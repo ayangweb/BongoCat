@@ -1,11 +1,8 @@
 use rdev::{listen, Event, EventType};
 use serde::Serialize;
 use serde_json::{json, Value};
-use std::{
-    sync::atomic::{AtomicBool, Ordering},
-    thread::spawn,
-};
-use tauri::{AppHandle, Emitter};
+use std::sync::atomic::{AtomicBool, Ordering};
+use tauri::{async_runtime, AppHandle, Emitter};
 
 static IS_RUNNING: AtomicBool = AtomicBool::new(false);
 
@@ -31,7 +28,7 @@ pub fn start_listening(app_handle: AppHandle) {
 
     IS_RUNNING.store(true, Ordering::SeqCst);
 
-    spawn(move || {
+    async_runtime::block_on(async move {
         let callback = move |event: Event| {
             let device = match event.event_type {
                 EventType::ButtonPress(button) => DeviceEvent {

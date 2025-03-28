@@ -1,11 +1,6 @@
-import type { IApplicationOptions } from 'pixi.js'
 import { Live2DModel } from 'pixi-live2d-display'
 import { Application } from 'pixi.js'
-import { ref } from 'vue'
-
-interface Options extends IApplicationOptions {
-  url: string
-}
+import { onMounted, ref } from 'vue'
 
 interface Motion {
   Name: string
@@ -21,22 +16,27 @@ interface Expression {
 }
 
 export function useModel() {
+  const mode = ref('standard')
   const model = ref<Live2DModel>()
   const motions = ref<Record<string, Motion[]>>({})
   const expressions = ref<Expression[]>([])
 
-  const loadModel = async (options: Options) => {
-    const { url, ...rest } = options
+  onMounted(() => {
+    loadModel()
+  })
 
+  const loadModel = async () => {
     destroyModel()
 
+    const view = document.getElementById('live2dCanvas') as HTMLCanvasElement
+
     const app = new Application({
+      view,
       resizeTo: window,
       backgroundAlpha: 0,
-      ...rest,
     })
 
-    const loadedModel = await Live2DModel.from(url)
+    const loadedModel = await Live2DModel.from(`/models/${mode.value}/cat.model3.json`)
 
     app.stage.addChild(loadedModel)
 

@@ -3,60 +3,58 @@ import { LogicalSize } from '@tauri-apps/api/dpi'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { Live2DModel } from 'pixi-live2d-display'
 import { Ticker } from 'pixi.js'
-import { ref, useTemplateRef, watch, watchEffect } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useDevice } from '../composables/useDevice'
 import { useModel } from '../composables/useModel'
+import { getCursorMonitor } from '../utils/monitor'
 
 Live2DModel.registerTicker(Ticker)
 
-const canvasRef = useTemplateRef<HTMLCanvasElement>('canvasRef')
 const mode = ref('standard')
 const { pressedKeys, pressedMouses, mousePosition } = useDevice()
-const { model, loadModel, setParameterValue } = useModel()
+const { model, setParameterValue } = useModel()
 
-watch([mode, canvasRef], (value) => {
-  const [mode, canvas] = value
-
-  if (!canvas) return
-
-  loadModel({
-    view: canvas,
-    url: `/models/${mode}/cat.model3.json`,
-  })
-}, { immediate: true })
-
-watchEffect(() => {
-  if (!model.value) return
-
-  handleResized()
-
-  window.removeEventListener('resize', handleResized)
+onMounted(() => {
   window.addEventListener('resize', handleResized)
 })
 
-watchEffect(() => {
-  const hasArrowKey = pressedKeys.value.some(key => key.endsWith('Arrow'))
-  const hasNonArrowKey = pressedKeys.value.some(key => !key.endsWith('Arrow'))
+watch(model, (value) => {
+  if (!value) return
+
+  handleResized()
+})
+
+watch(pressedKeys, (value) => {
+  const hasArrowKey = value.some(key => key.endsWith('Arrow'))
+  const hasNonArrowKey = value.some(key => !key.endsWith('Arrow'))
 
   setParameterValue('CatParamRightHandDown', hasArrowKey)
   setParameterValue('CatParamLeftHandDown', hasNonArrowKey)
 })
 
-watchEffect(() => {
-  const isLeftDown = pressedMouses.value.includes('Left')
-  const isRightDown = pressedMouses.value.includes('Right')
+watch(pressedMouses, (value) => {
+  const isLeftDown = value.includes('Left')
+  const isRightDown = value.includes('Right')
 
   setParameterValue('ParamMouseLeftDown', isLeftDown)
   setParameterValue('ParamMouseRightDown', isRightDown)
 })
 
-watchEffect(() => {
-  if (!mousePosition.value) return
+watch(mousePosition, async () => {
+  if (!model.value) return
 
-  const { innerWidth, innerHeight } = window
+  const monitor = await getCursorMonitor()
 
-  const x = -30 + (mousePosition.value.x / innerWidth) * 15
-  const y = -30 + (mousePosition.value.y / innerHeight) * 15
+  if (!monitor) return
+
+  const { size, cursorX, cursorY } = monitor
+  const { width, height } = size
+
+  const xRatio = cursorX / width
+  const yRatio = cursorY / height
+
+  const x = (xRatio * 60) - 30
+  const y = (yRatio * 60) - 30
 
   setParameterValue('ParamMouseX', -x)
   setParameterValue('ParamMouseY', -y)
@@ -93,11 +91,11 @@ function handleMouseDown() {
   >
     <img :src="`/images/backgrounds/${mode}.png`">
 
-    <canvas ref="canvasRef" />
+    <canvas id="live2dCanvas" />
 
-    <template v-for="item in pressedKeys" :key="item">
-      <img :src="`/images/keys/${item}.png`">
-      <img :src="`/images/hands/${item}.png`">
+    <template v-for="key in pressedKeys" :key="key">
+      <img :src="`/images/keys/${key}.png`">
+      <img :src="`/images/hands/${key}.png`">
     </template>
   </div>
 </template>
