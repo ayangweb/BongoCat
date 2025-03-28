@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { emit } from '@tauri-apps/api/event'
+
 import { LISTEN_KEY } from '../constants'
 
 type WindowLabel = 'main' | 'preference'

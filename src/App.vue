@@ -3,6 +3,7 @@ import { listen } from '@tauri-apps/api/event'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { onMounted } from 'vue'
 import { RouterView } from 'vue-router'
+
 import { LISTEN_KEY } from './constants'
 import { hideWindow, showWindow } from './plugins/window'
 

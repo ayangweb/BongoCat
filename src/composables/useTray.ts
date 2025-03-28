@@ -1,4 +1,5 @@
 import type { TrayIconOptions } from '@tauri-apps/api/tray'
+
 import { getName, getVersion } from '@tauri-apps/api/app'
 import { Menu, MenuItem, PredefinedMenuItem } from '@tauri-apps/api/menu'
 import { resolveResource } from '@tauri-apps/api/path'
@@ -6,6 +7,7 @@ import { TrayIcon } from '@tauri-apps/api/tray'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { exit, relaunch } from '@tauri-apps/plugin-process'
 import { onMounted, ref, watch } from 'vue'
+
 import { hideWindow, showWindow } from '../plugins/window'
 import { isMac } from '../utils/platform'
 
