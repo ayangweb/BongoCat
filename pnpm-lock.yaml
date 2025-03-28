@@ -59,9 +59,6 @@ importers:
       '@unocss/eslint-plugin':
         specifier: ^66.0.0
         version: 66.0.0(eslint@9.23.0(jiti@2.4.2))(typescript@5.6.3)
-      '@unocss/preset-rem-to-px':
-        specifier: 66.1.0-beta.7
-        version: 66.1.0-beta.7
       '@vitejs/plugin-vue':
         specifier: ^5.2.3
         version: 5.2.3(vite@6.2.3(@types/node@22.13.14)(jiti@2.4.2)(tsx@4.19.3)(yaml@2.7.0))(vue@3.5.13(typescript@5.6.3))
@@ -1362,9 +1359,6 @@ packages:
 
   '@unocss/preset-mini@66.1.0-beta.7':
     resolution: {integrity: sha512-5v9RNFTk2OMLbE45JVoYA0HtZKCDCI3j7uRAcuRLVP3O/yAd9JlP/b8ou3wvtgxHTXFEgk6Pt8dFDKPadA3Hrw==}
-
-  '@unocss/preset-rem-to-px@66.1.0-beta.7':
-    resolution: {integrity: sha512-ig51UnsHMar1x0N3vytHRxp7qXSlwkzk4j1rjjYCTQ05sBhZbKfu1YD+dvhTilJjPklk5kUND+At6nWgPzHHtA==}
 
   '@unocss/preset-tagify@66.1.0-beta.7':
     resolution: {integrity: sha512-8eJLHiyfzwfKjqV4sIP+158h6RSTwuQ4AOC8UZij0AketU9bhFIyfOzgvFALiZBo71LFFDe1gSliZpK/eGan2g==}
@@ -5536,10 +5530,6 @@ snapshots:
       '@unocss/core': 66.1.0-beta.7
       '@unocss/extractor-arbitrary-variants': 66.1.0-beta.7
       '@unocss/rule-utils': 66.1.0-beta.7
-
-  '@unocss/preset-rem-to-px@66.1.0-beta.7':
-    dependencies:
-      '@unocss/core': 66.1.0-beta.7
 
   '@unocss/preset-tagify@66.1.0-beta.7':
     dependencies:

@@ -38,7 +38,6 @@
     "@tauri-apps/cli": "^2.4.0",
     "@types/node": "^22.13.14",
     "@unocss/eslint-plugin": "^66.0.0",
-    "@unocss/preset-rem-to-px": "66.1.0-beta.7",
     "@vitejs/plugin-vue": "^5.2.3",
     "eslint": "^9.23.0",
     "eslint-plugin-format": "^1.0.1",
