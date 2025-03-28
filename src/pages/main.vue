@@ -1,15 +1,20 @@
 <script setup lang="ts">
+import type { KeyMap } from '../constants/keyMap'
+
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { useDevice } from '../composables/useDevice'
 import { useModel } from '../composables/useModel'
+import { KEY_MAP } from '../constants/keyMap'
 
 const { pressedKeys, pressedMouses, mousePosition } = useDevice()
 const { handleLoadModel, handleDestroy, handleMouseClick, handleResized, handleMouseMove, handleKeyDown, handleSetMode, mode, background } = useModel()
 
 const isOverLap = ref(false)
 let resizeTimer: NodeJS.Timeout | null = null
+
+const keyHistory = ref<string[]>([])
 
 async function handleSwitch() {
   const newMode = mode.value === 'STANDARD' ? 'KEYBOARD' : 'STANDARD'
@@ -45,7 +50,17 @@ onUnmounted(() => {
     clearTimeout(resizeTimer)
 })
 
-watch(pressedKeys, handleKeyDown)
+const displayDuration = ref(3000)
+watch(pressedKeys, (value) => {
+  handleKeyDown(value)
+
+  const icons = value.map(key => KEY_MAP[key as KeyMap])
+  keyHistory.value.push(...icons)
+
+  setTimeout(() => {
+    keyHistory.value.splice(0, icons.length)
+  }, displayDuration.value)
+})
 watch(mousePosition, handleMouseMove)
 watch(pressedMouses, handleMouseClick)
 
@@ -67,9 +82,16 @@ function handleMouseDown() {
       </span>
     </div>
 
-    <button class="absolute left-0 top-0 z-9 rounded-full bg-sky text-center text-white h-8! w-20! hover:shadow-lg" @click.stop="handleSwitch">
-      切换模式
-    </button>
+    <div class="absolute left-0 right-0 top-1 z-9 flex items-center justify-center gap-2 h-8!">
+      <div class="ml-2 h-full flex flex-1 items-center justify-center overflow-hidden rounded-md bg-black/50 p-2">
+        <span v-for="icon in keyHistory" :key="icon" :class="icon" class="text-2xl text-white">
+          {{ icon }}
+        </span>
+      </div>
+      <button class="shrink-0 rounded-full bg-sky text-center text-white h-8! w-20! hover:shadow-lg" @click.stop="handleSwitch">
+        切换模式
+      </button>
+    </div>
 
     <img :src="background">
 

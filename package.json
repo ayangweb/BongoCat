@@ -35,6 +35,7 @@
     "@antfu/eslint-config": "^4.11.0",
     "@commitlint/cli": "^19.8.0",
     "@commitlint/config-conventional": "^19.8.0",
+    "@iconify-json/tabler": "^1.2.17",
     "@tauri-apps/cli": "^2.4.0",
     "@types/node": "^22.13.14",
     "@unocss/eslint-plugin": "^66.0.0",
