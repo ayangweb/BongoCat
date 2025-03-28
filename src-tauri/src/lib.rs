@@ -2,7 +2,7 @@ mod core;
 
 use core::{device, setup};
 use tauri::{Manager, WindowEvent};
-use tauri_plugin_custom_window::{hide_window, MAIN_WINDOW_LABEL, PREFERENCE_WINDOW_LABEL};
+use tauri_plugin_custom_window::{MAIN_WINDOW_LABEL, PREFERENCE_WINDOW_LABEL};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -24,6 +24,7 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_pinia::init())
         .on_window_event(|window, event| match event {
             WindowEvent::CloseRequested { api, .. } => {
                 let _ = window.hide();

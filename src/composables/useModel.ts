@@ -1,31 +1,30 @@
-import type { ModelType } from '../constants'
-
 import { LogicalSize } from '@tauri-apps/api/dpi'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { computed, ref } from 'vue'
+import { computed, watch } from 'vue'
 
 import { MODEL_BACKGROUND } from '../constants'
+import { useModelStore } from '../stores/model'
 import live2d from '../utils/live2d'
 import { getCursorMonitor } from '../utils/monitor'
 
 export function useModel() {
-  const mode = ref<ModelType>(localStorage.getItem('mode') as ModelType ?? 'STANDARD')
+  const modelState = useModelStore()
 
-  const background = computed(() => MODEL_BACKGROUND[mode.value])
+  const background = computed(() => MODEL_BACKGROUND[modelState.mode])
 
-  async function handleSetMode(value: ModelType) {
-    mode.value = value
-    localStorage.setItem('mode', value)
-    await handleLoadModel()
-  }
+  watch(() => modelState.mode, () => {
+    loadModel()
+  })
 
-  async function handleLoadModel() {
-    await live2d.load(mode.value).catch((error) => {
+  async function loadModel() {
+    await live2d.load(modelState.mode).catch((error) => {
       console.error('模型加载失败:', error)
     })
+
+    handleResized()
   }
 
-  async function handleDestroy() {
+  async function destroyModel() {
     await live2d.destroy().catch((error) => {
       console.error('模型销毁失败:', error)
     })
@@ -88,29 +87,27 @@ export function useModel() {
     }
   }
 
-  async function handleMouseClick(value: string[]) {
+  async function handleMouseDown(value: string[]) {
     try {
-      const hasLeftClick = value.includes('Left')
-      const hasRightClick = value.includes('Right')
+      const hasLeftDown = value.includes('Left')
+      const hasRightDown = value.includes('Right')
 
-      live2d.setParameterValue('ParamMouseLeftDown', hasLeftClick)
-      live2d.setParameterValue('ParamMouseRightDown', hasRightClick)
+      live2d.setParameterValue('ParamMouseLeftDown', hasLeftDown)
+      live2d.setParameterValue('ParamMouseRightDown', hasRightDown)
     } catch (error) {
       console.error('鼠标点击捕获出错:', error)
     }
   }
 
   return {
-    mode,
     background,
     motions: live2d.currentMotions,
     expressions: live2d.currentExpressions,
-    handleSetMode,
-    handleLoadModel,
-    handleDestroy,
+    loadModel,
+    destroyModel,
     handleResized,
     handleKeyDown,
     handleMouseMove,
-    handleMouseClick,
+    handleMouseDown,
   }
 }

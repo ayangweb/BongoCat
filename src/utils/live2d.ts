@@ -1,4 +1,4 @@
-import type { ModelType } from '../constants'
+import type { ModelType } from '../types/model'
 
 import { Live2DModel } from 'pixi-live2d-display'
 import { Application, Ticker } from 'pixi.js'

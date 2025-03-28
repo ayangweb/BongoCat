@@ -1,21 +1,15 @@
 <script setup lang="ts">
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { useDevice } from '../composables/useDevice'
 import { useModel } from '../composables/useModel'
 
 const { pressedKeys, pressedMouses, mousePosition } = useDevice()
-const { handleLoadModel, handleDestroy, handleMouseClick, handleResized, handleMouseMove, handleKeyDown, handleSetMode, mode, background } = useModel()
+const { loadModel, destroyModel, handleMouseDown, handleResized, handleMouseMove, handleKeyDown, background } = useModel()
 
 const isOverLap = ref(false)
 let resizeTimer: NodeJS.Timeout | null = null
-
-async function handleSwitch() {
-  const newMode = mode.value === 'STANDARD' ? 'KEYBOARD' : 'STANDARD'
-  await handleSetMode(newMode)
-  handleResized()
-}
 
 function handleResize() {
   isOverLap.value = true
@@ -28,28 +22,29 @@ function handleResize() {
   }, 100)
 }
 
-onMounted(async () => {
-  await nextTick()
-  await handleLoadModel()
-  handleResized()
+onMounted(() => {
+  loadModel()
 
   window.addEventListener('resize', handleResize)
 })
 
 onUnmounted(() => {
-  handleDestroy()
+  destroyModel()
 
   window.removeEventListener('resize', handleResize)
 
-  if (resizeTimer)
-    clearTimeout(resizeTimer)
+  if (!resizeTimer) return
+
+  clearTimeout(resizeTimer)
 })
 
 watch(pressedKeys, handleKeyDown)
-watch(mousePosition, handleMouseMove)
-watch(pressedMouses, handleMouseClick)
 
-function handleMouseDown() {
+watch(mousePosition, handleMouseMove)
+
+watch(pressedMouses, handleMouseDown)
+
+function onMouseDown() {
   const appWindow = getCurrentWebviewWindow()
 
   appWindow.startDragging()
@@ -59,17 +54,13 @@ function handleMouseDown() {
 <template>
   <div
     class="relative children:(absolute h-screen w-screen)"
-    @mousedown="handleMouseDown"
+    @mousedown="onMouseDown"
   >
     <div v-if="isOverLap" class="absolute inset-0 z-99 flex items-center justify-center bg-black">
       <span class="text-center text-5xl text-white">
         重绘中...
       </span>
     </div>
-
-    <button class="absolute left-0 top-0 z-9 rounded-full bg-sky text-center text-white h-8! w-20! hover:shadow-lg" @click.stop="handleSwitch">
-      切换模式
-    </button>
 
     <img :src="background">
 

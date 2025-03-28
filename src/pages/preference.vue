@@ -1,7 +1,13 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
+
 import { useTray } from '../composables/useTray'
 
-useTray()
+const { createTray } = useTray()
+
+onMounted(() => {
+  createTray()
+})
 </script>
 
 <template>

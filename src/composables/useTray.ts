@@ -1,26 +1,25 @@
 import type { TrayIconOptions } from '@tauri-apps/api/tray'
 
 import { getName, getVersion } from '@tauri-apps/api/app'
-import { Menu, MenuItem, PredefinedMenuItem } from '@tauri-apps/api/menu'
+import { CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu } from '@tauri-apps/api/menu'
 import { resolveResource } from '@tauri-apps/api/path'
 import { TrayIcon } from '@tauri-apps/api/tray'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { exit, relaunch } from '@tauri-apps/plugin-process'
-import { onMounted, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 
+import { GITHUB_LINK } from '../constants'
 import { hideWindow, showWindow } from '../plugins/window'
+import { useModelStore } from '../stores/model'
 import { isMac } from '../utils/platform'
 
 const TRAY_ID = 'BONGO_CAT_TRAY'
 
 export function useTray() {
   const visible = ref(true)
+  const modelStore = useModelStore()
 
-  onMounted(() => {
-    createTray()
-  })
-
-  watch(visible, () => {
+  watch([visible, () => modelStore.mode], () => {
     updateTrayMenu()
   })
 
@@ -59,7 +58,7 @@ export function useTray() {
     const items = await Promise.all([
       MenuItem.new({
         text: '偏好设置...',
-        accelerator: 'Cmd+,',
+        accelerator: isMac ? 'Cmd+,' : '',
         action: () => showWindow(),
       }),
       MenuItem.new({
@@ -74,13 +73,32 @@ export function useTray() {
           visible.value = !visible.value
         },
       }),
+      Submenu.new({
+        text: '猫咪模式',
+        items: await Promise.all([
+          CheckMenuItem.new({
+            text: '标准模式',
+            checked: modelStore.mode === 'STANDARD',
+            action: () => {
+              modelStore.mode = 'STANDARD'
+            },
+          }),
+          CheckMenuItem.new({
+            text: '键盘模式',
+            checked: modelStore.mode === 'KEYBOARD',
+            action: () => {
+              modelStore.mode = 'KEYBOARD'
+            },
+          }),
+        ]),
+      }),
       PredefinedMenuItem.new({ item: 'Separator' }),
       MenuItem.new({
         text: '检查更新',
       }),
       MenuItem.new({
         text: '开源地址',
-        action: () => openUrl('https://github.com/ayangweb/BongoCat'),
+        action: () => openUrl(GITHUB_LINK),
       }),
       PredefinedMenuItem.new({ item: 'Separator' }),
       MenuItem.new({
@@ -93,7 +111,7 @@ export function useTray() {
       }),
       MenuItem.new({
         text: '退出应用',
-        accelerator: 'Cmd+Q',
+        accelerator: isMac ? 'Cmd+Q' : '',
         action: () => exit(0),
       }),
     ])
@@ -109,5 +127,9 @@ export function useTray() {
     const menu = await getTrayMenu()
 
     tray.setMenu(menu)
+  }
+
+  return {
+    createTray,
   }
 }

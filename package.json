@@ -15,7 +15,7 @@
     "build:icon": "tsx scripts/buildIcon.ts",
     "preview": "vite preview",
     "tauri": "tauri",
-    "lint": "eslint --fix",
+    "lint": "eslint --fix src",
     "preinstall": "npx only-allow pnpm",
     "prepare": "simple-git-hooks",
     "release": "release-it"
@@ -25,7 +25,9 @@
     "@tauri-apps/plugin-opener": "~2.2.6",
     "@tauri-apps/plugin-os": "^2.2.1",
     "@tauri-apps/plugin-process": "^2.2.0",
+    "@tauri-store/pinia": "^3.1.2",
     "@unocss/reset": "66.1.0-beta.7",
+    "pinia": "^3.0.1",
     "pixi-live2d-display": "^0.4.0",
     "pixi.js": "^6.5.10",
     "vue": "^3.5.13",

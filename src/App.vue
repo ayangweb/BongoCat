@@ -6,8 +6,13 @@ import { RouterView } from 'vue-router'
 
 import { LISTEN_KEY } from './constants'
 import { hideWindow, showWindow } from './plugins/window'
+import { useModelStore } from './stores/model'
+
+const modelStore = useModelStore()
 
 onMounted(() => {
+  modelStore.$tauri.start()
+
   const appWindow = getCurrentWebviewWindow()
 
   listen(LISTEN_KEY.SHOW_WINDOW, ({ payload }) => {
