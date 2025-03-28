@@ -4,6 +4,7 @@ import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { Live2DModel } from 'pixi-live2d-display'
 import { Ticker } from 'pixi.js'
 import { onMounted, ref, watch } from 'vue'
+
 import { useDevice } from '../composables/useDevice'
 import { useModel } from '../composables/useModel'
 import { getCursorMonitor } from '../utils/monitor'

@@ -1,4 +1,5 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
+
 import Main from '../pages/main.vue'
 import Preference from '../pages/preference.vue'
 
