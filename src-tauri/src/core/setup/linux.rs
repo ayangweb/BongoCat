@@ -1,4 +1,4 @@
-use tauri::{App, AppHandle, WebviewWindow};
+use tauri::{AppHandle, WebviewWindow};
 
 pub fn platform(
     _app_handle: &AppHandle,
