@@ -16,7 +16,7 @@ pub fn run() {
 
             setup::default(&app_handle, main_window.clone(), preference_window.clone());
 
-            let _ = device::start_listening(app_handle.clone());
+            device::start_listening(app_handle.clone());
 
             Ok(())
         })
