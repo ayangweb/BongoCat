@@ -8,4 +8,4 @@ useTray()
   <div class="">
     Preference
   </div>
-</template>../../composables/useTray
+</template>
