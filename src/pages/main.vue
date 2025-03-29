@@ -38,6 +38,10 @@ function handleWindowDrag() {
 
   appWindow.startDragging()
 }
+
+function resolveImageURL(key: string) {
+  return new URL(`../assets/images/keys/${key}.png`, import.meta.url).href
+}
 </script>
 
 <template>
@@ -45,19 +49,16 @@ function handleWindowDrag() {
     class="relative children:(absolute h-screen w-screen)"
     @mousedown="handleWindowDrag"
   >
-    <div v-show="resizing" class="absolute inset-0 z-99 flex items-center justify-center bg-black">
-      <span class="text-center text-5xl text-white">
-        重绘中...
-      </span>
-    </div>
-
     <img :src="background">
 
     <canvas id="live2dCanvas" />
 
-    <template v-for="key in pressedKeys" :key="key">
-      <img :src="`/images/keys/${key}.png`">
-      <img :src="`/images/hands/${key}.png`">
-    </template>
+    <img v-for="key in pressedKeys" :key="key" :src="resolveImageURL(key)">
+
+    <div v-show="resizing" class="flex items-center justify-center bg-black">
+      <span class="text-center text-5xl text-white">
+        重绘中...
+      </span>
+    </div>
   </div>
 </template>
