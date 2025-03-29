@@ -7,7 +7,7 @@ import { useDevice } from '../composables/useDevice'
 import { useModel } from '../composables/useModel'
 
 const { pressedMouses, mousePosition, pressedKeys } = useDevice()
-const { loadModel, destroyModel, onResized, onKeyDown, onMouseMove, onMouseDown, background } = useModel()
+const { onLoad, onDestroy, onResized, onKeyDown, onMouseMove, onMouseDown, background } = useModel()
 
 const isOverLap = ref(false)
 let resizeTimer: NodeJS.Timeout | null = null
@@ -23,12 +23,10 @@ function handleResize() {
   }, 100)
 }
 
-onMounted(() => {
-  loadModel()
-})
+onMounted(onLoad)
 
 onUnmounted(() => {
-  destroyModel()
+  onDestroy()
 
   if (!resizeTimer) return
 

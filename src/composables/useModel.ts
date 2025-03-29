@@ -12,17 +12,15 @@ export function useModel() {
 
   const background = computed(() => MODEL_BACKGROUND[modelState.mode])
 
-  watch(() => modelState.mode, () => {
-    loadModel()
-  })
+  watch(() => modelState.mode, onLoad)
 
-  async function loadModel() {
+  async function onLoad() {
     await live2d.load(modelState.mode)
 
     onResized()
   }
 
-  function destroyModel() {
+  function onDestroy() {
     live2d.destroy()
   }
 
@@ -83,8 +81,8 @@ export function useModel() {
     background,
     motions: live2d.currentMotions,
     expressions: live2d.currentExpressions,
-    loadModel,
-    destroyModel,
+    onLoad,
+    onDestroy,
     onResized,
     onKeyDown,
     onMouseMove,
