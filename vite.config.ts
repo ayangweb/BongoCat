@@ -1,5 +1,3 @@
-import { readdirSync } from 'node:fs'
-import { parse, resolve } from 'node:path'
 import { env } from 'node:process'
 
 import vue from '@vitejs/plugin-vue'
@@ -7,10 +5,6 @@ import UnoCSS from 'unocss/vite'
 import { defineConfig } from 'vite'
 
 const host = env.TAURI_DEV_HOST
-
-const availableKeys = readdirSync(resolve(__dirname, 'public/images/keys'))
-  .filter(file => !file.startsWith('.'))
-  .map(file => parse(file).name)
 
 // https://vitejs.dev/config/
 export default defineConfig(async () => ({
@@ -40,8 +34,5 @@ export default defineConfig(async () => ({
       // 3. tell vite to ignore watching `src-tauri`
       ignored: ['**/src-tauri/**'],
     },
-  },
-  define: {
-    'window.availableKeys': availableKeys,
   },
 }))
