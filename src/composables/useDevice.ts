@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 
 import { LISTEN_KEY } from '../constants'
 import { useModelStore } from '../stores/model'
@@ -29,19 +29,21 @@ interface KeyboardEvent {
 
 type DeviceEvent = MouseButtonEvent | MouseMoveEvent | KeyboardEvent
 
-const keyFiles = import.meta.glob('../assets/images/keys/*.png', { eager: true })
+function getSupportKeys() {
+  const files = import.meta.glob('../assets/images/keys/*.png', { eager: true })
+
+  return Object.keys(files).map((path) => {
+    return path.split('/').pop()?.replace('.png', '')
+  })
+}
+
+const supportKeys = getSupportKeys()
 
 export function useDevice() {
   const pressedMouses = ref<MouseButtonValue[]>([])
   const mousePosition = ref<MouseMoveValue | undefined>()
   const pressedKeys = ref<string[]>([])
   const modelStore = useModelStore()
-
-  const supportKeys = computed(() => {
-    return Object.keys(keyFiles).map((path) => {
-      return path.split('/').pop()?.replace('.png', '')
-    }).filter(Boolean)
-  })
 
   const handlePress = <T>(array: T[], value?: T) => {
     if (!value) return array
@@ -59,7 +61,7 @@ export function useDevice() {
     key = key.replace(/(Left|Right|Gr)$/, '').replace(/F(\d+)/, 'Fn')
 
     const isInvalidArrowKey = key.endsWith('Arrow') && modelStore.mode !== 'KEYBOARD'
-    const isUnsupportedKey = !supportKeys.value.includes(key)
+    const isUnsupportedKey = !supportKeys.includes(key)
 
     if (isInvalidArrowKey || isUnsupportedKey) return
 
