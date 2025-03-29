@@ -12,27 +12,16 @@ edition = "2021"
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "bongo_cat_lib"
-crate-type = [
-  "staticlib",
-  "cdylib",
-  "rlib"
-]
+crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { workspace = true, features = [
-  "macos-private-api",
-  "tray-icon",
-  "image-png"
-] }
-serde = { workspace = true, features = [ "derive" ] }
-
+tauri = { workspace = true, features = ["macos-private-api", "tray-icon", "image-png"] }
+serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
-
 tauri-plugin-custom-window.workspace = true
-
 rdev = "0.5"
 tauri-plugin-os = "2"
 tauri-plugin-process = "2"
