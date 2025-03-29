@@ -12,24 +12,25 @@ export function useModel() {
 
   const background = computed(() => MODEL_BACKGROUND[modelState.mode])
 
-  watch(() => modelState.mode, onLoad)
+  watch(() => modelState.mode, handleLoad)
 
-  async function onLoad() {
+  async function handleLoad() {
     await live2d.load(modelState.mode)
 
-    onResized()
+    handleResize()
   }
 
-  function onDestroy() {
+  function handleDestroy() {
     live2d.destroy()
   }
 
-  async function onResized() {
+  async function handleResize() {
     if (!live2d.currentModel) return
 
+    const appWindow = getCurrentWebviewWindow()
     const { innerWidth } = window
 
-    await getCurrentWebviewWindow().setSize(
+    await appWindow.setSize(
       new LogicalSize({
         width: innerWidth,
         height: innerWidth * (354 / 612),
@@ -39,7 +40,7 @@ export function useModel() {
     live2d.currentModel?.scale.set(innerWidth / 612)
   }
 
-  function onKeyDown(value: string[]) {
+  function handleKeyDown(value: string[]) {
     const hasArrowKey = value.some(key => key.endsWith('Arrow'))
     const hasNonArrowKey = value.some(key => !key.endsWith('Arrow'))
 
@@ -47,7 +48,7 @@ export function useModel() {
     live2d.setParameterValue('CatParamLeftHandDown', hasNonArrowKey)
   }
 
-  async function onMouseMove() {
+  async function handleMouseMove() {
     if (!live2d.currentModel) return
 
     const monitor = await getCursorMonitor()
@@ -69,7 +70,7 @@ export function useModel() {
     live2d.setParameterValue('ParamAngleY', -y)
   }
 
-  function onMouseDown(value: string[]) {
+  function handleMouseDown(value: string[]) {
     const hasLeftDown = value.includes('Left')
     const hasRightDown = value.includes('Right')
 
@@ -81,11 +82,11 @@ export function useModel() {
     background,
     motions: live2d.currentMotions,
     expressions: live2d.currentExpressions,
-    onLoad,
-    onDestroy,
-    onResized,
-    onKeyDown,
-    onMouseMove,
-    onMouseDown,
+    handleLoad,
+    handleDestroy,
+    handleResize,
+    handleKeyDown,
+    handleMouseMove,
+    handleMouseDown,
   }
 }

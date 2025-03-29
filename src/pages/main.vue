@@ -1,47 +1,39 @@
 <script setup lang="ts">
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { useEventListener } from '@vueuse/core'
+import { useDebounceFn, useEventListener } from '@vueuse/core'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { useDevice } from '../composables/useDevice'
 import { useModel } from '../composables/useModel'
 
 const { pressedMouses, mousePosition, pressedKeys } = useDevice()
-const { onLoad, onDestroy, onResized, onKeyDown, onMouseMove, onMouseDown, background } = useModel()
+const { background, handleLoad, handleDestroy, handleResize, handleMouseDown, handleMouseMove, handleKeyDown } = useModel()
 
-const isOverLap = ref(false)
-let resizeTimer: NodeJS.Timeout | null = null
+const resizing = ref(false)
 
-function handleResize() {
-  isOverLap.value = true
+onMounted(handleLoad)
 
-  if (resizeTimer) clearTimeout(resizeTimer)
+onUnmounted(handleDestroy)
 
-  resizeTimer = setTimeout(async () => {
-    await onResized()
-    isOverLap.value = false
-  }, 100)
-}
+const handleDebounceResize = useDebounceFn(async () => {
+  await handleResize()
 
-onMounted(onLoad)
+  resizing.value = false
+}, 100)
 
-onUnmounted(() => {
-  onDestroy()
+useEventListener('resize', () => {
+  resizing.value = true
 
-  if (!resizeTimer) return
-
-  clearTimeout(resizeTimer)
+  handleDebounceResize()
 })
 
-useEventListener('resize', handleResize)
+watch(pressedMouses, handleMouseDown)
 
-watch(pressedMouses, onMouseDown)
+watch(mousePosition, handleMouseMove)
 
-watch(mousePosition, onMouseMove)
+watch(pressedKeys, handleKeyDown)
 
-watch(pressedKeys, onKeyDown)
-
-function handleMouseDown() {
+function handleWindowDrag() {
   const appWindow = getCurrentWebviewWindow()
 
   appWindow.startDragging()
@@ -51,9 +43,9 @@ function handleMouseDown() {
 <template>
   <div
     class="relative children:(absolute h-screen w-screen)"
-    @mousedown="handleMouseDown"
+    @mousedown="handleWindowDrag"
   >
-    <div v-if="isOverLap" class="absolute inset-0 z-99 flex items-center justify-center bg-black">
+    <div v-show="resizing" class="absolute inset-0 z-99 flex items-center justify-center bg-black">
       <span class="text-center text-5xl text-white">
         重绘中...
       </span>
