@@ -54,7 +54,7 @@ pub fn start_listening(app_handle: AppHandle) {
                 _ => return,
             };
 
-            if let Err(e) = app_handle.emit("change", device) {
+            if let Err(e) = app_handle.emit("device-changed", device) {
                 eprintln!("Failed to emit event: {:?}", e);
             }
         };

@@ -1,5 +1,8 @@
-import { listen } from '@tauri-apps/api/event'
-import { onMounted, ref } from 'vue'
+import { ref } from 'vue'
+
+import { LISTEN_KEY } from '../constants'
+
+import { useTauriListen } from './useTauriListen'
 
 type MouseButtonValue = 'Left' | 'Right' | 'Middle'
 
@@ -38,28 +41,26 @@ export function useDevice() {
     return array.filter(item => item !== value)
   }
 
-  onMounted(() => {
-    listen<DeviceEvent>('change', ({ payload }) => {
-      const { kind, value } = payload
+  useTauriListen<DeviceEvent>(LISTEN_KEY.DEVICE_CHANGED, ({ payload }) => {
+    const { kind, value } = payload
 
-      switch (kind) {
-        case 'MousePress':
-          pressedMouses.value = handlePress(pressedMouses.value, value)
-          break
-        case 'MouseRelease':
-          pressedMouses.value = handleRelease(pressedMouses.value, value)
-          break
-        case 'MouseMove':
-          mousePosition.value = value
-          break
-        case 'KeyboardPress':
-          pressedKeys.value = handlePress(pressedKeys.value, value)
-          break
-        case 'KeyboardRelease':
-          pressedKeys.value = handleRelease(pressedKeys.value, value)
-          break
-      }
-    })
+    switch (kind) {
+      case 'MousePress':
+        pressedMouses.value = handlePress(pressedMouses.value, value)
+        break
+      case 'MouseRelease':
+        pressedMouses.value = handleRelease(pressedMouses.value, value)
+        break
+      case 'MouseMove':
+        mousePosition.value = value
+        break
+      case 'KeyboardPress':
+        pressedKeys.value = handlePress(pressedKeys.value, value)
+        break
+      case 'KeyboardRelease':
+        pressedKeys.value = handleRelease(pressedKeys.value, value)
+        break
+    }
   })
 
   return {

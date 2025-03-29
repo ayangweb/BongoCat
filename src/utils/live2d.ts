@@ -66,8 +66,8 @@ class ModelManager {
     ) as Map<string, Expression>
   }
 
-  public async destroy() {
-    await this.currentModel?.destroy()
+  public destroy() {
+    this.currentModel?.destroy()
   }
 
   public setParameterValue(id: string, value: number | boolean) {

@@ -8,4 +8,7 @@ import 'virtual:uno.css'
 import '@unocss/reset/tailwind-compat.css'
 import './assets/css/global.css'
 
-createApp(App).use(router).use(createPinia().use(createPlugin())).mount('#app')
+const pinia = createPinia()
+pinia.use(createPlugin({ saveOnChange: true }))
+
+createApp(App).use(router).use(pinia).mount('#app')

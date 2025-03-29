@@ -16,6 +16,9 @@ importers:
       '@tauri-apps/api':
         specifier: ^2.4.0
         version: 2.4.0
+      '@tauri-apps/plugin-log':
+        specifier: ~2.3.1
+        version: 2.3.1
       '@tauri-apps/plugin-opener':
         specifier: ~2.2.6
         version: 2.2.6
@@ -26,11 +29,14 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0
       '@tauri-store/pinia':
-        specifier: ^3.1.2
-        version: 3.1.2(typescript@5.6.3)
+        specifier: ^3.2.0
+        version: 3.2.0(typescript@5.6.3)
       '@unocss/reset':
         specifier: 66.1.0-beta.7
         version: 66.1.0-beta.7
+      '@vueuse/core':
+        specifier: ^13.0.0
+        version: 13.0.0(vue@3.5.13(typescript@5.6.3))
       pinia:
         specifier: ^3.0.1
         version: 3.0.1(typescript@5.6.3)(vue@3.5.13(typescript@5.6.3))
@@ -40,6 +46,9 @@ importers:
       pixi.js:
         specifier: ^6.5.10
         version: 6.5.10
+      radash:
+        specifier: ^12.1.0
+        version: 12.1.0
       vue:
         specifier: ^3.5.13
         version: 3.5.13(typescript@5.6.3)
@@ -1207,6 +1216,9 @@ packages:
     engines: {node: '>= 10'}
     hasBin: true
 
+  '@tauri-apps/plugin-log@2.3.1':
+    resolution: {integrity: sha512-nnKGHENWt7teqvUlIKxd6bp2wCUrrLvCvajN6CWbyrHBNKPi/pyKELzD511siEMDEdndbiZ/GEhiK0xBtZopRg==}
+
   '@tauri-apps/plugin-opener@2.2.6':
     resolution: {integrity: sha512-bSdkuP71ZQRepPOn8BOEdBKYJQvl6+jb160QtJX/i2H9BF6ZySY/kYljh76N2Ne5fJMQRge7rlKoStYQY5Jq1w==}
 
@@ -1216,8 +1228,8 @@ packages:
   '@tauri-apps/plugin-process@2.2.0':
     resolution: {integrity: sha512-uypN2Crmyop9z+KRJr3zl71OyVFgTuvHFjsJ0UxxQ/J5212jVa5w4nPEYjIewcn8bUEXacRebwE6F7owgrbhSw==}
 
-  '@tauri-store/pinia@3.1.2':
-    resolution: {integrity: sha512-NFy/o89jF8I9k/FcKU/9E0/gBPAjMqu0m3NutMI37HBa997h0EuuWd8wu+N2WI04zsE2bpL2ZcMlsuXXh+mWjg==}
+  '@tauri-store/pinia@3.2.0':
+    resolution: {integrity: sha512-Z9ZepfH+3Lvgq5CmzeYYct0WW26oqrE9aOR0swXlINALTEm+8FPaqRftwfkwe74GKWKVwENOwXZ5VVBsDapjug==}
 
   '@tauri-store/shared@0.7.2':
     resolution: {integrity: sha512-42nprNNeU+tjpCvYnaBsu3kYwAy8gP6KyXX9zeaIvpMys1tIhQdEiUAXo3KChHq/jCkSralXRLN4zfjCfBJFrw==}
@@ -1272,6 +1284,9 @@ packages:
 
   '@types/unist@3.0.3':
     resolution: {integrity: sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q==}
+
+  '@types/web-bluetooth@0.0.21':
+    resolution: {integrity: sha512-oIQLCGWtcFZy2JW77j9k8nHzAOpqMHLQejDA48XXMWH6tjCQHz5RCFz1bzsmROyL6PUm+LLnUiI4BCn221inxA==}
 
   '@typescript-eslint/eslint-plugin@8.28.0':
     resolution: {integrity: sha512-lvFK3TCGAHsItNdWZ/1FkvpzCxTHUVuFrdnOGLMa0GGCFIbCgQWVk3CzCGdA7kM3qGVc+dfW9tr0Z/sHnGDFyg==}
@@ -1556,6 +1571,19 @@ packages:
 
   '@vue/shared@3.5.13':
     resolution: {integrity: sha512-/hnE/qP5ZoGpol0a5mDi45bOd7t3tjYJBjsgCsivow7D48cJeV5l05RD82lPqi7gRiphZM37rnhW1l6ZoCNNnQ==}
+
+  '@vueuse/core@13.0.0':
+    resolution: {integrity: sha512-rkgb4a8/0b234lMGCT29WkCjPfsX0oxrIRR7FDndRoW3FsaC9NBzefXg/9TLhAgwM11f49XnutshM4LzJBrQ5g==}
+    peerDependencies:
+      vue: ^3.5.0
+
+  '@vueuse/metadata@13.0.0':
+    resolution: {integrity: sha512-TRNksqmvtvqsuHf7bbgH9OSXEV2b6+M3BSN4LR5oxWKykOFT9gV78+C2/0++Pq9KCp9KQ1OQDPvGlWNQpOb2Mw==}
+
+  '@vueuse/shared@13.0.0':
+    resolution: {integrity: sha512-9MiHhAPw+sqCF/RLo8V6HsjRqEdNEWVpDLm2WBRW2G/kSQjb8X901sozXpSCaeLG0f7TEfMrT4XNaA5m1ez7Dg==}
+    peerDependencies:
+      vue: ^3.5.0
 
   JSONStream@1.3.5:
     resolution: {integrity: sha512-E+iruNOY8VV9s4JEbe1aNEm6MiszPRr/UfcHMz0TQh1BXSxHK+ASV1R6W4HpjBhSeS+54PIsAMCBmwD06LLsqQ==}
@@ -3612,6 +3640,10 @@ packages:
   queue-microtask@1.2.3:
     resolution: {integrity: sha512-NuaNSa6flKT5JaSYQzJok04JzTL1CA6aGhv5rfLW3PgqA+M2ChpZQnAC8h8i4ZFkBS8X5RqkDBHA7r4hej3K9A==}
 
+  radash@12.1.0:
+    resolution: {integrity: sha512-b0Zcf09AhqKS83btmUeYBS8tFK7XL2e3RvLmZcm0sTdF1/UUlHSsjXdCcWNxe7yfmAlPve5ym0DmKGtTzP6kVQ==}
+    engines: {node: '>=14.18.0'}
+
   rc@1.2.8:
     resolution: {integrity: sha512-y3bGgqKj3QBdxLbLkomlohkvsA8gdAiUQlSBJnBhfn+BPxg4bc62d8TcBW15wavDfgexCgccckhcZvywyQYPOw==}
     hasBin: true
@@ -5357,6 +5389,10 @@ snapshots:
       '@tauri-apps/cli-win32-ia32-msvc': 2.4.0
       '@tauri-apps/cli-win32-x64-msvc': 2.4.0
 
+  '@tauri-apps/plugin-log@2.3.1':
+    dependencies:
+      '@tauri-apps/api': 2.4.0
+
   '@tauri-apps/plugin-opener@2.2.6':
     dependencies:
       '@tauri-apps/api': 2.4.0
@@ -5369,7 +5405,7 @@ snapshots:
     dependencies:
       '@tauri-apps/api': 2.4.0
 
-  '@tauri-store/pinia@3.1.2(typescript@5.6.3)':
+  '@tauri-store/pinia@3.2.0(typescript@5.6.3)':
     dependencies:
       '@tauri-apps/api': 2.4.0
       '@tauri-store/shared': 0.7.2
@@ -5430,6 +5466,8 @@ snapshots:
   '@types/parse-path@7.0.3': {}
 
   '@types/unist@3.0.3': {}
+
+  '@types/web-bluetooth@0.0.21': {}
 
   '@typescript-eslint/eslint-plugin@8.28.0(@typescript-eslint/parser@8.28.0(eslint@9.23.0(jiti@2.4.2))(typescript@5.6.3))(eslint@9.23.0(jiti@2.4.2))(typescript@5.6.3)':
     dependencies:
@@ -5816,6 +5854,19 @@ snapshots:
       vue: 3.5.13(typescript@5.6.3)
 
   '@vue/shared@3.5.13': {}
+
+  '@vueuse/core@13.0.0(vue@3.5.13(typescript@5.6.3))':
+    dependencies:
+      '@types/web-bluetooth': 0.0.21
+      '@vueuse/metadata': 13.0.0
+      '@vueuse/shared': 13.0.0(vue@3.5.13(typescript@5.6.3))
+      vue: 3.5.13(typescript@5.6.3)
+
+  '@vueuse/metadata@13.0.0': {}
+
+  '@vueuse/shared@13.0.0(vue@3.5.13(typescript@5.6.3))':
+    dependencies:
+      vue: 3.5.13(typescript@5.6.3)
 
   JSONStream@1.3.5:
     dependencies:
@@ -8215,6 +8266,8 @@ snapshots:
   quansync@0.2.10: {}
 
   queue-microtask@1.2.3: {}
+
+  radash@12.1.0: {}
 
   rc@1.2.8:
     dependencies:

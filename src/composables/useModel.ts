@@ -17,86 +17,66 @@ export function useModel() {
   })
 
   async function loadModel() {
-    await live2d.load(modelState.mode).catch((error) => {
-      console.error('模型加载失败:', error)
-    })
+    await live2d.load(modelState.mode)
 
-    handleResized()
+    onResized()
   }
 
-  async function destroyModel() {
-    await live2d.destroy().catch((error) => {
-      console.error('模型销毁失败:', error)
-    })
+  function destroyModel() {
+    live2d.destroy()
   }
 
-  async function handleResized() {
+  async function onResized() {
     if (!live2d.currentModel) return
 
-    try {
-      const { innerWidth } = window
+    const { innerWidth } = window
 
-      await getCurrentWebviewWindow().setSize(
-        new LogicalSize({
-          width: innerWidth,
-          height: innerWidth * (354 / 612),
-        }),
-      )
+    await getCurrentWebviewWindow().setSize(
+      new LogicalSize({
+        width: innerWidth,
+        height: innerWidth * (354 / 612),
+      }),
+    )
 
-      live2d.currentModel?.scale.set(innerWidth / 612)
-    } catch (error) {
-      console.error('窗口调整大小出错:', error)
-    }
+    live2d.currentModel?.scale.set(innerWidth / 612)
   }
 
-  async function handleKeyDown(value: string[]) {
-    try {
-      const hasArrowKey = value.some(key => key.endsWith('Arrow'))
-      const hasNonArrowKey = value.some(key => !key.endsWith('Arrow'))
+  function onKeyDown(value: string[]) {
+    const hasArrowKey = value.some(key => key.endsWith('Arrow'))
+    const hasNonArrowKey = value.some(key => !key.endsWith('Arrow'))
 
-      live2d.setParameterValue('CatParamRightHandDown', hasArrowKey)
-      live2d.setParameterValue('CatParamLeftHandDown', hasNonArrowKey)
-    } catch (error) {
-      console.error('按键捕获出错:', error)
-    }
+    live2d.setParameterValue('CatParamRightHandDown', hasArrowKey)
+    live2d.setParameterValue('CatParamLeftHandDown', hasNonArrowKey)
   }
 
-  async function handleMouseMove() {
+  async function onMouseMove() {
     if (!live2d.currentModel) return
 
-    try {
-      const monitor = await getCursorMonitor()
+    const monitor = await getCursorMonitor()
 
-      if (!monitor) return
+    if (!monitor) return
 
-      const { size, cursorX, cursorY } = monitor
-      const { width, height } = size
+    const { size, cursorX, cursorY } = monitor
+    const { width, height } = size
 
-      const xRatio = cursorX / width
-      const yRatio = cursorY / height
+    const xRatio = cursorX / width
+    const yRatio = cursorY / height
 
-      const x = (xRatio * 60) - 30
-      const y = (yRatio * 60) - 30
+    const x = (xRatio * 60) - 30
+    const y = (yRatio * 60) - 30
 
-      live2d.setParameterValue('ParamMouseX', -x)
-      live2d.setParameterValue('ParamMouseY', -y)
-      live2d.setParameterValue('ParamAngleX', x)
-      live2d.setParameterValue('ParamAngleY', -y)
-    } catch (error) {
-      console.error('鼠标移动捕获出错:', error)
-    }
+    live2d.setParameterValue('ParamMouseX', -x)
+    live2d.setParameterValue('ParamMouseY', -y)
+    live2d.setParameterValue('ParamAngleX', x)
+    live2d.setParameterValue('ParamAngleY', -y)
   }
 
-  async function handleMouseDown(value: string[]) {
-    try {
-      const hasLeftDown = value.includes('Left')
-      const hasRightDown = value.includes('Right')
+  function onMouseDown(value: string[]) {
+    const hasLeftDown = value.includes('Left')
+    const hasRightDown = value.includes('Right')
 
-      live2d.setParameterValue('ParamMouseLeftDown', hasLeftDown)
-      live2d.setParameterValue('ParamMouseRightDown', hasRightDown)
-    } catch (error) {
-      console.error('鼠标点击捕获出错:', error)
-    }
+    live2d.setParameterValue('ParamMouseLeftDown', hasLeftDown)
+    live2d.setParameterValue('ParamMouseRightDown', hasRightDown)
   }
 
   return {
@@ -105,9 +85,9 @@ export function useModel() {
     expressions: live2d.currentExpressions,
     loadModel,
     destroyModel,
-    handleResized,
-    handleKeyDown,
-    handleMouseMove,
-    handleMouseDown,
+    onResized,
+    onKeyDown,
+    onMouseMove,
+    onMouseDown,
   }
 }

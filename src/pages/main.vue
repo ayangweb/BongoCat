@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { useEventListener } from '@vueuse/core'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { useDevice } from '../composables/useDevice'
 import { useModel } from '../composables/useModel'
 
-const { pressedKeys, pressedMouses, mousePosition } = useDevice()
-const { loadModel, destroyModel, handleMouseDown, handleResized, handleMouseMove, handleKeyDown, background } = useModel()
+const { pressedMouses, mousePosition, pressedKeys } = useDevice()
+const { loadModel, destroyModel, onResized, onKeyDown, onMouseMove, onMouseDown, background } = useModel()
 
 const isOverLap = ref(false)
 let resizeTimer: NodeJS.Timeout | null = null
@@ -17,34 +18,32 @@ function handleResize() {
   if (resizeTimer) clearTimeout(resizeTimer)
 
   resizeTimer = setTimeout(async () => {
-    await handleResized()
+    await onResized()
     isOverLap.value = false
   }, 100)
 }
 
 onMounted(() => {
   loadModel()
-
-  window.addEventListener('resize', handleResize)
 })
 
 onUnmounted(() => {
   destroyModel()
-
-  window.removeEventListener('resize', handleResize)
 
   if (!resizeTimer) return
 
   clearTimeout(resizeTimer)
 })
 
-watch(pressedKeys, handleKeyDown)
+useEventListener('resize', handleResize)
 
-watch(mousePosition, handleMouseMove)
+watch(pressedMouses, onMouseDown)
 
-watch(pressedMouses, handleMouseDown)
+watch(mousePosition, onMouseMove)
 
-function onMouseDown() {
+watch(pressedKeys, onKeyDown)
+
+function handleMouseDown() {
   const appWindow = getCurrentWebviewWindow()
 
   appWindow.startDragging()
@@ -54,7 +53,7 @@ function onMouseDown() {
 <template>
   <div
     class="relative children:(absolute h-screen w-screen)"
-    @mousedown="onMouseDown"
+    @mousedown="handleMouseDown"
   >
     <div v-if="isOverLap" class="absolute inset-0 z-99 flex items-center justify-center bg-black">
       <span class="text-center text-5xl text-white">

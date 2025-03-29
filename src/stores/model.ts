@@ -9,8 +9,4 @@ export const useModelStore = defineStore('model', () => {
   return {
     mode,
   }
-}, {
-  tauri: {
-    saveOnChange: true,
-  },
 })

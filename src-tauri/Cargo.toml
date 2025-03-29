@@ -38,6 +38,7 @@ tauri-plugin-os = "2"
 tauri-plugin-process = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-pinia = "3"
+tauri-plugin-log = "2"
 
 [target."cfg(target_os = \"macos\")".dependencies]
 tauri-nspanel.workspace = true

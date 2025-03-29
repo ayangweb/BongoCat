@@ -2,7 +2,9 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["*"],
+  "windows": [
+    "*"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
@@ -11,6 +13,7 @@
     "os:default",
     "process:default",
     "opener:default",
-    "pinia:default"
+    "pinia:default",
+    "log:default"
   ]
 }
