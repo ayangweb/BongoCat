@@ -49,7 +49,7 @@ export function useModel() {
   }
 
   async function handleMouseMove() {
-    if (!live2d.currentModel) return
+    if (modelState.mode !== 'STANDARD' || !live2d.currentModel) return
 
     const monitor = await getCursorMonitor()
 
