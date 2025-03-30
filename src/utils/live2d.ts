@@ -22,7 +22,6 @@ interface Expression {
 
 class ModelManager {
   private app: Application | null = null
-
   public currentModel: Live2DModel | null = null
   public currentMotions = new Map<string, Motion[]>()
   public currentExpressions = new Map<string, Expression>()
@@ -36,7 +35,8 @@ class ModelManager {
       view,
       resizeTo: window,
       backgroundAlpha: 0,
-      antialias: true,
+      autoDensity: true,
+      resolution: devicePixelRatio,
     })
   }
 
