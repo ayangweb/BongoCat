@@ -1,4 +1,6 @@
-import { ref } from 'vue'
+import type { Ref } from 'vue'
+
+import { reactive, ref } from 'vue'
 
 import { LISTEN_KEY } from '../constants'
 import { useModelStore } from '../stores/model'
@@ -41,20 +43,20 @@ const supportKeys = getSupportKeys()
 
 export function useDevice() {
   const pressedMouses = ref<MouseButtonValue[]>([])
-  const mousePosition = ref<MouseMoveValue | undefined>()
+  const mousePosition = reactive<MouseMoveValue>({ x: 0, y: 0 })
   const pressedKeys = ref<string[]>([])
   const modelStore = useModelStore()
 
-  const handlePress = <T>(array: T[], value?: T) => {
-    if (!value) return array
+  const handlePress = <T>(array: Ref<T[]>, value?: T) => {
+    if (!value) return
 
-    return [...new Set([...array, value])]
+    array.value = [...new Set([...array.value, value])]
   }
 
-  const handleRelease = <T>(array: T[], value?: T) => {
-    if (!value) return array
+  const handleRelease = <T>(array: Ref<T[]>, value?: T) => {
+    if (!value) return
 
-    return array.filter(item => item !== value)
+    array.value = array.value.filter(item => item !== value)
   }
 
   const normalizeKeyValue = (key: string) => {
@@ -73,20 +75,15 @@ export function useDevice() {
 
     switch (kind) {
       case 'MousePress':
-        pressedMouses.value = handlePress(pressedMouses.value, value)
-        break
+        return handlePress(pressedMouses, value)
       case 'MouseRelease':
-        pressedMouses.value = handleRelease(pressedMouses.value, value)
-        break
+        return handleRelease(pressedMouses, value)
       case 'MouseMove':
-        mousePosition.value = value
-        break
+        return Object.assign(mousePosition, value)
       case 'KeyboardPress':
-        pressedKeys.value = handlePress(pressedKeys.value, normalizeKeyValue(value))
-        break
+        return handlePress(pressedKeys, normalizeKeyValue(value))
       case 'KeyboardRelease':
-        pressedKeys.value = handleRelease(pressedKeys.value, normalizeKeyValue(value))
-        break
+        return handleRelease(pressedKeys, normalizeKeyValue(value))
     }
   })
 
