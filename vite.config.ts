@@ -1,3 +1,4 @@
+import { resolve } from 'node:path'
 import { env } from 'node:process'
 
 import vue from '@vitejs/plugin-vue'
@@ -11,7 +12,7 @@ export default defineConfig(async () => ({
   plugins: [vue(), UnoCSS()],
   resolve: {
     alias: {
-      '@': '/src',
+      '@': resolve(__dirname, 'src'),
     },
   },
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
