@@ -1,0 +1,17 @@
+html {
+  --uno: select-none overscroll-none antialiased;
+
+  color-scheme: light;
+
+  &.dark {
+    color-scheme: dark;
+  }
+
+  img {
+    -webkit-user-drag: none;
+  }
+
+  button {
+    outline: none !important;
+  }
+}

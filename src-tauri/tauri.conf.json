@@ -22,17 +22,31 @@
         "alwaysOnTop": true,
         "transparent": true,
         "decorations": false,
-        "acceptFirstMouse": true
+        "acceptFirstMouse": true,
+        "skipTaskbar": true
       },
       {
         "label": "preference",
         "title": "偏好设置",
         "url": "index.html/#/preference",
-        "visible": false
+        "width": 600,
+        "height": 450,
+        "resizable": false,
+        "maximizable": false,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "dangerousDisableAssetCspModification": true,
+      "assetProtocol": {
+        "enable": true,
+        "scope": {
+          "allow": ["**/*"],
+          "requireLiteralLeadingDot": false
+        }
+      }
     }
   },
   "bundle": {
@@ -47,7 +61,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": ["assets/tray.png"]
+    "resources": ["assets/tray.png", "assets/logo.png"]
   },
   "plugins": {
     "updater": {

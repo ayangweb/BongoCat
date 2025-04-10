@@ -1,6 +1,7 @@
 import antfu from '@antfu/eslint-config'
 
 export default antfu({
+  formatters: true,
   unocss: true,
   rules: {
     'antfu/if-newline': 'off',
@@ -19,6 +20,7 @@ export default antfu({
         },
       },
     ],
+    'vue/attributes-order': ['error', { alphabetical: true }],
   },
   ignores: ['**/*.toml'],
 })

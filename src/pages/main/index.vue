@@ -3,11 +3,14 @@ import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { useDebounceFn, useEventListener } from '@vueuse/core'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
-import { useDevice } from '../composables/useDevice'
-import { useModel } from '../composables/useModel'
+import { useDevice } from '@/composables/useDevice'
+import { useModel } from '@/composables/useModel'
+import { useCatStore } from '@/stores/cat'
 
+const appWindow = getCurrentWebviewWindow()
 const { pressedMouses, mousePosition, pressedKeys } = useDevice()
-const { background, handleLoad, handleDestroy, handleResize, handleMouseDown, handleMouseMove, handleKeyDown } = useModel()
+const { handleLoad, handleDestroy, handleResize, handleMouseDown, handleMouseMove, handleKeyDown } = useModel()
+const catStore = useCatStore()
 
 const resizing = ref(false)
 
@@ -33,14 +36,16 @@ watch(mousePosition, handleMouseMove)
 
 watch(pressedKeys, handleKeyDown)
 
-function handleWindowDrag() {
-  const appWindow = getCurrentWebviewWindow()
+watch(() => catStore.penetrable, (value) => {
+  appWindow.setIgnoreCursorEvents(value)
+})
 
+function handleWindowDrag() {
   appWindow.startDragging()
 }
 
 function resolveImageURL(key: string) {
-  return new URL(`../assets/images/keys/${key}.png`, import.meta.url).href
+  return new URL(`../../assets/images/keys/${key}.png`, import.meta.url).href
 }
 </script>
 
@@ -49,7 +54,7 @@ function resolveImageURL(key: string) {
     class="relative children:(absolute h-screen w-screen)"
     @mousedown="handleWindowDrag"
   >
-    <img :src="background">
+    <img :src="`/images/backgrounds/${catStore.mode}.png`">
 
     <canvas id="live2dCanvas" />
 

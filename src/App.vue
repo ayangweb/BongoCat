@@ -7,16 +7,21 @@ import { onMounted } from 'vue'
 import { RouterView } from 'vue-router'
 
 import { useTauriListen } from './composables/useTauriListen'
+import { useThemeVars } from './composables/useThemeVars'
 import { LISTEN_KEY } from './constants'
 import { hideWindow, showWindow } from './plugins/window'
+import { useCatStore } from './stores/cat'
 import { useModelStore } from './stores/model'
 
+const { generateColorVars } = useThemeVars()
 const modelStore = useModelStore()
-
+const catStore = useCatStore()
 const appWindow = getCurrentWebviewWindow()
 
 onMounted(() => {
+  generateColorVars()
   modelStore.$tauri.start()
+  catStore.$tauri.start()
 })
 
 useTauriListen(LISTEN_KEY.SHOW_WINDOW, ({ payload }) => {

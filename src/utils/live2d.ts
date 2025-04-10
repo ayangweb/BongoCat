@@ -1,30 +1,11 @@
-import type { ModelType } from '../types/model'
-
 import { Live2DModel } from 'pixi-live2d-display'
 import { Application, Ticker } from 'pixi.js'
 
-import { MODEL_PATH } from '../constants'
-
 Live2DModel.registerTicker(Ticker)
 
-interface Motion {
-  Name: string
-  File: string
-  Sound?: string
-  FadeInTime: number
-  FadeOutTime: number
-}
-
-interface Expression {
-  Name: string
-  File: string
-}
-
-class ModelManager {
+class Live2d {
   private app: Application | null = null
-  public currentModel: Live2DModel | null = null
-  public currentMotions = new Map<string, Motion[]>()
-  public currentExpressions = new Map<string, Expression>()
+  public model: Live2DModel | null = null
 
   constructor() { }
 
@@ -40,14 +21,12 @@ class ModelManager {
     })
   }
 
-  public async load(type: ModelType) {
-    const modelPath = MODEL_PATH[type]
-
+  public async load(url: string) {
     if (!this.app) {
       this.mount()
     }
 
-    const model = await Live2DModel.from(modelPath)
+    const model = await Live2DModel.from(url)
 
     if (this.app?.stage.children.length) {
       this.app.stage.removeChildren()
@@ -57,24 +36,23 @@ class ModelManager {
 
     const { definitions, expressionManager } = model.internalModel.motionManager
 
-    this.currentModel = model
-    this.currentMotions = new Map(
-      Object.entries(definitions),
-    ) as Map<string, Motion[]>
-    this.currentExpressions = new Map(
-      Object.entries(expressionManager?.definitions || {}),
-    ) as Map<string, Expression>
+    this.model = model
+
+    return {
+      motions: Object.values(definitions).flat(),
+      expressions: expressionManager?.definitions ?? [],
+    }
   }
 
   public destroy() {
-    this.currentModel?.destroy()
+    this.model?.destroy()
   }
 
   public setParameterValue(id: string, value: number | boolean) {
-    return this.currentModel?.internalModel.coreModel.setParameterValueById(id, Number(value))
+    return this.model?.internalModel.coreModel.setParameterValueById(id, Number(value))
   }
 }
 
-const live2d = new ModelManager()
+const live2d = new Live2d()
 
 export default live2d

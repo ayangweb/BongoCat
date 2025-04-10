@@ -10,40 +10,34 @@
     "DisplayInfo": "demomodel.cdi3.json",
     "Expressions": [
       {
-        "Name": "live2d_expression0.exp3.json",
+        "Key": "",
+        "Name": "去掉表情",
         "File": "live2d_expression0.exp3.json"
       },
       {
-        "Name": "live2d_expression1.exp3.json",
+        "Key": "",
+        "Name": "戴上墨镜",
         "File": "live2d_expression1.exp3.json"
       },
       {
-        "Name": "live2d_expression2.exp3.json",
+        "Key": "",
+        "Name": "升天",
         "File": "live2d_expression2.exp3.json"
       }
     ],
     "Motions": {
       "CAT_motion": [
         {
+          "Key": "",
+          "Name": "打雷",
           "File": "live2d_motion1.motion3.json",
           "Sound": "live2d_motion1.flac",
           "FadeInTime": 0,
           "FadeOutTime": 0
         },
         {
-          "File": "live2d_motion2.motion3.json",
-          "FadeInTime": 0,
-          "FadeOutTime": 0
-        }
-      ],
-      "CAT_motion_lock": [
-        {
-          "File": "live2d_motion1.motion3.json",
-          "Sound": "live2d_motion1.flac",
-          "FadeInTime": 0,
-          "FadeOutTime": 0
-        },
-        {
+          "Key": "",
+          "Name": "左手摇摆",
           "File": "live2d_motion2.motion3.json",
           "FadeInTime": 0,
           "FadeOutTime": 0

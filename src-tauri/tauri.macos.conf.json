@@ -1,6 +1,6 @@
 {
   "identifier": "com.ayangweb.BongoCat",
   "bundle": {
-    "resources": ["assets/tray-mac.png"]
+    "resources": ["assets/tray-mac.png", "assets/logo.png"]
   }
 }

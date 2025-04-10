@@ -1,23 +1,23 @@
 import { LogicalSize } from '@tauri-apps/api/dpi'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { computed, watch } from 'vue'
+import { watch } from 'vue'
 
-import { MODEL_BACKGROUND } from '../constants'
-import { useModelStore } from '../stores/model'
 import live2d from '../utils/live2d'
 import { getCursorMonitor } from '../utils/monitor'
 
+import { useCatStore } from '@/stores/cat'
+
 export function useModel() {
-  const modelState = useModelStore()
+  const carStore = useCatStore()
 
-  const background = computed(() => MODEL_BACKGROUND[modelState.mode])
-
-  watch(() => modelState.mode, handleLoad)
+  watch(() => carStore.mode, handleLoad)
 
   async function handleLoad() {
-    await live2d.load(modelState.mode)
+    const data = await live2d.load(`/models/${carStore.mode}/cat.model3.json`)
 
     handleResize()
+
+    Object.assign(carStore, data)
   }
 
   function handleDestroy() {
@@ -25,7 +25,7 @@ export function useModel() {
   }
 
   async function handleResize() {
-    if (!live2d.currentModel) return
+    if (!live2d.model) return
 
     const appWindow = getCurrentWebviewWindow()
     const { innerWidth } = window
@@ -37,7 +37,7 @@ export function useModel() {
       }),
     )
 
-    live2d.currentModel?.scale.set(innerWidth / 612)
+    live2d.model?.scale.set(innerWidth / 612)
   }
 
   function handleKeyDown(value: string[]) {
@@ -49,7 +49,7 @@ export function useModel() {
   }
 
   async function handleMouseMove() {
-    if (modelState.mode !== 'STANDARD' || !live2d.currentModel) return
+    if (carStore.mode !== 'standard' || !live2d.model) return
 
     const monitor = await getCursorMonitor()
 
@@ -79,9 +79,6 @@ export function useModel() {
   }
 
   return {
-    background,
-    motions: live2d.currentMotions,
-    expressions: live2d.currentExpressions,
     handleLoad,
     handleDestroy,
     handleResize,

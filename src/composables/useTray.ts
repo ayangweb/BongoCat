@@ -10,16 +10,17 @@ import { ref, watch } from 'vue'
 
 import { GITHUB_LINK } from '../constants'
 import { hideWindow, showWindow } from '../plugins/window'
-import { useModelStore } from '../stores/model'
 import { isMac } from '../utils/platform'
+
+import { useCatStore } from '@/stores/cat'
 
 const TRAY_ID = 'BONGO_CAT_TRAY'
 
 export function useTray() {
   const visible = ref(true)
-  const modelStore = useModelStore()
+  const catStore = useCatStore()
 
-  watch([visible, () => modelStore.mode], () => {
+  watch([visible, () => catStore.mode], () => {
     updateTrayMenu()
   })
 
@@ -78,16 +79,16 @@ export function useTray() {
         items: await Promise.all([
           CheckMenuItem.new({
             text: '标准模式',
-            checked: modelStore.mode === 'STANDARD',
+            checked: catStore.mode === 'standard',
             action: () => {
-              modelStore.mode = 'STANDARD'
+              catStore.mode = 'standard'
             },
           }),
           CheckMenuItem.new({
             text: '键盘模式',
-            checked: modelStore.mode === 'KEYBOARD',
+            checked: catStore.mode === 'keyboard',
             action: () => {
-              modelStore.mode = 'KEYBOARD'
+              catStore.mode = 'keyboard'
             },
           }),
         ]),
