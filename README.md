@@ -49,14 +49,6 @@
 
 ![demo.gif](./static/demo.gif)
 
-当然，下面是润色后的版本，更加简洁清晰：
-
-⸻
-
-以下是润色后的版本，替换了“xx”并优化了表述，使其更清晰、自然且专业：
-
----
-
 ## 下载
 
 请前往 [Releases](https://github.com/ayangweb/BongoCat/releases) 页面，下载最新版本。
