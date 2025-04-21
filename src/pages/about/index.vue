@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { Button } from 'ant-design-vue'
 
 import ProList from '@/components/pro-list/index.vue'
@@ -7,6 +8,10 @@ import { GITHUB_LINK } from '@/constants'
 import { useAppStore } from '@/stores/app'
 
 const appStore = useAppStore()
+
+function feedbackIssue() {
+  openUrl(`${GITHUB_LINK}/issues/new`)
+}
 </script>
 
 <template>
@@ -22,7 +27,7 @@ const appStore = useAppStore()
     </ProListItem>
 
     <ProListItem title="开源地址">
-      <Button danger>
+      <Button danger @click="feedbackIssue">
         反馈问题
       </Button>
 

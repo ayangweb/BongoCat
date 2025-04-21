@@ -2,5 +2,5 @@
 </script>
 
 <template>
-  model
+  敬请期待...
 </template>

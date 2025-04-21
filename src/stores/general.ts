@@ -1,6 +1,10 @@
 import { defineStore } from 'pinia'
+import { ref } from 'vue'
 
-export const useCatStore = defineStore('cat', () => {
+export const useGeneralStore = defineStore('cat', () => {
+  const autoCheckUpdate = ref(false)
+
   return {
+    autoCheckUpdate,
   }
 })
