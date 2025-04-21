@@ -1,6 +1,7 @@
 import type { TrayIconOptions } from '@tauri-apps/api/tray'
 
 import { getName, getVersion } from '@tauri-apps/api/app'
+import { emit } from '@tauri-apps/api/event'
 import { CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu } from '@tauri-apps/api/menu'
 import { resolveResource } from '@tauri-apps/api/path'
 import { TrayIcon } from '@tauri-apps/api/tray'
@@ -8,7 +9,7 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { exit, relaunch } from '@tauri-apps/plugin-process'
 import { ref, watch } from 'vue'
 
-import { GITHUB_LINK } from '../constants'
+import { GITHUB_LINK, LISTEN_KEY } from '../constants'
 import { hideWindow, showWindow } from '../plugins/window'
 import { isMac } from '../utils/platform'
 
@@ -93,9 +94,21 @@ export function useTray() {
           }),
         ]),
       }),
+      CheckMenuItem.new({
+        text: '窗口穿透',
+        checked: catStore.penetrable,
+        action: () => {
+          catStore.penetrable = !catStore.penetrable
+        },
+      }),
       PredefinedMenuItem.new({ item: 'Separator' }),
       MenuItem.new({
         text: '检查更新',
+        action: () => {
+          showWindow()
+
+          emit(LISTEN_KEY.UPDATE_APP)
+        },
       }),
       MenuItem.new({
         text: '开源地址',

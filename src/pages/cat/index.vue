@@ -29,7 +29,7 @@ const modeList: SelectProps['options'] = [
   </ProList>
 
   <ProList title="窗口设置">
-    <ProListItem description="支持窗口穿透" title="窗口穿透">
+    <ProListItem description="启用后，窗口不影响对其他应用程序的操作" title="窗口穿透">
       <Switch v-model:checked="catStore.penetrable" />
     </ProListItem>
   </ProList>

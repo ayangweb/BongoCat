@@ -1,6 +1,6 @@
 mod core;
 
-use core::{device, setup};
+use core::{device, prevent_default, setup};
 use tauri::{Manager, WindowEvent};
 use tauri_plugin_custom_window::{MAIN_WINDOW_LABEL, PREFERENCE_WINDOW_LABEL};
 
@@ -25,6 +25,8 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_pinia::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(prevent_default::init())
         .on_window_event(|window, event| match event {
             WindowEvent::CloseRequested { api, .. } => {
                 let _ = window.hide();

@@ -18,6 +18,8 @@
     "process:default",
     "opener:default",
     "pinia:default",
-    "log:default"
+    "log:default",
+    "updater:default",
+    "prevent-default:default"
   ]
 }
