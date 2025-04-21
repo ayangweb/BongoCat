@@ -3,9 +3,10 @@ import type { Ref } from 'vue'
 import { reactive, ref } from 'vue'
 
 import { LISTEN_KEY } from '../constants'
-import { useModelStore } from '../stores/model'
 
 import { useTauriListen } from './useTauriListen'
+
+import { useCatStore } from '@/stores/cat'
 
 type MouseButtonValue = 'Left' | 'Right' | 'Middle'
 
@@ -45,7 +46,7 @@ export function useDevice() {
   const pressedMouses = ref<MouseButtonValue[]>([])
   const mousePosition = reactive<MouseMoveValue>({ x: 0, y: 0 })
   const pressedKeys = ref<string[]>([])
-  const modelStore = useModelStore()
+  const catStore = useCatStore()
 
   const handlePress = <T>(array: Ref<T[]>, value?: T) => {
     if (!value) return
@@ -62,7 +63,7 @@ export function useDevice() {
   const normalizeKeyValue = (key: string) => {
     key = key.replace(/(Left|Right|Gr)$/, '').replace(/F(\d+)/, 'Fn')
 
-    const isInvalidArrowKey = key.endsWith('Arrow') && modelStore.mode !== 'KEYBOARD'
+    const isInvalidArrowKey = key.endsWith('Arrow') && catStore.mode !== 'keyboard'
     const isUnsupportedKey = !supportKeys.includes(key)
 
     if (isInvalidArrowKey || isUnsupportedKey) return
