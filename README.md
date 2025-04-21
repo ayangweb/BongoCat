@@ -47,6 +47,8 @@
 
 此外，得益于 Tauri 框架 强大的跨平台能力，本项目不仅支持 macOS，还可在 Windows 和 Linux 上运行，让更多用户都能享受 Bongo Cat 的乐趣！
 
+![demo.gif](./static/demo.gif)
+
 ## 历史星标
 
 <a href="https://www.star-history.com/#ayangweb/BongoCat&Date">
