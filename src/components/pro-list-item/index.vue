@@ -2,10 +2,11 @@
 import { Flex } from 'ant-design-vue'
 import { computed, useSlots } from 'vue'
 
-const { title, icon, description } = defineProps<{
+const { title, icon, description, vertical } = defineProps<{
   title: string
   icon?: string
   description?: string
+  vertical?: boolean
 }>()
 
 const slots = useSlots()
@@ -19,7 +20,13 @@ const hasDescription = computed(() => {
 </script>
 
 <template>
-  <Flex align="center" class="b b-color-2 rounded-lg b-solid p-4" justify="space-between">
+  <Flex
+    :align="vertical ? void 0 : 'center'"
+    class="b b-color-2 rounded-lg b-solid p-4"
+    gap="middle"
+    justify="space-between"
+    :vertical="vertical"
+  >
     <Flex align="center">
       <slot name="icon">
         <div class="text-4" :class="icon" />
@@ -30,7 +37,10 @@ const hasDescription = computed(() => {
           {{ title }}
         </div>
 
-        <div class="text-xs [&_a]:(active:text-color-primary-7 hover:text-color-primary-5 text-color-3) text-color-3" :class="{ 'mt-2': hasDescription }">
+        <div
+          class="text-xs [&_a]:(active:text-color-primary-7 hover:text-color-primary-5 text-color-3) text-color-3"
+          :class="{ 'mt-2': hasDescription }"
+        >
           <slot name="description">
             {{ description }}
           </slot>

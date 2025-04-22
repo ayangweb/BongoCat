@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { SelectProps } from 'ant-design-vue'
 
-import { Select, Switch } from 'ant-design-vue'
+import { Select, Slider, Switch } from 'ant-design-vue'
 
 import ProList from '@/components/pro-list/index.vue'
 import ProListItem from '@/components/pro-list-item/index.vue'
@@ -31,6 +31,10 @@ const modeList: SelectProps['options'] = [
   <ProList title="窗口设置">
     <ProListItem description="启用后，窗口不影响对其他应用程序的操作" title="窗口穿透">
       <Switch v-model:checked="catStore.penetrable" />
+    </ProListItem>
+
+    <ProListItem title="透明度" vertical>
+      <Slider v-model:value="catStore.opacity" class="m-0!" />
     </ProListItem>
   </ProList>
 </template>

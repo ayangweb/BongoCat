@@ -52,6 +52,7 @@ function resolveImageURL(key: string) {
 <template>
   <div
     class="relative children:(absolute h-screen w-screen)"
+    :style="{ opacity: catStore.opacity / 100 }"
     @mousedown="handleWindowDrag"
   >
     <img :src="`/images/backgrounds/${catStore.mode}.png`">
