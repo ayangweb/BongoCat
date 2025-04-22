@@ -21,7 +21,7 @@ export function useTray() {
   const visible = ref(true)
   const catStore = useCatStore()
 
-  watch([visible, () => catStore.mode], () => {
+  watch([visible, () => catStore.mode, () => catStore.penetrable], () => {
     updateTrayMenu()
   })
 
