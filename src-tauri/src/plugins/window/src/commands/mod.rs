@@ -6,20 +6,14 @@ pub static PREFERENCE_WINDOW_LABEL: &str = "preference";
 #[cfg(target_os = "macos")]
 mod macos;
 
-#[cfg(target_os = "windows")]
-mod windows;
-
-#[cfg(target_os = "linux")]
-mod linux;
+#[cfg(not(target_os = "macos"))]
+mod not_macos;
 
 #[cfg(target_os = "macos")]
 pub use macos::*;
 
-#[cfg(target_os = "windows")]
-pub use windows::*;
-
-#[cfg(target_os = "linux")]
-pub use linux::*;
+#[cfg(not(target_os = "macos"))]
+pub use not_macos::*;
 
 pub fn is_main_window<R: Runtime>(window: &WebviewWindow<R>) -> bool {
     window.label() == MAIN_WINDOW_LABEL

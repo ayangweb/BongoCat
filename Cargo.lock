@@ -385,9 +385,9 @@ dependencies = [
 
 [[package]]
 name = "bon"
-version = "3.6.2"
+version = "3.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb63be695fba944ff70bb3416564e7f999a60dc3ab5e8f3e979d376c39ab4c55"
+checksum = "ced38439e7a86a4761f7f7d5ded5ff009135939ecb464a24452eaa4c1696af7d"
 dependencies = [
  "bon-macros",
  "rustversion",
@@ -395,9 +395,9 @@ dependencies = [
 
 [[package]]
 name = "bon-macros"
-version = "3.6.2"
+version = "3.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80f28a685256d4b94dc4fed84503da7f70b6c1d468b0d6686ba960ba130e915f"
+checksum = "0ce61d2d3844c6b8d31b2353d9f66cf5e632b3e9549583fe3cac2f4f6136725e"
 dependencies = [
  "darling",
  "ident_case",
@@ -425,6 +425,7 @@ dependencies = [
  "tauri-plugin-pinia",
  "tauri-plugin-prevent-default",
  "tauri-plugin-process",
+ "tauri-plugin-single-instance",
  "tauri-plugin-updater",
 ]
 
@@ -4366,9 +4367,9 @@ checksum = "61c41af27dd6d1e27b1b16b489db798443478cef1f06a660c96db617ba5de3b1"
 
 [[package]]
 name = "tauri"
-version = "2.5.0"
+version = "2.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be03adf68fba02f87c4653da7bd73f40b0ecf9c6b7c2c39830f6981d0651912f"
+checksum = "e7b0bc1aec81bda6bc455ea98fcaed26b3c98c1648c627ad6ff1c704e8bf8cbc"
 dependencies = [
  "anyhow",
  "bytes",
@@ -4621,6 +4622,21 @@ checksum = "57da5888533e802b6206b9685091f8714aa1f5266dc80051a82388449558b773"
 dependencies = [
  "tauri",
  "tauri-plugin",
+]
+
+[[package]]
+name = "tauri-plugin-single-instance"
+version = "2.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1320af4d866a7fb5f5721d299d14d0dd9e4e6bc0359ff3e263124a2bf6814efa"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "thiserror 2.0.12",
+ "tracing",
+ "windows-sys 0.59.0",
+ "zbus",
 ]
 
 [[package]]
