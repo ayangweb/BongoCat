@@ -52,6 +52,7 @@ function resolveImageURL(key: string) {
 <template>
   <div
     class="relative children:(absolute h-screen w-screen)"
+    :class="[catStore.mirrorMode ? '-scale-x-100' : 'scale-x-100']"
     :style="{ opacity: catStore.opacity / 100 }"
     @mousedown="handleWindowDrag"
   >

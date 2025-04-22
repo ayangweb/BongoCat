@@ -36,5 +36,9 @@ const modeList: SelectProps['options'] = [
     <ProListItem title="透明度" vertical>
       <Slider v-model:value="catStore.opacity" class="m-0!" />
     </ProListItem>
+
+    <ProListItem title="镜像模式">
+      <Switch v-model:checked="catStore.mirrorMode" />
+    </ProListItem>
   </ProList>
 </template>
