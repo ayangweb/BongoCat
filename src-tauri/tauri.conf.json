@@ -18,6 +18,8 @@
         "url": "index.html/#/",
         "width": 408,
         "height": 236,
+        "minWidth": 204,
+        "minHeight": 118,
         "shadow": false,
         "alwaysOnTop": true,
         "transparent": true,
