@@ -33,6 +33,7 @@
         "url": "index.html/#/preference",
         "width": 600,
         "height": 450,
+        "visible": false,
         "resizable": false,
         "maximizable": false,
         "titleBarStyle": "Overlay",
