@@ -1,5 +1,6 @@
 import type { Ref } from 'vue'
 
+import { useDebounceFn } from '@vueuse/core'
 import { reactive, ref } from 'vue'
 
 import { LISTEN_KEY } from '../constants'
@@ -48,6 +49,10 @@ export function useDevice() {
   const pressedKeys = ref<string[]>([])
   const catStore = useCatStore()
 
+  const debounceCapsLockRelease = useDebounceFn(() => {
+    handleRelease(pressedKeys, 'CapsLock')
+  }, 100)
+
   const handlePress = <T>(array: Ref<T[]>, value?: T) => {
     if (!value) return
 
@@ -73,6 +78,12 @@ export function useDevice() {
 
   useTauriListen<DeviceEvent>(LISTEN_KEY.DEVICE_CHANGED, ({ payload }) => {
     const { kind, value } = payload
+
+    if (value === 'CapsLock') {
+      handlePress(pressedKeys, 'CapsLock')
+
+      return debounceCapsLockRelease()
+    }
 
     switch (kind) {
       case 'MousePress':
