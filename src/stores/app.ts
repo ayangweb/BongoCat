@@ -1,10 +1,13 @@
+import type { WindowState } from '@/composables/useWindowState'
+
 import { getName, getVersion } from '@tauri-apps/api/app'
 import { defineStore } from 'pinia'
-import { onMounted, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 
 export const useAppStore = defineStore('app', () => {
   const name = ref('')
   const version = ref('')
+  const windowState = reactive<WindowState>({})
 
   onMounted(async () => {
     name.value = await getName()
@@ -14,5 +17,6 @@ export const useAppStore = defineStore('app', () => {
   return {
     name,
     version,
+    windowState,
   }
 })

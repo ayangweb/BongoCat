@@ -5,29 +5,37 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { useEventListener } from '@vueuse/core'
 import isURL from 'is-url'
 import { isString } from 'radash'
-import { onMounted } from 'vue'
+import { onMounted, watch } from 'vue'
 import { RouterView } from 'vue-router'
 
 import { useTauriListen } from './composables/useTauriListen'
 import { useThemeVars } from './composables/useThemeVars'
+import { useWindowState } from './composables/useWindowState'
 import { LISTEN_KEY } from './constants'
 import { hideWindow, showWindow } from './plugins/window'
+import { useAppStore } from './stores/app'
 import { useCatStore } from './stores/cat'
 import { useGeneralStore } from './stores/general'
 import { useModelStore } from './stores/model'
 
 const { generateColorVars } = useThemeVars()
+const appStore = useAppStore()
 const modelStore = useModelStore()
 const catStore = useCatStore()
 const generalStore = useGeneralStore()
 const appWindow = getCurrentWebviewWindow()
+const { isRestored, restoreState } = useWindowState()
 
-onMounted(() => {
+onMounted(async () => {
   generateColorVars()
+
+  appStore.$tauri.start()
   modelStore.$tauri.start()
   catStore.$tauri.start()
   generalStore.$tauri.start()
 })
+
+watch(appStore.windowState, restoreState, { deep: true, once: true })
 
 useTauriListen(LISTEN_KEY.SHOW_WINDOW, ({ payload }) => {
   if (appWindow.label !== payload) return
@@ -65,5 +73,5 @@ useEventListener('click', (event) => {
 </script>
 
 <template>
-  <RouterView />
+  <RouterView v-if="isRestored" />
 </template>
