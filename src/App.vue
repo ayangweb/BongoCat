@@ -5,7 +5,7 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { useEventListener } from '@vueuse/core'
 import isURL from 'is-url'
 import { isString } from 'radash'
-import { onMounted, watch } from 'vue'
+import { onMounted } from 'vue'
 import { RouterView } from 'vue-router'
 
 import { useTauriListen } from './composables/useTauriListen'
@@ -29,13 +29,13 @@ const { isRestored, restoreState } = useWindowState()
 onMounted(async () => {
   generateColorVars()
 
-  appStore.$tauri.start()
-  modelStore.$tauri.start()
-  catStore.$tauri.start()
-  generalStore.$tauri.start()
-})
+  await appStore.$tauri.start()
+  await modelStore.$tauri.start()
+  await catStore.$tauri.start()
+  await generalStore.$tauri.start()
 
-watch(appStore.windowState, restoreState, { deep: true, once: true })
+  restoreState()
+})
 
 useTauriListen(LISTEN_KEY.SHOW_WINDOW, ({ payload }) => {
   if (appWindow.label !== payload) return
