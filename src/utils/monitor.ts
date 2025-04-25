@@ -23,7 +23,7 @@ export async function getCursorMonitor() {
 
   return {
     ...monitor,
-    cursorX: x - monitor.position.x,
-    cursorY: y - monitor.position.y,
+    cursorX: x,
+    cursorY: y,
   }
 }
