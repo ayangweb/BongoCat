@@ -33,11 +33,13 @@ export async function getCursorMonitor() {
 
   const { scaleFactor, size, position } = monitor
 
+  const logicalPosition = position.toLogical(scaleFactor)
+
   return {
     ...monitor,
-    cursorX: x,
-    cursorY: y,
+    cursorX: x - logicalPosition.x,
+    cursorY: y - logicalPosition.y,
     size: size.toLogical(scaleFactor),
-    position: position.toLogical(scaleFactor),
+    position: logicalPosition,
   }
 }
