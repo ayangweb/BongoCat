@@ -22,17 +22,23 @@ const hasDescription = computed(() => {
 <template>
   <Flex
     :align="vertical ? void 0 : 'center'"
-    class="b b-color-2 rounded-lg b-solid p-4"
+    class="b b-color-2 rounded-lg b-solid bg-white p-4"
     gap="middle"
     justify="space-between"
     :vertical="vertical"
   >
     <Flex align="center">
       <slot name="icon">
-        <div class="text-4" :class="icon" />
+        <div
+          class="text-4"
+          :class="icon"
+        />
       </slot>
 
-      <Flex :class="{ 'ml-4': hasIcon }" vertical>
+      <Flex
+        :class="{ 'ml-4': hasIcon }"
+        vertical
+      >
         <div class="text-sm font-medium">
           {{ title }}
         </div>

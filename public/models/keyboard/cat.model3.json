@@ -10,40 +10,30 @@
     "DisplayInfo": "demomodel2.cdi3.json",
     "Expressions": [
       {
-        "Name": "live2d_expression0.exp3.json",
+        "Name": "默认喵",
         "File": "live2d_expression0.exp3.json"
       },
       {
-        "Name": "live2d_expression1.exp3.json",
-        "File": "live2d_expression1.exp3.json"
+        "Name": "社会喵",
+        "File": "live2d_expression1.exp3.json",
+        "Description": "喵喵我叼根小烟，耍个帅气俏皮的wink~超有范儿！但直播里用这招，怕是会让铲屎官和平台瞪大眼，本喵还是低调点，偷偷耍酷好啦！"
       },
       {
-        "Name": "live2d_expression2.exp3.json",
+        "Name": "天使喵",
         "File": "live2d_expression2.exp3.json"
       }
     ],
     "Motions": {
       "CAT_motion": [
         {
+          "Name": "雷霆喵",
           "File": "live2d_motion1.motion3.json",
           "Sound": "live2d_motion1.flac",
           "FadeInTime": 0,
           "FadeOutTime": 0
         },
         {
-          "File": "live2d_motion2.motion3.json",
-          "FadeInTime": 0,
-          "FadeOutTime": 0
-        }
-      ],
-      "CAT_motion_lock": [
-        {
-          "File": "live2d_motion1.motion3.json",
-          "Sound": "live2d_motion1.flac",
-          "FadeInTime": 0,
-          "FadeOutTime": 0
-        },
-        {
+          "Name": "摇摆喵",
           "File": "live2d_motion2.motion3.json",
           "FadeInTime": 0,
           "FadeOutTime": 0

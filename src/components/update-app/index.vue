@@ -107,12 +107,24 @@ async function handleOk() {
 </script>
 
 <template>
-  <Modal v-model:open="open" cancel-text="稍后更新" centered :closable="false" :mask-closable="false" title="发现新版本🥳" @ok="handleOk">
+  <Modal
+    v-model:open="open"
+    cancel-text="稍后更新"
+    centered
+    :closable="false"
+    :mask-closable="false"
+    title="发现新版本🥳"
+    @ok="handleOk"
+  >
     <template #okText>
       {{ loading ? downloadProgress : "立即更新" }}
     </template>
 
-    <Flex class="pt-1" gap="small" vertical>
+    <Flex
+      class="pt-1"
+      gap="small"
+      vertical
+    >
       <Flex align="center">
         <span>更新版本：</span>
         <span>

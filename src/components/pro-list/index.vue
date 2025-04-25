@@ -7,12 +7,22 @@ const { title } = defineProps<{
 </script>
 
 <template>
-  <Flex class="mb-4" gap="small" vertical>
-    <div class="text-base font-medium" data-tauri-drag-region>
+  <Flex
+    class="mb-4"
+    gap="small"
+    vertical
+  >
+    <div
+      class="text-base font-medium"
+      data-tauri-drag-region
+    >
       {{ title }}
     </div>
 
-    <Flex gap="middle" vertical>
+    <Flex
+      gap="middle"
+      vertical
+    >
       <slot />
     </Flex>
   </FLex>

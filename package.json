@@ -21,6 +21,7 @@
     "release": "release-it"
   },
   "dependencies": {
+    "@ant-design/icons-vue": "^7.0.1",
     "@tauri-apps/api": "^2.5.0",
     "@tauri-apps/plugin-log": "~2.3.1",
     "@tauri-apps/plugin-opener": "~2.2.6",
