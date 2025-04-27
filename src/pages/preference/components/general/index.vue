@@ -10,17 +10,13 @@ import { useGeneralStore } from '@/stores/general'
 const generalStore = useGeneralStore()
 
 watch(
-  () => generalStore.autoStart,
-  async (newValue) => {
-    if (import.meta.env.PROD) {
-      const enabled = await isEnabled()
-      if (newValue && !enabled) {
-        await enable()
-      } else if (!newValue && enabled) {
-        await disable()
-      }
-    } else {
-      console.warn('Autostart plugin is not available in development mode.')
+  () => generalStore.autostart,
+  async (value) => {
+    const enabled = await isEnabled()
+    if (value && !enabled) {
+      await enable()
+    } else if (!value && enabled) {
+      await disable()
     }
   },
 )
@@ -29,7 +25,7 @@ watch(
 <template>
   <ProList title="应用设置">
     <ProListItem title="开机自启动">
-      <Switch v-model:checked="generalStore.autoStart" />
+      <Switch v-model:checked="generalStore.autostart" />
     </ProListItem>
   </ProList>
 
