@@ -5,6 +5,11 @@
   "windows": [
     "*"
   ],
+  "platforms": [
+    "macOS",
+    "windows",
+    "linux"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
@@ -21,6 +26,10 @@
     "pinia:default",
     "log:default",
     "updater:default",
-    "prevent-default:default"
+    "prevent-default:default",
+    "autostart:default",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled"
   ]
 }
