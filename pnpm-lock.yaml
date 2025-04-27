@@ -13,6 +13,9 @@ importers:
 
   .:
     dependencies:
+      '@ant-design/icons-vue':
+        specifier: ^7.0.1
+        version: 7.0.1(vue@3.5.13(typescript@5.6.3))
       '@tauri-apps/api':
         specifier: ^2.5.0
         version: 2.5.0

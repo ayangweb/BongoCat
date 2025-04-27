@@ -31,8 +31,6 @@
         "label": "preference",
         "title": "偏好设置",
         "url": "index.html/#/preference",
-        "width": 600,
-        "height": 450,
         "visible": false,
         "resizable": false,
         "maximizable": false,

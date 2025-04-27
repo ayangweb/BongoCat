@@ -21,18 +21,32 @@ function feedbackIssue() {
 
 <template>
   <ProList title="关于软件">
-    <ProListItem :description="`版本：v${appStore.version}`" :title="appStore.name">
-      <Button type="primary" @click="handleUpdate">
+    <ProListItem
+      :description="`版本：v${appStore.version}`"
+      :title="appStore.name"
+    >
+      <Button
+        type="primary"
+        @click="handleUpdate"
+      >
         检查更新
       </Button>
 
       <template #icon>
-        <img class="size-12 drop-shadow" src="/images/logo.png">
+        <div class="b b-color-2 rounded-xl b-solid">
+          <img
+            class="size-12"
+            src="/images/logo.png"
+          >
+        </div>
       </template>
     </ProListItem>
 
     <ProListItem title="开源地址">
-      <Button danger @click="feedbackIssue">
+      <Button
+        danger
+        @click="feedbackIssue"
+      >
         反馈问题
       </Button>
 

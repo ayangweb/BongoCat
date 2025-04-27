@@ -39,13 +39,21 @@ class Live2d {
     this.model = model
 
     return {
-      motions: Object.values(definitions).flat(),
+      motions: definitions,
       expressions: expressionManager?.definitions ?? [],
     }
   }
 
   public destroy() {
     this.model?.destroy()
+  }
+
+  public playMotion(group: string, index: number) {
+    return this.model?.motion(group, index)
+  }
+
+  public playExpressions(index: number) {
+    return this.model?.expression(index)
   }
 
   public setParameterValue(id: string, value: number | boolean) {

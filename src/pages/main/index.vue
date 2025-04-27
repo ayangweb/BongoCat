@@ -38,7 +38,7 @@ watch(pressedKeys, handleKeyDown)
 
 watch(() => catStore.penetrable, (value) => {
   appWindow.setIgnoreCursorEvents(value)
-})
+}, { immediate: true })
 
 function handleWindowDrag() {
   appWindow.startDragging()
@@ -60,9 +60,16 @@ function resolveImageURL(key: string) {
 
     <canvas id="live2dCanvas" />
 
-    <img v-for="key in pressedKeys" :key="key" :src="resolveImageURL(key)">
+    <img
+      v-for="key in pressedKeys"
+      :key="key"
+      :src="resolveImageURL(key)"
+    >
 
-    <div v-show="resizing" class="flex items-center justify-center bg-black">
+    <div
+      v-show="resizing"
+      class="flex items-center justify-center bg-black"
+    >
       <span class="text-center text-5xl text-white">
         重绘中...
       </span>

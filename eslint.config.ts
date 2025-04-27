@@ -21,6 +21,7 @@ export default antfu({
       },
     ],
     'vue/attributes-order': ['error', { alphabetical: true }],
+    'vue/max-attributes-per-line': 'error',
   },
   ignores: ['**/*.toml'],
 })

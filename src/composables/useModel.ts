@@ -5,19 +5,28 @@ import { watch } from 'vue'
 import live2d from '../utils/live2d'
 import { getCursorMonitor } from '../utils/monitor'
 
+import { useTauriListen } from './useTauriListen'
+
+import { LISTEN_KEY } from '@/constants'
 import { useCatStore } from '@/stores/cat'
+import { useModelStore } from '@/stores/model'
 
 export function useModel() {
-  const carStore = useCatStore()
+  const catStore = useCatStore()
+  const modelStore = useModelStore()
 
-  watch(() => carStore.mode, handleLoad)
+  watch(() => catStore.mode, handleLoad)
+
+  useTauriListen<number>(LISTEN_KEY.PLAY_EXPRESSION, ({ payload }) => {
+    live2d.playExpressions(payload)
+  })
 
   async function handleLoad() {
-    const data = await live2d.load(`/models/${carStore.mode}/cat.model3.json`)
+    const data = await live2d.load(`/models/${catStore.mode}/cat.model3.json`)
 
     handleResize()
 
-    Object.assign(carStore, data)
+    Object.assign(modelStore, data)
   }
 
   function handleDestroy() {
@@ -49,7 +58,7 @@ export function useModel() {
   }
 
   async function handleMouseMove() {
-    if (carStore.mode !== 'standard' || !live2d.model) return
+    if (catStore.mode !== 'standard' || !live2d.model) return
 
     const monitor = await getCursorMonitor()
 

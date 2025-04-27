@@ -22,7 +22,7 @@ tauri = { workspace = true, features = ["tray-icon", "protocol-asset", "macos-pr
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 tauri-plugin-custom-window.workspace = true
-rdev = "0.5"
+rdev = { git = "https://github.com/ayangweb/rdev" }
 tauri-plugin-os = "2"
 tauri-plugin-process = "2"
 tauri-plugin-opener = "2"
