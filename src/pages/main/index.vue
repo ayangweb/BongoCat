@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { LogicalSize } from '@tauri-apps/api/window'
 import { useDebounceFn, useEventListener } from '@vueuse/core'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
@@ -30,6 +31,29 @@ useEventListener('resize', () => {
   handleDebounceResize()
 })
 
+async function handleMouseWheel(event: WheelEvent) {
+  event.preventDefault()
+  event.stopPropagation()
+
+  try {
+    const currentSize = (await appWindow.outerSize()).toLogical(window.devicePixelRatio)
+
+    const scaleFactor = event.deltaY > 0 ? 0.95 : 1.05
+
+    const newWidth = Math.round(currentSize.width * scaleFactor)
+    const newHeight = Math.round(currentSize.height * scaleFactor)
+
+    await appWindow.setSize(new LogicalSize(
+      Math.max(200, newWidth),
+      Math.max(200, newHeight),
+    ))
+  } catch (error) {
+    console.error('调整窗口大小失败:', error)
+  }
+}
+
+useEventListener('wheel', handleMouseWheel, { passive: false })
+
 watch(pressedMouses, handleMouseDown)
 
 watch(mousePosition, handleMouseMove)
@@ -53,7 +77,9 @@ function resolveImageURL(key: string) {
   <div
     class="relative children:(absolute h-screen w-screen)"
     :class="[catStore.mirrorMode ? '-scale-x-100' : 'scale-x-100']"
-    :style="{ opacity: catStore.opacity / 100 }"
+    :style="{
+      opacity: catStore.opacity / 100,
+    }"
     @mousedown="handleWindowDrag"
   >
     <img :src="`/images/backgrounds/${catStore.mode}.png`">
