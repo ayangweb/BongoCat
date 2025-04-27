@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { LogicalSize } from '@tauri-apps/api/window'
 import { useDebounceFn, useEventListener } from '@vueuse/core'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
@@ -10,7 +9,7 @@ import { useCatStore } from '@/stores/cat'
 
 const appWindow = getCurrentWebviewWindow()
 const { pressedMouses, mousePosition, pressedKeys } = useDevice()
-const { handleLoad, handleDestroy, handleResize, handleMouseDown, handleMouseMove, handleKeyDown } = useModel()
+const { handleLoad, handleDestroy, handleResize, handleMouseDown, handleMouseMove, handleKeyDown, handleMouseWheel } = useModel()
 const catStore = useCatStore()
 
 const resizing = ref(false)
@@ -30,27 +29,6 @@ useEventListener('resize', () => {
 
   handleDebounceResize()
 })
-
-async function handleMouseWheel(event: WheelEvent) {
-  event.preventDefault()
-  event.stopPropagation()
-
-  try {
-    const currentSize = (await appWindow.outerSize()).toLogical(window.devicePixelRatio)
-
-    const scaleFactor = event.deltaY > 0 ? 0.95 : 1.05
-
-    const newWidth = Math.round(currentSize.width * scaleFactor)
-    const newHeight = Math.round(currentSize.height * scaleFactor)
-
-    await appWindow.setSize(new LogicalSize(
-      Math.max(200, newWidth),
-      Math.max(200, newHeight),
-    ))
-  } catch (error) {
-    console.error('调整窗口大小失败:', error)
-  }
-}
 
 useEventListener('wheel', handleMouseWheel, { passive: false })
 

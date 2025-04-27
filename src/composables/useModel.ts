@@ -49,6 +49,29 @@ export function useModel() {
     live2d.model?.scale.set(innerWidth / 612)
   }
 
+  async function handleMouseWheel(event: WheelEvent) {
+    event.preventDefault()
+    event.stopPropagation()
+
+    const appWindow = getCurrentWebviewWindow()
+
+    try {
+      const currentSize = (await appWindow.outerSize()).toLogical(window.devicePixelRatio)
+
+      const scaleFactor = event.deltaY > 0 ? 0.95 : 1.05
+
+      const newWidth = Math.round(currentSize.width * scaleFactor)
+      const newHeight = Math.round(currentSize.height * scaleFactor)
+
+      await appWindow.setSize(new LogicalSize(
+        Math.max(200, newWidth),
+        Math.max(200, newHeight),
+      ))
+    } catch (error) {
+      console.error('调整窗口大小失败:', error)
+    }
+  }
+
   function handleKeyDown(value: string[]) {
     const hasArrowKey = value.some(key => key.endsWith('Arrow'))
     const hasNonArrowKey = value.some(key => !key.endsWith('Arrow'))
@@ -94,5 +117,6 @@ export function useModel() {
     handleKeyDown,
     handleMouseMove,
     handleMouseDown,
+    handleMouseWheel,
   }
 }
