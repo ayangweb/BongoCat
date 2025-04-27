@@ -2,6 +2,7 @@ mod core;
 
 use core::{device, prevent_default, setup};
 use tauri::{Manager, WindowEvent};
+use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_custom_window::{
     show_preference_window, MAIN_WINDOW_LABEL, PREFERENCE_WINDOW_LABEL,
 };
@@ -43,6 +44,10 @@ pub fn run() {
             _ => {}
         })
         .plugin(tauri_plugin_log::Builder::new().build())
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            Some(vec!["--auto-launch"]),
+        ))
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

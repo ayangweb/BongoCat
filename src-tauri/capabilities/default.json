@@ -21,6 +21,7 @@
     "pinia:default",
     "log:default",
     "updater:default",
-    "prevent-default:default"
+    "prevent-default:default",
+    "autostart:default"
   ]
 }
