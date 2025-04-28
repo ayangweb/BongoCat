@@ -2,28 +2,35 @@ import type { TrayIconOptions } from '@tauri-apps/api/tray'
 
 import { getName, getVersion } from '@tauri-apps/api/app'
 import { emit } from '@tauri-apps/api/event'
-import { CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu } from '@tauri-apps/api/menu'
+import { Menu, MenuItem, PredefinedMenuItem } from '@tauri-apps/api/menu'
 import { resolveResource } from '@tauri-apps/api/path'
 import { TrayIcon } from '@tauri-apps/api/tray'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { exit, relaunch } from '@tauri-apps/plugin-process'
-import { ref, watch } from 'vue'
+import { useDebounceFn } from '@vueuse/core'
+import { watch } from 'vue'
 
 import { GITHUB_LINK, LISTEN_KEY } from '../constants'
-import { hideWindow, showWindow } from '../plugins/window'
+import { showWindow } from '../plugins/window'
 import { isMac } from '../utils/platform'
+
+import { useSharedMenu } from './useSharedMenu'
 
 import { useCatStore } from '@/stores/cat'
 
 const TRAY_ID = 'BONGO_CAT_TRAY'
 
 export function useTray() {
-  const visible = ref(true)
   const catStore = useCatStore()
+  const { getSharedMenu } = useSharedMenu()
 
-  watch([visible, () => catStore.mode, () => catStore.penetrable], () => {
+  const debouncedUpdateTrayMenu = useDebounceFn(() => {
     updateTrayMenu()
   })
+
+  watch(() => catStore, () => {
+    debouncedUpdateTrayMenu()
+  }, { deep: true })
 
   const createTray = async () => {
     const tray = await getTrayById()
@@ -57,49 +64,7 @@ export function useTray() {
     const appVersion = await getVersion()
 
     const items = await Promise.all([
-      MenuItem.new({
-        text: '偏好设置...',
-        accelerator: isMac ? 'Cmd+,' : '',
-        action: () => showWindow(),
-      }),
-      MenuItem.new({
-        text: visible.value ? '隐藏猫咪' : '显示猫咪',
-        action: () => {
-          if (visible.value) {
-            hideWindow('main')
-          } else {
-            showWindow('main')
-          }
-
-          visible.value = !visible.value
-        },
-      }),
-      Submenu.new({
-        text: '猫咪模式',
-        items: await Promise.all([
-          CheckMenuItem.new({
-            text: '标准模式',
-            checked: catStore.mode === 'standard',
-            action: () => {
-              catStore.mode = 'standard'
-            },
-          }),
-          CheckMenuItem.new({
-            text: '键盘模式',
-            checked: catStore.mode === 'keyboard',
-            action: () => {
-              catStore.mode = 'keyboard'
-            },
-          }),
-        ]),
-      }),
-      CheckMenuItem.new({
-        text: '窗口穿透',
-        checked: catStore.penetrable,
-        action: () => {
-          catStore.penetrable = !catStore.penetrable
-        },
-      }),
+      ...await getSharedMenu(),
       PredefinedMenuItem.new({ item: 'Separator' }),
       MenuItem.new({
         text: '检查更新',

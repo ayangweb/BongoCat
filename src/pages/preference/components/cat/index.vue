@@ -41,7 +41,7 @@ const modeList: SelectProps['options'] = [
     </ProListItem>
 
     <ProListItem
-      title="透明度"
+      title="不透明度"
       vertical
     >
       <Slider
