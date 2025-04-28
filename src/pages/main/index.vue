@@ -41,7 +41,7 @@ watch(pressedKeys, handleKeyDown)
 
 watch(() => catStore.penetrable, (value) => {
   appWindow.setIgnoreCursorEvents(value)
-})
+}, { immediate: true })
 
 function handleWindowDrag() {
   appWindow.startDragging()
