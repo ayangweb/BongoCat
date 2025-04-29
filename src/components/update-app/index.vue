@@ -40,7 +40,7 @@ watch(() => generalStore.autoCheckUpdate, (value) => {
 
   if (!value) return
 
-  checkUpdate(false)
+  checkUpdate()
 
   resume()
 }, { immediate: true })
