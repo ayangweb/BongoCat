@@ -47,11 +47,12 @@
 
 此外，得益于 Tauri 框架强大的跨平台能力，本项目不仅支持 macOS，还可在 Windows 和 Linux 上运行，让更多用户都能与这只可爱的猫咪互动！
 
-![demo.gif](./static/demo.gif)
+![demo.gif](static/demo.gif)
 
 ## 下载
 
-请前往 [Releases](https://github.com/ayangweb/BongoCat/releases) 页面，下载最新版本。
+- [夸克网盘](https://pan.quark.cn/s/70f2f2663ce1)
+- [GitHub Releases](https://github.com/ayangweb/BongoCat/releases)
 
 ### macOS
 
@@ -70,12 +71,20 @@
 - Fedora / RHEL：下载 `BongoCat_x86_64.rpm`
 - 通用版本：下载 `BongoCat_amd64.AppImage`
 
+## 贡献指南
+
+感谢大家为 BongoCat 做出的宝贵贡献！如果你也希望为 BongoCat 做出贡献，请查阅[贡献指南](.github/CONTRIBUTING.md)。
+
+<a href="https://github.com/ayangweb/BongoCat/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=ayangweb/BongoCat" />
+</a>
+
 ## 历史星标
 
 <a href="https://www.star-history.com/#ayangweb/BongoCat&Date">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=ayangweb/BongoCat&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=ayangweb/BongoCat&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=ayangweb/BongoCat&type=Date" />
- </picture>
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=ayangweb/BongoCat&type=Date&theme=dark" />
+<source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=ayangweb/BongoCat&type=Date" />
+<img alt="Star History Chart" src="https://api.star-history.com/svg?repos=ayangweb/BongoCat&type=Date" />
+</picture>
 </a>
