@@ -46,16 +46,16 @@ export function useModel() {
     const { innerWidth, innerHeight } = window
     const { width, height } = await getImageSize(backgroundImagePath.value)
 
-    if (round(innerWidth / innerHeight, 1) !== round(width / height, 1)) {
-      await appWindow.setSize(
-        new LogicalSize({
-          width: innerWidth,
-          height: Math.ceil(innerWidth * (height / width)),
-        }),
-      )
-    }
-
     live2d.model?.scale.set(innerWidth / width)
+
+    if (round(innerWidth / innerHeight, 1) === round(width / height, 1)) return
+
+    return appWindow.setSize(
+      new LogicalSize({
+        width: innerWidth,
+        height: Math.ceil(innerWidth * (height / width)),
+      }),
+    )
   }
 
   function handleKeyDown(value: string[]) {
