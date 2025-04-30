@@ -1,5 +1,5 @@
 import { theme } from 'ant-design-vue'
-import { dash } from 'radash'
+import { kebabCase } from 'lodash-es'
 
 export function useThemeVars() {
   const { defaultAlgorithm, darkAlgorithm, defaultConfig } = theme
@@ -17,7 +17,7 @@ export function useThemeVars() {
       const vars: Record<string, any> = {}
 
       for (const [key, value] of Object.entries(item)) {
-        vars[`--ant-${dash(key)}`] = value
+        vars[`--ant-${kebabCase(key)}`] = value
       }
 
       const style = document.createElement('style')

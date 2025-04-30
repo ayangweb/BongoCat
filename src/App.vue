@@ -4,7 +4,7 @@ import { error } from '@tauri-apps/plugin-log'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useEventListener } from '@vueuse/core'
 import isURL from 'is-url'
-import { isString } from 'radash'
+import { isString } from 'lodash-es'
 import { onMounted } from 'vue'
 import { RouterView } from 'vue-router'
 

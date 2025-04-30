@@ -1,5 +1,6 @@
 import { LogicalSize } from '@tauri-apps/api/dpi'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { round } from 'lodash-es'
 import { watch } from 'vue'
 
 import live2d from '../utils/live2d'
@@ -37,14 +38,16 @@ export function useModel() {
     if (!live2d.model) return
 
     const appWindow = getCurrentWebviewWindow()
-    const { innerWidth } = window
+    const { innerWidth, innerHeight } = window
 
-    await appWindow.setSize(
-      new LogicalSize({
-        width: innerWidth,
-        height: innerWidth * (354 / 612),
-      }),
-    )
+    if (round(innerWidth / innerHeight, 2) !== round(612 / 354, 2)) {
+      await appWindow.setSize(
+        new LogicalSize({
+          width: innerWidth,
+          height: Math.ceil(innerWidth * (354 / 612)),
+        }),
+      )
+    }
 
     live2d.model?.scale.set(innerWidth / 612)
   }
