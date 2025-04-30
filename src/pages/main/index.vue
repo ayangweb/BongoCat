@@ -11,7 +11,7 @@ import { useCatStore } from '@/stores/cat'
 
 const appWindow = getCurrentWebviewWindow()
 const { pressedMouses, mousePosition, pressedKeys } = useDevice()
-const { handleLoad, handleDestroy, handleResize, handleMouseDown, handleMouseMove, handleKeyDown } = useModel()
+const { backgroundImagePath, handleLoad, handleDestroy, handleResize, handleMouseDown, handleMouseMove, handleKeyDown } = useModel()
 const catStore = useCatStore()
 const { getSharedMenu } = useSharedMenu()
 
@@ -70,7 +70,7 @@ function resolveImageURL(key: string) {
     @contextmenu="handleContextmenu"
     @mousedown="handleWindowDrag"
   >
-    <img :src="`/images/backgrounds/${catStore.mode}.png`">
+    <img :src="backgroundImagePath">
 
     <canvas id="live2dCanvas" />
 

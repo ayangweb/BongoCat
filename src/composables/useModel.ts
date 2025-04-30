@@ -1,7 +1,7 @@
 import { LogicalSize } from '@tauri-apps/api/dpi'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { round } from 'lodash-es'
-import { watch } from 'vue'
+import { computed, watch } from 'vue'
 
 import live2d from '../utils/live2d'
 import { getCursorMonitor } from '../utils/monitor'
@@ -11,12 +11,17 @@ import { useTauriListen } from './useTauriListen'
 import { LISTEN_KEY } from '@/constants'
 import { useCatStore } from '@/stores/cat'
 import { useModelStore } from '@/stores/model'
+import { getImageSize } from '@/utils/dom'
 
 export function useModel() {
   const catStore = useCatStore()
   const modelStore = useModelStore()
 
   watch(() => catStore.mode, handleLoad)
+
+  const backgroundImagePath = computed(() => {
+    return `/images/backgrounds/${catStore.mode}.png`
+  })
 
   useTauriListen<number>(LISTEN_KEY.PLAY_EXPRESSION, ({ payload }) => {
     live2d.playExpressions(payload)
@@ -39,17 +44,18 @@ export function useModel() {
 
     const appWindow = getCurrentWebviewWindow()
     const { innerWidth, innerHeight } = window
+    const { width, height } = await getImageSize(backgroundImagePath.value)
 
-    if (round(innerWidth / innerHeight, 2) !== round(612 / 354, 2)) {
+    if (round(innerWidth / innerHeight, 1) !== round(width / height, 1)) {
       await appWindow.setSize(
         new LogicalSize({
           width: innerWidth,
-          height: Math.ceil(innerWidth * (354 / 612)),
+          height: Math.ceil(innerWidth * (height / width)),
         }),
       )
     }
 
-    live2d.model?.scale.set(innerWidth / 612)
+    live2d.model?.scale.set(innerWidth / width)
   }
 
   function handleKeyDown(value: string[]) {
@@ -91,6 +97,7 @@ export function useModel() {
   }
 
   return {
+    backgroundImagePath,
     handleLoad,
     handleDestroy,
     handleResize,
