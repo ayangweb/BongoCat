@@ -2,12 +2,13 @@
 import { Menu } from '@tauri-apps/api/menu'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { useDebounceFn, useEventListener } from '@vueuse/core'
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { onBeforeMount, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { useDevice } from '@/composables/useDevice'
 import { useModel } from '@/composables/useModel'
 import { useSharedMenu } from '@/composables/useSharedMenu'
 import { useCatStore } from '@/stores/cat'
+import live2d from '@/utils/live2d.ts'
 
 const appWindow = getCurrentWebviewWindow()
 const { pressedMouses, mousePosition, pressedKeys } = useDevice()
@@ -16,9 +17,10 @@ const catStore = useCatStore()
 const { getSharedMenu } = useSharedMenu()
 
 const resizing = ref(false)
+const live2dContainer = ref<HTMLDivElement>()
 
-onMounted(handleLoad)
-
+onBeforeMount(handleLoad)
+onMounted(() => live2dContainer.value && live2d.mount(live2dContainer.value))
 onUnmounted(handleDestroy)
 
 const handleDebounceResize = useDebounceFn(async () => {
@@ -64,6 +66,7 @@ function resolveImageURL(key: string) {
 
 <template>
   <div
+    ref="live2dContainer"
     class="relative children:(absolute h-screen w-screen)"
     :class="[catStore.mirrorMode ? '-scale-x-100' : 'scale-x-100']"
     :style="{ opacity: catStore.opacity / 100 }"
@@ -71,8 +74,6 @@ function resolveImageURL(key: string) {
     @mousedown="handleWindowDrag"
   >
     <img :src="`/images/backgrounds/${catStore.mode}.png`">
-
-    <canvas id="live2dCanvas" />
 
     <img
       v-for="key in pressedKeys"

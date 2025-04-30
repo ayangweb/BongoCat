@@ -9,11 +9,8 @@ class Live2d {
 
   constructor() { }
 
-  private mount() {
-    const view = document.getElementById('live2dCanvas') as HTMLCanvasElement
-
+  private create() {
     this.app = new Application({
-      view,
       resizeTo: window,
       backgroundAlpha: 0,
       autoDensity: true,
@@ -21,9 +18,16 @@ class Live2d {
     })
   }
 
+  public mount(anchor: HTMLElement) {
+    if (!this.app && import.meta.env.DEV) {
+      console.warn('Perform the mount operation after creating the PixiJS Application instance.')
+    }
+    this.app && anchor.appendChild(this.app.view)
+  }
+
   public async load(url: string) {
     if (!this.app) {
-      this.mount()
+      this.create()
     }
 
     const model = await Live2DModel.from(url)
