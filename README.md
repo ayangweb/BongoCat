@@ -52,6 +52,7 @@
 ## 下载
 
 - [夸克网盘](https://pan.quark.cn/s/70f2f2663ce1)
+- [百度网盘](https://pan.baidu.com/s/1LSYpxin4HQ8mpKwcpYdO5Q?pwd=qbgy)
 - [GitHub Releases](https://github.com/ayangweb/BongoCat/releases)
 
 ### macOS
