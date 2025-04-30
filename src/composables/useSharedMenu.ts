@@ -49,6 +49,18 @@ export function useSharedMenu() {
         accelerator: isMac ? 'Cmd+,' : '',
         action: () => showWindow('preference'),
       }),
+      MenuItem.new({
+        text: catStore.visible ? '隐藏猫咪' : '显示猫咪',
+        action: () => {
+          if (catStore.visible) {
+            hideWindow('main')
+          } else {
+            showWindow('main')
+          }
+
+          catStore.visible = !catStore.visible
+        },
+      }),
       PredefinedMenuItem.new({ item: 'Separator' }),
       Submenu.new({
         text: '猫咪模式',
@@ -63,18 +75,6 @@ export function useSharedMenu() {
             })
           }),
         ),
-      }),
-      MenuItem.new({
-        text: catStore.visible ? '隐藏猫咪' : '显示猫咪',
-        action: () => {
-          if (catStore.visible) {
-            hideWindow('main')
-          } else {
-            showWindow('main')
-          }
-
-          catStore.visible = !catStore.visible
-        },
       }),
       CheckMenuItem.new({
         text: '窗口穿透',

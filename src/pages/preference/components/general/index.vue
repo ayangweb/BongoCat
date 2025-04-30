@@ -13,10 +13,13 @@ watch(
   () => generalStore.autostart,
   async (value) => {
     const enabled = await isEnabled()
+
     if (value && !enabled) {
-      await enable()
-    } else if (!value && enabled) {
-      await disable()
+      return enable()
+    }
+
+    if (!value && enabled) {
+      disable()
     }
   },
 )
