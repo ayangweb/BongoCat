@@ -9,20 +9,17 @@ import { useGeneralStore } from '@/stores/general'
 
 const generalStore = useGeneralStore()
 
-watch(
-  () => generalStore.autostart,
-  async (value) => {
-    const enabled = await isEnabled()
+watch(() => generalStore.autostart, async (value) => {
+  const enabled = await isEnabled()
 
-    if (value && !enabled) {
-      return enable()
-    }
+  if (value && !enabled) {
+    return enable()
+  }
 
-    if (!value && enabled) {
-      disable()
-    }
-  },
-)
+  if (!value && enabled) {
+    disable()
+  }
+})
 </script>
 
 <template>
