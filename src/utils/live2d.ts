@@ -1,3 +1,5 @@
+import type { Cubism4InternalModel } from 'pixi-live2d-display'
+
 import { Live2DModel } from 'pixi-live2d-display'
 import { Application, Ticker } from 'pixi.js'
 
@@ -57,7 +59,9 @@ class Live2d {
   }
 
   public setParameterValue(id: string, value: number | boolean) {
-    return this.model?.internalModel.coreModel.setParameterValueById(id, Number(value))
+    const internalModel = this.model?.internalModel as Cubism4InternalModel
+
+    return internalModel.coreModel.setParameterValueById(id, Number(value))
   }
 }
 
