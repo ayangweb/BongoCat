@@ -4,11 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-patchedDependencies:
-  pixi-live2d-display:
-    hash: ff8766c8ab250d85f6166e9dbc0de38045cbe2923c273e9dcfa5fbb61580307b
-    path: patches/pixi-live2d-display.patch
-
 importers:
 
   .:
@@ -60,7 +55,7 @@ importers:
         version: 3.0.2(typescript@5.6.3)(vue@3.5.13(typescript@5.6.3))
       pixi-live2d-display:
         specifier: ^0.4.0
-        version: 0.4.0(patch_hash=ff8766c8ab250d85f6166e9dbc0de38045cbe2923c273e9dcfa5fbb61580307b)(0736f5bd67d2e4de7e9fff36ad63fa2e)
+        version: 0.4.0(0736f5bd67d2e4de7e9fff36ad63fa2e)
       pixi.js:
         specifier: ^6.5.10
         version: 6.5.10
@@ -8774,7 +8769,7 @@ snapshots:
 
   pinkie@2.0.4: {}
 
-  pixi-live2d-display@0.4.0(patch_hash=ff8766c8ab250d85f6166e9dbc0de38045cbe2923c273e9dcfa5fbb61580307b)(0736f5bd67d2e4de7e9fff36ad63fa2e):
+  pixi-live2d-display@0.4.0(0736f5bd67d2e4de7e9fff36ad63fa2e):
     dependencies:
       '@pixi/core': 6.5.10(@pixi/constants@6.5.10)(@pixi/extensions@6.5.10)(@pixi/math@6.5.10)(@pixi/runner@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10))(@pixi/ticker@6.5.10(@pixi/extensions@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10)))(@pixi/utils@6.5.10(@pixi/constants@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10)))
       '@pixi/display': 6.5.10(@pixi/constants@6.5.10)(@pixi/math@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10))(@pixi/utils@6.5.10(@pixi/constants@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10)))
