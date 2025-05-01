@@ -68,6 +68,7 @@
 
 ### Linux (X11)
 
+- Manjaro / ArchLinux: `yay -S bongo-cat`
 - Debian / Ubuntu：下载 `BongoCat_amd64.deb`
 - Fedora / RHEL：下载 `BongoCat_x86_64.rpm`
 - 通用版本：下载 `BongoCat_amd64.AppImage`
