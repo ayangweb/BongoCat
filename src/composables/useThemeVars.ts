@@ -1,5 +1,5 @@
 import { theme } from 'ant-design-vue'
-import { kebabCase } from 'lodash-es'
+import { kebabCase } from 'es-toolkit'
 
 export function useThemeVars() {
   const { defaultAlgorithm, darkAlgorithm, defaultConfig } = theme

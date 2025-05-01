@@ -1,6 +1,6 @@
 import { LogicalSize } from '@tauri-apps/api/dpi'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { round } from 'lodash-es'
+import { round } from 'es-toolkit'
 import { computed, watch } from 'vue'
 
 import live2d from '../utils/live2d'
