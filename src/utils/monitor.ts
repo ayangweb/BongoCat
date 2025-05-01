@@ -1,29 +1,24 @@
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import {
-  availableMonitors,
   cursorPosition,
+  monitorFromPoint,
 } from '@tauri-apps/api/window'
 
 export async function getCursorMonitor() {
-  const monitors = await availableMonitors()
+  const appWindow = getCurrentWebviewWindow()
 
-  if (!monitors.length) return
+  const scaleFactor = await appWindow.scaleFactor()
 
-  const { x, y } = await cursorPosition()
+  const point = await cursorPosition()
 
-  const monitor = monitors.find((monitor) => {
-    const { position, size } = monitor
+  const { x, y } = point.toLogical(scaleFactor)
 
-    const inX = x >= position.x && x <= position.x + size.width
-    const inY = y >= position.y && y <= position.y + size.height
-
-    return inX && inY
-  })
+  const monitor = await monitorFromPoint(x, y)
 
   if (!monitor) return
 
   return {
     ...monitor,
-    cursorX: x,
-    cursorY: y,
+    cursorPosition: point,
   }
 }

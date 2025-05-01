@@ -1,6 +1,7 @@
 export function getImageSize(path: string): Promise<{ width: number, height: number }> {
   return new Promise((resolve, reject) => {
     const img = new Image()
+
     img.src = path
 
     img.onload = () => {

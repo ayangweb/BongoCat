@@ -73,11 +73,10 @@ export function useModel() {
 
     if (!monitor) return
 
-    const { size, cursorX, cursorY } = monitor
-    const { width, height } = size
+    const { size, position, cursorPosition } = monitor
 
-    const xRatio = cursorX / width
-    const yRatio = cursorY / height
+    const xRatio = (cursorPosition.x - position.x) / size.width
+    const yRatio = (cursorPosition.y - position.y) / size.height
 
     const x = (xRatio * 60) - 30
     const y = (yRatio * 60) - 30
