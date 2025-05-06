@@ -35,6 +35,13 @@ pub fn run() {
                 show_preference_window(app_handle);
             },
         ))
+        .plugin(tauri_plugin_log::Builder::new().build())
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            None,
+        ))
+        .plugin(tauri_plugin_macos_permissions::init())
+        .plugin(tauri_plugin_dialog::init())
         .on_window_event(|window, event| match event {
             WindowEvent::CloseRequested { api, .. } => {
                 let _ = window.hide();
@@ -43,11 +50,6 @@ pub fn run() {
             }
             _ => {}
         })
-        .plugin(tauri_plugin_log::Builder::new().build())
-        .plugin(tauri_plugin_autostart::init(
-            MacosLauncher::LaunchAgent,
-            None,
-        ))
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

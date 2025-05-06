@@ -40,6 +40,7 @@ export default defineConfig({
       'border-1': 'var(--ant-color-border)',
       'border-2': 'var(--ant-color-border-secondary)',
       'primary': 'var(--ant-blue)',
+      'success': 'var(--ant-green)',
     },
   },
 })

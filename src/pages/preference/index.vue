@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Flex } from 'ant-design-vue'
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 
 import About from './components/about/index.vue'
 import Cat from './components/cat/index.vue'
@@ -42,10 +42,6 @@ const menus = [
     component: About,
   },
 ]
-
-const currentComponent = computed(() => {
-  return menus[current.value].component
-})
 </script>
 
 <template>
@@ -85,10 +81,13 @@ const currentComponent = computed(() => {
     </div>
 
     <div
+      v-for="(item, index) in menus"
+      v-show="current === index"
+      :key="item.label"
       class="flex-1 bg-color-8 p-4"
       data-tauri-drag-region
     >
-      <component :is="currentComponent" />
+      <component :is="item.component" />
     </div>
   </Flex>
 
