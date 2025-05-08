@@ -9,7 +9,7 @@ use tauri_plugin_custom_window::{
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .setup(|app| {
             let app_handle = app.handle();
 
@@ -50,6 +50,16 @@ pub fn run() {
             }
             _ => {}
         })
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())
         .expect("error while running tauri application");
+
+    app.run(|app_handle, event| match event {
+        #[cfg(target_os = "macos")]
+        tauri::RunEvent::Reopen { .. } => {
+            tauri_plugin_custom_window::show_preference_window(app_handle);
+        }
+        _ => {
+            let _ = app_handle;
+        }
+    });
 }
