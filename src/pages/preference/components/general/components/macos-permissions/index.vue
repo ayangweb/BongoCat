@@ -53,7 +53,7 @@ onMounted(async () => {
 
       <Space
         v-else
-        class="cursor-pointer text-primary font-bold"
+        class="cursor-pointer text-danger font-bold"
         :size="4"
         @click="requestInputMonitoringPermission"
       >
