@@ -2,6 +2,7 @@ import type { Event } from '@tauri-apps/api/event'
 
 import { PhysicalPosition, PhysicalSize } from '@tauri-apps/api/dpi'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { isNumber } from 'es-toolkit/compat'
 import { onMounted, ref } from 'vue'
 
 import { useAppStore } from '@/stores/app'
@@ -34,7 +35,7 @@ export function useWindowState() {
   const restoreState = async () => {
     const { x, y, width, height } = appStore.windowState[label] ?? {}
 
-    if (x && y) {
+    if (isNumber(x) && isNumber(y)) {
       await appWindow.setPosition(new PhysicalPosition(x, y))
     }
 
