@@ -10,11 +10,14 @@ export const useCatStore = defineStore('cat', () => {
   const opacity = ref(100)
   const mirrorMode = ref(false)
 
+  const size = ref(100) // 新增：模型大小，初始为 100%
+
   return {
     mode,
     visible,
     penetrable,
     opacity,
     mirrorMode,
+    size,
   }
 })

@@ -42,6 +42,30 @@ export function useSharedMenu() {
     return Promise.all(items)
   }
 
+  const getSizeMenuItems = async () => {
+    const options = [25, 50, 75, 100]
+
+    const items = options.map((item) => {
+      return CheckMenuItem.new({
+        text: `${item}%`,
+        checked: catStore.size === item,
+        action: () => {
+          catStore.size = item
+        },
+      })
+    })
+
+    if (!options.includes(catStore.size)) {
+      items.unshift(CheckMenuItem.new({
+        text: `${catStore.size}%`,
+        checked: true,
+        enabled: false,
+      }))
+    }
+
+    return Promise.all(items)
+  }
+
   const getSharedMenu = async () => {
     return await Promise.all([
       MenuItem.new({
@@ -86,6 +110,10 @@ export function useSharedMenu() {
       Submenu.new({
         text: '不透明度',
         items: await getOpacityMenuItems(),
+      }),
+      Submenu.new({
+        text: '窗口大小',
+        items: await getSizeMenuItems(),
       }),
       CheckMenuItem.new({
         text: '镜像模式',

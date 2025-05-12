@@ -50,6 +50,19 @@ const modeList: SelectProps['options'] = [
       />
     </ProListItem>
 
+    <!-- 新增：列表项标题 -->
+    <ProListItem
+      title="模型大小"
+      vertical
+    >
+      <Slider
+        v-model:value="catStore.size"
+        class="m-0!"
+        :max="100"
+        :min="10"
+      />
+    </ProListItem>
+
     <ProListItem title="镜像模式">
       <Switch v-model:checked="catStore.mirrorMode" />
     </ProListItem>
