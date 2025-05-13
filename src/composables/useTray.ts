@@ -28,9 +28,7 @@ export function useTray() {
     updateTrayMenu()
   })
 
-  watch(() => catStore, () => {
-    debouncedUpdateTrayMenu()
-  }, { deep: true })
+  watch(() => catStore, debouncedUpdateTrayMenu, { deep: true })
 
   const createTray = async () => {
     const tray = await getTrayById()

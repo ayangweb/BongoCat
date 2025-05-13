@@ -19,6 +19,14 @@ const modeList: SelectProps['options'] = [
     value: 'keyboard',
   },
 ]
+
+function scaleFormatter(value?: number) {
+  return value === 100 ? '默认' : `${value}%`
+}
+
+function opacityFormatter(value?: number) {
+  return `${value}%`
+}
 </script>
 
 <template>
@@ -41,25 +49,27 @@ const modeList: SelectProps['options'] = [
     </ProListItem>
 
     <ProListItem
+      description="将鼠标移动到窗口边缘后，也可以拖动调整窗口尺寸"
+      title="窗口尺寸"
+      vertical
+    >
+      <Slider
+        v-model:value="catStore.scale"
+        class="m-0!"
+        :max="150"
+        :min="50"
+        :tip-formatter="scaleFormatter"
+      />
+    </ProListItem>
+
+    <ProListItem
       title="不透明度"
       vertical
     >
       <Slider
         v-model:value="catStore.opacity"
         class="m-0!"
-      />
-    </ProListItem>
-
-    <!-- 新增：列表项标题 -->
-    <ProListItem
-      title="模型大小"
-      vertical
-    >
-      <Slider
-        v-model:value="catStore.size"
-        class="m-0!"
-        :max="100"
-        :min="10"
+        :tip-formatter="opacityFormatter"
       />
     </ProListItem>
 
