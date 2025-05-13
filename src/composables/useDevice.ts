@@ -50,7 +50,7 @@ export function useDevice() {
   const catStore = useCatStore()
 
   watch(() => catStore.mode, () => {
-    pressedKeys.value = pressedKeys.value.filter(mouse => !mouse.endsWith('Arrow'))
+    pressedKeys.value = pressedKeys.value.filter(key => !key.endsWith('Arrow'))
   })
 
   const debounceCapsLockRelease = useDebounceFn(() => {
