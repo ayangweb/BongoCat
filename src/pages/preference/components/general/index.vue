@@ -21,7 +21,7 @@ watch(() => generalStore.autostart, async (value) => {
   if (!value && enabled) {
     disable()
   }
-})
+}, { immediate: true })
 </script>
 
 <template>
