@@ -8,7 +8,7 @@ const { title } = defineProps<{
 
 <template>
   <Flex
-    class="mb-4"
+    class="not-last:mb-4"
     gap="small"
     vertical
   >

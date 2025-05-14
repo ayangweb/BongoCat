@@ -116,13 +116,6 @@ export function useSharedMenu() {
         text: '不透明度',
         items: await getOpacityMenuItems(),
       }),
-      CheckMenuItem.new({
-        text: '镜像模式',
-        checked: catStore.mirrorMode,
-        action: () => {
-          catStore.mirrorMode = !catStore.mirrorMode
-        },
-      }),
     ])
   }
 

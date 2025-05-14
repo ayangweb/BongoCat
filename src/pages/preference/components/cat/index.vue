@@ -30,13 +30,23 @@ function opacityFormatter(value?: number) {
 </script>
 
 <template>
-  <ProList title="模式设置">
+  <ProList title="模型设置">
     <ProListItem title="选择模式">
       <Select
         v-model:value="catStore.mode"
         :options="modeList"
-        title="选择模式"
       />
+    </ProListItem>
+
+    <ProListItem title="镜像模式">
+      <Switch v-model:checked="catStore.mirrorMode" />
+    </ProListItem>
+
+    <ProListItem
+      description="启用后，每只手只显示最后按下的一个按键"
+      title="单键模式"
+    >
+      <Switch v-model:checked="catStore.singleMode" />
     </ProListItem>
   </ProList>
 
@@ -71,16 +81,6 @@ function opacityFormatter(value?: number) {
         class="m-0!"
         :tip-formatter="opacityFormatter"
       />
-    </ProListItem>
-
-    <ProListItem title="镜像模式">
-      <Switch v-model:checked="catStore.mirrorMode" />
-    </ProListItem>
-    <ProListItem
-      description="启用后，模型同一只手只显示最后一个键的动画"
-      title="单键模式"
-    >
-      <Switch v-model:checked="catStore.normalHandMode" />
     </ProListItem>
   </ProList>
 </template>

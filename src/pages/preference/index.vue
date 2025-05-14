@@ -84,7 +84,7 @@ const menus = [
       v-for="(item, index) in menus"
       v-show="current === index"
       :key="item.label"
-      class="flex-1 bg-color-8 p-4"
+      class="flex-1 overflow-auto bg-color-8 p-4"
       data-tauri-drag-region
     >
       <component :is="item.component" />

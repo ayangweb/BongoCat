@@ -4,21 +4,21 @@ import { ref } from 'vue'
 export type CatMode = 'standard' | 'keyboard'
 
 export const useCatStore = defineStore('cat', () => {
-  const mode = ref<CatMode>('standard')
   const visible = ref(true)
+  const mode = ref<CatMode>('standard')
+  const mirrorMode = ref(false)
+  const singleMode = ref(false)
   const penetrable = ref(false)
   const scale = ref(100)
   const opacity = ref(100)
-  const mirrorMode = ref(false)
-  const normalHandMode = ref(false)
 
   return {
-    mode,
     visible,
+    mode,
+    mirrorMode,
+    singleMode,
     penetrable,
     scale,
     opacity,
-    mirrorMode,
-    normalHandMode,
   }
 })

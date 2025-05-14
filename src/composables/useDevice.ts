@@ -1,6 +1,7 @@
 import type { Ref } from 'vue'
 
 import { useDebounceFn } from '@vueuse/core'
+import { uniq } from 'es-toolkit'
 import { reactive, ref, watch } from 'vue'
 
 import { LISTEN_KEY } from '../constants'
@@ -9,11 +10,9 @@ import { useTauriListen } from './useTauriListen'
 
 import { useCatStore } from '@/stores/cat'
 
-type MouseButtonValue = 'Left' | 'Right' | 'Middle'
-
 interface MouseButtonEvent {
   kind: 'MousePress' | 'MouseRelease'
-  value: MouseButtonValue
+  value: string
 }
 
 interface MouseMoveValue {
@@ -44,7 +43,7 @@ function getSupportKeys() {
 const supportKeys = getSupportKeys()
 
 export function useDevice() {
-  const pressedMouses = ref<MouseButtonValue[]>([])
+  const pressedMouses = ref<string[]>([])
   const mousePosition = reactive<MouseMoveValue>({ x: 0, y: 0 })
   const pressedKeys = ref<string[]>([])
   const catStore = useCatStore()
@@ -57,24 +56,19 @@ export function useDevice() {
     handleRelease(pressedKeys, 'CapsLock')
   }, 100)
 
-  const handlePress = <T>(array: Ref<T[]>, value?: T) => {
+  const handlePress = (array: Ref<string[]>, value?: string) => {
     if (!value) return
 
-    if (array === pressedKeys && typeof value === 'string' && catStore.normalHandMode) {
-      const isArrowKey = value.endsWith('Arrow')
-
+    if (catStore.singleMode) {
       array.value = array.value.filter((item) => {
-        const itemIsArrow = (item as string).endsWith('Arrow')
-        return itemIsArrow !== isArrowKey
+        return item.endsWith('Arrow') !== value.endsWith('Arrow')
       })
-
-      array.value.push(value)
-    } else {
-      array.value = [...new Set([...array.value, value])]
     }
+
+    array.value = uniq(array.value.concat(value))
   }
 
-  const handleRelease = <T>(array: Ref<T[]>, value?: T) => {
+  const handleRelease = (array: Ref<string[]>, value?: string) => {
     if (!value) return
 
     array.value = array.value.filter(item => item !== value)
