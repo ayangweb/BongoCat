@@ -76,5 +76,11 @@ function opacityFormatter(value?: number) {
     <ProListItem title="镜像模式">
       <Switch v-model:checked="catStore.mirrorMode" />
     </ProListItem>
+    <ProListItem
+      description="启用后，同一只手只会显示最后按下的键的动画"
+      title="单键模式"
+    >
+      <Switch v-model:checked="catStore.normalHandMode" />
+    </ProListItem>
   </ProList>
 </template>
