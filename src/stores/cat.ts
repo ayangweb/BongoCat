@@ -10,6 +10,7 @@ export const useCatStore = defineStore('cat', () => {
   const scale = ref(100)
   const opacity = ref(100)
   const mirrorMode = ref(false)
+  const normalHandMode = ref(false)
 
   return {
     mode,
@@ -18,5 +19,6 @@ export const useCatStore = defineStore('cat', () => {
     scale,
     opacity,
     mirrorMode,
+    normalHandMode,
   }
 })

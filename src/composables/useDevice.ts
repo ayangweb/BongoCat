@@ -60,7 +60,18 @@ export function useDevice() {
   const handlePress = <T>(array: Ref<T[]>, value?: T) => {
     if (!value) return
 
-    array.value = [...new Set([...array.value, value])]
+    if (array === pressedKeys && typeof value === 'string' && catStore.normalHandMode) {
+      const isArrowKey = value.endsWith('Arrow')
+
+      array.value = array.value.filter((item) => {
+        const itemIsArrow = (item as string).endsWith('Arrow')
+        return itemIsArrow !== isArrowKey
+      })
+
+      array.value.push(value)
+    } else {
+      array.value = [...new Set([...array.value, value])]
+    }
   }
 
   const handleRelease = <T>(array: Ref<T[]>, value?: T) => {
