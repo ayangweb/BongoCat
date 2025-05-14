@@ -53,52 +53,19 @@ export function useDevice() {
     handleRelease(pressedKeys, 'CapsLock')
   }, 100)
 
-  // const handlePress = <T>(array: Ref<T[]>, value?: T) => {
-  //   if (!value) return
-
-  //   array.value = [...new Set([...array.value, value])]
-  // }
-
-  // const handlePress = <T>(array: Ref<T[]>, value?: T) => {
-  //   if (!value) return
-
-  //   // 对于pressedKeys数组的特殊处理
-  //   if (array === pressedKeys && typeof value === 'string') {
-  //     const isArrowKey = value.endsWith('Arrow')
-
-  //     // 移除同类型的旧按键
-  //     array.value = array.value.filter((item) => {
-  //       const itemIsArrow = (item as string).endsWith('Arrow')
-  //       // 保留不同类型的按键
-  //       return itemIsArrow !== isArrowKey
-  //     })
-
-  //     // 添加新按键
-  //     array.value.push(value)
-  //   } else {
-  //     // 对于其他数组（如pressedMouses）保持原有逻辑
-  //     array.value = [...new Set([...array.value, value])]
-  //   }
-  // }
-
   const handlePress = <T>(array: Ref<T[]>, value?: T) => {
     if (!value) return
 
-    // 对于pressedKeys数组的特殊处理
     if (array === pressedKeys && typeof value === 'string' && catStore.normalHandMode) {
       const isArrowKey = value.endsWith('Arrow')
 
-      // 移除同类型的旧按键
       array.value = array.value.filter((item) => {
         const itemIsArrow = (item as string).endsWith('Arrow')
-        // 保留不同类型的按键
         return itemIsArrow !== isArrowKey
       })
 
-      // 添加新按键
       array.value.push(value)
     } else {
-      // 对于其他数组（如pressedMouses）或未启用单键模式时保持原有逻辑
       array.value = [...new Set([...array.value, value])]
     }
   }
