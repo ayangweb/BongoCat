@@ -56,7 +56,7 @@ pub fn run() {
     app.run(|app_handle, event| match event {
         #[cfg(target_os = "macos")]
         tauri::RunEvent::Reopen { .. } => {
-            tauri_plugin_custom_window::show_preference_window(app_handle);
+            show_preference_window(app_handle);
         }
         _ => {
             let _ = app_handle;
