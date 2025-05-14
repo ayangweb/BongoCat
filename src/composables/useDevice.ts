@@ -1,7 +1,7 @@
 import type { Ref } from 'vue'
 
 import { useDebounceFn } from '@vueuse/core'
-import { reactive, ref } from 'vue'
+import { reactive, ref, watch } from 'vue'
 
 import { LISTEN_KEY } from '../constants'
 
@@ -48,6 +48,10 @@ export function useDevice() {
   const mousePosition = reactive<MouseMoveValue>({ x: 0, y: 0 })
   const pressedKeys = ref<string[]>([])
   const catStore = useCatStore()
+
+  watch(() => catStore.mode, () => {
+    pressedKeys.value = pressedKeys.value.filter(key => !key.endsWith('Arrow'))
+  })
 
   const debounceCapsLockRelease = useDebounceFn(() => {
     handleRelease(pressedKeys, 'CapsLock')
