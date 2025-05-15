@@ -1,21 +1,24 @@
 <script setup lang="ts">
-import { Menu } from '@tauri-apps/api/menu'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { useDebounceFn, useEventListener } from '@vueuse/core'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { useDevice } from '@/composables/useDevice'
 import { useModel } from '@/composables/useModel'
-import { useSharedMenu } from '@/composables/useSharedMenu'
+import { useTray } from '@/composables/useTray'
 import { useCatStore } from '@/stores/cat'
 
 const appWindow = getCurrentWebviewWindow()
 const { pressedMouses, mousePosition, pressedKeys } = useDevice()
 const { backgroundImagePath, handleLoad, handleDestroy, handleResize, handleMouseDown, handleMouseMove, handleKeyDown } = useModel()
 const catStore = useCatStore()
-const { getSharedMenu } = useSharedMenu()
+// const { getSharedMenu } = useSharedMenu()
+const { getTrayMenu } = useTray()
 
 const resizing = ref(false)
+
+const { t } = useI18n()
 
 onMounted(handleLoad)
 
@@ -49,12 +52,8 @@ function handleWindowDrag() {
 
 async function handleContextmenu(event: MouseEvent) {
   event.preventDefault()
-
-  const menu = await Menu.new({
-    items: await getSharedMenu(),
-  })
-
-  menu.popup()
+  const menu = await getTrayMenu()
+  await menu.popup()
 }
 
 function resolveImageURL(key: string) {
@@ -85,7 +84,7 @@ function resolveImageURL(key: string) {
       class="flex items-center justify-center bg-black"
     >
       <span class="text-center text-5xl text-white">
-        重绘中...
+        {{ t('main.redrawing') }}
       </span>
     </div>
   </div>

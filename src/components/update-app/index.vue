@@ -8,6 +8,7 @@ import { Flex, message, Modal } from 'ant-design-vue'
 import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc'
 import { computed, reactive, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import VueMarkdown from 'vue-markdown-render'
 
 import { useTauriListen } from '@/composables/useTauriListen'
@@ -25,6 +26,7 @@ interface State {
   downloadProgress: number
 }
 
+const { t } = useI18n()
 const generalStore = useGeneralStore()
 const state = reactive<State>({
   open: false,
@@ -51,7 +53,7 @@ useTauriListen<boolean>(LISTEN_KEY.UPDATE_APP, () => {
   message.loading({
     key: MESSAGE_KEY,
     duration: 0,
-    content: '正在检查更新...',
+    content: t('update.checking'),
   })
 })
 
@@ -86,7 +88,7 @@ async function checkUpdate(visibleMessage = false) {
 
       message.destroy(MESSAGE_KEY)
     } else if (visibleMessage) {
-      message.success({ key: MESSAGE_KEY, content: '当前已是最新版本🎉' })
+      message.success({ key: MESSAGE_KEY, content: t('update.latest') })
     }
   } catch (error) {
     if (!visibleMessage) return
@@ -130,15 +132,15 @@ async function handleOk() {
 <template>
   <Modal
     v-model:open="state.open"
-    cancel-text="稍后更新"
+    :cancel-text="t('update.later')"
     centered
     :closable="false"
     :mask-closable="false"
-    title="发现新版本🥳"
+    :title="t('update.newVersion')"
     @ok="handleOk"
   >
     <template #okText>
-      {{ state.downloading ? downloadProgress : "立即更新" }}
+      {{ state.downloading ? downloadProgress : t('update.now') }}
     </template>
 
     <Flex
@@ -147,7 +149,7 @@ async function handleOk() {
       vertical
     >
       <Flex align="center">
-        <span>更新版本：</span>
+        <span>{{ t('update.version') }}：</span>
         <span>
           <span>{{ state.update?.currentVersion }} 👉 </span>
           <a
@@ -159,12 +161,12 @@ async function handleOk() {
       </Flex>
 
       <Flex align="center">
-        <span>更新时间：</span>
+        <span>{{ t('update.time') }}：</span>
         <span>{{ state.update?.date }}</span>
       </Flex>
 
       <Flex vertical>
-        <span>更新日志：</span>
+        <span>{{ t('update.changelog') }}：</span>
 
         <VueMarkdown
           class="update-note max-h-40 overflow-auto"

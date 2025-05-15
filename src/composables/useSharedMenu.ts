@@ -2,8 +2,11 @@ import type { CatMode } from '@/stores/cat'
 
 import { CheckMenuItem, MenuItem, PredefinedMenuItem, Submenu } from '@tauri-apps/api/menu'
 import { range } from 'es-toolkit'
+// import { watch } from 'vue' // 移除此处的 watch
+import { useI18n } from 'vue-i18n'
 
 import { hideWindow, showWindow } from '@/plugins/window'
+// import { useAppStore } from '@/stores/app' // 如果不再需要 appStore 实例于此文件 (如此处的 watch 被移除)，可以移除
 import { useCatStore } from '@/stores/cat'
 import { isMac } from '@/utils/platform'
 
@@ -13,18 +16,23 @@ interface ModeOption {
 }
 
 export function useSharedMenu() {
+  const { t } = useI18n()
   const catStore = useCatStore()
-  const modeOptions: ModeOption[] = [
-    { label: '标准模式', value: 'standard' },
-    { label: '键盘模式', value: 'keyboard' },
-  ]
+  // const appStore = useAppStore() // 如果 watch 被移除，此处可能不再需要
+
+  // 移除此 watch，因为它不能直接更新特定的上下文菜单实例
+  // watch(() => appStore.locale, () => {
+  //   if (window.__TAURI__) {
+  //     getSharedMenu()
+  //   }
+  // })
 
   const getScaleMenuItems = async () => {
     const options = range(50, 151, 25)
 
     const items = options.map((item) => {
       return CheckMenuItem.new({
-        text: item === 100 ? '默认' : `${item}%`,
+        text: item === 100 ? t('window.size.default') : t('common.percent', { value: item }),
         checked: catStore.scale === item,
         action: () => {
           catStore.scale = item
@@ -34,7 +42,7 @@ export function useSharedMenu() {
 
     if (!options.includes(catStore.scale)) {
       items.unshift(CheckMenuItem.new({
-        text: `${catStore.scale}%`,
+        text: t('common.percent', { value: catStore.scale }),
         checked: true,
         enabled: false,
       }))
@@ -48,7 +56,7 @@ export function useSharedMenu() {
 
     const items = options.map((item) => {
       return CheckMenuItem.new({
-        text: `${item}%`,
+        text: t('common.percent', { value: item }),
         checked: catStore.opacity === item,
         action: () => {
           catStore.opacity = item
@@ -58,7 +66,7 @@ export function useSharedMenu() {
 
     if (!options.includes(catStore.opacity)) {
       items.unshift(CheckMenuItem.new({
-        text: `${catStore.opacity}%`,
+        text: t('common.percent', { value: catStore.opacity }),
         checked: true,
         enabled: false,
       }))
@@ -68,14 +76,20 @@ export function useSharedMenu() {
   }
 
   const getSharedMenu = async () => {
+    // 将 modeOptions 定义移到函数内部，确保每次调用时都使用最新的翻译
+    const modeOptions: ModeOption[] = [
+      { label: t('mode.standard'), value: 'standard' },
+      { label: t('mode.keyboard'), value: 'keyboard' },
+    ]
+
     return await Promise.all([
       MenuItem.new({
-        text: '偏好设置...',
+        text: t('menu.preference'),
         accelerator: isMac ? 'Cmd+,' : '',
         action: () => showWindow('preference'),
       }),
       MenuItem.new({
-        text: catStore.visible ? '隐藏猫咪' : '显示猫咪',
+        text: catStore.visible ? t('menu.hideCat') : t('menu.showCat'),
         action: () => {
           if (catStore.visible) {
             hideWindow('main')
@@ -88,9 +102,9 @@ export function useSharedMenu() {
       }),
       PredefinedMenuItem.new({ item: 'Separator' }),
       Submenu.new({
-        text: '猫咪模式',
+        text: t('menu.catMode'),
         items: await Promise.all(
-          modeOptions.map((item) => {
+          modeOptions.map((item) => { // 这里的 item.label 将会是最新翻译的
             return CheckMenuItem.new({
               text: item.label,
               checked: catStore.mode === item.value,
@@ -102,22 +116,22 @@ export function useSharedMenu() {
         ),
       }),
       CheckMenuItem.new({
-        text: '窗口穿透',
+        text: t('menu.windowPenetrable'),
         checked: catStore.penetrable,
         action: () => {
           catStore.penetrable = !catStore.penetrable
         },
       }),
       Submenu.new({
-        text: '窗口尺寸',
+        text: t('menu.windowSize'),
         items: await getScaleMenuItems(),
       }),
       Submenu.new({
-        text: '不透明度',
+        text: t('menu.opacity'),
         items: await getOpacityMenuItems(),
       }),
       CheckMenuItem.new({
-        text: '镜像模式',
+        text: t('menu.mirrorMode'),
         checked: catStore.mirrorMode,
         action: () => {
           catStore.mirrorMode = !catStore.mirrorMode

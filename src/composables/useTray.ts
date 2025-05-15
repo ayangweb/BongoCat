@@ -9,6 +9,7 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { exit, relaunch } from '@tauri-apps/plugin-process'
 import { useDebounceFn } from '@vueuse/core'
 import { watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { GITHUB_LINK, LISTEN_KEY } from '../constants'
 import { showWindow } from '../plugins/window'
@@ -16,12 +17,15 @@ import { isMac } from '../utils/platform'
 
 import { useSharedMenu } from './useSharedMenu'
 
+import { useAppStore } from '@/stores/app'
 import { useCatStore } from '@/stores/cat'
 
 const TRAY_ID = 'BONGO_CAT_TRAY'
 
 export function useTray() {
+  const { t } = useI18n()
   const catStore = useCatStore()
+  const appStore = useAppStore()
   const { getSharedMenu } = useSharedMenu()
 
   const debouncedUpdateTrayMenu = useDebounceFn(() => {
@@ -29,6 +33,10 @@ export function useTray() {
   })
 
   watch(() => catStore, debouncedUpdateTrayMenu, { deep: true })
+
+  watch(() => appStore.locale, () => {
+    debouncedUpdateTrayMenu()
+  })
 
   const createTray = async () => {
     const tray = await getTrayById()
@@ -65,7 +73,7 @@ export function useTray() {
       ...await getSharedMenu(),
       PredefinedMenuItem.new({ item: 'Separator' }),
       MenuItem.new({
-        text: '检查更新',
+        text: t('about.checkUpdate'),
         action: () => {
           showWindow()
 
@@ -73,20 +81,20 @@ export function useTray() {
         },
       }),
       MenuItem.new({
-        text: '开源地址',
+        text: t('about.openSource'),
         action: () => openUrl(GITHUB_LINK),
       }),
       PredefinedMenuItem.new({ item: 'Separator' }),
       MenuItem.new({
-        text: `版本 ${appVersion}`,
+        text: t('about.version', { version: appVersion }),
         enabled: false,
       }),
       MenuItem.new({
-        text: '重启应用',
+        text: t('tray.restart'),
         action: relaunch,
       }),
       MenuItem.new({
-        text: '退出应用',
+        text: t('tray.exit'),
         accelerator: isMac ? 'Cmd+Q' : '',
         action: () => exit(0),
       }),
@@ -107,5 +115,6 @@ export function useTray() {
 
   return {
     createTray,
+    getTrayMenu,
   }
 }

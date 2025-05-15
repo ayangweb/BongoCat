@@ -6,3 +6,9 @@ declare module '*.vue' {
   const component: DefineComponent<object, object, any>
   export default component
 }
+
+interface Window {
+  __TAURI__?: {
+    [key: string]: any
+  }
+}

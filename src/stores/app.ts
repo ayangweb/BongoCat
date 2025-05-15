@@ -4,10 +4,13 @@ import { getName, getVersion } from '@tauri-apps/api/app'
 import { defineStore } from 'pinia'
 import { onMounted, reactive, ref } from 'vue'
 
+export type Locale = 'zh' | 'en'
+
 export const useAppStore = defineStore('app', () => {
   const name = ref('')
   const version = ref('')
   const windowState = reactive<WindowState>({})
+  const locale = ref<Locale>('zh')
 
   onMounted(async () => {
     name.value = await getName()
@@ -18,5 +21,6 @@ export const useAppStore = defineStore('app', () => {
     name,
     version,
     windowState,
+    locale,
   }
 })
