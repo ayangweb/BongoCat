@@ -47,7 +47,9 @@
 
 此外，得益于 Tauri 框架强大的跨平台能力，本项目不仅支持 macOS，还可在 Windows 和 Linux 上运行，让更多用户都能与这只可爱的猫咪互动！
 
-![demo.gif](static/demo.gif)
+| macOS                                                                                     | Windows                                                                                     | Linux(x11)                                                                                |
+| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| ![macOS](https://github.com/user-attachments/assets/e932b022-1472-4bbd-87ef-4a8ea374890a) | ![Windows](https://github.com/user-attachments/assets/79a4652e-0d14-412d-a274-4ccdd825d7c6) | ![Linux](https://github.com/user-attachments/assets/fd069c12-d12d-423b-b792-98b5926a7f09) |
 
 ## 下载
 
