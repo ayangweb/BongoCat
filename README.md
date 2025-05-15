@@ -58,7 +58,7 @@
 - [夸克网盘](https://pan.quark.cn/s/70f2f2663ce1)
 - [GitHub Releases](https://github.com/ayangweb/BongoCat/releases)
 
-不确定下载哪一个？请查阅[下载指南](.github/DOWNLOAD_GUIDE.md)。
+> 不确定下载哪一个？请查阅[下载指南](.github/DOWNLOAD_GUIDE.md)。
 
 ## 功能介绍
 
