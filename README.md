@@ -43,9 +43,9 @@
 
 ## 灵感来源
 
-本项目灵感来源于 [MMmmmoko](https://github.com/MMmmmoko) 大佬的 [Bongo Cat Mver](https://github.com/MMmmmoko/Bongo-Cat-Mver)。由于原项目仅支持 Windows，作为一名深度 macOS 用户，我希望在自己的设备上也能使用这款可爱的 Bongo Cat，因此决定开发一个适配 macOS 的版本。
+本项目灵感来源于 [MMmmmoko](https://github.com/MMmmmoko) 大佬的 [Bongo-Cat-Mver](https://github.com/MMmmmoko/Bongo-Cat-Mver)。由于原项目仅支持 Windows，作为一名深度 macOS 用户，我希望在自己的设备上也能使用这款可爱的猫咪，因此决定开发一个适配 macOS 的版本。
 
-此外，得益于 Tauri 框架强大的跨平台能力，本项目不仅支持 macOS，还可在 Windows 和 Linux 上运行，让更多用户都能与这只可爱的猫咪互动！
+此外，得益于 [Tauri](https://github.com/tauri-apps/tauri) 框架强大的跨平台能力，本项目不仅支持 macOS，还可以在 Windows 和 Linux(x11) 上运行，让更多用户都能与这只可爱的猫咪互动！
 
 | macOS                                                                                     | Windows                                                                                     | Linux(x11)                                                                                |
 | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
@@ -54,26 +54,9 @@
 ## 下载
 
 - [夸克网盘](https://pan.quark.cn/s/70f2f2663ce1)
-- [百度网盘](https://pan.baidu.com/s/1LSYpxin4HQ8mpKwcpYdO5Q?pwd=qbgy)
 - [GitHub Releases](https://github.com/ayangweb/BongoCat/releases)
 
-### macOS
-
-- Apple Silicon：下载 `BongoCat_aarch64.dmg`
-- Intel Chip：下载 `BongoCat_x64.dmg`
-
-### Windows
-
-- 64 位系统：下载 `BongoCat_x64.exe`
-- 32 位系统：下载 `BongoCat_x86.exe`
-- ARM64 架构：下载 `BongoCat_arm64.exe`
-
-### Linux (X11)
-
-- Manjaro / ArchLinux: `yay -S bongo-cat`
-- Debian / Ubuntu：下载 `BongoCat_amd64.deb`
-- Fedora / RHEL：下载 `BongoCat_x86_64.rpm`
-- 通用版本：下载 `BongoCat_amd64.AppImage`
+不确定下载哪一个？请查看[安装指南](.github/DOWNLOAD_GUIDE.md)
 
 ## 贡献指南
 
