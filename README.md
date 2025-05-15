@@ -47,11 +47,11 @@
 | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | ![macOS](https://github.com/user-attachments/assets/e932b022-1472-4bbd-87ef-4a8ea374890a) | ![Windows](https://github.com/user-attachments/assets/79a4652e-0d14-412d-a274-4ccdd825d7c6) | ![Linux](https://github.com/user-attachments/assets/fd069c12-d12d-423b-b792-98b5926a7f09) |
 
-## 灵感来源
+## 开发背景
 
-本项目灵感来源于 [MMmmmoko](https://github.com/MMmmmoko) 大佬的 [Bongo-Cat-Mver](https://github.com/MMmmmoko/Bongo-Cat-Mver)。由于原项目仅支持 Windows，作为一名深度 macOS 用户，我希望在自己的设备上也能使用这款可爱的猫咪，因此决定开发一个适配 macOS 的版本。
+本项目的灵感来源于 [MMmmmoko](https://github.com/MMmmmoko) 大佬开发的 [Bongo-Cat-Mver](https://github.com/MMmmmoko/Bongo-Cat-Mver)。它以独特的猫咪互动功能深受用户喜爱，但仅支持 Windows 平台。作为一名深度 macOS 用户，我特别希望在自己的设备上也能使用这款可爱的猫咪，于是我决定开发一个适配 macOS 的版本。
 
-此外，得益于 [Tauri](https://github.com/tauri-apps/tauri) 框架强大的跨平台能力，本项目不仅支持 macOS，还可以在 Windows 和 Linux(x11) 上运行，让更多用户都能与这只可爱的猫咪互动！
+同时，得益于 [Tauri](https://github.com/tauri-apps/tauri) 强大的跨平台能力，本项目不仅支持 macOS，还兼容 Windows 和 Linux(x11)，让更多的用户都能与这只可爱的猫咪互动！
 
 ## 下载
 
@@ -63,7 +63,7 @@
 ## 功能介绍
 
 - 适配 macOS、Windows 和 Linux(x11)。
-- 据键盘输入或鼠标操作，同步移动鼠标或敲击键盘，活灵活现。
+- 根据据键盘输入或鼠标操作，同步移动鼠标或敲击键盘。
 - 完全开源，代码透明，绝不收集任何用户数据。
 - 支持离线运行，无需联网，保护用户隐私。
 
