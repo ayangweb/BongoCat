@@ -2,9 +2,9 @@
 
 ## 系统要求
 
-- macOS 12 或更高版本
-- Windows 10 或更高版本
-- Linux 带有 X11 环境
+- macOS 12 或更高版本。
+- Windows 10 或更高版本。
+- Linux 带有 X11 环境。
 
 ## macOS
 
@@ -52,13 +52,13 @@ brew untap ayangweb/BongoCat
 ### 手动下载
 
 - 64 位系统：
-  - Debian / Ubuntu：下载 `BongoCat_amd64.deb` 并进行安装。
-  - Fedora / RHEL：下载 `BongoCat_x86_64.rpm` 并进行安装。
-  - 通用版本：下载 `BongoCat_amd64.AppImage` 并进行安装。
+  - Debian / Ubuntu：下载 `BongoCat_amd64.deb`
+  - Fedora / RHEL：下载 `BongoCat_x86_64.rpm`
+  - 通用版本：下载 `BongoCat_amd64.AppImage`
 - ARM64 架构：
-  - Debian / Ubuntu：下载 `BongoCat_arm64.deb` 并进行安装。
-  - Fedora / RHEL：下载 `BongoCat_aarch64.rpm` 并进行安装。
-  - 通用版本：下载 `BongoCat_aarch64.AppImage` 并进行安装。
+  - Debian / Ubuntu：下载 `BongoCat_arm64.deb`
+  - Fedora / RHEL：下载 `BongoCat_aarch64.rpm`
+  - 通用版本：下载 `BongoCat_aarch64.AppImage`
 
 ### AUR 下载
 

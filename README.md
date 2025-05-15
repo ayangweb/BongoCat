@@ -7,13 +7,13 @@
         alt="Windows"
         src="https://img.shields.io/badge/-Windows-blue?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB0PSIxNzI2MzA1OTcxMDA2IiBjbGFzcz0iaWNvbiIgdmlld0JveD0iMCAwIDEwMjQgMTAyNCIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHAtaWQ9IjE1NDgiIHdpZHRoPSIxMjgiIGhlaWdodD0iMTI4Ij48cGF0aCBkPSJNNTI3LjI3NTU1MTYxIDk2Ljk3MTAzMDEzdjM3My45OTIxMDY2N2g0OTQuNTEzNjE5NzVWMTUuMDI2NzU3NTN6TTUyNy4yNzU1NTE2MSA5MjguMzIzNTA4MTVsNDk0LjUxMzYxOTc1IDgwLjUyMDI4MDQ5di00NTUuNjc3NDcxNjFoLTQ5NC41MTM2MTk3NXpNNC42NzA0NTEzNiA0NzAuODMzNjgyOTdINDIyLjY3Njg1OTI1VjExMC41NjM2ODE5N2wtNDE4LjAwNjQwNzg5IDY5LjI1Nzc5NzUzek00LjY3MDQ1MTM2IDg0Ni43Njc1OTcwM0w0MjIuNjc2ODU5MjUgOTE0Ljg2MDMxMDEzVjU1My4xNjYzMTcwM0g0LjY3MDQ1MTM2eiIgcC1pZD0iMTU0OSIgZmlsbD0iI2ZmZmZmZiI+PC9wYXRoPjwvc3ZnPg=="
       />
-    </a >
+    </a>
     <a href="https://github.com/ayangweb/BongoCat/releases">
       <img
         alt="MacOS"
         src="https://img.shields.io/badge/-MacOS-black?style=flat-square&logo=apple&logoColor=white"
       />
-    </a >
+    </a>
     <a href="https://github.com/ayangweb/BongoCat/releases">
       <img
         alt="Linux"
@@ -27,19 +27,25 @@
       <img
         src="https://img.shields.io/github/license/ayangweb/BongoCat?style=flat-square"
       />
-    </a >
+    </a>
     <a href="https://github.com/ayangweb/BongoCat/releases">
       <img
         src="https://img.shields.io/github/package-json/v/ayangweb/BongoCat?style=flat-square"
       />
-    </a >
+    </a>
     <a href="https://github.com/ayangweb/BongoCat/releases">
       <img
         src="https://img.shields.io/github/downloads/ayangweb/BongoCat/total?style=flat-square"
       />
-    </a >
+    </a>
   </div>
+
+  <br />
 </div>
+
+| macOS                                                                                     | Window                                                                                      | Linux(x11)                                                                                |
+| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| ![macOS](https://github.com/user-attachments/assets/e932b022-1472-4bbd-87ef-4a8ea374890a) | ![Windows](https://github.com/user-attachments/assets/79a4652e-0d14-412d-a274-4ccdd825d7c6) | ![Linux](https://github.com/user-attachments/assets/fd069c12-d12d-423b-b792-98b5926a7f09) |
 
 ## 灵感来源
 
@@ -47,16 +53,19 @@
 
 此外，得益于 [Tauri](https://github.com/tauri-apps/tauri) 框架强大的跨平台能力，本项目不仅支持 macOS，还可以在 Windows 和 Linux(x11) 上运行，让更多用户都能与这只可爱的猫咪互动！
 
-| macOS                                                                                     | Windows                                                                                     | Linux(x11)                                                                                |
-| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| ![macOS](https://github.com/user-attachments/assets/e932b022-1472-4bbd-87ef-4a8ea374890a) | ![Windows](https://github.com/user-attachments/assets/79a4652e-0d14-412d-a274-4ccdd825d7c6) | ![Linux](https://github.com/user-attachments/assets/fd069c12-d12d-423b-b792-98b5926a7f09) |
-
 ## 下载
 
 - [夸克网盘](https://pan.quark.cn/s/70f2f2663ce1)
 - [GitHub Releases](https://github.com/ayangweb/BongoCat/releases)
 
-不确定下载哪一个？请查看[安装指南](.github/DOWNLOAD_GUIDE.md)
+不确定下载哪一个？请查阅[下载指南](.github/DOWNLOAD_GUIDE.md)。
+
+## 功能介绍
+
+- 适配 macOS、Windows 和 Linux(x11)。
+- 据键盘输入或鼠标操作，同步移动鼠标或敲击键盘，活灵活现。
+- 完全开源，代码透明，绝不收集任何用户数据。
+- 支持离线运行，无需联网，保护用户隐私。
 
 ## 贡献指南
 
