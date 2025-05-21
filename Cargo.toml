@@ -2,6 +2,15 @@
 resolver = "2"
 members = [ "src-tauri" ]
 
+[profile.release]
+strip = true
+opt-level = 3
+codegen-units = 1
+panic = "abort"
+debug-assertions = false
+overflow-checks = false
+lto = true
+
 [workspace.dependencies]
 tauri = "2"
 serde = "1"
