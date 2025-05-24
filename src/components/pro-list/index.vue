@@ -13,7 +13,7 @@ const { title } = defineProps<{
     vertical
   >
     <div
-      class="text-base font-medium"
+      class="text-4 font-medium"
       data-tauri-drag-region
     >
       {{ title }}

@@ -59,7 +59,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": ["assets/tray.png", "assets/logo.png"]
+    "resources": ["assets/tray.png", "assets/models"]
   },
   "plugins": {
     "updater": {

@@ -1,24 +1,11 @@
 <script setup lang="ts">
-import type { SelectProps } from 'ant-design-vue'
-
-import { Select, Slider, Switch } from 'ant-design-vue'
+import { Slider, Switch } from 'ant-design-vue'
 
 import ProList from '@/components/pro-list/index.vue'
 import ProListItem from '@/components/pro-list-item/index.vue'
 import { useCatStore } from '@/stores/cat'
 
 const catStore = useCatStore()
-
-const modeList: SelectProps['options'] = [
-  {
-    label: '标准模式',
-    value: 'standard',
-  },
-  {
-    label: '键盘模式',
-    value: 'keyboard',
-  },
-]
 
 function scaleFormatter(value?: number) {
   return value === 100 ? '默认' : `${value}%`
@@ -31,13 +18,6 @@ function opacityFormatter(value?: number) {
 
 <template>
   <ProList title="模型设置">
-    <ProListItem title="选择模式">
-      <Select
-        v-model:value="catStore.mode"
-        :options="modeList"
-      />
-    </ProListItem>
-
     <ProListItem title="镜像模式">
       <Switch v-model:checked="catStore.mirrorMode" />
     </ProListItem>

@@ -1,7 +1,11 @@
 import type { Cubism4InternalModel } from 'pixi-live2d-display'
 
-import { Live2DModel } from 'pixi-live2d-display'
+import { convertFileSrc } from '@tauri-apps/api/core'
+import { readTextFile } from '@tauri-apps/plugin-fs'
+import { Cubism4ModelSettings, Live2DModel } from 'pixi-live2d-display'
 import { Application, Ticker } from 'pixi.js'
+
+import { join } from './path'
 
 Live2DModel.registerTicker(Ticker)
 
@@ -23,26 +27,35 @@ class Live2d {
     })
   }
 
-  public async load(url: string) {
+  public async load(path: string) {
     if (!this.app) {
       this.mount()
     }
 
-    const model = await Live2DModel.from(url)
+    this.destroy()
 
-    if (this.app?.stage.children.length) {
-      this.app.stage.removeChildren()
-    }
+    const modelPath = join(path, 'cat.model3.json')
 
-    this.app?.stage.addChild(model)
+    const modelJSON = JSON.parse(await readTextFile(modelPath))
 
-    const { definitions, expressionManager } = model.internalModel.motionManager
+    const modelSettings = new Cubism4ModelSettings({
+      ...modelJSON,
+      url: convertFileSrc(modelPath),
+    })
 
-    this.model = model
+    modelSettings.replaceFiles((file) => {
+      return convertFileSrc(join(path, file))
+    })
+
+    this.model = await Live2DModel.from(modelSettings)
+
+    this.app?.stage.addChild(this.model)
+
+    const { motions, expressions } = modelSettings
 
     return {
-      motions: definitions,
-      expressions: expressionManager?.definitions ?? [],
+      motions,
+      expressions,
     }
   }
 
@@ -61,7 +74,7 @@ class Live2d {
   public setParameterValue(id: string, value: number | boolean) {
     const internalModel = this.model?.internalModel as Cubism4InternalModel
 
-    return internalModel.coreModel.setParameterValueById(id, Number(value))
+    return internalModel?.coreModel?.setParameterValueById?.(id, Number(value))
   }
 }
 

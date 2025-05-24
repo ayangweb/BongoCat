@@ -1,5 +1,6 @@
 import type { Ref } from 'vue'
 
+import { readDir } from '@tauri-apps/plugin-fs'
 import { useDebounceFn } from '@vueuse/core'
 import { uniq } from 'es-toolkit'
 import { reactive, ref, watch } from 'vue'
@@ -9,6 +10,9 @@ import { LISTEN_KEY } from '../constants'
 import { useTauriListen } from './useTauriListen'
 
 import { useCatStore } from '@/stores/cat'
+import { useModelStore } from '@/stores/model'
+import { isImage } from '@/utils/is'
+import { join } from '@/utils/path'
 
 interface MouseButtonEvent {
   kind: 'MousePress' | 'MouseRelease'
@@ -32,40 +36,67 @@ interface KeyboardEvent {
 
 type DeviceEvent = MouseButtonEvent | MouseMoveEvent | KeyboardEvent
 
-function getSupportKeys() {
-  const files = import.meta.glob('../assets/images/keys/*.png', { eager: true })
-
-  return Object.keys(files).map((path) => {
-    return path.split('/').pop()?.replace('.png', '')
-  })
-}
-
-const supportKeys = getSupportKeys()
-
 export function useDevice() {
+  const supportLeftKeys = ref<string[]>([])
+  const supportRightKeys = ref<string[]>([])
+
   const pressedMouses = ref<string[]>([])
   const mousePosition = reactive<MouseMoveValue>({ x: 0, y: 0 })
-  const pressedKeys = ref<string[]>([])
+  const pressedLeftKeys = ref<string[]>([])
+  const pressedRightKeys = ref<string[]>([])
   const catStore = useCatStore()
+  const modelStore = useModelStore()
 
-  watch(() => catStore.mode, () => {
-    pressedKeys.value = pressedKeys.value.filter(key => !key.endsWith('Arrow'))
-  })
+  watch(() => modelStore.currentModel, async (model) => {
+    if (!model) return
 
-  const debounceCapsLockRelease = useDebounceFn(() => {
-    handleRelease(pressedKeys, 'CapsLock')
+    const keySides = [
+      {
+        side: 'left',
+        supportKeys: supportLeftKeys,
+        pressedKeys: pressedLeftKeys,
+      },
+      {
+        side: 'right',
+        supportKeys: supportRightKeys,
+        pressedKeys: pressedRightKeys,
+      },
+    ]
+
+    for await (const item of keySides) {
+      const { side, supportKeys, pressedKeys } = item
+
+      try {
+        const files = await readDir(join(model.path, 'resources', `${side}-keys`))
+
+        const imageFiles = files.filter(file => isImage(file.name))
+
+        supportKeys.value = imageFiles.map((item) => {
+          return item.name.split('.')[0]
+        })
+
+        pressedKeys.value = pressedKeys.value.filter((key) => {
+          return supportKeys.value.includes(key)
+        })
+      } catch {
+        supportKeys.value = []
+        pressedKeys.value = []
+      }
+    }
+  }, { deep: true, immediate: true })
+
+  const debouncedHandleRelease = useDebounceFn((array: Ref<string[]>, key) => {
+    handleRelease(array, key)
   }, 100)
 
   const handlePress = (array: Ref<string[]>, value?: string) => {
     if (!value) return
 
     if (catStore.singleMode) {
-      array.value = array.value.filter((item) => {
-        return item.endsWith('Arrow') !== value.endsWith('Arrow')
-      })
+      array.value = [value]
+    } else {
+      array.value = uniq(array.value.concat(value))
     }
-
-    array.value = uniq(array.value.concat(value))
   }
 
   const handleRelease = (array: Ref<string[]>, value?: string) => {
@@ -74,24 +105,54 @@ export function useDevice() {
     array.value = array.value.filter(item => item !== value)
   }
 
-  const normalizeKeyValue = (key: string) => {
-    key = key.replace(/^(Meta).*/, '$1').replace(/F(\d+)/, 'Fn')
+  const getSupportedKey = (key: string) => {
+    for (const side of ['left', 'right']) {
+      let nextKey = key
 
-    const isInvalidArrowKey = key.endsWith('Arrow') && catStore.mode !== 'keyboard'
-    const isUnsupportedKey = !supportKeys.includes(key)
+      const supportKeys = side === 'left' ? supportLeftKeys.value : supportRightKeys.value
 
-    if (isInvalidArrowKey || isUnsupportedKey) return
+      const unsupportedKeys = !supportKeys.includes(key)
 
-    return key
+      if (key.startsWith('F') && unsupportedKeys) {
+        nextKey = key.replace(/F(\d+)/, 'Fn')
+      }
+
+      for (const item of ['Meta', 'Shift', 'Alt', 'Control']) {
+        if (key.startsWith(item) && unsupportedKeys) {
+          const regex = new RegExp(`^(${item}).*`)
+          nextKey = key.replace(regex, '$1')
+        }
+      }
+
+      if (!supportKeys.includes(nextKey)) continue
+
+      return nextKey
+    }
   }
 
   useTauriListen<DeviceEvent>(LISTEN_KEY.DEVICE_CHANGED, ({ payload }) => {
     const { kind, value } = payload
 
-    if (value === 'CapsLock') {
-      handlePress(pressedKeys, 'CapsLock')
+    if (kind === 'KeyboardPress' || kind === 'KeyboardRelease') {
+      const nextValue = getSupportedKey(value)
 
-      return debounceCapsLockRelease()
+      if (!nextValue) return
+
+      const isLeftSide = supportLeftKeys.value.includes(nextValue)
+
+      const pressedKeys = isLeftSide ? pressedLeftKeys : pressedRightKeys
+
+      if (nextValue === 'CapsLock') {
+        handlePress(pressedKeys, nextValue)
+
+        return debouncedHandleRelease(pressedKeys, nextValue)
+      }
+
+      if (kind === 'KeyboardPress') {
+        return handlePress(pressedKeys, nextValue)
+      }
+
+      return handleRelease(pressedKeys, nextValue)
     }
 
     switch (kind) {
@@ -101,16 +162,13 @@ export function useDevice() {
         return handleRelease(pressedMouses, value)
       case 'MouseMove':
         return Object.assign(mousePosition, value)
-      case 'KeyboardPress':
-        return handlePress(pressedKeys, normalizeKeyValue(value))
-      case 'KeyboardRelease':
-        return handleRelease(pressedKeys, normalizeKeyValue(value))
     }
   })
 
   return {
     pressedMouses,
     mousePosition,
-    pressedKeys,
+    pressedLeftKeys,
+    pressedRightKeys,
   }
 }

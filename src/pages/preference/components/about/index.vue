@@ -43,7 +43,7 @@ function feedbackIssue() {
         <div class="b b-color-2 rounded-xl b-solid">
           <img
             class="size-12"
-            src="/images/logo.png"
+            src="/logo.png"
           >
         </div>
       </template>

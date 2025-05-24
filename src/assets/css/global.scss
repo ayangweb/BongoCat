@@ -14,4 +14,15 @@ html {
   button {
     outline: none !important;
   }
+
+  .ant-card {
+    .ant-card-actions {
+      > li {
+        --uno: flex items-center justify-center;
+        > span {
+          --uno: inline-flex items-center justify-center min-w-unset;
+        }
+      }
+    }
+  }
 }

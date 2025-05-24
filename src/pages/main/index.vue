@@ -1,23 +1,25 @@
 <script setup lang="ts">
+import { convertFileSrc } from '@tauri-apps/api/core'
 import { Menu } from '@tauri-apps/api/menu'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { useDebounceFn, useEventListener } from '@vueuse/core'
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 
 import { useDevice } from '@/composables/useDevice'
 import { useModel } from '@/composables/useModel'
 import { useSharedMenu } from '@/composables/useSharedMenu'
 import { useCatStore } from '@/stores/cat'
+import { useModelStore } from '@/stores/model'
+import { join } from '@/utils/path'
 
 const appWindow = getCurrentWebviewWindow()
-const { pressedMouses, mousePosition, pressedKeys } = useDevice()
-const { backgroundImagePath, handleLoad, handleDestroy, handleResize, handleMouseDown, handleMouseMove, handleKeyDown } = useModel()
+const { pressedMouses, mousePosition, pressedLeftKeys, pressedRightKeys } = useDevice()
+const { handleDestroy, handleResize, handleMouseDown, handleMouseMove, handleKeyDown } = useModel()
 const catStore = useCatStore()
 const { getSharedMenu } = useSharedMenu()
+const modelStore = useModelStore()
 
 const resizing = ref(false)
-
-onMounted(handleLoad)
 
 onUnmounted(handleDestroy)
 
@@ -37,11 +39,23 @@ watch(pressedMouses, handleMouseDown)
 
 watch(mousePosition, handleMouseMove)
 
-watch(pressedKeys, handleKeyDown)
+watch(pressedLeftKeys, (keys) => {
+  handleKeyDown('left', keys.length > 0)
+})
+
+watch(pressedRightKeys, (keys) => {
+  handleKeyDown('right', keys.length > 0)
+})
 
 watch(() => catStore.penetrable, (value) => {
   appWindow.setIgnoreCursorEvents(value)
 }, { immediate: true })
+
+const backgroundImage = computed(() => {
+  if (!modelStore.currentModel) return
+
+  return convertFileSrc(join(modelStore.currentModel.path, 'resources', 'background.png'))
+})
 
 function handleWindowDrag() {
   appWindow.startDragging()
@@ -57,8 +71,10 @@ async function handleContextmenu(event: MouseEvent) {
   menu.popup()
 }
 
-function resolveImageURL(key: string) {
-  return new URL(`../../assets/images/keys/${key}.png`, import.meta.url).href
+function resolveImagePath(key: string, side: 'left' | 'right' = 'left') {
+  if (!modelStore.currentModel) return
+
+  return convertFileSrc(join(modelStore.currentModel.path, 'resources', `${side}-keys`, `${key}.png`))
 }
 </script>
 
@@ -70,14 +86,20 @@ function resolveImageURL(key: string) {
     @contextmenu="handleContextmenu"
     @mousedown="handleWindowDrag"
   >
-    <img :src="backgroundImagePath">
+    <img :src="backgroundImage">
 
     <canvas id="live2dCanvas" />
 
     <img
-      v-for="key in pressedKeys"
+      v-for="key in pressedLeftKeys"
       :key="key"
-      :src="resolveImageURL(key)"
+      :src="resolveImagePath(key)"
+    >
+
+    <img
+      v-for="key in pressedRightKeys"
+      :key="key"
+      :src="resolveImagePath(key, 'right')"
     >
 
     <div

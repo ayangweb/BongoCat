@@ -1,5 +1,3 @@
-import type { CatMode } from '@/stores/cat'
-
 import { CheckMenuItem, MenuItem, PredefinedMenuItem, Submenu } from '@tauri-apps/api/menu'
 import { range } from 'es-toolkit'
 
@@ -7,17 +5,8 @@ import { hideWindow, showWindow } from '@/plugins/window'
 import { useCatStore } from '@/stores/cat'
 import { isMac } from '@/utils/platform'
 
-interface ModeOption {
-  label: string
-  value: CatMode
-}
-
 export function useSharedMenu() {
   const catStore = useCatStore()
-  const modeOptions: ModeOption[] = [
-    { label: '标准模式', value: 'standard' },
-    { label: '键盘模式', value: 'keyboard' },
-  ]
 
   const getScaleMenuItems = async () => {
     const options = range(50, 151, 25)
@@ -87,20 +76,6 @@ export function useSharedMenu() {
         },
       }),
       PredefinedMenuItem.new({ item: 'Separator' }),
-      Submenu.new({
-        text: '猫咪模式',
-        items: await Promise.all(
-          modeOptions.map((item) => {
-            return CheckMenuItem.new({
-              text: item.label,
-              checked: catStore.mode === item.value,
-              action: () => {
-                catStore.mode = item.value
-              },
-            })
-          }),
-        ),
-      }),
       CheckMenuItem.new({
         text: '窗口穿透',
         checked: catStore.penetrable,

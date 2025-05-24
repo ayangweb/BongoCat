@@ -1,11 +1,13 @@
 mod core;
+mod utils;
 
 use core::{device, prevent_default, setup};
-use tauri::{Manager, WindowEvent};
+use tauri::{generate_handler, Manager, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_custom_window::{
     show_preference_window, MAIN_WINDOW_LABEL, PREFERENCE_WINDOW_LABEL,
 };
+use utils::fs_extra::copy_dir;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -23,6 +25,7 @@ pub fn run() {
 
             Ok(())
         })
+        .invoke_handler(generate_handler![copy_dir])
         .plugin(tauri_plugin_custom_window::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_process::init())
@@ -42,6 +45,7 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_macos_permissions::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .on_window_event(|window, event| match event {
             WindowEvent::CloseRequested { api, .. } => {
                 let _ = window.hide();

@@ -34,6 +34,8 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-autostart = "2"
 tauri-plugin-macos-permissions = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+fs_extra = "1"
 
 [target."cfg(target_os = \"macos\")".dependencies]
 tauri-nspanel.workspace = true

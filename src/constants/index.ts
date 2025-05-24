@@ -5,5 +5,12 @@ export const LISTEN_KEY = {
   HIDE_WINDOW: 'hide-window',
   DEVICE_CHANGED: 'device-changed',
   UPDATE_APP: 'update-app',
-  PLAY_EXPRESSION: 'play-expression',
+}
+
+export const DEFAULT_MODEL_WIDTH = 612
+
+export const DEFAULT_MODEL_HEIGHT = 354
+
+export const INVOKE_KEY = {
+  COPY_DIR: 'copy_dir',
 }

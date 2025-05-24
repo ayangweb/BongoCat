@@ -55,7 +55,7 @@ const menus = [
         <div class="b b-color-2 rounded-2xl b-solid">
           <img
             class="size-15"
-            src="/images/logo.png"
+            src="/logo.png"
           >
         </div>
 

@@ -42,10 +42,10 @@ export function useWindowState() {
       const monitor = monitors.find((monitor) => {
         const { position, size } = monitor
 
-        const inX = x >= position.x && x <= position.x + size.width
-        const inY = y >= position.y && y <= position.y + size.height
+        const inBoundsX = x >= position.x && x <= position.x + size.width
+        const inBoundsY = y >= position.y && y <= position.y + size.height
 
-        return inX && inY
+        return inBoundsX && inBoundsY
       })
 
       if (monitor) {

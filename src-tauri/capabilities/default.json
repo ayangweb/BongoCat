@@ -18,7 +18,11 @@
     "opener:default",
     {
       "identifier": "opener:allow-open-path",
-      "allow": [{ "path": "**/*" }]
+      "allow": [
+        {
+          "path": "**/*"
+        }
+      ]
     },
     "pinia:default",
     "log:default",
@@ -26,6 +30,13 @@
     "prevent-default:default",
     "autostart:default",
     "macos-permissions:default",
-    "dialog:default"
+    "dialog:default",
+    "fs:default",
+    "fs:read-all",
+    "fs:write-all",
+    {
+      "identifier": "fs:scope",
+      "allow": ["**/*"]
+    }
   ]
 }
