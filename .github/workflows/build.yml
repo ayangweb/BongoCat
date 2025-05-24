@@ -132,7 +132,7 @@ jobs:
         if: ${{ github.ref_type != 'tag' }}
         uses: actions/upload-artifact@v4
         with:
-          name: BongonCat-${{ matrix.target }}
+          name: BongoCat-${{ matrix.target }}
           path: artifacts
           compression-level: 9
 
