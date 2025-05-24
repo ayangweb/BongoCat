@@ -18,11 +18,7 @@
     "opener:default",
     {
       "identifier": "opener:allow-open-path",
-      "allow": [
-        {
-          "path": "**/*"
-        }
-      ]
+      "allow": [{ "path": "**/*" }]
     },
     "pinia:default",
     "log:default",
