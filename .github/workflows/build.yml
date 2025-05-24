@@ -1,14 +1,18 @@
-name: Release CI
+name: Build BongoCat artifacts
 
 on:
   push:
     tags:
       - 'v*'
+  pull_request:
+    branches: [master]
+  workflow_call:
   workflow_dispatch:
 
 jobs:
   create-release:
     runs-on: ubuntu-latest
+    if: ${{ github.ref_type == 'tag' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,7 +33,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
 
   build-app:
-    needs: create-release
     permissions:
       contents: write
     strategy:
@@ -66,7 +69,10 @@ jobs:
           version: latest
 
       - name: Install rust target
-        run: rustup target add ${{ matrix.target }}
+        run: |
+          rustup default stable
+          rustup update stable
+          rustup target add ${{ matrix.target }}
 
       - name: Install dependencies (ubuntu only)
         if: startsWith(matrix.platform, 'ubuntu')
@@ -91,8 +97,47 @@ jobs:
       - name: Install app dependencies and build web
         run: pnpm install --frozen-lockfile
 
-      - name: Build the app
+      - name: Build BongoCat
+        id: build
         uses: tauri-apps/tauri-action@v0
+        if: ${{ github.ref_type != 'tag' }}
+        env:
+          CI: true
+          PLATFORM: ${{ matrix.platform }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          args: --target ${{ matrix.target }}
+
+      - name: Prepare artifacts
+        if: ${{ github.ref_type != 'tag' && matrix.platform != 'windows-latest'}}
+        run: |
+          mkdir artifacts
+          paths=$(echo '${{ steps.build.outputs.artifactPaths }}' | jq -c '.[]' | sed 's/"//g')
+          for fn in $paths; do
+            if [[ -f $fn ]]; then
+              mv $fn artifacts
+            fi
+          done
+
+      - name: Prepare artifacts (Windows)
+        if: ${{ github.ref_type != 'tag' && matrix.platform == 'windows-latest'}}
+        run: |
+          mkdir artifacts
+          mv ${{ github.workspace }}/target/**/release/bundle/**/*.exe artifacts
+          mv ${{ github.workspace }}/target/**/release/bundle/**/*.sig artifacts
+
+      - name: Upload build artifacts
+        if: ${{ github.ref_type != 'tag' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: BongonCat-${{ matrix.target }}
+          path: artifacts
+          compression-level: 9
+
+      - name: Build and Release BongoCat
+        uses: tauri-apps/tauri-action@v0
+        if: ${{ github.ref_type == 'tag' }}
         env:
           CI: false
           PLATFORM: ${{ matrix.platform }}
@@ -101,7 +146,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: BongoCat ${{ needs.create-release.outputs.APP_VERSION }}
+          releaseName: BongoCat ${{ github.ref_name }}
           releaseBody: ''
           releaseDraft: true
           prerelease: false

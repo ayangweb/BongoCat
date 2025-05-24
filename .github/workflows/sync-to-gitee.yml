@@ -1,4 +1,4 @@
-name: Sync Github Repos To Gitee
+name: Sync Github Repository To Gitee
 on:
   push:
     branches:
@@ -8,12 +8,16 @@ jobs:
   repo-sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Sync Github Repos To Gitee
+      - name: Sync Github Repository To Gitee
         uses: Yikun/hub-mirror-action@master
+        env:
+          GITEE_PRIVATE_KEY: ${{ secrets.GITEE_PRIVATE_KEY }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        if: ${{ env.GITEE_PRIVATE_KEY != '' && env.GITEE_TOKEN != '' }}
         with:
           src: github/ayangweb
           dst: gitee/ayangweb
-          dst_key: ${{ secrets.GITEE_PRIVATE_KEY }}
-          dst_token: ${{ secrets.GITEE_TOKEN }}
+          dst_key: ${{ env.GITEE_PRIVATE_KEY }}
+          dst_token: ${{ env.GITEE_TOKEN }}
           static_list: BongoCat
           force_update: true
