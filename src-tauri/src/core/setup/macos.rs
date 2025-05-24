@@ -1,4 +1,4 @@
-use tauri::{ActivationPolicy, AppHandle, Emitter, EventTarget, WebviewWindow};
+use tauri::{AppHandle, Emitter, EventTarget, WebviewWindow};
 use tauri_nspanel::{
     cocoa::appkit::{NSMainMenuWindowLevel, NSWindowCollectionBehavior},
     panel_delegate, WebviewWindowExt,

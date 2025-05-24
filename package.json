@@ -65,7 +65,6 @@
     "sass": "^1.89.0",
     "simple-git-hooks": "^2.13.0",
     "tsx": "^4.19.4",
-    "type-fest": "^4.41.0",
     "typescript": "~5.6.3",
     "unocss": "66.1.0-beta.7",
     "vite": "^6.3.5"
