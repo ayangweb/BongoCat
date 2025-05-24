@@ -46,7 +46,7 @@ async function handleDelete(item: Model) {
         <template #cover>
           <img
             alt="example"
-            :src="convertFileSrc(join(item.path, 'resources', 'preview.png'))"
+            :src="convertFileSrc(join(item.path, 'resources', 'cover.png'))"
           >
         </template>
 
