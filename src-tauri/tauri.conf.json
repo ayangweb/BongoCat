@@ -67,6 +67,9 @@
       "endpoints": [
         "https://gh-proxy.com/github.com/ayangweb/BongoCat/releases/latest/download/latest.json"
       ]
+    },
+    "fs": {
+      "requireLiteralLeadingDot": false
     }
   }
 }
