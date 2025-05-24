@@ -1,7 +1,7 @@
 import type { Cubism4InternalModel } from 'pixi-live2d-display'
 
 import { convertFileSrc } from '@tauri-apps/api/core'
-import { readTextFile } from '@tauri-apps/plugin-fs'
+import { readDir, readTextFile } from '@tauri-apps/plugin-fs'
 import { Cubism4ModelSettings, Live2DModel } from 'pixi-live2d-display'
 import { Application, Ticker } from 'pixi.js'
 
@@ -34,7 +34,15 @@ class Live2d {
 
     this.destroy()
 
-    const modelPath = join(path, 'cat.model3.json')
+    const files = await readDir(path)
+
+    const modelFile = files.find(file => file.name.endsWith('.model3.json'))
+
+    if (!modelFile) {
+      throw new Error('未找到模型主配置文件，请确认模型文件是否完整。')
+    }
+
+    const modelPath = join(path, modelFile.name)
 
     const modelJSON = JSON.parse(await readTextFile(modelPath))
 

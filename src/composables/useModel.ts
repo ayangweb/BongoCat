@@ -1,6 +1,7 @@
 import { LogicalSize, PhysicalSize } from '@tauri-apps/api/dpi'
 import { resolveResource } from '@tauri-apps/api/path'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { message } from 'ant-design-vue'
 import { round } from 'es-toolkit'
 import { watch } from 'vue'
 
@@ -29,17 +30,21 @@ export function useModel() {
   }, { immediate: true })
 
   async function handleLoad() {
-    if (!modelStore.currentModel) return
+    try {
+      if (!modelStore.currentModel) return
 
-    const { path } = modelStore.currentModel
+      const { path } = modelStore.currentModel
 
-    await resolveResource(path)
+      await resolveResource(path)
 
-    const data = await live2d.load(path)
+      const data = await live2d.load(path)
 
-    handleResize()
+      handleResize()
 
-    Object.assign(modelStore, data)
+      Object.assign(modelStore, data)
+    } catch (error) {
+      message.error(String(error))
+    }
   }
 
   function handleDestroy() {
