@@ -79,10 +79,29 @@ class Live2d {
     return this.model?.expression(index)
   }
 
-  public setParameterValue(id: string, value: number | boolean) {
+  public getCoreModel() {
     const internalModel = this.model?.internalModel as Cubism4InternalModel
 
-    return internalModel?.coreModel?.setParameterValueById?.(id, Number(value))
+    return internalModel?.coreModel
+  }
+
+  public getParameterRange(id: string) {
+    const coreModel = this.getCoreModel()
+
+    const index = coreModel?.getParameterIndex(id)
+    const min = coreModel?.getParameterMinimumValue(index)
+    const max = coreModel?.getParameterMaximumValue(index)
+
+    return {
+      min,
+      max,
+    }
+  }
+
+  public setParameterValue(id: string, value: number) {
+    const coreModel = this.getCoreModel()
+
+    return coreModel?.setParameterValueById?.(id, Number(value))
   }
 }
 

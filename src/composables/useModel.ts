@@ -3,7 +3,7 @@ import { LogicalSize, PhysicalSize } from '@tauri-apps/api/dpi'
 import { resolveResource } from '@tauri-apps/api/path'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { message } from 'ant-design-vue'
-import { round } from 'es-toolkit'
+import { isNil, round } from 'es-toolkit'
 import { computed, watch } from 'vue'
 
 import live2d from '../utils/live2d'
@@ -81,11 +81,11 @@ export function useModel() {
   }
 
   function handleKeyDown(side: 'left' | 'right', pressed: boolean) {
-    if (side === 'left') {
-      live2d.setParameterValue('CatParamLeftHandDown', pressed)
-    } else {
-      live2d.setParameterValue('CatParamRightHandDown', pressed)
-    }
+    const id = side === 'left' ? 'CatParamLeftHandDown' : 'CatParamRightHandDown'
+
+    const { min, max } = live2d.getParameterRange(id)
+
+    live2d.setParameterValue(id, pressed ? max : min)
   }
 
   async function handleMouseMove() {
@@ -98,22 +98,29 @@ export function useModel() {
     const xRatio = (cursorPosition.x - position.x) / size.width
     const yRatio = (cursorPosition.y - position.y) / size.height
 
-    const x = 30 - (xRatio * 60)
-    const y = 30 - (yRatio * 60)
+    for (const id of ['ParamMouseX', 'ParamMouseY', 'ParamAngleX', 'ParamAngleY']) {
+      const { min, max } = live2d.getParameterRange(id)
 
-    live2d.setParameterValue('ParamMouseX', x)
-    live2d.setParameterValue('ParamMouseY', y)
+      if (isNil(min) || isNil(max)) continue
 
-    live2d.setParameterValue('ParamAngleX', x)
-    live2d.setParameterValue('ParamAngleY', y)
+      const ratio = id.includes('X') ? xRatio : yRatio
+      const value = max - (ratio * (max - min))
+
+      live2d.setParameterValue(id, value)
+    }
   }
 
   function handleMouseDown(value: string[]) {
-    const hasLeftDown = value.includes('Left')
-    const hasRightDown = value.includes('Right')
+    const params = {
+      ParamMouseLeftDown: value.includes('Left'),
+      ParamMouseRightDown: value.includes('Right'),
+    }
 
-    live2d.setParameterValue('ParamMouseLeftDown', hasLeftDown)
-    live2d.setParameterValue('ParamMouseRightDown', hasRightDown)
+    for (const [id, pressed] of Object.entries(params)) {
+      const { min, max } = live2d.getParameterRange(id)
+
+      live2d.setParameterValue(id, pressed ? max : min)
+    }
   }
 
   return {
