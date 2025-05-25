@@ -103,8 +103,14 @@ export function useModel() {
 
       if (isNil(min) || isNil(max)) continue
 
-      const ratio = id.includes('X') ? xRatio : yRatio
-      const value = max - (ratio * (max - min))
+      const isXAxis = id.endsWith('X')
+
+      const ratio = isXAxis ? xRatio : yRatio
+      let value = max - (ratio * (max - min))
+
+      if (isXAxis && catStore.mouseMirror) {
+        value *= -1
+      }
 
       live2d.setParameterValue(id, value)
     }
