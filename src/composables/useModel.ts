@@ -90,14 +90,14 @@ export function useModel() {
     const xRatio = (cursorPosition.x - position.x) / size.width
     const yRatio = (cursorPosition.y - position.y) / size.height
 
-    const x = (xRatio * 60) - 30
-    const y = (yRatio * 60) - 30
+    const x = 30 - (xRatio * 60)
+    const y = 30 - (yRatio * 60)
 
-    live2d.setParameterValue('ParamMouseX', -x)
-    live2d.setParameterValue('ParamMouseY', -y)
+    live2d.setParameterValue('ParamMouseX', x)
+    live2d.setParameterValue('ParamMouseY', y)
 
     live2d.setParameterValue('ParamAngleX', x)
-    live2d.setParameterValue('ParamAngleY', -y)
+    live2d.setParameterValue('ParamAngleY', y)
   }
 
   function handleMouseDown(value: string[]) {
