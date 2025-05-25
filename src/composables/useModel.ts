@@ -116,5 +116,13 @@ export function useModel() {
     live2d.setParameterValue('ParamMouseRightDown', hasRightDown)
   }
 
-  return { backgroundImage, handleLoad, handleDestroy, handleResize, handleKeyDown, handleMouseMove, handleMouseDown }
+  return {
+    backgroundImage,
+    handleLoad,
+    handleDestroy,
+    handleResize,
+    handleKeyDown,
+    handleMouseMove,
+    handleMouseDown,
+  }
 }
