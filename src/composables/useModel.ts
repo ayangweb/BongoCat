@@ -1,16 +1,18 @@
+import { convertFileSrc } from '@tauri-apps/api/core'
 import { LogicalSize, PhysicalSize } from '@tauri-apps/api/dpi'
 import { resolveResource } from '@tauri-apps/api/path'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { message } from 'ant-design-vue'
 import { round } from 'es-toolkit'
-import { watch } from 'vue'
+import { computed, watch } from 'vue'
 
 import live2d from '../utils/live2d'
 import { getCursorMonitor } from '../utils/monitor'
 
-import { DEFAULT_MODEL_HEIGHT, DEFAULT_MODEL_WIDTH } from '@/constants'
 import { useCatStore } from '@/stores/cat'
 import { useModelStore } from '@/stores/model'
+import { getImageSize } from '@/utils/dom'
+import { join } from '@/utils/path'
 
 const appWindow = getCurrentWebviewWindow()
 
@@ -18,22 +20,26 @@ export function useModel() {
   const modelStore = useModelStore()
   const catStore = useCatStore()
 
+  const backgroundImage = computed(() => {
+    return convertFileSrc(join(modelStore.currentModel!.path, 'resources', 'background.png'))
+  })
+
   watch(() => modelStore.currentModel, handleLoad, { deep: true, immediate: true })
 
   watch(() => catStore.scale, async () => {
+    const { width, height } = await getImageSize(backgroundImage.value)
+
     appWindow.setSize(
       new PhysicalSize({
-        width: round(DEFAULT_MODEL_WIDTH * (catStore.scale / 100)),
-        height: round(DEFAULT_MODEL_HEIGHT * (catStore.scale / 100)),
+        width: round(width * (catStore.scale / 100)),
+        height: round(height * (catStore.scale / 100)),
       }),
     )
   }, { immediate: true })
 
   async function handleLoad() {
     try {
-      if (!modelStore.currentModel) return
-
-      const { path } = modelStore.currentModel
+      const { path } = modelStore.currentModel!
 
       await resolveResource(path)
 
@@ -56,20 +62,22 @@ export function useModel() {
 
     const { innerWidth, innerHeight } = window
 
-    live2d.model?.scale.set(innerWidth / DEFAULT_MODEL_WIDTH)
+    const { width, height } = await getImageSize(backgroundImage.value)
 
-    if (round(innerWidth / innerHeight, 1) !== round(DEFAULT_MODEL_WIDTH / DEFAULT_MODEL_HEIGHT, 1)) {
+    live2d.model?.scale.set(innerWidth / width)
+
+    if (round(innerWidth / innerHeight, 1) !== round(width / height, 1)) {
       await appWindow.setSize(
         new LogicalSize({
           width: innerWidth,
-          height: Math.ceil(innerWidth * (DEFAULT_MODEL_HEIGHT / DEFAULT_MODEL_WIDTH)),
+          height: Math.ceil(innerWidth * (height / width)),
         }),
       )
     }
 
     const size = await appWindow.size()
 
-    catStore.scale = round((size.width / DEFAULT_MODEL_WIDTH) * 100)
+    catStore.scale = round((size.width / width) * 100)
   }
 
   function handleKeyDown(side: 'left' | 'right', pressed: boolean) {
@@ -108,12 +116,5 @@ export function useModel() {
     live2d.setParameterValue('ParamMouseRightDown', hasRightDown)
   }
 
-  return {
-    handleLoad,
-    handleDestroy,
-    handleResize,
-    handleKeyDown,
-    handleMouseMove,
-    handleMouseDown,
-  }
+  return { backgroundImage, handleLoad, handleDestroy, handleResize, handleKeyDown, handleMouseMove, handleMouseDown }
 }

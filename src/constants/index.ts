@@ -7,10 +7,6 @@ export const LISTEN_KEY = {
   UPDATE_APP: 'update-app',
 }
 
-export const DEFAULT_MODEL_WIDTH = 612
-
-export const DEFAULT_MODEL_HEIGHT = 354
-
 export const INVOKE_KEY = {
   COPY_DIR: 'copy_dir',
 }
