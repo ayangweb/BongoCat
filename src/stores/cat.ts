@@ -7,6 +7,7 @@ export const useCatStore = defineStore('cat', () => {
   const singleMode = ref(false)
   const mouseMirror = ref(false)
   const penetrable = ref(false)
+  const alwaysOnTop = ref(true)
   const scale = ref(100)
   const opacity = ref(100)
 
@@ -16,6 +17,7 @@ export const useCatStore = defineStore('cat', () => {
     singleMode,
     mouseMirror,
     penetrable,
+    alwaysOnTop,
     scale,
     opacity,
   }

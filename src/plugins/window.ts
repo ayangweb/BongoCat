@@ -8,6 +8,7 @@ type WindowLabel = 'main' | 'preference'
 const COMMAND = {
   SHOW_WINDOW: 'plugin:custom-window|show_window',
   HIDE_WINDOW: 'plugin:custom-window|hide_window',
+  SET_ALWAYS_ON_TOP: 'plugin:custom-window|set_always_on_top',
 }
 
 export function showWindow(label?: WindowLabel) {
@@ -24,4 +25,8 @@ export function hideWindow(label?: WindowLabel) {
   } else {
     invoke(COMMAND.HIDE_WINDOW)
   }
+}
+
+export function setAlwaysOnTop(alwaysOnTop: boolean) {
+  invoke(COMMAND.SET_ALWAYS_ON_TOP, { alwaysOnTop })
 }

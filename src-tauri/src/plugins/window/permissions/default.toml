@@ -2,4 +2,4 @@
 
 [default]
 description = "Default permissions for the plugin"
-permissions = ["allow-show-window", "allow-hide-window"]
+permissions = ["allow-show-window", "allow-hide-window", "allow-set-always-on-top"]

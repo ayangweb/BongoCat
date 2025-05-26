@@ -1,4 +1,4 @@
-use tauri::{async_runtime::spawn, AppHandle, Manager, Runtime, WebviewWindow};
+use tauri::{AppHandle, Manager, Runtime, WebviewWindow, async_runtime::spawn};
 
 pub static MAIN_WINDOW_LABEL: &str = "main";
 pub static PREFERENCE_WINDOW_LABEL: &str = "preference";
@@ -19,18 +19,26 @@ pub fn is_main_window<R: Runtime>(window: &WebviewWindow<R>) -> bool {
     window.label() == MAIN_WINDOW_LABEL
 }
 
-fn shared_show_window<R: Runtime>(app_handle: &AppHandle<R>, window: &WebviewWindow<R>) {
+fn shared_show_window<R: Runtime>(_app_handle: &AppHandle<R>, window: &WebviewWindow<R>) {
     let _ = window.show();
     let _ = window.unminimize();
     let _ = window.set_focus();
-
-    let _ = app_handle;
 }
 
-fn shared_hide_window<R: Runtime>(app_handle: &AppHandle<R>, window: &WebviewWindow<R>) {
+fn shared_hide_window<R: Runtime>(_app_handle: &AppHandle<R>, window: &WebviewWindow<R>) {
     let _ = window.hide();
+}
 
-    let _ = app_handle;
+fn shared_set_always_on_top<R: Runtime>(
+    _app_handle: &AppHandle<R>,
+    window: &WebviewWindow<R>,
+    always_on_top: bool,
+) {
+    if always_on_top {
+        let _ = window.set_always_on_top(true);
+    } else {
+        let _ = window.set_always_on_bottom(true);
+    }
 }
 
 pub fn show_main_window(app_handle: &AppHandle) {

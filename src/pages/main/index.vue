@@ -8,6 +8,7 @@ import { onUnmounted, ref, watch } from 'vue'
 import { useDevice } from '@/composables/useDevice'
 import { useModel } from '@/composables/useModel'
 import { useSharedMenu } from '@/composables/useSharedMenu'
+import { setAlwaysOnTop } from '@/plugins/window'
 import { useCatStore } from '@/stores/cat'
 import { useModelStore } from '@/stores/model'
 import { join } from '@/utils/path'
@@ -50,6 +51,8 @@ watch(pressedRightKeys, (keys) => {
 watch(() => catStore.penetrable, (value) => {
   appWindow.setIgnoreCursorEvents(value)
 }, { immediate: true })
+
+watch(() => catStore.alwaysOnTop, setAlwaysOnTop, { immediate: true })
 
 function handleWindowDrag() {
   appWindow.startDragging()

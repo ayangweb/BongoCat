@@ -1,7 +1,6 @@
 use tauri::{
-    generate_handler,
+    Runtime, generate_handler,
     plugin::{Builder, TauriPlugin},
-    Runtime,
 };
 
 mod commands;
@@ -13,6 +12,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
         .invoke_handler(generate_handler![
             commands::show_window,
             commands::hide_window,
+            commands::set_always_on_top
         ])
         .build()
 }

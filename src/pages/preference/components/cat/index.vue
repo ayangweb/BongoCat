@@ -49,6 +49,13 @@ function opacityFormatter(value?: number) {
     </ProListItem>
 
     <ProListItem
+      description="启用后，窗口始终显示在其他应用程序上方"
+      title="窗口置顶"
+    >
+      <Switch v-model:checked="catStore.alwaysOnTop" />
+    </ProListItem>
+
+    <ProListItem
       description="将鼠标移动到窗口边缘后，也可以拖动调整窗口尺寸"
       title="窗口尺寸"
       vertical
