@@ -111,7 +111,7 @@ jobs:
           args: --target ${{ matrix.target }}
 
       - name: Prepare artifacts
-        if: ${{ github.ref_type != 'tag' && matrix.platform != 'windows-latest'}}
+        if: ${{ github.ref_type != 'tag' && matrix.platform != 'windows-latest' && matrix.platform != 'macos-latest' }}
         run: |
           mkdir artifacts
           paths=$(echo '${{ steps.build.outputs.artifactPaths }}' | jq -c '.[]' | sed 's/"//g')
@@ -120,6 +120,12 @@ jobs:
               mv $fn artifacts
             fi
           done
+
+      - name: Prepare artifacts (macOS)
+        if: ${{ github.ref_type != 'tag' && matrix.platform == 'macos-latest'}}
+        run: |
+          mkdir artifacts
+          mv ${{ github.workspace }}/target/**/release/bundle/**/*.dmg artifacts
 
       - name: Prepare artifacts (Windows)
         if: ${{ github.ref_type != 'tag' && matrix.platform == 'windows-latest'}}
