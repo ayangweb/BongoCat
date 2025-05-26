@@ -14,20 +14,20 @@ import { join } from '@/utils/path'
 const modelStore = useModelStore()
 
 async function handleDelete(item: Model) {
-  try {
-    const { id, path } = item
+  const { id, path } = item
 
+  try {
     await remove(path, { recursive: true })
 
+    message.success('删除成功')
+  } catch (error) {
+    message.error(String(error))
+  } finally {
     modelStore.models = modelStore.models.filter(item => item.id !== id)
 
     if (id === modelStore.currentModel?.id) {
       modelStore.currentModel = modelStore.models[0]
     }
-
-    message.success('删除成功')
-  } catch (error) {
-    message.error(String(error))
   }
 }
 </script>
