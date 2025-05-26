@@ -35,8 +35,10 @@ fn shared_set_always_on_top<R: Runtime>(
     always_on_top: bool,
 ) {
     if always_on_top {
+        let _ = window.set_always_on_bottom(false);
         let _ = window.set_always_on_top(true);
     } else {
+        let _ = window.set_always_on_top(false);
         let _ = window.set_always_on_bottom(true);
     }
 }
