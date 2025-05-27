@@ -76,6 +76,8 @@ function opacityFormatter(value?: number) {
       <Slider
         v-model:value="catStore.opacity"
         class="m-0!"
+        :max="100"
+        :min="10"
         :tip-formatter="opacityFormatter"
       />
     </ProListItem>
