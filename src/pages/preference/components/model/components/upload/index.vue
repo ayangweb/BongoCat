@@ -75,7 +75,7 @@ watch(selectPaths, async (paths) => {
         isPreset: false,
       })
 
-      message.success('上传成功')
+      message.success('导入成功')
     } catch (error) {
       message.error(String(error))
     }
@@ -92,6 +92,6 @@ watch(selectPaths, async (paths) => {
   >
     <div class="i-solar:upload-square-outline text-12 text-primary" />
 
-    <span>点击或拖动至此区域上传</span>
+    <span>点击或拖动至此区域导入</span>
   </div>
 </template>
