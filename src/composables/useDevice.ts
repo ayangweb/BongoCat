@@ -1,7 +1,6 @@
 import type { Ref } from 'vue'
 
 import { readDir } from '@tauri-apps/plugin-fs'
-import { useDebounceFn } from '@vueuse/core'
 import { uniq } from 'es-toolkit'
 import { reactive, ref, watch } from 'vue'
 
@@ -13,6 +12,7 @@ import { useCatStore } from '@/stores/cat'
 import { useModelStore } from '@/stores/model'
 import { isImage } from '@/utils/is'
 import { join } from '@/utils/path'
+import { isWindows } from '@/utils/platform'
 
 interface MouseButtonEvent {
   kind: 'MousePress' | 'MouseRelease'
@@ -39,13 +39,13 @@ type DeviceEvent = MouseButtonEvent | MouseMoveEvent | KeyboardEvent
 export function useDevice() {
   const supportLeftKeys = ref<string[]>([])
   const supportRightKeys = ref<string[]>([])
-
   const pressedMouses = ref<string[]>([])
   const mousePosition = reactive<MouseMoveValue>({ x: 0, y: 0 })
   const pressedLeftKeys = ref<string[]>([])
   const pressedRightKeys = ref<string[]>([])
   const catStore = useCatStore()
   const modelStore = useModelStore()
+  const releaseTimers = new Map<string, NodeJS.Timeout>()
 
   watch(() => modelStore.currentModel, async (model) => {
     if (!model) return
@@ -84,10 +84,6 @@ export function useDevice() {
       }
     }
   }, { deep: true, immediate: true })
-
-  const debouncedHandleRelease = useDebounceFn((array: Ref<string[]>, key) => {
-    handleRelease(array, key)
-  }, 100)
 
   const handlePress = (array: Ref<string[]>, value?: string) => {
     if (!value) return
@@ -130,6 +126,20 @@ export function useDevice() {
     }
   }
 
+  const handleScheduleRelease = (pressedKeys: Ref<string[]>, key: string, delay = 500) => {
+    if (releaseTimers.has(key)) {
+      clearTimeout(releaseTimers.get(key))
+    }
+
+    const timer = setTimeout(() => {
+      handleRelease(pressedKeys, key)
+
+      releaseTimers.delete(key)
+    }, delay)
+
+    releaseTimers.set(key, timer)
+  }
+
   useTauriListen<DeviceEvent>(LISTEN_KEY.DEVICE_CHANGED, ({ payload }) => {
     const { kind, value } = payload
 
@@ -145,10 +155,14 @@ export function useDevice() {
       if (nextValue === 'CapsLock') {
         handlePress(pressedKeys, nextValue)
 
-        return debouncedHandleRelease(pressedKeys, nextValue)
+        return handleScheduleRelease(pressedKeys, nextValue, 100)
       }
 
       if (kind === 'KeyboardPress') {
+        if (isWindows) {
+          handleScheduleRelease(pressedKeys, nextValue)
+        }
+
         return handlePress(pressedKeys, nextValue)
       }
 
