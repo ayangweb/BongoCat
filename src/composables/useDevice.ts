@@ -47,6 +47,8 @@ export function useDevice() {
   const catStore = useCatStore()
   const modelStore = useModelStore()
 
+  const keyTimers = new Map<string, number>()
+
   watch(() => modelStore.currentModel, async (model) => {
     if (!model) return
 
@@ -97,12 +99,25 @@ export function useDevice() {
     } else {
       array.value = uniq(array.value.concat(value))
     }
+
+    // 设置定时器，10秒后自动释放
+    const timer = setTimeout(() => {
+      handleRelease(array, value)
+      keyTimers.delete(value)
+    }, 10000)
+    keyTimers.set(value, timer)
   }
 
   const handleRelease = (array: Ref<string[]>, value?: string) => {
     if (!value) return
 
     array.value = array.value.filter(item => item !== value)
+    // 清除定时器
+    const timer = keyTimers.get(value)
+    if (timer) {
+      clearTimeout(timer)
+      keyTimers.delete(value)
+    }
   }
 
   const getSupportedKey = (key: string) => {
