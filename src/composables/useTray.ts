@@ -7,8 +7,7 @@ import { resolveResource } from '@tauri-apps/api/path'
 import { TrayIcon } from '@tauri-apps/api/tray'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { exit, relaunch } from '@tauri-apps/plugin-process'
-import { useDebounceFn } from '@vueuse/core'
-import { watch } from 'vue'
+import { watchDebounced } from '@vueuse/core'
 
 import { GITHUB_LINK, LISTEN_KEY } from '../constants'
 import { showWindow } from '../plugins/window'
@@ -24,11 +23,9 @@ export function useTray() {
   const catStore = useCatStore()
   const { getSharedMenu } = useSharedMenu()
 
-  const debouncedUpdateTrayMenu = useDebounceFn(() => {
+  watchDebounced(() => catStore, () => {
     updateTrayMenu()
-  })
-
-  watch(() => catStore, debouncedUpdateTrayMenu, { deep: true })
+  }, { deep: true, debounce: 500 })
 
   const createTray = async () => {
     const tray = await getTrayById()
