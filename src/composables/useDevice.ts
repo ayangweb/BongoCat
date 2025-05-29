@@ -126,13 +126,13 @@ export function useDevice() {
     }
   }
 
-  const handleScheduleRelease = (pressedKeys: Ref<string[]>, key: string, delay = 500) => {
+  const handleScheduleRelease = (keys: Ref<string[]>, key: string, delay = 500) => {
     if (releaseTimers.has(key)) {
       clearTimeout(releaseTimers.get(key))
     }
 
     const timer = setTimeout(() => {
-      handleRelease(pressedKeys, key)
+      handleRelease(keys, key)
 
       releaseTimers.delete(key)
     }, delay)
