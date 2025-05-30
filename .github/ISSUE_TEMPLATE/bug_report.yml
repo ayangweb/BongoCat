@@ -1,0 +1,48 @@
+name: 🐞 Bug 报告
+title: '[bug] '
+description: 报告一个 Bug
+labels: 🐞 bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 温馨提示
+        1. 请先查阅现有的 [issues](https://github.com/ayangweb/BongoCat/issues)。
+        2. 请确保你使用的是[最新版本](https://github.com/ayangweb/BongoCat/releases/latest)。
+        3. 请确保该问题不是由其他软件引起的。
+        4. 请始终保持友好与尊重，感谢你的理解与配合。
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 描述 Bug
+      description: 请详细描述 Bug 并提供截图或视频以帮助我们更好地理解问题。
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 重现步骤
+      description: 请详细列出重现问题的步骤，并附带截图或视频。
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: 预期行为
+      description: 请描述你期望发生的行为。
+
+  - type: textarea
+    id: info
+    attributes:
+      render: text
+      label: 软件信息
+      description: 请前往偏好设置窗口的「关于 > 关于软件 > 软件信息」复制软件信息。
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 附加信息
+      description: 请在此提供有关该问题的其他相关信息，帮助我们更全面地理解问题。
