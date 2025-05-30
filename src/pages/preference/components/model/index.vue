@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Model } from '@/stores/model'
+import type { ColProps } from 'ant-design-vue'
 
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { remove } from '@tauri-apps/plugin-fs'
@@ -12,6 +13,13 @@ import { useModelStore } from '@/stores/model'
 import { join } from '@/utils/path'
 
 const modelStore = useModelStore()
+
+const colProps: ColProps = {
+  lg: 6,
+  md: 8,
+  xl: 4,
+  xs: 12,
+}
 
 async function handleDelete(item: Model) {
   const { id, path } = item
@@ -34,22 +42,14 @@ async function handleDelete(item: Model) {
 
 <template>
   <Row :gutter="[16, 16]">
-    <Col
-      :lg="6"
-      :md="8"
-      :xl="4"
-      :xs="12"
-    >
+    <Col v-bind="colProps">
       <Upload />
     </Col>
 
     <Col
       v-for="item in modelStore.models"
       :key="item.id"
-      :lg="6"
-      :md="8"
-      :xl="4"
-      :xs="12"
+      v-bind="colProps"
     >
       <Card
         hoverable
