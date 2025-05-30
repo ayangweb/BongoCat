@@ -7,6 +7,7 @@ import { remove } from '@tauri-apps/plugin-fs'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
 import { Card, Col, message, Popconfirm, Row } from 'ant-design-vue'
 
+import FloatMenu from './components/float-menu/index.vue'
 import Upload from './components/upload/index.vue'
 
 import { useModelStore } from '@/stores/model'
@@ -88,4 +89,6 @@ async function handleDelete(item: Model) {
       </Card>
     </Col>
   </Row>
+
+  <FloatMenu />
 </template>
