@@ -34,14 +34,22 @@ async function handleDelete(item: Model) {
 
 <template>
   <Row :gutter="[16, 16]">
-    <Col :span="8">
+    <Col
+      :lg="6"
+      :md="8"
+      :xl="4"
+      :xs="12"
+    >
       <Upload />
     </Col>
 
     <Col
       v-for="item in modelStore.models"
       :key="item.id"
-      :span="8"
+      :lg="6"
+      :md="8"
+      :xl="4"
+      :xs="12"
     >
       <Card
         hoverable
