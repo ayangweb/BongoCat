@@ -15,10 +15,10 @@ import { join } from '@/utils/path'
 const modelStore = useModelStore()
 
 const colProps: ColProps = {
-  lg: 6,
-  md: 8,
-  xl: 4,
   xs: 12,
+  md: 8,
+  lg: 6,
+  xl: 4,
 }
 
 async function handleDelete(item: Model) {
