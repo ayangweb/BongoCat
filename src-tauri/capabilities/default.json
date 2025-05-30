@@ -2,7 +2,9 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["*"],
+  "windows": [
+    "*"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
@@ -18,7 +20,11 @@
     "opener:default",
     {
       "identifier": "opener:allow-open-path",
-      "allow": [{ "path": "**/*" }]
+      "allow": [
+        {
+          "path": "**/*"
+        }
+      ]
     },
     "pinia:default",
     "log:default",
@@ -32,7 +38,10 @@
     "fs:write-all",
     {
       "identifier": "fs:scope",
-      "allow": ["**/*"]
-    }
+      "allow": [
+        "**/*"
+      ]
+    },
+    "clipboard-manager:allow-write-text"
   ]
 }

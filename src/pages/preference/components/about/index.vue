@@ -1,8 +1,11 @@
 <script setup lang="ts">
+import { getTauriVersion } from '@tauri-apps/api/app'
 import { emit } from '@tauri-apps/api/event'
 import { appLogDir } from '@tauri-apps/api/path'
+import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { openPath, openUrl } from '@tauri-apps/plugin-opener'
-import { Button } from 'ant-design-vue'
+import { arch, platform, version } from '@tauri-apps/plugin-os'
+import { Button, message } from 'ant-design-vue'
 import { onMounted, ref } from 'vue'
 
 import ProList from '@/components/pro-list/index.vue'
@@ -19,6 +22,21 @@ onMounted(async () => {
 
 function handleUpdate() {
   emit(LISTEN_KEY.UPDATE_APP)
+}
+
+async function copyInfo() {
+  const info = {
+    appName: appStore.name,
+    appVersion: appStore.version,
+    tauriVersion: await getTauriVersion(),
+    platform: platform(),
+    platformArch: arch(),
+    platformVersion: version(),
+  }
+
+  await writeText(JSON.stringify(info, null, 2))
+
+  message.success('复制成功')
 }
 
 function feedbackIssue() {
@@ -47,6 +65,15 @@ function feedbackIssue() {
           >
         </div>
       </template>
+    </ProListItem>
+
+    <ProListItem
+      description="复制软件信息并提供给 Bug Issue"
+      title="软件信息"
+    >
+      <Button @click="copyInfo">
+        复制
+      </Button>
     </ProListItem>
 
     <ProListItem title="开源地址">

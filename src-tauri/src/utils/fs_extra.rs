@@ -1,4 +1,4 @@
-use fs_extra::dir::{copy, CopyOptions};
+use fs_extra::dir::{CopyOptions, copy};
 use std::fs::create_dir_all;
 use tauri::command;
 

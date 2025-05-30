@@ -1,6 +1,6 @@
-use rdev::{listen, Event, EventType};
+use rdev::{Event, EventType, listen};
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter};
 

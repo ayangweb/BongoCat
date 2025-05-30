@@ -24,6 +24,7 @@
     "@ant-design/icons-vue": "^7.0.1",
     "@tauri-apps/api": "^2.5.0",
     "@tauri-apps/plugin-autostart": "~2.3.0",
+    "@tauri-apps/plugin-clipboard-manager": "~2.2.2",
     "@tauri-apps/plugin-dialog": "~2.2.2",
     "@tauri-apps/plugin-fs": "~2.3.0",
     "@tauri-apps/plugin-log": "~2.3.1",

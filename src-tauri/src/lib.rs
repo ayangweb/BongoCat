@@ -2,10 +2,10 @@ mod core;
 mod utils;
 
 use core::{device, prevent_default, setup};
-use tauri::{generate_handler, Manager, WindowEvent};
+use tauri::{Manager, WindowEvent, generate_handler};
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_custom_window::{
-    show_preference_window, MAIN_WINDOW_LABEL, PREFERENCE_WINDOW_LABEL,
+    MAIN_WINDOW_LABEL, PREFERENCE_WINDOW_LABEL, show_preference_window,
 };
 use utils::fs_extra::copy_dir;
 
@@ -46,6 +46,7 @@ pub fn run() {
         .plugin(tauri_plugin_macos_permissions::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .on_window_event(|window, event| match event {
             WindowEvent::CloseRequested { api, .. } => {
                 let _ = window.hide();
