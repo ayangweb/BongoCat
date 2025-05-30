@@ -40,7 +40,7 @@ async function copyInfo() {
 }
 
 function feedbackIssue() {
-  openUrl(`${GITHUB_LINK}/issues/new`)
+  openUrl(`${GITHUB_LINK}/issues/new/choose`)
 }
 </script>
 
