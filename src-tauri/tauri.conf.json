@@ -28,8 +28,6 @@
         "title": "偏好设置",
         "url": "index.html/#/preference",
         "visible": false,
-        "resizable": false,
-        "maximizable": false,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true
       }
