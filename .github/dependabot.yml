@@ -1,0 +1,35 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    target-branch: master
+    directory: /
+    schedule:
+      interval: daily
+    groups:
+      actions-dependencies:
+        patterns:
+          - '*'
+
+  - package-ecosystem: cargo
+    target-branch: master
+    directory: /
+    schedule:
+      interval: daily
+    allow:
+      - dependency-type: all
+    groups:
+      rust-dependencies:
+        patterns:
+          - '*'
+
+  - package-ecosystem: npm
+    target-branch: master
+    directory: /
+    schedule:
+      interval: daily
+    allow:
+      - dependency-type: all
+    groups:
+      npm-dependencies:
+        patterns:
+          - '*'
