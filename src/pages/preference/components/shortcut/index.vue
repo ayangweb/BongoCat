@@ -14,8 +14,12 @@ const catStore = useCatStore()
 const shortcutStore = useShortcutStore()
 
 async function onChangeShortcut(shortcut: string) {
+  const oldShortcut = shortcutStore.hosKeys.visibleCat
+
   if (!shortcut) {
-    await unregister(shortcutStore.hosKeys.visibleCat)
+    if (oldShortcut && await isRegistered(oldShortcut)) {
+      await unregister(oldShortcut)
+    }
     shortcutStore.hosKeys.visibleCat = shortcut
     return
   }
@@ -25,8 +29,8 @@ async function onChangeShortcut(shortcut: string) {
     return
   }
 
-  if (shortcutStore.hosKeys.visibleCat) {
-    await unregister(shortcutStore.hosKeys.visibleCat)
+  if (oldShortcut) {
+    await unregister(oldShortcut)
   }
 
   await register(shortcut, (event) => {
