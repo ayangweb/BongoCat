@@ -30,7 +30,7 @@ async function onChangeShortcut(shortcut: string) {
   }
 
   await register(shortcut, (event) => {
-    if (shortcutStore.disabled) return
+    if (!shortcutStore.enabled) return
 
     if (event.state === 'Released') {
       catStore.visible = !catStore.visible
@@ -45,7 +45,7 @@ async function onChangeShortcut(shortcut: string) {
 <template>
   <ProList title="全局快捷键">
     <ProListItem title="是否启动">
-      <Switch v-model:checked="shortcutStore.disabled" />
+      <Switch v-model:checked="shortcutStore.enabled" />
     </ProListItem>
   </ProList>
 
