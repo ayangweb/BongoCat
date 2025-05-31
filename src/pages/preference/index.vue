@@ -6,6 +6,7 @@ import About from './components/about/index.vue'
 import Cat from './components/cat/index.vue'
 import General from './components/general/index.vue'
 import Model from './components/model/index.vue'
+import Shortcut from './components/shortcut/index.vue'
 
 import UpdateApp from '@/components/update-app/index.vue'
 import { useTray } from '@/composables/useTray'
@@ -35,6 +36,11 @@ const menus = [
     label: '模型管理',
     icon: 'i-solar:magic-stick-3-bold',
     component: Model,
+  },
+  {
+    label: '快捷键',
+    icon: 'i-solar:keyboard-bold',
+    component: Shortcut,
   },
   {
     label: '关于',
