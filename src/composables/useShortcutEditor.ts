@@ -53,7 +53,7 @@ export function useShortcutEditor(hotKey: keyof HotKeys, handler: () => void) {
       return
     }
 
-    if (oldShortcut) {
+    if (oldShortcut && await isRegistered(oldShortcut)) {
       await unregister(oldShortcut)
     }
 
