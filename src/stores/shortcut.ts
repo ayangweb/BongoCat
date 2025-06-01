@@ -1,12 +1,16 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
+export interface HotKeys {
+  visibleCat: string
+}
+
 export const useShortcutStore = defineStore('shortcut', () => {
   const enabled = ref(false)
-  const hosKeys = ref({ visibleCat: '' })
+  const hotKeys = ref<HotKeys>({ visibleCat: '' })
 
   return {
     enabled,
-    hosKeys,
+    hotKeys,
   }
 })
