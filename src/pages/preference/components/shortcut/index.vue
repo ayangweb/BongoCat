@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { isRegistered, register, unregister } from '@tauri-apps/plugin-global-shortcut'
+import { useEventListener, useMagicKeys } from '@vueuse/core'
 import { message, Switch } from 'ant-design-vue'
+import { ref } from 'vue'
 
 import HotKey from './components/hot-key/index.vue'
 
@@ -9,22 +11,30 @@ import ProListItem from '@/components/pro-list-item/index.vue'
 import { hideWindow, showWindow } from '@/plugins/window'
 import { useCatStore } from '@/stores/cat.ts'
 import { useShortcutStore } from '@/stores/shortcut.ts'
+import { isModifierKey, normalizeKey } from '@/utils/keyboard.ts'
 
 const catStore = useCatStore()
 const shortcutStore = useShortcutStore()
 
-async function onChangeShortcut(shortcut: string) {
-  const oldShortcut = shortcutStore.hosKeys.visibleCat
+const isEditing = ref(false)
+const pressedKey = ref<string[]>([])
 
-  if (!shortcut) {
+async function onSave() {
+  if (!isEditing.value) return
+
+  const oldShortcut = shortcutStore.hosKeys.visibleCat
+  const newShortcut = pressedKey.value.join('+')
+
+  if (!newShortcut) {
     if (oldShortcut && await isRegistered(oldShortcut)) {
       await unregister(oldShortcut)
     }
-    shortcutStore.hosKeys.visibleCat = shortcut
+    shortcutStore.hosKeys.visibleCat = newShortcut
+    isEditing.value = false
     return
   }
 
-  if (await isRegistered(shortcut)) {
+  if (await isRegistered(newShortcut)) {
     message.warn('该快捷键已被注册')
     return
   }
@@ -33,7 +43,7 @@ async function onChangeShortcut(shortcut: string) {
     await unregister(oldShortcut)
   }
 
-  await register(shortcut, (event) => {
+  await register(newShortcut, (event) => {
     if (!shortcutStore.enabled) return
 
     if (event.state === 'Released') {
@@ -42,8 +52,28 @@ async function onChangeShortcut(shortcut: string) {
     }
   })
 
-  shortcutStore.hosKeys.visibleCat = shortcut
+  shortcutStore.hosKeys.visibleCat = newShortcut
+  isEditing.value = false
 }
+
+function onEdit() {
+  if (isEditing.value) return
+
+  isEditing.value = true
+  pressedKey.value = []
+}
+
+const { current } = useMagicKeys()
+useEventListener('keydown', (event) => {
+  if (!isEditing.value) return
+  event.preventDefault()
+  event.stopPropagation()
+
+  const keys = Array.from(current)
+  const modifiers = keys.filter(k => isModifierKey(k))
+  const nonModifiers = keys.filter(k => !isModifierKey(k))
+  pressedKey.value = [...modifiers, ...nonModifiers].map(k => normalizeKey(k))
+})
 </script>
 
 <template>
@@ -57,7 +87,10 @@ async function onChangeShortcut(shortcut: string) {
     <ProListItem title="隐藏猫咪">
       <HotKey
         :hot-key="shortcutStore.hosKeys.visibleCat"
-        @change-shortcut="onChangeShortcut"
+        :is-editing="isEditing"
+        :pressed-key="pressedKey"
+        @edit="onEdit"
+        @save="onSave"
       />
     </ProListItem>
   </ProList>

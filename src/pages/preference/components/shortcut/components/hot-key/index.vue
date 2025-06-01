@@ -1,41 +1,12 @@
 <script setup lang="ts">
-import { onClickOutside, useEventListener, useMagicKeys } from '@vueuse/core'
-import { ref, useTemplateRef } from 'vue'
+import { onClickOutside } from '@vueuse/core'
+import { useTemplateRef } from 'vue'
 
-import { isModifierKey, normalizeKey } from '@/utils/keyboard.ts'
+defineProps<{ hotKey: string, isEditing: boolean, pressedKey: string[] }>()
+const emits = defineEmits<{ save: [], edit: [] }>()
 
-defineProps<{ hotKey: string }>()
-const emits = defineEmits<{ changeShortcut: [shortcut: string] }>()
-
-const isEditing = ref(false)
-const pressedKey = ref<string[]>([])
 const el = useTemplateRef<HTMLDivElement>('el')
-
-function starEditShortcut() {
-  if (isEditing.value) return
-
-  isEditing.value = true
-  pressedKey.value = []
-}
-
-const { current } = useMagicKeys()
-useEventListener('keydown', (event) => {
-  if (!isEditing.value) return
-  event.preventDefault()
-  event.stopPropagation()
-
-  const keys = Array.from(current)
-  const modifiers = keys.filter(k => isModifierKey(k))
-  const nonModifiers = keys.filter(k => !isModifierKey(k))
-  pressedKey.value = [...modifiers, ...nonModifiers].map(k => normalizeKey(k))
-})
-
-onClickOutside(el, () => {
-  if (!isEditing.value) return
-
-  isEditing.value = false
-  emits('changeShortcut', pressedKey.value.join('+'))
-})
+onClickOutside(el, () => emits('save'))
 </script>
 
 <template>
@@ -50,7 +21,7 @@ onClickOutside(el, () => {
     <div
       v-else
       class="px-4 py-2 hover:cursor-pointer hover:bg-gray-2"
-      @click="starEditShortcut"
+      @click="$emit('edit')"
     >
       <span>{{ hotKey || 'None' }}</span>
     </div>
