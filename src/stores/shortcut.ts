@@ -1,16 +1,43 @@
+import type { ShortcutHandler } from '@tauri-apps/plugin-global-shortcut'
+
+import { isRegistered, register } from '@tauri-apps/plugin-global-shortcut'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-export interface HotKeys {
-  visibleCat: string
-}
+import { useCatStore } from './cat.ts'
+
+import { hideWindow, showWindow } from '@/plugins/window.ts'
+
+export type HotKey = 'visibleCat'
 
 export const useShortcutStore = defineStore('shortcut', () => {
   const enabled = ref(false)
-  const hotKeys = ref<HotKeys>({ visibleCat: '' })
+  const hotKeys = ref<Record<HotKey, string>>({ visibleCat: '' })
+  const handlers = ref<Record<HotKey, ShortcutHandler>>({
+    visibleCat(event) {
+      if (!enabled.value) return
+      if (event.state === 'Released') {
+        const catStore = useCatStore()
+        catStore.visible = !catStore.visible
+        catStore.visible ? showWindow('main') : hideWindow('main')
+      }
+    },
+  })
+
+  async function loadShortcuts() {
+    const keys = Object.keys(hotKeys.value) as HotKey[]
+    for (const key of keys) {
+      const hotKey = hotKeys.value[key]
+      if (hotKey && !(await isRegistered(hotKey))) {
+        register(hotKey, handlers.value[key])
+      }
+    }
+  }
 
   return {
     enabled,
     hotKeys,
+    handlers,
+    loadShortcuts,
   }
 })

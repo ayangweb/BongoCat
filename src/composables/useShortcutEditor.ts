@@ -1,4 +1,4 @@
-import type { HotKeys } from '@/stores/shortcut.ts'
+import type { HotKey } from '@/stores/shortcut.ts'
 
 import { isRegistered, register, unregister } from '@tauri-apps/plugin-global-shortcut'
 import { useEventListener, useMagicKeys } from '@vueuse/core'
@@ -8,8 +8,8 @@ import { computed, ref } from 'vue'
 import { useShortcutStore } from '@/stores/shortcut.ts'
 import { isModifierKey, normalizeKey } from '@/utils/keyboard.ts'
 
-export function useShortcutEditor(hotKey: keyof HotKeys, handler: () => void) {
-  const shortcutStore = useShortcutStore()
+export function useShortcutEditor(hotKey: HotKey) {
+  const store = useShortcutStore()
 
   const isEditing = ref(false)
   const pressedKey = ref<string[]>([])
@@ -36,14 +36,14 @@ export function useShortcutEditor(hotKey: keyof HotKeys, handler: () => void) {
   async function onSave() {
     if (!isEditing.value) return
 
-    const oldShortcut = shortcutStore.hotKeys[hotKey]
+    const oldShortcut = store.hotKeys[hotKey]
     const newShortcut = pressedKey.value.join('+')
 
     if (!newShortcut) {
       if (oldShortcut && await isRegistered(oldShortcut)) {
         await unregister(oldShortcut)
       }
-      shortcutStore.hotKeys[hotKey] = newShortcut
+      store.hotKeys[hotKey] = newShortcut
       isEditing.value = false
       return
     }
@@ -57,15 +57,9 @@ export function useShortcutEditor(hotKey: keyof HotKeys, handler: () => void) {
       await unregister(oldShortcut)
     }
 
-    await register(newShortcut, (event) => {
-      if (!shortcutStore.enabled) return
+    await register(newShortcut, store.handlers[hotKey])
 
-      if (event.state === 'Released') {
-        handler()
-      }
-    })
-
-    shortcutStore.hotKeys[hotKey] = newShortcut
+    store.hotKeys[hotKey] = newShortcut
     isEditing.value = false
   }
 
@@ -74,6 +68,6 @@ export function useShortcutEditor(hotKey: keyof HotKeys, handler: () => void) {
     pressedKey,
     onEdit,
     onSave,
-    hotKey: computed(() => shortcutStore.hotKeys[hotKey]),
+    hotKey: computed(() => store.hotKeys[hotKey]),
   }
 }

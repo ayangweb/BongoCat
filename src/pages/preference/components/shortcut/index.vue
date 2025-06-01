@@ -6,17 +6,11 @@ import HotKey from './components/hot-key/index.vue'
 import ProList from '@/components/pro-list/index.vue'
 import ProListItem from '@/components/pro-list-item/index.vue'
 import { useShortcutEditor } from '@/composables/useShortcutEditor.ts'
-import { hideWindow, showWindow } from '@/plugins/window.ts'
-import { useCatStore } from '@/stores/cat.ts'
 import { useShortcutStore } from '@/stores/shortcut.ts'
 
-const catStore = useCatStore()
 const shortcutStore = useShortcutStore()
 
-const { isEditing, pressedKey, onEdit, onSave, hotKey } = useShortcutEditor('visibleCat', () => {
-  catStore.visible = !catStore.visible
-  catStore.visible ? showWindow('main') : hideWindow('main')
-})
+const { isEditing, pressedKey, onEdit, onSave, hotKey } = useShortcutEditor('visibleCat')
 </script>
 
 <template>

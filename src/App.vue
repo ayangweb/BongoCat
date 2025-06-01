@@ -39,6 +39,7 @@ onMounted(async () => {
   await generalStore.$tauri.start()
   await shortcutStore.$tauri.start()
 
+  shortcutStore.loadShortcuts()
   restoreState()
 })
 
