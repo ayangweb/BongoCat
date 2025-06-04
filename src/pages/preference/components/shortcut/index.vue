@@ -14,6 +14,7 @@ const shortcutStore = useShortcutStore()
 const visibleCat = reactive(useShortcutEditor('visibleCat'))
 const mirrorMode = reactive(useShortcutEditor('mirrorMode'))
 const penetrable = reactive(useShortcutEditor('penetrable'))
+const alwaysOnTop = reactive(useShortcutEditor('alwaysOnTop'))
 </script>
 
 <template>
@@ -32,6 +33,9 @@ const penetrable = reactive(useShortcutEditor('penetrable'))
     </ProListItem>
     <ProListItem title="窗口穿透">
       <HotKey v-bind="penetrable" />
+    </ProListItem>
+    <ProListItem title="窗口置顶">
+      <HotKey v-bind="alwaysOnTop" />
     </ProListItem>
   </ProList>
 </template>
