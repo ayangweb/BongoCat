@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Flex } from 'ant-design-vue'
-import { onMounted, ref } from 'vue'
+import { storeToRefs } from 'pinia'
+import { onMounted, ref, watch } from 'vue'
 
 import About from './components/about/index.vue'
 import Cat from './components/cat/index.vue'
@@ -9,16 +10,29 @@ import Model from './components/model/index.vue'
 import Shortcut from './components/shortcut/index.vue'
 
 import UpdateApp from '@/components/update-app/index.vue'
+import { useTauriKeyPress } from '@/composables/useTauriKeyPress'
 import { useTray } from '@/composables/useTray'
+import { hideWindow, showWindow } from '@/plugins/window'
 import { useAppStore } from '@/stores/app'
+import { useShortcutStore } from '@/stores/shortcut'
 import { isMac } from '@/utils/platform'
 
 const { createTray } = useTray()
 const appStore = useAppStore()
 const current = ref(0)
+const visible = ref(false)
+const { visiblePreference } = storeToRefs(useShortcutStore())
 
 onMounted(async () => {
   createTray()
+})
+
+useTauriKeyPress(visiblePreference, () => {
+  visible.value = !visible.value
+})
+
+watch(visible, (value) => {
+  value ? showWindow() : hideWindow()
 })
 
 const menus = [

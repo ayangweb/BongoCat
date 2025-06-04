@@ -38,8 +38,8 @@ onMounted(async () => {
   await catStore.$tauri.start()
   await generalStore.$tauri.start()
   await shortcutStore.$tauri.start()
+  catStore.visible = true
 
-  shortcutStore.loadShortcuts()
   restoreState()
 })
 

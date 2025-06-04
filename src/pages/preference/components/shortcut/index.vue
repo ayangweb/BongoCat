@@ -1,41 +1,58 @@
 <script setup lang="ts">
-import { Switch } from 'ant-design-vue'
-import { reactive } from 'vue'
-
-import HotKey from './components/hot-key/index.vue'
+import { storeToRefs } from 'pinia'
 
 import ProList from '@/components/pro-list/index.vue'
-import ProListItem from '@/components/pro-list-item/index.vue'
-import { useShortcutEditor } from '@/composables/useShortcutEditor.ts'
+import ProShortcut from '@/components/pro-shortcut/index.vue'
+import { useTauriKeyPress } from '@/composables/useTauriKeyPress'
+import { useCatStore } from '@/stores/cat'
 import { useShortcutStore } from '@/stores/shortcut.ts'
 
 const shortcutStore = useShortcutStore()
+const { visibleCat, mirrorMode, penetrable, alwaysOnTop } = storeToRefs(shortcutStore)
+const catStore = useCatStore()
 
-const visibleCat = reactive(useShortcutEditor('visibleCat'))
-const mirrorMode = reactive(useShortcutEditor('mirrorMode'))
-const penetrable = reactive(useShortcutEditor('penetrable'))
-const alwaysOnTop = reactive(useShortcutEditor('alwaysOnTop'))
+useTauriKeyPress(visibleCat, () => {
+  catStore.visible = !catStore.visible
+})
+
+useTauriKeyPress(mirrorMode, () => {
+  catStore.mirrorMode = !catStore.mirrorMode
+})
+
+useTauriKeyPress(penetrable, () => {
+  catStore.penetrable = !catStore.penetrable
+})
+
+useTauriKeyPress(alwaysOnTop, () => {
+  catStore.alwaysOnTop = !catStore.alwaysOnTop
+})
 </script>
 
 <template>
-  <ProList title="全局快捷键">
-    <ProListItem title="是否启动">
-      <Switch v-model:checked="shortcutStore.enabled" />
-    </ProListItem>
-  </ProList>
-
   <ProList title="快捷键列表">
-    <ProListItem title="隐藏猫咪">
-      <HotKey v-bind="visibleCat" />
-    </ProListItem>
-    <ProListItem title="镜像模式">
-      <HotKey v-bind="mirrorMode" />
-    </ProListItem>
-    <ProListItem title="窗口穿透">
-      <HotKey v-bind="penetrable" />
-    </ProListItem>
-    <ProListItem title="窗口置顶">
-      <HotKey v-bind="alwaysOnTop" />
-    </ProListItem>
+    <ProShortcut
+      v-model="shortcutStore.visibleCat"
+      title="显示与隐藏猫咪窗口"
+    />
+
+    <ProShortcut
+      v-model="shortcutStore.visiblePreference"
+      title="显示与隐藏偏好设置窗口"
+    />
+
+    <ProShortcut
+      v-model="shortcutStore.mirrorMode"
+      title="镜像模式"
+    />
+
+    <ProShortcut
+      v-model="shortcutStore.penetrable"
+      title="窗口穿透"
+    />
+
+    <ProShortcut
+      v-model="shortcutStore.alwaysOnTop"
+      title="窗口置顶"
+    />
   </ProList>
 </template>

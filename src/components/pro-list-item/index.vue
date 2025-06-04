@@ -2,18 +2,14 @@
 import { Flex } from 'ant-design-vue'
 import { computed, useSlots } from 'vue'
 
-const { title, icon, description, vertical } = defineProps<{
+const { title, description, vertical } = defineProps<{
   title: string
-  icon?: string
   description?: string
   vertical?: boolean
 }>()
 
 const slots = useSlots()
 
-const hasIcon = computed(() => {
-  return icon || slots.icon
-})
 const hasDescription = computed(() => {
   return description || slots.description
 })
@@ -28,17 +24,7 @@ const hasDescription = computed(() => {
     :vertical="vertical"
   >
     <Flex align="center">
-      <slot name="icon">
-        <div
-          class="text-4"
-          :class="icon"
-        />
-      </slot>
-
-      <Flex
-        :class="{ 'ml-4': hasIcon }"
-        vertical
-      >
+      <Flex vertical>
         <div class="text-sm font-medium">
           {{ title }}
         </div>

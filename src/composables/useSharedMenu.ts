@@ -1,7 +1,7 @@
 import { CheckMenuItem, MenuItem, PredefinedMenuItem, Submenu } from '@tauri-apps/api/menu'
 import { range } from 'es-toolkit'
 
-import { hideWindow, showWindow } from '@/plugins/window'
+import { showWindow } from '@/plugins/window'
 import { useCatStore } from '@/stores/cat'
 import { isMac } from '@/utils/platform'
 
@@ -66,12 +66,6 @@ export function useSharedMenu() {
       MenuItem.new({
         text: catStore.visible ? '隐藏猫咪' : '显示猫咪',
         action: () => {
-          if (catStore.visible) {
-            hideWindow('main')
-          } else {
-            showWindow('main')
-          }
-
           catStore.visible = !catStore.visible
         },
       }),

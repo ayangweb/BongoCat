@@ -8,7 +8,7 @@ import { onUnmounted, ref, watch } from 'vue'
 import { useDevice } from '@/composables/useDevice'
 import { useModel } from '@/composables/useModel'
 import { useSharedMenu } from '@/composables/useSharedMenu'
-import { setAlwaysOnTop } from '@/plugins/window'
+import { hideWindow, setAlwaysOnTop, showWindow } from '@/plugins/window'
 import { useCatStore } from '@/stores/cat'
 import { useModelStore } from '@/stores/model'
 import { join } from '@/utils/path'
@@ -19,7 +19,6 @@ const { backgroundImage, handleDestroy, handleResize, handleMouseDown, handleMou
 const catStore = useCatStore()
 const { getSharedMenu } = useSharedMenu()
 const modelStore = useModelStore()
-
 const resizing = ref(false)
 
 onUnmounted(handleDestroy)
@@ -46,6 +45,10 @@ watch(pressedLeftKeys, (keys) => {
 
 watch(pressedRightKeys, (keys) => {
   handleKeyDown('right', keys.length > 0)
+})
+
+watch(() => catStore.visible, async (value) => {
+  value ? showWindow() : hideWindow()
 })
 
 watch(() => catStore.penetrable, (value) => {
