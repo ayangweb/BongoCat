@@ -8,13 +8,14 @@ import { useCatStore } from './cat.ts'
 
 import { hideWindow, showWindow } from '@/plugins/window.ts'
 
-export type HotKey = 'visibleCat' | 'mirrorMode'
+export type HotKey = 'visibleCat' | 'mirrorMode' | 'penetrable'
 
 export const useShortcutStore = defineStore('shortcut', () => {
   const enabled = ref(false)
   const hotKeys = ref<Record<HotKey, string>>({
     visibleCat: '',
     mirrorMode: '',
+    penetrable: '',
   })
   const handlers = ref<Record<HotKey, ShortcutHandler>>({
     visibleCat(event) {
@@ -30,6 +31,13 @@ export const useShortcutStore = defineStore('shortcut', () => {
       if (event.state === 'Released') {
         const catStore = useCatStore()
         catStore.mirrorMode = !catStore.mirrorMode
+      }
+    },
+    penetrable(event) {
+      if (!enabled.value) return
+      if (event.state === 'Released') {
+        const catStore = useCatStore()
+        catStore.penetrable = !catStore.penetrable
       }
     },
   })

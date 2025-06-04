@@ -13,6 +13,7 @@ const shortcutStore = useShortcutStore()
 
 const visibleCat = reactive(useShortcutEditor('visibleCat'))
 const mirrorMode = reactive(useShortcutEditor('mirrorMode'))
+const penetrable = reactive(useShortcutEditor('penetrable'))
 </script>
 
 <template>
@@ -28,6 +29,9 @@ const mirrorMode = reactive(useShortcutEditor('mirrorMode'))
     </ProListItem>
     <ProListItem title="镜像模式">
       <HotKey v-bind="mirrorMode" />
+    </ProListItem>
+    <ProListItem title="窗口穿透">
+      <HotKey v-bind="penetrable" />
     </ProListItem>
   </ProList>
 </template>
