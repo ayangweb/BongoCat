@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Switch } from 'ant-design-vue'
+import { reactive } from 'vue'
 
 import HotKey from './components/hot-key/index.vue'
 
@@ -10,7 +11,8 @@ import { useShortcutStore } from '@/stores/shortcut.ts'
 
 const shortcutStore = useShortcutStore()
 
-const { isEditing, pressedKey, onEdit, onSave, hotKey } = useShortcutEditor('visibleCat')
+const visibleCat = reactive(useShortcutEditor('visibleCat'))
+const mirrorMode = reactive(useShortcutEditor('mirrorMode'))
 </script>
 
 <template>
@@ -22,13 +24,10 @@ const { isEditing, pressedKey, onEdit, onSave, hotKey } = useShortcutEditor('vis
 
   <ProList title="快捷键列表">
     <ProListItem title="隐藏猫咪">
-      <HotKey
-        :hot-key="hotKey"
-        :is-editing="isEditing"
-        :pressed-key="pressedKey"
-        @edit="onEdit"
-        @save="onSave"
-      />
+      <HotKey v-bind="visibleCat" />
+    </ProListItem>
+    <ProListItem title="镜像模式">
+      <HotKey v-bind="mirrorMode" />
     </ProListItem>
   </ProList>
 </template>
