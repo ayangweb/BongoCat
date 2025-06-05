@@ -30,7 +30,7 @@ const hasDescription = computed(() => {
         </div>
 
         <div
-          class="text-xs [&_a]:(active:text-color-primary-7 hover:text-color-primary-5 text-color-3) text-color-3"
+          class="break-all text-xs [&_a]:(active:text-color-primary-7 hover:text-color-primary-5 text-color-3) text-color-3"
           :class="{ 'mt-2': hasDescription }"
         >
           <slot name="description">
