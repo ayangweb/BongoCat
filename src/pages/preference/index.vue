@@ -68,7 +68,7 @@ const menus = [
           :key="item.label"
           class="size-20 flex flex-col cursor-pointer items-center justify-center gap-2 rounded-lg hover:bg-color-7 text-color-3 transition"
           :class="{ 'bg-white! text-primary-5 font-bold': current === index }"
-          @mousedown="current = index"
+          @click="current = index"
         >
           <div
             class="size-8"
