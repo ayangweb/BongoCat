@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { emit } from '@tauri-apps/api/event'
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 
 import { LISTEN_KEY } from '../constants'
 
@@ -29,4 +30,18 @@ export function hideWindow(label?: WindowLabel) {
 
 export function setAlwaysOnTop(alwaysOnTop: boolean) {
   invoke(COMMAND.SET_ALWAYS_ON_TOP, { alwaysOnTop })
+}
+
+export async function toggleWindowVisible(label?: WindowLabel) {
+  const appWindow = getCurrentWebviewWindow()
+
+  if (appWindow.label !== label) return
+
+  const visible = await appWindow.isVisible()
+
+  if (visible) {
+    return hideWindow(label)
+  }
+
+  return showWindow(label)
 }

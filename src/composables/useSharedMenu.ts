@@ -1,12 +1,11 @@
 import { CheckMenuItem, MenuItem, PredefinedMenuItem, Submenu } from '@tauri-apps/api/menu'
 import { range } from 'es-toolkit'
 
-import { useAppStore } from '@/stores/app'
+import { showWindow } from '@/plugins/window'
 import { useCatStore } from '@/stores/cat'
 import { isMac } from '@/utils/platform'
 
 export function useSharedMenu() {
-  const appStore = useAppStore()
   const catStore = useCatStore()
 
   const getScaleMenuItems = async () => {
@@ -62,14 +61,12 @@ export function useSharedMenu() {
       MenuItem.new({
         text: '偏好设置...',
         accelerator: isMac ? 'Cmd+,' : '',
-        action: () => {
-          appStore.visiblePreference = true
-        },
+        action: () => showWindow('preference'),
       }),
       MenuItem.new({
-        text: appStore.visibleCat ? '隐藏猫咪' : '显示猫咪',
+        text: catStore.visible ? '隐藏猫咪' : '显示猫咪',
         action: () => {
-          appStore.visibleCat = !appStore.visibleCat
+          catStore.visible = !catStore.visible
         },
       }),
       PredefinedMenuItem.new({ item: 'Separator' }),

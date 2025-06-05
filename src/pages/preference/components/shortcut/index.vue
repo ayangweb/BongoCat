@@ -4,21 +4,20 @@ import { storeToRefs } from 'pinia'
 import ProList from '@/components/pro-list/index.vue'
 import ProShortcut from '@/components/pro-shortcut/index.vue'
 import { useTauriKeyPress } from '@/composables/useTauriKeyPress'
-import { useAppStore } from '@/stores/app'
+import { toggleWindowVisible } from '@/plugins/window'
 import { useCatStore } from '@/stores/cat'
 import { useShortcutStore } from '@/stores/shortcut.ts'
 
 const shortcutStore = useShortcutStore()
 const { visibleCat, visiblePreference, mirrorMode, penetrable, alwaysOnTop } = storeToRefs(shortcutStore)
-const appStore = useAppStore()
 const catStore = useCatStore()
 
 useTauriKeyPress(visibleCat, () => {
-  appStore.visibleCat = !appStore.visibleCat
+  catStore.visible = !catStore.visible
 })
 
 useTauriKeyPress(visiblePreference, () => {
-  appStore.visiblePreference = !appStore.visiblePreference
+  toggleWindowVisible('preference')
 })
 
 useTauriKeyPress(mirrorMode, () => {
