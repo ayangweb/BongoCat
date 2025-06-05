@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { Flex } from 'ant-design-vue'
-import { storeToRefs } from 'pinia'
 import { onMounted, ref, watch } from 'vue'
 
 import About from './components/about/index.vue'
@@ -10,28 +10,27 @@ import Model from './components/model/index.vue'
 import Shortcut from './components/shortcut/index.vue'
 
 import UpdateApp from '@/components/update-app/index.vue'
-import { useTauriKeyPress } from '@/composables/useTauriKeyPress'
 import { useTray } from '@/composables/useTray'
 import { hideWindow, showWindow } from '@/plugins/window'
 import { useAppStore } from '@/stores/app'
-import { useShortcutStore } from '@/stores/shortcut'
 import { isMac } from '@/utils/platform'
 
 const { createTray } = useTray()
+const appWindow = getCurrentWebviewWindow()
 const appStore = useAppStore()
 const current = ref(0)
-const visible = ref(false)
-const { visiblePreference } = storeToRefs(useShortcutStore())
 
 onMounted(async () => {
   createTray()
+
+  appWindow.onCloseRequested((event) => {
+    event.preventDefault()
+
+    appStore.visiblePreference = false
+  })
 })
 
-useTauriKeyPress(visiblePreference, () => {
-  visible.value = !visible.value
-})
-
-watch(visible, (value) => {
+watch(() => appStore.visiblePreference, (value) => {
   value ? showWindow() : hideWindow()
 })
 

@@ -9,6 +9,7 @@ import { useDevice } from '@/composables/useDevice'
 import { useModel } from '@/composables/useModel'
 import { useSharedMenu } from '@/composables/useSharedMenu'
 import { hideWindow, setAlwaysOnTop, showWindow } from '@/plugins/window'
+import { useAppStore } from '@/stores/app'
 import { useCatStore } from '@/stores/cat'
 import { useModelStore } from '@/stores/model'
 import { join } from '@/utils/path'
@@ -19,6 +20,7 @@ const { backgroundImage, handleDestroy, handleResize, handleMouseDown, handleMou
 const catStore = useCatStore()
 const { getSharedMenu } = useSharedMenu()
 const modelStore = useModelStore()
+const appStore = useAppStore()
 const resizing = ref(false)
 
 onUnmounted(handleDestroy)
@@ -47,7 +49,7 @@ watch(pressedRightKeys, (keys) => {
   handleKeyDown('right', keys.length > 0)
 })
 
-watch(() => catStore.visible, async (value) => {
+watch(() => appStore.visibleCat, async (value) => {
   value ? showWindow() : hideWindow()
 })
 
