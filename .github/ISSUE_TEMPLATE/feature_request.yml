@@ -1,7 +1,7 @@
 name: 💡 功能请求
 title: '[feat] '
 description: 提出一个想法
-labels: 💡 feature request
+labels: feature request
 body:
   - type: textarea
     id: problem

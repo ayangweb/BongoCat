@@ -1,7 +1,7 @@
 name: 🐞 Bug 报告
 title: '[bug] '
 description: 报告一个 Bug
-labels: 🐞 bug
+labels: bug
 body:
   - type: markdown
     attributes:
