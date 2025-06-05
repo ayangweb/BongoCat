@@ -53,7 +53,7 @@ const menus = [
 <template>
   <Flex class="h-screen">
     <div
-      class="h-full w-30 flex flex-col items-center gap-4 bg-gradient-from-primary-1 bg-gradient-to-black/1 bg-gradient-linear"
+      class="h-full w-30 flex flex-col items-center gap-4 overflow-auto bg-gradient-from-primary-1 bg-gradient-to-black/1 bg-gradient-linear"
       :class="[isMac ? 'pt-8' : 'pt-4']"
       data-tauri-drag-region
     >
