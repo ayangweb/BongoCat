@@ -38,32 +38,32 @@ useTauriKeyPress(alwaysOnTop, () => {
   <ProList title="快捷键">
     <ProShortcut
       v-model="shortcutStore.visibleCat"
-      description="显示或隐藏猫咪窗口"
-      title="打开猫咪窗口"
+      description="切换猫咪窗口的显示与隐藏"
+      title="打开猫咪"
     />
 
     <ProShortcut
       v-model="shortcutStore.visiblePreference"
-      description="显示或隐藏偏好设置窗口"
-      title="打开偏好设置窗口"
+      description="切换偏好设置窗口的显示与隐藏"
+      title="打开偏好设置"
     />
 
     <ProShortcut
       v-model="shortcutStore.mirrorMode"
-      description="开启或关闭猫咪镜像模式"
-      title="猫咪镜像模式"
+      description="切换猫咪的镜像模式"
+      title="镜像模式"
     />
 
     <ProShortcut
       v-model="shortcutStore.penetrable"
-      description="开启或关闭猫咪窗口穿透"
-      title="猫咪窗口穿透"
+      description="切换猫咪窗口是否可穿透"
+      title="窗口穿透"
     />
 
     <ProShortcut
       v-model="shortcutStore.alwaysOnTop"
-      description="开启或关闭猫咪窗口置顶"
-      title="猫咪窗口置顶"
+      description="切换猫咪窗口是否置顶"
+      title="窗口置顶"
     />
   </ProList>
 </template>
