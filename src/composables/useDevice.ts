@@ -93,6 +93,8 @@ export function useDevice() {
     } else {
       array.value = uniq(array.value.concat(value))
     }
+
+    modelStore.resetAutoSwitchTimer()
   }
 
   const handleRelease = (array: Ref<string[]>, value?: string) => {

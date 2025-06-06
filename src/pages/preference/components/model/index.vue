@@ -5,11 +5,14 @@ import type { ColProps } from 'ant-design-vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { remove } from '@tauri-apps/plugin-fs'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
-import { Card, Col, message, Popconfirm, Row } from 'ant-design-vue'
+import { Card, Col, InputNumber, message, Popconfirm, Row, Switch } from 'ant-design-vue'
+import { ref, watch } from 'vue'
 
 import FloatMenu from './components/float-menu/index.vue'
 import Upload from './components/upload/index.vue'
 
+import ProList from '@/components/pro-list/index.vue'
+import ProListItem from '@/components/pro-list-item/index.vue'
 import { useModelStore } from '@/stores/model'
 import { join } from '@/utils/path'
 
@@ -20,6 +23,37 @@ const colProps: ColProps = {
   md: 8,
   lg: 6,
   xl: 4,
+}
+
+// 将秒数转换为分秒格式
+function secondsToTime(seconds: number) {
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = seconds % 60
+  return { minutes, seconds: remainingSeconds }
+}
+
+// 将分秒格式转换为秒数
+function timeToSeconds(minutes: number, seconds: number) {
+  return minutes * 60 + seconds
+}
+
+// 初始化分秒值
+const { minutes: initialMinutes, seconds: initialSeconds } = secondsToTime(modelStore.autoSwitchInterval)
+const minutes = ref(initialMinutes)
+const seconds = ref(initialSeconds)
+
+// 监听 autoSwitchInterval 的变化
+watch(() => modelStore.autoSwitchInterval, (newValue) => {
+  const { minutes: newMinutes, seconds: newSeconds } = secondsToTime(newValue)
+  minutes.value = newMinutes
+  seconds.value = newSeconds
+})
+
+// 处理时间变化
+function handleTimeChange() {
+  if (modelStore.autoSwitchEnabled) {
+    modelStore.startAutoSwitch()
+  }
 }
 
 async function handleDelete(item: Model) {
@@ -89,6 +123,49 @@ async function handleDelete(item: Model) {
       </Card>
     </Col>
   </Row>
+
+  <ProList title="自动切换设置">
+    <ProListItem
+      description="启用后，在未操作一段时间后自动切换到下一个模型"
+      title="自动切换模型"
+    >
+      <Switch
+        v-model:checked="modelStore.autoSwitchEnabled"
+      />
+    </ProListItem>
+
+    <ProListItem
+      description="设置自动切换的时间间隔"
+      title="切换间隔"
+    >
+      <div class="flex items-center gap-2">
+        <InputNumber
+          v-model:value="minutes"
+          class="w-20"
+          :max="60"
+          :min="0"
+          :step="1"
+          @change="() => {
+            modelStore.autoSwitchInterval = timeToSeconds(minutes, seconds);
+            handleTimeChange();
+          }"
+        />
+        <span>分</span>
+        <InputNumber
+          v-model:value="seconds"
+          class="w-20"
+          :max="59"
+          :min="0"
+          :step="1"
+          @change="() => {
+            modelStore.autoSwitchInterval = timeToSeconds(minutes, seconds);
+            handleTimeChange();
+          }"
+        />
+        <span>秒</span>
+      </div>
+    </ProListItem>
+  </ProList>
 
   <FloatMenu />
 </template>
