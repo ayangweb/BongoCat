@@ -2,7 +2,7 @@ import type { Ref } from 'vue'
 
 import { readDir } from '@tauri-apps/plugin-fs'
 import { uniq } from 'es-toolkit'
-import { reactive, ref, watch } from 'vue'
+import { nextTick, reactive, ref, watch } from 'vue'
 
 import { LISTEN_KEY } from '../constants'
 
@@ -46,6 +46,87 @@ export function useDevice() {
   const catStore = useCatStore()
   const modelStore = useModelStore()
   const releaseTimers = new Map<string, NodeJS.Timeout>()
+  const isUserActive = ref(true)
+  let inactivityTimer: NodeJS.Timeout | null = null
+  let lastManualModel: string | null = null
+
+  function resetInactivityTimer() {
+    if (inactivityTimer) {
+      clearTimeout(inactivityTimer)
+    }
+
+    isUserActive.value = true
+
+    if (modelStore.autoSwitchEnabled) {
+      inactivityTimer = setTimeout(() => {
+        isUserActive.value = false
+        handleModelSwitch()
+      }, modelStore.autoSwitchInterval * 1000)
+    }
+  }
+
+  function handleModelSwitch() {
+    if (!modelStore.autoSwitchEnabled || modelStore.models.length <= 1) return
+
+    if (modelStore.targetModelIndex !== null) {
+      const index = Math.min(modelStore.targetModelIndex, modelStore.models.length - 1)
+      const targetModel = modelStore.models[index]
+      lastManualModel = modelStore.currentModel?.id || null
+      modelStore.currentModel = targetModel
+      resetInactivityTimer()
+    }
+  }
+
+  function handleUserActivity() {
+    if (inactivityTimer) {
+      clearTimeout(inactivityTimer)
+      inactivityTimer = null
+    }
+
+    isUserActive.value = true
+
+    if (lastManualModel) {
+      const manualModel = modelStore.models.find(model => model.id === lastManualModel)
+      if (manualModel) {
+        modelStore.currentModel = manualModel
+      }
+    }
+
+    if (modelStore.autoSwitchEnabled) {
+      inactivityTimer = setTimeout(() => {
+        isUserActive.value = false
+        handleModelSwitch()
+      }, modelStore.autoSwitchInterval * 1000)
+    }
+  }
+
+  watch(() => modelStore.currentModel?.id, (newId, oldId) => {
+    if (newId && isUserActive.value && newId !== oldId && !modelStore.autoSwitchEnabled) {
+      lastManualModel = newId
+    }
+  }, { immediate: true })
+
+  watch(() => modelStore.autoSwitchEnabled, (enabled) => {
+    if (enabled) {
+      resetInactivityTimer()
+    } else {
+      if (inactivityTimer) {
+        clearTimeout(inactivityTimer)
+        inactivityTimer = null
+      }
+      if (lastManualModel && modelStore.currentModel?.id !== lastManualModel) {
+        const manualModel = modelStore.models.find(model => model.id === lastManualModel)
+        if (manualModel) {
+          modelStore.currentModel = manualModel
+          nextTick()
+        }
+      }
+    }
+  })
+
+  watch([pressedMouses, mousePosition, pressedLeftKeys, pressedRightKeys], () => {
+    resetInactivityTimer()
+  }, { deep: true })
 
   watch(() => modelStore.currentModel, async (model) => {
     if (!model) return
@@ -93,8 +174,6 @@ export function useDevice() {
     } else {
       array.value = uniq(array.value.concat(value))
     }
-
-    modelStore.resetAutoSwitchTimer()
   }
 
   const handleRelease = (array: Ref<string[]>, value?: string) => {
@@ -144,7 +223,7 @@ export function useDevice() {
 
   useTauriListen<DeviceEvent>(LISTEN_KEY.DEVICE_CHANGED, ({ payload }) => {
     const { kind, value } = payload
-
+    handleUserActivity()
     if (kind === 'KeyboardPress' || kind === 'KeyboardRelease') {
       const nextValue = getSupportedKey(value)
 
@@ -182,9 +261,12 @@ export function useDevice() {
   })
 
   return {
+    supportLeftKeys,
+    supportRightKeys,
     pressedMouses,
     mousePosition,
     pressedLeftKeys,
     pressedRightKeys,
+    isUserActive,
   }
 }

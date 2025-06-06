@@ -51,9 +51,7 @@ watch(() => modelStore.autoSwitchInterval, (newValue) => {
 
 // 处理时间变化
 function handleTimeChange() {
-  if (modelStore.autoSwitchEnabled) {
-    modelStore.startAutoSwitch()
-  }
+  // 时间变化时不需要额外操作，useDevice 会自动处理
 }
 
 async function handleDelete(item: Model) {
@@ -163,6 +161,27 @@ async function handleDelete(item: Model) {
           }"
         />
         <span>秒</span>
+      </div>
+    </ProListItem>
+
+    <ProListItem
+      description="设置自动切换的目标模型"
+      title="目标模型"
+    >
+      <div class="flex items-center gap-2">
+        <InputNumber
+          class="w-20"
+          :max="modelStore.models.length"
+          :min="1"
+          placeholder="第n个模型"
+          :step="1"
+          :value="modelStore.targetModelIndex ?? undefined"
+          @update:value="(val) => {
+            modelStore.targetModelIndex = typeof val === 'number' ? val : null;
+            handleTimeChange();
+          }"
+        />
+        <span>个</span>
       </div>
     </ProListItem>
   </ProList>
