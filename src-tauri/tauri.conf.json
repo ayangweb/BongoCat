@@ -29,7 +29,9 @@
         "url": "index.html/#/preference",
         "visible": false,
         "titleBarStyle": "Overlay",
-        "hiddenTitle": true
+        "hiddenTitle": true,
+        "minWidth": 800,
+        "minHeight": 600
       }
     ],
     "security": {
