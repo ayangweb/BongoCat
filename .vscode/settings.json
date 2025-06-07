@@ -48,5 +48,8 @@
     "scss",
     "pcss",
     "postcss"
-  ]
+  ],
+
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+  "typescript.tsdk": "./node_modules/typescript/lib"
 }
