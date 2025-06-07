@@ -10,6 +10,7 @@ export const useCatStore = defineStore('cat', () => {
   const alwaysOnTop = ref(true)
   const scale = ref(100)
   const opacity = ref(100)
+  const autoSnap = ref(true)
 
   return {
     visible,
@@ -20,5 +21,6 @@ export const useCatStore = defineStore('cat', () => {
     alwaysOnTop,
     scale,
     opacity,
+    autoSnap,
   }
 })

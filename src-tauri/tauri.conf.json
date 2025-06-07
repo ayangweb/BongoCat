@@ -21,7 +21,8 @@
         "transparent": true,
         "decorations": false,
         "acceptFirstMouse": true,
-        "skipTaskbar": true
+        "skipTaskbar": true,
+        "resizable": false
       },
       {
         "label": "preference",

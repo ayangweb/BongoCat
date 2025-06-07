@@ -9,4 +9,5 @@ export const LISTEN_KEY = {
 
 export const INVOKE_KEY = {
   COPY_DIR: 'copy_dir',
+  SNAP_WINDOW_IF_NEEDED: 'snap_window_if_needed',
 }

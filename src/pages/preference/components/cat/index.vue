@@ -56,6 +56,13 @@ function opacityFormatter(value?: number) {
     </ProListItem>
 
     <ProListItem
+      description="启用后，拖动窗口到屏幕边缘时会自动吸附"
+      title="自动吸附"
+    >
+      <Switch v-model:checked="catStore.autoSnap" />
+    </ProListItem>
+
+    <ProListItem
       description="将鼠标移动到窗口边缘后，也可以拖动调整窗口尺寸"
       title="窗口尺寸"
       vertical
