@@ -19,7 +19,7 @@ interface MouseButtonEvent {
   value: string
 }
 
-interface MouseMoveValue {
+export interface MouseMoveValue {
   x: number
   y: number
 }
