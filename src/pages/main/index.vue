@@ -45,7 +45,7 @@ useRafFn((() => {
   return () => {
     if (isEqual(cached, mousePosition)) return
     Object.assign(cached, mousePosition)
-    handleMouseMove()
+    handleMouseMove(mousePosition)
   }
 })())
 
