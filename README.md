@@ -51,12 +51,14 @@
   </p>
 </div>
 
+## 屏幕截图
+
+
 | macOS                                                                                     | Windows                                                                                     | Linux(x11)                                                                                |
 | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | ![macOS](https://github.com/user-attachments/assets/e932b022-1472-4bbd-87ef-4a8ea374890a) | ![Windows](https://github.com/user-attachments/assets/79a4652e-0d14-412d-a274-4ccdd825d7c6) | ![Linux](https://github.com/user-attachments/assets/fd069c12-d12d-423b-b792-98b5926a7f09) |
 
-
-![settings](https://github.com/user-attachments/assets/a1e2109d-f836-4f4f-98c1-b809a89755fb)
+<img alt="Setting Screenshot" src="https://github.com/user-attachments/assets/a1e2109d-f836-4f4f-98c1-b809a89755fb" height="350" /><img alt="Setting Screenshot Model" src="https://github.com/user-attachments/assets/a81fcac5-410e-42e1-bbfe-b3e9574829ba" height="350" />
 
 
 
