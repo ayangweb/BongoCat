@@ -11,7 +11,7 @@ function scaleFormatter(value?: number) {
   return value === 100 ? '默认' : `${value}%`
 }
 
-function opacityFormatter(value?: number) {
+function sharedFormatter(value?: number) {
   return `${value}%`
 }
 </script>
@@ -62,7 +62,6 @@ function opacityFormatter(value?: number) {
     >
       <Slider
         v-model:value="catStore.scale"
-        class="m-0!"
         :max="150"
         :min="50"
         :tip-formatter="scaleFormatter"
@@ -75,10 +74,30 @@ function opacityFormatter(value?: number) {
     >
       <Slider
         v-model:value="catStore.opacity"
-        class="m-0!"
         :max="100"
         :min="10"
-        :tip-formatter="opacityFormatter"
+        :tip-formatter="sharedFormatter"
+      />
+    </ProListItem>
+
+    <ProListItem
+      description="启用后，窗口靠近屏幕边缘时将自动吸附"
+      title="自动吸附"
+    >
+      <Switch v-model:checked="catStore.autoAdsorb" />
+    </ProListItem>
+
+    <ProListItem
+      description="设置吸附生效的距离百分比，数值越大，吸附范围越大"
+      title="吸附范围"
+      vertical
+    >
+      <Slider
+        v-model:value="catStore.adsorbRange"
+        :disabled="!catStore.autoAdsorb"
+        :max="25"
+        :min="0"
+        :tip-formatter="sharedFormatter"
       />
     </ProListItem>
   </ProList>

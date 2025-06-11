@@ -18,7 +18,7 @@ const hasDescription = computed(() => {
 <template>
   <Flex
     :align="vertical ? void 0 : 'center'"
-    class="b b-color-2 rounded-lg b-solid bg-white p-4"
+    class="b b-color-2 rounded-lg b-solid bg-white p-4 [&_.ant-slider]:m-0!"
     gap="middle"
     justify="space-between"
     :vertical="vertical"
