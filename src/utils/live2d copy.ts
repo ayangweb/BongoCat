@@ -1,30 +1,24 @@
-import type { Sprite } from 'pixi.js'
+import type { Cubism4InternalModel } from 'pixi-live2d-display'
 
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { readDir, readTextFile } from '@tauri-apps/plugin-fs'
-import { Config, CubismSetting, Live2DSprite, LogLevel } from 'easy-live2d'
+import { Cubism4ModelSettings, Live2DModel } from 'pixi-live2d-display'
 import { Application, Ticker } from 'pixi.js'
 
 import { join } from './path'
 
-Config.MotionGroupIdle = 'Idle'
-Config.MouseFollow = false
-Config.CubismLoggingLevel = LogLevel.LogLevel_Off
+Live2DModel.registerTicker(Ticker)
 
 class Live2d {
   private app: Application | null = null
-  public model: Sprite | null = null
+  public model: Live2DModel | null = null
 
   constructor() { }
 
-  private async initApp() {
-    if (this.app) return
-
+  private mount() {
     const view = document.getElementById('live2dCanvas') as HTMLCanvasElement
 
-    this.app = new Application()
-
-    await this.app.init({
+    this.app = new Application({
       view,
       resizeTo: window,
       backgroundAlpha: 0,
@@ -34,7 +28,9 @@ class Live2d {
   }
 
   public async load(path: string) {
-    this.initApp()
+    if (!this.app) {
+      this.mount()
+    }
 
     this.destroy()
 
@@ -50,27 +46,25 @@ class Live2d {
 
     const modelJSON = JSON.parse(await readTextFile(modelPath))
 
-    const modelSetting = new CubismSetting({
-      modelJSON,
+    const modelSettings = new Cubism4ModelSettings({
+      ...modelJSON,
+      url: convertFileSrc(modelPath),
     })
 
-    modelSetting.redirectPath(({ file }) => {
+    modelSettings.replaceFiles((file) => {
       return convertFileSrc(join(path, file))
     })
 
-    this.model = new Live2DSprite({
-      modelSetting,
-      ticker: Ticker.shared,
-    })
+    this.model = await Live2DModel.from(modelSettings)
 
     this.app?.stage.addChild(this.model)
 
-    // const { motions, expressions } = modelSettings
+    const { motions, expressions } = modelSettings
 
-    // return {
-    //   motions,
-    //   expressions,
-    // }
+    return {
+      motions,
+      expressions,
+    }
   }
 
   public destroy() {
@@ -78,36 +72,36 @@ class Live2d {
   }
 
   public playMotion(group: string, index: number) {
-    // return this.model?.motion(group, index)
+    return this.model?.motion(group, index)
   }
 
   public playExpressions(index: number) {
-    // return this.model?.expression(index)
+    return this.model?.expression(index)
   }
 
   public getCoreModel() {
-    // const internalModel = this.model?.internalModel as Cubism4InternalModel
+    const internalModel = this.model?.internalModel as Cubism4InternalModel
 
-    // return internalModel?.coreModel
+    return internalModel?.coreModel
   }
 
   public getParameterRange(id: string) {
-    // const coreModel = this.getCoreModel()
+    const coreModel = this.getCoreModel()
 
-    // const index = coreModel?.getParameterIndex(id)
-    // const min = coreModel?.getParameterMinimumValue(index)
-    // const max = coreModel?.getParameterMaximumValue(index)
+    const index = coreModel?.getParameterIndex(id)
+    const min = coreModel?.getParameterMinimumValue(index)
+    const max = coreModel?.getParameterMaximumValue(index)
 
     return {
-      min: 0,
-      max: 1,
+      min,
+      max,
     }
   }
 
   public setParameterValue(id: string, value: number) {
-    // const coreModel = this.getCoreModel()
+    const coreModel = this.getCoreModel()
 
-    // return coreModel?.setParameterValueById?.(id, Number(value))
+    return coreModel?.setParameterValueById?.(id, Number(value))
   }
 }
 

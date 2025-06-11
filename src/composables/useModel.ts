@@ -43,11 +43,11 @@ export function useModel() {
 
       await resolveResource(path)
 
-      const data = await live2d.load(path)
+      await live2d.load(path)
 
-      handleResize()
+      // handleResize()
 
-      Object.assign(modelStore, data)
+      // Object.assign(modelStore, data)
     } catch (error) {
       message.error(String(error))
     }
