@@ -1,15 +1,11 @@
 <script setup lang="ts">
-import { Slider, Switch } from 'ant-design-vue'
+import { InputNumber, Slider, Switch } from 'ant-design-vue'
 
 import ProList from '@/components/pro-list/index.vue'
 import ProListItem from '@/components/pro-list-item/index.vue'
 import { useCatStore } from '@/stores/cat'
 
 const catStore = useCatStore()
-
-function scaleFormatter(value?: number) {
-  return value === 100 ? '默认' : `${value}%`
-}
 
 function opacityFormatter(value?: number) {
   return `${value}%`
@@ -58,15 +54,16 @@ function opacityFormatter(value?: number) {
     <ProListItem
       description="将鼠标移动到窗口边缘后，也可以拖动调整窗口尺寸"
       title="窗口尺寸"
-      vertical
     >
-      <Slider
+      <InputNumber
         v-model:value="catStore.scale"
-        class="m-0!"
-        :max="150"
-        :min="50"
-        :tip-formatter="scaleFormatter"
-      />
+        class="w-28"
+        :min="1"
+      >
+        <template #addonAfter>
+          %
+        </template>
+      </InputNumber>
     </ProListItem>
 
     <ProListItem
