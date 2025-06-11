@@ -55,6 +55,11 @@
 | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | ![macOS](https://github.com/user-attachments/assets/e932b022-1472-4bbd-87ef-4a8ea374890a) | ![Windows](https://github.com/user-attachments/assets/79a4652e-0d14-412d-a274-4ccdd825d7c6) | ![Linux](https://github.com/user-attachments/assets/fd069c12-d12d-423b-b792-98b5926a7f09) |
 
+
+![settings](https://github.com/user-attachments/assets/a1e2109d-f836-4f4f-98c1-b809a89755fb)
+
+
+
 ## 开发背景
 
 本项目的灵感来源于 [MMmmmoko](https://github.com/MMmmmoko) 大佬开发的 [Bongo-Cat-Mver](https://github.com/MMmmmoko/Bongo-Cat-Mver)。它以独特的猫咪互动功能深受用户喜爱，但仅支持 Windows 平台。作为一名深度 macOS 用户，我特别希望在自己的设备上也能使用这款可爱的猫咪，于是我决定开发一个适配 macOS 的版本。
