@@ -23,7 +23,7 @@ const resizing = ref(false)
 
 onUnmounted(handleDestroy)
 
-const handleDebounceResize = useDebounceFn(async () => {
+const debouncedResize = useDebounceFn(async () => {
   await handleResize()
 
   resizing.value = false
@@ -32,7 +32,7 @@ const handleDebounceResize = useDebounceFn(async () => {
 useEventListener('resize', () => {
   resizing.value = true
 
-  handleDebounceResize()
+  debouncedResize()
 })
 
 watch(pressedMouses, handleMouseDown)
