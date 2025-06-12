@@ -13,7 +13,7 @@
 - Apple Silicon：下载 `BongoCat_aarch64.dmg`
 - Intel Chip：下载 `BongoCat_x64.dmg`
 
-### Homebrew 下载
+### [Homebrew](https://brew.sh) 下载
 
 1. 添加 BongoCat 的 tap 源：
 
