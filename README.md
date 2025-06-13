@@ -86,9 +86,9 @@
 
 <a href="https://qm.qq.com/q/AS3gNv2Vzy">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/6428b6ff-0b39-4e16-a750-bad6f6b376e9" />
-   <source media="(prefers-color-scheme: light)" srcset="https://github.com/user-attachments/assets/e50883e2-0be7-4eea-9879-e725fa1dffd2" />
-   <img alt="QQ Group" src="https://github.com/user-attachments/assets/e50883e2-0be7-4eea-9879-e725fa1dffd2" height="250" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://i0.hdslb.com/bfs/openplatform/599680ad67bc9f9f876f76069c2239e9a85bb54d.png" />
+   <source media="(prefers-color-scheme: light)" srcset="https://i0.hdslb.com/bfs/openplatform/5ad8e4278c525cca6d3b4426c30b6d299d8a9654.png" />
+   <img alt="QQ Group" src="https://i0.hdslb.com/bfs/openplatform/599680ad67bc9f9f876f76069c2239e9a85bb54d.png" height="250" />
  </picture>
 </a>
 
