@@ -86,8 +86,8 @@
 
 <a href="https://qm.qq.com/q/AS3gNv2Vzy">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://i0.hdslb.com/bfs/openplatform/599680ad67bc9f9f876f76069c2239e9a85bb54d.png" />
-   <source media="(prefers-color-scheme: light)" srcset="https://i0.hdslb.com/bfs/openplatform/5ad8e4278c525cca6d3b4426c30b6d299d8a9654.png" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://i0.hdslb.com/bfs/openplatform/5ad8e4278c525cca6d3b4426c30b6d299d8a9654.png" />
+   <source media="(prefers-color-scheme: light)" srcset="https://i0.hdslb.com/bfs/openplatform/599680ad67bc9f9f876f76069c2239e9a85bb54d.png" /> 
    <img alt="QQ Group" src="https://i0.hdslb.com/bfs/openplatform/599680ad67bc9f9f876f76069c2239e9a85bb54d.png" height="250" />
  </picture>
 </a>
