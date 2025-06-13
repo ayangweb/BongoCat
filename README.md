@@ -86,11 +86,12 @@
 
 <a href="https://qm.qq.com/q/AS3gNv2Vzy">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/6428b6ff-0b39-4e16-a750-bad6f6b376e9" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/a80d0b68-9c15-4a8a-a44c-1a6717ebf61d" />
    <source media="(prefers-color-scheme: light)" srcset="https://github.com/user-attachments/assets/e50883e2-0be7-4eea-9879-e725fa1dffd2" />
    <img alt="QQ Group" src="https://github.com/user-attachments/assets/e50883e2-0be7-4eea-9879-e725fa1dffd2" height="250" />
  </picture>
 </a>
+
 
 ## 贡献指南
 
