@@ -58,13 +58,9 @@ export function useModel() {
   }
 
   async function handleResize() {
-    if (!live2d.model) return
-
-    const { innerWidth, innerHeight } = window
+    live2d.fitModel()
 
     const { width, height } = await getImageSize(backgroundImage.value)
-
-    live2d.model?.scale.set(innerWidth / width)
 
     if (round(innerWidth / innerHeight, 1) !== round(width / height, 1)) {
       await appWindow.setSize(

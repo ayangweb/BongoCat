@@ -79,7 +79,7 @@ function resolveImagePath(key: string, side: 'left' | 'right' = 'left') {
 <template>
   <div
     class="relative size-screen overflow-hidden children:(absolute size-full)"
-    :class="[catStore.mirrorMode ? '-scale-x-100' : 'scale-x-100']"
+    :class="{ '-scale-x-100': catStore.mirrorMode }"
     :style="{ opacity: catStore.opacity / 100 }"
     @contextmenu="handleContextmenu"
     @mousedown="handleWindowDrag"

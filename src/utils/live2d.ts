@@ -12,25 +12,26 @@ Live2DModel.registerTicker(Ticker)
 class Live2d {
   private app: Application | null = null
   public model: Live2DModel | null = null
+  private modelWidth = 0
+  private modelHeight = 0
 
   constructor() { }
 
-  private mount() {
+  private initApp() {
+    if (this.app) return
+
     const view = document.getElementById('live2dCanvas') as HTMLCanvasElement
 
     this.app = new Application({
       view,
       resizeTo: window,
       backgroundAlpha: 0,
-      autoDensity: true,
       resolution: devicePixelRatio,
     })
   }
 
   public async load(path: string) {
-    if (!this.app) {
-      this.mount()
-    }
+    this.initApp()
 
     this.destroy()
 
@@ -57,6 +58,10 @@ class Live2d {
 
     this.model = await Live2DModel.from(modelSettings)
 
+    const { width, height } = this.model
+    this.modelWidth = width
+    this.modelHeight = height
+
     this.app?.stage.addChild(this.model)
 
     const { motions, expressions } = modelSettings
@@ -69,6 +74,19 @@ class Live2d {
 
   public destroy() {
     this.model?.destroy()
+  }
+
+  public fitModel() {
+    if (!this.model) return
+
+    const scaleX = innerWidth / this.modelWidth
+    const scaleY = innerHeight / this.modelHeight
+    const scale = Math.min(scaleX, scaleY)
+
+    this.model.scale.set(scale)
+    this.model.x = innerWidth / 2
+    this.model.y = innerHeight / 2
+    this.model.anchor.set(0.5)
   }
 
   public playMotion(group: string, index: number) {
