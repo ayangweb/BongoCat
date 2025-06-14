@@ -11,7 +11,7 @@ import { computed, reactive, watch } from 'vue'
 import VueMarkdown from 'vue-markdown-render'
 
 import { useTauriListen } from '@/composables/useTauriListen'
-import { GITHUB_LINK, LISTEN_KEY } from '@/constants'
+import { GITHUB_LINK, LISTEN_KEY, UPGRADE_LINK_ACCESS_KEY } from '@/constants'
 import { showWindow } from '@/plugins/window'
 import { useGeneralStore } from '@/stores/general'
 
@@ -67,7 +67,12 @@ const downloadProgress = computed(() => {
 
 async function checkUpdate(visibleMessage = false) {
   try {
-    const update = await check()
+    const update = await check({
+      timeout: 5000,
+      headers: {
+        'X-AccessKey': UPGRADE_LINK_ACCESS_KEY,
+      },
+    })
 
     if (update) {
       const { version, currentVersion, body = '', date, downloadAndInstall } = update
