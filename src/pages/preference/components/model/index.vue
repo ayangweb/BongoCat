@@ -15,8 +15,8 @@ import { join } from '@/utils/path'
 
 const modelStore = useModelStore()
 
-async function handleDelete(data: Model) {
-  const { id, path } = data
+async function handleDelete(item: Model) {
+  const { id, path } = item
 
   try {
     await remove(path, { recursive: true })
