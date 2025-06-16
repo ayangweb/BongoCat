@@ -46,7 +46,8 @@
     "tauri-plugin-macos-permissions-api": "^2.3.0",
     "vue": "^3.5.16",
     "vue-markdown-render": "^2.2.1",
-    "vue-router": "^4.5.1"
+    "vue-router": "^4.5.1",
+    "vue3-masonry-css": "^1.0.7"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^4.13.3",

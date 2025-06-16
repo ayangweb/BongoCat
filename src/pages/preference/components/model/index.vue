@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import type { Model } from '@/stores/model'
-import type { ColProps } from 'ant-design-vue'
 
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { remove } from '@tauri-apps/plugin-fs'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
-import { Card, Col, message, Popconfirm, Row } from 'ant-design-vue'
+import { Card, message } from 'ant-design-vue'
+import { MasonryGrid, MasonryGridItem } from 'vue3-masonry-css'
 
 import FloatMenu from './components/float-menu/index.vue'
 import Upload from './components/upload/index.vue'
@@ -15,15 +15,8 @@ import { join } from '@/utils/path'
 
 const modelStore = useModelStore()
 
-const colProps: ColProps = {
-  xs: 12,
-  md: 8,
-  lg: 6,
-  xl: 4,
-}
-
-async function handleDelete(item: Model) {
-  const { id, path } = item
+async function handleDelete(data: Model) {
+  const { id, path } = data
 
   try {
     await remove(path, { recursive: true })
@@ -42,15 +35,17 @@ async function handleDelete(item: Model) {
 </script>
 
 <template>
-  <Row :gutter="[16, 16]">
-    <Col v-bind="colProps">
+  <MasonryGrid
+    :columns="{ 992: 3, 1200: 4, 1600: 6, default: 8 }"
+    :gutter="16"
+  >
+    <MasonryGridItem>
       <Upload />
-    </Col>
+    </MasonryGridItem>
 
-    <Col
+    <MasonryGridItem
       v-for="item in modelStore.models"
       :key="item.id"
-      v-bind="colProps"
     >
       <Card
         hoverable
@@ -90,8 +85,8 @@ async function handleDelete(item: Model) {
           </template>
         </template>
       </Card>
-    </Col>
-  </Row>
+    </MasonryGridItem>
+  </MasonryGrid>
 
   <FloatMenu />
 </template>
