@@ -55,6 +55,7 @@ async function handleDelete(item: Model) {
       <Card
         hoverable
         size="small"
+        @click="modelStore.currentModel = item"
       >
         <template #cover>
           <img
@@ -67,12 +68,11 @@ async function handleDelete(item: Model) {
           <i
             class="i-iconamoon:check-circle-1-bold text-4"
             :class="{ 'text-success': item.id === modelStore.currentModel?.id }"
-            @click="modelStore.currentModel = item"
           />
 
           <i
             class="i-iconamoon:link-external-bold text-4"
-            @click="revealItemInDir(item.path)"
+            @click.stop="revealItemInDir(item.path)"
           />
 
           <template v-if="!item.isPreset">
@@ -82,7 +82,10 @@ async function handleDelete(item: Model) {
               title="删除模型"
               @confirm="handleDelete(item)"
             >
-              <i class="i-iconamoon:trash-simple-bold text-4" />
+              <i
+                class="i-iconamoon:trash-simple-bold text-4"
+                @click.stop
+              />
             </Popconfirm>
           </template>
         </template>
