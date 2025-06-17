@@ -6,22 +6,11 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { readDir } from '@tauri-apps/plugin-fs'
 import { message } from 'ant-design-vue'
 import { nanoid } from 'nanoid'
-import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
+import { onMounted, ref, useTemplateRef, watch } from 'vue'
 
 import { INVOKE_KEY } from '@/constants'
 import { useModelStore } from '@/stores/model'
 import { join } from '@/utils/path'
-
-const props = defineProps({
-  firstCardHeight: {
-    type: Number,
-    default: 0,
-  },
-})
-
-const uploadHeight = computed(() => {
-  return props.firstCardHeight > 0 ? `${props.firstCardHeight}px` : '160px'
-})
 
 const dropRef = useTemplateRef('drop')
 const dragenter = ref(false)
@@ -99,7 +88,6 @@ watch(selectPaths, async (paths) => {
     ref="drop"
     class="w-full flex flex-col cursor-pointer items-center justify-center gap-4 b b-color-1 rounded-lg b-dashed bg-color-8 transition hover:border-primary"
     :class="{ 'border-primary': dragenter }"
-    :style="{ height: uploadHeight }"
     @click="handleUpload"
   >
     <div class="i-solar:upload-square-outline text-12 text-primary" />

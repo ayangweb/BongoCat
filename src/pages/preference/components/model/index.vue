@@ -6,7 +6,7 @@ import { remove } from '@tauri-apps/plugin-fs'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
 import { useResizeObserver } from '@vueuse/core'
 import { Card, message, Popconfirm } from 'ant-design-vue'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { MasonryGrid, MasonryGridItem } from 'vue3-masonry-css'
 
 import FloatMenu from './components/float-menu/index.vue'
@@ -19,6 +19,10 @@ const modelStore = useModelStore()
 
 const firstCardRef = ref<HTMLElement>()
 const firstCardHeight = ref<number>(0)
+
+const uploadStyle = computed(() => ({
+  height: firstCardHeight.value > 0 ? `${firstCardHeight.value}px` : '160px',
+}))
 
 useResizeObserver(firstCardRef, (entries: readonly ResizeObserverEntry[]) => {
   const entry = entries[0]
@@ -61,7 +65,7 @@ async function handleDelete(item: Model) {
     :gutter="16"
   >
     <MasonryGridItem>
-      <Upload :first-card-height="firstCardHeight" />
+      <Upload :style="uploadStyle" />
     </MasonryGridItem>
 
     <MasonryGridItem
@@ -69,7 +73,7 @@ async function handleDelete(item: Model) {
       :key="item.id"
     >
       <Card
-        :ref="index === 0 ? setFirstCardRef : undefined"
+        :ref="index === 0 ? setFirstCardRef : void 0"
         hoverable
         size="small"
         @click="modelStore.currentModel = item"
