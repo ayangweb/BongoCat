@@ -1,7 +1,7 @@
 import { resolveResource } from '@tauri-apps/api/path'
 import { nanoid } from 'nanoid'
 import { defineStore } from 'pinia'
-import { onMounted, ref } from 'vue'
+import { ref } from 'vue'
 
 import { join } from '@/utils/path'
 
@@ -37,33 +37,47 @@ export const useModelStore = defineStore('model', () => {
   const motions = ref<MotionGroup>({})
   const expressions = ref<Expression[]>([])
 
-  onMounted(async () => {
-    const modelsPath = await resolveResource('assets/models')
+  const init = async () => {
+    const presetModelsPath = await resolveResource('assets/models')
 
     if (models.value.length === 0) {
       const modes: ModelMode[] = ['standard', 'keyboard']
 
       for await (const mode of modes) {
-        const path = join(modelsPath, mode)
-
         models.value.push({
-          id: nanoid(),
-          path,
           mode,
+          id: nanoid(),
           isPreset: true,
+          path: join(presetModelsPath, mode),
         })
       }
+    } else {
+      models.value = models.value.map((item) => {
+        const { isPreset, mode } = item
+
+        if (!isPreset) return item
+
+        return {
+          ...item,
+          path: join(presetModelsPath, mode),
+        }
+      })
     }
 
-    if (currentModel.value) return
+    const matched = models.value.find(item => item.id === currentModel.value?.id)
+
+    if (matched) {
+      return currentModel.value = matched
+    }
 
     currentModel.value = models.value[0]
-  })
+  }
 
   return {
     models,
     currentModel,
     motions,
     expressions,
+    init,
   }
 })

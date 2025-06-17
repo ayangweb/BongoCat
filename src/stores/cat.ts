@@ -11,6 +11,10 @@ export const useCatStore = defineStore('cat', () => {
   const scale = ref(100)
   const opacity = ref(100)
 
+  const init = () => {
+    visible.value = true
+  }
+
   return {
     visible,
     mirrorMode,
@@ -20,5 +24,6 @@ export const useCatStore = defineStore('cat', () => {
     alwaysOnTop,
     scale,
     opacity,
+    init,
   }
 })
