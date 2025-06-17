@@ -4,7 +4,7 @@ import type { Model } from '@/stores/model'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { remove } from '@tauri-apps/plugin-fs'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
-import { Card, message } from 'ant-design-vue'
+import { Card, message, Popconfirm } from 'ant-design-vue'
 import { MasonryGrid, MasonryGridItem } from 'vue3-masonry-css'
 
 import FloatMenu from './components/float-menu/index.vue'
