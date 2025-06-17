@@ -4,9 +4,9 @@ import type { Model } from '@/stores/model'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { remove } from '@tauri-apps/plugin-fs'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
-import { useResizeObserver } from '@vueuse/core'
+import { useElementSize } from '@vueuse/core'
 import { Card, message, Popconfirm } from 'ant-design-vue'
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 import { MasonryGrid, MasonryGridItem } from 'vue3-masonry-css'
 
 import FloatMenu from './components/float-menu/index.vue'
@@ -16,29 +16,9 @@ import { useModelStore } from '@/stores/model'
 import { join } from '@/utils/path'
 
 const modelStore = useModelStore()
+const firstItemRef = ref<HTMLElement>()
 
-const firstCardRef = ref<HTMLElement>()
-const firstCardHeight = ref<number>(0)
-
-const uploadStyle = computed(() => ({
-  height: firstCardHeight.value > 0 ? `${firstCardHeight.value}px` : '160px',
-}))
-
-useResizeObserver(firstCardRef, (entries: readonly ResizeObserverEntry[]) => {
-  const entry = entries[0]
-  if (entry) {
-    const height = entry.contentRect.height
-    if (height > 0 && height !== firstCardHeight.value) {
-      firstCardHeight.value = height
-    }
-  }
-})
-
-function setFirstCardRef(el: any) {
-  if (el) {
-    firstCardRef.value = el.$el || el
-  }
-}
+const { height } = useElementSize(firstItemRef)
 
 async function handleDelete(item: Model) {
   const { id, path } = item
@@ -65,7 +45,7 @@ async function handleDelete(item: Model) {
     :gutter="16"
   >
     <MasonryGridItem>
-      <Upload :style="uploadStyle" />
+      <Upload :style="{ height: `${height}px` }" />
     </MasonryGridItem>
 
     <MasonryGridItem
@@ -73,7 +53,7 @@ async function handleDelete(item: Model) {
       :key="item.id"
     >
       <Card
-        :ref="index === 0 ? setFirstCardRef : void 0"
+        :ref="index === 0 ? 'firstItemRef' : void 0"
         hoverable
         size="small"
         @click="modelStore.currentModel = item"
