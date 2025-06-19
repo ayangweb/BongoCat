@@ -51,8 +51,8 @@
   </p>
 </div>
 
-| macOS                                                                                     | Windows                                                                                     | Linux(x11)                                                                                |
-| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| macOS                                                                                        | Windows                                                                                        | Linux(x11)                                                                                   |
+| -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | ![macOS](https://i0.hdslb.com/bfs/openplatform/dff276b96d49c5d6c431b74b531aab72191b3d87.png) | ![Windows](https://i0.hdslb.com/bfs/openplatform/a4149b753856ee7f401989da902cf3b5ad35b39e.png) | ![Linux](https://i0.hdslb.com/bfs/openplatform/3b49f961819d3ff63b2b80251c1cc13c27e986b0.png) |
 
 ## 开发背景
@@ -87,7 +87,7 @@
 <a href="https://qm.qq.com/q/AS3gNv2Vzy">
  <picture>
    <source media="(prefers-color-scheme: dark)" srcset="https://i0.hdslb.com/bfs/openplatform/5ad8e4278c525cca6d3b4426c30b6d299d8a9654.png" />
-   <source media="(prefers-color-scheme: light)" srcset="https://i0.hdslb.com/bfs/openplatform/599680ad67bc9f9f876f76069c2239e9a85bb54d.png" /> 
+   <source media="(prefers-color-scheme: light)" srcset="https://i0.hdslb.com/bfs/openplatform/599680ad67bc9f9f876f76069c2239e9a85bb54d.png" />
    <img alt="QQ Group" src="https://i0.hdslb.com/bfs/openplatform/599680ad67bc9f9f876f76069c2239e9a85bb54d.png" height="250" />
  </picture>
 </a>
@@ -109,3 +109,7 @@
    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=ayangweb/BongoCat&type=Date" />
  </picture>
 </a>
+
+## 致谢
+
+- 特别感谢 [UpgradeLink](https://www.toolsetlink.com/) 提供高效稳定的自动更新服务，让本项目得以持续为用户带来最新版本的优质体验。
