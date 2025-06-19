@@ -1,10 +1,14 @@
+import type { MouseMoveValue } from './useDevice.ts'
+import type { Monitor } from '@tauri-apps/api/window'
+
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { LogicalSize, PhysicalSize } from '@tauri-apps/api/dpi'
 import { resolveResource } from '@tauri-apps/api/path'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { availableMonitors as getAvailableMonitors } from '@tauri-apps/api/window'
 import { message } from 'ant-design-vue'
 import { isNil, round } from 'es-toolkit'
-import { computed, watch } from 'vue'
+import { computed, onBeforeMount, ref, watch } from 'vue'
 
 import live2d from '../utils/live2d'
 import { getCursorMonitor } from '../utils/monitor'
@@ -19,6 +23,13 @@ const appWindow = getCurrentWebviewWindow()
 export function useModel() {
   const modelStore = useModelStore()
   const catStore = useCatStore()
+  const availableMonitors = ref<Monitor[]>([])
+
+  const isOnlySingleMonitor = computed(() => availableMonitors.value.length === 1)
+
+  onBeforeMount(async () => {
+    availableMonitors.value = await getAvailableMonitors()
+  })
 
   const backgroundImage = computed(() => {
     return convertFileSrc(join(modelStore.currentModel!.path, 'resources', 'background.png'))
@@ -84,8 +95,14 @@ export function useModel() {
     live2d.setParameterValue(id, pressed ? max : min)
   }
 
-  async function handleMouseMove() {
-    const monitor = await getCursorMonitor()
+  async function _getCursorMonitor(mousePosition: MouseMoveValue) {
+    return isOnlySingleMonitor.value
+      ? { ...availableMonitors.value[0], cursorPosition: mousePosition }
+      : await getCursorMonitor()
+  }
+
+  async function handleMouseMove(mousePosition: MouseMoveValue) {
+    const monitor = await _getCursorMonitor(mousePosition)
 
     if (!monitor) return
 
