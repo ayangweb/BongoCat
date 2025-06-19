@@ -21,6 +21,18 @@ const firstItemRef = ref<HTMLElement>()
 
 const { height } = useElementSize(firstItemRef)
 
+function setFirstItemRef(el: Element | ComponentPublicInstance | null, index: number) {
+  if (!el || index > 0) return
+
+  if ('$el' in el) {
+    return firstItemRef.value = el.$el
+  }
+
+  if (el instanceof HTMLElement) {
+    firstItemRef.value = el
+  }
+}
+
 async function handleDelete(item: Model) {
   const { id, path } = item
 
@@ -36,18 +48,6 @@ async function handleDelete(item: Model) {
     if (id === modelStore.currentModel?.id) {
       modelStore.currentModel = modelStore.models[0]
     }
-  }
-}
-
-function setFirstItemRef(el: Element | ComponentPublicInstance | null, index: number) {
-  if (!el || index > 0) return
-
-  if ('$el' in el) {
-    return firstItemRef.value = el.$el
-  }
-
-  if (el instanceof HTMLElement) {
-    firstItemRef.value = el
   }
 }
 </script>
@@ -66,7 +66,7 @@ function setFirstItemRef(el: Element | ComponentPublicInstance | null, index: nu
       :key="item.id"
     >
       <Card
-        :ref="(el) => { setFirstItemRef(el, index) }"
+        :ref="(el) => setFirstItemRef(el, index)"
         hoverable
         size="small"
         @click="modelStore.currentModel = item"
