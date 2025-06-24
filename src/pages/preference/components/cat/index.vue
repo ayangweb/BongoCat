@@ -13,47 +13,47 @@ function opacityFormatter(value?: number) {
 </script>
 
 <template>
-  <ProList title="模型设置">
+  <ProList title="Model Settings">
     <ProListItem
-      description="启用后，模型将水平镜像翻转"
-      title="镜像模式"
+      description="When enabled, the model will be flipped horizontally."
+      title="Mirror Mode"
     >
       <Switch v-model:checked="catStore.mirrorMode" />
     </ProListItem>
 
     <ProListItem
-      description="启用后，每只手只显示最后按下的一个按键"
-      title="单键模式"
+      description="When enabled, only the last pressed key will be displayed for each hand."
+      title="Single Key Mode"
     >
       <Switch v-model:checked="catStore.singleMode" />
     </ProListItem>
 
     <ProListItem
-      description="启用后，鼠标将镜像跟随手部移动"
-      title="鼠标镜像"
+      description="When enabled, the mouse will mirror the movement of the hand."
+      title="Mouse Mirror"
     >
       <Switch v-model:checked="catStore.mouseMirror" />
     </ProListItem>
   </ProList>
 
-  <ProList title="窗口设置">
+  <ProList title="Window Settings">
     <ProListItem
-      description="启用后，窗口不影响对其他应用程序的操作"
-      title="窗口穿透"
+      description="When enabled, the window will not affect operations on other applications."
+      title="Window Penetration"
     >
       <Switch v-model:checked="catStore.penetrable" />
     </ProListItem>
 
     <ProListItem
-      description="启用后，窗口始终显示在其他应用程序上方"
-      title="窗口置顶"
+      description="When enabled, the window will always be displayed on top of other applications."
+      title="Always on Top"
     >
       <Switch v-model:checked="catStore.alwaysOnTop" />
     </ProListItem>
 
     <ProListItem
-      description="将鼠标移动到窗口边缘后，也可以拖动调整窗口尺寸"
-      title="窗口尺寸"
+      description="After moving the mouse to the edge of the window, you can also drag to adjust the window size."
+      title="Window Size"
     >
       <InputNumber
         v-model:value="catStore.scale"
@@ -67,7 +67,7 @@ function opacityFormatter(value?: number) {
     </ProListItem>
 
     <ProListItem
-      title="不透明度"
+      title="Opacity"
       vertical
     >
       <Slider

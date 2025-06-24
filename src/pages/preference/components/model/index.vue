@@ -39,7 +39,7 @@ async function handleDelete(item: Model) {
   try {
     await remove(path, { recursive: true })
 
-    message.success('删除成功')
+    message.success('Deleted successfully')
   } catch (error) {
     message.error(String(error))
   } finally {
@@ -91,9 +91,9 @@ async function handleDelete(item: Model) {
 
           <template v-if="!item.isPreset">
             <Popconfirm
-              description="你确定要删除此模型吗？"
+              description="Are you sure you want to delete this model?"
               placement="topRight"
-              title="删除模型"
+              title="Delete Model"
               @confirm="handleDelete(item)"
             >
               <i

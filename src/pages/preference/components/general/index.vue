@@ -27,14 +27,14 @@ watch(() => generalStore.autostart, async (value) => {
 <template>
   <MacosPermissions />
 
-  <ProList title="应用设置">
-    <ProListItem title="开机自启动">
+  <ProList title="Application Settings">
+    <ProListItem title="Startup on Boot">
       <Switch v-model:checked="generalStore.autostart" />
     </ProListItem>
   </ProList>
 
-  <ProList title="更新设置">
-    <ProListItem title="自动检查更新">
+  <ProList title="Update Settings">
+    <ProListItem title="Automatically Check for Updates">
       <Switch v-model:checked="generalStore.autoCheckUpdate" />
     </ProListItem>
   </ProList>

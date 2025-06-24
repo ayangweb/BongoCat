@@ -105,7 +105,7 @@ function resolveImagePath(key: string, side: 'left' | 'right' = 'left') {
       class="flex items-center justify-center bg-black"
     >
       <span class="text-center text-5xl text-white">
-        重绘中...
+        Redrawing...
       </span>
     </div>
   </div>

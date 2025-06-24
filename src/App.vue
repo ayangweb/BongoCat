@@ -4,7 +4,7 @@ import { error } from '@tauri-apps/plugin-log'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useEventListener } from '@vueuse/core'
 import { ConfigProvider } from 'ant-design-vue'
-import zhCN from 'ant-design-vue/es/locale/zh_CN'
+import enUS from 'ant-design-vue/es/locale/en_US'
 import { isString } from 'es-toolkit'
 import isURL from 'is-url'
 import { onMounted } from 'vue'
@@ -81,7 +81,7 @@ useEventListener('click', (event) => {
 </script>
 
 <template>
-  <ConfigProvider :locale="zhCN">
+  <ConfigProvider :locale="enUS">
     <RouterView v-if="isRestored" />
   </ConfigProvider>
 </template>

@@ -51,7 +51,7 @@ useTauriListen<boolean>(LISTEN_KEY.UPDATE_APP, () => {
   message.loading({
     key: MESSAGE_KEY,
     duration: 0,
-    content: '正在检查更新...',
+    content: 'Checking for updates...',
   })
 })
 
@@ -91,7 +91,7 @@ async function checkUpdate(visibleMessage = false) {
 
       message.destroy(MESSAGE_KEY)
     } else if (visibleMessage) {
-      message.success({ key: MESSAGE_KEY, content: '当前已是最新版本🎉' })
+      message.success({ key: MESSAGE_KEY, content: 'Already the latest version 🎉' })
     }
   } catch (error) {
     if (!visibleMessage) return
@@ -135,15 +135,15 @@ async function handleOk() {
 <template>
   <Modal
     v-model:open="state.open"
-    cancel-text="稍后更新"
+    cancel-text="Update Later"
     centered
     :closable="false"
     :mask-closable="false"
-    title="发现新版本🥳"
+    title="New Version Found 🥳"
     @ok="handleOk"
   >
     <template #okText>
-      {{ state.downloading ? downloadProgress : "立即更新" }}
+      {{ state.downloading ? downloadProgress : "Update Now" }}
     </template>
 
     <Flex
@@ -152,7 +152,7 @@ async function handleOk() {
       vertical
     >
       <Flex align="center">
-        <span>更新版本：</span>
+        <span>Update Version: </span>
         <span>
           <span>{{ state.update?.currentVersion }} 👉 </span>
           <a
@@ -164,12 +164,12 @@ async function handleOk() {
       </Flex>
 
       <Flex align="center">
-        <span>更新时间：</span>
+        <span>Update Time: </span>
         <span>{{ state.update?.date }}</span>
       </Flex>
 
       <Flex vertical>
-        <span>更新日志：</span>
+        <span>Update Log: </span>
 
         <VueMarkdown
           class="update-note max-h-40 overflow-auto"
