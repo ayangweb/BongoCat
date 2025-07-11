@@ -30,7 +30,7 @@ pub async fn start_device_listening<R: Runtime>(app_handle: AppHandle<R>) -> Res
     IS_RUNNING.store(true, Ordering::SeqCst);
 
     let callback = move |event: Event| {
-        let device = match event.event_type {
+        let device_event = match event.event_type {
             EventType::ButtonPress(button) => DeviceEvent {
                 kind: DeviceKind::MousePress,
                 value: json!(format!("{:?}", button)),
@@ -54,7 +54,7 @@ pub async fn start_device_listening<R: Runtime>(app_handle: AppHandle<R>) -> Res
             _ => return,
         };
 
-        let _ = app_handle.emit("device-changed", device);
+        let _ = app_handle.emit("device-changed", device_event);
     };
 
     listen(callback).map_err(|err| format!("Failed to listen device: {:?}", err))?;
