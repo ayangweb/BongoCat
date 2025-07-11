@@ -96,12 +96,14 @@ function resolveImagePath(key: string, side: 'left' | 'right' = 'left') {
     <img
       v-for="key in pressedLeftKeys"
       :key="key"
+      class="object-contain"
       :src="resolveImagePath(key)"
     >
 
     <img
       v-for="key in pressedRightKeys"
       :key="key"
+      class="object-contain"
       :src="resolveImagePath(key, 'right')"
     >
 
