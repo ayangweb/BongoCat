@@ -1,37 +1,34 @@
-import { convertFileSrc } from '@tauri-apps/api/core'
 import { LogicalSize, PhysicalSize } from '@tauri-apps/api/dpi'
 import { resolveResource } from '@tauri-apps/api/path'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { message } from 'ant-design-vue'
 import { isNil, round } from 'es-toolkit'
-import { computed, watch } from 'vue'
+import { ref, watch } from 'vue'
 
 import live2d from '../utils/live2d'
 import { getCursorMonitor } from '../utils/monitor'
 
 import { useCatStore } from '@/stores/cat'
 import { useModelStore } from '@/stores/model'
-import { getImageSize } from '@/utils/dom'
-import { join } from '@/utils/path'
 
 const appWindow = getCurrentWebviewWindow()
+
+interface ModelSize {
+  width: number
+  height: number
+}
 
 export function useModel() {
   const modelStore = useModelStore()
   const catStore = useCatStore()
-
-  const backgroundImage = computed(() => {
-    if (!modelStore.currentModel) return
-
-    return convertFileSrc(join(modelStore.currentModel.path, 'resources', 'background.png'))
-  })
+  const modelSize = ref<ModelSize>()
 
   watch(() => modelStore.currentModel, handleLoad, { deep: true, immediate: true })
 
-  watch([() => catStore.scale, backgroundImage], async () => {
-    if (!backgroundImage.value) return
+  watch([() => catStore.scale, modelSize], async () => {
+    if (!modelSize.value) return
 
-    const { width, height } = await getImageSize(backgroundImage.value)
+    const { width, height } = modelSize.value
 
     appWindow.setSize(
       new PhysicalSize({
@@ -49,11 +46,13 @@ export function useModel() {
 
       await resolveResource(path)
 
-      const data = await live2d.load(path)
+      const { width, height, ...rest } = await live2d.load(path)
+
+      modelSize.value = { width, height }
 
       handleResize()
 
-      Object.assign(modelStore, data)
+      Object.assign(modelStore, rest)
     } catch (error) {
       message.error(String(error))
     }
@@ -64,11 +63,11 @@ export function useModel() {
   }
 
   async function handleResize() {
-    if (!backgroundImage.value) return
+    if (!modelSize.value) return
 
     live2d.fitModel()
 
-    const { width, height } = await getImageSize(backgroundImage.value)
+    const { width, height } = modelSize.value
 
     if (round(innerWidth / innerHeight, 1) !== round(width / height, 1)) {
       await appWindow.setSize(
@@ -134,7 +133,6 @@ export function useModel() {
   }
 
   return {
-    backgroundImage,
     handleLoad,
     handleDestroy,
     handleResize,

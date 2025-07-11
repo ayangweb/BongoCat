@@ -67,6 +67,8 @@ class Live2d {
     const { motions, expressions } = modelSettings
 
     return {
+      width,
+      height,
       motions,
       expressions,
     }
