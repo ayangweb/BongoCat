@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { convertFileSrc } from '@tauri-apps/api/core'
+import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { Menu } from '@tauri-apps/api/menu'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { useDebounceFn, useEventListener } from '@vueuse/core'
-import { onUnmounted, ref, watch } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { useDevice } from '@/composables/useDevice'
 import { useModel } from '@/composables/useModel'
 import { useSharedMenu } from '@/composables/useSharedMenu'
+import { INVOKE_KEY } from '@/constants'
 import { hideWindow, setAlwaysOnTop, showWindow } from '@/plugins/window'
 import { useCatStore } from '@/stores/cat'
 import { useModelStore } from '@/stores/model'
@@ -20,6 +21,10 @@ const catStore = useCatStore()
 const { getSharedMenu } = useSharedMenu()
 const modelStore = useModelStore()
 const resizing = ref(false)
+
+onMounted(() => {
+  invoke(INVOKE_KEY.START_DEVICE_LISTENING)
+})
 
 onUnmounted(handleDestroy)
 

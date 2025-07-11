@@ -2,7 +2,7 @@ use rdev::{Event, EventType, listen};
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Runtime, command};
 
 static IS_RUNNING: AtomicBool = AtomicBool::new(false);
 
@@ -21,9 +21,10 @@ pub struct DeviceEvent {
     value: Value,
 }
 
-pub fn start_listening(app_handle: AppHandle) {
+#[command]
+pub async fn start_device_listening<R: Runtime>(app_handle: AppHandle<R>) -> Result<(), String> {
     if IS_RUNNING.load(Ordering::SeqCst) {
-        return;
+        return Err("Device is already listening".to_string());
     }
 
     IS_RUNNING.store(true, Ordering::SeqCst);
@@ -53,20 +54,10 @@ pub fn start_listening(app_handle: AppHandle) {
             _ => return,
         };
 
-        if let Err(e) = app_handle.emit("device-changed", device) {
-            eprintln!("Failed to emit event: {:?}", e);
-        }
+        let _ = app_handle.emit("device-changed", device);
     };
 
-    #[cfg(target_os = "macos")]
-    if let Err(e) = listen(callback) {
-        eprintln!("Device listening error: {:?}", e);
-    }
+    listen(callback).map_err(|err| format!("Failed to listen device: {:?}", err))?;
 
-    #[cfg(not(target_os = "macos"))]
-    std::thread::spawn(move || {
-        if let Err(e) = listen(callback) {
-            eprintln!("Device listening error: {:?}", e);
-        }
-    });
+    Ok(())
 }
