@@ -21,12 +21,16 @@ export function useModel() {
   const catStore = useCatStore()
 
   const backgroundImage = computed(() => {
-    return convertFileSrc(join(modelStore.currentModel!.path, 'resources', 'background.png'))
+    if (!modelStore.currentModel) return
+
+    return convertFileSrc(join(modelStore.currentModel.path, 'resources', 'background.png'))
   })
 
   watch(() => modelStore.currentModel, handleLoad, { deep: true, immediate: true })
 
-  watch(() => catStore.scale, async () => {
+  watch([() => catStore.scale, backgroundImage], async () => {
+    if (!backgroundImage.value) return
+
     const { width, height } = await getImageSize(backgroundImage.value)
 
     appWindow.setSize(
@@ -39,7 +43,9 @@ export function useModel() {
 
   async function handleLoad() {
     try {
-      const { path } = modelStore.currentModel!
+      if (!modelStore.currentModel) return
+
+      const { path } = modelStore.currentModel
 
       await resolveResource(path)
 
@@ -58,6 +64,8 @@ export function useModel() {
   }
 
   async function handleResize() {
+    if (!backgroundImage.value) return
+
     live2d.fitModel()
 
     const { width, height } = await getImageSize(backgroundImage.value)

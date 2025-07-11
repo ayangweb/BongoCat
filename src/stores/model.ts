@@ -43,7 +43,7 @@ export const useModelStore = defineStore('model', () => {
     if (models.value.length === 0) {
       const modes: ModelMode[] = ['standard', 'keyboard']
 
-      for await (const mode of modes) {
+      for (const mode of modes) {
         models.value.push({
           mode,
           id: nanoid(),
