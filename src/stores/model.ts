@@ -1,11 +1,12 @@
 import { resolveResource } from '@tauri-apps/api/path'
+import { filter, find } from 'es-toolkit/compat'
 import { nanoid } from 'nanoid'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 import { join } from '@/utils/path'
 
-export type ModelMode = 'standard' | 'keyboard' | 'handle'
+export type ModelMode = 'standard' | 'keyboard' | 'gamepad'
 
 export interface Model {
   id: string
@@ -40,37 +41,27 @@ export const useModelStore = defineStore('model', () => {
   const init = async () => {
     const presetModelsPath = await resolveResource('assets/models')
 
-    if (models.value.length === 0) {
-      const modes: ModelMode[] = ['standard', 'keyboard']
+    const nextModels = filter(models.value, { isPreset: false })
+    const presetModels = filter(models.value, { isPreset: true })
 
-      for (const mode of modes) {
-        models.value.push({
-          mode,
-          id: nanoid(),
-          isPreset: true,
-          path: join(presetModelsPath, mode),
-        })
-      }
-    } else {
-      models.value = models.value.map((item) => {
-        const { isPreset, mode } = item
+    const modes: ModelMode[] = ['gamepad', 'keyboard', 'standard']
 
-        if (!isPreset) return item
+    for (const mode of modes) {
+      const matched = find(presetModels, { mode })
 
-        return {
-          ...item,
-          path: join(presetModelsPath, mode),
-        }
+      nextModels.unshift({
+        id: matched?.id ?? nanoid(),
+        mode,
+        isPreset: true,
+        path: join(presetModelsPath, mode),
       })
     }
 
-    const matched = models.value.find(item => item.id === currentModel.value?.id)
+    const matched = find(nextModels, { id: currentModel.value?.id })
 
-    if (matched) {
-      return currentModel.value = matched
-    }
+    currentModel.value = matched ?? nextModels[0]
 
-    currentModel.value = models.value[0]
+    models.value = nextModels
   }
 
   return {

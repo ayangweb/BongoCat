@@ -7,6 +7,7 @@ import { useDebounceFn, useEventListener } from '@vueuse/core'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { useDevice } from '@/composables/useDevice'
+import { useGamepad } from '@/composables/useGamepad'
 import { useModel } from '@/composables/useModel'
 import { useSharedMenu } from '@/composables/useSharedMenu'
 import { INVOKE_KEY } from '@/constants'
@@ -23,6 +24,7 @@ const { getSharedMenu } = useSharedMenu()
 const modelStore = useModelStore()
 const resizing = ref(false)
 const backgroundImagePath = ref<string>()
+useGamepad()
 
 onMounted(() => {
   invoke(INVOKE_KEY.START_DEVICE_LISTENING)

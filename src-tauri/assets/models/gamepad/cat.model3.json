@@ -1,0 +1,69 @@
+{
+	"Version": 3,
+	"FileReferences": {
+		"Moc": "demomodel3.moc3",
+		"Textures": [
+			"demomodel3.1024/texture_00.png",
+			"demomodel3.1024/texture_01.png",
+			"demomodel3.1024/texture_02.png"
+		],
+		"DisplayInfo": "demomodel3.cdi3.json",
+		"Expressions": [
+			{
+				"Name": "live2d_expression0.exp3.json",
+				"File": "live2d_expression0.exp3.json"
+			},
+			{
+				"Name": "live2d_expression1.exp3.json",
+				"File": "live2d_expression1.exp3.json"
+			},
+			{
+				"Name": "live2d_expression2.exp3.json",
+				"File": "live2d_expression2.exp3.json"
+			}
+		],
+		"Motions": {
+			"CAT_motion": [
+				{
+					"File": "live2d_motion1.motion3.json",
+					"Sound": "live2d_motion1.flac",
+					"FadeInTime": 0,
+					"FadeOutTime": 0
+				},
+				{
+					"File": "live2d_motion2.motion3.json",
+					"FadeInTime": 0,
+					"FadeOutTime": 0
+				}
+			],
+			"CAT_motion_lock": [
+				{
+					"File": "live2d_motion1.motion3.json",
+					"Sound": "live2d_motion1.flac",
+					"FadeInTime": 0,
+					"FadeOutTime": 0
+				},
+				{
+					"File": "live2d_motion2.motion3.json",
+					"FadeInTime": 0,
+					"FadeOutTime": 0
+				}
+			]
+		}
+	},
+	"Groups": [
+		{
+			"Target": "Parameter",
+			"Name": "LipSync",
+			"Ids": []
+		},
+		{
+			"Target": "Parameter",
+			"Name": "EyeBlink",
+			"Ids": [
+				"ParamEyeLOpen",
+				"ParamEyeROpen"
+			]
+		}
+	]
+}

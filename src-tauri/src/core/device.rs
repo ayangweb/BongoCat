@@ -4,10 +4,10 @@ use serde_json::{Value, json};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter, Runtime, command};
 
-static IS_RUNNING: AtomicBool = AtomicBool::new(false);
+static IS_LISTENING: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, Serialize)]
-pub enum DeviceKind {
+pub enum DeviceEventKind {
     MousePress,
     MouseRelease,
     MouseMove,
@@ -17,38 +17,38 @@ pub enum DeviceKind {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DeviceEvent {
-    kind: DeviceKind,
+    kind: DeviceEventKind,
     value: Value,
 }
 
 #[command]
 pub async fn start_device_listening<R: Runtime>(app_handle: AppHandle<R>) -> Result<(), String> {
-    if IS_RUNNING.load(Ordering::SeqCst) {
+    if IS_LISTENING.load(Ordering::SeqCst) {
         return Err("Device is already listening".to_string());
     }
 
-    IS_RUNNING.store(true, Ordering::SeqCst);
+    IS_LISTENING.store(true, Ordering::SeqCst);
 
     let callback = move |event: Event| {
         let device_event = match event.event_type {
             EventType::ButtonPress(button) => DeviceEvent {
-                kind: DeviceKind::MousePress,
+                kind: DeviceEventKind::MousePress,
                 value: json!(format!("{:?}", button)),
             },
             EventType::ButtonRelease(button) => DeviceEvent {
-                kind: DeviceKind::MouseRelease,
+                kind: DeviceEventKind::MouseRelease,
                 value: json!(format!("{:?}", button)),
             },
             EventType::MouseMove { x, y } => DeviceEvent {
-                kind: DeviceKind::MouseMove,
+                kind: DeviceEventKind::MouseMove,
                 value: json!({ "x": x, "y": y }),
             },
             EventType::KeyPress(key) => DeviceEvent {
-                kind: DeviceKind::KeyboardPress,
+                kind: DeviceEventKind::KeyboardPress,
                 value: json!(format!("{:?}", key)),
             },
             EventType::KeyRelease(key) => DeviceEvent {
-                kind: DeviceKind::KeyboardRelease,
+                kind: DeviceEventKind::KeyboardRelease,
                 value: json!(format!("{:?}", key)),
             },
             _ => return,

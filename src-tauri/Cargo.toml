@@ -38,6 +38,7 @@ tauri-plugin-fs = "2"
 fs_extra = "1"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-global-shortcut = "2"
+gilrs = "0.11"
 
 [target."cfg(target_os = \"macos\")".dependencies]
 tauri-nspanel.workspace = true
