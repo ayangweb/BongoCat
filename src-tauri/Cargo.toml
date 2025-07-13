@@ -22,7 +22,6 @@ tauri = { workspace = true, features = ["tray-icon", "protocol-asset", "macos-pr
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 tauri-plugin-custom-window.workspace = true
-rdev = { git = "https://github.com/ayangweb/rdev" }
 tauri-plugin-os = "2"
 tauri-plugin-process = "2"
 tauri-plugin-opener = "2"
@@ -41,6 +40,13 @@ tauri-plugin-global-shortcut = "2"
 
 [target."cfg(target_os = \"macos\")".dependencies]
 tauri-nspanel.workspace = true
+
+[target."cfg(not(target_os = \"linux\"))".dependencies]
+rdev = { git = "https://github.com/ayangweb/rdev" }
+
+[target."cfg(target_os = \"linux\")".dependencies]
+nix = { version = "0.30", features = ["poll"] }
+input = "0.9"
 
 [features]
 cargo-clippy = []

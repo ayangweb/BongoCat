@@ -1,25 +1,11 @@
 use rdev::{Event, EventType, listen};
-use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::json;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter, Runtime, command};
 
+use crate::core::{device::{DeviceEvent, DeviceKind}};
+
 static IS_RUNNING: AtomicBool = AtomicBool::new(false);
-
-#[derive(Debug, Clone, Serialize)]
-pub enum DeviceKind {
-    MousePress,
-    MouseRelease,
-    MouseMove,
-    KeyboardPress,
-    KeyboardRelease,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct DeviceEvent {
-    kind: DeviceKind,
-    value: Value,
-}
 
 #[command]
 pub async fn start_device_listening<R: Runtime>(app_handle: AppHandle<R>) -> Result<(), String> {
