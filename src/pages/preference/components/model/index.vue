@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import type { Model } from '@/stores/model'
-import type { ColProps } from 'ant-design-vue'
+import type { ComponentPublicInstance } from 'vue'
 
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { remove } from '@tauri-apps/plugin-fs'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
-import { Card, Col, message, Popconfirm, Row } from 'ant-design-vue'
+import { useElementSize } from '@vueuse/core'
+import { Card, message, Popconfirm } from 'ant-design-vue'
+import { ref } from 'vue'
+import { MasonryGrid, MasonryGridItem } from 'vue3-masonry-css'
 
 import FloatMenu from './components/float-menu/index.vue'
 import Upload from './components/upload/index.vue'
@@ -14,12 +17,20 @@ import { useModelStore } from '@/stores/model'
 import { join } from '@/utils/path'
 
 const modelStore = useModelStore()
+const firstItemRef = ref<HTMLElement>()
 
-const colProps: ColProps = {
-  xs: 12,
-  md: 8,
-  lg: 6,
-  xl: 4,
+const { height } = useElementSize(firstItemRef)
+
+function setFirstItemRef(el: Element | ComponentPublicInstance | null, index: number) {
+  if (!el || index > 0) return
+
+  if ('$el' in el) {
+    return firstItemRef.value = el.$el
+  }
+
+  if (el instanceof HTMLElement) {
+    firstItemRef.value = el
+  }
 }
 
 async function handleDelete(item: Model) {
@@ -42,19 +53,23 @@ async function handleDelete(item: Model) {
 </script>
 
 <template>
-  <Row :gutter="[16, 16]">
-    <Col v-bind="colProps">
-      <Upload />
-    </Col>
+  <MasonryGrid
+    :columns="{ 992: 3, 1200: 4, 1600: 6, default: 8 }"
+    :gutter="16"
+  >
+    <MasonryGridItem>
+      <Upload :style="{ height: `${height}px` }" />
+    </MasonryGridItem>
 
-    <Col
-      v-for="item in modelStore.models"
+    <MasonryGridItem
+      v-for="(item, index) in modelStore.models"
       :key="item.id"
-      v-bind="colProps"
     >
       <Card
+        :ref="(el) => setFirstItemRef(el, index)"
         hoverable
         size="small"
+        @click="modelStore.currentModel = item"
       >
         <template #cover>
           <img
@@ -67,12 +82,11 @@ async function handleDelete(item: Model) {
           <i
             class="i-iconamoon:check-circle-1-bold text-4"
             :class="{ 'text-success': item.id === modelStore.currentModel?.id }"
-            @click="modelStore.currentModel = item"
           />
 
           <i
             class="i-iconamoon:link-external-bold text-4"
-            @click="revealItemInDir(item.path)"
+            @click.stop="revealItemInDir(item.path)"
           />
 
           <template v-if="!item.isPreset">
@@ -82,13 +96,16 @@ async function handleDelete(item: Model) {
               title="删除模型"
               @confirm="handleDelete(item)"
             >
-              <i class="i-iconamoon:trash-simple-bold text-4" />
+              <i
+                class="i-iconamoon:trash-simple-bold text-4"
+                @click.stop
+              />
             </Popconfirm>
           </template>
         </template>
       </Card>
-    </Col>
-  </Row>
+    </MasonryGridItem>
+  </MasonryGrid>
 
   <FloatMenu />
 </template>

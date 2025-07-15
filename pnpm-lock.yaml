@@ -86,6 +86,9 @@ importers:
       vue-router:
         specifier: ^4.5.1
         version: 4.5.1(vue@3.5.16(typescript@5.6.3))
+      vue3-masonry-css:
+        specifier: ^1.0.7
+        version: 1.0.7(vue@3.5.16(typescript@5.6.3))
     devDependencies:
       '@antfu/eslint-config':
         specifier: ^4.13.3
@@ -4664,6 +4667,12 @@ packages:
     engines: {node: '>=10.15.0'}
     peerDependencies:
       vue: ^3.0.0
+
+  vue3-masonry-css@1.0.7:
+    resolution: {integrity: sha512-uPbeBKBU8W57m2QnHQ9Yvr1qqtS9P3zuMn+ji/iTNNgpfB+bQhXeG8+UVh9ue4AjHplZjhezIHAGBqISr1y6kg==}
+    engines: {node: '>=18.18.0', npm: '>=9.0.0'}
+    peerDependencies:
+      vue: ^3.4.38
 
   vue@3.5.16:
     resolution: {integrity: sha512-rjOV2ecxMd5SiAmof2xzh2WxntRcigkX/He4YFJ6WdRvVUrbt6DxC1Iujh10XLl8xCDRDtGKMeO3D+pRQ1PP9w==}
@@ -9714,6 +9723,10 @@ snapshots:
   vue-types@3.0.2(vue@3.5.16(typescript@5.6.3)):
     dependencies:
       is-plain-object: 3.0.1
+      vue: 3.5.16(typescript@5.6.3)
+
+  vue3-masonry-css@1.0.7(vue@3.5.16(typescript@5.6.3)):
+    dependencies:
       vue: 3.5.16(typescript@5.6.3)
 
   vue@3.5.16(typescript@5.6.3):

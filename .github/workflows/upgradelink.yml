@@ -1,0 +1,20 @@
+name: Upload Release to UpgradeLink
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  upgradeLink-upload:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send a request to UpgradeLink
+        uses: toolsetlink/upgradelink-action@v5
+        with:
+          source-url: 'https://github.com/ayangweb/BongoCat/releases/latest/download/latest.json'
+          access-key: ${{ secrets.UPGRADE_LINK_ACCESS_KEY }}
+          tauri-key: ${{ secrets.UPGRADE_LINK_TAURI_KEY }}
+          github-token: ${{ secrets.RELEASE_TOKEN }}

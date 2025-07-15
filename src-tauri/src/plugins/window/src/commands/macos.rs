@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 use super::{is_main_window, shared_hide_window, shared_set_always_on_top, shared_show_window};
 use crate::MAIN_WINDOW_LABEL;
 use tauri::{AppHandle, Runtime, WebviewWindow, command};

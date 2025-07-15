@@ -61,6 +61,7 @@ const menus = [
         <div class="b b-color-2 rounded-2xl b-solid">
           <img
             class="size-15"
+            data-tauri-drag-region
             src="/logo.png"
           >
         </div>

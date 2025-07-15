@@ -35,12 +35,12 @@ onMounted(async () => {
 
   await appStore.$tauri.start()
   await modelStore.$tauri.start()
+  await modelStore.init()
   await catStore.$tauri.start()
   await generalStore.$tauri.start()
   await shortcutStore.$tauri.start()
-  catStore.visible = true
-
-  restoreState()
+  await restoreState()
+  catStore.init()
 })
 
 useTauriListen(LISTEN_KEY.SHOW_WINDOW, ({ payload }) => {
