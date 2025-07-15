@@ -14,7 +14,7 @@ pub mod linux;
 pub use linux::*;
 
 #[derive(Debug, Clone, Serialize)]
-pub enum DeviceKind {
+pub enum DeviceEventKind {
     MousePress,
     MouseRelease,
     MouseMove,
@@ -24,6 +24,6 @@ pub enum DeviceKind {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DeviceEvent {
-    kind: DeviceKind,
+    kind: DeviceEventKind,
     value: Value,
 }
