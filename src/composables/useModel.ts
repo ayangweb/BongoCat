@@ -86,17 +86,13 @@ export function useModel() {
   function handleKeyChange(isLeft = true, pressed = true) {
     const id = isLeft ? 'CatParamLeftHandDown' : 'CatParamRightHandDown'
 
-    const { min, max } = live2d.getParameterRange(id)
-
-    live2d.setParameterValue(id, pressed ? max : min)
+    live2d.setParameterValue(id, pressed)
   }
 
   function handleMouseChange(key: string, pressed = true) {
     const id = key === 'Left' ? 'ParamMouseLeftDown' : 'ParamMouseRightDown'
 
-    const { min, max } = live2d.getParameterRange(id)
-
-    live2d.setParameterValue(id, pressed ? max : min)
+    live2d.setParameterValue(id, pressed)
   }
 
   async function handleMouseMove(point: MouseMoveValue) {
@@ -131,6 +127,16 @@ export function useModel() {
     }
   }
 
+  async function handleAxisChange(id: string, value: number) {
+    for (const id of ['CatParamLeftHandDown', 'CatParamStickShowLeftHand']) {
+      live2d.setParameterValue(id, value !== 0)
+    }
+
+    const { min, max } = live2d.getParameterRange(id)
+
+    live2d.setParameterValue(id, Math.max(min, value * max))
+  }
+
   return {
     handleLoad,
     handleDestroy,
@@ -138,5 +144,6 @@ export function useModel() {
     handleKeyChange,
     handleMouseChange,
     handleMouseMove,
+    handleAxisChange,
   }
 }

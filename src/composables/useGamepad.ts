@@ -1,32 +1,63 @@
-// import { invoke } from '@tauri-apps/api/core'
-// import { ref, watch } from 'vue'
+import type { LiteralUnion } from 'ant-design-vue/es/_util/type'
 
-// import { useTauriListen } from './useTauriListen'
+import { invoke } from '@tauri-apps/api/core'
+import { watch } from 'vue'
 
-// import { INVOKE_KEY, LISTEN_KEY } from '@/constants'
-// import { useModelStore } from '@/stores/model'
+import { useModel } from './useModel'
+import { useModelKeys } from './useModelKeys'
+import { useTauriListen } from './useTauriListen'
 
-// interface GamepadEvent {
-//   kind: 'ButtonChanged' | 'AxisChanged'
-//   name: string
-//   value: number
-// }
+import { INVOKE_KEY, LISTEN_KEY } from '@/constants'
+import { useModelStore } from '@/stores/model'
+import live2d from '@/utils/live2d'
+
+type GamepadEventName = LiteralUnion<'LeftStickX' | 'LeftStickY' | 'RightStickX' | 'RightStickY' | 'LeftThumb' | 'RightThumb'>
+
+interface GamepadEvent {
+  kind: 'ButtonChanged' | 'AxisChanged'
+  name: GamepadEventName
+  value: number
+}
 
 export function useGamepad() {
-  // const { currentModel } = useModelStore()
-  // const pressedGamepadKeys = ref<string[]>([])
+  const { currentModel } = useModelStore()
+  const { pressedKeys, handlePress, handleRelease } = useModelKeys()
+  const { handleAxisChange } = useModel()
 
-  // watch(() => currentModel?.mode, (value) => {
-  //   if (value === 'gamepad') {
-  //     return invoke(INVOKE_KEY.START_GAMEPAD_LISTING)
-  //   }
+  watch(() => currentModel?.mode, (mode) => {
+    if (mode === 'gamepad') {
+      return invoke(INVOKE_KEY.START_GAMEPAD_LISTING)
+    }
 
-  //   invoke(INVOKE_KEY.STOP_GAMEPAD_LISTING)
-  // }, { immediate: true })
+    invoke(INVOKE_KEY.STOP_GAMEPAD_LISTING)
+  }, { immediate: true })
 
-  // useTauriListen<GamepadEvent>(LISTEN_KEY.GAMEPAD_CHANGED, ({ payload }) => {
-  //   // console.log('payload', payload)
+  useTauriListen<GamepadEvent>(LISTEN_KEY.GAMEPAD_CHANGED, ({ payload }) => {
+    const { name, value } = payload
 
-  //   // const { kind, name, value } = payload
-  // })
+    switch (name) {
+      case 'LeftStickX':
+        return handleAxisChange('CatParamStickLX', value)
+      case 'LeftStickY':
+        return handleAxisChange('CatParamStickLY', value)
+      case 'RightStickX':
+        return handleAxisChange('CatParamStickRX', value)
+      case 'RightStickY':
+        return handleAxisChange('CatParamStickRY', value)
+      case 'LeftThumb':
+        return live2d.setParameterValue('CatParamStickLeftDown', value !== 0)
+      case 'RightThumb':
+        return live2d.setParameterValue('CatParamStickRightDown', value !== 0)
+      default:
+        if (value > 0) {
+          return handlePress(name)
+        }
+
+        return handleRelease(name)
+    }
+  })
+
+  return {
+    pressedKeys,
+  }
 }

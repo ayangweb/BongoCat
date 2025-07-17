@@ -17,14 +17,14 @@ import { useModelStore } from '@/stores/model'
 import { join } from '@/utils/path'
 
 const appWindow = getCurrentWebviewWindow()
-const { pressedLeftKeys, pressedRightKeys } = useDevice()
-const { handleLoad, handleDestroy, handleResize } = useModel()
+const { pressedKeys: devicePressedKeys } = useDevice()
+const { handleLoad, handleDestroy, handleResize, handleKeyChange } = useModel()
 const catStore = useCatStore()
 const { getSharedMenu } = useSharedMenu()
 const modelStore = useModelStore()
 const resizing = ref(false)
 const backgroundImagePath = ref<string>()
-useGamepad()
+const { pressedKeys: gamepadPressedKeys } = useGamepad()
 
 onMounted(() => {
   invoke(INVOKE_KEY.START_DEVICE_LISTENING)
@@ -44,7 +44,17 @@ useEventListener('resize', () => {
   debouncedResize()
 })
 
-watch(() => modelStore.currentModel, handleLoad, { deep: true, immediate: true })
+watch(() => modelStore.currentModel, async (model) => {
+  handleLoad()
+
+  if (!model) return
+
+  const path = join(model.path, 'resources', 'background.png')
+
+  const existed = await exists(path)
+
+  backgroundImagePath.value = existed ? convertFileSrc(path) : void 0
+}, { deep: true, immediate: true })
 
 watch(() => catStore.visible, async (value) => {
   value ? showWindow() : hideWindow()
@@ -56,15 +66,25 @@ watch(() => catStore.penetrable, (value) => {
 
 watch(() => catStore.alwaysOnTop, setAlwaysOnTop, { immediate: true })
 
-watch(() => modelStore.currentModel, async (model) => {
-  if (!model) return
+watch(devicePressedKeys, (keys) => {
+  const values = Object.values(keys)
 
-  const path = join(model.path, 'resources', 'background.png')
+  const hasLeft = values.some(item => item.includes('left-'))
+  const hasRight = values.some(item => item.includes('right-'))
 
-  const existed = await exists(path)
+  handleKeyChange(true, hasLeft)
+  handleKeyChange(false, hasRight)
+}, { deep: true })
 
-  backgroundImagePath.value = existed ? convertFileSrc(path) : void 0
-}, { deep: true, immediate: true })
+watch(gamepadPressedKeys, (keys) => {
+  const values = Object.values(keys)
+
+  const hasLeft = values.some(item => item.includes('left-'))
+  const hasRight = values.some(item => item.includes('right-'))
+
+  handleKeyChange(true, hasLeft)
+  handleKeyChange(false, hasRight)
+}, { deep: true })
 
 function handleWindowDrag() {
   appWindow.startDragging()
@@ -78,10 +98,6 @@ async function handleContextmenu(event: MouseEvent) {
   })
 
   menu.popup()
-}
-
-function resolveKeyImagePath(key: string, side: 'left' | 'right' = 'left') {
-  return convertFileSrc(join(modelStore.currentModel!.path, 'resources', `${side}-keys`, `${key}.png`))
 }
 </script>
 
@@ -101,15 +117,15 @@ function resolveKeyImagePath(key: string, side: 'left' | 'right' = 'left') {
     <canvas id="live2dCanvas" />
 
     <img
-      v-for="key in pressedLeftKeys"
-      :key="key"
-      :src="resolveKeyImagePath(key)"
+      v-for="path in devicePressedKeys"
+      :key="path"
+      :src="convertFileSrc(path)"
     >
 
     <img
-      v-for="key in pressedRightKeys"
-      :key="key"
-      :src="resolveKeyImagePath(key, 'right')"
+      v-for="path in gamepadPressedKeys"
+      :key="path"
+      :src="convertFileSrc(path)"
     >
 
     <div

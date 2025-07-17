@@ -118,7 +118,7 @@ class Live2d {
     }
   }
 
-  public setParameterValue(id: string, value: number) {
+  public setParameterValue(id: string, value: number | boolean) {
     const coreModel = this.getCoreModel()
 
     return coreModel?.setParameterValueById?.(id, Number(value))

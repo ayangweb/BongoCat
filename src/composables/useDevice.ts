@@ -1,15 +1,12 @@
-import type { Ref } from 'vue'
-
-import { isEqual, mapValues, uniq } from 'es-toolkit'
-import { ref, watch } from 'vue'
+import { isEqual, mapValues } from 'es-toolkit'
+import { ref } from 'vue'
 
 import { LISTEN_KEY } from '../constants'
 
-import { useKeys } from './useKeys'
 import { useModel } from './useModel'
+import { useModelKeys } from './useModelKeys'
 import { useTauriListen } from './useTauriListen'
 
-import { useCatStore } from '@/stores/cat'
 import { isWindows } from '@/utils/platform'
 
 interface MouseButtonEvent {
@@ -35,61 +32,37 @@ interface KeyboardEvent {
 type DeviceEvent = MouseButtonEvent | MouseMoveEvent | KeyboardEvent
 
 export function useDevice() {
-  const catStore = useCatStore()
   const lastMousePoint = ref<MouseMoveValue>({ x: 0, y: 0 })
   const releaseTimers = new Map<string, NodeJS.Timeout>()
-  const { handleKeyChange, handleMouseChange, handleMouseMove } = useModel()
-
-  const { supportLeftKeys, supportRightKeys, pressedLeftKeys, pressedRightKeys } = useKeys()
-
-  const handlePress = (keys: Ref<string[]>, value?: string) => {
-    if (!value) return
-
-    if (catStore.singleMode) {
-      keys.value = [value]
-    } else {
-      keys.value = uniq(keys.value.concat(value))
-    }
-  }
-
-  const handleRelease = (keys: Ref<string[]>, value?: string) => {
-    if (!value) return
-
-    keys.value = keys.value.filter(item => item !== value)
-  }
+  const { supportKeys, pressedKeys, handlePress, handleRelease } = useModelKeys()
+  const { handleMouseChange, handleMouseMove } = useModel()
 
   const getSupportedKey = (key: string) => {
-    for (const side of ['left', 'right']) {
-      let nextKey = key
+    let nextKey = key
 
-      const supportKeys = side === 'left' ? supportLeftKeys.value : supportRightKeys.value
+    const unsupportedKey = !supportKeys[nextKey]
 
-      const unsupportedKey = !supportKeys.includes(key)
-
-      if (key.startsWith('F') && unsupportedKey) {
-        nextKey = key.replace(/F(\d+)/, 'Fn')
-      }
-
-      for (const item of ['Meta', 'Shift', 'Alt', 'Control']) {
-        if (key.startsWith(item) && unsupportedKey) {
-          const regex = new RegExp(`^(${item}).*`)
-          nextKey = key.replace(regex, '$1')
-        }
-      }
-
-      if (!supportKeys.includes(nextKey)) continue
-
-      return nextKey
+    if (key.startsWith('F') && unsupportedKey) {
+      nextKey = key.replace(/F(\d+)/, 'Fn')
     }
+
+    for (const item of ['Meta', 'Shift', 'Alt', 'Control']) {
+      if (key.startsWith(item) && unsupportedKey) {
+        const regex = new RegExp(`^(${item}).*`)
+        nextKey = key.replace(regex, '$1')
+      }
+    }
+
+    return nextKey
   }
 
-  const handleScheduleRelease = (keys: Ref<string[]>, key: string, delay = 500) => {
+  const handleScheduleRelease = (key: string, delay = 500) => {
     if (releaseTimers.has(key)) {
       clearTimeout(releaseTimers.get(key))
     }
 
     const timer = setTimeout(() => {
-      handleRelease(keys, key)
+      handleRelease(key)
 
       releaseTimers.delete(key)
     }, delay)
@@ -115,25 +88,21 @@ export function useDevice() {
 
       if (!nextValue) return
 
-      const isLeft = supportLeftKeys.value.includes(nextValue)
-
-      const pressedKeys = isLeft ? pressedLeftKeys : pressedRightKeys
-
       if (nextValue === 'CapsLock') {
-        handlePress(pressedKeys, nextValue)
+        handlePress(nextValue)
 
-        return handleScheduleRelease(pressedKeys, nextValue, 100)
+        return handleScheduleRelease(nextValue, 100)
       }
 
       if (kind === 'KeyboardPress') {
         if (isWindows) {
-          handleScheduleRelease(pressedKeys, nextValue)
+          handleScheduleRelease(nextValue)
         }
 
-        return handlePress(pressedKeys, nextValue)
+        return handlePress(nextValue)
       }
 
-      return handleRelease(pressedKeys, nextValue)
+      return handleRelease(nextValue)
     }
 
     switch (kind) {
@@ -146,18 +115,7 @@ export function useDevice() {
     }
   })
 
-  watch(pressedLeftKeys, (keys) => {
-    handleKeyChange(true, keys.length > 0)
-  })
-
-  watch(pressedRightKeys, (keys) => {
-    handleKeyChange(false, keys.length > 0)
-  })
-
   return {
-    supportLeftKeys,
-    supportRightKeys,
-    pressedLeftKeys,
-    pressedRightKeys,
+    pressedKeys,
   }
 }
