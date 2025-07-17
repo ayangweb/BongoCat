@@ -4,9 +4,9 @@ import { ref } from 'vue'
 import { LISTEN_KEY } from '../constants'
 
 import { useModel } from './useModel'
-import { useModelKeys } from './useModelKeys'
 import { useTauriListen } from './useTauriListen'
 
+import { useModelStore } from '@/stores/model'
 import { isWindows } from '@/utils/platform'
 
 interface MouseButtonEvent {
@@ -32,15 +32,15 @@ interface KeyboardEvent {
 type DeviceEvent = MouseButtonEvent | MouseMoveEvent | KeyboardEvent
 
 export function useDevice() {
+  const modelStore = useModelStore()
   const lastMousePoint = ref<MouseMoveValue>({ x: 0, y: 0 })
   const releaseTimers = new Map<string, NodeJS.Timeout>()
-  const { supportKeys, pressedKeys, handlePress, handleRelease } = useModelKeys()
-  const { handleMouseChange, handleMouseMove } = useModel()
+  const { handlePress, handleRelease, handleMouseChange, handleMouseMove } = useModel()
 
   const getSupportedKey = (key: string) => {
     let nextKey = key
 
-    const unsupportedKey = !supportKeys[nextKey]
+    const unsupportedKey = !modelStore.supportKeys[nextKey]
 
     if (key.startsWith('F') && unsupportedKey) {
       nextKey = key.replace(/F(\d+)/, 'Fn')
@@ -114,8 +114,4 @@ export function useDevice() {
         return processMouseMove(value)
     }
   })
-
-  return {
-    pressedKeys,
-  }
 }

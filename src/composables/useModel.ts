@@ -6,6 +6,7 @@ import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { monitorFromPoint } from '@tauri-apps/api/window'
 import { message } from 'ant-design-vue'
 import { isNil, round } from 'es-toolkit'
+import { forOwn } from 'es-toolkit/compat'
 import { ref, watch } from 'vue'
 
 import live2d from '../utils/live2d'
@@ -83,6 +84,24 @@ export function useModel() {
     catStore.scale = round((size.width / width) * 100)
   }
 
+  const handlePress = (key: string) => {
+    if (catStore.singleMode) {
+      forOwn(modelStore.pressedKeys, (_, key) => {
+        delete modelStore.pressedKeys[key]
+      })
+    }
+
+    const path = modelStore.supportKeys[key]
+
+    if (!path) return
+
+    modelStore.pressedKeys[key] = path
+  }
+
+  const handleRelease = (key: string) => {
+    delete modelStore.pressedKeys[key]
+  }
+
   function handleKeyChange(isLeft = true, pressed = true) {
     const id = isLeft ? 'CatParamLeftHandDown' : 'CatParamRightHandDown'
 
@@ -137,7 +156,19 @@ export function useModel() {
     live2d.setParameterValue(id, Math.max(min, value * max))
   }
 
+  watch(modelStore.pressedKeys, (keys) => {
+    const values = Object.values(keys)
+
+    const hasLeft = values.some(item => item.includes('left-'))
+    const hasRight = values.some(item => item.includes('right-'))
+
+    handleKeyChange(true, hasLeft)
+    handleKeyChange(false, hasRight)
+  }, { deep: true })
+
   return {
+    handlePress,
+    handleRelease,
     handleLoad,
     handleDestroy,
     handleResize,

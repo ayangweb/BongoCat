@@ -1,9 +1,11 @@
 import { resolveResource } from '@tauri-apps/api/path'
+import { readDir } from '@tauri-apps/plugin-fs'
 import { filter, find } from 'es-toolkit/compat'
 import { nanoid } from 'nanoid'
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { reactive, ref, watch } from 'vue'
 
+import { isImage } from '@/utils/is'
 import { join } from '@/utils/path'
 
 export type ModelMode = 'standard' | 'keyboard' | 'gamepad'
@@ -37,9 +39,11 @@ export const useModelStore = defineStore('model', () => {
   const currentModel = ref<Model>()
   const motions = ref<MotionGroup>({})
   const expressions = ref<Expression[]>([])
+  const supportKeys = reactive<Record<string, string>>({})
+  const pressedKeys = reactive<Record<string, string>>({})
 
   const init = async () => {
-    const presetModelsPath = await resolveResource('assets/models')
+    const modelsPath = await resolveResource('assets/models')
 
     const nextModels = filter(models.value, { isPreset: false })
     const presetModels = filter(models.value, { isPreset: true })
@@ -53,7 +57,7 @@ export const useModelStore = defineStore('model', () => {
         id: matched?.id ?? nanoid(),
         mode,
         isPreset: true,
-        path: join(presetModelsPath, mode),
+        path: join(modelsPath, mode),
       })
     }
 
@@ -64,11 +68,32 @@ export const useModelStore = defineStore('model', () => {
     models.value = nextModels
   }
 
+  watch(currentModel, async (model) => {
+    if (!model) return
+
+    const resourcePath = join(model.path, 'resources')
+    const groups = ['left-keys', 'right-keys']
+
+    for await (const groupName of groups) {
+      const groupDir = join(resourcePath, groupName)
+      const files = await readDir(groupDir).catch(() => [])
+      const imageFiles = files.filter(file => isImage(file.name))
+
+      for (const file of imageFiles) {
+        const fileName = file.name.split('.')[0]
+
+        supportKeys[fileName] = join(groupDir, file.name)
+      }
+    }
+  }, { deep: true, immediate: true })
+
   return {
     models,
     currentModel,
     motions,
     expressions,
+    supportKeys,
+    pressedKeys,
     init,
   }
 })

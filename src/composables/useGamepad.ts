@@ -4,7 +4,6 @@ import { invoke } from '@tauri-apps/api/core'
 import { watch } from 'vue'
 
 import { useModel } from './useModel'
-import { useModelKeys } from './useModelKeys'
 import { useTauriListen } from './useTauriListen'
 
 import { INVOKE_KEY, LISTEN_KEY } from '@/constants'
@@ -21,8 +20,7 @@ interface GamepadEvent {
 
 export function useGamepad() {
   const { currentModel } = useModelStore()
-  const { pressedKeys, handlePress, handleRelease } = useModelKeys()
-  const { handleAxisChange } = useModel()
+  const { handlePress, handleRelease, handleAxisChange } = useModel()
 
   watch(() => currentModel?.mode, (mode) => {
     if (mode === 'gamepad') {
@@ -56,8 +54,4 @@ export function useGamepad() {
         return handleRelease(name)
     }
   })
-
-  return {
-    pressedKeys,
-  }
 }

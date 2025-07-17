@@ -17,14 +17,15 @@ import { useModelStore } from '@/stores/model'
 import { join } from '@/utils/path'
 
 const appWindow = getCurrentWebviewWindow()
-const { pressedKeys: devicePressedKeys } = useDevice()
-const { handleLoad, handleDestroy, handleResize, handleKeyChange } = useModel()
+const { handleLoad, handleDestroy, handleResize } = useModel()
 const catStore = useCatStore()
 const { getSharedMenu } = useSharedMenu()
 const modelStore = useModelStore()
 const resizing = ref(false)
 const backgroundImagePath = ref<string>()
-const { pressedKeys: gamepadPressedKeys } = useGamepad()
+
+useDevice()
+useGamepad()
 
 onMounted(() => {
   invoke(INVOKE_KEY.START_DEVICE_LISTENING)
@@ -66,26 +67,6 @@ watch(() => catStore.penetrable, (value) => {
 
 watch(() => catStore.alwaysOnTop, setAlwaysOnTop, { immediate: true })
 
-watch(devicePressedKeys, (keys) => {
-  const values = Object.values(keys)
-
-  const hasLeft = values.some(item => item.includes('left-'))
-  const hasRight = values.some(item => item.includes('right-'))
-
-  handleKeyChange(true, hasLeft)
-  handleKeyChange(false, hasRight)
-}, { deep: true })
-
-watch(gamepadPressedKeys, (keys) => {
-  const values = Object.values(keys)
-
-  const hasLeft = values.some(item => item.includes('left-'))
-  const hasRight = values.some(item => item.includes('right-'))
-
-  handleKeyChange(true, hasLeft)
-  handleKeyChange(false, hasRight)
-}, { deep: true })
-
 function handleWindowDrag() {
   appWindow.startDragging()
 }
@@ -117,13 +98,7 @@ async function handleContextmenu(event: MouseEvent) {
     <canvas id="live2dCanvas" />
 
     <img
-      v-for="path in devicePressedKeys"
-      :key="path"
-      :src="convertFileSrc(path)"
-    >
-
-    <img
-      v-for="path in gamepadPressedKeys"
+      v-for="path in modelStore.pressedKeys"
       :key="path"
       :src="convertFileSrc(path)"
     >
