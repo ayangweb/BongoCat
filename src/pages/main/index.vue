@@ -1,15 +1,13 @@
 <script setup lang="ts">
-import type { MouseMoveValue } from '@/composables/useDevice'
-
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { Menu } from '@tauri-apps/api/menu'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { exists } from '@tauri-apps/plugin-fs'
-import { useDebounceFn, useEventListener, useRafFn } from '@vueuse/core'
-import { isEqual } from 'es-toolkit'
+import { useDebounceFn, useEventListener } from '@vueuse/core'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { useDevice } from '@/composables/useDevice'
+import { useGamepad } from '@/composables/useGamepad'
 import { useModel } from '@/composables/useModel'
 import { useSharedMenu } from '@/composables/useSharedMenu'
 import { INVOKE_KEY } from '@/constants'
@@ -19,13 +17,14 @@ import { useModelStore } from '@/stores/model'
 import { join } from '@/utils/path'
 
 const appWindow = getCurrentWebviewWindow()
-const { pressedMouses, mousePosition, pressedLeftKeys, pressedRightKeys } = useDevice()
-const { handleDestroy, handleResize, handleMouseDown, handleMouseMove, handleKeyDown } = useModel()
+const { pressedLeftKeys, pressedRightKeys } = useDevice()
+const { handleLoad, handleDestroy, handleResize } = useModel()
 const catStore = useCatStore()
 const { getSharedMenu } = useSharedMenu()
 const modelStore = useModelStore()
 const resizing = ref(false)
 const backgroundImagePath = ref<string>()
+useGamepad()
 
 onMounted(() => {
   invoke(INVOKE_KEY.START_DEVICE_LISTENING)
@@ -45,24 +44,7 @@ useEventListener('resize', () => {
   debouncedResize()
 })
 
-watch(pressedMouses, handleMouseDown)
-
-useRafFn((() => {
-  const cached: MouseMoveValue = { x: 0, y: 0 }
-  return () => {
-    if (isEqual(cached, mousePosition)) return
-    Object.assign(cached, mousePosition)
-    handleMouseMove(mousePosition)
-  }
-})())
-
-watch(pressedLeftKeys, (keys) => {
-  handleKeyDown('left', keys.length > 0)
-})
-
-watch(pressedRightKeys, (keys) => {
-  handleKeyDown('right', keys.length > 0)
-})
+watch(() => modelStore.currentModel, handleLoad, { deep: true, immediate: true })
 
 watch(() => catStore.visible, async (value) => {
   value ? showWindow() : hideWindow()

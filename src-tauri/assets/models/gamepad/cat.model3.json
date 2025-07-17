@@ -1,13 +1,13 @@
 {
   "Version": 3,
   "FileReferences": {
-    "Moc": "demomodel2.moc3",
+    "Moc": "demomodel3.moc3",
     "Textures": [
-      "demomodel2.1024/texture_00.png",
-      "demomodel2.1024/texture_01.png",
-      "demomodel2.1024/texture_02.png"
+      "demomodel3.1024/texture_00.png",
+      "demomodel3.1024/texture_01.png",
+      "demomodel3.1024/texture_02.png"
     ],
-    "DisplayInfo": "demomodel2.cdi3.json",
+    "DisplayInfo": "demomodel3.cdi3.json",
     "Expressions": [
       {
         "Name": "live2d_expression0.exp3.json",
@@ -54,16 +54,16 @@
   "Groups": [
     {
       "Target": "Parameter",
+      "Name": "LipSync",
+      "Ids": []
+    },
+    {
+      "Target": "Parameter",
       "Name": "EyeBlink",
       "Ids": [
         "ParamEyeLOpen",
         "ParamEyeROpen"
       ]
-    },
-    {
-      "Target": "Parameter",
-      "Name": "LipSync",
-      "Ids": []
     }
   ]
 }
