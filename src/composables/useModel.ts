@@ -6,13 +6,13 @@ import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { monitorFromPoint } from '@tauri-apps/api/window'
 import { message } from 'ant-design-vue'
 import { isNil, round } from 'es-toolkit'
-import { forOwn } from 'es-toolkit/compat'
 import { ref, watch } from 'vue'
 
 import live2d from '../utils/live2d'
 
 import { useCatStore } from '@/stores/cat'
 import { useModelStore } from '@/stores/model'
+import { clearObject } from '@/utils/shared'
 
 const appWindow = getCurrentWebviewWindow()
 
@@ -86,9 +86,7 @@ export function useModel() {
 
   const handlePress = (key: string) => {
     if (catStore.singleMode) {
-      forOwn(modelStore.pressedKeys, (_, key) => {
-        delete modelStore.pressedKeys[key]
-      })
+      clearObject(modelStore.pressedKeys)
     }
 
     const path = modelStore.supportKeys[key]

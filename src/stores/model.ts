@@ -7,6 +7,7 @@ import { reactive, ref, watch } from 'vue'
 
 import { isImage } from '@/utils/is'
 import { join } from '@/utils/path'
+import { clearObject } from '@/utils/shared'
 
 export type ModelMode = 'standard' | 'keyboard' | 'gamepad'
 
@@ -70,6 +71,8 @@ export const useModelStore = defineStore('model', () => {
 
   watch(currentModel, async (model) => {
     if (!model) return
+
+    clearObject(supportKeys)
 
     const resourcePath = join(model.path, 'resources')
     const groups = ['left-keys', 'right-keys']
