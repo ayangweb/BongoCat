@@ -16,7 +16,7 @@ import { clearObject } from '@/utils/shared'
 
 const appWindow = getCurrentWebviewWindow()
 
-interface ModelSize {
+export interface ModelSize {
   width: number
   height: number
 }
@@ -66,7 +66,7 @@ export function useModel() {
   async function handleResize() {
     if (!modelSize.value) return
 
-    live2d.fitModel()
+    live2d.resizeModel(modelSize.value)
 
     const { width, height } = modelSize.value
 
