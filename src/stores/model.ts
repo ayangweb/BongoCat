@@ -72,7 +72,7 @@ export const useModelStore = defineStore('model', () => {
   watch(currentModel, async (model) => {
     if (!model) return
 
-    clearObject(supportKeys)
+    clearObject([supportKeys, pressedKeys])
 
     const resourcePath = join(model.path, 'resources')
     const groups = ['left-keys', 'right-keys']
@@ -99,4 +99,9 @@ export const useModelStore = defineStore('model', () => {
     pressedKeys,
     init,
   }
+}, {
+  tauri: {
+    filterKeys: ['models', 'currentModel'],
+    filterKeysStrategy: 'pick',
+  },
 })
