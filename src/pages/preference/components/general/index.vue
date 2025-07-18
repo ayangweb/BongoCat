@@ -31,6 +31,13 @@ watch(() => generalStore.autostart, async (value) => {
     <ProListItem title="开机自启动">
       <Switch v-model:checked="generalStore.autostart" />
     </ProListItem>
+
+    <ProListItem
+      description="是否应从任务栏中隐藏窗口图标"
+      title="隐藏任务栏"
+    >
+      <Switch v-model:checked="generalStore.skipTaskbar" />
+    </ProListItem>
   </ProList>
 
   <ProList title="更新设置">
