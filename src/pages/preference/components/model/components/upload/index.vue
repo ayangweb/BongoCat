@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { ModelMode } from '@/stores/model'
+
 import { invoke } from '@tauri-apps/api/core'
 import { appDataDir } from '@tauri-apps/api/path'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
@@ -53,25 +55,35 @@ async function handleUpload() {
 }
 
 watch(selectPaths, async (paths) => {
-  for await (const path of paths) {
+  for await (const fromPath of paths) {
     try {
       const id = nanoid()
 
-      const files = await readDir(join(path, 'resources'))
+      let mode: ModelMode = 'standard'
 
-      const isKeyboardMode = files.some(file => file.name === 'right-keys')
+      const files = await readDir(join(fromPath, 'resources', 'right-keys')).catch(() => [])
+
+      if (files.length > 0) {
+        const fileNames = files.map(file => file.name.split('.')[0])
+
+        if (fileNames.includes('East')) {
+          mode = 'gamepad'
+        } else {
+          mode = 'keyboard'
+        }
+      }
 
       const toPath = join(await appDataDir(), 'custom-models', id)
 
       await invoke(INVOKE_KEY.COPY_DIR, {
-        fromPath: path,
+        fromPath,
         toPath,
       })
 
       modelStore.models.push({
         id,
         path: toPath,
-        mode: isKeyboardMode ? 'keyboard' : 'standard',
+        mode,
         isPreset: false,
       })
 
