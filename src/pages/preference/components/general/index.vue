@@ -33,7 +33,7 @@ watch(() => generalStore.autostart, async (value) => {
     </ProListItem>
 
     <ProListItem
-      description="启用后，即可通过 OBS 捕获窗口。"
+      description="启用后，即可通过 OBS Studio 捕获窗口。"
       title="显示任务栏图标"
     >
       <Switch v-model:checked="generalStore.taskbarVisibility" />
