@@ -68,7 +68,7 @@ function feedbackIssue() {
     </ProListItem>
 
     <ProListItem
-      description="复制软件信息并提供给 Bug Issue"
+      description="复制软件信息并提供给 Bug Issue。"
       title="软件信息"
     >
       <Button @click="copyInfo">

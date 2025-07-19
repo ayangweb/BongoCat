@@ -13,7 +13,7 @@ import { useDevice } from '@/composables/useDevice'
 import { useModel } from '@/composables/useModel'
 import { useSharedMenu } from '@/composables/useSharedMenu'
 import { INVOKE_KEY } from '@/constants'
-import { hideWindow, setAlwaysOnTop, showWindow } from '@/plugins/window'
+import { hideWindow, setAlwaysOnTop, setTaskbarVisibility, showWindow } from '@/plugins/window'
 import { useCatStore } from '@/stores/cat'
 import { useGeneralStore } from '@/stores/general.ts'
 import { useModelStore } from '@/stores/model'
@@ -86,9 +86,7 @@ watch(() => modelStore.currentModel, async (model) => {
   backgroundImagePath.value = existed ? convertFileSrc(path) : void 0
 }, { deep: true, immediate: true })
 
-watch(() => generalStore.skipTaskbar, (value) => {
-  appWindow.setSkipTaskbar(value)
-}, { immediate: true })
+watch(() => generalStore.taskbarVisibility, setTaskbarVisibility, { immediate: true })
 
 function handleWindowDrag() {
   appWindow.startDragging()

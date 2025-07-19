@@ -33,10 +33,10 @@ watch(() => generalStore.autostart, async (value) => {
     </ProListItem>
 
     <ProListItem
-      description="是否应从任务栏中隐藏窗口图标"
-      title="隐藏任务栏"
+      description="启用后，即可通过 OBS 捕获窗口。"
+      title="显示任务栏图标"
     >
-      <Switch v-model:checked="generalStore.skipTaskbar" />
+      <Switch v-model:checked="generalStore.taskbarVisibility" />
     </ProListItem>
   </ProList>
 

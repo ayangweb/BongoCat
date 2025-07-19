@@ -10,6 +10,7 @@ const COMMAND = {
   SHOW_WINDOW: 'plugin:custom-window|show_window',
   HIDE_WINDOW: 'plugin:custom-window|hide_window',
   SET_ALWAYS_ON_TOP: 'plugin:custom-window|set_always_on_top',
+  SET_TASKBAR_VISIBILITY: 'plugin:custom-window|set_taskbar_visibility',
 }
 
 export function showWindow(label?: WindowLabel) {
@@ -44,4 +45,8 @@ export async function toggleWindowVisible(label?: WindowLabel) {
   }
 
   return showWindow(label)
+}
+
+export async function setTaskbarVisibility(visible: boolean) {
+  invoke(COMMAND.SET_TASKBAR_VISIBILITY, { visible })
 }

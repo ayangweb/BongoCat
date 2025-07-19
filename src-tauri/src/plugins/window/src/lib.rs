@@ -12,7 +12,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
         .invoke_handler(generate_handler![
             commands::show_window,
             commands::hide_window,
-            commands::set_always_on_top
+            commands::set_always_on_top,
+            commands::set_taskbar_visibility,
         ])
         .build()
 }
