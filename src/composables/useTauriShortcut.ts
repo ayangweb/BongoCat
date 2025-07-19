@@ -8,7 +8,7 @@ import {
 } from '@tauri-apps/plugin-global-shortcut'
 import { ref, watch } from 'vue'
 
-export function useTauriKeyPress(shortcut: Ref<string, string>, callback: ShortcutHandler) {
+export function useTauriShortcut(shortcut: Ref<string, string>, callback: ShortcutHandler) {
   const oldShortcut = ref(shortcut.value)
 
   watch(shortcut, async (value) => {

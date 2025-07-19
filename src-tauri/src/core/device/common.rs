@@ -4,15 +4,15 @@ use serde_json::json;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter, Runtime, command};
 
-static IS_RUNNING: AtomicBool = AtomicBool::new(false);
+static IS_LISTENING: AtomicBool = AtomicBool::new(false);
 
 #[command]
 pub async fn start_device_listening<R: Runtime>(app_handle: AppHandle<R>) -> Result<(), String> {
-    if IS_RUNNING.load(Ordering::SeqCst) {
-        return Err("Device is already listening".to_string());
+    if IS_LISTENING.load(Ordering::SeqCst) {
+        return Ok(());
     }
 
-    IS_RUNNING.store(true, Ordering::SeqCst);
+    IS_LISTENING.store(true, Ordering::SeqCst);
 
     let callback = move |event: Event| {
         let device_event = match event.event_type {

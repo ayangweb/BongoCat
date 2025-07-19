@@ -1,3 +1,4 @@
+import type { ModelSize } from '@/composables/useModel'
 import type { Cubism4InternalModel } from 'pixi-live2d-display'
 
 import { convertFileSrc } from '@tauri-apps/api/core'
@@ -12,8 +13,6 @@ Live2DModel.registerTicker(Ticker)
 class Live2d {
   private app: Application | null = null
   public model: Live2DModel | null = null
-  private modelWidth = 0
-  private modelHeight = 0
 
   constructor() { }
 
@@ -58,12 +57,9 @@ class Live2d {
 
     this.model = await Live2DModel.from(modelSettings)
 
-    const { width, height } = this.model
-    this.modelWidth = width
-    this.modelHeight = height
-
     this.app?.stage.addChild(this.model)
 
+    const { width, height } = this.model
     const { motions, expressions } = modelSettings
 
     return {
@@ -78,11 +74,13 @@ class Live2d {
     this.model?.destroy()
   }
 
-  public fitModel() {
+  public resizeModel(modelSize: ModelSize) {
     if (!this.model) return
 
-    const scaleX = innerWidth / this.modelWidth
-    const scaleY = innerHeight / this.modelHeight
+    const { width, height } = modelSize
+
+    const scaleX = innerWidth / width
+    const scaleY = innerHeight / height
     const scale = Math.min(scaleX, scaleY)
 
     this.model.scale.set(scale)
@@ -118,7 +116,7 @@ class Live2d {
     }
   }
 
-  public setParameterValue(id: string, value: number) {
+  public setParameterValue(id: string, value: number | boolean) {
     const coreModel = this.getCoreModel()
 
     return coreModel?.setParameterValueById?.(id, Number(value))

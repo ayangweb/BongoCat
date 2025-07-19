@@ -127,7 +127,10 @@ async function handleOk() {
   } catch (error) {
     message.error(String(error))
   } finally {
-    state.downloading = false
+    Object.assign(state, {
+      downloading: false,
+      downloadProgress: 0,
+    })
   }
 }
 </script>

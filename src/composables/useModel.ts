@@ -1,23 +1,22 @@
-import type { MouseMoveValue } from './useDevice.ts'
-import type { Monitor } from '@tauri-apps/api/window'
+import type { MouseMoveValue } from './useDevice'
 
-import { LogicalSize, PhysicalSize } from '@tauri-apps/api/dpi'
+import { LogicalSize } from '@tauri-apps/api/dpi'
 import { resolveResource } from '@tauri-apps/api/path'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { availableMonitors as getAvailableMonitors } from '@tauri-apps/api/window'
+import { monitorFromPoint } from '@tauri-apps/api/window'
 import { message } from 'ant-design-vue'
 import { isNil, round } from 'es-toolkit'
-import { computed, onBeforeMount, ref, watch } from 'vue'
+import { ref } from 'vue'
 
 import live2d from '../utils/live2d'
-import { getCursorMonitor } from '../utils/monitor'
 
 import { useCatStore } from '@/stores/cat'
 import { useModelStore } from '@/stores/model'
+import { clearObject } from '@/utils/shared'
 
 const appWindow = getCurrentWebviewWindow()
 
-interface ModelSize {
+export interface ModelSize {
   width: number
   height: number
 }
@@ -26,28 +25,6 @@ export function useModel() {
   const modelStore = useModelStore()
   const catStore = useCatStore()
   const modelSize = ref<ModelSize>()
-  const availableMonitors = ref<Monitor[]>([])
-
-  const isOnlySingleMonitor = computed(() => availableMonitors.value.length === 1)
-
-  onBeforeMount(async () => {
-    availableMonitors.value = await getAvailableMonitors()
-  })
-
-  watch(() => modelStore.currentModel, handleLoad, { deep: true, immediate: true })
-
-  watch([() => catStore.scale, modelSize], async () => {
-    if (!modelSize.value) return
-
-    const { width, height } = modelSize.value
-
-    appWindow.setSize(
-      new PhysicalSize({
-        width: round(width * (catStore.scale / 100)),
-        height: round(height * (catStore.scale / 100)),
-      }),
-    )
-  }, { immediate: true })
 
   async function handleLoad() {
     try {
@@ -76,7 +53,7 @@ export function useModel() {
   async function handleResize() {
     if (!modelSize.value) return
 
-    live2d.fitModel()
+    live2d.resizeModel(modelSize.value)
 
     const { width, height } = modelSize.value
 
@@ -94,29 +71,47 @@ export function useModel() {
     catStore.scale = round((size.width / width) * 100)
   }
 
-  function handleKeyDown(side: 'left' | 'right', pressed: boolean) {
-    const id = side === 'left' ? 'CatParamLeftHandDown' : 'CatParamRightHandDown'
+  const handlePress = (key: string) => {
+    if (catStore.singleMode) {
+      clearObject(modelStore.pressedKeys)
+    }
 
-    const { min, max } = live2d.getParameterRange(id)
+    const path = modelStore.supportKeys[key]
 
-    live2d.setParameterValue(id, pressed ? max : min)
+    if (!path) return
+
+    modelStore.pressedKeys[key] = path
   }
 
-  async function _getCursorMonitor(mousePosition: MouseMoveValue) {
-    return isOnlySingleMonitor.value
-      ? { ...availableMonitors.value[0], cursorPosition: mousePosition }
-      : await getCursorMonitor()
+  const handleRelease = (key: string) => {
+    delete modelStore.pressedKeys[key]
   }
 
-  async function handleMouseMove(mousePosition: MouseMoveValue) {
-    const monitor = await _getCursorMonitor(mousePosition)
+  function handleKeyChange(isLeft = true, pressed = true) {
+    const id = isLeft ? 'CatParamLeftHandDown' : 'CatParamRightHandDown'
+
+    live2d.setParameterValue(id, pressed)
+  }
+
+  function handleMouseChange(key: string, pressed = true) {
+    const id = key === 'Left' ? 'ParamMouseLeftDown' : 'ParamMouseRightDown'
+
+    live2d.setParameterValue(id, pressed)
+  }
+
+  async function handleMouseMove(point: MouseMoveValue) {
+    const { x, y } = point
+
+    const monitor = await monitorFromPoint(x, y)
 
     if (!monitor) return
 
-    const { size, position, cursorPosition } = monitor
+    const { size, position } = monitor
 
-    const xRatio = (cursorPosition.x - position.x) / size.width
-    const yRatio = (cursorPosition.y - position.y) / size.height
+    const factor = await appWindow.scaleFactor()
+
+    const xRatio = ((x * factor) - position.x) / size.width
+    const yRatio = ((y * factor) - position.y) / size.height
 
     for (const id of ['ParamMouseX', 'ParamMouseY', 'ParamAngleX', 'ParamAngleY']) {
       const { min, max } = live2d.getParameterRange(id)
@@ -136,25 +131,28 @@ export function useModel() {
     }
   }
 
-  function handleMouseDown(value: string[]) {
-    const params = {
-      ParamMouseLeftDown: value.includes('Left'),
-      ParamMouseRightDown: value.includes('Right'),
-    }
+  async function handleAxisChange(id: string, value: number) {
+    const isLeftStick = id.endsWith('LX') || id.endsWith('LY')
 
-    for (const [id, pressed] of Object.entries(params)) {
-      const { min, max } = live2d.getParameterRange(id)
+    const handParamId = isLeftStick ? 'CatParamStickShowLeftHand' : 'CatParamStickShowRightHand'
 
-      live2d.setParameterValue(id, pressed ? max : min)
-    }
+    live2d.setParameterValue(handParamId, value !== 0)
+
+    const { min, max } = live2d.getParameterRange(id)
+
+    live2d.setParameterValue(id, Math.max(min, value * max))
   }
 
   return {
+    modelSize,
+    handlePress,
+    handleRelease,
     handleLoad,
     handleDestroy,
     handleResize,
-    handleKeyDown,
+    handleKeyChange,
+    handleMouseChange,
     handleMouseMove,
-    handleMouseDown,
+    handleAxisChange,
   }
 }

@@ -1,37 +1,34 @@
 <script setup lang="ts">
-import type { MouseMoveValue } from '@/composables/useDevice'
-
-import { convertFileSrc, invoke } from '@tauri-apps/api/core'
+import { convertFileSrc } from '@tauri-apps/api/core'
+import { PhysicalSize } from '@tauri-apps/api/dpi'
 import { Menu } from '@tauri-apps/api/menu'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { exists } from '@tauri-apps/plugin-fs'
-import { useDebounceFn, useEventListener, useRafFn } from '@vueuse/core'
-import { isEqual } from 'es-toolkit'
+import { useDebounceFn, useEventListener } from '@vueuse/core'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { useDevice } from '@/composables/useDevice'
+import { useGamepad } from '@/composables/useGamepad'
 import { useModel } from '@/composables/useModel'
 import { useSharedMenu } from '@/composables/useSharedMenu'
-import { INVOKE_KEY } from '@/constants'
 import { hideWindow, setAlwaysOnTop, setTaskbarVisibility, showWindow } from '@/plugins/window'
 import { useCatStore } from '@/stores/cat'
 import { useGeneralStore } from '@/stores/general.ts'
 import { useModelStore } from '@/stores/model'
 import { join } from '@/utils/path'
 
+const { startListening } = useDevice()
 const appWindow = getCurrentWebviewWindow()
-const { pressedMouses, mousePosition, pressedLeftKeys, pressedRightKeys } = useDevice()
-const { handleDestroy, handleResize, handleMouseDown, handleMouseMove, handleKeyDown } = useModel()
+const { modelSize, handleLoad, handleDestroy, handleResize, handleKeyChange } = useModel()
 const catStore = useCatStore()
 const { getSharedMenu } = useSharedMenu()
 const modelStore = useModelStore()
 const generalStore = useGeneralStore()
 const resizing = ref(false)
 const backgroundImagePath = ref<string>()
+useGamepad()
 
-onMounted(() => {
-  invoke(INVOKE_KEY.START_DEVICE_LISTENING)
-})
+onMounted(startListening)
 
 onUnmounted(handleDestroy)
 
@@ -47,24 +44,40 @@ useEventListener('resize', () => {
   debouncedResize()
 })
 
-watch(pressedMouses, handleMouseDown)
+watch(() => modelStore.currentModel, async (model) => {
+  handleLoad()
 
-useRafFn((() => {
-  const cached: MouseMoveValue = { x: 0, y: 0 }
-  return () => {
-    if (isEqual(cached, mousePosition)) return
-    Object.assign(cached, mousePosition)
-    handleMouseMove(mousePosition)
-  }
-})())
+  if (!model) return
 
-watch(pressedLeftKeys, (keys) => {
-  handleKeyDown('left', keys.length > 0)
-})
+  const path = join(model.path, 'resources', 'background.png')
 
-watch(pressedRightKeys, (keys) => {
-  handleKeyDown('right', keys.length > 0)
-})
+  const existed = await exists(path)
+
+  backgroundImagePath.value = existed ? convertFileSrc(path) : void 0
+}, { deep: true, immediate: true })
+
+watch([() => catStore.scale, modelSize], async () => {
+  if (!modelSize.value) return
+
+  const { width, height } = modelSize.value
+
+  appWindow.setSize(
+    new PhysicalSize({
+      width: Math.round(width * (catStore.scale / 100)),
+      height: Math.round(height * (catStore.scale / 100)),
+    }),
+  )
+}, { immediate: true })
+
+watch(modelStore.pressedKeys, (keys) => {
+  const values = Object.values(keys)
+
+  const hasLeft = values.some(item => item.includes('left-'))
+  const hasRight = values.some(item => item.includes('right-'))
+
+  handleKeyChange(true, hasLeft)
+  handleKeyChange(false, hasRight)
+}, { deep: true })
 
 watch(() => catStore.visible, async (value) => {
   value ? showWindow() : hideWindow()
@@ -75,16 +88,6 @@ watch(() => catStore.penetrable, (value) => {
 }, { immediate: true })
 
 watch(() => catStore.alwaysOnTop, setAlwaysOnTop, { immediate: true })
-
-watch(() => modelStore.currentModel, async (model) => {
-  if (!model) return
-
-  const path = join(model.path, 'resources', 'background.png')
-
-  const existed = await exists(path)
-
-  backgroundImagePath.value = existed ? convertFileSrc(path) : void 0
-}, { deep: true, immediate: true })
 
 watch(() => generalStore.taskbarVisibility, setTaskbarVisibility, { immediate: true })
 
@@ -100,10 +103,6 @@ async function handleContextmenu(event: MouseEvent) {
   })
 
   menu.popup()
-}
-
-function resolveKeyImagePath(key: string, side: 'left' | 'right' = 'left') {
-  return convertFileSrc(join(modelStore.currentModel!.path, 'resources', `${side}-keys`, `${key}.png`))
 }
 </script>
 
@@ -123,15 +122,9 @@ function resolveKeyImagePath(key: string, side: 'left' | 'right' = 'left') {
     <canvas id="live2dCanvas" />
 
     <img
-      v-for="key in pressedLeftKeys"
-      :key="key"
-      :src="resolveKeyImagePath(key)"
-    >
-
-    <img
-      v-for="key in pressedRightKeys"
-      :key="key"
-      :src="resolveKeyImagePath(key, 'right')"
+      v-for="path in modelStore.pressedKeys"
+      :key="path"
+      :src="convertFileSrc(path)"
     >
 
     <div

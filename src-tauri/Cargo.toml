@@ -37,6 +37,7 @@ tauri-plugin-fs = "2"
 fs_extra = "1"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-global-shortcut = "2"
+gilrs = { version = "0.11", default-features = false, features = ["xinput"] }
 
 [target."cfg(target_os = \"macos\")".dependencies]
 tauri-nspanel.workspace = true
