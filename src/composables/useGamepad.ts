@@ -35,23 +35,23 @@ export function useGamepad() {
 
     switch (name) {
       case 'LeftStickX':
+
         return handleAxisChange('CatParamStickLX', value)
       case 'LeftStickY':
+
         return handleAxisChange('CatParamStickLY', value)
       case 'RightStickX':
+
         return handleAxisChange('CatParamStickRX', value)
       case 'RightStickY':
+
         return handleAxisChange('CatParamStickRY', value)
       case 'LeftThumb':
         return live2d.setParameterValue('CatParamStickLeftDown', value !== 0)
       case 'RightThumb':
         return live2d.setParameterValue('CatParamStickRightDown', value !== 0)
       default:
-        if (value > 0) {
-          return handlePress(name)
-        }
-
-        return handleRelease(name)
+        return value > 0 ? handlePress(name) : handleRelease(name)
     }
   })
 }

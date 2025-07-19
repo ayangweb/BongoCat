@@ -9,7 +9,7 @@ static IS_LISTENING: AtomicBool = AtomicBool::new(false);
 #[command]
 pub async fn start_device_listening<R: Runtime>(app_handle: AppHandle<R>) -> Result<(), String> {
     if IS_LISTENING.load(Ordering::SeqCst) {
-        return Err("Device is already listening".to_string());
+        return Ok(());
     }
 
     IS_LISTENING.store(true, Ordering::SeqCst);

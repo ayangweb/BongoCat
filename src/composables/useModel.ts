@@ -1,12 +1,12 @@
 import type { MouseMoveValue } from './useDevice'
 
-import { LogicalSize, PhysicalSize } from '@tauri-apps/api/dpi'
+import { LogicalSize } from '@tauri-apps/api/dpi'
 import { resolveResource } from '@tauri-apps/api/path'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { monitorFromPoint } from '@tauri-apps/api/window'
 import { message } from 'ant-design-vue'
 import { isNil, round } from 'es-toolkit'
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 
 import live2d from '../utils/live2d'
 
@@ -25,19 +25,6 @@ export function useModel() {
   const modelStore = useModelStore()
   const catStore = useCatStore()
   const modelSize = ref<ModelSize>()
-
-  watch([() => catStore.scale, modelSize], async () => {
-    if (!modelSize.value) return
-
-    const { width, height } = modelSize.value
-
-    appWindow.setSize(
-      new PhysicalSize({
-        width: round(width * (catStore.scale / 100)),
-        height: round(height * (catStore.scale / 100)),
-      }),
-    )
-  }, { immediate: true })
 
   async function handleLoad() {
     try {
@@ -145,26 +132,19 @@ export function useModel() {
   }
 
   async function handleAxisChange(id: string, value: number) {
-    for (const id of ['CatParamLeftHandDown', 'CatParamStickShowLeftHand']) {
-      live2d.setParameterValue(id, value !== 0)
-    }
+    const isLeftStick = id.endsWith('LX') || id.endsWith('LY')
+
+    const handParamId = isLeftStick ? 'CatParamStickShowLeftHand' : 'CatParamStickShowRightHand'
+
+    live2d.setParameterValue(handParamId, value !== 0)
 
     const { min, max } = live2d.getParameterRange(id)
 
     live2d.setParameterValue(id, Math.max(min, value * max))
   }
 
-  watch(modelStore.pressedKeys, (keys) => {
-    const values = Object.values(keys)
-
-    const hasLeft = values.some(item => item.includes('left-'))
-    const hasRight = values.some(item => item.includes('right-'))
-
-    handleKeyChange(true, hasLeft)
-    handleKeyChange(false, hasRight)
-  }, { deep: true })
-
   return {
+    modelSize,
     handlePress,
     handleRelease,
     handleLoad,

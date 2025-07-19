@@ -1,7 +1,8 @@
+import { invoke } from '@tauri-apps/api/core'
 import { isEqual, mapValues } from 'es-toolkit'
 import { ref } from 'vue'
 
-import { LISTEN_KEY } from '../constants'
+import { INVOKE_KEY, LISTEN_KEY } from '../constants'
 
 import { useModel } from './useModel'
 import { useTauriListen } from './useTauriListen'
@@ -36,6 +37,10 @@ export function useDevice() {
   const lastMousePoint = ref<MouseMoveValue>({ x: 0, y: 0 })
   const releaseTimers = new Map<string, NodeJS.Timeout>()
   const { handlePress, handleRelease, handleMouseChange, handleMouseMove } = useModel()
+
+  const startListening = () => {
+    invoke(INVOKE_KEY.START_DEVICE_LISTENING)
+  }
 
   const getSupportedKey = (key: string) => {
     let nextKey = key
@@ -114,4 +119,8 @@ export function useDevice() {
         return processMouseMove(value)
     }
   })
+
+  return {
+    startListening,
+  }
 }
