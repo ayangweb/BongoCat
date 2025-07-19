@@ -31,6 +31,13 @@ watch(() => generalStore.autostart, async (value) => {
     <ProListItem title="开机自启动">
       <Switch v-model:checked="generalStore.autostart" />
     </ProListItem>
+
+    <ProListItem
+      description="启用后，即可通过 OBS Studio 捕获窗口。"
+      title="显示任务栏图标"
+    >
+      <Switch v-model:checked="generalStore.taskbarVisibility" />
+    </ProListItem>
   </ProList>
 
   <ProList title="更新设置">

@@ -11,8 +11,9 @@ import { useGamepad } from '@/composables/useGamepad'
 import { useModel } from '@/composables/useModel'
 import { useSharedMenu } from '@/composables/useSharedMenu'
 import { INVOKE_KEY } from '@/constants'
-import { hideWindow, setAlwaysOnTop, showWindow } from '@/plugins/window'
+import { hideWindow, setAlwaysOnTop, setTaskbarVisibility, showWindow } from '@/plugins/window'
 import { useCatStore } from '@/stores/cat'
+import { useGeneralStore } from '@/stores/general.ts'
 import { useModelStore } from '@/stores/model'
 import { join } from '@/utils/path'
 
@@ -21,6 +22,7 @@ const { handleLoad, handleDestroy, handleResize } = useModel()
 const catStore = useCatStore()
 const { getSharedMenu } = useSharedMenu()
 const modelStore = useModelStore()
+const generalStore = useGeneralStore()
 const resizing = ref(false)
 const backgroundImagePath = ref<string>()
 
@@ -66,6 +68,18 @@ watch(() => catStore.penetrable, (value) => {
 }, { immediate: true })
 
 watch(() => catStore.alwaysOnTop, setAlwaysOnTop, { immediate: true })
+
+watch(() => modelStore.currentModel, async (model) => {
+  if (!model) return
+
+  const path = join(model.path, 'resources', 'background.png')
+
+  const existed = await exists(path)
+
+  backgroundImagePath.value = existed ? convertFileSrc(path) : void 0
+}, { deep: true, immediate: true })
+
+watch(() => generalStore.taskbarVisibility, setTaskbarVisibility, { immediate: true })
 
 function handleWindowDrag() {
   appWindow.startDragging()

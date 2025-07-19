@@ -74,3 +74,8 @@ pub fn set_macos_panel<R: Runtime>(
         });
     }
 }
+
+#[command]
+pub async fn set_taskbar_visibility<R: Runtime>(app_handle: AppHandle<R>, visible: bool) {
+    let _ = app_handle.set_dock_visibility(visible);
+}

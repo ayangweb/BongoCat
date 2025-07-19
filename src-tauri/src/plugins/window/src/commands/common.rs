@@ -19,3 +19,8 @@ pub async fn set_always_on_top<R: Runtime>(
 ) {
     shared_set_always_on_top(&app_handle, &window, always_on_top);
 }
+
+#[command]
+pub async fn set_taskbar_visibility<R: Runtime>(window: WebviewWindow<R>, visible: bool) {
+    let _ = window.set_skip_taskbar(!visible);
+}
