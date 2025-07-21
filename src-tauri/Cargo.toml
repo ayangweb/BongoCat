@@ -37,17 +37,11 @@ tauri-plugin-fs = "2"
 fs_extra = "1"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-global-shortcut = "2"
+rdev = { git = "https://github.com/ayangweb/rdev" }
 gilrs = { version = "0.11", default-features = false, features = ["xinput"] }
 
 [target."cfg(target_os = \"macos\")".dependencies]
 tauri-nspanel.workspace = true
-
-[target."cfg(not(target_os = \"linux\"))".dependencies]
-rdev = { git = "https://github.com/ayangweb/rdev" }
-
-[target."cfg(target_os = \"linux\")".dependencies]
-nix = { version = "0.30", features = ["poll"] }
-input = "0.9"
 
 [features]
 cargo-clippy = []
