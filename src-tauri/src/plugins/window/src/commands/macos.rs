@@ -1,8 +1,7 @@
-#![allow(deprecated)]
 use super::{is_main_window, shared_hide_window, shared_set_always_on_top, shared_show_window};
 use crate::MAIN_WINDOW_LABEL;
 use tauri::{AppHandle, Runtime, WebviewWindow, command};
-use tauri_nspanel::{ManagerExt, cocoa::appkit::NSMainMenuWindowLevel};
+use tauri_nspanel::{ManagerExt, PanelLevel};
 
 pub enum MacOSPanelStatus {
     Show,
@@ -60,11 +59,11 @@ pub fn set_macos_panel<R: Runtime>(
                         panel.show();
                     }
                     MacOSPanelStatus::Hide => {
-                        panel.order_out(None);
+                        panel.hide();
                     }
                     MacOSPanelStatus::SetAlwaysOnTop(always_on_top) => {
                         if always_on_top {
-                            panel.set_level(NSMainMenuWindowLevel);
+                            panel.set_level(PanelLevel::MainMenu.value());
                         } else {
                             panel.set_level(-1);
                         };
