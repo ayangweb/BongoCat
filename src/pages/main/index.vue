@@ -2,9 +2,11 @@
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { PhysicalSize } from '@tauri-apps/api/dpi'
 import { Menu } from '@tauri-apps/api/menu'
+import { sep } from '@tauri-apps/api/path'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { exists } from '@tauri-apps/plugin-fs'
 import { useDebounceFn, useEventListener } from '@vueuse/core'
+import { nth } from 'es-toolkit/compat'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { useDevice } from '@/composables/useDevice'
@@ -70,10 +72,12 @@ watch([() => catStore.scale, modelSize], async () => {
 }, { immediate: true })
 
 watch([modelStore.pressedKeys, stickActive], ([keys, stickActive]) => {
-  const values = Object.values(keys)
+  const dirs = Object.values(keys).map((path) => {
+    return nth(path.split(sep()), -2)!
+  })
 
-  const hasLeft = values.some(item => item.includes('left-'))
-  const hasRight = values.some(item => item.includes('right-'))
+  const hasLeft = dirs.some(dir => dir.startsWith('left'))
+  const hasRight = dirs.some(dir => dir.startsWith('right'))
 
   handleKeyChange(true, stickActive.left || hasLeft)
   handleKeyChange(false, stickActive.right || hasRight)

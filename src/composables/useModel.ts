@@ -1,8 +1,9 @@
 import { LogicalSize } from '@tauri-apps/api/dpi'
-import { resolveResource } from '@tauri-apps/api/path'
+import { resolveResource, sep } from '@tauri-apps/api/path'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { message } from 'ant-design-vue'
 import { isNil, round } from 'es-toolkit'
+import { nth } from 'es-toolkit/compat'
 import { ref } from 'vue'
 
 import live2d from '../utils/live2d'
@@ -10,7 +11,6 @@ import live2d from '../utils/live2d'
 import { useCatStore } from '@/stores/cat'
 import { useModelStore } from '@/stores/model'
 import { getCursorMonitor } from '@/utils/monitor'
-import { clearObject } from '@/utils/shared'
 
 const appWindow = getCurrentWebviewWindow()
 
@@ -70,13 +70,21 @@ export function useModel() {
   }
 
   const handlePress = (key: string) => {
-    if (catStore.singleMode) {
-      clearObject(modelStore.pressedKeys)
-    }
-
     const path = modelStore.supportKeys[key]
 
     if (!path) return
+
+    if (catStore.singleMode) {
+      const dirName = nth(path.split(sep()), -2)!
+
+      const filterKeys = Object.entries(modelStore.pressedKeys).filter(([, value]) => {
+        return value.includes(dirName)
+      })
+
+      for (const [key] of filterKeys) {
+        handleRelease(key)
+      }
+    }
 
     modelStore.pressedKeys[key] = path
   }
