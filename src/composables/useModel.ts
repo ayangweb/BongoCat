@@ -126,12 +126,6 @@ export function useModel() {
   }
 
   async function handleAxisChange(id: string, value: number) {
-    const isLeftStick = id.endsWith('LX') || id.endsWith('LY')
-
-    const handParamId = isLeftStick ? 'CatParamStickShowLeftHand' : 'CatParamStickShowRightHand'
-
-    live2d.setParameterValue(handParamId, value !== 0)
-
     const { min, max } = live2d.getParameterRange(id)
 
     live2d.setParameterValue(id, Math.max(min, value * max))
