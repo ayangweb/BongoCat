@@ -45,7 +45,12 @@ pub fn run() {
                 show_preference_window(app_handle);
             },
         ))
-        .plugin(tauri_plugin_log::Builder::new().build())
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .timezone_strategy(tauri_plugin_log::TimezoneStrategy::UseLocal)
+                .filter(|metadata| !metadata.target().contains("gilrs"))
+                .build(),
+        )
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
             None,
