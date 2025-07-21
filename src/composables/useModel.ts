@@ -1,9 +1,6 @@
-import type { MouseMoveValue } from './useDevice'
-
 import { LogicalSize } from '@tauri-apps/api/dpi'
 import { resolveResource } from '@tauri-apps/api/path'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { monitorFromPoint } from '@tauri-apps/api/window'
 import { message } from 'ant-design-vue'
 import { isNil, round } from 'es-toolkit'
 import { ref } from 'vue'
@@ -12,6 +9,7 @@ import live2d from '../utils/live2d'
 
 import { useCatStore } from '@/stores/cat'
 import { useModelStore } from '@/stores/model'
+import { getCursorMonitor } from '@/utils/monitor'
 import { clearObject } from '@/utils/shared'
 
 const appWindow = getCurrentWebviewWindow()
@@ -99,19 +97,15 @@ export function useModel() {
     live2d.setParameterValue(id, pressed)
   }
 
-  async function handleMouseMove(point: MouseMoveValue) {
-    const { x, y } = point
-
-    const monitor = await monitorFromPoint(x, y)
+  async function handleMouseMove() {
+    const monitor = await getCursorMonitor()
 
     if (!monitor) return
 
-    const { size, position } = monitor
+    const { size, position, cursorPoint } = monitor
 
-    // const factor = await appWindow.scaleFactor()
-
-    const xRatio = ((x * devicePixelRatio) - position.x) / size.width
-    const yRatio = ((y * devicePixelRatio) - position.y) / size.height
+    const xRatio = (cursorPoint.x - position.x) / size.width
+    const yRatio = (cursorPoint.y - position.y) / size.height
 
     for (const id of ['ParamMouseX', 'ParamMouseY', 'ParamAngleX', 'ParamAngleY']) {
       const { min, max } = live2d.getParameterRange(id)

@@ -15,7 +15,7 @@ interface MouseButtonEvent {
   value: string
 }
 
-export interface MouseMoveValue {
+interface MouseMoveValue {
   x: number
   y: number
 }
@@ -82,7 +82,7 @@ export function useDevice() {
 
     lastMousePoint.value = roundedValue
 
-    return handleMouseMove(roundedValue)
+    return handleMouseMove()
   }
 
   useTauriListen<DeviceEvent>(LISTEN_KEY.DEVICE_CHANGED, ({ payload }) => {
