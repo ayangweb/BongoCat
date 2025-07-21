@@ -1,7 +1,7 @@
 import type { LiteralUnion } from 'ant-design-vue/es/_util/type'
 
 import { invoke } from '@tauri-apps/api/core'
-import { reactive, watch } from 'vue'
+import { computed, reactive, watch } from 'vue'
 
 import { useModel } from './useModel'
 import { useTauriListen } from './useTauriListen'
@@ -21,6 +21,7 @@ interface GamepadEvent {
 interface StickState {
   x: number
   y: number
+  moved: boolean
   pressed: boolean
 }
 
@@ -29,13 +30,20 @@ interface Sticks {
   right: StickState
 }
 
+const INITIAL_STICK_STATE: StickState = { x: 0, y: 0, moved: false, pressed: false }
+
 export function useGamepad() {
   const { currentModel } = useModelStore()
   const { handlePress, handleRelease, handleAxisChange } = useModel()
   const sticks = reactive<Sticks>({
-    left: { x: 0, y: 0, pressed: false },
-    right: { x: 0, y: 0, pressed: false },
+    left: { ...INITIAL_STICK_STATE },
+    right: { ...INITIAL_STICK_STATE },
   })
+
+  const stickActive = computed(() => ({
+    left: sticks.left.moved || sticks.left.pressed,
+    right: sticks.right.moved || sticks.right.pressed,
+  }))
 
   watch(() => currentModel?.mode, (mode) => {
     if (mode === 'gamepad') {
@@ -45,20 +53,16 @@ export function useGamepad() {
     invoke(INVOKE_KEY.STOP_GAMEPAD_LISTING)
   }, { immediate: true })
 
-  watch(sticks.left, ({ x, y, pressed }) => {
-    const moved = x !== 0 || y !== 0
+  watch(sticks.left, ({ x, y, moved, pressed }) => {
+    sticks.left.moved = x !== 0 || y !== 0
 
-    for (const id of ['CatParamLeftHandDown', 'CatParamStickShowLeftHand']) {
-      live2d.setParameterValue(id, moved || pressed)
-    }
+    live2d.setParameterValue('CatParamStickShowLeftHand', moved || pressed)
   }, { deep: true })
 
-  watch(sticks.right, ({ x, y, pressed }) => {
-    const moved = x !== 0 || y !== 0
+  watch(sticks.right, ({ x, y, moved, pressed }) => {
+    sticks.right.moved = x !== 0 || y !== 0
 
-    for (const id of ['CatParamRightHandDown', 'CatParamStickShowRightHand']) {
-      live2d.setParameterValue(id, moved || pressed)
-    }
+    live2d.setParameterValue('CatParamStickShowRightHand', moved || pressed)
   }, { deep: true })
 
   useTauriListen<GamepadEvent>(LISTEN_KEY.GAMEPAD_CHANGED, ({ payload }) => {
@@ -93,4 +97,8 @@ export function useGamepad() {
         return value > 0 ? handlePress(name) : handleRelease(name)
     }
   })
+
+  return {
+    stickActive,
+  }
 }

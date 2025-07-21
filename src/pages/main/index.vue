@@ -26,7 +26,7 @@ const modelStore = useModelStore()
 const generalStore = useGeneralStore()
 const resizing = ref(false)
 const backgroundImagePath = ref<string>()
-useGamepad()
+const { stickActive } = useGamepad()
 
 onMounted(startListening)
 
@@ -69,14 +69,14 @@ watch([() => catStore.scale, modelSize], async () => {
   )
 }, { immediate: true })
 
-watch(modelStore.pressedKeys, (keys) => {
+watch([modelStore.pressedKeys, stickActive], ([keys, stickActive]) => {
   const values = Object.values(keys)
 
   const hasLeft = values.some(item => item.includes('left-'))
   const hasRight = values.some(item => item.includes('right-'))
 
-  handleKeyChange(true, hasLeft)
-  handleKeyChange(false, hasRight)
+  handleKeyChange(true, stickActive.left || hasLeft)
+  handleKeyChange(false, stickActive.right || hasRight)
 }, { deep: true })
 
 watch(() => catStore.visible, async (value) => {
