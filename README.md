@@ -59,7 +59,7 @@
 
 本项目的灵感来源于 [MMmmmoko](https://github.com/MMmmmoko) 大佬开发的 [Bongo-Cat-Mver](https://github.com/MMmmmoko/Bongo-Cat-Mver)。它以独特的猫咪互动功能深受用户喜爱，但仅支持 Windows 平台。作为一名深度 macOS 用户，我特别希望在自己的设备上也能使用这款可爱的猫咪，于是我决定开发一个适配 macOS 的版本。
 
-同时，得益于 [Tauri](https://github.com/tauri-apps/tauri) 强大的跨平台能力，本项目不仅支持 macOS，还兼容 Windows 和 Linux，让更多的用户都能与这只可爱的猫咪互动！
+同时，得益于 [Tauri](https://github.com/tauri-apps/tauri) 强大的跨平台能力，本项目不仅支持 macOS，还兼容 Windows 和 Linux(x11)，让更多的用户都能与这只可爱的猫咪互动！
 
 ## 下载
 
@@ -70,15 +70,11 @@
 
 ## 功能介绍
 
-- 适配 macOS、Windows 和 Linux。
+- 适配 macOS、Windows 和 Linux(x11)。
 - 根据据键盘或鼠标操作，同步移动鼠标或敲击键盘。
 - 支持导入自定义模型，自由打造专属猫咪形象。
 - 完全开源，代码公开透明，绝不收集任何用户数据。
 - 支持离线运行，无需联网，保护用户隐私。
-
-## 使用提示
-
-- Linux 下需要用户系统安装 libinput 并加入 `input` 用户组，方可在 X11 和 Wayland 下正常使用。
 
 ## 更多模型
 
