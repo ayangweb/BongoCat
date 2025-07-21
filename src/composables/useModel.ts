@@ -1,3 +1,5 @@
+import type { CursorPoint } from '@/utils/monitor'
+
 import { LogicalSize } from '@tauri-apps/api/dpi'
 import { resolveResource, sep } from '@tauri-apps/api/path'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
@@ -105,8 +107,8 @@ export function useModel() {
     live2d.setParameterValue(id, pressed)
   }
 
-  async function handleMouseMove() {
-    const monitor = await getCursorMonitor()
+  async function handleMouseMove(point: CursorPoint) {
+    const monitor = await getCursorMonitor(point)
 
     if (!monitor) return
 

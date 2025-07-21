@@ -1,14 +1,26 @@
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { cursorPosition, monitorFromPoint } from '@tauri-apps/api/window'
+import { monitorFromPoint } from '@tauri-apps/api/window'
+import { mapValues } from 'es-toolkit'
 
-export async function getCursorMonitor() {
-  const appWindow = getCurrentWebviewWindow()
+import { isMac } from './platform'
 
-  const scaleFactor = await appWindow.scaleFactor()
+export interface CursorPoint {
+  x: number
+  y: number
+}
 
-  const cursorPoint = await cursorPosition()
+export async function getCursorMonitor(point: CursorPoint) {
+  let cursorPoint = point
 
-  const { x, y } = cursorPoint.toLogical(scaleFactor)
+  if (isMac) {
+    const appWindow = getCurrentWebviewWindow()
+
+    const scaleFactor = await appWindow.scaleFactor()
+
+    cursorPoint = mapValues(cursorPoint, value => value * scaleFactor)
+  }
+
+  const { x, y } = point
 
   const monitor = await monitorFromPoint(x, y)
 

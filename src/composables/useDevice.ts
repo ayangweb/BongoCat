@@ -1,3 +1,5 @@
+import type { CursorPoint } from '@/utils/monitor'
+
 import { invoke } from '@tauri-apps/api/core'
 import { isEqual, mapValues } from 'es-toolkit'
 import { ref } from 'vue'
@@ -15,14 +17,9 @@ interface MouseButtonEvent {
   value: string
 }
 
-interface MouseMoveValue {
-  x: number
-  y: number
-}
-
 interface MouseMoveEvent {
   kind: 'MouseMove'
-  value: MouseMoveValue
+  value: CursorPoint
 }
 
 interface KeyboardEvent {
@@ -34,7 +31,7 @@ type DeviceEvent = MouseButtonEvent | MouseMoveEvent | KeyboardEvent
 
 export function useDevice() {
   const modelStore = useModelStore()
-  const lastMousePoint = ref<MouseMoveValue>({ x: 0, y: 0 })
+  const lastCursorPoint = ref<CursorPoint>({ x: 0, y: 0 })
   const releaseTimers = new Map<string, NodeJS.Timeout>()
   const { handlePress, handleRelease, handleMouseChange, handleMouseMove } = useModel()
 
@@ -75,14 +72,14 @@ export function useDevice() {
     releaseTimers.set(key, timer)
   }
 
-  const processMouseMove = (value: MouseMoveValue) => {
-    const roundedValue = mapValues(value, Math.round)
+  const processMouseMove = (point: CursorPoint) => {
+    const roundedValue = mapValues(point, Math.round)
 
-    if (isEqual(lastMousePoint.value, roundedValue)) return
+    if (isEqual(lastCursorPoint.value, roundedValue)) return
 
-    lastMousePoint.value = roundedValue
+    lastCursorPoint.value = roundedValue
 
-    return handleMouseMove()
+    return handleMouseMove(point)
   }
 
   useTauriListen<DeviceEvent>(LISTEN_KEY.DEVICE_CHANGED, ({ payload }) => {

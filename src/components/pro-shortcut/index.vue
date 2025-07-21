@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Key } from '@/utils/keyboard'
 
-import { find, map, remove, some, split } from 'es-toolkit/compat'
+import { find, map, some, split } from 'es-toolkit/compat'
 import { ref, useTemplateRef, watch } from 'vue'
 
 import ProListItem from '@/components/pro-list-item/index.vue'
@@ -90,7 +90,7 @@ function handleKeyDown(event: KeyboardEvent) {
 }
 
 function handleKeyUp(event: KeyboardEvent) {
-  remove(pressedKeys.value, { eventKey: getEventKey(event) })
+  pressedKeys.value = pressedKeys.value.filter(key => key.eventKey !== getEventKey(event))
 }
 </script>
 
@@ -99,7 +99,7 @@ function handleKeyUp(event: KeyboardEvent) {
     <div
       ref="shortcutInput"
       align="center"
-      class="relative h-8 min-w-32 flex cursor-text items-center justify-center b b-color-1 hover:b-primary-5 rounded-md b-solid px-2.5 text-color-3 outline-none transition focus:(b-primary shadow-[0_0_0_2px_rgba(5,145,255,0.1)])"
+      class="relative h-8 min-w-32 flex cursor-text items-center justify-center b b-color-1 rounded-md b-solid px-2.5 text-color-3 outline-none transition focus:(b-primary shadow-[0_0_0_2px_rgba(5,145,255,0.1)]) hover:b-primary-5"
       justify="center"
       :tabindex="0"
       @blur="handleBlur"
