@@ -1,7 +1,7 @@
 import type { LiteralUnion } from 'ant-design-vue/es/_util/type'
 
 import { invoke } from '@tauri-apps/api/core'
-import { watch } from 'vue'
+import { computed, reactive, watch } from 'vue'
 
 import { useModel } from './useModel'
 import { useTauriListen } from './useTauriListen'
@@ -18,9 +18,24 @@ interface GamepadEvent {
   value: number
 }
 
+interface Axis {
+  x: number
+  y: number
+}
+
 export function useGamepad() {
   const { currentModel } = useModelStore()
   const { handlePress, handleRelease, handleAxisChange } = useModel()
+  const leftAxis = reactive<Axis>({ x: 0, y: 0 })
+  const rightAxis = reactive<Axis>({ x: 0, y: 0 })
+
+  const leftPressed = computed(() => {
+    return leftAxis.x !== 0 || leftAxis.y !== 0
+  })
+
+  const rightPressed = computed(() => {
+    return rightAxis.x !== 0 || rightAxis.y !== 0
+  })
 
   watch(() => currentModel?.mode, (mode) => {
     if (mode === 'gamepad') {
@@ -35,15 +50,19 @@ export function useGamepad() {
 
     switch (name) {
       case 'LeftStickX':
+        leftAxis.x = value
 
         return handleAxisChange('CatParamStickLX', value)
       case 'LeftStickY':
+        leftAxis.y = value
 
         return handleAxisChange('CatParamStickLY', value)
       case 'RightStickX':
+        rightAxis.x = value
 
         return handleAxisChange('CatParamStickRX', value)
       case 'RightStickY':
+        rightAxis.y = value
 
         return handleAxisChange('CatParamStickRY', value)
       case 'LeftThumb':
@@ -54,4 +73,9 @@ export function useGamepad() {
         return value > 0 ? handlePress(name) : handleRelease(name)
     }
   })
+
+  return {
+    leftPressed,
+    rightPressed,
+  }
 }

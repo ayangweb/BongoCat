@@ -108,10 +108,10 @@ export function useModel() {
 
     const { size, position } = monitor
 
-    const factor = await appWindow.scaleFactor()
+    // const factor = await appWindow.scaleFactor()
 
-    const xRatio = ((x * factor) - position.x) / size.width
-    const yRatio = ((y * factor) - position.y) / size.height
+    const xRatio = ((x * devicePixelRatio) - position.x) / size.width
+    const yRatio = ((y * devicePixelRatio) - position.y) / size.height
 
     for (const id of ['ParamMouseX', 'ParamMouseY', 'ParamAngleX', 'ParamAngleY']) {
       const { min, max } = live2d.getParameterRange(id)
