@@ -10,7 +10,6 @@ import { useModel } from './useModel'
 import { useTauriListen } from './useTauriListen'
 
 import { useModelStore } from '@/stores/model'
-import { isWindows } from '@/utils/platform'
 
 interface MouseButtonEvent {
   kind: 'MousePress' | 'MouseRelease'
@@ -32,7 +31,6 @@ type DeviceEvent = MouseButtonEvent | MouseMoveEvent | KeyboardEvent
 export function useDevice() {
   const modelStore = useModelStore()
   const lastCursorPoint = ref<CursorPoint>({ x: 0, y: 0 })
-  const releaseTimers = new Map<string, NodeJS.Timeout>()
   const { handlePress, handleRelease, handleMouseChange, handleMouseMove } = useModel()
 
   const startListening = () => {
@@ -58,20 +56,6 @@ export function useDevice() {
     return nextKey
   }
 
-  const handleScheduleRelease = (key: string, delay = 500) => {
-    if (releaseTimers.has(key)) {
-      clearTimeout(releaseTimers.get(key))
-    }
-
-    const timer = setTimeout(() => {
-      handleRelease(key)
-
-      releaseTimers.delete(key)
-    }, delay)
-
-    releaseTimers.set(key, timer)
-  }
-
   const processMouseMove = (point: CursorPoint) => {
     const roundedValue = mapValues(point, Math.round)
 
@@ -93,14 +77,12 @@ export function useDevice() {
       if (nextValue === 'CapsLock') {
         handlePress(nextValue)
 
-        return handleScheduleRelease(nextValue, 100)
+        return setTimeout(() => {
+          handleRelease(nextValue)
+        }, 100)
       }
 
       if (kind === 'KeyboardPress') {
-        if (isWindows) {
-          handleScheduleRelease(nextValue)
-        }
-
         return handlePress(nextValue)
       }
 
