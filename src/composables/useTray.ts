@@ -42,14 +42,15 @@ export function useTray() {
 
     const menu = await getTrayMenu()
 
-    const icon = await resolveResource('assets/tray.png')
+    const path = isMac ? 'assets/tray-mac.png' : 'assets/tray.png'
+    const icon = await resolveResource(path)
 
     const options: TrayIconOptions = {
       menu,
       icon,
       id: TRAY_ID,
       tooltip: `${appName} v${appVersion}`,
-      iconAsTemplate: false,
+      iconAsTemplate: true,
       menuOnLeftClick: true,
     }
 
