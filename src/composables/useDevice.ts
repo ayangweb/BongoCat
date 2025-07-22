@@ -1,6 +1,7 @@
 import type { CursorPoint } from '@/utils/monitor'
 
 import { invoke } from '@tauri-apps/api/core'
+import { useDebounceFn } from '@vueuse/core'
 import { isEqual, mapValues } from 'es-toolkit'
 import { ref } from 'vue'
 
@@ -36,6 +37,8 @@ export function useDevice() {
   const startListening = () => {
     invoke(INVOKE_KEY.START_DEVICE_LISTENING)
   }
+
+  const debouncedRelease = useDebounceFn(handleRelease, 100)
 
   const getSupportedKey = (key: string) => {
     let nextKey = key
@@ -77,9 +80,7 @@ export function useDevice() {
       if (nextValue === 'CapsLock') {
         handlePress(nextValue)
 
-        return setTimeout(() => {
-          handleRelease(nextValue)
-        }, 100)
+        return debouncedRelease(nextValue)
       }
 
       if (kind === 'KeyboardPress') {
