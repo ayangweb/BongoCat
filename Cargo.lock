@@ -3868,7 +3868,7 @@ checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
 [[package]]
 name = "rdev"
 version = "0.5.0-2"
-source = "git+https://github.com/ayangweb/rdev#a8d5724f4533a69958280aa4df6bf6bca042d064"
+source = "git+https://github.com/kunkunsh/rdev#cb9a29e19668a52e4e67d8a0ca6739c1807f8d3f"
 dependencies = [
  "cocoa 0.24.1",
  "core-foundation 0.9.4",
