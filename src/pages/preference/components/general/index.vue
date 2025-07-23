@@ -4,6 +4,7 @@ import { Switch } from 'ant-design-vue'
 import { watch } from 'vue'
 
 import MacosPermissions from './components/macos-permissions/index.vue'
+import ThemeMode from './components/theme-mode/index.vue'
 
 import ProList from '@/components/pro-list/index.vue'
 import ProListItem from '@/components/pro-list-item/index.vue'
@@ -38,6 +39,10 @@ watch(() => generalStore.autostart, async (value) => {
     >
       <Switch v-model:checked="generalStore.taskbarVisibility" />
     </ProListItem>
+  </ProList>
+
+  <ProList title="外观设置">
+    <ThemeMode />
   </ProList>
 
   <ProList title="更新设置">

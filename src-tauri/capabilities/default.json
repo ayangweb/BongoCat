@@ -14,6 +14,7 @@
     "core:window:allow-set-ignore-cursor-events",
     "core:window:allow-set-decorations",
     "core:window:allow-set-position",
+    "core:window:allow-set-theme",
     "custom-window:default",
     "os:default",
     "process:default",

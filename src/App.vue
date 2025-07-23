@@ -3,7 +3,7 @@ import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { error } from '@tauri-apps/plugin-log'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useEventListener } from '@vueuse/core'
-import { ConfigProvider } from 'ant-design-vue'
+import { ConfigProvider, theme } from 'ant-design-vue'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import { isString } from 'es-toolkit'
 import isURL from 'is-url'
@@ -29,6 +29,7 @@ const generalStore = useGeneralStore()
 const shortcutStore = useShortcutStore()
 const appWindow = getCurrentWebviewWindow()
 const { isRestored, restoreState } = useWindowState()
+const { darkAlgorithm, defaultAlgorithm } = theme
 
 onMounted(async () => {
   generateColorVars()
@@ -79,7 +80,12 @@ useEventListener('click', (event) => {
 </script>
 
 <template>
-  <ConfigProvider :locale="zhCN">
+  <ConfigProvider
+    :locale="zhCN"
+    :theme="{
+      algorithm: generalStore.appearance.isDark ? darkAlgorithm : defaultAlgorithm,
+    }"
+  >
     <RouterView v-if="isRestored" />
   </ConfigProvider>
 </template>

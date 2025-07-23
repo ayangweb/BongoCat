@@ -4,7 +4,7 @@ import { PhysicalSize } from '@tauri-apps/api/dpi'
 import { Menu } from '@tauri-apps/api/menu'
 import { sep } from '@tauri-apps/api/path'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { exists } from '@tauri-apps/plugin-fs'
+import { exists, readDir } from '@tauri-apps/plugin-fs'
 import { useDebounceFn, useEventListener } from '@vueuse/core'
 import { nth } from 'es-toolkit/compat'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
@@ -17,7 +17,9 @@ import { hideWindow, setAlwaysOnTop, setTaskbarVisibility, showWindow } from '@/
 import { useCatStore } from '@/stores/cat'
 import { useGeneralStore } from '@/stores/general.ts'
 import { useModelStore } from '@/stores/model'
+import { isImage } from '@/utils/is'
 import { join } from '@/utils/path'
+import { clearObject } from '@/utils/shared'
 
 const { startListening } = useDevice()
 const appWindow = getCurrentWebviewWindow()
@@ -47,15 +49,32 @@ useEventListener('resize', () => {
 })
 
 watch(() => modelStore.currentModel, async (model) => {
-  handleLoad()
-
   if (!model) return
+
+  handleLoad()
 
   const path = join(model.path, 'resources', 'background.png')
 
   const existed = await exists(path)
 
   backgroundImagePath.value = existed ? convertFileSrc(path) : void 0
+
+  clearObject([modelStore.supportKeys, modelStore.pressedKeys])
+
+  const resourcePath = join(model.path, 'resources')
+  const groups = ['left-keys', 'right-keys']
+
+  for await (const groupName of groups) {
+    const groupDir = join(resourcePath, groupName)
+    const files = await readDir(groupDir).catch(() => [])
+    const imageFiles = files.filter(file => isImage(file.name))
+
+    for (const file of imageFiles) {
+      const fileName = file.name.split('.')[0]
+
+      modelStore.supportKeys[fileName] = join(groupDir, file.name)
+    }
+  }
 }, { deep: true, immediate: true })
 
 watch([() => catStore.scale, modelSize], async () => {

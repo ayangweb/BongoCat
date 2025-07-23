@@ -1,13 +1,10 @@
 import { resolveResource } from '@tauri-apps/api/path'
-import { readDir } from '@tauri-apps/plugin-fs'
 import { filter, find } from 'es-toolkit/compat'
 import { nanoid } from 'nanoid'
 import { defineStore } from 'pinia'
-import { reactive, ref, watch } from 'vue'
+import { reactive, ref } from 'vue'
 
-import { isImage } from '@/utils/is'
 import { join } from '@/utils/path'
-import { clearObject } from '@/utils/shared'
 
 export type ModelMode = 'standard' | 'keyboard' | 'gamepad'
 
@@ -68,27 +65,6 @@ export const useModelStore = defineStore('model', () => {
 
     models.value = nextModels
   }
-
-  watch(currentModel, async (model) => {
-    if (!model) return
-
-    clearObject([supportKeys, pressedKeys])
-
-    const resourcePath = join(model.path, 'resources')
-    const groups = ['left-keys', 'right-keys']
-
-    for await (const groupName of groups) {
-      const groupDir = join(resourcePath, groupName)
-      const files = await readDir(groupDir).catch(() => [])
-      const imageFiles = files.filter(file => isImage(file.name))
-
-      for (const file of imageFiles) {
-        const fileName = file.name.split('.')[0]
-
-        supportKeys[fileName] = join(groupDir, file.name)
-      }
-    }
-  }, { deep: true, immediate: true })
 
   return {
     models,
