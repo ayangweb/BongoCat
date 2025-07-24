@@ -11,23 +11,23 @@ const appWindow = getCurrentWebviewWindow()
 
 onMounted(() => {
   appWindow.onThemeChanged(async ({ payload }) => {
-    if (generalStore.appearance.theme !== 'auto') return
+    if (generalStore.theme !== 'auto') return
 
-    generalStore.appearance.isDark = payload === 'dark'
+    generalStore.isDark = payload === 'dark'
   })
 })
 
-watch(() => generalStore.appearance.theme, async (value) => {
+watch(() => generalStore.theme, async (value) => {
   let nextTheme = value === 'auto' ? null : value
 
   await appWindow.setTheme(nextTheme)
 
   nextTheme = nextTheme ?? (await appWindow.theme())
 
-  generalStore.appearance.isDark = nextTheme === 'dark'
+  generalStore.isDark = nextTheme === 'dark'
 }, { immediate: true })
 
-watch(() => generalStore.appearance.isDark, (value) => {
+watch(() => generalStore.isDark, (value) => {
   if (value) {
     document.documentElement.classList.add('dark')
   } else {
@@ -38,7 +38,7 @@ watch(() => generalStore.appearance.isDark, (value) => {
 
 <template>
   <ProListItem title="主题模式">
-    <Select v-model:value="generalStore.appearance.theme">
+    <Select v-model:value="generalStore.theme">
       <SelectOption value="auto">
         跟随系统
       </SelectOption>

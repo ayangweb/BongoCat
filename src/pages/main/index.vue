@@ -6,6 +6,7 @@ import { sep } from '@tauri-apps/api/path'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { exists, readDir } from '@tauri-apps/plugin-fs'
 import { useDebounceFn, useEventListener } from '@vueuse/core'
+import { round } from 'es-toolkit'
 import { nth } from 'es-toolkit/compat'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
@@ -114,18 +115,31 @@ watch(() => catStore.alwaysOnTop, setAlwaysOnTop, { immediate: true })
 
 watch(() => generalStore.taskbarVisibility, setTaskbarVisibility, { immediate: true })
 
-function handleWindowDrag() {
+function handleMouseDown() {
   appWindow.startDragging()
 }
 
 async function handleContextmenu(event: MouseEvent) {
   event.preventDefault()
 
+  if (event.shiftKey) return
+
   const menu = await Menu.new({
     items: await getSharedMenu(),
   })
 
   menu.popup()
+}
+
+function handleMouseMove(event: MouseEvent) {
+  const { button, shiftKey, movementX, movementY } = event
+
+  if (button !== 2 || !shiftKey) return
+
+  const delta = (movementX + movementY) * 0.5
+  const nextScale = Math.max(10, Math.min(catStore.scale + delta, 500))
+
+  catStore.scale = round(nextScale)
 }
 </script>
 
@@ -135,7 +149,8 @@ async function handleContextmenu(event: MouseEvent) {
     :class="{ '-scale-x-100': catStore.mirrorMode }"
     :style="{ opacity: catStore.opacity / 100 }"
     @contextmenu="handleContextmenu"
-    @mousedown="handleWindowDrag"
+    @mousedown="handleMouseDown"
+    @mousemove="handleMouseMove"
   >
     <img
       v-if="backgroundImagePath"

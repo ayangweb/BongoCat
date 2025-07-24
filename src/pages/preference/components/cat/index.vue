@@ -6,10 +6,6 @@ import ProListItem from '@/components/pro-list-item/index.vue'
 import { useCatStore } from '@/stores/cat'
 
 const catStore = useCatStore()
-
-function opacityFormatter(value?: number) {
-  return `${value}%`
-}
 </script>
 
 <template>
@@ -52,7 +48,7 @@ function opacityFormatter(value?: number) {
     </ProListItem>
 
     <ProListItem
-      description="将鼠标移动到窗口边缘后，也可以拖动调整窗口尺寸。"
+      description="将鼠标移至窗口边缘，或按住 Shift 并右键拖动，也可已调整窗口大小。"
       title="窗口尺寸"
     >
       <InputNumber
@@ -75,7 +71,7 @@ function opacityFormatter(value?: number) {
         class="m-0!"
         :max="100"
         :min="10"
-        :tip-formatter="opacityFormatter"
+        :tip-formatter="(value) => `${value}%`"
       />
     </ProListItem>
   </ProList>
