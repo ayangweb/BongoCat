@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { EditOutlined, MenuOutlined, UnorderedListOutlined } from '@ant-design/icons-vue'
+import { EditOutlined, MenuOutlined, SyncOutlined, UnorderedListOutlined } from '@ant-design/icons-vue'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { FloatButton, FloatButtonGroup } from 'ant-design-vue'
 </script>
@@ -15,11 +15,20 @@ import { FloatButton, FloatButtonGroup } from 'ant-design-vue'
     </template>
 
     <FloatButton
-      tooltip="如何制作模型？"
+      tooltip="制作模型"
       @click="openUrl('https://juejin.cn/post/7509872655802269731')"
     >
       <template #icon>
         <EditOutlined />
+      </template>
+    </FloatButton>
+
+    <FloatButton
+      tooltip="转换模型"
+      @click="openUrl('https://bongocat.vteamer.cc')"
+    >
+      <template #icon>
+        <SyncOutlined />
       </template>
     </FloatButton>
 
