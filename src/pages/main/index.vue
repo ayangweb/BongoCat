@@ -132,9 +132,9 @@ async function handleContextmenu(event: MouseEvent) {
 }
 
 function handleMouseMove(event: MouseEvent) {
-  const { button, shiftKey, movementX, movementY } = event
+  const { buttons, shiftKey, movementX, movementY } = event
 
-  if (button !== 2 || !shiftKey) return
+  if (buttons !== 2 || !shiftKey) return
 
   const delta = (movementX + movementY) * 0.5
   const nextScale = Math.max(10, Math.min(catStore.scale + delta, 500))
