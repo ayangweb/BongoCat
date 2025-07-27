@@ -13,27 +13,27 @@ import { FloatButton, FloatButtonGroup } from 'ant-design-vue'
     <template #icon>
       <MenuOutlined />
     </template>
-
+    <!-- 制作模型 Making a model -->
     <FloatButton
-      tooltip="制作模型"
+      tooltip="Làm một mô hình"
       @click="openUrl('https://juejin.cn/post/7509872655802269731')"
     >
       <template #icon>
         <EditOutlined />
       </template>
     </FloatButton>
-
+    <!-- Transformation model 转换模型 -->
     <FloatButton
-      tooltip="转换模型"
+      tooltip="Mô hình chuyển đổi"
       @click="openUrl('https://bongocat.vteamer.cc')"
     >
       <template #icon>
         <SyncOutlined />
       </template>
     </FloatButton>
-
+    <!-- 更多模型 More models -->
     <FloatButton
-      tooltip="更多模型"
+      tooltip="Nhiều mô hình hơn"
       @click="openUrl('https://github.com/ayangweb/Awesome-BongoCat')"
     >
       <template #icon>

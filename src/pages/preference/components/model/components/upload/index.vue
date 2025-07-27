@@ -86,8 +86,8 @@ watch(selectPaths, async (paths) => {
         mode,
         isPreset: false,
       })
-
-      message.success('导入成功')
+      // 导入成功 Imported successfully
+      message.success('Nhập khẩu thành công')
     } catch (error) {
       message.error(String(error))
     }
@@ -103,7 +103,7 @@ watch(selectPaths, async (paths) => {
     @click="handleUpload"
   >
     <div class="i-solar:upload-square-outline text-12 text-primary" />
-
-    <span>点击或拖动至此区域导入</span>
+    <!-- 点击或拖动至此区域导入 Click or drag to this area to import -->
+    <span>Nhấp hoặc kéo vào khu vực này để nhập</span>
   </div>
 </template>

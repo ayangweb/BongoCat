@@ -51,7 +51,7 @@ useTauriListen<boolean>(LISTEN_KEY.UPDATE_APP, () => {
   message.loading({
     key: MESSAGE_KEY,
     duration: 0,
-    content: '正在检查更新...',
+    content: 'Kiểm tra cập nhật...', // Checking for updates-正在检查更新
   })
 })
 
@@ -91,7 +91,7 @@ async function checkUpdate(visibleMessage = false) {
 
       message.destroy(MESSAGE_KEY)
     } else if (visibleMessage) {
-      message.success({ key: MESSAGE_KEY, content: '当前已是最新版本🎉' })
+      message.success({ key: MESSAGE_KEY, content: 'Hiện là phiên bản mới nhất 🎉' })// It is currently the latest version - 当前已是最新版本
     }
   } catch (error) {
     if (!visibleMessage) return
@@ -136,17 +136,19 @@ async function handleOk() {
 </script>
 
 <template>
+  <!--  Update later  稍后更新    Discover a new version 发现新版本 -->
   <Modal
     v-model:open="state.open"
-    cancel-text="稍后更新"
+    cancel-text="Cập nhật sau"
     centered
     :closable="false"
     :mask-closable="false"
-    title="发现新版本🥳"
+    title="Khám phá một phiên bản mới🥳"
     @ok="handleOk"
   >
+    <!-- 立即更新   Update now -->
     <template #okText>
-      {{ state.downloading ? downloadProgress : "立即更新" }}
+      {{ state.downloading ? downloadProgress : "Cập nhật ngay bây giờ" }}
     </template>
 
     <Flex
@@ -154,8 +156,9 @@ async function handleOk() {
       gap="small"
       vertical
     >
+      <!--   Updated version:   更新版本： -->
       <Flex align="center">
-        <span>更新版本：</span>
+        <span>Phiên bản cập nhật:</span>
         <span>
           <span>{{ state.update?.currentVersion }} 👉 </span>
           <a
@@ -167,12 +170,13 @@ async function handleOk() {
       </Flex>
 
       <Flex align="center">
-        <span>更新时间：</span>
+        <!--  Update time:      更新时间： -->
+        <span>Thời gian cập nhật:</span>
         <span>{{ state.update?.date }}</span>
       </Flex>
-
+      <!-- 更新日志： Update log: -->
       <Flex vertical>
-        <span>更新日志：</span>
+        <span>Nhật ký cập nhật:</span>
 
         <VueMarkdown
           class="update-note max-h-40 overflow-auto"

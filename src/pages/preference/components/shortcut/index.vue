@@ -34,35 +34,41 @@ useTauriShortcut(alwaysOnTop, () => {
 </script>
 
 <template>
-  <ProList title="快捷键">
+  <!-- 快捷键 shortcut key  -->
+  <ProList title="phím tắt">
+    <!-- 切换猫咪窗口的显示与隐藏。  Toggle the display and hide of the cat window. -->
+    <!--  打开猫咪  Open the cat -->
     <ProShortcut
       v-model="shortcutStore.visibleCat"
-      description="切换猫咪窗口的显示与隐藏。"
-      title="打开猫咪"
+      description="Chuyển đổi màn hình và ẩn của cửa sổ mèo."
+      title="Mở con mèo"
     />
-
+    <!-- 切换偏好设置窗口的显示与隐藏。Toggle the display and hide of the preferences window. -->
+    <!-- 打开偏好设置   Turn on Preferences -->
     <ProShortcut
       v-model="shortcutStore.visiblePreference"
-      description="切换偏好设置窗口的显示与隐藏。"
-      title="打开偏好设置"
+      description="Chuyển đổi màn hình và ẩn của cửa sổ Tùy chọn."
+      title="Bật sở thích"
     />
-
+    <!-- 切换猫咪的镜像模式。Switch the cat's mirror mode. -->
+    <!--  镜像模式  Mirror mode -->
     <ProShortcut
       v-model="shortcutStore.mirrorMode"
-      description="切换猫咪的镜像模式。"
-      title="镜像模式"
+      description="Chuyển đổi chế độ gương của mèo."
+      title="Chế độ gương"
     />
-
+    <!-- 切换猫咪窗口是否可穿透。 Switch whether the cat window is penetrating. -->
+    <!-- 窗口穿透   Window penetration -->
     <ProShortcut
       v-model="shortcutStore.penetrable"
-      description="切换猫咪窗口是否可穿透。"
-      title="窗口穿透"
+      description="Chuyển đổi cho dù cửa sổ mèo có thâm nhập không."
+      title="Thâm nhập cửa sổ"
     />
-
+    <!-- 切换猫咪窗口是否置顶。 Toggle whether the cat window is topped. 窗口置顶 Top window -->
     <ProShortcut
       v-model="shortcutStore.alwaysOnTop"
-      description="切换猫咪窗口是否置顶。"
-      title="窗口置顶"
+      description="Chuyển đổi xem cửa sổ mèo có đứng đầu không."
+      title="Cửa sổ trên cùng"
     />
   </ProList>
 </template>

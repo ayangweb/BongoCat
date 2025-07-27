@@ -10,12 +10,12 @@ import { exit, relaunch } from '@tauri-apps/plugin-process'
 import { watchDebounced } from '@vueuse/core'
 import { watch } from 'vue'
 
-import { GITHUB_LINK, LISTEN_KEY } from '../constants'
 import { showWindow } from '../plugins/window'
 import { isMac } from '../utils/platform'
 
 import { useSharedMenu } from './useSharedMenu'
 
+import { GITHUB_LINK, LISTEN_KEY } from '@/constants'
 import { useCatStore } from '@/stores/cat'
 
 const TRAY_ID = 'BONGO_CAT_TRAY'
@@ -24,12 +24,12 @@ export function useTray() {
   const catStore = useCatStore()
   const { getSharedMenu } = useSharedMenu()
 
-  watch([() => catStore.visible, () => catStore.penetrable], () => {
-    updateTrayMenu()
+  watch([() => catStore.visible, () => catStore.penetrable], async () => {
+    await updateTrayMenu()
   })
 
-  watchDebounced([() => catStore.scale, () => catStore.opacity], () => {
-    updateTrayMenu()
+  watchDebounced([() => catStore.scale, () => catStore.opacity], async () => {
+    await updateTrayMenu()
   }, { debounce: 200 })
 
   const createTray = async () => {
@@ -68,7 +68,8 @@ export function useTray() {
       ...await getSharedMenu(),
       PredefinedMenuItem.new({ item: 'Separator' }),
       MenuItem.new({
-        text: '检查更新',
+        // 检查更新 Check for updates
+        text: 'Kiểm tra cập nhật',
         action: () => {
           showWindow()
 
@@ -76,20 +77,24 @@ export function useTray() {
         },
       }),
       MenuItem.new({
-        text: '开源地址',
+        // 开源地址 Open source address
+        text: 'Địa chỉ nguồn mở',
         action: () => openUrl(GITHUB_LINK),
       }),
       PredefinedMenuItem.new({ item: 'Separator' }),
       MenuItem.new({
-        text: `版本 ${appVersion}`,
+        // Version 版本
+        text: `Phiên bản ${appVersion}`,
         enabled: false,
       }),
       MenuItem.new({
-        text: '重启应用',
+        // 重启应用 Restart the app
+        text: 'Khởi động lại ứng dụng',
         action: relaunch,
       }),
       MenuItem.new({
-        text: '退出应用',
+        // Exit the application  退出应用
+        text: 'Thoát khỏi ứng dụng',
         accelerator: isMac ? 'Cmd+Q' : '',
         action: () => exit(0),
       }),
@@ -105,7 +110,7 @@ export function useTray() {
 
     const menu = await getTrayMenu()
 
-    tray.setMenu(menu)
+    await tray.setMenu(menu)
   }
 
   return {

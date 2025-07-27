@@ -109,8 +109,9 @@ function handleKeyUp(event: KeyboardEvent) {
       @mouseout="isHovering = false"
       @mouseover="isHovering = true"
     >
+      <!--  按下录制快捷键 Press the recording shortcut key   点击录制快捷键  Click the recording shortcut key -->
       <span v-if="pressedKeys.length === 0">
-        {{ isFocusing ? '按下录制快捷键' : '点击录制快捷键' }}
+        {{ isFocusing ? 'Nhấn phím tắt ghi âm' : 'Nhấp vào phím tắt ghi âm' }}
       </span>
 
       <span class="text-primary font-bold">

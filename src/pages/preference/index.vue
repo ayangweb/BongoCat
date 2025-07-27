@@ -23,27 +23,27 @@ onMounted(async () => {
 
 const menus = [
   {
-    label: '猫咪设置',
+    label: 'Con mèo', // Cat settings 猫咪设置
     icon: 'i-solar:cat-bold',
     component: Cat,
   },
   {
-    label: '通用设置',
+    label: 'Chung', // 通用设置  General settings
     icon: 'i-solar:settings-minimalistic-bold',
     component: General,
   },
   {
-    label: '模型管理',
+    label: 'Mô hình', // 模型管理 Model management
     icon: 'i-solar:magic-stick-3-bold',
     component: Model,
   },
   {
-    label: '快捷键',
+    label: 'Phím tắt', // 快捷键 Shortcut keys
     icon: 'i-solar:keyboard-bold',
     component: Shortcut,
   },
   {
-    label: '关于',
+    label: 'Về', // 关于 About
     icon: 'i-solar:info-circle-bold',
     component: About,
   },

@@ -13,7 +13,8 @@ export function useSharedMenu() {
 
     const items = options.map((item) => {
       return CheckMenuItem.new({
-        text: item === 100 ? '默认' : `${item}%`,
+        // 默认 default
+        text: item === 100 ? 'mặc định' : `${item}%`,
         checked: catStore.scale === item,
         action: () => {
           catStore.scale = item
@@ -59,30 +60,35 @@ export function useSharedMenu() {
   const getSharedMenu = async () => {
     return await Promise.all([
       MenuItem.new({
-        text: '偏好设置...',
+        // 偏好设置 Preferences
+        text: 'Cài đặt',
         accelerator: isMac ? 'Cmd+,' : '',
         action: () => showWindow('preference'),
       }),
       MenuItem.new({
-        text: catStore.visible ? '隐藏猫咪' : '显示猫咪',
+        // 隐藏猫咪 Hidden cat 显示猫咪 Show cats
+        text: catStore.visible ? 'Con mèo ẩn' : 'Hiển thị mèo',
         action: () => {
           catStore.visible = !catStore.visible
         },
       }),
       PredefinedMenuItem.new({ item: 'Separator' }),
       CheckMenuItem.new({
-        text: '窗口穿透',
+        // 窗口穿透 Window penetration
+        text: 'Thâm nhập cửa sổ',
         checked: catStore.penetrable,
         action: () => {
           catStore.penetrable = !catStore.penetrable
         },
       }),
       Submenu.new({
-        text: '窗口尺寸',
+        // 窗口尺寸 Window size
+        text: 'Kích thước cửa sổ',
         items: await getScaleMenuItems(),
       }),
       Submenu.new({
-        text: '不透明度',
+        // Opacity 不透明度
+        text: 'Độ mờ',
         items: await getOpacityMenuItems(),
       }),
     ])

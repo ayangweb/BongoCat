@@ -36,7 +36,7 @@ async function copyInfo() {
 
   await writeText(JSON.stringify(info, null, 2))
 
-  message.success('复制成功')
+  message.success('Đã sao chép thành công') // Copied successfully 复制成功
 }
 
 function feedbackIssue() {
@@ -45,43 +45,49 @@ function feedbackIssue() {
 </script>
 
 <template>
-  <ProList title="关于软件">
+  <!--  关于软件  About the software  版本：Version: -->
+  <ProList title="Về phần mềm">
     <ProListItem
-      :description="`版本：v${appStore.version}`"
+      :description="`Phiên bản: v${appStore.version}`"
       :title="appStore.name"
     >
       <Button
         type="primary"
         @click="handleUpdate"
       >
-        检查更新
+        <!--   检查更新   Check for updates   -->
+        Kiểm tra cập nhật
       </Button>
 
       <template #icon>
         <div class="b b-color-2 rounded-xl b-solid">
           <img
+            alt=" "
             class="size-12"
             src="/logo.png"
           >
         </div>
       </template>
     </ProListItem>
-
+    <!-- 复制软件信息并提供给 Bug Issue。 Copy the software information and provide it to Bug Issue. -->
+    <!-- 软件信息 Software Information -->
     <ProListItem
-      description="复制软件信息并提供给 Bug Issue。"
-      title="软件信息"
+      description="Sao chép thông tin phần mềm và cung cấp nó cho vấn đề lỗi."
+      title="Thông tin phần mềm"
     >
+      <!--      复制 copy -->
       <Button @click="copyInfo">
-        复制
+        sao chép
       </Button>
     </ProListItem>
-
-    <ProListItem title="开源地址">
+    <!-- 开源地址 Open source address -->
+    <ProListItem title="Địa chỉ nguồn mở">
       <Button
         danger
         @click="feedbackIssue"
       >
-        反馈问题
+        <!--  反馈问题     Feedback questions  -->
+        Câu hỏi phản hồi
       </Button>
 
       <template #description>
@@ -90,13 +96,14 @@ function feedbackIssue() {
         </a>
       </template>
     </ProListItem>
-
+    <!-- 软件日志 Software Log -->
     <ProListItem
       :description="logDir"
-      title="软件日志"
+      title="Nhật ký phần mềm"
     >
+      <!--  查看日志   View log -->
       <Button @click="openPath(logDir)">
-        查看日志
+        Xem nhật ký
       </Button>
     </ProListItem>
   </ProList>

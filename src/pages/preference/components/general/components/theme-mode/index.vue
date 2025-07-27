@@ -37,16 +37,20 @@ watch(() => generalStore.isDark, (value) => {
 </script>
 
 <template>
-  <ProListItem title="主题模式">
+  <!-- 主题模式 Theme mode -->
+  <ProListItem title="Chế độ chủ đề">
     <Select v-model:value="generalStore.theme">
       <SelectOption value="auto">
-        跟随系统
+        <!--   Follow the system     跟随系统 -->
+        Theo hệ thống
       </SelectOption>
       <SelectOption value="light">
-        亮色模式
+        <!--   Bright color mode     亮色模式 -->
+        Chế độ màu sáng
       </SelectOption>
       <SelectOption value="dark">
-        暗色模式
+        <!--    Dark Mode    暗色模式 -->
+        Chế độ tối
       </SelectOption>
     </Select>
   </ProListItem>

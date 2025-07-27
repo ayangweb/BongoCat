@@ -90,8 +90,9 @@ async function handleDelete(item: Model) {
           />
 
           <template v-if="!item.isPreset">
+            <!--  你确定要删除此模型吗？      Are you sure you want to delete this model?    -->
             <Popconfirm
-              description="你确定要删除此模型吗？"
+              description="Bạn có chắc là bạn muốn xóa mô hình này?"
               placement="topRight"
               title="删除模型"
               @confirm="handleDelete(item)"

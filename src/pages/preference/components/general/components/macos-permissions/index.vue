@@ -33,13 +33,16 @@ onMounted(async () => {
 </script>
 
 <template>
+  <!-- 权限设置  Permission settings -->
   <ProList
     v-if="isMac"
-    title="权限设置"
+    title="Cài đặt quyền"
   >
+    <!-- 开启输入监控权限，以便接收系统的键盘和鼠标事件来响应你的操作。  Turn on input monitoring permissions to receive system keyboard and mouse events to respond to your operations.  -->
+    <!-- 输入监控权限 Enter monitoring permissions -->
     <ProListItem
-      description="开启输入监控权限，以便接收系统的键盘和鼠标事件来响应你的操作。"
-      title="输入监控权限"
+      description="Turn on input monitoring permissions to receive system keyboard and mouse events to respond to your operations."
+      title="Enter monitoring permissions"
     >
       <Space
         v-if="authorized"
@@ -47,8 +50,8 @@ onMounted(async () => {
         :size="4"
       >
         <div class="i-solar:verified-check-bold text-4.5" />
-
-        <span>已授权</span>
+        <!-- 已授权 Authorized -->
+        <span>Được ủy quyền</span>
       </Space>
 
       <Space
@@ -58,8 +61,8 @@ onMounted(async () => {
         @click="requestInputMonitoringPermission"
       >
         <div class="i-solar:round-arrow-right-bold text-4.5" />
-
-        <span>去授权</span>
+        <!-- 去授权 Go to authorization -->
+        <span>Đi đến ủy quyền</span>
       </Space>
     </ProListItem>
   </ProList>
