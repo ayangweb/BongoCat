@@ -19,16 +19,18 @@ onMounted(async () => {
   const appWindow = getCurrentWebviewWindow()
 
   await appWindow.setAlwaysOnTop(true)
-
-  await message('如果权限已开启，先选中后点击“-”按钮将其删除，再重新手动添加，并重启应用以确保权限生效。', {
-    title: '输入监控权限',
-    okLabel: '前往开启',
+  // 如果权限已开启，先选中后点击“-”按钮将其删除，再重新手动添加，并重启应用以确保权限生效。If the permission is enabled, first select it and then click the "-" button to delete it, then add it manually again, and restart the app to ensure that the permissions take effect.
+  // 输入监控权限 Enter monitoring permissions
+  // 前往开启 Go to Turn on
+  await message('Nếu quyền được bật, trước tiên hãy chọn nó và sau đó nhấp vào nút "-" để xóa nó, sau đó thêm nó theo cách thủ công và khởi động lại ứng dụng để đảm bảo rằng các quyền có hiệu lực.', {
+    title: 'Nhập quyền giám sát',
+    okLabel: 'Đi bật',
     kind: 'warning',
   })
 
   await appWindow.setAlwaysOnTop(false)
 
-  requestInputMonitoringPermission()
+  await requestInputMonitoringPermission()
 })
 </script>
 
@@ -42,7 +44,7 @@ onMounted(async () => {
     <!-- 输入监控权限 Enter monitoring permissions -->
     <ProListItem
       description="Bật quyền giám sát đầu vào để nhận các sự kiện bàn phím và chuột của hệ thống nhằm phản hồi các thao tác của bạn."
-      title="Enter monitoring permissions"
+      title="Nhập quyền giám sát"
     >
       <Space
         v-if="authorized"

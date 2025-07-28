@@ -38,8 +38,8 @@ async function handleDelete(item: Model) {
 
   try {
     await remove(path, { recursive: true })
-
-    message.success('删除成功')
+    // 删除成功 Delete successfully
+    message.success('Xóa thành công')
   } catch (error) {
     message.error(String(error))
   } finally {
@@ -91,10 +91,11 @@ async function handleDelete(item: Model) {
 
           <template v-if="!item.isPreset">
             <!--  你确定要删除此模型吗？      Are you sure you want to delete this model?    -->
+            <!--        删除模型    Delete the model -->
             <Popconfirm
               description="Bạn có chắc là bạn muốn xóa mô hình này?"
               placement="topRight"
-              title="删除模型"
+              title="Xóa mô hình"
               @confirm="handleDelete(item)"
             >
               <i
@@ -107,6 +108,5 @@ async function handleDelete(item: Model) {
       </Card>
     </MasonryGridItem>
   </MasonryGrid>
-
   <FloatMenu />
 </template>

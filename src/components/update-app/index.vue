@@ -123,7 +123,7 @@ async function handleOk() {
       }
     })
 
-    relaunch()
+    await relaunch()
   } catch (error) {
     message.error(String(error))
   } finally {
