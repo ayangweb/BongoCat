@@ -154,6 +154,7 @@ function handleMouseMove(event: MouseEvent) {
   >
     <img
       v-if="backgroundImagePath"
+      class="object-cover"
       :src="backgroundImagePath"
     >
 
@@ -162,6 +163,7 @@ function handleMouseMove(event: MouseEvent) {
     <img
       v-for="path in modelStore.pressedKeys"
       :key="path"
+      class="object-cover"
       :src="convertFileSrc(path)"
     >
 
