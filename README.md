@@ -55,9 +55,11 @@
 | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | ![macOS](https://i0.hdslb.com/bfs/openplatform/dff276b96d49c5d6c431b74b531aab72191b3d87.png) | ![Windows](https://i0.hdslb.com/bfs/openplatform/a4149b753856ee7f401989da902cf3b5ad35b39e.png) | ![Linux](https://i0.hdslb.com/bfs/openplatform/3b49f961819d3ff63b2b80251c1cc13c27e986b0.png) |
 
-## 致谢
+## 赞助商
 
-特别感谢 [UpgradeLink](https://www.toolsetlink.com) 提供高效稳定的自动更新服务，让本项目得以持续为用户带来最新版本的优质体验。
+<a href="https://www.toolsetlink.com">
+  <img height="54" alt="UpgradeLink" src="https://github.com/user-attachments/assets/6b84fb0f-3f1d-44b5-9932-2298bc999d8d" />
+</a>
 
 ## 开发背景
 
@@ -85,6 +87,8 @@
 如果你想将 Bongo-Cat-Mver 应用中的模型转换为兼容 BongoCat 的格式，可以使用以下工具：
 
 📦 [BongoCat-Converter](https://github.com/ayangweb/BongoCat-Converter)
+
+🔗 [在线使用](https://bongocat.vteamer.cc)
 
 ## 更多模型
 
