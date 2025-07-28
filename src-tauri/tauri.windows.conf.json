@@ -1,10 +1,10 @@
 {
-  "identifier": "com.ayangweb.BongoCat",
+  "identifier": "com.ayangweb.BongoCatVN",
   "bundle": {
     "windows": {
       "digestAlgorithm": "sha256",
       "nsis": {
-        "languages": ["SimpChinese"],
+        "languages": ["Vietnamese"],
         "installMode": "both"
       }
     }
