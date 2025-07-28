@@ -55,6 +55,10 @@
 | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | ![macOS](https://i0.hdslb.com/bfs/openplatform/dff276b96d49c5d6c431b74b531aab72191b3d87.png) | ![Windows](https://i0.hdslb.com/bfs/openplatform/a4149b753856ee7f401989da902cf3b5ad35b39e.png) | ![Linux](https://i0.hdslb.com/bfs/openplatform/3b49f961819d3ff63b2b80251c1cc13c27e986b0.png) |
 
+## 致谢
+
+特别感谢 [UpgradeLink](https://www.toolsetlink.com) 提供高效稳定的自动更新服务，让本项目得以持续为用户带来最新版本的优质体验。
+
 ## 开发背景
 
 本项目的灵感来源于 [MMmmmoko](https://github.com/MMmmmoko) 大佬开发的 [Bongo-Cat-Mver](https://github.com/MMmmmoko/Bongo-Cat-Mver)。它以独特的猫咪互动功能深受用户喜爱，但仅支持 Windows 平台。作为一名深度 macOS 用户，我特别希望在自己的设备上也能使用这款可爱的猫咪，于是我决定开发一个适配 macOS 的版本。
@@ -71,10 +75,16 @@
 ## 功能介绍
 
 - 适配 macOS、Windows 和 Linux(x11)。
-- 根据据键盘或鼠标操作，同步移动鼠标或敲击键盘。
+- 根据键盘、鼠标或手柄的操作，同步对应的动作。
 - 支持导入自定义模型，自由打造专属猫咪形象。
 - 完全开源，代码公开透明，绝不收集任何用户数据。
 - 支持离线运行，无需联网，保护用户隐私。
+
+## 模型转换
+
+如果你想将 Bongo-Cat-Mver 应用中的模型转换为兼容 BongoCat 的格式，可以使用以下工具：
+
+📦 [BongoCat-Converter](https://github.com/ayangweb/BongoCat-Converter)
 
 ## 更多模型
 
@@ -109,7 +119,3 @@
    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=ayangweb/BongoCat&type=Date" />
  </picture>
 </a>
-
-## 致谢
-
-- 特别感谢 [UpgradeLink](https://www.toolsetlink.com/) 提供高效稳定的自动更新服务，让本项目得以持续为用户带来最新版本的优质体验。
