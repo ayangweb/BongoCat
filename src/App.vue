@@ -35,6 +35,7 @@ onMounted(async () => {
   generateColorVars()
 
   await appStore.$tauri.start()
+  await appStore.init()
   await modelStore.$tauri.start()
   await modelStore.init()
   await catStore.$tauri.start()

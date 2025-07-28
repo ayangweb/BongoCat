@@ -78,15 +78,15 @@ watch(() => modelStore.currentModel, async (model) => {
   }
 }, { deep: true, immediate: true })
 
-watch([() => catStore.scale, modelSize], async () => {
-  if (!modelSize.value) return
+watch([() => catStore.scale, modelSize], async ([scale, modelSize]) => {
+  if (!modelSize) return
 
-  const { width, height } = modelSize.value
+  const { width, height } = modelSize
 
   appWindow.setSize(
     new PhysicalSize({
-      width: Math.round(width * (catStore.scale / 100)),
-      height: Math.round(height * (catStore.scale / 100)),
+      width: Math.round(width * (scale / 100)),
+      height: Math.round(height * (scale / 100)),
     }),
   )
 }, { immediate: true })
