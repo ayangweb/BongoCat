@@ -41,7 +41,7 @@ onMounted(async () => {
     <!-- 开启输入监控权限，以便接收系统的键盘和鼠标事件来响应你的操作。  Turn on input monitoring permissions to receive system keyboard and mouse events to respond to your operations.  -->
     <!-- 输入监控权限 Enter monitoring permissions -->
     <ProListItem
-      description="Turn on input monitoring permissions to receive system keyboard and mouse events to respond to your operations."
+      description="Bật quyền giám sát đầu vào để nhận các sự kiện bàn phím và chuột của hệ thống nhằm phản hồi các thao tác của bạn."
       title="Enter monitoring permissions"
     >
       <Space
