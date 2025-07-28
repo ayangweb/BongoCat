@@ -86,8 +86,6 @@
 
 如果你想将 Bongo-Cat-Mver 应用中的模型转换为兼容 BongoCat 的格式，可以使用以下工具：
 
-📦 [BongoCat-Converter](https://github.com/ayangweb/BongoCat-Converter)
-
 🔗 [在线使用](https://bongocat.vteamer.cc)
 
 ## 更多模型
