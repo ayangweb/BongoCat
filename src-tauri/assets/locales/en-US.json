@@ -1,0 +1,158 @@
+{
+  "meta": {
+    "name": "English"
+  },
+  "menu": {
+    "cat": "Cat Settings",
+    "general": "General",
+    "model": "Models",
+    "shortcut": "Shortcuts",
+    "about": "About",
+    "preference": "Preferences...",
+    "showCat": "Show Cat",
+    "hideCat": "Hide Cat",
+    "penetrable": "Click-Through",
+    "windowSize": "Size",
+    "opacity": "Opacity",
+    "default": "Default"
+  },
+  "trayMenu": {
+    "checkUpdate": "Check for updates",
+    "openSource": "Source Code",
+    "version": "Version",
+    "restart": "Restart",
+    "exit": "Exit"
+  },
+  "update": {
+    "checking": "Checking for updates...",
+    "latest": "You are already on the latest version 🎉",
+    "modal": {
+      "title": "New version found 🥳",
+      "cancel": "Update later",
+      "ok": "Update now",
+      "version": "Version:",
+      "date": "Update time:",
+      "log": "Changelog:"
+    }
+  },
+  "shortcut": {
+    "record": {
+      "press": "Press keys to record shortcut",
+      "click": "Click to record shortcut"
+    }
+  },
+  "common": {
+    "loading": {
+      "resizing": "Resizing..."
+    }
+  },
+  "model": {
+    "actions": {
+      "create": "Create model",
+      "convert": "Convert model",
+      "more": "More models"
+    },
+    "delete": {
+      "success": "Deleted successfully",
+      "title": "Delete model",
+      "confirm": "Are you sure you want to delete this model?"
+    },
+    "import": {
+      "success": "Import successful",
+      "tip": "Click or drag files here to import"
+    }
+  },
+  "general": {
+    "theme": {
+      "title": "Theme",
+      "auto": "System",
+      "light": "Light",
+      "dark": "Dark"
+    },
+    "settings": {
+      "app": "Application settings",
+      "appearance": "Appearance settings",
+      "update": "Update settings",
+      "launchStartup": "Launch at startup",
+      "taskbar": {
+        "title": "Show taskbar icon",
+        "description": "Once enabled, you can capture the window via OBS Studio."
+      },
+      "autoUpdate": "Check for updates automatically"
+    },
+    "languages": {
+      "title": "Languages"
+    }
+  },
+  "permissions": {
+    "title": "Permission Settings",
+    "input": {
+      "title": "Input Monitoring Permission",
+      "desc": "Enable input monitoring permission to receive system keyboard and mouse events to respond to your actions.",
+      "modal": {
+        "title": "Input Monitoring Permission",
+        "content": "If the permission is already enabled, select it and click the “-” button to remove it, then manually re-add it and restart the app to ensure the permission takes effect.",
+        "ok": "Go to Enable"
+      },
+      "authorized": "Authorized",
+      "unauthorized": "Grant Permission"
+    }
+  },
+  "shortcuts": {
+    "title": "Shortcuts",
+    "items": {
+      "visibleCat": {
+        "title": "Show/Hide Cat",
+        "desc": "Toggle the cat window's visibility."
+      },
+      "visiblePreference": {
+        "title": "Open Preferences",
+        "desc": "Toggle the preferences window visibility."
+      },
+      "mirrorMode": {
+        "title": "Mirror Mode",
+        "desc": "Toggle the cat's mirror mode."
+      },
+      "penetrable": {
+        "title": "Window Penetration",
+        "desc": "Toggle whether the cat window is click-through."
+      },
+      "alwaysOnTop": {
+        "title": "Always On Top",
+        "desc": "Toggle whether the cat window stays on top."
+      }
+    }
+  },
+  "about": {
+    "title": "About",
+    "version": "Version",
+    "checkUpdate": "Check for updates",
+    "info": "App Info",
+    "infoDesc": "Copy app information to include in bug reports.",
+    "copy": "Copy",
+    "copySuccess": "Copied successfully",
+    "openSource": "Open Source",
+    "feedback": "Report Issue",
+    "logs": "App Logs",
+    "viewLogs": "View Logs"
+  },
+  "modelSettings": {
+    "title": "Model Settings",
+    "mirrorMode": "Mirror Mode",
+    "mirrorModeDesc": "When enabled, the model will be horizontally flipped.",
+    "singleMode": "Show Last Key Only",
+    "singleModeDesc": "When enabled, only the last key pressed on each hand is displayed (prevents showing multiple hands when pressing multiple keys at once).",
+    "mouseMirror": "Mouse Mirror",
+    "mouseMirrorDesc": "When enabled, the mouse will mirror follow the hand movement."
+  },
+  "windowSettings": {
+    "title": "Window Settings",
+    "penetrable": "Window Penetration",
+    "penetrableDesc": "When enabled, the window will not affect operations on other applications.",
+    "alwaysOnTop": "Always On Top",
+    "alwaysOnTopDesc": "When enabled, the window will always stay above other applications.",
+    "size": "Window Size",
+    "sizeDesc": "Move the mouse to the edge of the window or hold Shift and right-drag to resize.",
+    "opacity": "Opacity"
+  }
+}
