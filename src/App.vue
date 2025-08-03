@@ -4,7 +4,6 @@ import { error } from '@tauri-apps/plugin-log'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useEventListener } from '@vueuse/core'
 import { ConfigProvider, theme } from 'ant-design-vue'
-import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import { isString } from 'es-toolkit'
 import isURL from 'is-url'
 import { onMounted } from 'vue'
@@ -21,6 +20,9 @@ import { useGeneralStore } from './stores/general'
 import { useModelStore } from './stores/model'
 import { useShortcutStore } from './stores/shortcut.ts'
 
+import { useLocale } from '@/composables/useLocale'
+import { antLocale } from '@/composables/useLocale.ts'
+
 const { generateColorVars } = useThemeVars()
 const appStore = useAppStore()
 const modelStore = useModelStore()
@@ -30,6 +32,7 @@ const shortcutStore = useShortcutStore()
 const appWindow = getCurrentWebviewWindow()
 const { isRestored, restoreState } = useWindowState()
 const { darkAlgorithm, defaultAlgorithm } = theme
+const { initLocale, isLocaleReady } = useLocale()
 
 onMounted(async () => {
   generateColorVars()
@@ -43,6 +46,7 @@ onMounted(async () => {
   await shortcutStore.$tauri.start()
   await restoreState()
   catStore.init()
+  await initLocale()
 })
 
 useTauriListen(LISTEN_KEY.SHOW_WINDOW, ({ payload }) => {
@@ -82,11 +86,11 @@ useEventListener('click', (event) => {
 
 <template>
   <ConfigProvider
-    :locale="zhCN"
+    :locale="antLocale"
     :theme="{
       algorithm: generalStore.isDark ? darkAlgorithm : defaultAlgorithm,
     }"
   >
-    <RouterView v-if="isRestored" />
+    <RouterView v-if="isLocaleReady && isRestored" />
   </ConfigProvider>
 </template>

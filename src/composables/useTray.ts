@@ -9,6 +9,7 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { exit, relaunch } from '@tauri-apps/plugin-process'
 import { watchDebounced } from '@vueuse/core'
 import { watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { GITHUB_LINK, LISTEN_KEY } from '../constants'
 import { showWindow } from '../plugins/window'
@@ -17,12 +18,22 @@ import { isMac } from '../utils/platform'
 import { useSharedMenu } from './useSharedMenu'
 
 import { useCatStore } from '@/stores/cat'
+import { useGeneralStore } from '@/stores/general'
 
 const TRAY_ID = 'BONGO_CAT_TRAY'
 
 export function useTray() {
   const catStore = useCatStore()
   const { getSharedMenu } = useSharedMenu()
+
+  // Use vue-i18n for tray menu translations
+  const { t } = useI18n()
+  const generalStore = useGeneralStore()
+
+  // Rebuild tray menu when locale changes
+  watch(() => generalStore.locale, () => {
+    updateTrayMenu()
+  })
 
   watch([() => catStore.visible, () => catStore.penetrable], () => {
     updateTrayMenu()
@@ -67,29 +78,29 @@ export function useTray() {
     const items = await Promise.all([
       ...await getSharedMenu(),
       PredefinedMenuItem.new({ item: 'Separator' }),
+      // Replaced hardcoded text with translation key
       MenuItem.new({
-        text: '检查更新',
+        text: t('trayMenu.checkUpdate'),
         action: () => {
           showWindow()
-
           emit(LISTEN_KEY.UPDATE_APP)
         },
       }),
       MenuItem.new({
-        text: '开源地址',
+        text: t('trayMenu.openSource'),
         action: () => openUrl(GITHUB_LINK),
       }),
       PredefinedMenuItem.new({ item: 'Separator' }),
       MenuItem.new({
-        text: `版本 ${appVersion}`,
+        text: `${t('trayMenu.version')} v${appVersion}`,
         enabled: false,
       }),
       MenuItem.new({
-        text: '重启应用',
+        text: t('trayMenu.restart'),
         action: relaunch,
       }),
       MenuItem.new({
-        text: '退出应用',
+        text: t('trayMenu.exit'),
         accelerator: isMac ? 'Cmd+Q' : '',
         action: () => exit(0),
       }),
