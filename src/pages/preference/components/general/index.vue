@@ -2,7 +2,9 @@
 import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart'
 import { Switch } from 'ant-design-vue'
 import { watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
+import Languages from './components/languages/index.vue'
 import MacosPermissions from './components/macos-permissions/index.vue'
 import ThemeMode from './components/theme-mode/index.vue'
 
@@ -10,6 +12,7 @@ import ProList from '@/components/pro-list/index.vue'
 import ProListItem from '@/components/pro-list-item/index.vue'
 import { useGeneralStore } from '@/stores/general'
 
+const { t } = useI18n()
 const generalStore = useGeneralStore()
 
 watch(() => generalStore.autostart, async (value) => {
@@ -28,25 +31,26 @@ watch(() => generalStore.autostart, async (value) => {
 <template>
   <MacosPermissions />
 
-  <ProList title="应用设置">
-    <ProListItem title="开机自启动">
+  <ProList :title="t('general.settings.app')">
+    <ProListItem :title="t('general.settings.launchStartup')">
       <Switch v-model:checked="generalStore.autostart" />
     </ProListItem>
 
     <ProListItem
-      description="启用后，即可通过 OBS Studio 捕获窗口。"
-      title="显示任务栏图标"
+      :description="t('general.settings.taskbar.description')"
+      :title="t('general.settings.taskbar.title')"
     >
       <Switch v-model:checked="generalStore.taskbarVisibility" />
     </ProListItem>
   </ProList>
 
-  <ProList title="外观设置">
+  <ProList :title="t('general.settings.appearance')">
     <ThemeMode />
+    <Languages />
   </ProList>
 
-  <ProList title="更新设置">
-    <ProListItem title="自动检查更新">
+  <ProList :title="t('general.settings.update')">
+    <ProListItem :title="t('general.settings.autoUpdate')">
       <Switch v-model:checked="generalStore.autoCheckUpdate" />
     </ProListItem>
   </ProList>

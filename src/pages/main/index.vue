@@ -9,6 +9,7 @@ import { useDebounceFn, useEventListener } from '@vueuse/core'
 import { round } from 'es-toolkit'
 import { nth } from 'es-toolkit/compat'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { useDevice } from '@/composables/useDevice'
 import { useGamepad } from '@/composables/useGamepad'
@@ -21,6 +22,8 @@ import { useModelStore } from '@/stores/model'
 import { isImage } from '@/utils/is'
 import { join } from '@/utils/path'
 import { clearObject } from '@/utils/shared'
+
+const { t } = useI18n()
 
 const { startListening } = useDevice()
 const appWindow = getCurrentWebviewWindow()
@@ -172,7 +175,7 @@ function handleMouseMove(event: MouseEvent) {
       class="flex items-center justify-center bg-black"
     >
       <span class="text-center text-5xl text-white">
-        重绘中...
+        {{ t('common.loading.resizing') }}
       </span>
     </div>
   </div>

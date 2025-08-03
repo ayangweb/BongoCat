@@ -8,6 +8,7 @@ import { Flex, message, Modal } from 'ant-design-vue'
 import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc'
 import { computed, reactive, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import VueMarkdown from 'vue-markdown-render'
 
 import { useTauriListen } from '@/composables/useTauriListen'
@@ -16,6 +17,8 @@ import { showWindow } from '@/plugins/window'
 import { useGeneralStore } from '@/stores/general'
 
 dayjs.extend(utc)
+
+const { t } = useI18n()
 
 interface State {
   open: boolean
@@ -51,7 +54,7 @@ useTauriListen<boolean>(LISTEN_KEY.UPDATE_APP, () => {
   message.loading({
     key: MESSAGE_KEY,
     duration: 0,
-    content: '正在检查更新...',
+    content: t('update.checking'),
   })
 })
 
@@ -86,12 +89,10 @@ async function checkUpdate(visibleMessage = false) {
       })
 
       showWindow()
-
       state.open = true
-
       message.destroy(MESSAGE_KEY)
     } else if (visibleMessage) {
-      message.success({ key: MESSAGE_KEY, content: '当前已是最新版本🎉' })
+      message.success({ key: MESSAGE_KEY, content: t('update.latest') })
     }
   } catch (error) {
     if (!visibleMessage) return
@@ -138,15 +139,15 @@ async function handleOk() {
 <template>
   <Modal
     v-model:open="state.open"
-    cancel-text="稍后更新"
+    :cancel-text="t('update.modal.cancel')"
     centered
     :closable="false"
     :mask-closable="false"
-    title="发现新版本🥳"
+    :title="t('update.modal.title')"
     @ok="handleOk"
   >
     <template #okText>
-      {{ state.downloading ? downloadProgress : "立即更新" }}
+      {{ state.downloading ? downloadProgress : t('update.modal.ok') }}
     </template>
 
     <Flex
@@ -155,25 +156,22 @@ async function handleOk() {
       vertical
     >
       <Flex align="center">
-        <span>更新版本：</span>
+        <span>{{ t('update.modal.version') }}</span>
         <span>
           <span>{{ state.update?.currentVersion }} 👉 </span>
-          <a
-            :href="`${GITHUB_LINK}/releases/tag/${state.update?.version}`"
-          >
+          <a :href="`${GITHUB_LINK}/releases/tag/${state.update?.version}`">
             {{ state.update?.version }}
           </a>
         </span>
       </Flex>
 
       <Flex align="center">
-        <span>更新时间：</span>
+        <span>{{ t('update.modal.date') }}</span>
         <span>{{ state.update?.date }}</span>
       </Flex>
 
       <Flex vertical>
-        <span>更新日志：</span>
-
+        <span>{{ t('update.modal.log') }}</span>
         <VueMarkdown
           class="update-note max-h-40 overflow-auto"
           :source="state.update?.body ?? ''"

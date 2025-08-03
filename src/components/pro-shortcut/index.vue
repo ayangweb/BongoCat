@@ -3,6 +3,7 @@ import type { Key } from '@/utils/keyboard'
 
 import { find, map, remove, some, split } from 'es-toolkit/compat'
 import { ref, useTemplateRef, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import ProListItem from '@/components/pro-list-item/index.vue'
 import { keys, modifierKeys, standardKeys } from '@/utils/keyboard'
@@ -11,6 +12,8 @@ const props = defineProps<{
   title: string
   description?: string
 }>()
+
+const { t } = useI18n()
 
 const modelValue = defineModel<string>()
 const shortcutInputRef = useTemplateRef('shortcutInput')
@@ -110,7 +113,7 @@ function handleKeyUp(event: KeyboardEvent) {
       @mouseover="isHovering = true"
     >
       <span v-if="pressedKeys.length === 0">
-        {{ isFocusing ? '按下录制快捷键' : '点击录制快捷键' }}
+        {{ isFocusing ? t('shortcut.record.press') : t('shortcut.record.click') }}
       </span>
 
       <span class="text-primary font-bold">

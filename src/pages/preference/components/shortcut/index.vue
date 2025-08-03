@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
+import { useI18n } from 'vue-i18n'
 
 import ProList from '@/components/pro-list/index.vue'
 import ProShortcut from '@/components/pro-shortcut/index.vue'
@@ -8,6 +9,7 @@ import { toggleWindowVisible } from '@/plugins/window'
 import { useCatStore } from '@/stores/cat'
 import { useShortcutStore } from '@/stores/shortcut.ts'
 
+const { t } = useI18n()
 const shortcutStore = useShortcutStore()
 const { visibleCat, visiblePreference, mirrorMode, penetrable, alwaysOnTop } = storeToRefs(shortcutStore)
 const catStore = useCatStore()
@@ -34,35 +36,35 @@ useTauriShortcut(alwaysOnTop, () => {
 </script>
 
 <template>
-  <ProList title="快捷键">
+  <ProList :title="t('shortcuts.title')">
     <ProShortcut
       v-model="shortcutStore.visibleCat"
-      description="切换猫咪窗口的显示与隐藏。"
-      title="打开猫咪"
+      :description="t('shortcuts.items.visibleCat.desc')"
+      :title="t('shortcuts.items.visibleCat.title')"
     />
 
     <ProShortcut
       v-model="shortcutStore.visiblePreference"
-      description="切换偏好设置窗口的显示与隐藏。"
-      title="打开偏好设置"
+      :description="t('shortcuts.items.visiblePreference.desc')"
+      :title="t('shortcuts.items.visiblePreference.title')"
     />
 
     <ProShortcut
       v-model="shortcutStore.mirrorMode"
-      description="切换猫咪的镜像模式。"
-      title="镜像模式"
+      :description="t('shortcuts.items.mirrorMode.desc')"
+      :title="t('shortcuts.items.mirrorMode.title')"
     />
 
     <ProShortcut
       v-model="shortcutStore.penetrable"
-      description="切换猫咪窗口是否可穿透。"
-      title="窗口穿透"
+      :description="t('shortcuts.items.penetrable.desc')"
+      :title="t('shortcuts.items.penetrable.title')"
     />
 
     <ProShortcut
       v-model="shortcutStore.alwaysOnTop"
-      description="切换猫咪窗口是否置顶。"
-      title="窗口置顶"
+      :description="t('shortcuts.items.alwaysOnTop.desc')"
+      :title="t('shortcuts.items.alwaysOnTop.title')"
     />
   </ProList>
 </template>

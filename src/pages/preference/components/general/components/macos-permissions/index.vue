@@ -4,11 +4,13 @@ import { message } from '@tauri-apps/plugin-dialog'
 import { Space } from 'ant-design-vue'
 import { checkInputMonitoringPermission, requestInputMonitoringPermission } from 'tauri-plugin-macos-permissions-api'
 import { onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import ProList from '@/components/pro-list/index.vue'
 import ProListItem from '@/components/pro-list-item/index.vue'
 import { isMac } from '@/utils/platform'
 
+const { t } = useI18n()
 const authorized = ref(false)
 
 onMounted(async () => {
@@ -20,9 +22,9 @@ onMounted(async () => {
 
   await appWindow.setAlwaysOnTop(true)
 
-  await message('如果权限已开启，先选中后点击“-”按钮将其删除，再重新手动添加，并重启应用以确保权限生效。', {
-    title: '输入监控权限',
-    okLabel: '前往开启',
+  await message(t('permissions.input.modal.content'), {
+    title: t('permissions.input.modal.title'),
+    okLabel: t('permissions.input.modal.ok'),
     kind: 'warning',
   })
 
@@ -35,11 +37,11 @@ onMounted(async () => {
 <template>
   <ProList
     v-if="isMac"
-    title="权限设置"
+    :title="t('permissions.title')"
   >
     <ProListItem
-      description="开启输入监控权限，以便接收系统的键盘和鼠标事件来响应你的操作。"
-      title="输入监控权限"
+      :description="t('permissions.input.desc')"
+      :title="t('permissions.input.title')"
     >
       <Space
         v-if="authorized"
@@ -48,7 +50,7 @@ onMounted(async () => {
       >
         <div class="i-solar:verified-check-bold text-4.5" />
 
-        <span>已授权</span>
+        <span>{{ t('permissions.input.authorized') }}</span>
       </Space>
 
       <Space
@@ -59,7 +61,7 @@ onMounted(async () => {
       >
         <div class="i-solar:round-arrow-right-bold text-4.5" />
 
-        <span>去授权</span>
+        <span>{{ t('permissions.input.unauthorized') }}</span>
       </Space>
     </ProListItem>
   </ProList>

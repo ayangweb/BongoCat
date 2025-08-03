@@ -2,10 +2,12 @@
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { Select, SelectOption } from 'ant-design-vue'
 import { onMounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import ProListItem from '@/components/pro-list-item/index.vue'
 import { useGeneralStore } from '@/stores/general'
 
+const { t } = useI18n()
 const generalStore = useGeneralStore()
 const appWindow = getCurrentWebviewWindow()
 
@@ -37,16 +39,19 @@ watch(() => generalStore.isDark, (value) => {
 </script>
 
 <template>
-  <ProListItem title="主题模式">
-    <Select v-model:value="generalStore.theme">
+  <ProListItem :title="t('general.theme.title')">
+    <Select
+      v-model:value="generalStore.theme"
+      style="width: 150px"
+    >
       <SelectOption value="auto">
-        跟随系统
+        {{ t('general.theme.auto') }}
       </SelectOption>
       <SelectOption value="light">
-        亮色模式
+        {{ t('general.theme.light') }}
       </SelectOption>
       <SelectOption value="dark">
-        暗色模式
+        {{ t('general.theme.dark') }}
       </SelectOption>
     </Select>
   </ProListItem>

@@ -7,12 +7,14 @@ import { openPath, openUrl } from '@tauri-apps/plugin-opener'
 import { arch, platform, version } from '@tauri-apps/plugin-os'
 import { Button, message } from 'ant-design-vue'
 import { onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import ProList from '@/components/pro-list/index.vue'
 import ProListItem from '@/components/pro-list-item/index.vue'
 import { GITHUB_LINK, LISTEN_KEY } from '@/constants'
 import { useAppStore } from '@/stores/app'
 
+const { t } = useI18n()
 const appStore = useAppStore()
 const logDir = ref('')
 
@@ -36,7 +38,7 @@ async function copyInfo() {
 
   await writeText(JSON.stringify(info, null, 2))
 
-  message.success('复制成功')
+  message.success(t('about.copySuccess'))
 }
 
 function feedbackIssue() {
@@ -45,16 +47,16 @@ function feedbackIssue() {
 </script>
 
 <template>
-  <ProList title="关于软件">
+  <ProList :title="t('about.title')">
     <ProListItem
-      :description="`版本：v${appStore.version}`"
+      :description="`${t('about.version')}: v${appStore.version}`"
       :title="appStore.name"
     >
       <Button
         type="primary"
         @click="handleUpdate"
       >
-        检查更新
+        {{ t('about.checkUpdate') }}
       </Button>
 
       <template #icon>
@@ -68,20 +70,20 @@ function feedbackIssue() {
     </ProListItem>
 
     <ProListItem
-      description="复制软件信息并提供给 Bug Issue。"
-      title="软件信息"
+      :description="t('about.infoDesc')"
+      :title="t('about.info')"
     >
       <Button @click="copyInfo">
-        复制
+        {{ t('about.copy') }}
       </Button>
     </ProListItem>
 
-    <ProListItem title="开源地址">
+    <ProListItem :title="t('about.openSource')">
       <Button
         danger
         @click="feedbackIssue"
       >
-        反馈问题
+        {{ t('about.feedback') }}
       </Button>
 
       <template #description>
@@ -93,10 +95,10 @@ function feedbackIssue() {
 
     <ProListItem
       :description="logDir"
-      title="软件日志"
+      :title="t('about.logs')"
     >
       <Button @click="openPath(logDir)">
-        查看日志
+        {{ t('about.viewLogs') }}
       </Button>
     </ProListItem>
   </ProList>

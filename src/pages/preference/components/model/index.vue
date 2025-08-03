@@ -8,6 +8,7 @@ import { revealItemInDir } from '@tauri-apps/plugin-opener'
 import { useElementSize } from '@vueuse/core'
 import { Card, message, Popconfirm } from 'ant-design-vue'
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { MasonryGrid, MasonryGridItem } from 'vue3-masonry-css'
 
 import FloatMenu from './components/float-menu/index.vue'
@@ -16,6 +17,7 @@ import Upload from './components/upload/index.vue'
 import { useModelStore } from '@/stores/model'
 import { join } from '@/utils/path'
 
+const { t } = useI18n()
 const modelStore = useModelStore()
 const firstItemRef = ref<HTMLElement>()
 
@@ -39,7 +41,7 @@ async function handleDelete(item: Model) {
   try {
     await remove(path, { recursive: true })
 
-    message.success('删除成功')
+    message.success(t('model.delete.success'))
   } catch (error) {
     message.error(String(error))
   } finally {
@@ -91,9 +93,9 @@ async function handleDelete(item: Model) {
 
           <template v-if="!item.isPreset">
             <Popconfirm
-              description="你确定要删除此模型吗？"
+              :description="t('model.delete.confirm')"
               placement="topRight"
-              title="删除模型"
+              :title="t('model.delete.title')"
               @confirm="handleDelete(item)"
             >
               <i
