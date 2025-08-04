@@ -18,7 +18,6 @@ import { isMac } from '../utils/platform'
 import { useSharedMenu } from './useSharedMenu'
 
 import { useCatStore } from '@/stores/cat'
-import { useGeneralStore } from '@/stores/general'
 
 const TRAY_ID = 'BONGO_CAT_TRAY'
 
@@ -28,10 +27,11 @@ export function useTray() {
 
   // Use vue-i18n for tray menu translations
   const { t } = useI18n()
-  const generalStore = useGeneralStore()
 
   // Rebuild tray menu when locale changes
-  watch(() => generalStore.locale, () => {
+  const { locale } = useI18n()
+
+  watch(locale, () => {
     updateTrayMenu()
   })
 

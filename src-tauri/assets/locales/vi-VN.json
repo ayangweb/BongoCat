@@ -81,7 +81,9 @@
       "autoUpdate": "Tự động kiểm tra cập nhật"
     },
     "languages": {
-      "title": "Ngôn ngữ (Languages)"
+      "title": "Ngôn ngữ",
+      "openFolder": "Mở thư mục",
+      "customize": "Bạn có thể thêm hoặc chỉnh sửa các tệp ngôn ngữ thủ công trong thư mục này:"
     }
   },
   "permissions": {

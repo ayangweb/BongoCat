@@ -81,7 +81,9 @@
       "autoUpdate": "自动检查更新"
     },
     "languages": {
-      "title": "语言 (Languages)"
+      "title": "语言",
+      "openFolder": "打开文件夹",
+      "customize": "您可以在此文件夹中手动添加或编辑语言文件："
     }
   },
   "permissions": {

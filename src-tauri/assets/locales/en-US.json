@@ -81,7 +81,9 @@
       "autoUpdate": "Check for updates automatically"
     },
     "languages": {
-      "title": "Languages"
+      "title": "Languages",
+      "openFolder": "Open folder",
+      "customize": "You can add or edit language files manually in this folder:"
     }
   },
   "permissions": {
