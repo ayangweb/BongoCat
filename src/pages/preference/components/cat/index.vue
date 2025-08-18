@@ -48,7 +48,7 @@ const catStore = useCatStore()
     </ProListItem>
 
     <ProListItem
-      description="将鼠标移至窗口边缘，或按住 Shift 并右键拖动，也可已调整窗口大小。"
+      description="将鼠标移至窗口边缘，或按住 Shift 并右键拖动，也可以调整窗口大小。"
       title="窗口尺寸"
     >
       <InputNumber
