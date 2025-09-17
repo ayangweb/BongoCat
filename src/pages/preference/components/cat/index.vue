@@ -9,47 +9,47 @@ const catStore = useCatStore()
 </script>
 
 <template>
-  <ProList title="模型设置">
+  <ProList :title="$t('pages.preference.cat.labels.modelSettings')">
     <ProListItem
-      description="启用后，模型将水平镜像翻转。"
-      title="镜像模式"
+      :description="$t('pages.preference.cat.hints.mirrorMode')"
+      :title="$t('pages.preference.cat.labels.mirrorMode')"
     >
       <Switch v-model:checked="catStore.model.mirror" />
     </ProListItem>
 
     <ProListItem
-      description="启用后，每只手只显示最后按下的一个按键。"
-      title="单键模式"
+      :description="$t('pages.preference.cat.hints.singleMode')"
+      :title="$t('pages.preference.cat.labels.singleMode')"
     >
       <Switch v-model:checked="catStore.model.single" />
     </ProListItem>
 
     <ProListItem
-      description="启用后，鼠标将镜像跟随手部移动。"
-      title="鼠标镜像"
+      :description="$t('pages.preference.cat.hints.mouseMirror')"
+      :title="$t('pages.preference.cat.labels.mouseMirror')"
     >
       <Switch v-model:checked="catStore.model.mouseMirror" />
     </ProListItem>
   </ProList>
 
-  <ProList title="窗口设置">
+  <ProList :title="$t('pages.preference.cat.labels.windowSettings')">
     <ProListItem
-      description="启用后，窗口不影响对其他应用程序的操作。"
-      title="窗口穿透"
+      :description="$t('pages.preference.cat.hints.passThrough')"
+      :title="$t('pages.preference.cat.labels.passThrough')"
     >
       <Switch v-model:checked="catStore.window.passThrough" />
     </ProListItem>
 
     <ProListItem
-      description="启用后，窗口始终显示在其他应用程序上方。"
-      title="窗口置顶"
+      :description="$t('pages.preference.cat.hints.alwaysOnTop')"
+      :title="$t('pages.preference.cat.labels.alwaysOnTop')"
     >
       <Switch v-model:checked="catStore.window.alwaysOnTop" />
     </ProListItem>
 
     <ProListItem
-      description="将鼠标移至窗口边缘，或按住 Shift 并右键拖动，也可以调整窗口大小。"
-      title="窗口尺寸"
+      :description="$t('pages.preference.cat.hints.windowSize')"
+      :title="$t('pages.preference.cat.labels.windowSize')"
     >
       <InputNumber
         v-model:value="catStore.window.scale"
@@ -59,7 +59,7 @@ const catStore = useCatStore()
       />
     </ProListItem>
 
-    <ProListItem title="窗口圆角">
+    <ProListItem :title="$t('pages.preference.cat.labels.windowRadius')">
       <InputNumber
         v-model:value="catStore.window.radius"
         addon-after="%"
@@ -69,7 +69,7 @@ const catStore = useCatStore()
     </ProListItem>
 
     <ProListItem
-      title="不透明度"
+      :title="$t('pages.preference.cat.labels.opacity')"
       vertical
     >
       <Slider

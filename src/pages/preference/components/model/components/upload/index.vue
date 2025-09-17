@@ -9,6 +9,7 @@ import { readDir } from '@tauri-apps/plugin-fs'
 import { message } from 'ant-design-vue'
 import { nanoid } from 'nanoid'
 import { onMounted, ref, useTemplateRef, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { INVOKE_KEY } from '@/constants'
 import { useModelStore } from '@/stores/model'
@@ -18,6 +19,7 @@ const dropRef = useTemplateRef('drop')
 const dragenter = ref(false)
 const selectPaths = ref<string[]>([])
 const modelStore = useModelStore()
+const { t } = useI18n()
 
 onMounted(() => {
   const appWindow = getCurrentWebviewWindow()
@@ -87,7 +89,7 @@ watch(selectPaths, async (paths) => {
         isPreset: false,
       })
 
-      message.success('导入成功')
+      message.success(t('pages.preference.model.hints.importSuccess'))
     } catch (error) {
       message.error(String(error))
     }
@@ -104,6 +106,6 @@ watch(selectPaths, async (paths) => {
   >
     <div class="i-solar:upload-square-outline text-12 text-primary" />
 
-    <span>点击或拖动至此区域导入</span>
+    <span>{{ $t('pages.preference.model.hints.clickOrDragToImport') }}</span>
   </div>
 </template>

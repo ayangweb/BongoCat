@@ -37,16 +37,16 @@ watch(() => generalStore.appearance.isDark, (value) => {
 </script>
 
 <template>
-  <ProListItem title="主题模式">
+  <ProListItem :title="$t('pages.preference.general.labels.themeMode')">
     <Select v-model:value="generalStore.appearance.theme">
       <SelectOption value="auto">
-        跟随系统
+        {{ $t('pages.preference.general.options.auto') }}
       </SelectOption>
       <SelectOption value="light">
-        亮色模式
+        {{ $t('pages.preference.general.options.lightMode') }}
       </SelectOption>
       <SelectOption value="dark">
-        暗色模式
+        {{ $t('pages.preference.general.options.darkMode') }}
       </SelectOption>
     </Select>
   </ProListItem>

@@ -7,6 +7,7 @@ import { openPath, openUrl } from '@tauri-apps/plugin-opener'
 import { arch, platform, version } from '@tauri-apps/plugin-os'
 import { Button, message } from 'ant-design-vue'
 import { onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import ProList from '@/components/pro-list/index.vue'
 import ProListItem from '@/components/pro-list-item/index.vue'
@@ -15,6 +16,7 @@ import { useAppStore } from '@/stores/app'
 
 const appStore = useAppStore()
 const logDir = ref('')
+const { t } = useI18n()
 
 onMounted(async () => {
   logDir.value = await appLogDir()
@@ -36,7 +38,7 @@ async function copyInfo() {
 
   await writeText(JSON.stringify(info, null, 2))
 
-  message.success('复制成功')
+  message.success(t('pages.preference.about.hints.copySuccess'))
 }
 
 function feedbackIssue() {
@@ -45,16 +47,16 @@ function feedbackIssue() {
 </script>
 
 <template>
-  <ProList title="关于软件">
+  <ProList :title="$t('pages.preference.about.labels.aboutApp')">
     <ProListItem
-      :description="`版本：v${appStore.version}`"
+      :description="`${$t('pages.preference.about.labels.version')}v${appStore.version}`"
       :title="appStore.name"
     >
       <Button
         type="primary"
         @click="handleUpdate"
       >
-        检查更新
+        {{ $t('pages.preference.about.buttons.checkUpdate') }}
       </Button>
 
       <template #icon>
@@ -68,20 +70,20 @@ function feedbackIssue() {
     </ProListItem>
 
     <ProListItem
-      description="复制软件信息并提供给 Bug Issue。"
-      title="软件信息"
+      :description="$t('pages.preference.about.hints.appInfo')"
+      :title="$t('pages.preference.about.labels.appInfo')"
     >
       <Button @click="copyInfo">
-        复制
+        {{ $t('pages.preference.about.buttons.copy') }}
       </Button>
     </ProListItem>
 
-    <ProListItem title="开源地址">
+    <ProListItem :title="$t('pages.preference.about.labels.openSourceAddress')">
       <Button
         danger
         @click="feedbackIssue"
       >
-        反馈问题
+        {{ $t('pages.preference.about.buttons.feedbackIssues') }}
       </Button>
 
       <template #description>
@@ -93,10 +95,10 @@ function feedbackIssue() {
 
     <ProListItem
       :description="logDir"
-      title="软件日志"
+      :title="$t('pages.preference.about.labels.appLog')"
     >
       <Button @click="openPath(logDir)">
-        查看日志
+        {{ $t('pages.preference.about.buttons.viewLog') }}
       </Button>
     </ProListItem>
   </ProList>

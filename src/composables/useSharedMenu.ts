@@ -1,5 +1,6 @@
 import { CheckMenuItem, MenuItem, PredefinedMenuItem, Submenu } from '@tauri-apps/api/menu'
 import { range } from 'es-toolkit'
+import { useI18n } from 'vue-i18n'
 
 import { showWindow } from '@/plugins/window'
 import { useCatStore } from '@/stores/cat'
@@ -7,13 +8,14 @@ import { isMac } from '@/utils/platform'
 
 export function useSharedMenu() {
   const catStore = useCatStore()
+  const { t } = useI18n()
 
   const getScaleMenuItems = async () => {
     const options = range(50, 151, 25)
 
     const items = options.map((item) => {
       return CheckMenuItem.new({
-        text: item === 100 ? '默认' : `${item}%`,
+        text: `${item}%`,
         checked: catStore.window.scale === item,
         action: () => {
           catStore.window.scale = item
@@ -59,30 +61,30 @@ export function useSharedMenu() {
   const getSharedMenu = async () => {
     return await Promise.all([
       MenuItem.new({
-        text: '偏好设置...',
+        text: t('composables.useSharedMenu.labels.preference'),
         accelerator: isMac ? 'Cmd+,' : '',
         action: () => showWindow('preference'),
       }),
       MenuItem.new({
-        text: catStore.window.visible ? '隐藏猫咪' : '显示猫咪',
+        text: catStore.window.visible ? t('composables.useSharedMenu.labels.hideCat') : t('composables.useSharedMenu.labels.showCat'),
         action: () => {
           catStore.window.visible = !catStore.window.visible
         },
       }),
       PredefinedMenuItem.new({ item: 'Separator' }),
       CheckMenuItem.new({
-        text: '窗口穿透',
+        text: t('composables.useSharedMenu.labels.passThrough'),
         checked: catStore.window.passThrough,
         action: () => {
           catStore.window.passThrough = !catStore.window.passThrough
         },
       }),
       Submenu.new({
-        text: '窗口尺寸',
+        text: t('composables.useSharedMenu.labels.windowSize'),
         items: await getScaleMenuItems(),
       }),
       Submenu.new({
-        text: '不透明度',
+        text: t('composables.useSharedMenu.labels.opacity'),
         items: await getOpacityMenuItems(),
       }),
     ])

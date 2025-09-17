@@ -1,7 +1,12 @@
 import type { Theme } from '@tauri-apps/api/window'
 
 import { defineStore } from 'pinia'
+import { getLocale } from 'tauri-plugin-locale-api'
 import { reactive, ref } from 'vue'
+
+import { LANGUAGE } from '@/constants'
+
+export type Language = typeof LANGUAGE[keyof typeof LANGUAGE]
 
 export interface GeneralStore {
   app: {
@@ -11,6 +16,7 @@ export interface GeneralStore {
   appearance: {
     theme: 'auto' | Theme
     isDark: boolean
+    language?: Language
   }
   update: {
     autoCheck: boolean
@@ -49,7 +55,17 @@ export const useGeneralStore = defineStore('general', () => {
     autoCheck: false,
   })
 
-  const init = () => {
+  const getLanguage = async () => {
+    const locale = await getLocale<Language>()
+
+    if (Object.values(LANGUAGE).includes(locale)) {
+      return locale
+    }
+
+    return LANGUAGE.EN_US
+  }
+
+  const init = async () => {
     app.autostart = autostart.value
     app.taskbarVisible = taskbarVisibility.value
 
@@ -57,6 +73,8 @@ export const useGeneralStore = defineStore('general', () => {
     appearance.isDark = isDark.value
 
     update.autoCheck = autoCheckUpdate.value
+
+    appearance.language ??= await getLanguage()
   }
 
   return {

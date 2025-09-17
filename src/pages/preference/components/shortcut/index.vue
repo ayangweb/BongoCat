@@ -34,35 +34,35 @@ useTauriShortcut(alwaysOnTop, () => {
 </script>
 
 <template>
-  <ProList title="快捷键">
+  <ProList :title="$t('pages.preference.shortcut.title')">
     <ProShortcut
       v-model="shortcutStore.visibleCat"
-      description="切换猫咪窗口的显示与隐藏。"
-      title="打开猫咪"
+      :description="$t('pages.preference.shortcut.hints.toggleCat')"
+      :title="$t('pages.preference.shortcut.labels.toggleCat')"
     />
 
     <ProShortcut
       v-model="shortcutStore.visiblePreference"
-      description="切换偏好设置窗口的显示与隐藏。"
-      title="打开偏好设置"
+      :description="$t('pages.preference.shortcut.hints.togglePreferences')"
+      :title="$t('pages.preference.shortcut.labels.togglePreferences')"
     />
 
     <ProShortcut
       v-model="shortcutStore.mirrorMode"
-      description="切换猫咪的镜像模式。"
-      title="镜像模式"
+      :description="$t('pages.preference.shortcut.hints.mirrorMode')"
+      :title="$t('pages.preference.shortcut.labels.mirrorMode')"
     />
 
     <ProShortcut
       v-model="shortcutStore.penetrable"
-      description="切换猫咪窗口是否可穿透。"
-      title="窗口穿透"
+      :description="$t('pages.preference.shortcut.hints.passThrough')"
+      :title="$t('pages.preference.shortcut.labels.passThrough')"
     />
 
     <ProShortcut
       v-model="shortcutStore.alwaysOnTop"
-      description="切换猫咪窗口是否置顶。"
-      title="窗口置顶"
+      :description="$t('pages.preference.shortcut.hints.alwaysOnTop')"
+      :title="$t('pages.preference.shortcut.labels.alwaysOnTop')"
     />
   </ProList>
 </template>

@@ -110,7 +110,7 @@ function handleKeyUp(event: KeyboardEvent) {
       @mouseover="isHovering = true"
     >
       <span v-if="pressedKeys.length === 0">
-        {{ isFocusing ? '按下录制快捷键' : '点击录制快捷键' }}
+        {{ isFocusing ? $t('components.proShortcut.hints.pressRecordShortcut') : $t('components.proShortcut.hints.clickRecordShortcut') }}
       </span>
 
       <span class="text-primary font-bold">

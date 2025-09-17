@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart'
-import { Switch } from 'ant-design-vue'
+import { Select, Switch } from 'ant-design-vue'
 import { watch } from 'vue'
 
 import MacosPermissions from './components/macos-permissions/index.vue'
@@ -28,25 +28,39 @@ watch(() => generalStore.app.autostart, async (value) => {
 <template>
   <MacosPermissions />
 
-  <ProList title="应用设置">
-    <ProListItem title="开机自启动">
+  <ProList :title="$t('pages.preference.general.labels.appSettings')">
+    <ProListItem :title="$t('pages.preference.general.labels.launchOnStartup')">
       <Switch v-model:checked="generalStore.app.autostart" />
     </ProListItem>
 
     <ProListItem
-      description="启用后，即可通过 OBS Studio 捕获窗口。"
-      title="显示任务栏图标"
+      :description="$t('pages.preference.general.hints.showTaskbarIcon')"
+      :title="$t('pages.preference.general.labels.showTaskbarIcon')"
     >
       <Switch v-model:checked="generalStore.app.taskbarVisible" />
     </ProListItem>
   </ProList>
 
-  <ProList title="外观设置">
+  <ProList :title="$t('pages.preference.general.labels.appearanceSettings')">
     <ThemeMode />
+
+    <ProListItem :title="$t('pages.preference.general.labels.language')">
+      <Select v-model:value="generalStore.appearance.language">
+        <Select.Option value="zh-CN">
+          简体中文
+        </Select.Option>
+        <Select.Option value="en-US">
+          English
+        </Select.Option>
+        <Select.Option value="vi-VN">
+          Tiếng Việt
+        </Select.Option>
+      </Select>
+    </ProListItem>
   </ProList>
 
-  <ProList title="更新设置">
-    <ProListItem title="自动检查更新">
+  <ProList :title="$t('pages.preference.general.labels.updateSettings')">
+    <ProListItem :title="$t('pages.preference.general.labels.autoCheckUpdate')">
       <Switch v-model:checked="generalStore.update.autoCheck" />
     </ProListItem>
   </ProList>

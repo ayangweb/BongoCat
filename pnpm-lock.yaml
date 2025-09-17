@@ -74,12 +74,18 @@ importers:
       pixi.js:
         specifier: ^6.5.10
         version: 6.5.10
+      tauri-plugin-locale-api:
+        specifier: ^2.0.1
+        version: 2.0.1
       tauri-plugin-macos-permissions-api:
         specifier: ^2.3.0
         version: 2.3.0
       vue:
         specifier: ^3.5.16
         version: 3.5.16(typescript@5.6.3)
+      vue-i18n:
+        specifier: ^11.1.12
+        version: 11.1.12(vue@3.5.16(typescript@5.6.3))
       vue-markdown-render:
         specifier: ^2.2.1
         version: 2.2.1(vue@3.5.16(typescript@5.6.3))
@@ -732,6 +738,18 @@ packages:
     peerDependenciesMeta:
       '@types/node':
         optional: true
+
+  '@intlify/core-base@11.1.12':
+    resolution: {integrity: sha512-whh0trqRsSqVLNEUCwU59pyJZYpU8AmSWl8M3Jz2Mv5ESPP6kFh4juas2NpZ1iCvy7GlNRffUD1xr84gceimjg==}
+    engines: {node: '>= 16'}
+
+  '@intlify/message-compiler@11.1.12':
+    resolution: {integrity: sha512-Fv9iQSJoJaXl4ZGkOCN1LDM3trzze0AS2zRz2EHLiwenwL6t0Ki9KySYlyr27yVOj5aVz0e55JePO+kELIvfdQ==}
+    engines: {node: '>= 16'}
+
+  '@intlify/shared@11.1.12':
+    resolution: {integrity: sha512-Om86EjuQtA69hdNj3GQec9ZC0L0vPSAnXzB3gP/gyJ7+mA7t06d9aOAiqMZ+xEOsumGP4eEBlfl8zF2LOTzf2A==}
+    engines: {node: '>= 16'}
 
   '@jridgewell/gen-mapping@0.3.8':
     resolution: {integrity: sha512-imAbBGkb+ebQyxKgzv5Hu2nmROxoDOXHh80evxdoXNOrvAnVx7zimzc1Oo5h9RlfV4vPXaE2iM5pOFbvOCClWA==}
@@ -4411,6 +4429,9 @@ packages:
     resolution: {integrity: sha512-Re10+NauLTMCudc7T5WLFLAwDhQ0JWdrMK+9B2M8zR5hRExKmsRDCBA7/aV/pNJFltmBFO5BAMlQFi/vq3nKOg==}
     engines: {node: '>=6'}
 
+  tauri-plugin-locale-api@2.0.1:
+    resolution: {integrity: sha512-kiNcbP6ZKUpPbFseePrR9eb8kTRw8tSJ0ZBpQk4mDyGcbK3xGu0/dy7Cx8lBfC/p2MlmnyO4uRVIwta7FoV6eQ==}
+
   tauri-plugin-macos-permissions-api@2.3.0:
     resolution: {integrity: sha512-pZp0jmDySysBqrGueknd1a7Rr4XEO9aXpMv9TNrT2PDHP0MSH20njieOagsFYJ5MCVb8A+wcaK0cIkjUC2dOww==}
 
@@ -4651,6 +4672,12 @@ packages:
     resolution: {integrity: sha512-JdgRRUVrN0Y2GosA0M68DEbKlXMqJ7FQgsK8CjQD2vxvNSqAU6PZEpi4cfcTVtfM2GVOMjHo7GKKLbXxOBqDqA==}
     peerDependencies:
       vue: ^3.4.37
+
+  vue-i18n@11.1.12:
+    resolution: {integrity: sha512-BnstPj3KLHLrsqbVU2UOrPmr0+Mv11bsUZG0PyCOzsawCivk8W00GMXHeVUWIDOgNaScCuZah47CZFE+Wnl8mw==}
+    engines: {node: '>= 16'}
+    peerDependencies:
+      vue: ^3.0.0
 
   vue-markdown-render@2.2.1:
     resolution: {integrity: sha512-XkYnC0PMdbs6Vy6j/gZXSvCuOS0787Se5COwXlepRqiqPiunyCIeTPQAO2XnB4Yl04EOHXwLx5y6IuszMWSgyQ==}
@@ -5353,6 +5380,18 @@ snapshots:
   '@inquirer/type@3.0.7(@types/node@22.15.29)':
     optionalDependencies:
       '@types/node': 22.15.29
+
+  '@intlify/core-base@11.1.12':
+    dependencies:
+      '@intlify/message-compiler': 11.1.12
+      '@intlify/shared': 11.1.12
+
+  '@intlify/message-compiler@11.1.12':
+    dependencies:
+      '@intlify/shared': 11.1.12
+      source-map-js: 1.2.1
+
+  '@intlify/shared@11.1.12': {}
 
   '@jridgewell/gen-mapping@0.3.8':
     dependencies:
@@ -9437,6 +9476,10 @@ snapshots:
 
   tapable@2.2.2: {}
 
+  tauri-plugin-locale-api@2.0.1:
+    dependencies:
+      '@tauri-apps/api': 2.5.0
+
   tauri-plugin-macos-permissions-api@2.3.0:
     dependencies:
       '@tauri-apps/api': 2.5.0
@@ -9708,6 +9751,13 @@ snapshots:
 
   vue-flow-layout@0.1.1(vue@3.5.16(typescript@5.6.3)):
     dependencies:
+      vue: 3.5.16(typescript@5.6.3)
+
+  vue-i18n@11.1.12(vue@3.5.16(typescript@5.6.3)):
+    dependencies:
+      '@intlify/core-base': 11.1.12
+      '@intlify/shared': 11.1.12
+      '@vue/devtools-api': 6.6.4
       vue: 3.5.16(typescript@5.6.3)
 
   vue-markdown-render@2.2.1(vue@3.5.16(typescript@5.6.3)):

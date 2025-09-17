@@ -9,6 +9,7 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { exit, relaunch } from '@tauri-apps/plugin-process'
 import { watchDebounced } from '@vueuse/core'
 import { watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { GITHUB_LINK, LISTEN_KEY } from '../constants'
 import { showWindow } from '../plugins/window'
@@ -17,14 +18,17 @@ import { isMac } from '../utils/platform'
 import { useSharedMenu } from './useSharedMenu'
 
 import { useCatStore } from '@/stores/cat'
+import { useGeneralStore } from '@/stores/general'
 
 const TRAY_ID = 'BONGO_CAT_TRAY'
 
 export function useTray() {
   const catStore = useCatStore()
+  const generalStore = useGeneralStore()
   const { getSharedMenu } = useSharedMenu()
+  const { t } = useI18n()
 
-  watch([() => catStore.window.visible, () => catStore.window.passThrough], () => {
+  watch([() => catStore.window.visible, () => catStore.window.passThrough, () => generalStore.appearance.language], () => {
     updateTrayMenu()
   })
 
@@ -68,7 +72,7 @@ export function useTray() {
       ...await getSharedMenu(),
       PredefinedMenuItem.new({ item: 'Separator' }),
       MenuItem.new({
-        text: '检查更新',
+        text: t('composables.useTray.checkUpdate'),
         action: () => {
           showWindow()
 
@@ -76,20 +80,20 @@ export function useTray() {
         },
       }),
       MenuItem.new({
-        text: '开源地址',
+        text: t('composables.useTray.openSource'),
         action: () => openUrl(GITHUB_LINK),
       }),
       PredefinedMenuItem.new({ item: 'Separator' }),
       MenuItem.new({
-        text: `版本 ${appVersion}`,
+        text: `${t('composables.useTray.version')} ${appVersion}`,
         enabled: false,
       }),
       MenuItem.new({
-        text: '重启应用',
+        text: t('composables.useTray.restartApp'),
         action: relaunch,
       }),
       MenuItem.new({
-        text: '退出应用',
+        text: t('composables.useTray.quitApp'),
         accelerator: isMac ? 'Cmd+Q' : '',
         action: () => exit(0),
       }),

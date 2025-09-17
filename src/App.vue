@@ -4,16 +4,17 @@ import { error } from '@tauri-apps/plugin-log'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useEventListener } from '@vueuse/core'
 import { ConfigProvider, theme } from 'ant-design-vue'
-import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import { isString } from 'es-toolkit'
 import isURL from 'is-url'
-import { onMounted } from 'vue'
+import { onMounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { RouterView } from 'vue-router'
 
 import { useTauriListen } from './composables/useTauriListen'
 import { useThemeVars } from './composables/useThemeVars'
 import { useWindowState } from './composables/useWindowState'
-import { LISTEN_KEY } from './constants'
+import { LANGUAGE, LISTEN_KEY } from './constants'
+import { getAntdLocale } from './locales/index.ts'
 import { hideWindow, showWindow } from './plugins/window'
 import { useAppStore } from './stores/app'
 import { useCatStore } from './stores/cat'
@@ -30,6 +31,7 @@ const shortcutStore = useShortcutStore()
 const appWindow = getCurrentWebviewWindow()
 const { isRestored, restoreState } = useWindowState()
 const { darkAlgorithm, defaultAlgorithm } = theme
+const { locale } = useI18n()
 
 onMounted(async () => {
   generateColorVars()
@@ -39,10 +41,15 @@ onMounted(async () => {
   await modelStore.$tauri.start()
   await modelStore.init()
   await catStore.$tauri.start()
+  catStore.init()
   await generalStore.$tauri.start()
+  await generalStore.init()
   await shortcutStore.$tauri.start()
   await restoreState()
-  catStore.init()
+})
+
+watch(() => generalStore.appearance.language, (value) => {
+  locale.value = value ?? LANGUAGE.EN_US
 })
 
 useTauriListen(LISTEN_KEY.SHOW_WINDOW, ({ payload }) => {
@@ -82,7 +89,7 @@ useEventListener('click', (event) => {
 
 <template>
   <ConfigProvider
-    :locale="zhCN"
+    :locale="getAntdLocale(generalStore.appearance.language)"
     :theme="{
       algorithm: generalStore.appearance.isDark ? darkAlgorithm : defaultAlgorithm,
     }"

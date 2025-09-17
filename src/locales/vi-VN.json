@@ -1,0 +1,14 @@
+{
+  "pages": {
+    "main": {
+      "hints": {
+        "redrawing": "Redrawing..."
+      }
+    },
+    "preference": {}
+  },
+  "hooks": {},
+  "components": {
+
+  }
+}

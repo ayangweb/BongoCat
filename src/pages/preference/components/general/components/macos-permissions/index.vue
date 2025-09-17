@@ -35,11 +35,11 @@ onMounted(async () => {
 <template>
   <ProList
     v-if="isMac"
-    title="权限设置"
+    :title="$t('pages.preference.general.labels.permissionsSettings')"
   >
     <ProListItem
-      description="开启输入监控权限，以便接收系统的键盘和鼠标事件来响应你的操作。"
-      title="输入监控权限"
+      :description="$t('pages.preference.general.hints.inputMonitoringPermission')"
+      :title="$t('pages.preference.general.labels.inputMonitoringPermission')"
     >
       <Space
         v-if="authorized"
@@ -48,7 +48,7 @@ onMounted(async () => {
       >
         <div class="i-solar:verified-check-bold text-4.5" />
 
-        <span>已授权</span>
+        <span>{{ $t('pages.preference.general.status.authorized') }}</span>
       </Space>
 
       <Space
@@ -59,7 +59,7 @@ onMounted(async () => {
       >
         <div class="i-solar:round-arrow-right-bold text-4.5" />
 
-        <span>去授权</span>
+        <span>{{ $t('pages.preference.general.status.authorize') }}</span>
       </Space>
     </ProListItem>
   </ProList>

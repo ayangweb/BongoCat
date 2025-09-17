@@ -16,3 +16,9 @@ export const INVOKE_KEY = {
   START_GAMEPAD_LISTING: 'start_gamepad_listing',
   STOP_GAMEPAD_LISTING: 'stop_gamepad_listing',
 }
+
+export const LANGUAGE = {
+  ZH_CN: 'zh-CN',
+  EN_US: 'en-US',
+  VI_VN: 'vi-VN',
+} as const
