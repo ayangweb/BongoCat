@@ -12,7 +12,7 @@ import { useGeneralStore } from '@/stores/general'
 
 const generalStore = useGeneralStore()
 
-watch(() => generalStore.autostart, async (value) => {
+watch(() => generalStore.app.autostart, async (value) => {
   const enabled = await isEnabled()
 
   if (value && !enabled) {
@@ -30,14 +30,14 @@ watch(() => generalStore.autostart, async (value) => {
 
   <ProList title="应用设置">
     <ProListItem title="开机自启动">
-      <Switch v-model:checked="generalStore.autostart" />
+      <Switch v-model:checked="generalStore.app.autostart" />
     </ProListItem>
 
     <ProListItem
       description="启用后，即可通过 OBS Studio 捕获窗口。"
       title="显示任务栏图标"
     >
-      <Switch v-model:checked="generalStore.taskbarVisibility" />
+      <Switch v-model:checked="generalStore.app.taskbarVisible" />
     </ProListItem>
   </ProList>
 
@@ -47,7 +47,7 @@ watch(() => generalStore.autostart, async (value) => {
 
   <ProList title="更新设置">
     <ProListItem title="自动检查更新">
-      <Switch v-model:checked="generalStore.autoCheckUpdate" />
+      <Switch v-model:checked="generalStore.update.autoCheck" />
     </ProListItem>
   </ProList>
 </template>

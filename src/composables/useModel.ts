@@ -68,7 +68,7 @@ export function useModel() {
 
     const size = await appWindow.size()
 
-    catStore.scale = round((size.width / width) * 100)
+    catStore.window.scale = round((size.width / width) * 100)
   }
 
   const handlePress = (key: string) => {
@@ -76,7 +76,7 @@ export function useModel() {
 
     if (!path) return
 
-    if (catStore.singleMode) {
+    if (catStore.model.single) {
       const dirName = nth(path.split(sep()), -2)!
 
       const filterKeys = Object.entries(modelStore.pressedKeys).filter(([, value]) => {
@@ -127,7 +127,7 @@ export function useModel() {
       const ratio = isXAxis ? xRatio : yRatio
       let value = max - (ratio * (max - min))
 
-      if (isXAxis && catStore.mouseMirror) {
+      if (isXAxis && catStore.model.mouseMirror) {
         value *= -1
       }
 

@@ -13,7 +13,7 @@ const { visibleCat, visiblePreference, mirrorMode, penetrable, alwaysOnTop } = s
 const catStore = useCatStore()
 
 useTauriShortcut(visibleCat, () => {
-  catStore.visible = !catStore.visible
+  catStore.window.visible = !catStore.window.visible
 })
 
 useTauriShortcut(visiblePreference, () => {
@@ -21,15 +21,15 @@ useTauriShortcut(visiblePreference, () => {
 })
 
 useTauriShortcut(mirrorMode, () => {
-  catStore.mirrorMode = !catStore.mirrorMode
+  catStore.model.mirror = !catStore.model.mirror
 })
 
 useTauriShortcut(penetrable, () => {
-  catStore.penetrable = !catStore.penetrable
+  catStore.window.passThrough = !catStore.window.passThrough
 })
 
 useTauriShortcut(alwaysOnTop, () => {
-  catStore.alwaysOnTop = !catStore.alwaysOnTop
+  catStore.window.alwaysOnTop = !catStore.window.alwaysOnTop
 })
 </script>
 

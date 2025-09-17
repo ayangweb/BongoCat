@@ -35,7 +35,7 @@ const MESSAGE_KEY = 'updatable'
 
 const { pause, resume } = useIntervalFn(checkUpdate, 1000 * 60 * 60 * 24)
 
-watch(() => generalStore.autoCheckUpdate, (value) => {
+watch(() => generalStore.update.autoCheck, (value) => {
   pause()
 
   if (!value) return

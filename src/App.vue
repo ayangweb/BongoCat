@@ -84,7 +84,7 @@ useEventListener('click', (event) => {
   <ConfigProvider
     :locale="zhCN"
     :theme="{
-      algorithm: generalStore.isDark ? darkAlgorithm : defaultAlgorithm,
+      algorithm: generalStore.appearance.isDark ? darkAlgorithm : defaultAlgorithm,
     }"
   >
     <RouterView v-if="isRestored" />

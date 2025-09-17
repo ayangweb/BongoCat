@@ -78,7 +78,7 @@ watch(() => modelStore.currentModel, async (model) => {
   }
 }, { deep: true, immediate: true })
 
-watch([() => catStore.scale, modelSize], async ([scale, modelSize]) => {
+watch([() => catStore.window.scale, modelSize], async ([scale, modelSize]) => {
   if (!modelSize) return
 
   const { width, height } = modelSize
@@ -103,17 +103,17 @@ watch([modelStore.pressedKeys, stickActive], ([keys, stickActive]) => {
   handleKeyChange(false, stickActive.right || hasRight)
 }, { deep: true })
 
-watch(() => catStore.visible, async (value) => {
+watch(() => catStore.window.visible, async (value) => {
   value ? showWindow() : hideWindow()
 })
 
-watch(() => catStore.penetrable, (value) => {
+watch(() => catStore.window.passThrough, (value) => {
   appWindow.setIgnoreCursorEvents(value)
 }, { immediate: true })
 
-watch(() => catStore.alwaysOnTop, setAlwaysOnTop, { immediate: true })
+watch(() => catStore.window.alwaysOnTop, setAlwaysOnTop, { immediate: true })
 
-watch(() => generalStore.taskbarVisibility, setTaskbarVisibility, { immediate: true })
+watch(() => generalStore.app.taskbarVisible, setTaskbarVisibility, { immediate: true })
 
 function handleMouseDown() {
   appWindow.startDragging()
@@ -137,17 +137,20 @@ function handleMouseMove(event: MouseEvent) {
   if (buttons !== 2 || !shiftKey) return
 
   const delta = (movementX + movementY) * 0.5
-  const nextScale = Math.max(10, Math.min(catStore.scale + delta, 500))
+  const nextScale = Math.max(10, Math.min(catStore.window.scale + delta, 500))
 
-  catStore.scale = round(nextScale)
+  catStore.window.scale = round(nextScale)
 }
 </script>
 
 <template>
   <div
     class="relative size-screen overflow-hidden children:(absolute size-full)"
-    :class="{ '-scale-x-100': catStore.mirrorMode }"
-    :style="{ opacity: catStore.opacity / 100 }"
+    :class="{ '-scale-x-100': catStore.model.mirror }"
+    :style="{
+      opacity: catStore.window.opacity / 100,
+      borderRadius: `${catStore.window.radius}%`,
+    }"
     @contextmenu="handleContextmenu"
     @mousedown="handleMouseDown"
     @mousemove="handleMouseMove"

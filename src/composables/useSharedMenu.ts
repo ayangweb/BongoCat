@@ -14,16 +14,16 @@ export function useSharedMenu() {
     const items = options.map((item) => {
       return CheckMenuItem.new({
         text: item === 100 ? '默认' : `${item}%`,
-        checked: catStore.scale === item,
+        checked: catStore.window.scale === item,
         action: () => {
-          catStore.scale = item
+          catStore.window.scale = item
         },
       })
     })
 
-    if (!options.includes(catStore.scale)) {
+    if (!options.includes(catStore.window.scale)) {
       items.unshift(CheckMenuItem.new({
-        text: `${catStore.scale}%`,
+        text: `${catStore.window.scale}%`,
         checked: true,
         enabled: false,
       }))
@@ -38,16 +38,16 @@ export function useSharedMenu() {
     const items = options.map((item) => {
       return CheckMenuItem.new({
         text: `${item}%`,
-        checked: catStore.opacity === item,
+        checked: catStore.window.opacity === item,
         action: () => {
-          catStore.opacity = item
+          catStore.window.opacity = item
         },
       })
     })
 
-    if (!options.includes(catStore.opacity)) {
+    if (!options.includes(catStore.window.opacity)) {
       items.unshift(CheckMenuItem.new({
-        text: `${catStore.opacity}%`,
+        text: `${catStore.window.opacity}%`,
         checked: true,
         enabled: false,
       }))
@@ -64,17 +64,17 @@ export function useSharedMenu() {
         action: () => showWindow('preference'),
       }),
       MenuItem.new({
-        text: catStore.visible ? '隐藏猫咪' : '显示猫咪',
+        text: catStore.window.visible ? '隐藏猫咪' : '显示猫咪',
         action: () => {
-          catStore.visible = !catStore.visible
+          catStore.window.visible = !catStore.window.visible
         },
       }),
       PredefinedMenuItem.new({ item: 'Separator' }),
       CheckMenuItem.new({
         text: '窗口穿透',
-        checked: catStore.penetrable,
+        checked: catStore.window.passThrough,
         action: () => {
-          catStore.penetrable = !catStore.penetrable
+          catStore.window.passThrough = !catStore.window.passThrough
         },
       }),
       Submenu.new({

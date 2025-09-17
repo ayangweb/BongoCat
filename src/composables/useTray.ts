@@ -24,11 +24,11 @@ export function useTray() {
   const catStore = useCatStore()
   const { getSharedMenu } = useSharedMenu()
 
-  watch([() => catStore.visible, () => catStore.penetrable], () => {
+  watch([() => catStore.window.visible, () => catStore.window.passThrough], () => {
     updateTrayMenu()
   })
 
-  watchDebounced([() => catStore.scale, () => catStore.opacity], () => {
+  watchDebounced([() => catStore.window.scale, () => catStore.window.opacity], () => {
     updateTrayMenu()
   }, { debounce: 200 })
 

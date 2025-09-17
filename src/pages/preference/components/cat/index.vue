@@ -14,21 +14,21 @@ const catStore = useCatStore()
       description="启用后，模型将水平镜像翻转。"
       title="镜像模式"
     >
-      <Switch v-model:checked="catStore.mirrorMode" />
+      <Switch v-model:checked="catStore.model.mirror" />
     </ProListItem>
 
     <ProListItem
       description="启用后，每只手只显示最后按下的一个按键。"
       title="单键模式"
     >
-      <Switch v-model:checked="catStore.singleMode" />
+      <Switch v-model:checked="catStore.model.single" />
     </ProListItem>
 
     <ProListItem
       description="启用后，鼠标将镜像跟随手部移动。"
       title="鼠标镜像"
     >
-      <Switch v-model:checked="catStore.mouseMirror" />
+      <Switch v-model:checked="catStore.model.mouseMirror" />
     </ProListItem>
   </ProList>
 
@@ -37,14 +37,14 @@ const catStore = useCatStore()
       description="启用后，窗口不影响对其他应用程序的操作。"
       title="窗口穿透"
     >
-      <Switch v-model:checked="catStore.penetrable" />
+      <Switch v-model:checked="catStore.window.passThrough" />
     </ProListItem>
 
     <ProListItem
       description="启用后，窗口始终显示在其他应用程序上方。"
       title="窗口置顶"
     >
-      <Switch v-model:checked="catStore.alwaysOnTop" />
+      <Switch v-model:checked="catStore.window.alwaysOnTop" />
     </ProListItem>
 
     <ProListItem
@@ -52,14 +52,20 @@ const catStore = useCatStore()
       title="窗口尺寸"
     >
       <InputNumber
-        v-model:value="catStore.scale"
+        v-model:value="catStore.window.scale"
+        addon-after="%"
         class="w-28"
         :min="1"
-      >
-        <template #addonAfter>
-          %
-        </template>
-      </InputNumber>
+      />
+    </ProListItem>
+
+    <ProListItem title="窗口圆角">
+      <InputNumber
+        v-model:value="catStore.window.radius"
+        addon-after="%"
+        class="w-28"
+        :min="0"
+      />
     </ProListItem>
 
     <ProListItem
@@ -67,7 +73,7 @@ const catStore = useCatStore()
       vertical
     >
       <Slider
-        v-model:value="catStore.opacity"
+        v-model:value="catStore.window.opacity"
         class="m-0!"
         :max="100"
         :min="10"
