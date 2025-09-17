@@ -4,8 +4,13 @@
     "windows": {
       "digestAlgorithm": "sha256",
       "nsis": {
-        "languages": ["SimpChinese"],
-        "installMode": "both"
+        "languages": [
+          "English",
+          "Vietnamese",
+          "SimpChinese"
+        ],
+        "installMode": "both",
+        "displayLanguageSelector": true
       }
     }
   }
