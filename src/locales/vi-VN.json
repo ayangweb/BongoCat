@@ -94,11 +94,11 @@
       "about": {
         "title": "Giới thiệu",
         "labels": {
-          "aboutApp": "Thông tin ứng dụng:",
-          "appLog": "Nhật ký ứng dụng:",
+          "aboutApp": "Thông tin ứng dụng",
+          "appLog": "Nhật ký ứng dụng",
           "version": "Phiên bản: ",
-          "appInfo": "Thông tin ứng dụng:",
-          "openSourceAddress": "Mã nguồn:"
+          "appInfo": "Thông tin ứng dụng",
+          "openSourceAddress": "Mã nguồn"
         },
         "hints": {
           "appInfo": "Sao chép thông tin để gửi bug.",
