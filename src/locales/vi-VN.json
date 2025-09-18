@@ -2,13 +2,143 @@
   "pages": {
     "main": {
       "hints": {
-        "redrawing": "Redrawing..."
+        "redrawing": "Đang đổi kích thước..."
       }
     },
-    "preference": {}
+    "preference": {
+      "cat": {
+        "title": "Cài đặt Mèo",
+        "labels": {
+          "modelSettings": "Cài đặt Mô hình",
+          "mirrorMode": "Chế độ gương",
+          "singleMode": "Chỉ hiển thị phím cuối cùng",
+          "mouseMirror": "Phản chiếu chuột",
+          "windowSettings": "Cài đặt Cửa sổ",
+          "passThrough": "Click xuyên",
+          "alwaysOnTop": "Luôn trên cùng",
+          "windowSize": "Kích thước",
+          "windowRadius": "",
+          "opacity": "Độ mờ"
+        },
+        "hints": {
+          "mirrorMode": "Bật để lật ngang mô hình.",
+          "singleMode": "Khi bật, mỗi tay mèo chỉ hiển thị phím vừa nhấn cuối cùng (tránh hiện nhiều tay khi nhấn nhiều phím cùng lúc).",
+          "mouseMirror": "Khi bật, chuột của mô hình sẽ phản chiếu theo chuyển động chuột thực tế.",
+          "passThrough": "Bật để cửa sổ không ảnh hưởng đến thao tác trên ứng dụng khác.",
+          "alwaysOnTop": "Bật để cửa sổ luôn nằm trên ứng dụng khác.",
+          "windowSize": "Di chuyển chuột đến mép cửa sổ hoặc giữ Shift và kéo chuột phải để thay đổi kích thước."
+        }
+      },
+      "general": {
+        "title": "Chung",
+        "labels": {
+          "appSettings": "Cài đặt ứng dụng",
+          "launchOnStartup": "Khởi động cùng hệ thống",
+          "showTaskbarIcon": "Hiện biểu tượng trên thanh tác vụ (icon taskbar)",
+          "appearanceSettings": "Cài đặt giao diện",
+          "themeMode": "Giao diện",
+          "language": "Ngôn ngữ",
+          "updateSettings": "Cài đặt cập nhật",
+          "autoCheckUpdate": "Tự động kiểm tra cập nhật",
+          "permissionsSettings": "Cài đặt quyền",
+          "inputMonitoringPermission": "Quyền giám sát đầu vào"
+        },
+        "options": {
+          "auto": "Theo hệ thống",
+          "lightMode": "Sáng",
+          "darkMode": "Tối"
+        },
+        "hints": {
+          "showTaskbarIcon": "Bật để có thể quay cửa sổ qua OBS.",
+          "inputMonitoringPermission": "Bật quyền giám sát để nhận sự kiện bàn phím và chuột từ hệ thống nhằm phản hồi thao tác của bạn."
+        },
+        "status": {
+          "authorized": "Đã cấp quyền",
+          "authorize": "Đi đến Bật"
+        }
+      },
+      "model": {
+        "title": "Cài đặt Mô hình",
+        "labels": {
+          "deleteModel": "Xóa mô hình"
+        },
+        "hints": {
+          "deleteSuccess": "Xóa thành công",
+          "deleteModel": "Bạn chắc muốn xóa mô hình này?",
+          "importSuccess": "Nhập thành công",
+          "clickOrDragToImport": "Nhấp hoặc kéo tệp vào đây"
+        },
+        "tooltips": {
+          "createModel": "Tạo mô hình",
+          "convertModel": "Chuyển đổi mô hình",
+          "moreModels": "Khám phá mô hình khác"
+        }
+      },
+      "shortcut": {
+        "title": "Phím tắt",
+        "labels": {
+          "toggleCat": "Ẩn/Hiện Mèo",
+          "togglePreferences": "Mở Tùy chỉnh",
+          "mirrorMode": "Chế độ gương",
+          "passThrough": "Click xuyên",
+          "alwaysOnTop": "Luôn trên cùng"
+        },
+        "hints": {
+          "toggleCat": "Bật/Tắt cửa sổ mèo.",
+          "togglePreferences": "Bật/Tắt cửa sổ tùy chỉnh.",
+          "mirrorMode": "Bật/Tắt chế độ gương.",
+          "passThrough": "Bật/Tắt cho phép click xuyên cửa sổ mèo.",
+          "alwaysOnTop": "Bật/Tắt luôn giữ cửa sổ mèo trên cùng."
+        }
+      },
+      "about": {
+        "title": "Giới thiệu",
+        "labels": {
+          "aboutApp": "Thông tin ứng dụng",
+          "appLog": "Nhật ký ứng dụng",
+          "version": "Phiên bản",
+          "appInfo": "Thông tin ứng dụng",
+          "openSourceAddress": "Mã nguồn"
+        },
+        "hints": {
+          "appInfo": "Sao chép thông tin để gửi bug.",
+          "copySuccess": "Đã sao chép"
+        },
+        "buttons": {
+          "checkUpdate": "Kiểm tra cập nhật",
+          "copy": "Sao chép",
+          "feedbackIssues": "Báo lỗi",
+          "viewLog": "Xem nhật ký"
+        }
+      }
+    }
   },
-  "hooks": {},
   "components": {
-
+    "proShortcut": {
+      "hints": {
+        "pressRecordShortcut": "Nhấn phím/tổ hợp phím để ghi",
+        "clickRecordShortcut": "Click để ghi phím tắt"
+      },
+      "updateApp": {}
+    }
+  },
+  "composables": {
+    "useSharedMenu": {
+      "labels": {
+        "preference": "Tùy chỉnh...",
+        "hideCat": "Ẩn Mèo",
+        "showCat": "Hiện Mèo",
+        "passThrough": "Click xuyên",
+        "windowSize": "Kích thước",
+        "opacity": "Độ mờ"
+      }
+    },
+    "useTray": {
+      "checkUpdate": "Kiểm tra cập nhật",
+      "openSource": "Mã nguồn",
+      "version": "Phiên bản",
+      "restartApp": "Khởi động lại",
+      "quitApp": "Thoát"
+    }
   }
 }
