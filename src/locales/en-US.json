@@ -119,7 +119,22 @@
         "pressRecordShortcut": "Press keys to record shortcut",
         "clickRecordShortcut": "Click to record shortcut"
       },
-      "updateApp": {}
+      "updateApp": {
+        "title": "New version found 🥳",
+        "labels": {
+          "updateVersion": "Version:",
+          "updateTime": "Update time:",
+          "changelog": "Changelog:"
+        },
+        "hints": {
+          "checkingUpdates": "Checking for updates...",
+          "alreadyLatest": "You are already on the latest version 🎉"
+        },
+        "buttons": {
+          "updateNow": "Update Now",
+          "updateLater": "Update later"
+        }
+      }
     }
   },
   "composables": {
