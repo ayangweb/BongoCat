@@ -2,13 +2,143 @@
   "pages": {
     "main": {
       "hints": {
-        "redrawing": "Redrawing..."
+        "redrawing": "Resizing..."
       }
     },
-    "preference": {}
+    "preference": {
+      "cat": {
+        "title": "Cat Settings",
+        "labels": {
+          "modelSettings": "Model Settings",
+          "mirrorMode": "Mirror Mode",
+          "singleMode": "Show Last Key Only",
+          "mouseMirror": "Mouse Mirror",
+          "windowSettings": "Window Settings",
+          "passThrough": "Window Penetration",
+          "alwaysOnTop": "Always On Top",
+          "windowSize": "Window Size",
+          "windowRadius": "",
+          "opacity": "Opacity"
+        },
+        "hints": {
+          "mirrorMode": "When enabled, the model will be horizontally flipped.",
+          "singleMode": "When enabled, only the last key pressed on each hand is displayed (prevents showing multiple hands when pressing multiple keys at once).",
+          "mouseMirror": "When enabled, the mouse will mirror follow the hand movement.",
+          "passThrough": "When enabled, the window will not affect operations on other applications.",
+          "alwaysOnTop": "When enabled, the window will always stay above other applications.",
+          "windowSize": "Move the mouse to the edge of the window or hold Shift and right-drag to resize."
+        }
+      },
+      "general": {
+        "title": "General",
+        "labels": {
+          "appSettings": "Application settings",
+          "launchOnStartup": "Launch at startup",
+          "showTaskbarIcon": "Show taskbar icon",
+          "appearanceSettings": "Appearance settings",
+          "themeMode": "Theme",
+          "language": "Languages",
+          "updateSettings": "Update settings",
+          "autoCheckUpdate": "Check for updates automatically",
+          "permissionsSettings": "Permission Settings",
+          "inputMonitoringPermission": "Input Monitoring Permission"
+        },
+        "options": {
+          "auto": "System",
+          "lightMode": "Light",
+          "darkMode": "Dark"
+        },
+        "hints": {
+          "showTaskbarIcon": "Once enabled, you can capture the window via OBS Studio.",
+          "inputMonitoringPermission": "Enable input monitoring permission to receive system keyboard and mouse events to respond to your actions."
+        },
+        "status": {
+          "authorized": "Authorized",
+          "authorize": "Go to Enable"
+        }
+      },
+      "model": {
+        "title": "Model Settings",
+        "labels": {
+          "deleteModel": "Delete model"
+        },
+        "hints": {
+          "deleteSuccess": "Deleted successfully",
+          "deleteModel": "Are you sure you want to delete this model?",
+          "importSuccess": "Import successful",
+          "clickOrDragToImport": "Click or drag files here to import"
+        },
+        "tooltips": {
+          "createModel": "Create model",
+          "convertModel": "Convert model",
+          "moreModels": "More models"
+        }
+      },
+      "shortcut": {
+        "title": "Shortcuts",
+        "labels": {
+          "toggleCat": "Show/Hide Cat",
+          "togglePreferences": "Open Preferences",
+          "mirrorMode": "Mirror Mode",
+          "passThrough": "Window Penetration",
+          "alwaysOnTop": "Always On Top"
+        },
+        "hints": {
+          "toggleCat": "Toggle the cat window's visibility.",
+          "togglePreferences": "Toggle the preferences window visibility.",
+          "mirrorMode": "Toggle the cat's mirror mode.",
+          "passThrough": "Toggle whether the cat window is click-through.",
+          "alwaysOnTop": "Toggle whether the cat window stays on top."
+        }
+      },
+      "about": {
+        "title": "About",
+        "labels": {
+          "aboutApp": "App Info",
+          "appLog": "App Logs",
+          "version": "Version",
+          "appInfo": "App Info",
+          "openSourceAddress": "Open Source"
+        },
+        "hints": {
+          "appInfo": "Copy app information to include in bug reports.",
+          "copySuccess": "Copied successfully"
+        },
+        "buttons": {
+          "checkUpdate": "Check for updates",
+          "copy": "Copy",
+          "feedbackIssues": "Report Issue",
+          "viewLog": "View Logs"
+        }
+      }
+    }
   },
-  "hooks": {},
   "components": {
-
+    "proShortcut": {
+      "hints": {
+        "pressRecordShortcut": "Press keys to record shortcut",
+        "clickRecordShortcut": "Click to record shortcut"
+      },
+      "updateApp": {}
+    }
+  },
+  "composables": {
+    "useSharedMenu": {
+      "labels": {
+        "preference": "Preferences...",
+        "hideCat": "Hide Cat",
+        "showCat": "Show Cat",
+        "passThrough": "Window Penetration",
+        "windowSize": "Window Size",
+        "opacity": "Opacity"
+      }
+    },
+    "useTray": {
+      "checkUpdate": "Check for updates",
+      "openSource": "Source Code",
+      "version": "Version",
+      "restartApp": "Restart",
+      "quitApp": "Exit"
+    }
   }
 }
