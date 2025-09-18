@@ -94,10 +94,10 @@
       "about": {
         "title": "About",
         "labels": {
-          "aboutApp": "App Info: ",
-          "appLog": "App Logs: ",
+          "aboutApp": "About App:",
+          "appLog": "App Logs:",
           "version": "Version: ",
-          "appInfo": "App Info: ",
+          "appInfo": "App Info:",
           "openSourceAddress": "Open Source: "
         },
         "hints": {
