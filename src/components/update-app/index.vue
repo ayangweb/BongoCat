@@ -8,6 +8,7 @@ import { Flex, message, Modal } from 'ant-design-vue'
 import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc'
 import { computed, reactive, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import VueMarkdown from 'vue-markdown-render'
 
 import { useTauriListen } from '@/composables/useTauriListen'
@@ -32,6 +33,7 @@ const state = reactive<State>({
   downloadProgress: 0,
 })
 const MESSAGE_KEY = 'updatable'
+const { t } = useI18n()
 
 const { pause, resume } = useIntervalFn(checkUpdate, 1000 * 60 * 60 * 24)
 
@@ -51,7 +53,7 @@ useTauriListen<boolean>(LISTEN_KEY.UPDATE_APP, () => {
   message.loading({
     key: MESSAGE_KEY,
     duration: 0,
-    content: '正在检查更新...',
+    content: t('components.proShortcut.updateApp.hints.checkingUpdates'),
   })
 })
 
@@ -91,7 +93,7 @@ async function checkUpdate(visibleMessage = false) {
 
       message.destroy(MESSAGE_KEY)
     } else if (visibleMessage) {
-      message.success({ key: MESSAGE_KEY, content: '当前已是最新版本🎉' })
+      message.success({ key: MESSAGE_KEY, content: t('components.proShortcut.updateApp.hints.alreadyLatest') })
     }
   } catch (error) {
     if (!visibleMessage) return
@@ -138,15 +140,15 @@ async function handleOk() {
 <template>
   <Modal
     v-model:open="state.open"
-    cancel-text="稍后更新"
+    :cancel-text="$t('components.proShortcut.updateApp.buttons.updateLater')"
     centered
     :closable="false"
     :mask-closable="false"
-    title="发现新版本🥳"
+    :title="$t('components.proShortcut.updateApp.title')"
     @ok="handleOk"
   >
     <template #okText>
-      {{ state.downloading ? downloadProgress : "立即更新" }}
+      {{ state.downloading ? downloadProgress : $t('components.proShortcut.updateApp.buttons.updateNow') }}
     </template>
 
     <Flex

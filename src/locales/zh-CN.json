@@ -119,7 +119,22 @@
         "pressRecordShortcut": "按下录制快捷键",
         "clickRecordShortcut": "点击录制快捷键"
       },
-      "updateApp": {}
+      "updateApp": {
+        "title": "发现新版本🥳",
+        "labels": {
+          "updateVersion": "更新版本：",
+          "updateTime": "更新时间：",
+          "changelog": "更新日志："
+        },
+        "hints": {
+          "checkingUpdates": "正在检查更新...",
+          "alreadyLatest": "当前已是最新版本🎉"
+        },
+        "buttons": {
+          "updateNow": "立即更新",
+          "updateLater": "稍后更新"
+        }
+      }
     }
   },
   "composables": {
