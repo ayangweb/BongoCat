@@ -17,7 +17,7 @@
           "passThrough": "Click xuyên",
           "alwaysOnTop": "Luôn trên cùng",
           "windowSize": "Kích thước",
-          "windowRadius": "",
+          "windowRadius": "Độ bo tròn cửa sổ",
           "opacity": "Độ mờ"
         },
         "hints": {
@@ -94,11 +94,11 @@
       "about": {
         "title": "Giới thiệu",
         "labels": {
-          "aboutApp": "Thông tin ứng dụng",
-          "appLog": "Nhật ký ứng dụng",
-          "version": "Phiên bản",
-          "appInfo": "Thông tin ứng dụng",
-          "openSourceAddress": "Mã nguồn"
+          "aboutApp": "Thông tin ứng dụng: ",
+          "appLog": "Nhật ký ứng dụng: ",
+          "version": "Phiên bản: ",
+          "appInfo": "Thông tin ứng dụng: ",
+          "openSourceAddress": "Mã nguồn: "
         },
         "hints": {
           "appInfo": "Sao chép thông tin để gửi bug.",
@@ -119,7 +119,22 @@
         "pressRecordShortcut": "Nhấn phím/tổ hợp phím để ghi",
         "clickRecordShortcut": "Click để ghi phím tắt"
       },
-      "updateApp": {}
+      "updateApp": {
+        "title": "Đã tìm thấy phiên bản mới 🥳",
+        "labels": {
+          "updateVersion": "Phiên bản: ",
+          "updateTime": "Thời gian cập nhật: ",
+          "changelog": "Nhật ký thay đổi: "
+        },
+        "hints": {
+          "checkingUpdates": "Đang kiểm tra cập nhật...",
+          "alreadyLatest": "Bạn đang dùng phiên bản mới nhất 🎉"
+        },
+        "buttons": {
+          "updateNow": "Cập nhật ngay",
+          "updateLater": "Để sau"
+        }
+      }
     }
   },
   "composables": {
