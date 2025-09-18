@@ -17,7 +17,7 @@
           "passThrough": "Window Penetration",
           "alwaysOnTop": "Always On Top",
           "windowSize": "Window Size",
-          "windowRadius": "",
+          "windowRadius": "Window Radius",
           "opacity": "Opacity"
         },
         "hints": {
@@ -94,11 +94,11 @@
       "about": {
         "title": "About",
         "labels": {
-          "aboutApp": "App Info",
-          "appLog": "App Logs",
-          "version": "Version",
-          "appInfo": "App Info",
-          "openSourceAddress": "Open Source"
+          "aboutApp": "App Info: ",
+          "appLog": "App Logs: ",
+          "version": "Version: ",
+          "appInfo": "App Info: ",
+          "openSourceAddress": "Open Source: "
         },
         "hints": {
           "appInfo": "Copy app information to include in bug reports.",
@@ -122,9 +122,9 @@
       "updateApp": {
         "title": "New version found 🥳",
         "labels": {
-          "updateVersion": "Version:",
-          "updateTime": "Update time:",
-          "changelog": "Changelog:"
+          "updateVersion": "Version: ",
+          "updateTime": "Update time: ",
+          "changelog": "Changelog: "
         },
         "hints": {
           "checkingUpdates": "Checking for updates...",
