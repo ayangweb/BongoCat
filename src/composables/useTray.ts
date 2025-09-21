@@ -85,7 +85,7 @@ export function useTray() {
       }),
       PredefinedMenuItem.new({ item: 'Separator' }),
       MenuItem.new({
-        text: `${t('composables.useTray.version')} ${appVersion}`,
+        text: `v${appVersion}`,
         enabled: false,
       }),
       MenuItem.new({

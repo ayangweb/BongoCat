@@ -7,7 +7,7 @@
     },
     "preference": {
       "cat": {
-        "title": "Cài đặt Mèo",
+        "title": "Mèo",
         "labels": {
           "modelSettings": "Cài đặt Mô hình",
           "mirrorMode": "Chế độ gương",
@@ -58,7 +58,7 @@
         }
       },
       "model": {
-        "title": "Cài đặt Mô hình",
+        "title": "Mô hình",
         "labels": {
           "deleteModel": "Xóa mô hình"
         },
@@ -96,9 +96,8 @@
         "labels": {
           "aboutApp": "Thông tin ứng dụng",
           "appLog": "Nhật ký ứng dụng",
-          "version": "Phiên bản: ",
           "appInfo": "Thông tin ứng dụng",
-          "openSourceAddress": "Mã nguồn"
+          "openSource": "Mã nguồn"
         },
         "hints": {
           "appInfo": "Sao chép thông tin để gửi bug.",
@@ -151,7 +150,6 @@
     "useTray": {
       "checkUpdate": "Kiểm tra cập nhật",
       "openSource": "Mã nguồn",
-      "version": "Phiên bản",
       "restartApp": "Khởi động lại",
       "quitApp": "Thoát"
     }

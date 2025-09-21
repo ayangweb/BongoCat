@@ -7,7 +7,7 @@
     },
     "preference": {
       "cat": {
-        "title": "Cat Settings",
+        "title": "Cat",
         "labels": {
           "modelSettings": "Model Settings",
           "mirrorMode": "Mirror Mode",
@@ -58,7 +58,7 @@
         }
       },
       "model": {
-        "title": "Model Settings",
+        "title": "Model",
         "labels": {
           "deleteModel": "Delete model"
         },
@@ -66,7 +66,7 @@
           "deleteSuccess": "Deleted successfully",
           "deleteModel": "Are you sure you want to delete this model?",
           "importSuccess": "Import successful",
-          "clickOrDragToImport": "Click or drag files here to import"
+          "clickOrDragToImport": "Click or drag to import"
         },
         "tooltips": {
           "createModel": "Create model",
@@ -96,9 +96,8 @@
         "labels": {
           "aboutApp": "About App",
           "appLog": "App Logs",
-          "version": "Version: ",
           "appInfo": "App Info",
-          "openSourceAddress": "Open Source"
+          "openSource": "Open Source"
         },
         "hints": {
           "appInfo": "Copy app information to include in bug reports.",
@@ -151,7 +150,6 @@
     "useTray": {
       "checkUpdate": "Check for updates",
       "openSource": "Source Code",
-      "version": "Version",
       "restartApp": "Restart",
       "quitApp": "Exit"
     }

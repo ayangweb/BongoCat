@@ -48,7 +48,7 @@ onMounted(async () => {
       >
         <div class="i-solar:verified-check-bold text-4.5" />
 
-        <span>{{ $t('pages.preference.general.status.authorized') }}</span>
+        <span class="whitespace-nowrap">{{ $t('pages.preference.general.status.authorized') }}</span>
       </Space>
 
       <Space
@@ -59,7 +59,7 @@ onMounted(async () => {
       >
         <div class="i-solar:round-arrow-right-bold text-4.5" />
 
-        <span>{{ $t('pages.preference.general.status.authorize') }}</span>
+        <span class="whitespace-nowrap">{{ $t('pages.preference.general.status.authorize') }}</span>
       </Space>
     </ProListItem>
   </ProList>

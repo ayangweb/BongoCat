@@ -96,9 +96,8 @@
         "labels": {
           "aboutApp": "关于软件",
           "appLog": "软件日志",
-          "version": "版本：",
           "appInfo": "软件信息",
-          "openSourceAddress": "开源地址"
+          "openSource": "开源地址"
         },
         "hints": {
           "appInfo": "复制软件信息并提供给 Bug Issue。",
@@ -151,7 +150,6 @@
     "useTray": {
       "checkUpdate": "检查更新",
       "openSource": "开源地址",
-      "version": "版本",
       "restartApp": "重启应用",
       "quitApp": "退出应用"
     }

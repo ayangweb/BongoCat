@@ -19,7 +19,7 @@ const hasDescription = computed(() => {
   <Flex
     :align="vertical ? void 0 : 'center'"
     class="b b-color-2 rounded-lg b-solid bg-color-3 p-4"
-    gap="middle"
+    :gap="vertical ? 'middle' : 'large'"
     justify="space-between"
     :vertical="vertical"
   >

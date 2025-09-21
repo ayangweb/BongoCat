@@ -49,7 +49,7 @@ function feedbackIssue() {
 <template>
   <ProList :title="$t('pages.preference.about.labels.aboutApp')">
     <ProListItem
-      :description="`${$t('pages.preference.about.labels.version')}v${appStore.version}`"
+      :description="`v${appStore.version}`"
       :title="appStore.name"
     >
       <Button
