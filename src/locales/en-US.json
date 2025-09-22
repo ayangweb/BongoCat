@@ -6,6 +6,7 @@
       }
     },
     "preference": {
+      "title": "Preferences",
       "cat": {
         "title": "Cat",
         "labels": {
@@ -50,11 +51,16 @@
         },
         "hints": {
           "showTaskbarIcon": "Once enabled, you can capture the window via OBS Studio.",
-          "inputMonitoringPermission": "Enable input monitoring permission to receive system keyboard and mouse events to respond to your actions."
+          "inputMonitoringPermission": "Enable input monitoring permission to receive system keyboard and mouse events to respond to your actions.",
+          "inputMonitoringPermissionGuide": "If the permission is already enabled, first select it and click the \"-\" button to remove it. Then add it again manually and restart the application to ensure the permission takes effect."
         },
         "status": {
           "authorized": "Authorized",
           "authorize": "Go to Enable"
+        },
+        "buttons": {
+          "openNow": "Open Now",
+          "openLater": "Open Later"
         }
       },
       "model": {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { Flex } from 'ant-design-vue'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import About from './components/about/index.vue'
@@ -12,16 +13,23 @@ import Shortcut from './components/shortcut/index.vue'
 import UpdateApp from '@/components/update-app/index.vue'
 import { useTray } from '@/composables/useTray'
 import { useAppStore } from '@/stores/app'
+import { useGeneralStore } from '@/stores/general'
 import { isMac } from '@/utils/platform'
 
 const { createTray } = useTray()
 const appStore = useAppStore()
 const current = ref(0)
 const { t } = useI18n()
+const generalStore = useGeneralStore()
+const appWindow = getCurrentWebviewWindow()
 
 onMounted(async () => {
   createTray()
 })
+
+watch(() => generalStore.appearance.language, () => {
+  appWindow.setTitle(t('pages.preference.title'))
+}, { immediate: true })
 
 const menus = computed(() => [
   {

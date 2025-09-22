@@ -25,7 +25,6 @@
       },
       {
         "label": "preference",
-        "title": "偏好设置",
         "url": "index.html/#/preference",
         "visible": false,
         "titleBarStyle": "Overlay",

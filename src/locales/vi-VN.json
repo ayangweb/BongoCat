@@ -6,6 +6,7 @@
       }
     },
     "preference": {
+      "title": "Tùy chỉnh",
       "cat": {
         "title": "Mèo",
         "labels": {
@@ -50,11 +51,16 @@
         },
         "hints": {
           "showTaskbarIcon": "Bật để có thể quay cửa sổ qua OBS.",
-          "inputMonitoringPermission": "Bật quyền giám sát để nhận sự kiện bàn phím và chuột từ hệ thống nhằm phản hồi thao tác của bạn."
+          "inputMonitoringPermission": "Bật quyền giám sát để nhận sự kiện bàn phím và chuột từ hệ thống nhằm phản hồi thao tác của bạn.",
+          "inputMonitoringPermissionGuide": "Nếu quyền đã được bật, hãy chọn nó và nhấn nút \"-\" để xóa. Sau đó thêm lại thủ công và khởi động lại ứng dụng để đảm bảo quyền được áp dụng."
         },
         "status": {
           "authorized": "Đã cấp quyền",
           "authorize": "Đi đến Bật"
+        },
+        "buttons": {
+          "openNow": "Mở ngay",
+          "openLater": "Mở sau"
         }
       },
       "model": {

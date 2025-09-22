@@ -15,6 +15,7 @@
     "core:window:allow-set-decorations",
     "core:window:allow-set-position",
     "core:window:allow-set-theme",
+    "core:window:allow-set-title",
     "custom-window:default",
     "os:default",
     "process:default",

@@ -78,7 +78,7 @@ function feedbackIssue() {
       </Button>
     </ProListItem>
 
-    <ProListItem :title="$t('pages.preference.about.labels.openSourceAddress')">
+    <ProListItem :title="$t('pages.preference.about.labels.openSource')">
       <Button
         danger
         @click="feedbackIssue"

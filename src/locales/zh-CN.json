@@ -6,6 +6,7 @@
       }
     },
     "preference": {
+      "title": "偏好设置",
       "cat": {
         "title": "猫咪设置",
         "labels": {
@@ -50,11 +51,16 @@
         },
         "hints": {
           "showTaskbarIcon": "启用后，即可通过 OBS Studio 捕获窗口。",
-          "inputMonitoringPermission": "开启输入监控权限，以便接收系统的键盘和鼠标事件来响应你的操作。"
+          "inputMonitoringPermission": "开启输入监控权限，以便接收系统的键盘和鼠标事件来响应你的操作。",
+          "inputMonitoringPermissionGuide": "如果权限已开启，请先选中并点击“-”按钮将其删除，然后重新手动添加，最后重启应用以确保权限生效。"
         },
         "status": {
           "authorized": "已授权",
           "authorize": "去授权"
+        },
+        "buttons": {
+          "openNow": "前往开启",
+          "openLater": "稍后开启"
         }
       },
       "model": {
