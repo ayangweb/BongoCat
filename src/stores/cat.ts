@@ -41,6 +41,9 @@ export const useCatStore = defineStore('cat', () => {
   /** @deprecated 请使用 `window.opacity` */
   const opacity = ref(100)
 
+  /** @deprecated 用于标识数据是否已迁移，后续版本将删除 */
+  const migrated = ref(false)
+
   const model = reactive<CatStore['model']>({
     mirror: false,
     single: false,
@@ -57,6 +60,8 @@ export const useCatStore = defineStore('cat', () => {
   })
 
   const init = () => {
+    if (migrated.value) return
+
     model.mirror = mirrorMode.value
     model.single = singleMode.value
     model.mouseMirror = mouseMirror.value
@@ -66,9 +71,12 @@ export const useCatStore = defineStore('cat', () => {
     window.alwaysOnTop = alwaysOnTop.value
     window.scale = scale.value
     window.opacity = opacity.value
+
+    migrated.value = true
   }
 
   return {
+    migrated,
     model,
     window,
     init,

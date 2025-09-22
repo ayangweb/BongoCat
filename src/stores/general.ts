@@ -41,6 +41,9 @@ export const useGeneralStore = defineStore('general', () => {
   /** @deprecated 请使用 `appearance.isDark` */
   const isDark = ref(false)
 
+  /** @deprecated 用于标识数据是否已迁移，后续版本将删除 */
+  const migrated = ref(false)
+
   const app = reactive<GeneralStore['app']>({
     autostart: false,
     taskbarVisible: false,
@@ -66,6 +69,10 @@ export const useGeneralStore = defineStore('general', () => {
   }
 
   const init = async () => {
+    appearance.language ??= await getLanguage()
+
+    if (migrated.value) return
+
     app.autostart = autostart.value
     app.taskbarVisible = taskbarVisibility.value
 
@@ -74,10 +81,11 @@ export const useGeneralStore = defineStore('general', () => {
 
     update.autoCheck = autoCheckUpdate.value
 
-    appearance.language ??= await getLanguage()
+    migrated.value = true
   }
 
   return {
+    migrated,
     app,
     appearance,
     update,
