@@ -47,7 +47,7 @@
   },
   "bundle": {
     "active": true,
-    "category": "Game",
+    "category": "Entertainment",
     "createUpdaterArtifacts": true,
     "targets": ["nsis", "dmg", "app", "appimage", "deb", "rpm"],
     "shortDescription": "BongoCat",
