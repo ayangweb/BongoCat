@@ -20,11 +20,13 @@ import { useAppStore } from './stores/app'
 import { useCatStore } from './stores/cat'
 import { useGeneralStore } from './stores/general'
 import { useModelStore } from './stores/model'
+import { useRemoteStore } from './stores/remote'
 import { useShortcutStore } from './stores/shortcut.ts'
 
 const { generateColorVars } = useThemeVars()
 const appStore = useAppStore()
 const modelStore = useModelStore()
+const remoteStore = useRemoteStore()
 const catStore = useCatStore()
 const generalStore = useGeneralStore()
 const shortcutStore = useShortcutStore()
@@ -46,6 +48,7 @@ onMounted(async () => {
   await generalStore.init()
   await shortcutStore.$tauri.start()
   await restoreState()
+  remoteStore.connect()
 })
 
 watch(() => generalStore.appearance.language, (value) => {

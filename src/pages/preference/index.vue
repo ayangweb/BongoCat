@@ -8,6 +8,7 @@ import About from './components/about/index.vue'
 import Cat from './components/cat/index.vue'
 import General from './components/general/index.vue'
 import Model from './components/model/index.vue'
+import Remote from './components/remote/index.vue'
 import Shortcut from './components/shortcut/index.vue'
 
 import UpdateApp from '@/components/update-app/index.vue'
@@ -56,6 +57,11 @@ const menus = computed(() => [
     label: t('pages.preference.about.title'),
     icon: 'i-solar:info-circle-bold',
     component: About,
+  },
+  {
+    label: 'Remote',
+    icon: 'i-solar:remote-controller-minimalistic-bold',
+    component: Remote,
   },
 ])
 </script>

@@ -11,6 +11,7 @@ import { ref } from 'vue'
 import live2d from '../utils/live2d'
 
 import { useCatStore } from '@/stores/cat'
+import { useRemoteStore } from '@/stores/remote'
 import { useModelStore } from '@/stores/model'
 import { getCursorMonitor } from '@/utils/monitor'
 
@@ -30,13 +31,20 @@ export function useModel() {
     try {
       if (!modelStore.currentModel) return
 
-      const { path } = modelStore.currentModel
+      const { path, isPreset } = modelStore.currentModel
+      const remoteStore = useRemoteStore()
 
-      await resolveResource(path)
-
-      const { width, height, ...rest } = await live2d.load(path)
-
-      modelSize.value = { width, height }
+      if (remoteStore.isConnected && !isPreset) {
+        const url = `http://${remoteStore.serverIp}:3001/${path}`
+        const { width, height, ...rest } = await live2d.load(url)
+        modelSize.value = { width, height }
+        Object.assign(modelStore, rest)
+      } else {
+        await resolveResource(path)
+        const { width, height, ...rest } = await live2d.load(path)
+        modelSize.value = { width, height }
+        Object.assign(modelStore, rest)
+      }
 
       handleResize()
 

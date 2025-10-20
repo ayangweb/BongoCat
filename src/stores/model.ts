@@ -40,7 +40,19 @@ export const useModelStore = defineStore('model', () => {
   const supportKeys = reactive<Record<string, string>>({})
   const pressedKeys = reactive<Record<string, string>>({})
 
-  const init = async () => {
+  const init = async (data?: Model) => {
+    if (data) {
+      const remoteModel = data
+      currentModel.value = remoteModel
+      models.value = [remoteModel]
+      return
+    }
+
+    const { useRemoteStore } = await import('./remote')
+    const remoteStore = useRemoteStore()
+
+    if (remoteStore.isConnected) return
+
     const modelsPath = await resolveResource('assets/models')
 
     const nextModels = filter(models.value, { isPreset: false })
