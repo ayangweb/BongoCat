@@ -30,6 +30,17 @@ const catStore = useCatStore()
     >
       <Switch v-model:checked="catStore.model.mouseMirror" />
     </ProListItem>
+
+    <ProListItem
+      :description="$t('pages.preference.cat.hints.autoReleaseDelay')"
+      :title="$t('pages.preference.cat.labels.autoReleaseDelay')"
+    >
+      <InputNumber
+        v-model:value="catStore.model.autoReleaseDelay"
+        addon-after="s"
+        class="w-28"
+      />
+    </ProListItem>
   </ProList>
 
   <ProList :title="$t('pages.preference.cat.labels.windowSettings')">
@@ -74,7 +85,7 @@ const catStore = useCatStore()
     >
       <Slider
         v-model:value="catStore.window.opacity"
-        class="m-0!"
+        class="m-[0]!"
         :max="100"
         :min="10"
         :tip-formatter="(value) => `${value}%`"

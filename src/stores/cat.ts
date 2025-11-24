@@ -6,6 +6,7 @@ export interface CatStore {
     mirror: boolean
     single: boolean
     mouseMirror: boolean
+    autoReleaseDelay: number
   }
   window: {
     visible: boolean
@@ -48,6 +49,7 @@ export const useCatStore = defineStore('cat', () => {
     mirror: false,
     single: false,
     mouseMirror: false,
+    autoReleaseDelay: 3,
   })
 
   const window = reactive<CatStore['window']>({

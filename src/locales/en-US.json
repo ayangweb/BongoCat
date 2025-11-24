@@ -19,7 +19,8 @@
           "alwaysOnTop": "Always On Top",
           "windowSize": "Window Size",
           "windowRadius": "Window Radius",
-          "opacity": "Opacity"
+          "opacity": "Opacity",
+          "autoReleaseDelay": "Auto Release Delay"
         },
         "hints": {
           "mirrorMode": "When enabled, the model will be horizontally flipped.",
@@ -27,7 +28,8 @@
           "mouseMirror": "When enabled, the mouse will mirror follow the hand movement.",
           "passThrough": "When enabled, the window will not affect operations on other applications.",
           "alwaysOnTop": "When enabled, the window will always stay above other applications.",
-          "windowSize": "Move the mouse to the edge of the window or hold Shift and right-drag to resize."
+          "windowSize": "Move the mouse to the edge of the window or hold Shift and right-drag to resize.",
+          "autoReleaseDelay": "Due to Windows not capturing the release events of certain system-level keys, they will be automatically treated as released after a timeout."
         }
       },
       "general": {

@@ -1,7 +1,6 @@
 import type { CursorPoint } from '@/utils/monitor'
 
 import { invoke } from '@tauri-apps/api/core'
-import { useDebounceFn } from '@vueuse/core'
 import { isEqual, mapValues } from 'es-toolkit'
 import { ref } from 'vue'
 
@@ -10,7 +9,9 @@ import { INVOKE_KEY, LISTEN_KEY } from '../constants'
 import { useModel } from './useModel'
 import { useTauriListen } from './useTauriListen'
 
+import { useCatStore } from '@/stores/cat'
 import { useModelStore } from '@/stores/model'
+import { isWindows } from '@/utils/platform'
 
 interface MouseButtonEvent {
   kind: 'MousePress' | 'MouseRelease'
@@ -32,13 +33,13 @@ type DeviceEvent = MouseButtonEvent | MouseMoveEvent | KeyboardEvent
 export function useDevice() {
   const modelStore = useModelStore()
   const lastCursorPoint = ref<CursorPoint>({ x: 0, y: 0 })
+  const releaseTimers = new Map<string, NodeJS.Timeout>()
+  const catStore = useCatStore()
   const { handlePress, handleRelease, handleMouseChange, handleMouseMove } = useModel()
 
   const startListening = () => {
     invoke(INVOKE_KEY.START_DEVICE_LISTENING)
   }
-
-  const debouncedRelease = useDebounceFn(handleRelease, 100)
 
   const getSupportedKey = (key: string) => {
     let nextKey = key
@@ -69,6 +70,22 @@ export function useDevice() {
     return handleMouseMove(point)
   }
 
+  const handleScheduleRelease = (key: string, delay = 100) => {
+    handlePress(key)
+
+    if (releaseTimers.has(key)) {
+      clearTimeout(releaseTimers.get(key))
+    }
+
+    const timer = setTimeout(() => {
+      handleRelease(key)
+
+      releaseTimers.delete(key)
+    }, delay)
+
+    releaseTimers.set(key, timer)
+  }
+
   useTauriListen<DeviceEvent>(LISTEN_KEY.DEVICE_CHANGED, ({ payload }) => {
     const { kind, value } = payload
 
@@ -78,12 +95,16 @@ export function useDevice() {
       if (!nextValue) return
 
       if (nextValue === 'CapsLock') {
-        handlePress(nextValue)
-
-        return debouncedRelease(nextValue)
+        return handleScheduleRelease(nextValue)
       }
 
       if (kind === 'KeyboardPress') {
+        if (isWindows) {
+          const delay = catStore.model.autoReleaseDelay * 1000
+
+          return handleScheduleRelease(nextValue, delay)
+        }
+
         return handlePress(nextValue)
       }
 

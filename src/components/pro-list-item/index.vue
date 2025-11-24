@@ -23,7 +23,10 @@ const hasDescription = computed(() => {
     justify="space-between"
     :vertical="vertical"
   >
-    <Flex align="center">
+    <Flex
+      align="center"
+      class="flex-1"
+    >
       <Flex vertical>
         <div class="text-sm font-medium">
           {{ title }}
