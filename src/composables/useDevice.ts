@@ -70,7 +70,7 @@ export function useDevice() {
     return handleMouseMove(point)
   }
 
-  const handleScheduleRelease = (key: string, delay = 100) => {
+  const handleAutoRelease = (key: string, delay = 100) => {
     handlePress(key)
 
     if (releaseTimers.has(key)) {
@@ -95,14 +95,14 @@ export function useDevice() {
       if (!nextValue) return
 
       if (nextValue === 'CapsLock') {
-        return handleScheduleRelease(nextValue)
+        return handleAutoRelease(nextValue)
       }
 
       if (kind === 'KeyboardPress') {
         if (isWindows) {
           const delay = catStore.model.autoReleaseDelay * 1000
 
-          return handleScheduleRelease(nextValue, delay)
+          return handleAutoRelease(nextValue, delay)
         }
 
         return handlePress(nextValue)
