@@ -4,6 +4,7 @@ import { InputNumber, Slider, Switch } from 'ant-design-vue'
 import ProList from '@/components/pro-list/index.vue'
 import ProListItem from '@/components/pro-list-item/index.vue'
 import { useCatStore } from '@/stores/cat'
+import { isWindows } from '@/utils/platform'
 
 const catStore = useCatStore()
 </script>
@@ -32,6 +33,7 @@ const catStore = useCatStore()
     </ProListItem>
 
     <ProListItem
+      v-if="isWindows"
       :description="$t('pages.preference.cat.hints.autoReleaseDelay')"
       :title="$t('pages.preference.cat.labels.autoReleaseDelay')"
     >
