@@ -28,7 +28,7 @@ interface KeyboardEvent {
   value: string
 }
 
-type DeviceEvent = MouseButtonEvent | MouseMoveEvent | KeyboardEvent
+export type DeviceEvent = MouseButtonEvent | MouseMoveEvent | KeyboardEvent
 
 export function useDevice() {
   const modelStore = useModelStore()
