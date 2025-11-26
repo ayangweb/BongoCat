@@ -2,7 +2,7 @@
   "pages": {
     "main": {
       "hints": {
-        "redrawing": "Resizing..."
+        "redrawing": "Redrawing..."
       }
     },
     "preference": {
@@ -108,7 +108,7 @@
           "openSource": "Open Source"
         },
         "hints": {
-          "appInfo": "Copy app information to include in bug reports.",
+          "appInfo": "Copy the app information to include in bug reports.",
           "copySuccess": "Copied successfully"
         },
         "buttons": {
