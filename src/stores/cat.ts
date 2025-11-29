@@ -77,10 +77,35 @@ export const useCatStore = defineStore('cat', () => {
     migrated.value = true
   }
 
+  const reset = () => {
+    // legacy fields
+    mirrorMode.value = false
+    singleMode.value = false
+    mouseMirror.value = false
+    penetrable.value = false
+    alwaysOnTop.value = true
+    scale.value = 100
+    opacity.value = 100
+    migrated.value = false
+
+    // new model/window state
+    model.mirror = false
+    model.single = false
+    model.mouseMirror = false
+
+    window.visible = true
+    window.passThrough = false
+    window.alwaysOnTop = false
+    window.scale = 100
+    window.opacity = 100
+    window.radius = 0
+  }
+
   return {
     migrated,
     model,
     window,
     init,
+    reset,
   }
 })

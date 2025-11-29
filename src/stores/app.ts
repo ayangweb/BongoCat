@@ -14,10 +14,18 @@ export const useAppStore = defineStore('app', () => {
     version.value = await getVersion()
   }
 
+  const reset = () => {
+    // remove all saved window positions/sizes
+    Object.keys(windowState).forEach((key) => {
+      delete windowState[key]
+    })
+  }
+
   return {
     name,
     version,
     windowState,
     init,
+    reset,
   }
 })

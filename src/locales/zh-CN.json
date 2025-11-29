@@ -152,7 +152,8 @@
         "showCat": "显示猫咪",
         "passThrough": "窗口穿透",
         "windowSize": "窗口尺寸",
-        "opacity": "不透明度"
+        "opacity": "不透明度",
+        "resetCat": "重置猫咪"
       }
     },
     "useTray": {
