@@ -54,17 +54,17 @@ const catStore = useCatStore()
     </ProListItem>
 
     <ProListItem
-      :description="$t('pages.preference.cat.hints.hoverTransparent')"
-      :title="$t('pages.preference.cat.labels.hoverTransparent')"
-    >
-      <Switch v-model:checked="catStore.window.hoverTransparent" />
-    </ProListItem>
-
-    <ProListItem
       :description="$t('pages.preference.cat.hints.alwaysOnTop')"
       :title="$t('pages.preference.cat.labels.alwaysOnTop')"
     >
       <Switch v-model:checked="catStore.window.alwaysOnTop" />
+    </ProListItem>
+
+    <ProListItem
+      :description="$t('pages.preference.cat.hints.hideOnHover')"
+      :title="$t('pages.preference.cat.labels.hideOnHover')"
+    >
+      <Switch v-model:checked="catStore.window.hideOnHover" />
     </ProListItem>
 
     <ProListItem

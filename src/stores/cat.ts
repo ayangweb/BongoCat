@@ -11,11 +11,11 @@ export interface CatStore {
   window: {
     visible: boolean
     passThrough: boolean
-    hoverTransparent: boolean
     alwaysOnTop: boolean
     scale: number
     opacity: number
     radius: number
+    hideOnHover: boolean
   }
 }
 
@@ -56,11 +56,11 @@ export const useCatStore = defineStore('cat', () => {
   const window = reactive<CatStore['window']>({
     visible: true,
     passThrough: false,
-    hoverTransparent: false,
     alwaysOnTop: false,
     scale: 100,
     opacity: 100,
     radius: 0,
+    hideOnHover: false,
   })
 
   const init = () => {

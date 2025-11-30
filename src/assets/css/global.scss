@@ -3,6 +3,10 @@ html {
 
   color-scheme: light;
 
+  body {
+    --uno: transition-opacity-300;
+  }
+
   &.dark {
     color-scheme: dark;
   }

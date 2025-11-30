@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import type { DeviceEvent } from '@/composables/useDevice'
-
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { PhysicalSize } from '@tauri-apps/api/dpi'
 import { Menu } from '@tauri-apps/api/menu'
@@ -10,14 +8,12 @@ import { exists, readDir } from '@tauri-apps/plugin-fs'
 import { useDebounceFn, useEventListener } from '@vueuse/core'
 import { round } from 'es-toolkit'
 import { nth } from 'es-toolkit/compat'
-import { onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { useDevice } from '@/composables/useDevice'
 import { useGamepad } from '@/composables/useGamepad'
 import { useModel } from '@/composables/useModel'
 import { useSharedMenu } from '@/composables/useSharedMenu'
-import { useTauriListen } from '@/composables/useTauriListen'
-import { LISTEN_KEY } from '@/constants'
 import { hideWindow, setAlwaysOnTop, setTaskbarVisibility, showWindow } from '@/plugins/window'
 import { useCatStore } from '@/stores/cat'
 import { useGeneralStore } from '@/stores/general.ts'
@@ -145,40 +141,11 @@ function handleMouseMove(event: MouseEvent) {
 
   catStore.window.scale = round(nextScale)
 }
-
-const sceneRef = useTemplateRef('sceneRef')
-let wasInside = false
-
-useTauriListen<DeviceEvent>(LISTEN_KEY.DEVICE_CHANGED, async ({ payload }) => {
-  const { kind, value } = payload
-
-  if (kind !== 'MouseMove') return
-  const { x, y } = value
-
-  const windowPosition = await appWindow.innerPosition()
-  const windowSize = await appWindow.innerSize()
-
-  const left = windowPosition.x
-  const top = windowPosition.y
-  const right = windowPosition.x + windowSize.width
-  const bottom = windowPosition.y + windowSize.height
-
-  const isInside = x > left && x < right && y > top && y < bottom
-
-  if (isInside && !wasInside) {
-    catStore.window.hoverTransparent && sceneRef.value?.style.setProperty('opacity', '0')
-    wasInside = true
-  } else if (!isInside && wasInside) {
-    catStore.window.hoverTransparent && sceneRef.value?.style.setProperty('opacity', `${catStore.window.opacity / 100}`)
-    wasInside = false
-  }
-})
 </script>
 
 <template>
   <div
-    ref="sceneRef"
-    class="relative size-screen overflow-hidden transition-opacity children:(absolute size-full)"
+    class="relative size-screen overflow-hidden children:(absolute size-full)"
     :class="{ '-scale-x-100': catStore.model.mirror }"
     :style="{
       opacity: catStore.window.opacity / 100,
