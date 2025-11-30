@@ -66,20 +66,6 @@ export const useModelStore = defineStore('model', () => {
     models.value = nextModels
   }
 
-  const reset = () => {
-    models.value = []
-    currentModel.value = undefined
-    motions.value = {}
-    expressions.value = []
-
-    Object.keys(supportKeys).forEach((key) => {
-      delete supportKeys[key]
-    })
-    Object.keys(pressedKeys).forEach((key) => {
-      delete pressedKeys[key]
-    })
-  }
-
   return {
     models,
     currentModel,
@@ -88,7 +74,6 @@ export const useModelStore = defineStore('model', () => {
     supportKeys,
     pressedKeys,
     init,
-    reset,
   }
 }, {
   tauri: {

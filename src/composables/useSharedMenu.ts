@@ -1,18 +1,15 @@
 import { CheckMenuItem, MenuItem, PredefinedMenuItem, Submenu } from '@tauri-apps/api/menu'
-import { relaunch } from '@tauri-apps/plugin-process'
 import { range } from 'es-toolkit'
 import { useI18n } from 'vue-i18n'
 
 import { showWindow } from '@/plugins/window'
 import { useAppStore } from '@/stores/app'
 import { useCatStore } from '@/stores/cat'
-import { useModelStore } from '@/stores/model'
 import { isMac } from '@/utils/platform'
 
 export function useSharedMenu() {
   const appStore = useAppStore()
   const catStore = useCatStore()
-  const modelStore = useModelStore()
   const { t } = useI18n()
 
   const getScaleMenuItems = async () => {
@@ -64,12 +61,8 @@ export function useSharedMenu() {
   }
 
   const handleResetAll = async () => {
-    appStore.reset()
-    catStore.reset()
-    modelStore.reset()
-
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await relaunch()
+    await catStore.resetWindowScale()
+    await appStore.reset()
   }
 
   const getSharedMenu = async () => {
