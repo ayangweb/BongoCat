@@ -1,8 +1,6 @@
-import type { CursorPoint } from '@/utils/monitor'
-
 import { invoke } from '@tauri-apps/api/core'
-import { isEqual, mapValues } from 'es-toolkit'
-import { ref } from 'vue'
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { cursorPosition } from '@tauri-apps/api/window'
 
 import { INVOKE_KEY, LISTEN_KEY } from '../constants'
 
@@ -11,11 +9,17 @@ import { useTauriListen } from './useTauriListen'
 
 import { useCatStore } from '@/stores/cat'
 import { useModelStore } from '@/stores/model'
+import { inBetween } from '@/utils/is'
 import { isWindows } from '@/utils/platform'
 
 interface MouseButtonEvent {
   kind: 'MousePress' | 'MouseRelease'
   value: string
+}
+
+export interface CursorPoint {
+  x: number
+  y: number
 }
 
 interface MouseMoveEvent {
@@ -32,7 +36,6 @@ type DeviceEvent = MouseButtonEvent | MouseMoveEvent | KeyboardEvent
 
 export function useDevice() {
   const modelStore = useModelStore()
-  const lastCursorPoint = ref<CursorPoint>({ x: 0, y: 0 })
   const releaseTimers = new Map<string, NodeJS.Timeout>()
   const catStore = useCatStore()
   const { handlePress, handleRelease, handleMouseChange, handleMouseMove } = useModel()
@@ -60,14 +63,25 @@ export function useDevice() {
     return nextKey
   }
 
-  const processMouseMove = (point: CursorPoint) => {
-    const roundedValue = mapValues(point, Math.round)
+  const handleCursorMove = async () => {
+    const cursorPoint = await cursorPosition()
 
-    if (isEqual(lastCursorPoint.value, roundedValue)) return
+    handleMouseMove(cursorPoint)
 
-    lastCursorPoint.value = roundedValue
+    if (catStore.window.hideOnHover) {
+      const appWindow = getCurrentWebviewWindow()
+      const position = await appWindow.outerPosition()
+      const { width, height } = await appWindow.innerSize()
 
-    return handleMouseMove(point)
+      const isInWindow = inBetween(cursorPoint.x, position.x, position.x + width)
+        && inBetween(cursorPoint.y, position.y, position.y + height)
+
+      document.body.style.setProperty('opacity', isInWindow ? '0' : 'unset')
+
+      if (!catStore.window.passThrough) {
+        appWindow.setIgnoreCursorEvents(isInWindow)
+      }
+    }
   }
 
   const handleAutoRelease = (key: string, delay = 100) => {
@@ -117,7 +131,7 @@ export function useDevice() {
       case 'MouseRelease':
         return handleMouseChange(value, false)
       case 'MouseMove':
-        return processMouseMove(value)
+        return handleCursorMove()
     }
   })
 

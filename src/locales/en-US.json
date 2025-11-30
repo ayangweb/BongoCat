@@ -20,7 +20,8 @@
           "windowSize": "Window Size",
           "windowRadius": "Window Radius",
           "opacity": "Opacity",
-          "autoReleaseDelay": "Auto Release Delay"
+          "autoReleaseDelay": "Auto Release Delay",
+          "hideOnHover": "Hide on Hover"
         },
         "hints": {
           "mirrorMode": "When enabled, the model will be horizontally flipped.",
@@ -29,7 +30,8 @@
           "passThrough": "When enabled, the window will not affect operations on other applications.",
           "alwaysOnTop": "When enabled, the window will always stay above other applications.",
           "windowSize": "Move the mouse to the edge of the window or hold Shift and right-drag to resize.",
-          "autoReleaseDelay": "Due to Windows not capturing the release events of certain system-level keys, they will be automatically treated as released after a timeout."
+          "autoReleaseDelay": "Due to Windows not capturing the release events of certain system-level keys, they will be automatically treated as released after a timeout.",
+          "hideOnHover": "When enabled, the window will hide when the mouse hovers over it."
         }
       },
       "general": {

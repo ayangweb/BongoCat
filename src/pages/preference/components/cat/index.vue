@@ -61,6 +61,13 @@ const catStore = useCatStore()
     </ProListItem>
 
     <ProListItem
+      :description="$t('pages.preference.cat.hints.hideOnHover')"
+      :title="$t('pages.preference.cat.labels.hideOnHover')"
+    >
+      <Switch v-model:checked="catStore.window.hideOnHover" />
+    </ProListItem>
+
+    <ProListItem
       :description="$t('pages.preference.cat.hints.windowSize')"
       :title="$t('pages.preference.cat.labels.windowSize')"
     >
