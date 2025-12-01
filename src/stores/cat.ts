@@ -79,10 +79,15 @@ export const useCatStore = defineStore('cat', () => {
     migrated.value = true
   }
 
+  const resetWindowScale = () => {
+    window.scale = 75
+  }
+
   return {
     migrated,
     model,
     window,
     init,
+    resetWindowScale,
   }
 })

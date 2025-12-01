@@ -154,7 +154,8 @@
         "showCat": "Hiện Mèo",
         "passThrough": "Click xuyên",
         "windowSize": "Kích thước",
-        "opacity": "Độ mờ"
+        "opacity": "Độ mờ",
+        "resetCat": "Đặt lại Mèo"
       }
     },
     "useTray": {
