@@ -55,5 +55,23 @@
 
   "i18n-ally.localesPaths": ["src/locales"],
   "i18n-ally.keystyle": "nested",
-  "i18n-ally.displayLanguage": "zh-CN"
+  "i18n-ally.displayLanguage": "zh-CN",
+  "cSpell.words": [
+    "Antd",
+    "apng",
+    "appimage",
+    "ayangweb",
+    "gilrs",
+    "iconamoon",
+    "iconify",
+    "Mmmmoko",
+    "Mver",
+    "nsis",
+    "pinia",
+    "srcset",
+    "tauri",
+    "Trendshift",
+    "unocss",
+    "vueuse"
+  ]
 }
