@@ -8,6 +8,8 @@ import { Application, Ticker } from 'pixi.js'
 
 import { join } from './path'
 
+import { i18n } from '@/locales'
+
 Live2DModel.registerTicker(Ticker)
 
 class Live2d {
@@ -39,7 +41,7 @@ class Live2d {
     const modelFile = files.find(file => file.name.endsWith('.model3.json'))
 
     if (!modelFile) {
-      throw new Error('未找到模型主配置文件，请确认模型文件是否完整。')
+      throw new Error(i18n.global.t('utils.live2d.errors.notFoundMainConfig'))
     }
 
     const modelPath = join(path, modelFile.name)
