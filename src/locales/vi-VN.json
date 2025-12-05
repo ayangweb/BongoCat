@@ -163,5 +163,12 @@
       "restartApp": "Khởi động lại",
       "quitApp": "Thoát"
     }
+  },
+  "utils": {
+    "live2d": {
+      "errors": {
+        "notFoundMainConfig": "Không tìm thấy cấu hình chính của mô hình. Vui lòng đảm bảo tệp mô hình đầy đủ."
+      }
+    }
   }
 }

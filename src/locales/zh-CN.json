@@ -163,5 +163,12 @@
       "restartApp": "重启应用",
       "quitApp": "退出应用"
     }
+  },
+  "utils": {
+    "live2d": {
+      "errors": {
+        "notFoundMainConfig": "未找到模型主配置文件，请确认模型文件是否完整。"
+      }
+    }
   }
 }
