@@ -21,4 +21,5 @@ export const LANGUAGE = {
   ZH_CN: 'zh-CN',
   EN_US: 'en-US',
   VI_VN: 'vi-VN',
+  PT_BR: 'pt-BR',
 } as const

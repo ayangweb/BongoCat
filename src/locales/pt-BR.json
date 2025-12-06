@@ -1,0 +1,168 @@
+{
+  "pages": {
+    "main": {
+      "hints": {
+        "redrawing": "Redimensionando..."
+      }
+    },
+    "preference": {
+      "title": "Preferências",
+      "cat": {
+        "title": "Gato",
+        "labels": {
+          "modelSettings": "Configurações do Modelo",
+          "mirrorMode": "Modo Espelho",
+          "singleMode": "Mostrar Apenas Última Tecla",
+          "mouseMirror": "Espelho do Mouse",
+          "windowSettings": "Configurações da Janela",
+          "passThrough": "Janela Transparente",
+          "alwaysOnTop": "Sempre no Topo",
+          "windowSize": "Tamanho da Janela",
+          "windowRadius": "Raio da Janela",
+          "opacity": "Opacidade",
+          "autoReleaseDelay": "Atraso de Liberação Automática",
+          "hideOnHover": "Ocultar ao Passar o Mouse"
+        },
+        "hints": {
+          "mirrorMode": "Quando ativado, o modelo será invertido horizontalmente.",
+          "singleMode": "Quando ativado, apenas a última tecla pressionada em cada mão é exibida (evita mostrar múltiplas mãos ao pressionar várias teclas ao mesmo tempo).",
+          "mouseMirror": "Quando ativado, o mouse espelhará o movimento da mão.",
+          "passThrough": "Quando ativado, a janela não afetará operações em outros aplicativos.",
+          "alwaysOnTop": "Quando ativado, a janela sempre ficará acima de outros aplicativos.",
+          "windowSize": "Mova o mouse para a borda da janela ou segure Shift e arraste com o botão direito para redimensionar.",
+          "autoReleaseDelay": "Devido ao Windows não capturar eventos de liberação de certas teclas de nível do sistema, elas serão automaticamente tratadas como liberadas após um tempo limite.",
+          "hideOnHover": "Quando ativado, a janela será ocultada quando o mouse passar sobre ela."
+        }
+      },
+      "general": {
+        "title": "Geral",
+        "labels": {
+          "appSettings": "Configurações do aplicativo",
+          "launchOnStartup": "Iniciar na inicialização",
+          "showTaskbarIcon": "Mostrar ícone na barra de tarefas",
+          "appearanceSettings": "Configurações de aparência",
+          "themeMode": "Tema",
+          "language": "Idiomas",
+          "updateSettings": "Configurações de atualização",
+          "autoCheckUpdate": "Verificar atualizações automaticamente",
+          "permissionsSettings": "Configurações de Permissões",
+          "inputMonitoringPermission": "Permissão de Monitoramento de Entrada"
+        },
+        "options": {
+          "auto": "Sistema",
+          "lightMode": "Claro",
+          "darkMode": "Escuro"
+        },
+        "hints": {
+          "showTaskbarIcon": "Uma vez ativado, você pode capturar a janela via OBS Studio.",
+          "inputMonitoringPermission": "Ative a permissão de monitoramento de entrada para receber eventos de teclado e mouse do sistema para responder às suas ações.",
+          "inputMonitoringPermissionGuide": "Se a permissão já estiver ativada, primeiro selecione-a e clique no botão \"-\" para removê-la. Em seguida, adicione-a novamente manualmente e reinicie o aplicativo para garantir que a permissão entre em vigor."
+        },
+        "status": {
+          "authorized": "Autorizado",
+          "authorize": "Ir para Ativar"
+        },
+        "buttons": {
+          "openNow": "Abrir Agora",
+          "openLater": "Abrir Mais Tarde"
+        }
+      },
+      "model": {
+        "title": "Modelo",
+        "labels": {
+          "deleteModel": "Excluir modelo"
+        },
+        "hints": {
+          "deleteSuccess": "Excluído com sucesso",
+          "deleteModel": "Tem certeza de que deseja excluir este modelo?",
+          "importSuccess": "Importação bem-sucedida",
+          "clickOrDragToImport": "Clique ou arraste para importar"
+        },
+        "tooltips": {
+          "createModel": "Criar modelo",
+          "convertModel": "Converter modelo",
+          "moreModels": "Mais modelos"
+        }
+      },
+      "shortcut": {
+        "title": "Atalhos",
+        "labels": {
+          "toggleCat": "Mostrar/Ocultar Gato",
+          "togglePreferences": "Abrir Preferências",
+          "mirrorMode": "Modo Espelho",
+          "passThrough": "Janela Transparente",
+          "alwaysOnTop": "Sempre no Topo"
+        },
+        "hints": {
+          "toggleCat": "Alternar a visibilidade da janela do gato.",
+          "togglePreferences": "Alternar a visibilidade da janela de preferências.",
+          "mirrorMode": "Alternar o modo espelho do gato.",
+          "passThrough": "Alternar se a janela do gato é clicável.",
+          "alwaysOnTop": "Alternar se a janela do gato permanece no topo."
+        }
+      },
+      "about": {
+        "title": "Sobre",
+        "labels": {
+          "aboutApp": "Sobre o Aplicativo",
+          "appLog": "Logs do Aplicativo",
+          "appInfo": "Informações do Aplicativo",
+          "openSource": "Código Aberto"
+        },
+        "hints": {
+          "appInfo": "Copiar informações do aplicativo para incluir em relatórios de bugs.",
+          "copySuccess": "Copiado com sucesso"
+        },
+        "buttons": {
+          "checkUpdate": "Verificar atualizações",
+          "copy": "Copiar",
+          "feedbackIssues": "Reportar Problema",
+          "viewLog": "Ver Logs"
+        }
+      }
+    }
+  },
+  "components": {
+    "proShortcut": {
+      "hints": {
+        "pressRecordShortcut": "Pressione as teclas para gravar atalho",
+        "clickRecordShortcut": "Clique para gravar atalho"
+      },
+      "updateApp": {
+        "title": "Nova versão encontrada 🥳",
+        "labels": {
+          "updateVersion": "Versão: ",
+          "updateTime": "Hora da atualização: ",
+          "changelog": "Registro de alterações: "
+        },
+        "hints": {
+          "checkingUpdates": "Verificando atualizações...",
+          "alreadyLatest": "Você já está na versão mais recente 🎉"
+        },
+        "buttons": {
+          "updateNow": "Atualizar Agora",
+          "updateLater": "Atualizar mais tarde"
+        }
+      }
+    }
+  },
+  "composables": {
+    "useSharedMenu": {
+      "labels": {
+        "preference": "Preferências...",
+        "hideCat": "Ocultar Gato",
+        "showCat": "Mostrar Gato",
+        "passThrough": "Janela Transparente",
+        "windowSize": "Tamanho da Janela",
+        "opacity": "Opacidade"
+      }
+    },
+    "useTray": {
+      "checkUpdate": "Verificar atualizações",
+      "openSource": "Código Fonte",
+      "restartApp": "Reiniciar",
+      "quitApp": "Sair"
+    }
+  }
+}
+
