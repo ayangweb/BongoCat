@@ -64,8 +64,58 @@ const catStore = useCatStore()
       :description="$t('pages.preference.cat.hints.hideOnHover')"
       :title="$t('pages.preference.cat.labels.hideOnHover')"
     >
-      <Switch v-model:checked="catStore.window.hideOnHover" />
+      <Switch
+        v-model:checked="catStore.window.hideOnHover"
+        :disabled="catStore.window.distanceOpacity"
+      />
     </ProListItem>
+
+    <ProListItem
+      :description="$t('pages.preference.cat.hints.distanceOpacity')"
+      :title="$t('pages.preference.cat.labels.distanceOpacity')"
+    >
+      <Switch
+        v-model:checked="catStore.window.distanceOpacity"
+        :disabled="catStore.window.hideOnHover"
+      />
+    </ProListItem>
+
+    <template v-if="catStore.window.distanceOpacity">
+      <ProListItem :title="$t('pages.preference.cat.labels.distanceThreshold')">
+        <InputNumber
+          v-model:value="catStore.window.distanceThreshold"
+          addon-after="px"
+          class="w-28"
+          :min="0"
+        />
+      </ProListItem>
+
+      <ProListItem
+        :title="$t('pages.preference.cat.labels.minOpacity')"
+        vertical
+      >
+        <Slider
+          v-model:value="catStore.window.minOpacity"
+          class="m-[0]!"
+          :max="100"
+          :min="0"
+          :tip-formatter="(value) => `${value}%`"
+        />
+      </ProListItem>
+
+      <ProListItem
+        :title="$t('pages.preference.cat.labels.distanceGradient')"
+        vertical
+      >
+        <Slider
+          v-model:value="catStore.window.distanceGradient"
+          class="m-[0]!"
+          :max="100"
+          :min="0"
+          :tip-formatter="(value) => `${value}%`"
+        />
+      </ProListItem>
+    </template>
 
     <ProListItem
       :description="$t('pages.preference.cat.hints.windowSize')"

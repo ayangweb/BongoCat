@@ -4,9 +4,9 @@
   "version": "../package.json",
   "identifier": "com.ayangweb.BongoCat",
   "build": {
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "npx pnpm dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm build",
+    "beforeBuildCommand": "npx pnpm build",
     "frontendDist": "../dist"
   },
   "app": {
