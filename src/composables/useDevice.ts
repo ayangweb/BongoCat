@@ -81,6 +81,28 @@ export function useDevice() {
       if (!catStore.window.passThrough) {
         appWindow.setIgnoreCursorEvents(isInWindow)
       }
+    } else if (catStore.window.distanceOpacity) {
+      const appWindow = getCurrentWebviewWindow()
+      const position = await appWindow.outerPosition()
+
+      const scale = window.devicePixelRatio
+      const x = (cursorPoint.x - position.x) / scale
+      const y = (cursorPoint.y - position.y) / scale
+
+      const threshold = catStore.window.distanceThreshold
+      const minOpacity = catStore.window.minOpacity / 100
+      const gradient = catStore.window.distanceGradient || 100
+
+      const style = document.body.style
+      const maskStyle = `radial-gradient(circle ${threshold}px at ${x}px ${y}px, rgba(0,0,0,${minOpacity}) 0%, rgba(0,0,0,1) ${gradient}%)`
+
+      style.setProperty('-webkit-mask-image', maskStyle)
+      style.setProperty('mask-image', maskStyle)
+      style.removeProperty('opacity')
+    } else {
+      document.body.style.removeProperty('opacity')
+      document.body.style.removeProperty('-webkit-mask-image')
+      document.body.style.removeProperty('mask-image')
     }
   }
 

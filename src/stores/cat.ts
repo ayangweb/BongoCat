@@ -16,6 +16,10 @@ export interface CatStore {
     opacity: number
     radius: number
     hideOnHover: boolean
+    distanceOpacity: boolean
+    distanceThreshold: number
+    minOpacity: number
+    distanceGradient: number
   }
 }
 
@@ -61,6 +65,10 @@ export const useCatStore = defineStore('cat', () => {
     opacity: 100,
     radius: 0,
     hideOnHover: false,
+    distanceOpacity: false,
+    distanceThreshold: 200,
+    minOpacity: 40,
+    distanceGradient: 100,
   })
 
   const init = () => {
