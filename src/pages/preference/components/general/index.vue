@@ -55,6 +55,9 @@ watch(() => generalStore.app.autostart, async (value) => {
         <Select.Option value="vi-VN">
           Tiếng Việt
         </Select.Option>
+        <Select.Option value="pt-BR">
+          Português
+        </Select.Option>
       </Select>
     </ProListItem>
   </ProList>
