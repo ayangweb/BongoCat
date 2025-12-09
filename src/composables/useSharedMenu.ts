@@ -3,10 +3,12 @@ import { range } from 'es-toolkit'
 import { useI18n } from 'vue-i18n'
 
 import { showWindow } from '@/plugins/window'
+import { useAppStore } from '@/stores/app'
 import { useCatStore } from '@/stores/cat'
 import { isMac } from '@/utils/platform'
 
 export function useSharedMenu() {
+  const appStore = useAppStore()
   const catStore = useCatStore()
   const { t } = useI18n()
 
@@ -58,6 +60,11 @@ export function useSharedMenu() {
     return Promise.all(items)
   }
 
+  const handleResetAll = async () => {
+    await catStore.resetWindowScale()
+    await appStore.reset()
+  }
+
   const getSharedMenu = async () => {
     return await Promise.all([
       MenuItem.new({
@@ -69,6 +76,12 @@ export function useSharedMenu() {
         text: catStore.window.visible ? t('composables.useSharedMenu.labels.hideCat') : t('composables.useSharedMenu.labels.showCat'),
         action: () => {
           catStore.window.visible = !catStore.window.visible
+        },
+      }),
+      MenuItem.new({
+        text: t('composables.useSharedMenu.labels.resetCat'),
+        action: () => {
+          void handleResetAll()
         },
       }),
       PredefinedMenuItem.new({ item: 'Separator' }),
