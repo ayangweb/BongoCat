@@ -157,7 +157,7 @@ async function handleOk() {
       vertical
     >
       <Flex align="center">
-        <span>更新版本：</span>
+        <span>{{ $t('components.proShortcut.updateApp.labels.updateVersion') }}</span>
         <span>
           <span>{{ state.update?.currentVersion }} 👉 </span>
           <a
@@ -169,12 +169,12 @@ async function handleOk() {
       </Flex>
 
       <Flex align="center">
-        <span>更新时间：</span>
+        <span>{{ $t('components.proShortcut.updateApp.labels.updateTime') }}</span>
         <span>{{ state.update?.date }}</span>
       </Flex>
 
       <Flex vertical>
-        <span>更新日志：</span>
+        <span>{{ $t('components.proShortcut.updateApp.labels.changelog') }}</span>
 
         <VueMarkdown
           class="update-note max-h-40 overflow-auto"

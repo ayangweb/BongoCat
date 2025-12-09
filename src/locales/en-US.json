@@ -168,5 +168,12 @@
       "restartApp": "Restart",
       "quitApp": "Exit"
     }
+  },
+  "utils": {
+    "live2d": {
+      "errors": {
+        "notFoundMainConfig": "Main model config not found. Please ensure the model files are complete."
+      }
+    }
   }
 }
