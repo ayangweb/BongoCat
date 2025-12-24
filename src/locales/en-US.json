@@ -2,7 +2,7 @@
   "pages": {
     "main": {
       "hints": {
-        "redrawing": "Resizing..."
+        "redrawing": "Redrawing..."
       }
     },
     "preference": {
@@ -12,11 +12,11 @@
         "labels": {
           "modelSettings": "Model Settings",
           "mirrorMode": "Mirror Mode",
-          "singleMode": "Show Last Key Only",
+          "singleMode": "Single Key Mode",
           "mouseMirror": "Mouse Mirror",
           "windowSettings": "Window Settings",
-          "passThrough": "Window Penetration",
-          "alwaysOnTop": "Always On Top",
+          "passThrough": "Pass Through",
+          "alwaysOnTop": "Always on Top",
           "windowSize": "Window Size",
           "windowRadius": "Window Radius",
           "opacity": "Opacity",
@@ -24,28 +24,28 @@
           "hideOnHover": "Hide on Hover"
         },
         "hints": {
-          "mirrorMode": "When enabled, the model will be horizontally flipped.",
-          "singleMode": "When enabled, only the last key pressed on each hand is displayed (prevents showing multiple hands when pressing multiple keys at once).",
-          "mouseMirror": "When enabled, the mouse will mirror follow the hand movement.",
-          "passThrough": "When enabled, the window will not affect operations on other applications.",
-          "alwaysOnTop": "When enabled, the window will always stay above other applications.",
-          "windowSize": "Move the mouse to the edge of the window or hold Shift and right-drag to resize.",
-          "autoReleaseDelay": "Due to Windows not capturing the release events of certain system-level keys, they will be automatically treated as released after a timeout.",
-          "hideOnHover": "When enabled, the window will hide when the mouse hovers over it."
+          "mirrorMode": "When enabled, the model will be mirrored horizontally.",
+          "singleMode": "When enabled, only the last pressed key is displayed for each hand.",
+          "mouseMirror": "When enabled, the mouse will mirror the hand movement.",
+          "passThrough": "When enabled, clicks pass through the window without affecting it.",
+          "alwaysOnTop": "When enabled, the window stays above all other windows.",
+          "windowSize": "Move mouse to window edge, or hold Shift and right-drag to resize.",
+          "autoReleaseDelay": "On Windows, some system keys cannot capture release events and will auto-release after timeout.",
+          "hideOnHover": "When enabled, the window hides when mouse hovers over it."
         }
       },
       "general": {
         "title": "General",
         "labels": {
-          "appSettings": "Application settings",
-          "launchOnStartup": "Launch at startup",
-          "showTaskbarIcon": "Show taskbar icon",
-          "appearanceSettings": "Appearance settings",
-          "themeMode": "Theme",
-          "language": "Languages",
-          "updateSettings": "Update settings",
-          "autoCheckUpdate": "Check for updates automatically",
-          "permissionsSettings": "Permission Settings",
+          "appSettings": "Application Settings",
+          "launchOnStartup": "Launch on Startup",
+          "showTaskbarIcon": "Show Taskbar Icon",
+          "appearanceSettings": "Appearance Settings",
+          "themeMode": "Theme Mode",
+          "language": "Language",
+          "updateSettings": "Update Settings",
+          "autoCheckUpdate": "Auto Check for Updates",
+          "permissionsSettings": "Permissions Settings",
           "inputMonitoringPermission": "Input Monitoring Permission"
         },
         "options": {
@@ -54,9 +54,9 @@
           "darkMode": "Dark"
         },
         "hints": {
-          "showTaskbarIcon": "Once enabled, you can capture the window via OBS Studio.",
-          "inputMonitoringPermission": "Enable input monitoring permission to receive system keyboard and mouse events to respond to your actions.",
-          "inputMonitoringPermissionGuide": "If the permission is already enabled, first select it and click the \"-\" button to remove it. Then add it again manually and restart the application to ensure the permission takes effect."
+          "showTaskbarIcon": "When enabled, the window can be captured via OBS Studio.",
+          "inputMonitoringPermission": "Enable input monitoring to receive keyboard and mouse events from the system.",
+          "inputMonitoringPermissionGuide": "If the permission is already enabled, select it and click the \"-\" button to remove it, then manually add it again and restart the app."
         },
         "status": {
           "authorized": "Authorized",
@@ -70,34 +70,34 @@
       "model": {
         "title": "Model",
         "labels": {
-          "deleteModel": "Delete model"
+          "deleteModel": "Delete Model"
         },
         "hints": {
-          "deleteSuccess": "Deleted successfully",
+          "deleteSuccess": "Deleted Successfully",
           "deleteModel": "Are you sure you want to delete this model?",
-          "importSuccess": "Import successful",
-          "clickOrDragToImport": "Click or drag to import"
+          "importSuccess": "Imported Successfully",
+          "clickOrDragToImport": "Click or drag here to import"
         },
         "tooltips": {
-          "createModel": "Create model",
-          "convertModel": "Convert model",
-          "moreModels": "More models"
+          "createModel": "Create Model",
+          "convertModel": "Convert Model",
+          "moreModels": "More Models"
         }
       },
       "shortcut": {
         "title": "Shortcuts",
         "labels": {
-          "toggleCat": "Show/Hide Cat",
-          "togglePreferences": "Open Preferences",
+          "toggleCat": "Toggle Cat",
+          "togglePreferences": "Toggle Preferences",
           "mirrorMode": "Mirror Mode",
-          "passThrough": "Window Penetration",
-          "alwaysOnTop": "Always On Top"
+          "passThrough": "Pass Through",
+          "alwaysOnTop": "Always on Top"
         },
         "hints": {
-          "toggleCat": "Toggle the cat window's visibility.",
-          "togglePreferences": "Toggle the preferences window visibility.",
+          "toggleCat": "Toggle the visibility of the cat window.",
+          "togglePreferences": "Toggle the visibility of the preferences window.",
           "mirrorMode": "Toggle the cat's mirror mode.",
-          "passThrough": "Toggle whether the cat window is click-through.",
+          "passThrough": "Toggle whether the cat window is pass-through.",
           "alwaysOnTop": "Toggle whether the cat window stays on top."
         }
       },
@@ -110,13 +110,13 @@
           "openSource": "Open Source"
         },
         "hints": {
-          "appInfo": "Copy app information to include in bug reports.",
-          "copySuccess": "Copied successfully"
+          "appInfo": "Copy app information and provide it to bug issue.",
+          "copySuccess": "Copied Successfully"
         },
         "buttons": {
-          "checkUpdate": "Check for updates",
+          "checkUpdate": "Check for Updates",
           "copy": "Copy",
-          "feedbackIssues": "Report Issue",
+          "feedbackIssues": "Feedback Issues",
           "viewLog": "View Logs"
         }
       }
@@ -125,24 +125,24 @@
   "components": {
     "proShortcut": {
       "hints": {
-        "pressRecordShortcut": "Press keys to record shortcut",
+        "pressRecordShortcut": "Press to record shortcut",
         "clickRecordShortcut": "Click to record shortcut"
+      }
+    },
+    "updateApp": {
+      "title": "New Version Found 🥳",
+      "labels": {
+        "updateVersion": "Update Version: ",
+        "updateTime": "Update Time: ",
+        "changelog": "Changelog: "
       },
-      "updateApp": {
-        "title": "New version found 🥳",
-        "labels": {
-          "updateVersion": "Version: ",
-          "updateTime": "Update time: ",
-          "changelog": "Changelog: "
-        },
-        "hints": {
-          "checkingUpdates": "Checking for updates...",
-          "alreadyLatest": "You are already on the latest version 🎉"
-        },
-        "buttons": {
-          "updateNow": "Update Now",
-          "updateLater": "Update later"
-        }
+      "hints": {
+        "checkingUpdates": "Checking for updates...",
+        "alreadyLatest": "Already on the latest version 🎉"
+      },
+      "buttons": {
+        "updateNow": "Update Now",
+        "updateLater": "Update Later"
       }
     }
   },
@@ -152,22 +152,22 @@
         "preference": "Preferences...",
         "hideCat": "Hide Cat",
         "showCat": "Show Cat",
-        "passThrough": "Window Penetration",
+        "passThrough": "Pass Through",
         "windowSize": "Window Size",
         "opacity": "Opacity"
       }
     },
     "useTray": {
-      "checkUpdate": "Check for updates",
-      "openSource": "Source Code",
-      "restartApp": "Restart",
-      "quitApp": "Exit"
+      "checkUpdate": "Check for Updates",
+      "openSource": "Open Source",
+      "restartApp": "Restart App",
+      "quitApp": "Quit App"
     }
   },
   "utils": {
     "live2d": {
-      "errors": {
-        "notFoundMainConfig": "Main model config not found. Please ensure the model files are complete."
+      "hints": {
+        "notFound": "Model master configuration file not found, please ensure the model files are complete."
       }
     }
   }

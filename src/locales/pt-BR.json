@@ -127,22 +127,22 @@
       "hints": {
         "pressRecordShortcut": "Pressione as teclas para gravar atalho",
         "clickRecordShortcut": "Clique para gravar atalho"
+      }
+    },
+    "updateApp": {
+      "title": "Nova versão encontrada 🥳",
+      "labels": {
+        "updateVersion": "Versão: ",
+        "updateTime": "Hora da atualização: ",
+        "changelog": "Registro de alterações: "
       },
-      "updateApp": {
-        "title": "Nova versão encontrada 🥳",
-        "labels": {
-          "updateVersion": "Versão: ",
-          "updateTime": "Hora da atualização: ",
-          "changelog": "Registro de alterações: "
-        },
-        "hints": {
-          "checkingUpdates": "Verificando atualizações...",
-          "alreadyLatest": "Você já está na versão mais recente 🎉"
-        },
-        "buttons": {
-          "updateNow": "Atualizar Agora",
-          "updateLater": "Atualizar mais tarde"
-        }
+      "hints": {
+        "checkingUpdates": "Verificando atualizações...",
+        "alreadyLatest": "Você já está na versão mais recente 🎉"
+      },
+      "buttons": {
+        "updateNow": "Atualizar Agora",
+        "updateLater": "Atualizar mais tarde"
       }
     }
   },
@@ -166,8 +166,8 @@
   },
   "utils": {
     "live2d": {
-      "errors": {
-        "notFoundMainConfig": "Arquivo de configuração principal do modelo não encontrado. Verifique se os arquivos do modelo estão completos."
+      "hints": {
+        "notFound": "Arquivo de configuração principal do modelo não encontrado. Verifique se os arquivos do modelo estão completos."
       }
     }
   }

@@ -127,22 +127,22 @@
       "hints": {
         "pressRecordShortcut": "按下录制快捷键",
         "clickRecordShortcut": "点击录制快捷键"
+      }
+    },
+    "updateApp": {
+      "title": "发现新版本🥳",
+      "labels": {
+        "updateVersion": "更新版本：",
+        "updateTime": "更新时间：",
+        "changelog": "更新日志："
       },
-      "updateApp": {
-        "title": "发现新版本🥳",
-        "labels": {
-          "updateVersion": "更新版本：",
-          "updateTime": "更新时间：",
-          "changelog": "更新日志："
-        },
-        "hints": {
-          "checkingUpdates": "正在检查更新...",
-          "alreadyLatest": "当前已是最新版本🎉"
-        },
-        "buttons": {
-          "updateNow": "立即更新",
-          "updateLater": "稍后更新"
-        }
+      "hints": {
+        "checkingUpdates": "正在检查更新...",
+        "alreadyLatest": "当前已是最新版本🎉"
+      },
+      "buttons": {
+        "updateNow": "立即更新",
+        "updateLater": "稍后更新"
       }
     }
   },
@@ -166,8 +166,8 @@
   },
   "utils": {
     "live2d": {
-      "errors": {
-        "notFoundMainConfig": "未找到模型主配置文件，请确认模型文件是否完整。"
+      "hints": {
+        "notFound": "未找到模型主配置文件，请确认模型文件是否完整。"
       }
     }
   }

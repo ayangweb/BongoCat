@@ -127,22 +127,22 @@
       "hints": {
         "pressRecordShortcut": "Nhấn phím/tổ hợp phím để ghi",
         "clickRecordShortcut": "Click để ghi phím tắt"
+      }
+    },
+    "updateApp": {
+      "title": "Đã tìm thấy phiên bản mới 🥳",
+      "labels": {
+        "updateVersion": "Phiên bản: ",
+        "updateTime": "Thời gian cập nhật: ",
+        "changelog": "Nhật ký thay đổi: "
       },
-      "updateApp": {
-        "title": "Đã tìm thấy phiên bản mới 🥳",
-        "labels": {
-          "updateVersion": "Phiên bản: ",
-          "updateTime": "Thời gian cập nhật: ",
-          "changelog": "Nhật ký thay đổi: "
-        },
-        "hints": {
-          "checkingUpdates": "Đang kiểm tra cập nhật...",
-          "alreadyLatest": "Bạn đang dùng phiên bản mới nhất 🎉"
-        },
-        "buttons": {
-          "updateNow": "Cập nhật ngay",
-          "updateLater": "Để sau"
-        }
+      "hints": {
+        "checkingUpdates": "Đang kiểm tra cập nhật...",
+        "alreadyLatest": "Bạn đang dùng phiên bản mới nhất 🎉"
+      },
+      "buttons": {
+        "updateNow": "Cập nhật ngay",
+        "updateLater": "Để sau"
       }
     }
   },
@@ -166,8 +166,8 @@
   },
   "utils": {
     "live2d": {
-      "errors": {
-        "notFoundMainConfig": "Không tìm thấy cấu hình chính của mô hình. Vui lòng đảm bảo tệp mô hình đầy đủ."
+      "hints": {
+        "notFound": "Không tìm thấy tệp cấu hình chính của mô hình, vui lòng xác nhận các tệp mô hình có đầy đủ không."
       }
     }
   }

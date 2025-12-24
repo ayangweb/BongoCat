@@ -53,7 +53,7 @@ useTauriListen<boolean>(LISTEN_KEY.UPDATE_APP, () => {
   message.loading({
     key: MESSAGE_KEY,
     duration: 0,
-    content: t('components.proShortcut.updateApp.hints.checkingUpdates'),
+    content: t('components.updateApp.hints.checkingUpdates'),
   })
 })
 
@@ -93,7 +93,7 @@ async function checkUpdate(visibleMessage = false) {
 
       message.destroy(MESSAGE_KEY)
     } else if (visibleMessage) {
-      message.success({ key: MESSAGE_KEY, content: t('components.proShortcut.updateApp.hints.alreadyLatest') })
+      message.success({ key: MESSAGE_KEY, content: t('components.updateApp.hints.alreadyLatest') })
     }
   } catch (error) {
     if (!visibleMessage) return
@@ -140,15 +140,15 @@ async function handleOk() {
 <template>
   <Modal
     v-model:open="state.open"
-    :cancel-text="$t('components.proShortcut.updateApp.buttons.updateLater')"
+    :cancel-text="$t('components.updateApp.buttons.updateLater')"
     centered
     :closable="false"
     :mask-closable="false"
-    :title="$t('components.proShortcut.updateApp.title')"
+    :title="$t('components.updateApp.title')"
     @ok="handleOk"
   >
     <template #okText>
-      {{ state.downloading ? downloadProgress : $t('components.proShortcut.updateApp.buttons.updateNow') }}
+      {{ state.downloading ? downloadProgress : $t('components.updateApp.buttons.updateNow') }}
     </template>
 
     <Flex
@@ -157,7 +157,7 @@ async function handleOk() {
       vertical
     >
       <Flex align="center">
-        <span>{{ $t('components.proShortcut.updateApp.labels.updateVersion') }}</span>
+        <span>{{ $t('components.updateApp.labels.updateVersion') }}</span>
         <span>
           <span>{{ state.update?.currentVersion }} 👉 </span>
           <a
@@ -169,12 +169,12 @@ async function handleOk() {
       </Flex>
 
       <Flex align="center">
-        <span>{{ $t('components.proShortcut.updateApp.labels.updateTime') }}</span>
+        <span>{{ $t('components.updateApp.labels.updateTime') }}</span>
         <span>{{ state.update?.date }}</span>
       </Flex>
 
       <Flex vertical>
-        <span>{{ $t('components.proShortcut.updateApp.labels.changelog') }}</span>
+        <span>{{ $t('components.updateApp.labels.changelog') }}</span>
 
         <VueMarkdown
           class="update-note max-h-40 overflow-auto"

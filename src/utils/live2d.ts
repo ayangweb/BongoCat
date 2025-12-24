@@ -41,7 +41,7 @@ class Live2d {
     const modelFile = files.find(file => file.name.endsWith('.model3.json'))
 
     if (!modelFile) {
-      throw new Error(i18n.global.t('utils.live2d.errors.notFoundMainConfig'))
+      throw new Error(i18n.global.t('utils.live2d.hints.notFound'))
     }
 
     const modelPath = join(path, modelFile.name)
