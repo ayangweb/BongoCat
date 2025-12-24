@@ -163,7 +163,12 @@
       "restartApp": "Reiniciar",
       "quitApp": "Sair"
     }
+  },
+  "utils": {
+    "live2d": {
+      "errors": {
+        "notFoundMainConfig": "Arquivo de configuração principal do modelo não encontrado. Verifique se os arquivos do modelo estão completos."
+      }
+    }
   }
 }
-
-
