@@ -154,7 +154,8 @@
         "showCat": "Show Cat",
         "passThrough": "Pass Through",
         "windowSize": "Window Size",
-        "opacity": "Opacity"
+        "opacity": "Opacity",
+        "resetCat": "Reset Cat"
       }
     },
     "useTray": {
