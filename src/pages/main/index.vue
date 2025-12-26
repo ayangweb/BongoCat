@@ -14,6 +14,7 @@ import { useDevice } from '@/composables/useDevice'
 import { useGamepad } from '@/composables/useGamepad'
 import { useModel } from '@/composables/useModel'
 import { useSharedMenu } from '@/composables/useSharedMenu'
+import { useWindowPosition } from '@/composables/useWindowPosition'
 import { hideWindow, setAlwaysOnTop, setTaskbarVisibility, showWindow } from '@/plugins/window'
 import { useCatStore } from '@/stores/cat'
 import { useGeneralStore } from '@/stores/general.ts'
@@ -32,6 +33,7 @@ const generalStore = useGeneralStore()
 const resizing = ref(false)
 const backgroundImagePath = ref<string>()
 const { stickActive } = useGamepad()
+const { isMounted } = useWindowPosition()
 
 onMounted(startListening)
 
@@ -145,6 +147,7 @@ function handleMouseMove(event: MouseEvent) {
 
 <template>
   <div
+    v-show="isMounted"
     class="relative size-screen overflow-hidden children:(absolute size-full)"
     :class="{ '-scale-x-100': catStore.model.mirror }"
     :style="{
@@ -174,7 +177,7 @@ function handleMouseMove(event: MouseEvent) {
       v-show="resizing"
       class="flex items-center justify-center bg-black"
     >
-      <span class="text-center text-10vw text-white">
+      <span class="text-center text-[10vw] text-white">
         {{ $t('pages.main.hints.redrawing') }}
       </span>
     </div>

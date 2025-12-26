@@ -21,7 +21,8 @@
           "windowRadius": "Raio da Janela",
           "opacity": "Opacidade",
           "autoReleaseDelay": "Atraso de Liberação Automática",
-          "hideOnHover": "Ocultar ao Passar o Mouse"
+          "hideOnHover": "Ocultar ao Passar o Mouse",
+          "position": "Posição da Janela"
         },
         "hints": {
           "mirrorMode": "Quando ativado, o modelo será invertido horizontalmente.",
@@ -31,7 +32,14 @@
           "alwaysOnTop": "Quando ativado, a janela sempre ficará acima de outros aplicativos.",
           "windowSize": "Mova o mouse para a borda da janela ou segure Shift e arraste com o botão direito para redimensionar.",
           "autoReleaseDelay": "Devido ao Windows não capturar eventos de liberação de certas teclas de nível do sistema, elas serão automaticamente tratadas como liberadas após um tempo limite.",
-          "hideOnHover": "Quando ativado, a janela será ocultada quando o mouse passar sobre ela."
+          "hideOnHover": "Quando ativado, a janela será ocultada quando o mouse passar sobre ela.",
+          "position": "Entra em vigor após inicializar o aplicativo ou quando este parâmetro, o tamanho da janela, o modelo ou a resolução de tela é alterado."
+        },
+        "options": {
+          "topLeft": "Canto Superior Esquerdo",
+          "topRight": "Canto Superior Direito",
+          "bottomLeft": "Canto Inferior Esquerdo",
+          "bottomRight": "Canto Inferior Direito"
         }
       },
       "general": {
