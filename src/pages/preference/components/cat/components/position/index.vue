@@ -9,21 +9,21 @@ const catStore = useCatStore()
 
 <template>
   <ProListItem
-    description="启动应用、更改尺寸、更换模型、更改电脑分辨率后生效"
-    title="窗口位置"
+    :description="$t('pages.preference.cat.hints.position')"
+    :title="$t('pages.preference.cat.labels.position')"
   >
     <Select v-model:value="catStore.window.position">
       <SelectOption value="bottomRight">
-        右下角
+        {{ $t('pages.preference.cat.options.bottomRight') }}
       </SelectOption>
       <SelectOption value="bottomLeft">
-        左下角
+        {{ $t('pages.preference.cat.options.bottomLeft') }}
       </SelectOption>
       <SelectOption value="topLeft">
-        左上角
+        {{ $t('pages.preference.cat.options.topLeft') }}
       </SelectOption>
       <SelectOption value="topRight">
-        右上角
+        {{ $t('pages.preference.cat.options.topRight') }}
       </SelectOption>
     </Select>
   </ProListItem>

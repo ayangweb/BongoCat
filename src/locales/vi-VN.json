@@ -21,7 +21,8 @@
           "windowRadius": "Độ bo tròn cửa sổ",
           "opacity": "Độ mờ",
           "autoReleaseDelay": "Độ trễ tự động nhả phím",
-          "hideOnHover": "Ẩn khi di chuột"
+          "hideOnHover": "Ẩn khi di chuột",
+          "position": "Vị trí cửa sổ"
         },
         "hints": {
           "mirrorMode": "Bật để lật ngang mô hình.",
@@ -31,7 +32,14 @@
           "alwaysOnTop": "Bật để cửa sổ luôn nằm trên ứng dụng khác.",
           "windowSize": "Di chuyển chuột đến mép cửa sổ hoặc giữ Shift và kéo chuột phải để thay đổi kích thước.",
           "autoReleaseDelay": "Do Windows không bắt được sự kiện nhả của một số phím hệ thống, các phím đó sẽ được tự động xem như đã nhả sau khi hết thời gian chờ.",
-          "hideOnHover": "Khi bật, cửa sổ sẽ ẩn khi chuột di chuyển vào."
+          "hideOnHover": "Khi bật, cửa sổ sẽ ẩn khi chuột di chuyển vào.",
+          "position": "Có hiệu lực sau khi khởi động ứng dụng hoặc khi tham số này, kích thước cửa sổ, mô hình hoặc độ phân giải màn hình thay đổi."
+        },
+        "options": {
+          "topLeft": "Góc trên cùng bên trái",
+          "topRight": "Góc trên cùng bên phải",
+          "bottomLeft": "Góc dưới cùng bên trái",
+          "bottomRight": "Góc dưới cùng bên phải"
         }
       },
       "general": {
