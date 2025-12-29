@@ -3,18 +3,15 @@ import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { cursorPosition } from '@tauri-apps/api/window'
 import { ref } from 'vue'
 
-import { INVOKE_KEY, LISTEN_KEY } from '../constants'
-
 import { useModel } from './useModel'
 import { useTauriListen } from './useTauriListen'
 
+import { INVOKE_KEY, LISTEN_KEY } from '@/constants'
 import { useCatStore } from '@/stores/cat'
 import { useModelStore } from '@/stores/model'
 import { useStatisticsStore } from '@/stores/statistics'
 import { inBetween } from '@/utils/is'
 import { isWindows } from '@/utils/platform'
-
-const isHovering = ref(false)
 
 interface MouseButtonEvent {
   kind: 'MousePress' | 'MouseRelease'
@@ -39,6 +36,7 @@ interface KeyboardEvent {
 type DeviceEvent = MouseButtonEvent | MouseMoveEvent | KeyboardEvent
 
 export function useDevice() {
+  const isHovering = ref(false)
   const modelStore = useModelStore()
   const releaseTimers = new Map<string, NodeJS.Timeout>()
   const catStore = useCatStore()

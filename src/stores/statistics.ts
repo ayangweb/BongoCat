@@ -42,9 +42,13 @@ export const useStatisticsStore = defineStore('statistics', () => {
 
   const recordMouseClick = (button: string) => {
     if (!settings.enabled || !settings.mouseClickEnabled) return
-    mouse.total++
-    if (button === 'Left') mouse.left++
-    else if (button === 'Right') mouse.right++
+    if (button === 'Left') {
+      mouse.left++
+      mouse.total++
+    } else if (button === 'Right') {
+      mouse.right++
+      mouse.total++
+    }
   }
 
   const reset = () => {
@@ -68,5 +72,6 @@ export const useStatisticsStore = defineStore('statistics', () => {
   tauri: {
     autoStart: true,
     saveOnChange: true,
+    filterKeys: ['settings'],
   },
 })
