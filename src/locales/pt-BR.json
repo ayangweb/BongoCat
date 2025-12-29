@@ -21,7 +21,11 @@
           "windowRadius": "Raio da Janela",
           "opacity": "Opacidade",
           "autoReleaseDelay": "Atraso de Liberação Automática",
-          "hideOnHover": "Ocultar ao Passar o Mouse"
+          "hideOnHover": "Ocultar ao Passar o Mouse",
+          "statisticsSettings": "Configurações de Estatísticas",
+          "enableStatistics": "Ativar Estatísticas",
+          "mouseClickStatistics": "Rastrear Cliques do Mouse",
+          "resetStatistics": "Redefinir Estatísticas"
         },
         "hints": {
           "mirrorMode": "Quando ativado, o modelo será invertido horizontalmente.",
@@ -31,7 +35,15 @@
           "alwaysOnTop": "Quando ativado, a janela sempre ficará acima de outros aplicativos.",
           "windowSize": "Mova o mouse para a borda da janela ou segure Shift e arraste com o botão direito para redimensionar.",
           "autoReleaseDelay": "Devido ao Windows não capturar eventos de liberação de certas teclas de nível do sistema, elas serão automaticamente tratadas como liberadas após um tempo limite.",
-          "hideOnHover": "Quando ativado, a janela será ocultada quando o mouse passar sobre ela."
+          "hideOnHover": "Quando ativado, a janela será ocultada quando o mouse passar sobre ela.",
+          "enableStatistics": "Quando ativado, os dados de uso do teclado e mouse serão rastreados.",
+          "mouseClickStatistics": "Quando ativado, os cliques do mouse serão contados.",
+          "resetStatisticsConfirm": "Tem certeza de que deseja redefinir todas as estatísticas?"
+        },
+        "buttons": {
+          "reset": "Redefinir",
+          "cancel": "Cancelar",
+          "confirm": "Confirmar"
         }
       },
       "general": {
