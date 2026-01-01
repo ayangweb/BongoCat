@@ -33,7 +33,7 @@ const generalStore = useGeneralStore()
 const resizing = ref(false)
 const backgroundImagePath = ref<string>()
 const { stickActive } = useGamepad()
-const { isMounted } = useWindowPosition()
+const { isMounted, setWindowPosition } = useWindowPosition()
 
 onMounted(startListening)
 
@@ -41,6 +41,8 @@ onUnmounted(handleDestroy)
 
 const debouncedResize = useDebounceFn(async () => {
   await handleResize()
+
+  await setWindowPosition()
 
   resizing.value = false
 }, 100)
@@ -54,7 +56,7 @@ useEventListener('resize', () => {
 watch(() => modelStore.currentModel, async (model) => {
   if (!model) return
 
-  handleLoad()
+  await handleLoad()
 
   const path = join(model.path, 'resources', 'background.png')
 
@@ -78,6 +80,8 @@ watch(() => modelStore.currentModel, async (model) => {
       modelStore.supportKeys[fileName] = join(groupDir, file.name)
     }
   }
+
+  setWindowPosition()
 }, { deep: true, immediate: true })
 
 watch([() => catStore.window.scale, modelSize], async ([scale, modelSize]) => {

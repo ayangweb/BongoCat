@@ -4,17 +4,15 @@ import { useDebounceFn } from '@vueuse/core'
 import { onMounted, ref, watch } from 'vue'
 
 import { useCatStore } from '@/stores/cat'
-import { useModelStore } from '@/stores/model'
 import { getCursorMonitor } from '@/utils/monitor'
 
 const appWindow = getCurrentWebviewWindow()
 
 export function useWindowPosition() {
   const catStore = useCatStore()
-  const modelStore = useModelStore()
   const isMounted = ref(false)
 
-  const setPosition = async () => {
+  const setWindowPosition = async () => {
     const monitor = await getCursorMonitor()
 
     if (!monitor) return
@@ -33,19 +31,20 @@ export function useWindowPosition() {
     }
   }
 
-  const debouncedSetPosition = useDebounceFn(setPosition, 100)
+  const debouncedSetPosition = useDebounceFn(setWindowPosition, 100)
 
   onMounted(async () => {
-    await setPosition()
+    await setWindowPosition()
 
     isMounted.value = true
 
     appWindow.onScaleChanged(debouncedSetPosition)
   })
 
-  watch([() => catStore.window.position, () => catStore.window.scale, () => modelStore.currentModel], debouncedSetPosition, { deep: true })
+  watch(() => catStore.window.position, debouncedSetPosition)
 
   return {
     isMounted,
+    setWindowPosition,
   }
 }
