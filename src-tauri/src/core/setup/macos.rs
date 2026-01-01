@@ -57,7 +57,7 @@ pub fn platform(
             "window_did_resize" => {
                 window_move_event();
 
-                if let Ok(size) = main_window.inner_size() {
+                if let Ok(size) = main_window.outer_size() {
                     let _ = main_window.emit_to(target, WINDOW_RESIZED_EVENT, size);
                 }
             }

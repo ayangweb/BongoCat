@@ -14,6 +14,7 @@ import { useDevice } from '@/composables/useDevice'
 import { useGamepad } from '@/composables/useGamepad'
 import { useModel } from '@/composables/useModel'
 import { useSharedMenu } from '@/composables/useSharedMenu'
+import { useWindowPosition } from '@/composables/useWindowPosition'
 import { hideWindow, setAlwaysOnTop, setTaskbarVisibility, showWindow } from '@/plugins/window'
 import { useCatStore } from '@/stores/cat'
 import { useGeneralStore } from '@/stores/general.ts'
@@ -34,6 +35,7 @@ const generalStore = useGeneralStore()
 const resizing = ref(false)
 const backgroundImagePath = ref<string>()
 const { stickActive } = useGamepad()
+const { isMounted, setWindowPosition } = useWindowPosition()
 
 onMounted(startListening)
 
@@ -41,6 +43,8 @@ onUnmounted(handleDestroy)
 
 const debouncedResize = useDebounceFn(async () => {
   await handleResize()
+
+  await setWindowPosition()
 
   resizing.value = false
 }, 100)
@@ -54,7 +58,7 @@ useEventListener('resize', () => {
 watch(() => modelStore.currentModel, async (model) => {
   if (!model) return
 
-  handleLoad()
+  await handleLoad()
 
   const path = join(model.path, 'resources', 'background.png')
 
@@ -78,6 +82,8 @@ watch(() => modelStore.currentModel, async (model) => {
       modelStore.supportKeys[fileName] = join(groupDir, file.name)
     }
   }
+
+  setWindowPosition()
 }, { deep: true, immediate: true })
 
 watch([() => catStore.window.scale, modelSize], async ([scale, modelSize]) => {
@@ -151,6 +157,7 @@ const totalCount = computed(() => {
 
 <template>
   <div
+    v-show="isMounted"
     class="relative size-screen overflow-hidden children:(absolute size-full)"
     :class="{ '-scale-x-100': catStore.model.mirror }"
     :style="{
@@ -180,7 +187,7 @@ const totalCount = computed(() => {
       v-show="resizing"
       class="flex items-center justify-center bg-black"
     >
-      <span class="text-center text-10vw text-white">
+      <span class="text-center text-[10vw] text-white">
         {{ $t('pages.main.hints.redrawing') }}
       </span>
     </div>
