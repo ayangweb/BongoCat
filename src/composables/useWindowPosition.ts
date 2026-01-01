@@ -1,6 +1,5 @@
 import { PhysicalPosition } from '@tauri-apps/api/dpi'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { useDebounceFn } from '@vueuse/core'
 import { onMounted, ref, watch } from 'vue'
 
 import { useCatStore } from '@/stores/cat'
@@ -31,17 +30,15 @@ export function useWindowPosition() {
     }
   }
 
-  const debouncedSetPosition = useDebounceFn(setWindowPosition, 100)
-
   onMounted(async () => {
     await setWindowPosition()
 
     isMounted.value = true
 
-    appWindow.onScaleChanged(debouncedSetPosition)
+    appWindow.onScaleChanged(setWindowPosition)
   })
 
-  watch(() => catStore.window.position, debouncedSetPosition)
+  watch(() => catStore.window.position, setWindowPosition)
 
   return {
     isMounted,
