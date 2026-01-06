@@ -73,6 +73,8 @@ class Live2d {
   }
 
   public destroy() {
+    if (!this.model) return
+
     this.model?.destroy()
 
     this.model = null
