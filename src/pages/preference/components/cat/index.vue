@@ -79,6 +79,7 @@ const catStore = useCatStore()
         v-model:value="catStore.window.scale"
         addon-after="%"
         class="w-28"
+        :max="500"
         :min="1"
       />
     </ProListItem>
