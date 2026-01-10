@@ -39,6 +39,7 @@
     "dayjs": "^1.11.13",
     "es-toolkit": "^1.38.0",
     "is-url": "^1.2.4",
+    "json5": "^2.2.3",
     "nanoid": "^5.1.5",
     "pinia": "^3.0.3",
     "pixi-live2d-display": "^0.4.0",

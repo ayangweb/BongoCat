@@ -3,6 +3,7 @@ import type { Cubism4InternalModel } from 'pixi-live2d-display'
 
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { readDir, readTextFile } from '@tauri-apps/plugin-fs'
+import JSON5 from 'json5'
 import { Cubism4ModelSettings, Live2DModel } from 'pixi-live2d-display'
 import { Application, Ticker } from 'pixi.js'
 
@@ -46,7 +47,7 @@ class Live2d {
 
     const modelPath = join(path, modelFile.name)
 
-    const modelJSON = JSON.parse(await readTextFile(modelPath))
+    const modelJSON = JSON5.parse(await readTextFile(modelPath))
 
     const modelSettings = new Cubism4ModelSettings({
       ...modelJSON,
