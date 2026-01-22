@@ -71,13 +71,56 @@
 
 ## 社区交流
 
-<a href="https://qm.qq.com/q/AS3gNv2Vzy">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://i0.hdslb.com/bfs/openplatform/5ad8e4278c525cca6d3b4426c30b6d299d8a9654.png" />
-   <source media="(prefers-color-scheme: light)" srcset="https://i0.hdslb.com/bfs/openplatform/599680ad67bc9f9f876f76069c2239e9a85bb54d.png" />
-   <img alt="QQ Group" src="https://i0.hdslb.com/bfs/openplatform/599680ad67bc9f9f876f76069c2239e9a85bb54d.png" height="250" />
- </picture>
-</a>
+<table>
+  <thead>
+    <tr>
+      <th>QQ 群 1</th>
+      <th>QQ 群 2</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>
+        <a href="https://qm.qq.com/q/AS3gNv2Vzy">
+          <picture>
+            <source
+              media="(prefers-color-scheme: dark)"
+              srcset="https://i0.hdslb.com/bfs/openplatform/8ecdc4982ab01b59d7731fcca3ec26631a274560.png"
+            />
+            <source
+              media="(prefers-color-scheme: light)"
+              srcset="https://i0.hdslb.com/bfs/openplatform/09f56580397063e1819c4c2ed63d07dee12720e1.png"
+            />
+            <img
+              alt="QQ Group 1"
+              src="https://i0.hdslb.com/bfs/openplatform/09f56580397063e1819c4c2ed63d07dee12720e1.png"
+              height="250"
+            />
+          </picture>
+        </a>
+      </td>
+      <td>
+        <a href="https://qm.qq.com/q/TmltLAod2O">
+          <picture>
+            <source
+              media="(prefers-color-scheme: dark)"
+              srcset="https://i0.hdslb.com/bfs/openplatform/473c522487ff33e0f32b15466aeb0734f17161c8.png"
+            />
+            <source
+              media="(prefers-color-scheme: light)"
+              srcset="https://i0.hdslb.com/bfs/openplatform/d5ae8c5af6ae1d0a1f066705ee822d1287384cf6.png"
+            />
+            <img
+              alt="QQ Group 2"
+              src="https://i0.hdslb.com/bfs/openplatform/d5ae8c5af6ae1d0a1f066705ee822d1287384cf6.png"
+              height="250"
+            />
+          </picture>
+        </a>
+      </td>
+    </tr>
+  </tbody>
+</table>
 
 ## 赞赏
 
