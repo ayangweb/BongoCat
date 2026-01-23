@@ -1,0 +1,61 @@
+name: continuous_build
+
+on:
+  push:
+    branches:
+      - master
+
+  pull_request:
+    branches:
+      - master
+
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu
+            target: x86_64-bongocat-linux-gnu
+          - os: windows
+            target: x86_64-bongocat-windows-msvc
+          - os: macos
+            target: x86_64-bongocat-apple-darwin
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install dependencies (frontend)
+        run: pnpm install --frozen-lockfile
+
+      - name: continuous_build
+        run: pnpm tauri build
+        env:
+
+      - name: Upload artifacts
+        if: github.ref == 'refs/heads/master'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bongocat-${{ matrix.os }}
+          path: src-tauri/target/release/bundle/**
