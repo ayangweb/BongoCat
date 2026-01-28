@@ -31,7 +31,8 @@
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
         "minWidth": 800,
-        "minHeight": 600
+        "minHeight": 600,
+        "skipTaskbar": true
       }
     ],
     "security": {
