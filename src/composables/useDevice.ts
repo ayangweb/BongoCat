@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { cursorPosition } from '@tauri-apps/api/window'
+import { useThrottleFn } from '@vueuse/core'
 
 import { INVOKE_KEY, LISTEN_KEY } from '../constants'
 
@@ -84,6 +85,9 @@ export function useDevice() {
     }
   }
 
+  // Throttle mouse movement to ~60fps (16ms interval) to prevent lag with high polling rate mice
+  const throttledCursorMove = useThrottleFn(handleCursorMove, 16)
+
   const handleAutoRelease = (key: string, delay = 100) => {
     handlePress(key)
 
@@ -131,7 +135,7 @@ export function useDevice() {
       case 'MouseRelease':
         return handleMouseChange(value, false)
       case 'MouseMove':
-        return handleCursorMove()
+        return throttledCursorMove()
     }
   })
 
