@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
+import { PhysicalPosition } from '@tauri-apps/api/dpi'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { cursorPosition } from '@tauri-apps/api/window'
 
 import { INVOKE_KEY, LISTEN_KEY } from '../constants'
 
@@ -33,12 +33,17 @@ interface KeyboardEvent {
 }
 
 type DeviceEvent = MouseButtonEvent | MouseMoveEvent | KeyboardEvent
+const MOUSE_MOVE_FRAME_MS = 16
 
 export function useDevice() {
+  const appWindow = getCurrentWebviewWindow()
   const modelStore = useModelStore()
-  const releaseTimers = new Map<string, NodeJS.Timeout>()
+  const releaseTimers = new Map<string, ReturnType<typeof setTimeout>>()
   const catStore = useCatStore()
   const { handlePress, handleRelease, handleMouseChange, handleMouseMove } = useModel()
+  let latestCursorPoint: PhysicalPosition | undefined
+  let lastMouseMoveAt = 0
+  let mouseMoveTimer: ReturnType<typeof setTimeout> | undefined
 
   const startListening = () => {
     invoke(INVOKE_KEY.START_DEVICE_LISTENING)
@@ -63,15 +68,12 @@ export function useDevice() {
     return nextKey
   }
 
-  const handleCursorMove = async () => {
-    const cursorPoint = await cursorPosition()
-
-    handleMouseMove(cursorPoint)
-
+  const updateHideOnHover = async (cursorPoint: PhysicalPosition) => {
     if (catStore.window.hideOnHover) {
-      const appWindow = getCurrentWebviewWindow()
-      const position = await appWindow.outerPosition()
-      const { width, height } = await appWindow.innerSize()
+      const [position, { width, height }] = await Promise.all([
+        appWindow.outerPosition(),
+        appWindow.innerSize(),
+      ])
 
       const isInWindow = inBetween(cursorPoint.x, position.x, position.x + width)
         && inBetween(cursorPoint.y, position.y, position.y + height)
@@ -82,6 +84,34 @@ export function useDevice() {
         appWindow.setIgnoreCursorEvents(isInWindow)
       }
     }
+  }
+
+  const scheduleMouseMove = () => {
+    if (mouseMoveTimer) return
+
+    const delay = Math.max(0, MOUSE_MOVE_FRAME_MS - (performance.now() - lastMouseMoveAt))
+
+    mouseMoveTimer = setTimeout(() => {
+      mouseMoveTimer = void 0
+      void flushMouseMove()
+    }, delay)
+  }
+
+  const flushMouseMove = () => {
+    if (!latestCursorPoint) return
+
+    const cursorPoint = latestCursorPoint
+
+    lastMouseMoveAt = performance.now()
+    latestCursorPoint = void 0
+
+    void handleMouseMove(cursorPoint)
+    void updateHideOnHover(cursorPoint)
+  }
+
+  const handleCursorMove = (cursorPoint: CursorPoint) => {
+    latestCursorPoint = new PhysicalPosition(cursorPoint.x, cursorPoint.y)
+    scheduleMouseMove()
   }
 
   const handleAutoRelease = (key: string, delay = 100) => {
@@ -131,7 +161,7 @@ export function useDevice() {
       case 'MouseRelease':
         return handleMouseChange(value, false)
       case 'MouseMove':
-        return handleCursorMove()
+        return handleCursorMove(value)
     }
   })
 
