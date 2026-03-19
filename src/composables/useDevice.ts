@@ -43,6 +43,7 @@ export function useDevice() {
   const { handlePress, handleRelease, handleMouseChange, handleMouseMove } = useModel()
   let latestCursorPoint: PhysicalPosition | undefined
   let lastMouseMoveAt = 0
+  let mouseMoveVersion = 0
   let mouseMoveTimer: ReturnType<typeof setTimeout> | undefined
 
   const startListening = () => {
@@ -67,6 +68,8 @@ export function useDevice() {
 
     return nextKey
   }
+
+  const isLatestMouseMove = (version: number) => version === mouseMoveVersion
 
   const updateHideOnHover = async (cursorPoint: PhysicalPosition) => {
     if (catStore.window.hideOnHover) {
@@ -101,16 +104,22 @@ export function useDevice() {
     if (!latestCursorPoint) return
 
     const cursorPoint = latestCursorPoint
+    const version = mouseMoveVersion
 
     lastMouseMoveAt = performance.now()
     latestCursorPoint = void 0
 
-    void handleMouseMove(cursorPoint)
+    void handleMouseMove(cursorPoint, { isLatest: () => isLatestMouseMove(version) })
     void updateHideOnHover(cursorPoint)
+
+    if (version !== mouseMoveVersion) {
+      scheduleMouseMove()
+    }
   }
 
   const handleCursorMove = (cursorPoint: CursorPoint) => {
     latestCursorPoint = new PhysicalPosition(cursorPoint.x, cursorPoint.y)
+    mouseMoveVersion += 1
     scheduleMouseMove()
   }
 

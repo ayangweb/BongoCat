@@ -107,10 +107,13 @@ export function useModel() {
     live2d.setParameterValue(id, pressed)
   }
 
-  async function handleMouseMove(cursorPoint: PhysicalPosition) {
+  async function handleMouseMove(
+    cursorPoint: PhysicalPosition,
+    { isLatest = () => true }: { isLatest?: () => boolean } = {},
+  ) {
     const monitor = await getCursorMonitor(cursorPoint)
 
-    if (!monitor) return
+    if (!monitor || !isLatest()) return
 
     const { size, position } = monitor
 
