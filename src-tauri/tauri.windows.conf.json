@@ -7,8 +7,9 @@
         "languages": [
           "English",
           "Vietnamese",
+          "PortugueseBR",
           "SimpChinese",
-          "PortugueseBR"
+          "TradChinese"
         ],
         "installMode": "both",
         "displayLanguageSelector": true

@@ -49,6 +49,9 @@ watch(() => generalStore.app.autostart, async (value) => {
         <Select.Option value="zh-CN">
           简体中文
         </Select.Option>
+        <Select.Option value="zh-TW">
+          繁體中文
+        </Select.Option>
         <Select.Option value="en-US">
           English
         </Select.Option>

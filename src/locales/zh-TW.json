@@ -1,0 +1,182 @@
+{
+  "pages": {
+    "main": {
+      "hints": {
+        "redrawing": "重繪中…"
+      }
+    },
+    "preference": {
+      "title": "偏好設定",
+      "cat": {
+        "title": "貓咪設定",
+        "labels": {
+          "modelSettings": "模型設定",
+          "mirrorMode": "鏡像模式",
+          "singleMode": "單鍵模式",
+          "mouseMirror": "滑鼠游標鏡像",
+          "windowSettings": "視窗設定",
+          "passThrough": "視窗穿透",
+          "alwaysOnTop": "視窗置頂",
+          "windowSize": "視窗尺寸",
+          "windowRadius": "視窗圓角",
+          "opacity": "不透明度",
+          "autoReleaseDelay": "按鍵自動釋放延遲",
+          "hideOnHover": "滑鼠游標移入隱藏",
+          "position": "視窗位置"
+        },
+        "hints": {
+          "mirrorMode": "啟用後，模型將水平鏡像翻轉。",
+          "singleMode": "啟用後，每隻手只顯示最後按下的一個按鍵。",
+          "mouseMirror": "啟用後，滑鼠游標將鏡像跟隨手部移動。",
+          "passThrough": "啟用後，視窗不影響對其他應用程式的操作。",
+          "alwaysOnTop": "啟用後，視窗始終顯示在其他應用程式上方。",
+          "windowSize": "將滑鼠游標移至視窗邊緣，或按住 Shift 並右鍵拖曳，也可以調整視窗大小。",
+          "autoReleaseDelay": "由於 Windows 下部份系統級按鍵無法擷取釋放事件，超時後將自動視為已釋放。",
+          "hideOnHover": "啟用後，滑鼠游標懸停在視窗上時，視窗會隱藏。",
+          "position": "應用程式啟動後，或當此參數、視窗尺寸、模型、電腦解析度發生變化時生效。"
+        },
+        "options": {
+          "topLeft": "左上角",
+          "topRight": "右上角",
+          "bottomLeft": "左下角",
+          "bottomRight": "右下角"
+        }
+      },
+      "general": {
+        "title": "一般設定",
+        "labels": {
+          "appSettings": "應用程式設定",
+          "launchOnStartup": "開機自動啟動",
+          "showTaskbarIcon": "顯示工作列圖示",
+          "appearanceSettings": "外觀設定",
+          "themeMode": "主題模式",
+          "language": "語言",
+          "updateSettings": "更新設定",
+          "autoCheckUpdate": "自動檢查更新",
+          "permissionsSettings": "權限設定",
+          "inputMonitoringPermission": "輸入監控權限"
+        },
+        "options": {
+          "auto": "跟隨系統",
+          "lightMode": "淺色模式",
+          "darkMode": "深色模式"
+        },
+        "hints": {
+          "showTaskbarIcon": "啟用後，即可透過 OBS Studio 擷取視窗。",
+          "inputMonitoringPermission": "開啟輸入監控權限，以便接收系統的鍵盤和滑鼠游標事件來回應您的操作。",
+          "inputMonitoringPermissionGuide": "如果權限已開啟，請先選中並點擊「-」按鈕將其刪除，然後重新手動新增，最後重啟應用程式以確保權限生效。"
+        },
+        "status": {
+          "authorized": "已授權",
+          "authorize": "去授權"
+        },
+        "buttons": {
+          "openNow": "前往開啟",
+          "openLater": "稍後開啟"
+        }
+      },
+      "model": {
+        "title": "模型管理",
+        "labels": {
+          "deleteModel": "刪除模型"
+        },
+        "hints": {
+          "deleteSuccess": "刪除成功",
+          "deleteModel": "您確定要刪除此模型嗎？",
+          "importSuccess": "匯入成功",
+          "clickOrDragToImport": "點擊或拖曳至此區域匯入"
+        },
+        "tooltips": {
+          "createModel": "製作模型",
+          "convertModel": "轉換模型",
+          "moreModels": "更多模型"
+        }
+      },
+      "shortcut": {
+        "title": "快速鍵",
+        "labels": {
+          "toggleCat": "開啟貓咪",
+          "togglePreferences": "開啟偏好設定",
+          "mirrorMode": "鏡像模式",
+          "passThrough": "視窗穿透",
+          "alwaysOnTop": "視窗置頂"
+        },
+        "hints": {
+          "toggleCat": "切換貓咪視窗的顯示與隱藏。",
+          "togglePreferences": "切換偏好設定視窗的顯示與隱藏。",
+          "mirrorMode": "切換貓咪的鏡像模式。",
+          "passThrough": "切換貓咪視窗是否可穿透。",
+          "alwaysOnTop": "切換貓咪視窗是否置頂。"
+        }
+      },
+      "about": {
+        "title": "關於",
+        "labels": {
+          "aboutApp": "關於軟體",
+          "appLog": "軟體日誌",
+          "appInfo": "軟體資訊",
+          "openSource": "開源網址"
+        },
+        "hints": {
+          "appInfo": "複製軟體資訊並提供給 Bug Issue。",
+          "copySuccess": "複製成功"
+        },
+        "buttons": {
+          "checkUpdate": "檢查更新",
+          "copy": "複製",
+          "feedbackIssues": "回饋問題",
+          "viewLog": "查看日誌"
+        }
+      }
+    }
+  },
+  "components": {
+    "proShortcut": {
+      "hints": {
+        "pressRecordShortcut": "按下錄製快速鍵",
+        "clickRecordShortcut": "點擊錄製快速鍵"
+      }
+    },
+    "updateApp": {
+      "title": "發現新版本🥳",
+      "labels": {
+        "updateVersion": "更新版本：",
+        "updateTime": "更新時間：",
+        "changelog": "更新日誌："
+      },
+      "hints": {
+        "checkingUpdates": "正在檢查更新…",
+        "alreadyLatest": "目前已是最新版本🎉"
+      },
+      "buttons": {
+        "updateNow": "立即更新",
+        "updateLater": "稍後更新"
+      }
+    }
+  },
+  "composables": {
+    "useSharedMenu": {
+      "labels": {
+        "preference": "偏好設定…",
+        "hideCat": "隱藏貓咪",
+        "showCat": "顯示貓咪",
+        "passThrough": "視窗穿透",
+        "windowSize": "視窗尺寸",
+        "opacity": "不透明度"
+      }
+    },
+    "useTray": {
+      "checkUpdate": "檢查更新",
+      "openSource": "開源網址",
+      "restartApp": "重啟應用程式",
+      "quitApp": "退出應用程式"
+    }
+  },
+  "utils": {
+    "live2d": {
+      "hints": {
+        "notFound": "未找到模型主設定檔，請確認模型文件是否完整。"
+      }
+    }
+  }
+}
