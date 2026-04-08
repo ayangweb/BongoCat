@@ -28,5 +28,7 @@ export function useKeyPress(shortcut: Ref<string | undefined, string>, callback:
 
       callback(event)
     })
+
+    oldShortcut.value = value
   }, { immediate: true })
 }
