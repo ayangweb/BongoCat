@@ -1,3 +1,5 @@
+import type { CubismSpec } from 'pixi-live2d-display'
+
 import { resolveResource } from '@tauri-apps/api/path'
 import { filter, find } from 'es-toolkit/compat'
 import { nanoid } from 'nanoid'
@@ -15,30 +17,17 @@ export interface Model {
   isPreset: boolean
 }
 
-interface Motion {
-  Name: string
-  File: string
-  Sound?: string
-  FadeInTime: number
-  FadeOutTime: number
-  Description?: string
-}
-
-type MotionGroup = Record<string, Motion[]>
-
-interface Expression {
-  Name: string
-  File: string
-  Description?: string
-}
+export type Motions = Array<[string, CubismSpec.Motion[]]>
+export type Expressions = CubismSpec.Expression[]
 
 export const useModelStore = defineStore('model', () => {
   const models = ref<Model[]>([])
   const currentModel = ref<Model>()
-  const motions = ref<MotionGroup>({})
-  const expressions = ref<Expression[]>([])
   const supportKeys = reactive<Record<string, string>>({})
   const pressedKeys = reactive<Record<string, string>>({})
+  const currentMotions = ref<Motions>([])
+  const currentExpressions = ref<Expressions>([])
+  const shortcuts = reactive<Record<string, string>>({})
 
   const init = async () => {
     const modelsPath = await resolveResource('assets/models')
@@ -69,15 +58,11 @@ export const useModelStore = defineStore('model', () => {
   return {
     models,
     currentModel,
-    motions,
-    expressions,
     supportKeys,
     pressedKeys,
+    currentMotions,
+    currentExpressions,
+    shortcuts,
     init,
   }
-}, {
-  tauri: {
-    filterKeys: ['models', 'currentModel'],
-    filterKeysStrategy: 'pick',
-  },
 })

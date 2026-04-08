@@ -90,6 +90,16 @@
           "createModel": "制作模型",
           "convertModel": "转换模型",
           "moreModels": "更多模型"
+        },
+        "behaviorModal": {
+          "title": "动作与表情",
+          "labels": {
+            "motion": "动作",
+            "expression": "表情",
+            "motionIndex": "动作{index}",
+            "motionGroupIndex": "动作组{index}",
+            "expressionIndex": "表情{index}"
+          }
         }
       },
       "shortcut": {
@@ -131,7 +141,7 @@
     }
   },
   "components": {
-    "proShortcut": {
+    "shortcut": {
       "hints": {
         "pressRecordShortcut": "按下录制快捷键",
         "clickRecordShortcut": "点击录制快捷键"

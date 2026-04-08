@@ -4,13 +4,7 @@ import type { Key } from '@/utils/keyboard'
 import { find, map, remove, some, split } from 'es-toolkit/compat'
 import { ref, useTemplateRef, watch } from 'vue'
 
-import ProListItem from '@/components/pro-list-item/index.vue'
 import { keys, modifierKeys, standardKeys } from '@/utils/keyboard'
-
-const props = defineProps<{
-  title: string
-  description?: string
-}>()
 
 const modelValue = defineModel<string>()
 const shortcutInputRef = useTemplateRef('shortcutInput')
@@ -95,33 +89,29 @@ function handleKeyUp(event: KeyboardEvent) {
 </script>
 
 <template>
-  <ProListItem v-bind="props">
+  <div
+    ref="shortcutInput"
+    class="relative h-8 min-w-32 flex cursor-text items-center justify-center b b-color-1 hover:b-primary-5 rounded-md b-solid px-2.5 text-color-3 outline-none transition focus:(b-primary shadow-[0_0_0_2px_rgba(5,145,255,0.1)])"
+    :tabindex="0"
+    @blur="handleBlur"
+    @focus="handleFocus"
+    @keydown="handleKeyDown"
+    @keyup="handleKeyUp"
+    @mouseout="isHovering = false"
+    @mouseover="isHovering = true"
+  >
+    <span v-if="pressedKeys.length === 0">
+      {{ isFocusing ? $t('components.shortcut.hints.pressRecordShortcut') : $t('components.shortcut.hints.clickRecordShortcut') }}
+    </span>
+
+    <span class="text-primary font-bold">
+      {{ map(pressedKeys, 'symbol').join(' ') }}
+    </span>
+
     <div
-      ref="shortcutInput"
-      align="center"
-      class="relative h-8 min-w-32 flex cursor-text items-center justify-center b b-color-1 hover:b-primary-5 rounded-md b-solid px-2.5 text-color-3 outline-none transition focus:(b-primary shadow-[0_0_0_2px_rgba(5,145,255,0.1)])"
-      justify="center"
-      :tabindex="0"
-      @blur="handleBlur"
-      @focus="handleFocus"
-      @keydown="handleKeyDown"
-      @keyup="handleKeyUp"
-      @mouseout="isHovering = false"
-      @mouseover="isHovering = true"
-    >
-      <span v-if="pressedKeys.length === 0">
-        {{ isFocusing ? $t('components.proShortcut.hints.pressRecordShortcut') : $t('components.proShortcut.hints.clickRecordShortcut') }}
-      </span>
-
-      <span class="text-primary font-bold">
-        {{ map(pressedKeys, 'symbol').join(' ') }}
-      </span>
-
-      <div
-        class="i-iconamoon:close-circle-1 absolute right-2 cursor-pointer text-4 transition hover:text-primary"
-        :hidden="isFocusing || !isHovering || pressedKeys.length === 0"
-        @mousedown.prevent="modelValue = ''"
-      />
-    </div>
-  </ProListItem>
+      class="i-lucide:circle-x absolute right-2 cursor-pointer text-4 transition hover:text-primary"
+      :hidden="isFocusing || !isHovering || pressedKeys.length === 0"
+      @mousedown.prevent="modelValue = ''"
+    />
+  </div>
 </template>

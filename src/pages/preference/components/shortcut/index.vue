@@ -2,8 +2,9 @@
 import { storeToRefs } from 'pinia'
 
 import ProList from '@/components/pro-list/index.vue'
-import ProShortcut from '@/components/pro-shortcut/index.vue'
-import { useTauriShortcut } from '@/composables/useTauriShortcut'
+import ProListItem from '@/components/pro-list-item/index.vue'
+import Shortcut from '@/components/shortcut/index.vue'
+import { useKeyPress } from '@/composables/useKeyPress'
 import { toggleWindowVisible } from '@/plugins/window'
 import { useCatStore } from '@/stores/cat'
 import { useShortcutStore } from '@/stores/shortcut.ts'
@@ -12,57 +13,62 @@ const shortcutStore = useShortcutStore()
 const { visibleCat, visiblePreference, mirrorMode, penetrable, alwaysOnTop } = storeToRefs(shortcutStore)
 const catStore = useCatStore()
 
-useTauriShortcut(visibleCat, () => {
+useKeyPress(visibleCat, () => {
   catStore.window.visible = !catStore.window.visible
 })
 
-useTauriShortcut(visiblePreference, () => {
+useKeyPress(visiblePreference, () => {
   toggleWindowVisible('preference')
 })
 
-useTauriShortcut(mirrorMode, () => {
+useKeyPress(mirrorMode, () => {
   catStore.model.mirror = !catStore.model.mirror
 })
 
-useTauriShortcut(penetrable, () => {
+useKeyPress(penetrable, () => {
   catStore.window.passThrough = !catStore.window.passThrough
 })
 
-useTauriShortcut(alwaysOnTop, () => {
+useKeyPress(alwaysOnTop, () => {
   catStore.window.alwaysOnTop = !catStore.window.alwaysOnTop
 })
 </script>
 
 <template>
   <ProList :title="$t('pages.preference.shortcut.title')">
-    <ProShortcut
-      v-model="shortcutStore.visibleCat"
+    <ProListItem
       :description="$t('pages.preference.shortcut.hints.toggleCat')"
       :title="$t('pages.preference.shortcut.labels.toggleCat')"
-    />
+    >
+      <Shortcut v-model="shortcutStore.visibleCat" />
+    </ProListItem>
 
-    <ProShortcut
-      v-model="shortcutStore.visiblePreference"
+    <ProListItem
       :description="$t('pages.preference.shortcut.hints.togglePreferences')"
       :title="$t('pages.preference.shortcut.labels.togglePreferences')"
-    />
+    >
+      <Shortcut v-model="shortcutStore.visiblePreference" />
+    </ProListItem>
 
-    <ProShortcut
-      v-model="shortcutStore.mirrorMode"
+    <ProListItem
       :description="$t('pages.preference.shortcut.hints.mirrorMode')"
       :title="$t('pages.preference.shortcut.labels.mirrorMode')"
-    />
+    >
+      <Shortcut v-model="shortcutStore.mirrorMode" />
+    </ProListItem>
 
-    <ProShortcut
-      v-model="shortcutStore.penetrable"
+    <ProListItem
       :description="$t('pages.preference.shortcut.hints.passThrough')"
       :title="$t('pages.preference.shortcut.labels.passThrough')"
-    />
+    >
+      <Shortcut v-model="shortcutStore.penetrable" />
+    </ProListItem>
 
-    <ProShortcut
-      v-model="shortcutStore.alwaysOnTop"
+    <ProListItem
       :description="$t('pages.preference.shortcut.hints.alwaysOnTop')"
       :title="$t('pages.preference.shortcut.labels.alwaysOnTop')"
-    />
+    >
+      <Shortcut v-model="shortcutStore.alwaysOnTop" />
+    </ProListItem>
   </ProList>
 </template>

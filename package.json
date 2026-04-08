@@ -56,7 +56,7 @@
     "@antfu/eslint-config": "^4.13.3",
     "@commitlint/cli": "^19.8.1",
     "@commitlint/config-conventional": "^19.8.1",
-    "@iconify-json/iconamoon": "^1.2.2",
+    "@iconify-json/lucide": "^1.2.83",
     "@iconify-json/solar": "^1.2.2",
     "@tauri-apps/cli": "^2.5.0",
     "@types/is-url": "^1.2.32",

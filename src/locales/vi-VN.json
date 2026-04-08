@@ -90,6 +90,16 @@
           "createModel": "Tạo mô hình",
           "convertModel": "Chuyển đổi mô hình",
           "moreModels": "Khám phá mô hình khác"
+        },
+        "behaviorModal": {
+          "title": "Chuyển động và Biểu cảm",
+          "labels": {
+            "motion": "Chuyển động",
+            "expression": "Biểu cảm",
+            "motionIndex": "Chuyển động {index}",
+            "motionGroupIndex": "Nhóm chuyển động {index}",
+            "expressionIndex": "Biểu cảm {index}"
+          }
         }
       },
       "shortcut": {
@@ -131,7 +141,7 @@
     }
   },
   "components": {
-    "proShortcut": {
+    "shortcut": {
       "hints": {
         "pressRecordShortcut": "Nhấn phím/tổ hợp phím để ghi",
         "clickRecordShortcut": "Click để ghi phím tắt"

@@ -90,6 +90,16 @@
           "createModel": "Create Model",
           "convertModel": "Convert Model",
           "moreModels": "More Models"
+        },
+        "behaviorModal": {
+          "title": "Motions and Expressions",
+          "labels": {
+            "motion": "Motion",
+            "expression": "Expression",
+            "motionIndex": "Motion {index}",
+            "motionGroupIndex": "Motion Group {index}",
+            "expressionIndex": "Expression {index}"
+          }
         }
       },
       "shortcut": {
@@ -131,7 +141,7 @@
     }
   },
   "components": {
-    "proShortcut": {
+    "shortcut": {
       "hints": {
         "pressRecordShortcut": "Press to record shortcut",
         "clickRecordShortcut": "Click to record shortcut"
