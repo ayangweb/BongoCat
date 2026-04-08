@@ -17,16 +17,13 @@ export interface Model {
   isPreset: boolean
 }
 
-export type Motions = Array<[string, CubismSpec.Motion[]]>
-export type Expressions = CubismSpec.Expression[]
-
 export const useModelStore = defineStore('model', () => {
   const models = ref<Model[]>([])
   const currentModel = ref<Model>()
   const supportKeys = reactive<Record<string, string>>({})
   const pressedKeys = reactive<Record<string, string>>({})
-  const currentMotions = ref<Motions>([])
-  const currentExpressions = ref<Expressions>([])
+  const currentMotions = ref<Array<[string, CubismSpec.Motion[]]>>([])
+  const currentExpressions = ref<CubismSpec.Expression[]>([])
   const shortcuts = reactive<Record<string, string>>({})
 
   const init = async () => {

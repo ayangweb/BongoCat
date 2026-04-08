@@ -38,9 +38,7 @@ const backgroundImagePath = ref<string>()
 const { stickActive } = useGamepad()
 const { isMounted, setWindowPosition } = useWindowPosition()
 
-onMounted(() => {
-  startListening()
-})
+onMounted(startListening)
 
 onUnmounted(handleDestroy)
 
