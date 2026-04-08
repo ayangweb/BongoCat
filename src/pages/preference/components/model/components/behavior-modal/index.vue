@@ -2,7 +2,7 @@
 import { emit } from '@tauri-apps/api/event'
 import { Empty, List, Modal, Segmented } from 'ant-design-vue'
 import { isEmpty } from 'es-toolkit/compat'
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 
 import BehaviorItem from './components/behavior-item/index.vue'
 
@@ -12,10 +12,6 @@ import { useModelStore } from '@/stores/model'
 const modelValue = defineModel<boolean>()
 const modelStore = useModelStore()
 const value = ref<'motion' | 'expression'>('motion')
-
-watch(modelValue, () => {
-  value.value = 'motion'
-})
 
 function getMotionShortcutId(groupName: string, index: number) {
   return `${modelStore.currentModel?.id}:motion:${groupName}:${index}`

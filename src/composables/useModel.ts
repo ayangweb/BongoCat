@@ -4,7 +4,7 @@ import { LogicalSize } from '@tauri-apps/api/dpi'
 import { resolveResource, sep } from '@tauri-apps/api/path'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { message } from 'ant-design-vue'
-import { isNil, range, round } from 'es-toolkit'
+import { isNil, round } from 'es-toolkit'
 import { nth } from 'es-toolkit/compat'
 import { ref } from 'vue'
 
@@ -16,7 +16,8 @@ import { getCursorMonitor } from '@/utils/monitor'
 import { isMac } from '@/utils/platform'
 
 const appWindow = getCurrentWebviewWindow()
-const digitKeys = [...range(1, 10), 0] as const
+const digitKeys = '1234567890'.split('') as readonly string[]
+const letterKeys = 'QWERTYUIOPASDFGHJKLZXCVBNM'.split('') as readonly string[]
 
 export interface ModelSize {
   width: number
@@ -28,31 +29,39 @@ export function useModel() {
   const catStore = useCatStore()
   const modelSize = ref<ModelSize>()
 
-  const getBehaviorShortcut = (index: number) => {
-    const tier = Math.floor(index / digitKeys.length)
-
-    if (tier >= 3) return ''
-
+  function getBehaviorShortcut(index: number) {
     const primary = isMac ? 'Command' : 'Control'
-    const key = digitKeys[index % digitKeys.length]
-    const modifiers = [primary]
 
-    if (tier >= 1) {
-      modifiers.push('Shift')
+    const modifierGroups = [
+      [primary],
+      [primary, 'Shift'],
+      [primary, 'Alt'],
+      [primary, 'Shift', 'Alt'],
+    ]
+
+    const tiers = [
+      ...modifierGroups.map(modifiers => ({ modifiers, keys: digitKeys })),
+      ...modifierGroups.map(modifiers => ({ modifiers, keys: letterKeys })),
+    ]
+
+    let nextIndex = index
+
+    for (const tier of tiers) {
+      if (nextIndex < tier.keys.length) {
+        return [...tier.modifiers, tier.keys[nextIndex]].join('+')
+      }
+
+      nextIndex -= tier.keys.length
     }
 
-    if (tier >= 2) {
-      modifiers.push('Alt')
-    }
-
-    return [...modifiers, key].join('+')
+    return ''
   }
 
-  const getMotionShortcutId = (modelId: string, groupName: string, index: number) => {
+  function getMotionShortcutId(modelId: string, groupName: string, index: number) {
     return `${modelId}:motion:${groupName}:${index}`
   }
 
-  const getExpressionShortcutId = (modelId: string, index: number) => {
+  function getExpressionShortcutId(modelId: string, index: number) {
     return `${modelId}:expression:${index}`
   }
 
