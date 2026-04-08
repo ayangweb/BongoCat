@@ -8,7 +8,8 @@ import {
 } from '@tauri-apps/plugin-global-shortcut'
 import { ref, watch } from 'vue'
 
-export function useTauriShortcut(shortcut: Ref<string, string>, callback: ShortcutHandler) {
+export function useKeyPress(shortcut: Ref<string | undefined, string>, callback: ShortcutHandler) {
+  // This is primarily to prevent errors during hot reloading in the development environment.
   const oldShortcut = ref(shortcut.value)
 
   watch(shortcut, async (value) => {
@@ -27,7 +28,5 @@ export function useTauriShortcut(shortcut: Ref<string, string>, callback: Shortc
 
       callback(event)
     })
-
-    oldShortcut.value = value
   }, { immediate: true })
 }

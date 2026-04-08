@@ -4,7 +4,7 @@ import { LogicalSize } from '@tauri-apps/api/dpi'
 import { resolveResource, sep } from '@tauri-apps/api/path'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { message } from 'ant-design-vue'
-import { isNil, round } from 'es-toolkit'
+import { isNil, range, round } from 'es-toolkit'
 import { nth } from 'es-toolkit/compat'
 import { ref } from 'vue'
 
@@ -13,8 +13,10 @@ import live2d from '../utils/live2d'
 import { useCatStore } from '@/stores/cat'
 import { useModelStore } from '@/stores/model'
 import { getCursorMonitor } from '@/utils/monitor'
+import { isMac } from '@/utils/platform'
 
 const appWindow = getCurrentWebviewWindow()
+const digitKeys = [...range(1, 10), 0] as const
 
 export interface ModelSize {
   width: number
@@ -26,6 +28,34 @@ export function useModel() {
   const catStore = useCatStore()
   const modelSize = ref<ModelSize>()
 
+  const getBehaviorShortcut = (index: number) => {
+    const tier = Math.floor(index / digitKeys.length)
+
+    if (tier >= 3) return ''
+
+    const primary = isMac ? 'Command' : 'Control'
+    const key = digitKeys[index % digitKeys.length]
+    const modifiers = [primary]
+
+    if (tier >= 1) {
+      modifiers.push('Shift')
+    }
+
+    if (tier >= 2) {
+      modifiers.push('Alt')
+    }
+
+    return [...modifiers, key].join('+')
+  }
+
+  const getMotionShortcutId = (modelId: string, groupName: string, index: number) => {
+    return `${modelId}:motion:${groupName}:${index}`
+  }
+
+  const getExpressionShortcutId = (modelId: string, index: number) => {
+    return `${modelId}:expression:${index}`
+  }
+
   async function handleLoad() {
     try {
       if (!modelStore.currentModel) return
@@ -34,13 +64,39 @@ export function useModel() {
 
       await resolveResource(path)
 
-      const { width, height, ...rest } = await live2d.load(path)
+      const { width, height, motions = {}, expressions = [] } = await live2d.load(path)
+
+      const nextMotions = Object.entries(motions)
 
       modelSize.value = { width, height }
+      modelStore.currentMotions = nextMotions
+      modelStore.currentExpressions = expressions
 
       handleResize()
 
-      Object.assign(modelStore, rest)
+      const modelId = modelStore.currentModel.id
+
+      const behaviorIds: string[] = []
+
+      for (const [groupName, items] of nextMotions) {
+        for (const [index] of items.entries()) {
+          behaviorIds.push(getMotionShortcutId(modelId, groupName, index))
+        }
+      }
+
+      for (const [index] of expressions.entries()) {
+        behaviorIds.push(getExpressionShortcutId(modelId, index))
+      }
+
+      for (const [index, id] of behaviorIds.entries()) {
+        if (modelStore.shortcuts[id]) continue
+
+        const shortcut = getBehaviorShortcut(index)
+
+        if (!shortcut) continue
+
+        modelStore.shortcuts[id] = shortcut
+      }
     } catch (error) {
       message.error(String(error))
     }
@@ -79,9 +135,11 @@ export function useModel() {
     if (catStore.model.single) {
       const dirName = nth(path.split(sep()), -2)!
 
-      const filterKeys = Object.entries(modelStore.pressedKeys).filter(([, value]) => {
-        return value.includes(dirName)
-      })
+      const filterKeys = Object.entries(modelStore.pressedKeys).filter(
+        ([, value]) => {
+          return value.includes(dirName)
+        },
+      )
 
       for (const [key] of filterKeys) {
         handleRelease(key)
@@ -117,7 +175,12 @@ export function useModel() {
     const xRatio = (cursorPoint.x - position.x) / size.width
     const yRatio = (cursorPoint.y - position.y) / size.height
 
-    for (const id of ['ParamMouseX', 'ParamMouseY', 'ParamAngleX', 'ParamAngleY']) {
+    for (const id of [
+      'ParamMouseX',
+      'ParamMouseY',
+      'ParamAngleX',
+      'ParamAngleY',
+    ]) {
       const { min, max } = live2d.getParameterRange(id)
 
       if (isNil(min) || isNil(max)) continue
@@ -125,7 +188,7 @@ export function useModel() {
       const isXAxis = id.endsWith('X')
 
       const ratio = isXAxis ? xRatio : yRatio
-      let value = max - (ratio * (max - min))
+      let value = max - ratio * (max - min)
 
       if (isXAxis && catStore.model.mouseMirror) {
         value *= -1

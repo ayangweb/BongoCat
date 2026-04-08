@@ -23,9 +23,7 @@ const { t } = useI18n()
 const generalStore = useGeneralStore()
 const appWindow = getCurrentWebviewWindow()
 
-onMounted(async () => {
-  createTray()
-})
+onMounted(createTray)
 
 watch(() => generalStore.appearance.language, () => {
   appWindow.setTitle(t('pages.preference.title'))

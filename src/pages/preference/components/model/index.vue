@@ -11,6 +11,7 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { MasonryGrid, MasonryGridItem } from 'vue3-masonry-css'
 
+import BehaviorModal from './components/behavior-modal/index.vue'
 import FloatMenu from './components/float-menu/index.vue'
 import Upload from './components/upload/index.vue'
 
@@ -21,6 +22,7 @@ const modelStore = useModelStore()
 const firstItemRef = ref<HTMLElement>()
 const { height } = useElementSize(firstItemRef)
 const { t } = useI18n()
+const openBehaviorModal = ref(false)
 
 function setFirstItemRef(el: Element | ComponentPublicInstance | null, index: number) {
   if (!el || index > 0) return
@@ -68,6 +70,7 @@ async function handleDelete(item: Model) {
     >
       <Card
         :ref="(el) => setFirstItemRef(el, index)"
+        class="[&_[class^='i-']]:text-4"
         hoverable
         size="small"
         @click="modelStore.currentModel = item"
@@ -81,12 +84,18 @@ async function handleDelete(item: Model) {
 
         <template #actions>
           <i
-            class="i-iconamoon:check-circle-1-bold text-4"
+            class="i-lucide:circle-check"
             :class="{ 'text-success': item.id === modelStore.currentModel?.id }"
           />
 
           <i
-            class="i-iconamoon:link-external-bold text-4"
+            v-if="modelStore.currentModel?.id === item.id"
+            class="i-lucide:smile"
+            @click.stop="openBehaviorModal = true"
+          />
+
+          <i
+            class="i-lucide:folder-open"
             @click.stop="revealItemInDir(item.path)"
           />
 
@@ -98,7 +107,7 @@ async function handleDelete(item: Model) {
               @confirm="handleDelete(item)"
             >
               <i
-                class="i-iconamoon:trash-simple-bold text-4"
+                class="i-lucide:trash-2"
                 @click.stop
               />
             </Popconfirm>
@@ -109,4 +118,6 @@ async function handleDelete(item: Model) {
   </MasonryGrid>
 
   <FloatMenu />
+
+  <BehaviorModal v-model="openBehaviorModal" />
 </template>
