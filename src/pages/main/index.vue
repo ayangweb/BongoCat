@@ -8,6 +8,7 @@ import { exists, readDir } from '@tauri-apps/plugin-fs'
 import { useDebounceFn, useEventListener } from '@vueuse/core'
 import { round } from 'es-toolkit'
 import { nth } from 'es-toolkit/compat'
+import { storeToRefs } from 'pinia'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { useDevice } from '@/composables/useDevice'
@@ -19,6 +20,7 @@ import { useWindowPosition } from '@/composables/useWindowPosition'
 import { LISTEN_KEY } from '@/constants'
 import { hideWindow, setAlwaysOnTop, setTaskbarVisibility, showWindow } from '@/plugins/window'
 import { useCatStore } from '@/stores/cat'
+import { useCounterStore } from '@/stores/counter'
 import { useGeneralStore } from '@/stores/general.ts'
 import { useModelStore } from '@/stores/model'
 import { isImage } from '@/utils/is'
@@ -37,6 +39,7 @@ const resizing = ref(false)
 const backgroundImagePath = ref<string>()
 const { stickActive } = useGamepad()
 const { isMounted, setWindowPosition } = useWindowPosition()
+const { totalCount } = storeToRefs(useCounterStore())
 
 onMounted(startListening)
 
@@ -189,6 +192,10 @@ function handleMouseMove(event: MouseEvent) {
       class="object-cover"
       :src="convertFileSrc(path)"
     >
+
+    <div class="text-sm">
+      {{ totalCount }}
+    </div>
 
     <div
       v-show="resizing"

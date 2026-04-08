@@ -18,6 +18,7 @@ import { getAntdLocale } from './locales/index.ts'
 import { hideWindow, showWindow } from './plugins/window'
 import { useAppStore } from './stores/app'
 import { useCatStore } from './stores/cat'
+import { useCounterStore } from './stores/counter.ts'
 import { useGeneralStore } from './stores/general'
 import { useModelStore } from './stores/model'
 import { useShortcutStore } from './stores/shortcut.ts'
@@ -25,6 +26,7 @@ import { useShortcutStore } from './stores/shortcut.ts'
 const { generateColorVars } = useThemeVars()
 const appStore = useAppStore()
 const modelStore = useModelStore()
+const counterStore = useCounterStore()
 const catStore = useCatStore()
 const generalStore = useGeneralStore()
 const shortcutStore = useShortcutStore()
@@ -46,6 +48,8 @@ onMounted(async () => {
   await generalStore.init()
   await shortcutStore.$tauri.start()
   await restoreState()
+  await counterStore.init()
+  await counterStore.$tauri.start()
 })
 
 watch(() => generalStore.appearance.language, (value) => {

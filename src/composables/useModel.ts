@@ -11,6 +11,7 @@ import { ref } from 'vue'
 import live2d from '../utils/live2d'
 
 import { useCatStore } from '@/stores/cat'
+import { useCounterStore } from '@/stores/counter'
 import { useModelStore } from '@/stores/model'
 import { getCursorMonitor } from '@/utils/monitor'
 import { isMac } from '@/utils/platform'
@@ -28,6 +29,7 @@ export function useModel() {
   const modelStore = useModelStore()
   const catStore = useCatStore()
   const modelSize = ref<ModelSize>()
+  const counterStore = useCounterStore()
 
   function getBehaviorShortcut(index: number) {
     const primary = isMac ? 'Command' : 'Control'
@@ -137,6 +139,8 @@ export function useModel() {
   }
 
   const handlePress = (key: string) => {
+    counterStore.addKeyPressCount()
+
     const path = modelStore.supportKeys[key]
 
     if (!path) return
@@ -172,6 +176,7 @@ export function useModel() {
     const id = key === 'Left' ? 'ParamMouseLeftDown' : 'ParamMouseRightDown'
 
     live2d.setParameterValue(id, pressed)
+    counterStore.addMouseClickCount(pressed)
   }
 
   async function handleMouseMove(cursorPoint: PhysicalPosition) {
