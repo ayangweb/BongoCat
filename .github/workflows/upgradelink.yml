@@ -12,9 +12,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Send a request to UpgradeLink
-        uses: toolsetlink/upgradelink-action@v5
+        uses: toolsetlink/upgradelink-action@3.0.2
         with:
-          source-url: 'https://github.com/ayangweb/BongoCat/releases/latest/download/latest.json'
-          access-key: ${{ secrets.UPGRADE_LINK_ACCESS_KEY }}
-          tauri-key: ${{ secrets.UPGRADE_LINK_TAURI_KEY }}
-          github-token: ${{ secrets.RELEASE_TOKEN }}
+          access_key: ${{ secrets.UPGRADE_LINK_ACCESS_KEY }}
+          access_secret: ${{ secrets.UPGRADE_LINK_ACCESS_SECRET }}
+          config: |
+            {
+              "app_type": "tauri",
+              "request": {
+                "app_key": "${{ secrets.UPGRADE_LINK_APP_KEY }}",
+                "latest_json_url": "https://github.com/ayangweb/BongoCat/releases/latest/download/latest.json"
+              }
+            }
