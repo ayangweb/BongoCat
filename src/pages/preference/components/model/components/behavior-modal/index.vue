@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { MotionInfo } from 'easy-live2d'
+
 import { emit } from '@tauri-apps/api/event'
 import { Empty, List, Modal, Segmented } from 'ant-design-vue'
 import { isEmpty } from 'es-toolkit/compat'
@@ -21,8 +23,8 @@ function getExpressionShortcutId(index: number) {
   return `${modelStore.currentModel?.id}:expression:${index}`
 }
 
-function playMotion(group: string, index: number) {
-  emit(LISTEN_KEY.PLAY_MOTION, { group, index })
+function playMotion(motion: MotionInfo) {
+  emit(LISTEN_KEY.PLAY_MOTION, motion)
 }
 
 function playExpression(index: number) {
@@ -76,7 +78,7 @@ function playExpression(index: number) {
               <BehaviorItem
                 v-model="modelStore.shortcuts[getMotionShortcutId(groupName, index)]"
                 :label="$t('pages.preference.model.behaviorModal.labels.motionIndex', { index: index + 1 })"
-                @click="playMotion(groupName, index)"
+                @click="playMotion(motions[index])"
               />
             </template>
           </List>

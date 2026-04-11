@@ -73,7 +73,7 @@ export function useModel() {
 
       await resolveResource(path)
 
-      const { width, height, motions = {}, expressions = [] } = await live2d.load(path)
+      const { width, height, motions, expressions } = await live2d.load(path)
 
       const nextMotions = Object.entries(motions)
 
@@ -190,7 +190,11 @@ export function useModel() {
       'ParamAngleX',
       'ParamAngleY',
     ]) {
-      const { min, max } = live2d.getParameterRange(id)
+      const range = live2d.getParameterValueRange(id)
+
+      if (!range) continue
+
+      const { min, max } = range
 
       if (isNil(min) || isNil(max)) continue
 
@@ -208,7 +212,11 @@ export function useModel() {
   }
 
   async function handleAxisChange(id: string, value: number) {
-    const { min, max } = live2d.getParameterRange(id)
+    const range = live2d.getParameterValueRange(id)
+
+    if (!range) return
+
+    const { min, max } = range
 
     live2d.setParameterValue(id, Math.max(min, value * max))
   }

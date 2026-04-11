@@ -1,4 +1,4 @@
-import type { CubismSpec } from 'pixi-live2d-display'
+import type { ExpressionInfo, MotionInfo } from 'easy-live2d'
 
 import { resolveResource } from '@tauri-apps/api/path'
 import { filter, find } from 'es-toolkit/compat'
@@ -22,8 +22,8 @@ export const useModelStore = defineStore('model', () => {
   const currentModel = ref<Model>()
   const supportKeys = reactive<Record<string, string>>({})
   const pressedKeys = reactive<Record<string, string>>({})
-  const currentMotions = ref<Array<[string, CubismSpec.Motion[]]>>([])
-  const currentExpressions = ref<CubismSpec.Expression[]>([])
+  const currentMotions = ref<Array<[string, MotionInfo[]]>>([])
+  const currentExpressions = ref<ExpressionInfo[]>([])
   const shortcuts = reactive<Record<string, string>>({})
 
   const init = async () => {
