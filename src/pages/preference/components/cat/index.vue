@@ -1,14 +1,20 @@
 <script setup lang="ts">
-import { InputNumber, Slider, Switch } from 'ant-design-vue'
+import { Button, InputNumber, Popconfirm, Slider, Switch } from 'ant-design-vue'
 
 import Position from './components/position/index.vue'
 
 import ProList from '@/components/pro-list/index.vue'
 import ProListItem from '@/components/pro-list-item/index.vue'
 import { useCatStore } from '@/stores/cat'
+import { useStatisticsStore } from '@/stores/statistics'
 import { isWindows } from '@/utils/platform'
 
 const catStore = useCatStore()
+const statisticsStore = useStatisticsStore()
+
+function handleReset() {
+  statisticsStore.reset()
+}
 </script>
 
 <template>
@@ -111,6 +117,35 @@ const catStore = useCatStore()
         :min="10"
         :tip-formatter="(value) => `${value}%`"
       />
+    </ProListItem>
+  </ProList>
+
+  <ProList :title="$t('pages.preference.cat.labels.statisticsSettings')">
+    <ProListItem
+      :description="$t('pages.preference.cat.hints.enableStatistics')"
+      :title="$t('pages.preference.cat.labels.enableStatistics')"
+    >
+      <Switch v-model:checked="statisticsStore.settings.enabled" />
+    </ProListItem>
+
+    <ProListItem
+      :description="$t('pages.preference.cat.hints.mouseClickStatistics')"
+      :title="$t('pages.preference.cat.labels.mouseClickStatistics')"
+    >
+      <Switch v-model:checked="statisticsStore.settings.mouseClickEnabled" />
+    </ProListItem>
+
+    <ProListItem :title="$t('pages.preference.cat.labels.resetStatistics')">
+      <Popconfirm
+        :cancel-text="$t('pages.preference.cat.buttons.cancel')"
+        :ok-text="$t('pages.preference.cat.buttons.confirm')"
+        :title="$t('pages.preference.cat.hints.resetStatisticsConfirm')"
+        @confirm="handleReset"
+      >
+        <Button danger>
+          {{ $t('pages.preference.cat.buttons.reset') }}
+        </Button>
+      </Popconfirm>
     </ProListItem>
   </ProList>
 </template>

@@ -1,14 +1,15 @@
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { cursorPosition } from '@tauri-apps/api/window'
-
-import { INVOKE_KEY, LISTEN_KEY } from '../constants'
+import { ref } from 'vue'
 
 import { useModel } from './useModel'
 import { useTauriListen } from './useTauriListen'
 
+import { INVOKE_KEY, LISTEN_KEY } from '@/constants'
 import { useCatStore } from '@/stores/cat'
 import { useModelStore } from '@/stores/model'
+import { useStatisticsStore } from '@/stores/statistics'
 import { inBetween } from '@/utils/is'
 import { isWindows } from '@/utils/platform'
 
@@ -35,9 +36,11 @@ interface KeyboardEvent {
 type DeviceEvent = MouseButtonEvent | MouseMoveEvent | KeyboardEvent
 
 export function useDevice() {
+  const isHovering = ref(false)
   const modelStore = useModelStore()
   const releaseTimers = new Map<string, NodeJS.Timeout>()
   const catStore = useCatStore()
+  const statisticsStore = useStatisticsStore()
   const { handlePress, handleRelease, handleMouseChange, handleMouseMove } = useModel()
 
   const startListening = () => {
@@ -68,14 +71,16 @@ export function useDevice() {
 
     handleMouseMove(cursorPoint)
 
+    const appWindow = getCurrentWebviewWindow()
+    const position = await appWindow.outerPosition()
+    const { width, height } = await appWindow.innerSize()
+
+    const isInWindow = inBetween(cursorPoint.x, position.x, position.x + width)
+      && inBetween(cursorPoint.y, position.y, position.y + height)
+
+    isHovering.value = isInWindow
+
     if (catStore.window.hideOnHover) {
-      const appWindow = getCurrentWebviewWindow()
-      const position = await appWindow.outerPosition()
-      const { width, height } = await appWindow.innerSize()
-
-      const isInWindow = inBetween(cursorPoint.x, position.x, position.x + width)
-        && inBetween(cursorPoint.y, position.y, position.y + height)
-
       document.body.style.setProperty('opacity', isInWindow ? '0' : 'unset')
 
       if (!catStore.window.passThrough) {
@@ -108,6 +113,10 @@ export function useDevice() {
 
       if (!nextValue) return
 
+      if (kind === 'KeyboardPress') {
+        statisticsStore.recordKeyPress(nextValue)
+      }
+
       if (nextValue === 'CapsLock') {
         return handleAutoRelease(nextValue)
       }
@@ -127,6 +136,7 @@ export function useDevice() {
 
     switch (kind) {
       case 'MousePress':
+        statisticsStore.recordMouseClick(value)
         return handleMouseChange(value)
       case 'MouseRelease':
         return handleMouseChange(value, false)
@@ -137,5 +147,6 @@ export function useDevice() {
 
   return {
     startListening,
+    isHovering,
   }
 }

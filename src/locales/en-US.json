@@ -23,7 +23,11 @@
           "motionSound": "Motion Sound",
           "autoReleaseDelay": "Auto Release Delay",
           "hideOnHover": "Hide on Hover",
-          "position": "Window Position"
+          "position": "Window Position",
+          "statisticsSettings": "Statistics Settings",
+          "enableStatistics": "Enable Statistics",
+          "mouseClickStatistics": "Track Mouse Clicks",
+          "resetStatistics": "Reset Statistics"
         },
         "hints": {
           "mirrorMode": "When enabled, the model will be mirrored horizontally.",
@@ -35,7 +39,15 @@
           "windowSize": "Move mouse to window edge, or hold Shift and right-drag to resize.",
           "autoReleaseDelay": "On Windows, some system keys cannot capture release events and will auto-release after timeout.",
           "hideOnHover": "When enabled, the window hides when mouse hovers over it.",
-          "position": "Takes effect after the app starts, or when this parameter, window size, model, or screen resolution changes."
+          "position": "Takes effect after the app starts, or when this parameter, window size, model, or screen resolution changes.",
+          "enableStatistics": "When enabled, keyboard and mouse usage data will be tracked.",
+          "mouseClickStatistics": "When enabled, mouse clicks will be counted.",
+          "resetStatisticsConfirm": "Are you sure you want to reset all statistics?"
+        },
+        "buttons": {
+          "reset": "Reset",
+          "cancel": "Cancel",
+          "confirm": "Confirm"
         },
         "options": {
           "topLeft": "Top Left",

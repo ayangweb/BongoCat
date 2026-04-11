@@ -10,7 +10,7 @@ import { exists, readDir } from '@tauri-apps/plugin-fs'
 import { useDebounceFn, useEventListener } from '@vueuse/core'
 import { round } from 'es-toolkit'
 import { nth } from 'es-toolkit/compat'
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { useDevice } from '@/composables/useDevice'
 import { useGamepad } from '@/composables/useGamepad'
@@ -23,12 +23,14 @@ import { hideWindow, setAlwaysOnTop, setTaskbarVisibility, showWindow } from '@/
 import { useCatStore } from '@/stores/cat'
 import { useGeneralStore } from '@/stores/general.ts'
 import { useModelStore } from '@/stores/model'
+import { useStatisticsStore } from '@/stores/statistics'
 import { isImage } from '@/utils/is'
 import live2d from '@/utils/live2d'
 import { join } from '@/utils/path'
 import { clearObject } from '@/utils/shared'
 
-const { startListening } = useDevice()
+const { startListening, isHovering } = useDevice()
+const statisticsStore = useStatisticsStore()
 const appWindow = getCurrentWebviewWindow()
 const { modelSize, handleLoad, handleDestroy, handleResize, handleKeyChange } = useModel()
 const catStore = useCatStore()
@@ -164,6 +166,10 @@ function handleMouseMove(event: MouseEvent) {
 
   catStore.window.scale = round(nextScale)
 }
+
+const totalCount = computed(() => {
+  return statisticsStore.keyboard.total + statisticsStore.mouse.total
+})
 </script>
 
 <template>
@@ -200,6 +206,15 @@ function handleMouseMove(event: MouseEvent) {
     >
       <span class="text-center text-[10vw] text-white">
         {{ $t('pages.main.hints.redrawing') }}
+      </span>
+    </div>
+
+    <div
+      v-show="isHovering && statisticsStore.settings.enabled"
+      class="pointer-events-none flex items-end justify-center pb-[5%]"
+    >
+      <span class="rounded-full bg-black/60 px-10px py-6px text-16px text-white">
+        {{ totalCount }}
       </span>
     </div>
   </div>
