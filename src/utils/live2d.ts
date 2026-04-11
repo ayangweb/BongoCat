@@ -3,7 +3,7 @@ import type { MotionInfo } from 'easy-live2d'
 
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { readDir, readTextFile } from '@tauri-apps/plugin-fs'
-import { CubismSetting, Live2DSprite, Priority } from 'easy-live2d'
+import { Config, CubismSetting, Live2DSprite, Priority } from 'easy-live2d'
 import { groupBy } from 'es-toolkit/compat'
 import JSON5 from 'json5'
 import { Application, Ticker } from 'pixi.js'
@@ -121,6 +121,10 @@ class Live2d {
 
   public setParameterValue(id: string, value: number | boolean) {
     return this.model?.setParameterValueById(id, Number(value))
+  }
+
+  public setMotionSoundEnabled(enabled: boolean) {
+    Config.MotionSound = enabled
   }
 }
 

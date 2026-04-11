@@ -126,6 +126,10 @@ watch(() => catStore.window.alwaysOnTop, setAlwaysOnTop, { immediate: true })
 
 watch(() => generalStore.app.taskbarVisible, setTaskbarVisibility, { immediate: true })
 
+watch(() => catStore.model.motionSound, (value) => {
+  live2d.setMotionSoundEnabled(value)
+}, { immediate: true })
+
 useTauriListen<MotionInfo>(LISTEN_KEY.START_MOTION, ({ payload }) => {
   live2d.startMotion(payload)
 })

@@ -35,6 +35,13 @@ const catStore = useCatStore()
     </ProListItem>
 
     <ProListItem
+      :description="$t('pages.preference.cat.hints.motionSound')"
+      :title="$t('pages.preference.cat.labels.motionSound')"
+    >
+      <Switch v-model:checked="catStore.model.motionSound" />
+    </ProListItem>
+
+    <ProListItem
       v-if="isWindows"
       :description="$t('pages.preference.cat.hints.autoReleaseDelay')"
       :title="$t('pages.preference.cat.labels.autoReleaseDelay')"

@@ -20,6 +20,7 @@
           "windowSize": "Window Size",
           "windowRadius": "Window Radius",
           "opacity": "Opacity",
+          "motionSound": "Motion Sound",
           "autoReleaseDelay": "Auto Release Delay",
           "hideOnHover": "Hide on Hover",
           "position": "Window Position"
@@ -28,6 +29,7 @@
           "mirrorMode": "When enabled, the model will be mirrored horizontally.",
           "singleMode": "When enabled, only the last pressed key is displayed for each hand.",
           "mouseMirror": "When enabled, the mouse will mirror the hand movement.",
+          "motionSound": "When enabled, the model will play corresponding sound effects when performing actions (if they exist).",
           "passThrough": "When enabled, clicks pass through the window without affecting it.",
           "alwaysOnTop": "When enabled, the window stays above all other windows.",
           "windowSize": "Move mouse to window edge, or hold Shift and right-drag to resize.",

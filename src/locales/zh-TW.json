@@ -20,6 +20,7 @@
           "windowSize": "視窗尺寸",
           "windowRadius": "視窗圓角",
           "opacity": "不透明度",
+          "motionSound": "動作音效",
           "autoReleaseDelay": "按鍵自動釋放延遲",
           "hideOnHover": "滑鼠游標移入隱藏",
           "position": "視窗位置"
@@ -28,6 +29,7 @@
           "mirrorMode": "啟用後，模型將水平鏡像翻轉。",
           "singleMode": "啟用後，每隻手只顯示最後按下的一個按鍵。",
           "mouseMirror": "啟用後，滑鼠游標將鏡像跟隨手部移動。",
+          "motionSound": "啟用後，模型執行動作時會播放對應音效（如果存在）。",
           "passThrough": "啟用後，視窗不影響對其他應用程式的操作。",
           "alwaysOnTop": "啟用後，視窗始終顯示在其他應用程式上方。",
           "windowSize": "將滑鼠游標移至視窗邊緣，或按住 Shift 並右鍵拖曳，也可以調整視窗大小。",
