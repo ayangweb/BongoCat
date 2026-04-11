@@ -126,12 +126,12 @@ watch(() => catStore.window.alwaysOnTop, setAlwaysOnTop, { immediate: true })
 
 watch(() => generalStore.app.taskbarVisible, setTaskbarVisibility, { immediate: true })
 
-useTauriListen<MotionInfo>(LISTEN_KEY.PLAY_MOTION, ({ payload }) => {
-  live2d.playMotion(payload)
+useTauriListen<MotionInfo>(LISTEN_KEY.START_MOTION, ({ payload }) => {
+  live2d.startMotion(payload)
 })
 
-useTauriListen<number>(LISTEN_KEY.PLAY_EXPRESSION, ({ payload }) => {
-  live2d.playExpressions(payload)
+useTauriListen<number>(LISTEN_KEY.SET_EXPRESSION, ({ payload }) => {
+  live2d.setExpression(payload)
 })
 
 function handleMouseDown() {

@@ -8,8 +8,8 @@ export const LISTEN_KEY = {
   DEVICE_CHANGED: 'device-changed',
   UPDATE_APP: 'update-app',
   GAMEPAD_CHANGED: 'gamepad-changed',
-  PLAY_MOTION: 'play-motion',
-  PLAY_EXPRESSION: 'play-expression',
+  START_MOTION: 'start-motion',
+  SET_EXPRESSION: 'set-expression',
 }
 
 export const INVOKE_KEY = {

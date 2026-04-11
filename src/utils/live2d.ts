@@ -104,14 +104,14 @@ class Live2d {
     this.model.anchor.set(0.5)
   }
 
-  public playMotion(motion: MotionInfo) {
+  public startMotion(motion: MotionInfo) {
     return this.model?.startMotion({
       ...motion,
       priority: Priority.Normal,
     })
   }
 
-  public playExpressions(index: number) {
+  public setExpression(index: number) {
     return this.model?.setExpression({ index })
   }
 
@@ -120,7 +120,7 @@ class Live2d {
   }
 
   public setParameterValue(id: string, value: number | boolean) {
-    return this.model?.setParameterValueById?.(id, Number(value))
+    return this.model?.setParameterValueById(id, Number(value))
   }
 }
 

@@ -23,12 +23,12 @@ function getExpressionShortcutId(index: number) {
   return `${modelStore.currentModel?.id}:expression:${index}`
 }
 
-function playMotion(motion: MotionInfo) {
-  emit(LISTEN_KEY.PLAY_MOTION, motion)
+function startMotion(motion: MotionInfo) {
+  emit(LISTEN_KEY.START_MOTION, motion)
 }
 
-function playExpression(index: number) {
-  emit(LISTEN_KEY.PLAY_EXPRESSION, index)
+function setExpression(index: number) {
+  emit(LISTEN_KEY.SET_EXPRESSION, index)
 }
 </script>
 
@@ -78,7 +78,7 @@ function playExpression(index: number) {
               <BehaviorItem
                 v-model="modelStore.shortcuts[getMotionShortcutId(groupName, index)]"
                 :label="$t('pages.preference.model.behaviorModal.labels.motionIndex', { index: index + 1 })"
-                @click="playMotion(motions[index])"
+                @click="startMotion(motions[index])"
               />
             </template>
           </List>
@@ -105,7 +105,7 @@ function playExpression(index: number) {
           <BehaviorItem
             v-model="modelStore.shortcuts[getExpressionShortcutId(index)]"
             :label="$t('pages.preference.model.behaviorModal.labels.expressionIndex', { index: index + 1 })"
-            @click="playExpression(index)"
+            @click="setExpression(index)"
           />
         </template>
       </List>
