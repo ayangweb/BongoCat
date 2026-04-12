@@ -19,6 +19,22 @@ const appWindow = getCurrentWebviewWindow()
 const digitKeys = '1234567890'.split('') as readonly string[]
 const letterKeys = 'QWERTYUIOPASDFGHJKLZXCVBNM'.split('') as readonly string[]
 
+// ---------------------------------------------------------------------------
+// Mouse-tracking smoothing state (module-level so it is shared across all
+// composable instances and survives across re-renders).
+//
+// EMA formula:  smoothed = α × raw + (1 − α) × smoothed
+//   α close to 1 → very responsive, little smoothing
+//   α close to 0 → very smooth, more lag
+//
+// The actual α value is read from `catStore.model.mouseSmoothingAlpha` each
+// frame so it can be changed at runtime without reloading the page.
+// Default: 0.25 (see stores/cat.ts).  Recommended range: 0.1 – 0.5.
+// ---------------------------------------------------------------------------
+let smoothedXRatio = 0.5
+let smoothedYRatio = 0.5
+let isSmoothedInitialized = false
+
 export interface ModelSize {
   width: number
   height: number
@@ -181,8 +197,21 @@ export function useModel() {
 
     const { size, position } = monitor
 
-    const xRatio = (cursorPoint.x - position.x) / size.width
-    const yRatio = (cursorPoint.y - position.y) / size.height
+    const rawXRatio = (cursorPoint.x - position.x) / size.width
+    const rawYRatio = (cursorPoint.y - position.y) / size.height
+
+    // Apply EMA smoothing to reduce jitter from high-report-rate mice.
+    // On the very first call the smoothed values are seeded with the raw
+    // values so the model snaps to the correct position instantly.
+    const alpha = catStore.model.mouseSmoothingAlpha
+    if (!isSmoothedInitialized) {
+      smoothedXRatio = rawXRatio
+      smoothedYRatio = rawYRatio
+      isSmoothedInitialized = true
+    } else {
+      smoothedXRatio = alpha * rawXRatio + (1 - alpha) * smoothedXRatio
+      smoothedYRatio = alpha * rawYRatio + (1 - alpha) * smoothedYRatio
+    }
 
     for (const id of [
       'ParamMouseX',
@@ -200,7 +229,7 @@ export function useModel() {
 
       const isXAxis = id.endsWith('X')
 
-      const ratio = isXAxis ? xRatio : yRatio
+      const ratio = isXAxis ? smoothedXRatio : smoothedYRatio
       let value = max - ratio * (max - min)
 
       if (isXAxis && catStore.model.mouseMirror) {

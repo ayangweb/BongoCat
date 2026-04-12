@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
+import { PhysicalPosition } from '@tauri-apps/api/dpi'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { cursorPosition } from '@tauri-apps/api/window'
+import { Ticker } from 'pixi.js'
 
 import { INVOKE_KEY, LISTEN_KEY } from '../constants'
 
@@ -40,8 +41,30 @@ export function useDevice() {
   const catStore = useCatStore()
   const { handlePress, handleRelease, handleMouseChange, handleMouseMove } = useModel()
 
+  // Latest cursor position buffered from high-frequency rdev MouseMove events.
+  // Consumed once per render frame via Ticker.shared to prevent parameter jitter
+  // caused by >500 Hz mice on Windows.
+  let latestCursorPoint: CursorPoint | null = null
+  let isTickerRegistered = false
+
   const startListening = () => {
     invoke(INVOKE_KEY.START_DEVICE_LISTENING)
+
+    // Register at most once: Ticker callbacks are permanent for the app lifetime.
+    if (isTickerRegistered) return
+    isTickerRegistered = true
+
+    // Consume the buffered cursor position once per render frame so that Live2D
+    // parameter updates stay in sync with the rendering rate regardless of the
+    // mouse report rate.
+    Ticker.shared.add(() => {
+      if (!latestCursorPoint) return
+
+      const point = latestCursorPoint
+      latestCursorPoint = null
+
+      handleCursorMove(point)
+    })
   }
 
   const getSupportedKey = (key: string) => {
@@ -63,10 +86,12 @@ export function useDevice() {
     return nextKey
   }
 
-  const handleCursorMove = async () => {
-    const cursorPoint = await cursorPosition()
+  const handleCursorMove = async (cursorPoint: CursorPoint) => {
+    // Build a PhysicalPosition from the rdev coordinates so we avoid an extra
+    // round-trip Tauri IPC call on every consumed frame.
+    const physicalPoint = new PhysicalPosition(cursorPoint.x, cursorPoint.y)
 
-    handleMouseMove(cursorPoint)
+    handleMouseMove(physicalPoint)
 
     if (catStore.window.hideOnHover) {
       const appWindow = getCurrentWebviewWindow()
@@ -131,7 +156,9 @@ export function useDevice() {
       case 'MouseRelease':
         return handleMouseChange(value, false)
       case 'MouseMove':
-        return handleCursorMove()
+        // Buffer the latest position; a Ticker.shared callback (registered in
+        // startListening) will consume it once per render frame.
+        latestCursorPoint = value as CursorPoint
     }
   })
 
