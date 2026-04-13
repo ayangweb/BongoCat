@@ -23,6 +23,8 @@ export function useWindowState() {
     appWindow.onMoved(onChange)
 
     appWindow.onResized(onChange)
+
+    appWindow.onScaleChanged(() => clampToMonitor())
   })
 
   const clampToMonitor = useDebounceFn(async () => {
