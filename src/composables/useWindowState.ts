@@ -58,9 +58,7 @@ export function useWindowState() {
 
     Object.assign(appStore.windowState[label], payload)
 
-    if (payload instanceof PhysicalPosition) {
-      clampToMonitor()
-    }
+    clampToMonitor()
   }
 
   const restoreState = async () => {
@@ -88,6 +86,8 @@ export function useWindowState() {
     }
 
     isRestored.value = true
+
+    clampToMonitor()
   }
 
   return {
