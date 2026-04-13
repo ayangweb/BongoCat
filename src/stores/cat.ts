@@ -12,11 +12,12 @@ export interface CatStore {
   window: {
     visible: boolean
     passThrough: boolean
-    alwaysOnTop: boolean
+    keepInScreen: boolean
     scale: number
     opacity: number
     radius: number
     hideOnHover: boolean
+    alwaysOnTop: boolean
   }
 }
 
@@ -63,6 +64,7 @@ export const useCatStore = defineStore('cat', () => {
     opacity: 100,
     radius: 0,
     hideOnHover: false,
+    keepInScreen: true,
   })
 
   const init = () => {

@@ -75,6 +75,13 @@ const catStore = useCatStore()
     </ProListItem>
 
     <ProListItem
+      :description="$t('pages.preference.cat.hints.keepInScreen')"
+      :title="$t('pages.preference.cat.labels.keepInScreen')"
+    >
+      <Switch v-model:checked="catStore.window.keepInScreen" />
+    </ProListItem>
+
+    <ProListItem
       :description="$t('pages.preference.cat.hints.windowSize')"
       :title="$t('pages.preference.cat.labels.windowSize')"
     >

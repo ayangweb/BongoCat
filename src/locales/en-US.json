@@ -17,6 +17,7 @@
           "windowSettings": "Window Settings",
           "passThrough": "Pass Through",
           "alwaysOnTop": "Always on Top",
+          "keepInScreen": "Keep on Screen",
           "windowSize": "Window Size",
           "windowRadius": "Window Radius",
           "opacity": "Opacity",
@@ -31,6 +32,7 @@
           "motionSound": "When enabled, the model will play corresponding sound effects when performing actions (if they exist).",
           "passThrough": "When enabled, clicks pass through the window without affecting it.",
           "alwaysOnTop": "When enabled, the window stays above all other windows.",
+          "keepInScreen": "When enabled, the window automatically stays within the screen boundaries.",
           "windowSize": "Move mouse to window edge, or hold Shift and right-drag to resize.",
           "autoReleaseDelay": "On Windows, some system keys cannot capture release events and will auto-release after timeout.",
           "hideOnHover": "When enabled, the window hides when mouse hovers over it."

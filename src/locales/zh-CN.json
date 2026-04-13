@@ -17,6 +17,7 @@
           "windowSettings": "窗口设置",
           "passThrough": "窗口穿透",
           "alwaysOnTop": "窗口置顶",
+          "keepInScreen": "保持在屏幕内",
           "windowSize": "窗口尺寸",
           "windowRadius": "窗口圆角",
           "opacity": "不透明度",
@@ -31,6 +32,7 @@
           "motionSound": "启用后，模型执行动作时会播放对应音效（如果存在）。",
           "passThrough": "启用后，窗口不影响对其他应用程序的操作。",
           "alwaysOnTop": "启用后，窗口始终显示在其他应用程序上方。",
+          "keepInScreen": "启用后，窗口会自动调整位置，防止超出屏幕边界。",
           "windowSize": "将鼠标移至窗口边缘，或按住 Shift 并右键拖动，也可以调整窗口大小。",
           "autoReleaseDelay": "由于 Windows 下部分系统级按键无法捕获释放事件，超时后将自动视为已释放。",
           "hideOnHover": "启用后，鼠标悬停在窗口上时，窗口会隐藏。"

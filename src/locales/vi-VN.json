@@ -17,6 +17,7 @@
           "windowSettings": "Cài đặt Cửa sổ",
           "passThrough": "Click xuyên",
           "alwaysOnTop": "Luôn trên cùng",
+          "keepInScreen": "Giữ trong màn hình",
           "windowSize": "Kích thước",
           "windowRadius": "Độ bo tròn cửa sổ",
           "opacity": "Độ mờ",
@@ -31,6 +32,7 @@
           "motionSound": "Khi bật, mô hình sẽ phát các âm thanh tương ứng khi thực hiện hành động (nếu tồn tại).",
           "passThrough": "Bật để cửa sổ không ảnh hưởng đến thao tác trên ứng dụng khác.",
           "alwaysOnTop": "Bật để cửa sổ luôn nằm trên ứng dụng khác.",
+          "keepInScreen": "Khi bật, cửa sổ sẽ tự động giữ trong ranh giới màn hình.",
           "windowSize": "Di chuyển chuột đến mép cửa sổ hoặc giữ Shift và kéo chuột phải để thay đổi kích thước.",
           "autoReleaseDelay": "Do Windows không bắt được sự kiện nhả của một số phím hệ thống, các phím đó sẽ được tự động xem như đã nhả sau khi hết thời gian chờ.",
           "hideOnHover": "Khi bật, cửa sổ sẽ ẩn khi chuột di chuyển vào."

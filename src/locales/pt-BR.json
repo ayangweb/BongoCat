@@ -17,6 +17,7 @@
           "windowSettings": "Configurações da Janela",
           "passThrough": "Janela Transparente",
           "alwaysOnTop": "Sempre no Topo",
+          "keepInScreen": "Manter na Tela",
           "windowSize": "Tamanho da Janela",
           "windowRadius": "Raio da Janela",
           "opacity": "Opacidade",
@@ -31,6 +32,7 @@
           "motionSound": "Quando ativado, o modelo reproduzirá efeitos sonoros correspondentes ao executar ações (se existirem).",
           "passThrough": "Quando ativado, a janela não afetará operações em outros aplicativos.",
           "alwaysOnTop": "Quando ativado, a janela sempre ficará acima de outros aplicativos.",
+          "keepInScreen": "Quando ativado, a janela permanece automaticamente dentro dos limites da tela.",
           "windowSize": "Mova o mouse para a borda da janela ou segure Shift e arraste com o botão direito para redimensionar.",
           "autoReleaseDelay": "Devido ao Windows não capturar eventos de liberação de certas teclas de nível do sistema, elas serão automaticamente tratadas como liberadas após um tempo limite.",
           "hideOnHover": "Quando ativado, a janela será ocultada quando o mouse passar sobre ela."

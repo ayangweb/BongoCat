@@ -17,6 +17,7 @@
           "windowSettings": "視窗設定",
           "passThrough": "視窗穿透",
           "alwaysOnTop": "視窗置頂",
+          "keepInScreen": "保持在螢幕內",
           "windowSize": "視窗尺寸",
           "windowRadius": "視窗圓角",
           "opacity": "不透明度",
@@ -31,6 +32,7 @@
           "motionSound": "啟用後，模型執行動作時會播放對應音效（如果存在）。",
           "passThrough": "啟用後，視窗不影響對其他應用程式的操作。",
           "alwaysOnTop": "啟用後，視窗始終顯示在其他應用程式上方。",
+          "keepInScreen": "啟用後，視窗會自動調整位置，防止超出螢幕邊界。",
           "windowSize": "將滑鼠游標移至視窗邊緣，或按住 Shift 並右鍵拖曳，也可以調整視窗大小。",
           "autoReleaseDelay": "由於 Windows 下部份系統級按鍵無法擷取釋放事件，超時後將自動視為已釋放。",
           "hideOnHover": "啟用後，滑鼠游標懸停在視窗上時，視窗會隱藏。"
