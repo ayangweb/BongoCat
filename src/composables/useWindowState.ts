@@ -24,7 +24,7 @@ export function useWindowState() {
 
     appWindow.onResized(onChange)
 
-    appWindow.onScaleChanged(() => clampToMonitor())
+    appWindow.onScaleChanged(clampToMonitor)
   })
 
   const clampToMonitor = useDebounceFn(async () => {
@@ -46,7 +46,7 @@ export function useWindowState() {
 
     if (clampedX === windowPos.x && clampedY === windowPos.y) return
 
-    appWindow.setPosition(new PhysicalPosition(clampedX, clampedY))
+    return appWindow.setPosition(new PhysicalPosition(clampedX, clampedY))
   }, 500)
 
   const onChange = async (event: Event<PhysicalPosition | PhysicalSize>) => {
