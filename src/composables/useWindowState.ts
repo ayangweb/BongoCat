@@ -31,8 +31,8 @@ export function useWindowState() {
     if (!monitor) return
 
     const { position: monitorPos, size: monitorSize } = monitor
-    const windowSize = await appWindow.innerSize()
-    const windowPos = await appWindow.innerPosition()
+    const windowSize = await appWindow.outerSize()
+    const windowPos = await appWindow.outerPosition()
 
     const minX = monitorPos.x
     const maxX = monitorPos.x + monitorSize.width - windowSize.width
