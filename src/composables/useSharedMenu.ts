@@ -2,6 +2,7 @@ import { CheckMenuItem, MenuItem, PredefinedMenuItem, Submenu } from '@tauri-app
 import { range } from 'es-toolkit'
 import { useI18n } from 'vue-i18n'
 
+import { WINDOW_LABEL } from '@/constants'
 import { showWindow } from '@/plugins/window'
 import { useCatStore } from '@/stores/cat'
 import { isMac } from '@/utils/platform'
@@ -63,7 +64,7 @@ export function useSharedMenu() {
       MenuItem.new({
         text: t('composables.useSharedMenu.labels.preference'),
         accelerator: isMac ? 'Cmd+,' : '',
-        action: () => showWindow('preference'),
+        action: () => showWindow(WINDOW_LABEL.PREFERENCE),
       }),
       MenuItem.new({
         text: catStore.window.visible ? t('composables.useSharedMenu.labels.hideCat') : t('composables.useSharedMenu.labels.showCat'),

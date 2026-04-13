@@ -7,6 +7,7 @@ import { useDebounceFn } from '@vueuse/core'
 import { isNumber } from 'es-toolkit/compat'
 import { onMounted, ref, watch } from 'vue'
 
+import { WINDOW_LABEL } from '@/constants'
 import { useAppStore } from '@/stores/app'
 import { useCatStore } from '@/stores/cat'
 import { getCursorMonitor } from '@/utils/monitor'
@@ -30,7 +31,7 @@ export function useWindowState() {
   })
 
   const clampToMonitor = useDebounceFn(async () => {
-    if (!catStore.window.keepInScreen) return
+    if (label !== WINDOW_LABEL.MAIN || !catStore.window.keepInScreen) return
 
     const monitor = await getCursorMonitor()
 
@@ -53,7 +54,7 @@ export function useWindowState() {
     return appWindow.setPosition(new PhysicalPosition(clampedX, clampedY))
   }, 500)
 
-  watch(() => catStore.window.keepInScreen, clampToMonitor, { immediate: true })
+  watch(() => catStore.window.keepInScreen, clampToMonitor)
 
   const onChange = async (event: Event<PhysicalPosition | PhysicalSize>) => {
     const minimized = await appWindow.isMinimized()

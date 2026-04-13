@@ -12,12 +12,12 @@ export interface CatStore {
   window: {
     visible: boolean
     passThrough: boolean
-    keepInScreen: boolean
+    alwaysOnTop: boolean
     scale: number
     opacity: number
     radius: number
     hideOnHover: boolean
-    alwaysOnTop: boolean
+    keepInScreen: boolean
   }
 }
 

@@ -1,10 +1,12 @@
+import type { WINDOW_LABEL } from '../constants'
+
 import { invoke } from '@tauri-apps/api/core'
 import { emit } from '@tauri-apps/api/event'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 
 import { LISTEN_KEY } from '../constants'
 
-type WindowLabel = 'main' | 'preference'
+export type WindowLabel = typeof WINDOW_LABEL[keyof typeof WINDOW_LABEL]
 
 const COMMAND = {
   SHOW_WINDOW: 'plugin:custom-window|show_window',
