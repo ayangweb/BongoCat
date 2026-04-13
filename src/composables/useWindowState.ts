@@ -54,11 +54,9 @@ export function useWindowState() {
 
     if (minimized) return
 
-    const { payload } = event
-
     appStore.windowState[label] ??= {}
 
-    Object.assign(appStore.windowState[label], payload)
+    Object.assign(appStore.windowState[label], event.payload)
 
     clampToMonitor()
   }
