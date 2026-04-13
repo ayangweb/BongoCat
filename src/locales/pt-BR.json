@@ -36,12 +36,6 @@
           "autoReleaseDelay": "Devido ao Windows não capturar eventos de liberação de certas teclas de nível do sistema, elas serão automaticamente tratadas como liberadas após um tempo limite.",
           "hideOnHover": "Quando ativado, a janela será ocultada quando o mouse passar sobre ela.",
           "position": "Entra em vigor após inicializar o aplicativo ou quando este parâmetro, o tamanho da janela, o modelo ou a resolução de tela é alterado."
-        },
-        "options": {
-          "topLeft": "Canto Superior Esquerdo",
-          "topRight": "Canto Superior Direito",
-          "bottomLeft": "Canto Inferior Esquerdo",
-          "bottomRight": "Canto Inferior Direito"
         }
       },
       "general": {

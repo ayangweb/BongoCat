@@ -36,12 +36,6 @@
           "autoReleaseDelay": "由于 Windows 下部分系统级按键无法捕获释放事件，超时后将自动视为已释放。",
           "hideOnHover": "启用后，鼠标悬停在窗口上时，窗口会隐藏。",
           "position": "应用启动后，或当此参数、窗口尺寸、模型、电脑分辨率发生变化时生效。"
-        },
-        "options": {
-          "topLeft": "左上角",
-          "topRight": "右上角",
-          "bottomLeft": "左下角",
-          "bottomRight": "右下角"
         }
       },
       "general": {

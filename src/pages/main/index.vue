@@ -17,7 +17,6 @@ import { useGamepad } from '@/composables/useGamepad'
 import { useModel } from '@/composables/useModel'
 import { useSharedMenu } from '@/composables/useSharedMenu'
 import { useTauriListen } from '@/composables/useTauriListen'
-import { useWindowPosition } from '@/composables/useWindowPosition'
 import { LISTEN_KEY } from '@/constants'
 import { hideWindow, setAlwaysOnTop, setTaskbarVisibility, showWindow } from '@/plugins/window'
 import { useCatStore } from '@/stores/cat'
@@ -38,7 +37,6 @@ const generalStore = useGeneralStore()
 const resizing = ref(false)
 const backgroundImagePath = ref<string>()
 const { stickActive } = useGamepad()
-const { isMounted, setWindowPosition } = useWindowPosition()
 
 onMounted(startListening)
 
@@ -46,8 +44,6 @@ onUnmounted(handleDestroy)
 
 const debouncedResize = useDebounceFn(async () => {
   await handleResize()
-
-  await setWindowPosition()
 
   resizing.value = false
 }, 100)
@@ -85,8 +81,6 @@ watch(() => modelStore.currentModel, async (model) => {
       modelStore.supportKeys[fileName] = join(groupDir, file.name)
     }
   }
-
-  setWindowPosition()
 }, { deep: true, immediate: true })
 
 watch([() => catStore.window.scale, modelSize], async ([scale, modelSize]) => {
@@ -168,7 +162,6 @@ function handleMouseMove(event: MouseEvent) {
 
 <template>
   <div
-    v-show="isMounted"
     class="relative size-screen overflow-hidden children:(absolute size-full)"
     :class="{ '-scale-x-100': catStore.model.mirror }"
     :style="{

@@ -36,12 +36,6 @@
           "autoReleaseDelay": "由於 Windows 下部份系統級按鍵無法擷取釋放事件，超時後將自動視為已釋放。",
           "hideOnHover": "啟用後，滑鼠游標懸停在視窗上時，視窗會隱藏。",
           "position": "應用程式啟動後，或當此參數、視窗尺寸、模型、電腦解析度發生變化時生效。"
-        },
-        "options": {
-          "topLeft": "左上角",
-          "topRight": "右上角",
-          "bottomLeft": "左下角",
-          "bottomRight": "右下角"
         }
       },
       "general": {

@@ -36,12 +36,6 @@
           "autoReleaseDelay": "On Windows, some system keys cannot capture release events and will auto-release after timeout.",
           "hideOnHover": "When enabled, the window hides when mouse hovers over it.",
           "position": "Takes effect after the app starts, or when this parameter, window size, model, or screen resolution changes."
-        },
-        "options": {
-          "topLeft": "Top Left",
-          "topRight": "Top Right",
-          "bottomLeft": "Bottom Left",
-          "bottomRight": "Bottom Right"
         }
       },
       "general": {
