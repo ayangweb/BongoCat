@@ -184,6 +184,9 @@ export function useModel() {
       'ParamMouseY',
       'ParamAngleX',
       'ParamAngleY',
+      'ParamAngleZ',
+      'ParamEyeBallX',
+      'ParamEyeBallY',
     ]) {
       const range = live2d.getParameterValueRange(id)
 
@@ -194,11 +197,23 @@ export function useModel() {
       if (isNil(min) || isNil(max)) continue
 
       const isXAxis = id.endsWith('X')
+      const isYAxis = id.endsWith('Y')
+      const isZAxis = id.endsWith('Z')
 
-      const ratio = isXAxis ? xRatio : yRatio
-      let value = max - ratio * (max - min)
+      let value: number
 
-      if (isXAxis && catStore.model.mouseMirror) {
+      if (isZAxis) {
+        const dragX = 1 - 2 * xRatio
+        const dragY = 1 - 2 * yRatio
+
+        value = dragX * dragY * min
+      } else {
+        const ratio = isXAxis ? xRatio : yRatio
+
+        value = max - ratio * (max - min)
+      }
+
+      if (!isYAxis && catStore.model.mouseMirror) {
         value *= -1
       }
 
