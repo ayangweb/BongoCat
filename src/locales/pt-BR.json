@@ -22,6 +22,7 @@
           "windowRadius": "Raio da Janela",
           "opacity": "Opacidade",
           "motionSound": "Som de Ação",
+          "behavior": "Movimentos e Expressões",
           "autoReleaseDelay": "Atraso de Liberação Automática",
           "hideOnHover": "Ocultar ao Passar o Mouse"
         },
@@ -30,6 +31,7 @@
           "singleMode": "Quando ativado, apenas a última tecla pressionada em cada mão é exibida (evita mostrar múltiplas mãos ao pressionar várias teclas ao mesmo tempo).",
           "mouseMirror": "Quando ativado, o mouse espelhará o movimento da mão.",
           "motionSound": "Quando ativado, o modelo reproduzirá efeitos sonoros correspondentes ao executar ações (se existirem).",
+          "behavior": "Quando ativado, movimentos e expressões podem ser configurados e acionados.",
           "passThrough": "Quando ativado, a janela não afetará operações em outros aplicativos.",
           "alwaysOnTop": "Quando ativado, a janela sempre ficará acima de outros aplicativos.",
           "keepInScreen": "Quando ativado, a janela permanece automaticamente dentro dos limites da tela.",

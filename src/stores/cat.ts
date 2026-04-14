@@ -7,6 +7,7 @@ export interface CatStore {
     single: boolean
     mouseMirror: boolean
     motionSound: boolean
+    behavior: boolean
     autoReleaseDelay: number
   }
   window: {
@@ -53,6 +54,7 @@ export const useCatStore = defineStore('cat', () => {
     single: false,
     mouseMirror: false,
     motionSound: true,
+    behavior: true,
     autoReleaseDelay: 3,
   })
 

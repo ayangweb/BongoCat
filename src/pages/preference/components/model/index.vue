@@ -15,9 +15,11 @@ import BehaviorModal from './components/behavior-modal/index.vue'
 import FloatMenu from './components/float-menu/index.vue'
 import Upload from './components/upload/index.vue'
 
+import { useCatStore } from '@/stores/cat'
 import { useModelStore } from '@/stores/model'
 import { join } from '@/utils/path'
 
+const catStore = useCatStore()
 const modelStore = useModelStore()
 const firstItemRef = ref<HTMLElement>()
 const { height } = useElementSize(firstItemRef)
@@ -89,7 +91,7 @@ async function handleDelete(item: Model) {
           />
 
           <i
-            v-if="modelStore.currentModel?.id === item.id"
+            v-if="catStore.model.behavior && modelStore.currentModel?.id === item.id"
             class="i-lucide:smile"
             @click.stop="openBehaviorModal = true"
           />
@@ -119,5 +121,8 @@ async function handleDelete(item: Model) {
 
   <FloatMenu />
 
-  <BehaviorModal v-model="openBehaviorModal" />
+  <BehaviorModal
+    v-if="catStore.model.behavior"
+    v-model="openBehaviorModal"
+  />
 </template>
