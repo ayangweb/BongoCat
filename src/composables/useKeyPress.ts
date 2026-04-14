@@ -22,7 +22,7 @@ export function useKeyPress(shortcut: Ref<string | undefined, string>, callback:
   }
 
   watch(shortcut, async (value) => {
-    unbind()
+    await unbind()
 
     if (!value) return
 
