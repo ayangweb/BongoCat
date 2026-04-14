@@ -39,6 +39,13 @@ watch(() => generalStore.app.autostart, async (value) => {
     >
       <Switch v-model:checked="generalStore.app.taskbarVisible" />
     </ProListItem>
+
+    <ProListItem
+      :description="$t('pages.preference.general.hints.showTrayIcon')"
+      :title="$t('pages.preference.general.labels.showTrayIcon')"
+    >
+      <Switch v-model:checked="generalStore.app.trayVisible" />
+    </ProListItem>
   </ProList>
 
   <ProList :title="$t('pages.preference.general.labels.appearanceSettings')">

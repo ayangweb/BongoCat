@@ -44,6 +44,7 @@
           "appSettings": "Application Settings",
           "launchOnStartup": "Launch on Startup",
           "showTaskbarIcon": "Show Taskbar Icon",
+          "showTrayIcon": "Show Tray Icon",
           "appearanceSettings": "Appearance Settings",
           "themeMode": "Theme Mode",
           "language": "Language",
@@ -59,6 +60,7 @@
         },
         "hints": {
           "showTaskbarIcon": "When enabled, the window can be captured via OBS Studio.",
+          "showTrayIcon": "When enabled, the app icon is displayed in the system tray.",
           "inputMonitoringPermission": "Enable input monitoring to receive keyboard and mouse events from the system.",
           "inputMonitoringPermissionGuide": "If the permission is already enabled, select it and click the \"-\" button to remove it, then manually add it again and restart the app."
         },
@@ -161,21 +163,21 @@
     }
   },
   "composables": {
-    "useSharedMenu": {
+    "useAppMenu": {
       "labels": {
         "preference": "Preferences...",
         "hideCat": "Hide Cat",
         "showCat": "Show Cat",
         "passThrough": "Pass Through",
         "windowSize": "Window Size",
-        "opacity": "Opacity"
+        "opacity": "Opacity",
+        "restartApp": "Restart App",
+        "quitApp": "Quit App"
       }
     },
     "useTray": {
       "checkUpdate": "Check for Updates",
-      "openSource": "Open Source",
-      "restartApp": "Restart App",
-      "quitApp": "Quit App"
+      "openSource": "Open Source"
     }
   },
   "utils": {

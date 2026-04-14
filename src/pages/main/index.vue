@@ -3,7 +3,7 @@ import type { MotionInfo } from 'easy-live2d'
 
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { PhysicalSize } from '@tauri-apps/api/dpi'
-import { Menu } from '@tauri-apps/api/menu'
+import { Menu, PredefinedMenuItem } from '@tauri-apps/api/menu'
 import { sep } from '@tauri-apps/api/path'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { exists, readDir } from '@tauri-apps/plugin-fs'
@@ -12,10 +12,10 @@ import { round } from 'es-toolkit'
 import { nth } from 'es-toolkit/compat'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
+import { useAppMenu } from '@/composables/useAppMenu'
 import { useDevice } from '@/composables/useDevice'
 import { useGamepad } from '@/composables/useGamepad'
 import { useModel } from '@/composables/useModel'
-import { useSharedMenu } from '@/composables/useSharedMenu'
 import { useTauriListen } from '@/composables/useTauriListen'
 import { LISTEN_KEY } from '@/constants'
 import { hideWindow, setAlwaysOnTop, setTaskbarVisibility, showWindow } from '@/plugins/window'
@@ -31,7 +31,7 @@ const { startListening } = useDevice()
 const appWindow = getCurrentWebviewWindow()
 const { modelSize, handleLoad, handleDestroy, handleResize, handleKeyChange } = useModel()
 const catStore = useCatStore()
-const { getSharedMenu } = useSharedMenu()
+const { getBaseMenu, getExitMenu } = useAppMenu()
 const modelStore = useModelStore()
 const generalStore = useGeneralStore()
 const resizing = ref(false)
@@ -142,7 +142,11 @@ async function handleContextmenu(event: MouseEvent) {
   if (event.shiftKey) return
 
   const menu = await Menu.new({
-    items: await getSharedMenu(),
+    items: [
+      ...await getBaseMenu(),
+      await PredefinedMenuItem.new({ item: 'Separator' }),
+      ...await getExitMenu(),
+    ],
   })
 
   menu.popup()

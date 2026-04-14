@@ -44,6 +44,7 @@
           "appSettings": "Cài đặt ứng dụng",
           "launchOnStartup": "Khởi động cùng hệ thống",
           "showTaskbarIcon": "Hiện biểu tượng trên thanh tác vụ (icon taskbar)",
+          "showTrayIcon": "Hiện biểu tượng trên khay hệ thống (tray)",
           "appearanceSettings": "Cài đặt giao diện",
           "themeMode": "Giao diện",
           "language": "Ngôn ngữ",
@@ -59,6 +60,7 @@
         },
         "hints": {
           "showTaskbarIcon": "Bật để có thể quay cửa sổ qua OBS.",
+          "showTrayIcon": "Bật để hiện biểu tượng ứng dụng trên khay hệ thống.",
           "inputMonitoringPermission": "Bật quyền giám sát để nhận sự kiện bàn phím và chuột từ hệ thống nhằm phản hồi thao tác của bạn.",
           "inputMonitoringPermissionGuide": "Nếu quyền đã được bật, hãy chọn nó và nhấn nút \"-\" để xóa. Sau đó thêm lại thủ công và khởi động lại ứng dụng để đảm bảo quyền được áp dụng."
         },
@@ -161,21 +163,21 @@
     }
   },
   "composables": {
-    "useSharedMenu": {
+    "useAppMenu": {
       "labels": {
         "preference": "Tùy chỉnh...",
         "hideCat": "Ẩn Mèo",
         "showCat": "Hiện Mèo",
         "passThrough": "Click xuyên",
         "windowSize": "Kích thước",
-        "opacity": "Độ mờ"
+        "opacity": "Độ mờ",
+        "restartApp": "Khởi động lại",
+        "quitApp": "Thoát"
       }
     },
     "useTray": {
       "checkUpdate": "Kiểm tra cập nhật",
-      "openSource": "Mã nguồn",
-      "restartApp": "Khởi động lại",
-      "quitApp": "Thoát"
+      "openSource": "Mã nguồn"
     }
   },
   "utils": {

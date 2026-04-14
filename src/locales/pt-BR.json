@@ -44,6 +44,7 @@
           "appSettings": "Configurações do aplicativo",
           "launchOnStartup": "Iniciar na inicialização",
           "showTaskbarIcon": "Mostrar ícone na barra de tarefas",
+          "showTrayIcon": "Mostrar ícone na bandeja",
           "appearanceSettings": "Configurações de aparência",
           "themeMode": "Tema",
           "language": "Idiomas",
@@ -59,6 +60,7 @@
         },
         "hints": {
           "showTaskbarIcon": "Uma vez ativado, você pode capturar a janela via OBS Studio.",
+          "showTrayIcon": "Quando ativado, o ícone do aplicativo é exibido na bandeja do sistema.",
           "inputMonitoringPermission": "Ative a permissão de monitoramento de entrada para receber eventos de teclado e mouse do sistema para responder às suas ações.",
           "inputMonitoringPermissionGuide": "Se a permissão já estiver ativada, primeiro selecione-a e clique no botão \"-\" para removê-la. Em seguida, adicione-a novamente manualmente e reinicie o aplicativo para garantir que a permissão entre em vigor."
         },
@@ -161,21 +163,21 @@
     }
   },
   "composables": {
-    "useSharedMenu": {
+    "useAppMenu": {
       "labels": {
         "preference": "Preferências...",
         "hideCat": "Ocultar Gato",
         "showCat": "Mostrar Gato",
         "passThrough": "Janela Transparente",
         "windowSize": "Tamanho da Janela",
-        "opacity": "Opacidade"
+        "opacity": "Opacidade",
+        "restartApp": "Reiniciar",
+        "quitApp": "Sair"
       }
     },
     "useTray": {
       "checkUpdate": "Verificar atualizações",
-      "openSource": "Código Fonte",
-      "restartApp": "Reiniciar",
-      "quitApp": "Sair"
+      "openSource": "Código Fonte"
     }
   },
   "utils": {

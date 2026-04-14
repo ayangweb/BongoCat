@@ -12,6 +12,7 @@ export interface GeneralStore {
   app: {
     autostart: boolean
     taskbarVisible: boolean
+    trayVisible: boolean
   }
   appearance: {
     theme: 'auto' | Theme
@@ -47,6 +48,7 @@ export const useGeneralStore = defineStore('general', () => {
   const app = reactive<GeneralStore['app']>({
     autostart: false,
     taskbarVisible: false,
+    trayVisible: true,
   })
 
   const appearance = reactive<GeneralStore['appearance']>({

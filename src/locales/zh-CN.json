@@ -44,6 +44,7 @@
           "appSettings": "应用设置",
           "launchOnStartup": "开机自启动",
           "showTaskbarIcon": "显示任务栏图标",
+          "showTrayIcon": "显示托盘图标",
           "appearanceSettings": "外观设置",
           "themeMode": "主题模式",
           "language": "语言",
@@ -59,6 +60,7 @@
         },
         "hints": {
           "showTaskbarIcon": "启用后，即可通过 OBS Studio 捕获窗口。",
+          "showTrayIcon": "启用后，在系统托盘中显示应用图标。",
           "inputMonitoringPermission": "开启输入监控权限，以便接收系统的键盘和鼠标事件来响应你的操作。",
           "inputMonitoringPermissionGuide": "如果权限已开启，请先选中并点击“-”按钮将其删除，然后重新手动添加，最后重启应用以确保权限生效。"
         },
@@ -161,21 +163,21 @@
     }
   },
   "composables": {
-    "useSharedMenu": {
+    "useAppMenu": {
       "labels": {
         "preference": "偏好设置...",
         "hideCat": "隐藏猫咪",
         "showCat": "显示猫咪",
         "passThrough": "窗口穿透",
         "windowSize": "窗口尺寸",
-        "opacity": "不透明度"
+        "opacity": "不透明度",
+        "restartApp": "重启应用",
+        "quitApp": "退出应用"
       }
     },
     "useTray": {
       "checkUpdate": "检查更新",
-      "openSource": "开源地址",
-      "restartApp": "重启应用",
-      "quitApp": "退出应用"
+      "openSource": "开源地址"
     }
   },
   "utils": {
