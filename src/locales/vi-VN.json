@@ -12,7 +12,6 @@
         "labels": {
           "modelSettings": "Cài đặt Mô hình",
           "mirrorMode": "Chế độ gương",
-          "singleMode": "Chỉ hiển thị phím cuối cùng",
           "mouseMirror": "Phản chiếu chuột",
           "windowSettings": "Cài đặt Cửa sổ",
           "passThrough": "Click xuyên",
@@ -28,7 +27,6 @@
         },
         "hints": {
           "mirrorMode": "Bật để lật ngang mô hình.",
-          "singleMode": "Khi bật, mỗi tay mèo chỉ hiển thị phím vừa nhấn cuối cùng (tránh hiện nhiều tay khi nhấn nhiều phím cùng lúc).",
           "mouseMirror": "Khi bật, chuột của mô hình sẽ phản chiếu theo chuyển động chuột thực tế.",
           "motionSound": "Khi bật, mô hình sẽ phát các âm thanh tương ứng khi thực hiện hành động (nếu tồn tại).",
           "behavior": "Khi bật, các hành động và biểu cảm có thể được cấu hình và kích hoạt.",

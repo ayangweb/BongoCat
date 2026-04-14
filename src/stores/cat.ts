@@ -4,7 +4,6 @@ import { reactive, ref } from 'vue'
 export interface CatStore {
   model: {
     mirror: boolean
-    single: boolean
     mouseMirror: boolean
     motionSound: boolean
     behavior: boolean
@@ -28,9 +27,6 @@ export const useCatStore = defineStore('cat', () => {
   /** @deprecated 请使用 `model.mirror` */
   const mirrorMode = ref(false)
 
-  /** @deprecated 请使用 `model.single` */
-  const singleMode = ref(false)
-
   /** @deprecated 请使用 `model.mouseMirror` */
   const mouseMirror = ref(false)
 
@@ -51,7 +47,6 @@ export const useCatStore = defineStore('cat', () => {
 
   const model = reactive<CatStore['model']>({
     mirror: false,
-    single: false,
     mouseMirror: false,
     motionSound: true,
     behavior: true,
@@ -73,7 +68,6 @@ export const useCatStore = defineStore('cat', () => {
     if (migrated.value) return
 
     model.mirror = mirrorMode.value
-    model.single = singleMode.value
     model.mouseMirror = mouseMirror.value
 
     window.visible = true

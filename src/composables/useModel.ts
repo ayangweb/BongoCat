@@ -5,7 +5,7 @@ import { resolveResource, sep } from '@tauri-apps/api/path'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { message } from 'ant-design-vue'
 import { isNil, round } from 'es-toolkit'
-import { nth } from 'es-toolkit/compat'
+import { findKey, nth } from 'es-toolkit/compat'
 import { ref } from 'vue'
 
 import live2d from '../utils/live2d'
@@ -141,18 +141,13 @@ export function useModel() {
 
     if (!path) return
 
-    if (catStore.model.single) {
-      const dirName = nth(path.split(sep()), -2)!
+    const dirName = nth(path.split(sep()), -2)!
+    const prevKey = findKey(modelStore.pressedKeys, (value) => {
+      return value.includes(dirName)
+    })
 
-      const filterKeys = Object.entries(modelStore.pressedKeys).filter(
-        ([, value]) => {
-          return value.includes(dirName)
-        },
-      )
-
-      for (const [key] of filterKeys) {
-        handleRelease(key)
-      }
+    if (prevKey) {
+      handleRelease(prevKey)
     }
 
     modelStore.pressedKeys[key] = path

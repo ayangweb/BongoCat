@@ -12,7 +12,6 @@
         "labels": {
           "modelSettings": "Model Settings",
           "mirrorMode": "Mirror Mode",
-          "singleMode": "Single Key Mode",
           "mouseMirror": "Mouse Mirror",
           "windowSettings": "Window Settings",
           "passThrough": "Pass Through",
@@ -28,7 +27,6 @@
         },
         "hints": {
           "mirrorMode": "When enabled, the model will be mirrored horizontally.",
-          "singleMode": "When enabled, only the last pressed key is displayed for each hand.",
           "mouseMirror": "When enabled, the mouse will mirror the hand movement.",
           "motionSound": "When enabled, the model will play corresponding sound effects when performing actions (if they exist).",
           "behavior": "When enabled, motions and expressions can be configured and triggered.",

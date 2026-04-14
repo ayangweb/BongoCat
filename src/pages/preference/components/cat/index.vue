@@ -19,13 +19,6 @@ const catStore = useCatStore()
     </ProListItem>
 
     <ProListItem
-      :description="$t('pages.preference.cat.hints.singleMode')"
-      :title="$t('pages.preference.cat.labels.singleMode')"
-    >
-      <Switch v-model:checked="catStore.model.single" />
-    </ProListItem>
-
-    <ProListItem
       :description="$t('pages.preference.cat.hints.mouseMirror')"
       :title="$t('pages.preference.cat.labels.mouseMirror')"
     >

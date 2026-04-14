@@ -12,7 +12,6 @@
         "labels": {
           "modelSettings": "Configurações do Modelo",
           "mirrorMode": "Modo Espelho",
-          "singleMode": "Mostrar Apenas Última Tecla",
           "mouseMirror": "Espelho do Mouse",
           "windowSettings": "Configurações da Janela",
           "passThrough": "Janela Transparente",
@@ -28,7 +27,6 @@
         },
         "hints": {
           "mirrorMode": "Quando ativado, o modelo será invertido horizontalmente.",
-          "singleMode": "Quando ativado, apenas a última tecla pressionada em cada mão é exibida (evita mostrar múltiplas mãos ao pressionar várias teclas ao mesmo tempo).",
           "mouseMirror": "Quando ativado, o mouse espelhará o movimento da mão.",
           "motionSound": "Quando ativado, o modelo reproduzirá efeitos sonoros correspondentes ao executar ações (se existirem).",
           "behavior": "Quando ativado, movimentos e expressões podem ser configurados e acionados.",

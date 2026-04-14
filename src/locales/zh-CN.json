@@ -12,7 +12,6 @@
         "labels": {
           "modelSettings": "模型设置",
           "mirrorMode": "镜像模式",
-          "singleMode": "单键模式",
           "mouseMirror": "鼠标镜像",
           "windowSettings": "窗口设置",
           "passThrough": "窗口穿透",
@@ -28,7 +27,6 @@
         },
         "hints": {
           "mirrorMode": "启用后，模型将水平镜像翻转。",
-          "singleMode": "启用后，每只手只显示最后按下的一个按键。",
           "mouseMirror": "启用后，鼠标将镜像跟随手部移动。",
           "motionSound": "启用后，模型执行动作时会播放对应音效（如果存在）。",
           "behavior": "启用后，可以配置和触发模型的动作与表情。",
