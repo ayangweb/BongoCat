@@ -5,6 +5,7 @@ import ProList from '@/components/pro-list/index.vue'
 import ProListItem from '@/components/pro-list-item/index.vue'
 import Shortcut from '@/components/shortcut/index.vue'
 import { useKeyPress } from '@/composables/useKeyPress'
+import { WINDOW_LABEL } from '@/constants'
 import { toggleWindowVisible } from '@/plugins/window'
 import { useCatStore } from '@/stores/cat'
 import { useShortcutStore } from '@/stores/shortcut.ts'
@@ -18,7 +19,7 @@ useKeyPress(visibleCat, () => {
 })
 
 useKeyPress(visiblePreference, () => {
-  toggleWindowVisible('preference')
+  toggleWindowVisible(WINDOW_LABEL.PREFERENCE)
 })
 
 useKeyPress(mirrorMode, () => {

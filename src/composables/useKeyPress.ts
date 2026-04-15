@@ -6,20 +6,23 @@ import {
   register,
   unregister,
 } from '@tauri-apps/plugin-global-shortcut'
-import { ref, watch } from 'vue'
+import { onUnmounted, ref, watch } from 'vue'
 
 export function useKeyPress(shortcut: Ref<string | undefined, string>, callback: ShortcutHandler) {
-  // This is primarily to prevent errors during hot reloading in the development environment.
   const oldShortcut = ref(shortcut.value)
 
-  watch(shortcut, async (value) => {
-    if (oldShortcut.value) {
-      const registered = await isRegistered(oldShortcut.value)
+  async function unbind() {
+    if (!oldShortcut.value) return
 
-      if (registered) {
-        await unregister(oldShortcut.value)
-      }
-    }
+    const registered = await isRegistered(oldShortcut.value)
+
+    if (!registered) return
+
+    return unregister(oldShortcut.value)
+  }
+
+  watch(shortcut, async (value) => {
+    await unbind()
 
     if (!value) return
 
@@ -31,4 +34,6 @@ export function useKeyPress(shortcut: Ref<string | undefined, string>, callback:
 
     oldShortcut.value = value
   }, { immediate: true })
+
+  onUnmounted(unbind)
 }

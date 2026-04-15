@@ -12,36 +12,30 @@
         "labels": {
           "modelSettings": "Model Settings",
           "mirrorMode": "Mirror Mode",
-          "singleMode": "Single Key Mode",
           "mouseMirror": "Mouse Mirror",
           "windowSettings": "Window Settings",
           "passThrough": "Pass Through",
           "alwaysOnTop": "Always on Top",
+          "keepInScreen": "Keep on Screen",
           "windowSize": "Window Size",
           "windowRadius": "Window Radius",
           "opacity": "Opacity",
           "motionSound": "Motion Sound",
+          "behavior": "Motions and Expressions",
           "autoReleaseDelay": "Auto Release Delay",
-          "hideOnHover": "Hide on Hover",
-          "position": "Window Position"
+          "hideOnHover": "Hide on Hover"
         },
         "hints": {
           "mirrorMode": "When enabled, the model will be mirrored horizontally.",
-          "singleMode": "When enabled, only the last pressed key is displayed for each hand.",
           "mouseMirror": "When enabled, the mouse will mirror the hand movement.",
           "motionSound": "When enabled, the model will play corresponding sound effects when performing actions (if they exist).",
+          "behavior": "When enabled, motions and expressions can be configured and triggered.",
           "passThrough": "When enabled, clicks pass through the window without affecting it.",
           "alwaysOnTop": "When enabled, the window stays above all other windows.",
+          "keepInScreen": "When enabled, the window automatically stays within the screen boundaries.",
           "windowSize": "Move mouse to window edge, or hold Shift and right-drag to resize.",
           "autoReleaseDelay": "On Windows, some system keys cannot capture release events and will auto-release after timeout.",
-          "hideOnHover": "When enabled, the window hides when mouse hovers over it.",
-          "position": "Takes effect after the app starts, or when this parameter, window size, model, or screen resolution changes."
-        },
-        "options": {
-          "topLeft": "Top Left",
-          "topRight": "Top Right",
-          "bottomLeft": "Bottom Left",
-          "bottomRight": "Bottom Right"
+          "hideOnHover": "When enabled, the window hides when mouse hovers over it."
         }
       },
       "general": {
@@ -50,6 +44,7 @@
           "appSettings": "Application Settings",
           "launchOnStartup": "Launch on Startup",
           "showTaskbarIcon": "Show Taskbar Icon",
+          "showTrayIcon": "Show Tray Icon",
           "appearanceSettings": "Appearance Settings",
           "themeMode": "Theme Mode",
           "language": "Language",
@@ -65,6 +60,7 @@
         },
         "hints": {
           "showTaskbarIcon": "When enabled, the window can be captured via OBS Studio.",
+          "showTrayIcon": "When enabled, the app icon is displayed in the system tray.",
           "inputMonitoringPermission": "Enable input monitoring to receive keyboard and mouse events from the system.",
           "inputMonitoringPermissionGuide": "If the permission is already enabled, select it and click the \"-\" button to remove it, then manually add it again and restart the app."
         },
@@ -167,21 +163,21 @@
     }
   },
   "composables": {
-    "useSharedMenu": {
+    "useAppMenu": {
       "labels": {
         "preference": "Preferences...",
         "hideCat": "Hide Cat",
         "showCat": "Show Cat",
         "passThrough": "Pass Through",
         "windowSize": "Window Size",
-        "opacity": "Opacity"
+        "opacity": "Opacity",
+        "restartApp": "Restart App",
+        "quitApp": "Quit App"
       }
     },
     "useTray": {
       "checkUpdate": "Check for Updates",
-      "openSource": "Open Source",
-      "restartApp": "Restart App",
-      "quitApp": "Quit App"
+      "openSource": "Open Source"
     }
   },
   "utils": {

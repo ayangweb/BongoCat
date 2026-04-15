@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { InputNumber, Slider, Switch } from 'ant-design-vue'
 
-import Position from './components/position/index.vue'
-
 import ProList from '@/components/pro-list/index.vue'
 import ProListItem from '@/components/pro-list-item/index.vue'
 import { useCatStore } from '@/stores/cat'
@@ -21,13 +19,6 @@ const catStore = useCatStore()
     </ProListItem>
 
     <ProListItem
-      :description="$t('pages.preference.cat.hints.singleMode')"
-      :title="$t('pages.preference.cat.labels.singleMode')"
-    >
-      <Switch v-model:checked="catStore.model.single" />
-    </ProListItem>
-
-    <ProListItem
       :description="$t('pages.preference.cat.hints.mouseMirror')"
       :title="$t('pages.preference.cat.labels.mouseMirror')"
     >
@@ -39,6 +30,13 @@ const catStore = useCatStore()
       :title="$t('pages.preference.cat.labels.motionSound')"
     >
       <Switch v-model:checked="catStore.model.motionSound" />
+    </ProListItem>
+
+    <ProListItem
+      :description="$t('pages.preference.cat.hints.behavior')"
+      :title="$t('pages.preference.cat.labels.behavior')"
+    >
+      <Switch v-model:checked="catStore.model.behavior" />
     </ProListItem>
 
     <ProListItem
@@ -55,8 +53,6 @@ const catStore = useCatStore()
   </ProList>
 
   <ProList :title="$t('pages.preference.cat.labels.windowSettings')">
-    <Position />
-
     <ProListItem
       :description="$t('pages.preference.cat.hints.passThrough')"
       :title="$t('pages.preference.cat.labels.passThrough')"
@@ -76,6 +72,13 @@ const catStore = useCatStore()
       :title="$t('pages.preference.cat.labels.hideOnHover')"
     >
       <Switch v-model:checked="catStore.window.hideOnHover" />
+    </ProListItem>
+
+    <ProListItem
+      :description="$t('pages.preference.cat.hints.keepInScreen')"
+      :title="$t('pages.preference.cat.labels.keepInScreen')"
+    >
+      <Switch v-model:checked="catStore.window.keepInScreen" />
     </ProListItem>
 
     <ProListItem

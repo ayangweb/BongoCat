@@ -5,7 +5,7 @@ import { resolveResource, sep } from '@tauri-apps/api/path'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { message } from 'ant-design-vue'
 import { isNil, round } from 'es-toolkit'
-import { nth } from 'es-toolkit/compat'
+import { findKey, nth } from 'es-toolkit/compat'
 import { ref } from 'vue'
 
 import live2d from '../utils/live2d'
@@ -18,22 +18,6 @@ import { isMac } from '@/utils/platform'
 const appWindow = getCurrentWebviewWindow()
 const digitKeys = '1234567890'.split('') as readonly string[]
 const letterKeys = 'QWERTYUIOPASDFGHJKLZXCVBNM'.split('') as readonly string[]
-
-// ---------------------------------------------------------------------------
-// Mouse-tracking smoothing state (module-level so it is shared across all
-// composable instances and survives across re-renders).
-//
-// EMA formula:  smoothed = α × raw + (1 − α) × smoothed
-//   α close to 1 → very responsive, little smoothing
-//   α close to 0 → very smooth, more lag
-//
-// The actual α value is read from `catStore.model.mouseSmoothingAlpha` each
-// frame so it can be changed at runtime without reloading the page.
-// Default: 0.25 (see stores/cat.ts).  Recommended range: 0.1 – 0.5.
-// ---------------------------------------------------------------------------
-let smoothedXRatio = 0.5
-let smoothedYRatio = 0.5
-let isSmoothedInitialized = false
 
 export interface ModelSize {
   width: number
@@ -157,18 +141,13 @@ export function useModel() {
 
     if (!path) return
 
-    if (catStore.model.single) {
-      const dirName = nth(path.split(sep()), -2)!
+    const dirName = nth(path.split(sep()), -2)!
+    const prevKey = findKey(modelStore.pressedKeys, (value) => {
+      return value.includes(dirName)
+    })
 
-      const filterKeys = Object.entries(modelStore.pressedKeys).filter(
-        ([, value]) => {
-          return value.includes(dirName)
-        },
-      )
-
-      for (const [key] of filterKeys) {
-        handleRelease(key)
-      }
+    if (prevKey) {
+      handleRelease(prevKey)
     }
 
     modelStore.pressedKeys[key] = path
@@ -197,27 +176,17 @@ export function useModel() {
 
     const { size, position } = monitor
 
-    const rawXRatio = (cursorPoint.x - position.x) / size.width
-    const rawYRatio = (cursorPoint.y - position.y) / size.height
-
-    // Apply EMA smoothing to reduce jitter from high-report-rate mice.
-    // On the very first call the smoothed values are seeded with the raw
-    // values so the model snaps to the correct position instantly.
-    const alpha = catStore.model.mouseSmoothingAlpha
-    if (!isSmoothedInitialized) {
-      smoothedXRatio = rawXRatio
-      smoothedYRatio = rawYRatio
-      isSmoothedInitialized = true
-    } else {
-      smoothedXRatio = alpha * rawXRatio + (1 - alpha) * smoothedXRatio
-      smoothedYRatio = alpha * rawYRatio + (1 - alpha) * smoothedYRatio
-    }
+    const xRatio = (cursorPoint.x - position.x) / size.width
+    const yRatio = (cursorPoint.y - position.y) / size.height
 
     for (const id of [
       'ParamMouseX',
       'ParamMouseY',
       'ParamAngleX',
       'ParamAngleY',
+      'ParamAngleZ',
+      'ParamEyeBallX',
+      'ParamEyeBallY',
     ]) {
       const range = live2d.getParameterValueRange(id)
 
@@ -228,11 +197,23 @@ export function useModel() {
       if (isNil(min) || isNil(max)) continue
 
       const isXAxis = id.endsWith('X')
+      const isYAxis = id.endsWith('Y')
+      const isZAxis = id.endsWith('Z')
 
-      const ratio = isXAxis ? smoothedXRatio : smoothedYRatio
-      let value = max - ratio * (max - min)
+      let value: number
 
-      if (isXAxis && catStore.model.mouseMirror) {
+      if (isZAxis) {
+        const dragX = 1 - 2 * xRatio
+        const dragY = 1 - 2 * yRatio
+
+        value = dragX * dragY * min
+      } else {
+        const ratio = isXAxis ? xRatio : yRatio
+
+        value = max - ratio * (max - min)
+      }
+
+      if (!isYAxis && catStore.model.mouseMirror) {
         value *= -1
       }
 

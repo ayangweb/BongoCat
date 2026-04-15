@@ -4,18 +4,10 @@ import { reactive, ref } from 'vue'
 export interface CatStore {
   model: {
     mirror: boolean
-    single: boolean
     mouseMirror: boolean
     motionSound: boolean
+    behavior: boolean
     autoReleaseDelay: number
-    /**
-     * EMA smoothing factor for global mouse tracking (0–1).
-     * Lower values produce smoother movement at the cost of a slight lag;
-     * higher values are more responsive but may show micro-jitter on
-     * high-report-rate (>500 Hz) mice.
-     * Recommended range: 0.1 – 0.5.  Default: 0.25.
-     */
-    mouseSmoothingAlpha: number
   }
   window: {
     visible: boolean
@@ -25,7 +17,7 @@ export interface CatStore {
     opacity: number
     radius: number
     hideOnHover: boolean
-    position: 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight'
+    keepInScreen: boolean
   }
 }
 
@@ -34,9 +26,6 @@ export const useCatStore = defineStore('cat', () => {
 
   /** @deprecated 请使用 `model.mirror` */
   const mirrorMode = ref(false)
-
-  /** @deprecated 请使用 `model.single` */
-  const singleMode = ref(false)
 
   /** @deprecated 请使用 `model.mouseMirror` */
   const mouseMirror = ref(false)
@@ -58,11 +47,10 @@ export const useCatStore = defineStore('cat', () => {
 
   const model = reactive<CatStore['model']>({
     mirror: false,
-    single: false,
     mouseMirror: false,
     motionSound: true,
+    behavior: true,
     autoReleaseDelay: 3,
-    mouseSmoothingAlpha: 0.25,
   })
 
   const window = reactive<CatStore['window']>({
@@ -73,14 +61,13 @@ export const useCatStore = defineStore('cat', () => {
     opacity: 100,
     radius: 0,
     hideOnHover: false,
-    position: 'bottomRight',
+    keepInScreen: true,
   })
 
   const init = () => {
     if (migrated.value) return
 
     model.mirror = mirrorMode.value
-    model.single = singleMode.value
     model.mouseMirror = mouseMirror.value
 
     window.visible = true

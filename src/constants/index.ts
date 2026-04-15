@@ -26,3 +26,8 @@ export const LANGUAGE = {
   VI_VN: 'vi-VN',
   PT_BR: 'pt-BR',
 } as const
+
+export const WINDOW_LABEL = {
+  MAIN: 'main',
+  PREFERENCE: 'preference',
+} as const

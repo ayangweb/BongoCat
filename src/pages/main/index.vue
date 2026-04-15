@@ -3,7 +3,7 @@ import type { MotionInfo } from 'easy-live2d'
 
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { PhysicalSize } from '@tauri-apps/api/dpi'
-import { Menu } from '@tauri-apps/api/menu'
+import { Menu, PredefinedMenuItem } from '@tauri-apps/api/menu'
 import { sep } from '@tauri-apps/api/path'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { exists, readDir } from '@tauri-apps/plugin-fs'
@@ -12,12 +12,11 @@ import { round } from 'es-toolkit'
 import { nth } from 'es-toolkit/compat'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
+import { useAppMenu } from '@/composables/useAppMenu'
 import { useDevice } from '@/composables/useDevice'
 import { useGamepad } from '@/composables/useGamepad'
 import { useModel } from '@/composables/useModel'
-import { useSharedMenu } from '@/composables/useSharedMenu'
 import { useTauriListen } from '@/composables/useTauriListen'
-import { useWindowPosition } from '@/composables/useWindowPosition'
 import { LISTEN_KEY } from '@/constants'
 import { hideWindow, setAlwaysOnTop, setTaskbarVisibility, showWindow } from '@/plugins/window'
 import { useCatStore } from '@/stores/cat'
@@ -32,13 +31,12 @@ const { startListening } = useDevice()
 const appWindow = getCurrentWebviewWindow()
 const { modelSize, handleLoad, handleDestroy, handleResize, handleKeyChange } = useModel()
 const catStore = useCatStore()
-const { getSharedMenu } = useSharedMenu()
+const { getBaseMenu, getExitMenu } = useAppMenu()
 const modelStore = useModelStore()
 const generalStore = useGeneralStore()
 const resizing = ref(false)
 const backgroundImagePath = ref<string>()
 const { stickActive } = useGamepad()
-const { isMounted, setWindowPosition } = useWindowPosition()
 
 onMounted(startListening)
 
@@ -46,8 +44,6 @@ onUnmounted(handleDestroy)
 
 const debouncedResize = useDebounceFn(async () => {
   await handleResize()
-
-  await setWindowPosition()
 
   resizing.value = false
 }, 100)
@@ -85,8 +81,6 @@ watch(() => modelStore.currentModel, async (model) => {
       modelStore.supportKeys[fileName] = join(groupDir, file.name)
     }
   }
-
-  setWindowPosition()
 }, { deep: true, immediate: true })
 
 watch([() => catStore.window.scale, modelSize], async ([scale, modelSize]) => {
@@ -148,7 +142,11 @@ async function handleContextmenu(event: MouseEvent) {
   if (event.shiftKey) return
 
   const menu = await Menu.new({
-    items: await getSharedMenu(),
+    items: [
+      ...await getBaseMenu(),
+      await PredefinedMenuItem.new({ item: 'Separator' }),
+      ...await getExitMenu(),
+    ],
   })
 
   menu.popup()
@@ -168,7 +166,6 @@ function handleMouseMove(event: MouseEvent) {
 
 <template>
   <div
-    v-show="isMounted"
     class="relative size-screen overflow-hidden children:(absolute size-full)"
     :class="{ '-scale-x-100': catStore.model.mirror }"
     :style="{

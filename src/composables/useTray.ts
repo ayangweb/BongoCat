@@ -6,7 +6,6 @@ import { Menu, MenuItem, PredefinedMenuItem } from '@tauri-apps/api/menu'
 import { resolveResource } from '@tauri-apps/api/path'
 import { TrayIcon } from '@tauri-apps/api/tray'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import { exit, relaunch } from '@tauri-apps/plugin-process'
 import { watchDebounced } from '@vueuse/core'
 import { watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -15,7 +14,7 @@ import { GITHUB_LINK, LISTEN_KEY } from '../constants'
 import { showWindow } from '../plugins/window'
 import { isMac } from '../utils/platform'
 
-import { useSharedMenu } from './useSharedMenu'
+import { useAppMenu } from './useAppMenu'
 
 import { useCatStore } from '@/stores/cat'
 import { useGeneralStore } from '@/stores/general'
@@ -25,7 +24,7 @@ const TRAY_ID = 'BONGO_CAT_TRAY'
 export function useTray() {
   const catStore = useCatStore()
   const generalStore = useGeneralStore()
-  const { getSharedMenu } = useSharedMenu()
+  const { getBaseMenu, getExitMenu } = useAppMenu()
   const { t } = useI18n()
 
   watch([() => catStore.window.visible, () => catStore.window.passThrough, () => generalStore.appearance.language], () => {
@@ -35,6 +34,10 @@ export function useTray() {
   watchDebounced([() => catStore.window.scale, () => catStore.window.opacity], () => {
     updateTrayMenu()
   }, { debounce: 200 })
+
+  const getTrayById = () => {
+    return TrayIcon.getById(TRAY_ID)
+  }
 
   const createTray = async () => {
     const tray = await getTrayById()
@@ -61,15 +64,11 @@ export function useTray() {
     return TrayIcon.new(options)
   }
 
-  const getTrayById = () => {
-    return TrayIcon.getById(TRAY_ID)
-  }
-
   const getTrayMenu = async () => {
     const appVersion = await getVersion()
 
     const items = await Promise.all([
-      ...await getSharedMenu(),
+      ...await getBaseMenu(),
       PredefinedMenuItem.new({ item: 'Separator' }),
       MenuItem.new({
         text: t('composables.useTray.checkUpdate'),
@@ -88,15 +87,7 @@ export function useTray() {
         text: `v${appVersion}`,
         enabled: false,
       }),
-      MenuItem.new({
-        text: t('composables.useTray.restartApp'),
-        action: relaunch,
-      }),
-      MenuItem.new({
-        text: t('composables.useTray.quitApp'),
-        accelerator: isMac ? 'Cmd+Q' : '',
-        action: () => exit(0),
-      }),
+      ...await getExitMenu(),
     ])
 
     return Menu.new({ items })
@@ -112,7 +103,11 @@ export function useTray() {
     tray.setMenu(menu)
   }
 
-  return {
-    createTray,
-  }
+  watch(() => generalStore.app.trayVisible, async (visible) => {
+    const tray = await getTrayById() ?? await createTray()
+
+    if (!tray) return
+
+    tray.setVisible(visible)
+  }, { immediate: true })
 }

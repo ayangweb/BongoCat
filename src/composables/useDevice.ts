@@ -11,7 +11,7 @@ import { useTauriListen } from './useTauriListen'
 import { useCatStore } from '@/stores/cat'
 import { useModelStore } from '@/stores/model'
 import { inBetween } from '@/utils/is'
-import { isWindows } from '@/utils/platform'
+import { isMac, isWindows } from '@/utils/platform'
 
 interface MouseButtonEvent {
   kind: 'MousePress' | 'MouseRelease'
@@ -87,19 +87,27 @@ export function useDevice() {
   }
 
   const handleCursorMove = async (cursorPoint: CursorPoint) => {
-    // Build a PhysicalPosition from the rdev coordinates so we avoid an extra
-    // round-trip Tauri IPC call on every consumed frame.
-    const physicalPoint = new PhysicalPosition(cursorPoint.x, cursorPoint.y)
+    const appWindow = getCurrentWebviewWindow()
+
+    // On macOS rdev reports logical (point) coordinates whereas
+    // PhysicalPosition expects physical pixels, so multiply by scaleFactor.
+    let { x, y } = cursorPoint
+    if (isMac) {
+      const scaleFactor = await appWindow.scaleFactor()
+      x *= scaleFactor
+      y *= scaleFactor
+    }
+
+    const physicalPoint = new PhysicalPosition(x, y)
 
     handleMouseMove(physicalPoint)
 
     if (catStore.window.hideOnHover) {
-      const appWindow = getCurrentWebviewWindow()
       const position = await appWindow.outerPosition()
       const { width, height } = await appWindow.innerSize()
 
-      const isInWindow = inBetween(cursorPoint.x, position.x, position.x + width)
-        && inBetween(cursorPoint.y, position.y, position.y + height)
+      const isInWindow = inBetween(x, position.x, position.x + width)
+        && inBetween(y, position.y, position.y + height)
 
       document.body.style.setProperty('opacity', isInWindow ? '0' : 'unset')
 
