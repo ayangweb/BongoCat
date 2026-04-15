@@ -18,9 +18,22 @@ import { isMac } from '@/utils/platform'
 const appWindow = getCurrentWebviewWindow()
 const digitKeys = '1234567890'.split('') as readonly string[]
 const letterKeys = 'QWERTYUIOPASDFGHJKLZXCVBNM'.split('') as readonly string[]
+// EMA smoothing state for mouse tracking ratios.
+// Seeded with the raw value on first call so the model snaps to the cursor
+// immediately on startup instead of slowly drifting from screen centre.
 let _smoothedX = 0.5
 let _smoothedY = 0.5
 let _smoothInit = false
+
+// Why: getCursorMonitor() requires two IPC round-trips (scaleFactor +
+// monitorFromPoint). Calling it every frame via fire-and-forget causes async
+// results to arrive out-of-order, making Live2D parameters jump between
+// positions — the primary source of visible jitter. Caching the monitor and
+// refreshing in the background keeps the per-frame update fully synchronous.
+let _cachedMonitor: { size: { width: number, height: number }, position: { x: number, y: number } } | null = null
+let _monitorRefreshPending = false
+let _monitorRefreshFrames = 0
+const MONITOR_REFRESH_INTERVAL = 30
 
 export interface ModelSize {
   width: number
@@ -172,15 +185,45 @@ export function useModel() {
     live2d.setParameterValue(id, pressed)
   }
 
-  async function handleMouseMove(cursorPoint: PhysicalPosition) {
-    const monitor = await getCursorMonitor(cursorPoint)
+  // Why synchronous: the previous async version fired getCursorMonitor() (2 IPC
+  // round-trips) every frame via fire-and-forget. When results arrived
+  // out-of-order, Live2D parameters jumped between positions causing visible
+  // jitter. Making this synchronous with a background-refreshed cache
+  // guarantees parameters are written in strict frame order — matching the
+  // Mver C++ reference where Update() is called inside the render loop.
+  function handleMouseMove(cursorPoint: PhysicalPosition) {
+    _monitorRefreshFrames++
 
-    if (!monitor) return
+    // Trigger an async cache refresh when the cache is empty or stale.
+    // The actual parameter update below uses the cached value so it stays
+    // fully synchronous and can never race or reorder.
+    if (!_cachedMonitor || _monitorRefreshFrames >= MONITOR_REFRESH_INTERVAL) {
+      if (!_monitorRefreshPending) {
+        _monitorRefreshPending = true
 
-    const { size, position } = monitor
+        getCursorMonitor(cursorPoint)
+          .then((monitor) => {
+            if (monitor) {
+              _cachedMonitor = { size: monitor.size, position: monitor.position }
+            }
+
+            _monitorRefreshFrames = 0
+          })
+          .catch(() => {})
+          .finally(() => {
+            _monitorRefreshPending = false
+          })
+      }
+    }
+
+    // Skip this frame if the cache hasn't been populated yet (first ~1 frame).
+    if (!_cachedMonitor) return
+
+    const { size, position } = _cachedMonitor
 
     const rawXRatio = (cursorPoint.x - position.x) / size.width
     const rawYRatio = (cursorPoint.y - position.y) / size.height
+
     // Why: a tiny EMA removes frame-to-frame micro jitter left after
     // decoupling event rate from render rate, while preserving responsiveness.
     const alpha = catStore.model.mouseSmoothingAlpha

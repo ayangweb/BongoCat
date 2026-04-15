@@ -43,6 +43,11 @@ export function useDevice() {
   let latestMousePosition: CursorPoint | null = null
   let isTickerRegistered = false
 
+  // Cached DPI scale factor for coordinate conversion. On Windows/Linux rdev
+  // already reports physical pixels so this stays 1; on macOS rdev reports
+  // logical points and we multiply by scaleFactor to get physical pixels.
+  let cachedScaleFactor = 1
+
   const startListening = () => {
     invoke(INVOKE_KEY.START_DEVICE_LISTENING)
 
@@ -50,8 +55,19 @@ export function useDevice() {
 
     isTickerRegistered = true
 
-    // Why: rdev can emit MouseMove far above render FPS; consuming only the
-    // newest sample once per frame prevents sub-frame parameter thrashing.
+    // Seed the macOS scale-factor cache once; it seldom changes at runtime.
+    if (isMac) {
+      getCurrentWebviewWindow().scaleFactor().then((sf) => {
+        cachedScaleFactor = sf
+      })
+    }
+
+    // Why fully synchronous: the previous fire-and-forget async approach
+    // caused multiple IPC chains to overlap and complete out-of-order,
+    // writing Live2D parameters with stale positions. Keeping the entire
+    // callback synchronous (with background-cached monitor data) guarantees
+    // parameters are written in strict frame order — matching the Mver C++
+    // reference implementation.
     Ticker.shared.add(() => {
       if (!latestMousePosition) return
 
@@ -59,7 +75,18 @@ export function useDevice() {
 
       latestMousePosition = null
 
-      void handleCursorMove(point)
+      const x = point.x * cachedScaleFactor
+      const y = point.y * cachedScaleFactor
+
+      // Synchronous: handleMouseMove uses cached monitor info internally,
+      // so no IPC round-trips happen here.
+      handleMouseMove(new PhysicalPosition(x, y))
+
+      // hideOnHover is async (IPC for window position/size) but does not
+      // affect Live2D parameters, so fire-and-forget is safe here.
+      if (catStore.window.hideOnHover) {
+        void handleHideOnHover(x, y)
+      }
     })
   }
 
@@ -82,30 +109,21 @@ export function useDevice() {
     return nextKey
   }
 
-  const handleCursorMove = async (cursorPoint: CursorPoint) => {
-    // Why: platform DPI coordinates from rdev are inconsistent across OSes.
-    // macOS emits logical points, while Windows/Linux already emit physical
-    // pixels. Live2D tracking expects physical coordinates.
-    const scaleFactor = isMac ? await getCurrentWebviewWindow().scaleFactor() : 1
-    const x = cursorPoint.x * scaleFactor
-    const y = cursorPoint.y * scaleFactor
-    const physicalCursorPoint = new PhysicalPosition(x, y)
+  // Async hide-on-hover check, separated from the synchronous parameter path
+  // so that its IPC calls (outerPosition, innerSize) can never delay or
+  // reorder Live2D parameter writes.
+  const handleHideOnHover = async (x: number, y: number) => {
+    const appWindow = getCurrentWebviewWindow()
+    const position = await appWindow.outerPosition()
+    const { width, height } = await appWindow.innerSize()
 
-    handleMouseMove(physicalCursorPoint)
+    const isInWindow = inBetween(x, position.x, position.x + width)
+      && inBetween(y, position.y, position.y + height)
 
-    if (catStore.window.hideOnHover) {
-      const appWindow = getCurrentWebviewWindow()
-      const position = await appWindow.outerPosition()
-      const { width, height } = await appWindow.innerSize()
+    document.body.style.setProperty('opacity', isInWindow ? '0' : 'unset')
 
-      const isInWindow = inBetween(x, position.x, position.x + width)
-        && inBetween(y, position.y, position.y + height)
-
-      document.body.style.setProperty('opacity', isInWindow ? '0' : 'unset')
-
-      if (!catStore.window.passThrough) {
-        appWindow.setIgnoreCursorEvents(isInWindow)
-      }
+    if (!catStore.window.passThrough) {
+      appWindow.setIgnoreCursorEvents(isInWindow)
     }
   }
 
