@@ -5,6 +5,17 @@ export interface CatStore {
   model: {
     mirror: boolean
     mouseMirror: boolean
+    /**
+     * EMA smoothing factor applied to global mouse-tracking ratios (0–1).
+     *
+     * Formula: smoothed = α × raw + (1 − α) × smoothed
+     * - α → 1: very responsive, minimal smoothing
+     * - α → 0: very smooth, adds slight lag
+     *
+     * Recommended range: 0.1–0.5. Default: 0.15.
+     * This value is read every frame so it can be changed at runtime without reload.
+     */
+    mouseSmoothingAlpha: number
     motionSound: boolean
     behavior: boolean
     autoReleaseDelay: number
@@ -48,6 +59,7 @@ export const useCatStore = defineStore('cat', () => {
   const model = reactive<CatStore['model']>({
     mirror: false,
     mouseMirror: false,
+    mouseSmoothingAlpha: 0.15,
     motionSound: true,
     behavior: true,
     autoReleaseDelay: 3,

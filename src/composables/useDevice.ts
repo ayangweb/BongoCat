@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
+import { PhysicalPosition } from '@tauri-apps/api/dpi'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { cursorPosition } from '@tauri-apps/api/window'
+import { Ticker } from 'pixi.js'
 
 import { INVOKE_KEY, LISTEN_KEY } from '../constants'
 
@@ -10,7 +11,7 @@ import { useTauriListen } from './useTauriListen'
 import { useCatStore } from '@/stores/cat'
 import { useModelStore } from '@/stores/model'
 import { inBetween } from '@/utils/is'
-import { isWindows } from '@/utils/platform'
+import { isMac, isWindows } from '@/utils/platform'
 
 interface MouseButtonEvent {
   kind: 'MousePress' | 'MouseRelease'
@@ -39,9 +40,27 @@ export function useDevice() {
   const releaseTimers = new Map<string, NodeJS.Timeout>()
   const catStore = useCatStore()
   const { handlePress, handleRelease, handleMouseChange, handleMouseMove } = useModel()
+  let latestMousePosition: CursorPoint | null = null
+  let isTickerRegistered = false
 
   const startListening = () => {
     invoke(INVOKE_KEY.START_DEVICE_LISTENING)
+
+    if (isTickerRegistered) return
+
+    isTickerRegistered = true
+
+    // Why: rdev can emit MouseMove far above render FPS; consuming only the
+    // newest sample once per frame prevents sub-frame parameter thrashing.
+    Ticker.shared.add(() => {
+      if (!latestMousePosition) return
+
+      const point = latestMousePosition
+
+      latestMousePosition = null
+
+      void handleCursorMove(point)
+    })
   }
 
   const getSupportedKey = (key: string) => {
@@ -63,18 +82,24 @@ export function useDevice() {
     return nextKey
   }
 
-  const handleCursorMove = async () => {
-    const cursorPoint = await cursorPosition()
+  const handleCursorMove = async (cursorPoint: CursorPoint) => {
+    // Why: platform DPI coordinates from rdev are inconsistent across OSes.
+    // macOS emits logical points, while Windows/Linux already emit physical
+    // pixels. Live2D tracking expects physical coordinates.
+    const scaleFactor = isMac ? await getCurrentWebviewWindow().scaleFactor() : 1
+    const x = cursorPoint.x * scaleFactor
+    const y = cursorPoint.y * scaleFactor
+    const physicalCursorPoint = new PhysicalPosition(x, y)
 
-    handleMouseMove(cursorPoint)
+    handleMouseMove(physicalCursorPoint)
 
     if (catStore.window.hideOnHover) {
       const appWindow = getCurrentWebviewWindow()
       const position = await appWindow.outerPosition()
       const { width, height } = await appWindow.innerSize()
 
-      const isInWindow = inBetween(cursorPoint.x, position.x, position.x + width)
-        && inBetween(cursorPoint.y, position.y, position.y + height)
+      const isInWindow = inBetween(x, position.x, position.x + width)
+        && inBetween(y, position.y, position.y + height)
 
       document.body.style.setProperty('opacity', isInWindow ? '0' : 'unset')
 
@@ -131,7 +156,7 @@ export function useDevice() {
       case 'MouseRelease':
         return handleMouseChange(value, false)
       case 'MouseMove':
-        return handleCursorMove()
+        latestMousePosition = value
     }
   })
 

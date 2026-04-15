@@ -18,6 +18,9 @@ import { isMac } from '@/utils/platform'
 const appWindow = getCurrentWebviewWindow()
 const digitKeys = '1234567890'.split('') as readonly string[]
 const letterKeys = 'QWERTYUIOPASDFGHJKLZXCVBNM'.split('') as readonly string[]
+let _smoothedX = 0.5
+let _smoothedY = 0.5
+let _smoothInit = false
 
 export interface ModelSize {
   width: number
@@ -176,8 +179,23 @@ export function useModel() {
 
     const { size, position } = monitor
 
-    const xRatio = (cursorPoint.x - position.x) / size.width
-    const yRatio = (cursorPoint.y - position.y) / size.height
+    const rawXRatio = (cursorPoint.x - position.x) / size.width
+    const rawYRatio = (cursorPoint.y - position.y) / size.height
+    // Why: a tiny EMA removes frame-to-frame micro jitter left after
+    // decoupling event rate from render rate, while preserving responsiveness.
+    const alpha = catStore.model.mouseSmoothingAlpha
+
+    if (!_smoothInit) {
+      _smoothedX = rawXRatio
+      _smoothedY = rawYRatio
+      _smoothInit = true
+    } else {
+      _smoothedX = alpha * rawXRatio + (1 - alpha) * _smoothedX
+      _smoothedY = alpha * rawYRatio + (1 - alpha) * _smoothedY
+    }
+
+    const xRatio = _smoothedX
+    const yRatio = _smoothedY
 
     for (const id of [
       'ParamMouseX',
