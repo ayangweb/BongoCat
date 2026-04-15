@@ -37,7 +37,7 @@
     "@vueuse/core": "^13.3.0",
     "ant-design-vue": "^4.2.6",
     "dayjs": "^1.11.13",
-    "easy-live2d": "^0.4.3",
+    "easy-live2d": "^0.4.4",
     "es-toolkit": "^1.38.0",
     "is-url": "^1.2.4",
     "json5": "^2.2.3",

@@ -57,8 +57,8 @@ importers:
         specifier: ^1.11.13
         version: 1.11.13
       easy-live2d:
-        specifier: ^0.4.3
-        version: 0.4.3(eslint@9.28.0(jiti@2.6.1))(pixi.js@8.17.1)
+        specifier: ^0.4.4
+        version: 0.4.4(eslint@9.28.0(jiti@2.6.1))(pixi.js@8.17.1)
       es-toolkit:
         specifier: ^1.38.0
         version: 1.38.0
@@ -2163,8 +2163,8 @@ packages:
   earcut@3.0.2:
     resolution: {integrity: sha512-X7hshQbLyMJ/3RPhyObLARM2sNxxmRALLKx1+NVFFnQ9gKzmCrxm9+uLIAdBcvc8FNLpctqlQ2V6AE92Ol9UDQ==}
 
-  easy-live2d@0.4.3:
-    resolution: {integrity: sha512-41ofBMauFQFzCj7keN5haLKmjJSbEv4OVYr4wXNxW4J4PTkBDeHqRvN6mCDHFxHKmeQuerbQ6I+wsk5vyDg+cQ==}
+  easy-live2d@0.4.4:
+    resolution: {integrity: sha512-3/PNWXng0vJcNm4y7pj6Rkux6KA6t/ZaSx50uVEDUpO9a50A+AGLRdG0E5vYKlFpWTOeZ/NxaL497CpXwJ20BQ==}
     engines: {node: ^18.0.0 || >=20.0.0}
 
   electron-to-chromium@1.5.165:
@@ -6586,7 +6586,7 @@ snapshots:
 
   earcut@3.0.2: {}
 
-  easy-live2d@0.4.3(eslint@9.28.0(jiti@2.6.1))(pixi.js@8.17.1):
+  easy-live2d@0.4.4(eslint@9.28.0(jiti@2.6.1))(pixi.js@8.17.1):
     dependencies:
       '@pixi/sound': 6.0.1(pixi.js@8.17.1)
       eslint-plugin-format: 2.0.1(eslint@9.28.0(jiti@2.6.1))
