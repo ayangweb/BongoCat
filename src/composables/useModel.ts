@@ -209,6 +209,7 @@ export function useModel() {
 
             _monitorRefreshFrames = 0
           })
+          // Stale cache is acceptable; next refresh cycle will retry.
           .catch(() => {})
           .finally(() => {
             _monitorRefreshPending = false
