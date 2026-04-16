@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 
-import ProList from '@/components/pro-list/index.vue'
 import ProListItem from '@/components/pro-list-item/index.vue'
+import ProList from '@/components/pro-list/index.vue'
 import Shortcut from '@/components/shortcut/index.vue'
 import { useKeyPress } from '@/composables/useKeyPress'
 import { WINDOW_LABEL } from '@/constants'

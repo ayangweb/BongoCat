@@ -3,12 +3,12 @@ import type { LiteralUnion } from 'ant-design-vue/es/_util/type'
 import { invoke } from '@tauri-apps/api/core'
 import { computed, reactive, watch } from 'vue'
 
-import { useModel } from './useModel'
-import { useTauriListen } from './useTauriListen'
-
 import { INVOKE_KEY, LISTEN_KEY } from '@/constants'
 import { useModelStore } from '@/stores/model'
+
 import live2d from '@/utils/live2d'
+import { useModel } from './useModel'
+import { useTauriListen } from './useTauriListen'
 
 type GamepadEventName = LiteralUnion<'LeftStickX' | 'LeftStickY' | 'RightStickX' | 'RightStickY' | 'LeftThumb' | 'RightThumb'>
 

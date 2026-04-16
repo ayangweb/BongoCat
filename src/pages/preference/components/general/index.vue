@@ -3,12 +3,12 @@ import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart'
 import { Select, Switch } from 'ant-design-vue'
 import { watch } from 'vue'
 
+import ProListItem from '@/components/pro-list-item/index.vue'
+import ProList from '@/components/pro-list/index.vue'
+
+import { useGeneralStore } from '@/stores/general'
 import MacosPermissions from './components/macos-permissions/index.vue'
 import ThemeMode from './components/theme-mode/index.vue'
-
-import ProList from '@/components/pro-list/index.vue'
-import ProListItem from '@/components/pro-list-item/index.vue'
-import { useGeneralStore } from '@/stores/general'
 
 const generalStore = useGeneralStore()
 

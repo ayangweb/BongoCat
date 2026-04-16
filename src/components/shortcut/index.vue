@@ -91,7 +91,7 @@ function handleKeyUp(event: KeyboardEvent) {
 <template>
   <div
     ref="shortcutInput"
-    class="relative h-8 min-w-32 flex cursor-text items-center justify-center b b-color-1 hover:b-primary-5 rounded-md b-solid px-2.5 text-color-3 outline-none transition focus:(b-primary shadow-[0_0_0_2px_rgba(5,145,255,0.1)])"
+    class="relative h-8 min-w-32 flex cursor-text items-center justify-center b b-color-1 rounded-md b-solid px-2.5 text-color-3 outline-none transition focus:(b-primary shadow-[0_0_0_2px_rgba(5,145,255,0.1)]) hover:b-primary-5"
     :tabindex="0"
     @blur="handleBlur"
     @focus="handleFocus"

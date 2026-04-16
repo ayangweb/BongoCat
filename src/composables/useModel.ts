@@ -8,12 +8,12 @@ import { isNil, round } from 'es-toolkit'
 import { findKey, nth } from 'es-toolkit/compat'
 import { ref } from 'vue'
 
-import live2d from '../utils/live2d'
-
 import { useCatStore } from '@/stores/cat'
+
 import { useModelStore } from '@/stores/model'
 import { getCursorMonitor } from '@/utils/monitor'
 import { isMac } from '@/utils/platform'
+import live2d from '../utils/live2d'
 
 const appWindow = getCurrentWebviewWindow()
 const digitKeys = '1234567890'.split('') as readonly string[]

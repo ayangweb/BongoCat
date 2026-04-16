@@ -9,8 +9,8 @@ import { Button, message } from 'ant-design-vue'
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import ProList from '@/components/pro-list/index.vue'
 import ProListItem from '@/components/pro-list-item/index.vue'
+import ProList from '@/components/pro-list/index.vue'
 import { GITHUB_LINK, LISTEN_KEY } from '@/constants'
 import { useAppStore } from '@/stores/app'
 

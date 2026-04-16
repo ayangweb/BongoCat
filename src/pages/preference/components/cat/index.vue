@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { InputNumber, Slider, Switch } from 'ant-design-vue'
 
-import ProList from '@/components/pro-list/index.vue'
 import ProListItem from '@/components/pro-list-item/index.vue'
+import ProList from '@/components/pro-list/index.vue'
 import { useCatStore } from '@/stores/cat'
 import { isWindows } from '@/utils/platform'
 

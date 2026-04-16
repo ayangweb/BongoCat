@@ -6,10 +6,10 @@ import { Empty, List, Modal, Segmented } from 'ant-design-vue'
 import { isEmpty } from 'es-toolkit/compat'
 import { ref } from 'vue'
 
-import BehaviorItem from './components/behavior-item/index.vue'
-
 import { LISTEN_KEY } from '@/constants'
+
 import { useModelStore } from '@/stores/model'
+import BehaviorItem from './components/behavior-item/index.vue'
 
 const modelValue = defineModel<boolean>()
 const modelStore = useModelStore()

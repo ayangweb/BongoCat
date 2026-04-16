@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { Model } from '@/stores/model'
 import type { ComponentPublicInstance } from 'vue'
+import type { Model } from '@/stores/model'
 
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { remove } from '@tauri-apps/plugin-fs'
@@ -8,16 +8,16 @@ import { revealItemInDir } from '@tauri-apps/plugin-opener'
 import { useElementSize } from '@vueuse/core'
 import { Card, message, Popconfirm } from 'ant-design-vue'
 import { ref } from 'vue'
-import { useI18n } from 'vue-i18n'
 import { MasonryGrid, MasonryGridItem } from 'vue3-masonry-css'
-
-import BehaviorModal from './components/behavior-modal/index.vue'
-import FloatMenu from './components/float-menu/index.vue'
-import Upload from './components/upload/index.vue'
+import { useI18n } from 'vue-i18n'
 
 import { useCatStore } from '@/stores/cat'
 import { useModelStore } from '@/stores/model'
 import { join } from '@/utils/path'
+
+import BehaviorModal from './components/behavior-modal/index.vue'
+import FloatMenu from './components/float-menu/index.vue'
+import Upload from './components/upload/index.vue'
 
 const catStore = useCatStore()
 const modelStore = useModelStore()

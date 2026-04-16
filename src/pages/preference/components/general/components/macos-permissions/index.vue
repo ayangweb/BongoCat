@@ -6,8 +6,8 @@ import { checkInputMonitoringPermission, requestInputMonitoringPermission } from
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import ProList from '@/components/pro-list/index.vue'
 import ProListItem from '@/components/pro-list-item/index.vue'
+import ProList from '@/components/pro-list/index.vue'
 import { isMac } from '@/utils/platform'
 
 const authorized = ref(false)

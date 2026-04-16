@@ -10,14 +10,14 @@ import { watchDebounced } from '@vueuse/core'
 import { watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { GITHUB_LINK, LISTEN_KEY } from '../constants'
-import { showWindow } from '../plugins/window'
-import { isMac } from '../utils/platform'
-
-import { useAppMenu } from './useAppMenu'
-
 import { useCatStore } from '@/stores/cat'
 import { useGeneralStore } from '@/stores/general'
+import { GITHUB_LINK, LISTEN_KEY } from '../constants'
+
+import { showWindow } from '../plugins/window'
+
+import { isMac } from '../utils/platform'
+import { useAppMenu } from './useAppMenu'
 
 const TRAY_ID = 'BONGO_CAT_TRAY'
 
