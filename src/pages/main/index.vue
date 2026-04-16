@@ -194,20 +194,11 @@ function handleMouseMove(event: MouseEvent) {
     >
 
     <div
-      v-show="resizing"
+      v-show="resizing || !modelStore.modelReady"
       class="flex items-center justify-center bg-black"
     >
       <span class="text-center text-[10vw] text-white">
-        {{ $t('pages.main.hints.redrawing') }}
-      </span>
-    </div>
-
-    <div
-      v-show="!modelStore.modelReady"
-      class="flex items-center justify-center bg-black"
-    >
-      <span class="text-center text-[10vw] text-white">
-        {{ $t('pages.main.hints.switching') }}
+        {{ resizing ? $t('pages.main.hints.redrawing') : $t('pages.main.hints.switching') }}
       </span>
     </div>
   </div>
