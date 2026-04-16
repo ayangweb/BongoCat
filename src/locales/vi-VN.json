@@ -2,7 +2,8 @@
   "pages": {
     "main": {
       "hints": {
-        "redrawing": "Đang đổi kích thước..."
+        "redrawing": "Đang đổi kích thước...",
+        "switching": "Đang chuyển đổi..."
       }
     },
     "preference": {

@@ -2,7 +2,8 @@
   "pages": {
     "main": {
       "hints": {
-        "redrawing": "重绘中..."
+        "redrawing": "重绘中...",
+        "switching": "切换中..."
       }
     },
     "preference": {

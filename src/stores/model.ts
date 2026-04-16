@@ -18,6 +18,7 @@ export interface Model {
 }
 
 export const useModelStore = defineStore('model', () => {
+  const modelReady = ref(true)
   const models = ref<Model[]>([])
   const currentModel = ref<Model>()
   const supportKeys = reactive<Record<string, string>>({})
@@ -53,6 +54,7 @@ export const useModelStore = defineStore('model', () => {
   }
 
   return {
+    modelReady,
     models,
     currentModel,
     supportKeys,

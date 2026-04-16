@@ -2,7 +2,8 @@
   "pages": {
     "main": {
       "hints": {
-        "redrawing": "Redrawing..."
+        "redrawing": "Redrawing...",
+        "switching": "Switching..."
       }
     },
     "preference": {

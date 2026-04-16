@@ -38,6 +38,14 @@ function setFirstItemRef(el: Element | ComponentPublicInstance | null, index: nu
   }
 }
 
+function handleToggle(nextModel: Model) {
+  if (modelStore.currentModel?.id === nextModel.id) return
+
+  modelStore.modelReady = false
+
+  modelStore.currentModel = nextModel
+}
+
 async function handleDelete(item: Model) {
   const { id, path } = item
 
@@ -75,7 +83,7 @@ async function handleDelete(item: Model) {
         class="[&_[class^='i-']]:text-4"
         hoverable
         size="small"
-        @click="modelStore.currentModel = item"
+        @click="handleToggle(item)"
       >
         <template #cover>
           <img
