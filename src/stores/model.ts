@@ -62,4 +62,8 @@ export const useModelStore = defineStore('model', () => {
     shortcuts,
     init,
   }
+}, {
+  tauri: {
+    filterKeys: ['supportKeys', 'pressedKeys'],
+  },
 })
