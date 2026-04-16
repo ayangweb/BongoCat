@@ -4,6 +4,7 @@ import { cursorPosition } from '@tauri-apps/api/window'
 
 import { INVOKE_KEY, LISTEN_KEY } from '../constants'
 
+import { useMicrophone } from './useMicrophone'
 import { useModel } from './useModel'
 import { useTauriListen } from './useTauriListen'
 
@@ -39,6 +40,7 @@ export function useDevice() {
   const releaseTimers = new Map<string, NodeJS.Timeout>()
   const catStore = useCatStore()
   const { handlePress, handleRelease, handleMouseChange, handleMouseMove } = useModel()
+  useMicrophone()
 
   const startListening = () => {
     invoke(INVOKE_KEY.START_DEVICE_LISTENING)

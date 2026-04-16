@@ -23,7 +23,12 @@
           "motionSound": "Motion Sound",
           "behavior": "Motions and Expressions",
           "autoReleaseDelay": "Auto Release Delay",
-          "hideOnHover": "Hide on Hover"
+          "hideOnHover": "Hide on Hover",
+          "audioSettings": "Audio Settings",
+          "microphoneEnabled": "Microphone Input",
+          "microphoneSensitivity": "Microphone Sensitivity",
+          "microphoneThreshold": "Activation Threshold",
+          "microphoneSmoothing": "Smoothing"
         },
         "hints": {
           "mirrorMode": "When enabled, the model will be mirrored horizontally.",
@@ -35,7 +40,11 @@
           "keepInScreen": "When enabled, the window automatically stays within the screen boundaries.",
           "windowSize": "Move mouse to window edge, or hold Shift and right-drag to resize.",
           "autoReleaseDelay": "On Windows, some system keys cannot capture release events and will auto-release after timeout.",
-          "hideOnHover": "When enabled, the window hides when mouse hovers over it."
+          "hideOnHover": "When enabled, the window hides when mouse hovers over it.",
+          "microphoneEnabled": "When enabled, the model will respond to microphone input volume.",
+          "microphoneSensitivity": "Adjust the sensitivity of microphone input.",
+          "microphoneThreshold": "Model actions are triggered when volume reaches this threshold.",
+          "microphoneSmoothing": "Control the smoothness of mouth movements to avoid jitter."
         }
       },
       "general": {

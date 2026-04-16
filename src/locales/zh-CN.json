@@ -23,7 +23,12 @@
           "motionSound": "动作音效",
           "behavior": "动作与表情",
           "autoReleaseDelay": "按键自动释放延迟",
-          "hideOnHover": "鼠标移入隐藏"
+          "hideOnHover": "鼠标移入隐藏",
+          "audioSettings": "音频设置",
+          "microphoneEnabled": "麦克风输入",
+          "microphoneSensitivity": "麦克风灵敏度",
+          "microphoneThreshold": "触发阈值",
+          "microphoneSmoothing": "平滑度"
         },
         "hints": {
           "mirrorMode": "启用后，模型将水平镜像翻转。",
@@ -35,7 +40,11 @@
           "keepInScreen": "启用后，窗口会自动调整位置，防止超出屏幕边界。",
           "windowSize": "将鼠标移至窗口边缘，或按住 Shift 并右键拖动，也可以调整窗口大小。",
           "autoReleaseDelay": "由于 Windows 下部分系统级按键无法捕获释放事件，超时后将自动视为已释放。",
-          "hideOnHover": "启用后，鼠标悬停在窗口上时，窗口会隐藏。"
+          "hideOnHover": "启用后，鼠标悬停在窗口上时，窗口会隐藏。",
+          "microphoneEnabled": "启用后，模型会根据麦克风输入音量做出反应",
+          "microphoneSensitivity": "调整麦克风输入的灵敏度",
+          "microphoneThreshold": "音量达到此阈值时触发模型动作",
+          "microphoneSmoothing": "控制嘴部动作的平滑程度，避免抖动"
         }
       },
       "general": {

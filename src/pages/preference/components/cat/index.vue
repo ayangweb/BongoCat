@@ -116,4 +116,57 @@ const catStore = useCatStore()
       />
     </ProListItem>
   </ProList>
+  
+  <ProList :title="$t('pages.preference.cat.labels.audioSettings')">
+    <ProListItem
+      :description="$t('pages.preference.cat.hints.microphoneEnabled')"
+      :title="$t('pages.preference.cat.labels.microphoneEnabled')"
+    >
+      <Switch v-model:checked="catStore.model.microphoneEnabled" />
+    </ProListItem>
+
+    <template v-if="catStore.model.microphoneEnabled">
+      <ProListItem
+        :description="$t('pages.preference.cat.hints.microphoneSensitivity')"
+        :title="$t('pages.preference.cat.labels.microphoneSensitivity')"
+        vertical
+      >
+        <Slider
+          v-model:value="catStore.model.microphoneSensitivity"
+          class="m-[0]!"
+          :max="100"
+          :min="0"
+          :tip-formatter="(value) => `${value}%`"
+        />
+      </ProListItem>
+
+      <ProListItem
+        :description="$t('pages.preference.cat.hints.microphoneThreshold')"
+        :title="$t('pages.preference.cat.labels.microphoneThreshold')"
+        vertical
+      >
+        <Slider
+          v-model:value="catStore.model.microphoneThreshold"
+          class="m-[0]!"
+          :max="100"
+          :min="0"
+          :tip-formatter="(value) => `${value}%`"
+        />
+      </ProListItem>
+
+      <ProListItem
+        :description="$t('pages.preference.cat.hints.microphoneSmoothing')"
+        :title="$t('pages.preference.cat.labels.microphoneSmoothing')"
+        vertical
+      >
+        <Slider
+          v-model:value="catStore.model.microphoneSmoothing"
+          class="m-[0]!"
+          :max="100"
+          :min="0"
+          :tip-formatter="(value) => `${value}%`"
+        />
+      </ProListItem>
+    </template>
+  </ProList>
 </template>

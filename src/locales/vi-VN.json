@@ -23,7 +23,12 @@
           "motionSound": "Âm thanh hành động",
           "behavior": "Hành động và Biểu cảm",
           "autoReleaseDelay": "Độ trễ tự động nhả phím",
-          "hideOnHover": "Ẩn khi di chuột"
+          "hideOnHover": "Ẩn khi di chuột",
+          "audioSettings": "Cài đặt Âm thanh",
+          "microphoneEnabled": "Đầu vào Microphone",
+          "microphoneSensitivity": "Độ nhạy Microphone",
+          "microphoneThreshold": "Ngưỡng kích hoạt",
+          "microphoneSmoothing": "Độ mượt"
         },
         "hints": {
           "mirrorMode": "Bật để lật ngang mô hình.",
@@ -35,7 +40,11 @@
           "keepInScreen": "Khi bật, cửa sổ sẽ tự động giữ trong ranh giới màn hình.",
           "windowSize": "Di chuyển chuột đến mép cửa sổ hoặc giữ Shift và kéo chuột phải để thay đổi kích thước.",
           "autoReleaseDelay": "Do Windows không bắt được sự kiện nhả của một số phím hệ thống, các phím đó sẽ được tự động xem như đã nhả sau khi hết thời gian chờ.",
-          "hideOnHover": "Khi bật, cửa sổ sẽ ẩn khi chuột di chuyển vào."
+          "hideOnHover": "Khi bật, cửa sổ sẽ ẩn khi chuột di chuyển vào.",
+          "microphoneEnabled": "Khi bật, mô hình sẽ phản ứng với âm lượng đầu vào từ microphone.",
+          "microphoneSensitivity": "Điều chỉnh độ nhạy của đầu vào microphone.",
+          "microphoneThreshold": "Hành động của mô hình được kích hoạt khi âm lượng đạt ngưỡng này.",
+          "microphoneSmoothing": "Kiểm soát độ mượt của chuyển động miệng để tránh giật."
         }
       },
       "general": {
