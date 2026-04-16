@@ -17,5 +17,5 @@ serde = "1"
 serde_json = "1"
 fs_extra = "1"
 tauri-plugin = { version = "2", features = [ "build" ] }
-tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2" }
+tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
 tauri-plugin-custom-window = { path = "./src-tauri/src/plugins/window" }
