@@ -9,10 +9,10 @@ import { findKey, nth } from 'es-toolkit/compat'
 import { ref } from 'vue'
 
 import { useCatStore } from '@/stores/cat'
-
 import { useModelStore } from '@/stores/model'
 import { getCursorMonitor } from '@/utils/monitor'
 import { isMac } from '@/utils/platform'
+
 import live2d from '../utils/live2d'
 
 const appWindow = getCurrentWebviewWindow()

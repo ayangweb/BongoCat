@@ -3,11 +3,10 @@ import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { cursorPosition } from '@tauri-apps/api/window'
 
 import { useCatStore } from '@/stores/cat'
-
 import { useModelStore } from '@/stores/model'
 import { inBetween } from '@/utils/is'
-
 import { isWindows } from '@/utils/platform'
+
 import { INVOKE_KEY, LISTEN_KEY } from '../constants'
 import { useModel } from './useModel'
 import { useTauriListen } from './useTauriListen'

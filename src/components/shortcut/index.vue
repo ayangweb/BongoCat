@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { Key } from '@/utils/keyboard'
-
 import { find, map, remove, some, split } from 'es-toolkit/compat'
 import { ref, useTemplateRef, watch } from 'vue'
+
+import type { Key } from '@/utils/keyboard'
 
 import { keys, modifierKeys, standardKeys } from '@/utils/keyboard'
 

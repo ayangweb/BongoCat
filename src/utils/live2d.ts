@@ -1,5 +1,4 @@
 import type { MotionInfo } from 'easy-live2d'
-import type { ModelSize } from '@/composables/useModel'
 
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { readDir, readTextFile } from '@tauri-apps/plugin-fs'
@@ -7,6 +6,8 @@ import { Config, CubismSetting, Live2DSprite, Priority } from 'easy-live2d'
 import { groupBy } from 'es-toolkit/compat'
 import JSON5 from 'json5'
 import { Application, Ticker } from 'pixi.js'
+
+import type { ModelSize } from '@/composables/useModel'
 
 import { i18n } from '@/locales'
 

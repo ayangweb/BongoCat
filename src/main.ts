@@ -8,6 +8,7 @@ import router from './router'
 
 import 'virtual:uno.css'
 import 'ant-design-vue/dist/reset.css'
+
 import './assets/css/global.scss'
 
 const pinia = createPinia()

@@ -1,5 +1,4 @@
 import type { Locale as AntdLocale } from 'ant-design-vue/es/locale'
-import type { Language } from '@/stores/general'
 
 import antdEnUS from 'ant-design-vue/locale/en_US'
 import antdPtBR from 'ant-design-vue/locale/pt_BR'
@@ -8,7 +7,10 @@ import antdZhCN from 'ant-design-vue/locale/zh_CN'
 import antdZhTW from 'ant-design-vue/locale/zh_TW'
 import { createI18n } from 'vue-i18n'
 
+import type { Language } from '@/stores/general'
+
 import { LANGUAGE } from '@/constants'
+
 import enUS from './en-US.json'
 import ptBR from './pt-BR.json'
 import viVN from './vi-VN.json'

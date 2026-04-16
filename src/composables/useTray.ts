@@ -12,10 +12,9 @@ import { useI18n } from 'vue-i18n'
 
 import { useCatStore } from '@/stores/cat'
 import { useGeneralStore } from '@/stores/general'
+
 import { GITHUB_LINK, LISTEN_KEY } from '../constants'
-
 import { showWindow } from '../plugins/window'
-
 import { isMac } from '../utils/platform'
 import { useAppMenu } from './useAppMenu'
 

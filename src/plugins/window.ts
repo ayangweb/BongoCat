@@ -1,8 +1,8 @@
-import type { WINDOW_LABEL } from '../constants'
-
 import { invoke } from '@tauri-apps/api/core'
 import { emit } from '@tauri-apps/api/event'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
+
+import type { WINDOW_LABEL } from '../constants'
 
 import { LISTEN_KEY } from '../constants'
 

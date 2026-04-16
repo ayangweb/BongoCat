@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { ComponentPublicInstance } from 'vue'
-import type { Model } from '@/stores/model'
 
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { remove } from '@tauri-apps/plugin-fs'
@@ -10,6 +9,8 @@ import { Card, message, Popconfirm } from 'ant-design-vue'
 import { ref } from 'vue'
 import { MasonryGrid, MasonryGridItem } from 'vue3-masonry-css'
 import { useI18n } from 'vue-i18n'
+
+import type { Model } from '@/stores/model'
 
 import { useCatStore } from '@/stores/cat'
 import { useModelStore } from '@/stores/model'

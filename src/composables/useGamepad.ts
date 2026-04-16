@@ -5,8 +5,8 @@ import { computed, reactive, watch } from 'vue'
 
 import { INVOKE_KEY, LISTEN_KEY } from '@/constants'
 import { useModelStore } from '@/stores/model'
-
 import live2d from '@/utils/live2d'
+
 import { useModel } from './useModel'
 import { useTauriListen } from './useTauriListen'
 

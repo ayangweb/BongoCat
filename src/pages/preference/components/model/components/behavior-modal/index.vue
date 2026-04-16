@@ -7,8 +7,8 @@ import { isEmpty } from 'es-toolkit/compat'
 import { ref } from 'vue'
 
 import { LISTEN_KEY } from '@/constants'
-
 import { useModelStore } from '@/stores/model'
+
 import BehaviorItem from './components/behavior-item/index.vue'
 
 const modelValue = defineModel<boolean>()
