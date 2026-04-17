@@ -1,20 +1,37 @@
-import type { PhysicalPosition } from '@tauri-apps/api/window'
+import type { Monitor, PhysicalPosition } from '@tauri-apps/api/window'
 
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { cursorPosition, monitorFromPoint } from '@tauri-apps/api/window'
 
-export async function getCursorMonitor(cursorPoint?: PhysicalPosition) {
-  cursorPoint ??= await cursorPosition()
+function createCursorMonitor() {
+  let cachedMonitor: Monitor | null = null
 
-  const appWindow = getCurrentWebviewWindow()
+  return async (cursorPoint?: PhysicalPosition) => {
+    cursorPoint ??= await cursorPosition()
 
-  const scaleFactor = await appWindow.scaleFactor()
+    if (cachedMonitor) {
+      const { size, position } = cachedMonitor
 
-  const { x, y } = cursorPoint.toLogical(scaleFactor)
+      const inBounds = cursorPoint.x >= position.x
+        && cursorPoint.x < position.x + size.width
+        && cursorPoint.y >= position.y
+        && cursorPoint.y < position.y + size.height
 
-  const monitor = await monitorFromPoint(x, y)
+      if (inBounds) {
+        return cachedMonitor
+      }
+    }
 
-  if (!monitor) return
+    const appWindow = getCurrentWebviewWindow()
 
-  return monitor
+    const scaleFactor = await appWindow.scaleFactor()
+
+    const { x, y } = cursorPoint.toLogical(scaleFactor)
+
+    cachedMonitor = await monitorFromPoint(x, y)
+
+    return cachedMonitor
+  }
 }
+
+export const getCursorMonitor = createCursorMonitor()

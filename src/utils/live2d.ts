@@ -13,6 +13,8 @@ import { i18n } from '@/locales'
 
 import { join } from './path'
 
+Config.MouseFollow = false
+
 class Live2d {
   private app: Application | null = null
   public model: Live2DSprite | null = null

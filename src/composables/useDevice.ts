@@ -1,13 +1,17 @@
 import { invoke } from '@tauri-apps/api/core'
+import { PhysicalPosition } from '@tauri-apps/api/dpi'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { cursorPosition } from '@tauri-apps/api/window'
+import { isNil } from 'es-toolkit'
+import { Ticker } from 'pixi.js'
+import { onMounted, onUnmounted, ref } from 'vue'
 
+import { useAppStore } from '@/stores/app'
 import { useCatStore } from '@/stores/cat'
 import { useModelStore } from '@/stores/model'
 import { inBetween } from '@/utils/is'
-import { isWindows } from '@/utils/platform'
+import { isMac, isWindows } from '@/utils/platform'
 
-import { INVOKE_KEY, LISTEN_KEY } from '../constants'
+import { INVOKE_KEY, LISTEN_KEY, WINDOW_LABEL } from '../constants'
 import { useModel } from './useModel'
 import { useTauriListen } from './useTauriListen'
 
@@ -33,11 +37,59 @@ interface KeyboardEvent {
 
 type DeviceEvent = MouseButtonEvent | MouseMoveEvent | KeyboardEvent
 
+const DAMPING_DECAY = 0.75
+const appWindow = getCurrentWebviewWindow()
+
 export function useDevice() {
   const modelStore = useModelStore()
   const releaseTimers = new Map<string, NodeJS.Timeout>()
+  const appStore = useAppStore()
   const catStore = useCatStore()
+  const latestCursorPoint = ref<CursorPoint>()
+  const smoothedCursorPoint = ref<CursorPoint>()
+  const scaleFactor = ref(1)
   const { handlePress, handleRelease, handleMouseChange, handleMouseMove } = useModel()
+
+  const tickerCallback = (ticker: Ticker) => {
+    const destination = latestCursorPoint.value
+
+    if (!destination) return
+
+    const current = smoothedCursorPoint.value ?? destination
+
+    const alpha = 1 - DAMPING_DECAY ** (ticker.deltaMS / (1000 / 60))
+
+    const interpolated = {
+      x: current.x + (destination.x - current.x) * alpha,
+      y: current.y + (destination.y - current.y) * alpha,
+    }
+
+    if (Math.hypot(destination.x - interpolated.x, destination.y - interpolated.y) < 0.5) {
+      smoothedCursorPoint.value = { ...destination }
+
+      latestCursorPoint.value = void 0
+    } else {
+      smoothedCursorPoint.value = interpolated
+    }
+
+    void handleCursorMove(smoothedCursorPoint.value)
+  }
+
+  onMounted(async () => {
+    scaleFactor.value = isMac ? await appWindow.scaleFactor() : 1
+
+    appWindow.onScaleChanged(({ payload }) => {
+      if (!isMac) return
+
+      scaleFactor.value = payload.scaleFactor
+    })
+
+    Ticker.shared.add(tickerCallback)
+  })
+
+  onUnmounted(() => {
+    Ticker.shared.remove(tickerCallback)
+  })
 
   const startListening = () => {
     invoke(INVOKE_KEY.START_DEVICE_LISTENING)
@@ -62,18 +114,19 @@ export function useDevice() {
     return nextKey
   }
 
-  const handleCursorMove = async () => {
-    const cursorPoint = await cursorPosition()
+  const handleCursorMove = async (cursorPoint: CursorPoint) => {
+    const x = cursorPoint.x * scaleFactor.value
+    const y = cursorPoint.y * scaleFactor.value
 
-    handleMouseMove(cursorPoint)
+    handleMouseMove(new PhysicalPosition(x, y))
 
     if (catStore.window.hideOnHover) {
-      const appWindow = getCurrentWebviewWindow()
-      const position = await appWindow.outerPosition()
-      const { width, height } = await appWindow.innerSize()
+      const { x: winX, y: winY, width, height } = appStore.windowState[WINDOW_LABEL.MAIN] ?? {}
 
-      const isInWindow = inBetween(cursorPoint.x, position.x, position.x + width)
-        && inBetween(cursorPoint.y, position.y, position.y + height)
+      if (isNil(winX) || isNil(winY) || isNil(width) || isNil(height)) return
+
+      const isInWindow = inBetween(x, winX, winX + width)
+        && inBetween(y, winY, winY + height)
 
       document.body.style.setProperty('opacity', isInWindow ? '0' : 'unset')
 
@@ -130,7 +183,7 @@ export function useDevice() {
       case 'MouseRelease':
         return handleMouseChange(value, false)
       case 'MouseMove':
-        return handleCursorMove()
+        return latestCursorPoint.value = value
     }
   })
 
