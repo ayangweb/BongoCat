@@ -57,7 +57,7 @@ const catStore = useCatStore()
     >
       <InputNumber
         v-model:value="catStore.model.maxFPS"
-        class="20"
+        class="w-20"
         :min="0"
       />
     </ProListItem>
