@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Flex } from 'ant-design-vue'
-import { computed, useSlots } from 'vue'
+import { computed } from 'vue'
 
 const { title, description, vertical } = defineProps<{
   title: string
@@ -8,7 +8,7 @@ const { title, description, vertical } = defineProps<{
   vertical?: boolean
 }>()
 
-const slots = useSlots()
+const slots = defineSlots()
 
 const hasDescription = computed(() => {
   return description || slots.description

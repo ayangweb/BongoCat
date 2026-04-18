@@ -37,7 +37,7 @@
           "keepInScreen": "When enabled, the window automatically stays within the screen boundaries.",
           "windowSize": "Move mouse to window edge, or hold Shift and right-drag to resize.",
           "autoReleaseDelay": "On Windows, some system keys cannot capture release events and will auto-release after timeout.",
-          "hideOnHover": "When enabled, the window hides when mouse hovers over it.",
+          "hideOnHover": "When enabled, the window hides automatically on mouse hover. You can set a delay; 0 means hide immediately.",
           "maxFPS": "Limit the maximum frame rate for model rendering. Lowering the frame rate can reduce CPU/GPU usage."
         }
       },

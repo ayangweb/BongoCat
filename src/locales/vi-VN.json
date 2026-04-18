@@ -37,7 +37,7 @@
           "keepInScreen": "Khi bật, cửa sổ sẽ tự động giữ trong ranh giới màn hình.",
           "windowSize": "Di chuyển chuột đến mép cửa sổ hoặc giữ Shift và kéo chuột phải để thay đổi kích thước.",
           "autoReleaseDelay": "Do Windows không bắt được sự kiện nhả của một số phím hệ thống, các phím đó sẽ được tự động xem như đã nhả sau khi hết thời gian chờ.",
-          "hideOnHover": "Khi bật, cửa sổ sẽ ẩn khi chuột di chuyển vào.",
+          "hideOnHover": "Khi bật, cửa sổ tự động ẩn khi chuột di vào. Có thể đặt thời gian trễ, 0 nghĩa là ẩn ngay.",
           "maxFPS": "Giới hạn tốc độ khung hình tối đa cho việc render mô hình. Giảm tốc độ khung hình có thể giảm mức sử dụng CPU/GPU."
         }
       },

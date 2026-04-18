@@ -114,13 +114,11 @@ export function useDevice() {
     return nextKey
   }
 
-  const handleCursorMove = async (cursorPoint: CursorPoint) => {
-    const x = cursorPoint.x * scaleFactor.value
-    const y = cursorPoint.y * scaleFactor.value
+  const onHideOnHover = (() => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let wasInWindow = false
 
-    handleMouseMove(new PhysicalPosition(x, y))
-
-    if (catStore.window.hideOnHover) {
+    return (x: number, y: number) => {
       const { x: winX, y: winY, width, height } = appStore.windowState[WINDOW_LABEL.MAIN] ?? {}
 
       if (isNil(winX) || isNil(winY) || isNil(width) || isNil(height)) return
@@ -128,12 +126,39 @@ export function useDevice() {
       const isInWindow = inBetween(x, winX, winX + width)
         && inBetween(y, winY, winY + height)
 
-      document.body.style.setProperty('opacity', isInWindow ? '0' : 'unset')
+      if (isInWindow === wasInWindow) return
 
-      if (!catStore.window.passThrough) {
-        appWindow.setIgnoreCursorEvents(isInWindow)
+      if (timer) {
+        clearTimeout(timer)
+
+        timer = void 0
       }
+
+      if (isInWindow) {
+        timer = setTimeout(() => {
+          document.body.style.setProperty('opacity', '0')
+
+          appWindow.setIgnoreCursorEvents(true)
+        }, catStore.window.hideOnHoverDelay * 1000)
+      } else {
+        document.body.style.setProperty('opacity', 'unset')
+
+        appWindow.setIgnoreCursorEvents(catStore.window.passThrough)
+      }
+
+      wasInWindow = isInWindow
     }
+  })()
+
+  const handleCursorMove = async (cursorPoint: CursorPoint) => {
+    const x = cursorPoint.x * scaleFactor.value
+    const y = cursorPoint.y * scaleFactor.value
+
+    handleMouseMove(new PhysicalPosition(x, y))
+
+    if (!catStore.window.hideOnHover) return
+
+    onHideOnHover(x, y)
   }
 
   const handleAutoRelease = (key: string, delay = 100) => {

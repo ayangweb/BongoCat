@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { InputNumber, Slider, Switch } from 'ant-design-vue'
+import { Divider, Flex, InputNumber, Slider, Switch } from 'ant-design-vue'
 
 import ProListItem from '@/components/pro-list-item/index.vue'
 import ProList from '@/components/pro-list/index.vue'
@@ -82,7 +82,24 @@ const catStore = useCatStore()
       :description="$t('pages.preference.cat.hints.hideOnHover')"
       :title="$t('pages.preference.cat.labels.hideOnHover')"
     >
-      <Switch v-model:checked="catStore.window.hideOnHover" />
+      <Flex align="center">
+        <Switch v-model:checked="catStore.window.hideOnHover" />
+
+        <Flex
+          align="center"
+          class="overflow-hidden transition-all"
+          :class="[catStore.window.hideOnHover ? 'w-28 opacity-100' : 'w-0 opacity-0']"
+        >
+          <Divider type="vertical" />
+
+          <InputNumber
+            v-model:value="catStore.window.hideOnHoverDelay"
+            addon-after="s"
+            class="w-24"
+            :min="0"
+          />
+        </Flex>
+      </Flex>
     </ProListItem>
 
     <ProListItem
