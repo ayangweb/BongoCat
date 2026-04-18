@@ -33,7 +33,7 @@ interface Sticks {
 const INITIAL_STICK_STATE: StickState = { x: 0, y: 0, moved: false, pressed: false }
 
 export function useGamepad() {
-  const { currentModel } = useModelStore()
+  const modelStore = useModelStore()
   const { handlePress, handleRelease, handleAxisChange } = useModel()
   const sticks = reactive<Sticks>({
     left: { ...INITIAL_STICK_STATE },
@@ -45,7 +45,7 @@ export function useGamepad() {
     right: sticks.right.moved || sticks.right.pressed,
   }))
 
-  watch(() => currentModel?.mode, (mode) => {
+  watch(() => modelStore.currentModel?.mode, (mode) => {
     if (mode === 'gamepad') {
       return invoke(INVOKE_KEY.START_GAMEPAD_LISTING)
     }
