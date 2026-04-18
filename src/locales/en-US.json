@@ -14,6 +14,7 @@
           "modelSettings": "Model Settings",
           "mirrorMode": "Mirror Mode",
           "mouseMirror": "Mouse Mirror",
+          "ignoreMouse": "Ignore Mouse Events",
           "windowSettings": "Window Settings",
           "passThrough": "Pass Through",
           "alwaysOnTop": "Always on Top",
@@ -30,6 +31,7 @@
         "hints": {
           "mirrorMode": "When enabled, the model will be mirrored horizontally.",
           "mouseMirror": "When enabled, the mouse will mirror the hand movement.",
+          "ignoreMouse": "When enabled, the model will not respond to mouse events. Useful for keyboard mode or gamepad mode.",
           "motionSound": "When enabled, the model will play corresponding sound effects when performing actions (if they exist).",
           "behavior": "When enabled, motions and expressions can be configured and triggered.",
           "passThrough": "When enabled, clicks pass through the window without affecting it.",

@@ -14,6 +14,7 @@
           "modelSettings": "Configurações do Modelo",
           "mirrorMode": "Modo Espelho",
           "mouseMirror": "Espelho do Mouse",
+          "ignoreMouse": "Ignorar Eventos do Mouse",
           "windowSettings": "Configurações da Janela",
           "passThrough": "Janela Transparente",
           "alwaysOnTop": "Sempre no Topo",
@@ -30,6 +31,7 @@
         "hints": {
           "mirrorMode": "Quando ativado, o modelo será invertido horizontalmente.",
           "mouseMirror": "Quando ativado, o mouse espelhará o movimento da mão.",
+          "ignoreMouse": "Quando ativado, o modelo não responderá a eventos do mouse. Útil para o modo teclado ou modo controle.",
           "motionSound": "Quando ativado, o modelo reproduzirá efeitos sonoros correspondentes ao executar ações (se existirem).",
           "behavior": "Quando ativado, movimentos e expressões podem ser configurados e acionados.",
           "passThrough": "Quando ativado, a janela não afetará operações em outros aplicativos.",

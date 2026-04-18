@@ -26,6 +26,13 @@ const catStore = useCatStore()
     </ProListItem>
 
     <ProListItem
+      :description="$t('pages.preference.cat.hints.ignoreMouse')"
+      :title="$t('pages.preference.cat.labels.ignoreMouse')"
+    >
+      <Switch v-model:checked="catStore.model.ignoreMouse" />
+    </ProListItem>
+
+    <ProListItem
       :description="$t('pages.preference.cat.hints.motionSound')"
       :title="$t('pages.preference.cat.labels.motionSound')"
     >

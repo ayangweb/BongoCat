@@ -3,7 +3,7 @@ import { PhysicalPosition } from '@tauri-apps/api/dpi'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { isNil } from 'es-toolkit'
 import { Ticker } from 'pixi.js'
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { useAppStore } from '@/stores/app'
 import { useCatStore } from '@/stores/cat'
@@ -83,13 +83,19 @@ export function useDevice() {
 
       scaleFactor.value = payload.scaleFactor
     })
-
-    Ticker.shared.add(tickerCallback)
   })
 
   onUnmounted(() => {
     Ticker.shared.remove(tickerCallback)
   })
+
+  watch(() => catStore.model.ignoreMouse, (value) => {
+    if (value) {
+      return Ticker.shared.remove(tickerCallback)
+    }
+
+    return Ticker.shared.add(tickerCallback)
+  }, { immediate: true })
 
   const startListening = () => {
     invoke(INVOKE_KEY.START_DEVICE_LISTENING)
