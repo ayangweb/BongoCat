@@ -25,6 +25,7 @@ import { useModelStore } from '@/stores/model'
 import { isImage } from '@/utils/is'
 import live2d from '@/utils/live2d'
 import { join } from '@/utils/path'
+import { isWindows } from '@/utils/platform'
 import { clearObject } from '@/utils/shared'
 
 const { startListening } = useDevice()
@@ -151,7 +152,17 @@ async function handleContextmenu(event: MouseEvent) {
     ],
   })
 
-  menu.popup()
+  // Temporarily disable always-on-top on Windows so the context menu is not covered
+  if (isWindows && catStore.window.alwaysOnTop) {
+    setAlwaysOnTop(false)
+  }
+
+  await menu.popup()
+
+  // Restore always-on-top after the menu is closed
+  if (!isWindows || !catStore.window.alwaysOnTop) return
+
+  setAlwaysOnTop(true)
 }
 
 function handleMouseMove(event: MouseEvent) {

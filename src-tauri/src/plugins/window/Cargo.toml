@@ -16,3 +16,6 @@ tauri-plugin.workspace = true
 
 [target."cfg(target_os = \"macos\")".dependencies]
 tauri-nspanel.workspace = true
+
+[target."cfg(target_os = \"windows\")".dependencies]
+windows = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }

@@ -1,51 +1,19 @@
 #![allow(deprecated)]
-use super::{is_main_window, shared_hide_window, shared_set_always_on_top, shared_show_window};
 use crate::MAIN_WINDOW_LABEL;
 use tauri::{AppHandle, Runtime, WebviewWindow, command};
 use tauri_nspanel::{CollectionBehavior, ManagerExt, PanelLevel};
 
-pub enum MacOSPanelStatus {
+enum MacOSPanelStatus {
     Show,
     Hide,
     SetAlwaysOnTop(bool),
 }
 
-#[command]
-pub async fn show_window<R: Runtime>(app_handle: AppHandle<R>, window: WebviewWindow<R>) {
-    if is_main_window(&window) {
-        set_macos_panel(&app_handle, &window, MacOSPanelStatus::Show);
-    } else {
-        shared_show_window(&app_handle, &window);
-    }
+fn is_main_window<R: Runtime>(window: &WebviewWindow<R>) -> bool {
+    window.label() == MAIN_WINDOW_LABEL
 }
 
-#[command]
-pub async fn hide_window<R: Runtime>(app_handle: AppHandle<R>, window: WebviewWindow<R>) {
-    if is_main_window(&window) {
-        set_macos_panel(&app_handle, &window, MacOSPanelStatus::Hide);
-    } else {
-        shared_hide_window(&app_handle, &window);
-    }
-}
-
-#[command]
-pub async fn set_always_on_top<R: Runtime>(
-    app_handle: AppHandle<R>,
-    window: WebviewWindow<R>,
-    always_on_top: bool,
-) {
-    if is_main_window(&window) {
-        set_macos_panel(
-            &app_handle,
-            &window,
-            MacOSPanelStatus::SetAlwaysOnTop(always_on_top),
-        );
-    } else {
-        shared_set_always_on_top(&app_handle, &window, always_on_top);
-    }
-}
-
-pub fn set_macos_panel<R: Runtime>(
+fn set_macos_panel<R: Runtime>(
     app_handle: &AppHandle<R>,
     window: &WebviewWindow<R>,
     status: MacOSPanelStatus,
@@ -88,6 +56,49 @@ pub fn set_macos_panel<R: Runtime>(
                 }
             }
         });
+    }
+}
+
+#[command]
+pub async fn show_window<R: Runtime>(app_handle: AppHandle<R>, window: WebviewWindow<R>) {
+    if is_main_window(&window) {
+        set_macos_panel(&app_handle, &window, MacOSPanelStatus::Show);
+    } else {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
+#[command]
+pub async fn hide_window<R: Runtime>(app_handle: AppHandle<R>, window: WebviewWindow<R>) {
+    if is_main_window(&window) {
+        set_macos_panel(&app_handle, &window, MacOSPanelStatus::Hide);
+    } else {
+        let _ = window.hide();
+    }
+}
+
+#[command]
+pub async fn set_always_on_top<R: Runtime>(
+    app_handle: AppHandle<R>,
+    window: WebviewWindow<R>,
+    always_on_top: bool,
+) {
+    if is_main_window(&window) {
+        return set_macos_panel(
+            &app_handle,
+            &window,
+            MacOSPanelStatus::SetAlwaysOnTop(always_on_top),
+        );
+    }
+
+    if always_on_top {
+        let _ = window.set_always_on_bottom(false);
+        let _ = window.set_always_on_top(true);
+    } else {
+        let _ = window.set_always_on_top(false);
+        let _ = window.set_always_on_bottom(true);
     }
 }
 
