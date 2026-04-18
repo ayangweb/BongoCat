@@ -8,6 +8,7 @@ export interface CatStore {
     motionSound: boolean
     behavior: boolean
     autoReleaseDelay: number
+    maxFPS: number
   }
   window: {
     visible: boolean
@@ -51,6 +52,7 @@ export const useCatStore = defineStore('cat', () => {
     motionSound: true,
     behavior: true,
     autoReleaseDelay: 3,
+    maxFPS: 60,
   })
 
   const window = reactive<CatStore['window']>({

@@ -24,7 +24,8 @@
           "motionSound": "Som de Ação",
           "behavior": "Movimentos e Expressões",
           "autoReleaseDelay": "Atraso de Liberação Automática",
-          "hideOnHover": "Ocultar ao Passar o Mouse"
+          "hideOnHover": "Ocultar ao Passar o Mouse",
+          "maxFPS": "Taxa Máxima de Quadros"
         },
         "hints": {
           "mirrorMode": "Quando ativado, o modelo será invertido horizontalmente.",
@@ -36,7 +37,8 @@
           "keepInScreen": "Quando ativado, a janela permanece automaticamente dentro dos limites da tela.",
           "windowSize": "Mova o mouse para a borda da janela ou segure Shift e arraste com o botão direito para redimensionar.",
           "autoReleaseDelay": "Devido ao Windows não capturar eventos de liberação de certas teclas de nível do sistema, elas serão automaticamente tratadas como liberadas após um tempo limite.",
-          "hideOnHover": "Quando ativado, a janela será ocultada quando o mouse passar sobre ela."
+          "hideOnHover": "Quando ativado, a janela será ocultada quando o mouse passar sobre ela.",
+          "maxFPS": "Limitar a taxa máxima de quadros para renderização do modelo. Reduzir a taxa de quadros pode diminuir o uso de CPU/GPU."
         }
       },
       "general": {

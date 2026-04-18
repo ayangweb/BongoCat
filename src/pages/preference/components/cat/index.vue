@@ -50,6 +50,17 @@ const catStore = useCatStore()
         class="w-28"
       />
     </ProListItem>
+
+    <ProListItem
+      :description="$t('pages.preference.cat.hints.maxFPS')"
+      :title="$t('pages.preference.cat.labels.maxFPS')"
+    >
+      <InputNumber
+        v-model:value="catStore.model.maxFPS"
+        class="20"
+        :min="0"
+      />
+    </ProListItem>
   </ProList>
 
   <ProList :title="$t('pages.preference.cat.labels.windowSettings')">

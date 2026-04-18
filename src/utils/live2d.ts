@@ -129,6 +129,10 @@ class Live2d {
   public setMotionSoundEnabled(enabled: boolean) {
     Config.MotionSound = enabled
   }
+
+  public setMaxFPS(fps: number) {
+    Ticker.shared.maxFPS = fps
+  }
 }
 
 const live2d = new Live2d()
