@@ -1,4 +1,4 @@
-import { theme } from 'ant-design-vue'
+import { theme } from 'antdv-next'
 import { kebabCase } from 'es-toolkit'
 
 export function useThemeVars() {

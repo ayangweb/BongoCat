@@ -1,13 +1,23 @@
 <script setup lang="ts">
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { Select, SelectOption } from 'ant-design-vue'
-import { onMounted, watch } from 'vue'
+import { Select } from 'antdv-next'
+import { computed, onMounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+import type { Theme } from '@/stores/general'
 
 import ProListItem from '@/components/pro-list-item/index.vue'
 import { useGeneralStore } from '@/stores/general'
 
 const generalStore = useGeneralStore()
 const appWindow = getCurrentWebviewWindow()
+const { t } = useI18n()
+
+const options = computed<Array<{ label: string, value: Theme }>>(() => [
+  { label: t('pages.preference.general.options.auto'), value: 'auto' },
+  { label: t('pages.preference.general.options.lightMode'), value: 'light' },
+  { label: t('pages.preference.general.options.darkMode'), value: 'dark' },
+])
 
 onMounted(() => {
   appWindow.onThemeChanged(async ({ payload }) => {
@@ -38,16 +48,9 @@ watch(() => generalStore.appearance.isDark, (value) => {
 
 <template>
   <ProListItem :title="$t('pages.preference.general.labels.themeMode')">
-    <Select v-model:value="generalStore.appearance.theme">
-      <SelectOption value="auto">
-        {{ $t('pages.preference.general.options.auto') }}
-      </SelectOption>
-      <SelectOption value="light">
-        {{ $t('pages.preference.general.options.lightMode') }}
-      </SelectOption>
-      <SelectOption value="dark">
-        {{ $t('pages.preference.general.options.darkMode') }}
-      </SelectOption>
-    </Select>
+    <Select
+      v-model:value="generalStore.appearance.theme"
+      :options="options"
+    />
   </ProListItem>
 </template>

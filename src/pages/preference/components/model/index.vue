@@ -1,13 +1,10 @@
 <script setup lang="ts">
-import type { ComponentPublicInstance } from 'vue'
-
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { remove } from '@tauri-apps/plugin-fs'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
 import { useElementSize } from '@vueuse/core'
-import { Card, message, Popconfirm } from 'ant-design-vue'
-import { ref } from 'vue'
-import { MasonryGrid, MasonryGridItem } from 'vue3-masonry-css'
+import { Card, Masonry, message, Popconfirm } from 'antdv-next'
+import { computed, ref, useTemplateRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import type { Model } from '@/stores/model'
@@ -22,22 +19,21 @@ import Upload from './components/upload/index.vue'
 
 const catStore = useCatStore()
 const modelStore = useModelStore()
-const firstItemRef = ref<HTMLElement>()
-const { height } = useElementSize(firstItemRef)
+const firstCardRef = useTemplateRef('firstCard')
+const { height } = useElementSize(firstCardRef)
 const { t } = useI18n()
 const openBehaviorModal = ref(false)
 
-function setFirstItemRef(el: Element | ComponentPublicInstance | null, index: number) {
-  if (!el || index > 0) return
+const masonryItems = computed(() => {
+  const items = modelStore.models.map((item) => {
+    return {
+      key: item.id,
+      data: item,
+    }
+  })
 
-  if ('$el' in el) {
-    return firstItemRef.value = el.$el
-  }
-
-  if (el instanceof HTMLElement) {
-    firstItemRef.value = el
-  }
-}
+  return [{ key: 'upload', data: null }, ...items]
+})
 
 function handleToggle(nextModel: Model) {
   if (modelStore.currentModel?.id === nextModel.id) return
@@ -67,55 +63,57 @@ async function handleDelete(item: Model) {
 </script>
 
 <template>
-  <MasonryGrid
-    :columns="{ 992: 3, 1200: 4, 1600: 6, default: 8 }"
+  <Masonry
+    :columns="{ xs: 3, lg: 4, xxl: 6 }"
     :gutter="16"
+    :items="masonryItems"
   >
-    <MasonryGridItem>
-      <Upload :style="{ height: `${height}px` }" />
-    </MasonryGridItem>
+    <template #itemRender="{ data, index }">
+      <template v-if="!data">
+        <Upload :style="{ height: `${height}px` }" />
+      </template>
 
-    <MasonryGridItem
-      v-for="(item, index) in modelStore.models"
-      :key="item.id"
-    >
       <Card
-        :ref="(el) => setFirstItemRef(el, index)"
-        class="[&_[class^='i-']]:text-4"
+        v-else
+        :ref="index === 1 ? 'firstCard' : void 0"
+        :classes="{
+          body: 'p-0!',
+          actions: `[&>li]:(flex justify-center) [&>li>span]:(inline-flex! justify-center text-4!)`,
+        }"
         hoverable
         size="small"
-        @click="handleToggle(item)"
+        @click="handleToggle(data)"
       >
         <template #cover>
           <img
             alt="example"
-            :src="convertFileSrc(join(item.path, 'resources', 'cover.png'))"
+            :src="convertFileSrc(join(data.path, 'resources', 'cover.png'))"
           >
         </template>
 
         <template #actions>
           <i
             class="i-lucide:circle-check"
-            :class="{ 'text-success': item.id === modelStore.currentModel?.id }"
+            :class="{ 'text-success': data.id === modelStore.currentModel?.id }"
           />
 
           <i
-            v-if="catStore.model.behavior && modelStore.currentModel?.id === item.id"
+            v-if="catStore.model.behavior && modelStore.currentModel?.id === data.id"
             class="i-lucide:smile"
             @click.stop="openBehaviorModal = true"
           />
 
           <i
             class="i-lucide:folder-open"
-            @click.stop="revealItemInDir(item.path)"
+            @click.stop="revealItemInDir(data.path)"
           />
 
-          <template v-if="!item.isPreset">
+          <template v-if="!data.isPreset">
             <Popconfirm
               :description="$t('pages.preference.model.hints.deleteModel')"
               placement="topRight"
               :title="$t('pages.preference.model.labels.deleteModel')"
-              @confirm="handleDelete(item)"
+              @confirm="handleDelete(data)"
             >
               <i
                 class="i-lucide:trash-2"
@@ -125,8 +123,8 @@ async function handleDelete(item: Model) {
           </template>
         </template>
       </Card>
-    </MasonryGridItem>
-  </MasonryGrid>
+    </template>
+  </Masonry>
 
   <FloatMenu />
 

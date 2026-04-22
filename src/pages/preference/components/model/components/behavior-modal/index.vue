@@ -2,7 +2,7 @@
 import type { MotionInfo } from 'easy-live2d'
 
 import { emit } from '@tauri-apps/api/event'
-import { Empty, List, Modal, Segmented } from 'ant-design-vue'
+import { Empty, Modal, Segmented } from 'antdv-next'
 import { isEmpty } from 'es-toolkit/compat'
 import { ref } from 'vue'
 
@@ -69,19 +69,18 @@ function setExpression(index: number) {
             {{ $t('pages.preference.model.behaviorModal.labels.motionGroupIndex', { index: groupIndex + 1 }) }}
           </div>
 
-          <List
-            bordered
-            :data-source="motions"
-            size="small"
-          >
-            <template #renderItem="{ index }">
+          <div class="b b-color-1 rounded-lg b-solid">
+            <template
+              v-for="(item, index) in motions"
+              :key="item.no"
+            >
               <BehaviorItem
                 v-model="modelStore.shortcuts[getMotionShortcutId(groupName, index)]"
                 :label="$t('pages.preference.model.behaviorModal.labels.motionIndex', { index: index + 1 })"
-                @click="startMotion(motions[index])"
+                @click="startMotion(item)"
               />
             </template>
-          </List>
+          </div>
         </div>
       </template>
     </div>
@@ -95,20 +94,18 @@ function setExpression(index: number) {
         :image="Empty.PRESENTED_IMAGE_SIMPLE"
       />
 
-      <List
-        v-else
-        bordered
-        :data-source="modelStore.currentExpressions"
-        size="small"
-      >
-        <template #renderItem="{ index }">
+      <div class="b b-color-1 rounded-lg b-solid">
+        <template
+          v-for="(item, index) in modelStore.currentExpressions"
+          :key="item.name"
+        >
           <BehaviorItem
             v-model="modelStore.shortcuts[getExpressionShortcutId(index)]"
             :label="$t('pages.preference.model.behaviorModal.labels.expressionIndex', { index: index + 1 })"
             @click="setExpression(index)"
           />
         </template>
-      </List>
+      </div>
     </div>
   </Modal>
 </template>

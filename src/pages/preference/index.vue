@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { Flex, Spin } from 'ant-design-vue'
+import { Flex, Spin } from 'antdv-next'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -59,59 +59,60 @@ const menus = computed(() => [
 </script>
 
 <template>
-  <UpdateApp />
-
   <Spin
     class="max-h-unset!"
+    :description="t('pages.main.hints.switching')"
+    fullscreen
     size="large"
     :spinning="!modelStore.modelReady"
-    :tip="t('pages.main.hints.switching')"
-  >
-    <Flex class="h-screen">
-      <div
-        class="h-full w-30 flex flex-col items-center gap-4 overflow-auto bg-gradient-from-primary-1 bg-gradient-to-black/1 bg-gradient-linear dark:(bg-color-3 bg-none)"
-        :class="[isMac ? 'pt-8' : 'pt-4']"
-        data-tauri-drag-region
-      >
-        <div class="flex flex-col items-center gap-2">
-          <div class="b b-color-2 rounded-2xl b-solid">
-            <img
-              class="size-15"
-              data-tauri-drag-region
-              src="/logo.png"
-            >
-          </div>
+  />
 
-          <span class="font-bold">{{ appStore.name }}</span>
-        </div>
-
-        <div class="flex flex-col gap-2">
-          <div
-            v-for="(item, index) in menus"
-            :key="item.label"
-            class="size-20 flex flex-col cursor-pointer items-center justify-center gap-2 rounded-lg text-color-3 transition hover:bg-color-7 dark:text-color-2"
-            :class="{ 'bg-color-2! text-primary-5 dark:text-primary-7 font-bold dark:bg-color-8!': current === index }"
-            @click="current = index"
+  <Flex class="h-screen">
+    <div
+      class="h-full w-30 flex flex-col items-center gap-4 overflow-auto bg-gradient-from-primary-1 bg-gradient-to-black/1 bg-gradient-linear dark:bg-none"
+      :class="[isMac ? 'pt-8' : 'pt-4']"
+      data-tauri-drag-region
+    >
+      <div class="flex flex-col items-center gap-2">
+        <div class="b b-color-2 rounded-2xl b-solid">
+          <img
+            class="size-15"
+            data-tauri-drag-region
+            src="/logo.png"
           >
-            <div
-              class="size-8"
-              :class="item.icon"
-            />
+        </div>
 
-            <span>{{ item.label }}</span>
-          </div>
+        <span class="font-bold">{{ appStore.name }}</span>
+      </div>
+
+      <div class="flex flex-col gap-2">
+        <div
+          v-for="(item, index) in menus"
+          :key="item.label"
+          class="size-20 flex flex-col cursor-pointer items-center justify-center gap-2 rounded-lg text-color-3 transition hover:bg-color-7 dark:text-color-2"
+          :class="{ 'bg-color-2! text-primary-5 dark:text-primary-7 font-bold dark:bg-color-8!': current === index }"
+          @click="current = index"
+        >
+          <div
+            class="size-8"
+            :class="item.icon"
+          />
+
+          <span>{{ item.label }}</span>
         </div>
       </div>
+    </div>
 
-      <div
-        v-for="(item, index) in menus"
-        v-show="current === index"
-        :key="item.label"
-        class="flex-1 overflow-auto bg-color-8 p-4 dark:bg-color-2"
-        data-tauri-drag-region
-      >
-        <component :is="item.component" />
-      </div>
-    </Flex>
-  </Spin>
+    <div
+      v-for="(item, index) in menus"
+      v-show="current === index"
+      :key="item.label"
+      class="flex-1 overflow-auto bg-color-8 p-4 dark:bg-color-2"
+      data-tauri-drag-region
+    >
+      <component :is="item.component" />
+    </div>
+  </Flex>
+
+  <UpdateApp />
 </template>

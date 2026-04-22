@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Button, ListItem } from 'ant-design-vue'
+import { Button, Divider } from 'antdv-next'
 
 import Shortcut from '@/components/shortcut/index.vue'
 import { useKeyPress } from '@/composables/useKeyPress'
@@ -14,11 +14,13 @@ useKeyPress(modelValue, () => {
 </script>
 
 <template>
-  <ListItem>
+  <div class="flex items-center justify-between px-4 py-2 not-last:(b-b b-color-2 b-b-solid)">
     <span>{{ label }}</span>
 
-    <template #actions>
+    <div class="flex items-center">
       <Shortcut v-model="modelValue" />
+
+      <Divider type="vertical" />
 
       <Button
         class="inline-flex items-center justify-center"
@@ -28,6 +30,6 @@ useKeyPress(modelValue, () => {
           <div class="i-lucide:play" />
         </template>
       </Button>
-    </template>
-  </ListItem>
+    </div>
+  </div>
 </template>

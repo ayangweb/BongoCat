@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Flex } from 'ant-design-vue'
+import { Flex } from 'antdv-next'
 import { computed } from 'vue'
 
 const { title, description, vertical } = defineProps<{

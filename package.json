@@ -21,7 +21,7 @@
     "release": "release-it"
   },
   "dependencies": {
-    "@ant-design/icons-vue": "^7.0.1",
+    "@antdv-next/icons": "^1.0.6",
     "@tauri-apps/api": "^2.10.1",
     "@tauri-apps/plugin-autostart": "^2.5.1",
     "@tauri-apps/plugin-clipboard-manager": "^2.3.2",
@@ -35,7 +35,7 @@
     "@tauri-apps/plugin-updater": "^2.10.1",
     "@tauri-store/pinia": "^3.7.1",
     "@vueuse/core": "^13.9.0",
-    "ant-design-vue": "^4.2.6",
+    "antdv-next": "^1.2.1",
     "dayjs": "^1.11.20",
     "easy-live2d": "^0.4.4",
     "es-toolkit": "^1.45.1",
@@ -46,13 +46,14 @@
     "pixi.js": "^8.18.1",
     "tauri-plugin-locale-api": "^2.0.1",
     "tauri-plugin-macos-permissions-api": "^2.3.0",
+    "type-fest": "^5.6.0",
     "vue": "^3.5.32",
     "vue-i18n": "^11.3.2",
     "vue-markdown-render": "^2.3.0",
-    "vue-router": "^4.6.4",
-    "vue3-masonry-css": "^1.0.8"
+    "vue-router": "^4.6.4"
   },
   "devDependencies": {
+    "@antdv-next/unocss": "^1.0.3",
     "@antfu/eslint-config": "^4.19.0",
     "@commitlint/cli": "^19.8.1",
     "@commitlint/config-conventional": "^19.8.1",

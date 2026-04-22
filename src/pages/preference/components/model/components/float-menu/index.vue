@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { EditOutlined, MenuOutlined, SyncOutlined, UnorderedListOutlined } from '@ant-design/icons-vue'
+import { EditOutlined, MenuOutlined, SyncOutlined, UnorderedListOutlined } from '@antdv-next/icons'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import { FloatButton, FloatButtonGroup } from 'ant-design-vue'
+import { FloatButton, FloatButtonGroup } from 'antdv-next'
 </script>
 
 <template>

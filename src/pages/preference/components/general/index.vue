@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart'
-import { Select, Switch } from 'ant-design-vue'
+import { Switch } from 'antdv-next'
 import { watch } from 'vue'
 
 import ProListItem from '@/components/pro-list-item/index.vue'
 import ProList from '@/components/pro-list/index.vue'
 import { useGeneralStore } from '@/stores/general'
 
+import Language from './components/language/index.vue'
 import MacosPermissions from './components/macos-permissions/index.vue'
 import ThemeMode from './components/theme-mode/index.vue'
 
@@ -51,25 +52,7 @@ watch(() => generalStore.app.autostart, async (value) => {
   <ProList :title="$t('pages.preference.general.labels.appearanceSettings')">
     <ThemeMode />
 
-    <ProListItem :title="$t('pages.preference.general.labels.language')">
-      <Select v-model:value="generalStore.appearance.language">
-        <Select.Option value="zh-CN">
-          简体中文
-        </Select.Option>
-        <Select.Option value="zh-TW">
-          繁體中文
-        </Select.Option>
-        <Select.Option value="en-US">
-          English
-        </Select.Option>
-        <Select.Option value="vi-VN">
-          Tiếng Việt
-        </Select.Option>
-        <Select.Option value="pt-BR">
-          Português
-        </Select.Option>
-      </Select>
-    </ProListItem>
+    <Language />
   </ProList>
 
   <ProList :title="$t('pages.preference.general.labels.updateSettings')">

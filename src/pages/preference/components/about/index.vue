@@ -5,7 +5,7 @@ import { appLogDir } from '@tauri-apps/api/path'
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { openPath, openUrl } from '@tauri-apps/plugin-opener'
 import { arch, platform, version } from '@tauri-apps/plugin-os'
-import { Button, message } from 'ant-design-vue'
+import { Button, message } from 'antdv-next'
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 

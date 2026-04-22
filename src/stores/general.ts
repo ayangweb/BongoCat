@@ -1,11 +1,10 @@
-import type { Theme } from '@tauri-apps/api/window'
-
 import { defineStore } from 'pinia'
 import { getLocale } from 'tauri-plugin-locale-api'
 import { reactive, ref } from 'vue'
 
 import { LANGUAGE } from '@/constants'
 
+export type Theme = 'auto' | 'light' | 'dark'
 export type Language = typeof LANGUAGE[keyof typeof LANGUAGE]
 
 export interface GeneralStore {
@@ -15,7 +14,7 @@ export interface GeneralStore {
     trayVisible: boolean
   }
   appearance: {
-    theme: 'auto' | Theme
+    theme: Theme
     isDark: boolean
     language?: Language
   }

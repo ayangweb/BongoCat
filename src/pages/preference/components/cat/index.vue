@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Divider, Flex, InputNumber, Slider, Switch } from 'ant-design-vue'
+import { Divider, Flex, InputNumber, Slider, SpaceAddon, SpaceCompact, Switch } from 'antdv-next'
 
 import ProListItem from '@/components/pro-list-item/index.vue'
 import ProList from '@/components/pro-list/index.vue'
@@ -51,11 +51,14 @@ const catStore = useCatStore()
       :description="$t('pages.preference.cat.hints.autoReleaseDelay')"
       :title="$t('pages.preference.cat.labels.autoReleaseDelay')"
     >
-      <InputNumber
-        v-model:value="catStore.model.autoReleaseDelay"
-        addon-after="s"
-        class="w-28"
-      />
+      <SpaceCompact>
+        <InputNumber
+          v-model:value="catStore.model.autoReleaseDelay"
+          class="w-20"
+        />
+
+        <SpaceAddon>s</SpaceAddon>
+      </SpaceCompact>
     </ProListItem>
 
     <ProListItem
@@ -99,12 +102,15 @@ const catStore = useCatStore()
         >
           <Divider type="vertical" />
 
-          <InputNumber
-            v-model:value="catStore.window.hideOnHoverDelay"
-            addon-after="s"
-            class="w-24"
-            :min="0"
-          />
+          <SpaceCompact>
+            <InputNumber
+              v-model:value="catStore.window.hideOnHoverDelay"
+              class="w-16"
+              :min="0"
+            />
+
+            <SpaceAddon>s</SpaceAddon>
+          </SpaceCompact>
         </Flex>
       </Flex>
     </ProListItem>
@@ -120,22 +126,28 @@ const catStore = useCatStore()
       :description="$t('pages.preference.cat.hints.windowSize')"
       :title="$t('pages.preference.cat.labels.windowSize')"
     >
-      <InputNumber
-        v-model:value="catStore.window.scale"
-        addon-after="%"
-        class="w-28"
-        :max="500"
-        :min="1"
-      />
+      <SpaceCompact>
+        <InputNumber
+          v-model:value="catStore.window.scale"
+          class="w-20"
+          :max="500"
+          :min="1"
+        />
+
+        <SpaceAddon>%</SpaceAddon>
+      </SpaceCompact>
     </ProListItem>
 
     <ProListItem :title="$t('pages.preference.cat.labels.windowRadius')">
-      <InputNumber
-        v-model:value="catStore.window.radius"
-        addon-after="%"
-        class="w-28"
-        :min="0"
-      />
+      <SpaceCompact>
+        <InputNumber
+          v-model:value="catStore.window.radius"
+          class="w-20"
+          :min="0"
+        />
+
+        <SpaceAddon>%</SpaceAddon>
+      </SpaceCompact>
     </ProListItem>
 
     <ProListItem
@@ -147,7 +159,11 @@ const catStore = useCatStore()
         class="m-[0]!"
         :max="100"
         :min="10"
-        :tip-formatter="(value) => `${value}%`"
+        :tooltip="{
+          formatter(value) {
+            return `${value}%`
+          },
+        }"
       />
     </ProListItem>
   </ProList>

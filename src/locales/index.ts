@@ -1,10 +1,10 @@
-import type { Locale as AntdLocale } from 'ant-design-vue/es/locale'
+import type { Locale as AntdLocale } from 'antdv-next/dist/locale/index'
 
-import antdEnUS from 'ant-design-vue/locale/en_US'
-import antdPtBR from 'ant-design-vue/locale/pt_BR'
-import antdViVN from 'ant-design-vue/locale/vi_VN'
-import antdZhCN from 'ant-design-vue/locale/zh_CN'
-import antdZhTW from 'ant-design-vue/locale/zh_TW'
+import antdEnUS from 'antdv-next/locale/en_US'
+import antdPtBR from 'antdv-next/locale/pt_BR'
+import antdViVN from 'antdv-next/locale/vi_VN'
+import antdZhCN from 'antdv-next/locale/zh_CN'
+import antdZhTW from 'antdv-next/locale/zh_TW'
 import { createI18n } from 'vue-i18n'
 
 import type { Language } from '@/stores/general'
