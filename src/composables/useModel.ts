@@ -9,6 +9,7 @@ import { findKey, nth } from 'es-toolkit/compat'
 import { ref } from 'vue'
 
 import { useCatStore } from '@/stores/cat'
+import { useLabelStore } from '@/stores/label'
 import { useModelStore } from '@/stores/model'
 import { getCursorMonitor } from '@/utils/monitor'
 import { isMac } from '@/utils/platform'
@@ -27,6 +28,7 @@ export interface ModelSize {
 export function useModel() {
   const modelStore = useModelStore()
   const catStore = useCatStore()
+  const labelStore = useLabelStore()
   const modelSize = ref<ModelSize>()
 
   function getBehaviorShortcut(index: number) {
@@ -118,15 +120,18 @@ export function useModel() {
   async function handleResize() {
     if (!modelSize.value) return
 
-    live2d.resizeModel(modelSize.value)
+    const reservedTopHeight = labelStore.metrics.reservedHeight
+
+    live2d.resizeModel(modelSize.value, reservedTopHeight)
 
     const { width, height } = modelSize.value
+    const stageHeight = Math.max(innerHeight - reservedTopHeight, 1)
 
-    if (round(innerWidth / innerHeight, 1) !== round(width / height, 1)) {
+    if (round(innerWidth / stageHeight, 1) !== round(width / height, 1)) {
       await appWindow.setSize(
         new LogicalSize({
           width: innerWidth,
-          height: Math.ceil(innerWidth * (height / width)),
+          height: Math.ceil(innerWidth * (height / width) + reservedTopHeight),
         }),
       )
     }

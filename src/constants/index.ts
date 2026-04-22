@@ -10,6 +10,9 @@ export const LISTEN_KEY = {
   GAMEPAD_CHANGED: 'gamepad-changed',
   START_MOTION: 'start-motion',
   SET_EXPRESSION: 'set-expression',
+  LABEL_TEXT_CHANGED: 'label-text-changed',
+  LABEL_SIZE_CHANGED: 'label-size-changed',
+  CLAUDE_EVENT: 'claude-event',
 }
 
 export const INVOKE_KEY = {
@@ -17,6 +20,7 @@ export const INVOKE_KEY = {
   START_DEVICE_LISTENING: 'start_device_listening',
   START_GAMEPAD_LISTING: 'start_gamepad_listing',
   STOP_GAMEPAD_LISTING: 'stop_gamepad_listing',
+  SET_LABEL_TEXT: 'set_label_text',
 }
 
 export const LANGUAGE = {

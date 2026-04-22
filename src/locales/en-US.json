@@ -140,6 +140,55 @@
           "feedbackIssues": "Feedback Issues",
           "viewLog": "View Logs"
         }
+      },
+      "hook": {
+        "title": "Hook",
+        "labels": {
+          "labelSettings": "Label Settings",
+          "labelText": "Default Label Text",
+          "labelSize": "Label Size",
+          "claudeCodeSettings": "Claude Code Integration",
+          "notificationHook": "Permission Notification Hook",
+          "pretoolHook": "Remote Approval Hook",
+          "interceptMode": "Intercept Mode",
+          "showSessionTitle": "Show Session Title",
+          "collapseLongText": "Auto-collapse Long Text",
+          "showDetailedContent": "Show Detailed Content",
+          "advancedConfig": "Advanced Config",
+          "hookTimeout": "Hook Timeout (s)",
+          "idleSleep": "Idle Sleep (s)",
+          "activeStateTimeout": "Active State Timeout"
+        },
+        "hints": {
+          "labelText": "Enter the default text shown above the model when Claude is idle. Dynamic Claude text takes priority during activity. Leave empty to hide it.",
+          "labelTextPlaceholder": "Enter default label text",
+          "labelSize": "Adjust the label font size and reserved top space.",
+          "notificationHook": "Install a Notification Hook so BongoCat is notified when Claude Code requests permission.",
+          "pretoolHook": "Install a PreToolUse Hook to remotely approve tool-call requests via BongoCat.",
+          "interceptMode": "When enabled, all tool calls are intercepted and require manual approval; when disabled, only notifications are sent.",
+          "showSessionTitle": "Show the current session title before dynamic text so multiple Claude sessions are easier to tell apart.",
+          "collapseLongText": "Automatically shorten content when it spans multiple lines or exceeds 50 characters to avoid covering the model.",
+          "showDetailedContent": "When enabled, shows the raw text from Claude. When disabled, only shows brief status labels.",
+          "hookTimeout": "Maximum seconds to wait for user approval before auto-allowing.",
+          "idleSleep": "Background thread sleep interval when idle.",
+          "activeStateTimeout": "Auto-reset to idle when Claude Code stops unexpectedly (seconds)"
+        },
+        "runtime": {
+          "thinking": "Thinking",
+          "tool": "Running tool",
+          "toolWithName": "Running {name}",
+          "waiting": "Waiting for approval",
+          "sessionFallback": "Session {id}",
+          "success": "Completed",
+          "error": "Something went wrong",
+          "dormant": "Dormant"
+        },
+        "options": {
+          "small": "Small",
+          "medium": "Medium",
+          "large": "Large",
+          "xlarge": "Extra Large"
+        }
       }
     }
   },

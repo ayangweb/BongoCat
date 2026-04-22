@@ -140,6 +140,55 @@
           "feedbackIssues": "Báo lỗi",
           "viewLog": "Xem nhật ký"
         }
+      },
+      "hook": {
+        "title": "Hook",
+        "labels": {
+          "labelSettings": "Cài đặt nhãn",
+          "labelText": "Văn bản nhãn mặc định",
+          "labelSize": "Kích thước nhãn",
+          "claudeCodeSettings": "Tích hợp Claude Code",
+          "notificationHook": "Hook thông báo quyền",
+          "pretoolHook": "Hook phê duyệt từ xa",
+          "interceptMode": "Chế độ chặn",
+          "showSessionTitle": "Hiển thị tiêu đề phiên",
+          "collapseLongText": "Tự động thu gọn văn bản dài",
+          "showDetailedContent": "Hiển thị nội dung chi tiết",
+          "advancedConfig": "Cấu hình nâng cao",
+          "hookTimeout": "Thời gian chờ Hook (s)",
+          "idleSleep": "Ngủ khi rảnh (s)",
+          "activeStateTimeout": "Thời gian chờ trạng thái"
+        },
+        "hints": {
+          "labelText": "Nhập văn bản mặc định hiển thị phía trên mô hình khi Claude đang rảnh. Trong lúc hoạt động, văn bản động của Claude sẽ được ưu tiên. Để trống để ẩn nhãn.",
+          "labelTextPlaceholder": "Nhập văn bản nhãn mặc định",
+          "labelSize": "Điều chỉnh cỡ chữ và chiều cao dành riêng cho nhãn.",
+          "notificationHook": "Cài đặt Hook thông báo để BongoCat nhận thông báo khi Claude Code yêu cầu quyền.",
+          "pretoolHook": "Cài đặt Hook PreToolUse để phê duyệt từ xa các yêu cầu gọi công cụ qua BongoCat.",
+          "interceptMode": "Khi bật, tất cả các lệnh gọi công cụ bị chặn và yêu cầu phê duyệt thủ công.",
+          "showSessionTitle": "Hiển thị tiêu đề phiên trước nội dung động để dễ phân biệt nhiều phiên Claude.",
+          "collapseLongText": "Tự động rút gọn khi nội dung có nhiều dòng hoặc vượt quá 50 ký tự để tránh che mô hình.",
+          "showDetailedContent": "Khi bật, hiển thị văn bản thô từ Claude. Khi tắt, chỉ hiển thị nhãn trạng thái ngắn gọn.",
+          "hookTimeout": "Số giây tối đa chờ phê duyệt của người dùng trước khi tự động cho phép.",
+          "idleSleep": "Khoảng thời gian ngủ của luồng nền khi rảnh.",
+          "activeStateTimeout": "Tự động đặt lại về rảnh khi Claude Code dừng bất ngờ (giây)"
+        },
+        "runtime": {
+          "thinking": "Đang suy nghĩ",
+          "tool": "Đang chạy công cụ",
+          "toolWithName": "Đang chạy {name}",
+          "waiting": "Đang chờ phê duyệt",
+          "sessionFallback": "Phiên {id}",
+          "success": "Đã hoàn tất",
+          "error": "Đã xảy ra lỗi",
+          "dormant": "Ngủ đông"
+        },
+        "options": {
+          "small": "Nhỏ",
+          "medium": "Trung bình",
+          "large": "Lớn",
+          "xlarge": "Rất lớn"
+        }
       }
     }
   },

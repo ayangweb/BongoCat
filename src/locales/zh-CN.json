@@ -140,6 +140,55 @@
           "feedbackIssues": "反馈问题",
           "viewLog": "查看日志"
         }
+      },
+      "hook": {
+        "title": "Hook",
+        "labels": {
+          "labelSettings": "标签设置",
+          "labelText": "默认标签文字",
+          "labelSize": "标签大小",
+          "claudeCodeSettings": "Claude Code 集成",
+          "notificationHook": "权限检测 Hook",
+          "pretoolHook": "远程审批 Hook",
+          "interceptMode": "拦截模式",
+          "showSessionTitle": "显示会话标题",
+          "collapseLongText": "长文本自动折叠",
+          "showDetailedContent": "显示详细内容",
+          "advancedConfig": "高级配置",
+          "hookTimeout": "Hook 超时（秒）",
+          "idleSleep": "空闲休眠（秒）",
+          "activeStateTimeout": "活跃状态超时"
+        },
+        "hints": {
+          "labelText": "输入空闲时展示在模型上方的默认文字。Claude 活动期间会优先显示动态文本，留空时将隐藏标签。",
+          "labelTextPlaceholder": "输入默认标签文字",
+          "labelSize": "调整标签展示的字号与预留高度。",
+          "notificationHook": "安装 Notification Hook，当 Claude Code 请求权限时通知 BongoCat。",
+          "pretoolHook": "安装 PreToolUse Hook，通过 BongoCat 远程审批工具调用请求。",
+          "interceptMode": "开启后将拦截所有工具调用，等待用户手动审批；关闭则仅通知不拦截。",
+          "showSessionTitle": "在动态标签前显示当前会话标题，便于区分多个 Claude 会话。",
+          "collapseLongText": "当正文包含多行或超过 50 字时自动截短，避免遮挡模型。",
+          "showDetailedContent": "开启后展示 Claude 的原始文本，关闭后仅显示简短的状态提示。",
+          "hookTimeout": "等待用户审批的最长时间，超时后自动放行。",
+          "idleSleep": "无活动时后台线程的休眠间隔。",
+          "activeStateTimeout": "若 Claude Code 异常中断，超时后自动回到空闲状态（秒）"
+        },
+        "runtime": {
+          "thinking": "思考中",
+          "tool": "运行命令中",
+          "toolWithName": "运行{name}中",
+          "waiting": "等待批准",
+          "sessionFallback": "会话 {id}",
+          "success": "已完成",
+          "error": "执行出错",
+          "dormant": "休眠中"
+        },
+        "options": {
+          "small": "小",
+          "medium": "中",
+          "large": "大",
+          "xlarge": "特大"
+        }
       }
     }
   },

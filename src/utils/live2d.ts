@@ -25,12 +25,13 @@ class Live2d {
     if (this.app) return
 
     const view = document.getElementById('live2dCanvas') as HTMLCanvasElement
+    const stage = document.getElementById('modelStage') as HTMLElement | null
 
     this.app = new Application()
 
     return this.app.init({
       view,
-      resizeTo: window,
+      resizeTo: stage ?? window,
       backgroundAlpha: 0,
       autoDensity: true,
       resolution: devicePixelRatio,
@@ -92,18 +93,20 @@ class Live2d {
     this.model = null
   }
 
-  public resizeModel(modelSize: ModelSize) {
+  public resizeModel(modelSize: ModelSize, reservedTopHeight = 0) {
     if (!this.model) return
 
     const { width, height } = modelSize
-
-    const scaleX = innerWidth / width
-    const scaleY = innerHeight / height
+    const stage = document.getElementById('modelStage') as HTMLElement | null
+    const stageWidth = stage?.clientWidth ?? innerWidth
+    const stageHeight = stage?.clientHeight ?? Math.max(innerHeight - reservedTopHeight, 1)
+    const scaleX = stageWidth / width
+    const scaleY = stageHeight / height
     const scale = Math.min(scaleX, scaleY)
 
     this.model.scale.set(scale)
-    this.model.x = innerWidth / 2
-    this.model.y = innerHeight / 2
+    this.model.x = stageWidth / 2
+    this.model.y = stageHeight / 2
     this.model.anchor.set(0.5)
   }
 

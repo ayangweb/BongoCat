@@ -14,6 +14,7 @@ import { isMac } from '@/utils/platform'
 import About from './components/about/index.vue'
 import Cat from './components/cat/index.vue'
 import General from './components/general/index.vue'
+import Hook from './components/hook/index.vue'
 import Model from './components/model/index.vue'
 import Shortcut from './components/shortcut/index.vue'
 
@@ -44,6 +45,11 @@ const menus = computed(() => [
     label: t('pages.preference.model.title'),
     icon: 'i-solar:magic-stick-3-bold',
     component: Model,
+  },
+  {
+    label: t('pages.preference.hook.title'),
+    icon: 'i-solar:tag-bold',
+    component: Hook,
   },
   {
     label: t('pages.preference.shortcut.title'),
