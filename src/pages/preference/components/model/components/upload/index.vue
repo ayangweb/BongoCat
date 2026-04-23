@@ -100,7 +100,7 @@ watch(selectPaths, async (paths) => {
 <template>
   <div
     ref="drop"
-    class="w-full flex flex-col cursor-pointer items-center justify-center gap-4 b b-color-1 rounded-lg b-dashed bg-color-8 transition hover:border-primary"
+    class="w-full flex flex-col cursor-pointer items-center justify-center gap-4 b-1 b-dashed bg-[--ant-color-fill-quaternary] transition b-border rounded-lg hover:border-primary"
     :class="{ 'border-primary': dragenter }"
     @click="handleUpload"
   >

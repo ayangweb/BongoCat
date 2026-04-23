@@ -58,15 +58,6 @@ function feedbackIssue() {
       >
         {{ $t('pages.preference.about.buttons.checkUpdate') }}
       </Button>
-
-      <template #icon>
-        <div class="b b-color-2 rounded-xl b-solid">
-          <img
-            class="size-12"
-            src="/logo.png"
-          >
-        </div>
-      </template>
     </ProListItem>
 
     <ProListItem

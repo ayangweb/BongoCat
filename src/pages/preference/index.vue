@@ -69,12 +69,12 @@ const menus = computed(() => [
 
   <Flex class="h-screen">
     <div
-      class="h-full w-30 flex flex-col items-center gap-4 overflow-auto bg-gradient-from-primary-1 bg-gradient-to-black/1 bg-gradient-linear dark:bg-none"
+      class="h-full w-30 flex flex-col items-center gap-4 overflow-auto bg-gradient-from-blue-1 bg-gradient-to-black/1 bg-gradient-linear dark:bg-none"
       :class="[isMac ? 'pt-8' : 'pt-4']"
       data-tauri-drag-region
     >
       <div class="flex flex-col items-center gap-2">
-        <div class="b b-color-2 rounded-2xl b-solid">
+        <div class="b-1 b-solid b-border-sec rounded-2xl">
           <img
             class="size-15"
             data-tauri-drag-region
@@ -89,8 +89,8 @@ const menus = computed(() => [
         <div
           v-for="(item, index) in menus"
           :key="item.label"
-          class="size-20 flex flex-col cursor-pointer items-center justify-center gap-2 rounded-lg text-color-3 transition hover:bg-color-7 dark:text-color-2"
-          :class="{ 'bg-color-2! text-primary-5 dark:text-primary-7 font-bold dark:bg-color-8!': current === index }"
+          class="size-20 flex flex-col cursor-pointer items-center justify-center gap-2 transition color-text-tertiary rounded-lg hover:bg-[--ant-color-fill-tertiary] dark:color-text-secondary"
+          :class="{ 'bg-container! color-blue-5! dark:color-blue-7! font-bold dark:bg-[--ant-color-fill-quaternary]!': current === index }"
           @click="current = index"
         >
           <div
@@ -107,7 +107,7 @@ const menus = computed(() => [
       v-for="(item, index) in menus"
       v-show="current === index"
       :key="item.label"
-      class="flex-1 overflow-auto bg-color-8 p-4 dark:bg-color-2"
+      class="flex-1 overflow-auto bg-[--ant-color-fill-quaternary] p-4 dark:bg-container"
       data-tauri-drag-region
     >
       <component :is="item.component" />

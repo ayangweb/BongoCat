@@ -156,7 +156,7 @@ const catStore = useCatStore()
     >
       <Slider
         v-model:value="catStore.window.opacity"
-        class="m-[0]!"
+        class="m-0!"
         :max="100"
         :min="10"
         :tooltip="{

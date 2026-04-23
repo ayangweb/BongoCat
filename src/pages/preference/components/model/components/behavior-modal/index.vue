@@ -69,7 +69,7 @@ function setExpression(index: number) {
             {{ $t('pages.preference.model.behaviorModal.labels.motionGroupIndex', { index: groupIndex + 1 }) }}
           </div>
 
-          <div class="b b-color-1 rounded-lg b-solid">
+          <div class="b-1 b-solid b-border rounded-lg">
             <template
               v-for="(item, index) in motions"
               :key="item.no"
@@ -94,7 +94,7 @@ function setExpression(index: number) {
         :image="Empty.PRESENTED_IMAGE_SIMPLE"
       />
 
-      <div class="b b-color-1 rounded-lg b-solid">
+      <div class="b-1 b-solid b-border rounded-lg">
         <template
           v-for="(item, index) in modelStore.currentExpressions"
           :key="item.name"

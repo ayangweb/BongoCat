@@ -18,7 +18,7 @@ const hasDescription = computed(() => {
 <template>
   <Flex
     :align="vertical ? void 0 : 'center'"
-    class="b b-color-2 rounded-lg b-solid bg-color-3 p-4"
+    class="b-1 b-solid p-4 bg-elevated b-border-sec rounded-lg"
     :gap="vertical ? 'middle' : 'large'"
     justify="space-between"
     :vertical="vertical"
@@ -28,12 +28,12 @@ const hasDescription = computed(() => {
       class="flex-1"
     >
       <Flex vertical>
-        <div class="text-sm font-medium">
+        <div class="text-3.5 font-medium">
           {{ title }}
         </div>
 
         <div
-          class="break-all text-xs text-color-3 [&_a]:(text-color-3 active:text-color-primary-7 hover:text-color-primary-5)"
+          class="break-all text-3 color-text-tertiary [&_a]:color-text-tertiary [&_a]:active:color-blue-7 [&_a]:hover:color-blue-5"
           :class="{ 'mt-2': hasDescription }"
         >
           <slot name="description">

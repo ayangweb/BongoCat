@@ -14,7 +14,7 @@ useKeyPress(modelValue, () => {
 </script>
 
 <template>
-  <div class="flex items-center justify-between px-4 py-2 not-last:(b-b b-color-2 b-b-solid)">
+  <div class="flex items-center justify-between px-4 py-2 not-last:(b-b b-b-solid b-border-sec)">
     <span>{{ label }}</span>
 
     <div class="flex items-center">
