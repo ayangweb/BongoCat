@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@antdv-next/happy-work-theme':
+        specifier: ^1.0.0
+        version: 1.0.0(antdv-next@1.2.1(vue@3.5.32(typescript@5.9.3)))(vue@3.5.32(typescript@5.9.3))
       '@antdv-next/icons':
         specifier: ^1.0.6
         version: 1.0.6(vue@3.5.32(typescript@5.9.3))
@@ -165,6 +168,9 @@ importers:
       vite:
         specifier: ^6.4.2
         version: 6.4.2(@types/node@22.19.17)(jiti@2.6.1)(lightningcss@1.29.2)(sass@1.99.0)(tsx@4.21.0)(yaml@2.8.3)
+      vite-plugin-dayjs:
+        specifier: ^1.0.2
+        version: 1.0.2
 
 packages:
 
@@ -189,6 +195,12 @@ packages:
     resolution: {integrity: sha512-8NL+AzjFZVHfG9A2l+r4rNWdRfbS5FFFozGU9jVl7WNgd7y+wEYSzl+qvRjJuqd3IryacrDfsTxIgcSQkVlr5Q==}
     peerDependencies:
       vue: '>=3.2.0'
+
+  '@antdv-next/happy-work-theme@1.0.0':
+    resolution: {integrity: sha512-INjE69eKPWfmwi0SySkRA7hzp0JgmkID5pqTL8FIU9O2k1ynJAYj7BS+4fFE9rRQdFN2g7dyQsUQXfIuZZc6eg==}
+    peerDependencies:
+      antdv-next: ^1.0.0
+      vue: ^3.5.0
 
   '@antdv-next/icons@1.0.6':
     resolution: {integrity: sha512-SCPe/otLTmOEVoAdrZ/fn5pr1wlA1Tbzhk908gWPDnjSLEPIcv4n0Feh416RKj1oe8PKbPIC95BH+HaBXybojg==}
@@ -4927,6 +4939,9 @@ packages:
   validate-npm-package-license@3.0.4:
     resolution: {integrity: sha512-DpKm2Ui/xN7/HQKCtpZxoRWBhZ9Z0kqtygG8XCgNQ8ZlDnxuQmWhj566j8fN4Cu3/JmbhsDo7fcAJq4s9h27Ew==}
 
+  vite-plugin-dayjs@1.0.2:
+    resolution: {integrity: sha512-In33iaGn+uZ0jYbDlFDtEqOSQAKx5ahcIyXkydTYxDT52GT6RwFnum0RRLS8WHlQAKUMbO07zD2AlMnacjbCng==}
+
   vite@6.4.2:
     resolution: {integrity: sha512-2N/55r4JDJ4gdrCvGgINMy+HH3iRpNIz8K6SFwVsA+JbQScLiC+clmAxBgwiSPgcG9U15QmvqCGWzMbqda5zGQ==}
     engines: {node: ^18.0.0 || ^20.0.0 || >=22.0.0}
@@ -5135,6 +5150,12 @@ snapshots:
       '@v-c/util': 1.0.19(vue@3.5.32(typescript@5.9.3))
       csstype: 3.2.3
       stylis: 4.3.6
+      vue: 3.5.32(typescript@5.9.3)
+
+  '@antdv-next/happy-work-theme@1.0.0(antdv-next@1.2.1(vue@3.5.32(typescript@5.9.3)))(vue@3.5.32(typescript@5.9.3))':
+    dependencies:
+      '@ant-design/fast-color': 3.0.1
+      antdv-next: 1.2.1(vue@3.5.32(typescript@5.9.3))
       vue: 3.5.32(typescript@5.9.3)
 
   '@antdv-next/icons@1.0.6(vue@3.5.32(typescript@5.9.3))':
@@ -10195,6 +10216,8 @@ snapshots:
     dependencies:
       spdx-correct: 3.2.0
       spdx-expression-parse: 3.0.1
+
+  vite-plugin-dayjs@1.0.2: {}
 
   vite@6.4.2(@types/node@22.19.17)(jiti@2.6.1)(lightningcss@1.29.2)(sass@1.99.0)(tsx@4.21.0)(yaml@2.8.3):
     dependencies:

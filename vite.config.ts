@@ -1,15 +1,15 @@
+import vue from '@vitejs/plugin-vue'
 import { resolve } from 'node:path'
 import { env } from 'node:process'
-
-import vue from '@vitejs/plugin-vue'
 import UnoCSS from 'unocss/vite'
 import { defineConfig } from 'vite'
+import vitePluginDayjs from 'vite-plugin-dayjs'
 
 const host = env.TAURI_DEV_HOST
 
 // https://vitejs.dev/config/
 export default defineConfig(async () => ({
-  plugins: [vue(), UnoCSS()],
+  plugins: [vue(), UnoCSS(), vitePluginDayjs()],
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { HappyProvider } from '@antdv-next/happy-work-theme'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { error } from '@tauri-apps/plugin-log'
 import { openUrl } from '@tauri-apps/plugin-opener'
@@ -84,12 +85,18 @@ useEventListener('click', (event) => {
 </script>
 
 <template>
-  <ConfigProvider
-    :locale="getAntdLocale(generalStore.appearance.language)"
-    :theme="{
-      algorithm: generalStore.appearance.isDark ? darkAlgorithm : defaultAlgorithm,
-    }"
+  <HappyProvider
+    v-slot="{ wave }"
+    enabled
   >
-    <RouterView v-if="isRestored" />
-  </ConfigProvider>
+    <ConfigProvider
+      :locale="getAntdLocale(generalStore.appearance.language)"
+      :theme="{
+        algorithm: generalStore.appearance.isDark ? darkAlgorithm : defaultAlgorithm,
+      }"
+      :wave="wave"
+    >
+      <RouterView v-if="isRestored" />
+    </ConfigProvider>
+  </HappyProvider>
 </template>
