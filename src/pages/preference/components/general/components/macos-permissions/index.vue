@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { confirm } from '@tauri-apps/plugin-dialog'
 import { Space } from 'antdv-next'
 import { checkInputMonitoringPermission, requestInputMonitoringPermission } from 'tauri-plugin-macos-permissions-api'
@@ -8,7 +7,6 @@ import { useI18n } from 'vue-i18n'
 
 import ProListItem from '@/components/pro-list-item/index.vue'
 import ProList from '@/components/pro-list/index.vue'
-import { isMac } from '@/utils/platform'
 
 const authorized = ref(false)
 const { t } = useI18n()
@@ -17,10 +15,6 @@ onMounted(async () => {
   authorized.value = await checkInputMonitoringPermission()
 
   if (authorized.value) return
-
-  const appWindow = getCurrentWebviewWindow()
-
-  await appWindow.setAlwaysOnTop(true)
 
   const confirmed = await confirm(t('pages.preference.general.hints.inputMonitoringPermissionGuide'), {
     title: t('pages.preference.general.labels.inputMonitoringPermission'),
@@ -31,15 +25,12 @@ onMounted(async () => {
 
   if (!confirmed) return
 
-  await appWindow.setAlwaysOnTop(false)
-
   requestInputMonitoringPermission()
 })
 </script>
 
 <template>
   <ProList
-    v-if="isMac"
     :title="$t('pages.preference.general.labels.permissionsSettings')"
   >
     <ProListItem

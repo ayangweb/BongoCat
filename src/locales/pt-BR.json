@@ -69,8 +69,8 @@
           "showTrayIcon": "Quando ativado, o ícone do aplicativo é exibido na bandeja do sistema.",
           "inputMonitoringPermission": "Ative a permissão de monitoramento de entrada para receber eventos de teclado e mouse do sistema para responder às suas ações.",
           "inputMonitoringPermissionGuide": "Se a permissão já estiver ativada, primeiro selecione-a e clique no botão \"-\" para removê-la. Em seguida, adicione-a novamente manualmente e reinicie o aplicativo para garantir que a permissão entre em vigor.",
-          "administratorPermission": "Executar o aplicativo como administrador no Windows ajuda a capturar algumas teclas e eventos de entrada em nível de sistema com mais confiabilidade.",
-          "administratorPermissionGuide": "Para capturar algumas teclas e eventos de entrada em nível de sistema com mais confiabilidade, é recomendado executar o aplicativo como administrador.\n\nComo fazer:\n1. Feche o aplicativo primeiro.\n2. Encontre o exe do aplicativo ou o atalho no Explorador de Arquivos.\n3. Clique com o botão direito e escolha \"Executar como administrador\".\n4. Se quiser esse comportamento por padrão, ative \"Executar este programa como administrador\" nas propriedades do exe ou do atalho."
+          "administratorPermission": "Executar o aplicativo como administrador ajuda a capturar algumas teclas e eventos de entrada em nível de sistema com mais confiabilidade.",
+          "administratorPermissionGuide": "Para capturar algumas teclas e eventos de entrada em nível de sistema com mais confiabilidade, é recomendado executar o aplicativo como administrador.\n\nComo fazer:\n1. Feche o aplicativo primeiro.\n2. Encontre o exe do aplicativo ou o atalho no Explorador de Arquivos.\n3. Escolha como iniciar:\n   • Apenas desta vez: Clique com o botão direito e escolha \"Executar como administrador\".\n   • Sempre (padrão): Botão direito → Propriedades → aba Compatibilidade → marque \"Executar este programa como administrador\" → OK."
         },
         "status": {
           "authorized": "Autorizado",
@@ -79,7 +79,9 @@
         },
         "buttons": {
           "openNow": "Abrir Agora",
-          "openLater": "Abrir Mais Tarde"
+          "openLater": "Abrir Mais Tarde",
+          "setLater": "Configurar Depois",
+          "exitApp": "Sair do App"
         }
       },
       "model": {

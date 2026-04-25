@@ -1,19 +1,18 @@
 <script setup lang="ts">
-import { Modal, Space } from 'antdv-next'
-import { h, onMounted, ref } from 'vue'
+import { confirm } from '@tauri-apps/plugin-dialog'
+import { exit } from '@tauri-apps/plugin-process'
+import { Space } from 'antdv-next'
+import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import ProListItem from '@/components/pro-list-item/index.vue'
 import ProList from '@/components/pro-list/index.vue'
 import { isRunningAsAdministrator } from '@/plugins/admin'
-import { isWindows } from '@/utils/platform'
 
 const authorized = ref(true)
 const { t } = useI18n()
 
 onMounted(async () => {
-  if (!isWindows) return
-
   authorized.value = await isRunningAsAdministrator()
 
   if (authorized.value) return
@@ -21,22 +20,22 @@ onMounted(async () => {
   showAdministratorGuide()
 })
 
-function showAdministratorGuide() {
-  Modal.warning({
-    centered: true,
+async function showAdministratorGuide() {
+  const confirmed = await confirm(t('pages.preference.general.hints.administratorPermissionGuide'), {
     title: t('pages.preference.general.labels.administratorPermission'),
-    content: h(
-      'div',
-      { style: 'white-space: pre-line;' },
-      t('pages.preference.general.hints.administratorPermissionGuide'),
-    ),
+    okLabel: t('pages.preference.general.buttons.exitApp'),
+    cancelLabel: t('pages.preference.general.buttons.setLater'),
+    kind: 'warning',
   })
+
+  if (!confirmed) return
+
+  exit(0)
 }
 </script>
 
 <template>
   <ProList
-    v-if="isWindows"
     :title="$t('pages.preference.general.labels.permissionsSettings')"
   >
     <ProListItem

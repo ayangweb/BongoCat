@@ -69,8 +69,8 @@
           "showTrayIcon": "启用后，在系统托盘中显示应用图标。",
           "inputMonitoringPermission": "开启输入监控权限，以便接收系统的键盘和鼠标事件来响应你的操作。",
           "inputMonitoringPermissionGuide": "如果权限已开启，请先选中并点击“-”按钮将其删除，然后重新手动添加，最后重启应用以确保权限生效。",
-          "administratorPermission": "在 Windows 上以管理员身份运行应用，可以更稳定地捕获部分系统级按键与输入事件。",
-          "administratorPermissionGuide": "为了更稳定地捕获部分系统级按键与输入事件，建议以管理员身份运行应用。\n\n操作方式：\n1. 先退出应用。\n2. 在资源管理器中找到应用的 exe 或快捷方式。\n3. 右键并选择“以管理员身份运行”。\n4. 如果希望以后默认这样启动，可以在 exe 或快捷方式属性中开启“以管理员身份运行此程序”。"
+          "administratorPermission": "以管理员身份运行应用，可以更稳定地捕获部分系统级按键与输入事件。",
+          "administratorPermissionGuide": "为了能更稳定地捕获部分系统级按键与输入事件，建议以管理员身份运行应用。\n\n操作方式：\n1. 先退出应用。\n2. 在资源管理器中找到应用的 exe 或快捷方式。\n3. 根据需要选择启动方式：\n   • 仅本次：右键并选择「以管理员身份运行」。\n   • 永久默认：右键 → 属性 → 兼容性选项卡 → 勾选「以管理员身份运行此程序」→ 确定。"
         },
         "status": {
           "authorized": "已授权",
@@ -79,7 +79,9 @@
         },
         "buttons": {
           "openNow": "前往开启",
-          "openLater": "稍后开启"
+          "openLater": "稍后开启",
+          "setLater": "稍后设置",
+          "exitApp": "退出应用"
         }
       },
       "model": {
