@@ -31,26 +31,31 @@ watch(() => generalStore.appearance.language, () => {
 
 const menus = computed(() => [
   {
+    key: 'cat',
     label: t('pages.preference.cat.title'),
     icon: 'i-solar:cat-bold',
     component: Cat,
   },
   {
+    key: 'general',
     label: t('pages.preference.general.title'),
     icon: 'i-solar:settings-minimalistic-bold',
     component: General,
   },
   {
+    key: 'model',
     label: t('pages.preference.model.title'),
     icon: 'i-solar:magic-stick-3-bold',
     component: Model,
   },
   {
+    key: 'shortcut',
     label: t('pages.preference.shortcut.title'),
     icon: 'i-solar:keyboard-bold',
     component: Shortcut,
   },
   {
+    key: 'about',
     label: t('pages.preference.about.title'),
     icon: 'i-solar:info-circle-bold',
     component: About,
@@ -88,7 +93,7 @@ const menus = computed(() => [
       <div class="flex flex-col gap-2">
         <div
           v-for="(item, index) in menus"
-          :key="item.label"
+          :key="item.key"
           class="size-20 flex flex-col cursor-pointer items-center justify-center gap-2 transition color-text-tertiary rounded-lg hover:bg-[--ant-color-fill-tertiary] dark:color-text-secondary"
           :class="{ 'bg-container! color-blue-5! dark:color-blue-7! font-bold dark:bg-[--ant-color-fill-quaternary]!': current === index }"
           @click="current = index"
@@ -106,7 +111,7 @@ const menus = computed(() => [
     <div
       v-for="(item, index) in menus"
       v-show="current === index"
-      :key="item.label"
+      :key="item.key"
       class="flex-1 overflow-auto bg-[--ant-color-fill-quaternary] p-4 dark:bg-container"
       data-tauri-drag-region
     >
