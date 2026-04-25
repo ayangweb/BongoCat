@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { confirm } from '@tauri-apps/plugin-dialog'
-import { message, Space } from 'antdv-next'
-import { onMounted, ref } from 'vue'
+import { Modal, Space } from 'antdv-next'
+import { h, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import ProListItem from '@/components/pro-list-item/index.vue'
 import ProList from '@/components/pro-list/index.vue'
-import { isRunningAsAdministrator, relaunchAsAdministrator } from '@/plugins/admin'
+import { isRunningAsAdministrator } from '@/plugins/admin'
 import { isWindows } from '@/utils/platform'
 
 const authorized = ref(true)
@@ -19,24 +18,19 @@ onMounted(async () => {
 
   if (authorized.value) return
 
-  const confirmed = await confirm(t('pages.preference.general.hints.administratorPermissionGuide'), {
-    title: t('pages.preference.general.labels.administratorPermission'),
-    okLabel: t('pages.preference.general.buttons.openNow'),
-    cancelLabel: t('pages.preference.general.buttons.openLater'),
-    kind: 'warning',
-  })
-
-  if (!confirmed) return
-
-  await handleRelaunch()
+  showAdministratorGuide()
 })
 
-async function handleRelaunch() {
-  try {
-    await relaunchAsAdministrator()
-  } catch (error) {
-    message.error(String(error))
-  }
+function showAdministratorGuide() {
+  Modal.warning({
+    centered: true,
+    title: t('pages.preference.general.labels.administratorPermission'),
+    content: h(
+      'div',
+      { style: 'white-space: pre-line;' },
+      t('pages.preference.general.hints.administratorPermissionGuide'),
+    ),
+  })
 }
 </script>
 
@@ -63,11 +57,11 @@ async function handleRelaunch() {
         v-else
         class="cursor-pointer text-error font-bold"
         :size="4"
-        @click="handleRelaunch"
+        @click="showAdministratorGuide"
       >
         <div class="i-solar:round-arrow-right-bold text-4.5" />
 
-        <span class="whitespace-nowrap">{{ $t('pages.preference.general.status.restartAsAdministrator') }}</span>
+        <span class="whitespace-nowrap">{{ $t('pages.preference.general.status.viewGuide') }}</span>
       </Space>
     </ProListItem>
   </ProList>

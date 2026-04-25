@@ -70,12 +70,12 @@
           "inputMonitoringPermission": "Enable input monitoring to receive keyboard and mouse events from the system.",
           "inputMonitoringPermissionGuide": "If the permission is already enabled, select it and click the \"-\" button to remove it, then manually add it again and restart the app.",
           "administratorPermission": "Running the app as administrator on Windows helps capture some system-level keys and input events more reliably.",
-          "administratorPermissionGuide": "Windows will show a User Account Control prompt. After confirmation, the app will restart with administrator privileges."
+          "administratorPermissionGuide": "To capture some system-level keys and input events more reliably, it is recommended to run the app as administrator.\n\nHow to do it:\n1. Exit the app first.\n2. Find the app exe or its shortcut in File Explorer.\n3. Right-click it and choose \"Run as administrator\".\n4. If you want this behavior by default, enable \"Run this program as an administrator\" in the properties of the exe or shortcut."
         },
         "status": {
           "authorized": "Authorized",
           "authorize": "Go to Enable",
-          "restartAsAdministrator": "Restart as Administrator"
+          "viewGuide": "View Instructions"
         },
         "buttons": {
           "openNow": "Open Now",

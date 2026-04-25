@@ -70,12 +70,12 @@
           "inputMonitoringPermission": "Bật quyền giám sát để nhận sự kiện bàn phím và chuột từ hệ thống nhằm phản hồi thao tác của bạn.",
           "inputMonitoringPermissionGuide": "Nếu quyền đã được bật, hãy chọn nó và nhấn nút \"-\" để xóa. Sau đó thêm lại thủ công và khởi động lại ứng dụng để đảm bảo quyền được áp dụng.",
           "administratorPermission": "Chạy ứng dụng với quyền quản trị viên trên Windows giúp bắt một số phím và sự kiện nhập liệu cấp hệ thống ổn định hơn.",
-          "administratorPermissionGuide": "Windows sẽ hiển thị hộp thoại Kiểm soát tài khoản người dùng. Sau khi xác nhận, ứng dụng sẽ khởi động lại với quyền quản trị viên."
+          "administratorPermissionGuide": "Để bắt một số phím và sự kiện nhập liệu cấp hệ thống ổn định hơn, bạn nên chạy ứng dụng với quyền quản trị viên.\n\nCách thực hiện:\n1. Thoát ứng dụng trước.\n2. Tìm file exe hoặc lối tắt của ứng dụng trong File Explorer.\n3. Nhấp chuột phải và chọn \"Run as administrator\".\n4. Nếu muốn luôn khởi động như vậy, hãy bật \"Run this program as an administrator\" trong phần thuộc tính của exe hoặc lối tắt."
         },
         "status": {
           "authorized": "Đã cấp quyền",
           "authorize": "Đi đến Bật",
-          "restartAsAdministrator": "Khởi động lại với quyền quản trị"
+          "viewGuide": "Xem hướng dẫn"
         },
         "buttons": {
           "openNow": "Mở ngay",
