@@ -208,7 +208,7 @@ function handleMouseMove(event: MouseEvent) {
       v-show="resizing || !modelStore.modelReady"
       class="flex items-center justify-center bg-black"
     >
-      <span class="text-center text-[10vw] text-white">
+      <span class="text-center text-[10vw] text-[#fff]">
         {{ resizing ? $t('pages.main.hints.redrawing') : $t('pages.main.hints.switching') }}
       </span>
     </div>
