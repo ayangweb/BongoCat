@@ -56,7 +56,8 @@
           "updateSettings": "Update Settings",
           "autoCheckUpdate": "Auto Check for Updates",
           "permissionsSettings": "Permissions Settings",
-          "inputMonitoringPermission": "Input Monitoring Permission"
+          "inputMonitoringPermission": "Input Monitoring Permission",
+          "administratorPermission": "Administrator Privileges"
         },
         "options": {
           "auto": "System",
@@ -67,11 +68,14 @@
           "showTaskbarIcon": "When enabled, the window can be captured via OBS Studio.",
           "showTrayIcon": "When enabled, the app icon is displayed in the system tray.",
           "inputMonitoringPermission": "Enable input monitoring to receive keyboard and mouse events from the system.",
-          "inputMonitoringPermissionGuide": "If the permission is already enabled, select it and click the \"-\" button to remove it, then manually add it again and restart the app."
+          "inputMonitoringPermissionGuide": "If the permission is already enabled, select it and click the \"-\" button to remove it, then manually add it again and restart the app.",
+          "administratorPermission": "Running the app as administrator on Windows helps capture some system-level keys and input events more reliably.",
+          "administratorPermissionGuide": "Windows will show a User Account Control prompt. After confirmation, the app will restart with administrator privileges."
         },
         "status": {
           "authorized": "Authorized",
-          "authorize": "Go to Enable"
+          "authorize": "Go to Enable",
+          "restartAsAdministrator": "Restart as Administrator"
         },
         "buttons": {
           "openNow": "Open Now",

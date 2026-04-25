@@ -22,6 +22,7 @@ tauri = { workspace = true, features = ["tray-icon", "protocol-asset", "macos-pr
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 tauri-plugin-custom-window.workspace = true
+tauri-plugin-admin-status.workspace = true
 tauri-plugin-os = "2"
 tauri-plugin-process = "2"
 tauri-plugin-opener = "2"

@@ -56,7 +56,8 @@
           "updateSettings": "Cài đặt cập nhật",
           "autoCheckUpdate": "Tự động kiểm tra cập nhật",
           "permissionsSettings": "Cài đặt quyền",
-          "inputMonitoringPermission": "Quyền giám sát đầu vào"
+          "inputMonitoringPermission": "Quyền giám sát đầu vào",
+          "administratorPermission": "Quyền quản trị viên"
         },
         "options": {
           "auto": "Theo hệ thống",
@@ -67,11 +68,14 @@
           "showTaskbarIcon": "Bật để có thể quay cửa sổ qua OBS.",
           "showTrayIcon": "Bật để hiện biểu tượng ứng dụng trên khay hệ thống.",
           "inputMonitoringPermission": "Bật quyền giám sát để nhận sự kiện bàn phím và chuột từ hệ thống nhằm phản hồi thao tác của bạn.",
-          "inputMonitoringPermissionGuide": "Nếu quyền đã được bật, hãy chọn nó và nhấn nút \"-\" để xóa. Sau đó thêm lại thủ công và khởi động lại ứng dụng để đảm bảo quyền được áp dụng."
+          "inputMonitoringPermissionGuide": "Nếu quyền đã được bật, hãy chọn nó và nhấn nút \"-\" để xóa. Sau đó thêm lại thủ công và khởi động lại ứng dụng để đảm bảo quyền được áp dụng.",
+          "administratorPermission": "Chạy ứng dụng với quyền quản trị viên trên Windows giúp bắt một số phím và sự kiện nhập liệu cấp hệ thống ổn định hơn.",
+          "administratorPermissionGuide": "Windows sẽ hiển thị hộp thoại Kiểm soát tài khoản người dùng. Sau khi xác nhận, ứng dụng sẽ khởi động lại với quyền quản trị viên."
         },
         "status": {
           "authorized": "Đã cấp quyền",
-          "authorize": "Đi đến Bật"
+          "authorize": "Đi đến Bật",
+          "restartAsAdministrator": "Khởi động lại với quyền quản trị"
         },
         "buttons": {
           "openNow": "Mở ngay",

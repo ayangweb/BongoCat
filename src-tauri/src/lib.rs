@@ -33,6 +33,7 @@ pub fn run() {
             start_gamepad_listing,
             stop_gamepad_listing
         ])
+        .plugin(tauri_plugin_admin_status::init())
         .plugin(tauri_plugin_custom_window::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_process::init())

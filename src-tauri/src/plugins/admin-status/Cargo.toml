@@ -1,0 +1,17 @@
+[package]
+name = "tauri-plugin-admin-status"
+version = "0.1.0"
+authors = []
+description = ""
+edition = "2024"
+rust-version = "1.85.0"
+links = "tauri-plugin-admin-status"
+
+[dependencies]
+tauri.workspace = true
+
+[build-dependencies]
+tauri-plugin.workspace = true
+
+[target."cfg(target_os = \"windows\")".dependencies]
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading"] }

@@ -16,6 +16,7 @@
     "core:window:allow-set-position",
     "core:window:allow-set-theme",
     "core:window:allow-set-title",
+    "admin-status:default",
     "custom-window:default",
     "os:default",
     "process:default",

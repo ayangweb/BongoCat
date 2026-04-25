@@ -56,7 +56,8 @@
           "updateSettings": "更新设置",
           "autoCheckUpdate": "自动检查更新",
           "permissionsSettings": "权限设置",
-          "inputMonitoringPermission": "输入监控权限"
+          "inputMonitoringPermission": "输入监控权限",
+          "administratorPermission": "管理员权限"
         },
         "options": {
           "auto": "跟随系统",
@@ -67,11 +68,14 @@
           "showTaskbarIcon": "启用后，即可通过 OBS Studio 捕获窗口。",
           "showTrayIcon": "启用后，在系统托盘中显示应用图标。",
           "inputMonitoringPermission": "开启输入监控权限，以便接收系统的键盘和鼠标事件来响应你的操作。",
-          "inputMonitoringPermissionGuide": "如果权限已开启，请先选中并点击“-”按钮将其删除，然后重新手动添加，最后重启应用以确保权限生效。"
+          "inputMonitoringPermissionGuide": "如果权限已开启，请先选中并点击“-”按钮将其删除，然后重新手动添加，最后重启应用以确保权限生效。",
+          "administratorPermission": "在 Windows 上以管理员身份运行应用，可以更稳定地捕获部分系统级按键与输入事件。",
+          "administratorPermissionGuide": "Windows 将弹出用户账户控制提示。确认后，应用会以管理员身份重新启动。"
         },
         "status": {
           "authorized": "已授权",
-          "authorize": "去授权"
+          "authorize": "去授权",
+          "restartAsAdministrator": "以管理员身份重启"
         },
         "buttons": {
           "openNow": "前往开启",

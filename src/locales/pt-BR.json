@@ -56,7 +56,8 @@
           "updateSettings": "Configurações de atualização",
           "autoCheckUpdate": "Verificar atualizações automaticamente",
           "permissionsSettings": "Configurações de Permissões",
-          "inputMonitoringPermission": "Permissão de Monitoramento de Entrada"
+          "inputMonitoringPermission": "Permissão de Monitoramento de Entrada",
+          "administratorPermission": "Privilégios de Administrador"
         },
         "options": {
           "auto": "Sistema",
@@ -67,11 +68,14 @@
           "showTaskbarIcon": "Uma vez ativado, você pode capturar a janela via OBS Studio.",
           "showTrayIcon": "Quando ativado, o ícone do aplicativo é exibido na bandeja do sistema.",
           "inputMonitoringPermission": "Ative a permissão de monitoramento de entrada para receber eventos de teclado e mouse do sistema para responder às suas ações.",
-          "inputMonitoringPermissionGuide": "Se a permissão já estiver ativada, primeiro selecione-a e clique no botão \"-\" para removê-la. Em seguida, adicione-a novamente manualmente e reinicie o aplicativo para garantir que a permissão entre em vigor."
+          "inputMonitoringPermissionGuide": "Se a permissão já estiver ativada, primeiro selecione-a e clique no botão \"-\" para removê-la. Em seguida, adicione-a novamente manualmente e reinicie o aplicativo para garantir que a permissão entre em vigor.",
+          "administratorPermission": "Executar o aplicativo como administrador no Windows ajuda a capturar algumas teclas e eventos de entrada em nível de sistema com mais confiabilidade.",
+          "administratorPermissionGuide": "O Windows exibirá o aviso de Controle de Conta de Usuário. Após a confirmação, o aplicativo será reiniciado com privilégios de administrador."
         },
         "status": {
           "authorized": "Autorizado",
-          "authorize": "Ir para Ativar"
+          "authorize": "Ir para Ativar",
+          "restartAsAdministrator": "Reiniciar como administrador"
         },
         "buttons": {
           "openNow": "Abrir Agora",

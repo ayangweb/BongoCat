@@ -10,6 +10,7 @@ import { useGeneralStore } from '@/stores/general'
 import Language from './components/language/index.vue'
 import MacosPermissions from './components/macos-permissions/index.vue'
 import ThemeMode from './components/theme-mode/index.vue'
+import WindowsPermissions from './components/windows-permissions/index.vue'
 
 const generalStore = useGeneralStore()
 
@@ -28,6 +29,8 @@ watch(() => generalStore.app.autostart, async (value) => {
 
 <template>
   <MacosPermissions />
+
+  <WindowsPermissions />
 
   <ProList :title="$t('pages.preference.general.labels.appSettings')">
     <ProListItem :title="$t('pages.preference.general.labels.launchOnStartup')">
