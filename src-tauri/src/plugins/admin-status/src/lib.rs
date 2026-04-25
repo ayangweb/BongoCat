@@ -9,6 +9,6 @@ pub use commands::*;
 
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("admin-status")
-        .invoke_handler(generate_handler![commands::is_elevated])
+        .invoke_handler(generate_handler![commands::is_running_as_administrator])
         .build()
 }

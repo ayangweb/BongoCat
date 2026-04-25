@@ -1,12 +1,8 @@
 use tauri::command;
 
 #[command]
-pub fn is_elevated() -> Result<bool, String> {
-    is_elevated_inner()
-}
-
 #[cfg(target_os = "windows")]
-fn is_elevated_inner() -> Result<bool, String> {
+pub fn is_running_as_administrator() -> Result<bool, String> {
     use std::mem::size_of;
     use windows::Win32::{
         Foundation::{CloseHandle, HANDLE},
@@ -38,7 +34,8 @@ fn is_elevated_inner() -> Result<bool, String> {
     }
 }
 
+#[command]
 #[cfg(not(target_os = "windows"))]
-fn is_elevated_inner() -> Result<bool, String> {
+pub fn is_running_as_administrator() -> Result<bool, String> {
     Ok(true)
 }
