@@ -74,6 +74,7 @@
         },
         "status": {
           "authorized": "Đã cấp quyền",
+          "adminEnabled": "Đã bật",
           "authorize": "Đi đến Bật",
           "viewGuide": "Xem hướng dẫn"
         },

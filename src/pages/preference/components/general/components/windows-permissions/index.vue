@@ -49,7 +49,7 @@ async function showAdministratorGuide() {
       >
         <div class="i-solar:verified-check-bold text-4.5" />
 
-        <span class="whitespace-nowrap">{{ $t('pages.preference.general.status.authorized') }}</span>
+        <span class="whitespace-nowrap">{{ $t('pages.preference.general.status.adminEnabled') }}</span>
       </Space>
 
       <Space

@@ -57,7 +57,7 @@
           "autoCheckUpdate": "Auto Check for Updates",
           "permissionsSettings": "Permissions Settings",
           "inputMonitoringPermission": "Input Monitoring Permission",
-          "administratorPermission": "Administrator Privileges"
+          "administratorPermission": "Administrator"
         },
         "options": {
           "auto": "System",
@@ -74,6 +74,7 @@
         },
         "status": {
           "authorized": "Authorized",
+          "adminEnabled": "Enabled",
           "authorize": "Go to Enable",
           "viewGuide": "View Instructions"
         },

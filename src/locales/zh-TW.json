@@ -57,7 +57,7 @@
           "autoCheckUpdate": "自動檢查更新",
           "permissionsSettings": "權限設定",
           "inputMonitoringPermission": "輸入監控權限",
-          "administratorPermission": "管理員權限"
+          "administratorPermission": "系統管理員身分"
         },
         "options": {
           "auto": "跟隨系統",
@@ -74,6 +74,7 @@
         },
         "status": {
           "authorized": "已授權",
+          "adminEnabled": "已啟用",
           "authorize": "去授權",
           "viewGuide": "查看操作說明"
         },
