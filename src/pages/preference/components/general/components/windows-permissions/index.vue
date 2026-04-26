@@ -7,7 +7,7 @@ import { useI18n } from 'vue-i18n'
 
 import ProListItem from '@/components/pro-list-item/index.vue'
 import ProList from '@/components/pro-list/index.vue'
-import { isRunningAsAdministrator } from '@/plugins/admin'
+import { isRunningAsAdministrator } from '@/plugins/adminStatus'
 
 const authorized = ref(true)
 const { t } = useI18n()
