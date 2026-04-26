@@ -68,7 +68,7 @@
           "showTaskbarIcon": "Bật để có thể quay cửa sổ qua OBS.",
           "showTrayIcon": "Bật để hiện biểu tượng ứng dụng trên khay hệ thống.",
           "inputMonitoringPermission": "Bật quyền giám sát để nhận sự kiện bàn phím và chuột từ hệ thống nhằm phản hồi thao tác của bạn.",
-          "inputMonitoringPermissionGuide": "Nếu quyền đã được bật, hãy chọn nó và nhấn nút \"-\" để xóa. Sau đó thêm lại thủ công và khởi động lại ứng dụng để đảm bảo quyền được áp dụng.",
+          "inputMonitoringPermissionGuide": "Quyền Giám sát đầu vào là cần thiết để ứng dụng có thể nhận các sự kiện bàn phím và chuột từ hệ thống.\n\nCác bước thực hiện:\n1. Mở Cài đặt hệ thống → Quyền riêng tư & Bảo mật → Giám sát đầu vào.\n2. Nếu BongoCat đã có trong danh sách, hãy chọn nó và nhấn nút \"-\" để xóa.\n3. Nhấn nút \"+\" để tìm và thêm lại BongoCat.\n4. Khởi động lại ứng dụng để quyền chính thức có hiệu lực.",
           "administratorPermission": "Chạy ứng dụng với quyền quản trị viên giúp bắt một số phím và sự kiện nhập liệu cấp hệ thống ổn định hơn.",
           "administratorPermissionGuide": "Để bắt một số phím và sự kiện nhập liệu cấp hệ thống ổn định hơn, bạn nên chạy ứng dụng với quyền quản trị viên.\n\nCách thực hiện:\n1. Thoát ứng dụng trước.\n2. Tìm file exe hoặc lối tắt của ứng dụng trong File Explorer.\n3. Chọn cách khởi động:\n   • Chỉ lần này: Nhấp chuột phải và chọn \"Run as administrator\".\n   • Luôn luôn (mặc định): Nhấp chuột phải → Properties → tab Compatibility → tích \"Run this program as an administrator\" → OK."
         },
