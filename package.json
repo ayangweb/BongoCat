@@ -36,7 +36,7 @@
     "@tauri-apps/plugin-updater": "^2.10.1",
     "@tauri-store/pinia": "^3.7.1",
     "@vueuse/core": "^13.9.0",
-    "antdv-next": "^1.2.1",
+    "antdv-next": "^1.2.2",
     "dayjs": "^1.11.20",
     "easy-live2d": "^0.4.4",
     "es-toolkit": "^1.45.1",
