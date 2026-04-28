@@ -77,7 +77,6 @@ async function handleDelete(item: Model) {
         v-else
         :ref="index === 1 ? 'firstCard' : void 0"
         :classes="{
-          body: 'p-0!',
           actions: `[&>li]:(flex justify-center) [&>li>span]:(inline-flex! justify-center text-4!)`,
         }"
         hoverable
