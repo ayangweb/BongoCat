@@ -2,7 +2,6 @@
 import type { MotionInfo } from 'easy-live2d'
 
 import { convertFileSrc } from '@tauri-apps/api/core'
-import { PhysicalSize } from '@tauri-apps/api/dpi'
 import { Menu, PredefinedMenuItem } from '@tauri-apps/api/menu'
 import { sep } from '@tauri-apps/api/path'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
@@ -10,7 +9,7 @@ import { exists, readDir } from '@tauri-apps/plugin-fs'
 import { useDebounceFn, useEventListener } from '@vueuse/core'
 import { round } from 'es-toolkit'
 import { nth } from 'es-toolkit/compat'
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { useAppMenu } from '@/composables/useAppMenu'
 import { useDevice } from '@/composables/useDevice'
@@ -30,7 +29,7 @@ import { clearObject } from '@/utils/shared'
 
 const { startListening } = useDevice()
 const appWindow = getCurrentWebviewWindow()
-const { modelSize, handleLoad, handleDestroy, handleResize, handleKeyChange } = useModel()
+const { modelSize, handleLoad, handleDestroy, handleResize, syncWindowSize, handleKeyChange } = useModel()
 const catStore = useCatStore()
 const { getBaseMenu, getExitMenu } = useAppMenu()
 const modelStore = useModelStore()
@@ -38,8 +37,11 @@ const generalStore = useGeneralStore()
 const resizing = ref(false)
 const backgroundImagePath = ref<string>()
 const { stickActive } = useGamepad()
-
-onMounted(startListening)
+const isCanvasReady = ref(false)
+const INITIAL_MODEL_LOAD_RETRY_DELAY_MS = 100
+let loadedModelId: string | undefined
+let modelLoadVersion = 0
+let modelLoadBarrier = Promise.resolve()
 
 onUnmounted(handleDestroy)
 
@@ -55,49 +57,148 @@ useEventListener('resize', () => {
   debouncedResize()
 })
 
-watch(() => modelStore.currentModel, async (model) => {
-  if (!model) return
+function waitForAnimationFrame() {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => resolve())
+  })
+}
 
-  await handleLoad()
+function waitForDelay(delayMs: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, delayMs)
+  })
+}
 
-  const path = join(model.path, 'resources', 'background.png')
+async function ensureCanvasReady() {
+  await nextTick()
 
-  const existed = await exists(path)
+  let canvas = document.getElementById('live2dCanvas')
 
-  backgroundImagePath.value = existed ? convertFileSrc(path) : void 0
-
-  clearObject([modelStore.supportKeys, modelStore.pressedKeys])
-
-  const resourcePath = join(model.path, 'resources')
-  const groups = ['left-keys', 'right-keys']
-
-  for await (const groupName of groups) {
-    const groupDir = join(resourcePath, groupName)
-    const files = await readDir(groupDir).catch(() => [])
-    const imageFiles = files.filter(file => isImage(file.name))
-
-    for (const file of imageFiles) {
-      const fileName = file.name.split('.')[0]
-
-      modelStore.supportKeys[fileName] = join(groupDir, file.name)
-    }
+  if (!(canvas instanceof HTMLCanvasElement)) {
+    await waitForAnimationFrame()
+    canvas = document.getElementById('live2dCanvas')
   }
 
-  modelStore.modelReady = true
-}, { deep: true, immediate: true })
+  if (!(canvas instanceof HTMLCanvasElement)) {
+    throw new TypeError('[main] #live2dCanvas is not ready')
+  }
 
-watch([() => catStore.window.scale, modelSize], async ([scale, modelSize]) => {
-  if (!modelSize) return
+  isCanvasReady.value = true
+}
 
-  const { width, height } = modelSize
+async function loadCurrentModel(
+  model = modelStore.currentModel,
+  options: { retryOnFailure?: boolean } = {},
+) {
+  if (!model) return false
 
-  appWindow.setSize(
-    new PhysicalSize({
-      width: Math.round(width * (scale / 100)),
-      height: Math.round(height * (scale / 100)),
-    }),
-  )
-}, { immediate: true })
+  const version = ++modelLoadVersion
+  let completed = false
+  const previousLoad = modelLoadBarrier
+  let releaseCurrentLoad!: () => void
+  const currentLoad = new Promise<void>((resolve) => {
+    releaseCurrentLoad = resolve
+  })
+
+  modelLoadBarrier = currentLoad
+
+  await previousLoad
+
+  const isActiveLoad = () => {
+    return version === modelLoadVersion && modelStore.currentModel?.id === model.id
+  }
+
+  try {
+    if (!isActiveLoad()) {
+      return false
+    }
+
+    modelStore.modelReady = false
+
+    let didLoad = await handleLoad(model, { showError: !options.retryOnFailure })
+
+    if (!didLoad && options.retryOnFailure) {
+      await waitForDelay(INITIAL_MODEL_LOAD_RETRY_DELAY_MS)
+
+      if (!isActiveLoad()) {
+        return false
+      }
+
+      didLoad = await handleLoad(model)
+    }
+
+    if (!didLoad || !isActiveLoad()) {
+      return false
+    }
+
+    const didSyncWindowSize = await syncWindowSize()
+
+    if (!didSyncWindowSize) {
+      return false
+    }
+
+    if (!isActiveLoad()) {
+      return false
+    }
+
+    const path = join(model.path, 'resources', 'background.png')
+
+    const existed = await exists(path)
+
+    backgroundImagePath.value = existed ? convertFileSrc(path) : void 0
+
+    clearObject([modelStore.supportKeys, modelStore.pressedKeys])
+
+    const resourcePath = join(model.path, 'resources')
+    const groups = ['left-keys', 'right-keys']
+
+    for await (const groupName of groups) {
+      const groupDir = join(resourcePath, groupName)
+      const files = await readDir(groupDir).catch(() => [])
+      const imageFiles = files.filter(file => isImage(file.name))
+
+      for (const file of imageFiles) {
+        const fileName = file.name.split('.')[0]
+
+        modelStore.supportKeys[fileName] = join(groupDir, file.name)
+      }
+    }
+
+    if (!isActiveLoad()) {
+      return false
+    }
+
+    loadedModelId = model.id
+    modelStore.modelReady = true
+    completed = true
+
+    return true
+  } finally {
+    if (!completed && isActiveLoad()) {
+      modelStore.modelReady = true
+    }
+
+    releaseCurrentLoad()
+  }
+}
+
+onMounted(async () => {
+  startListening()
+  await ensureCanvasReady()
+  await loadCurrentModel(modelStore.currentModel, { retryOnFailure: true })
+})
+
+watch(() => modelStore.currentModel?.id, async (modelId) => {
+  if (!isCanvasReady.value || !modelId || modelId === loadedModelId) return
+
+  await loadCurrentModel()
+})
+
+watch(() => catStore.window.scale, async () => {
+  if (!modelSize.value) return
+
+  await syncWindowSize()
+})
 
 watch([modelStore.pressedKeys, stickActive], ([keys, stickActive]) => {
   const dirs = Object.values(keys).map((path) => {

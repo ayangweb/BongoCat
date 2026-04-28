@@ -1,6 +1,6 @@
 import type { PhysicalPosition } from '@tauri-apps/api/dpi'
 
-import { LogicalSize } from '@tauri-apps/api/dpi'
+import { PhysicalSize } from '@tauri-apps/api/dpi'
 import { resolveResource, sep } from '@tauri-apps/api/path'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { message } from 'antdv-next'
@@ -18,6 +18,8 @@ import live2d from '../utils/live2d'
 const appWindow = getCurrentWebviewWindow()
 const digitKeys = '1234567890'.split('') as readonly string[]
 const letterKeys = 'QWERTYUIOPASDFGHJKLZXCVBNM'.split('') as readonly string[]
+let suppressScaleWriteback = false
+let hasCompletedInitialWindowSizeSync = false
 
 export interface ModelSize {
   width: number
@@ -65,11 +67,16 @@ export function useModel() {
     return `${modelId}:expression:${index}`
   }
 
-  async function handleLoad() {
+  async function handleLoad(
+    model = modelStore.currentModel,
+    options: { showError?: boolean } = {},
+  ) {
     try {
-      if (!modelStore.currentModel) return
+      if (!model) return false
 
-      const { path } = modelStore.currentModel
+      hasCompletedInitialWindowSizeSync = false
+
+      const { path } = model
 
       await resolveResource(path)
 
@@ -83,7 +90,7 @@ export function useModel() {
 
       handleResize()
 
-      const modelId = modelStore.currentModel.id
+      const modelId = model.id
 
       const behaviorIds: string[] = []
 
@@ -106,8 +113,15 @@ export function useModel() {
 
         modelStore.shortcuts[id] = shortcut
       }
+      return true
     } catch (error) {
-      message.error(String(error))
+      modelSize.value = void 0
+
+      if (options.showError ?? true) {
+        message.error(String(error))
+      }
+
+      return false
     }
   }
 
@@ -120,20 +134,52 @@ export function useModel() {
 
     live2d.resizeModel(modelSize.value)
 
-    const { width, height } = modelSize.value
-
-    if (round(innerWidth / innerHeight, 1) !== round(width / height, 1)) {
-      await appWindow.setSize(
-        new LogicalSize({
-          width: innerWidth,
-          height: Math.ceil(innerWidth * (height / width)),
-        }),
-      )
+    if (!hasCompletedInitialWindowSizeSync || suppressScaleWriteback) {
+      suppressScaleWriteback = false
+      return
     }
+
+    const { width } = modelSize.value
 
     const size = await appWindow.size()
 
     catStore.window.scale = round((size.width / width) * 100)
+  }
+
+  async function syncWindowSize() {
+    if (!modelSize.value) return false
+
+    const { width, height } = modelSize.value
+    const nextWidth = Math.round(width * (catStore.window.scale / 100))
+    const nextHeight = Math.round(height * (catStore.window.scale / 100))
+    const size = await appWindow.size()
+
+    if (size.width === nextWidth && size.height === nextHeight) {
+      hasCompletedInitialWindowSizeSync = true
+      return true
+    }
+
+    suppressScaleWriteback = true
+
+    try {
+      await appWindow.setSize(
+        new PhysicalSize({
+          width: nextWidth,
+          height: nextHeight,
+        }),
+      )
+
+      hasCompletedInitialWindowSizeSync = true
+
+      return true
+    } catch (error) {
+      suppressScaleWriteback = false
+      hasCompletedInitialWindowSizeSync = false
+
+      message.error(String(error))
+
+      return false
+    }
   }
 
   const handlePress = (key: string) => {
@@ -238,6 +284,7 @@ export function useModel() {
     handleLoad,
     handleDestroy,
     handleResize,
+    syncWindowSize,
     handleKeyChange,
     handleMouseChange,
     handleMouseMove,
