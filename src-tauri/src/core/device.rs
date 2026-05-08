@@ -9,6 +9,7 @@ pub enum DeviceEventKind {
     MousePress,
     MouseRelease,
     MouseMove,
+    MouseMoveDelta,
     KeyboardPress,
     KeyboardRelease,
 }
@@ -20,6 +21,14 @@ pub struct DeviceEvent {
 }
 
 static IS_LISTENING: AtomicBool = AtomicBool::new(false);
+
+pub fn emit_device_event<R: Runtime>(
+    app_handle: &AppHandle<R>,
+    kind: DeviceEventKind,
+    value: Value,
+) {
+    let _ = app_handle.emit("device-changed", DeviceEvent { kind, value });
+}
 
 #[command]
 pub async fn start_device_listening<R: Runtime>(app_handle: AppHandle<R>) -> Result<(), String> {
@@ -54,7 +63,7 @@ pub async fn start_device_listening<R: Runtime>(app_handle: AppHandle<R>) -> Res
             _ => return,
         };
 
-        let _ = app_handle.emit("device-changed", device_event);
+        emit_device_event(&app_handle, device_event.kind, device_event.value);
     };
 
     listen(callback).map_err(|err| format!("Failed to listen device: {:?}", err))?;

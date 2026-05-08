@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { PhysicalPosition } from '@tauri-apps/api/dpi'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { cursorPosition } from '@tauri-apps/api/window'
 import { isNil } from 'es-toolkit'
 import { Ticker } from 'pixi.js'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
@@ -9,6 +10,7 @@ import { useAppStore } from '@/stores/app'
 import { useCatStore } from '@/stores/cat'
 import { useModelStore } from '@/stores/model'
 import { inBetween } from '@/utils/is'
+import { getCursorMonitor } from '@/utils/monitor'
 import { isMac, isWindows } from '@/utils/platform'
 
 import { INVOKE_KEY, LISTEN_KEY, WINDOW_LABEL } from '../constants'
@@ -30,12 +32,17 @@ interface MouseMoveEvent {
   value: CursorPoint
 }
 
+interface MouseMoveDeltaEvent {
+  kind: 'MouseMoveDelta'
+  value: CursorPoint
+}
+
 interface KeyboardEvent {
   kind: 'KeyboardPress' | 'KeyboardRelease'
   value: string
 }
 
-type DeviceEvent = MouseButtonEvent | MouseMoveEvent | KeyboardEvent
+type DeviceEvent = MouseButtonEvent | MouseMoveEvent | MouseMoveDeltaEvent | KeyboardEvent
 
 const DAMPING_DECAY = 0.75
 const appWindow = getCurrentWebviewWindow()
@@ -46,7 +53,9 @@ export function useDevice() {
   const appStore = useAppStore()
   const catStore = useCatStore()
   const latestCursorPoint = ref<CursorPoint>()
+  const rawCursorPoint = ref<CursorPoint>()
   const smoothedCursorPoint = ref<CursorPoint>()
+  const lastAbsoluteMouseMoveAt = ref(0)
   const scaleFactor = ref(1)
   const { handlePress, handleRelease, handleMouseChange, handleMouseMove } = useModel()
 
@@ -77,6 +86,8 @@ export function useDevice() {
 
   onMounted(async () => {
     scaleFactor.value = isMac ? await appWindow.scaleFactor() : 1
+    const cursor = await cursorPosition()
+    rawCursorPoint.value = { x: cursor.x, y: cursor.y }
 
     appWindow.onScaleChanged(({ payload }) => {
       if (!isMac) return
@@ -167,6 +178,31 @@ export function useDevice() {
     onHideOnHover(x, y)
   }
 
+  const handleRawMouseMove = async (delta: CursorPoint) => {
+    if (Date.now() - lastAbsoluteMouseMoveAt.value < 32) return
+
+    let base = rawCursorPoint.value ?? latestCursorPoint.value
+
+    if (!base) {
+      const cursor = await cursorPosition()
+
+      base = { x: cursor.x, y: cursor.y }
+    }
+
+    const monitor = await getCursorMonitor(new PhysicalPosition(base.x, base.y))
+
+    if (!monitor) return
+
+    const { position, size } = monitor
+    const next = {
+      x: Math.max(position.x, Math.min(base.x + delta.x, position.x + size.width)),
+      y: Math.max(position.y, Math.min(base.y + delta.y, position.y + size.height)),
+    }
+
+    rawCursorPoint.value = next
+    latestCursorPoint.value = next
+  }
+
   const handleAutoRelease = (key: string, delay = 100) => {
     handlePress(key)
 
@@ -214,7 +250,11 @@ export function useDevice() {
       case 'MouseRelease':
         return handleMouseChange(value, false)
       case 'MouseMove':
+        lastAbsoluteMouseMoveAt.value = Date.now()
+        rawCursorPoint.value = value
         return latestCursorPoint.value = value
+      case 'MouseMoveDelta':
+        return void handleRawMouseMove(value)
     }
   })
 

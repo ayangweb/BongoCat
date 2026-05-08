@@ -20,4 +20,4 @@ tauri-plugin = { version = "2", features = [ "build" ] }
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
 tauri-plugin-custom-window = { path = "./src-tauri/src/plugins/window" }
 tauri-plugin-admin-status = { path = "./src-tauri/src/plugins/admin-status" }
-windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading", "Win32_UI_Input", "Win32_UI_WindowsAndMessaging"] }
