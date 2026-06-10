@@ -147,6 +147,29 @@
           "feedbackIssues": "Feedback Issues",
           "viewLog": "View Logs"
         }
+      },
+      "pomodoro": {
+        "title": "Pomodoro Timer",
+        "labels": {
+          "pomodoroSettings": "Pomodoro Settings",
+          "timerSettings": "Timer Settings",
+          "enabled": "Enable Pomodoro",
+          "workDuration": "Work Duration",
+          "shortBreakDuration": "Short Break Duration",
+          "longBreakDuration": "Long Break Duration",
+          "longBreakInterval": "Long Break Interval",
+          "autoStartBreak": "Auto Start Break",
+          "autoStartWork": "Auto Start Work"
+        },
+        "hints": {
+          "enabled": "When enabled, the cat window will show the pomodoro timer widget.",
+          "workDuration": "Duration of work sessions.",
+          "shortBreakDuration": "Duration of short breaks.",
+          "longBreakDuration": "Duration of long breaks.",
+          "longBreakInterval": "Number of pomodoros before a long break.",
+          "autoStartBreak": "Automatically start break after work ends.",
+          "autoStartWork": "Automatically start work after break ends."
+        }
       }
     }
   },

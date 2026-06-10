@@ -13,6 +13,7 @@ import { RouterView } from 'vue-router'
 
 import { useTauriListen } from './composables/useTauriListen'
 import { useWindowState } from './composables/useWindowState'
+import { usePomodoro } from './composables/usePomodoro'
 import { LANGUAGE, LISTEN_KEY } from './constants'
 import { getAntdLocale } from './locales/index.ts'
 import { hideWindow, showWindow } from './plugins/window'
@@ -21,16 +22,21 @@ import { useCatStore } from './stores/cat'
 import { useGeneralStore } from './stores/general'
 import { useModelStore } from './stores/model'
 import { useShortcutStore } from './stores/shortcut.ts'
+import { usePomodoroStore } from './stores/pomodoro'
 
 const appStore = useAppStore()
 const modelStore = useModelStore()
 const catStore = useCatStore()
 const generalStore = useGeneralStore()
 const shortcutStore = useShortcutStore()
+const pomodoroStore = usePomodoroStore()
 const appWindow = getCurrentWebviewWindow()
 const { isRestored, restoreState } = useWindowState()
 const { darkAlgorithm, defaultAlgorithm } = theme
 const { locale } = useI18n()
+
+// Initialize pomodoro timer
+usePomodoro()
 
 onMounted(async () => {
   await appStore.$tauri.start()
@@ -42,6 +48,7 @@ onMounted(async () => {
   await generalStore.$tauri.start()
   await generalStore.init()
   await shortcutStore.$tauri.start()
+  await pomodoroStore.$tauri.start()
   await restoreState()
 })
 

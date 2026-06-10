@@ -17,6 +17,7 @@ import { useDevice } from '@/composables/useDevice'
 import { useGamepad } from '@/composables/useGamepad'
 import { useModel } from '@/composables/useModel'
 import { useTauriListen } from '@/composables/useTauriListen'
+import PomodoroTimer from '@/components/pomodoro-timer/index.vue'
 import { LISTEN_KEY } from '@/constants'
 import { hideWindow, setAlwaysOnTop, setTaskbarVisibility, showWindow } from '@/plugins/window'
 import { useCatStore } from '@/stores/cat'
@@ -213,4 +214,6 @@ function handleMouseMove(event: MouseEvent) {
       </span>
     </div>
   </div>
+
+  <PomodoroTimer />
 </template>

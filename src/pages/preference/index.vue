@@ -15,6 +15,7 @@ import About from './components/about/index.vue'
 import Cat from './components/cat/index.vue'
 import General from './components/general/index.vue'
 import Model from './components/model/index.vue'
+import Pomodoro from './components/pomodoro/index.vue'
 import Shortcut from './components/shortcut/index.vue'
 
 useTray()
@@ -53,6 +54,12 @@ const menus = computed(() => [
     label: t('pages.preference.shortcut.title'),
     icon: 'i-solar:keyboard-bold',
     component: Shortcut,
+  },
+  {
+    key: 'pomodoro',
+    label: t('pages.preference.pomodoro.title'),
+    icon: 'i-solar:timer-bold',
+    component: Pomodoro,
   },
   {
     key: 'about',

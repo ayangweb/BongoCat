@@ -1,0 +1,4 @@
+allowBuilds:
+  '@parcel/watcher': set this to true or false
+  esbuild: set this to true or false
+  simple-git-hooks: set this to true or false

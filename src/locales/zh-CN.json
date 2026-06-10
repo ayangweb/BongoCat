@@ -147,6 +147,29 @@
           "feedbackIssues": "反馈问题",
           "viewLog": "查看日志"
         }
+      },
+      "pomodoro": {
+        "title": "番茄时钟",
+        "labels": {
+          "pomodoroSettings": "番茄时钟设置",
+          "timerSettings": "计时器设置",
+          "enabled": "启用番茄时钟",
+          "workDuration": "工作时长",
+          "shortBreakDuration": "短休息时长",
+          "longBreakDuration": "长休息时长",
+          "longBreakInterval": "长休息间隔",
+          "autoStartBreak": "自动开始休息",
+          "autoStartWork": "自动开始工作"
+        },
+        "hints": {
+          "enabled": "启用后，猫咪将显示番茄时钟悬浮组件。",
+          "workDuration": "工作阶段的时长。",
+          "shortBreakDuration": "短休息阶段的时长。",
+          "longBreakDuration": "长休息阶段的时长。",
+          "longBreakInterval": "多少个番茄后触发长休息。",
+          "autoStartBreak": "工作结束后自动开始休息。",
+          "autoStartWork": "休息结束后自动开始工作。"
+        }
       }
     }
   },
