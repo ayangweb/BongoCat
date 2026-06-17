@@ -1,7 +1,6 @@
+import vue from '@vitejs/plugin-vue'
 import { resolve } from 'node:path'
 import { env } from 'node:process'
-
-import vue from '@vitejs/plugin-vue'
 import UnoCSS from 'unocss/vite'
 import { defineConfig } from 'vite'
 
@@ -33,7 +32,7 @@ export default defineConfig(async () => ({
       : undefined,
     watch: {
       // 3. tell vite to ignore watching `src-tauri`
-      ignored: ['**/src-tauri/**'],
+      ignored: ['**/src-tauri/**', '**/target/**'],
     },
   },
 }))

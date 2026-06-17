@@ -42,6 +42,8 @@ onMounted(async () => {
   await modelStore.init()
   await catStore.$tauri.start()
   catStore.init()
+  // 启动时重置窗口穿透，防止持久化的 passThrough=true 锁死鼠标交互
+  catStore.window.passThrough = false
   await generalStore.$tauri.start()
   await generalStore.init()
   await shortcutStore.$tauri.start()

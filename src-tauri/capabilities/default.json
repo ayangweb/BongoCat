@@ -8,6 +8,7 @@
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
+    "core:window:allow-show",
     "core:window:allow-set-size",
     "core:window:deny-internal-toggle-maximize",
     "core:window:allow-set-always-on-top",
