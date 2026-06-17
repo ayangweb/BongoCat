@@ -17,6 +17,8 @@
         "title": "BongoCat",
         "url": "index.html/#/",
         "shadow": false,
+        "visible": false,
+        "resizable": false,
         "alwaysOnTop": true,
         "transparent": true,
         "decorations": false,

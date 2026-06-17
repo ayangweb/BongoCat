@@ -38,6 +38,7 @@ const generalStore = useGeneralStore()
 const resizing = ref(false)
 const backgroundImagePath = ref<string>()
 const { stickActive } = useGamepad()
+const initialShowDone = ref(false)
 
 onMounted(startListening)
 
@@ -91,12 +92,17 @@ watch([() => catStore.window.scale, modelSize], async ([scale, modelSize]) => {
 
   const { width, height } = modelSize
 
-  appWindow.setSize(
+  await appWindow.setSize(
     new PhysicalSize({
       width: Math.round(width * (scale / 100)),
       height: Math.round(height * (scale / 100)),
     }),
   )
+
+  if (!initialShowDone.value && catStore.window.visible) {
+    initialShowDone.value = true
+    await appWindow.show()
+  }
 }, { immediate: true })
 
 watch([modelStore.pressedKeys, stickActive], ([keys, stickActive]) => {
