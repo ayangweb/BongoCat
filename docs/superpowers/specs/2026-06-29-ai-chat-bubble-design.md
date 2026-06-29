@@ -8,7 +8,7 @@
 
 在桌宠（Live2D 猫咪）头顶展示一个对话气泡，显示动态文字。
 
-- 文字来源：**由代码/事件主动推送**（提供一个通用 `say()` 接口，任意位置可调用；后续接一言、句库、交互触发都建在它之上）。
+- 文字来源：**由代码/事件主动推送**。两类生产者：前端 `say()`（任意位置可调用）+ 本地 HTTP 接口（进程外 bash/curl/任意工具推送，见 6.1）；后续接一言、句库、交互触发都建在它之上。
 - 消失行为：**定时自动消失**，接口可传 `duration=0` 表示常驻。
 - 平台：**三端都要**（macOS / Windows / Linux），macOS 用 NSPanel 处理层级。
 
@@ -60,12 +60,13 @@ say(text, duration)              ← 任意位置可调用的推送 API
 - **挂载时** `appWindow.setIgnoreCursorEvents(true)`（整窗鼠标穿透，透明空白区点不到）。
 - **气泡 UI**：圆角矩形 + 朝下小三角（指向猫咪），底部居中锚定，文字向上换行；`<Transition>` 做淡入淡出。
 - 样式从 `useAiStore()` 读取并绑到 `:style`：`textColor` / `fontSize` / `bgColor`+`bgOpacity`（合成 `rgba` 作气泡背景填充，窗口本身始终透明）。
-- **监听 `show-chat {text, duration}`**：
+- **监听 `show-chat {text, duration?}`**（`duration` 单位毫秒，可选）：
+  0. `!aiStore.ai.enabled` → 直接忽略（**总开关唯一生效点**，所有生产者共用）
   1. 写入 `text` → `await nextTick()`
   2. `bubbleEl.getBoundingClientRect()` 量出 `w/h`（CSS 逻辑像素）
   3. `appWindow.setSize(new LogicalSize(w + 阴影留白, h + 三角高))`
   4. `reposition()` → `appWindow.show()` → 触发淡入
-  5. 重置计时器：`duration > 0` 时 `duration` 毫秒后淡出并 `hide()`；`=0` 常驻
+  5. `ms = duration ?? aiStore.ai.duration * 1000`（**默认时长唯一兜底点**）；重置计时器：`ms > 0` 时 `ms` 毫秒后淡出并 `hide()`；`=0` 常驻
 - **监听主窗口几何变化** → 可见时 `reposition()`。
 - **样式变化（字号等）且气泡可见时** → 重新测量 → `setSize` → `reposition`（字号改变会改变尺寸）。
 
@@ -91,14 +92,53 @@ computeBubblePosition(main{x,y,w,h}, bubble{w,h}, screen{x,y,w,h}, gap) {
 
 ```ts
 export function say(text: string, duration?: number) {
-  const aiStore = useAiStore()
-  if (!aiStore.ai.enabled) return
-  emit('show-chat', { text, duration: duration ?? aiStore.ai.duration * 1000 })
+  emit('show-chat', { text, duration }) // duration 单位毫秒；undefined 时由 chat 页兜底默认值
 }
 ```
 
 - 全局 `emit` 广播，chat 窗口接收。任意页面/composable 直接 `say('你好~')`。
-- Rust 侧未来要推送只需 `app.emit("show-chat", payload)`，本版**不实现**（YAGNI，留一行注释说明）。
+- **总开关 / 默认时长不在这里判断**，统一由 chat 页处理（见第 4 节 step 0 / 5），保证前端 `say()` 与 HTTP 接口两个生产者行为一致。
+- 两类生产者最终都只是发同一个 `show-chat` 事件：
+  - 前端任意位置：`say()`
+  - 进程外（bash / curl / 任意工具）：HTTP 接口（见 6.1）
+
+## 6.1 HTTP 外部推送接口（方案②）
+
+进程内事件够不着外部。内嵌一个**本地 HTTP server**作为进程外入口，让 `curl` / 任意工具直接推送。
+
+**依赖**：`tiny_http`（极轻量、无需 async 运行时，单独 std 线程跑阻塞循环；比 axum 省）。加入 workspace `Cargo.toml`：`tiny_http = "0.12"`。
+
+**模块**：新增 `src-tauri/src/core/server.rs`，在 `setup` 阶段按配置启动。
+
+```
+GET http://127.0.0.1:<port>/say?text=<urlencoded>&duration=<秒，可选>&token=<可选>
+```
+
+- 启动时读 `aiStore` 配置：`httpEnabled` / `httpPort` / `httpToken`。
+- 在独立线程 `std::thread::spawn` 跑 `tiny_http::Server::http("127.0.0.1:<port>")` 阻塞循环。
+- 收到请求 → 解析 query：
+  - `httpToken` 非空时校验 `token` 不匹配 → `401`
+  - `text` 缺失 → `400`
+  - `duration` 给了就 `秒 → 毫秒`；没给则**不带** `duration` 字段（让 chat 页用默认值）；`0` 表示常驻
+  - 校验通过 → `app_handle.emit("show-chat", { text, duration })` → 返回 `200 ok`
+- **复用同一个 `show-chat` 事件**：总开关 / 默认时长 / 定位 / 动画全部由 chat 页统一处理，HTTP 侧只管解析转发。
+
+调用示例：
+
+```bash
+# 简单
+curl "http://127.0.0.1:7800/say?text=%E4%BD%A0%E5%A5%BD%E5%91%80"
+# 自动 urlencode + 指定 5 秒 + token
+curl -G "http://127.0.0.1:7800/say" \
+  --data-urlencode "text=你好呀~" \
+  --data "duration=5" --data "token=abc123"
+```
+
+**安全（信任边界，不可省）**：
+- **只绑 `127.0.0.1`**，不监听外网。
+- 开关默认 **关闭**（`httpEnabled=false`）：开一个监听端口是用户应主动同意的行为；在「AI」设置里显式开启。
+- 可选 `httpToken`：同机其它进程/用户也能访问 localhost，需要更强隔离时填 token 校验。默认空=仅靠 localhost。
+- `// ponytail: 改端口/开关/token 后需重启 app 生效（不做热重启）`。
 
 ## 7. macOS NSPanel（`src-tauri/src/core/setup/macos.rs`）
 
@@ -116,13 +156,17 @@ export function say(text: string, duration?: number) {
 
 ```ts
 ai: {
-  enabled:   boolean   // 总开关，默认 true
-  duration:  number    // 默认展示秒数，默认 3
-  textColor: string    // 文字颜色，默认 '#333'
-  fontSize:  number    // 文字大小(px)，默认 14
-  bgColor:   string    // 气泡底色，默认 '#fff'
-  bgOpacity: number    // 底色透明度 0-100，默认 90
-  debug:     boolean   // DEBUG 开关，默认 false
+  enabled:     boolean  // 总开关，默认 true
+  duration:    number   // 默认展示秒数，默认 3
+  textColor:   string   // 文字颜色，默认 '#333'
+  fontSize:    number   // 文字大小(px)，默认 14
+  bgColor:     string   // 气泡底色，默认 '#fff'
+  bgOpacity:   number   // 底色透明度 0-100，默认 90
+  debug:       boolean  // DEBUG 开关，默认 false
+  // —— HTTP 外部接口（见 6.1）——
+  httpEnabled: boolean  // HTTP 接口开关，默认 false（安全：默认不开端口）
+  httpPort:    number   // 监听端口，默认 7800
+  httpToken:   string   // 可选校验 token，默认 ''（空=不校验）
 }
 ```
 
@@ -131,6 +175,7 @@ AI 设置页（用现有 `ProList`/`ProListItem` + antdv-next 控件）：
 - **默认秒数** `duration`（InputNumber + `s` 后缀）
 - **文字颜色** `textColor`（ColorPicker）/ **文字大小** `fontSize`（InputNumber 或 Slider）
 - **气泡底色** `bgColor`（ColorPicker）/ **透明度** `bgOpacity`（Slider 0-100）
+- **HTTP 接口**子区：`httpEnabled`（Switch）/ `httpPort`（InputNumber）/ `httpToken`（Input.Password，可空）；开启时展示一条可复制的 `curl` 示例；旁注「改动后需重启生效」。
 - **DEBUG** `debug`（Switch）；开启后**展开测试区**：
   - 文本输入框 + 「展示」按钮 → 调 `say(inputText)` 立即在猫咪头顶展示
   - 这块同时充当定位的手动验证工具（见第 9 节）
@@ -168,6 +213,14 @@ i18n：5 个语言包补 key（zh-CN / zh-TW / en-US / vi-VN / pt-BR）。
 
 模型加载完成后 `say(t('greeting'))` 打个招呼（受 `ai.enabled` 控制），启动即可看到气泡浮在猫咪头顶。
 
+### (e) HTTP 接口验证
+
+- 关闭 `httpEnabled` → 端口不监听（`curl` 连不上）。
+- 开启后重启 → `curl ".../say?text=hi"` 返回 `200` 且猫咪头顶冒泡。
+- 缺 `text` → `400`；设了 `httpToken` 且不带/错 token → `401`。
+- 绑定确认：只在 `127.0.0.1` 可达，外网 IP 连不上。
+- `duration=0` → 常驻；`duration=5` → 5 秒后消失。
+
 ## 10. 改动文件一览
 
 新增：
@@ -177,10 +230,14 @@ i18n：5 个语言包补 key（zh-CN / zh-TW / en-US / vi-VN / pt-BR）。
 - `src/stores/ai.ts`
 - `src/pages/preference/components/ai/index.vue`
 
+- `src-tauri/src/core/server.rs`（HTTP 外部推送，tiny_http）
+
 修改：
 - `src-tauri/tauri.conf.json`（新增 chat 窗口）
 - `src/router`（新增 /chat 路由）
 - `src-tauri/src/core/setup/macos.rs`（chat NSPanel + move/resize 改广播）
+- `src-tauri/src/core/mod.rs` + `lib.rs`（setup 阶段启动 HTTP server）
+- `src-tauri/Cargo.toml`（+ `tiny_http`）
 - `src/pages/preference/index.vue`（menus 加 AI tab）
 - `src/locales/*`（5 个语言包补 key）
 - `src/pages/main/index.vue`（模型加载后调一次 `say` 打招呼）
@@ -189,4 +246,6 @@ i18n：5 个语言包补 key（zh-CN / zh-TW / en-US / vi-VN / pt-BR）。
 
 - macOS chat 与猫同 NSPanel level + order-front；若层级不准再抬高 `PanelLevel`。
 - 拖动猫咪时气泡用 JS 重定位有极轻微跟随延迟；完全消除需原生子窗口（大量平台代码），不值。
-- Rust 侧推送接口本版不实现，留注释；前端 `say()` 已是完整底座。
+- HTTP 接口用 `tiny_http` 单线程阻塞循环（够用），不引入 axum/tokio server 栈。
+- HTTP 改端口/开关/token 后需重启 app 生效，不做配置热重载。
+- HTTP 仅 `GET /say`，不做 REST/多路由/POST body（YAGNI，curl 一行就够）。
