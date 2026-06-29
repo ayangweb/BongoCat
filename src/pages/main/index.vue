@@ -11,8 +11,10 @@ import { useDebounceFn, useEventListener } from '@vueuse/core'
 import { round } from 'es-toolkit'
 import { nth } from 'es-toolkit/compat'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { useAppMenu } from '@/composables/useAppMenu'
+import { say } from '@/composables/useChat'
 import { useDevice } from '@/composables/useDevice'
 import { useGamepad } from '@/composables/useGamepad'
 import { useModel } from '@/composables/useModel'
@@ -35,6 +37,8 @@ const catStore = useCatStore()
 const { getBaseMenu, getExitMenu } = useAppMenu()
 const modelStore = useModelStore()
 const generalStore = useGeneralStore()
+const { t } = useI18n()
+let greeted = false
 const resizing = ref(false)
 const backgroundImagePath = ref<string>()
 const { stickActive } = useGamepad()
@@ -84,6 +88,11 @@ watch(() => modelStore.currentModel, async (model) => {
   }
 
   modelStore.modelReady = true
+
+  if (!greeted) {
+    greeted = true
+    say(t('pages.main.greeting'))
+  }
 }, { deep: true, immediate: true })
 
 watch([() => catStore.window.scale, modelSize], async ([scale, modelSize]) => {
