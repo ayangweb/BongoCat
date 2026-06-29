@@ -23,7 +23,14 @@ pub fn run() {
 
             let preference_window = app.get_webview_window(PREFERENCE_WINDOW_LABEL).unwrap();
 
-            setup::default(&app_handle, main_window.clone(), preference_window.clone());
+            let chat_window = app.get_webview_window("chat").unwrap();
+
+            setup::default(
+                &app_handle,
+                main_window.clone(),
+                preference_window.clone(),
+                chat_window.clone(),
+            );
 
             Ok(())
         })

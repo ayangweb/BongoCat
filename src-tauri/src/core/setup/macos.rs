@@ -29,6 +29,7 @@ pub fn platform(
     app_handle: &AppHandle,
     main_window: WebviewWindow,
     _preference_window: WebviewWindow,
+    chat_window: WebviewWindow,
 ) {
     let _ = app_handle.plugin(tauri_nspanel::init());
 
@@ -64,11 +65,10 @@ pub fn platform(
         let _ = blur_window.emit_to(target, WINDOW_BLUR_EVENT, true);
     });
 
+    // 广播给所有窗口（含 chat），使 chat 能跟随主窗口移动/缩放
     fn emit_position(window: &WebviewWindow) {
-        let target = EventTarget::labeled(MAIN_WINDOW_LABEL);
-
         if let Ok(position) = window.outer_position() {
-            let _ = window.emit_to(target, WINDOW_MOVED_EVENT, position);
+            let _ = window.emit(WINDOW_MOVED_EVENT, position);
         }
     }
 
@@ -76,10 +76,8 @@ pub fn platform(
     handler.window_did_resize(move |_| {
         emit_position(&resize_window);
 
-        let target = EventTarget::labeled(MAIN_WINDOW_LABEL);
-
         if let Ok(size) = resize_window.inner_size() {
-            let _ = resize_window.emit_to(target, WINDOW_RESIZED_EVENT, size);
+            let _ = resize_window.emit(WINDOW_RESIZED_EVENT, size);
         }
     });
 
@@ -87,6 +85,22 @@ pub fn platform(
     handler.window_did_move(move |_| {
         emit_position(&move_window);
     });
+
+    // chat 窗口：与猫同 level + 同 collection behavior，永不抢焦点
+    if let Ok(chat_panel) = chat_window.to_panel::<NsPanel>() {
+        chat_panel.set_level(PanelLevel::Dock.value());
+
+        chat_panel.set_style_mask(StyleMask::empty().nonactivating_panel().into());
+
+        chat_panel.set_collection_behavior(
+            CollectionBehavior::new()
+                .stationary()
+                .move_to_active_space()
+                .full_screen_auxiliary()
+                .into(),
+        );
+    }
+    // ponytail: 同层 order-front（chat 创建晚于 main，show 时在猫之上）；若层级不准再抬高 PanelLevel
 
     panel.set_event_handler(Some(handler.as_ref()));
 }
