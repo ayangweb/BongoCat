@@ -2,7 +2,7 @@
 import { LogicalSize, PhysicalPosition } from '@tauri-apps/api/dpi'
 import { TauriEvent } from '@tauri-apps/api/event'
 import { getCurrentWebviewWindow, WebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { useTauriListen } from '@/composables/useTauriListen'
 import { LISTEN_KEY, WINDOW_LABEL } from '@/constants'
@@ -24,11 +24,13 @@ const text = ref('')
 const visible = ref(false)
 
 let timer: ReturnType<typeof setTimeout> | undefined
+const unlisteners: Array<() => void> = []
 
 // 气泡背景：hex + 透明度(0-100) 合成 rgba；窗口本身始终透明
 function hexToRgba(hex: string, opacity: number) {
   const value = hex.replace('#', '')
   const full = value.length === 3 ? value.split('').map(c => c + c).join('') : value
+  if (full.length !== 6) return `rgba(0, 0, 0, ${opacity / 100})`
   const r = Number.parseInt(full.slice(0, 2), 16)
   const g = Number.parseInt(full.slice(2, 4), 16)
   const b = Number.parseInt(full.slice(4, 6), 16)
@@ -116,14 +118,22 @@ onMounted(async () => {
 
   if (isMac) {
     // macOS：NSPanel 不触发原生 move/resize，由 macos.rs 广播 tauri://move / tauri://resize
-    appWindow.listen(TauriEvent.WINDOW_MOVED, reposition)
-    appWindow.listen(TauriEvent.WINDOW_RESIZED, reposition)
+    unlisteners.push(await appWindow.listen(TauriEvent.WINDOW_MOVED, reposition))
+    unlisteners.push(await appWindow.listen(TauriEvent.WINDOW_RESIZED, reposition))
   } else {
     // Windows/Linux：原生监听主窗口几何变化
     const main = await WebviewWindow.getByLabel(WINDOW_LABEL.MAIN)
-    main?.onMoved(reposition)
-    main?.onResized(reposition)
+    if (main) {
+      unlisteners.push(await main.onMoved(reposition))
+      unlisteners.push(await main.onResized(reposition))
+    }
   }
+})
+
+// ponytail: singleton overlay window won't remount in prod, but cleanup is cheap and correct
+onUnmounted(() => {
+  unlisteners.forEach(fn => fn())
+  clearTimeout(timer)
 })
 
 useTauriListen<ShowChatPayload>(LISTEN_KEY.SHOW_CHAT, ({ payload }) => {
