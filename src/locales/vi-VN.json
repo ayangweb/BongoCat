@@ -1,6 +1,7 @@
 {
   "pages": {
     "main": {
+      "greeting": "Xin chào~",
       "hints": {
         "redrawing": "Đang đổi kích thước...",
         "switching": "Đang chuyển đổi..."
@@ -127,6 +128,31 @@
           "mirrorMode": "Bật/Tắt chế độ gương.",
           "passThrough": "Bật/Tắt cho phép click xuyên cửa sổ mèo.",
           "alwaysOnTop": "Bật/Tắt luôn giữ cửa sổ mèo trên cùng."
+        }
+      },
+      "ai": {
+        "title": "AI",
+        "labels": {
+          "basic": "Cài đặt bong bóng",
+          "enabled": "Bật bong bóng",
+          "duration": "Thời lượng mặc định",
+          "textColor": "Màu chữ",
+          "fontSize": "Cỡ chữ",
+          "bgColor": "Màu nền bong bóng",
+          "bgOpacity": "Độ trong suốt nền",
+          "http": "Giao diện HTTP",
+          "httpEnabled": "Bật giao diện HTTP",
+          "httpPort": "Cổng lắng nghe",
+          "httpToken": "Token xác thực",
+          "debug": "Chế độ gỡ lỗi",
+          "testText": "Văn bản thử",
+          "testShow": "Hiển thị"
+        },
+        "hints": {
+          "enabled": "Công tắc tổng. Khi tắt, không bong bóng nào hiển thị.",
+          "http": "Mở một giao diện HTTP cục bộ để công cụ ngoài (vd: curl) đẩy bong bóng. Chỉ lắng nghe 127.0.0.1.",
+          "httpRestart": "Đổi cổng/công tắc/token cần khởi động lại ứng dụng để có hiệu lực.",
+          "debug": "Mở khu vực thử bên dưới để kích hoạt bong bóng thủ công."
         }
       },
       "about": {

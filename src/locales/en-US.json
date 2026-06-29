@@ -1,6 +1,7 @@
 {
   "pages": {
     "main": {
+      "greeting": "Hi there~",
       "hints": {
         "redrawing": "Redrawing...",
         "switching": "Switching..."
@@ -127,6 +128,31 @@
           "mirrorMode": "Toggle the cat's mirror mode.",
           "passThrough": "Toggle whether the cat window is pass-through.",
           "alwaysOnTop": "Toggle whether the cat window stays on top."
+        }
+      },
+      "ai": {
+        "title": "AI",
+        "labels": {
+          "basic": "Bubble settings",
+          "enabled": "Enable bubble",
+          "duration": "Default duration",
+          "textColor": "Text color",
+          "fontSize": "Font size",
+          "bgColor": "Bubble color",
+          "bgOpacity": "Background opacity",
+          "http": "HTTP endpoint",
+          "httpEnabled": "Enable HTTP endpoint",
+          "httpPort": "Listen port",
+          "httpToken": "Auth token",
+          "debug": "Debug mode",
+          "testText": "Test text",
+          "testShow": "Show"
+        },
+        "hints": {
+          "enabled": "Master switch. When off, no bubble is shown.",
+          "http": "Expose a local HTTP endpoint so external tools (e.g. curl) can push bubbles. Bound to 127.0.0.1 only.",
+          "httpRestart": "Changing port/switch/token requires an app restart to take effect.",
+          "debug": "Expands the test area below for manually triggering a bubble."
         }
       },
       "about": {

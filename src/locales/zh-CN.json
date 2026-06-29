@@ -1,6 +1,7 @@
 {
   "pages": {
     "main": {
+      "greeting": "你好呀~",
       "hints": {
         "redrawing": "重绘中...",
         "switching": "切换中..."
@@ -127,6 +128,31 @@
           "mirrorMode": "切换猫咪的镜像模式。",
           "passThrough": "切换猫咪窗口是否可穿透。",
           "alwaysOnTop": "切换猫咪窗口是否置顶。"
+        }
+      },
+      "ai": {
+        "title": "AI",
+        "labels": {
+          "basic": "气泡设置",
+          "enabled": "启用气泡",
+          "duration": "默认展示时长",
+          "textColor": "文字颜色",
+          "fontSize": "文字大小",
+          "bgColor": "气泡底色",
+          "bgOpacity": "底色透明度",
+          "http": "HTTP 接口",
+          "httpEnabled": "启用 HTTP 接口",
+          "httpPort": "监听端口",
+          "httpToken": "校验 Token",
+          "debug": "调试模式",
+          "testText": "测试文本",
+          "testShow": "展示"
+        },
+        "hints": {
+          "enabled": "总开关，关闭后所有气泡都不显示。",
+          "http": "开启一个本地 HTTP 接口，供外部工具（如 curl）推送气泡。仅监听 127.0.0.1。",
+          "httpRestart": "改动端口/开关/Token 后需重启应用生效。",
+          "debug": "开启后展开下方测试区，可手动触发气泡用于验证。"
         }
       },
       "about": {

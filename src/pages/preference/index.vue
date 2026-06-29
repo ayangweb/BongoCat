@@ -12,6 +12,7 @@ import { useModelStore } from '@/stores/model'
 import { isMac } from '@/utils/platform'
 
 import About from './components/about/index.vue'
+import Ai from './components/ai/index.vue'
 import Cat from './components/cat/index.vue'
 import General from './components/general/index.vue'
 import Model from './components/model/index.vue'
@@ -53,6 +54,12 @@ const menus = computed(() => [
     label: t('pages.preference.shortcut.title'),
     icon: 'i-solar:keyboard-bold',
     component: Shortcut,
+  },
+  {
+    key: 'ai',
+    label: t('pages.preference.ai.title'),
+    icon: 'i-solar:chat-round-bold',
+    component: Ai,
   },
   {
     key: 'about',

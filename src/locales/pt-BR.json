@@ -1,6 +1,7 @@
 {
   "pages": {
     "main": {
+      "greeting": "Olá~",
       "hints": {
         "redrawing": "Redimensionando...",
         "switching": "Alternando..."
@@ -127,6 +128,31 @@
           "mirrorMode": "Alternar o modo espelho do gato.",
           "passThrough": "Alternar se a janela do gato é clicável.",
           "alwaysOnTop": "Alternar se a janela do gato permanece no topo."
+        }
+      },
+      "ai": {
+        "title": "AI",
+        "labels": {
+          "basic": "Configurações do balão",
+          "enabled": "Ativar balão",
+          "duration": "Duração padrão",
+          "textColor": "Cor do texto",
+          "fontSize": "Tamanho da fonte",
+          "bgColor": "Cor do balão",
+          "bgOpacity": "Opacidade do fundo",
+          "http": "Endpoint HTTP",
+          "httpEnabled": "Ativar endpoint HTTP",
+          "httpPort": "Porta de escuta",
+          "httpToken": "Token de autenticação",
+          "debug": "Modo de depuração",
+          "testText": "Texto de teste",
+          "testShow": "Mostrar"
+        },
+        "hints": {
+          "enabled": "Interruptor geral. Quando desligado, nenhum balão é exibido.",
+          "http": "Expõe um endpoint HTTP local para ferramentas externas (ex.: curl) enviarem balões. Vinculado apenas a 127.0.0.1.",
+          "httpRestart": "Alterar porta/interruptor/token exige reiniciar o app para ter efeito.",
+          "debug": "Expande a área de teste abaixo para disparar um balão manualmente."
         }
       },
       "about": {
