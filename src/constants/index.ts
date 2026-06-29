@@ -10,6 +10,7 @@ export const LISTEN_KEY = {
   GAMEPAD_CHANGED: 'gamepad-changed',
   START_MOTION: 'start-motion',
   SET_EXPRESSION: 'set-expression',
+  SHOW_CHAT: 'show-chat',
 }
 
 export const INVOKE_KEY = {
@@ -30,4 +31,5 @@ export const LANGUAGE = {
 export const WINDOW_LABEL = {
   MAIN: 'main',
   PREFERENCE: 'preference',
+  CHAT: 'chat',
 } as const
