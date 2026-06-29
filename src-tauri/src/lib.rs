@@ -32,6 +32,8 @@ pub fn run() {
                 chat_window.clone(),
             );
 
+            core::server::start(&app_handle);
+
             Ok(())
         })
         .invoke_handler(generate_handler![

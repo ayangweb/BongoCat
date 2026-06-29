@@ -14,6 +14,7 @@
     "core:window:allow-set-ignore-cursor-events",
     "core:window:allow-set-decorations",
     "core:window:allow-set-position",
+    "core:window:allow-current-monitor",
     "core:window:allow-set-theme",
     "core:window:allow-set-title",
     "admin-status:default",
