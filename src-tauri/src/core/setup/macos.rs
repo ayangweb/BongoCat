@@ -17,6 +17,14 @@ tauri_panel! {
         }
     })
 
+    panel!(NsChatPanel {
+        config: {
+            is_floating_panel: true,
+            can_become_key_window: false,
+            can_become_main_window: false
+        }
+    })
+
     panel_event!(NsPanelEventHandler {
         window_did_become_key(notification: &NSNotification) -> (),
         window_did_resign_key(notification: &NSNotification) -> (),
@@ -87,7 +95,7 @@ pub fn platform(
     });
 
     // chat 窗口：与猫同 level + 同 collection behavior，永不抢焦点
-    if let Ok(chat_panel) = chat_window.to_panel::<NsPanel>() {
+    if let Ok(chat_panel) = chat_window.to_panel::<NsChatPanel>() {
         chat_panel.set_level(PanelLevel::Dock.value());
 
         chat_panel.set_style_mask(StyleMask::empty().nonactivating_panel().into());
