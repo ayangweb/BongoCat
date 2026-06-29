@@ -33,6 +33,21 @@
         "minWidth": 800,
         "minHeight": 600,
         "skipTaskbar": true
+      },
+      {
+        "label": "chat",
+        "url": "index.html/#/chat",
+        "width": 200,
+        "height": 100,
+        "visible": false,
+        "transparent": true,
+        "decorations": false,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "maximizable": false,
+        "focus": false
       }
     ],
     "security": {
