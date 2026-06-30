@@ -21,6 +21,9 @@ pub fn default(
     #[cfg(debug_assertions)]
     main_window.open_devtools();
 
+    #[cfg(debug_assertions)]
+    chat_window.open_devtools();
+
     platform(
         app_handle,
         main_window.clone(),
