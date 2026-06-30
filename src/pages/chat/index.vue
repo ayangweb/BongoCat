@@ -56,6 +56,8 @@ async function resize() {
   const el = bubbleRef.value
   if (!el) return
 
+  // bubbleRef 是带 padding 的外层 wrapper（padding 给阴影留白，且会被 getBoundingClientRect 计入）；
+  // wrapper 是普通 block + w-max，宽度由内容决定、与当前窗口宽度无关，不会被 flex 压缩成竖排。
   const rect = el.getBoundingClientRect()
 
   await appWindow.setSize(new LogicalSize(Math.ceil(rect.width), Math.ceil(rect.height)))
@@ -157,23 +159,28 @@ watch(() => aiStore.ai.fontSize, async () => {
 </script>
 
 <template>
-  <div class="size-screen flex items-end justify-center overflow-hidden">
+  <div class="size-screen overflow-hidden">
     <Transition
       name="fade"
       @after-leave="appWindow.hide()"
     >
+      <!-- wrapper：w-max 让宽度跟随内容（横向排版），max-w-80 到达上限后才换行；p-3 给阴影留白并被测量计入 -->
       <div
         v-show="visible"
         ref="bubbleRef"
-        class="relative m-3 max-w-80 w-max whitespace-pre-wrap break-words px-3 py-2 leading-relaxed rounded-2xl shadow-lg"
-        :style="bubbleStyle"
+        class="max-w-80 w-max p-3"
       >
-        {{ text }}
+        <div
+          class="relative whitespace-pre-wrap break-words px-3 py-2 leading-relaxed rounded-2xl shadow-lg"
+          :style="bubbleStyle"
+        >
+          {{ text }}
 
-        <span
-          class="absolute left-1/2 top-full h-0 w-0 b-6 b-solid b-transparent -translate-x-1/2"
-          :style="triangleStyle"
-        />
+          <span
+            class="absolute left-1/2 top-full h-0 w-0 b-6 b-solid b-transparent -translate-x-1/2"
+            :style="triangleStyle"
+          />
+        </div>
       </div>
     </Transition>
   </div>
