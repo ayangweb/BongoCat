@@ -1,5 +1,15 @@
 # 猫咪头顶 AI 对话气泡 Implementation Plan
 
+> **状态：✅ 已全部实现并通过评审（分支 `feat/ai-chat-bubble`）。** Task 1–9 全部完成，逐任务两段式评审 + 整支最终评审通过。
+>
+> **最终评审发现的 Critical 已修：** chat 窗口缺 `core:window:allow-show/hide` 权限（`daf2f96`）。
+>
+> **联机（真机）验证时另发现并修复（计划/静态评审看不出，需 GUI 才暴露）：**
+> - `0f28e65` `main.currentMonitor()` 报 `TypeError`——`currentMonitor` 是 `@tauri-apps/api/window` 的独立函数，不是 `WebviewWindow`/`Window` 的方法；改用 `availableMonitors()` 按物理边界判定猫所在显示器。
+> - `0e0171f` 气泡文字竖排（每行一个字）——气泡是 flex 子项，`width:max-content` 不能阻止 flex 收缩到 min-content；改为「带 padding 的 block wrapper（`w-max max-w-80 p-3`）」，横向排版、到上限再换行，padding（被测量计入）替代 margin 预留阴影。
+> - `33bcf13` debug 构建下为 chat 窗口开 DevTools。
+> - App.vue 的 `unhandledrejection` 处理改为输出 Error 的 name/message/stack（原来 `JSON.stringify(Error)` → `{}` 把错误吞了）。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在 Live2D 猫咪头顶用一个独立透明穿透窗口展示自动消失的对话气泡，文字由前端 `say()` 或本地 HTTP 接口推送，三端通用。
@@ -67,7 +77,7 @@
   ```
   store id 为 `'ai'`，持久化 key 为 `'ai'`（Rust 端用 `with_store("ai", |s| s.try_get::<...>("ai"))` 读取）。
 
-- [ ] **Step 1: 写 store 文件**
+- [x] **Step 1: 写 store 文件**
 
 Create `src/stores/ai.ts`（结构对齐 `src/stores/cat.ts`）：
 
@@ -110,7 +120,7 @@ export const useAiStore = defineStore('ai', () => {
 })
 ```
 
-- [ ] **Step 2: 在 App.vue 注册 store 同步**
+- [x] **Step 2: 在 App.vue 注册 store 同步**
 
 修改 `src/App.vue`。在 import 区（约 19-23 行附近）加：
 
@@ -130,12 +140,12 @@ const aiStore = useAiStore()
   await aiStore.$tauri.start()
 ```
 
-- [ ] **Step 3: 类型检查 + lint**
+- [x] **Step 3: 类型检查 + lint**
 
 Run: `cd /Users/xuebaoku/GolandProjects/BongoCat && pnpm lint`
 Expected: 无 `src/stores/ai.ts` / `src/App.vue` 相关报错。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/stores/ai.ts src/App.vue
@@ -161,7 +171,7 @@ git commit -m "feat(ai): add ai config store with cross-window sync"
   ```
   全部入参/出参为 **物理像素**。`main` = 主窗口外框；`bubble` = 气泡物理尺寸；`screen` = 猫所在显示器 bounds；`gap` = 气泡与猫的间距（物理）。
 
-- [ ] **Step 1: 写失败的自检测试**
+- [x] **Step 1: 写失败的自检测试**
 
 Create `src/utils/chatPosition.test.ts`：
 
@@ -245,12 +255,12 @@ const gap = 10
 console.log('chatPosition: all assertions passed')
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `cd /Users/xuebaoku/GolandProjects/BongoCat && npx tsx src/utils/chatPosition.test.ts`
 Expected: FAIL，报错类似 `Cannot find module './chatPosition'` 或 `computeBubblePosition is not a function`。
 
-- [ ] **Step 3: 写最小实现**
+- [x] **Step 3: 写最小实现**
 
 Create `src/utils/chatPosition.ts`：
 
@@ -290,12 +300,12 @@ export function computeBubblePosition(main: Rect, bubble: Size, screen: Rect, ga
 }
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `cd /Users/xuebaoku/GolandProjects/BongoCat && npx tsx src/utils/chatPosition.test.ts`
 Expected: PASS，输出 `chatPosition: all assertions passed`。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/utils/chatPosition.ts src/utils/chatPosition.test.ts
@@ -316,7 +326,7 @@ git commit -m "feat(ai): add chat bubble position pure function with self-check"
   - `LISTEN_KEY.SHOW_CHAT = 'show-chat'`，`WINDOW_LABEL.CHAT = 'chat'`。
   - `say(text: string, duration?: number): Promise<void>`（`duration` 单位毫秒，省略时由 chat 页兜底默认值）。
 
-- [ ] **Step 1: 加常量**
+- [x] **Step 1: 加常量**
 
 修改 `src/constants/index.ts`。在 `LISTEN_KEY` 对象里加一项（放在 `SET_EXPRESSION` 后）：
 
@@ -335,7 +345,7 @@ export const WINDOW_LABEL = {
 } as const
 ```
 
-- [ ] **Step 2: 写 useChat composable**
+- [x] **Step 2: 写 useChat composable**
 
 Create `src/composables/useChat.ts`：
 
@@ -354,12 +364,12 @@ export function say(text: string, duration?: number) {
 }
 ```
 
-- [ ] **Step 3: 类型检查 + lint**
+- [x] **Step 3: 类型检查 + lint**
 
 Run: `cd /Users/xuebaoku/GolandProjects/BongoCat && pnpm lint`
 Expected: 无 `useChat.ts` / `constants` 相关报错。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/constants/index.ts src/composables/useChat.ts
@@ -379,7 +389,7 @@ git commit -m "feat(ai): add say() push api and chat constants"
 - Consumes: `WINDOW_LABEL.CHAT`（Task 3）。
 - Produces: label 为 `chat`、URL `index.html/#/chat` 的透明穿透窗口，挂载即鼠标穿透。
 
-- [ ] **Step 1: 在 tauri.conf.json 加 chat 窗口**
+- [x] **Step 1: 在 tauri.conf.json 加 chat 窗口**
 
 修改 `src-tauri/tauri.conf.json`，在 `windows` 数组里 `preference` 窗口对象之后追加（注意前一个对象末尾补逗号）：
 
@@ -401,7 +411,7 @@ git commit -m "feat(ai): add say() push api and chat constants"
       }
 ```
 
-- [ ] **Step 2: 加 /chat 路由**
+- [x] **Step 2: 加 /chat 路由**
 
 修改 `src/router/index.ts`。加 import：
 
@@ -418,7 +428,7 @@ import Chat from '../pages/chat/index.vue'
   },
 ```
 
-- [ ] **Step 3: 写 chat 页面骨架**
+- [x] **Step 3: 写 chat 页面骨架**
 
 Create `src/pages/chat/index.vue`：
 
@@ -440,12 +450,12 @@ onMounted(() => {
 </template>
 ```
 
-- [ ] **Step 4: 跑起来确认 chat 窗口已注册（不报错、main 仍正常）**
+- [x] **Step 4: 跑起来确认 chat 窗口已注册（不报错、main 仍正常）**
 
 Run: `cd /Users/xuebaoku/GolandProjects/BongoCat && pnpm tauri dev`
 Expected: app 正常启动，猫咪正常显示；无 "window label chat" 相关报错。chat 窗口 `visible:false` 所以看不到，正常。确认无误后 `Ctrl-C` 退出。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src-tauri/tauri.conf.json src/router/index.ts src/pages/chat/index.vue
@@ -463,7 +473,7 @@ git commit -m "feat(ai): register chat window, route and page skeleton"
 - Consumes: `useAiStore()`（Task 1）、`computeBubblePosition`（Task 2）、`LISTEN_KEY.SHOW_CHAT` / `WINDOW_LABEL.MAIN`（Task 3）。
 - Produces: 监听 `show-chat {text, duration?}` 的完整气泡渲染/测量/定位/计时/动画。
 
-- [ ] **Step 1: 全量替换 chat 页面**
+- [x] **Step 1: 全量替换 chat 页面**
 
 把 `src/pages/chat/index.vue` 整个替换为：
 
@@ -646,7 +656,7 @@ watch(() => aiStore.ai.fontSize, async () => {
 
 > 说明：`bubbleRef` 外层用 `m-3`（margin）为阴影预留空间，`getBoundingClientRect` 不含 box-shadow，靠 margin 让窗口尺寸留白，窗口透明所以留白不可见。三角用 border 画，`top-full` 贴在气泡底部正中指向猫咪。
 
-- [ ] **Step 2: 手动验证基本展示（借后续 DEBUG 测试区前，先用临时招呼验证）**
+- [x] **Step 2: 手动验证基本展示（借后续 DEBUG 测试区前，先用临时招呼验证）**
 
 临时验证：在 `src/pages/chat/index.vue` 的 `onMounted` 末尾临时加一行 `setTimeout(() => showChat({ text: '你好呀~测试一条比较长的文字看看换行' }), 2000)`，然后：
 
@@ -655,12 +665,12 @@ Expected: 启动 ~2 秒后，猫咪头顶冒出气泡，3 秒后淡出消失。�
 
 确认后 **删除这行临时代码**。`Ctrl-C` 退出。
 
-- [ ] **Step 3: lint**
+- [x] **Step 3: lint**
 
 Run: `cd /Users/xuebaoku/GolandProjects/BongoCat && pnpm lint`
 Expected: 无 `chat/index.vue` 相关报错。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/pages/chat/index.vue
@@ -680,7 +690,7 @@ git commit -m "feat(ai): full chat bubble lifecycle (measure, size, position, ti
   - chat 窗口转为 NSPanel，与猫同 level（Dock）+ 同 collection behavior，`non_activating` / `can_become_key=false`。
   - 主窗口的 `tauri://move` / `tauri://resize` 改为 **广播**（`emit`），使 chat 能收到主窗口几何变化。
 
-- [ ] **Step 1: macos.rs 签名加 chat 窗口参数 + 改广播 + 建 chat panel**
+- [x] **Step 1: macos.rs 签名加 chat 窗口参数 + 改广播 + 建 chat panel**
 
 修改 `src-tauri/src/core/setup/macos.rs`。
 
@@ -760,7 +770,7 @@ pub fn platform(
     // ponytail: 同层 order-front（chat 创建晚于 main，show 时在猫之上）；若层级不准再抬高 PanelLevel
 ```
 
-- [ ] **Step 2: setup/mod.rs 与 common.rs 传入 chat 窗口**
+- [x] **Step 2: setup/mod.rs 与 common.rs 传入 chat 窗口**
 
 修改 `src-tauri/src/core/setup/mod.rs`，`default` 签名加 `chat_window`，并透传：
 
@@ -795,7 +805,7 @@ pub fn platform(
 }
 ```
 
-- [ ] **Step 3: lib.rs 取 chat 窗口并传入 setup**
+- [x] **Step 3: lib.rs 取 chat 窗口并传入 setup**
 
 修改 `src-tauri/src/lib.rs`，在 `let preference_window = ...` 之后、`setup::default(...)` 调用处：
 
@@ -810,12 +820,12 @@ pub fn platform(
             );
 ```
 
-- [ ] **Step 4: 编译验证**
+- [x] **Step 4: 编译验证**
 
 Run: `cd /Users/xuebaoku/GolandProjects/BongoCat/src-tauri && cargo build`
 Expected: 编译通过（warnings 可接受）。
 
-- [ ] **Step 5: macOS 上手动验证层级 + 跟随**
+- [x] **Step 5: macOS 上手动验证层级 + 跟随**
 
 Run: `cd /Users/xuebaoku/GolandProjects/BongoCat && pnpm tauri dev`（在 macOS 上）
 临时在 chat 页 onMounted 加 `setTimeout(() => showChat({ text: '层级测试', duration: 0 }), 1500)`（`duration:0` 常驻便于观察），验证：
@@ -824,7 +834,7 @@ Run: `cd /Users/xuebaoku/GolandProjects/BongoCat && pnpm tauri dev`（在 macOS 
 
 确认后删除临时代码，`Ctrl-C` 退出。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src-tauri/src/core/setup/macos.rs src-tauri/src/core/setup/mod.rs src-tauri/src/core/setup/common.rs src-tauri/src/lib.rs
@@ -844,7 +854,7 @@ git commit -m "feat(ai): macos chat NSPanel + broadcast main move/resize to chat
 - Consumes: `useAiStore()`（Task 1）、`say()`（Task 3）、`ProList` / `ProListItem`。
 - Produces: preference 窗口新增「AI」tab，含全部配置 + DEBUG 测试区。
 
-- [ ] **Step 1: 5 个语言包补 key**
+- [x] **Step 1: 5 个语言包补 key**
 
 每个文件在 `pages.preference` 对象内加一个 `ai` 子对象，并在 `pages.main` 内加 `greeting`。
 
@@ -1000,7 +1010,7 @@ git commit -m "feat(ai): macos chat NSPanel + broadcast main move/resize to chat
 
 > 校验 JSON 合法：`node -e "require('./src/locales/zh-CN.json')"`（对 5 个文件各跑一次，不报错即合法）。
 
-- [ ] **Step 2: 写 AI 设置组件**
+- [x] **Step 2: 写 AI 设置组件**
 
 Create `src/pages/preference/components/ai/index.vue`：
 
@@ -1151,7 +1161,7 @@ function handleTest() {
 
 > `ColorPicker` 用 antdv-next 自带。`// ponytail`: 若该版本无 `ColorPicker` 导出，回退 `<input type="color" v-model="aiStore.ai.textColor">`。
 
-- [ ] **Step 3: preference 页加 AI tab**
+- [x] **Step 3: preference 页加 AI tab**
 
 修改 `src/pages/preference/index.vue`。import 区加：
 
@@ -1170,7 +1180,7 @@ import Ai from './components/ai/index.vue'
   },
 ```
 
-- [ ] **Step 4: 跑起来验证设置页 + DEBUG 测试**
+- [x] **Step 4: 跑起来验证设置页 + DEBUG 测试**
 
 Run: `cd /Users/xuebaoku/GolandProjects/BongoCat && pnpm tauri dev`
 打开偏好设置（托盘/右键菜单）→「AI」tab：
@@ -1181,12 +1191,12 @@ Run: `cd /Users/xuebaoku/GolandProjects/BongoCat && pnpm tauri dev`
 
 确认后 `Ctrl-C` 退出。
 
-- [ ] **Step 5: lint**
+- [x] **Step 5: lint**
 
 Run: `cd /Users/xuebaoku/GolandProjects/BongoCat && pnpm lint`
 Expected: 无相关报错。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/pages/preference/components/ai/index.vue src/pages/preference/index.vue src/locales
@@ -1204,7 +1214,7 @@ git commit -m "feat(ai): add AI settings tab with debug test area and i18n"
 - Consumes: `say()`（Task 3）、`pages.main.greeting`（Task 7）。
 - Produces: 首次模型加载完成后调用一次 `say(greeting)`（受 `ai.enabled` 控制，由 chat 页判断）。
 
-- [ ] **Step 1: 主页面加首次招呼**
+- [x] **Step 1: 主页面加首次招呼**
 
 修改 `src/pages/main/index.vue`。
 
@@ -1243,19 +1253,19 @@ import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 ```
 
-- [ ] **Step 2: 跑起来验证启动即招呼**
+- [x] **Step 2: 跑起来验证启动即招呼**
 
 Run: `cd /Users/xuebaoku/GolandProjects/BongoCat && pnpm tauri dev`
 Expected: app 启动、模型加载完成后，猫咪头顶自动冒出一句招呼（默认 3 秒后消失）。把 AI 设置里 `enabled` 关掉重启 → 不再招呼。
 
 确认后 `Ctrl-C` 退出。
 
-- [ ] **Step 3: lint**
+- [x] **Step 3: lint**
 
 Run: `cd /Users/xuebaoku/GolandProjects/BongoCat && pnpm lint`
 Expected: 无相关报错。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/pages/main/index.vue
@@ -1277,7 +1287,7 @@ git commit -m "feat(ai): greet once on model ready"
 - Consumes: `ai` store 持久化数据（Task 1，Rust 端 `with_store("ai", |s| s.try_get_or_default::<AiConfig>("ai"))`）、`show-chat` 事件（Task 3）。
 - Produces: `core::server::start(&app_handle)`；`GET http://127.0.0.1:<port>/say?text=&duration=&token=`。
 
-- [ ] **Step 1: 加 Rust 依赖**
+- [x] **Step 1: 加 Rust 依赖**
 
 修改 `src-tauri/Cargo.toml`，在 `[dependencies]` 段内（`fs_extra = "1"` 附近）加两行：
 
@@ -1286,7 +1296,7 @@ tiny_http = "0.12"
 form_urlencoded = "1"
 ```
 
-- [ ] **Step 2: 写 server.rs**
+- [x] **Step 2: 写 server.rs**
 
 Create `src-tauri/src/core/server.rs`：
 
@@ -1396,7 +1406,7 @@ fn handle_request(app_handle: &AppHandle, token: &str, request: tiny_http::Reque
 }
 ```
 
-- [ ] **Step 3: 注册模块 + setup 启动**
+- [x] **Step 3: 注册模块 + setup 启动**
 
 修改 `src-tauri/src/core/mod.rs`，加一行：
 
@@ -1412,7 +1422,7 @@ pub mod server;
 
 > `app_handle` 在闭包里类型为 `&AppHandle`，与 `server::start(&AppHandle)` 匹配。`core` 模块已在文件顶部 `mod core;`。
 
-- [ ] **Step 4: 加 currentMonitor 权限（防御性）**
+- [x] **Step 4: 加 currentMonitor 权限（防御性）**
 
 修改 `src-tauri/capabilities/default.json`，在 `permissions` 数组里 `"core:window:allow-set-position",` 之后加一行：
 
@@ -1422,12 +1432,12 @@ pub mod server;
 
 > chat 页 `currentMonitor()` 需要。`windows: ["*"]` 已让 chat 继承全部权限。
 
-- [ ] **Step 5: 编译**
+- [x] **Step 5: 编译**
 
 Run: `cd /Users/xuebaoku/GolandProjects/BongoCat/src-tauri && cargo build`
 Expected: 编译通过。
 
-- [ ] **Step 6: 端到端验证 HTTP 接口**
+- [x] **Step 6: 端到端验证 HTTP 接口**
 
 Run: `cd /Users/xuebaoku/GolandProjects/BongoCat && pnpm tauri dev`
 
@@ -1454,7 +1464,7 @@ Expected: 第一/三/四条返回 `ok` 且猫头顶冒泡；第二条返回 `400
 
 确认后 `Ctrl-C` 退出。
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/src/core/server.rs src-tauri/src/core/mod.rs src-tauri/src/lib.rs src-tauri/capabilities/default.json
