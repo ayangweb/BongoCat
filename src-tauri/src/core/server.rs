@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_pinia::ManagerExt;
 use tiny_http::{Method, Response, Server};
 
@@ -35,6 +35,7 @@ struct AiPublicConfig {
     bg_opacity: u32,
 }
 
+// keep in sync with src/stores/ai.ts defaults
 impl Default for AiPublicConfig {
     fn default() -> Self {
         Self {
@@ -243,6 +244,10 @@ fn handle_config(app_handle: &AppHandle, params: &HashMap<String, String>, reque
             .unwrap_or_default();
         let body = serde_json::to_string(&current).unwrap_or_else(|_| "null".into());
         return respond_json(request, body);
+    }
+
+    if app_handle.get_webview_window("chat").is_none() {
+        return respond(request, 503, "chat window not ready");
     }
 
     let _ = app_handle.emit("update-config", &overrides);
