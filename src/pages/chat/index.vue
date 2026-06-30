@@ -2,6 +2,7 @@
 import { LogicalSize, PhysicalPosition } from '@tauri-apps/api/dpi'
 import { TauriEvent } from '@tauri-apps/api/event'
 import { getCurrentWebviewWindow, WebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { availableMonitors } from '@tauri-apps/api/window'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { useTauriListen } from '@/composables/useTauriListen'
@@ -67,11 +68,18 @@ async function reposition() {
   const main = await WebviewWindow.getByLabel(WINDOW_LABEL.MAIN)
   if (!main) return
 
-  const [position, size, monitor] = await Promise.all([
+  const [position, size, monitors] = await Promise.all([
     main.outerPosition(),
     main.outerSize(),
-    main.currentMonitor(),
+    availableMonitors(),
   ])
+
+  // 猫所在显示器：包含猫中心点的那块屏（全物理像素比较，多屏/不同 DPI 都正确）
+  const centerX = position.x + size.width / 2
+  const centerY = position.y + size.height / 2
+  const monitor = monitors.find(({ position: p, size: s }) => {
+    return centerX >= p.x && centerX < p.x + s.width && centerY >= p.y && centerY < p.y + s.height
+  }) ?? monitors[0]
 
   if (!monitor) return
 

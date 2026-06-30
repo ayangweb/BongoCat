@@ -65,7 +65,15 @@ useTauriListen(LISTEN_KEY.HIDE_WINDOW, ({ payload }) => {
 })
 
 useEventListener('unhandledrejection', ({ reason }) => {
-  const message = isString(reason) ? reason : JSON.stringify(reason)
+  let message: string
+
+  if (isString(reason)) {
+    message = reason
+  } else if (reason instanceof Error) {
+    message = `${reason.name}: ${reason.message}\n${reason.stack ?? ''}`
+  } else {
+    message = JSON.stringify(reason)
+  }
 
   error(message)
 })
