@@ -11,6 +11,7 @@ export const LISTEN_KEY = {
   START_MOTION: 'start-motion',
   SET_EXPRESSION: 'set-expression',
   SHOW_CHAT: 'show-chat',
+  UPDATE_CONFIG: 'update-config',
 }
 
 export const INVOKE_KEY = {

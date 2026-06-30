@@ -3,7 +3,7 @@ import { LogicalSize, PhysicalPosition } from '@tauri-apps/api/dpi'
 import { TauriEvent } from '@tauri-apps/api/event'
 import { getCurrentWebviewWindow, WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { availableMonitors } from '@tauri-apps/api/window'
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 
 import { useTauriListen } from '@/composables/useTauriListen'
 import { LISTEN_KEY, WINDOW_LABEL } from '@/constants'
@@ -14,6 +14,10 @@ import { isMac } from '@/utils/platform'
 interface ShowChatPayload {
   text: string
   duration?: number
+  textColor?: string
+  fontSize?: number
+  bgColor?: string
+  bgOpacity?: number
 }
 
 const GAP = 8 // 气泡与猫的间距（逻辑像素），定位时 × scaleFactor 转物理
@@ -23,6 +27,14 @@ const aiStore = useAiStore()
 const bubbleRef = ref<HTMLElement>()
 const text = ref('')
 const visible = ref(false)
+
+// 本条气泡的一次性样式覆盖；每次 showChat 重置，不写入 aiStore（设置不变）
+const override = reactive<{
+  textColor?: string
+  fontSize?: number
+  bgColor?: string
+  bgOpacity?: number
+}>({})
 
 let timer: ReturnType<typeof setTimeout> | undefined
 const unlisteners: Array<() => void> = []
@@ -38,11 +50,11 @@ function hexToRgba(hex: string, opacity: number) {
   return `rgba(${r}, ${g}, ${b}, ${opacity / 100})`
 }
 
-const bgRgba = computed(() => hexToRgba(aiStore.ai.bgColor, aiStore.ai.bgOpacity))
+const bgRgba = computed(() => hexToRgba(override.bgColor ?? aiStore.ai.bgColor, override.bgOpacity ?? aiStore.ai.bgOpacity))
 
 const bubbleStyle = computed(() => ({
-  color: aiStore.ai.textColor,
-  fontSize: `${aiStore.ai.fontSize}px`,
+  color: override.textColor ?? aiStore.ai.textColor,
+  fontSize: `${override.fontSize ?? aiStore.ai.fontSize}px`,
   background: bgRgba.value,
 }))
 
@@ -102,9 +114,15 @@ function hide() {
   visible.value = false // 触发淡出；@after-leave 里再 appWindow.hide()
 }
 
-async function showChat({ text: nextText, duration }: ShowChatPayload) {
+async function showChat({ text: nextText, duration, textColor, fontSize, bgColor, bgOpacity }: ShowChatPayload) {
   // 总开关唯一生效点
   if (!aiStore.ai.enabled) return
+
+  // 一次性覆盖：赋 undefined 即回落到 store 默认
+  override.textColor = textColor
+  override.fontSize = fontSize
+  override.bgColor = bgColor
+  override.bgOpacity = bgOpacity
 
   text.value = nextText
   visible.value = true
@@ -148,6 +166,25 @@ onUnmounted(() => {
 
 useTauriListen<ShowChatPayload>(LISTEN_KEY.SHOW_CHAT, ({ payload }) => {
   showChat(payload)
+})
+
+interface UpdateConfigPayload {
+  duration?: number
+  textColor?: string
+  fontSize?: number
+  bgColor?: string
+  bgOpacity?: number
+}
+
+// 控制接口：写入 aiStore 默认值，saveOnChange 落盘并跨窗口同步到设置页
+useTauriListen<UpdateConfigPayload>(LISTEN_KEY.UPDATE_CONFIG, ({ payload }) => {
+  const { duration, textColor, fontSize, bgColor, bgOpacity } = payload
+
+  if (duration !== undefined) aiStore.ai.duration = duration
+  if (textColor !== undefined) aiStore.ai.textColor = textColor
+  if (fontSize !== undefined) aiStore.ai.fontSize = fontSize
+  if (bgColor !== undefined) aiStore.ai.bgColor = bgColor
+  if (bgOpacity !== undefined) aiStore.ai.bgOpacity = bgOpacity
 })
 
 // 字号改变会改变气泡尺寸：可见时重新测量并定位
