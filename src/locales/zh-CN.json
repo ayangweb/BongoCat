@@ -130,8 +130,8 @@
           "alwaysOnTop": "切换猫咪窗口是否置顶。"
         }
       },
-      "ai": {
-        "title": "AI",
+      "chat": {
+        "title": "Chat",
         "labels": {
           "basic": "气泡设置",
           "enabled": "启用气泡",

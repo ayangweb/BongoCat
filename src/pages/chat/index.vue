@@ -7,7 +7,7 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from
 
 import { useTauriListen } from '@/composables/useTauriListen'
 import { LISTEN_KEY, WINDOW_LABEL } from '@/constants'
-import { useAiStore } from '@/stores/ai'
+import { useChatStore } from '@/stores/chat'
 import { computeBubblePosition } from '@/utils/chatPosition'
 import { isMac } from '@/utils/platform'
 
@@ -23,12 +23,12 @@ interface ShowChatPayload {
 const GAP = 8 // 气泡与猫的间距（逻辑像素），定位时 × scaleFactor 转物理
 
 const appWindow = getCurrentWebviewWindow()
-const aiStore = useAiStore()
+const chatStore = useChatStore()
 const bubbleRef = ref<HTMLElement>()
 const text = ref('')
 const visible = ref(false)
 
-// 本条气泡的一次性样式覆盖；每次 showChat 重置，不写入 aiStore（设置不变）
+// 本条气泡的一次性样式覆盖；每次 showChat 重置，不写入 chatStore（设置不变）
 const override = reactive<{
   textColor?: string
   fontSize?: number
@@ -50,11 +50,11 @@ function hexToRgba(hex: string, opacity: number) {
   return `rgba(${r}, ${g}, ${b}, ${opacity / 100})`
 }
 
-const bgRgba = computed(() => hexToRgba(override.bgColor ?? aiStore.ai.bgColor, override.bgOpacity ?? aiStore.ai.bgOpacity))
+const bgRgba = computed(() => hexToRgba(override.bgColor ?? chatStore.ai.bgColor, override.bgOpacity ?? chatStore.ai.bgOpacity))
 
 const bubbleStyle = computed(() => ({
-  color: override.textColor ?? aiStore.ai.textColor,
-  fontSize: `${override.fontSize ?? aiStore.ai.fontSize}px`,
+  color: override.textColor ?? chatStore.ai.textColor,
+  fontSize: `${override.fontSize ?? chatStore.ai.fontSize}px`,
   background: bgRgba.value,
 }))
 
@@ -116,7 +116,7 @@ function hide() {
 
 async function showChat({ text: nextText, duration, textColor, fontSize, bgColor, bgOpacity }: ShowChatPayload) {
   // 总开关唯一生效点
-  if (!aiStore.ai.enabled) return
+  if (!chatStore.ai.enabled) return
 
   // 一次性覆盖：赋 undefined 即回落到 store 默认
   override.textColor = textColor
@@ -132,7 +132,7 @@ async function showChat({ text: nextText, duration, textColor, fontSize, bgColor
   await appWindow.show()
 
   // 默认时长唯一兜底点；0 表示常驻
-  const ms = duration ?? aiStore.ai.duration * 1000
+  const ms = duration ?? chatStore.ai.duration * 1000
 
   clearTimeout(timer)
 
@@ -176,19 +176,19 @@ interface UpdateConfigPayload {
   bgOpacity?: number
 }
 
-// 控制接口：写入 aiStore 默认值，saveOnChange 落盘并跨窗口同步到设置页
+// 控制接口：写入 chatStore 默认值，saveOnChange 落盘并跨窗口同步到设置页
 useTauriListen<UpdateConfigPayload>(LISTEN_KEY.UPDATE_CONFIG, ({ payload }) => {
   const { duration, textColor, fontSize, bgColor, bgOpacity } = payload
 
-  if (duration !== undefined) aiStore.ai.duration = duration
-  if (textColor !== undefined) aiStore.ai.textColor = textColor
-  if (fontSize !== undefined) aiStore.ai.fontSize = fontSize
-  if (bgColor !== undefined) aiStore.ai.bgColor = bgColor
-  if (bgOpacity !== undefined) aiStore.ai.bgOpacity = bgOpacity
+  if (duration !== undefined) chatStore.ai.duration = duration
+  if (textColor !== undefined) chatStore.ai.textColor = textColor
+  if (fontSize !== undefined) chatStore.ai.fontSize = fontSize
+  if (bgColor !== undefined) chatStore.ai.bgColor = bgColor
+  if (bgOpacity !== undefined) chatStore.ai.bgOpacity = bgOpacity
 })
 
 // 字号改变会改变气泡尺寸：可见时重新测量并定位
-watch(() => aiStore.ai.fontSize, async () => {
+watch(() => chatStore.ai.fontSize, async () => {
   if (!visible.value) return
   await resize()
   await reposition()

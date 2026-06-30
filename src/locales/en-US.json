@@ -130,8 +130,8 @@
           "alwaysOnTop": "Toggle whether the cat window stays on top."
         }
       },
-      "ai": {
-        "title": "AI",
+      "chat": {
+        "title": "Chat",
         "labels": {
           "basic": "Bubble settings",
           "enabled": "Enable bubble",

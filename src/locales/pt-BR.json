@@ -130,8 +130,8 @@
           "alwaysOnTop": "Alternar se a janela do gato permanece no topo."
         }
       },
-      "ai": {
-        "title": "AI",
+      "chat": {
+        "title": "Chat",
         "labels": {
           "basic": "Configurações do balão",
           "enabled": "Ativar balão",

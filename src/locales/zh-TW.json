@@ -130,8 +130,8 @@
           "alwaysOnTop": "切換貓咪視窗是否置頂。"
         }
       },
-      "ai": {
-        "title": "AI",
+      "chat": {
+        "title": "Chat",
         "labels": {
           "basic": "氣泡設定",
           "enabled": "啟用氣泡",

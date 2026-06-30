@@ -12,8 +12,8 @@ import { useModelStore } from '@/stores/model'
 import { isMac } from '@/utils/platform'
 
 import About from './components/about/index.vue'
-import Ai from './components/ai/index.vue'
 import Cat from './components/cat/index.vue'
+import Chat from './components/chat/index.vue'
 import General from './components/general/index.vue'
 import Model from './components/model/index.vue'
 import Shortcut from './components/shortcut/index.vue'
@@ -56,10 +56,10 @@ const menus = computed(() => [
     component: Shortcut,
   },
   {
-    key: 'ai',
-    label: t('pages.preference.ai.title'),
+    key: 'chat',
+    label: t('pages.preference.chat.title'),
     icon: 'i-solar:chat-round-bold',
-    component: Ai,
+    component: Chat,
   },
   {
     key: 'about',

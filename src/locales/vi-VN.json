@@ -130,8 +130,8 @@
           "alwaysOnTop": "Bật/Tắt luôn giữ cửa sổ mèo trên cùng."
         }
       },
-      "ai": {
-        "title": "AI",
+      "chat": {
+        "title": "Chat",
         "labels": {
           "basic": "Cài đặt bong bóng",
           "enabled": "Bật bong bóng",
