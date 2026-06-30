@@ -146,13 +146,15 @@
           "httpToken": "校验 Token",
           "debug": "调试模式",
           "testText": "测试文本",
-          "testShow": "展示"
+          "testShow": "展示",
+          "httpDocs": "调用说明"
         },
         "hints": {
           "enabled": "总开关，关闭后所有气泡都不显示。",
           "http": "开启一个本地 HTTP 接口，供外部工具（如 curl）推送气泡。仅监听 127.0.0.1。",
           "httpRestart": "改动端口/开关/Token 后需重启应用生效。",
-          "debug": "开启后展开下方测试区，可手动触发气泡用于验证。"
+          "debug": "开启后展开下方测试区，可手动触发气泡用于验证。",
+          "httpDocs": "消息接口 /say 的样式参数仅对本条气泡生效；控制接口 /config 写入默认值并持久保存。"
         }
       },
       "about": {

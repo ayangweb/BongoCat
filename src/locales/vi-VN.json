@@ -146,13 +146,15 @@
           "httpToken": "Token xác thực",
           "debug": "Chế độ gỡ lỗi",
           "testText": "Văn bản thử",
-          "testShow": "Hiển thị"
+          "testShow": "Hiển thị",
+          "httpDocs": "Hướng dẫn gọi API"
         },
         "hints": {
           "enabled": "Công tắc tổng. Khi tắt, không bong bóng nào hiển thị.",
           "http": "Mở một giao diện HTTP cục bộ để công cụ ngoài (vd: curl) đẩy bong bóng. Chỉ lắng nghe 127.0.0.1.",
           "httpRestart": "Đổi cổng/công tắc/token cần khởi động lại ứng dụng để có hiệu lực.",
-          "debug": "Mở khu vực thử bên dưới để kích hoạt bong bóng thủ công."
+          "debug": "Mở khu vực thử bên dưới để kích hoạt bong bóng thủ công.",
+          "httpDocs": "Tham số kiểu dáng của /say chỉ áp dụng cho một bong bóng; /config ghi vào giá trị mặc định đã lưu."
         }
       },
       "about": {

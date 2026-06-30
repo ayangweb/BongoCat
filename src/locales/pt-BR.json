@@ -146,13 +146,15 @@
           "httpToken": "Token de autenticação",
           "debug": "Modo de depuração",
           "testText": "Texto de teste",
-          "testShow": "Mostrar"
+          "testShow": "Mostrar",
+          "httpDocs": "Referência da API"
         },
         "hints": {
           "enabled": "Interruptor geral. Quando desligado, nenhum balão é exibido.",
           "http": "Expõe um endpoint HTTP local para ferramentas externas (ex.: curl) enviarem balões. Vinculado apenas a 127.0.0.1.",
           "httpRestart": "Alterar porta/interruptor/token exige reiniciar o app para ter efeito.",
-          "debug": "Expande a área de teste abaixo para disparar um balão manualmente."
+          "debug": "Expande a área de teste abaixo para disparar um balão manualmente.",
+          "httpDocs": "Os parâmetros de estilo de /say afetam apenas um balão; /config grava os padrões salvos."
         }
       },
       "about": {

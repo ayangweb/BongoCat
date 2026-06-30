@@ -103,10 +103,34 @@ function handleTest() {
         />
       </ProListItem>
 
-      <ProListItem title="curl">
-        <code class="select-all break-all text-3 color-text-tertiary">
-          curl "http://127.0.0.1:{{ aiStore.ai.httpPort }}/say?text=hi"
-        </code>
+      <ProListItem
+        :description="$t('pages.preference.ai.hints.httpDocs')"
+        :title="$t('pages.preference.ai.labels.httpDocs')"
+        vertical
+      >
+        <Flex
+          class="w-full text-3 color-text-tertiary"
+          :gap="8"
+          vertical
+        >
+          <div>
+            <div class="color-text-secondary">
+              {{ $t('pages.preference.ai.labels.basic') }} · /say
+            </div>
+            <code class="select-all break-all">curl "http://127.0.0.1:{{ aiStore.ai.httpPort }}/say?text=hi&textColor=%23ff0000&fontSize=20&duration=5"</code>
+          </div>
+
+          <div>
+            <div class="color-text-secondary">
+              {{ $t('pages.preference.ai.labels.http') }} · /config
+            </div>
+            <code class="select-all break-all">curl "http://127.0.0.1:{{ aiStore.ai.httpPort }}/config?bgColor=%23000000&bgOpacity=80"</code>
+          </div>
+
+          <div class="break-all">
+            text · token? · duration · textColor · fontSize · bgColor · bgOpacity
+          </div>
+        </Flex>
       </ProListItem>
     </template>
   </ProList>
