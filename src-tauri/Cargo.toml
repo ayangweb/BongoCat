@@ -45,5 +45,8 @@ gilrs = { git = "https://github.com/ayangweb/gilrs", default-features = false, f
 [target."cfg(target_os = \"macos\")".dependencies]
 tauri-nspanel.workspace = true
 
+[target."cfg(target_os = \"windows\")".dependencies]
+windows.workspace = true
+
 [features]
 cargo-clippy = []
