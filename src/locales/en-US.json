@@ -51,6 +51,7 @@
           "launchOnStartup": "Launch on Startup",
           "showTaskbarIcon": "Show Taskbar Icon",
           "showTrayIcon": "Show Tray Icon",
+          "multiScreenFollow": "Follow Active Display",
           "appearanceSettings": "Appearance Settings",
           "themeMode": "Theme Mode",
           "language": "Language",
@@ -68,6 +69,7 @@
         "hints": {
           "showTaskbarIcon": "When enabled, the window can be captured via OBS Studio.",
           "showTrayIcon": "When enabled, the app icon is displayed in the system tray.",
+          "multiScreenFollow": "When enabled, the cat automatically moves to whichever display the cursor is on.",
           "inputMonitoringPermission": "Enable input monitoring to receive keyboard and mouse events from the system.",
           "inputMonitoringPermissionGuide": "Input Monitoring permission is required for the app to receive keyboard and mouse events from the system.\n\nSteps:\n1. Open System Settings → Privacy & Security → Input Monitoring.\n2. If BongoCat already appears in the list, select it and click the \"-\" button to remove it.\n3. Click the \"+\" button to find and add BongoCat.\n4. Restart the app for the permission to take effect.",
           "administratorPermission": "Running the app as administrator helps capture some system-level keys and input events more reliably.",

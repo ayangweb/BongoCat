@@ -13,6 +13,7 @@ const COMMAND = {
   HIDE_WINDOW: 'plugin:custom-window|hide_window',
   SET_ALWAYS_ON_TOP: 'plugin:custom-window|set_always_on_top',
   SET_TASKBAR_VISIBILITY: 'plugin:custom-window|set_taskbar_visibility',
+  SET_MULTI_SCREEN_FOLLOW: 'plugin:custom-window|set_multi_screen_follow',
 }
 
 export function showWindow(label?: WindowLabel) {
@@ -51,4 +52,8 @@ export async function toggleWindowVisible(label?: WindowLabel) {
 
 export async function setTaskbarVisibility(visible: boolean) {
   invoke(COMMAND.SET_TASKBAR_VISIBILITY, { visible })
+}
+
+export function setMultiScreenFollow(enabled: boolean) {
+  return invoke(COMMAND.SET_MULTI_SCREEN_FOLLOW, { enabled })
 }

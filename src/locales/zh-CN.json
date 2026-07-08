@@ -51,6 +51,7 @@
           "launchOnStartup": "开机自启动",
           "showTaskbarIcon": "显示任务栏图标",
           "showTrayIcon": "显示托盘图标",
+          "multiScreenFollow": "跟随当前屏幕",
           "appearanceSettings": "外观设置",
           "themeMode": "主题模式",
           "language": "语言",
@@ -68,6 +69,7 @@
         "hints": {
           "showTaskbarIcon": "启用后，即可通过 OBS Studio 捕获窗口。",
           "showTrayIcon": "启用后，在系统托盘中显示应用图标。",
+          "multiScreenFollow": "启用后，BongoCat 会自动移动到鼠标所在的显示器。",
           "inputMonitoringPermission": "开启输入监控权限，以便接收系统的键盘和鼠标事件来响应你的操作。",
           "inputMonitoringPermissionGuide": "开启输入监控权限后，应用才能接收系统的键盘和鼠标事件，从而响应你的操作。\n\n操作方式：\n1. 打开「系统设置」→「隐私与安全性」→「输入监控」。\n2. 若列表中已存在 BongoCat，请先选中它，点击「-」按钮将其删除。\n3. 点击「+」按钮，找到并添加 BongoCat 应用。\n4. 重启应用，以确保权限正式生效。",
           "administratorPermission": "以管理员身份运行应用，可以更稳定地捕获部分系统级按键与输入事件。",

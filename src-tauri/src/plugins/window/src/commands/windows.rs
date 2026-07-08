@@ -82,3 +82,12 @@ pub async fn set_always_on_top<R: Runtime>(
 pub async fn set_taskbar_visibility<R: Runtime>(window: WebviewWindow<R>, visible: bool) {
     let _ = window.set_skip_taskbar(!visible);
 }
+
+// 多屏跟随由前端统一控制，Windows 上窗口可自由跨屏，无需调整原生行为。
+#[command]
+pub async fn set_multi_screen_follow<R: Runtime>(
+    _app_handle: AppHandle<R>,
+    _window: WebviewWindow<R>,
+    _enabled: bool,
+) {
+}

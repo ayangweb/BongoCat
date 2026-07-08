@@ -18,6 +18,7 @@ import { say } from '@/composables/useChat'
 import { useDevice } from '@/composables/useDevice'
 import { useGamepad } from '@/composables/useGamepad'
 import { useModel } from '@/composables/useModel'
+import { useMultiScreenFollow } from '@/composables/useMultiScreenFollow'
 import { useTauriListen } from '@/composables/useTauriListen'
 import { LISTEN_KEY } from '@/constants'
 import { hideWindow, setAlwaysOnTop, setTaskbarVisibility, showWindow } from '@/plugins/window'
@@ -42,6 +43,8 @@ let greeted = false
 const resizing = ref(false)
 const backgroundImagePath = ref<string>()
 const { stickActive } = useGamepad()
+
+useMultiScreenFollow()
 
 onMounted(startListening)
 

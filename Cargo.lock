@@ -5216,6 +5216,7 @@ dependencies = [
 name = "tauri-plugin-custom-window"
 version = "0.1.0"
 dependencies = [
+ "objc2-app-kit",
  "serde",
  "tauri",
  "tauri-nspanel",

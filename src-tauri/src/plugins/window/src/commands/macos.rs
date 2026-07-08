@@ -1,12 +1,49 @@
 #![allow(deprecated)]
 use crate::MAIN_WINDOW_LABEL;
+use objc2_app_kit::NSWindowCollectionBehavior;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Runtime, WebviewWindow, command};
 use tauri_nspanel::{CollectionBehavior, ManagerExt, PanelLevel};
+
+// 多屏跟随开关；开启后去掉 `.stationary()`，让 NSPanel 可在不同屏幕之间移动。
+static MULTI_SCREEN_FOLLOW: AtomicBool = AtomicBool::new(false);
 
 enum MacOSPanelStatus {
     Show,
     Hide,
     SetAlwaysOnTop(bool),
+}
+
+fn show_collection_behavior() -> NSWindowCollectionBehavior {
+    let multi = MULTI_SCREEN_FOLLOW.load(Ordering::SeqCst);
+    if multi {
+        CollectionBehavior::new()
+            .can_join_all_spaces()
+            .full_screen_auxiliary()
+            .into()
+    } else {
+        CollectionBehavior::new()
+            .stationary()
+            .can_join_all_spaces()
+            .full_screen_auxiliary()
+            .into()
+    }
+}
+
+fn hide_collection_behavior() -> NSWindowCollectionBehavior {
+    let multi = MULTI_SCREEN_FOLLOW.load(Ordering::SeqCst);
+    if multi {
+        CollectionBehavior::new()
+            .move_to_active_space()
+            .full_screen_auxiliary()
+            .into()
+    } else {
+        CollectionBehavior::new()
+            .stationary()
+            .move_to_active_space()
+            .full_screen_auxiliary()
+            .into()
+    }
 }
 
 fn is_main_window<R: Runtime>(window: &WebviewWindow<R>) -> bool {
@@ -27,24 +64,12 @@ fn set_macos_panel<R: Runtime>(
                     MacOSPanelStatus::Show => {
                         panel.show();
 
-                        panel.set_collection_behavior(
-                            CollectionBehavior::new()
-                                .stationary()
-                                .can_join_all_spaces()
-                                .full_screen_auxiliary()
-                                .into(),
-                        );
+                        panel.set_collection_behavior(show_collection_behavior());
                     }
                     MacOSPanelStatus::Hide => {
                         panel.hide();
 
-                        panel.set_collection_behavior(
-                            CollectionBehavior::new()
-                                .stationary()
-                                .move_to_active_space()
-                                .full_screen_auxiliary()
-                                .into(),
-                        );
+                        panel.set_collection_behavior(hide_collection_behavior());
                     }
                     MacOSPanelStatus::SetAlwaysOnTop(always_on_top) => {
                         if always_on_top {
@@ -105,4 +130,25 @@ pub async fn set_always_on_top<R: Runtime>(
 #[command]
 pub async fn set_taskbar_visibility<R: Runtime>(app_handle: AppHandle<R>, visible: bool) {
     let _ = app_handle.set_dock_visibility(visible);
+}
+
+#[command]
+pub async fn set_multi_screen_follow<R: Runtime>(
+    app_handle: AppHandle<R>,
+    window: WebviewWindow<R>,
+    enabled: bool,
+) {
+    if !is_main_window(&window) {
+        return;
+    }
+
+    MULTI_SCREEN_FOLLOW.store(enabled, Ordering::SeqCst);
+
+    let app_handle_clone = app_handle.clone();
+
+    let _ = app_handle.run_on_main_thread(move || {
+        if let Ok(panel) = app_handle_clone.get_webview_panel(MAIN_WINDOW_LABEL) {
+            panel.set_collection_behavior(show_collection_behavior());
+        }
+    });
 }

@@ -3,6 +3,7 @@ const COMMANDS: &[&str] = &[
     "hide_window",
     "set_always_on_top",
     "set_taskbar_visibility",
+    "set_multi_screen_follow",
 ];
 
 fn main() {
