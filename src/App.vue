@@ -19,6 +19,7 @@ import { hideWindow, showWindow } from './plugins/window'
 import { useAppStore } from './stores/app'
 import { useCatStore } from './stores/cat'
 import { useChatStore } from './stores/chat'
+import { useChatHistoryStore } from './stores/chatHistory'
 import { useGeneralStore } from './stores/general'
 import { useModelStore } from './stores/model'
 import { useShortcutStore } from './stores/shortcut.ts'
@@ -29,6 +30,7 @@ const catStore = useCatStore()
 const generalStore = useGeneralStore()
 const shortcutStore = useShortcutStore()
 const chatStore = useChatStore()
+const chatHistoryStore = useChatHistoryStore()
 const appWindow = getCurrentWebviewWindow()
 const { isRestored, restoreState } = useWindowState()
 const { darkAlgorithm, defaultAlgorithm } = theme
@@ -45,6 +47,7 @@ onMounted(async () => {
   await generalStore.init()
   await shortcutStore.$tauri.start()
   await chatStore.$tauri.start()
+  await chatHistoryStore.$tauri.start()
   await restoreState()
 })
 
