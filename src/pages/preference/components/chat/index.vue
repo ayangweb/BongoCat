@@ -7,8 +7,11 @@ import ProList from '@/components/pro-list/index.vue'
 import { say } from '@/composables/useChat'
 import { useChatStore } from '@/stores/chat'
 
+import HistoryModal from './components/history-modal/index.vue'
+
 const chatStore = useChatStore()
 const testText = ref('你好呀~')
+const historyVisible = ref(false)
 
 function handleTest() {
   say(testText.value)
@@ -22,6 +25,15 @@ function handleTest() {
       :title="$t('pages.preference.chat.labels.enabled')"
     >
       <Switch v-model:checked="chatStore.ai.enabled" />
+    </ProListItem>
+
+    <ProListItem
+      :description="$t('pages.preference.chat.hints.history')"
+      :title="$t('pages.preference.chat.labels.history')"
+    >
+      <Button @click="historyVisible = true">
+        {{ $t('pages.preference.chat.history.view') }}
+      </Button>
     </ProListItem>
 
     <ProListItem :title="$t('pages.preference.chat.labels.duration')">
@@ -169,4 +181,6 @@ function handleTest() {
       </Flex>
     </ProListItem>
   </ProList>
+
+  <HistoryModal v-model="historyVisible" />
 </template>

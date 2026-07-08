@@ -149,14 +149,31 @@
           "debug": "Modo de depuração",
           "testText": "Texto de teste",
           "testShow": "Mostrar",
-          "httpDocs": "Referência da API"
+          "httpDocs": "Referência da API",
+          "history": "Histórico de mensagens"
         },
         "hints": {
           "enabled": "Interruptor geral. Quando desligado, nenhum balão é exibido.",
           "http": "Expõe um endpoint HTTP local para ferramentas externas (ex.: curl) enviarem balões. Vinculado apenas a 127.0.0.1.",
           "httpRestart": "Alterar porta/interruptor/token exige reiniciar o app para ter efeito.",
           "debug": "Expande a área de teste abaixo para disparar um balão manualmente.",
-          "httpDocs": "Os parâmetros de estilo de /say afetam apenas um balão; /config grava os padrões salvos."
+          "httpDocs": "Os parâmetros de estilo de /say afetam apenas um balão; /config grava os padrões salvos.",
+          "history": "Mantém as últimas 500 mensagens de balão, preservadas entre reinicializações."
+        },
+        "history": {
+          "view": "Ver",
+          "time": "Hora",
+          "status": "Status",
+          "source": "Origem",
+          "content": "Conteúdo",
+          "action": "Ação",
+          "detail": "Detalhes",
+          "shown": "Exibida",
+          "skipped": "Ignorada",
+          "http": "HTTP",
+          "internal": "Interno",
+          "filterStatus": "Todos os status",
+          "filterSource": "Todas as origens"
         }
       },
       "about": {

@@ -149,14 +149,31 @@
           "debug": "除錯模式",
           "testText": "測試文字",
           "testShow": "顯示",
-          "httpDocs": "呼叫說明"
+          "httpDocs": "呼叫說明",
+          "history": "歷史訊息"
         },
         "hints": {
           "enabled": "總開關，關閉後所有氣泡都不顯示。",
           "http": "開啟一個本機 HTTP 介面，供外部工具（如 curl）推送氣泡。僅監聽 127.0.0.1。",
           "httpRestart": "變更連接埠/開關/Token 後需重新啟動應用程式才會生效。",
           "debug": "開啟後展開下方測試區，可手動觸發氣泡用於驗證。",
-          "httpDocs": "訊息介面 /say 的樣式參數僅對本條氣泡生效；控制介面 /config 寫入預設值並持久保存。"
+          "httpDocs": "訊息介面 /say 的樣式參數僅對本條氣泡生效；控制介面 /config 寫入預設值並持久保存。",
+          "history": "記錄最近 500 則氣泡訊息，重新啟動後保留。"
+        },
+        "history": {
+          "view": "檢視",
+          "time": "時間",
+          "status": "狀態",
+          "source": "來源",
+          "content": "內容",
+          "action": "操作",
+          "detail": "詳情",
+          "shown": "已顯示",
+          "skipped": "未顯示",
+          "http": "HTTP",
+          "internal": "內部",
+          "filterStatus": "全部狀態",
+          "filterSource": "全部來源"
         }
       },
       "about": {

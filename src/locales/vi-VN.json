@@ -149,14 +149,31 @@
           "debug": "Chế độ gỡ lỗi",
           "testText": "Văn bản thử",
           "testShow": "Hiển thị",
-          "httpDocs": "Hướng dẫn gọi API"
+          "httpDocs": "Hướng dẫn gọi API",
+          "history": "Lịch sử tin nhắn"
         },
         "hints": {
           "enabled": "Công tắc tổng. Khi tắt, không bong bóng nào hiển thị.",
           "http": "Mở một giao diện HTTP cục bộ để công cụ ngoài (vd: curl) đẩy bong bóng. Chỉ lắng nghe 127.0.0.1.",
           "httpRestart": "Đổi cổng/công tắc/token cần khởi động lại ứng dụng để có hiệu lực.",
           "debug": "Mở khu vực thử bên dưới để kích hoạt bong bóng thủ công.",
-          "httpDocs": "Tham số kiểu dáng của /say chỉ áp dụng cho một bong bóng; /config ghi vào giá trị mặc định đã lưu."
+          "httpDocs": "Tham số kiểu dáng của /say chỉ áp dụng cho một bong bóng; /config ghi vào giá trị mặc định đã lưu.",
+          "history": "Lưu 500 tin nhắn bong bóng gần nhất, giữ lại sau khi khởi động lại."
+        },
+        "history": {
+          "view": "Xem",
+          "time": "Thời gian",
+          "status": "Trạng thái",
+          "source": "Nguồn",
+          "content": "Nội dung",
+          "action": "Thao tác",
+          "detail": "Chi tiết",
+          "shown": "Đã hiển thị",
+          "skipped": "Đã bỏ qua",
+          "http": "HTTP",
+          "internal": "Nội bộ",
+          "filterStatus": "Tất cả trạng thái",
+          "filterSource": "Tất cả nguồn"
         }
       },
       "about": {

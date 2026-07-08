@@ -149,14 +149,31 @@
           "debug": "Debug mode",
           "testText": "Test text",
           "testShow": "Show",
-          "httpDocs": "API reference"
+          "httpDocs": "API reference",
+          "history": "Message history"
         },
         "hints": {
           "enabled": "Master switch. When off, no bubble is shown.",
           "http": "Expose a local HTTP endpoint so external tools (e.g. curl) can push bubbles. Bound to 127.0.0.1 only.",
           "httpRestart": "Changing port/switch/token requires an app restart to take effect.",
           "debug": "Expands the test area below for manually triggering a bubble.",
-          "httpDocs": "Style params on /say apply to a single bubble only; /config writes the saved defaults."
+          "httpDocs": "Style params on /say apply to a single bubble only; /config writes the saved defaults.",
+          "history": "Keeps the latest 500 bubble messages, preserved across restarts."
+        },
+        "history": {
+          "view": "View",
+          "time": "Time",
+          "status": "Status",
+          "source": "Source",
+          "content": "Content",
+          "action": "Action",
+          "detail": "Detail",
+          "shown": "Shown",
+          "skipped": "Skipped",
+          "http": "HTTP",
+          "internal": "Internal",
+          "filterStatus": "All statuses",
+          "filterSource": "All sources"
         }
       },
       "about": {
