@@ -81,6 +81,8 @@ struct ShowChatPayload {
     bg_color: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     bg_opacity: Option<u32>,
+    // 消息来源；前端 say() 不带此字段，气泡窗口按 internal 兜底
+    source: String,
 }
 
 fn is_hex_color(value: &str) -> bool {
@@ -224,6 +226,7 @@ fn handle_say(app_handle: &AppHandle, params: &HashMap<String, String>, request:
         font_size: overrides.font_size,
         bg_color: overrides.bg_color,
         bg_opacity: overrides.bg_opacity,
+        source: "http".into(),
     };
 
     let _ = app_handle.emit("show-chat", payload);
@@ -308,5 +311,20 @@ mod tests {
         assert!(parse_overrides(&params(&[("bgOpacity", "101")])).is_err());
         assert!(parse_overrides(&params(&[("textColor", "blue")])).is_err());
         assert!(parse_overrides(&params(&[("duration", "-1")])).is_err());
+    }
+
+    #[test]
+    fn say_payload_serializes_http_source() {
+        let payload = ShowChatPayload {
+            text: "hi".into(),
+            duration: None,
+            text_color: None,
+            font_size: None,
+            bg_color: None,
+            bg_opacity: None,
+            source: "http".into(),
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains(r#""source":"http""#));
     }
 }
