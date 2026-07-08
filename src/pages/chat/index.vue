@@ -8,6 +8,7 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from
 import { useTauriListen } from '@/composables/useTauriListen'
 import { LISTEN_KEY, WINDOW_LABEL } from '@/constants'
 import { useChatStore } from '@/stores/chat'
+import { useChatHistoryStore } from '@/stores/chatHistory'
 import { computeBubblePosition } from '@/utils/chatPosition'
 import { isMac } from '@/utils/platform'
 
@@ -18,12 +19,14 @@ interface ShowChatPayload {
   fontSize?: number
   bgColor?: string
   bgOpacity?: number
+  source?: 'http'
 }
 
 const GAP = 8 // 气泡与猫的间距（逻辑像素），定位时 × scaleFactor 转物理
 
 const appWindow = getCurrentWebviewWindow()
 const chatStore = useChatStore()
+const chatHistoryStore = useChatHistoryStore()
 const bubbleRef = ref<HTMLElement>()
 const text = ref('')
 const visible = ref(false)
@@ -114,7 +117,15 @@ function hide() {
   visible.value = false // 触发淡出；@after-leave 里再 appWindow.hide()
 }
 
-async function showChat({ text: nextText, duration, textColor, fontSize, bgColor, bgOpacity }: ShowChatPayload) {
+async function showChat({ text: nextText, duration, textColor, fontSize, bgColor, bgOpacity, source }: ShowChatPayload) {
+  // 单点记录：所有来源的消息都经过这里，enabled 决定展示与否
+  chatHistoryStore.record({
+    time: Date.now(),
+    text: nextText,
+    status: chatStore.ai.enabled ? 'shown' : 'skipped',
+    source: source ?? 'internal',
+  })
+
   // 总开关唯一生效点
   if (!chatStore.ai.enabled) return
 
