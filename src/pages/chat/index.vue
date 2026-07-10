@@ -5,6 +5,7 @@ import { getCurrentWebviewWindow, WebviewWindow } from '@tauri-apps/api/webviewW
 import { availableMonitors } from '@tauri-apps/api/window'
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 
+import { useBark } from '@/composables/useBark'
 import { useTauriListen } from '@/composables/useTauriListen'
 import { LISTEN_KEY, WINDOW_LABEL } from '@/constants'
 import { useChatStore } from '@/stores/chat'
@@ -19,7 +20,7 @@ interface ShowChatPayload {
   fontSize?: number
   bgColor?: string
   bgOpacity?: number
-  source?: 'http'
+  source?: 'http' | 'bark'
 }
 
 const GAP = 8 // 气泡与猫的间距（逻辑像素），定位时 × scaleFactor 转物理
@@ -27,6 +28,7 @@ const GAP = 8 // 气泡与猫的间距（逻辑像素），定位时 × scaleFac
 const appWindow = getCurrentWebviewWindow()
 const chatStore = useChatStore()
 const chatHistoryStore = useChatHistoryStore()
+const { connect: connectBark, disconnect: disconnectBark } = useBark()
 const bubbleRef = ref<HTMLElement>()
 const text = ref('')
 const visible = ref(false)
@@ -167,12 +169,15 @@ onMounted(async () => {
       unlisteners.push(await main.onResized(reposition))
     }
   }
+
+  connectBark()
 })
 
 // ponytail: singleton overlay window won't remount in prod, but cleanup is cheap and correct
 onUnmounted(() => {
   unlisteners.forEach(fn => fn())
   clearTimeout(timer)
+  disconnectBark()
 })
 
 useTauriListen<ShowChatPayload>(LISTEN_KEY.SHOW_CHAT, ({ payload }) => {
@@ -204,6 +209,16 @@ watch(() => chatStore.ai.fontSize, async () => {
   await resize()
   await reposition()
 })
+
+// bark 连接参数变更后重建连接；防抖吸收设置页逐键输入。解密配置逐条实时读取，不在此列
+let barkReconnectTimer: ReturnType<typeof setTimeout> | undefined
+watch(
+  () => [chatStore.bark.enabled, chatStore.bark.serverUrl, chatStore.bark.deviceKey, chatStore.bark.streamToken],
+  () => {
+    clearTimeout(barkReconnectTimer)
+    barkReconnectTimer = setTimeout(connectBark, 500)
+  },
+)
 </script>
 
 <template>

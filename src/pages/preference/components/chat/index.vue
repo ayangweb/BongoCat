@@ -7,6 +7,7 @@ import ProList from '@/components/pro-list/index.vue'
 import { say } from '@/composables/useChat'
 import { useChatStore } from '@/stores/chat'
 
+import BarkSettings from './components/bark-settings/index.vue'
 import HistoryModal from './components/history-modal/index.vue'
 
 const chatStore = useChatStore()
@@ -152,6 +153,8 @@ function handleTest() {
       </ProListItem>
     </template>
   </ProList>
+
+  <BarkSettings />
 
   <ProList :title="$t('pages.preference.chat.labels.debug')">
     <ProListItem
