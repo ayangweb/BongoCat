@@ -18,7 +18,8 @@ BongoCat 作为 Bark 客户端，注册到自托管的 **htnanako/bark-server**�
 | 展示方式 | 只弹气泡：`title\nbody` 拼纯文本走现有 show-chat 路径，记入 chat-history（source: `bark`）；不发系统通知 |
 | 断线回放 | 不回放：不发送 Last-Event-ID，断线期间消息直接丢弃 |
 | 加密消息 | 支持 AES CBC/GCM（Web Crypto 原生），不支持 ECB |
-| 实现位置 | 前端 fetch-SSE（方案 A）：零 Rust 改动、零新依赖 |
+| 实现位置 | 前端 fetch-SSE（方案 A），但 fetch 经官方 `@tauri-apps/plugin-http` 发出（见下） |
+| CORS | fork 服务端（Fiber）无 CORS 中间件，webview 原生 fetch 跨域被拦截；改用 plugin-http（请求走 Rust 侧，不受 CORS 限制，响应体为真 ReadableStream，SSE 可用） |
 
 ## 服务端协议（htnanako fork）
 
@@ -63,7 +64,12 @@ bark-server SSE → useBark 解析/解密 → emit show-chat (source:'bark')
               → 现有 showChat()：记 chat-history + 总开关判断 + 弹气泡
 ```
 
-bark 消息不走任何特殊展示分支，与 `/say` 完全同路。Rust 端零改动。
+bark 消息不走任何特殊展示分支，与 `/say` 完全同路。
+
+Rust 端改动仅限 plugin-http 接入：`Cargo.toml` 加 `tauri-plugin-http`、`lib.rs` 一行
+`.plugin(tauri_plugin_http::init())`、`capabilities/default.json` 加 `http:default` 权限
+（url scope `http://**` + `https://**`）；npm 侧加 `@tauri-apps/plugin-http`。
+`useBark` 用 `import { fetch } from '@tauri-apps/plugin-http'` 替代原生 fetch，其余不变。
 
 ## 错误处理
 
