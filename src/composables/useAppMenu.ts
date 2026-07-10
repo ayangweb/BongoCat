@@ -1,9 +1,10 @@
+import { emit } from '@tauri-apps/api/event'
 import { CheckMenuItem, MenuItem, PredefinedMenuItem, Submenu } from '@tauri-apps/api/menu'
 import { exit, relaunch } from '@tauri-apps/plugin-process'
 import { range } from 'es-toolkit'
 import { useI18n } from 'vue-i18n'
 
-import { WINDOW_LABEL } from '@/constants'
+import { LISTEN_KEY, WINDOW_LABEL } from '@/constants'
 import { showWindow } from '@/plugins/window'
 import { useCatStore } from '@/stores/cat'
 import { isMac } from '@/utils/platform'
@@ -66,6 +67,13 @@ export function useAppMenu() {
         text: t('composables.useAppMenu.labels.preference'),
         accelerator: isMac ? 'Cmd+,' : '',
         action: () => showWindow(WINDOW_LABEL.PREFERENCE),
+      }),
+      MenuItem.new({
+        text: t('composables.useAppMenu.labels.chatSetting'),
+        action: () => {
+          showWindow(WINDOW_LABEL.PREFERENCE)
+          emit(LISTEN_KEY.NAVIGATE_PREFERENCE_TAB, 'chat')
+        },
       }),
       MenuItem.new({
         text: catStore.window.visible ? t('composables.useAppMenu.labels.hideCat') : t('composables.useAppMenu.labels.showCat'),

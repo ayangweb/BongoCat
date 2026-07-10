@@ -225,6 +225,7 @@
     "useAppMenu": {
       "labels": {
         "preference": "Preferences...",
+        "chatSetting": "Chat Settings",
         "hideCat": "Hide Cat",
         "showCat": "Show Cat",
         "passThrough": "Pass Through",

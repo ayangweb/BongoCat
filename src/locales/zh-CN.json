@@ -225,6 +225,7 @@
     "useAppMenu": {
       "labels": {
         "preference": "偏好设置...",
+        "chatSetting": "聊天设置",
         "hideCat": "隐藏猫咪",
         "showCat": "显示猫咪",
         "passThrough": "窗口穿透",

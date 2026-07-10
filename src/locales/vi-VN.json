@@ -225,6 +225,7 @@
     "useAppMenu": {
       "labels": {
         "preference": "Tùy chỉnh...",
+        "chatSetting": "Cài đặt trò chuyện",
         "hideCat": "Ẩn Mèo",
         "showCat": "Hiện Mèo",
         "passThrough": "Click xuyên",

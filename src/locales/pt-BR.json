@@ -225,6 +225,7 @@
     "useAppMenu": {
       "labels": {
         "preference": "Preferências...",
+        "chatSetting": "Configurações de chat",
         "hideCat": "Ocultar Gato",
         "showCat": "Mostrar Gato",
         "passThrough": "Janela Transparente",
