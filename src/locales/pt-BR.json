@@ -150,7 +150,16 @@
           "testText": "Texto de teste",
           "testShow": "Mostrar",
           "httpDocs": "Referência da API",
-          "history": "Histórico de mensagens"
+          "history": "Histórico de mensagens",
+          "bark": "Push Bark",
+          "barkEnabled": "Ativar Bark",
+          "barkServerUrl": "URL do servidor",
+          "barkRegister": "Registrar dispositivo",
+          "barkDeviceKey": "Chave do dispositivo",
+          "barkStatus": "Status da conexão",
+          "barkCryptoKey": "Chave de descriptografia",
+          "barkCryptoIv": "IV",
+          "barkCryptoMode": "Modo de cifra"
         },
         "hints": {
           "enabled": "Interruptor geral. Quando desligado, nenhum balão é exibido.",
@@ -158,7 +167,10 @@
           "httpRestart": "Alterar porta/interruptor/token exige reiniciar o app para ter efeito.",
           "debug": "Expande a área de teste abaixo para disparar um balão manualmente.",
           "httpDocs": "Os parâmetros de estilo de /say afetam apenas um balão; /config grava os padrões salvos.",
-          "history": "Mantém as últimas 500 mensagens de balão, preservadas entre reinicializações."
+          "history": "Mantém as últimas 500 mensagens de balão, preservadas entre reinicializações.",
+          "bark": "Conecte-se a um htnanako/bark-server auto-hospedado via SSE para receber pushes do Bark como balões. Mensagens enviadas offline não são reenviadas.",
+          "barkRegister": "Registre primeiro para obter a chave do dispositivo; use-a para enviar mensagens ao servidor.",
+          "barkCrypto": "Deixe vazio para não descriptografar; mensagens criptografadas são descartadas sem chave configurada."
         },
         "history": {
           "view": "Ver",
@@ -173,7 +185,15 @@
           "http": "HTTP",
           "internal": "Interno",
           "filterStatus": "Todos os status",
-          "filterSource": "Todas as origens"
+          "filterSource": "Todas as origens",
+          "bark": "Bark"
+        },
+        "barkStatus": {
+          "idle": "Inativo",
+          "connecting": "Conectando",
+          "connected": "Conectado",
+          "reconnecting": "Reconectando",
+          "unauthorized": "Necessário registrar novamente"
         }
       },
       "about": {

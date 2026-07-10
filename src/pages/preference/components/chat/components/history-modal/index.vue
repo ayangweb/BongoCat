@@ -26,6 +26,7 @@ const statusOptions = computed(() => [
 const sourceOptions = computed(() => [
   { value: 'http', label: t('pages.preference.chat.history.http') },
   { value: 'internal', label: t('pages.preference.chat.history.internal') },
+  { value: 'bark', label: t('pages.preference.chat.history.bark') },
 ])
 
 // 日期闭区间：开始日 00:00:00.000 → 结束日 23:59:59.999；dayjs() 对字符串/Dayjs 输入都适用

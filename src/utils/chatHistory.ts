@@ -4,7 +4,7 @@ export interface ChatMessage {
   time: number // 毫秒时间戳，展示时格式化到秒
   text: string
   status: 'shown' | 'skipped' // skipped = 总开关关闭时收到
-  source: 'http' | 'internal'
+  source: 'http' | 'internal' | 'bark'
 }
 
 export interface HistoryFilter {

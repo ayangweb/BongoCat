@@ -150,7 +150,16 @@
           "testText": "測試文字",
           "testShow": "顯示",
           "httpDocs": "呼叫說明",
-          "history": "歷史訊息"
+          "history": "歷史訊息",
+          "bark": "Bark 推送",
+          "barkEnabled": "啟用 Bark",
+          "barkServerUrl": "伺服器位址",
+          "barkRegister": "註冊裝置",
+          "barkDeviceKey": "裝置 Key",
+          "barkStatus": "連線狀態",
+          "barkCryptoKey": "解密金鑰",
+          "barkCryptoIv": "IV",
+          "barkCryptoMode": "加密模式"
         },
         "hints": {
           "enabled": "總開關，關閉後所有氣泡都不顯示。",
@@ -158,7 +167,10 @@
           "httpRestart": "變更連接埠/開關/Token 後需重新啟動應用程式才會生效。",
           "debug": "開啟後展開下方測試區，可手動觸發氣泡用於驗證。",
           "httpDocs": "訊息介面 /say 的樣式參數僅對本條氣泡生效；控制介面 /config 寫入預設值並持久保存。",
-          "history": "記錄最近 500 則氣泡訊息，重新啟動後保留。"
+          "history": "記錄最近 500 則氣泡訊息，重新啟動後保留。",
+          "bark": "連接自架 htnanako/bark-server（SSE），即時接收 Bark 推送並彈出氣泡。斷線期間的訊息不補收。",
+          "barkRegister": "首次使用先註冊取得裝置 Key；用它向伺服器推送訊息。",
+          "barkCrypto": "留空則不解密；收到加密訊息且未設定金鑰時捨棄該條。"
         },
         "history": {
           "view": "檢視",
@@ -173,7 +185,15 @@
           "http": "HTTP",
           "internal": "內部",
           "filterStatus": "全部狀態",
-          "filterSource": "全部來源"
+          "filterSource": "全部來源",
+          "bark": "Bark"
+        },
+        "barkStatus": {
+          "idle": "未啟用",
+          "connecting": "連線中",
+          "connected": "已連線",
+          "reconnecting": "重連中",
+          "unauthorized": "需要重新註冊"
         }
       },
       "about": {

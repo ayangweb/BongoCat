@@ -150,7 +150,16 @@
           "testText": "Văn bản thử",
           "testShow": "Hiển thị",
           "httpDocs": "Hướng dẫn gọi API",
-          "history": "Lịch sử tin nhắn"
+          "history": "Lịch sử tin nhắn",
+          "bark": "Đẩy Bark",
+          "barkEnabled": "Bật Bark",
+          "barkServerUrl": "Địa chỉ máy chủ",
+          "barkRegister": "Đăng ký thiết bị",
+          "barkDeviceKey": "Khóa thiết bị",
+          "barkStatus": "Trạng thái kết nối",
+          "barkCryptoKey": "Khóa giải mã",
+          "barkCryptoIv": "IV",
+          "barkCryptoMode": "Chế độ mã hóa"
         },
         "hints": {
           "enabled": "Công tắc tổng. Khi tắt, không bong bóng nào hiển thị.",
@@ -158,7 +167,10 @@
           "httpRestart": "Đổi cổng/công tắc/token cần khởi động lại ứng dụng để có hiệu lực.",
           "debug": "Mở khu vực thử bên dưới để kích hoạt bong bóng thủ công.",
           "httpDocs": "Tham số kiểu dáng của /say chỉ áp dụng cho một bong bóng; /config ghi vào giá trị mặc định đã lưu.",
-          "history": "Lưu 500 tin nhắn bong bóng gần nhất, giữ lại sau khi khởi động lại."
+          "history": "Lưu 500 tin nhắn bong bóng gần nhất, giữ lại sau khi khởi động lại.",
+          "bark": "Kết nối tới htnanako/bark-server tự triển khai qua SSE để nhận thông báo Bark dưới dạng bong bóng. Tin nhắn gửi khi ngoại tuyến sẽ không được phát lại.",
+          "barkRegister": "Đăng ký trước để nhận khóa thiết bị; dùng nó để gửi tin nhắn tới máy chủ.",
+          "barkCrypto": "Để trống nếu không giải mã; tin nhắn mã hóa sẽ bị bỏ qua khi chưa cấu hình khóa."
         },
         "history": {
           "view": "Xem",
@@ -173,7 +185,15 @@
           "http": "HTTP",
           "internal": "Nội bộ",
           "filterStatus": "Tất cả trạng thái",
-          "filterSource": "Tất cả nguồn"
+          "filterSource": "Tất cả nguồn",
+          "bark": "Bark"
+        },
+        "barkStatus": {
+          "idle": "Chưa bật",
+          "connecting": "Đang kết nối",
+          "connected": "Đã kết nối",
+          "reconnecting": "Đang kết nối lại",
+          "unauthorized": "Cần đăng ký lại"
         }
       },
       "about": {
