@@ -59,6 +59,12 @@ async function handleUpload() {
 watch(selectPaths, async (paths) => {
   for await (const fromPath of paths) {
     try {
+      const entries = await readDir(fromPath)
+
+      if (!entries.some(entry => entry.isFile && entry.name.endsWith('.model3.json'))) {
+        throw new Error(t('utils.live2d.hints.notFound'))
+      }
+
       const id = nanoid()
 
       let mode: ModelMode = 'standard'
