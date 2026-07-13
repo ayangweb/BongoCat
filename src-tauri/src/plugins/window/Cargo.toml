@@ -16,6 +16,7 @@ tauri-plugin.workspace = true
 
 [target."cfg(target_os = \"macos\")".dependencies]
 tauri-nspanel.workspace = true
+objc2-app-kit = "0.3"
 
 [target."cfg(target_os = \"windows\")".dependencies]
 windows.workspace = true

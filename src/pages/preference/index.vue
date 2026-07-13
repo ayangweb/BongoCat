@@ -5,7 +5,9 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import UpdateApp from '@/components/update-app/index.vue'
+import { useTauriListen } from '@/composables/useTauriListen'
 import { useTray } from '@/composables/useTray'
+import { LISTEN_KEY } from '@/constants'
 import { useAppStore } from '@/stores/app'
 import { useGeneralStore } from '@/stores/general'
 import { useModelStore } from '@/stores/model'
@@ -13,6 +15,7 @@ import { isMac } from '@/utils/platform'
 
 import About from './components/about/index.vue'
 import Cat from './components/cat/index.vue'
+import Chat from './components/chat/index.vue'
 import General from './components/general/index.vue'
 import Model from './components/model/index.vue'
 import Shortcut from './components/shortcut/index.vue'
@@ -55,12 +58,26 @@ const menus = computed(() => [
     component: Shortcut,
   },
   {
+    key: 'chat',
+    label: t('pages.preference.chat.title'),
+    icon: 'i-solar:chat-round-bold',
+    component: Chat,
+  },
+  {
     key: 'about',
     label: t('pages.preference.about.title'),
     icon: 'i-solar:info-circle-bold',
     component: About,
   },
 ])
+
+useTauriListen<string>(LISTEN_KEY.NAVIGATE_PREFERENCE_TAB, ({ payload }) => {
+  const index = menus.value.findIndex(item => item.key === payload)
+
+  if (index >= 0) {
+    current.value = index
+  }
+})
 </script>
 
 <template>

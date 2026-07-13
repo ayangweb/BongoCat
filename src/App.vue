@@ -18,6 +18,8 @@ import { getAntdLocale } from './locales/index.ts'
 import { hideWindow, showWindow } from './plugins/window'
 import { useAppStore } from './stores/app'
 import { useCatStore } from './stores/cat'
+import { useChatStore } from './stores/chat'
+import { useChatHistoryStore } from './stores/chatHistory'
 import { useGeneralStore } from './stores/general'
 import { useModelStore } from './stores/model'
 import { useShortcutStore } from './stores/shortcut.ts'
@@ -27,6 +29,8 @@ const modelStore = useModelStore()
 const catStore = useCatStore()
 const generalStore = useGeneralStore()
 const shortcutStore = useShortcutStore()
+const chatStore = useChatStore()
+const chatHistoryStore = useChatHistoryStore()
 const appWindow = getCurrentWebviewWindow()
 const { isRestored, restoreState } = useWindowState()
 const { darkAlgorithm, defaultAlgorithm } = theme
@@ -42,6 +46,8 @@ onMounted(async () => {
   await generalStore.$tauri.start()
   await generalStore.init()
   await shortcutStore.$tauri.start()
+  await chatStore.$tauri.start()
+  await chatHistoryStore.$tauri.start()
   await restoreState()
 })
 
@@ -62,7 +68,15 @@ useTauriListen(LISTEN_KEY.HIDE_WINDOW, ({ payload }) => {
 })
 
 useEventListener('unhandledrejection', ({ reason }) => {
-  const message = isString(reason) ? reason : JSON.stringify(reason)
+  let message: string
+
+  if (isString(reason)) {
+    message = reason
+  } else if (reason instanceof Error) {
+    message = `${reason.name}: ${reason.message}\n${reason.stack ?? ''}`
+  } else {
+    message = JSON.stringify(reason)
+  }
 
   error(message)
 })

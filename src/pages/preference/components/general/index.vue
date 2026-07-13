@@ -51,6 +51,14 @@ watch(() => generalStore.app.autostart, async (value) => {
     >
       <Switch v-model:checked="generalStore.app.trayVisible" />
     </ProListItem>
+
+    <ProListItem
+      v-if="isMac"
+      :description="$t('pages.preference.general.hints.multiScreenFollow')"
+      :title="$t('pages.preference.general.labels.multiScreenFollow')"
+    >
+      <Switch v-model:checked="generalStore.app.multiScreenFollow" />
+    </ProListItem>
   </ProList>
 
   <ProList :title="$t('pages.preference.general.labels.appearanceSettings')">

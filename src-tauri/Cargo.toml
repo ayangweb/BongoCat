@@ -36,11 +36,15 @@ tauri-plugin-macos-permissions = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 fs_extra = "1"
+tiny_http = "0.12"
+form_urlencoded = "1"
+log = "0.4"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-locale = "2"
 rdev = { git = "https://github.com/kunkunsh/rdev" }
 gilrs = { git = "https://github.com/ayangweb/gilrs", default-features = false, features = ["xinput"] }
+tauri-plugin-http = "2.5.9"
 
 [target."cfg(target_os = \"macos\")".dependencies]
 tauri-nspanel.workspace = true

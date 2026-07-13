@@ -1,6 +1,7 @@
 {
   "pages": {
     "main": {
+      "greeting": "你好呀~",
       "hints": {
         "redrawing": "重繪中…",
         "switching": "切換中…"
@@ -50,6 +51,7 @@
           "launchOnStartup": "開機自動啟動",
           "showTaskbarIcon": "顯示工作列圖示",
           "showTrayIcon": "顯示托盤圖示",
+          "multiScreenFollow": "跟隨目前螢幕",
           "appearanceSettings": "外觀設定",
           "themeMode": "主題模式",
           "language": "語言",
@@ -67,6 +69,7 @@
         "hints": {
           "showTaskbarIcon": "啟用後，即可透過 OBS Studio 擷取視窗。",
           "showTrayIcon": "啟用後，在系統托盤中顯示應用程式圖示。",
+          "multiScreenFollow": "啟用後，BongoCat 會自動移動到滑鼠所在的螢幕。",
           "inputMonitoringPermission": "開啟輸入監控權限，以便接收系統的鍵盤和滑鼠游標事件來回應您的操作。",
           "inputMonitoringPermissionGuide": "開啟輸入監控權限後，應用程式才能接收系統的鍵盤和滑鼠事件，進而回應你的操作。\n\n操作方式：\n1. 開啟「系統設定」→「隱私權與安全性」→「輸入監控」。\n2. 若清單中已存在 BongoCat，請先選取它，點擊「-」按鈕將其刪除。\n3. 點擊「+」按鈕，找到並新增 BongoCat 應用程式。\n4. 重新啟動應用程式，以確保權限正式生效。",
           "administratorPermission": "以系統管理員身分執行應用程式，可以更穩定地擷取部分系統層級按鍵與輸入事件。",
@@ -129,6 +132,70 @@
           "alwaysOnTop": "切換貓咪視窗是否置頂。"
         }
       },
+      "chat": {
+        "title": "Chat",
+        "labels": {
+          "basic": "氣泡設定",
+          "enabled": "啟用氣泡",
+          "duration": "預設顯示時長",
+          "textColor": "文字顏色",
+          "fontSize": "文字大小",
+          "bgColor": "氣泡底色",
+          "bgOpacity": "底色透明度",
+          "http": "HTTP 介面",
+          "httpEnabled": "啟用 HTTP 介面",
+          "httpPort": "監聽連接埠",
+          "httpToken": "驗證 Token",
+          "debug": "除錯模式",
+          "testText": "測試文字",
+          "testShow": "顯示",
+          "httpDocs": "呼叫說明",
+          "history": "歷史訊息",
+          "bark": "Bark 推送",
+          "barkEnabled": "啟用 Bark",
+          "barkServerUrl": "伺服器位址",
+          "barkRegister": "註冊裝置",
+          "barkDeviceKey": "裝置 Key",
+          "barkStatus": "連線狀態",
+          "barkCryptoKey": "解密金鑰",
+          "barkCryptoIv": "IV",
+          "barkCryptoMode": "加密模式"
+        },
+        "hints": {
+          "enabled": "總開關，關閉後所有氣泡都不顯示。",
+          "http": "開啟一個本機 HTTP 介面，供外部工具（如 curl）推送氣泡。僅監聽 127.0.0.1。",
+          "httpRestart": "變更連接埠/開關/Token 後需重新啟動應用程式才會生效。",
+          "debug": "開啟後展開下方測試區，可手動觸發氣泡用於驗證。",
+          "httpDocs": "訊息介面 /say 的樣式參數僅對本條氣泡生效；控制介面 /config 寫入預設值並持久保存。",
+          "history": "記錄最近 500 則氣泡訊息，重新啟動後保留。",
+          "bark": "連接自架 htnanako/bark-server（SSE），即時接收 Bark 推送並彈出氣泡。斷線期間的訊息不補收。",
+          "barkRegister": "首次使用先註冊取得裝置 Key；用它向伺服器推送訊息。",
+          "barkCrypto": "留空則不解密；收到加密訊息且未設定金鑰時捨棄該條。"
+        },
+        "history": {
+          "view": "檢視",
+          "time": "時間",
+          "status": "狀態",
+          "source": "來源",
+          "content": "內容",
+          "action": "操作",
+          "detail": "詳情",
+          "shown": "已顯示",
+          "skipped": "未顯示",
+          "http": "HTTP",
+          "internal": "內部",
+          "filterStatus": "全部狀態",
+          "filterSource": "全部來源",
+          "bark": "Bark"
+        },
+        "barkStatus": {
+          "idle": "未啟用",
+          "connecting": "連線中",
+          "connected": "已連線",
+          "reconnecting": "重連中",
+          "unauthorized": "需要重新註冊"
+        }
+      },
       "about": {
         "title": "關於",
         "labels": {
@@ -178,6 +245,7 @@
     "useAppMenu": {
       "labels": {
         "preference": "偏好設定…",
+        "chatSetting": "聊天設定",
         "hideCat": "隱藏貓咪",
         "showCat": "顯示貓咪",
         "passThrough": "視窗穿透",

@@ -1,6 +1,7 @@
 {
   "pages": {
     "main": {
+      "greeting": "Hi there~",
       "hints": {
         "redrawing": "Redrawing...",
         "switching": "Switching..."
@@ -50,6 +51,7 @@
           "launchOnStartup": "Launch on Startup",
           "showTaskbarIcon": "Show Taskbar Icon",
           "showTrayIcon": "Show Tray Icon",
+          "multiScreenFollow": "Follow Active Display",
           "appearanceSettings": "Appearance Settings",
           "themeMode": "Theme Mode",
           "language": "Language",
@@ -67,6 +69,7 @@
         "hints": {
           "showTaskbarIcon": "When enabled, the window can be captured via OBS Studio.",
           "showTrayIcon": "When enabled, the app icon is displayed in the system tray.",
+          "multiScreenFollow": "When enabled, the cat automatically moves to whichever display the cursor is on.",
           "inputMonitoringPermission": "Enable input monitoring to receive keyboard and mouse events from the system.",
           "inputMonitoringPermissionGuide": "Input Monitoring permission is required for the app to receive keyboard and mouse events from the system.\n\nSteps:\n1. Open System Settings → Privacy & Security → Input Monitoring.\n2. If BongoCat already appears in the list, select it and click the \"-\" button to remove it.\n3. Click the \"+\" button to find and add BongoCat.\n4. Restart the app for the permission to take effect.",
           "administratorPermission": "Running the app as administrator helps capture some system-level keys and input events more reliably.",
@@ -129,6 +132,70 @@
           "alwaysOnTop": "Toggle whether the cat window stays on top."
         }
       },
+      "chat": {
+        "title": "Chat",
+        "labels": {
+          "basic": "Bubble settings",
+          "enabled": "Enable bubble",
+          "duration": "Default duration",
+          "textColor": "Text color",
+          "fontSize": "Font size",
+          "bgColor": "Bubble color",
+          "bgOpacity": "Background opacity",
+          "http": "HTTP endpoint",
+          "httpEnabled": "Enable HTTP endpoint",
+          "httpPort": "Listen port",
+          "httpToken": "Auth token",
+          "debug": "Debug mode",
+          "testText": "Test text",
+          "testShow": "Show",
+          "httpDocs": "API reference",
+          "history": "Message history",
+          "bark": "Bark Push",
+          "barkEnabled": "Enable Bark",
+          "barkServerUrl": "Server URL",
+          "barkRegister": "Register Device",
+          "barkDeviceKey": "Device Key",
+          "barkStatus": "Connection Status",
+          "barkCryptoKey": "Decryption Key",
+          "barkCryptoIv": "IV",
+          "barkCryptoMode": "Cipher Mode"
+        },
+        "hints": {
+          "enabled": "Master switch. When off, no bubble is shown.",
+          "http": "Expose a local HTTP endpoint so external tools (e.g. curl) can push bubbles. Bound to 127.0.0.1 only.",
+          "httpRestart": "Changing port/switch/token requires an app restart to take effect.",
+          "debug": "Expands the test area below for manually triggering a bubble.",
+          "httpDocs": "Style params on /say apply to a single bubble only; /config writes the saved defaults.",
+          "history": "Keeps the latest 500 bubble messages, preserved across restarts.",
+          "bark": "Connect to a self-hosted htnanako/bark-server via SSE to receive Bark pushes as chat bubbles. Messages sent while offline are not replayed.",
+          "barkRegister": "Register first to get a device key, then use it to push messages to the server.",
+          "barkCrypto": "Leave empty to skip decryption; encrypted messages are dropped when no key is configured."
+        },
+        "history": {
+          "view": "View",
+          "time": "Time",
+          "status": "Status",
+          "source": "Source",
+          "content": "Content",
+          "action": "Action",
+          "detail": "Detail",
+          "shown": "Shown",
+          "skipped": "Skipped",
+          "http": "HTTP",
+          "internal": "Internal",
+          "filterStatus": "All statuses",
+          "filterSource": "All sources",
+          "bark": "Bark"
+        },
+        "barkStatus": {
+          "idle": "Idle",
+          "connecting": "Connecting",
+          "connected": "Connected",
+          "reconnecting": "Reconnecting",
+          "unauthorized": "Re-register required"
+        }
+      },
       "about": {
         "title": "About",
         "labels": {
@@ -178,6 +245,7 @@
     "useAppMenu": {
       "labels": {
         "preference": "Preferences...",
+        "chatSetting": "Chat Settings",
         "hideCat": "Hide Cat",
         "showCat": "Show Cat",
         "passThrough": "Pass Through",

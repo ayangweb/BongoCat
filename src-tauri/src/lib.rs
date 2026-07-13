@@ -23,7 +23,16 @@ pub fn run() {
 
             let preference_window = app.get_webview_window(PREFERENCE_WINDOW_LABEL).unwrap();
 
-            setup::default(&app_handle, main_window.clone(), preference_window.clone());
+            let chat_window = app.get_webview_window("chat").unwrap();
+
+            setup::default(
+                &app_handle,
+                main_window.clone(),
+                preference_window.clone(),
+                chat_window.clone(),
+            );
+
+            core::server::start(&app_handle);
 
             Ok(())
         })
@@ -39,6 +48,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_pinia::init())
+        .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(prevent_default::init())
         .plugin(tauri_plugin_single_instance::init(

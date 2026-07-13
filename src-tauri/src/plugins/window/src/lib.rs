@@ -14,6 +14,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::hide_window,
             commands::set_always_on_top,
             commands::set_taskbar_visibility,
+            commands::set_multi_screen_follow,
         ])
         .build()
 }
