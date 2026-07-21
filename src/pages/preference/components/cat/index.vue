@@ -19,6 +19,13 @@ const catStore = useCatStore()
     </ProListItem>
 
     <ProListItem
+      :description="$t('pages.preference.cat.hints.autoMirror')"
+      :title="$t('pages.preference.cat.labels.autoMirror')"
+    >
+      <Switch v-model:checked="catStore.model.autoMirror" />
+    </ProListItem>
+
+    <ProListItem
       :description="$t('pages.preference.cat.hints.mouseMirror')"
       :title="$t('pages.preference.cat.labels.mouseMirror')"
     >
