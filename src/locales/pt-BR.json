@@ -13,6 +13,7 @@
         "labels": {
           "modelSettings": "Configurações do Modelo",
           "mirrorMode": "Modo Espelho",
+          "autoMirror": "Espelho Automático",
           "mouseMirror": "Espelho do Mouse",
           "ignoreMouse": "Ignorar Eventos do Mouse",
           "windowSettings": "Configurações da Janela",
@@ -30,6 +31,7 @@
         },
         "hints": {
           "mirrorMode": "Quando ativado, o modelo será invertido horizontalmente.",
+          "autoMirror": "Quando ativado, o modelo será invertido automaticamente com base no lado da tela em que a janela está.",
           "mouseMirror": "Quando ativado, o mouse espelhará o movimento da mão.",
           "ignoreMouse": "Quando ativado, o modelo não responderá a eventos do mouse. Útil para o modo teclado ou modo controle.",
           "motionSound": "Quando ativado, o modelo reproduzirá efeitos sonoros correspondentes ao executar ações (se existirem).",

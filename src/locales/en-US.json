@@ -13,6 +13,7 @@
         "labels": {
           "modelSettings": "Model Settings",
           "mirrorMode": "Mirror Mode",
+          "autoMirror": "Auto Mirror",
           "mouseMirror": "Mouse Mirror",
           "ignoreMouse": "Ignore Mouse Events",
           "windowSettings": "Window Settings",
@@ -30,6 +31,7 @@
         },
         "hints": {
           "mirrorMode": "When enabled, the model will be mirrored horizontally.",
+          "autoMirror": "When enabled, the model will mirror automatically based on which side of the screen the window is on.",
           "mouseMirror": "When enabled, the mouse will mirror the hand movement.",
           "ignoreMouse": "When enabled, the model will not respond to mouse events. Useful for keyboard mode or gamepad mode.",
           "motionSound": "When enabled, the model will play corresponding sound effects when performing actions (if they exist).",

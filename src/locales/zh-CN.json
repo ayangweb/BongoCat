@@ -13,6 +13,7 @@
         "labels": {
           "modelSettings": "模型设置",
           "mirrorMode": "镜像模式",
+          "autoMirror": "自动镜像",
           "mouseMirror": "鼠标镜像",
           "ignoreMouse": "忽略鼠标事件",
           "windowSettings": "窗口设置",
@@ -30,6 +31,7 @@
         },
         "hints": {
           "mirrorMode": "启用后，模型将水平镜像翻转。",
+          "autoMirror": "启用后，根据窗口在屏幕左/右半侧的位置自动翻转镜像。",
           "mouseMirror": "启用后，鼠标将镜像跟随手部移动。",
           "ignoreMouse": "启用后，模型将不再响应鼠标事件，适用于键盘模式或手柄模式。",
           "motionSound": "启用后，模型执行动作时会播放对应音效（如果存在）。",

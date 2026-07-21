@@ -5,6 +5,7 @@ export interface CatStore {
   model: {
     mirror: boolean
     mouseMirror: boolean
+    autoMirror: boolean
     motionSound: boolean
     behavior: boolean
     autoReleaseDelay: number
@@ -51,6 +52,7 @@ export const useCatStore = defineStore('cat', () => {
   const model = reactive<CatStore['model']>({
     mirror: false,
     mouseMirror: false,
+    autoMirror: false,
     motionSound: true,
     behavior: true,
     autoReleaseDelay: 3,

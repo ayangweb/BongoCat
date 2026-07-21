@@ -13,6 +13,7 @@
         "labels": {
           "modelSettings": "Cài đặt Mô hình",
           "mirrorMode": "Chế độ gương",
+          "autoMirror": "Tự động gương",
           "mouseMirror": "Phản chiếu chuột",
           "ignoreMouse": "Bỏ qua sự kiện chuột",
           "windowSettings": "Cài đặt Cửa sổ",
@@ -30,6 +31,7 @@
         },
         "hints": {
           "mirrorMode": "Bật để lật ngang mô hình.",
+          "autoMirror": "Khi bật, mô hình sẽ tự động phản chiếu dựa trên vị trí cửa sổ ở bên trái hay bên phải màn hình.",
           "mouseMirror": "Khi bật, chuột của mô hình sẽ phản chiếu theo chuyển động chuột thực tế.",
           "ignoreMouse": "Khi bật, mô hình sẽ không phản hồi sự kiện chuột. Hữu ích cho chế độ bàn phím hoặc chế độ tay cầm.",
           "motionSound": "Khi bật, mô hình sẽ phát các âm thanh tương ứng khi thực hiện hành động (nếu tồn tại).",
