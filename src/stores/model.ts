@@ -21,6 +21,8 @@ export const useModelStore = defineStore('model', () => {
   const modelReady = ref(true)
   const models = ref<Model[]>([])
   const currentModel = ref<Model>()
+  const lightModelId = ref<string | null>(null)
+  const darkModelId = ref<string | null>(null)
   const supportKeys = reactive<Record<string, string>>({})
   const pressedKeys = reactive<Record<string, string>>({})
   const currentMotions = ref<Array<[string, MotionInfo[]]>>([])
@@ -49,6 +51,8 @@ export const useModelStore = defineStore('model', () => {
     const matched = find(nextModels, { id: currentModel.value?.id })
 
     currentModel.value = matched ?? nextModels[0]
+    if (!nextModels.some(item => item.id === lightModelId.value)) lightModelId.value = null
+    if (!nextModels.some(item => item.id === darkModelId.value)) darkModelId.value = null
 
     models.value = nextModels
   }
@@ -57,6 +61,8 @@ export const useModelStore = defineStore('model', () => {
     modelReady,
     models,
     currentModel,
+    lightModelId,
+    darkModelId,
     supportKeys,
     pressedKeys,
     currentMotions,

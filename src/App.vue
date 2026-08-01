@@ -7,7 +7,7 @@ import { useEventListener } from '@vueuse/core'
 import { ConfigProvider, theme } from 'antdv-next'
 import { isString } from 'es-toolkit'
 import isURL from 'is-url'
-import { onMounted, watch } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterView } from 'vue-router'
 
@@ -31,6 +31,35 @@ const appWindow = getCurrentWebviewWindow()
 const { isRestored, restoreState } = useWindowState()
 const { darkAlgorithm, defaultAlgorithm } = theme
 const { locale } = useI18n()
+const themeReady = ref(false)
+let unlistenTheme: (() => void) | undefined
+
+function applyThemeModel(isDark: boolean) {
+  if (appWindow.label !== 'main') return
+  if (generalStore.appearance.theme !== 'auto') return
+
+  const modelId = isDark ? modelStore.darkModelId : modelStore.lightModelId
+  const model = modelStore.models.find(item => item.id === modelId)
+
+  if (!model || model.id === modelStore.currentModel?.id) return
+
+  modelStore.modelReady = false
+  modelStore.currentModel = model
+}
+
+function applyResolvedTheme(isDark: boolean) {
+  generalStore.appearance.isDark = isDark
+  document.documentElement.classList.toggle('dark', isDark)
+  applyThemeModel(isDark)
+}
+
+async function applyTheme(value: 'auto' | 'light' | 'dark') {
+  const nextTheme = value === 'auto' ? null : value
+
+  await appWindow.setTheme(nextTheme)
+
+  applyResolvedTheme((nextTheme ?? (await appWindow.theme())) === 'dark')
+}
 
 onMounted(async () => {
   await appStore.$tauri.start()
@@ -42,7 +71,30 @@ onMounted(async () => {
   await generalStore.$tauri.start()
   await generalStore.init()
   await shortcutStore.$tauri.start()
+
+  themeReady.value = true
+  await applyTheme(generalStore.appearance.theme)
   await restoreState()
+
+  unlistenTheme = await appWindow.onThemeChanged(({ payload }) => {
+    if (generalStore.appearance.theme !== 'auto') return
+
+    applyResolvedTheme(payload === 'dark')
+  })
+})
+
+onUnmounted(() => unlistenTheme?.())
+
+watch(() => generalStore.appearance.theme, (value) => {
+  if (!themeReady.value) return
+
+  applyTheme(value)
+})
+
+watch([() => modelStore.lightModelId, () => modelStore.darkModelId], () => {
+  if (!themeReady.value) return
+
+  applyThemeModel(generalStore.appearance.isDark)
 })
 
 watch(() => generalStore.appearance.language, (value) => {
@@ -62,7 +114,7 @@ useTauriListen(LISTEN_KEY.HIDE_WINDOW, ({ payload }) => {
 })
 
 useEventListener('unhandledrejection', ({ reason }) => {
-  const message = isString(reason) ? reason : JSON.stringify(reason)
+  const message = isString(reason) ? reason : reason instanceof Error ? `${reason.name}: ${reason.message}\n${reason.stack ?? ''}` : JSON.stringify(reason)
 
   error(message)
 })

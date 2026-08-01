@@ -3,7 +3,7 @@ import { convertFileSrc } from '@tauri-apps/api/core'
 import { remove } from '@tauri-apps/plugin-fs'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
 import { useElementSize } from '@vueuse/core'
-import { Card, Masonry, message, Popconfirm } from 'antdv-next'
+import { Card, Masonry, message, Popconfirm, Tooltip } from 'antdv-next'
 import { computed, ref, useTemplateRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -43,6 +43,14 @@ function handleToggle(nextModel: Model) {
   modelStore.currentModel = nextModel
 }
 
+function handleThemeModel(model: Model, theme: 'light' | 'dark') {
+  if (theme === 'light') {
+    modelStore.lightModelId = modelStore.lightModelId === model.id ? null : model.id
+  } else {
+    modelStore.darkModelId = modelStore.darkModelId === model.id ? null : model.id
+  }
+}
+
 async function handleDelete(item: Model) {
   const { id, path } = item
 
@@ -54,6 +62,9 @@ async function handleDelete(item: Model) {
     message.error(String(error))
   } finally {
     modelStore.models = modelStore.models.filter(item => item.id !== id)
+
+    if (modelStore.lightModelId === id) modelStore.lightModelId = null
+    if (modelStore.darkModelId === id) modelStore.darkModelId = null
 
     if (id === modelStore.currentModel?.id) {
       modelStore.currentModel = modelStore.models[0]
@@ -101,6 +112,24 @@ async function handleDelete(item: Model) {
             class="i-lucide:smile"
             @click.stop="openBehaviorModal = true"
           />
+
+          <Tooltip :title="$t('pages.preference.model.tooltips.lightModel')">
+            <i
+              :aria-label="$t('pages.preference.model.tooltips.lightModel')"
+              class="i-lucide:sun"
+              :class="{ 'text-orange-5': data.id === modelStore.lightModelId }"
+              @click.stop="handleThemeModel(data, 'light')"
+            />
+          </Tooltip>
+
+          <Tooltip :title="$t('pages.preference.model.tooltips.darkModel')">
+            <i
+              :aria-label="$t('pages.preference.model.tooltips.darkModel')"
+              class="i-lucide:moon"
+              :class="{ 'text-blue-5': data.id === modelStore.darkModelId }"
+              @click.stop="handleThemeModel(data, 'dark')"
+            />
+          </Tooltip>
 
           <i
             class="i-lucide:folder-open"
