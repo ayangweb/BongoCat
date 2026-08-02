@@ -6,12 +6,13 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { readDir } from '@tauri-apps/plugin-fs'
 import { message } from 'antdv-next'
 import { nanoid } from 'nanoid'
-import { onMounted, ref, useTemplateRef, watch } from 'vue'
+import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import type { ModelMode } from '@/stores/model'
 
 import { INVOKE_KEY } from '@/constants'
+import { useAppStore } from '@/stores/app'
 import { useModelStore } from '@/stores/model'
 import { join } from '@/utils/path'
 
@@ -19,16 +20,17 @@ const dropRef = useTemplateRef('drop')
 const dragenter = ref(false)
 const selectPaths = ref<string[]>([])
 const modelStore = useModelStore()
+const appStore = useAppStore()
 const { t } = useI18n()
+const appWindow = getCurrentWebviewWindow()
+const scaleFactor = computed(() => appStore.windowState[appWindow.label]?.scaleFactor ?? devicePixelRatio)
 
 onMounted(() => {
-  const appWindow = getCurrentWebviewWindow()
-
   appWindow.onDragDropEvent(({ payload }) => {
     const { type } = payload
 
     if (type === 'over') {
-      const { x, y } = payload.position.toLogical(devicePixelRatio)
+      const { x, y } = payload.position.toLogical(scaleFactor.value)
 
       if (dropRef.value) {
         const { left, right, top, bottom } = dropRef.value.getBoundingClientRect()
