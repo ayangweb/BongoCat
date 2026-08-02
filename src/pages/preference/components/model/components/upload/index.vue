@@ -28,7 +28,7 @@ onMounted(() => {
     const { type } = payload
 
     if (type === 'over') {
-      const { x, y } = payload.position
+      const { x, y } = payload.position.toLogical(devicePixelRatio)
 
       if (dropRef.value) {
         const { left, right, top, bottom } = dropRef.value.getBoundingClientRect()
