@@ -1,4 +1,5 @@
 import type { Event } from '@tauri-apps/api/event'
+import type { ScaleFactorChanged } from '@tauri-apps/api/window'
 
 import { PhysicalPosition, PhysicalSize } from '@tauri-apps/api/dpi'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
@@ -12,7 +13,7 @@ import { useAppStore } from '@/stores/app'
 import { useCatStore } from '@/stores/cat'
 import { getCursorMonitor } from '@/utils/monitor'
 
-export type WindowState = Record<string, Partial<PhysicalPosition & PhysicalSize> | undefined>
+export type WindowState = Record<string, Partial<PhysicalPosition & PhysicalSize & Pick<ScaleFactorChanged, 'scaleFactor'>> | undefined>
 
 const appWindow = getCurrentWebviewWindow()
 const { label } = appWindow
@@ -28,6 +29,7 @@ export function useWindowState() {
     appWindow.onResized(onChange)
 
     appWindow.onScaleChanged(clampToMonitor)
+    appWindow.onScaleChanged(onScaleChanged)
   })
 
   const clampToMonitor = useDebounceFn(async () => {
@@ -53,6 +55,11 @@ export function useWindowState() {
 
     return appWindow.setPosition(new PhysicalPosition(clampedX, clampedY))
   }, 500)
+
+  const onScaleChanged = (event: Event<ScaleFactorChanged>) => {
+    appStore.windowState[label] ??= {}
+    appStore.windowState[label].scaleFactor = event.payload.scaleFactor
+  }
 
   watch(() => catStore.window.keepInScreen, clampToMonitor)
 
