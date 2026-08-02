@@ -29,7 +29,7 @@ export function useWindowState() {
     appWindow.onResized(onChange)
 
     appWindow.onScaleChanged(clampToMonitor)
-    appWindow.onScaleChanged(onSacleChanged)
+    appWindow.onScaleChanged(onScaleChanged)
   })
 
   const clampToMonitor = useDebounceFn(async () => {
@@ -56,7 +56,7 @@ export function useWindowState() {
     return appWindow.setPosition(new PhysicalPosition(clampedX, clampedY))
   }, 500)
 
-  const onSacleChanged = (event: Event<ScaleFactorChanged>) => {
+  const onScaleChanged = (event: Event<ScaleFactorChanged>) => {
     appStore.windowState[label] ??= {}
     appStore.windowState[label].scaleFactor = event.payload.scaleFactor
   }
