@@ -1,5 +1,7 @@
 # 贡献指南
 
+[简体中文](./CONTRIBUTING.md) | [English](./CONTRIBUTING_EN.md)
+
 非常感谢您对 BongoCat 的关注和贡献！在您提交贡献之前，请先花一些时间阅读以下指南，以确保您的贡献能够顺利进行。
 
 ## 透明的开发
