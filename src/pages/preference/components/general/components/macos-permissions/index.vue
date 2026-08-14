@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { confirm } from '@tauri-apps/plugin-dialog'
+import { resolveResource } from '@tauri-apps/api/path'
+import { message } from '@tauri-apps/plugin-dialog'
+import { openPath } from '@tauri-apps/plugin-opener'
 import { Space } from 'antdv-next'
 import { checkInputMonitoringPermission, requestInputMonitoringPermission } from 'tauri-plugin-macos-permissions-api'
 import { onMounted, ref } from 'vue'
@@ -16,14 +18,27 @@ onMounted(async () => {
 
   if (authorized.value) return
 
-  const confirmed = await confirm(t('pages.preference.general.hints.inputMonitoringPermissionGuide'), {
+  const openSettingsLabel = t('pages.preference.general.buttons.openNow')
+  const viewGuideLabel = t('pages.preference.general.status.viewGuide')
+  const openLaterLabel = t('pages.preference.general.buttons.openLater')
+
+  const confirmed = await message(t('pages.preference.general.hints.inputMonitoringPermissionGuide'), {
     title: t('pages.preference.general.labels.inputMonitoringPermission'),
-    okLabel: t('pages.preference.general.buttons.openNow'),
-    cancelLabel: t('pages.preference.general.buttons.openLater'),
     kind: 'warning',
+    buttons: {
+      yes: openSettingsLabel,
+      no: viewGuideLabel,
+      cancel: openLaterLabel,
+    },
   })
 
-  if (!confirmed) return
+  if (confirmed === openLaterLabel) return
+
+  if (confirmed === viewGuideLabel) {
+    const guidePath = await resolveResource('assets/macos-input-monitoring-guide.png')
+    await openPath(guidePath)
+    return
+  }
 
   requestInputMonitoringPermission()
 })
