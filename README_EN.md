@@ -138,7 +138,7 @@ Every bit of appreciation is cherished! Sponsorship is optional, but support is 
 
 ## Contributing
 
-Thank you to everyone who has made valuable contributions to BongoCat! If you would like to contribute to BongoCat as well, please check out the [Contribution Guide](.github/CONTRIBUTING.md).
+Thank you to everyone who has made valuable contributions to BongoCat! If you would like to contribute to BongoCat as well, please check out the [Contribution Guide](.github/CONTRIBUTING_EN.md).
 
 <a href="https://openomy.com/ayangweb/BongoCat" target="_blank" style="display: block; width: 100%;" align="center">
   <img src="https://openomy.com/svg?repo=ayangweb/BongoCat&chart=bubble" alt="Contribution Leaderboard" style="display: block; width: 100%;" />
