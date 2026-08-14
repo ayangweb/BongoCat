@@ -51,7 +51,7 @@ Furthermore, thanks to the powerful cross-platform capabilities of [Tauri](https
 - [Quark Netdisk](https://pan.quark.cn/s/70f2f2663ce1)
 - [GitHub Releases](https://github.com/ayangweb/BongoCat/releases)
 
-Not sure which one to download? Please refer to the [Download Guide](.github/DOWNLOAD_GUIDE.md).
+Not sure which one to download? Please refer to the [Download Guide](.github/DOWNLOAD_GUIDE_EN.md).
 
 ## Features
 

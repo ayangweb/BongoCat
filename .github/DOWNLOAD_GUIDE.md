@@ -1,5 +1,7 @@
 # 下载指南
 
+[简体中文](./DOWNLOAD_GUIDE.md) | [English](./DOWNLOAD_GUIDE_EN.md)
+
 ## 系统要求
 
 - macOS 12 或更高版本。
