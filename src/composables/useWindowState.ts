@@ -61,6 +61,11 @@ export function useWindowState() {
 
     if (minimized) return
 
+    if ('width' in event.payload && 'height' in event.payload
+      && (event.payload.width <= 0 || event.payload.height <= 0)) {
+      return
+    }
+
     appStore.windowState[label] ??= {}
 
     Object.assign(appStore.windowState[label], event.payload)
@@ -88,8 +93,11 @@ export function useWindowState() {
       }
     }
 
-    if (width && height) {
+    if (isNumber(width) && width > 0 && isNumber(height) && height > 0) {
       await appWindow.setSize(new PhysicalSize(width, height))
+    } else if (appStore.windowState[label]) {
+      delete appStore.windowState[label].width
+      delete appStore.windowState[label].height
     }
 
     isRestored.value = true

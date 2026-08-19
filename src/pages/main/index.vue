@@ -23,7 +23,7 @@ import { useCatStore } from '@/stores/cat'
 import { useGeneralStore } from '@/stores/general.ts'
 import { useModelStore } from '@/stores/model'
 import { isImage } from '@/utils/is'
-import live2d from '@/utils/live2d'
+import modelRuntime from '@/utils/model-runtime'
 import { join } from '@/utils/path'
 import { isWindows } from '@/utils/platform'
 import { clearObject } from '@/utils/shared'
@@ -38,10 +38,14 @@ const generalStore = useGeneralStore()
 const resizing = ref(false)
 const backgroundImagePath = ref<string>()
 const { stickActive } = useGamepad()
+let modelLoadGeneration = 0
 
 onMounted(startListening)
 
-onUnmounted(handleDestroy)
+onUnmounted(() => {
+  ++modelLoadGeneration
+  handleDestroy()
+})
 
 const debouncedResize = useDebounceFn(async () => {
   await handleResize()
@@ -56,17 +60,37 @@ useEventListener('resize', () => {
 })
 
 watch(() => modelStore.currentModel, async (model) => {
-  if (!model) return
+  const generation = ++modelLoadGeneration
 
-  await handleLoad()
+  modelStore.modelReady = false
+  backgroundImagePath.value = void 0
+  clearObject([modelStore.supportKeys, modelStore.pressedKeys])
+
+  if (!model) {
+    handleDestroy()
+
+    return
+  }
+
+  const { id, path: modelPath, renderer } = model
+  const isCurrent = () => {
+    const current = modelStore.currentModel
+
+    return generation === modelLoadGeneration
+      && current?.id === id
+      && current.path === modelPath
+      && current.renderer === renderer
+  }
+
+  if (!await handleLoad() || !isCurrent()) return
 
   const path = join(model.path, 'resources', 'background.png')
 
   const existed = await exists(path)
+  const nextBackgroundImagePath = existed ? convertFileSrc(path) : void 0
+  const nextSupportKeys: Record<string, string> = {}
 
-  backgroundImagePath.value = existed ? convertFileSrc(path) : void 0
-
-  clearObject([modelStore.supportKeys, modelStore.pressedKeys])
+  if (!isCurrent()) return
 
   const resourcePath = join(model.path, 'resources')
   const groups = ['left-keys', 'right-keys']
@@ -79,10 +103,15 @@ watch(() => modelStore.currentModel, async (model) => {
     for (const file of imageFiles) {
       const fileName = file.name.split('.')[0]
 
-      modelStore.supportKeys[fileName] = join(groupDir, file.name)
+      nextSupportKeys[fileName] = join(groupDir, file.name)
     }
   }
 
+  if (!isCurrent()) return
+
+  backgroundImagePath.value = nextBackgroundImagePath
+  clearObject([modelStore.supportKeys])
+  Object.assign(modelStore.supportKeys, nextSupportKeys)
   modelStore.modelReady = true
 }, { deep: true, immediate: true })
 
@@ -123,16 +152,18 @@ watch(() => catStore.window.alwaysOnTop, setAlwaysOnTop, { immediate: true })
 
 watch(() => generalStore.app.taskbarVisible, setTaskbarVisibility, { immediate: true })
 
-watch(() => catStore.model.motionSound, live2d.setMotionSoundEnabled, { immediate: true })
+watch(() => catStore.model.motionSound, modelRuntime.setMotionSoundEnabled, { immediate: true })
 
-watch(() => catStore.model.maxFPS, live2d.setMaxFPS, { immediate: true })
+watch(() => catStore.model.maxFPS, modelRuntime.setMaxFPS, { immediate: true })
+
+watch(() => catStore.model.mirror, modelRuntime.setMirrored, { immediate: true })
 
 useTauriListen<MotionInfo>(LISTEN_KEY.START_MOTION, ({ payload }) => {
-  live2d.startMotion(payload)
+  modelRuntime.startMotion(payload)
 })
 
 useTauriListen<number>(LISTEN_KEY.SET_EXPRESSION, ({ payload }) => {
-  live2d.setExpression(payload)
+  modelRuntime.setExpression(payload)
 })
 
 function handleMouseDown() {
@@ -180,7 +211,7 @@ function handleMouseMove(event: MouseEvent) {
 <template>
   <div
     class="relative size-screen overflow-hidden children:(absolute size-full)"
-    :class="{ '-scale-x-100': catStore.model.mirror }"
+    :class="{ '-scale-x-100': catStore.model.mirror && modelStore.currentModel?.renderer !== 'sprite' }"
     :style="{
       opacity: catStore.window.opacity / 100,
       borderRadius: `${catStore.window.radius}%`,
@@ -195,7 +226,15 @@ function handleMouseMove(event: MouseEvent) {
       :src="backgroundImagePath"
     >
 
-    <canvas id="live2dCanvas" />
+    <canvas
+      v-show="modelStore.currentModel?.renderer !== 'sprite'"
+      id="live2dCanvas"
+    />
+
+    <canvas
+      v-show="modelStore.currentModel?.renderer === 'sprite'"
+      id="spriteCanvas"
+    />
 
     <img
       v-for="path in modelStore.pressedKeys"

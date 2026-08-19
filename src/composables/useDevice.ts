@@ -1,8 +1,10 @@
 import { invoke } from '@tauri-apps/api/core'
 import { PhysicalPosition } from '@tauri-apps/api/dpi'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { error } from '@tauri-apps/plugin-log'
 import { isNil } from 'es-toolkit'
 import { Ticker } from 'pixi.js'
+import { checkInputMonitoringPermission, requestInputMonitoringPermission } from 'tauri-plugin-macos-permissions-api'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { useAppStore } from '@/stores/app'
@@ -32,7 +34,10 @@ interface MouseMoveEvent {
 
 interface KeyboardEvent {
   kind: 'KeyboardPress' | 'KeyboardRelease'
-  value: string
+  value: string | {
+    code: string
+    label?: string | null
+  }
 }
 
 type DeviceEvent = MouseButtonEvent | MouseMoveEvent | KeyboardEvent
@@ -97,11 +102,28 @@ export function useDevice() {
     return Ticker.shared.add(tickerCallback)
   }, { immediate: true })
 
-  const startListening = () => {
-    invoke(INVOKE_KEY.START_DEVICE_LISTENING)
+  const startListening = async () => {
+    try {
+      if (isMac && !await checkInputMonitoringPermission()) {
+        await requestInputMonitoringPermission()
+
+        return
+      }
+
+      await invoke(INVOKE_KEY.START_DEVICE_LISTENING)
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : String(reason)
+
+      console.error('Failed to start device listening:', reason)
+      void error(`Failed to start device listening: ${message}`).catch((logReason) => {
+        console.error('Failed to write device listening error log:', logReason)
+      })
+    }
   }
 
   const getSupportedKey = (key: string) => {
+    if (modelStore.currentModel?.renderer === 'sprite') return key
+
     let nextKey = key
 
     const unsupportedKey = !modelStore.supportKeys[nextKey]
@@ -167,8 +189,8 @@ export function useDevice() {
     onHideOnHover(x, y)
   }
 
-  const handleAutoRelease = (key: string, delay = 100) => {
-    handlePress(key)
+  const handleAutoRelease = (key: string, delay = 100, label?: string | null) => {
+    handlePress(key, label)
 
     if (releaseTimers.has(key)) {
       clearTimeout(releaseTimers.get(key))
@@ -187,7 +209,9 @@ export function useDevice() {
     const { kind, value } = payload
 
     if (kind === 'KeyboardPress' || kind === 'KeyboardRelease') {
-      const nextValue = getSupportedKey(value)
+      const code = typeof value === 'string' ? value : value.code
+      const label = typeof value === 'string' ? void 0 : value.label
+      const nextValue = getSupportedKey(code)
 
       if (!nextValue) return
 
@@ -199,10 +223,10 @@ export function useDevice() {
         if (isWindows) {
           const delay = catStore.model.autoReleaseDelay * 1000
 
-          return handleAutoRelease(nextValue, delay)
+          return handleAutoRelease(nextValue, delay, label)
         }
 
-        return handlePress(nextValue)
+        return handlePress(nextValue, label)
       }
 
       return handleRelease(nextValue)
