@@ -38,7 +38,7 @@
       "columns": 3,
       "fps": 15,
       "loop": false,
-      "frameDurations": [30, 90, 90, 90, 90, 30]
+      "frameDurations": [30, 70, 110, 110, 70, 30]
     },
     "pluck-03": {
       "file": "sprites/pluck-03.webp",
@@ -48,7 +48,7 @@
       "columns": 3,
       "fps": 15,
       "loop": false,
-      "frameDurations": [30, 90, 90, 90, 90, 30]
+      "frameDurations": [30, 70, 110, 110, 70, 30]
     },
     "pluck-04": {
       "file": "sprites/pluck-04.webp",
@@ -68,7 +68,7 @@
       "columns": 3,
       "fps": 15,
       "loop": false,
-      "frameDurations": [30, 90, 90, 90, 90, 30]
+      "frameDurations": [30, 70, 110, 110, 70, 30]
     },
     "pluck-06": {
       "file": "sprites/pluck-06.webp",
@@ -98,7 +98,7 @@
       "columns": 3,
       "fps": 15,
       "loop": false,
-      "frameDurations": [30, 90, 90, 90, 90, 30]
+      "frameDurations": [30, 70, 110, 110, 70, 30]
     },
     "pluck-09": {
       "file": "sprites/pluck-09.webp",
@@ -108,7 +108,7 @@
       "columns": 3,
       "fps": 15,
       "loop": false,
-      "frameDurations": [30, 90, 90, 90, 90, 30]
+      "frameDurations": [30, 70, 110, 110, 70, 30]
     },
     "pluck-10": {
       "file": "sprites/pluck-10.webp",
@@ -124,11 +124,11 @@
       "file": "sprites/transform.webp",
       "frameWidth": 512,
       "frameHeight": 512,
-      "frames": 6,
-      "columns": 3,
-      "fps": 12,
+      "frames": 16,
+      "columns": 4,
+      "fps": 16,
       "loop": false,
-      "frameDurations": [84, 84, 84, 600, 120, 120]
+      "frameDurations": [70, 60, 60, 60, 60, 60, 70, 120, 120, 70, 60, 60, 60, 60, 60, 70]
     }
   },
   "bindings": {

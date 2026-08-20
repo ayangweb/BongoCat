@@ -198,6 +198,41 @@ def stabilize_idle(frames, reference_index, open_index, eye_boxes):
     return outputs, eye_mask, report
 
 
+def preserved_idle_sequence(frames, eye_boxes):
+    if len(frames) != 6:
+        return None
+    if not (
+        np.array_equal(frames[0], frames[1])
+        and np.array_equal(frames[0], frames[5])
+        and np.array_equal(frames[2], frames[3])
+        and np.array_equal(frames[2], frames[4])
+    ):
+        return None
+    eye_mask = ellipse_mask((frames[0].shape[1], frames[0].shape[0]), eye_boxes, 2.2)
+    outside = eye_mask < 0.001
+    outside_delta = int(np.max(np.abs(frames[0][outside].astype(np.int16) - frames[2][outside].astype(np.int16))))
+    eye_changes = []
+    for eye_box in eye_boxes:
+        single_eye = ellipse_mask((frames[0].shape[1], frames[0].shape[0]), [eye_box], 0) > 0.5
+        eye_changes.append(int(np.count_nonzero(np.any(frames[0] != frames[2], axis=2) & single_eye)))
+    if outside_delta or any(count == 0 for count in eye_changes):
+        return None
+    outputs = [frame.copy() for frame in frames]
+    return outputs, eye_mask, {
+        'mode': 'preserved-idle-eye-only',
+        'referenceFrame': 3,
+        'openEyeSourceFrame': 0,
+        'openFrames': [0, 1, 5],
+        'closedFrames': [2, 3, 4],
+        'eyeBoxes': eye_boxes,
+        'eyeChangedPixels': eye_changes,
+        'outsideEyeMaxChannelDelta': outside_delta,
+        'bodyAndHandsLocked': outside_delta == 0,
+        'openFramesMaxDelta': 0,
+        'closedFramesMaxDelta': 0,
+    }
+
+
 def action_region_mask(size):
     mask = Image.new('L', size, 0)
     draw = ImageDraw.Draw(mask)
@@ -260,6 +295,31 @@ PLUCK_INTERMEDIATE_FRAMES = {
 }
 
 
+TWO_HAND_COMPANIONS = {
+    'pluck-01': {'name': 'pluck-07', 'side': 'right'},
+    'pluck-02': {'name': 'pluck-07', 'side': 'right'},
+    'pluck-03': {'name': 'pluck-07', 'side': 'right'},
+    'pluck-04': {'name': 'pluck-07', 'side': 'right'},
+    'pluck-05': {'name': 'pluck-07', 'side': 'right'},
+    'pluck-06': {'name': 'pluck-07', 'side': 'right'},
+    'pluck-07': {'name': 'pluck-10', 'side': 'left', 'frameOrder': [0, 2, 1, 1, 2, 0]},
+    'pluck-08': {'name': 'pluck-07', 'side': 'right'},
+    'pluck-10': {'name': 'pluck-07', 'side': 'right'},
+}
+
+
+PLUCK_INTERMEDIATE_DONORS = {
+    'pluck-02': [{'name': 'pluck-03', 'side': 'left', 'frame': 1}],
+    'pluck-03': [{'name': 'pluck-05', 'side': 'left', 'frame': 1}],
+    'pluck-05': [{'name': 'pluck-03', 'side': 'left', 'frame': 1}],
+    'pluck-08': [{'name': 'pluck-10', 'side': 'left', 'frame': 1}],
+    'pluck-09': [
+        {'name': 'pluck-02', 'side': 'left', 'frame': 1},
+        {'name': 'pluck-07', 'side': 'right', 'frame': 1},
+    ],
+}
+
+
 def limb_patch_mask(canonical, peak, name):
     size = (canonical.shape[1], canonical.shape[0])
     geometry = Image.new('L', size, 0)
@@ -280,7 +340,7 @@ def limb_patch_mask(canonical, peak, name):
     return np.asarray(feathered, dtype=np.float32) / 255 * geometry_array
 
 
-def stabilize_pluck(name, canonical, frames):
+def stabilize_pluck(name, canonical, frames, external_intermediate=None):
     allowed = action_region_mask((canonical.shape[1], canonical.shape[0]))
     neutral = frames[0]
     candidates = list(range(1, len(frames) - 1))
@@ -290,13 +350,30 @@ def stabilize_pluck(name, canonical, frames):
     peak_mask = limb_patch_mask(canonical, peak, name)
     peak_patch = composite_stable(canonical, peak, peak_mask)
     intermediate_index = PLUCK_INTERMEDIATE_FRAMES.get(name)
+    if intermediate_index is not None and np.array_equal(frames[intermediate_index], peak):
+        intermediate_index = None
     if intermediate_index is None:
+        distinct = [
+            index
+            for index in candidates
+            if not np.array_equal(frames[index], peak) and not np.array_equal(frames[index], canonical)
+        ]
+        if distinct:
+            target_score = pose_scores[peak_index] * 0.6
+            intermediate_index = min(distinct, key=lambda index: abs(pose_scores[index] - target_score))
+    if intermediate_index is None and external_intermediate is None:
         intermediate_patch = peak_patch
         intermediate_mask = peak_mask
+        intermediate_source = peak_index
+    elif external_intermediate is not None and intermediate_index is None:
+        intermediate_patch = external_intermediate.copy()
+        intermediate_mask = np.any(intermediate_patch != canonical, axis=2).astype(np.float32)
+        intermediate_source = 'external-donor-pose'
     else:
         intermediate = frames[intermediate_index]
         intermediate_mask = limb_patch_mask(canonical, intermediate, name)
         intermediate_patch = composite_stable(canonical, intermediate, intermediate_mask)
+        intermediate_source = intermediate_index
     outputs = [canonical.copy(), intermediate_patch.copy(), peak_patch.copy(), peak_patch.copy(), intermediate_patch.copy(), canonical.copy()]
     union = np.maximum(peak_mask, intermediate_mask)
     static = (union < 0.001) & (canonical[:, :, 3] > 12)
@@ -307,10 +384,10 @@ def stabilize_pluck(name, canonical, frames):
     report = {
         'mode': 'single-peak-local-patch',
         'canonicalFrame': 'stabilized idle frame 0',
-        'sourceFrameSequence': ['canonical', intermediate_index if intermediate_index is not None else peak_index, peak_index, peak_index, intermediate_index if intermediate_index is not None else peak_index, 'canonical'],
-        'recommendedFrameDurations': [30, 70, 110, 110, 70, 30] if intermediate_index is not None else [30, 90, 90, 90, 90, 30],
+        'sourceFrameSequence': ['canonical', intermediate_source, peak_index, peak_index, intermediate_source, 'canonical'],
+        'recommendedFrameDurations': [30, 70, 110, 110, 70, 30] if intermediate_source != peak_index else [30, 90, 90, 90, 90, 30],
         'peakSourceFrame': peak_index,
-        'intermediateSourceFrame': intermediate_index,
+        'intermediateSourceFrame': intermediate_source,
         'sourcePoseScores': pose_scores,
         'motionPixelFraction': float(np.mean(union > 0.5)),
         'stablePixelFraction': float(np.mean(union <= 0.5)),
@@ -327,10 +404,172 @@ def stabilize_pluck(name, canonical, frames):
     return outputs, union, report
 
 
+def add_companion_hand(canonical, frames, companion_frames, side):
+    outputs = []
+    companion_union = np.zeros(canonical.shape[:2], dtype=np.float32)
+    split = canonical.shape[1] // 2
+    for frame, companion in zip(frames, companion_frames):
+        changed = np.any(companion != canonical, axis=2)
+        if side == 'left':
+            changed[:, split:] = False
+        else:
+            changed[:, :split] = False
+        output = frame.copy()
+        output[changed] = companion[changed]
+        output[output[:, :, 3] == 0, :3] = 0
+        outputs.append(output)
+        companion_union = np.maximum(companion_union, changed.astype(np.float32))
+    target_union = np.max(
+        np.stack([np.any(frame != canonical, axis=2) for frame in frames]),
+        axis=0,
+    ).astype(np.float32)
+    union = np.maximum(target_union, companion_union)
+    changed_counts = []
+    for frame in outputs:
+        changed = np.any(frame != canonical, axis=2)
+        changed_counts.append({
+            'left': int(np.count_nonzero(changed[:, :split])),
+            'right': int(np.count_nonzero(changed[:, split:])),
+        })
+    static = union < 0.5
+    static_max_delta = max(
+        int(np.max(np.abs(frame[static].astype(np.int16) - canonical[static].astype(np.int16))))
+        for frame in outputs
+    ) if np.any(static) else 0
+    return outputs, union, {
+        'twoHandMotion': True,
+        'companionSide': side,
+        'changedPixelsByFrame': changed_counts,
+        'twoHandStaticMaxDelta': static_max_delta,
+        'bothHandsVisibleFrames': [
+            index
+            for index, counts in enumerate(changed_counts)
+            if counts['left'] > 100 and counts['right'] > 100
+        ],
+    }
+
+
+def two_hand_action_corridors(name, size):
+    left_geometry = Image.new('L', size, 0)
+    right_geometry = Image.new('L', size, 0)
+    left_draw = ImageDraw.Draw(left_geometry)
+    right_draw = ImageDraw.Draw(right_geometry)
+
+    def add_source(source, side):
+        polygons = PLUCK_POLYGONS[source]
+        if source == 'pluck-09':
+            if side in (None, 'left'):
+                left_draw.polygon(polygons[0], fill=255)
+            if side in (None, 'right'):
+                right_draw.polygon(polygons[1], fill=255)
+            return
+        draw = right_draw if side == 'right' else left_draw
+        for polygon in polygons:
+            draw.polygon(polygon, fill=255)
+
+    if name == 'pluck-09':
+        add_source(name, None)
+    else:
+        add_source(name, 'right' if name == 'pluck-07' else 'left')
+    companion = TWO_HAND_COMPANIONS.get(name)
+    if companion is not None:
+        add_source(companion['name'], companion['side'])
+    for donor in PLUCK_INTERMEDIATE_DONORS.get(name, []):
+        add_source(donor['name'], donor['side'])
+    return (
+        np.asarray(left_geometry, dtype=np.uint8) > 0,
+        np.asarray(right_geometry, dtype=np.uint8) > 0,
+    )
+
+
+def two_hand_motion_report(name, canonical, frames):
+    left_corridor, right_corridor = two_hand_action_corridors(name, (canonical.shape[1], canonical.shape[0]))
+    corridor = left_corridor | right_corridor
+    left_core = left_corridor & ~right_corridor
+    right_core = right_corridor & ~left_corridor
+    protected_face = np.zeros(canonical.shape[:2], dtype=bool)
+    protected_face[194:260, 218:294] = True
+    counts = []
+    outside_counts = []
+    protected_face_counts = []
+    for frame in frames:
+        changed = np.any(frame != canonical, axis=2)
+        outside_counts.append(int(np.count_nonzero(changed & ~corridor)))
+        protected_face_counts.append(int(np.count_nonzero(changed & protected_face)))
+        counts.append({
+            'left': int(np.count_nonzero(changed & left_core)),
+            'right': int(np.count_nonzero(changed & right_core)),
+        })
+    visible = [
+        index
+        for index, value in enumerate(counts)
+        if value['left'] > 100 and value['right'] > 100
+    ]
+    return {
+        'twoHandMotion': len(visible) >= max(1, len(frames) - 2),
+        'changedPixelsByFrame': counts,
+        'bothHandsVisibleFrames': visible,
+        'outsideActionCorridorChangedPixels': outside_counts,
+        'protectedFaceChangedPixels': protected_face_counts,
+    }
+
+
+def preserved_two_hand_sequence(name, canonical, frames):
+    if len(frames) != 6:
+        return None
+    if not (
+        np.array_equal(frames[0], canonical)
+        and np.array_equal(frames[5], canonical)
+        and np.array_equal(frames[1], frames[4])
+        and np.array_equal(frames[2], frames[3])
+    ):
+        return None
+    hand_report = two_hand_motion_report(name, canonical, frames)
+    active = {frame.tobytes() for frame in frames[1:5] if not np.array_equal(frame, canonical)}
+    if (
+        not hand_report['twoHandMotion']
+        or len(active) < 2
+        or any(hand_report['outsideActionCorridorChangedPixels'])
+        or any(hand_report['protectedFaceChangedPixels'])
+    ):
+        return None
+    outputs = [frame.copy() for frame in frames]
+    moving = np.max(
+        np.stack([np.any(frame != canonical, axis=2) for frame in outputs]),
+        axis=0,
+    ).astype(np.float32)
+    left_corridor, right_corridor = two_hand_action_corridors(name, (canonical.shape[1], canonical.shape[0]))
+    corridor = left_corridor | right_corridor
+    static = ~corridor & (canonical[:, :, 3] > 12)
+    stable_mae = max(
+        float(np.mean(np.abs(frame.astype(np.float32) - canonical.astype(np.float32))[static]))
+        for frame in outputs
+    ) if np.any(static) else 0
+    static_max_delta = max(
+        int(np.max(np.abs(frame[static].astype(np.int16) - canonical[static].astype(np.int16))))
+        for frame in outputs
+    ) if np.any(static) else 0
+    return outputs, moving, {
+        'mode': 'preserved-two-hand-sequence',
+        'canonicalFrame': 'idle frame 0',
+        'sourceFrameSequence': [0, 1, 2, 3, 4, 5],
+        'motionPixelFraction': float(np.mean(moving > 0.5)),
+        'stablePixelFraction': float(np.mean(moving <= 0.5)),
+        'canonicalStaticMae': stable_mae,
+        'firstFrameCanonicalMaxDelta': 0,
+        'lastFrameCanonicalMaxDelta': 0,
+        'returnIntermediateMaxDelta': 0,
+        'peakHoldMaxDelta': 0,
+        'symmetricMaxDelta': 0,
+        'twoHandStaticMaxDelta': static_max_delta,
+        **hand_report,
+    }
+
+
 def cool_white_lut(canonical, progress):
     output = canonical.copy()
     rgb = canonical[:, :, :3].astype(np.float32)
-    strengths = np.array([0.3, 0.38, 0.46], dtype=np.float32)
+    strengths = np.array([0.78, 0.84, 0.9], dtype=np.float32)
     corrected = rgb + (255 - rgb) * strengths[None, None, :] * progress
     output[:, :, :3] = np.clip(np.rint(corrected), 0, 255).astype(np.uint8)
     output[output[:, :, 3] == 0, :3] = 0
@@ -339,32 +578,15 @@ def cool_white_lut(canonical, progress):
 
 def programmatic_transform_effect(canonical, opacity):
     height, width = canonical.shape[:2]
-    scale = 3
-    effect = Image.new('RGBA', (width * scale, height * scale), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(effect)
-    rings = [
-        ((92, 82, 420, 300), (122, 244, 255, 232), 4),
-        ((120, 60, 392, 324), (205, 250, 255, 198), 2),
-    ]
-    for box, color, line_width in rings:
-        scaled_box = tuple(value * scale for value in box)
-        draw.ellipse(scaled_box, outline=color, width=line_width * scale)
-    for x, y, radius in ((103, 191, 8), (409, 191, 8), (256, 76, 6), (256, 309, 5)):
-        cx, cy, r = x * scale, y * scale, radius * scale
-        draw.polygon(
-            ((cx, cy - r), (cx + r // 3, cy - r // 3), (cx + r, cy), (cx + r // 3, cy + r // 3),
-             (cx, cy + r), (cx - r // 3, cy + r // 3), (cx - r, cy), (cx - r // 3, cy - r // 3)),
-            fill=(225, 255, 255, 235),
-        )
-    glow = effect.getchannel('A').filter(ImageFilter.GaussianBlur(7 * scale))
-    glow_layer = Image.new('RGBA', effect.size, (66, 224, 255, 0))
-    glow_layer.putalpha(glow.point(lambda value: round(value * 0.62)))
-    combined = Image.alpha_composite(glow_layer, effect).resize((width, height), Image.Resampling.LANCZOS)
-    effect_array = np.asarray(combined, dtype=np.uint8).copy()
-    protected = Image.fromarray(np.where(canonical[:, :, 3] > 0, 255, 0).astype(np.uint8), 'L')
-    protected = np.asarray(protected.filter(ImageFilter.MaxFilter(5)), dtype=np.float32) / 255
-    weight = effect_array[:, :, 3].astype(np.float32) / 255 * (1 - protected) * opacity
-    effect_array[:, :, 3] = np.clip(np.rint(weight * 255), 0, 255).astype(np.uint8)
+    alpha = Image.fromarray(canonical[:, :, 3], 'L')
+    protected = np.asarray(alpha.filter(ImageFilter.MaxFilter(5)), dtype=np.float32) / 255
+    near = np.asarray(alpha.filter(ImageFilter.MaxFilter(11)).filter(ImageFilter.GaussianBlur(2)), dtype=np.float32) / 255
+    far = np.asarray(alpha.filter(ImageFilter.MaxFilter(17)).filter(ImageFilter.GaussianBlur(3)), dtype=np.float32) / 255
+    weight = np.clip(near * 0.78 + far * 0.22 - protected, 0, 1) * opacity
+    weight[canonical[:, :, 3] > 0] = 0
+    effect_array = np.zeros((height, width, 4), dtype=np.uint8)
+    effect_array[:, :, :3] = np.array([225, 248, 255], dtype=np.uint8)
+    effect_array[:, :, 3] = np.clip(np.rint(weight * 150), 0, 255).astype(np.uint8)
     effect_array[effect_array[:, :, 3] == 0, :3] = 0
     return effect_array, weight
 
@@ -378,12 +600,8 @@ def stabilize_transform(canonical, frames):
     effect_pixel_counts = []
     character = canonical[:, :, 3] > 12
     character_weight = canonical[:, :, 3].astype(np.float32) / 255
-    if len(frames) == 6:
-        progress_values = [0, 0.35, 0.75, 1, 0.5, 0]
-        effect_opacities = [0, 0.35, 0.75, 1, 0.55, 0]
-    else:
-        progress_values = [1 - abs(index * 2 / max(1, len(frames) - 1) - 1) for index in range(len(frames))]
-        effect_opacities = progress_values
+    progress_values = [0, 0.055, 0.198, 0.394, 0.606, 0.802, 0.945, 1, 1, 0.945, 0.802, 0.606, 0.394, 0.198, 0.055, 0]
+    effect_opacities = [progress ** 1.15 for progress in progress_values]
     for index, effect_opacity in enumerate(effect_opacities):
         progress = progress_values[index]
         base = cool_white_lut(canonical, progress)
@@ -410,19 +628,37 @@ def stabilize_transform(canonical, frames):
     )
     first_delta = int(np.max(np.abs(outputs[0].astype(np.int16) - canonical.astype(np.int16))))
     last_delta = int(np.max(np.abs(outputs[-1].astype(np.int16) - canonical.astype(np.int16))))
+    symmetry_delta = max(
+        int(np.max(np.abs(outputs[index].astype(np.int16) - outputs[-1 - index].astype(np.int16))))
+        for index in range(len(outputs) // 2)
+    )
+    peak_index = int(np.argmax(progress_values))
+    peak_rgb = bases[peak_index][:, :, :3].astype(np.float32)[character]
+    peak_max = np.max(peak_rgb, axis=1)
+    peak_min = np.min(peak_rgb, axis=1)
+    peak_saturation = np.where(peak_max > 0, (peak_max - peak_min) / peak_max * 255, 0)
+    rising = all(right >= left for left, right in zip(character_luma[:peak_index], character_luma[1:peak_index + 1]))
+    falling = all(right <= left for left, right in zip(character_luma[peak_index + 1:], character_luma[peak_index + 2:]))
     report = {
         'mode': 'canonical-character-lut-external-effects',
         'canonicalFrame': 'stabilized idle frame 0',
         'lutProgress': progress_values,
         'effectOpacity': effect_opacities,
-        'effectSource': 'deterministic complete cyan rings',
-        'recommendedFrameDurations': [84, 84, 84, 600, 120, 120],
+        'effectSource': 'deterministic attached cool-white aura',
+        'recommendedFrames': 16,
+        'recommendedColumns': 4,
+        'recommendedFrameDurations': [70, 60, 60, 60, 60, 60, 70, 120, 120, 70, 60, 60, 60, 60, 60, 70],
         'characterLuma': character_luma,
+        'peakCharacterLuma': character_luma[peak_index],
+        'peakCharacterSaturationP90': float(np.percentile(peak_saturation, 90)),
         'effectPixelCounts': effect_pixel_counts,
         'canonicalCharacterAlphaMaxDelta': alpha_delta,
         'canonicalCharacterBodyResidual': body_residual,
         'firstFrameCanonicalMaxDelta': first_delta,
         'lastFrameCanonicalMaxDelta': last_delta,
+        'symmetricMaxDelta': symmetry_delta,
+        'peakHoldMaxDelta': int(np.max(np.abs(outputs[7].astype(np.int16) - outputs[8].astype(np.int16)))),
+        'lumaEnvelopeMonotonic': rising and falling,
         'colorMatching': False,
         'stableLocking': True,
         'registrationApplied': False,
@@ -540,7 +776,7 @@ def round_metrics(value):
     return value
 
 
-def process_animation(name, animation, model_dir, output_dir, args, canonical=None):
+def process_animation(name, animation, model_dir, output_dir, args, canonical=None, companion=None, intermediate=None):
     source_path = model_dir / animation['file']
     sheet = Image.open(source_path).convert('RGBA')
     frame_width = int(animation['frameWidth'])
@@ -550,9 +786,21 @@ def process_animation(name, animation, model_dir, output_dir, args, canonical=No
     original = split_frames(sheet, frame_width, frame_height, frame_count, columns)
     reference_index = 3 if name == 'idle' and frame_count > 3 else 0
     reference = canonical if (name.startswith('pluck-') or name == 'transform') and canonical is not None else original[reference_index]
+    preserved_idle = preserved_idle_sequence(original, args.eye_box) if name == 'idle' else None
+    preserved_pluck = (
+        preserved_two_hand_sequence(name, canonical, original)
+        if args.two_hand and name.startswith('pluck-') and canonical is not None
+        else None
+    )
     registered = []
     registrations = []
     for index, frame in enumerate(original):
+        if preserved_idle is not None or preserved_pluck is not None:
+            dx, dy, cost = 0, 0, 0
+            matched, gains, biases = frame.copy(), [1, 1, 1], [0, 0, 0]
+            registered.append(matched)
+            registrations.append({'frame': index, 'dx': dx, 'dy': dy, 'cost': cost, 'gains': gains, 'biases': biases})
+            continue
         if name == 'transform' or (not name.startswith('pluck-') and index == reference_index):
             dx, dy, cost = 0, 0, 0
         else:
@@ -565,16 +813,42 @@ def process_animation(name, animation, model_dir, output_dir, args, canonical=No
         registered.append(matched)
         registrations.append({'frame': index, 'dx': dx, 'dy': dy, 'cost': cost, 'gains': gains, 'biases': biases})
     if name == 'idle':
-        stabilized, moving, mode_report = stabilize_idle(
-            registered,
-            reference_index,
-            args.idle_open_frame,
-            args.eye_box,
-        )
+        if preserved_idle is not None:
+            stabilized, moving, mode_report = preserved_idle
+        else:
+            stabilized, moving, mode_report = stabilize_idle(
+                registered,
+                reference_index,
+                args.idle_open_frame,
+                args.eye_box,
+            )
         stable_mask = 1 - moving
         threshold = None
     elif name.startswith('pluck-') and canonical is not None:
-        stabilized, moving, mode_report = stabilize_pluck(name, canonical, registered)
+        if preserved_pluck is not None:
+            stabilized, moving, mode_report = preserved_pluck
+        else:
+            stabilized, moving, mode_report = stabilize_pluck(name, canonical, registered, intermediate)
+            if companion is not None:
+                stabilized, moving, companion_report = add_companion_hand(
+                    canonical,
+                    stabilized,
+                    companion['frames'],
+                    companion['side'],
+                )
+                mode_report.update(companion_report)
+                mode_report['companionAnimation'] = companion['name']
+                mode_report['mode'] = 'two-hand-local-patches'
+        if args.two_hand:
+            mode_report.update(two_hand_motion_report(name, canonical, stabilized))
+        unique_frames = {frame.tobytes() for frame in stabilized}
+        active_frames = {
+            frame.tobytes()
+            for frame in stabilized
+            if not np.array_equal(frame, canonical)
+        }
+        mode_report['uniqueFrameCount'] = len(unique_frames)
+        mode_report['activePoseCount'] = len(active_frames)
         stable_mask = (moving < 0.001).astype(np.float32)
     elif name == 'transform' and canonical is not None:
         stabilized, moving, mode_report = stabilize_transform(canonical, registered)
@@ -597,8 +871,9 @@ def process_animation(name, animation, model_dir, output_dir, args, canonical=No
     stabilized_dir = output_dir / 'frames' / stem / 'stabilized'
     original_dir.mkdir(parents=True, exist_ok=True)
     stabilized_dir.mkdir(parents=True, exist_ok=True)
-    for index, (source, result) in enumerate(zip(original, stabilized)):
+    for index, source in enumerate(original):
         Image.fromarray(source, 'RGBA').save(original_dir / f'{index:02d}.png')
+    for index, result in enumerate(stabilized):
         Image.fromarray(result, 'RGBA').save(stabilized_dir / f'{index:02d}.png')
     sheets_dir = output_dir / 'sheets'
     previews_dir = output_dir / 'previews'
@@ -610,7 +885,9 @@ def process_animation(name, animation, model_dir, output_dir, args, canonical=No
     masks_dir.mkdir(parents=True, exist_ok=True)
     Image.fromarray(np.rint(moving * 255).astype(np.uint8), 'L').save(masks_dir / f'{stem}-motion.png')
     output_sheet_path = sheets_dir / f'{stem}.webp'
-    compose_sheet(stabilized, columns).save(
+    output_columns = int(mode_report.get('recommendedColumns', columns))
+    output_frame_count = len(stabilized)
+    compose_sheet(stabilized, output_columns).save(
         output_sheet_path,
         format='WEBP',
         lossless=True,
@@ -618,13 +895,17 @@ def process_animation(name, animation, model_dir, output_dir, args, canonical=No
         method=6,
         exact=True,
     )
-    durations = animation_durations(animation, frame_count)
+    durations = animation_durations(animation, output_frame_count)
     if 'recommendedFrameDurations' in mode_report:
         durations = mode_report['recommendedFrameDurations']
-    save_gif(original, previews_dir / f'{stem}-before.gif', durations)
+    before_durations = animation_durations(animation, len(original))
+    comparison_original = original
+    if len(original) != output_frame_count:
+        comparison_original = [reference.copy() for _ in stabilized]
+    save_gif(original, previews_dir / f'{stem}-before.gif', before_durations)
     save_gif(stabilized, previews_dir / f'{stem}-after.gif', durations)
-    save_side_by_side(original, stabilized, previews_dir / f'{stem}-comparison.gif', durations)
-    save_contact_sheet(original, stabilized, previews_dir / f'{stem}-contact.png')
+    save_side_by_side(comparison_original, stabilized, previews_dir / f'{stem}-comparison.gif', durations)
+    save_contact_sheet(comparison_original, stabilized, previews_dir / f'{stem}-contact.png')
     centroids_before = [alpha_centroid(frame) for frame in original]
     centroids_after = [alpha_centroid(frame) for frame in stabilized]
     centroid_spread_before = float(np.mean(np.std(np.asarray(centroids_before), axis=0)))
@@ -641,13 +922,13 @@ def process_animation(name, animation, model_dir, output_dir, args, canonical=No
     }
     encoded_sheet = Image.open(output_sheet_path).convert('RGBA')
     encoded_array = np.asarray(encoded_sheet, dtype=np.uint8)
-    encoded_frames = split_frames(encoded_sheet, frame_width, frame_height, frame_count, columns)
+    encoded_frames = split_frames(encoded_sheet, frame_width, frame_height, output_frame_count, output_columns)
     transparent = encoded_array[:, :, 3] == 0
     hidden_rgb_max = int(np.max(encoded_array[:, :, :3][transparent])) if np.any(transparent) else 0
     edge_counts = [edge_alpha_pixels(frame) for frame in encoded_frames]
     empty_frames = [index for index, frame in enumerate(encoded_frames) if not np.any(frame[:, :, 3])]
     errors = []
-    expected_size = (frame_width * columns, frame_height * math.ceil(frame_count / columns))
+    expected_size = (frame_width * output_columns, frame_height * math.ceil(output_frame_count / output_columns))
     if encoded_sheet.size != expected_size:
         errors.append('encoded sheet dimensions do not match configured grid')
     if hidden_rgb_max:
@@ -672,6 +953,16 @@ def process_animation(name, animation, model_dir, output_dir, args, canonical=No
             errors.append('pluck first or last frame does not exactly match the idle canonical frame')
         if mode_report['symmetricMaxDelta']:
             errors.append('pluck mirrored intermediate or repeated peak frames are not pixel-identical')
+        if args.two_hand and not mode_report.get('twoHandMotion'):
+            errors.append(f"pluck does not move both hands in every active frame: {mode_report.get('changedPixelsByFrame')}")
+        if any(mode_report.get('outsideActionCorridorChangedPixels', [])):
+            errors.append(f"pluck changes pixels outside the fixed hand corridor: {mode_report['outsideActionCorridorChangedPixels']}")
+        if any(mode_report.get('protectedFaceChangedPixels', [])):
+            errors.append(f"pluck changes protected face pixels: {mode_report['protectedFaceChangedPixels']}")
+        if mode_report.get('twoHandStaticMaxDelta', 0):
+            errors.append(f"two-hand composition changed static pixels: {mode_report['twoHandStaticMaxDelta']}")
+        if mode_report.get('activePoseCount', 0) < 2:
+            errors.append(f"pluck has fewer than two distinct active poses: {mode_report.get('activePoseCount')}")
     elif name == 'transform':
         progress = mode_report['lutProgress']
         if mode_report['canonicalCharacterAlphaMaxDelta']:
@@ -686,6 +977,16 @@ def process_animation(name, animation, model_dir, output_dir, args, canonical=No
             errors.append(f'transform LUT envelope has an abrupt time step: {progress}')
         if max(mode_report['effectPixelCounts']) < 100:
             errors.append('transform external highlight extraction found too few effect pixels')
+        if mode_report['symmetricMaxDelta']:
+            errors.append('transform whitening and recovery frames are not pixel-symmetric')
+        if mode_report['peakHoldMaxDelta']:
+            errors.append('transform peak white frames do not hold exactly')
+        if not mode_report['lumaEnvelopeMonotonic']:
+            errors.append('transform luminance does not rise and fall monotonically')
+        if not 232 <= mode_report['peakCharacterLuma'] <= 242:
+            errors.append(f"transform peak luminance is outside 232..242: {mode_report['peakCharacterLuma']}")
+        if mode_report['peakCharacterSaturationP90'] > 45:
+            errors.append(f"transform peak saturation p90 exceeds 45: {mode_report['peakCharacterSaturationP90']}")
     report = {
         'ok': not errors,
         'animation': name,
@@ -693,8 +994,9 @@ def process_animation(name, animation, model_dir, output_dir, args, canonical=No
         'output': str(output_sheet_path.resolve()),
         'frameWidth': frame_width,
         'frameHeight': frame_height,
-        'frames': frame_count,
-        'columns': columns,
+        'sourceFrames': frame_count,
+        'frames': output_frame_count,
+        'columns': output_columns,
         'registration': registrations,
         **mode_report,
         'acceptance': {
@@ -710,6 +1012,33 @@ def process_animation(name, animation, model_dir, output_dir, args, canonical=No
     return report
 
 
+def model_animation_frames(config, model_dir, name):
+    animation = config['animations'][name]
+    sheet = Image.open(model_dir / animation['file']).convert('RGBA')
+    return split_frames(
+        sheet,
+        int(animation['frameWidth']),
+        int(animation['frameHeight']),
+        int(animation['frames']),
+        int(animation['columns']),
+    )
+
+
+def compose_donor_pose(canonical, config, model_dir, donors):
+    output = canonical.copy()
+    split = canonical.shape[1] // 2
+    for donor in donors:
+        source = model_animation_frames(config, model_dir, donor['name'])[donor['frame']]
+        changed = np.any(source != canonical, axis=2)
+        if donor['side'] == 'left':
+            changed[:, split:] = False
+        else:
+            changed[:, :split] = False
+        output[changed] = source[changed]
+    output[output[:, :, 3] == 0, :3] = 0
+    return output
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model-dir', required=True)
@@ -717,6 +1046,7 @@ def main():
     parser.add_argument('--max-shift', type=int, default=12)
     parser.add_argument('--idle-open-frame', type=int, default=0)
     parser.add_argument('--eye-box', type=int, nargs=4, action='append')
+    parser.add_argument('--two-hand', action='store_true')
     args = parser.parse_args()
     if not args.eye_box:
         args.eye_box = [[196, 214, 249, 263], [243, 214, 297, 263]]
@@ -726,11 +1056,41 @@ def main():
     reports = []
     idle = config['animations']['idle']
     reports.append(process_animation('idle', idle, model_dir, output_dir, args))
-    canonical = np.array(Image.open(output_dir / 'frames' / Path(idle['file']).stem / 'stabilized' / '00.png').convert('RGBA'))
+    if args.two_hand:
+        canonical = model_animation_frames(config, model_dir, 'idle')[0]
+    else:
+        canonical = np.array(Image.open(output_dir / 'frames' / Path(idle['file']).stem / 'stabilized' / '00.png').convert('RGBA'))
     for name, animation in config['animations'].items():
         if name == 'idle':
             continue
-        reports.append(process_animation(name, animation, model_dir, output_dir, args, canonical))
+        companion = None
+        companion_spec = TWO_HAND_COMPANIONS.get(name) if args.two_hand else None
+        if companion_spec is not None:
+            companion_frames = model_animation_frames(config, model_dir, companion_spec['name'])
+            frame_order = companion_spec.get('frameOrder', list(range(len(companion_frames))))
+            companion = {
+                'name': companion_spec['name'],
+                'side': companion_spec['side'],
+                'frames': [companion_frames[index] for index in frame_order],
+            }
+        intermediate = None
+        if args.two_hand and name in PLUCK_INTERMEDIATE_DONORS:
+            intermediate = compose_donor_pose(
+                canonical,
+                config,
+                model_dir,
+                PLUCK_INTERMEDIATE_DONORS[name],
+            )
+        reports.append(process_animation(
+            name,
+            animation,
+            model_dir,
+            output_dir,
+            args,
+            canonical,
+            companion,
+            intermediate,
+        ))
     summary = {
         'ok': all(report['ok'] for report in reports),
         'model': str(model_dir.resolve()),
