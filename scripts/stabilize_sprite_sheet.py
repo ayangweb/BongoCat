@@ -576,6 +576,160 @@ def cool_white_lut(canonical, progress):
     return output
 
 
+def smoothstep(low, high, values):
+    scaled = np.clip((values - low) / (high - low), 0, 1)
+    return scaled * scaled * (3 - 2 * scaled)
+
+
+def original_white_lut(canonical):
+    output = canonical.copy()
+    rgb = canonical[:, :, :3].astype(np.float32)
+    red, green, blue_channel = np.moveaxis(rgb, 2, 0)
+    luma = red * 0.2126 + green * 0.7152 + blue_channel * 0.0722
+    chroma = np.max(rgb, axis=2) - np.min(rgb, axis=2)
+    y, x = np.indices(luma.shape)
+    blue = smoothstep(5, 70, blue_channel - (red + green) / 2)
+    cool = smoothstep(0, 55, np.maximum(blue_channel - red, green - red))
+    dark = smoothstep(35, 135, luma)
+    head = np.exp(-1.2 * (((x - 255) / 150) ** 2 + ((y - 205) / 135) ** 2))
+    skin = smoothstep(8, 40, red - blue_channel) * smoothstep(0, 25, red - green)
+    gold = smoothstep(8, 40, red - blue_channel) * smoothstep(3, 30, green - blue_channel)
+    neutral = (1 - smoothstep(20, 75, chroma)) * smoothstep(95, 205, luma)
+    strength = (
+        blue * (0.1 + 0.8 * head) * (0.18 + 0.82 * dark)
+        + 0.05 * cool * dark
+        + 0.035 * neutral
+    ) * (1 - 0.8 * np.maximum(skin, gold))
+    strength = np.clip(strength, 0, 0.82)
+    target = np.array([238, 248, 255], dtype=np.float32)
+    output[:, :, :3] = np.clip(
+        np.rint(rgb + (target - rgb) * strength[:, :, None]),
+        0,
+        255,
+    ).astype(np.uint8)
+    output[output[:, :, 3] == 0, :3] = 0
+    return output
+
+
+def original_white_effect(canonical, reference_frames):
+    historical_alpha = np.maximum.reduce([frame[:, :, 3] for frame in reference_frames[:4]])
+    protected = np.asarray(
+        Image.fromarray(historical_alpha, 'L').filter(ImageFilter.MaxFilter(9)),
+        dtype=np.float32,
+    ) / 255
+    source = reference_frames[-1]
+    alpha = source[:, :, 3].astype(np.float32) / 255 * (1 - protected)
+    y = np.indices(alpha.shape)[0]
+    alpha *= np.clip((380 - y) / 35, 0, 1)
+    alpha[90:130, 185:320] = 0
+    alpha[canonical[:, :, 3] > 0] = 0
+    effect = np.zeros_like(canonical)
+    effect[:, :, :3] = source[:, :, :3]
+    effect[:, :, 3] = np.clip(np.rint(alpha * 255), 0, 255).astype(np.uint8)
+    effect[effect[:, :, 3] == 0, :3] = 0
+    return effect
+
+
+def stabilize_original_white_transform(canonical, reference_frames):
+    progress_values = [0, 0.055, 0.198, 0.394, 0.606, 0.802, 0.945, 1, 1, 0.945, 0.802, 0.606, 0.394, 0.198, 0.055, 0]
+    effect_opacities = [progress ** 1.6 for progress in progress_values]
+    peak = original_white_lut(canonical)
+    peak_effect = original_white_effect(canonical, reference_frames)
+    outputs = []
+    bases = []
+    masks = []
+    character_luma = []
+    effect_pixel_counts = []
+    character = canonical[:, :, 3] > 12
+    character_weight = canonical[:, :, 3].astype(np.float32) / 255
+    for progress, effect_opacity in zip(progress_values, effect_opacities):
+        base = canonical.copy()
+        base[:, :, :3] = np.clip(
+            np.rint(
+                canonical[:, :, :3].astype(np.float32) * (1 - progress)
+                + peak[:, :, :3].astype(np.float32) * progress
+            ),
+            0,
+            255,
+        ).astype(np.uint8)
+        effect = peak_effect.copy()
+        effect[:, :, 3] = np.clip(
+            np.rint(peak_effect[:, :, 3].astype(np.float32) * effect_opacity),
+            0,
+            255,
+        ).astype(np.uint8)
+        effect[effect[:, :, 3] == 0, :3] = 0
+        output = np.asarray(
+            Image.alpha_composite(Image.fromarray(effect, 'RGBA'), Image.fromarray(base, 'RGBA')),
+            dtype=np.uint8,
+        ).copy()
+        output[output[:, :, 3] == 0, :3] = 0
+        outputs.append(output)
+        bases.append(base)
+        masks.append(effect[:, :, 3].astype(np.float32) / 255)
+        luma = base[:, :, 0] * 0.2126 + base[:, :, 1] * 0.7152 + base[:, :, 2] * 0.0722
+        character_luma.append(float(np.sum(luma * character_weight) / np.sum(character_weight)))
+        effect_pixel_counts.append(int(np.count_nonzero(effect[:, :, 3] > 8)))
+    peak_index = int(np.argmax(progress_values))
+    peak_rgb = bases[peak_index][:, :, :3].astype(np.float32)
+    peak_luma = peak_rgb[:, :, 0] * 0.2126 + peak_rgb[:, :, 1] * 0.7152 + peak_rgb[:, :, 2] * 0.0722
+    peak_max = np.max(peak_rgb, axis=2)
+    peak_min = np.min(peak_rgb, axis=2)
+    peak_saturation = np.zeros_like(peak_max)
+    np.divide(peak_max - peak_min, peak_max, out=peak_saturation, where=peak_max > 0)
+    peak_saturation *= 255
+    y, x = np.indices(character.shape)
+    head = character & (x >= 145) & (x < 370) & (y >= 105) & (y < 315)
+    effect_union = np.max(np.stack(masks), axis=0)
+    moving = np.max(
+        np.stack([np.any(output != canonical, axis=2) for output in outputs]),
+        axis=0,
+    ).astype(np.float32)
+    body_residual = max(
+        int(np.max(np.abs(output[character].astype(np.int16) - base[character].astype(np.int16))))
+        for output, base in zip(outputs, bases)
+    )
+    first_delta = int(np.max(np.abs(outputs[0].astype(np.int16) - canonical.astype(np.int16))))
+    last_delta = int(np.max(np.abs(outputs[-1].astype(np.int16) - canonical.astype(np.int16))))
+    symmetry_delta = max(
+        int(np.max(np.abs(outputs[index].astype(np.int16) - outputs[-1 - index].astype(np.int16))))
+        for index in range(len(outputs) // 2)
+    )
+    rising = all(right >= left for left, right in zip(character_luma[:peak_index], character_luma[1:peak_index + 1]))
+    falling = all(right <= left for left, right in zip(character_luma[peak_index + 1:], character_luma[peak_index + 2:]))
+    return outputs, moving, {
+        'mode': 'canonical-v1-original-white',
+        'canonicalFrame': 'stabilized idle frame 0',
+        'referenceFrames': len(reference_frames),
+        'lutProgress': progress_values,
+        'effectOpacity': effect_opacities,
+        'effectSource': 'V1 original exterior sword-ring pixels',
+        'recommendedFrames': 16,
+        'recommendedColumns': 4,
+        'recommendedFrameDurations': [70, 60, 60, 60, 60, 60, 70, 180, 180, 70, 60, 60, 60, 60, 60, 90],
+        'characterLuma': character_luma,
+        'peakCharacterLuma': character_luma[peak_index],
+        'peakCharacterSaturationP90': float(np.percentile(peak_saturation[character], 90)),
+        'peakHeadLuma': float(np.mean(peak_luma[head])),
+        'peakHeadSaturationP50': float(np.percentile(peak_saturation[head], 50)),
+        'effectPixelCounts': effect_pixel_counts,
+        'canonicalCharacterAlphaMaxDelta': max(
+            int(np.max(np.abs(base[:, :, 3].astype(np.int16) - canonical[:, :, 3].astype(np.int16))))
+            for base in bases
+        ),
+        'canonicalCharacterBodyResidual': body_residual,
+        'firstFrameCanonicalMaxDelta': first_delta,
+        'lastFrameCanonicalMaxDelta': last_delta,
+        'symmetricMaxDelta': symmetry_delta,
+        'peakHoldMaxDelta': int(np.max(np.abs(outputs[7].astype(np.int16) - outputs[8].astype(np.int16)))),
+        'lumaEnvelopeMonotonic': rising and falling,
+        'colorMatching': False,
+        'stableLocking': True,
+        'registrationApplied': False,
+        'effectUnionPixelCount': int(np.count_nonzero(effect_union > 0.03)),
+    }
+
+
 def programmatic_transform_effect(canonical, opacity):
     height, width = canonical.shape[:2]
     alpha = Image.fromarray(canonical[:, :, 3], 'L')
@@ -591,7 +745,7 @@ def programmatic_transform_effect(canonical, opacity):
     return effect_array, weight
 
 
-def stabilize_transform(canonical, frames):
+def stabilize_soft_white_transform(canonical, frames):
     outputs = []
     masks = []
     bases = []
@@ -664,6 +818,12 @@ def stabilize_transform(canonical, frames):
         'registrationApplied': False,
     }
     return outputs, effect_union, report
+
+
+def stabilize_transform(canonical, frames, reference_frames=None):
+    if reference_frames:
+        return stabilize_original_white_transform(canonical, reference_frames)
+    return stabilize_soft_white_transform(canonical, frames)
 
 
 def alpha_centroid(frame):
@@ -776,7 +936,17 @@ def round_metrics(value):
     return value
 
 
-def process_animation(name, animation, model_dir, output_dir, args, canonical=None, companion=None, intermediate=None):
+def process_animation(
+    name,
+    animation,
+    model_dir,
+    output_dir,
+    args,
+    canonical=None,
+    companion=None,
+    intermediate=None,
+    transform_reference=None,
+):
     source_path = model_dir / animation['file']
     sheet = Image.open(source_path).convert('RGBA')
     frame_width = int(animation['frameWidth'])
@@ -851,7 +1021,7 @@ def process_animation(name, animation, model_dir, output_dir, args, canonical=No
         mode_report['activePoseCount'] = len(active_frames)
         stable_mask = (moving < 0.001).astype(np.float32)
     elif name == 'transform' and canonical is not None:
-        stabilized, moving, mode_report = stabilize_transform(canonical, registered)
+        stabilized, moving, mode_report = stabilize_transform(canonical, registered, transform_reference)
         stable_mask = (canonical[:, :, 3] > 12).astype(np.float32)
     else:
         moving, threshold = motion_mask(reference, registered)
@@ -983,10 +1153,18 @@ def process_animation(name, animation, model_dir, output_dir, args, canonical=No
             errors.append('transform peak white frames do not hold exactly')
         if not mode_report['lumaEnvelopeMonotonic']:
             errors.append('transform luminance does not rise and fall monotonically')
-        if not 232 <= mode_report['peakCharacterLuma'] <= 242:
-            errors.append(f"transform peak luminance is outside 232..242: {mode_report['peakCharacterLuma']}")
-        if mode_report['peakCharacterSaturationP90'] > 45:
-            errors.append(f"transform peak saturation p90 exceeds 45: {mode_report['peakCharacterSaturationP90']}")
+        if mode_report['mode'] == 'canonical-v1-original-white':
+            if not 165 <= mode_report['peakCharacterLuma'] <= 180:
+                errors.append(f"transform peak luminance is outside 165..180: {mode_report['peakCharacterLuma']}")
+            if not 185 <= mode_report['peakHeadLuma'] <= 198:
+                errors.append(f"transform peak head luminance is outside 185..198: {mode_report['peakHeadLuma']}")
+            if mode_report['peakHeadSaturationP50'] > 60:
+                errors.append(f"transform peak head saturation p50 exceeds 60: {mode_report['peakHeadSaturationP50']}")
+        else:
+            if not 232 <= mode_report['peakCharacterLuma'] <= 242:
+                errors.append(f"transform peak luminance is outside 232..242: {mode_report['peakCharacterLuma']}")
+            if mode_report['peakCharacterSaturationP90'] > 45:
+                errors.append(f"transform peak saturation p90 exceeds 45: {mode_report['peakCharacterSaturationP90']}")
     report = {
         'ok': not errors,
         'animation': name,
@@ -1053,6 +1231,24 @@ def main():
     model_dir = Path(args.model_dir)
     output_dir = Path(args.output_dir)
     config = json.loads((model_dir / 'model.json').read_text())
+    transform_reference = None
+    transform_reference_path = model_dir / 'references' / 'transform-original-white.webp'
+    if transform_reference_path.exists():
+        transform_animation = config['animations']['transform']
+        reference_sheet = Image.open(transform_reference_path).convert('RGBA')
+        frame_width = int(transform_animation['frameWidth'])
+        frame_height = int(transform_animation['frameHeight'])
+        if reference_sheet.width % frame_width or reference_sheet.height % frame_height:
+            raise ValueError('transform reference dimensions do not match the configured frame size')
+        reference_columns = reference_sheet.width // frame_width
+        reference_frames = reference_columns * (reference_sheet.height // frame_height)
+        transform_reference = split_frames(
+            reference_sheet,
+            frame_width,
+            frame_height,
+            reference_frames,
+            reference_columns,
+        )
     reports = []
     idle = config['animations']['idle']
     reports.append(process_animation('idle', idle, model_dir, output_dir, args))
@@ -1090,6 +1286,7 @@ def main():
             canonical,
             companion,
             intermediate,
+            transform_reference if name == 'transform' else None,
         ))
     summary = {
         'ok': all(report['ok'] for report in reports),
