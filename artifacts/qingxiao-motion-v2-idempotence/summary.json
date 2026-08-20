@@ -1,0 +1,33 @@
+{
+  "ok": true,
+  "model": "/Users/thousanddream/code/BongoCat/src-tauri/assets/models/qingxiao",
+  "output": "/Users/thousanddream/code/BongoCat/artifacts/qingxiao-motion-v2-idempotence",
+  "animations": [
+    "idle",
+    "pluck-01",
+    "pluck-02",
+    "pluck-03",
+    "pluck-04",
+    "pluck-05",
+    "pluck-06",
+    "pluck-07",
+    "pluck-08",
+    "pluck-09",
+    "pluck-10",
+    "transform"
+  ],
+  "reports": [
+    "/Users/thousanddream/code/BongoCat/artifacts/qingxiao-motion-v2-idempotence/reports/idle.json",
+    "/Users/thousanddream/code/BongoCat/artifacts/qingxiao-motion-v2-idempotence/reports/pluck-01.json",
+    "/Users/thousanddream/code/BongoCat/artifacts/qingxiao-motion-v2-idempotence/reports/pluck-02.json",
+    "/Users/thousanddream/code/BongoCat/artifacts/qingxiao-motion-v2-idempotence/reports/pluck-03.json",
+    "/Users/thousanddream/code/BongoCat/artifacts/qingxiao-motion-v2-idempotence/reports/pluck-04.json",
+    "/Users/thousanddream/code/BongoCat/artifacts/qingxiao-motion-v2-idempotence/reports/pluck-05.json",
+    "/Users/thousanddream/code/BongoCat/artifacts/qingxiao-motion-v2-idempotence/reports/pluck-06.json",
+    "/Users/thousanddream/code/BongoCat/artifacts/qingxiao-motion-v2-idempotence/reports/pluck-07.json",
+    "/Users/thousanddream/code/BongoCat/artifacts/qingxiao-motion-v2-idempotence/reports/pluck-08.json",
+    "/Users/thousanddream/code/BongoCat/artifacts/qingxiao-motion-v2-idempotence/reports/pluck-09.json",
+    "/Users/thousanddream/code/BongoCat/artifacts/qingxiao-motion-v2-idempotence/reports/pluck-10.json",
+    "/Users/thousanddream/code/BongoCat/artifacts/qingxiao-motion-v2-idempotence/reports/transform.json"
+  ]
+}

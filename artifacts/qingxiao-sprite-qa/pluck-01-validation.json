@@ -1,0 +1,215 @@
+{
+  "ok": true,
+  "animation": "pluck-01",
+  "source": "/Users/thousanddream/code/BongoCat/src-tauri/assets/models/qingxiao/sprites/pluck-01.webp",
+  "output": "/Users/thousanddream/code/BongoCat/src-tauri/assets/models/qingxiao/sprites/pluck-01.webp",
+  "frameWidth": 512,
+  "frameHeight": 512,
+  "frames": 6,
+  "columns": 3,
+  "registration": [
+    {
+      "frame": 0,
+      "dx": 10,
+      "dy": 3,
+      "cost": 0.1543268859386444,
+      "gains": [
+        0.96861,
+        0.91534,
+        0.9
+      ],
+      "biases": [
+        4.9731,
+        16.0,
+        16.0
+      ]
+    },
+    {
+      "frame": 1,
+      "dx": -3,
+      "dy": -7,
+      "cost": 0.16614332795143127,
+      "gains": [
+        0.96429,
+        0.91489,
+        0.9
+      ],
+      "biases": [
+        6.0714,
+        16.0,
+        16.0
+      ]
+    },
+    {
+      "frame": 2,
+      "dx": 10,
+      "dy": 4,
+      "cost": 0.15757614374160767,
+      "gains": [
+        0.96875,
+        0.92021,
+        0.9
+      ],
+      "biases": [
+        4.0625,
+        16.0,
+        16.0
+      ]
+    },
+    {
+      "frame": 3,
+      "dx": 8,
+      "dy": 10,
+      "cost": 0.1650506854057312,
+      "gains": [
+        0.96875,
+        0.92063,
+        0.9
+      ],
+      "biases": [
+        5.5312,
+        16.0,
+        16.0
+      ]
+    },
+    {
+      "frame": 4,
+      "dx": 4,
+      "dy": 10,
+      "cost": 0.1590893715620041,
+      "gains": [
+        0.97748,
+        0.92021,
+        0.9
+      ],
+      "biases": [
+        3.8784,
+        16.0,
+        16.0
+      ]
+    },
+    {
+      "frame": 5,
+      "dx": 10,
+      "dy": 3,
+      "cost": 0.15959614515304565,
+      "gains": [
+        0.96,
+        0.91534,
+        0.9
+      ],
+      "biases": [
+        5.16,
+        16.0,
+        16.0
+      ]
+    }
+  ],
+  "mode": "single-peak-local-patch",
+  "canonicalFrame": "stabilized idle frame 0",
+  "sourceFrameSequence": [
+    "canonical",
+    4,
+    1,
+    1,
+    4,
+    "canonical"
+  ],
+  "recommendedFrameDurations": [
+    30,
+    70,
+    110,
+    110,
+    70,
+    30
+  ],
+  "peakSourceFrame": 1,
+  "intermediateSourceFrame": 4,
+  "sourcePoseScores": {
+    "1": 59.530914306640625,
+    "2": 8.421480178833008,
+    "3": 32.26079559326172,
+    "4": 40.61764144897461
+  },
+  "motionPixelFraction": 0.025012969970703125,
+  "stablePixelFraction": 0.9749870300292969,
+  "canonicalStaticMae": 0.0,
+  "firstFrameCanonicalMaxDelta": 0,
+  "lastFrameCanonicalMaxDelta": 0,
+  "returnIntermediateMaxDelta": 0,
+  "peakHoldMaxDelta": 0,
+  "symmetricMaxDelta": 0,
+  "acceptance": {
+    "errors": [],
+    "hiddenRgbMax": 0,
+    "emptyFrames": [],
+    "edgeAlphaPixels": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "metrics": {
+    "alphaCentroidsBefore": [
+      [
+        245.5731345812848,
+        326.6459876010283
+      ],
+      [
+        245.72709005938697,
+        325.6868524687222
+      ],
+      [
+        245.37056061303267,
+        326.520941140476
+      ],
+      [
+        246.05393751017274,
+        326.0494067125396
+      ],
+      [
+        245.79470163340125,
+        325.9698575832881
+      ],
+      [
+        245.70919098365215,
+        325.9721295854535
+      ]
+    ],
+    "alphaCentroidsAfter": [
+      [
+        251.39895580300507,
+        331.2740000770604
+      ],
+      [
+        251.03199386580224,
+        331.2747096482385
+      ],
+      [
+        249.75776739877443,
+        331.07324321814286
+      ],
+      [
+        249.75776739877443,
+        331.07324321814286
+      ],
+      [
+        251.03199386580224,
+        331.2747096482385
+      ],
+      [
+        251.39895580300507,
+        331.2740000770604
+      ]
+    ],
+    "centroidSpreadBefore": 0.27130145552049917,
+    "centroidSpreadAfter": 0.39905804302104997,
+    "stableRegionColorDeltaBefore": 55.94626998901367,
+    "stableRegionColorDeltaAfter": 0.0,
+    "stableRegionFlickerBefore": 14.680584907531738,
+    "stableRegionFlickerAfter": 5.464895380669077e-08
+  }
+}

@@ -1,0 +1,191 @@
+{
+  "ok": true,
+  "sheet": "/Users/thousanddream/code/BongoCat/artifacts/qingxiao-motion-v2/sheets/transform.webp",
+  "width": 2048,
+  "height": 2048,
+  "frameWidth": 512,
+  "frameHeight": 512,
+  "frames": 16,
+  "columns": 4,
+  "rows": 4,
+  "errors": [],
+  "warnings": [],
+  "frameStats": [
+    {
+      "index": 0,
+      "bbox": [
+        48,
+        116,
+        464,
+        464
+      ],
+      "coverage": 0.2762,
+      "edgePixels": 0
+    },
+    {
+      "index": 1,
+      "bbox": [
+        39,
+        107,
+        473,
+        473
+      ],
+      "coverage": 0.3317,
+      "edgePixels": 0
+    },
+    {
+      "index": 2,
+      "bbox": [
+        36,
+        104,
+        476,
+        476
+      ],
+      "coverage": 0.3495,
+      "edgePixels": 0
+    },
+    {
+      "index": 3,
+      "bbox": [
+        35,
+        103,
+        477,
+        477
+      ],
+      "coverage": 0.356,
+      "edgePixels": 0
+    },
+    {
+      "index": 4,
+      "bbox": [
+        34,
+        102,
+        478,
+        478
+      ],
+      "coverage": 0.3603,
+      "edgePixels": 0
+    },
+    {
+      "index": 5,
+      "bbox": [
+        34,
+        102,
+        478,
+        478
+      ],
+      "coverage": 0.3624,
+      "edgePixels": 0
+    },
+    {
+      "index": 6,
+      "bbox": [
+        34,
+        102,
+        478,
+        478
+      ],
+      "coverage": 0.3625,
+      "edgePixels": 0
+    },
+    {
+      "index": 7,
+      "bbox": [
+        34,
+        102,
+        478,
+        478
+      ],
+      "coverage": 0.3638,
+      "edgePixels": 0
+    },
+    {
+      "index": 8,
+      "bbox": [
+        34,
+        102,
+        478,
+        478
+      ],
+      "coverage": 0.3638,
+      "edgePixels": 0
+    },
+    {
+      "index": 9,
+      "bbox": [
+        34,
+        102,
+        478,
+        478
+      ],
+      "coverage": 0.3625,
+      "edgePixels": 0
+    },
+    {
+      "index": 10,
+      "bbox": [
+        34,
+        102,
+        478,
+        478
+      ],
+      "coverage": 0.3624,
+      "edgePixels": 0
+    },
+    {
+      "index": 11,
+      "bbox": [
+        34,
+        102,
+        478,
+        478
+      ],
+      "coverage": 0.3603,
+      "edgePixels": 0
+    },
+    {
+      "index": 12,
+      "bbox": [
+        35,
+        103,
+        477,
+        477
+      ],
+      "coverage": 0.356,
+      "edgePixels": 0
+    },
+    {
+      "index": 13,
+      "bbox": [
+        36,
+        104,
+        476,
+        476
+      ],
+      "coverage": 0.3495,
+      "edgePixels": 0
+    },
+    {
+      "index": 14,
+      "bbox": [
+        39,
+        107,
+        473,
+        473
+      ],
+      "coverage": 0.3317,
+      "edgePixels": 0
+    },
+    {
+      "index": 15,
+      "bbox": [
+        48,
+        116,
+        464,
+        464
+      ],
+      "coverage": 0.2762,
+      "edgePixels": 0
+    }
+  ]
+}

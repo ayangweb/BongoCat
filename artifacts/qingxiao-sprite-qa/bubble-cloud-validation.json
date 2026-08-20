@@ -1,0 +1,48 @@
+{
+  "ok": true,
+  "renderer": "src/utils/sprite.ts",
+  "model": "src-tauri/assets/models/qingxiao/model.json",
+  "spriteSources": [
+    "src-tauri/assets/models/qingxiao/sprites/pluck-01.webp",
+    "src-tauri/assets/models/qingxiao/sprites/idle.webp"
+  ],
+  "canvas": {
+    "width": 512,
+    "height": 512
+  },
+  "origin": {
+    "configured": [256, 380],
+    "firstFrameTailTip": [256, 380],
+    "matchesGuqinCenter": true
+  },
+  "visibility": {
+    "synchronousFirstFrameVisiblePixels": 1808,
+    "minimumTextContrast": 8.0332,
+    "wcagAAA": true
+  },
+  "motionBoundary": {
+    "sampleCount": 24,
+    "elapsedRangeMs": [0, 1370],
+    "allSamplesInsideCanvas": true,
+    "borderDifferencePixels": 0,
+    "minimumCanvasMarginPixels": 122
+  },
+  "multiKey": {
+    "elapsedMs": 620,
+    "labels": ["Q", "A", "Z", "W"],
+    "allInsideCanvas": true,
+    "boundingBoxOverlapPixels": 0,
+    "bounds": [
+      { "label": "Q", "minX": 275, "minY": 236, "maxX": 362, "maxY": 313 },
+      { "label": "A", "minX": 147, "minY": 236, "maxX": 231, "maxY": 319 },
+      { "label": "Z", "minX": 380, "minY": 242, "maxX": 467, "maxY": 328 },
+      { "label": "W", "minX": 43, "minY": 244, "maxX": 140, "maxY": 328 }
+    ]
+  },
+  "artifacts": [
+    "bubble-cloud-first-frame.png",
+    "bubble-cloud-mid-rise.png",
+    "bubble-cloud-multi.png",
+    "bubble-cloud-motion.gif"
+  ]
+}

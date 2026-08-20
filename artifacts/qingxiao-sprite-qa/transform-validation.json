@@ -1,0 +1,231 @@
+{
+  "ok": true,
+  "animation": "transform",
+  "source": "/Users/thousanddream/code/BongoCat/src-tauri/assets/models/qingxiao/sprites/transform.webp",
+  "output": "/Users/thousanddream/code/BongoCat/src-tauri/assets/models/qingxiao/sprites/transform.webp",
+  "frameWidth": 512,
+  "frameHeight": 512,
+  "frames": 6,
+  "columns": 3,
+  "registration": [
+    {
+      "frame": 0,
+      "dx": 0,
+      "dy": 0,
+      "cost": 0,
+      "gains": [
+        1,
+        1,
+        1
+      ],
+      "biases": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "frame": 1,
+      "dx": 0,
+      "dy": 0,
+      "cost": 0,
+      "gains": [
+        1,
+        1,
+        1
+      ],
+      "biases": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "frame": 2,
+      "dx": 0,
+      "dy": 0,
+      "cost": 0,
+      "gains": [
+        1,
+        1,
+        1
+      ],
+      "biases": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "frame": 3,
+      "dx": 0,
+      "dy": 0,
+      "cost": 0,
+      "gains": [
+        1,
+        1,
+        1
+      ],
+      "biases": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "frame": 4,
+      "dx": 0,
+      "dy": 0,
+      "cost": 0,
+      "gains": [
+        1,
+        1,
+        1
+      ],
+      "biases": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "frame": 5,
+      "dx": 0,
+      "dy": 0,
+      "cost": 0,
+      "gains": [
+        1,
+        1,
+        1
+      ],
+      "biases": [
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "mode": "canonical-character-lut-external-effects",
+  "canonicalFrame": "stabilized idle frame 0",
+  "lutProgress": [
+    0,
+    0.35,
+    0.75,
+    1,
+    0.5,
+    0
+  ],
+  "effectOpacity": [
+    0,
+    0.35,
+    0.75,
+    1,
+    0.55,
+    0
+  ],
+  "effectSource": "deterministic complete cyan rings",
+  "recommendedFrameDurations": [
+    84,
+    84,
+    84,
+    600,
+    120,
+    120
+  ],
+  "characterLuma": [
+    148.59261328253936,
+    162.06552105732234,
+    177.46419456126878,
+    187.09017122614588,
+    167.84047319724434,
+    148.59261328253936
+  ],
+  "effectPixelCounts": [
+    0,
+    5383,
+    14636,
+    17858,
+    10179,
+    0
+  ],
+  "canonicalCharacterAlphaMaxDelta": 0,
+  "canonicalCharacterBodyResidual": 0,
+  "firstFrameCanonicalMaxDelta": 0,
+  "lastFrameCanonicalMaxDelta": 0,
+  "colorMatching": false,
+  "stableLocking": true,
+  "registrationApplied": false,
+  "acceptance": {
+    "errors": [],
+    "hiddenRgbMax": 0,
+    "emptyFrames": [],
+    "edgeAlphaPixels": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "metrics": {
+    "alphaCentroidsBefore": [
+      [
+        251.39895580300507,
+        331.2740000770604
+      ],
+      [
+        251.49442104763375,
+        326.87729416287715
+      ],
+      [
+        251.59944651738735,
+        322.0762954402158
+      ],
+      [
+        251.66184660255269,
+        319.2345031885436
+      ],
+      [
+        251.54805968367185,
+        324.42768326889416
+      ],
+      [
+        251.39895580300507,
+        331.2740000770604
+      ]
+    ],
+    "alphaCentroidsAfter": [
+      [
+        251.39895580300507,
+        331.2740000770604
+      ],
+      [
+        251.49442104763375,
+        326.87729416287715
+      ],
+      [
+        251.59944651738735,
+        322.0762954402158
+      ],
+      [
+        251.66184660255269,
+        319.2345031885436
+      ],
+      [
+        251.54805968367185,
+        324.42768326889416
+      ],
+      [
+        251.39895580300507,
+        331.2740000770604
+      ]
+    ],
+    "centroidSpreadBefore": 2.2841347592631047,
+    "centroidSpreadAfter": 2.2841347592631047,
+    "stableRegionColorDeltaBefore": 15.627914428710938,
+    "stableRegionColorDeltaAfter": 15.627914428710938,
+    "stableRegionFlickerBefore": 12.970321655273438,
+    "stableRegionFlickerAfter": 12.970321655273438
+  }
+}

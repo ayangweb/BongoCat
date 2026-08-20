@@ -1,0 +1,254 @@
+{
+  "ok": true,
+  "animation": "pluck-06",
+  "source": "/Users/thousanddream/code/BongoCat/src-tauri/assets/models/qingxiao/sprites/pluck-06.webp",
+  "output": "/Users/thousanddream/code/BongoCat/artifacts/qingxiao-motion-v2/sheets/pluck-06.webp",
+  "frameWidth": 512,
+  "frameHeight": 512,
+  "sourceFrames": 6,
+  "frames": 6,
+  "columns": 3,
+  "registration": [
+    {
+      "frame": 0,
+      "dx": 0,
+      "dy": 0,
+      "cost": 0.0,
+      "gains": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "biases": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "frame": 1,
+      "dx": 0,
+      "dy": 0,
+      "cost": 0.04442886263132095,
+      "gains": [
+        0.99074,
+        1.0,
+        1.0
+      ],
+      "biases": [
+        1.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "frame": 2,
+      "dx": 0,
+      "dy": 0,
+      "cost": 0.08956633508205414,
+      "gains": [
+        1.0,
+        1.01176,
+        1.01504
+      ],
+      "biases": [
+        0.0,
+        -1.8118,
+        -3.0977
+      ]
+    },
+    {
+      "frame": 3,
+      "dx": 0,
+      "dy": 0,
+      "cost": 0.08956633508205414,
+      "gains": [
+        1.0,
+        1.01176,
+        1.01504
+      ],
+      "biases": [
+        0.0,
+        -1.8118,
+        -3.0977
+      ]
+    },
+    {
+      "frame": 4,
+      "dx": 0,
+      "dy": 0,
+      "cost": 0.04442886263132095,
+      "gains": [
+        0.99074,
+        1.0,
+        1.0
+      ],
+      "biases": [
+        1.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "frame": 5,
+      "dx": 0,
+      "dy": 0,
+      "cost": 0.0,
+      "gains": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "biases": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  ],
+  "mode": "two-hand-local-patches",
+  "canonicalFrame": "stabilized idle frame 0",
+  "sourceFrameSequence": [
+    "canonical",
+    1,
+    2,
+    2,
+    1,
+    "canonical"
+  ],
+  "recommendedFrameDurations": [
+    30,
+    70,
+    110,
+    110,
+    70,
+    30
+  ],
+  "peakSourceFrame": 2,
+  "intermediateSourceFrame": 1,
+  "sourcePoseScores": {
+    "1": 39.14110565185547,
+    "2": 73.83478546142578,
+    "3": 73.83478546142578,
+    "4": 39.14110565185547
+  },
+  "motionPixelFraction": 0.06269454956054688,
+  "stablePixelFraction": 0.9373054504394531,
+  "canonicalStaticMae": 0.0,
+  "firstFrameCanonicalMaxDelta": 0,
+  "lastFrameCanonicalMaxDelta": 0,
+  "returnIntermediateMaxDelta": 0,
+  "peakHoldMaxDelta": 0,
+  "symmetricMaxDelta": 0,
+  "twoHandMotion": true,
+  "companionSide": "right",
+  "changedPixelsByFrame": [
+    {
+      "left": 0,
+      "right": 0
+    },
+    {
+      "left": 10784,
+      "right": 5725
+    },
+    {
+      "left": 14832,
+      "right": 5725
+    },
+    {
+      "left": 14832,
+      "right": 5725
+    },
+    {
+      "left": 10784,
+      "right": 5725
+    },
+    {
+      "left": 0,
+      "right": 0
+    }
+  ],
+  "twoHandStaticMaxDelta": 0,
+  "bothHandsVisibleFrames": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "companionAnimation": "pluck-07",
+  "uniqueFrameCount": 3,
+  "activePoseCount": 2,
+  "acceptance": {
+    "errors": [],
+    "hiddenRgbMax": 0,
+    "emptyFrames": [],
+    "edgeAlphaPixels": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "metrics": {
+    "alphaCentroidsBefore": [
+      [
+        251.39895580300507,
+        331.2740000770604
+      ],
+      [
+        246.8497091177912,
+        329.12746860751116
+      ],
+      [
+        241.33748233392214,
+        325.9976681613974
+      ],
+      [
+        241.33748233392214,
+        325.9976681613974
+      ],
+      [
+        246.8497091177912,
+        329.12746860751116
+      ],
+      [
+        251.39895580300507,
+        331.2740000770604
+      ]
+    ],
+    "alphaCentroidsAfter": [
+      [
+        251.39895580300507,
+        331.2740000770604
+      ],
+      [
+        246.86378510614128,
+        329.1301496395793
+      ],
+      [
+        241.34630911501688,
+        326.0006483201208
+      ],
+      [
+        241.34630911501688,
+        326.0006483201208
+      ],
+      [
+        246.86378510614128,
+        329.1301496395793
+      ],
+      [
+        251.39895580300507,
+        331.2740000770604
+      ]
+    ],
+    "centroidSpreadBefore": 3.1401654950868005,
+    "centroidSpreadAfter": 3.137918760945399,
+    "stableRegionColorDeltaBefore": 0.22830091416835785,
+    "stableRegionColorDeltaAfter": 0.0,
+    "stableRegionFlickerBefore": 0.07359714806079865,
+    "stableRegionFlickerAfter": 5.3086480988895346e-08
+  }
+}

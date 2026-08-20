@@ -1,0 +1,28 @@
+{
+  "actualSource": "/Users/thousanddream/code/BongoCat/src/utils/sprite.ts",
+  "actualModelConfig": "/Users/thousanddream/code/BongoCat/src-tauri/assets/models/qingxiao/model.json",
+  "canvas": {
+    "width": 512,
+    "height": 512
+  },
+  "key": {
+    "code": "KeyA",
+    "label": "A",
+    "handled": true
+  },
+  "synchronousRenderMilliseconds": 0.252,
+  "pngChangedBeforeHandleKeyboardReturned": true,
+  "configuredAnchor": {
+    "x": 256,
+    "y": 380
+  },
+  "tracedTailTipAtFirstRender": {
+    "x": 256,
+    "y": 380
+  },
+  "guqinBand": {
+    "yMin": 345,
+    "yMax": 420
+  },
+  "tailInsideGuqinBand": true
+}

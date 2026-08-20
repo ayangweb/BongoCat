@@ -1,0 +1,81 @@
+{
+  "ok": true,
+  "sheet": "/Users/thousanddream/code/BongoCat/artifacts/qingxiao-motion-v2/sheets/pluck-02.webp",
+  "width": 1536,
+  "height": 1024,
+  "frameWidth": 512,
+  "frameHeight": 512,
+  "frames": 6,
+  "columns": 3,
+  "rows": 2,
+  "errors": [],
+  "warnings": [],
+  "frameStats": [
+    {
+      "index": 0,
+      "bbox": [
+        48,
+        116,
+        464,
+        464
+      ],
+      "coverage": 0.2762,
+      "edgePixels": 0
+    },
+    {
+      "index": 1,
+      "bbox": [
+        48,
+        116,
+        464,
+        464
+      ],
+      "coverage": 0.2762,
+      "edgePixels": 0
+    },
+    {
+      "index": 2,
+      "bbox": [
+        48,
+        116,
+        464,
+        464
+      ],
+      "coverage": 0.2762,
+      "edgePixels": 0
+    },
+    {
+      "index": 3,
+      "bbox": [
+        48,
+        116,
+        464,
+        464
+      ],
+      "coverage": 0.2762,
+      "edgePixels": 0
+    },
+    {
+      "index": 4,
+      "bbox": [
+        48,
+        116,
+        464,
+        464
+      ],
+      "coverage": 0.2762,
+      "edgePixels": 0
+    },
+    {
+      "index": 5,
+      "bbox": [
+        48,
+        116,
+        464,
+        464
+      ],
+      "coverage": 0.2762,
+      "edgePixels": 0
+    }
+  ]
+}

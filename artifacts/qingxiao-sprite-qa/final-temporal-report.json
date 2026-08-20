@@ -1,0 +1,613 @@
+{
+  "source": "/Users/thousanddream/code/BongoCat/src-tauri/assets/models/qingxiao/sprites",
+  "independentAudit": true,
+  "criteria": {
+    "idleEyeAllowedExclusive": [
+      180,
+      195,
+      315,
+      280
+    ],
+    "handSleeveCorridors": [
+      {
+        "exclusive": [
+          60,
+          175,
+          245,
+          430
+        ]
+      },
+      {
+        "exclusive": [
+          245,
+          275,
+          385,
+          435
+        ]
+      }
+    ],
+    "protectedFaceCoreExclusive": [
+      220,
+      200,
+      292,
+      300
+    ],
+    "staticPixelsMustBeBitExact": true,
+    "pluckEndpointAndReturnSymmetryMustBeBitExact": true,
+    "globalForegroundMeanLumaAndWarmCoolThreshold8Bit": 2.0,
+    "transformSubjectAlphaMustBeBitExact": true,
+    "transformSameInputColorMustMapToOneOutputColor": true
+  },
+  "files": {
+    "idle": {
+      "readable": true,
+      "size": [
+        1536,
+        1024
+      ],
+      "frameCount": 6,
+      "pass": true
+    },
+    "pluck-01": {
+      "readable": true,
+      "size": [
+        1536,
+        1024
+      ],
+      "frameCount": 6,
+      "pass": true
+    },
+    "pluck-02": {
+      "readable": true,
+      "size": [
+        1536,
+        1024
+      ],
+      "frameCount": 6,
+      "pass": true
+    },
+    "pluck-03": {
+      "readable": true,
+      "size": [
+        1536,
+        1024
+      ],
+      "frameCount": 6,
+      "pass": true
+    },
+    "pluck-04": {
+      "readable": true,
+      "size": [
+        1536,
+        1024
+      ],
+      "frameCount": 6,
+      "pass": true
+    },
+    "pluck-05": {
+      "readable": true,
+      "size": [
+        1536,
+        1024
+      ],
+      "frameCount": 6,
+      "pass": true
+    },
+    "pluck-06": {
+      "readable": true,
+      "size": [
+        1536,
+        1024
+      ],
+      "frameCount": 6,
+      "pass": true
+    },
+    "pluck-07": {
+      "readable": true,
+      "size": [
+        1536,
+        1024
+      ],
+      "frameCount": 6,
+      "pass": true
+    },
+    "pluck-08": {
+      "readable": true,
+      "size": [
+        1536,
+        1024
+      ],
+      "frameCount": 6,
+      "pass": true
+    },
+    "pluck-09": {
+      "readable": true,
+      "size": [
+        1536,
+        1024
+      ],
+      "frameCount": 6,
+      "pass": true
+    },
+    "pluck-10": {
+      "readable": true,
+      "size": [
+        1536,
+        1024
+      ],
+      "frameCount": 6,
+      "pass": true
+    },
+    "transform": {
+      "readable": true,
+      "size": [
+        1536,
+        1024
+      ],
+      "frameCount": 6,
+      "pass": true
+    }
+  },
+  "hashes": {
+    "idle": {
+      "bytes": 215734,
+      "rawSha256": "a3e9d8237873291391f412748ece3a5987fcfda0f7200fc6e86a9069de8cc1db",
+      "decodedRgbaSha256": "d85a820fdf5f578abb3e1ce0b3a4dc3c188f217549501f25660c42937338c62f",
+      "secondPassRawSha256": "a3e9d8237873291391f412748ece3a5987fcfda0f7200fc6e86a9069de8cc1db",
+      "secondPassDecodedRgbaSha256": "d85a820fdf5f578abb3e1ce0b3a4dc3c188f217549501f25660c42937338c62f",
+      "stableAcrossTwoPasses": true
+    },
+    "pluck-01": {
+      "bytes": 239606,
+      "rawSha256": "5abde41049f622c53e18b934879e6c2063d53b4f860d8bbeb7d8690d8f80ac02",
+      "decodedRgbaSha256": "cb368146376ab75f99a5dd953e9308343cecc9163a916d6d92eedcd27c8a1bf3",
+      "secondPassRawSha256": "5abde41049f622c53e18b934879e6c2063d53b4f860d8bbeb7d8690d8f80ac02",
+      "secondPassDecodedRgbaSha256": "cb368146376ab75f99a5dd953e9308343cecc9163a916d6d92eedcd27c8a1bf3",
+      "stableAcrossTwoPasses": true
+    },
+    "pluck-02": {
+      "bytes": 220298,
+      "rawSha256": "0d7cbef2693a20975cee3652a1ddb24547c960a720229fa2f14a94c47657358e",
+      "decodedRgbaSha256": "15ba7c649386e7043f9c1990e6010163808fa2fcbf9e51efd99bd9981dae9244",
+      "secondPassRawSha256": "0d7cbef2693a20975cee3652a1ddb24547c960a720229fa2f14a94c47657358e",
+      "secondPassDecodedRgbaSha256": "15ba7c649386e7043f9c1990e6010163808fa2fcbf9e51efd99bd9981dae9244",
+      "stableAcrossTwoPasses": true
+    },
+    "pluck-03": {
+      "bytes": 220932,
+      "rawSha256": "b84c5b85238f78dfffbaacce77488b90388536114ac13cb83c0a992b73ccdf12",
+      "decodedRgbaSha256": "18045035052d43705b4f64af13f3e2c794eeef602a9690ee03494d35efb52960",
+      "secondPassRawSha256": "b84c5b85238f78dfffbaacce77488b90388536114ac13cb83c0a992b73ccdf12",
+      "secondPassDecodedRgbaSha256": "18045035052d43705b4f64af13f3e2c794eeef602a9690ee03494d35efb52960",
+      "stableAcrossTwoPasses": true
+    },
+    "pluck-04": {
+      "bytes": 249610,
+      "rawSha256": "a0e3227d5dd0e0529ea2fdbdf889c00c7a1b3f13aa2a26622c454b591c6994db",
+      "decodedRgbaSha256": "33b4d319fc5176d51b144de4433c12101a0288d7ec15723e94851056bf676d05",
+      "secondPassRawSha256": "a0e3227d5dd0e0529ea2fdbdf889c00c7a1b3f13aa2a26622c454b591c6994db",
+      "secondPassDecodedRgbaSha256": "33b4d319fc5176d51b144de4433c12101a0288d7ec15723e94851056bf676d05",
+      "stableAcrossTwoPasses": true
+    },
+    "pluck-05": {
+      "bytes": 221754,
+      "rawSha256": "e9af89f12d93c2b45d7820547f1006e428d86c039d6083cadfd0c4a7b011fbc8",
+      "decodedRgbaSha256": "b7c9f6d4981cfc77facbd46eabc7828c11e221302038dff63172651ce485e0be",
+      "secondPassRawSha256": "e9af89f12d93c2b45d7820547f1006e428d86c039d6083cadfd0c4a7b011fbc8",
+      "secondPassDecodedRgbaSha256": "b7c9f6d4981cfc77facbd46eabc7828c11e221302038dff63172651ce485e0be",
+      "stableAcrossTwoPasses": true
+    },
+    "pluck-06": {
+      "bytes": 280320,
+      "rawSha256": "08aeb188be02c238f7cbc0a2721da6b93ed4d7bc75a1a8612eae0207c8e6a553",
+      "decodedRgbaSha256": "c9afcdde2b6a4ea43897c46e85243d3566e908386ed617773d3f8453c7f2c212",
+      "secondPassRawSha256": "08aeb188be02c238f7cbc0a2721da6b93ed4d7bc75a1a8612eae0207c8e6a553",
+      "secondPassDecodedRgbaSha256": "c9afcdde2b6a4ea43897c46e85243d3566e908386ed617773d3f8453c7f2c212",
+      "stableAcrossTwoPasses": true
+    },
+    "pluck-07": {
+      "bytes": 219390,
+      "rawSha256": "5390ad54a60d25eec1953980b6e0c3a0ce3dc4c5bd7f51fcf7d352bd9bbc95ed",
+      "decodedRgbaSha256": "e0c9a6dd3efab70387c73e92146060754a2a1200162ad382035714e10a610dc8",
+      "secondPassRawSha256": "5390ad54a60d25eec1953980b6e0c3a0ce3dc4c5bd7f51fcf7d352bd9bbc95ed",
+      "secondPassDecodedRgbaSha256": "e0c9a6dd3efab70387c73e92146060754a2a1200162ad382035714e10a610dc8",
+      "stableAcrossTwoPasses": true
+    },
+    "pluck-08": {
+      "bytes": 221366,
+      "rawSha256": "c74d866c80e18971e487c56ad1d8bd0b4d17ff7d57cb4fbd48f33481f45b4509",
+      "decodedRgbaSha256": "fa562bdf7042d49f60d5faa55370e8abe742acfa9740688b338f0d254af714af",
+      "secondPassRawSha256": "c74d866c80e18971e487c56ad1d8bd0b4d17ff7d57cb4fbd48f33481f45b4509",
+      "secondPassDecodedRgbaSha256": "fa562bdf7042d49f60d5faa55370e8abe742acfa9740688b338f0d254af714af",
+      "stableAcrossTwoPasses": true
+    },
+    "pluck-09": {
+      "bytes": 239750,
+      "rawSha256": "f5d1ca2082dff01d2d315caaf1a5794305d252a956171c3f4e53a7a158df1cf2",
+      "decodedRgbaSha256": "3f048f80a23751e33132b0a4fd2814db61f97a73a53932320e8948f951c0eecb",
+      "secondPassRawSha256": "f5d1ca2082dff01d2d315caaf1a5794305d252a956171c3f4e53a7a158df1cf2",
+      "secondPassDecodedRgbaSha256": "3f048f80a23751e33132b0a4fd2814db61f97a73a53932320e8948f951c0eecb",
+      "stableAcrossTwoPasses": true
+    },
+    "pluck-10": {
+      "bytes": 235610,
+      "rawSha256": "5f141025d3190b28325545d59e133aa047621ab6fcca98df6859e9a107fed7bd",
+      "decodedRgbaSha256": "81d4f35a1110a5590f20468b84c95b9efbc7561c8933edaf846348f8c3cb8a80",
+      "secondPassRawSha256": "5f141025d3190b28325545d59e133aa047621ab6fcca98df6859e9a107fed7bd",
+      "secondPassDecodedRgbaSha256": "81d4f35a1110a5590f20468b84c95b9efbc7561c8933edaf846348f8c3cb8a80",
+      "stableAcrossTwoPasses": true
+    },
+    "transform": {
+      "bytes": 913542,
+      "rawSha256": "ccd4048c64f18ef85b3979333eb0ba4bee31765bc71ce4e8eb8e8aac86f2d9bf",
+      "decodedRgbaSha256": "08a7640b84400a11be156e6a282f878f0c972676237b114944851f58f66a82eb",
+      "secondPassRawSha256": "ccd4048c64f18ef85b3979333eb0ba4bee31765bc71ce4e8eb8e8aac86f2d9bf",
+      "secondPassDecodedRgbaSha256": "08a7640b84400a11be156e6a282f878f0c972676237b114944851f58f66a82eb",
+      "stableAcrossTwoPasses": true
+    }
+  },
+  "idle": {
+    "changedPixelCount": 4865,
+    "changedFraction": 0.018558502197265625,
+    "changedBboxExclusive": [
+      192,
+      210,
+      302,
+      268
+    ],
+    "changedOutsideEyeCount": 0,
+    "changedAtOrBelowHandsY280Count": 0,
+    "outsideEyeMaxRgbaDelta": 0,
+    "openFramesEqualCanonical": [
+      true,
+      true,
+      true
+    ],
+    "closedFramesMutuallyEqual": true,
+    "pass": true
+  },
+  "plucks": {
+    "pluck-01": {
+      "changedPixelCount": 7138,
+      "changedFraction": 0.02722930908203125,
+      "changedBboxExclusive": [
+        102,
+        293,
+        229,
+        375
+      ],
+      "changedOutsideHandSleeveCorridorsCount": 0,
+      "adjacentChangedOutsideHandSleeveCorridorsCount": 0,
+      "protectedFaceCoreChangedCount": 0,
+      "staticRegionMaxRgbaDelta": 0,
+      "staticRegionRgbaMae": 0.0,
+      "staticRegionMaxAbsMeanLumaDrift": 0.0,
+      "staticRegionMaxAbsMeanWarmCoolDriftBR": 0.0,
+      "globalForegroundMaxAbsMeanLumaDelta": 0.08461488247299075,
+      "globalForegroundMaxAbsMeanWarmCoolDeltaBR": 1.8152249925073856,
+      "globalForegroundMaxAbsMedianRgbDelta": 0.0,
+      "firstCanonicalMaxRgbaDelta": 0,
+      "lastCanonicalMaxRgbaDelta": 0,
+      "returnIntermediateMaxRgbaDelta": 0,
+      "peakHoldMaxRgbaDelta": 0,
+      "pass": true
+    },
+    "pluck-02": {
+      "changedPixelCount": 6625,
+      "changedFraction": 0.025272369384765625,
+      "changedBboxExclusive": [
+        122,
+        302,
+        252,
+        385
+      ],
+      "changedOutsideHandSleeveCorridorsCount": 0,
+      "adjacentChangedOutsideHandSleeveCorridorsCount": 0,
+      "protectedFaceCoreChangedCount": 0,
+      "staticRegionMaxRgbaDelta": 0,
+      "staticRegionRgbaMae": 0.0,
+      "staticRegionMaxAbsMeanLumaDrift": 0.0,
+      "staticRegionMaxAbsMeanWarmCoolDriftBR": 0.0,
+      "globalForegroundMaxAbsMeanLumaDelta": 0.3966830324394526,
+      "globalForegroundMaxAbsMeanWarmCoolDeltaBR": 0.697070030969473,
+      "globalForegroundMaxAbsMedianRgbDelta": 0.0,
+      "firstCanonicalMaxRgbaDelta": 0,
+      "lastCanonicalMaxRgbaDelta": 0,
+      "returnIntermediateMaxRgbaDelta": 0,
+      "peakHoldMaxRgbaDelta": 0,
+      "pass": true
+    },
+    "pluck-03": {
+      "changedPixelCount": 6297,
+      "changedFraction": 0.024021148681640625,
+      "changedBboxExclusive": [
+        122,
+        304,
+        235,
+        391
+      ],
+      "changedOutsideHandSleeveCorridorsCount": 0,
+      "adjacentChangedOutsideHandSleeveCorridorsCount": 0,
+      "protectedFaceCoreChangedCount": 0,
+      "staticRegionMaxRgbaDelta": 0,
+      "staticRegionRgbaMae": 0.0,
+      "staticRegionMaxAbsMeanLumaDrift": 0.0,
+      "staticRegionMaxAbsMeanWarmCoolDriftBR": 0.0,
+      "globalForegroundMaxAbsMeanLumaDelta": 0.6366262198689863,
+      "globalForegroundMaxAbsMeanWarmCoolDeltaBR": 0.08684296907334199,
+      "globalForegroundMaxAbsMedianRgbDelta": 0.0,
+      "firstCanonicalMaxRgbaDelta": 0,
+      "lastCanonicalMaxRgbaDelta": 0,
+      "returnIntermediateMaxRgbaDelta": 0,
+      "peakHoldMaxRgbaDelta": 0,
+      "pass": true
+    },
+    "pluck-04": {
+      "changedPixelCount": 10501,
+      "changedFraction": 0.040058135986328125,
+      "changedBboxExclusive": [
+        100,
+        244,
+        221,
+        386
+      ],
+      "changedOutsideHandSleeveCorridorsCount": 0,
+      "adjacentChangedOutsideHandSleeveCorridorsCount": 0,
+      "protectedFaceCoreChangedCount": 0,
+      "staticRegionMaxRgbaDelta": 0,
+      "staticRegionRgbaMae": 0.0,
+      "staticRegionMaxAbsMeanLumaDrift": 0.0,
+      "staticRegionMaxAbsMeanWarmCoolDriftBR": 0.0,
+      "globalForegroundMaxAbsMeanLumaDelta": 1.3533878377028357,
+      "globalForegroundMaxAbsMeanWarmCoolDeltaBR": 0.1773680229488076,
+      "globalForegroundMaxAbsMedianRgbDelta": 0.0,
+      "firstCanonicalMaxRgbaDelta": 0,
+      "lastCanonicalMaxRgbaDelta": 0,
+      "returnIntermediateMaxRgbaDelta": 0,
+      "peakHoldMaxRgbaDelta": 0,
+      "pass": true
+    },
+    "pluck-05": {
+      "changedPixelCount": 6799,
+      "changedFraction": 0.025936126708984375,
+      "changedBboxExclusive": [
+        122,
+        302,
+        253,
+        385
+      ],
+      "changedOutsideHandSleeveCorridorsCount": 0,
+      "adjacentChangedOutsideHandSleeveCorridorsCount": 0,
+      "protectedFaceCoreChangedCount": 0,
+      "staticRegionMaxRgbaDelta": 0,
+      "staticRegionRgbaMae": 0.0,
+      "staticRegionMaxAbsMeanLumaDrift": 0.0,
+      "staticRegionMaxAbsMeanWarmCoolDriftBR": 0.0,
+      "globalForegroundMaxAbsMeanLumaDelta": 0.9917132483694643,
+      "globalForegroundMaxAbsMeanWarmCoolDeltaBR": 1.2596440651357947,
+      "globalForegroundMaxAbsMedianRgbDelta": 0.0,
+      "firstCanonicalMaxRgbaDelta": 0,
+      "lastCanonicalMaxRgbaDelta": 0,
+      "returnIntermediateMaxRgbaDelta": 0,
+      "peakHoldMaxRgbaDelta": 0,
+      "pass": true
+    },
+    "pluck-06": {
+      "changedPixelCount": 15256,
+      "changedFraction": 0.058197021484375,
+      "changedBboxExclusive": [
+        89,
+        190,
+        226,
+        375
+      ],
+      "changedOutsideHandSleeveCorridorsCount": 0,
+      "adjacentChangedOutsideHandSleeveCorridorsCount": 0,
+      "protectedFaceCoreChangedCount": 0,
+      "staticRegionMaxRgbaDelta": 0,
+      "staticRegionRgbaMae": 0.0,
+      "staticRegionMaxAbsMeanLumaDrift": 0.0,
+      "staticRegionMaxAbsMeanWarmCoolDriftBR": 0.0,
+      "globalForegroundMaxAbsMeanLumaDelta": 0.8452132640682755,
+      "globalForegroundMaxAbsMeanWarmCoolDeltaBR": 1.420428434828526,
+      "globalForegroundMaxAbsMedianRgbDelta": 0.0,
+      "firstCanonicalMaxRgbaDelta": 0,
+      "lastCanonicalMaxRgbaDelta": 0,
+      "returnIntermediateMaxRgbaDelta": 0,
+      "peakHoldMaxRgbaDelta": 0,
+      "pass": true
+    },
+    "pluck-07": {
+      "changedPixelCount": 5725,
+      "changedFraction": 0.021839141845703125,
+      "changedBboxExclusive": [
+        270,
+        302,
+        359,
+        419
+      ],
+      "changedOutsideHandSleeveCorridorsCount": 0,
+      "adjacentChangedOutsideHandSleeveCorridorsCount": 0,
+      "protectedFaceCoreChangedCount": 0,
+      "staticRegionMaxRgbaDelta": 0,
+      "staticRegionRgbaMae": 0.0,
+      "staticRegionMaxAbsMeanLumaDrift": 0.0,
+      "staticRegionMaxAbsMeanWarmCoolDriftBR": 0.0,
+      "globalForegroundMaxAbsMeanLumaDelta": 0.22720329960467534,
+      "globalForegroundMaxAbsMeanWarmCoolDeltaBR": 0.7867102427607073,
+      "globalForegroundMaxAbsMedianRgbDelta": 0.0,
+      "firstCanonicalMaxRgbaDelta": 0,
+      "lastCanonicalMaxRgbaDelta": 0,
+      "returnIntermediateMaxRgbaDelta": 0,
+      "peakHoldMaxRgbaDelta": 0,
+      "pass": true
+    },
+    "pluck-08": {
+      "changedPixelCount": 6248,
+      "changedFraction": 0.023834228515625,
+      "changedBboxExclusive": [
+        78,
+        300,
+        216,
+        373
+      ],
+      "changedOutsideHandSleeveCorridorsCount": 0,
+      "adjacentChangedOutsideHandSleeveCorridorsCount": 0,
+      "protectedFaceCoreChangedCount": 0,
+      "staticRegionMaxRgbaDelta": 0,
+      "staticRegionRgbaMae": 0.0,
+      "staticRegionMaxAbsMeanLumaDrift": 0.0,
+      "staticRegionMaxAbsMeanWarmCoolDriftBR": 0.0,
+      "globalForegroundMaxAbsMeanLumaDelta": 0.32588622643394377,
+      "globalForegroundMaxAbsMeanWarmCoolDeltaBR": 1.4433486991394198,
+      "globalForegroundMaxAbsMedianRgbDelta": 0.0,
+      "firstCanonicalMaxRgbaDelta": 0,
+      "lastCanonicalMaxRgbaDelta": 0,
+      "returnIntermediateMaxRgbaDelta": 0,
+      "peakHoldMaxRgbaDelta": 0,
+      "pass": true
+    },
+    "pluck-09": {
+      "changedPixelCount": 13628,
+      "changedFraction": 0.0519866943359375,
+      "changedBboxExclusive": [
+        122,
+        303,
+        341,
+        420
+      ],
+      "changedOutsideHandSleeveCorridorsCount": 0,
+      "adjacentChangedOutsideHandSleeveCorridorsCount": 0,
+      "protectedFaceCoreChangedCount": 0,
+      "staticRegionMaxRgbaDelta": 0,
+      "staticRegionRgbaMae": 0.0,
+      "staticRegionMaxAbsMeanLumaDrift": 0.0,
+      "staticRegionMaxAbsMeanWarmCoolDriftBR": 0.0,
+      "globalForegroundMaxAbsMeanLumaDelta": 0.1719271346815282,
+      "globalForegroundMaxAbsMeanWarmCoolDeltaBR": 0.09276570237908348,
+      "globalForegroundMaxAbsMedianRgbDelta": 0.0,
+      "firstCanonicalMaxRgbaDelta": 0,
+      "lastCanonicalMaxRgbaDelta": 0,
+      "returnIntermediateMaxRgbaDelta": 0,
+      "peakHoldMaxRgbaDelta": 0,
+      "pass": true
+    },
+    "pluck-10": {
+      "changedPixelCount": 5944,
+      "changedFraction": 0.022674560546875,
+      "changedBboxExclusive": [
+        89,
+        300,
+        216,
+        373
+      ],
+      "changedOutsideHandSleeveCorridorsCount": 0,
+      "adjacentChangedOutsideHandSleeveCorridorsCount": 0,
+      "protectedFaceCoreChangedCount": 0,
+      "staticRegionMaxRgbaDelta": 0,
+      "staticRegionRgbaMae": 0.0,
+      "staticRegionMaxAbsMeanLumaDrift": 0.0,
+      "staticRegionMaxAbsMeanWarmCoolDriftBR": 0.0,
+      "globalForegroundMaxAbsMeanLumaDelta": 0.4026977693416488,
+      "globalForegroundMaxAbsMeanWarmCoolDeltaBR": 1.2724885470036678,
+      "globalForegroundMaxAbsMedianRgbDelta": 0.0,
+      "firstCanonicalMaxRgbaDelta": 0,
+      "lastCanonicalMaxRgbaDelta": 0,
+      "returnIntermediateMaxRgbaDelta": 0,
+      "peakHoldMaxRgbaDelta": 0,
+      "pass": true
+    }
+  },
+  "transform": {
+    "firstCanonicalMaxRgbaDelta": 0,
+    "lastCanonicalMaxRgbaDelta": 0,
+    "subjectAlphaMaxDeltaByFrame": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "subjectAlphaGeometryChangedPixelCountByFrame": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "externalEffectAlphaPixelCountByFrame": [
+      0,
+      29738,
+      33775,
+      33775,
+      33775,
+      0
+    ],
+    "maxOutputVariantsForSameCanonicalRgbValueByFrameAndChannel": [
+      [
+        1,
+        1,
+        1
+      ],
+      [
+        1,
+        1,
+        1
+      ],
+      [
+        1,
+        1,
+        1
+      ],
+      [
+        1,
+        1,
+        1
+      ],
+      [
+        1,
+        1,
+        1
+      ],
+      [
+        1,
+        1,
+        1
+      ]
+    ],
+    "subjectWeightedLumaByFrame": [
+      148.59261421779266,
+      162.06552207519667,
+      177.46419567356642,
+      187.09017239746612,
+      167.84047425052907,
+      148.59261421779266
+    ],
+    "pass": true
+  },
+  "artifacts": [
+    "/Users/thousanddream/code/BongoCat/artifacts/qingxiao-sprite-qa/final-temporal-all-contact.png",
+    "/Users/thousanddream/code/BongoCat/artifacts/qingxiao-sprite-qa/final-temporal-motion-diff.png",
+    "/Users/thousanddream/code/BongoCat/artifacts/qingxiao-sprite-qa/final-temporal-idle.gif",
+    "/Users/thousanddream/code/BongoCat/artifacts/qingxiao-sprite-qa/final-temporal-plucks.gif",
+    "/Users/thousanddream/code/BongoCat/artifacts/qingxiao-sprite-qa/final-temporal-transform.gif"
+  ],
+  "groupVerdicts": {
+    "filesAndTwoPassHashes": "PASS",
+    "idle": "PASS",
+    "pluck-01": "PASS",
+    "pluck-02": "PASS",
+    "pluck-03": "PASS",
+    "pluck-04": "PASS",
+    "pluck-05": "PASS",
+    "pluck-06": "PASS",
+    "pluck-07": "PASS",
+    "pluck-08": "PASS",
+    "pluck-09": "PASS",
+    "pluck-10": "PASS",
+    "transform": "PASS"
+  },
+  "overall": "PASS"
+}

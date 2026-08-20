@@ -1,0 +1,215 @@
+{
+  "ok": true,
+  "animation": "pluck-04",
+  "source": "/Users/thousanddream/code/BongoCat/src-tauri/assets/models/qingxiao/sprites/pluck-04.webp",
+  "output": "/Users/thousanddream/code/BongoCat/src-tauri/assets/models/qingxiao/sprites/pluck-04.webp",
+  "frameWidth": 512,
+  "frameHeight": 512,
+  "frames": 6,
+  "columns": 3,
+  "registration": [
+    {
+      "frame": 0,
+      "dx": -1,
+      "dy": 2,
+      "cost": 0.048305295407772064,
+      "gains": [
+        1.03865,
+        1.08176,
+        1.03817
+      ],
+      "biases": [
+        -5.5169,
+        -11.761,
+        -5.7939
+      ]
+    },
+    {
+      "frame": 1,
+      "dx": 6,
+      "dy": 2,
+      "cost": 0.0726558193564415,
+      "gains": [
+        1.05366,
+        1.08861,
+        1.05385
+      ],
+      "biases": [
+        -6.5463,
+        -12.6076,
+        -9.5
+      ]
+    },
+    {
+      "frame": 2,
+      "dx": 4,
+      "dy": 1,
+      "cost": 0.06503193080425262,
+      "gains": [
+        1.04854,
+        1.075,
+        1.0458
+      ],
+      "biases": [
+        -6.1068,
+        -10.8,
+        -8.2137
+      ]
+    },
+    {
+      "frame": 3,
+      "dx": 0,
+      "dy": 0,
+      "cost": 0.06640511751174927,
+      "gains": [
+        1.0534,
+        1.075,
+        1.03817
+      ],
+      "biases": [
+        -5.9126,
+        -9.7,
+        -5.9084
+      ]
+    },
+    {
+      "frame": 4,
+      "dx": 6,
+      "dy": 0,
+      "cost": 0.12138370424509048,
+      "gains": [
+        1.03798,
+        1.06832,
+        1.03817
+      ],
+      "biases": [
+        -2.2918,
+        -7.6957,
+        -5.2061
+      ]
+    },
+    {
+      "frame": 5,
+      "dx": 5,
+      "dy": 0,
+      "cost": 0.0681697428226471,
+      "gains": [
+        1.04831,
+        1.075,
+        1.0458
+      ],
+      "biases": [
+        -5.058,
+        -9.775,
+        -7.9924
+      ]
+    }
+  ],
+  "mode": "single-peak-local-patch",
+  "canonicalFrame": "stabilized idle frame 0",
+  "sourceFrameSequence": [
+    "canonical",
+    3,
+    4,
+    4,
+    3,
+    "canonical"
+  ],
+  "recommendedFrameDurations": [
+    30,
+    70,
+    110,
+    110,
+    70,
+    30
+  ],
+  "peakSourceFrame": 4,
+  "intermediateSourceFrame": 3,
+  "sourcePoseScores": {
+    "1": 12.703193664550781,
+    "2": 17.52056884765625,
+    "3": 20.751375198364258,
+    "4": 57.4422492980957
+  },
+  "motionPixelFraction": 0.03957366943359375,
+  "stablePixelFraction": 0.9604263305664062,
+  "canonicalStaticMae": 0.0,
+  "firstFrameCanonicalMaxDelta": 0,
+  "lastFrameCanonicalMaxDelta": 0,
+  "returnIntermediateMaxDelta": 0,
+  "peakHoldMaxDelta": 0,
+  "symmetricMaxDelta": 0,
+  "acceptance": {
+    "errors": [],
+    "hiddenRgbMax": 0,
+    "emptyFrames": [],
+    "edgeAlphaPixels": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "metrics": {
+    "alphaCentroidsBefore": [
+      [
+        251.51759317286664,
+        329.6247259371968
+      ],
+      [
+        248.38772564247557,
+        329.1128748603682
+      ],
+      [
+        250.4281554097202,
+        329.3149932475707
+      ],
+      [
+        251.91412069351162,
+        331.74486329151677
+      ],
+      [
+        242.3774329968982,
+        328.5736286103958
+      ],
+      [
+        248.88885256720116,
+        331.965141702574
+      ]
+    ],
+    "alphaCentroidsAfter": [
+      [
+        251.39895580300507,
+        331.2740000770604
+      ],
+      [
+        251.39544377103016,
+        331.27485942407924
+      ],
+      [
+        247.93105064690806,
+        329.888041761862
+      ],
+      [
+        247.93105064690806,
+        329.888041761862
+      ],
+      [
+        251.39544377103016,
+        331.27485942407924
+      ],
+      [
+        251.39895580300507,
+        331.2740000770604
+      ]
+    ],
+    "centroidSpreadBefore": 2.2509711793330442,
+    "centroidSpreadAfter": 1.1437543315284406,
+    "stableRegionColorDeltaBefore": 33.19850540161133,
+    "stableRegionColorDeltaAfter": 0.0,
+    "stableRegionFlickerBefore": 7.361452102661133,
+    "stableRegionFlickerAfter": 5.225691879218175e-08
+  }
+}

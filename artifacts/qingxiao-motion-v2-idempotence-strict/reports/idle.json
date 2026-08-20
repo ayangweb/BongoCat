@@ -1,0 +1,217 @@
+{
+  "ok": true,
+  "animation": "idle",
+  "source": "/Users/thousanddream/code/BongoCat/src-tauri/assets/models/qingxiao/sprites/idle.webp",
+  "output": "/Users/thousanddream/code/BongoCat/artifacts/qingxiao-motion-v2-idempotence-strict/sheets/idle.webp",
+  "frameWidth": 512,
+  "frameHeight": 512,
+  "sourceFrames": 6,
+  "frames": 6,
+  "columns": 3,
+  "registration": [
+    {
+      "frame": 0,
+      "dx": 0,
+      "dy": 0,
+      "cost": 0,
+      "gains": [
+        1,
+        1,
+        1
+      ],
+      "biases": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "frame": 1,
+      "dx": 0,
+      "dy": 0,
+      "cost": 0,
+      "gains": [
+        1,
+        1,
+        1
+      ],
+      "biases": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "frame": 2,
+      "dx": 0,
+      "dy": 0,
+      "cost": 0,
+      "gains": [
+        1,
+        1,
+        1
+      ],
+      "biases": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "frame": 3,
+      "dx": 0,
+      "dy": 0,
+      "cost": 0,
+      "gains": [
+        1,
+        1,
+        1
+      ],
+      "biases": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "frame": 4,
+      "dx": 0,
+      "dy": 0,
+      "cost": 0,
+      "gains": [
+        1,
+        1,
+        1
+      ],
+      "biases": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "frame": 5,
+      "dx": 0,
+      "dy": 0,
+      "cost": 0,
+      "gains": [
+        1,
+        1,
+        1
+      ],
+      "biases": [
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "mode": "preserved-idle-eye-only",
+  "referenceFrame": 3,
+  "openEyeSourceFrame": 0,
+  "openFrames": [
+    0,
+    1,
+    5
+  ],
+  "closedFrames": [
+    2,
+    3,
+    4
+  ],
+  "eyeBoxes": [
+    [
+      196,
+      214,
+      249,
+      263
+    ],
+    [
+      243,
+      214,
+      297,
+      263
+    ]
+  ],
+  "eyeChangedPixels": [
+    2097,
+    2149
+  ],
+  "outsideEyeMaxChannelDelta": 0,
+  "bodyAndHandsLocked": true,
+  "openFramesMaxDelta": 0,
+  "closedFramesMaxDelta": 0,
+  "acceptance": {
+    "errors": [],
+    "hiddenRgbMax": 0,
+    "emptyFrames": [],
+    "edgeAlphaPixels": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "metrics": {
+    "alphaCentroidsBefore": [
+      [
+        251.39895580300507,
+        331.2740000770604
+      ],
+      [
+        251.39895580300507,
+        331.2740000770604
+      ],
+      [
+        251.39895580300507,
+        331.2740000770604
+      ],
+      [
+        251.39895580300507,
+        331.2740000770604
+      ],
+      [
+        251.39895580300507,
+        331.2740000770604
+      ],
+      [
+        251.39895580300507,
+        331.2740000770604
+      ]
+    ],
+    "alphaCentroidsAfter": [
+      [
+        251.39895580300507,
+        331.2740000770604
+      ],
+      [
+        251.39895580300507,
+        331.2740000770604
+      ],
+      [
+        251.39895580300507,
+        331.2740000770604
+      ],
+      [
+        251.39895580300507,
+        331.2740000770604
+      ],
+      [
+        251.39895580300507,
+        331.2740000770604
+      ],
+      [
+        251.39895580300507,
+        331.2740000770604
+      ]
+    ],
+    "centroidSpreadBefore": 0.0,
+    "centroidSpreadAfter": 0.0,
+    "stableRegionColorDeltaBefore": 0.008036967366933823,
+    "stableRegionColorDeltaAfter": 0.008036967366933823,
+    "stableRegionFlickerBefore": 0.002042884938418865,
+    "stableRegionFlickerAfter": 0.002042884938418865
+  }
+}
