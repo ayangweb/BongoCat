@@ -82,7 +82,9 @@ watch(() => modelStore.currentModel, async (model) => {
       && current.renderer === renderer
   }
 
-  if (!await handleLoad() || !isCurrent()) return
+  await handleLoad()
+
+  if (!isCurrent()) return
 
   const path = join(model.path, 'resources', 'background.png')
 

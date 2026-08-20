@@ -54,6 +54,7 @@ export function useDevice() {
   const smoothedCursorPoint = ref<CursorPoint>()
   const scaleFactor = ref(1)
   const { handlePress, handleRelease, handleMouseChange, handleMouseMove } = useModel()
+  let unmounted = false
 
   const tickerCallback = (ticker: Ticker) => {
     const destination = latestCursorPoint.value
@@ -91,6 +92,7 @@ export function useDevice() {
   })
 
   onUnmounted(() => {
+    unmounted = true
     Ticker.shared.remove(tickerCallback)
   })
 
@@ -102,12 +104,21 @@ export function useDevice() {
     return Ticker.shared.add(tickerCallback)
   }, { immediate: true })
 
+  const waitForInputMonitoringPermission = async () => {
+    for (;;) {
+      if (unmounted) return false
+      if (await checkInputMonitoringPermission()) return true
+
+      await new Promise<void>(resolve => setTimeout(resolve, 1000))
+    }
+  }
+
   const startListening = async () => {
     try {
       if (isMac && !await checkInputMonitoringPermission()) {
         await requestInputMonitoringPermission()
 
-        return
+        if (!await waitForInputMonitoringPermission()) return
       }
 
       await invoke(INVOKE_KEY.START_DEVICE_LISTENING)
