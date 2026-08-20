@@ -177,7 +177,7 @@ async function handleContextmenu(event: MouseEvent) {
 
   const menu = await Menu.new({
     items: [
-      ...await getBaseMenu(),
+      ...await getBaseMenu({ includeAlwaysOnTop: true }),
       await PredefinedMenuItem.new({ item: 'Separator' }),
       ...await getExitMenu(),
     ],

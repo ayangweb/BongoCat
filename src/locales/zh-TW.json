@@ -181,6 +181,7 @@
         "hideCat": "隱藏貓咪",
         "showCat": "顯示貓咪",
         "passThrough": "視窗穿透",
+        "alwaysOnTop": "視窗置頂",
         "windowSize": "視窗尺寸",
         "opacity": "不透明度",
         "restartApp": "重啟應用程式",

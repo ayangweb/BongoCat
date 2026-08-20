@@ -181,6 +181,7 @@
         "hideCat": "隐藏猫咪",
         "showCat": "显示猫咪",
         "passThrough": "窗口穿透",
+        "alwaysOnTop": "窗口置顶",
         "windowSize": "窗口尺寸",
         "opacity": "不透明度",
         "restartApp": "重启应用",

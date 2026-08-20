@@ -181,6 +181,7 @@
         "hideCat": "Ocultar Gato",
         "showCat": "Mostrar Gato",
         "passThrough": "Janela Transparente",
+        "alwaysOnTop": "Sempre no Topo",
         "windowSize": "Tamanho da Janela",
         "opacity": "Opacidade",
         "restartApp": "Reiniciar",
