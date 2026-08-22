@@ -1,3 +1,15 @@
+> [!TIP]
+> 🚧 **项目重构中**：本项目正从 Tauri 迁移至基于 C/C++、SDL3 和 OpenGL 的原生实现。由于项目刚完成维护交接，重构期间暂不受理 Bug 报告及 PR。重要事项请联系[当前维护者](https://github.com/vladelaina)。
+>
+> 🚧 **Project Rewrite in Progress:** This project is being migrated from Tauri to a native implementation based on C/C++, SDL3, and OpenGL. As the project has recently undergone a maintainer transition, bug reports and PRs are temporarily not being accepted during the rewrite. For important matters, please contact the [current maintainer](https://github.com/vladelaina).
+
+
+<img width="1306" height="950" alt="tip" src="https://github.com/user-attachments/assets/6dc541f1-75f8-41b3-bd71-ff96806de380" />
+
+
+---
+
+
 ![BongoCat](https://socialify.git.ci/ayangweb/BongoCat/image?custom_description=&description=1&font=Source+Code+Pro&forks=1&issues=1&logo=https%3A%2F%2Fgithub.com%2Fayangweb%2FBongoCat%2Fblob%2Fmaster%2Fsrc-tauri%2Fassets%2Flogo-mac.png%3Fraw%3Dtrue&name=1&owner=1&pattern=Floating+Cogs&pulls=1&stargazers=1&theme=Auto)
 
 <div align="center">
