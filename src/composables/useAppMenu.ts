@@ -60,7 +60,7 @@ export function useAppMenu() {
     return Promise.all(items)
   }
 
-  const getBaseMenu = async () => {
+  const getBaseMenu = async ({ includeAlwaysOnTop = false } = {}) => {
     return await Promise.all([
       MenuItem.new({
         text: t('composables.useAppMenu.labels.preference'),
@@ -81,6 +81,15 @@ export function useAppMenu() {
           catStore.window.passThrough = !catStore.window.passThrough
         },
       }),
+      ...(includeAlwaysOnTop
+        ? [CheckMenuItem.new({
+            text: t('composables.useAppMenu.labels.alwaysOnTop'),
+            checked: catStore.window.alwaysOnTop,
+            action: () => {
+              catStore.window.alwaysOnTop = !catStore.window.alwaysOnTop
+            },
+          })]
+        : []),
       Submenu.new({
         text: t('composables.useAppMenu.labels.windowSize'),
         items: await getScaleMenuItems(),

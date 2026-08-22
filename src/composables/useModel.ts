@@ -13,7 +13,7 @@ import { useModelStore } from '@/stores/model'
 import { getCursorMonitor } from '@/utils/monitor'
 import { isMac } from '@/utils/platform'
 
-import live2d from '../utils/live2d'
+import modelRuntime from '../utils/model-runtime'
 
 const appWindow = getCurrentWebviewWindow()
 const digitKeys = '1234567890'.split('') as readonly string[]
@@ -28,6 +28,7 @@ export function useModel() {
   const modelStore = useModelStore()
   const catStore = useCatStore()
   const modelSize = ref<ModelSize>()
+  let loadGeneration = 0
 
   function getBehaviorShortcut(index: number) {
     const primary = isMac ? 'Command' : 'Control'
@@ -66,35 +67,47 @@ export function useModel() {
   }
 
   async function handleLoad() {
+    const generation = ++loadGeneration
+    const currentModel = modelStore.currentModel
+
+    modelSize.value = void 0
+    modelStore.currentMotions = []
+    modelStore.currentExpressions = []
+
+    if (!currentModel) return false
+
+    const { id, path, renderer } = currentModel
+    const isCurrent = () => {
+      const model = modelStore.currentModel
+
+      return generation === loadGeneration
+        && model?.id === id
+        && model.path === path
+        && model.renderer === renderer
+    }
+
     try {
-      if (!modelStore.currentModel) return
-
-      const { path } = modelStore.currentModel
-
       await resolveResource(path)
 
-      const { width, height, motions, expressions } = await live2d.load(path)
+      if (!isCurrent()) return false
+
+      const { width, height, motions, expressions } = await modelRuntime.load(path, renderer)
+
+      if (!isCurrent()) return false
 
       const nextMotions = Object.entries(motions)
-
-      modelSize.value = { width, height }
-      modelStore.currentMotions = nextMotions
-      modelStore.currentExpressions = expressions
-
-      handleResize()
-
-      const modelId = modelStore.currentModel.id
-
+      const nextModelSize = { width, height }
+      const nextShortcuts: Array<[string, string]> = []
       const behaviorIds: string[] = []
 
       for (const [groupName, items] of nextMotions) {
         for (const [index] of items.entries()) {
-          behaviorIds.push(getMotionShortcutId(modelId, groupName, index))
+          behaviorIds.push(getMotionShortcutId(id, groupName, index))
         }
       }
 
       for (const [index] of expressions.entries()) {
-        behaviorIds.push(getExpressionShortcutId(modelId, index))
+        behaviorIds.push(getExpressionShortcutId(id, index))
       }
 
       for (const [index, id] of behaviorIds.entries()) {
@@ -104,39 +117,76 @@ export function useModel() {
 
         if (!shortcut) continue
 
-        modelStore.shortcuts[id] = shortcut
+        nextShortcuts.push([id, shortcut])
       }
+
+      if (!isCurrent()) return false
+
+      modelSize.value = nextModelSize
+      modelStore.currentMotions = nextMotions
+      modelStore.currentExpressions = expressions
+
+      for (const [shortcutId, shortcut] of nextShortcuts) {
+        modelStore.shortcuts[shortcutId] = shortcut
+      }
+
+      if (!await handleResize(generation, nextModelSize)) return false
+
+      return isCurrent()
     } catch (error) {
+      if (isAbortError(error) || !isCurrent()) return false
+
       message.error(String(error))
+
+      return false
     }
   }
 
   function handleDestroy() {
-    live2d.destroy()
+    ++loadGeneration
+    modelRuntime.destroy()
   }
 
-  async function handleResize() {
-    if (!modelSize.value) return
+  async function handleResize(
+    generation = loadGeneration,
+    nextModelSize = modelSize.value,
+  ) {
+    if (!nextModelSize || generation !== loadGeneration) return false
 
-    live2d.resizeModel(modelSize.value)
+    const { width, height } = nextModelSize
 
-    const { width, height } = modelSize.value
-
-    if (round(innerWidth / innerHeight, 1) !== round(width / height, 1)) {
+    if (innerWidth > 0 && innerHeight > 0
+      && round(innerWidth / innerHeight, 1) !== round(width / height, 1)) {
       await appWindow.setSize(
         new LogicalSize({
           width: innerWidth,
           height: Math.ceil(innerWidth * (height / width)),
         }),
       )
+
+      if (generation !== loadGeneration) return false
     }
+
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve())
+    })
+
+    if (generation !== loadGeneration) return false
+
+    modelRuntime.resizeModel(nextModelSize)
 
     const size = await appWindow.size()
 
+    if (generation !== loadGeneration) return false
+
     catStore.window.scale = round((size.width / width) * 100)
+
+    return true
   }
 
-  const handlePress = (key: string) => {
+  const handlePress = (key: string, label?: string | null) => {
+    modelRuntime.handleKeyboard(key, true, label)
+
     const path = modelStore.supportKeys[key]
 
     if (!path) return
@@ -154,19 +204,22 @@ export function useModel() {
   }
 
   const handleRelease = (key: string) => {
+    modelRuntime.handleKeyboard(key, false)
+
     delete modelStore.pressedKeys[key]
   }
 
   function handleKeyChange(isLeft = true, pressed = true) {
     const id = isLeft ? 'CatParamLeftHandDown' : 'CatParamRightHandDown'
 
-    live2d.setParameterValue(id, pressed)
+    modelRuntime.setParameterValue(id, pressed)
   }
 
   function handleMouseChange(key: string, pressed = true) {
     const id = key === 'Left' ? 'ParamMouseLeftDown' : 'ParamMouseRightDown'
 
-    live2d.setParameterValue(id, pressed)
+    modelRuntime.handleMouse(key, pressed)
+    modelRuntime.setParameterValue(id, pressed)
   }
 
   async function handleMouseMove(cursorPoint: PhysicalPosition) {
@@ -188,7 +241,7 @@ export function useModel() {
       'ParamEyeBallX',
       'ParamEyeBallY',
     ]) {
-      const range = live2d.getParameterValueRange(id)
+      const range = modelRuntime.getParameterValueRange(id)
 
       if (!range) continue
 
@@ -217,18 +270,18 @@ export function useModel() {
         value *= -1
       }
 
-      live2d.setParameterValue(id, value)
+      modelRuntime.setParameterValue(id, value)
     }
   }
 
   async function handleAxisChange(id: string, value: number) {
-    const range = live2d.getParameterValueRange(id)
+    const range = modelRuntime.getParameterValueRange(id)
 
     if (!range) return
 
     const { min, max } = range
 
-    live2d.setParameterValue(id, Math.max(min, value * max))
+    modelRuntime.setParameterValue(id, Math.max(min, value * max))
   }
 
   return {
@@ -243,4 +296,11 @@ export function useModel() {
     handleMouseMove,
     handleAxisChange,
   }
+}
+
+function isAbortError(error: unknown) {
+  return typeof error === 'object'
+    && error !== null
+    && 'name' in error
+    && error.name === 'AbortError'
 }

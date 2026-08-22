@@ -17,77 +17,140 @@ Config.MouseFollow = false
 
 class Live2d {
   private app: Application | null = null
+  private appInitPromise: Promise<void> | null = null
+  private loadGeneration = 0
+  private loadQueue: Promise<void> = Promise.resolve()
   public model: Live2DSprite | null = null
 
   constructor() { }
 
-  private initApp() {
+  private async initApp() {
+    if (this.appInitPromise) {
+      await this.appInitPromise
+
+      return
+    }
+
     if (this.app) return
 
     const view = document.getElementById('live2dCanvas') as HTMLCanvasElement
+    const app = new Application()
 
-    this.app = new Application()
-
-    return this.app.init({
+    this.app = app
+    this.appInitPromise = app.init({
       view,
       resizeTo: window,
       backgroundAlpha: 0,
       autoDensity: true,
       resolution: devicePixelRatio,
     })
+
+    try {
+      await this.appInitPromise
+    } catch (error) {
+      if (this.app === app) this.app = null
+
+      throw error
+    } finally {
+      this.appInitPromise = null
+    }
   }
 
   public async load(path: string) {
-    await this.initApp()
+    const generation = ++this.loadGeneration
+    const previousLoad = this.loadQueue
+    let releaseLoad!: () => void
 
-    this.destroy()
-
-    const files = await readDir(path)
-
-    const modelFile = files.find(file => file.name.endsWith('.model3.json'))
-
-    if (!modelFile) {
-      throw new Error(i18n.global.t('utils.live2d.hints.notFound'))
-    }
-
-    const modelPath = join(path, modelFile.name)
-
-    const modelJSON = JSON5.parse(await readTextFile(modelPath))
-
-    const modelSetting = new CubismSetting({
-      modelJSON,
+    this.loadQueue = new Promise((resolve) => {
+      releaseLoad = resolve
     })
 
-    modelSetting.redirectPath(({ file }) => {
-      return convertFileSrc(join(path, file))
-    })
+    try {
+      await previousLoad
 
-    this.model = new Live2DSprite({
-      modelSetting,
-      ticker: Ticker.shared,
-    })
+      this.assertGeneration(generation)
+      this.destroyModel()
 
-    this.app?.stage.addChild(this.model)
+      await this.initApp()
 
-    await this.model.ready
+      this.assertGeneration(generation)
 
-    const { width, height } = this.model
+      const files = await readDir(path)
 
-    const motions = groupBy(this.model.getMotions(), 'group')
-    const expressions = this.model.getExpressions()
+      this.assertGeneration(generation)
 
-    return {
-      width,
-      height,
-      motions,
-      expressions,
+      const modelFile = files.find(file => file.name.endsWith('.model3.json'))
+
+      if (!modelFile) {
+        throw new Error(i18n.global.t('utils.live2d.hints.notFound'))
+      }
+
+      const modelPath = join(path, modelFile.name)
+      const modelText = await readTextFile(modelPath)
+
+      this.assertGeneration(generation)
+
+      const modelJSON = JSON5.parse(modelText)
+
+      const modelSetting = new CubismSetting({
+        modelJSON,
+      })
+
+      modelSetting.redirectPath(({ file }) => {
+        return convertFileSrc(join(path, file))
+      })
+
+      const model = new Live2DSprite({
+        modelSetting,
+        ticker: Ticker.shared,
+      })
+
+      this.app?.stage.addChild(model)
+
+      try {
+        await model.ready
+
+        this.assertGeneration(generation)
+
+        this.model = model
+
+        const { width, height } = model
+        const motions = groupBy(model.getMotions(), 'group')
+        const expressions = model.getExpressions()
+
+        return {
+          width,
+          height,
+          motions,
+          expressions,
+        }
+      } catch (error) {
+        if (this.model === model) this.model = null
+
+        model.destroy()
+
+        throw error
+      }
+    } finally {
+      releaseLoad()
     }
   }
 
   public destroy() {
+    ++this.loadGeneration
+    this.destroyModel()
+  }
+
+  private assertGeneration(generation: number) {
+    if (generation === this.loadGeneration) return
+
+    throw new DOMException('Live2D model load was superseded', 'AbortError')
+  }
+
+  private destroyModel() {
     if (!this.model) return
 
-    this.model?.destroy()
+    this.model.destroy()
 
     this.model = null
   }

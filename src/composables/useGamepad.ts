@@ -5,7 +5,7 @@ import { computed, reactive, watch } from 'vue'
 
 import { INVOKE_KEY, LISTEN_KEY } from '@/constants'
 import { useModelStore } from '@/stores/model'
-import live2d from '@/utils/live2d'
+import modelRuntime from '@/utils/model-runtime'
 
 import { useModel } from './useModel'
 import { useTauriListen } from './useTauriListen'
@@ -56,13 +56,13 @@ export function useGamepad() {
   watch(sticks.left, ({ x, y, moved, pressed }) => {
     sticks.left.moved = x !== 0 || y !== 0
 
-    live2d.setParameterValue('CatParamStickShowLeftHand', moved || pressed)
+    modelRuntime.setParameterValue('CatParamStickShowLeftHand', moved || pressed)
   }, { deep: true })
 
   watch(sticks.right, ({ x, y, moved, pressed }) => {
     sticks.right.moved = x !== 0 || y !== 0
 
-    live2d.setParameterValue('CatParamStickShowRightHand', moved || pressed)
+    modelRuntime.setParameterValue('CatParamStickShowRightHand', moved || pressed)
   }, { deep: true })
 
   useTauriListen<GamepadEvent>(LISTEN_KEY.GAMEPAD_CHANGED, ({ payload }) => {
@@ -88,11 +88,11 @@ export function useGamepad() {
       case 'LeftThumb':
         sticks.left.pressed = value !== 0
 
-        return live2d.setParameterValue('CatParamStickLeftDown', value !== 0)
+        return modelRuntime.setParameterValue('CatParamStickLeftDown', value !== 0)
       case 'RightThumb':
         sticks.right.pressed = value !== 0
 
-        return live2d.setParameterValue('CatParamStickRightDown', value !== 0)
+        return modelRuntime.setParameterValue('CatParamStickRightDown', value !== 0)
       default:
         return value > 0 ? handlePress(name) : handleRelease(name)
     }

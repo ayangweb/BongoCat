@@ -1,0 +1,4 @@
+interface:
+  display_name: Build BongoCat Sprite Model
+  short_description: 生成、稳定化并验收 BongoCat 雪碧人物模型
+  default_prompt: Use $build-bongocat-sprite-model to create a new validated BongoCat sprite model from my character references.

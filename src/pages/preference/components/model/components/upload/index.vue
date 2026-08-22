@@ -3,17 +3,18 @@ import { invoke } from '@tauri-apps/api/core'
 import { appDataDir } from '@tauri-apps/api/path'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { open } from '@tauri-apps/plugin-dialog'
-import { readDir } from '@tauri-apps/plugin-fs'
+import { exists, readDir, readTextFile } from '@tauri-apps/plugin-fs'
 import { message } from 'antdv-next'
 import { nanoid } from 'nanoid'
 import { onMounted, ref, useTemplateRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import type { ModelMode } from '@/stores/model'
+import type { ModelMode, ModelRenderer } from '@/stores/model'
 
 import { INVOKE_KEY } from '@/constants'
 import { useModelStore } from '@/stores/model'
 import { join } from '@/utils/path'
+import sprite from '@/utils/sprite'
 
 const dropRef = useTemplateRef('drop')
 const dragenter = ref(false)
@@ -62,8 +63,39 @@ watch(selectPaths, async (paths) => {
       const id = nanoid()
 
       let mode: ModelMode = 'standard'
+      let renderer: ModelRenderer = 'live2d'
+      let displayName: string | undefined
 
-      const files = await readDir(join(fromPath, 'resources', 'right-keys')).catch(() => [])
+      const manifestPath = join(fromPath, 'model.json')
+
+      if (await exists(manifestPath)) {
+        const content = await readTextFile(manifestPath)
+        let manifest: unknown
+
+        try {
+          manifest = JSON.parse(content)
+        } catch (error) {
+          if (/"renderer"\s*:\s*"sprite"/.test(content)) throw error
+
+          manifest = undefined
+        }
+
+        if (manifest && typeof manifest === 'object'
+          && 'renderer' in manifest && manifest.renderer === 'sprite') {
+          const validatedManifest = await sprite.validateModel(fromPath)
+
+          renderer = 'sprite'
+          displayName = validatedManifest.displayName
+
+          if (validatedManifest.mode) {
+            mode = validatedManifest.mode
+          }
+        }
+      }
+
+      const files = renderer === 'live2d'
+        ? await readDir(join(fromPath, 'resources', 'right-keys')).catch(() => [])
+        : []
 
       if (files.length > 0) {
         const fileNames = files.map(file => file.name.split('.')[0])
@@ -86,6 +118,8 @@ watch(selectPaths, async (paths) => {
         id,
         path: toPath,
         mode,
+        renderer,
+        displayName,
         isPreset: false,
       })
 
