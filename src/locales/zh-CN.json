@@ -97,6 +97,8 @@
           "clickOrDragToImport": "点击或拖动至此区域导入"
         },
         "tooltips": {
+          "lightModel": "设为浅色模式桌宠（再次点击取消）",
+          "darkModel": "设为深色模式桌宠（再次点击取消）",
           "createModel": "制作模型",
           "convertModel": "转换模型",
           "moreModels": "更多模型"

@@ -97,6 +97,8 @@
           "clickOrDragToImport": "Clique ou arraste para importar"
         },
         "tooltips": {
+          "lightModel": "Usar no modo claro (clique novamente para limpar)",
+          "darkModel": "Usar no modo escuro (clique novamente para limpar)",
           "createModel": "Criar modelo",
           "convertModel": "Converter modelo",
           "moreModels": "Mais modelos"

@@ -97,6 +97,8 @@
           "clickOrDragToImport": "Nhấp hoặc kéo tệp vào đây"
         },
         "tooltips": {
+          "lightModel": "Dùng ở chế độ sáng (nhấp lại để bỏ chọn)",
+          "darkModel": "Dùng ở chế độ tối (nhấp lại để bỏ chọn)",
           "createModel": "Tạo mô hình",
           "convertModel": "Chuyển đổi mô hình",
           "moreModels": "Khám phá mô hình khác"
