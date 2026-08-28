@@ -35,6 +35,8 @@ jobs:
         include:
           - name: input-state
             manifest: spikes/input-state/Cargo.toml
+          - name: input-queue
+            manifest: spikes/input-queue/Cargo.toml
           - name: input-windows
             manifest: spikes/input-windows/Cargo.toml
           - name: overlay-lifecycle

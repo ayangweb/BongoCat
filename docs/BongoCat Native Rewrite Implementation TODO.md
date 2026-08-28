@@ -299,6 +299,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 单一 runtime owner 管理可变业务状态。
 - [ ] key/button edge 和 command 使用可靠有序队列。
 - [ ] 为每个可靠队列定义容量、生产者、消费者、满载策略和关闭语义，不使用无界队列逃避背压设计。
+  - 状态（2026-08-28）：`spikes/input-queue/` 已验证固定容量 FIFO、满载返回原事件、关闭 drain 和 latest-value 槽位；runtime 的实际容量、跨线程唤醒和 shutdown drain 仍待产品 crate。
 - [ ] edge/command 携带单调 sequence id，诊断可发现乱序、重复和丢失但不记录具体键值。
   - 状态（2026-08-28）：`spikes/input-state/` 已验证可靠输入事件的重复/乱序忽略与跳号安全 reset；runtime queue、command sequence 和平台 producer 仍待产品 crate。
 - [ ] cursor/gamepad axis 使用 latest-value 合并通道。
