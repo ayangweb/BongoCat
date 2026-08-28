@@ -354,7 +354,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 3.5 配置 v1
 
-- 状态（2026-08-28）：`spikes/config-store/` 已建立 typed NativeConfig、Bundle ID、Development/Production 隔离目录、snake_case 序列化、schema 校验、原子 commit probe、expected revision、writer lock contract 和当前 macOS 真实 path resolver；Windows resolver、崩溃恢复、备份策略和 GPUI command 边界仍待产品 crate 阶段完成，详见 `docs/phase-0/config-store-spike.md`。
+- 状态（2026-08-28）：`spikes/config-store/` 已建立 typed NativeConfig、Bundle ID、Development/Production 隔离目录、snake_case 序列化、schema 校验、原子 commit probe、expected revision、writer lock contract、中断提交恢复 contract 和当前 macOS 真实 path resolver；Windows resolver、真实进程崩溃故障注入、stale lock、备份策略和 GPUI command 边界仍待产品 crate 阶段完成，详见 `docs/phase-0/config-store-spike.md`。
 
 - [ ] 定义带 `schema_version` 的 Rust 配置结构和 JSON schema，JSON key 使用 `snake_case`。
 - [ ] 区分用户配置、运行时状态和诊断数据。
@@ -365,8 +365,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 当前 macOS resolver 已通过；Windows 对等 resolver 仍待 Windows 实机。
 - [x] 两个环境的 `config.json`、`state.json`、`models/`、`backups/`、`logs/` 和 `locks/` 相对结构一致；spike 测试逐项比较相对路径。
 - [ ] 环境不能由 CLI、进程环境变量或设置项在运行时切换，也不能 fallback 到另一环境。
-- [x] 在 spike 中实现同目录临时文件、flush、原子替换、提交后验证和上一份有效配置备份；平台文件锁与崩溃注入仍未完成。
-- [x] 在 spike 中拒绝损坏配置并保留原始文件；隔离备份、默认恢复和 GPUI 用户诊断仍未完成。
+- [x] 在 spike 中实现同目录临时文件、flush、原子替换、提交后验证和上一份有效配置备份；平台文件锁与真实进程崩溃注入仍未完成。
+- [x] 在 spike 中拒绝损坏配置并保留原始文件；中断提交恢复会保守提升有效临时文件并归档无效/陈旧副本，隔离备份保留策略、默认恢复和 GPUI 用户诊断仍未完成。
 - [ ] 配置写入去抖，退出前强制 flush。
 - [ ] GPUI 只通过 typed command 获取 snapshot 和提交 patch。
 - [x] 在 spike 中以包含环境目录的 `locks/config.writer.lock` 拒绝并发 writer，并在 guard 释放后允许重试；平台文件权限和异常终止后的 stale lock 清理仍待产品 crate。
@@ -571,7 +571,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] path resolver 返回当前平台与环境的数据根，不能接受任意外部生产路径。
 - [ ] 实现 load -> parse -> validate -> upgrade native schema -> atomic commit -> verify。
 - [ ] backup 包含 Native schema 版本和时间，并限制数量与总大小。
-- [ ] 中途崩溃后可安全恢复或重试；失败不覆盖当前可用配置。
+- [x] spike 中途提交中断后可安全恢复或重试；失败不覆盖当前可用配置。
+  - 状态（2026-08-28）：`ConfigStore::recover_interrupted_commit` 覆盖主配置有效/缺失/损坏与临时文件有效/无效组合，恢复在 writer lock 内执行并保留诊断副本；真实进程崩溃、stale lock 和产品备份上限仍待完成。
 - [ ] GPUI 显示错误摘要、备份位置和恢复默认 command。
 - [ ] 用户模型只通过显式、受验证的导入进入当前环境，不扫描旧应用目录。
 

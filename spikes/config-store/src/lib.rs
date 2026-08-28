@@ -386,6 +386,21 @@ impl From<serde_json::Error> for ConfigError {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RecoveryAction {
+    NothingToRecover,
+    ArchivedStaleTemp,
+    ArchivedInvalidTemp,
+    PromotedTemp,
+}
+
+#[derive(Clone, Debug)]
+enum ConfigFileStatus {
+    Missing,
+    Valid,
+    Invalid,
+}
+
 pub struct ConfigStore {
     layout: StorageLayout,
 }
@@ -412,6 +427,7 @@ impl ConfigStore {
     }
 
     pub fn load_or_default(&self) -> Result<NativeConfig, ConfigError> {
+        self.recover_interrupted_commit()?;
         match fs::read(&self.layout.config) {
             Ok(bytes) => {
                 let config: NativeConfig = serde_json::from_slice(&bytes)?;
@@ -425,6 +441,11 @@ impl ConfigStore {
             }
             Err(error) => Err(error.into()),
         }
+    }
+
+    pub fn recover_interrupted_commit(&self) -> Result<RecoveryAction, ConfigError> {
+        let _lock = self.acquire_writer_lock()?;
+        self.recover_interrupted_commit_unlocked()
     }
 
     pub fn revision(&self) -> Result<ConfigRevision, ConfigError> {
@@ -470,6 +491,43 @@ impl ConfigStore {
         Ok(())
     }
 
+    fn recover_interrupted_commit_unlocked(&self) -> Result<RecoveryAction, ConfigError> {
+        let temp_path = self.layout.config.with_extension("json.tmp");
+        let temp_status = inspect_config_file(&temp_path)?;
+        if matches!(temp_status, ConfigFileStatus::Missing) {
+            return Ok(RecoveryAction::NothingToRecover);
+        }
+        let current_status = inspect_config_file(&self.layout.config)?;
+        match temp_status {
+            ConfigFileStatus::Valid => match current_status {
+                ConfigFileStatus::Valid => {
+                    archive_file(&temp_path, &self.layout.backups, "config.interrupted")?;
+                    Ok(RecoveryAction::ArchivedStaleTemp)
+                }
+                ConfigFileStatus::Missing => {
+                    fs::rename(&temp_path, &self.layout.config)?;
+                    File::open(&self.layout.config)?.sync_all()?;
+                    Ok(RecoveryAction::PromotedTemp)
+                }
+                ConfigFileStatus::Invalid => {
+                    archive_file(&self.layout.config, &self.layout.backups, "config.corrupt")?;
+                    fs::rename(&temp_path, &self.layout.config)?;
+                    File::open(&self.layout.config)?.sync_all()?;
+                    Ok(RecoveryAction::PromotedTemp)
+                }
+            },
+            ConfigFileStatus::Invalid => {
+                archive_file(
+                    &temp_path,
+                    &self.layout.backups,
+                    "config.interrupted.invalid",
+                )?;
+                Ok(RecoveryAction::ArchivedInvalidTemp)
+            }
+            ConfigFileStatus::Missing => unreachable!("missing temp was returned above"),
+        }
+    }
+
     fn back_up_current_config(&self) -> Result<(), ConfigError> {
         if !self.layout.config.is_file() {
             return Ok(());
@@ -481,6 +539,60 @@ impl ConfigStore {
         fs::rename(backup_temp_path, backup_path)?;
         Ok(())
     }
+}
+
+fn inspect_config_file(path: &Path) -> Result<ConfigFileStatus, ConfigError> {
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == ErrorKind::NotFound => {
+            return Ok(ConfigFileStatus::Missing);
+        }
+        Err(error) => return Err(error.into()),
+    };
+    let config = match serde_json::from_slice::<NativeConfig>(&bytes) {
+        Ok(config) => config,
+        Err(_) => return Ok(ConfigFileStatus::Invalid),
+    };
+    if config.validate().is_err() {
+        return Ok(ConfigFileStatus::Invalid);
+    }
+    Ok(ConfigFileStatus::Valid)
+}
+
+fn archive_file(source: &Path, backups: &Path, stem: &str) -> Result<PathBuf, ConfigError> {
+    for suffix in 0..1000u16 {
+        let filename = if suffix == 0 {
+            format!("{stem}.json")
+        } else {
+            format!("{stem}.{suffix}.json")
+        };
+        let destination = backups.join(filename);
+        let mut destination_file = match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&destination)
+        {
+            Ok(file) => file,
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error.into()),
+        };
+        let mut source_file = File::open(source)?;
+        if let Err(error) = io::copy(&mut source_file, &mut destination_file) {
+            drop(destination_file);
+            let _ = fs::remove_file(&destination);
+            return Err(error.into());
+        }
+        destination_file.sync_all()?;
+        drop(destination_file);
+        drop(source_file);
+        fs::remove_file(source)?;
+        return Ok(destination);
+    }
+    Err(io::Error::new(
+        ErrorKind::AlreadyExists,
+        "too many config recovery archives",
+    )
+    .into())
 }
 
 #[cfg(test)]
@@ -598,6 +710,123 @@ mod tests {
         let backup: NativeConfig = serde_json::from_slice(&fs::read(backup_path).unwrap()).unwrap();
         assert_eq!(backup, original);
         assert_eq!(store.load_or_default().unwrap(), updated);
+    }
+
+    #[test]
+    fn recovery_promotes_valid_temp_when_current_config_is_missing() {
+        let base = tempdir().unwrap();
+        let layout = StorageLayout::under(base.path(), BuildEnvironment::Development);
+        let store = ConfigStore::new(layout.clone()).unwrap();
+        let mut candidate = NativeConfig::default();
+        candidate.appearance.language = "zh-CN".into();
+        let temp_path = layout.config.with_extension("json.tmp");
+        fs::write(&temp_path, serde_json::to_vec_pretty(&candidate).unwrap()).unwrap();
+
+        assert_eq!(
+            store.recover_interrupted_commit().unwrap(),
+            RecoveryAction::PromotedTemp
+        );
+        assert!(!temp_path.exists());
+        assert_eq!(store.load_or_default().unwrap(), candidate);
+    }
+
+    #[test]
+    fn recovery_preserves_valid_current_and_archives_stale_temp() {
+        let base = tempdir().unwrap();
+        let layout = StorageLayout::under(base.path(), BuildEnvironment::Development);
+        let store = ConfigStore::new(layout.clone()).unwrap();
+        let current = store.load_or_default().unwrap();
+        let mut stale = current.clone();
+        stale.appearance.language = "zh-CN".into();
+        let temp_path = layout.config.with_extension("json.tmp");
+        fs::write(&temp_path, serde_json::to_vec_pretty(&stale).unwrap()).unwrap();
+
+        assert_eq!(
+            store.recover_interrupted_commit().unwrap(),
+            RecoveryAction::ArchivedStaleTemp
+        );
+        assert_eq!(store.load_or_default().unwrap(), current);
+        let archived: NativeConfig = serde_json::from_slice(
+            &fs::read(layout.backups.join("config.interrupted.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(archived, stale);
+        assert_eq!(
+            store.recover_interrupted_commit().unwrap(),
+            RecoveryAction::NothingToRecover
+        );
+    }
+
+    #[test]
+    fn recovery_never_overwrites_an_existing_archive() {
+        let base = tempdir().unwrap();
+        let layout = StorageLayout::under(base.path(), BuildEnvironment::Development);
+        let store = ConfigStore::new(layout.clone()).unwrap();
+        let current = store.load_or_default().unwrap();
+        let temp_path = layout.config.with_extension("json.tmp");
+
+        let mut first = current.clone();
+        first.appearance.language = "zh-CN".into();
+        fs::write(&temp_path, serde_json::to_vec_pretty(&first).unwrap()).unwrap();
+        store.recover_interrupted_commit().unwrap();
+
+        let mut second = current;
+        second.appearance.language = "ja-JP".into();
+        fs::write(&temp_path, serde_json::to_vec_pretty(&second).unwrap()).unwrap();
+        store.recover_interrupted_commit().unwrap();
+
+        let archived_first: NativeConfig = serde_json::from_slice(
+            &fs::read(layout.backups.join("config.interrupted.json")).unwrap(),
+        )
+        .unwrap();
+        let archived_second: NativeConfig = serde_json::from_slice(
+            &fs::read(layout.backups.join("config.interrupted.1.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(archived_first, first);
+        assert_eq!(archived_second, second);
+    }
+
+    #[test]
+    fn recovery_archives_invalid_temp_without_touching_valid_current() {
+        let base = tempdir().unwrap();
+        let layout = StorageLayout::under(base.path(), BuildEnvironment::Production);
+        let store = ConfigStore::new(layout.clone()).unwrap();
+        let current = store.load_or_default().unwrap();
+        let temp_path = layout.config.with_extension("json.tmp");
+        fs::write(&temp_path, b"{interrupted").unwrap();
+
+        assert_eq!(
+            store.recover_interrupted_commit().unwrap(),
+            RecoveryAction::ArchivedInvalidTemp
+        );
+        assert_eq!(store.load_or_default().unwrap(), current);
+        assert_eq!(
+            fs::read(layout.backups.join("config.interrupted.invalid.json")).unwrap(),
+            b"{interrupted"
+        );
+    }
+
+    #[test]
+    fn recovery_archives_corrupt_current_before_promoting_valid_temp() {
+        let base = tempdir().unwrap();
+        let layout = StorageLayout::under(base.path(), BuildEnvironment::Production);
+        let store = ConfigStore::new(layout.clone()).unwrap();
+        fs::write(&layout.config, b"{corrupt").unwrap();
+        let mut candidate = NativeConfig::default();
+        candidate.appearance.language = "ja-JP".into();
+        let temp_path = layout.config.with_extension("json.tmp");
+        fs::write(&temp_path, serde_json::to_vec_pretty(&candidate).unwrap()).unwrap();
+
+        assert_eq!(
+            store.recover_interrupted_commit().unwrap(),
+            RecoveryAction::PromotedTemp
+        );
+        assert_eq!(store.load_or_default().unwrap(), candidate);
+        assert_eq!(
+            fs::read(layout.backups.join("config.corrupt.json")).unwrap(),
+            b"{corrupt"
+        );
     }
 
     #[test]
