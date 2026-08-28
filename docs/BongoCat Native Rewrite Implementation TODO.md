@@ -186,6 +186,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 ### 1.7 输入可靠性 spike
 
 - 状态（2026-08-28）：`spikes/input-state/` 已建立纯 Rust pressed-set contract，覆盖正常 down/up、重复 down、Reconcile、Reset 和 issue #47 的丢失 release 恢复；计数器不记录具体键值。平台采集、校正频率和管理员/权限场景仍待实机验证，详见 `docs/phase-0/input-state-spike.md`。
+- 状态（2026-08-28）：`spikes/input-macos/` 已建立 macOS 权限/tap 生命周期 contract 和只读 preflight probe；状态测试覆盖 denied/granted、tap timeout/disable、权限撤销和 session reset。真实 CGEventTap callback、TCC 授权/撤销、`CGEventSourceKeyState` 校正和 100 次 restart 仍未完成，详见 `docs/phase-0/input-macos-spike.md`。
 
 - [ ] Windows 实现 RegisterRawInputDevices 和 WM_INPUT 最小路径。
 - [ ] 映射 scan code、extended flag、左右修饰键和 RI_KEY_BREAK。
@@ -774,6 +775,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 完成平台无关 pressed-set contract 和 issue #47 恢复测试；Windows 采集与校正仍未完成。
 
 11. [ ] `P0-INPUT-MAC`：完成 CGEventTap 权限拒绝/授予/恢复、状态校正和 100 次 restart。
+
+- [x] 完成权限/tap 生命周期 contract 和只读 preflight probe；真实 tap callback 与权限矩阵仍未完成。
+
 12. [ ] `P0-CUBISM`：确认 SDK/许可证/binding 生成，三个预置模型完成 Core、资源和 renderer spike。
 13. [ ] `P0-GO-NO-GO`：汇总证据、阻塞和条件，确认后再建立完整产品 workspace。
 

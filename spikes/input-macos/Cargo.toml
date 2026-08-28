@@ -1,0 +1,14 @@
+[package]
+name = "bongocat-input-macos-spike"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Used only by the opt-in macOS permission probe; not a product dependency yet.
+core-graphics2 = { version = "=0.4.1", default-features = false, features = ["event", "link"] }
+
