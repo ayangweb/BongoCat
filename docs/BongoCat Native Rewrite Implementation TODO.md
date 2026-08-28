@@ -144,7 +144,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 添加丢失 KeyUp、设备断开、锁屏、睡眠和服务重启序列。
 - [ ] 为 fixture 生成旧版观察结果并人工确认产品语义。
 - [ ] 将 Draft 2020-12 schema 校验与 `tools/validate-fixtures.py` 接入 CI，固定 validator 版本。
-- [x] fixture validator 拒绝逆序时间、重复 id、孤立 expected、未知事件和字段不匹配。
+- [x] fixture validator 拒绝逆序时间、重复 id、孤立 expected、未知事件和字段不匹配；`tools/run-input-fixtures.py` 执行确定性协议模型并比较 checkpoint。
 - [x] expected snapshot 记录来源：旧版观察、产品决策或新行为修复，禁止无法追溯的 golden update。
 
 ### 1.5 GPUI spike

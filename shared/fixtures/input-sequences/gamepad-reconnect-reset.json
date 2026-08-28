@@ -19,6 +19,7 @@
     { "atMs": 40, "type": "device_disconnected", "deviceId": "fixture-pad-1", "deviceKind": "gamepad" },
     { "atMs": 50, "type": "device_connected", "deviceId": "fixture-pad-2", "deviceKind": "gamepad" },
     { "atMs": 60, "type": "gamepad_button", "deviceId": "fixture-pad-2", "button": "east", "value": 1.0 },
+    { "atMs": 70, "type": "device_disconnected", "deviceId": "fixture-pad-2", "deviceKind": "gamepad" },
     { "atMs": 70, "type": "reset", "reason": "device_removed" }
   ]
 }

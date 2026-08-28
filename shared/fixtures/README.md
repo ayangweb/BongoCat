@@ -44,6 +44,7 @@ Platform adapter 的 scan code、系统权限和原始消息另设平台 fixture
 
 ```text
 python3 tools/validate-fixtures.py
+python3 tools/run-input-fixtures.py
 ```
 
-该命令检查 input/expected 配对、id、事件时间顺序和 checkpoint 对应关系；同时把合成模型包复制到临时目录，验证 package discovery、JSON 解析、引用路径和纹理头限制。模型 fixture 只定义导入 preflight 行为，不包含可供 Cubism Core 加载的数据，也不替代运行时兼容测试。JSON Schema Draft 2020-12 校验仍应由 CI 中固定版本的标准 validator 执行。
+`validate-fixtures.py` 检查 input/expected 配对、id、事件时间顺序和 checkpoint 对应关系；同时把合成模型包复制到临时目录，验证 package discovery、JSON 解析、引用路径和纹理头限制。`run-input-fixtures.py` 使用无平台依赖的确定性协议模型执行输入事件，并逐 checkpoint 比较 pressed state、设备、鼠标、光标和 hand parameter；它不是产品 runtime，也不能替代 Windows/macOS 平台采集测试。模型 fixture 只定义导入 preflight 行为，不包含可供 Cubism Core 加载的数据，也不替代运行时兼容测试。JSON Schema Draft 2020-12 校验仍应由 CI 中固定版本的标准 validator 执行。
