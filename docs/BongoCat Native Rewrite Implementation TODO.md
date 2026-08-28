@@ -143,8 +143,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 添加动作、表情、停止、模型切换和音效序列；优先级与切换清理规范见 `shared/behavior/animation-semantics.md`。
 - [x] 添加丢失 KeyUp、设备断开、锁屏、睡眠和服务重启序列。
 - [ ] 为 fixture 生成旧版观察结果并人工确认产品语义。
-- [ ] 将 Draft 2020-12 schema 校验与 `tools/validate-fixtures.py` 接入 CI，固定 validator 版本。
-- [x] 将跨文件 validator 与确定性 input fixture runner 接入 `.github/workflows/native-rewrite-phase0.yml`；Draft 2020-12 标准 validator 固定版本仍待完成。
+- [x] 将 Draft 2020-12 schema 校验与 `tools/validate-fixtures.py` 接入 CI，固定 `jsonschema==4.25.1`；验证脚本和工具依赖位于 `tools/validate-json-schema.py`、`tools/requirements-phase0.txt`。
+- [x] 将跨文件 validator、固定版本 Draft 2020-12 validator 与确定性 input fixture runner 接入 `.github/workflows/native-rewrite-phase0.yml`。
 - [x] fixture validator 拒绝逆序时间、重复 id、孤立 expected、未知事件和字段不匹配；`tools/run-input-fixtures.py` 执行确定性协议模型并比较 checkpoint。
 - [x] expected snapshot 记录来源：旧版观察、产品决策或新行为修复，禁止无法追溯的 golden update。
 

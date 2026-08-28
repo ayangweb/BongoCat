@@ -15,8 +15,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install pinned schema validator
+        run: python3 -m pip install --disable-pip-version-check --requirement tools/requirements-phase0.txt
       - name: Validate fixture structure and model cases
         run: python3 tools/validate-fixtures.py
+      - name: Validate Draft 2020-12 schemas
+        run: python3 tools/validate-json-schema.py
       - name: Run deterministic input fixtures
         run: python3 tools/run-input-fixtures.py
       - name: Check whitespace
