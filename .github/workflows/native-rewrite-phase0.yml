@@ -48,6 +48,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - name: Hash Rust toolchain
+        id: rust-toolchain
+        shell: bash
+        run: echo "hash=$(rustc -Vv | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+      - name: Cache Cargo artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            spikes/*/target/
+          key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.hash }}-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.hash }}-
+            ${{ runner.os }}-cargo-
       - name: Check formatting
         run: cargo fmt --manifest-path ${{ matrix.manifest }} -- --check
       - name: Run Clippy
@@ -61,6 +77,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - name: Hash Rust toolchain
+        id: rust-toolchain
+        shell: bash
+        run: echo "hash=$(rustc -Vv | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+      - name: Cache Cargo artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            spikes/*/target/
+          key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.hash }}-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.hash }}-
+            ${{ runner.os }}-cargo-
       - name: Check settings spike
         run: cargo check --manifest-path spikes/gpui-settings/Cargo.toml --locked
       - name: Check overlay spike
