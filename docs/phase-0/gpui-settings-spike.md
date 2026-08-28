@@ -54,6 +54,21 @@ spike 使用容量为 8 的 `async-channel 1.9.0` 传递强类型 `ReadSnapshot`
 
 760x520 Retina 人工 smoke 确认 `Runtime Ready · revision 1` 和 Refresh 控件完整显示，无文字裁剪或卡片溢出。此次检查没有提交全屏截图，避免把用户桌面内容纳入仓库证据；可重复证据以 contract test、release binary 日志、bundle 校验和本文环境记录为准。
 
+## 性能基线
+
+运行 `spikes/gpui-settings/scripts/benchmark-macos.sh` 取得 commit `248a770375291f2467f7ffae7d5cc1172da601b3` 的 macOS 基线。脚本在同一设备上执行 10 次 warm-start，记录 Rust `main` 到首个 GPUI frame callback 的时间；另一次运行预热 5 秒后每秒采集 10 个 `%CPU`/RSS 样本。二进制增量是 release 可执行文件与同 toolchain、`opt-level=2`、thin LTO 的空 Rust 可执行文件之差。
+
+| 指标                       |                                     结果 |
+| -------------------------- | ---------------------------------------: |
+| 首帧 min / p50 / p95 / max | 202.136 / 230.745 / 308.403 / 308.403 ms |
+| idle CPU mean / max        |                           3.160% / 10.0% |
+| idle RSS mean / max        |                      95,614 / 95,920 KiB |
+| release executable         |                          6,095,008 bytes |
+| empty Rust executable      |                            439,608 bytes |
+| executable increment       |                          5,655,400 bytes |
+
+环境为 MacBook Pro 18,1、Apple M1 Pro、16 GB、macOS 26.5.2 (25F84)、Rust 1.97.1 `aarch64-apple-darwin`、GPUI 0.2.2、760x520 Retina 设置窗口。`ps %CPU` 是进程生命周期平均值，可能受窗口系统或桌面活动影响；数据没有模型、输入采集或 Live2D renderer，因此不能用来判断最终应用预算。原始数据保存在 `docs/benchmark/data/gpui-settings-macos-248a770-startup.csv` 和 `docs/benchmark/data/gpui-settings-macos-248a770-idle.csv`。
+
 ### 交互和视觉验证（macOS 人工 smoke）
 
 已验证：
