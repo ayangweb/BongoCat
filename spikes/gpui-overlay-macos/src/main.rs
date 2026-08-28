@@ -106,21 +106,19 @@ mod macos_overlay {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
-mod macos_overlay {
-    pub struct NativeOverlay;
-}
-
 use gpui::{
     App, Application, Bounds, Context, Global, Render, Timer, Window, WindowBounds, WindowOptions,
     div, prelude::*, px, rgb, size,
 };
 use std::time::Duration;
 
+#[cfg(target_os = "macos")]
 struct OverlayGlobal {
-    #[cfg(target_os = "macos")]
     overlay: macos_overlay::NativeOverlay,
 }
+
+#[cfg(not(target_os = "macos"))]
+struct OverlayGlobal {}
 
 impl Global for OverlayGlobal {}
 
