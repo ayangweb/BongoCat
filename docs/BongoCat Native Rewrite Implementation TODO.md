@@ -204,6 +204,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] macOS 实现 CGEventTap、权限拒绝/授予和 tap 自动重启。
 - [ ] macOS 使用 CGEventSourceKeyState 校正 pressed state。
 - [ ] 连续 start/stop/restart 输入服务 100 次，无资源泄漏。
+  - 状态（2026-08-28）：`--tap-ms 20 --cycles 100` 全部创建、运行、停止成功，无 error、disabled 残留或 callback panic；专门的泄漏工具采样和 timeout/权限故障重启仍待完成。
 - [ ] 记录 monio 对照结果，但不引入生产依赖。
 - [ ] 为 captured、reconciled、reset、duplicate、overflow 分别维护计数器，不记录具体键值。
 - [ ] 验证输入 callback panic 隔离、队列关闭和应用退出竞态，不允许 callback 访问已析构 runtime。
