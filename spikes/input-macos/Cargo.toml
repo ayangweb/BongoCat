@@ -11,4 +11,4 @@ publish = false
 [target.'cfg(target_os = "macos")'.dependencies]
 # Used only by the opt-in macOS permission probe; not a product dependency yet.
 core-graphics2 = { version = "=0.4.1", default-features = false, features = ["event", "link"] }
-
+core-foundation = "=0.10.1"
