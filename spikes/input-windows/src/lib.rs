@@ -89,6 +89,51 @@ pub struct RawKeyboardPacket {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RawInputHeader {
+    pub declared_size: usize,
+    pub input_type: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RawInputError {
+    TruncatedHeader,
+    DeclaredSizeExceedsBuffer,
+    UnsupportedInputType,
+    TruncatedKeyboardPayload,
+}
+
+/// Decode the stable byte layout returned by `GetRawInputData` for a keyboard.
+///
+/// The platform wrapper must pass the header size reported by the target ABI:
+/// 16 bytes for 32-bit and 24 bytes for 64-bit Windows. No pointer or handle
+/// from the native header is exposed beyond this validation boundary.
+pub fn decode_raw_keyboard_bytes(
+    header: RawInputHeader,
+    bytes: &[u8],
+    header_size: usize,
+) -> Result<RawKeyboardPacket, RawInputError> {
+    if bytes.len() < header_size || bytes.len() < 8 {
+        return Err(RawInputError::TruncatedHeader);
+    }
+    if header.declared_size > bytes.len() {
+        return Err(RawInputError::DeclaredSizeExceedsBuffer);
+    }
+    if header.input_type != 1 {
+        return Err(RawInputError::UnsupportedInputType);
+    }
+    let keyboard_offset = header_size;
+    let keyboard_end = keyboard_offset
+        .checked_add(4)
+        .ok_or(RawInputError::TruncatedKeyboardPayload)?;
+    if header.declared_size < keyboard_end || bytes.len() < keyboard_end {
+        return Err(RawInputError::TruncatedKeyboardPayload);
+    }
+    let make_code = u16::from_le_bytes([bytes[keyboard_offset], bytes[keyboard_offset + 1]]);
+    let flags = u16::from_le_bytes([bytes[keyboard_offset + 2], bytes[keyboard_offset + 3]]);
+    Ok(RawKeyboardPacket { make_code, flags })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct KeyboardEdge {
     pub key: PhysicalKey,
     pub pressed: bool,
@@ -253,5 +298,60 @@ mod tests {
                 flags: 0
             }
         );
+    }
+
+    #[test]
+    fn raw_input_decoder_rejects_truncated_or_non_keyboard_packets() {
+        let header = RawInputHeader {
+            declared_size: 28,
+            input_type: 1,
+        };
+        assert_eq!(
+            decode_raw_keyboard_bytes(header, &[0; 12], 24),
+            Err(RawInputError::TruncatedHeader)
+        );
+        assert_eq!(
+            decode_raw_keyboard_bytes(
+                RawInputHeader {
+                    declared_size: 28,
+                    input_type: 2,
+                },
+                &[0; 28],
+                24,
+            ),
+            Err(RawInputError::UnsupportedInputType)
+        );
+        assert_eq!(
+            decode_raw_keyboard_bytes(
+                RawInputHeader {
+                    declared_size: 40,
+                    input_type: 1,
+                },
+                &[0; 28],
+                24,
+            ),
+            Err(RawInputError::DeclaredSizeExceedsBuffer)
+        );
+    }
+
+    #[test]
+    fn raw_input_decoder_reads_keyboard_make_code_and_flags() {
+        let mut bytes = vec![0u8; 28];
+        bytes[24..26].copy_from_slice(&0x1du16.to_le_bytes());
+        bytes[26..28].copy_from_slice(&RI_KEY_E0.to_le_bytes());
+        let packet = decode_raw_keyboard_bytes(
+            RawInputHeader {
+                declared_size: bytes.len(),
+                input_type: 1,
+            },
+            &bytes,
+            24,
+        )
+        .unwrap();
+        assert_eq!(
+            decode_keyboard_packet(packet).key,
+            PhysicalKey::ControlRight
+        );
+        assert!(decode_keyboard_packet(packet).pressed);
     }
 }

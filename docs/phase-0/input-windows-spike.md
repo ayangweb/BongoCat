@@ -1,6 +1,6 @@
 # Windows Raw Input Scan Code Contract Spike
 
-状态：平台无关 scan code/edge contract 已通过；Win32 `WM_INPUT`、设备热插拔和 `GetAsyncKeyState` 待 Windows 实机
+状态：平台无关 scan code/edge contract 和安全 `RAWINPUT` 字节解析已通过；Win32 `WM_INPUT`、设备热插拔和 `GetAsyncKeyState` 待 Windows 实机
 日期：2026-08-28
 
 ## 范围
@@ -11,6 +11,7 @@
 - E0 扩展码和左右 Control/Alt/Meta、导航键、PrintScreen；
 - E1 Pause 序列，避免误判为左 Control；
 - 未知 scan code 保留为诊断值，不静默丢弃。
+- `GetRawInputData` 返回的声明长度、输入类型、键盘 payload 偏移和截断数据在进入 mapper 前校验。
 
 该 contract 可在 macOS/Linux 离线运行，但不能证明 Windows 消息接收、scan code 设备差异或 `GetAsyncKeyState` 校正行为。
 
@@ -23,4 +24,4 @@ cargo test --manifest-path spikes/input-windows/Cargo.toml --locked
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked
 ```
 
-下一步是在 Windows 实机把 `RAWINPUTHEADER`/`RAWKEYBOARD` 解包接到该 contract，验证 `WM_INPUT` 的设备句柄生命周期、E0/E1 实际序列、`RI_KEY_BREAK` 和 `GetAsyncKeyState` reconciliation；不得用本 spike 的通过结果替代平台验收。
+当前测试还覆盖截断 header、声明长度超出 buffer、非键盘输入类型和有效 64-bit header/payload 解码。下一步是在 Windows 实机把 `RAWINPUTHEADER`/`RAWKEYBOARD` 的真实 `GetRawInputData` 输出接到该 contract，验证 `WM_INPUT` 的设备句柄生命周期、E0/E1 实际序列、`RI_KEY_BREAK` 和 `GetAsyncKeyState` reconciliation；不得用本 spike 的通过结果替代平台验收。

@@ -188,7 +188,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 ### 1.7 输入可靠性 spike
 
 - 状态（2026-08-28）：`spikes/input-state/` 已建立纯 Rust pressed-set contract，覆盖正常 down/up、重复 down、Reconcile、Reset 和 issue #47 的丢失 release 恢复；计数器不记录具体键值。平台采集、校正频率和管理员/权限场景仍待实机验证，详见 `docs/phase-0/input-state-spike.md`。
-- 状态（2026-08-28）：`spikes/input-windows/` 已冻结 `RI_KEY_BREAK`、E0/E1、左右修饰键、PrintScreen 和未知 scan code 保留的纯 Rust mapping contract；Win32 `WM_INPUT`、设备句柄、热插拔和 `GetAsyncKeyState` 仍待 Windows 实机，详见 `docs/phase-0/input-windows-spike.md`。
+- 状态（2026-08-28）：`spikes/input-windows/` 已冻结 `RI_KEY_BREAK`、E0/E1、左右修饰键、PrintScreen、未知 scan code 保留和安全 `RAWINPUT` 字节解析 contract；Win32 `WM_INPUT`、设备句柄、热插拔和 `GetAsyncKeyState` 仍待 Windows 实机，详见 `docs/phase-0/input-windows-spike.md`。
 - 状态（2026-08-28）：`spikes/input-macos/` 已建立 macOS 权限/tap 生命周期 contract、listen-only `CGEventTap` 专用 run loop 和 panic-isolated callback；当前 macOS 会话完成 104 次创建运行停止 smoke，且受控按键序列报告 `key_down=2 key_up=2`、`callback_panics=0`。真实鼠标 callback、系统 timeout/disable、TCC 授权/撤销、校正行为和锁屏/睡眠恢复仍未完成，详见 `docs/phase-0/input-macos-spike.md`。
 
 - [ ] Windows 实现 RegisterRawInputDevices 和 WM_INPUT 最小路径。
