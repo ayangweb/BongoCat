@@ -82,15 +82,17 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 新增 ADR-003：主猫使用独立 D3D11/Metal overlay。
 - [x] 新增 ADR-004：输入采用事件 + 状态校正。
 - [x] 新增 ADR-005：Cubism Core 是唯一厂商 FFI 边界。
-- [ ] 新增 ADR-006：首发不支持 Linux，但共享模块不封死后续 backend。
-- [ ] 新增 ADR-007：生产版本只有单一 Rust 运行环境，历史实现仅用于迁移和行为对照。
-- [ ] 记录 `master`、`next`、旧版本 tag 和可回退 commit。
+- [x] 新增 ADR-006：首发不支持 Linux，但共享模块不封死后续 backend。
+- [x] 新增 ADR-007：生产版本只有单一 Rust 运行环境，历史实现仅用于迁移和行为对照。
+- [x] 记录 `master`、`next`、旧版本 tag 和可回退 commit。
 - [ ] 确认旧 Vue/Tauri 应用仍可构建和运行，保存命令与产物信息。
 - [x] 建立 `docs/adr/`、`docs/benchmark/`、`docs/migration/` 目录。
 - [ ] 建立依赖许可证清单，确认与项目 MIT 发布兼容。
 - [ ] 冻结首发 target triple 和 CPU 架构矩阵，明确 Windows ARM64、macOS Intel 是否发布或仅测试。
 - [ ] 记录 Windows MSVC/SDK、macOS Xcode/SDK/Metal Toolchain 和 Rust toolchain 的最低可用组合。
 - [ ] 保存旧版最后可用安装包、资源清单、签名状态和 SHA-256，不只记录源码 commit。
+
+状态（2026-08-28）：`docs/phase-0/repository-baseline.md` 已冻结 Git 回滚引用、旧版发布矩阵、主要安装包 hash 和当前可验证的 macOS 签名状态；`docs/phase-0/toolchain-target-matrix.md` 已记录本机 macOS/Rust 环境及五个历史目标。Windows 实机工具链、Cubism 各架构二进制、长期产物归档和最终首发架构决策仍未完成，因此后三项保持未勾选。
 
 ### 1.2 旧版功能清单
 
@@ -740,6 +742,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 2. [x] `P0-FIXTURE-V1`：提交 input/expected schema、4 组核心输入 fixture 和跨文件 validator。
 3. [x] `P0-GPUI-LIFECYCLE-MAC`：macOS 隔离 spike 精确锁定 GPUI 0.2.2，窗口打开并通过 GPUI `quit()` 正常退出。
 4. [ ] `P0-DOC-CONSISTENCY`：补建 ADR-006/007，记录旧版 tag/安装包 hash、target triple 和工具链矩阵。
+   - 状态（2026-08-28）：ADR 与仓库/发布基线已完成；target/toolchain 文档为 provisional，仍待 Windows 实机、GPUI 发布构建和 Cubism 架构证据后冻结。
 5. [ ] `P0-ARCHAEOLOGY`：补齐 Windows 真实配置路径、历史版本样本、完整功能优先级和模型异常 fixture。
 6. [ ] `P0-GPUI-PACKAGE-MAC`：使用默认预编译 shader 构建 `.app`，验证 IME、剪贴板、焦点、辅助功能、主题和窗口重开。
 7. [ ] `P0-GPUI-WINDOWS`：在 Windows 构建同一 spike，验证字体、IME、DPI、辅助功能和正常退出。
