@@ -45,6 +45,8 @@ jobs:
             manifest: spikes/overlay-lifecycle/Cargo.toml
           - name: config-store
             manifest: spikes/config-store/Cargo.toml
+          - name: runtime-contract
+            manifest: spikes/runtime-contract/Cargo.toml
           - name: input-macos
             manifest: spikes/input-macos/Cargo.toml
     steps:
