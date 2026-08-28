@@ -134,7 +134,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 状态（2026-08-28）：已建立 v1 input/expected schema、8 组输入序列和规范化结果；8 个文档通过 Draft 2020-12 校验及跨文件一致性检查。物理键全集、动作/表情场景和旧版人工确认仍未完成。
 
-- [ ] 定义稳定的 PhysicalKey、MouseButton、GamepadButton 和 axis 表示。
+- [x] 定义稳定的 `PhysicalKey`、`MouseButton`、`GamepadButton` 和 axis 表示；canonical names、按钮阈值、axis 范围和未知码诊断已写入 `shared/behavior/input-semantics.md`。
 - [x] 定义带单调相对时间的输入序列 JSON 格式。
 - [x] 定义规范化 RuntimeSnapshot，排除平台坐标和浮点噪声。
 - [x] 添加单键、重复键、长按和左右修饰键序列。

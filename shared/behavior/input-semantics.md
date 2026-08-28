@@ -23,6 +23,17 @@
 
 Runtime 使用布局无关的稳定物理键名。左右修饰键必须区分，例如 `ControlLeft` 和 `ControlRight`。字符和 UI 显示名称由单独映射层产生。
 
+### Canonical names
+
+平台 adapter 必须把系统原始码映射到以下协议名称；名称不会随键盘布局、本地化或设备厂商变化：
+
+- `PhysicalKey`：使用 `KeyA`、`Digit1`、`Enter`、`Escape`、`Space`、`Tab`、`Backspace`、`ShiftLeft`/`ShiftRight`、`ControlLeft`/`ControlRight`、`AltLeft`/`AltRight`、`MetaLeft`/`MetaRight`、`ArrowUp`/`ArrowDown`/`ArrowLeft`/`ArrowRight`、`PrintScreen`、`Pause` 等 DOM/USB 语义名；无法识别的码保留 `Unknown(<platform-code>)` 诊断值，不得映射成字符。
+- `MouseButton`：`left`、`right`、`middle`、`back`、`forward`。
+- `GamepadButton`：优先使用标准位置名 `south`、`east`、`west`、`north`、`left_shoulder`、`right_shoulder`、`left_trigger`、`right_trigger`、`select`、`start`、`left_stick`、`right_stick`、`dpad_up`、`dpad_down`、`dpad_left`、`dpad_right`；不能识别的位置保留设备 profile 的稳定诊断名。
+- `GamepadAxis`：使用 `left_stick_x`、`left_stick_y`、`right_stick_x`、`right_stick_y`、`left_trigger`、`right_trigger`；数值归一化到 `[-1, 1]`，trigger 的无效负值由 adapter 钳制为 `0` 并计入诊断。
+
+数字手柄按钮以 `value >= 0.5` 产生 pressed，低于阈值产生 released；重复 edge 不增加 pressed 计数。axis 和 cursor 只保留最新值，不能阻塞可靠边沿。死区由产品配置决定，adapter 不得把设备默认死区静默写入共享协议。
+
 ## 手部状态
 
 模型资源可以把多个键映射到同一只手。兼容模式下，同一手只显示最后按下且仍有效的键资源；任意映射到该手的 pressed key 都令对应 hand-down 参数为 true。
