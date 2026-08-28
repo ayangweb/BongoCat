@@ -274,8 +274,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 ### 2.3 CI
 
 - [ ] Windows：format、Clippy、unit test、release check。
-- [ ] macOS：format、Clippy、unit test、release check。
-- [ ] 缓存 key 包含 Cargo.lock 和 toolchain hash。
+- [x] macOS：format、Clippy、unit test、release check；GPUI settings/overlay spike 均纳入 `macos-spikes` job。
+- [x] 缓存 key 包含所有 `Cargo.lock`/`Cargo.toml` 和 Rust toolchain hash；Linux contract 与 macOS GPUI jobs 均使用该 key。
 - [ ] CI 不下载未经版本/hash 固定的 Cubism 二进制。
 - [ ] GPU、权限、签名测试分离为实机/nightly job。
 - [ ] 共享 crate 增加 Linux cargo check，但不生成首发安装包。

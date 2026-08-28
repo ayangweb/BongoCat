@@ -97,3 +97,19 @@ jobs:
         run: cargo check --manifest-path spikes/gpui-settings/Cargo.toml --locked
       - name: Check overlay spike
         run: cargo check --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked
+      - name: Check GPUI spike formatting
+        run: |
+          cargo fmt --manifest-path spikes/gpui-settings/Cargo.toml -- --check
+          cargo fmt --manifest-path spikes/gpui-overlay-macos/Cargo.toml -- --check
+      - name: Run GPUI spike Clippy
+        run: |
+          cargo clippy --manifest-path spikes/gpui-settings/Cargo.toml --locked --all-targets -- -D warnings
+          cargo clippy --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked --all-targets -- -D warnings
+      - name: Run GPUI spike tests
+        run: |
+          cargo test --manifest-path spikes/gpui-settings/Cargo.toml --locked
+          cargo test --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked
+      - name: Check GPUI spike release builds
+        run: |
+          cargo check --manifest-path spikes/gpui-settings/Cargo.toml --locked --release
+          cargo check --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked --release
