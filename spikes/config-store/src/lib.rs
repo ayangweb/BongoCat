@@ -63,6 +63,35 @@ impl StorageLayout {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ConfigRevision(u64);
+
+impl ConfigRevision {
+    pub const fn value(self) -> u64 {
+        self.0
+    }
+}
+
+/// Stable equality token for optimistic config writes, not an integrity hash.
+fn revision_for_bytes(bytes: &[u8]) -> ConfigRevision {
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    ConfigRevision(hash)
+}
+
+pub struct WriterLock {
+    path: PathBuf,
+}
+
+impl Drop for WriterLock {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
 #[derive(Debug)]
 pub enum PlatformStorageError {
     DataDirectoryUnavailable,
@@ -316,6 +345,11 @@ impl NativeConfig {
 pub enum ConfigError {
     Io(io::Error),
     Json(serde_json::Error),
+    LockUnavailable,
+    RevisionConflict {
+        expected: ConfigRevision,
+        actual: ConfigRevision,
+    },
     UnsupportedSchema(u32),
     InvalidValue(&'static str),
 }
@@ -325,6 +359,13 @@ impl std::fmt::Display for ConfigError {
         match self {
             Self::Io(error) => write!(f, "config I/O failed: {error}"),
             Self::Json(error) => write!(f, "config JSON failed: {error}"),
+            Self::LockUnavailable => write!(f, "config writer lock unavailable"),
+            Self::RevisionConflict { expected, actual } => write!(
+                f,
+                "config revision conflict: expected {}, found {}",
+                expected.value(),
+                actual.value()
+            ),
             Self::UnsupportedSchema(version) => write!(f, "unsupported schema_version {version}"),
             Self::InvalidValue(field) => write!(f, "invalid config value: {field}"),
         }
@@ -359,6 +400,17 @@ impl ConfigStore {
         &self.layout
     }
 
+    pub fn acquire_writer_lock(&self) -> Result<WriterLock, ConfigError> {
+        let path = self.layout.locks.join("config.writer.lock");
+        match OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(_) => Ok(WriterLock { path }),
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => {
+                Err(ConfigError::LockUnavailable)
+            }
+            Err(error) => Err(error.into()),
+        }
+    }
+
     pub fn load_or_default(&self) -> Result<NativeConfig, ConfigError> {
         match fs::read(&self.layout.config) {
             Ok(bytes) => {
@@ -375,7 +427,32 @@ impl ConfigStore {
         }
     }
 
+    pub fn revision(&self) -> Result<ConfigRevision, ConfigError> {
+        let bytes = fs::read(&self.layout.config)?;
+        let config: NativeConfig = serde_json::from_slice(&bytes)?;
+        config.validate()?;
+        Ok(revision_for_bytes(&serde_json::to_vec(&config)?))
+    }
+
     pub fn commit(&self, config: &NativeConfig) -> Result<(), ConfigError> {
+        let _lock = self.acquire_writer_lock()?;
+        self.commit_unlocked(config)
+    }
+
+    pub fn commit_if_revision(
+        &self,
+        config: &NativeConfig,
+        expected: ConfigRevision,
+    ) -> Result<(), ConfigError> {
+        let _lock = self.acquire_writer_lock()?;
+        let actual = self.revision()?;
+        if actual != expected {
+            return Err(ConfigError::RevisionConflict { expected, actual });
+        }
+        self.commit_unlocked(config)
+    }
+
+    fn commit_unlocked(&self, config: &NativeConfig) -> Result<(), ConfigError> {
         config.validate()?;
         let bytes = serde_json::to_vec_pretty(config)?;
         let temp_path = self.layout.config.with_extension("json.tmp");
@@ -521,6 +598,42 @@ mod tests {
         let backup: NativeConfig = serde_json::from_slice(&fs::read(backup_path).unwrap()).unwrap();
         assert_eq!(backup, original);
         assert_eq!(store.load_or_default().unwrap(), updated);
+    }
+
+    #[test]
+    fn stale_revision_is_rejected_without_overwriting_newer_config() {
+        let base = tempdir().unwrap();
+        let layout = StorageLayout::under(base.path(), BuildEnvironment::Development);
+        let first = ConfigStore::new(layout.clone()).unwrap();
+        let second = ConfigStore::new(layout).unwrap();
+        let original = first.load_or_default().unwrap();
+        let revision = first.revision().unwrap();
+        let mut newer = original.clone();
+        newer.appearance.language = "zh-CN".into();
+        second.commit_if_revision(&newer, revision).unwrap();
+        let mut stale = original;
+        stale.appearance.language = "pt-BR".into();
+        let error = first.commit_if_revision(&stale, revision).unwrap_err();
+        assert!(matches!(error, ConfigError::RevisionConflict { .. }));
+        assert_eq!(
+            second.load_or_default().unwrap().appearance.language,
+            "zh-CN"
+        );
+    }
+
+    #[test]
+    fn writer_lock_rejects_concurrent_commit_and_releases_on_drop() {
+        let base = tempdir().unwrap();
+        let layout = StorageLayout::under(base.path(), BuildEnvironment::Production);
+        let first = ConfigStore::new(layout.clone()).unwrap();
+        let second = ConfigStore::new(layout).unwrap();
+        let lock = first.acquire_writer_lock().unwrap();
+        assert!(matches!(
+            second.commit(&NativeConfig::default()),
+            Err(ConfigError::LockUnavailable)
+        ));
+        drop(lock);
+        second.commit(&NativeConfig::default()).unwrap();
     }
 
     #[test]

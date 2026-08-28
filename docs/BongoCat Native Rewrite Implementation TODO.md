@@ -351,7 +351,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 3.5 配置 v1
 
-- 状态（2026-08-28）：`spikes/config-store/` 已建立 typed NativeConfig、Bundle ID、Development/Production 隔离目录、snake_case 序列化、schema 校验、原子 commit probe 和当前 macOS 真实 path resolver；Windows resolver、并发锁、崩溃恢复、备份和 GPUI command 边界仍待产品 crate 阶段完成，详见 `docs/phase-0/config-store-spike.md`。
+- 状态（2026-08-28）：`spikes/config-store/` 已建立 typed NativeConfig、Bundle ID、Development/Production 隔离目录、snake_case 序列化、schema 校验、原子 commit probe、expected revision、writer lock contract 和当前 macOS 真实 path resolver；Windows resolver、崩溃恢复、备份策略和 GPUI command 边界仍待产品 crate 阶段完成，详见 `docs/phase-0/config-store-spike.md`。
 
 - [ ] 定义带 `schema_version` 的 Rust 配置结构和 JSON schema，JSON key 使用 `snake_case`。
 - [ ] 区分用户配置、运行时状态和诊断数据。
@@ -366,9 +366,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 在 spike 中拒绝损坏配置并保留原始文件；隔离备份、默认恢复和 GPUI 用户诊断仍未完成。
 - [ ] 配置写入去抖，退出前强制 flush。
 - [ ] GPUI 只通过 typed command 获取 snapshot 和提交 patch。
-- [ ] 防止两个进程或两个 writer 同时覆盖配置；锁和单实例 namespace 包含环境身份。
+- [x] 在 spike 中以包含环境目录的 `locks/config.writer.lock` 拒绝并发 writer，并在 guard 释放后允许重试；平台文件权限和异常终止后的 stale lock 清理仍待产品 crate。
 - [ ] 新配置文件和备份使用最小用户权限，不继承过宽 ACL/文件 mode。
-- [ ] 配置更新使用 expected revision，拒绝静默覆盖较新的用户修改。
+- [x] 在 spike 中以稳定 NativeConfig revision 拒绝过期 writer，避免静默覆盖较新的用户修改；GPUI snapshot/command 携带 revision 仍待产品 crate。
 
 ### 3.6 Phase 2 退出门槛
 
