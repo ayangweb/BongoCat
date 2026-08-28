@@ -1,6 +1,6 @@
 # ADR-0003: Native Overlay Renderers
 
-状态：Accepted, pending Phase 0 validation
+状态：Accepted, macOS validated; Windows pending Phase 0 validation
 日期：2026-08-28
 
 ## Context
@@ -25,4 +25,6 @@ Renderer 只消费不可变 `RenderSnapshot`，不访问 GPUI、配置或输入�
 
 ## Verification
 
-Phase 0 完成双平台透明 clear/present，并验证 overlay 与 GPUI 设置窗口反复创建、销毁和退出无资源增长。
+macOS spike 已验证 `NSPanel` + `CAMetalLayer` 的透明 clear/present、独立于 GPUI renderer 的窗口生命周期，以及设置窗口与 overlay 同时存在时的显示/隐藏/退出流程。证据和运行环境见 `docs/phase-0/overlay-lifecycle-spike.md`。
+
+Windows Win32 + D3D11 尚未在 Windows 实机验证；macOS 结果不能替代 Windows 结论。双平台模型绘制、真实 frame source、device lost/swapchain recovery 和 100 次真实窗口创建/销毁仍是 Phase 0 未完成项。

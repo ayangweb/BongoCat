@@ -170,13 +170,15 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 1.6 原生 Overlay spike
 
-- 状态（2026-08-28）：`spikes/overlay-lifecycle/` 已建立无平台依赖的生命周期 contract probe，显示/隐藏/重开、乱序 shutdown 拒绝、关闭后禁止重开和 100 次创建/销毁测试通过。它只固定平台 wrapper 必须遵守的状态迁移与 shutdown 顺序，不代表窗口、透明合成或 GPU 已完成；详见 `docs/phase-0/overlay-lifecycle-spike.md`。
+- 状态（2026-08-28）：`spikes/overlay-lifecycle/` 已建立无平台依赖的生命周期 contract probe，显示/隐藏/重开、乱序 shutdown 拒绝、关闭后禁止重开和 100 次创建/销毁测试通过。它只固定平台 wrapper 必须遵守的状态迁移与 shutdown 顺序，不代表双平台窗口、透明合成或 GPU 已完成；详见 `docs/phase-0/overlay-lifecycle-spike.md`。
+- 状态（2026-08-28）：macOS `spikes/gpui-overlay-macos/` 已在 Apple Silicon 实机验证 GPUI 设置窗口与独立 `NSPanel` + `CAMetalLayer` 共存、透明 clear/present、显示/隐藏/重显示、跨 Space 配置、鼠标穿透和正常退出；`.app` Bundle ID `com.ayangweb.bongo-cat` 与 ad-hoc strict codesign 通过。Windows D3D11、真实 Live2D、真实 frame source 和两个平台的 100 次原生创建/销毁仍未完成。
 
 - [ ] 在 GPUI 应用生命周期内创建独立主猫原生窗口。
 - [ ] Windows 从 Rust 获得 HWND，完成透明 D3D11 clear/present。
 - [ ] macOS 从 Rust/objc2 创建 NSPanel + CAMetalLayer，完成透明 Metal clear/present。
 - [ ] 验证 overlay 不嵌入/替换 GPUI renderer 或依赖其私有对象。
-- [ ] 验证 GPUI 设置窗口与 overlay 同时存在，事件循环不冲突。
+- [x] 验证 GPUI 设置窗口与 overlay 同时存在，事件循环不冲突。
+  - 仅 macOS spike 已通过；Windows 对等验证仍待完成。
 - [ ] 验证 overlay 可置顶、穿透、显示/隐藏、拖动和缩放。
 - [ ] 连续创建/销毁 overlay 100 次，无窗口、swapchain、layer 或线程泄漏。
 - [ ] 验证退出顺序：frame source -> renderer -> GPU -> overlay -> GPUI。

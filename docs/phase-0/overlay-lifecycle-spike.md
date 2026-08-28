@@ -1,6 +1,6 @@
 # Native Overlay Lifecycle Contract Spike
 
-状态：生命周期契约和 100 次创建/销毁模型测试通过；平台窗口、透明合成和 GPUI 共存待完成
+状态：生命周期契约通过；macOS 原生窗口、透明 Metal 合成和 GPUI 共存已通过；Windows D3D11 待实机验证
 日期：2026-08-28
 
 ## 目的
@@ -29,8 +29,51 @@ cargo fmt --manifest-path spikes/overlay-lifecycle/Cargo.toml -- --check
 cargo test --manifest-path spikes/overlay-lifecycle/Cargo.toml --locked
 ```
 
-测试覆盖显示/隐藏/重开、乱序 shutdown、关闭后禁止重开以及 100 次创建/销毁循环。该结果不能替代 Windows D3D11 或 macOS Metal 的透明窗口验证。
+测试覆盖显示/隐藏/重开、乱序 shutdown、关闭后禁止重开以及 100 次创建/销毁循环。该 contract 结果不能替代平台 GPU 验证。
+
+### macOS GPUI 共存验证
+
+源码位于 `spikes/gpui-overlay-macos/`，使用 `gpui = 0.2.2`、`objc2`、`metal = 0.29.0` 和 `core-graphics-types = 0.1.3`。在以下环境执行：
+
+```text
+Hardware: MacBook Pro 18,1 / Apple M1 Pro / 16 GB
+GPU: Apple M1 Pro / Metal 4
+Display: 3456x2234 Retina
+OS: macOS 26.5.2 (25F84)
+Rust: rustc 1.97.1, aarch64-apple-darwin
+```
+
+通过的命令和结果：
+
+```text
+cargo fmt --manifest-path spikes/gpui-overlay-macos/Cargo.toml
+cargo check --offline --manifest-path spikes/gpui-overlay-macos/Cargo.toml
+cargo build --release --offline --locked --manifest-path spikes/gpui-overlay-macos/Cargo.toml
+./spikes/gpui-overlay-macos/scripts/package-macos.sh
+codesign --verify --deep --strict --verbose=4 "target/package/BongoCat GPUI Overlay Spike.app"
+open -W "target/package/BongoCat GPUI Overlay Spike.app" --args --auto-quit-ms 1500
+```
+
+`.app` 的 Bundle ID 为 `com.ayangweb.bongo-cat`，ad-hoc 签名通过 strict bundle integrity 检查。运行日志确认：
+
+```text
+overlay shown
+transparent clear/present submitted
+native overlay created
+overlay hidden
+overlay shown
+transparent clear/present submitted
+```
+
+设置窗口和独立 `NSPanel` 同时存在，overlay 使用独立 `CAMetalLayer`，鼠标穿透、跨 Space 和 Full Screen Auxiliary 行为由 AppKit wrapper 设置。此验证覆盖 macOS 当前机器的窗口/Metal/GPUI 生命周期，不包含 Live2D/Cubism、真实 frame source、输入服务或发布签名。
+
+### 尚未验证
+
+- Windows Win32 + D3D11 透明 clear/present、DPI 和 device lost 路径；当前 macOS 结果不能推断 Windows 行为。
+- 两个平台的真实 Live2D/Cubism 绘制和模型资源兼容。
+- 100 次真实原生窗口创建/销毁循环；目前 100 次仅针对无平台 contract probe。
+- renderer 初始化失败、drawable/swapchain unavailable 和 GPU device lost 后的诊断 UI。
 
 ## 下一步
 
-平台 overlay spike 需要在各自主线程创建原生窗口，接入真实 frame source，并将创建、隐藏、重建和 shutdown 事件映射到本契约；同时证明 GPUI settings 窗口可并存且不共享 renderer 私有对象。
+下一步是在 Windows 实机完成 Win32/D3D11 对等验证，并在两个平台接入真实 frame source、模型绘制和失败诊断；macOS 结果应保持为独立平台证据，不作为跨平台完成声明。
