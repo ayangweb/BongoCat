@@ -1,15 +1,15 @@
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 
-use std::collections::BTreeSet;
+use std::{
+    collections::{BTreeSet, VecDeque},
+    sync::{Arc, Mutex},
+};
 
 #[cfg(target_os = "macos")]
 use std::{
     panic::{AssertUnwindSafe, catch_unwind},
+    sync::atomic::{AtomicU64, Ordering},
     sync::mpsc,
-    sync::{
-        Arc,
-        atomic::{AtomicU64, Ordering},
-    },
     thread,
     time::{Duration, Instant},
 };
@@ -62,6 +62,181 @@ pub struct MacCaptureLifecycle {
     permission: PermissionState,
     tap: TapState,
     reset_pressed_state: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CapturedInputEvent {
+    KeyDown { key_code: u16, repeat: bool },
+    KeyUp { key_code: u16 },
+    FlagsChanged { key_code: u16 },
+    MouseDown,
+    MouseUp,
+    Reset,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CaptureQueueErrorKind {
+    Full,
+    Closed,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct CaptureQueueError {
+    pub kind: CaptureQueueErrorKind,
+    pub event: CapturedInputEvent,
+    pub discarded: usize,
+}
+
+#[derive(Debug)]
+pub struct CaptureQueue {
+    capacity: usize,
+    events: VecDeque<CapturedInputEvent>,
+    closed: bool,
+    overflow_count: u64,
+    recovery_reset_count: u64,
+    recovery_discard_count: u64,
+}
+
+impl CaptureQueue {
+    pub fn with_capacity(capacity: usize) -> Self {
+        assert!(capacity > 0, "capture queue capacity must be positive");
+        Self {
+            capacity,
+            events: VecDeque::with_capacity(capacity),
+            closed: false,
+            overflow_count: 0,
+            recovery_reset_count: 0,
+            recovery_discard_count: 0,
+        }
+    }
+
+    pub fn push(&mut self, event: CapturedInputEvent) -> Result<(), CaptureQueueError> {
+        if self.closed {
+            return Err(CaptureQueueError {
+                kind: CaptureQueueErrorKind::Closed,
+                event,
+                discarded: 0,
+            });
+        }
+        if self.events.len() == self.capacity {
+            return Err(CaptureQueueError {
+                kind: CaptureQueueErrorKind::Full,
+                event,
+                discarded: 0,
+            });
+        }
+        self.events.push_back(event);
+        Ok(())
+    }
+
+    pub fn push_with_overflow_reset(
+        &mut self,
+        event: CapturedInputEvent,
+    ) -> Result<(), CaptureQueueError> {
+        if self.closed {
+            return Err(CaptureQueueError {
+                kind: CaptureQueueErrorKind::Closed,
+                event,
+                discarded: 0,
+            });
+        }
+        if self.events.len() == self.capacity {
+            let discarded = self.events.len();
+            self.overflow_count += 1;
+            self.recovery_reset_count += 1;
+            self.recovery_discard_count += discarded as u64;
+            self.events.clear();
+            self.events.push_back(CapturedInputEvent::Reset);
+            return Err(CaptureQueueError {
+                kind: CaptureQueueErrorKind::Full,
+                event,
+                discarded,
+            });
+        }
+        self.events.push_back(event);
+        Ok(())
+    }
+
+    pub fn pop(&mut self) -> Option<CapturedInputEvent> {
+        self.events.pop_front()
+    }
+
+    pub fn close(&mut self) {
+        self.closed = true;
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.closed
+    }
+
+    pub fn len(&self) -> usize {
+        self.events.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.events.is_empty()
+    }
+
+    pub fn overflow_count(&self) -> u64 {
+        self.overflow_count
+    }
+
+    pub fn recovery_reset_count(&self) -> u64 {
+        self.recovery_reset_count
+    }
+
+    pub fn recovery_discard_count(&self) -> u64 {
+        self.recovery_discard_count
+    }
+}
+
+#[derive(Clone, Debug)]
+struct SharedCaptureQueue(Arc<Mutex<CaptureQueue>>);
+
+impl SharedCaptureQueue {
+    fn new(capacity: usize) -> Self {
+        Self(Arc::new(Mutex::new(CaptureQueue::with_capacity(capacity))))
+    }
+
+    fn push_with_overflow_reset(&self, event: CapturedInputEvent) -> Result<(), CaptureQueueError> {
+        let mut queue = self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        queue.push_with_overflow_reset(event)
+    }
+
+    fn drain(&self) -> Vec<CapturedInputEvent> {
+        let mut queue = self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut drained = Vec::with_capacity(queue.len());
+        while let Some(event) = queue.pop() {
+            drained.push(event);
+        }
+        drained
+    }
+
+    fn close(&self) {
+        let mut queue = self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        queue.close();
+    }
+
+    fn diagnostics(&self) -> (u64, u64, u64) {
+        let queue = self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        (
+            queue.overflow_count(),
+            queue.recovery_reset_count(),
+            queue.recovery_discard_count(),
+        )
+    }
 }
 
 impl Default for MacCaptureLifecycle {
@@ -162,6 +337,12 @@ pub struct TapProbeReport {
     pub disabled_by_user: u64,
     pub reenabled: u64,
     pub callback_panics: u64,
+    pub queued_events: u64,
+    pub consumed_events: u64,
+    pub queue_overflows: u64,
+    pub queue_recovery_resets: u64,
+    pub queue_discarded_events: u64,
+    pub queue_closed_events: u64,
 }
 
 #[cfg(target_os = "macos")]
@@ -184,6 +365,12 @@ struct TapCounters {
     disabled_by_user: AtomicU64,
     reenabled: AtomicU64,
     callback_panics: AtomicU64,
+    queued_events: AtomicU64,
+    consumed_events: AtomicU64,
+    queue_overflows: AtomicU64,
+    queue_recovery_resets: AtomicU64,
+    queue_discarded_events: AtomicU64,
+    queue_closed_events: AtomicU64,
 }
 
 #[cfg(target_os = "macos")]
@@ -201,6 +388,12 @@ impl TapCounters {
             disabled_by_user: self.disabled_by_user.load(Ordering::Relaxed),
             reenabled: self.reenabled.load(Ordering::Relaxed),
             callback_panics: self.callback_panics.load(Ordering::Relaxed),
+            queued_events: self.queued_events.load(Ordering::Relaxed),
+            consumed_events: self.consumed_events.load(Ordering::Relaxed),
+            queue_overflows: self.queue_overflows.load(Ordering::Relaxed),
+            queue_recovery_resets: self.queue_recovery_resets.load(Ordering::Relaxed),
+            queue_discarded_events: self.queue_discarded_events.load(Ordering::Relaxed),
+            queue_closed_events: self.queue_closed_events.load(Ordering::Relaxed),
         }
     }
 }
@@ -209,7 +402,8 @@ impl TapCounters {
 fn run_tap_on_run_loop(duration: Duration) -> Result<TapProbeReport, TapProbeError> {
     use core_foundation::runloop::{CFRunLoop, kCFRunLoopDefaultMode};
     use core_graphics2::event::{
-        CGEventTap, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement, CGEventType,
+        CGEventField, CGEventTap, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement,
+        CGEventType,
     };
 
     let counters = Arc::new(TapCounters {
@@ -222,39 +416,111 @@ fn run_tap_on_run_loop(duration: Duration) -> Result<TapProbeReport, TapProbeErr
         disabled_by_user: AtomicU64::new(0),
         reenabled: AtomicU64::new(0),
         callback_panics: AtomicU64::new(0),
+        queued_events: AtomicU64::new(0),
+        consumed_events: AtomicU64::new(0),
+        queue_overflows: AtomicU64::new(0),
+        queue_recovery_resets: AtomicU64::new(0),
+        queue_discarded_events: AtomicU64::new(0),
+        queue_closed_events: AtomicU64::new(0),
     });
     let (disabled_tx, disabled_rx) = mpsc::sync_channel::<()>(8);
+    let event_queue = SharedCaptureQueue::new(256);
+    let callback_queue = event_queue.clone();
     let callback_counters = Arc::clone(&counters);
     let callback = move |_proxy: core_graphics2::event::CGEventTapProxy,
                          event_type: CGEventType,
-                         _event: &core_graphics2::event::CGEvent| {
-        let outcome = catch_unwind(AssertUnwindSafe(|| match event_type {
-            CGEventType::KeyDown => callback_counters.key_down.fetch_add(1, Ordering::Relaxed),
-            CGEventType::KeyUp => callback_counters.key_up.fetch_add(1, Ordering::Relaxed),
-            CGEventType::FlagsChanged => callback_counters
-                .flags_changed
-                .fetch_add(1, Ordering::Relaxed),
-            CGEventType::LeftMouseDown
-            | CGEventType::RightMouseDown
-            | CGEventType::OtherMouseDown => {
-                callback_counters.mouse_down.fetch_add(1, Ordering::Relaxed)
+                         event: &core_graphics2::event::CGEvent| {
+        let outcome = catch_unwind(AssertUnwindSafe(|| {
+            let captured_event = match event_type {
+                CGEventType::KeyDown => {
+                    callback_counters.key_down.fetch_add(1, Ordering::Relaxed);
+                    Some(CapturedInputEvent::KeyDown {
+                        key_code: event
+                            .get_integer_value_field(CGEventField::KeyboardEventKeycode)
+                            .clamp(0, i64::from(u16::MAX)) as u16,
+                        repeat: event
+                            .get_integer_value_field(CGEventField::KeyboardEventAutorepeat)
+                            != 0,
+                    })
+                }
+                CGEventType::KeyUp => {
+                    callback_counters.key_up.fetch_add(1, Ordering::Relaxed);
+                    Some(CapturedInputEvent::KeyUp {
+                        key_code: event
+                            .get_integer_value_field(CGEventField::KeyboardEventKeycode)
+                            .clamp(0, i64::from(u16::MAX)) as u16,
+                    })
+                }
+                CGEventType::FlagsChanged => {
+                    callback_counters
+                        .flags_changed
+                        .fetch_add(1, Ordering::Relaxed);
+                    Some(CapturedInputEvent::FlagsChanged {
+                        key_code: event
+                            .get_integer_value_field(CGEventField::KeyboardEventKeycode)
+                            .clamp(0, i64::from(u16::MAX)) as u16,
+                    })
+                }
+                CGEventType::LeftMouseDown
+                | CGEventType::RightMouseDown
+                | CGEventType::OtherMouseDown => {
+                    callback_counters.mouse_down.fetch_add(1, Ordering::Relaxed);
+                    Some(CapturedInputEvent::MouseDown)
+                }
+                CGEventType::LeftMouseUp
+                | CGEventType::RightMouseUp
+                | CGEventType::OtherMouseUp => {
+                    callback_counters.mouse_up.fetch_add(1, Ordering::Relaxed);
+                    Some(CapturedInputEvent::MouseUp)
+                }
+                CGEventType::TapDisabledByTimeout => {
+                    let _ = disabled_tx.try_send(());
+                    callback_counters
+                        .disabled_by_timeout
+                        .fetch_add(1, Ordering::Relaxed);
+                    Some(CapturedInputEvent::Reset)
+                }
+                CGEventType::TapDisabledByUserInput => {
+                    let _ = disabled_tx.try_send(());
+                    callback_counters
+                        .disabled_by_user
+                        .fetch_add(1, Ordering::Relaxed);
+                    Some(CapturedInputEvent::Reset)
+                }
+                _ => None,
+            };
+            if let Some(captured_event) = captured_event {
+                match callback_queue.push_with_overflow_reset(captured_event) {
+                    Ok(()) => {
+                        callback_counters
+                            .queued_events
+                            .fetch_add(1, Ordering::Relaxed);
+                    }
+                    Err(CaptureQueueError {
+                        kind: CaptureQueueErrorKind::Full,
+                        discarded,
+                        ..
+                    }) => {
+                        callback_counters
+                            .queue_overflows
+                            .fetch_add(1, Ordering::Relaxed);
+                        callback_counters
+                            .queue_recovery_resets
+                            .fetch_add(1, Ordering::Relaxed);
+                        callback_counters
+                            .queue_discarded_events
+                            .fetch_add(discarded as u64, Ordering::Relaxed);
+                    }
+                    Err(CaptureQueueError {
+                        kind: CaptureQueueErrorKind::Closed,
+                        ..
+                    }) => {
+                        callback_counters
+                            .queue_closed_events
+                            .fetch_add(1, Ordering::Relaxed);
+                    }
+                }
             }
-            CGEventType::LeftMouseUp | CGEventType::RightMouseUp | CGEventType::OtherMouseUp => {
-                callback_counters.mouse_up.fetch_add(1, Ordering::Relaxed)
-            }
-            CGEventType::TapDisabledByTimeout => {
-                let _ = disabled_tx.try_send(());
-                callback_counters
-                    .disabled_by_timeout
-                    .fetch_add(1, Ordering::Relaxed)
-            }
-            CGEventType::TapDisabledByUserInput => {
-                let _ = disabled_tx.try_send(());
-                callback_counters
-                    .disabled_by_user
-                    .fetch_add(1, Ordering::Relaxed)
-            }
-            _ => 0,
         }));
         if outcome.is_err() {
             callback_counters
@@ -301,6 +567,9 @@ fn run_tap_on_run_loop(duration: Duration) -> Result<TapProbeReport, TapProbeErr
         let slice = remaining.min(Duration::from_millis(20));
         // SAFETY: the run-loop mode remains valid for the duration of this loop.
         CFRunLoop::run_in_mode(unsafe { kCFRunLoopDefaultMode }, slice, true);
+        counters
+            .consumed_events
+            .fetch_add(event_queue.drain().len() as u64, Ordering::Relaxed);
         while let Ok(()) = disabled_rx.try_recv() {
             tap.enable(true);
             counters.reenabled.fetch_add(1, Ordering::Relaxed);
@@ -309,6 +578,21 @@ fn run_tap_on_run_loop(duration: Duration) -> Result<TapProbeReport, TapProbeErr
     let finished_enabled = tap.is_enabled();
     tap.enable(false);
     run_loop.remove_source(&source, unsafe { kCFRunLoopDefaultMode });
+    event_queue.close();
+    counters
+        .consumed_events
+        .fetch_add(event_queue.drain().len() as u64, Ordering::Relaxed);
+    let (queue_overflows, queue_recovery_resets, queue_discarded_events) =
+        event_queue.diagnostics();
+    counters
+        .queue_overflows
+        .store(queue_overflows, Ordering::Relaxed);
+    counters
+        .queue_recovery_resets
+        .store(queue_recovery_resets, Ordering::Relaxed);
+    counters
+        .queue_discarded_events
+        .store(queue_discarded_events, Ordering::Relaxed);
     Ok(counters.snapshot(true, finished_enabled))
 }
 
@@ -434,5 +718,79 @@ mod tests {
         assert_eq!(queried, vec![12, 13]);
         assert!(report.still_pressed.is_empty());
         assert_eq!(report.released_count, 2);
+    }
+
+    #[test]
+    fn capture_queue_keeps_edge_order_and_releases_items_after_close() {
+        let mut queue = CaptureQueue::with_capacity(3);
+        queue
+            .push(CapturedInputEvent::KeyDown {
+                key_code: 30,
+                repeat: false,
+            })
+            .unwrap();
+        queue
+            .push(CapturedInputEvent::KeyUp { key_code: 30 })
+            .unwrap();
+        queue.close();
+        assert_eq!(
+            queue.pop(),
+            Some(CapturedInputEvent::KeyDown {
+                key_code: 30,
+                repeat: false,
+            })
+        );
+        assert_eq!(
+            queue.pop(),
+            Some(CapturedInputEvent::KeyUp { key_code: 30 })
+        );
+        assert!(queue.is_empty());
+        let error = queue
+            .push(CapturedInputEvent::FlagsChanged { key_code: 55 })
+            .unwrap_err();
+        assert_eq!(error.kind, CaptureQueueErrorKind::Closed);
+        assert_eq!(error.discarded, 0);
+    }
+
+    #[test]
+    fn capture_queue_overflow_injects_reset_and_reports_discarded_edges() {
+        let mut queue = CaptureQueue::with_capacity(2);
+        queue
+            .push(CapturedInputEvent::KeyDown {
+                key_code: 30,
+                repeat: false,
+            })
+            .unwrap();
+        queue
+            .push(CapturedInputEvent::KeyDown {
+                key_code: 31,
+                repeat: true,
+            })
+            .unwrap();
+        let error = queue
+            .push_with_overflow_reset(CapturedInputEvent::KeyUp { key_code: 30 })
+            .unwrap_err();
+        assert_eq!(error.kind, CaptureQueueErrorKind::Full);
+        assert_eq!(error.discarded, 2);
+        assert_eq!(queue.pop(), Some(CapturedInputEvent::Reset));
+        assert!(queue.is_empty());
+        assert_eq!(queue.overflow_count(), 1);
+        assert_eq!(queue.recovery_reset_count(), 1);
+        assert_eq!(queue.recovery_discard_count(), 2);
+    }
+
+    #[test]
+    fn shared_capture_queue_closes_callback_sink_without_poisoning_consumer() {
+        let queue = SharedCaptureQueue::new(2);
+        queue
+            .push_with_overflow_reset(CapturedInputEvent::MouseDown)
+            .unwrap();
+        queue.close();
+        let error = queue
+            .push_with_overflow_reset(CapturedInputEvent::MouseUp)
+            .unwrap_err();
+        assert_eq!(error.kind, CaptureQueueErrorKind::Closed);
+        assert_eq!(queue.drain(), vec![CapturedInputEvent::MouseDown]);
+        assert_eq!(queue.diagnostics(), (0, 0, 0));
     }
 }
