@@ -278,6 +278,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 - [ ] Windows：format、Clippy、unit test、release check。
 - [x] macOS：format、Clippy、unit test、release check；GPUI settings/overlay spike 均纳入 `macos-spikes` job。
+  - 状态（2026-08-28）：已新增 `windows-gpui-spikes` job，对 GPUI settings 与非 macOS overlay 条件编译执行 format、debug/release check、Clippy 和 unit test；首轮 Windows runner 通过后才能勾选，仍不替代字体、IME、DPI 和辅助功能实机验收。
 - [x] 缓存 key 包含所有 `Cargo.lock`/`Cargo.toml` 和 Rust toolchain hash；Linux contract 与 macOS GPUI jobs 均使用该 key。
 - [ ] CI 不下载未经版本/hash 固定的 Cubism 二进制。
 - [ ] GPU、权限、签名测试分离为实机/nightly job。
