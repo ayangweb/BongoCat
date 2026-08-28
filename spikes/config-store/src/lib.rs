@@ -333,8 +333,21 @@ impl ConfigStore {
         file.write_all(&bytes)?;
         file.sync_all()?;
         drop(file);
+        self.back_up_current_config()?;
         fs::rename(&temp_path, &self.layout.config)?;
         File::open(&self.layout.config)?.sync_all()?;
+        Ok(())
+    }
+
+    fn back_up_current_config(&self) -> Result<(), ConfigError> {
+        if !self.layout.config.is_file() {
+            return Ok(());
+        }
+        let backup_path = self.layout.backups.join("config.previous.json");
+        let backup_temp_path = self.layout.backups.join("config.previous.json.tmp");
+        fs::copy(&self.layout.config, &backup_temp_path)?;
+        File::open(&backup_temp_path)?.sync_all()?;
+        fs::rename(backup_temp_path, backup_path)?;
         Ok(())
     }
 }
@@ -350,18 +363,30 @@ mod tests {
         let development = StorageLayout::under(base.path(), BuildEnvironment::Development);
         let production = StorageLayout::under(base.path(), BuildEnvironment::Production);
         assert_ne!(development.root, production.root);
-        assert_eq!(
-            development.root.strip_prefix(&development.root).unwrap(),
-            production.root.strip_prefix(&production.root).unwrap()
-        );
-        assert_eq!(
-            development.config.file_name(),
-            production.config.file_name()
-        );
-        assert_eq!(
-            development.models.file_name(),
-            production.models.file_name()
-        );
+        let development_paths = [
+            &development.config,
+            &development.state,
+            &development.models,
+            &development.backups,
+            &development.logs,
+            &development.locks,
+        ];
+        let production_paths = [
+            &production.config,
+            &production.state,
+            &production.models,
+            &production.backups,
+            &production.logs,
+            &production.locks,
+        ];
+        for (development_path, production_path) in
+            development_paths.into_iter().zip(production_paths)
+        {
+            assert_eq!(
+                development_path.strip_prefix(&development.root).unwrap(),
+                production_path.strip_prefix(&production.root).unwrap()
+            );
+        }
     }
 
     #[cfg(target_os = "macos")]
@@ -427,6 +452,21 @@ mod tests {
             Err(ConfigError::InvalidValue("overlay.opacity_percent"))
         ));
         assert_eq!(store.load_or_default().unwrap(), original);
+    }
+
+    #[test]
+    fn successful_commit_keeps_previous_config_backup() {
+        let base = tempdir().unwrap();
+        let layout = StorageLayout::under(base.path(), BuildEnvironment::Development);
+        let store = ConfigStore::new(layout.clone()).unwrap();
+        let original = store.load_or_default().unwrap();
+        let mut updated = original.clone();
+        updated.appearance.language = "zh-CN".into();
+        store.commit(&updated).unwrap();
+        let backup_path = layout.backups.join("config.previous.json");
+        let backup: NativeConfig = serde_json::from_slice(&fs::read(backup_path).unwrap()).unwrap();
+        assert_eq!(backup, original);
+        assert_eq!(store.load_or_default().unwrap(), updated);
     }
 
     #[test]

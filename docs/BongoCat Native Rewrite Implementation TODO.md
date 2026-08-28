@@ -354,9 +354,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] Windows 使用 `%APPDATA%\BongoCat\<environment>\` 数据根。
 - [x] macOS 使用 `Application Support/com.ayangweb.bongo-cat/<environment>/` 数据根。
   - 当前 macOS resolver 已通过；Windows 对等 resolver 仍待 Windows 实机。
-- [ ] 两个环境的 `config.json`、`state.json`、`models/`、`backups/` 和 `logs/` 相对结构一致。
+- [x] 两个环境的 `config.json`、`state.json`、`models/`、`backups/`、`logs/` 和 `locks/` 相对结构一致；spike 测试逐项比较相对路径。
 - [ ] 环境不能由 CLI、进程环境变量或设置项在运行时切换，也不能 fallback 到另一环境。
-- [x] 在 spike 中实现同目录临时文件、flush、原子替换和提交后验证；平台文件锁与崩溃注入仍未完成。
+- [x] 在 spike 中实现同目录临时文件、flush、原子替换、提交后验证和上一份有效配置备份；平台文件锁与崩溃注入仍未完成。
 - [x] 在 spike 中拒绝损坏配置并保留原始文件；隔离备份、默认恢复和 GPUI 用户诊断仍未完成。
 - [ ] 配置写入去抖，退出前强制 flush。
 - [ ] GPUI 只通过 typed command 获取 snapshot 和提交 patch。

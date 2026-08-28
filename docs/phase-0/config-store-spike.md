@@ -11,7 +11,7 @@
 - 两个环境具有完全一致的相对结构：`config.json`、`state.json`、`models/`、`backups/`、`logs/`、`locks/`；
 - `NativeConfig` 是强类型结构，显式 `schema_version = 1`，JSON key 使用当前产品语义的 `snake_case`；
 - typed parser 与 JSON schema 都拒绝未知字段，避免拼写错误或旧配置字段被静默接受；
-- commit 流程为 validate -> serialize -> 同目录临时文件 -> `sync_all` -> rename -> 提交后重新打开验证；校验失败不会覆盖旧配置；
+- commit 流程为 validate -> serialize -> 同目录临时文件 -> `sync_all` -> 备份当前有效配置 -> rename -> 提交后重新打开验证；校验失败不会覆盖旧配置，成功提交会保留 `backups/config.previous.json`；
 - 损坏 JSON 会返回诊断错误并保留原始文件，不静默写回默认配置；
 - `BuildEnvironment` 只在构造 store 时选择。产品实现必须由构建产物固定环境，禁止 CLI、环境变量或设置项在运行时切换；`platform_layout` 不接受外部路径覆盖。
 
@@ -23,7 +23,7 @@ cargo test --manifest-path spikes/config-store/Cargo.toml --locked
 cargo run --manifest-path spikes/config-store/Cargo.toml --locked
 ```
 
-当前测试覆盖环境隔离、默认配置、非法提交保留旧文件、损坏配置不被静默覆盖、snake_case 序列化和平台目录 resolver。macOS 实机运行输出应位于 `~/Library/Application Support/com.ayangweb.bongo-cat/development/`（debug）或 `production/`（release）；Windows 对应 `%APPDATA%\\BongoCat\\<environment>\\` 仍待 Windows 实机验证。`tempfile` 只用于测试，`dirs` 仅用于该 resolver spike。
+当前测试覆盖环境隔离、默认配置、非法提交保留旧文件、损坏配置不被静默覆盖、成功提交保留上一份有效备份、snake_case 序列化和平台目录 resolver。macOS 实机运行输出应位于 `~/Library/Application Support/com.ayangweb.bongo-cat/development/`（debug）或 `production/`（release）；Windows 对应 `%APPDATA%\\BongoCat\\<environment>\\` 仍待 Windows 实机验证。`tempfile` 只用于测试，`dirs` 仅用于该 resolver spike。
 
 ## 未完成
 
