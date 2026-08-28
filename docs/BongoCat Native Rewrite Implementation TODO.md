@@ -1,6 +1,6 @@
 # BongoCat Native Rewrite Implementation TODO
 
-状态：待执行
+状态：Phase 0 执行中
 最后更新：2026-08-28
 当前分支：`next`
 首发平台：Windows 10 1903+、macOS 12+
@@ -43,6 +43,33 @@
 - [ ] 配置迁移回滚测试未通过前，不覆盖用户旧配置。
 - [ ] 8 小时 soak、签名和更新回滚未通过前，不发布 stable。
 
+### 0.4 状态、依赖与验收证据
+
+- `[ ]` 表示未开始、进行中、被阻塞或尚缺任一验收条件；部分完成不得改成 `[x]`。
+- `[x]` 只表示该行描述的完整工作已进入 `next`，并具有可重复验证证据；不代表所属 section 或 phase 自动完成。
+- 被阻塞的任务在其下记录 `Blocked by`、阻塞日期、所需决策或外部条件，不创建假实现绕过。
+- 有前置依赖的任务在开始前确认上游 contract 已冻结；若必须并行，先写清临时接口、owner 和回收日期。
+- 每个 spike 必须包含：假设、范围、非目标、依赖版本/来源、运行命令、环境、成功条件、失败条件、原始结果位置和后续处置。
+- 平台验收记录必须包含 commit、target triple、系统/SDK、CPU/GPU、显示器/DPI、权限、模型、运行时长和结果；“在本机打开过”不算可重复证据。
+- 性能结果必须同时保存测试方法与原始数据；截图必须标注窗口尺寸、缩放、主题、模型和 build commit。
+- spike 结束后必须明确 `promote`、`replace` 或 `delete`；不得让实验代码未经评审自然演变为生产模块。
+
+### 0.5 阶段映射
+
+Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设置更细的退出门槛拆成 10 个执行阶段：
+
+| Technical Design                | Implementation TODO |
+| ------------------------------- | ------------------- |
+| Phase 0 风险验证和行为冻结      | Phase 0             |
+| Phase 1 Rust 工程骨架           | Phase 1             |
+| Phase 2 输入到 Live2D 最小闭环  | Phase 2-4           |
+| Phase 3 产品 Runtime 与模型兼容 | Phase 2、Phase 4    |
+| Phase 4 GPUI 设置和配置迁移     | Phase 5-6           |
+| Phase 5 系统集成                | Phase 7             |
+| Phase 6 稳定性与发布            | Phase 8-9           |
+
+阶段名称或边界变化时必须同时更新此映射和 Technical Design 的实施阶段摘要。
+
 ## 1. Phase 0：行为冻结与技术风险验证
 
 目标：证明纯 Rust + GPUI 路线可行，并把旧版行为变成可测试输入。
@@ -50,15 +77,20 @@
 ### 1.1 文档与仓库基线
 
 - [ ] 评审并确认 Technical Design 与本 TODO。
-- [ ] 新增 ADR-001：采用单一 Rust 应用。
-- [ ] 新增 ADR-002：GPUI 只用于设置 UI。
-- [ ] 新增 ADR-003：主猫使用独立 D3D11/Metal overlay。
-- [ ] 新增 ADR-004：输入采用事件 + 状态校正。
-- [ ] 新增 ADR-005：Cubism Core 是唯一厂商 FFI 边界。
+- [x] 新增 ADR-001：采用单一 Rust 应用。
+- [x] 新增 ADR-002：GPUI 只用于设置 UI。
+- [x] 新增 ADR-003：主猫使用独立 D3D11/Metal overlay。
+- [x] 新增 ADR-004：输入采用事件 + 状态校正。
+- [x] 新增 ADR-005：Cubism Core 是唯一厂商 FFI 边界。
+- [ ] 新增 ADR-006：首发不支持 Linux，但共享模块不封死后续 backend。
+- [ ] 新增 ADR-007：生产版本只有单一 Rust 运行环境，历史实现仅用于迁移和行为对照。
 - [ ] 记录 `master`、`next`、旧版本 tag 和可回退 commit。
 - [ ] 确认旧 Vue/Tauri 应用仍可构建和运行，保存命令与产物信息。
-- [ ] 建立 `docs/adr/`、`docs/benchmark/`、`docs/migration/` 目录。
+- [x] 建立 `docs/adr/`、`docs/benchmark/`、`docs/migration/` 目录。
 - [ ] 建立依赖许可证清单，确认与项目 MIT 发布兼容。
+- [ ] 冻结首发 target triple 和 CPU 架构矩阵，明确 Windows ARM64、macOS Intel 是否发布或仅测试。
+- [ ] 记录 Windows MSVC/SDK、macOS Xcode/SDK/Metal Toolchain 和 Rust toolchain 的最低可用组合。
+- [ ] 保存旧版最后可用安装包、资源清单、签名状态和 SHA-256，不只记录源码 commit。
 
 ### 1.2 旧版功能清单
 
@@ -93,21 +125,24 @@
 状态（2026-08-28）：已建立 v1 input/expected schema、4 组输入序列和规范化结果；8 个文档通过 Draft 2020-12 校验及跨文件一致性检查。物理键全集、手柄/动作/表情场景和旧版人工确认仍未完成。
 
 - [ ] 定义稳定的 PhysicalKey、MouseButton、GamepadButton 和 axis 表示。
-- [ ] 定义带单调相对时间的输入序列 JSON 格式。
-- [ ] 定义规范化 RuntimeSnapshot，排除平台坐标和浮点噪声。
+- [x] 定义带单调相对时间的输入序列 JSON 格式。
+- [x] 定义规范化 RuntimeSnapshot，排除平台坐标和浮点噪声。
 - [ ] 添加单键、重复键、长按和左右修饰键序列。
 - [ ] 添加组合键、鼠标移动/点击/拖动和多显示器坐标序列。
 - [ ] 添加手柄连接/断开、按钮、摇杆 dead-zone 和 trigger 序列。
 - [ ] 添加动作、表情、停止、模型切换和音效序列。
 - [ ] 添加丢失 KeyUp、设备断开、锁屏、睡眠和服务重启序列。
 - [ ] 为 fixture 生成旧版观察结果并人工确认产品语义。
+- [ ] 将 Draft 2020-12 schema 校验与 `tools/validate-fixtures.py` 接入 CI，固定 validator 版本。
+- [ ] fixture runner 拒绝逆序时间、重复 id、孤立 expected、未知事件和未声明 checkpoint。
+- [ ] expected snapshot 记录来源：旧版观察、产品决策或新行为修复，禁止无法追溯的 golden update。
 
 ### 1.5 GPUI spike
 
 状态（2026-08-28）：已在 `spikes/gpui-settings/` 建立隔离的 macOS 最小窗口，精确锁定 `gpui = 0.2.2` 并生成独立 lockfile；构建和自动 shutdown smoke 通过。IME、辅助功能、窗口重开、overlay 共存及 Windows 实机均未验证，详见 `docs/phase-0/gpui-settings-spike.md`。
 
-- [ ] 建立最小 Rust workspace 和 GPUI hello/settings 窗口。
-- [ ] 固定 `gpui = "=0.2.2"` 并提交 Cargo.lock。
+- [x] 建立最小 Rust workspace 和 GPUI hello/settings 窗口。
+- [x] 固定 `gpui = "=0.2.2"` 并提交 Cargo.lock。
 - [ ] 禁止依赖 Zed 私有 UI crate；建立最小本地 design token。
 - [ ] 验证 Windows/macOS 字体、中文输入法、复制粘贴和文本选择。
 - [ ] 验证键盘导航、焦点、tooltip、dialog 和菜单。
@@ -116,6 +151,10 @@
 - [ ] 验证 GPUI async executor 与 runtime channel 可安全通信。
 - [ ] 验证辅助功能树满足设置表单的基础要求。
 - [ ] 记录首次打开、空闲 CPU、RSS 和二进制增量。
+- [ ] 安装并固定 macOS Metal Toolchain，验证 GPUI 默认预编译 shader 路径；`runtime_shaders` 不作为发布配置。
+- [ ] 将 macOS spike 打包为最小 `.app`，验证 bundle id、菜单、激活、关闭和辅助功能树可被系统识别。
+- [ ] 生成 Windows spike 可执行文件，验证 MSVC、Windows SDK、D3D shader 工具和 manifest 前置条件。
+- [ ] 跟踪 `block 0.1.6`、`proc-macro-error2 2.0.1` future-incompatibility，进入产品 workspace 前形成升级或接受结论。
 - [ ] 若存在发布阻塞，提交 GPUI go/no-go ADR；备选只评估 Iced。
 
 ### 1.6 原生 Overlay spike
@@ -128,6 +167,8 @@
 - [ ] 验证 overlay 可置顶、穿透、显示/隐藏、拖动和缩放。
 - [ ] 连续创建/销毁 overlay 100 次，无窗口、swapchain、layer 或线程泄漏。
 - [ ] 验证退出顺序：frame source -> renderer -> GPU -> overlay -> GPUI。
+- [ ] 写明 GPUI/AppKit/Win32 主线程所有权、overlay 创建线程和跨线程 command 不变量。
+- [ ] 注入 renderer 初始化失败、drawable/swapchain unavailable 和 device lost，设置窗口仍可打开并显示诊断。
 
 ### 1.7 输入可靠性 spike
 
@@ -143,6 +184,8 @@
 - [ ] macOS 使用 CGEventSourceKeyState 校正 pressed state。
 - [ ] 连续 start/stop/restart 输入服务 100 次，无资源泄漏。
 - [ ] 记录 monio 对照结果，但不引入生产依赖。
+- [ ] 为 captured、reconciled、reset、duplicate、overflow 分别维护计数器，不记录具体键值。
+- [ ] 验证输入 callback panic 隔离、队列关闭和应用退出竞态，不允许 callback 访问已析构 runtime。
 
 ### 1.8 Cubism/Renderer spike
 
@@ -157,6 +200,8 @@
 - [ ] 验证模型切换/销毁 100 次，无 CPU/GPU 资源增长。
 - [ ] 记录与 easy-live2d 的差异和必须兼容项。
 - [ ] 若纯 Rust Framework 逻辑不可行，提交 go/no-go ADR；不得静默加入 C++ 业务桥。
+- [ ] 建立 Cubism Framework 行为来源清单，逐项说明 motion、expression、physics、pose 的 Rust 实现依据和许可边界。
+- [ ] 对 raw binding 生成流程固定 header、生成器版本和输出审阅方式，禁止手改生成代码后失去可重复性。
 
 ### 1.9 Phase 0 退出门槛
 
@@ -167,6 +212,7 @@
 - [ ] 三个预置模型的兼容差异已知且没有未决 P0 阻塞。
 - [ ] Cubism 发布授权、二进制来源和打包方式有书面结论。
 - [ ] 形成 Phase 0 报告，明确 GO、GO WITH CONDITIONS 或 NO-GO。
+- [ ] GO WITH CONDITIONS 必须为每个条件指定 owner、截止阶段和失败时的回退决策。
 
 ## 2. Phase 1：Rust 工程骨架
 
@@ -189,14 +235,20 @@
 ### 2.2 工程质量
 
 - [ ] 固定 stable Rust toolchain、target 和必要 components。
+- [ ] 在 workspace manifest 声明 `rust-version`，CI 验证最低版本和当前 stable，不依赖开发机偶然安装的 nightly。
 - [ ] 禁止应用依赖未固定 git branch，提交 Cargo.lock。
+- [ ] 平台依赖使用 target-specific dependency，Windows feature 不进入 macOS，macOS framework 不进入 Windows。
+- [ ] 审查 Cargo feature union，禁止测试/诊断/运行时 shader feature 意外进入 release 产物。
 - [ ] 业务、配置、模型和 UI crate 使用 forbid unsafe_code。
 - [ ] 平台 unsafe wrapper 写明线程、指针、所有权和析构不变量。
 - [ ] 配置 rustfmt、Clippy -D warnings、cargo test 和许可证检查。
+- [ ] 配置 `cargo deny`/等价检查：license、advisory、banned source、重复高风险依赖和 unknown registry。
 - [ ] 配置 panic hook 和 release 可诊断退出。
 - [ ] 定义线程、任务、channel、窗口和 GPU object owner。
 - [ ] 建立结构化日志字段和用户路径脱敏规则。
 - [ ] 提供开发/测试所需 Cubism 二进制的可验证安装说明。
+- [ ] 构建脚本默认不联网；外部 SDK、shader compiler 和生成器必须先由显式 bootstrap 步骤准备。
+- [ ] 定义 debug、release、profiling 三种 profile，profiling 产物不得误发布。
 
 ### 2.3 CI
 
@@ -206,6 +258,9 @@
 - [ ] CI 不下载未经版本/hash 固定的 Cubism 二进制。
 - [ ] GPU、权限、签名测试分离为实机/nightly job。
 - [ ] 共享 crate 增加 Linux cargo check，但不生成首发安装包。
+- [ ] CI 校验 fixture JSON Schema、跨文件一致性、本地化 key 和生成文件是否漂移。
+- [ ] 保存失败测试日志、截图和 renderer validation 输出，同时执行路径/按键隐私清理。
+- [ ] 构建产物记录 source commit、Cargo.lock hash、toolchain、target 和 feature set。
 
 ### 2.4 Phase 1 退出门槛
 
@@ -213,6 +268,7 @@
 - [ ] GPUI 空设置窗口可打开，overlay 可显示测试帧。
 - [ ] CI 在干净环境复现构建。
 - [ ] 应用可正常退出，所有 worker 有明确 join 结果。
+- [ ] Windows/macOS release dependency tree 与批准清单一致，无意外 Tauri/WebView/JavaScript runtime。
 
 ## 3. Phase 2：Runtime、输入和配置
 
@@ -221,12 +277,16 @@
 - [ ] 定义 AppCommand、InputEvent、RuntimeSnapshot、RenderSnapshot。
 - [ ] 单一 runtime owner 管理可变业务状态。
 - [ ] key/button edge 和 command 使用可靠有序队列。
+- [ ] 为每个可靠队列定义容量、生产者、消费者、满载策略和关闭语义，不使用无界队列逃避背压设计。
+- [ ] edge/command 携带单调 sequence id，诊断可发现乱序、重复和丢失但不记录具体键值。
 - [ ] cursor/gamepad axis 使用 latest-value 合并通道。
 - [ ] 队列溢出必须计数、记录并触发安全恢复。
 - [ ] 动画、长按和延迟统一使用 Instant。
 - [ ] 实现可注入 clock 和确定性 tick。
 - [ ] 实现 starting、ready、degraded、stopping、stopped 状态。
 - [ ] 实现 shutdown drain、超时和错误聚合。
+- [ ] command 定义幂等性和重复提交语义；有副作用的长操作使用 operation id 去重。
+- [ ] runtime tick 设置工作预算，模型解析、磁盘、音频初始化和 GPU 上传不得阻塞实时队列。
 
 ### 3.2 输入语义
 
@@ -249,6 +309,8 @@
 - [ ] 管理员权限差异产生诊断，但默认不要求提权。
 - [ ] RegisterHotKey 冲突返回错误并保持旧绑定。
 - [ ] issue #47 固定为发布回归项。
+- [ ] 明确 Raw Input scan code 到可查询 virtual-key 的映射，无法可靠校正的键必须有 Reset/保险策略和诊断。
+- [ ] 处理输入设备提供伪造、重复或异常长度 Raw Input 数据的边界，不信任设备名称和 handle 生命周期。
 
 ### 3.4 macOS 输入
 
@@ -259,6 +321,8 @@
 - [ ] 权限拒绝时进入 degraded，不产生重试风暴。
 - [ ] 锁屏、睡眠、快速用户切换和 tap 重启发送 Reset。
 - [ ] GameController 设备和 profile 映射进入统一事件。
+- [ ] event tap callback 使用 autorelease pool/panic boundary，run loop 停止后不再触达已释放 producer。
+- [ ] 明确辅助功能与 Input Monitoring 各自真正需要的能力，避免请求不必要的 TCC 权限。
 
 ### 3.5 配置 v1
 
@@ -271,6 +335,9 @@
 - [ ] 实现损坏配置隔离、默认恢复和用户可见诊断。
 - [ ] 配置写入去抖，退出前强制 flush。
 - [ ] GPUI 只通过 typed command 获取 snapshot 和提交 patch。
+- [ ] 防止两个进程、旧版和新版或两个 writer 同时覆盖配置；锁冲突进入可诊断只读/重试路径。
+- [ ] 新配置文件和备份使用最小用户权限，不继承过宽 ACL/文件 mode。
+- [ ] 配置更新使用 expected revision，拒绝静默覆盖较新的用户修改。
 
 ### 3.6 Phase 2 退出门槛
 
@@ -278,6 +345,7 @@
 - [ ] 10 分钟压力测试无 edge 丢失和永久残留。
 - [ ] 100 次输入服务 restart 无资源泄漏。
 - [ ] 配置并发更新、崩溃中断和损坏恢复测试通过。
+- [ ] queue overflow、runtime panic、writer lock 冲突和 shutdown timeout 均有确定的 degraded/recovery 结果。
 
 ## 4. Phase 3：原生 Overlay 与 Renderer
 
@@ -318,6 +386,8 @@
 - [ ] 支持目标 FPS、不可见暂停/降频和刷新率变化。
 - [ ] 首帧前不出现黑框或不透明闪烁。
 - [ ] shutdown 先停 frame source，再释放 GPU/window。
+- [ ] 明确 sRGB/linear、预乘 alpha 和 texture color space，避免两平台颜色或边缘混合语义漂移。
+- [ ] present 失败、窗口隐藏和 drawable unavailable 时限流，不产生 busy loop 或日志风暴。
 
 ### 4.5 Phase 3 退出门槛
 
@@ -381,6 +451,7 @@
 - [ ] 自定义模型 fixture 成功/失败行为符合规范。
 - [ ] 模型切换 100 次无 CPU/GPU/音频持续增长。
 - [ ] 输入、动作、表情、物理和音效闭环不依赖 GPUI。
+- [ ] 模型 parser 完成 fuzz/property test，畸形 JSON、索引和尺寸不能触发 panic、越界分配或路径逃逸。
 
 ## 6. Phase 5：GPUI 设置应用
 
@@ -438,6 +509,9 @@
 - [ ] 模型扫描/导入具有 loading、empty、error、cancel 状态。
 - [ ] 复杂列表和动态文本不会导致布局跳动。
 - [ ] UI 中不出现开发说明、架构术语或操作教学段落。
+- [ ] screen reader 可识别 label、value、role、错误和进度；颜色不是状态的唯一表达方式。
+- [ ] 中文、英文、德文等长文本和系统字体 fallback 下仍满足布局约束。
+- [ ] 降低动态效果/高对比度等系统辅助设置有明确支持或书面限制。
 
 ### 6.6 Phase 5 退出门槛
 
@@ -485,6 +559,8 @@
 - [ ] 重复迁移 10 次输出一致。
 - [ ] Windows/macOS 从已发布旧版本完成真实升级 smoke test。
 - [ ] 失败注入不丢旧配置或用户模型。
+- [ ] 提供只读 dry-run 报告，列出将迁移、跳过、冲突和失败的项目，不修改任何用户文件。
+- [ ] 迁移完成后旧版再次启动再写入旧 store 的行为有明确策略，避免双向版本互相覆盖。
 
 ## 8. Phase 7：原生系统集成
 
@@ -495,6 +571,7 @@
 - [ ] 托盘/菜单栏 command 统一进入 runtime。
 - [ ] 系统关机、注销和普通退出进入 shutdown coordinator。
 - [ ] panic/crash 生成本地诊断并避免配置半写入。
+- [ ] 定义正常退出、强制退出、崩溃和系统终止的恢复标记；下次启动可区分并避免无限恢复循环。
 
 ### 8.2 Windows
 
@@ -525,6 +602,8 @@
 - [ ] 日志 rotation、总大小和保留天数有上限。
 - [ ] 记录 renderer/input/model/migration/update 的稳定 error code。
 - [ ] 日志导出生成可预览的脱敏包。
+- [ ] 更新 manifest 定义 schemaVersion、channel、最低可升级版本、发布时间和防回滚字段。
+- [ ] 更新 helper/installer 的权限边界、替换原子性和失败恢复经过单独威胁建模。
 
 ### 8.5 Phase 7 退出门槛
 
@@ -544,6 +623,8 @@
 - [ ] 输入 fixture 和丢 release 恢复测试。
 - [ ] GPUI component、command 和窗口重建测试。
 - [ ] Windows/macOS 安装、首次启动、升级和卸载 smoke test。
+- [ ] 公共 contract/schema 兼容性测试，旧 UI snapshot、配置和更新 manifest 在支持窗口内可读取。
+- [ ] release 构建启用 panic/allocator/overflow 策略的真实测试，不只测试 debug 行为。
 
 ### 9.2 Windows 实机矩阵
 
@@ -605,6 +686,8 @@
 - [ ] Windows 产物签名并验证安装/卸载和 SmartScreen。
 - [ ] macOS app 签名、notarize、staple 并验证 Gatekeeper。
 - [ ] 产物不包含 WebView bundle、Node、旧前端或开发资源。
+- [ ] 从干净 checkout 按书面步骤生成相同内容清单；不可避免的签名/时间戳差异单独记录。
+- [ ] 对安装包、应用二进制、模型资源和更新 manifest 生成 SHA-256 并写入 release provenance。
 - [ ] 更新 manifest 只引用 HTTPS 和签名产物。
 - [ ] 准备已知差异、迁移、备份恢复和问题反馈说明。
 
@@ -614,6 +697,7 @@
 - [ ] alpha 收集 input reset、renderer reset、model load 和 migration 指标。
 - [ ] beta 扩大模型/显示器/权限组合并冻结 schema/command contract。
 - [ ] stable 前从已发布旧版执行端到端升级。
+- [ ] alpha/beta/stable 的配置 schema、更新 channel 和数据目录不会互相污染，降级行为有明确限制。
 - [ ] 验证失败更新可回滚，旧配置备份仍可用。
 - [ ] stable 观察期结束前不删除旧迁移读取器。
 
@@ -648,15 +732,32 @@
 - [ ] 明确 AppImage/Flatpak/deb/rpm 的权限和资源分发策略。
 - [ ] 只有输入、透明窗口和渲染达到门槛后才加入支持列表。
 
-## 12. 当前最近任务
+## 12. 当前执行队列
 
-按顺序执行，不并行铺开产品功能：
+按顺序执行。`P0-GPUI-PACKAGE` 通过前不开始完整 UI；`P0-OVERLAY` 通过前不创建产品 platform workspace。
 
-1. [ ] 评审 Technical Design 和 ADR 摘要。
-2. [ ] 完成功能、配置、模型考古并提交 fixture 格式。
-3. [ ] 完成 GPUI 设置窗口最小 spike。
-4. [ ] 完成 GPUI + 原生 overlay + 透明 clear/present spike。
-5. [ ] 完成 Windows issue #47 输入可靠性 spike。
-6. [ ] 完成 macOS CGEventTap 权限与恢复 spike。
-7. [ ] 完成三个预置模型的 Cubism Rust/renderer spike。
-8. [ ] 召开 Phase 0 go/no-go；确认后再建立完整产品骨架。
+1. [x] `P0-BASELINE`：提交 Technical Design、Implementation TODO、AGENTS 和 ADR-001 至 005。
+2. [x] `P0-FIXTURE-V1`：提交 input/expected schema、4 组核心输入 fixture 和跨文件 validator。
+3. [x] `P0-GPUI-LIFECYCLE-MAC`：macOS 隔离 spike 精确锁定 GPUI 0.2.2，窗口打开并通过 GPUI `quit()` 正常退出。
+4. [ ] `P0-DOC-CONSISTENCY`：补建 ADR-006/007，记录旧版 tag/安装包 hash、target triple 和工具链矩阵。
+5. [ ] `P0-ARCHAEOLOGY`：补齐 Windows 真实配置路径、历史版本样本、完整功能优先级和模型异常 fixture。
+6. [ ] `P0-GPUI-PACKAGE-MAC`：使用默认预编译 shader 构建 `.app`，验证 IME、剪贴板、焦点、辅助功能、主题和窗口重开。
+7. [ ] `P0-GPUI-WINDOWS`：在 Windows 构建同一 spike，验证字体、IME、DPI、辅助功能和正常退出。
+8. [ ] `P0-OVERLAY`：GPUI 生命周期内完成 Windows D3D11/macOS Metal 透明 clear/present、错误注入和 100 次重建。
+9. [ ] `P0-INPUT-WINDOWS`：完成 Raw Input + pressed set + `GetAsyncKeyState` 校正并实测 issue #47 场景。
+10. [ ] `P0-INPUT-MAC`：完成 CGEventTap 权限拒绝/授予/恢复、状态校正和 100 次 restart。
+11. [ ] `P0-CUBISM`：确认 SDK/许可证/binding 生成，三个预置模型完成 Core、资源和 renderer spike。
+12. [ ] `P0-GO-NO-GO`：汇总证据、阻塞和条件，确认后再建立完整产品 workspace。
+
+## 13. 待决策清单
+
+| 决策                                                          | 最迟完成              | 阻塞内容                           |
+| ------------------------------------------------------------- | --------------------- | ---------------------------------- |
+| Windows/macOS 首发 CPU 架构和 target triple                   | `P0-DOC-CONSISTENCY`  | CI、SDK 二进制、签名和安装包矩阵   |
+| GPUI 默认 shader 构建工具链及上游 future-incompatibility 处置 | `P0-GPUI-PACKAGE-MAC` | 产品 workspace 和发布构建          |
+| Cubism Core/Framework 版本、获取方式和再分发条款              | `P0-CUBISM`           | Live2D safe layer、CI 和公开安装包 |
+| Rust 音频后端及现有 FLAC 支持                                 | Phase 4 开始前        | motion sound、资源和许可证         |
+| Windows 安装格式与更新 helper 权限模型                        | Phase 7 开始前        | 签名、升级、回滚和卸载             |
+| macOS 最低系统、Intel 支持和 universal binary 策略            | Phase 1 开始前        | target、依赖、CI 和 notarization   |
+
+每项决策必须落入 ADR 或对应设计文档，并从本表移除；不得只在聊天记录中形成结论。
