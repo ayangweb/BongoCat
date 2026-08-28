@@ -1,0 +1,12 @@
+[package]
+name = "bongocat-overlay-lifecycle-spike"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Keep this contract probe isolated from the legacy root Tauri workspace.
+[workspace]
+
+[lints.rust]
+unsafe_code = "forbid"
+
