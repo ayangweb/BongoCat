@@ -123,6 +123,8 @@ GPUI 0.2.2 公共源码中没有找到可为普通绘制 element 设置 role、l
 2. 可维护且不依赖 Zed 私有 UI crate 的项目内方案；
 3. 若仍无法满足设置表单基础要求，提交 GPUI go/no-go ADR 并评估 Iced。
 
+该阻塞已按 ADR-0009 记录。Iced 0.14.0 仅完成候选版本和公开源码的初步检查，尚未通过实际 AX/UI Automation spike，因此当前仍无替代框架的 go 结论。
+
 ## 本地化资源边界
 
 当前五种 locale（`en-US`、`pt-BR`、`vi-VN`、`zh-CN`、`zh-TW`）仍位于历史前端的 `src/locales/`，仅作为 Native Rewrite 的迁移输入。`tools/validate-locales.py` 在迁移前检查每个语言包的递归 key、叶子类型、非空文本和占位符集合，并由 Phase 0 CI 执行。迁移到 `shared/resources/localization/` 时必须保留相同 key 契约，再由 GPUI UI crate 显式加载；该检查不代表 Native 本地化迁移或 GPUI 辅助功能已经完成。

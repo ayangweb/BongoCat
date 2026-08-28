@@ -167,7 +167,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态：Bundle ID `com.ayangweb.bongo-cat`、菜单、激活、关闭/重开和退出已通过；GPUI 内容节点无法被辅助功能 API 识别，因此保持未完成。
 - [ ] 生成 Windows spike 可执行文件，验证 MSVC、Windows SDK、D3D shader 工具和 manifest 前置条件。
 - [ ] 跟踪 `block 0.1.6`、`proc-macro-error2 2.0.1` future-incompatibility，进入产品 workspace 前形成升级或接受结论。
-- [ ] 若存在发布阻塞，提交 GPUI go/no-go ADR；备选只评估 Iced。
+- [x] 若存在发布阻塞，提交 GPUI go/no-go ADR；备选只评估 Iced。ADR-0009 记录 GPUI 0.2.2 的 AX gate、Iced 0.14.0 初步检查和解除条件；当前阻塞仍未解除。
 
 ### 1.6 原生 Overlay spike
 
@@ -779,7 +779,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 7. [x] `P0-RUNTIME-CONTRACT`：冻结生命周期、单调 tick、operation 去重、shutdown drain 与超时结果。
    - 状态（2026-08-28）：`spikes/runtime-contract/` 已通过 7 项 contract test 并接入 CI；实际 channel、worker、模型和平台服务仍待 Phase 1/2。
 8. [ ] `P0-GPUI-PACKAGE-MAC`：使用默认预编译 shader 构建 `.app`，验证 IME、剪贴板、焦点、辅助功能、主题和窗口重开。
-   - 状态（2026-08-28）：默认 shader、bundle、菜单、窗口生命周期、主题、基础文本编辑/剪贴板、runtime bridge 和 macOS 性能基线通过；辅助功能内容节点缺失，真实 IME、完整 tooltip/dialog/focus chain 仍待验证。
+   - 状态（2026-08-28）：默认 shader、bundle、菜单、窗口生命周期、主题、基础文本编辑/剪贴板、runtime bridge 和 macOS 性能基线通过；ADR-0009 已记录辅助功能 P0 gate，内容节点缺失，真实 IME、完整 tooltip/dialog/focus chain 仍待验证。
 9. [ ] `P0-GPUI-WINDOWS`：在 Windows 构建同一 spike，验证字体、IME、DPI、辅助功能和正常退出。
 10. [ ] `P0-OVERLAY`：GPUI 生命周期内完成 Windows D3D11/macOS Metal 透明 clear/present、错误注入和 100 次重建。
 
