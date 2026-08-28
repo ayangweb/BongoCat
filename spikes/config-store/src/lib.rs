@@ -499,6 +499,16 @@ mod tests {
     }
 
     #[test]
+    fn default_serialization_matches_shared_config_fixture() {
+        let expected = include_str!("../../../shared/config/fixtures/default.json");
+        let expected: serde_json::Value = serde_json::from_str(expected).unwrap();
+        assert_eq!(
+            serde_json::to_value(NativeConfig::default()).unwrap(),
+            expected
+        );
+    }
+
+    #[test]
     fn unknown_fields_are_rejected_like_the_json_schema() {
         let mut value = serde_json::to_value(NativeConfig::default()).unwrap();
         value["unexpected_field"] = serde_json::json!(true);
