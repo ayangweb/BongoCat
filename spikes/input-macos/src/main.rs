@@ -1,10 +1,10 @@
 #[cfg(target_os = "macos")]
 use bongocat_input_macos_spike::{
     CaptureAction, CaptureEvent, MacCaptureLifecycle, PermissionState, input_monitoring_preflight,
-    reconcile_key_state, request_input_monitoring_access, run_listen_only_tap,
+    reconcile_pressed_key_codes, request_input_monitoring_access, run_listen_only_tap,
 };
 #[cfg(target_os = "macos")]
-use std::time::Duration;
+use std::{collections::BTreeSet, time::Duration};
 
 fn main() {
     #[cfg(target_os = "macos")]
@@ -42,9 +42,13 @@ fn main() {
         }
         if let Some(key_code) = key_state_code {
             if after {
+                let candidates = BTreeSet::from([key_code]);
+                let report = reconcile_pressed_key_codes(&candidates);
                 println!(
-                    "input-macos-spike: key-state query completed pressed={}",
-                    reconcile_key_state(key_code)
+                    "input-macos-spike: key-state reconciliation checked={} still_pressed={} released={}",
+                    candidates.len(),
+                    report.still_pressed.len(),
+                    report.released_count
                 );
             } else {
                 println!("input-macos-spike: key-state query skipped because permission is denied");

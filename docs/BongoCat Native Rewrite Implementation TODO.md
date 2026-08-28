@@ -190,7 +190,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 - 状态（2026-08-28）：`spikes/input-state/` 已建立纯 Rust pressed-set contract，覆盖正常 down/up、重复 down、Reconcile、Reset、issue #47 的丢失 release 恢复，以及可靠事件的序列跳号/重复/乱序诊断；计数器不记录具体键值。平台采集、校正频率和管理员/权限场景仍待实机验证，详见 `docs/phase-0/input-state-spike.md`。
 - 状态（2026-08-28）：`spikes/input-windows/` 已冻结 `RI_KEY_BREAK`、E0/E1、左右修饰键、PrintScreen、未知 scan code 保留和安全 `RAWINPUT` 字节解析 contract；Win32 `WM_INPUT`、设备句柄、热插拔和 `GetAsyncKeyState` 仍待 Windows 实机，详见 `docs/phase-0/input-windows-spike.md`。
-- 状态（2026-08-28）：`spikes/input-macos/` 已建立 macOS 权限/tap 生命周期 contract、listen-only `CGEventTap` 专用 run loop 和 panic-isolated callback；当前 macOS 会话完成 104 次创建运行停止 smoke，且受控按键序列报告 `key_down=2 key_up=2`、`callback_panics=0`。真实鼠标 callback、系统 timeout/disable、TCC 授权/撤销、校正行为和锁屏/睡眠恢复仍未完成，详见 `docs/phase-0/input-macos-spike.md`。
+- 状态（2026-08-28）：`spikes/input-macos/` 已建立 macOS 权限/tap 生命周期 contract、listen-only `CGEventTap` 专用 run loop、panic-isolated callback 和候选 pressed-set 校正边界；当前 macOS 会话完成 104 次创建运行停止 smoke，且受控按键序列报告 `key_down=2 key_up=2`、`callback_panics=0`。真实鼠标 callback、系统 timeout/disable、TCC 授权/撤销、周期性校正接入和锁屏/睡眠恢复仍未完成，详见 `docs/phase-0/input-macos-spike.md`。
 
 - [ ] Windows 实现 RegisterRawInputDevices 和 WM_INPUT 最小路径。
 - [x] 冻结 scan code、extended flag、左右修饰键和 RI_KEY_BREAK mapping contract；Win32 packet 接入仍待实机。
@@ -203,6 +203,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 进行 10 分钟高速鼠标 + 键盘压力测试，edge 丢失计数必须为 0。
 - [ ] macOS 实现 CGEventTap、权限拒绝/授予和 tap 自动重启。
 - [ ] macOS 使用 CGEventSourceKeyState 校正 pressed state。
+  - 状态（2026-08-28）：候选 pressed keycode 集合可生成仍按下快照和释放计数，多键过滤 contract 与单键实机 query 通过；周期调度及 runtime pressed state 消费仍待产品接入。
 - [ ] 连续 start/stop/restart 输入服务 100 次，无资源泄漏。
   - 状态（2026-08-28）：`--tap-ms 20 --cycles 100` 全部创建、运行、停止成功，无 error、disabled 残留或 callback panic；专门的泄漏工具采样和 timeout/权限故障重启仍待完成。
 - [ ] 记录 monio 对照结果，但不引入生产依赖。
@@ -793,6 +794,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 12. [ ] `P0-INPUT-MAC`：完成 CGEventTap 权限拒绝/授予/恢复、状态校正和 100 次 restart。
 
 - [x] 完成权限/tap 生命周期 contract 和只读 preflight probe；真实 tap callback 与权限矩阵仍未完成。
+- [x] 完成候选 pressed set 到 `CGEventSourceKeyState` 校正快照的边界；周期调度、runtime 接入和生命周期实测仍未完成。
 
 13. [ ] `P0-CUBISM`：确认 SDK/许可证/binding 生成，三个预置模型完成 Core、资源和 renderer spike。
 14. [ ] `P0-GO-NO-GO`：汇总证据、阻塞和条件，确认后再建立完整产品 workspace。

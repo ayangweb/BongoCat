@@ -27,7 +27,7 @@ cargo run --manifest-path spikes/input-macos/Cargo.toml --locked
 cargo run --manifest-path spikes/input-macos/Cargo.toml --locked -- --request
 ```
 
-CoreGraphics binding 仅存在于 macOS target dependency；非 macOS 构建会输出 skipped，不引入跨平台 API。`--tap-ms <milliseconds>` 会在专用线程/run loop 上创建 listen-only `CGEventTap`，只统计事件类型计数，不记录具体键值；`--cycles <count>` 可重复创建、运行、禁用并销毁 tap；`--key-state <macOS-keycode>` 只输出指定 keycode 的当前布尔状态。默认仍不会自动创建 tap。
+CoreGraphics binding 仅存在于 macOS target dependency；非 macOS 构建会输出 skipped，不引入跨平台 API。`--tap-ms <milliseconds>` 会在专用线程/run loop 上创建 listen-only `CGEventTap`，只统计事件类型计数，不记录具体键值；`--cycles <count>` 可重复创建、运行、禁用并销毁 tap；`--key-state <macOS-keycode>` 将该 keycode 作为 runtime 当前 pressed-set 候选，经 `CGEventSourceKeyState` 生成仍按下快照，只输出 checked/still-pressed/released 数量。默认仍不会自动创建 tap。
 
 ## Verification
 
@@ -39,8 +39,8 @@ cargo run --manifest-path spikes/input-macos/Cargo.toml --locked -- --tap-ms 300
 cargo run --manifest-path spikes/input-macos/Cargo.toml --locked -- --key-state 0
 ```
 
-2026-08-28 在 macOS 26.5.2、Apple M1 Pro、`aarch64-apple-darwin` 上执行 `--tap-ms 150 --cycles 3`、`--tap-ms 3000 --cycles 1` 和 `--tap-ms 20 --cycles 100`：所有 104 次 tap 均成功创建、进入 run loop、保持 enabled、正常停止，`callback_panics=0`；最新 100-cycle 结果进一步确认 100 次均无 `error`、`finished_enabled=false` 或非零 panic 计数。3 秒 tap 期间向前台应用发送两次普通按键，报告 `key_down=2 key_up=2`，证明 listen-only callback 能同时收到按下和释放。另通过 `--key-state 0` 验证 `CGEventSourceKeyState(CombinedSessionState, key_code)` wrapper 可运行。
+2026-08-28 在 macOS 26.5.2、Apple M1 Pro、`aarch64-apple-darwin` 上执行 `--tap-ms 150 --cycles 3`、`--tap-ms 3000 --cycles 1` 和 `--tap-ms 20 --cycles 100`：所有 104 次 tap 均成功创建、进入 run loop、保持 enabled、正常停止，`callback_panics=0`；最新 100-cycle 结果进一步确认 100 次均无 `error`、`finished_enabled=false` 或非零 panic 计数。3 秒 tap 期间向前台应用发送两次普通按键，报告 `key_down=2 key_up=2`，证明 listen-only callback 能同时收到按下和释放。`--key-state 0` 实机得到 `checked=1 still_pressed=0 released=1`，验证候选 pressed set 通过 `CGEventSourceKeyState(CombinedSessionState, key_code)` 生成校正快照。纯函数测试覆盖多键保留/释放，并确认不会查询 pressed set 之外的 keycode。
 
 实现约束：特殊的 `kCGEventTapDisabledByTimeout`/`kCGEventTapDisabledByUserInput` 值不能放入第三方事件 mask（其高位值会导致 `1 << type` 溢出）；callback 仍对这两类通知分支处理，收到后通过有界 channel 请求在 run loop 内 re-enable。tap 创建阶段使用 panic boundary，避免 binding 异常杀死输入线程。
 
-目前已覆盖 denied/granted、tap timeout/disable、permission revocation 和 session reset 的状态测试，以及真实 tap 创建/运行/停止和 100 次 tap wrapper restart smoke。真实按键/鼠标 callback 计数、系统主动 timeout/disable、TCC 授权/拒绝/撤销、校正结果和锁屏/睡眠恢复仍必须在受控 macOS 实机完成；100 次循环尚未包含专门的泄漏工具采样或系统故障注入。
+目前已覆盖 denied/granted、tap timeout/disable、permission revocation 和 session reset 的状态测试，以及真实 tap 创建/运行/停止、100 次 tap wrapper restart smoke 和候选 pressed-set 校正边界。真实鼠标 callback、系统主动 timeout/disable、TCC 授权/拒绝/撤销、周期性校正调度、runtime pressed state 接入和锁屏/睡眠恢复仍必须在受控 macOS 实机完成；100 次循环尚未包含专门的泄漏工具采样或系统故障注入。本机未安装 `x86_64-unknown-linux-gnu` 标准库，因此新增纯函数的 Linux 交叉测试只由 Ubuntu CI 覆盖。

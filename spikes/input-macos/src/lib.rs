@@ -1,5 +1,7 @@
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 
+use std::collections::BTreeSet;
+
 #[cfg(target_os = "macos")]
 use std::{
     panic::{AssertUnwindSafe, catch_unwind},
@@ -329,6 +331,32 @@ pub fn reconcile_key_state(key_code: u16) -> bool {
     CGEventSource::key_state(CGEventSourceStateID::CombinedSessionState, key_code)
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct KeyReconciliation {
+    pub still_pressed: BTreeSet<u16>,
+    pub released_count: usize,
+}
+
+fn reconcile_pressed_key_codes_with(
+    candidates: &BTreeSet<u16>,
+    mut is_pressed: impl FnMut(u16) -> bool,
+) -> KeyReconciliation {
+    let still_pressed = candidates
+        .iter()
+        .copied()
+        .filter(|key_code| is_pressed(*key_code))
+        .collect::<BTreeSet<_>>();
+    KeyReconciliation {
+        released_count: candidates.len().saturating_sub(still_pressed.len()),
+        still_pressed,
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn reconcile_pressed_key_codes(candidates: &BTreeSet<u16>) -> KeyReconciliation {
+    reconcile_pressed_key_codes_with(candidates, reconcile_key_state)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -385,5 +413,26 @@ mod tests {
             lifecycle.apply(CaptureEvent::SessionReset).action,
             Some(CaptureAction::RestartTap)
         );
+    }
+
+    #[test]
+    fn reconciliation_keeps_confirmed_keys_and_counts_releases() {
+        let candidates = BTreeSet::from([0, 1, 2, 3]);
+        let report = reconcile_pressed_key_codes_with(&candidates, |key_code| key_code % 2 == 0);
+        assert_eq!(report.still_pressed, BTreeSet::from([0, 2]));
+        assert_eq!(report.released_count, 2);
+    }
+
+    #[test]
+    fn reconciliation_does_not_query_keys_outside_the_pressed_set() {
+        let candidates = BTreeSet::from([12, 13]);
+        let mut queried = Vec::new();
+        let report = reconcile_pressed_key_codes_with(&candidates, |key_code| {
+            queried.push(key_code);
+            false
+        });
+        assert_eq!(queried, vec![12, 13]);
+        assert!(report.still_pressed.is_empty());
+        assert_eq!(report.released_count, 2);
     }
 }
