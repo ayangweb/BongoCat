@@ -15,6 +15,10 @@
 - `reset` 清空所有 pressed key/button 和瞬时输入状态。
 - 每个 pressed key 最终必须由 `key_up` 或 `reset` 清除。
 
+## 可靠事件序列
+
+平台采集器为 key/button edge 和设备生命周期事件分配进程内单调 `sequence`。状态层必须检测重复、乱序和跳号：重复或乱序事件计数后忽略；跳号表示未知边沿可能丢失，先执行安全 `reset`，再应用当前事件。序列诊断只记录异常类别与数量，不记录具体键值；鼠标移动和手柄 axis 的 latest-value 更新不要求进入该序列。
+
 ## 高频值
 
 `cursor_moved` 和 `gamepad_axis` 可以在进入 runtime 前合并为最新值。合并不能改变 key/button edge 的顺序，也不能延迟释放事件。
