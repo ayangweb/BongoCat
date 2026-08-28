@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate Phase 0 fixture shape and input/expected cross-file invariants."""
+"""Validate Phase 0 fixture shape and cross-file invariants."""
 
 from __future__ import annotations
 
@@ -11,6 +11,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 INPUT_DIR = ROOT / "shared" / "fixtures" / "input-sequences"
 EXPECTED_DIR = ROOT / "shared" / "fixtures" / "expected-state"
+LEGACY_CONFIG_DIR = ROOT / "shared" / "config" / "legacy-pinia"
+LEGACY_STORE_NAMES = ("app", "general", "cat", "model", "shortcut")
 
 
 def fail(path: Path, message: str) -> None:
@@ -81,7 +83,82 @@ def validate_expected(path: Path, value: dict, input_id: str, input_events: list
             fail(path, f"checkpoints[{index}] must include input and model objects")
 
 
+def walk_strings(value: object):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, list):
+        for item in value:
+            yield from walk_strings(item)
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from walk_strings(item)
+
+
+def validate_synthetic_paths(path: Path, value: dict) -> None:
+    for text in walk_strings(value):
+        is_unix_absolute = text.startswith("/")
+        is_windows_absolute = len(text) >= 3 and text[0].isalpha() and text[1] == ":" and text[2] in "\\/"
+        if is_unix_absolute or is_windows_absolute:
+            fail(path, "synthetic fixture must not contain an absolute user path")
+
+
+def validate_legacy_config_fixtures() -> int:
+    manifest_path = LEGACY_CONFIG_DIR / "manifest.json"
+    manifest = load(manifest_path)
+    if manifest.get("schemaVersion") != 1 or not isinstance(manifest.get("cases"), list):
+        fail(manifest_path, "schemaVersion must be 1 and cases must be an array")
+
+    case_ids: set[str] = set()
+    listed_directories: set[str] = set()
+    for index, case in enumerate(manifest["cases"]):
+        if not isinstance(case, dict):
+            fail(manifest_path, f"cases[{index}] must be an object")
+        case_id = case.get("id")
+        directory = case.get("directory")
+        expected = case.get("expected")
+        if not isinstance(case_id, str) or case_id in case_ids:
+            fail(manifest_path, f"cases[{index}].id must be a unique string")
+        if not isinstance(directory, str) or Path(directory).name != directory:
+            fail(manifest_path, f"cases[{index}].directory must be one path component")
+        if expected not in {"migrate", "migrate-with-stale-fields-ignored", "reject"}:
+            fail(manifest_path, f"cases[{index}].expected is invalid")
+        if case.get("preserveSource") is not True:
+            fail(manifest_path, f"cases[{index}] must require source preservation")
+
+        case_dir = LEGACY_CONFIG_DIR / directory
+        if not case_dir.is_dir():
+            fail(manifest_path, f"case directory does not exist: {directory}")
+        case_ids.add(case_id)
+        listed_directories.add(directory)
+
+        for store_name in LEGACY_STORE_NAMES:
+            store_path = case_dir / f"{store_name}.json"
+            if expected == "reject" and store_name == "cat":
+                invalid_path = case_dir / "cat.json.invalid"
+                if not invalid_path.is_file() or store_path.exists():
+                    fail(case_dir, "reject case must contain only cat.json.invalid for cat store")
+                try:
+                    json.loads(invalid_path.read_text(encoding="utf-8"))
+                except json.JSONDecodeError:
+                    continue
+                fail(invalid_path, "damaged fixture must not parse as JSON")
+
+            if not store_path.is_file():
+                fail(case_dir, f"missing store: {store_name}.json")
+            validate_synthetic_paths(store_path, load(store_path))
+
+        print(f"ok legacy-config {case_id}")
+
+    actual_case_dirs = {
+        path.name for path in LEGACY_CONFIG_DIR.iterdir() if path.is_dir()
+    }
+    if unlisted := actual_case_dirs - listed_directories:
+        fail(manifest_path, f"unlisted legacy config directories: {sorted(unlisted)}")
+    return len(case_ids)
+
+
 def main() -> int:
+    legacy_case_count = validate_legacy_config_fixtures()
     input_files = sorted(INPUT_DIR.glob("*.json"))
     if not input_files:
         print("no input fixtures found", file=sys.stderr)
@@ -104,7 +181,7 @@ def main() -> int:
     }
     if orphaned := expected_ids - input_ids:
         fail(EXPECTED_DIR, f"expected fixtures without input sequences: {sorted(orphaned)}")
-    print(f"validated {len(input_ids)} fixture(s)")
+    print(f"validated {len(input_ids)} input fixture(s) and {legacy_case_count} legacy config case(s)")
     return 0
 
 

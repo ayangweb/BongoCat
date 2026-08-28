@@ -112,15 +112,17 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 ### 1.3 配置与资源考古
 
 - [ ] 在 Windows/macOS 实机确认 Pinia/Tauri store 的真实落盘路径和格式。
-- [ ] 保存匿名化默认、长期升级、自定义模型和损坏配置样本。
-- [ ] 列出 `app`、`general`、`cat`、`model`、`shortcut` 的持久化字段。
-- [ ] 记录 deprecated 映射：mirror、mouseMirror、passThrough、alwaysOnTop、scale、opacity。
-- [ ] 记录 deprecated 映射：autostart、taskbarVisible、theme、isDark、autoCheckUpdate。
-- [ ] 标记不得迁移的 pressedKeys、modelReady 和能力缓存等瞬时字段。
-- [ ] 为 standard、keyboard、gamepad 预置模型生成文件清单和 hash。
+- [x] 保存匿名化默认、长期升级、自定义模型和损坏配置样本。
+- [x] 列出 `app`、`general`、`cat`、`model`、`shortcut` 的持久化字段。
+- [x] 记录 deprecated 映射：mirror、mouseMirror、passThrough、alwaysOnTop、scale、opacity。
+- [x] 记录 deprecated 映射：autostart、taskbarVisible、theme、isDark、autoCheckUpdate。
+- [x] 标记不得迁移的 pressedKeys、modelReady 和能力缓存等瞬时字段。
+- [x] 为 standard、keyboard、gamepad 预置模型生成文件清单和 hash。
 - [ ] 建立缺文件、损坏 JSON、非 ASCII 路径、超大纹理等模型 fixture。
-- [ ] 记录 model3、moc、texture、motion、expression、physics、pose、cdi 和音频用法。
-- [ ] 记录 background、cover、left-keys、right-keys 的实际语义。
+- [x] 记录 model3、moc、texture、motion、expression、physics、pose、cdi 和音频用法。
+- [x] 记录 background、cover、left-keys、right-keys 的实际语义。
+
+状态（2026-08-28）：macOS 实机确认生产 store 目录、五个 JSON 的稀疏/历史字段结构和 13 个自定义模型的匿名统计；Windows 落盘位置仍未实机确认。合成 config fixture 已覆盖默认、长期升级冲突、自定义模型和截断 JSON；模型异常目录 fixture 仍待建立。
 
 ### 1.4 行为 fixture
 
@@ -745,6 +747,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 4. [ ] `P0-DOC-CONSISTENCY`：补建 ADR-006/007，记录旧版 tag/安装包 hash、target triple 和工具链矩阵。
    - 状态（2026-08-28）：ADR 与仓库/发布基线已完成；target/toolchain 文档为 provisional，仍待 Windows 实机、GPUI 发布构建和 Cubism 架构证据后冻结。
 5. [ ] `P0-ARCHAEOLOGY`：补齐 Windows 真实配置路径、历史版本样本、完整功能优先级和模型异常 fixture。
+   - 状态（2026-08-28）：macOS 真实 store 结构、配置字段/迁移优先级、合成迁移 fixture 和自定义模型匿名统计已完成；Windows 实机、早期 tag 字段演化和模型异常目录 fixture 待完成。
 6. [ ] `P0-GPUI-PACKAGE-MAC`：使用默认预编译 shader 构建 `.app`，验证 IME、剪贴板、焦点、辅助功能、主题和窗口重开。
    - 状态（2026-08-28）：默认 shader、bundle、菜单和窗口生命周期通过；辅助功能内容节点缺失，IME、文本编辑、剪贴板、完整焦点链和主题待验证。
 7. [ ] `P0-GPUI-WINDOWS`：在 Windows 构建同一 spike，验证字体、IME、DPI、辅助功能和正常退出。

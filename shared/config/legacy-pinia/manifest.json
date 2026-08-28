@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "default",
+      "directory": "default",
+      "expected": "migrate",
+      "preserveSource": true
+    },
+    {
+      "id": "upgraded-with-custom-model",
+      "directory": "upgraded-with-custom-model",
+      "expected": "migrate-with-stale-fields-ignored",
+      "preserveSource": true
+    },
+    {
+      "id": "damaged-cat",
+      "directory": "damaged",
+      "expected": "reject",
+      "preserveSource": true
+    }
+  ]
+}

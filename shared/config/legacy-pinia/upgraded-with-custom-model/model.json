@@ -1,0 +1,65 @@
+{
+  "modelReady": false,
+  "models": [
+    {
+      "id": "preset-standard-old-id",
+      "path": "$BUNDLED_MODELS/standard",
+      "mode": "standard",
+      "isPreset": true
+    },
+    {
+      "id": "custom-demo",
+      "path": "$LEGACY_APP_DATA/custom-models/示例 model",
+      "mode": "keyboard",
+      "isPreset": false
+    }
+  ],
+  "currentModel": {
+    "id": "custom-demo",
+    "path": "$LEGACY_APP_DATA/custom-models/示例 model",
+    "mode": "keyboard",
+    "isPreset": false
+  },
+  "supportKeys": {
+    "KeyA": "$LEGACY_APP_DATA/custom-models/示例 model/resources/left-keys/KeyA.png"
+  },
+  "pressedKeys": {
+    "KeyA": "$LEGACY_APP_DATA/custom-models/示例 model/resources/left-keys/KeyA.png"
+  },
+  "motions": {
+    "Tap": [
+      {
+        "File": "tap.motion3.json",
+        "FadeInTime": 0,
+        "FadeOutTime": 0
+      }
+    ]
+  },
+  "expressions": [
+    {
+      "Name": "smile",
+      "File": "smile.exp3.json"
+    }
+  ],
+  "currentMotions": [
+    [
+      "Tap",
+      [
+        {
+          "File": "tap.motion3.json",
+          "FadeInTime": 0,
+          "FadeOutTime": 0
+        }
+      ]
+    ]
+  ],
+  "currentExpressions": [
+    {
+      "name": "smile"
+    }
+  ],
+  "shortcuts": {
+    "custom-demo:motion:Tap:0": "Control+1",
+    "custom-demo:expression:0": "Control+2"
+  }
+}

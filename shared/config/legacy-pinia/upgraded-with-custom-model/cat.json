@@ -1,0 +1,33 @@
+{
+  "mirrorMode": true,
+  "mouseMirror": true,
+  "penetrable": true,
+  "alwaysOnTop": true,
+  "scale": 175,
+  "opacity": 80,
+  "visible": false,
+  "singleMode": true,
+  "migrated": true,
+  "model": {
+    "mirror": false,
+    "mouseMirror": false,
+    "motionSound": true,
+    "behavior": true,
+    "autoReleaseDelay": 3,
+    "maxFPS": 60,
+    "ignoreMouse": false,
+    "single": true
+  },
+  "window": {
+    "visible": true,
+    "passThrough": false,
+    "alwaysOnTop": false,
+    "scale": 125,
+    "opacity": 90,
+    "radius": 8,
+    "hideOnHover": true,
+    "hideOnHoverDelay": 1,
+    "keepInScreen": true,
+    "position": "right"
+  }
+}

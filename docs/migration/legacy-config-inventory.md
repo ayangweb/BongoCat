@@ -24,6 +24,19 @@ macOS 实机存在以下结构：
 
 仓库不保存用户当前配置、绝对路径、模型 id 或快捷键值。迁移 fixture 必须人工匿名化或合成。
 
+`shared/config/legacy-pinia/` 已建立完全合成的 default、长期升级+自定义模型和截断损坏三类 fixture。fixture 中的路径 token 只能在隔离临时目录解析，不得访问真实用户目录。
+
+## 存储机制
+
+- 前端使用 `@tauri-store/pinia 3.7.1`，Rust backend 声明 `tauri-plugin-pinia = "3"`。
+- `app`、`general`、`cat`、`model`、`shortcut` 分别写入独立 JSON，没有统一事务或 `schemaVersion`。
+- 生产文件位于 `tauri-plugin-pinia/<store>.json`；开发构建使用 `<store>.dev.json`。
+- 应用启动时依次执行各 store 的 `$tauri.start()`；插件默认在退出时保存。
+- backend 使用 merge/patch 维护对象。被新版本省略的 key 不一定从旧 JSON 删除，因此磁盘文件可能长期保留 deprecated 字段和派生缓存。
+- `model` store 当前以默认 `omit` 策略过滤 `supportKeys`、`pressedKeys`。该过滤只影响后续同步；实机升级样本仍包含历史 `supportKeys`，证明迁移器必须主动忽略，而不能以“当前代码已过滤”为依据。
+
+macOS 实机的生产 JSON 都能解析，但部分 store 是稀疏对象，只包含曾写入或历史遗留字段。迁移器必须逐字段读取并应用默认值，不能要求五个文件都具有当前源码的完整形状。
+
 ## Store 字段
 
 ### app.json
@@ -107,7 +120,7 @@ new nested field
 ## 待办
 
 - Windows 实机确认 store 目录、文件名和历史安装版本差异。
-- 从发布 tag 收集不同 schema 样本并匿名化。
+- 从更早发布 tag 收集不同 schema 样本，补充当前合成 fixture 未覆盖的字段演化。
 - 明确 `model.single`、`singleMode`、`window.position` 的历史版本语义。
 - 定义新 `schemaVersion: 1` 的完整 JSON schema。
-- 添加损坏、截断、越界、未知字段和重复迁移 fixture。
+- 在已有截断样本上继续添加越界、未知字段和重复迁移 fixture。

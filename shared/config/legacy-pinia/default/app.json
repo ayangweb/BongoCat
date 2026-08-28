@@ -1,0 +1,20 @@
+{
+  "name": "BongoCat",
+  "version": "1.1.0",
+  "windowState": {
+    "main": {
+      "x": 100,
+      "y": 100,
+      "width": 360,
+      "height": 360,
+      "type": "Physical"
+    },
+    "preference": {
+      "x": 160,
+      "y": 120,
+      "width": 800,
+      "height": 600,
+      "type": "Physical"
+    }
+  }
+}
