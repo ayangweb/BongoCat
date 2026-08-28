@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "limits": {
+    "maximumTextureDimension": 8192
+  },
+  "cases": [
+    {
+      "id": "missing-moc",
+      "directory": "missing-moc",
+      "stage": "reference_resolution",
+      "expected": "reject",
+      "expectedDiagnostics": ["model_moc_missing"]
+    },
+    {
+      "id": "malformed-model3-json",
+      "directory": "malformed-model3-json",
+      "stage": "json_parse",
+      "entrySource": "cat.model3.json.invalid",
+      "materializedEntry": "cat.model3.json",
+      "expected": "reject",
+      "expectedDiagnostics": ["model_json_invalid"]
+    },
+    {
+      "id": "non-ascii-path",
+      "directory": "非 ASCII 模型",
+      "stage": "reference_resolution",
+      "expected": "accept",
+      "expectedDiagnostics": []
+    },
+    {
+      "id": "oversized-texture",
+      "directory": "oversized-texture",
+      "stage": "texture_header",
+      "materialize": [
+        {
+          "source": "textures/huge.png.hex",
+          "target": "textures/huge.png",
+          "encoding": "hex"
+        }
+      ],
+      "expected": "reject",
+      "expectedDiagnostics": ["model_texture_dimension_exceeded"]
+    },
+    {
+      "id": "path-traversal",
+      "directory": "path-traversal",
+      "stage": "reference_resolution",
+      "expected": "reject",
+      "expectedDiagnostics": ["model_reference_escapes_root"]
+    },
+    {
+      "id": "multiple-model3",
+      "directory": "multiple-model3",
+      "stage": "package_discovery",
+      "expected": "reject",
+      "expectedDiagnostics": ["model_entry_ambiguous"]
+    }
+  ]
+}

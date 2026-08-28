@@ -122,11 +122,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 定义 Development/Production 双存储根；schema 和内部相对结构保持一致。
 - [x] 保存匿名化旧配置样本和只读 inspector 作为历史参考，不接入生产配置路径。
 - [x] 为 standard、keyboard、gamepad 预置模型生成文件清单和 hash。
-- [ ] 建立缺文件、损坏 JSON、非 ASCII 路径、超大纹理等模型 fixture。
+- [x] 建立缺文件、损坏 JSON、非 ASCII 路径、超大纹理等模型 fixture。
 - [x] 记录 model3、moc、texture、motion、expression、physics、pose、cdi 和音频用法。
 - [x] 记录 background、cover、left-keys、right-keys 的实际语义。
 
-状态（2026-08-28）：ADR-008 和 `shared/config/native-config-contract.md` 已冻结应用身份、环境隔离与新字段命名。旧配置兼容已移出产品范围；此前的合成 fixture 与 `tools/legacy-config-inspector/` 只保留为历史考古证据。模型异常目录 fixture 仍待建立。
+状态（2026-08-28）：ADR-008 和 `shared/config/native-config-contract.md` 已冻结应用身份、环境隔离与新字段命名。旧配置兼容已移出产品范围；此前的合成 fixture 与 `tools/legacy-config-inspector/` 只保留为历史考古证据。六类合成模型包已覆盖缺失 moc、损坏 JSON、非 ASCII/空格路径、超大纹理、路径穿越和多 model3 入口，并由临时目录 validator 检查稳定诊断；Cubism 与 renderer 兼容仍待独立 spike。
 
 ### 1.4 行为 fixture
 
@@ -754,7 +754,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 4. [ ] `P0-DOC-CONSISTENCY`：维护 ADR-006/007/008，记录旧版 tag/安装包 hash、target triple 和工具链矩阵。
    - 状态（2026-08-28）：ADR 与仓库/发布基线已完成；target/toolchain 文档为 provisional，仍待 Windows 实机、GPUI 发布构建和 Cubism 架构证据后冻结。
 5. [ ] `P0-ARCHAEOLOGY`：补齐完整功能优先级和模型异常 fixture。
-   - 状态（2026-08-28）：旧配置兼容已从产品范围移除；预置模型资源清单、自定义模型匿名统计已完成，完整功能优先级和模型异常目录 fixture 待完成。
+   - 状态（2026-08-28）：旧配置兼容已从产品范围移除；预置模型资源清单、自定义模型匿名统计和六类模型异常目录 fixture 已完成，完整功能优先级仍待补齐。
 6. [x] `P0-CONFIG-CONTRACT`：固定 Bundle ID、自有字段命名和 Development/Production 隔离存储契约。
    - 状态（2026-08-28）：ADR-008 与 naming contract 已完成；实际 path resolver 和隔离测试在配置 crate 阶段实现。
 7. [ ] `P0-GPUI-PACKAGE-MAC`：使用默认预编译 shader 构建 `.app`，验证 IME、剪贴板、焦点、辅助功能、主题和窗口重开。

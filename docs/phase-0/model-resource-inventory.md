@@ -77,7 +77,7 @@ model-root/
 - macOS metadata 文件；
 - 非预置 expression 命名。
 
-用户模型不得直接提交到仓库。后续 fixture 必须使用取得分发授权的样本或人工合成的最小目录，并覆盖：路径含空格/非 ASCII、缺文件、损坏 JSON、超大纹理、多 model3 和路径穿越。
+用户模型不得直接提交到仓库。可分发的运行时 fixture 必须使用取得分发授权的样本；静态导入 preflight 使用人工合成的最小目录。
 
 2026-08-28 对本机旧版数据目录只执行结构统计，未复制或记录用户模型 id、名称和内容：
 
@@ -93,6 +93,23 @@ model-root/
 | 缺少 resources/background/cover/left-keys 的模型根目录 |                0 |
 
 该样本说明 importer 必须处理大文件和大量 motion，且不能把预置模型“不含 physics/pose”的结论推广到自定义模型。统计不代表所有用户模型都符合相同目录完整性。
+
+## 合成异常模型 fixture
+
+`shared/fixtures/model-fixtures/cases.json` 固定六类导入 preflight 行为：
+
+| 用例                    | 预期结果 | 稳定诊断                           |
+| ----------------------- | -------- | ---------------------------------- |
+| 缺失 moc                | reject   | `model_moc_missing`                |
+| 损坏 model3 JSON        | reject   | `model_json_invalid`               |
+| 非 ASCII 和空格路径     | accept   | 无                                 |
+| 32768 x 32768 纹理头    | reject   | `model_texture_dimension_exceeded` |
+| `..` 引用逃逸模型根目录 | reject   | `model_reference_escapes_root`     |
+| 多个 model3 入口        | reject   | `model_entry_ambiguous`            |
+
+Phase 0 暂定单边纹理尺寸上限为 `8192`。超大纹理 fixture 只保存紧凑的 PNG 十六进制头，并在临时目录物化；validator 必须在完整图片解码和 GPU 分配前拒绝。所有合成包只验证入口发现、JSON 解析、引用解析和纹理头限制，既不包含有效 Cubism moc，也不得传入 Cubism Core。它们不能证明 drawable、motion、expression、physics、mask 或 renderer 兼容。
+
+运行 `python3 tools/validate-fixtures.py` 会复制每个源 fixture 到隔离临时目录、比较精确诊断并在退出时清理物化文件。验证不得修改源包或当前活动模型。
 
 ## Spike 验收
 
