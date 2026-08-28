@@ -192,6 +192,7 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
 ```
 
 - Key/button down/up、设备连接和 command 必须可靠、有序；溢出是可观测错误，不能静默丢弃。
+- 可靠队列溢出时必须清空无法证明顺序的缓存，并在队首注入 `Reset`；原始失败 item 返回 producer，溢出、恢复和被清理 item 数量进入诊断 snapshot。
 - 鼠标移动和摇杆轴可以合并为最新值，不能阻塞边沿事件。
 - 动画和延迟使用单调时钟 `Instant`，持久化时间才使用墙上时钟。
 - render snapshot 不含锁和平台对象，通过双缓冲或 latest-value channel 交给渲染线程。

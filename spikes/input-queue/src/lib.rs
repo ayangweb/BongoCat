@@ -24,6 +24,8 @@ pub struct ReliableQueue<T> {
     items: VecDeque<T>,
     closed: bool,
     overflow_count: u64,
+    recovery_reset_count: u64,
+    recovery_discard_count: u64,
 }
 
 impl<T> ReliableQueue<T> {
@@ -34,6 +36,8 @@ impl<T> ReliableQueue<T> {
             items: VecDeque::with_capacity(capacity),
             closed: false,
             overflow_count: 0,
+            recovery_reset_count: 0,
+            recovery_discard_count: 0,
         }
     }
 
@@ -46,6 +50,34 @@ impl<T> ReliableQueue<T> {
         }
         if self.items.len() == self.capacity {
             self.overflow_count += 1;
+            return Err(QueueError {
+                kind: QueueErrorKind::Full,
+                item,
+            });
+        }
+        self.items.push_back(item);
+        Ok(())
+    }
+
+    /// Push an edge and install a recovery marker when the queue is full.
+    ///
+    /// Once full, the relative order of already buffered edges can no longer
+    /// establish a trustworthy state. The buffered items are therefore
+    /// discarded as one observable recovery operation, and `reset` is made the
+    /// next item to consume. The rejected item is still returned to the caller.
+    pub fn push_with_overflow_reset(&mut self, item: T, reset: T) -> Result<(), QueueError<T>> {
+        if self.closed {
+            return Err(QueueError {
+                kind: QueueErrorKind::Closed,
+                item,
+            });
+        }
+        if self.items.len() == self.capacity {
+            self.overflow_count += 1;
+            self.recovery_reset_count += 1;
+            self.recovery_discard_count += self.items.len() as u64;
+            self.items.clear();
+            self.items.push_back(reset);
             return Err(QueueError {
                 kind: QueueErrorKind::Full,
                 item,
@@ -81,6 +113,14 @@ impl<T> ReliableQueue<T> {
 
     pub fn overflow_count(&self) -> u64 {
         self.overflow_count
+    }
+
+    pub fn recovery_reset_count(&self) -> u64 {
+        self.recovery_reset_count
+    }
+
+    pub fn recovery_discard_count(&self) -> u64 {
+        self.recovery_discard_count
     }
 }
 
@@ -132,6 +172,33 @@ mod tests {
         );
         assert_eq!(queue.overflow_count(), 1);
         assert_eq!(queue.pop(), Some(1));
+    }
+
+    #[test]
+    fn overflow_reset_discards_untrusted_edges_and_preserves_recovery_marker() {
+        let mut queue = ReliableQueue::with_capacity(2);
+        queue.push("first").unwrap();
+        queue.push("second").unwrap();
+        let error = queue
+            .push_with_overflow_reset("third", "reset")
+            .unwrap_err();
+        assert_eq!(error.kind, QueueErrorKind::Full);
+        assert_eq!(error.item, "third");
+        assert_eq!(queue.pop(), Some("reset"));
+        assert_eq!(queue.pop(), None);
+        assert_eq!(queue.overflow_count(), 1);
+        assert_eq!(queue.recovery_reset_count(), 1);
+        assert_eq!(queue.recovery_discard_count(), 2);
+    }
+
+    #[test]
+    fn closed_overflow_reset_does_not_enqueue_recovery_marker() {
+        let mut queue = ReliableQueue::with_capacity(1);
+        queue.close();
+        let error = queue.push_with_overflow_reset("item", "reset").unwrap_err();
+        assert_eq!(error.kind, QueueErrorKind::Closed);
+        assert_eq!(queue.recovery_reset_count(), 0);
+        assert!(queue.is_empty());
     }
 
     #[test]

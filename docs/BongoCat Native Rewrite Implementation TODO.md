@@ -309,6 +309,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-28）：`spikes/input-state/` 已验证可靠输入事件的重复/乱序忽略与跳号安全 reset；runtime queue、command sequence 和平台 producer 仍待产品 crate。
 - [ ] cursor/gamepad axis 使用 latest-value 合并通道。
 - [ ] 队列溢出必须计数、记录并触发安全恢复。
+  - 状态（2026-08-28）：`spikes/input-queue/` 的 `push_with_overflow_reset` 已固定溢出返回原事件、清空不可信缓存、注入 `Reset` 并记录恢复/丢弃计数；runtime producer、诊断 snapshot 和实际容量仍待产品实现。
 - [ ] 动画、长按和延迟统一使用 Instant。
 - [ ] 实现可注入 clock 和确定性 tick。
 - [ ] 实现 starting、ready、degraded、stopping、stopped 状态。
