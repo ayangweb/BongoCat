@@ -226,10 +226,11 @@ PixPin、Win+L 或其他系统级快捷键可能让应用收到按下边沿，�
 1. 使用 `windows-rs` 调用 `RegisterRawInputDevices`，后台窗口接收 `WM_INPUT`。
 2. 从 scan code、extended flag 和 `RI_KEY_BREAK` 建立物理键边沿。
 3. runtime 维护 pressed set，但事件流不是唯一事实来源。
-4. 对 pressed set 中的键周期性调用 `GetAsyncKeyState`；确认释放后生成内部 `KeyUp`。
-5. 会话锁定、桌面切换、睡眠、设备移除、服务重启和队列异常时发送 `Reset`。
-6. 必要时用 `WH_KEYBOARD_LL` 补充合成事件，但 hook 不得覆盖 Raw Input 物理状态。
-7. `RegisterHotKey` 只处理应用快捷键；冲突必须反馈 UI 并保留旧绑定。
+4. 校正使用单调时钟周期调度；默认每 `250 ms` 查询一次，并要求同一个 key 连续 `2` 次快照缺失才确认释放，避免单次系统查询异常误清除。时钟回退不得推进调度游标。
+5. 对 pressed set 中确认释放的键生成内部 `KeyUp`。
+6. 会话锁定、桌面切换、睡眠、设备移除、服务重启和队列异常时发送 `Reset`；这些生命周期复位不等待确认阈值。
+7. 必要时用 `WH_KEYBOARD_LL` 补充合成事件，但 hook 不得覆盖 Raw Input 物理状态。
+8. `RegisterHotKey` 只处理应用快捷键；冲突必须反馈 UI 并保留旧绑定。
 
 该方案不承诺安全桌面交付每个释放事件，而是保证丢事件不会产生永久卡键。自动释放超时只是最后保险，不是正常语义。
 
@@ -240,7 +241,7 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 - 使用 listen-only `CGEventTap`，不经过 GPUI 响应链。
 - 区分 Input Monitoring/Accessibility 的 unknown、denied、granted、restart-required 状态。
 - 监听 tap 被系统禁用、超时和 session 变化，并自动重建。
-- 对 pressed set 使用 `CGEventSourceKeyState` 校正；睡眠、锁屏、权限变化和 tap 重启时复位。
+- 对 pressed set 使用 `CGEventSourceKeyState` 校正；按统一的 `250 ms`/连续 `2` 次缺失策略确认释放，睡眠、锁屏、权限变化和 tap 重启时直接复位。
 - callback 只做映射和入队，不执行模型、文件或 UI 工作。
 
 ## 10. 平台实现

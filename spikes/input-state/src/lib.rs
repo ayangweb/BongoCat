@@ -2,6 +2,9 @@
 
 use std::collections::BTreeSet;
 
+pub const DEFAULT_RECONCILIATION_INTERVAL_MS: u64 = 250;
+pub const DEFAULT_MISSING_CONFIRMATIONS: u8 = 2;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct InputKey(pub u16);
 
@@ -42,9 +45,124 @@ pub struct InputCounters {
     pub out_of_order_sequences: u64,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ReconciliationPolicy {
+    interval_ms: u64,
+    missing_confirmations: u8,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReconciliationPolicyError {
+    ZeroInterval,
+    ZeroConfirmations,
+}
+
+impl ReconciliationPolicy {
+    pub const fn new(
+        interval_ms: u64,
+        missing_confirmations: u8,
+    ) -> Result<Self, ReconciliationPolicyError> {
+        if interval_ms == 0 {
+            return Err(ReconciliationPolicyError::ZeroInterval);
+        }
+        if missing_confirmations == 0 {
+            return Err(ReconciliationPolicyError::ZeroConfirmations);
+        }
+        Ok(Self {
+            interval_ms,
+            missing_confirmations,
+        })
+    }
+
+    pub const fn interval_ms(self) -> u64 {
+        self.interval_ms
+    }
+
+    pub const fn missing_confirmations(self) -> u8 {
+        self.missing_confirmations
+    }
+}
+
+impl Default for ReconciliationPolicy {
+    fn default() -> Self {
+        Self {
+            interval_ms: DEFAULT_RECONCILIATION_INTERVAL_MS,
+            missing_confirmations: DEFAULT_MISSING_CONFIRMATIONS,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReconciliationClockError {
+    NonMonotonic { previous_ms: u64, received_ms: u64 },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReconciliationSchedule {
+    Due,
+    NotDue { remaining_ms: u64 },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ReconciliationScheduler {
+    policy: ReconciliationPolicy,
+    last_run_ms: Option<u64>,
+}
+
+impl ReconciliationScheduler {
+    pub const fn new(policy: ReconciliationPolicy) -> Self {
+        Self {
+            policy,
+            last_run_ms: None,
+        }
+    }
+
+    pub const fn policy(self) -> ReconciliationPolicy {
+        self.policy
+    }
+
+    pub const fn last_run_ms(self) -> Option<u64> {
+        self.last_run_ms
+    }
+
+    pub fn poll(
+        &mut self,
+        now_ms: u64,
+    ) -> Result<ReconciliationSchedule, ReconciliationClockError> {
+        let Some(previous_ms) = self.last_run_ms else {
+            self.last_run_ms = Some(now_ms);
+            return Ok(ReconciliationSchedule::Due);
+        };
+        if now_ms < previous_ms {
+            return Err(ReconciliationClockError::NonMonotonic {
+                previous_ms,
+                received_ms: now_ms,
+            });
+        }
+        let elapsed_ms = now_ms - previous_ms;
+        if elapsed_ms >= self.policy.interval_ms() {
+            self.last_run_ms = Some(now_ms);
+            Ok(ReconciliationSchedule::Due)
+        } else {
+            Ok(ReconciliationSchedule::NotDue {
+                remaining_ms: self.policy.interval_ms() - elapsed_ms,
+            })
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ReconciliationReport {
+    pub checked: usize,
+    pub released: usize,
+    pub still_pressed: usize,
+    pub pending_confirmations: usize,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PressedState {
     pressed: BTreeSet<InputKey>,
+    missing_confirmations: std::collections::BTreeMap<InputKey, u8>,
     counters: InputCounters,
     last_sequence: Option<u64>,
 }
@@ -97,6 +215,7 @@ impl PressedState {
     fn apply_event(&mut self, event: InputEvent) {
         match event {
             InputEvent::Down(key) => {
+                self.missing_confirmations.remove(&key);
                 if !self.pressed.insert(key) {
                     self.counters.duplicate_down += 1;
                 } else {
@@ -106,15 +225,18 @@ impl PressedState {
             InputEvent::Up(key) => {
                 self.counters.captured_up += 1;
                 self.pressed.remove(&key);
+                self.missing_confirmations.remove(&key);
             }
             InputEvent::Reconcile(snapshot) => {
                 let before = self.pressed.len();
                 self.pressed.retain(|key| snapshot.contains(key));
                 self.counters.reconciled_release +=
                     (before.saturating_sub(self.pressed.len())) as u64;
+                self.missing_confirmations.clear();
             }
             InputEvent::Reset => {
                 self.pressed.clear();
+                self.missing_confirmations.clear();
                 self.counters.reset += 1;
             }
         }
@@ -122,6 +244,37 @@ impl PressedState {
 
     pub fn is_pressed(&self, key: InputKey) -> bool {
         self.pressed.contains(&key)
+    }
+
+    pub fn reconcile_with_policy(
+        &mut self,
+        snapshot: &BTreeSet<InputKey>,
+        policy: ReconciliationPolicy,
+    ) -> ReconciliationReport {
+        let mut released = 0usize;
+        let pressed_before = self.pressed.len();
+        let threshold = policy.missing_confirmations();
+        let pressed_keys = self.pressed.iter().copied().collect::<Vec<_>>();
+        for key in pressed_keys {
+            if snapshot.contains(&key) {
+                self.missing_confirmations.remove(&key);
+                continue;
+            }
+            let confirmations = self.missing_confirmations.entry(key).or_insert(0);
+            *confirmations = confirmations.saturating_add(1);
+            if *confirmations >= threshold {
+                self.pressed.remove(&key);
+                self.missing_confirmations.remove(&key);
+                released += 1;
+            }
+        }
+        self.counters.reconciled_release += released as u64;
+        ReconciliationReport {
+            checked: pressed_before,
+            released,
+            still_pressed: self.pressed.len(),
+            pending_confirmations: self.missing_confirmations.len(),
+        }
     }
 }
 
@@ -231,5 +384,85 @@ mod tests {
         assert!(state.is_pressed(A));
         assert_eq!(state.counters().duplicate_sequences, 1);
         assert_eq!(state.counters().out_of_order_sequences, 1);
+    }
+
+    #[test]
+    fn scheduler_runs_immediately_then_only_after_interval() {
+        let policy = ReconciliationPolicy::new(250, 2).unwrap();
+        let mut scheduler = ReconciliationScheduler::new(policy);
+        assert_eq!(scheduler.poll(1_000).unwrap(), ReconciliationSchedule::Due);
+        assert_eq!(
+            scheduler.poll(1_249).unwrap(),
+            ReconciliationSchedule::NotDue { remaining_ms: 1 }
+        );
+        assert_eq!(scheduler.poll(1_250).unwrap(), ReconciliationSchedule::Due);
+        assert_eq!(scheduler.last_run_ms(), Some(1_250));
+    }
+
+    #[test]
+    fn reconciliation_policy_rejects_zero_interval_or_confirmation_threshold() {
+        assert_eq!(
+            ReconciliationPolicy::new(0, 2),
+            Err(ReconciliationPolicyError::ZeroInterval)
+        );
+        assert_eq!(
+            ReconciliationPolicy::new(250, 0),
+            Err(ReconciliationPolicyError::ZeroConfirmations)
+        );
+    }
+
+    #[test]
+    fn scheduler_rejects_clock_rollback_without_moving_last_run() {
+        let mut scheduler = ReconciliationScheduler::new(ReconciliationPolicy::default());
+        scheduler.poll(500).unwrap();
+        assert_eq!(
+            scheduler.poll(499),
+            Err(ReconciliationClockError::NonMonotonic {
+                previous_ms: 500,
+                received_ms: 499,
+            })
+        );
+        assert_eq!(scheduler.last_run_ms(), Some(500));
+    }
+
+    #[test]
+    fn transient_missing_snapshot_does_not_release_pressed_key() {
+        let policy = ReconciliationPolicy::new(100, 2).unwrap();
+        let mut state = PressedState::default();
+        state.apply(InputEvent::Down(A));
+        let empty = snapshot([]);
+        let first = state.reconcile_with_policy(&empty, policy);
+        assert_eq!(first.released, 0);
+        assert_eq!(first.pending_confirmations, 1);
+        assert!(state.is_pressed(A));
+        let held = snapshot([A]);
+        let confirmed = state.reconcile_with_policy(&held, policy);
+        assert_eq!(confirmed.pending_confirmations, 0);
+        assert!(state.is_pressed(A));
+    }
+
+    #[test]
+    fn repeated_missing_snapshots_release_key_and_count_reconciliation() {
+        let policy = ReconciliationPolicy::default();
+        let mut state = PressedState::default();
+        state.apply(InputEvent::Down(A));
+        let empty = snapshot([]);
+        assert_eq!(state.reconcile_with_policy(&empty, policy).released, 0);
+        let report = state.reconcile_with_policy(&empty, policy);
+        assert_eq!(report.released, 1);
+        assert!(state.pressed().is_empty());
+        assert_eq!(state.counters().reconciled_release, 1);
+    }
+
+    #[test]
+    fn reset_discards_pending_false_positive_confirmations() {
+        let mut state = PressedState::default();
+        state.apply(InputEvent::Down(A));
+        state.reconcile_with_policy(&snapshot([]), ReconciliationPolicy::default());
+        state.apply(InputEvent::Reset);
+        state.apply(InputEvent::Down(A));
+        let report = state.reconcile_with_policy(&snapshot([]), ReconciliationPolicy::default());
+        assert_eq!(report.released, 0);
+        assert!(state.is_pressed(A));
     }
 }

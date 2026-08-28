@@ -19,11 +19,14 @@ Key/button edge 使用可靠有序队列。鼠标移动和手柄轴使用 latest
 
 Windows 以 Raw Input 为主路径，并用 `GetAsyncKeyState` 校正。macOS 使用 CGEventTap，并用 `CGEventSourceKeyState` 校正。
 
+平台 adapter 统一使用单调时钟调度校正：默认间隔为 `250 ms`，同一个本地 pressed key 必须连续 `2` 次系统快照缺失才生成释放。单次查询异常只增加该 key 的待确认次数；后续快照确认仍按下时清零待确认次数。正常 `KeyUp` 和生命周期 `Reset` 立即清理待确认状态，`Reset` 不等待确认阈值；时钟回退不得推进校正调度游标。该策略由平台无关状态 contract 固定，平台只负责提供候选 pressed-set。
+
 ## Consequences
 
 - 单个释放事件丢失不会永久卡键。
 - 队列溢出必须可观测，不能静默丢弃边沿。
 - 自动释放超时只作为最后保险，不是正常输入语义。
+- 校正延迟上限由平台查询周期和确认次数共同决定；实机应分别测量权限、锁屏和睡眠恢复下的延迟。
 - Renderer 不直接查询系统键盘状态。
 
 ## Verification
