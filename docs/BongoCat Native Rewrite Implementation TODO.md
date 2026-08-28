@@ -132,7 +132,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 1.4 行为 fixture
 
-状态（2026-08-28）：已建立 v1 input/expected schema、9 组输入序列和规范化结果；输入、动作、表情、模型切换和音效 command 已覆盖，确定性 runner 与跨文件检查通过。物理键全集、旧版人工确认和固定版本的 Draft 2020-12 标准 validator 仍未完成。
+状态（2026-08-28）：已建立 v1 input/expected schema、9 组输入序列和规范化结果；输入、动作、表情、模型切换和音效 command 已覆盖，确定性 runner、跨文件检查和固定版本的 Draft 2020-12 标准 validator 均已在本机及 CI 通过。物理键全集和旧版人工确认仍未完成。
 
 - [x] 定义稳定的 `PhysicalKey`、`MouseButton`、`GamepadButton` 和 axis 表示；canonical names、按钮阈值、axis 范围和未知码诊断已写入 `shared/behavior/input-semantics.md`。
 - [x] 定义带单调相对时间的输入序列 JSON 格式。
