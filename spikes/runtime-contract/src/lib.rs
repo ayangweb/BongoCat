@@ -294,6 +294,12 @@ pub enum RuntimeCommand {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SequencedCommand {
+    pub sequence: u64,
+    pub command: RuntimeCommand,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CommandQueueErrorKind {
     Full,
     Closed,
@@ -301,6 +307,7 @@ pub enum CommandQueueErrorKind {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct CommandQueueError {
+    pub sequence: u64,
     pub kind: CommandQueueErrorKind,
     pub command: RuntimeCommand,
     pub discarded: usize,
@@ -310,8 +317,8 @@ impl fmt::Display for CommandQueueError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "runtime command queue {:?} while submitting {:?} (discarded={})",
-            self.kind, self.command, self.discarded
+            "runtime command queue {:?} at sequence {} while submitting {:?} (discarded={})",
+            self.kind, self.sequence, self.command, self.discarded
         )
     }
 }
@@ -321,8 +328,9 @@ impl std::error::Error for CommandQueueError {}
 #[derive(Debug)]
 struct CommandQueueState {
     capacity: usize,
-    commands: VecDeque<RuntimeCommand>,
+    commands: VecDeque<SequencedCommand>,
     closed: bool,
+    next_sequence: u64,
     overflow_count: u64,
     recovery_reset_count: u64,
     recovery_discard_count: u64,
@@ -345,6 +353,7 @@ impl CommandQueue {
                 capacity,
                 commands: VecDeque::with_capacity(capacity),
                 closed: false,
+                next_sequence: 1,
                 overflow_count: 0,
                 recovery_reset_count: 0,
                 recovery_discard_count: 0,
@@ -358,8 +367,33 @@ impl CommandQueue {
             .state
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let sequence = state.next_sequence;
+        state.next_sequence = state.next_sequence.saturating_add(1);
+        self.push_locked(&mut state, sequence, command)
+    }
+
+    pub fn push_with_sequence(
+        &self,
+        sequence: u64,
+        command: RuntimeCommand,
+    ) -> Result<(), CommandQueueError> {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.next_sequence = state.next_sequence.max(sequence.saturating_add(1));
+        self.push_locked(&mut state, sequence, command)
+    }
+
+    fn push_locked(
+        &self,
+        state: &mut CommandQueueState,
+        sequence: u64,
+        command: RuntimeCommand,
+    ) -> Result<(), CommandQueueError> {
         if state.closed {
             return Err(CommandQueueError {
+                sequence,
                 kind: CommandQueueErrorKind::Closed,
                 command,
                 discarded: 0,
@@ -367,12 +401,15 @@ impl CommandQueue {
         }
         if state.commands.len() == state.capacity {
             return Err(CommandQueueError {
+                sequence,
                 kind: CommandQueueErrorKind::Full,
                 command,
                 discarded: 0,
             });
         }
-        state.commands.push_back(command);
+        state
+            .commands
+            .push_back(SequencedCommand { sequence, command });
         self.wake.notify_one();
         Ok(())
     }
@@ -385,8 +422,33 @@ impl CommandQueue {
             .state
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let sequence = state.next_sequence;
+        state.next_sequence = state.next_sequence.saturating_add(1);
+        self.push_with_overflow_reset_locked(&mut state, sequence, command)
+    }
+
+    pub fn push_with_sequence_overflow_reset(
+        &self,
+        sequence: u64,
+        command: RuntimeCommand,
+    ) -> Result<(), CommandQueueError> {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.next_sequence = state.next_sequence.max(sequence.saturating_add(1));
+        self.push_with_overflow_reset_locked(&mut state, sequence, command)
+    }
+
+    fn push_with_overflow_reset_locked(
+        &self,
+        state: &mut CommandQueueState,
+        sequence: u64,
+        command: RuntimeCommand,
+    ) -> Result<(), CommandQueueError> {
         if state.closed {
             return Err(CommandQueueError {
+                sequence,
                 kind: CommandQueueErrorKind::Closed,
                 command,
                 discarded: 0,
@@ -398,22 +460,28 @@ impl CommandQueue {
             state.recovery_reset_count += 1;
             state.recovery_discard_count += discarded as u64;
             state.commands.clear();
-            state.commands.push_back(RuntimeCommand::Reset {
-                reason: RuntimeResetReason::QueueOverflow,
+            state.commands.push_back(SequencedCommand {
+                sequence,
+                command: RuntimeCommand::Reset {
+                    reason: RuntimeResetReason::QueueOverflow,
+                },
             });
             self.wake.notify_one();
             return Err(CommandQueueError {
+                sequence,
                 kind: CommandQueueErrorKind::Full,
                 command,
                 discarded,
             });
         }
-        state.commands.push_back(command);
+        state
+            .commands
+            .push_back(SequencedCommand { sequence, command });
         self.wake.notify_one();
         Ok(())
     }
 
-    fn pop_blocking(&self) -> Option<RuntimeCommand> {
+    fn pop_blocking(&self) -> Option<SequencedCommand> {
         let mut state = self
             .state
             .lock()
@@ -510,6 +578,9 @@ pub struct RuntimeSnapshot {
     pub reset_count: u64,
     pub discarded_work: u64,
     pub command_errors: u64,
+    pub last_command_sequence: Option<u64>,
+    pub sequence_gaps: u64,
+    pub duplicate_sequences: u64,
     pub worker_panics: u64,
     pub worker_status: WorkerStatus,
     pub queued_commands: usize,
@@ -532,6 +603,9 @@ impl Default for RuntimeSnapshot {
             reset_count: 0,
             discarded_work: 0,
             command_errors: 0,
+            last_command_sequence: None,
+            sequence_gaps: 0,
+            duplicate_sequences: 0,
             worker_panics: 0,
             worker_status: WorkerStatus::Starting,
             queued_commands: 0,
@@ -556,6 +630,15 @@ pub struct RuntimeWorker {
     join: Option<JoinHandle<WorkerExit>>,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+struct WorkerDiagnostics {
+    command_errors: u64,
+    worker_panics: u64,
+    last_command_sequence: Option<u64>,
+    sequence_gaps: u64,
+    duplicate_sequences: u64,
+}
+
 impl RuntimeWorker {
     pub fn spawn(capacity: usize) -> Self {
         let queue = Arc::new(CommandQueue::with_capacity(capacity));
@@ -577,12 +660,22 @@ impl RuntimeWorker {
         self.queue.push_with_overflow_reset(command)
     }
 
+    pub fn send_with_sequence(
+        &self,
+        sequence: u64,
+        command: RuntimeCommand,
+    ) -> Result<(), CommandQueueError> {
+        self.queue
+            .push_with_sequence_overflow_reset(sequence, command)
+    }
+
     pub fn snapshot(&self) -> RuntimeSnapshot {
+        // Keep queue -> snapshot lock order in sync with update_snapshot.
+        let queue = self.queue.diagnostics();
         let mut snapshot = *self
             .snapshot
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let queue = self.queue.diagnostics();
         snapshot.queued_commands = queue.queued;
         snapshot.queue_overflows = queue.overflow_count;
         snapshot.queue_recovery_resets = queue.recovery_reset_count;
@@ -617,34 +710,62 @@ impl Drop for RuntimeWorker {
 
 fn run_worker(queue: Arc<CommandQueue>, snapshot: Arc<Mutex<RuntimeSnapshot>>) -> WorkerExit {
     let mut runtime = RuntimeContract::new();
-    let mut command_errors = 0;
-    let mut worker_panics = 0;
+    let mut diagnostics = WorkerDiagnostics::default();
     let mut shutdown_disposition = None;
+    let mut expected_sequence = None;
     update_snapshot(
         &snapshot,
         &runtime,
-        command_errors,
-        worker_panics,
+        diagnostics,
         WorkerStatus::Running,
         &queue,
     );
 
-    while let Some(command) = queue.pop_blocking() {
-        let result = catch_unwind(AssertUnwindSafe(|| apply_command(&mut runtime, command)));
+    while let Some(envelope) = queue.pop_blocking() {
+        let sequence = envelope.sequence;
+        let command = envelope.command;
+        let is_overflow_reset = matches!(
+            command,
+            RuntimeCommand::Reset {
+                reason: RuntimeResetReason::QueueOverflow
+            }
+        );
+        let mut skip_command = false;
+        if is_overflow_reset {
+            expected_sequence = Some(sequence.saturating_add(1));
+        } else if let Some(expected) = expected_sequence {
+            if sequence < expected {
+                diagnostics.duplicate_sequences += 1;
+                skip_command = true;
+            } else if sequence > expected {
+                diagnostics.sequence_gaps += 1;
+                let _ = runtime.reset(RuntimeResetReason::WorkerRecovery);
+                expected_sequence = Some(sequence.saturating_add(1));
+            } else {
+                expected_sequence = Some(sequence.saturating_add(1));
+            }
+        } else {
+            expected_sequence = Some(sequence.saturating_add(1));
+        }
+        diagnostics.last_command_sequence = Some(sequence);
+        let result = if skip_command {
+            Ok(Ok(None))
+        } else {
+            catch_unwind(AssertUnwindSafe(|| apply_command(&mut runtime, command)))
+        };
         match result {
             Ok(Ok(disposition)) => {
                 if disposition.is_some() {
                     shutdown_disposition = disposition;
                 }
             }
-            Ok(Err(_error)) => command_errors += 1,
+            Ok(Err(_error)) => diagnostics.command_errors += 1,
             Err(_) => {
-                worker_panics += 1;
+                diagnostics.worker_panics += 1;
                 update_snapshot(
                     &snapshot,
                     &runtime,
-                    command_errors,
-                    worker_panics,
+                    diagnostics,
                     WorkerStatus::Panicked,
                     &queue,
                 );
@@ -655,8 +776,7 @@ fn run_worker(queue: Arc<CommandQueue>, snapshot: Arc<Mutex<RuntimeSnapshot>>) -
         update_snapshot(
             &snapshot,
             &runtime,
-            command_errors,
-            worker_panics,
+            diagnostics,
             WorkerStatus::Running,
             &queue,
         );
@@ -680,8 +800,7 @@ fn run_worker(queue: Arc<CommandQueue>, snapshot: Arc<Mutex<RuntimeSnapshot>>) -
     update_snapshot(
         &snapshot,
         &runtime,
-        command_errors,
-        worker_panics,
+        diagnostics,
         WorkerStatus::Stopped,
         &queue,
     );
@@ -712,8 +831,7 @@ fn apply_command(
 fn update_snapshot(
     snapshot: &Mutex<RuntimeSnapshot>,
     runtime: &RuntimeContract,
-    command_errors: u64,
-    worker_panics: u64,
+    diagnostics: WorkerDiagnostics,
     worker_status: WorkerStatus,
     queue: &CommandQueue,
 ) {
@@ -730,8 +848,11 @@ fn update_snapshot(
     current.timed_out_shutdowns = runtime.timed_out_shutdowns();
     current.reset_count = runtime.reset_count();
     current.discarded_work = runtime.discarded_work();
-    current.command_errors = command_errors;
-    current.worker_panics = worker_panics;
+    current.command_errors = diagnostics.command_errors;
+    current.last_command_sequence = diagnostics.last_command_sequence;
+    current.sequence_gaps = diagnostics.sequence_gaps;
+    current.duplicate_sequences = diagnostics.duplicate_sequences;
+    current.worker_panics = diagnostics.worker_panics;
     current.worker_status = worker_status;
     current.queued_commands = queue_diagnostics.queued;
     current.queue_overflows = queue_diagnostics.overflow_count;
@@ -869,8 +990,11 @@ mod tests {
         assert_eq!(queue.len(), 1);
         assert_eq!(
             queue.pop_blocking(),
-            Some(RuntimeCommand::Reset {
-                reason: RuntimeResetReason::QueueOverflow,
+            Some(SequencedCommand {
+                sequence: 3,
+                command: RuntimeCommand::Reset {
+                    reason: RuntimeResetReason::QueueOverflow,
+                },
             })
         );
         assert!(queue.is_empty());
@@ -946,5 +1070,39 @@ mod tests {
         );
         assert_eq!(report.snapshot.command_errors, 1);
         assert_eq!(report.snapshot.state, RuntimeState::Stopped);
+    }
+
+    #[test]
+    fn worker_resets_on_sequence_gap_and_ignores_duplicate_sequence() {
+        let worker = RuntimeWorker::spawn(8);
+        worker
+            .send_with_sequence(1, RuntimeCommand::MarkReady)
+            .unwrap();
+        worker
+            .send_with_sequence(3, RuntimeCommand::Tick { at_ms: 10 })
+            .unwrap();
+        worker
+            .send_with_sequence(3, RuntimeCommand::Tick { at_ms: 20 })
+            .unwrap();
+        worker
+            .send_with_sequence(4, RuntimeCommand::Recover)
+            .unwrap();
+        worker
+            .send_with_sequence(5, RuntimeCommand::BeginShutdown)
+            .unwrap();
+        worker
+            .send_with_sequence(6, RuntimeCommand::CompleteShutdown)
+            .unwrap();
+
+        let report = worker.shutdown();
+        assert_eq!(
+            report.exit,
+            WorkerExit::Clean(ShutdownDisposition::Completed)
+        );
+        assert_eq!(report.snapshot.sequence_gaps, 1);
+        assert_eq!(report.snapshot.duplicate_sequences, 1);
+        assert_eq!(report.snapshot.last_command_sequence, Some(6));
+        assert_eq!(report.snapshot.reset_count, 1);
+        assert_eq!(report.snapshot.command_errors, 0);
     }
 }

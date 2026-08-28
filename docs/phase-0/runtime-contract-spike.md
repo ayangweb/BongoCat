@@ -15,6 +15,7 @@ worker contract 进一步固定：
 
 - `CommandQueue` 使用固定容量、FIFO 和 `Condvar` 唤醒；满载时清空无法证明顺序的命令、计数并注入 `Reset { reason: QueueOverflow }`，原失败命令通过错误返回给 producer；
 - worker 独占 `RuntimeContract`，每次处理后发布递增 `RuntimeSnapshot.revision`；snapshot 只包含状态、计数和队列诊断，不包含平台对象或用户内容；
+- 每个 command 封装为单调 `u64` sequence；worker 对跳号先执行 `WorkerRecovery` reset 再应用当前 command，对重复/过期 sequence 丢弃并计数；队列溢出的 recovery marker 使用自己的 sequence 重新建立后续基线；
 - `RuntimeWorker::shutdown` 先关闭 producer，再 drain 已入队命令；队列排空但仍有未完成工作时返回 `TimedOut { discarded_work }`，不伪装为成功完成；
 - worker 通过 `catch_unwind` 隔离 panic，关闭 queue 并返回 `WorkerExit::Panicked`；正常退出和 panic 都有明确的 join report。
 
@@ -27,4 +28,4 @@ cargo test --manifest-path spikes/runtime-contract/Cargo.toml --locked
 cargo run --manifest-path spikes/runtime-contract/Cargo.toml --locked
 ```
 
-当前 13 个单元测试覆盖 degraded/recovery、startup 取消、tick 回退、operation 去重、重复 completion、reset、bounded queue 溢出恢复、worker revision snapshot、shutdown drain/timeout、command error 和 panic/join 报告。该 spike 不证明模型求值、平台输入行为、实时工作预算或产品级 channel 选型；产品 crate 必须以相同 contract 重新实现并补充 runtime/input/model 集成验收。
+当前 14 个单元测试覆盖 degraded/recovery、startup 取消、tick 回退、operation 去重、重复 completion、reset、bounded queue 溢出恢复、worker revision snapshot、sequence gap/duplicate、shutdown drain/timeout、command error 和 panic/join 报告。该 spike 不证明模型求值、平台输入行为、实时工作预算或产品级 channel 选型；产品 crate 必须以相同 contract 重新实现并补充 runtime/input/model 集成验收。

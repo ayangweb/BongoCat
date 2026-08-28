@@ -306,7 +306,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 为每个可靠队列定义容量、生产者、消费者、满载策略和关闭语义，不使用无界队列逃避背压设计。
   - 状态（2026-08-28）：`spikes/input-queue/` 已验证固定容量 FIFO、满载返回原事件、关闭 drain 和 latest-value 槽位；`spikes/runtime-contract/` 进一步验证固定容量 command queue、Condvar 唤醒、溢出 Reset、worker drain 和 join 报告；runtime 的实际容量与产品 channel 选型仍待产品 crate。
 - [ ] edge/command 携带单调 sequence id，诊断可发现乱序、重复和丢失但不记录具体键值。
-  - 状态（2026-08-28）：`spikes/input-state/` 已验证可靠输入事件的重复/乱序忽略与跳号安全 reset；runtime queue、command sequence 和平台 producer 仍待产品 crate。
+  - 状态（2026-08-28）：`spikes/input-state/` 已验证可靠输入事件的重复/乱序忽略与跳号安全 reset；`spikes/runtime-contract/` 已验证 typed command sequence、跳号前 `WorkerRecovery` reset、重复/过期 sequence 丢弃和诊断计数；平台 producer、输入事件 sequence 与产品 runtime 接入仍待产品 crate。
 - [ ] cursor/gamepad axis 使用 latest-value 合并通道。
 - [ ] 队列溢出必须计数、记录并触发安全恢复。
   - 状态（2026-08-28）：`spikes/input-queue/` 的 `push_with_overflow_reset` 已固定溢出返回原事件、清空不可信缓存、注入 `Reset` 并记录恢复/丢弃计数；`spikes/runtime-contract/` 已将同一策略应用到 typed command queue 并通过 worker snapshot 暴露诊断；runtime producer、实际容量和输入/command sequence 仍待产品实现。
@@ -316,7 +316,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 实现 shutdown drain、超时和错误聚合。
 - [ ] command 定义幂等性和重复提交语义；有副作用的长操作使用 operation id 去重。
 - [ ] runtime tick 设置工作预算，模型解析、磁盘、音频初始化和 GPU 上传不得阻塞实时队列。
-  - 状态（2026-08-28）：`spikes/runtime-contract/` 已通过 13 项测试，覆盖状态机、单调 tick、operation 去重、typed bounded worker、递增 snapshot revision、overflow Reset、shutdown drain/timeout、command error 和 panic/join 诊断；产品 runtime 的输入、模型、配置服务、工作预算和真实线程 owner 仍待 Phase 1/2。
+  - 状态（2026-08-28）：`spikes/runtime-contract/` 已通过 14 项测试，覆盖状态机、单调 tick、operation 去重、typed bounded worker、递增 snapshot revision、sequence gap/duplicate、overflow Reset、shutdown drain/timeout、command error 和 panic/join 诊断；产品 runtime 的输入、模型、配置服务、工作预算和真实线程 owner 仍待 Phase 1/2。
 
 ### 3.2 输入语义
 
@@ -783,7 +783,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 6. [x] `P0-CONFIG-CONTRACT`：固定 Bundle ID、自有字段命名和 Development/Production 隔离存储契约。
    - 状态（2026-08-28）：ADR-008 与 naming contract 已完成；实际 path resolver 和隔离测试在配置 crate 阶段实现。
 7. [x] `P0-RUNTIME-CONTRACT`：冻结生命周期、单调 tick、operation 去重、shutdown drain 与超时结果。
-   - 状态（2026-08-28）：`spikes/runtime-contract/` 已通过 13 项 contract test 并接入 CI，补齐 typed bounded worker、snapshot revision、overflow Reset、shutdown drain/timeout 和 panic/join 诊断；实际输入、模型、配置服务和平台 runtime 仍待 Phase 1/2。
+   - 状态（2026-08-28）：`spikes/runtime-contract/` 已通过 14 项 contract test 并接入 CI，补齐 typed bounded worker、snapshot revision、command sequence gap/duplicate、overflow Reset、shutdown drain/timeout 和 panic/join 诊断；实际输入、模型、配置服务和平台 runtime 仍待 Phase 1/2。
 8. [ ] `P0-GPUI-PACKAGE-MAC`：使用默认预编译 shader 构建 `.app`，验证 IME、剪贴板、焦点、辅助功能、主题和窗口重开。
    - 状态（2026-08-28）：默认 shader、bundle、菜单、窗口生命周期、主题、基础文本编辑/剪贴板、runtime bridge 和 macOS 性能基线通过；ADR-0009 已记录辅助功能 P0 gate，内容节点缺失，真实 IME、完整 tooltip/dialog/focus chain 仍待验证。
 9. [ ] `P0-GPUI-WINDOWS`：在 Windows 构建同一 spike，验证字体、IME、DPI、辅助功能和正常退出。
