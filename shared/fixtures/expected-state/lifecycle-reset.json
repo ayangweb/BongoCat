@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
   "sequenceId": "lifecycle-reset",
+  "provenance": "product_decision",
   "checkpoints": [
     {
       "atMs": 10,

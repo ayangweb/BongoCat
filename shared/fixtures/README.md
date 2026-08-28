@@ -25,6 +25,7 @@ fixtures/
 - `key_down/up` 使用稳定物理键名，不使用本地化字符。
 - Expected snapshot 中所有集合按 UTF-8 字典序排序。
 - 浮点值在比较前按 runner 规定的精度规范化；v1 使用小数点后 6 位。
+- Expected snapshot 必须声明 `provenance`：`legacy_observation`、`product_decision` 或 `bug_fix`；golden 更新不得没有来源。
 - Fixture 不包含绝对路径、用户模型 id、真实快捷键或个人数据。
 
 ## Runner 责任

@@ -4,10 +4,11 @@
   "title": "BongoCat expected runtime state fixture",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "sequenceId", "checkpoints"],
+  "required": ["schemaVersion", "sequenceId", "provenance", "checkpoints"],
   "properties": {
     "schemaVersion": { "const": 1 },
     "sequenceId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "provenance": { "enum": ["legacy_observation", "product_decision", "bug_fix"] },
     "checkpoints": {
       "type": "array",
       "items": { "$ref": "#/$defs/checkpoint" }

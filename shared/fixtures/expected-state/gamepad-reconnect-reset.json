@@ -1,26 +1,26 @@
 {
   "schemaVersion": 1,
-  "sequenceId": "keyboard-single-key",
+  "sequenceId": "gamepad-reconnect-reset",
   "provenance": "product_decision",
   "checkpoints": [
     {
-      "atMs": 0,
+      "atMs": 10,
       "input": {
-        "pressedKeys": ["KeyA"],
+        "pressedKeys": [],
         "pressedMouseButtons": [],
-        "connectedDevices": [],
+        "connectedDevices": ["fixture-pad-1"],
         "lastResetReason": null
       },
       "model": {
         "leftHandDown": true,
         "rightHandDown": false,
-        "parameters": { "CatParamLeftHandDown": 1.0 },
+        "parameters": { "GamepadSouthDown": 1.0 },
         "activeMotion": null,
         "activeExpression": null
       }
     },
     {
-      "atMs": 120,
+      "atMs": 40,
       "input": {
         "pressedKeys": [],
         "pressedMouseButtons": [],
@@ -30,7 +30,23 @@
       "model": {
         "leftHandDown": false,
         "rightHandDown": false,
-        "parameters": { "CatParamLeftHandDown": 0.0 },
+        "parameters": { "GamepadSouthDown": 0.0 },
+        "activeMotion": null,
+        "activeExpression": null
+      }
+    },
+    {
+      "atMs": 70,
+      "input": {
+        "pressedKeys": [],
+        "pressedMouseButtons": [],
+        "connectedDevices": [],
+        "lastResetReason": "device_removed"
+      },
+      "model": {
+        "leftHandDown": false,
+        "rightHandDown": false,
+        "parameters": { "GamepadEastDown": 0.0 },
         "activeMotion": null,
         "activeExpression": null
       }

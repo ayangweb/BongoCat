@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "sequenceId": "keyboard-single-key",
+  "sequenceId": "keyboard-modifiers-and-repeat",
   "provenance": "product_decision",
   "checkpoints": [
     {
-      "atMs": 0,
+      "atMs": 500,
       "input": {
-        "pressedKeys": ["KeyA"],
+        "pressedKeys": ["ControlLeft", "KeyA", "ShiftLeft"],
         "pressedMouseButtons": [],
         "connectedDevices": [],
         "lastResetReason": null
@@ -20,7 +20,7 @@
       }
     },
     {
-      "atMs": 120,
+      "atMs": 1020,
       "input": {
         "pressedKeys": [],
         "pressedMouseButtons": [],

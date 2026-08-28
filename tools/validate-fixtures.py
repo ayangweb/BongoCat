@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import math
+import re
 import shutil
 import sys
 import tempfile
@@ -27,6 +29,29 @@ MODEL_DIAGNOSTICS = {
     "model_texture_invalid_png",
     "model_texture_missing",
 }
+INPUT_EVENT_TYPES = {
+    "key_down",
+    "key_up",
+    "mouse_down",
+    "mouse_up",
+    "cursor_moved",
+    "gamepad_button",
+    "gamepad_axis",
+    "device_connected",
+    "device_disconnected",
+    "reset",
+}
+RESET_REASONS = {
+    "session_lock",
+    "sleep",
+    "device_removed",
+    "service_restart",
+    "queue_overflow",
+    "permission_changed",
+    "test",
+}
+MOUSE_BUTTONS = {"left", "right", "middle", "back", "forward"}
+DEVICE_KINDS = {"keyboard", "mouse", "gamepad"}
 
 
 def fail(path: Path, message: str) -> None:
@@ -50,11 +75,18 @@ def validate_input(path: Path, value: dict) -> tuple[str, list[dict]]:
         fail(path, f"missing fields: {sorted(missing)}")
     if value["schemaVersion"] != 1 or not isinstance(value["id"], str):
         fail(path, "schemaVersion must be 1 and id must be a string")
+    if re.fullmatch(r"[a-z0-9][a-z0-9-]*", value["id"]) is None:
+        fail(path, "id must use lowercase kebab-case")
+    if not isinstance(value["description"], str) or not value["description"].strip():
+        fail(path, "description must be a non-empty string")
     context = value["context"]
     if not isinstance(context, dict) or context.get("modelMode") not in {"standard", "keyboard", "gamepad"}:
         fail(path, "context.modelMode is invalid")
     if not isinstance(context.get("keySides"), dict):
         fail(path, "context.keySides must be an object")
+    if any(not isinstance(key, str) or not key or side not in {"left", "right"}
+           for key, side in context["keySides"].items()):
+        fail(path, "context.keySides keys must be non-empty strings with left/right values")
     events = value["events"]
     if not isinstance(events, list):
         fail(path, "events must be an array")
@@ -66,14 +98,61 @@ def validate_input(path: Path, value: dict) -> tuple[str, list[dict]]:
             fail(path, f"events must be ordered by atMs (index {index})")
         last_at = event["atMs"]
         event_type = event.get("type")
-        if event_type in {"key_down", "key_up"} and not isinstance(event.get("key"), str):
-            fail(path, f"events[{index}].key must be a string")
-        if event_type == "key_down" and not isinstance(event.get("repeat"), bool):
-            fail(path, f"events[{index}].repeat must be boolean")
-        if event_type == "reset" and event.get("reason") not in {
-            "session_lock", "sleep", "device_removed", "service_restart",
-            "queue_overflow", "permission_changed", "test",
-        }:
+        if event_type not in INPUT_EVENT_TYPES:
+            fail(path, f"events[{index}].type is unknown")
+        expected_fields = {
+            "key_down": {"atMs", "type", "key", "repeat", "source"},
+            "key_up": {"atMs", "type", "key", "source"},
+            "mouse_down": {"atMs", "type", "button", "source"},
+            "mouse_up": {"atMs", "type", "button", "source"},
+            "cursor_moved": {"atMs", "type", "position"},
+            "gamepad_button": {"atMs", "type", "deviceId", "button", "value"},
+            "gamepad_axis": {"atMs", "type", "deviceId", "axis", "value"},
+            "device_connected": {"atMs", "type", "deviceId", "deviceKind"},
+            "device_disconnected": {"atMs", "type", "deviceId", "deviceKind"},
+            "reset": {"atMs", "type", "reason"},
+        }[event_type]
+        if set(event) != expected_fields:
+            fail(path, f"events[{index}] fields do not match {event_type}")
+        if event_type == "key_down":
+            if not isinstance(event["key"], str) or not event["key"]:
+                fail(path, f"events[{index}].key must be a non-empty string")
+            if not isinstance(event["repeat"], bool) or event["source"] != "capture":
+                fail(path, f"events[{index}] key_down repeat/source is invalid")
+        elif event_type == "key_up":
+            if not isinstance(event["key"], str) or not event["key"]:
+                fail(path, f"events[{index}].key must be a non-empty string")
+            if event["source"] not in {"capture", "reconciliation"}:
+                fail(path, f"events[{index}].source is invalid")
+        elif event_type in {"mouse_down", "mouse_up"}:
+            if event["button"] not in MOUSE_BUTTONS or event["source"] not in {"capture", "reconciliation"}:
+                fail(path, f"events[{index}] mouse edge is invalid")
+        elif event_type == "cursor_moved":
+            position = event["position"]
+            if (not isinstance(position, dict) or set(position) != {"x", "y"}
+                    or not all(isinstance(position[axis], (int, float))
+                               and not isinstance(position[axis], bool)
+                               and math.isfinite(position[axis]) for axis in ("x", "y"))):
+                fail(path, f"events[{index}].position must contain finite x/y numbers")
+        elif event_type == "gamepad_button":
+            if (not isinstance(event["deviceId"], str) or not event["deviceId"]
+                    or not isinstance(event["button"], str) or not event["button"]
+                    or not isinstance(event["value"], (int, float))
+                    or isinstance(event["value"], bool) or not math.isfinite(event["value"])
+                    or not 0 <= event["value"] <= 1):
+                fail(path, f"events[{index}] gamepad button is invalid")
+        elif event_type == "gamepad_axis":
+            if (not isinstance(event["deviceId"], str) or not event["deviceId"]
+                    or not isinstance(event["axis"], str) or not event["axis"]
+                    or not isinstance(event["value"], (int, float))
+                    or isinstance(event["value"], bool) or not math.isfinite(event["value"])
+                    or not -1 <= event["value"] <= 1):
+                fail(path, f"events[{index}] gamepad axis is invalid")
+        elif event_type in {"device_connected", "device_disconnected"}:
+            if (not isinstance(event["deviceId"], str) or not event["deviceId"]
+                    or event["deviceKind"] not in DEVICE_KINDS):
+                fail(path, f"events[{index}] device event is invalid")
+        elif event_type == "reset" and event["reason"] not in RESET_REASONS:
             fail(path, f"events[{index}].reason is invalid")
     return value["id"], events
 
@@ -81,6 +160,8 @@ def validate_input(path: Path, value: dict) -> tuple[str, list[dict]]:
 def validate_expected(path: Path, value: dict, input_id: str, input_events: list[dict]) -> None:
     if value.get("schemaVersion") != 1 or value.get("sequenceId") != input_id:
         fail(path, "schemaVersion or sequenceId does not match input fixture")
+    if value.get("provenance") not in {"legacy_observation", "product_decision", "bug_fix"}:
+        fail(path, "provenance must identify the source of the expected snapshot")
     checkpoints = value.get("checkpoints")
     if not isinstance(checkpoints, list):
         fail(path, "checkpoints must be an array")
@@ -357,6 +438,8 @@ def main() -> int:
         fixture_id, events = validate_input(input_path, load(input_path))
         if input_path.stem != fixture_id:
             fail(input_path, "filename must match fixture id")
+        if fixture_id in input_ids:
+            fail(input_path, f"duplicate fixture id: {fixture_id}")
         input_ids.add(fixture_id)
         expected_path = EXPECTED_DIR / f"{fixture_id}.json"
         if not expected_path.is_file():

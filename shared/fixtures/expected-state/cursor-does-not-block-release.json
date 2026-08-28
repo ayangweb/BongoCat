@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
   "sequenceId": "cursor-does-not-block-release",
+  "provenance": "bug_fix",
   "checkpoints": [
     {
       "atMs": 4,
