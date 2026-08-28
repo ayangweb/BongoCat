@@ -345,14 +345,15 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 3.5 配置 v1
 
-- 状态（2026-08-28）：`spikes/config-store/` 已建立 typed NativeConfig、Bundle ID、Development/Production 隔离目录、snake_case 序列化、schema 校验和原子 commit probe；真实平台 resolver、并发锁、崩溃恢复、备份和 GPUI command 边界仍待产品 crate 阶段完成，详见 `docs/phase-0/config-store-spike.md`。
+- 状态（2026-08-28）：`spikes/config-store/` 已建立 typed NativeConfig、Bundle ID、Development/Production 隔离目录、snake_case 序列化、schema 校验、原子 commit probe 和当前 macOS 真实 path resolver；Windows resolver、并发锁、崩溃恢复、备份和 GPUI command 边界仍待产品 crate 阶段完成，详见 `docs/phase-0/config-store-spike.md`。
 
 - [ ] 定义带 `schema_version` 的 Rust 配置结构和 JSON schema，JSON key 使用 `snake_case`。
 - [ ] 区分用户配置、运行时状态和诊断数据。
 - [ ] 为字段定义范围、默认值和跨字段约束。
 - [x] 在 spike 中实现不可变 `BuildEnvironment::{Development, Production}`；未知或缺失环境的打包构建失败仍待产品构建链验证。
 - [ ] Windows 使用 `%APPDATA%\BongoCat\<environment>\` 数据根。
-- [ ] macOS 使用 `Application Support/com.ayangweb.bongo-cat/<environment>/` 数据根。
+- [x] macOS 使用 `Application Support/com.ayangweb.bongo-cat/<environment>/` 数据根。
+  - 当前 macOS resolver 已通过；Windows 对等 resolver 仍待 Windows 实机。
 - [ ] 两个环境的 `config.json`、`state.json`、`models/`、`backups/` 和 `logs/` 相对结构一致。
 - [ ] 环境不能由 CLI、进程环境变量或设置项在运行时切换，也不能 fallback 到另一环境。
 - [x] 在 spike 中实现同目录临时文件、flush、原子替换和提交后验证；平台文件锁与崩溃注入仍未完成。

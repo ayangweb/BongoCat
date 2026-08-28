@@ -1,4 +1,4 @@
-use bongocat_config_store_spike::{BUNDLE_ID, BuildEnvironment, ConfigStore, StorageLayout};
+use bongocat_config_store_spike::{BUNDLE_ID, BuildEnvironment, ConfigStore, platform_layout};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let environment = if cfg!(debug_assertions) {
@@ -6,8 +6,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         BuildEnvironment::Production
     };
-    let base = std::env::temp_dir().join("bongocat-config-store-spike");
-    let store = ConfigStore::new(StorageLayout::under(base, environment))?;
+    let store = ConfigStore::new(platform_layout(environment)?)?;
     let config = store.load_or_default()?;
     println!(
         "config-store-spike: bundle_id={BUNDLE_ID} environment={} schema_version={} config={}",

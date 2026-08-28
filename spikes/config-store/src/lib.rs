@@ -37,11 +37,8 @@ pub struct StorageLayout {
 }
 
 impl StorageLayout {
-    pub fn under(base: impl AsRef<Path>, environment: BuildEnvironment) -> Self {
-        let root = base
-            .as_ref()
-            .join(BUNDLE_ID)
-            .join(environment.directory_name());
+    pub fn under_application_root(base: impl AsRef<Path>, environment: BuildEnvironment) -> Self {
+        let root = base.as_ref().join(environment.directory_name());
         Self {
             config: root.join("config.json"),
             state: root.join("state.json"),
@@ -53,12 +50,59 @@ impl StorageLayout {
         }
     }
 
+    /// Test helper that supplies a neutral base and keeps the bundle namespace visible.
+    pub fn under(base: impl AsRef<Path>, environment: BuildEnvironment) -> Self {
+        Self::under_application_root(base.as_ref().join(BUNDLE_ID), environment)
+    }
+
     pub fn create_directories(&self) -> io::Result<()> {
         for directory in [&self.models, &self.backups, &self.logs, &self.locks] {
             fs::create_dir_all(directory)?;
         }
         Ok(())
     }
+}
+
+#[derive(Debug)]
+pub enum PlatformStorageError {
+    DataDirectoryUnavailable,
+}
+
+impl std::fmt::Display for PlatformStorageError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DataDirectoryUnavailable => write!(f, "platform data directory unavailable"),
+        }
+    }
+}
+
+impl std::error::Error for PlatformStorageError {}
+
+#[cfg(target_os = "macos")]
+pub fn platform_layout(
+    environment: BuildEnvironment,
+) -> Result<StorageLayout, PlatformStorageError> {
+    let base = dirs::data_dir()
+        .ok_or(PlatformStorageError::DataDirectoryUnavailable)?
+        .join(BUNDLE_ID);
+    Ok(StorageLayout::under_application_root(base, environment))
+}
+
+#[cfg(target_os = "windows")]
+pub fn platform_layout(
+    environment: BuildEnvironment,
+) -> Result<StorageLayout, PlatformStorageError> {
+    let base = dirs::data_dir()
+        .ok_or(PlatformStorageError::DataDirectoryUnavailable)?
+        .join("BongoCat");
+    Ok(StorageLayout::under_application_root(base, environment))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+pub fn platform_layout(
+    _environment: BuildEnvironment,
+) -> Result<StorageLayout, PlatformStorageError> {
+    Err(PlatformStorageError::DataDirectoryUnavailable)
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -318,6 +362,27 @@ mod tests {
             development.models.file_name(),
             production.models.file_name()
         );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_platform_layout_uses_bundle_namespace_once() {
+        let layout = platform_layout(BuildEnvironment::Development).unwrap();
+        assert!(
+            layout
+                .root
+                .ends_with(Path::new(BUNDLE_ID).join("development"))
+        );
+        assert_eq!(
+            layout.root.file_name().and_then(|name| name.to_str()),
+            Some("development")
+        );
+        let bundle_root = layout.root.parent().expect("environment parent");
+        assert_eq!(
+            bundle_root.file_name().and_then(|name| name.to_str()),
+            Some(BUNDLE_ID)
+        );
+        assert!(!bundle_root.parent().unwrap().ends_with(BUNDLE_ID));
     }
 
     #[test]
