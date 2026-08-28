@@ -258,8 +258,10 @@ cargo check --workspace --release
   - 当前分支为 `next` 时，直接在 `next` 创建用户要求的 commit，不询问是否改用新分支。
   - 当前分支既不是 `master` 也不是 `next` 时，若用户尚未明确指定提交到当前分支还是新分支，必须先询问用户选择；得到答复前不得创建 commit。
   - 若用户已经明确指定提交到当前非 `master` 分支或指定了新分支，则按该选择执行，无需重复询问。
-- Commit message 必须根据实际 staged diff 生成，并遵循 Conventional Commits：`<type>(<optional-scope>): <summary>`。
+- Commit message 必须根据实际 staged diff 生成，并遵循 Conventional Commits。默认格式为 `<type>: <summary>`；scope 确有区分价值时才使用 `<type>(<scope>): <summary>`。
   - 常用 type 为 `feat`、`fix`、`docs`、`test`、`refactor`、`perf`、`build`、`ci` 和 `chore`；不得用含糊的 `update`、`changes` 或 `misc` 代替准确类型。
+  - scope 是可选信息，不得机械添加。单一主题、仓库级改动或 summary 已足够明确时必须省略 scope。
+  - 只有改动明确局限于一个稳定模块，且省略后容易与其他模块混淆时才使用 scope，例如 `fix(input): recover missing key releases`。不得仅为了强调 Native Rewrite 而固定使用 `native` scope。
   - summary 使用简洁英文祈使语气，不加句号，建议不超过 72 个字符；存在不兼容变更时使用 `!` 并在正文写明 `BREAKING CHANGE:`。
   - 提交前核对 staged diff，确保 message 描述的是实际提交内容，不包含未暂存或无关改动。
 - 不修改无关 lockfile、生成文件或资产 metadata。
