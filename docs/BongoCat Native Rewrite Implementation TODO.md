@@ -280,6 +280,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] GPU、权限、签名测试分离为实机/nightly job。
 - [ ] 共享 crate 增加 Linux cargo check，但不生成首发安装包。
 - [ ] CI 校验 fixture JSON Schema、跨文件一致性、本地化 key 和生成文件是否漂移。
+  - [x] 已接入 Draft 2020-12 schema、fixture 跨文件一致性和五种历史 locale 的 key/类型/占位符校验。
+  - [ ] 生成文件漂移校验仍待 Native 资源生成链建立后补齐。
 - [ ] 保存失败测试日志、截图和 renderer validation 输出，同时执行路径/按键隐私清理。
 - [ ] 构建产物记录 source commit、Cargo.lock hash、toolchain、target 和 feature set。
 

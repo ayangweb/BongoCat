@@ -21,6 +21,8 @@ jobs:
         run: python3 tools/validate-fixtures.py
       - name: Validate Draft 2020-12 schemas
         run: python3 tools/validate-json-schema.py
+      - name: Validate locale keys and placeholders
+        run: python3 tools/validate-locales.py
       - name: Run deterministic input fixtures
         run: python3 tools/run-input-fixtures.py
       - name: Check whitespace
