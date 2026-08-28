@@ -656,6 +656,7 @@ name = "bongocat-gpui-settings-spike"
 version = "0.1.0"
 dependencies = [
  "gpui",
+ "unicode-segmentation",
 ]
 
 [[package]]

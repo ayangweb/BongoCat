@@ -10,6 +10,7 @@ publish = false
 [dependencies]
 # Keep the default precompiled-shader path aligned with release packaging.
 gpui = "=0.2.2"
+unicode-segmentation = "=1.13.3"
 
 [profile.release]
 opt-level = 2

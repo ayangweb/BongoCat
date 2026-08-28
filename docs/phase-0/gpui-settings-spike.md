@@ -1,6 +1,6 @@
 # GPUI Settings Spike Record
 
-状态：macOS 默认 shader、`.app` 与窗口生命周期通过；内容辅助功能与完整交互待完成
+状态：macOS 默认 shader、`.app`、主题和基础文本交互通过；内容辅助功能、真实 IME 和跨平台验证待完成
 日期：2026-08-28
 原始重构基线 commit：`94af230`；后续验证源码与本记录保持同一提交
 
@@ -13,7 +13,8 @@
 3. 使用 GPUI 默认预编译 shader 路径完成 debug/release 构建；
 4. 生成具有固定 bundle id 的最小 macOS `.app` 并通过 LaunchServices 启动；
 5. 验证应用菜单、关闭、重开和 GPUI `quit()` 生命周期；
-6. 不接入 runtime、输入、Live2D 或原生 overlay。
+6. 使用 GPUI 公共输入协议验证一个最小设置表单：System/Light/Dark 主题选择、焦点边框、Tab/Shift-Tab、Unicode 文本编辑、选择、剪切、复制、粘贴和 marked-text 接口；
+7. 不接入 runtime、输入、Live2D 或原生 overlay。
 
 源码位于 `spikes/gpui-settings/`。该目录包含独立 `Cargo.lock`，不会改变历史根 workspace。
 
@@ -42,6 +43,19 @@ open -W "target/package/BongoCat GPUI Spike.app" --args --auto-quit-ms 1500
 ```
 
 结果：debug/release 编译通过，`.app` 的 ad-hoc 签名通过 strict bundle integrity 校验；LaunchServices smoke 以 0 退出。直接运行 release binary 时输出 `window opened`，随后通过 GPUI `quit()` 输出 `stopped` 并以 0 退出。
+
+### 交互和视觉验证（macOS 人工 smoke）
+
+已验证：
+
+- 主题选项可切换，浅色/深色表面、文本和输入框样式同步更新；System 模式能跟随系统 appearance；
+- 文本框可输入普通 Unicode 和中文粘贴内容；字符计数与内容更新；
+- 鼠标选择、Shift-方向键扩展选择、Cmd/Ctrl-A、剪切、复制和粘贴可用；换行粘贴会被归一化为空格；
+- Tab 和 Shift-Tab 在主题选项与文本框之间移动焦点；焦点控件显示 accent border；
+- 关闭设置窗口不会退出进程，重新激活应用可重建窗口；
+- 截图证据：`docs/phase-0/evidence/gpui-settings-light-760x520.jpg`（SHA-256 `e9343ae1cfeed487dbe368121c35a4ec4146eab2fd72da38d3f7eb9755fa2401`）和 `docs/phase-0/evidence/gpui-settings-dark-760x520.jpg`（SHA-256 `6c84b9e2473586e556a647e44e3584c2c6b5ec334564b7b423c1428cb5d3d158`）。
+
+这些结果是 macOS 当前环境下的视觉和交互 smoke，不等价于跨平台验收。GPUI 输入实现已接入 UTF-16 selection、grapheme 边界和 marked-text 公共协议，但尚未用中文输入法完成真实组合态验证；Windows 字体、IME、DPI 和辅助技术也尚未验证。
 
 2026-08-28 按 ADR-0008 将 Bundle ID 更新为 `com.ayangweb.bongo-cat` 后重新执行打包、strict codesign 和 LaunchServices auto-quit，三项均通过。打包脚本会在签名前读取 Info.plist 并拒绝任何非预期 Bundle ID。
 
@@ -86,10 +100,10 @@ GPUI 0.2.2 公共源码中没有找到可为普通绘制 element 设置 role、l
 
 ## 未完成
 
-- 中文输入法、文本编辑、复制粘贴、键盘焦点顺序、tooltip、dialog 和主题尚未实现或验证。
+- 真实中文输入法组合态/marked text 尚未在 macOS 上完成端到端验证；Windows IME、字体、DPI 和辅助技术尚未验证。
+- tooltip、dialog 和完整菜单交互尚未验证。
 - GPUI 内容辅助功能树未通过；当前只有窗口 chrome 和菜单可识别。
-- 未保存带 commit/窗口尺寸/主题标注的截图证据；本次只完成人工视觉 smoke。
 - 菜单栏常驻策略、隐藏行为和 native overlay 共存尚未验证。
-- Windows 构建、DPI、字体、IME 和退出路径尚未验证。
+- Windows 构建、退出路径和系统集成尚未验证。
 
-因此只勾选默认 shader 工具链这一完整子项；`.app` 综合验收、完整 GPUI spike 和 Phase 0 退出门槛保持未完成。
+因此默认 shader 工具链、`.app` bundle/lifecycle、主题和基础编辑交互子项可以单独记录为通过；内容辅助功能、真实 IME、Windows 验证、overlay 共存和完整 GPUI spike 仍保持未完成。GPUI go/no-go 决策必须等辅助功能策略明确后再做。
