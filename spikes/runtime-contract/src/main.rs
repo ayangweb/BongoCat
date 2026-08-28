@@ -1,11 +1,13 @@
-use bongocat_runtime_contract_spike::RuntimeContract;
+use bongocat_runtime_contract_spike::{RuntimeCommand, RuntimeWorker};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut runtime = RuntimeContract::new();
-    runtime.mark_ready()?;
-    runtime.tick(0)?;
-    runtime.begin_shutdown()?;
-    runtime.complete_shutdown()?;
-    println!("runtime-contract-spike: state={:?}", runtime.state());
+    let worker = RuntimeWorker::spawn(8);
+    worker.send(RuntimeCommand::MarkReady)?;
+    worker.send(RuntimeCommand::Tick { at_ms: 0 })?;
+    let report = worker.shutdown();
+    println!(
+        "runtime-contract-spike: state={:?} revision={} worker_status={:?} exit={:?}",
+        report.snapshot.state, report.snapshot.revision, report.snapshot.worker_status, report.exit
+    );
     Ok(())
 }
