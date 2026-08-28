@@ -185,12 +185,15 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 1.7 输入可靠性 spike
 
+- 状态（2026-08-28）：`spikes/input-state/` 已建立纯 Rust pressed-set contract，覆盖正常 down/up、重复 down、Reconcile、Reset 和 issue #47 的丢失 release 恢复；计数器不记录具体键值。平台采集、校正频率和管理员/权限场景仍待实机验证，详见 `docs/phase-0/input-state-spike.md`。
+
 - [ ] Windows 实现 RegisterRawInputDevices 和 WM_INPUT 最小路径。
 - [ ] 映射 scan code、extended flag、左右修饰键和 RI_KEY_BREAK。
-- [ ] 建立 pressed set，并以 GetAsyncKeyState 校正其中的键。
+- [x] 建立平台无关 pressed set contract；Windows `GetAsyncKeyState` 校正仍待实机接入。
 - [ ] 定义校正频率、连续确认次数和误判保护。
 - [ ] 在锁屏、睡眠、设备移除和服务重启时发送 Reset。
 - [ ] 实测 PixPin Ctrl+Alt+A，丢失 release 时不得永久高亮。
+  - [x] contract probe 已覆盖丢失 A-up 后通过 Reconcile 清除残留；尚未在 Windows callback 上实测。
 - [ ] 实测 Win+L、PrintScreen、UAC 和管理员/非管理员场景。
 - [ ] 进行 10 分钟高速鼠标 + 键盘压力测试，edge 丢失计数必须为 0。
 - [ ] macOS 实现 CGEventTap、权限拒绝/授予和 tap 自动重启。
@@ -767,6 +770,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 9. [ ] `P0-OVERLAY`：GPUI 生命周期内完成 Windows D3D11/macOS Metal 透明 clear/present、错误注入和 100 次重建。
    - [x] 先完成无平台依赖的 overlay lifecycle contract probe；平台窗口和 GPU 验证仍未完成。
 10. [ ] `P0-INPUT-WINDOWS`：完成 Raw Input + pressed set + `GetAsyncKeyState` 校正并实测 issue #47 场景。
+
+- [x] 完成平台无关 pressed-set contract 和 issue #47 恢复测试；Windows 采集与校正仍未完成。
+
 11. [ ] `P0-INPUT-MAC`：完成 CGEventTap 权限拒绝/授予/恢复、状态校正和 100 次 restart。
 12. [ ] `P0-CUBISM`：确认 SDK/许可证/binding 生成，三个预置模型完成 Core、资源和 renderer spike。
 13. [ ] `P0-GO-NO-GO`：汇总证据、阻塞和条件，确认后再建立完整产品 workspace。
