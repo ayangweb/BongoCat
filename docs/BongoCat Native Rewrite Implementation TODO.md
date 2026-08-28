@@ -343,16 +343,18 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 3.5 配置 v1
 
+- 状态（2026-08-28）：`spikes/config-store/` 已建立 typed NativeConfig、Bundle ID、Development/Production 隔离目录、snake_case 序列化、schema 校验和原子 commit probe；真实平台 resolver、并发锁、崩溃恢复、备份和 GPUI command 边界仍待产品 crate 阶段完成，详见 `docs/phase-0/config-store-spike.md`。
+
 - [ ] 定义带 `schema_version` 的 Rust 配置结构和 JSON schema，JSON key 使用 `snake_case`。
 - [ ] 区分用户配置、运行时状态和诊断数据。
 - [ ] 为字段定义范围、默认值和跨字段约束。
-- [ ] 实现不可变 `BuildEnvironment::{Development, Production}`；未知或缺失环境的打包构建失败。
+- [x] 在 spike 中实现不可变 `BuildEnvironment::{Development, Production}`；未知或缺失环境的打包构建失败仍待产品构建链验证。
 - [ ] Windows 使用 `%APPDATA%\BongoCat\<environment>\` 数据根。
 - [ ] macOS 使用 `Application Support/com.ayangweb.bongo-cat/<environment>/` 数据根。
 - [ ] 两个环境的 `config.json`、`state.json`、`models/`、`backups/` 和 `logs/` 相对结构一致。
 - [ ] 环境不能由 CLI、进程环境变量或设置项在运行时切换，也不能 fallback 到另一环境。
-- [ ] 实现同目录临时文件、flush、原子替换和提交后验证。
-- [ ] 实现损坏配置隔离、默认恢复和用户可见诊断。
+- [x] 在 spike 中实现同目录临时文件、flush、原子替换和提交后验证；平台文件锁与崩溃注入仍未完成。
+- [x] 在 spike 中拒绝损坏配置并保留原始文件；隔离备份、默认恢复和 GPUI 用户诊断仍未完成。
 - [ ] 配置写入去抖，退出前强制 flush。
 - [ ] GPUI 只通过 typed command 获取 snapshot 和提交 patch。
 - [ ] 防止两个进程或两个 writer 同时覆盖配置；锁和单实例 namespace 包含环境身份。
@@ -572,7 +574,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 7.4 测试与门槛
 
-- [ ] 双平台验证 Development/Production 根目录不同且内部相对结构一致。
+- [x] 在平台无关 spike 中验证 Development/Production 根目录不同且相对结构一致；Windows/macOS 真实 resolver 仍待验证。
 - [ ] 两个环境写入不同 sentinel，重启和并发运行后仍只读取各自数据。
 - [ ] 覆盖损坏、截断、错误类型、越界值和未知字段。
 - [ ] 覆盖无权限、磁盘满、目标占用和中途退出。

@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bongocat.dev/schemas/native-config-v1.json",
+  "title": "BongoCat Native Rewrite configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "application", "appearance", "overlay", "model", "shortcuts"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "application": {
+      "$ref": "#/$defs/application"
+    },
+    "appearance": {
+      "$ref": "#/$defs/appearance"
+    },
+    "overlay": {
+      "$ref": "#/$defs/overlay"
+    },
+    "model": {
+      "$ref": "#/$defs/model"
+    },
+    "shortcuts": {
+      "$ref": "#/$defs/shortcuts"
+    }
+  },
+  "$defs": {
+    "application": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["launch_at_login", "show_taskbar_icon", "show_status_icon", "check_for_updates_automatically"],
+      "properties": {
+        "launch_at_login": { "type": "boolean" },
+        "show_taskbar_icon": { "type": "boolean" },
+        "show_status_icon": { "type": "boolean" },
+        "check_for_updates_automatically": { "type": "boolean" }
+      }
+    },
+    "appearance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["theme", "language"],
+      "properties": {
+        "theme": { "enum": ["system", "light", "dark"] },
+        "language": { "type": "string", "minLength": 1 }
+      }
+    },
+    "overlay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["visible", "click_through", "always_on_top", "scale_percent", "opacity_percent", "corner_radius_percent", "hide_on_pointer_hover", "hide_on_pointer_hover_delay_ms", "keep_inside_work_area"],
+      "properties": {
+        "visible": { "type": "boolean" },
+        "click_through": { "type": "boolean" },
+        "always_on_top": { "type": "boolean" },
+        "scale_percent": { "type": "integer", "minimum": 25, "maximum": 400 },
+        "opacity_percent": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "corner_radius_percent": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "hide_on_pointer_hover": { "type": "boolean" },
+        "hide_on_pointer_hover_delay_ms": { "type": "integer", "minimum": 0 },
+        "keep_inside_work_area": { "type": "boolean" }
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selected_model_id", "mirror", "mirror_pointer_tracking", "play_motion_audio", "enable_behavior_shortcuts", "maximum_fps", "ignore_pointer", "release_fallback_timeout_ms"],
+      "properties": {
+        "selected_model_id": { "type": ["string", "null"] },
+        "mirror": { "type": "boolean" },
+        "mirror_pointer_tracking": { "type": "boolean" },
+        "play_motion_audio": { "type": "boolean" },
+        "enable_behavior_shortcuts": { "type": "boolean" },
+        "maximum_fps": { "type": "integer", "minimum": 15, "maximum": 240 },
+        "ignore_pointer": { "type": "boolean" },
+        "release_fallback_timeout_ms": { "type": "integer", "minimum": 0, "maximum": 60000 }
+      }
+    },
+    "shortcuts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commands", "model_behaviors"],
+      "properties": {
+        "commands": { "type": "array", "items": { "$ref": "#/$defs/shortcut_binding" } },
+        "model_behaviors": { "type": "array", "items": { "$ref": "#/$defs/model_behavior_binding" } }
+      }
+    },
+    "shortcut_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "shortcut"],
+      "properties": {
+        "command": { "type": "string", "minLength": 1 },
+        "shortcut": { "type": "string", "minLength": 1 }
+      }
+    },
+    "model_behavior_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model_id", "behavior_id", "shortcut"],
+      "properties": {
+        "model_id": { "type": "string", "minLength": 1 },
+        "behavior_id": { "type": "string", "minLength": 1 },
+        "shortcut": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
