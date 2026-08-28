@@ -37,14 +37,14 @@ Linux target 不属于首发 tier。共享 crate 的 Linux `cargo check` 仅用�
 | OS                       | macOS 26.5.2 (25F84)                                            |
 | Xcode                    | 26.6 (17F113)                                                   |
 | macOS SDK                | 26.5                                                            |
-| Optional Metal Toolchain | build 17F109, `uninstalled`                                     |
+| Optional Metal Toolchain | build 17F109, `installed`                                       |
 | Rust                     | 1.97.1, host `aarch64-apple-darwin`                             |
 | Cargo                    | 1.97.1                                                          |
 | GPUI                     | crates.io `0.2.2`, exact version and lockfile in isolated spike |
 
 本机已安装 Rust targets：`aarch64-apple-darwin`、`x86_64-apple-darwin`、`x86_64-pc-windows-msvc`。target 已安装只代表标准库可用，不代表能在 macOS 链接 Windows MSVC 产物，也不代表目标运行测试通过。
 
-当前 GPUI spike 使用公开 `runtime_shaders` feature 绕过未安装的 Metal Toolchain。生产构建必须安装并固定 Metal Toolchain，关闭该 feature 后验证 GPUI 默认预编译 shader 路径。
+当前 GPUI spike 已移除公开 `runtime_shaders` feature，并使用 Metal Toolchain 17F109 通过默认预编译 shader 的 debug/release 构建和 `.app` smoke。最低 Xcode/SDK/Rust 组合仍未验证，不能由这台较新开发机反推 macOS 12 构建兼容性。
 
 ## 4. Required Windows Toolchain Evidence
 

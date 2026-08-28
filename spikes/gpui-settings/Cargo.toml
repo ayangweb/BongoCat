@@ -8,10 +8,8 @@ publish = false
 [workspace]
 
 [dependencies]
-# Runtime shader compilation keeps this probe runnable on development machines
-# without the optional Xcode Metal Toolchain component. Release packaging must
-# validate GPUI's default precompiled-shader path separately.
-gpui = { version = "=0.2.2", features = ["runtime_shaders"] }
+# Keep the default precompiled-shader path aligned with release packaging.
+gpui = "=0.2.2"
 
 [profile.release]
 opt-level = 2

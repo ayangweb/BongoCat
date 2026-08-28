@@ -141,7 +141,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 1.5 GPUI spike
 
-状态（2026-08-28）：已在 `spikes/gpui-settings/` 建立隔离的 macOS 最小窗口，精确锁定 `gpui = 0.2.2` 并生成独立 lockfile；构建和自动 shutdown smoke 通过。IME、辅助功能、窗口重开、overlay 共存及 Windows 实机均未验证，详见 `docs/phase-0/gpui-settings-spike.md`。
+状态（2026-08-28）：已在 `spikes/gpui-settings/` 建立隔离的 macOS 最小窗口，精确锁定 `gpui = 0.2.2` 并生成独立 lockfile；默认预编译 shader、release `.app`、菜单、窗口关闭/重开和 shutdown smoke 通过。GPUI 绘制内容未出现在 macOS 辅助功能树中；IME、完整焦点链、主题、overlay 共存及 Windows 实机仍未验证，详见 `docs/phase-0/gpui-settings-spike.md`。
 
 - [x] 建立最小 Rust workspace 和 GPUI hello/settings 窗口。
 - [x] 固定 `gpui = "=0.2.2"` 并提交 Cargo.lock。
@@ -153,8 +153,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 验证 GPUI async executor 与 runtime channel 可安全通信。
 - [ ] 验证辅助功能树满足设置表单的基础要求。
 - [ ] 记录首次打开、空闲 CPU、RSS 和二进制增量。
-- [ ] 安装并固定 macOS Metal Toolchain，验证 GPUI 默认预编译 shader 路径；`runtime_shaders` 不作为发布配置。
+- [x] 安装并固定 macOS Metal Toolchain，验证 GPUI 默认预编译 shader 路径；`runtime_shaders` 不作为发布配置。
 - [ ] 将 macOS spike 打包为最小 `.app`，验证 bundle id、菜单、激活、关闭和辅助功能树可被系统识别。
+  - 状态：bundle、菜单、激活、关闭/重开和退出已通过；GPUI 内容节点无法被辅助功能 API 识别，因此保持未完成。
 - [ ] 生成 Windows spike 可执行文件，验证 MSVC、Windows SDK、D3D shader 工具和 manifest 前置条件。
 - [ ] 跟踪 `block 0.1.6`、`proc-macro-error2 2.0.1` future-incompatibility，进入产品 workspace 前形成升级或接受结论。
 - [ ] 若存在发布阻塞，提交 GPUI go/no-go ADR；备选只评估 Iced。
@@ -745,6 +746,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
    - 状态（2026-08-28）：ADR 与仓库/发布基线已完成；target/toolchain 文档为 provisional，仍待 Windows 实机、GPUI 发布构建和 Cubism 架构证据后冻结。
 5. [ ] `P0-ARCHAEOLOGY`：补齐 Windows 真实配置路径、历史版本样本、完整功能优先级和模型异常 fixture。
 6. [ ] `P0-GPUI-PACKAGE-MAC`：使用默认预编译 shader 构建 `.app`，验证 IME、剪贴板、焦点、辅助功能、主题和窗口重开。
+   - 状态（2026-08-28）：默认 shader、bundle、菜单和窗口生命周期通过；辅助功能内容节点缺失，IME、文本编辑、剪贴板、完整焦点链和主题待验证。
 7. [ ] `P0-GPUI-WINDOWS`：在 Windows 构建同一 spike，验证字体、IME、DPI、辅助功能和正常退出。
 8. [ ] `P0-OVERLAY`：GPUI 生命周期内完成 Windows D3D11/macOS Metal 透明 clear/present、错误注入和 100 次重建。
 9. [ ] `P0-INPUT-WINDOWS`：完成 Raw Input + pressed set + `GetAsyncKeyState` 校正并实测 issue #47 场景。

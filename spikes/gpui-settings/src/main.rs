@@ -1,11 +1,29 @@
 use gpui::{
-    App, Application, Bounds, Context, Render, SharedString, Timer, Window, WindowBounds,
-    WindowOptions, div, prelude::*, px, rgb, size,
+    App, Application, Bounds, Context, KeyBinding, Menu, MenuItem, Render, SharedString,
+    SystemMenuType, Timer, TitlebarOptions, Window, WindowBounds, WindowOptions, actions, div,
+    prelude::*, px, rgb, size,
 };
 use std::time::Duration;
 
+actions!(gpui_settings_spike, [Quit]);
+
 struct SettingsWindow {
     selected_section: SharedString,
+}
+
+fn auto_quit_delay() -> Option<Duration> {
+    let argument = std::env::args()
+        .skip_while(|argument| argument != "--auto-quit-ms")
+        .nth(1);
+    let value = argument.or_else(|| std::env::var("BONGOCAT_SPIKE_AUTO_QUIT_MS").ok())?;
+
+    match value.parse::<u64>() {
+        Ok(milliseconds) => Some(Duration::from_millis(milliseconds)),
+        Err(error) => {
+            eprintln!("invalid auto-quit duration: {error}");
+            None
+        }
+    }
 }
 
 impl Render for SettingsWindow {
@@ -91,46 +109,74 @@ impl Render for SettingsWindow {
     }
 }
 
+fn open_settings_window(cx: &mut App) {
+    let bounds = Bounds::centered(None, size(px(760.0), px(520.0)), cx);
+    let result = cx.open_window(
+        WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(bounds)),
+            titlebar: Some(TitlebarOptions {
+                title: Some("BongoCat Settings".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        |_, cx| {
+            cx.new(|_| SettingsWindow {
+                selected_section: "Appearance".into(),
+            })
+        },
+    );
+
+    match result {
+        Ok(_) => println!("gpui-settings-spike: window opened"),
+        Err(error) => eprintln!("gpui-settings-spike: failed to open window: {error:#}"),
+    }
+}
+
+fn quit(_: &Quit, cx: &mut App) {
+    cx.quit();
+}
+
 fn main() {
-    Application::new().run(|cx: &mut App| {
-        cx.on_window_closed(|cx| {
-            if cx.windows().is_empty() {
-                cx.quit();
-            }
-        })
-        .detach();
+    let auto_quit_delay = auto_quit_delay();
+    let application = Application::new();
+
+    application.on_reopen(|cx| {
+        if cx.windows().is_empty() {
+            open_settings_window(cx);
+        }
+        cx.activate(true);
+    });
+
+    application.run(move |cx: &mut App| {
         cx.on_app_quit(|_| async {
             println!("gpui-settings-spike: stopped");
         })
         .detach();
 
-        let bounds = Bounds::centered(None, size(px(760.0), px(520.0)), cx);
-        cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                ..Default::default()
-            },
-            |_, cx| {
-                cx.new(|_| SettingsWindow {
-                    selected_section: "Appearance".into(),
-                })
-            },
-        )
-        .expect("open GPUI settings window");
-        println!("gpui-settings-spike: window opened");
+        cx.on_action(quit);
+        #[cfg(target_os = "macos")]
+        cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
+        #[cfg(target_os = "windows")]
+        cx.bind_keys([KeyBinding::new("ctrl-q", Quit, None)]);
+        cx.set_menus(vec![Menu {
+            name: "BongoCat GPUI Spike".into(),
+            items: vec![
+                MenuItem::os_submenu("Services", SystemMenuType::Services),
+                MenuItem::separator(),
+                MenuItem::action("Quit BongoCat GPUI Spike", Quit),
+            ],
+        }]);
+
+        open_settings_window(cx);
         cx.activate(true);
 
-        if let Ok(value) = std::env::var("BONGOCAT_SPIKE_AUTO_QUIT_MS") {
-            match value.parse::<u64>() {
-                Ok(milliseconds) => {
-                    cx.spawn(async move |cx| {
-                        Timer::after(Duration::from_millis(milliseconds)).await;
-                        let _ = cx.update(|cx| cx.quit());
-                    })
-                    .detach();
-                }
-                Err(error) => eprintln!("invalid BONGOCAT_SPIKE_AUTO_QUIT_MS: {error}"),
-            }
+        if let Some(delay) = auto_quit_delay {
+            cx.spawn(async move |cx| {
+                Timer::after(delay).await;
+                let _ = cx.update(|cx| cx.quit());
+            })
+            .detach();
         }
     });
 }
