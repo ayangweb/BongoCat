@@ -1,0 +1,61 @@
+name: Native Rewrite Phase 0
+
+on:
+  pull_request:
+  push:
+    branches:
+      - next
+
+permissions:
+  contents: read
+
+jobs:
+  fixtures:
+    name: Validate shared fixtures
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate fixture structure and model cases
+        run: python3 tools/validate-fixtures.py
+      - name: Run deterministic input fixtures
+        run: python3 tools/run-input-fixtures.py
+      - name: Check whitespace
+        run: git diff --check
+
+  contract-spikes:
+    name: Test ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: input-state
+            manifest: spikes/input-state/Cargo.toml
+          - name: input-windows
+            manifest: spikes/input-windows/Cargo.toml
+          - name: overlay-lifecycle
+            manifest: spikes/overlay-lifecycle/Cargo.toml
+          - name: config-store
+            manifest: spikes/config-store/Cargo.toml
+          - name: input-macos
+            manifest: spikes/input-macos/Cargo.toml
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check formatting
+        run: cargo fmt --manifest-path ${{ matrix.manifest }} -- --check
+      - name: Run Clippy
+        run: cargo clippy --manifest-path ${{ matrix.manifest }} --locked --all-targets -- -D warnings
+      - name: Run tests
+        run: cargo test --manifest-path ${{ matrix.manifest }} --locked
+
+  macos-spikes:
+    name: Build macOS GPUI spikes
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check settings spike
+        run: cargo check --manifest-path spikes/gpui-settings/Cargo.toml --locked
+      - name: Check overlay spike
+        run: cargo check --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked
