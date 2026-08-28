@@ -1,23 +1,21 @@
-use bongocat_input_macos_spike::{
-    CaptureAction, CaptureEvent, MacCaptureLifecycle, PermissionState,
-};
 #[cfg(target_os = "macos")]
-use bongocat_input_macos_spike::{reconcile_key_state, run_listen_only_tap};
+use bongocat_input_macos_spike::{
+    CaptureAction, CaptureEvent, MacCaptureLifecycle, PermissionState, input_monitoring_preflight,
+    reconcile_key_state, request_input_monitoring_access, run_listen_only_tap,
+};
 #[cfg(target_os = "macos")]
 use std::time::Duration;
 
-#[cfg(target_os = "macos")]
-use bongocat_input_macos_spike::{input_monitoring_preflight, request_input_monitoring_access};
-
 fn main() {
-    let request = std::env::args().any(|arg| arg == "--request");
-    let tap_ms = argument_value("--tap-ms").and_then(|value| value.parse::<u64>().ok());
-    let key_state_code = argument_value("--key-state").and_then(|value| value.parse::<u16>().ok());
-    let cycles = argument_value("--cycles")
-        .and_then(|value| value.parse::<usize>().ok())
-        .unwrap_or(1);
     #[cfg(target_os = "macos")]
     {
+        let request = std::env::args().any(|arg| arg == "--request");
+        let tap_ms = argument_value("--tap-ms").and_then(|value| value.parse::<u64>().ok());
+        let key_state_code =
+            argument_value("--key-state").and_then(|value| value.parse::<u16>().ok());
+        let cycles = argument_value("--cycles")
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(1);
         let before = input_monitoring_preflight();
         let after = if request {
             request_input_monitoring_access()
@@ -83,11 +81,11 @@ fn main() {
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = request;
         println!("input-macos-spike: target OS is not macOS; probe skipped");
     }
 }
 
+#[cfg(target_os = "macos")]
 fn argument_value(name: &str) -> Option<String> {
     let mut args = std::env::args().skip(1);
     while let Some(argument) = args.next() {
