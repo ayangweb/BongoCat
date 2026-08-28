@@ -16,7 +16,16 @@ For a repeatable lifecycle smoke test:
 BONGOCAT_SPIKE_AUTO_QUIT_MS=1500 cargo run --locked
 ```
 
-Successful output includes both `window opened` and `stopped`.
+Successful output includes `window opened`, `runtime snapshot revision=1`,
+`runtime stopped`, and `stopped`.
+
+The synthetic runtime bridge uses a bounded typed command channel. The UI reads
+revisioned snapshots through a GPUI task, while application shutdown waits for
+the runtime acknowledgement. Run its contract test with:
+
+```text
+cargo test --locked
+```
 
 Build an ad-hoc-signed macOS application bundle and launch it through
 LaunchServices:
@@ -31,7 +40,7 @@ Developer ID signature or notarization result.
 
 The spike is successful only when the window opens, renders text without
 clipping, and closes cleanly on the target machine. It is not evidence that the
-production UI or overlay lifecycle is complete.
+production runtime, UI, or overlay lifecycle is complete.
 
 This probe uses GPUI's default precompiled shader path. On macOS, install the
 optional Metal Toolchain before building:

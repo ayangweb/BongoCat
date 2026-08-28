@@ -1,3 +1,4 @@
+mod runtime_bridge;
 mod text_input;
 
 use gpui::{
@@ -5,6 +6,7 @@ use gpui::{
     SharedString, SystemMenuType, Timer, TitlebarOptions, Window, WindowAppearance, WindowBounds,
     WindowOptions, actions, div, prelude::*, px, rgb, size,
 };
+use runtime_bridge::{RuntimeBridge, RuntimeSnapshot, run_runtime};
 use std::time::Duration;
 use text_input::{
     Backspace, Copy, Cut, Delete, End, Home, Left, Paste, Right, SelectAll, SelectLeft,
@@ -78,10 +80,14 @@ struct SettingsWindow {
     theme_focus: Vec<FocusHandle>,
     root_focus: FocusHandle,
     model_name: gpui::Entity<TextInput>,
+    runtime_bridge: RuntimeBridge,
+    runtime_snapshot: Option<RuntimeSnapshot>,
+    runtime_request_in_flight: bool,
+    runtime_error: Option<SharedString>,
 }
 
 impl SettingsWindow {
-    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    fn new(window: &mut Window, runtime_bridge: RuntimeBridge, cx: &mut Context<Self>) -> Self {
         let dark_theme = matches!(
             window.appearance(),
             WindowAppearance::Dark | WindowAppearance::VibrantDark
@@ -112,6 +118,10 @@ impl SettingsWindow {
             theme_focus,
             root_focus: cx.focus_handle(),
             model_name,
+            runtime_bridge,
+            runtime_snapshot: None,
+            runtime_request_in_flight: false,
+            runtime_error: None,
         }
     }
 
@@ -132,6 +142,38 @@ impl SettingsWindow {
 
     fn on_tab_previous(&mut self, _: &TabPrevious, window: &mut Window, _: &mut Context<Self>) {
         window.focus_prev();
+    }
+
+    fn request_runtime_snapshot(&mut self, cx: &mut Context<Self>) {
+        if self.runtime_request_in_flight {
+            return;
+        }
+        self.runtime_request_in_flight = true;
+        self.runtime_error = None;
+        let bridge = self.runtime_bridge.clone();
+        cx.spawn(async move |this, cx| {
+            let result = bridge.read_snapshot().await;
+            let _ = this.update(cx, |settings, cx| {
+                settings.runtime_request_in_flight = false;
+                match result {
+                    Ok(snapshot) => {
+                        if settings
+                            .runtime_snapshot
+                            .is_none_or(|current| snapshot.revision > current.revision)
+                        {
+                            settings.runtime_snapshot = Some(snapshot);
+                        }
+                        println!(
+                            "gpui-settings-spike: runtime snapshot revision={}",
+                            snapshot.revision
+                        );
+                    }
+                    Err(error) => settings.runtime_error = Some(error.to_string().into()),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 }
 
@@ -162,6 +204,18 @@ impl Render for SettingsWindow {
             WindowAppearance::Light | WindowAppearance::VibrantLight => "Light",
         };
         let character_count = self.model_name.read(cx).content().chars().count();
+        let runtime_status = if let Some(error) = &self.runtime_error {
+            error.clone()
+        } else if self.runtime_request_in_flight {
+            "Refreshing...".into()
+        } else if let Some(snapshot) = self.runtime_snapshot {
+            let health = match snapshot.health {
+                runtime_bridge::RuntimeHealth::Ready => "Ready",
+            };
+            format!("Runtime {health} · revision {}", snapshot.revision).into()
+        } else {
+            "Runtime unavailable".into()
+        };
 
         let sidebar = div()
             .flex()
@@ -234,18 +288,12 @@ impl Render for SettingsWindow {
         let content = div()
             .flex()
             .flex_col()
-            .gap_4()
+            .gap_3()
             .flex_1()
-            .p_8()
+            .p_6()
             .bg(tokens.canvas)
             .text_color(tokens.text)
             .child(div().text_2xl().child("Appearance"))
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(tokens.text_muted)
-                    .child("GPUI interaction and platform behavior probe"),
-            )
             .child(
                 div()
                     .flex()
@@ -283,9 +331,32 @@ impl Render for SettingsWindow {
             )
             .child(
                 div()
-                    .text_sm()
-                    .text_color(tokens.text_muted)
-                    .child("Tab and Shift-Tab move focus; focused controls use an accent border."),
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .border_1()
+                    .border_color(tokens.border)
+                    .rounded_md()
+                    .p_4()
+                    .bg(tokens.surface)
+                    .child(runtime_status)
+                    .child(
+                        div()
+                            .id("refresh-runtime")
+                            .w(px(88.0))
+                            .h(px(32.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_md()
+                            .border_1()
+                            .border_color(tokens.border)
+                            .hover(|style| style.bg(tokens.surface_selected).cursor_pointer())
+                            .on_click(cx.listener(|settings, _, _, cx| {
+                                settings.request_runtime_snapshot(cx);
+                            }))
+                            .child("Refresh"),
+                    ),
             );
 
         div()
@@ -300,7 +371,7 @@ impl Render for SettingsWindow {
     }
 }
 
-fn open_settings_window(cx: &mut App) {
+fn open_settings_window(cx: &mut App, runtime_bridge: RuntimeBridge) {
     let bounds = Bounds::centered(None, size(px(760.0), px(520.0)), cx);
     let result = cx.open_window(
         WindowOptions {
@@ -311,7 +382,7 @@ fn open_settings_window(cx: &mut App) {
             }),
             ..Default::default()
         },
-        |window, cx| cx.new(|cx| SettingsWindow::new(window, cx)),
+        move |window, cx| cx.new(|cx| SettingsWindow::new(window, runtime_bridge, cx)),
     );
 
     match result {
@@ -319,6 +390,7 @@ fn open_settings_window(cx: &mut App) {
             window
                 .update(cx, |settings, window, cx| {
                     window.focus(&settings.model_name.focus_handle(cx));
+                    settings.request_runtime_snapshot(cx);
                 })
                 .ok();
             println!("gpui-settings-spike: window opened");
@@ -334,17 +406,30 @@ fn quit(_: &Quit, cx: &mut App) {
 fn main() {
     let auto_quit_delay = auto_quit_delay();
     let application = Application::new();
+    let (runtime_bridge, runtime_commands) = RuntimeBridge::new();
+    let reopen_bridge = runtime_bridge.clone();
 
-    application.on_reopen(|cx| {
+    application.on_reopen(move |cx| {
         if cx.windows().is_empty() {
-            open_settings_window(cx);
+            open_settings_window(cx, reopen_bridge.clone());
         }
         cx.activate(true);
     });
 
     application.run(move |cx: &mut App| {
-        cx.on_app_quit(|_| async {
-            println!("gpui-settings-spike: stopped");
+        cx.background_executor()
+            .spawn(run_runtime(runtime_commands))
+            .detach();
+        let quit_bridge = runtime_bridge.clone();
+        cx.on_app_quit(move |_| {
+            let bridge = quit_bridge.clone();
+            async move {
+                if let Err(error) = bridge.shutdown().await {
+                    eprintln!("gpui-settings-spike: runtime shutdown failed: {error}");
+                }
+                println!("gpui-settings-spike: runtime stopped");
+                println!("gpui-settings-spike: stopped");
+            }
         })
         .detach();
 
@@ -386,7 +471,7 @@ fn main() {
             ],
         }]);
 
-        open_settings_window(cx);
+        open_settings_window(cx, runtime_bridge.clone());
         cx.activate(true);
 
         if let Some(delay) = auto_quit_delay {

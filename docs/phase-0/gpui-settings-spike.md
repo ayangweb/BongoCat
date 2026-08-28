@@ -1,6 +1,6 @@
 # GPUI Settings Spike Record
 
-状态：macOS 默认 shader、`.app`、主题和基础文本交互通过；内容辅助功能、真实 IME 和跨平台验证待完成
+状态：macOS 默认 shader、`.app`、主题、基础文本交互和 runtime bridge 通过；内容辅助功能、真实 IME 和跨平台验证待完成
 日期：2026-08-28
 原始重构基线 commit：`94af230`；后续验证源码与本记录保持同一提交
 
@@ -14,7 +14,7 @@
 4. 生成具有固定 bundle id 的最小 macOS `.app` 并通过 LaunchServices 启动；
 5. 验证应用菜单、关闭、重开和 GPUI `quit()` 生命周期；
 6. 使用 GPUI 公共输入协议验证一个最小设置表单：System/Light/Dark 主题选择、焦点边框、Tab/Shift-Tab、Unicode 文本编辑、选择、剪切、复制、粘贴和 marked-text 接口；
-7. 不接入 runtime、输入、Live2D 或原生 overlay。
+7. 通过合成 runtime 验证 GPUI executor、强类型 command、revision snapshot 和 shutdown acknowledgement；不接入产品 runtime、输入、Live2D 或原生 overlay。
 
 源码位于 `spikes/gpui-settings/`。该目录包含独立 `Cargo.lock`，不会改变历史根 workspace。
 
@@ -35,6 +35,8 @@ GPUI: crates.io 0.2.2, Apache-2.0
 
 ```text
 cargo fmt -- --check
+cargo clippy --locked --all-targets -- --deny warnings
+cargo test --locked
 cargo check --locked
 cargo build --release --locked
 ./scripts/package-macos.sh
@@ -42,7 +44,15 @@ codesign --verify --deep --strict --verbose=4 "target/package/BongoCat GPUI Spik
 open -W "target/package/BongoCat GPUI Spike.app" --args --auto-quit-ms 1500
 ```
 
-结果：debug/release 编译通过，`.app` 的 ad-hoc 签名通过 strict bundle integrity 校验；LaunchServices smoke 以 0 退出。直接运行 release binary 时输出 `window opened`，随后通过 GPUI `quit()` 输出 `stopped` 并以 0 退出。
+结果：格式化、Clippy、1 项 runtime bridge contract test 和 debug/release 编译通过，`.app` 的 ad-hoc 签名通过 strict bundle integrity 校验；LaunchServices smoke 以 0 退出。直接运行 release binary 时输出 `window opened`、`runtime snapshot revision=1`，随后通过 GPUI `quit()` 输出 `runtime stopped` 和 `stopped` 并以 0 退出。
+
+## Runtime Bridge 结果
+
+spike 使用容量为 8 的 `async-channel 1.9.0` 传递强类型 `ReadSnapshot` 和 `Shutdown` command。每个 command 携带容量为 1 的 reply channel；UI 通过 GPUI `Context::spawn` 等待结果，再使用 weak entity 更新视图状态。snapshot 带单调递增 revision，UI 忽略不比当前 revision 更新的结果，runtime worker 在 GPUI background executor 上运行。
+
+退出时，runtime 先关闭 command receiver，再发送 shutdown acknowledgement，避免 acknowledgement 返回后仍有请求成功入队并永远等待 reply。contract test 覆盖两次 snapshot 的 revision、health、shutdown acknowledgement 和停止后请求失败。macOS release `.app` smoke 同时证明 GPUI executor 能完成首次 snapshot 请求，并在 auto-quit 的 100 ms GPUI shutdown 窗口内收到 acknowledgement；该结果不等于产品 runtime、持久化或高负载 channel 已完成。
+
+760x520 Retina 人工 smoke 确认 `Runtime Ready · revision 1` 和 Refresh 控件完整显示，无文字裁剪或卡片溢出。此次检查没有提交全屏截图，避免把用户桌面内容纳入仓库证据；可重复证据以 contract test、release binary 日志、bundle 校验和本文环境记录为准。
 
 ### 交互和视觉验证（macOS 人工 smoke）
 

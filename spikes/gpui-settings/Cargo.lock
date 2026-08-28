@@ -655,6 +655,8 @@ dependencies = [
 name = "bongocat-gpui-settings-spike"
 version = "0.1.0"
 dependencies = [
+ "async-channel 1.9.0",
+ "futures-lite 2.6.1",
  "gpui",
  "unicode-segmentation",
 ]
