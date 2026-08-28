@@ -70,7 +70,7 @@ Release 中的 `.sig` 是 Tauri updater 签名，用于旧更新协议的内容�
 - 重构前最新源码对照：使用 `pre-refactor` 的固定 commit `44f44bc...`。
 - 已发布安装包恢复：从 GitHub `v1.1.0` release 获取目标架构产物，下载后先核对本文件 SHA-256。
 - 不使用 release `.sig` 判断操作系统签名状态。
-- 不覆盖现有用户配置做回滚测试；复制到隔离的数据目录后运行旧版或迁移器。
+- 不覆盖现有用户配置做回滚测试；需要观察旧版时复制到隔离数据目录运行。Native Rewrite 不读取这些旧配置。
 
 ## 6. Remaining Evidence
 

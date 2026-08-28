@@ -8,6 +8,7 @@ APP_PATH="$SPIKE_DIR/target/package/BongoCat GPUI Spike.app"
 CONTENTS_PATH="$APP_PATH/Contents"
 MACOS_PATH="$CONTENTS_PATH/MacOS"
 EXECUTABLE_NAME="bongocat-gpui-settings-spike"
+EXPECTED_BUNDLE_ID="com.ayangweb.bongo-cat"
 
 cargo build --release --locked --manifest-path "$SPIKE_DIR/Cargo.toml"
 
@@ -15,6 +16,12 @@ rm -rf "$APP_PATH"
 mkdir -p "$MACOS_PATH"
 cp "$SPIKE_DIR/macos/Info.plist" "$CONTENTS_PATH/Info.plist"
 cp "$SPIKE_DIR/target/release/$EXECUTABLE_NAME" "$MACOS_PATH/$EXECUTABLE_NAME"
+
+ACTUAL_BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw -o - "$CONTENTS_PATH/Info.plist")
+if [ "$ACTUAL_BUNDLE_ID" != "$EXPECTED_BUNDLE_ID" ]; then
+  printf 'unexpected bundle id: %s\n' "$ACTUAL_BUNDLE_ID" >&2
+  exit 1
+fi
 
 # Ad-hoc signing makes bundle integrity testable. Release signing is a separate gate.
 codesign --force --sign - --timestamp=none "$APP_PATH"

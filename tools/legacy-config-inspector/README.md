@@ -1,9 +1,9 @@
 # Legacy Config Inspector
 
-This isolated Phase 0 tool reads the five JSON stores produced by the historical
-Tauri Pinia persistence plugin and prints a deterministic migration dry-run
-report. It never writes the source directory and is not the production
-`bongocat-config` migration implementation.
+This isolated Phase 0 archaeology tool reads the five JSON stores produced by
+the historical Tauri Pinia persistence plugin and prints a deterministic risk
+report. It never writes the source directory. Native Rewrite does not import
+legacy configuration, so this tool must not become a product dependency.
 
 The report contains only normalized non-secret settings, inventory counts, store
 states, and stable diagnostic codes. It never prints the input directory, model
@@ -20,8 +20,8 @@ report is blocked by a missing, unreadable, invalid, or non-object store. No exi
 code authorizes writing or deleting old data.
 
 The inspector applies only provisional safety ranges needed to expose legacy
-data hazards in Phase 0. These ranges and its `report_version` are not the future
-product `config.schemaVersion` contract.
+data hazards in Phase 0. These ranges and its `report_version` are unrelated to
+the Native Rewrite `schema_version` contract.
 
 ## Dependencies
 

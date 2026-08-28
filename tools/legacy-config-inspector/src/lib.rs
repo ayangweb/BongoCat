@@ -477,7 +477,7 @@ fn inspect_cat(root: &Value, settings: &mut CatSettings, diagnostics: &mut Vec<D
         if value_at(root, &field.split('.').collect::<Vec<_>>()).is_some() {
             diagnostics.push(Diagnostic {
                 severity: Severity::Info,
-                code: "migration_rule_pending",
+                code: "historical_field_unclassified",
                 store: "cat",
                 field,
             });

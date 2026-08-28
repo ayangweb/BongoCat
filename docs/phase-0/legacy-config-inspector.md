@@ -1,12 +1,12 @@
 # Phase 0 Legacy Config Inspector Spike
 
-状态：完成只读 dry-run 子项；不代表生产迁移完成
+状态：完成只读历史考古子项；不属于产品配置兼容范围
 
 日期：2026-08-28
 
 ## 假设与范围
 
-旧版 Pinia/Tauri 配置由五个独立 JSON store 组成。Native Rewrite 需要先确认这些输入能被安全读取、识别字段优先级，并在不泄漏用户数据的情况下给出迁移前诊断。本 spike 只读取合成 fixture，不写入用户目录，不生成新配置，也不实现生产迁移事务。
+旧版 Pinia/Tauri 配置由五个独立 JSON store 组成。本 spike 用于确认这些历史输入的结构风险、字段优先级和隐私边界，只读取合成 fixture，不写入用户目录，也不生成 Native Rewrite 配置。
 
 实现位置：`tools/legacy-config-inspector/`
 
@@ -49,4 +49,4 @@ missing store                  blocked; store_missing
 
 ## 非目标与后续
 
-本工具不定义生产 `config.schemaVersion`，不执行 `detect -> backup -> parse -> validate -> transform -> atomic commit -> verify`，不处理真实 Windows 路径、不校验模型目录安全性，也不迁移文件。生产迁移仍需独立实现并覆盖备份、锁、原子替换、回滚、幂等和真实双平台升级 smoke test。
+本工具不定义 Native `schema_version`，不处理真实 Windows 路径、不校验模型目录安全性，也不转换或迁移文件。Native Rewrite 不兼容旧配置，因此本工具只保留为隔离的 Phase 0 考古资产，不能接入应用启动、设置或发布依赖。

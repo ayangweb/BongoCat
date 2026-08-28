@@ -120,7 +120,7 @@ def validate_legacy_config_fixtures() -> int:
             fail(manifest_path, f"cases[{index}].id must be a unique string")
         if not isinstance(directory, str) or Path(directory).name != directory:
             fail(manifest_path, f"cases[{index}].directory must be one path component")
-        if expected not in {"migrate", "migrate-with-stale-fields-ignored", "reject"}:
+        if expected not in {"inspectable", "inspectable-with-stale-fields", "invalid"}:
             fail(manifest_path, f"cases[{index}].expected is invalid")
         if case.get("preserveSource") is not True:
             fail(manifest_path, f"cases[{index}] must require source preservation")
@@ -133,10 +133,10 @@ def validate_legacy_config_fixtures() -> int:
 
         for store_name in LEGACY_STORE_NAMES:
             store_path = case_dir / f"{store_name}.json"
-            if expected == "reject" and store_name == "cat":
+            if expected == "invalid" and store_name == "cat":
                 invalid_path = case_dir / "cat.json.invalid"
                 if not invalid_path.is_file() or store_path.exists():
-                    fail(case_dir, "reject case must contain only cat.json.invalid for cat store")
+                    fail(case_dir, "invalid case must contain only cat.json.invalid for cat store")
                 try:
                     json.loads(invalid_path.read_text(encoding="utf-8"))
                 except json.JSONDecodeError:

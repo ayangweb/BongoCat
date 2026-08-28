@@ -4,19 +4,19 @@
     {
       "id": "default",
       "directory": "default",
-      "expected": "migrate",
+      "expected": "inspectable",
       "preserveSource": true
     },
     {
       "id": "upgraded-with-custom-model",
       "directory": "upgraded-with-custom-model",
-      "expected": "migrate-with-stale-fields-ignored",
+      "expected": "inspectable-with-stale-fields",
       "preserveSource": true
     },
     {
       "id": "damaged-cat",
       "directory": "damaged",
-      "expected": "reject",
+      "expected": "invalid",
       "preserveSource": true
     }
   ]

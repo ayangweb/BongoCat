@@ -2,7 +2,7 @@
 
 状态：macOS 默认 shader、`.app` 与窗口生命周期通过；内容辅助功能与完整交互待完成
 日期：2026-08-28
-重构基线 commit：`94af230`；验证源码与本记录在同一提交
+原始重构基线 commit：`94af230`；后续验证源码与本记录保持同一提交
 
 ## 范围
 
@@ -43,6 +43,8 @@ open -W "target/package/BongoCat GPUI Spike.app" --args --auto-quit-ms 1500
 
 结果：debug/release 编译通过，`.app` 的 ad-hoc 签名通过 strict bundle integrity 校验；LaunchServices smoke 以 0 退出。直接运行 release binary 时输出 `window opened`，随后通过 GPUI `quit()` 输出 `stopped` 并以 0 退出。
 
+2026-08-28 按 ADR-0008 将 Bundle ID 更新为 `com.ayangweb.bongo-cat` 后重新执行打包、strict codesign 和 LaunchServices auto-quit，三项均通过。打包脚本会在签名前读取 Info.plist 并拒绝任何非预期 Bundle ID。
+
 上游 `block 0.1.6` 和 `proc-macro-error2 2.0.1` 被 Cargo 标记为 future-incompatible；进入产品 workspace 前需要评估 GPUI 更新或上游修复时间。
 
 ## Metal Toolchain 结果
@@ -61,7 +63,7 @@ xcodebuild -downloadComponent MetalToolchain
 
 `scripts/package-macos.sh` 生成 `target/package/BongoCat GPUI Spike.app`，复制固定 `Info.plist` 与 release executable，并执行 ad-hoc signing。系统检查得到：
 
-- bundle id：`com.ayangweb.bongocat.gpui-settings-spike`；
+- bundle id：`com.ayangweb.bongo-cat`；
 - executable：arm64 Mach-O；
 - 最低系统声明：macOS 12.0；
 - `codesign --verify --deep --strict`：通过；

@@ -20,6 +20,8 @@ Rust Application
 
 “纯 Rust”指 BongoCat 自有应用代码全部使用 Rust。官方 Cubism Core 平台二进制是唯一允许的厂商 FFI 例外。不得把 BongoCat 业务逻辑放入 SDK bridge。
 
+Native Rewrite 的 Bundle ID 固定为 `com.ayangweb.bongo-cat`。Development 与 Production 使用相同数据结构和不同存储根；任何开发构建不得读取、写入或锁住生产数据。新配置使用自己的 `snake_case` 字段，不兼容或导入旧 Tauri/Pinia 配置。
+
 ## 2. 必读文档
 
 开始任务前按顺序阅读：
@@ -174,8 +176,11 @@ Issue #47 的“收到按下但未收到释放”必须从架构上处理，不�
 
 ## 10. 配置、文件与安全
 
-- 配置包含显式 `schemaVersion`，迁移必须幂等。
-- 迁移流程固定为 detect -> backup -> parse -> validate -> transform -> atomic commit -> verify。
+- 配置包含显式 `schema_version`；只支持 Native Rewrite schema 的顺序、幂等演进。
+- 不实现旧 Tauri/Pinia 配置探测、字段 alias、自动导入或目录 fallback。
+- JSON key 使用 `snake_case` 和当前产品领域名称，不沿用旧 store 字段名。
+- 构建产物携带不可变的 Development/Production 环境；运行时输入不得切换环境。
+- 配置、状态、模型、备份、日志、锁、单实例命名和更新 channel 全部按环境隔离。
 - 写入使用同目录临时文件、flush 和原子替换；失败保留原文件和备份。
 - 模型导入防止路径穿越、符号链接逃逸、绝对路径注入、压缩炸弹和静默覆盖。
 - 文件选择结果必须在 Rust 侧再次验证。
@@ -215,7 +220,7 @@ cargo check --workspace --release
 - 任何 pressed state 最终都能由 release、reconcile 或 reset 清除。
 - Renderer 不阻塞 runtime，鼠标移动不阻塞释放边沿。
 - 模型加载/切换失败不会破坏当前可用模型。
-- 配置迁移失败不会丢失历史配置或用户模型。
+- 配置写入、schema 演进或损坏恢复不会丢失当前环境的可用配置或用户模型。
 - 退出不依赖进程强杀，所有 worker 在超时内完成 join。
 - 8 小时 soak 无持续内存、GPU、handle、线程或日志增长。
 
@@ -230,12 +235,13 @@ cargo check --workspace --release
 
 ## 13. 历史源码处理
 
-当前仓库中的历史源码是行为考古、配置迁移和模型兼容的参考输入：
+当前仓库中的历史源码是行为考古和模型兼容的参考输入：
 
-- 未到 TODO 的发布切换/退役阶段，不删除历史源码、资源、构建入口或迁移读取器。
+- 未到 TODO 的发布切换/退役阶段，不删除历史源码、资源或构建入口。
 - 不在历史实现上继续扩展 Native Rewrite 功能。
 - 可以添加最小诊断或导出工具来冻结行为，但必须与重构实现隔离。
-- 读取历史配置和模型时不得原地修改用户样本。
+- 已有 legacy config inspector 只作为历史考古工具保留，不得接入产品启动、设置或发布依赖。
+- 读取历史配置和模型样本时不得原地修改。
 - 对历史源码的结论必须以实际代码、配置文件或实机行为为证据。
 
 ## 14. 文档与 TODO 维护
@@ -243,7 +249,7 @@ cargo check --workspace --release
 - Technical Design 只描述当前目标架构，不记录被放弃的技术路线。
 - 架构决策、约束变化和 go/no-go 结果写入 `docs/adr/`。
 - Benchmark 方法和结果写入 `docs/benchmark/`。
-- 配置、模型和用户数据迁移规则写入 `docs/migration/`。
+- 历史考古记录写入 `docs/migration/`，但不得把旧配置兼容重新加入产品范围。
 - TODO checkbox 只有在完整完成定义满足后才能从 `[ ]` 改为 `[x]`。
 - 部分完成的任务保持 `[ ]`，在其下增加简短状态和剩余工作，不得用模糊措辞标记完成。
 - 新增任务放入正确 phase，并标明依赖和退出条件，不在文档末尾堆放无归属事项。

@@ -47,7 +47,7 @@ Rust 2024 edition application
 
 - 使用 Rust 实现完整的桌面应用、设置 UI 和实时运行链路。
 - 使用一套 Rust 业务实现覆盖 Windows 和 macOS。
-- 保持现有模型、动作、表情、配置、快捷键和用户资源尽可能兼容。
+- 保持现有模型、动作、表情和用户资源格式尽可能兼容；配置使用全新的 Native Rewrite schema 和命名。
 - 修复输入事件丢失导致的永久卡键，包括 issue #47 的截图快捷键场景。
 - 设置界面具备一致、清晰、可主题化的桌面体验。
 - 主猫窗口具备低延迟、透明、置顶、穿透、多显示器和高 DPI/Retina 支持。
@@ -60,7 +60,7 @@ Rust 2024 edition application
 - 不提供进程内插件 ABI。
 - 不要求 Windows/macOS 像素完全一致。
 - 不把 GPUI fork、Zed 私有 UI crate 或第三方输入库变成业务 API。
-- 历史版本只作为行为、配置和资源迁移输入。
+- 历史版本只作为行为与模型资源参考；Native Rewrite 不读取或导入旧 Tauri/Pinia 配置。
 - 不在技术 spike 通过前完整迁移所有产品功能。
 
 ## 4. 设计原则
@@ -72,7 +72,7 @@ Rust 2024 edition application
 | 输入最终一致   | 按键边沿、系统状态校正和生命周期复位共同维护 pressed state |
 | UI 与渲染分离  | GPUI 负责设置，独立 overlay renderer 负责 Live2D           |
 | 平台能力显式   | 系统 API 封装在平台模块，业务 crate 不接触平台 handle      |
-| 配置可恢复     | schema、验证、备份、幂等迁移和原子提交均可测试             |
+| 配置可恢复     | schema、环境隔离、验证、备份、版本演进和原子提交均可测试   |
 | 行为可重复     | fixture、规范化状态快照和平台 smoke test 共同验收          |
 
 ## 5. GPUI 决策
@@ -125,10 +125,10 @@ Platform input ---> Runtime thread ---> Model/Animation state
 - `runtime`：唯一业务状态所有者，处理输入、快捷键、动画选择和模型命令。
 - `ui`：显示 runtime snapshot，发送显式 command，不直接修改业务字段。
 - `platform`：窗口、输入、托盘、权限、显示器、启动项、文件和更新。
-- `model`：模型包解析、路径安全、资源索引、导入和迁移。
+- `model`：模型包解析、路径安全、资源索引和显式导入。
 - `live2d`：Cubism Core 生命周期、motion/expression/physics/pose 求值。
 - `render`：不可变 render snapshot 和 renderer contract。
-- `config`：版本化 schema、验证、迁移、备份和原子提交。
+- `config`：环境隔离、版本化 schema、验证、备份和原子提交。
 
 ### 6.2 依赖方向
 
@@ -157,22 +157,22 @@ BongoCat/
   crates/
     bongocat-app/             入口、装配和 shutdown
     bongocat-runtime/         状态、输入语义、动画和命令
-    bongocat-config/          schema、迁移和原子存储
+    bongocat-config/          schema、环境隔离和原子存储
     bongocat-model/           模型包、导入和资源索引
     bongocat-live2d/          Cubism Core 边界与模型求值
     bongocat-render/          render snapshot/contract
     bongocat-ui/              GPUI 设置界面和 design system
     bongocat-platform/        Windows/macOS 平台服务
   shared/
-    config/                   JSON schema、旧字段映射和样本
+    config/                   Native JSON schema、命名与存储契约
     behavior/                 输入、动画和快捷键规范
     fixtures/                 输入序列、预期状态和模型样本
     resources/                模型、图标和本地化
-  tools/                      不随应用发布的验证/迁移工具
+  tools/                      不随应用发布的验证与考古工具
   docs/
     adr/
     benchmark/
-    migration/
+    migration/                历史参考，不进入生产配置路径
 ```
 
 crate 是编译和责任边界，不是动态库。首期不为目录美观建立空 crate；只有依赖方向或测试隔离确实需要时才拆分。
@@ -309,25 +309,33 @@ Linux 阶段再决定增加 Vulkan/OpenGL backend，或基于数据迁移到 wgp
 
 ## 12. 配置、模型与安全
 
-配置位置：
-
-- Windows：`%AppData%/BongoCat/config.json`
-- macOS：`~/Library/Application Support/BongoCat/config.json`
-
-统一迁移事务：
+应用身份：
 
 ```text
-detect -> backup -> parse -> validate -> transform -> atomic commit -> verify
+com.ayangweb.bongo-cat
 ```
+
+构建产物携带不可变的 `Development` 或 `Production` 环境。环境由构建入口显式选择，运行时参数、环境变量和设置项均不能切换。两个环境使用相同 schema 和相对目录结构，只改变数据根目录：
+
+| 平台    | Development                                                         | Production                                                         |
+| ------- | ------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Windows | `%APPDATA%\BongoCat\development\`                                   | `%APPDATA%\BongoCat\production\`                                   |
+| macOS   | `~/Library/Application Support/com.ayangweb.bongo-cat/development/` | `~/Library/Application Support/com.ayangweb.bongo-cat/production/` |
+
+每个根目录包含 `config.json`、`state.json`、`models/`、`backups/` 和 `logs/`。锁、单实例命名、更新 channel 和诊断同样按环境隔离；任何环境不得读取、写入或 fallback 到另一个环境。
 
 要求：
 
-- 配置包含显式 `schemaVersion`，写入使用同目录临时文件、flush 和原子替换。
-- 迁移幂等；失败保留原文件和备份，不迁移瞬时 pressed/modelReady 状态。
-- 历史配置存储只作为迁移输入，不参与新应用运行。
+- Native Rewrite 配置从全新 schema 开始，不读取、不探测、不导入旧 Tauri/Pinia store。
+- JSON key 使用 `snake_case`，字段按当前领域语义命名，不提供旧字段 alias。
+- 配置包含显式 `schema_version`，只对 Native Rewrite 自身后续 schema 执行顺序、幂等升级。
+- 写入使用同目录临时文件、flush、原子替换和提交后验证；失败保留当前文件和受限数量的备份。
+- `config.json` 只包含用户设置；窗口布局写入 `state.json`，pressed state、权限结果和模型解析缓存不持久化。
 - 模型导入防止路径穿越、符号链接逃逸、压缩炸弹和覆盖现有用户数据。
 - 更新只允许 HTTPS，安装包和更新包必须签名并支持失败回滚。
 - 日志不记录真实按键序列、剪贴板内容或用户文件内容。
+
+初始字段命名和数据分类见 `shared/config/native-config-contract.md`，环境和 Bundle ID 决策见 ADR-0008。
 
 继续兼容：
 
@@ -345,7 +353,7 @@ resources/background.png  resources/cover.png
 
 ### 13.1 测试层级
 
-- Rust 单元测试：reducer、输入映射、动画、迁移、路径验证和模型语义。
+- Rust 单元测试：reducer、输入映射、动画、配置、路径验证和模型语义。
 - fixture：相同输入序列产生规范化状态快照。
 - Cubism fixture：三个预置模型和异常/自定义样本的加载、动作、表情、物理和销毁。
 - GPUI 测试：设置表单、命令、错误状态、键盘导航和窗口重建。
@@ -423,13 +431,17 @@ Windows 使用 D3D11，macOS 使用 Metal。主猫窗口不嵌入 GPUI renderer�
 
 ### ADR-007：单一 Rust 运行环境
 
-生产版本的 UI、运行时、平台服务和渲染器均属于同一 Rust 应用。历史版本只用于行为对照和数据迁移。
+生产版本的 UI、运行时、平台服务和渲染器均属于同一 Rust 应用。历史版本只用于行为与资源对照。
+
+### ADR-008：应用身份与存储环境隔离
+
+Bundle ID 固定为 `com.ayangweb.bongo-cat`。Development 与 Production 使用相同数据结构和不同存储根，Native Rewrite 不读取旧配置。
 
 ## 17. 实施阶段
 
 ### Phase 0：风险验证和行为冻结
 
-冻结参考行为、模型和配置样本；完成 GPUI + 独立 overlay、Cubism、输入可靠性、透明合成和许可证 spike。
+冻结参考行为和模型样本，定义全新配置命名与环境隔离契约；完成 GPUI + 独立 overlay、Cubism、输入可靠性、透明合成和许可证 spike。
 
 ### Phase 1：Rust 工程骨架
 
@@ -443,9 +455,9 @@ Windows 使用 D3D11，macOS 使用 Metal。主猫窗口不嵌入 GPUI renderer�
 
 实现状态、动画、手柄、动作、表情、物理、音效和模型管理，并由 fixture 验证。
 
-### Phase 4：GPUI 设置和配置迁移
+### Phase 4：GPUI 设置和配置存储
 
-完成 design system、设置页、模型管理、快捷键、权限、诊断和历史配置幂等迁移。
+完成 design system、设置页、模型管理、快捷键、权限、诊断、环境隔离与 Native schema 演进。
 
 ### Phase 5：系统集成
 

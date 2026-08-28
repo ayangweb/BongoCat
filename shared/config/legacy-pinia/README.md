@@ -19,5 +19,5 @@ isolated temporary directory.
 The historical format has no `schemaVersion`. `manifest.json` belongs to the
 Native Rewrite test suite and must not be mistaken for an old application file.
 
-Migration tests must read copies of these files and must preserve the source on
-all failures.
+Archaeology tests must read copies of these files and preserve the source on all
+failures. Product code must not read this directory.

@@ -8,6 +8,8 @@
 
 > 执行基线：应用代码使用 Rust 2024 edition；GPUI 负责设置 UI；主猫窗口由 Rust 平台模块直接创建，不嵌入 GPUI renderer；Windows 使用 Raw Input + D3D11，macOS 使用 CGEventTap + Metal；官方 Cubism Core 是唯一厂商二进制/FFI 例外。生产产物不包含 Tauri、WebView、Vue、React 或 JavaScript runtime。
 
+> 应用与存储基线：Bundle ID 固定为 `com.ayangweb.bongo-cat`；Development/Production 使用相同 schema 和不同数据根；新配置使用 `snake_case` 自有命名，不读取或导入旧 Tauri/Pinia 配置。
+
 ## 0. 执行规则
 
 ### 0.1 架构红线
@@ -21,6 +23,8 @@
 - [ ] 除官方 Cubism Core 外，不新增长期 C/C++/Swift 业务模块。
 - [ ] 平台 unsafe/FFI 必须集中在小型 wrapper，业务 crate 默认禁止 unsafe。
 - [ ] Linux 不阻塞首发，但共享 crate 不得暴露 Win32/AppKit 类型。
+- [ ] Development 不得读取、写入、锁住或 fallback 到 Production 数据。
+- [ ] 不实现旧配置字段 alias、自动导入或旧目录探测。
 
 ### 0.2 任务完成定义
 
@@ -40,7 +44,7 @@
 - [ ] Phase 0 未通过前，不实现完整设置 UI 或批量迁移旧代码。
 - [ ] GPUI 与原生 overlay 共存 spike 未通过前，不铺开平台窗口实现。
 - [ ] Cubism spike 未通过前，不删除 Pixi/easy-live2d 行为对照。
-- [ ] 配置迁移回滚测试未通过前，不覆盖用户旧配置。
+- [ ] 存储环境隔离测试未通过前，不允许开发构建使用生产数据根。
 - [ ] 8 小时 soak、签名和更新回滚未通过前，不发布 stable。
 
 ### 0.4 状态、依赖与验收证据
@@ -64,7 +68,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 | Phase 1 Rust 工程骨架           | Phase 1             |
 | Phase 2 输入到 Live2D 最小闭环  | Phase 2-4           |
 | Phase 3 产品 Runtime 与模型兼容 | Phase 2、Phase 4    |
-| Phase 4 GPUI 设置和配置迁移     | Phase 5-6           |
+| Phase 4 GPUI 设置和配置存储     | Phase 5-6           |
 | Phase 5 系统集成                | Phase 7             |
 | Phase 6 稳定性与发布            | Phase 8-9           |
 
@@ -83,7 +87,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 新增 ADR-004：输入采用事件 + 状态校正。
 - [x] 新增 ADR-005：Cubism Core 是唯一厂商 FFI 边界。
 - [x] 新增 ADR-006：首发不支持 Linux，但共享模块不封死后续 backend。
-- [x] 新增 ADR-007：生产版本只有单一 Rust 运行环境，历史实现仅用于迁移和行为对照。
+- [x] 新增 ADR-007：生产版本只有单一 Rust 运行环境，历史实现仅用于行为与资源对照。
+- [x] 新增 ADR-008：固定 Bundle ID，并隔离 Development/Production 存储环境。
 - [x] 记录 `master`、`next`、旧版本 tag 和可回退 commit。
 - [ ] 确认旧 Vue/Tauri 应用仍可构建和运行，保存命令与产物信息。
 - [x] 建立 `docs/adr/`、`docs/benchmark/`、`docs/migration/` 目录。
@@ -109,23 +114,19 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 记录现有五种语言、主题、错误提示和首次启动流程。
 - [ ] 为功能标记 `P0 首发`、`P1 首发后` 或 `不迁移`。
 
-### 1.3 配置与资源考古
+### 1.3 配置契约与资源考古
 
-- [ ] 在 Windows/macOS 实机确认 Pinia/Tauri store 的真实落盘路径和格式。
-- [x] 保存匿名化默认、长期升级、自定义模型和损坏配置样本。
-- [x] 列出 `app`、`general`、`cat`、`model`、`shortcut` 的持久化字段。
-- [x] 记录 deprecated 映射：mirror、mouseMirror、passThrough、alwaysOnTop、scale、opacity。
-- [x] 记录 deprecated 映射：autostart、taskbarVisible、theme、isDark、autoCheckUpdate。
-- [x] 标记不得迁移的 pressedKeys、modelReady 和能力缓存等瞬时字段。
-- [x] 建立隔离的 Rust 只读 legacy config dry-run inspector；仅输出归一化设置、数量和稳定诊断，不写入源文件。
+- [x] 明确 Native Rewrite 不读取、不探测、不导入旧 Tauri/Pinia 配置。
+- [x] 固定 JSON `snake_case` 命名规则和首版领域字段命名基线。
+- [x] 固定 Bundle ID `com.ayangweb.bongo-cat`。
+- [x] 定义 Development/Production 双存储根；schema 和内部相对结构保持一致。
+- [x] 保存匿名化旧配置样本和只读 inspector 作为历史参考，不接入生产配置路径。
 - [x] 为 standard、keyboard、gamepad 预置模型生成文件清单和 hash。
 - [ ] 建立缺文件、损坏 JSON、非 ASCII 路径、超大纹理等模型 fixture。
 - [x] 记录 model3、moc、texture、motion、expression、physics、pose、cdi 和音频用法。
 - [x] 记录 background、cover、left-keys、right-keys 的实际语义。
 
-状态（2026-08-28）：macOS 实机确认生产 store 目录、五个 JSON 的稀疏/历史字段结构和 13 个自定义模型的匿名统计；Windows 落盘位置仍未实机确认。合成 config fixture 已覆盖默认、长期升级冲突、自定义模型和截断 JSON；模型异常目录 fixture 仍待建立。
-
-只读迁移检查器状态（2026-08-28）：`tools/legacy-config-inspector/` 已完成并通过 9 个库测试、2 个 CLI 测试及 release check。它验证五个 store 的可读性、deprecated/新字段优先级、瞬时字段忽略、数量统计、临时范围 clamp 和隐私不泄漏；生产迁移、备份、锁、原子提交、回滚和真实双平台升级仍未开始。
+状态（2026-08-28）：ADR-008 和 `shared/config/native-config-contract.md` 已冻结应用身份、环境隔离与新字段命名。旧配置兼容已移出产品范围；此前的合成 fixture 与 `tools/legacy-config-inspector/` 只保留为历史考古证据。模型异常目录 fixture 仍待建立。
 
 ### 1.4 行为 fixture
 
@@ -160,7 +161,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 记录首次打开、空闲 CPU、RSS 和二进制增量。
 - [x] 安装并固定 macOS Metal Toolchain，验证 GPUI 默认预编译 shader 路径；`runtime_shaders` 不作为发布配置。
 - [ ] 将 macOS spike 打包为最小 `.app`，验证 bundle id、菜单、激活、关闭和辅助功能树可被系统识别。
-  - 状态：bundle、菜单、激活、关闭/重开和退出已通过；GPUI 内容节点无法被辅助功能 API 识别，因此保持未完成。
+  - 状态：Bundle ID `com.ayangweb.bongo-cat`、菜单、激活、关闭/重开和退出已通过；GPUI 内容节点无法被辅助功能 API 识别，因此保持未完成。
 - [ ] 生成 Windows spike 可执行文件，验证 MSVC、Windows SDK、D3D shader 工具和 manifest 前置条件。
 - [ ] 跟踪 `block 0.1.6`、`proc-macro-error2 2.0.1` future-incompatibility，进入产品 workspace 前形成升级或接受结论。
 - [ ] 若存在发布阻塞，提交 GPUI go/no-go ADR；备选只评估 Iced。
@@ -231,7 +232,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 根 Cargo workspace 仅包含新 Rust 应用和 crate。
 - [ ] 创建 bongocat-app：入口、服务装配和 shutdown。
 - [ ] 创建 bongocat-runtime：状态、输入语义、动画和 command。
-- [ ] 创建 bongocat-config：schema、验证、迁移和原子存储。
+- [ ] 创建 bongocat-config：环境隔离、schema、验证和原子存储。
 - [ ] 创建 bongocat-model：模型包、导入和资源索引。
 - [ ] 创建 bongocat-live2d：Cubism safe wrapper 和模型求值。
 - [ ] 创建 bongocat-render：render snapshot 和 renderer contract。
@@ -334,16 +335,19 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 3.5 配置 v1
 
-- [ ] 定义带 schemaVersion 的 Rust 配置结构和 JSON schema。
+- [ ] 定义带 `schema_version` 的 Rust 配置结构和 JSON schema，JSON key 使用 `snake_case`。
 - [ ] 区分用户配置、运行时状态和诊断数据。
 - [ ] 为字段定义范围、默认值和跨字段约束。
-- [ ] Windows 使用 AppData/BongoCat/config.json。
-- [ ] macOS 使用 Application Support/BongoCat/config.json。
+- [ ] 实现不可变 `BuildEnvironment::{Development, Production}`；未知或缺失环境的打包构建失败。
+- [ ] Windows 使用 `%APPDATA%\BongoCat\<environment>\` 数据根。
+- [ ] macOS 使用 `Application Support/com.ayangweb.bongo-cat/<environment>/` 数据根。
+- [ ] 两个环境的 `config.json`、`state.json`、`models/`、`backups/` 和 `logs/` 相对结构一致。
+- [ ] 环境不能由 CLI、进程环境变量或设置项在运行时切换，也不能 fallback 到另一环境。
 - [ ] 实现同目录临时文件、flush、原子替换和提交后验证。
 - [ ] 实现损坏配置隔离、默认恢复和用户可见诊断。
 - [ ] 配置写入去抖，退出前强制 flush。
 - [ ] GPUI 只通过 typed command 获取 snapshot 和提交 patch。
-- [ ] 防止两个进程、旧版和新版或两个 writer 同时覆盖配置；锁冲突进入可诊断只读/重试路径。
+- [ ] 防止两个进程或两个 writer 同时覆盖配置；锁和单实例 namespace 包含环境身份。
 - [ ] 新配置文件和备份使用最小用户权限，不继承过宽 ACL/文件 mode。
 - [ ] 配置更新使用 expected revision，拒绝静默覆盖较新的用户修改。
 
@@ -528,48 +532,47 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 设置窗口关闭时 overlay CPU、帧率和输入不受明显影响。
 - [ ] GPUI test、contract test 和双平台截图检查通过。
 
-## 7. Phase 6：旧配置和用户数据迁移
+## 7. Phase 6：配置存储与环境隔离
 
-### 7.1 Schema 与映射
+### 7.1 Schema 与命名
 
-- [ ] 发布 shared/config/config.schema.json。
-- [ ] 记录每个旧字段的目标字段、默认、范围和废弃原因。
-- [ ] 明确模型列表、自定义路径、快捷键和行为绑定迁移规则。
-- [ ] 记录不同历史版本的 Pinia/Tauri store key 和位置。
-- [ ] 为未知字段定义保留、忽略或诊断策略。
-- [ ] 建立 sequential schemaVersion migration。
+- [ ] 发布 `shared/config/config.schema.json`。
+- [ ] 实现 `shared/config/native-config-contract.md` 中的首版字段，调整时同步 contract 和测试。
+- [ ] 每个字段记录默认值、范围、单位和跨字段约束。
+- [ ] 未知字段采用明确的拒绝、忽略或诊断策略。
+- [ ] 只为 Native Rewrite schema 建立 sequential `schema_version` 演进。
+- [ ] 不包含旧 Pinia store key、旧字段 alias 或自动导入逻辑。
 
-### 7.2 迁移事务
+### 7.2 环境与持久化事务
 
-- [ ] 实现 detect -> backup -> parse -> validate -> transform -> atomic commit -> verify。
-- [ ] backup 包含来源版本/时间并限制保留数量。
-- [ ] 成功后记录来源 hash，重复迁移必须幂等。
-- [ ] 中途崩溃后可安全恢复或重试。
-- [ ] 失败不删除旧配置、不移动用户模型、不覆盖新配置。
+- [ ] 构建系统显式产生 Development/Production 元数据，发布构建拒绝默认值。
+- [ ] path resolver 返回当前平台与环境的数据根，不能接受任意外部生产路径。
+- [ ] 实现 load -> parse -> validate -> upgrade native schema -> atomic commit -> verify。
+- [ ] backup 包含 Native schema 版本和时间，并限制数量与总大小。
+- [ ] 中途崩溃后可安全恢复或重试；失败不覆盖当前可用配置。
 - [ ] GPUI 显示错误摘要、备份位置和恢复默认 command。
+- [ ] 用户模型只通过显式、受验证的导入进入当前环境，不扫描旧应用目录。
 
-### 7.3 模型目录迁移
+### 7.3 跨环境隔离
 
-- [ ] 区分预置模型和用户模型，禁止误移动安装资源。
-- [ ] 大模型迁移支持进度、取消和磁盘空间预检。
-- [ ] 同卷原子移动；跨卷 copy + verify + commit。
-- [ ] 比较大小/hash 后才标记完成。
-- [ ] 目标冲突不静默覆盖。
-- [ ] 旧目录保留到发布策略规定的清理版本。
+- [ ] Development 与 Production 的相对目录树和 JSON schema 完全一致。
+- [ ] 配置、state、模型、备份、日志、锁和单实例 namespace 均包含环境边界。
+- [ ] 两个环境可同时运行，不争用 writer lock、模型目录或日志文件。
+- [ ] 开发构建即使收到指向 Production 的 CLI 参数或进程环境变量也拒绝越界。
+- [ ] Production 不自动复制 Development 数据；需要测试数据时使用显式导入。
+- [ ] 更新 channel 与环境绑定，Development 不能安装 Production 更新或反向覆盖。
 
 ### 7.4 测试与门槛
 
-- [ ] 覆盖默认和所有历史 store/schema 版本。
-- [ ] 覆盖 deprecated/新字段并存优先级。
-- [ ] 覆盖损坏、截断、错误类型和越界值。
+- [ ] 双平台验证 Development/Production 根目录不同且内部相对结构一致。
+- [ ] 两个环境写入不同 sentinel，重启和并发运行后仍只读取各自数据。
+- [ ] 覆盖损坏、截断、错误类型、越界值和未知字段。
 - [ ] 覆盖无权限、磁盘满、目标占用和中途退出。
 - [ ] 覆盖非 ASCII/超长路径、缺失和重复模型。
-- [ ] 重复迁移 10 次输出一致。
-- [ ] Windows/macOS 从已发布旧版本完成真实升级 smoke test。
-- [ ] 失败注入不丢旧配置或用户模型。
-- [ ] 提供只读 dry-run 报告，列出将迁移、跳过、冲突和失败的项目，不修改任何用户文件。
-  - 状态（2026-08-28）：Phase 0 只读 inspector 已提供安全归一化设置、数量、冲突/跳过/失败诊断；“将迁移”的完整项目清单仍需生产 schema 和模型路径验证后实现。
-- [ ] 迁移完成后旧版再次启动再写入旧 store 的行为有明确策略，避免双向版本互相覆盖。
+- [ ] Native schema upgrade 重复执行 10 次结果一致。
+- [ ] 失败注入不丢当前环境的配置或用户模型。
+- [ ] 发布依赖和运行日志中没有旧 Tauri/Pinia 配置探测。
+- [ ] Bundle ID 精确验证为 `com.ayangweb.bongo-cat`。
 
 ## 8. Phase 7：原生系统集成
 
@@ -609,7 +612,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 安装前协调 runtime/renderer shutdown，失败可回滚。
 - [ ] 测试断网、代理、中断、签名错误和降级攻击。
 - [ ] 日志 rotation、总大小和保留天数有上限。
-- [ ] 记录 renderer/input/model/migration/update 的稳定 error code。
+- [ ] 记录 renderer/input/model/config/update 的稳定 error code。
 - [ ] 日志导出生成可预览的脱敏包。
 - [ ] 更新 manifest 定义 schemaVersion、channel、最低可升级版本、发布时间和防回滚字段。
 - [ ] 更新 helper/installer 的权限边界、替换原子性和失败恢复经过单独威胁建模。
@@ -626,13 +629,13 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 - [ ] Runtime reducer、输入语义和动画单元测试。
 - [ ] motion/expression priority 和可注入 clock 测试。
-- [ ] 配置 schema、迁移和原子写入测试。
+- [ ] 配置 schema、Native 版本演进、环境隔离和原子写入测试。
 - [ ] 模型路径安全和损坏资源测试。
 - [ ] Cubism safe wrapper 生命周期测试。
 - [ ] 输入 fixture 和丢 release 恢复测试。
 - [ ] GPUI component、command 和窗口重建测试。
 - [ ] Windows/macOS 安装、首次启动、升级和卸载 smoke test。
-- [ ] 公共 contract/schema 兼容性测试，旧 UI snapshot、配置和更新 manifest 在支持窗口内可读取。
+- [ ] 公共 contract/schema 兼容性测试；支持窗口内的 Native config、UI snapshot 和更新 manifest 可读取。
 - [ ] release 构建启用 panic/allocator/overflow 策略的真实测试，不只测试 debug 行为。
 
 ### 9.2 Windows 实机矩阵
@@ -698,17 +701,17 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 从干净 checkout 按书面步骤生成相同内容清单；不可避免的签名/时间戳差异单独记录。
 - [ ] 对安装包、应用二进制、模型资源和更新 manifest 生成 SHA-256 并写入 release provenance。
 - [ ] 更新 manifest 只引用 HTTPS 和签名产物。
-- [ ] 准备已知差异、迁移、备份恢复和问题反馈说明。
+- [ ] 准备已知差异、全新配置、环境隔离、备份恢复和问题反馈说明。
 
 ### 10.2 分阶段发布
 
 - [ ] 内部 dogfood 覆盖至少一台 Windows 和一台 macOS 主力设备。
-- [ ] alpha 收集 input reset、renderer reset、model load 和 migration 指标。
+- [ ] alpha 收集 input reset、renderer reset、model load 和 config recovery 指标。
 - [ ] beta 扩大模型/显示器/权限组合并冻结 schema/command contract。
-- [ ] stable 前从已发布旧版执行端到端升级。
-- [ ] alpha/beta/stable 的配置 schema、更新 channel 和数据目录不会互相污染，降级行为有明确限制。
-- [ ] 验证失败更新可回滚，旧配置备份仍可用。
-- [ ] stable 观察期结束前不删除旧迁移读取器。
+- [ ] stable 前验证替换已安装旧版后二进制可正常启动，并明确提示新配置不会导入旧设置。
+- [ ] Development/Production 的配置、更新 channel 和数据目录不会互相污染，Native schema 降级行为有明确限制。
+- [ ] 验证失败更新可回滚，当前 Native 配置备份仍可用。
+- [ ] 发布依赖和产物始终不包含 legacy config inspector 或旧 store 读取器。
 
 ### 10.3 旧代码退役
 
@@ -717,9 +720,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 删除 rdev 和旧 device emit/listen 路径。
 - [ ] 删除 gilrs 高频 IPC 路径；保留与新手柄方案无关的有效 fork 修复需单独评估。
 - [ ] 删除旧不安全 updater 配置和宽泛 asset scope。
-- [ ] 清理旧模型复制代码前确认迁移器覆盖已发布版本。
+- [ ] 删除旧模型复制代码前确认 Native 显式导入覆盖支持的模型格式。
 - [ ] 更新 README、开发环境、贡献指南和架构图。
-- [ ] 保留旧版本 tag/分支作为行为与迁移参考，不重写历史。
+- [ ] 保留旧版本 tag/分支作为行为与模型资源参考，不重写历史。
 
 ### 10.4 最终完成定义
 
@@ -728,7 +731,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 关闭 GPUI 设置窗口不影响输入、动画、音效和 overlay。
 - [ ] issue #47 和输入生命周期回归矩阵通过。
 - [ ] 三个预置模型和支持范围内自定义模型通过兼容矩阵。
-- [ ] 配置/模型迁移可回滚且无已知数据丢失路径。
+- [ ] Native 配置写入/schema 演进可恢复，模型显式导入无已知数据丢失路径。
 - [ ] 性能、稳定性、安全和许可证门槛有可追溯证据。
 
 ## 11. Linux 后续 Backlog（不阻塞首发）
@@ -748,12 +751,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 1. [x] `P0-BASELINE`：提交 Technical Design、Implementation TODO、AGENTS 和 ADR-001 至 005。
 2. [x] `P0-FIXTURE-V1`：提交 input/expected schema、4 组核心输入 fixture 和跨文件 validator。
 3. [x] `P0-GPUI-LIFECYCLE-MAC`：macOS 隔离 spike 精确锁定 GPUI 0.2.2，窗口打开并通过 GPUI `quit()` 正常退出。
-4. [ ] `P0-DOC-CONSISTENCY`：补建 ADR-006/007，记录旧版 tag/安装包 hash、target triple 和工具链矩阵。
+4. [ ] `P0-DOC-CONSISTENCY`：维护 ADR-006/007/008，记录旧版 tag/安装包 hash、target triple 和工具链矩阵。
    - 状态（2026-08-28）：ADR 与仓库/发布基线已完成；target/toolchain 文档为 provisional，仍待 Windows 实机、GPUI 发布构建和 Cubism 架构证据后冻结。
-5. [ ] `P0-ARCHAEOLOGY`：补齐 Windows 真实配置路径、历史版本样本、完整功能优先级和模型异常 fixture。
-   - 状态（2026-08-28）：macOS 真实 store 结构、配置字段/迁移优先级、合成迁移 fixture 和自定义模型匿名统计已完成；Windows 实机、早期 tag 字段演化和模型异常目录 fixture 待完成。
-6. [x] `P0-LEGACY-CONFIG-DRY-RUN`：隔离 Rust 工具读取五个旧 store，输出隐私安全的稳定 dry-run 报告。
-   - 状态（2026-08-28）：工具、fixture 测试和 CLI 退出码已验证；不包含生产 schema、真实路径验证或任何写入操作。
+5. [ ] `P0-ARCHAEOLOGY`：补齐完整功能优先级和模型异常 fixture。
+   - 状态（2026-08-28）：旧配置兼容已从产品范围移除；预置模型资源清单、自定义模型匿名统计已完成，完整功能优先级和模型异常目录 fixture 待完成。
+6. [x] `P0-CONFIG-CONTRACT`：固定 Bundle ID、自有字段命名和 Development/Production 隔离存储契约。
+   - 状态（2026-08-28）：ADR-008 与 naming contract 已完成；实际 path resolver 和隔离测试在配置 crate 阶段实现。
 7. [ ] `P0-GPUI-PACKAGE-MAC`：使用默认预编译 shader 构建 `.app`，验证 IME、剪贴板、焦点、辅助功能、主题和窗口重开。
    - 状态（2026-08-28）：默认 shader、bundle、菜单和窗口生命周期通过；辅助功能内容节点缺失，IME、文本编辑、剪贴板、完整焦点链和主题待验证。
 8. [ ] `P0-GPUI-WINDOWS`：在 Windows 构建同一 spike，验证字体、IME、DPI、辅助功能和正常退出。
