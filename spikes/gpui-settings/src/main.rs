@@ -7,7 +7,7 @@ use gpui::{
     WindowOptions, actions, div, prelude::*, px, rgb, size,
 };
 use runtime_bridge::{RuntimeBridge, RuntimeSnapshot, run_runtime};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use text_input::{
     Backspace, Copy, Cut, Delete, End, Home, Left, Paste, Right, SelectAll, SelectLeft,
     SelectRight, TextInput,
@@ -371,7 +371,11 @@ impl Render for SettingsWindow {
     }
 }
 
-fn open_settings_window(cx: &mut App, runtime_bridge: RuntimeBridge) {
+fn open_settings_window(
+    cx: &mut App,
+    runtime_bridge: RuntimeBridge,
+    startup_started_at: Option<Instant>,
+) {
     let bounds = Bounds::centered(None, size(px(760.0), px(520.0)), cx);
     let result = cx.open_window(
         WindowOptions {
@@ -391,6 +395,14 @@ fn open_settings_window(cx: &mut App, runtime_bridge: RuntimeBridge) {
                 .update(cx, |settings, window, cx| {
                     window.focus(&settings.model_name.focus_handle(cx));
                     settings.request_runtime_snapshot(cx);
+                    if let Some(started_at) = startup_started_at {
+                        window.on_next_frame(move |_, _| {
+                            println!(
+                                "gpui-settings-spike: first frame elapsed_ms={:.3}",
+                                started_at.elapsed().as_secs_f64() * 1_000.0
+                            );
+                        });
+                    }
                 })
                 .ok();
             println!("gpui-settings-spike: window opened");
@@ -404,6 +416,7 @@ fn quit(_: &Quit, cx: &mut App) {
 }
 
 fn main() {
+    let startup_started_at = Instant::now();
     let auto_quit_delay = auto_quit_delay();
     let application = Application::new();
     let (runtime_bridge, runtime_commands) = RuntimeBridge::new();
@@ -411,7 +424,7 @@ fn main() {
 
     application.on_reopen(move |cx| {
         if cx.windows().is_empty() {
-            open_settings_window(cx, reopen_bridge.clone());
+            open_settings_window(cx, reopen_bridge.clone(), None);
         }
         cx.activate(true);
     });
@@ -471,7 +484,7 @@ fn main() {
             ],
         }]);
 
-        open_settings_window(cx, runtime_bridge.clone());
+        open_settings_window(cx, runtime_bridge.clone(), Some(startup_started_at));
         cx.activate(true);
 
         if let Some(delay) = auto_quit_delay {

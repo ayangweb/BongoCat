@@ -27,6 +27,20 @@ the runtime acknowledgement. Run its contract test with:
 cargo test --locked
 ```
 
+Build the release binary and collect the macOS Phase 0 performance probe with:
+
+```text
+./scripts/package-macos.sh
+./scripts/benchmark-macos.sh
+```
+
+Raw CSV files and a summary are written below `target/benchmark/`. First-frame
+time starts at Rust `main`, so it excludes dyld and process creation. Idle CPU
+is the lifetime average reported by macOS `ps`; RSS is sampled in KiB after a
+five-second warmup. The binary increment compares the unsigned release
+executable with an empty Rust executable built by the same toolchain using
+`opt-level=2` and thin LTO.
+
 Build an ad-hoc-signed macOS application bundle and launch it through
 LaunchServices:
 
