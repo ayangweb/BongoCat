@@ -101,18 +101,20 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 1.2 旧版功能清单
 
-- [ ] 记录透明、无边框、缩放、透明度、拖动、置顶和穿透行为。
-- [ ] 记录 hover 隐藏、任务栏显示、显示/隐藏和窗口位置恢复。
-- [ ] 记录多显示器、负坐标、DPI/Retina 和显示器移除行为。
-- [ ] 记录 standard、keyboard、gamepad 三种模式的输入映射。
-- [ ] 记录左右手、鼠标按键、鼠标跟随、镜像和鼠标镜像语义。
-- [ ] 记录 motion、expression、physics、pose、音效和淡入淡出语义。
-- [ ] 记录全局快捷键和模型行为快捷键。
-- [ ] 记录模型导入、删除、切换、预置保护和自定义资源目录。
-- [ ] 记录托盘、设置、启动项、更新、日志、剪贴板和外部链接。
-- [ ] 记录 Windows 权限差异和 macOS Input Monitoring/Accessibility 流程。
-- [ ] 记录现有五种语言、主题、错误提示和首次启动流程。
-- [ ] 为功能标记 `P0 首发`、`P1 首发后` 或 `不迁移`。
+- [x] 记录透明、无边框、缩放、透明度、拖动、置顶和穿透行为。
+- [x] 记录 hover 隐藏、任务栏显示、显示/隐藏和窗口位置恢复。
+- [x] 记录多显示器、负坐标、DPI/Retina 和显示器移除行为。
+- [x] 记录 standard、keyboard、gamepad 三种模式的输入映射。
+- [x] 记录左右手、鼠标按键、鼠标跟随、镜像和鼠标镜像语义。
+- [x] 记录 motion、expression、physics、pose、音效和淡入淡出语义。
+- [x] 记录全局快捷键和模型行为快捷键。
+- [x] 记录模型导入、删除、切换、预置保护和自定义资源目录。
+- [x] 记录托盘、设置、启动项、更新、日志、剪贴板和外部链接。
+- [x] 记录 Windows 权限差异和 macOS Input Monitoring/Accessibility 流程。
+- [x] 记录现有五种语言、主题、错误提示和首次启动流程。
+- [x] 为功能标记 `P0 首发`、`P1 首发后` 或 `不迁移`。
+
+状态（2026-08-28）：`docs/phase-0/behavior-inventory.md` 已完成静态源码考古并冻结 47 项范围决策：34 项 `P0 首发`、4 项 `P1 首发后`、9 项 `不迁移`。完成表示功能入口、旧语义、已知风险和待确认项已有可追溯记录；Windows/macOS 实机行为、Cubism 兼容和 fixture 人工确认仍由后续 Phase 0 spike 验收，不因本节勾选而视为完成。
 
 ### 1.3 配置契约与资源考古
 
@@ -753,8 +755,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 3. [x] `P0-GPUI-LIFECYCLE-MAC`：macOS 隔离 spike 精确锁定 GPUI 0.2.2，窗口打开并通过 GPUI `quit()` 正常退出。
 4. [ ] `P0-DOC-CONSISTENCY`：维护 ADR-006/007/008，记录旧版 tag/安装包 hash、target triple 和工具链矩阵。
    - 状态（2026-08-28）：ADR 与仓库/发布基线已完成；target/toolchain 文档为 provisional，仍待 Windows 实机、GPUI 发布构建和 Cubism 架构证据后冻结。
-5. [ ] `P0-ARCHAEOLOGY`：补齐完整功能优先级和模型异常 fixture。
-   - 状态（2026-08-28）：旧配置兼容已从产品范围移除；预置模型资源清单、自定义模型匿名统计和六类模型异常目录 fixture 已完成，完整功能优先级仍待补齐。
+5. [x] `P0-ARCHAEOLOGY`：补齐完整功能优先级和模型异常 fixture。
+   - 状态（2026-08-28）：旧配置兼容已从产品范围移除；47 项功能优先级、预置模型资源清单、自定义模型匿名统计和六类模型异常目录 fixture 已完成。实机行为确认继续由输入、overlay 与 Cubism spike 承担。
 6. [x] `P0-CONFIG-CONTRACT`：固定 Bundle ID、自有字段命名和 Development/Production 隔离存储契约。
    - 状态（2026-08-28）：ADR-008 与 naming contract 已完成；实际 path resolver 和隔离测试在配置 crate 阶段实现。
 7. [ ] `P0-GPUI-PACKAGE-MAC`：使用默认预编译 shader 构建 `.app`，验证 IME、剪贴板、焦点、辅助功能、主题和窗口重开。
