@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bongocat.dev/schemas/fixtures/input-sequence-v1.json",
+  "title": "BongoCat input sequence fixture",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "description", "context", "events"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "description": { "type": "string", "minLength": 1 },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["modelMode", "keySides"],
+      "properties": {
+        "modelMode": { "enum": ["standard", "keyboard", "gamepad"] },
+        "keySides": {
+          "type": "object",
+          "additionalProperties": { "enum": ["left", "right"] }
+        }
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/event" }
+    }
+  },
+  "$defs": {
+    "base": {
+      "type": "object",
+      "required": ["atMs", "type"],
+      "properties": {
+        "atMs": { "type": "integer", "minimum": 0 },
+        "type": { "type": "string" }
+      }
+    },
+    "keyDown": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["atMs", "type", "key", "repeat", "source"],
+          "properties": {
+            "atMs": { "type": "integer", "minimum": 0 },
+            "type": { "const": "key_down" },
+            "key": { "type": "string", "minLength": 1 },
+            "repeat": { "type": "boolean" },
+            "source": { "const": "capture" }
+          }
+        }
+      ]
+    },
+    "keyUp": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["atMs", "type", "key", "source"],
+          "properties": {
+            "atMs": { "type": "integer", "minimum": 0 },
+            "type": { "const": "key_up" },
+            "key": { "type": "string", "minLength": 1 },
+            "source": { "enum": ["capture", "reconciliation"] }
+          }
+        }
+      ]
+    },
+    "mouseEdge": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["atMs", "type", "button", "source"],
+          "properties": {
+            "atMs": { "type": "integer", "minimum": 0 },
+            "type": { "enum": ["mouse_down", "mouse_up"] },
+            "button": { "enum": ["left", "right", "middle", "back", "forward"] },
+            "source": { "enum": ["capture", "reconciliation"] }
+          }
+        }
+      ]
+    },
+    "cursorMoved": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["atMs", "type", "position"],
+          "properties": {
+            "atMs": { "type": "integer", "minimum": 0 },
+            "type": { "const": "cursor_moved" },
+            "position": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["x", "y"],
+              "properties": {
+                "x": { "type": "number" },
+                "y": { "type": "number" }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "gamepadButton": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["atMs", "type", "deviceId", "button", "value"],
+          "properties": {
+            "atMs": { "type": "integer", "minimum": 0 },
+            "type": { "const": "gamepad_button" },
+            "deviceId": { "type": "string", "minLength": 1 },
+            "button": { "type": "string", "minLength": 1 },
+            "value": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        }
+      ]
+    },
+    "gamepadAxis": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["atMs", "type", "deviceId", "axis", "value"],
+          "properties": {
+            "atMs": { "type": "integer", "minimum": 0 },
+            "type": { "const": "gamepad_axis" },
+            "deviceId": { "type": "string", "minLength": 1 },
+            "axis": { "type": "string", "minLength": 1 },
+            "value": { "type": "number", "minimum": -1, "maximum": 1 }
+          }
+        }
+      ]
+    },
+    "device": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["atMs", "type", "deviceId", "deviceKind"],
+          "properties": {
+            "atMs": { "type": "integer", "minimum": 0 },
+            "type": { "enum": ["device_connected", "device_disconnected"] },
+            "deviceId": { "type": "string", "minLength": 1 },
+            "deviceKind": { "enum": ["keyboard", "mouse", "gamepad"] }
+          }
+        }
+      ]
+    },
+    "reset": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["atMs", "type", "reason"],
+          "properties": {
+            "atMs": { "type": "integer", "minimum": 0 },
+            "type": { "const": "reset" },
+            "reason": {
+              "enum": [
+                "session_lock",
+                "sleep",
+                "device_removed",
+                "service_restart",
+                "queue_overflow",
+                "permission_changed",
+                "test"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "event": {
+      "oneOf": [
+        { "$ref": "#/$defs/keyDown" },
+        { "$ref": "#/$defs/keyUp" },
+        { "$ref": "#/$defs/mouseEdge" },
+        { "$ref": "#/$defs/cursorMoved" },
+        { "$ref": "#/$defs/gamepadButton" },
+        { "$ref": "#/$defs/gamepadAxis" },
+        { "$ref": "#/$defs/device" },
+        { "$ref": "#/$defs/reset" }
+      ]
+    }
+  }
+}

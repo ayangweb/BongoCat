@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "sequenceId": "lifecycle-reset",
+  "checkpoints": [
+    {
+      "atMs": 10,
+      "input": {
+        "pressedKeys": ["KeyA"],
+        "pressedMouseButtons": ["left"],
+        "connectedDevices": [],
+        "lastResetReason": null
+      },
+      "model": {
+        "leftHandDown": true,
+        "rightHandDown": false,
+        "parameters": {
+          "CatParamLeftHandDown": 1.0,
+          "ParamMouseLeftDown": 1.0
+        },
+        "activeMotion": null,
+        "activeExpression": null
+      }
+    },
+    {
+      "atMs": 250,
+      "input": {
+        "pressedKeys": [],
+        "pressedMouseButtons": [],
+        "connectedDevices": [],
+        "lastResetReason": "session_lock"
+      },
+      "model": {
+        "leftHandDown": false,
+        "rightHandDown": false,
+        "parameters": {
+          "CatParamLeftHandDown": 0.0,
+          "ParamMouseLeftDown": 0.0
+        },
+        "activeMotion": null,
+        "activeExpression": null
+      }
+    }
+  ]
+}

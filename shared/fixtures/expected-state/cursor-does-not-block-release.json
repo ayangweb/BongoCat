@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "sequenceId": "cursor-does-not-block-release",
+  "checkpoints": [
+    {
+      "atMs": 4,
+      "input": {
+        "pressedKeys": [],
+        "pressedMouseButtons": [],
+        "connectedDevices": [],
+        "lastResetReason": null,
+        "cursorPosition": { "x": 30.0, "y": 40.0 }
+      },
+      "model": {
+        "leftHandDown": false,
+        "rightHandDown": false,
+        "parameters": { "CatParamLeftHandDown": 0.0 },
+        "activeMotion": null,
+        "activeExpression": null
+      }
+    }
+  ]
+}
