@@ -117,12 +117,15 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 记录 deprecated 映射：mirror、mouseMirror、passThrough、alwaysOnTop、scale、opacity。
 - [x] 记录 deprecated 映射：autostart、taskbarVisible、theme、isDark、autoCheckUpdate。
 - [x] 标记不得迁移的 pressedKeys、modelReady 和能力缓存等瞬时字段。
+- [x] 建立隔离的 Rust 只读 legacy config dry-run inspector；仅输出归一化设置、数量和稳定诊断，不写入源文件。
 - [x] 为 standard、keyboard、gamepad 预置模型生成文件清单和 hash。
 - [ ] 建立缺文件、损坏 JSON、非 ASCII 路径、超大纹理等模型 fixture。
 - [x] 记录 model3、moc、texture、motion、expression、physics、pose、cdi 和音频用法。
 - [x] 记录 background、cover、left-keys、right-keys 的实际语义。
 
 状态（2026-08-28）：macOS 实机确认生产 store 目录、五个 JSON 的稀疏/历史字段结构和 13 个自定义模型的匿名统计；Windows 落盘位置仍未实机确认。合成 config fixture 已覆盖默认、长期升级冲突、自定义模型和截断 JSON；模型异常目录 fixture 仍待建立。
+
+只读迁移检查器状态（2026-08-28）：`tools/legacy-config-inspector/` 已完成并通过 9 个库测试、2 个 CLI 测试及 release check。它验证五个 store 的可读性、deprecated/新字段优先级、瞬时字段忽略、数量统计、临时范围 clamp 和隐私不泄漏；生产迁移、备份、锁、原子提交、回滚和真实双平台升级仍未开始。
 
 ### 1.4 行为 fixture
 
@@ -565,6 +568,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] Windows/macOS 从已发布旧版本完成真实升级 smoke test。
 - [ ] 失败注入不丢旧配置或用户模型。
 - [ ] 提供只读 dry-run 报告，列出将迁移、跳过、冲突和失败的项目，不修改任何用户文件。
+  - 状态（2026-08-28）：Phase 0 只读 inspector 已提供安全归一化设置、数量、冲突/跳过/失败诊断；“将迁移”的完整项目清单仍需生产 schema 和模型路径验证后实现。
 - [ ] 迁移完成后旧版再次启动再写入旧 store 的行为有明确策略，避免双向版本互相覆盖。
 
 ## 8. Phase 7：原生系统集成
@@ -748,14 +752,16 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
    - 状态（2026-08-28）：ADR 与仓库/发布基线已完成；target/toolchain 文档为 provisional，仍待 Windows 实机、GPUI 发布构建和 Cubism 架构证据后冻结。
 5. [ ] `P0-ARCHAEOLOGY`：补齐 Windows 真实配置路径、历史版本样本、完整功能优先级和模型异常 fixture。
    - 状态（2026-08-28）：macOS 真实 store 结构、配置字段/迁移优先级、合成迁移 fixture 和自定义模型匿名统计已完成；Windows 实机、早期 tag 字段演化和模型异常目录 fixture 待完成。
-6. [ ] `P0-GPUI-PACKAGE-MAC`：使用默认预编译 shader 构建 `.app`，验证 IME、剪贴板、焦点、辅助功能、主题和窗口重开。
+6. [x] `P0-LEGACY-CONFIG-DRY-RUN`：隔离 Rust 工具读取五个旧 store，输出隐私安全的稳定 dry-run 报告。
+   - 状态（2026-08-28）：工具、fixture 测试和 CLI 退出码已验证；不包含生产 schema、真实路径验证或任何写入操作。
+7. [ ] `P0-GPUI-PACKAGE-MAC`：使用默认预编译 shader 构建 `.app`，验证 IME、剪贴板、焦点、辅助功能、主题和窗口重开。
    - 状态（2026-08-28）：默认 shader、bundle、菜单和窗口生命周期通过；辅助功能内容节点缺失，IME、文本编辑、剪贴板、完整焦点链和主题待验证。
-7. [ ] `P0-GPUI-WINDOWS`：在 Windows 构建同一 spike，验证字体、IME、DPI、辅助功能和正常退出。
-8. [ ] `P0-OVERLAY`：GPUI 生命周期内完成 Windows D3D11/macOS Metal 透明 clear/present、错误注入和 100 次重建。
-9. [ ] `P0-INPUT-WINDOWS`：完成 Raw Input + pressed set + `GetAsyncKeyState` 校正并实测 issue #47 场景。
-10. [ ] `P0-INPUT-MAC`：完成 CGEventTap 权限拒绝/授予/恢复、状态校正和 100 次 restart。
-11. [ ] `P0-CUBISM`：确认 SDK/许可证/binding 生成，三个预置模型完成 Core、资源和 renderer spike。
-12. [ ] `P0-GO-NO-GO`：汇总证据、阻塞和条件，确认后再建立完整产品 workspace。
+8. [ ] `P0-GPUI-WINDOWS`：在 Windows 构建同一 spike，验证字体、IME、DPI、辅助功能和正常退出。
+9. [ ] `P0-OVERLAY`：GPUI 生命周期内完成 Windows D3D11/macOS Metal 透明 clear/present、错误注入和 100 次重建。
+10. [ ] `P0-INPUT-WINDOWS`：完成 Raw Input + pressed set + `GetAsyncKeyState` 校正并实测 issue #47 场景。
+11. [ ] `P0-INPUT-MAC`：完成 CGEventTap 权限拒绝/授予/恢复、状态校正和 100 次 restart。
+12. [ ] `P0-CUBISM`：确认 SDK/许可证/binding 生成，三个预置模型完成 Core、资源和 renderer spike。
+13. [ ] `P0-GO-NO-GO`：汇总证据、阻塞和条件，确认后再建立完整产品 workspace。
 
 ## 13. 待决策清单
 

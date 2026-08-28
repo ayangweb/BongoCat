@@ -119,6 +119,7 @@ new nested field
 
 ## 待办
 
+- 已建立 `tools/legacy-config-inspector/` 只读 dry-run spike。它只消费合成 fixture，输出不含路径、模型 id 或快捷键值的稳定诊断；它不是生产迁移器，也不写入用户文件。
 - Windows 实机确认 store 目录、文件名和历史安装版本差异。
 - 从更早发布 tag 收集不同 schema 样本，补充当前合成 fixture 未覆盖的字段演化。
 - 明确 `model.single`、`singleMode`、`window.position` 的历史版本语义。
