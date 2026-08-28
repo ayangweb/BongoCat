@@ -553,7 +553,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 - [x] 发布 `shared/config/config.schema.json`，并用有效/拒绝样本验证 schema 边界。
 - [ ] 实现 `shared/config/native-config-contract.md` 中的首版字段，调整时同步 contract 和测试。
-- [ ] 每个字段记录默认值、范围、单位和跨字段约束。
+- [x] 每个字段记录默认值、范围、单位和跨字段约束；schema、typed validation 与边界 fixture 已对齐，后续新增字段必须同步三者。
 - [ ] 未知字段采用明确的拒绝、忽略或诊断策略。
 - [ ] 只为 Native Rewrite schema 建立 sequential `schema_version` 演进。
 - [ ] 不包含旧 Pinia store key、旧字段 alias 或自动导入逻辑。

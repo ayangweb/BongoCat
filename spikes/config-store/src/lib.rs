@@ -254,6 +254,60 @@ impl NativeConfig {
         if self.appearance.language.trim().is_empty() {
             return Err(ConfigError::InvalidValue("appearance.language"));
         }
+        if self
+            .model
+            .selected_model_id
+            .as_deref()
+            .is_some_and(|model_id| model_id.trim().is_empty())
+        {
+            return Err(ConfigError::InvalidValue("model.selected_model_id"));
+        }
+        if self
+            .shortcuts
+            .commands
+            .iter()
+            .any(|binding| binding.command.trim().is_empty())
+        {
+            return Err(ConfigError::InvalidValue("shortcuts.commands.command"));
+        }
+        if self
+            .shortcuts
+            .commands
+            .iter()
+            .any(|binding| binding.shortcut.trim().is_empty())
+        {
+            return Err(ConfigError::InvalidValue("shortcuts.commands.shortcut"));
+        }
+        if self
+            .shortcuts
+            .model_behaviors
+            .iter()
+            .any(|binding| binding.model_id.trim().is_empty())
+        {
+            return Err(ConfigError::InvalidValue(
+                "shortcuts.model_behaviors.model_id",
+            ));
+        }
+        if self
+            .shortcuts
+            .model_behaviors
+            .iter()
+            .any(|binding| binding.behavior_id.trim().is_empty())
+        {
+            return Err(ConfigError::InvalidValue(
+                "shortcuts.model_behaviors.behavior_id",
+            ));
+        }
+        if self
+            .shortcuts
+            .model_behaviors
+            .iter()
+            .any(|binding| binding.shortcut.trim().is_empty())
+        {
+            return Err(ConfigError::InvalidValue(
+                "shortcuts.model_behaviors.shortcut",
+            ));
+        }
         Ok(())
     }
 }
@@ -514,5 +568,18 @@ mod tests {
         value["unexpected_field"] = serde_json::json!(true);
         let error = serde_json::from_value::<NativeConfig>(value).unwrap_err();
         assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn blank_binding_is_rejected_by_typed_validation() {
+        let mut config = NativeConfig::default();
+        config.shortcuts.commands.push(ShortcutBinding {
+            command: "  ".into(),
+            shortcut: "Control+Alt+B".into(),
+        });
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::InvalidValue("shortcuts.commands.command"))
+        ));
     }
 }

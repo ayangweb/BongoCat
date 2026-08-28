@@ -41,7 +41,7 @@
       "required": ["theme", "language"],
       "properties": {
         "theme": { "enum": ["system", "light", "dark"] },
-        "language": { "type": "string", "minLength": 1 }
+        "language": { "type": "string", "minLength": 1, "pattern": ".*\\S.*" }
       }
     },
     "overlay": {
@@ -65,7 +65,7 @@
       "additionalProperties": false,
       "required": ["selected_model_id", "mirror", "mirror_pointer_tracking", "play_motion_audio", "enable_behavior_shortcuts", "maximum_fps", "ignore_pointer", "release_fallback_timeout_ms"],
       "properties": {
-        "selected_model_id": { "type": ["string", "null"] },
+        "selected_model_id": { "type": ["string", "null"], "minLength": 1 },
         "mirror": { "type": "boolean" },
         "mirror_pointer_tracking": { "type": "boolean" },
         "play_motion_audio": { "type": "boolean" },
@@ -89,8 +89,8 @@
       "additionalProperties": false,
       "required": ["command", "shortcut"],
       "properties": {
-        "command": { "type": "string", "minLength": 1 },
-        "shortcut": { "type": "string", "minLength": 1 }
+        "command": { "type": "string", "minLength": 1, "pattern": ".*\\S.*" },
+        "shortcut": { "type": "string", "minLength": 1, "pattern": ".*\\S.*" }
       }
     },
     "model_behavior_binding": {
@@ -98,9 +98,9 @@
       "additionalProperties": false,
       "required": ["model_id", "behavior_id", "shortcut"],
       "properties": {
-        "model_id": { "type": "string", "minLength": 1 },
-        "behavior_id": { "type": "string", "minLength": 1 },
-        "shortcut": { "type": "string", "minLength": 1 }
+        "model_id": { "type": "string", "minLength": 1, "pattern": ".*\\S.*" },
+        "behavior_id": { "type": "string", "minLength": 1, "pattern": ".*\\S.*" },
+        "shortcut": { "type": "string", "minLength": 1, "pattern": ".*\\S.*" }
       }
     }
   }

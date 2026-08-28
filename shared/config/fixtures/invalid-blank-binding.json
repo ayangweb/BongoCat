@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "application": {
+    "launch_at_login": false,
+    "show_taskbar_icon": true,
+    "show_status_icon": true,
+    "check_for_updates_automatically": true
+  },
+  "appearance": { "theme": "system", "language": "en-US" },
+  "overlay": {
+    "visible": true,
+    "click_through": true,
+    "always_on_top": true,
+    "scale_percent": 100,
+    "opacity_percent": 100,
+    "corner_radius_percent": 0,
+    "hide_on_pointer_hover": false,
+    "hide_on_pointer_hover_delay_ms": 250,
+    "keep_inside_work_area": true
+  },
+  "model": {
+    "selected_model_id": null,
+    "mirror": false,
+    "mirror_pointer_tracking": false,
+    "play_motion_audio": true,
+    "enable_behavior_shortcuts": true,
+    "maximum_fps": 60,
+    "ignore_pointer": false,
+    "release_fallback_timeout_ms": 500
+  },
+  "shortcuts": {
+    "commands": [{ "command": "  ", "shortcut": "Control+Alt+B" }],
+    "model_behaviors": []
+  }
+}
