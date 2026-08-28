@@ -58,6 +58,24 @@ def apply_event(state: dict, event: dict) -> None:
         state["gamepad_buttons"].clear()
         state["cursor_position"] = None
         state["last_reset_reason"] = event["reason"]
+    elif event_type == "model_switch":
+        state["selected_model_id"] = event["modelId"]
+        state["active_motion"] = None
+        state["motion_priority"] = None
+        state["active_expression"] = None
+    elif event_type == "motion_start":
+        priority = {"idle": 0, "normal": 1, "force": 2}[event["priority"]]
+        if state["motion_priority"] is None or priority >= state["motion_priority"]:
+            state["active_motion"] = event["motionId"]
+            state["motion_priority"] = priority
+    elif event_type == "motion_stop":
+        if state["active_motion"] == event["motionId"]:
+            state["active_motion"] = None
+            state["motion_priority"] = None
+    elif event_type == "expression_set":
+        state["active_expression"] = event["expressionId"]
+    elif event_type == "audio_trigger":
+        state["audio_trigger_count"] += 1
     else:
         raise ValueError(f"unknown event type: {event_type}")
 
@@ -99,6 +117,11 @@ def run_fixture(input_path: Path) -> None:
         "gamepad_buttons": {},
         "cursor_position": None,
         "last_reset_reason": None,
+        "selected_model_id": None,
+        "active_motion": None,
+        "motion_priority": None,
+        "active_expression": None,
+        "audio_trigger_count": 0,
     }
     event_index = 0
     for checkpoint in expected["checkpoints"]:
@@ -118,9 +141,11 @@ def run_fixture(input_path: Path) -> None:
             "leftHandDown": hand_state(state, context, "left"),
             "rightHandDown": hand_state(state, context, "right"),
             "parameters": {name: parameter_value(name, state, context) for name in checkpoint["model"]["parameters"]},
-            "activeMotion": None,
-            "activeExpression": None,
+            "activeMotion": state["active_motion"],
+            "activeExpression": state["active_expression"],
         }
+        if "selectedModelId" in checkpoint["model"]:
+            actual_model["selectedModelId"] = state["selected_model_id"]
         actual = {"input": actual_input, "model": actual_model}
         wanted = {"input": expected_input, "model": checkpoint["model"]}
         if actual != wanted:

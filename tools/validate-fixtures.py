@@ -40,6 +40,11 @@ INPUT_EVENT_TYPES = {
     "device_connected",
     "device_disconnected",
     "reset",
+    "motion_start",
+    "motion_stop",
+    "expression_set",
+    "model_switch",
+    "audio_trigger",
 }
 RESET_REASONS = {
     "session_lock",
@@ -111,6 +116,11 @@ def validate_input(path: Path, value: dict) -> tuple[str, list[dict]]:
             "device_connected": {"atMs", "type", "deviceId", "deviceKind"},
             "device_disconnected": {"atMs", "type", "deviceId", "deviceKind"},
             "reset": {"atMs", "type", "reason"},
+            "motion_start": {"atMs", "type", "motionId", "priority"},
+            "motion_stop": {"atMs", "type", "motionId"},
+            "expression_set": {"atMs", "type", "expressionId"},
+            "model_switch": {"atMs", "type", "modelId"},
+            "audio_trigger": {"atMs", "type", "cueId"},
         }[event_type]
         if set(event) != expected_fields:
             fail(path, f"events[{index}] fields do not match {event_type}")
@@ -154,6 +164,22 @@ def validate_input(path: Path, value: dict) -> tuple[str, list[dict]]:
                 fail(path, f"events[{index}] device event is invalid")
         elif event_type == "reset" and event["reason"] not in RESET_REASONS:
             fail(path, f"events[{index}].reason is invalid")
+        elif event_type == "motion_start":
+            if (not isinstance(event["motionId"], str) or not event["motionId"]
+                    or event["priority"] not in {"idle", "normal", "force"}):
+                fail(path, f"events[{index}] motion_start is invalid")
+        elif event_type == "motion_stop":
+            if not isinstance(event["motionId"], str) or not event["motionId"]:
+                fail(path, f"events[{index}].motionId is invalid")
+        elif event_type == "expression_set":
+            if not isinstance(event["expressionId"], str) or not event["expressionId"]:
+                fail(path, f"events[{index}].expressionId is invalid")
+        elif event_type == "model_switch":
+            if not isinstance(event["modelId"], str) or not event["modelId"]:
+                fail(path, f"events[{index}].modelId is invalid")
+        elif event_type == "audio_trigger":
+            if not isinstance(event["cueId"], str) or not event["cueId"]:
+                fail(path, f"events[{index}].cueId is invalid")
     return value["id"], events
 
 

@@ -132,7 +132,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 1.4 行为 fixture
 
-状态（2026-08-28）：已建立 v1 input/expected schema、8 组输入序列和规范化结果；8 个文档通过 Draft 2020-12 校验及跨文件一致性检查。物理键全集、动作/表情场景和旧版人工确认仍未完成。
+状态（2026-08-28）：已建立 v1 input/expected schema、9 组输入序列和规范化结果；输入、动作、表情、模型切换和音效 command 已覆盖，确定性 runner 与跨文件检查通过。物理键全集、旧版人工确认和固定版本的 Draft 2020-12 标准 validator 仍未完成。
 
 - [x] 定义稳定的 `PhysicalKey`、`MouseButton`、`GamepadButton` 和 axis 表示；canonical names、按钮阈值、axis 范围和未知码诊断已写入 `shared/behavior/input-semantics.md`。
 - [x] 定义带单调相对时间的输入序列 JSON 格式。
@@ -140,7 +140,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 添加单键、重复键、长按和左右修饰键序列。
 - [x] 添加组合键、鼠标移动/点击/拖动和多显示器坐标序列。
 - [x] 添加手柄连接/断开、按钮、摇杆 dead-zone 和 trigger 序列。
-- [ ] 添加动作、表情、停止、模型切换和音效序列。
+- [x] 添加动作、表情、停止、模型切换和音效序列；优先级与切换清理规范见 `shared/behavior/animation-semantics.md`。
 - [x] 添加丢失 KeyUp、设备断开、锁屏、睡眠和服务重启序列。
 - [ ] 为 fixture 生成旧版观察结果并人工确认产品语义。
 - [ ] 将 Draft 2020-12 schema 校验与 `tools/validate-fixtures.py` 接入 CI，固定 validator 版本。
@@ -764,7 +764,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 按顺序执行。`P0-GPUI-PACKAGE` 通过前不开始完整 UI；`P0-OVERLAY` 通过前不创建产品 platform workspace。
 
 1. [x] `P0-BASELINE`：提交 Technical Design、Implementation TODO、AGENTS 和 ADR-001 至 005。
-2. [x] `P0-FIXTURE-V1`：提交 input/expected schema、8 组核心输入 fixture 和跨文件 validator。
+2. [x] `P0-FIXTURE-V1`：提交 input/expected schema、9 组核心输入 fixture 和跨文件 validator。
 3. [x] `P0-GPUI-LIFECYCLE-MAC`：macOS 隔离 spike 精确锁定 GPUI 0.2.2，窗口打开并通过 GPUI `quit()` 正常退出。
 4. [ ] `P0-DOC-CONSISTENCY`：维护 ADR-006/007/008，记录旧版 tag/安装包 hash、target triple 和工具链矩阵。
    - 状态（2026-08-28）：ADR 与仓库/发布基线已完成；target/toolchain 文档为 provisional，仍待 Windows 实机、GPUI 发布构建和 Cubism 架构证据后冻结。

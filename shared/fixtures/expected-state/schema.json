@@ -60,6 +60,7 @@
           "additionalProperties": false,
           "required": ["leftHandDown", "rightHandDown", "parameters", "activeMotion", "activeExpression"],
           "properties": {
+            "selectedModelId": { "type": ["string", "null"] },
             "leftHandDown": { "type": "boolean" },
             "rightHandDown": { "type": "boolean" },
             "parameters": {

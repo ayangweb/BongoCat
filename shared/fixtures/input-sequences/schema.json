@@ -182,6 +182,82 @@
         }
       ]
     },
+    "motionStart": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["atMs", "type", "motionId", "priority"],
+          "properties": {
+            "atMs": { "type": "integer", "minimum": 0 },
+            "type": { "const": "motion_start" },
+            "motionId": { "type": "string", "minLength": 1 },
+            "priority": { "enum": ["idle", "normal", "force"] }
+          }
+        }
+      ]
+    },
+    "motionStop": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["atMs", "type", "motionId"],
+          "properties": {
+            "atMs": { "type": "integer", "minimum": 0 },
+            "type": { "const": "motion_stop" },
+            "motionId": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "expressionSet": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["atMs", "type", "expressionId"],
+          "properties": {
+            "atMs": { "type": "integer", "minimum": 0 },
+            "type": { "const": "expression_set" },
+            "expressionId": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "modelSwitch": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["atMs", "type", "modelId"],
+          "properties": {
+            "atMs": { "type": "integer", "minimum": 0 },
+            "type": { "const": "model_switch" },
+            "modelId": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "audioTrigger": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["atMs", "type", "cueId"],
+          "properties": {
+            "atMs": { "type": "integer", "minimum": 0 },
+            "type": { "const": "audio_trigger" },
+            "cueId": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
     "event": {
       "oneOf": [
         { "$ref": "#/$defs/keyDown" },
@@ -191,7 +267,12 @@
         { "$ref": "#/$defs/gamepadButton" },
         { "$ref": "#/$defs/gamepadAxis" },
         { "$ref": "#/$defs/device" },
-        { "$ref": "#/$defs/reset" }
+        { "$ref": "#/$defs/reset" },
+        { "$ref": "#/$defs/motionStart" },
+        { "$ref": "#/$defs/motionStop" },
+        { "$ref": "#/$defs/expressionSet" },
+        { "$ref": "#/$defs/modelSwitch" },
+        { "$ref": "#/$defs/audioTrigger" }
       ]
     }
   }
