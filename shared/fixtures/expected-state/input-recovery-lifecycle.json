@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "sequenceId": "input-recovery-lifecycle",
+  "provenance": "bug_fix",
+  "checkpoints": [
+    {
+      "atMs": 10,
+      "input": {
+        "pressedKeys": [],
+        "pressedMouseButtons": [],
+        "connectedDevices": [],
+        "lastResetReason": "queue_overflow"
+      },
+      "model": {
+        "leftHandDown": false,
+        "rightHandDown": false,
+        "parameters": { "CatParamLeftHandDown": 0.0 },
+        "activeMotion": null,
+        "activeExpression": null
+      }
+    },
+    {
+      "atMs": 21,
+      "input": {
+        "pressedKeys": [],
+        "pressedMouseButtons": [],
+        "connectedDevices": ["fixture-pad"],
+        "lastResetReason": "queue_overflow"
+      },
+      "model": {
+        "leftHandDown": true,
+        "rightHandDown": false,
+        "parameters": { "GamepadSouthDown": 1.0 },
+        "activeMotion": null,
+        "activeExpression": null
+      }
+    },
+    {
+      "atMs": 30,
+      "input": {
+        "pressedKeys": [],
+        "pressedMouseButtons": [],
+        "connectedDevices": [],
+        "lastResetReason": "queue_overflow"
+      },
+      "model": {
+        "leftHandDown": false,
+        "rightHandDown": false,
+        "parameters": { "GamepadSouthDown": 0.0 },
+        "activeMotion": null,
+        "activeExpression": null
+      }
+    },
+    {
+      "atMs": 40,
+      "input": {
+        "pressedKeys": ["KeyB"],
+        "pressedMouseButtons": [],
+        "connectedDevices": [],
+        "lastResetReason": "queue_overflow"
+      },
+      "model": {
+        "leftHandDown": false,
+        "rightHandDown": true,
+        "parameters": { "CatParamRightHandDown": 1.0 },
+        "activeMotion": null,
+        "activeExpression": null
+      }
+    },
+    {
+      "atMs": 50,
+      "input": {
+        "pressedKeys": [],
+        "pressedMouseButtons": [],
+        "connectedDevices": [],
+        "lastResetReason": "service_restart"
+      },
+      "model": {
+        "leftHandDown": false,
+        "rightHandDown": false,
+        "parameters": { "CatParamRightHandDown": 0.0 },
+        "activeMotion": null,
+        "activeExpression": null
+      }
+    }
+  ]
+}
