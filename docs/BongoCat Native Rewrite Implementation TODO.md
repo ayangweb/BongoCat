@@ -137,7 +137,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 1.4 行为 fixture
 
-状态（2026-08-28）：已建立 v1 input/expected schema、9 组输入序列和规范化结果；输入、动作、表情、模型切换和音效 command 已覆盖，确定性 runner、跨文件检查和固定版本的 Draft 2020-12 标准 validator 均已在本机及 CI 通过。物理键全集和旧版人工确认仍未完成。
+状态（2026-08-29）：已建立 v1 input/expected schema、9 组输入序列和规范化结果；输入、动作、表情、模型切换和音效 command 已覆盖。Rust 强类型 runner 现执行 51 个事件与 24 个 checkpoint，拒绝时间/设备生命周期/未连接 gamepad/非法 repeat 等错误并输出字段级差异；同时修复旧 Python runner 由 expected key 反向选择 parameter 的盲点，golden 现在包含序列完整参数域。跨文件检查和固定版本的 Draft 2020-12 标准 validator 均已在本机及 CI 通过；Rust runner 的 push CI 待本批提交后确认。物理键全集和旧版人工确认仍未完成。
 
 - [x] 定义稳定的 `PhysicalKey`、`MouseButton`、`GamepadButton` 和 axis 表示；canonical names、按钮阈值、axis 范围和未知码诊断已写入 `shared/behavior/input-semantics.md`。
 - [x] 定义带单调相对时间的输入序列 JSON 格式。
@@ -366,6 +366,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 每个 pressed key 记录来源、按下时间和最后校正时间。
 - [ ] 每个 pressed key 最终经 KeyUp、reconcile 或 Reset 释放。
 - [ ] 实现 fixture runner 和规范化 snapshot 比较。
+  - 状态（2026-08-29）：`spikes/fixture-runner/` 已用 Rust 强类型解析并执行全部 9 组共享 fixture，在 24 个 checkpoint 比较完整规范化 snapshot，且已接入 Phase 0 Linux contract matrix；产品 runtime 的 `InputEvent`/`RuntimeSnapshot` 尚未建立，因此本项保持未勾选。
 
 ### 3.3 Windows 输入
 

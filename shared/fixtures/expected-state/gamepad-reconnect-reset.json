@@ -14,7 +14,10 @@
       "model": {
         "leftHandDown": true,
         "rightHandDown": false,
-        "parameters": { "GamepadSouthDown": 1.0 },
+        "parameters": {
+          "GamepadEastDown": 0.0,
+          "GamepadSouthDown": 1.0
+        },
         "activeMotion": null,
         "activeExpression": null
       }
@@ -30,7 +33,10 @@
       "model": {
         "leftHandDown": false,
         "rightHandDown": false,
-        "parameters": { "GamepadSouthDown": 0.0 },
+        "parameters": {
+          "GamepadEastDown": 0.0,
+          "GamepadSouthDown": 0.0
+        },
         "activeMotion": null,
         "activeExpression": null
       }
@@ -46,7 +52,10 @@
       "model": {
         "leftHandDown": false,
         "rightHandDown": false,
-        "parameters": { "GamepadEastDown": 0.0 },
+        "parameters": {
+          "GamepadEastDown": 0.0,
+          "GamepadSouthDown": 0.0
+        },
         "activeMotion": null,
         "activeExpression": null
       }

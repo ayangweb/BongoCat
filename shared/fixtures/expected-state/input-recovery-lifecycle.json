@@ -14,7 +14,12 @@
       "model": {
         "leftHandDown": false,
         "rightHandDown": false,
-        "parameters": { "CatParamLeftHandDown": 0.0 },
+        "parameters": {
+          "CatParamLeftHandDown": 0.0,
+          "CatParamRightHandDown": 0.0,
+          "GamepadSouthDown": 0.0,
+          "ParamMouseLeftDown": 0.0
+        },
         "activeMotion": null,
         "activeExpression": null
       }
@@ -30,7 +35,12 @@
       "model": {
         "leftHandDown": true,
         "rightHandDown": false,
-        "parameters": { "GamepadSouthDown": 1.0 },
+        "parameters": {
+          "CatParamLeftHandDown": 1.0,
+          "CatParamRightHandDown": 0.0,
+          "GamepadSouthDown": 1.0,
+          "ParamMouseLeftDown": 0.0
+        },
         "activeMotion": null,
         "activeExpression": null
       }
@@ -46,7 +56,12 @@
       "model": {
         "leftHandDown": false,
         "rightHandDown": false,
-        "parameters": { "GamepadSouthDown": 0.0 },
+        "parameters": {
+          "CatParamLeftHandDown": 0.0,
+          "CatParamRightHandDown": 0.0,
+          "GamepadSouthDown": 0.0,
+          "ParamMouseLeftDown": 0.0
+        },
         "activeMotion": null,
         "activeExpression": null
       }
@@ -62,7 +77,12 @@
       "model": {
         "leftHandDown": false,
         "rightHandDown": true,
-        "parameters": { "CatParamRightHandDown": 1.0 },
+        "parameters": {
+          "CatParamLeftHandDown": 0.0,
+          "CatParamRightHandDown": 1.0,
+          "GamepadSouthDown": 0.0,
+          "ParamMouseLeftDown": 0.0
+        },
         "activeMotion": null,
         "activeExpression": null
       }
@@ -78,7 +98,12 @@
       "model": {
         "leftHandDown": false,
         "rightHandDown": false,
-        "parameters": { "CatParamRightHandDown": 0.0 },
+        "parameters": {
+          "CatParamLeftHandDown": 0.0,
+          "CatParamRightHandDown": 0.0,
+          "GamepadSouthDown": 0.0,
+          "ParamMouseLeftDown": 0.0
+        },
         "activeMotion": null,
         "activeExpression": null
       }

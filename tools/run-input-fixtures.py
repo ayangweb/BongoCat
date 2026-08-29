@@ -26,6 +26,21 @@ def button_key(button: str) -> str:
     return "Gamepad" + "".join(part.capitalize() for part in button.split("_"))
 
 
+def parameter_names(sequence: dict) -> list[str]:
+    names: set[str] = set()
+    for key, side in sequence["context"]["keySides"].items():
+        if key.startswith("Gamepad"):
+            names.add(f"{key}Down")
+        elif side == "left":
+            names.add("CatParamLeftHandDown")
+        else:
+            names.add("CatParamRightHandDown")
+    for event in sequence["events"]:
+        if event["type"] in {"mouse_down", "mouse_up"}:
+            names.add(f"ParamMouse{event['button'].capitalize()}Down")
+    return sorted(names)
+
+
 def apply_event(state: dict, event: dict) -> None:
     event_type = event["type"]
     if event_type == "key_down":
@@ -110,6 +125,7 @@ def run_fixture(input_path: Path) -> None:
     sequence = load(input_path)
     expected = load(EXPECTED_DIR / f"{input_path.stem}.json")
     context = sequence["context"]
+    tracked_parameters = parameter_names(sequence)
     state = {
         "pressed_keys": set(),
         "pressed_mouse_buttons": set(),
@@ -140,7 +156,7 @@ def run_fixture(input_path: Path) -> None:
         actual_model = {
             "leftHandDown": hand_state(state, context, "left"),
             "rightHandDown": hand_state(state, context, "right"),
-            "parameters": {name: parameter_value(name, state, context) for name in checkpoint["model"]["parameters"]},
+            "parameters": {name: parameter_value(name, state, context) for name in tracked_parameters},
             "activeMotion": state["active_motion"],
             "activeExpression": state["active_expression"],
         }

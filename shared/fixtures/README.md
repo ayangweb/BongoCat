@@ -28,6 +28,7 @@ Native 配置 schema 的有效/拒绝样本位于 `shared/config/fixtures/`，�
 - `key_down/up` 使用稳定物理键名，不使用本地化字符。
 - Expected snapshot 中所有集合按 UTF-8 字典序排序。
 - 浮点值在比较前按 runner 规定的精度规范化；v1 使用小数点后 6 位。
+- `model.parameters` 是序列完整的规范化参数投影：包含 `context.keySides` 声明的 keyboard side/gamepad button，以及序列触达的 mouse button；即使当前值为 `0.0` 也不得省略。runner 不能根据 expected 中已有 key 反向选择要计算的参数。
 - Expected snapshot 必须声明 `provenance`：`legacy_observation`、`product_decision` 或 `bug_fix`；golden 更新不得没有来源。
 - Fixture 不包含绝对路径、用户模型 id、真实快捷键或个人数据。
 
@@ -49,6 +50,9 @@ Platform adapter 的 scan code、系统权限和原始消息另设平台 fixture
 python3 tools/validate-fixtures.py
 python3 tools/validate-json-schema.py
 python3 tools/run-input-fixtures.py
+cargo run --manifest-path spikes/fixture-runner/Cargo.toml --locked
 ```
 
-`validate-fixtures.py` 检查 input/expected 配对、id、事件时间顺序和 checkpoint 对应关系；同时把合成模型包复制到临时目录，验证 package discovery、JSON 解析、引用路径和纹理头限制。`spikes/model-package` 使用 Rust 重跑同一异常包 contract，并把三个预置模型的强类型 model3/资源索引与 `preset-model3-index.json` 比较。`validate-json-schema.py` 使用 `tools/requirements-phase0.txt` 中固定版本的 `jsonschema`，先检查三份 schema 自身，再验证 input、expected 和 Native config fixture。`run-input-fixtures.py` 使用无平台依赖的确定性协议模型执行输入事件，并逐 checkpoint 比较 pressed state、设备、鼠标、光标、hand parameter 和动画/model 状态；它不是产品 runtime，也不能替代 Windows/macOS 平台采集测试。音效事件只验证为有序、非阻塞的协议输入，不会在 expected snapshot 中伪造音频设备结果。模型包索引验证静态资源边界，不调用 Cubism Core，也不替代 drawable、动作求值或 renderer 兼容测试。
+`validate-fixtures.py` 检查 input/expected 配对、id、事件时间顺序和 checkpoint 对应关系；同时把合成模型包复制到临时目录，验证 package discovery、JSON 解析、引用路径和纹理头限制。`spikes/model-package` 使用 Rust 重跑同一异常包 contract，并把三个预置模型的强类型 model3/资源索引与 `preset-model3-index.json` 比较。`validate-json-schema.py` 使用 `tools/requirements-phase0.txt` 中固定版本的 `jsonschema`，先检查三份 schema 自身，再验证 input、expected 和 Native config fixture。
+
+`run-input-fixtures.py` 保留为轻量独立 oracle；`spikes/fixture-runner` 使用 Rust 强类型事件和状态 reducer 执行同一 9 组序列，并逐 checkpoint 比较完整规范化 snapshot。Rust runner 还拒绝时间回退、重复/错误类型的 device 生命周期、未连接 gamepad 输入、非有限值、无初始边沿的 repeat 和未知 JSON 字段，并输出字段路径差异。两者都不是产品 runtime，也不能替代 Windows/macOS 平台采集测试。音效事件只验证为有序、非阻塞的协议输入，不会在 expected snapshot 中伪造音频设备结果。模型包索引验证静态资源边界，不调用 Cubism Core，也不替代 drawable、动作求值或 renderer 兼容测试。

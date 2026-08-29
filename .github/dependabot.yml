@@ -6,6 +6,7 @@ updates:
       - /spikes/config-store
       - /spikes/gpui-overlay-macos
       - /spikes/gpui-settings
+      - /spikes/fixture-runner
       - /spikes/input-macos
       - /spikes/input-queue
       - /spikes/input-state

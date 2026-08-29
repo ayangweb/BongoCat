@@ -125,6 +125,8 @@ jobs:
         include:
           - name: input-state
             manifest: spikes/input-state/Cargo.toml
+          - name: fixture-runner
+            manifest: spikes/fixture-runner/Cargo.toml
           - name: input-queue
             manifest: spikes/input-queue/Cargo.toml
           - name: input-windows
