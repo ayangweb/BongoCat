@@ -117,7 +117,11 @@ renderer 内部对象。
 - `WS_EX_NOREDIRECTIONBITMAP`、tool window、no-activate 和 click-through window；
 - hardware device 优先、WARP fallback 只用于能力/生命周期验证；
 - BGRA、flip sequential、premultiplied alpha 的双缓冲 composition swapchain；
-- 透明 clear/present、device-removed 检查、显示/隐藏和一次性 topmost；
+- Rust 提供的合成顶点、运行时编译 HLSL、vertex/pixel shader、input layout、
+  vertex buffer 和 `ONE / INV_SRC_ALPHA` 预乘 alpha blend state；
+- 透明 clear 后提交非空 draw，将 back buffer 复制到 staging texture 并映射中心
+  BGRA 像素；alpha 必须非零且三个颜色通道不得大于 alpha；
+- present、device-removed 检查、显示/隐藏和一次性 topmost；
 - owner-thread assertion 与 `!Send`/`!Sync` marker；
 - composition detach -> D3D clear/flush -> COM release -> HWND destroy 顺序；
 - renderer 初始化失败注入，GPUI 设置窗口继续显示 degraded 状态；
@@ -136,6 +140,10 @@ clear/present、隐藏/重显示、GPUI 共存和自动退出；退出日志中
 `handles_before=172 handles_after=172 clean_shutdown=true`。该计数证明本次 runner
 进程的 process handle 未增长，不替代 GPU memory/driver resource 专项采样。
 
+当前非空帧仍使用 spike 内的合成顶点和运行时编译 HLSL，只验证 D3D11 pipeline、
+预乘 alpha 和可回读 draw。预置模型纹理、draw order、mask 与 production shader
+打包仍属于 Cubism/Renderer 门禁，正式实现不得依赖运行时 shader 编译。
+
 ### 线程与所有权不变量
 
 - GPUI application loop 在进程 UI 主线程启动；overlay owner 在同一线程创建、
@@ -152,6 +160,7 @@ clear/present、隐藏/重显示、GPUI 共存和自动退出；退出日志中
 ### 尚未验证
 
 - 两个平台的真实 Live2D/Cubism 绘制和模型资源兼容。
+- 两个平台的模型 texture、draw order、mask 及离线固定 shader 产物。
 - 双平台 GPU memory/driver resource 与线程专项采样。
 - Windows swapchain unavailable、双平台真实 GPU device lost 和恢复后的诊断 UI；macOS 当前只完成受控 drawable unavailable。
 - 拖动、缩放、显示器/DPI 切换和真实 frame source 的完整生命周期。

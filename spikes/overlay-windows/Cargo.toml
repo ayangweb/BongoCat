@@ -11,6 +11,7 @@ license = "MIT"
 windows = { version = "=0.62.2", features = [
     "Win32_Foundation",
     "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D_Fxc",
     "Win32_Graphics_Direct3D11",
     "Win32_Graphics_DirectComposition",
     "Win32_Graphics_Dxgi",

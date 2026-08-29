@@ -461,7 +461,7 @@ jobs:
             -Arguments @("--auto-quit-ms", "1800")
           @(
             "Windows native overlay created",
-            "Windows transparent clear/present submitted",
+            "Windows non-empty premultiplied-alpha draw/present submitted",
             "Windows overlay hidden",
             "GPUI settings window opened",
             "auto quit requested",
@@ -494,7 +494,12 @@ jobs:
           $cycles = Invoke-OverlaySmoke `
             -Name "cycles" `
             -Arguments @("--windows-overlay-cycles", "100")
-          if (-not $cycles.Contains("Windows cycles=100") -or
-              -not $cycles.Contains("clean_shutdown=true")) {
-            throw "overlay cycle smoke did not complete all cycles"
+          @(
+            "Windows cycles=100",
+            "non_empty_frames=100",
+            "clean_shutdown=true"
+          ) | ForEach-Object {
+            if (-not $cycles.Contains($_)) {
+              throw "overlay cycle smoke did not report: $_"
+            }
           }
