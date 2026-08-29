@@ -1,7 +1,9 @@
 use bongocat_input_windows_spike::{
-    RawInputHeader, decode_keyboard_packet, decode_raw_keyboard_bytes,
+    KeyStateSnapshot, PhysicalKey, RawInputHeader, collect_key_state_snapshot_with,
+    decode_keyboard_packet, decode_raw_keyboard_bytes,
 };
 use std::{
+    collections::BTreeSet,
     ffi::c_void,
     mem::size_of,
     panic::{AssertUnwindSafe, catch_unwind},
@@ -12,10 +14,13 @@ use windows::{
     Win32::{
         Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM},
         System::LibraryLoader::GetModuleHandleW,
+        System::StationsAndDesktops::{
+            CloseDesktop, DESKTOP_CONTROL_FLAGS, DESKTOP_READOBJECTS, OpenInputDesktop,
+        },
         UI::{
             Input::{
-                GetRawInputData, HRAWINPUT, RAWINPUTDEVICE, RAWINPUTHEADER, RID_INPUT,
-                RIDEV_INPUTSINK, RIDEV_REMOVE, RegisterRawInputDevices,
+                GetRawInputData, HRAWINPUT, KeyboardAndMouse::GetAsyncKeyState, RAWINPUTDEVICE,
+                RAWINPUTHEADER, RID_INPUT, RIDEV_INPUTSINK, RIDEV_REMOVE, RegisterRawInputDevices,
             },
             WindowsAndMessaging::{
                 CREATESTRUCTW, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
@@ -67,6 +72,21 @@ pub fn run_registration_smoke(duration: Duration) -> WindowsResult<RegistrationR
     // state outlives the HWND and is released only after WM_NCDESTROY clears
     // GWLP_USERDATA and the message loop exits.
     unsafe { run_registration_smoke_inner(duration) }
+}
+
+pub fn query_pressed_keys(candidates: &BTreeSet<PhysicalKey>) -> WindowsResult<KeyStateSnapshot> {
+    // SAFETY: OpenInputDesktop yields an owned HDESK used only as an
+    // availability guard. Every successful open is paired with CloseDesktop,
+    // and GetAsyncKeyState receives only validated virtual-key integers.
+    unsafe {
+        let input_desktop =
+            OpenInputDesktop(DESKTOP_CONTROL_FLAGS::default(), false, DESKTOP_READOBJECTS)?;
+        let report = collect_key_state_snapshot_with(candidates, |virtual_key| {
+            GetAsyncKeyState(virtual_key.as_i32()) as u16 & 0x8000 != 0
+        });
+        CloseDesktop(input_desktop)?;
+        Ok(report)
+    }
 }
 
 unsafe fn run_registration_smoke_inner(duration: Duration) -> WindowsResult<RegistrationReport> {

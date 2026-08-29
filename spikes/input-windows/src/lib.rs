@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+use std::collections::BTreeSet;
+
 pub const RI_KEY_BREAK: u16 = 0x0001;
 pub const RI_KEY_E0: u16 = 0x0002;
 pub const RI_KEY_E1: u16 = 0x0004;
@@ -137,6 +139,128 @@ pub fn decode_raw_keyboard_bytes(
 pub struct KeyboardEdge {
     pub key: PhysicalKey,
     pub pressed: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct VirtualKeyCode(u16);
+
+impl VirtualKeyCode {
+    pub const fn as_i32(self) -> i32 {
+        self.0 as i32
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct KeyStateSnapshot {
+    pub still_pressed: BTreeSet<PhysicalKey>,
+    pub queried: usize,
+    pub unqueryable: usize,
+    pub reset_required: bool,
+}
+
+/// Build an OS-state snapshot for keys that the local runtime believes are down.
+///
+/// Unknown keys are retained instead of being falsely released. The caller must
+/// respond to `reset_required` with a lifecycle Reset because Windows cannot
+/// reliably query those keys by virtual-key code.
+pub fn collect_key_state_snapshot_with(
+    candidates: &BTreeSet<PhysicalKey>,
+    mut is_pressed: impl FnMut(VirtualKeyCode) -> bool,
+) -> KeyStateSnapshot {
+    let mut report = KeyStateSnapshot::default();
+    for key in candidates {
+        let Some(virtual_key) = virtual_key_for_reconciliation(*key) else {
+            report.still_pressed.insert(*key);
+            report.unqueryable += 1;
+            report.reset_required = true;
+            continue;
+        };
+        report.queried += 1;
+        if is_pressed(virtual_key) {
+            report.still_pressed.insert(*key);
+        }
+    }
+    report
+}
+
+pub const fn virtual_key_for_reconciliation(key: PhysicalKey) -> Option<VirtualKeyCode> {
+    let value = match key {
+        PhysicalKey::Escape => 0x1b,
+        PhysicalKey::Digit1 => 0x31,
+        PhysicalKey::Digit2 => 0x32,
+        PhysicalKey::Digit3 => 0x33,
+        PhysicalKey::Digit4 => 0x34,
+        PhysicalKey::Digit5 => 0x35,
+        PhysicalKey::Digit6 => 0x36,
+        PhysicalKey::Digit7 => 0x37,
+        PhysicalKey::Digit8 => 0x38,
+        PhysicalKey::Digit9 => 0x39,
+        PhysicalKey::Digit0 => 0x30,
+        PhysicalKey::Minus => 0xbd,
+        PhysicalKey::Equal => 0xbb,
+        PhysicalKey::Backspace => 0x08,
+        PhysicalKey::Tab => 0x09,
+        PhysicalKey::Q => 0x51,
+        PhysicalKey::W => 0x57,
+        PhysicalKey::E => 0x45,
+        PhysicalKey::R => 0x52,
+        PhysicalKey::T => 0x54,
+        PhysicalKey::Y => 0x59,
+        PhysicalKey::U => 0x55,
+        PhysicalKey::I => 0x49,
+        PhysicalKey::O => 0x4f,
+        PhysicalKey::P => 0x50,
+        PhysicalKey::BracketLeft => 0xdb,
+        PhysicalKey::BracketRight => 0xdd,
+        PhysicalKey::Enter => 0x0d,
+        PhysicalKey::ControlLeft => 0xa2,
+        PhysicalKey::ControlRight => 0xa3,
+        PhysicalKey::A => 0x41,
+        PhysicalKey::S => 0x53,
+        PhysicalKey::D => 0x44,
+        PhysicalKey::F => 0x46,
+        PhysicalKey::G => 0x47,
+        PhysicalKey::H => 0x48,
+        PhysicalKey::J => 0x4a,
+        PhysicalKey::K => 0x4b,
+        PhysicalKey::L => 0x4c,
+        PhysicalKey::Semicolon => 0xba,
+        PhysicalKey::Apostrophe => 0xde,
+        PhysicalKey::Grave => 0xc0,
+        PhysicalKey::ShiftLeft => 0xa0,
+        PhysicalKey::Backslash => 0xdc,
+        PhysicalKey::Z => 0x5a,
+        PhysicalKey::X => 0x58,
+        PhysicalKey::C => 0x43,
+        PhysicalKey::V => 0x56,
+        PhysicalKey::B => 0x42,
+        PhysicalKey::N => 0x4e,
+        PhysicalKey::M => 0x4d,
+        PhysicalKey::Comma => 0xbc,
+        PhysicalKey::Period => 0xbe,
+        PhysicalKey::Slash => 0xbf,
+        PhysicalKey::ShiftRight => 0xa1,
+        PhysicalKey::AltLeft => 0xa4,
+        PhysicalKey::AltRight => 0xa5,
+        PhysicalKey::Space => 0x20,
+        PhysicalKey::CapsLock => 0x14,
+        PhysicalKey::PrintScreen => 0x2c,
+        PhysicalKey::Pause => 0x13,
+        PhysicalKey::Insert => 0x2d,
+        PhysicalKey::Delete => 0x2e,
+        PhysicalKey::Home => 0x24,
+        PhysicalKey::End => 0x23,
+        PhysicalKey::PageUp => 0x21,
+        PhysicalKey::PageDown => 0x22,
+        PhysicalKey::ArrowLeft => 0x25,
+        PhysicalKey::ArrowRight => 0x27,
+        PhysicalKey::ArrowUp => 0x26,
+        PhysicalKey::ArrowDown => 0x28,
+        PhysicalKey::MetaLeft => 0x5b,
+        PhysicalKey::MetaRight => 0x5c,
+        PhysicalKey::Unknown { .. } => return None,
+    };
+    Some(VirtualKeyCode(value))
 }
 
 pub fn decode_keyboard_packet(packet: RawKeyboardPacket) -> KeyboardEdge {
@@ -298,6 +422,67 @@ mod tests {
                 flags: 0
             }
         );
+    }
+
+    #[test]
+    fn reconciliation_uses_distinct_modifier_virtual_keys() {
+        assert_eq!(
+            virtual_key_for_reconciliation(PhysicalKey::ControlLeft),
+            Some(VirtualKeyCode(0xa2))
+        );
+        assert_eq!(
+            virtual_key_for_reconciliation(PhysicalKey::ControlRight),
+            Some(VirtualKeyCode(0xa3))
+        );
+        assert_eq!(
+            virtual_key_for_reconciliation(PhysicalKey::AltLeft),
+            Some(VirtualKeyCode(0xa4))
+        );
+        assert_eq!(
+            virtual_key_for_reconciliation(PhysicalKey::AltRight),
+            Some(VirtualKeyCode(0xa5))
+        );
+    }
+
+    #[test]
+    fn reconciliation_only_queries_local_pressed_candidates() {
+        let candidates = BTreeSet::from([
+            PhysicalKey::ControlLeft,
+            PhysicalKey::AltLeft,
+            PhysicalKey::A,
+        ]);
+        let mut queried = Vec::new();
+        let report = collect_key_state_snapshot_with(&candidates, |virtual_key| {
+            queried.push(virtual_key);
+            virtual_key == VirtualKeyCode(0xa2)
+        });
+        assert_eq!(queried.len(), 3);
+        assert_eq!(report.queried, 3);
+        assert_eq!(report.unqueryable, 0);
+        assert!(!report.reset_required);
+        assert_eq!(
+            report.still_pressed,
+            BTreeSet::from([PhysicalKey::ControlLeft])
+        );
+    }
+
+    #[test]
+    fn unknown_keys_require_reset_instead_of_false_release() {
+        let unknown = PhysicalKey::Unknown {
+            scan_code: 0x7f,
+            flags: RI_KEY_E0,
+        };
+        let candidates = BTreeSet::from([unknown]);
+        let mut query_count = 0;
+        let report = collect_key_state_snapshot_with(&candidates, |_| {
+            query_count += 1;
+            false
+        });
+        assert_eq!(query_count, 0);
+        assert_eq!(report.queried, 0);
+        assert_eq!(report.unqueryable, 1);
+        assert!(report.reset_required);
+        assert_eq!(report.still_pressed, candidates);
     }
 
     #[test]

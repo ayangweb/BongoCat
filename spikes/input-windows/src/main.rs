@@ -1,9 +1,36 @@
 use bongocat_input_windows_spike::{RawKeyboardPacket, decode_keyboard_packet};
 
 #[cfg(target_os = "windows")]
+use bongocat_input_windows_spike::PhysicalKey;
+#[cfg(target_os = "windows")]
+use std::collections::BTreeSet;
+
+#[cfg(target_os = "windows")]
 mod windows_capture;
 
 fn main() {
+    #[cfg(target_os = "windows")]
+    if std::env::args().any(|argument| argument == "--key-state-smoke") {
+        let candidates = BTreeSet::from([
+            PhysicalKey::ControlLeft,
+            PhysicalKey::AltLeft,
+            PhysicalKey::A,
+        ]);
+        let report = windows_capture::query_pressed_keys(&candidates)
+            .expect("GetAsyncKeyState reconciliation smoke failed");
+        assert_eq!(report.queried, candidates.len());
+        assert_eq!(report.unqueryable, 0);
+        assert!(!report.reset_required);
+        println!(
+            "input-windows-spike: key_state_checked={} currently_pressed={} unqueryable={} reset_required={}",
+            report.queried,
+            report.still_pressed.len(),
+            report.unqueryable,
+            report.reset_required,
+        );
+        return;
+    }
+
     #[cfg(target_os = "windows")]
     if let Some(milliseconds) =
         argument_value("--register-smoke-ms").and_then(|value| value.parse::<u64>().ok())
