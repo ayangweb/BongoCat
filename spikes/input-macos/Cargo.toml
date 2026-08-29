@@ -7,6 +7,7 @@ publish = false
 [workspace]
 
 [dependencies]
+bongocat-input-queue-spike = { path = "../input-queue" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Used only by the opt-in macOS permission probe; not a product dependency yet.
@@ -17,3 +18,4 @@ block2 = "=0.6.2"
 objc2 = "=0.6.4"
 objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["NSWorkspace"] }
 objc2-foundation = { version = "=0.3.2", default-features = false, features = ["NSNotification", "NSObject", "NSOperation", "NSString", "block2"] }
+objc2-game-controller = { version = "=0.3.2", default-features = false, features = ["GCController", "GCControllerAxisInput", "GCControllerButtonInput", "GCControllerDirectionPad", "GCControllerElement", "GCExtendedGamepad", "GCPhysicalInputProfile", "block2"] }

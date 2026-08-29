@@ -27,4 +27,4 @@ cargo check --manifest-path spikes/input-queue/Cargo.toml --locked --release
 
 11 项测试还证明恢复标记优先于旧边沿、恢复归档不会静默成功，以及关闭状态不会伪造恢复事件。gamepad contract 将同一轴 10,000 次更新合并为最终样本，独立保留不同轴；六轴容量边界拒绝第七个未知 key；断开 generation 41 后只允许 generation 42 的重连样本；shutdown flush pending 并拒绝迟到 publish。commit `16a51bb` 的 push run `33259120950`、job `99117907732` 已通过 format、Clippy 和全部测试。
 
-该 spike 证明的是容器与 generation 契约，不证明 XInput/GameController producer、runtime 的实际容量选择、跨线程唤醒、背压策略或退出时限；产品 producer 必须把可靠连接/断开/按钮边沿与 keyed axis channel 按该协议接入，并把匿名诊断送入 runtime snapshot。
+该 spike 证明的是容器与 generation 契约。macOS Phase 0 producer 已把 GameController extended profile 接到可靠连接/断开/按钮边沿与 keyed axis channel，并完成无设备 framework/shutdown smoke；物理手柄、Windows XInput producer、产品 runtime 的实际容量、跨线程唤醒和退出时限仍未验证。产品 producer 必须继续按该协议接入，并把匿名诊断送入 runtime snapshot。

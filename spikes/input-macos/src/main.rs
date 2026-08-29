@@ -3,7 +3,7 @@ use bongocat_input_macos_spike::{
     CaptureAction, CaptureEvent, MacCaptureLifecycle, PermissionState, TapDisableReason,
     TapProbeReport, WorkspaceLifecycleInjection, input_monitoring_preflight,
     post_event_access_preflight, reconcile_pressed_key_codes, reconcile_pressed_mouse_buttons,
-    request_input_monitoring_access, run_listen_only_tap,
+    request_input_monitoring_access, run_gamecontroller_probe, run_listen_only_tap,
 };
 #[cfg(target_os = "macos")]
 use std::{collections::BTreeSet, time::Duration};
@@ -15,6 +15,16 @@ fn main() {
         let inject_release_loss = std::env::args().any(|arg| arg == "--inject-release-loss");
         let summary_only = std::env::args().any(|arg| arg == "--summary-only");
         let tap_ms = argument_value("--tap-ms").and_then(|value| value.parse::<u64>().ok());
+        let gamepad_ms = match argument_value("--gamepad-ms") {
+            None => None,
+            Some(value) => match value.parse::<u64>() {
+                Ok(value) if value > 0 => Some(value),
+                _ => {
+                    eprintln!("input-macos-spike: --gamepad-ms must be greater than zero");
+                    std::process::exit(2);
+                }
+            },
+        };
         let injected_disable = match argument_value("--inject-disable").as_deref() {
             None => None,
             Some("timeout") => Some(TapDisableReason::Timeout),
@@ -151,6 +161,47 @@ fn main() {
                 summary.print();
             }
         }
+        if let Some(gamepad_ms) = gamepad_ms {
+            let report = run_gamecontroller_probe(Duration::from_millis(gamepad_ms));
+            println!(
+                "input-macos-spike: gamecontroller started={} background_monitoring_enabled={} background_monitoring_restored={} enumerations={} observed_controllers={} unsupported_profiles={} connections={} disconnections={} button_down={} button_up={} reliable_events={} reliable_overflows={} reliable_discarded={} axis_captured={} axis_coalesced={} axis_consumed={} axis_discarded={} axis_overflows={} axis_samples={} stale_callbacks={} invalid_values={} callback_panics={} rejected_after_close={} clean_shutdown={}",
+                report.started,
+                report.background_monitoring_enabled,
+                report.background_monitoring_restored,
+                report.enumerations,
+                report.observed_controllers,
+                report.unsupported_profiles,
+                report.producer.connections,
+                report.producer.disconnections,
+                report.producer.button_down,
+                report.producer.button_up,
+                report.reliable_events,
+                report.producer.reliable_overflows,
+                report.producer.reliable_discarded,
+                report.axes.captured,
+                report.axes.coalesced,
+                report.axes.consumed,
+                report.axes.discarded,
+                report.axes.overflows,
+                report.axis_samples,
+                report.producer.stale_callbacks,
+                report.producer.invalid_values,
+                report.callback_panics,
+                report.producer.rejected_after_close,
+                report.clean_shutdown,
+            );
+            if !report.started
+                || !report.background_monitoring_enabled
+                || !report.background_monitoring_restored
+                || report.callback_panics != 0
+                || report.producer.reliable_overflows != 0
+                || report.axes.overflows != 0
+                || !report.clean_shutdown
+            {
+                eprintln!("input-macos-spike: GameController lifecycle validation failed");
+                std::process::exit(1);
+            }
+        }
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -261,10 +312,12 @@ fn validate_cycle_report(
         return Err("lifecycle injection did not reset and close its callback gate".to_string());
     }
     if inject_release_loss
-        && (report.synthetic_events_posted != 2
-            || report.key_down < 1
-            || report.key_up < 1
-            || report.intentionally_dropped_releases != 1
+        && (report.synthetic_events_posted != 2 || report.key_down < 1 || report.key_up < 1)
+    {
+        return Err("release-loss injection did not reach the event-tap callback".to_string());
+    }
+    if inject_release_loss
+        && (report.intentionally_dropped_releases != 1
             || report.reconciliation_runs < 2
             || report.reconciled_releases != 1
             || report.pressed_candidates_before_shutdown != 0)
@@ -400,6 +453,23 @@ mod tests {
 
         report.pressed_candidates_before_shutdown = 1;
         assert!(validate_cycle_report(&report, None, None, true).is_err());
+    }
+
+    #[test]
+    fn distinguishes_release_loss_capture_failure_from_reconciliation_failure() {
+        let mut report = healthy_report();
+        report.synthetic_events_posted = 2;
+        assert_eq!(
+            validate_cycle_report(&report, None, None, true).unwrap_err(),
+            "release-loss injection did not reach the event-tap callback"
+        );
+
+        report.key_down = 1;
+        report.key_up = 1;
+        assert_eq!(
+            validate_cycle_report(&report, None, None, true).unwrap_err(),
+            "release-loss injection left an uncorrected pressed candidate"
+        );
     }
 
     #[test]
