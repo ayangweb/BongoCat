@@ -71,6 +71,8 @@ NSZombieEnabled=YES spikes/input-macos/target/release/bongocat-input-macos-spike
 
 2026-08-29 为 callback queue 的每个 edge/Reset 增加单调 sequence，并把 gap、duplicate/out-of-order 与完整 drain accounting 加入严格 cycle validator。20 项 library test 和 4 项报告 test 通过；macOS 本机普通 3-cycle、timeout disable、user disable 与四类 lifecycle 通知均为 `sequence_gaps=0 sequence_duplicates_or_out_of_order=0`，受控队列分别满足 `0=0`、`2=2`、`2=2` 与 `1=1` 的 queued/consumed 关系。当前 Codex 会话重跑 release-loss 时 listen/post 两项 preflight 均为 true，但 session tap 收到 `0/2` 个已投递 synthetic event，严格门禁按预期非零失败；本批没有把该失败改写为成功，也没有覆盖此前已记录的成功结果。需要在交互式会话确认前台 session/TCC 状态后重跑该命令，才能为 sequence 变更补充 release-loss 回归证据。
 
+实现 commit `d7501dc` 的 push run `33257871184` 中，contract job `99114627795` 已通过；原生 macOS job `99114627654` 也已通过 input spike 的 check、format、Clippy、20 项 library test、4 项报告 test 和 release build。CI 没有绕过 TCC 创建 tap，因此这份证据只覆盖编译与纯 contract，真实 tap 结果仍以上述本机命令为准。
+
 实现约束：特殊的 `kCGEventTapDisabledByTimeout`/`kCGEventTapDisabledByUserInput` 值不能放入第三方事件 mask（其高位值会导致 `1 << type` 溢出）；callback 仍对这两类通知分支处理，收到后通过有界 channel 请求在 run loop 内 re-enable。tap 创建阶段使用 panic boundary，避免 binding 异常杀死输入线程。
 
 目前已覆盖 denied/granted、tap timeout/disable、permission revocation 和 session reset 的状态测试，以及真实 tap 创建/运行/停止、严格 100 次 tap wrapper restart 与 malloc/NSZombie 检查、受控 timeout/user-disable 恢复、公开 NSWorkspace observer 的生命周期 Reset、真实 callback release 在 consumer 边界丢弃后的候选校正、callback panic boundary 和 queue 的 FIFO/overflow/close contract。系统自然触发的 timeout、TCC 拒绝/撤销、带真实 modifier 的 `FlagsChanged` 字段、物理输入或系统自然丢失 release 后的校正、runtime pressed state 接入和真实锁屏/睡眠/快速用户切换恢复仍必须在受控 macOS 实机完成；100 次循环尚未覆盖 timeout/权限故障或 Instruments 级 allocation/port 采样。纯函数和 target gating 已通过本机 `x86_64-unknown-linux-gnu` `cargo check --all-targets`，Ubuntu CI 继续提供原生 Linux contract test。
