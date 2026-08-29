@@ -24,6 +24,7 @@ mod macos_overlay {
 
     const OVERLAY_WIDTH: usize = 320;
     const OVERLAY_HEIGHT: usize = 240;
+    const METAL_ALLOCATION_GRANULARITY_BYTES: u64 = 1024 * 1024;
     const SHADER_SOURCE: &str = r#"
         #include <metal_stdlib>
         using namespace metal;
@@ -92,6 +93,7 @@ mod macos_overlay {
         pub resident_bytes_after: u64,
         pub metal_bytes_before: u64,
         pub metal_bytes_after: u64,
+        pub metal_growth_budget_bytes: u64,
     }
 
     #[derive(Clone, Copy)]
@@ -391,6 +393,28 @@ mod macos_overlay {
             }
             Ok(())
         }
+
+        fn drawable_pool_budget_bytes(&self) -> Result<u64, String> {
+            let layer = self
+                .layer
+                .as_ref()
+                .expect("live overlay must own a Metal layer");
+            let size = layer.drawable_size();
+            let width = size.width.round() as u64;
+            let height = size.height.round() as u64;
+            let frame_bytes = width
+                .checked_mul(height)
+                .and_then(|pixels| pixels.checked_mul(4))
+                .ok_or("Metal drawable byte size overflow")?;
+            let aligned_frame_bytes = frame_bytes
+                .checked_add(METAL_ALLOCATION_GRANULARITY_BYTES - 1)
+                .ok_or("Metal drawable allocation alignment overflow")?
+                / METAL_ALLOCATION_GRANULARITY_BYTES
+                * METAL_ALLOCATION_GRANULARITY_BYTES;
+            aligned_frame_bytes
+                .checked_mul(layer.maximum_drawable_count())
+                .ok_or_else(|| "Metal drawable pool budget overflow".into())
+        }
     }
 
     impl Drop for NativeOverlay {
@@ -532,6 +556,7 @@ mod macos_overlay {
         cycles: u32,
         before: ResourceCounts,
         after: ResourceCounts,
+        metal_growth_budget_bytes: u64,
     ) -> Result<CycleReport, String> {
         if cycles == 0 {
             return Err("overlay cycle count must be greater than zero".into());
@@ -554,10 +579,11 @@ mod macos_overlay {
                 before.threads, after.threads
             ));
         }
-        if after.metal_bytes > before.metal_bytes {
+        let metal_growth = after.metal_bytes.saturating_sub(before.metal_bytes);
+        if metal_growth > metal_growth_budget_bytes {
             return Err(format!(
-                "Metal allocated size grew from {} to {} bytes after {cycles} cycles",
-                before.metal_bytes, after.metal_bytes
+                "Metal allocated size grew by {metal_growth} bytes from {} to {} after {cycles} cycles, exceeding drawable-pool budget {metal_growth_budget_bytes}",
+                before.metal_bytes, after.metal_bytes,
             ));
         }
 
@@ -573,6 +599,7 @@ mod macos_overlay {
             resident_bytes_after: after.resident_bytes,
             metal_bytes_before: before.metal_bytes,
             metal_bytes_after: after.metal_bytes,
+            metal_growth_budget_bytes,
         })
     }
 
@@ -628,14 +655,15 @@ mod macos_overlay {
         })
     }
 
-    pub fn run_creation_cycle(mtm: MainThreadMarker) -> Result<(), String> {
+    pub fn run_creation_cycle(mtm: MainThreadMarker) -> Result<u64, String> {
         autoreleasepool(|_| {
             let overlay = NativeOverlay::create_with_logging(mtm, false)?;
             overlay.show();
             overlay.clear_present_and_wait()?;
             overlay.hide();
+            let drawable_pool_budget_bytes = overlay.drawable_pool_budget_bytes()?;
             drop(overlay);
-            Ok(())
+            Ok(drawable_pool_budget_bytes)
         })
     }
 
@@ -671,7 +699,7 @@ mod macos_overlay {
         #[test]
         fn accepts_stable_window_and_owner_counts() {
             let counts = counts(1, 0);
-            let report = validate_creation_cycles(100, counts, counts).unwrap();
+            let report = validate_creation_cycles(100, counts, counts, 0).unwrap();
 
             assert_eq!(report.cycles, 100);
             assert_eq!(report.windows_before, report.windows_after);
@@ -689,6 +717,7 @@ mod macos_overlay {
                     windows: 2,
                     ..before
                 },
+                0,
             )
             .unwrap_err();
             assert!(window_error.contains("window count changed from 1 to 2"));
@@ -700,6 +729,7 @@ mod macos_overlay {
                     owners: 1,
                     ..before
                 },
+                0,
             )
             .unwrap_err();
             assert!(owner_error.contains("owner count changed from 0 to 1"));
@@ -709,7 +739,7 @@ mod macos_overlay {
         fn rejects_zero_cycles() {
             let counts = counts(0, 0);
             assert_eq!(
-                validate_creation_cycles(0, counts, counts).unwrap_err(),
+                validate_creation_cycles(0, counts, counts, 0).unwrap_err(),
                 "overlay cycle count must be greater than zero"
             );
         }
@@ -724,6 +754,7 @@ mod macos_overlay {
                     threads: before.threads + 1,
                     ..before
                 },
+                0,
             )
             .unwrap_err();
             assert!(thread_error.contains("thread count grew"));
@@ -735,9 +766,31 @@ mod macos_overlay {
                     metal_bytes: before.metal_bytes + 1,
                     ..before
                 },
+                0,
             )
             .unwrap_err();
-            assert!(metal_error.contains("Metal allocated size grew"));
+            assert!(metal_error.contains("exceeding drawable-pool budget 0"));
+        }
+
+        #[test]
+        fn accepts_only_bounded_compositor_drawable_growth() {
+            let before = counts(0, 0);
+            let budget = 3 * 1024 * 1024;
+            let within_budget = ResourceCounts {
+                metal_bytes: before.metal_bytes + budget,
+                ..before
+            };
+            assert!(validate_creation_cycles(300, before, within_budget, budget).is_ok());
+
+            let above_budget = ResourceCounts {
+                metal_bytes: within_budget.metal_bytes + 1,
+                ..before
+            };
+            assert!(
+                validate_creation_cycles(300, before, above_budget, budget)
+                    .unwrap_err()
+                    .contains("exceeding drawable-pool budget")
+            );
         }
 
         #[test]
@@ -912,20 +965,42 @@ fn main() {
                     // pools before measuring resources owned by the next batch.
                     // Yield one 60 Hz frame after each destroyed panel so the
                     // compositor can retire its presented CAMetalDrawable.
-                    for _ in 0..10 {
-                        cx.update(|_| {
+                    let mut metal_growth_budget_bytes = 0;
+                    for batch in 1..=3 {
+                        for _ in 0..cycles {
+                            let cycle_budget = cx
+                                .update(|_| {
+                                    let mtm = objc2::MainThreadMarker::new()
+                                        .expect("GPUI must run on AppKit main thread");
+                                    macos_overlay::run_creation_cycle(mtm)
+                                })
+                                .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
+                            metal_growth_budget_bytes =
+                                metal_growth_budget_bytes.max(cycle_budget);
+                            Timer::after(MACOS_COMPOSITOR_SETTLE_INTERVAL).await;
+                        }
+                        Timer::after(Duration::from_millis(100)).await;
+                        let warmup_counts = cx
+                            .update(|_| {
+                                let mtm = objc2::MainThreadMarker::new()
+                                    .expect("GPUI must run on AppKit main thread");
+                                macos_overlay::resource_counts(mtm)
+                            })
+                            .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
+                        println!(
+                            "gpui-overlay-spike: macOS resource warmup batch={batch} metal_bytes={} drawable_pool_budget_bytes={metal_growth_budget_bytes}",
+                            warmup_counts.metal_bytes()
+                        );
+                    }
+                    let before = cx
+                        .update(|_| {
                             let mtm = objc2::MainThreadMarker::new()
                                 .expect("GPUI must run on AppKit main thread");
-                            macos_overlay::run_creation_cycle(mtm)
+                            macos_overlay::resource_counts(mtm)
                         })
                         .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
-                        Timer::after(MACOS_COMPOSITOR_SETTLE_INTERVAL).await;
-                    }
-                    Timer::after(Duration::from_millis(100)).await;
 
-                    let mut previous_metal_bytes = None;
-                    let mut before = None;
-                    for batch in 1..=6 {
+                    for _ in 0..3 {
                         for _ in 0..cycles {
                             cx.update(|_| {
                                 let mtm = objc2::MainThreadMarker::new()
@@ -936,42 +1011,7 @@ fn main() {
                             Timer::after(MACOS_COMPOSITOR_SETTLE_INTERVAL).await;
                         }
                         Timer::after(Duration::from_millis(100)).await;
-                        let counts = cx
-                            .update(|_| {
-                                let mtm = objc2::MainThreadMarker::new()
-                                    .expect("GPUI must run on AppKit main thread");
-                                macos_overlay::resource_counts(mtm)
-                            })
-                            .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
-                        println!(
-                            "gpui-overlay-spike: macOS resource warmup batch={batch} metal_bytes={}",
-                            counts.metal_bytes()
-                        );
-                        if previous_metal_bytes == Some(counts.metal_bytes()) {
-                            before = Some(counts);
-                            break;
-                        }
-                        previous_metal_bytes = Some(counts.metal_bytes());
                     }
-                    let before = before.ok_or_else(|| {
-                        "Metal resource pool did not converge after 6 warmup batches".to_string()
-                    })?;
-
-                    for batch in 1..=3 {
-                        for _ in 0..cycles {
-                            cx.update(|_| {
-                                let mtm = objc2::MainThreadMarker::new()
-                                    .expect("GPUI must run on AppKit main thread");
-                                macos_overlay::run_creation_cycle(mtm)
-                            })
-                            .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
-                            Timer::after(MACOS_COMPOSITOR_SETTLE_INTERVAL).await;
-                        }
-                        if batch < 3 {
-                            Timer::after(Duration::from_millis(100)).await;
-                        }
-                    }
-                    Timer::after(Duration::from_millis(100)).await;
                     let after = cx
                         .update(|_| {
                             let mtm = objc2::MainThreadMarker::new()
@@ -979,14 +1019,19 @@ fn main() {
                             macos_overlay::resource_counts(mtm)
                         })
                         .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
-                    macos_overlay::validate_creation_cycles(cycles, before, after)
+                    macos_overlay::validate_creation_cycles(
+                        cycles,
+                        before,
+                        after,
+                        metal_growth_budget_bytes,
+                    )
                 }
                 .await;
 
                 match result {
                     Ok(report) => {
                         println!(
-                            "gpui-overlay-spike: macOS cycles={} non_empty_frames={} windows_before={} windows_after={} owners_before={} owners_after={} threads_before={} threads_after={} resident_bytes_before={} resident_bytes_after={} metal_bytes_before={} metal_bytes_after={} clean_shutdown=true",
+                            "gpui-overlay-spike: macOS cycles={} non_empty_frames={} windows_before={} windows_after={} owners_before={} owners_after={} threads_before={} threads_after={} resident_bytes_before={} resident_bytes_after={} metal_bytes_before={} metal_bytes_after={} metal_growth_budget_bytes={} clean_shutdown=true",
                             report.cycles,
                             report.cycles * 3,
                             report.windows_before,
@@ -998,7 +1043,8 @@ fn main() {
                             report.resident_bytes_before,
                             report.resident_bytes_after,
                             report.metal_bytes_before,
-                            report.metal_bytes_after
+                            report.metal_bytes_after,
+                            report.metal_growth_budget_bytes
                         );
                         cx.update(|cx| cx.quit()).ok();
                     }
