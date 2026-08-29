@@ -72,6 +72,7 @@ non-empty premultiplied-alpha draw/present submitted
 ```text
 cargo run --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked --release -- --macos-overlay-cycles 100
 NSZombieEnabled=YES spikes/gpui-overlay-macos/target/release/bongocat-gpui-overlay-macos-spike --macos-overlay-cycles 100
+leaks --atExit -- spikes/gpui-overlay-macos/target/release/bongocat-gpui-overlay-macos-spike --macos-overlay-cycle-worker 100
 cargo run --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked -- --simulate-macos-drawable-unavailable --auto-quit-ms 300
 cargo run --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked --release -- --simulate-renderer-loss-at-frame 12 --auto-quit-ms 1600
 ```
@@ -84,6 +85,18 @@ vertex buffer、command queue 和 drawable，清空透明背景后绘制一组�
 两次运行均报告
 `non_empty_frames=100 windows_before=0 windows_after=0 owners_before=0 owners_after=0 clean_shutdown=true`，
 启用 `NSZombieEnabled` 后也没有 deallocated-object 消息。
+
+为区分一次性系统初始化与每轮 overlay owner 增长，`leaks --atExit` 分别以
+1、10 和 100 cycle 建立基线。原 100-cycle 结果为 `342 leaks / 22512 bytes`、
+physical footprint `38.4M`、peak `47.1M`，其中比 1/10-cycle 基线多出 3 个
+`_NSWindowTransformAnimation` retain cycle。overlay 是无动画的后台窗口，因此 wrapper
+现在显式设置 `NSWindowAnimationBehavior::None`。修改后相同 100-cycle probe 为
+`288 leaks / 18816 bytes`、physical footprint `16.3M`、peak `24.3M`，不再包含
+`_NSWindowTransformAnimation`、overlay owner 或 Metal resource stack；剩余记录全部来自
+AppIntents/LinkServices 的 3 个系统 `NSXPCConnection` 常驻 cycle。普通 release 与
+`NSZombieEnabled=YES` probe 仍分别完成 100/100 个非空帧，窗口和 Rust owner 都回到 0。
+这些数据证明窗口动画 retain cycle 已消除，但不把系统 XPC 基线计作应用泄漏，也不替代
+Metal driver/GPU memory 和线程的专项采样。
 
 受控 drawable unavailable 路径保留 overlay owner 直到统一 shutdown，但不执行后续
 显示/隐藏 smoke；设置窗口仍打开并显示 degraded 诊断，然后在 GPUI `quit()` 前显式
@@ -191,6 +204,6 @@ push run `33247687689` 和 PR run `33247689437` 的 hardware D3D11 smoke 验证�
 
 ## 下一步
 
-下一步是验证 Windows 受控恢复 job，再补充真实 swapchain unavailable/device-lost、
-双平台 GPU/线程专项采样、display-linked frame source、拖动/显示器切换和模型绘制；任一平台
-结果都不能替代另一平台证据。
+下一步是补充真实 swapchain unavailable/device-lost、双平台 GPU/线程专项采样、
+display-linked frame source、拖动/显示器切换和模型绘制；任一平台结果都不能替代
+另一平台证据。

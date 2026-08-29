@@ -12,7 +12,7 @@ mod macos_overlay {
     };
     use objc2_app_kit::{
         NSApplication, NSBackingStoreType, NSColor, NSFloatingWindowLevel, NSPanel, NSView,
-        NSWindowCollectionBehavior, NSWindowStyleMask,
+        NSWindowAnimationBehavior, NSWindowCollectionBehavior, NSWindowStyleMask,
     };
     use objc2_foundation::{NSPoint, NSRect, NSSize};
     use std::{
@@ -129,6 +129,7 @@ mod macos_overlay {
             );
             panel.setOpaque(false);
             panel.setHasShadow(false);
+            panel.setAnimationBehavior(NSWindowAnimationBehavior::None);
             panel.setBackgroundColor(Some(&NSColor::clearColor()));
             panel.setLevel(NSFloatingWindowLevel);
             panel.setCollectionBehavior(
