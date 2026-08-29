@@ -21,28 +21,29 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 
 ## Direct Dependencies
 
-| Crate                  | Pinned version | Result            |
-| ---------------------- | -------------: | ----------------- |
-| `async-channel`        |        `2.5.0` | 从 `1.9.0` 升级   |
-| `bindgen`              |       `0.72.1` | 新增时即为最新    |
-| `block2`               |        `0.6.2` | 已是最新          |
-| `core-foundation`      |       `0.10.1` | 已是最新          |
-| `core-graphics-types`  |        `0.2.0` | 从 `0.1.3` 升级   |
-| `core-graphics2`       |        `0.6.1` | 从 `0.4.1` 升级   |
-| `dirs`                 |        `6.0.0` | 从 `5.0.1` 升级   |
-| `futures-lite`         |        `2.6.1` | 已是最新          |
-| `gpui`                 |        `0.2.2` | 已是最新          |
-| `metal`                |       `0.33.0` | 从 `0.29.0` 升级  |
-| `objc2`                |        `0.6.4` | 已是最新          |
-| `objc2-app-kit`        |        `0.3.2` | 已是最新          |
-| `objc2-foundation`     |        `0.3.2` | 已是最新          |
-| `objc2-quartz-core`    |        `0.3.2` | 已是最新          |
-| `serde`                |      `1.0.229` | 从 `1.0.228` 升级 |
-| `serde_json`           |      `1.0.151` | 从 `1.0.149` 升级 |
-| `sha2`                 |       `0.11.0` | 新增时即为最新    |
-| `tempfile`             |       `3.27.0` | 已是最新          |
-| `unicode-segmentation` |       `1.13.3` | 已是最新          |
-| `windows`              |       `0.62.2` | 从 `0.61.3` 升级  |
+| Crate                  | Pinned version | Result               |
+| ---------------------- | -------------: | -------------------- |
+| `async-channel`        |        `2.5.0` | 从 `1.9.0` 升级      |
+| `bindgen`              |       `0.72.1` | 新增时即为最新       |
+| `block2`               |        `0.6.2` | 已是最新             |
+| `core-foundation`      |       `0.10.1` | 已是最新             |
+| `core-graphics-types`  |        `0.2.0` | 从 `0.1.3` 升级      |
+| `core-graphics2`       |        `0.6.1` | 从 `0.4.1` 升级      |
+| `dirs`                 |        `6.0.0` | 从 `5.0.1` 升级      |
+| `futures-lite`         |        `2.6.1` | 已是最新             |
+| `gpui`                 |        `0.2.2` | 已是最新             |
+| `libc`                 |      `0.2.189` | 新增时即为最新稳定版 |
+| `metal`                |       `0.33.0` | 从 `0.29.0` 升级     |
+| `objc2`                |        `0.6.4` | 已是最新             |
+| `objc2-app-kit`        |        `0.3.2` | 已是最新             |
+| `objc2-foundation`     |        `0.3.2` | 已是最新             |
+| `objc2-quartz-core`    |        `0.3.2` | 已是最新             |
+| `serde`                |      `1.0.229` | 从 `1.0.228` 升级    |
+| `serde_json`           |      `1.0.151` | 从 `1.0.149` 升级    |
+| `sha2`                 |       `0.11.0` | 新增时即为最新       |
+| `tempfile`             |       `3.27.0` | 已是最新             |
+| `unicode-segmentation` |       `1.13.3` | 已是最新             |
+| `windows`              |       `0.62.2` | 从 `0.61.3` 升级     |
 
 `windows 0.62.2` 删除了 `Error::from_win32()`；Win32 wrapper 已改为在失败调用后立即使用语义等价的 `Error::from_thread()`，避免清理 API 覆盖 thread last-error。
 
@@ -69,6 +70,7 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 - `windows 0.62.2` 同时封装 Raw Input 与原生 overlay 边界；输入和 overlay crate 均在 `x86_64-pc-windows-msvc` 完成 Check/Clippy，overlay 另对 `aarch64-pc-windows-msvc` 完成 Check；真实 Windows 输入与 D3D11 生命周期 smoke 由 push CI 执行；
 - `core-graphics2 0.6.1` 在已授予 Input Monitoring 的 macOS 会话创建 listen-only tap，完成 lifecycle Reset 和正常 shutdown；
 - `metal 0.33.0` 创建透明 `CAMetalLayer`，完成两次 clear/present、隐藏/重显和自动退出；
+- `libc 0.2.189` 只在 macOS overlay spike 的平台边界调用 `proc_pidinfo`，用于 100-cycle 线程/RSS 资源快照；许可证为 MIT OR Apache-2.0，停止使用该系统指标后可直接移除，不进入项目公共 API；
 - `async-channel 2.5.0` 的 GPUI 设置 spike 完成 revisioned snapshot、runtime shutdown 和自动退出；
 - `dirs 6.0.0`、`serde 1.0.229` 与 `serde_json 1.0.151` 的配置/考古工具共 28 项测试通过；
 - `bindgen 0.72.1` 与 `sha2 0.11.0` 只存在于离线 Cubism raw binding 工具；三个当前可绑定 target 的合成 header golden、外部路径/hash/不可覆盖/provenance 测试和 release check 通过；

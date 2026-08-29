@@ -16,7 +16,7 @@ mod macos_overlay {
     };
     use objc2_foundation::{NSPoint, NSRect, NSSize};
     use std::{
-        mem,
+        mem::{self, MaybeUninit},
         sync::atomic::{AtomicUsize, Ordering},
     };
 
@@ -86,12 +86,21 @@ mod macos_overlay {
         pub windows_after: usize,
         pub owners_before: usize,
         pub owners_after: usize,
+        pub threads_before: i32,
+        pub threads_after: i32,
+        pub resident_bytes_before: u64,
+        pub resident_bytes_after: u64,
+        pub metal_bytes_before: u64,
+        pub metal_bytes_after: u64,
     }
 
     #[derive(Clone, Copy)]
     pub struct ResourceCounts {
         windows: usize,
         owners: usize,
+        threads: i32,
+        resident_bytes: u64,
+        metal_bytes: u64,
     }
 
     #[derive(Clone, Copy)]
@@ -491,6 +500,18 @@ mod macos_overlay {
                 before.owners, after.owners
             ));
         }
+        if after.threads > before.threads {
+            return Err(format!(
+                "process thread count grew from {} to {} after {cycles} cycles",
+                before.threads, after.threads
+            ));
+        }
+        if after.metal_bytes > before.metal_bytes {
+            return Err(format!(
+                "Metal allocated size grew from {} to {} bytes after {cycles} cycles",
+                before.metal_bytes, after.metal_bytes
+            ));
+        }
 
         Ok(CycleReport {
             cycles,
@@ -498,15 +519,65 @@ mod macos_overlay {
             windows_after: after.windows,
             owners_before: before.owners,
             owners_after: after.owners,
+            threads_before: before.threads,
+            threads_after: after.threads,
+            resident_bytes_before: before.resident_bytes,
+            resident_bytes_after: after.resident_bytes,
+            metal_bytes_before: before.metal_bytes,
+            metal_bytes_after: after.metal_bytes,
         })
     }
 
-    pub fn resource_counts(mtm: MainThreadMarker) -> ResourceCounts {
+    pub fn resource_counts(mtm: MainThreadMarker) -> Result<ResourceCounts, String> {
         let application = NSApplication::sharedApplication(mtm);
-        ResourceCounts {
+        let process = process_metrics()?;
+        let device = Device::system_default().ok_or("Metal device unavailable for metrics")?;
+        Ok(ResourceCounts {
             windows: application.windows().count(),
             owners: LIVE_OVERLAY_OWNERS.load(Ordering::Acquire),
+            threads: process.threads,
+            resident_bytes: process.resident_bytes,
+            metal_bytes: device.current_allocated_size(),
+        })
+    }
+
+    struct ProcessMetrics {
+        threads: i32,
+        resident_bytes: u64,
+    }
+
+    fn process_metrics() -> Result<ProcessMetrics, String> {
+        let mut task_info = MaybeUninit::<libc::proc_taskinfo>::zeroed();
+        let expected_size = size_of::<libc::proc_taskinfo>();
+        // SAFETY: task_info points to expected_size writable bytes for the exact
+        // PROC_PIDTASKINFO layout from libc. The current PID is valid, and the
+        // buffer is only initialized after proc_pidinfo reports a full write.
+        let bytes_read = unsafe {
+            libc::proc_pidinfo(
+                std::process::id() as i32,
+                libc::PROC_PIDTASKINFO,
+                0,
+                task_info.as_mut_ptr().cast(),
+                expected_size as i32,
+            )
+        };
+        if bytes_read != expected_size as i32 {
+            return Err(format!(
+                "proc_pidinfo returned {bytes_read} bytes, expected {expected_size}"
+            ));
         }
+        // SAFETY: the full proc_taskinfo buffer was initialized above.
+        let task_info = unsafe { task_info.assume_init() };
+        if task_info.pti_threadnum <= 0 {
+            return Err(format!(
+                "proc_pidinfo returned invalid thread count {}",
+                task_info.pti_threadnum
+            ));
+        }
+        Ok(ProcessMetrics {
+            threads: task_info.pti_threadnum,
+            resident_bytes: task_info.pti_resident_size,
+        })
     }
 
     pub fn run_creation_cycle(mtm: MainThreadMarker) -> Result<(), String> {
@@ -529,6 +600,16 @@ mod macos_overlay {
         use core_graphics_types::geometry::CGSize;
         use objc2_foundation::NSSize;
 
+        fn counts(windows: usize, owners: usize) -> ResourceCounts {
+            ResourceCounts {
+                windows,
+                owners,
+                threads: 12,
+                resident_bytes: 16 * 1024 * 1024,
+                metal_bytes: 4 * 1024 * 1024,
+            }
+        }
+
         #[test]
         fn vertex_layout_matches_metal_float4_alignment() {
             assert_eq!(size_of::<OverlayVertex>(), 32);
@@ -541,10 +622,7 @@ mod macos_overlay {
 
         #[test]
         fn accepts_stable_window_and_owner_counts() {
-            let counts = ResourceCounts {
-                windows: 1,
-                owners: 0,
-            };
+            let counts = counts(1, 0);
             let report = validate_creation_cycles(100, counts, counts).unwrap();
 
             assert_eq!(report.cycles, 100);
@@ -554,17 +632,14 @@ mod macos_overlay {
 
         #[test]
         fn rejects_window_or_owner_growth() {
-            let before = ResourceCounts {
-                windows: 1,
-                owners: 0,
-            };
+            let before = counts(1, 0);
 
             let window_error = validate_creation_cycles(
                 100,
                 before,
                 ResourceCounts {
                     windows: 2,
-                    owners: 0,
+                    ..before
                 },
             )
             .unwrap_err();
@@ -574,8 +649,8 @@ mod macos_overlay {
                 100,
                 before,
                 ResourceCounts {
-                    windows: 1,
                     owners: 1,
+                    ..before
                 },
             )
             .unwrap_err();
@@ -584,14 +659,37 @@ mod macos_overlay {
 
         #[test]
         fn rejects_zero_cycles() {
-            let counts = ResourceCounts {
-                windows: 0,
-                owners: 0,
-            };
+            let counts = counts(0, 0);
             assert_eq!(
                 validate_creation_cycles(0, counts, counts).unwrap_err(),
                 "overlay cycle count must be greater than zero"
             );
+        }
+
+        #[test]
+        fn rejects_thread_or_metal_growth() {
+            let before = counts(0, 0);
+            let thread_error = validate_creation_cycles(
+                100,
+                before,
+                ResourceCounts {
+                    threads: before.threads + 1,
+                    ..before
+                },
+            )
+            .unwrap_err();
+            assert!(thread_error.contains("thread count grew"));
+
+            let metal_error = validate_creation_cycles(
+                100,
+                before,
+                ResourceCounts {
+                    metal_bytes: before.metal_bytes + 1,
+                    ..before
+                },
+            )
+            .unwrap_err();
+            assert!(metal_error.contains("Metal allocated size grew"));
         }
 
         #[test]
@@ -752,22 +850,18 @@ fn main() {
                         return Err("overlay cycle count must be greater than zero".to_string());
                     }
 
-                    // Warm up process-global AppKit and Metal state, then let
-                    // AppKit process the close before capturing the baseline.
-                    cx.update(|_| {
-                        let mtm = objc2::MainThreadMarker::new()
-                            .expect("GPUI must run on AppKit main thread");
-                        macos_overlay::run_creation_cycle(mtm)
-                    })
-                    .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
-                    Timer::after(Duration::from_millis(10)).await;
-                    let before = cx
-                        .update(|_| {
+                    // Warm up process-global AppKit, Metal compiler and driver
+                    // pools before measuring resources owned by the next batch.
+                    for _ in 0..10 {
+                        cx.update(|_| {
                             let mtm = objc2::MainThreadMarker::new()
                                 .expect("GPUI must run on AppKit main thread");
-                            macos_overlay::resource_counts(mtm)
+                            macos_overlay::run_creation_cycle(mtm)
                         })
-                        .map_err(|error| format!("GPUI cycle task stopped: {error}"))?;
+                        .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
+                        Timer::after(Duration::from_millis(2)).await;
+                    }
+                    Timer::after(Duration::from_millis(100)).await;
 
                     for _ in 0..cycles {
                         cx.update(|_| {
@@ -779,14 +873,44 @@ fn main() {
                         Timer::after(Duration::from_millis(1)).await;
                     }
 
-                    Timer::after(Duration::from_millis(10)).await;
+                    Timer::after(Duration::from_millis(100)).await;
+                    for _ in 0..cycles {
+                        cx.update(|_| {
+                            let mtm = objc2::MainThreadMarker::new()
+                                .expect("GPUI must run on AppKit main thread");
+                            macos_overlay::run_creation_cycle(mtm)
+                        })
+                        .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
+                        Timer::after(Duration::from_millis(1)).await;
+                    }
+
+                    Timer::after(Duration::from_millis(100)).await;
+                    let before = cx
+                        .update(|_| {
+                            let mtm = objc2::MainThreadMarker::new()
+                                .expect("GPUI must run on AppKit main thread");
+                            macos_overlay::resource_counts(mtm)
+                        })
+                        .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
+
+                    for _ in 0..cycles {
+                        cx.update(|_| {
+                            let mtm = objc2::MainThreadMarker::new()
+                                .expect("GPUI must run on AppKit main thread");
+                            macos_overlay::run_creation_cycle(mtm)
+                        })
+                        .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
+                        Timer::after(Duration::from_millis(1)).await;
+                    }
+
+                    Timer::after(Duration::from_millis(100)).await;
                     let after = cx
                         .update(|_| {
                             let mtm = objc2::MainThreadMarker::new()
                                 .expect("GPUI must run on AppKit main thread");
                             macos_overlay::resource_counts(mtm)
                         })
-                        .map_err(|error| format!("GPUI cycle task stopped: {error}"))?;
+                        .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
                     macos_overlay::validate_creation_cycles(cycles, before, after)
                 }
                 .await;
@@ -794,13 +918,19 @@ fn main() {
                 match result {
                     Ok(report) => {
                         println!(
-                            "gpui-overlay-spike: macOS cycles={} non_empty_frames={} windows_before={} windows_after={} owners_before={} owners_after={} clean_shutdown=true",
+                            "gpui-overlay-spike: macOS cycles={} non_empty_frames={} windows_before={} windows_after={} owners_before={} owners_after={} threads_before={} threads_after={} resident_bytes_before={} resident_bytes_after={} metal_bytes_before={} metal_bytes_after={} clean_shutdown=true",
                             report.cycles,
-                            report.cycles,
+                            report.cycles * 3,
                             report.windows_before,
                             report.windows_after,
                             report.owners_before,
-                            report.owners_after
+                            report.owners_after,
+                            report.threads_before,
+                            report.threads_after,
+                            report.resident_bytes_before,
+                            report.resident_bytes_after,
+                            report.metal_bytes_before,
+                            report.metal_bytes_after
                         );
                         cx.update(|cx| cx.quit()).ok();
                     }

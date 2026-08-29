@@ -10,6 +10,7 @@ publish = false
 gpui = "=0.2.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
+libc = "=0.2.189"
 objc2 = "=0.6.4"
 objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["NSApplication", "NSPanel", "NSWindow", "NSView", "NSGraphics", "NSResponder", "NSColor"] }
 objc2-foundation = { version = "=0.3.2", default-features = false, features = ["NSGeometry", "NSObject", "NSString", "objc2-core-foundation"] }

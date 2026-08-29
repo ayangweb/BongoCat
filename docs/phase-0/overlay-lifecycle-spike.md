@@ -78,14 +78,14 @@ cargo run --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked -- --sim
 cargo run --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked --release -- --simulate-renderer-loss-at-frame 12 --auto-quit-ms 1600
 ```
 
-100 次循环每次都真实创建 `NSPanel`、`CAMetalLayer`、Metal render pipeline、
+每次循环都真实创建 `NSPanel`、`CAMetalLayer`、Metal render pipeline、
 vertex buffer、command queue 和 drawable，清空透明背景后绘制一组预乘 alpha 三角形，
 等待 command buffer 完成，并从 drawable 中回读中心像素；只有 alpha 非零且三个颜色
 通道都不大于 alpha 才通过。随后循环隐藏窗口并析构 GPU/window owner。
 父进程只在 worker 经 GPUI `quit()` 正常退出且输出 shutdown marker 时接受结果；
-两次运行均报告
+初始版本的普通与 `NSZombieEnabled` 运行均报告
 `non_empty_frames=100 windows_before=0 windows_after=0 owners_before=0 owners_after=0 clean_shutdown=true`，
-启用 `NSZombieEnabled` 后也没有 deallocated-object 消息。
+且没有 deallocated-object 消息。
 
 为区分一次性系统初始化与每轮 overlay owner 增长，`leaks --atExit` 分别以
 1、10 和 100 cycle 建立基线。原 100-cycle 结果为 `342 leaks / 22512 bytes`、
@@ -99,18 +99,28 @@ AppIntents/LinkServices 的 3 个系统 `NSXPCConnection` 常驻 cycle。普通 
 这些数据证明窗口动画 retain cycle 已消除，但不把系统 XPC 基线计作应用泄漏，也不替代
 Metal driver/GPU memory 和线程的专项采样。
 
+当前 resource probe 在 10 次初始化预热后运行三个等长的 100-cycle batch。第一批让
+Metal compiler/driver worker pool 完成延迟初始化，第二批结束时建立进程基线，第三批结束时
+再次读取 `proc_pidinfo(PROC_PIDTASKINFO)` 的线程/RSS 和
+`MTLDevice.currentAllocatedSize`。窗口或 Rust owner 不相等、线程数增加或 Metal allocation
+增加都会使 worker 非零退出；RSS 受 allocator/系统 cache 影响，只输出原始值，不作为单点
+泄漏判定。连续两次独立 release 运行都完成 300 个非空帧，第二/第三批均为
+`threads 9 -> 9`、`metal_bytes 393216 -> 393216`、window/owner `0 -> 0`；RSS 分别约增长
+230 KiB 和 304 KiB。该 probe 已覆盖应用可见的 Metal allocation 与进程线程增长，不替代
+Instruments/Metal System Trace 的 driver resource 和长期趋势证据。
+
 每次提交帧前，wrapper 通过 content view 的 `convertRectToBacking` 计算当前物理像素尺寸，
 仅在它与 `CAMetalLayer.drawableSize` 不同时更新 layer。这样跨 Retina/非 Retina 显示器后
 即使窗口通知丢失，下一帧也会收敛，不需要把 AppKit notification token 或 callback 生命周期
 扩散给 renderer。受控 release smoke 先把 drawable 改成 `1x1`，首帧恢复为当前 Retina
-`640x480`，逻辑 resize 后再恢复为 `800x600`，随后完成 49 帧和有序 shutdown。6 项单元测试
+`640x480`，逻辑 resize 后再恢复为 `800x600`，随后完成 49 帧和有序 shutdown。7 项单元测试
 覆盖正数/有限/整数物理尺寸以及陈旧尺寸检测。该结果验证校正算法，不替代真实外接显示器
 热切换、非 Retina 屏幕或 display removal 实测。
 
 受控 drawable unavailable 路径保留 overlay owner 直到统一 shutdown，但不执行后续
 显示/隐藏 smoke；设置窗口仍打开并显示 degraded 诊断，然后在 GPUI `quit()` 前显式
-释放 overlay。以上计数只能证明 AppKit window list 与 Rust owner 数量稳定，不能替代
-Metal driver resource、GPU memory 或线程专项采样。GitHub `macos-latest` 已接入三条
+释放 overlay。以上计数与 process/Metal resource probe 不能替代 driver resource 的
+Instruments/Metal System Trace 专项采样。GitHub `macos-latest` 已接入相关
 smoke。commit `5bc82b61b12d9873fb8bddfdb0de4f1652487ac9` 的 push run
 `33245147905`、job `99081224637` 与 PR run `33245149605`、job
 `99081228964` 均通过；两次 runner 都记录正常透明 clear/present、显示/隐藏、
@@ -205,7 +215,8 @@ push run `33247687689` 和 PR run `33247689437` 的 hardware D3D11 smoke 验证�
 
 - 两个平台的真实 Live2D/Cubism 绘制和模型资源兼容。
 - 两个平台的模型 texture、draw order、mask 及离线固定 shader 产物。
-- 双平台 GPU memory/driver resource 与线程专项采样。
+- Windows GPU memory/driver resource 与线程专项采样，以及 macOS Instruments/Metal
+  System Trace driver resource 证据；macOS process thread 和 Metal allocated size 已接入门禁。
 - Windows swapchain unavailable 与双平台真实 GPU device lost；双平台受控 owner 释放、
   有限退避、重建和诊断 UI 已实现，但注入结果不能替代真实驱动故障。
 - 用户拖动、显示器/DPI 热切换和 production display-linked frame source 的完整生命周期；

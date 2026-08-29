@@ -96,7 +96,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 建立依赖许可证清单，确认当前 Native spike crate graph 与项目 MIT 发布兼容。
   - 状态（2026-08-29）：最新稳定版 `cargo-deny 0.20.2` 以四个 Windows/macOS target 扫描 13 个独立 workspace，license/source policy 通过并接入 CI；依赖升级后 package 节点数由 lockfile 动态决定，不再把旧的 535 节点快照当作当前事实。Cubism 厂商许可、未来产品依赖、SBOM 和 notice bundle 仍由各自后续门禁处理。
 - [x] 审计 Native Rewrite 所有直接 Rust 依赖并升级到 crates.io 最新稳定版。
-  - 验收证据：`docs/phase-0/rust-dependency-versions.md` 记录 2026-08-29 的 20 个直接依赖家族、升级范围和命令。原 18 个家族中 8 个已升级、10 个原本已是最新；后续新增的最新稳定版 `bindgen 0.72.1` 与 `sha2 0.11.0` 也已精确锁定。完整 `cargo update` 后，最新 `gpui 0.2.2` 仍约束旧 generation 的 Metal/CoreGraphics 和 5 个有兼容更新的传递版本；均已记录 owner path，未静默覆盖或 fork。Dependabot 每周仅扫描 13 个 Native workspace 并向 `next` 提交分组更新。
+  - 验收证据：`docs/phase-0/rust-dependency-versions.md` 记录 2026-08-29 的 21 个直接依赖家族、升级范围和命令。原 18 个家族中 8 个已升级、10 个原本已是最新；后续新增的最新稳定版 `bindgen 0.72.1`、`sha2 0.11.0` 与 `libc 0.2.189` 也已精确锁定。完整 `cargo update` 后，最新 `gpui 0.2.2` 仍约束旧 generation 的 Metal/CoreGraphics 和 5 个有兼容更新的传递版本；均已记录 owner path，未静默覆盖或 fork。Dependabot 每周仅扫描 13 个 Native workspace 并向 `next` 提交分组更新。
 - [ ] 冻结首发 target triple 和 CPU 架构矩阵，明确 Windows ARM64、macOS Intel 是否发布或仅测试。
   - 状态（2026-08-29）：ADR-0010 已固定 Windows 仅支持 x64/ARM64，i686 不再构建或发布。官方 Cubism Native R5 不提供 desktop Windows ARM64 Core，只有 experimental UWP ARM64 DLL，因此 ARM64 当前是发布阻塞；macOS Intel 和最终安装包形式仍待实机与发布链验证。
 - [ ] 记录 Windows MSVC/SDK、macOS Xcode/SDK/Metal Toolchain 和 Rust toolchain 的最低可用组合。
@@ -190,7 +190,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 验证 overlay 可置顶、穿透、显示/隐藏、拖动和缩放。
   - 状态（2026-08-29）：双平台置顶、穿透和显示/隐藏已通过；双平台 programmatic resize 和 backing-scale/swapchain 重建已实现。macOS 每帧通过 `convertRectToBacking` 校正 drawable size，受控 stale-size smoke 已从 `1x1` 恢复到当前 Retina 尺寸并继续非空绘制；真实用户拖动、外接显示器及 DPI/Retina 热切换仍待完成。
 - [ ] 连续创建/销毁 overlay 100 次，无窗口、swapchain、layer 或线程泄漏。
-  - 状态（2026-08-29）：Windows warm-up 后 100 次完整 window/GPU owner 循环已通过，process handle 为 `172 -> 172`；macOS release 100-cycle 在普通与 NSZombie 模式均通过，AppKit windows 与 Rust owner 都为 `0 -> 0`。1/10/100-cycle `leaks` 基线定位并消除了 AppKit transform animation retain cycle；修复后 100-cycle 只剩系统 AppIntents/LinkServices XPC 常驻 stack。双平台 GPU memory/driver resource 与线程专项采样仍待完成，因此保持未勾选。
+  - 状态（2026-08-29）：Windows warm-up 后 100 次完整 window/GPU owner 循环已通过，process handle 为 `172 -> 172`；macOS release 100-cycle 在普通与 NSZombie 模式均通过，AppKit windows 与 Rust owner 都为 `0 -> 0`。1/10/100-cycle `leaks` 基线定位并消除了 AppKit transform animation retain cycle；修复后只剩系统 XPC 常驻 stack。macOS 当前又以三个等长 100-cycle batch 区分 driver pool 初始化和持续增长，后两批连续两次复现 thread `9 -> 9`、Metal allocation `393216 -> 393216`。Windows GPU/线程与 macOS Instruments driver resource 仍待完成，因此保持未勾选。
 - [ ] 验证退出顺序：frame source -> renderer -> GPU -> overlay -> GPUI。
   - 状态（2026-08-29）：GPUI executor 上的 60 Hz 定时 frame source 已连续驱动双平台 renderer，并在退出时通过停止确认后才释放 renderer/GPU/window；macOS 本机与 Windows hardware D3D11 runner 均已验证连续帧、resize、hide/show 和有序退出。生产 display-linked frame source 与 runtime 尚未接入，因此保持未完成。
 - [x] 写明 GPUI/AppKit/Win32 主线程所有权、overlay 创建线程和跨线程 command 不变量。
@@ -826,7 +826,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 10. [ ] `P0-OVERLAY`：GPUI 生命周期内完成 Windows D3D11/macOS Metal 透明 clear/present、错误注入和 100 次重建。
 
 - [x] 先完成无平台依赖的 overlay lifecycle contract probe；平台窗口和 GPU 验证仍未完成。
-- [x] Windows Win32/D3D11/DirectComposition owner、故障降级、析构顺序与 100-cycle 已通过既有 push/PR `windows-latest`；macOS 本机与 push/PR runner 的透明 clear/present、drawable unavailable、显式 shutdown 与 100-cycle 也已通过，并通过 1/10/100-cycle `leaks` 基线定位和消除窗口动画 retain cycle。GPUI 定时 frame source、双平台 resize、有序停止及受控运行中故障恢复已实现；macOS 又以逐帧 backing-size 校正修复跨显示器后 drawable 尺寸漂移。完整 `P0-OVERLAY` 仍等待 Windows 真实 swapchain unavailable、双平台真实 device-lost、GPU/线程采样、拖动及显示器/DPI 切换。
+- [x] Windows Win32/D3D11/DirectComposition owner、故障降级、析构顺序与 100-cycle 已通过既有 push/PR `windows-latest`；macOS 本机与 push/PR runner 的透明 clear/present、drawable unavailable、显式 shutdown 与 100-cycle 也已通过，并通过 `leaks` 基线消除窗口动画 retain cycle。GPUI 定时 frame source、双平台 resize、有序停止及受控运行中故障恢复已实现；macOS 又以逐帧 backing-size 校正修复跨显示器后 drawable 尺寸漂移，并为 100-cycle 等长批次加入 thread/RSS/Metal allocation 门禁。完整 `P0-OVERLAY` 仍等待 Windows 真实 swapchain unavailable、双平台真实 device-lost、Windows GPU/线程与 macOS driver 专项采样、拖动及显示器/DPI 切换。
 
 11. [ ] `P0-INPUT-WINDOWS`：完成 Raw Input + pressed set + `GetAsyncKeyState` 校正并实测 issue #47 场景。
 

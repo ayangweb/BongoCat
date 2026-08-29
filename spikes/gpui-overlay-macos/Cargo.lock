@@ -658,6 +658,7 @@ dependencies = [
  "bongocat-overlay-windows-spike",
  "core-graphics-types 0.2.0",
  "gpui",
+ "libc",
  "metal 0.33.0",
  "objc2",
  "objc2-app-kit",

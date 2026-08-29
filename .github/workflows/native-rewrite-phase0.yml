@@ -366,7 +366,11 @@ jobs:
           cycles = run_smoke("cycles", ["--macos-overlay-cycles", "100"])
           for expected in (
               "macOS cycles=100",
-              "non_empty_frames=100",
+              "non_empty_frames=300",
+              "threads_before=",
+              "threads_after=",
+              "metal_bytes_before=",
+              "metal_bytes_after=",
               "clean_shutdown=true",
           ):
               if expected not in cycles:
