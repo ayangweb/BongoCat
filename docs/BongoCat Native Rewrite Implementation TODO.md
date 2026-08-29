@@ -856,11 +856,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 13. [ ] `P0-CUBISM`：确认 SDK/许可证/binding 生成，三个预置模型完成 Core、资源和 renderer spike。
 
-- [x] 完成平台无关 Rust model3/package parser、三个预置规范化索引与异常资源安全 contract；Native Core、binding、Framework 求值和 D3D11/Metal 绘制仍未完成。
+- [x] 完成平台无关 Rust model3/package parser、所有结构化 sidecar 静态 preflight、三个预置规范化索引与异常资源安全 contract；Native Core、binding、Framework 求值和 D3D11/Metal 绘制仍未完成。
 - [x] 完成 6 个预置 motion3 与 15 个 exp3 的强类型结构、segment/Meta 计数、fade/parameter/blend 校验；这不代表 motion/expression 行为求值完成。
 - [x] 完成 3 个预置 cdi3 的强类型 parameter/group/part 与 group 拓扑校验，并将规范化索引升级到 schema v2；跨资源 ID 以未来 Core 表为准。
 - [x] 完成 physics3 v3 静态 preflight、匿名摘要 CLI 和合成错误 contract；13 个历史文件只作为本地结构覆盖，不作为可分发 fixture 或行为求值证据。
 - [x] 完成 pose3 静态 preflight、匿名摘要 CLI 和合成错误 contract；没有授权真实样本或 fade/link 求值证据。
+- [x] 完成 userdata3 v3 静态 preflight、匿名摘要 CLI 和合成错误 contract；三个预置模型没有真实 userdata3。
 - [ ] 取得可分发授权的 physics3/pose3 fixture 后完成强类型结构和 Framework 求值；三个预置模型不含这两类资源，不得以合成样本冒充兼容证据。
 
 14. [ ] `P0-GO-NO-GO`：汇总证据、阻塞和条件，确认后再建立完整产品 workspace。

@@ -62,6 +62,7 @@ pub enum DiagnosticCode {
     ModelTextureInvalidPng,
     ModelTextureMissing,
     ModelUnsupportedVersion,
+    ModelUserDataInvalid,
 }
 
 impl DiagnosticCode {
@@ -93,6 +94,7 @@ impl DiagnosticCode {
             Self::ModelTextureInvalidPng => "model_texture_invalid_png",
             Self::ModelTextureMissing => "model_texture_missing",
             Self::ModelUnsupportedVersion => "model_unsupported_version",
+            Self::ModelUserDataInvalid => "model_user_data_invalid",
         }
     }
 }
@@ -195,6 +197,13 @@ pub struct PoseResourceSummary {
     pub group_count: usize,
     pub part_count: usize,
     pub link_count: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct UserDataResourceSummary {
+    pub version: u32,
+    pub entry_count: usize,
+    pub total_value_bytes: usize,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -485,6 +494,42 @@ struct PosePart {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct UserDataDefinition {
+    #[serde(rename = "Version")]
+    version: u32,
+    #[serde(rename = "Meta")]
+    meta: UserDataMeta,
+    #[serde(rename = "UserData")]
+    entries: Vec<UserDataEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UserDataMeta {
+    #[serde(rename = "UserDataCount")]
+    entry_count: usize,
+    #[serde(rename = "TotalUserDataSize")]
+    total_value_bytes: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UserDataEntry {
+    #[serde(rename = "Target")]
+    target: UserDataTarget,
+    #[serde(rename = "Id")]
+    id: String,
+    #[serde(rename = "Value")]
+    value: String,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+enum UserDataTarget {
+    ArtMesh,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PhysicsDefinition {
     #[serde(rename = "Version")]
     version: u32,
@@ -727,17 +772,6 @@ impl PackageReader {
         Ok((normalized, canonical))
     }
 
-    fn resolve_json(&mut self, reference: &str) -> Result<String, ModelPackageError> {
-        let (normalized, path) = self.resolve_file(reference, ResourceKind::Other)?;
-        read_json_object(
-            &path,
-            &normalized,
-            self.limits.maximum_json_bytes,
-            DiagnosticCode::ModelResourceJsonInvalid,
-        )?;
-        Ok(normalized)
-    }
-
     fn resolve_physics(&mut self, reference: &str) -> Result<String, ModelPackageError> {
         let (normalized, path) = self.resolve_file(reference, ResourceKind::Other)?;
         inspect_physics_file(&path, &normalized, self.limits.maximum_json_bytes)?;
@@ -747,6 +781,12 @@ impl PackageReader {
     fn resolve_pose(&mut self, reference: &str) -> Result<String, ModelPackageError> {
         let (normalized, path) = self.resolve_file(reference, ResourceKind::Other)?;
         inspect_pose_file(&path, &normalized, self.limits.maximum_json_bytes)?;
+        Ok(normalized)
+    }
+
+    fn resolve_user_data(&mut self, reference: &str) -> Result<String, ModelPackageError> {
+        let (normalized, path) = self.resolve_file(reference, ResourceKind::Other)?;
+        inspect_user_data_file(&path, &normalized, self.limits.maximum_json_bytes)?;
         Ok(normalized)
     }
 
@@ -1066,7 +1106,7 @@ pub fn inspect_model_package(
         .file_references
         .user_data
         .as_deref()
-        .map(|reference| reader.resolve_json(reference))
+        .map(|reference| reader.resolve_user_data(reference))
         .transpose()?;
 
     let groups = model
@@ -1254,23 +1294,6 @@ fn read_typed_json<T: for<'de> Deserialize<'de>>(
             format!("invalid JSON: {error}"),
         )
     })
-}
-
-fn read_json_object(
-    path: &Path,
-    reference: &str,
-    maximum_bytes: u64,
-    invalid_code: DiagnosticCode,
-) -> Result<(), ModelPackageError> {
-    let value: serde_json::Value = read_typed_json(path, reference, maximum_bytes, invalid_code)?;
-    if !value.is_object() {
-        return Err(ModelPackageError::new(
-            invalid_code,
-            Some(reference),
-            "resource JSON top level must be an object",
-        ));
-    }
-    Ok(())
 }
 
 fn inspect_display_info_file(
@@ -1528,6 +1551,87 @@ fn inspect_pose_file(
         group_count: pose.groups.len(),
         part_count,
         link_count,
+    })
+}
+
+pub fn inspect_user_data_resource(
+    path: impl AsRef<Path>,
+    maximum_bytes: u64,
+) -> Result<UserDataResourceSummary, ModelPackageError> {
+    inspect_user_data_file(path.as_ref(), "userdata3.json", maximum_bytes)
+}
+
+fn inspect_user_data_file(
+    path: &Path,
+    reference: &str,
+    maximum_bytes: u64,
+) -> Result<UserDataResourceSummary, ModelPackageError> {
+    let user_data: UserDataDefinition = read_typed_json(
+        path,
+        reference,
+        maximum_bytes,
+        DiagnosticCode::ModelUserDataInvalid,
+    )?;
+    if user_data.version != 3 {
+        return resource_error(
+            DiagnosticCode::ModelUserDataInvalid,
+            reference,
+            format!("userdata3 version {} is not supported", user_data.version),
+        );
+    }
+    if user_data.meta.entry_count != user_data.entries.len() {
+        return resource_error(
+            DiagnosticCode::ModelUserDataInvalid,
+            reference,
+            format!(
+                "Meta.UserDataCount is {}; parsed {} entries",
+                user_data.meta.entry_count,
+                user_data.entries.len()
+            ),
+        );
+    }
+
+    let mut entry_ids = BTreeSet::new();
+    let mut total_value_bytes = 0usize;
+    for entry in &user_data.entries {
+        require_resource_identifier(
+            &entry.id,
+            DiagnosticCode::ModelUserDataInvalid,
+            reference,
+            "user data Id",
+        )?;
+        if !entry_ids.insert((entry.target, entry.id.as_str())) {
+            return resource_error(
+                DiagnosticCode::ModelUserDataInvalid,
+                reference,
+                "user data Target/Id pairs must be unique",
+            );
+        }
+        total_value_bytes = total_value_bytes
+            .checked_add(entry.value.len())
+            .ok_or_else(|| {
+                ModelPackageError::new(
+                    DiagnosticCode::ModelUserDataInvalid,
+                    Some(reference),
+                    "user data value byte count overflowed",
+                )
+            })?;
+    }
+    if user_data.meta.total_value_bytes != total_value_bytes {
+        return resource_error(
+            DiagnosticCode::ModelUserDataInvalid,
+            reference,
+            format!(
+                "Meta.TotalUserDataSize is {}; parsed {total_value_bytes} UTF-8 bytes",
+                user_data.meta.total_value_bytes
+            ),
+        );
+    }
+
+    Ok(UserDataResourceSummary {
+        version: user_data.version,
+        entry_count: user_data.entries.len(),
+        total_value_bytes,
     })
 }
 
@@ -2382,6 +2486,12 @@ mod tests {
         ]]
     }"#;
 
+    const MINIMAL_USER_DATA_JSON: &str = r#"{
+        "Version":3,
+        "Meta":{"UserDataCount":1,"TotalUserDataSize":3},
+        "UserData":[{"Target":"ArtMesh","Id":"Drawable1","Value":"tag"}]
+    }"#;
+
     fn repository_root() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
@@ -2566,8 +2676,11 @@ mod tests {
         fs::write(package.path().join("model.moc3"), b"placeholder").expect("write moc");
         fs::write(package.path().join("model.pose3.json"), MINIMAL_POSE_JSON)
             .expect("write pose resource");
-        fs::write(package.path().join("model.userdata3.json"), b"{}")
-            .expect("write user data resource");
+        fs::write(
+            package.path().join("model.userdata3.json"),
+            MINIMAL_USER_DATA_JSON,
+        )
+        .expect("write user data resource");
         fs::write(
             package.path().join("model.physics3.json"),
             MINIMAL_PHYSICS_JSON,
@@ -2716,6 +2829,66 @@ mod tests {
             assert!(error.detail.contains(expected_detail), "{}", error.detail);
             assert_eq!(error.resource.as_deref(), Some("pose3.json"));
         }
+    }
+
+    #[test]
+    fn user_data_meta_target_ids_and_utf8_size_are_validated() {
+        let directory = tempfile::tempdir().expect("create user data directory");
+        let path = directory.path().join("model.userdata3.json");
+        fs::write(&path, MINIMAL_USER_DATA_JSON).expect("write valid user data");
+        let summary =
+            inspect_user_data_resource(&path, 16 * 1024).expect("inspect valid user data resource");
+        assert_eq!(summary.version, 3);
+        assert_eq!(summary.entry_count, 1);
+        assert_eq!(summary.total_value_bytes, 3);
+
+        for (pointer, replacement, expected_detail) in [
+            ("/Version", Value::from(2), "version 2"),
+            ("/Meta/UserDataCount", Value::from(2), "UserDataCount"),
+            (
+                "/Meta/TotalUserDataSize",
+                Value::from(4),
+                "TotalUserDataSize",
+            ),
+            ("/UserData/0/Id", Value::from(""), "must not be blank"),
+            ("/UserData/0/Target", Value::from("Part"), "unknown variant"),
+        ] {
+            let mut user_data: Value = serde_json::from_str(MINIMAL_USER_DATA_JSON)
+                .expect("parse minimal user data fixture");
+            *user_data
+                .pointer_mut(pointer)
+                .expect("fixture pointer exists") = replacement;
+            fs::write(
+                &path,
+                serde_json::to_vec(&user_data).expect("serialize invalid user data"),
+            )
+            .expect("write invalid user data");
+
+            let error = inspect_user_data_resource(&path, 16 * 1024)
+                .expect_err("invalid user data resource must fail");
+            assert_eq!(error.code, DiagnosticCode::ModelUserDataInvalid);
+            assert!(error.detail.contains(expected_detail), "{}", error.detail);
+            assert_eq!(error.resource.as_deref(), Some("userdata3.json"));
+        }
+
+        let mut duplicate: Value =
+            serde_json::from_str(MINIMAL_USER_DATA_JSON).expect("parse duplicate fixture");
+        let repeated = duplicate["UserData"][0].clone();
+        duplicate["UserData"]
+            .as_array_mut()
+            .expect("user data array")
+            .push(repeated);
+        duplicate["Meta"]["UserDataCount"] = Value::from(2);
+        duplicate["Meta"]["TotalUserDataSize"] = Value::from(6);
+        fs::write(
+            &path,
+            serde_json::to_vec(&duplicate).expect("serialize duplicate user data"),
+        )
+        .expect("write duplicate user data");
+        let duplicate_error = inspect_user_data_resource(&path, 16 * 1024)
+            .expect_err("duplicate user data target/id must fail");
+        assert_eq!(duplicate_error.code, DiagnosticCode::ModelUserDataInvalid);
+        assert!(duplicate_error.detail.contains("must be unique"));
     }
 
     #[test]

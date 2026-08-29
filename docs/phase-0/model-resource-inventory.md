@@ -140,7 +140,7 @@ Phase 0 暂定单边纹理尺寸上限为 `8192`。超大纹理 fixture 只保�
 
 ## Rust Model Package Index
 
-`spikes/model-package/` 以纯 Rust 强类型解析三个预置 `cat.model3.json`、cdi3、motion3 和 exp3，并在读取 Cubism Core 前验证所有 model3 引用：moc、纹理、display info、expression、motion、音频、physics、pose 和 user data。cdi3 进一步验证 parameter/group/part 与 group 拓扑；`resources/background.png`、`cover.png` 与左右键图片也进入同一规范化索引。cdi3 不作为 Core ID 权威来源，跨资源 ID 留待 Native Core 表校验。
+`spikes/model-package/` 以纯 Rust 强类型解析三个预置 `cat.model3.json`、cdi3、motion3 和 exp3，并在读取 Cubism Core 前验证所有 model3 引用：moc、纹理、display info、expression、motion、音频、physics、pose 和 user data。physics3、pose3 与 userdata3 也已拥有各自强类型静态 preflight，不再回退到通用 JSON object 检查；后两者当前只有合成格式 fixture。cdi3 进一步验证 parameter/group/part 与 group 拓扑；`resources/background.png`、`cover.png` 与左右键图片也进入同一规范化索引。cdi3 不作为 Core ID 权威来源，跨资源 ID 留待 Native Core 表校验。
 
 解析器统一把 `\\` 转为 `/`，拒绝绝对路径、盘符、`..`、跨根符号链接和符号链接目录递归；关联 JSON 有 16 MiB 上限并要求 object 顶层，单文件上限为 512 MiB，包上限为 1 GiB/4096 文件/32 层目录。PNG 在解码或 GPU 分配前只读取签名与 IHDR，并执行 8192 单边上限。
 

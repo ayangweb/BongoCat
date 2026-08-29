@@ -1,6 +1,6 @@
 # Phase 0 Rust Model Package Spike
 
-状态：三个预置 model3/cdi3/motion3/exp3、历史 physics3 与合成 pose3 静态解析通过；Cubism Core、行为求值和 renderer 未进入本 spike
+状态：三个预置 model3/cdi3/motion3/exp3、历史 physics3 与合成 pose3/userdata3 静态解析通过；Cubism Core、行为求值和 renderer 未进入本 spike
 日期：2026-08-30
 
 ## Hypothesis
@@ -17,6 +17,7 @@
 - 强类型解析 motion3 v3 的 curve target、segment encoding、时间边界、fade、user data 和 Meta 计数，并强类型解析 exp3 的类型、参数、fade 与 Add/Multiply/Overwrite blend；
 - 强类型解析 physics3 v3 的 forces、dictionary、setting、input/output、normalization 和 vertex，校验 Meta 计数、权重、范围、引用索引与有限数值；
 - 强类型解析 pose3 的 Type、FadeInTime、group、part Id 和 link，拒绝空 group、重复 part、空/重复 link 和自引用；
+- 强类型解析 userdata3 v3 的 Meta、ArtMesh target、Id 和 Value UTF-8 byte size，拒绝重复 target/Id；
 - 规范化 `/` 与 `\\`，拒绝绝对路径、Windows 盘符、`..` 和 canonical root 之外的符号链接；
 - 有界读取 JSON、文件和整个包，在图片解码/GPU 分配前检查 PNG IHDR 与尺寸；
 - 索引 `resources/background.png`、`cover.png`、`left-keys` 和 `right-keys`，显式输出旧版 mode heuristic；
@@ -29,6 +30,7 @@
 
 - 不调用或模拟 Cubism Core，不校验 `.moc3` consistency。
 - 不求值 motion、expression、physics 或 pose；physics3/pose3 通过只表示静态结构可读。
+- 不解释 userdata3 Value 的产品含义，不把 user data 当作可执行 command。
 - 不解码纹理、不创建 GPU 资源、不绘制 Live2D。
 - 不复制模型到数据目录，不修改源包或当前活动模型。
 - 不把 spike 直接当作 Phase 4 产品 parser；Phase 0 结束后需按评审结论 promote、replace 或 delete。
@@ -49,13 +51,14 @@ cargo check --manifest-path spikes/model-package/Cargo.toml --locked --release -
 cargo run --manifest-path spikes/model-package/Cargo.toml --locked -- src-tauri/assets/models/standard
 cargo run --manifest-path spikes/model-package/Cargo.toml --locked -- --physics /path/to/model.physics3.json
 cargo run --manifest-path spikes/model-package/Cargo.toml --locked -- --pose /path/to/model.pose3.json
+cargo run --manifest-path spikes/model-package/Cargo.toml --locked -- --user-data /path/to/model.userdata3.json
 ```
 
 规范化预置结果位于 `shared/fixtures/model-fixtures/preset-model3-index.json`。测试会从仓库中的三个只读预置目录重新生成内存索引并与该文件精确比较；golden 不会在测试中自动更新。
 
 ## Environment And Results
 
-本地验证环境为 macOS 26.5.2 build 25F84、Apple Silicon arm64、`aarch64-apple-darwin`、rustc/cargo 1.97.1。格式、Clippy、14 项单元/fixture 测试、release check 和 license/source policy 通过；`x86_64-pc-windows-msvc` 与 `aarch64-pc-windows-msvc` release check 同样通过。
+本地验证环境为 macOS 26.5.2 build 25F84、Apple Silicon arm64、`aarch64-apple-darwin`、rustc/cargo 1.97.1。格式、Clippy、15 项单元/fixture 测试、release check 和 license/source policy 通过；`x86_64-pc-windows-msvc` 与 `aarch64-pc-windows-msvc` release check 同样通过。
 
 远端验收 build commit 为 `7ee8acd5f2a3d4dcb7a1dbc36623cbe497aeae49`。Push run `33238204993` 与 PR run `33238206415` 各 16 个 jobs 全部通过；Linux model-package jobs 为 `99062839956`/`99062844146`，Windows 为 `99062839561`/`99062844097`，macOS 为 `99062839774`/`99062844085`。三个平台均执行 format、Clippy 和 tests，Windows/macOS 额外执行 release check。首个 runner 发现 Rust 1.98 新增的 `chunks_exact_to_as_chunks` lint 后，修复提交同时增加奇数长度 fixture hex 拒绝，再由上述两组 workflow 完整复验。
 
@@ -77,9 +80,11 @@ motion3/exp3 强类型验证提交 `3f8f5bc` 的 push run `33269920418` 与 PR r
 
 仓库自造的最小 pose3 只用于静态边界测试，固定 `model_pose_invalid` 并覆盖错误 Type、负 FadeInTime、空 group、重复 part Id、空 link 和自引用。`--pose` 只输出 fade 与 group/part/link 数量，不输出路径或 part Id。三个预置模型没有 pose3，且本批没有引入第三方 pose 文件，因此这项结果不构成真实模型兼容或 linked opacity/fade 求值证据。
 
+仓库自造的最小 userdata3 固定 `model_user_data_invalid`，覆盖版本、Meta count、Value UTF-8 byte size、ArtMesh target、空 Id 和重复 target/Id。`--user-data` 只输出版本、entry count 和 value byte count，不输出路径、drawable Id 或 Value。model3 的所有结构化 sidecar 因此不再使用通用“顶层是 JSON object”弱校验；三个预置模型没有 userdata3，本批同样不冒充真实模型覆盖。
+
 ## Success And Failure Criteria
 
-成功要求三个预置包的 model3/cdi3/motion3/exp3 索引与 snapshot 一致，六类异常 fixture 和合成 physics3/pose3 诊断一致，损坏 cdi3/physics3/pose3 与路径逃逸在读取 Core/GPU 前被拒绝，且格式、Clippy、测试、release 和 license/source policy 全部通过。
+成功要求三个预置包的 model3/cdi3/motion3/exp3 索引与 snapshot 一致，六类异常 fixture 和合成 physics3/pose3/userdata3 诊断一致，损坏 cdi3/physics3/pose3/userdata3 与路径逃逸在读取 Core/GPU 前被拒绝，且格式、Clippy、测试、release 和 license/source policy 全部通过。
 
 出现以下任一情况即失败：读取源包时发生写入；绝对/遍历/跨根 symlink 被接受；超限纹理进入解码；关联 JSON 未校验；输出含绝对用户路径；任一预置包资源未被验证；平台类型或 `unsafe` 进入该 workspace。
 
