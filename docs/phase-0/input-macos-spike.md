@@ -91,6 +91,8 @@ controller，也未以无人值守 session 替代上述本机 framework smoke。
 
 同一工作批次重跑 `--tap-ms 800 --inject-release-loss` 时，两项 TCC preflight 仍为 true 且投递计数为 2，但 session callback 收到 `0/2`；严格 validator 继续非零退出，并把错误精确区分为“未到达 event-tap callback”，未将其误报成校正失败或成功。sequence 变更后的 release-loss 实机回归仍需在可接收 synthetic callback 的交互式会话重跑。
 
+2026-08-30 在同一 Apple M1 Pro、macOS 26.5.2 和已授权交互式会话重跑 sequence 变更后的 release-loss。单次 `--tap-ms 800` 得到 `key_down=1 key_up=1 intentionally_dropped_releases=1 reconciled_releases=1 pressed_candidates_before_shutdown=0 sequence_gaps=0`；随后 `--tap-ms 600 --cycles 20 --summary-only` 得到 `completed_cycles=20 key_down=20 key_up=20 reconciled_releases=20 queue_overflows=0 sequence_gaps=0 sequence_duplicates_or_out_of_order=0 callback_panics=0 clean_shutdown=true`。这补齐了此前的临时 `0/2` 投递失败证据，但仍不替代物理键盘、系统自然丢 release 或 TCC 变化实测。
+
 实现约束：特殊的 `kCGEventTapDisabledByTimeout`/`kCGEventTapDisabledByUserInput` 值不能放入第三方事件 mask（其高位值会导致 `1 << type` 溢出）；callback 仍对这两类通知分支处理，收到后通过有界 channel 请求在 run loop 内 re-enable。tap 创建阶段使用 panic boundary，避免 binding 异常杀死输入线程。
 
 目前已覆盖 denied/granted、tap timeout/disable、permission revocation 和 session reset 的状态测试，以及真实 tap 创建/运行/停止、严格 100 次 tap wrapper restart 与 malloc/NSZombie 检查、受控 timeout/user-disable 恢复、公开 NSWorkspace observer 的生命周期 Reset、真实 callback release 在 consumer 边界丢弃后的候选校正、callback panic boundary 和 queue 的 FIFO/overflow/close contract。系统自然触发的 timeout、TCC 拒绝/撤销、带真实 modifier 的 `FlagsChanged` 字段、物理输入或系统自然丢失 release 后的校正、runtime pressed state 接入和真实锁屏/睡眠/快速用户切换恢复仍必须在受控 macOS 实机完成；100 次循环尚未覆盖 timeout/权限故障或 Instruments 级 allocation/port 采样。纯函数和 target gating 已通过本机 `x86_64-unknown-linux-gnu` `cargo check --all-targets`，Ubuntu CI 继续提供原生 Linux contract test。
