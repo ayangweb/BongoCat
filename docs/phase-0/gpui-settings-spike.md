@@ -1,6 +1,6 @@
 # GPUI Settings Spike Record
 
-状态：macOS 默认 shader、`.app`、主题、基础文本交互和 runtime bridge 通过；内容辅助功能、真实 IME 和跨平台验证待完成
+状态：macOS 默认 shader、`.app`、主题、基础文本交互和 runtime bridge 通过；Windows 真实窗口/首帧/shutdown smoke 已接入 runner、等待远端证据，内容辅助功能和真实 IME 待完成
 日期：2026-08-28
 原始重构基线 commit：`94af230`；后续验证源码与本记录保持同一提交
 
@@ -45,6 +45,8 @@ open -W "target/package/BongoCat GPUI Spike.app" --args --auto-quit-ms 1500
 ```
 
 结果：格式化、Clippy、1 项 runtime bridge contract test 和 debug/release 编译通过，`.app` 的 ad-hoc 签名通过 strict bundle integrity 校验；LaunchServices smoke 以 0 退出。直接运行 release binary 时输出 `window opened`、`runtime snapshot revision=1`，随后通过 GPUI `quit()` 输出 `runtime stopped` 和 `stopped` 并以 0 退出。
+
+2026-08-29 将同一个 settings executable 接入 `windows-latest` 真实生命周期 smoke。runner 会启动窗口、等待最多 30 秒并要求进程以 0 退出，同时检查 `window opened`、首帧 elapsed/scale factor、runtime revision 1，以及 `runtime stopped` 先于 `stopped`。spike 自身也改为在初始或 reopen 窗口创建失败时触发有序 quit，并在 event loop 返回后以非零退出，避免“打印 failed 但 CI 仍成功”。该 runner 尚未完成本批 push，因此当前只记录验收实现，不作为 Windows 通过证据。
 
 ## Runtime Bridge 结果
 
@@ -135,6 +137,6 @@ GPUI 0.2.2 公共源码中没有找到可为普通绘制 element 设置 role、l
 - tooltip、dialog 和完整菜单交互尚未验证。
 - GPUI 内容辅助功能树未通过；当前只有窗口 chrome 和菜单可识别。
 - 菜单栏常驻策略、隐藏行为和 native overlay 共存尚未验证。
-- Windows 构建、退出路径和系统集成尚未验证。
+- Windows 已有编译验证且真实窗口/首帧/退出 smoke 已接入 runner；等待本批远端执行，字体、IME、DPI 切换、辅助技术和系统集成仍未验证。
 
 因此默认 shader 工具链、`.app` bundle/lifecycle、主题和基础编辑交互子项可以单独记录为通过；内容辅助功能、真实 IME、Windows 验证、overlay 共存和完整 GPUI spike 仍保持未完成。GPUI go/no-go 决策必须等辅助功能策略明确后再做。

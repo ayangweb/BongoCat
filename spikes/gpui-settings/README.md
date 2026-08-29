@@ -16,8 +16,10 @@ For a repeatable lifecycle smoke test:
 BONGOCAT_SPIKE_AUTO_QUIT_MS=1500 cargo run --locked
 ```
 
-Successful output includes `window opened`, `runtime snapshot revision=1`,
-`runtime stopped`, and `stopped`.
+Successful output includes `window opened`, a first-frame line with a positive
+platform `scale_factor`, `runtime snapshot revision=1`, `runtime stopped`, and
+`stopped`. Window creation failure exits non-zero after the runtime shutdown
+hook completes, so automated smoke tests cannot pass on an error log alone.
 
 The synthetic runtime bridge uses a bounded typed command channel. The UI reads
 revisioned snapshots through a GPUI task, while application shutdown waits for

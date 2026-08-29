@@ -7,7 +7,13 @@ use gpui::{
     WindowOptions, actions, div, prelude::*, px, rgb, size,
 };
 use runtime_bridge::{RuntimeBridge, RuntimeSnapshot, run_runtime};
-use std::time::{Duration, Instant};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant},
+};
 use text_input::{
     Backspace, Copy, Cut, Delete, End, Home, Left, Paste, Right, SelectAll, SelectLeft,
     SelectRight, TextInput,
@@ -375,7 +381,7 @@ fn open_settings_window(
     cx: &mut App,
     runtime_bridge: RuntimeBridge,
     startup_started_at: Option<Instant>,
-) {
+) -> bool {
     let bounds = Bounds::centered(None, size(px(760.0), px(520.0)), cx);
     let result = cx.open_window(
         WindowOptions {
@@ -396,18 +402,23 @@ fn open_settings_window(
                     window.focus(&settings.model_name.focus_handle(cx));
                     settings.request_runtime_snapshot(cx);
                     if let Some(started_at) = startup_started_at {
-                        window.on_next_frame(move |_, _| {
+                        window.on_next_frame(move |window, _| {
                             println!(
-                                "gpui-settings-spike: first frame elapsed_ms={:.3}",
-                                started_at.elapsed().as_secs_f64() * 1_000.0
+                                "gpui-settings-spike: first frame elapsed_ms={:.3} scale_factor={:.3}",
+                                started_at.elapsed().as_secs_f64() * 1_000.0,
+                                window.scale_factor(),
                             );
                         });
                     }
                 })
                 .ok();
             println!("gpui-settings-spike: window opened");
+            true
         }
-        Err(error) => eprintln!("gpui-settings-spike: failed to open window: {error:#}"),
+        Err(error) => {
+            eprintln!("gpui-settings-spike: failed to open window: {error:#}");
+            false
+        }
     }
 }
 
@@ -421,10 +432,15 @@ fn main() {
     let application = Application::new();
     let (runtime_bridge, runtime_commands) = RuntimeBridge::new();
     let reopen_bridge = runtime_bridge.clone();
+    let window_open_failed = Arc::new(AtomicBool::new(false));
+    let reopen_window_failed = Arc::clone(&window_open_failed);
+    let startup_window_failed = Arc::clone(&window_open_failed);
 
     application.on_reopen(move |cx| {
-        if cx.windows().is_empty() {
-            open_settings_window(cx, reopen_bridge.clone(), None);
+        if cx.windows().is_empty() && !open_settings_window(cx, reopen_bridge.clone(), None) {
+            reopen_window_failed.store(true, Ordering::Release);
+            cx.quit();
+            return;
         }
         cx.activate(true);
     });
@@ -484,7 +500,11 @@ fn main() {
             ],
         }]);
 
-        open_settings_window(cx, runtime_bridge.clone(), Some(startup_started_at));
+        if !open_settings_window(cx, runtime_bridge.clone(), Some(startup_started_at)) {
+            startup_window_failed.store(true, Ordering::Release);
+            cx.quit();
+            return;
+        }
         cx.activate(true);
 
         if let Some(delay) = auto_quit_delay {
@@ -495,4 +515,8 @@ fn main() {
             .detach();
         }
     });
+
+    if window_open_failed.load(Ordering::Acquire) {
+        std::process::exit(1);
+    }
 }

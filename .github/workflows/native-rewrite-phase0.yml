@@ -436,6 +436,56 @@ jobs:
         run: cargo test --manifest-path ${{ matrix.manifest }} --locked
       - name: Check release build
         run: cargo check --manifest-path ${{ matrix.manifest }} --locked --release
+      - name: Build Windows settings smoke executable
+        if: matrix.manifest == 'spikes/gpui-settings/Cargo.toml'
+        timeout-minutes: 5
+        run: cargo build --manifest-path ${{ matrix.manifest }} --locked
+      - name: Smoke Windows GPUI settings lifecycle
+        if: matrix.manifest == 'spikes/gpui-settings/Cargo.toml'
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          $executable = Join-Path $PWD "spikes/gpui-settings/target/debug/bongocat-gpui-settings-spike.exe"
+          $stdout = Join-Path $env:RUNNER_TEMP "gpui-settings.stdout.log"
+          $stderr = Join-Path $env:RUNNER_TEMP "gpui-settings.stderr.log"
+          Remove-Item $stdout, $stderr -Force -ErrorAction SilentlyContinue
+          $process = Start-Process `
+            -FilePath $executable `
+            -ArgumentList @("--auto-quit-ms", "1500") `
+            -NoNewWindow `
+            -PassThru `
+            -RedirectStandardOutput $stdout `
+            -RedirectStandardError $stderr
+          if (-not $process.WaitForExit(30000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            $process.WaitForExit()
+            throw "Windows GPUI settings smoke exceeded 30 seconds"
+          }
+          $output = @(
+            Get-Content $stdout -Raw -ErrorAction SilentlyContinue
+            Get-Content $stderr -Raw -ErrorAction SilentlyContinue
+          ) -join "`n"
+          Write-Host $output
+          if ($process.ExitCode -ne 0) {
+            throw "Windows GPUI settings smoke exited with $($process.ExitCode)"
+          }
+          @(
+            "gpui-settings-spike: window opened",
+            "gpui-settings-spike: first frame elapsed_ms=",
+            "scale_factor=",
+            "gpui-settings-spike: runtime snapshot revision=1",
+            "gpui-settings-spike: runtime stopped",
+            "gpui-settings-spike: stopped"
+          ) | ForEach-Object {
+            if (-not $output.Contains($_)) {
+              throw "Windows GPUI settings smoke did not report: $_"
+            }
+          }
+          $runtimeStopped = $output.IndexOf("gpui-settings-spike: runtime stopped")
+          $stopped = $output.IndexOf("gpui-settings-spike: stopped")
+          if ($runtimeStopped -lt 0 -or $stopped -le $runtimeStopped) {
+            throw "Windows GPUI settings runtime did not stop before application shutdown"
+          }
       - name: Build Windows overlay smoke executable
         if: matrix.manifest == 'spikes/gpui-overlay-macos/Cargo.toml'
         timeout-minutes: 5
