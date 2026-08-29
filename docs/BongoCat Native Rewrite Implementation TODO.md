@@ -232,7 +232,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-29）：已用 hash 固定的 legacy Web Core `5.1.0` 为三个预置 moc 建立可重复 baseline，记录 MOC enum、consistency、parameter/part/drawable count 和 canvas，并接入 CI 漂移检查；这只是未来 R5 wrapper 的对照，尚未完成 Native R5 sys binding 或 drawable 数据读取。
 - [ ] 包装 Moc/Model 生命周期，证明 Model 不会比 Moc 存活更久。
 - [x] 用 Rust 解析三个预置 model3 和所有关联资源。
-  - 验收证据：`spikes/model-package/` 强类型解析 model3 v3，验证 moc、纹理、display info、expression、motion/audio、可选 physics/pose/user data 与 companion images，完整包索引冻结在 `shared/fixtures/model-fixtures/preset-model3-index.json`。三个预置包与六类异常 fixture、跨根 symlink、目录深度均有 Rust 测试；详见 `docs/phase-0/model-package-spike.md`。本项不包含 Core/model creation、动作求值或 renderer。
+  - 验收证据：build `7ee8acd5f2a3d4dcb7a1dbc36623cbe497aeae49` 的 push run `33238204993` 与 PR run `33238206415` 各 16 jobs 全绿。`spikes/model-package/` 强类型解析 model3 v3，验证 moc、纹理、display info、expression、motion/audio、可选 physics/pose/user data 与 companion images，完整包索引冻结在 `shared/fixtures/model-fixtures/preset-model3-index.json`。三个预置包与六类异常 fixture、跨根 symlink、目录深度均有 Rust 测试；详见 `docs/phase-0/model-package-spike.md`。本项不包含 Core/model creation、动作求值或 renderer。
 - [ ] Windows D3D11 绘制预置模型的 texture/order/alpha/mask。
 - [ ] macOS Metal 绘制同一模型的 texture/order/alpha/mask。
 - [ ] 验证 motion、expression、physics、pose 至少各一个真实样本。

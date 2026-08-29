@@ -49,13 +49,15 @@ cargo run --manifest-path spikes/model-package/Cargo.toml --locked -- src-tauri/
 
 本地验证环境为 macOS 26.5.2 build 25F84、Apple Silicon arm64、`aarch64-apple-darwin`、rustc/cargo 1.97.1。格式、Clippy、7 项单元/fixture 测试和 release check 通过；`x86_64-pc-windows-msvc` target 的 check 与 Clippy 同样通过。
 
+远端验收 build commit 为 `7ee8acd5f2a3d4dcb7a1dbc36623cbe497aeae49`。Push run `33238204993` 与 PR run `33238206415` 各 16 个 jobs 全部通过；Linux model-package jobs 为 `99062839956`/`99062844146`，Windows 为 `99062839561`/`99062844097`，macOS 为 `99062839774`/`99062844085`。三个平台均执行 format、Clippy 和 tests，Windows/macOS 额外执行 release check。首个 runner 发现 Rust 1.98 新增的 `chunks_exact_to_as_chunks` lint 后，修复提交同时增加奇数长度 fixture hex 拒绝，再由上述两组 workflow 完整复验。
+
 | 模式     | 文件 |      字节 | 纹理 | expression | motion group | left/right keys |
 | -------- | ---: | --------: | ---: | ---------: | -----------: | --------------: |
 | standard |   71 | 1,524,540 |    3 |          3 |            2 |          55 / 0 |
 | keyboard |   75 | 1,490,448 |    3 |          3 |            2 |          55 / 4 |
 | gamepad  |   28 | 1,206,645 |    3 |          3 |            2 |           6 / 6 |
 
-六类共享异常 fixture 的 accept/reject 与稳定诊断完全一致。额外测试证明 model3 引用的符号链接不能逃出包根，递归扫描在超过配置深度时确定失败。CI 在 Linux contract job 重跑同一套测试；代码不含平台条件或平台 handle，Windows/macOS job 将补充 target 编译证据。
+六类共享异常 fixture 的 accept/reject 与稳定诊断完全一致。额外测试证明 model3 引用的符号链接不能逃出包根，递归扫描在超过配置深度时确定失败。CI 在 Linux contract job 重跑同一套测试；代码不含平台条件或平台 handle，Windows/macOS runner 已产生对等通过证据。
 
 ## Success And Failure Criteria
 
