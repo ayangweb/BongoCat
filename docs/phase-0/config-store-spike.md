@@ -1,6 +1,6 @@
 # Native Configuration Store Spike
 
-状态：typed config、Development/Production 隔离、schema validation、原子提交、expected revision、writer lock 和中断提交恢复 contract 已通过；Windows resolver 精确路径测试已接入 runner、等待远端证据，进程崩溃故障注入和 stale-lock 恢复待产品 crate 阶段完成
+状态：typed config、Development/Production 隔离、schema validation、原子提交、expected revision、writer lock 和中断提交恢复 contract 已通过；Windows resolver 精确路径断言已通过，Windows 可写 flush handle 修复等待远端回归，进程崩溃故障注入和 stale-lock 恢复待产品 crate 阶段完成
 日期：2026-08-28
 
 ## 已固定的行为
@@ -26,8 +26,8 @@ cargo test --manifest-path spikes/config-store/Cargo.toml --locked
 cargo run --manifest-path spikes/config-store/Cargo.toml --locked
 ```
 
-当前测试覆盖环境隔离、默认配置、非法提交保留旧文件、损坏配置不被静默覆盖、成功提交保留上一份有效备份、snake_case 序列化、writer lock 冲突/释放、stale revision 拒绝、四种中断提交恢复路径、归档不覆盖和平台目录 resolver（macOS 共 17 个 Rust 测试，Windows 增加 1 个 target-specific test）。macOS 实机运行输出应位于 `~/Library/Application Support/com.ayangweb.bongo-cat/development/`（debug）或 `production/`（release）；Windows 测试精确断言 `dirs::data_dir()/BongoCat/<environment>/`，也就是 `%APPDATA%\\BongoCat\\<environment>\\`，已接入既有 Windows platform job、等待本批 push。`tempfile` 已限制为 dev-dependency，`dirs` 仅用于该 resolver spike。
+当前测试覆盖环境隔离、默认配置、非法提交保留旧文件、损坏配置不被静默覆盖、成功提交保留上一份有效备份、snake_case 序列化、writer lock 冲突/释放、stale revision 拒绝、四种中断提交恢复路径、归档不覆盖和平台目录 resolver（macOS/Windows 各 17 个 Rust 测试，分别包含 target-specific resolver test）。macOS 实机运行输出应位于 `~/Library/Application Support/com.ayangweb.bongo-cat/development/`（debug）或 `production/`（release）；Windows test 在 push run `33250708023` 已通过 `dirs::data_dir()/BongoCat/<environment>/` 精确断言，也就是 `%APPDATA%\\BongoCat\\<environment>\\`。同一 job 随后暴露 Windows `FlushFileBuffers` 不接受只读 handle：11 个写入/恢复测试返回 `AccessDenied`；实现已统一改为通过可写 handle flush，等待下一批 runner 回归。`tempfile` 已限制为 dev-dependency，`dirs` 仅用于该 resolver spike。
 
 ## 未完成
 
-Windows resolver runner 证据、权限/磁盘满/目标占用、真实进程崩溃故障注入、stale lock 清理、备份保留策略和 GPUI typed command 尚未在该 spike 中完成；这些必须在 Phase 6 配置 crate 中分别验证。当前 lock 文件没有自动超时或进程存活探测，异常终止后的 stale lock 恢复策略不能由本 spike 推断。
+Windows 配置事务回归 runner、权限/磁盘满/目标占用、真实进程崩溃故障注入、stale lock 清理、备份保留策略和 GPUI typed command 尚未在该 spike 中完成；这些必须在 Phase 6 配置 crate 中分别验证。当前 lock 文件没有自动超时或进程存活探测，异常终止后的 stale lock 恢复策略不能由本 spike 推断。

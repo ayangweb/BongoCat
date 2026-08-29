@@ -487,7 +487,7 @@ impl ConfigStore {
         drop(file);
         self.back_up_current_config()?;
         fs::rename(&temp_path, &self.layout.config)?;
-        File::open(&self.layout.config)?.sync_all()?;
+        sync_file_contents(&self.layout.config)?;
         Ok(())
     }
 
@@ -506,13 +506,13 @@ impl ConfigStore {
                 }
                 ConfigFileStatus::Missing => {
                     fs::rename(&temp_path, &self.layout.config)?;
-                    File::open(&self.layout.config)?.sync_all()?;
+                    sync_file_contents(&self.layout.config)?;
                     Ok(RecoveryAction::PromotedTemp)
                 }
                 ConfigFileStatus::Invalid => {
                     archive_file(&self.layout.config, &self.layout.backups, "config.corrupt")?;
                     fs::rename(&temp_path, &self.layout.config)?;
-                    File::open(&self.layout.config)?.sync_all()?;
+                    sync_file_contents(&self.layout.config)?;
                     Ok(RecoveryAction::PromotedTemp)
                 }
             },
@@ -535,10 +535,18 @@ impl ConfigStore {
         let backup_path = self.layout.backups.join("config.previous.json");
         let backup_temp_path = self.layout.backups.join("config.previous.json.tmp");
         fs::copy(&self.layout.config, &backup_temp_path)?;
-        File::open(&backup_temp_path)?.sync_all()?;
+        sync_file_contents(&backup_temp_path)?;
         fs::rename(backup_temp_path, backup_path)?;
         Ok(())
     }
+}
+
+fn sync_file_contents(path: &Path) -> Result<(), ConfigError> {
+    // FlushFileBuffers requires a writable handle on Windows even when this process has
+    // finished writing through another handle. Unix accepts both modes, so use the stricter
+    // access contract consistently across platforms.
+    OpenOptions::new().write(true).open(path)?.sync_all()?;
+    Ok(())
 }
 
 fn inspect_config_file(path: &Path) -> Result<ConfigFileStatus, ConfigError> {
