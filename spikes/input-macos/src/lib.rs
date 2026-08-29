@@ -1,7 +1,7 @@
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 
 use std::{
-    collections::{BTreeSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     sync::{Arc, Mutex},
 };
 
@@ -72,6 +72,114 @@ pub enum CapturedInputEvent {
     MouseDown,
     MouseUp,
     Reset,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct KeyCandidateCounters {
+    pub duplicate_down: u64,
+    pub unmatched_up: u64,
+    pub resets: u64,
+    pub reconciled_releases: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CandidateReconciliation {
+    pub checked: usize,
+    pub released: usize,
+    pub still_pressed: usize,
+    pub pending_confirmations: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct InvalidMissingConfirmations;
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct MacPressedKeyCandidates {
+    keys: BTreeSet<u16>,
+    missing_confirmations: BTreeMap<u16, u8>,
+    counters: KeyCandidateCounters,
+}
+
+impl MacPressedKeyCandidates {
+    pub fn apply_event_with(
+        &mut self,
+        event: CapturedInputEvent,
+        mut is_pressed: impl FnMut(u16) -> bool,
+    ) {
+        match event {
+            CapturedInputEvent::KeyDown { key_code, .. } => {
+                self.missing_confirmations.remove(&key_code);
+                if !self.keys.insert(key_code) {
+                    self.counters.duplicate_down += 1;
+                }
+            }
+            CapturedInputEvent::KeyUp { key_code } => {
+                self.missing_confirmations.remove(&key_code);
+                if !self.keys.remove(&key_code) {
+                    self.counters.unmatched_up += 1;
+                }
+            }
+            CapturedInputEvent::FlagsChanged { key_code } => {
+                self.missing_confirmations.remove(&key_code);
+                if is_pressed(key_code) {
+                    if !self.keys.insert(key_code) {
+                        self.counters.duplicate_down += 1;
+                    }
+                } else if !self.keys.remove(&key_code) {
+                    self.counters.unmatched_up += 1;
+                }
+            }
+            CapturedInputEvent::Reset => self.reset(),
+            CapturedInputEvent::MouseDown | CapturedInputEvent::MouseUp => {}
+        }
+    }
+
+    pub fn reconcile(
+        &mut self,
+        snapshot: &KeyReconciliation,
+        required_missing_confirmations: u8,
+    ) -> Result<CandidateReconciliation, InvalidMissingConfirmations> {
+        if required_missing_confirmations == 0 {
+            return Err(InvalidMissingConfirmations);
+        }
+        let checked = self.keys.len();
+        let mut released = 0usize;
+        let candidates = self.keys.iter().copied().collect::<Vec<_>>();
+        for key_code in candidates {
+            if snapshot.still_pressed.contains(&key_code) {
+                self.missing_confirmations.remove(&key_code);
+                continue;
+            }
+            let confirmations = self.missing_confirmations.entry(key_code).or_insert(0);
+            *confirmations = confirmations.saturating_add(1);
+            if *confirmations >= required_missing_confirmations {
+                self.keys.remove(&key_code);
+                self.missing_confirmations.remove(&key_code);
+                released += 1;
+            }
+        }
+        self.counters.reconciled_releases += released as u64;
+        Ok(CandidateReconciliation {
+            checked,
+            released,
+            still_pressed: self.keys.len(),
+            pending_confirmations: self.missing_confirmations.len(),
+        })
+    }
+
+    pub fn reset(&mut self) {
+        self.keys.clear();
+        self.missing_confirmations.clear();
+        self.counters.resets += 1;
+    }
+
+    pub fn keys(&self) -> &BTreeSet<u16> {
+        &self.keys
+    }
+
+    pub fn counters(&self) -> KeyCandidateCounters {
+        self.counters
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -343,6 +451,11 @@ pub struct TapProbeReport {
     pub queue_recovery_resets: u64,
     pub queue_discarded_events: u64,
     pub queue_closed_events: u64,
+    pub reconciliation_runs: u64,
+    pub reconciled_releases: u64,
+    pub candidate_resets: u64,
+    pub duplicate_down: u64,
+    pub unmatched_up: u64,
 }
 
 #[cfg(target_os = "macos")]
@@ -371,6 +484,11 @@ struct TapCounters {
     queue_recovery_resets: AtomicU64,
     queue_discarded_events: AtomicU64,
     queue_closed_events: AtomicU64,
+    reconciliation_runs: AtomicU64,
+    reconciled_releases: AtomicU64,
+    candidate_resets: AtomicU64,
+    duplicate_down: AtomicU64,
+    unmatched_up: AtomicU64,
 }
 
 #[cfg(target_os = "macos")]
@@ -394,6 +512,11 @@ impl TapCounters {
             queue_recovery_resets: self.queue_recovery_resets.load(Ordering::Relaxed),
             queue_discarded_events: self.queue_discarded_events.load(Ordering::Relaxed),
             queue_closed_events: self.queue_closed_events.load(Ordering::Relaxed),
+            reconciliation_runs: self.reconciliation_runs.load(Ordering::Relaxed),
+            reconciled_releases: self.reconciled_releases.load(Ordering::Relaxed),
+            candidate_resets: self.candidate_resets.load(Ordering::Relaxed),
+            duplicate_down: self.duplicate_down.load(Ordering::Relaxed),
+            unmatched_up: self.unmatched_up.load(Ordering::Relaxed),
         }
     }
 }
@@ -422,6 +545,11 @@ fn run_tap_on_run_loop(duration: Duration) -> Result<TapProbeReport, TapProbeErr
         queue_recovery_resets: AtomicU64::new(0),
         queue_discarded_events: AtomicU64::new(0),
         queue_closed_events: AtomicU64::new(0),
+        reconciliation_runs: AtomicU64::new(0),
+        reconciled_releases: AtomicU64::new(0),
+        candidate_resets: AtomicU64::new(0),
+        duplicate_down: AtomicU64::new(0),
+        unmatched_up: AtomicU64::new(0),
     });
     let (disabled_tx, disabled_rx) = mpsc::sync_channel::<()>(8);
     let event_queue = SharedCaptureQueue::new(256);
@@ -562,26 +690,59 @@ fn run_tap_on_run_loop(duration: Duration) -> Result<TapProbeReport, TapProbeErr
     run_loop.add_source(&source, unsafe { kCFRunLoopDefaultMode });
     tap.enable(true);
     let deadline = Instant::now() + duration;
+    let reconciliation_interval = Duration::from_millis(250);
+    let mut next_reconciliation = Instant::now() + reconciliation_interval;
+    let mut pressed_candidates = MacPressedKeyCandidates::default();
     while Instant::now() < deadline {
         let remaining = deadline.saturating_duration_since(Instant::now());
         let slice = remaining.min(Duration::from_millis(20));
         // SAFETY: the run-loop mode remains valid for the duration of this loop.
         CFRunLoop::run_in_mode(unsafe { kCFRunLoopDefaultMode }, slice, true);
+        let drained = event_queue.drain();
         counters
             .consumed_events
-            .fetch_add(event_queue.drain().len() as u64, Ordering::Relaxed);
+            .fetch_add(drained.len() as u64, Ordering::Relaxed);
+        for event in drained {
+            pressed_candidates.apply_event_with(event, reconcile_key_state);
+        }
         while let Ok(()) = disabled_rx.try_recv() {
             tap.enable(true);
             counters.reenabled.fetch_add(1, Ordering::Relaxed);
+        }
+        if Instant::now() >= next_reconciliation {
+            let snapshot = reconcile_pressed_key_codes(pressed_candidates.keys());
+            pressed_candidates
+                .reconcile(&snapshot, 2)
+                .expect("non-zero reconciliation confirmation threshold");
+            counters.reconciliation_runs.fetch_add(1, Ordering::Relaxed);
+            next_reconciliation = Instant::now() + reconciliation_interval;
         }
     }
     let finished_enabled = tap.is_enabled();
     tap.enable(false);
     run_loop.remove_source(&source, unsafe { kCFRunLoopDefaultMode });
     event_queue.close();
+    let drained = event_queue.drain();
     counters
         .consumed_events
-        .fetch_add(event_queue.drain().len() as u64, Ordering::Relaxed);
+        .fetch_add(drained.len() as u64, Ordering::Relaxed);
+    for event in drained {
+        pressed_candidates.apply_event_with(event, reconcile_key_state);
+    }
+    pressed_candidates.reset();
+    let candidate_counters = pressed_candidates.counters();
+    counters
+        .reconciled_releases
+        .store(candidate_counters.reconciled_releases, Ordering::Relaxed);
+    counters
+        .candidate_resets
+        .store(candidate_counters.resets, Ordering::Relaxed);
+    counters
+        .duplicate_down
+        .store(candidate_counters.duplicate_down, Ordering::Relaxed);
+    counters
+        .unmatched_up
+        .store(candidate_counters.unmatched_up, Ordering::Relaxed);
     let (queue_overflows, queue_recovery_resets, queue_discarded_events) =
         event_queue.diagnostics();
     counters
@@ -718,6 +879,79 @@ mod tests {
         assert_eq!(queried, vec![12, 13]);
         assert!(report.still_pressed.is_empty());
         assert_eq!(report.released_count, 2);
+    }
+
+    #[test]
+    fn candidate_state_tracks_key_and_modifier_edges() {
+        let mut candidates = MacPressedKeyCandidates::default();
+        candidates.apply_event_with(
+            CapturedInputEvent::KeyDown {
+                key_code: 0,
+                repeat: false,
+            },
+            |_| false,
+        );
+        candidates.apply_event_with(CapturedInputEvent::FlagsChanged { key_code: 55 }, |_| true);
+        assert_eq!(candidates.keys(), &BTreeSet::from([0, 55]));
+        candidates.apply_event_with(CapturedInputEvent::KeyUp { key_code: 0 }, |_| false);
+        candidates.apply_event_with(CapturedInputEvent::FlagsChanged { key_code: 55 }, |_| false);
+        assert!(candidates.keys().is_empty());
+    }
+
+    #[test]
+    fn candidate_state_requires_two_missing_snapshots_before_release() {
+        let mut candidates = MacPressedKeyCandidates::default();
+        candidates.apply_event_with(
+            CapturedInputEvent::KeyDown {
+                key_code: 0,
+                repeat: false,
+            },
+            |_| false,
+        );
+        let empty = KeyReconciliation {
+            still_pressed: BTreeSet::new(),
+            released_count: 1,
+        };
+        let first = candidates.reconcile(&empty, 2).unwrap();
+        assert_eq!(first.released, 0);
+        assert_eq!(first.pending_confirmations, 1);
+        let second = candidates.reconcile(&empty, 2).unwrap();
+        assert_eq!(second.released, 1);
+        assert!(candidates.keys().is_empty());
+        assert_eq!(candidates.counters().reconciled_releases, 1);
+    }
+
+    #[test]
+    fn confirmed_key_cancels_pending_release_and_reset_clears_state() {
+        let mut candidates = MacPressedKeyCandidates::default();
+        candidates.apply_event_with(
+            CapturedInputEvent::KeyDown {
+                key_code: 12,
+                repeat: false,
+            },
+            |_| false,
+        );
+        candidates
+            .reconcile(&KeyReconciliation::default(), 2)
+            .unwrap();
+        let held = KeyReconciliation {
+            still_pressed: BTreeSet::from([12]),
+            released_count: 0,
+        };
+        let report = candidates.reconcile(&held, 2).unwrap();
+        assert_eq!(report.pending_confirmations, 0);
+        candidates.apply_event_with(CapturedInputEvent::Reset, |_| false);
+        assert!(candidates.keys().is_empty());
+        assert_eq!(candidates.counters().resets, 1);
+    }
+
+    #[test]
+    fn candidate_reconciliation_rejects_zero_confirmation_threshold() {
+        let mut candidates = MacPressedKeyCandidates::default();
+        assert_eq!(
+            candidates.reconcile(&KeyReconciliation::default(), 0),
+            Err(InvalidMissingConfirmations)
+        );
     }
 
     #[test]

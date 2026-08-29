@@ -191,13 +191,13 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 - 状态（2026-08-28）：`spikes/input-state/` 已建立纯 Rust pressed-set contract，覆盖正常 down/up、重复 down、Reconcile、Reset、issue #47 的丢失 release 恢复、可靠事件的序列跳号/重复/乱序诊断，以及 `250 ms` 校正调度和连续 `2` 次缺失确认的误判保护；计数器不记录具体键值。平台采集、runtime 接入和管理员/权限场景仍待实机验证，详见 `docs/phase-0/input-state-spike.md`。
 - 状态（2026-08-29）：`spikes/input-windows/` 已冻结 `RI_KEY_BREAK`、E0/E1、左右修饰键、PrintScreen、未知 scan code 保留和安全 `RAWINPUT` 字节解析 contract；已实现 message-only HWND、Raw Input 注册、`WM_INPUT` 读取、计数诊断与定时退出 wrapper。commit `0672a00b3d278505a1345f8e749b814bd9391b3c` 的 push/PR Windows jobs 通过注册/退出 smoke；commit `a338686d0af9461f5d1997dac2b67c64591b333f` 的 push run `33232636952` 与 pull request run `33232638253` 进一步通过 input desktop guard 和 `GetAsyncKeyState` 查询 smoke。真实设备样本、热插拔和周期性校正仍待完成，详见 `docs/phase-0/input-windows-spike.md`。
-- 状态（2026-08-28）：`spikes/input-macos/` 已建立 macOS 权限/tap 生命周期 contract、listen-only `CGEventTap` 专用 run loop、panic-isolated callback、固定容量 callback queue 和候选 pressed-set 校正边界；当前 macOS 会话完成 104 次创建运行停止 smoke，且受控按键序列报告 `key_down=2 key_up=2`、`callback_panics=0`。真实鼠标/键盘 callback 字段、系统 timeout/disable、TCC 授权/撤销、周期性校正接入和锁屏/睡眠恢复仍未完成，详见 `docs/phase-0/input-macos-spike.md`。
+- 状态（2026-08-29）：`spikes/input-macos/` 已建立 macOS 权限/tap 生命周期 contract、listen-only `CGEventTap` 专用 run loop、panic-isolated callback、固定容量 callback queue 和候选 pressed-set 周期校正；当前 macOS 会话累计完成 105 次创建运行停止 smoke，受控按键序列曾报告 `key_down=2 key_up=2`、`callback_panics=0`，最新 600 ms tap 完成 2 次校正且 shutdown Reset 为 1。真实 modifier 字段、丢失 release 恢复、系统 timeout/disable、TCC 拒绝/撤销和锁屏/睡眠恢复仍未完成，详见 `docs/phase-0/input-macos-spike.md`。
 
 - [ ] Windows 实现 RegisterRawInputDevices 和 WM_INPUT 最小路径。
   - 状态（2026-08-29）：已实现注册、读取、注销和自动退出路径，并通过 Windows target 交叉 check/Clippy 以及 `windows-latest` 注册/退出 smoke；仍需受控实机 `WM_INPUT` 输入样本后才能勾选。
 - [x] 冻结 scan code、extended flag、左右修饰键和 RI_KEY_BREAK mapping contract；Win32 packet 接入仍待实机。
 - [x] 建立平台无关 pressed set contract；Windows `GetAsyncKeyState` 校正仍待实机接入。
-  - 状态（2026-08-29）：Windows spike 已增加 physical-key 到 virtual-key 查询计划、input desktop guard、只查询本地 pressed candidates 的 `GetAsyncKeyState` adapter，以及未知键触发 Reset 的 contract；查询 smoke 已通过。message window 已接入 `250 ms` scheduler 和连续 `2` 次缺失确认，Windows scheduler smoke 与真实丢失 release 恢复仍待完成。
+  - 状态（2026-08-29）：Windows spike 已增加 physical-key 到 virtual-key 查询计划、input desktop guard、只查询本地 pressed candidates 的 `GetAsyncKeyState` adapter，以及未知键触发 Reset 的 contract；commit `09773f0066f526799eb702fb1759049d0de9732f` 的 push/PR Windows jobs 已通过 `250 ms` scheduler 和连续 `2` 次缺失确认 smoke，真实丢失 release 恢复仍待完成。
 - [x] 定义校正频率、连续确认次数和误判保护。
   - 状态（2026-08-28）：`spikes/input-state/` 固定默认 `250 ms` 周期、连续 `2` 次缺失确认、单调时钟回退拒绝和 reset/up/down 清理待确认状态；平台 adapter 的周期调度和 runtime 消费仍待产品实现。
 - [ ] 在锁屏、睡眠、设备移除和服务重启时发送 Reset。
@@ -208,7 +208,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 进行 10 分钟高速鼠标 + 键盘压力测试，edge 丢失计数必须为 0。
 - [ ] macOS 实现 CGEventTap、权限拒绝/授予和 tap 自动重启。
 - [ ] macOS 使用 CGEventSourceKeyState 校正 pressed state。
-  - 状态（2026-08-28）：候选 pressed keycode 集合可生成仍按下快照和释放计数，多键过滤 contract 与单键实机 query 通过；周期调度及 runtime pressed state 消费仍待产品接入。
+  - 状态（2026-08-29）：候选 pressed keycode 集合可生成仍按下快照和释放计数；run-loop consumer 已从 KeyDown/Up、`FlagsChanged` 和 Reset 维护平台候选集合，并每 `250 ms` 使用 `CGEventSourceKeyState` 校正，连续 `2` 次缺失才释放。当前 macOS 实机 600 ms tap 完成 2 次校正且诊断为 0；真实丢失 release 与 runtime pressed state 消费仍待完成。
 - [ ] 连续 start/stop/restart 输入服务 100 次，无资源泄漏。
   - 状态（2026-08-28）：`--tap-ms 20 --cycles 100` 全部创建、运行、停止成功，无 error、disabled 残留或 callback panic；专门的泄漏工具采样和 timeout/权限故障重启仍待完成。
 - [ ] 记录 monio 对照结果，但不引入生产依赖。

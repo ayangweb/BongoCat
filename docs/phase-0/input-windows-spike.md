@@ -67,4 +67,13 @@ Windows runner 验收证据：
 
 该证据没有产生真实 `WM_INPUT_DEVICE_CHANGE` removal 消息，只证明设备通知注册与 shutdown Reset 路径可在 runner 执行。真实键鼠拔插、设备 handle 生命周期和移除期间的 pressed edge 仍需交互式 Windows 验收。
 
-下一步是在 Windows runner 验证 `250 ms` scheduler 至少运行两次且查询错误为零；随后获取真实 `RAWINPUTHEADER`/`RAWKEYBOARD` 样本，验证连续缺失能在实际 callback 后形成 reconciled release，以及设备句柄生命周期、E0/E1 实际序列、`RI_KEY_BREAK` 与热插拔。最后执行 PixPin、Win+L、PrintScreen、UAC 和管理员/非管理员矩阵；不得用无人值守 CI 的空闲查询替代这些平台验收。
+周期校正 scheduler 的 Windows runner 证据：
+
+- 实现 commit：`09773f0066f526799eb702fb1759049d0de9732f`；
+- push run：`33233023879`，job `99049028541`；
+- pull request run：`33233025942`，job `99049034643`；
+- 两个 `windows-latest` job 均通过 15 项 contract test 和 600 ms scheduler smoke，至少执行两次 `GetAsyncKeyState` reconciliation，`reconciliation_query_errors=0`。
+
+该 smoke 的候选 pressed-set 为空，只证明 timer、input desktop 查询、连续确认实现和 shutdown 可以共存。真实 Raw Input down 后丢失 up 的恢复延迟与正确性仍须受控输入验证。
+
+下一步是获取真实 `RAWINPUTHEADER`/`RAWKEYBOARD` 样本，验证连续缺失能在实际 callback 后形成 reconciled release，以及设备句柄生命周期、E0/E1 实际序列、`RI_KEY_BREAK` 与热插拔。最后执行 PixPin、Win+L、PrintScreen、UAC 和管理员/非管理员矩阵；不得用无人值守 CI 的空闲查询替代这些平台验收。

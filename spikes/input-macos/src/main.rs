@@ -61,7 +61,7 @@ fn main() {
                 for cycle in 0..cycles {
                     match run_listen_only_tap(Duration::from_millis(tap_ms)) {
                         Ok(report) => println!(
-                            "input-macos-spike: tap cycle={} started={} finished_enabled={} key_down={} key_up={} flags_changed={} mouse_down={} mouse_up={} disabled_timeout={} disabled_user={} reenabled={} callback_panics={} queued_events={} consumed_events={} queue_overflows={} queue_recovery_resets={} queue_discarded_events={} queue_closed_events={}",
+                            "input-macos-spike: tap cycle={} started={} finished_enabled={} key_down={} key_up={} flags_changed={} mouse_down={} mouse_up={} disabled_timeout={} disabled_user={} reenabled={} callback_panics={} queued_events={} consumed_events={} queue_overflows={} queue_recovery_resets={} queue_discarded_events={} queue_closed_events={} reconciliation_runs={} reconciled_releases={} candidate_resets={} duplicate_down={} unmatched_up={}",
                             cycle + 1,
                             report.started,
                             report.finished_enabled,
@@ -80,6 +80,11 @@ fn main() {
                             report.queue_recovery_resets,
                             report.queue_discarded_events,
                             report.queue_closed_events,
+                            report.reconciliation_runs,
+                            report.reconciled_releases,
+                            report.candidate_resets,
+                            report.duplicate_down,
+                            report.unmatched_up,
                         ),
                         Err(error) => {
                             println!("input-macos-spike: tap cycle={} error={error:?}", cycle + 1)
