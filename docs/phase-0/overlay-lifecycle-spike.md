@@ -99,7 +99,9 @@ AppIntents/LinkServices 的 3 个系统 `NSXPCConnection` 常驻 cycle。普通 
 这些数据证明窗口动画 retain cycle 已消除，但不把系统 XPC 基线计作应用泄漏，也不替代
 Metal driver/GPU memory 和线程的专项采样。
 
-当前 resource probe 在 10 次初始化预热后运行三个等长的 100-cycle batch。第一批让
+当前 resource probe 在 10 次初始化预热后运行三个等长的 100-cycle batch。每次 GPU
+completion、readback 和 owner 析构后，probe 把主线程让回 AppKit 一个 60 Hz 刷新周期，
+使 compositor 有机会回收已经 present 的 `CAMetalDrawable`，再创建下一窗口。第一批让
 Metal compiler/driver worker pool 完成延迟初始化，第二批结束时建立进程基线，第三批结束时
 再次读取 `proc_pidinfo(PROC_PIDTASKINFO)` 的线程/RSS 和
 `MTLDevice.currentAllocatedSize`。窗口或 Rust owner 不相等、线程数增加或 Metal allocation
@@ -108,6 +110,14 @@ Metal compiler/driver worker pool 完成延迟初始化，第二批结束时建�
 `threads 9 -> 9`、`metal_bytes 393216 -> 393216`、window/owner `0 -> 0`；RSS 分别约增长
 230 KiB 和 304 KiB。该 probe 已覆盖应用可见的 Metal allocation 与进程线程增长，不替代
 Instruments/Metal System Trace 的 driver resource 和长期趋势证据。
+
+commit `aeaa1be` 首次接入 runner 时仍以 1 ms 间隔高速创建并立即销毁窗口；push run
+`33252550911` 的 macOS job `99100622848` 在第三批观察到 Metal allocation
+`2097152 -> 3145728`，但 window/owner/thread 均无增长。该负面证据表明 probe 测到了
+compositor 尚未退休的 display surface 背压，而不是可归属给 Rust owner 的稳定增长。
+修正后的本机 release worker 在 9.4/9.6 秒内连续两次完成 300 帧，结果分别为 thread
+`7 -> 7`、`8 -> 8`，Metal allocation 均为 `393216 -> 393216`，window/owner 均为
+`0 -> 0`；零增长判定未增加任何容差，runner 结果仍由后续 push 验证。
 
 每次提交帧前，wrapper 通过 content view 的 `convertRectToBacking` 计算当前物理像素尺寸，
 仅在它与 `CAMetalLayer.drawableSize` 不同时更新 layer。这样跨 Retina/非 Retina 显示器后

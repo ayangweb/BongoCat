@@ -773,6 +773,9 @@ use gpui::{
 use std::time::Duration;
 
 #[cfg(target_os = "macos")]
+const MACOS_COMPOSITOR_SETTLE_INTERVAL: Duration = Duration::from_millis(17);
+
+#[cfg(target_os = "macos")]
 type PlatformOverlay = macos_overlay::NativeOverlay;
 
 #[cfg(target_os = "windows")]
@@ -894,6 +897,8 @@ fn main() {
 
                     // Warm up process-global AppKit, Metal compiler and driver
                     // pools before measuring resources owned by the next batch.
+                    // Yield one 60 Hz frame after each destroyed panel so the
+                    // compositor can retire its presented CAMetalDrawable.
                     for _ in 0..10 {
                         cx.update(|_| {
                             let mtm = objc2::MainThreadMarker::new()
@@ -901,7 +906,7 @@ fn main() {
                             macos_overlay::run_creation_cycle(mtm)
                         })
                         .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
-                        Timer::after(Duration::from_millis(2)).await;
+                        Timer::after(MACOS_COMPOSITOR_SETTLE_INTERVAL).await;
                     }
                     Timer::after(Duration::from_millis(100)).await;
 
@@ -912,7 +917,7 @@ fn main() {
                             macos_overlay::run_creation_cycle(mtm)
                         })
                         .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
-                        Timer::after(Duration::from_millis(1)).await;
+                        Timer::after(MACOS_COMPOSITOR_SETTLE_INTERVAL).await;
                     }
 
                     Timer::after(Duration::from_millis(100)).await;
@@ -923,7 +928,7 @@ fn main() {
                             macos_overlay::run_creation_cycle(mtm)
                         })
                         .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
-                        Timer::after(Duration::from_millis(1)).await;
+                        Timer::after(MACOS_COMPOSITOR_SETTLE_INTERVAL).await;
                     }
 
                     Timer::after(Duration::from_millis(100)).await;
@@ -942,7 +947,7 @@ fn main() {
                             macos_overlay::run_creation_cycle(mtm)
                         })
                         .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
-                        Timer::after(Duration::from_millis(1)).await;
+                        Timer::after(MACOS_COMPOSITOR_SETTLE_INTERVAL).await;
                     }
 
                     Timer::after(Duration::from_millis(100)).await;
