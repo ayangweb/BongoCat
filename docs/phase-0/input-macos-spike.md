@@ -1,6 +1,6 @@
 # macOS Input Permission and Tap Lifecycle Spike
 
-状态：权限/tap 生命周期 contract、listen-only CGEventTap、可靠 callback 队列、键盘/鼠标按钮周期校正、真实 keyboard callback release 丢弃后的恢复、受控 disable 恢复、NSWorkspace 生命周期 Reset 和 callback shutdown smoke 已通过；权限矩阵、真实系统生命周期、系统自然 timeout 和物理鼠标矩阵仍待验证
+状态：权限/tap 生命周期 contract、listen-only CGEventTap、可靠 callback 队列、cursor latest-value 通道、键盘/鼠标按钮周期校正、真实 keyboard callback release 丢弃后的恢复、受控 disable 恢复、NSWorkspace 生命周期 Reset 和 callback shutdown smoke 已通过；权限矩阵、真实系统生命周期、系统自然 timeout 和物理鼠标矩阵仍待验证
 日期：2026-08-29
 
 ## Contract
@@ -12,6 +12,8 @@
 - `SessionReset`：锁屏、睡眠、快速用户切换、TCC 变化和服务重启都清空 pressed state。
 
 权限撤销会停止 tap、发出 reset 并进入用户引导；重新 granted 后才允许创建 tap。状态层不把 callback 生命周期或 CoreGraphics 指针暴露给 runtime。callback 只生成不含用户内容的 `CapturedInputEvent`，由 mutex 保护的生产者为其分配单调 `u64` sequence 后送入固定容量队列；消费发生在 tap run loop 中，不能访问已析构的 runtime。满载 Reset 继承被拒边沿的 sequence，使被丢弃 backlog 形成可计数 gap；正常 cycle 的 gap 和 duplicate/out-of-order 必须为 0，且 `queued_events = consumed_events + queue_discarded_events`。
+
+`MouseMoved` 和 left/right/other drag 不进入上述可靠队列。callback 把 `CGEventGetLocation` 的全局坐标转换成项目自有 `MacCursorSample`，覆盖独立 latest-value slot；run-loop owner 约每 `16 ms` 最多消费一个样本，shutdown 封住 producer 后 flush 最后一个 pending sample。匿名诊断强制满足 `cursor_captured = cursor_coalesced + cursor_consumed`，并拒绝 close 后发布。cursor flood 因而不会占用 key/button/Reset 的容量或 sequence。
 
 ## Probe
 
@@ -27,7 +29,7 @@ cargo run --manifest-path spikes/input-macos/Cargo.toml --locked
 cargo run --manifest-path spikes/input-macos/Cargo.toml --locked -- --request
 ```
 
-CoreGraphics binding 仅存在于 macOS target dependency；非 macOS 构建会输出 skipped，不引入跨平台 API。`--tap-ms <milliseconds>` 会在专用线程/run loop 上创建 listen-only `CGEventTap`，只统计事件类型计数和队列诊断，不记录具体键值。键盘事件在 queue 中保留 keycode/repeat；鼠标 down/up 保留 CoreGraphics 的 0–31 号 button identity，不再把左、右、中和侧键压成同一个事件。run-loop consumer 分别维护键盘和鼠标候选 pressed set，`FlagsChanged` 用 `CGEventSourceKeyState` 判定方向；每 `250 ms` 只查询当前候选 key/button，经 `CGEventSourceKeyState`/`CGEventSourceButtonState` 连续 `2` 次缺失才形成 reconciled release。`Reset`、tap shutdown 和 queue overflow 同时清空两类候选。`--cycles <count>` 可重复创建、运行、禁用并销毁 tap，0 会被拒绝；`--summary-only` 省略逐 cycle 行但保留严格校验和聚合结果。任一 cycle 创建失败、未恢复 enabled、callback panic、队列 overflow/close 后事件、observer 数量不匹配或注入语义失败都会以非零状态退出，不再只打印错误。`--key-state <macOS-keycode>` 和 `--button-state <0..31>` 分别对单个候选执行系统状态查询，只输出 checked/still-pressed/released 数量。默认仍不会自动创建 tap。
+CoreGraphics binding 仅存在于 macOS target dependency；非 macOS 构建会输出 skipped，不引入跨平台 API。`--tap-ms <milliseconds>` 会在专用线程/run loop 上创建 listen-only `CGEventTap`，只统计事件类型、可靠队列和 cursor 合并诊断，不记录具体键值或坐标。键盘事件在 queue 中保留 keycode/repeat；鼠标 down/up 保留 CoreGraphics 的 0–31 号 button identity，不再把左、右、中和侧键压成同一个事件。run-loop consumer 分别维护键盘和鼠标候选 pressed set，`FlagsChanged` 用 `CGEventSourceKeyState` 判定方向；每 `250 ms` 只查询当前候选 key/button，经 `CGEventSourceKeyState`/`CGEventSourceButtonState` 连续 `2` 次缺失才形成 reconciled release。`Reset`、tap shutdown 和 queue overflow 同时清空两类候选。`--cycles <count>` 可重复创建、运行、禁用并销毁 tap，0 会被拒绝；`--summary-only` 省略逐 cycle 行但保留严格校验和聚合结果。任一 cycle 创建失败、未恢复 enabled、callback panic、队列 overflow/close 后事件、cursor accounting 不完整、observer 数量不匹配或注入语义失败都会以非零状态退出，不再只打印错误。`--key-state <macOS-keycode>` 和 `--button-state <0..31>` 分别对单个候选执行系统状态查询，只输出 checked/still-pressed/released 数量。默认仍不会自动创建 tap。
 
 `--inject-disable timeout|user` 只能和 `--tap-ms` 一起用于受控故障验证。每个 cycle 先注入一个没有 KeyUp 的候选键，再禁用真实 tap；`user` 使用 CoreGraphics 返回的真实 user-disable callback，`timeout` 将测试动作附带的 user-disable 通知替换为 timeout 原因。两者随后走与系统 callback 相同的 Reset、权限 preflight 和 re-enable 路径。恢复信号使用原子位合并，不会像有界 `try_send` 一样在满载时静默丢失；报告只输出 disable、Reset、release 和队列数量。
 
@@ -72,6 +74,8 @@ NSZombieEnabled=YES spikes/input-macos/target/release/bongocat-input-macos-spike
 2026-08-29 为 callback queue 的每个 edge/Reset 增加单调 sequence，并把 gap、duplicate/out-of-order 与完整 drain accounting 加入严格 cycle validator。20 项 library test 和 4 项报告 test 通过；macOS 本机普通 3-cycle、timeout disable、user disable 与四类 lifecycle 通知均为 `sequence_gaps=0 sequence_duplicates_or_out_of_order=0`，受控队列分别满足 `0=0`、`2=2`、`2=2` 与 `1=1` 的 queued/consumed 关系。当前 Codex 会话重跑 release-loss 时 listen/post 两项 preflight 均为 true，但 session tap 收到 `0/2` 个已投递 synthetic event，严格门禁按预期非零失败；本批没有把该失败改写为成功，也没有覆盖此前已记录的成功结果。需要在交互式会话确认前台 session/TCC 状态后重跑该命令，才能为 sequence 变更补充 release-loss 回归证据。
 
 实现 commit `d7501dc` 的 push run `33257871184` 中，contract job `99114627795` 已通过；原生 macOS job `99114627654` 也已通过 input spike 的 check、format、Clippy、20 项 library test、4 项报告 test 和 release build。CI 没有绕过 TCC 创建 tap，因此这份证据只覆盖编译与纯 contract，真实 tap 结果仍以上述本机命令为准。
+
+2026-08-29 在 commit `500a956` 上将 `MouseMoved` 与三类 drag 接入独立 cursor latest-value slot。23 项 library test 中的 10,000-sample flood 将 9,999 个中间位置合并、只消费最终样本，同时两项容量的可靠队列完整保留 MouseDown/MouseUp 且 overflow 为 0；关闭测试证明 pending sample 会 flush，迟到 publish 会被拒绝并计数。当前 Apple M1 Pro、macOS 26.5.2 上执行 `--tap-ms 600 --cycles 3`，三轮真实 tap 均 `started=true finished_enabled=true`，cursor accounting 为 `0 = 0 + 0`、close 后拒绝为 0；测试期间没有物理移动鼠标，因此该结果不冒充物理 cursor callback 证据。PR run `33258718745` 的原生 macOS job `99116842307` 已通过 input check、format、Clippy、23 项 library test、4 项报告 test 和 release build，独立 contract job `99116842405` 也通过。
 
 实现约束：特殊的 `kCGEventTapDisabledByTimeout`/`kCGEventTapDisabledByUserInput` 值不能放入第三方事件 mask（其高位值会导致 `1 << type` 溢出）；callback 仍对这两类通知分支处理，收到后通过有界 channel 请求在 run loop 内 re-enable。tap 创建阶段使用 panic boundary，避免 binding 异常杀死输入线程。
 

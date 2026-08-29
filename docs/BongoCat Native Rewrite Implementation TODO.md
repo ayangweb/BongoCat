@@ -343,6 +343,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-28）：`spikes/input-state/` 已验证可靠输入事件的重复/乱序忽略与跳号安全 reset；`spikes/runtime-contract/` 已验证 typed command sequence、跳号前 `WorkerRecovery` reset、重复/过期 sequence 丢弃和诊断计数；平台 producer、输入事件 sequence 与产品 runtime 接入仍待产品 crate。
 - [ ] cursor/gamepad axis 使用 latest-value 合并通道。
   - 状态（2026-08-29）：Windows RAWMOUSE movement 已从可靠 edge FIFO 分流到独立 latest-value 槽位；safe decoder 保留 relative/absolute/virtual-desktop 语义，16ms owner tick 在 callback 外查询当前 cursor，pointer flood 要求 captured sample 全部由 coalesced 或 consumed 解释且不影响 keyboard release。commit `098d532` 的 push run `33258305541`、Windows job `99115756881` 已通过强化后的 3072 movement/1536 keyboard edge 回归。Gamepad axis、macOS cursor 和产品 runtime 通道仍待实现，因此保持未勾选。
+  - 状态（2026-08-29）：macOS `MouseMoved` 与 left/right/other drag 已分流到独立 latest-value slot，run-loop owner 约每 16ms 消费一次并在 shutdown flush；10,000-sample contract 证明 cursor flood 不占用可靠 button edge 队列，严格报告要求 `captured = coalesced + consumed` 且 close 后无迟到发布。commit `500a956` 的 PR run `33258718745` 中，原生 macOS job `99116842307` 与 contract job `99116842405` 均通过。Gamepad axis、产品 runtime 通道和物理 cursor callback 实测仍待完成，因此保持未勾选。
 - [ ] 队列溢出必须计数、记录并触发安全恢复。
   - 状态（2026-08-28）：`spikes/input-queue/` 的 `push_with_overflow_reset` 已固定溢出返回原事件、清空不可信缓存、注入 `Reset` 并记录恢复/丢弃计数；`spikes/runtime-contract/` 已将同一策略应用到 typed command queue 并通过 worker snapshot 暴露诊断；runtime producer、实际容量和输入/command sequence 仍待产品实现。
 - [ ] 动画、长按和延迟统一使用 Instant。
