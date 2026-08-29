@@ -137,7 +137,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 1.4 行为 fixture
 
-状态（2026-08-29）：已建立 v1 input/expected schema、9 组输入序列和规范化结果；输入、动作、表情、模型切换和音效 command 已覆盖。Rust 强类型 runner 现执行 51 个事件与 24 个 checkpoint，拒绝时间/设备生命周期/未连接 gamepad/非法 repeat 等错误并输出字段级差异；同时修复旧 Python runner 由 expected key 反向选择 parameter 的盲点，golden 现在包含序列完整参数域。跨文件检查和固定版本的 Draft 2020-12 标准 validator 均已在本机及 CI 通过；Rust runner 的 push CI 待本批提交后确认。物理键全集和旧版人工确认仍未完成。
+状态（2026-08-30）：已建立 v1 input/expected schema、9 组输入序列和规范化结果；输入、动作、表情、模型切换和音效 command 已覆盖。Rust 强类型 runner 现执行 51 个事件与 24 个 checkpoint，拒绝时间/设备生命周期/未连接 gamepad/非法 repeat 等错误并输出字段级差异；同时修复旧 Python runner 由 expected key 反向选择 parameter 的盲点，golden 现在包含序列完整参数域。跨文件检查、固定版本的 Draft 2020-12 标准 validator 与 Rust runner 已在本机及 commit `3c5f4e1` 的 push/PR CI 通过。物理键全集和旧版人工确认仍未完成。
 
 - [x] 定义稳定的 `PhysicalKey`、`MouseButton`、`GamepadButton` 和 axis 表示；canonical names、按钮阈值、axis 范围和未知码诊断已写入 `shared/behavior/input-semantics.md`。
 - [x] 定义带单调相对时间的输入序列 JSON 格式。
@@ -243,12 +243,13 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-29）：已用 hash 固定的 legacy Web Core `5.1.0` 为三个预置 moc 建立可重复 baseline，记录 MOC enum、consistency、parameter/part/drawable count 和 canvas，并接入 CI 漂移检查；这只是未来 R5 wrapper 的对照，尚未完成 Native R5 sys binding 或 drawable 数据读取。
 - [ ] 包装 Moc/Model 生命周期，证明 Model 不会比 Moc 存活更久。
 - [x] 用 Rust 解析三个预置 model3 和所有关联资源。
-  - 验收证据：build `7ee8acd5f2a3d4dcb7a1dbc36623cbe497aeae49` 的 push run `33238204993` 与 PR run `33238206415` 各 16 jobs 全绿。`spikes/model-package/` 强类型解析 model3 v3，验证 moc、纹理、display info、expression、motion/audio、可选 physics/pose/user data 与 companion images，完整包索引冻结在 `shared/fixtures/model-fixtures/preset-model3-index.json`。三个预置包与六类异常 fixture、跨根 symlink、目录深度均有 Rust 测试；详见 `docs/phase-0/model-package-spike.md`。本项不包含 Core/model creation、动作求值或 renderer。
+  - 验收证据：build `7ee8acd5f2a3d4dcb7a1dbc36623cbe497aeae49` 的 push run `33238204993` 与 PR run `33238206415` 各 16 jobs 全绿。`spikes/model-package/` 强类型解析 model3 v3，验证 moc、纹理、display info、expression、motion/audio、可选 physics/pose/user data 与 companion images，完整包索引冻结在 `shared/fixtures/model-fixtures/preset-model3-index.json`。2026-08-30 又将 6 个 motion3 的 12 条 curve/45 个 segment/123 个 point 与 15 个 exp3 的类型、fade、参数和 blend 纳入强类型结构验证；三个预置包、异常 fixture、跨根 symlink 和目录深度均有 Rust 测试，详见 `docs/phase-0/model-package-spike.md`。本项不包含 Core/model creation、动作求值或 renderer。
 - [ ] Windows D3D11 绘制预置模型的 texture/order/alpha/mask。
   - 状态（2026-08-29）：Windows overlay 已实现合成几何的 D3D11 shader pipeline、预乘 alpha draw 和 staging texture 像素验证；预置模型 texture、drawable order 和 mask 尚未接入，因此保持未完成。
 - [ ] macOS Metal 绘制同一模型的 texture/order/alpha/mask。
   - 状态（2026-08-29）：macOS overlay 已完成合成几何的真实 Metal pipeline、预乘 alpha draw 和 100 帧 GPU readback，不再只是透明 clear/present；预置模型 texture、drawable order 和 mask 尚未接入，因此保持未完成。
 - [ ] 验证 motion、expression、physics、pose 至少各一个真实样本。
+  - 状态（2026-08-30）：6 个预置 motion3 与 15 个 exp3 已通过强类型结构解析和计数门禁，能在 Core/GPU 前拒绝损坏 segment、Meta、fade、parameter 和 blend。motion/expression 的实际时间求值、参数混合与优先级，以及 physics/pose 的结构解析和实际求值仍未完成，因此本项保持未勾选。
 - [ ] 验证模型切换/销毁 100 次，无 CPU/GPU 资源增长。
 - [x] 记录与 easy-live2d 的差异和必须兼容项；`docs/phase-0/easy-live2d-compatibility.md` 基于 lockfile 固定的 `easy-live2d 0.4.4` 及安装产物 hash，冻结 BongoCat 实际 API 面、跨帧参数 override、update order、motion sound、ready/销毁与 renderer 语义，并明确多 model3、JSON5、破坏性切换、全局 ticker、WebGL/Pixi 和错误吞噬不进入兼容范围。该项只完成旧库边界，不代表 R5 Core/Framework/renderer 已通过。
 - [ ] 若纯 Rust Framework 逻辑不可行，提交 go/no-go ADR；不得静默加入 C++ 业务桥。
@@ -855,6 +856,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 13. [ ] `P0-CUBISM`：确认 SDK/许可证/binding 生成，三个预置模型完成 Core、资源和 renderer spike。
 
 - [x] 完成平台无关 Rust model3/package parser、三个预置规范化索引与异常资源安全 contract；Native Core、binding、Framework 求值和 D3D11/Metal 绘制仍未完成。
+- [x] 完成 6 个预置 motion3 与 15 个 exp3 的强类型结构、segment/Meta 计数、fade/parameter/blend 校验；这不代表 motion/expression 行为求值完成。
+- [ ] 完成预置 physics3/pose3 强类型结构校验，再进入获得授权后的 Framework 求值。
 
 14. [ ] `P0-GO-NO-GO`：汇总证据、阻塞和条件，确认后再建立完整产品 workspace。
     - 状态（2026-08-29）：`docs/phase-0/go-no-go-readiness.md` 已建立 gate matrix、外部 owner、工程队列和三类决策规则；当前结论明确为 `NOT READY FOR DECISION`，不勾选本项。主要阻塞是 Cubism SDK/书面授权、真实 Core/三模型 renderer、GPUI 辅助功能/IME 与双平台物理输入/GPU 矩阵。

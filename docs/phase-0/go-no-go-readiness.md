@@ -28,7 +28,7 @@
 | Windows input            | Raw Input、状态校正、lifecycle Reset、可靠队列、pointer 合并和系统合成丢 release 闭环已通过；`b6bbd73` 的 runner XInput smoke 完成 124 次无错误查询并干净关闭                                            | PixPin、Win+L、PrintScreen、UAC、管理员差异、10 分钟物理压力、物理手柄；runner `peak_connected=0`                    | P0 blocker；CI 合成/无设备 API smoke 不能替代        |
 | macOS input              | CGEventTap、两次缺失校正、受控 disable/lifecycle、100-cycle restart、cursor 合并已通过；`a4fab65` 的双 CI 原生 job 通过 30+5 项 GameController contract/report test，本机无设备 framework smoke 干净关闭 | TCC deny/grant/revoke、自然 timeout、真实 session/power、物理键鼠/手柄；sequence 变更后的 release-loss callback 重跑 | P0 blocker；当前 synthetic callback 为 0/2，严格失败 |
 | Cubism source/license    | R5/Core 06.00.0001、官方来源、目标 artifact 路径和许可问题已固定                                                                                                                                         | SDK ZIP/hash、书面发布授权、Rust Framework 实现边界、notice/redistribution 结论                                      | External P0 blocker；当前最关键                      |
-| Cubism ABI/model         | 三个预置 model3 已由 Rust 强类型 parser 验证；legacy Web Core baseline 已固定                                                                                                                            | Native R5 binding、ABI、Moc/Model owner、drawable、motion/expression/physics/pose 和 100 次切换                      | P0 blocker；无 SDK 不得伪造                          |
+| Cubism ABI/model         | 三个预置 model3、6 个 motion3 和 15 个 exp3 已由 Rust 强类型 parser 验证；legacy Web Core baseline 已固定                                                                                                | Native R5 binding、ABI、Moc/Model owner、drawable、Framework 行为求值、physics/pose 和 100 次切换                    | P0 blocker；资源结构验证不替代 Core/求值             |
 | Targets/toolchain        | Windows 仅 x64/ARM64，i686 已排除；当前 Rust/GPUI/macOS 工具链和双 Windows target check 有记录                                                                                                           | Windows 实机 MSVC/SDK、最低 macOS toolchain、Intel 发布形式、Windows ARM64 desktop Core                              | P0 blocker；矩阵保持 Provisional                     |
 | Config/runtime contracts | 强类型 bounded runtime、revision、shutdown、双环境 resolver/lock/atomic recovery 已通过 spike                                                                                                            | 产品 workspace 的 build-time environment、统一 runtime owner 与完整 config service                                   | Phase 1/2 工作；Phase 0 GO 前不创建产品实现          |
 
@@ -48,7 +48,7 @@
 
 外部动作等待期间，仓库内工作按以下顺序继续：
 
-1. 用 Rust fixture runner 执行全部共享输入序列并逐 checkpoint 比较规范化 snapshot，避免 schema-valid fixture 与 reducer 行为长期漂移；
+1. 对预置 physics3/pose3 建立强类型结构、计数和引用校验，继续缩小获得 SDK 后的 Framework 求值范围；
 2. 获得合法 SDK 后立即运行 offline inspector、raw binding 双生成和 macOS arm64/Windows x64 ABI smoke；
 3. 建立最小 Moc/Model safe owner，读取三个预置 moc 的 drawable 数据并验证 100 次析构；
 4. 以同一不可变 RenderSnapshot 在 D3D11/Metal 绘制 texture/order/alpha/mask，完成至少一个输入到绘制闭环；

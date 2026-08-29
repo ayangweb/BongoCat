@@ -38,12 +38,14 @@ impl Default for ModelPackageLimits {
 pub enum DiagnosticCode {
     ModelEntryAmbiguous,
     ModelEntryMissing,
+    ModelExpressionInvalid,
     ModelFileCountExceeded,
     ModelFileTooLarge,
     ModelIoError,
     ModelJsonInvalid,
     ModelJsonTooLarge,
     ModelMocMissing,
+    ModelMotionInvalid,
     ModelPackageDepthExceeded,
     ModelPackageSizeExceeded,
     ModelReferenceEscapesRoot,
@@ -64,12 +66,14 @@ impl DiagnosticCode {
         match self {
             Self::ModelEntryAmbiguous => "model_entry_ambiguous",
             Self::ModelEntryMissing => "model_entry_missing",
+            Self::ModelExpressionInvalid => "model_expression_invalid",
             Self::ModelFileCountExceeded => "model_file_count_exceeded",
             Self::ModelFileTooLarge => "model_file_too_large",
             Self::ModelIoError => "model_io_error",
             Self::ModelJsonInvalid => "model_json_invalid",
             Self::ModelJsonTooLarge => "model_json_too_large",
             Self::ModelMocMissing => "model_moc_missing",
+            Self::ModelMotionInvalid => "model_motion_invalid",
             Self::ModelPackageDepthExceeded => "model_package_depth_exceeded",
             Self::ModelPackageSizeExceeded => "model_package_size_exceeded",
             Self::ModelReferenceEscapesRoot => "model_reference_escapes_root",
@@ -276,6 +280,119 @@ struct RawHitArea {
     name: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MotionDefinition {
+    #[serde(rename = "Version")]
+    version: u32,
+    #[serde(rename = "Meta")]
+    meta: MotionMeta,
+    #[serde(rename = "Curves")]
+    curves: Vec<MotionCurve>,
+    #[serde(rename = "UserData", default)]
+    user_data: Vec<MotionUserData>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MotionMeta {
+    #[serde(rename = "Duration")]
+    duration: f64,
+    #[serde(rename = "Fps")]
+    fps: f64,
+    #[serde(rename = "Loop")]
+    _looping: bool,
+    #[serde(rename = "AreBeziersRestricted")]
+    _are_beziers_restricted: bool,
+    #[serde(rename = "CurveCount")]
+    curve_count: usize,
+    #[serde(rename = "TotalSegmentCount")]
+    total_segment_count: usize,
+    #[serde(rename = "TotalPointCount")]
+    total_point_count: usize,
+    #[serde(rename = "UserDataCount")]
+    user_data_count: usize,
+    #[serde(rename = "TotalUserDataSize")]
+    _total_user_data_size: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MotionCurve {
+    #[serde(rename = "Target")]
+    target: MotionCurveTarget,
+    #[serde(rename = "Id")]
+    id: String,
+    #[serde(rename = "Segments")]
+    segments: Vec<f64>,
+    #[serde(rename = "FadeInTime", default)]
+    fade_in_seconds: Option<f64>,
+    #[serde(rename = "FadeOutTime", default)]
+    fade_out_seconds: Option<f64>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+enum MotionCurveTarget {
+    Model,
+    Parameter,
+    PartOpacity,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MotionUserData {
+    #[serde(rename = "Time")]
+    time: f64,
+    #[serde(rename = "Value")]
+    value: String,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct MotionSummary {
+    curve_count: usize,
+    segment_count: usize,
+    point_count: usize,
+    user_data_count: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExpressionDefinition {
+    #[serde(rename = "Type")]
+    expression_type: String,
+    #[serde(rename = "Parameters")]
+    parameters: Vec<ExpressionParameter>,
+    #[serde(rename = "FadeInTime", default)]
+    fade_in_seconds: Option<f64>,
+    #[serde(rename = "FadeOutTime", default)]
+    fade_out_seconds: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExpressionParameter {
+    #[serde(rename = "Id")]
+    id: String,
+    #[serde(rename = "Value")]
+    value: f64,
+    #[serde(rename = "Blend", default)]
+    blend: ExpressionBlend,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+enum ExpressionBlend {
+    #[default]
+    Add,
+    Multiply,
+    Overwrite,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct ExpressionSummary {
+    parameter_count: usize,
+    blend_counts: BTreeMap<ExpressionBlend, usize>,
+}
+
 #[derive(Clone, Copy)]
 enum ResourceKind {
     Moc,
@@ -370,6 +487,18 @@ impl PackageReader {
             self.limits.maximum_json_bytes,
             DiagnosticCode::ModelResourceJsonInvalid,
         )?;
+        Ok(normalized)
+    }
+
+    fn resolve_motion(&mut self, reference: &str) -> Result<String, ModelPackageError> {
+        let (normalized, path) = self.resolve_file(reference, ResourceKind::Other)?;
+        inspect_motion_file(&path, &normalized, self.limits.maximum_json_bytes)?;
+        Ok(normalized)
+    }
+
+    fn resolve_expression(&mut self, reference: &str) -> Result<String, ModelPackageError> {
+        let (normalized, path) = self.resolve_file(reference, ResourceKind::Other)?;
+        inspect_expression_file(&path, &normalized, self.limits.maximum_json_bytes)?;
         Ok(normalized)
     }
 
@@ -608,7 +737,7 @@ pub fn inspect_model_package(
             require_identifier(&resource.name, "expression name")?;
             Ok(NamedResource {
                 name: resource.name,
-                file: reader.resolve_json(&resource.file)?,
+                file: reader.resolve_expression(&resource.file)?,
             })
         })
         .collect::<Result<Vec<_>, ModelPackageError>>()?;
@@ -624,7 +753,7 @@ pub fn inspect_model_package(
                     validate_fade(motion.fade_in_seconds, "FadeInTime")?;
                     validate_fade(motion.fade_out_seconds, "FadeOutTime")?;
                     Ok(MotionResource {
-                        file: reader.resolve_json(&motion.file)?,
+                        file: reader.resolve_motion(&motion.file)?,
                         sound: motion
                             .sound
                             .as_deref()
@@ -863,6 +992,349 @@ fn read_json_object(
         ));
     }
     Ok(())
+}
+
+fn inspect_motion_file(
+    path: &Path,
+    reference: &str,
+    maximum_bytes: u64,
+) -> Result<MotionSummary, ModelPackageError> {
+    let motion: MotionDefinition = read_typed_json(
+        path,
+        reference,
+        maximum_bytes,
+        DiagnosticCode::ModelMotionInvalid,
+    )?;
+    if motion.version != 3 {
+        return resource_error(
+            DiagnosticCode::ModelMotionInvalid,
+            reference,
+            format!("motion3 version {} is not supported", motion.version),
+        );
+    }
+    if !motion.meta.duration.is_finite() || motion.meta.duration < 0.0 {
+        return resource_error(
+            DiagnosticCode::ModelMotionInvalid,
+            reference,
+            "Meta.Duration must be a finite non-negative number",
+        );
+    }
+    if !motion.meta.fps.is_finite() || motion.meta.fps <= 0.0 {
+        return resource_error(
+            DiagnosticCode::ModelMotionInvalid,
+            reference,
+            "Meta.Fps must be a finite positive number",
+        );
+    }
+    if motion.meta.curve_count != motion.curves.len() {
+        return resource_error(
+            DiagnosticCode::ModelMotionInvalid,
+            reference,
+            format!(
+                "Meta.CurveCount is {}; parsed {} curves",
+                motion.meta.curve_count,
+                motion.curves.len()
+            ),
+        );
+    }
+
+    let mut summary = MotionSummary {
+        curve_count: motion.curves.len(),
+        user_data_count: motion.user_data.len(),
+        ..MotionSummary::default()
+    };
+    for curve in motion.curves {
+        let _target = curve.target;
+        require_resource_identifier(
+            &curve.id,
+            DiagnosticCode::ModelMotionInvalid,
+            reference,
+            "curve Id",
+        )?;
+        validate_resource_fade(
+            curve.fade_in_seconds,
+            DiagnosticCode::ModelMotionInvalid,
+            reference,
+            "curve FadeInTime",
+        )?;
+        validate_resource_fade(
+            curve.fade_out_seconds,
+            DiagnosticCode::ModelMotionInvalid,
+            reference,
+            "curve FadeOutTime",
+        )?;
+        let curve_summary =
+            inspect_motion_segments(&curve.segments, motion.meta.duration, reference)?;
+        summary.segment_count = summary
+            .segment_count
+            .checked_add(curve_summary.segment_count)
+            .ok_or_else(|| {
+                ModelPackageError::new(
+                    DiagnosticCode::ModelMotionInvalid,
+                    Some(reference),
+                    "motion segment count overflowed",
+                )
+            })?;
+        summary.point_count = summary
+            .point_count
+            .checked_add(curve_summary.point_count)
+            .ok_or_else(|| {
+                ModelPackageError::new(
+                    DiagnosticCode::ModelMotionInvalid,
+                    Some(reference),
+                    "motion point count overflowed",
+                )
+            })?;
+    }
+
+    if motion.meta.user_data_count != summary.user_data_count {
+        return resource_error(
+            DiagnosticCode::ModelMotionInvalid,
+            reference,
+            format!(
+                "Meta.UserDataCount is {}; parsed {} entries",
+                motion.meta.user_data_count, summary.user_data_count
+            ),
+        );
+    }
+    let mut user_data_bytes = 0usize;
+    for user_data in motion.user_data {
+        if !user_data.time.is_finite()
+            || user_data.time < 0.0
+            || user_data.time > motion.meta.duration
+        {
+            return resource_error(
+                DiagnosticCode::ModelMotionInvalid,
+                reference,
+                "UserData.Time must be finite and within the motion duration",
+            );
+        }
+        user_data_bytes = user_data_bytes
+            .checked_add(user_data.value.len())
+            .ok_or_else(|| {
+                ModelPackageError::new(
+                    DiagnosticCode::ModelMotionInvalid,
+                    Some(reference),
+                    "user data byte count overflowed",
+                )
+            })?;
+    }
+    if motion.meta._total_user_data_size != user_data_bytes {
+        return resource_error(
+            DiagnosticCode::ModelMotionInvalid,
+            reference,
+            format!(
+                "Meta.TotalUserDataSize is {}; parsed {user_data_bytes} UTF-8 bytes",
+                motion.meta._total_user_data_size
+            ),
+        );
+    }
+    if motion.meta.total_segment_count != summary.segment_count
+        || motion.meta.total_point_count != summary.point_count
+    {
+        return resource_error(
+            DiagnosticCode::ModelMotionInvalid,
+            reference,
+            format!(
+                "Meta totals are segments={} points={}; parsed segments={} points={}",
+                motion.meta.total_segment_count,
+                motion.meta.total_point_count,
+                summary.segment_count,
+                summary.point_count
+            ),
+        );
+    }
+    Ok(summary)
+}
+
+fn inspect_motion_segments(
+    segments: &[f64],
+    duration: f64,
+    reference: &str,
+) -> Result<MotionSummary, ModelPackageError> {
+    if segments.len() < 2 {
+        return resource_error(
+            DiagnosticCode::ModelMotionInvalid,
+            reference,
+            "curve Segments must begin with an initial time/value point",
+        );
+    }
+    if segments.iter().any(|value| !value.is_finite()) {
+        return resource_error(
+            DiagnosticCode::ModelMotionInvalid,
+            reference,
+            "curve Segments must contain only finite numbers",
+        );
+    }
+    let mut previous_time = segments[0];
+    validate_motion_time(previous_time, 0.0, duration, reference, "initial point")?;
+    let mut index = 2usize;
+    let mut segment_count = 0usize;
+    let mut point_count = 1usize;
+    while index < segments.len() {
+        let segment_code = segments[index];
+        if segment_code.fract() != 0.0 {
+            return resource_error(
+                DiagnosticCode::ModelMotionInvalid,
+                reference,
+                format!("segment code at index {index} must be an integer"),
+            );
+        }
+        let (width, added_points, end_offset) = match segment_code as i32 {
+            0 | 2 | 3 => (3usize, 1usize, 1usize),
+            1 => (7usize, 3usize, 5usize),
+            code => {
+                return resource_error(
+                    DiagnosticCode::ModelMotionInvalid,
+                    reference,
+                    format!("segment code {code} at index {index} is unsupported"),
+                );
+            }
+        };
+        if segments.len().saturating_sub(index) < width {
+            return resource_error(
+                DiagnosticCode::ModelMotionInvalid,
+                reference,
+                format!("segment at index {index} is truncated"),
+            );
+        }
+        let end_time = segments[index + end_offset];
+        validate_motion_time(end_time, previous_time, duration, reference, "segment end")?;
+        if width == 7 {
+            validate_motion_time(
+                segments[index + 1],
+                previous_time,
+                end_time,
+                reference,
+                "Bezier control point 1",
+            )?;
+            validate_motion_time(
+                segments[index + 3],
+                previous_time,
+                end_time,
+                reference,
+                "Bezier control point 2",
+            )?;
+        }
+        segment_count += 1;
+        point_count += added_points;
+        previous_time = end_time;
+        index += width;
+    }
+    Ok(MotionSummary {
+        curve_count: 1,
+        segment_count,
+        point_count,
+        user_data_count: 0,
+    })
+}
+
+fn validate_motion_time(
+    time: f64,
+    minimum: f64,
+    duration: f64,
+    reference: &str,
+    label: &str,
+) -> Result<(), ModelPackageError> {
+    const TIME_TOLERANCE: f64 = 0.000_001;
+    if !time.is_finite() || time + TIME_TOLERANCE < minimum || time > duration + TIME_TOLERANCE {
+        return resource_error(
+            DiagnosticCode::ModelMotionInvalid,
+            reference,
+            format!("{label} time {time} is outside [{minimum}, {duration}]"),
+        );
+    }
+    Ok(())
+}
+
+fn inspect_expression_file(
+    path: &Path,
+    reference: &str,
+    maximum_bytes: u64,
+) -> Result<ExpressionSummary, ModelPackageError> {
+    let expression: ExpressionDefinition = read_typed_json(
+        path,
+        reference,
+        maximum_bytes,
+        DiagnosticCode::ModelExpressionInvalid,
+    )?;
+    if expression.expression_type != "Live2D Expression" {
+        return resource_error(
+            DiagnosticCode::ModelExpressionInvalid,
+            reference,
+            "Type must be Live2D Expression",
+        );
+    }
+    validate_resource_fade(
+        expression.fade_in_seconds,
+        DiagnosticCode::ModelExpressionInvalid,
+        reference,
+        "FadeInTime",
+    )?;
+    validate_resource_fade(
+        expression.fade_out_seconds,
+        DiagnosticCode::ModelExpressionInvalid,
+        reference,
+        "FadeOutTime",
+    )?;
+
+    let mut summary = ExpressionSummary {
+        parameter_count: expression.parameters.len(),
+        ..ExpressionSummary::default()
+    };
+    for parameter in expression.parameters {
+        require_resource_identifier(
+            &parameter.id,
+            DiagnosticCode::ModelExpressionInvalid,
+            reference,
+            "parameter Id",
+        )?;
+        if !parameter.value.is_finite() {
+            return resource_error(
+                DiagnosticCode::ModelExpressionInvalid,
+                reference,
+                "parameter Value must be finite",
+            );
+        }
+        *summary.blend_counts.entry(parameter.blend).or_insert(0) += 1;
+    }
+    Ok(summary)
+}
+
+fn require_resource_identifier(
+    value: &str,
+    code: DiagnosticCode,
+    reference: &str,
+    label: &str,
+) -> Result<(), ModelPackageError> {
+    if value.trim().is_empty() {
+        return resource_error(code, reference, format!("{label} must not be blank"));
+    }
+    Ok(())
+}
+
+fn validate_resource_fade(
+    value: Option<f64>,
+    code: DiagnosticCode,
+    reference: &str,
+    label: &str,
+) -> Result<(), ModelPackageError> {
+    if value.is_some_and(|value| !value.is_finite() || value < 0.0) {
+        return resource_error(
+            code,
+            reference,
+            format!("{label} must be a finite non-negative number"),
+        );
+    }
+    Ok(())
+}
+
+fn resource_error<T>(
+    code: DiagnosticCode,
+    reference: &str,
+    detail: impl Into<String>,
+) -> Result<T, ModelPackageError> {
+    Err(ModelPackageError::new(code, Some(reference), detail))
 }
 
 fn read_bounded(
@@ -1269,14 +1741,36 @@ mod tests {
         fs::write(package.path().join("model.moc3"), b"placeholder").expect("write moc");
         for resource in [
             "display.cdi3.json",
-            "smile.exp3.json",
-            "tap.motion3.json",
             "model.physics3.json",
             "model.pose3.json",
             "model.userdata3.json",
         ] {
             fs::write(package.path().join(resource), b"{}").expect("write JSON resource");
         }
+        fs::write(
+            package.path().join("smile.exp3.json"),
+            br#"{"Type":"Live2D Expression","Parameters":[]}"#,
+        )
+        .expect("write expression resource");
+        fs::write(
+            package.path().join("tap.motion3.json"),
+            br#"{
+                "Version":3,
+                "Meta":{
+                    "Duration":0.1,
+                    "Fps":30.0,
+                    "Loop":false,
+                    "AreBeziersRestricted":true,
+                    "CurveCount":0,
+                    "TotalSegmentCount":0,
+                    "TotalPointCount":0,
+                    "UserDataCount":0,
+                    "TotalUserDataSize":0
+                },
+                "Curves":[]
+            }"#,
+        )
+        .expect("write motion resource");
         fs::write(package.path().join("tap.flac"), b"placeholder").expect("write audio");
         let mut png = vec![0_u8; 24];
         png[..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
@@ -1321,8 +1815,141 @@ mod tests {
 
         let error = inspect_model_package(package.path(), ModelPackageLimits::default())
             .expect_err("malformed associated JSON must fail");
-        assert_eq!(error.code, DiagnosticCode::ModelResourceJsonInvalid);
+        assert_eq!(error.code, DiagnosticCode::ModelMotionInvalid);
         assert_eq!(error.resource.as_deref(), Some("tap.motion3.json"));
+    }
+
+    #[test]
+    fn all_preset_motion_and_expression_files_are_strongly_parsed() {
+        let root = repository_root().join("src-tauri/assets/models");
+        let mut motion_files = 0usize;
+        let mut motion_summary = MotionSummary::default();
+        let mut expression_files = 0usize;
+        let mut expression_summary = ExpressionSummary::default();
+        for mode in ["standard", "keyboard", "gamepad"] {
+            for entry in fs::read_dir(root.join(mode)).expect("list preset model") {
+                let path = entry.expect("read preset entry").path();
+                let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+                    continue;
+                };
+                if name.ends_with(".motion3.json") {
+                    let summary = inspect_motion_file(&path, name, 16 * 1024 * 1024)
+                        .unwrap_or_else(|error| panic!("inspect {mode}/{name}: {error}"));
+                    motion_files += 1;
+                    motion_summary.curve_count += summary.curve_count;
+                    motion_summary.segment_count += summary.segment_count;
+                    motion_summary.point_count += summary.point_count;
+                    motion_summary.user_data_count += summary.user_data_count;
+                } else if name.ends_with(".exp3.json") {
+                    let summary = inspect_expression_file(&path, name, 16 * 1024 * 1024)
+                        .unwrap_or_else(|error| panic!("inspect {mode}/{name}: {error}"));
+                    expression_files += 1;
+                    expression_summary.parameter_count += summary.parameter_count;
+                    for (blend, count) in summary.blend_counts {
+                        *expression_summary.blend_counts.entry(blend).or_insert(0) += count;
+                    }
+                }
+            }
+        }
+        assert_eq!(motion_files, 6);
+        assert_eq!(motion_summary.curve_count, 12);
+        assert_eq!(motion_summary.segment_count, 45);
+        assert_eq!(motion_summary.point_count, 123);
+        assert_eq!(motion_summary.user_data_count, 0);
+        assert_eq!(expression_files, 15);
+        assert_eq!(expression_summary.parameter_count, 15);
+        assert_eq!(
+            expression_summary.blend_counts,
+            BTreeMap::from([(ExpressionBlend::Add, 9), (ExpressionBlend::Multiply, 6),])
+        );
+    }
+
+    #[test]
+    fn motion_meta_and_segment_encoding_must_match() {
+        let package = tempfile::tempdir().expect("create package");
+        fs::write(
+            package.path().join("cat.model3.json"),
+            r#"{
+                "Version":3,
+                "FileReferences":{
+                    "Moc":"model.moc3",
+                    "Textures":[],
+                    "Motions":{"Tap":[{"File":"tap.motion3.json"}]}
+                }
+            }"#,
+        )
+        .expect("write model entry");
+        fs::write(package.path().join("model.moc3"), b"placeholder").expect("write moc");
+        fs::write(
+            package.path().join("tap.motion3.json"),
+            r#"{
+                "Version":3,
+                "Meta":{
+                    "Duration":1.0,
+                    "Fps":30.0,
+                    "Loop":false,
+                    "AreBeziersRestricted":true,
+                    "CurveCount":1,
+                    "TotalSegmentCount":1,
+                    "TotalPointCount":2,
+                    "UserDataCount":0,
+                    "TotalUserDataSize":0
+                },
+                "Curves":[{"Target":"Parameter","Id":"Param","Segments":[0,0,1,0.5]}]
+            }"#,
+        )
+        .expect("write truncated motion");
+
+        let error = inspect_model_package(package.path(), ModelPackageLimits::default())
+            .expect_err("truncated segment must fail");
+        assert_eq!(error.code, DiagnosticCode::ModelMotionInvalid);
+        assert_eq!(error.resource.as_deref(), Some("tap.motion3.json"));
+        assert!(error.detail.contains("truncated"));
+    }
+
+    #[test]
+    fn bezier_control_times_must_not_pass_the_segment_end() {
+        let error = inspect_motion_segments(
+            &[0.0, 0.0, 1.0, 0.25, 0.0, 1.25, 0.0, 0.5, 0.0],
+            2.0,
+            "tap.motion3.json",
+        )
+        .expect_err("Bezier control time after the segment end must fail");
+
+        assert_eq!(error.code, DiagnosticCode::ModelMotionInvalid);
+        assert_eq!(error.resource.as_deref(), Some("tap.motion3.json"));
+        assert!(error.detail.contains("Bezier control point 2"));
+    }
+
+    #[test]
+    fn expression_type_and_blend_are_strict() {
+        let package = tempfile::tempdir().expect("create package");
+        fs::write(
+            package.path().join("cat.model3.json"),
+            r#"{
+                "Version":3,
+                "FileReferences":{
+                    "Moc":"model.moc3",
+                    "Textures":[],
+                    "Expressions":[{"Name":"bad","File":"bad.exp3.json"}]
+                }
+            }"#,
+        )
+        .expect("write model entry");
+        fs::write(package.path().join("model.moc3"), b"placeholder").expect("write moc");
+        fs::write(
+            package.path().join("bad.exp3.json"),
+            r#"{
+                "Type":"Live2D Expression",
+                "Parameters":[{"Id":"Param","Value":1.0,"Blend":"Unknown"}]
+            }"#,
+        )
+        .expect("write invalid expression");
+
+        let error = inspect_model_package(package.path(), ModelPackageLimits::default())
+            .expect_err("unknown blend must fail");
+        assert_eq!(error.code, DiagnosticCode::ModelExpressionInvalid);
+        assert_eq!(error.resource.as_deref(), Some("bad.exp3.json"));
     }
 
     #[test]

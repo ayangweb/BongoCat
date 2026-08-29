@@ -1,7 +1,7 @@
 # Phase 0 Rust Model Package Spike
 
-状态：三个预置 model3 与静态关联资源解析通过；Cubism Core 和 renderer 未进入本 spike
-日期：2026-08-29
+状态：三个预置 model3、motion3、exp3 与静态关联资源解析通过；Cubism Core、行为求值和 renderer 未进入本 spike
+日期：2026-08-30
 
 ## Hypothesis
 
@@ -13,6 +13,7 @@
 
 - 要求包根目录恰好包含一个 `.model3.json`；
 - 解析 model3 v3 的 moc、texture、display info、expression、motion/sound、physics、pose、user data、group 和 hit area；
+- 强类型解析 motion3 v3 的 curve target、segment encoding、时间边界、fade、user data 和 Meta 计数，并强类型解析 exp3 的类型、参数、fade 与 Add/Multiply/Overwrite blend；
 - 规范化 `/` 与 `\\`，拒绝绝对路径、Windows 盘符、`..` 和 canonical root 之外的符号链接；
 - 有界读取 JSON、文件和整个包，在图片解码/GPU 分配前检查 PNG IHDR 与尺寸；
 - 索引 `resources/background.png`、`cover.png`、`left-keys` 和 `right-keys`，显式输出旧版 mode heuristic；
@@ -40,6 +41,8 @@ cargo fmt --manifest-path spikes/model-package/Cargo.toml -- --check
 cargo clippy --manifest-path spikes/model-package/Cargo.toml --locked --all-targets --all-features -- -D warnings
 cargo test --manifest-path spikes/model-package/Cargo.toml --locked
 cargo check --manifest-path spikes/model-package/Cargo.toml --locked --release
+cargo check --manifest-path spikes/model-package/Cargo.toml --locked --release --target x86_64-pc-windows-msvc
+cargo check --manifest-path spikes/model-package/Cargo.toml --locked --release --target aarch64-pc-windows-msvc
 cargo run --manifest-path spikes/model-package/Cargo.toml --locked -- src-tauri/assets/models/standard
 ```
 
@@ -47,7 +50,7 @@ cargo run --manifest-path spikes/model-package/Cargo.toml --locked -- src-tauri/
 
 ## Environment And Results
 
-本地验证环境为 macOS 26.5.2 build 25F84、Apple Silicon arm64、`aarch64-apple-darwin`、rustc/cargo 1.97.1。格式、Clippy、7 项单元/fixture 测试和 release check 通过；`x86_64-pc-windows-msvc` target 的 check 与 Clippy 同样通过。
+本地验证环境为 macOS 26.5.2 build 25F84、Apple Silicon arm64、`aarch64-apple-darwin`、rustc/cargo 1.97.1。格式、Clippy、11 项单元/fixture 测试、release check 和 license/source policy 通过；`x86_64-pc-windows-msvc` 与 `aarch64-pc-windows-msvc` release check 同样通过。
 
 远端验收 build commit 为 `7ee8acd5f2a3d4dcb7a1dbc36623cbe497aeae49`。Push run `33238204993` 与 PR run `33238206415` 各 16 个 jobs 全部通过；Linux model-package jobs 为 `99062839956`/`99062844146`，Windows 为 `99062839561`/`99062844097`，macOS 为 `99062839774`/`99062844085`。三个平台均执行 format、Clippy 和 tests，Windows/macOS 额外执行 release check。首个 runner 发现 Rust 1.98 新增的 `chunks_exact_to_as_chunks` lint 后，修复提交同时增加奇数长度 fixture hex 拒绝，再由上述两组 workflow 完整复验。
 
@@ -58,6 +61,8 @@ cargo run --manifest-path spikes/model-package/Cargo.toml --locked -- src-tauri/
 | gamepad  |   28 | 1,206,645 |    3 |          3 |            2 |           6 / 6 |
 
 六类共享异常 fixture 的 accept/reject 与稳定诊断完全一致。额外测试证明 model3 引用的符号链接不能逃出包根，递归扫描在超过配置深度时确定失败。CI 在 Linux contract job 重跑同一套测试；代码不含平台条件或平台 handle，Windows/macOS runner 已产生对等通过证据。
+
+本批进一步强类型读取 6 个预置 motion 文件和 15 个 expression 文件：motion 共 12 条 curve、45 个 segment、123 个 point、0 条 user data；expression 共 15 个 parameter，其中 Add 9 个、Multiply 6 个。测试拒绝截断/未知 segment、越过 segment end 的 Bezier control time、Meta 计数漂移、非有限时间或参数、空 Id、错误 expression Type 和未知 blend，并分别返回 `model_motion_invalid` 或 `model_expression_invalid`。这些结果只证明发布资源的结构与引用可读取，不证明 Cubism motion/expression 求值、参数混合、优先级或绘制语义正确。
 
 ## Success And Failure Criteria
 
