@@ -207,7 +207,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] Windows 实现 RegisterRawInputDevices 和 WM_INPUT 最小路径。
   - 状态（2026-08-29）：已实现注册、读取、注销和自动退出路径，并通过 Windows target 交叉 check/Clippy 以及 `windows-latest` 注册/退出 smoke。本批新增 `SendInput` scan-code down/up -> 系统 `WM_INPUT` callback -> raw decode 的闭环命令并接入 Windows runner；物理设备样本仍待实机，因此保持未勾选。
 - [x] 冻结 scan code、extended flag、左右修饰键和 RI_KEY_BREAK mapping contract；Win32 packet 接入仍待实机。
-  - 状态（2026-08-29）：同一 safe raw-byte boundary 已覆盖 RAWMOUSE `usButtonFlags`，五个 canonical mouse button 的 down/up 与同包顺序由 contract test 固定；button pressed-state/校正已接入 Windows spike，pointer movement 和 wheel 的 latest-value 分流仍属于平台 producer 实现。
+  - 状态（2026-08-29）：同一 safe raw-byte boundary 已覆盖 RAWMOUSE `usButtonFlags`，五个 canonical mouse button 的 down/up 与同包顺序由 contract test 固定；button pressed-state/校正已接入 Windows spike，commit `e776867` 的 push run `33256593886`、job `99111304790` 已通过 22 项 contract test 和五个 button VK 的真实查询。pointer movement 和 wheel 的 latest-value 分流仍属于平台 producer 实现。
 - [x] 建立平台无关 pressed set contract；Windows `GetAsyncKeyState` 校正仍待实机接入。
   - 状态（2026-08-29）：Windows spike 已增加 physical-key 到 virtual-key 查询计划、input desktop guard、只查询本地 pressed candidates 的 `GetAsyncKeyState` adapter，以及未知键触发 Reset 的 contract；commit `09773f0066f526799eb702fb1759049d0de9732f` 的 push/PR Windows jobs 已通过 `250 ms` scheduler 和连续 `2` 次缺失确认 smoke，真实丢失 release 恢复仍待完成。
 - [x] 定义校正频率、连续确认次数和误判保护。

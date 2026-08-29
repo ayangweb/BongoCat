@@ -133,4 +133,7 @@ Windows mouse button 已完成 raw byte decode、canonical mapping、callback ca
 virtual-key 的 `GetAsyncKeyState` 查询、连续两次缺失释放，以及 device/session/power/shutdown
 Reset；诊断按 keyboard/mouse 分别输出 captured、duplicate、unmatched、reconciled 和残留数。
 无注入的 `--mouse-button-state-smoke` 已接入 Windows runner。合成/物理 button release 与
-wheel/cursor latest-value 分流仍待验证，不能由 pointer-move flood 结果替代。
+wheel/cursor latest-value 分流仍待验证，不能由 pointer-move flood 结果替代。commit
+`e776867` 的 push run `33256593886`、job `99111304790` 已通过 22 项 Windows contract test、
+五个 button VK 查询、keyboard release recovery、两项压力 smoke、lifecycle Reset 和完整
+config-store tests。

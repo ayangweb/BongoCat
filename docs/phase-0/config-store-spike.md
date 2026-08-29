@@ -49,7 +49,9 @@ state、模型、日志、单实例和更新 channel 的环境隔离测试。
 和 PR input/config job `99109571372` 通过；同一 PR 的独立 config-store job `99109571503`
 随后在尚未启动 crash 子进程的首次 `load_or_default` 捕获第二个竞态：恢复锁刚释放就为默认
 提交重新加锁。当前实现改为整个 load/recover/create-default 共用单个 guard，新的 Windows
-runner 证据待本批 push run 验证。
+runner 已在 commit `e776867` 的 push run `33256593886` 验证：独立 config-store job
+`99111304933` 通过 18 项 unit test（含 100 次全新目录首次加载）和 2 项 process integration
+test；input/config job `99111304790` 随后再次执行完整 config-store tests 也通过。
 
 ## 未完成
 
