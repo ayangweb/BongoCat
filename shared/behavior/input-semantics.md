@@ -42,6 +42,8 @@ Runtime 使用布局无关的稳定物理键名。左右修饰键必须区分，
 
 数字手柄按钮以 `value >= 0.5` 产生 pressed，低于阈值产生 released；重复 edge 不增加 pressed 计数。axis 和 cursor 只保留最新值，不能阻塞可靠边沿。死区由产品配置决定，adapter 不得把设备默认死区静默写入共享协议。
 
+Windows XInput 的 0–3 user index 只作为当前连接的 `device_id`；同一 slot 断开再连接必须分配新 generation。signed thumb axis 按负半轴 `32768`、正半轴 `32767` 归一化到完整 `[-1, 1]`，trigger 按 `0..255` 归一化到 `[0, 1]`。adapter 不应用 `XINPUT_GAMEPAD_*_DEADZONE` 或 trigger threshold 常量，避免平台默认值覆盖产品配置与共享 `0.5` 按钮语义。
+
 ## 手部状态
 
 模型资源可以把多个键映射到同一只手。兼容模式下，同一手只显示最后按下且仍有效的键资源；任意映射到该手的 pressed key 都令对应 hand-down 参数为 true。

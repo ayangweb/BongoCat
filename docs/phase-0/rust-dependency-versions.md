@@ -75,7 +75,7 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2`，虽然 crates.io 最新稳
 
 当前 13 个 workspace 均纳入 locked format、Clippy、test 和 dependency policy；有发布构建的 spike 继续执行 release check。无依赖的 contract workspace 同样重新生成/检查 lockfile。附加平台验证包括：
 
-- `windows 0.62.2` 同时封装 Raw Input 与原生 overlay 边界；输入和 overlay crate 均在 `x86_64-pc-windows-msvc` 完成 Check/Clippy，overlay 另对 `aarch64-pc-windows-msvc` 完成 Check；真实 Windows 输入与 D3D11 生命周期 smoke 由 push CI 执行；
+- `windows 0.62.2` 同时封装 Raw Input、XInput 与原生 overlay 边界；输入和 overlay crate 均在 `x86_64-pc-windows-msvc` 完成 Check/Clippy，输入与 overlay 也对 `aarch64-pc-windows-msvc` 完成 Check；XInput 仅增加同一 package 的 `Win32_UI_Input_XboxController` feature，真实 Windows 输入与 D3D11 生命周期 smoke 由 push CI 执行；
 - `core-graphics2 0.6.1` 在已授予 Input Monitoring 的 macOS 会话创建 listen-only tap，完成 lifecycle Reset 和正常 shutdown；
 - `objc2-game-controller 0.3.2` 只在 macOS 输入 spike 的窄平台边界枚举 `GCExtendedGamepad`、安装 value-change handler 并管理 background delivery；许可证为 Zlib OR Apache-2.0 OR MIT，项目公共协议只接收自有 snapshot/event 类型，停止使用 GameController 时可替换该 adapter 而不改变 producer contract；
 - `metal 0.33.0` 创建透明 `CAMetalLayer`，完成两次 clear/present、隐藏/重显和自动退出；

@@ -7,8 +7,53 @@ use std::collections::BTreeSet;
 
 #[cfg(target_os = "windows")]
 mod windows_capture;
+#[cfg(target_os = "windows")]
+mod windows_xinput;
 
 fn main() {
+    #[cfg(target_os = "windows")]
+    if let Some(milliseconds) =
+        argument_value("--xinput-ms").and_then(|value| value.parse::<u64>().ok())
+    {
+        assert!(milliseconds > 0, "--xinput-ms must be greater than zero");
+        let report =
+            windows_xinput::run_xinput_probe(std::time::Duration::from_millis(milliseconds));
+        assert!(report.started);
+        assert!(report.service_enabled);
+        assert!(report.service_disabled);
+        assert!(report.api_calls >= 4);
+        assert_eq!(report.producer.query_errors, 0);
+        assert_eq!(report.producer.reliable_overflows, 0);
+        assert_eq!(report.axes.overflows, 0);
+        assert!(report.clean_shutdown);
+        println!(
+            "input-windows-spike: xinput started={} service_enabled={} service_disabled={} api_calls={} peak_connected={} polls={} query_errors={} connections={} disconnections={} button_down={} button_up={} reliable_events={} reliable_overflows={} reliable_discarded={} axis_captured={} axis_coalesced={} axis_consumed={} axis_discarded={} axis_overflows={} axis_samples={} rejected_after_close={} clean_shutdown={}",
+            report.started,
+            report.service_enabled,
+            report.service_disabled,
+            report.api_calls,
+            report.peak_connected,
+            report.producer.polls,
+            report.producer.query_errors,
+            report.producer.connections,
+            report.producer.disconnections,
+            report.producer.button_down,
+            report.producer.button_up,
+            report.reliable_events,
+            report.producer.reliable_overflows,
+            report.producer.reliable_discarded,
+            report.axes.captured,
+            report.axes.coalesced,
+            report.axes.consumed,
+            report.axes.discarded,
+            report.axes.overflows,
+            report.axis_samples,
+            report.producer.rejected_after_close,
+            report.clean_shutdown,
+        );
+        return;
+    }
+
     #[cfg(target_os = "windows")]
     if let Some(milliseconds) =
         argument_value("--queue-overflow-smoke-ms").and_then(|value| value.parse::<u64>().ok())

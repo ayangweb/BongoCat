@@ -442,7 +442,7 @@ jobs:
             ~/.cargo/git/db/
             spikes/input-windows/target/
             spikes/config-store/target/
-          key: ${{ runner.os }}-input-config-windows-${{ steps.rust-toolchain.outputs.hash }}-${{ hashFiles('spikes/input-windows/Cargo.lock', 'spikes/input-windows/Cargo.toml', 'spikes/config-store/Cargo.lock', 'spikes/config-store/Cargo.toml') }}
+          key: ${{ runner.os }}-input-config-windows-${{ steps.rust-toolchain.outputs.hash }}-${{ hashFiles('spikes/input-windows/Cargo.lock', 'spikes/input-windows/Cargo.toml', 'spikes/input-queue/Cargo.lock', 'spikes/input-queue/Cargo.toml', 'spikes/config-store/Cargo.lock', 'spikes/config-store/Cargo.toml') }}
           restore-keys: |
             ${{ runner.os }}-input-config-windows-${{ steps.rust-toolchain.outputs.hash }}-
             ${{ runner.os }}-input-config-windows-
@@ -452,6 +452,8 @@ jobs:
         run: cargo clippy --manifest-path spikes/input-windows/Cargo.toml --locked --all-targets -- -D warnings
       - name: Run Windows tests
         run: cargo test --manifest-path spikes/input-windows/Cargo.toml --locked
+      - name: Smoke Windows XInput polling and shutdown
+        run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --xinput-ms 250
       - name: Smoke Raw Input registration and shutdown
         run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --register-smoke-ms 100
       - name: Smoke Windows key-state reconciliation query

@@ -18,5 +18,6 @@ windows = { version = "=0.62.2", features = [
     "Win32_System_StationsAndDesktops",
     "Win32_UI_Input",
     "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Input_XboxController",
     "Win32_UI_WindowsAndMessaging",
 ] }

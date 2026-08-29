@@ -240,6 +240,7 @@ PixPin、Win+L 或其他系统级快捷键可能让应用收到按下边沿，�
 6. 会话锁定、桌面切换、睡眠、设备移除、服务重启和队列异常时发送 `Reset`；这些生命周期复位不等待确认阈值。
 7. 必要时用 `WH_KEYBOARD_LL` 补充合成事件，但 hook 不得覆盖 Raw Input 物理状态。
 8. `RegisterHotKey` 只处理应用快捷键；冲突必须反馈 UI 并保留旧绑定。
+9. XInput 固定轮询 0–3 号 slot；连接/断开和按钮使用可靠序列，摇杆/trigger 使用带 connection generation 的 latest-values。平台层只归一化原始范围，产品 dead-zone 由 runtime 配置统一决定。
 
 该方案不承诺安全桌面交付每个释放事件，而是保证丢事件不会产生永久卡键。自动释放超时只是最后保险，不是正常语义。
 
