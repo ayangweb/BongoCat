@@ -1,6 +1,6 @@
 use bongocat_input_windows_spike::{
-    CaptureResetReason, KeyStateSnapshot, PhysicalKey, PressedKeyCandidates, RawInputDeviceChange,
-    RawInputHeader, collect_key_state_snapshot_with, decode_keyboard_packet,
+    CaptureResetReason, KeyStateSnapshot, KeyboardEdge, PhysicalKey, PressedKeyCandidates,
+    RawInputDeviceChange, RawInputHeader, collect_key_state_snapshot_with, decode_keyboard_packet,
     decode_raw_keyboard_bytes,
 };
 use std::{
@@ -15,6 +15,10 @@ use windows::{
     Win32::{
         Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM},
         System::LibraryLoader::GetModuleHandleW,
+        System::RemoteDesktop::{
+            NOTIFY_FOR_THIS_SESSION, WTSRegisterSessionNotification,
+            WTSUnRegisterSessionNotification,
+        },
         System::StationsAndDesktops::{
             CloseDesktop, DESKTOP_CONTROL_FLAGS, DESKTOP_READOBJECTS, OpenInputDesktop,
         },
@@ -27,10 +31,14 @@ use windows::{
             WindowsAndMessaging::{
                 CREATESTRUCTW, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
                 GIDC_ARRIVAL, GIDC_REMOVAL, GWLP_USERDATA, GetMessageW, GetWindowLongPtrW,
-                HWND_MESSAGE, KillTimer, MSG, PostQuitMessage, RegisterClassW, SetTimer,
-                SetWindowLongPtrW, TranslateMessage, UnregisterClassW, WINDOW_EX_STYLE,
-                WINDOW_STYLE, WM_DESTROY, WM_INPUT, WM_INPUT_DEVICE_CHANGE, WM_NCCREATE,
-                WM_NCDESTROY, WM_TIMER, WNDCLASSW,
+                KillTimer, MSG, PBT_APMRESUMEAUTOMATIC, PBT_APMRESUMECRITICAL,
+                PBT_APMRESUMESTANDBY, PBT_APMRESUMESUSPEND, PBT_APMSTANDBY, PBT_APMSUSPEND,
+                PostQuitMessage, RegisterClassW, SendMessageW, SetTimer, SetWindowLongPtrW,
+                TranslateMessage, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_DESTROY,
+                WM_INPUT, WM_INPUT_DEVICE_CHANGE, WM_NCCREATE, WM_NCDESTROY, WM_POWERBROADCAST,
+                WM_TIMER, WM_WTSSESSION_CHANGE, WNDCLASSW, WTS_CONSOLE_CONNECT,
+                WTS_CONSOLE_DISCONNECT, WTS_REMOTE_CONNECT, WTS_REMOTE_DISCONNECT,
+                WTS_SESSION_LOCK, WTS_SESSION_UNLOCK,
             },
         },
     },
@@ -45,13 +53,18 @@ const REQUIRED_MISSING_CONFIRMATIONS: u8 = 2;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct RegistrationReport {
     pub registered: bool,
+    pub session_notifications_registered: bool,
+    pub session_notifications_unregistered: bool,
     pub clean_shutdown: bool,
     pub raw_messages: u64,
     pub keyboard_edges: u64,
     pub device_arrivals: u64,
     pub device_removals: u64,
     pub resets: u64,
+    pub reset_releases: u64,
     pub device_removed_resets: u64,
+    pub session_change_resets: u64,
+    pub power_change_resets: u64,
     pub service_stopped_resets: u64,
     pub unqueryable_key_resets: u64,
     pub state_query_unavailable_resets: u64,
@@ -64,6 +77,8 @@ pub struct RegistrationReport {
 
 #[derive(Default)]
 struct WindowState {
+    session_notifications_registered: bool,
+    session_notifications_unregistered: bool,
     raw_messages: u64,
     keyboard_edges: u64,
     device_arrivals: u64,
@@ -80,13 +95,18 @@ impl WindowState {
         let candidate_counters = self.pressed_candidates.counters();
         RegistrationReport {
             registered,
+            session_notifications_registered: self.session_notifications_registered,
+            session_notifications_unregistered: self.session_notifications_unregistered,
             clean_shutdown,
             raw_messages: self.raw_messages,
             keyboard_edges: self.keyboard_edges,
             device_arrivals: self.device_arrivals,
             device_removals: self.device_removals,
             resets: candidate_counters.resets,
+            reset_releases: candidate_counters.reset_releases,
             device_removed_resets: candidate_counters.device_removed_resets,
+            session_change_resets: candidate_counters.session_change_resets,
+            power_change_resets: candidate_counters.power_change_resets,
             service_stopped_resets: candidate_counters.service_stopped_resets,
             unqueryable_key_resets: candidate_counters.unqueryable_key_resets,
             state_query_unavailable_resets: candidate_counters.state_query_unavailable_resets,
@@ -120,7 +140,13 @@ pub fn run_registration_smoke(duration: Duration) -> WindowsResult<RegistrationR
     // SAFETY: all Win32 window operations remain on this thread. The boxed
     // state outlives the HWND and is released only after WM_NCDESTROY clears
     // GWLP_USERDATA and the message loop exits.
-    unsafe { run_registration_smoke_inner(duration) }
+    unsafe { run_registration_smoke_inner(duration, false) }
+}
+
+pub fn run_lifecycle_smoke(duration: Duration) -> WindowsResult<RegistrationReport> {
+    // SAFETY: this uses the same thread-confined window contract and sends only
+    // synchronous lifecycle messages to its own hidden HWND.
+    unsafe { run_registration_smoke_inner(duration, true) }
 }
 
 pub fn query_pressed_keys(candidates: &BTreeSet<PhysicalKey>) -> WindowsResult<KeyStateSnapshot> {
@@ -138,7 +164,10 @@ pub fn query_pressed_keys(candidates: &BTreeSet<PhysicalKey>) -> WindowsResult<K
     }
 }
 
-unsafe fn run_registration_smoke_inner(duration: Duration) -> WindowsResult<RegistrationReport> {
+unsafe fn run_registration_smoke_inner(
+    duration: Duration,
+    inject_lifecycle: bool,
+) -> WindowsResult<RegistrationReport> {
     let module = unsafe { GetModuleHandleW(None)? };
     let instance = HINSTANCE(module.0);
     let class_name = w!("BongoCatInputSpikeWindow");
@@ -164,7 +193,7 @@ unsafe fn run_registration_smoke_inner(duration: Duration) -> WindowsResult<Regi
             0,
             0,
             0,
-            Some(HWND_MESSAGE),
+            None,
             None,
             Some(instance),
             Some(state_ptr.cast()),
@@ -178,6 +207,13 @@ unsafe fn run_registration_smoke_inner(duration: Duration) -> WindowsResult<Regi
         }
     };
 
+    if let Err(error) = unsafe { WTSRegisterSessionNotification(window, NOTIFY_FOR_THIS_SESSION) } {
+        let _ = unsafe { DestroyWindow(window) };
+        let _ = unsafe { UnregisterClassW(class_name, Some(instance)) };
+        return Err(error);
+    }
+    state.session_notifications_registered = true;
+
     let devices = [
         raw_input_device(0x02, window),
         raw_input_device(0x06, window),
@@ -188,6 +224,10 @@ unsafe fn run_registration_smoke_inner(duration: Duration) -> WindowsResult<Regi
         let _ = unsafe { DestroyWindow(window) };
         let _ = unsafe { UnregisterClassW(class_name, Some(instance)) };
         return Err(error);
+    }
+
+    if inject_lifecycle {
+        unsafe { inject_lifecycle_messages(window, state_ptr) };
     }
 
     if unsafe {
@@ -235,7 +275,32 @@ unsafe fn run_registration_smoke_inner(duration: Duration) -> WindowsResult<Regi
     }
     removal_result?;
     class_result?;
-    Ok(state.report(true, true))
+    Ok(state.report(true, state.session_notifications_unregistered))
+}
+
+unsafe fn inject_lifecycle_messages(window: HWND, state: *mut WindowState) {
+    for (message, event) in [
+        (WM_WTSSESSION_CHANGE, WTS_SESSION_LOCK),
+        (WM_WTSSESSION_CHANGE, WTS_SESSION_UNLOCK),
+        (WM_POWERBROADCAST, PBT_APMSUSPEND),
+        (WM_POWERBROADCAST, PBT_APMRESUMEAUTOMATIC),
+    ] {
+        // SAFETY: state is the live Box installed in this window's user data.
+        unsafe {
+            (*state).pressed_candidates.apply_edge(KeyboardEdge {
+                key: PhysicalKey::A,
+                pressed: true,
+            })
+        };
+        unsafe {
+            SendMessageW(
+                window,
+                message,
+                Some(WPARAM(event as usize)),
+                Some(LPARAM(0)),
+            )
+        };
+    }
 }
 
 fn raw_input_device(usage: u16, window: HWND) -> RAWINPUTDEVICE {
@@ -316,6 +381,48 @@ unsafe extern "system" fn window_proc(
             state.pressed_candidates.apply_device_change(change);
             Some(LRESULT(0))
         }
+        WM_WTSSESSION_CHANGE if !state.is_null() => {
+            let reset = matches!(
+                wparam.0 as u32,
+                WTS_SESSION_LOCK
+                    | WTS_SESSION_UNLOCK
+                    | WTS_CONSOLE_CONNECT
+                    | WTS_CONSOLE_DISCONNECT
+                    | WTS_REMOTE_CONNECT
+                    | WTS_REMOTE_DISCONNECT
+            );
+            if reset {
+                // SAFETY: GWLP_USERDATA points to the live WindowState until
+                // WM_NCDESTROY clears it.
+                unsafe {
+                    (*state)
+                        .pressed_candidates
+                        .reset(CaptureResetReason::SessionChanged)
+                };
+            }
+            Some(LRESULT(0))
+        }
+        WM_POWERBROADCAST if !state.is_null() => {
+            let reset = matches!(
+                wparam.0 as u32,
+                PBT_APMSUSPEND
+                    | PBT_APMSTANDBY
+                    | PBT_APMRESUMEAUTOMATIC
+                    | PBT_APMRESUMECRITICAL
+                    | PBT_APMRESUMESTANDBY
+                    | PBT_APMRESUMESUSPEND
+            );
+            if reset {
+                // SAFETY: GWLP_USERDATA points to the live WindowState until
+                // WM_NCDESTROY clears it.
+                unsafe {
+                    (*state)
+                        .pressed_candidates
+                        .reset(CaptureResetReason::PowerChanged)
+                };
+            }
+            Some(LRESULT(1))
+        }
         WM_TIMER if wparam.0 == RECONCILIATION_TIMER_ID && !state.is_null() => {
             // SAFETY: GWLP_USERDATA points to the live WindowState until
             // WM_NCDESTROY clears it.
@@ -338,6 +445,12 @@ unsafe extern "system" fn window_proc(
                         .pressed_candidates
                         .reset(CaptureResetReason::ServiceStopped)
                 };
+                if unsafe { (*state).session_notifications_registered }
+                    && !unsafe { (*state).session_notifications_unregistered }
+                {
+                    let unregistered = unsafe { WTSUnRegisterSessionNotification(window) }.is_ok();
+                    unsafe { (*state).session_notifications_unregistered = unregistered };
+                }
             }
             unsafe { PostQuitMessage(0) };
             Some(LRESULT(0))

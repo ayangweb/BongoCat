@@ -33,6 +33,31 @@ fn main() {
 
     #[cfg(target_os = "windows")]
     if let Some(milliseconds) =
+        argument_value("--lifecycle-smoke-ms").and_then(|value| value.parse::<u64>().ok())
+    {
+        let report =
+            windows_capture::run_lifecycle_smoke(std::time::Duration::from_millis(milliseconds))
+                .expect("Windows input lifecycle smoke failed");
+        assert!(report.registered, "Raw Input devices were not registered");
+        assert!(
+            report.session_notifications_registered,
+            "session notifications were not registered"
+        );
+        assert!(
+            report.session_notifications_unregistered,
+            "session notifications were not unregistered"
+        );
+        assert_eq!(report.session_change_resets, 2);
+        assert_eq!(report.power_change_resets, 2);
+        assert_eq!(report.reset_releases, 4);
+        assert!(report.clean_shutdown);
+        assert_eq!(report.callback_panics, 0);
+        print_registration_report(report);
+        return;
+    }
+
+    #[cfg(target_os = "windows")]
+    if let Some(milliseconds) =
         argument_value("--reconcile-smoke-ms").and_then(|value| value.parse::<u64>().ok())
     {
         let report =
@@ -95,15 +120,20 @@ fn main() {
 #[cfg(target_os = "windows")]
 fn print_registration_report(report: windows_capture::RegistrationReport) {
     println!(
-        "input-windows-spike: registered={} clean_shutdown={} raw_messages={} keyboard_edges={} device_arrivals={} device_removals={} resets={} device_removed_resets={} service_stopped_resets={} unqueryable_key_resets={} state_query_unavailable_resets={} reconciliation_runs={} reconciled_releases={} reconciliation_query_errors={} decode_errors={} callback_panics={}",
+        "input-windows-spike: registered={} session_notifications_registered={} session_notifications_unregistered={} clean_shutdown={} raw_messages={} keyboard_edges={} device_arrivals={} device_removals={} resets={} reset_releases={} device_removed_resets={} session_change_resets={} power_change_resets={} service_stopped_resets={} unqueryable_key_resets={} state_query_unavailable_resets={} reconciliation_runs={} reconciled_releases={} reconciliation_query_errors={} decode_errors={} callback_panics={}",
         report.registered,
+        report.session_notifications_registered,
+        report.session_notifications_unregistered,
         report.clean_shutdown,
         report.raw_messages,
         report.keyboard_edges,
         report.device_arrivals,
         report.device_removals,
         report.resets,
+        report.reset_releases,
         report.device_removed_resets,
+        report.session_change_resets,
+        report.power_change_resets,
         report.service_stopped_resets,
         report.unqueryable_key_resets,
         report.state_query_unavailable_resets,

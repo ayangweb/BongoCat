@@ -151,6 +151,8 @@ pub enum RawInputDeviceChange {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CaptureResetReason {
     DeviceRemoved,
+    SessionChanged,
+    PowerChanged,
     ServiceStopped,
     UnqueryableKey,
     StateQueryUnavailable,
@@ -163,7 +165,10 @@ pub struct CandidateCounters {
     pub duplicate_down: u64,
     pub unmatched_up: u64,
     pub resets: u64,
+    pub reset_releases: u64,
     pub device_removed_resets: u64,
+    pub session_change_resets: u64,
+    pub power_change_resets: u64,
     pub service_stopped_resets: u64,
     pub unqueryable_key_resets: u64,
     pub state_query_unavailable_resets: u64,
@@ -220,10 +225,13 @@ impl PressedKeyCandidates {
     }
 
     pub fn reset(&mut self, reason: CaptureResetReason) {
+        self.counters.reset_releases += self.keys.len() as u64;
         self.keys.clear();
         self.counters.resets += 1;
         match reason {
             CaptureResetReason::DeviceRemoved => self.counters.device_removed_resets += 1,
+            CaptureResetReason::SessionChanged => self.counters.session_change_resets += 1,
+            CaptureResetReason::PowerChanged => self.counters.power_change_resets += 1,
             CaptureResetReason::ServiceStopped => self.counters.service_stopped_resets += 1,
             CaptureResetReason::UnqueryableKey => self.counters.unqueryable_key_resets += 1,
             CaptureResetReason::StateQueryUnavailable => {
@@ -625,7 +633,29 @@ mod tests {
         assert_eq!(counters.duplicate_down, 1);
         assert_eq!(counters.unmatched_up, 1);
         assert_eq!(counters.resets, 1);
+        assert_eq!(counters.reset_releases, 1);
         assert_eq!(counters.service_stopped_resets, 1);
+    }
+
+    #[test]
+    fn session_and_power_resets_release_pressed_candidates() {
+        let mut candidates = PressedKeyCandidates::default();
+        for reason in [
+            CaptureResetReason::SessionChanged,
+            CaptureResetReason::PowerChanged,
+        ] {
+            candidates.apply_edge(KeyboardEdge {
+                key: PhysicalKey::A,
+                pressed: true,
+            });
+            candidates.reset(reason);
+            assert!(candidates.keys().is_empty());
+        }
+        let counters = candidates.counters();
+        assert_eq!(counters.resets, 2);
+        assert_eq!(counters.reset_releases, 2);
+        assert_eq!(counters.session_change_resets, 1);
+        assert_eq!(counters.power_change_resets, 1);
     }
 
     #[test]

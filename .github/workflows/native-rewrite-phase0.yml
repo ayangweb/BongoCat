@@ -188,6 +188,8 @@ jobs:
         run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --key-state-smoke
       - name: Smoke Windows reconciliation scheduler
         run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --reconcile-smoke-ms 600
+      - name: Smoke Windows session and power resets
+        run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --lifecycle-smoke-ms 100
 
   windows-gpui-spikes:
     name: Build Windows GPUI spikes
