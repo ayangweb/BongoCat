@@ -1,6 +1,6 @@
 # Windows Raw Input Spike
 
-状态：平台无关 mapping contract、Windows Raw Input 注册/退出路径、`GetAsyncKeyState` 查询 adapter 与周期性校正已实现；注册/退出、查询和设备通知注册 smoke 已通过，scheduler smoke、真实键盘和真实热插拔待验证
+状态：平台无关 mapping contract、Windows Raw Input 注册/退出路径、`GetAsyncKeyState` 周期校正与生命周期 Reset 已实现；注册/退出、查询、scheduler 和受控 session/power smoke 已通过，真实键盘、锁屏/睡眠和热插拔待验证
 日期：2026-08-29
 
 ## 范围
@@ -12,7 +12,7 @@
 - E1 Pause 序列，避免误判为左 Control；
 - 未知 scan code 保留为诊断值，不静默丢弃；
 - `GetRawInputData` 返回的声明长度、输入类型、键盘 payload 偏移和截断数据在进入 mapper 前校验；
-- 在专用 message-only HWND 上为鼠标和键盘注册 `RIDEV_INPUTSINK`；
+- 在永不显示的专用顶层 HWND 上为鼠标和键盘注册 `RIDEV_INPUTSINK`；顶层窗口用于接收 message-only HWND 收不到的电源广播；
 - `WM_INPUT` 先查询长度，再使用对齐 buffer 读取，不向安全 mapper 泄漏 handle/pointer；
 - callback panic boundary、`WM_TIMER` 自动退出、Raw Input 注销、window class 注销和清理结果诊断。
 - 只对本地 pressed candidates 建立 physical-key 到 Win32 virtual-key 的查询计划，左右修饰键使用独立 virtual-key；
@@ -22,6 +22,8 @@
 - 注册 `RIDEV_DEVNOTIFY` 并处理 `WM_INPUT_DEVICE_CHANGE`；设备移除和服务停止会清空平台候选 pressed-set 并记录 Reset，不记录具体键值。
 - message window 每 `250 ms` 查询一次候选 pressed-set，同一键连续 `2` 次缺失才形成 reconciled release；中间重新确认按下会取消待释放状态。
 - input desktop 查询失败或候选键不可查询时立即 Reset，不把不可信的全零 snapshot 当作正常释放。
+- 使用 `WTSRegisterSessionNotification`/`WTSUnRegisterSessionNotification` 成对管理当前会话通知；锁定、解锁、console/remote connect/disconnect 都立即 Reset。
+- 处理 `WM_POWERBROADCAST` 的 suspend/standby 和各类 resume 通知；进入和离开不可观测窗口都立即 Reset。
 
 安全 contract 可在 macOS/Linux 离线运行；Win32 wrapper 使用精确锁定的 `windows = 0.61.3`，只在 Windows target 编译。wrapper 当前只输出消息、edge、decode error 和 callback panic 计数，不记录真实按键值。
 
@@ -35,9 +37,10 @@ cargo run --manifest-path spikes/input-windows/Cargo.toml --locked
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --register-smoke-ms 100
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --key-state-smoke
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --reconcile-smoke-ms 600
+cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --lifecycle-smoke-ms 100
 ```
 
-当前本地验证包括 macOS host 上的 format、15 项 contract test、Clippy 和 release check，以及 `x86_64-pc-windows-msvc` 的 check/Clippy。测试覆盖左右修饰键 virtual-key、只查询 pressed candidates、未知键触发 Reset、设备移除/服务停止 Reset、重复 down/无匹配 up 诊断、连续两次缺失释放、仍按下取消待确认和零确认阈值拒绝。
+当前本地验证包括 macOS host 上的 format、16 项 contract test、Clippy 和 release check，以及 `x86_64-pc-windows-msvc` 的 check/Clippy/release check。测试覆盖左右修饰键 virtual-key、只查询 pressed candidates、未知键触发 Reset、设备移除/服务停止/session/power Reset、Reset 释放数量、重复 down/无匹配 up 诊断、连续两次缺失释放、仍按下取消待确认和零确认阈值拒绝。
 
 Windows runner 验收证据：
 
@@ -76,4 +79,13 @@ Windows runner 验收证据：
 
 该 smoke 的候选 pressed-set 为空，只证明 timer、input desktop 查询、连续确认实现和 shutdown 可以共存。真实 Raw Input down 后丢失 up 的恢复延迟与正确性仍须受控输入验证。
 
-下一步是获取真实 `RAWINPUTHEADER`/`RAWKEYBOARD` 样本，验证连续缺失能在实际 callback 后形成 reconciled release，以及设备句柄生命周期、E0/E1 实际序列、`RI_KEY_BREAK` 与热插拔。最后执行 PixPin、Win+L、PrintScreen、UAC 和管理员/非管理员矩阵；不得用无人值守 CI 的空闲查询替代这些平台验收。
+会话与电源 Reset 的 Windows runner 证据：
+
+- 实现 commit：`32bc9a37efd201a788511ee86e7350c6a5058ab3`；
+- push run：`33234259414`，job `99052333561`；
+- `windows-latest` 通过 build、Clippy、16 项 contract test 和 `--lifecycle-smoke-ms 100`；
+- 报告为 `session_notifications_registered=true session_notifications_unregistered=true clean_shutdown=true resets=5 reset_releases=4 session_change_resets=2 power_change_resets=2 service_stopped_resets=1 callback_panics=0`。
+
+该 smoke 在每条受控 `WM_WTSSESSION_CHANGE`/`WM_POWERBROADCAST` 前注入一个无 KeyUp 候选，并验证消息 dispatch 实际清空它；它不等于操作系统真实锁屏或睡眠。Win+L、快速用户切换、睡眠/唤醒和 UAC 返回仍需交互式 Windows 验收。
+
+下一步是获取真实 `RAWINPUTHEADER`/`RAWKEYBOARD` 样本，验证连续缺失能在实际 callback 后形成 reconciled release，以及设备句柄生命周期、E0/E1 实际序列、`RI_KEY_BREAK` 与热插拔。最后执行 PixPin、Win+L、睡眠/唤醒、PrintScreen、UAC 和管理员/非管理员矩阵；不得用无人值守 CI 的空闲查询或受控生命周期消息替代这些平台验收。
