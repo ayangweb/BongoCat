@@ -191,7 +191,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 - 状态（2026-08-28）：`spikes/input-state/` 已建立纯 Rust pressed-set contract，覆盖正常 down/up、重复 down、Reconcile、Reset、issue #47 的丢失 release 恢复、可靠事件的序列跳号/重复/乱序诊断，以及 `250 ms` 校正调度和连续 `2` 次缺失确认的误判保护；计数器不记录具体键值。平台采集、runtime 接入和管理员/权限场景仍待实机验证，详见 `docs/phase-0/input-state-spike.md`。
 - 状态（2026-08-29）：`spikes/input-windows/` 已冻结 `RI_KEY_BREAK`、E0/E1、左右修饰键、PrintScreen、未知 scan code 保留和安全 `RAWINPUT` 字节解析 contract；已实现 message-only HWND、Raw Input 注册、`WM_INPUT` 读取、计数诊断与定时退出 wrapper。commit `0672a00b3d278505a1345f8e749b814bd9391b3c` 的 push/PR Windows jobs 通过注册/退出 smoke；commit `a338686d0af9461f5d1997dac2b67c64591b333f` 的 push run `33232636952` 与 pull request run `33232638253` 进一步通过 input desktop guard 和 `GetAsyncKeyState` 查询 smoke。真实设备样本、热插拔和周期性校正仍待完成，详见 `docs/phase-0/input-windows-spike.md`。
-- 状态（2026-08-29）：`spikes/input-macos/` 已建立 macOS 权限/tap 生命周期 contract、listen-only `CGEventTap` 专用 run loop、panic-isolated callback、固定容量 callback queue 和候选 pressed-set 周期校正；当前 macOS 会话累计完成 105 次创建运行停止 smoke，受控按键序列曾报告 `key_down=2 key_up=2`、`callback_panics=0`，最新 600 ms tap 完成 2 次校正且 shutdown Reset 为 1。真实 modifier 字段、丢失 release 恢复、系统 timeout/disable、TCC 拒绝/撤销和锁屏/睡眠恢复仍未完成，详见 `docs/phase-0/input-macos-spike.md`。
+- 状态（2026-08-29）：`spikes/input-macos/` 已建立 macOS 权限/tap 生命周期 contract、listen-only `CGEventTap` 专用 run loop、panic-isolated callback、固定容量 callback queue 和候选 pressed-set 周期校正；当前 macOS 会话累计完成 105 次创建运行停止 smoke，受控按键序列曾报告 `key_down=2 key_up=2`、`callback_panics=0`，最新 600 ms tap 完成 2 次校正且 shutdown Reset 为 1。commit `c271ceb2449b48f37569c6746fbe7b7170dbe0d3` 又完成 timeout/user-disable 各 20 次受控故障恢复，全部重新启用并通过 Reset 释放注入的缺失 KeyUp 候选。真实 modifier 字段、真实丢失 release、系统自然 timeout、TCC 拒绝/撤销和锁屏/睡眠恢复仍未完成，详见 `docs/phase-0/input-macos-spike.md`。
 
 - [ ] Windows 实现 RegisterRawInputDevices 和 WM_INPUT 最小路径。
   - 状态（2026-08-29）：已实现注册、读取、注销和自动退出路径，并通过 Windows target 交叉 check/Clippy 以及 `windows-latest` 注册/退出 smoke；仍需受控实机 `WM_INPUT` 输入样本后才能勾选。
@@ -207,12 +207,14 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 实测 Win+L、PrintScreen、UAC 和管理员/非管理员场景。
 - [ ] 进行 10 分钟高速鼠标 + 键盘压力测试，edge 丢失计数必须为 0。
 - [ ] macOS 实现 CGEventTap、权限拒绝/授予和 tap 自动重启。
+  - 状态（2026-08-29）：真实 listen-only tap 与受控 timeout/user-disable Reset + re-enable 已通过；TCC 拒绝、撤销、重新授予和系统自然 timeout 矩阵仍待实机完成。
 - [ ] macOS 使用 CGEventSourceKeyState 校正 pressed state。
   - 状态（2026-08-29）：候选 pressed keycode 集合可生成仍按下快照和释放计数；run-loop consumer 已从 KeyDown/Up、`FlagsChanged` 和 Reset 维护平台候选集合，并每 `250 ms` 使用 `CGEventSourceKeyState` 校正，连续 `2` 次缺失才释放。当前 macOS 实机 600 ms tap 完成 2 次校正且诊断为 0；真实丢失 release 与 runtime pressed state 消费仍待完成。
 - [ ] 连续 start/stop/restart 输入服务 100 次，无资源泄漏。
-  - 状态（2026-08-28）：`--tap-ms 20 --cycles 100` 全部创建、运行、停止成功，无 error、disabled 残留或 callback panic；专门的泄漏工具采样和 timeout/权限故障重启仍待完成。
+  - 状态（2026-08-29）：`--tap-ms 20 --cycles 100` 全部创建、运行、停止成功，无 error、disabled 残留或 callback panic；timeout/user-disable 又各完成 20 次受控恢复。专门的泄漏工具采样、100 次故障循环和权限故障重启仍待完成。
 - [x] 记录 monio 对照结果，但不引入生产依赖；`docs/phase-0/monio-comparison.md` 基于 commit `d1766e0dcd20dea0435be16cd80adaa749b86e30` 记录 Raw Input、channel、reconciliation、Reset、callback 和许可证差异。
 - [ ] 为 captured、reconciled、reset、duplicate、overflow 分别维护计数器，不记录具体键值。
+  - 状态（2026-08-29）：macOS spike 已输出事件类型、reconciled release、Reset 次数/释放数、duplicate/unmatched 和 queue overflow/recovery 数量，且不输出具体键值；Windows 与产品 runtime 的统一诊断 snapshot 仍待完成。
 - [ ] 验证输入 callback panic 隔离、队列关闭和应用退出竞态，不允许 callback 访问已析构 runtime。
 
 ### 1.8 Cubism/Renderer spike
@@ -802,8 +804,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 12. [ ] `P0-INPUT-MAC`：完成 CGEventTap 权限拒绝/授予/恢复、状态校正和 100 次 restart。
 
-- [x] 完成权限/tap 生命周期 contract 和只读 preflight probe；真实 tap callback 与权限矩阵仍未完成。
-- [x] 完成候选 pressed set 到 `CGEventSourceKeyState` 校正快照的边界；周期调度、runtime 接入和生命周期实测仍未完成。
+- [x] 完成权限/tap 生命周期 contract、只读 preflight、真实 callback 和受控 disable 恢复；TCC 权限矩阵与系统自然 timeout 仍未完成。
+- [x] 完成候选 pressed set 到 `CGEventSourceKeyState` 校正快照的边界和周期调度；真实丢失 release、runtime 接入和生命周期实测仍未完成。
 
 13. [ ] `P0-CUBISM`：确认 SDK/许可证/binding 生成，三个预置模型完成 Core、资源和 renderer spike。
 14. [ ] `P0-GO-NO-GO`：汇总证据、阻塞和条件，确认后再建立完整产品 workspace。
