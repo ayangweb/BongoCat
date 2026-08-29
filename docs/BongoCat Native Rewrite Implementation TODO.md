@@ -211,7 +211,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-29）：候选 pressed keycode 集合可生成仍按下快照和释放计数；run-loop consumer 已从 KeyDown/Up、`FlagsChanged` 和 Reset 维护平台候选集合，并每 `250 ms` 使用 `CGEventSourceKeyState` 校正，连续 `2` 次缺失才释放。当前 macOS 实机 600 ms tap 完成 2 次校正且诊断为 0；真实丢失 release 与 runtime pressed state 消费仍待完成。
 - [ ] 连续 start/stop/restart 输入服务 100 次，无资源泄漏。
   - 状态（2026-08-28）：`--tap-ms 20 --cycles 100` 全部创建、运行、停止成功，无 error、disabled 残留或 callback panic；专门的泄漏工具采样和 timeout/权限故障重启仍待完成。
-- [ ] 记录 monio 对照结果，但不引入生产依赖。
+- [x] 记录 monio 对照结果，但不引入生产依赖；`docs/phase-0/monio-comparison.md` 基于 commit `d1766e0dcd20dea0435be16cd80adaa749b86e30` 记录 Raw Input、channel、reconciliation、Reset、callback 和许可证差异。
 - [ ] 为 captured、reconciled、reset、duplicate、overflow 分别维护计数器，不记录具体键值。
 - [ ] 验证输入 callback panic 隔离、队列关闭和应用退出竞态，不允许 callback 访问已析构 runtime。
 
