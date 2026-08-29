@@ -1,7 +1,8 @@
 #[cfg(target_os = "macos")]
 use bongocat_input_macos_spike::{
-    CaptureAction, CaptureEvent, MacCaptureLifecycle, PermissionState, input_monitoring_preflight,
-    reconcile_pressed_key_codes, request_input_monitoring_access, run_listen_only_tap,
+    CaptureAction, CaptureEvent, MacCaptureLifecycle, PermissionState, TapDisableReason,
+    input_monitoring_preflight, reconcile_pressed_key_codes, request_input_monitoring_access,
+    run_listen_only_tap,
 };
 #[cfg(target_os = "macos")]
 use std::{collections::BTreeSet, time::Duration};
@@ -11,6 +12,17 @@ fn main() {
     {
         let request = std::env::args().any(|arg| arg == "--request");
         let tap_ms = argument_value("--tap-ms").and_then(|value| value.parse::<u64>().ok());
+        let injected_disable = match argument_value("--inject-disable").as_deref() {
+            None => None,
+            Some("timeout") => Some(TapDisableReason::Timeout),
+            Some("user") => Some(TapDisableReason::UserInput),
+            Some(value) => {
+                eprintln!(
+                    "input-macos-spike: invalid --inject-disable value {value:?}; expected timeout or user"
+                );
+                std::process::exit(2);
+            }
+        };
         let key_state_code =
             argument_value("--key-state").and_then(|value| value.parse::<u16>().ok());
         let cycles = argument_value("--cycles")
@@ -59,9 +71,9 @@ fn main() {
                 println!("input-macos-spike: tap probe skipped because permission is denied");
             } else {
                 for cycle in 0..cycles {
-                    match run_listen_only_tap(Duration::from_millis(tap_ms)) {
+                    match run_listen_only_tap(Duration::from_millis(tap_ms), injected_disable) {
                         Ok(report) => println!(
-                            "input-macos-spike: tap cycle={} started={} finished_enabled={} key_down={} key_up={} flags_changed={} mouse_down={} mouse_up={} disabled_timeout={} disabled_user={} reenabled={} callback_panics={} queued_events={} consumed_events={} queue_overflows={} queue_recovery_resets={} queue_discarded_events={} queue_closed_events={} reconciliation_runs={} reconciled_releases={} candidate_resets={} duplicate_down={} unmatched_up={}",
+                            "input-macos-spike: tap cycle={} started={} finished_enabled={} key_down={} key_up={} flags_changed={} mouse_down={} mouse_up={} disabled_timeout={} disabled_user={} injected_disables={} reenabled={} callback_panics={} queued_events={} consumed_events={} queue_overflows={} queue_recovery_resets={} queue_discarded_events={} queue_closed_events={} reconciliation_runs={} reconciled_releases={} candidate_resets={} candidate_reset_releases={} duplicate_down={} unmatched_up={}",
                             cycle + 1,
                             report.started,
                             report.finished_enabled,
@@ -72,6 +84,7 @@ fn main() {
                             report.mouse_up,
                             report.disabled_by_timeout,
                             report.disabled_by_user,
+                            report.injected_disables,
                             report.reenabled,
                             report.callback_panics,
                             report.queued_events,
@@ -83,6 +96,7 @@ fn main() {
                             report.reconciliation_runs,
                             report.reconciled_releases,
                             report.candidate_resets,
+                            report.candidate_reset_releases,
                             report.duplicate_down,
                             report.unmatched_up,
                         ),

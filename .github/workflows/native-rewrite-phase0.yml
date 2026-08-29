@@ -127,22 +127,32 @@ jobs:
         run: cargo check --manifest-path spikes/gpui-settings/Cargo.toml --locked
       - name: Check overlay spike
         run: cargo check --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked
+      - name: Check macOS input spike
+        run: cargo check --manifest-path spikes/input-macos/Cargo.toml --locked
       - name: Check GPUI spike formatting
         run: |
           cargo fmt --manifest-path spikes/gpui-settings/Cargo.toml -- --check
           cargo fmt --manifest-path spikes/gpui-overlay-macos/Cargo.toml -- --check
+      - name: Check macOS input spike formatting
+        run: cargo fmt --manifest-path spikes/input-macos/Cargo.toml -- --check
       - name: Run GPUI spike Clippy
         run: |
           cargo clippy --manifest-path spikes/gpui-settings/Cargo.toml --locked --all-targets -- -D warnings
           cargo clippy --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked --all-targets -- -D warnings
+      - name: Run macOS input spike Clippy
+        run: cargo clippy --manifest-path spikes/input-macos/Cargo.toml --locked --all-targets -- -D warnings
       - name: Run GPUI spike tests
         run: |
           cargo test --manifest-path spikes/gpui-settings/Cargo.toml --locked
           cargo test --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked
+      - name: Run macOS input spike tests
+        run: cargo test --manifest-path spikes/input-macos/Cargo.toml --locked
       - name: Check GPUI spike release builds
         run: |
           cargo check --manifest-path spikes/gpui-settings/Cargo.toml --locked --release
           cargo check --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked --release
+      - name: Check macOS input spike release build
+        run: cargo check --manifest-path spikes/input-macos/Cargo.toml --locked --release
 
   windows-input-spike:
     name: Smoke Windows Raw Input registration

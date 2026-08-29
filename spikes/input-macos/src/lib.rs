@@ -8,8 +8,7 @@ use std::{
 #[cfg(target_os = "macos")]
 use std::{
     panic::{AssertUnwindSafe, catch_unwind},
-    sync::atomic::{AtomicU64, Ordering},
-    sync::mpsc,
+    sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering},
     thread,
     time::{Duration, Instant},
 };
@@ -27,6 +26,12 @@ pub enum TapState {
     Running,
     Disabled,
     TimedOut,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TapDisableReason {
+    Timeout,
+    UserInput,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -79,6 +84,7 @@ pub struct KeyCandidateCounters {
     pub duplicate_down: u64,
     pub unmatched_up: u64,
     pub resets: u64,
+    pub reset_releases: u64,
     pub reconciled_releases: u64,
 }
 
@@ -168,6 +174,7 @@ impl MacPressedKeyCandidates {
     }
 
     pub fn reset(&mut self) {
+        self.counters.reset_releases += self.keys.len() as u64;
         self.keys.clear();
         self.missing_confirmations.clear();
         self.counters.resets += 1;
@@ -443,6 +450,7 @@ pub struct TapProbeReport {
     pub mouse_up: u64,
     pub disabled_by_timeout: u64,
     pub disabled_by_user: u64,
+    pub injected_disables: u64,
     pub reenabled: u64,
     pub callback_panics: u64,
     pub queued_events: u64,
@@ -454,6 +462,7 @@ pub struct TapProbeReport {
     pub reconciliation_runs: u64,
     pub reconciled_releases: u64,
     pub candidate_resets: u64,
+    pub candidate_reset_releases: u64,
     pub duplicate_down: u64,
     pub unmatched_up: u64,
 }
@@ -476,6 +485,7 @@ struct TapCounters {
     mouse_up: AtomicU64,
     disabled_by_timeout: AtomicU64,
     disabled_by_user: AtomicU64,
+    injected_disables: AtomicU64,
     reenabled: AtomicU64,
     callback_panics: AtomicU64,
     queued_events: AtomicU64,
@@ -487,6 +497,7 @@ struct TapCounters {
     reconciliation_runs: AtomicU64,
     reconciled_releases: AtomicU64,
     candidate_resets: AtomicU64,
+    candidate_reset_releases: AtomicU64,
     duplicate_down: AtomicU64,
     unmatched_up: AtomicU64,
 }
@@ -504,6 +515,7 @@ impl TapCounters {
             mouse_up: self.mouse_up.load(Ordering::Relaxed),
             disabled_by_timeout: self.disabled_by_timeout.load(Ordering::Relaxed),
             disabled_by_user: self.disabled_by_user.load(Ordering::Relaxed),
+            injected_disables: self.injected_disables.load(Ordering::Relaxed),
             reenabled: self.reenabled.load(Ordering::Relaxed),
             callback_panics: self.callback_panics.load(Ordering::Relaxed),
             queued_events: self.queued_events.load(Ordering::Relaxed),
@@ -515,6 +527,7 @@ impl TapCounters {
             reconciliation_runs: self.reconciliation_runs.load(Ordering::Relaxed),
             reconciled_releases: self.reconciled_releases.load(Ordering::Relaxed),
             candidate_resets: self.candidate_resets.load(Ordering::Relaxed),
+            candidate_reset_releases: self.candidate_reset_releases.load(Ordering::Relaxed),
             duplicate_down: self.duplicate_down.load(Ordering::Relaxed),
             unmatched_up: self.unmatched_up.load(Ordering::Relaxed),
         }
@@ -522,7 +535,85 @@ impl TapCounters {
 }
 
 #[cfg(target_os = "macos")]
-fn run_tap_on_run_loop(duration: Duration) -> Result<TapProbeReport, TapProbeError> {
+const TAP_TIMEOUT_PENDING: u8 = 1;
+#[cfg(target_os = "macos")]
+const TAP_USER_DISABLE_PENDING: u8 = 1 << 1;
+
+#[cfg(target_os = "macos")]
+#[derive(Default)]
+struct TapDisableSignals(AtomicU8);
+
+#[cfg(target_os = "macos")]
+impl TapDisableSignals {
+    fn signal(&self, reason: TapDisableReason) {
+        let flag = match reason {
+            TapDisableReason::Timeout => TAP_TIMEOUT_PENDING,
+            TapDisableReason::UserInput => TAP_USER_DISABLE_PENDING,
+        };
+        self.0.fetch_or(flag, Ordering::Release);
+    }
+
+    fn take(&self) -> u8 {
+        self.0.swap(0, Ordering::Acquire)
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn queue_captured_event(
+    event: CapturedInputEvent,
+    queue: &SharedCaptureQueue,
+    counters: &TapCounters,
+) {
+    match queue.push_with_overflow_reset(event) {
+        Ok(()) => {
+            counters.queued_events.fetch_add(1, Ordering::Relaxed);
+        }
+        Err(CaptureQueueError {
+            kind: CaptureQueueErrorKind::Full,
+            discarded,
+            ..
+        }) => {
+            counters.queue_overflows.fetch_add(1, Ordering::Relaxed);
+            counters
+                .queue_recovery_resets
+                .fetch_add(1, Ordering::Relaxed);
+            counters
+                .queue_discarded_events
+                .fetch_add(discarded as u64, Ordering::Relaxed);
+        }
+        Err(CaptureQueueError {
+            kind: CaptureQueueErrorKind::Closed,
+            ..
+        }) => {
+            counters.queue_closed_events.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn record_tap_disable(
+    reason: TapDisableReason,
+    signals: &TapDisableSignals,
+    queue: &SharedCaptureQueue,
+    counters: &TapCounters,
+) {
+    signals.signal(reason);
+    match reason {
+        TapDisableReason::Timeout => {
+            counters.disabled_by_timeout.fetch_add(1, Ordering::Relaxed);
+        }
+        TapDisableReason::UserInput => {
+            counters.disabled_by_user.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+    queue_captured_event(CapturedInputEvent::Reset, queue, counters);
+}
+
+#[cfg(target_os = "macos")]
+fn run_tap_on_run_loop(
+    duration: Duration,
+    injected_disable: Option<TapDisableReason>,
+) -> Result<TapProbeReport, TapProbeError> {
     use core_foundation::runloop::{CFRunLoop, kCFRunLoopDefaultMode};
     use core_graphics2::event::{
         CGEventField, CGEventTap, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement,
@@ -537,6 +628,7 @@ fn run_tap_on_run_loop(duration: Duration) -> Result<TapProbeReport, TapProbeErr
         mouse_up: AtomicU64::new(0),
         disabled_by_timeout: AtomicU64::new(0),
         disabled_by_user: AtomicU64::new(0),
+        injected_disables: AtomicU64::new(0),
         reenabled: AtomicU64::new(0),
         callback_panics: AtomicU64::new(0),
         queued_events: AtomicU64::new(0),
@@ -548,13 +640,17 @@ fn run_tap_on_run_loop(duration: Duration) -> Result<TapProbeReport, TapProbeErr
         reconciliation_runs: AtomicU64::new(0),
         reconciled_releases: AtomicU64::new(0),
         candidate_resets: AtomicU64::new(0),
+        candidate_reset_releases: AtomicU64::new(0),
         duplicate_down: AtomicU64::new(0),
         unmatched_up: AtomicU64::new(0),
     });
-    let (disabled_tx, disabled_rx) = mpsc::sync_channel::<()>(8);
+    let disable_signals = Arc::new(TapDisableSignals::default());
+    let ignore_next_user_disable = Arc::new(AtomicBool::new(false));
     let event_queue = SharedCaptureQueue::new(256);
     let callback_queue = event_queue.clone();
     let callback_counters = Arc::clone(&counters);
+    let callback_disable_signals = Arc::clone(&disable_signals);
+    let callback_ignore_next_user_disable = Arc::clone(&ignore_next_user_disable);
     let callback = move |_proxy: core_graphics2::event::CGEventTapProxy,
                          event_type: CGEventType,
                          event: &core_graphics2::event::CGEvent| {
@@ -602,52 +698,29 @@ fn run_tap_on_run_loop(duration: Duration) -> Result<TapProbeReport, TapProbeErr
                     Some(CapturedInputEvent::MouseUp)
                 }
                 CGEventType::TapDisabledByTimeout => {
-                    let _ = disabled_tx.try_send(());
-                    callback_counters
-                        .disabled_by_timeout
-                        .fetch_add(1, Ordering::Relaxed);
-                    Some(CapturedInputEvent::Reset)
+                    record_tap_disable(
+                        TapDisableReason::Timeout,
+                        &callback_disable_signals,
+                        &callback_queue,
+                        &callback_counters,
+                    );
+                    None
                 }
                 CGEventType::TapDisabledByUserInput => {
-                    let _ = disabled_tx.try_send(());
-                    callback_counters
-                        .disabled_by_user
-                        .fetch_add(1, Ordering::Relaxed);
-                    Some(CapturedInputEvent::Reset)
+                    if !callback_ignore_next_user_disable.swap(false, Ordering::AcqRel) {
+                        record_tap_disable(
+                            TapDisableReason::UserInput,
+                            &callback_disable_signals,
+                            &callback_queue,
+                            &callback_counters,
+                        );
+                    }
+                    None
                 }
                 _ => None,
             };
             if let Some(captured_event) = captured_event {
-                match callback_queue.push_with_overflow_reset(captured_event) {
-                    Ok(()) => {
-                        callback_counters
-                            .queued_events
-                            .fetch_add(1, Ordering::Relaxed);
-                    }
-                    Err(CaptureQueueError {
-                        kind: CaptureQueueErrorKind::Full,
-                        discarded,
-                        ..
-                    }) => {
-                        callback_counters
-                            .queue_overflows
-                            .fetch_add(1, Ordering::Relaxed);
-                        callback_counters
-                            .queue_recovery_resets
-                            .fetch_add(1, Ordering::Relaxed);
-                        callback_counters
-                            .queue_discarded_events
-                            .fetch_add(discarded as u64, Ordering::Relaxed);
-                    }
-                    Err(CaptureQueueError {
-                        kind: CaptureQueueErrorKind::Closed,
-                        ..
-                    }) => {
-                        callback_counters
-                            .queue_closed_events
-                            .fetch_add(1, Ordering::Relaxed);
-                    }
-                }
+                queue_captured_event(captured_event, &callback_queue, &callback_counters);
             }
         }));
         if outcome.is_err() {
@@ -693,6 +766,26 @@ fn run_tap_on_run_loop(duration: Duration) -> Result<TapProbeReport, TapProbeErr
     let reconciliation_interval = Duration::from_millis(250);
     let mut next_reconciliation = Instant::now() + reconciliation_interval;
     let mut pressed_candidates = MacPressedKeyCandidates::default();
+    if let Some(reason) = injected_disable {
+        // Seed a missing-KeyUp case so the probe verifies that disable recovery clears state.
+        queue_captured_event(
+            CapturedInputEvent::KeyDown {
+                key_code: 0,
+                repeat: false,
+            },
+            &event_queue,
+            &counters,
+        );
+        if reason == TapDisableReason::Timeout {
+            // Manual disable emits a user-disable callback; timeout mode substitutes its reason.
+            ignore_next_user_disable.store(true, Ordering::Release);
+        }
+        tap.enable(false);
+        if reason == TapDisableReason::Timeout {
+            record_tap_disable(reason, &disable_signals, &event_queue, &counters);
+        }
+        counters.injected_disables.fetch_add(1, Ordering::Relaxed);
+    }
     while Instant::now() < deadline {
         let remaining = deadline.saturating_duration_since(Instant::now());
         let slice = remaining.min(Duration::from_millis(20));
@@ -705,9 +798,14 @@ fn run_tap_on_run_loop(duration: Duration) -> Result<TapProbeReport, TapProbeErr
         for event in drained {
             pressed_candidates.apply_event_with(event, reconcile_key_state);
         }
-        while let Ok(()) = disabled_rx.try_recv() {
-            tap.enable(true);
-            counters.reenabled.fetch_add(1, Ordering::Relaxed);
+        if disable_signals.take() != 0 {
+            ignore_next_user_disable.store(false, Ordering::Release);
+            if input_monitoring_preflight() {
+                tap.enable(true);
+                if tap.is_enabled() {
+                    counters.reenabled.fetch_add(1, Ordering::Relaxed);
+                }
+            }
         }
         if Instant::now() >= next_reconciliation {
             let snapshot = reconcile_pressed_key_codes(pressed_candidates.keys());
@@ -738,6 +836,9 @@ fn run_tap_on_run_loop(duration: Duration) -> Result<TapProbeReport, TapProbeErr
         .candidate_resets
         .store(candidate_counters.resets, Ordering::Relaxed);
     counters
+        .candidate_reset_releases
+        .store(candidate_counters.reset_releases, Ordering::Relaxed);
+    counters
         .duplicate_down
         .store(candidate_counters.duplicate_down, Ordering::Relaxed);
     counters
@@ -758,13 +859,16 @@ fn run_tap_on_run_loop(duration: Duration) -> Result<TapProbeReport, TapProbeErr
 }
 
 #[cfg(target_os = "macos")]
-pub fn run_listen_only_tap(duration: Duration) -> Result<TapProbeReport, TapProbeError> {
+pub fn run_listen_only_tap(
+    duration: Duration,
+    injected_disable: Option<TapDisableReason>,
+) -> Result<TapProbeReport, TapProbeError> {
     if !input_monitoring_preflight() {
         return Err(TapProbeError::PermissionDenied);
     }
     thread::Builder::new()
         .name("bongocat-macos-input-tap".to_string())
-        .spawn(move || run_tap_on_run_loop(duration))
+        .spawn(move || run_tap_on_run_loop(duration, injected_disable))
         .map_err(|_| TapProbeError::ThreadPanicked)?
         .join()
         .map_err(|_| TapProbeError::ThreadPanicked)?
@@ -943,6 +1047,20 @@ mod tests {
         candidates.apply_event_with(CapturedInputEvent::Reset, |_| false);
         assert!(candidates.keys().is_empty());
         assert_eq!(candidates.counters().resets, 1);
+        assert_eq!(candidates.counters().reset_releases, 1);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn tap_disable_signals_coalesce_without_losing_recovery_work() {
+        let signals = TapDisableSignals::default();
+        signals.signal(TapDisableReason::Timeout);
+        signals.signal(TapDisableReason::UserInput);
+        assert_eq!(
+            signals.take(),
+            TAP_TIMEOUT_PENDING | TAP_USER_DISABLE_PENDING
+        );
+        assert_eq!(signals.take(), 0);
     }
 
     #[test]
