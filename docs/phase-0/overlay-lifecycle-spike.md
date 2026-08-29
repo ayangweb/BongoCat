@@ -1,6 +1,6 @@
 # Native Overlay Lifecycle Contract Spike
 
-状态：生命周期契约、双平台透明 clear/present 与 Windows 生命周期门禁通过；完整 overlay 门禁仍未完成
+状态：生命周期契约、双平台透明 clear/present、Windows 生命周期门禁与 macOS 本机重建门禁通过；完整 overlay 门禁仍未完成
 日期：2026-08-29
 
 ## 目的
@@ -67,6 +67,27 @@ transparent clear/present submitted
 
 设置窗口和独立 `NSPanel` 同时存在，overlay 使用独立 `CAMetalLayer`，鼠标穿透、跨 Space 和 Full Screen Auxiliary 行为由 AppKit wrapper 设置。此验证覆盖 macOS 当前机器的窗口/Metal/GPUI 生命周期，不包含 Live2D/Cubism、真实 frame source、输入服务或发布签名。
 
+同一台机器还通过以下 release smoke：
+
+```text
+cargo run --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked --release -- --macos-overlay-cycles 100
+NSZombieEnabled=YES spikes/gpui-overlay-macos/target/release/bongocat-gpui-overlay-macos-spike --macos-overlay-cycles 100
+cargo run --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked -- --simulate-macos-drawable-unavailable --auto-quit-ms 300
+```
+
+100 次循环每次都真实创建 `NSPanel`、`CAMetalLayer`、Metal command queue 和
+drawable，提交透明 clear/present，等待 command buffer 完成后隐藏并析构 owner。
+父进程只在 worker 经 GPUI `quit()` 正常退出且输出 shutdown marker 时接受结果；
+两次运行均报告
+`windows_before=0 windows_after=0 owners_before=0 owners_after=0 clean_shutdown=true`，
+启用 `NSZombieEnabled` 后也没有 deallocated-object 消息。
+
+受控 drawable unavailable 路径保留 overlay owner 直到统一 shutdown，但不执行后续
+显示/隐藏 smoke；设置窗口仍打开并显示 degraded 诊断，然后在 GPUI `quit()` 前显式
+释放 overlay。以上计数只能证明 AppKit window list 与 Rust owner 数量稳定，不能替代
+Metal driver resource、GPU memory 或线程专项采样。GitHub `macos-latest` 已接入三条
+smoke，runner 证据仍待本次提交后的 CI 结果。
+
 ### Windows 实现与验收门禁
 
 `spikes/overlay-windows/` 使用精确固定的 `windows = 0.62.2`，封装线程限定的
@@ -115,13 +136,12 @@ clear/present、隐藏/重显示、GPUI 共存和自动退出；退出日志中
 ### 尚未验证
 
 - 两个平台的真实 Live2D/Cubism 绘制和模型资源兼容。
-- macOS 100 次真实原生窗口创建/销毁循环，以及双平台 GPU memory/driver resource 专项采样。
-- drawable/swapchain unavailable、真实 GPU device lost 和恢复后的诊断 UI。
+- 双平台 GPU memory/driver resource 与线程专项采样。
+- Windows swapchain unavailable、双平台真实 GPU device lost 和恢复后的诊断 UI；macOS 当前只完成受控 drawable unavailable。
 - 拖动、缩放、显示器/DPI 切换和真实 frame source 的完整生命周期。
 
 ## 下一步
 
-下一步是在 macOS 补齐 100 次原生窗口/GPU owner 重建与 drawable unavailable
-注入，并为 Windows 增加 swapchain unavailable/device-lost 恢复验证。随后才能在
-两个平台接入真实 frame source、模型绘制和 GPU 专项采样；任一平台结果都不能
-替代另一平台证据。
+下一步是取得 macOS CI runner 的重建与故障降级证据，并为 Windows 增加 swapchain
+unavailable/device-lost 恢复验证。随后补齐双平台 GPU/线程专项采样、真实 frame
+source、拖动/缩放/显示器切换和模型绘制；任一平台结果都不能替代另一平台证据。

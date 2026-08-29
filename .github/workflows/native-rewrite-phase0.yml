@@ -256,6 +256,70 @@ jobs:
           cargo check --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked --release
       - name: Check macOS input spike release build
         run: cargo check --manifest-path spikes/input-macos/Cargo.toml --locked --release
+      - name: Build macOS overlay smoke executable
+        timeout-minutes: 10
+        run: cargo build --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked
+      - name: Smoke independent AppKit and Metal overlay
+        timeout-minutes: 3
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import subprocess
+
+          executable = pathlib.Path("spikes/gpui-overlay-macos/target/debug/bongocat-gpui-overlay-macos-spike")
+
+          def run_smoke(name, arguments):
+              try:
+                  completed = subprocess.run(
+                      [str(executable), *arguments],
+                      capture_output=True,
+                      check=False,
+                      text=True,
+                      timeout=30,
+                  )
+              except subprocess.TimeoutExpired as error:
+                  output = (error.stdout or "") + "\n" + (error.stderr or "")
+                  print(output)
+                  raise RuntimeError(f"{name} overlay smoke exceeded 30 seconds") from error
+              output = completed.stdout + "\n" + completed.stderr
+              print(output)
+              if completed.returncode != 0:
+                  raise RuntimeError(
+                      f"{name} overlay smoke exited with {completed.returncode}"
+                  )
+              return output
+
+          normal = run_smoke("normal", ["--auto-quit-ms", "1200"])
+          for expected in (
+              "macOS native overlay created",
+              "transparent clear/present submitted",
+              "overlay hidden",
+              "GPUI settings window opened",
+              "auto quit requested",
+              "overlay window/GPU owner released",
+          ):
+              if expected not in normal:
+                  raise RuntimeError(f"normal overlay smoke did not report: {expected}")
+
+          degraded = run_smoke(
+              "drawable-unavailable",
+              ["--simulate-macos-drawable-unavailable", "--auto-quit-ms", "900"],
+          )
+          for expected in (
+              "overlay degraded error=simulated CAMetalLayer drawable unavailable",
+              "GPUI settings window opened",
+              "auto quit requested",
+              "overlay window/GPU owner released",
+          ):
+              if expected not in degraded:
+                  raise RuntimeError(
+                      f"drawable-unavailable overlay smoke did not report: {expected}"
+                  )
+
+          cycles = run_smoke("cycles", ["--macos-overlay-cycles", "100"])
+          if "macOS cycles=100" not in cycles or "clean_shutdown=true" not in cycles:
+              raise RuntimeError("overlay cycle smoke did not complete all cycles")
+          PY
 
   windows-input-spike:
     name: Smoke Windows Raw Input registration
