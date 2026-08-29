@@ -198,6 +198,14 @@ clear/present、隐藏/重显示、GPUI 共存和自动退出；退出日志中
 `handles_before=172 handles_after=172 clean_shutdown=true`。该计数证明本次 runner
 进程的 process handle 未增长，不替代 GPU memory/driver resource 专项采样。
 
+Windows resource probe 现通过同一常驻 D3D11 device 的 `IDXGIAdapter3` 调用
+`QueryVideoMemoryInfo(LOCAL)`，并用 ToolHelp snapshot 统计当前进程线程。probe 先运行一个
+完整 100-cycle batch 初始化 D3D/DXGI/DirectComposition/compiler/driver pool，在第二个等长
+100-cycle batch 前后执行零增长检查；任何 thread 或 `CurrentUsage` 增长都会使 worker 非零
+退出，原有 process handle 门禁保持不变。x64 Clippy/Check 与 ARM64 Check 已通过；真实
+hardware D3D11 的线程和显存数值仍待本批 `windows-latest` push job 记录，交叉编译结果不能
+替代运行时证据。
+
 commit `53eec36` 的首次真实 Windows 非空帧运行暴露了默认 D3D11 背面剔除：draw
 已提交但中心像素仍透明。commit `ebaea32` 将 rasterizer 明确设为 `CULL_NONE`，并由
 push run `33247687689` 和 PR run `33247689437` 的 hardware D3D11 smoke 验证连续帧、
@@ -235,8 +243,8 @@ renderer 重建后会重新应用并验证该契约。该测试证明窗口已�
 
 - 两个平台的真实 Live2D/Cubism 绘制和模型资源兼容。
 - 两个平台的模型 texture、draw order、mask 及离线固定 shader 产物。
-- Windows GPU memory/driver resource 与线程专项采样，以及 macOS Instruments/Metal
-  System Trace driver resource 证据；macOS process thread 和 Metal allocated size 已接入门禁。
+- Windows GPU memory/driver resource 与线程专项 runner 结果，以及 macOS Instruments/Metal
+  System Trace driver resource 证据；双平台 process thread 和 API 可见 GPU allocation 已接入门禁。
 - Windows swapchain unavailable 与双平台真实 GPU device lost；双平台受控 owner 释放、
   有限退避、重建和诊断 UI 已实现，但注入结果不能替代真实驱动故障。
 - 物理鼠标拖动、显示器/DPI 热切换和 production display-linked frame source 的完整生命周期；

@@ -639,7 +639,11 @@ jobs:
             -Arguments @("--windows-overlay-cycles", "100")
           @(
             "Windows cycles=100",
-            "non_empty_frames=100",
+            "non_empty_frames=200",
+            "threads_before=",
+            "threads_after=",
+            "gpu_bytes_before=",
+            "gpu_bytes_after=",
             "clean_shutdown=true"
           ) | ForEach-Object {
             if (-not $cycles.Contains($_)) {

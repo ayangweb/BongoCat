@@ -1,11 +1,11 @@
 #![cfg(target_os = "windows")]
 
-use std::{fmt, rc::Rc, thread::ThreadId};
+use std::{fmt, mem::size_of, rc::Rc, thread::ThreadId};
 use windows::{
     Win32::{
         Foundation::{
-            GetLastError, HINSTANCE, HMODULE, HWND, LPARAM, LRESULT, RECT, SetLastError,
-            WIN32_ERROR, WPARAM,
+            CloseHandle, ERROR_NO_MORE_FILES, GetLastError, HANDLE, HINSTANCE, HMODULE, HWND,
+            LPARAM, LRESULT, RECT, SetLastError, WIN32_ERROR, WPARAM,
         },
         Graphics::{
             Direct3D::{
@@ -38,16 +38,21 @@ use windows::{
                 },
                 DXGI_ERROR_ACCESS_LOST, DXGI_ERROR_DEVICE_HUNG, DXGI_ERROR_DEVICE_REMOVED,
                 DXGI_ERROR_DEVICE_RESET, DXGI_ERROR_DRIVER_INTERNAL_ERROR,
-                DXGI_ERROR_NOT_CURRENTLY_AVAILABLE, DXGI_ERROR_WAIT_TIMEOUT, DXGI_PRESENT,
+                DXGI_ERROR_NOT_CURRENTLY_AVAILABLE, DXGI_ERROR_WAIT_TIMEOUT,
+                DXGI_MEMORY_SEGMENT_GROUP_LOCAL, DXGI_PRESENT, DXGI_QUERY_VIDEO_MEMORY_INFO,
                 DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_CHAIN_FLAG,
                 DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL, DXGI_USAGE_RENDER_TARGET_OUTPUT, IDXGIAdapter,
-                IDXGIDevice, IDXGIFactory2, IDXGISwapChain1,
+                IDXGIAdapter3, IDXGIDevice, IDXGIFactory2, IDXGISwapChain1,
             },
         },
         System::{
             Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize},
+            Diagnostics::ToolHelp::{
+                CreateToolhelp32Snapshot, TH32CS_SNAPTHREAD, THREADENTRY32, Thread32First,
+                Thread32Next,
+            },
             LibraryLoader::GetModuleHandleW,
-            Threading::{GetCurrentProcess, GetProcessHandleCount},
+            Threading::{GetCurrentProcess, GetCurrentProcessId, GetProcessHandleCount},
         },
         UI::{
             HiDpi::GetDpiForWindow,
@@ -225,6 +230,10 @@ pub struct CycleReport {
     pub non_empty_frames: u32,
     pub handles_before: u32,
     pub handles_after: u32,
+    pub threads_before: u32,
+    pub threads_after: u32,
+    pub gpu_bytes_before: u64,
+    pub gpu_bytes_after: u64,
 }
 
 pub fn run_creation_cycles(cycles: u32) -> Result<CycleReport, String> {
@@ -233,12 +242,20 @@ pub fn run_creation_cycles(cycles: u32) -> Result<CycleReport, String> {
     }
     let _com_apartment = ComApartment::initialize().map_err(format_windows_error)?;
 
-    // Warm up process-global D3D/DXGI state before measuring owned resources.
-    {
+    let gpu_metrics = GpuMemoryProbe::create().map_err(format_windows_error)?;
+
+    // Use one complete, equivalent batch to initialize process-global D3D,
+    // DXGI, DirectComposition, compiler, and driver pools before measuring.
+    for _ in 0..cycles {
         let overlay = NativeOverlay::create_with_logging(false)?;
         overlay.show()?;
         overlay.clear_present()?;
+        overlay.hide()?;
     }
+    let gpu_bytes_before = gpu_metrics
+        .current_local_usage()
+        .map_err(format_windows_error)?;
+    let threads_before = process_thread_count().map_err(format_windows_error)?;
     let handles_before = process_handle_count().map_err(format_windows_error)?;
 
     for _ in 0..cycles {
@@ -248,18 +265,67 @@ pub fn run_creation_cycles(cycles: u32) -> Result<CycleReport, String> {
         overlay.hide()?;
     }
 
+    let gpu_bytes_after = gpu_metrics
+        .current_local_usage()
+        .map_err(format_windows_error)?;
+    let threads_after = process_thread_count().map_err(format_windows_error)?;
     let handles_after = process_handle_count().map_err(format_windows_error)?;
     if handles_after > handles_before.saturating_add(HANDLE_GROWTH_LIMIT) {
         return Err(format!(
             "process handle count grew from {handles_before} to {handles_after} after {cycles} cycles"
         ));
     }
+    if threads_after > threads_before {
+        return Err(format!(
+            "process thread count grew from {threads_before} to {threads_after} after {cycles} cycles"
+        ));
+    }
+    if gpu_bytes_after > gpu_bytes_before {
+        return Err(format!(
+            "DXGI local memory usage grew from {gpu_bytes_before} to {gpu_bytes_after} bytes after {cycles} cycles"
+        ));
+    }
     Ok(CycleReport {
         cycles,
-        non_empty_frames: cycles,
+        non_empty_frames: cycles.saturating_mul(2),
         handles_before,
         handles_after,
+        threads_before,
+        threads_after,
+        gpu_bytes_before,
+        gpu_bytes_after,
     })
+}
+
+struct GpuMemoryProbe {
+    adapter: IDXGIAdapter3,
+    _device: ID3D11Device,
+}
+
+impl GpuMemoryProbe {
+    fn create() -> WindowsResult<Self> {
+        // SAFETY: the probe is created and queried on the same initialized COM
+        // apartment as the overlay cycle owner. COM interfaces retain their
+        // parents and remain alive for the complete before/after interval.
+        let (device, _context, _driver_name) = unsafe { create_d3d11_device()? };
+        let dxgi_device: IDXGIDevice = device.cast()?;
+        let adapter: IDXGIAdapter = unsafe { dxgi_device.GetAdapter()? };
+        Ok(Self {
+            adapter: adapter.cast()?,
+            _device: device,
+        })
+    }
+
+    fn current_local_usage(&self) -> WindowsResult<u64> {
+        let mut info = DXGI_QUERY_VIDEO_MEMORY_INFO::default();
+        // SAFETY: node zero is the adapter's primary node and info points to a
+        // writable DXGI_QUERY_VIDEO_MEMORY_INFO for this synchronous query.
+        unsafe {
+            self.adapter
+                .QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &mut info)?;
+        }
+        Ok(info.CurrentUsage)
+    }
 }
 
 struct ComApartment {
@@ -1089,6 +1155,45 @@ fn process_handle_count() -> WindowsResult<u32> {
     // the output pointer references initialized writable storage.
     unsafe { GetProcessHandleCount(GetCurrentProcess(), &mut count)? };
     Ok(count)
+}
+
+fn process_thread_count() -> WindowsResult<u32> {
+    // SAFETY: the snapshot handle is wrapped immediately and closed by Drop;
+    // THREADENTRY32 has the required size before the first enumeration call.
+    let snapshot = ThreadSnapshot(unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0)? });
+    let process_id = unsafe { GetCurrentProcessId() };
+    let mut entry = THREADENTRY32 {
+        dwSize: size_of::<THREADENTRY32>() as u32,
+        ..Default::default()
+    };
+    unsafe { Thread32First(snapshot.0, &mut entry)? };
+    let mut count = 0_u32;
+    loop {
+        if entry.th32OwnerProcessID == process_id {
+            count = count.saturating_add(1);
+        }
+        match unsafe { Thread32Next(snapshot.0, &mut entry) } {
+            Ok(()) => {}
+            Err(error) if error.code() == ERROR_NO_MORE_FILES.to_hresult() => break,
+            Err(error) => return Err(error),
+        }
+    }
+    if count == 0 {
+        return Err(invariant_error(
+            "thread snapshot did not contain the current process",
+        ));
+    }
+    Ok(count)
+}
+
+struct ThreadSnapshot(HANDLE);
+
+impl Drop for ThreadSnapshot {
+    fn drop(&mut self) {
+        // SAFETY: this owner contains exactly one successful ToolHelp snapshot
+        // handle and Drop runs once after enumeration has stopped.
+        let _ = unsafe { CloseHandle(self.0) };
+    }
 }
 
 fn format_windows_error(error: Error) -> String {

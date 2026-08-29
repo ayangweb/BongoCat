@@ -860,8 +860,15 @@ fn main() {
         let report = windows_overlay::run_creation_cycles(cycles)
             .expect("Windows overlay create/destroy cycle smoke failed");
         println!(
-            "gpui-overlay-spike: Windows cycles={} non_empty_frames={} handles_before={} handles_after={} clean_shutdown=true",
-            report.cycles, report.non_empty_frames, report.handles_before, report.handles_after
+            "gpui-overlay-spike: Windows cycles={} non_empty_frames={} handles_before={} handles_after={} threads_before={} threads_after={} gpu_bytes_before={} gpu_bytes_after={} clean_shutdown=true",
+            report.cycles,
+            report.non_empty_frames,
+            report.handles_before,
+            report.handles_after,
+            report.threads_before,
+            report.threads_after,
+            report.gpu_bytes_before,
+            report.gpu_bytes_after
         );
         return;
     }
