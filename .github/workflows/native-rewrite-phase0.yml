@@ -283,7 +283,7 @@ jobs:
                   f"macOS GPUI settings smoke exited with {completed.returncode}"
               )
           for expected in (
-              "accessibility tree root_role=AXGroup nodes=8 controls=6",
+              "accessibility tree root_role=AXGroup nodes=9 controls=7",
               "window opened",
               "first frame elapsed_ms=",
               "scale_factor=",
@@ -571,6 +571,7 @@ jobs:
             "Dark" = "ControlType.RadioButton"
             "Model display name" = "ControlType.Edit"
             "Runtime status" = "ControlType.StatusBar"
+            "Reset settings..." = "ControlType.Button"
             "Refresh" = "ControlType.Button"
           }
           foreach ($entry in $expectedControls.GetEnumerator()) {
@@ -589,6 +590,63 @@ jobs:
           } while (-not $selected -and [DateTime]::UtcNow -lt $selectionDeadline)
           if (-not $selected) {
             throw "Windows UIA Dark radio action did not update selected state"
+          }
+
+          $resetPattern = $observedElements["Reset settings..."].GetCurrentPattern(
+            [System.Windows.Automation.InvokePattern]::Pattern
+          )
+          $resetPattern.Invoke()
+          $dialogCondition = [System.Windows.Automation.PropertyCondition]::new(
+            [System.Windows.Automation.AutomationElement]::NameProperty,
+            "Reset settings?"
+          )
+          $dialogDeadline = [DateTime]::UtcNow.AddSeconds(5)
+          do {
+            Start-Sleep -Milliseconds 100
+            $dialog = $root.FindFirst(
+              [System.Windows.Automation.TreeScope]::Descendants,
+              $dialogCondition
+            )
+          } while ($null -eq $dialog -and [DateTime]::UtcNow -lt $dialogDeadline)
+          if ($null -eq $dialog) {
+            throw "Windows UIA reset action did not expose a confirmation dialog"
+          }
+          if ($dialog.Current.ControlType.ProgrammaticName -ne "ControlType.Window") {
+            throw "Windows UIA reset confirmation was not exposed as a dialog window"
+          }
+          $cancelCondition = [System.Windows.Automation.PropertyCondition]::new(
+            [System.Windows.Automation.AutomationElement]::NameProperty,
+            "Cancel"
+          )
+          $cancel = $dialog.FindFirst(
+            [System.Windows.Automation.TreeScope]::Descendants,
+            $cancelCondition
+          )
+          if ($null -eq $cancel) {
+            throw "Windows UIA reset dialog did not expose Cancel"
+          }
+          $focusDeadline = [DateTime]::UtcNow.AddSeconds(5)
+          do {
+            Start-Sleep -Milliseconds 100
+            $focused = [System.Windows.Automation.AutomationElement]::FocusedElement
+            $focusedName = if ($null -eq $focused) { "" } else { $focused.Current.Name }
+          } while ($focusedName -ne "Cancel" -and [DateTime]::UtcNow -lt $focusDeadline)
+          if ($focusedName -ne "Cancel") {
+            throw "Windows UIA reset dialog did not move focus to Cancel"
+          }
+          $cancel.GetCurrentPattern(
+            [System.Windows.Automation.InvokePattern]::Pattern
+          ).Invoke()
+          $closeDeadline = [DateTime]::UtcNow.AddSeconds(5)
+          do {
+            Start-Sleep -Milliseconds 100
+            $dialog = $root.FindFirst(
+              [System.Windows.Automation.TreeScope]::Descendants,
+              $dialogCondition
+            )
+          } while ($null -ne $dialog -and [DateTime]::UtcNow -lt $closeDeadline)
+          if ($null -ne $dialog) {
+            throw "Windows UIA cancel action did not dismiss the reset dialog"
           }
           Write-Host "gpui-settings-spike: Windows UIA tree controls=$($expectedControls.Count)"
           if (-not $process.WaitForExit(30000)) {

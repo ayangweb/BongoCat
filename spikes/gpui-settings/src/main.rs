@@ -9,7 +9,7 @@ use accessibility::{
 use gpui::{
     App, Application, Bounds, Context, FocusHandle, Focusable, KeyBinding, Menu, MenuItem, Render,
     SharedString, SystemMenuType, Timer, TitlebarOptions, Window, WindowAppearance, WindowBounds,
-    WindowOptions, actions, div, prelude::*, px, rgb, size,
+    WindowOptions, actions, div, prelude::*, px, rgb, rgba, size,
 };
 use runtime_bridge::{RuntimeBridge, RuntimeSnapshot, run_runtime};
 use std::{
@@ -24,7 +24,10 @@ use text_input::{
     SelectRight, TextInput,
 };
 
-actions!(gpui_settings_spike, [Quit, Tab, TabPrevious]);
+actions!(
+    gpui_settings_spike,
+    [Quit, Tab, TabPrevious, ActivateFocused, DismissDialog]
+);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ThemeMode {
@@ -91,6 +94,10 @@ struct SettingsWindow {
     theme_focus: Vec<FocusHandle>,
     root_focus: FocusHandle,
     refresh_focus: FocusHandle,
+    reset_focus: FocusHandle,
+    dialog_cancel_focus: FocusHandle,
+    dialog_confirm_focus: FocusHandle,
+    reset_dialog_open: bool,
     model_name: gpui::Entity<TextInput>,
     runtime_bridge: RuntimeBridge,
     runtime_snapshot: Option<RuntimeSnapshot>,
@@ -138,6 +145,10 @@ impl SettingsWindow {
             theme_focus,
             root_focus: cx.focus_handle(),
             refresh_focus: cx.focus_handle().tab_index(5).tab_stop(true),
+            reset_focus: cx.focus_handle().tab_index(6).tab_stop(true),
+            dialog_cancel_focus: cx.focus_handle().tab_index(7).tab_stop(true),
+            dialog_confirm_focus: cx.focus_handle().tab_index(8).tab_stop(true),
+            reset_dialog_open: false,
             model_name,
             runtime_bridge,
             runtime_snapshot: None,
@@ -160,11 +171,78 @@ impl SettingsWindow {
     }
 
     fn on_tab(&mut self, _: &Tab, window: &mut Window, _: &mut Context<Self>) {
+        if self.reset_dialog_open && self.dialog_confirm_focus.is_focused(window) {
+            window.focus(&self.dialog_cancel_focus);
+            return;
+        }
         window.focus_next();
     }
 
     fn on_tab_previous(&mut self, _: &TabPrevious, window: &mut Window, _: &mut Context<Self>) {
+        if self.reset_dialog_open && self.dialog_cancel_focus.is_focused(window) {
+            window.focus(&self.dialog_confirm_focus);
+            return;
+        }
         window.focus_prev();
+    }
+
+    fn on_activate_focused(
+        &mut self,
+        _: &ActivateFocused,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.reset_dialog_open {
+            if self.dialog_confirm_focus.is_focused(window) {
+                self.confirm_reset(window, cx);
+            } else if self.dialog_cancel_focus.is_focused(window) {
+                self.close_reset_dialog(window, cx);
+            }
+            return;
+        }
+        if let Some(mode) = ThemeMode::ALL
+            .into_iter()
+            .zip(&self.theme_focus)
+            .find_map(|(mode, focus)| focus.is_focused(window).then_some(mode))
+        {
+            self.set_theme_mode(mode, window, cx);
+        } else if self.refresh_focus.is_focused(window) {
+            self.request_runtime_snapshot(cx);
+        } else if self.reset_focus.is_focused(window) {
+            self.open_reset_dialog(window, cx);
+        }
+    }
+
+    fn on_dismiss_dialog(
+        &mut self,
+        _: &DismissDialog,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.reset_dialog_open {
+            self.close_reset_dialog(window, cx);
+        }
+    }
+
+    fn open_reset_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.reset_dialog_open = true;
+        window.focus(&self.dialog_cancel_focus);
+        cx.notify();
+    }
+
+    fn close_reset_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.reset_dialog_open = false;
+        window.focus(&self.reset_focus);
+        cx.notify();
+    }
+
+    fn confirm_reset(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.theme_mode = ThemeMode::System;
+        self.model_name.update(cx, |input, cx| {
+            input.set_content("", window, cx);
+            input.set_dark_theme(self.resolved_dark(window));
+        });
+        self.close_reset_dialog(window, cx);
     }
 
     fn set_theme_mode(&mut self, mode: ThemeMode, window: &mut Window, cx: &mut Context<Self>) {
@@ -226,6 +304,33 @@ impl SettingsWindow {
                 cx.notify();
             }
             AccessibilityAction::RefreshRuntime => self.request_runtime_snapshot(cx),
+            AccessibilityAction::FocusReset => {
+                window.focus(&self.reset_focus);
+                cx.notify();
+            }
+            AccessibilityAction::OpenResetDialog => self.open_reset_dialog(window, cx),
+            AccessibilityAction::FocusDialogCancel => {
+                if self.reset_dialog_open {
+                    window.focus(&self.dialog_cancel_focus);
+                    cx.notify();
+                }
+            }
+            AccessibilityAction::FocusDialogConfirm => {
+                if self.reset_dialog_open {
+                    window.focus(&self.dialog_confirm_focus);
+                    cx.notify();
+                }
+            }
+            AccessibilityAction::CancelReset => {
+                if self.reset_dialog_open {
+                    self.close_reset_dialog(window, cx);
+                }
+            }
+            AccessibilityAction::ConfirmReset => {
+                if self.reset_dialog_open {
+                    self.confirm_reset(window, cx);
+                }
+            }
         }
         println!("gpui-settings-spike: accessibility action applied");
     }
@@ -332,9 +437,16 @@ impl Render for SettingsWindow {
                 })
             } else if self.refresh_focus.is_focused(window) {
                 AccessibilityFocus::Refresh
+            } else if self.reset_focus.is_focused(window) {
+                AccessibilityFocus::Reset
+            } else if self.dialog_cancel_focus.is_focused(window) {
+                AccessibilityFocus::DialogCancel
+            } else if self.dialog_confirm_focus.is_focused(window) {
+                AccessibilityFocus::DialogConfirm
             } else {
                 AccessibilityFocus::Root
             },
+            reset_dialog_open: self.reset_dialog_open,
         });
 
         let sidebar = div()
@@ -372,6 +484,7 @@ impl Render for SettingsWindow {
                     let focused = focus.is_focused(window);
                     div()
                         .id(mode.label())
+                        .key_context("SettingsButton")
                         .track_focus(&focus)
                         .tab_index((mode as isize) + 2)
                         .flex_1()
@@ -401,6 +514,7 @@ impl Render for SettingsWindow {
                 }),
         );
 
+        let reset_tooltip_tokens = tokens;
         let content = div()
             .flex()
             .flex_col()
@@ -455,41 +569,198 @@ impl Render for SettingsWindow {
                     .rounded_md()
                     .p_4()
                     .bg(tokens.surface)
-                    .child(runtime_status)
+                    .child(div().min_w_0().flex_1().child(runtime_status))
                     .child(
                         div()
-                            .id("refresh-runtime")
-                            .track_focus(&self.refresh_focus)
-                            .tab_index(5)
-                            .w(px(88.0))
-                            .h(px(32.0))
                             .flex()
-                            .items_center()
-                            .justify_center()
-                            .rounded_md()
-                            .border_1()
-                            .border_color(if self.refresh_focus.is_focused(window) {
-                                tokens.accent
-                            } else {
-                                tokens.border
-                            })
-                            .hover(|style| style.bg(tokens.surface_selected).cursor_pointer())
-                            .on_click(cx.listener(|settings, _, _, cx| {
-                                settings.request_runtime_snapshot(cx);
-                            }))
-                            .child("Refresh"),
+                            .flex_none()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .id("reset-settings")
+                                    .key_context("SettingsButton")
+                                    .track_focus(&self.reset_focus)
+                                    .tab_index(6)
+                                    .w(px(88.0))
+                                    .h(px(32.0))
+                                    .flex_none()
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded_md()
+                                    .border_1()
+                                    .border_color(if self.reset_focus.is_focused(window) {
+                                        tokens.accent
+                                    } else {
+                                        tokens.border
+                                    })
+                                    .hover(|style| {
+                                        style.bg(tokens.surface_selected).cursor_pointer()
+                                    })
+                                    .tooltip(move |_, cx| {
+                                        cx.new(|_| SettingsTooltip {
+                                            text: "Restore the settings shown in this spike".into(),
+                                            tokens: reset_tooltip_tokens,
+                                        })
+                                        .into()
+                                    })
+                                    .on_click(cx.listener(|settings, _, window, cx| {
+                                        settings.open_reset_dialog(window, cx);
+                                    }))
+                                    .child("Reset..."),
+                            )
+                            .child(
+                                div()
+                                    .id("refresh-runtime")
+                                    .key_context("SettingsButton")
+                                    .track_focus(&self.refresh_focus)
+                                    .tab_index(5)
+                                    .w(px(88.0))
+                                    .h(px(32.0))
+                                    .flex_none()
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded_md()
+                                    .border_1()
+                                    .border_color(if self.refresh_focus.is_focused(window) {
+                                        tokens.accent
+                                    } else {
+                                        tokens.border
+                                    })
+                                    .hover(|style| {
+                                        style.bg(tokens.surface_selected).cursor_pointer()
+                                    })
+                                    .on_click(cx.listener(|settings, _, _, cx| {
+                                        settings.request_runtime_snapshot(cx);
+                                    }))
+                                    .child("Refresh"),
+                            ),
                     ),
             );
+
+        let reset_dialog = self.reset_dialog_open.then(|| {
+            div()
+                .absolute()
+                .top_0()
+                .right_0()
+                .bottom_0()
+                .left_0()
+                .occlude()
+                .flex()
+                .items_center()
+                .justify_center()
+                .bg(rgba(0x00000088))
+                .child(
+                    div()
+                        .w(px(360.0))
+                        .p_5()
+                        .rounded_md()
+                        .border_1()
+                        .border_color(tokens.border)
+                        .bg(tokens.surface)
+                        .flex()
+                        .flex_col()
+                        .gap_3()
+                        .child(div().text_xl().child("Reset settings?"))
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(tokens.text_muted)
+                                .child("Theme and model display name will return to defaults."),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .justify_end()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .id("cancel-reset")
+                                        .key_context("SettingsButton")
+                                        .track_focus(&self.dialog_cancel_focus)
+                                        .tab_index(7)
+                                        .w(px(88.0))
+                                        .h(px(32.0))
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .rounded_md()
+                                        .border_1()
+                                        .border_color(
+                                            if self.dialog_cancel_focus.is_focused(window) {
+                                                tokens.accent
+                                            } else {
+                                                tokens.border
+                                            },
+                                        )
+                                        .hover(|style| {
+                                            style.bg(tokens.surface_selected).cursor_pointer()
+                                        })
+                                        .on_click(cx.listener(|settings, _, window, cx| {
+                                            settings.close_reset_dialog(window, cx);
+                                        }))
+                                        .child("Cancel"),
+                                )
+                                .child(
+                                    div()
+                                        .id("confirm-reset")
+                                        .key_context("SettingsButton")
+                                        .track_focus(&self.dialog_confirm_focus)
+                                        .tab_index(8)
+                                        .w(px(88.0))
+                                        .h(px(32.0))
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .rounded_md()
+                                        .border_1()
+                                        .border_color(tokens.accent)
+                                        .bg(tokens.surface_selected)
+                                        .text_color(tokens.accent)
+                                        .hover(|style| style.cursor_pointer())
+                                        .on_click(cx.listener(|settings, _, window, cx| {
+                                            settings.confirm_reset(window, cx);
+                                        }))
+                                        .child("Reset"),
+                                ),
+                        ),
+                )
+        });
 
         div()
             .id("settings-root")
             .track_focus(&self.root_focus)
             .on_action(cx.listener(Self::on_tab))
             .on_action(cx.listener(Self::on_tab_previous))
+            .on_action(cx.listener(Self::on_activate_focused))
+            .on_action(cx.listener(Self::on_dismiss_dialog))
+            .relative()
             .flex()
             .size_full()
             .child(sidebar)
             .child(content)
+            .children(reset_dialog)
+    }
+}
+
+struct SettingsTooltip {
+    text: SharedString,
+    tokens: Tokens,
+}
+
+impl Render for SettingsTooltip {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .w(px(220.0))
+            .p_2()
+            .rounded_md()
+            .border_1()
+            .border_color(self.tokens.border)
+            .bg(self.tokens.surface)
+            .text_sm()
+            .text_color(self.tokens.text)
+            .child(self.text.clone())
     }
 }
 
@@ -610,6 +881,9 @@ fn main() {
         cx.bind_keys([
             KeyBinding::new("tab", Tab, None),
             KeyBinding::new("shift-tab", TabPrevious, None),
+            KeyBinding::new("enter", ActivateFocused, Some("SettingsButton")),
+            KeyBinding::new("space", ActivateFocused, Some("SettingsButton")),
+            KeyBinding::new("escape", DismissDialog, None),
             KeyBinding::new("backspace", Backspace, Some("SettingsTextInput")),
             KeyBinding::new("delete", Delete, Some("SettingsTextInput")),
             KeyBinding::new("left", Left, Some("SettingsTextInput")),

@@ -15,6 +15,11 @@ const DARK_THEME_ID: NodeId = NodeId(5);
 const MODEL_NAME_ID: NodeId = NodeId(6);
 const REFRESH_ID: NodeId = NodeId(7);
 const STATUS_ID: NodeId = NodeId(8);
+const RESET_ID: NodeId = NodeId(9);
+const RESET_DIALOG_ID: NodeId = NodeId(10);
+const RESET_DIALOG_MESSAGE_ID: NodeId = NodeId(11);
+const RESET_DIALOG_CANCEL_ID: NodeId = NodeId(12);
+const RESET_DIALOG_CONFIRM_ID: NodeId = NodeId(13);
 const ACTION_QUEUE_CAPACITY: usize = 32;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -32,6 +37,12 @@ pub enum AccessibilityAction {
     SetModelName(String),
     FocusRefresh,
     RefreshRuntime,
+    FocusReset,
+    OpenResetDialog,
+    FocusDialogCancel,
+    FocusDialogConfirm,
+    CancelReset,
+    ConfirmReset,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -40,6 +51,9 @@ pub enum AccessibilityFocus {
     Theme(AccessibilityTheme),
     ModelName,
     Refresh,
+    Reset,
+    DialogCancel,
+    DialogConfirm,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -50,6 +64,7 @@ pub struct AccessibilitySnapshot {
     pub runtime_busy: bool,
     pub runtime_error: bool,
     pub focus: AccessibilityFocus,
+    pub reset_dialog_open: bool,
 }
 
 impl Default for AccessibilitySnapshot {
@@ -61,6 +76,7 @@ impl Default for AccessibilitySnapshot {
             runtime_busy: false,
             runtime_error: false,
             focus: AccessibilityFocus::Root,
+            reset_dialog_open: false,
         }
     }
 }
@@ -81,6 +97,7 @@ impl AccessibilitySnapshot {
             DARK_THEME_ID,
             MODEL_NAME_ID,
             STATUS_ID,
+            RESET_ID,
             REFRESH_ID,
         ]);
 
@@ -135,13 +152,61 @@ impl AccessibilitySnapshot {
         refresh.add_action(Action::Focus);
         refresh.set_bounds(Rect::new(632.0, 376.0, 720.0, 408.0));
 
+        let mut reset = Node::new(Role::Button);
+        reset.set_label("Reset settings...");
+        reset.set_description("Restore the settings shown in this spike");
+        reset.add_action(Action::Click);
+        reset.add_action(Action::Focus);
+        reset.set_bounds(Rect::new(536.0, 376.0, 624.0, 408.0));
+
         let mut nodes = vec![(ROOT_ID, root), (APPEARANCE_ID, appearance)];
         nodes.extend(themes);
         nodes.extend([
             (MODEL_NAME_ID, model_name),
             (STATUS_ID, status),
+            (RESET_ID, reset),
             (REFRESH_ID, refresh),
         ]);
+        if self.reset_dialog_open {
+            let appearance = nodes
+                .iter_mut()
+                .find(|(id, _)| *id == APPEARANCE_ID)
+                .map(|(_, node)| node)
+                .expect("appearance node exists");
+            appearance.set_children(vec![RESET_DIALOG_ID]);
+
+            let mut dialog = Node::new(Role::AlertDialog);
+            dialog.set_label("Reset settings?");
+            dialog.set_modal();
+            dialog.set_children(vec![
+                RESET_DIALOG_MESSAGE_ID,
+                RESET_DIALOG_CANCEL_ID,
+                RESET_DIALOG_CONFIRM_ID,
+            ]);
+            dialog.set_bounds(Rect::new(290.0, 170.0, 650.0, 350.0));
+
+            let mut message = Node::new(Role::Label);
+            message.set_label("Theme and model display name will return to defaults.");
+            message.set_bounds(Rect::new(310.0, 225.0, 630.0, 260.0));
+
+            let mut cancel = Node::new(Role::Button);
+            cancel.set_label("Cancel");
+            cancel.add_action(Action::Click);
+            cancel.add_action(Action::Focus);
+            cancel.set_bounds(Rect::new(442.0, 290.0, 530.0, 322.0));
+
+            let mut confirm = Node::new(Role::DefaultButton);
+            confirm.set_label("Reset");
+            confirm.add_action(Action::Click);
+            confirm.add_action(Action::Focus);
+            confirm.set_bounds(Rect::new(542.0, 290.0, 630.0, 322.0));
+            nodes.extend([
+                (RESET_DIALOG_ID, dialog),
+                (RESET_DIALOG_MESSAGE_ID, message),
+                (RESET_DIALOG_CANCEL_ID, cancel),
+                (RESET_DIALOG_CONFIRM_ID, confirm),
+            ]);
+        }
         TreeUpdate {
             nodes,
             tree: Some(TreeInfo::new(ROOT_ID)),
@@ -153,6 +218,9 @@ impl AccessibilitySnapshot {
                 AccessibilityFocus::Theme(AccessibilityTheme::Dark) => DARK_THEME_ID,
                 AccessibilityFocus::ModelName => MODEL_NAME_ID,
                 AccessibilityFocus::Refresh => REFRESH_ID,
+                AccessibilityFocus::Reset => RESET_ID,
+                AccessibilityFocus::DialogCancel => RESET_DIALOG_CANCEL_ID,
+                AccessibilityFocus::DialogConfirm => RESET_DIALOG_CONFIRM_ID,
             },
         }
     }
@@ -203,6 +271,14 @@ fn action_from_request(request: &ActionRequest) -> Option<AccessibilityAction> {
         }
         (REFRESH_ID, Action::Focus, _) => Some(AccessibilityAction::FocusRefresh),
         (REFRESH_ID, Action::Click, _) => Some(AccessibilityAction::RefreshRuntime),
+        (RESET_ID, Action::Focus, _) => Some(AccessibilityAction::FocusReset),
+        (RESET_ID, Action::Click, _) => Some(AccessibilityAction::OpenResetDialog),
+        (RESET_DIALOG_CANCEL_ID, Action::Focus, _) => Some(AccessibilityAction::FocusDialogCancel),
+        (RESET_DIALOG_CONFIRM_ID, Action::Focus, _) => {
+            Some(AccessibilityAction::FocusDialogConfirm)
+        }
+        (RESET_DIALOG_CANCEL_ID, Action::Click, _) => Some(AccessibilityAction::CancelReset),
+        (RESET_DIALOG_CONFIRM_ID, Action::Click, _) => Some(AccessibilityAction::ConfirmReset),
         (node, Action::Click, _) => theme_for_node(node).map(AccessibilityAction::SelectTheme),
         (node, Action::Focus, _) => theme_for_node(node).map(AccessibilityAction::FocusTheme),
         _ => None,
@@ -382,6 +458,7 @@ impl AccessibilityBridge {
                 ("Dark", "AXRadioButton"),
                 ("Model display name", "AXTextField"),
                 ("Runtime status", "AXGroup"),
+                ("Reset settings...", "AXButton"),
                 ("Refresh", "AXButton"),
             ] {
                 if controls_by_title.get(title).map(String::as_str) != Some(expected_role) {
@@ -423,11 +500,12 @@ mod tests {
             runtime_busy: false,
             runtime_error: false,
             focus: AccessibilityFocus::ModelName,
+            reset_dialog_open: false,
         }
         .tree_update();
         assert_eq!(update.tree.unwrap().root, ROOT_ID);
         assert_eq!(update.focus, MODEL_NAME_ID);
-        assert_eq!(update.nodes.len(), 8);
+        assert_eq!(update.nodes.len(), 9);
         assert!(
             update
                 .nodes
@@ -447,6 +525,33 @@ mod tests {
             .unwrap();
         assert!(!status.is_busy());
         assert_eq!(status.invalid(), None);
+    }
+
+    #[test]
+    fn modal_tree_hides_background_controls_and_focuses_cancel() {
+        let update = AccessibilitySnapshot {
+            reset_dialog_open: true,
+            focus: AccessibilityFocus::DialogCancel,
+            ..AccessibilitySnapshot::default()
+        }
+        .tree_update();
+        assert_eq!(update.focus, RESET_DIALOG_CANCEL_ID);
+        assert_eq!(update.nodes.len(), 13);
+        let appearance = update
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == APPEARANCE_ID)
+            .map(|(_, node)| node)
+            .unwrap();
+        assert_eq!(appearance.children(), &[RESET_DIALOG_ID]);
+        let dialog = update
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == RESET_DIALOG_ID)
+            .map(|(_, node)| node)
+            .unwrap();
+        assert!(dialog.is_modal());
+        assert_eq!(dialog.role(), Role::AlertDialog);
     }
 
     #[test]
@@ -473,6 +578,14 @@ mod tests {
         assert_eq!(
             action_from_request(&request(STATUS_ID, Action::Click, None)),
             None
+        );
+        assert_eq!(
+            action_from_request(&request(RESET_ID, Action::Click, None)),
+            Some(AccessibilityAction::OpenResetDialog)
+        );
+        assert_eq!(
+            action_from_request(&request(RESET_DIALOG_CANCEL_ID, Action::Click, None)),
+            Some(AccessibilityAction::CancelReset)
         );
     }
 }

@@ -31,6 +31,12 @@ the runtime acknowledgement. Run its contract test with:
 cargo test --locked
 ```
 
+The Reset command exercises GPUI's public tooltip API and a project-owned modal
+dialog. The dialog traps Tab/Shift-Tab between Cancel and Reset, supports
+Enter/Space activation and Escape dismissal, and replaces the background
+AccessKit subtree while it is open. It remains a Phase 0 interaction probe, not
+a product settings reset implementation.
+
 Build the release binary and collect the macOS Phase 0 performance probe with:
 
 ```text

@@ -1,7 +1,7 @@
 # GPUI Settings Spike Record
 
-状态：macOS 默认 shader、`.app`、主题、基础文本交互、marked-text contract、runtime bridge 与 AccessKit AX tree/action 通过；Windows 真实窗口/首帧/shutdown runner smoke 已通过，UI Automation runner 与双平台真实 IME 待完成
-日期：2026-08-29
+状态：macOS 默认 shader、`.app`、主题、基础文本交互、marked-text contract、runtime bridge、tooltip 与 modal dialog/AccessKit AX tree/action 通过；Windows 真实窗口/首帧/shutdown runner smoke 已通过，dialog UI Automation、双平台真实 IME 与真实辅助技术待完成
+日期：2026-08-30
 原始重构基线 commit：`94af230`；后续验证源码与本记录保持同一提交
 
 ## 范围
@@ -45,7 +45,7 @@ codesign --verify --deep --strict --verbose=4 "target/package/BongoCat GPUI Spik
 open -W "target/package/BongoCat GPUI Spike.app" --args --auto-quit-ms 1500
 ```
 
-结果：格式化、Clippy、7 项 contract test 和 debug/release 编译通过，`.app` 的 ad-hoc 签名通过 strict bundle integrity 校验；LaunchServices smoke 以 0 退出。直接运行 binary 时输出 `accessibility tree root_role=AXGroup nodes=8 controls=6`、`window opened`、`runtime snapshot revision=1`，随后通过 GPUI `quit()` 输出 `runtime stopped` 和 `stopped` 并以 0 退出。
+结果：格式化、Clippy、8 项 contract test 和 debug/release 编译通过，`.app` 的 ad-hoc 签名通过 strict bundle integrity 校验；LaunchServices smoke 以 0 退出。直接运行 binary 时输出 `accessibility tree root_role=AXGroup nodes=9 controls=7`、`window opened`、`runtime snapshot revision=1`，随后通过 GPUI `quit()` 输出 `runtime stopped` 和 `stopped` 并以 0 退出。
 
 2026-08-29 将同一个 settings executable 接入 `windows-latest` 真实生命周期 smoke。runner 启动窗口、等待最多 30 秒并要求进程以 0 退出，同时检查 `window opened`、首帧 elapsed/scale factor、runtime revision 1，以及 `runtime stopped` 先于 `stopped`。spike 自身也改为在初始或 reopen 窗口创建失败时触发有序 quit，并在 event loop 返回后以非零退出，避免“打印 failed 但 CI 仍成功”。push run `33250457705`、job `99095132076` 已通过全部 build/test/release 和真实窗口 smoke；这不代表字体、IME、DPI 切换或 UI Automation 已验证。
 
@@ -126,13 +126,13 @@ Windows adapter `0.35.0`，在窗口首次显示/聚焦前分别动态 subclass 
 subclass `HWND`。方案不依赖 Zed 私有 crate、GPUI renderer、隐藏控件或 fork。
 
 项目自有 tree 当前包含顶层 window、Appearance group、System/Light/Dark radio、模型名称
-text input、live runtime status 和 Refresh button。节点公开 role、title、value、focus、selected、
-busy、invalid 与 click/focus/set-value action。AccessKit 回调只向容量 32 的强类型 channel
+text input、live runtime status、Reset 和 Refresh button。节点公开 role、title、description、value、
+focus、selected、busy、invalid 与 click/focus/set-value action。AccessKit 回调只向容量 32 的强类型 channel
 发送 `AccessibilityAction`；GPUI application thread 再更新可见控件和语义 snapshot，平台
 callback 不直接访问 Entity。队列拒绝会输出诊断，不会静默丢 action。
 
 macOS 本机通过真实 `accessibilityChildren`、`accessibilityRole` 和 `accessibilityTitle`
-读取 `AXGroup` root 与 6 个控件，并对 Dark `AXRadioButton` 调用
+读取 `AXGroup` root 与 7 个控件，并对 Dark `AXRadioButton` 调用
 `accessibilityPerformPress`；日志确认 action 在 GPUI 线程应用。AccessKit 按 VoiceOver 约定
 隐藏顶层 `Role::Window` 的重复标题，因此测试验证 native window title 和内部 role/title，
 不错误要求 semantic root 再暴露同名 label。commit `fd9ad85` 的 push run `33255204781`、
@@ -140,6 +140,17 @@ job `99107586036` 已由外部 .NET UIA client 读取 Appearance group、三个 
 status bar 和 Refresh button，再调用 Dark radio 的 `SelectionItem.Select` 并验证
 `SelectionItem.IsSelected` 与 GPUI typed action marker。该证据覆盖 Windows 原生 UIA
 role/name/action/selected，不替代 Narrator、错误/loading 宣读、IME、DPI 或窗口重建实测。
+
+2026-08-30 增加只通过 GPUI 公共 `tooltip` API 构建的 Reset 说明，以及项目自有的 modal
+确认框。Reset command 在 760x520 下使用固定 command group 宽度，状态文本占用剩余空间；可见
+smoke 曾发现未固定 flex shrink 时按钮语义存在但视觉宽度为 0，当前布局与外部 AX tree 都能看到
+`Reset settings...`。确认框打开后 AccessKit 只把 `AlertDialog`、说明、Cancel 和默认 Reset
+暴露为 Appearance 的子树，背景表单不再进入辅助技术遍历；初始焦点落在 Cancel。Tab 与
+Shift-Tab 在两个 dialog command 之间循环，Enter/Space 只在 `SettingsButton` key context
+激活，不会截获文本框空格，Escape 关闭后焦点返回 Reset。macOS `.app` 的真实窗口 smoke 已
+执行打开、Shift-Tab/Tab、Escape 和 Cmd+Q，并确认 dialog 子树撤销及 runtime-first shutdown。
+Windows CI 已加入进程外 UI Automation 的 open -> role/focus -> cancel -> subtree removed 门禁，
+结果需以本批 push/PR runner 为准；tooltip 的真实 hover 延迟和 VoiceOver/Narrator 宣读仍待完成。
 
 `accesskit_macos 0.27.0` 的公开 adapter 类型基于 `objc2 0.5.x`，因此仅用于 AX 诊断消息的
 直接 `objc2` 精确固定为 `0.5.2`，避免通过 `objc2 0.6` Rust 类型访问另一 generation 的
@@ -153,7 +164,7 @@ Objective-C 对象。该版本例外的解除条件是 AccessKit macOS adapter �
 ## 未完成
 
 - marked-text 纯状态 contract 已通过；真实中文输入法组合态尚未在 macOS 上完成端到端验证，Windows IME、字体、DPI 和辅助技术尚未验证。
-- tooltip、dialog 和完整菜单交互尚未验证。
+- tooltip builder、modal dialog、焦点陷阱和 Escape 已通过 macOS 可见/AX smoke；真实 tooltip hover 延迟、双平台辅助技术朗读与完整菜单交互尚未验证。
 - macOS 内容 AX tree/action 与 Windows UI Automation runner 已通过；真实 VoiceOver/Narrator 操作、错误/loading 宣读顺序仍待完成。
 - 菜单栏常驻策略、隐藏行为和 native overlay 共存尚未验证。
 - Windows 已通过编译和真实窗口/首帧/退出 runner smoke；字体、IME、DPI 切换、辅助技术和系统集成仍未验证。
