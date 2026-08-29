@@ -405,6 +405,91 @@ impl PressedKeyCandidates {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PressedMouseCandidates {
+    buttons: BTreeSet<MouseButton>,
+    missing_confirmations: BTreeMap<MouseButton, u8>,
+    counters: CandidateCounters,
+}
+
+impl PressedMouseCandidates {
+    pub fn apply_edge(&mut self, edge: MouseButtonEdge) {
+        if edge.pressed {
+            self.missing_confirmations.remove(&edge.button);
+            if self.buttons.insert(edge.button) {
+                self.counters.captured_down += 1;
+            } else {
+                self.counters.duplicate_down += 1;
+            }
+        } else {
+            self.counters.captured_up += 1;
+            if !self.buttons.remove(&edge.button) {
+                self.counters.unmatched_up += 1;
+            }
+            self.missing_confirmations.remove(&edge.button);
+        }
+    }
+
+    pub fn reset(&mut self, reason: CaptureResetReason) {
+        self.counters.reset_releases += self.buttons.len() as u64;
+        self.buttons.clear();
+        self.counters.resets += 1;
+        match reason {
+            CaptureResetReason::DeviceRemoved => self.counters.device_removed_resets += 1,
+            CaptureResetReason::SessionChanged => self.counters.session_change_resets += 1,
+            CaptureResetReason::PowerChanged => self.counters.power_change_resets += 1,
+            CaptureResetReason::ServiceStopped => self.counters.service_stopped_resets += 1,
+            CaptureResetReason::UnqueryableKey => self.counters.unqueryable_key_resets += 1,
+            CaptureResetReason::StateQueryUnavailable => {
+                self.counters.state_query_unavailable_resets += 1
+            }
+        }
+        self.missing_confirmations.clear();
+    }
+
+    pub fn reconcile(
+        &mut self,
+        snapshot: &MouseButtonStateSnapshot,
+        required_missing_confirmations: u8,
+    ) -> Result<CandidateReconciliation, InvalidMissingConfirmations> {
+        if required_missing_confirmations == 0 {
+            return Err(InvalidMissingConfirmations);
+        }
+        let checked = self.buttons.len();
+        let mut released = 0usize;
+        let candidates = self.buttons.iter().copied().collect::<Vec<_>>();
+        for button in candidates {
+            if snapshot.still_pressed.contains(&button) {
+                self.missing_confirmations.remove(&button);
+                continue;
+            }
+            let confirmations = self.missing_confirmations.entry(button).or_insert(0);
+            *confirmations = confirmations.saturating_add(1);
+            if *confirmations >= required_missing_confirmations {
+                self.buttons.remove(&button);
+                self.missing_confirmations.remove(&button);
+                released += 1;
+            }
+        }
+        self.counters.reconciled_releases += released as u64;
+        Ok(CandidateReconciliation {
+            checked,
+            released,
+            still_pressed: self.buttons.len(),
+            pending_confirmations: self.missing_confirmations.len(),
+            reset: false,
+        })
+    }
+
+    pub fn buttons(&self) -> &BTreeSet<MouseButton> {
+        &self.buttons
+    }
+
+    pub fn counters(&self) -> CandidateCounters {
+        self.counters
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct VirtualKeyCode(u16);
 
@@ -420,6 +505,12 @@ pub struct KeyStateSnapshot {
     pub queried: usize,
     pub unqueryable: usize,
     pub reset_required: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct MouseButtonStateSnapshot {
+    pub still_pressed: BTreeSet<MouseButton>,
+    pub queried: usize,
 }
 
 /// Build an OS-state snapshot for keys that the local runtime believes are down.
@@ -445,6 +536,30 @@ pub fn collect_key_state_snapshot_with(
         }
     }
     report
+}
+
+pub fn collect_mouse_button_state_snapshot_with(
+    candidates: &BTreeSet<MouseButton>,
+    mut is_pressed: impl FnMut(VirtualKeyCode) -> bool,
+) -> MouseButtonStateSnapshot {
+    let mut report = MouseButtonStateSnapshot::default();
+    for button in candidates {
+        report.queried += 1;
+        if is_pressed(virtual_key_for_mouse_button(*button)) {
+            report.still_pressed.insert(*button);
+        }
+    }
+    report
+}
+
+pub const fn virtual_key_for_mouse_button(button: MouseButton) -> VirtualKeyCode {
+    VirtualKeyCode(match button {
+        MouseButton::Left => 0x01,
+        MouseButton::Right => 0x02,
+        MouseButton::Middle => 0x04,
+        MouseButton::Back => 0x05,
+        MouseButton::Forward => 0x06,
+    })
 }
 
 pub const fn virtual_key_for_reconciliation(key: PhysicalKey) -> Option<VirtualKeyCode> {
@@ -1030,6 +1145,67 @@ mod tests {
         assert_eq!(
             decode_mouse_button_edges(RawMousePacket { button_flags: 0 }).count(),
             0
+        );
+    }
+
+    #[test]
+    fn mouse_candidates_reconcile_missing_release_after_two_snapshots() {
+        let mut candidates = PressedMouseCandidates::default();
+        candidates.apply_edge(MouseButtonEdge {
+            button: MouseButton::Left,
+            pressed: true,
+        });
+        let empty = MouseButtonStateSnapshot {
+            queried: 1,
+            ..Default::default()
+        };
+        let first = candidates.reconcile(&empty, 2).unwrap();
+        assert_eq!(first.pending_confirmations, 1);
+        assert_eq!(first.released, 0);
+        let second = candidates.reconcile(&empty, 2).unwrap();
+        assert_eq!(second.released, 1);
+        assert!(candidates.buttons().is_empty());
+        assert_eq!(candidates.counters().reconciled_releases, 1);
+    }
+
+    #[test]
+    fn mouse_candidates_count_duplicate_unmatched_and_lifecycle_reset() {
+        let mut candidates = PressedMouseCandidates::default();
+        let down = MouseButtonEdge {
+            button: MouseButton::Back,
+            pressed: true,
+        };
+        candidates.apply_edge(down);
+        candidates.apply_edge(down);
+        candidates.apply_edge(MouseButtonEdge {
+            button: MouseButton::Forward,
+            pressed: false,
+        });
+        candidates.reset(CaptureResetReason::DeviceRemoved);
+        let counters = candidates.counters();
+        assert_eq!(counters.captured_down, 1);
+        assert_eq!(counters.captured_up, 1);
+        assert_eq!(counters.duplicate_down, 1);
+        assert_eq!(counters.unmatched_up, 1);
+        assert_eq!(counters.reset_releases, 1);
+        assert_eq!(counters.device_removed_resets, 1);
+        assert!(candidates.buttons().is_empty());
+    }
+
+    #[test]
+    fn mouse_reconciliation_queries_only_pressed_buttons_with_stable_vks() {
+        let candidates = BTreeSet::from([MouseButton::Left, MouseButton::Back]);
+        let mut queried = Vec::new();
+        let snapshot = collect_mouse_button_state_snapshot_with(&candidates, |virtual_key| {
+            queried.push(virtual_key);
+            virtual_key == virtual_key_for_mouse_button(MouseButton::Back)
+        });
+        assert_eq!(queried.len(), 2);
+        assert_eq!(snapshot.queried, 2);
+        assert_eq!(snapshot.still_pressed, BTreeSet::from([MouseButton::Back]));
+        assert_eq!(
+            virtual_key_for_mouse_button(MouseButton::Forward).as_i32(),
+            0x06
         );
     }
 }

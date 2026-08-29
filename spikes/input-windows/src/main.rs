@@ -1,7 +1,7 @@
 use bongocat_input_windows_spike::{RawKeyboardPacket, decode_keyboard_packet};
 
 #[cfg(target_os = "windows")]
-use bongocat_input_windows_spike::PhysicalKey;
+use bongocat_input_windows_spike::{MouseButton, PhysicalKey};
 #[cfg(target_os = "windows")]
 use std::collections::BTreeSet;
 
@@ -136,6 +136,26 @@ fn main() {
     }
 
     #[cfg(target_os = "windows")]
+    if std::env::args().any(|argument| argument == "--mouse-button-state-smoke") {
+        let candidates = BTreeSet::from([
+            MouseButton::Left,
+            MouseButton::Right,
+            MouseButton::Middle,
+            MouseButton::Back,
+            MouseButton::Forward,
+        ]);
+        let report = windows_capture::query_pressed_mouse_buttons(&candidates)
+            .expect("GetAsyncKeyState mouse button reconciliation smoke failed");
+        assert_eq!(report.queried, candidates.len());
+        println!(
+            "input-windows-spike: mouse_buttons_checked={} currently_pressed={}",
+            report.queried,
+            report.still_pressed.len(),
+        );
+        return;
+    }
+
+    #[cfg(target_os = "windows")]
     if let Some(milliseconds) =
         argument_value("--lifecycle-smoke-ms").and_then(|value| value.parse::<u64>().ok())
     {
@@ -224,7 +244,7 @@ fn main() {
 #[cfg(target_os = "windows")]
 fn print_registration_report(report: windows_capture::RegistrationReport) {
     println!(
-        "input-windows-spike: registered={} session_notifications_registered={} session_notifications_unregistered={} clean_shutdown={} raw_messages={} keyboard_edges={} mouse_messages={} mouse_button_edges={} device_arrivals={} device_removals={} resets={} reset_releases={} device_removed_resets={} session_change_resets={} power_change_resets={} service_stopped_resets={} unqueryable_key_resets={} state_query_unavailable_resets={} reconciliation_runs={} reconciled_releases={} reconciliation_query_errors={} decode_errors={} callback_panics={} synthetic_inputs_sent={} synthetic_pointer_inputs_requested={} synthetic_expected_edges={} synthetic_edges_seen={} synthetic_down_edges={} synthetic_up_edges={} synthetic_order_errors={} synthetic_expected_edges_remaining={} intentionally_dropped_releases={} captured_down={} captured_up={} duplicate_down={} unmatched_up={} pressed_candidates_remaining={}",
+        "input-windows-spike: registered={} session_notifications_registered={} session_notifications_unregistered={} clean_shutdown={} raw_messages={} keyboard_edges={} mouse_messages={} mouse_button_edges={} mouse_captured_down={} mouse_captured_up={} mouse_duplicate_down={} mouse_unmatched_up={} mouse_resets={} mouse_reset_releases={} mouse_reconciled_releases={} mouse_candidates_remaining={} device_arrivals={} device_removals={} resets={} reset_releases={} device_removed_resets={} session_change_resets={} power_change_resets={} service_stopped_resets={} unqueryable_key_resets={} state_query_unavailable_resets={} reconciliation_runs={} reconciled_releases={} reconciliation_query_errors={} decode_errors={} callback_panics={} synthetic_inputs_sent={} synthetic_pointer_inputs_requested={} synthetic_expected_edges={} synthetic_edges_seen={} synthetic_down_edges={} synthetic_up_edges={} synthetic_order_errors={} synthetic_expected_edges_remaining={} intentionally_dropped_releases={} captured_down={} captured_up={} duplicate_down={} unmatched_up={} pressed_candidates_remaining={}",
         report.registered,
         report.session_notifications_registered,
         report.session_notifications_unregistered,
@@ -233,6 +253,14 @@ fn print_registration_report(report: windows_capture::RegistrationReport) {
         report.keyboard_edges,
         report.mouse_messages,
         report.mouse_button_edges,
+        report.mouse_captured_down,
+        report.mouse_captured_up,
+        report.mouse_duplicate_down,
+        report.mouse_unmatched_up,
+        report.mouse_resets,
+        report.mouse_reset_releases,
+        report.mouse_reconciled_releases,
+        report.mouse_candidates_remaining,
         report.device_arrivals,
         report.device_removals,
         report.resets,

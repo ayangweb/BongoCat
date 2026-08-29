@@ -44,7 +44,9 @@ state、模型、日志、单实例和更新 channel 的环境隔离测试。
 后续 push run `33255204781` 的独立 Windows config-store job 在强杀子进程并 `wait` 后立即
 恢复时偶发一次 `LockUnavailable`，而同 commit 的 Windows input/config job、对应 PR job及
 本地重复测试均通过，说明 ready-file 握手与进程终止已完成，但内核锁释放存在短暂可见性
-窗口。恢复路径现使用上述有界重试；新的 Windows runner 证据待本批 push run 验证。
+窗口。恢复路径现使用上述有界重试；commit `7d92daa` 的 push run `33255952549`、job
+`99109567157` 和 PR run `33255954055`、job `99109571372` 均已通过 17 项 unit test、2 项
+process integration test，以及与 Windows input smokes 共存的第二次 config-store 执行。
 
 ## 未完成
 

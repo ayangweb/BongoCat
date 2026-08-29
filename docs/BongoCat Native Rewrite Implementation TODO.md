@@ -201,13 +201,13 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 ### 1.7 输入可靠性 spike
 
 - 状态（2026-08-28）：`spikes/input-state/` 已建立纯 Rust pressed-set contract，覆盖正常 down/up、重复 down、Reconcile、Reset、issue #47 的丢失 release 恢复、可靠事件的序列跳号/重复/乱序诊断，以及 `250 ms` 校正调度和连续 `2` 次缺失确认的误判保护；计数器不记录具体键值。平台采集、runtime 接入和管理员/权限场景仍待实机验证，详见 `docs/phase-0/input-state-spike.md`。
-- 状态（2026-08-29）：`spikes/input-windows/` 已冻结 `RI_KEY_BREAK`、E0/E1、左右修饰键、PrintScreen、未知 scan code 保留和安全 `RAWINPUT` 字节解析 contract；已实现隐藏顶层 HWND、Raw Input 注册、`WM_INPUT` 读取、周期校正、计数诊断和生命周期 Reset。本批又为 RAWMOUSE 增加截断/类型校验及 left/right/middle/back/forward button flag 映射，callback 只输出聚合边沿数；Windows mouse pressed candidate 与校正尚未接入。真实设备样本、热插拔、锁屏/睡眠和丢失 release 校正仍待完成，详见 `docs/phase-0/input-windows-spike.md`。
+- 状态（2026-08-29）：`spikes/input-windows/` 已冻结 `RI_KEY_BREAK`、E0/E1、左右修饰键、PrintScreen、未知 scan code 保留和安全 `RAWINPUT` 字节解析 contract；已实现隐藏顶层 HWND、Raw Input 注册、`WM_INPUT` 读取、周期校正、计数诊断和生命周期 Reset。本批又把 RAWMOUSE 五个 canonical button 的 safe decode 接到独立 pressed candidate、五个稳定 VK 的 `GetAsyncKeyState` 查询、连续两次缺失释放及 device/session/power/shutdown Reset；合成/物理 button release 仍待验证。真实设备样本、热插拔、锁屏/睡眠和丢失 release 校正仍待完成，详见 `docs/phase-0/input-windows-spike.md`。
 - 状态（2026-08-29）：`spikes/input-macos/` 已建立 macOS 权限/tap 生命周期 contract、listen-only `CGEventTap` 专用 run loop、panic-isolated callback、固定容量 callback queue 和候选 pressed-set 周期校正；当前 macOS 会话累计完成 105 次创建运行停止 smoke，timeout/user-disable 各 20 次受控故障恢复，公开 NSWorkspace lifecycle Reset、成对注销和 callback close gate 也已验证。本批先以 private `CGEventSource` 投递 keyboard down/up，真实 callback 捕获后在 consumer 边界故意丢弃一次 KeyUp，再由 `CGEventSourceKeyState` 两次缺失确认释放候选，20/20 cycle 均无残留；随后为 mouse down/up 保留 0–31 号 button identity，并将 `CGEventSourceButtonState` 校正接入同一周期和 Reset 路径。物理输入/系统自然丢事件、真实 modifier/鼠标字段、系统自然 timeout、TCC 拒绝/撤销和真实锁屏/睡眠/快速用户切换恢复仍未完成，详见 `docs/phase-0/input-macos-spike.md`。
 
 - [ ] Windows 实现 RegisterRawInputDevices 和 WM_INPUT 最小路径。
   - 状态（2026-08-29）：已实现注册、读取、注销和自动退出路径，并通过 Windows target 交叉 check/Clippy 以及 `windows-latest` 注册/退出 smoke。本批新增 `SendInput` scan-code down/up -> 系统 `WM_INPUT` callback -> raw decode 的闭环命令并接入 Windows runner；物理设备样本仍待实机，因此保持未勾选。
 - [x] 冻结 scan code、extended flag、左右修饰键和 RI_KEY_BREAK mapping contract；Win32 packet 接入仍待实机。
-  - 状态（2026-08-29）：同一 safe raw-byte boundary 已覆盖 RAWMOUSE `usButtonFlags`，五个 canonical mouse button 的 down/up 与同包顺序由 contract test 固定；pointer movement、wheel 和 button pressed-state 分流仍属于平台 producer 实现。
+  - 状态（2026-08-29）：同一 safe raw-byte boundary 已覆盖 RAWMOUSE `usButtonFlags`，五个 canonical mouse button 的 down/up 与同包顺序由 contract test 固定；button pressed-state/校正已接入 Windows spike，pointer movement 和 wheel 的 latest-value 分流仍属于平台 producer 实现。
 - [x] 建立平台无关 pressed set contract；Windows `GetAsyncKeyState` 校正仍待实机接入。
   - 状态（2026-08-29）：Windows spike 已增加 physical-key 到 virtual-key 查询计划、input desktop guard、只查询本地 pressed candidates 的 `GetAsyncKeyState` adapter，以及未知键触发 Reset 的 contract；commit `09773f0066f526799eb702fb1759049d0de9732f` 的 push/PR Windows jobs 已通过 `250 ms` scheduler 和连续 `2` 次缺失确认 smoke，真实丢失 release 恢复仍待完成。
 - [x] 定义校正频率、连续确认次数和误判保护。
@@ -220,7 +220,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-29）：本批新增系统合成 A down/up，consumer 故意丢弃已捕获 release，再由两次 `GetAsyncKeyState` 快照清除 candidate 的 Windows runner smoke；它验证 callback 到 reconcile 的实现闭环，但不替代 PixPin/物理键实测。
 - [ ] 实测 Win+L、PrintScreen、UAC 和管理员/非管理员场景。
 - [ ] 进行 10 分钟高速鼠标 + 键盘压力测试，edge 丢失计数必须为 0。
-  - 状态（2026-08-29）：3 秒有界 `SendInput` 压力 smoke 对 A、S、Space、左 Shift、左 Control 和 E0 右 Control 发送 128 轮、共 1536 个 down/up 边沿；commit `f68b46f` 的 push/PR Windows jobs 均已通过完整、有序、无 duplicate/unmatched/decode/panic/残留门禁。本批再增加 keyboard-under-pointer-flood 模式，在相同键盘边沿之间插入 3072 个不可合并的相对鼠标移动，验证高频位置流量不阻塞可靠 release，runner 证据待完成。两者都不能替代本项要求的 10 分钟物理键鼠与交互场景，因此保持未勾选。
+  - 状态（2026-08-29）：3 秒有界 `SendInput` 压力 smoke 对 A、S、Space、左 Shift、左 Control 和 E0 右 Control 发送 128 轮、共 1536 个 down/up 边沿；commit `f68b46f` 的 push/PR Windows jobs 均已通过完整、有序、无 duplicate/unmatched/decode/panic/残留门禁。keyboard-under-pointer-flood 模式又在相同键盘边沿之间插入 3072 个不可合并的相对鼠标移动，commit `64dd9d3` 的 push/PR Windows jobs 均验证实际 mouse message 洪峰不阻塞可靠 release。两者都不能替代本项要求的 10 分钟物理键鼠与交互场景，因此保持未勾选。
 - [ ] macOS 实现 CGEventTap、权限拒绝/授予和 tap 自动重启。
   - 状态（2026-08-29）：真实 listen-only tap 与受控 timeout/user-disable Reset + re-enable 已通过；TCC 拒绝、撤销、重新授予和系统自然 timeout 矩阵仍待实机完成。
 - [ ] macOS 使用 CGEventSourceKeyState/CGEventSourceButtonState 校正 pressed state。

@@ -1,7 +1,9 @@
 use bongocat_input_windows_spike::{
-    CaptureResetReason, KeyStateSnapshot, KeyboardEdge, PhysicalKey, PressedKeyCandidates,
-    RawInputDeviceChange, RawInputHeader, collect_key_state_snapshot_with, decode_keyboard_packet,
-    decode_mouse_button_edges, decode_raw_keyboard_bytes, decode_raw_mouse_bytes,
+    CaptureResetReason, KeyStateSnapshot, KeyboardEdge, MouseButton, MouseButtonStateSnapshot,
+    PhysicalKey, PressedKeyCandidates, PressedMouseCandidates, RawInputDeviceChange,
+    RawInputHeader, RawMousePacket, collect_key_state_snapshot_with,
+    collect_mouse_button_state_snapshot_with, decode_keyboard_packet, decode_mouse_button_edges,
+    decode_raw_keyboard_bytes, decode_raw_mouse_bytes,
 };
 use std::{
     collections::{BTreeSet, VecDeque},
@@ -109,6 +111,14 @@ pub struct RegistrationReport {
     pub keyboard_edges: u64,
     pub mouse_messages: u64,
     pub mouse_button_edges: u64,
+    pub mouse_captured_down: u64,
+    pub mouse_captured_up: u64,
+    pub mouse_duplicate_down: u64,
+    pub mouse_unmatched_up: u64,
+    pub mouse_resets: u64,
+    pub mouse_reset_releases: u64,
+    pub mouse_reconciled_releases: u64,
+    pub mouse_candidates_remaining: usize,
     pub device_arrivals: u64,
     pub device_removals: u64,
     pub resets: u64,
@@ -151,6 +161,7 @@ struct WindowState {
     device_arrivals: u64,
     device_removals: u64,
     pressed_candidates: PressedKeyCandidates,
+    pressed_mouse_candidates: PressedMouseCandidates,
     reconciliation_runs: u64,
     reconciliation_query_errors: u64,
     decode_errors: u64,
@@ -170,6 +181,7 @@ struct WindowState {
 impl WindowState {
     fn report(&self, registered: bool, clean_shutdown: bool) -> RegistrationReport {
         let candidate_counters = self.pressed_candidates.counters();
+        let mouse_candidate_counters = self.pressed_mouse_candidates.counters();
         RegistrationReport {
             registered,
             session_notifications_registered: self.session_notifications_registered,
@@ -179,6 +191,14 @@ impl WindowState {
             keyboard_edges: self.keyboard_edges,
             mouse_messages: self.mouse_messages,
             mouse_button_edges: self.mouse_button_edges,
+            mouse_captured_down: mouse_candidate_counters.captured_down,
+            mouse_captured_up: mouse_candidate_counters.captured_up,
+            mouse_duplicate_down: mouse_candidate_counters.duplicate_down,
+            mouse_unmatched_up: mouse_candidate_counters.unmatched_up,
+            mouse_resets: mouse_candidate_counters.resets,
+            mouse_reset_releases: mouse_candidate_counters.reset_releases,
+            mouse_reconciled_releases: mouse_candidate_counters.reconciled_releases,
+            mouse_candidates_remaining: self.pressed_mouse_candidates.buttons().len(),
             device_arrivals: self.device_arrivals,
             device_removals: self.device_removals,
             resets: candidate_counters.resets,
@@ -214,18 +234,40 @@ impl WindowState {
     fn reconcile_pressed_candidates(&mut self) {
         self.reconciliation_runs += 1;
         let candidates = self.pressed_candidates.keys().clone();
-        match query_pressed_keys(&candidates) {
-            Ok(snapshot) => {
-                self.pressed_candidates
-                    .reconcile(&snapshot, REQUIRED_MISSING_CONFIRMATIONS)
-                    .expect("non-zero reconciliation confirmation threshold");
-            }
-            Err(_) => {
-                self.reconciliation_query_errors += 1;
-                self.pressed_candidates
-                    .reset(CaptureResetReason::StateQueryUnavailable);
+        if !candidates.is_empty() {
+            match query_pressed_keys(&candidates) {
+                Ok(snapshot) => {
+                    self.pressed_candidates
+                        .reconcile(&snapshot, REQUIRED_MISSING_CONFIRMATIONS)
+                        .expect("non-zero reconciliation confirmation threshold");
+                }
+                Err(_) => {
+                    self.reconciliation_query_errors += 1;
+                    self.pressed_candidates
+                        .reset(CaptureResetReason::StateQueryUnavailable);
+                }
             }
         }
+        let mouse_candidates = self.pressed_mouse_candidates.buttons().clone();
+        if !mouse_candidates.is_empty() {
+            match query_pressed_mouse_buttons(&mouse_candidates) {
+                Ok(snapshot) => {
+                    self.pressed_mouse_candidates
+                        .reconcile(&snapshot, REQUIRED_MISSING_CONFIRMATIONS)
+                        .expect("non-zero reconciliation confirmation threshold");
+                }
+                Err(_) => {
+                    self.reconciliation_query_errors += 1;
+                    self.pressed_mouse_candidates
+                        .reset(CaptureResetReason::StateQueryUnavailable);
+                }
+            }
+        }
+    }
+
+    fn reset_candidates(&mut self, reason: CaptureResetReason) {
+        self.pressed_candidates.reset(reason);
+        self.pressed_mouse_candidates.reset(reason);
     }
 
     fn observe_synthetic_edge(&mut self, edge: KeyboardEdge) {
@@ -305,6 +347,22 @@ pub fn query_pressed_keys(candidates: &BTreeSet<PhysicalKey>) -> WindowsResult<K
         let input_desktop =
             OpenInputDesktop(DESKTOP_CONTROL_FLAGS::default(), false, DESKTOP_READOBJECTS)?;
         let report = collect_key_state_snapshot_with(candidates, |virtual_key| {
+            GetAsyncKeyState(virtual_key.as_i32()) as u16 & 0x8000 != 0
+        });
+        CloseDesktop(input_desktop)?;
+        Ok(report)
+    }
+}
+
+pub fn query_pressed_mouse_buttons(
+    candidates: &BTreeSet<MouseButton>,
+) -> WindowsResult<MouseButtonStateSnapshot> {
+    // SAFETY: the input desktop guard and validated virtual-key contract match
+    // query_pressed_keys; all five project mouse buttons have stable VK codes.
+    unsafe {
+        let input_desktop =
+            OpenInputDesktop(DESKTOP_CONTROL_FLAGS::default(), false, DESKTOP_READOBJECTS)?;
+        let report = collect_mouse_button_state_snapshot_with(candidates, |virtual_key| {
             GetAsyncKeyState(virtual_key.as_i32()) as u16 & 0x8000 != 0
         });
         CloseDesktop(input_desktop)?;
@@ -672,9 +730,12 @@ unsafe extern "system" fn window_proc(
                         state.pressed_candidates.apply_edge(edge);
                     }
                 }
-                Ok(Some(CapturedRawInput::Mouse { button_edges })) => {
+                Ok(Some(CapturedRawInput::Mouse(packet))) => {
                     state.mouse_messages += 1;
-                    state.mouse_button_edges += u64::from(button_edges);
+                    for edge in decode_mouse_button_edges(packet) {
+                        state.mouse_button_edges += 1;
+                        state.pressed_mouse_candidates.apply_edge(edge);
+                    }
                 }
                 Ok(None) => {}
                 Err(()) => state.decode_errors += 1,
@@ -696,7 +757,11 @@ unsafe extern "system" fn window_proc(
                 }
                 _ => RawInputDeviceChange::Unknown,
             };
-            state.pressed_candidates.apply_device_change(change);
+            if state.pressed_candidates.apply_device_change(change) {
+                state
+                    .pressed_mouse_candidates
+                    .reset(CaptureResetReason::DeviceRemoved);
+            }
             Some(LRESULT(0))
         }
         WM_WTSSESSION_CHANGE if !state.is_null() => {
@@ -712,11 +777,7 @@ unsafe extern "system" fn window_proc(
             if reset {
                 // SAFETY: GWLP_USERDATA points to the live WindowState until
                 // WM_NCDESTROY clears it.
-                unsafe {
-                    (*state)
-                        .pressed_candidates
-                        .reset(CaptureResetReason::SessionChanged)
-                };
+                unsafe { (*state).reset_candidates(CaptureResetReason::SessionChanged) };
             }
             Some(LRESULT(0))
         }
@@ -733,11 +794,7 @@ unsafe extern "system" fn window_proc(
             if reset {
                 // SAFETY: GWLP_USERDATA points to the live WindowState until
                 // WM_NCDESTROY clears it.
-                unsafe {
-                    (*state)
-                        .pressed_candidates
-                        .reset(CaptureResetReason::PowerChanged)
-                };
+                unsafe { (*state).reset_candidates(CaptureResetReason::PowerChanged) };
             }
             Some(LRESULT(1))
         }
@@ -758,11 +815,7 @@ unsafe extern "system" fn window_proc(
                 // SAFETY: WM_DESTROY runs before WM_NCDESTROY clears the
                 // WindowState pointer, so every normal destruction path can
                 // reset its platform-local candidates exactly once.
-                unsafe {
-                    (*state)
-                        .pressed_candidates
-                        .reset(CaptureResetReason::ServiceStopped)
-                };
+                unsafe { (*state).reset_candidates(CaptureResetReason::ServiceStopped) };
                 if unsafe { (*state).session_notifications_registered }
                     && !unsafe { (*state).session_notifications_unregistered }
                 {
@@ -795,7 +848,7 @@ unsafe extern "system" fn window_proc(
 
 enum CapturedRawInput {
     Keyboard(KeyboardEdge),
-    Mouse { button_edges: u32 },
+    Mouse(RawMousePacket),
 }
 
 unsafe fn read_raw_input(lparam: LPARAM) -> Result<Option<CapturedRawInput>, ()> {
@@ -837,9 +890,7 @@ unsafe fn read_raw_input(lparam: LPARAM) -> Result<Option<CapturedRawInput>, ()>
             header_size as usize,
         )
         .map_err(|_| ())?;
-        return Ok(Some(CapturedRawInput::Mouse {
-            button_edges: decode_mouse_button_edges(packet).count() as u32,
-        }));
+        return Ok(Some(CapturedRawInput::Mouse(packet)));
     }
     if native_header.dwType != 1 {
         return Ok(None);

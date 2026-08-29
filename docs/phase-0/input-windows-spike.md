@@ -37,6 +37,7 @@ cargo test --manifest-path spikes/input-windows/Cargo.toml --locked
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --register-smoke-ms 100
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --key-state-smoke
+cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --mouse-button-state-smoke
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --reconcile-smoke-ms 600
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --synthetic-release-recovery-ms 800
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked --release -- --synthetic-edge-pressure-cycles 128
@@ -44,7 +45,7 @@ cargo run --manifest-path spikes/input-windows/Cargo.toml --locked --release -- 
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --lifecycle-smoke-ms 100
 ```
 
-当前本地验证包括 macOS host 上的 format、19 项 contract test、Clippy 和 release check，以及 `x86_64-pc-windows-msvc` 的 check/Clippy/release check。测试覆盖左右修饰键 virtual-key、只查询 pressed candidates、未知键触发 Reset、设备移除/服务停止/session/power Reset、Reset 释放数量、重复 down/无匹配 up 诊断、连续两次缺失释放、仍按下取消待确认、零确认阈值拒绝，以及 RAWMOUSE 截断/类型校验和五个规范 button 的完整 down/up flag 映射。
+当前本地验证包括 macOS host 上的 format、22 项 contract test、Clippy 和 release check，以及 `x86_64-pc-windows-msvc` 的 check/Clippy/release check。测试覆盖左右修饰键 virtual-key、只查询 pressed candidates、未知键触发 Reset、设备移除/服务停止/session/power Reset、Reset 释放数量、重复 down/无匹配 up 诊断、连续两次缺失释放、仍按下取消待确认、零确认阈值拒绝，以及 RAWMOUSE 截断/类型校验、五个规范 button 的完整 down/up flag 映射、mouse candidate 异常计数和两次缺失校正。
 
 Windows runner 验收证据：
 
@@ -110,7 +111,9 @@ PixPin、Win+L、PrintScreen、UAC、输入桌面切换或不同完整性级别�
 项为一批，避免一次调用无界扩张；Raw Input 端分别统计 mouse message 和 keyboard edge，
 只要求收到足以证明洪峰存在的 mouse message，不要求高频位置样本逐个可靠送达，但仍要求
 全部键盘 down/up 保持原顺序且没有 duplicate、unmatched 或残留 candidate。命令最长运行
-5 秒、cycles 上限 256，已接入 Windows runner，执行证据待包含本批实现的 push run。
+5 秒、cycles 上限 256。commit `64dd9d3` 的 push run `33256121099`、job `99110014206`
+和 PR run `33256122578`、job `99110018813` 均已通过；断言保证实际收到至少 128 个 mouse
+message，1536 个 keyboard edge 仍完整、有序，且 duplicate/unmatched/decode/panic/残留为 0。
 
 会话与电源 Reset 的 Windows runner 证据：
 
@@ -126,6 +129,8 @@ PixPin、Win+L、PrintScreen、UAC、输入桌面切换或不同完整性级别�
 `RI_KEY_BREAK` 与热插拔。最后执行 PixPin、Win+L、睡眠/唤醒、PrintScreen、UAC 和
 管理员/非管理员矩阵；不得用无人值守 CI 的合成输入或受控生命周期消息替代这些平台验收。
 
-Windows mouse button 当前只完成 raw byte decode、canonical mapping 和 callback 聚合计数；
-pressed candidate、`GetAsyncKeyState` button 校正、合成/物理 button release 以及 wheel/cursor
-latest-value 分流仍是下一批实现，不能由 pointer-move flood 结果替代。
+Windows mouse button 已完成 raw byte decode、canonical mapping、callback candidate、五个稳定
+virtual-key 的 `GetAsyncKeyState` 查询、连续两次缺失释放，以及 device/session/power/shutdown
+Reset；诊断按 keyboard/mouse 分别输出 captured、duplicate、unmatched、reconciled 和残留数。
+无注入的 `--mouse-button-state-smoke` 已接入 Windows runner。合成/物理 button release 与
+wheel/cursor latest-value 分流仍待验证，不能由 pointer-move flood 结果替代。
