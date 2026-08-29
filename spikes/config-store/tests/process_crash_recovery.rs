@@ -69,3 +69,51 @@ fn forced_process_exit_releases_writer_lock_and_preserves_current_config() {
             .unwrap();
     assert_eq!(interrupted.appearance.language, "zh-CN");
 }
+
+#[test]
+fn development_and_production_processes_commit_and_restart_independently() {
+    let base = tempdir().unwrap();
+    let executable = env!("CARGO_BIN_EXE_bongocat-config-store-spike");
+    let mut development = Command::new(executable)
+        .args([
+            "--commit-language",
+            base.path().to_str().unwrap(),
+            "development",
+            "zh-CN",
+        ])
+        .spawn()
+        .unwrap();
+    let mut production = Command::new(executable)
+        .args([
+            "--commit-language",
+            base.path().to_str().unwrap(),
+            "production",
+            "pt-BR",
+        ])
+        .spawn()
+        .unwrap();
+
+    assert!(development.wait().unwrap().success());
+    assert!(production.wait().unwrap().success());
+
+    let development = ConfigStore::new(StorageLayout::under(
+        base.path(),
+        BuildEnvironment::Development,
+    ))
+    .unwrap();
+    let production = ConfigStore::new(StorageLayout::under(
+        base.path(),
+        BuildEnvironment::Production,
+    ))
+    .unwrap();
+    assert_eq!(
+        development.load_or_default().unwrap().appearance.language,
+        "zh-CN"
+    );
+    assert_eq!(
+        production.load_or_default().unwrap().appearance.language,
+        "pt-BR"
+    );
+    assert_ne!(development.layout().root, production.layout().root);
+    assert_ne!(development.layout().locks, production.layout().locks);
+}

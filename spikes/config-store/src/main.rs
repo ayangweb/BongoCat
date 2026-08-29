@@ -47,6 +47,18 @@ fn hold_lock_after_temp_sync(
     }
 }
 
+fn commit_language(
+    base: &Path,
+    environment: BuildEnvironment,
+    language: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let store = ConfigStore::new(StorageLayout::under(base, environment))?;
+    let mut config = store.load_or_default()?;
+    config.appearance.language = language;
+    store.commit(&config)?;
+    Ok(())
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut arguments = std::env::args().skip(1);
     match arguments.next().as_deref() {
@@ -61,6 +73,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 return Err("unexpected crash probe argument".into());
             }
             return hold_lock_after_temp_sync(Path::new(&base), environment);
+        }
+        Some("--commit-language") => {
+            let base = arguments.next().ok_or("missing commit probe base path")?;
+            let environment = arguments
+                .next()
+                .as_deref()
+                .and_then(parse_environment)
+                .ok_or("missing or invalid commit probe environment")?;
+            let language = arguments.next().ok_or("missing commit probe language")?;
+            if arguments.next().is_some() {
+                return Err("unexpected commit probe argument".into());
+            }
+            return commit_language(Path::new(&base), environment, language);
         }
         Some(_) => return Err("unexpected config-store spike argument".into()),
         None => {}

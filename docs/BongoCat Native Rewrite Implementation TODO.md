@@ -614,6 +614,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] Development 与 Production 的相对目录树和 JSON schema 完全一致。
 - [ ] 配置、state、模型、备份、日志、锁和单实例 namespace 均包含环境边界。
 - [ ] 两个环境可同时运行，不争用 writer lock、模型目录或日志文件。
+  - 状态（2026-08-29）：config-store process test 已在 macOS 同时启动 Development/Production writer，分别提交 sentinel 并在重启后读取各自值，两个 lock root 互斥；Windows runner、模型目录和日志 writer 仍待完成，因此保持未勾选。
 - [ ] 开发构建即使收到指向 Production 的 CLI 参数或进程环境变量也拒绝越界。
 - [ ] Production 不自动复制 Development 数据；需要测试数据时使用显式导入。
 - [ ] 更新 channel 与环境绑定，Development 不能安装 Production 更新或反向覆盖。
@@ -622,6 +623,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 - [x] 在平台无关 spike 中验证 Development/Production 根目录不同且相对结构一致，并在 Windows/macOS target-specific test 验证真实 resolver。
 - [ ] 两个环境写入不同 sentinel，重启和并发运行后仍只读取各自数据。
+  - 状态（2026-08-29）：macOS config-store process test 已通过，等待 Windows runner 后勾选；产品 state/model/log 服务仍由各自阶段验证。
 - [ ] 覆盖损坏、截断、错误类型、越界值和未知字段。
 - [ ] 覆盖无权限、磁盘满、目标占用和中途退出。
 - [ ] 覆盖非 ASCII/超长路径、缺失和重复模型。
