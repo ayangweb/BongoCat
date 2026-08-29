@@ -8,7 +8,7 @@ use std::fs::{self, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-pub const INDEX_SCHEMA_VERSION: u32 = 1;
+pub const INDEX_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ModelPackageLimits {
@@ -38,6 +38,7 @@ impl Default for ModelPackageLimits {
 pub enum DiagnosticCode {
     ModelEntryAmbiguous,
     ModelEntryMissing,
+    ModelDisplayInfoInvalid,
     ModelExpressionInvalid,
     ModelFileCountExceeded,
     ModelFileTooLarge,
@@ -66,6 +67,7 @@ impl DiagnosticCode {
         match self {
             Self::ModelEntryAmbiguous => "model_entry_ambiguous",
             Self::ModelEntryMissing => "model_entry_missing",
+            Self::ModelDisplayInfoInvalid => "model_display_info_invalid",
             Self::ModelExpressionInvalid => "model_expression_invalid",
             Self::ModelFileCountExceeded => "model_file_count_exceeded",
             Self::ModelFileTooLarge => "model_file_too_large",
@@ -132,7 +134,7 @@ pub struct ModelPackageIndex {
     pub entry: String,
     pub moc: String,
     pub textures: Vec<ImageResource>,
-    pub display_info: Option<String>,
+    pub display_info: Option<DisplayInfoResource>,
     pub expressions: Vec<NamedResource>,
     pub motion_groups: Vec<MotionGroup>,
     pub physics: Option<String>,
@@ -163,6 +165,14 @@ pub struct NamedImageResource {
 pub struct NamedResource {
     pub name: String,
     pub file: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct DisplayInfoResource {
+    pub file: String,
+    pub parameter_count: usize,
+    pub parameter_group_count: usize,
+    pub part_count: usize,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -282,6 +292,44 @@ struct RawHitArea {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct DisplayInfoDefinition {
+    #[serde(rename = "Version")]
+    version: u32,
+    #[serde(rename = "Parameters")]
+    parameters: Vec<DisplayInfoItem>,
+    #[serde(rename = "ParameterGroups")]
+    parameter_groups: Vec<DisplayInfoItem>,
+    #[serde(rename = "Parts")]
+    parts: Vec<DisplayInfoPart>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DisplayInfoItem {
+    #[serde(rename = "Id")]
+    id: String,
+    #[serde(rename = "GroupId")]
+    group_id: String,
+    #[serde(rename = "Name")]
+    _name: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DisplayInfoPart {
+    #[serde(rename = "Id")]
+    id: String,
+    #[serde(rename = "Name")]
+    _name: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct DisplayInfoInspection {
+    resource: DisplayInfoResource,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct MotionDefinition {
     #[serde(rename = "Version")]
     version: u32,
@@ -347,7 +395,7 @@ struct MotionUserData {
     value: String,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct MotionSummary {
     curve_count: usize,
     segment_count: usize,
@@ -490,16 +538,30 @@ impl PackageReader {
         Ok(normalized)
     }
 
-    fn resolve_motion(&mut self, reference: &str) -> Result<String, ModelPackageError> {
+    fn resolve_display_info(
+        &mut self,
+        reference: &str,
+    ) -> Result<DisplayInfoInspection, ModelPackageError> {
         let (normalized, path) = self.resolve_file(reference, ResourceKind::Other)?;
-        inspect_motion_file(&path, &normalized, self.limits.maximum_json_bytes)?;
-        Ok(normalized)
+        inspect_display_info_file(&path, &normalized, self.limits.maximum_json_bytes)
     }
 
-    fn resolve_expression(&mut self, reference: &str) -> Result<String, ModelPackageError> {
+    fn resolve_motion(
+        &mut self,
+        reference: &str,
+    ) -> Result<(String, MotionSummary), ModelPackageError> {
         let (normalized, path) = self.resolve_file(reference, ResourceKind::Other)?;
-        inspect_expression_file(&path, &normalized, self.limits.maximum_json_bytes)?;
-        Ok(normalized)
+        let summary = inspect_motion_file(&path, &normalized, self.limits.maximum_json_bytes)?;
+        Ok((normalized, summary))
+    }
+
+    fn resolve_expression(
+        &mut self,
+        reference: &str,
+    ) -> Result<(String, ExpressionSummary), ModelPackageError> {
+        let (normalized, path) = self.resolve_file(reference, ResourceKind::Other)?;
+        let summary = inspect_expression_file(&path, &normalized, self.limits.maximum_json_bytes)?;
+        Ok((normalized, summary))
     }
 
     fn resolve_image(&mut self, reference: &str) -> Result<ImageResource, ModelPackageError> {
@@ -723,21 +785,25 @@ pub fn inspect_model_package(
         .iter()
         .map(|reference| reader.resolve_image(reference))
         .collect::<Result<Vec<_>, _>>()?;
-    let display_info = model
+    let display_info_inspection = model
         .file_references
         .display_info
         .as_deref()
-        .map(|reference| reader.resolve_json(reference))
+        .map(|reference| reader.resolve_display_info(reference))
         .transpose()?;
+    let display_info = display_info_inspection
+        .as_ref()
+        .map(|inspection| inspection.resource.clone());
     let expressions = model
         .file_references
         .expressions
         .into_iter()
         .map(|resource| {
             require_identifier(&resource.name, "expression name")?;
+            let (file, _summary) = reader.resolve_expression(&resource.file)?;
             Ok(NamedResource {
                 name: resource.name,
-                file: reader.resolve_expression(&resource.file)?,
+                file,
             })
         })
         .collect::<Result<Vec<_>, ModelPackageError>>()?;
@@ -752,8 +818,9 @@ pub fn inspect_model_package(
                 .map(|motion| {
                     validate_fade(motion.fade_in_seconds, "FadeInTime")?;
                     validate_fade(motion.fade_out_seconds, "FadeOutTime")?;
+                    let (file, _summary) = reader.resolve_motion(&motion.file)?;
                     Ok(MotionResource {
-                        file: reader.resolve_motion(&motion.file)?,
+                        file,
                         sound: motion
                             .sound
                             .as_deref()
@@ -994,6 +1061,144 @@ fn read_json_object(
     Ok(())
 }
 
+fn inspect_display_info_file(
+    path: &Path,
+    reference: &str,
+    maximum_bytes: u64,
+) -> Result<DisplayInfoInspection, ModelPackageError> {
+    let display_info: DisplayInfoDefinition = read_typed_json(
+        path,
+        reference,
+        maximum_bytes,
+        DiagnosticCode::ModelDisplayInfoInvalid,
+    )?;
+    if display_info.version != 3 {
+        return resource_error(
+            DiagnosticCode::ModelDisplayInfoInvalid,
+            reference,
+            format!("cdi3 version {} is not supported", display_info.version),
+        );
+    }
+
+    let parameter_group_ids = collect_display_info_ids(
+        display_info.parameter_groups.iter().map(|group| &group.id),
+        reference,
+        "parameter group",
+    )?;
+    for group in &display_info.parameter_groups {
+        validate_display_info_group(
+            &group.group_id,
+            &group.id,
+            &parameter_group_ids,
+            reference,
+            "parameter group",
+        )?;
+    }
+    validate_display_info_group_cycles(&display_info.parameter_groups, reference)?;
+
+    let parameter_ids = collect_display_info_ids(
+        display_info
+            .parameters
+            .iter()
+            .map(|parameter| &parameter.id),
+        reference,
+        "parameter",
+    )?;
+    for parameter in &display_info.parameters {
+        validate_display_info_group(
+            &parameter.group_id,
+            &parameter.id,
+            &parameter_group_ids,
+            reference,
+            "parameter",
+        )?;
+    }
+
+    let part_ids = collect_display_info_ids(
+        display_info.parts.iter().map(|part| &part.id),
+        reference,
+        "part",
+    )?;
+
+    Ok(DisplayInfoInspection {
+        resource: DisplayInfoResource {
+            file: reference.to_owned(),
+            parameter_count: parameter_ids.len(),
+            parameter_group_count: parameter_group_ids.len(),
+            part_count: part_ids.len(),
+        },
+    })
+}
+
+fn collect_display_info_ids<'a>(
+    items: impl IntoIterator<Item = &'a String>,
+    reference: &str,
+    label: &str,
+) -> Result<BTreeSet<String>, ModelPackageError> {
+    let mut ids = BTreeSet::new();
+    for id in items {
+        require_resource_identifier(
+            id,
+            DiagnosticCode::ModelDisplayInfoInvalid,
+            reference,
+            &format!("{label} Id"),
+        )?;
+        if !ids.insert(id.clone()) {
+            return resource_error(
+                DiagnosticCode::ModelDisplayInfoInvalid,
+                reference,
+                format!("{label} Ids must be unique"),
+            );
+        }
+    }
+    Ok(ids)
+}
+
+fn validate_display_info_group(
+    group_id: &str,
+    item_id: &str,
+    known_groups: &BTreeSet<String>,
+    reference: &str,
+    label: &str,
+) -> Result<(), ModelPackageError> {
+    if group_id.is_empty() {
+        return Ok(());
+    }
+    if group_id == item_id || !known_groups.contains(group_id) {
+        return resource_error(
+            DiagnosticCode::ModelDisplayInfoInvalid,
+            reference,
+            format!("{label} GroupId must reference a different parameter group"),
+        );
+    }
+    Ok(())
+}
+
+fn validate_display_info_group_cycles(
+    groups: &[DisplayInfoItem],
+    reference: &str,
+) -> Result<(), ModelPackageError> {
+    let parents = groups
+        .iter()
+        .map(|group| (group.id.as_str(), group.group_id.as_str()))
+        .collect::<BTreeMap<_, _>>();
+    for group in groups {
+        let mut visited = BTreeSet::new();
+        let mut current = group.id.as_str();
+        while !current.is_empty() {
+            if !visited.insert(current) {
+                return resource_error(
+                    DiagnosticCode::ModelDisplayInfoInvalid,
+                    reference,
+                    "parameter group hierarchy must not contain a cycle",
+                );
+            }
+            current = parents.get(current).copied().unwrap_or("");
+        }
+    }
+    Ok(())
+}
+
 fn inspect_motion_file(
     path: &Path,
     reference: &str,
@@ -1044,7 +1249,6 @@ fn inspect_motion_file(
         ..MotionSummary::default()
     };
     for curve in motion.curves {
-        let _target = curve.target;
         require_resource_identifier(
             &curve.id,
             DiagnosticCode::ModelMotionInvalid,
@@ -1063,6 +1267,7 @@ fn inspect_motion_file(
             reference,
             "curve FadeOutTime",
         )?;
+        let _target = curve.target;
         let curve_summary =
             inspect_motion_segments(&curve.segments, motion.meta.duration, reference)?;
         summary.segment_count = summary
@@ -1740,13 +1945,22 @@ mod tests {
         .expect("write model entry");
         fs::write(package.path().join("model.moc3"), b"placeholder").expect("write moc");
         for resource in [
-            "display.cdi3.json",
             "model.physics3.json",
             "model.pose3.json",
             "model.userdata3.json",
         ] {
             fs::write(package.path().join(resource), b"{}").expect("write JSON resource");
         }
+        fs::write(
+            package.path().join("display.cdi3.json"),
+            br#"{
+                "Version":3,
+                "Parameters":[{"Id":"Eye","GroupId":"","Name":""}],
+                "ParameterGroups":[],
+                "Parts":[]
+            }"#,
+        )
+        .expect("write display info resource");
         fs::write(
             package.path().join("smile.exp3.json"),
             br#"{"Type":"Live2D Expression","Parameters":[]}"#,
@@ -1783,6 +1997,7 @@ mod tests {
             .expect("inspect complete model3 package");
         assert_eq!(index.textures[0].width, 1);
         assert_eq!(index.textures[0].height, 2);
+        assert_eq!(index.display_info.as_ref().unwrap().parameter_count, 1);
         assert_eq!(index.physics.as_deref(), Some("model.physics3.json"));
         assert_eq!(index.pose.as_deref(), Some("model.pose3.json"));
         assert_eq!(index.user_data.as_deref(), Some("model.userdata3.json"));
@@ -1793,6 +2008,65 @@ mod tests {
         assert_eq!(index.groups[0].ids, ["Eye"]);
         assert_eq!(index.hit_areas[0].id, "Head");
         assert!(index.unreferenced_files.is_empty());
+    }
+
+    #[test]
+    fn display_info_rejects_duplicate_ids_and_group_cycles() {
+        let directory = tempfile::tempdir().expect("create display info directory");
+        let path = directory.path().join("display.cdi3.json");
+        fs::write(
+            &path,
+            br#"{
+                "Version":3,
+                "Parameters":[
+                    {"Id":"Param","GroupId":"","Name":"first"},
+                    {"Id":"Param","GroupId":"","Name":"second"}
+                ],
+                "ParameterGroups":[],
+                "Parts":[]
+            }"#,
+        )
+        .expect("write duplicate display info");
+
+        let duplicate = inspect_display_info_file(&path, "display.cdi3.json", 1024)
+            .expect_err("duplicate display info Id must fail");
+        assert_eq!(duplicate.code, DiagnosticCode::ModelDisplayInfoInvalid);
+        assert!(duplicate.detail.contains("unique"));
+
+        fs::write(
+            &path,
+            br#"{
+                "Version":3,
+                "Parameters":[{"Id":"Param","GroupId":"Missing","Name":"Param"}],
+                "ParameterGroups":[],
+                "Parts":[]
+            }"#,
+        )
+        .expect("write dangling display info group");
+
+        let dangling = inspect_display_info_file(&path, "display.cdi3.json", 1024)
+            .expect_err("dangling display info GroupId must fail");
+        assert_eq!(dangling.code, DiagnosticCode::ModelDisplayInfoInvalid);
+        assert!(dangling.detail.contains("GroupId"));
+
+        fs::write(
+            &path,
+            br#"{
+                "Version":3,
+                "Parameters":[],
+                "ParameterGroups":[
+                    {"Id":"A","GroupId":"B","Name":"A"},
+                    {"Id":"B","GroupId":"A","Name":"B"}
+                ],
+                "Parts":[]
+            }"#,
+        )
+        .expect("write cyclic display info");
+
+        let cycle = inspect_display_info_file(&path, "display.cdi3.json", 1024)
+            .expect_err("cyclic display info groups must fail");
+        assert_eq!(cycle.code, DiagnosticCode::ModelDisplayInfoInvalid);
+        assert!(cycle.detail.contains("cycle"));
     }
 
     #[test]

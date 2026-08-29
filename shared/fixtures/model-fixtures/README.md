@@ -33,10 +33,11 @@ dimension guard must reject it before image decoding or GPU allocation.
 - Rejection must not modify the source package or current active model.
 
 `preset-model3-index.json` is a normalized snapshot produced by the Rust
-`spikes/model-package` parser for the three tracked preset packages. It freezes
-model3 references, image dimensions, motion/expression groups, companion image
-indexes, total package size, and unreferenced files. The snapshot contains no
-model bytes and does not claim Cubism runtime compatibility.
+`spikes/model-package` parser for the three tracked preset packages. Schema v2
+freezes model3 references, cdi3 parameter/group/part counts, image dimensions,
+motion/expression groups, companion image indexes, total package size, and
+unreferenced files. The snapshot contains no model bytes and does not claim
+Cubism runtime compatibility.
 
 Run the repository validator with:
 

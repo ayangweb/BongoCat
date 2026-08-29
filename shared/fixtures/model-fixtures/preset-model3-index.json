@@ -1,6 +1,6 @@
 {
   "standard": {
-    "schema_version": 1,
+    "schema_version": 2,
     "model_version": 3,
     "entry": "cat.model3.json",
     "moc": "demomodel.moc3",
@@ -21,7 +21,12 @@
         "height": 512
       }
     ],
-    "display_info": "demomodel.cdi3.json",
+    "display_info": {
+      "file": "demomodel.cdi3.json",
+      "parameter_count": 37,
+      "parameter_group_count": 2,
+      "part_count": 10
+    },
     "expressions": [
       {
         "name": "live2d_expression0.exp3.json",
@@ -555,7 +560,7 @@
     ]
   },
   "keyboard": {
-    "schema_version": 1,
+    "schema_version": 2,
     "model_version": 3,
     "entry": "cat.model3.json",
     "moc": "demomodel2.moc3",
@@ -576,7 +581,12 @@
         "height": 512
       }
     ],
-    "display_info": "demomodel2.cdi3.json",
+    "display_info": {
+      "file": "demomodel2.cdi3.json",
+      "parameter_count": 34,
+      "parameter_group_count": 2,
+      "part_count": 11
+    },
     "expressions": [
       {
         "name": "live2d_expression0.exp3.json",
@@ -1143,7 +1153,7 @@
     ]
   },
   "gamepad": {
-    "schema_version": 1,
+    "schema_version": 2,
     "model_version": 3,
     "entry": "cat.model3.json",
     "moc": "demomodel3.moc3",
@@ -1164,7 +1174,12 @@
         "height": 512
       }
     ],
-    "display_info": "demomodel3.cdi3.json",
+    "display_info": {
+      "file": "demomodel3.cdi3.json",
+      "parameter_count": 42,
+      "parameter_group_count": 2,
+      "part_count": 15
+    },
     "expressions": [
       {
         "name": "live2d_expression0.exp3.json",

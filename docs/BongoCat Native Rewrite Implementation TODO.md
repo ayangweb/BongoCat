@@ -243,7 +243,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-29）：已用 hash 固定的 legacy Web Core `5.1.0` 为三个预置 moc 建立可重复 baseline，记录 MOC enum、consistency、parameter/part/drawable count 和 canvas，并接入 CI 漂移检查；这只是未来 R5 wrapper 的对照，尚未完成 Native R5 sys binding 或 drawable 数据读取。
 - [ ] 包装 Moc/Model 生命周期，证明 Model 不会比 Moc 存活更久。
 - [x] 用 Rust 解析三个预置 model3 和所有关联资源。
-  - 验收证据：build `7ee8acd5f2a3d4dcb7a1dbc36623cbe497aeae49` 的 push run `33238204993` 与 PR run `33238206415` 各 16 jobs 全绿。`spikes/model-package/` 强类型解析 model3 v3，验证 moc、纹理、display info、expression、motion/audio、可选 physics/pose/user data 与 companion images，完整包索引冻结在 `shared/fixtures/model-fixtures/preset-model3-index.json`。2026-08-30 又将 6 个 motion3 的 12 条 curve/45 个 segment/123 个 point 与 15 个 exp3 的类型、fade、参数和 blend 纳入强类型结构验证；三个预置包、异常 fixture、跨根 symlink 和目录深度均有 Rust 测试，详见 `docs/phase-0/model-package-spike.md`。本项不包含 Core/model creation、动作求值或 renderer。
+  - 验收证据：build `7ee8acd5f2a3d4dcb7a1dbc36623cbe497aeae49` 的 push run `33238204993` 与 PR run `33238206415` 各 16 jobs 全绿。`spikes/model-package/` 强类型解析 model3 v3，验证 moc、纹理、display info、expression、motion/audio、可选 physics/pose/user data 与 companion images，完整包索引冻结在 `shared/fixtures/model-fixtures/preset-model3-index.json`。2026-08-30 又将 3 个 cdi3、6 个 motion3 与 15 个 exp3 纳入强类型结构验证；cdi3 parameter/part 数量与 legacy Core baseline 一致，三个预置包、异常 fixture、跨根 symlink 和目录深度均有 Rust 测试，详见 `docs/phase-0/model-package-spike.md`。本项不包含 Core/model creation、动作求值或 renderer。
 - [ ] Windows D3D11 绘制预置模型的 texture/order/alpha/mask。
   - 状态（2026-08-29）：Windows overlay 已实现合成几何的 D3D11 shader pipeline、预乘 alpha draw 和 staging texture 像素验证；预置模型 texture、drawable order 和 mask 尚未接入，因此保持未完成。
 - [ ] macOS Metal 绘制同一模型的 texture/order/alpha/mask。
@@ -857,7 +857,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 - [x] 完成平台无关 Rust model3/package parser、三个预置规范化索引与异常资源安全 contract；Native Core、binding、Framework 求值和 D3D11/Metal 绘制仍未完成。
 - [x] 完成 6 个预置 motion3 与 15 个 exp3 的强类型结构、segment/Meta 计数、fade/parameter/blend 校验；这不代表 motion/expression 行为求值完成。
-- [ ] 完成预置 physics3/pose3 强类型结构校验，再进入获得授权后的 Framework 求值。
+- [x] 完成 3 个预置 cdi3 的强类型 parameter/group/part 与 group 拓扑校验，并将规范化索引升级到 schema v2；跨资源 ID 以未来 Core 表为准。
+- [ ] 取得可分发授权的 physics3/pose3 fixture 后完成强类型结构和 Framework 求值；三个预置模型不含这两类资源，不得以合成样本冒充兼容证据。
 
 14. [ ] `P0-GO-NO-GO`：汇总证据、阻塞和条件，确认后再建立完整产品 workspace。
     - 状态（2026-08-29）：`docs/phase-0/go-no-go-readiness.md` 已建立 gate matrix、外部 owner、工程队列和三类决策规则；当前结论明确为 `NOT READY FOR DECISION`，不勾选本项。主要阻塞是 Cubism SDK/书面授权、真实 Core/三模型 renderer、GPUI 辅助功能/IME 与双平台物理输入/GPU 矩阵。

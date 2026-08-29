@@ -138,10 +138,10 @@ Phase 0 暂定单边纹理尺寸上限为 `8192`。超大纹理 fixture 只保�
 
 ## Rust Model Package Index
 
-`spikes/model-package/` 以纯 Rust 强类型解析三个预置 `cat.model3.json`，并在读取 Cubism Core 前验证所有 model3 引用：moc、纹理、display info、expression、motion、音频、physics、pose 和 user data。`resources/background.png`、`cover.png` 与左右键图片也进入同一规范化索引。
+`spikes/model-package/` 以纯 Rust 强类型解析三个预置 `cat.model3.json`、cdi3、motion3 和 exp3，并在读取 Cubism Core 前验证所有 model3 引用：moc、纹理、display info、expression、motion、音频、physics、pose 和 user data。cdi3 进一步验证 parameter/group/part 与 group 拓扑；`resources/background.png`、`cover.png` 与左右键图片也进入同一规范化索引。cdi3 不作为 Core ID 权威来源，跨资源 ID 留待 Native Core 表校验。
 
 解析器统一把 `\\` 转为 `/`，拒绝绝对路径、盘符、`..`、跨根符号链接和符号链接目录递归；关联 JSON 有 16 MiB 上限并要求 object 顶层，单文件上限为 512 MiB，包上限为 1 GiB/4096 文件/32 层目录。PNG 在解码或 GPU 分配前只读取签名与 IHDR，并执行 8192 单边上限。
 
-`shared/fixtures/model-fixtures/preset-model3-index.json` 冻结完整索引。Rust 测试同时重跑六类合成异常包，并额外覆盖跨根符号链接和目录深度。三个预置包分别解析出 71/75/28 个文件，字节数与本清单一致；每个包均有 3 张模型纹理、3 个引用 expression、2 个 motion group，且明确报告未被 model3 引用的 `exp_1.exp3.json` 与 `exp_2.exp3.json`。
+`shared/fixtures/model-fixtures/preset-model3-index.json` 以 schema v2 冻结完整索引。Rust 测试同时重跑六类合成异常包，并额外覆盖跨根符号链接、目录深度和 cdi3 重复/悬空/成环 group。三个预置包分别解析出 71/75/28 个文件，字节数与本清单一致；每个包均有 3 张模型纹理、3 个引用 expression、2 个 motion group，且明确报告未被 model3 引用的 `exp_1.exp3.json` 与 `exp_2.exp3.json`。
 
 该索引只完成包发现、静态解析、路径安全和资源存在性验证。moc consistency/model creation、motion/expression/physics/pose 求值、D3D11/Metal 绘制和销毁压力仍属于 `P0-CUBISM` 的未完成门禁。
