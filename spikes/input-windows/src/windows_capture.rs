@@ -4,7 +4,7 @@ use bongocat_input_windows_spike::{
     decode_raw_keyboard_bytes,
 };
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeSet, VecDeque},
     ffi::c_void,
     mem::size_of,
     panic::{AssertUnwindSafe, catch_unwind},
@@ -26,8 +26,9 @@ use windows::{
             Input::{
                 GetRawInputData, HRAWINPUT,
                 KeyboardAndMouse::{
-                    GetAsyncKeyState, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
-                    KEYEVENTF_SCANCODE, SendInput, VIRTUAL_KEY,
+                    GetAsyncKeyState, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT,
+                    KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, SendInput,
+                    VIRTUAL_KEY,
                 },
                 RAWINPUTDEVICE, RAWINPUTHEADER, RID_INPUT, RIDEV_DEVNOTIFY, RIDEV_INPUTSINK,
                 RIDEV_REMOVE, RegisterRawInputDevices,
@@ -53,6 +54,45 @@ const STOP_TIMER_ID: usize = 1;
 const RECONCILIATION_TIMER_ID: usize = 2;
 const RECONCILIATION_INTERVAL_MS: u32 = 250;
 const REQUIRED_MISSING_CONFIRMATIONS: u8 = 2;
+pub const SYNTHETIC_PRESSURE_KEY_COUNT: usize = 6;
+pub const MAX_SYNTHETIC_PRESSURE_CYCLES: usize = 256;
+
+const SYNTHETIC_PRESSURE_KEYS: [SyntheticKey; SYNTHETIC_PRESSURE_KEY_COUNT] = [
+    SyntheticKey::new(0x1e, false, PhysicalKey::A),
+    SyntheticKey::new(0x1f, false, PhysicalKey::S),
+    SyntheticKey::new(0x39, false, PhysicalKey::Space),
+    SyntheticKey::new(0x2a, false, PhysicalKey::ShiftLeft),
+    SyntheticKey::new(0x1d, false, PhysicalKey::ControlLeft),
+    SyntheticKey::new(0x1d, true, PhysicalKey::ControlRight),
+];
+
+#[derive(Clone, Copy)]
+struct SyntheticKey {
+    scan_code: u16,
+    extended: bool,
+    physical_key: PhysicalKey,
+}
+
+impl SyntheticKey {
+    const fn new(scan_code: u16, extended: bool, physical_key: PhysicalKey) -> Self {
+        Self {
+            scan_code,
+            extended,
+            physical_key,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Default)]
+enum SmokeMode {
+    #[default]
+    Registration,
+    Lifecycle,
+    ReleaseRecovery,
+    EdgePressure {
+        cycles: usize,
+    },
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct RegistrationReport {
@@ -78,7 +118,17 @@ pub struct RegistrationReport {
     pub decode_errors: u64,
     pub callback_panics: u64,
     pub synthetic_inputs_sent: u64,
+    pub synthetic_expected_edges: u64,
+    pub synthetic_edges_seen: u64,
+    pub synthetic_down_edges: u64,
+    pub synthetic_up_edges: u64,
+    pub synthetic_order_errors: u64,
+    pub synthetic_expected_edges_remaining: usize,
     pub intentionally_dropped_releases: u64,
+    pub captured_down: u64,
+    pub captured_up: u64,
+    pub duplicate_down: u64,
+    pub unmatched_up: u64,
     pub pressed_candidates_remaining: usize,
 }
 
@@ -96,6 +146,12 @@ struct WindowState {
     decode_errors: u64,
     callback_panics: u64,
     synthetic_inputs_sent: u64,
+    synthetic_expected_edge_count: u64,
+    synthetic_expected_edges: VecDeque<KeyboardEdge>,
+    synthetic_edges_seen: u64,
+    synthetic_down_edges: u64,
+    synthetic_up_edges: u64,
+    synthetic_order_errors: u64,
     intentionally_dropped_releases: u64,
     drop_next_release: bool,
 }
@@ -126,7 +182,17 @@ impl WindowState {
             decode_errors: self.decode_errors,
             callback_panics: self.callback_panics,
             synthetic_inputs_sent: self.synthetic_inputs_sent,
+            synthetic_expected_edges: self.synthetic_expected_edge_count,
+            synthetic_edges_seen: self.synthetic_edges_seen,
+            synthetic_down_edges: self.synthetic_down_edges,
+            synthetic_up_edges: self.synthetic_up_edges,
+            synthetic_order_errors: self.synthetic_order_errors,
+            synthetic_expected_edges_remaining: self.synthetic_expected_edges.len(),
             intentionally_dropped_releases: self.intentionally_dropped_releases,
+            captured_down: candidate_counters.captured_down,
+            captured_up: candidate_counters.captured_up,
+            duplicate_down: candidate_counters.duplicate_down,
+            unmatched_up: candidate_counters.unmatched_up,
             pressed_candidates_remaining: self.pressed_candidates.keys().len(),
         }
     }
@@ -147,19 +213,32 @@ impl WindowState {
             }
         }
     }
+
+    fn observe_synthetic_edge(&mut self, edge: KeyboardEdge) {
+        let expected = self.synthetic_expected_edges.pop_front();
+        self.synthetic_edges_seen += 1;
+        if edge.pressed {
+            self.synthetic_down_edges += 1;
+        } else {
+            self.synthetic_up_edges += 1;
+        }
+        if expected != Some(edge) {
+            self.synthetic_order_errors += 1;
+        }
+    }
 }
 
 pub fn run_registration_smoke(duration: Duration) -> WindowsResult<RegistrationReport> {
     // SAFETY: all Win32 window operations remain on this thread. The boxed
     // state outlives the HWND and is released only after WM_NCDESTROY clears
     // GWLP_USERDATA and the message loop exits.
-    unsafe { run_registration_smoke_inner(duration, false, false) }
+    unsafe { run_registration_smoke_inner(duration, SmokeMode::Registration) }
 }
 
 pub fn run_lifecycle_smoke(duration: Duration) -> WindowsResult<RegistrationReport> {
     // SAFETY: this uses the same thread-confined window contract and sends only
     // synchronous lifecycle messages to its own hidden HWND.
-    unsafe { run_registration_smoke_inner(duration, true, false) }
+    unsafe { run_registration_smoke_inner(duration, SmokeMode::Lifecycle) }
 }
 
 pub fn run_synthetic_release_recovery_smoke(
@@ -168,7 +247,22 @@ pub fn run_synthetic_release_recovery_smoke(
     // SAFETY: SendInput is issued only after the thread-confined Raw Input
     // window is registered. The synthetic key is always paired with KeyUp;
     // only this spike's consumer intentionally ignores that captured release.
-    unsafe { run_registration_smoke_inner(duration, false, true) }
+    unsafe { run_registration_smoke_inner(duration, SmokeMode::ReleaseRecovery) }
+}
+
+pub fn run_synthetic_edge_pressure_smoke(
+    duration: Duration,
+    cycles: usize,
+) -> WindowsResult<RegistrationReport> {
+    assert!(cycles > 0, "synthetic pressure cycles must be non-zero");
+    assert!(
+        cycles <= MAX_SYNTHETIC_PRESSURE_CYCLES,
+        "synthetic pressure cycles exceed the bounded smoke limit"
+    );
+    // SAFETY: every injected scan-code down has a paired up, including the
+    // cleanup path after partial SendInput failure. Expected edge storage and
+    // the Raw Input HWND remain confined to this thread.
+    unsafe { run_registration_smoke_inner(duration, SmokeMode::EdgePressure { cycles }) }
 }
 
 pub fn query_pressed_keys(candidates: &BTreeSet<PhysicalKey>) -> WindowsResult<KeyStateSnapshot> {
@@ -188,8 +282,7 @@ pub fn query_pressed_keys(candidates: &BTreeSet<PhysicalKey>) -> WindowsResult<K
 
 unsafe fn run_registration_smoke_inner(
     duration: Duration,
-    inject_lifecycle: bool,
-    inject_synthetic_input: bool,
+    mode: SmokeMode,
 ) -> WindowsResult<RegistrationReport> {
     let module = unsafe { GetModuleHandleW(None)? };
     let instance = HINSTANCE(module.0);
@@ -249,13 +342,27 @@ unsafe fn run_registration_smoke_inner(
         return Err(error);
     }
 
-    if inject_lifecycle {
+    if matches!(mode, SmokeMode::Lifecycle) {
         unsafe { inject_lifecycle_messages(window, state_ptr) };
     }
 
-    if inject_synthetic_input {
-        state.drop_next_release = true;
-        match unsafe { send_synthetic_a_press_and_release() } {
+    let synthetic_input = match mode {
+        SmokeMode::ReleaseRecovery => {
+            state.drop_next_release = true;
+            build_synthetic_sequence(&[SYNTHETIC_PRESSURE_KEYS[0]], 1)
+        }
+        SmokeMode::EdgePressure { cycles } => {
+            build_synthetic_sequence(&SYNTHETIC_PRESSURE_KEYS, cycles)
+        }
+        SmokeMode::Registration | SmokeMode::Lifecycle => Vec::new(),
+    };
+    if !synthetic_input.is_empty() {
+        state.synthetic_expected_edges = synthetic_input
+            .iter()
+            .map(|input| input.expected_edge)
+            .collect();
+        state.synthetic_expected_edge_count = synthetic_input.len() as u64;
+        match unsafe { send_synthetic_sequence(&synthetic_input) } {
             Ok(sent) => state.synthetic_inputs_sent = u64::from(sent),
             Err(error) => {
                 let _ = unsafe { DestroyWindow(window) };
@@ -316,32 +423,67 @@ unsafe fn run_registration_smoke_inner(
     Ok(state.report(true, state.session_notifications_unregistered))
 }
 
-unsafe fn send_synthetic_a_press_and_release() -> WindowsResult<u32> {
-    let key_down = synthetic_a_input(false);
-    let key_up = synthetic_a_input(true);
-    let inputs = [key_down, key_up];
+#[derive(Clone, Copy)]
+struct SyntheticInput {
+    input: INPUT,
+    expected_edge: KeyboardEdge,
+}
+
+fn build_synthetic_sequence(keys: &[SyntheticKey], cycles: usize) -> Vec<SyntheticInput> {
+    let mut sequence = Vec::with_capacity(keys.len() * cycles * 2);
+    for _ in 0..cycles {
+        for key in keys {
+            sequence.push(SyntheticInput {
+                input: synthetic_input(*key, false),
+                expected_edge: KeyboardEdge {
+                    key: key.physical_key,
+                    pressed: true,
+                },
+            });
+            sequence.push(SyntheticInput {
+                input: synthetic_input(*key, true),
+                expected_edge: KeyboardEdge {
+                    key: key.physical_key,
+                    pressed: false,
+                },
+            });
+        }
+    }
+    sequence
+}
+
+unsafe fn send_synthetic_sequence(sequence: &[SyntheticInput]) -> WindowsResult<u32> {
+    let inputs = sequence.iter().map(|item| item.input).collect::<Vec<_>>();
     let sent = unsafe { SendInput(&inputs, size_of::<INPUT>() as i32) };
     if sent != inputs.len() as u32 {
         // Best-effort cleanup prevents a partial injection from leaving the
-        // runner's input state pressed even when the smoke must fail.
-        let _ = unsafe { SendInput(&[key_up], size_of::<INPUT>() as i32) };
+        // runner's input state pressed even when the smoke must fail. Releasing
+        // every key is harmless for keys whose down edge was not inserted.
+        let releases = SYNTHETIC_PRESSURE_KEYS
+            .iter()
+            .map(|key| synthetic_input(*key, true))
+            .collect::<Vec<_>>();
+        let _ = unsafe { SendInput(&releases, size_of::<INPUT>() as i32) };
         return Err(Error::from_thread());
     }
     Ok(sent)
 }
 
-fn synthetic_a_input(released: bool) -> INPUT {
+fn synthetic_input(key: SyntheticKey, released: bool) -> INPUT {
+    let mut flags = KEYEVENTF_SCANCODE;
+    if key.extended {
+        flags |= KEYEVENTF_EXTENDEDKEY;
+    }
+    if released {
+        flags |= KEYEVENTF_KEYUP;
+    }
     INPUT {
         r#type: INPUT_KEYBOARD,
         Anonymous: INPUT_0 {
             ki: KEYBDINPUT {
                 wVk: VIRTUAL_KEY(0),
-                wScan: 0x1e,
-                dwFlags: if released {
-                    KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP
-                } else {
-                    KEYEVENTF_SCANCODE
-                },
+                wScan: key.scan_code,
+                dwFlags: flags,
                 time: 0,
                 dwExtraInfo: 0,
             },
@@ -427,6 +569,12 @@ unsafe extern "system" fn window_proc(
             match unsafe { read_keyboard_edge(lparam) } {
                 Ok(Some(edge)) => {
                     state.keyboard_edges += 1;
+                    if !state.synthetic_expected_edges.is_empty() {
+                        state.observe_synthetic_edge(edge);
+                    } else if state.synthetic_edges_seen > 0 {
+                        state.synthetic_edges_seen += 1;
+                        state.synthetic_order_errors += 1;
+                    }
                     if !edge.pressed && state.drop_next_release {
                         state.drop_next_release = false;
                         state.intentionally_dropped_releases += 1;
@@ -595,4 +743,37 @@ unsafe fn read_keyboard_edge(
     )
     .map_err(|_| ())?;
     Ok(Some(decode_keyboard_packet(packet)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pressure_sequence_pairs_every_key_in_stable_order() {
+        let sequence = build_synthetic_sequence(&SYNTHETIC_PRESSURE_KEYS, 2);
+        assert_eq!(sequence.len(), SYNTHETIC_PRESSURE_KEY_COUNT * 4);
+
+        let expected_cycle = SYNTHETIC_PRESSURE_KEYS
+            .iter()
+            .flat_map(|key| {
+                [
+                    KeyboardEdge {
+                        key: key.physical_key,
+                        pressed: true,
+                    },
+                    KeyboardEdge {
+                        key: key.physical_key,
+                        pressed: false,
+                    },
+                ]
+            })
+            .collect::<Vec<_>>();
+        let actual = sequence
+            .iter()
+            .map(|input| input.expected_edge)
+            .collect::<Vec<_>>();
+        assert_eq!(actual[..expected_cycle.len()], expected_cycle);
+        assert_eq!(actual[expected_cycle.len()..], expected_cycle);
+    }
 }

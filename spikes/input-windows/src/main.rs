@@ -10,6 +10,37 @@ mod windows_capture;
 
 fn main() {
     #[cfg(target_os = "windows")]
+    if let Some(cycles) = argument_value("--synthetic-edge-pressure-cycles")
+        .and_then(|value| value.parse::<usize>().ok())
+    {
+        let report = windows_capture::run_synthetic_edge_pressure_smoke(
+            std::time::Duration::from_secs(3),
+            cycles,
+        )
+        .expect("Windows synthetic edge pressure smoke failed");
+        let expected_pairs = cycles * windows_capture::SYNTHETIC_PRESSURE_KEY_COUNT;
+        let expected_edges = expected_pairs * 2;
+        assert!(report.registered, "Raw Input devices were not registered");
+        assert_eq!(report.synthetic_inputs_sent, expected_edges as u64);
+        assert_eq!(report.synthetic_expected_edges, expected_edges as u64);
+        assert_eq!(report.synthetic_edges_seen, expected_edges as u64);
+        assert_eq!(report.synthetic_down_edges, expected_pairs as u64);
+        assert_eq!(report.synthetic_up_edges, expected_pairs as u64);
+        assert_eq!(report.synthetic_order_errors, 0);
+        assert_eq!(report.synthetic_expected_edges_remaining, 0);
+        assert_eq!(report.captured_down, expected_pairs as u64);
+        assert_eq!(report.captured_up, expected_pairs as u64);
+        assert_eq!(report.duplicate_down, 0);
+        assert_eq!(report.unmatched_up, 0);
+        assert_eq!(report.decode_errors, 0);
+        assert_eq!(report.callback_panics, 0);
+        assert_eq!(report.pressed_candidates_remaining, 0);
+        assert!(report.clean_shutdown);
+        print_registration_report(report);
+        return;
+    }
+
+    #[cfg(target_os = "windows")]
     if let Some(milliseconds) = argument_value("--synthetic-release-recovery-ms")
         .and_then(|value| value.parse::<u64>().ok())
     {
@@ -149,7 +180,7 @@ fn main() {
 #[cfg(target_os = "windows")]
 fn print_registration_report(report: windows_capture::RegistrationReport) {
     println!(
-        "input-windows-spike: registered={} session_notifications_registered={} session_notifications_unregistered={} clean_shutdown={} raw_messages={} keyboard_edges={} device_arrivals={} device_removals={} resets={} reset_releases={} device_removed_resets={} session_change_resets={} power_change_resets={} service_stopped_resets={} unqueryable_key_resets={} state_query_unavailable_resets={} reconciliation_runs={} reconciled_releases={} reconciliation_query_errors={} decode_errors={} callback_panics={} synthetic_inputs_sent={} intentionally_dropped_releases={} pressed_candidates_remaining={}",
+        "input-windows-spike: registered={} session_notifications_registered={} session_notifications_unregistered={} clean_shutdown={} raw_messages={} keyboard_edges={} device_arrivals={} device_removals={} resets={} reset_releases={} device_removed_resets={} session_change_resets={} power_change_resets={} service_stopped_resets={} unqueryable_key_resets={} state_query_unavailable_resets={} reconciliation_runs={} reconciled_releases={} reconciliation_query_errors={} decode_errors={} callback_panics={} synthetic_inputs_sent={} synthetic_expected_edges={} synthetic_edges_seen={} synthetic_down_edges={} synthetic_up_edges={} synthetic_order_errors={} synthetic_expected_edges_remaining={} intentionally_dropped_releases={} captured_down={} captured_up={} duplicate_down={} unmatched_up={} pressed_candidates_remaining={}",
         report.registered,
         report.session_notifications_registered,
         report.session_notifications_unregistered,
@@ -172,7 +203,17 @@ fn print_registration_report(report: windows_capture::RegistrationReport) {
         report.decode_errors,
         report.callback_panics,
         report.synthetic_inputs_sent,
+        report.synthetic_expected_edges,
+        report.synthetic_edges_seen,
+        report.synthetic_down_edges,
+        report.synthetic_up_edges,
+        report.synthetic_order_errors,
+        report.synthetic_expected_edges_remaining,
         report.intentionally_dropped_releases,
+        report.captured_down,
+        report.captured_up,
+        report.duplicate_down,
+        report.unmatched_up,
         report.pressed_candidates_remaining,
     );
 }

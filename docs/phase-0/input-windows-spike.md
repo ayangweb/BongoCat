@@ -1,6 +1,6 @@
 # Windows Raw Input Spike
 
-状态：平台无关 mapping contract、Windows Raw Input 注册/退出路径、`GetAsyncKeyState` 周期校正与生命周期 Reset 已实现；新增系统合成输入到 `WM_INPUT` 再到丢 release 校正的闭环 smoke，真实键盘、锁屏/睡眠和热插拔待验证
+状态：平台无关 mapping contract、Windows Raw Input 注册/退出路径、`GetAsyncKeyState` 周期校正与生命周期 Reset 已实现；系统合成输入已覆盖丢 release 校正闭环和多键有序边沿压力 smoke，真实键盘、锁屏/睡眠和热插拔待验证
 日期：2026-08-29
 
 ## 范围
@@ -38,6 +38,7 @@ cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --register
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --key-state-smoke
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --reconcile-smoke-ms 600
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --synthetic-release-recovery-ms 800
+cargo run --manifest-path spikes/input-windows/Cargo.toml --locked --release -- --synthetic-edge-pressure-cycles 128
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --lifecycle-smoke-ms 100
 ```
 
@@ -88,6 +89,17 @@ edge；consumer 随后只故意忽略一次已捕获的 release，保留 pressed
 run 验证。它覆盖真实 Win32 callback、解码、pressed set 和校正调度的进程内闭环，但
 仍属于系统合成输入，不能替代物理键盘、PixPin、安全桌面或不同完整性级别实测。
 
+`--synthetic-edge-pressure-cycles 128` 为 A、S、Space、左 Shift、左 Control 和 E0
+右 Control 依次发送 128 轮 down/up，共 768 对、1536 个 scan-code 边沿。消费端保存预期
+物理边沿队列，逐条验证 `WM_INPUT` 解码后的顺序，并分别断言 injected/seen/down/up、
+duplicate down、unmatched up、decode error、callback panic 和最终 candidate 数量。命令最长
+运行 3 秒，cycles 上限为 256，防止 CI 参数失控；输出只包含聚合计数，不包含实际按键值。
+该 smoke 已接入 `windows-latest`，真实 Windows 执行结果待本批 push run 验证。
+
+这项压力 smoke 证明 `SendInput -> WM_INPUT -> raw decode -> candidate state` 在无人值守
+runner 上对一组已知 scan code 保持有序，不等于 10 分钟高速物理键鼠测试，也不能覆盖
+PixPin、Win+L、PrintScreen、UAC、输入桌面切换或不同完整性级别的事件投递。
+
 会话与电源 Reset 的 Windows runner 证据：
 
 - 实现 commit：`32bc9a37efd201a788511ee86e7350c6a5058ab3`；
@@ -97,7 +109,7 @@ run 验证。它覆盖真实 Win32 callback、解码、pressed set 和校正调�
 
 该 smoke 在每条受控 `WM_WTSSESSION_CHANGE`/`WM_POWERBROADCAST` 前注入一个无 KeyUp 候选，并验证消息 dispatch 实际清空它；它不等于操作系统真实锁屏或睡眠。Win+L、快速用户切换、睡眠/唤醒和 UAC 返回仍需交互式 Windows 验收。
 
-下一步先确认 Windows runner 的系统合成 `WM_INPUT` 闭环，再获取物理设备的
+下一步先确认 Windows runner 的系统合成 release-recovery 与 edge-pressure 闭环，再获取物理设备的
 `RAWINPUTHEADER`/`RAWKEYBOARD` 样本，验证设备句柄生命周期、E0/E1 实际序列、
 `RI_KEY_BREAK` 与热插拔。最后执行 PixPin、Win+L、睡眠/唤醒、PrintScreen、UAC 和
 管理员/非管理员矩阵；不得用无人值守 CI 的合成输入或受控生命周期消息替代这些平台验收。

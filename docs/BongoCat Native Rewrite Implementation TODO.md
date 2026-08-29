@@ -219,6 +219,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-29）：本批新增系统合成 A down/up，consumer 故意丢弃已捕获 release，再由两次 `GetAsyncKeyState` 快照清除 candidate 的 Windows runner smoke；它验证 callback 到 reconcile 的实现闭环，但不替代 PixPin/物理键实测。
 - [ ] 实测 Win+L、PrintScreen、UAC 和管理员/非管理员场景。
 - [ ] 进行 10 分钟高速鼠标 + 键盘压力测试，edge 丢失计数必须为 0。
+  - 状态（2026-08-29）：新增 3 秒有界 `SendInput` 压力 smoke，对 A、S、Space、左 Shift、左 Control 和 E0 右 Control 发送 128 轮、共 1536 个 down/up 边沿；Windows consumer 逐边沿校验预期顺序，并要求 seen/down/up 完整、duplicate/unmatched/decode/panic/残留均为 0。它只验证无人值守 runner 的系统合成链路，不能替代本项要求的 10 分钟物理键鼠与交互场景，因此保持未勾选。
 - [ ] macOS 实现 CGEventTap、权限拒绝/授予和 tap 自动重启。
   - 状态（2026-08-29）：真实 listen-only tap 与受控 timeout/user-disable Reset + re-enable 已通过；TCC 拒绝、撤销、重新授予和系统自然 timeout 矩阵仍待实机完成。
 - [ ] macOS 使用 CGEventSourceKeyState/CGEventSourceButtonState 校正 pressed state。
@@ -227,7 +228,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 验收证据（2026-08-29）：release probe 现在严格校验每个 cycle 的 enabled 恢复、callback panic、queue overflow/closed event 和 NSWorkspace observer 成对注销，任一失败均非零退出。`leaks --atExit` 的 100-cycle 报告 `0 leaks for 0 total leaked bytes`、physical footprint `5232K`，`NSZombieEnabled=YES` 另完成 100/100；两次均为 `queue_overflows=0 callback_panics=0 clean_shutdown=true`，且每个 tap worker 都已 join。timeout/user-disable 各 20 次恢复已另行通过；权限故障循环留在 TCC 矩阵，不阻塞本 restart owner 子项。
 - [x] 记录 monio 对照结果，但不引入生产依赖；`docs/phase-0/monio-comparison.md` 基于 commit `d1766e0dcd20dea0435be16cd80adaa749b86e30` 记录 Raw Input、channel、reconciliation、Reset、callback 和许可证差异。
 - [ ] 为 captured、reconciled、reset、duplicate、overflow 分别维护计数器，不记录具体键值。
-  - 状态（2026-08-29）：macOS spike 已输出事件类型、reconciled release、Reset 次数/释放数、duplicate/unmatched 和 queue overflow/recovery 数量，且不输出具体键值；Windows 与产品 runtime 的统一诊断 snapshot 仍待完成。
+  - 状态（2026-08-29）：macOS spike 已输出事件类型、reconciled release、Reset 次数/释放数、duplicate/unmatched 和 queue overflow/recovery 数量；Windows spike 已补齐 captured down/up、reconciled、Reset、duplicate/unmatched、decode、callback panic、合成顺序错误和残留 candidate 聚合计数。两平台均不输出具体键值；Windows callback queue overflow 与产品 runtime 的统一诊断 snapshot 仍待完成。
 - [x] 验证输入 callback panic 隔离、队列关闭和应用退出竞态，不允许 callback 访问已析构 runtime。
   - 验收证据：macOS event-tap 与 workspace callback 共用 autorelease/panic boundary，故意 panic 的测试确认 unwind 不越过 callback；固定队列 close 后拒绝新事件并可 drain；受控生命周期 smoke 在 callback gate 关闭后触发迟到通知，只增加 ignored 计数。observer token 成对注销，callback 只持有 queue/atomic，不捕获 runtime owner。产品 runtime 接入后仍须重跑对等 shutdown 测试。
 
