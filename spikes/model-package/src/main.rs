@@ -1,5 +1,5 @@
 use bongocat_model_package_spike::{
-    ModelPackageLimits, inspect_model_package, inspect_physics_resource,
+    ModelPackageLimits, inspect_model_package, inspect_physics_resource, inspect_pose_resource,
 };
 use serde::Serialize;
 use std::env;
@@ -23,9 +23,12 @@ fn main() -> ExitCode {
         [flag, physics] if flag == OsStr::new("--physics") => print_result(
             inspect_physics_resource(PathBuf::from(physics), 16 * 1024 * 1024),
         ),
+        [flag, pose] if flag == OsStr::new("--pose") => {
+            print_result(inspect_pose_resource(PathBuf::from(pose), 16 * 1024 * 1024))
+        }
         _ => {
             eprintln!(
-                "usage: {executable} <model-package-directory>\n       {executable} --physics <physics3-json>"
+                "usage: {executable} <model-package-directory>\n       {executable} --physics <physics3-json>\n       {executable} --pose <pose3-json>"
             );
             ExitCode::from(2)
         }

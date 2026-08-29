@@ -50,6 +50,7 @@ pub enum DiagnosticCode {
     ModelPackageDepthExceeded,
     ModelPackageSizeExceeded,
     ModelPhysicsInvalid,
+    ModelPoseInvalid,
     ModelReferenceEscapesRoot,
     ModelReferenceInvalid,
     ModelReferenceSymlinkEscape,
@@ -80,6 +81,7 @@ impl DiagnosticCode {
             Self::ModelPackageDepthExceeded => "model_package_depth_exceeded",
             Self::ModelPackageSizeExceeded => "model_package_size_exceeded",
             Self::ModelPhysicsInvalid => "model_physics_invalid",
+            Self::ModelPoseInvalid => "model_pose_invalid",
             Self::ModelReferenceEscapesRoot => "model_reference_escapes_root",
             Self::ModelReferenceInvalid => "model_reference_invalid",
             Self::ModelReferenceSymlinkEscape => "model_reference_symlink_escape",
@@ -185,6 +187,14 @@ pub struct PhysicsResourceSummary {
     pub input_count: usize,
     pub output_count: usize,
     pub vertex_count: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct PoseResourceSummary {
+    pub fade_in_seconds: Option<f64>,
+    pub group_count: usize,
+    pub part_count: usize,
+    pub link_count: usize,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -455,6 +465,26 @@ struct ExpressionSummary {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct PoseDefinition {
+    #[serde(rename = "Type")]
+    pose_type: String,
+    #[serde(rename = "FadeInTime", default)]
+    fade_in_seconds: Option<f64>,
+    #[serde(rename = "Groups")]
+    groups: Vec<Vec<PosePart>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PosePart {
+    #[serde(rename = "Id")]
+    id: String,
+    #[serde(rename = "Link", default)]
+    links: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PhysicsDefinition {
     #[serde(rename = "Version")]
     version: u32,
@@ -711,6 +741,12 @@ impl PackageReader {
     fn resolve_physics(&mut self, reference: &str) -> Result<String, ModelPackageError> {
         let (normalized, path) = self.resolve_file(reference, ResourceKind::Other)?;
         inspect_physics_file(&path, &normalized, self.limits.maximum_json_bytes)?;
+        Ok(normalized)
+    }
+
+    fn resolve_pose(&mut self, reference: &str) -> Result<String, ModelPackageError> {
+        let (normalized, path) = self.resolve_file(reference, ResourceKind::Other)?;
+        inspect_pose_file(&path, &normalized, self.limits.maximum_json_bytes)?;
         Ok(normalized)
     }
 
@@ -1024,7 +1060,7 @@ pub fn inspect_model_package(
         .file_references
         .pose
         .as_deref()
-        .map(|reference| reader.resolve_json(reference))
+        .map(|reference| reader.resolve_pose(reference))
         .transpose()?;
     let user_data = model
         .file_references
@@ -1380,6 +1416,119 @@ pub fn inspect_physics_resource(
     maximum_bytes: u64,
 ) -> Result<PhysicsResourceSummary, ModelPackageError> {
     inspect_physics_file(path.as_ref(), "physics3.json", maximum_bytes)
+}
+
+pub fn inspect_pose_resource(
+    path: impl AsRef<Path>,
+    maximum_bytes: u64,
+) -> Result<PoseResourceSummary, ModelPackageError> {
+    inspect_pose_file(path.as_ref(), "pose3.json", maximum_bytes)
+}
+
+fn inspect_pose_file(
+    path: &Path,
+    reference: &str,
+    maximum_bytes: u64,
+) -> Result<PoseResourceSummary, ModelPackageError> {
+    let pose: PoseDefinition = read_typed_json(
+        path,
+        reference,
+        maximum_bytes,
+        DiagnosticCode::ModelPoseInvalid,
+    )?;
+    if pose.pose_type != "Live2D Pose" {
+        return resource_error(
+            DiagnosticCode::ModelPoseInvalid,
+            reference,
+            "Type must be Live2D Pose",
+        );
+    }
+    validate_resource_fade(
+        pose.fade_in_seconds,
+        DiagnosticCode::ModelPoseInvalid,
+        reference,
+        "FadeInTime",
+    )?;
+    if pose.groups.is_empty() {
+        return resource_error(
+            DiagnosticCode::ModelPoseInvalid,
+            reference,
+            "Groups must contain at least one pose group",
+        );
+    }
+
+    let mut part_ids = BTreeSet::new();
+    let mut part_count = 0usize;
+    let mut link_count = 0usize;
+    for group in &pose.groups {
+        if group.is_empty() {
+            return resource_error(
+                DiagnosticCode::ModelPoseInvalid,
+                reference,
+                "pose groups must not be empty",
+            );
+        }
+        part_count = part_count.checked_add(group.len()).ok_or_else(|| {
+            ModelPackageError::new(
+                DiagnosticCode::ModelPoseInvalid,
+                Some(reference),
+                "pose part count overflowed",
+            )
+        })?;
+        for part in group {
+            require_resource_identifier(
+                &part.id,
+                DiagnosticCode::ModelPoseInvalid,
+                reference,
+                "pose part Id",
+            )?;
+            if !part_ids.insert(part.id.as_str()) {
+                return resource_error(
+                    DiagnosticCode::ModelPoseInvalid,
+                    reference,
+                    "pose part Ids must be unique across groups",
+                );
+            }
+
+            let mut links = BTreeSet::new();
+            for link in &part.links {
+                require_resource_identifier(
+                    link,
+                    DiagnosticCode::ModelPoseInvalid,
+                    reference,
+                    "pose link Id",
+                )?;
+                if link == &part.id {
+                    return resource_error(
+                        DiagnosticCode::ModelPoseInvalid,
+                        reference,
+                        "a pose part must not link to itself",
+                    );
+                }
+                if !links.insert(link.as_str()) {
+                    return resource_error(
+                        DiagnosticCode::ModelPoseInvalid,
+                        reference,
+                        "pose link Ids must be unique within a part",
+                    );
+                }
+                link_count = link_count.checked_add(1).ok_or_else(|| {
+                    ModelPackageError::new(
+                        DiagnosticCode::ModelPoseInvalid,
+                        Some(reference),
+                        "pose link count overflowed",
+                    )
+                })?;
+            }
+        }
+    }
+
+    Ok(PoseResourceSummary {
+        fade_in_seconds: pose.fade_in_seconds,
+        group_count: pose.groups.len(),
+        part_count,
+        link_count,
+    })
 }
 
 fn inspect_physics_file(
@@ -2224,6 +2373,15 @@ mod tests {
         }]
     }"#;
 
+    const MINIMAL_POSE_JSON: &str = r#"{
+        "Type":"Live2D Pose",
+        "FadeInTime":0.5,
+        "Groups":[[
+            {"Id":"PartArmA","Link":["PartArmALink"]},
+            {"Id":"PartArmB","Link":[]}
+        ]]
+    }"#;
+
     fn repository_root() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
@@ -2406,9 +2564,10 @@ mod tests {
         )
         .expect("write model entry");
         fs::write(package.path().join("model.moc3"), b"placeholder").expect("write moc");
-        for resource in ["model.pose3.json", "model.userdata3.json"] {
-            fs::write(package.path().join(resource), b"{}").expect("write JSON resource");
-        }
+        fs::write(package.path().join("model.pose3.json"), MINIMAL_POSE_JSON)
+            .expect("write pose resource");
+        fs::write(package.path().join("model.userdata3.json"), b"{}")
+            .expect("write user data resource");
         fs::write(
             package.path().join("model.physics3.json"),
             MINIMAL_PHYSICS_JSON,
@@ -2516,6 +2675,46 @@ mod tests {
             assert_eq!(error.code, DiagnosticCode::ModelPhysicsInvalid);
             assert!(error.detail.contains(expected_detail), "{}", error.detail);
             assert_eq!(error.resource.as_deref(), Some("physics3.json"));
+        }
+    }
+
+    #[test]
+    fn pose_type_groups_ids_links_and_fade_are_validated() {
+        let directory = tempfile::tempdir().expect("create pose directory");
+        let path = directory.path().join("model.pose3.json");
+        fs::write(&path, MINIMAL_POSE_JSON).expect("write valid pose");
+        let summary = inspect_pose_resource(&path, 16 * 1024).expect("inspect valid pose resource");
+        assert_eq!(summary.fade_in_seconds, Some(0.5));
+        assert_eq!(summary.group_count, 1);
+        assert_eq!(summary.part_count, 2);
+        assert_eq!(summary.link_count, 1);
+
+        for (pointer, replacement, expected_detail) in [
+            ("/Type", Value::from("Other"), "Type"),
+            ("/FadeInTime", Value::from(-1), "FadeInTime"),
+            ("/Groups/0", Value::Array(Vec::new()), "must not be empty"),
+            ("/Groups/0/1/Id", Value::from("PartArmA"), "must be unique"),
+            ("/Groups/0/0/Link/0", Value::from(""), "must not be blank"),
+            (
+                "/Groups/0/0/Link/0",
+                Value::from("PartArmA"),
+                "must not link to itself",
+            ),
+        ] {
+            let mut pose: Value =
+                serde_json::from_str(MINIMAL_POSE_JSON).expect("parse minimal pose fixture");
+            *pose.pointer_mut(pointer).expect("fixture pointer exists") = replacement;
+            fs::write(
+                &path,
+                serde_json::to_vec(&pose).expect("serialize invalid pose"),
+            )
+            .expect("write invalid pose");
+
+            let error = inspect_pose_resource(&path, 16 * 1024)
+                .expect_err("invalid pose resource must fail");
+            assert_eq!(error.code, DiagnosticCode::ModelPoseInvalid);
+            assert!(error.detail.contains(expected_detail), "{}", error.detail);
+            assert_eq!(error.resource.as_deref(), Some("pose3.json"));
         }
     }
 

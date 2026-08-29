@@ -27,7 +27,7 @@ dimension guard must reject it before image decoding or GPU allocation.
   and texture-header limits only.
 - Placeholder `.moc3` content in the accepted path case is not passed to Cubism
   Core.
-- Cubism consistency, drawable, motion/expression/physics behavior, and
+- Cubism consistency, drawable, motion/expression/physics/pose behavior, and
   rendering tests require licensed SDK binaries and separately authorized model
   fixtures. Synthetic JSON may test static format rejection only.
 - Import checks must run before copying files into the environment model store.
