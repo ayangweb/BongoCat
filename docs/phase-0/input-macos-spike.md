@@ -11,7 +11,7 @@
 - `TapState`：`Stopped`、`Running`、`Disabled`、`TimedOut`；tap disabled/timeout 后必须 reset pressed state，并在权限仍 granted 时安排 restart；
 - `SessionReset`：锁屏、睡眠、快速用户切换、TCC 变化和服务重启都清空 pressed state。
 
-权限撤销会停止 tap、发出 reset 并进入用户引导；重新 granted 后才允许创建 tap。状态层不把 callback 生命周期或 CoreGraphics 指针暴露给 runtime。callback 只生成不含用户内容的 `CapturedInputEvent`，送入固定容量队列；消费发生在 tap run loop 中，不能访问已析构的 runtime。
+权限撤销会停止 tap、发出 reset 并进入用户引导；重新 granted 后才允许创建 tap。状态层不把 callback 生命周期或 CoreGraphics 指针暴露给 runtime。callback 只生成不含用户内容的 `CapturedInputEvent`，由 mutex 保护的生产者为其分配单调 `u64` sequence 后送入固定容量队列；消费发生在 tap run loop 中，不能访问已析构的 runtime。满载 Reset 继承被拒边沿的 sequence，使被丢弃 backlog 形成可计数 gap；正常 cycle 的 gap 和 duplicate/out-of-order 必须为 0，且 `queued_events = consumed_events + queue_discarded_events`。
 
 ## Probe
 
@@ -31,7 +31,7 @@ CoreGraphics binding 仅存在于 macOS target dependency；非 macOS 构建会�
 
 `--inject-disable timeout|user` 只能和 `--tap-ms` 一起用于受控故障验证。每个 cycle 先注入一个没有 KeyUp 的候选键，再禁用真实 tap；`user` 使用 CoreGraphics 返回的真实 user-disable callback，`timeout` 将测试动作附带的 user-disable 通知替换为 timeout 原因。两者随后走与系统 callback 相同的 Reset、权限 preflight 和 re-enable 路径。恢复信号使用原子位合并，不会像有界 `try_send` 一样在满载时静默丢失；报告只输出 disable、Reset、release 和队列数量。
 
-`--inject-release-loss` 只能和 `--tap-ms` 一起用于 release 校正闭环。probe 通过 private `CGEventSource` 向 session event tap 投递 keycode 0 的 down/up；listen-only callback 必须收到两个真实 CoreGraphics 事件，但 callback 到 consumer 的边界会故意丢弃一次 KeyUp。consumer 保留由 KeyDown 建立的候选，随后只通过两次 `CGEventSourceKeyState` 缺失确认清除它。命令会断言投递数、callback down/up、丢弃数、校正数和 shutdown 前候选数，不输出 keycode。它验证真实 event tap callback 到校正实现的闭环，但不能代替物理键盘、系统丢事件或 TCC 变化实测。
+`--inject-release-loss` 只能和 `--tap-ms` 一起用于 release 校正闭环。probe 会分别 preflight listen-only Input Monitoring 和 synthetic Post Event/Accessibility 权限；后者未授予时以 `PostEventPermissionDenied` 明确失败，不触发权限请求。权限齐备后通过 private `CGEventSource` 向 session event tap 投递 keycode 0 的 down/up；listen-only callback 必须收到两个真实 CoreGraphics 事件，但 callback 到 consumer 的边界会故意丢弃一次 KeyUp。consumer 保留由 KeyDown 建立的候选，随后只通过两次 `CGEventSourceKeyState` 缺失确认清除它。命令会断言投递数、callback down/up、丢弃数、校正数和 shutdown 前候选数，不输出 keycode。它验证真实 event tap callback 到校正实现的闭环，但不能代替物理键盘、系统丢事件或 TCC 变化实测。
 
 `--inject-lifecycle session|sleep|wake|all` 使用 `NSWorkspace.notificationCenter` 和公开的 `NSWorkspaceWillSleepNotification`、`NSWorkspaceDidWakeNotification`、`NSWorkspaceSessionDidResignActiveNotification`、`NSWorkspaceSessionDidBecomeActiveNotification` 做受控 callback smoke。observer callback 只写原子信号与匿名计数；输入 run-loop owner 消费合并信号并 Reset 候选 pressed-set。observer token 由 RAII owner 保存，退出时先关闭 callback gate 和输入队列，再停止 tap/source、消费末尾信号并成对注销 token。受控模式会在 gate 关闭后、注销前额外 post 一次通知，证明迟到 callback 只能增加 `workspace_callbacks_ignored_after_close`，不能再访问 queue、候选状态或 runtime owner。
 
@@ -69,6 +69,8 @@ NSZombieEnabled=YES spikes/input-macos/target/release/bongocat-input-macos-spike
 
 2026-08-29 将 mouse button identity 接入 callback queue、pressed candidates、reconciliation 和 lifecycle Reset；0–31 号按钮可独立统计 duplicate、unmatched、reconciled 和 reset release。19 项 library contract test 新增侧键身份保留、只查询候选按钮、两次缺失释放和 keyboard/mouse 同步 Reset。`--button-state 0` 在同一设备调用 `CGEventSourceButtonState` 得到 `checked=1 still_pressed=0 released=1`，证明窄平台边界可用。Computer Use 的 AX window/coordinate click 没有进入 session event tap，因此没有作为物理鼠标证据；真实设备 down/up 和丢 release 仍待手工矩阵。
 
+2026-08-29 为 callback queue 的每个 edge/Reset 增加单调 sequence，并把 gap、duplicate/out-of-order 与完整 drain accounting 加入严格 cycle validator。20 项 library test 和 4 项报告 test 通过；macOS 本机普通 3-cycle、timeout disable、user disable 与四类 lifecycle 通知均为 `sequence_gaps=0 sequence_duplicates_or_out_of_order=0`，受控队列分别满足 `0=0`、`2=2`、`2=2` 与 `1=1` 的 queued/consumed 关系。当前 Codex 会话重跑 release-loss 时 listen/post 两项 preflight 均为 true，但 session tap 收到 `0/2` 个已投递 synthetic event，严格门禁按预期非零失败；本批没有把该失败改写为成功，也没有覆盖此前已记录的成功结果。需要在交互式会话确认前台 session/TCC 状态后重跑该命令，才能为 sequence 变更补充 release-loss 回归证据。
+
 实现约束：特殊的 `kCGEventTapDisabledByTimeout`/`kCGEventTapDisabledByUserInput` 值不能放入第三方事件 mask（其高位值会导致 `1 << type` 溢出）；callback 仍对这两类通知分支处理，收到后通过有界 channel 请求在 run loop 内 re-enable。tap 创建阶段使用 panic boundary，避免 binding 异常杀死输入线程。
 
-目前已覆盖 denied/granted、tap timeout/disable、permission revocation 和 session reset 的状态测试，以及真实 tap 创建/运行/停止、严格 100 次 tap wrapper restart 与 malloc/NSZombie 检查、受控 timeout/user-disable 恢复、公开 NSWorkspace observer 的生命周期 Reset、真实 callback release 在 consumer 边界丢弃后的候选校正、callback panic boundary 和 queue 的 FIFO/overflow/close contract。系统自然触发的 timeout、TCC 拒绝/撤销、带真实 modifier 的 `FlagsChanged` 字段、物理输入或系统自然丢失 release 后的校正、runtime pressed state 接入和真实锁屏/睡眠/快速用户切换恢复仍必须在受控 macOS 实机完成；100 次循环尚未覆盖 timeout/权限故障或 Instruments 级 allocation/port 采样。本机未安装 `x86_64-unknown-linux-gnu` 标准库，因此新增纯函数的 Linux 交叉测试只由 Ubuntu CI 覆盖。
+目前已覆盖 denied/granted、tap timeout/disable、permission revocation 和 session reset 的状态测试，以及真实 tap 创建/运行/停止、严格 100 次 tap wrapper restart 与 malloc/NSZombie 检查、受控 timeout/user-disable 恢复、公开 NSWorkspace observer 的生命周期 Reset、真实 callback release 在 consumer 边界丢弃后的候选校正、callback panic boundary 和 queue 的 FIFO/overflow/close contract。系统自然触发的 timeout、TCC 拒绝/撤销、带真实 modifier 的 `FlagsChanged` 字段、物理输入或系统自然丢失 release 后的校正、runtime pressed state 接入和真实锁屏/睡眠/快速用户切换恢复仍必须在受控 macOS 实机完成；100 次循环尚未覆盖 timeout/权限故障或 Instruments 级 allocation/port 采样。纯函数和 target gating 已通过本机 `x86_64-unknown-linux-gnu` `cargo check --all-targets`，Ubuntu CI 继续提供原生 Linux contract test。

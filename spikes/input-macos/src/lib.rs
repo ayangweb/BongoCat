@@ -311,10 +311,37 @@ pub struct CaptureQueueError {
     pub discarded: usize,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SequencedCapturedInputEvent {
+    pub sequence: u64,
+    pub event: CapturedInputEvent,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CaptureSequenceDiagnostics {
+    next_expected: u64,
+    pub gaps: u64,
+    pub duplicates_or_out_of_order: u64,
+}
+
+impl CaptureSequenceDiagnostics {
+    pub fn observe(&mut self, sequence: u64) {
+        if sequence == self.next_expected {
+            self.next_expected = self.next_expected.saturating_add(1);
+        } else if sequence > self.next_expected {
+            self.gaps += sequence - self.next_expected;
+            self.next_expected = sequence.saturating_add(1);
+        } else {
+            self.duplicates_or_out_of_order += 1;
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct CaptureQueue {
     capacity: usize,
-    events: VecDeque<CapturedInputEvent>,
+    events: VecDeque<SequencedCapturedInputEvent>,
+    next_sequence: u64,
     closed: bool,
     overflow_count: u64,
     recovery_reset_count: u64,
@@ -327,6 +354,7 @@ impl CaptureQueue {
         Self {
             capacity,
             events: VecDeque::with_capacity(capacity),
+            next_sequence: 0,
             closed: false,
             overflow_count: 0,
             recovery_reset_count: 0,
@@ -335,21 +363,22 @@ impl CaptureQueue {
     }
 
     pub fn push(&mut self, event: CapturedInputEvent) -> Result<(), CaptureQueueError> {
+        let sequenced = self.sequence(event);
         if self.closed {
             return Err(CaptureQueueError {
                 kind: CaptureQueueErrorKind::Closed,
-                event,
+                event: sequenced.event,
                 discarded: 0,
             });
         }
         if self.events.len() == self.capacity {
             return Err(CaptureQueueError {
                 kind: CaptureQueueErrorKind::Full,
-                event,
+                event: sequenced.event,
                 discarded: 0,
             });
         }
-        self.events.push_back(event);
+        self.events.push_back(sequenced);
         Ok(())
     }
 
@@ -357,10 +386,11 @@ impl CaptureQueue {
         &mut self,
         event: CapturedInputEvent,
     ) -> Result<(), CaptureQueueError> {
+        let sequenced = self.sequence(event);
         if self.closed {
             return Err(CaptureQueueError {
                 kind: CaptureQueueErrorKind::Closed,
-                event,
+                event: sequenced.event,
                 discarded: 0,
             });
         }
@@ -370,19 +400,33 @@ impl CaptureQueue {
             self.recovery_reset_count += 1;
             self.recovery_discard_count += discarded as u64;
             self.events.clear();
-            self.events.push_back(CapturedInputEvent::Reset);
+            self.events.push_back(SequencedCapturedInputEvent {
+                sequence: sequenced.sequence,
+                event: CapturedInputEvent::Reset,
+            });
             return Err(CaptureQueueError {
                 kind: CaptureQueueErrorKind::Full,
-                event,
+                event: sequenced.event,
                 discarded,
             });
         }
-        self.events.push_back(event);
+        self.events.push_back(sequenced);
         Ok(())
     }
 
-    pub fn pop(&mut self) -> Option<CapturedInputEvent> {
+    pub fn pop(&mut self) -> Option<SequencedCapturedInputEvent> {
         self.events.pop_front()
+    }
+
+    fn sequence(&mut self, event: CapturedInputEvent) -> SequencedCapturedInputEvent {
+        let sequenced = SequencedCapturedInputEvent {
+            sequence: self.next_sequence,
+            event,
+        };
+        // Keep the callback path non-panicking. A theoretical u64 wrap becomes
+        // observable as a non-monotonic sequence at the consumer.
+        self.next_sequence = self.next_sequence.wrapping_add(1);
+        sequenced
     }
 
     pub fn close(&mut self) {
@@ -430,7 +474,7 @@ impl SharedCaptureQueue {
         queue.push_with_overflow_reset(event)
     }
 
-    fn drain(&self) -> Vec<CapturedInputEvent> {
+    fn drain(&self) -> Vec<SequencedCapturedInputEvent> {
         let mut queue = self
             .0
             .lock()
@@ -542,6 +586,13 @@ pub fn input_monitoring_preflight() -> bool {
 }
 
 #[cfg(target_os = "macos")]
+pub fn post_event_access_preflight() -> bool {
+    // This checks Accessibility/Post Event separately from listen-only Input
+    // Monitoring. It never prompts and is required only by synthetic probes.
+    unsafe { core_graphics2::event::CGPreflightPostEventAccess() }
+}
+
+#[cfg(target_os = "macos")]
 pub fn request_input_monitoring_access() -> bool {
     // Callers must only invoke this from an explicit user action.
     unsafe { core_graphics2::event::CGRequestListenEventAccess() }
@@ -568,6 +619,8 @@ pub struct TapProbeReport {
     pub queue_recovery_resets: u64,
     pub queue_discarded_events: u64,
     pub queue_closed_events: u64,
+    pub sequence_gaps: u64,
+    pub sequence_duplicates_or_out_of_order: u64,
     pub reconciliation_runs: u64,
     pub reconciled_releases: u64,
     pub candidate_resets: u64,
@@ -592,6 +645,7 @@ pub struct TapProbeReport {
 #[derive(Debug)]
 pub enum TapProbeError {
     PermissionDenied,
+    PostEventPermissionDenied,
     TapCreateFailed,
     RunLoopSourceFailed,
     SyntheticEventCreateFailed,
@@ -617,6 +671,8 @@ struct TapCounters {
     queue_recovery_resets: AtomicU64,
     queue_discarded_events: AtomicU64,
     queue_closed_events: AtomicU64,
+    sequence_gaps: AtomicU64,
+    sequence_duplicates_or_out_of_order: AtomicU64,
     reconciliation_runs: AtomicU64,
     reconciled_releases: AtomicU64,
     candidate_resets: AtomicU64,
@@ -659,6 +715,10 @@ impl TapCounters {
             queue_recovery_resets: self.queue_recovery_resets.load(Ordering::Relaxed),
             queue_discarded_events: self.queue_discarded_events.load(Ordering::Relaxed),
             queue_closed_events: self.queue_closed_events.load(Ordering::Relaxed),
+            sequence_gaps: self.sequence_gaps.load(Ordering::Relaxed),
+            sequence_duplicates_or_out_of_order: self
+                .sequence_duplicates_or_out_of_order
+                .load(Ordering::Relaxed),
             reconciliation_runs: self.reconciliation_runs.load(Ordering::Relaxed),
             reconciled_releases: self.reconciled_releases.load(Ordering::Relaxed),
             candidate_resets: self.candidate_resets.load(Ordering::Relaxed),
@@ -949,6 +1009,8 @@ fn queue_captured_event(
             discarded,
             ..
         }) => {
+            // The rejected edge is replaced by one sequenced Reset marker.
+            counters.queued_events.fetch_add(1, Ordering::Relaxed);
             counters.queue_overflows.fetch_add(1, Ordering::Relaxed);
             counters
                 .queue_recovery_resets
@@ -1149,6 +1211,7 @@ fn run_tap_on_run_loop(
     let mut next_reconciliation = Instant::now() + reconciliation_interval;
     let mut pressed_key_candidates = MacPressedKeyCandidates::default();
     let mut pressed_mouse_candidates = MacPressedMouseCandidates::default();
+    let mut capture_sequence = CaptureSequenceDiagnostics::default();
     if let Some(reason) = injected_disable {
         // Seed a missing-KeyUp case so the probe verifies that disable recovery clears state.
         queue_captured_event(
@@ -1191,9 +1254,10 @@ fn run_tap_on_run_loop(
         counters
             .consumed_events
             .fetch_add(drained.len() as u64, Ordering::Relaxed);
-        for event in drained {
-            pressed_key_candidates.apply_event_with(event, reconcile_key_state);
-            pressed_mouse_candidates.apply_event(event);
+        for sequenced in drained {
+            capture_sequence.observe(sequenced.sequence);
+            pressed_key_candidates.apply_event_with(sequenced.event, reconcile_key_state);
+            pressed_mouse_candidates.apply_event(sequenced.event);
         }
         consume_workspace_lifecycle_signals(
             &workspace_signals,
@@ -1243,9 +1307,10 @@ fn run_tap_on_run_loop(
     counters
         .consumed_events
         .fetch_add(drained.len() as u64, Ordering::Relaxed);
-    for event in drained {
-        pressed_key_candidates.apply_event_with(event, reconcile_key_state);
-        pressed_mouse_candidates.apply_event(event);
+    for sequenced in drained {
+        capture_sequence.observe(sequenced.sequence);
+        pressed_key_candidates.apply_event_with(sequenced.event, reconcile_key_state);
+        pressed_mouse_candidates.apply_event(sequenced.event);
     }
     counters.pressed_candidates_before_shutdown.store(
         (pressed_key_candidates.keys().len() + pressed_mouse_candidates.buttons().len()) as u64,
@@ -1285,6 +1350,13 @@ fn run_tap_on_run_loop(
     counters
         .queue_discarded_events
         .store(queue_discarded_events, Ordering::Relaxed);
+    counters
+        .sequence_gaps
+        .store(capture_sequence.gaps, Ordering::Relaxed);
+    counters.sequence_duplicates_or_out_of_order.store(
+        capture_sequence.duplicates_or_out_of_order,
+        Ordering::Relaxed,
+    );
     Ok(counters.snapshot(true, finished_enabled))
 }
 
@@ -1297,6 +1369,9 @@ pub fn run_listen_only_tap(
 ) -> Result<TapProbeReport, TapProbeError> {
     if !input_monitoring_preflight() {
         return Err(TapProbeError::PermissionDenied);
+    }
+    if inject_release_loss && !post_event_access_preflight() {
+        return Err(TapProbeError::PostEventPermissionDenied);
     }
     thread::Builder::new()
         .name("bongocat-macos-input-tap".to_string())
@@ -1657,14 +1732,20 @@ mod tests {
         queue.close();
         assert_eq!(
             queue.pop(),
-            Some(CapturedInputEvent::KeyDown {
-                key_code: 30,
-                repeat: false,
+            Some(SequencedCapturedInputEvent {
+                sequence: 0,
+                event: CapturedInputEvent::KeyDown {
+                    key_code: 30,
+                    repeat: false,
+                },
             })
         );
         assert_eq!(
             queue.pop(),
-            Some(CapturedInputEvent::KeyUp { key_code: 30 })
+            Some(SequencedCapturedInputEvent {
+                sequence: 1,
+                event: CapturedInputEvent::KeyUp { key_code: 30 },
+            })
         );
         assert!(queue.is_empty());
         let error = queue
@@ -1694,11 +1775,22 @@ mod tests {
             .unwrap_err();
         assert_eq!(error.kind, CaptureQueueErrorKind::Full);
         assert_eq!(error.discarded, 2);
-        assert_eq!(queue.pop(), Some(CapturedInputEvent::Reset));
+        let recovery = queue.pop().expect("overflow Reset must remain queued");
+        assert_eq!(
+            recovery,
+            SequencedCapturedInputEvent {
+                sequence: 2,
+                event: CapturedInputEvent::Reset,
+            }
+        );
         assert!(queue.is_empty());
         assert_eq!(queue.overflow_count(), 1);
         assert_eq!(queue.recovery_reset_count(), 1);
         assert_eq!(queue.recovery_discard_count(), 2);
+        let mut sequence = CaptureSequenceDiagnostics::default();
+        sequence.observe(recovery.sequence);
+        assert_eq!(sequence.gaps, 2);
+        assert_eq!(sequence.duplicates_or_out_of_order, 0);
     }
 
     #[test]
@@ -1714,8 +1806,21 @@ mod tests {
         assert_eq!(error.kind, CaptureQueueErrorKind::Closed);
         assert_eq!(
             queue.drain(),
-            vec![CapturedInputEvent::MouseDown { button: 3 }]
+            vec![SequencedCapturedInputEvent {
+                sequence: 0,
+                event: CapturedInputEvent::MouseDown { button: 3 },
+            }]
         );
         assert_eq!(queue.diagnostics(), (0, 0, 0));
+    }
+
+    #[test]
+    fn capture_sequence_diagnostics_find_gaps_and_non_monotonic_events() {
+        let mut diagnostics = CaptureSequenceDiagnostics::default();
+        for sequence in [0, 1, 4, 4, 3, 5] {
+            diagnostics.observe(sequence);
+        }
+        assert_eq!(diagnostics.gaps, 2);
+        assert_eq!(diagnostics.duplicates_or_out_of_order, 2);
     }
 }

@@ -2,8 +2,8 @@
 use bongocat_input_macos_spike::{
     CaptureAction, CaptureEvent, MacCaptureLifecycle, PermissionState, TapDisableReason,
     TapProbeReport, WorkspaceLifecycleInjection, input_monitoring_preflight,
-    reconcile_pressed_key_codes, reconcile_pressed_mouse_buttons, request_input_monitoring_access,
-    run_listen_only_tap,
+    post_event_access_preflight, reconcile_pressed_key_codes, reconcile_pressed_mouse_buttons,
+    request_input_monitoring_access, run_listen_only_tap,
 };
 #[cfg(target_os = "macos")]
 use std::{collections::BTreeSet, time::Duration};
@@ -57,8 +57,11 @@ fn main() {
             before
         };
         println!(
-            "input-macos-spike: preflight={} request={} granted={}",
-            before, request, after
+            "input-macos-spike: preflight={} request={} granted={} post_event_preflight={}",
+            before,
+            request,
+            after,
+            post_event_access_preflight(),
         );
         let mut lifecycle = MacCaptureLifecycle::default();
         let permission = if after {
@@ -127,6 +130,7 @@ fn main() {
                                 injected_lifecycle,
                                 inject_release_loss,
                             ) {
+                                print_cycle_report(cycle + 1, &report);
                                 eprintln!(
                                     "input-macos-spike: tap cycle={} validation failed: {error}",
                                     cycle + 1
@@ -163,6 +167,8 @@ struct CycleSummary {
     reconciled_releases: u64,
     candidate_resets: u64,
     queue_overflows: u64,
+    sequence_gaps: u64,
+    sequence_duplicates_or_out_of_order: u64,
     callback_panics: u64,
 }
 
@@ -175,18 +181,22 @@ impl CycleSummary {
         self.reconciled_releases += report.reconciled_releases;
         self.candidate_resets += report.candidate_resets;
         self.queue_overflows += report.queue_overflows;
+        self.sequence_gaps += report.sequence_gaps;
+        self.sequence_duplicates_or_out_of_order += report.sequence_duplicates_or_out_of_order;
         self.callback_panics += report.callback_panics + report.workspace_callback_panics;
     }
 
     fn print(&self) {
         println!(
-            "input-macos-spike: summary completed_cycles={} key_down={} key_up={} reconciled_releases={} candidate_resets={} queue_overflows={} callback_panics={} clean_shutdown=true",
+            "input-macos-spike: summary completed_cycles={} key_down={} key_up={} reconciled_releases={} candidate_resets={} queue_overflows={} sequence_gaps={} sequence_duplicates_or_out_of_order={} callback_panics={} clean_shutdown=true",
             self.completed,
             self.key_down,
             self.key_up,
             self.reconciled_releases,
             self.candidate_resets,
             self.queue_overflows,
+            self.sequence_gaps,
+            self.sequence_duplicates_or_out_of_order,
             self.callback_panics,
         );
     }
@@ -210,6 +220,12 @@ fn validate_cycle_report(
     }
     if report.queue_overflows != 0 || report.queue_closed_events != 0 {
         return Err("the callback queue lost or rejected an event".to_string());
+    }
+    if report.sequence_gaps != 0 || report.sequence_duplicates_or_out_of_order != 0 {
+        return Err("the callback queue observed a non-contiguous sequence".to_string());
+    }
+    if report.queued_events != report.consumed_events + report.queue_discarded_events {
+        return Err("the callback queue did not account for every accepted event".to_string());
     }
     if report.workspace_observers_registered != report.workspace_observers_removed {
         return Err("workspace observers were not removed exactly once".to_string());
@@ -246,7 +262,7 @@ fn validate_cycle_report(
 #[cfg(target_os = "macos")]
 fn print_cycle_report(cycle: usize, report: &TapProbeReport) {
     println!(
-        "input-macos-spike: tap cycle={} started={} finished_enabled={} key_down={} key_up={} flags_changed={} mouse_down={} mouse_up={} disabled_timeout={} disabled_user={} injected_disables={} reenabled={} callback_panics={} queued_events={} consumed_events={} queue_overflows={} queue_recovery_resets={} queue_discarded_events={} queue_closed_events={} reconciliation_runs={} reconciled_releases={} candidate_resets={} candidate_reset_releases={} duplicate_down={} unmatched_up={} workspace_observers_registered={} workspace_observers_removed={} workspace_will_sleep={} workspace_did_wake={} workspace_session_resigned={} workspace_session_active={} workspace_lifecycle_resets={} workspace_callback_panics={} workspace_callbacks_ignored_after_close={} synthetic_events_posted={} intentionally_dropped_releases={} pressed_candidates_before_shutdown={}",
+        "input-macos-spike: tap cycle={} started={} finished_enabled={} key_down={} key_up={} flags_changed={} mouse_down={} mouse_up={} disabled_timeout={} disabled_user={} injected_disables={} reenabled={} callback_panics={} queued_events={} consumed_events={} queue_overflows={} queue_recovery_resets={} queue_discarded_events={} queue_closed_events={} sequence_gaps={} sequence_duplicates_or_out_of_order={} reconciliation_runs={} reconciled_releases={} candidate_resets={} candidate_reset_releases={} duplicate_down={} unmatched_up={} workspace_observers_registered={} workspace_observers_removed={} workspace_will_sleep={} workspace_did_wake={} workspace_session_resigned={} workspace_session_active={} workspace_lifecycle_resets={} workspace_callback_panics={} workspace_callbacks_ignored_after_close={} synthetic_events_posted={} intentionally_dropped_releases={} pressed_candidates_before_shutdown={}",
         cycle,
         report.started,
         report.finished_enabled,
@@ -266,6 +282,8 @@ fn print_cycle_report(cycle: usize, report: &TapProbeReport) {
         report.queue_recovery_resets,
         report.queue_discarded_events,
         report.queue_closed_events,
+        report.sequence_gaps,
+        report.sequence_duplicates_or_out_of_order,
         report.reconciliation_runs,
         report.reconciled_releases,
         report.candidate_resets,
@@ -329,6 +347,15 @@ mod tests {
 
         let mut report = healthy_report();
         report.finished_enabled = false;
+        assert!(validate_cycle_report(&report, None, None, false).is_err());
+
+        let mut report = healthy_report();
+        report.sequence_gaps = 1;
+        assert!(validate_cycle_report(&report, None, None, false).is_err());
+
+        let mut report = healthy_report();
+        report.queued_events = 2;
+        report.consumed_events = 1;
         assert!(validate_cycle_report(&report, None, None, false).is_err());
     }
 
