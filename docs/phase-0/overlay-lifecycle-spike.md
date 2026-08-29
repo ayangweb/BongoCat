@@ -1,6 +1,6 @@
 # Native Overlay Lifecycle Contract Spike
 
-状态：生命周期契约、双平台透明 clear/present、Windows 生命周期门禁与 macOS 本机重建门禁通过；完整 overlay 门禁仍未完成
+状态：生命周期契约、双平台透明合成、macOS 非空 draw/readback 与双平台重建门禁通过；完整 overlay 门禁仍未完成
 日期：2026-08-29
 
 ## 目的
@@ -58,11 +58,11 @@ open -W "target/package/BongoCat GPUI Overlay Spike.app" --args --auto-quit-ms 1
 
 ```text
 overlay shown
-transparent clear/present submitted
+non-empty premultiplied-alpha draw/present submitted
 native overlay created
 overlay hidden
 overlay shown
-transparent clear/present submitted
+non-empty premultiplied-alpha draw/present submitted
 ```
 
 设置窗口和独立 `NSPanel` 同时存在，overlay 使用独立 `CAMetalLayer`，鼠标穿透、跨 Space 和 Full Screen Auxiliary 行为由 AppKit wrapper 设置。此验证覆盖 macOS 当前机器的窗口/Metal/GPUI 生命周期，不包含 Live2D/Cubism、真实 frame source、输入服务或发布签名。
@@ -75,11 +75,13 @@ NSZombieEnabled=YES spikes/gpui-overlay-macos/target/release/bongocat-gpui-overl
 cargo run --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked -- --simulate-macos-drawable-unavailable --auto-quit-ms 300
 ```
 
-100 次循环每次都真实创建 `NSPanel`、`CAMetalLayer`、Metal command queue 和
-drawable，提交透明 clear/present，等待 command buffer 完成后隐藏并析构 owner。
+100 次循环每次都真实创建 `NSPanel`、`CAMetalLayer`、Metal render pipeline、
+vertex buffer、command queue 和 drawable，清空透明背景后绘制一组预乘 alpha 三角形，
+等待 command buffer 完成，并从 drawable 中回读中心像素；只有 alpha 非零且三个颜色
+通道都不大于 alpha 才通过。随后循环隐藏窗口并析构 GPU/window owner。
 父进程只在 worker 经 GPUI `quit()` 正常退出且输出 shutdown marker 时接受结果；
 两次运行均报告
-`windows_before=0 windows_after=0 owners_before=0 owners_after=0 clean_shutdown=true`，
+`non_empty_frames=100 windows_before=0 windows_after=0 owners_before=0 owners_after=0 clean_shutdown=true`，
 启用 `NSZombieEnabled` 后也没有 deallocated-object 消息。
 
 受控 drawable unavailable 路径保留 overlay owner 直到统一 shutdown，但不执行后续
@@ -91,6 +93,11 @@ smoke。commit `5bc82b61b12d9873fb8bddfdb0de4f1652487ac9` 的 push run
 `99081228964` 均通过；两次 runner 都记录正常透明 clear/present、显示/隐藏、
 drawable unavailable 降级、GPUI 正常退出、owner 释放，以及
 `windows_before=0 windows_after=0 owners_before=0 owners_after=0 clean_shutdown=true`。
+
+当前非空帧使用 spike 内的合成顶点和运行时编译 Metal shader，只证明 Rust 能独立
+创建 pipeline、提交真实 draw call、进行预乘 alpha 合成并可靠回读。它不包含 Cubism
+drawable、模型纹理、draw order、mask 或 production shader 打包；这些仍属于 1.8 的
+模型 renderer 门禁，正式实现不得依赖运行时 shader 编译。
 
 同一 commit 的 Windows push job `99081224522` 与 PR job `99081228988` 也保持
 hardware D3D11、DPI 96、透明 clear/present、degraded 初始化、GPU 早于 HWND

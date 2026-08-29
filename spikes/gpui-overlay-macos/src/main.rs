@@ -1,8 +1,10 @@
 #[cfg(target_os = "macos")]
 mod macos_overlay {
     use metal::{
-        CommandQueue, Device, MTLClearColor, MTLCommandBufferStatus, MTLLoadAction, MTLPixelFormat,
-        MTLStoreAction, MetalLayer, RenderPassDescriptor,
+        Buffer, CommandQueue, CompileOptions, Device, MTLBlendFactor, MTLClearColor,
+        MTLCommandBufferStatus, MTLLoadAction, MTLOrigin, MTLPixelFormat, MTLPrimitiveType,
+        MTLRegion, MTLResourceOptions, MTLSize, MTLStoreAction, MetalLayer, RenderPassDescriptor,
+        RenderPipelineDescriptor, RenderPipelineState,
     };
     use objc2::{
         MainThreadMarker, MainThreadOnly,
@@ -19,6 +21,63 @@ mod macos_overlay {
     };
 
     static LIVE_OVERLAY_OWNERS: AtomicUsize = AtomicUsize::new(0);
+
+    const OVERLAY_WIDTH: usize = 320;
+    const OVERLAY_HEIGHT: usize = 240;
+    const SHADER_SOURCE: &str = r#"
+        #include <metal_stdlib>
+        using namespace metal;
+
+        struct Vertex {
+            float2 position;
+            float4 color;
+        };
+
+        struct RasterVertex {
+            float4 position [[position]];
+            float4 color;
+        };
+
+        vertex RasterVertex overlay_vertex(
+            const device Vertex* vertices [[buffer(0)]],
+            uint vertex_id [[vertex_id]]
+        ) {
+            RasterVertex output;
+            output.position = float4(vertices[vertex_id].position, 0.0, 1.0);
+            output.color = vertices[vertex_id].color;
+            return output;
+        }
+
+        fragment float4 overlay_fragment(RasterVertex input [[stage_in]]) {
+            return input.color;
+        }
+    "#;
+
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct OverlayVertex {
+        position: [f32; 2],
+        _metal_float4_alignment: [f32; 2],
+        premultiplied_color: [f32; 4],
+    }
+
+    const OVERLAY_VERTICES: [OverlayVertex; 3] = [
+        OverlayVertex {
+            position: [0.0, 0.72],
+            _metal_float4_alignment: [0.0; 2],
+            premultiplied_color: [0.72, 0.25, 0.06, 0.78],
+        },
+        OverlayVertex {
+            position: [-0.68, -0.62],
+            _metal_float4_alignment: [0.0; 2],
+            premultiplied_color: [0.16, 0.58, 0.68, 0.78],
+        },
+        OverlayVertex {
+            position: [0.68, -0.62],
+            _metal_float4_alignment: [0.0; 2],
+            premultiplied_color: [0.48, 0.16, 0.64, 0.78],
+        },
+    ];
 
     #[derive(Debug)]
     pub struct CycleReport {
@@ -46,6 +105,8 @@ mod macos_overlay {
         panel: mem::ManuallyDrop<Retained<NSPanel>>,
         layer: Option<MetalLayer>,
         queue: Option<CommandQueue>,
+        pipeline: Option<RenderPipelineState>,
+        vertex_buffer: Option<Buffer>,
         log_lifecycle: bool,
     }
 
@@ -84,7 +145,11 @@ mod macos_overlay {
             layer.set_pixel_format(MTLPixelFormat::BGRA8Unorm);
             layer.set_opaque(false);
             layer.set_presents_with_transaction(false);
-            layer.set_drawable_size(core_graphics_types::geometry::CGSize::new(320.0, 240.0));
+            layer.set_framebuffer_only(false);
+            layer.set_drawable_size(core_graphics_types::geometry::CGSize::new(
+                OVERLAY_WIDTH as f64,
+                OVERLAY_HEIGHT as f64,
+            ));
             // SAFETY: metal::MetalLayerRef and objc2_quartz_core::CALayer are
             // the same Objective-C CAMetalLayer object; the view retains it.
             let layer_ref = unsafe {
@@ -93,10 +158,18 @@ mod macos_overlay {
             view.setLayer(Some(layer_ref));
             panel.setContentView(Some(&view));
 
+            let pipeline = create_render_pipeline(&device)?;
+            let vertex_buffer = device.new_buffer_with_data(
+                OVERLAY_VERTICES.as_ptr().cast(),
+                size_of_val(&OVERLAY_VERTICES) as u64,
+                MTLResourceOptions::StorageModeShared,
+            );
             let overlay = Self {
                 panel: mem::ManuallyDrop::new(panel),
                 layer: Some(layer),
                 queue: Some(device.new_command_queue()),
+                pipeline: Some(pipeline),
+                vertex_buffer: Some(vertex_buffer),
                 log_lifecycle,
             };
             LIVE_OVERLAY_OWNERS.fetch_add(1, Ordering::AcqRel);
@@ -154,6 +227,21 @@ mod macos_overlay {
                 .expect("live overlay must own a Metal command queue")
                 .new_command_buffer();
             let encoder = command_buffer.new_render_command_encoder(pass);
+            encoder.set_render_pipeline_state(
+                self.pipeline
+                    .as_ref()
+                    .expect("live overlay must own a Metal render pipeline"),
+            );
+            encoder.set_vertex_buffer(
+                0,
+                Some(
+                    self.vertex_buffer
+                        .as_ref()
+                        .expect("live overlay must own a Metal vertex buffer"),
+                ),
+                0,
+            );
+            encoder.draw_primitives(MTLPrimitiveType::Triangle, 0, OVERLAY_VERTICES.len() as u64);
             encoder.end_encoding();
             command_buffer.present_drawable(drawable);
             command_buffer.commit();
@@ -165,9 +253,12 @@ mod macos_overlay {
                         "Metal command buffer did not complete successfully: {status:?}"
                     ));
                 }
+                verify_non_empty_frame(drawable.texture())?;
             }
             if self.log_lifecycle {
-                println!("gpui-overlay-macos-spike: transparent clear/present submitted");
+                println!(
+                    "gpui-overlay-macos-spike: non-empty premultiplied-alpha draw/present submitted"
+                );
             }
             Ok(())
         }
@@ -176,6 +267,8 @@ mod macos_overlay {
     impl Drop for NativeOverlay {
         fn drop(&mut self) {
             self.panel.setContentView(None);
+            drop(self.vertex_buffer.take());
+            drop(self.pipeline.take());
             drop(self.queue.take());
             drop(self.layer.take());
             // SAFETY: releasedWhenClosed transfers the retain represented by
@@ -191,6 +284,65 @@ mod macos_overlay {
                 println!("gpui-overlay-macos-spike: overlay window/GPU owner released");
             }
         }
+    }
+
+    fn create_render_pipeline(device: &Device) -> Result<RenderPipelineState, String> {
+        let library = device
+            .new_library_with_source(SHADER_SOURCE, &CompileOptions::new())
+            .map_err(|error| format!("compile Metal overlay shaders: {error}"))?;
+        let vertex_function = library
+            .get_function("overlay_vertex", None)
+            .map_err(|error| format!("load Metal overlay vertex function: {error}"))?;
+        let fragment_function = library
+            .get_function("overlay_fragment", None)
+            .map_err(|error| format!("load Metal overlay fragment function: {error}"))?;
+        let descriptor = RenderPipelineDescriptor::new();
+        descriptor.set_vertex_function(Some(&vertex_function));
+        descriptor.set_fragment_function(Some(&fragment_function));
+        let attachment = descriptor
+            .color_attachments()
+            .object_at(0)
+            .ok_or("missing Metal pipeline color attachment")?;
+        attachment.set_pixel_format(MTLPixelFormat::BGRA8Unorm);
+        attachment.set_blending_enabled(true);
+        attachment.set_source_rgb_blend_factor(MTLBlendFactor::One);
+        attachment.set_destination_rgb_blend_factor(MTLBlendFactor::OneMinusSourceAlpha);
+        attachment.set_source_alpha_blend_factor(MTLBlendFactor::One);
+        attachment.set_destination_alpha_blend_factor(MTLBlendFactor::OneMinusSourceAlpha);
+        device
+            .new_render_pipeline_state(&descriptor)
+            .map_err(|error| format!("create Metal overlay render pipeline: {error}"))
+    }
+
+    fn verify_non_empty_frame(texture: &metal::TextureRef) -> Result<(), String> {
+        let mut pixel = [0_u8; 4];
+        texture.get_bytes(
+            pixel.as_mut_ptr().cast(),
+            pixel.len() as u64,
+            MTLRegion {
+                origin: MTLOrigin {
+                    x: OVERLAY_WIDTH as u64 / 2,
+                    y: OVERLAY_HEIGHT as u64 / 2,
+                    z: 0,
+                },
+                size: MTLSize {
+                    width: 1,
+                    height: 1,
+                    depth: 1,
+                },
+            },
+            0,
+        );
+        let [blue, green, red, alpha] = pixel;
+        if alpha == 0 {
+            return Err("Metal readback found a transparent center pixel after draw".into());
+        }
+        if red > alpha || green > alpha || blue > alpha {
+            return Err(format!(
+                "Metal readback violated premultiplied alpha: bgra={pixel:?}"
+            ));
+        }
+        Ok(())
     }
 
     pub fn validate_creation_cycles(
@@ -244,7 +396,17 @@ mod macos_overlay {
 
     #[cfg(test)]
     mod tests {
-        use super::{ResourceCounts, validate_creation_cycles};
+        use super::{OVERLAY_VERTICES, OverlayVertex, ResourceCounts, validate_creation_cycles};
+
+        #[test]
+        fn vertex_layout_matches_metal_float4_alignment() {
+            assert_eq!(size_of::<OverlayVertex>(), 32);
+            for vertex in OVERLAY_VERTICES {
+                let [red, green, blue, alpha] = vertex.premultiplied_color;
+                assert!(alpha > 0.0);
+                assert!(red <= alpha && green <= alpha && blue <= alpha);
+            }
+        }
 
         #[test]
         fn accepts_stable_window_and_owner_counts() {
@@ -423,7 +585,8 @@ fn main() {
                 match result {
                     Ok(report) => {
                         println!(
-                            "gpui-overlay-spike: macOS cycles={} windows_before={} windows_after={} owners_before={} owners_after={} clean_shutdown=true",
+                            "gpui-overlay-spike: macOS cycles={} non_empty_frames={} windows_before={} windows_after={} owners_before={} owners_after={} clean_shutdown=true",
+                            report.cycles,
                             report.cycles,
                             report.windows_before,
                             report.windows_after,

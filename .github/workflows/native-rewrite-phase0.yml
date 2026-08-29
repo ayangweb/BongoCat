@@ -292,7 +292,7 @@ jobs:
           normal = run_smoke("normal", ["--auto-quit-ms", "1200"])
           for expected in (
               "macOS native overlay created",
-              "transparent clear/present submitted",
+              "non-empty premultiplied-alpha draw/present submitted",
               "overlay hidden",
               "GPUI settings window opened",
               "auto quit requested",
@@ -317,8 +317,13 @@ jobs:
                   )
 
           cycles = run_smoke("cycles", ["--macos-overlay-cycles", "100"])
-          if "macOS cycles=100" not in cycles or "clean_shutdown=true" not in cycles:
-              raise RuntimeError("overlay cycle smoke did not complete all cycles")
+          for expected in (
+              "macOS cycles=100",
+              "non_empty_frames=100",
+              "clean_shutdown=true",
+          ):
+              if expected not in cycles:
+                  raise RuntimeError(f"overlay cycle smoke did not report: {expected}")
           PY
 
   windows-input-spike:

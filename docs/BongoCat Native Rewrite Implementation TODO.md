@@ -177,7 +177,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 ### 1.6 原生 Overlay spike
 
 - 状态（2026-08-28）：`spikes/overlay-lifecycle/` 已建立无平台依赖的生命周期 contract probe，显示/隐藏/重开、乱序 shutdown 拒绝、关闭后禁止重开和 100 次创建/销毁测试通过。它只固定平台 wrapper 必须遵守的状态迁移与 shutdown 顺序，不代表双平台窗口、透明合成或 GPU 已完成；详见 `docs/phase-0/overlay-lifecycle-spike.md`。
-- 状态（2026-08-29）：macOS `spikes/gpui-overlay-macos/` 已在 Apple Silicon 实机验证 GPUI 设置窗口与独立 `NSPanel` + `CAMetalLayer` 共存、透明 clear/present、显示/隐藏/重显示、跨 Space 配置、鼠标穿透和正常退出；`.app` Bundle ID `com.ayangweb.bongo-cat` 与 ad-hoc strict codesign 通过。release 100-cycle 逐次创建真实 window/layer/drawable 并等待 command buffer 完成，普通与 `NSZombieEnabled=YES` 两次运行均为 AppKit windows `0 -> 0`、Rust owner `0 -> 0`、`clean_shutdown=true`；受控 drawable unavailable 也已验证设置窗口 degraded 与 quit 前 owner 释放。commit `5bc82b61b12d9873fb8bddfdb0de4f1652487ac9` 的 push run `33245147905`/job `99081224637` 与 PR run `33245149605`/job `99081228964` 均通过正常、故障降级和 100-cycle runner smoke。
+- 状态（2026-08-29）：macOS `spikes/gpui-overlay-macos/` 已在 Apple Silicon 实机验证 GPUI 设置窗口与独立 `NSPanel` + `CAMetalLayer` 共存、显示/隐藏/重显示、跨 Space 配置、鼠标穿透和正常退出；`.app` Bundle ID `com.ayangweb.bongo-cat` 与 ad-hoc strict codesign 通过。renderer 已从透明 clear 推进到 Rust 创建 Metal pipeline/vertex buffer、提交非空预乘 alpha draw，并在 release 100-cycle 的每轮等待 GPU 完成、回读非透明中心像素及验证 `rgb <= alpha`；本机结果为 `non_empty_frames=100`、AppKit windows `0 -> 0`、Rust owner `0 -> 0`、`clean_shutdown=true`。该合成几何尚不代表 Cubism texture/order/mask 完成；受控 drawable unavailable 也已验证设置窗口 degraded 与 quit 前 owner 释放。
 - 状态（2026-08-29）：`spikes/overlay-windows/` 已实现线程限定的 Win32 popup 与独立 D3D11/DXGI/DirectComposition premultiplied-alpha renderer，并由同一 GPUI coexistence executable 驱动；x64 Check/Clippy 与 ARM64 Check 已交叉通过。commit `d0ce206ffc56ef83acf6f18c7aa330910bb5543f` 的 push run `33243568461`/job `99076961942` 与 PR run `33243569993`/job `99076967070` 均通过 hardware D3D11、透明 clear/present、GPUI 共存、故障降级、析构顺序和 100-cycle 门禁，process handle 为 `172 -> 172`。真实 Live2D、frame source、device-lost 恢复和双平台 GPU/线程专项泄漏采样仍未完成。
 
 - [x] 在 GPUI 应用生命周期内创建独立主猫原生窗口。
@@ -242,6 +242,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 验收证据：build `7ee8acd5f2a3d4dcb7a1dbc36623cbe497aeae49` 的 push run `33238204993` 与 PR run `33238206415` 各 16 jobs 全绿。`spikes/model-package/` 强类型解析 model3 v3，验证 moc、纹理、display info、expression、motion/audio、可选 physics/pose/user data 与 companion images，完整包索引冻结在 `shared/fixtures/model-fixtures/preset-model3-index.json`。三个预置包与六类异常 fixture、跨根 symlink、目录深度均有 Rust 测试；详见 `docs/phase-0/model-package-spike.md`。本项不包含 Core/model creation、动作求值或 renderer。
 - [ ] Windows D3D11 绘制预置模型的 texture/order/alpha/mask。
 - [ ] macOS Metal 绘制同一模型的 texture/order/alpha/mask。
+  - 状态（2026-08-29）：macOS overlay 已完成合成几何的真实 Metal pipeline、预乘 alpha draw 和 100 帧 GPU readback，不再只是透明 clear/present；预置模型 texture、drawable order 和 mask 尚未接入，因此保持未完成。
 - [ ] 验证 motion、expression、physics、pose 至少各一个真实样本。
 - [ ] 验证模型切换/销毁 100 次，无 CPU/GPU 资源增长。
 - [ ] 记录与 easy-live2d 的差异和必须兼容项。
