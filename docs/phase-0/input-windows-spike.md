@@ -1,6 +1,6 @@
 # Windows Raw Input Spike
 
-状态：平台无关 mapping contract、Windows Raw Input 注册/退出路径、`GetAsyncKeyState` 周期校正与生命周期 Reset 已实现；系统合成输入已覆盖丢 release 校正闭环和多键有序边沿压力 smoke，真实键盘、锁屏/睡眠和热插拔待验证
+状态：平台无关 mapping contract、Windows Raw Input 注册/退出路径、可靠 callback queue、`GetAsyncKeyState` 周期校正与生命周期 Reset 已实现；系统合成输入已覆盖丢 release 校正闭环和多键有序边沿压力 smoke，真实键盘、锁屏/睡眠和热插拔待验证
 日期：2026-08-29
 
 ## 范围
@@ -15,6 +15,10 @@
 - `RAWMOUSE` 只在 safe decoder 中读取稳定的 `usButtonFlags` 前缀，将 left/right/middle/back/forward 的 down/up 映射为项目类型；纯移动和 wheel flag 不伪造 button edge，同包多边沿按固定顺序保留；
 - 在永不显示的专用顶层 HWND 上为鼠标和键盘注册 `RIDEV_INPUTSINK`；顶层窗口用于接收 message-only HWND 收不到的电源广播；
 - `WM_INPUT` 先查询长度，再使用对齐 buffer 读取，不向安全 mapper 泄漏 handle/pointer；
+- callback 只把 keyboard/button edge、lifecycle Reset 和 reconciliation tick 写入容量 `64` 的强类型 FIFO；pressed candidate 只在 `DispatchMessageW` 返回后的 owner drain 中更新；
+- 每个可靠事件携带单调 sequence；正常路径诊断 gap、duplicate/out-of-order，队列满载时原子丢弃不可信 backlog 并以同一 sequence 插入 `QueueOverflow` Reset；overflow、recovery Reset 和 discarded 数量全部可观测；
+- 鼠标移动不进入可靠边沿队列，避免位置洪峰阻塞 button/key release；后续接入产品时使用独立 latest-value 槽位；
+- `WM_DESTROY` 先写入 `ServiceStopped` Reset 再关闭 producer，message owner 最终 drain 后才报告 clean shutdown；关闭后的迟到 push 会被拒绝并计数；
 - callback panic boundary、`WM_TIMER` 自动退出、Raw Input 注销、window class 注销和清理结果诊断。
 - 只对本地 pressed candidates 建立 physical-key 到 Win32 virtual-key 的查询计划，左右修饰键使用独立 virtual-key；
 - `GetAsyncKeyState` 只读取当前按下高位，不把 toggle/近期按下低位当作 pressed state；
@@ -40,12 +44,13 @@ cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --key-stat
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --mouse-button-state-smoke
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --reconcile-smoke-ms 600
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --synthetic-release-recovery-ms 800
+cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --queue-overflow-smoke-ms 100
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked --release -- --synthetic-edge-pressure-cycles 128
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked --release -- --synthetic-pointer-flood-cycles 128
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --lifecycle-smoke-ms 100
 ```
 
-当前本地验证包括 macOS host 上的 format、22 项 contract test、Clippy 和 release check，以及 `x86_64-pc-windows-msvc` 的 check/Clippy/release check。测试覆盖左右修饰键 virtual-key、只查询 pressed candidates、未知键触发 Reset、设备移除/服务停止/session/power Reset、Reset 释放数量、重复 down/无匹配 up 诊断、连续两次缺失释放、仍按下取消待确认、零确认阈值拒绝，以及 RAWMOUSE 截断/类型校验、五个规范 button 的完整 down/up flag 映射、mouse candidate 异常计数和两次缺失校正。
+当前本地验证包括 macOS host 上的 format、25 项 contract test 和 Clippy，以及 `x86_64-pc-windows-msvc`、`aarch64-pc-windows-msvc` 的 check/Clippy。测试覆盖左右修饰键 virtual-key、只查询 pressed candidates、未知键触发 Reset、设备移除/服务停止/session/power Reset、Reset 释放数量、重复 down/无匹配 up 诊断、连续两次缺失释放、仍按下取消待确认、零确认阈值拒绝、RAWMOUSE 五个规范 button，以及可靠队列的 FIFO overflow Reset、关闭 drain 和 sequence gap/duplicate 诊断。
 
 Windows runner 验收证据：
 
@@ -137,3 +142,10 @@ wheel/cursor latest-value 分流仍待验证，不能由 pointer-move flood 结�
 `e776867` 的 push run `33256593886`、job `99111304790` 已通过 22 项 Windows contract test、
 五个 button VK 查询、keyboard release recovery、两项压力 smoke、lifecycle Reset 和完整
 config-store tests。
+
+`--queue-overflow-smoke-ms 100` 先通过正常 producer/consumer 路径建立一个 A pressed
+candidate，再在单次受控 window callback 内写满 `64` 项 FIFO 并追加第 65 项。满载策略必须
+清除 64 项不可信 backlog、把被拒绝边沿替换为带同一 sequence 的 `QueueOverflow` Reset，
+owner drain 后释放 A。命令断言 `overflows=1 recovery_resets=1 discarded=64 gaps=64`、无
+duplicate/out-of-order、无残留 candidate，随后 `WM_DESTROY` 的 final Reset 必须成功入队，
+producer 关闭且队列完全 drain。该 smoke 已接入 Windows runner，push 证据待本批提交后补录。

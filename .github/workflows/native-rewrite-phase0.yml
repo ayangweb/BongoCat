@@ -462,6 +462,8 @@ jobs:
         run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --reconcile-smoke-ms 600
       - name: Smoke synthetic Raw Input release recovery
         run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --synthetic-release-recovery-ms 800
+      - name: Smoke Windows capture queue overflow recovery
+        run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --queue-overflow-smoke-ms 100
       - name: Pressure synthetic Raw Input edges
         run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked --release -- --synthetic-edge-pressure-cycles 128
       - name: Pressure keyboard edges under pointer flood

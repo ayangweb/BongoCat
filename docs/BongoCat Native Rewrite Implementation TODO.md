@@ -201,7 +201,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 ### 1.7 输入可靠性 spike
 
 - 状态（2026-08-28）：`spikes/input-state/` 已建立纯 Rust pressed-set contract，覆盖正常 down/up、重复 down、Reconcile、Reset、issue #47 的丢失 release 恢复、可靠事件的序列跳号/重复/乱序诊断，以及 `250 ms` 校正调度和连续 `2` 次缺失确认的误判保护；计数器不记录具体键值。平台采集、runtime 接入和管理员/权限场景仍待实机验证，详见 `docs/phase-0/input-state-spike.md`。
-- 状态（2026-08-29）：`spikes/input-windows/` 已冻结 `RI_KEY_BREAK`、E0/E1、左右修饰键、PrintScreen、未知 scan code 保留和安全 `RAWINPUT` 字节解析 contract；已实现隐藏顶层 HWND、Raw Input 注册、`WM_INPUT` 读取、周期校正、计数诊断和生命周期 Reset。本批又把 RAWMOUSE 五个 canonical button 的 safe decode 接到独立 pressed candidate、五个稳定 VK 的 `GetAsyncKeyState` 查询、连续两次缺失释放及 device/session/power/shutdown Reset；合成/物理 button release 仍待验证。真实设备样本、热插拔、锁屏/睡眠和丢失 release 校正仍待完成，详见 `docs/phase-0/input-windows-spike.md`。
+- 状态（2026-08-29）：`spikes/input-windows/` 已冻结 `RI_KEY_BREAK`、E0/E1、左右修饰键、PrintScreen、未知 scan code 保留和安全 `RAWINPUT` 字节解析 contract；隐藏顶层 HWND 的 callback 现在只生产带单调 sequence 的 keyboard/button/Reset/reconcile 事件，由容量 64 的可靠 FIFO 交给 message owner 消费。满载会丢弃不可信 backlog、插入 `QueueOverflow` Reset 并计数，shutdown 会先入队最终 Reset、关闭 producer 再 drain。RAWMOUSE 五个 canonical button、`GetAsyncKeyState` 校正及 lifecycle Reset 已接入；合成/物理 button release 和真实设备矩阵仍待验证，详见 `docs/phase-0/input-windows-spike.md`。
 - 状态（2026-08-29）：`spikes/input-macos/` 已建立 macOS 权限/tap 生命周期 contract、listen-only `CGEventTap` 专用 run loop、panic-isolated callback、固定容量 callback queue 和候选 pressed-set 周期校正；当前 macOS 会话累计完成 105 次创建运行停止 smoke，timeout/user-disable 各 20 次受控故障恢复，公开 NSWorkspace lifecycle Reset、成对注销和 callback close gate 也已验证。本批先以 private `CGEventSource` 投递 keyboard down/up，真实 callback 捕获后在 consumer 边界故意丢弃一次 KeyUp，再由 `CGEventSourceKeyState` 两次缺失确认释放候选，20/20 cycle 均无残留；随后为 mouse down/up 保留 0–31 号 button identity，并将 `CGEventSourceButtonState` 校正接入同一周期和 Reset 路径。物理输入/系统自然丢事件、真实 modifier/鼠标字段、系统自然 timeout、TCC 拒绝/撤销和真实锁屏/睡眠/快速用户切换恢复仍未完成，详见 `docs/phase-0/input-macos-spike.md`。
 
 - [ ] Windows 实现 RegisterRawInputDevices 和 WM_INPUT 最小路径。
@@ -229,7 +229,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 验收证据（2026-08-29）：release probe 现在严格校验每个 cycle 的 enabled 恢复、callback panic、queue overflow/closed event 和 NSWorkspace observer 成对注销，任一失败均非零退出。`leaks --atExit` 的 100-cycle 报告 `0 leaks for 0 total leaked bytes`、physical footprint `5232K`，`NSZombieEnabled=YES` 另完成 100/100；两次均为 `queue_overflows=0 callback_panics=0 clean_shutdown=true`，且每个 tap worker 都已 join。timeout/user-disable 各 20 次恢复已另行通过；权限故障循环留在 TCC 矩阵，不阻塞本 restart owner 子项。
 - [x] 记录 monio 对照结果，但不引入生产依赖；`docs/phase-0/monio-comparison.md` 基于 commit `d1766e0dcd20dea0435be16cd80adaa749b86e30` 记录 Raw Input、channel、reconciliation、Reset、callback 和许可证差异。
 - [ ] 为 captured、reconciled、reset、duplicate、overflow 分别维护计数器，不记录具体键值。
-  - 状态（2026-08-29）：macOS spike 已输出事件类型、reconciled release、Reset 次数/释放数、duplicate/unmatched 和 queue overflow/recovery 数量；Windows spike 已补齐 captured down/up、reconciled、Reset、duplicate/unmatched、decode、callback panic、合成顺序错误和残留 candidate 聚合计数。两平台均不输出具体键值；Windows callback queue overflow 与产品 runtime 的统一诊断 snapshot 仍待完成。
+  - 状态（2026-08-29）：macOS spike 已输出事件类型、reconciled release、Reset 次数/释放数、duplicate/unmatched 和 queue overflow/recovery 数量；Windows spike 已补齐 captured、reconciled、Reset、duplicate/unmatched、queue enqueued/consumed/overflow/recovery/discarded/closed push、sequence gap/duplicate、decode 和 callback panic 聚合计数。两平台均不输出具体键值；产品 runtime 的统一诊断 snapshot 仍待完成。
 - [x] 验证输入 callback panic 隔离、队列关闭和应用退出竞态，不允许 callback 访问已析构 runtime。
   - 验收证据：macOS event-tap 与 workspace callback 共用 autorelease/panic boundary，故意 panic 的测试确认 unwind 不越过 callback；固定队列 close 后拒绝新事件并可 drain；受控生命周期 smoke 在 callback gate 关闭后触发迟到通知，只增加 ignored 计数。observer token 成对注销，callback 只持有 queue/atomic，不捕获 runtime owner。产品 runtime 接入后仍须重跑对等 shutdown 测试。
 
@@ -338,6 +338,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 为每个可靠队列定义容量、生产者、消费者、满载策略和关闭语义，不使用无界队列逃避背压设计。
   - 状态（2026-08-28）：`spikes/input-queue/` 已验证固定容量 FIFO、满载返回原事件、关闭 drain 和 latest-value 槽位；`spikes/runtime-contract/` 进一步验证固定容量 command queue、Condvar 唤醒、溢出 Reset、worker drain 和 join 报告；runtime 的实际容量与产品 channel 选型仍待产品 crate。
 - [ ] edge/command 携带单调 sequence id，诊断可发现乱序、重复和丢失但不记录具体键值。
+  - 状态（2026-08-29）：Windows callback queue 的 edge、Reset 和 reconcile tick 已携带单调 `u64` sequence，正常压力路径要求 gap/duplicate 均为 0，受控 overflow 以 discarded backlog 数量产生等量 gap 并由 Reset 恢复。macOS platform queue、command queue 与产品 runtime 的统一 sequence contract 仍待实现，因此保持未勾选。
   - 状态（2026-08-28）：`spikes/input-state/` 已验证可靠输入事件的重复/乱序忽略与跳号安全 reset；`spikes/runtime-contract/` 已验证 typed command sequence、跳号前 `WorkerRecovery` reset、重复/过期 sequence 丢弃和诊断计数；平台 producer、输入事件 sequence 与产品 runtime 接入仍待产品 crate。
 - [ ] cursor/gamepad axis 使用 latest-value 合并通道。
 - [ ] 队列溢出必须计数、记录并触发安全恢复。

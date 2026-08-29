@@ -10,6 +10,31 @@ mod windows_capture;
 
 fn main() {
     #[cfg(target_os = "windows")]
+    if let Some(milliseconds) =
+        argument_value("--queue-overflow-smoke-ms").and_then(|value| value.parse::<u64>().ok())
+    {
+        let report = windows_capture::run_capture_queue_overflow_smoke(
+            std::time::Duration::from_millis(milliseconds),
+        )
+        .expect("Windows capture queue overflow smoke failed");
+        assert_eq!(report.capture_queue_capacity, 64);
+        assert_eq!(report.capture_queue_overflows, 1);
+        assert_eq!(report.capture_queue_recovery_resets, 1);
+        assert_eq!(report.capture_queue_discarded, 64);
+        assert_eq!(report.capture_sequence_gaps, 64);
+        assert_eq!(report.capture_sequence_duplicates_or_out_of_order, 0);
+        assert_eq!(report.queue_overflow_resets, 1);
+        assert_eq!(report.reset_releases, 1);
+        assert_eq!(report.pressed_candidates_remaining, 0);
+        assert_eq!(report.capture_queue_remaining, 0);
+        assert_eq!(report.capture_queue_closed_pushes, 0);
+        assert!(report.capture_queue_closed);
+        assert!(report.clean_shutdown);
+        print_registration_report(report);
+        return;
+    }
+
+    #[cfg(target_os = "windows")]
     if let Some(cycles) = argument_value("--synthetic-pointer-flood-cycles")
         .and_then(|value| value.parse::<usize>().ok())
     {
@@ -49,6 +74,7 @@ fn main() {
         assert_eq!(report.callback_panics, 0);
         assert_eq!(report.pressed_candidates_remaining, 0);
         assert!(report.clean_shutdown);
+        assert_capture_queue_healthy(report);
         print_registration_report(report);
         return;
     }
@@ -80,6 +106,7 @@ fn main() {
         assert_eq!(report.callback_panics, 0);
         assert_eq!(report.pressed_candidates_remaining, 0);
         assert!(report.clean_shutdown);
+        assert_capture_queue_healthy(report);
         print_registration_report(report);
         return;
     }
@@ -109,6 +136,7 @@ fn main() {
         assert_eq!(report.pressed_candidates_remaining, 0);
         assert_eq!(report.callback_panics, 0);
         assert!(report.clean_shutdown);
+        assert_capture_queue_healthy(report);
         print_registration_report(report);
         return;
     }
@@ -176,6 +204,7 @@ fn main() {
         assert_eq!(report.reset_releases, 4);
         assert!(report.clean_shutdown);
         assert_eq!(report.callback_panics, 0);
+        assert_capture_queue_healthy(report);
         print_registration_report(report);
         return;
     }
@@ -201,6 +230,7 @@ fn main() {
             "Windows key-state reconciliation query failed"
         );
         assert_eq!(report.callback_panics, 0, "Raw Input callback panicked");
+        assert_capture_queue_healthy(report);
         print_registration_report(report);
         return;
     }
@@ -223,6 +253,7 @@ fn main() {
             report.service_stopped_resets, 1,
             "Raw Input shutdown did not reset pressed candidates"
         );
+        assert_capture_queue_healthy(report);
         print_registration_report(report);
         return;
     }
@@ -244,7 +275,7 @@ fn main() {
 #[cfg(target_os = "windows")]
 fn print_registration_report(report: windows_capture::RegistrationReport) {
     println!(
-        "input-windows-spike: registered={} session_notifications_registered={} session_notifications_unregistered={} clean_shutdown={} raw_messages={} keyboard_edges={} mouse_messages={} mouse_button_edges={} mouse_captured_down={} mouse_captured_up={} mouse_duplicate_down={} mouse_unmatched_up={} mouse_resets={} mouse_reset_releases={} mouse_reconciled_releases={} mouse_candidates_remaining={} device_arrivals={} device_removals={} resets={} reset_releases={} device_removed_resets={} session_change_resets={} power_change_resets={} service_stopped_resets={} unqueryable_key_resets={} state_query_unavailable_resets={} reconciliation_runs={} reconciled_releases={} reconciliation_query_errors={} decode_errors={} callback_panics={} synthetic_inputs_sent={} synthetic_pointer_inputs_requested={} synthetic_expected_edges={} synthetic_edges_seen={} synthetic_down_edges={} synthetic_up_edges={} synthetic_order_errors={} synthetic_expected_edges_remaining={} intentionally_dropped_releases={} captured_down={} captured_up={} duplicate_down={} unmatched_up={} pressed_candidates_remaining={}",
+        "input-windows-spike: registered={} session_notifications_registered={} session_notifications_unregistered={} clean_shutdown={} raw_messages={} keyboard_edges={} mouse_messages={} mouse_button_edges={} mouse_captured_down={} mouse_captured_up={} mouse_duplicate_down={} mouse_unmatched_up={} mouse_resets={} mouse_reset_releases={} mouse_reconciled_releases={} mouse_candidates_remaining={} device_arrivals={} device_removals={} resets={} reset_releases={} device_removed_resets={} session_change_resets={} power_change_resets={} service_stopped_resets={} unqueryable_key_resets={} state_query_unavailable_resets={} queue_overflow_resets={} reconciliation_runs={} reconciled_releases={} reconciliation_query_errors={} decode_errors={} callback_panics={} synthetic_inputs_sent={} synthetic_pointer_inputs_requested={} synthetic_expected_edges={} synthetic_edges_seen={} synthetic_down_edges={} synthetic_up_edges={} synthetic_order_errors={} synthetic_expected_edges_remaining={} intentionally_dropped_releases={} captured_down={} captured_up={} duplicate_down={} unmatched_up={} pressed_candidates_remaining={} capture_queue_capacity={} capture_events_enqueued={} capture_events_consumed={} capture_queue_overflows={} capture_queue_recovery_resets={} capture_queue_discarded={} capture_queue_closed_pushes={} capture_sequence_gaps={} capture_sequence_duplicates_or_out_of_order={} capture_queue_remaining={} capture_queue_closed={}",
         report.registered,
         report.session_notifications_registered,
         report.session_notifications_unregistered,
@@ -271,6 +302,7 @@ fn print_registration_report(report: windows_capture::RegistrationReport) {
         report.service_stopped_resets,
         report.unqueryable_key_resets,
         report.state_query_unavailable_resets,
+        report.queue_overflow_resets,
         report.reconciliation_runs,
         report.reconciled_releases,
         report.reconciliation_query_errors,
@@ -290,6 +322,33 @@ fn print_registration_report(report: windows_capture::RegistrationReport) {
         report.duplicate_down,
         report.unmatched_up,
         report.pressed_candidates_remaining,
+        report.capture_queue_capacity,
+        report.capture_events_enqueued,
+        report.capture_events_consumed,
+        report.capture_queue_overflows,
+        report.capture_queue_recovery_resets,
+        report.capture_queue_discarded,
+        report.capture_queue_closed_pushes,
+        report.capture_sequence_gaps,
+        report.capture_sequence_duplicates_or_out_of_order,
+        report.capture_queue_remaining,
+        report.capture_queue_closed,
+    );
+}
+
+#[cfg(target_os = "windows")]
+fn assert_capture_queue_healthy(report: windows_capture::RegistrationReport) {
+    assert_eq!(report.capture_queue_overflows, 0);
+    assert_eq!(report.capture_queue_recovery_resets, 0);
+    assert_eq!(report.capture_queue_discarded, 0);
+    assert_eq!(report.capture_queue_closed_pushes, 0);
+    assert_eq!(report.capture_sequence_gaps, 0);
+    assert_eq!(report.capture_sequence_duplicates_or_out_of_order, 0);
+    assert_eq!(report.capture_queue_remaining, 0);
+    assert!(report.capture_queue_closed);
+    assert_eq!(
+        report.capture_events_enqueued,
+        report.capture_events_consumed
     );
 }
 

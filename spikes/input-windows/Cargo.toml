@@ -6,6 +6,9 @@ publish = false
 
 [workspace]
 
+[dependencies]
+bongocat-input-queue-spike = { path = "../input-queue" }
+
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "=0.62.2", features = [
     "Win32_Foundation",

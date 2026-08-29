@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+use bongocat_input_queue_spike::{QueueErrorKind, ReliableQueue};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const RI_KEY_BREAK: u16 = 0x0001;
@@ -267,6 +268,142 @@ pub enum CaptureResetReason {
     ServiceStopped,
     UnqueryableKey,
     StateQueryUnavailable,
+    QueueOverflow,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CapturedInputEvent {
+    Keyboard(KeyboardEdge),
+    MouseButton(MouseButtonEdge),
+    Reset(CaptureResetReason),
+    Reconcile,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SequencedCaptureEvent {
+    pub sequence: u64,
+    pub event: CapturedInputEvent,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CaptureQueuePushError {
+    Full,
+    Closed,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CaptureQueueCounters {
+    pub enqueued: u64,
+    pub consumed: u64,
+    pub overflows: u64,
+    pub recovery_resets: u64,
+    pub discarded: u64,
+    pub closed_pushes: u64,
+}
+
+/// Platform callback queue for reliable key/button edges and lifecycle events.
+///
+/// A full queue invalidates the buffered edge history. The queue atomically
+/// replaces that history with a sequenced Reset marker and exposes every loss
+/// through counters. Mouse movement and controller axes do not enter this
+/// queue; they belong in a coalescing latest-value path.
+#[derive(Debug)]
+pub struct CaptureEventQueue {
+    queue: ReliableQueue<SequencedCaptureEvent>,
+    next_sequence: u64,
+    counters: CaptureQueueCounters,
+}
+
+impl CaptureEventQueue {
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            queue: ReliableQueue::with_capacity(capacity),
+            next_sequence: 0,
+            counters: CaptureQueueCounters::default(),
+        }
+    }
+
+    pub fn push(&mut self, event: CapturedInputEvent) -> Result<(), CaptureQueuePushError> {
+        let sequenced = SequencedCaptureEvent {
+            sequence: self.next_sequence,
+            event,
+        };
+        // Exhaustion is practically unreachable, but wrapping keeps the FFI
+        // producer path non-panicking and makes the anomaly observable as a
+        // non-monotonic sequence if it ever occurs.
+        self.next_sequence = self.next_sequence.wrapping_add(1);
+        let reset = SequencedCaptureEvent {
+            sequence: sequenced.sequence,
+            event: CapturedInputEvent::Reset(CaptureResetReason::QueueOverflow),
+        };
+        match self.queue.push_with_overflow_reset(sequenced, reset) {
+            Ok(()) => {
+                self.counters.enqueued += 1;
+                Ok(())
+            }
+            Err(error) if error.kind == QueueErrorKind::Full => {
+                self.counters.enqueued += 1;
+                self.counters.overflows += 1;
+                self.counters.recovery_resets += 1;
+                self.counters.discarded = self.queue.recovery_discard_count();
+                Err(CaptureQueuePushError::Full)
+            }
+            Err(_) => {
+                self.counters.closed_pushes += 1;
+                Err(CaptureQueuePushError::Closed)
+            }
+        }
+    }
+
+    pub fn pop(&mut self) -> Option<SequencedCaptureEvent> {
+        let event = self.queue.pop()?;
+        self.counters.consumed += 1;
+        Some(event)
+    }
+
+    pub fn close(&mut self) {
+        self.queue.close();
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.queue.is_closed()
+    }
+
+    pub fn len(&self) -> usize {
+        self.queue.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.queue.is_empty()
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.queue.capacity()
+    }
+
+    pub fn counters(&self) -> CaptureQueueCounters {
+        self.counters
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CaptureSequenceDiagnostics {
+    next_expected: u64,
+    pub gaps: u64,
+    pub duplicates_or_out_of_order: u64,
+}
+
+impl CaptureSequenceDiagnostics {
+    pub fn observe(&mut self, sequence: u64) {
+        if sequence == self.next_expected {
+            self.next_expected = self.next_expected.saturating_add(1);
+        } else if sequence > self.next_expected {
+            self.gaps += sequence - self.next_expected;
+            self.next_expected = sequence.saturating_add(1);
+        } else {
+            self.duplicates_or_out_of_order += 1;
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -283,6 +420,7 @@ pub struct CandidateCounters {
     pub service_stopped_resets: u64,
     pub unqueryable_key_resets: u64,
     pub state_query_unavailable_resets: u64,
+    pub queue_overflow_resets: u64,
     pub reconciled_releases: u64,
 }
 
@@ -348,6 +486,7 @@ impl PressedKeyCandidates {
             CaptureResetReason::StateQueryUnavailable => {
                 self.counters.state_query_unavailable_resets += 1
             }
+            CaptureResetReason::QueueOverflow => self.counters.queue_overflow_resets += 1,
         }
         self.missing_confirmations.clear();
     }
@@ -443,6 +582,7 @@ impl PressedMouseCandidates {
             CaptureResetReason::StateQueryUnavailable => {
                 self.counters.state_query_unavailable_resets += 1
             }
+            CaptureResetReason::QueueOverflow => self.counters.queue_overflow_resets += 1,
         }
         self.missing_confirmations.clear();
     }
@@ -1207,5 +1347,66 @@ mod tests {
             virtual_key_for_mouse_button(MouseButton::Forward).as_i32(),
             0x06
         );
+    }
+
+    #[test]
+    fn capture_queue_overflow_replaces_untrusted_edges_with_sequenced_reset() {
+        let mut queue = CaptureEventQueue::with_capacity(2);
+        let down = CapturedInputEvent::Keyboard(KeyboardEdge {
+            key: PhysicalKey::A,
+            pressed: true,
+        });
+        queue.push(down).unwrap();
+        queue.push(down).unwrap();
+        assert_eq!(queue.push(down), Err(CaptureQueuePushError::Full));
+
+        let recovery = queue.pop().expect("overflow Reset must be consumable");
+        assert_eq!(recovery.sequence, 2);
+        assert_eq!(
+            recovery.event,
+            CapturedInputEvent::Reset(CaptureResetReason::QueueOverflow)
+        );
+        assert!(queue.is_empty());
+        assert_eq!(
+            queue.counters(),
+            CaptureQueueCounters {
+                enqueued: 3,
+                consumed: 1,
+                overflows: 1,
+                recovery_resets: 1,
+                discarded: 2,
+                closed_pushes: 0,
+            }
+        );
+
+        let mut sequence = CaptureSequenceDiagnostics::default();
+        sequence.observe(recovery.sequence);
+        assert_eq!(sequence.gaps, 2);
+        assert_eq!(sequence.duplicates_or_out_of_order, 0);
+    }
+
+    #[test]
+    fn closed_capture_queue_drains_existing_events_and_rejects_late_pushes() {
+        let mut queue = CaptureEventQueue::with_capacity(1);
+        queue.push(CapturedInputEvent::Reconcile).unwrap();
+        queue.close();
+        assert_eq!(
+            queue.push(CapturedInputEvent::Reconcile),
+            Err(CaptureQueuePushError::Closed)
+        );
+        assert!(queue.is_closed());
+        assert_eq!(queue.pop().unwrap().sequence, 0);
+        assert!(queue.is_empty());
+        assert_eq!(queue.counters().closed_pushes, 1);
+    }
+
+    #[test]
+    fn sequence_diagnostics_count_gaps_and_non_monotonic_events() {
+        let mut diagnostics = CaptureSequenceDiagnostics::default();
+        for sequence in [0, 1, 4, 4, 3, 5] {
+            diagnostics.observe(sequence);
+        }
+        assert_eq!(diagnostics.gaps, 2);
+        assert_eq!(diagnostics.duplicates_or_out_of_order, 2);
     }
 }

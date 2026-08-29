@@ -1,9 +1,10 @@
 use bongocat_input_windows_spike::{
-    CaptureResetReason, KeyStateSnapshot, KeyboardEdge, MouseButton, MouseButtonStateSnapshot,
-    PhysicalKey, PressedKeyCandidates, PressedMouseCandidates, RawInputDeviceChange,
-    RawInputHeader, RawMousePacket, collect_key_state_snapshot_with,
-    collect_mouse_button_state_snapshot_with, decode_keyboard_packet, decode_mouse_button_edges,
-    decode_raw_keyboard_bytes, decode_raw_mouse_bytes,
+    CaptureEventQueue, CaptureQueuePushError, CaptureResetReason, CaptureSequenceDiagnostics,
+    CapturedInputEvent, KeyStateSnapshot, KeyboardEdge, MouseButton, MouseButtonStateSnapshot,
+    PhysicalKey, PressedKeyCandidates, PressedMouseCandidates, RawInputHeader, RawMousePacket,
+    collect_key_state_snapshot_with, collect_mouse_button_state_snapshot_with,
+    decode_keyboard_packet, decode_mouse_button_edges, decode_raw_keyboard_bytes,
+    decode_raw_mouse_bytes,
 };
 use std::{
     collections::{BTreeSet, VecDeque},
@@ -41,9 +42,9 @@ use windows::{
                 KillTimer, MSG, PBT_APMRESUMEAUTOMATIC, PBT_APMRESUMECRITICAL,
                 PBT_APMRESUMESTANDBY, PBT_APMRESUMESUSPEND, PBT_APMSTANDBY, PBT_APMSUSPEND,
                 PostQuitMessage, RegisterClassW, SendMessageW, SetTimer, SetWindowLongPtrW,
-                TranslateMessage, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_DESTROY,
-                WM_INPUT, WM_INPUT_DEVICE_CHANGE, WM_NCCREATE, WM_NCDESTROY, WM_POWERBROADCAST,
-                WM_TIMER, WM_WTSSESSION_CHANGE, WNDCLASSW, WTS_CONSOLE_CONNECT,
+                TranslateMessage, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP,
+                WM_DESTROY, WM_INPUT, WM_INPUT_DEVICE_CHANGE, WM_NCCREATE, WM_NCDESTROY,
+                WM_POWERBROADCAST, WM_TIMER, WM_WTSSESSION_CHANGE, WNDCLASSW, WTS_CONSOLE_CONNECT,
                 WTS_CONSOLE_DISCONNECT, WTS_REMOTE_CONNECT, WTS_REMOTE_DISCONNECT,
                 WTS_SESSION_LOCK, WTS_SESSION_UNLOCK,
             },
@@ -57,6 +58,8 @@ const RECONCILIATION_TIMER_ID: usize = 2;
 const RECONCILIATION_INTERVAL_MS: u32 = 250;
 const REQUIRED_MISSING_CONFIRMATIONS: u8 = 2;
 const SYNTHETIC_INPUT_BATCH_SIZE: usize = 256;
+const CAPTURE_QUEUE_CAPACITY: usize = 64;
+const WM_CAPTURE_TEST_QUEUE_OVERFLOW: u32 = WM_APP + 1;
 pub const SYNTHETIC_POINTER_MOVES_PER_KEY_PAIR: usize = 4;
 pub const SYNTHETIC_PRESSURE_KEY_COUNT: usize = 6;
 pub const MAX_SYNTHETIC_PRESSURE_CYCLES: usize = 256;
@@ -99,6 +102,7 @@ enum SmokeMode {
     PointerFlood {
         cycles: usize,
     },
+    QueueOverflow,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -129,6 +133,7 @@ pub struct RegistrationReport {
     pub service_stopped_resets: u64,
     pub unqueryable_key_resets: u64,
     pub state_query_unavailable_resets: u64,
+    pub queue_overflow_resets: u64,
     pub reconciliation_runs: u64,
     pub reconciled_releases: u64,
     pub reconciliation_query_errors: u64,
@@ -148,9 +153,19 @@ pub struct RegistrationReport {
     pub duplicate_down: u64,
     pub unmatched_up: u64,
     pub pressed_candidates_remaining: usize,
+    pub capture_queue_capacity: usize,
+    pub capture_events_enqueued: u64,
+    pub capture_events_consumed: u64,
+    pub capture_queue_overflows: u64,
+    pub capture_queue_recovery_resets: u64,
+    pub capture_queue_discarded: u64,
+    pub capture_queue_closed_pushes: u64,
+    pub capture_sequence_gaps: u64,
+    pub capture_sequence_duplicates_or_out_of_order: u64,
+    pub capture_queue_remaining: usize,
+    pub capture_queue_closed: bool,
 }
 
-#[derive(Default)]
 struct WindowState {
     session_notifications_registered: bool,
     session_notifications_unregistered: bool,
@@ -162,6 +177,8 @@ struct WindowState {
     device_removals: u64,
     pressed_candidates: PressedKeyCandidates,
     pressed_mouse_candidates: PressedMouseCandidates,
+    capture_queue: CaptureEventQueue,
+    capture_sequence: CaptureSequenceDiagnostics,
     reconciliation_runs: u64,
     reconciliation_query_errors: u64,
     decode_errors: u64,
@@ -178,10 +195,44 @@ struct WindowState {
     drop_next_release: bool,
 }
 
+impl Default for WindowState {
+    fn default() -> Self {
+        Self {
+            session_notifications_registered: false,
+            session_notifications_unregistered: false,
+            raw_messages: 0,
+            keyboard_edges: 0,
+            mouse_messages: 0,
+            mouse_button_edges: 0,
+            device_arrivals: 0,
+            device_removals: 0,
+            pressed_candidates: PressedKeyCandidates::default(),
+            pressed_mouse_candidates: PressedMouseCandidates::default(),
+            capture_queue: CaptureEventQueue::with_capacity(CAPTURE_QUEUE_CAPACITY),
+            capture_sequence: CaptureSequenceDiagnostics::default(),
+            reconciliation_runs: 0,
+            reconciliation_query_errors: 0,
+            decode_errors: 0,
+            callback_panics: 0,
+            synthetic_inputs_sent: 0,
+            synthetic_pointer_inputs_requested: 0,
+            synthetic_expected_edge_count: 0,
+            synthetic_expected_edges: VecDeque::new(),
+            synthetic_edges_seen: 0,
+            synthetic_down_edges: 0,
+            synthetic_up_edges: 0,
+            synthetic_order_errors: 0,
+            intentionally_dropped_releases: 0,
+            drop_next_release: false,
+        }
+    }
+}
+
 impl WindowState {
     fn report(&self, registered: bool, clean_shutdown: bool) -> RegistrationReport {
         let candidate_counters = self.pressed_candidates.counters();
         let mouse_candidate_counters = self.pressed_mouse_candidates.counters();
+        let queue_counters = self.capture_queue.counters();
         RegistrationReport {
             registered,
             session_notifications_registered: self.session_notifications_registered,
@@ -209,6 +260,7 @@ impl WindowState {
             service_stopped_resets: candidate_counters.service_stopped_resets,
             unqueryable_key_resets: candidate_counters.unqueryable_key_resets,
             state_query_unavailable_resets: candidate_counters.state_query_unavailable_resets,
+            queue_overflow_resets: candidate_counters.queue_overflow_resets,
             reconciliation_runs: self.reconciliation_runs,
             reconciled_releases: candidate_counters.reconciled_releases,
             reconciliation_query_errors: self.reconciliation_query_errors,
@@ -228,6 +280,53 @@ impl WindowState {
             duplicate_down: candidate_counters.duplicate_down,
             unmatched_up: candidate_counters.unmatched_up,
             pressed_candidates_remaining: self.pressed_candidates.keys().len(),
+            capture_queue_capacity: self.capture_queue.capacity(),
+            capture_events_enqueued: queue_counters.enqueued,
+            capture_events_consumed: queue_counters.consumed,
+            capture_queue_overflows: queue_counters.overflows,
+            capture_queue_recovery_resets: queue_counters.recovery_resets,
+            capture_queue_discarded: queue_counters.discarded,
+            capture_queue_closed_pushes: queue_counters.closed_pushes,
+            capture_sequence_gaps: self.capture_sequence.gaps,
+            capture_sequence_duplicates_or_out_of_order: self
+                .capture_sequence
+                .duplicates_or_out_of_order,
+            capture_queue_remaining: self.capture_queue.len(),
+            capture_queue_closed: self.capture_queue.is_closed(),
+        }
+    }
+
+    fn enqueue_capture_event(
+        &mut self,
+        event: CapturedInputEvent,
+    ) -> Result<(), CaptureQueuePushError> {
+        self.capture_queue.push(event)
+    }
+
+    fn drain_capture_events(&mut self) {
+        while let Some(sequenced) = self.capture_queue.pop() {
+            self.capture_sequence.observe(sequenced.sequence);
+            match sequenced.event {
+                CapturedInputEvent::Keyboard(edge) => {
+                    if !self.synthetic_expected_edges.is_empty() {
+                        self.observe_synthetic_edge(edge);
+                    } else if self.synthetic_edges_seen > 0 {
+                        self.synthetic_edges_seen += 1;
+                        self.synthetic_order_errors += 1;
+                    }
+                    if !edge.pressed && self.drop_next_release {
+                        self.drop_next_release = false;
+                        self.intentionally_dropped_releases += 1;
+                    } else {
+                        self.pressed_candidates.apply_edge(edge);
+                    }
+                }
+                CapturedInputEvent::MouseButton(edge) => {
+                    self.pressed_mouse_candidates.apply_edge(edge);
+                }
+                CapturedInputEvent::Reset(reason) => self.reset_candidates(reason),
+                CapturedInputEvent::Reconcile => self.reconcile_pressed_candidates(),
+            }
         }
     }
 
@@ -339,6 +438,12 @@ pub fn run_synthetic_pointer_flood_smoke(
     unsafe { run_registration_smoke_inner(duration, SmokeMode::PointerFlood { cycles }) }
 }
 
+pub fn run_capture_queue_overflow_smoke(duration: Duration) -> WindowsResult<RegistrationReport> {
+    // SAFETY: the controlled window message and queue owner remain confined to
+    // this thread. The overflow path emits a Reset before any event is applied.
+    unsafe { run_registration_smoke_inner(duration, SmokeMode::QueueOverflow) }
+}
+
 pub fn query_pressed_keys(candidates: &BTreeSet<PhysicalKey>) -> WindowsResult<KeyStateSnapshot> {
     // SAFETY: OpenInputDesktop yields an owned HDESK used only as an
     // availability guard. Every successful open is paired with CloseDesktop,
@@ -435,6 +540,24 @@ unsafe fn run_registration_smoke_inner(
     if matches!(mode, SmokeMode::Lifecycle) {
         unsafe { inject_lifecycle_messages(window, state_ptr) };
     }
+    if matches!(mode, SmokeMode::QueueOverflow) {
+        state
+            .enqueue_capture_event(CapturedInputEvent::Keyboard(KeyboardEdge {
+                key: PhysicalKey::A,
+                pressed: true,
+            }))
+            .expect("fresh capture queue must accept seed edge");
+        state.drain_capture_events();
+        unsafe {
+            SendMessageW(
+                window,
+                WM_CAPTURE_TEST_QUEUE_OVERFLOW,
+                Some(WPARAM(0)),
+                Some(LPARAM(0)),
+            )
+        };
+        state.drain_capture_events();
+    }
 
     let synthetic_input = match mode {
         SmokeMode::ReleaseRecovery => {
@@ -447,7 +570,7 @@ unsafe fn run_registration_smoke_inner(
         SmokeMode::PointerFlood { cycles } => {
             build_pointer_flood_sequence(&SYNTHETIC_PRESSURE_KEYS, cycles)
         }
-        SmokeMode::Registration | SmokeMode::Lifecycle => Vec::new(),
+        SmokeMode::Registration | SmokeMode::Lifecycle | SmokeMode::QueueOverflow => Vec::new(),
     };
     if !synthetic_input.is_empty() {
         state.synthetic_expected_edges = synthetic_input
@@ -509,6 +632,7 @@ unsafe fn run_registration_smoke_inner(
             let _ = TranslateMessage(&message);
             DispatchMessageW(&message);
         }
+        state.drain_capture_events();
     };
 
     let removal_result = unsafe { unregister_raw_input_devices() };
@@ -518,7 +642,10 @@ unsafe fn run_registration_smoke_inner(
     }
     removal_result?;
     class_result?;
-    Ok(state.report(true, state.session_notifications_unregistered))
+    let clean_shutdown = state.session_notifications_unregistered
+        && state.capture_queue.is_closed()
+        && state.capture_queue.is_empty();
+    Ok(state.report(true, clean_shutdown))
 }
 
 #[derive(Clone, Copy)]
@@ -647,11 +774,15 @@ unsafe fn inject_lifecycle_messages(window: HWND, state: *mut WindowState) {
         (WM_POWERBROADCAST, PBT_APMRESUMEAUTOMATIC),
     ] {
         // SAFETY: state is the live Box installed in this window's user data.
+        // Draining here happens after the producer call and outside window_proc.
         unsafe {
-            (*state).pressed_candidates.apply_edge(KeyboardEdge {
-                key: PhysicalKey::A,
-                pressed: true,
-            })
+            (*state)
+                .enqueue_capture_event(CapturedInputEvent::Keyboard(KeyboardEdge {
+                    key: PhysicalKey::A,
+                    pressed: true,
+                }))
+                .expect("lifecycle seed edge must fit capture queue");
+            (*state).drain_capture_events();
         };
         unsafe {
             SendMessageW(
@@ -661,6 +792,7 @@ unsafe fn inject_lifecycle_messages(window: HWND, state: *mut WindowState) {
                 Some(LPARAM(0)),
             )
         };
+        unsafe { (*state).drain_capture_events() };
     }
 }
 
@@ -717,24 +849,13 @@ unsafe extern "system" fn window_proc(
             match unsafe { read_raw_input(lparam) } {
                 Ok(Some(CapturedRawInput::Keyboard(edge))) => {
                     state.keyboard_edges += 1;
-                    if !state.synthetic_expected_edges.is_empty() {
-                        state.observe_synthetic_edge(edge);
-                    } else if state.synthetic_edges_seen > 0 {
-                        state.synthetic_edges_seen += 1;
-                        state.synthetic_order_errors += 1;
-                    }
-                    if !edge.pressed && state.drop_next_release {
-                        state.drop_next_release = false;
-                        state.intentionally_dropped_releases += 1;
-                    } else {
-                        state.pressed_candidates.apply_edge(edge);
-                    }
+                    let _ = state.enqueue_capture_event(CapturedInputEvent::Keyboard(edge));
                 }
                 Ok(Some(CapturedRawInput::Mouse(packet))) => {
                     state.mouse_messages += 1;
                     for edge in decode_mouse_button_edges(packet) {
                         state.mouse_button_edges += 1;
-                        state.pressed_mouse_candidates.apply_edge(edge);
+                        let _ = state.enqueue_capture_event(CapturedInputEvent::MouseButton(edge));
                     }
                 }
                 Ok(None) => {}
@@ -746,21 +867,17 @@ unsafe extern "system" fn window_proc(
             // SAFETY: GWLP_USERDATA points to the live WindowState until
             // WM_NCDESTROY clears it.
             let state = unsafe { &mut *state };
-            let change = match wparam.0 as u32 {
+            match wparam.0 as u32 {
                 GIDC_ARRIVAL => {
                     state.device_arrivals += 1;
-                    RawInputDeviceChange::Arrival
                 }
                 GIDC_REMOVAL => {
                     state.device_removals += 1;
-                    RawInputDeviceChange::Removal
+                    let _ = state.enqueue_capture_event(CapturedInputEvent::Reset(
+                        CaptureResetReason::DeviceRemoved,
+                    ));
                 }
-                _ => RawInputDeviceChange::Unknown,
-            };
-            if state.pressed_candidates.apply_device_change(change) {
-                state
-                    .pressed_mouse_candidates
-                    .reset(CaptureResetReason::DeviceRemoved);
+                _ => {}
             }
             Some(LRESULT(0))
         }
@@ -777,7 +894,9 @@ unsafe extern "system" fn window_proc(
             if reset {
                 // SAFETY: GWLP_USERDATA points to the live WindowState until
                 // WM_NCDESTROY clears it.
-                unsafe { (*state).reset_candidates(CaptureResetReason::SessionChanged) };
+                let _ = unsafe { &mut *state }.enqueue_capture_event(CapturedInputEvent::Reset(
+                    CaptureResetReason::SessionChanged,
+                ));
             }
             Some(LRESULT(0))
         }
@@ -794,14 +913,28 @@ unsafe extern "system" fn window_proc(
             if reset {
                 // SAFETY: GWLP_USERDATA points to the live WindowState until
                 // WM_NCDESTROY clears it.
-                unsafe { (*state).reset_candidates(CaptureResetReason::PowerChanged) };
+                let _ = unsafe { &mut *state }.enqueue_capture_event(CapturedInputEvent::Reset(
+                    CaptureResetReason::PowerChanged,
+                ));
             }
             Some(LRESULT(1))
         }
         WM_TIMER if wparam.0 == RECONCILIATION_TIMER_ID && !state.is_null() => {
             // SAFETY: GWLP_USERDATA points to the live WindowState until
             // WM_NCDESTROY clears it.
-            unsafe { (*state).reconcile_pressed_candidates() };
+            let _ = unsafe { &mut *state }.enqueue_capture_event(CapturedInputEvent::Reconcile);
+            Some(LRESULT(0))
+        }
+        WM_CAPTURE_TEST_QUEUE_OVERFLOW if !state.is_null() => {
+            // SAFETY: this test-only message is sent synchronously while the
+            // WindowState owner is alive. It proves recovery within one callback.
+            let state = unsafe { &mut *state };
+            for _ in 0..=CAPTURE_QUEUE_CAPACITY {
+                let _ = state.enqueue_capture_event(CapturedInputEvent::Keyboard(KeyboardEdge {
+                    key: PhysicalKey::A,
+                    pressed: true,
+                }));
+            }
             Some(LRESULT(0))
         }
         WM_TIMER if wparam.0 == STOP_TIMER_ID => {
@@ -814,13 +947,18 @@ unsafe extern "system" fn window_proc(
             if !state.is_null() {
                 // SAFETY: WM_DESTROY runs before WM_NCDESTROY clears the
                 // WindowState pointer, so every normal destruction path can
-                // reset its platform-local candidates exactly once.
-                unsafe { (*state).reset_candidates(CaptureResetReason::ServiceStopped) };
-                if unsafe { (*state).session_notifications_registered }
-                    && !unsafe { (*state).session_notifications_unregistered }
+                // enqueue the final Reset and close the producer exactly once.
+                // The owner drains it after DispatchMessageW returns.
+                let state = unsafe { &mut *state };
+                let _ = state.enqueue_capture_event(CapturedInputEvent::Reset(
+                    CaptureResetReason::ServiceStopped,
+                ));
+                state.capture_queue.close();
+                if state.session_notifications_registered
+                    && !state.session_notifications_unregistered
                 {
                     let unregistered = unsafe { WTSUnRegisterSessionNotification(window) }.is_ok();
-                    unsafe { (*state).session_notifications_unregistered = unregistered };
+                    state.session_notifications_unregistered = unregistered;
                 }
             }
             unsafe { PostQuitMessage(0) };

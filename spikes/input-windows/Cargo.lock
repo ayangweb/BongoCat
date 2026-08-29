@@ -3,9 +3,14 @@
 version = 4
 
 [[package]]
+name = "bongocat-input-queue-spike"
+version = "0.1.0"
+
+[[package]]
 name = "bongocat-input-windows-spike"
 version = "0.1.0"
 dependencies = [
+ "bongocat-input-queue-spike",
  "windows",
 ]
 
