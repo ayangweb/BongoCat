@@ -170,6 +170,9 @@ struct CycleSummary {
     sequence_gaps: u64,
     sequence_duplicates_or_out_of_order: u64,
     callback_panics: u64,
+    cursor_captured: u64,
+    cursor_coalesced: u64,
+    cursor_consumed: u64,
 }
 
 #[cfg(target_os = "macos")]
@@ -184,14 +187,20 @@ impl CycleSummary {
         self.sequence_gaps += report.sequence_gaps;
         self.sequence_duplicates_or_out_of_order += report.sequence_duplicates_or_out_of_order;
         self.callback_panics += report.callback_panics + report.workspace_callback_panics;
+        self.cursor_captured += report.cursor_captured;
+        self.cursor_coalesced += report.cursor_coalesced;
+        self.cursor_consumed += report.cursor_consumed;
     }
 
     fn print(&self) {
         println!(
-            "input-macos-spike: summary completed_cycles={} key_down={} key_up={} reconciled_releases={} candidate_resets={} queue_overflows={} sequence_gaps={} sequence_duplicates_or_out_of_order={} callback_panics={} clean_shutdown=true",
+            "input-macos-spike: summary completed_cycles={} key_down={} key_up={} cursor_captured={} cursor_coalesced={} cursor_consumed={} reconciled_releases={} candidate_resets={} queue_overflows={} sequence_gaps={} sequence_duplicates_or_out_of_order={} callback_panics={} clean_shutdown=true",
             self.completed,
             self.key_down,
             self.key_up,
+            self.cursor_captured,
+            self.cursor_coalesced,
+            self.cursor_consumed,
             self.reconciled_releases,
             self.candidate_resets,
             self.queue_overflows,
@@ -226,6 +235,12 @@ fn validate_cycle_report(
     }
     if report.queued_events != report.consumed_events + report.queue_discarded_events {
         return Err("the callback queue did not account for every accepted event".to_string());
+    }
+    if report.cursor_captured != report.cursor_coalesced + report.cursor_consumed {
+        return Err("the cursor latest-value channel did not account for every sample".to_string());
+    }
+    if report.cursor_rejected_after_close != 0 {
+        return Err("the cursor callback published after its channel closed".to_string());
     }
     if report.workspace_observers_registered != report.workspace_observers_removed {
         return Err("workspace observers were not removed exactly once".to_string());
@@ -262,7 +277,7 @@ fn validate_cycle_report(
 #[cfg(target_os = "macos")]
 fn print_cycle_report(cycle: usize, report: &TapProbeReport) {
     println!(
-        "input-macos-spike: tap cycle={} started={} finished_enabled={} key_down={} key_up={} flags_changed={} mouse_down={} mouse_up={} disabled_timeout={} disabled_user={} injected_disables={} reenabled={} callback_panics={} queued_events={} consumed_events={} queue_overflows={} queue_recovery_resets={} queue_discarded_events={} queue_closed_events={} sequence_gaps={} sequence_duplicates_or_out_of_order={} reconciliation_runs={} reconciled_releases={} candidate_resets={} candidate_reset_releases={} duplicate_down={} unmatched_up={} workspace_observers_registered={} workspace_observers_removed={} workspace_will_sleep={} workspace_did_wake={} workspace_session_resigned={} workspace_session_active={} workspace_lifecycle_resets={} workspace_callback_panics={} workspace_callbacks_ignored_after_close={} synthetic_events_posted={} intentionally_dropped_releases={} pressed_candidates_before_shutdown={}",
+        "input-macos-spike: tap cycle={} started={} finished_enabled={} key_down={} key_up={} flags_changed={} mouse_down={} mouse_up={} cursor_captured={} cursor_coalesced={} cursor_consumed={} cursor_rejected_after_close={} disabled_timeout={} disabled_user={} injected_disables={} reenabled={} callback_panics={} queued_events={} consumed_events={} queue_overflows={} queue_recovery_resets={} queue_discarded_events={} queue_closed_events={} sequence_gaps={} sequence_duplicates_or_out_of_order={} reconciliation_runs={} reconciled_releases={} candidate_resets={} candidate_reset_releases={} duplicate_down={} unmatched_up={} workspace_observers_registered={} workspace_observers_removed={} workspace_will_sleep={} workspace_did_wake={} workspace_session_resigned={} workspace_session_active={} workspace_lifecycle_resets={} workspace_callback_panics={} workspace_callbacks_ignored_after_close={} synthetic_events_posted={} intentionally_dropped_releases={} pressed_candidates_before_shutdown={}",
         cycle,
         report.started,
         report.finished_enabled,
@@ -271,6 +286,10 @@ fn print_cycle_report(cycle: usize, report: &TapProbeReport) {
         report.flags_changed,
         report.mouse_down,
         report.mouse_up,
+        report.cursor_captured,
+        report.cursor_coalesced,
+        report.cursor_consumed,
+        report.cursor_rejected_after_close,
         report.disabled_by_timeout,
         report.disabled_by_user,
         report.injected_disables,
@@ -356,6 +375,15 @@ mod tests {
         let mut report = healthy_report();
         report.queued_events = 2;
         report.consumed_events = 1;
+        assert!(validate_cycle_report(&report, None, None, false).is_err());
+
+        let mut report = healthy_report();
+        report.cursor_captured = 2;
+        report.cursor_consumed = 1;
+        assert!(validate_cycle_report(&report, None, None, false).is_err());
+
+        let mut report = healthy_report();
+        report.cursor_rejected_after_close = 1;
         assert!(validate_cycle_report(&report, None, None, false).is_err());
     }
 

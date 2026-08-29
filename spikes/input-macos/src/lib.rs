@@ -507,6 +507,81 @@ impl SharedCaptureQueue {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MacCursorSample {
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CursorLatestDiagnostics {
+    pub captured: u64,
+    pub coalesced: u64,
+    pub consumed: u64,
+    pub rejected_after_close: u64,
+}
+
+impl CursorLatestDiagnostics {
+    pub fn is_fully_accounted(self) -> bool {
+        self.captured == self.coalesced.saturating_add(self.consumed)
+    }
+}
+
+#[derive(Debug, Default)]
+struct CursorLatestState {
+    pending: Option<MacCursorSample>,
+    diagnostics: CursorLatestDiagnostics,
+    closed: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct LatestCursorValue(Arc<Mutex<CursorLatestState>>);
+
+impl LatestCursorValue {
+    pub fn publish(&self, sample: MacCursorSample) -> bool {
+        let mut state = self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if state.closed {
+            state.diagnostics.rejected_after_close += 1;
+            return false;
+        }
+        state.diagnostics.captured += 1;
+        if state.pending.replace(sample).is_some() {
+            state.diagnostics.coalesced += 1;
+        }
+        true
+    }
+
+    pub fn take(&self) -> Option<MacCursorSample> {
+        let mut state = self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let sample = state.pending.take();
+        if sample.is_some() {
+            state.diagnostics.consumed += 1;
+        }
+        sample
+    }
+
+    pub fn close(&self) {
+        let mut state = self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.closed = true;
+    }
+
+    pub fn diagnostics(&self) -> CursorLatestDiagnostics {
+        self.0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .diagnostics
+    }
+}
+
 impl Default for MacCaptureLifecycle {
     fn default() -> Self {
         Self {
@@ -608,6 +683,10 @@ pub struct TapProbeReport {
     pub flags_changed: u64,
     pub mouse_down: u64,
     pub mouse_up: u64,
+    pub cursor_captured: u64,
+    pub cursor_coalesced: u64,
+    pub cursor_consumed: u64,
+    pub cursor_rejected_after_close: u64,
     pub disabled_by_timeout: u64,
     pub disabled_by_user: u64,
     pub injected_disables: u64,
@@ -660,6 +739,10 @@ struct TapCounters {
     flags_changed: AtomicU64,
     mouse_down: AtomicU64,
     mouse_up: AtomicU64,
+    cursor_captured: AtomicU64,
+    cursor_coalesced: AtomicU64,
+    cursor_consumed: AtomicU64,
+    cursor_rejected_after_close: AtomicU64,
     disabled_by_timeout: AtomicU64,
     disabled_by_user: AtomicU64,
     injected_disables: AtomicU64,
@@ -704,6 +787,10 @@ impl TapCounters {
             flags_changed: self.flags_changed.load(Ordering::Relaxed),
             mouse_down: self.mouse_down.load(Ordering::Relaxed),
             mouse_up: self.mouse_up.load(Ordering::Relaxed),
+            cursor_captured: self.cursor_captured.load(Ordering::Relaxed),
+            cursor_coalesced: self.cursor_coalesced.load(Ordering::Relaxed),
+            cursor_consumed: self.cursor_consumed.load(Ordering::Relaxed),
+            cursor_rejected_after_close: self.cursor_rejected_after_close.load(Ordering::Relaxed),
             disabled_by_timeout: self.disabled_by_timeout.load(Ordering::Relaxed),
             disabled_by_user: self.disabled_by_user.load(Ordering::Relaxed),
             injected_disables: self.injected_disables.load(Ordering::Relaxed),
@@ -1079,7 +1166,9 @@ fn run_tap_on_run_loop(
         WorkspaceLifecycleObserver::register(Arc::clone(&workspace_signals), Arc::clone(&counters));
     let ignore_next_user_disable = Arc::new(AtomicBool::new(false));
     let event_queue = SharedCaptureQueue::new(256);
+    let cursor_latest = LatestCursorValue::default();
     let callback_queue = event_queue.clone();
+    let callback_cursor_latest = cursor_latest.clone();
     let callback_counters = Arc::clone(&counters);
     let callback_disable_signals = Arc::clone(&disable_signals);
     let callback_ignore_next_user_disable = Arc::clone(&ignore_next_user_disable);
@@ -1141,6 +1230,17 @@ fn run_tap_on_run_loop(
                     captured_mouse_button(event)
                         .map(|button| CapturedInputEvent::MouseUp { button })
                 }
+                CGEventType::MouseMoved
+                | CGEventType::LeftMouseDragged
+                | CGEventType::RightMouseDragged
+                | CGEventType::OtherMouseDragged => {
+                    let location = event.get_location();
+                    callback_cursor_latest.publish(MacCursorSample {
+                        x: location.x,
+                        y: location.y,
+                    });
+                    None
+                }
                 CGEventType::TapDisabledByTimeout => {
                     record_tap_disable(
                         TapDisableReason::Timeout,
@@ -1185,6 +1285,10 @@ fn run_tap_on_run_loop(
                 CGEventType::RightMouseUp,
                 CGEventType::OtherMouseDown,
                 CGEventType::OtherMouseUp,
+                CGEventType::MouseMoved,
+                CGEventType::LeftMouseDragged,
+                CGEventType::RightMouseDragged,
+                CGEventType::OtherMouseDragged,
             ],
             callback,
         )
@@ -1209,6 +1313,8 @@ fn run_tap_on_run_loop(
     let deadline = Instant::now() + duration;
     let reconciliation_interval = Duration::from_millis(250);
     let mut next_reconciliation = Instant::now() + reconciliation_interval;
+    let cursor_interval = Duration::from_millis(16);
+    let mut next_cursor_tick = Instant::now() + cursor_interval;
     let mut pressed_key_candidates = MacPressedKeyCandidates::default();
     let mut pressed_mouse_candidates = MacPressedMouseCandidates::default();
     let mut capture_sequence = CaptureSequenceDiagnostics::default();
@@ -1259,6 +1365,11 @@ fn run_tap_on_run_loop(
             pressed_key_candidates.apply_event_with(sequenced.event, reconcile_key_state);
             pressed_mouse_candidates.apply_event(sequenced.event);
         }
+        let now = Instant::now();
+        if now >= next_cursor_tick {
+            let _latest_sample = cursor_latest.take();
+            next_cursor_tick = now + cursor_interval;
+        }
         consume_workspace_lifecycle_signals(
             &workspace_signals,
             &mut pressed_key_candidates,
@@ -1290,6 +1401,7 @@ fn run_tap_on_run_loop(
     }
     let finished_enabled = tap.is_enabled();
     event_queue.close();
+    cursor_latest.close();
     tap.enable(false);
     run_loop.remove_source(&source, unsafe { kCFRunLoopDefaultMode });
     consume_workspace_lifecycle_signals(
@@ -1312,6 +1424,20 @@ fn run_tap_on_run_loop(
         pressed_key_candidates.apply_event_with(sequenced.event, reconcile_key_state);
         pressed_mouse_candidates.apply_event(sequenced.event);
     }
+    let _final_cursor_sample = cursor_latest.take();
+    let cursor_diagnostics = cursor_latest.diagnostics();
+    counters
+        .cursor_captured
+        .store(cursor_diagnostics.captured, Ordering::Relaxed);
+    counters
+        .cursor_coalesced
+        .store(cursor_diagnostics.coalesced, Ordering::Relaxed);
+    counters
+        .cursor_consumed
+        .store(cursor_diagnostics.consumed, Ordering::Relaxed);
+    counters
+        .cursor_rejected_after_close
+        .store(cursor_diagnostics.rejected_after_close, Ordering::Relaxed);
     counters.pressed_candidates_before_shutdown.store(
         (pressed_key_candidates.keys().len() + pressed_mouse_candidates.buttons().len()) as u64,
         Ordering::Relaxed,
@@ -1822,5 +1948,67 @@ mod tests {
         }
         assert_eq!(diagnostics.gaps, 2);
         assert_eq!(diagnostics.duplicates_or_out_of_order, 2);
+    }
+
+    #[test]
+    fn cursor_latest_value_coalesces_without_using_the_edge_queue() {
+        let latest = LatestCursorValue::default();
+        assert!(latest.publish(MacCursorSample { x: -10.5, y: 3.0 }));
+        assert!(latest.publish(MacCursorSample { x: 20.0, y: 30.0 }));
+        assert!(latest.publish(MacCursorSample { x: 40.0, y: 50.0 }));
+
+        assert_eq!(latest.take(), Some(MacCursorSample { x: 40.0, y: 50.0 }));
+        assert_eq!(latest.take(), None);
+        let diagnostics = latest.diagnostics();
+        assert_eq!(diagnostics.captured, 3);
+        assert_eq!(diagnostics.coalesced, 2);
+        assert_eq!(diagnostics.consumed, 1);
+        assert!(diagnostics.is_fully_accounted());
+    }
+
+    #[test]
+    fn cursor_latest_value_flushes_pending_sample_and_rejects_late_callbacks() {
+        let latest = LatestCursorValue::default();
+        assert!(latest.publish(MacCursorSample { x: 1.0, y: 2.0 }));
+        latest.close();
+        assert!(!latest.publish(MacCursorSample { x: 3.0, y: 4.0 }));
+        assert_eq!(latest.take(), Some(MacCursorSample { x: 1.0, y: 2.0 }));
+
+        let diagnostics = latest.diagnostics();
+        assert_eq!(diagnostics.rejected_after_close, 1);
+        assert!(diagnostics.is_fully_accounted());
+    }
+
+    #[test]
+    fn cursor_flood_does_not_consume_reliable_edge_capacity() {
+        let queue = SharedCaptureQueue::new(2);
+        let latest = LatestCursorValue::default();
+        queue
+            .push_with_overflow_reset(CapturedInputEvent::MouseDown { button: 0 })
+            .unwrap();
+        for value in 0..10_000 {
+            assert!(latest.publish(MacCursorSample {
+                x: f64::from(value),
+                y: f64::from(-value),
+            }));
+        }
+        queue
+            .push_with_overflow_reset(CapturedInputEvent::MouseUp { button: 0 })
+            .unwrap();
+
+        assert_eq!(queue.drain().len(), 2);
+        assert_eq!(queue.diagnostics(), (0, 0, 0));
+        assert_eq!(
+            latest.take(),
+            Some(MacCursorSample {
+                x: 9_999.0,
+                y: -9_999.0,
+            })
+        );
+        let diagnostics = latest.diagnostics();
+        assert_eq!(diagnostics.captured, 10_000);
+        assert_eq!(diagnostics.coalesced, 9_999);
+        assert_eq!(diagnostics.consumed, 1);
+        assert!(diagnostics.is_fully_accounted());
     }
 }
