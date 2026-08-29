@@ -1,6 +1,6 @@
 # macOS Input Permission and Tap Lifecycle Spike
 
-状态：权限/tap 生命周期 contract、listen-only CGEventTap、可靠 callback 队列、真实 callback release 丢弃后的周期校正、受控 disable 恢复、NSWorkspace 生命周期 Reset 和 callback shutdown smoke 已通过；权限矩阵、真实系统生命周期、系统自然 timeout 和长期 restart 泄漏采样仍待验证
+状态：权限/tap 生命周期 contract、listen-only CGEventTap、可靠 callback 队列、键盘/鼠标按钮周期校正、真实 keyboard callback release 丢弃后的恢复、受控 disable 恢复、NSWorkspace 生命周期 Reset 和 callback shutdown smoke 已通过；权限矩阵、真实系统生命周期、系统自然 timeout 和物理鼠标矩阵仍待验证
 日期：2026-08-29
 
 ## Contract
@@ -27,7 +27,7 @@ cargo run --manifest-path spikes/input-macos/Cargo.toml --locked
 cargo run --manifest-path spikes/input-macos/Cargo.toml --locked -- --request
 ```
 
-CoreGraphics binding 仅存在于 macOS target dependency；非 macOS 构建会输出 skipped，不引入跨平台 API。`--tap-ms <milliseconds>` 会在专用线程/run loop 上创建 listen-only `CGEventTap`，只统计事件类型计数和队列诊断，不记录具体键值；键盘事件在 queue 中保留 keycode/repeat，由 run-loop consumer 更新平台候选 pressed-set。`FlagsChanged` 在 consumer 侧用 `CGEventSourceKeyState` 判定方向；每 `250 ms` 只查询候选 keycode，同一键连续 `2` 次缺失才形成 reconciled release。`Reset`、tap shutdown 和 queue overflow 清空候选状态。`--cycles <count>` 可重复创建、运行、禁用并销毁 tap，0 会被拒绝；`--summary-only` 省略逐 cycle 行但保留严格校验和聚合结果。任一 cycle 创建失败、未恢复 enabled、callback panic、队列 overflow/close 后事件、observer 数量不匹配或注入语义失败都会以非零状态退出，不再只打印错误。`--key-state <macOS-keycode>` 将该 keycode 作为 runtime 当前 pressed-set 候选，经 `CGEventSourceKeyState` 生成仍按下快照，只输出 checked/still-pressed/released 数量。默认仍不会自动创建 tap。
+CoreGraphics binding 仅存在于 macOS target dependency；非 macOS 构建会输出 skipped，不引入跨平台 API。`--tap-ms <milliseconds>` 会在专用线程/run loop 上创建 listen-only `CGEventTap`，只统计事件类型计数和队列诊断，不记录具体键值。键盘事件在 queue 中保留 keycode/repeat；鼠标 down/up 保留 CoreGraphics 的 0–31 号 button identity，不再把左、右、中和侧键压成同一个事件。run-loop consumer 分别维护键盘和鼠标候选 pressed set，`FlagsChanged` 用 `CGEventSourceKeyState` 判定方向；每 `250 ms` 只查询当前候选 key/button，经 `CGEventSourceKeyState`/`CGEventSourceButtonState` 连续 `2` 次缺失才形成 reconciled release。`Reset`、tap shutdown 和 queue overflow 同时清空两类候选。`--cycles <count>` 可重复创建、运行、禁用并销毁 tap，0 会被拒绝；`--summary-only` 省略逐 cycle 行但保留严格校验和聚合结果。任一 cycle 创建失败、未恢复 enabled、callback panic、队列 overflow/close 后事件、observer 数量不匹配或注入语义失败都会以非零状态退出，不再只打印错误。`--key-state <macOS-keycode>` 和 `--button-state <0..31>` 分别对单个候选执行系统状态查询，只输出 checked/still-pressed/released 数量。默认仍不会自动创建 tap。
 
 `--inject-disable timeout|user` 只能和 `--tap-ms` 一起用于受控故障验证。每个 cycle 先注入一个没有 KeyUp 的候选键，再禁用真实 tap；`user` 使用 CoreGraphics 返回的真实 user-disable callback，`timeout` 将测试动作附带的 user-disable 通知替换为 timeout 原因。两者随后走与系统 callback 相同的 Reset、权限 preflight 和 re-enable 路径。恢复信号使用原子位合并，不会像有界 `try_send` 一样在满载时静默丢失；报告只输出 disable、Reset、release 和队列数量。
 
@@ -45,6 +45,7 @@ cargo test --manifest-path spikes/input-macos/Cargo.toml --locked
 cargo run --manifest-path spikes/input-macos/Cargo.toml --locked
 cargo run --manifest-path spikes/input-macos/Cargo.toml --locked -- --tap-ms 3000 --cycles 3
 cargo run --manifest-path spikes/input-macos/Cargo.toml --locked -- --key-state 0
+cargo run --manifest-path spikes/input-macos/Cargo.toml --locked -- --button-state 0
 cargo run --manifest-path spikes/input-macos/Cargo.toml --locked -- --tap-ms 300 --inject-disable timeout
 cargo run --manifest-path spikes/input-macos/Cargo.toml --locked -- --tap-ms 300 --inject-disable user
 cargo run --manifest-path spikes/input-macos/Cargo.toml --locked -- --tap-ms 300 --inject-lifecycle all
@@ -65,6 +66,8 @@ NSZombieEnabled=YES spikes/input-macos/target/release/bongocat-input-macos-spike
 2026-08-29 在同一设备、系统和权限条件下执行 release-loss 闭环。单次 `--tap-ms 800 --inject-release-loss` 得到 `key_down=1 key_up=1 reconciliation_runs=3 reconciled_releases=1 synthetic_events_posted=2 intentionally_dropped_releases=1 pressed_candidates_before_shutdown=0 callback_panics=0`。随后 release 构建执行 `--tap-ms 600 --cycles 20 --inject-release-loss`，20/20 cycle 均捕获 down/up、故意丢弃一次 release、经两次状态缺失确认释放候选，且每次 `queue_overflows=0 callback_panics=0 pressed_candidates_before_shutdown=0`。该结果证明不是依靠 shutdown Reset 清除残留键；物理输入和系统自然丢失 release 仍需单独实测。
 
 2026-08-29 对 release 二进制增加严格 cycle validator 后，再执行两个 100-cycle 资源验证。`leaks --atExit` 报告 `completed_cycles=100 candidate_resets=100 queue_overflows=0 callback_panics=0 clean_shutdown=true`、physical footprint `5232K`、`0 leaks for 0 total leaked bytes`；当前系统同时提示受限进程的只读内存检查限制，因此该结果只作为可见 malloc leak 证据。独立的 `NSZombieEnabled=YES` 运行也完成 100/100，无 over-release crash。每个 `run_listen_only_tap` 都创建并 join 专用线程，且每 cycle 的 4 个 NSWorkspace observer 必须注册/注销数量相等才会通过 validator。
+
+2026-08-29 将 mouse button identity 接入 callback queue、pressed candidates、reconciliation 和 lifecycle Reset；0–31 号按钮可独立统计 duplicate、unmatched、reconciled 和 reset release。19 项 library contract test 新增侧键身份保留、只查询候选按钮、两次缺失释放和 keyboard/mouse 同步 Reset。`--button-state 0` 在同一设备调用 `CGEventSourceButtonState` 得到 `checked=1 still_pressed=0 released=1`，证明窄平台边界可用。Computer Use 的 AX window/coordinate click 没有进入 session event tap，因此没有作为物理鼠标证据；真实设备 down/up 和丢 release 仍待手工矩阵。
 
 实现约束：特殊的 `kCGEventTapDisabledByTimeout`/`kCGEventTapDisabledByUserInput` 值不能放入第三方事件 mask（其高位值会导致 `1 << type` 溢出）；callback 仍对这两类通知分支处理，收到后通过有界 channel 请求在 run loop 内 re-enable。tap 创建阶段使用 panic boundary，避免 binding 异常杀死输入线程。
 

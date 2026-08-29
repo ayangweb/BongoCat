@@ -2,7 +2,8 @@
 use bongocat_input_macos_spike::{
     CaptureAction, CaptureEvent, MacCaptureLifecycle, PermissionState, TapDisableReason,
     TapProbeReport, WorkspaceLifecycleInjection, input_monitoring_preflight,
-    reconcile_pressed_key_codes, request_input_monitoring_access, run_listen_only_tap,
+    reconcile_pressed_key_codes, reconcile_pressed_mouse_buttons, request_input_monitoring_access,
+    run_listen_only_tap,
 };
 #[cfg(target_os = "macos")]
 use std::{collections::BTreeSet, time::Duration};
@@ -40,6 +41,8 @@ fn main() {
         };
         let key_state_code =
             argument_value("--key-state").and_then(|value| value.parse::<u16>().ok());
+        let button_state_code =
+            argument_value("--button-state").and_then(|value| value.parse::<u8>().ok());
         let cycles = argument_value("--cycles")
             .and_then(|value| value.parse::<usize>().ok())
             .unwrap_or(1);
@@ -83,6 +86,26 @@ fn main() {
                 );
             } else {
                 println!("input-macos-spike: key-state query skipped because permission is denied");
+            }
+        }
+        if let Some(button) = button_state_code {
+            if button > 31 {
+                eprintln!("input-macos-spike: --button-state must be in 0..=31");
+                std::process::exit(2);
+            }
+            if after {
+                let candidates = BTreeSet::from([button]);
+                let report = reconcile_pressed_mouse_buttons(&candidates);
+                println!(
+                    "input-macos-spike: button-state reconciliation checked={} still_pressed={} released={}",
+                    candidates.len(),
+                    report.still_pressed.len(),
+                    report.released_count
+                );
+            } else {
+                println!(
+                    "input-macos-spike: button-state query skipped because permission is denied"
+                );
             }
         }
         if let Some(tap_ms) = tap_ms {

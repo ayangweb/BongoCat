@@ -105,8 +105,8 @@ pub enum CapturedInputEvent {
     KeyDown { key_code: u16, repeat: bool },
     KeyUp { key_code: u16 },
     FlagsChanged { key_code: u16 },
-    MouseDown,
-    MouseUp,
+    MouseDown { button: u8 },
+    MouseUp { button: u8 },
     Reset,
 }
 
@@ -167,7 +167,7 @@ impl MacPressedKeyCandidates {
                 }
             }
             CapturedInputEvent::Reset => self.reset(),
-            CapturedInputEvent::MouseDown | CapturedInputEvent::MouseUp => {}
+            CapturedInputEvent::MouseDown { .. } | CapturedInputEvent::MouseUp { .. } => {}
         }
     }
 
@@ -213,6 +213,84 @@ impl MacPressedKeyCandidates {
 
     pub fn keys(&self) -> &BTreeSet<u16> {
         &self.keys
+    }
+
+    pub fn counters(&self) -> KeyCandidateCounters {
+        self.counters
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct MacPressedMouseCandidates {
+    buttons: BTreeSet<u8>,
+    missing_confirmations: BTreeMap<u8, u8>,
+    counters: KeyCandidateCounters,
+}
+
+impl MacPressedMouseCandidates {
+    pub fn apply_event(&mut self, event: CapturedInputEvent) {
+        match event {
+            CapturedInputEvent::MouseDown { button } => {
+                self.missing_confirmations.remove(&button);
+                if !self.buttons.insert(button) {
+                    self.counters.duplicate_down += 1;
+                }
+            }
+            CapturedInputEvent::MouseUp { button } => {
+                self.missing_confirmations.remove(&button);
+                if !self.buttons.remove(&button) {
+                    self.counters.unmatched_up += 1;
+                }
+            }
+            CapturedInputEvent::Reset => self.reset(),
+            CapturedInputEvent::KeyDown { .. }
+            | CapturedInputEvent::KeyUp { .. }
+            | CapturedInputEvent::FlagsChanged { .. } => {}
+        }
+    }
+
+    pub fn reconcile(
+        &mut self,
+        snapshot: &ButtonReconciliation,
+        required_missing_confirmations: u8,
+    ) -> Result<CandidateReconciliation, InvalidMissingConfirmations> {
+        if required_missing_confirmations == 0 {
+            return Err(InvalidMissingConfirmations);
+        }
+        let checked = self.buttons.len();
+        let mut released = 0usize;
+        let candidates = self.buttons.iter().copied().collect::<Vec<_>>();
+        for button in candidates {
+            if snapshot.still_pressed.contains(&button) {
+                self.missing_confirmations.remove(&button);
+                continue;
+            }
+            let confirmations = self.missing_confirmations.entry(button).or_insert(0);
+            *confirmations = confirmations.saturating_add(1);
+            if *confirmations >= required_missing_confirmations {
+                self.buttons.remove(&button);
+                self.missing_confirmations.remove(&button);
+                released += 1;
+            }
+        }
+        self.counters.reconciled_releases += released as u64;
+        Ok(CandidateReconciliation {
+            checked,
+            released,
+            still_pressed: self.buttons.len(),
+            pending_confirmations: self.missing_confirmations.len(),
+        })
+    }
+
+    pub fn reset(&mut self) {
+        self.counters.reset_releases += self.buttons.len() as u64;
+        self.buttons.clear();
+        self.missing_confirmations.clear();
+        self.counters.resets += 1;
+    }
+
+    pub fn buttons(&self) -> &BTreeSet<u8> {
+        &self.buttons
     }
 
     pub fn counters(&self) -> KeyCandidateCounters {
@@ -830,15 +908,30 @@ impl Drop for WorkspaceLifecycleObserver {
 #[cfg(target_os = "macos")]
 fn consume_workspace_lifecycle_signals(
     signals: &WorkspaceLifecycleSignals,
-    pressed_candidates: &mut MacPressedKeyCandidates,
+    pressed_key_candidates: &mut MacPressedKeyCandidates,
+    pressed_mouse_candidates: &mut MacPressedMouseCandidates,
     counters: &TapCounters,
 ) {
     if signals.take() != 0 {
-        pressed_candidates.reset();
+        pressed_key_candidates.reset();
+        pressed_mouse_candidates.reset();
         counters
             .workspace_lifecycle_resets
             .fetch_add(1, Ordering::Relaxed);
     }
+}
+
+#[cfg(target_os = "macos")]
+const MAX_RECONCILABLE_MOUSE_BUTTON: i64 = 31;
+
+#[cfg(target_os = "macos")]
+fn captured_mouse_button(event: &core_graphics2::event::CGEvent) -> Option<u8> {
+    use core_graphics2::event::CGEventField;
+
+    let button = event.get_integer_value_field(CGEventField::MouseEventButtonNumber);
+    (0..=MAX_RECONCILABLE_MOUSE_BUTTON)
+        .contains(&button)
+        .then_some(button as u8)
 }
 
 #[cfg(target_os = "macos")]
@@ -976,13 +1069,15 @@ fn run_tap_on_run_loop(
                 | CGEventType::RightMouseDown
                 | CGEventType::OtherMouseDown => {
                     callback_counters.mouse_down.fetch_add(1, Ordering::Relaxed);
-                    Some(CapturedInputEvent::MouseDown)
+                    captured_mouse_button(event)
+                        .map(|button| CapturedInputEvent::MouseDown { button })
                 }
                 CGEventType::LeftMouseUp
                 | CGEventType::RightMouseUp
                 | CGEventType::OtherMouseUp => {
                     callback_counters.mouse_up.fetch_add(1, Ordering::Relaxed);
-                    Some(CapturedInputEvent::MouseUp)
+                    captured_mouse_button(event)
+                        .map(|button| CapturedInputEvent::MouseUp { button })
                 }
                 CGEventType::TapDisabledByTimeout => {
                     record_tap_disable(
@@ -1052,7 +1147,8 @@ fn run_tap_on_run_loop(
     let deadline = Instant::now() + duration;
     let reconciliation_interval = Duration::from_millis(250);
     let mut next_reconciliation = Instant::now() + reconciliation_interval;
-    let mut pressed_candidates = MacPressedKeyCandidates::default();
+    let mut pressed_key_candidates = MacPressedKeyCandidates::default();
+    let mut pressed_mouse_candidates = MacPressedMouseCandidates::default();
     if let Some(reason) = injected_disable {
         // Seed a missing-KeyUp case so the probe verifies that disable recovery clears state.
         queue_captured_event(
@@ -1096,9 +1192,15 @@ fn run_tap_on_run_loop(
             .consumed_events
             .fetch_add(drained.len() as u64, Ordering::Relaxed);
         for event in drained {
-            pressed_candidates.apply_event_with(event, reconcile_key_state);
+            pressed_key_candidates.apply_event_with(event, reconcile_key_state);
+            pressed_mouse_candidates.apply_event(event);
         }
-        consume_workspace_lifecycle_signals(&workspace_signals, &mut pressed_candidates, &counters);
+        consume_workspace_lifecycle_signals(
+            &workspace_signals,
+            &mut pressed_key_candidates,
+            &mut pressed_mouse_candidates,
+            &counters,
+        );
         if disable_signals.take() != 0 {
             ignore_next_user_disable.store(false, Ordering::Release);
             if input_monitoring_preflight() {
@@ -1109,9 +1211,14 @@ fn run_tap_on_run_loop(
             }
         }
         if Instant::now() >= next_reconciliation {
-            let snapshot = reconcile_pressed_key_codes(pressed_candidates.keys());
-            pressed_candidates
-                .reconcile(&snapshot, 2)
+            let key_snapshot = reconcile_pressed_key_codes(pressed_key_candidates.keys());
+            pressed_key_candidates
+                .reconcile(&key_snapshot, 2)
+                .expect("non-zero reconciliation confirmation threshold");
+            let button_snapshot =
+                reconcile_pressed_mouse_buttons(pressed_mouse_candidates.buttons());
+            pressed_mouse_candidates
+                .reconcile(&button_snapshot, 2)
                 .expect("non-zero reconciliation confirmation threshold");
             counters.reconciliation_runs.fetch_add(1, Ordering::Relaxed);
             next_reconciliation = Instant::now() + reconciliation_interval;
@@ -1121,7 +1228,12 @@ fn run_tap_on_run_loop(
     event_queue.close();
     tap.enable(false);
     run_loop.remove_source(&source, unsafe { kCFRunLoopDefaultMode });
-    consume_workspace_lifecycle_signals(&workspace_signals, &mut pressed_candidates, &counters);
+    consume_workspace_lifecycle_signals(
+        &workspace_signals,
+        &mut pressed_key_candidates,
+        &mut pressed_mouse_candidates,
+        &counters,
+    );
     workspace_observer.close_sink();
     if injected_lifecycle.is_some() {
         workspace_observer.post_for_probe(WorkspaceLifecycleEvent::DidWake);
@@ -1132,28 +1244,36 @@ fn run_tap_on_run_loop(
         .consumed_events
         .fetch_add(drained.len() as u64, Ordering::Relaxed);
     for event in drained {
-        pressed_candidates.apply_event_with(event, reconcile_key_state);
+        pressed_key_candidates.apply_event_with(event, reconcile_key_state);
+        pressed_mouse_candidates.apply_event(event);
     }
-    counters
-        .pressed_candidates_before_shutdown
-        .store(pressed_candidates.keys().len() as u64, Ordering::Relaxed);
-    pressed_candidates.reset();
-    let candidate_counters = pressed_candidates.counters();
-    counters
-        .reconciled_releases
-        .store(candidate_counters.reconciled_releases, Ordering::Relaxed);
+    counters.pressed_candidates_before_shutdown.store(
+        (pressed_key_candidates.keys().len() + pressed_mouse_candidates.buttons().len()) as u64,
+        Ordering::Relaxed,
+    );
+    pressed_key_candidates.reset();
+    pressed_mouse_candidates.reset();
+    let key_counters = pressed_key_candidates.counters();
+    let mouse_counters = pressed_mouse_candidates.counters();
+    counters.reconciled_releases.store(
+        key_counters.reconciled_releases + mouse_counters.reconciled_releases,
+        Ordering::Relaxed,
+    );
     counters
         .candidate_resets
-        .store(candidate_counters.resets, Ordering::Relaxed);
-    counters
-        .candidate_reset_releases
-        .store(candidate_counters.reset_releases, Ordering::Relaxed);
-    counters
-        .duplicate_down
-        .store(candidate_counters.duplicate_down, Ordering::Relaxed);
-    counters
-        .unmatched_up
-        .store(candidate_counters.unmatched_up, Ordering::Relaxed);
+        .store(key_counters.resets, Ordering::Relaxed);
+    counters.candidate_reset_releases.store(
+        key_counters.reset_releases + mouse_counters.reset_releases,
+        Ordering::Relaxed,
+    );
+    counters.duplicate_down.store(
+        key_counters.duplicate_down + mouse_counters.duplicate_down,
+        Ordering::Relaxed,
+    );
+    counters.unmatched_up.store(
+        key_counters.unmatched_up + mouse_counters.unmatched_up,
+        Ordering::Relaxed,
+    );
     let (queue_overflows, queue_recovery_resets, queue_discarded_events) =
         event_queue.diagnostics();
     counters
@@ -1199,9 +1319,30 @@ pub fn reconcile_key_state(key_code: u16) -> bool {
     CGEventSource::key_state(CGEventSourceStateID::CombinedSessionState, key_code)
 }
 
+#[cfg(target_os = "macos")]
+#[link(name = "CoreGraphics", kind = "framework")]
+unsafe extern "C" {
+    #[link_name = "CGEventSourceButtonState"]
+    fn cg_event_source_button_state(state_id: i32, button: u32) -> bool;
+}
+
+#[cfg(target_os = "macos")]
+pub fn reconcile_mouse_button_state(button: u8) -> bool {
+    // SAFETY: state id 0 is kCGEventSourceStateCombinedSessionState. The C
+    // CGMouseButton typedef is a u32 button number, and callers only provide
+    // callback values validated to the documented 0..=31 range.
+    unsafe { cg_event_source_button_state(0, u32::from(button)) }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct KeyReconciliation {
     pub still_pressed: BTreeSet<u16>,
+    pub released_count: usize,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ButtonReconciliation {
+    pub still_pressed: BTreeSet<u8>,
     pub released_count: usize,
 }
 
@@ -1223,6 +1364,26 @@ fn reconcile_pressed_key_codes_with(
 #[cfg(target_os = "macos")]
 pub fn reconcile_pressed_key_codes(candidates: &BTreeSet<u16>) -> KeyReconciliation {
     reconcile_pressed_key_codes_with(candidates, reconcile_key_state)
+}
+
+fn reconcile_pressed_mouse_buttons_with(
+    candidates: &BTreeSet<u8>,
+    mut is_pressed: impl FnMut(u8) -> bool,
+) -> ButtonReconciliation {
+    let still_pressed = candidates
+        .iter()
+        .copied()
+        .filter(|button| is_pressed(*button))
+        .collect::<BTreeSet<_>>();
+    ButtonReconciliation {
+        released_count: candidates.len().saturating_sub(still_pressed.len()),
+        still_pressed,
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn reconcile_pressed_mouse_buttons(candidates: &BTreeSet<u8>) -> ButtonReconciliation {
+    reconcile_pressed_mouse_buttons_with(candidates, reconcile_mouse_button_state)
 }
 
 #[cfg(test)]
@@ -1345,6 +1506,37 @@ mod tests {
     }
 
     #[test]
+    fn mouse_candidate_state_preserves_button_identity_and_recovers_release() {
+        let mut candidates = MacPressedMouseCandidates::default();
+        candidates.apply_event(CapturedInputEvent::MouseDown { button: 0 });
+        candidates.apply_event(CapturedInputEvent::MouseDown { button: 3 });
+        candidates.apply_event(CapturedInputEvent::MouseUp { button: 0 });
+        assert_eq!(candidates.buttons(), &BTreeSet::from([3]));
+
+        let empty = ButtonReconciliation::default();
+        let first = candidates.reconcile(&empty, 2).unwrap();
+        assert_eq!(first.released, 0);
+        assert_eq!(first.pending_confirmations, 1);
+        let second = candidates.reconcile(&empty, 2).unwrap();
+        assert_eq!(second.released, 1);
+        assert!(candidates.buttons().is_empty());
+        assert_eq!(candidates.counters().reconciled_releases, 1);
+    }
+
+    #[test]
+    fn mouse_reconciliation_queries_only_pressed_buttons() {
+        let candidates = BTreeSet::from([0, 2, 4]);
+        let mut queried = Vec::new();
+        let report = reconcile_pressed_mouse_buttons_with(&candidates, |button| {
+            queried.push(button);
+            button == 2
+        });
+        assert_eq!(queried, vec![0, 2, 4]);
+        assert_eq!(report.still_pressed, BTreeSet::from([2]));
+        assert_eq!(report.released_count, 2);
+    }
+
+    #[test]
     fn confirmed_key_cancels_pending_release_and_reset_clears_state() {
         let mut candidates = MacPressedKeyCandidates::default();
         candidates.apply_event_with(
@@ -1405,19 +1597,28 @@ mod tests {
     fn workspace_lifecycle_reset_clears_candidates_once_per_signal_batch() {
         let signals = WorkspaceLifecycleSignals::default();
         let counters = TapCounters::default();
-        let mut candidates = MacPressedKeyCandidates::default();
-        candidates.apply_event_with(
+        let mut key_candidates = MacPressedKeyCandidates::default();
+        let mut mouse_candidates = MacPressedMouseCandidates::default();
+        key_candidates.apply_event_with(
             CapturedInputEvent::KeyDown {
                 key_code: 0,
                 repeat: false,
             },
             |_| false,
         );
+        mouse_candidates.apply_event(CapturedInputEvent::MouseDown { button: 1 });
         signals.signal(WorkspaceLifecycleEvent::WillSleep);
         signals.signal(WorkspaceLifecycleEvent::DidWake);
-        consume_workspace_lifecycle_signals(&signals, &mut candidates, &counters);
-        assert!(candidates.keys().is_empty());
-        assert_eq!(candidates.counters().reset_releases, 1);
+        consume_workspace_lifecycle_signals(
+            &signals,
+            &mut key_candidates,
+            &mut mouse_candidates,
+            &counters,
+        );
+        assert!(key_candidates.keys().is_empty());
+        assert!(mouse_candidates.buttons().is_empty());
+        assert_eq!(key_candidates.counters().reset_releases, 1);
+        assert_eq!(mouse_candidates.counters().reset_releases, 1);
         assert_eq!(
             counters.workspace_lifecycle_resets.load(Ordering::Relaxed),
             1
@@ -1504,14 +1705,17 @@ mod tests {
     fn shared_capture_queue_closes_callback_sink_without_poisoning_consumer() {
         let queue = SharedCaptureQueue::new(2);
         queue
-            .push_with_overflow_reset(CapturedInputEvent::MouseDown)
+            .push_with_overflow_reset(CapturedInputEvent::MouseDown { button: 3 })
             .unwrap();
         queue.close();
         let error = queue
-            .push_with_overflow_reset(CapturedInputEvent::MouseUp)
+            .push_with_overflow_reset(CapturedInputEvent::MouseUp { button: 3 })
             .unwrap_err();
         assert_eq!(error.kind, CaptureQueueErrorKind::Closed);
-        assert_eq!(queue.drain(), vec![CapturedInputEvent::MouseDown]);
+        assert_eq!(
+            queue.drain(),
+            vec![CapturedInputEvent::MouseDown { button: 3 }]
+        );
         assert_eq!(queue.diagnostics(), (0, 0, 0));
     }
 }
