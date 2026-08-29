@@ -79,6 +79,8 @@ jobs:
             manifest: spikes/runtime-contract/Cargo.toml
           - name: input-macos
             manifest: spikes/input-macos/Cargo.toml
+          - name: model-package
+            manifest: spikes/model-package/Cargo.toml
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -104,6 +106,43 @@ jobs:
         run: cargo clippy --manifest-path ${{ matrix.manifest }} --locked --all-targets -- -D warnings
       - name: Run tests
         run: cargo test --manifest-path ${{ matrix.manifest }} --locked
+
+  model-package-platforms:
+    name: Test model package on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Hash Rust toolchain
+        id: rust-toolchain
+        shell: bash
+        run: echo "hash=$(rustc -Vv | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+      - name: Cache Cargo artifacts
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            spikes/model-package/target/
+          key: ${{ runner.os }}-model-package-${{ steps.rust-toolchain.outputs.hash }}-${{ hashFiles('spikes/model-package/Cargo.lock', 'spikes/model-package/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-model-package-${{ steps.rust-toolchain.outputs.hash }}-
+            ${{ runner.os }}-model-package-
+      - name: Check formatting
+        run: cargo fmt --manifest-path spikes/model-package/Cargo.toml -- --check
+      - name: Run Clippy
+        run: cargo clippy --manifest-path spikes/model-package/Cargo.toml --locked --all-targets --all-features -- -D warnings
+      - name: Run tests
+        run: cargo test --manifest-path spikes/model-package/Cargo.toml --locked
+      - name: Check release build
+        run: cargo check --manifest-path spikes/model-package/Cargo.toml --locked --release
 
   macos-spikes:
     name: Build macOS GPUI spikes

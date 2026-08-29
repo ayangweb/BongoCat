@@ -1,6 +1,6 @@
 # Phase 0 Model Resource Inventory
 
-状态：预置资源静态清单完成，运行时兼容待 Cubism spike
+状态：静态清单与 Rust model3/资源索引完成，运行时兼容待 Cubism spike
 基线 commit：`44f44bc`
 记录日期：2026-08-28
 
@@ -135,3 +135,13 @@ Phase 0 暂定单边纹理尺寸上限为 `8192`。超大纹理 fixture 只保�
 运行 `node tools/inspect-legacy-cubism-models.mjs --check` 会先校验 Web Core 与三个 moc 的固定 hash，再在隔离 VM 中创建并释放 Moc/Model，最后与 snapshot 精确比较。工具不接受任意模型、不修改资源，也不接入新应用运行时。
 
 该 snapshot 是未来 Native R5 spike 的回归 oracle，不是 R5 兼容证据。新 sys/safe wrapper 必须对同一组固定 moc 产生相同 moc version、基础计数和 canvas；drawable 数据、mask、motion、expression、physics、renderer 与重复销毁仍按 Cubism spike 单独验收。
+
+## Rust Model Package Index
+
+`spikes/model-package/` 以纯 Rust 强类型解析三个预置 `cat.model3.json`，并在读取 Cubism Core 前验证所有 model3 引用：moc、纹理、display info、expression、motion、音频、physics、pose 和 user data。`resources/background.png`、`cover.png` 与左右键图片也进入同一规范化索引。
+
+解析器统一把 `\\` 转为 `/`，拒绝绝对路径、盘符、`..`、跨根符号链接和符号链接目录递归；关联 JSON 有 16 MiB 上限并要求 object 顶层，单文件上限为 512 MiB，包上限为 1 GiB/4096 文件/32 层目录。PNG 在解码或 GPU 分配前只读取签名与 IHDR，并执行 8192 单边上限。
+
+`shared/fixtures/model-fixtures/preset-model3-index.json` 冻结完整索引。Rust 测试同时重跑六类合成异常包，并额外覆盖跨根符号链接和目录深度。三个预置包分别解析出 71/75/28 个文件，字节数与本清单一致；每个包均有 3 张模型纹理、3 个引用 expression、2 个 motion group，且明确报告未被 model3 引用的 `exp_1.exp3.json` 与 `exp_2.exp3.json`。
+
+该索引只完成包发现、静态解析、路径安全和资源存在性验证。moc consistency/model creation、motion/expression/physics/pose 求值、D3D11/Metal 绘制和销毁压力仍属于 `P0-CUBISM` 的未完成门禁。

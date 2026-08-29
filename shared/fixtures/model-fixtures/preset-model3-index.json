@@ -1,0 +1,1357 @@
+{
+  "standard": {
+    "schema_version": 1,
+    "model_version": 3,
+    "entry": "cat.model3.json",
+    "moc": "demomodel.moc3",
+    "textures": [
+      {
+        "file": "demomodel.1024/texture_00.png",
+        "width": 1024,
+        "height": 512
+      },
+      {
+        "file": "demomodel.1024/texture_01.png",
+        "width": 1024,
+        "height": 512
+      },
+      {
+        "file": "demomodel.1024/texture_02.png",
+        "width": 1024,
+        "height": 512
+      }
+    ],
+    "display_info": "demomodel.cdi3.json",
+    "expressions": [
+      {
+        "name": "live2d_expression0.exp3.json",
+        "file": "live2d_expression0.exp3.json"
+      },
+      {
+        "name": "live2d_expression1.exp3.json",
+        "file": "live2d_expression1.exp3.json"
+      },
+      {
+        "name": "live2d_expression2.exp3.json",
+        "file": "live2d_expression2.exp3.json"
+      }
+    ],
+    "motion_groups": [
+      {
+        "name": "CAT_motion",
+        "motions": [
+          {
+            "file": "live2d_motion1.motion3.json",
+            "sound": "live2d_motion1.flac",
+            "fade_in_seconds": 0,
+            "fade_out_seconds": 0
+          },
+          {
+            "file": "live2d_motion2.motion3.json",
+            "sound": null,
+            "fade_in_seconds": 0,
+            "fade_out_seconds": 0
+          }
+        ]
+      },
+      {
+        "name": "CAT_motion_lock",
+        "motions": [
+          {
+            "file": "live2d_motion1.motion3.json",
+            "sound": "live2d_motion1.flac",
+            "fade_in_seconds": 0,
+            "fade_out_seconds": 0
+          },
+          {
+            "file": "live2d_motion2.motion3.json",
+            "sound": null,
+            "fade_in_seconds": 0,
+            "fade_out_seconds": 0
+          }
+        ]
+      }
+    ],
+    "physics": null,
+    "pose": null,
+    "user_data": null,
+    "groups": [
+      {
+        "target": "Parameter",
+        "name": "EyeBlink",
+        "ids": [
+          "ParamEyeLOpen",
+          "ParamEyeROpen"
+        ]
+      },
+      {
+        "target": "Parameter",
+        "name": "LipSync",
+        "ids": []
+      }
+    ],
+    "hit_areas": [],
+    "companion_resources": {
+      "mode_hint": "standard",
+      "background": {
+        "file": "resources/background.png",
+        "width": 612,
+        "height": 354
+      },
+      "cover": {
+        "file": "resources/cover.png",
+        "width": 612,
+        "height": 354
+      },
+      "left_keys": [
+        {
+          "id": "Alt",
+          "image": {
+            "file": "resources/left-keys/Alt.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "AltGr",
+          "image": {
+            "file": "resources/left-keys/AltGr.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "BackQuote",
+          "image": {
+            "file": "resources/left-keys/BackQuote.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Backspace",
+          "image": {
+            "file": "resources/left-keys/Backspace.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "CapsLock",
+          "image": {
+            "file": "resources/left-keys/CapsLock.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Control",
+          "image": {
+            "file": "resources/left-keys/Control.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "ControlLeft",
+          "image": {
+            "file": "resources/left-keys/ControlLeft.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "ControlRight",
+          "image": {
+            "file": "resources/left-keys/ControlRight.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Delete",
+          "image": {
+            "file": "resources/left-keys/Delete.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Escape",
+          "image": {
+            "file": "resources/left-keys/Escape.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Fn",
+          "image": {
+            "file": "resources/left-keys/Fn.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyA",
+          "image": {
+            "file": "resources/left-keys/KeyA.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyB",
+          "image": {
+            "file": "resources/left-keys/KeyB.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyC",
+          "image": {
+            "file": "resources/left-keys/KeyC.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyD",
+          "image": {
+            "file": "resources/left-keys/KeyD.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyE",
+          "image": {
+            "file": "resources/left-keys/KeyE.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyF",
+          "image": {
+            "file": "resources/left-keys/KeyF.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyG",
+          "image": {
+            "file": "resources/left-keys/KeyG.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyH",
+          "image": {
+            "file": "resources/left-keys/KeyH.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyI",
+          "image": {
+            "file": "resources/left-keys/KeyI.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyJ",
+          "image": {
+            "file": "resources/left-keys/KeyJ.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyK",
+          "image": {
+            "file": "resources/left-keys/KeyK.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyL",
+          "image": {
+            "file": "resources/left-keys/KeyL.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyM",
+          "image": {
+            "file": "resources/left-keys/KeyM.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyN",
+          "image": {
+            "file": "resources/left-keys/KeyN.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyO",
+          "image": {
+            "file": "resources/left-keys/KeyO.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyP",
+          "image": {
+            "file": "resources/left-keys/KeyP.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyQ",
+          "image": {
+            "file": "resources/left-keys/KeyQ.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyR",
+          "image": {
+            "file": "resources/left-keys/KeyR.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyS",
+          "image": {
+            "file": "resources/left-keys/KeyS.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyT",
+          "image": {
+            "file": "resources/left-keys/KeyT.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyU",
+          "image": {
+            "file": "resources/left-keys/KeyU.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyV",
+          "image": {
+            "file": "resources/left-keys/KeyV.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyW",
+          "image": {
+            "file": "resources/left-keys/KeyW.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyX",
+          "image": {
+            "file": "resources/left-keys/KeyX.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyY",
+          "image": {
+            "file": "resources/left-keys/KeyY.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyZ",
+          "image": {
+            "file": "resources/left-keys/KeyZ.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Meta",
+          "image": {
+            "file": "resources/left-keys/Meta.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Num0",
+          "image": {
+            "file": "resources/left-keys/Num0.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Num1",
+          "image": {
+            "file": "resources/left-keys/Num1.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Num2",
+          "image": {
+            "file": "resources/left-keys/Num2.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Num3",
+          "image": {
+            "file": "resources/left-keys/Num3.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Num4",
+          "image": {
+            "file": "resources/left-keys/Num4.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Num5",
+          "image": {
+            "file": "resources/left-keys/Num5.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Num6",
+          "image": {
+            "file": "resources/left-keys/Num6.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Num7",
+          "image": {
+            "file": "resources/left-keys/Num7.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Num8",
+          "image": {
+            "file": "resources/left-keys/Num8.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Num9",
+          "image": {
+            "file": "resources/left-keys/Num9.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Return",
+          "image": {
+            "file": "resources/left-keys/Return.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Shift",
+          "image": {
+            "file": "resources/left-keys/Shift.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "ShiftLeft",
+          "image": {
+            "file": "resources/left-keys/ShiftLeft.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "ShiftRight",
+          "image": {
+            "file": "resources/left-keys/ShiftRight.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Slash",
+          "image": {
+            "file": "resources/left-keys/Slash.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Space",
+          "image": {
+            "file": "resources/left-keys/Space.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Tab",
+          "image": {
+            "file": "resources/left-keys/Tab.png",
+            "width": 612,
+            "height": 354
+          }
+        }
+      ],
+      "right_keys": []
+    },
+    "package_file_count": 71,
+    "package_total_bytes": 1524540,
+    "unreferenced_files": [
+      "exp_1.exp3.json",
+      "exp_2.exp3.json"
+    ]
+  },
+  "keyboard": {
+    "schema_version": 1,
+    "model_version": 3,
+    "entry": "cat.model3.json",
+    "moc": "demomodel2.moc3",
+    "textures": [
+      {
+        "file": "demomodel2.1024/texture_00.png",
+        "width": 1024,
+        "height": 512
+      },
+      {
+        "file": "demomodel2.1024/texture_01.png",
+        "width": 1024,
+        "height": 512
+      },
+      {
+        "file": "demomodel2.1024/texture_02.png",
+        "width": 1024,
+        "height": 512
+      }
+    ],
+    "display_info": "demomodel2.cdi3.json",
+    "expressions": [
+      {
+        "name": "live2d_expression0.exp3.json",
+        "file": "live2d_expression0.exp3.json"
+      },
+      {
+        "name": "live2d_expression1.exp3.json",
+        "file": "live2d_expression1.exp3.json"
+      },
+      {
+        "name": "live2d_expression2.exp3.json",
+        "file": "live2d_expression2.exp3.json"
+      }
+    ],
+    "motion_groups": [
+      {
+        "name": "CAT_motion",
+        "motions": [
+          {
+            "file": "live2d_motion1.motion3.json",
+            "sound": "live2d_motion1.flac",
+            "fade_in_seconds": 0,
+            "fade_out_seconds": 0
+          },
+          {
+            "file": "live2d_motion2.motion3.json",
+            "sound": null,
+            "fade_in_seconds": 0,
+            "fade_out_seconds": 0
+          }
+        ]
+      },
+      {
+        "name": "CAT_motion_lock",
+        "motions": [
+          {
+            "file": "live2d_motion1.motion3.json",
+            "sound": "live2d_motion1.flac",
+            "fade_in_seconds": 0,
+            "fade_out_seconds": 0
+          },
+          {
+            "file": "live2d_motion2.motion3.json",
+            "sound": null,
+            "fade_in_seconds": 0,
+            "fade_out_seconds": 0
+          }
+        ]
+      }
+    ],
+    "physics": null,
+    "pose": null,
+    "user_data": null,
+    "groups": [
+      {
+        "target": "Parameter",
+        "name": "EyeBlink",
+        "ids": [
+          "ParamEyeLOpen",
+          "ParamEyeROpen"
+        ]
+      },
+      {
+        "target": "Parameter",
+        "name": "LipSync",
+        "ids": []
+      }
+    ],
+    "hit_areas": [],
+    "companion_resources": {
+      "mode_hint": "keyboard",
+      "background": {
+        "file": "resources/background.png",
+        "width": 612,
+        "height": 354
+      },
+      "cover": {
+        "file": "resources/cover.png",
+        "width": 612,
+        "height": 354
+      },
+      "left_keys": [
+        {
+          "id": "Alt",
+          "image": {
+            "file": "resources/left-keys/Alt.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "AltGr",
+          "image": {
+            "file": "resources/left-keys/AltGr.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "BackQuote",
+          "image": {
+            "file": "resources/left-keys/BackQuote.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Backspace",
+          "image": {
+            "file": "resources/left-keys/Backspace.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "CapsLock",
+          "image": {
+            "file": "resources/left-keys/CapsLock.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Control",
+          "image": {
+            "file": "resources/left-keys/Control.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "ControlLeft",
+          "image": {
+            "file": "resources/left-keys/ControlLeft.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "ControlRight",
+          "image": {
+            "file": "resources/left-keys/ControlRight.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Delete",
+          "image": {
+            "file": "resources/left-keys/Delete.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Escape",
+          "image": {
+            "file": "resources/left-keys/Escape.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Fn",
+          "image": {
+            "file": "resources/left-keys/Fn.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyA",
+          "image": {
+            "file": "resources/left-keys/KeyA.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyB",
+          "image": {
+            "file": "resources/left-keys/KeyB.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyC",
+          "image": {
+            "file": "resources/left-keys/KeyC.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyD",
+          "image": {
+            "file": "resources/left-keys/KeyD.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyE",
+          "image": {
+            "file": "resources/left-keys/KeyE.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyF",
+          "image": {
+            "file": "resources/left-keys/KeyF.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyG",
+          "image": {
+            "file": "resources/left-keys/KeyG.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyH",
+          "image": {
+            "file": "resources/left-keys/KeyH.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyI",
+          "image": {
+            "file": "resources/left-keys/KeyI.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyJ",
+          "image": {
+            "file": "resources/left-keys/KeyJ.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyK",
+          "image": {
+            "file": "resources/left-keys/KeyK.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyL",
+          "image": {
+            "file": "resources/left-keys/KeyL.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyM",
+          "image": {
+            "file": "resources/left-keys/KeyM.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyN",
+          "image": {
+            "file": "resources/left-keys/KeyN.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyO",
+          "image": {
+            "file": "resources/left-keys/KeyO.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyP",
+          "image": {
+            "file": "resources/left-keys/KeyP.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyQ",
+          "image": {
+            "file": "resources/left-keys/KeyQ.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyR",
+          "image": {
+            "file": "resources/left-keys/KeyR.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyS",
+          "image": {
+            "file": "resources/left-keys/KeyS.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyT",
+          "image": {
+            "file": "resources/left-keys/KeyT.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyU",
+          "image": {
+            "file": "resources/left-keys/KeyU.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyV",
+          "image": {
+            "file": "resources/left-keys/KeyV.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyW",
+          "image": {
+            "file": "resources/left-keys/KeyW.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyX",
+          "image": {
+            "file": "resources/left-keys/KeyX.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyY",
+          "image": {
+            "file": "resources/left-keys/KeyY.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "KeyZ",
+          "image": {
+            "file": "resources/left-keys/KeyZ.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Meta",
+          "image": {
+            "file": "resources/left-keys/Meta.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Num0",
+          "image": {
+            "file": "resources/left-keys/Num0.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Num1",
+          "image": {
+            "file": "resources/left-keys/Num1.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Num2",
+          "image": {
+            "file": "resources/left-keys/Num2.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Num3",
+          "image": {
+            "file": "resources/left-keys/Num3.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Num4",
+          "image": {
+            "file": "resources/left-keys/Num4.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Num5",
+          "image": {
+            "file": "resources/left-keys/Num5.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Num6",
+          "image": {
+            "file": "resources/left-keys/Num6.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Num7",
+          "image": {
+            "file": "resources/left-keys/Num7.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Num8",
+          "image": {
+            "file": "resources/left-keys/Num8.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Num9",
+          "image": {
+            "file": "resources/left-keys/Num9.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Return",
+          "image": {
+            "file": "resources/left-keys/Return.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Shift",
+          "image": {
+            "file": "resources/left-keys/Shift.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "ShiftLeft",
+          "image": {
+            "file": "resources/left-keys/ShiftLeft.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "ShiftRight",
+          "image": {
+            "file": "resources/left-keys/ShiftRight.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Slash",
+          "image": {
+            "file": "resources/left-keys/Slash.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Space",
+          "image": {
+            "file": "resources/left-keys/Space.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "Tab",
+          "image": {
+            "file": "resources/left-keys/Tab.png",
+            "width": 612,
+            "height": 354
+          }
+        }
+      ],
+      "right_keys": [
+        {
+          "id": "DownArrow",
+          "image": {
+            "file": "resources/right-keys/DownArrow.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "LeftArrow",
+          "image": {
+            "file": "resources/right-keys/LeftArrow.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "RightArrow",
+          "image": {
+            "file": "resources/right-keys/RightArrow.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "UpArrow",
+          "image": {
+            "file": "resources/right-keys/UpArrow.png",
+            "width": 612,
+            "height": 354
+          }
+        }
+      ]
+    },
+    "package_file_count": 75,
+    "package_total_bytes": 1490448,
+    "unreferenced_files": [
+      "exp_1.exp3.json",
+      "exp_2.exp3.json"
+    ]
+  },
+  "gamepad": {
+    "schema_version": 1,
+    "model_version": 3,
+    "entry": "cat.model3.json",
+    "moc": "demomodel3.moc3",
+    "textures": [
+      {
+        "file": "demomodel3.1024/texture_00.png",
+        "width": 1024,
+        "height": 512
+      },
+      {
+        "file": "demomodel3.1024/texture_01.png",
+        "width": 1024,
+        "height": 512
+      },
+      {
+        "file": "demomodel3.1024/texture_02.png",
+        "width": 1024,
+        "height": 512
+      }
+    ],
+    "display_info": "demomodel3.cdi3.json",
+    "expressions": [
+      {
+        "name": "live2d_expression0.exp3.json",
+        "file": "live2d_expression0.exp3.json"
+      },
+      {
+        "name": "live2d_expression1.exp3.json",
+        "file": "live2d_expression1.exp3.json"
+      },
+      {
+        "name": "live2d_expression2.exp3.json",
+        "file": "live2d_expression2.exp3.json"
+      }
+    ],
+    "motion_groups": [
+      {
+        "name": "CAT_motion",
+        "motions": [
+          {
+            "file": "live2d_motion1.motion3.json",
+            "sound": "live2d_motion1.flac",
+            "fade_in_seconds": 0,
+            "fade_out_seconds": 0
+          },
+          {
+            "file": "live2d_motion2.motion3.json",
+            "sound": null,
+            "fade_in_seconds": 0,
+            "fade_out_seconds": 0
+          }
+        ]
+      },
+      {
+        "name": "CAT_motion_lock",
+        "motions": [
+          {
+            "file": "live2d_motion1.motion3.json",
+            "sound": "live2d_motion1.flac",
+            "fade_in_seconds": 0,
+            "fade_out_seconds": 0
+          },
+          {
+            "file": "live2d_motion2.motion3.json",
+            "sound": null,
+            "fade_in_seconds": 0,
+            "fade_out_seconds": 0
+          }
+        ]
+      }
+    ],
+    "physics": null,
+    "pose": null,
+    "user_data": null,
+    "groups": [
+      {
+        "target": "Parameter",
+        "name": "LipSync",
+        "ids": []
+      },
+      {
+        "target": "Parameter",
+        "name": "EyeBlink",
+        "ids": [
+          "ParamEyeLOpen",
+          "ParamEyeROpen"
+        ]
+      }
+    ],
+    "hit_areas": [],
+    "companion_resources": {
+      "mode_hint": "gamepad",
+      "background": {
+        "file": "resources/background.png",
+        "width": 612,
+        "height": 354
+      },
+      "cover": {
+        "file": "resources/cover.png",
+        "width": 612,
+        "height": 354
+      },
+      "left_keys": [
+        {
+          "id": "DPadDown",
+          "image": {
+            "file": "resources/left-keys/DPadDown.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "DPadLeft",
+          "image": {
+            "file": "resources/left-keys/DPadLeft.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "DPadRight",
+          "image": {
+            "file": "resources/left-keys/DPadRight.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "DPadUp",
+          "image": {
+            "file": "resources/left-keys/DPadUp.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "LeftTrigger",
+          "image": {
+            "file": "resources/left-keys/LeftTrigger.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "LeftTrigger2",
+          "image": {
+            "file": "resources/left-keys/LeftTrigger2.png",
+            "width": 612,
+            "height": 354
+          }
+        }
+      ],
+      "right_keys": [
+        {
+          "id": "East",
+          "image": {
+            "file": "resources/right-keys/East.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "North",
+          "image": {
+            "file": "resources/right-keys/North.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "RightTrigger",
+          "image": {
+            "file": "resources/right-keys/RightTrigger.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "RightTrigger2",
+          "image": {
+            "file": "resources/right-keys/RightTrigger2.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "South",
+          "image": {
+            "file": "resources/right-keys/South.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "West",
+          "image": {
+            "file": "resources/right-keys/West.png",
+            "width": 612,
+            "height": 354
+          }
+        }
+      ]
+    },
+    "package_file_count": 28,
+    "package_total_bytes": 1206645,
+    "unreferenced_files": [
+      "exp_1.exp3.json",
+      "exp_2.exp3.json"
+    ]
+  }
+}

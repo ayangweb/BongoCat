@@ -16,19 +16,19 @@
 
 ## Direct dependencies
 
-| Dependency family                | Locked version        | License                  | Role                               |
-| -------------------------------- | --------------------- | ------------------------ | ---------------------------------- |
-| GPUI                             | `0.2.2`               | Apache-2.0               | Settings UI spike                  |
-| async-channel                    | `2.5.0`               | MIT OR Apache-2.0        | Typed command/reply spike          |
-| unicode-segmentation             | `1.13.3`              | MIT OR Apache-2.0        | Grapheme-safe text editing         |
-| futures-lite                     | `2.6.1`               | MIT OR Apache-2.0        | Test-only executor bridge          |
-| dirs                             | `6.0.0`               | MIT OR Apache-2.0        | Config path spike                  |
-| serde / serde_json               | `1.0.229` / `1.0.151` | MIT OR Apache-2.0        | Config and inspector serialization |
-| tempfile                         | `3.27.0`              | MIT OR Apache-2.0        | Failure-safe config tests          |
-| core-graphics2 / core-foundation | `0.6.1` / `0.10.1`    | MIT OR Apache-2.0        | macOS input boundary spike         |
-| objc2 / block2 family            | `0.6.4` / `0.3.2`     | MIT OR Apache-2.0 / Zlib | macOS overlay/input lifecycle      |
-| metal / core-graphics-types      | `0.33.0` / `0.2.0`    | MIT OR Apache-2.0        | macOS transparent present spike    |
-| windows                          | `0.62.2`              | MIT OR Apache-2.0        | Windows Raw Input boundary spike   |
+| Dependency family                | Locked version        | License                  | Role                                 |
+| -------------------------------- | --------------------- | ------------------------ | ------------------------------------ |
+| GPUI                             | `0.2.2`               | Apache-2.0               | Settings UI spike                    |
+| async-channel                    | `2.5.0`               | MIT OR Apache-2.0        | Typed command/reply spike            |
+| unicode-segmentation             | `1.13.3`              | MIT OR Apache-2.0        | Grapheme-safe text editing           |
+| futures-lite                     | `2.6.1`               | MIT OR Apache-2.0        | Test-only executor bridge            |
+| dirs                             | `6.0.0`               | MIT OR Apache-2.0        | Config path spike                    |
+| serde / serde_json               | `1.0.229` / `1.0.151` | MIT OR Apache-2.0        | Config, model and tool serialization |
+| tempfile                         | `3.27.0`              | MIT OR Apache-2.0        | Isolated config/model fixture tests  |
+| core-graphics2 / core-foundation | `0.6.1` / `0.10.1`    | MIT OR Apache-2.0        | macOS input boundary spike           |
+| objc2 / block2 family            | `0.6.4` / `0.3.2`     | MIT OR Apache-2.0 / Zlib | macOS overlay/input lifecycle        |
+| metal / core-graphics-types      | `0.33.0` / `0.2.0`    | MIT OR Apache-2.0        | macOS transparent present spike      |
+| windows                          | `0.62.2`              | MIT OR Apache-2.0        | Windows Raw Input boundary spike     |
 
 ## Policy
 

@@ -10,6 +10,7 @@ updates:
       - /spikes/input-queue
       - /spikes/input-state
       - /spikes/input-windows
+      - /spikes/model-package
       - /spikes/overlay-lifecycle
       - /spikes/runtime-contract
       - /tools/legacy-config-inspector
