@@ -3,7 +3,10 @@
 use std::{fmt, rc::Rc, thread::ThreadId};
 use windows::{
     Win32::{
-        Foundation::{HINSTANCE, HMODULE, HWND, LPARAM, LRESULT, WPARAM},
+        Foundation::{
+            GetLastError, HINSTANCE, HMODULE, HWND, LPARAM, LRESULT, RECT, SetLastError,
+            WIN32_ERROR, WPARAM,
+        },
         Graphics::{
             Direct3D::{
                 D3D_DRIVER_TYPE, D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE_WARP,
@@ -49,9 +52,11 @@ use windows::{
         UI::{
             HiDpi::GetDpiForWindow,
             WindowsAndMessaging::{
-                CreateWindowExW, DefWindowProcW, DestroyWindow, HWND_TOPMOST, IsWindowVisible,
-                RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-                SWP_NOZORDER, SetWindowPos, ShowWindow, UnregisterClassW, WNDCLASSW,
+                CreateWindowExW, DefWindowProcW, DestroyWindow, GWL_EXSTYLE, GetWindowLongPtrW,
+                GetWindowRect, HTCAPTION, HTTRANSPARENT, HWND_TOPMOST, IsWindowVisible,
+                RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_FRAMECHANGED, SWP_NOACTIVATE,
+                SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SendMessageW, SetWindowLongPtrW,
+                SetWindowPos, ShowWindow, UnregisterClassW, WM_NCHITTEST, WNDCLASSW,
                 WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
                 WS_POPUP,
             },
@@ -198,6 +203,12 @@ impl NativeOverlay {
             );
         }
         Ok(())
+    }
+
+    pub fn verify_drag_contract(&mut self) -> Result<(), String> {
+        self.window
+            .verify_drag_contract()
+            .map_err(format_windows_error)
     }
 
     pub fn driver_name(&self) -> &'static str {
@@ -405,6 +416,115 @@ impl OverlayWindow {
         }
         if self.log_lifecycle {
             println!("gpui-overlay-spike: Windows overlay resized width={width} height={height}");
+        }
+        Ok(())
+    }
+
+    fn verify_drag_contract(&mut self) -> WindowsResult<()> {
+        self.assert_owner_thread();
+        self.set_drag_enabled(false)?;
+        self.expect_hit_test(HTTRANSPARENT as isize)?;
+
+        self.set_drag_enabled(true)?;
+        self.expect_hit_test(HTCAPTION as isize)?;
+        self.move_by(24, 18)?;
+
+        self.set_drag_enabled(false)?;
+        self.expect_hit_test(HTTRANSPARENT as isize)?;
+        if self.log_lifecycle {
+            println!("gpui-overlay-spike: Windows overlay drag contract verified delta=24x18");
+        }
+        Ok(())
+    }
+
+    fn set_drag_enabled(&mut self, enabled: bool) -> WindowsResult<()> {
+        self.assert_owner_thread();
+        // SAFETY: the HWND is live and thread-confined. The only style bit
+        // changed here is WS_EX_TRANSPARENT; SWP_FRAMECHANGED makes the hit-test
+        // policy visible before the next pointer event.
+        unsafe {
+            let current = GetWindowLongPtrW(self.hwnd, GWL_EXSTYLE);
+            let transparent = WS_EX_TRANSPARENT.0 as isize;
+            let updated = if enabled {
+                current & !transparent
+            } else {
+                current | transparent
+            };
+            SetLastError(WIN32_ERROR(0));
+            let previous = SetWindowLongPtrW(self.hwnd, GWL_EXSTYLE, updated);
+            let last_error = GetLastError();
+            if previous == 0 && last_error != WIN32_ERROR(0) {
+                return Err(Error::from_hresult(last_error.to_hresult()));
+            }
+            SetWindowPos(
+                self.hwnd,
+                None,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+            )?;
+        }
+        if self.is_drag_enabled() != enabled {
+            return Err(invariant_error(
+                "overlay interaction style did not converge",
+            ));
+        }
+        if self.log_lifecycle {
+            println!(
+                "gpui-overlay-spike: Windows interaction mode={}",
+                if enabled { "drag" } else { "click-through" }
+            );
+        }
+        Ok(())
+    }
+
+    fn is_drag_enabled(&self) -> bool {
+        self.assert_owner_thread();
+        // SAFETY: reading the extended style of the live, thread-confined HWND
+        // does not transfer ownership or retain a borrowed platform pointer.
+        let style = unsafe { GetWindowLongPtrW(self.hwnd, GWL_EXSTYLE) };
+        style & WS_EX_TRANSPARENT.0 as isize == 0
+    }
+
+    fn expect_hit_test(&self, expected: isize) -> WindowsResult<()> {
+        self.assert_owner_thread();
+        // SAFETY: WM_NCHITTEST is synchronously delivered to this crate's
+        // window procedure on the owner thread; no borrowed data crosses it.
+        let actual =
+            unsafe { SendMessageW(self.hwnd, WM_NCHITTEST, Some(WPARAM(0)), Some(LPARAM(0))) };
+        if actual.0 != expected {
+            return Err(invariant_error(
+                "overlay returned an unexpected drag hit-test result",
+            ));
+        }
+        Ok(())
+    }
+
+    fn move_by(&self, delta_x: i32, delta_y: i32) -> WindowsResult<()> {
+        self.assert_owner_thread();
+        let mut before = RECT::default();
+        // SAFETY: the HWND is live and thread-confined, RECT storage is valid,
+        // and SetWindowPos preserves size, z-order, and activation state.
+        unsafe {
+            GetWindowRect(self.hwnd, &mut before)?;
+            SetWindowPos(
+                self.hwnd,
+                None,
+                before.left + delta_x,
+                before.top + delta_y,
+                0,
+                0,
+                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+            )?;
+            let mut after = RECT::default();
+            GetWindowRect(self.hwnd, &mut after)?;
+            if after.left != before.left + delta_x || after.top != before.top + delta_y {
+                return Err(invariant_error(
+                    "overlay position did not follow drag movement",
+                ));
+            }
         }
         Ok(())
     }
@@ -1015,8 +1135,18 @@ unsafe extern "system" fn window_proc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
+    if message == WM_NCHITTEST {
+        // SAFETY: Windows calls this procedure only for the registered overlay
+        // HWND. Reading its current style is valid for the duration of dispatch.
+        let style = unsafe { GetWindowLongPtrW(window, GWL_EXSTYLE) };
+        return if style & WS_EX_TRANSPARENT.0 as isize != 0 {
+            LRESULT(HTTRANSPARENT as isize)
+        } else {
+            LRESULT(HTCAPTION as isize)
+        };
+    }
     // SAFETY: this callback does not retain pointers or panic across Win32;
-    // all messages use the default window procedure.
+    // all unhandled messages use the default window procedure.
     unsafe { DefWindowProcW(window, message, wparam, lparam) }
 }
 

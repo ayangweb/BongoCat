@@ -162,6 +162,9 @@ renderer 内部对象。
 - 透明 clear 后提交非空 draw，将 back buffer 复制到 staging texture 并映射中心
   BGRA 像素；alpha 必须非零且三个颜色通道不得大于 alpha；
 - present、device-removed 检查、显示/隐藏和一次性 topmost；
+- click-through 与 drag 两种交互状态；drag 状态移除 `WS_EX_TRANSPARENT`，
+  `WM_NCHITTEST` 返回 `HTCAPTION` 以使用系统窗口拖动循环，恢复 click-through 后返回
+  `HTTRANSPARENT`；受控 smoke 还验证窗口位置按 `24x18` 改变并恢复穿透；
 - 将 `DXGI_ERROR_DEVICE_REMOVED/RESET/HUNG/DRIVER_INTERNAL_ERROR` 分类为 device lost，
   将 access lost/not currently available/wait timeout 分类为 surface unavailable；
 - 按窗口 DPI 将逻辑尺寸换算为物理像素，释放旧 back-buffer 引用后执行
@@ -196,6 +199,13 @@ push run `33247687689` 和 PR run `33247689437` 的 hardware D3D11 smoke 验证�
 预乘 alpha 和可回读 draw。预置模型纹理、draw order、mask 与 production shader
 打包仍属于 Cubism/Renderer 门禁，正式实现不得依赖运行时 shader 编译。
 
+macOS wrapper 同样具有显式 click-through/drag 状态。click-through 使用
+`ignoresMouseEvents=true` 且禁止 background movement；drag 状态使用
+`ignoresMouseEvents=false` 与 `movableByWindowBackground=true`，交给 AppKit 原生窗口拖动
+循环。受控 smoke 验证两项 AppKit 属性、`24x18` frame origin 变化以及切回穿透状态；
+renderer 重建后会重新应用并验证该契约。该测试证明窗口已经具备原生拖动入口和状态恢复，
+不替代物理鼠标从按下、移动到释放的人工手势，也不替代跨显示器拖动实测。
+
 ### 线程与所有权不变量
 
 - GPUI application loop 在进程 UI 主线程启动；overlay owner 在同一线程创建、
@@ -219,11 +229,12 @@ push run `33247687689` 和 PR run `33247689437` 的 hardware D3D11 smoke 验证�
   System Trace driver resource 证据；macOS process thread 和 Metal allocated size 已接入门禁。
 - Windows swapchain unavailable 与双平台真实 GPU device lost；双平台受控 owner 释放、
   有限退避、重建和诊断 UI 已实现，但注入结果不能替代真实驱动故障。
-- 用户拖动、显示器/DPI 热切换和 production display-linked frame source 的完整生命周期；
-  当前验证了 programmatic resize、逐帧 backing-size 校正与 GPUI 定时 frame source。
+- 物理鼠标拖动、显示器/DPI 热切换和 production display-linked frame source 的完整生命周期；
+  当前验证了双平台原生 drag hit-test/窗口属性、受控位置变化、programmatic resize、
+  逐帧 backing-size 校正与 GPUI 定时 frame source。
 
 ## 下一步
 
 下一步是补充真实 swapchain unavailable/device-lost、双平台 GPU/线程专项采样、
-display-linked frame source、拖动/显示器切换和模型绘制；任一平台结果都不能替代
+display-linked frame source、物理拖动/显示器切换和模型绘制；任一平台结果都不能替代
 另一平台证据。

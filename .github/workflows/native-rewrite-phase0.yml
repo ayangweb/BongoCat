@@ -292,6 +292,9 @@ jobs:
           normal = run_smoke("normal", ["--auto-quit-ms", "1200"])
           for expected in (
               "macOS native overlay created",
+              "macOS interaction mode=drag",
+              "macOS overlay drag contract verified delta=24x18",
+              "macOS interaction mode=click-through",
               "non-empty premultiplied-alpha draw/present submitted",
               "frame source started target_hz=60",
               "macOS overlay resized width=400 height=300",
@@ -567,6 +570,9 @@ jobs:
             -Arguments @("--auto-quit-ms", "1800")
           @(
             "Windows native overlay created",
+            "Windows interaction mode=drag",
+            "Windows overlay drag contract verified delta=24x18",
+            "Windows interaction mode=click-through",
             "Windows non-empty premultiplied-alpha draw/present submitted",
             "frame source started target_hz=60",
             "Windows logical resize width=400 height=300",

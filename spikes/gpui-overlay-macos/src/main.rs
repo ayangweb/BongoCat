@@ -148,6 +148,7 @@ mod macos_overlay {
                 NSWindowCollectionBehavior::CanJoinAllSpaces
                     | NSWindowCollectionBehavior::FullScreenAuxiliary,
             );
+            panel.setMovableByWindowBackground(false);
             panel.setIgnoresMouseEvents(true);
 
             let view = NSView::new(mtm);
@@ -221,6 +222,47 @@ mod macos_overlay {
                 println!(
                     "gpui-overlay-spike: macOS overlay resized width={width} height={height} scale={}",
                     self.panel.backingScaleFactor()
+                );
+            }
+            Ok(())
+        }
+
+        pub fn verify_drag_contract(&mut self) -> Result<(), String> {
+            self.set_drag_enabled(false)?;
+            self.set_drag_enabled(true)?;
+
+            let before = self.panel.frame().origin;
+            let expected = NSPoint::new(before.x + 24.0, before.y + 18.0);
+            self.panel.setFrameOrigin(expected);
+            let after = self.panel.frame().origin;
+            if (after.x - expected.x).abs() > f64::EPSILON
+                || (after.y - expected.y).abs() > f64::EPSILON
+            {
+                return Err(format!(
+                    "macOS overlay position did not follow drag movement: expected={}x{} actual={}x{}",
+                    expected.x, expected.y, after.x, after.y
+                ));
+            }
+
+            self.set_drag_enabled(false)?;
+            if self.log_lifecycle {
+                println!("gpui-overlay-spike: macOS overlay drag contract verified delta=24x18");
+            }
+            Ok(())
+        }
+
+        fn set_drag_enabled(&mut self, enabled: bool) -> Result<(), String> {
+            self.panel.setMovableByWindowBackground(enabled);
+            self.panel.setIgnoresMouseEvents(!enabled);
+            if self.panel.isMovableByWindowBackground() != enabled
+                || self.panel.ignoresMouseEvents() == enabled
+            {
+                return Err("macOS overlay interaction mode did not converge".into());
+            }
+            if self.log_lifecycle {
+                println!(
+                    "gpui-overlay-spike: macOS interaction mode={}",
+                    if enabled { "drag" } else { "click-through" }
                 );
             }
             Ok(())
@@ -959,9 +1001,9 @@ fn main() {
                 create_platform_overlay()
             };
             match overlay {
-                Ok(overlay) => {
+                Ok(mut overlay) => {
                     match initial_show_and_present(
-                        &overlay,
+                        &mut overlay,
                         simulate_macos_drawable_unavailable,
                         simulate_macos_stale_drawable_size,
                     ) {
@@ -1262,7 +1304,7 @@ fn try_recover_overlay(global: &mut OverlayGlobal) -> FrameTickOutcome {
         if global.frame_source.resize_completed {
             resize_platform_overlay(&mut overlay, 400, 300)?;
         }
-        initial_show_and_present(&overlay, false, false)?;
+        initial_show_and_present(&mut overlay, false, false)?;
         Ok(overlay)
     });
 
@@ -1339,11 +1381,12 @@ fn create_platform_overlay() -> Result<PlatformOverlay, String> {
 
 #[cfg(target_os = "macos")]
 fn initial_show_and_present(
-    overlay: &PlatformOverlay,
+    overlay: &mut PlatformOverlay,
     simulate_drawable_unavailable: bool,
     simulate_stale_drawable_size: bool,
 ) -> Result<(), String> {
     overlay.show();
+    overlay.verify_drag_contract()?;
     if simulate_stale_drawable_size {
         overlay.simulate_stale_drawable_size();
     }
@@ -1356,10 +1399,11 @@ fn initial_show_and_present(
 
 #[cfg(target_os = "windows")]
 fn initial_show_and_present(
-    overlay: &PlatformOverlay,
+    overlay: &mut PlatformOverlay,
     _simulate_drawable_unavailable: bool,
     _simulate_stale_drawable_size: bool,
 ) -> Result<(), String> {
+    overlay.verify_drag_contract()?;
     show_and_present(overlay)
 }
 
