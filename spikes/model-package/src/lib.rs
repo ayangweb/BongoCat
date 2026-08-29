@@ -1137,10 +1137,13 @@ mod tests {
                 fs::create_dir_all(target.parent().expect("materialization parent"))
                     .expect("create materialization parent");
                 let hex = fs::read_to_string(source).expect("read fixture hex");
-                let bytes = hex
-                    .trim()
-                    .as_bytes()
-                    .chunks_exact(2)
+                let (pairs, remainder) = hex.trim().as_bytes().as_chunks::<2>();
+                assert!(
+                    remainder.is_empty(),
+                    "fixture hex must contain complete bytes"
+                );
+                let bytes = pairs
+                    .iter()
                     .map(|pair| {
                         u8::from_str_radix(std::str::from_utf8(pair).expect("ASCII hex pair"), 16)
                             .expect("valid fixture hex")
