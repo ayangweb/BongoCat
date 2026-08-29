@@ -35,6 +35,37 @@ pub enum TapDisableReason {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WorkspaceLifecycleEvent {
+    WillSleep,
+    DidWake,
+    SessionResigned,
+    SessionBecameActive,
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WorkspaceLifecycleInjection {
+    Session,
+    Sleep,
+    Wake,
+    All,
+}
+
+#[cfg(target_os = "macos")]
+impl WorkspaceLifecycleInjection {
+    fn events(self) -> &'static [WorkspaceLifecycleEvent] {
+        use WorkspaceLifecycleEvent::{DidWake, SessionBecameActive, SessionResigned, WillSleep};
+
+        match self {
+            Self::Session => &[SessionResigned, SessionBecameActive],
+            Self::Sleep => &[WillSleep],
+            Self::Wake => &[DidWake],
+            Self::All => &[WillSleep, DidWake, SessionResigned, SessionBecameActive],
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CaptureAction {
     RequestPermission,
     StartTap,
@@ -465,6 +496,15 @@ pub struct TapProbeReport {
     pub candidate_reset_releases: u64,
     pub duplicate_down: u64,
     pub unmatched_up: u64,
+    pub workspace_observers_registered: u64,
+    pub workspace_observers_removed: u64,
+    pub workspace_will_sleep: u64,
+    pub workspace_did_wake: u64,
+    pub workspace_session_resigned: u64,
+    pub workspace_session_active: u64,
+    pub workspace_lifecycle_resets: u64,
+    pub workspace_callback_panics: u64,
+    pub workspace_callbacks_ignored_after_close: u64,
 }
 
 #[cfg(target_os = "macos")]
@@ -477,6 +517,7 @@ pub enum TapProbeError {
 }
 
 #[cfg(target_os = "macos")]
+#[derive(Default)]
 struct TapCounters {
     key_down: AtomicU64,
     key_up: AtomicU64,
@@ -500,6 +541,15 @@ struct TapCounters {
     candidate_reset_releases: AtomicU64,
     duplicate_down: AtomicU64,
     unmatched_up: AtomicU64,
+    workspace_observers_registered: AtomicU64,
+    workspace_observers_removed: AtomicU64,
+    workspace_will_sleep: AtomicU64,
+    workspace_did_wake: AtomicU64,
+    workspace_session_resigned: AtomicU64,
+    workspace_session_active: AtomicU64,
+    workspace_lifecycle_resets: AtomicU64,
+    workspace_callback_panics: AtomicU64,
+    workspace_callbacks_ignored_after_close: AtomicU64,
 }
 
 #[cfg(target_os = "macos")]
@@ -530,7 +580,30 @@ impl TapCounters {
             candidate_reset_releases: self.candidate_reset_releases.load(Ordering::Relaxed),
             duplicate_down: self.duplicate_down.load(Ordering::Relaxed),
             unmatched_up: self.unmatched_up.load(Ordering::Relaxed),
+            workspace_observers_registered: self
+                .workspace_observers_registered
+                .load(Ordering::Relaxed),
+            workspace_observers_removed: self.workspace_observers_removed.load(Ordering::Relaxed),
+            workspace_will_sleep: self.workspace_will_sleep.load(Ordering::Relaxed),
+            workspace_did_wake: self.workspace_did_wake.load(Ordering::Relaxed),
+            workspace_session_resigned: self.workspace_session_resigned.load(Ordering::Relaxed),
+            workspace_session_active: self.workspace_session_active.load(Ordering::Relaxed),
+            workspace_lifecycle_resets: self.workspace_lifecycle_resets.load(Ordering::Relaxed),
+            workspace_callback_panics: self.workspace_callback_panics.load(Ordering::Relaxed),
+            workspace_callbacks_ignored_after_close: self
+                .workspace_callbacks_ignored_after_close
+                .load(Ordering::Relaxed),
         }
+    }
+
+    fn record_workspace_event(&self, event: WorkspaceLifecycleEvent) {
+        let counter = match event {
+            WorkspaceLifecycleEvent::WillSleep => &self.workspace_will_sleep,
+            WorkspaceLifecycleEvent::DidWake => &self.workspace_did_wake,
+            WorkspaceLifecycleEvent::SessionResigned => &self.workspace_session_resigned,
+            WorkspaceLifecycleEvent::SessionBecameActive => &self.workspace_session_active,
+        };
+        counter.fetch_add(1, Ordering::Relaxed);
     }
 }
 
@@ -555,6 +628,202 @@ impl TapDisableSignals {
 
     fn take(&self) -> u8 {
         self.0.swap(0, Ordering::Acquire)
+    }
+}
+
+#[cfg(target_os = "macos")]
+const WORKSPACE_WILL_SLEEP_PENDING: u8 = 1;
+#[cfg(target_os = "macos")]
+const WORKSPACE_DID_WAKE_PENDING: u8 = 1 << 1;
+#[cfg(target_os = "macos")]
+const WORKSPACE_SESSION_RESIGNED_PENDING: u8 = 1 << 2;
+#[cfg(target_os = "macos")]
+const WORKSPACE_SESSION_ACTIVE_PENDING: u8 = 1 << 3;
+
+#[cfg(target_os = "macos")]
+impl WorkspaceLifecycleEvent {
+    fn pending_bit(self) -> u8 {
+        match self {
+            Self::WillSleep => WORKSPACE_WILL_SLEEP_PENDING,
+            Self::DidWake => WORKSPACE_DID_WAKE_PENDING,
+            Self::SessionResigned => WORKSPACE_SESSION_RESIGNED_PENDING,
+            Self::SessionBecameActive => WORKSPACE_SESSION_ACTIVE_PENDING,
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Default)]
+struct WorkspaceLifecycleSignals(AtomicU8);
+
+#[cfg(target_os = "macos")]
+impl WorkspaceLifecycleSignals {
+    fn signal(&self, event: WorkspaceLifecycleEvent) {
+        self.0.fetch_or(event.pending_bit(), Ordering::Release);
+    }
+
+    fn take(&self) -> u8 {
+        self.0.swap(0, Ordering::Acquire)
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn run_macos_callback_boundary(panic_counter: &AtomicU64, callback: impl FnOnce()) {
+    use objc2::rc::autoreleasepool;
+
+    let outcome = catch_unwind(AssertUnwindSafe(|| autoreleasepool(|_| callback())));
+    if outcome.is_err() {
+        panic_counter.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+#[cfg(target_os = "macos")]
+struct WorkspaceLifecycleObserver {
+    center: objc2::rc::Retained<objc2_foundation::NSNotificationCenter>,
+    tokens: Vec<
+        objc2::rc::Retained<objc2::runtime::ProtocolObject<dyn objc2::runtime::NSObjectProtocol>>,
+    >,
+    accepting_callbacks: Arc<AtomicBool>,
+    counters: Arc<TapCounters>,
+}
+
+#[cfg(target_os = "macos")]
+impl WorkspaceLifecycleObserver {
+    fn register(signals: Arc<WorkspaceLifecycleSignals>, counters: Arc<TapCounters>) -> Self {
+        use block2::RcBlock;
+        use objc2_app_kit::{
+            NSWorkspace, NSWorkspaceDidWakeNotification,
+            NSWorkspaceSessionDidBecomeActiveNotification,
+            NSWorkspaceSessionDidResignActiveNotification, NSWorkspaceWillSleepNotification,
+        };
+        use objc2_foundation::NSNotification;
+        use std::ptr::NonNull;
+
+        let workspace = NSWorkspace::sharedWorkspace();
+        let center = workspace.notificationCenter();
+        let accepting_callbacks = Arc::new(AtomicBool::new(true));
+        // SAFETY: these are immutable notification-name constants exported by AppKit.
+        let registrations = unsafe {
+            [
+                (
+                    NSWorkspaceWillSleepNotification,
+                    WorkspaceLifecycleEvent::WillSleep,
+                ),
+                (
+                    NSWorkspaceDidWakeNotification,
+                    WorkspaceLifecycleEvent::DidWake,
+                ),
+                (
+                    NSWorkspaceSessionDidResignActiveNotification,
+                    WorkspaceLifecycleEvent::SessionResigned,
+                ),
+                (
+                    NSWorkspaceSessionDidBecomeActiveNotification,
+                    WorkspaceLifecycleEvent::SessionBecameActive,
+                ),
+            ]
+        };
+        let mut tokens = Vec::with_capacity(registrations.len());
+        for (name, event) in registrations {
+            let callback_signals = Arc::clone(&signals);
+            let callback_counters = Arc::clone(&counters);
+            let callback_accepting = Arc::clone(&accepting_callbacks);
+            let block: RcBlock<dyn Fn(NonNull<NSNotification>)> =
+                RcBlock::new(move |_notification: NonNull<NSNotification>| {
+                    run_macos_callback_boundary(
+                        &callback_counters.workspace_callback_panics,
+                        || {
+                            if !callback_accepting.load(Ordering::Acquire) {
+                                callback_counters
+                                    .workspace_callbacks_ignored_after_close
+                                    .fetch_add(1, Ordering::Relaxed);
+                                return;
+                            }
+                            callback_counters.record_workspace_event(event);
+                            callback_signals.signal(event);
+                        },
+                    );
+                });
+            // SAFETY: no object filter is used, the public notification name matches the
+            // callback signature, and the block captures only thread-safe atomics.
+            let token = unsafe {
+                center.addObserverForName_object_queue_usingBlock(Some(name), None, None, &block)
+            };
+            tokens.push(token);
+        }
+        counters
+            .workspace_observers_registered
+            .store(tokens.len() as u64, Ordering::Relaxed);
+        Self {
+            center,
+            tokens,
+            accepting_callbacks,
+            counters,
+        }
+    }
+
+    fn post_for_probe(&self, event: WorkspaceLifecycleEvent) {
+        use objc2_app_kit::{
+            NSWorkspaceDidWakeNotification, NSWorkspaceSessionDidBecomeActiveNotification,
+            NSWorkspaceSessionDidResignActiveNotification, NSWorkspaceWillSleepNotification,
+        };
+
+        // SAFETY: these are immutable notification-name constants exported by AppKit.
+        let name = unsafe {
+            match event {
+                WorkspaceLifecycleEvent::WillSleep => NSWorkspaceWillSleepNotification,
+                WorkspaceLifecycleEvent::DidWake => NSWorkspaceDidWakeNotification,
+                WorkspaceLifecycleEvent::SessionResigned => {
+                    NSWorkspaceSessionDidResignActiveNotification
+                }
+                WorkspaceLifecycleEvent::SessionBecameActive => {
+                    NSWorkspaceSessionDidBecomeActiveNotification
+                }
+            }
+        };
+        // SAFETY: the probe posts a public NSWorkspace notification with no object or user info.
+        unsafe { self.center.postNotificationName_object(name, None) };
+    }
+
+    fn close_sink(&self) {
+        self.accepting_callbacks.store(false, Ordering::Release);
+    }
+
+    fn unregister(&mut self) {
+        use objc2::runtime::AnyObject;
+
+        for token in self.tokens.drain(..) {
+            let token_ref: &objc2::runtime::ProtocolObject<dyn objc2::runtime::NSObjectProtocol> =
+                &token;
+            let observer: &AnyObject = token_ref.as_ref();
+            // SAFETY: each token was returned by this notification center and is removed once.
+            unsafe { self.center.removeObserver(observer) };
+            self.counters
+                .workspace_observers_removed
+                .fetch_add(1, Ordering::Relaxed);
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for WorkspaceLifecycleObserver {
+    fn drop(&mut self) {
+        self.close_sink();
+        self.unregister();
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn consume_workspace_lifecycle_signals(
+    signals: &WorkspaceLifecycleSignals,
+    pressed_candidates: &mut MacPressedKeyCandidates,
+    counters: &TapCounters,
+) {
+    if signals.take() != 0 {
+        pressed_candidates.reset();
+        counters
+            .workspace_lifecycle_resets
+            .fetch_add(1, Ordering::Relaxed);
     }
 }
 
@@ -613,6 +882,7 @@ fn record_tap_disable(
 fn run_tap_on_run_loop(
     duration: Duration,
     injected_disable: Option<TapDisableReason>,
+    injected_lifecycle: Option<WorkspaceLifecycleInjection>,
 ) -> Result<TapProbeReport, TapProbeError> {
     use core_foundation::runloop::{CFRunLoop, kCFRunLoopDefaultMode};
     use core_graphics2::event::{
@@ -620,31 +890,11 @@ fn run_tap_on_run_loop(
         CGEventType,
     };
 
-    let counters = Arc::new(TapCounters {
-        key_down: AtomicU64::new(0),
-        key_up: AtomicU64::new(0),
-        flags_changed: AtomicU64::new(0),
-        mouse_down: AtomicU64::new(0),
-        mouse_up: AtomicU64::new(0),
-        disabled_by_timeout: AtomicU64::new(0),
-        disabled_by_user: AtomicU64::new(0),
-        injected_disables: AtomicU64::new(0),
-        reenabled: AtomicU64::new(0),
-        callback_panics: AtomicU64::new(0),
-        queued_events: AtomicU64::new(0),
-        consumed_events: AtomicU64::new(0),
-        queue_overflows: AtomicU64::new(0),
-        queue_recovery_resets: AtomicU64::new(0),
-        queue_discarded_events: AtomicU64::new(0),
-        queue_closed_events: AtomicU64::new(0),
-        reconciliation_runs: AtomicU64::new(0),
-        reconciled_releases: AtomicU64::new(0),
-        candidate_resets: AtomicU64::new(0),
-        candidate_reset_releases: AtomicU64::new(0),
-        duplicate_down: AtomicU64::new(0),
-        unmatched_up: AtomicU64::new(0),
-    });
+    let counters = Arc::new(TapCounters::default());
     let disable_signals = Arc::new(TapDisableSignals::default());
+    let workspace_signals = Arc::new(WorkspaceLifecycleSignals::default());
+    let mut workspace_observer =
+        WorkspaceLifecycleObserver::register(Arc::clone(&workspace_signals), Arc::clone(&counters));
     let ignore_next_user_disable = Arc::new(AtomicBool::new(false));
     let event_queue = SharedCaptureQueue::new(256);
     let callback_queue = event_queue.clone();
@@ -654,7 +904,7 @@ fn run_tap_on_run_loop(
     let callback = move |_proxy: core_graphics2::event::CGEventTapProxy,
                          event_type: CGEventType,
                          event: &core_graphics2::event::CGEvent| {
-        let outcome = catch_unwind(AssertUnwindSafe(|| {
+        run_macos_callback_boundary(&callback_counters.callback_panics, || {
             let captured_event = match event_type {
                 CGEventType::KeyDown => {
                     callback_counters.key_down.fetch_add(1, Ordering::Relaxed);
@@ -722,12 +972,7 @@ fn run_tap_on_run_loop(
             if let Some(captured_event) = captured_event {
                 queue_captured_event(captured_event, &callback_queue, &callback_counters);
             }
-        }));
-        if outcome.is_err() {
-            callback_counters
-                .callback_panics
-                .fetch_add(1, Ordering::Relaxed);
-        }
+        });
         None
     };
 
@@ -786,6 +1031,19 @@ fn run_tap_on_run_loop(
         }
         counters.injected_disables.fetch_add(1, Ordering::Relaxed);
     }
+    if let Some(injection) = injected_lifecycle {
+        queue_captured_event(
+            CapturedInputEvent::KeyDown {
+                key_code: 0,
+                repeat: false,
+            },
+            &event_queue,
+            &counters,
+        );
+        for event in injection.events() {
+            workspace_observer.post_for_probe(*event);
+        }
+    }
     while Instant::now() < deadline {
         let remaining = deadline.saturating_duration_since(Instant::now());
         let slice = remaining.min(Duration::from_millis(20));
@@ -798,6 +1056,7 @@ fn run_tap_on_run_loop(
         for event in drained {
             pressed_candidates.apply_event_with(event, reconcile_key_state);
         }
+        consume_workspace_lifecycle_signals(&workspace_signals, &mut pressed_candidates, &counters);
         if disable_signals.take() != 0 {
             ignore_next_user_disable.store(false, Ordering::Release);
             if input_monitoring_preflight() {
@@ -817,9 +1076,15 @@ fn run_tap_on_run_loop(
         }
     }
     let finished_enabled = tap.is_enabled();
+    event_queue.close();
     tap.enable(false);
     run_loop.remove_source(&source, unsafe { kCFRunLoopDefaultMode });
-    event_queue.close();
+    consume_workspace_lifecycle_signals(&workspace_signals, &mut pressed_candidates, &counters);
+    workspace_observer.close_sink();
+    if injected_lifecycle.is_some() {
+        workspace_observer.post_for_probe(WorkspaceLifecycleEvent::DidWake);
+    }
+    workspace_observer.unregister();
     let drained = event_queue.drain();
     counters
         .consumed_events
@@ -862,13 +1127,14 @@ fn run_tap_on_run_loop(
 pub fn run_listen_only_tap(
     duration: Duration,
     injected_disable: Option<TapDisableReason>,
+    injected_lifecycle: Option<WorkspaceLifecycleInjection>,
 ) -> Result<TapProbeReport, TapProbeError> {
     if !input_monitoring_preflight() {
         return Err(TapProbeError::PermissionDenied);
     }
     thread::Builder::new()
         .name("bongocat-macos-input-tap".to_string())
-        .spawn(move || run_tap_on_run_loop(duration, injected_disable))
+        .spawn(move || run_tap_on_run_loop(duration, injected_disable, injected_lifecycle))
         .map_err(|_| TapProbeError::ThreadPanicked)?
         .join()
         .map_err(|_| TapProbeError::ThreadPanicked)?
@@ -1061,6 +1327,56 @@ mod tests {
             TAP_TIMEOUT_PENDING | TAP_USER_DISABLE_PENDING
         );
         assert_eq!(signals.take(), 0);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn workspace_lifecycle_signals_coalesce_without_losing_reset_work() {
+        let signals = WorkspaceLifecycleSignals::default();
+        signals.signal(WorkspaceLifecycleEvent::WillSleep);
+        signals.signal(WorkspaceLifecycleEvent::DidWake);
+        signals.signal(WorkspaceLifecycleEvent::SessionResigned);
+        signals.signal(WorkspaceLifecycleEvent::SessionBecameActive);
+        assert_eq!(
+            signals.take(),
+            WORKSPACE_WILL_SLEEP_PENDING
+                | WORKSPACE_DID_WAKE_PENDING
+                | WORKSPACE_SESSION_RESIGNED_PENDING
+                | WORKSPACE_SESSION_ACTIVE_PENDING
+        );
+        assert_eq!(signals.take(), 0);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn workspace_lifecycle_reset_clears_candidates_once_per_signal_batch() {
+        let signals = WorkspaceLifecycleSignals::default();
+        let counters = TapCounters::default();
+        let mut candidates = MacPressedKeyCandidates::default();
+        candidates.apply_event_with(
+            CapturedInputEvent::KeyDown {
+                key_code: 0,
+                repeat: false,
+            },
+            |_| false,
+        );
+        signals.signal(WorkspaceLifecycleEvent::WillSleep);
+        signals.signal(WorkspaceLifecycleEvent::DidWake);
+        consume_workspace_lifecycle_signals(&signals, &mut candidates, &counters);
+        assert!(candidates.keys().is_empty());
+        assert_eq!(candidates.counters().reset_releases, 1);
+        assert_eq!(
+            counters.workspace_lifecycle_resets.load(Ordering::Relaxed),
+            1
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn callback_boundary_contains_panics_and_records_them() {
+        let panics = AtomicU64::new(0);
+        run_macos_callback_boundary(&panics, || panic!("controlled callback panic"));
+        assert_eq!(panics.load(Ordering::Relaxed), 1);
     }
 
     #[test]

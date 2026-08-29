@@ -192,7 +192,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 - 状态（2026-08-28）：`spikes/input-state/` 已建立纯 Rust pressed-set contract，覆盖正常 down/up、重复 down、Reconcile、Reset、issue #47 的丢失 release 恢复、可靠事件的序列跳号/重复/乱序诊断，以及 `250 ms` 校正调度和连续 `2` 次缺失确认的误判保护；计数器不记录具体键值。平台采集、runtime 接入和管理员/权限场景仍待实机验证，详见 `docs/phase-0/input-state-spike.md`。
 - 状态（2026-08-29）：`spikes/input-windows/` 已冻结 `RI_KEY_BREAK`、E0/E1、左右修饰键、PrintScreen、未知 scan code 保留和安全 `RAWINPUT` 字节解析 contract；已实现隐藏顶层 HWND、Raw Input 注册、`WM_INPUT` 读取、周期校正、计数诊断和生命周期 Reset。commit `32bc9a37efd201a788511ee86e7350c6a5058ab3` 的 push Windows job 已通过 WTS 注册/注销以及 session/power 受控消息 smoke。真实设备样本、热插拔、锁屏/睡眠和丢失 release 校正仍待完成，详见 `docs/phase-0/input-windows-spike.md`。
-- 状态（2026-08-29）：`spikes/input-macos/` 已建立 macOS 权限/tap 生命周期 contract、listen-only `CGEventTap` 专用 run loop、panic-isolated callback、固定容量 callback queue 和候选 pressed-set 周期校正；当前 macOS 会话累计完成 105 次创建运行停止 smoke，受控按键序列曾报告 `key_down=2 key_up=2`、`callback_panics=0`，最新 600 ms tap 完成 2 次校正且 shutdown Reset 为 1。commit `c271ceb2449b48f37569c6746fbe7b7170dbe0d3` 又完成 timeout/user-disable 各 20 次受控故障恢复，全部重新启用并通过 Reset 释放注入的缺失 KeyUp 候选。真实 modifier 字段、真实丢失 release、系统自然 timeout、TCC 拒绝/撤销和锁屏/睡眠恢复仍未完成，详见 `docs/phase-0/input-macos-spike.md`。
+- 状态（2026-08-29）：`spikes/input-macos/` 已建立 macOS 权限/tap 生命周期 contract、listen-only `CGEventTap` 专用 run loop、panic-isolated callback、固定容量 callback queue 和候选 pressed-set 周期校正；当前 macOS 会话累计完成 105 次创建运行停止 smoke，受控按键序列曾报告 `key_down=2 key_up=2`、`callback_panics=0`，最新 600 ms tap 完成 2 次校正且 shutdown Reset 为 1。commit `c271ceb2449b48f37569c6746fbe7b7170dbe0d3` 又完成 timeout/user-disable 各 20 次受控故障恢复，全部重新启用并通过 Reset 释放注入的缺失 KeyUp 候选。公开 NSWorkspace sleep/wake/session observer 的受控注入已验证 Reset、成对注销和 callback close gate；真实 modifier 字段、真实丢失 release、系统自然 timeout、TCC 拒绝/撤销和真实锁屏/睡眠/快速用户切换恢复仍未完成，详见 `docs/phase-0/input-macos-spike.md`。
 
 - [ ] Windows 实现 RegisterRawInputDevices 和 WM_INPUT 最小路径。
   - 状态（2026-08-29）：已实现注册、读取、注销和自动退出路径，并通过 Windows target 交叉 check/Clippy 以及 `windows-latest` 注册/退出 smoke；仍需受控实机 `WM_INPUT` 输入样本后才能勾选。
@@ -203,6 +203,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-28）：`spikes/input-state/` 固定默认 `250 ms` 周期、连续 `2` 次缺失确认、单调时钟回退拒绝和 reset/up/down 清理待确认状态；平台 adapter 的周期调度和 runtime 消费仍待产品实现。
 - [ ] 在锁屏、睡眠、设备移除和服务重启时发送 Reset。
   - 状态（2026-08-29）：Windows spike 已注册 `RIDEV_DEVNOTIFY` 和 WTS current-session notification，并在设备移除、服务停止、lock/unlock、connect/disconnect、suspend/resume 时 Reset。commit `32bc9a37efd201a788511ee86e7350c6a5058ab3` 的 push run `33234259414`、job `99052333561` 已通过 4 条受控 lifecycle 消息、4 个候选释放和 WTS 注销断言；真实设备拔插、Win+L 和睡眠/唤醒仍待完成。
+  - 状态（2026-08-29）：macOS spike 已通过公开 NSWorkspace sleep/wake/session 通知的受控 callback smoke，四类通知合并形成 Reset 并释放缺失 KeyUp 候选；真实锁屏、睡眠/唤醒和快速用户切换仍待实机完成，因此本项保持未勾选。
 - [ ] 实测 PixPin Ctrl+Alt+A，丢失 release 时不得永久高亮。
   - [x] contract probe 已覆盖丢失 A-up 后通过 Reconcile 清除残留；尚未在 Windows callback 上实测。
 - [ ] 实测 Win+L、PrintScreen、UAC 和管理员/非管理员场景。
@@ -216,7 +217,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 记录 monio 对照结果，但不引入生产依赖；`docs/phase-0/monio-comparison.md` 基于 commit `d1766e0dcd20dea0435be16cd80adaa749b86e30` 记录 Raw Input、channel、reconciliation、Reset、callback 和许可证差异。
 - [ ] 为 captured、reconciled、reset、duplicate、overflow 分别维护计数器，不记录具体键值。
   - 状态（2026-08-29）：macOS spike 已输出事件类型、reconciled release、Reset 次数/释放数、duplicate/unmatched 和 queue overflow/recovery 数量，且不输出具体键值；Windows 与产品 runtime 的统一诊断 snapshot 仍待完成。
-- [ ] 验证输入 callback panic 隔离、队列关闭和应用退出竞态，不允许 callback 访问已析构 runtime。
+- [x] 验证输入 callback panic 隔离、队列关闭和应用退出竞态，不允许 callback 访问已析构 runtime。
+  - 验收证据：macOS event-tap 与 workspace callback 共用 autorelease/panic boundary，故意 panic 的测试确认 unwind 不越过 callback；固定队列 close 后拒绝新事件并可 drain；受控生命周期 smoke 在 callback gate 关闭后触发迟到通知，只增加 ignored 计数。observer token 成对注销，callback 只持有 queue/atomic，不捕获 runtime owner。产品 runtime 接入后仍须重跑对等 shutdown 测试。
 
 ### 1.8 Cubism/Renderer spike
 

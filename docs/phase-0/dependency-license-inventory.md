@@ -26,7 +26,7 @@
 | serde / serde_json               | `1.0.228` / `1.0.149` | MIT OR Apache-2.0        | Config and inspector serialization |
 | tempfile                         | `3.27.0`              | MIT OR Apache-2.0        | Failure-safe config tests          |
 | core-graphics2 / core-foundation | `0.4.1` / `0.10.1`    | MIT OR Apache-2.0        | macOS input boundary spike         |
-| objc2 family                     | `0.6.4` / `0.3.2`     | MIT OR Apache-2.0 / Zlib | macOS overlay boundary spike       |
+| objc2 / block2 family            | `0.6.4` / `0.3.2`     | MIT OR Apache-2.0 / Zlib | macOS overlay/input lifecycle      |
 | metal / core-graphics-types      | `0.29.0` / `0.1.3`    | MIT OR Apache-2.0        | macOS transparent present spike    |
 | windows                          | `0.61.3`              | MIT OR Apache-2.0        | Windows Raw Input boundary spike   |
 

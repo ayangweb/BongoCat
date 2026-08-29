@@ -1,8 +1,8 @@
 #[cfg(target_os = "macos")]
 use bongocat_input_macos_spike::{
     CaptureAction, CaptureEvent, MacCaptureLifecycle, PermissionState, TapDisableReason,
-    input_monitoring_preflight, reconcile_pressed_key_codes, request_input_monitoring_access,
-    run_listen_only_tap,
+    WorkspaceLifecycleInjection, input_monitoring_preflight, reconcile_pressed_key_codes,
+    request_input_monitoring_access, run_listen_only_tap,
 };
 #[cfg(target_os = "macos")]
 use std::{collections::BTreeSet, time::Duration};
@@ -19,6 +19,19 @@ fn main() {
             Some(value) => {
                 eprintln!(
                     "input-macos-spike: invalid --inject-disable value {value:?}; expected timeout or user"
+                );
+                std::process::exit(2);
+            }
+        };
+        let injected_lifecycle = match argument_value("--inject-lifecycle").as_deref() {
+            None => None,
+            Some("session") => Some(WorkspaceLifecycleInjection::Session),
+            Some("sleep") => Some(WorkspaceLifecycleInjection::Sleep),
+            Some("wake") => Some(WorkspaceLifecycleInjection::Wake),
+            Some("all") => Some(WorkspaceLifecycleInjection::All),
+            Some(value) => {
+                eprintln!(
+                    "input-macos-spike: invalid --inject-lifecycle value {value:?}; expected session, sleep, wake, or all"
                 );
                 std::process::exit(2);
             }
@@ -71,9 +84,13 @@ fn main() {
                 println!("input-macos-spike: tap probe skipped because permission is denied");
             } else {
                 for cycle in 0..cycles {
-                    match run_listen_only_tap(Duration::from_millis(tap_ms), injected_disable) {
+                    match run_listen_only_tap(
+                        Duration::from_millis(tap_ms),
+                        injected_disable,
+                        injected_lifecycle,
+                    ) {
                         Ok(report) => println!(
-                            "input-macos-spike: tap cycle={} started={} finished_enabled={} key_down={} key_up={} flags_changed={} mouse_down={} mouse_up={} disabled_timeout={} disabled_user={} injected_disables={} reenabled={} callback_panics={} queued_events={} consumed_events={} queue_overflows={} queue_recovery_resets={} queue_discarded_events={} queue_closed_events={} reconciliation_runs={} reconciled_releases={} candidate_resets={} candidate_reset_releases={} duplicate_down={} unmatched_up={}",
+                            "input-macos-spike: tap cycle={} started={} finished_enabled={} key_down={} key_up={} flags_changed={} mouse_down={} mouse_up={} disabled_timeout={} disabled_user={} injected_disables={} reenabled={} callback_panics={} queued_events={} consumed_events={} queue_overflows={} queue_recovery_resets={} queue_discarded_events={} queue_closed_events={} reconciliation_runs={} reconciled_releases={} candidate_resets={} candidate_reset_releases={} duplicate_down={} unmatched_up={} workspace_observers_registered={} workspace_observers_removed={} workspace_will_sleep={} workspace_did_wake={} workspace_session_resigned={} workspace_session_active={} workspace_lifecycle_resets={} workspace_callback_panics={} workspace_callbacks_ignored_after_close={}",
                             cycle + 1,
                             report.started,
                             report.finished_enabled,
@@ -99,6 +116,15 @@ fn main() {
                             report.candidate_reset_releases,
                             report.duplicate_down,
                             report.unmatched_up,
+                            report.workspace_observers_registered,
+                            report.workspace_observers_removed,
+                            report.workspace_will_sleep,
+                            report.workspace_did_wake,
+                            report.workspace_session_resigned,
+                            report.workspace_session_active,
+                            report.workspace_lifecycle_resets,
+                            report.workspace_callback_panics,
+                            report.workspace_callbacks_ignored_after_close,
                         ),
                         Err(error) => {
                             println!("input-macos-spike: tap cycle={} error={error:?}", cycle + 1)
