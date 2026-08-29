@@ -160,4 +160,7 @@ pointer flood 现在进一步断言 decoded movement、latest-value consumption 
 不占用可靠 FIFO。16ms tick 消费 sample 后查询一次 `GetCursorPos`，shutdown 前再通过 final tick
 清空，因此必须满足 `movement_samples = coalesced + consumed`、`cursor_queries = consumed`、
 query error 为 0，同时原有 1536 keyboard edge、queue gap/overflow 和 pressed candidate 门禁
-保持不变。Windows runner 证据待本批提交后补录。
+保持不变。commit `098d532` 的 push run `33258305541`、job `99115756881` 已通过 27 项
+contract test 和强化后的 pointer flood；同一 job 也重跑通过 release recovery、queue overflow、
+edge pressure、lifecycle 与 config 回归。该结果证明合成 RAWMOUSE 洪峰在 Windows runner 上
+确实发生合并且未阻塞 release，不替代 10 分钟物理键鼠压力测试。
