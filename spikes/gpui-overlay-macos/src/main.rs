@@ -103,6 +103,12 @@ mod macos_overlay {
         metal_bytes: u64,
     }
 
+    impl ResourceCounts {
+        pub fn metal_bytes(self) -> u64 {
+            self.metal_bytes
+        }
+    }
+
     #[derive(Clone, Copy)]
     enum PresentBehavior {
         Submit,
@@ -917,46 +923,54 @@ fn main() {
                     }
                     Timer::after(Duration::from_millis(100)).await;
 
-                    for _ in 0..cycles {
-                        cx.update(|_| {
-                            let mtm = objc2::MainThreadMarker::new()
-                                .expect("GPUI must run on AppKit main thread");
-                            macos_overlay::run_creation_cycle(mtm)
-                        })
-                        .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
-                        Timer::after(MACOS_COMPOSITOR_SETTLE_INTERVAL).await;
+                    let mut previous_metal_bytes = None;
+                    let mut before = None;
+                    for batch in 1..=6 {
+                        for _ in 0..cycles {
+                            cx.update(|_| {
+                                let mtm = objc2::MainThreadMarker::new()
+                                    .expect("GPUI must run on AppKit main thread");
+                                macos_overlay::run_creation_cycle(mtm)
+                            })
+                            .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
+                            Timer::after(MACOS_COMPOSITOR_SETTLE_INTERVAL).await;
+                        }
+                        Timer::after(Duration::from_millis(100)).await;
+                        let counts = cx
+                            .update(|_| {
+                                let mtm = objc2::MainThreadMarker::new()
+                                    .expect("GPUI must run on AppKit main thread");
+                                macos_overlay::resource_counts(mtm)
+                            })
+                            .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
+                        println!(
+                            "gpui-overlay-spike: macOS resource warmup batch={batch} metal_bytes={}",
+                            counts.metal_bytes()
+                        );
+                        if previous_metal_bytes == Some(counts.metal_bytes()) {
+                            before = Some(counts);
+                            break;
+                        }
+                        previous_metal_bytes = Some(counts.metal_bytes());
                     }
+                    let before = before.ok_or_else(|| {
+                        "Metal resource pool did not converge after 6 warmup batches".to_string()
+                    })?;
 
-                    Timer::after(Duration::from_millis(100)).await;
-                    for _ in 0..cycles {
-                        cx.update(|_| {
-                            let mtm = objc2::MainThreadMarker::new()
-                                .expect("GPUI must run on AppKit main thread");
-                            macos_overlay::run_creation_cycle(mtm)
-                        })
-                        .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
-                        Timer::after(MACOS_COMPOSITOR_SETTLE_INTERVAL).await;
+                    for batch in 1..=3 {
+                        for _ in 0..cycles {
+                            cx.update(|_| {
+                                let mtm = objc2::MainThreadMarker::new()
+                                    .expect("GPUI must run on AppKit main thread");
+                                macos_overlay::run_creation_cycle(mtm)
+                            })
+                            .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
+                            Timer::after(MACOS_COMPOSITOR_SETTLE_INTERVAL).await;
+                        }
+                        if batch < 3 {
+                            Timer::after(Duration::from_millis(100)).await;
+                        }
                     }
-
-                    Timer::after(Duration::from_millis(100)).await;
-                    let before = cx
-                        .update(|_| {
-                            let mtm = objc2::MainThreadMarker::new()
-                                .expect("GPUI must run on AppKit main thread");
-                            macos_overlay::resource_counts(mtm)
-                        })
-                        .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
-
-                    for _ in 0..cycles {
-                        cx.update(|_| {
-                            let mtm = objc2::MainThreadMarker::new()
-                                .expect("GPUI must run on AppKit main thread");
-                            macos_overlay::run_creation_cycle(mtm)
-                        })
-                        .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
-                        Timer::after(MACOS_COMPOSITOR_SETTLE_INTERVAL).await;
-                    }
-
                     Timer::after(Duration::from_millis(100)).await;
                     let after = cx
                         .update(|_| {

@@ -826,7 +826,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 10. [ ] `P0-OVERLAY`：GPUI 生命周期内完成 Windows D3D11/macOS Metal 透明 clear/present、错误注入和 100 次重建。
 
 - [x] 先完成无平台依赖的 overlay lifecycle contract probe；平台窗口和 GPU 验证仍未完成。
-- [x] Windows Win32/D3D11/DirectComposition owner、故障降级、析构顺序与 100-cycle 已通过既有 push/PR `windows-latest`；macOS 本机与 push/PR runner 的透明 clear/present、drawable unavailable、显式 shutdown 与 100-cycle 也已通过，并通过 `leaks` 基线消除窗口动画 retain cycle。GPUI 定时 frame source、双平台 resize、有序停止、原生 drag 状态切换及受控运行中故障恢复已实现；双平台 100-cycle 等长批次现在都具有 process thread 与 API 可见 GPU allocation 门禁，macOS 又以逐帧 backing-size 校正修复跨显示器后 drawable 尺寸漂移。完整 `P0-OVERLAY` 仍等待本批双平台 runner 资源结果、Windows 真实 swapchain unavailable、双平台真实 device-lost、driver 专项采样、物理拖动及显示器/DPI 切换。
+- [x] Windows Win32/D3D11/DirectComposition owner、故障降级、析构顺序与 100-cycle 已通过既有 push/PR `windows-latest`；macOS 本机与 push/PR runner 的透明 clear/present、drawable unavailable、显式 shutdown 与 100-cycle 也已通过，并通过 `leaks` 基线消除窗口动画 retain cycle。GPUI 定时 frame source、双平台 resize、有序停止、原生 drag 状态切换及受控运行中故障恢复已实现；双平台具有 process thread 与 API 可见 GPU allocation 门禁，macOS 又以逐帧 backing-size 校正修复跨显示器后 drawable 尺寸漂移。commit `7d74d41`/`7d0c91b` 的 macOS runner 证明固定预热批次仍可能处于 driver allocation 扩展期，当前 probe 改为最多 6 批证明 pool 收敛后再执行独立 300-cycle 零增长测量，本机已通过；完整 `P0-OVERLAY` 仍等待新 runner 结果、Windows 真实 swapchain unavailable、双平台真实 device-lost、driver 专项采样、物理拖动及显示器/DPI 切换。
 
 11. [ ] `P0-INPUT-WINDOWS`：完成 Raw Input + pressed set + `GetAsyncKeyState` 校正并实测 issue #47 场景。
 
