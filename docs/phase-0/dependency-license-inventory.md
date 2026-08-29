@@ -16,21 +16,24 @@
 
 ## Direct dependencies
 
-| Dependency family                | Locked version        | License                  | Role                                 |
-| -------------------------------- | --------------------- | ------------------------ | ------------------------------------ |
-| GPUI                             | `0.2.2`               | Apache-2.0               | Settings UI spike                    |
-| async-channel                    | `2.5.0`               | MIT OR Apache-2.0        | Typed command/reply spike            |
-| unicode-segmentation             | `1.13.3`              | MIT OR Apache-2.0        | Grapheme-safe text editing           |
-| futures-lite                     | `2.6.1`               | MIT OR Apache-2.0        | Test-only executor bridge            |
-| dirs                             | `6.0.0`               | MIT OR Apache-2.0        | Config path spike                    |
-| serde / serde_json               | `1.0.229` / `1.0.151` | MIT OR Apache-2.0        | Config, model and tool serialization |
-| tempfile                         | `3.27.0`              | MIT OR Apache-2.0        | Isolated config/model fixture tests  |
-| core-graphics2 / core-foundation | `0.6.1` / `0.10.1`    | MIT OR Apache-2.0        | macOS input boundary spike           |
-| objc2 / block2 family            | `0.6.4` / `0.3.2`     | MIT OR Apache-2.0 / Zlib | macOS overlay/input lifecycle        |
-| metal / core-graphics-types      | `0.33.0` / `0.2.0`    | MIT OR Apache-2.0        | macOS transparent present spike      |
-| windows                          | `0.62.2`              | MIT OR Apache-2.0        | Windows Raw Input boundary spike     |
-| bindgen                          | `0.72.1`              | BSD-3-Clause             | Offline Cubism raw binding generator |
-| sha2                             | `0.11.0`              | MIT OR Apache-2.0        | Header/output provenance hashes      |
+| Dependency family                | Locked version                 | License                   | Role                                    |
+| -------------------------------- | ------------------------------ | ------------------------- | --------------------------------------- |
+| GPUI                             | `0.2.2`                        | Apache-2.0                | Settings UI spike                       |
+| AccessKit core/macOS/Windows     | `0.25.0` / `0.27.0` / `0.35.0` | MIT OR Apache-2.0         | GPUI semantic AX/UIA adapter            |
+| raw-window-handle                | `0.6.2`                        | MIT OR Apache-2.0 OR Zlib | GPUI native window handle boundary      |
+| async-channel                    | `2.5.0`                        | MIT OR Apache-2.0         | Typed command/reply spike               |
+| unicode-segmentation             | `1.13.3`                       | MIT OR Apache-2.0         | Grapheme-safe text editing              |
+| futures-lite                     | `2.6.1`                        | MIT OR Apache-2.0         | Test-only executor bridge               |
+| dirs                             | `6.0.0`                        | MIT OR Apache-2.0         | Config path spike                       |
+| serde / serde_json               | `1.0.229` / `1.0.151`          | MIT OR Apache-2.0         | Config, model and tool serialization    |
+| tempfile                         | `3.27.0`                       | MIT OR Apache-2.0         | Isolated config/model fixture tests     |
+| core-graphics2 / core-foundation | `0.6.1` / `0.10.1`             | MIT OR Apache-2.0         | macOS input boundary spike              |
+| objc2 / block2 family            | `0.6.4` / `0.3.2`              | MIT OR Apache-2.0 / Zlib  | macOS overlay/input lifecycle           |
+| objc2 (GPUI AX compatibility)    | `0.5.2`                        | MIT                       | Inspect AccessKit macOS adapter objects |
+| metal / core-graphics-types      | `0.33.0` / `0.2.0`             | MIT OR Apache-2.0         | macOS transparent present spike         |
+| windows                          | `0.62.2`                       | MIT OR Apache-2.0         | Windows Raw Input boundary spike        |
+| bindgen                          | `0.72.1`                       | BSD-3-Clause              | Offline Cubism raw binding generator    |
+| sha2                             | `0.11.0`                       | MIT OR Apache-2.0         | Header/output provenance hashes         |
 
 ## Policy
 
@@ -61,6 +64,8 @@ cargo install cargo-deny --version 0.20.2 --locked
 - 发布阶段的 SBOM 与 notice bundle 生成。
 
 Cubism 版本、来源、hash、再分发条款和 attribution 必须在 `P0-CUBISM` 单独形成书面结论；完成前不得制作可公开分发的 Native Rewrite 安装包。
+
+AccessKit 由同一上游仓库维护，core 与双平台 adapter 的公开边界仅接收语义树、action 和原生窗口 handle；其节点、事件和错误类型不进入 BongoCat runtime 公共 API。若 GPUI 后续提供稳定的 element-level accessibility API，则删除该 adapter。`objc2 0.5.2` 是 `accesskit_macos 0.27.0` 的 ABI 类型世代兼容例外，仅用于本机 AX 诊断；AccessKit 切换到 `objc2 0.6` 或诊断边界移除后不再保留旧版本。
 
 ## Future-Incompatibility
 

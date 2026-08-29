@@ -15,7 +15,9 @@ GPUI 继续作为当前首选设置 UI，但在辅助功能 gate 通过前保持
 
 - 不建立完整产品 UI workspace，不把当前 spike 宣称为可发布设置界面；
 - 不引入 GPUI 私有 API、未维护 fork 或隐藏控件 workaround；
-- 先验证 GPUI 后续版本是否提供受支持的公开 accessibility API，并以独立升级提交记录版本、许可证、双平台构建和 AX smoke；
+- 使用 GPUI 公开的 raw window handle 安装项目自有 AccessKit semantic tree；macOS/Windows adapter 只负责系统协议，语义 snapshot 由 UI crate 维护；
+- 辅助技术 action 必须通过有界强类型 channel 回到 GPUI 主线程，不允许平台 callback 直接修改 Entity 或 runtime；
+- 可见控件和语义节点使用同一份 UI 状态，必须覆盖 role、label/title、value、focus、selected、loading/error 和支持的 action；
 - 若 GPUI 仍无法提供基础语义，才启动 Iced 替代 spike。Iced 只作为此门槛的 fallback，不与 GPUI 并行进入产品。
 
 截至本 ADR 日期，Iced 0.14.0 的公开 crate feature/source 中也未发现可直接满足 role/label/value 的通用 accessibility API，因此它是待验证候选，不是当前 go 结论。不能因为换 UI 框架名称就视为问题已解决。
@@ -36,4 +38,6 @@ GPUI 继续作为当前首选设置 UI，但在辅助功能 gate 通过前保持
 
 - GPUI spike 的 AX 观察、环境和截图限制：`docs/phase-0/gpui-settings-spike.md`；
 - GPUI 版本固定为 crates.io `0.2.2`，见 `spikes/gpui-settings/Cargo.toml`；
+- macOS 本机通过 AppKit AX API 读取 8 个项目语义节点，并通过 `accessibilityPerformPress` 将 Dark radio action 送回 GPUI；
+- Windows workflow 使用进程外 UI Automation client 验证同等节点和 radio selected action，结果待本批 `windows-latest` runner；
 - Iced 候选版本与 feature 清单通过 `cargo info iced@0.14.0 --verbose` 获取，源码检索未发现通用 accessibility surface。

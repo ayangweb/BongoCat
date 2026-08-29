@@ -1,6 +1,11 @@
+mod accessibility;
 mod runtime_bridge;
 mod text_input;
 
+use accessibility::{
+    AccessibilityAction, AccessibilityBridge, AccessibilityFocus, AccessibilitySnapshot,
+    AccessibilityTheme,
+};
 use gpui::{
     App, Application, Bounds, Context, FocusHandle, Focusable, KeyBinding, Menu, MenuItem, Render,
     SharedString, SystemMenuType, Timer, TitlebarOptions, Window, WindowAppearance, WindowBounds,
@@ -85,15 +90,24 @@ struct SettingsWindow {
     theme_mode: ThemeMode,
     theme_focus: Vec<FocusHandle>,
     root_focus: FocusHandle,
+    refresh_focus: FocusHandle,
     model_name: gpui::Entity<TextInput>,
     runtime_bridge: RuntimeBridge,
     runtime_snapshot: Option<RuntimeSnapshot>,
     runtime_request_in_flight: bool,
     runtime_error: Option<SharedString>,
+    accessibility: AccessibilityBridge,
+    accessibility_actions: Option<async_channel::Receiver<AccessibilityAction>>,
 }
 
 impl SettingsWindow {
-    fn new(window: &mut Window, runtime_bridge: RuntimeBridge, cx: &mut Context<Self>) -> Self {
+    fn new(
+        window: &mut Window,
+        runtime_bridge: RuntimeBridge,
+        accessibility: AccessibilityBridge,
+        accessibility_actions: async_channel::Receiver<AccessibilityAction>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let dark_theme = matches!(
             window.appearance(),
             WindowAppearance::Dark | WindowAppearance::VibrantDark
@@ -123,11 +137,14 @@ impl SettingsWindow {
             theme_mode: ThemeMode::System,
             theme_focus,
             root_focus: cx.focus_handle(),
+            refresh_focus: cx.focus_handle().tab_index(5).tab_stop(true),
             model_name,
             runtime_bridge,
             runtime_snapshot: None,
             runtime_request_in_flight: false,
             runtime_error: None,
+            accessibility,
+            accessibility_actions: Some(accessibility_actions),
         }
     }
 
@@ -148,6 +165,69 @@ impl SettingsWindow {
 
     fn on_tab_previous(&mut self, _: &TabPrevious, window: &mut Window, _: &mut Context<Self>) {
         window.focus_prev();
+    }
+
+    fn set_theme_mode(&mut self, mode: ThemeMode, window: &mut Window, cx: &mut Context<Self>) {
+        self.theme_mode = mode;
+        self.model_name.update(cx, |input, _| {
+            input.set_dark_theme(self.resolved_dark(window));
+        });
+        cx.notify();
+    }
+
+    fn start_accessibility_action_task(&mut self, window: &Window, cx: &mut Context<Self>) {
+        let Some(receiver) = self.accessibility_actions.take() else {
+            return;
+        };
+        let window_handle = window.window_handle();
+        cx.spawn(async move |this, cx| {
+            while let Ok(action) = receiver.recv().await {
+                let updated = window_handle.update(cx, |_, window, cx| {
+                    this.update(cx, |settings, cx| {
+                        settings.apply_accessibility_action(action, window, cx);
+                    })
+                });
+                if updated.is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
+    }
+
+    fn apply_accessibility_action(
+        &mut self,
+        action: AccessibilityAction,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match action {
+            AccessibilityAction::SelectTheme(theme) => {
+                let mode = ThemeMode::from(theme);
+                let focus = self.theme_focus[mode as usize].clone();
+                window.focus(&focus);
+                self.set_theme_mode(mode, window, cx);
+            }
+            AccessibilityAction::FocusTheme(theme) => {
+                window.focus(&self.theme_focus[ThemeMode::from(theme) as usize]);
+                cx.notify();
+            }
+            AccessibilityAction::FocusModelName => {
+                window.focus(&self.model_name.focus_handle(cx));
+                cx.notify();
+            }
+            AccessibilityAction::SetModelName(value) => {
+                self.model_name.update(cx, |input, cx| {
+                    input.set_content(&value, window, cx);
+                });
+            }
+            AccessibilityAction::FocusRefresh => {
+                window.focus(&self.refresh_focus);
+                cx.notify();
+            }
+            AccessibilityAction::RefreshRuntime => self.request_runtime_snapshot(cx),
+        }
+        println!("gpui-settings-spike: accessibility action applied");
     }
 
     fn request_runtime_snapshot(&mut self, cx: &mut Context<Self>) {
@@ -180,6 +260,16 @@ impl SettingsWindow {
             });
         })
         .detach();
+    }
+}
+
+impl From<AccessibilityTheme> for ThemeMode {
+    fn from(value: AccessibilityTheme) -> Self {
+        match value {
+            AccessibilityTheme::System => Self::System,
+            AccessibilityTheme::Light => Self::Light,
+            AccessibilityTheme::Dark => Self::Dark,
+        }
     }
 }
 
@@ -222,6 +312,30 @@ impl Render for SettingsWindow {
         } else {
             "Runtime unavailable".into()
         };
+        self.accessibility.update(AccessibilitySnapshot {
+            selected_theme: self.theme_mode.label(),
+            model_name: self.model_name.read(cx).content().to_string(),
+            runtime_status: runtime_status.to_string(),
+            runtime_busy: self.runtime_request_in_flight,
+            runtime_error: self.runtime_error.is_some(),
+            focus: if self.model_name.focus_handle(cx).is_focused(window) {
+                AccessibilityFocus::ModelName
+            } else if let Some((mode, _)) = ThemeMode::ALL
+                .into_iter()
+                .zip(&self.theme_focus)
+                .find(|(_, focus)| focus.is_focused(window))
+            {
+                AccessibilityFocus::Theme(match mode {
+                    ThemeMode::System => AccessibilityTheme::System,
+                    ThemeMode::Light => AccessibilityTheme::Light,
+                    ThemeMode::Dark => AccessibilityTheme::Dark,
+                })
+            } else if self.refresh_focus.is_focused(window) {
+                AccessibilityFocus::Refresh
+            } else {
+                AccessibilityFocus::Root
+            },
+        });
 
         let sidebar = div()
             .flex()
@@ -281,11 +395,7 @@ impl Render for SettingsWindow {
                         .hover(|style| style.bg(tokens.surface_selected).cursor_pointer())
                         .on_click(cx.listener(move |this, _, window, cx| {
                             window.focus(&focus);
-                            this.theme_mode = mode;
-                            this.model_name.update(cx, |input, _| {
-                                input.set_dark_theme(this.resolved_dark(window));
-                            });
-                            cx.notify();
+                            this.set_theme_mode(mode, window, cx);
                         }))
                         .child(mode.label())
                 }),
@@ -349,6 +459,8 @@ impl Render for SettingsWindow {
                     .child(
                         div()
                             .id("refresh-runtime")
+                            .track_focus(&self.refresh_focus)
+                            .tab_index(5)
                             .w(px(88.0))
                             .h(px(32.0))
                             .flex()
@@ -356,7 +468,11 @@ impl Render for SettingsWindow {
                             .justify_center()
                             .rounded_md()
                             .border_1()
-                            .border_color(tokens.border)
+                            .border_color(if self.refresh_focus.is_focused(window) {
+                                tokens.accent
+                            } else {
+                                tokens.border
+                            })
                             .hover(|style| style.bg(tokens.surface_selected).cursor_pointer())
                             .on_click(cx.listener(|settings, _, _, cx| {
                                 settings.request_runtime_snapshot(cx);
@@ -390,15 +506,32 @@ fn open_settings_window(
                 title: Some("BongoCat Settings".into()),
                 ..Default::default()
             }),
+            focus: false,
+            show: false,
             ..Default::default()
         },
-        move |window, cx| cx.new(|cx| SettingsWindow::new(window, runtime_bridge, cx)),
+        move |window, cx| {
+            let (accessibility, accessibility_actions) = AccessibilityBridge::attach(window)
+                .expect("attach AccessKit before the GPUI window is shown");
+            let settings = cx.new(|cx| {
+                SettingsWindow::new(
+                    window,
+                    runtime_bridge,
+                    accessibility,
+                    accessibility_actions,
+                    cx,
+                )
+            });
+            window.activate_window();
+            settings
+        },
     );
 
     match result {
         Ok(window) => {
-            window
+            let setup = window
                 .update(cx, |settings, window, cx| {
+                    settings.start_accessibility_action_task(window, cx);
                     window.focus(&settings.model_name.focus_handle(cx));
                     settings.request_runtime_snapshot(cx);
                     if let Some(started_at) = startup_started_at {
@@ -410,8 +543,14 @@ fn open_settings_window(
                             );
                         });
                     }
+                    settings.accessibility.verify_platform_tree()
                 })
-                .ok();
+                .map_err(|error| error.to_string())
+                .and_then(|result| result);
+            if let Err(error) = setup {
+                eprintln!("gpui-settings-spike: accessibility setup failed: {error}");
+                return false;
+            }
             println!("gpui-settings-spike: window opened");
             true
         }
@@ -435,6 +574,7 @@ fn main() {
     let window_open_failed = Arc::new(AtomicBool::new(false));
     let reopen_window_failed = Arc::clone(&window_open_failed);
     let startup_window_failed = Arc::clone(&window_open_failed);
+    let quit_window_failed = Arc::clone(&window_open_failed);
 
     application.on_reopen(move |cx| {
         if cx.windows().is_empty() && !open_settings_window(cx, reopen_bridge.clone(), None) {
@@ -452,12 +592,16 @@ fn main() {
         let quit_bridge = runtime_bridge.clone();
         cx.on_app_quit(move |_| {
             let bridge = quit_bridge.clone();
+            let window_failed = Arc::clone(&quit_window_failed);
             async move {
                 if let Err(error) = bridge.shutdown().await {
                     eprintln!("gpui-settings-spike: runtime shutdown failed: {error}");
                 }
                 println!("gpui-settings-spike: runtime stopped");
                 println!("gpui-settings-spike: stopped");
+                if window_failed.load(Ordering::Acquire) {
+                    std::process::exit(1);
+                }
             }
         })
         .detach();

@@ -256,6 +256,49 @@ jobs:
           cargo check --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked --release
       - name: Check macOS input spike release build
         run: cargo check --manifest-path spikes/input-macos/Cargo.toml --locked --release
+      - name: Build macOS settings smoke executable
+        timeout-minutes: 10
+        run: cargo build --manifest-path spikes/gpui-settings/Cargo.toml --locked
+      - name: Smoke macOS GPUI settings accessibility
+        timeout-minutes: 2
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import subprocess
+
+          executable = pathlib.Path("spikes/gpui-settings/target/debug/bongocat-gpui-settings-spike")
+          completed = subprocess.run(
+              [str(executable), "--auto-quit-ms", "1500"],
+              capture_output=True,
+              check=False,
+              text=True,
+              timeout=30,
+          )
+          output = completed.stdout + "\n" + completed.stderr
+          print(output)
+          if completed.returncode != 0:
+              raise RuntimeError(
+                  f"macOS GPUI settings smoke exited with {completed.returncode}"
+              )
+          for expected in (
+              "accessibility tree root_role=AXGroup nodes=8 controls=6",
+              "window opened",
+              "first frame elapsed_ms=",
+              "scale_factor=",
+              "runtime snapshot revision=1",
+              "accessibility action applied",
+              "runtime stopped",
+              "stopped",
+          ):
+              if expected not in output:
+                  raise RuntimeError(
+                      f"macOS GPUI settings smoke did not report: {expected}"
+                  )
+          if output.index("gpui-settings-spike: runtime stopped") >= output.index(
+              "gpui-settings-spike: stopped"
+          ):
+              raise RuntimeError("runtime did not stop before macOS application shutdown")
+          PY
       - name: Build macOS overlay smoke executable
         timeout-minutes: 10
         run: cargo build --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked
@@ -475,11 +518,70 @@ jobs:
           Remove-Item $stdout, $stderr -Force -ErrorAction SilentlyContinue
           $process = Start-Process `
             -FilePath $executable `
-            -ArgumentList @("--auto-quit-ms", "1500") `
+            -ArgumentList @("--auto-quit-ms", "5000") `
             -NoNewWindow `
             -PassThru `
             -RedirectStandardOutput $stdout `
             -RedirectStandardError $stderr
+          Add-Type -AssemblyName UIAutomationClient
+          $windowDeadline = [DateTime]::UtcNow.AddSeconds(15)
+          do {
+            Start-Sleep -Milliseconds 100
+            $process.Refresh()
+            if ($process.HasExited) {
+              throw "Windows GPUI settings exited before UI Automation inspection"
+            }
+          } while ($process.MainWindowHandle -eq 0 -and [DateTime]::UtcNow -lt $windowDeadline)
+          if ($process.MainWindowHandle -eq 0) {
+            throw "Windows GPUI settings did not expose a main HWND"
+          }
+          $root = [System.Windows.Automation.AutomationElement]::FromHandle(
+            [IntPtr]$process.MainWindowHandle
+          )
+          $elements = $root.FindAll(
+            [System.Windows.Automation.TreeScope]::Descendants,
+            [System.Windows.Automation.Condition]::TrueCondition
+          )
+          $observed = @{}
+          $observedElements = @{}
+          for ($index = 0; $index -lt $elements.Count; $index++) {
+            $element = $elements.Item($index)
+            $name = $element.Current.Name
+            if ($name) {
+              $observed[$name] = $element.Current.ControlType.ProgrammaticName
+              $observedElements[$name] = $element
+            }
+          }
+          $expectedControls = @{
+            "Appearance" = "ControlType.Group"
+            "System" = "ControlType.RadioButton"
+            "Light" = "ControlType.RadioButton"
+            "Dark" = "ControlType.RadioButton"
+            "Model display name" = "ControlType.Edit"
+            "Runtime status" = "ControlType.Group"
+            "Refresh" = "ControlType.Button"
+          }
+          foreach ($entry in $expectedControls.GetEnumerator()) {
+            if ($observed[$entry.Key] -ne $entry.Value) {
+              throw "Windows UIA control '$($entry.Key)' expected $($entry.Value), found $($observed[$entry.Key])"
+            }
+          }
+          $invokePattern = $observedElements["Dark"].GetCurrentPattern(
+            [System.Windows.Automation.InvokePattern]::Pattern
+          )
+          $invokePattern.Invoke()
+          $selectionPattern = $observedElements["Dark"].GetCurrentPattern(
+            [System.Windows.Automation.SelectionItemPattern]::Pattern
+          )
+          $selectionDeadline = [DateTime]::UtcNow.AddSeconds(5)
+          do {
+            Start-Sleep -Milliseconds 100
+            $selected = $selectionPattern.Current.IsSelected
+          } while (-not $selected -and [DateTime]::UtcNow -lt $selectionDeadline)
+          if (-not $selected) {
+            throw "Windows UIA Dark radio action did not update selected state"
+          }
+          Write-Host "gpui-settings-spike: Windows UIA tree controls=$($expectedControls.Count)"
           if (-not $process.WaitForExit(30000)) {
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
             $process.WaitForExit()
@@ -498,6 +600,7 @@ jobs:
             "gpui-settings-spike: first frame elapsed_ms=",
             "scale_factor=",
             "gpui-settings-spike: runtime snapshot revision=1",
+            "gpui-settings-spike: accessibility action applied",
             "gpui-settings-spike: runtime stopped",
             "gpui-settings-spike: stopped"
           ) | ForEach-Object {

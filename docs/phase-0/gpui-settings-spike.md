@@ -1,7 +1,7 @@
 # GPUI Settings Spike Record
 
-状态：macOS 默认 shader、`.app`、主题、基础文本交互、marked-text contract 和 runtime bridge 通过；Windows 真实窗口/首帧/shutdown runner smoke 已通过，双平台内容辅助功能和真实 IME 待完成
-日期：2026-08-28
+状态：macOS 默认 shader、`.app`、主题、基础文本交互、marked-text contract、runtime bridge 与 AccessKit AX tree/action 通过；Windows 真实窗口/首帧/shutdown runner smoke 已通过，UI Automation runner 与双平台真实 IME 待完成
+日期：2026-08-29
 原始重构基线 commit：`94af230`；后续验证源码与本记录保持同一提交
 
 ## 范围
@@ -15,6 +15,7 @@
 5. 验证应用菜单、关闭、重开和 GPUI `quit()` 生命周期；
 6. 使用 GPUI 公共输入协议验证一个最小设置表单：System/Light/Dark 主题选择、焦点边框、Tab/Shift-Tab、Unicode 文本编辑、选择、剪切、复制、粘贴和 marked-text 接口；
 7. 通过合成 runtime 验证 GPUI executor、强类型 command、revision snapshot 和 shutdown acknowledgement；不接入产品 runtime、输入、Live2D 或原生 overlay。
+8. 通过 GPUI 公共 raw window handle 安装 AccessKit adapter，验证系统辅助功能 API 可读取设置语义并把 action 送回 GPUI 主线程。
 
 源码位于 `spikes/gpui-settings/`。该目录包含独立 `Cargo.lock`，不会改变历史根 workspace。
 
@@ -44,7 +45,7 @@ codesign --verify --deep --strict --verbose=4 "target/package/BongoCat GPUI Spik
 open -W "target/package/BongoCat GPUI Spike.app" --args --auto-quit-ms 1500
 ```
 
-结果：格式化、Clippy、5 项 contract test 和 debug/release 编译通过，`.app` 的 ad-hoc 签名通过 strict bundle integrity 校验；LaunchServices smoke 以 0 退出。直接运行 release binary 时输出 `window opened`、`runtime snapshot revision=1`，随后通过 GPUI `quit()` 输出 `runtime stopped` 和 `stopped` 并以 0 退出。
+结果：格式化、Clippy、7 项 contract test 和 debug/release 编译通过，`.app` 的 ad-hoc 签名通过 strict bundle integrity 校验；LaunchServices smoke 以 0 退出。直接运行 binary 时输出 `accessibility tree root_role=AXGroup nodes=8 controls=6`、`window opened`、`runtime snapshot revision=1`，随后通过 GPUI `quit()` 输出 `runtime stopped` 和 `stopped` 并以 0 退出。
 
 2026-08-29 将同一个 settings executable 接入 `windows-latest` 真实生命周期 smoke。runner 启动窗口、等待最多 30 秒并要求进程以 0 退出，同时检查 `window opened`、首帧 elapsed/scale factor、runtime revision 1，以及 `runtime stopped` 先于 `stopped`。spike 自身也改为在初始或 reopen 窗口创建失败时触发有序 quit，并在 event loop 返回后以非零退出，避免“打印 failed 但 CI 仍成功”。push run `33250457705`、job `99095132076` 已通过全部 build/test/release 和真实窗口 smoke；这不代表字体、IME、DPI 切换或 UI Automation 已验证。
 
@@ -117,17 +118,31 @@ xcodebuild -downloadComponent MetalToolchain
 
 ad-hoc signing 只验证本地 bundle 完整性，不代表 Developer ID、Hardened Runtime、notarization 或发布 Gatekeeper 已通过。
 
-## Accessibility Finding
+## Accessibility Result
 
-macOS 辅助功能 API 能识别应用、标准窗口、标题、traffic-light buttons、菜单栏和菜单项，但不能识别 GPUI 绘制的 `Appearance`、`Theme`、`Models` 等内容节点。截图可见不等于辅助功能可用。
+GPUI 0.2.2 没有普通 element 的公共语义 API，但 `Window` 实现标准
+`raw-window-handle 0.6.2`。spike 使用 `accesskit 0.25.0`、macOS adapter `0.27.0` 与
+Windows adapter `0.35.0`，在窗口首次显示/聚焦前分别动态 subclass GPUI `NSView` 和
+subclass `HWND`。方案不依赖 Zed 私有 crate、GPUI renderer、隐藏控件或 fork。
 
-GPUI 0.2.2 公共源码中没有找到可为普通绘制 element 设置 role、label、value 的通用 accessibility API。本问题在进入产品 UI 前必须得到以下之一：
+项目自有 tree 当前包含顶层 window、Appearance group、System/Light/Dark radio、模型名称
+text input、live runtime status 和 Refresh button。节点公开 role、title、value、focus、selected、
+busy、invalid 与 click/focus/set-value action。AccessKit 回调只向容量 32 的强类型 channel
+发送 `AccessibilityAction`；GPUI application thread 再更新可见控件和语义 snapshot，平台
+callback 不直接访问 Entity。队列拒绝会输出诊断，不会静默丢 action。
 
-1. GPUI 的受支持公共 accessibility API/版本升级；
-2. 可维护且不依赖 Zed 私有 UI crate 的项目内方案；
-3. 若仍无法满足设置表单基础要求，提交 GPUI go/no-go ADR 并评估 Iced。
+macOS 本机通过真实 `accessibilityChildren`、`accessibilityRole` 和 `accessibilityTitle`
+读取 `AXGroup` root 与 6 个控件，并对 Dark `AXRadioButton` 调用
+`accessibilityPerformPress`；日志确认 action 在 GPUI 线程应用。AccessKit 按 VoiceOver 约定
+隐藏顶层 `Role::Window` 的重复标题，因此测试验证 native window title 和内部 role/title，
+不错误要求 semantic root 再暴露同名 label。Windows workflow 已增加外部 .NET UIA client，
+将读取同等控件、调用 Dark radio 并验证 `SelectionItem.IsSelected`；该 runner 通过前 ADR-0009
+与完整辅助功能 checkbox 仍保持未完成。
 
-该阻塞已按 ADR-0009 记录。Iced 0.14.0 仅完成候选版本和公开源码的初步检查，尚未通过实际 AX/UI Automation spike，因此当前仍无替代框架的 go 结论。
+`accesskit_macos 0.27.0` 的公开 adapter 类型基于 `objc2 0.5.x`，因此仅用于 AX 诊断消息的
+直接 `objc2` 精确固定为 `0.5.2`，避免通过 `objc2 0.6` Rust 类型访问另一 generation 的
+Objective-C 对象。该版本例外的解除条件是 AccessKit macOS adapter 升级到 0.6 generation；
+业务和语义类型不依赖 `objc2`。
 
 ## 本地化资源边界
 
@@ -137,8 +152,8 @@ GPUI 0.2.2 公共源码中没有找到可为普通绘制 element 设置 role、l
 
 - marked-text 纯状态 contract 已通过；真实中文输入法组合态尚未在 macOS 上完成端到端验证，Windows IME、字体、DPI 和辅助技术尚未验证。
 - tooltip、dialog 和完整菜单交互尚未验证。
-- GPUI 内容辅助功能树未通过；当前只有窗口 chrome 和菜单可识别。
+- macOS 内容 AX tree/action 本机已通过；Windows UI Automation runner、真实 VoiceOver/Narrator 操作、错误/loading 宣读顺序仍待完成。
 - 菜单栏常驻策略、隐藏行为和 native overlay 共存尚未验证。
 - Windows 已通过编译和真实窗口/首帧/退出 runner smoke；字体、IME、DPI 切换、辅助技术和系统集成仍未验证。
 
-因此默认 shader 工具链、`.app` bundle/lifecycle、主题和基础编辑交互子项可以单独记录为通过；内容辅助功能、真实 IME、Windows 验证、overlay 共存和完整 GPUI spike 仍保持未完成。GPUI go/no-go 决策必须等辅助功能策略明确后再做。
+因此默认 shader 工具链、`.app` bundle/lifecycle、主题、基础编辑交互与 macOS 最小 AX tree/action 子项可以单独记录为通过；Windows UIA、真实辅助技术/IME、overlay 共存和完整 GPUI spike 仍保持未完成。GPUI go/no-go 决策必须等 ADR-0009 的全部 gate 有证据后再做。

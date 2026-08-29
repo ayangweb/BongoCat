@@ -190,6 +190,12 @@ impl TextInput {
         self.dark_theme = dark_theme;
     }
 
+    pub fn set_content(&mut self, content: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let content = content.replace(['\n', '\r'], " ");
+        let range = 0..self.buffer.content.len();
+        self.replace_text_in_range(Some(range), &content, window, cx);
+    }
+
     fn left(&mut self, _: &Left, _: &mut Window, cx: &mut Context<Self>) {
         if self.buffer.selected_range.is_empty() {
             self.move_to(

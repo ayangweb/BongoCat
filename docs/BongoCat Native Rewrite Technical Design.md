@@ -96,6 +96,10 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
 - 不自动跟随 Zed main，不直接依赖 Zed 应用内部 UI crate。
 - 项目内建立小型 design system：颜色、排版、间距、焦点、按钮、表单、列表、弹窗和通知。
 - GPUI `Entity` 只保存视图状态；真实输入、动画、配置和模型状态由 runtime 管理。
+- 设置控件的辅助功能语义由 UI crate 维护项目自有 AccessKit tree；平台 adapter 只通过
+  GPUI 公开的 raw window handle 安装，辅助技术 action 经有界强类型通道回到 GPUI 主线程。
+- 辅助功能实现不得使用 GPUI 私有 renderer、隐藏原生控件或独立业务状态副本；可见控件、
+  语义节点、焦点、loading/error 和 value 必须由同一份 UI snapshot 更新。
 - GPUI 不加载 Cubism、不持有主猫 GPU 资源、不驱动 Live2D 帧循环。
 - 平台服务不返回 GPUI 类型，避免框架扩散到业务模块。
 - GPUI 升级必须单独提交，附变更说明、双平台构建和 UI smoke test。
