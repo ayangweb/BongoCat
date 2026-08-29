@@ -505,6 +505,9 @@ pub struct TapProbeReport {
     pub workspace_lifecycle_resets: u64,
     pub workspace_callback_panics: u64,
     pub workspace_callbacks_ignored_after_close: u64,
+    pub synthetic_events_posted: u64,
+    pub intentionally_dropped_releases: u64,
+    pub pressed_candidates_before_shutdown: u64,
 }
 
 #[cfg(target_os = "macos")]
@@ -513,6 +516,7 @@ pub enum TapProbeError {
     PermissionDenied,
     TapCreateFailed,
     RunLoopSourceFailed,
+    SyntheticEventCreateFailed,
     ThreadPanicked,
 }
 
@@ -550,6 +554,9 @@ struct TapCounters {
     workspace_lifecycle_resets: AtomicU64,
     workspace_callback_panics: AtomicU64,
     workspace_callbacks_ignored_after_close: AtomicU64,
+    synthetic_events_posted: AtomicU64,
+    intentionally_dropped_releases: AtomicU64,
+    pressed_candidates_before_shutdown: AtomicU64,
 }
 
 #[cfg(target_os = "macos")]
@@ -592,6 +599,13 @@ impl TapCounters {
             workspace_callback_panics: self.workspace_callback_panics.load(Ordering::Relaxed),
             workspace_callbacks_ignored_after_close: self
                 .workspace_callbacks_ignored_after_close
+                .load(Ordering::Relaxed),
+            synthetic_events_posted: self.synthetic_events_posted.load(Ordering::Relaxed),
+            intentionally_dropped_releases: self
+                .intentionally_dropped_releases
+                .load(Ordering::Relaxed),
+            pressed_candidates_before_shutdown: self
+                .pressed_candidates_before_shutdown
                 .load(Ordering::Relaxed),
         }
     }
@@ -883,11 +897,24 @@ fn run_tap_on_run_loop(
     duration: Duration,
     injected_disable: Option<TapDisableReason>,
     injected_lifecycle: Option<WorkspaceLifecycleInjection>,
+    inject_release_loss: bool,
 ) -> Result<TapProbeReport, TapProbeError> {
     use core_foundation::runloop::{CFRunLoop, kCFRunLoopDefaultMode};
     use core_graphics2::event::{
-        CGEventField, CGEventTap, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement,
-        CGEventType,
+        CGEvent, CGEventField, CGEventSource, CGEventSourceStateID, CGEventTap, CGEventTapLocation,
+        CGEventTapOptions, CGEventTapPlacement, CGEventType,
+    };
+
+    let synthetic_events = if inject_release_loss {
+        let source = CGEventSource::new(CGEventSourceStateID::Private)
+            .map_err(|_| TapProbeError::SyntheticEventCreateFailed)?;
+        let key_down = CGEvent::new_keyboard_event(source.clone(), 0, true)
+            .ok_or(TapProbeError::SyntheticEventCreateFailed)?;
+        let key_up = CGEvent::new_keyboard_event(source, 0, false)
+            .ok_or(TapProbeError::SyntheticEventCreateFailed)?;
+        Some((key_down, key_up))
+    } else {
+        None
     };
 
     let counters = Arc::new(TapCounters::default());
@@ -901,6 +928,8 @@ fn run_tap_on_run_loop(
     let callback_counters = Arc::clone(&counters);
     let callback_disable_signals = Arc::clone(&disable_signals);
     let callback_ignore_next_user_disable = Arc::clone(&ignore_next_user_disable);
+    let drop_next_key_up = Arc::new(AtomicBool::new(inject_release_loss));
+    let callback_drop_next_key_up = Arc::clone(&drop_next_key_up);
     let callback = move |_proxy: core_graphics2::event::CGEventTapProxy,
                          event_type: CGEventType,
                          event: &core_graphics2::event::CGEvent| {
@@ -919,11 +948,19 @@ fn run_tap_on_run_loop(
                 }
                 CGEventType::KeyUp => {
                     callback_counters.key_up.fetch_add(1, Ordering::Relaxed);
-                    Some(CapturedInputEvent::KeyUp {
-                        key_code: event
-                            .get_integer_value_field(CGEventField::KeyboardEventKeycode)
-                            .clamp(0, i64::from(u16::MAX)) as u16,
-                    })
+                    if callback_drop_next_key_up.swap(false, Ordering::AcqRel) {
+                        callback_counters
+                            .intentionally_dropped_releases
+                            .fetch_add(1, Ordering::Relaxed);
+                        None
+                    } else {
+                        Some(CapturedInputEvent::KeyUp {
+                            key_code: event
+                                .get_integer_value_field(CGEventField::KeyboardEventKeycode)
+                                .clamp(0, i64::from(u16::MAX))
+                                as u16,
+                        })
+                    }
                 }
                 CGEventType::FlagsChanged => {
                     callback_counters
@@ -1007,6 +1044,11 @@ fn run_tap_on_run_loop(
     // SAFETY: the run-loop mode is the process-owned constant supplied by CoreFoundation.
     run_loop.add_source(&source, unsafe { kCFRunLoopDefaultMode });
     tap.enable(true);
+    if let Some((key_down, key_up)) = synthetic_events {
+        key_down.post(CGEventTapLocation::SessionEventTap);
+        key_up.post(CGEventTapLocation::SessionEventTap);
+        counters.synthetic_events_posted.store(2, Ordering::Relaxed);
+    }
     let deadline = Instant::now() + duration;
     let reconciliation_interval = Duration::from_millis(250);
     let mut next_reconciliation = Instant::now() + reconciliation_interval;
@@ -1092,6 +1134,9 @@ fn run_tap_on_run_loop(
     for event in drained {
         pressed_candidates.apply_event_with(event, reconcile_key_state);
     }
+    counters
+        .pressed_candidates_before_shutdown
+        .store(pressed_candidates.keys().len() as u64, Ordering::Relaxed);
     pressed_candidates.reset();
     let candidate_counters = pressed_candidates.counters();
     counters
@@ -1128,13 +1173,21 @@ pub fn run_listen_only_tap(
     duration: Duration,
     injected_disable: Option<TapDisableReason>,
     injected_lifecycle: Option<WorkspaceLifecycleInjection>,
+    inject_release_loss: bool,
 ) -> Result<TapProbeReport, TapProbeError> {
     if !input_monitoring_preflight() {
         return Err(TapProbeError::PermissionDenied);
     }
     thread::Builder::new()
         .name("bongocat-macos-input-tap".to_string())
-        .spawn(move || run_tap_on_run_loop(duration, injected_disable, injected_lifecycle))
+        .spawn(move || {
+            run_tap_on_run_loop(
+                duration,
+                injected_disable,
+                injected_lifecycle,
+                inject_release_loss,
+            )
+        })
         .map_err(|_| TapProbeError::ThreadPanicked)?
         .join()
         .map_err(|_| TapProbeError::ThreadPanicked)?

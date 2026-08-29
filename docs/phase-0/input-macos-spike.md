@@ -1,7 +1,7 @@
 # macOS Input Permission and Tap Lifecycle Spike
 
-状态：权限/tap 生命周期 contract、listen-only CGEventTap、可靠 callback 队列、周期校正、受控 disable 恢复、NSWorkspace 生命周期 Reset 和 callback shutdown smoke 已通过；权限矩阵、真实系统生命周期、系统自然 timeout 和长期 restart 泄漏采样仍待验证
-日期：2026-08-28
+状态：权限/tap 生命周期 contract、listen-only CGEventTap、可靠 callback 队列、真实 callback release 丢弃后的周期校正、受控 disable 恢复、NSWorkspace 生命周期 Reset 和 callback shutdown smoke 已通过；权限矩阵、真实系统生命周期、系统自然 timeout 和长期 restart 泄漏采样仍待验证
+日期：2026-08-29
 
 ## Contract
 
@@ -31,6 +31,8 @@ CoreGraphics binding 仅存在于 macOS target dependency；非 macOS 构建会�
 
 `--inject-disable timeout|user` 只能和 `--tap-ms` 一起用于受控故障验证。每个 cycle 先注入一个没有 KeyUp 的候选键，再禁用真实 tap；`user` 使用 CoreGraphics 返回的真实 user-disable callback，`timeout` 将测试动作附带的 user-disable 通知替换为 timeout 原因。两者随后走与系统 callback 相同的 Reset、权限 preflight 和 re-enable 路径。恢复信号使用原子位合并，不会像有界 `try_send` 一样在满载时静默丢失；报告只输出 disable、Reset、release 和队列数量。
 
+`--inject-release-loss` 只能和 `--tap-ms` 一起用于 release 校正闭环。probe 通过 private `CGEventSource` 向 session event tap 投递 keycode 0 的 down/up；listen-only callback 必须收到两个真实 CoreGraphics 事件，但 callback 到 consumer 的边界会故意丢弃一次 KeyUp。consumer 保留由 KeyDown 建立的候选，随后只通过两次 `CGEventSourceKeyState` 缺失确认清除它。命令会断言投递数、callback down/up、丢弃数、校正数和 shutdown 前候选数，不输出 keycode。它验证真实 event tap callback 到校正实现的闭环，但不能代替物理键盘、系统丢事件或 TCC 变化实测。
+
 `--inject-lifecycle session|sleep|wake|all` 使用 `NSWorkspace.notificationCenter` 和公开的 `NSWorkspaceWillSleepNotification`、`NSWorkspaceDidWakeNotification`、`NSWorkspaceSessionDidResignActiveNotification`、`NSWorkspaceSessionDidBecomeActiveNotification` 做受控 callback smoke。observer callback 只写原子信号与匿名计数；输入 run-loop owner 消费合并信号并 Reset 候选 pressed-set。observer token 由 RAII owner 保存，退出时先关闭 callback gate 和输入队列，再停止 tap/source、消费末尾信号并成对注销 token。受控模式会在 gate 关闭后、注销前额外 post 一次通知，证明迟到 callback 只能增加 `workspace_callbacks_ignored_after_close`，不能再访问 queue、候选状态或 runtime owner。
 
 这项注入只证明公开通知 API、callback、Reset 和注销链路，不等同于系统真实锁屏、睡眠、唤醒或快速用户切换。实现不订阅 undocumented 的 `com.apple.screenIsLocked` distributed notification。
@@ -46,6 +48,8 @@ cargo run --manifest-path spikes/input-macos/Cargo.toml --locked -- --key-state 
 cargo run --manifest-path spikes/input-macos/Cargo.toml --locked -- --tap-ms 300 --inject-disable timeout
 cargo run --manifest-path spikes/input-macos/Cargo.toml --locked -- --tap-ms 300 --inject-disable user
 cargo run --manifest-path spikes/input-macos/Cargo.toml --locked -- --tap-ms 300 --inject-lifecycle all
+cargo run --manifest-path spikes/input-macos/Cargo.toml --locked --release -- --tap-ms 800 --inject-release-loss
+cargo run --manifest-path spikes/input-macos/Cargo.toml --locked --release -- --tap-ms 600 --cycles 20 --inject-release-loss
 ```
 
 2026-08-28 在 macOS 26.5.2、Apple M1 Pro、`aarch64-apple-darwin` 上执行 `--tap-ms 150 --cycles 3`、`--tap-ms 3000 --cycles 1` 和 `--tap-ms 20 --cycles 100`：所有 104 次 tap 均成功创建、进入 run loop、保持 enabled、正常停止，`callback_panics=0`；最新 100-cycle 结果进一步确认 100 次均无 `error`、`finished_enabled=false` 或非零 panic 计数。3 秒 tap 期间向前台应用发送两次普通按键，报告 `key_down=2 key_up=2`，证明 listen-only callback 能同时收到按下和释放。最新短 tap 报告还包含 `queued_events=0 consumed_events=0 queue_overflows=0 queue_recovery_resets=0 queue_discarded_events=0 queue_closed_events=0`，确认无事件时队列可正常关闭和 drain。`--key-state 0` 实机得到 `checked=1 still_pressed=0 released=1`，验证候选 pressed set 通过 `CGEventSourceKeyState(CombinedSessionState, key_code)` 生成校正快照。纯函数测试覆盖多键保留/释放、队列 FIFO、溢出恢复和关闭竞态，并确认不会查询 pressed set 之外的 keycode。
@@ -56,6 +60,8 @@ cargo run --manifest-path spikes/input-macos/Cargo.toml --locked -- --tap-ms 300
 
 2026-08-29 在同一设备、系统和权限条件下执行 `--tap-ms 300 --inject-lifecycle all`。真实 listen-only tap 正常创建和停止，4 个公开 NSWorkspace observer 均完成注册/注销；四类受控通知计数各为 1，并合并形成 1 次 lifecycle Reset，释放 1 个注入的缺失 KeyUp 候选。shutdown 前受控触发的迟到 callback 被关闭 gate 忽略 1 次，`workspace_callback_panics=0 queue_closed_events=0`，最终报告 `workspace_observers_registered=4 workspace_observers_removed=4 candidate_resets=2 candidate_reset_releases=1`。17 项测试还以故意 panic 验证共享的 autorelease/panic boundary 会吞住 unwind 并增加匿名计数；event-tap 与 workspace callback 都使用该边界。
 
+2026-08-29 在同一设备、系统和权限条件下执行 release-loss 闭环。单次 `--tap-ms 800 --inject-release-loss` 得到 `key_down=1 key_up=1 reconciliation_runs=3 reconciled_releases=1 synthetic_events_posted=2 intentionally_dropped_releases=1 pressed_candidates_before_shutdown=0 callback_panics=0`。随后 release 构建执行 `--tap-ms 600 --cycles 20 --inject-release-loss`，20/20 cycle 均捕获 down/up、故意丢弃一次 release、经两次状态缺失确认释放候选，且每次 `queue_overflows=0 callback_panics=0 pressed_candidates_before_shutdown=0`。该结果证明不是依靠 shutdown Reset 清除残留键；物理输入和系统自然丢失 release 仍需单独实测。
+
 实现约束：特殊的 `kCGEventTapDisabledByTimeout`/`kCGEventTapDisabledByUserInput` 值不能放入第三方事件 mask（其高位值会导致 `1 << type` 溢出）；callback 仍对这两类通知分支处理，收到后通过有界 channel 请求在 run loop 内 re-enable。tap 创建阶段使用 panic boundary，避免 binding 异常杀死输入线程。
 
-目前已覆盖 denied/granted、tap timeout/disable、permission revocation 和 session reset 的状态测试，以及真实 tap 创建/运行/停止、100 次 tap wrapper restart smoke、受控 timeout/user-disable 恢复、公开 NSWorkspace observer 的生命周期 Reset、候选 pressed-set 周期校正、callback panic boundary 和 queue 的 FIFO/overflow/close contract。系统自然触发的 timeout、TCC 拒绝/撤销、带真实 modifier 的 `FlagsChanged` 字段、真实丢失 release 后的校正、runtime pressed state 接入和真实锁屏/睡眠/快速用户切换恢复仍必须在受控 macOS 实机完成；100 次循环尚未包含专门的泄漏工具采样或 timeout/权限故障。本机未安装 `x86_64-unknown-linux-gnu` 标准库，因此新增纯函数的 Linux 交叉测试只由 Ubuntu CI 覆盖。
+目前已覆盖 denied/granted、tap timeout/disable、permission revocation 和 session reset 的状态测试，以及真实 tap 创建/运行/停止、100 次 tap wrapper restart smoke、受控 timeout/user-disable 恢复、公开 NSWorkspace observer 的生命周期 Reset、真实 callback release 在 consumer 边界丢弃后的候选校正、callback panic boundary 和 queue 的 FIFO/overflow/close contract。系统自然触发的 timeout、TCC 拒绝/撤销、带真实 modifier 的 `FlagsChanged` 字段、物理输入或系统自然丢失 release 后的校正、runtime pressed state 接入和真实锁屏/睡眠/快速用户切换恢复仍必须在受控 macOS 实机完成；100 次循环尚未包含专门的泄漏工具采样或 timeout/权限故障。本机未安装 `x86_64-unknown-linux-gnu` 标准库，因此新增纯函数的 Linux 交叉测试只由 Ubuntu CI 覆盖。

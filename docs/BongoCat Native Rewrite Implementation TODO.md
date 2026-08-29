@@ -201,7 +201,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 - 状态（2026-08-28）：`spikes/input-state/` 已建立纯 Rust pressed-set contract，覆盖正常 down/up、重复 down、Reconcile、Reset、issue #47 的丢失 release 恢复、可靠事件的序列跳号/重复/乱序诊断，以及 `250 ms` 校正调度和连续 `2` 次缺失确认的误判保护；计数器不记录具体键值。平台采集、runtime 接入和管理员/权限场景仍待实机验证，详见 `docs/phase-0/input-state-spike.md`。
 - 状态（2026-08-29）：`spikes/input-windows/` 已冻结 `RI_KEY_BREAK`、E0/E1、左右修饰键、PrintScreen、未知 scan code 保留和安全 `RAWINPUT` 字节解析 contract；已实现隐藏顶层 HWND、Raw Input 注册、`WM_INPUT` 读取、周期校正、计数诊断和生命周期 Reset。commit `32bc9a37efd201a788511ee86e7350c6a5058ab3` 的 push Windows job 已通过 WTS 注册/注销以及 session/power 受控消息 smoke。真实设备样本、热插拔、锁屏/睡眠和丢失 release 校正仍待完成，详见 `docs/phase-0/input-windows-spike.md`。
-- 状态（2026-08-29）：`spikes/input-macos/` 已建立 macOS 权限/tap 生命周期 contract、listen-only `CGEventTap` 专用 run loop、panic-isolated callback、固定容量 callback queue 和候选 pressed-set 周期校正；当前 macOS 会话累计完成 105 次创建运行停止 smoke，受控按键序列曾报告 `key_down=2 key_up=2`、`callback_panics=0`，最新 600 ms tap 完成 2 次校正且 shutdown Reset 为 1。commit `c271ceb2449b48f37569c6746fbe7b7170dbe0d3` 又完成 timeout/user-disable 各 20 次受控故障恢复，全部重新启用并通过 Reset 释放注入的缺失 KeyUp 候选。公开 NSWorkspace sleep/wake/session observer 的受控注入已验证 Reset、成对注销和 callback close gate；真实 modifier 字段、真实丢失 release、系统自然 timeout、TCC 拒绝/撤销和真实锁屏/睡眠/快速用户切换恢复仍未完成，详见 `docs/phase-0/input-macos-spike.md`。
+- 状态（2026-08-29）：`spikes/input-macos/` 已建立 macOS 权限/tap 生命周期 contract、listen-only `CGEventTap` 专用 run loop、panic-isolated callback、固定容量 callback queue 和候选 pressed-set 周期校正；当前 macOS 会话累计完成 105 次创建运行停止 smoke，timeout/user-disable 各 20 次受控故障恢复，公开 NSWorkspace lifecycle Reset、成对注销和 callback close gate 也已验证。本批又以 private `CGEventSource` 投递 down/up，真实 callback 捕获后在 consumer 边界故意丢弃一次 KeyUp，再由 `CGEventSourceKeyState` 两次缺失确认释放候选；20/20 cycle 均为 `reconciled_releases=1 pressed_candidates_before_shutdown=0 queue_overflows=0 callback_panics=0`。物理输入/系统自然丢事件、真实 modifier 字段、系统自然 timeout、TCC 拒绝/撤销和真实锁屏/睡眠/快速用户切换恢复仍未完成，详见 `docs/phase-0/input-macos-spike.md`。
 
 - [ ] Windows 实现 RegisterRawInputDevices 和 WM_INPUT 最小路径。
   - 状态（2026-08-29）：已实现注册、读取、注销和自动退出路径，并通过 Windows target 交叉 check/Clippy 以及 `windows-latest` 注册/退出 smoke。本批新增 `SendInput` scan-code down/up -> 系统 `WM_INPUT` callback -> raw decode 的闭环命令并接入 Windows runner；物理设备样本仍待实机，因此保持未勾选。
@@ -221,7 +221,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] macOS 实现 CGEventTap、权限拒绝/授予和 tap 自动重启。
   - 状态（2026-08-29）：真实 listen-only tap 与受控 timeout/user-disable Reset + re-enable 已通过；TCC 拒绝、撤销、重新授予和系统自然 timeout 矩阵仍待实机完成。
 - [ ] macOS 使用 CGEventSourceKeyState 校正 pressed state。
-  - 状态（2026-08-29）：候选 pressed keycode 集合可生成仍按下快照和释放计数；run-loop consumer 已从 KeyDown/Up、`FlagsChanged` 和 Reset 维护平台候选集合，并每 `250 ms` 使用 `CGEventSourceKeyState` 校正，连续 `2` 次缺失才释放。当前 macOS 实机 600 ms tap 完成 2 次校正且诊断为 0；真实丢失 release 与 runtime pressed state 消费仍待完成。
+  - 状态（2026-08-29）：候选 pressed keycode 集合可生成仍按下快照和释放计数；run-loop consumer 已从 KeyDown/Up、`FlagsChanged` 和 Reset 维护平台候选集合，并每 `250 ms` 使用 `CGEventSourceKeyState` 校正，连续 `2` 次缺失才释放。本批在真实 callback 捕获合成 down/up 后故意不向 consumer 交付 KeyUp，20/20 cycle 均由校正释放唯一候选且 shutdown 前 pressed set 为 0。物理输入/系统自然丢事件与产品 runtime pressed state 接入仍待完成，因此保持未勾选。
 - [ ] 连续 start/stop/restart 输入服务 100 次，无资源泄漏。
   - 状态（2026-08-29）：`--tap-ms 20 --cycles 100` 全部创建、运行、停止成功，无 error、disabled 残留或 callback panic；timeout/user-disable 又各完成 20 次受控恢复。专门的泄漏工具采样、100 次故障循环和权限故障重启仍待完成。
 - [x] 记录 monio 对照结果，但不引入生产依赖；`docs/phase-0/monio-comparison.md` 基于 commit `d1766e0dcd20dea0435be16cd80adaa749b86e30` 记录 Raw Input、channel、reconciliation、Reset、callback 和许可证差异。
@@ -824,12 +824,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 11. [ ] `P0-INPUT-WINDOWS`：完成 Raw Input + pressed set + `GetAsyncKeyState` 校正并实测 issue #47 场景。
 
 - [x] 完成平台无关 pressed-set contract 和 issue #47 恢复测试；Windows 采集与校正仍未完成。
-- [ ] Windows 系统合成 input -> `WM_INPUT` -> 故意丢 release -> `GetAsyncKeyState` reconcile 闭环已接入 runner；待通过后仍需 PixPin、Win+L、UAC 和物理设备矩阵。
+- [x] Windows 系统合成 input -> `WM_INPUT` -> 故意丢 release -> `GetAsyncKeyState` reconcile 闭环已通过 push run `33249296927`、job `99092066404`；PixPin、Win+L、UAC 和物理设备矩阵仍待完成。
 
 12. [ ] `P0-INPUT-MAC`：完成 CGEventTap 权限拒绝/授予/恢复、状态校正和 100 次 restart。
 
 - [x] 完成权限/tap 生命周期 contract、只读 preflight、真实 callback 和受控 disable 恢复；TCC 权限矩阵与系统自然 timeout 仍未完成。
-- [x] 完成候选 pressed set 到 `CGEventSourceKeyState` 校正快照的边界和周期调度；真实丢失 release、runtime 接入和生命周期实测仍未完成。
+- [x] 完成候选 pressed set 到 `CGEventSourceKeyState` 校正快照的边界和周期调度；真实 callback release 受控丢弃后的 20-cycle 闭环已通过，物理输入/系统自然丢事件、runtime 接入和生命周期实测仍未完成。
 
 13. [ ] `P0-CUBISM`：确认 SDK/许可证/binding 生成，三个预置模型完成 Core、资源和 renderer spike。
 

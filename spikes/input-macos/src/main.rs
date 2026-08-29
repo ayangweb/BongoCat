@@ -11,6 +11,7 @@ fn main() {
     #[cfg(target_os = "macos")]
     {
         let request = std::env::args().any(|arg| arg == "--request");
+        let inject_release_loss = std::env::args().any(|arg| arg == "--inject-release-loss");
         let tap_ms = argument_value("--tap-ms").and_then(|value| value.parse::<u64>().ok());
         let injected_disable = match argument_value("--inject-disable").as_deref() {
             None => None,
@@ -88,44 +89,59 @@ fn main() {
                         Duration::from_millis(tap_ms),
                         injected_disable,
                         injected_lifecycle,
+                        inject_release_loss,
                     ) {
-                        Ok(report) => println!(
-                            "input-macos-spike: tap cycle={} started={} finished_enabled={} key_down={} key_up={} flags_changed={} mouse_down={} mouse_up={} disabled_timeout={} disabled_user={} injected_disables={} reenabled={} callback_panics={} queued_events={} consumed_events={} queue_overflows={} queue_recovery_resets={} queue_discarded_events={} queue_closed_events={} reconciliation_runs={} reconciled_releases={} candidate_resets={} candidate_reset_releases={} duplicate_down={} unmatched_up={} workspace_observers_registered={} workspace_observers_removed={} workspace_will_sleep={} workspace_did_wake={} workspace_session_resigned={} workspace_session_active={} workspace_lifecycle_resets={} workspace_callback_panics={} workspace_callbacks_ignored_after_close={}",
-                            cycle + 1,
-                            report.started,
-                            report.finished_enabled,
-                            report.key_down,
-                            report.key_up,
-                            report.flags_changed,
-                            report.mouse_down,
-                            report.mouse_up,
-                            report.disabled_by_timeout,
-                            report.disabled_by_user,
-                            report.injected_disables,
-                            report.reenabled,
-                            report.callback_panics,
-                            report.queued_events,
-                            report.consumed_events,
-                            report.queue_overflows,
-                            report.queue_recovery_resets,
-                            report.queue_discarded_events,
-                            report.queue_closed_events,
-                            report.reconciliation_runs,
-                            report.reconciled_releases,
-                            report.candidate_resets,
-                            report.candidate_reset_releases,
-                            report.duplicate_down,
-                            report.unmatched_up,
-                            report.workspace_observers_registered,
-                            report.workspace_observers_removed,
-                            report.workspace_will_sleep,
-                            report.workspace_did_wake,
-                            report.workspace_session_resigned,
-                            report.workspace_session_active,
-                            report.workspace_lifecycle_resets,
-                            report.workspace_callback_panics,
-                            report.workspace_callbacks_ignored_after_close,
-                        ),
+                        Ok(report) => {
+                            if inject_release_loss {
+                                assert_eq!(report.synthetic_events_posted, 2);
+                                assert!(report.key_down >= 1);
+                                assert!(report.key_up >= 1);
+                                assert_eq!(report.intentionally_dropped_releases, 1);
+                                assert!(report.reconciliation_runs >= 2);
+                                assert_eq!(report.reconciled_releases, 1);
+                                assert_eq!(report.pressed_candidates_before_shutdown, 0);
+                            }
+                            println!(
+                                "input-macos-spike: tap cycle={} started={} finished_enabled={} key_down={} key_up={} flags_changed={} mouse_down={} mouse_up={} disabled_timeout={} disabled_user={} injected_disables={} reenabled={} callback_panics={} queued_events={} consumed_events={} queue_overflows={} queue_recovery_resets={} queue_discarded_events={} queue_closed_events={} reconciliation_runs={} reconciled_releases={} candidate_resets={} candidate_reset_releases={} duplicate_down={} unmatched_up={} workspace_observers_registered={} workspace_observers_removed={} workspace_will_sleep={} workspace_did_wake={} workspace_session_resigned={} workspace_session_active={} workspace_lifecycle_resets={} workspace_callback_panics={} workspace_callbacks_ignored_after_close={} synthetic_events_posted={} intentionally_dropped_releases={} pressed_candidates_before_shutdown={}",
+                                cycle + 1,
+                                report.started,
+                                report.finished_enabled,
+                                report.key_down,
+                                report.key_up,
+                                report.flags_changed,
+                                report.mouse_down,
+                                report.mouse_up,
+                                report.disabled_by_timeout,
+                                report.disabled_by_user,
+                                report.injected_disables,
+                                report.reenabled,
+                                report.callback_panics,
+                                report.queued_events,
+                                report.consumed_events,
+                                report.queue_overflows,
+                                report.queue_recovery_resets,
+                                report.queue_discarded_events,
+                                report.queue_closed_events,
+                                report.reconciliation_runs,
+                                report.reconciled_releases,
+                                report.candidate_resets,
+                                report.candidate_reset_releases,
+                                report.duplicate_down,
+                                report.unmatched_up,
+                                report.workspace_observers_registered,
+                                report.workspace_observers_removed,
+                                report.workspace_will_sleep,
+                                report.workspace_did_wake,
+                                report.workspace_session_resigned,
+                                report.workspace_session_active,
+                                report.workspace_lifecycle_resets,
+                                report.workspace_callback_panics,
+                                report.workspace_callbacks_ignored_after_close,
+                                report.synthetic_events_posted,
+                                report.intentionally_dropped_releases,
+                                report.pressed_candidates_before_shutdown,
+                            )
+                        }
                         Err(error) => {
                             println!("input-macos-spike: tap cycle={} error={error:?}", cycle + 1)
                         }
