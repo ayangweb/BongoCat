@@ -219,7 +219,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-29）：本批新增系统合成 A down/up，consumer 故意丢弃已捕获 release，再由两次 `GetAsyncKeyState` 快照清除 candidate 的 Windows runner smoke；它验证 callback 到 reconcile 的实现闭环，但不替代 PixPin/物理键实测。
 - [ ] 实测 Win+L、PrintScreen、UAC 和管理员/非管理员场景。
 - [ ] 进行 10 分钟高速鼠标 + 键盘压力测试，edge 丢失计数必须为 0。
-  - 状态（2026-08-29）：新增 3 秒有界 `SendInput` 压力 smoke，对 A、S、Space、左 Shift、左 Control 和 E0 右 Control 发送 128 轮、共 1536 个 down/up 边沿；Windows consumer 逐边沿校验预期顺序，并要求 seen/down/up 完整、duplicate/unmatched/decode/panic/残留均为 0。它只验证无人值守 runner 的系统合成链路，不能替代本项要求的 10 分钟物理键鼠与交互场景，因此保持未勾选。
+  - 状态（2026-08-29）：3 秒有界 `SendInput` 压力 smoke 对 A、S、Space、左 Shift、左 Control 和 E0 右 Control 发送 128 轮、共 1536 个 down/up 边沿；commit `f68b46f` 的 push/PR Windows jobs 均已通过完整、有序、无 duplicate/unmatched/decode/panic/残留门禁。本批再增加 keyboard-under-pointer-flood 模式，在相同键盘边沿之间插入 3072 个不可合并的相对鼠标移动，验证高频位置流量不阻塞可靠 release，runner 证据待完成。两者都不能替代本项要求的 10 分钟物理键鼠与交互场景，因此保持未勾选。
 - [ ] macOS 实现 CGEventTap、权限拒绝/授予和 tap 自动重启。
   - 状态（2026-08-29）：真实 listen-only tap 与受控 timeout/user-disable Reset + re-enable 已通过；TCC 拒绝、撤销、重新授予和系统自然 timeout 矩阵仍待实机完成。
 - [ ] macOS 使用 CGEventSourceKeyState/CGEventSourceButtonState 校正 pressed state。

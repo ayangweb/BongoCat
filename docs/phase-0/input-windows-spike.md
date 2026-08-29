@@ -39,6 +39,7 @@ cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --key-stat
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --reconcile-smoke-ms 600
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --synthetic-release-recovery-ms 800
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked --release -- --synthetic-edge-pressure-cycles 128
+cargo run --manifest-path spikes/input-windows/Cargo.toml --locked --release -- --synthetic-pointer-flood-cycles 128
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --lifecycle-smoke-ms 100
 ```
 
@@ -94,11 +95,21 @@ run 验证。它覆盖真实 Win32 callback、解码、pressed set 和校正调�
 物理边沿队列，逐条验证 `WM_INPUT` 解码后的顺序，并分别断言 injected/seen/down/up、
 duplicate down、unmatched up、decode error、callback panic 和最终 candidate 数量。命令最长
 运行 3 秒，cycles 上限为 256，防止 CI 参数失控；输出只包含聚合计数，不包含实际按键值。
-该 smoke 已接入 `windows-latest`，真实 Windows 执行结果待本批 push run 验证。
+该 smoke 已接入 `windows-latest`。commit `f68b46f` 的 push run `33255823160`、job
+`99109219820` 与 PR run `33255825363`、job `99109225114` 均已通过，证明 1536 个预期
+键盘边沿完整、有序到达，duplicate/unmatched/decode/panic/残留均为 0；完整聚合输出待
+workflow 结束后归档。
 
 这项压力 smoke 证明 `SendInput -> WM_INPUT -> raw decode -> candidate state` 在无人值守
 runner 上对一组已知 scan code 保持有序，不等于 10 分钟高速物理键鼠测试，也不能覆盖
 PixPin、Win+L、PrintScreen、UAC、输入桌面切换或不同完整性级别的事件投递。
+
+`--synthetic-pointer-flood-cycles 128` 在同一组 1536 个键盘边沿之间插入 3072 个带
+`MOUSEEVENTF_MOVE_NOCOALESCE` 的相对鼠标移动，正负移动成对以恢复初始位置。注入以 256
+项为一批，避免一次调用无界扩张；Raw Input 端分别统计 mouse message 和 keyboard edge，
+只要求收到足以证明洪峰存在的 mouse message，不要求高频位置样本逐个可靠送达，但仍要求
+全部键盘 down/up 保持原顺序且没有 duplicate、unmatched 或残留 candidate。命令最长运行
+5 秒、cycles 上限 256，已接入 Windows runner，执行证据待包含本批实现的 push run。
 
 会话与电源 Reset 的 Windows runner 证据：
 

@@ -462,6 +462,8 @@ jobs:
         run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --synthetic-release-recovery-ms 800
       - name: Pressure synthetic Raw Input edges
         run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked --release -- --synthetic-edge-pressure-cycles 128
+      - name: Pressure keyboard edges under pointer flood
+        run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked --release -- --synthetic-pointer-flood-cycles 128
       - name: Smoke Windows session and power resets
         run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --lifecycle-smoke-ms 100
       - name: Test Windows config storage layout

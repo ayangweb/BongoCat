@@ -27,8 +27,8 @@ use windows::{
                 GetRawInputData, HRAWINPUT,
                 KeyboardAndMouse::{
                     GetAsyncKeyState, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT,
-                    KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, SendInput,
-                    VIRTUAL_KEY,
+                    KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, MOUSEEVENTF_MOVE,
+                    MOUSEEVENTF_MOVE_NOCOALESCE, MOUSEINPUT, SendInput, VIRTUAL_KEY,
                 },
                 RAWINPUTDEVICE, RAWINPUTHEADER, RID_INPUT, RIDEV_DEVNOTIFY, RIDEV_INPUTSINK,
                 RIDEV_REMOVE, RegisterRawInputDevices,
@@ -54,6 +54,8 @@ const STOP_TIMER_ID: usize = 1;
 const RECONCILIATION_TIMER_ID: usize = 2;
 const RECONCILIATION_INTERVAL_MS: u32 = 250;
 const REQUIRED_MISSING_CONFIRMATIONS: u8 = 2;
+const SYNTHETIC_INPUT_BATCH_SIZE: usize = 256;
+pub const SYNTHETIC_POINTER_MOVES_PER_KEY_PAIR: usize = 4;
 pub const SYNTHETIC_PRESSURE_KEY_COUNT: usize = 6;
 pub const MAX_SYNTHETIC_PRESSURE_CYCLES: usize = 256;
 
@@ -92,6 +94,9 @@ enum SmokeMode {
     EdgePressure {
         cycles: usize,
     },
+    PointerFlood {
+        cycles: usize,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -102,6 +107,7 @@ pub struct RegistrationReport {
     pub clean_shutdown: bool,
     pub raw_messages: u64,
     pub keyboard_edges: u64,
+    pub mouse_messages: u64,
     pub device_arrivals: u64,
     pub device_removals: u64,
     pub resets: u64,
@@ -118,6 +124,7 @@ pub struct RegistrationReport {
     pub decode_errors: u64,
     pub callback_panics: u64,
     pub synthetic_inputs_sent: u64,
+    pub synthetic_pointer_inputs_requested: u64,
     pub synthetic_expected_edges: u64,
     pub synthetic_edges_seen: u64,
     pub synthetic_down_edges: u64,
@@ -138,6 +145,7 @@ struct WindowState {
     session_notifications_unregistered: bool,
     raw_messages: u64,
     keyboard_edges: u64,
+    mouse_messages: u64,
     device_arrivals: u64,
     device_removals: u64,
     pressed_candidates: PressedKeyCandidates,
@@ -146,6 +154,7 @@ struct WindowState {
     decode_errors: u64,
     callback_panics: u64,
     synthetic_inputs_sent: u64,
+    synthetic_pointer_inputs_requested: u64,
     synthetic_expected_edge_count: u64,
     synthetic_expected_edges: VecDeque<KeyboardEdge>,
     synthetic_edges_seen: u64,
@@ -166,6 +175,7 @@ impl WindowState {
             clean_shutdown,
             raw_messages: self.raw_messages,
             keyboard_edges: self.keyboard_edges,
+            mouse_messages: self.mouse_messages,
             device_arrivals: self.device_arrivals,
             device_removals: self.device_removals,
             resets: candidate_counters.resets,
@@ -182,6 +192,7 @@ impl WindowState {
             decode_errors: self.decode_errors,
             callback_panics: self.callback_panics,
             synthetic_inputs_sent: self.synthetic_inputs_sent,
+            synthetic_pointer_inputs_requested: self.synthetic_pointer_inputs_requested,
             synthetic_expected_edges: self.synthetic_expected_edge_count,
             synthetic_edges_seen: self.synthetic_edges_seen,
             synthetic_down_edges: self.synthetic_down_edges,
@@ -263,6 +274,24 @@ pub fn run_synthetic_edge_pressure_smoke(
     // cleanup path after partial SendInput failure. Expected edge storage and
     // the Raw Input HWND remain confined to this thread.
     unsafe { run_registration_smoke_inner(duration, SmokeMode::EdgePressure { cycles }) }
+}
+
+pub fn run_synthetic_pointer_flood_smoke(
+    duration: Duration,
+    cycles: usize,
+) -> WindowsResult<RegistrationReport> {
+    assert!(
+        cycles > 0,
+        "synthetic pointer flood cycles must be non-zero"
+    );
+    assert!(
+        cycles <= MAX_SYNTHETIC_PRESSURE_CYCLES,
+        "synthetic pointer flood cycles exceed the bounded smoke limit"
+    );
+    // SAFETY: relative pointer moves are paired to return the cursor to its
+    // starting position. Keyboard down/up cleanup and owner confinement match
+    // the edge-pressure smoke contract.
+    unsafe { run_registration_smoke_inner(duration, SmokeMode::PointerFlood { cycles }) }
 }
 
 pub fn query_pressed_keys(candidates: &BTreeSet<PhysicalKey>) -> WindowsResult<KeyStateSnapshot> {
@@ -354,14 +383,22 @@ unsafe fn run_registration_smoke_inner(
         SmokeMode::EdgePressure { cycles } => {
             build_synthetic_sequence(&SYNTHETIC_PRESSURE_KEYS, cycles)
         }
+        SmokeMode::PointerFlood { cycles } => {
+            build_pointer_flood_sequence(&SYNTHETIC_PRESSURE_KEYS, cycles)
+        }
         SmokeMode::Registration | SmokeMode::Lifecycle => Vec::new(),
     };
     if !synthetic_input.is_empty() {
         state.synthetic_expected_edges = synthetic_input
             .iter()
-            .map(|input| input.expected_edge)
+            .filter_map(|input| input.expected_edge)
             .collect();
         state.synthetic_expected_edge_count = synthetic_input.len() as u64;
+        state.synthetic_pointer_inputs_requested = synthetic_input
+            .iter()
+            .filter(|input| input.expected_edge.is_none())
+            .count() as u64;
+        state.synthetic_expected_edge_count -= state.synthetic_pointer_inputs_requested;
         match unsafe { send_synthetic_sequence(&synthetic_input) } {
             Ok(sent) => state.synthetic_inputs_sent = u64::from(sent),
             Err(error) => {
@@ -426,7 +463,7 @@ unsafe fn run_registration_smoke_inner(
 #[derive(Clone, Copy)]
 struct SyntheticInput {
     input: INPUT,
-    expected_edge: KeyboardEdge,
+    expected_edge: Option<KeyboardEdge>,
 }
 
 fn build_synthetic_sequence(keys: &[SyntheticKey], cycles: usize) -> Vec<SyntheticInput> {
@@ -435,18 +472,46 @@ fn build_synthetic_sequence(keys: &[SyntheticKey], cycles: usize) -> Vec<Synthet
         for key in keys {
             sequence.push(SyntheticInput {
                 input: synthetic_input(*key, false),
-                expected_edge: KeyboardEdge {
+                expected_edge: Some(KeyboardEdge {
                     key: key.physical_key,
                     pressed: true,
-                },
+                }),
             });
             sequence.push(SyntheticInput {
                 input: synthetic_input(*key, true),
-                expected_edge: KeyboardEdge {
+                expected_edge: Some(KeyboardEdge {
                     key: key.physical_key,
                     pressed: false,
-                },
+                }),
             });
+        }
+    }
+    sequence
+}
+
+fn build_pointer_flood_sequence(keys: &[SyntheticKey], cycles: usize) -> Vec<SyntheticInput> {
+    let inputs_per_key = 2 + SYNTHETIC_POINTER_MOVES_PER_KEY_PAIR;
+    let mut sequence = Vec::with_capacity(keys.len() * cycles * inputs_per_key);
+    for _ in 0..cycles {
+        for key in keys {
+            sequence.push(pointer_move_input(1, 0));
+            sequence.push(SyntheticInput {
+                input: synthetic_input(*key, false),
+                expected_edge: Some(KeyboardEdge {
+                    key: key.physical_key,
+                    pressed: true,
+                }),
+            });
+            sequence.push(pointer_move_input(0, 1));
+            sequence.push(pointer_move_input(-1, 0));
+            sequence.push(SyntheticInput {
+                input: synthetic_input(*key, true),
+                expected_edge: Some(KeyboardEdge {
+                    key: key.physical_key,
+                    pressed: false,
+                }),
+            });
+            sequence.push(pointer_move_input(0, -1));
         }
     }
     sequence
@@ -454,19 +519,22 @@ fn build_synthetic_sequence(keys: &[SyntheticKey], cycles: usize) -> Vec<Synthet
 
 unsafe fn send_synthetic_sequence(sequence: &[SyntheticInput]) -> WindowsResult<u32> {
     let inputs = sequence.iter().map(|item| item.input).collect::<Vec<_>>();
-    let sent = unsafe { SendInput(&inputs, size_of::<INPUT>() as i32) };
-    if sent != inputs.len() as u32 {
-        // Best-effort cleanup prevents a partial injection from leaving the
-        // runner's input state pressed even when the smoke must fail. Releasing
-        // every key is harmless for keys whose down edge was not inserted.
-        let releases = SYNTHETIC_PRESSURE_KEYS
-            .iter()
-            .map(|key| synthetic_input(*key, true))
-            .collect::<Vec<_>>();
-        let _ = unsafe { SendInput(&releases, size_of::<INPUT>() as i32) };
-        return Err(Error::from_thread());
+    let mut total_sent = 0u32;
+    for batch in inputs.chunks(SYNTHETIC_INPUT_BATCH_SIZE) {
+        let sent = unsafe { SendInput(batch, size_of::<INPUT>() as i32) };
+        total_sent += sent;
+        if sent != batch.len() as u32 {
+            // Best-effort cleanup prevents a partial injection from leaving the
+            // runner's input state pressed even when the smoke must fail.
+            let releases = SYNTHETIC_PRESSURE_KEYS
+                .iter()
+                .map(|key| synthetic_input(*key, true))
+                .collect::<Vec<_>>();
+            let _ = unsafe { SendInput(&releases, size_of::<INPUT>() as i32) };
+            return Err(Error::from_thread());
+        }
     }
-    Ok(sent)
+    Ok(total_sent)
 }
 
 fn synthetic_input(key: SyntheticKey, released: bool) -> INPUT {
@@ -488,6 +556,25 @@ fn synthetic_input(key: SyntheticKey, released: bool) -> INPUT {
                 dwExtraInfo: 0,
             },
         },
+    }
+}
+
+fn pointer_move_input(dx: i32, dy: i32) -> SyntheticInput {
+    SyntheticInput {
+        input: INPUT {
+            r#type: windows::Win32::UI::Input::KeyboardAndMouse::INPUT_MOUSE,
+            Anonymous: INPUT_0 {
+                mi: MOUSEINPUT {
+                    dx,
+                    dy,
+                    mouseData: 0,
+                    dwFlags: MOUSEEVENTF_MOVE | MOUSEEVENTF_MOVE_NOCOALESCE,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        },
+        expected_edge: None,
     }
 }
 
@@ -566,8 +653,8 @@ unsafe extern "system" fn window_proc(
             // run_registration_smoke_inner until this HWND is destroyed.
             let state = unsafe { &mut *state };
             state.raw_messages += 1;
-            match unsafe { read_keyboard_edge(lparam) } {
-                Ok(Some(edge)) => {
+            match unsafe { read_raw_input(lparam) } {
+                Ok(Some(CapturedRawInput::Keyboard(edge))) => {
                     state.keyboard_edges += 1;
                     if !state.synthetic_expected_edges.is_empty() {
                         state.observe_synthetic_edge(edge);
@@ -582,6 +669,7 @@ unsafe extern "system" fn window_proc(
                         state.pressed_candidates.apply_edge(edge);
                     }
                 }
+                Ok(Some(CapturedRawInput::Mouse)) => state.mouse_messages += 1,
                 Ok(None) => {}
                 Err(()) => state.decode_errors += 1,
             }
@@ -699,9 +787,12 @@ unsafe extern "system" fn window_proc(
     }
 }
 
-unsafe fn read_keyboard_edge(
-    lparam: LPARAM,
-) -> Result<Option<bongocat_input_windows_spike::KeyboardEdge>, ()> {
+enum CapturedRawInput {
+    Keyboard(KeyboardEdge),
+    Mouse,
+}
+
+unsafe fn read_raw_input(lparam: LPARAM) -> Result<Option<CapturedRawInput>, ()> {
     let raw_input = HRAWINPUT(lparam.0 as *mut c_void);
     let header_size = size_of::<RAWINPUTHEADER>() as u32;
     let mut byte_count = 0u32;
@@ -730,6 +821,9 @@ unsafe fn read_keyboard_edge(
     // bytes from GetRawInputData, and remains alive while both views are used.
     let bytes = unsafe { slice::from_raw_parts(storage.as_ptr().cast::<u8>(), read as usize) };
     let native_header = unsafe { (bytes.as_ptr() as *const RAWINPUTHEADER).read_unaligned() };
+    if native_header.dwType == 0 {
+        return Ok(Some(CapturedRawInput::Mouse));
+    }
     if native_header.dwType != 1 {
         return Ok(None);
     }
@@ -742,7 +836,9 @@ unsafe fn read_keyboard_edge(
         header_size as usize,
     )
     .map_err(|_| ())?;
-    Ok(Some(decode_keyboard_packet(packet)))
+    Ok(Some(CapturedRawInput::Keyboard(decode_keyboard_packet(
+        packet,
+    ))))
 }
 
 #[cfg(test)]
@@ -771,9 +867,32 @@ mod tests {
             .collect::<Vec<_>>();
         let actual = sequence
             .iter()
-            .map(|input| input.expected_edge)
+            .filter_map(|input| input.expected_edge)
             .collect::<Vec<_>>();
         assert_eq!(actual[..expected_cycle.len()], expected_cycle);
         assert_eq!(actual[expected_cycle.len()..], expected_cycle);
+    }
+
+    #[test]
+    fn pointer_flood_pairs_motion_and_keeps_keyboard_expectations() {
+        let sequence = build_pointer_flood_sequence(&SYNTHETIC_PRESSURE_KEYS, 1);
+        assert_eq!(
+            sequence.len(),
+            SYNTHETIC_PRESSURE_KEY_COUNT * (2 + SYNTHETIC_POINTER_MOVES_PER_KEY_PAIR)
+        );
+        assert_eq!(
+            sequence
+                .iter()
+                .filter(|input| input.expected_edge.is_none())
+                .count(),
+            SYNTHETIC_PRESSURE_KEY_COUNT * SYNTHETIC_POINTER_MOVES_PER_KEY_PAIR
+        );
+        assert_eq!(
+            sequence
+                .iter()
+                .filter(|input| input.expected_edge.is_some())
+                .count(),
+            SYNTHETIC_PRESSURE_KEY_COUNT * 2
+        );
     }
 }
