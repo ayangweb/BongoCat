@@ -155,7 +155,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 1.5 GPUI spike
 
-状态（2026-08-28）：已在 `spikes/gpui-settings/` 建立隔离的 macOS 最小窗口，精确锁定 `gpui = 0.2.2` 并生成独立 lockfile；默认预编译 shader、release `.app`、菜单、窗口关闭/重开和 shutdown smoke 通过。当前 spike 还验证了 System/Light/Dark 主题、焦点边框、Tab/Shift-Tab、Unicode/grapheme 文本编辑、选择、剪切、复制和粘贴，以及 GPUI executor 上的 bounded typed command/revision snapshot/shutdown acknowledgement，并保存浅色/深色截图证据。GPUI 绘制内容未出现在 macOS 辅助功能树中；真实 IME 组合态、Windows 实机、完整 tooltip/dialog、overlay 共存仍未验证，详见 `docs/phase-0/gpui-settings-spike.md`。
+状态（2026-08-29）：已在 `spikes/gpui-settings/` 建立隔离的 macOS 最小窗口，精确锁定 `gpui = 0.2.2` 并生成独立 lockfile；默认预编译 shader、release `.app`、菜单、窗口关闭/重开和 shutdown smoke 通过。当前 spike 还验证了 System/Light/Dark 主题、焦点边框、Tab/Shift-Tab、Unicode/grapheme 文本编辑、选择、剪切、复制和粘贴，以及 GPUI executor 上的 bounded typed command/revision snapshot/shutdown acknowledgement，并保存浅色/深色截图证据。marked-text 纯状态 contract 已覆盖连续中文组合、已有多字节前缀、surrogate pair 和异常 range，修复了相对 UTF-16 selection 错按完整内容换算导致的越界风险。GPUI 绘制内容未出现在 macOS 辅助功能树中；真实系统 IME 组合态、完整 tooltip/dialog 和双平台辅助功能仍未验证，详见 `docs/phase-0/gpui-settings-spike.md`。
 
 - [x] 建立最小 Rust workspace 和 GPUI hello/settings 窗口。
 - [x] 固定 `gpui = "=0.2.2"` 并提交 Cargo.lock。
@@ -814,7 +814,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 7. [x] `P0-RUNTIME-CONTRACT`：冻结生命周期、单调 tick、operation 去重、shutdown drain 与超时结果。
    - 状态（2026-08-28）：`spikes/runtime-contract/` 已通过 14 项 contract test 并接入 CI，补齐 typed bounded worker、snapshot revision、command sequence gap/duplicate、overflow Reset、shutdown drain/timeout 和 panic/join 诊断；实际输入、模型、配置服务和平台 runtime 仍待 Phase 1/2。
 8. [ ] `P0-GPUI-PACKAGE-MAC`：使用默认预编译 shader 构建 `.app`，验证 IME、剪贴板、焦点、辅助功能、主题和窗口重开。
-   - 状态（2026-08-28）：默认 shader、bundle、菜单、窗口生命周期、主题、基础文本编辑/剪贴板、runtime bridge 和 macOS 性能基线通过；ADR-0009 已记录辅助功能 P0 gate，内容节点缺失，真实 IME、完整 tooltip/dialog/focus chain 仍待验证。
+   - 状态（2026-08-29）：默认 shader、bundle、菜单、窗口生命周期、主题、基础文本编辑/剪贴板、runtime bridge 和 macOS 性能基线通过；marked-text 纯状态 contract 已覆盖连续中文组合和 UTF-16 多字节边界，但不替代真实系统 IME。ADR-0009 已记录辅助功能 P0 gate，内容节点缺失，真实 IME、完整 tooltip/dialog/focus chain 仍待验证。
 9. [ ] `P0-GPUI-WINDOWS`：在 Windows 构建同一 spike，验证字体、IME、DPI、辅助功能和正常退出。
    - 状态（2026-08-29）：push run `33250457705`、job `99095132076` 已在 `windows-latest` 启动同一 GPUI settings executable，并通过窗口创建、首帧 `scale_factor`、runtime revision 和有序 shutdown 检查；窗口创建失败现在非零退出。字体、IME、DPI 切换和 UI Automation 仍待 Windows 实机，因此保持未勾选。
 10. [ ] `P0-OVERLAY`：GPUI 生命周期内完成 Windows D3D11/macOS Metal 透明 clear/present、错误注入和 100 次重建。

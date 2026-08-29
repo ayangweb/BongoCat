@@ -30,13 +30,144 @@ actions!(
 pub struct TextInput {
     focus_handle: FocusHandle,
     dark_theme: bool,
+    buffer: TextBuffer,
+    last_layout: Option<ShapedLine>,
+    last_bounds: Option<Bounds<Pixels>>,
+    is_selecting: bool,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct TextBuffer {
     content: String,
     selected_range: Range<usize>,
     selection_reversed: bool,
     marked_range: Option<Range<usize>>,
-    last_layout: Option<ShapedLine>,
-    last_bounds: Option<Bounds<Pixels>>,
-    is_selecting: bool,
+}
+
+impl TextBuffer {
+    fn move_to(&mut self, offset: usize) {
+        let offset = offset.min(self.content.len());
+        self.selected_range = offset..offset;
+        self.selection_reversed = false;
+    }
+
+    fn select_to(&mut self, offset: usize) {
+        let offset = offset.min(self.content.len());
+        if self.selection_reversed {
+            self.selected_range.start = offset;
+        } else {
+            self.selected_range.end = offset;
+        }
+        if self.selected_range.end < self.selected_range.start {
+            self.selection_reversed = !self.selection_reversed;
+            self.selected_range = self.selected_range.end..self.selected_range.start;
+        }
+    }
+
+    fn cursor_offset(&self) -> usize {
+        if self.selection_reversed {
+            self.selected_range.start
+        } else {
+            self.selected_range.end
+        }
+    }
+
+    fn previous_boundary(&self, offset: usize) -> usize {
+        self.content
+            .grapheme_indices(true)
+            .rev()
+            .find_map(|(index, _)| (index < offset).then_some(index))
+            .unwrap_or(0)
+    }
+
+    fn next_boundary(&self, offset: usize) -> usize {
+        self.content
+            .grapheme_indices(true)
+            .find_map(|(index, _)| (index > offset).then_some(index))
+            .unwrap_or(self.content.len())
+    }
+
+    fn range_to_utf16(&self, range: &Range<usize>) -> Range<usize> {
+        utf16_offset_from_utf8(&self.content, range.start)
+            ..utf16_offset_from_utf8(&self.content, range.end)
+    }
+
+    fn range_from_utf16(&self, range: &Range<usize>) -> Range<usize> {
+        utf8_range_from_utf16(&self.content, range)
+    }
+
+    fn replace_text(&mut self, range: Option<Range<usize>>, new_text: &str) {
+        let range = range
+            .as_ref()
+            .map(|range| self.range_from_utf16(range))
+            .or(self.marked_range.clone())
+            .unwrap_or(self.selected_range.clone());
+        self.content.replace_range(range.clone(), new_text);
+        let cursor = range.start + new_text.len();
+        self.selected_range = cursor..cursor;
+        self.selection_reversed = false;
+        self.marked_range = None;
+    }
+
+    fn replace_and_mark_text(
+        &mut self,
+        range: Option<Range<usize>>,
+        new_text: &str,
+        selected_range: Option<Range<usize>>,
+    ) {
+        let range = range
+            .as_ref()
+            .map(|range| self.range_from_utf16(range))
+            .or(self.marked_range.clone())
+            .unwrap_or(self.selected_range.clone());
+        self.content.replace_range(range.clone(), new_text);
+        self.marked_range =
+            (!new_text.is_empty()).then(|| range.start..range.start + new_text.len());
+
+        // GPUI follows the platform text-input contracts: this selection is relative to
+        // the replacement text, not to the input's complete post-replacement content.
+        self.selected_range = selected_range
+            .as_ref()
+            .map(|selected| utf8_range_from_utf16(new_text, selected))
+            .map(|selected| range.start + selected.start..range.start + selected.end)
+            .unwrap_or_else(|| {
+                let cursor = range.start + new_text.len();
+                cursor..cursor
+            });
+        self.selection_reversed = false;
+    }
+}
+
+fn utf8_offset_from_utf16(text: &str, offset: usize) -> usize {
+    let mut utf8_offset = 0;
+    let mut utf16_count = 0;
+    for character in text.chars() {
+        if utf16_count >= offset {
+            break;
+        }
+        utf16_count += character.len_utf16();
+        utf8_offset += character.len_utf8();
+    }
+    utf8_offset
+}
+
+fn utf16_offset_from_utf8(text: &str, offset: usize) -> usize {
+    let mut utf8_count = 0;
+    let mut utf16_offset = 0;
+    for character in text.chars() {
+        if utf8_count >= offset {
+            break;
+        }
+        utf8_count += character.len_utf8();
+        utf16_offset += character.len_utf16();
+    }
+    utf16_offset
+}
+
+fn utf8_range_from_utf16(text: &str, range: &Range<usize>) -> Range<usize> {
+    let start = utf8_offset_from_utf16(text, range.start);
+    let end = utf8_offset_from_utf16(text, range.end);
+    start.min(end)..start.max(end)
 }
 
 impl TextInput {
@@ -44,10 +175,7 @@ impl TextInput {
         Self {
             focus_handle: cx.focus_handle().tab_index(1).tab_stop(true),
             dark_theme,
-            content: String::new(),
-            selected_range: 0..0,
-            selection_reversed: false,
-            marked_range: None,
+            buffer: TextBuffer::default(),
             last_layout: None,
             last_bounds: None,
             is_selecting: false,
@@ -55,7 +183,7 @@ impl TextInput {
     }
 
     pub fn content(&self) -> &str {
-        &self.content
+        &self.buffer.content
     }
 
     pub fn set_dark_theme(&mut self, dark_theme: bool) {
@@ -63,32 +191,41 @@ impl TextInput {
     }
 
     fn left(&mut self, _: &Left, _: &mut Window, cx: &mut Context<Self>) {
-        if self.selected_range.is_empty() {
-            self.move_to(self.previous_boundary(self.cursor_offset()), cx);
+        if self.buffer.selected_range.is_empty() {
+            self.move_to(
+                self.buffer.previous_boundary(self.buffer.cursor_offset()),
+                cx,
+            );
         } else {
-            self.move_to(self.selected_range.start, cx);
+            self.move_to(self.buffer.selected_range.start, cx);
         }
     }
 
     fn right(&mut self, _: &Right, _: &mut Window, cx: &mut Context<Self>) {
-        if self.selected_range.is_empty() {
-            self.move_to(self.next_boundary(self.selected_range.end), cx);
+        if self.buffer.selected_range.is_empty() {
+            self.move_to(
+                self.buffer.next_boundary(self.buffer.selected_range.end),
+                cx,
+            );
         } else {
-            self.move_to(self.selected_range.end, cx);
+            self.move_to(self.buffer.selected_range.end, cx);
         }
     }
 
     fn select_left(&mut self, _: &SelectLeft, _: &mut Window, cx: &mut Context<Self>) {
-        self.select_to(self.previous_boundary(self.cursor_offset()), cx);
+        self.select_to(
+            self.buffer.previous_boundary(self.buffer.cursor_offset()),
+            cx,
+        );
     }
 
     fn select_right(&mut self, _: &SelectRight, _: &mut Window, cx: &mut Context<Self>) {
-        self.select_to(self.next_boundary(self.cursor_offset()), cx);
+        self.select_to(self.buffer.next_boundary(self.buffer.cursor_offset()), cx);
     }
 
     fn select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
         self.move_to(0, cx);
-        self.select_to(self.content.len(), cx);
+        self.select_to(self.buffer.content.len(), cx);
     }
 
     fn home(&mut self, _: &Home, _: &mut Window, cx: &mut Context<Self>) {
@@ -96,19 +233,22 @@ impl TextInput {
     }
 
     fn end(&mut self, _: &End, _: &mut Window, cx: &mut Context<Self>) {
-        self.move_to(self.content.len(), cx);
+        self.move_to(self.buffer.content.len(), cx);
     }
 
     fn backspace(&mut self, _: &Backspace, window: &mut Window, cx: &mut Context<Self>) {
-        if self.selected_range.is_empty() {
-            self.select_to(self.previous_boundary(self.cursor_offset()), cx);
+        if self.buffer.selected_range.is_empty() {
+            self.select_to(
+                self.buffer.previous_boundary(self.buffer.cursor_offset()),
+                cx,
+            );
         }
         self.replace_text_in_range(None, "", window, cx);
     }
 
     fn delete(&mut self, _: &Delete, window: &mut Window, cx: &mut Context<Self>) {
-        if self.selected_range.is_empty() {
-            self.select_to(self.next_boundary(self.cursor_offset()), cx);
+        if self.buffer.selected_range.is_empty() {
+            self.select_to(self.buffer.next_boundary(self.buffer.cursor_offset()), cx);
         }
         self.replace_text_in_range(None, "", window, cx);
     }
@@ -120,17 +260,17 @@ impl TextInput {
     }
 
     fn copy(&mut self, _: &Copy, _: &mut Window, cx: &mut Context<Self>) {
-        if !self.selected_range.is_empty() {
+        if !self.buffer.selected_range.is_empty() {
             cx.write_to_clipboard(ClipboardItem::new_string(
-                self.content[self.selected_range.clone()].to_string(),
+                self.buffer.content[self.buffer.selected_range.clone()].to_string(),
             ));
         }
     }
 
     fn cut(&mut self, _: &Cut, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.selected_range.is_empty() {
+        if !self.buffer.selected_range.is_empty() {
             cx.write_to_clipboard(ClipboardItem::new_string(
-                self.content[self.selected_range.clone()].to_string(),
+                self.buffer.content[self.buffer.selected_range.clone()].to_string(),
             ));
             self.replace_text_in_range(None, "", window, cx);
         }
@@ -163,34 +303,17 @@ impl TextInput {
     }
 
     fn move_to(&mut self, offset: usize, cx: &mut Context<Self>) {
-        self.selected_range = offset..offset;
-        self.selection_reversed = false;
+        self.buffer.move_to(offset);
         cx.notify();
     }
 
     fn select_to(&mut self, offset: usize, cx: &mut Context<Self>) {
-        if self.selection_reversed {
-            self.selected_range.start = offset;
-        } else {
-            self.selected_range.end = offset;
-        }
-        if self.selected_range.end < self.selected_range.start {
-            self.selection_reversed = !self.selection_reversed;
-            self.selected_range = self.selected_range.end..self.selected_range.start;
-        }
+        self.buffer.select_to(offset);
         cx.notify();
     }
 
-    fn cursor_offset(&self) -> usize {
-        if self.selection_reversed {
-            self.selected_range.start
-        } else {
-            self.selected_range.end
-        }
-    }
-
     fn index_for_mouse_position(&self, position: Point<Pixels>) -> usize {
-        if self.content.is_empty() {
+        if self.buffer.content.is_empty() {
             return 0;
         }
         let (Some(bounds), Some(line)) = (self.last_bounds.as_ref(), self.last_layout.as_ref())
@@ -201,58 +324,9 @@ impl TextInput {
             return 0;
         }
         if position.y > bounds.bottom() {
-            return self.content.len();
+            return self.buffer.content.len();
         }
         line.closest_index_for_x(position.x - bounds.left())
-    }
-
-    fn previous_boundary(&self, offset: usize) -> usize {
-        self.content
-            .grapheme_indices(true)
-            .rev()
-            .find_map(|(index, _)| (index < offset).then_some(index))
-            .unwrap_or(0)
-    }
-
-    fn next_boundary(&self, offset: usize) -> usize {
-        self.content
-            .grapheme_indices(true)
-            .find_map(|(index, _)| (index > offset).then_some(index))
-            .unwrap_or(self.content.len())
-    }
-
-    fn offset_from_utf16(&self, offset: usize) -> usize {
-        let mut utf8_offset = 0;
-        let mut utf16_count = 0;
-        for character in self.content.chars() {
-            if utf16_count >= offset {
-                break;
-            }
-            utf16_count += character.len_utf16();
-            utf8_offset += character.len_utf8();
-        }
-        utf8_offset
-    }
-
-    fn offset_to_utf16(&self, offset: usize) -> usize {
-        let mut utf8_count = 0;
-        let mut utf16_offset = 0;
-        for character in self.content.chars() {
-            if utf8_count >= offset {
-                break;
-            }
-            utf8_count += character.len_utf8();
-            utf16_offset += character.len_utf16();
-        }
-        utf16_offset
-    }
-
-    fn range_to_utf16(&self, range: &Range<usize>) -> Range<usize> {
-        self.offset_to_utf16(range.start)..self.offset_to_utf16(range.end)
-    }
-
-    fn range_from_utf16(&self, range: &Range<usize>) -> Range<usize> {
-        self.offset_from_utf16(range.start)..self.offset_from_utf16(range.end)
     }
 }
 
@@ -264,9 +338,9 @@ impl EntityInputHandler for TextInput {
         _: &mut Window,
         _: &mut Context<Self>,
     ) -> Option<String> {
-        let range = self.range_from_utf16(&range);
-        actual_range.replace(self.range_to_utf16(&range));
-        Some(self.content[range].to_string())
+        let range = self.buffer.range_from_utf16(&range);
+        actual_range.replace(self.buffer.range_to_utf16(&range));
+        Some(self.buffer.content[range].to_string())
     }
 
     fn selected_text_range(
@@ -276,19 +350,20 @@ impl EntityInputHandler for TextInput {
         _: &mut Context<Self>,
     ) -> Option<UTF16Selection> {
         Some(UTF16Selection {
-            range: self.range_to_utf16(&self.selected_range),
-            reversed: self.selection_reversed,
+            range: self.buffer.range_to_utf16(&self.buffer.selected_range),
+            reversed: self.buffer.selection_reversed,
         })
     }
 
     fn marked_text_range(&self, _: &mut Window, _: &mut Context<Self>) -> Option<Range<usize>> {
-        self.marked_range
+        self.buffer
+            .marked_range
             .as_ref()
-            .map(|range| self.range_to_utf16(range))
+            .map(|range| self.buffer.range_to_utf16(range))
     }
 
     fn unmark_text(&mut self, _: &mut Window, _: &mut Context<Self>) {
-        self.marked_range = None;
+        self.buffer.marked_range = None;
     }
 
     fn replace_text_in_range(
@@ -298,15 +373,7 @@ impl EntityInputHandler for TextInput {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let range = range
-            .as_ref()
-            .map(|range| self.range_from_utf16(range))
-            .or(self.marked_range.clone())
-            .unwrap_or(self.selected_range.clone());
-        self.content.replace_range(range.clone(), new_text);
-        let cursor = range.start + new_text.len();
-        self.selected_range = cursor..cursor;
-        self.marked_range = None;
+        self.buffer.replace_text(range, new_text);
         cx.notify();
     }
 
@@ -318,22 +385,8 @@ impl EntityInputHandler for TextInput {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let range = range
-            .as_ref()
-            .map(|range| self.range_from_utf16(range))
-            .or(self.marked_range.clone())
-            .unwrap_or(self.selected_range.clone());
-        self.content.replace_range(range.clone(), new_text);
-        self.marked_range =
-            (!new_text.is_empty()).then(|| range.start..range.start + new_text.len());
-        self.selected_range = selected_range
-            .as_ref()
-            .map(|selected| self.range_from_utf16(selected))
-            .map(|selected| range.start + selected.start..range.start + selected.end)
-            .unwrap_or_else(|| {
-                let cursor = range.start + new_text.len();
-                cursor..cursor
-            });
+        self.buffer
+            .replace_and_mark_text(range, new_text, selected_range);
         cx.notify();
     }
 
@@ -345,7 +398,7 @@ impl EntityInputHandler for TextInput {
         _: &mut Context<Self>,
     ) -> Option<Bounds<Pixels>> {
         let line = self.last_layout.as_ref()?;
-        let range = self.range_from_utf16(&range);
+        let range = self.buffer.range_from_utf16(&range);
         Some(Bounds::from_corners(
             point(bounds.left() + line.x_for_index(range.start), bounds.top()),
             point(bounds.left() + line.x_for_index(range.end), bounds.bottom()),
@@ -361,7 +414,7 @@ impl EntityInputHandler for TextInput {
         let local = self.last_bounds?.localize(&point)?;
         let line = self.last_layout.as_ref()?;
         let index = line.index_for_x(point.x - local.x)?;
-        Some(self.offset_to_utf16(index))
+        Some(utf16_offset_from_utf8(&self.buffer.content, index))
     }
 }
 
@@ -418,13 +471,13 @@ impl Element for TextElement {
         cx: &mut App,
     ) -> PrepaintState {
         let input = self.input.read(cx);
-        let content = input.content.clone();
+        let content = input.buffer.content.clone();
         let display_text = if content.is_empty() {
             "Type a model name...".to_string()
         } else {
             content
         };
-        let text_color = if input.content.is_empty() {
+        let text_color = if input.buffer.content.is_empty() {
             if input.dark_theme {
                 hsla(0., 0., 0.61, 0.6)
             } else {
@@ -445,7 +498,7 @@ impl Element for TextElement {
             underline: None,
             strikethrough: None,
         };
-        let runs = if let Some(marked) = input.marked_range.as_ref() {
+        let runs = if let Some(marked) = input.buffer.marked_range.as_ref() {
             vec![
                 TextRun {
                     len: marked.start,
@@ -475,8 +528,8 @@ impl Element for TextElement {
         let line = window
             .text_system()
             .shape_line(display_text.into(), font_size, &runs, None);
-        let selected = input.selected_range.clone();
-        let cursor_x = line.x_for_index(input.cursor_offset());
+        let selected = input.buffer.selected_range.clone();
+        let cursor_x = line.x_for_index(input.buffer.cursor_offset());
         let (selection, cursor) = if selected.is_empty() {
             (
                 None,
@@ -598,5 +651,76 @@ impl Render for TextInput {
 impl Focusable for TextInput {
     fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus_handle.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn marked_text_selection_is_relative_to_each_composition_update() {
+        let mut buffer = TextBuffer::default();
+        buffer.replace_text(None, "猫");
+
+        buffer.replace_and_mark_text(None, "ni", Some(2..2));
+        assert_eq!(buffer.content, "猫ni");
+        assert_eq!(buffer.marked_range, Some(3..5));
+        assert_eq!(buffer.selected_range, 5..5);
+
+        buffer.replace_and_mark_text(None, "你", Some(1..1));
+        assert_eq!(buffer.content, "猫你");
+        assert_eq!(buffer.marked_range, Some(3..6));
+        assert_eq!(buffer.selected_range, 6..6);
+        buffer.replace_text(None, "你");
+
+        buffer.replace_and_mark_text(None, "hao", Some(3..3));
+        buffer.replace_and_mark_text(None, "好", Some(1..1));
+        buffer.replace_text(None, "好");
+        assert_eq!(buffer.content, "猫你好");
+        assert_eq!(buffer.selected_range, 9..9);
+        assert_eq!(buffer.marked_range, None);
+    }
+
+    #[test]
+    fn marked_text_selection_handles_utf16_surrogate_pairs() {
+        let mut buffer = TextBuffer::default();
+        buffer.replace_text(None, "前");
+        buffer.replace_and_mark_text(None, "😀a", Some(2..2));
+
+        assert_eq!(buffer.content, "前😀a");
+        assert_eq!(buffer.marked_range, Some(3..8));
+        assert_eq!(buffer.selected_range, 7..7);
+        assert_eq!(buffer.range_to_utf16(&buffer.selected_range), 3..3);
+    }
+
+    #[test]
+    fn committed_replacement_clears_reversed_selection_state() {
+        let mut buffer = TextBuffer {
+            content: "A😀B".to_string(),
+            selected_range: 1..5,
+            selection_reversed: true,
+            marked_range: None,
+        };
+
+        buffer.replace_text(None, "猫");
+
+        assert_eq!(buffer.content, "A猫B");
+        assert_eq!(buffer.selected_range, 4..4);
+        assert!(!buffer.selection_reversed);
+    }
+
+    #[test]
+    fn malformed_utf16_ranges_are_clamped_and_normalized() {
+        let text = "A😀猫";
+        let reversed_start = 99;
+        let reversed_end = 1;
+
+        assert_eq!(utf8_range_from_utf16(text, &(1..3)), 1..5);
+        assert_eq!(
+            utf8_range_from_utf16(text, &(reversed_start..reversed_end)),
+            1..8
+        );
+        assert_eq!(utf8_range_from_utf16(text, &(2..2)), 5..5);
     }
 }

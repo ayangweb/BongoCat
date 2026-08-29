@@ -1,6 +1,6 @@
 # GPUI Settings Spike Record
 
-状态：macOS 默认 shader、`.app`、主题、基础文本交互和 runtime bridge 通过；Windows 真实窗口/首帧/shutdown runner smoke 已通过，双平台内容辅助功能和真实 IME 待完成
+状态：macOS 默认 shader、`.app`、主题、基础文本交互、marked-text contract 和 runtime bridge 通过；Windows 真实窗口/首帧/shutdown runner smoke 已通过，双平台内容辅助功能和真实 IME 待完成
 日期：2026-08-28
 原始重构基线 commit：`94af230`；后续验证源码与本记录保持同一提交
 
@@ -44,9 +44,11 @@ codesign --verify --deep --strict --verbose=4 "target/package/BongoCat GPUI Spik
 open -W "target/package/BongoCat GPUI Spike.app" --args --auto-quit-ms 1500
 ```
 
-结果：格式化、Clippy、1 项 runtime bridge contract test 和 debug/release 编译通过，`.app` 的 ad-hoc 签名通过 strict bundle integrity 校验；LaunchServices smoke 以 0 退出。直接运行 release binary 时输出 `window opened`、`runtime snapshot revision=1`，随后通过 GPUI `quit()` 输出 `runtime stopped` 和 `stopped` 并以 0 退出。
+结果：格式化、Clippy、5 项 contract test 和 debug/release 编译通过，`.app` 的 ad-hoc 签名通过 strict bundle integrity 校验；LaunchServices smoke 以 0 退出。直接运行 release binary 时输出 `window opened`、`runtime snapshot revision=1`，随后通过 GPUI `quit()` 输出 `runtime stopped` 和 `stopped` 并以 0 退出。
 
 2026-08-29 将同一个 settings executable 接入 `windows-latest` 真实生命周期 smoke。runner 启动窗口、等待最多 30 秒并要求进程以 0 退出，同时检查 `window opened`、首帧 elapsed/scale factor、runtime revision 1，以及 `runtime stopped` 先于 `stopped`。spike 自身也改为在初始或 reopen 窗口创建失败时触发有序 quit，并在 event loop 返回后以非零退出，避免“打印 failed 但 CI 仍成功”。push run `33250457705`、job `99095132076` 已通过全部 build/test/release 和真实窗口 smoke；这不代表字体、IME、DPI 切换或 UI Automation 已验证。
+
+同日将文本、选择和 marked range 收敛为不依赖 GPUI context 的 `TextBuffer` 并增加 4 项 IME contract 回归。测试发现并修复了 `replace_and_mark_text_in_range` 将 IME 的相对 UTF-16 selection 错按完整输入内容换算的问题；已有中文前缀时，旧逻辑可能产生越界 selection。当前测试覆盖连续 `ni -> 你`、`hao -> 好` 组合更新、surrogate pair、反向选择提交清理和异常 range 归一化，并同时进入 macOS/Windows GPUI test job。该证据验证文本协议和纯状态实现，不替代系统输入法端到端 smoke。
 
 ## Runtime Bridge 结果
 
@@ -82,7 +84,7 @@ spike 使用容量为 8 的 `async-channel 2.5.0` 传递强类型 `ReadSnapshot`
 - 关闭设置窗口不会退出进程，重新激活应用可重建窗口；
 - 截图证据：`docs/phase-0/evidence/gpui-settings-light-760x520.jpg`（SHA-256 `e9343ae1cfeed487dbe368121c35a4ec4146eab2fd72da38d3f7eb9755fa2401`）和 `docs/phase-0/evidence/gpui-settings-dark-760x520.jpg`（SHA-256 `6c84b9e2473586e556a647e44e3584c2c6b5ec334564b7b423c1428cb5d3d158`）。
 
-这些结果是 macOS 当前环境下的视觉和交互 smoke，不等价于跨平台验收。GPUI 输入实现已接入 UTF-16 selection、grapheme 边界和 marked-text 公共协议，但尚未用中文输入法完成真实组合态验证；Windows 字体、IME、DPI 和辅助技术也尚未验证。
+这些结果是 macOS 当前环境下的视觉和交互 smoke，不等价于跨平台验收。GPUI 输入实现已接入 UTF-16 selection、grapheme 边界和 marked-text 公共协议，纯状态 contract 已覆盖已有多字节内容上的连续中文组合更新，但尚未用系统中文输入法完成真实组合态验证；Windows 字体、IME、DPI 和辅助技术也尚未验证。
 
 2026-08-28 按 ADR-0008 将 Bundle ID 更新为 `com.ayangweb.bongo-cat` 后重新执行打包、strict codesign 和 LaunchServices auto-quit，三项均通过。打包脚本会在签名前读取 Info.plist 并拒绝任何非预期 Bundle ID。
 
@@ -133,7 +135,7 @@ GPUI 0.2.2 公共源码中没有找到可为普通绘制 element 设置 role、l
 
 ## 未完成
 
-- 真实中文输入法组合态/marked text 尚未在 macOS 上完成端到端验证；Windows IME、字体、DPI 和辅助技术尚未验证。
+- marked-text 纯状态 contract 已通过；真实中文输入法组合态尚未在 macOS 上完成端到端验证，Windows IME、字体、DPI 和辅助技术尚未验证。
 - tooltip、dialog 和完整菜单交互尚未验证。
 - GPUI 内容辅助功能树未通过；当前只有窗口 chrome 和菜单可识别。
 - 菜单栏常驻策略、隐藏行为和 native overlay 共存尚未验证。
