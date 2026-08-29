@@ -86,7 +86,16 @@ drawable，提交透明 clear/present，等待 command buffer 完成后隐藏并
 显示/隐藏 smoke；设置窗口仍打开并显示 degraded 诊断，然后在 GPUI `quit()` 前显式
 释放 overlay。以上计数只能证明 AppKit window list 与 Rust owner 数量稳定，不能替代
 Metal driver resource、GPU memory 或线程专项采样。GitHub `macos-latest` 已接入三条
-smoke，runner 证据仍待本次提交后的 CI 结果。
+smoke。commit `5bc82b61b12d9873fb8bddfdb0de4f1652487ac9` 的 push run
+`33245147905`、job `99081224637` 与 PR run `33245149605`、job
+`99081228964` 均通过；两次 runner 都记录正常透明 clear/present、显示/隐藏、
+drawable unavailable 降级、GPUI 正常退出、owner 释放，以及
+`windows_before=0 windows_after=0 owners_before=0 owners_after=0 clean_shutdown=true`。
+
+同一 commit 的 Windows push job `99081224522` 与 PR job `99081228988` 也保持
+hardware D3D11、DPI 96、透明 clear/present、degraded 初始化、GPU 早于 HWND
+释放，以及 `handles_before=172 handles_after=172 clean_shutdown=true`，说明共用入口
+的 macOS 改动没有破坏已有 Windows smoke。
 
 ### Windows 实现与验收门禁
 
@@ -142,6 +151,6 @@ clear/present、隐藏/重显示、GPUI 共存和自动退出；退出日志中
 
 ## 下一步
 
-下一步是取得 macOS CI runner 的重建与故障降级证据，并为 Windows 增加 swapchain
-unavailable/device-lost 恢复验证。随后补齐双平台 GPU/线程专项采样、真实 frame
-source、拖动/缩放/显示器切换和模型绘制；任一平台结果都不能替代另一平台证据。
+下一步是为 Windows 增加 swapchain unavailable/device-lost 恢复验证。随后补齐双平台
+GPU/线程专项采样、真实 frame source、拖动/缩放/显示器切换和模型绘制；任一平台
+结果都不能替代另一平台证据。
