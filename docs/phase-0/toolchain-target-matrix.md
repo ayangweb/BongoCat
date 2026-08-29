@@ -1,7 +1,7 @@
 # Toolchain and Target Matrix
 
-状态：Provisional；首发 CPU 架构尚未冻结
-记录日期：2026-08-28
+状态：Provisional；R5 Core 已排除 Windows ARM64，其他首发 CPU 架构尚未冻结
+记录日期：2026-08-29
 
 ## 1. Decision Rule
 
@@ -17,13 +17,13 @@ target 只有同时通过以下检查后才能进入首发支持矩阵：
 
 ## 2. Provisional Target Tiers
 
-| Target                    | Historical v1.1.0   | Native Rewrite status          | Required disposition                                                                          |
-| ------------------------- | ------------------- | ------------------------------ | --------------------------------------------------------------------------------------------- |
-| `x86_64-pc-windows-msvc`  | Installer published | Primary validation target      | 首发候选；需 Windows 实机完成 GPUI、Raw Input、D3D11、Cubism 和签名链                         |
-| `aarch64-apple-darwin`    | DMG/app published   | Primary validation target      | 首发候选；当前仅 GPUI runtime-shader 生命周期 spike 通过                                      |
-| `aarch64-pc-windows-msvc` | Installer published | Compatibility decision pending | 验证 GPUI、D3D11/DirectComposition、输入、Cubism binary 和 installer 后决定发布或明确停止支持 |
-| `i686-pc-windows-msvc`    | Installer published | Compatibility decision pending | 验证 GPUI/Cubism/依赖是否仍支持 32-bit；若移除必须记录用户影响和迁移说明                      |
-| `x86_64-apple-darwin`     | DMG/app published   | Compatibility decision pending | 在 Intel Mac 或受控设备验证 GPUI、Metal、输入、Cubism 和签名；决定独立包或 universal binary   |
+| Target                    | Historical v1.1.0   | Native Rewrite status          | Required disposition                                                                    |
+| ------------------------- | ------------------- | ------------------------------ | --------------------------------------------------------------------------------------- |
+| `x86_64-pc-windows-msvc`  | Installer published | Primary validation target      | 首发候选；需 Windows 实机完成 GPUI、Raw Input、D3D11、Cubism 和签名链                   |
+| `aarch64-apple-darwin`    | DMG/app published   | Primary validation target      | 首发候选；当前仅 GPUI runtime-shader 生命周期 spike 通过                                |
+| `aarch64-pc-windows-msvc` | Installer published | R5 Core unavailable / NO-GO    | 官方 R5 仅提供 experimental UWP ARM64 DLL，没有 desktop Windows ARM64 Core；首发不支持  |
+| `i686-pc-windows-msvc`    | Installer published | Compatibility decision pending | R5 Core 支持 x86；继续验证 GPUI/依赖/renderer/installer，若移除须记录用户影响和迁移说明 |
+| `x86_64-apple-darwin`     | DMG/app published   | Compatibility decision pending | R5 Core 提供 x64 static library；仍需 Intel 实机验证 GPUI、Metal、输入、签名和发布形式  |
 
 Linux target 不属于首发 tier。共享 crate 的 Linux `cargo check` 仅用于防止业务层绑定平台类型，遵循 ADR-0006。
 
@@ -62,7 +62,9 @@ Windows 工具链尚未在实机记录。`P0-GPUI-WINDOWS` 至少要固定并保
 
 ## 5. Cubism Constraint
 
-Cubism Core 是冻结首发架构矩阵的硬前置条件。每个候选 target 必须记录官方二进制文件名、SDK/Core 版本、下载来源、SHA-256、再分发条款和真实加载结果。缺少官方目标二进制时，不通过自制兼容层、未知来源二进制或跨架构模拟静默补齐。
+Cubism Core 是冻结首发架构矩阵的硬前置条件。`docs/phase-0/cubism-sdk-source-and-license.md` 已固定 Cubism 5 SDK for Native R5、Core `06.00.0001`、官方来源和许可门禁，并确认标准 Windows Core 只有 x86/x86_64，macOS Core 有 arm64/x86_64。Windows ARM64 因缺少 `aarch64-pc-windows-msvc` 可用的官方 desktop Core 而在 R5 下 NO-GO，不能用 experimental UWP DLL、自制兼容层、未知来源二进制或跨架构模拟补齐。
+
+其他候选 target 仍必须记录官方 ZIP SHA-256、目标文件 hash、真实加载和生命周期结果。尚未由维护者合法下载并检查 ZIP，因此本矩阵仍未冻结。
 
 ## 6. Freeze Gate
 
@@ -70,7 +72,7 @@ Cubism Core 是冻结首发架构矩阵的硬前置条件。每个候选 target 
 
 - Windows x64 是否首发；
 - macOS arm64 是否首发；
-- Windows ARM64 与 x86 是首发、实验性还是停止支持；
+- Windows ARM64 停止首发支持的用户影响与迁移说明，以及 x86 是首发、实验性还是停止支持；
 - macOS Intel 是独立包、universal binary、实验性还是停止支持；
 - 每个支持 target 的最低 OS、构建工具链和实机测试 tier。
 

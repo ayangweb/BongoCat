@@ -95,6 +95,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 建立依赖许可证清单，确认当前 Native spike crate graph 与项目 MIT 发布兼容。
   - 状态（2026-08-29）：`cargo-deny 0.18.3` 以四个 Windows/macOS target 扫描 10 个独立 workspace、535 个唯一 package 节点，license/source policy 通过并接入 CI；Cubism 厂商许可、未来产品依赖、SBOM 和 notice bundle 仍由各自后续门禁处理。
 - [ ] 冻结首发 target triple 和 CPU 架构矩阵，明确 Windows ARM64、macOS Intel 是否发布或仅测试。
+  - 状态（2026-08-29）：官方 Cubism Native R5 不提供 desktop Windows ARM64 Core，只有 experimental UWP ARM64 DLL，因此 `aarch64-pc-windows-msvc` 已判定首发 NO-GO；Windows x86、macOS Intel 和最终安装包形式仍待实机与发布链验证。
 - [ ] 记录 Windows MSVC/SDK、macOS Xcode/SDK/Metal Toolchain 和 Rust toolchain 的最低可用组合。
 - [ ] 保存旧版最后可用安装包、资源清单、签名状态和 SHA-256，不只记录源码 commit。
 
@@ -220,7 +221,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 ### 1.8 Cubism/Renderer spike
 
 - [ ] 确认 Cubism SDK/Core 版本、来源、再分发条款和 attribution 要求。
+  - 状态（2026-08-29）：`docs/phase-0/cubism-sdk-source-and-license.md` 已固定 Native R5/Core `06.00.0001`、官方 tag/commit、下载入口和 RedistributableFiles 边界。BongoCat 很可能属于需预先批准和单独协议的 Expandable Application；Framework 到 MIT Rust 实现的许可边界、最终 attribution 和 Live2D 书面授权仍未完成，因此保持未勾选。
 - [ ] 建立目标架构二进制清单、hash 和可重复获取流程。
+  - 状态（2026-08-29）：R5 的 Windows x64/x86 与 macOS arm64/x64 artifact 路径已形成清单，Windows ARM64 已明确不可用；离线 ZIP 检查流程已定义。合法下载 ZIP 的 archive/file hash、双人复核和真实 ABI 加载仍待完成。
 - [ ] 验证 Rust sys binding 加载 moc、创建 model 并读取 drawable 数据。
 - [ ] 包装 Moc/Model 生命周期，证明 Model 不会比 Moc 存活更久。
 - [ ] 用 Rust 解析三个预置 model3 和所有关联资源。
