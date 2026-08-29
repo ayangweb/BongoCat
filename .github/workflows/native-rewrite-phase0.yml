@@ -25,6 +25,8 @@ jobs:
         run: python3 tools/validate-locales.py
       - name: Run deterministic input fixtures
         run: python3 tools/run-input-fixtures.py
+      - name: Test Cubism SDK offline inspector
+        run: python3 -m unittest discover -s tools/tests -p 'test_*.py'
       - name: Check whitespace
         run: git diff --check
 
