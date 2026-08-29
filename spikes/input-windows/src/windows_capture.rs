@@ -24,9 +24,13 @@ use windows::{
         },
         UI::{
             Input::{
-                GetRawInputData, HRAWINPUT, KeyboardAndMouse::GetAsyncKeyState, RAWINPUTDEVICE,
-                RAWINPUTHEADER, RID_INPUT, RIDEV_DEVNOTIFY, RIDEV_INPUTSINK, RIDEV_REMOVE,
-                RegisterRawInputDevices,
+                GetRawInputData, HRAWINPUT,
+                KeyboardAndMouse::{
+                    GetAsyncKeyState, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
+                    KEYEVENTF_SCANCODE, SendInput, VIRTUAL_KEY,
+                },
+                RAWINPUTDEVICE, RAWINPUTHEADER, RID_INPUT, RIDEV_DEVNOTIFY, RIDEV_INPUTSINK,
+                RIDEV_REMOVE, RegisterRawInputDevices,
             },
             WindowsAndMessaging::{
                 CREATESTRUCTW, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
@@ -73,6 +77,9 @@ pub struct RegistrationReport {
     pub reconciliation_query_errors: u64,
     pub decode_errors: u64,
     pub callback_panics: u64,
+    pub synthetic_inputs_sent: u64,
+    pub intentionally_dropped_releases: u64,
+    pub pressed_candidates_remaining: usize,
 }
 
 #[derive(Default)]
@@ -88,6 +95,9 @@ struct WindowState {
     reconciliation_query_errors: u64,
     decode_errors: u64,
     callback_panics: u64,
+    synthetic_inputs_sent: u64,
+    intentionally_dropped_releases: u64,
+    drop_next_release: bool,
 }
 
 impl WindowState {
@@ -115,6 +125,9 @@ impl WindowState {
             reconciliation_query_errors: self.reconciliation_query_errors,
             decode_errors: self.decode_errors,
             callback_panics: self.callback_panics,
+            synthetic_inputs_sent: self.synthetic_inputs_sent,
+            intentionally_dropped_releases: self.intentionally_dropped_releases,
+            pressed_candidates_remaining: self.pressed_candidates.keys().len(),
         }
     }
 
@@ -140,13 +153,22 @@ pub fn run_registration_smoke(duration: Duration) -> WindowsResult<RegistrationR
     // SAFETY: all Win32 window operations remain on this thread. The boxed
     // state outlives the HWND and is released only after WM_NCDESTROY clears
     // GWLP_USERDATA and the message loop exits.
-    unsafe { run_registration_smoke_inner(duration, false) }
+    unsafe { run_registration_smoke_inner(duration, false, false) }
 }
 
 pub fn run_lifecycle_smoke(duration: Duration) -> WindowsResult<RegistrationReport> {
     // SAFETY: this uses the same thread-confined window contract and sends only
     // synchronous lifecycle messages to its own hidden HWND.
-    unsafe { run_registration_smoke_inner(duration, true) }
+    unsafe { run_registration_smoke_inner(duration, true, false) }
+}
+
+pub fn run_synthetic_release_recovery_smoke(
+    duration: Duration,
+) -> WindowsResult<RegistrationReport> {
+    // SAFETY: SendInput is issued only after the thread-confined Raw Input
+    // window is registered. The synthetic key is always paired with KeyUp;
+    // only this spike's consumer intentionally ignores that captured release.
+    unsafe { run_registration_smoke_inner(duration, false, true) }
 }
 
 pub fn query_pressed_keys(candidates: &BTreeSet<PhysicalKey>) -> WindowsResult<KeyStateSnapshot> {
@@ -167,6 +189,7 @@ pub fn query_pressed_keys(candidates: &BTreeSet<PhysicalKey>) -> WindowsResult<K
 unsafe fn run_registration_smoke_inner(
     duration: Duration,
     inject_lifecycle: bool,
+    inject_synthetic_input: bool,
 ) -> WindowsResult<RegistrationReport> {
     let module = unsafe { GetModuleHandleW(None)? };
     let instance = HINSTANCE(module.0);
@@ -230,6 +253,19 @@ unsafe fn run_registration_smoke_inner(
         unsafe { inject_lifecycle_messages(window, state_ptr) };
     }
 
+    if inject_synthetic_input {
+        state.drop_next_release = true;
+        match unsafe { send_synthetic_a_press_and_release() } {
+            Ok(sent) => state.synthetic_inputs_sent = u64::from(sent),
+            Err(error) => {
+                let _ = unsafe { DestroyWindow(window) };
+                let _ = unsafe { unregister_raw_input_devices() };
+                let _ = unsafe { UnregisterClassW(class_name, Some(instance)) };
+                return Err(error);
+            }
+        }
+    }
+
     if unsafe {
         SetTimer(
             Some(window),
@@ -241,6 +277,7 @@ unsafe fn run_registration_smoke_inner(
     {
         let error = Error::from_thread();
         let _ = unsafe { DestroyWindow(window) };
+        let _ = unsafe { unregister_raw_input_devices() };
         let _ = unsafe { UnregisterClassW(class_name, Some(instance)) };
         return Err(error);
     }
@@ -249,6 +286,7 @@ unsafe fn run_registration_smoke_inner(
         let error = Error::from_thread();
         let _ = unsafe { KillTimer(Some(window), RECONCILIATION_TIMER_ID) };
         let _ = unsafe { DestroyWindow(window) };
+        let _ = unsafe { unregister_raw_input_devices() };
         let _ = unsafe { UnregisterClassW(class_name, Some(instance)) };
         return Err(error);
     }
@@ -276,6 +314,39 @@ unsafe fn run_registration_smoke_inner(
     removal_result?;
     class_result?;
     Ok(state.report(true, state.session_notifications_unregistered))
+}
+
+unsafe fn send_synthetic_a_press_and_release() -> WindowsResult<u32> {
+    let key_down = synthetic_a_input(false);
+    let key_up = synthetic_a_input(true);
+    let inputs = [key_down, key_up];
+    let sent = unsafe { SendInput(&inputs, size_of::<INPUT>() as i32) };
+    if sent != inputs.len() as u32 {
+        // Best-effort cleanup prevents a partial injection from leaving the
+        // runner's input state pressed even when the smoke must fail.
+        let _ = unsafe { SendInput(&[key_up], size_of::<INPUT>() as i32) };
+        return Err(Error::from_thread());
+    }
+    Ok(sent)
+}
+
+fn synthetic_a_input(released: bool) -> INPUT {
+    INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: VIRTUAL_KEY(0),
+                wScan: 0x1e,
+                dwFlags: if released {
+                    KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP
+                } else {
+                    KEYEVENTF_SCANCODE
+                },
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    }
 }
 
 unsafe fn inject_lifecycle_messages(window: HWND, state: *mut WindowState) {
@@ -356,7 +427,12 @@ unsafe extern "system" fn window_proc(
             match unsafe { read_keyboard_edge(lparam) } {
                 Ok(Some(edge)) => {
                     state.keyboard_edges += 1;
-                    state.pressed_candidates.apply_edge(edge);
+                    if !edge.pressed && state.drop_next_release {
+                        state.drop_next_release = false;
+                        state.intentionally_dropped_releases += 1;
+                    } else {
+                        state.pressed_candidates.apply_edge(edge);
+                    }
                 }
                 Ok(None) => {}
                 Err(()) => state.decode_errors += 1,

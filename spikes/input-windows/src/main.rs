@@ -10,6 +10,35 @@ mod windows_capture;
 
 fn main() {
     #[cfg(target_os = "windows")]
+    if let Some(milliseconds) = argument_value("--synthetic-release-recovery-ms")
+        .and_then(|value| value.parse::<u64>().ok())
+    {
+        let report = windows_capture::run_synthetic_release_recovery_smoke(
+            std::time::Duration::from_millis(milliseconds),
+        )
+        .expect("Windows synthetic release recovery smoke failed");
+        assert!(report.registered, "Raw Input devices were not registered");
+        assert_eq!(report.synthetic_inputs_sent, 2);
+        assert!(
+            report.raw_messages >= 2,
+            "SendInput produced no WM_INPUT pair"
+        );
+        assert!(
+            report.keyboard_edges >= 2,
+            "SendInput produced no keyboard edge pair"
+        );
+        assert_eq!(report.intentionally_dropped_releases, 1);
+        assert_eq!(report.reconciled_releases, 1);
+        assert!(report.reconciliation_runs >= 2);
+        assert_eq!(report.reconciliation_query_errors, 0);
+        assert_eq!(report.pressed_candidates_remaining, 0);
+        assert_eq!(report.callback_panics, 0);
+        assert!(report.clean_shutdown);
+        print_registration_report(report);
+        return;
+    }
+
+    #[cfg(target_os = "windows")]
     if std::env::args().any(|argument| argument == "--key-state-smoke") {
         let candidates = BTreeSet::from([
             PhysicalKey::ControlLeft,
@@ -120,7 +149,7 @@ fn main() {
 #[cfg(target_os = "windows")]
 fn print_registration_report(report: windows_capture::RegistrationReport) {
     println!(
-        "input-windows-spike: registered={} session_notifications_registered={} session_notifications_unregistered={} clean_shutdown={} raw_messages={} keyboard_edges={} device_arrivals={} device_removals={} resets={} reset_releases={} device_removed_resets={} session_change_resets={} power_change_resets={} service_stopped_resets={} unqueryable_key_resets={} state_query_unavailable_resets={} reconciliation_runs={} reconciled_releases={} reconciliation_query_errors={} decode_errors={} callback_panics={}",
+        "input-windows-spike: registered={} session_notifications_registered={} session_notifications_unregistered={} clean_shutdown={} raw_messages={} keyboard_edges={} device_arrivals={} device_removals={} resets={} reset_releases={} device_removed_resets={} session_change_resets={} power_change_resets={} service_stopped_resets={} unqueryable_key_resets={} state_query_unavailable_resets={} reconciliation_runs={} reconciled_releases={} reconciliation_query_errors={} decode_errors={} callback_panics={} synthetic_inputs_sent={} intentionally_dropped_releases={} pressed_candidates_remaining={}",
         report.registered,
         report.session_notifications_registered,
         report.session_notifications_unregistered,
@@ -142,6 +171,9 @@ fn print_registration_report(report: windows_capture::RegistrationReport) {
         report.reconciliation_query_errors,
         report.decode_errors,
         report.callback_panics,
+        report.synthetic_inputs_sent,
+        report.intentionally_dropped_releases,
+        report.pressed_candidates_remaining,
     );
 }
 
