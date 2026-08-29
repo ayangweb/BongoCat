@@ -148,4 +148,8 @@ candidate，再在单次受控 window callback 内写满 `64` 项 FIFO 并追加
 清除 64 项不可信 backlog、把被拒绝边沿替换为带同一 sequence 的 `QueueOverflow` Reset，
 owner drain 后释放 A。命令断言 `overflows=1 recovery_resets=1 discarded=64 gaps=64`、无
 duplicate/out-of-order、无残留 candidate，随后 `WM_DESTROY` 的 final Reset 必须成功入队，
-producer 关闭且队列完全 drain。该 smoke 已接入 Windows runner，push 证据待本批提交后补录。
+producer 关闭且队列完全 drain。commit `98b27f2` 的 push run `33257310771`、job
+`99113185410` 已通过 25 项 contract test 和该命令；同一 job 也重跑并通过 release recovery、
+1536 个 keyboard edge、pointer flood、lifecycle Reset 与 config-store 回归。该受控 overflow
+证明恢复策略在真实 Win32 callback/dispatch 路径执行，但不代表正常物理压力下允许 overflow；
+产品门槛仍要求正常压力计数始终为 0。
