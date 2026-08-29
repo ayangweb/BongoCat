@@ -167,7 +167,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 将 macOS spike 打包为最小 `.app`，验证 bundle id、菜单、激活、关闭和辅助功能树可被系统识别。
   - 状态：Bundle ID `com.ayangweb.bongo-cat`、菜单、激活、关闭/重开和退出已通过；GPUI 内容节点无法被辅助功能 API 识别，因此保持未完成。
 - [ ] 生成 Windows spike 可执行文件，验证 MSVC、Windows SDK、D3D shader 工具和 manifest 前置条件。
-- [ ] 跟踪 `block 0.1.6`、`proc-macro-error2 2.0.1` future-incompatibility，进入产品 workspace 前形成升级或接受结论。
+- [x] 跟踪 `block 0.1.6`、`proc-macro-error2 2.0.1` future-incompatibility；`docs/phase-0/future-incompatibility.md` 明确当前图只接受用于 spike，macOS 输入产品边界迁移到 `objc2-core-graphics`，GPUI 图必须在进入产品 workspace 前通过升级或审计 patch 消除两条 warning。
 - [x] 若存在发布阻塞，提交 GPUI go/no-go ADR；备选只评估 Iced。ADR-0009 记录 GPUI 0.2.2 的 AX gate、Iced 0.14.0 初步检查和解除条件；当前阻塞仍未解除。
 
 ### 1.6 原生 Overlay spike

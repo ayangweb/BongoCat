@@ -59,3 +59,7 @@ cargo install cargo-deny --version 0.18.3 --locked
 - 发布阶段的 SBOM 与 notice bundle 生成。
 
 Cubism 版本、来源、hash、再分发条款和 attribution 必须在 `P0-CUBISM` 单独形成书面结论；完成前不得制作可公开分发的 Native Rewrite 安装包。
+
+## Future-Incompatibility
+
+当前 stable Rust 报告 `block 0.1.6` 与 `proc-macro-error2 2.0.1` 将在未来版本成为硬错误。两者仅允许保留在 Phase 0 spike lockfile 中，不获准直接进入产品 workspace。依赖路径、rustc 诊断、替换策略和产品门禁见 `docs/phase-0/future-incompatibility.md`。

@@ -84,7 +84,7 @@ spike 使用容量为 8 的 `async-channel 1.9.0` 传递强类型 `ReadSnapshot`
 
 2026-08-28 按 ADR-0008 将 Bundle ID 更新为 `com.ayangweb.bongo-cat` 后重新执行打包、strict codesign 和 LaunchServices auto-quit，三项均通过。打包脚本会在签名前读取 Info.plist 并拒绝任何非预期 Bundle ID。
 
-上游 `block 0.1.6` 和 `proc-macro-error2 2.0.1` 被 Cargo 标记为 future-incompatible；进入产品 workspace 前需要评估 GPUI 更新或上游修复时间。
+上游 `block 0.1.6` 和 `proc-macro-error2 2.0.1` 被 Cargo 标记为 future-incompatible。`docs/phase-0/future-incompatibility.md` 已形成结论：当前图只允许用于 Phase 0 spike，进入产品 workspace 前必须通过 GPUI 上游升级或单独审计的可复现 patch 消除两条 warning。
 
 ## Metal Toolchain 结果
 
