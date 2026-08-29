@@ -251,6 +251,7 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 - 使用 listen-only `CGEventTap`，不经过 GPUI 响应链。
 - 区分 Input Monitoring/Accessibility 的 unknown、denied、granted、restart-required 状态。
 - 监听 tap 被系统禁用、超时和 session 变化，并自动重建。
+- `FlagsChanged` 的 down/up 方向必须在 callback 中从事件自身 flags、左右修饰键 keycode 和 callback decoder 的前一边沿状态冻结；这样左右同类修饰键同时按下时仍能识别单侧 release。decoder 状态不属于 runtime pressed state，并随任何 `Reset` 清空；不得等到 consumer drain 时用较新的全局状态反推旧事件，无法识别的修饰键必须触发可观测 `Reset`。
 - 对键盘和鼠标 pressed set 分别使用 `CGEventSourceKeyState`、`CGEventSourceButtonState` 校正；保留 0–31 号 mouse button 身份，按统一的 `250 ms`/连续 `2` 次缺失策略确认释放，睡眠、锁屏、权限变化和 tap 重启时直接复位。
 - GameController owner 在服务期启用后台事件，连接分配新的 generation；按钮/连接边沿进入可靠队列，axis 进入固定容量 keyed latest-values，断开后旧 generation 的 callback 和待消费样本不得作用于重连设备。
 - callback 只做映射和入队，不执行模型、文件或 UI 工作。

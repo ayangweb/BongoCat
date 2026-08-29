@@ -56,6 +56,14 @@ pub enum WorkspaceLifecycleInjection {
 }
 
 #[cfg(target_os = "macos")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReleaseLossInjection {
+    Keyboard,
+    Modifier,
+    Mouse,
+}
+
+#[cfg(target_os = "macos")]
 impl WorkspaceLifecycleInjection {
     fn events(self) -> &'static [WorkspaceLifecycleEvent] {
         use WorkspaceLifecycleEvent::{DidWake, SessionBecameActive, SessionResigned, WillSleep};
@@ -108,7 +116,7 @@ pub struct MacCaptureLifecycle {
 pub enum CapturedInputEvent {
     KeyDown { key_code: u16, repeat: bool },
     KeyUp { key_code: u16 },
-    FlagsChanged { key_code: u16 },
+    FlagsChanged { key_code: u16, pressed: bool },
     MouseDown { button: u8 },
     MouseUp { button: u8 },
     Reset,
@@ -142,11 +150,7 @@ pub struct MacPressedKeyCandidates {
 }
 
 impl MacPressedKeyCandidates {
-    pub fn apply_event_with(
-        &mut self,
-        event: CapturedInputEvent,
-        mut is_pressed: impl FnMut(u16) -> bool,
-    ) {
+    pub fn apply_event(&mut self, event: CapturedInputEvent) {
         match event {
             CapturedInputEvent::KeyDown { key_code, .. } => {
                 self.missing_confirmations.remove(&key_code);
@@ -160,9 +164,9 @@ impl MacPressedKeyCandidates {
                     self.counters.unmatched_up += 1;
                 }
             }
-            CapturedInputEvent::FlagsChanged { key_code } => {
+            CapturedInputEvent::FlagsChanged { key_code, pressed } => {
                 self.missing_confirmations.remove(&key_code);
-                if is_pressed(key_code) {
+                if pressed {
                     if !self.keys.insert(key_code) {
                         self.counters.duplicate_down += 1;
                     }
@@ -685,6 +689,7 @@ pub struct TapProbeReport {
     pub key_down: u64,
     pub key_up: u64,
     pub flags_changed: u64,
+    pub unsupported_modifier_resets: u64,
     pub mouse_down: u64,
     pub mouse_up: u64,
     pub cursor_captured: u64,
@@ -741,6 +746,7 @@ struct TapCounters {
     key_down: AtomicU64,
     key_up: AtomicU64,
     flags_changed: AtomicU64,
+    unsupported_modifier_resets: AtomicU64,
     mouse_down: AtomicU64,
     mouse_up: AtomicU64,
     cursor_captured: AtomicU64,
@@ -789,6 +795,7 @@ impl TapCounters {
             key_down: self.key_down.load(Ordering::Relaxed),
             key_up: self.key_up.load(Ordering::Relaxed),
             flags_changed: self.flags_changed.load(Ordering::Relaxed),
+            unsupported_modifier_resets: self.unsupported_modifier_resets.load(Ordering::Relaxed),
             mouse_down: self.mouse_down.load(Ordering::Relaxed),
             mouse_up: self.mouse_up.load(Ordering::Relaxed),
             cursor_captured: self.cursor_captured.load(Ordering::Relaxed),
@@ -1062,18 +1069,42 @@ fn consume_workspace_lifecycle_signals(
     pressed_key_candidates: &mut MacPressedKeyCandidates,
     pressed_mouse_candidates: &mut MacPressedMouseCandidates,
     counters: &TapCounters,
-) {
+) -> bool {
     if signals.take() != 0 {
         pressed_key_candidates.reset();
         pressed_mouse_candidates.reset();
         counters
             .workspace_lifecycle_resets
             .fetch_add(1, Ordering::Relaxed);
+        true
+    } else {
+        false
     }
 }
 
 #[cfg(target_os = "macos")]
 const MAX_RECONCILABLE_MOUSE_BUTTON: i64 = 31;
+
+#[cfg(target_os = "macos")]
+fn captured_modifier_pressed(
+    event: &core_graphics2::event::CGEvent,
+    key_code: u16,
+    was_pressed: bool,
+) -> Option<bool> {
+    use core_graphics2::event::CGEventFlags;
+
+    let mask = match key_code {
+        54 | 55 => CGEventFlags::MaskCommand,
+        56 | 60 => CGEventFlags::MaskShift,
+        57 => CGEventFlags::MaskAlphaShift,
+        58 | 61 => CGEventFlags::MaskAlternate,
+        59 | 62 => CGEventFlags::MaskControl,
+        63 => CGEventFlags::MaskSecondaryFn,
+        _ => return None,
+    };
+    let aggregate_pressed = event.get_flags().contains(mask);
+    Some(aggregate_pressed && !was_pressed)
+}
 
 #[cfg(target_os = "macos")]
 fn captured_mouse_button(event: &core_graphics2::event::CGEvent) -> Option<u8> {
@@ -1090,10 +1121,11 @@ fn queue_captured_event(
     event: CapturedInputEvent,
     queue: &SharedCaptureQueue,
     counters: &TapCounters,
-) {
+) -> bool {
     match queue.push_with_overflow_reset(event) {
         Ok(()) => {
             counters.queued_events.fetch_add(1, Ordering::Relaxed);
+            false
         }
         Err(CaptureQueueError {
             kind: CaptureQueueErrorKind::Full,
@@ -1109,12 +1141,14 @@ fn queue_captured_event(
             counters
                 .queue_discarded_events
                 .fetch_add(discarded as u64, Ordering::Relaxed);
+            true
         }
         Err(CaptureQueueError {
             kind: CaptureQueueErrorKind::Closed,
             ..
         }) => {
             counters.queue_closed_events.fetch_add(1, Ordering::Relaxed);
+            false
         }
     }
 }
@@ -1143,24 +1177,62 @@ fn run_tap_on_run_loop(
     duration: Duration,
     injected_disable: Option<TapDisableReason>,
     injected_lifecycle: Option<WorkspaceLifecycleInjection>,
-    inject_release_loss: bool,
+    release_loss: Option<ReleaseLossInjection>,
 ) -> Result<TapProbeReport, TapProbeError> {
     use core_foundation::runloop::{CFRunLoop, kCFRunLoopDefaultMode};
     use core_graphics2::event::{
-        CGEvent, CGEventField, CGEventSource, CGEventSourceStateID, CGEventTap, CGEventTapLocation,
-        CGEventTapOptions, CGEventTapPlacement, CGEventType,
+        CGEvent, CGEventField, CGEventFlags, CGEventSource, CGEventSourceStateID, CGEventTap,
+        CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement, CGEventType, CGMouseButton,
     };
 
-    let synthetic_events = if inject_release_loss {
-        let source = CGEventSource::new(CGEventSourceStateID::Private)
-            .map_err(|_| TapProbeError::SyntheticEventCreateFailed)?;
-        let key_down = CGEvent::new_keyboard_event(source.clone(), 0, true)
+    let synthetic_events = match release_loss {
+        Some(ReleaseLossInjection::Keyboard) => {
+            let source = CGEventSource::new(CGEventSourceStateID::Private)
+                .map_err(|_| TapProbeError::SyntheticEventCreateFailed)?;
+            let down = CGEvent::new_keyboard_event(source.clone(), 0, true)
+                .ok_or(TapProbeError::SyntheticEventCreateFailed)?;
+            let up = CGEvent::new_keyboard_event(source, 0, false)
+                .ok_or(TapProbeError::SyntheticEventCreateFailed)?;
+            Some([down, up])
+        }
+        Some(ReleaseLossInjection::Modifier) => {
+            let source = CGEventSource::new(CGEventSourceStateID::Private)
+                .map_err(|_| TapProbeError::SyntheticEventCreateFailed)?;
+            let down = CGEvent::new_keyboard_event(source.clone(), 56, true)
+                .ok_or(TapProbeError::SyntheticEventCreateFailed)?;
+            down.set_type(CGEventType::FlagsChanged);
+            down.set_flags(CGEventFlags::MaskShift);
+            let up = CGEvent::new_keyboard_event(source, 56, false)
+                .ok_or(TapProbeError::SyntheticEventCreateFailed)?;
+            up.set_type(CGEventType::FlagsChanged);
+            up.set_flags(CGEventFlags::empty());
+            Some([down, up])
+        }
+        Some(ReleaseLossInjection::Mouse) => {
+            let source = CGEventSource::new(CGEventSourceStateID::Private)
+                .map_err(|_| TapProbeError::SyntheticEventCreateFailed)?;
+            let location = CGEvent::new(source.clone())
+                .ok_or(TapProbeError::SyntheticEventCreateFailed)?
+                .get_location();
+            let down = CGEvent::new_mouse_event(
+                source.clone(),
+                CGEventType::OtherMouseDown,
+                location,
+                CGMouseButton::Center,
+            )
             .ok_or(TapProbeError::SyntheticEventCreateFailed)?;
-        let key_up = CGEvent::new_keyboard_event(source, 0, false)
+            down.set_integer_value_field(CGEventField::MouseEventButtonNumber, 31);
+            let up = CGEvent::new_mouse_event(
+                source,
+                CGEventType::OtherMouseUp,
+                location,
+                CGMouseButton::Center,
+            )
             .ok_or(TapProbeError::SyntheticEventCreateFailed)?;
-        Some((key_down, key_up))
-    } else {
-        None
+            up.set_integer_value_field(CGEventField::MouseEventButtonNumber, 31);
+            Some([down, up])
+        }
+        None => None,
     };
 
     let counters = Arc::new(TapCounters::default());
@@ -1176,8 +1248,23 @@ fn run_tap_on_run_loop(
     let callback_counters = Arc::clone(&counters);
     let callback_disable_signals = Arc::clone(&disable_signals);
     let callback_ignore_next_user_disable = Arc::clone(&ignore_next_user_disable);
-    let drop_next_key_up = Arc::new(AtomicBool::new(inject_release_loss));
+    let callback_modifier_keys = Arc::new(Mutex::new(BTreeSet::<u16>::new()));
+    let modifier_keys_for_callback = Arc::clone(&callback_modifier_keys);
+    let drop_next_key_up = Arc::new(AtomicBool::new(matches!(
+        release_loss,
+        Some(ReleaseLossInjection::Keyboard)
+    )));
     let callback_drop_next_key_up = Arc::clone(&drop_next_key_up);
+    let drop_next_modifier_up = Arc::new(AtomicBool::new(matches!(
+        release_loss,
+        Some(ReleaseLossInjection::Modifier)
+    )));
+    let callback_drop_next_modifier_up = Arc::clone(&drop_next_modifier_up);
+    let drop_next_mouse_up = Arc::new(AtomicBool::new(matches!(
+        release_loss,
+        Some(ReleaseLossInjection::Mouse)
+    )));
+    let callback_drop_next_mouse_up = Arc::clone(&drop_next_mouse_up);
     let callback = move |_proxy: core_graphics2::event::CGEventTapProxy,
                          event_type: CGEventType,
                          event: &core_graphics2::event::CGEvent| {
@@ -1214,11 +1301,39 @@ fn run_tap_on_run_loop(
                     callback_counters
                         .flags_changed
                         .fetch_add(1, Ordering::Relaxed);
-                    Some(CapturedInputEvent::FlagsChanged {
-                        key_code: event
-                            .get_integer_value_field(CGEventField::KeyboardEventKeycode)
-                            .clamp(0, i64::from(u16::MAX)) as u16,
-                    })
+                    let key_code = event
+                        .get_integer_value_field(CGEventField::KeyboardEventKeycode)
+                        .clamp(0, i64::from(u16::MAX)) as u16;
+                    let mut modifier_keys = modifier_keys_for_callback
+                        .lock()
+                        .expect("callback modifier decoder lock poisoned");
+                    let was_pressed = modifier_keys.contains(&key_code);
+                    match captured_modifier_pressed(event, key_code, was_pressed) {
+                        Some(false)
+                            if callback_drop_next_modifier_up.swap(false, Ordering::AcqRel) =>
+                        {
+                            modifier_keys.remove(&key_code);
+                            callback_counters
+                                .intentionally_dropped_releases
+                                .fetch_add(1, Ordering::Relaxed);
+                            None
+                        }
+                        Some(pressed) => {
+                            if pressed {
+                                modifier_keys.insert(key_code);
+                            } else {
+                                modifier_keys.remove(&key_code);
+                            }
+                            Some(CapturedInputEvent::FlagsChanged { key_code, pressed })
+                        }
+                        None => {
+                            modifier_keys.clear();
+                            callback_counters
+                                .unsupported_modifier_resets
+                                .fetch_add(1, Ordering::Relaxed);
+                            Some(CapturedInputEvent::Reset)
+                        }
+                    }
                 }
                 CGEventType::LeftMouseDown
                 | CGEventType::RightMouseDown
@@ -1231,8 +1346,16 @@ fn run_tap_on_run_loop(
                 | CGEventType::RightMouseUp
                 | CGEventType::OtherMouseUp => {
                     callback_counters.mouse_up.fetch_add(1, Ordering::Relaxed);
-                    captured_mouse_button(event)
-                        .map(|button| CapturedInputEvent::MouseUp { button })
+                    captured_mouse_button(event).and_then(|button| {
+                        if callback_drop_next_mouse_up.swap(false, Ordering::AcqRel) {
+                            callback_counters
+                                .intentionally_dropped_releases
+                                .fetch_add(1, Ordering::Relaxed);
+                            None
+                        } else {
+                            Some(CapturedInputEvent::MouseUp { button })
+                        }
+                    })
                 }
                 CGEventType::MouseMoved
                 | CGEventType::LeftMouseDragged
@@ -1246,6 +1369,10 @@ fn run_tap_on_run_loop(
                     None
                 }
                 CGEventType::TapDisabledByTimeout => {
+                    modifier_keys_for_callback
+                        .lock()
+                        .expect("callback modifier decoder lock poisoned")
+                        .clear();
                     record_tap_disable(
                         TapDisableReason::Timeout,
                         &callback_disable_signals,
@@ -1255,6 +1382,10 @@ fn run_tap_on_run_loop(
                     None
                 }
                 CGEventType::TapDisabledByUserInput => {
+                    modifier_keys_for_callback
+                        .lock()
+                        .expect("callback modifier decoder lock poisoned")
+                        .clear();
                     if !callback_ignore_next_user_disable.swap(false, Ordering::AcqRel) {
                         record_tap_disable(
                             TapDisableReason::UserInput,
@@ -1267,8 +1398,13 @@ fn run_tap_on_run_loop(
                 }
                 _ => None,
             };
-            if let Some(captured_event) = captured_event {
-                queue_captured_event(captured_event, &callback_queue, &callback_counters);
+            if let Some(captured_event) = captured_event
+                && queue_captured_event(captured_event, &callback_queue, &callback_counters)
+            {
+                modifier_keys_for_callback
+                    .lock()
+                    .expect("callback modifier decoder lock poisoned")
+                    .clear();
             }
         });
         None
@@ -1309,9 +1445,9 @@ fn run_tap_on_run_loop(
     // SAFETY: the run-loop mode is the process-owned constant supplied by CoreFoundation.
     run_loop.add_source(&source, unsafe { kCFRunLoopDefaultMode });
     tap.enable(true);
-    if let Some((key_down, key_up)) = synthetic_events {
-        key_down.post(CGEventTapLocation::SessionEventTap);
-        key_up.post(CGEventTapLocation::SessionEventTap);
+    if let Some([down, up]) = synthetic_events {
+        down.post(CGEventTapLocation::SessionEventTap);
+        up.post(CGEventTapLocation::SessionEventTap);
         counters.synthetic_events_posted.store(2, Ordering::Relaxed);
     }
     let deadline = Instant::now() + duration;
@@ -1366,7 +1502,7 @@ fn run_tap_on_run_loop(
             .fetch_add(drained.len() as u64, Ordering::Relaxed);
         for sequenced in drained {
             capture_sequence.observe(sequenced.sequence);
-            pressed_key_candidates.apply_event_with(sequenced.event, reconcile_key_state);
+            pressed_key_candidates.apply_event(sequenced.event);
             pressed_mouse_candidates.apply_event(sequenced.event);
         }
         let now = Instant::now();
@@ -1374,12 +1510,17 @@ fn run_tap_on_run_loop(
             let _latest_sample = cursor_latest.take();
             next_cursor_tick = now + cursor_interval;
         }
-        consume_workspace_lifecycle_signals(
+        if consume_workspace_lifecycle_signals(
             &workspace_signals,
             &mut pressed_key_candidates,
             &mut pressed_mouse_candidates,
             &counters,
-        );
+        ) {
+            callback_modifier_keys
+                .lock()
+                .expect("callback modifier decoder lock poisoned")
+                .clear();
+        }
         if disable_signals.take() != 0 {
             ignore_next_user_disable.store(false, Ordering::Release);
             if input_monitoring_preflight() {
@@ -1408,12 +1549,17 @@ fn run_tap_on_run_loop(
     cursor_latest.close();
     tap.enable(false);
     run_loop.remove_source(&source, unsafe { kCFRunLoopDefaultMode });
-    consume_workspace_lifecycle_signals(
+    if consume_workspace_lifecycle_signals(
         &workspace_signals,
         &mut pressed_key_candidates,
         &mut pressed_mouse_candidates,
         &counters,
-    );
+    ) {
+        callback_modifier_keys
+            .lock()
+            .expect("callback modifier decoder lock poisoned")
+            .clear();
+    }
     workspace_observer.close_sink();
     if injected_lifecycle.is_some() {
         workspace_observer.post_for_probe(WorkspaceLifecycleEvent::DidWake);
@@ -1425,7 +1571,7 @@ fn run_tap_on_run_loop(
         .fetch_add(drained.len() as u64, Ordering::Relaxed);
     for sequenced in drained {
         capture_sequence.observe(sequenced.sequence);
-        pressed_key_candidates.apply_event_with(sequenced.event, reconcile_key_state);
+        pressed_key_candidates.apply_event(sequenced.event);
         pressed_mouse_candidates.apply_event(sequenced.event);
     }
     let _final_cursor_sample = cursor_latest.take();
@@ -1495,23 +1641,18 @@ pub fn run_listen_only_tap(
     duration: Duration,
     injected_disable: Option<TapDisableReason>,
     injected_lifecycle: Option<WorkspaceLifecycleInjection>,
-    inject_release_loss: bool,
+    release_loss: Option<ReleaseLossInjection>,
 ) -> Result<TapProbeReport, TapProbeError> {
     if !input_monitoring_preflight() {
         return Err(TapProbeError::PermissionDenied);
     }
-    if inject_release_loss && !post_event_access_preflight() {
+    if release_loss.is_some() && !post_event_access_preflight() {
         return Err(TapProbeError::PostEventPermissionDenied);
     }
     thread::Builder::new()
         .name("bongocat-macos-input-tap".to_string())
         .spawn(move || {
-            run_tap_on_run_loop(
-                duration,
-                injected_disable,
-                injected_lifecycle,
-                inject_release_loss,
-            )
+            run_tap_on_run_loop(duration, injected_disable, injected_lifecycle, release_loss)
         })
         .map_err(|_| TapProbeError::ThreadPanicked)?
         .join()
@@ -1673,30 +1814,30 @@ mod tests {
     #[test]
     fn candidate_state_tracks_key_and_modifier_edges() {
         let mut candidates = MacPressedKeyCandidates::default();
-        candidates.apply_event_with(
-            CapturedInputEvent::KeyDown {
-                key_code: 0,
-                repeat: false,
-            },
-            |_| false,
-        );
-        candidates.apply_event_with(CapturedInputEvent::FlagsChanged { key_code: 55 }, |_| true);
+        candidates.apply_event(CapturedInputEvent::KeyDown {
+            key_code: 0,
+            repeat: false,
+        });
+        candidates.apply_event(CapturedInputEvent::FlagsChanged {
+            key_code: 55,
+            pressed: true,
+        });
         assert_eq!(candidates.keys(), &BTreeSet::from([0, 55]));
-        candidates.apply_event_with(CapturedInputEvent::KeyUp { key_code: 0 }, |_| false);
-        candidates.apply_event_with(CapturedInputEvent::FlagsChanged { key_code: 55 }, |_| false);
+        candidates.apply_event(CapturedInputEvent::KeyUp { key_code: 0 });
+        candidates.apply_event(CapturedInputEvent::FlagsChanged {
+            key_code: 55,
+            pressed: false,
+        });
         assert!(candidates.keys().is_empty());
     }
 
     #[test]
     fn candidate_state_requires_two_missing_snapshots_before_release() {
         let mut candidates = MacPressedKeyCandidates::default();
-        candidates.apply_event_with(
-            CapturedInputEvent::KeyDown {
-                key_code: 0,
-                repeat: false,
-            },
-            |_| false,
-        );
+        candidates.apply_event(CapturedInputEvent::KeyDown {
+            key_code: 0,
+            repeat: false,
+        });
         let empty = KeyReconciliation {
             still_pressed: BTreeSet::new(),
             released_count: 1,
@@ -1744,13 +1885,10 @@ mod tests {
     #[test]
     fn confirmed_key_cancels_pending_release_and_reset_clears_state() {
         let mut candidates = MacPressedKeyCandidates::default();
-        candidates.apply_event_with(
-            CapturedInputEvent::KeyDown {
-                key_code: 12,
-                repeat: false,
-            },
-            |_| false,
-        );
+        candidates.apply_event(CapturedInputEvent::KeyDown {
+            key_code: 12,
+            repeat: false,
+        });
         candidates
             .reconcile(&KeyReconciliation::default(), 2)
             .unwrap();
@@ -1760,7 +1898,7 @@ mod tests {
         };
         let report = candidates.reconcile(&held, 2).unwrap();
         assert_eq!(report.pending_confirmations, 0);
-        candidates.apply_event_with(CapturedInputEvent::Reset, |_| false);
+        candidates.apply_event(CapturedInputEvent::Reset);
         assert!(candidates.keys().is_empty());
         assert_eq!(candidates.counters().resets, 1);
         assert_eq!(candidates.counters().reset_releases, 1);
@@ -1799,18 +1937,34 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
+    fn modifier_direction_is_frozen_from_callback_event_flags() {
+        use core_graphics2::event::{
+            CGEvent, CGEventFlags, CGEventSource, CGEventSourceStateID, CGEventType,
+        };
+
+        let source = CGEventSource::new(CGEventSourceStateID::Private).unwrap();
+        let event = CGEvent::new_keyboard_event(source, 56, true).unwrap();
+        event.set_type(CGEventType::FlagsChanged);
+        event.set_flags(CGEventFlags::MaskShift);
+        assert_eq!(captured_modifier_pressed(&event, 56, false), Some(true));
+        assert_eq!(captured_modifier_pressed(&event, 60, true), Some(false));
+
+        event.set_flags(CGEventFlags::empty());
+        assert_eq!(captured_modifier_pressed(&event, 56, true), Some(false));
+        assert_eq!(captured_modifier_pressed(&event, 0, false), None);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
     fn workspace_lifecycle_reset_clears_candidates_once_per_signal_batch() {
         let signals = WorkspaceLifecycleSignals::default();
         let counters = TapCounters::default();
         let mut key_candidates = MacPressedKeyCandidates::default();
         let mut mouse_candidates = MacPressedMouseCandidates::default();
-        key_candidates.apply_event_with(
-            CapturedInputEvent::KeyDown {
-                key_code: 0,
-                repeat: false,
-            },
-            |_| false,
-        );
+        key_candidates.apply_event(CapturedInputEvent::KeyDown {
+            key_code: 0,
+            repeat: false,
+        });
         mouse_candidates.apply_event(CapturedInputEvent::MouseDown { button: 1 });
         signals.signal(WorkspaceLifecycleEvent::WillSleep);
         signals.signal(WorkspaceLifecycleEvent::DidWake);
@@ -1879,7 +2033,10 @@ mod tests {
         );
         assert!(queue.is_empty());
         let error = queue
-            .push(CapturedInputEvent::FlagsChanged { key_code: 55 })
+            .push(CapturedInputEvent::FlagsChanged {
+                key_code: 55,
+                pressed: true,
+            })
             .unwrap_err();
         assert_eq!(error.kind, CaptureQueueErrorKind::Closed);
         assert_eq!(error.discarded, 0);

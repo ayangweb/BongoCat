@@ -1,7 +1,7 @@
 #[cfg(target_os = "macos")]
 use bongocat_input_macos_spike::{
-    CaptureAction, CaptureEvent, MacCaptureLifecycle, PermissionState, TapDisableReason,
-    TapProbeReport, WorkspaceLifecycleInjection, input_monitoring_preflight,
+    CaptureAction, CaptureEvent, MacCaptureLifecycle, PermissionState, ReleaseLossInjection,
+    TapDisableReason, TapProbeReport, WorkspaceLifecycleInjection, input_monitoring_preflight,
     post_event_access_preflight, reconcile_pressed_key_codes, reconcile_pressed_mouse_buttons,
     request_input_monitoring_access, run_gamecontroller_probe, run_listen_only_tap,
 };
@@ -12,9 +12,26 @@ fn main() {
     #[cfg(target_os = "macos")]
     {
         let request = std::env::args().any(|arg| arg == "--request");
-        let inject_release_loss = std::env::args().any(|arg| arg == "--inject-release-loss");
+        let legacy_release_loss = std::env::args().any(|arg| arg == "--inject-release-loss");
+        let release_loss = match argument_value("--release-loss-kind").as_deref() {
+            None if legacy_release_loss => Some(ReleaseLossInjection::Keyboard),
+            None => None,
+            Some("keyboard") => Some(ReleaseLossInjection::Keyboard),
+            Some("modifier") => Some(ReleaseLossInjection::Modifier),
+            Some("mouse") => Some(ReleaseLossInjection::Mouse),
+            Some(value) => {
+                eprintln!(
+                    "input-macos-spike: invalid --release-loss-kind value {value:?}; expected keyboard, modifier, or mouse"
+                );
+                std::process::exit(2);
+            }
+        };
         let summary_only = std::env::args().any(|arg| arg == "--summary-only");
         let tap_ms = argument_value("--tap-ms").and_then(|value| value.parse::<u64>().ok());
+        if release_loss.is_some() && tap_ms.is_none() {
+            eprintln!("input-macos-spike: release-loss injection requires --tap-ms");
+            std::process::exit(2);
+        }
         let gamepad_ms = match argument_value("--gamepad-ms") {
             None => None,
             Some(value) => match value.parse::<u64>() {
@@ -131,14 +148,14 @@ fn main() {
                         Duration::from_millis(tap_ms),
                         injected_disable,
                         injected_lifecycle,
-                        inject_release_loss,
+                        release_loss,
                     ) {
                         Ok(report) => {
                             if let Err(error) = validate_cycle_report(
                                 &report,
                                 injected_disable,
                                 injected_lifecycle,
-                                inject_release_loss,
+                                release_loss,
                             ) {
                                 print_cycle_report(cycle + 1, &report);
                                 eprintln!(
@@ -215,6 +232,10 @@ struct CycleSummary {
     completed: usize,
     key_down: u64,
     key_up: u64,
+    flags_changed: u64,
+    mouse_down: u64,
+    mouse_up: u64,
+    unsupported_modifier_resets: u64,
     reconciled_releases: u64,
     candidate_resets: u64,
     queue_overflows: u64,
@@ -232,6 +253,10 @@ impl CycleSummary {
         self.completed += 1;
         self.key_down += report.key_down;
         self.key_up += report.key_up;
+        self.flags_changed += report.flags_changed;
+        self.mouse_down += report.mouse_down;
+        self.mouse_up += report.mouse_up;
+        self.unsupported_modifier_resets += report.unsupported_modifier_resets;
         self.reconciled_releases += report.reconciled_releases;
         self.candidate_resets += report.candidate_resets;
         self.queue_overflows += report.queue_overflows;
@@ -245,10 +270,14 @@ impl CycleSummary {
 
     fn print(&self) {
         println!(
-            "input-macos-spike: summary completed_cycles={} key_down={} key_up={} cursor_captured={} cursor_coalesced={} cursor_consumed={} reconciled_releases={} candidate_resets={} queue_overflows={} sequence_gaps={} sequence_duplicates_or_out_of_order={} callback_panics={} clean_shutdown=true",
+            "input-macos-spike: summary completed_cycles={} key_down={} key_up={} flags_changed={} mouse_down={} mouse_up={} unsupported_modifier_resets={} cursor_captured={} cursor_coalesced={} cursor_consumed={} reconciled_releases={} candidate_resets={} queue_overflows={} sequence_gaps={} sequence_duplicates_or_out_of_order={} callback_panics={} clean_shutdown=true",
             self.completed,
             self.key_down,
             self.key_up,
+            self.flags_changed,
+            self.mouse_down,
+            self.mouse_up,
+            self.unsupported_modifier_resets,
             self.cursor_captured,
             self.cursor_coalesced,
             self.cursor_consumed,
@@ -267,7 +296,7 @@ fn validate_cycle_report(
     report: &TapProbeReport,
     injected_disable: Option<TapDisableReason>,
     injected_lifecycle: Option<WorkspaceLifecycleInjection>,
-    inject_release_loss: bool,
+    release_loss: Option<ReleaseLossInjection>,
 ) -> Result<(), String> {
     if !report.started {
         return Err("tap did not start".to_string());
@@ -277,6 +306,9 @@ fn validate_cycle_report(
     }
     if report.callback_panics != 0 || report.workspace_callback_panics != 0 {
         return Err("a callback panic was contained".to_string());
+    }
+    if report.unsupported_modifier_resets != 0 {
+        return Err("an unsupported modifier key forced input recovery".to_string());
     }
     if report.queue_overflows != 0 || report.queue_closed_events != 0 {
         return Err("the callback queue lost or rejected an event".to_string());
@@ -311,12 +343,16 @@ fn validate_cycle_report(
     {
         return Err("lifecycle injection did not reset and close its callback gate".to_string());
     }
-    if inject_release_loss
-        && (report.synthetic_events_posted != 2 || report.key_down < 1 || report.key_up < 1)
-    {
+    let callback_reached = match release_loss {
+        Some(ReleaseLossInjection::Keyboard) => report.key_down >= 1 && report.key_up >= 1,
+        Some(ReleaseLossInjection::Modifier) => report.flags_changed >= 2,
+        Some(ReleaseLossInjection::Mouse) => report.mouse_down >= 1 && report.mouse_up >= 1,
+        None => true,
+    };
+    if release_loss.is_some() && (report.synthetic_events_posted != 2 || !callback_reached) {
         return Err("release-loss injection did not reach the event-tap callback".to_string());
     }
-    if inject_release_loss
+    if release_loss.is_some()
         && (report.intentionally_dropped_releases != 1
             || report.reconciliation_runs < 2
             || report.reconciled_releases != 1
@@ -330,13 +366,14 @@ fn validate_cycle_report(
 #[cfg(target_os = "macos")]
 fn print_cycle_report(cycle: usize, report: &TapProbeReport) {
     println!(
-        "input-macos-spike: tap cycle={} started={} finished_enabled={} key_down={} key_up={} flags_changed={} mouse_down={} mouse_up={} cursor_captured={} cursor_coalesced={} cursor_consumed={} cursor_rejected_after_close={} disabled_timeout={} disabled_user={} injected_disables={} reenabled={} callback_panics={} queued_events={} consumed_events={} queue_overflows={} queue_recovery_resets={} queue_discarded_events={} queue_closed_events={} sequence_gaps={} sequence_duplicates_or_out_of_order={} reconciliation_runs={} reconciled_releases={} candidate_resets={} candidate_reset_releases={} duplicate_down={} unmatched_up={} workspace_observers_registered={} workspace_observers_removed={} workspace_will_sleep={} workspace_did_wake={} workspace_session_resigned={} workspace_session_active={} workspace_lifecycle_resets={} workspace_callback_panics={} workspace_callbacks_ignored_after_close={} synthetic_events_posted={} intentionally_dropped_releases={} pressed_candidates_before_shutdown={}",
+        "input-macos-spike: tap cycle={} started={} finished_enabled={} key_down={} key_up={} flags_changed={} unsupported_modifier_resets={} mouse_down={} mouse_up={} cursor_captured={} cursor_coalesced={} cursor_consumed={} cursor_rejected_after_close={} disabled_timeout={} disabled_user={} injected_disables={} reenabled={} callback_panics={} queued_events={} consumed_events={} queue_overflows={} queue_recovery_resets={} queue_discarded_events={} queue_closed_events={} sequence_gaps={} sequence_duplicates_or_out_of_order={} reconciliation_runs={} reconciled_releases={} candidate_resets={} candidate_reset_releases={} duplicate_down={} unmatched_up={} workspace_observers_registered={} workspace_observers_removed={} workspace_will_sleep={} workspace_did_wake={} workspace_session_resigned={} workspace_session_active={} workspace_lifecycle_resets={} workspace_callback_panics={} workspace_callbacks_ignored_after_close={} synthetic_events_posted={} intentionally_dropped_releases={} pressed_candidates_before_shutdown={}",
         cycle,
         report.started,
         report.finished_enabled,
         report.key_down,
         report.key_up,
         report.flags_changed,
+        report.unsupported_modifier_resets,
         report.mouse_down,
         report.mouse_up,
         report.cursor_captured,
@@ -404,40 +441,40 @@ mod tests {
 
     #[test]
     fn accepts_a_healthy_cycle() {
-        validate_cycle_report(&healthy_report(), None, None, false).unwrap();
+        validate_cycle_report(&healthy_report(), None, None, None).unwrap();
     }
 
     #[test]
     fn rejects_silent_smoke_failures() {
         let mut report = healthy_report();
         report.queue_overflows = 1;
-        assert!(validate_cycle_report(&report, None, None, false).is_err());
+        assert!(validate_cycle_report(&report, None, None, None).is_err());
 
         let mut report = healthy_report();
         report.workspace_observers_removed = 3;
-        assert!(validate_cycle_report(&report, None, None, false).is_err());
+        assert!(validate_cycle_report(&report, None, None, None).is_err());
 
         let mut report = healthy_report();
         report.finished_enabled = false;
-        assert!(validate_cycle_report(&report, None, None, false).is_err());
+        assert!(validate_cycle_report(&report, None, None, None).is_err());
 
         let mut report = healthy_report();
         report.sequence_gaps = 1;
-        assert!(validate_cycle_report(&report, None, None, false).is_err());
+        assert!(validate_cycle_report(&report, None, None, None).is_err());
 
         let mut report = healthy_report();
         report.queued_events = 2;
         report.consumed_events = 1;
-        assert!(validate_cycle_report(&report, None, None, false).is_err());
+        assert!(validate_cycle_report(&report, None, None, None).is_err());
 
         let mut report = healthy_report();
         report.cursor_captured = 2;
         report.cursor_consumed = 1;
-        assert!(validate_cycle_report(&report, None, None, false).is_err());
+        assert!(validate_cycle_report(&report, None, None, None).is_err());
 
         let mut report = healthy_report();
         report.cursor_rejected_after_close = 1;
-        assert!(validate_cycle_report(&report, None, None, false).is_err());
+        assert!(validate_cycle_report(&report, None, None, None).is_err());
     }
 
     #[test]
@@ -449,10 +486,37 @@ mod tests {
         report.intentionally_dropped_releases = 1;
         report.reconciliation_runs = 2;
         report.reconciled_releases = 1;
-        validate_cycle_report(&report, None, None, true).unwrap();
+        validate_cycle_report(&report, None, None, Some(ReleaseLossInjection::Keyboard)).unwrap();
 
         report.pressed_candidates_before_shutdown = 1;
-        assert!(validate_cycle_report(&report, None, None, true).is_err());
+        assert!(
+            validate_cycle_report(&report, None, None, Some(ReleaseLossInjection::Keyboard),)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn requires_each_release_loss_kind_to_reach_its_callback_path() {
+        let mut report = healthy_report();
+        report.synthetic_events_posted = 2;
+        report.intentionally_dropped_releases = 1;
+        report.reconciliation_runs = 2;
+        report.reconciled_releases = 1;
+
+        report.flags_changed = 2;
+        validate_cycle_report(&report, None, None, Some(ReleaseLossInjection::Modifier)).unwrap();
+
+        report.flags_changed = 0;
+        report.mouse_down = 1;
+        report.mouse_up = 1;
+        validate_cycle_report(&report, None, None, Some(ReleaseLossInjection::Mouse)).unwrap();
+
+        report.mouse_up = 0;
+        assert_eq!(
+            validate_cycle_report(&report, None, None, Some(ReleaseLossInjection::Mouse),)
+                .unwrap_err(),
+            "release-loss injection did not reach the event-tap callback"
+        );
     }
 
     #[test]
@@ -460,14 +524,16 @@ mod tests {
         let mut report = healthy_report();
         report.synthetic_events_posted = 2;
         assert_eq!(
-            validate_cycle_report(&report, None, None, true).unwrap_err(),
+            validate_cycle_report(&report, None, None, Some(ReleaseLossInjection::Keyboard),)
+                .unwrap_err(),
             "release-loss injection did not reach the event-tap callback"
         );
 
         report.key_down = 1;
         report.key_up = 1;
         assert_eq!(
-            validate_cycle_report(&report, None, None, true).unwrap_err(),
+            validate_cycle_report(&report, None, None, Some(ReleaseLossInjection::Keyboard),)
+                .unwrap_err(),
             "release-loss injection left an uncorrected pressed candidate"
         );
     }
@@ -478,7 +544,7 @@ mod tests {
         report.injected_disables = 1;
         report.disabled_by_timeout = 1;
         report.reenabled = 1;
-        validate_cycle_report(&report, Some(TapDisableReason::Timeout), None, false).unwrap();
+        validate_cycle_report(&report, Some(TapDisableReason::Timeout), None, None).unwrap();
 
         report.workspace_lifecycle_resets = 1;
         report.workspace_callbacks_ignored_after_close = 1;
@@ -486,7 +552,7 @@ mod tests {
             &report,
             Some(TapDisableReason::Timeout),
             Some(WorkspaceLifecycleInjection::All),
-            false,
+            None,
         )
         .unwrap();
     }

@@ -44,6 +44,8 @@ Runtime 使用布局无关的稳定物理键名。左右修饰键必须区分，
 
 Windows XInput 的 0–3 user index 只作为当前连接的 `device_id`；同一 slot 断开再连接必须分配新 generation。signed thumb axis 按负半轴 `32768`、正半轴 `32767` 归一化到完整 `[-1, 1]`，trigger 按 `0..255` 归一化到 `[0, 1]`。adapter 不应用 `XINPUT_GAMEPAD_*_DEADZONE` 或 trigger threshold 常量，避免平台默认值覆盖产品配置与共享 `0.5` 按钮语义。
 
+macOS `FlagsChanged` 必须在 event-tap callback 中结合事件自身 flags、keycode 和 callback decoder 记录的该 key 前一边沿状态，固定左右修饰键的 pressed/released 方向；同类左右键同时按住时，聚合 flag 仍为 true，但已在 decoder set 中的触发 key 表示单侧 release。decoder set 只解决平台 packet 歧义，不是 runtime pressed state，并随任何 `reset` 清空。consumer 不得在稍后 drain 时查询当前全局状态来反推旧边沿，因为同一批次可能已经包含后续 release。无法识别方向的 modifier event 触发带计数的安全 `reset`；`CGEventSourceKeyState` 只用于候选 pressed set 的周期校正。
+
 ## 手部状态
 
 模型资源可以把多个键映射到同一只手。兼容模式下，同一手只显示最后按下且仍有效的键资源；任意映射到该手的 pressed key 都令对应 hand-down 参数为 true。
