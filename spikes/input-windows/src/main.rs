@@ -45,12 +45,21 @@ fn main() {
         );
         assert_eq!(report.decode_errors, 0, "Raw Input decoding failed");
         assert_eq!(report.callback_panics, 0, "Raw Input callback panicked");
+        assert_eq!(
+            report.service_stopped_resets, 1,
+            "Raw Input shutdown did not reset pressed candidates"
+        );
         println!(
-            "input-windows-spike: registered={} clean_shutdown={} raw_messages={} keyboard_edges={} decode_errors={} callback_panics={}",
+            "input-windows-spike: registered={} clean_shutdown={} raw_messages={} keyboard_edges={} device_arrivals={} device_removals={} resets={} device_removed_resets={} service_stopped_resets={} decode_errors={} callback_panics={}",
             report.registered,
             report.clean_shutdown,
             report.raw_messages,
             report.keyboard_edges,
+            report.device_arrivals,
+            report.device_removals,
+            report.resets,
+            report.device_removed_resets,
+            report.service_stopped_resets,
             report.decode_errors,
             report.callback_panics,
         );

@@ -142,6 +142,82 @@ pub struct KeyboardEdge {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RawInputDeviceChange {
+    Arrival,
+    Removal,
+    Unknown,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CaptureResetReason {
+    DeviceRemoved,
+    ServiceStopped,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CandidateCounters {
+    pub captured_down: u64,
+    pub captured_up: u64,
+    pub duplicate_down: u64,
+    pub unmatched_up: u64,
+    pub resets: u64,
+    pub device_removed_resets: u64,
+    pub service_stopped_resets: u64,
+}
+
+/// Platform-local candidate cache used only to scope key-state queries.
+///
+/// The product runtime remains the pressed-state owner. This cache must be
+/// reset on device/service lifecycle changes so it cannot retain stale keys.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PressedKeyCandidates {
+    keys: BTreeSet<PhysicalKey>,
+    counters: CandidateCounters,
+}
+
+impl PressedKeyCandidates {
+    pub fn apply_edge(&mut self, edge: KeyboardEdge) {
+        if edge.pressed {
+            if self.keys.insert(edge.key) {
+                self.counters.captured_down += 1;
+            } else {
+                self.counters.duplicate_down += 1;
+            }
+        } else {
+            self.counters.captured_up += 1;
+            if !self.keys.remove(&edge.key) {
+                self.counters.unmatched_up += 1;
+            }
+        }
+    }
+
+    pub fn apply_device_change(&mut self, change: RawInputDeviceChange) -> bool {
+        if change != RawInputDeviceChange::Removal {
+            return false;
+        }
+        self.reset(CaptureResetReason::DeviceRemoved);
+        true
+    }
+
+    pub fn reset(&mut self, reason: CaptureResetReason) {
+        self.keys.clear();
+        self.counters.resets += 1;
+        match reason {
+            CaptureResetReason::DeviceRemoved => self.counters.device_removed_resets += 1,
+            CaptureResetReason::ServiceStopped => self.counters.service_stopped_resets += 1,
+        }
+    }
+
+    pub fn keys(&self) -> &BTreeSet<PhysicalKey> {
+        &self.keys
+    }
+
+    pub fn counters(&self) -> CandidateCounters {
+        self.counters
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct VirtualKeyCode(u16);
 
 impl VirtualKeyCode {
@@ -442,6 +518,45 @@ mod tests {
             virtual_key_for_reconciliation(PhysicalKey::AltRight),
             Some(VirtualKeyCode(0xa5))
         );
+    }
+
+    #[test]
+    fn device_removal_resets_pressed_candidates_but_arrival_does_not() {
+        let mut candidates = PressedKeyCandidates::default();
+        candidates.apply_edge(KeyboardEdge {
+            key: PhysicalKey::A,
+            pressed: true,
+        });
+        assert!(!candidates.apply_device_change(RawInputDeviceChange::Arrival));
+        assert_eq!(candidates.keys(), &BTreeSet::from([PhysicalKey::A]));
+        assert!(candidates.apply_device_change(RawInputDeviceChange::Removal));
+        assert!(candidates.keys().is_empty());
+        assert_eq!(candidates.counters().resets, 1);
+        assert_eq!(candidates.counters().device_removed_resets, 1);
+    }
+
+    #[test]
+    fn service_stop_resets_candidates_and_edge_anomalies_are_counted() {
+        let mut candidates = PressedKeyCandidates::default();
+        let down = KeyboardEdge {
+            key: PhysicalKey::ControlLeft,
+            pressed: true,
+        };
+        candidates.apply_edge(down);
+        candidates.apply_edge(down);
+        candidates.apply_edge(KeyboardEdge {
+            key: PhysicalKey::A,
+            pressed: false,
+        });
+        candidates.reset(CaptureResetReason::ServiceStopped);
+        let counters = candidates.counters();
+        assert!(candidates.keys().is_empty());
+        assert_eq!(counters.captured_down, 1);
+        assert_eq!(counters.captured_up, 1);
+        assert_eq!(counters.duplicate_down, 1);
+        assert_eq!(counters.unmatched_up, 1);
+        assert_eq!(counters.resets, 1);
+        assert_eq!(counters.service_stopped_resets, 1);
     }
 
     #[test]

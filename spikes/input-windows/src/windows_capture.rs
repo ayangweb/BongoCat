@@ -1,6 +1,7 @@
 use bongocat_input_windows_spike::{
-    KeyStateSnapshot, PhysicalKey, RawInputHeader, collect_key_state_snapshot_with,
-    decode_keyboard_packet, decode_raw_keyboard_bytes,
+    CaptureResetReason, KeyStateSnapshot, PhysicalKey, PressedKeyCandidates, RawInputDeviceChange,
+    RawInputHeader, collect_key_state_snapshot_with, decode_keyboard_packet,
+    decode_raw_keyboard_bytes,
 };
 use std::{
     collections::BTreeSet,
@@ -20,13 +21,15 @@ use windows::{
         UI::{
             Input::{
                 GetRawInputData, HRAWINPUT, KeyboardAndMouse::GetAsyncKeyState, RAWINPUTDEVICE,
-                RAWINPUTHEADER, RID_INPUT, RIDEV_INPUTSINK, RIDEV_REMOVE, RegisterRawInputDevices,
+                RAWINPUTHEADER, RID_INPUT, RIDEV_DEVNOTIFY, RIDEV_INPUTSINK, RIDEV_REMOVE,
+                RegisterRawInputDevices,
             },
             WindowsAndMessaging::{
                 CREATESTRUCTW, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
-                GWLP_USERDATA, GetMessageW, GetWindowLongPtrW, HWND_MESSAGE, KillTimer, MSG,
-                PostQuitMessage, RegisterClassW, SetTimer, SetWindowLongPtrW, TranslateMessage,
-                UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_DESTROY, WM_INPUT, WM_NCCREATE,
+                GIDC_ARRIVAL, GIDC_REMOVAL, GWLP_USERDATA, GetMessageW, GetWindowLongPtrW,
+                HWND_MESSAGE, KillTimer, MSG, PostQuitMessage, RegisterClassW, SetTimer,
+                SetWindowLongPtrW, TranslateMessage, UnregisterClassW, WINDOW_EX_STYLE,
+                WINDOW_STYLE, WM_DESTROY, WM_INPUT, WM_INPUT_DEVICE_CHANGE, WM_NCCREATE,
                 WM_NCDESTROY, WM_TIMER, WNDCLASSW,
             },
         },
@@ -42,6 +45,11 @@ pub struct RegistrationReport {
     pub clean_shutdown: bool,
     pub raw_messages: u64,
     pub keyboard_edges: u64,
+    pub device_arrivals: u64,
+    pub device_removals: u64,
+    pub resets: u64,
+    pub device_removed_resets: u64,
+    pub service_stopped_resets: u64,
     pub decode_errors: u64,
     pub callback_panics: u64,
 }
@@ -50,17 +58,26 @@ pub struct RegistrationReport {
 struct WindowState {
     raw_messages: u64,
     keyboard_edges: u64,
+    device_arrivals: u64,
+    device_removals: u64,
+    pressed_candidates: PressedKeyCandidates,
     decode_errors: u64,
     callback_panics: u64,
 }
 
 impl WindowState {
     fn report(&self, registered: bool, clean_shutdown: bool) -> RegistrationReport {
+        let candidate_counters = self.pressed_candidates.counters();
         RegistrationReport {
             registered,
             clean_shutdown,
             raw_messages: self.raw_messages,
             keyboard_edges: self.keyboard_edges,
+            device_arrivals: self.device_arrivals,
+            device_removals: self.device_removals,
+            resets: candidate_counters.resets,
+            device_removed_resets: candidate_counters.device_removed_resets,
+            service_stopped_resets: candidate_counters.service_stopped_resets,
             decode_errors: self.decode_errors,
             callback_panics: self.callback_panics,
         }
@@ -178,7 +195,7 @@ fn raw_input_device(usage: u16, window: HWND) -> RAWINPUTDEVICE {
     RAWINPUTDEVICE {
         usUsagePage: 0x01,
         usUsage: usage,
-        dwFlags: RIDEV_INPUTSINK,
+        dwFlags: RIDEV_INPUTSINK | RIDEV_DEVNOTIFY,
         hwndTarget: window,
     }
 }
@@ -225,18 +242,49 @@ unsafe extern "system" fn window_proc(
             let state = unsafe { &mut *state };
             state.raw_messages += 1;
             match unsafe { read_keyboard_edge(lparam) } {
-                Ok(Some(_)) => state.keyboard_edges += 1,
+                Ok(Some(edge)) => {
+                    state.keyboard_edges += 1;
+                    state.pressed_candidates.apply_edge(edge);
+                }
                 Ok(None) => {}
                 Err(()) => state.decode_errors += 1,
             }
             None
         }
-        WM_TIMER => {
+        WM_INPUT_DEVICE_CHANGE if !state.is_null() => {
+            // SAFETY: GWLP_USERDATA points to the live WindowState until
+            // WM_NCDESTROY clears it.
+            let state = unsafe { &mut *state };
+            let change = match wparam.0 as u32 {
+                GIDC_ARRIVAL => {
+                    state.device_arrivals += 1;
+                    RawInputDeviceChange::Arrival
+                }
+                GIDC_REMOVAL => {
+                    state.device_removals += 1;
+                    RawInputDeviceChange::Removal
+                }
+                _ => RawInputDeviceChange::Unknown,
+            };
+            state.pressed_candidates.apply_device_change(change);
+            Some(LRESULT(0))
+        }
+        WM_TIMER if wparam.0 == TIMER_ID => {
             let _ = unsafe { KillTimer(Some(window), TIMER_ID) };
             let _ = unsafe { DestroyWindow(window) };
             Some(LRESULT(0))
         }
         WM_DESTROY => {
+            if !state.is_null() {
+                // SAFETY: WM_DESTROY runs before WM_NCDESTROY clears the
+                // WindowState pointer, so every normal destruction path can
+                // reset its platform-local candidates exactly once.
+                unsafe {
+                    (*state)
+                        .pressed_candidates
+                        .reset(CaptureResetReason::ServiceStopped)
+                };
+            }
             unsafe { PostQuitMessage(0) };
             Some(LRESULT(0))
         }

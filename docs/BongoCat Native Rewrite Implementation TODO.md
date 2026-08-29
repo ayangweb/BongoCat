@@ -190,17 +190,18 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 ### 1.7 输入可靠性 spike
 
 - 状态（2026-08-28）：`spikes/input-state/` 已建立纯 Rust pressed-set contract，覆盖正常 down/up、重复 down、Reconcile、Reset、issue #47 的丢失 release 恢复、可靠事件的序列跳号/重复/乱序诊断，以及 `250 ms` 校正调度和连续 `2` 次缺失确认的误判保护；计数器不记录具体键值。平台采集、runtime 接入和管理员/权限场景仍待实机验证，详见 `docs/phase-0/input-state-spike.md`。
-- 状态（2026-08-29）：`spikes/input-windows/` 已冻结 `RI_KEY_BREAK`、E0/E1、左右修饰键、PrintScreen、未知 scan code 保留和安全 `RAWINPUT` 字节解析 contract；已实现 message-only HWND、Raw Input 注册、`WM_INPUT` 读取、计数诊断与定时退出 wrapper。commit `0672a00b3d278505a1345f8e749b814bd9391b3c` 的 push run `33232314822` 与 pull request run `33232316402` 均通过 Windows build、Clippy、test 和注册/退出 smoke；真实设备样本、热插拔和 `GetAsyncKeyState` 仍待完成，详见 `docs/phase-0/input-windows-spike.md`。
+- 状态（2026-08-29）：`spikes/input-windows/` 已冻结 `RI_KEY_BREAK`、E0/E1、左右修饰键、PrintScreen、未知 scan code 保留和安全 `RAWINPUT` 字节解析 contract；已实现 message-only HWND、Raw Input 注册、`WM_INPUT` 读取、计数诊断与定时退出 wrapper。commit `0672a00b3d278505a1345f8e749b814bd9391b3c` 的 push/PR Windows jobs 通过注册/退出 smoke；commit `a338686d0af9461f5d1997dac2b67c64591b333f` 的 push run `33232636952` 与 pull request run `33232638253` 进一步通过 input desktop guard 和 `GetAsyncKeyState` 查询 smoke。真实设备样本、热插拔和周期性校正仍待完成，详见 `docs/phase-0/input-windows-spike.md`。
 - 状态（2026-08-28）：`spikes/input-macos/` 已建立 macOS 权限/tap 生命周期 contract、listen-only `CGEventTap` 专用 run loop、panic-isolated callback、固定容量 callback queue 和候选 pressed-set 校正边界；当前 macOS 会话完成 104 次创建运行停止 smoke，且受控按键序列报告 `key_down=2 key_up=2`、`callback_panics=0`。真实鼠标/键盘 callback 字段、系统 timeout/disable、TCC 授权/撤销、周期性校正接入和锁屏/睡眠恢复仍未完成，详见 `docs/phase-0/input-macos-spike.md`。
 
 - [ ] Windows 实现 RegisterRawInputDevices 和 WM_INPUT 最小路径。
   - 状态（2026-08-29）：已实现注册、读取、注销和自动退出路径，并通过 Windows target 交叉 check/Clippy 以及 `windows-latest` 注册/退出 smoke；仍需受控实机 `WM_INPUT` 输入样本后才能勾选。
 - [x] 冻结 scan code、extended flag、左右修饰键和 RI_KEY_BREAK mapping contract；Win32 packet 接入仍待实机。
 - [x] 建立平台无关 pressed set contract；Windows `GetAsyncKeyState` 校正仍待实机接入。
-  - 状态（2026-08-29）：Windows spike 已增加 physical-key 到 virtual-key 查询计划、input desktop guard、只查询本地 pressed candidates 的 `GetAsyncKeyState` adapter，以及未知键触发 Reset 的 contract；Windows runner smoke、`250 ms` scheduler/连续确认接入和真实丢失 release 恢复仍待完成。
+  - 状态（2026-08-29）：Windows spike 已增加 physical-key 到 virtual-key 查询计划、input desktop guard、只查询本地 pressed candidates 的 `GetAsyncKeyState` adapter，以及未知键触发 Reset 的 contract；Windows runner smoke 已通过，`250 ms` scheduler/连续确认接入和真实丢失 release 恢复仍待完成。
 - [x] 定义校正频率、连续确认次数和误判保护。
   - 状态（2026-08-28）：`spikes/input-state/` 固定默认 `250 ms` 周期、连续 `2` 次缺失确认、单调时钟回退拒绝和 reset/up/down 清理待确认状态；平台 adapter 的周期调度和 runtime 消费仍待产品实现。
 - [ ] 在锁屏、睡眠、设备移除和服务重启时发送 Reset。
+  - 状态（2026-08-29）：Windows spike 已注册 `RIDEV_DEVNOTIFY`，设备移除会清空平台候选 pressed-set 并计入 `device_removed` Reset，服务停止也会在销毁 HWND 前 Reset；Windows runner 注册/停止 smoke、真实设备拔插、锁屏和睡眠仍待完成。
 - [ ] 实测 PixPin Ctrl+Alt+A，丢失 release 时不得永久高亮。
   - [x] contract probe 已覆盖丢失 A-up 后通过 Reconcile 清除残留；尚未在 Windows callback 上实测。
 - [ ] 实测 Win+L、PrintScreen、UAC 和管理员/非管理员场景。
