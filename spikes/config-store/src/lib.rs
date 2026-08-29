@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::{
-    fs::{self, File, OpenOptions},
+    fs::{self, File, OpenOptions, TryLockError},
     io::{self, ErrorKind, Write},
     path::{Path, PathBuf},
 };
@@ -83,13 +83,7 @@ fn revision_for_bytes(bytes: &[u8]) -> ConfigRevision {
 }
 
 pub struct WriterLock {
-    path: PathBuf,
-}
-
-impl Drop for WriterLock {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.path);
-    }
+    _file: File,
 }
 
 #[derive(Debug)]
@@ -417,12 +411,16 @@ impl ConfigStore {
 
     pub fn acquire_writer_lock(&self) -> Result<WriterLock, ConfigError> {
         let path = self.layout.locks.join("config.writer.lock");
-        match OpenOptions::new().write(true).create_new(true).open(&path) {
-            Ok(_) => Ok(WriterLock { path }),
-            Err(error) if error.kind() == ErrorKind::AlreadyExists => {
-                Err(ConfigError::LockUnavailable)
-            }
-            Err(error) => Err(error.into()),
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(path)?;
+        match file.try_lock() {
+            Ok(()) => Ok(WriterLock { _file: file }),
+            Err(TryLockError::WouldBlock) => Err(ConfigError::LockUnavailable),
+            Err(TryLockError::Error(error)) => Err(error.into()),
         }
     }
 
@@ -879,6 +877,7 @@ mod tests {
     fn writer_lock_rejects_concurrent_commit_and_releases_on_drop() {
         let base = tempdir().unwrap();
         let layout = StorageLayout::under(base.path(), BuildEnvironment::Production);
+        let lock_path = layout.locks.join("config.writer.lock");
         let first = ConfigStore::new(layout.clone()).unwrap();
         let second = ConfigStore::new(layout).unwrap();
         let lock = first.acquire_writer_lock().unwrap();
@@ -888,6 +887,7 @@ mod tests {
         ));
         drop(lock);
         second.commit(&NativeConfig::default()).unwrap();
+        assert!(lock_path.is_file());
     }
 
     #[test]

@@ -385,7 +385,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 3.5 配置 v1
 
-- 状态（2026-08-29）：`spikes/config-store/` 已建立 typed NativeConfig、Bundle ID、Development/Production 隔离目录、snake_case 序列化、schema 校验、原子 commit probe、expected revision、writer lock contract、中断提交恢复 contract 和当前 macOS 真实 path resolver；push run `33250708023` 已通过 Windows `%APPDATA%\\BongoCat\\<environment>\\` 精确路径断言，同时暴露只读 handle 在 Windows flush 时返回 `AccessDenied`。实现已统一改用可写 handle，等待下一批 runner 回归后再勾选 Windows resolver。真实进程崩溃故障注入、stale lock、备份策略和 GPUI command 边界仍待产品 crate 阶段完成，详见 `docs/phase-0/config-store-spike.md`。
+- 状态（2026-08-29）：`spikes/config-store/` 已建立 typed NativeConfig、Bundle ID、Development/Production 隔离目录、snake_case 序列化、schema 校验、原子 commit probe、expected revision、OS writer lock contract、中断提交恢复 contract 和当前 macOS 真实 path resolver；push run `33250708023` 已通过 Windows `%APPDATA%\\BongoCat\\<environment>\\` 精确路径断言，同时暴露只读 handle 在 Windows flush 时返回 `AccessDenied`。实现已统一改用可写 handle，并以父进程强制终止持锁子进程的 integration test 验证 kernel lock 释放、临时配置归档和当前配置保留；macOS 已通过，等待 Windows runner 后再勾选 Windows resolver。备份策略和 GPUI command 边界仍待产品 crate 阶段完成，详见 `docs/phase-0/config-store-spike.md`。
 
 - [ ] 定义带 `schema_version` 的 Rust 配置结构和 JSON schema，JSON key 使用 `snake_case`。
 - [ ] 区分用户配置、运行时状态和诊断数据。
@@ -400,7 +400,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 在 spike 中拒绝损坏配置并保留原始文件；中断提交恢复会保守提升有效临时文件并归档无效/陈旧副本，隔离备份保留策略、默认恢复和 GPUI 用户诊断仍未完成。
 - [ ] 配置写入去抖，退出前强制 flush。
 - [ ] GPUI 只通过 typed command 获取 snapshot 和提交 patch。
-- [x] 在 spike 中以包含环境目录的 `locks/config.writer.lock` 拒绝并发 writer，并在 guard 释放后允许重试；平台文件权限和异常终止后的 stale lock 清理仍待产品 crate。
+- [x] 在 spike 中以包含环境目录的持久 `locks/config.writer.lock` 拒绝并发 writer，并通过 OS advisory lock 在 guard drop 后允许重试。
+- [ ] 强制终止持锁进程后由内核释放 writer lock，下一进程可恢复已 flush 的临时配置且不覆盖当前配置。
+  - 状态（2026-08-29）：macOS process integration test 已通过，Windows 等待本批 runner；平台文件权限仍待产品 crate。
 - [ ] 新配置文件和备份使用最小用户权限，不继承过宽 ACL/文件 mode。
 - [x] 在 spike 中以稳定 NativeConfig revision 拒绝过期 writer，避免静默覆盖较新的用户修改；GPUI snapshot/command 携带 revision 仍待产品 crate。
 
@@ -603,7 +605,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 实现 load -> parse -> validate -> upgrade native schema -> atomic commit -> verify。
 - [ ] backup 包含 Native schema 版本和时间，并限制数量与总大小。
 - [x] spike 中途提交中断后可安全恢复或重试；失败不覆盖当前可用配置。
-  - 状态（2026-08-28）：`ConfigStore::recover_interrupted_commit` 覆盖主配置有效/缺失/损坏与临时文件有效/无效组合，恢复在 writer lock 内执行并保留诊断副本；真实进程崩溃、stale lock 和产品备份上限仍待完成。
+  - 状态（2026-08-29）：`ConfigStore::recover_interrupted_commit` 覆盖主配置有效/缺失/损坏与临时文件有效/无效组合，恢复在 OS writer lock 内执行并保留诊断副本；父进程强制终止已写入并 flush 临时配置的持锁子进程后，macOS 已验证 lock 自动释放、当前配置保留和 interrupted archive。Windows 等待 runner，产品备份上限仍待完成。
 - [ ] GPUI 显示错误摘要、备份位置和恢复默认 command。
 - [ ] 用户模型只通过显式、受验证的导入进入当前环境，不扫描旧应用目录。
 
