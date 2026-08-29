@@ -1,15 +1,60 @@
 # Phase 0 Dependency License Inventory
 
-状态：直接依赖第一轮，完整传递依赖审计待完成
-日期：2026-08-28
+状态：Native spike 依赖许可证与来源策略已自动化
+日期：2026-08-29
 
-| Dependency           | Version/source     | License           | Runtime role                       | Replacement boundary                    |
-| -------------------- | ------------------ | ----------------- | ---------------------------------- | --------------------------------------- |
-| GPUI                 | crates.io `0.2.2`  | Apache-2.0        | Settings UI only                   | `bongocat-ui` command/snapshot boundary |
-| async-channel        | crates.io `1.9.0`  | MIT OR Apache-2.0 | Spike typed command/reply channels | Runtime command transport abstraction   |
-| unicode-segmentation | crates.io `1.13.3` | MIT OR Apache-2.0 | Spike grapheme-safe text editing   | Text input implementation               |
-| futures-lite         | crates.io `2.6.1`  | MIT OR Apache-2.0 | Dev-only bridge contract executor  | Test harness only                       |
+## Scope
 
-以上许可证可与项目 MIT 源码并存，但发布包必须保留各许可证要求的 notices。`futures-lite` 的直接使用仅属于 spike 的 dev dependency；该 crate 已由 GPUI 间接依赖，因此本次不会扩大 release dependency graph。当前表不代表 705 个已解析 package 的完整传递依赖结论；进入 Phase 1 前仍需使用 lockfile 驱动的许可证扫描，逐项处理 unknown、copyleft、binary asset 和 notice 要求。
+`deny.toml` 使用 `cargo-deny 0.18.3` 扫描所有 `spikes/*/Cargo.toml` 与 `tools/legacy-config-inspector/Cargo.toml`，并以已提交的 lockfile 为输入。检查目标是：
 
-官方 Cubism Core 不属于开源 Rust 依赖，其版本、下载来源、hash、再分发条款和 attribution 必须单独形成清单。在授权结论完成前不得制作可公开分发的 Native Rewrite 安装包。
+- `aarch64-apple-darwin`
+- `x86_64-apple-darwin`
+- `aarch64-pc-windows-msvc`
+- `x86_64-pc-windows-msvc`
+
+扫描解析到 535 个唯一 package 节点。其中最大的 GPUI settings graph 包含 520 个 package 节点；overlay graph 包含 519 个。这些数字是当前 lockfile 与 target filter 的结果，依赖变化后由 CI 重新评估，不作为需要手工维护的 golden value。
+
+## Direct dependencies
+
+| Dependency family                | Locked version        | License                  | Role                               |
+| -------------------------------- | --------------------- | ------------------------ | ---------------------------------- |
+| GPUI                             | `0.2.2`               | Apache-2.0               | Settings UI spike                  |
+| async-channel                    | `1.9.0`               | MIT OR Apache-2.0        | Typed command/reply spike          |
+| unicode-segmentation             | `1.13.3`              | MIT OR Apache-2.0        | Grapheme-safe text editing         |
+| futures-lite                     | `2.6.1`               | MIT OR Apache-2.0        | Test-only executor bridge          |
+| dirs                             | `5.0.1`               | MIT OR Apache-2.0        | Config path spike                  |
+| serde / serde_json               | `1.0.228` / `1.0.149` | MIT OR Apache-2.0        | Config and inspector serialization |
+| tempfile                         | `3.27.0`              | MIT OR Apache-2.0        | Failure-safe config tests          |
+| core-graphics2 / core-foundation | `0.4.1` / `0.10.1`    | MIT OR Apache-2.0        | macOS input boundary spike         |
+| objc2 family                     | `0.6.4` / `0.3.2`     | MIT OR Apache-2.0 / Zlib | macOS overlay boundary spike       |
+| metal / core-graphics-types      | `0.29.0` / `0.1.3`    | MIT OR Apache-2.0        | macOS transparent present spike    |
+
+## Policy
+
+允许的 SPDX 许可证为：`0BSD`、`Apache-2.0`、`Apache-2.0 WITH LLVM-exception`、`BSD-2-Clause`、`BSD-3-Clause`、`BSL-1.0`、`CC0-1.0`、`ISC`、`MIT`、`MIT-0`、`MPL-2.0`、`Unicode-3.0`、`Unlicense` 和 `Zlib`。这些许可证可与项目 MIT 源码并存，但发布产物仍必须保留各依赖要求的 license text 和 notice。
+
+`MPL-2.0` 是 file-level weak copyleft，当前图中来自 `option-ext`、`dwrote` 和构建期 `cbindgen`。不修改这些 crate 时不要求 BongoCat 改用 MPL；若未来 fork 或修改其 MPL 文件，必须履行对应源码提供义务。
+
+`cargo-deny list` 会为包含多选许可的 crate 展示所有标识。例如 `self_cell` 的表达式包含 `Apache-2.0 OR GPL-2.0`，`r-efi` 包含 `MIT OR Apache-2.0 OR LGPL-2.1-or-later`；策略通过允许的 Apache/MIT 分支满足表达式，没有全局允许 GPL/LGPL。
+
+依赖来源只允许 crates.io index。unknown registry 和任何 git dependency 均会使检查失败；新的 git source 必须先形成明确评审结论，不能通过宽泛 organization allowlist 绕过。
+
+## Reproduction
+
+```text
+cargo install cargo-deny --version 0.18.3 --locked
+./tools/check-native-dependencies.sh
+```
+
+检查脚本会拒绝其他 `cargo-deny` 版本，然后对每个独立 workspace 执行 locked license/source check。GitHub Actions 的 `Check Native dependency policy` job 使用同一命令。
+
+## Boundaries
+
+本结论覆盖当前 Native Rust spike 的 crate graph，不包括：
+
+- 历史 Tauri/Vue 产品的发布依赖；
+- 官方 Cubism Core 二进制、SDK 资源和 attribution；
+- 未来的音频、更新、打包或产品 workspace 新依赖；
+- 发布阶段的 SBOM 与 notice bundle 生成。
+
+Cubism 版本、来源、hash、再分发条款和 attribution 必须在 `P0-CUBISM` 单独形成书面结论；完成前不得制作可公开分发的 Native Rewrite 安装包。

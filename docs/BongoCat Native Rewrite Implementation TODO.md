@@ -1,7 +1,7 @@
 # BongoCat Native Rewrite Implementation TODO
 
 状态：Phase 0 执行中
-最后更新：2026-08-28
+最后更新：2026-08-29
 当前分支：`next`
 首发平台：Windows 10 1903+、macOS 12+
 后续评估：Linux
@@ -92,7 +92,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 记录 `master`、`next`、旧版本 tag 和可回退 commit。
 - [ ] 确认旧 Vue/Tauri 应用仍可构建和运行，保存命令与产物信息。
 - [x] 建立 `docs/adr/`、`docs/benchmark/`、`docs/migration/` 目录。
-- [ ] 建立依赖许可证清单，确认与项目 MIT 发布兼容。
+- [x] 建立依赖许可证清单，确认当前 Native spike crate graph 与项目 MIT 发布兼容。
+  - 状态（2026-08-29）：`cargo-deny 0.18.3` 以四个 Windows/macOS target 扫描 10 个独立 workspace、535 个唯一 package 节点，license/source policy 通过并接入 CI；Cubism 厂商许可、未来产品依赖、SBOM 和 notice bundle 仍由各自后续门禁处理。
 - [ ] 冻结首发 target triple 和 CPU 架构矩阵，明确 Windows ARM64、macOS Intel 是否发布或仅测试。
 - [ ] 记录 Windows MSVC/SDK、macOS Xcode/SDK/Metal Toolchain 和 Rust toolchain 的最低可用组合。
 - [ ] 保存旧版最后可用安装包、资源清单、签名状态和 SHA-256，不只记录源码 commit。
@@ -276,9 +277,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 2.3 CI
 
-- [ ] Windows：format、Clippy、unit test、release check。
+- [x] Windows：format、Clippy、unit test、release check；GPUI settings/overlay spike 已由 GitHub `windows-latest` 执行。
+  - 验收证据：commit `221f5483976b64b7cbf6c5818ee5714ad47de479`，push run `33182146480` 与 pull request run `33182148815` 均成功；不代表 Windows 字体、IME、DPI、辅助功能或图形实机验收完成。
 - [x] macOS：format、Clippy、unit test、release check；GPUI settings/overlay spike 均纳入 `macos-spikes` job。
-  - 状态（2026-08-28）：已新增 `windows-gpui-spikes` job，对 GPUI settings 与非 macOS overlay 条件编译执行 format、debug/release check、Clippy 和 unit test；首轮 Windows runner 通过后才能勾选，仍不替代字体、IME、DPI 和辅助功能实机验收。
 - [x] 缓存 key 包含所有 `Cargo.lock`/`Cargo.toml` 和 Rust toolchain hash；Linux contract 与 macOS GPUI jobs 均使用该 key。
 - [ ] CI 不下载未经版本/hash 固定的 Cubism 二进制。
 - [ ] GPU、权限、签名测试分离为实机/nightly job。

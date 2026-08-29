@@ -28,6 +28,32 @@ jobs:
       - name: Check whitespace
         run: git diff --check
 
+  dependency-policy:
+    name: Check Native dependency policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cache Cargo artifacts
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/bin/cargo-deny
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-deny-0.18.3-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'deny.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-deny-0.18.3-
+      - name: Install pinned cargo-deny
+        shell: bash
+        run: |
+          if ! cargo deny --version 2>/dev/null | grep -Fxq 'cargo-deny 0.18.3'; then
+            cargo install cargo-deny --version 0.18.3 --locked
+          fi
+      - name: Check licenses and dependency sources
+        run: ./tools/check-native-dependencies.sh
+
   contract-spikes:
     name: Test ${{ matrix.name }}
     runs-on: ubuntu-latest
