@@ -37,7 +37,10 @@ use windows::{
     core::{Error, Result as WindowsResult, w},
 };
 
-const TIMER_ID: usize = 1;
+const STOP_TIMER_ID: usize = 1;
+const RECONCILIATION_TIMER_ID: usize = 2;
+const RECONCILIATION_INTERVAL_MS: u32 = 250;
+const REQUIRED_MISSING_CONFIRMATIONS: u8 = 2;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct RegistrationReport {
@@ -50,6 +53,11 @@ pub struct RegistrationReport {
     pub resets: u64,
     pub device_removed_resets: u64,
     pub service_stopped_resets: u64,
+    pub unqueryable_key_resets: u64,
+    pub state_query_unavailable_resets: u64,
+    pub reconciliation_runs: u64,
+    pub reconciled_releases: u64,
+    pub reconciliation_query_errors: u64,
     pub decode_errors: u64,
     pub callback_panics: u64,
 }
@@ -61,6 +69,8 @@ struct WindowState {
     device_arrivals: u64,
     device_removals: u64,
     pressed_candidates: PressedKeyCandidates,
+    reconciliation_runs: u64,
+    reconciliation_query_errors: u64,
     decode_errors: u64,
     callback_panics: u64,
 }
@@ -78,8 +88,30 @@ impl WindowState {
             resets: candidate_counters.resets,
             device_removed_resets: candidate_counters.device_removed_resets,
             service_stopped_resets: candidate_counters.service_stopped_resets,
+            unqueryable_key_resets: candidate_counters.unqueryable_key_resets,
+            state_query_unavailable_resets: candidate_counters.state_query_unavailable_resets,
+            reconciliation_runs: self.reconciliation_runs,
+            reconciled_releases: candidate_counters.reconciled_releases,
+            reconciliation_query_errors: self.reconciliation_query_errors,
             decode_errors: self.decode_errors,
             callback_panics: self.callback_panics,
+        }
+    }
+
+    fn reconcile_pressed_candidates(&mut self) {
+        self.reconciliation_runs += 1;
+        let candidates = self.pressed_candidates.keys().clone();
+        match query_pressed_keys(&candidates) {
+            Ok(snapshot) => {
+                self.pressed_candidates
+                    .reconcile(&snapshot, REQUIRED_MISSING_CONFIRMATIONS)
+                    .expect("non-zero reconciliation confirmation threshold");
+            }
+            Err(_) => {
+                self.reconciliation_query_errors += 1;
+                self.pressed_candidates
+                    .reset(CaptureResetReason::StateQueryUnavailable);
+            }
         }
     }
 }
@@ -158,9 +190,24 @@ unsafe fn run_registration_smoke_inner(duration: Duration) -> WindowsResult<Regi
         return Err(error);
     }
 
-    let timeout_ms = duration.as_millis().clamp(1, u128::from(u32::MAX)) as u32;
-    if unsafe { SetTimer(Some(window), TIMER_ID, timeout_ms, None) } == 0 {
+    if unsafe {
+        SetTimer(
+            Some(window),
+            RECONCILIATION_TIMER_ID,
+            RECONCILIATION_INTERVAL_MS,
+            None,
+        )
+    } == 0
+    {
         let error = Error::from_win32();
+        let _ = unsafe { DestroyWindow(window) };
+        let _ = unsafe { UnregisterClassW(class_name, Some(instance)) };
+        return Err(error);
+    }
+    let timeout_ms = duration.as_millis().clamp(1, u128::from(u32::MAX)) as u32;
+    if unsafe { SetTimer(Some(window), STOP_TIMER_ID, timeout_ms, None) } == 0 {
+        let error = Error::from_win32();
+        let _ = unsafe { KillTimer(Some(window), RECONCILIATION_TIMER_ID) };
         let _ = unsafe { DestroyWindow(window) };
         let _ = unsafe { UnregisterClassW(class_name, Some(instance)) };
         return Err(error);
@@ -269,8 +316,15 @@ unsafe extern "system" fn window_proc(
             state.pressed_candidates.apply_device_change(change);
             Some(LRESULT(0))
         }
-        WM_TIMER if wparam.0 == TIMER_ID => {
-            let _ = unsafe { KillTimer(Some(window), TIMER_ID) };
+        WM_TIMER if wparam.0 == RECONCILIATION_TIMER_ID && !state.is_null() => {
+            // SAFETY: GWLP_USERDATA points to the live WindowState until
+            // WM_NCDESTROY clears it.
+            unsafe { (*state).reconcile_pressed_candidates() };
+            Some(LRESULT(0))
+        }
+        WM_TIMER if wparam.0 == STOP_TIMER_ID => {
+            let _ = unsafe { KillTimer(Some(window), STOP_TIMER_ID) };
+            let _ = unsafe { KillTimer(Some(window), RECONCILIATION_TIMER_ID) };
             let _ = unsafe { DestroyWindow(window) };
             Some(LRESULT(0))
         }

@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub const RI_KEY_BREAK: u16 = 0x0001;
 pub const RI_KEY_E0: u16 = 0x0002;
@@ -152,6 +152,8 @@ pub enum RawInputDeviceChange {
 pub enum CaptureResetReason {
     DeviceRemoved,
     ServiceStopped,
+    UnqueryableKey,
+    StateQueryUnavailable,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -163,7 +165,22 @@ pub struct CandidateCounters {
     pub resets: u64,
     pub device_removed_resets: u64,
     pub service_stopped_resets: u64,
+    pub unqueryable_key_resets: u64,
+    pub state_query_unavailable_resets: u64,
+    pub reconciled_releases: u64,
 }
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CandidateReconciliation {
+    pub checked: usize,
+    pub released: usize,
+    pub still_pressed: usize,
+    pub pending_confirmations: usize,
+    pub reset: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct InvalidMissingConfirmations;
 
 /// Platform-local candidate cache used only to scope key-state queries.
 ///
@@ -172,12 +189,14 @@ pub struct CandidateCounters {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PressedKeyCandidates {
     keys: BTreeSet<PhysicalKey>,
+    missing_confirmations: BTreeMap<PhysicalKey, u8>,
     counters: CandidateCounters,
 }
 
 impl PressedKeyCandidates {
     pub fn apply_edge(&mut self, edge: KeyboardEdge) {
         if edge.pressed {
+            self.missing_confirmations.remove(&edge.key);
             if self.keys.insert(edge.key) {
                 self.counters.captured_down += 1;
             } else {
@@ -188,6 +207,7 @@ impl PressedKeyCandidates {
             if !self.keys.remove(&edge.key) {
                 self.counters.unmatched_up += 1;
             }
+            self.missing_confirmations.remove(&edge.key);
         }
     }
 
@@ -205,7 +225,56 @@ impl PressedKeyCandidates {
         match reason {
             CaptureResetReason::DeviceRemoved => self.counters.device_removed_resets += 1,
             CaptureResetReason::ServiceStopped => self.counters.service_stopped_resets += 1,
+            CaptureResetReason::UnqueryableKey => self.counters.unqueryable_key_resets += 1,
+            CaptureResetReason::StateQueryUnavailable => {
+                self.counters.state_query_unavailable_resets += 1
+            }
         }
+        self.missing_confirmations.clear();
+    }
+
+    pub fn reconcile(
+        &mut self,
+        snapshot: &KeyStateSnapshot,
+        required_missing_confirmations: u8,
+    ) -> Result<CandidateReconciliation, InvalidMissingConfirmations> {
+        if required_missing_confirmations == 0 {
+            return Err(InvalidMissingConfirmations);
+        }
+        if snapshot.reset_required {
+            let checked = self.keys.len();
+            self.reset(CaptureResetReason::UnqueryableKey);
+            return Ok(CandidateReconciliation {
+                checked,
+                reset: true,
+                ..Default::default()
+            });
+        }
+
+        let checked = self.keys.len();
+        let mut released = 0usize;
+        let candidates = self.keys.iter().copied().collect::<Vec<_>>();
+        for key in candidates {
+            if snapshot.still_pressed.contains(&key) {
+                self.missing_confirmations.remove(&key);
+                continue;
+            }
+            let confirmations = self.missing_confirmations.entry(key).or_insert(0);
+            *confirmations = confirmations.saturating_add(1);
+            if *confirmations >= required_missing_confirmations {
+                self.keys.remove(&key);
+                self.missing_confirmations.remove(&key);
+                released += 1;
+            }
+        }
+        self.counters.reconciled_releases += released as u64;
+        Ok(CandidateReconciliation {
+            checked,
+            released,
+            still_pressed: self.keys.len(),
+            pending_confirmations: self.missing_confirmations.len(),
+            reset: false,
+        })
     }
 
     pub fn keys(&self) -> &BTreeSet<PhysicalKey> {
@@ -557,6 +626,81 @@ mod tests {
         assert_eq!(counters.unmatched_up, 1);
         assert_eq!(counters.resets, 1);
         assert_eq!(counters.service_stopped_resets, 1);
+    }
+
+    #[test]
+    fn two_missing_snapshots_are_required_for_reconciled_release() {
+        let mut candidates = PressedKeyCandidates::default();
+        candidates.apply_edge(KeyboardEdge {
+            key: PhysicalKey::A,
+            pressed: true,
+        });
+        let empty = KeyStateSnapshot {
+            queried: 1,
+            ..Default::default()
+        };
+        let first = candidates.reconcile(&empty, 2).unwrap();
+        assert_eq!(first.released, 0);
+        assert_eq!(first.pending_confirmations, 1);
+        assert_eq!(candidates.keys(), &BTreeSet::from([PhysicalKey::A]));
+        let second = candidates.reconcile(&empty, 2).unwrap();
+        assert_eq!(second.released, 1);
+        assert_eq!(second.pending_confirmations, 0);
+        assert!(candidates.keys().is_empty());
+        assert_eq!(candidates.counters().reconciled_releases, 1);
+    }
+
+    #[test]
+    fn held_snapshot_cancels_pending_release_confirmation() {
+        let mut candidates = PressedKeyCandidates::default();
+        candidates.apply_edge(KeyboardEdge {
+            key: PhysicalKey::A,
+            pressed: true,
+        });
+        candidates
+            .reconcile(
+                &KeyStateSnapshot {
+                    queried: 1,
+                    ..Default::default()
+                },
+                2,
+            )
+            .unwrap();
+        let held = KeyStateSnapshot {
+            still_pressed: BTreeSet::from([PhysicalKey::A]),
+            queried: 1,
+            ..Default::default()
+        };
+        let report = candidates.reconcile(&held, 2).unwrap();
+        assert_eq!(report.released, 0);
+        assert_eq!(report.pending_confirmations, 0);
+        assert_eq!(candidates.keys(), &BTreeSet::from([PhysicalKey::A]));
+    }
+
+    #[test]
+    fn unqueryable_snapshot_resets_candidates_without_waiting() {
+        let mut candidates = PressedKeyCandidates::default();
+        candidates.apply_edge(KeyboardEdge {
+            key: PhysicalKey::Unknown {
+                scan_code: 0x7f,
+                flags: RI_KEY_E0,
+            },
+            pressed: true,
+        });
+        let snapshot = collect_key_state_snapshot_with(candidates.keys(), |_| false);
+        let report = candidates.reconcile(&snapshot, 2).unwrap();
+        assert!(report.reset);
+        assert!(candidates.keys().is_empty());
+        assert_eq!(candidates.counters().unqueryable_key_resets, 1);
+    }
+
+    #[test]
+    fn reconciliation_rejects_zero_missing_confirmation_threshold() {
+        let mut candidates = PressedKeyCandidates::default();
+        assert_eq!(
+            candidates.reconcile(&KeyStateSnapshot::default(), 0),
+            Err(InvalidMissingConfirmations)
+        );
     }
 
     #[test]

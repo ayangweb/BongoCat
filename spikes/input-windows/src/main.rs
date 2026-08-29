@@ -33,6 +33,31 @@ fn main() {
 
     #[cfg(target_os = "windows")]
     if let Some(milliseconds) =
+        argument_value("--reconcile-smoke-ms").and_then(|value| value.parse::<u64>().ok())
+    {
+        let report =
+            windows_capture::run_registration_smoke(std::time::Duration::from_millis(milliseconds))
+                .expect("Raw Input reconciliation scheduler smoke failed");
+        assert!(report.registered, "Raw Input devices were not registered");
+        assert!(
+            report.clean_shutdown,
+            "Raw Input window did not shut down cleanly"
+        );
+        assert!(
+            report.reconciliation_runs >= 2,
+            "Raw Input reconciliation scheduler did not run twice"
+        );
+        assert_eq!(
+            report.reconciliation_query_errors, 0,
+            "Windows key-state reconciliation query failed"
+        );
+        assert_eq!(report.callback_panics, 0, "Raw Input callback panicked");
+        print_registration_report(report);
+        return;
+    }
+
+    #[cfg(target_os = "windows")]
+    if let Some(milliseconds) =
         argument_value("--register-smoke-ms").and_then(|value| value.parse::<u64>().ok())
     {
         let report =
@@ -49,20 +74,7 @@ fn main() {
             report.service_stopped_resets, 1,
             "Raw Input shutdown did not reset pressed candidates"
         );
-        println!(
-            "input-windows-spike: registered={} clean_shutdown={} raw_messages={} keyboard_edges={} device_arrivals={} device_removals={} resets={} device_removed_resets={} service_stopped_resets={} decode_errors={} callback_panics={}",
-            report.registered,
-            report.clean_shutdown,
-            report.raw_messages,
-            report.keyboard_edges,
-            report.device_arrivals,
-            report.device_removals,
-            report.resets,
-            report.device_removed_resets,
-            report.service_stopped_resets,
-            report.decode_errors,
-            report.callback_panics,
-        );
+        print_registration_report(report);
         return;
     }
 
@@ -77,6 +89,29 @@ fn main() {
     println!(
         "input-windows-spike: decoded_edges={} down={} up={}",
         2, down.pressed, up.pressed
+    );
+}
+
+#[cfg(target_os = "windows")]
+fn print_registration_report(report: windows_capture::RegistrationReport) {
+    println!(
+        "input-windows-spike: registered={} clean_shutdown={} raw_messages={} keyboard_edges={} device_arrivals={} device_removals={} resets={} device_removed_resets={} service_stopped_resets={} unqueryable_key_resets={} state_query_unavailable_resets={} reconciliation_runs={} reconciled_releases={} reconciliation_query_errors={} decode_errors={} callback_panics={}",
+        report.registered,
+        report.clean_shutdown,
+        report.raw_messages,
+        report.keyboard_edges,
+        report.device_arrivals,
+        report.device_removals,
+        report.resets,
+        report.device_removed_resets,
+        report.service_stopped_resets,
+        report.unqueryable_key_resets,
+        report.state_query_unavailable_resets,
+        report.reconciliation_runs,
+        report.reconciled_releases,
+        report.reconciliation_query_errors,
+        report.decode_errors,
+        report.callback_panics,
     );
 }
 

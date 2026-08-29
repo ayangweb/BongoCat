@@ -1,6 +1,6 @@
 # Windows Raw Input Spike
 
-状态：平台无关 mapping contract、Windows Raw Input 注册/退出路径与 `GetAsyncKeyState` 查询 adapter 已实现；注册/退出和查询 smoke 已通过，真实键盘、热插拔和周期性状态校正待验证
+状态：平台无关 mapping contract、Windows Raw Input 注册/退出路径、`GetAsyncKeyState` 查询 adapter 与周期性校正已实现；注册/退出、查询和设备通知注册 smoke 已通过，scheduler smoke、真实键盘和真实热插拔待验证
 日期：2026-08-29
 
 ## 范围
@@ -20,6 +20,8 @@
 - 查询前验证当前 input desktop 可访问；失败时不生成可能错误的全释放 snapshot；
 - 无法可靠映射的未知 scan code 保留在 snapshot，并显式返回 `reset_required`，禁止静默误释放或永久忽略。
 - 注册 `RIDEV_DEVNOTIFY` 并处理 `WM_INPUT_DEVICE_CHANGE`；设备移除和服务停止会清空平台候选 pressed-set 并记录 Reset，不记录具体键值。
+- message window 每 `250 ms` 查询一次候选 pressed-set，同一键连续 `2` 次缺失才形成 reconciled release；中间重新确认按下会取消待释放状态。
+- input desktop 查询失败或候选键不可查询时立即 Reset，不把不可信的全零 snapshot 当作正常释放。
 
 安全 contract 可在 macOS/Linux 离线运行；Win32 wrapper 使用精确锁定的 `windows = 0.61.3`，只在 Windows target 编译。wrapper 当前只输出消息、edge、decode error 和 callback panic 计数，不记录真实按键值。
 
@@ -32,9 +34,10 @@ cargo test --manifest-path spikes/input-windows/Cargo.toml --locked
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --register-smoke-ms 100
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --key-state-smoke
+cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --reconcile-smoke-ms 600
 ```
 
-当前本地验证包括 macOS host 上的 format、11 项 contract test、Clippy 和 release check，以及 `x86_64-pc-windows-msvc` 的 check/Clippy。测试覆盖左右修饰键 virtual-key、只查询 pressed candidates、释放 snapshot、未知键触发 Reset、设备移除 Reset、服务停止 Reset，以及重复 down/无匹配 up 诊断。
+当前本地验证包括 macOS host 上的 format、15 项 contract test、Clippy 和 release check，以及 `x86_64-pc-windows-msvc` 的 check/Clippy。测试覆盖左右修饰键 virtual-key、只查询 pressed candidates、未知键触发 Reset、设备移除/服务停止 Reset、重复 down/无匹配 up 诊断、连续两次缺失释放、仍按下取消待确认和零确认阈值拒绝。
 
 Windows runner 验收证据：
 
@@ -53,6 +56,15 @@ Windows runner 验收证据：
 - pull request run：`33232638253`，job `99048006545`；
 - 两个 `windows-latest` job 均通过 build、Clippy、该版本的 9 项 contract test、注册/退出 smoke 和 `GetAsyncKeyState` 查询 smoke。
 
-该 smoke 证明 runner 可打开 input desktop 并执行候选键查询，但没有注入按键或丢失 release。`RIDEV_DEVNOTIFY`、设备移除 Reset 与服务停止 Reset 将由下一次提交的 Windows runner 验证；真实拔插仍必须在交互式 Windows 环境完成。
+该 smoke 证明 runner 可打开 input desktop 并执行候选键查询，但没有注入按键或丢失 release。该 commit 尚未包含后续的 `RIDEV_DEVNOTIFY` 与生命周期 Reset；对应证据记录在下一段。
 
-下一步是在 Windows runner 验证 `RIDEV_DEVNOTIFY` 注册和服务停止 Reset；随后获取真实 `RAWINPUTHEADER`/`RAWKEYBOARD` 样本，将查询 adapter 接入 `250 ms` scheduler 和连续两次缺失确认策略，并验证设备句柄生命周期、E0/E1 实际序列、`RI_KEY_BREAK` 与热插拔。最后执行 PixPin、Win+L、PrintScreen、UAC 和管理员/非管理员矩阵；不得用无人值守 CI 的空闲查询替代这些平台验收。
+设备通知注册与服务停止 Reset 的 Windows runner 证据：
+
+- 实现 commit：`1c1947f3e80a7d5adb8caca48d5b3ee17ee27b07`；
+- push run：`33232844193`，job `99048557823`；
+- pull request run：`33232845935`，job `99048562213`；
+- 两个 `windows-latest` job 均通过 build、Clippy、11 项 contract test、带 `RIDEV_DEVNOTIFY` 的注册/退出 smoke、服务停止 Reset 断言和 key-state 查询 smoke。
+
+该证据没有产生真实 `WM_INPUT_DEVICE_CHANGE` removal 消息，只证明设备通知注册与 shutdown Reset 路径可在 runner 执行。真实键鼠拔插、设备 handle 生命周期和移除期间的 pressed edge 仍需交互式 Windows 验收。
+
+下一步是在 Windows runner 验证 `250 ms` scheduler 至少运行两次且查询错误为零；随后获取真实 `RAWINPUTHEADER`/`RAWKEYBOARD` 样本，验证连续缺失能在实际 callback 后形成 reconciled release，以及设备句柄生命周期、E0/E1 实际序列、`RI_KEY_BREAK` 与热插拔。最后执行 PixPin、Win+L、PrintScreen、UAC 和管理员/非管理员矩阵；不得用无人值守 CI 的空闲查询替代这些平台验收。

@@ -197,11 +197,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-29）：已实现注册、读取、注销和自动退出路径，并通过 Windows target 交叉 check/Clippy 以及 `windows-latest` 注册/退出 smoke；仍需受控实机 `WM_INPUT` 输入样本后才能勾选。
 - [x] 冻结 scan code、extended flag、左右修饰键和 RI_KEY_BREAK mapping contract；Win32 packet 接入仍待实机。
 - [x] 建立平台无关 pressed set contract；Windows `GetAsyncKeyState` 校正仍待实机接入。
-  - 状态（2026-08-29）：Windows spike 已增加 physical-key 到 virtual-key 查询计划、input desktop guard、只查询本地 pressed candidates 的 `GetAsyncKeyState` adapter，以及未知键触发 Reset 的 contract；Windows runner smoke 已通过，`250 ms` scheduler/连续确认接入和真实丢失 release 恢复仍待完成。
+  - 状态（2026-08-29）：Windows spike 已增加 physical-key 到 virtual-key 查询计划、input desktop guard、只查询本地 pressed candidates 的 `GetAsyncKeyState` adapter，以及未知键触发 Reset 的 contract；查询 smoke 已通过。message window 已接入 `250 ms` scheduler 和连续 `2` 次缺失确认，Windows scheduler smoke 与真实丢失 release 恢复仍待完成。
 - [x] 定义校正频率、连续确认次数和误判保护。
   - 状态（2026-08-28）：`spikes/input-state/` 固定默认 `250 ms` 周期、连续 `2` 次缺失确认、单调时钟回退拒绝和 reset/up/down 清理待确认状态；平台 adapter 的周期调度和 runtime 消费仍待产品实现。
 - [ ] 在锁屏、睡眠、设备移除和服务重启时发送 Reset。
-  - 状态（2026-08-29）：Windows spike 已注册 `RIDEV_DEVNOTIFY`，设备移除会清空平台候选 pressed-set 并计入 `device_removed` Reset，服务停止也会在销毁 HWND 前 Reset；Windows runner 注册/停止 smoke、真实设备拔插、锁屏和睡眠仍待完成。
+  - 状态（2026-08-29）：Windows spike 已注册 `RIDEV_DEVNOTIFY`，设备移除会清空平台候选 pressed-set 并计入 `device_removed` Reset，服务停止也会在 `WM_DESTROY` Reset；commit `1c1947f3e80a7d5adb8caca48d5b3ee17ee27b07` 的 push/PR Windows jobs 已通过注册与停止 smoke，真实设备拔插、锁屏和睡眠仍待完成。
 - [ ] 实测 PixPin Ctrl+Alt+A，丢失 release 时不得永久高亮。
   - [x] contract probe 已覆盖丢失 A-up 后通过 Reconcile 清除残留；尚未在 Windows callback 上实测。
 - [ ] 实测 Win+L、PrintScreen、UAC 和管理员/非管理员场景。
