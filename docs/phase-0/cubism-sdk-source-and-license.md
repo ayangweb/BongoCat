@@ -82,7 +82,7 @@ Proprietary Software License 将“通过增加或组合文件/数据，使用�
 5. 复核后把 ZIP 的 expected SHA-256 写入本文件和显式 bootstrap 配置；后续运行使用 `--expected-sha256` 拒绝漂移。
 6. 只有在发布授权结论完成后，才设计私有 SDK 缓存、构建时复制和安装包 notice 生成；构建与 CI 默认保持离线。
 
-检查器只读取 ZIP central directory 和所需文件并计算 hash，不解压文件、不接受许可、不联网。它拒绝路径穿越、绝对路径、反斜杠路径、重复路径、符号链接、加密 entry 和异常膨胀 archive。
+检查器只读取 ZIP central directory 和所需文件并计算 hash，不解压文件、不接受许可、不联网。它拒绝路径穿越、绝对路径、反斜杠路径、重复路径、符号链接、加密 entry 和异常膨胀 archive，并按 `cubism-framework-behavior-sources.md` 校验关键 Framework 文件属于固定的 R5 Git tree。
 
 ## 5. Evidence Still Required
 

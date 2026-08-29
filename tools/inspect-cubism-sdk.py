@@ -49,6 +49,25 @@ TARGET_ARTIFACTS = {
 
 CORE_HEADER = "include/Live2DCubismCore.h"
 FRAMEWORK_CHANGELOG_SUFFIX = "Framework/CHANGELOG.md"
+FRAMEWORK_TREE_SHA = "a140eec8da452762fcad566329074ad4d1cd6130"
+FRAMEWORK_SOURCE_BLOBS = {
+    "Framework/src/CubismModelSettingJson.cpp": "8b9fa84d5d74a0882b2d5f20322862606207c6a6",
+    "Framework/src/Effect/CubismBreath.cpp": "9312b1f96b25380670856f9cecc3dee33ea9ad02",
+    "Framework/src/Effect/CubismEyeBlink.cpp": "7b67806753b76cac1fd053ed899ff761aa0156b4",
+    "Framework/src/Effect/CubismPose.cpp": "fcb88823d17466359f87c7e2a88e309fc54b19c4",
+    "Framework/src/Motion/CubismExpressionMotion.cpp": "5f79270126c487c38075a853d0081c974b081060",
+    "Framework/src/Motion/CubismMotion.cpp": "702f85a1a4057dc695eba47088f9338409937bce",
+    "Framework/src/Motion/CubismMotionJson.cpp": "6cd35be1923a26014c5bd155ecad9eccbc9cd1e2",
+    "Framework/src/Motion/CubismUpdateScheduler.cpp": "76d967d6a6788165a68e6e34653ead3ba40acee8",
+    "Framework/src/Motion/ICubismUpdater.hpp": "00e1b8000c4a9c7263e36f58d2ac9ea6a8476d4e",
+    "Framework/src/Physics/CubismPhysics.cpp": "5cb44241c1f3faeb6dcac7463c0c18eab9dac431",
+    "Framework/src/Physics/CubismPhysicsJson.cpp": "8cfdc05564e24ece369035fdf90fb546b94d90c6",
+    "Framework/src/Rendering/CubismRenderer.cpp": "ce008f9148b1fd591d077ab90a963da9431ac08c",
+    "Framework/src/Rendering/D3D11/CubismRenderer_D3D11.cpp": "917b46ba352f4e80566c07369baba3d703ec54fb",
+    "Framework/src/Rendering/D3D11/Shaders/CubismEffect.fx": "bbaca13cbbcfb9b184e6e8a5e63f40e99619f217",
+    "Framework/src/Rendering/Metal/CubismRenderer_Metal.mm": "d46eddfb748669a55e6c47ea22bfba5774ec4504",
+    "Framework/src/Rendering/Metal/Shaders/MetalShaders.metal": "696adec0e2e38e1fa83d499f1369c388bab1576a",
+}
 
 
 class InspectionError(ValueError):
@@ -68,6 +87,11 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: source.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def git_blob_sha(data: bytes) -> str:
+    header = f"blob {len(data)}\0".encode("ascii")
+    return hashlib.sha1(header + data, usedforsecurity=False).hexdigest()
 
 
 def normalized_archive_name(name: str) -> str:
@@ -222,6 +246,33 @@ def detect_framework_release(
     return match.group(1)
 
 
+def validate_framework_sources(
+    archive: zipfile.ZipFile,
+    entries: dict[str, zipfile.ZipInfo],
+    expected_blobs: dict[str, str],
+) -> list[dict[str, str | int]]:
+    reports = []
+    for source_path, expected_blob in sorted(expected_blobs.items()):
+        info = find_unique_suffix(entries, source_path, f"Framework source {source_path}")
+        data = member_bytes(archive, info)
+        actual_blob = git_blob_sha(data)
+        if actual_blob != expected_blob:
+            raise InspectionError(
+                f"Framework source blob mismatch for {source_path}: "
+                f"expected {expected_blob}, got {actual_blob}"
+            )
+        reports.append(
+            {
+                "path": normalized_archive_name(info.filename),
+                "relative_path": source_path,
+                "size": info.file_size,
+                "git_blob_sha": actual_blob,
+                "sha256": hashlib.sha256(data).hexdigest(),
+            }
+        )
+    return reports
+
+
 def detect_core_version(core_changelog: str) -> str:
     match = re.search(
         r"Upgrade Core version to [`]?([0-9]{2}\.[0-9]{2}\.[0-9]{4})[`]?",
@@ -251,7 +302,11 @@ def validate_redistributable_list(text: str) -> None:
         )
 
 
-def inspect_archive(path: Path, expected_sha256: str | None = None) -> dict[str, object]:
+def inspect_archive(
+    path: Path,
+    expected_sha256: str | None = None,
+    framework_source_blobs: dict[str, str] | None = None,
+) -> dict[str, object]:
     if not path.is_file():
         raise InspectionError(f"SDK ZIP does not exist or is not a file: {path}")
     if not zipfile.is_zipfile(path):
@@ -302,6 +357,14 @@ def inspect_archive(path: Path, expected_sha256: str | None = None) -> dict[str,
                 f"Framework release mismatch: expected {EXPECTED_SDK_RELEASE}, "
                 f"got {framework_release}"
             )
+        expected_framework_blobs = (
+            FRAMEWORK_SOURCE_BLOBS
+            if framework_source_blobs is None
+            else framework_source_blobs
+        )
+        framework_sources = validate_framework_sources(
+            archive, entries, expected_framework_blobs
+        )
 
         core_changelog_info = next(
             member.info for member in legal_members if member.role == "core_changelog"
@@ -352,7 +415,9 @@ def inspect_archive(path: Path, expected_sha256: str | None = None) -> dict[str,
                 "release": framework_release,
                 "core_version": core_version,
                 "core_root": core_root,
+                "framework_tree_sha": FRAMEWORK_TREE_SHA,
             },
+            "framework_sources": framework_sources,
             "core_header": member_report(archive, header_member),
             "legal_files": [
                 member_report(archive, member) for member in legal_members

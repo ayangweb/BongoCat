@@ -234,7 +234,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 验证模型切换/销毁 100 次，无 CPU/GPU 资源增长。
 - [ ] 记录与 easy-live2d 的差异和必须兼容项。
 - [ ] 若纯 Rust Framework 逻辑不可行，提交 go/no-go ADR；不得静默加入 C++ 业务桥。
-- [ ] 建立 Cubism Framework 行为来源清单，逐项说明 motion、expression、physics、pose 的 Rust 实现依据和许可边界。
+- [x] 建立 Cubism Framework 行为来源清单，逐项说明 motion、expression、physics、pose 的 Rust 实现依据和许可边界。
+  - 验收证据：`docs/phase-0/cubism-framework-behavior-sources.md` 固定 R5 tree、16 个关键 Framework blob、双平台 sample owner、行为 oracle 与禁止直接翻译的许可边界；离线 SDK inspector 会验证这些 blob。Live2D 对独立 Rust 实现和生成 binding 发布的书面许可仍是 P0 阻塞，不因本项勾选而视为解决。
 - [ ] 对 raw binding 生成流程固定 header、生成器版本和输出审阅方式，禁止手改生成代码后失去可重复性。
 
 ### 1.9 Phase 0 退出门槛

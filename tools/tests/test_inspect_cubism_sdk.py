@@ -21,6 +21,14 @@ SPEC.loader.exec_module(SDK_INSPECTOR)
 
 ROOT = "CubismSdkForNative-5-r.5/"
 CORE = f"{ROOT}Core/"
+FRAMEWORK_SOURCE_CONTENTS = {
+    f"{ROOT}Framework/src/CubismModelSettingJson.cpp": b"synthetic model setting source\n",
+    f"{ROOT}Framework/src/Motion/CubismMotion.cpp": b"synthetic motion source\n",
+}
+FRAMEWORK_SOURCE_BLOBS = {
+    path.removeprefix(ROOT): SDK_INSPECTOR.git_blob_sha(data)
+    for path, data in FRAMEWORK_SOURCE_CONTENTS.items()
+}
 
 
 def valid_entries() -> dict[str, bytes]:
@@ -48,6 +56,7 @@ def valid_entries() -> dict[str, bytes]:
         f"{CORE}dll/windows/x86/Live2DCubismCore.lib": b"x86-import-lib",
         f"{CORE}lib/macos/arm64/libLive2DCubismCore.a": b"mac-arm64-static",
         f"{CORE}lib/macos/x86_64/libLive2DCubismCore.a": b"mac-x64-static",
+        **FRAMEWORK_SOURCE_CONTENTS,
     }
 
 
@@ -57,6 +66,14 @@ def write_zip(path: Path, entries: dict[str, bytes]) -> None:
             archive.writestr(name, data)
 
 
+def inspect(path: Path, expected_hash: str | None = None) -> dict[str, object]:
+    return SDK_INSPECTOR.inspect_archive(
+        path,
+        expected_hash,
+        framework_source_blobs=FRAMEWORK_SOURCE_BLOBS,
+    )
+
+
 class CubismSdkInspectorTests(unittest.TestCase):
     def test_valid_archive_reports_required_targets_and_hashes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -64,7 +81,7 @@ class CubismSdkInspectorTests(unittest.TestCase):
             write_zip(path, valid_entries())
 
             expected_hash = hashlib.sha256(path.read_bytes()).hexdigest()
-            report = SDK_INSPECTOR.inspect_archive(path, expected_hash)
+            report = inspect(path, expected_hash)
 
             self.assertTrue(report["verified"])
             self.assertEqual(report["archive"]["sha256"], expected_hash)
@@ -87,7 +104,7 @@ class CubismSdkInspectorTests(unittest.TestCase):
             with self.assertRaisesRegex(
                 SDK_INSPECTOR.InspectionError, "SHA-256 mismatch"
             ):
-                SDK_INSPECTOR.inspect_archive(path, "0" * 64)
+                inspect(path, "0" * 64)
 
     def test_path_traversal_is_rejected_before_artifact_inspection(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -99,7 +116,7 @@ class CubismSdkInspectorTests(unittest.TestCase):
             with self.assertRaisesRegex(
                 SDK_INSPECTOR.InspectionError, "not normalized"
             ):
-                SDK_INSPECTOR.inspect_archive(path)
+                inspect(path)
 
     def test_case_colliding_paths_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -111,7 +128,7 @@ class CubismSdkInspectorTests(unittest.TestCase):
             with self.assertRaisesRegex(
                 SDK_INSPECTOR.InspectionError, "non-portable paths"
             ):
-                SDK_INSPECTOR.inspect_archive(path)
+                inspect(path)
 
     def test_symbolic_link_entry_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -126,7 +143,7 @@ class CubismSdkInspectorTests(unittest.TestCase):
             with self.assertRaisesRegex(
                 SDK_INSPECTOR.InspectionError, "symbolic link"
             ):
-                SDK_INSPECTOR.inspect_archive(path)
+                inspect(path)
 
     def test_duplicate_path_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -140,7 +157,7 @@ class CubismSdkInspectorTests(unittest.TestCase):
             with self.assertRaisesRegex(
                 SDK_INSPECTOR.InspectionError, "duplicate"
             ):
-                SDK_INSPECTOR.inspect_archive(path)
+                inspect(path)
 
     def test_missing_required_artifact_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -152,7 +169,7 @@ class CubismSdkInspectorTests(unittest.TestCase):
             with self.assertRaisesRegex(
                 SDK_INSPECTOR.InspectionError, "windows_x64_dll is missing"
             ):
-                SDK_INSPECTOR.inspect_archive(path)
+                inspect(path)
 
     def test_framework_release_mismatch_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -164,7 +181,20 @@ class CubismSdkInspectorTests(unittest.TestCase):
             with self.assertRaisesRegex(
                 SDK_INSPECTOR.InspectionError, "Framework release mismatch"
             ):
-                SDK_INSPECTOR.inspect_archive(path)
+                inspect(path)
+
+    def test_framework_source_blob_mismatch_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "sdk.zip"
+            entries = valid_entries()
+            source_path = next(iter(FRAMEWORK_SOURCE_CONTENTS))
+            entries[source_path] = b"drifted source\n"
+            write_zip(path, entries)
+
+            with self.assertRaisesRegex(
+                SDK_INSPECTOR.InspectionError, "Framework source blob mismatch"
+            ):
+                inspect(path)
 
 
 if __name__ == "__main__":
