@@ -309,6 +309,20 @@ jobs:
           if owner_release <= frame_stop:
               raise RuntimeError("overlay owner released before frame source stopped")
 
+          backing_reconcile = run_smoke(
+              "backing-reconcile",
+              ["--simulate-macos-stale-drawable-size", "--auto-quit-ms", "900"],
+          )
+          for expected in (
+              "simulated stale macOS drawable size",
+              "macOS drawable size reconciled from=1x1 to=",
+              "non-empty premultiplied-alpha draw/present submitted",
+          ):
+              if expected not in backing_reconcile:
+                  raise RuntimeError(
+                      f"backing-reconcile overlay smoke did not report: {expected}"
+                  )
+
           degraded = run_smoke(
               "drawable-unavailable",
               ["--simulate-macos-drawable-unavailable", "--auto-quit-ms", "900"],

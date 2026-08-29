@@ -116,7 +116,10 @@ mod macos_overlay {
         }
 
         fn create_with_logging(mtm: MainThreadMarker, log_lifecycle: bool) -> Result<Self, String> {
-            let frame = NSRect::new(NSPoint::new(80.0, 80.0), NSSize::new(320.0, 240.0));
+            let frame = NSRect::new(
+                NSPoint::new(80.0, 80.0),
+                NSSize::new(OVERLAY_WIDTH as f64, OVERLAY_HEIGHT as f64),
+            );
             let style = NSWindowStyleMask::Borderless | NSWindowStyleMask::NonactivatingPanel;
             // SAFETY: creation is performed on the AppKit main thread and the
             // selected style/backing values are valid NSPanel initializer inputs.
@@ -147,7 +150,6 @@ mod macos_overlay {
             layer.set_opaque(false);
             layer.set_presents_with_transaction(false);
             layer.set_framebuffer_only(false);
-            configure_drawable_size(&panel, &layer, OVERLAY_WIDTH as f64, OVERLAY_HEIGHT as f64)?;
             // SAFETY: metal::MetalLayerRef and objc2_quartz_core::CALayer are
             // the same Objective-C CAMetalLayer object; the view retains it.
             let layer_ref = unsafe {
@@ -155,6 +157,7 @@ mod macos_overlay {
             };
             view.setLayer(Some(layer_ref));
             panel.setContentView(Some(&view));
+            synchronize_drawable_size(&panel, &layer)?;
 
             let pipeline = create_render_pipeline(&device)?;
             let vertex_buffer = device.new_buffer_with_data(
@@ -204,14 +207,7 @@ mod macos_overlay {
             let logical_height = height as f64;
             self.panel
                 .setContentSize(NSSize::new(logical_width, logical_height));
-            configure_drawable_size(
-                &self.panel,
-                self.layer
-                    .as_ref()
-                    .expect("live overlay must own a Metal layer"),
-                logical_width,
-                logical_height,
-            )?;
+            self.synchronize_drawable_size()?;
             if self.log_lifecycle {
                 println!(
                     "gpui-overlay-spike: macOS overlay resized width={width} height={height} scale={}",
@@ -219,6 +215,14 @@ mod macos_overlay {
                 );
             }
             Ok(())
+        }
+
+        pub fn simulate_stale_drawable_size(&self) {
+            self.layer
+                .as_ref()
+                .expect("live overlay must own a Metal layer")
+                .set_drawable_size(core_graphics_types::geometry::CGSize::new(1.0, 1.0));
+            println!("gpui-overlay-spike: simulated stale macOS drawable size");
         }
 
         pub fn clear_present_simulating_unavailable(&self) -> Result<(), String> {
@@ -237,6 +241,7 @@ mod macos_overlay {
             if matches!(behavior, PresentBehavior::SimulateDrawableUnavailable) {
                 return Err("simulated CAMetalLayer drawable unavailable".into());
             }
+            self.synchronize_drawable_size()?;
             let drawable = self
                 .layer
                 .as_ref()
@@ -309,6 +314,26 @@ mod macos_overlay {
             }
             Ok(())
         }
+
+        fn synchronize_drawable_size(&self) -> Result<(), String> {
+            let layer = self
+                .layer
+                .as_ref()
+                .expect("live overlay must own a Metal layer");
+            if let Some((previous, current)) = synchronize_drawable_size(&self.panel, layer)?
+                && self.log_lifecycle
+            {
+                println!(
+                    "gpui-overlay-spike: macOS drawable size reconciled from={}x{} to={}x{} scale={}",
+                    previous.width,
+                    previous.height,
+                    current.width,
+                    current.height,
+                    self.panel.backingScaleFactor()
+                );
+            }
+            Ok(())
+        }
     }
 
     impl Drop for NativeOverlay {
@@ -361,21 +386,53 @@ mod macos_overlay {
             .map_err(|error| format!("create Metal overlay render pipeline: {error}"))
     }
 
-    fn configure_drawable_size(
+    fn synchronize_drawable_size(
         panel: &NSPanel,
         layer: &MetalLayer,
-        logical_width: f64,
-        logical_height: f64,
-    ) -> Result<(), String> {
-        let scale = panel.backingScaleFactor();
-        if !scale.is_finite() || scale <= 0.0 {
-            return Err(format!("invalid AppKit backing scale factor: {scale}"));
+    ) -> Result<
+        Option<(
+            core_graphics_types::geometry::CGSize,
+            core_graphics_types::geometry::CGSize,
+        )>,
+        String,
+    > {
+        let content_view = panel
+            .contentView()
+            .ok_or("overlay panel has no content view")?;
+        let backing_rect = content_view.convertRectToBacking(content_view.bounds());
+        let expected = validated_drawable_size(backing_rect.size)?;
+        let current = layer.drawable_size();
+        if drawable_sizes_match(current, expected) {
+            return Ok(None);
         }
-        layer.set_drawable_size(core_graphics_types::geometry::CGSize::new(
-            logical_width * scale,
-            logical_height * scale,
-        ));
-        Ok(())
+        layer.set_drawable_size(expected);
+        Ok(Some((current, expected)))
+    }
+
+    fn validated_drawable_size(
+        size: NSSize,
+    ) -> Result<core_graphics_types::geometry::CGSize, String> {
+        if !size.width.is_finite()
+            || !size.height.is_finite()
+            || size.width <= 0.0
+            || size.height <= 0.0
+        {
+            return Err(format!(
+                "invalid AppKit backing dimensions: {}x{}",
+                size.width, size.height
+            ));
+        }
+        Ok(core_graphics_types::geometry::CGSize::new(
+            size.width.round(),
+            size.height.round(),
+        ))
+    }
+
+    fn drawable_sizes_match(
+        left: core_graphics_types::geometry::CGSize,
+        right: core_graphics_types::geometry::CGSize,
+    ) -> bool {
+        (left.width - right.width).abs() < 0.5 && (left.height - right.height).abs() < 0.5
     }
 
     fn verify_non_empty_frame(texture: &metal::TextureRef) -> Result<(), String> {
@@ -465,7 +522,12 @@ mod macos_overlay {
 
     #[cfg(test)]
     mod tests {
-        use super::{OVERLAY_VERTICES, OverlayVertex, ResourceCounts, validate_creation_cycles};
+        use super::{
+            OVERLAY_VERTICES, OverlayVertex, ResourceCounts, drawable_sizes_match,
+            validate_creation_cycles, validated_drawable_size,
+        };
+        use core_graphics_types::geometry::CGSize;
+        use objc2_foundation::NSSize;
 
         #[test]
         fn vertex_layout_matches_metal_float4_alignment() {
@@ -530,6 +592,33 @@ mod macos_overlay {
                 validate_creation_cycles(0, counts, counts).unwrap_err(),
                 "overlay cycle count must be greater than zero"
             );
+        }
+
+        #[test]
+        fn validates_integral_positive_backing_dimensions() {
+            let size = validated_drawable_size(NSSize::new(799.6, 600.4)).unwrap();
+            assert_eq!(size.width, 800.0);
+            assert_eq!(size.height, 600.0);
+
+            for invalid in [
+                NSSize::new(0.0, 600.0),
+                NSSize::new(800.0, -1.0),
+                NSSize::new(f64::NAN, 600.0),
+            ] {
+                assert!(validated_drawable_size(invalid).is_err());
+            }
+        }
+
+        #[test]
+        fn detects_stale_drawable_dimensions() {
+            assert!(drawable_sizes_match(
+                CGSize::new(800.0, 600.0),
+                CGSize::new(800.0, 600.0)
+            ));
+            assert!(!drawable_sizes_match(
+                CGSize::new(1.0, 1.0),
+                CGSize::new(800.0, 600.0)
+            ));
         }
     }
 }
@@ -650,6 +739,7 @@ fn main() {
     let auto_quit_ms = argument_value("--auto-quit-ms").and_then(|value| value.parse::<u64>().ok());
     let simulate_failure = has_argument("--simulate-overlay-init-failure");
     let simulate_macos_drawable_unavailable = has_argument("--simulate-macos-drawable-unavailable");
+    let simulate_macos_stale_drawable_size = has_argument("--simulate-macos-stale-drawable-size");
     let simulate_renderer_loss_at_frame = argument_value("--simulate-renderer-loss-at-frame")
         .and_then(|value| value.parse::<u64>().ok());
 
@@ -743,6 +833,7 @@ fn main() {
                     match initial_show_and_present(
                         &overlay,
                         simulate_macos_drawable_unavailable,
+                        simulate_macos_stale_drawable_size,
                     ) {
                         Ok(()) => {
                             run_visibility_smoke = true;
@@ -1041,7 +1132,7 @@ fn try_recover_overlay(global: &mut OverlayGlobal) -> FrameTickOutcome {
         if global.frame_source.resize_completed {
             resize_platform_overlay(&mut overlay, 400, 300)?;
         }
-        initial_show_and_present(&overlay, false)?;
+        initial_show_and_present(&overlay, false, false)?;
         Ok(overlay)
     });
 
@@ -1120,8 +1211,12 @@ fn create_platform_overlay() -> Result<PlatformOverlay, String> {
 fn initial_show_and_present(
     overlay: &PlatformOverlay,
     simulate_drawable_unavailable: bool,
+    simulate_stale_drawable_size: bool,
 ) -> Result<(), String> {
     overlay.show();
+    if simulate_stale_drawable_size {
+        overlay.simulate_stale_drawable_size();
+    }
     if simulate_drawable_unavailable {
         overlay.clear_present_simulating_unavailable()
     } else {
@@ -1133,6 +1228,7 @@ fn initial_show_and_present(
 fn initial_show_and_present(
     overlay: &PlatformOverlay,
     _simulate_drawable_unavailable: bool,
+    _simulate_stale_drawable_size: bool,
 ) -> Result<(), String> {
     show_and_present(overlay)
 }

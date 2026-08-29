@@ -73,6 +73,7 @@ non-empty premultiplied-alpha draw/present submitted
 cargo run --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked --release -- --macos-overlay-cycles 100
 NSZombieEnabled=YES spikes/gpui-overlay-macos/target/release/bongocat-gpui-overlay-macos-spike --macos-overlay-cycles 100
 leaks --atExit -- spikes/gpui-overlay-macos/target/release/bongocat-gpui-overlay-macos-spike --macos-overlay-cycle-worker 100
+cargo run --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked --release -- --simulate-macos-stale-drawable-size --auto-quit-ms 900
 cargo run --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked -- --simulate-macos-drawable-unavailable --auto-quit-ms 300
 cargo run --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked --release -- --simulate-renderer-loss-at-frame 12 --auto-quit-ms 1600
 ```
@@ -97,6 +98,14 @@ AppIntents/LinkServices 的 3 个系统 `NSXPCConnection` 常驻 cycle。普通 
 `NSZombieEnabled=YES` probe 仍分别完成 100/100 个非空帧，窗口和 Rust owner 都回到 0。
 这些数据证明窗口动画 retain cycle 已消除，但不把系统 XPC 基线计作应用泄漏，也不替代
 Metal driver/GPU memory 和线程的专项采样。
+
+每次提交帧前，wrapper 通过 content view 的 `convertRectToBacking` 计算当前物理像素尺寸，
+仅在它与 `CAMetalLayer.drawableSize` 不同时更新 layer。这样跨 Retina/非 Retina 显示器后
+即使窗口通知丢失，下一帧也会收敛，不需要把 AppKit notification token 或 callback 生命周期
+扩散给 renderer。受控 release smoke 先把 drawable 改成 `1x1`，首帧恢复为当前 Retina
+`640x480`，逻辑 resize 后再恢复为 `800x600`，随后完成 49 帧和有序 shutdown。6 项单元测试
+覆盖正数/有限/整数物理尺寸以及陈旧尺寸检测。该结果验证校正算法，不替代真实外接显示器
+热切换、非 Retina 屏幕或 display removal 实测。
 
 受控 drawable unavailable 路径保留 overlay owner 直到统一 shutdown，但不执行后续
 显示/隐藏 smoke；设置窗口仍打开并显示 degraded 诊断，然后在 GPUI `quit()` 前显式
@@ -200,7 +209,7 @@ push run `33247687689` 和 PR run `33247689437` 的 hardware D3D11 smoke 验证�
 - Windows swapchain unavailable 与双平台真实 GPU device lost；双平台受控 owner 释放、
   有限退避、重建和诊断 UI 已实现，但注入结果不能替代真实驱动故障。
 - 用户拖动、显示器/DPI 热切换和 production display-linked frame source 的完整生命周期；
-  当前仅验证 programmatic resize 与 GPUI 定时 frame source。
+  当前验证了 programmatic resize、逐帧 backing-size 校正与 GPUI 定时 frame source。
 
 ## 下一步
 
