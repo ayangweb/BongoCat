@@ -558,7 +558,7 @@ jobs:
             "Light" = "ControlType.RadioButton"
             "Dark" = "ControlType.RadioButton"
             "Model display name" = "ControlType.Edit"
-            "Runtime status" = "ControlType.Group"
+            "Runtime status" = "ControlType.StatusBar"
             "Refresh" = "ControlType.Button"
           }
           foreach ($entry in $expectedControls.GetEnumerator()) {
@@ -566,13 +566,10 @@ jobs:
               throw "Windows UIA control '$($entry.Key)' expected $($entry.Value), found $($observed[$entry.Key])"
             }
           }
-          $invokePattern = $observedElements["Dark"].GetCurrentPattern(
-            [System.Windows.Automation.InvokePattern]::Pattern
-          )
-          $invokePattern.Invoke()
           $selectionPattern = $observedElements["Dark"].GetCurrentPattern(
             [System.Windows.Automation.SelectionItemPattern]::Pattern
           )
+          $selectionPattern.Select()
           $selectionDeadline = [DateTime]::UtcNow.AddSeconds(5)
           do {
             Start-Sleep -Milliseconds 100
