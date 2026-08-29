@@ -346,7 +346,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-29）：macOS `MouseMoved` 与 left/right/other drag 已分流到独立 latest-value slot，run-loop owner 约每 16ms 消费一次并在 shutdown flush；10,000-sample contract 证明 cursor flood 不占用可靠 button edge 队列，严格报告要求 `captured = coalesced + consumed` 且 close 后无迟到发布。commit `500a956` 的 PR run `33258718745` 中，原生 macOS job `99116842307` 与 contract job `99116842405` 均通过。Gamepad axis、产品 runtime 通道和物理 cursor callback 实测仍待完成，因此保持未勾选。
   - 状态（2026-08-29）：平台无关 keyed latest-values contract 已为 gamepad axis 固定容量、按 key 合并、完整 accounting、关闭语义和连接 generation；10,000 次同轴更新只消费最终值，新 key 超容量明确失败，断开后的旧 generation 不会污染复用 device id 的重连。commit `16a51bb` 的 push run `33259120950`、job `99117907732` 已通过 11 项测试；该提交只完成容器契约，不包含平台 producer 或产品 runtime。
   - 状态（2026-08-29）：macOS Phase 0 producer 已使用最新稳定版 `objc2-game-controller 0.3.2` 枚举 `GCExtendedGamepad`，把连接/断开/按钮放入可靠 FIFO，把六轴放入 `{device_id, generation, axis}` latest-values，并处理后台投递策略、slot 复用、迟到 callback、断开丢弃和 shutdown。30 项 library test 中的 10,000-axis flood 不阻塞按钮 release；本机 1 秒 framework smoke 完成 37 次枚举和干净恢复全局策略，但 `observed_controllers=0`，物理手柄和产品 runtime 仍待完成，因此总项保持未勾选。
-  - 状态（2026-08-29）：Windows Phase 0 producer 已把 XInput 0–3 slot 的连接/断开/标准按钮映射到可靠 FIFO，把六轴映射到 generation-keyed latest-values；33 项 library test 覆盖全范围归一化、10,000-axis flood、overflow Reset、断开丢弃、slot 重连和 shutdown。x64/ARM64 MSVC check 已通过，`windows-latest` API smoke、物理手柄和产品 runtime 仍待完成，因此总项保持未勾选。
+  - 状态（2026-08-29）：Windows Phase 0 producer 已把 XInput 0–3 slot 的连接/断开/标准按钮映射到可靠 FIFO，把六轴映射到 generation-keyed latest-values；33 项 library test 覆盖全范围归一化、10,000-axis flood、overflow Reset、断开丢弃、slot 重连和 shutdown。x64/ARM64 MSVC check 已通过；commit `b6bbd73` 的 push run `33260707799`、job `99122041439` 与 PR run `33260709475`、job `99122046077` 均通过真实 XInput API smoke，push job 完成 124 次无错误 slot 查询并干净关闭。runner `peak_connected=0`，物理手柄和产品 runtime 仍待完成，因此总项保持未勾选。
 - [ ] 队列溢出必须计数、记录并触发安全恢复。
   - 状态（2026-08-28）：`spikes/input-queue/` 的 `push_with_overflow_reset` 已固定溢出返回原事件、清空不可信缓存、注入 `Reset` 并记录恢复/丢弃计数；`spikes/runtime-contract/` 已将同一策略应用到 typed command queue 并通过 worker snapshot 暴露诊断；runtime producer、实际容量和输入/command sequence 仍待产品实现。
 - [ ] 动画、长按和延迟统一使用 Instant。
@@ -856,6 +856,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 完成平台无关 Rust model3/package parser、三个预置规范化索引与异常资源安全 contract；Native Core、binding、Framework 求值和 D3D11/Metal 绘制仍未完成。
 
 14. [ ] `P0-GO-NO-GO`：汇总证据、阻塞和条件，确认后再建立完整产品 workspace。
+    - 状态（2026-08-29）：`docs/phase-0/go-no-go-readiness.md` 已建立 gate matrix、外部 owner、工程队列和三类决策规则；当前结论明确为 `NOT READY FOR DECISION`，不勾选本项。主要阻塞是 Cubism SDK/书面授权、真实 Core/三模型 renderer、GPUI 辅助功能/IME 与双平台物理输入/GPU 矩阵。
 
 ## 13. 待决策清单
 

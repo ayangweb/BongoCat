@@ -168,4 +168,12 @@ contract test 和强化后的 pointer flood；同一 job 也重跑通过 release
 edge pressure、lifecycle 与 config 回归。该结果证明合成 RAWMOUSE 洪峰在 Windows runner 上
 确实发生合并且未阻塞 release，不替代 10 分钟物理键鼠压力测试。
 
-XInput producer 的 33 项 library contract test 覆盖 i16/u8 全范围归一化、连接/断开、标准按钮、六轴 latest-value、10,000 次 axis flood 不阻塞 release、可靠队列 overflow Reset + 原边沿重放、slot generation 复用、断开丢弃和 shutdown。`windows = 0.62.2` 只新增 `Win32_UI_Input_XboxController` feature，没有新增 package；唯一 `unsafe` 调用位于 binary platform wrapper，安全库继续 `forbid(unsafe_code)`。x64/ARM64 MSVC check 已通过；`windows-latest --xinput-ms 250` 和物理 controller/profile/热插拔证据仍待 push runner 与交互式设备，因此不把编译结果当作 XInput 实机完成。
+XInput producer 的 33 项 library contract test 覆盖 i16/u8 全范围归一化、连接/断开、标准按钮、六轴 latest-value、10,000 次 axis flood 不阻塞 release、可靠队列 overflow Reset + 原边沿重放、slot generation 复用、断开丢弃和 shutdown。`windows = 0.62.2` 只新增 `Win32_UI_Input_XboxController` feature，没有新增 package；唯一 `unsafe` 调用位于 binary platform wrapper，安全库继续 `forbid(unsafe_code)`。x64/ARM64 MSVC check 已通过。
+
+实现 commit `b6bbd73` 的 push run `33260707799`、job `99122041439` 与 PR run
+`33260709475`、job `99122046077` 均通过 33 项 Windows test 和
+`--xinput-ms 250` API smoke。push job 的报告为
+`service_enabled=true service_disabled=true api_calls=124 query_errors=0`
+`reliable_overflows=0 axis_overflows=0 clean_shutdown=true`。runner 未连接手柄，
+`peak_connected=0`，所以该结果只证明真实 `XInputEnable`/`XInputGetState` 调用、四 slot
+轮询和 owner shutdown，不证明物理 controller/profile、按钮、axis 或热插拔。

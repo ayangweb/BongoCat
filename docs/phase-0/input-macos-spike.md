@@ -84,6 +84,11 @@ NSZombieEnabled=YES spikes/input-macos/target/release/bongocat-input-macos-spike
 
 2026-08-29 当前 Apple M1 Pro、macOS 26.5.2 上新增 GameController producer 后，30 项 library test 与 5 项报告 test 通过。contract 覆盖连接/断开、按钮阈值、六轴合并、10,000 次 axis flood 不阻塞 release、可靠队列 overflow Reset + 原边沿重放、slot generation 复用、断开丢弃、非有限值、容量边界和 shutdown 迟到 callback。release `--gamepad-ms 1000` 完成 37 次真实 framework 枚举，`background_monitoring_enabled=true background_monitoring_restored=true callback_panics=0 clean_shutdown=true`；本机没有连接手柄，报告为 `observed_controllers=0`，因此它只证明 framework API、进程全局策略和 owner shutdown，不证明物理 controller profile、按钮、axis 或热插拔。
 
+实现 commit `a4fab65` 的 push run `33260175313`、job `99120641038` 与 PR run
+`33260176884`、job `99120645425` 均成功；两个原生 macOS job 均通过 dependency resolve、
+check、format、Clippy、30 项 library test、5 项报告 test 和 release build。CI 未连接物理
+controller，也未以无人值守 session 替代上述本机 framework smoke。
+
 同一工作批次重跑 `--tap-ms 800 --inject-release-loss` 时，两项 TCC preflight 仍为 true 且投递计数为 2，但 session callback 收到 `0/2`；严格 validator 继续非零退出，并把错误精确区分为“未到达 event-tap callback”，未将其误报成校正失败或成功。sequence 变更后的 release-loss 实机回归仍需在可接收 synthetic callback 的交互式会话重跑。
 
 实现约束：特殊的 `kCGEventTapDisabledByTimeout`/`kCGEventTapDisabledByUserInput` 值不能放入第三方事件 mask（其高位值会导致 `1 << type` 溢出）；callback 仍对这两类通知分支处理，收到后通过有界 channel 请求在 run loop 内 re-enable。tap 创建阶段使用 panic boundary，避免 binding 异常杀死输入线程。
