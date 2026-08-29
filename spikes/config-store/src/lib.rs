@@ -429,7 +429,8 @@ impl ConfigStore {
     }
 
     pub fn load_or_default(&self) -> Result<NativeConfig, ConfigError> {
-        self.recover_interrupted_commit()?;
+        let _lock = self.acquire_recovery_lock(RECOVERY_LOCK_TIMEOUT)?;
+        self.recover_interrupted_commit_unlocked()?;
         match fs::read(&self.layout.config) {
             Ok(bytes) => {
                 let config: NativeConfig = serde_json::from_slice(&bytes)?;
@@ -438,7 +439,7 @@ impl ConfigStore {
             }
             Err(error) if error.kind() == ErrorKind::NotFound => {
                 let config = NativeConfig::default();
-                self.commit(&config)?;
+                self.commit_unlocked(&config)?;
                 Ok(config)
             }
             Err(error) => Err(error.into()),
@@ -947,6 +948,19 @@ mod tests {
             serde_json::to_value(NativeConfig::default()).unwrap(),
             expected
         );
+    }
+
+    #[test]
+    fn repeated_first_load_uses_one_recovery_and_default_commit_lock() {
+        let base = tempdir().unwrap();
+        for index in 0..100 {
+            let layout = StorageLayout::under(
+                base.path().join(format!("first-load-{index}")),
+                BuildEnvironment::Development,
+            );
+            let store = ConfigStore::new(layout).unwrap();
+            assert_eq!(store.load_or_default().unwrap(), NativeConfig::default());
+        }
     }
 
     #[test]
