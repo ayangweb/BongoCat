@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 INPUT_DIR = ROOT / "shared" / "fixtures" / "input-sequences"
 EXPECTED_DIR = ROOT / "shared" / "fixtures" / "expected-state"
 CONFIG_DIR = ROOT / "shared" / "config" / "fixtures"
+MODEL_FIXTURE_DIR = ROOT / "shared" / "fixtures" / "model-fixtures"
 
 
 def load(path: Path) -> object:
@@ -47,6 +48,16 @@ def validate_directory(directory: Path, validator: Draft202012Validator) -> int:
         print(f"ok json-schema {path.relative_to(ROOT)}")
         count += 1
     return count
+
+
+def validate_file(path: Path, validator: Draft202012Validator) -> None:
+    try:
+        validator.validate(load(path))
+    except ValidationError as exc:
+        location = ".".join(str(item) for item in exc.absolute_path)
+        suffix = f" at {location}" if location else ""
+        raise RuntimeError(f"{path.relative_to(ROOT)}{suffix}: {exc.message}") from exc
+    print(f"ok json-schema {path.relative_to(ROOT)}")
 
 
 def validate_config_fixtures(validator: Draft202012Validator) -> int:
@@ -110,9 +121,14 @@ def main() -> int:
     config_count = validate_config_fixtures(
         validate_schema(ROOT / "shared" / "config" / "config.schema.json")
     )
+    validate_file(
+        MODEL_FIXTURE_DIR / "legacy-core-baseline.json",
+        validate_schema(MODEL_FIXTURE_DIR / "legacy-core-baseline.schema.json"),
+    )
     print(
         f"validated {input_count} input, {expected_count} expected, and "
-        f"{config_count} config fixture(s) with Draft 2020-12"
+        f"{config_count} config fixture(s), plus the legacy Core baseline "
+        "with Draft 2020-12"
     )
     return 0
 

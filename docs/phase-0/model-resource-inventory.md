@@ -121,3 +121,17 @@ Phase 0 暂定单边纹理尺寸上限为 `8192`。超大纹理 fixture 只保�
 4. motion、expression 和音效；
 5. 输入参数驱动；
 6. 100 次 load/switch/destroy 无持续资源增长。
+
+## Legacy Core Compatibility Baseline
+
+`shared/fixtures/model-fixtures/legacy-core-baseline.json` 冻结旧应用当前 Web Core 对三个预置 moc 的可重复观察。来源 Core 为 `public/js/live2dcubismcore.min.js`，SHA-256 `25ae938cb4fe282ce189b357bcc97e603d1e1f7ec78bf04150d401c23cdc792f`，运行时版本为 `5.1.0`（`0x05010000`），其最高 MOC enum 为 `MocVersion_50`。
+
+| 模式     | moc enum        | consistency | parameters | parts | drawables | canvas             |
+| -------- | --------------- | ----------- | ---------: | ----: | --------: | ------------------ |
+| standard | `MocVersion_40` | true        |         37 |    10 |        21 | 612 x 354，PPU 354 |
+| keyboard | `MocVersion_40` | true        |         34 |    10 |        19 | 612 x 354，PPU 354 |
+| gamepad  | `MocVersion_40` | true        |         42 |    14 |        25 | 612 x 354，PPU 354 |
+
+运行 `node tools/inspect-legacy-cubism-models.mjs --check` 会先校验 Web Core 与三个 moc 的固定 hash，再在隔离 VM 中创建并释放 Moc/Model，最后与 snapshot 精确比较。工具不接受任意模型、不修改资源，也不接入新应用运行时。
+
+该 snapshot 是未来 Native R5 spike 的回归 oracle，不是 R5 兼容证据。新 sys/safe wrapper 必须对同一组固定 moc 产生相同 moc version、基础计数和 canvas；drawable 数据、mask、motion、expression、physics、renderer 与重复销毁仍按 Cubism spike 单独验收。

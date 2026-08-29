@@ -225,6 +225,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 建立目标架构二进制清单、hash 和可重复获取流程。
   - 状态（2026-08-29）：R5 的 Windows x64/x86 与 macOS arm64/x64 artifact 路径已形成清单，Windows ARM64 已明确不可用；离线 ZIP 检查流程已定义。合法下载 ZIP 的 archive/file hash、双人复核和真实 ABI 加载仍待完成。
 - [ ] 验证 Rust sys binding 加载 moc、创建 model 并读取 drawable 数据。
+  - 状态（2026-08-29）：已用 hash 固定的 legacy Web Core `5.1.0` 为三个预置 moc 建立可重复 baseline，记录 MOC enum、consistency、parameter/part/drawable count 和 canvas，并接入 CI 漂移检查；这只是未来 R5 wrapper 的对照，尚未完成 Native R5 sys binding 或 drawable 数据读取。
 - [ ] 包装 Moc/Model 生命周期，证明 Model 不会比 Moc 存活更久。
 - [ ] 用 Rust 解析三个预置 model3 和所有关联资源。
 - [ ] Windows D3D11 绘制预置模型的 texture/order/alpha/mask。
