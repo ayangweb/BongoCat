@@ -331,7 +331,12 @@ jobs:
       - name: Run tests
         run: cargo test --manifest-path ${{ matrix.manifest }} --locked
       - name: Check release build
+        if: matrix.manifest != 'spikes/gpui-overlay-macos/Cargo.toml'
         run: cargo check --manifest-path ${{ matrix.manifest }} --locked --release
+      - name: Build Windows overlay smoke executable
+        if: matrix.manifest == 'spikes/gpui-overlay-macos/Cargo.toml'
+        timeout-minutes: 10
+        run: cargo build --manifest-path ${{ matrix.manifest }} --locked --release
       - name: Check Windows ARM64 overlay source
         if: matrix.manifest == 'spikes/gpui-overlay-macos/Cargo.toml'
         shell: bash
@@ -344,16 +349,8 @@ jobs:
       - name: Smoke independent Win32 and D3D11 overlay
         if: matrix.manifest == 'spikes/gpui-overlay-macos/Cargo.toml'
         shell: pwsh
-        timeout-minutes: 5
+        timeout-minutes: 3
         run: |
-          cargo build `
-            --manifest-path spikes/gpui-overlay-macos/Cargo.toml `
-            --locked `
-            --release
-          if ($LASTEXITCODE -ne 0) {
-            throw "failed to build overlay smoke executable"
-          }
-
           $executable = Join-Path $PWD "spikes/gpui-overlay-macos/target/release/bongocat-gpui-overlay-macos-spike.exe"
           function Invoke-OverlaySmoke {
             param(
