@@ -14,7 +14,7 @@ fi
 
 cd "$REPOSITORY_ROOT"
 
-for manifest in spikes/*/Cargo.toml tools/legacy-config-inspector/Cargo.toml; do
+for manifest in spikes/*/Cargo.toml tools/cubism-bindgen/Cargo.toml tools/legacy-config-inspector/Cargo.toml; do
     printf 'checking dependency policy: %s\n' "$manifest"
     cargo deny \
         --manifest-path "$manifest" \

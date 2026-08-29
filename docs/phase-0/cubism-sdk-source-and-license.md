@@ -24,13 +24,13 @@ Phase 0 以 **Cubism 5 SDK for Native R5**（`5-r.5`，2026-04-02）作为唯一
 
 R5 `Core/README.md` 和 `Core/RedistributableFiles.txt` 给出以下首发相关能力：
 
-| Rust target               | R5 Core artifact                                                                                       | Phase 0 disposition                                             |
-| ------------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------- |
-| `x86_64-pc-windows-msvc`  | `Core/dll/windows/x86_64/Live2DCubismCore.dll` 与 import `.lib`；另有 MSVC 141/142/143 static variants | 首发候选；先验证 DLL + import library                           |
-| `i686-pc-windows-msvc`    | `Core/dll/windows/x86/` 与 MSVC 141/142/143 static variants；DLL 调用约定为 `__stdcall`                | Core 可用，但 GPUI、依赖、renderer 与安装链仍待决定             |
-| `aarch64-pc-windows-msvc` | 无 desktop Windows ARM64 artifact；只有 experimental UWP ARM64 DLL                                     | **R5 下 NO-GO**；UWP DLL 不能作为 Win32 desktop target 的替代品 |
-| `aarch64-apple-darwin`    | `Core/lib/macos/arm64/libLive2DCubismCore.a`；另有 macOS bundle/dylib                                  | 首发候选；先验证 architecture-specific static library           |
-| `x86_64-apple-darwin`     | `Core/lib/macos/x86_64/libLive2DCubismCore.a`；另有 macOS bundle/dylib                                 | 首发候选；需 Intel 实机与发布链验证                             |
+| Rust target               | R5 Core artifact                                                                                       | Phase 0 disposition                                              |
+| ------------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| `x86_64-pc-windows-msvc`  | `Core/dll/windows/x86_64/Live2DCubismCore.dll` 与 import `.lib`；另有 MSVC 141/142/143 static variants | 首发候选；先验证 DLL + import library                            |
+| `i686-pc-windows-msvc`    | `Core/dll/windows/x86/` 与 MSVC 141/142/143 static variants；DLL 调用约定为 `__stdcall`                | **产品范围外**；Native Rewrite 不构建或发布 x86                  |
+| `aarch64-pc-windows-msvc` | 无 desktop Windows ARM64 artifact；只有 experimental UWP ARM64 DLL                                     | **发布阻塞**；ARM64 是产品目标，但 UWP DLL 不能替代 desktop Core |
+| `aarch64-apple-darwin`    | `Core/lib/macos/arm64/libLive2DCubismCore.a`；另有 macOS bundle/dylib                                  | 首发候选；先验证 architecture-specific static library            |
+| `x86_64-apple-darwin`     | `Core/lib/macos/x86_64/libLive2DCubismCore.a`；另有 macOS bundle/dylib                                 | 首发候选；需 Intel 实机与发布链验证                              |
 
 `RedistributableFiles.txt` 列出的 Core 文件才是 Proprietary Software License 下的可再分发候选，并要求按 Live2D 提供的原样形式分发。BongoCat 不修改、重打包为另一种库格式或从二进制反向生成源码。最终选择 static 或 dynamic linkage 之前，还要验证代码签名、notarization、更新替换、崩溃符号和最终安装包中的许可文件。
 
@@ -79,8 +79,10 @@ Proprietary Software License 将“通过增加或组合文件/数据，使用�
 2. ZIP 保存在仓库外的受控开发目录，不提交到 Git，不复制到 CI cache 或公开 artifact。
 3. 运行 `python3 tools/inspect-cubism-sdk.py /absolute/path/CubismSdkForNative-5-r.5.zip`。
 4. 首次验证记录 ZIP SHA-256、Core version、每个目标文件的路径/大小/hash，并由另一位维护者或独立机器复核。
-5. 复核后把 ZIP 的 expected SHA-256 写入本文件和显式 bootstrap 配置；后续运行使用 `--expected-sha256` 拒绝漂移。
-6. 只有在发布授权结论完成后，才设计私有 SDK 缓存、构建时复制和安装包 notice 生成；构建与 CI 默认保持离线。
+5. 维护者只在仓库外的受控目录准备 `Core/include/Live2DCubismCore.h`，使用 inspector 报告中的 header SHA-256 运行 `tools/cubism-bindgen`；真实 bindings 与 provenance 仍留在仓库外。
+6. 第二位维护者使用记录的 bindgen/libclang/target 配置独立生成并比较 output/config hash，再执行对应 Core 的 compile/link/ABI smoke；详见 `cubism-binding-generation.md`。
+7. 复核后把 ZIP 的 expected SHA-256 写入本文件和显式 bootstrap 配置；后续运行使用 `--expected-sha256` 拒绝漂移。
+8. 只有在发布授权结论完成后，才设计私有 SDK 缓存、构建时复制和安装包 notice 生成；构建与 CI 默认保持离线。
 
 检查器只读取 ZIP central directory 和所需文件并计算 hash，不解压文件、不接受许可、不联网。它拒绝路径穿越、绝对路径、反斜杠路径、重复路径、符号链接、加密 entry 和异常膨胀 archive，并按 `cubism-framework-behavior-sources.md` 校验关键 Framework 文件属于固定的 R5 Git tree。
 
@@ -89,7 +91,7 @@ Proprietary Software License 将“通过增加或组合文件/数据，使用�
 以下事项尚未完成，不能由版本/许可文档替代：
 
 - 合法下载的官方 ZIP SHA-256 与第二来源复核；
-- R5 header 的可重复 raw binding 生成与审阅；
+- 已建立合成输入的可重复 raw binding 契约；仍缺 R5 header 真实 hash、授权后的生成、双人审阅与 ABI smoke；
 - Windows x64 和 macOS arm64/x64 Core 的真实加载、版本查询和 ABI smoke；
 - 三个预置 moc 的 consistency、model 创建、drawable 读取和析构；
 - motion、expression、physics、pose 的独立 Rust 实现依据及许可书面结论；

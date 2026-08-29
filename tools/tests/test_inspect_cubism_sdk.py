@@ -52,8 +52,6 @@ def valid_entries() -> dict[str, bytes]:
         f"{CORE}RedistributableFiles.txt": redistributable,
         f"{CORE}dll/windows/x86_64/Live2DCubismCore.dll": b"x64-dll",
         f"{CORE}dll/windows/x86_64/Live2DCubismCore.lib": b"x64-import-lib",
-        f"{CORE}dll/windows/x86/Live2DCubismCore.dll": b"x86-dll",
-        f"{CORE}dll/windows/x86/Live2DCubismCore.lib": b"x86-import-lib",
         f"{CORE}lib/macos/arm64/libLive2DCubismCore.a": b"mac-arm64-static",
         f"{CORE}lib/macos/x86_64/libLive2DCubismCore.a": b"mac-x64-static",
         **FRAMEWORK_SOURCE_CONTENTS,
@@ -94,6 +92,10 @@ class CubismSdkInspectorTests(unittest.TestCase):
             self.assertEqual(
                 report["targets"]["x86_64-pc-windows-msvc"]["status"],
                 "present",
+            )
+            self.assertEqual(
+                report["targets"]["i686-pc-windows-msvc"]["status"],
+                "excluded_by_product",
             )
 
     def test_expected_archive_hash_is_enforced(self) -> None:

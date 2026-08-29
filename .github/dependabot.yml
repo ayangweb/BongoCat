@@ -13,6 +13,7 @@ updates:
       - /spikes/model-package
       - /spikes/overlay-lifecycle
       - /spikes/runtime-contract
+      - /tools/cubism-bindgen
       - /tools/legacy-config-inspector
     target-branch: next
     schedule:

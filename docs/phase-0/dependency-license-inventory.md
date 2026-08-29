@@ -5,7 +5,7 @@
 
 ## Scope
 
-`deny.toml` 使用 `cargo-deny 0.20.2` 扫描所有 `spikes/*/Cargo.toml` 与 `tools/legacy-config-inspector/Cargo.toml`，并以已提交的 lockfile 为输入。检查目标是：
+`deny.toml` 使用 `cargo-deny 0.20.2` 扫描所有 `spikes/*/Cargo.toml`、`tools/cubism-bindgen/Cargo.toml` 与 `tools/legacy-config-inspector/Cargo.toml`，并以已提交的 lockfile 为输入。检查目标是：
 
 - `aarch64-apple-darwin`
 - `x86_64-apple-darwin`
@@ -29,6 +29,8 @@
 | objc2 / block2 family            | `0.6.4` / `0.3.2`     | MIT OR Apache-2.0 / Zlib | macOS overlay/input lifecycle        |
 | metal / core-graphics-types      | `0.33.0` / `0.2.0`    | MIT OR Apache-2.0        | macOS transparent present spike      |
 | windows                          | `0.62.2`              | MIT OR Apache-2.0        | Windows Raw Input boundary spike     |
+| bindgen                          | `0.72.1`              | BSD-3-Clause             | Offline Cubism raw binding generator |
+| sha2                             | `0.11.0`              | MIT OR Apache-2.0        | Header/output provenance hashes      |
 
 ## Policy
 

@@ -89,15 +89,16 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 新增 ADR-006：首发不支持 Linux，但共享模块不封死后续 backend。
 - [x] 新增 ADR-007：生产版本只有单一 Rust 运行环境，历史实现仅用于行为与资源对照。
 - [x] 新增 ADR-008：固定 Bundle ID，并隔离 Development/Production 存储环境。
+- [x] 新增 ADR-010：Windows 只保留 x64/ARM64，移除 i686，并把缺少 R5 desktop ARM64 Core 固定为发布阻塞。
 - [x] 记录 `master`、`next`、旧版本 tag 和可回退 commit。
 - [ ] 确认旧 Vue/Tauri 应用仍可构建和运行，保存命令与产物信息。
 - [x] 建立 `docs/adr/`、`docs/benchmark/`、`docs/migration/` 目录。
 - [x] 建立依赖许可证清单，确认当前 Native spike crate graph 与项目 MIT 发布兼容。
-  - 状态（2026-08-29）：最新稳定版 `cargo-deny 0.20.2` 以四个 Windows/macOS target 扫描 11 个独立 workspace，license/source policy 通过并接入 CI；依赖升级后 package 节点数由 lockfile 动态决定，不再把旧的 535 节点快照当作当前事实。Cubism 厂商许可、未来产品依赖、SBOM 和 notice bundle 仍由各自后续门禁处理。
+  - 状态（2026-08-29）：最新稳定版 `cargo-deny 0.20.2` 以四个 Windows/macOS target 扫描 12 个独立 workspace，license/source policy 通过并接入 CI；依赖升级后 package 节点数由 lockfile 动态决定，不再把旧的 535 节点快照当作当前事实。Cubism 厂商许可、未来产品依赖、SBOM 和 notice bundle 仍由各自后续门禁处理。
 - [x] 审计 Native Rewrite 所有直接 Rust 依赖并升级到 crates.io 最新稳定版。
-  - 验收证据：`docs/phase-0/rust-dependency-versions.md` 记录 2026-08-29 的 18 个直接依赖家族、升级范围和命令。8 个落后家族已升级；其余 10 个原本已是最新。完整 `cargo update` 后，最新 `gpui 0.2.2` 仍约束旧 generation 的 Metal/CoreGraphics 和 5 个有兼容更新的传递版本；均已记录 owner path，未静默覆盖或 fork。Dependabot 每周仅扫描 11 个 Native workspace 并向 `next` 提交分组更新。
+  - 验收证据：`docs/phase-0/rust-dependency-versions.md` 记录 2026-08-29 的 20 个直接依赖家族、升级范围和命令。原 18 个家族中 8 个已升级、10 个原本已是最新；后续新增的最新稳定版 `bindgen 0.72.1` 与 `sha2 0.11.0` 也已精确锁定。完整 `cargo update` 后，最新 `gpui 0.2.2` 仍约束旧 generation 的 Metal/CoreGraphics 和 5 个有兼容更新的传递版本；均已记录 owner path，未静默覆盖或 fork。Dependabot 每周仅扫描 12 个 Native workspace 并向 `next` 提交分组更新。
 - [ ] 冻结首发 target triple 和 CPU 架构矩阵，明确 Windows ARM64、macOS Intel 是否发布或仅测试。
-  - 状态（2026-08-29）：官方 Cubism Native R5 不提供 desktop Windows ARM64 Core，只有 experimental UWP ARM64 DLL，因此 `aarch64-pc-windows-msvc` 已判定首发 NO-GO；Windows x86、macOS Intel 和最终安装包形式仍待实机与发布链验证。
+  - 状态（2026-08-29）：ADR-0010 已固定 Windows 仅支持 x64/ARM64，i686 不再构建或发布。官方 Cubism Native R5 不提供 desktop Windows ARM64 Core，只有 experimental UWP ARM64 DLL，因此 ARM64 当前是发布阻塞；macOS Intel 和最终安装包形式仍待实机与发布链验证。
 - [ ] 记录 Windows MSVC/SDK、macOS Xcode/SDK/Metal Toolchain 和 Rust toolchain 的最低可用组合。
 - [ ] 保存旧版最后可用安装包、资源清单、签名状态和 SHA-256，不只记录源码 commit。
 
@@ -227,7 +228,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 确认 Cubism SDK/Core 版本、来源、再分发条款和 attribution 要求。
   - 状态（2026-08-29）：`docs/phase-0/cubism-sdk-source-and-license.md` 已固定 Native R5/Core `06.00.0001`、官方 tag/commit、下载入口和 RedistributableFiles 边界。BongoCat 很可能属于需预先批准和单独协议的 Expandable Application；Framework 到 MIT Rust 实现的许可边界、最终 attribution 和 Live2D 书面授权仍未完成，因此保持未勾选。
 - [ ] 建立目标架构二进制清单、hash 和可重复获取流程。
-  - 状态（2026-08-29）：R5 的 Windows x64/x86 与 macOS arm64/x64 artifact 路径已形成清单，Windows ARM64 已明确不可用；离线 ZIP 检查流程已定义。合法下载 ZIP 的 archive/file hash、双人复核和真实 ABI 加载仍待完成。
+  - 状态（2026-08-29）：产品目标中的 R5 Windows x64 与 macOS arm64/x64 artifact 路径已形成清单，Windows ARM64 已明确无 desktop artifact，i686 已排除；离线 ZIP 检查流程已定义。合法下载 ZIP 的 archive/file hash、双人复核和真实 ABI 加载仍待完成。
 - [ ] 验证 Rust sys binding 加载 moc、创建 model 并读取 drawable 数据。
   - 状态（2026-08-29）：已用 hash 固定的 legacy Web Core `5.1.0` 为三个预置 moc 建立可重复 baseline，记录 MOC enum、consistency、parameter/part/drawable count 和 canvas，并接入 CI 漂移检查；这只是未来 R5 wrapper 的对照，尚未完成 Native R5 sys binding 或 drawable 数据读取。
 - [ ] 包装 Moc/Model 生命周期，证明 Model 不会比 Moc 存活更久。
@@ -242,6 +243,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 建立 Cubism Framework 行为来源清单，逐项说明 motion、expression、physics、pose 的 Rust 实现依据和许可边界。
   - 验收证据：`docs/phase-0/cubism-framework-behavior-sources.md` 固定 R5 tree、16 个关键 Framework blob、双平台 sample owner、行为 oracle 与禁止直接翻译的许可边界；离线 SDK inspector 会验证这些 blob。Live2D 对独立 Rust 实现和生成 binding 发布的书面许可仍是 P0 阻塞，不因本项勾选而视为解决。
 - [ ] 对 raw binding 生成流程固定 header、生成器版本和输出审阅方式，禁止手改生成代码后失去可重复性。
+  - 状态（2026-08-29）：`tools/cubism-bindgen/` 已精确锁定最新稳定版 `bindgen 0.72.1`，固定当前 R5 可用且属于产品矩阵的 Windows x64 与 macOS arm64/x64、`csm*` 白名单、Rust 1.85/edition 2024、配置/output hash 和仓库外生成门禁；自有合成 header 的三 target golden、7 项安全测试与 CI 漂移检查已完成。工具明确拒绝 i686 与当前无 Core 的 Windows ARM64。合法 R5 header 的真实 SHA、授权后的生成/双人审阅以及 Core compile/link/ABI smoke 仍待完成，因此保持未勾选。
 
 ### 1.9 Phase 0 退出门槛
 
@@ -301,6 +303,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 共享 crate 增加 Linux cargo check，但不生成首发安装包。
 - [ ] CI 校验 fixture JSON Schema、跨文件一致性、本地化 key 和生成文件是否漂移。
   - [x] 已接入 Draft 2020-12 schema、fixture 跨文件一致性和五种历史 locale 的 key/类型/占位符校验。
+  - [x] Cubism raw binding 工具已用自有合成 header 对三个当前可绑定 target 执行 deterministic golden 漂移检查；真实 R5 bindings 因许可门禁不进入 CI。
   - [ ] 生成文件漂移校验仍待 Native 资源生成链建立后补齐。
 - [ ] 保存失败测试日志、截图和 renderer validation 输出，同时执行路径/按键隐私清理。
 - [ ] 构建产物记录 source commit、Cargo.lock hash、toolchain、target 和 feature set。

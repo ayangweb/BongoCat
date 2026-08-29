@@ -22,6 +22,7 @@ Rust 2024 edition application
 主要决策：
 
 - BongoCat 自有应用代码统一使用 Rust。
+- Windows 只发布 x64 与 ARM64，不构建或发布 x86；ARM64 在官方 desktop Cubism Core 可用并通过 ABI/模型验证前保持发布阻塞。
 - GPUI 只负责常规设置 UI，不承担主猫 Live2D 渲染。
 - 主猫窗口由 Rust 平台模块直接创建和管理，与 GPUI 设置窗口共享同一应用生命周期。
 - Windows 使用 D3D11，macOS 使用 Metal；首发不为了未来 Linux 强行统一 GPU backend。
@@ -286,6 +287,8 @@ model evaluation + render snapshot
 ```
 
 - Core 二进制按平台分发，版本、hash、来源和许可证记录在构建清单中。
+- raw binding 只由精确锁定的离线生成工具从 hash 固定的官方 header 生成；生成配置、target ABI、libclang 版本和输出 hash 必须进入 provenance，禁止手改生成代码。
+- 在 Live2D 书面确认 header 派生 binding 的发布权限前，官方 header 与真实生成物均保留在仓库和 CI 外；仓库只提交自有合成 header 的生成契约与漂移测试。
 - 原始指针不离开 safe wrapper；Moc 必须比 Model 活得更久。
 - 不把未经验证的新纯 Rust Cubism 兼容 crate 作为生产基础。
 - `.model3.json`、motion、expression、physics 和 pose 兼容性由 fixture 验证。

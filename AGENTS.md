@@ -18,6 +18,8 @@ Rust Application
 
 首发平台是 Windows 10 1903+ 和 macOS 12+。Linux 只属于首发后的评估范围，不得阻塞 Windows/macOS 工作；共享业务模块仍须保持平台无关。
 
+Windows Native Rewrite 只面向 `x86_64-pc-windows-msvc` 与 `aarch64-pc-windows-msvc`，不得新增 i686 构建、测试或安装包。Windows ARM64 虽是产品目标，但当前 Cubism Native R5 缺少 desktop ARM64 Core；在官方可授权 artifact 通过真实 ABI 与模型验证前必须保持发布阻塞，不得用 UWP DLL 或模拟结果冒充支持。
+
 “纯 Rust”指 BongoCat 自有应用代码全部使用 Rust。官方 Cubism Core 平台二进制是唯一允许的厂商 FFI 例外。不得把 BongoCat 业务逻辑放入 SDK bridge。
 
 Native Rewrite 的 Bundle ID 固定为 `com.ayangweb.bongo-cat`。Development 与 Production 使用相同数据结构和不同存储根；任何开发构建不得读取、写入或锁住生产数据。新配置使用自己的 `snake_case` 字段，不兼容或导入旧 Tauri/Pinia 配置。

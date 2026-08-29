@@ -6,7 +6,7 @@ Rust：`cargo 1.97.1`、`rustc 1.97.1`
 
 ## Scope
 
-本次审计最初覆盖 Native Rewrite 的 9 个 `spikes/*` 独立 workspace 和 `tools/legacy-config-inspector`；新增 `spikes/model-package` 后当前共 11 个独立 workspace。仓库根 workspace、`src-tauri/` 和其插件属于历史行为对照，不是 Native Rewrite 的依赖图；Phase 0 不借依赖升级修改历史应用。
+本次审计最初覆盖 Native Rewrite 的 9 个 `spikes/*` 独立 workspace 和 `tools/legacy-config-inspector`；新增 `spikes/model-package` 与 `tools/cubism-bindgen` 后当前共 12 个独立 workspace。仓库根 workspace、`src-tauri/` 和其插件属于历史行为对照，不是 Native Rewrite 的依赖图；Phase 0 不借依赖升级修改历史应用。
 
 版本来源使用 crates.io stable release：
 
@@ -24,6 +24,7 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 | Crate                  | Pinned version | Result            |
 | ---------------------- | -------------: | ----------------- |
 | `async-channel`        |        `2.5.0` | 从 `1.9.0` 升级   |
+| `bindgen`              |       `0.72.1` | 新增时即为最新    |
 | `block2`               |        `0.6.2` | 已是最新          |
 | `core-foundation`      |       `0.10.1` | 已是最新          |
 | `core-graphics-types`  |        `0.2.0` | 从 `0.1.3` 升级   |
@@ -38,6 +39,7 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 | `objc2-quartz-core`    |        `0.3.2` | 已是最新          |
 | `serde`                |      `1.0.229` | 从 `1.0.228` 升级 |
 | `serde_json`           |      `1.0.151` | 从 `1.0.149` 升级 |
+| `sha2`                 |       `0.11.0` | 新增时即为最新    |
 | `tempfile`             |       `3.27.0` | 已是最新          |
 | `unicode-segmentation` |       `1.13.3` | 已是最新          |
 | `windows`              |       `0.62.2` | 从 `0.61.3` 升级  |
@@ -62,14 +64,15 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 
 ## Verification
 
-当前 11 个 workspace 均完成 locked format、Clippy、test 和 release check；无依赖的 contract workspace 同样重新生成/检查 lockfile。附加平台验证包括：
+当前 12 个 workspace 均完成 locked format、Clippy、test 和 release check；无依赖的 contract workspace 同样重新生成/检查 lockfile。附加平台验证包括：
 
 - `windows 0.62.2` 在 `x86_64-pc-windows-msvc` 完成 check 与 Clippy；真实 Windows 注册和生命周期 smoke 由 push CI 执行；
 - `core-graphics2 0.6.1` 在已授予 Input Monitoring 的 macOS 会话创建 listen-only tap，完成 lifecycle Reset 和正常 shutdown；
 - `metal 0.33.0` 创建透明 `CAMetalLayer`，完成两次 clear/present、隐藏/重显和自动退出；
 - `async-channel 2.5.0` 的 GPUI 设置 spike 完成 revisioned snapshot、runtime shutdown 和自动退出；
 - `dirs 6.0.0`、`serde 1.0.229` 与 `serde_json 1.0.151` 的配置/考古工具共 28 项测试通过；
-- `cargo-deny 0.20.2` 对全部 11 个 workspace 的四目标 license/source policy 通过。
+- `bindgen 0.72.1` 与 `sha2 0.11.0` 只存在于离线 Cubism raw binding 工具；三个当前可绑定 target 的合成 header golden、外部路径/hash/不可覆盖/provenance 测试和 release check 通过；
+- `cargo-deny 0.20.2` 对全部 12 个 workspace 的四目标 license/source policy 通过。
 
 GPUI 图继续报告已单独建档的 `block 0.1.6` 和 `proc-macro-error2 2.0.1` future-incompatibility。两者本身已是各自当前最新版，升级直接依赖没有解除上游约束，产品 workspace 的禁止门槛保持不变。
 
@@ -77,7 +80,7 @@ GPUI 图继续报告已单独建档的 `block 0.1.6` 和 `proc-macro-error2 2.0.
 
 新增依赖时必须先核对当日最新稳定版并选用该版本。若最新版本与已确认 toolchain、target、许可证或安全边界冲突，提交必须同时记录实际选择、阻塞原因、上游解除条件和替换成本。新增或修改 manifest 后必须更新对应 lockfile，运行 license/source policy、format、Clippy、test 和目标平台 build。
 
-`.github/dependabot.yml` 每周扫描这 11 个独立 workspace，并把更新目标固定为 `next`。扫描不包含根目录和 `src-tauri`，避免把历史行为对照混入 Native Rewrite 依赖 PR。自动 PR 仍必须通过双平台 CI 和人工 API/许可证评审，不能因版本号更新而自动合并。
+`.github/dependabot.yml` 每周扫描这 12 个独立 workspace，并把更新目标固定为 `next`。扫描不包含根目录和 `src-tauri`，避免把历史行为对照混入 Native Rewrite 依赖 PR。自动 PR 仍必须通过双平台 CI 和人工 API/许可证评审，不能因版本号更新而自动合并。
 
 版本最新不替代依赖审查。维护状态、许可证、unsafe 面积、平台覆盖和公共 API 泄漏仍按 `AGENTS.md` 的依赖规则独立验收。
 

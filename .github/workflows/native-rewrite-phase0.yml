@@ -58,6 +58,64 @@ jobs:
       - name: Check licenses and dependency sources
         run: ./tools/check-native-dependencies.sh
 
+  cubism-binding-contract:
+    name: Check Cubism binding generation contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Hash Rust toolchain
+        id: rust-toolchain
+        shell: bash
+        run: echo "hash=$(rustc -Vv | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+      - name: Cache Cargo artifacts
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            tools/cubism-bindgen/target/
+          key: ${{ runner.os }}-cubism-bindgen-${{ steps.rust-toolchain.outputs.hash }}-${{ hashFiles('tools/cubism-bindgen/Cargo.lock', 'tools/cubism-bindgen/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cubism-bindgen-${{ steps.rust-toolchain.outputs.hash }}-
+            ${{ runner.os }}-cubism-bindgen-
+      - name: Check formatting
+        run: cargo fmt --manifest-path tools/cubism-bindgen/Cargo.toml -- --check
+      - name: Run Clippy
+        run: cargo clippy --manifest-path tools/cubism-bindgen/Cargo.toml --locked --all-targets --all-features -- -D warnings
+      - name: Run tests
+        run: cargo test --manifest-path tools/cubism-bindgen/Cargo.toml --locked
+      - name: Check deterministic synthetic bindings
+        run: cargo run --manifest-path tools/cubism-bindgen/Cargo.toml --locked -- check-fixtures
+      - name: Compile synthetic bindings for every Core target
+        shell: bash
+        run: |
+          rustup target add \
+            x86_64-pc-windows-msvc \
+            aarch64-apple-darwin \
+            x86_64-apple-darwin
+          output_directory=$(mktemp -d)
+          for target in \
+            x86_64-pc-windows-msvc \
+            aarch64-apple-darwin \
+            x86_64-apple-darwin; do
+            mkdir -p "$output_directory/$target"
+            rustc \
+              --crate-name cubism_core_synthetic \
+              --crate-type lib \
+              --edition 2024 \
+              --target "$target" \
+              --emit metadata \
+              -D warnings \
+              -A non_camel_case_types \
+              -A non_snake_case \
+              -A non_upper_case_globals \
+              "tools/cubism-bindgen/fixtures/expected/$target.rs" \
+              --out-dir "$output_directory/$target"
+          done
+      - name: Check release build
+        run: cargo check --manifest-path tools/cubism-bindgen/Cargo.toml --locked --release
+
   contract-spikes:
     name: Test ${{ matrix.name }}
     runs-on: ubuntu-latest

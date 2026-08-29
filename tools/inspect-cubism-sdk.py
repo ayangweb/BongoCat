@@ -35,10 +35,6 @@ TARGET_ARTIFACTS = {
         "windows_x64_dll": "dll/windows/x86_64/Live2DCubismCore.dll",
         "windows_x64_import_library": "dll/windows/x86_64/Live2DCubismCore.lib",
     },
-    "i686-pc-windows-msvc": {
-        "windows_x86_dll": "dll/windows/x86/Live2DCubismCore.dll",
-        "windows_x86_import_library": "dll/windows/x86/Live2DCubismCore.lib",
-    },
     "aarch64-apple-darwin": {
         "macos_arm64_static_library": "lib/macos/arm64/libLive2DCubismCore.a",
     },
@@ -395,6 +391,10 @@ def inspect_archive(
         }
         target_reports["aarch64-pc-windows-msvc"] = {
             "status": "unsupported_by_r5",
+            "artifacts": [],
+        }
+        target_reports["i686-pc-windows-msvc"] = {
+            "status": "excluded_by_product",
             "artifacts": [],
         }
 
