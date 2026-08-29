@@ -324,6 +324,31 @@ jobs:
                       f"drawable-unavailable overlay smoke did not report: {expected}"
                   )
 
+          recovered = run_smoke(
+              "renderer-recovery",
+              [
+                  "--simulate-renderer-loss-at-frame",
+                  "12",
+                  "--auto-quit-ms",
+                  "1600",
+              ],
+          )
+          for expected in (
+              "frame degraded kind=device_lost error=simulated renderer device loss",
+              "frame renderer recovered attempt=1",
+              "settings overlay status=GPUI settings + native overlay (recovered)",
+              "failures=1 recoveries=1",
+          ):
+              if expected not in recovered:
+                  raise RuntimeError(
+                      f"renderer-recovery overlay smoke did not report: {expected}"
+                  )
+          degraded_at = recovered.index("frame degraded kind=device_lost")
+          released_at = recovered.index("overlay window/GPU owner released", degraded_at)
+          recovered_at = recovered.index("frame renderer recovered attempt=1")
+          if not degraded_at < released_at < recovered_at:
+              raise RuntimeError("macOS renderer was recreated before the failed owner released")
+
           cycles = run_smoke("cycles", ["--macos-overlay-cycles", "100"])
           for expected in (
               "macOS cycles=100",
@@ -502,6 +527,32 @@ jobs:
             if (-not $degraded.Contains($_)) {
               throw "degraded overlay smoke did not report: $_"
             }
+          }
+
+          $recovered = Invoke-OverlaySmoke `
+            -Name "renderer-recovery" `
+            -Arguments @("--simulate-renderer-loss-at-frame", "12", "--auto-quit-ms", "1800")
+          @(
+            "frame degraded kind=device_lost error=simulated renderer device loss",
+            "frame renderer recovered attempt=1",
+            "settings overlay status=GPUI settings + native overlay (recovered)",
+            "failures=1 recoveries=1"
+          ) | ForEach-Object {
+            if (-not $recovered.Contains($_)) {
+              throw "renderer-recovery overlay smoke did not report: $_"
+            }
+          }
+          $degradedAt = $recovered.IndexOf("frame degraded kind=device_lost")
+          $gpuReleasedAt = $recovered.IndexOf("Windows overlay GPU released", $degradedAt)
+          $windowDestroyedAt = $recovered.IndexOf("Windows overlay window destroyed", $gpuReleasedAt)
+          $recoveredAt = $recovered.IndexOf("frame renderer recovered attempt=1")
+          if (
+            $degradedAt -lt 0 -or
+            $gpuReleasedAt -le $degradedAt -or
+            $windowDestroyedAt -le $gpuReleasedAt -or
+            $recoveredAt -le $windowDestroyedAt
+          ) {
+            throw "Windows renderer was recreated before the failed GPU/window owner released"
           }
 
           $cycles = Invoke-OverlaySmoke `

@@ -1,6 +1,6 @@
 # Native Overlay Lifecycle Contract Spike
 
-状态：生命周期契约、双平台透明合成、macOS 非空 draw/readback 与双平台重建门禁通过；完整 overlay 门禁仍未完成
+状态：生命周期契约、双平台透明合成、连续帧与受控 renderer 故障恢复通过；完整 overlay 门禁仍未完成
 日期：2026-08-29
 
 ## 目的
@@ -73,6 +73,7 @@ non-empty premultiplied-alpha draw/present submitted
 cargo run --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked --release -- --macos-overlay-cycles 100
 NSZombieEnabled=YES spikes/gpui-overlay-macos/target/release/bongocat-gpui-overlay-macos-spike --macos-overlay-cycles 100
 cargo run --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked -- --simulate-macos-drawable-unavailable --auto-quit-ms 300
+cargo run --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked --release -- --simulate-renderer-loss-at-frame 12 --auto-quit-ms 1600
 ```
 
 100 次循环每次都真实创建 `NSPanel`、`CAMetalLayer`、Metal render pipeline、
@@ -93,6 +94,13 @@ smoke。commit `5bc82b61b12d9873fb8bddfdb0de4f1652487ac9` 的 push run
 `99081228964` 均通过；两次 runner 都记录正常透明 clear/present、显示/隐藏、
 drawable unavailable 降级、GPUI 正常退出、owner 释放，以及
 `windows_before=0 windows_after=0 owners_before=0 owners_after=0 clean_shutdown=true`。
+
+连续 frame source 还支持运行中故障恢复。受控 smoke 在第 12 个成功帧注入
+`device_lost` 语义故障，立即释放旧 Metal/AppKit owner，等待 3 个 frame tick 后重建
+完整 owner，重新应用 `400x300` 逻辑尺寸与 `800x600` Retina drawable，并恢复提交。
+本机 release 结果为 `frames=87 resize_completed=true failures=1 recoveries=1`；设置窗口
+在恢复期间显示 recovering，成功后切回 recovered。重建最多尝试 3 次并使用有限退避，
+耗尽后只停止 frame source、保留 GPUI 设置窗口和诊断，不进入 panic 或忙循环。
 
 当前非空帧使用 spike 内的合成顶点和运行时编译 Metal shader，只证明 Rust 能独立
 创建 pipeline、提交真实 draw call、进行预乘 alpha 合成并可靠回读。它不包含 Cubism
@@ -122,11 +130,14 @@ renderer 内部对象。
 - 透明 clear 后提交非空 draw，将 back buffer 复制到 staging texture 并映射中心
   BGRA 像素；alpha 必须非零且三个颜色通道不得大于 alpha；
 - present、device-removed 检查、显示/隐藏和一次性 topmost；
+- 将 `DXGI_ERROR_DEVICE_REMOVED/RESET/HUNG/DRIVER_INTERNAL_ERROR` 分类为 device lost，
+  将 access lost/not currently available/wait timeout 分类为 surface unavailable；
 - 按窗口 DPI 将逻辑尺寸换算为物理像素，释放旧 back-buffer 引用后执行
   `ResizeBuffers` 并重建 RTV 与 staging texture；
 - owner-thread assertion 与 `!Send`/`!Sync` marker；
 - composition detach -> D3D clear/flush -> COM release -> HWND destroy 顺序；
 - renderer 初始化失败注入，GPUI 设置窗口继续显示 degraded 状态；
+- 连续帧故障后释放旧 D3D11/Win32 owner、有限退避、重建并恢复绘制；
 - 100 次窗口/GPU 创建销毁及 warm-up 后 process handle 增长门禁。
 
 本机已对 `x86_64-pc-windows-msvc` 执行 Check/Clippy，并对
@@ -143,8 +154,11 @@ clear/present、隐藏/重显示、GPUI 共存和自动退出；退出日志中
 进程的 process handle 未增长，不替代 GPU memory/driver resource 专项采样。
 
 commit `53eec36` 的首次真实 Windows 非空帧运行暴露了默认 D3D11 背面剔除：draw
-已提交但中心像素仍透明。本批将 rasterizer 明确设为 `CULL_NONE`，该修复与连续帧、
-resize 一并等待新的 `windows-latest` 实机结果，不能沿用旧 green check 声称非空绘制完成。
+已提交但中心像素仍透明。commit `ebaea32` 将 rasterizer 明确设为 `CULL_NONE`，并由
+push run `33247687689` 和 PR run `33247689437` 的 hardware D3D11 smoke 验证连续帧、
+非空 readback、逻辑 resize、`172 -> 172` handle 计数与有序退出。当前新增的受控
+运行中 renderer loss/recreate smoke 将在本批 push 后由同一 Windows job 验证；真实
+驱动 device removal 仍不能由注入结果代替。
 
 当前非空帧仍使用 spike 内的合成顶点和运行时编译 HLSL，只验证 D3D11 pipeline、
 预乘 alpha 和可回读 draw。预置模型纹理、draw order、mask 与 production shader
@@ -170,13 +184,13 @@ resize 一并等待新的 `windows-latest` 实机结果，不能沿用旧 green 
 - 两个平台的真实 Live2D/Cubism 绘制和模型资源兼容。
 - 两个平台的模型 texture、draw order、mask 及离线固定 shader 产物。
 - 双平台 GPU memory/driver resource 与线程专项采样。
-- Windows swapchain unavailable、双平台真实 GPU device lost 和恢复后的诊断 UI；macOS 当前只完成受控 drawable unavailable。
+- Windows swapchain unavailable 与双平台真实 GPU device lost；双平台受控 owner 释放、
+  有限退避、重建和诊断 UI 已实现，但注入结果不能替代真实驱动故障。
 - 用户拖动、显示器/DPI 热切换和 production display-linked frame source 的完整生命周期；
   当前仅验证 programmatic resize 与 GPUI 定时 frame source。
 
 ## 下一步
 
-下一步是完成本批 Windows 非空帧/resize 实机验证，再增加 swapchain unavailable/
-device-lost 恢复验证。随后补齐双平台 GPU/线程专项采样、display-linked frame source、
-拖动/显示器切换和模型绘制；任一平台
+下一步是验证 Windows 受控恢复 job，再补充真实 swapchain unavailable/device-lost、
+双平台 GPU/线程专项采样、display-linked frame source、拖动/显示器切换和模型绘制；任一平台
 结果都不能替代另一平台证据。

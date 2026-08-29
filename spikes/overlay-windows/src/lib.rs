@@ -1,6 +1,6 @@
 #![cfg(target_os = "windows")]
 
-use std::{rc::Rc, thread::ThreadId};
+use std::{fmt, rc::Rc, thread::ThreadId};
 use windows::{
     Win32::{
         Foundation::{HINSTANCE, HMODULE, HWND, LPARAM, LRESULT, WPARAM},
@@ -33,7 +33,10 @@ use windows::{
                     DXGI_FORMAT_R32G32_FLOAT, DXGI_FORMAT_R32G32B32A32_FLOAT, DXGI_FORMAT_UNKNOWN,
                     DXGI_SAMPLE_DESC,
                 },
-                DXGI_PRESENT, DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_CHAIN_FLAG,
+                DXGI_ERROR_ACCESS_LOST, DXGI_ERROR_DEVICE_HUNG, DXGI_ERROR_DEVICE_REMOVED,
+                DXGI_ERROR_DEVICE_RESET, DXGI_ERROR_DRIVER_INTERNAL_ERROR,
+                DXGI_ERROR_NOT_CURRENTLY_AVAILABLE, DXGI_ERROR_WAIT_TIMEOUT, DXGI_PRESENT,
+                DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_CHAIN_FLAG,
                 DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL, DXGI_USAGE_RENDER_TARGET_OUTPUT, IDXGIAdapter,
                 IDXGIDevice, IDXGIFactory2, IDXGISwapChain1,
             },
@@ -82,6 +85,33 @@ const SHADER_SOURCE: &str = r#"
         return input.color;
     }
 "#;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RenderFailureKind {
+    SurfaceUnavailable,
+    DeviceLost,
+    Fatal,
+}
+
+#[derive(Debug)]
+pub struct RenderFailure {
+    kind: RenderFailureKind,
+    message: String,
+}
+
+impl RenderFailure {
+    pub fn kind(&self) -> RenderFailureKind {
+        self.kind
+    }
+}
+
+impl fmt::Display for RenderFailure {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for RenderFailure {}
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -148,10 +178,8 @@ impl NativeOverlay {
             .map_err(format_windows_error)
     }
 
-    pub fn render_scheduled_frame(&self) -> Result<(), String> {
-        self.renderer
-            .clear_present(false)
-            .map_err(format_windows_error)
+    pub fn render_scheduled_frame(&self) -> Result<(), RenderFailure> {
+        self.renderer.clear_present(false).map_err(render_failure)
     }
 
     pub fn resize(&mut self, logical_width: u32, logical_height: u32) -> Result<(), String> {
@@ -951,6 +979,32 @@ fn format_windows_error(error: Error) -> String {
     )
 }
 
+fn render_failure(error: Error) -> RenderFailure {
+    RenderFailure {
+        kind: classify_render_hresult(error.code()),
+        message: format_windows_error(error),
+    }
+}
+
+fn classify_render_hresult(code: HRESULT) -> RenderFailureKind {
+    if matches!(
+        code,
+        DXGI_ERROR_DEVICE_REMOVED
+            | DXGI_ERROR_DEVICE_RESET
+            | DXGI_ERROR_DEVICE_HUNG
+            | DXGI_ERROR_DRIVER_INTERNAL_ERROR
+    ) {
+        RenderFailureKind::DeviceLost
+    } else if matches!(
+        code,
+        DXGI_ERROR_ACCESS_LOST | DXGI_ERROR_NOT_CURRENTLY_AVAILABLE | DXGI_ERROR_WAIT_TIMEOUT
+    ) {
+        RenderFailureKind::SurfaceUnavailable
+    } else {
+        RenderFailureKind::Fatal
+    }
+}
+
 fn invariant_error(message: &str) -> Error {
     Error::new(HRESULT(0x8000_4005_u32 as i32), message)
 }
@@ -968,7 +1022,18 @@ unsafe extern "system" fn window_proc(
 
 #[cfg(test)]
 mod tests {
-    use super::{OVERLAY_VERTICES, OverlayVertex, logical_to_physical};
+    use super::{
+        OVERLAY_VERTICES, OverlayVertex, RenderFailureKind, classify_render_hresult,
+        logical_to_physical,
+    };
+    use windows::{
+        Win32::Graphics::Dxgi::{
+            DXGI_ERROR_ACCESS_LOST, DXGI_ERROR_DEVICE_HUNG, DXGI_ERROR_DEVICE_REMOVED,
+            DXGI_ERROR_DEVICE_RESET, DXGI_ERROR_DRIVER_INTERNAL_ERROR,
+            DXGI_ERROR_NOT_CURRENTLY_AVAILABLE, DXGI_ERROR_WAIT_TIMEOUT,
+        },
+        core::HRESULT,
+    };
 
     #[test]
     fn vertex_layout_and_colors_match_d3d_input_contract() {
@@ -988,5 +1053,31 @@ mod tests {
         assert_eq!(logical_to_physical(400, 192).unwrap(), 800);
         assert!(logical_to_physical(0, 96).is_err());
         assert!(logical_to_physical(400, 0).is_err());
+    }
+
+    #[test]
+    fn classifies_device_loss_separately_from_surface_unavailability() {
+        for code in [
+            DXGI_ERROR_DEVICE_REMOVED,
+            DXGI_ERROR_DEVICE_RESET,
+            DXGI_ERROR_DEVICE_HUNG,
+            DXGI_ERROR_DRIVER_INTERNAL_ERROR,
+        ] {
+            assert_eq!(classify_render_hresult(code), RenderFailureKind::DeviceLost);
+        }
+        for code in [
+            DXGI_ERROR_ACCESS_LOST,
+            DXGI_ERROR_NOT_CURRENTLY_AVAILABLE,
+            DXGI_ERROR_WAIT_TIMEOUT,
+        ] {
+            assert_eq!(
+                classify_render_hresult(code),
+                RenderFailureKind::SurfaceUnavailable
+            );
+        }
+        assert_eq!(
+            classify_render_hresult(HRESULT(0x8000_4005_u32 as i32)),
+            RenderFailureKind::Fatal
+        );
     }
 }

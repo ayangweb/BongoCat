@@ -562,6 +562,43 @@ struct FrameSourceState {
     stopped: bool,
     frames: u64,
     resize_completed: bool,
+    failures: u32,
+    recoveries: u32,
+    recovery_attempts: u8,
+    retry_ticks_remaining: u8,
+    recovery_disabled: bool,
+    injected_failure: bool,
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FrameFailureKind {
+    SurfaceUnavailable,
+    DeviceLost,
+    Fatal,
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+impl FrameFailureKind {
+    fn label(self) -> &'static str {
+        match self {
+            Self::SurfaceUnavailable => "surface_unavailable",
+            Self::DeviceLost => "device_lost",
+            Self::Fatal => "fatal",
+        }
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+struct FrameFailure {
+    kind: FrameFailureKind,
+    message: String,
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+struct FrameTickOutcome {
+    keep_running: bool,
+    status: Option<String>,
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -612,6 +649,8 @@ fn main() {
     let auto_quit_ms = argument_value("--auto-quit-ms").and_then(|value| value.parse::<u64>().ok());
     let simulate_failure = has_argument("--simulate-overlay-init-failure");
     let simulate_macos_drawable_unavailable = has_argument("--simulate-macos-drawable-unavailable");
+    let simulate_renderer_loss_at_frame = argument_value("--simulate-renderer-loss-at-frame")
+        .and_then(|value| value.parse::<u64>().ok());
 
     Application::new().run(move |cx: &mut App| {
         #[cfg(target_os = "macos")]
@@ -715,18 +754,17 @@ fn main() {
                             #[cfg(target_os = "macos")]
                             println!("gpui-overlay-spike: macOS native overlay created");
                         }
-                        Err(error) if simulate_macos_drawable_unavailable => {
+                        Err(error) => {
                             overlay_status = format!("Overlay unavailable: {error}");
                             println!("gpui-overlay-spike: overlay degraded error={error}");
                         }
-                        Err(error) => panic!("show and clear/present native overlay: {error}"),
                     }
                     cx.set_global(OverlayGlobal {
                         overlay: Some(overlay),
                         frame_source: FrameSourceState::default(),
                     });
                 }
-                Err(error) if simulate_failure => {
+                Err(error) => {
                     overlay_status = format!("Overlay unavailable: {error}");
                     cx.set_global(OverlayGlobal {
                         overlay: None,
@@ -737,14 +775,14 @@ fn main() {
                     });
                     println!("gpui-overlay-spike: overlay degraded error={error}");
                 }
-                Err(error) => panic!("create native overlay: {error}"),
             }
         }
 
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         cx.set_global(OverlayGlobal {});
 
-        cx.open_window(
+        let settings_window = cx
+            .open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
                     None,
@@ -760,7 +798,7 @@ fn main() {
                 })
             },
         )
-        .expect("open GPUI settings window");
+            .expect("open GPUI settings window");
         println!("gpui-overlay-spike: GPUI settings window opened");
         cx.activate(true);
 
@@ -775,38 +813,30 @@ fn main() {
             cx.spawn(async move |cx| {
                 loop {
                     Timer::after(Duration::from_millis(16)).await;
-                    let keep_running = cx
+                    let outcome = cx
                         .update(|cx| {
-                            let global = cx.global_mut::<OverlayGlobal>();
-                            if !global.frame_source.running {
-                                global.frame_source.stopped = true;
-                                println!(
-                                    "gpui-overlay-spike: frame source stopped frames={} resize_completed={}",
-                                    global.frame_source.frames,
-                                    global.frame_source.resize_completed
-                                );
-                                return false;
-                            }
-
-                            let overlay = global
-                                .overlay
-                                .as_mut()
-                                .expect("running frame source must own an overlay");
-                            if global.frame_source.frames == 8
-                                && !global.frame_source.resize_completed
-                            {
-                                resize_platform_overlay(overlay, 400, 300)
-                                    .expect("resize native overlay and GPU drawable");
-                                global.frame_source.resize_completed = true;
-                            }
-                            overlay
-                                .render_scheduled_frame()
-                                .expect("render scheduled native overlay frame");
-                            global.frame_source.frames += 1;
-                            true
+                            tick_frame_source(
+                                cx.global_mut::<OverlayGlobal>(),
+                                simulate_renderer_loss_at_frame,
+                            )
                         })
-                        .unwrap_or(false);
-                    if !keep_running {
+                        .unwrap_or(FrameTickOutcome {
+                            keep_running: false,
+                            status: None,
+                        });
+                    if let Some(status) = outcome.status {
+                        settings_window
+                            .update(cx, |settings, _, cx| {
+                                settings.overlay_status = status;
+                                println!(
+                                    "gpui-overlay-spike: settings overlay status={}",
+                                    settings.overlay_status
+                                );
+                                cx.notify();
+                            })
+                            .ok();
+                    }
+                    if !outcome.keep_running {
                         break;
                     }
                 }
@@ -890,6 +920,162 @@ fn main() {
             .detach();
         }
     });
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn tick_frame_source(
+    global: &mut OverlayGlobal,
+    simulate_renderer_loss_at_frame: Option<u64>,
+) -> FrameTickOutcome {
+    if !global.frame_source.running {
+        global.frame_source.stopped = true;
+        println!(
+            "gpui-overlay-spike: frame source stopped frames={} resize_completed={} failures={} recoveries={}",
+            global.frame_source.frames,
+            global.frame_source.resize_completed,
+            global.frame_source.failures,
+            global.frame_source.recoveries
+        );
+        return FrameTickOutcome {
+            keep_running: false,
+            status: None,
+        };
+    }
+
+    if global.frame_source.recovery_disabled {
+        global.frame_source.running = false;
+        return FrameTickOutcome {
+            keep_running: true,
+            status: None,
+        };
+    }
+
+    if global.overlay.is_none() {
+        return try_recover_overlay(global);
+    }
+
+    let should_inject = simulate_renderer_loss_at_frame
+        .is_some_and(|frame| frame == global.frame_source.frames)
+        && !global.frame_source.injected_failure;
+    let render_result = if should_inject {
+        global.frame_source.injected_failure = true;
+        Err(FrameFailure {
+            kind: FrameFailureKind::DeviceLost,
+            message: "simulated renderer device loss".into(),
+        })
+    } else {
+        let overlay = global
+            .overlay
+            .as_mut()
+            .expect("checked overlay presence before frame submission");
+        if global.frame_source.frames == 8 && !global.frame_source.resize_completed {
+            match resize_platform_overlay(overlay, 400, 300) {
+                Ok(()) => global.frame_source.resize_completed = true,
+                Err(message) => {
+                    return enter_frame_recovery(
+                        global,
+                        FrameFailure {
+                            kind: FrameFailureKind::SurfaceUnavailable,
+                            message,
+                        },
+                    );
+                }
+            }
+        }
+        render_platform_frame(overlay)
+    };
+
+    match render_result {
+        Ok(()) => {
+            global.frame_source.frames += 1;
+            FrameTickOutcome {
+                keep_running: true,
+                status: None,
+            }
+        }
+        Err(failure) => enter_frame_recovery(global, failure),
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn enter_frame_recovery(global: &mut OverlayGlobal, failure: FrameFailure) -> FrameTickOutcome {
+    global.frame_source.failures += 1;
+    global.frame_source.recovery_attempts = 0;
+    global.frame_source.retry_ticks_remaining = 3;
+    let kind = failure.kind;
+    let message = failure.message;
+    println!(
+        "gpui-overlay-spike: frame degraded kind={} error={message}",
+        kind.label()
+    );
+    drop(global.overlay.take());
+
+    if kind == FrameFailureKind::Fatal {
+        global.frame_source.recovery_disabled = true;
+        return FrameTickOutcome {
+            keep_running: true,
+            status: Some(format!("Overlay unavailable: {message}")),
+        };
+    }
+
+    FrameTickOutcome {
+        keep_running: true,
+        status: Some(format!("Overlay recovering: {message}")),
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn try_recover_overlay(global: &mut OverlayGlobal) -> FrameTickOutcome {
+    if global.frame_source.retry_ticks_remaining > 0 {
+        global.frame_source.retry_ticks_remaining -= 1;
+        return FrameTickOutcome {
+            keep_running: true,
+            status: None,
+        };
+    }
+
+    global.frame_source.recovery_attempts += 1;
+    let attempt = global.frame_source.recovery_attempts;
+    let recovered = create_platform_overlay().and_then(|mut overlay| {
+        if global.frame_source.resize_completed {
+            resize_platform_overlay(&mut overlay, 400, 300)?;
+        }
+        initial_show_and_present(&overlay, false)?;
+        Ok(overlay)
+    });
+
+    match recovered {
+        Ok(overlay) => {
+            global.overlay = Some(overlay);
+            global.frame_source.recoveries += 1;
+            global.frame_source.recovery_attempts = 0;
+            println!("gpui-overlay-spike: frame renderer recovered attempt={attempt}");
+            FrameTickOutcome {
+                keep_running: true,
+                status: Some("GPUI settings + native overlay (recovered)".into()),
+            }
+        }
+        Err(error) if attempt < 3 => {
+            global.frame_source.retry_ticks_remaining = 3_u8.saturating_mul(1 << attempt);
+            println!(
+                "gpui-overlay-spike: frame renderer recovery deferred attempt={attempt} error={error}"
+            );
+            FrameTickOutcome {
+                keep_running: true,
+                status: Some(format!("Overlay recovering: {error}")),
+            }
+        }
+        Err(error) => {
+            global.frame_source.recovery_disabled = true;
+            println!(
+                "gpui-overlay-spike: frame renderer recovery exhausted attempts={attempt} error={error}"
+            );
+            FrameTickOutcome {
+                keep_running: true,
+                status: Some(format!("Overlay unavailable: {error}")),
+            }
+        }
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -989,6 +1175,33 @@ fn resize_platform_overlay(
     height: u32,
 ) -> Result<(), String> {
     overlay.resize(width, height)
+}
+
+#[cfg(target_os = "macos")]
+fn render_platform_frame(overlay: &PlatformOverlay) -> Result<(), FrameFailure> {
+    overlay
+        .render_scheduled_frame()
+        .map_err(|message| FrameFailure {
+            kind: FrameFailureKind::SurfaceUnavailable,
+            message,
+        })
+}
+
+#[cfg(target_os = "windows")]
+fn render_platform_frame(overlay: &PlatformOverlay) -> Result<(), FrameFailure> {
+    overlay.render_scheduled_frame().map_err(|error| {
+        let kind = match error.kind() {
+            windows_overlay::RenderFailureKind::SurfaceUnavailable => {
+                FrameFailureKind::SurfaceUnavailable
+            }
+            windows_overlay::RenderFailureKind::DeviceLost => FrameFailureKind::DeviceLost,
+            windows_overlay::RenderFailureKind::Fatal => FrameFailureKind::Fatal,
+        };
+        FrameFailure {
+            kind,
+            message: error.to_string(),
+        }
+    })
 }
 
 fn argument_value(name: &str) -> Option<String> {
