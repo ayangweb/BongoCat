@@ -131,6 +131,8 @@ jobs:
             manifest: spikes/input-windows/Cargo.toml
           - name: overlay-lifecycle
             manifest: spikes/overlay-lifecycle/Cargo.toml
+          - name: overlay-windows
+            manifest: spikes/overlay-windows/Cargo.toml
           - name: config-store
             manifest: spikes/config-store/Cargo.toml
           - name: runtime-contract
@@ -330,3 +332,81 @@ jobs:
         run: cargo test --manifest-path ${{ matrix.manifest }} --locked
       - name: Check release build
         run: cargo check --manifest-path ${{ matrix.manifest }} --locked --release
+      - name: Check Windows ARM64 overlay source
+        if: matrix.manifest == 'spikes/gpui-overlay-macos/Cargo.toml'
+        shell: bash
+        run: |
+          rustup target add aarch64-pc-windows-msvc
+          cargo check \
+            --manifest-path spikes/overlay-windows/Cargo.toml \
+            --locked \
+            --target aarch64-pc-windows-msvc
+      - name: Smoke independent Win32 and D3D11 overlay
+        if: matrix.manifest == 'spikes/gpui-overlay-macos/Cargo.toml'
+        shell: pwsh
+        run: |
+          $normal = & cargo run `
+            --manifest-path spikes/gpui-overlay-macos/Cargo.toml `
+            --locked `
+            --release `
+            -- `
+            --auto-quit-ms 1800 2>&1 | Out-String
+          $normalExit = $LASTEXITCODE
+          Write-Host $normal
+          if ($normalExit -ne 0) {
+            throw "normal overlay smoke exited with $normalExit"
+          }
+          @(
+            "Windows native overlay created",
+            "Windows transparent clear/present submitted",
+            "Windows overlay hidden",
+            "GPUI settings window opened",
+            "Windows overlay GPU released",
+            "Windows overlay window destroyed"
+          ) | ForEach-Object {
+            if (-not $normal.Contains($_)) {
+              throw "normal overlay smoke did not report: $_"
+            }
+          }
+          $gpuRelease = $normal.IndexOf("Windows overlay GPU released")
+          $windowDestroy = $normal.IndexOf("Windows overlay window destroyed")
+          if ($gpuRelease -lt 0 -or $windowDestroy -le $gpuRelease) {
+            throw "overlay did not release GPU before destroying HWND"
+          }
+
+          $degraded = & cargo run `
+            --manifest-path spikes/gpui-overlay-macos/Cargo.toml `
+            --locked `
+            --release `
+            -- `
+            --simulate-overlay-init-failure `
+            --auto-quit-ms 900 2>&1 | Out-String
+          $degradedExit = $LASTEXITCODE
+          Write-Host $degraded
+          if ($degradedExit -ne 0) {
+            throw "degraded overlay smoke exited with $degradedExit"
+          }
+          @(
+            "overlay degraded error=simulated overlay initialization failure",
+            "GPUI settings window opened"
+          ) | ForEach-Object {
+            if (-not $degraded.Contains($_)) {
+              throw "degraded overlay smoke did not report: $_"
+            }
+          }
+
+          $cycles = & cargo run `
+            --manifest-path spikes/gpui-overlay-macos/Cargo.toml `
+            --locked `
+            --release `
+            -- `
+            --windows-overlay-cycles 100 2>&1 | Out-String
+          $cyclesExit = $LASTEXITCODE
+          Write-Host $cycles
+          if ($cyclesExit -ne 0) {
+            throw "overlay cycle smoke exited with $cyclesExit"
+          }
+          if (-not $cycles.Contains("Windows cycles=100") -or
+              -not $cycles.Contains("clean_shutdown=true")) {
+            throw "overlay cycle smoke did not complete all cycles"
+          }

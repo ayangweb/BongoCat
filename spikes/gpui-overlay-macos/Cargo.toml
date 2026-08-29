@@ -16,3 +16,6 @@ objc2-foundation = { version = "=0.3.2", default-features = false, features = ["
 objc2-quartz-core = { version = "=0.3.2", default-features = false, features = ["CALayer", "CAMetalLayer", "objc2-core-foundation", "objc2-metal"] }
 metal = "=0.33.0"
 core-graphics-types = "=0.2.0"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+bongocat-overlay-windows-spike = { path = "../overlay-windows" }

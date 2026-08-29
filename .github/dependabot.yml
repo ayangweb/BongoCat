@@ -12,6 +12,7 @@ updates:
       - /spikes/input-windows
       - /spikes/model-package
       - /spikes/overlay-lifecycle
+      - /spikes/overlay-windows
       - /spikes/runtime-contract
       - /tools/cubism-bindgen
       - /tools/legacy-config-inspector

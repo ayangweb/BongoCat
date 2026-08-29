@@ -106,6 +106,9 @@ mod macos_overlay {
     }
 }
 
+#[cfg(target_os = "windows")]
+use bongocat_overlay_windows_spike as windows_overlay;
+
 use gpui::{
     App, Application, Bounds, Context, Global, Render, Timer, Window, WindowBounds, WindowOptions,
     div, prelude::*, px, rgb, size,
@@ -113,39 +116,88 @@ use gpui::{
 use std::time::Duration;
 
 #[cfg(target_os = "macos")]
+type PlatformOverlay = macos_overlay::NativeOverlay;
+
+#[cfg(target_os = "windows")]
+type PlatformOverlay = windows_overlay::NativeOverlay;
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 struct OverlayGlobal {
-    overlay: macos_overlay::NativeOverlay,
+    overlay: Option<PlatformOverlay>,
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 struct OverlayGlobal {}
 
 impl Global for OverlayGlobal {}
 
-struct SettingsProbe;
+struct SettingsProbe {
+    overlay_status: String,
+}
 
 impl Render for SettingsProbe {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         div()
             .size_full()
             .bg(rgb(0x25282e))
-            .child("GPUI settings + native overlay")
+            .child(self.overlay_status.clone())
     }
 }
 
 fn main() {
-    Application::new().run(|cx: &mut App| {
-        #[cfg(target_os = "macos")]
+    #[cfg(target_os = "windows")]
+    if let Some(cycles) =
+        argument_value("--windows-overlay-cycles").and_then(|value| value.parse::<u32>().ok())
+    {
+        let report = windows_overlay::run_creation_cycles(cycles)
+            .expect("Windows overlay create/destroy cycle smoke failed");
+        println!(
+            "gpui-overlay-spike: Windows cycles={} handles_before={} handles_after={} clean_shutdown=true",
+            report.cycles, report.handles_before, report.handles_after
+        );
+        return;
+    }
+
+    let auto_quit_ms = argument_value("--auto-quit-ms").and_then(|value| value.parse::<u64>().ok());
+    let simulate_failure = has_argument("--simulate-overlay-init-failure");
+
+    Application::new().run(move |cx: &mut App| {
+        let mut overlay_status = "GPUI settings + native overlay".to_string();
+
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
-            let mtm = objc2::MainThreadMarker::new().expect("GPUI must run on AppKit main thread");
-            let overlay = macos_overlay::NativeOverlay::create(mtm).expect("create overlay");
-            overlay.show();
-            overlay.clear_present().expect("clear/present overlay");
-            cx.set_global(OverlayGlobal { overlay });
-            println!("gpui-overlay-macos-spike: native overlay created");
+            let overlay = if simulate_failure {
+                Err("simulated overlay initialization failure".to_string())
+            } else {
+                create_platform_overlay()
+            };
+            match overlay {
+                Ok(overlay) => {
+                    show_and_present(&overlay).expect("show and clear/present native overlay");
+                    #[cfg(target_os = "windows")]
+                    println!(
+                        "gpui-overlay-spike: Windows native overlay created driver={} dpi={}",
+                        overlay.driver_name(),
+                        overlay.dpi()
+                    );
+                    #[cfg(target_os = "macos")]
+                    println!("gpui-overlay-spike: macOS native overlay created");
+                    cx.set_global(OverlayGlobal {
+                        overlay: Some(overlay),
+                    });
+                }
+                Err(error) if simulate_failure => {
+                    overlay_status = format!("Overlay unavailable: {error}");
+                    cx.set_global(OverlayGlobal { overlay: None });
+                    println!("gpui-overlay-spike: overlay degraded error={error}");
+                }
+                Err(error) => panic!("create native overlay: {error}"),
+            }
         }
-        #[cfg(not(target_os = "macos"))]
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         cx.set_global(OverlayGlobal {});
+
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
@@ -156,34 +208,37 @@ fn main() {
                 titlebar: Some(gpui::TitlebarOptions::default()),
                 ..Default::default()
             },
-            |_, cx| cx.new(|_| SettingsProbe),
+            |_, cx| {
+                cx.new(|_| SettingsProbe {
+                    overlay_status: overlay_status.clone(),
+                })
+            },
         )
         .expect("open GPUI settings window");
+        println!("gpui-overlay-spike: GPUI settings window opened");
 
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         cx.spawn(async move |cx| {
             Timer::after(Duration::from_millis(300)).await;
             cx.update(|cx| {
                 let global = cx.global_mut::<OverlayGlobal>();
-                global.overlay.hide();
+                if let Some(overlay) = &global.overlay {
+                    hide_platform_overlay(overlay).expect("hide native overlay");
+                }
             })
             .ok();
             Timer::after(Duration::from_millis(300)).await;
             cx.update(|cx| {
                 let global = cx.global_mut::<OverlayGlobal>();
-                global.overlay.show();
-                global.overlay.clear_present().ok();
+                if let Some(overlay) = &global.overlay {
+                    show_and_present(overlay).expect("reshow and clear/present native overlay");
+                }
             })
             .ok();
         })
         .detach();
 
-        if let Some(milliseconds) = std::env::args()
-            .skip(1)
-            .position(|arg| arg == "--auto-quit-ms")
-            .and_then(|index| std::env::args().nth(index + 2))
-            .and_then(|value| value.parse::<u64>().ok())
-        {
+        if let Some(milliseconds) = auto_quit_ms {
             cx.spawn(async move |cx| {
                 Timer::after(Duration::from_millis(milliseconds)).await;
                 cx.update(|cx| cx.quit()).ok();
@@ -191,4 +246,52 @@ fn main() {
             .detach();
         }
     });
+}
+
+#[cfg(target_os = "macos")]
+fn create_platform_overlay() -> Result<PlatformOverlay, String> {
+    let mtm = objc2::MainThreadMarker::new().expect("GPUI must run on AppKit main thread");
+    macos_overlay::NativeOverlay::create(mtm)
+}
+
+#[cfg(target_os = "windows")]
+fn create_platform_overlay() -> Result<PlatformOverlay, String> {
+    windows_overlay::NativeOverlay::create()
+}
+
+#[cfg(target_os = "macos")]
+fn show_and_present(overlay: &PlatformOverlay) -> Result<(), String> {
+    overlay.show();
+    overlay.clear_present()
+}
+
+#[cfg(target_os = "windows")]
+fn show_and_present(overlay: &PlatformOverlay) -> Result<(), String> {
+    overlay.show()?;
+    overlay.clear_present()
+}
+
+#[cfg(target_os = "macos")]
+fn hide_platform_overlay(overlay: &PlatformOverlay) -> Result<(), String> {
+    overlay.hide();
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn hide_platform_overlay(overlay: &PlatformOverlay) -> Result<(), String> {
+    overlay.hide()
+}
+
+fn argument_value(name: &str) -> Option<String> {
+    let mut arguments = std::env::args().skip(1);
+    while let Some(argument) = arguments.next() {
+        if argument == name {
+            return arguments.next();
+        }
+    }
+    None
+}
+
+fn has_argument(name: &str) -> bool {
+    std::env::args().skip(1).any(|argument| argument == name)
 }

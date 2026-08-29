@@ -1,7 +1,7 @@
 # Native Overlay Lifecycle Contract Spike
 
-状态：生命周期契约通过；macOS 原生窗口、透明 Metal 合成和 GPUI 共存已通过；Windows D3D11 待实机验证
-日期：2026-08-28
+状态：生命周期契约与 macOS 实机通过；Windows D3D11 实现已接入 CI，待 runner 证据
+日期：2026-08-29
 
 ## 目的
 
@@ -67,12 +67,36 @@ transparent clear/present submitted
 
 设置窗口和独立 `NSPanel` 同时存在，overlay 使用独立 `CAMetalLayer`，鼠标穿透、跨 Space 和 Full Screen Auxiliary 行为由 AppKit wrapper 设置。此验证覆盖 macOS 当前机器的窗口/Metal/GPUI 生命周期，不包含 Live2D/Cubism、真实 frame source、输入服务或发布签名。
 
+### Windows 实现与验收门禁
+
+`spikes/overlay-windows/` 使用精确固定的 `windows = 0.62.2`，封装线程限定的
+Win32 popup、D3D11 device/context、DXGI premultiplied-alpha composition
+swapchain 和 DirectComposition target/visual。`spikes/gpui-overlay-macos/`
+在 Windows 通过 target-specific path dependency 使用该 owner；它不访问 GPUI
+renderer 内部对象。
+
+当前实现包含：
+
+- `WS_EX_NOREDIRECTIONBITMAP`、tool window、no-activate 和 click-through window；
+- hardware device 优先、WARP fallback 只用于能力/生命周期验证；
+- BGRA、flip sequential、premultiplied alpha 的双缓冲 composition swapchain；
+- 透明 clear/present、device-removed 检查、显示/隐藏和一次性 topmost；
+- owner-thread assertion 与 `!Send`/`!Sync` marker；
+- composition detach -> D3D clear/flush -> COM release -> HWND destroy 顺序；
+- renderer 初始化失败注入，GPUI 设置窗口继续显示 degraded 状态；
+- 100 次窗口/GPU 创建销毁及 warm-up 后 process handle 增长门禁。
+
+本机已对 `x86_64-pc-windows-msvc` 执行 Check/Clippy，并对
+`aarch64-pc-windows-msvc` 执行 Check。macOS 不能提供 Windows 窗口/GPU 运行证据，
+因此 Windows 项在 `windows-latest` 正常、故障注入和 100-cycle smoke 成功前保持
+未完成。
+
 ### 尚未验证
 
-- Windows Win32 + D3D11 透明 clear/present、DPI 和 device lost 路径；当前 macOS 结果不能推断 Windows 行为。
+- Windows runner 的 Win32 + D3D11 透明 clear/present、DPI、GPUI 共存和 100-cycle 结果；实现已存在但不能由 macOS 推断运行正确。
 - 两个平台的真实 Live2D/Cubism 绘制和模型资源兼容。
-- 100 次真实原生窗口创建/销毁循环；目前 100 次仅针对无平台 contract probe。
-- renderer 初始化失败、drawable/swapchain unavailable 和 GPU device lost 后的诊断 UI。
+- macOS 100 次真实原生窗口创建/销毁循环，以及双平台 GPU memory/driver resource 专项采样。
+- drawable/swapchain unavailable、真实 GPU device lost 和恢复后的诊断 UI。
 
 ## 下一步
 

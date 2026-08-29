@@ -94,9 +94,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 确认旧 Vue/Tauri 应用仍可构建和运行，保存命令与产物信息。
 - [x] 建立 `docs/adr/`、`docs/benchmark/`、`docs/migration/` 目录。
 - [x] 建立依赖许可证清单，确认当前 Native spike crate graph 与项目 MIT 发布兼容。
-  - 状态（2026-08-29）：最新稳定版 `cargo-deny 0.20.2` 以四个 Windows/macOS target 扫描 12 个独立 workspace，license/source policy 通过并接入 CI；依赖升级后 package 节点数由 lockfile 动态决定，不再把旧的 535 节点快照当作当前事实。Cubism 厂商许可、未来产品依赖、SBOM 和 notice bundle 仍由各自后续门禁处理。
+  - 状态（2026-08-29）：最新稳定版 `cargo-deny 0.20.2` 以四个 Windows/macOS target 扫描 13 个独立 workspace，license/source policy 通过并接入 CI；依赖升级后 package 节点数由 lockfile 动态决定，不再把旧的 535 节点快照当作当前事实。Cubism 厂商许可、未来产品依赖、SBOM 和 notice bundle 仍由各自后续门禁处理。
 - [x] 审计 Native Rewrite 所有直接 Rust 依赖并升级到 crates.io 最新稳定版。
-  - 验收证据：`docs/phase-0/rust-dependency-versions.md` 记录 2026-08-29 的 20 个直接依赖家族、升级范围和命令。原 18 个家族中 8 个已升级、10 个原本已是最新；后续新增的最新稳定版 `bindgen 0.72.1` 与 `sha2 0.11.0` 也已精确锁定。完整 `cargo update` 后，最新 `gpui 0.2.2` 仍约束旧 generation 的 Metal/CoreGraphics 和 5 个有兼容更新的传递版本；均已记录 owner path，未静默覆盖或 fork。Dependabot 每周仅扫描 12 个 Native workspace 并向 `next` 提交分组更新。
+  - 验收证据：`docs/phase-0/rust-dependency-versions.md` 记录 2026-08-29 的 20 个直接依赖家族、升级范围和命令。原 18 个家族中 8 个已升级、10 个原本已是最新；后续新增的最新稳定版 `bindgen 0.72.1` 与 `sha2 0.11.0` 也已精确锁定。完整 `cargo update` 后，最新 `gpui 0.2.2` 仍约束旧 generation 的 Metal/CoreGraphics 和 5 个有兼容更新的传递版本；均已记录 owner path，未静默覆盖或 fork。Dependabot 每周仅扫描 13 个 Native workspace 并向 `next` 提交分组更新。
 - [ ] 冻结首发 target triple 和 CPU 架构矩阵，明确 Windows ARM64、macOS Intel 是否发布或仅测试。
   - 状态（2026-08-29）：ADR-0010 已固定 Windows 仅支持 x64/ARM64，i686 不再构建或发布。官方 Cubism Native R5 不提供 desktop Windows ARM64 Core，只有 experimental UWP ARM64 DLL，因此 ARM64 当前是发布阻塞；macOS Intel 和最终安装包形式仍待实机与发布链验证。
 - [ ] 记录 Windows MSVC/SDK、macOS Xcode/SDK/Metal Toolchain 和 Rust toolchain 的最低可用组合。
@@ -177,19 +177,24 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 ### 1.6 原生 Overlay spike
 
 - 状态（2026-08-28）：`spikes/overlay-lifecycle/` 已建立无平台依赖的生命周期 contract probe，显示/隐藏/重开、乱序 shutdown 拒绝、关闭后禁止重开和 100 次创建/销毁测试通过。它只固定平台 wrapper 必须遵守的状态迁移与 shutdown 顺序，不代表双平台窗口、透明合成或 GPU 已完成；详见 `docs/phase-0/overlay-lifecycle-spike.md`。
-- 状态（2026-08-28）：macOS `spikes/gpui-overlay-macos/` 已在 Apple Silicon 实机验证 GPUI 设置窗口与独立 `NSPanel` + `CAMetalLayer` 共存、透明 clear/present、显示/隐藏/重显示、跨 Space 配置、鼠标穿透和正常退出；`.app` Bundle ID `com.ayangweb.bongo-cat` 与 ad-hoc strict codesign 通过。Windows D3D11、真实 Live2D、真实 frame source 和两个平台的 100 次原生创建/销毁仍未完成。
+- 状态（2026-08-28）：macOS `spikes/gpui-overlay-macos/` 已在 Apple Silicon 实机验证 GPUI 设置窗口与独立 `NSPanel` + `CAMetalLayer` 共存、透明 clear/present、显示/隐藏/重显示、跨 Space 配置、鼠标穿透和正常退出；`.app` Bundle ID `com.ayangweb.bongo-cat` 与 ad-hoc strict codesign 通过。
+- 状态（2026-08-29）：`spikes/overlay-windows/` 已实现线程限定的 Win32 popup 与独立 D3D11/DXGI/DirectComposition premultiplied-alpha renderer，并由同一 GPUI coexistence executable 驱动；x64 Check/Clippy 与 ARM64 Check 已在 macOS host 交叉通过。正常运行、故障降级和 100-cycle/handle 门禁已接入 `windows-latest`，runner 证据完成前不勾选 Windows 项。真实 Live2D、frame source、device-lost 恢复和双平台 GPU 泄漏采样仍未完成。
 
 - [ ] 在 GPUI 应用生命周期内创建独立主猫原生窗口。
 - [ ] Windows 从 Rust 获得 HWND，完成透明 D3D11 clear/present。
+  - 状态（2026-08-29）：Rust owner、透明 composition swapchain、clear/present 和 device-removed 检查已实现；等待 Windows runner 运行证据。
 - [ ] macOS 从 Rust/objc2 创建 NSPanel + CAMetalLayer，完成透明 Metal clear/present。
 - [ ] 验证 overlay 不嵌入/替换 GPUI renderer 或依赖其私有对象。
 - [x] 验证 GPUI 设置窗口与 overlay 同时存在，事件循环不冲突。
   - 仅 macOS spike 已通过；Windows 对等验证仍待完成。
 - [ ] 验证 overlay 可置顶、穿透、显示/隐藏、拖动和缩放。
 - [ ] 连续创建/销毁 overlay 100 次，无窗口、swapchain、layer 或线程泄漏。
+  - 状态（2026-08-29）：Windows 已加入 warm-up 后 100 次完整 window/GPU owner 循环与 process handle 增长门禁；等待 runner 证据，macOS 真实 100-cycle 与 GPU 专项采样仍待完成。
 - [ ] 验证退出顺序：frame source -> renderer -> GPU -> overlay -> GPUI。
+  - 状态（2026-08-29）：Windows CI 将断言 GPU/DirectComposition release 日志先于 HWND destroy；真实 frame source/runtime 尚未接入，因此保持未完成。
 - [ ] 写明 GPUI/AppKit/Win32 主线程所有权、overlay 创建线程和跨线程 command 不变量。
 - [ ] 注入 renderer 初始化失败、drawable/swapchain unavailable 和 device lost，设置窗口仍可打开并显示诊断。
+  - 状态（2026-08-29）：已实现 renderer 初始化失败注入与 GPUI degraded 状态，等待 Windows runner；drawable unavailable、真实 device lost 和恢复仍待完成。
 
 ### 1.7 输入可靠性 spike
 
@@ -810,6 +815,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 10. [ ] `P0-OVERLAY`：GPUI 生命周期内完成 Windows D3D11/macOS Metal 透明 clear/present、错误注入和 100 次重建。
 
 - [x] 先完成无平台依赖的 overlay lifecycle contract probe；平台窗口和 GPU 验证仍未完成。
+- [ ] Windows Win32/D3D11/DirectComposition owner、故障降级与 100-cycle 已实现并接入 CI；等待 `windows-latest` 运行证据后更新状态。
 
 11. [ ] `P0-INPUT-WINDOWS`：完成 Raw Input + pressed set + `GetAsyncKeyState` 校正并实测 issue #47 场景。
 
