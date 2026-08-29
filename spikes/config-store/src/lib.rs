@@ -653,6 +653,23 @@ mod tests {
         assert!(!bundle_root.parent().unwrap().ends_with(BUNDLE_ID));
     }
 
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_platform_layout_uses_roaming_app_data_product_namespace() {
+        let data_root = dirs::data_dir().expect("Windows roaming AppData");
+        let development = platform_layout(BuildEnvironment::Development).unwrap();
+        let production = platform_layout(BuildEnvironment::Production).unwrap();
+        assert_eq!(
+            development.root,
+            data_root.join("BongoCat").join("development")
+        );
+        assert_eq!(
+            production.root,
+            data_root.join("BongoCat").join("production")
+        );
+        assert_ne!(development.root, production.root);
+    }
+
     #[test]
     fn development_and_production_data_never_crosses() {
         let base = tempdir().unwrap();

@@ -360,7 +360,7 @@ jobs:
           PY
 
   windows-input-spike:
-    name: Smoke Windows Raw Input registration
+    name: Smoke Windows input and config services
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -377,10 +377,11 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             spikes/input-windows/target/
-          key: ${{ runner.os }}-input-windows-${{ steps.rust-toolchain.outputs.hash }}-${{ hashFiles('spikes/input-windows/Cargo.lock', 'spikes/input-windows/Cargo.toml') }}
+            spikes/config-store/target/
+          key: ${{ runner.os }}-input-config-windows-${{ steps.rust-toolchain.outputs.hash }}-${{ hashFiles('spikes/input-windows/Cargo.lock', 'spikes/input-windows/Cargo.toml', 'spikes/config-store/Cargo.lock', 'spikes/config-store/Cargo.toml') }}
           restore-keys: |
-            ${{ runner.os }}-input-windows-${{ steps.rust-toolchain.outputs.hash }}-
-            ${{ runner.os }}-input-windows-
+            ${{ runner.os }}-input-config-windows-${{ steps.rust-toolchain.outputs.hash }}-
+            ${{ runner.os }}-input-config-windows-
       - name: Check Windows build
         run: cargo check --manifest-path spikes/input-windows/Cargo.toml --locked
       - name: Run Windows Clippy
@@ -397,6 +398,8 @@ jobs:
         run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --synthetic-release-recovery-ms 800
       - name: Smoke Windows session and power resets
         run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --lifecycle-smoke-ms 100
+      - name: Test Windows config storage layout
+        run: cargo test --manifest-path spikes/config-store/Cargo.toml --locked
 
   windows-gpui-spikes:
     name: Build Windows GPUI spikes

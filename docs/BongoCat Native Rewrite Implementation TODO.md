@@ -385,7 +385,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 3.5 配置 v1
 
-- 状态（2026-08-28）：`spikes/config-store/` 已建立 typed NativeConfig、Bundle ID、Development/Production 隔离目录、snake_case 序列化、schema 校验、原子 commit probe、expected revision、writer lock contract、中断提交恢复 contract 和当前 macOS 真实 path resolver；Windows resolver、真实进程崩溃故障注入、stale lock、备份策略和 GPUI command 边界仍待产品 crate 阶段完成，详见 `docs/phase-0/config-store-spike.md`。
+- 状态（2026-08-29）：`spikes/config-store/` 已建立 typed NativeConfig、Bundle ID、Development/Production 隔离目录、snake_case 序列化、schema 校验、原子 commit probe、expected revision、writer lock contract、中断提交恢复 contract 和当前 macOS 真实 path resolver；Windows `%APPDATA%\\BongoCat\\<environment>\\` 精确路径测试已接入 `windows-latest`，等待本批 runner 证据。真实进程崩溃故障注入、stale lock、备份策略和 GPUI command 边界仍待产品 crate 阶段完成，详见 `docs/phase-0/config-store-spike.md`。
 
 - [ ] 定义带 `schema_version` 的 Rust 配置结构和 JSON schema，JSON key 使用 `snake_case`。
 - [ ] 区分用户配置、运行时状态和诊断数据。
@@ -816,7 +816,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 8. [ ] `P0-GPUI-PACKAGE-MAC`：使用默认预编译 shader 构建 `.app`，验证 IME、剪贴板、焦点、辅助功能、主题和窗口重开。
    - 状态（2026-08-28）：默认 shader、bundle、菜单、窗口生命周期、主题、基础文本编辑/剪贴板、runtime bridge 和 macOS 性能基线通过；ADR-0009 已记录辅助功能 P0 gate，内容节点缺失，真实 IME、完整 tooltip/dialog/focus chain 仍待验证。
 9. [ ] `P0-GPUI-WINDOWS`：在 Windows 构建同一 spike，验证字体、IME、DPI、辅助功能和正常退出。
-   - 状态（2026-08-29）：`windows-latest` 已从仅编译扩展为启动同一 GPUI settings executable，严格检查窗口创建、首帧 `scale_factor`、runtime revision 和有序 shutdown；窗口创建失败现在非零退出。等待本批 push runner 证据，字体、IME、DPI 切换和 UI Automation 仍待 Windows 实机，因此保持未勾选。
+   - 状态（2026-08-29）：push run `33250457705`、job `99095132076` 已在 `windows-latest` 启动同一 GPUI settings executable，并通过窗口创建、首帧 `scale_factor`、runtime revision 和有序 shutdown 检查；窗口创建失败现在非零退出。字体、IME、DPI 切换和 UI Automation 仍待 Windows 实机，因此保持未勾选。
 10. [ ] `P0-OVERLAY`：GPUI 生命周期内完成 Windows D3D11/macOS Metal 透明 clear/present、错误注入和 100 次重建。
 
 - [x] 先完成无平台依赖的 overlay lifecycle contract probe；平台窗口和 GPU 验证仍未完成。
