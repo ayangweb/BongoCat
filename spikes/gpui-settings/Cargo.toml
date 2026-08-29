@@ -10,7 +10,7 @@ publish = false
 [dependencies]
 # Keep the default precompiled-shader path aligned with release packaging.
 gpui = "=0.2.2"
-async-channel = "=1.9.0"
+async-channel = "=2.5.0"
 unicode-segmentation = "=1.13.3"
 
 [dev-dependencies]

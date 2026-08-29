@@ -33,7 +33,7 @@ cargo test --manifest-path spikes/overlay-lifecycle/Cargo.toml --locked
 
 ### macOS GPUI 共存验证
 
-源码位于 `spikes/gpui-overlay-macos/`，使用 `gpui = 0.2.2`、`objc2`、`metal = 0.29.0` 和 `core-graphics-types = 0.1.3`。在以下环境执行：
+源码位于 `spikes/gpui-overlay-macos/`，使用 `gpui = 0.2.2`、`objc2`、`metal = 0.33.0` 和 `core-graphics-types = 0.2.0`。在以下环境执行：
 
 ```text
 Hardware: MacBook Pro 18,1 / Apple M1 Pro / 16 GB

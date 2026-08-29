@@ -46,14 +46,14 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-deny-0.18.3-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'deny.toml') }}
+          key: ${{ runner.os }}-cargo-deny-0.20.2-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'deny.toml') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-deny-0.18.3-
+            ${{ runner.os }}-cargo-deny-0.20.2-
       - name: Install pinned cargo-deny
         shell: bash
         run: |
-          if ! cargo deny --version 2>/dev/null | grep -Fxq 'cargo-deny 0.18.3'; then
-            cargo install cargo-deny --version 0.18.3 --locked
+          if ! cargo deny --version 2>/dev/null | grep -Fxq 'cargo-deny 0.20.2'; then
+            cargo install cargo-deny --version 0.20.2 --locked
           fi
       - name: Check licenses and dependency sources
         run: ./tools/check-native-dependencies.sh

@@ -22,7 +22,7 @@ cargo check --release --locked
 cargo run --locked -- --input ../../shared/config/legacy-pinia/default
 ```
 
-依赖版本固定在工具自己的 `Cargo.lock`。工具使用 Rust 2024、`serde 1.0.228` 和 `serde_json 1.0.149`，并声明 `#![forbid(unsafe_code)]`。
+依赖版本固定在工具自己的 `Cargo.lock`。工具使用 Rust 2024、`serde 1.0.229` 和 `serde_json 1.0.151`，并声明 `#![forbid(unsafe_code)]`。
 
 ## 输出契约
 

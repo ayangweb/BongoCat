@@ -7,9 +7,9 @@ publish = false
 [workspace]
 
 [dependencies]
-dirs = "=5.0.1"
-serde = { version = "=1.0.228", features = ["derive"] }
-serde_json = "=1.0.149"
+dirs = "=6.0.0"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
 tempfile = "=3.27.0"
 
 [lints.rust]

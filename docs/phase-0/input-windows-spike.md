@@ -25,7 +25,7 @@
 - 使用 `WTSRegisterSessionNotification`/`WTSUnRegisterSessionNotification` 成对管理当前会话通知；锁定、解锁、console/remote connect/disconnect 都立即 Reset。
 - 处理 `WM_POWERBROADCAST` 的 suspend/standby 和各类 resume 通知；进入和离开不可观测窗口都立即 Reset。
 
-安全 contract 可在 macOS/Linux 离线运行；Win32 wrapper 使用精确锁定的 `windows = 0.61.3`，只在 Windows target 编译。wrapper 当前只输出消息、edge、decode error 和 callback panic 计数，不记录真实按键值。
+安全 contract 可在 macOS/Linux 离线运行；Win32 wrapper 使用精确锁定的 `windows = 0.62.2`，只在 Windows target 编译。wrapper 当前只输出消息、edge、decode error 和 callback panic 计数，不记录真实按键值。
 
 ## 验证
 

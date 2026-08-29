@@ -5,30 +5,30 @@
 
 ## Scope
 
-`deny.toml` 使用 `cargo-deny 0.18.3` 扫描所有 `spikes/*/Cargo.toml` 与 `tools/legacy-config-inspector/Cargo.toml`，并以已提交的 lockfile 为输入。检查目标是：
+`deny.toml` 使用 `cargo-deny 0.20.2` 扫描所有 `spikes/*/Cargo.toml` 与 `tools/legacy-config-inspector/Cargo.toml`，并以已提交的 lockfile 为输入。检查目标是：
 
 - `aarch64-apple-darwin`
 - `x86_64-apple-darwin`
 - `aarch64-pc-windows-msvc`
 - `x86_64-pc-windows-msvc`
 
-扫描解析到 535 个唯一 package 节点。其中最大的 GPUI settings graph 包含 520 个 package 节点；overlay graph 包含 519 个。这些数字是当前 lockfile 与 target filter 的结果，依赖变化后由 CI 重新评估，不作为需要手工维护的 golden value。
+扫描 package 节点数由当前 lockfile 与 target filter 动态决定，不作为需要手工维护的 golden value。2026-08-29 已先完成所有 Native Rewrite 直接依赖的最新稳定版审计和 lockfile 更新，详见 `rust-dependency-versions.md`。
 
 ## Direct dependencies
 
 | Dependency family                | Locked version        | License                  | Role                               |
 | -------------------------------- | --------------------- | ------------------------ | ---------------------------------- |
 | GPUI                             | `0.2.2`               | Apache-2.0               | Settings UI spike                  |
-| async-channel                    | `1.9.0`               | MIT OR Apache-2.0        | Typed command/reply spike          |
+| async-channel                    | `2.5.0`               | MIT OR Apache-2.0        | Typed command/reply spike          |
 | unicode-segmentation             | `1.13.3`              | MIT OR Apache-2.0        | Grapheme-safe text editing         |
 | futures-lite                     | `2.6.1`               | MIT OR Apache-2.0        | Test-only executor bridge          |
-| dirs                             | `5.0.1`               | MIT OR Apache-2.0        | Config path spike                  |
-| serde / serde_json               | `1.0.228` / `1.0.149` | MIT OR Apache-2.0        | Config and inspector serialization |
+| dirs                             | `6.0.0`               | MIT OR Apache-2.0        | Config path spike                  |
+| serde / serde_json               | `1.0.229` / `1.0.151` | MIT OR Apache-2.0        | Config and inspector serialization |
 | tempfile                         | `3.27.0`              | MIT OR Apache-2.0        | Failure-safe config tests          |
-| core-graphics2 / core-foundation | `0.4.1` / `0.10.1`    | MIT OR Apache-2.0        | macOS input boundary spike         |
+| core-graphics2 / core-foundation | `0.6.1` / `0.10.1`    | MIT OR Apache-2.0        | macOS input boundary spike         |
 | objc2 / block2 family            | `0.6.4` / `0.3.2`     | MIT OR Apache-2.0 / Zlib | macOS overlay/input lifecycle      |
-| metal / core-graphics-types      | `0.29.0` / `0.1.3`    | MIT OR Apache-2.0        | macOS transparent present spike    |
-| windows                          | `0.61.3`              | MIT OR Apache-2.0        | Windows Raw Input boundary spike   |
+| metal / core-graphics-types      | `0.33.0` / `0.2.0`    | MIT OR Apache-2.0        | macOS transparent present spike    |
+| windows                          | `0.62.2`              | MIT OR Apache-2.0        | Windows Raw Input boundary spike   |
 
 ## Policy
 
@@ -43,7 +43,7 @@
 ## Reproduction
 
 ```text
-cargo install cargo-deny --version 0.18.3 --locked
+cargo install cargo-deny --version 0.20.2 --locked
 ./tools/check-native-dependencies.sh
 ```
 

@@ -178,7 +178,7 @@ unsafe fn run_registration_smoke_inner(
         ..Default::default()
     };
     if unsafe { RegisterClassW(&window_class) } == 0 {
-        return Err(Error::from_win32());
+        return Err(Error::from_thread());
     }
 
     let mut state = Box::<WindowState>::default();
@@ -239,14 +239,14 @@ unsafe fn run_registration_smoke_inner(
         )
     } == 0
     {
-        let error = Error::from_win32();
+        let error = Error::from_thread();
         let _ = unsafe { DestroyWindow(window) };
         let _ = unsafe { UnregisterClassW(class_name, Some(instance)) };
         return Err(error);
     }
     let timeout_ms = duration.as_millis().clamp(1, u128::from(u32::MAX)) as u32;
     if unsafe { SetTimer(Some(window), STOP_TIMER_ID, timeout_ms, None) } == 0 {
-        let error = Error::from_win32();
+        let error = Error::from_thread();
         let _ = unsafe { KillTimer(Some(window), RECONCILIATION_TIMER_ID) };
         let _ = unsafe { DestroyWindow(window) };
         let _ = unsafe { UnregisterClassW(class_name, Some(instance)) };
@@ -257,7 +257,7 @@ unsafe fn run_registration_smoke_inner(
     let message_error = loop {
         let result = unsafe { GetMessageW(&mut message, None, 0, 0) };
         if result.0 == -1 {
-            break Some(Error::from_win32());
+            break Some(Error::from_thread());
         }
         if !result.as_bool() {
             break None;

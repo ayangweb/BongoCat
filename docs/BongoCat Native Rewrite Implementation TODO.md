@@ -93,7 +93,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 确认旧 Vue/Tauri 应用仍可构建和运行，保存命令与产物信息。
 - [x] 建立 `docs/adr/`、`docs/benchmark/`、`docs/migration/` 目录。
 - [x] 建立依赖许可证清单，确认当前 Native spike crate graph 与项目 MIT 发布兼容。
-  - 状态（2026-08-29）：`cargo-deny 0.18.3` 以四个 Windows/macOS target 扫描 10 个独立 workspace、535 个唯一 package 节点，license/source policy 通过并接入 CI；Cubism 厂商许可、未来产品依赖、SBOM 和 notice bundle 仍由各自后续门禁处理。
+  - 状态（2026-08-29）：最新稳定版 `cargo-deny 0.20.2` 以四个 Windows/macOS target 扫描 10 个独立 workspace，license/source policy 通过并接入 CI；依赖升级后 package 节点数由 lockfile 动态决定，不再把旧的 535 节点快照当作当前事实。Cubism 厂商许可、未来产品依赖、SBOM 和 notice bundle 仍由各自后续门禁处理。
+- [x] 审计 Native Rewrite 所有直接 Rust 依赖并升级到 crates.io 最新稳定版。
+  - 验收证据：`docs/phase-0/rust-dependency-versions.md` 记录 2026-08-29 的 18 个直接依赖家族、升级范围和命令。8 个落后家族已升级；其余 10 个原本已是最新。完整 `cargo update` 后，最新 `gpui 0.2.2` 仍约束旧 generation 的 Metal/CoreGraphics 和 5 个有兼容更新的传递版本；均已记录 owner path，未静默覆盖或 fork。Dependabot 每周仅扫描 10 个 Native workspace 并向 `next` 提交分组更新。
 - [ ] 冻结首发 target triple 和 CPU 架构矩阵，明确 Windows ARM64、macOS Intel 是否发布或仅测试。
   - 状态（2026-08-29）：官方 Cubism Native R5 不提供 desktop Windows ARM64 Core，只有 experimental UWP ARM64 DLL，因此 `aarch64-pc-windows-msvc` 已判定首发 NO-GO；Windows x86、macOS Intel 和最终安装包形式仍待实机与发布链验证。
 - [ ] 记录 Windows MSVC/SDK、macOS Xcode/SDK/Metal Toolchain 和 Rust toolchain 的最低可用组合。

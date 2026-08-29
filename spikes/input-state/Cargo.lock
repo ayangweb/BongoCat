@@ -5,4 +5,3 @@ version = 4
 [[package]]
 name = "bongocat-input-state-spike"
 version = "0.1.0"
-

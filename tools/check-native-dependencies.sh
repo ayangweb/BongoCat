@@ -4,7 +4,7 @@ set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPOSITORY_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
-EXPECTED_CARGO_DENY_VERSION="cargo-deny 0.18.3"
+EXPECTED_CARGO_DENY_VERSION="cargo-deny 0.20.2"
 ACTUAL_CARGO_DENY_VERSION=$(cargo deny --version)
 
 if [ "$ACTUAL_CARGO_DENY_VERSION" != "$EXPECTED_CARGO_DENY_VERSION" ]; then
@@ -19,7 +19,7 @@ for manifest in spikes/*/Cargo.toml tools/legacy-config-inspector/Cargo.toml; do
     cargo deny \
         --manifest-path "$manifest" \
         --locked \
-        check licenses sources \
         --config "$REPOSITORY_ROOT/deny.toml" \
+        check licenses sources \
         --allow license-not-encountered
 done

@@ -1,0 +1,26 @@
+version: 2
+
+updates:
+  - package-ecosystem: cargo
+    directories:
+      - /spikes/config-store
+      - /spikes/gpui-overlay-macos
+      - /spikes/gpui-settings
+      - /spikes/input-macos
+      - /spikes/input-queue
+      - /spikes/input-state
+      - /spikes/input-windows
+      - /spikes/overlay-lifecycle
+      - /spikes/runtime-contract
+      - /tools/legacy-config-inspector
+    target-branch: next
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    groups:
+      native-rust-dependencies:
+        patterns:
+          - '*'

@@ -25,7 +25,7 @@ the Native Rewrite `schema_version` contract.
 
 ## Dependencies
 
-- `serde 1.0.228` and `serde_json 1.0.149` are exact-pinned in this isolated
+- `serde 1.0.229` and `serde_json 1.0.151` are exact-pinned in this isolated
   workspace and locked in `Cargo.lock`.
 - Both are maintained Rust ecosystem serialization crates under MIT OR Apache-2.0.
 - Their types remain private implementation details; the tool can replace them

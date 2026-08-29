@@ -48,7 +48,7 @@ open -W "target/package/BongoCat GPUI Spike.app" --args --auto-quit-ms 1500
 
 ## Runtime Bridge 结果
 
-spike 使用容量为 8 的 `async-channel 1.9.0` 传递强类型 `ReadSnapshot` 和 `Shutdown` command。每个 command 携带容量为 1 的 reply channel；UI 通过 GPUI `Context::spawn` 等待结果，再使用 weak entity 更新视图状态。snapshot 带单调递增 revision，UI 忽略不比当前 revision 更新的结果，runtime worker 在 GPUI background executor 上运行。
+spike 使用容量为 8 的 `async-channel 2.5.0` 传递强类型 `ReadSnapshot` 和 `Shutdown` command。每个 command 携带容量为 1 的 reply channel；UI 通过 GPUI `Context::spawn` 等待结果，再使用 weak entity 更新视图状态。snapshot 带单调递增 revision，UI 忽略不比当前 revision 更新的结果，runtime worker 在 GPUI background executor 上运行。
 
 退出时，runtime 先关闭 command receiver，再发送 shutdown acknowledgement，避免 acknowledgement 返回后仍有请求成功入队并永远等待 reply。contract test 覆盖两次 snapshot 的 revision、health、shutdown acknowledgement 和停止后请求失败。macOS release `.app` smoke 同时证明 GPUI executor 能完成首次 snapshot 请求，并在 auto-quit 的 100 ms GPUI shutdown 窗口内收到 acknowledgement；该结果不等于产品 runtime、持久化或高负载 channel 已完成。
 

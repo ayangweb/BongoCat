@@ -1,7 +1,7 @@
 # BongoCat Native Rewrite Technical Design
 
 状态：架构决策稿，Phase 0 尚未完成
-最后更新：2026-08-28
+最后更新：2026-08-29
 首发平台：Windows 10 1903+、macOS 12+
 后续平台：Linux（首发后评估）
 
@@ -91,13 +91,15 @@ GPUI 用于设置窗口、模型管理、快捷键编辑、权限状态、更新
 
 GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 Live2D 纹理合成路径。因此：
 
-- 首个 spike 固定 `gpui = "=0.2.2"`，提交 `Cargo.lock`，禁止 `version = "*"`。
+- 首个 spike 使用审计时 crates.io 最新稳定版并固定为 `gpui = "=0.2.2"`，提交 `Cargo.lock`，禁止 `version = "*"`。
 - 不自动跟随 Zed main，不直接依赖 Zed 应用内部 UI crate。
 - 项目内建立小型 design system：颜色、排版、间距、焦点、按钮、表单、列表、弹窗和通知。
 - GPUI `Entity` 只保存视图状态；真实输入、动画、配置和模型状态由 runtime 管理。
 - GPUI 不加载 Cubism、不持有主猫 GPU 资源、不驱动 Live2D 帧循环。
 - 平台服务不返回 GPUI 类型，避免框架扩散到业务模块。
 - GPUI 升级必须单独提交，附变更说明、双平台构建和 UI smoke test。
+
+所有新的 crates.io 直接依赖同样先选择引入时最新的非 yanked 稳定版，再精确 pin 并提交 lockfile。只有 Rust toolchain、目标平台、许可证或已验证的安全边界不兼容时才允许暂缓，且必须留下可复核的版本差异和解除条件；不能用旧版本回避正常的 API 迁移。传递依赖在上游约束允许的范围内保持最新，不 fork 上游只为修改版本号。
 
 Phase 0 必须验证输入法、文本编辑、缩放、辅助功能、窗口重开、托盘应用生命周期，以及 GPUI 设置窗口与独立 overlay 共存。任何阻塞发布的问题都必须在进入完整 UI 实现前解决并记录。
 
