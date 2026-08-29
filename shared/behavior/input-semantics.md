@@ -25,6 +25,8 @@
 
 可靠 edge、设备生命周期事件和 command 使用固定容量 FIFO；满载必须返回原事件并触发安全恢复，不能静默丢弃。高频 cursor/axis 使用独立 latest-value 槽位，不得占用可靠 edge 容量。
 
+手柄 axis 槽位以 `{device_id, connection_generation, axis}` 为 key，并限制活动 key 总数。可靠的 `device_connected` 为该连接分配单调 generation；`device_disconnected` 清空该 generation 的 runtime axis/pressed state 和尚未消费的 axis sample。重连即使复用平台 device id 也必须获得新 generation，旧 callback 的迟到 sample 只能被计数并忽略。每个 accepted sample 最终由 coalesced、consumed、disconnect discard 或 pending 之一解释；新增 key 超容量必须显式报错，不能扩成无界 map。
+
 ## 物理键
 
 Runtime 使用布局无关的稳定物理键名。左右修饰键必须区分，例如 `ControlLeft` 和 `ControlRight`。字符和 UI 显示名称由单独映射层产生。
