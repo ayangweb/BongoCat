@@ -178,23 +178,24 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 - 状态（2026-08-28）：`spikes/overlay-lifecycle/` 已建立无平台依赖的生命周期 contract probe，显示/隐藏/重开、乱序 shutdown 拒绝、关闭后禁止重开和 100 次创建/销毁测试通过。它只固定平台 wrapper 必须遵守的状态迁移与 shutdown 顺序，不代表双平台窗口、透明合成或 GPU 已完成；详见 `docs/phase-0/overlay-lifecycle-spike.md`。
 - 状态（2026-08-28）：macOS `spikes/gpui-overlay-macos/` 已在 Apple Silicon 实机验证 GPUI 设置窗口与独立 `NSPanel` + `CAMetalLayer` 共存、透明 clear/present、显示/隐藏/重显示、跨 Space 配置、鼠标穿透和正常退出；`.app` Bundle ID `com.ayangweb.bongo-cat` 与 ad-hoc strict codesign 通过。
-- 状态（2026-08-29）：`spikes/overlay-windows/` 已实现线程限定的 Win32 popup 与独立 D3D11/DXGI/DirectComposition premultiplied-alpha renderer，并由同一 GPUI coexistence executable 驱动；x64 Check/Clippy 与 ARM64 Check 已在 macOS host 交叉通过。正常运行、故障降级和 100-cycle/handle 门禁已接入 `windows-latest`，runner 证据完成前不勾选 Windows 项。真实 Live2D、frame source、device-lost 恢复和双平台 GPU 泄漏采样仍未完成。
+- 状态（2026-08-29）：`spikes/overlay-windows/` 已实现线程限定的 Win32 popup 与独立 D3D11/DXGI/DirectComposition premultiplied-alpha renderer，并由同一 GPUI coexistence executable 驱动；x64 Check/Clippy 与 ARM64 Check 已交叉通过。commit `d0ce206ffc56ef83acf6f18c7aa330910bb5543f` 的 push run `33243568461`/job `99076961942` 与 PR run `33243569993`/job `99076967070` 均通过 hardware D3D11、透明 clear/present、GPUI 共存、故障降级、析构顺序和 100-cycle 门禁，process handle 为 `172 -> 172`。真实 Live2D、frame source、device-lost 恢复、macOS 100-cycle 和双平台 GPU 专项泄漏采样仍未完成。
 
-- [ ] 在 GPUI 应用生命周期内创建独立主猫原生窗口。
-- [ ] Windows 从 Rust 获得 HWND，完成透明 D3D11 clear/present。
-  - 状态（2026-08-29）：Rust owner、透明 composition swapchain、clear/present 和 device-removed 检查已实现；等待 Windows runner 运行证据。
-- [ ] macOS 从 Rust/objc2 创建 NSPanel + CAMetalLayer，完成透明 Metal clear/present。
-- [ ] 验证 overlay 不嵌入/替换 GPUI renderer 或依赖其私有对象。
+- [x] 在 GPUI 应用生命周期内创建独立主猫原生窗口。
+- [x] Windows 从 Rust 获得 HWND，完成透明 D3D11 clear/present。
+  - 状态（2026-08-29）：两次 `windows-latest` 运行均使用 hardware D3D11 完成两次透明 composition swapchain clear/present，并验证正常退出。
+- [x] macOS 从 Rust/objc2 创建 NSPanel + CAMetalLayer，完成透明 Metal clear/present。
+- [x] 验证 overlay 不嵌入/替换 GPUI renderer 或依赖其私有对象。
 - [x] 验证 GPUI 设置窗口与 overlay 同时存在，事件循环不冲突。
-  - 仅 macOS spike 已通过；Windows 对等验证仍待完成。
+  - macOS 实机与 Windows push/PR runner 已分别通过。
 - [ ] 验证 overlay 可置顶、穿透、显示/隐藏、拖动和缩放。
+  - 状态（2026-08-29）：双平台置顶、穿透和显示/隐藏已通过；拖动、缩放及显示器/DPI 切换仍待完成。
 - [ ] 连续创建/销毁 overlay 100 次，无窗口、swapchain、layer 或线程泄漏。
-  - 状态（2026-08-29）：Windows 已加入 warm-up 后 100 次完整 window/GPU owner 循环与 process handle 增长门禁；等待 runner 证据，macOS 真实 100-cycle 与 GPU 专项采样仍待完成。
+  - 状态（2026-08-29）：Windows warm-up 后 100 次完整 window/GPU owner 循环已通过，process handle 为 `172 -> 172`；macOS 真实 100-cycle 与双平台 GPU 专项采样仍待完成。
 - [ ] 验证退出顺序：frame source -> renderer -> GPU -> overlay -> GPUI。
-  - 状态（2026-08-29）：Windows CI 将断言 GPU/DirectComposition release 日志先于 HWND destroy；真实 frame source/runtime 尚未接入，因此保持未完成。
-- [ ] 写明 GPUI/AppKit/Win32 主线程所有权、overlay 创建线程和跨线程 command 不变量。
+  - 状态（2026-08-29）：Windows push/PR CI 均断言 GPU/DirectComposition release 先于 HWND destroy，overlay owner 又在 GPUI `quit()` 前显式析构；真实 frame source/runtime 尚未接入，因此保持未完成。
+- [x] 写明 GPUI/AppKit/Win32 主线程所有权、overlay 创建线程和跨线程 command 不变量。
 - [ ] 注入 renderer 初始化失败、drawable/swapchain unavailable 和 device lost，设置窗口仍可打开并显示诊断。
-  - 状态（2026-08-29）：已实现 renderer 初始化失败注入与 GPUI degraded 状态，等待 Windows runner；drawable unavailable、真实 device lost 和恢复仍待完成。
+  - 状态（2026-08-29）：Windows push/PR runner 已通过 renderer 初始化失败与 GPUI degraded 状态；drawable/swapchain unavailable、真实 device lost 和恢复仍待完成。
 
 ### 1.7 输入可靠性 spike
 
@@ -815,7 +816,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 10. [ ] `P0-OVERLAY`：GPUI 生命周期内完成 Windows D3D11/macOS Metal 透明 clear/present、错误注入和 100 次重建。
 
 - [x] 先完成无平台依赖的 overlay lifecycle contract probe；平台窗口和 GPU 验证仍未完成。
-- [ ] Windows Win32/D3D11/DirectComposition owner、故障降级与 100-cycle 已实现并接入 CI；等待 `windows-latest` 运行证据后更新状态。
+- [x] Windows Win32/D3D11/DirectComposition owner、故障降级、析构顺序与 100-cycle 已通过 push/PR `windows-latest`；完整 `P0-OVERLAY` 仍等待 macOS 100-cycle 与双平台 unavailable/device-lost/GPU 采样。
 
 11. [ ] `P0-INPUT-WINDOWS`：完成 Raw Input + pressed set + `GetAsyncKeyState` 校正并实测 issue #47 场景。
 

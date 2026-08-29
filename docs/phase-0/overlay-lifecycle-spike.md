@@ -1,6 +1,6 @@
 # Native Overlay Lifecycle Contract Spike
 
-状态：生命周期契约与 macOS 实机通过；Windows D3D11 实现已接入 CI，待 runner 证据
+状态：生命周期契约、双平台透明 clear/present 与 Windows 生命周期门禁通过；完整 overlay 门禁仍未完成
 日期：2026-08-29
 
 ## 目的
@@ -87,17 +87,41 @@ renderer 内部对象。
 - 100 次窗口/GPU 创建销毁及 warm-up 后 process handle 增长门禁。
 
 本机已对 `x86_64-pc-windows-msvc` 执行 Check/Clippy，并对
-`aarch64-pc-windows-msvc` 执行 Check。macOS 不能提供 Windows 窗口/GPU 运行证据，
-因此 Windows 项在 `windows-latest` 正常、故障注入和 100-cycle smoke 成功前保持
-未完成。
+`aarch64-pc-windows-msvc` 执行 Check。commit
+`d0ce206ffc56ef83acf6f18c7aa330910bb5543f` 的 push run `33243568461`、job
+`99076961942` 与 PR run `33243569993`、job `99076967070` 均在
+`windows-latest` 通过。两次运行都确认 hardware D3D11、DPI 96、两次透明
+clear/present、隐藏/重显示、GPUI 共存和自动退出；退出日志中
+`Windows overlay GPU released` 严格早于 `Windows overlay window destroyed`。
+
+受控 renderer 初始化失败后，GPUI 设置窗口仍然打开并走完自动退出。100 次
+完整 Win32/D3D11/DirectComposition owner 重建报告
+`handles_before=172 handles_after=172 clean_shutdown=true`。该计数证明本次 runner
+进程的 process handle 未增长，不替代 GPU memory/driver resource 专项采样。
+
+### 线程与所有权不变量
+
+- GPUI application loop 在进程 UI 主线程启动；overlay owner 在同一线程创建、
+  调用和析构。
+- macOS wrapper 必须持有 `MainThreadMarker` 才能创建 `NSPanel`，AppKit 和 Metal
+  layer 的窗口生命周期操作不得离开主线程。
+- Windows wrapper 记录创建线程并在每次公开操作和析构时断言 owner thread；
+  `Rc` marker 使完整 window/GPU owner 保持 `!Send`/`!Sync`。
+- GPUI async task 只可通过 `cx.update` 回到 application thread 后访问 overlay；
+  runtime 或输入 worker 不得持有 HWND、NSPanel、GPU handle 或 overlay 引用。
+- 未来跨线程操作必须发送强类型 command，由 UI thread adapter 执行；shutdown
+  command 必须停止生产者后，在 GPUI `quit()` 前显式取出并析构 overlay owner。
 
 ### 尚未验证
 
-- Windows runner 的 Win32 + D3D11 透明 clear/present、DPI、GPUI 共存和 100-cycle 结果；实现已存在但不能由 macOS 推断运行正确。
 - 两个平台的真实 Live2D/Cubism 绘制和模型资源兼容。
 - macOS 100 次真实原生窗口创建/销毁循环，以及双平台 GPU memory/driver resource 专项采样。
 - drawable/swapchain unavailable、真实 GPU device lost 和恢复后的诊断 UI。
+- 拖动、缩放、显示器/DPI 切换和真实 frame source 的完整生命周期。
 
 ## 下一步
 
-下一步是在 Windows 实机完成 Win32/D3D11 对等验证，并在两个平台接入真实 frame source、模型绘制和失败诊断；macOS 结果应保持为独立平台证据，不作为跨平台完成声明。
+下一步是在 macOS 补齐 100 次原生窗口/GPU owner 重建与 drawable unavailable
+注入，并为 Windows 增加 swapchain unavailable/device-lost 恢复验证。随后才能在
+两个平台接入真实 frame source、模型绘制和 GPU 专项采样；任一平台结果都不能
+替代另一平台证据。
