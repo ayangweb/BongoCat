@@ -5,6 +5,16 @@ use std::collections::{BTreeMap, BTreeSet};
 pub const RI_KEY_BREAK: u16 = 0x0001;
 pub const RI_KEY_E0: u16 = 0x0002;
 pub const RI_KEY_E1: u16 = 0x0004;
+pub const RI_MOUSE_LEFT_BUTTON_DOWN: u16 = 0x0001;
+pub const RI_MOUSE_LEFT_BUTTON_UP: u16 = 0x0002;
+pub const RI_MOUSE_RIGHT_BUTTON_DOWN: u16 = 0x0004;
+pub const RI_MOUSE_RIGHT_BUTTON_UP: u16 = 0x0008;
+pub const RI_MOUSE_MIDDLE_BUTTON_DOWN: u16 = 0x0010;
+pub const RI_MOUSE_MIDDLE_BUTTON_UP: u16 = 0x0020;
+pub const RI_MOUSE_BACK_BUTTON_DOWN: u16 = 0x0040;
+pub const RI_MOUSE_BACK_BUTTON_UP: u16 = 0x0080;
+pub const RI_MOUSE_FORWARD_BUTTON_DOWN: u16 = 0x0100;
+pub const RI_MOUSE_FORWARD_BUTTON_UP: u16 = 0x0200;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PhysicalKey {
@@ -91,6 +101,26 @@ pub struct RawKeyboardPacket {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RawMousePacket {
+    pub button_flags: u16,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum MouseButton {
+    Left,
+    Right,
+    Middle,
+    Back,
+    Forward,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MouseButtonEdge {
+    pub button: MouseButton,
+    pub pressed: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RawInputHeader {
     pub declared_size: usize,
     pub input_type: u32,
@@ -102,6 +132,87 @@ pub enum RawInputError {
     DeclaredSizeExceedsBuffer,
     UnsupportedInputType,
     TruncatedKeyboardPayload,
+    TruncatedMousePayload,
+}
+
+/// Decode only the stable button-flag prefix of a `RAWMOUSE` payload.
+///
+/// `usButtonFlags` is the low word of the `ulButtons` union at payload offset
+/// four. Movement, wheel data and device handles remain outside this boundary.
+pub fn decode_raw_mouse_bytes(
+    header: RawInputHeader,
+    bytes: &[u8],
+    header_size: usize,
+) -> Result<RawMousePacket, RawInputError> {
+    if bytes.len() < header_size || bytes.len() < 8 {
+        return Err(RawInputError::TruncatedHeader);
+    }
+    if header.declared_size > bytes.len() {
+        return Err(RawInputError::DeclaredSizeExceedsBuffer);
+    }
+    if header.input_type != 0 {
+        return Err(RawInputError::UnsupportedInputType);
+    }
+    let button_flags_offset = header_size
+        .checked_add(4)
+        .ok_or(RawInputError::TruncatedMousePayload)?;
+    let mouse_end = button_flags_offset
+        .checked_add(2)
+        .ok_or(RawInputError::TruncatedMousePayload)?;
+    if header.declared_size < mouse_end || bytes.len() < mouse_end {
+        return Err(RawInputError::TruncatedMousePayload);
+    }
+    Ok(RawMousePacket {
+        button_flags: u16::from_le_bytes([
+            bytes[button_flags_offset],
+            bytes[button_flags_offset + 1],
+        ]),
+    })
+}
+
+pub fn decode_mouse_button_edges(packet: RawMousePacket) -> impl Iterator<Item = MouseButtonEdge> {
+    [
+        (
+            MouseButton::Left,
+            RI_MOUSE_LEFT_BUTTON_DOWN,
+            RI_MOUSE_LEFT_BUTTON_UP,
+        ),
+        (
+            MouseButton::Right,
+            RI_MOUSE_RIGHT_BUTTON_DOWN,
+            RI_MOUSE_RIGHT_BUTTON_UP,
+        ),
+        (
+            MouseButton::Middle,
+            RI_MOUSE_MIDDLE_BUTTON_DOWN,
+            RI_MOUSE_MIDDLE_BUTTON_UP,
+        ),
+        (
+            MouseButton::Back,
+            RI_MOUSE_BACK_BUTTON_DOWN,
+            RI_MOUSE_BACK_BUTTON_UP,
+        ),
+        (
+            MouseButton::Forward,
+            RI_MOUSE_FORWARD_BUTTON_DOWN,
+            RI_MOUSE_FORWARD_BUTTON_UP,
+        ),
+    ]
+    .into_iter()
+    .flat_map(move |(button, down_flag, up_flag)| {
+        [
+            (packet.button_flags & down_flag != 0).then_some(MouseButtonEdge {
+                button,
+                pressed: true,
+            }),
+            (packet.button_flags & up_flag != 0).then_some(MouseButtonEdge {
+                button,
+                pressed: false,
+            }),
+        ]
+        .into_iter()
+        .flatten()
+    })
 }
 
 /// Decode the stable byte layout returned by `GetRawInputData` for a keyboard.
@@ -827,5 +938,98 @@ mod tests {
             PhysicalKey::ControlRight
         );
         assert!(decode_keyboard_packet(packet).pressed);
+    }
+
+    #[test]
+    fn raw_mouse_decoder_reads_button_flags_without_pointer_layout_leakage() {
+        let mut bytes = vec![0u8; 48];
+        let flags = RI_MOUSE_LEFT_BUTTON_DOWN | RI_MOUSE_FORWARD_BUTTON_UP;
+        bytes[28..30].copy_from_slice(&flags.to_le_bytes());
+        let packet = decode_raw_mouse_bytes(
+            RawInputHeader {
+                declared_size: bytes.len(),
+                input_type: 0,
+            },
+            &bytes,
+            24,
+        )
+        .unwrap();
+        assert_eq!(packet.button_flags, flags);
+        assert_eq!(
+            decode_mouse_button_edges(packet).collect::<Vec<_>>(),
+            vec![
+                MouseButtonEdge {
+                    button: MouseButton::Left,
+                    pressed: true,
+                },
+                MouseButtonEdge {
+                    button: MouseButton::Forward,
+                    pressed: false,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn raw_mouse_decoder_rejects_truncated_or_keyboard_payloads() {
+        assert_eq!(
+            decode_raw_mouse_bytes(
+                RawInputHeader {
+                    declared_size: 28,
+                    input_type: 0,
+                },
+                &[0; 28],
+                24,
+            ),
+            Err(RawInputError::TruncatedMousePayload)
+        );
+        assert_eq!(
+            decode_raw_mouse_bytes(
+                RawInputHeader {
+                    declared_size: 48,
+                    input_type: 1,
+                },
+                &[0; 48],
+                24,
+            ),
+            Err(RawInputError::UnsupportedInputType)
+        );
+    }
+
+    #[test]
+    fn raw_mouse_button_mapping_preserves_all_canonical_edges() {
+        let all_flags = RI_MOUSE_LEFT_BUTTON_DOWN
+            | RI_MOUSE_LEFT_BUTTON_UP
+            | RI_MOUSE_RIGHT_BUTTON_DOWN
+            | RI_MOUSE_RIGHT_BUTTON_UP
+            | RI_MOUSE_MIDDLE_BUTTON_DOWN
+            | RI_MOUSE_MIDDLE_BUTTON_UP
+            | RI_MOUSE_BACK_BUTTON_DOWN
+            | RI_MOUSE_BACK_BUTTON_UP
+            | RI_MOUSE_FORWARD_BUTTON_DOWN
+            | RI_MOUSE_FORWARD_BUTTON_UP;
+        let edges = decode_mouse_button_edges(RawMousePacket {
+            button_flags: all_flags,
+        })
+        .collect::<Vec<_>>();
+        assert_eq!(edges.len(), 10);
+        assert_eq!(
+            edges.first(),
+            Some(&MouseButtonEdge {
+                button: MouseButton::Left,
+                pressed: true,
+            })
+        );
+        assert_eq!(
+            edges.last(),
+            Some(&MouseButtonEdge {
+                button: MouseButton::Forward,
+                pressed: false,
+            })
+        );
+        assert_eq!(
+            decode_mouse_button_edges(RawMousePacket { button_flags: 0 }).count(),
+            0
+        );
     }
 }

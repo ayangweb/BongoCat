@@ -12,6 +12,7 @@
 - E1 Pause 序列，避免误判为左 Control；
 - 未知 scan code 保留为诊断值，不静默丢弃；
 - `GetRawInputData` 返回的声明长度、输入类型、键盘 payload 偏移和截断数据在进入 mapper 前校验；
+- `RAWMOUSE` 只在 safe decoder 中读取稳定的 `usButtonFlags` 前缀，将 left/right/middle/back/forward 的 down/up 映射为项目类型；纯移动和 wheel flag 不伪造 button edge，同包多边沿按固定顺序保留；
 - 在永不显示的专用顶层 HWND 上为鼠标和键盘注册 `RIDEV_INPUTSINK`；顶层窗口用于接收 message-only HWND 收不到的电源广播；
 - `WM_INPUT` 先查询长度，再使用对齐 buffer 读取，不向安全 mapper 泄漏 handle/pointer；
 - callback panic boundary、`WM_TIMER` 自动退出、Raw Input 注销、window class 注销和清理结果诊断。
@@ -43,7 +44,7 @@ cargo run --manifest-path spikes/input-windows/Cargo.toml --locked --release -- 
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --lifecycle-smoke-ms 100
 ```
 
-当前本地验证包括 macOS host 上的 format、16 项 contract test、Clippy 和 release check，以及 `x86_64-pc-windows-msvc` 的 check/Clippy/release check。测试覆盖左右修饰键 virtual-key、只查询 pressed candidates、未知键触发 Reset、设备移除/服务停止/session/power Reset、Reset 释放数量、重复 down/无匹配 up 诊断、连续两次缺失释放、仍按下取消待确认和零确认阈值拒绝。
+当前本地验证包括 macOS host 上的 format、19 项 contract test、Clippy 和 release check，以及 `x86_64-pc-windows-msvc` 的 check/Clippy/release check。测试覆盖左右修饰键 virtual-key、只查询 pressed candidates、未知键触发 Reset、设备移除/服务停止/session/power Reset、Reset 释放数量、重复 down/无匹配 up 诊断、连续两次缺失释放、仍按下取消待确认、零确认阈值拒绝，以及 RAWMOUSE 截断/类型校验和五个规范 button 的完整 down/up flag 映射。
 
 Windows runner 验收证据：
 
@@ -124,3 +125,7 @@ PixPin、Win+L、PrintScreen、UAC、输入桌面切换或不同完整性级别�
 `RAWINPUTHEADER`/`RAWKEYBOARD` 样本，验证设备句柄生命周期、E0/E1 实际序列、
 `RI_KEY_BREAK` 与热插拔。最后执行 PixPin、Win+L、睡眠/唤醒、PrintScreen、UAC 和
 管理员/非管理员矩阵；不得用无人值守 CI 的合成输入或受控生命周期消息替代这些平台验收。
+
+Windows mouse button 当前只完成 raw byte decode、canonical mapping 和 callback 聚合计数；
+pressed candidate、`GetAsyncKeyState` button 校正、合成/物理 button release 以及 wheel/cursor
+latest-value 分流仍是下一批实现，不能由 pointer-move flood 结果替代。

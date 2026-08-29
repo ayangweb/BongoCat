@@ -1,7 +1,7 @@
 use bongocat_input_windows_spike::{
     CaptureResetReason, KeyStateSnapshot, KeyboardEdge, PhysicalKey, PressedKeyCandidates,
     RawInputDeviceChange, RawInputHeader, collect_key_state_snapshot_with, decode_keyboard_packet,
-    decode_raw_keyboard_bytes,
+    decode_mouse_button_edges, decode_raw_keyboard_bytes, decode_raw_mouse_bytes,
 };
 use std::{
     collections::{BTreeSet, VecDeque},
@@ -108,6 +108,7 @@ pub struct RegistrationReport {
     pub raw_messages: u64,
     pub keyboard_edges: u64,
     pub mouse_messages: u64,
+    pub mouse_button_edges: u64,
     pub device_arrivals: u64,
     pub device_removals: u64,
     pub resets: u64,
@@ -146,6 +147,7 @@ struct WindowState {
     raw_messages: u64,
     keyboard_edges: u64,
     mouse_messages: u64,
+    mouse_button_edges: u64,
     device_arrivals: u64,
     device_removals: u64,
     pressed_candidates: PressedKeyCandidates,
@@ -176,6 +178,7 @@ impl WindowState {
             raw_messages: self.raw_messages,
             keyboard_edges: self.keyboard_edges,
             mouse_messages: self.mouse_messages,
+            mouse_button_edges: self.mouse_button_edges,
             device_arrivals: self.device_arrivals,
             device_removals: self.device_removals,
             resets: candidate_counters.resets,
@@ -669,7 +672,10 @@ unsafe extern "system" fn window_proc(
                         state.pressed_candidates.apply_edge(edge);
                     }
                 }
-                Ok(Some(CapturedRawInput::Mouse)) => state.mouse_messages += 1,
+                Ok(Some(CapturedRawInput::Mouse { button_edges })) => {
+                    state.mouse_messages += 1;
+                    state.mouse_button_edges += u64::from(button_edges);
+                }
                 Ok(None) => {}
                 Err(()) => state.decode_errors += 1,
             }
@@ -789,7 +795,7 @@ unsafe extern "system" fn window_proc(
 
 enum CapturedRawInput {
     Keyboard(KeyboardEdge),
-    Mouse,
+    Mouse { button_edges: u32 },
 }
 
 unsafe fn read_raw_input(lparam: LPARAM) -> Result<Option<CapturedRawInput>, ()> {
@@ -822,7 +828,18 @@ unsafe fn read_raw_input(lparam: LPARAM) -> Result<Option<CapturedRawInput>, ()>
     let bytes = unsafe { slice::from_raw_parts(storage.as_ptr().cast::<u8>(), read as usize) };
     let native_header = unsafe { (bytes.as_ptr() as *const RAWINPUTHEADER).read_unaligned() };
     if native_header.dwType == 0 {
-        return Ok(Some(CapturedRawInput::Mouse));
+        let packet = decode_raw_mouse_bytes(
+            RawInputHeader {
+                declared_size: native_header.dwSize as usize,
+                input_type: native_header.dwType,
+            },
+            bytes,
+            header_size as usize,
+        )
+        .map_err(|_| ())?;
+        return Ok(Some(CapturedRawInput::Mouse {
+            button_edges: decode_mouse_button_edges(packet).count() as u32,
+        }));
     }
     if native_header.dwType != 1 {
         return Ok(None);
