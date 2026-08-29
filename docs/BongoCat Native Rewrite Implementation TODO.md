@@ -178,7 +178,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 - 状态（2026-08-28）：`spikes/overlay-lifecycle/` 已建立无平台依赖的生命周期 contract probe，显示/隐藏/重开、乱序 shutdown 拒绝、关闭后禁止重开和 100 次创建/销毁测试通过。它只固定平台 wrapper 必须遵守的状态迁移与 shutdown 顺序，不代表双平台窗口、透明合成或 GPU 已完成；详见 `docs/phase-0/overlay-lifecycle-spike.md`。
 - 状态（2026-08-29）：macOS `spikes/gpui-overlay-macos/` 已在 Apple Silicon 实机验证 GPUI 设置窗口与独立 `NSPanel` + `CAMetalLayer` 共存、显示/隐藏/重显示、跨 Space 配置、鼠标穿透和正常退出；`.app` Bundle ID `com.ayangweb.bongo-cat` 与 ad-hoc strict codesign 通过。renderer 已从透明 clear 推进到 Rust 创建 Metal pipeline/vertex buffer、提交非空预乘 alpha draw，并在 release 100-cycle 的每轮等待 GPU 完成、回读非透明中心像素及验证 `rgb <= alpha`；本机结果为 `non_empty_frames=100`、AppKit windows `0 -> 0`、Rust owner `0 -> 0`、`clean_shutdown=true`。该合成几何尚不代表 Cubism texture/order/mask 完成；受控 drawable unavailable 也已验证设置窗口 degraded 与 quit 前 owner 释放。
-- 状态（2026-08-29）：`spikes/overlay-windows/` 已实现线程限定的 Win32 popup 与独立 D3D11/DXGI/DirectComposition premultiplied-alpha renderer，并由同一 GPUI coexistence executable 驱动。renderer 已从透明 clear 推进到 Rust 顶点、运行时 HLSL 编译、shader/input layout/vertex buffer/blend state、非空 draw，以及 back-buffer -> staging texture 的中心像素回读；x64 Check/Clippy 与 ARM64 Check 已交叉通过，真实 `windows-latest` GPU/readback smoke 待本批 push 验证。合成几何尚不代表 Live2D texture/order/mask、frame source、device-lost 恢复或 GPU/线程专项泄漏完成。
+- 状态（2026-08-29）：`spikes/overlay-windows/` 已实现线程限定的 Win32 popup 与独立 D3D11/DXGI/DirectComposition premultiplied-alpha renderer，并由同一 GPUI coexistence executable 驱动。renderer 已包含 Rust 顶点、运行时 HLSL 编译、shader/input layout/vertex buffer/blend/rasterizer state、非空 draw、staging readback 和 DPI-aware `ResizeBuffers`；上一批 Windows smoke 发现默认背面剔除导致中心像素透明，本批已改为显式 `CULL_NONE`，x64 Check/Clippy 与 ARM64 Release Check 通过，真实 `windows-latest` GPU/readback/resize 待本批 push 验证。合成几何尚不代表 Live2D texture/order/mask、device-lost 恢复或 GPU/线程专项泄漏完成。
 
 - [x] 在 GPUI 应用生命周期内创建独立主猫原生窗口。
 - [x] Windows 从 Rust 获得 HWND，完成透明 D3D11 clear/present。
@@ -188,11 +188,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 验证 GPUI 设置窗口与 overlay 同时存在，事件循环不冲突。
   - macOS 实机与 Windows push/PR runner 已分别通过。
 - [ ] 验证 overlay 可置顶、穿透、显示/隐藏、拖动和缩放。
-  - 状态（2026-08-29）：双平台置顶、穿透和显示/隐藏已通过；拖动、缩放及显示器/DPI 切换仍待完成。
+  - 状态（2026-08-29）：双平台置顶、穿透和显示/隐藏已通过；双平台 programmatic resize 和 backing-scale/swapchain 重建已实现，Windows 实机待本批 push 验证；用户拖动及显示器/DPI 热切换仍待完成。
 - [ ] 连续创建/销毁 overlay 100 次，无窗口、swapchain、layer 或线程泄漏。
   - 状态（2026-08-29）：Windows warm-up 后 100 次完整 window/GPU owner 循环已通过，process handle 为 `172 -> 172`；macOS release 100-cycle 在普通与 NSZombie 模式均通过，AppKit windows 与 Rust owner 都为 `0 -> 0`。双平台 GPU memory/driver resource 与线程专项采样仍待完成，因此保持未勾选。
 - [ ] 验证退出顺序：frame source -> renderer -> GPU -> overlay -> GPUI。
-  - 状态（2026-08-29）：Windows push/PR CI 均断言 GPU/DirectComposition release 先于 HWND destroy，overlay owner 又在 GPUI `quit()` 前显式析构；真实 frame source/runtime 尚未接入，因此保持未完成。
+  - 状态（2026-08-29）：GPUI executor 上的 60 Hz 定时 frame source 已连续驱动双平台 renderer，并在退出时通过停止确认后才释放 renderer/GPU/window；macOS 本机已验证 66 帧、resize、hide/show 和有序退出，Windows 实机待本批 push 验证。生产 display-linked frame source 与 runtime 尚未接入，因此保持未完成。
 - [x] 写明 GPUI/AppKit/Win32 主线程所有权、overlay 创建线程和跨线程 command 不变量。
 - [ ] 注入 renderer 初始化失败、drawable/swapchain unavailable 和 device lost，设置窗口仍可打开并显示诊断。
   - 状态（2026-08-29）：Windows push/PR runner 已通过 renderer 初始化失败与 GPUI degraded 状态；macOS push/PR runner 已通过受控 drawable unavailable、GPUI degraded、正常 quit 与 owner 释放。Windows swapchain unavailable、双平台真实 device lost 和恢复仍待完成。
@@ -818,7 +818,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 10. [ ] `P0-OVERLAY`：GPUI 生命周期内完成 Windows D3D11/macOS Metal 透明 clear/present、错误注入和 100 次重建。
 
 - [x] 先完成无平台依赖的 overlay lifecycle contract probe；平台窗口和 GPU 验证仍未完成。
-- [x] Windows Win32/D3D11/DirectComposition owner、故障降级、析构顺序与 100-cycle 已通过 push/PR `windows-latest`；macOS 本机与 push/PR runner 的透明 clear/present、drawable unavailable、显式 shutdown 与 100-cycle 也已通过。完整 `P0-OVERLAY` 仍等待 Windows swapchain unavailable、双平台真实 device-lost、GPU/线程采样、真实 frame source 及拖动/缩放/显示器切换。
+- [x] Windows Win32/D3D11/DirectComposition owner、故障降级、析构顺序与 100-cycle 已通过既有 push/PR `windows-latest`；macOS 本机与 push/PR runner 的透明 clear/present、drawable unavailable、显式 shutdown 与 100-cycle 也已通过。GPUI 定时 frame source、双平台 resize 和有序停止已实现，Windows 实机结果待本批 push 验证；完整 `P0-OVERLAY` 仍等待 Windows swapchain unavailable、双平台真实 device-lost、GPU/线程采样、拖动及显示器/DPI 切换。
 
 11. [ ] `P0-INPUT-WINDOWS`：完成 Raw Input + pressed set + `GetAsyncKeyState` 校正并实测 issue #47 场景。
 

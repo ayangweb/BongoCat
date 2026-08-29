@@ -118,10 +118,12 @@ renderer 内部对象。
 - hardware device 优先、WARP fallback 只用于能力/生命周期验证；
 - BGRA、flip sequential、premultiplied alpha 的双缓冲 composition swapchain；
 - Rust 提供的合成顶点、运行时编译 HLSL、vertex/pixel shader、input layout、
-  vertex buffer 和 `ONE / INV_SRC_ALPHA` 预乘 alpha blend state；
+  vertex buffer、`CULL_NONE` rasterizer state 和 `ONE / INV_SRC_ALPHA` 预乘 alpha blend state；
 - 透明 clear 后提交非空 draw，将 back buffer 复制到 staging texture 并映射中心
   BGRA 像素；alpha 必须非零且三个颜色通道不得大于 alpha；
 - present、device-removed 检查、显示/隐藏和一次性 topmost；
+- 按窗口 DPI 将逻辑尺寸换算为物理像素，释放旧 back-buffer 引用后执行
+  `ResizeBuffers` 并重建 RTV 与 staging texture；
 - owner-thread assertion 与 `!Send`/`!Sync` marker；
 - composition detach -> D3D clear/flush -> COM release -> HWND destroy 顺序；
 - renderer 初始化失败注入，GPUI 设置窗口继续显示 degraded 状态；
@@ -140,6 +142,10 @@ clear/present、隐藏/重显示、GPUI 共存和自动退出；退出日志中
 `handles_before=172 handles_after=172 clean_shutdown=true`。该计数证明本次 runner
 进程的 process handle 未增长，不替代 GPU memory/driver resource 专项采样。
 
+commit `53eec36` 的首次真实 Windows 非空帧运行暴露了默认 D3D11 背面剔除：draw
+已提交但中心像素仍透明。本批将 rasterizer 明确设为 `CULL_NONE`，该修复与连续帧、
+resize 一并等待新的 `windows-latest` 实机结果，不能沿用旧 green check 声称非空绘制完成。
+
 当前非空帧仍使用 spike 内的合成顶点和运行时编译 HLSL，只验证 D3D11 pipeline、
 预乘 alpha 和可回读 draw。预置模型纹理、draw order、mask 与 production shader
 打包仍属于 Cubism/Renderer 门禁，正式实现不得依赖运行时 shader 编译。
@@ -154,6 +160,8 @@ clear/present、隐藏/重显示、GPUI 共存和自动退出；退出日志中
   `Rc` marker 使完整 window/GPU owner 保持 `!Send`/`!Sync`。
 - GPUI async task 只可通过 `cx.update` 回到 application thread 后访问 overlay；
   runtime 或输入 worker 不得持有 HWND、NSPanel、GPU handle 或 overlay 引用。
+- 当前 spike 的 60 Hz 定时 frame source 在 GPUI executor 上等待，在 application thread
+  上提交 renderer 调用；退出先请求停止并等待确认，再析构 GPU/window owner。
 - 未来跨线程操作必须发送强类型 command，由 UI thread adapter 执行；shutdown
   command 必须停止生产者后，在 GPUI `quit()` 前显式取出并析构 overlay owner。
 
@@ -163,10 +171,12 @@ clear/present、隐藏/重显示、GPUI 共存和自动退出；退出日志中
 - 两个平台的模型 texture、draw order、mask 及离线固定 shader 产物。
 - 双平台 GPU memory/driver resource 与线程专项采样。
 - Windows swapchain unavailable、双平台真实 GPU device lost 和恢复后的诊断 UI；macOS 当前只完成受控 drawable unavailable。
-- 拖动、缩放、显示器/DPI 切换和真实 frame source 的完整生命周期。
+- 用户拖动、显示器/DPI 热切换和 production display-linked frame source 的完整生命周期；
+  当前仅验证 programmatic resize 与 GPUI 定时 frame source。
 
 ## 下一步
 
-下一步是为 Windows 增加 swapchain unavailable/device-lost 恢复验证。随后补齐双平台
-GPU/线程专项采样、真实 frame source、拖动/缩放/显示器切换和模型绘制；任一平台
+下一步是完成本批 Windows 非空帧/resize 实机验证，再增加 swapchain unavailable/
+device-lost 恢复验证。随后补齐双平台 GPU/线程专项采样、display-linked frame source、
+拖动/显示器切换和模型绘制；任一平台
 结果都不能替代另一平台证据。

@@ -293,13 +293,21 @@ jobs:
           for expected in (
               "macOS native overlay created",
               "non-empty premultiplied-alpha draw/present submitted",
+              "frame source started target_hz=60",
+              "macOS overlay resized width=400 height=300",
               "overlay hidden",
               "GPUI settings window opened",
               "auto quit requested",
+              "frame source stopped frames=",
+              "resize_completed=true",
               "overlay window/GPU owner released",
           ):
               if expected not in normal:
                   raise RuntimeError(f"normal overlay smoke did not report: {expected}")
+          frame_stop = normal.index("frame source stopped frames=")
+          owner_release = normal.index("overlay window/GPU owner released")
+          if owner_release <= frame_stop:
+              raise RuntimeError("overlay owner released before frame source stopped")
 
           degraded = run_smoke(
               "drawable-unavailable",
@@ -462,9 +470,13 @@ jobs:
           @(
             "Windows native overlay created",
             "Windows non-empty premultiplied-alpha draw/present submitted",
+            "frame source started target_hz=60",
+            "Windows logical resize width=400 height=300",
             "Windows overlay hidden",
             "GPUI settings window opened",
             "auto quit requested",
+            "frame source stopped frames=",
+            "resize_completed=true",
             "Windows overlay GPU released",
             "Windows overlay window destroyed"
           ) | ForEach-Object {
@@ -474,8 +486,9 @@ jobs:
           }
           $gpuRelease = $normal.IndexOf("Windows overlay GPU released")
           $windowDestroy = $normal.IndexOf("Windows overlay window destroyed")
-          if ($gpuRelease -lt 0 -or $windowDestroy -le $gpuRelease) {
-            throw "overlay did not release GPU before destroying HWND"
+          $frameStop = $normal.IndexOf("frame source stopped frames=")
+          if ($frameStop -lt 0 -or $gpuRelease -le $frameStop -or $windowDestroy -le $gpuRelease) {
+            throw "overlay did not stop frame source before releasing GPU and destroying HWND"
           }
 
           $degraded = Invoke-OverlaySmoke `

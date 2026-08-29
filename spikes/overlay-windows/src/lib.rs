@@ -14,13 +14,14 @@ use windows::{
                 D3D11_BIND_VERTEX_BUFFER, D3D11_BLEND_DESC, D3D11_BLEND_INV_SRC_ALPHA,
                 D3D11_BLEND_ONE, D3D11_BLEND_OP_ADD, D3D11_BUFFER_DESC,
                 D3D11_COLOR_WRITE_ENABLE_ALL, D3D11_CPU_ACCESS_READ,
-                D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_INPUT_ELEMENT_DESC,
-                D3D11_INPUT_PER_VERTEX_DATA, D3D11_MAP_READ, D3D11_MAPPED_SUBRESOURCE,
-                D3D11_RENDER_TARGET_BLEND_DESC, D3D11_SDK_VERSION, D3D11_SUBRESOURCE_DATA,
-                D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT, D3D11_USAGE_STAGING, D3D11_VIEWPORT,
-                D3D11CreateDevice, ID3D11BlendState, ID3D11Buffer, ID3D11ClassLinkage,
-                ID3D11DepthStencilView, ID3D11Device, ID3D11DeviceContext, ID3D11InputLayout,
-                ID3D11PixelShader, ID3D11RenderTargetView, ID3D11Texture2D, ID3D11VertexShader,
+                D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_CULL_NONE, D3D11_FILL_SOLID,
+                D3D11_INPUT_ELEMENT_DESC, D3D11_INPUT_PER_VERTEX_DATA, D3D11_MAP_READ,
+                D3D11_MAPPED_SUBRESOURCE, D3D11_RASTERIZER_DESC, D3D11_RENDER_TARGET_BLEND_DESC,
+                D3D11_SDK_VERSION, D3D11_SUBRESOURCE_DATA, D3D11_TEXTURE2D_DESC,
+                D3D11_USAGE_DEFAULT, D3D11_USAGE_STAGING, D3D11_VIEWPORT, D3D11CreateDevice,
+                ID3D11BlendState, ID3D11Buffer, ID3D11ClassLinkage, ID3D11DepthStencilView,
+                ID3D11Device, ID3D11DeviceContext, ID3D11InputLayout, ID3D11PixelShader,
+                ID3D11RasterizerState, ID3D11RenderTargetView, ID3D11Texture2D, ID3D11VertexShader,
             },
             DirectComposition::{
                 DCompositionCreateDevice, IDCompositionDevice, IDCompositionTarget,
@@ -29,9 +30,10 @@ use windows::{
             Dxgi::{
                 Common::{
                     DXGI_ALPHA_MODE_PREMULTIPLIED, DXGI_FORMAT_B8G8R8A8_UNORM,
-                    DXGI_FORMAT_R32G32_FLOAT, DXGI_FORMAT_R32G32B32A32_FLOAT, DXGI_SAMPLE_DESC,
+                    DXGI_FORMAT_R32G32_FLOAT, DXGI_FORMAT_R32G32B32A32_FLOAT, DXGI_FORMAT_UNKNOWN,
+                    DXGI_SAMPLE_DESC,
                 },
-                DXGI_PRESENT, DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1,
+                DXGI_PRESENT, DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_CHAIN_FLAG,
                 DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL, DXGI_USAGE_RENDER_TARGET_OUTPUT, IDXGIAdapter,
                 IDXGIDevice, IDXGIFactory2, IDXGISwapChain1,
             },
@@ -46,8 +48,9 @@ use windows::{
             WindowsAndMessaging::{
                 CreateWindowExW, DefWindowProcW, DestroyWindow, HWND_TOPMOST, IsWindowVisible,
                 RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-                SetWindowPos, ShowWindow, UnregisterClassW, WNDCLASSW, WS_EX_NOACTIVATE,
-                WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_POPUP,
+                SWP_NOZORDER, SetWindowPos, ShowWindow, UnregisterClassW, WNDCLASSW,
+                WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
+                WS_POPUP,
             },
         },
     },
@@ -121,8 +124,13 @@ impl NativeOverlay {
     }
 
     unsafe fn create_inner(log_lifecycle: bool) -> WindowsResult<Self> {
-        let window = unsafe { OverlayWindow::create(log_lifecycle)? };
-        let renderer = unsafe { Renderer::create(window.hwnd, log_lifecycle)? };
+        let mut window = unsafe { OverlayWindow::create(log_lifecycle)? };
+        let mut renderer = unsafe { Renderer::create(window.hwnd, log_lifecycle)? };
+        let (physical_width, physical_height) = window.physical_dimensions(WIDTH, HEIGHT)?;
+        if physical_width != WIDTH || physical_height != HEIGHT {
+            renderer.resize(physical_width, physical_height)?;
+            window.resize(physical_width, physical_height)?;
+        }
         Ok(Self { renderer, window })
     }
 
@@ -135,7 +143,33 @@ impl NativeOverlay {
     }
 
     pub fn clear_present(&self) -> Result<(), String> {
-        self.renderer.clear_present().map_err(format_windows_error)
+        self.renderer
+            .clear_present(true)
+            .map_err(format_windows_error)
+    }
+
+    pub fn render_scheduled_frame(&self) -> Result<(), String> {
+        self.renderer
+            .clear_present(false)
+            .map_err(format_windows_error)
+    }
+
+    pub fn resize(&mut self, logical_width: u32, logical_height: u32) -> Result<(), String> {
+        let (physical_width, physical_height) = self
+            .window
+            .physical_dimensions(logical_width, logical_height)
+            .map_err(format_windows_error)?;
+        self.renderer
+            .resize(physical_width, physical_height)
+            .and_then(|()| self.window.resize(physical_width, physical_height))
+            .map_err(format_windows_error)?;
+        if self.window.log_lifecycle {
+            println!(
+                "gpui-overlay-spike: Windows logical resize width={logical_width} height={logical_height} physical_width={physical_width} physical_height={physical_height} dpi={}",
+                self.window.dpi
+            );
+        }
+        Ok(())
     }
 
     pub fn driver_name(&self) -> &'static str {
@@ -325,6 +359,39 @@ impl OverlayWindow {
         Ok(())
     }
 
+    fn resize(&mut self, width: u32, height: u32) -> WindowsResult<()> {
+        self.assert_owner_thread();
+        validate_dimensions(width, height)?;
+        // SAFETY: the HWND is live and thread-confined. This changes only the
+        // client-sized popup dimensions and does not reactivate or reorder it.
+        unsafe {
+            SetWindowPos(
+                self.hwnd,
+                None,
+                0,
+                0,
+                width as i32,
+                height as i32,
+                SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
+            )?;
+        }
+        if self.log_lifecycle {
+            println!("gpui-overlay-spike: Windows overlay resized width={width} height={height}");
+        }
+        Ok(())
+    }
+
+    fn physical_dimensions(
+        &self,
+        logical_width: u32,
+        logical_height: u32,
+    ) -> WindowsResult<(u32, u32)> {
+        Ok((
+            logical_to_physical(logical_width, self.dpi)?,
+            logical_to_physical(logical_height, self.dpi)?,
+        ))
+    }
+
     fn assert_owner_thread(&self) {
         assert_eq!(
             self.owner_thread,
@@ -353,18 +420,21 @@ struct Renderer {
     visual: IDCompositionVisual,
     target: IDCompositionTarget,
     composition_device: IDCompositionDevice,
-    render_target: ID3D11RenderTargetView,
-    staging_texture: ID3D11Texture2D,
+    render_target: Option<ID3D11RenderTargetView>,
+    staging_texture: Option<ID3D11Texture2D>,
     blend_state: ID3D11BlendState,
+    rasterizer_state: ID3D11RasterizerState,
     vertex_buffer: ID3D11Buffer,
     input_layout: ID3D11InputLayout,
     pixel_shader: ID3D11PixelShader,
     vertex_shader: ID3D11VertexShader,
-    back_buffer: ID3D11Texture2D,
+    back_buffer: Option<ID3D11Texture2D>,
     swap_chain: IDXGISwapChain1,
     context: ID3D11DeviceContext,
     device: ID3D11Device,
     driver_name: &'static str,
+    width: u32,
+    height: u32,
     owner_thread: ThreadId,
     log_lifecycle: bool,
     _not_send_or_sync: std::marker::PhantomData<Rc<()>>,
@@ -405,49 +475,66 @@ impl Renderer {
             composition_device.Commit()?;
         }
 
-        let back_buffer: ID3D11Texture2D = unsafe { swap_chain.GetBuffer(0)? };
-        let mut render_target = None;
-        unsafe {
-            device.CreateRenderTargetView(&back_buffer, None, Some(&mut render_target))?;
-        }
-        let staging_texture = unsafe { create_staging_texture(&device, &back_buffer)? };
-        let (vertex_shader, pixel_shader, input_layout, vertex_buffer, blend_state) =
-            unsafe { create_geometry_pipeline(&device)? };
+        let (back_buffer, render_target, staging_texture) =
+            unsafe { create_render_targets(&device, &swap_chain)? };
+        let (
+            vertex_shader,
+            pixel_shader,
+            input_layout,
+            vertex_buffer,
+            blend_state,
+            rasterizer_state,
+        ) = unsafe { create_geometry_pipeline(&device)? };
 
         Ok(Self {
             visual,
             target,
             composition_device,
-            render_target: render_target.expect("CreateRenderTargetView returned no view"),
-            staging_texture,
+            render_target: Some(render_target),
+            staging_texture: Some(staging_texture),
             blend_state,
+            rasterizer_state,
             vertex_buffer,
             input_layout,
             pixel_shader,
             vertex_shader,
-            back_buffer,
+            back_buffer: Some(back_buffer),
             swap_chain,
             context,
             device,
             driver_name,
+            width: WIDTH,
+            height: HEIGHT,
             owner_thread: std::thread::current().id(),
             log_lifecycle,
             _not_send_or_sync: std::marker::PhantomData,
         })
     }
 
-    fn clear_present(&self) -> WindowsResult<()> {
+    fn clear_present(&self, log_frame: bool) -> WindowsResult<()> {
         self.assert_owner_thread();
+        let render_target = self
+            .render_target
+            .as_ref()
+            .ok_or_else(|| invariant_error("D3D11 render target is unavailable"))?;
+        let staging_texture = self
+            .staging_texture
+            .as_ref()
+            .ok_or_else(|| invariant_error("D3D11 staging texture is unavailable"))?;
+        let back_buffer = self
+            .back_buffer
+            .as_ref()
+            .ok_or_else(|| invariant_error("D3D11 back buffer is unavailable"))?;
         // SAFETY: all interfaces are owned by this renderer on the creation
         // thread. The RTV belongs to swap-chain buffer 0 and remains live
         // across this clear/present call.
         unsafe {
             self.context.OMSetRenderTargets(
-                Some(&[Some(self.render_target.clone())]),
+                Some(&[Some(render_target.clone())]),
                 None::<&ID3D11DepthStencilView>,
             );
             self.context
-                .ClearRenderTargetView(&self.render_target, &[0.0, 0.0, 0.0, 0.0]);
+                .ClearRenderTargetView(render_target, &[0.0, 0.0, 0.0, 0.0]);
             let vertex_buffer = Some(self.vertex_buffer.clone());
             let stride = size_of::<OverlayVertex>() as u32;
             let offset = 0_u32;
@@ -465,26 +552,65 @@ impl Renderer {
             self.context.PSSetShader(&self.pixel_shader, None);
             self.context
                 .OMSetBlendState(&self.blend_state, None, u32::MAX);
+            self.context.RSSetState(&self.rasterizer_state);
             self.context.RSSetViewports(Some(&[D3D11_VIEWPORT {
                 TopLeftX: 0.0,
                 TopLeftY: 0.0,
-                Width: WIDTH as f32,
-                Height: HEIGHT as f32,
+                Width: self.width as f32,
+                Height: self.height as f32,
                 MinDepth: 0.0,
                 MaxDepth: 1.0,
             }]));
             self.context.Draw(OVERLAY_VERTICES.len() as u32, 0);
-            self.context
-                .CopyResource(&self.staging_texture, &self.back_buffer);
-            verify_non_empty_frame(&self.context, &self.staging_texture)?;
+            self.context.CopyResource(staging_texture, back_buffer);
+            verify_non_empty_frame(&self.context, staging_texture, self.width, self.height)?;
             self.swap_chain.Present(1, DXGI_PRESENT(0)).ok()?;
             self.device.GetDeviceRemovedReason()?;
         }
-        if self.log_lifecycle {
+        if self.log_lifecycle && log_frame {
             println!(
                 "gpui-overlay-spike: Windows non-empty premultiplied-alpha draw/present submitted"
             );
         }
+        Ok(())
+    }
+
+    fn resize(&mut self, width: u32, height: u32) -> WindowsResult<()> {
+        self.assert_owner_thread();
+        validate_dimensions(width, height)?;
+        if self.width == width && self.height == height {
+            return Ok(());
+        }
+
+        // SAFETY: all swap-chain references are owned here. The immediate
+        // context is detached and flushed before the old RTV, staging texture,
+        // and back buffer are released, satisfying ResizeBuffers ownership.
+        unsafe {
+            self.context
+                .OMSetRenderTargets(None, None::<&ID3D11DepthStencilView>);
+            self.context.ClearState();
+            self.context.Flush();
+        }
+        drop(self.render_target.take());
+        drop(self.staging_texture.take());
+        drop(self.back_buffer.take());
+
+        unsafe {
+            self.swap_chain.ResizeBuffers(
+                0,
+                width,
+                height,
+                DXGI_FORMAT_UNKNOWN,
+                DXGI_SWAP_CHAIN_FLAG(0),
+            )?;
+        }
+        let (back_buffer, render_target, staging_texture) =
+            unsafe { create_render_targets(&self.device, &self.swap_chain)? };
+        self.back_buffer = Some(back_buffer);
+        self.render_target = Some(render_target);
+        self.staging_texture = Some(staging_texture);
+        self.width = width;
+        self.height = height;
         Ok(())
     }
 
@@ -495,6 +621,21 @@ impl Renderer {
             "D3D11 overlay accessed outside its owner thread"
         );
     }
+}
+
+unsafe fn create_render_targets(
+    device: &ID3D11Device,
+    swap_chain: &IDXGISwapChain1,
+) -> WindowsResult<(ID3D11Texture2D, ID3D11RenderTargetView, ID3D11Texture2D)> {
+    let back_buffer: ID3D11Texture2D = unsafe { swap_chain.GetBuffer(0)? };
+    let mut render_target = None;
+    unsafe { device.CreateRenderTargetView(&back_buffer, None, Some(&mut render_target))? };
+    let staging_texture = unsafe { create_staging_texture(device, &back_buffer)? };
+    Ok((
+        back_buffer,
+        render_target.ok_or_else(|| invariant_error("CreateRenderTargetView returned no view"))?,
+        staging_texture,
+    ))
 }
 
 unsafe fn create_staging_texture(
@@ -521,6 +662,7 @@ unsafe fn create_geometry_pipeline(
     ID3D11InputLayout,
     ID3D11Buffer,
     ID3D11BlendState,
+    ID3D11RasterizerState,
 )> {
     let vertex_bytecode = unsafe { compile_shader(s!("vertex_main"), s!("vs_5_0"))? };
     let pixel_bytecode = unsafe { compile_shader(s!("pixel_main"), s!("ps_5_0"))? };
@@ -604,6 +746,16 @@ unsafe fn create_geometry_pipeline(
     let mut blend_state = None;
     unsafe { device.CreateBlendState(&blend_descriptor, Some(&mut blend_state))? };
 
+    let rasterizer_descriptor = D3D11_RASTERIZER_DESC {
+        FillMode: D3D11_FILL_SOLID,
+        CullMode: D3D11_CULL_NONE,
+        ..Default::default()
+    };
+    let mut rasterizer_state = None;
+    unsafe {
+        device.CreateRasterizerState(&rasterizer_descriptor, Some(&mut rasterizer_state))?;
+    }
+
     Ok((
         vertex_shader
             .ok_or_else(|| invariant_error("CreateVertexShader returned no vertex shader"))?,
@@ -612,6 +764,8 @@ unsafe fn create_geometry_pipeline(
         input_layout.ok_or_else(|| invariant_error("CreateInputLayout returned no layout"))?,
         vertex_buffer.ok_or_else(|| invariant_error("CreateBuffer returned no vertex buffer"))?,
         blend_state.ok_or_else(|| invariant_error("CreateBlendState returned no blend state"))?,
+        rasterizer_state
+            .ok_or_else(|| invariant_error("CreateRasterizerState returned no rasterizer state"))?,
     ))
 }
 
@@ -662,17 +816,19 @@ unsafe fn blob_message(blob: &ID3DBlob) -> String {
 unsafe fn verify_non_empty_frame(
     context: &ID3D11DeviceContext,
     staging_texture: &ID3D11Texture2D,
+    width: u32,
+    height: u32,
 ) -> WindowsResult<()> {
     let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
     unsafe { context.Map(staging_texture, 0, D3D11_MAP_READ, 0, Some(&mut mapped))? };
     let validation = if mapped.pData.is_null() {
         Err(invariant_error("D3D11 staging texture mapped to null"))
-    } else if mapped.RowPitch < WIDTH * 4 {
+    } else if mapped.RowPitch < width * 4 {
         Err(invariant_error(
             "D3D11 staging texture row pitch is too small",
         ))
     } else {
-        let offset = (HEIGHT as usize / 2) * mapped.RowPitch as usize + (WIDTH as usize / 2) * 4;
+        let offset = (height as usize / 2) * mapped.RowPitch as usize + (width as usize / 2) * 4;
         // SAFETY: RowPitch was checked for a complete row, the selected x/y are
         // inside the fixed texture dimensions, and BGRA8 stores four bytes.
         let pixel = unsafe {
@@ -694,6 +850,31 @@ unsafe fn verify_non_empty_frame(
     };
     unsafe { context.Unmap(staging_texture, 0) };
     validation
+}
+
+fn validate_dimensions(width: u32, height: u32) -> WindowsResult<()> {
+    if width == 0 || height == 0 {
+        return Err(invariant_error("overlay dimensions must be non-zero"));
+    }
+    if width > i32::MAX as u32 || height > i32::MAX as u32 {
+        return Err(invariant_error("overlay dimensions exceed Win32 limits"));
+    }
+    Ok(())
+}
+
+fn logical_to_physical(logical: u32, dpi: u32) -> WindowsResult<u32> {
+    if logical == 0 || dpi == 0 {
+        return Err(invariant_error(
+            "logical dimensions and DPI must be non-zero",
+        ));
+    }
+    let physical = (u64::from(logical) * u64::from(dpi) + 48) / 96;
+    if physical == 0 || physical > i32::MAX as u64 {
+        return Err(invariant_error(
+            "scaled overlay dimension exceeds Win32 limits",
+        ));
+    }
+    Ok(physical as u32)
 }
 
 impl Drop for Renderer {
@@ -787,7 +968,7 @@ unsafe extern "system" fn window_proc(
 
 #[cfg(test)]
 mod tests {
-    use super::{OVERLAY_VERTICES, OverlayVertex};
+    use super::{OVERLAY_VERTICES, OverlayVertex, logical_to_physical};
 
     #[test]
     fn vertex_layout_and_colors_match_d3d_input_contract() {
@@ -797,5 +978,15 @@ mod tests {
             assert!(alpha > 0.0);
             assert!(red <= alpha && green <= alpha && blue <= alpha);
         }
+    }
+
+    #[test]
+    fn scales_logical_dimensions_for_per_monitor_dpi() {
+        assert_eq!(logical_to_physical(400, 96).unwrap(), 400);
+        assert_eq!(logical_to_physical(400, 120).unwrap(), 500);
+        assert_eq!(logical_to_physical(400, 144).unwrap(), 600);
+        assert_eq!(logical_to_physical(400, 192).unwrap(), 800);
+        assert!(logical_to_physical(0, 96).is_err());
+        assert!(logical_to_physical(400, 0).is_err());
     }
 }

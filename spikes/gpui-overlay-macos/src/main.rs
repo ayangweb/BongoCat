@@ -146,10 +146,7 @@ mod macos_overlay {
             layer.set_opaque(false);
             layer.set_presents_with_transaction(false);
             layer.set_framebuffer_only(false);
-            layer.set_drawable_size(core_graphics_types::geometry::CGSize::new(
-                OVERLAY_WIDTH as f64,
-                OVERLAY_HEIGHT as f64,
-            ));
+            configure_drawable_size(&panel, &layer, OVERLAY_WIDTH as f64, OVERLAY_HEIGHT as f64)?;
             // SAFETY: metal::MetalLayerRef and objc2_quartz_core::CALayer are
             // the same Objective-C CAMetalLayer object; the view retains it.
             let layer_ref = unsafe {
@@ -191,18 +188,51 @@ mod macos_overlay {
         }
 
         pub fn clear_present(&self) -> Result<(), String> {
-            self.clear_present_with_behavior(PresentBehavior::Submit)
+            self.clear_present_with_behavior(PresentBehavior::Submit, true)
+        }
+
+        pub fn render_scheduled_frame(&self) -> Result<(), String> {
+            self.clear_present_with_behavior(PresentBehavior::Submit, false)
+        }
+
+        pub fn resize(&mut self, width: u32, height: u32) -> Result<(), String> {
+            if width == 0 || height == 0 {
+                return Err("overlay dimensions must be non-zero".into());
+            }
+            let logical_width = width as f64;
+            let logical_height = height as f64;
+            self.panel
+                .setContentSize(NSSize::new(logical_width, logical_height));
+            configure_drawable_size(
+                &self.panel,
+                self.layer
+                    .as_ref()
+                    .expect("live overlay must own a Metal layer"),
+                logical_width,
+                logical_height,
+            )?;
+            if self.log_lifecycle {
+                println!(
+                    "gpui-overlay-spike: macOS overlay resized width={width} height={height} scale={}",
+                    self.panel.backingScaleFactor()
+                );
+            }
+            Ok(())
         }
 
         pub fn clear_present_simulating_unavailable(&self) -> Result<(), String> {
-            self.clear_present_with_behavior(PresentBehavior::SimulateDrawableUnavailable)
+            self.clear_present_with_behavior(PresentBehavior::SimulateDrawableUnavailable, true)
         }
 
         fn clear_present_and_wait(&self) -> Result<(), String> {
-            self.clear_present_with_behavior(PresentBehavior::SubmitAndWait)
+            self.clear_present_with_behavior(PresentBehavior::SubmitAndWait, true)
         }
 
-        fn clear_present_with_behavior(&self, behavior: PresentBehavior) -> Result<(), String> {
+        fn clear_present_with_behavior(
+            &self,
+            behavior: PresentBehavior,
+            log_frame: bool,
+        ) -> Result<(), String> {
             if matches!(behavior, PresentBehavior::SimulateDrawableUnavailable) {
                 return Err("simulated CAMetalLayer drawable unavailable".into());
             }
@@ -212,6 +242,22 @@ mod macos_overlay {
                 .expect("live overlay must own a Metal layer")
                 .next_drawable()
                 .ok_or("CAMetalLayer returned no drawable")?;
+            let expected_size = self
+                .layer
+                .as_ref()
+                .expect("live overlay must own a Metal layer")
+                .drawable_size();
+            if drawable.texture().width() != expected_size.width.round() as u64
+                || drawable.texture().height() != expected_size.height.round() as u64
+            {
+                return Err(format!(
+                    "Metal drawable size {}x{} does not match layer {}x{}",
+                    drawable.texture().width(),
+                    drawable.texture().height(),
+                    expected_size.width,
+                    expected_size.height
+                ));
+            }
             let pass = RenderPassDescriptor::new();
             let attachment = pass
                 .color_attachments()
@@ -255,7 +301,7 @@ mod macos_overlay {
                 }
                 verify_non_empty_frame(drawable.texture())?;
             }
-            if self.log_lifecycle {
+            if self.log_lifecycle && log_frame {
                 println!(
                     "gpui-overlay-macos-spike: non-empty premultiplied-alpha draw/present submitted"
                 );
@@ -314,15 +360,37 @@ mod macos_overlay {
             .map_err(|error| format!("create Metal overlay render pipeline: {error}"))
     }
 
+    fn configure_drawable_size(
+        panel: &NSPanel,
+        layer: &MetalLayer,
+        logical_width: f64,
+        logical_height: f64,
+    ) -> Result<(), String> {
+        let scale = panel.backingScaleFactor();
+        if !scale.is_finite() || scale <= 0.0 {
+            return Err(format!("invalid AppKit backing scale factor: {scale}"));
+        }
+        layer.set_drawable_size(core_graphics_types::geometry::CGSize::new(
+            logical_width * scale,
+            logical_height * scale,
+        ));
+        Ok(())
+    }
+
     fn verify_non_empty_frame(texture: &metal::TextureRef) -> Result<(), String> {
+        let width = texture.width();
+        let height = texture.height();
+        if width == 0 || height == 0 {
+            return Err("Metal drawable has zero dimensions".into());
+        }
         let mut pixel = [0_u8; 4];
         texture.get_bytes(
             pixel.as_mut_ptr().cast(),
             pixel.len() as u64,
             MTLRegion {
                 origin: MTLOrigin {
-                    x: OVERLAY_WIDTH as u64 / 2,
-                    y: OVERLAY_HEIGHT as u64 / 2,
+                    x: width / 2,
+                    y: height / 2,
                     z: 0,
                 },
                 size: MTLSize {
@@ -483,6 +551,17 @@ type PlatformOverlay = windows_overlay::NativeOverlay;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 struct OverlayGlobal {
     overlay: Option<PlatformOverlay>,
+    frame_source: FrameSourceState,
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[derive(Default)]
+struct FrameSourceState {
+    started: bool,
+    running: bool,
+    stopped: bool,
+    frames: u64,
+    resize_completed: bool,
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -644,11 +723,18 @@ fn main() {
                     }
                     cx.set_global(OverlayGlobal {
                         overlay: Some(overlay),
+                        frame_source: FrameSourceState::default(),
                     });
                 }
                 Err(error) if simulate_failure => {
                     overlay_status = format!("Overlay unavailable: {error}");
-                    cx.set_global(OverlayGlobal { overlay: None });
+                    cx.set_global(OverlayGlobal {
+                        overlay: None,
+                        frame_source: FrameSourceState {
+                            stopped: true,
+                            ..Default::default()
+                        },
+                    });
                     println!("gpui-overlay-spike: overlay degraded error={error}");
                 }
                 Err(error) => panic!("create native overlay: {error}"),
@@ -680,6 +766,53 @@ fn main() {
 
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         if run_visibility_smoke {
+            {
+                let frame_source = &mut cx.global_mut::<OverlayGlobal>().frame_source;
+                frame_source.started = true;
+                frame_source.running = true;
+            }
+            println!("gpui-overlay-spike: frame source started target_hz=60");
+            cx.spawn(async move |cx| {
+                loop {
+                    Timer::after(Duration::from_millis(16)).await;
+                    let keep_running = cx
+                        .update(|cx| {
+                            let global = cx.global_mut::<OverlayGlobal>();
+                            if !global.frame_source.running {
+                                global.frame_source.stopped = true;
+                                println!(
+                                    "gpui-overlay-spike: frame source stopped frames={} resize_completed={}",
+                                    global.frame_source.frames,
+                                    global.frame_source.resize_completed
+                                );
+                                return false;
+                            }
+
+                            let overlay = global
+                                .overlay
+                                .as_mut()
+                                .expect("running frame source must own an overlay");
+                            if global.frame_source.frames == 8
+                                && !global.frame_source.resize_completed
+                            {
+                                resize_platform_overlay(overlay, 400, 300)
+                                    .expect("resize native overlay and GPU drawable");
+                                global.frame_source.resize_completed = true;
+                            }
+                            overlay
+                                .render_scheduled_frame()
+                                .expect("render scheduled native overlay frame");
+                            global.frame_source.frames += 1;
+                            true
+                        })
+                        .unwrap_or(false);
+                    if !keep_running {
+                        break;
+                    }
+                }
+            })
+            .detach();
+
             cx.spawn(async move |cx| {
                 Timer::after(Duration::from_millis(300)).await;
                 cx.update(|cx| {
@@ -710,7 +843,44 @@ fn main() {
                     println!("gpui-overlay-spike: auto quit requested");
                     #[cfg(any(target_os = "macos", target_os = "windows"))]
                     {
-                        let overlay = cx.global_mut::<OverlayGlobal>().overlay.take();
+                        cx.global_mut::<OverlayGlobal>().frame_source.running = false;
+                    }
+                })
+                .ok();
+
+                #[cfg(any(target_os = "macos", target_os = "windows"))]
+                for _ in 0..20 {
+                    Timer::after(Duration::from_millis(10)).await;
+                    let stopped = cx
+                        .update(|cx| {
+                            let frame_source = &cx.global::<OverlayGlobal>().frame_source;
+                            !frame_source.started || frame_source.stopped
+                        })
+                        .unwrap_or(true);
+                    if stopped {
+                        break;
+                    }
+                }
+
+                cx.update(|cx| {
+                    #[cfg(any(target_os = "macos", target_os = "windows"))]
+                    {
+                        let global = cx.global_mut::<OverlayGlobal>();
+                        assert!(
+                            !global.frame_source.started || global.frame_source.stopped,
+                            "frame source did not stop before overlay teardown"
+                        );
+                        if global.frame_source.started {
+                            assert!(
+                                global.frame_source.frames > 0,
+                                "frame source stopped without rendering"
+                            );
+                            assert!(
+                                global.frame_source.resize_completed,
+                                "frame source stopped before resize completed"
+                            );
+                        }
+                        let overlay = global.overlay.take();
                         drop(overlay);
                     }
                     cx.quit();
@@ -801,6 +971,24 @@ fn hide_platform_overlay(overlay: &PlatformOverlay) -> Result<(), String> {
 #[cfg(target_os = "windows")]
 fn hide_platform_overlay(overlay: &PlatformOverlay) -> Result<(), String> {
     overlay.hide()
+}
+
+#[cfg(target_os = "macos")]
+fn resize_platform_overlay(
+    overlay: &mut PlatformOverlay,
+    width: u32,
+    height: u32,
+) -> Result<(), String> {
+    overlay.resize(width, height)
+}
+
+#[cfg(target_os = "windows")]
+fn resize_platform_overlay(
+    overlay: &mut PlatformOverlay,
+    width: u32,
+    height: u32,
+) -> Result<(), String> {
+    overlay.resize(width, height)
 }
 
 fn argument_value(name: &str) -> Option<String> {
