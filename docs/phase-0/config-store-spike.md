@@ -17,6 +17,7 @@
 - 每个环境在持久的 `locks/config.writer.lock` 上获取标准库 OS advisory lock；Unix 使用 `flock`，Windows 使用 `LockFileEx`。锁 guard drop 或进程终止关闭 handle 时由内核释放，已持有锁的 writer 以稳定 `LockUnavailable` 错误失败；不再依赖删除 lock file 判断 owner 存活。
 - `revision()` 返回由验证后 NativeConfig 稳定序列化计算的 equality token；`commit_if_revision` 在持锁后重新读取当前配置，revision 不匹配时返回 `RevisionConflict`，不得静默覆盖较新的修改。
 - 启动加载前会在 writer lock 内检查 `config.json.tmp`：主配置有效时不提升临时文件，而是归档为 `backups/config.interrupted*.json`；主配置缺失或损坏且临时文件有效时才提升临时文件，并将损坏主配置归档为 `backups/config.corrupt*.json`；临时文件无效时归档为 `backups/config.interrupted.invalid*.json`，不覆盖主配置。归档使用只创建不覆盖的递增文件名，避免 Unix/Windows `rename` 语义差异。恢复操作没有临时文件时返回 `NothingToRecover`，可重复执行且不会重复修改已恢复结果。
+- 普通 `commit` 的 writer lock 冲突立即返回 `LockUnavailable`；仅启动恢复路径以 10 ms 间隔、最多 1 秒重试锁获取，用于容纳 Windows 被强制终止进程已经 `wait` 完成但 file lock 尚未对新进程可见的短暂窗口。超过门限仍返回原错误，不猜测 owner、不删除 lock file。
 
 ## 验证
 
@@ -39,6 +40,11 @@ Windows job `99097619545` 在 Windows Server 2025 / `windows-2025-vs2026` runner
 `development_and_production_processes_commit_and_restart_independently`，验证两个环境并发
 提交、退出后重建 store 及 sentinel/lock root 隔离。该证据只覆盖 config store，不替代未来
 state、模型、日志、单实例和更新 channel 的环境隔离测试。
+
+后续 push run `33255204781` 的独立 Windows config-store job 在强杀子进程并 `wait` 后立即
+恢复时偶发一次 `LockUnavailable`，而同 commit 的 Windows input/config job、对应 PR job及
+本地重复测试均通过，说明 ready-file 握手与进程终止已完成，但内核锁释放存在短暂可见性
+窗口。恢复路径现使用上述有界重试；新的 Windows runner 证据待本批 push run 验证。
 
 ## 未完成
 

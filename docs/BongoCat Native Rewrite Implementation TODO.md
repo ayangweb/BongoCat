@@ -387,7 +387,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 3.5 配置 v1
 
-- 状态（2026-08-29）：`spikes/config-store/` 已建立 typed NativeConfig、Bundle ID、Development/Production 隔离目录、snake_case 序列化、schema 校验、原子 commit probe、expected revision、OS writer lock contract、中断提交恢复 contract 和双平台真实 path resolver。Windows 首次 run 暴露只读 handle flush 的 `AccessDenied` 后已修复；push run `33251278193`、job `99097261951` 通过 17 项 unit test 和强制终止持锁子进程的 integration test，验证 `%APPDATA%` 路径、kernel lock 释放、临时配置归档和当前配置保留。备份策略和 GPUI command 边界仍待产品 crate 阶段完成，详见 `docs/phase-0/config-store-spike.md`。
+- 状态（2026-08-29）：`spikes/config-store/` 已建立 typed NativeConfig、Bundle ID、Development/Production 隔离目录、snake_case 序列化、schema 校验、原子 commit probe、expected revision、OS writer lock contract、中断提交恢复 contract 和双平台真实 path resolver。Windows 首次 run 暴露只读 handle flush 的 `AccessDenied` 后已修复；后续独立 config-store job 又捕获强杀进程已 `wait` 后内核锁短暂仍不可获取，启动恢复现以 10 ms 间隔有界重试最多 1 秒，普通 commit 仍立即报告竞争。备份策略和 GPUI command 边界仍待产品 crate 阶段完成，详见 `docs/phase-0/config-store-spike.md`。
 
 - [ ] 定义带 `schema_version` 的 Rust 配置结构和 JSON schema，JSON key 使用 `snake_case`。
 - [ ] 区分用户配置、运行时状态和诊断数据。

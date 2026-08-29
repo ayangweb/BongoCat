@@ -5,10 +5,14 @@ use std::{
     fs::{self, File, OpenOptions, TryLockError},
     io::{self, ErrorKind, Write},
     path::{Path, PathBuf},
+    thread,
+    time::{Duration, Instant},
 };
 
 pub const BUNDLE_ID: &str = "com.ayangweb.bongo-cat";
 pub const SCHEMA_VERSION: u32 = 1;
+const RECOVERY_LOCK_TIMEOUT: Duration = Duration::from_secs(1);
+const RECOVERY_LOCK_RETRY_INTERVAL: Duration = Duration::from_millis(10);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BuildEnvironment {
@@ -442,8 +446,24 @@ impl ConfigStore {
     }
 
     pub fn recover_interrupted_commit(&self) -> Result<RecoveryAction, ConfigError> {
-        let _lock = self.acquire_writer_lock()?;
+        let _lock = self.acquire_recovery_lock(RECOVERY_LOCK_TIMEOUT)?;
         self.recover_interrupted_commit_unlocked()
+    }
+
+    fn acquire_recovery_lock(&self, timeout: Duration) -> Result<WriterLock, ConfigError> {
+        let deadline = Instant::now()
+            .checked_add(timeout)
+            .unwrap_or_else(Instant::now);
+        loop {
+            match self.acquire_writer_lock() {
+                Ok(lock) => return Ok(lock),
+                Err(ConfigError::LockUnavailable) if Instant::now() < deadline => {
+                    let remaining = deadline.saturating_duration_since(Instant::now());
+                    thread::sleep(RECOVERY_LOCK_RETRY_INTERVAL.min(remaining));
+                }
+                Err(error) => return Err(error),
+            }
+        }
     }
 
     pub fn revision(&self) -> Result<ConfigRevision, ConfigError> {
