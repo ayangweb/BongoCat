@@ -385,24 +385,24 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 3.5 配置 v1
 
-- 状态（2026-08-29）：`spikes/config-store/` 已建立 typed NativeConfig、Bundle ID、Development/Production 隔离目录、snake_case 序列化、schema 校验、原子 commit probe、expected revision、OS writer lock contract、中断提交恢复 contract 和当前 macOS 真实 path resolver；push run `33250708023` 已通过 Windows `%APPDATA%\\BongoCat\\<environment>\\` 精确路径断言，同时暴露只读 handle 在 Windows flush 时返回 `AccessDenied`。实现已统一改用可写 handle，并以父进程强制终止持锁子进程的 integration test 验证 kernel lock 释放、临时配置归档和当前配置保留；macOS 已通过，等待 Windows runner 后再勾选 Windows resolver。备份策略和 GPUI command 边界仍待产品 crate 阶段完成，详见 `docs/phase-0/config-store-spike.md`。
+- 状态（2026-08-29）：`spikes/config-store/` 已建立 typed NativeConfig、Bundle ID、Development/Production 隔离目录、snake_case 序列化、schema 校验、原子 commit probe、expected revision、OS writer lock contract、中断提交恢复 contract 和双平台真实 path resolver。Windows 首次 run 暴露只读 handle flush 的 `AccessDenied` 后已修复；push run `33251278193`、job `99097261951` 通过 17 项 unit test 和强制终止持锁子进程的 integration test，验证 `%APPDATA%` 路径、kernel lock 释放、临时配置归档和当前配置保留。备份策略和 GPUI command 边界仍待产品 crate 阶段完成，详见 `docs/phase-0/config-store-spike.md`。
 
 - [ ] 定义带 `schema_version` 的 Rust 配置结构和 JSON schema，JSON key 使用 `snake_case`。
 - [ ] 区分用户配置、运行时状态和诊断数据。
 - [ ] 为字段定义范围、默认值和跨字段约束。
 - [x] 在 spike 中实现不可变 `BuildEnvironment::{Development, Production}`；未知或缺失环境的打包构建失败仍待产品构建链验证。
-- [ ] Windows 使用 `%APPDATA%\BongoCat\<environment>\` 数据根。
+- [x] Windows 使用 `%APPDATA%\BongoCat\<environment>\` 数据根。
 - [x] macOS 使用 `Application Support/com.ayangweb.bongo-cat/<environment>/` 数据根。
-  - 当前 macOS resolver 已通过；Windows 对等 resolver 仍待 Windows 实机。
+  - 双平台 target-specific resolver test 已通过。
 - [x] 两个环境的 `config.json`、`state.json`、`models/`、`backups/`、`logs/` 和 `locks/` 相对结构一致；spike 测试逐项比较相对路径。
 - [ ] 环境不能由 CLI、进程环境变量或设置项在运行时切换，也不能 fallback 到另一环境。
-- [x] 在 spike 中实现同目录临时文件、flush、原子替换、提交后验证和上一份有效配置备份；平台文件锁与真实进程崩溃注入仍未完成。
+- [x] 在 spike 中实现同目录临时文件、flush、原子替换、提交后验证和上一份有效配置备份；双平台 OS file lock 与强制进程终止恢复已通过。
 - [x] 在 spike 中拒绝损坏配置并保留原始文件；中断提交恢复会保守提升有效临时文件并归档无效/陈旧副本，隔离备份保留策略、默认恢复和 GPUI 用户诊断仍未完成。
 - [ ] 配置写入去抖，退出前强制 flush。
 - [ ] GPUI 只通过 typed command 获取 snapshot 和提交 patch。
 - [x] 在 spike 中以包含环境目录的持久 `locks/config.writer.lock` 拒绝并发 writer，并通过 OS advisory lock 在 guard drop 后允许重试。
-- [ ] 强制终止持锁进程后由内核释放 writer lock，下一进程可恢复已 flush 的临时配置且不覆盖当前配置。
-  - 状态（2026-08-29）：macOS process integration test 已通过，Windows 等待本批 runner；平台文件权限仍待产品 crate。
+- [x] 强制终止持锁进程后由内核释放 writer lock，下一进程可恢复已 flush 的临时配置且不覆盖当前配置。
+  - 验收证据（2026-08-29）：macOS 本机与 Windows push run `33251278193`、job `99097261951` 均通过；平台文件权限仍待产品 crate。
 - [ ] 新配置文件和备份使用最小用户权限，不继承过宽 ACL/文件 mode。
 - [x] 在 spike 中以稳定 NativeConfig revision 拒绝过期 writer，避免静默覆盖较新的用户修改；GPUI snapshot/command 携带 revision 仍待产品 crate。
 
@@ -605,7 +605,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 实现 load -> parse -> validate -> upgrade native schema -> atomic commit -> verify。
 - [ ] backup 包含 Native schema 版本和时间，并限制数量与总大小。
 - [x] spike 中途提交中断后可安全恢复或重试；失败不覆盖当前可用配置。
-  - 状态（2026-08-29）：`ConfigStore::recover_interrupted_commit` 覆盖主配置有效/缺失/损坏与临时文件有效/无效组合，恢复在 OS writer lock 内执行并保留诊断副本；父进程强制终止已写入并 flush 临时配置的持锁子进程后，macOS 已验证 lock 自动释放、当前配置保留和 interrupted archive。Windows 等待 runner，产品备份上限仍待完成。
+  - 状态（2026-08-29）：`ConfigStore::recover_interrupted_commit` 覆盖主配置有效/缺失/损坏与临时文件有效/无效组合，恢复在 OS writer lock 内执行并保留诊断副本；父进程强制终止已写入并 flush 临时配置的持锁子进程后，macOS 本机与 Windows runner 均验证 lock 自动释放、当前配置保留和 interrupted archive。产品备份上限仍待完成。
 - [ ] GPUI 显示错误摘要、备份位置和恢复默认 command。
 - [ ] 用户模型只通过显式、受验证的导入进入当前环境，不扫描旧应用目录。
 
@@ -620,7 +620,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 7.4 测试与门槛
 
-- [x] 在平台无关 spike 中验证 Development/Production 根目录不同且相对结构一致；Windows/macOS 真实 resolver 仍待验证。
+- [x] 在平台无关 spike 中验证 Development/Production 根目录不同且相对结构一致，并在 Windows/macOS target-specific test 验证真实 resolver。
 - [ ] 两个环境写入不同 sentinel，重启和并发运行后仍只读取各自数据。
 - [ ] 覆盖损坏、截断、错误类型、越界值和未知字段。
 - [ ] 覆盖无权限、磁盘满、目标占用和中途退出。
@@ -812,7 +812,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 5. [x] `P0-ARCHAEOLOGY`：补齐完整功能优先级和模型异常 fixture。
    - 状态（2026-08-28）：旧配置兼容已从产品范围移除；47 项功能优先级、预置模型资源清单、自定义模型匿名统计和六类模型异常目录 fixture 已完成。实机行为确认继续由输入、overlay 与 Cubism spike 承担。
 6. [x] `P0-CONFIG-CONTRACT`：固定 Bundle ID、自有字段命名和 Development/Production 隔离存储契约。
-   - 状态（2026-08-28）：ADR-008 与 naming contract 已完成；实际 path resolver 和隔离测试在配置 crate 阶段实现。
+   - 状态（2026-08-29）：ADR-008 与 naming contract 已完成；双平台 path resolver、环境隔离、OS writer lock、原子提交和强制进程终止恢复已在 config-store spike 验证。构建产物固定环境和完整产品配置服务仍属于 Phase 1/6。
 7. [x] `P0-RUNTIME-CONTRACT`：冻结生命周期、单调 tick、operation 去重、shutdown drain 与超时结果。
    - 状态（2026-08-28）：`spikes/runtime-contract/` 已通过 14 项 contract test 并接入 CI，补齐 typed bounded worker、snapshot revision、command sequence gap/duplicate、overflow Reset、shutdown drain/timeout 和 panic/join 诊断；实际输入、模型、配置服务和平台 runtime 仍待 Phase 1/2。
 8. [ ] `P0-GPUI-PACKAGE-MAC`：使用默认预编译 shader 构建 `.app`，验证 IME、剪贴板、焦点、辅助功能、主题和窗口重开。

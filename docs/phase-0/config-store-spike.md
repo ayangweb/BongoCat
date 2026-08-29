@@ -1,6 +1,6 @@
 # Native Configuration Store Spike
 
-状态：typed config、Development/Production 隔离、schema validation、原子提交、expected revision、OS writer lock 和中断提交恢复 contract 已通过；Windows resolver 精确路径断言已通过，Windows 可写 flush handle 与强制进程终止恢复等待远端回归，产品级备份策略待后续阶段完成
+状态：typed config、Development/Production 隔离、双平台 path resolver、schema validation、原子提交、expected revision、OS writer lock 和强制进程终止恢复 contract 已通过；产品级备份策略待后续阶段完成
 日期：2026-08-28
 
 ## 已固定的行为
@@ -26,10 +26,10 @@ cargo test --manifest-path spikes/config-store/Cargo.toml --locked
 cargo run --manifest-path spikes/config-store/Cargo.toml --locked
 ```
 
-当前测试覆盖环境隔离、默认配置、非法提交保留旧文件、损坏配置不被静默覆盖、成功提交保留上一份有效备份、snake_case 序列化、writer lock 冲突/释放、stale revision 拒绝、四种中断提交恢复路径、归档不覆盖和平台目录 resolver（macOS/Windows 各 17 个 Rust unit test，分别包含 target-specific resolver test）。另有 1 项 process integration test：子进程持有 writer lock，写入并 flush `config.json.tmp` 后等待；父进程确认并发写被拒绝，再强制终止子进程，验证锁自动释放、临时配置被归档且当前配置不变。该测试已在 macOS 本机通过，Windows 等待本批 runner。
+当前测试覆盖环境隔离、默认配置、非法提交保留旧文件、损坏配置不被静默覆盖、成功提交保留上一份有效备份、snake_case 序列化、writer lock 冲突/释放、stale revision 拒绝、四种中断提交恢复路径、归档不覆盖和平台目录 resolver（macOS/Windows 各 17 个 Rust unit test，分别包含 target-specific resolver test）。另有 1 项 process integration test：子进程持有 writer lock，写入并 flush `config.json.tmp` 后等待；父进程确认并发写被拒绝，再强制终止子进程，验证锁自动释放、临时配置被归档且当前配置不变。该测试已在 macOS 本机和 Windows push run `33251278193`、job `99097261951` 通过。
 
-macOS 实机运行输出应位于 `~/Library/Application Support/com.ayangweb.bongo-cat/development/`（debug）或 `production/`（release）；Windows test 在 push run `33250708023` 已通过 `dirs::data_dir()/BongoCat/<environment>/` 精确断言，也就是 `%APPDATA%\\BongoCat\\<environment>\\`。同一 job 随后暴露 Windows `FlushFileBuffers` 不接受只读 handle：11 个写入/恢复测试返回 `AccessDenied`；实现已统一改为通过可写 handle flush，等待下一批 runner 回归。`tempfile` 已限制为 dev-dependency，`dirs` 仅用于该 resolver spike；writer lock 使用 Rust 1.89 起的标准库 API，没有新增第三方依赖。
+macOS 实机运行输出应位于 `~/Library/Application Support/com.ayangweb.bongo-cat/development/`（debug）或 `production/`（release）；Windows test 在 push run `33250708023` 已通过 `dirs::data_dir()/BongoCat/<environment>/` 精确断言，也就是 `%APPDATA%\\BongoCat\\<environment>\\`。同一 job 随后暴露 Windows `FlushFileBuffers` 不接受只读 handle：11 个写入/恢复测试返回 `AccessDenied`；改用可写 handle 后，push run `33251112463`、job `99096826978` 已通过全部配置测试，后续 process recovery run 继续通过。`tempfile` 已限制为 dev-dependency，`dirs` 仅用于该 resolver spike；writer lock 使用 Rust 1.89 起的标准库 API，没有新增第三方依赖。
 
 ## 未完成
 
-Windows 配置事务与强制进程终止回归 runner、权限/磁盘满/目标占用、备份保留策略和 GPUI typed command 尚未完成；这些必须在 Phase 6 配置 crate 中分别验证。进程存活不再通过 PID、时间戳或删除 lock file 猜测，异常退出后的释放由 OS file lock 生命周期保证。
+权限/磁盘满/目标占用、备份保留策略和 GPUI typed command 尚未完成；这些必须在 Phase 6 配置 crate 中分别验证。进程存活不再通过 PID、时间戳或删除 lock file 猜测，异常退出后的释放由 OS file lock 生命周期保证。
