@@ -190,10 +190,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 ### 1.7 输入可靠性 spike
 
 - 状态（2026-08-28）：`spikes/input-state/` 已建立纯 Rust pressed-set contract，覆盖正常 down/up、重复 down、Reconcile、Reset、issue #47 的丢失 release 恢复、可靠事件的序列跳号/重复/乱序诊断，以及 `250 ms` 校正调度和连续 `2` 次缺失确认的误判保护；计数器不记录具体键值。平台采集、runtime 接入和管理员/权限场景仍待实机验证，详见 `docs/phase-0/input-state-spike.md`。
-- 状态（2026-08-28）：`spikes/input-windows/` 已冻结 `RI_KEY_BREAK`、E0/E1、左右修饰键、PrintScreen、未知 scan code 保留和安全 `RAWINPUT` 字节解析 contract；Win32 `WM_INPUT`、设备句柄、热插拔和 `GetAsyncKeyState` 仍待 Windows 实机，详见 `docs/phase-0/input-windows-spike.md`。
+- 状态（2026-08-29）：`spikes/input-windows/` 已冻结 `RI_KEY_BREAK`、E0/E1、左右修饰键、PrintScreen、未知 scan code 保留和安全 `RAWINPUT` 字节解析 contract；已实现 message-only HWND、Raw Input 注册、`WM_INPUT` 读取、计数诊断与定时退出 wrapper，Windows runner 证据、真实设备样本、热插拔和 `GetAsyncKeyState` 仍待完成，详见 `docs/phase-0/input-windows-spike.md`。
 - 状态（2026-08-28）：`spikes/input-macos/` 已建立 macOS 权限/tap 生命周期 contract、listen-only `CGEventTap` 专用 run loop、panic-isolated callback、固定容量 callback queue 和候选 pressed-set 校正边界；当前 macOS 会话完成 104 次创建运行停止 smoke，且受控按键序列报告 `key_down=2 key_up=2`、`callback_panics=0`。真实鼠标/键盘 callback 字段、系统 timeout/disable、TCC 授权/撤销、周期性校正接入和锁屏/睡眠恢复仍未完成，详见 `docs/phase-0/input-macos-spike.md`。
 
 - [ ] Windows 实现 RegisterRawInputDevices 和 WM_INPUT 最小路径。
+  - 状态（2026-08-29）：已实现注册、读取、注销和自动退出路径，并通过 Windows target 交叉 check/Clippy；仍需 Windows runner smoke 与受控实机输入样本后才能勾选。
 - [x] 冻结 scan code、extended flag、左右修饰键和 RI_KEY_BREAK mapping contract；Win32 packet 接入仍待实机。
 - [x] 建立平台无关 pressed set contract；Windows `GetAsyncKeyState` 校正仍待实机接入。
 - [x] 定义校正频率、连续确认次数和误判保护。
