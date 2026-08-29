@@ -249,7 +249,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] macOS Metal 绘制同一模型的 texture/order/alpha/mask。
   - 状态（2026-08-29）：macOS overlay 已完成合成几何的真实 Metal pipeline、预乘 alpha draw 和 100 帧 GPU readback，不再只是透明 clear/present；预置模型 texture、drawable order 和 mask 尚未接入，因此保持未完成。
 - [ ] 验证 motion、expression、physics、pose 至少各一个真实样本。
-  - 状态（2026-08-30）：6 个预置 motion3 与 15 个 exp3 已通过强类型结构解析和计数门禁，能在 Core/GPU 前拒绝损坏 segment、Meta、fade、parameter 和 blend。motion/expression 的实际时间求值、参数混合与优先级，以及 physics/pose 的结构解析和实际求值仍未完成，因此本项保持未勾选。
+  - 状态（2026-08-30）：6 个预置 motion3 与 15 个 exp3 已通过强类型结构解析和计数门禁；本机 13 个历史 physics3 也以匿名只读方式通过 v3 静态 parser，共覆盖 86 setting/139 input/206 output/267 vertex。motion/expression 的实际时间求值、参数混合与优先级，physics 的实际求值，以及授权 physics/pose fixture 仍未完成，因此本项保持未勾选。
 - [ ] 验证模型切换/销毁 100 次，无 CPU/GPU 资源增长。
 - [x] 记录与 easy-live2d 的差异和必须兼容项；`docs/phase-0/easy-live2d-compatibility.md` 基于 lockfile 固定的 `easy-live2d 0.4.4` 及安装产物 hash，冻结 BongoCat 实际 API 面、跨帧参数 override、update order、motion sound、ready/销毁与 renderer 语义，并明确多 model3、JSON5、破坏性切换、全局 ticker、WebGL/Pixi 和错误吞噬不进入兼容范围。该项只完成旧库边界，不代表 R5 Core/Framework/renderer 已通过。
 - [ ] 若纯 Rust Framework 逻辑不可行，提交 go/no-go ADR；不得静默加入 C++ 业务桥。
@@ -858,6 +858,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 完成平台无关 Rust model3/package parser、三个预置规范化索引与异常资源安全 contract；Native Core、binding、Framework 求值和 D3D11/Metal 绘制仍未完成。
 - [x] 完成 6 个预置 motion3 与 15 个 exp3 的强类型结构、segment/Meta 计数、fade/parameter/blend 校验；这不代表 motion/expression 行为求值完成。
 - [x] 完成 3 个预置 cdi3 的强类型 parameter/group/part 与 group 拓扑校验，并将规范化索引升级到 schema v2；跨资源 ID 以未来 Core 表为准。
+- [x] 完成 physics3 v3 静态 preflight、匿名摘要 CLI 和合成错误 contract；13 个历史文件只作为本地结构覆盖，不作为可分发 fixture 或行为求值证据。
 - [ ] 取得可分发授权的 physics3/pose3 fixture 后完成强类型结构和 Framework 求值；三个预置模型不含这两类资源，不得以合成样本冒充兼容证据。
 
 14. [ ] `P0-GO-NO-GO`：汇总证据、阻塞和条件，确认后再建立完整产品 workspace。

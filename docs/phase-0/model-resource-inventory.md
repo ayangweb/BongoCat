@@ -94,6 +94,8 @@ model-root/
 
 该样本说明 importer 必须处理大文件和大量 motion，且不能把预置模型“不含 physics/pose”的结论推广到自定义模型。统计不代表所有用户模型都符合相同目录完整性。
 
+2026-08-30 使用 `spikes/model-package --physics` 对上述 13 个 physics3 做了第二次只读、匿名结构检查：全部为 v3/60 FPS，共 86 个 setting、139 个 input、206 个 output 和 267 个 vertex，Meta 总数均与实际数组一致。检查未记录路径、模型名、dictionary name 或参数 ID，未复制文件；它只证明 parser 覆盖当前观察结构，不构成分发授权、可重复 fixture 或 physics 求值证据。
+
 ## 合成异常模型 fixture
 
 `shared/fixtures/model-fixtures/cases.json` 固定六类导入 preflight 行为：

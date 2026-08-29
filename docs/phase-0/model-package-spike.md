@@ -1,6 +1,6 @@
 # Phase 0 Rust Model Package Spike
 
-状态：三个预置 model3、cdi3、motion3、exp3 与静态关联资源解析通过；Cubism Core、行为求值和 renderer 未进入本 spike
+状态：三个预置 model3/cdi3/motion3/exp3 与历史 physics3 静态解析通过；Cubism Core、行为求值和 renderer 未进入本 spike
 日期：2026-08-30
 
 ## Hypothesis
@@ -15,6 +15,7 @@
 - 解析 model3 v3 的 moc、texture、display info、expression、motion/sound、physics、pose、user data、group 和 hit area；
 - 强类型解析 cdi3 v3 的 parameter、parameter group 和 part，拒绝重复 ID、悬空/成环 group；
 - 强类型解析 motion3 v3 的 curve target、segment encoding、时间边界、fade、user data 和 Meta 计数，并强类型解析 exp3 的类型、参数、fade 与 Add/Multiply/Overwrite blend；
+- 强类型解析 physics3 v3 的 forces、dictionary、setting、input/output、normalization 和 vertex，校验 Meta 计数、权重、范围、引用索引与有限数值；
 - 规范化 `/` 与 `\\`，拒绝绝对路径、Windows 盘符、`..` 和 canonical root 之外的符号链接；
 - 有界读取 JSON、文件和整个包，在图片解码/GPU 分配前检查 PNG IHDR 与尺寸；
 - 索引 `resources/background.png`、`cover.png`、`left-keys` 和 `right-keys`，显式输出旧版 mode heuristic；
@@ -26,7 +27,7 @@
 ## Non-goals
 
 - 不调用或模拟 Cubism Core，不校验 `.moc3` consistency。
-- 不求值 motion、expression、physics 或 pose。
+- 不求值 motion、expression、physics 或 pose；physics3 通过只表示静态结构可读。
 - 不解码纹理、不创建 GPU 资源、不绘制 Live2D。
 - 不复制模型到数据目录，不修改源包或当前活动模型。
 - 不把 spike 直接当作 Phase 4 产品 parser；Phase 0 结束后需按评审结论 promote、replace 或 delete。
@@ -45,13 +46,14 @@ cargo check --manifest-path spikes/model-package/Cargo.toml --locked --release
 cargo check --manifest-path spikes/model-package/Cargo.toml --locked --release --target x86_64-pc-windows-msvc
 cargo check --manifest-path spikes/model-package/Cargo.toml --locked --release --target aarch64-pc-windows-msvc
 cargo run --manifest-path spikes/model-package/Cargo.toml --locked -- src-tauri/assets/models/standard
+cargo run --manifest-path spikes/model-package/Cargo.toml --locked -- --physics /path/to/model.physics3.json
 ```
 
 规范化预置结果位于 `shared/fixtures/model-fixtures/preset-model3-index.json`。测试会从仓库中的三个只读预置目录重新生成内存索引并与该文件精确比较；golden 不会在测试中自动更新。
 
 ## Environment And Results
 
-本地验证环境为 macOS 26.5.2 build 25F84、Apple Silicon arm64、`aarch64-apple-darwin`、rustc/cargo 1.97.1。格式、Clippy、12 项单元/fixture 测试、release check 和 license/source policy 通过；`x86_64-pc-windows-msvc` 与 `aarch64-pc-windows-msvc` release check 同样通过。
+本地验证环境为 macOS 26.5.2 build 25F84、Apple Silicon arm64、`aarch64-apple-darwin`、rustc/cargo 1.97.1。格式、Clippy、13 项单元/fixture 测试、release check 和 license/source policy 通过；`x86_64-pc-windows-msvc` 与 `aarch64-pc-windows-msvc` release check 同样通过。
 
 远端验收 build commit 为 `7ee8acd5f2a3d4dcb7a1dbc36623cbe497aeae49`。Push run `33238204993` 与 PR run `33238206415` 各 16 个 jobs 全部通过；Linux model-package jobs 为 `99062839956`/`99062844146`，Windows 为 `99062839561`/`99062844097`，macOS 为 `99062839774`/`99062844085`。三个平台均执行 format、Clippy 和 tests，Windows/macOS 额外执行 release check。首个 runner 发现 Rust 1.98 新增的 `chunks_exact_to_as_chunks` lint 后，修复提交同时增加奇数长度 fixture hex 拒绝，再由上述两组 workflow 完整复验。
 
@@ -69,9 +71,11 @@ motion3/exp3 强类型验证提交 `3f8f5bc` 的 push run `33269920418` 与 PR r
 
 索引 schema v2 又把三个 cdi3 的 parameter/group/part 数量固定为 standard `37/2/10`、keyboard `34/2/11`、gamepad `42/2/15`，其中 parameter 与 part 数量和 legacy Core baseline 完全一致。解析器使用 `model_display_info_invalid` 区分 display info 损坏，并在模型提交前拒绝重复 ID、悬空或成环 group。cdi3 是可选显示元数据，不作为 motion/expression 的权威 ID 白名单；真正的跨资源 ID 校验必须在取得 Core 参数/part 表后完成，以免误拒合法但不完整的 display info。
 
+本机历史数据中的 13 个 physics3 仅以只读方式进入本地结构验收：全部为 v3/60 FPS，共 86 个 setting、139 个 input、206 个 output 和 267 个 vertex，文件声明计数与实际数组完全一致。`--physics` 逐个验证成功，输出只包含版本和聚合计数，不包含路径、模型名、dictionary name 或参数 ID；文件未复制到仓库，也不作为可分发 fixture。合成最小 physics3 测试固定 `model_physics_invalid`，覆盖 Meta 计数漂移、dictionary/setting 不一致、权重越界、normalization 逆序和 output vertex 越界。
+
 ## Success And Failure Criteria
 
-成功要求三个预置包的 model3/cdi3/motion3/exp3 索引与 snapshot 一致，六类异常 fixture 诊断一致，损坏 cdi3 和路径逃逸在读取 Core/GPU 前被拒绝，且格式、Clippy、测试、release 和 license/source policy 全部通过。
+成功要求三个预置包的 model3/cdi3/motion3/exp3 索引与 snapshot 一致，六类异常 fixture 和合成 physics3 诊断一致，损坏 cdi3/physics3 与路径逃逸在读取 Core/GPU 前被拒绝，且格式、Clippy、测试、release 和 license/source policy 全部通过。
 
 出现以下任一情况即失败：读取源包时发生写入；绝对/遍历/跨根 symlink 被接受；超限纹理进入解码；关联 JSON 未校验；输出含绝对用户路径；任一预置包资源未被验证；平台类型或 `unsafe` 进入该 workspace。
 

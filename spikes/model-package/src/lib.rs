@@ -49,6 +49,7 @@ pub enum DiagnosticCode {
     ModelMotionInvalid,
     ModelPackageDepthExceeded,
     ModelPackageSizeExceeded,
+    ModelPhysicsInvalid,
     ModelReferenceEscapesRoot,
     ModelReferenceInvalid,
     ModelReferenceSymlinkEscape,
@@ -78,6 +79,7 @@ impl DiagnosticCode {
             Self::ModelMotionInvalid => "model_motion_invalid",
             Self::ModelPackageDepthExceeded => "model_package_depth_exceeded",
             Self::ModelPackageSizeExceeded => "model_package_size_exceeded",
+            Self::ModelPhysicsInvalid => "model_physics_invalid",
             Self::ModelReferenceEscapesRoot => "model_reference_escapes_root",
             Self::ModelReferenceInvalid => "model_reference_invalid",
             Self::ModelReferenceSymlinkEscape => "model_reference_symlink_escape",
@@ -173,6 +175,16 @@ pub struct DisplayInfoResource {
     pub parameter_count: usize,
     pub parameter_group_count: usize,
     pub part_count: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct PhysicsResourceSummary {
+    pub version: u32,
+    pub fps: f64,
+    pub setting_count: usize,
+    pub input_count: usize,
+    pub output_count: usize,
+    pub vertex_count: usize,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -441,6 +453,164 @@ struct ExpressionSummary {
     blend_counts: BTreeMap<ExpressionBlend, usize>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PhysicsDefinition {
+    #[serde(rename = "Version")]
+    version: u32,
+    #[serde(rename = "Meta")]
+    meta: PhysicsMeta,
+    #[serde(rename = "PhysicsSettings")]
+    settings: Vec<PhysicsSetting>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PhysicsMeta {
+    #[serde(rename = "PhysicsSettingCount")]
+    setting_count: usize,
+    #[serde(rename = "TotalInputCount")]
+    input_count: usize,
+    #[serde(rename = "TotalOutputCount")]
+    output_count: usize,
+    #[serde(rename = "VertexCount")]
+    vertex_count: usize,
+    #[serde(rename = "Fps")]
+    fps: f64,
+    #[serde(rename = "EffectiveForces")]
+    effective_forces: PhysicsForces,
+    #[serde(rename = "PhysicsDictionary")]
+    dictionary: Vec<PhysicsDictionaryEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PhysicsForces {
+    #[serde(rename = "Gravity")]
+    gravity: PhysicsVector,
+    #[serde(rename = "Wind")]
+    wind: PhysicsVector,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PhysicsVector {
+    #[serde(rename = "X")]
+    x: f64,
+    #[serde(rename = "Y")]
+    y: f64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PhysicsDictionaryEntry {
+    #[serde(rename = "Id")]
+    id: String,
+    #[serde(rename = "Name")]
+    _name: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PhysicsSetting {
+    #[serde(rename = "Id")]
+    id: String,
+    #[serde(rename = "Input")]
+    inputs: Vec<PhysicsInput>,
+    #[serde(rename = "Output")]
+    outputs: Vec<PhysicsOutput>,
+    #[serde(rename = "Vertices")]
+    vertices: Vec<PhysicsVertex>,
+    #[serde(rename = "Normalization")]
+    normalization: PhysicsNormalization,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PhysicsInput {
+    #[serde(rename = "Source")]
+    source: PhysicsTarget,
+    #[serde(rename = "Weight")]
+    weight: f64,
+    #[serde(rename = "Type")]
+    _kind: PhysicsChannel,
+    #[serde(rename = "Reflect")]
+    _reflect: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PhysicsOutput {
+    #[serde(rename = "Destination")]
+    destination: PhysicsTarget,
+    #[serde(rename = "VertexIndex")]
+    vertex_index: usize,
+    #[serde(rename = "Scale")]
+    scale: f64,
+    #[serde(rename = "Weight")]
+    weight: f64,
+    #[serde(rename = "Type")]
+    _kind: PhysicsChannel,
+    #[serde(rename = "Reflect")]
+    _reflect: bool,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+enum PhysicsChannel {
+    X,
+    Y,
+    Angle,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PhysicsTarget {
+    #[serde(rename = "Target")]
+    _target: PhysicsTargetKind,
+    #[serde(rename = "Id")]
+    id: String,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+enum PhysicsTargetKind {
+    Parameter,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PhysicsNormalization {
+    #[serde(rename = "Position")]
+    position: PhysicsRange,
+    #[serde(rename = "Angle")]
+    angle: PhysicsRange,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PhysicsRange {
+    #[serde(rename = "Minimum")]
+    minimum: f64,
+    #[serde(rename = "Default")]
+    default: f64,
+    #[serde(rename = "Maximum")]
+    maximum: f64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PhysicsVertex {
+    #[serde(rename = "Position")]
+    position: PhysicsVector,
+    #[serde(rename = "Mobility")]
+    mobility: f64,
+    #[serde(rename = "Delay")]
+    delay: f64,
+    #[serde(rename = "Acceleration")]
+    acceleration: f64,
+    #[serde(rename = "Radius")]
+    radius: f64,
+}
+
 #[derive(Clone, Copy)]
 enum ResourceKind {
     Moc,
@@ -535,6 +705,12 @@ impl PackageReader {
             self.limits.maximum_json_bytes,
             DiagnosticCode::ModelResourceJsonInvalid,
         )?;
+        Ok(normalized)
+    }
+
+    fn resolve_physics(&mut self, reference: &str) -> Result<String, ModelPackageError> {
+        let (normalized, path) = self.resolve_file(reference, ResourceKind::Other)?;
+        inspect_physics_file(&path, &normalized, self.limits.maximum_json_bytes)?;
         Ok(normalized)
     }
 
@@ -842,7 +1018,7 @@ pub fn inspect_model_package(
         .file_references
         .physics
         .as_deref()
-        .map(|reference| reader.resolve_json(reference))
+        .map(|reference| reader.resolve_physics(reference))
         .transpose()?;
     let pose = model
         .file_references
@@ -1197,6 +1373,251 @@ fn validate_display_info_group_cycles(
         }
     }
     Ok(())
+}
+
+pub fn inspect_physics_resource(
+    path: impl AsRef<Path>,
+    maximum_bytes: u64,
+) -> Result<PhysicsResourceSummary, ModelPackageError> {
+    inspect_physics_file(path.as_ref(), "physics3.json", maximum_bytes)
+}
+
+fn inspect_physics_file(
+    path: &Path,
+    reference: &str,
+    maximum_bytes: u64,
+) -> Result<PhysicsResourceSummary, ModelPackageError> {
+    let physics: PhysicsDefinition = read_typed_json(
+        path,
+        reference,
+        maximum_bytes,
+        DiagnosticCode::ModelPhysicsInvalid,
+    )?;
+    if physics.version != 3 {
+        return resource_error(
+            DiagnosticCode::ModelPhysicsInvalid,
+            reference,
+            format!("physics3 version {} is not supported", physics.version),
+        );
+    }
+    if !physics.meta.fps.is_finite() || physics.meta.fps <= 0.0 {
+        return resource_error(
+            DiagnosticCode::ModelPhysicsInvalid,
+            reference,
+            "Meta.Fps must be a finite positive number",
+        );
+    }
+    validate_physics_vector(
+        physics.meta.effective_forces.gravity,
+        reference,
+        "Meta.EffectiveForces.Gravity",
+    )?;
+    validate_physics_vector(
+        physics.meta.effective_forces.wind,
+        reference,
+        "Meta.EffectiveForces.Wind",
+    )?;
+
+    let mut setting_ids = BTreeSet::new();
+    let mut input_count = 0usize;
+    let mut output_count = 0usize;
+    let mut vertex_count = 0usize;
+    for setting in &physics.settings {
+        require_resource_identifier(
+            &setting.id,
+            DiagnosticCode::ModelPhysicsInvalid,
+            reference,
+            "physics setting Id",
+        )?;
+        if !setting_ids.insert(setting.id.clone()) {
+            return resource_error(
+                DiagnosticCode::ModelPhysicsInvalid,
+                reference,
+                "physics setting Ids must be unique",
+            );
+        }
+        if setting.inputs.is_empty() || setting.outputs.is_empty() || setting.vertices.len() < 2 {
+            return resource_error(
+                DiagnosticCode::ModelPhysicsInvalid,
+                reference,
+                "each physics setting requires input, output, and at least two vertices",
+            );
+        }
+        validate_physics_range(setting.normalization.position, reference, "Position")?;
+        validate_physics_range(setting.normalization.angle, reference, "Angle")?;
+
+        for input in &setting.inputs {
+            require_resource_identifier(
+                &input.source.id,
+                DiagnosticCode::ModelPhysicsInvalid,
+                reference,
+                "input source Id",
+            )?;
+            validate_physics_weight(input.weight, reference, "input Weight")?;
+        }
+        for output in &setting.outputs {
+            require_resource_identifier(
+                &output.destination.id,
+                DiagnosticCode::ModelPhysicsInvalid,
+                reference,
+                "output destination Id",
+            )?;
+            validate_physics_weight(output.weight, reference, "output Weight")?;
+            if !output.scale.is_finite() {
+                return resource_error(
+                    DiagnosticCode::ModelPhysicsInvalid,
+                    reference,
+                    "output Scale must be finite",
+                );
+            }
+            if output.vertex_index >= setting.vertices.len() {
+                return resource_error(
+                    DiagnosticCode::ModelPhysicsInvalid,
+                    reference,
+                    "output VertexIndex must reference a setting vertex",
+                );
+            }
+        }
+        for vertex in &setting.vertices {
+            validate_physics_vector(vertex.position, reference, "vertex Position")?;
+            if [
+                vertex.mobility,
+                vertex.delay,
+                vertex.acceleration,
+                vertex.radius,
+            ]
+            .iter()
+            .any(|value| !value.is_finite())
+            {
+                return resource_error(
+                    DiagnosticCode::ModelPhysicsInvalid,
+                    reference,
+                    "vertex coefficients must be finite",
+                );
+            }
+        }
+        input_count = input_count
+            .checked_add(setting.inputs.len())
+            .ok_or_else(|| physics_count_overflow(reference))?;
+        output_count = output_count
+            .checked_add(setting.outputs.len())
+            .ok_or_else(|| physics_count_overflow(reference))?;
+        vertex_count = vertex_count
+            .checked_add(setting.vertices.len())
+            .ok_or_else(|| physics_count_overflow(reference))?;
+    }
+
+    let mut dictionary_ids = BTreeSet::new();
+    for entry in &physics.meta.dictionary {
+        require_resource_identifier(
+            &entry.id,
+            DiagnosticCode::ModelPhysicsInvalid,
+            reference,
+            "physics dictionary Id",
+        )?;
+        if !dictionary_ids.insert(entry.id.clone()) {
+            return resource_error(
+                DiagnosticCode::ModelPhysicsInvalid,
+                reference,
+                "physics dictionary Ids must be unique",
+            );
+        }
+    }
+    if dictionary_ids != setting_ids {
+        return resource_error(
+            DiagnosticCode::ModelPhysicsInvalid,
+            reference,
+            "physics dictionary Ids must match setting Ids",
+        );
+    }
+    if physics.meta.setting_count != physics.settings.len()
+        || physics.meta.input_count != input_count
+        || physics.meta.output_count != output_count
+        || physics.meta.vertex_count != vertex_count
+    {
+        return resource_error(
+            DiagnosticCode::ModelPhysicsInvalid,
+            reference,
+            format!(
+                "Meta counts are settings={} inputs={} outputs={} vertices={}; parsed settings={} inputs={} outputs={} vertices={}",
+                physics.meta.setting_count,
+                physics.meta.input_count,
+                physics.meta.output_count,
+                physics.meta.vertex_count,
+                physics.settings.len(),
+                input_count,
+                output_count,
+                vertex_count
+            ),
+        );
+    }
+
+    Ok(PhysicsResourceSummary {
+        version: physics.version,
+        fps: physics.meta.fps,
+        setting_count: physics.settings.len(),
+        input_count,
+        output_count,
+        vertex_count,
+    })
+}
+
+fn validate_physics_vector(
+    vector: PhysicsVector,
+    reference: &str,
+    label: &str,
+) -> Result<(), ModelPackageError> {
+    if !vector.x.is_finite() || !vector.y.is_finite() {
+        return resource_error(
+            DiagnosticCode::ModelPhysicsInvalid,
+            reference,
+            format!("{label} must contain finite coordinates"),
+        );
+    }
+    Ok(())
+}
+
+fn validate_physics_range(
+    range: PhysicsRange,
+    reference: &str,
+    label: &str,
+) -> Result<(), ModelPackageError> {
+    if !range.minimum.is_finite()
+        || !range.default.is_finite()
+        || !range.maximum.is_finite()
+        || range.minimum > range.default
+        || range.default > range.maximum
+    {
+        return resource_error(
+            DiagnosticCode::ModelPhysicsInvalid,
+            reference,
+            format!("Normalization.{label} must satisfy finite minimum <= default <= maximum"),
+        );
+    }
+    Ok(())
+}
+
+fn validate_physics_weight(
+    weight: f64,
+    reference: &str,
+    label: &str,
+) -> Result<(), ModelPackageError> {
+    if !weight.is_finite() || !(0.0..=100.0).contains(&weight) {
+        return resource_error(
+            DiagnosticCode::ModelPhysicsInvalid,
+            reference,
+            format!("{label} must be finite and within 0..=100"),
+        );
+    }
+    Ok(())
+}
+
+fn physics_count_overflow(reference: &str) -> ModelPackageError {
+    ModelPackageError::new(
+        DiagnosticCode::ModelPhysicsInvalid,
+        Some(reference),
+        "physics count overflowed",
+    )
 }
 
 fn inspect_motion_file(
@@ -1762,6 +2183,47 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
+    const MINIMAL_PHYSICS_JSON: &str = r#"{
+        "Version":3,
+        "Meta":{
+            "PhysicsSettingCount":1,
+            "TotalInputCount":1,
+            "TotalOutputCount":1,
+            "VertexCount":2,
+            "Fps":60.0,
+            "EffectiveForces":{
+                "Gravity":{"X":0.0,"Y":-1.0},
+                "Wind":{"X":0.0,"Y":0.0}
+            },
+            "PhysicsDictionary":[{"Id":"Physics1","Name":""}]
+        },
+        "PhysicsSettings":[{
+            "Id":"Physics1",
+            "Input":[{
+                "Source":{"Target":"Parameter","Id":"ParamInput"},
+                "Weight":100.0,
+                "Type":"X",
+                "Reflect":false
+            }],
+            "Output":[{
+                "Destination":{"Target":"Parameter","Id":"ParamOutput"},
+                "VertexIndex":1,
+                "Scale":1.0,
+                "Weight":100.0,
+                "Type":"Angle",
+                "Reflect":false
+            }],
+            "Vertices":[
+                {"Position":{"X":0.0,"Y":0.0},"Mobility":0.8,"Delay":0.8,"Acceleration":1.0,"Radius":0.0},
+                {"Position":{"X":0.0,"Y":10.0},"Mobility":0.8,"Delay":0.8,"Acceleration":1.0,"Radius":10.0}
+            ],
+            "Normalization":{
+                "Position":{"Minimum":-10.0,"Default":0.0,"Maximum":10.0},
+                "Angle":{"Minimum":-10.0,"Default":0.0,"Maximum":10.0}
+            }
+        }]
+    }"#;
+
     fn repository_root() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
@@ -1944,13 +2406,14 @@ mod tests {
         )
         .expect("write model entry");
         fs::write(package.path().join("model.moc3"), b"placeholder").expect("write moc");
-        for resource in [
-            "model.physics3.json",
-            "model.pose3.json",
-            "model.userdata3.json",
-        ] {
+        for resource in ["model.pose3.json", "model.userdata3.json"] {
             fs::write(package.path().join(resource), b"{}").expect("write JSON resource");
         }
+        fs::write(
+            package.path().join("model.physics3.json"),
+            MINIMAL_PHYSICS_JSON,
+        )
+        .expect("write physics resource");
         fs::write(
             package.path().join("display.cdi3.json"),
             br#"{
@@ -2008,6 +2471,52 @@ mod tests {
         assert_eq!(index.groups[0].ids, ["Eye"]);
         assert_eq!(index.hit_areas[0].id, "Head");
         assert!(index.unreferenced_files.is_empty());
+    }
+
+    #[test]
+    fn physics_counts_dictionary_ranges_weights_and_vertices_are_validated() {
+        let directory = tempfile::tempdir().expect("create physics directory");
+        let path = directory.path().join("model.physics3.json");
+        for (pointer, replacement, expected_detail) in [
+            ("/Meta/TotalOutputCount", Value::from(2), "Meta counts"),
+            (
+                "/Meta/PhysicsDictionary/0/Id",
+                Value::from("Other"),
+                "dictionary Ids",
+            ),
+            (
+                "/PhysicsSettings/0/Input/0/Weight",
+                Value::from(101),
+                "input Weight",
+            ),
+            (
+                "/PhysicsSettings/0/Normalization/Position/Minimum",
+                Value::from(1),
+                "Normalization.Position",
+            ),
+            (
+                "/PhysicsSettings/0/Output/0/VertexIndex",
+                Value::from(2),
+                "VertexIndex",
+            ),
+        ] {
+            let mut physics: Value =
+                serde_json::from_str(MINIMAL_PHYSICS_JSON).expect("parse minimal physics fixture");
+            *physics
+                .pointer_mut(pointer)
+                .expect("fixture pointer exists") = replacement;
+            fs::write(
+                &path,
+                serde_json::to_vec(&physics).expect("serialize invalid physics"),
+            )
+            .expect("write invalid physics");
+
+            let error = inspect_physics_resource(&path, 16 * 1024)
+                .expect_err("invalid physics resource must fail");
+            assert_eq!(error.code, DiagnosticCode::ModelPhysicsInvalid);
+            assert!(error.detail.contains(expected_detail), "{}", error.detail);
+            assert_eq!(error.resource.as_deref(), Some("physics3.json"));
+        }
     }
 
     #[test]
