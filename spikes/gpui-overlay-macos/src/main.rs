@@ -951,6 +951,9 @@ fn main() {
     let simulate_macos_stale_drawable_size = has_argument("--simulate-macos-stale-drawable-size");
     let simulate_renderer_loss_at_frame = argument_value("--simulate-renderer-loss-at-frame")
         .and_then(|value| value.parse::<u64>().ok());
+    let simulate_surface_unavailable_at_frame =
+        argument_value("--simulate-surface-unavailable-at-frame")
+            .and_then(|value| value.parse::<u64>().ok());
 
     Application::new().run(move |cx: &mut App| {
         #[cfg(target_os = "macos")]
@@ -1154,6 +1157,7 @@ fn main() {
                             tick_frame_source(
                                 cx.global_mut::<OverlayGlobal>(),
                                 simulate_renderer_loss_at_frame,
+                                simulate_surface_unavailable_at_frame,
                             )
                         })
                         .unwrap_or(FrameTickOutcome {
@@ -1262,6 +1266,7 @@ fn main() {
 fn tick_frame_source(
     global: &mut OverlayGlobal,
     simulate_renderer_loss_at_frame: Option<u64>,
+    simulate_surface_unavailable_at_frame: Option<u64>,
 ) -> FrameTickOutcome {
     if !global.frame_source.running {
         global.frame_source.stopped = true;
@@ -1290,15 +1295,28 @@ fn tick_frame_source(
         return try_recover_overlay(global);
     }
 
-    let should_inject = simulate_renderer_loss_at_frame
+    let injected_failure = if global.frame_source.injected_failure {
+        None
+    } else if simulate_renderer_loss_at_frame
         .is_some_and(|frame| frame == global.frame_source.frames)
-        && !global.frame_source.injected_failure;
-    let render_result = if should_inject {
-        global.frame_source.injected_failure = true;
-        Err(FrameFailure {
+    {
+        Some(FrameFailure {
             kind: FrameFailureKind::DeviceLost,
             message: "simulated renderer device loss".into(),
         })
+    } else if simulate_surface_unavailable_at_frame
+        .is_some_and(|frame| frame == global.frame_source.frames)
+    {
+        Some(FrameFailure {
+            kind: FrameFailureKind::SurfaceUnavailable,
+            message: "simulated renderer surface unavailable".into(),
+        })
+    } else {
+        None
+    };
+    let render_result = if let Some(failure) = injected_failure {
+        global.frame_source.injected_failure = true;
+        Err(failure)
     } else {
         let overlay = global
             .overlay

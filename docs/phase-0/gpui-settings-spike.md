@@ -135,9 +135,11 @@ macOS 本机通过真实 `accessibilityChildren`、`accessibilityRole` 和 `acce
 读取 `AXGroup` root 与 6 个控件，并对 Dark `AXRadioButton` 调用
 `accessibilityPerformPress`；日志确认 action 在 GPUI 线程应用。AccessKit 按 VoiceOver 约定
 隐藏顶层 `Role::Window` 的重复标题，因此测试验证 native window title 和内部 role/title，
-不错误要求 semantic root 再暴露同名 label。Windows workflow 已增加外部 .NET UIA client，
-将读取同等控件、调用 Dark radio 并验证 `SelectionItem.IsSelected`；该 runner 通过前 ADR-0009
-与完整辅助功能 checkbox 仍保持未完成。
+不错误要求 semantic root 再暴露同名 label。commit `fd9ad85` 的 push run `33255204781`、
+job `99107586036` 已由外部 .NET UIA client 读取 Appearance group、三个 radio、text input、
+status bar 和 Refresh button，再调用 Dark radio 的 `SelectionItem.Select` 并验证
+`SelectionItem.IsSelected` 与 GPUI typed action marker。该证据覆盖 Windows 原生 UIA
+role/name/action/selected，不替代 Narrator、错误/loading 宣读、IME、DPI 或窗口重建实测。
 
 `accesskit_macos 0.27.0` 的公开 adapter 类型基于 `objc2 0.5.x`，因此仅用于 AX 诊断消息的
 直接 `objc2` 精确固定为 `0.5.2`，避免通过 `objc2 0.6` Rust 类型访问另一 generation 的
@@ -152,8 +154,8 @@ Objective-C 对象。该版本例外的解除条件是 AccessKit macOS adapter �
 
 - marked-text 纯状态 contract 已通过；真实中文输入法组合态尚未在 macOS 上完成端到端验证，Windows IME、字体、DPI 和辅助技术尚未验证。
 - tooltip、dialog 和完整菜单交互尚未验证。
-- macOS 内容 AX tree/action 本机已通过；Windows UI Automation runner、真实 VoiceOver/Narrator 操作、错误/loading 宣读顺序仍待完成。
+- macOS 内容 AX tree/action 与 Windows UI Automation runner 已通过；真实 VoiceOver/Narrator 操作、错误/loading 宣读顺序仍待完成。
 - 菜单栏常驻策略、隐藏行为和 native overlay 共存尚未验证。
 - Windows 已通过编译和真实窗口/首帧/退出 runner smoke；字体、IME、DPI 切换、辅助技术和系统集成仍未验证。
 
-因此默认 shader 工具链、`.app` bundle/lifecycle、主题、基础编辑交互与 macOS 最小 AX tree/action 子项可以单独记录为通过；Windows UIA、真实辅助技术/IME、overlay 共存和完整 GPUI spike 仍保持未完成。GPUI go/no-go 决策必须等 ADR-0009 的全部 gate 有证据后再做。
+因此默认 shader 工具链、`.app` bundle/lifecycle、主题、基础编辑交互与双平台最小 AX/UIA tree/action 子项可以单独记录为通过；真实辅助技术/IME、overlay 共存和完整 GPUI spike 仍保持未完成。GPUI go/no-go 决策必须等 ADR-0009 的全部 gate 有证据后再做。

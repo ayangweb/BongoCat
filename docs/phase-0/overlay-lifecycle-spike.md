@@ -149,6 +149,12 @@ drawable unavailable 降级、GPUI 正常退出、owner 释放，以及
 在恢复期间显示 recovering，成功后切回 recovered。重建最多尝试 3 次并使用有限退避，
 耗尽后只停止 frame source、保留 GPUI 设置窗口和诊断，不进入 panic 或忙循环。
 
+Windows runner 还分别注入 `device_lost` 与 `surface_unavailable` 帧故障。两条路径都必须先
+打印 degraded 分类，随后按 D3D11/DirectComposition owner -> HWND 顺序释放旧实例，经过有限
+退避才创建新 renderer，并让设置窗口从 recovering 更新为 recovered；最终诊断必须为
+`failures=1 recoveries=1`。这验证分类后的恢复状态机与析构顺序，不替代真实
+`Present`/swapchain 返回 DXGI 错误或物理 device removal。
+
 当前非空帧使用 spike 内的合成顶点和运行时编译 Metal shader，只证明 Rust 能独立
 创建 pipeline、提交真实 draw call、进行预乘 alpha 合成并可靠回读。它不包含 Cubism
 drawable、模型纹理、draw order、mask 或 production shader 打包；这些仍属于 1.8 的

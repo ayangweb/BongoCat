@@ -734,6 +734,32 @@ jobs:
             throw "Windows renderer was recreated before the failed GPU/window owner released"
           }
 
+          $surfaceRecovered = Invoke-OverlaySmoke `
+            -Name "surface-recovery" `
+            -Arguments @("--simulate-surface-unavailable-at-frame", "12", "--auto-quit-ms", "1800")
+          @(
+            "frame degraded kind=surface_unavailable error=simulated renderer surface unavailable",
+            "frame renderer recovered attempt=1",
+            "settings overlay status=GPUI settings + native overlay (recovered)",
+            "failures=1 recoveries=1"
+          ) | ForEach-Object {
+            if (-not $surfaceRecovered.Contains($_)) {
+              throw "surface-recovery overlay smoke did not report: $_"
+            }
+          }
+          $surfaceDegradedAt = $surfaceRecovered.IndexOf("frame degraded kind=surface_unavailable")
+          $surfaceGpuReleasedAt = $surfaceRecovered.IndexOf("Windows overlay GPU released", $surfaceDegradedAt)
+          $surfaceWindowDestroyedAt = $surfaceRecovered.IndexOf("Windows overlay window destroyed", $surfaceGpuReleasedAt)
+          $surfaceRecoveredAt = $surfaceRecovered.IndexOf("frame renderer recovered attempt=1")
+          if (
+            $surfaceDegradedAt -lt 0 -or
+            $surfaceGpuReleasedAt -le $surfaceDegradedAt -or
+            $surfaceWindowDestroyedAt -le $surfaceGpuReleasedAt -or
+            $surfaceRecoveredAt -le $surfaceWindowDestroyedAt
+          ) {
+            throw "Windows surface recovery recreated the renderer before releasing GPU/HWND"
+          }
+
           $cycles = Invoke-OverlaySmoke `
             -Name "cycles" `
             -Arguments @("--windows-overlay-cycles", "100")

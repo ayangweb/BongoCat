@@ -155,7 +155,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 1.5 GPUI spike
 
-状态（2026-08-29）：已在 `spikes/gpui-settings/` 建立隔离的 macOS 最小窗口，精确锁定 `gpui = 0.2.2` 并生成独立 lockfile；默认预编译 shader、release `.app`、菜单、窗口关闭/重开和 shutdown smoke 通过。当前 spike 还验证了 System/Light/Dark 主题、焦点边框、Tab/Shift-Tab、Unicode/grapheme 文本编辑、选择、剪切、复制和粘贴，以及 GPUI executor 上的 bounded typed command/revision snapshot/shutdown acknowledgement，并保存浅色/深色截图证据。marked-text 纯状态 contract 已覆盖连续中文组合、已有多字节前缀、surrogate pair 和异常 range。项目自有 AccessKit tree 已由 macOS AppKit AX API 读取 8 个语义节点，Dark radio 的系统 press 经强类型 channel 回到 GPUI；Windows UIA runner、真实系统 IME、完整 tooltip/dialog 和真实辅助技术操作仍未验证，详见 `docs/phase-0/gpui-settings-spike.md`。
+状态（2026-08-29）：已在 `spikes/gpui-settings/` 建立隔离的 macOS 最小窗口，精确锁定 `gpui = 0.2.2` 并生成独立 lockfile；默认预编译 shader、release `.app`、菜单、窗口关闭/重开和 shutdown smoke 通过。当前 spike 还验证了 System/Light/Dark 主题、焦点边框、Tab/Shift-Tab、Unicode/grapheme 文本编辑、选择、剪切、复制和粘贴，以及 GPUI executor 上的 bounded typed command/revision snapshot/shutdown acknowledgement，并保存浅色/深色截图证据。marked-text 纯状态 contract 已覆盖连续中文组合、已有多字节前缀、surrogate pair 和异常 range。项目自有 AccessKit tree 已由 macOS AppKit AX API 读取 8 个语义节点，Dark radio 的系统 press 经强类型 channel 回到 GPUI；Windows UIA runner 也已读取同等 role/name 并通过 `SelectionItem.Select` 验证 selected/action。真实系统 IME、完整 tooltip/dialog 和真实辅助技术操作仍未验证，详见 `docs/phase-0/gpui-settings-spike.md`。
 
 - [x] 建立最小 Rust workspace 和 GPUI hello/settings 窗口。
 - [x] 固定 `gpui = "=0.2.2"` 并提交 Cargo.lock。
@@ -166,7 +166,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 验证窗口关闭、重开和退出生命周期；隐藏到托盘/菜单栏待系统集成阶段验证。
 - [x] 验证 GPUI async executor 与 runtime channel 可安全通信；bounded command/reply、revision 过滤、receiver close 和 shutdown acknowledgement 已通过 contract test 与 macOS release `.app` smoke。
 - [ ] 验证辅助功能树满足设置表单的基础要求。
-  - 状态：macOS 本机已验证 role/title/value、selected/focus、busy/error 属性与 radio action；Windows UIA workflow 已接入但等待 runner，真实 VoiceOver/Narrator 和 error/loading 宣读仍待完成，因此保持未勾选。
+  - 状态：macOS 本机已验证 role/title/value、selected/focus、busy/error 属性与 radio action；commit `fd9ad85` 的 push run `33255204781`、job `99107586036` 已通过 Windows UIA role/name、radio selection action 与 selected state。真实 VoiceOver/Narrator 和 error/loading 宣读仍待完成，因此保持未勾选。
 - [x] 记录首次打开、空闲 CPU、RSS 和二进制增量；`docs/benchmark/data/gpui-settings-macos-248a770-*.csv` 保存原始样本，方法、环境和限制见 `docs/phase-0/gpui-settings-spike.md`。
 - [x] 安装并固定 macOS Metal Toolchain，验证 GPUI 默认预编译 shader 路径；`runtime_shaders` 不作为发布配置。
 - [ ] 将 macOS spike 打包为最小 `.app`，验证 bundle id、菜单、激活、关闭和辅助功能树可被系统识别。
@@ -196,7 +196,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-29）：GPUI executor 上的 60 Hz 定时 frame source 已连续驱动双平台 renderer，并在退出时通过停止确认后才释放 renderer/GPU/window；macOS 本机与 Windows hardware D3D11 runner 均已验证连续帧、resize、hide/show 和有序退出。生产 display-linked frame source 与 runtime 尚未接入，因此保持未完成。
 - [x] 写明 GPUI/AppKit/Win32 主线程所有权、overlay 创建线程和跨线程 command 不变量。
 - [ ] 注入 renderer 初始化失败、drawable/swapchain unavailable 和 device lost，设置窗口仍可打开并显示诊断。
-  - 状态（2026-08-29）：Windows push/PR runner 已通过 renderer 初始化失败与 GPUI degraded 状态；macOS push/PR runner 已通过受控 drawable unavailable、GPUI degraded、正常 quit 与 owner 释放。本批又实现运行中故障的双平台恢复状态机：旧 owner 先释放，有限退避后完整重建，GPUI 显示 recovering/recovered，macOS 本机注入结果为 `frames=87 failures=1 recoveries=1`；Windows runner 已接入同等 smoke。Windows 真实 swapchain unavailable 与双平台真实驱动 device loss 仍待完成。
+  - 状态（2026-08-29）：Windows push/PR runner 已通过 renderer 初始化失败与 GPUI degraded 状态；macOS push/PR runner 已通过受控 drawable unavailable、GPUI degraded、正常 quit 与 owner 释放。运行中故障的双平台恢复状态机先释放旧 owner，有限退避后完整重建，GPUI 显示 recovering/recovered；device-lost 注入已通过 macOS 本机与 Windows runner。本批又为 Windows runner 增加独立 surface-unavailable 注入，要求 D3D11/DirectComposition owner 和 HWND 均早于重建释放，并验证 `failures=1 recoveries=1`。真实 swapchain unavailable 与双平台真实驱动 device loss 仍待完成。
 
 ### 1.7 输入可靠性 spike
 
@@ -823,11 +823,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 8. [ ] `P0-GPUI-PACKAGE-MAC`：使用默认预编译 shader 构建 `.app`，验证 IME、剪贴板、焦点、辅助功能、主题和窗口重开。
    - 状态（2026-08-29）：默认 shader、bundle、菜单、窗口生命周期、主题、基础文本编辑/剪贴板、runtime bridge、性能基线与最小 AppKit AX tree/action 通过；marked-text 纯状态 contract 已覆盖连续中文组合和 UTF-16 多字节边界，但不替代真实系统 IME。ADR-0009 仍等待真实 VoiceOver、error/loading 宣读、完整 tooltip/dialog/focus chain 等证据。
 9. [ ] `P0-GPUI-WINDOWS`：在 Windows 构建同一 spike，验证字体、IME、DPI、辅助功能和正常退出。
-   - 状态（2026-08-29）：push run `33250457705`、job `99095132076` 已在 `windows-latest` 启动同一 GPUI settings executable，并通过窗口创建、首帧 `scale_factor`、runtime revision 和有序 shutdown 检查；窗口创建/辅助功能初始化失败现在非零退出。当前 workflow 新增进程外 UI Automation role/name/action/selected 检查，等待本批 runner；字体、真实 IME、DPI 切换和 Narrator 仍待 Windows 实机，因此保持未勾选。
+   - 状态（2026-08-29）：push run `33255204781`、job `99107586036` 已在 `windows-latest` 启动同一 GPUI settings executable，通过窗口创建、首帧 `scale_factor`、runtime revision、有序 shutdown，以及进程外 UI Automation role/name/selection action/selected 检查；窗口或辅助功能初始化失败会非零退出。字体、真实 IME、DPI 切换和 Narrator 仍待 Windows 实机，因此保持未勾选。
 10. [ ] `P0-OVERLAY`：GPUI 生命周期内完成 Windows D3D11/macOS Metal 透明 clear/present、错误注入和 100 次重建。
 
 - [x] 先完成无平台依赖的 overlay lifecycle contract probe；平台窗口和 GPU 验证仍未完成。
-- [x] Windows Win32/D3D11/DirectComposition owner、故障降级、析构顺序与 100-cycle 已通过既有 push/PR `windows-latest`；macOS 本机与 push/PR runner 的透明 clear/present、drawable unavailable、显式 shutdown 与 100-cycle 也已通过，并通过 `leaks` 基线消除窗口动画 retain cycle。GPUI 定时 frame source、双平台 resize、有序停止、原生 drag 状态切换及受控运行中故障恢复已实现；双平台具有 process thread 与 API 可见 GPU allocation 门禁，macOS 又以逐帧 backing-size 校正修复跨显示器后 drawable 尺寸漂移。commit `5baa6ba` 证明单次 `currentAllocatedSize` 相等不能代表无显示 compositor pool 收敛；当前 probe 对 window/owner/thread 零容差，并把 Metal 增长限制为一个按实测物理尺寸和三缓冲上限计算的 drawable pool，新 runner 仍待验证。完整 `P0-OVERLAY` 还等待 Windows 真实 swapchain unavailable、双平台真实 device-lost、driver 专项采样、物理拖动及显示器/DPI 切换。
+- [x] Windows Win32/D3D11/DirectComposition owner、故障降级、析构顺序与 100-cycle 已通过既有 push/PR `windows-latest`；macOS 本机与 push/PR runner 的透明 clear/present、drawable unavailable、显式 shutdown 与 100-cycle 也已通过，并通过 `leaks` 基线消除窗口动画 retain cycle。GPUI 定时 frame source、双平台 resize、有序停止、原生 drag 状态切换及受控运行中故障恢复已实现；双平台具有 process thread 与 API 可见 GPU allocation 门禁，macOS 又以逐帧 backing-size 校正修复跨显示器后 drawable 尺寸漂移。commit `5baa6ba` 证明单次 `currentAllocatedSize` 相等不能代表无显示 compositor pool 收敛；当前按实测物理尺寸和三缓冲上限计算一个 drawable pool，commit `fd9ad85` 的 push run `33255204781`、job `99107586014` 已通过新门禁。完整 `P0-OVERLAY` 还等待 Windows 真实 swapchain unavailable、双平台真实 device-lost、driver 专项采样、物理拖动及显示器/DPI 切换。
 
 11. [ ] `P0-INPUT-WINDOWS`：完成 Raw Input + pressed set + `GetAsyncKeyState` 校正并实测 issue #47 场景。
 

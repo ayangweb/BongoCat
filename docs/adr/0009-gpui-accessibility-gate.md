@@ -39,5 +39,5 @@ GPUI 继续作为当前首选设置 UI，但在辅助功能 gate 通过前保持
 - GPUI spike 的 AX 观察、环境和截图限制：`docs/phase-0/gpui-settings-spike.md`；
 - GPUI 版本固定为 crates.io `0.2.2`，见 `spikes/gpui-settings/Cargo.toml`；
 - macOS 本机通过 AppKit AX API 读取 8 个项目语义节点，并通过 `accessibilityPerformPress` 将 Dark radio action 送回 GPUI；
-- Windows workflow 使用进程外 UI Automation client 验证同等节点和 radio selected action，结果待本批 `windows-latest` runner；
+- commit `fd9ad85` 的 push run `33255204781`、job `99107586036` 使用进程外 UI Automation client 读取同等节点，并通过 `SelectionItem.Select` 验证 Dark radio 的 selected/action 闭环；
 - Iced 候选版本与 feature 清单通过 `cargo info iced@0.14.0 --verbose` 获取，源码检索未发现通用 accessibility surface。
