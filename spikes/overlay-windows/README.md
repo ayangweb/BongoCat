@@ -50,8 +50,10 @@ modes:
 ```
 
 The normal path must report two transparent presents and ordered GPU/HWND
-teardown. The injected failure must leave the GPUI settings window alive with
-a degraded status. The cycle probe warms process-global graphics state, then
+teardown; the GPUI quit path explicitly releases the overlay owner before
+posting the platform quit message. The injected failure must leave the GPUI
+settings window alive with a degraded status. The cycle probe warms
+process-global graphics state, then
 requires 100 full create/show/present/hide/drop cycles without process handle
 growth beyond a fixed four-handle tolerance. The standalone cycle process owns
 a thread-confined COM apartment, and CI terminates any individual smoke process

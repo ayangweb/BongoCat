@@ -245,6 +245,11 @@ fn main() {
                 Timer::after(Duration::from_millis(milliseconds)).await;
                 cx.update(|cx| {
                     println!("gpui-overlay-spike: auto quit requested");
+                    #[cfg(any(target_os = "macos", target_os = "windows"))]
+                    {
+                        let overlay = cx.global_mut::<OverlayGlobal>().overlay.take();
+                        drop(overlay);
+                    }
                     cx.quit();
                 })
                 .ok();
