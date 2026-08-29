@@ -222,8 +222,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-29）：真实 listen-only tap 与受控 timeout/user-disable Reset + re-enable 已通过；TCC 拒绝、撤销、重新授予和系统自然 timeout 矩阵仍待实机完成。
 - [ ] macOS 使用 CGEventSourceKeyState 校正 pressed state。
   - 状态（2026-08-29）：候选 pressed keycode 集合可生成仍按下快照和释放计数；run-loop consumer 已从 KeyDown/Up、`FlagsChanged` 和 Reset 维护平台候选集合，并每 `250 ms` 使用 `CGEventSourceKeyState` 校正，连续 `2` 次缺失才释放。本批在真实 callback 捕获合成 down/up 后故意不向 consumer 交付 KeyUp，20/20 cycle 均由校正释放唯一候选且 shutdown 前 pressed set 为 0。物理输入/系统自然丢事件与产品 runtime pressed state 接入仍待完成，因此保持未勾选。
-- [ ] 连续 start/stop/restart 输入服务 100 次，无资源泄漏。
-  - 状态（2026-08-29）：`--tap-ms 20 --cycles 100` 全部创建、运行、停止成功，无 error、disabled 残留或 callback panic；timeout/user-disable 又各完成 20 次受控恢复。专门的泄漏工具采样、100 次故障循环和权限故障重启仍待完成。
+- [x] 连续 start/stop/restart 输入服务 100 次，无资源泄漏。
+  - 验收证据（2026-08-29）：release probe 现在严格校验每个 cycle 的 enabled 恢复、callback panic、queue overflow/closed event 和 NSWorkspace observer 成对注销，任一失败均非零退出。`leaks --atExit` 的 100-cycle 报告 `0 leaks for 0 total leaked bytes`、physical footprint `5232K`，`NSZombieEnabled=YES` 另完成 100/100；两次均为 `queue_overflows=0 callback_panics=0 clean_shutdown=true`，且每个 tap worker 都已 join。timeout/user-disable 各 20 次恢复已另行通过；权限故障循环留在 TCC 矩阵，不阻塞本 restart owner 子项。
 - [x] 记录 monio 对照结果，但不引入生产依赖；`docs/phase-0/monio-comparison.md` 基于 commit `d1766e0dcd20dea0435be16cd80adaa749b86e30` 记录 Raw Input、channel、reconciliation、Reset、callback 和许可证差异。
 - [ ] 为 captured、reconciled、reset、duplicate、overflow 分别维护计数器，不记录具体键值。
   - 状态（2026-08-29）：macOS spike 已输出事件类型、reconciled release、Reset 次数/释放数、duplicate/unmatched 和 queue overflow/recovery 数量，且不输出具体键值；Windows 与产品 runtime 的统一诊断 snapshot 仍待完成。
