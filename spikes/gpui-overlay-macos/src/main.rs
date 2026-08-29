@@ -216,6 +216,7 @@ fn main() {
         )
         .expect("open GPUI settings window");
         println!("gpui-overlay-spike: GPUI settings window opened");
+        cx.activate(true);
 
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         cx.spawn(async move |cx| {
@@ -239,9 +240,14 @@ fn main() {
         .detach();
 
         if let Some(milliseconds) = auto_quit_ms {
+            println!("gpui-overlay-spike: auto quit scheduled milliseconds={milliseconds}");
             cx.spawn(async move |cx| {
                 Timer::after(Duration::from_millis(milliseconds)).await;
-                cx.update(|cx| cx.quit()).ok();
+                cx.update(|cx| {
+                    println!("gpui-overlay-spike: auto quit requested");
+                    cx.quit();
+                })
+                .ok();
             })
             .detach();
         }

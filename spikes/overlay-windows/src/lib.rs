@@ -28,6 +28,7 @@ use windows::{
             },
         },
         System::{
+            Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize},
             LibraryLoader::GetModuleHandleW,
             Threading::{GetCurrentProcess, GetProcessHandleCount},
         },
@@ -103,6 +104,7 @@ pub fn run_creation_cycles(cycles: u32) -> Result<CycleReport, String> {
     if cycles == 0 {
         return Err("overlay cycle count must be greater than zero".into());
     }
+    let _com_apartment = ComApartment::initialize().map_err(format_windows_error)?;
 
     // Warm up process-global D3D/DXGI state before measuring owned resources.
     {
@@ -130,6 +132,37 @@ pub fn run_creation_cycles(cycles: u32) -> Result<CycleReport, String> {
         handles_before,
         handles_after,
     })
+}
+
+struct ComApartment {
+    owner_thread: ThreadId,
+    _not_send_or_sync: std::marker::PhantomData<Rc<()>>,
+}
+
+impl ComApartment {
+    fn initialize() -> WindowsResult<Self> {
+        // SAFETY: the cycle probe initializes one STA on its current thread,
+        // retains this owner for the complete COM object lifetime, and pairs
+        // every successful initialization with CoUninitialize on that thread.
+        unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()? };
+        Ok(Self {
+            owner_thread: std::thread::current().id(),
+            _not_send_or_sync: std::marker::PhantomData,
+        })
+    }
+}
+
+impl Drop for ComApartment {
+    fn drop(&mut self) {
+        assert_eq!(
+            self.owner_thread,
+            std::thread::current().id(),
+            "COM apartment dropped outside its owner thread"
+        );
+        // SAFETY: this owner represents a successful CoInitializeEx call on
+        // the current thread and all overlay COM owners have already dropped.
+        unsafe { CoUninitialize() };
+    }
 }
 
 struct OverlayWindow {

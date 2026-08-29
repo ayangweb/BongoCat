@@ -344,23 +344,62 @@ jobs:
       - name: Smoke independent Win32 and D3D11 overlay
         if: matrix.manifest == 'spikes/gpui-overlay-macos/Cargo.toml'
         shell: pwsh
+        timeout-minutes: 5
         run: |
-          $normal = & cargo run `
+          cargo build `
             --manifest-path spikes/gpui-overlay-macos/Cargo.toml `
             --locked `
-            --release `
-            -- `
-            --auto-quit-ms 1800 2>&1 | Out-String
-          $normalExit = $LASTEXITCODE
-          Write-Host $normal
-          if ($normalExit -ne 0) {
-            throw "normal overlay smoke exited with $normalExit"
+            --release
+          if ($LASTEXITCODE -ne 0) {
+            throw "failed to build overlay smoke executable"
           }
+
+          $executable = Join-Path $PWD "spikes/gpui-overlay-macos/target/release/bongocat-gpui-overlay-macos-spike.exe"
+          function Invoke-OverlaySmoke {
+            param(
+              [string] $Name,
+              [string[]] $Arguments
+            )
+            $stdout = Join-Path $env:RUNNER_TEMP "$Name.stdout.log"
+            $stderr = Join-Path $env:RUNNER_TEMP "$Name.stderr.log"
+            Remove-Item $stdout, $stderr -Force -ErrorAction SilentlyContinue
+            $process = Start-Process `
+              -FilePath $executable `
+              -ArgumentList $Arguments `
+              -NoNewWindow `
+              -PassThru `
+              -RedirectStandardOutput $stdout `
+              -RedirectStandardError $stderr
+            if (-not $process.WaitForExit(30000)) {
+              Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+              $process.WaitForExit()
+              $output = @(
+                Get-Content $stdout -Raw -ErrorAction SilentlyContinue
+                Get-Content $stderr -Raw -ErrorAction SilentlyContinue
+              ) -join "`n"
+              Write-Host $output
+              throw "$Name overlay smoke exceeded 30 seconds"
+            }
+            $output = @(
+              Get-Content $stdout -Raw -ErrorAction SilentlyContinue
+              Get-Content $stderr -Raw -ErrorAction SilentlyContinue
+            ) -join "`n"
+            Write-Host $output
+            if ($process.ExitCode -ne 0) {
+              throw "$Name overlay smoke exited with $($process.ExitCode)"
+            }
+            return $output
+          }
+
+          $normal = Invoke-OverlaySmoke `
+            -Name "normal" `
+            -Arguments @("--auto-quit-ms", "1800")
           @(
             "Windows native overlay created",
             "Windows transparent clear/present submitted",
             "Windows overlay hidden",
             "GPUI settings window opened",
+            "auto quit requested",
             "Windows overlay GPU released",
             "Windows overlay window destroyed"
           ) | ForEach-Object {
@@ -374,38 +413,22 @@ jobs:
             throw "overlay did not release GPU before destroying HWND"
           }
 
-          $degraded = & cargo run `
-            --manifest-path spikes/gpui-overlay-macos/Cargo.toml `
-            --locked `
-            --release `
-            -- `
-            --simulate-overlay-init-failure `
-            --auto-quit-ms 900 2>&1 | Out-String
-          $degradedExit = $LASTEXITCODE
-          Write-Host $degraded
-          if ($degradedExit -ne 0) {
-            throw "degraded overlay smoke exited with $degradedExit"
-          }
+          $degraded = Invoke-OverlaySmoke `
+            -Name "degraded" `
+            -Arguments @("--simulate-overlay-init-failure", "--auto-quit-ms", "900")
           @(
             "overlay degraded error=simulated overlay initialization failure",
-            "GPUI settings window opened"
+            "GPUI settings window opened",
+            "auto quit requested"
           ) | ForEach-Object {
             if (-not $degraded.Contains($_)) {
               throw "degraded overlay smoke did not report: $_"
             }
           }
 
-          $cycles = & cargo run `
-            --manifest-path spikes/gpui-overlay-macos/Cargo.toml `
-            --locked `
-            --release `
-            -- `
-            --windows-overlay-cycles 100 2>&1 | Out-String
-          $cyclesExit = $LASTEXITCODE
-          Write-Host $cycles
-          if ($cyclesExit -ne 0) {
-            throw "overlay cycle smoke exited with $cyclesExit"
-          }
+          $cycles = Invoke-OverlaySmoke `
+            -Name "cycles" `
+            -Arguments @("--windows-overlay-cycles", "100")
           if (-not $cycles.Contains("Windows cycles=100") -or
               -not $cycles.Contains("clean_shutdown=true")) {
             throw "overlay cycle smoke did not complete all cycles"
