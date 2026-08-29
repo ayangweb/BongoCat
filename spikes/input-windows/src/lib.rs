@@ -16,6 +16,8 @@ pub const RI_MOUSE_BACK_BUTTON_DOWN: u16 = 0x0040;
 pub const RI_MOUSE_BACK_BUTTON_UP: u16 = 0x0080;
 pub const RI_MOUSE_FORWARD_BUTTON_DOWN: u16 = 0x0100;
 pub const RI_MOUSE_FORWARD_BUTTON_UP: u16 = 0x0200;
+pub const MOUSE_MOVE_ABSOLUTE: u16 = 0x0001;
+pub const MOUSE_VIRTUAL_DESKTOP: u16 = 0x0002;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PhysicalKey {
@@ -106,6 +108,20 @@ pub struct RawMousePacket {
     pub button_flags: u16,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RawPointerMovement {
+    pub x: i32,
+    pub y: i32,
+    pub absolute: bool,
+    pub virtual_desktop: bool,
+}
+
+impl RawPointerMovement {
+    pub fn has_motion(self) -> bool {
+        self.x != 0 || self.y != 0
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MouseButton {
     Left,
@@ -168,6 +184,52 @@ pub fn decode_raw_mouse_bytes(
             bytes[button_flags_offset],
             bytes[button_flags_offset + 1],
         ]),
+    })
+}
+
+/// Decode the stable movement fields of a `RAWMOUSE` payload.
+///
+/// Relative samples contain deltas; absolute samples contain the documented
+/// normalized coordinates. The callback does not accumulate either form in a
+/// reliable edge queue. It uses the sample only to mark cursor state dirty.
+pub fn decode_raw_pointer_movement(
+    header: RawInputHeader,
+    bytes: &[u8],
+    header_size: usize,
+) -> Result<RawPointerMovement, RawInputError> {
+    if bytes.len() < header_size || bytes.len() < 8 {
+        return Err(RawInputError::TruncatedHeader);
+    }
+    if header.declared_size > bytes.len() {
+        return Err(RawInputError::DeclaredSizeExceedsBuffer);
+    }
+    if header.input_type != 0 {
+        return Err(RawInputError::UnsupportedInputType);
+    }
+    let movement_end = header_size
+        .checked_add(20)
+        .ok_or(RawInputError::TruncatedMousePayload)?;
+    if header.declared_size < movement_end || bytes.len() < movement_end {
+        return Err(RawInputError::TruncatedMousePayload);
+    }
+    let flags = u16::from_le_bytes([bytes[header_size], bytes[header_size + 1]]);
+    let x_offset = header_size + 12;
+    let y_offset = header_size + 16;
+    Ok(RawPointerMovement {
+        x: i32::from_le_bytes([
+            bytes[x_offset],
+            bytes[x_offset + 1],
+            bytes[x_offset + 2],
+            bytes[x_offset + 3],
+        ]),
+        y: i32::from_le_bytes([
+            bytes[y_offset],
+            bytes[y_offset + 1],
+            bytes[y_offset + 2],
+            bytes[y_offset + 3],
+        ]),
+        absolute: flags & MOUSE_MOVE_ABSOLUTE != 0,
+        virtual_desktop: flags & MOUSE_VIRTUAL_DESKTOP != 0,
     })
 }
 
@@ -277,6 +339,7 @@ pub enum CapturedInputEvent {
     MouseButton(MouseButtonEdge),
     Reset(CaptureResetReason),
     Reconcile,
+    PointerTick,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1248,6 +1311,65 @@ mod tests {
                 24,
             ),
             Err(RawInputError::UnsupportedInputType)
+        );
+    }
+
+    #[test]
+    fn raw_pointer_decoder_preserves_relative_and_absolute_movement() {
+        let mut relative = [0u8; 48];
+        relative[36..40].copy_from_slice(&17i32.to_le_bytes());
+        relative[40..44].copy_from_slice(&(-9i32).to_le_bytes());
+        let relative = decode_raw_pointer_movement(
+            RawInputHeader {
+                declared_size: 48,
+                input_type: 0,
+            },
+            &relative,
+            24,
+        )
+        .unwrap();
+        assert_eq!(
+            relative,
+            RawPointerMovement {
+                x: 17,
+                y: -9,
+                absolute: false,
+                virtual_desktop: false,
+            }
+        );
+        assert!(relative.has_motion());
+
+        let mut absolute = [0u8; 40];
+        absolute[16..18]
+            .copy_from_slice(&(MOUSE_MOVE_ABSOLUTE | MOUSE_VIRTUAL_DESKTOP).to_le_bytes());
+        absolute[28..32].copy_from_slice(&32_767i32.to_le_bytes());
+        absolute[32..36].copy_from_slice(&65_535i32.to_le_bytes());
+        let absolute = decode_raw_pointer_movement(
+            RawInputHeader {
+                declared_size: 40,
+                input_type: 0,
+            },
+            &absolute,
+            16,
+        )
+        .unwrap();
+        assert!(absolute.absolute);
+        assert!(absolute.virtual_desktop);
+        assert_eq!((absolute.x, absolute.y), (32_767, 65_535));
+    }
+
+    #[test]
+    fn raw_pointer_decoder_rejects_short_payloads() {
+        assert_eq!(
+            decode_raw_pointer_movement(
+                RawInputHeader {
+                    declared_size: 28,
+                    input_type: 0,
+                },
+                &[0; 28],
+                24,
+            ),
+            Err(RawInputError::TruncatedMousePayload)
         );
     }
 

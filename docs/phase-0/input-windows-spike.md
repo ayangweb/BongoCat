@@ -13,11 +13,12 @@
 - 未知 scan code 保留为诊断值，不静默丢弃；
 - `GetRawInputData` 返回的声明长度、输入类型、键盘 payload 偏移和截断数据在进入 mapper 前校验；
 - `RAWMOUSE` 只在 safe decoder 中读取稳定的 `usButtonFlags` 前缀，将 left/right/middle/back/forward 的 down/up 映射为项目类型；纯移动和 wheel flag 不伪造 button edge，同包多边沿按固定顺序保留；
+- 独立 safe decoder 读取 `usFlags`、`lLastX` 和 `lLastY`，保留 relative/absolute 与 virtual-desktop 语义；截断 payload 在进入 callback 状态前拒绝；
 - 在永不显示的专用顶层 HWND 上为鼠标和键盘注册 `RIDEV_INPUTSINK`；顶层窗口用于接收 message-only HWND 收不到的电源广播；
 - `WM_INPUT` 先查询长度，再使用对齐 buffer 读取，不向安全 mapper 泄漏 handle/pointer；
-- callback 只把 keyboard/button edge、lifecycle Reset 和 reconciliation tick 写入容量 `64` 的强类型 FIFO；pressed candidate 只在 `DispatchMessageW` 返回后的 owner drain 中更新；
+- callback 只把 keyboard/button edge、lifecycle Reset 和低频 owner tick 写入容量 `64` 的强类型 FIFO；pressed candidate 与 cursor query 只在 `DispatchMessageW` 返回后的 owner drain 中更新；
 - 每个可靠事件携带单调 sequence；正常路径诊断 gap、duplicate/out-of-order，队列满载时原子丢弃不可信 backlog 并以同一 sequence 插入 `QueueOverflow` Reset；overflow、recovery Reset 和 discarded 数量全部可观测；
-- 鼠标移动不进入可靠边沿队列，避免位置洪峰阻塞 button/key release；后续接入产品时使用独立 latest-value 槽位；
+- 鼠标移动不进入可靠边沿队列：callback 只覆盖独立 `LatestValue<RawPointerMovement>` 槽位并记录 coalesced 数量；可靠 FIFO 只接收每 `16 ms` 一次的 owner tick，tick 在 callback 返回后调用 `GetCursorPos` 获取当前屏幕位置，坐标不写入日志；
 - `WM_DESTROY` 先写入 `ServiceStopped` Reset 再关闭 producer，message owner 最终 drain 后才报告 clean shutdown；关闭后的迟到 push 会被拒绝并计数；
 - callback panic boundary、`WM_TIMER` 自动退出、Raw Input 注销、window class 注销和清理结果诊断。
 - 只对本地 pressed candidates 建立 physical-key 到 Win32 virtual-key 的查询计划，左右修饰键使用独立 virtual-key；
@@ -50,7 +51,7 @@ cargo run --manifest-path spikes/input-windows/Cargo.toml --locked --release -- 
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --lifecycle-smoke-ms 100
 ```
 
-当前本地验证包括 macOS host 上的 format、25 项 contract test 和 Clippy，以及 `x86_64-pc-windows-msvc`、`aarch64-pc-windows-msvc` 的 check/Clippy。测试覆盖左右修饰键 virtual-key、只查询 pressed candidates、未知键触发 Reset、设备移除/服务停止/session/power Reset、Reset 释放数量、重复 down/无匹配 up 诊断、连续两次缺失释放、仍按下取消待确认、零确认阈值拒绝、RAWMOUSE 五个规范 button，以及可靠队列的 FIFO overflow Reset、关闭 drain 和 sequence gap/duplicate 诊断。
+当前本地验证包括 macOS host 上的 format、27 项 contract test 和 Clippy，以及 `x86_64-pc-windows-msvc`、`aarch64-pc-windows-msvc` 的 check/Clippy。测试覆盖左右修饰键 virtual-key、只查询 pressed candidates、未知键触发 Reset、设备移除/服务停止/session/power Reset、Reset 释放数量、重复 down/无匹配 up 诊断、连续两次缺失释放、仍按下取消待确认、零确认阈值拒绝、RAWMOUSE 五个规范 button、相对/绝对/virtual-desktop movement 与截断拒绝，以及可靠队列的 FIFO overflow Reset、关闭 drain 和 sequence gap/duplicate 诊断。
 
 Windows runner 验收证据：
 
@@ -153,3 +154,10 @@ producer 关闭且队列完全 drain。commit `98b27f2` 的 push run `3325731077
 1536 个 keyboard edge、pointer flood、lifecycle Reset 与 config-store 回归。该受控 overflow
 证明恢复策略在真实 Win32 callback/dispatch 路径执行，但不代表正常物理压力下允许 overflow；
 产品门槛仍要求正常压力计数始终为 0。
+
+pointer flood 现在进一步断言 decoded movement、latest-value consumption 和 cursor query：每个
+非零 RAWMOUSE movement 都计入 captured sample；slot 已有未消费值时只增加 coalesced 计数，
+不占用可靠 FIFO。16ms tick 消费 sample 后查询一次 `GetCursorPos`，shutdown 前再通过 final tick
+清空，因此必须满足 `movement_samples = coalesced + consumed`、`cursor_queries = consumed`、
+query error 为 0，同时原有 1536 keyboard edge、queue gap/overflow 和 pressed candidate 门禁
+保持不变。Windows runner 证据待本批提交后补录。

@@ -1,10 +1,11 @@
+use bongocat_input_queue_spike::LatestValue;
 use bongocat_input_windows_spike::{
     CaptureEventQueue, CaptureQueuePushError, CaptureResetReason, CaptureSequenceDiagnostics,
     CapturedInputEvent, KeyStateSnapshot, KeyboardEdge, MouseButton, MouseButtonStateSnapshot,
     PhysicalKey, PressedKeyCandidates, PressedMouseCandidates, RawInputHeader, RawMousePacket,
-    collect_key_state_snapshot_with, collect_mouse_button_state_snapshot_with,
+    RawPointerMovement, collect_key_state_snapshot_with, collect_mouse_button_state_snapshot_with,
     decode_keyboard_packet, decode_mouse_button_edges, decode_raw_keyboard_bytes,
-    decode_raw_mouse_bytes,
+    decode_raw_mouse_bytes, decode_raw_pointer_movement,
 };
 use std::{
     collections::{BTreeSet, VecDeque},
@@ -16,7 +17,7 @@ use std::{
 };
 use windows::{
     Win32::{
-        Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM},
+        Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM},
         System::LibraryLoader::GetModuleHandleW,
         System::RemoteDesktop::{
             NOTIFY_FOR_THIS_SESSION, WTSRegisterSessionNotification,
@@ -38,8 +39,8 @@ use windows::{
             },
             WindowsAndMessaging::{
                 CREATESTRUCTW, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
-                GIDC_ARRIVAL, GIDC_REMOVAL, GWLP_USERDATA, GetMessageW, GetWindowLongPtrW,
-                KillTimer, MSG, PBT_APMRESUMEAUTOMATIC, PBT_APMRESUMECRITICAL,
+                GIDC_ARRIVAL, GIDC_REMOVAL, GWLP_USERDATA, GetCursorPos, GetMessageW,
+                GetWindowLongPtrW, KillTimer, MSG, PBT_APMRESUMEAUTOMATIC, PBT_APMRESUMECRITICAL,
                 PBT_APMRESUMESTANDBY, PBT_APMRESUMESUSPEND, PBT_APMSTANDBY, PBT_APMSUSPEND,
                 PostQuitMessage, RegisterClassW, SendMessageW, SetTimer, SetWindowLongPtrW,
                 TranslateMessage, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP,
@@ -55,7 +56,9 @@ use windows::{
 
 const STOP_TIMER_ID: usize = 1;
 const RECONCILIATION_TIMER_ID: usize = 2;
+const POINTER_SAMPLE_TIMER_ID: usize = 3;
 const RECONCILIATION_INTERVAL_MS: u32 = 250;
+const POINTER_SAMPLE_INTERVAL_MS: u32 = 16;
 const REQUIRED_MISSING_CONFIRMATIONS: u8 = 2;
 const SYNTHETIC_INPUT_BATCH_SIZE: usize = 256;
 const CAPTURE_QUEUE_CAPACITY: usize = 64;
@@ -164,6 +167,11 @@ pub struct RegistrationReport {
     pub capture_sequence_duplicates_or_out_of_order: u64,
     pub capture_queue_remaining: usize,
     pub capture_queue_closed: bool,
+    pub pointer_movement_samples: u64,
+    pub pointer_samples_coalesced: u64,
+    pub pointer_samples_consumed: u64,
+    pub cursor_position_queries: u64,
+    pub cursor_position_query_errors: u64,
 }
 
 struct WindowState {
@@ -179,6 +187,7 @@ struct WindowState {
     pressed_mouse_candidates: PressedMouseCandidates,
     capture_queue: CaptureEventQueue,
     capture_sequence: CaptureSequenceDiagnostics,
+    latest_pointer_movement: LatestValue<RawPointerMovement>,
     reconciliation_runs: u64,
     reconciliation_query_errors: u64,
     decode_errors: u64,
@@ -193,6 +202,11 @@ struct WindowState {
     synthetic_order_errors: u64,
     intentionally_dropped_releases: u64,
     drop_next_release: bool,
+    pointer_movement_samples: u64,
+    pointer_samples_coalesced: u64,
+    pointer_samples_consumed: u64,
+    cursor_position_queries: u64,
+    cursor_position_query_errors: u64,
 }
 
 impl Default for WindowState {
@@ -210,6 +224,7 @@ impl Default for WindowState {
             pressed_mouse_candidates: PressedMouseCandidates::default(),
             capture_queue: CaptureEventQueue::with_capacity(CAPTURE_QUEUE_CAPACITY),
             capture_sequence: CaptureSequenceDiagnostics::default(),
+            latest_pointer_movement: LatestValue::default(),
             reconciliation_runs: 0,
             reconciliation_query_errors: 0,
             decode_errors: 0,
@@ -224,6 +239,11 @@ impl Default for WindowState {
             synthetic_order_errors: 0,
             intentionally_dropped_releases: 0,
             drop_next_release: false,
+            pointer_movement_samples: 0,
+            pointer_samples_coalesced: 0,
+            pointer_samples_consumed: 0,
+            cursor_position_queries: 0,
+            cursor_position_query_errors: 0,
         }
     }
 }
@@ -293,6 +313,11 @@ impl WindowState {
                 .duplicates_or_out_of_order,
             capture_queue_remaining: self.capture_queue.len(),
             capture_queue_closed: self.capture_queue.is_closed(),
+            pointer_movement_samples: self.pointer_movement_samples,
+            pointer_samples_coalesced: self.pointer_samples_coalesced,
+            pointer_samples_consumed: self.pointer_samples_consumed,
+            cursor_position_queries: self.cursor_position_queries,
+            cursor_position_query_errors: self.cursor_position_query_errors,
         }
     }
 
@@ -326,7 +351,33 @@ impl WindowState {
                 }
                 CapturedInputEvent::Reset(reason) => self.reset_candidates(reason),
                 CapturedInputEvent::Reconcile => self.reconcile_pressed_candidates(),
+                CapturedInputEvent::PointerTick => self.consume_pointer_movement(),
             }
+        }
+    }
+
+    fn record_pointer_movement(&mut self, movement: RawPointerMovement) {
+        if !movement.has_motion() {
+            return;
+        }
+        self.pointer_movement_samples += 1;
+        if self.latest_pointer_movement.peek().is_some() {
+            self.pointer_samples_coalesced += 1;
+        }
+        self.latest_pointer_movement.replace(movement);
+    }
+
+    fn consume_pointer_movement(&mut self) {
+        if self.latest_pointer_movement.take().is_none() {
+            return;
+        }
+        self.pointer_samples_consumed += 1;
+        let mut cursor = POINT::default();
+        // SAFETY: GetCursorPos receives a valid, initialized out pointer that
+        // remains local to the message owner. Coordinates are not logged.
+        match unsafe { GetCursorPos(&mut cursor) } {
+            Ok(()) => self.cursor_position_queries += 1,
+            Err(_) => self.cursor_position_query_errors += 1,
         }
     }
 
@@ -609,10 +660,27 @@ unsafe fn run_registration_smoke_inner(
         let _ = unsafe { UnregisterClassW(class_name, Some(instance)) };
         return Err(error);
     }
+    if unsafe {
+        SetTimer(
+            Some(window),
+            POINTER_SAMPLE_TIMER_ID,
+            POINTER_SAMPLE_INTERVAL_MS,
+            None,
+        )
+    } == 0
+    {
+        let error = Error::from_thread();
+        let _ = unsafe { KillTimer(Some(window), RECONCILIATION_TIMER_ID) };
+        let _ = unsafe { DestroyWindow(window) };
+        let _ = unsafe { unregister_raw_input_devices() };
+        let _ = unsafe { UnregisterClassW(class_name, Some(instance)) };
+        return Err(error);
+    }
     let timeout_ms = duration.as_millis().clamp(1, u128::from(u32::MAX)) as u32;
     if unsafe { SetTimer(Some(window), STOP_TIMER_ID, timeout_ms, None) } == 0 {
         let error = Error::from_thread();
         let _ = unsafe { KillTimer(Some(window), RECONCILIATION_TIMER_ID) };
+        let _ = unsafe { KillTimer(Some(window), POINTER_SAMPLE_TIMER_ID) };
         let _ = unsafe { DestroyWindow(window) };
         let _ = unsafe { unregister_raw_input_devices() };
         let _ = unsafe { UnregisterClassW(class_name, Some(instance)) };
@@ -851,9 +919,10 @@ unsafe extern "system" fn window_proc(
                     state.keyboard_edges += 1;
                     let _ = state.enqueue_capture_event(CapturedInputEvent::Keyboard(edge));
                 }
-                Ok(Some(CapturedRawInput::Mouse(packet))) => {
+                Ok(Some(CapturedRawInput::Mouse(raw_mouse))) => {
                     state.mouse_messages += 1;
-                    for edge in decode_mouse_button_edges(packet) {
+                    state.record_pointer_movement(raw_mouse.movement);
+                    for edge in decode_mouse_button_edges(raw_mouse.buttons) {
                         state.mouse_button_edges += 1;
                         let _ = state.enqueue_capture_event(CapturedInputEvent::MouseButton(edge));
                     }
@@ -925,6 +994,12 @@ unsafe extern "system" fn window_proc(
             let _ = unsafe { &mut *state }.enqueue_capture_event(CapturedInputEvent::Reconcile);
             Some(LRESULT(0))
         }
+        WM_TIMER if wparam.0 == POINTER_SAMPLE_TIMER_ID && !state.is_null() => {
+            // Pointer data remains in its coalescing slot; only the low-rate
+            // owner tick enters the ordered control queue.
+            let _ = unsafe { &mut *state }.enqueue_capture_event(CapturedInputEvent::PointerTick);
+            Some(LRESULT(0))
+        }
         WM_CAPTURE_TEST_QUEUE_OVERFLOW if !state.is_null() => {
             // SAFETY: this test-only message is sent synchronously while the
             // WindowState owner is alive. It proves recovery within one callback.
@@ -940,6 +1015,7 @@ unsafe extern "system" fn window_proc(
         WM_TIMER if wparam.0 == STOP_TIMER_ID => {
             let _ = unsafe { KillTimer(Some(window), STOP_TIMER_ID) };
             let _ = unsafe { KillTimer(Some(window), RECONCILIATION_TIMER_ID) };
+            let _ = unsafe { KillTimer(Some(window), POINTER_SAMPLE_TIMER_ID) };
             let _ = unsafe { DestroyWindow(window) };
             Some(LRESULT(0))
         }
@@ -950,6 +1026,7 @@ unsafe extern "system" fn window_proc(
                 // enqueue the final Reset and close the producer exactly once.
                 // The owner drains it after DispatchMessageW returns.
                 let state = unsafe { &mut *state };
+                let _ = state.enqueue_capture_event(CapturedInputEvent::PointerTick);
                 let _ = state.enqueue_capture_event(CapturedInputEvent::Reset(
                     CaptureResetReason::ServiceStopped,
                 ));
@@ -986,7 +1063,12 @@ unsafe extern "system" fn window_proc(
 
 enum CapturedRawInput {
     Keyboard(KeyboardEdge),
-    Mouse(RawMousePacket),
+    Mouse(CapturedRawMouse),
+}
+
+struct CapturedRawMouse {
+    buttons: RawMousePacket,
+    movement: RawPointerMovement,
 }
 
 unsafe fn read_raw_input(lparam: LPARAM) -> Result<Option<CapturedRawInput>, ()> {
@@ -1019,16 +1101,18 @@ unsafe fn read_raw_input(lparam: LPARAM) -> Result<Option<CapturedRawInput>, ()>
     let bytes = unsafe { slice::from_raw_parts(storage.as_ptr().cast::<u8>(), read as usize) };
     let native_header = unsafe { (bytes.as_ptr() as *const RAWINPUTHEADER).read_unaligned() };
     if native_header.dwType == 0 {
-        let packet = decode_raw_mouse_bytes(
-            RawInputHeader {
-                declared_size: native_header.dwSize as usize,
-                input_type: native_header.dwType,
-            },
-            bytes,
-            header_size as usize,
-        )
-        .map_err(|_| ())?;
-        return Ok(Some(CapturedRawInput::Mouse(packet)));
+        let header = RawInputHeader {
+            declared_size: native_header.dwSize as usize,
+            input_type: native_header.dwType,
+        };
+        let buttons =
+            decode_raw_mouse_bytes(header, bytes, header_size as usize).map_err(|_| ())?;
+        let movement =
+            decode_raw_pointer_movement(header, bytes, header_size as usize).map_err(|_| ())?;
+        return Ok(Some(CapturedRawInput::Mouse(CapturedRawMouse {
+            buttons,
+            movement,
+        })));
     }
     if native_header.dwType != 1 {
         return Ok(None);

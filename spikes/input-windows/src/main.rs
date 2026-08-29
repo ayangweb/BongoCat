@@ -60,6 +60,24 @@ fn main() {
             report.mouse_messages >= cycles as u64,
             "pointer flood produced too few Raw Input mouse messages"
         );
+        assert!(
+            report.pointer_movement_samples >= cycles as u64,
+            "pointer flood produced too few decoded movement samples"
+        );
+        assert!(
+            report.pointer_samples_coalesced > 0,
+            "pointer flood did not exercise latest-value coalescing"
+        );
+        assert!(report.pointer_samples_consumed > 0);
+        assert_eq!(
+            report.pointer_movement_samples,
+            report.pointer_samples_coalesced + report.pointer_samples_consumed
+        );
+        assert_eq!(
+            report.cursor_position_queries,
+            report.pointer_samples_consumed
+        );
+        assert_eq!(report.cursor_position_query_errors, 0);
         assert_eq!(report.synthetic_expected_edges, expected_edges as u64);
         assert_eq!(report.synthetic_edges_seen, expected_edges as u64);
         assert_eq!(report.synthetic_down_edges, expected_pairs as u64);
@@ -275,7 +293,7 @@ fn main() {
 #[cfg(target_os = "windows")]
 fn print_registration_report(report: windows_capture::RegistrationReport) {
     println!(
-        "input-windows-spike: registered={} session_notifications_registered={} session_notifications_unregistered={} clean_shutdown={} raw_messages={} keyboard_edges={} mouse_messages={} mouse_button_edges={} mouse_captured_down={} mouse_captured_up={} mouse_duplicate_down={} mouse_unmatched_up={} mouse_resets={} mouse_reset_releases={} mouse_reconciled_releases={} mouse_candidates_remaining={} device_arrivals={} device_removals={} resets={} reset_releases={} device_removed_resets={} session_change_resets={} power_change_resets={} service_stopped_resets={} unqueryable_key_resets={} state_query_unavailable_resets={} queue_overflow_resets={} reconciliation_runs={} reconciled_releases={} reconciliation_query_errors={} decode_errors={} callback_panics={} synthetic_inputs_sent={} synthetic_pointer_inputs_requested={} synthetic_expected_edges={} synthetic_edges_seen={} synthetic_down_edges={} synthetic_up_edges={} synthetic_order_errors={} synthetic_expected_edges_remaining={} intentionally_dropped_releases={} captured_down={} captured_up={} duplicate_down={} unmatched_up={} pressed_candidates_remaining={} capture_queue_capacity={} capture_events_enqueued={} capture_events_consumed={} capture_queue_overflows={} capture_queue_recovery_resets={} capture_queue_discarded={} capture_queue_closed_pushes={} capture_sequence_gaps={} capture_sequence_duplicates_or_out_of_order={} capture_queue_remaining={} capture_queue_closed={}",
+        "input-windows-spike: registered={} session_notifications_registered={} session_notifications_unregistered={} clean_shutdown={} raw_messages={} keyboard_edges={} mouse_messages={} mouse_button_edges={} mouse_captured_down={} mouse_captured_up={} mouse_duplicate_down={} mouse_unmatched_up={} mouse_resets={} mouse_reset_releases={} mouse_reconciled_releases={} mouse_candidates_remaining={} device_arrivals={} device_removals={} resets={} reset_releases={} device_removed_resets={} session_change_resets={} power_change_resets={} service_stopped_resets={} unqueryable_key_resets={} state_query_unavailable_resets={} queue_overflow_resets={} reconciliation_runs={} reconciled_releases={} reconciliation_query_errors={} decode_errors={} callback_panics={} synthetic_inputs_sent={} synthetic_pointer_inputs_requested={} synthetic_expected_edges={} synthetic_edges_seen={} synthetic_down_edges={} synthetic_up_edges={} synthetic_order_errors={} synthetic_expected_edges_remaining={} intentionally_dropped_releases={} captured_down={} captured_up={} duplicate_down={} unmatched_up={} pressed_candidates_remaining={} capture_queue_capacity={} capture_events_enqueued={} capture_events_consumed={} capture_queue_overflows={} capture_queue_recovery_resets={} capture_queue_discarded={} capture_queue_closed_pushes={} capture_sequence_gaps={} capture_sequence_duplicates_or_out_of_order={} capture_queue_remaining={} capture_queue_closed={} pointer_movement_samples={} pointer_samples_coalesced={} pointer_samples_consumed={} cursor_position_queries={} cursor_position_query_errors={}",
         report.registered,
         report.session_notifications_registered,
         report.session_notifications_unregistered,
@@ -333,6 +351,11 @@ fn print_registration_report(report: windows_capture::RegistrationReport) {
         report.capture_sequence_duplicates_or_out_of_order,
         report.capture_queue_remaining,
         report.capture_queue_closed,
+        report.pointer_movement_samples,
+        report.pointer_samples_coalesced,
+        report.pointer_samples_consumed,
+        report.cursor_position_queries,
+        report.cursor_position_query_errors,
     );
 }
 
@@ -346,6 +369,7 @@ fn assert_capture_queue_healthy(report: windows_capture::RegistrationReport) {
     assert_eq!(report.capture_sequence_duplicates_or_out_of_order, 0);
     assert_eq!(report.capture_queue_remaining, 0);
     assert!(report.capture_queue_closed);
+    assert_eq!(report.cursor_position_query_errors, 0);
     assert_eq!(
         report.capture_events_enqueued,
         report.capture_events_consumed
