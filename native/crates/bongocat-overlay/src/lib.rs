@@ -263,6 +263,7 @@ pub fn run_model_switch_preview(
     }
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub(crate) fn validate_model_generation_advance(
     active_generation: u64,
     candidate_generation: u64,
@@ -275,7 +276,7 @@ pub(crate) fn validate_model_generation_advance(
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, any(target_os = "macos", target_os = "windows")))]
 mod tests {
     use super::*;
 
