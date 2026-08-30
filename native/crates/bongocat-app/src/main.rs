@@ -264,7 +264,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Err(error) => return Err(Box::new(error)),
     };
-    let mut application = bongocat_app::Application::start()?;
+    let mut application = bongocat_app::Application::start(development_preset_root())?;
 
     let model_id = application
         .config()
@@ -279,7 +279,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         opacity_percent: application.config().overlay.opacity_percent,
         maximum_fps: application.config().model.maximum_fps,
     };
-    application.prepare_preset_model(development_preset_root(), model_id)?;
+    application.prepare_preset_model(model_id)?;
     let runtime_client = application.runtime_client();
     let input_producer = application.input_producer();
     let cursor_producer = application.cursor_producer();
@@ -609,8 +609,17 @@ fn development_preset_root() -> PathBuf {
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn development_preset_root() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(3)
+        .expect("repository root")
+        .join("native/resources/models")
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let application = bongocat_app::Application::start()?;
+    let application = bongocat_app::Application::start(development_preset_root())?;
     application.shutdown()?;
     Ok(())
 }

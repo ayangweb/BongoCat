@@ -125,6 +125,7 @@ pub struct Application {
     config_store: ConfigStore,
     config: NativeConfig,
     config_revision: ConfigRevision,
+    preset_models: PresetModelCatalog,
     model_store: ModelStore,
     runtime: RuntimeOwner,
     motion_audio: Option<MotionAudioService>,
@@ -132,19 +133,25 @@ pub struct Application {
 }
 
 impl Application {
-    pub fn start() -> Result<Self, ApplicationError> {
-        Self::start_with_layout_internal(platform_layout(BUILD_ENVIRONMENT)?, true)
+    pub fn start(preset_root: impl AsRef<Path>) -> Result<Self, ApplicationError> {
+        Self::start_with_layout_internal(
+            platform_layout(BUILD_ENVIRONMENT)?,
+            preset_root.as_ref(),
+            true,
+        )
     }
 
     #[cfg(test)]
     fn start_with_layout(layout: StorageLayout) -> Result<Self, ApplicationError> {
-        Self::start_with_layout_internal(layout, false)
+        Self::start_with_layout_internal(layout, repository_preset_root().as_path(), false)
     }
 
     fn start_with_layout_internal(
         layout: StorageLayout,
+        preset_root: &Path,
         enable_rendering: bool,
     ) -> Result<Self, ApplicationError> {
+        let preset_models = PresetModelCatalog::open(preset_root, ModelPackageLimits::default())?;
         let model_store = ModelStore::new(
             &layout.models,
             layout.locks.join("models.writer.lock"),
@@ -187,6 +194,7 @@ impl Application {
             config_store,
             config,
             config_revision,
+            preset_models,
             model_store,
             runtime,
             motion_audio,
@@ -261,9 +269,14 @@ impl Application {
     }
 
     pub fn model_catalog(&self) -> Result<Vec<ModelCatalogEntry>, ApplicationError> {
-        self.model_store
-            .list()
-            .map_err(ApplicationError::ModelStore)
+        let mut entries = self.preset_models.list()?;
+        entries.extend(self.model_store.list()?);
+        entries.sort_by(|left, right| {
+            left.id().as_str().cmp(right.id().as_str()).then_with(|| {
+                model_origin_order(left.origin()).cmp(&model_origin_order(right.origin()))
+            })
+        });
+        Ok(entries)
     }
 
     pub fn start_motion(
@@ -303,18 +316,16 @@ impl Application {
 
     pub fn prepare_preset_model(
         &mut self,
-        preset_root: impl AsRef<Path>,
         id: impl Into<String>,
     ) -> Result<ModelCommitToken, ApplicationError> {
         if self.render_consumer.is_none() {
             return Err(ApplicationError::RenderConsumerUnavailable);
         }
         let id = ModelId::parse(id)?;
-        let catalog = PresetModelCatalog::open(preset_root, ModelPackageLimits::default())?;
         let client = self.runtime.client();
         let sequence = client
             .send(RuntimeCommand::ActivateModelWithBindings {
-                model: Arc::new(catalog.load(&id)?),
+                model: Arc::new(self.preset_models.load(&id)?),
                 input_bindings: Arc::new(preset_input_bindings(id.as_str())),
             })
             .map_err(ApplicationError::RuntimeCommand)?;
@@ -399,6 +410,22 @@ impl Application {
         audio_result.map_err(ApplicationError::MotionAudioShutdown)?;
         Ok(stopped)
     }
+}
+
+fn model_origin_order(origin: bongocat_model::ModelOrigin) -> u8 {
+    match origin {
+        bongocat_model::ModelOrigin::Preset => 0,
+        bongocat_model::ModelOrigin::Installed => 1,
+    }
+}
+
+#[cfg(test)]
+fn repository_preset_root() -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(3)
+        .expect("repository root")
+        .join("native/resources/models")
 }
 
 fn preset_input_bindings(model_id: &str) -> InputBindings {
@@ -501,12 +528,12 @@ mod tests {
             .import_model("same-id", source)
             .expect("production import");
         assert_eq!(
-            development_app.model_catalog().expect("dev catalog").len(),
-            1
+            installed_catalog_ids(&development_app),
+            vec!["same-id".to_owned()]
         );
         assert_eq!(
-            production_app.model_catalog().expect("prod catalog").len(),
-            1
+            installed_catalog_ids(&production_app),
+            vec!["same-id".to_owned()]
         );
         assert!(development_root.join("models/same-id").is_dir());
         assert!(production_root.join("models/same-id").is_dir());
@@ -577,16 +604,50 @@ mod tests {
         assert!(imported.root().join("猫.model3.json").is_file());
 
         let catalog = application.model_catalog().expect("model catalog");
-        assert_eq!(catalog.len(), 1);
-        assert_eq!(catalog[0].id().as_str(), "unicode");
+        assert!(catalog.iter().any(|entry| {
+            entry.origin() == bongocat_model::ModelOrigin::Installed
+                && entry.id().as_str() == "unicode"
+        }));
 
         application.delete_model("unicode").expect("delete model");
-        assert!(
-            application
-                .model_catalog()
-                .expect("catalog after deletion")
-                .is_empty()
+        assert!(installed_catalog_ids(&application).is_empty());
+        application.shutdown().expect("clean shutdown");
+    }
+
+    #[test]
+    fn merged_model_catalog_retains_source_identity_for_duplicate_ids() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let mut application = Application::start_with_layout(layout).expect("start application");
+        let source = repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型");
+        application
+            .import_model("standard", source)
+            .expect("install duplicate id");
+
+        let catalog = application.model_catalog().expect("merged catalog");
+        let duplicate = catalog
+            .iter()
+            .filter(|entry| entry.id().as_str() == "standard")
+            .map(ModelCatalogEntry::origin)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            duplicate,
+            [
+                bongocat_model::ModelOrigin::Preset,
+                bongocat_model::ModelOrigin::Installed,
+            ]
         );
+        assert!(catalog.windows(2).all(|entries| {
+            let left = (
+                entries[0].id().as_str(),
+                model_origin_order(entries[0].origin()),
+            );
+            let right = (
+                entries[1].id().as_str(),
+                model_origin_order(entries[1].origin()),
+            );
+            left <= right
+        }));
         application.shutdown().expect("clean shutdown");
     }
 
@@ -607,8 +668,21 @@ mod tests {
             .delete_model("active")
             .expect_err("active model deletion must fail");
         assert!(matches!(error, ApplicationError::ActiveModelDeletion(_)));
-        assert_eq!(application.model_catalog().expect("catalog").len(), 1);
+        assert_eq!(
+            installed_catalog_ids(&application),
+            vec!["active".to_owned()]
+        );
         application.shutdown().expect("clean shutdown");
+    }
+
+    fn installed_catalog_ids(application: &Application) -> Vec<String> {
+        application
+            .model_catalog()
+            .expect("model catalog")
+            .into_iter()
+            .filter(|entry| entry.origin() == bongocat_model::ModelOrigin::Installed)
+            .map(|entry| entry.id().as_str().to_owned())
+            .collect()
     }
 
     #[cfg(target_os = "macos")]
@@ -616,13 +690,14 @@ mod tests {
     fn application_owns_the_rendering_runtime_and_issues_one_consumer() {
         let base = tempdir().expect("temp directory");
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
-        let mut application = Application::start_with_layout_internal(layout, true)
-            .expect("start rendering application");
+        let mut application = Application::start_with_layout_internal(
+            layout,
+            repository_preset_root().as_path(),
+            true,
+        )
+        .expect("start rendering application");
         let token = application
-            .prepare_preset_model(
-                repository_root().join("native/resources/models"),
-                "standard",
-            )
+            .prepare_preset_model("standard")
             .expect("prepare preset model");
         assert_eq!(token.model_generation, 0);
         assert!(

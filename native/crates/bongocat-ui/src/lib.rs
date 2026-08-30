@@ -23,6 +23,69 @@ pub struct SettingsSnapshot {
     pub overlay_visible: bool,
     pub motion_audio_enabled: bool,
     pub active_model_id: Option<String>,
+    pub model_catalog: SettingsModelCatalog,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct SettingsModelCatalog {
+    pub entries: Vec<SettingsModelEntry>,
+    pub error: Option<SettingsModelCatalogError>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SettingsModelEntry {
+    pub id: String,
+    pub origin: SettingsModelOrigin,
+    pub availability: SettingsModelAvailability,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SettingsModelOrigin {
+    Preset,
+    Installed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SettingsModelAvailability {
+    Ready {
+        texture_count: usize,
+        expression_count: usize,
+        motion_count: usize,
+    },
+    Invalid {
+        diagnostic: SettingsModelDiagnostic,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SettingsModelDiagnostic {
+    InvalidModelId,
+    ModelEntryAmbiguous,
+    ModelEntryMissing,
+    ModelFileCountExceeded,
+    ModelFileTooLarge,
+    ModelIoError,
+    ModelJsonInvalid,
+    ModelJsonTooLarge,
+    ModelMocMissing,
+    ModelPackageDepthExceeded,
+    ModelPackageSizeExceeded,
+    ModelReferenceEscapesRoot,
+    ModelReferenceInvalid,
+    ModelReferenceSymlinkEscape,
+    ModelResourceInvalid,
+    ModelResourceMissing,
+    ModelResourceNotFile,
+    ModelSymlinkDirectoryUnsupported,
+    ModelTextureDimensionExceeded,
+    ModelTextureInvalidPng,
+    ModelTextureMissing,
+    ModelUnsupportedVersion,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SettingsModelCatalogError {
+    Unavailable,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -264,6 +327,7 @@ mod tests {
             overlay_visible,
             motion_audio_enabled,
             active_model_id: Some("standard".to_owned()),
+            model_catalog: SettingsModelCatalog::default(),
         }
     }
 }

@@ -421,6 +421,13 @@ com.ayangweb.bongo-cat
 - 模型导入防止路径穿越、符号链接逃逸、压缩炸弹和覆盖现有用户数据。
 - 任意外部目录只能产生待导入的 `PreparedModel`；只有当前环境 `ModelStore` 完成复制、
   复验和原子提交后签发的 `InstalledModel` 才能进入 runtime 激活 command。
+- 应用装配时打开并持有只读 `PresetModelCatalog`；设置与模型管理只消费预置目录和当前
+  环境 `ModelStore` 的合并目录，不在 UI executor 临时扫描或解析模型文件。
+- 模型目录身份是 `(origin, model_id)`。同一 `model_id` 的 preset 与 installed 条目都保留，
+  排序固定为 `model_id` 升序、同 ID 时 preset 在前；后续选择 command 必须携带 origin，
+  不得以静默覆盖解决冲突。
+- 合并目录通过强类型 settings snapshot 投影来源、可用状态、资源计数和稳定诊断码；无效
+  模型继续可见，但用户路径、底层 I/O 文本和模型内容不得进入 UI snapshot 或日志。
 - 更新只允许 HTTPS，安装包和更新包必须签名并支持失败回滚。
 - 日志不记录真实按键序列、剪贴板内容或用户文件内容。
 

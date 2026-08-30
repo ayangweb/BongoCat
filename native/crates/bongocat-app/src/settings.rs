@@ -1,8 +1,11 @@
 use crate::{Application, ApplicationError};
+use bongocat_model::{ModelCatalogEntry, ModelDiagnostic, ModelOrigin};
 use bongocat_runtime::RuntimeState;
 use bongocat_ui::{
     RuntimeHealth, SettingsClient, SettingsCommand, SettingsError, SettingsErrorCode,
-    SettingsServiceEndpoint, SettingsSnapshot,
+    SettingsModelAvailability, SettingsModelCatalog, SettingsModelCatalogError,
+    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelOrigin, SettingsServiceEndpoint,
+    SettingsSnapshot,
 };
 use std::{fmt, thread};
 
@@ -121,6 +124,84 @@ fn snapshot(application: &Application) -> SettingsSnapshot {
             .active_model
             .map(|model| model.id.as_str().to_owned())
             .or_else(|| application.config().model.selected_model_id.clone()),
+        model_catalog: settings_model_catalog(application),
+    }
+}
+
+fn settings_model_catalog(application: &Application) -> SettingsModelCatalog {
+    match application.model_catalog() {
+        Ok(entries) => SettingsModelCatalog {
+            entries: entries.into_iter().map(settings_model_entry).collect(),
+            error: None,
+        },
+        Err(_) => SettingsModelCatalog {
+            entries: Vec::new(),
+            error: Some(SettingsModelCatalogError::Unavailable),
+        },
+    }
+}
+
+fn settings_model_entry(entry: ModelCatalogEntry) -> SettingsModelEntry {
+    let id = entry.id().as_str().to_owned();
+    let origin = match entry.origin() {
+        ModelOrigin::Preset => SettingsModelOrigin::Preset,
+        ModelOrigin::Installed => SettingsModelOrigin::Installed,
+    };
+    let availability = match entry {
+        ModelCatalogEntry::Ready { snapshot, .. } => SettingsModelAvailability::Ready {
+            texture_count: snapshot.texture_count,
+            expression_count: snapshot.expression_count,
+            motion_count: snapshot.motion_count,
+        },
+        ModelCatalogEntry::Invalid { code, .. } => SettingsModelAvailability::Invalid {
+            diagnostic: settings_model_diagnostic(code),
+        },
+    };
+    SettingsModelEntry {
+        id,
+        origin,
+        availability,
+    }
+}
+
+const fn settings_model_diagnostic(diagnostic: ModelDiagnostic) -> SettingsModelDiagnostic {
+    match diagnostic {
+        ModelDiagnostic::InvalidModelId => SettingsModelDiagnostic::InvalidModelId,
+        ModelDiagnostic::ModelEntryAmbiguous => SettingsModelDiagnostic::ModelEntryAmbiguous,
+        ModelDiagnostic::ModelEntryMissing => SettingsModelDiagnostic::ModelEntryMissing,
+        ModelDiagnostic::ModelFileCountExceeded => SettingsModelDiagnostic::ModelFileCountExceeded,
+        ModelDiagnostic::ModelFileTooLarge => SettingsModelDiagnostic::ModelFileTooLarge,
+        ModelDiagnostic::ModelIoError => SettingsModelDiagnostic::ModelIoError,
+        ModelDiagnostic::ModelJsonInvalid => SettingsModelDiagnostic::ModelJsonInvalid,
+        ModelDiagnostic::ModelJsonTooLarge => SettingsModelDiagnostic::ModelJsonTooLarge,
+        ModelDiagnostic::ModelMocMissing => SettingsModelDiagnostic::ModelMocMissing,
+        ModelDiagnostic::ModelPackageDepthExceeded => {
+            SettingsModelDiagnostic::ModelPackageDepthExceeded
+        }
+        ModelDiagnostic::ModelPackageSizeExceeded => {
+            SettingsModelDiagnostic::ModelPackageSizeExceeded
+        }
+        ModelDiagnostic::ModelReferenceEscapesRoot => {
+            SettingsModelDiagnostic::ModelReferenceEscapesRoot
+        }
+        ModelDiagnostic::ModelReferenceInvalid => SettingsModelDiagnostic::ModelReferenceInvalid,
+        ModelDiagnostic::ModelReferenceSymlinkEscape => {
+            SettingsModelDiagnostic::ModelReferenceSymlinkEscape
+        }
+        ModelDiagnostic::ModelResourceInvalid => SettingsModelDiagnostic::ModelResourceInvalid,
+        ModelDiagnostic::ModelResourceMissing => SettingsModelDiagnostic::ModelResourceMissing,
+        ModelDiagnostic::ModelResourceNotFile => SettingsModelDiagnostic::ModelResourceNotFile,
+        ModelDiagnostic::ModelSymlinkDirectoryUnsupported => {
+            SettingsModelDiagnostic::ModelSymlinkDirectoryUnsupported
+        }
+        ModelDiagnostic::ModelTextureDimensionExceeded => {
+            SettingsModelDiagnostic::ModelTextureDimensionExceeded
+        }
+        ModelDiagnostic::ModelTextureInvalidPng => SettingsModelDiagnostic::ModelTextureInvalidPng,
+        ModelDiagnostic::ModelTextureMissing => SettingsModelDiagnostic::ModelTextureMissing,
+        ModelDiagnostic::ModelUnsupportedVersion => {
+            SettingsModelDiagnostic::ModelUnsupportedVersion
+        }
     }
 }
 
@@ -153,6 +234,12 @@ mod tests {
         let client = service.client();
 
         let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        assert_eq!(initial.model_catalog.entries.len(), 3);
+        assert!(initial.model_catalog.error.is_none());
+        assert!(initial.model_catalog.entries.iter().all(|entry| {
+            entry.origin == SettingsModelOrigin::Preset
+                && matches!(entry.availability, SettingsModelAvailability::Ready { .. })
+        }));
         let hidden = client
             .set_overlay_visible_blocking(false)
             .expect("hide overlay");

@@ -366,6 +366,49 @@ impl PresetModelCatalog {
         })
     }
 
+    pub fn list(&self) -> Result<Vec<ModelCatalogEntry>, ModelError> {
+        let mut entries = Vec::new();
+        for entry in fs::read_dir(&self.root).map_err(|error| {
+            ModelError::new(
+                ModelDiagnostic::ModelIoError,
+                None,
+                format!("preset catalog cannot be listed: {error}"),
+            )
+        })? {
+            let entry = entry.map_err(|error| {
+                ModelError::new(
+                    ModelDiagnostic::ModelIoError,
+                    None,
+                    format!("preset catalog entry cannot be read: {error}"),
+                )
+            })?;
+            let name = entry.file_name().into_string().map_err(|_| {
+                ModelError::new(
+                    ModelDiagnostic::InvalidModelId,
+                    None,
+                    "preset catalog contains a non-UTF-8 entry",
+                )
+            })?;
+            let id = ModelId::parse(name)?;
+            let catalog_entry = match self.load(&id) {
+                Ok(model) => ModelCatalogEntry::Ready {
+                    origin: ModelOrigin::Preset,
+                    snapshot: model.snapshot(),
+                },
+                Err(error) => ModelCatalogEntry::Invalid {
+                    origin: ModelOrigin::Preset,
+                    id,
+                    code: error.code,
+                    resource: error.resource,
+                    detail: error.detail,
+                },
+            };
+            entries.push(catalog_entry);
+        }
+        entries.sort_by(|left, right| left.id().as_str().cmp(right.id().as_str()));
+        Ok(entries)
+    }
+
     pub fn root(&self) -> &Path {
         &self.root
     }
@@ -1330,6 +1373,45 @@ mod tests {
             assert_eq!(model.root().parent(), Some(catalog.root()));
             assert!(!model.index().textures.is_empty());
         }
+    }
+
+    #[test]
+    fn preset_catalog_is_sorted_and_retains_invalid_entries() {
+        let root = tempdir().expect("preset catalog");
+        for id in ["zeta", "alpha"] {
+            let model = root.path().join(id);
+            fs::create_dir(&model).expect("preset directory");
+            fs::write(model.join("model.moc3"), b"moc").expect("preset moc");
+            fs::write(
+                model.join("cat.model3.json"),
+                r#"{"Version":3,"FileReferences":{"Moc":"model.moc3","Textures":[]}}"#,
+            )
+            .expect("preset model3");
+        }
+        fs::remove_file(root.path().join("alpha/model.moc3")).expect("corrupt alpha preset");
+
+        let catalog = PresetModelCatalog::open(root.path(), ModelPackageLimits::default())
+            .expect("open preset catalog")
+            .list()
+            .expect("list preset catalog");
+        assert_eq!(
+            catalog
+                .iter()
+                .map(|entry| entry.id().as_str())
+                .collect::<Vec<_>>(),
+            ["alpha", "zeta"]
+        );
+        assert_eq!(catalog[0].origin(), ModelOrigin::Preset);
+        assert!(matches!(
+            catalog[0],
+            ModelCatalogEntry::Invalid {
+                code: ModelDiagnostic::ModelMocMissing,
+                ..
+            }
+        ));
+        assert!(catalog[0].snapshot().is_none());
+        assert_eq!(catalog[1].origin(), ModelOrigin::Preset);
+        assert!(catalog[1].snapshot().is_some());
     }
 
     #[test]

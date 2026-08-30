@@ -1176,6 +1176,18 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
       `399258feeaf90ad8a3a208c99221ee87b6452f38` 保留同一同步重入回调，因此当前实现改为先
       有序停止并 join 全部 BongoCat owner，再由 Windows adapter 跳过最终 GPUI 窗口析构；
       Windows 原生 lifecycle CI 和完整门禁通过前保持未勾选。
+    - 状态（2026-08-31）：run `33330226417`、Windows job `99307365560` 的编译、Clippy、
+      测试和 release check 均通过，但 lifecycle script 的 `Process.MainWindowHandle` 选中了
+      独立 overlay，导致错误地关闭猫窗口并报告 overlay/设置窗口双失败；macOS job
+      `99307365568` 已通过。runner 现改为按标题和 PID 定位 GPUI 设置窗口并发送真实
+      `WM_CLOSE`，等待替代 run 后再判断退出条件。
+18. [ ] `P4-MODEL-CATALOG`：建立来源感知的预置/用户模型合并目录并投影到设置服务。
+    - 依赖：正式 `bongocat-model`、环境 `ModelStore`、只读预置资源和 typed settings snapshot。
+    - 退出条件：应用持有 preset catalog；preset/installed 的 ready/invalid 条目都可见且确定
+      排序；重复 ID 保留 `(origin, id)` 复合身份；snapshot 只暴露稳定诊断而不泄漏路径；
+      model/app/ui 单元测试、Clippy 与完整 Native workspace 门禁通过。
+    - 状态（2026-08-31）：model/app/ui 实现和定向测试已完成，完整 Native workspace 门禁
+      仍在运行，因此保持未勾选。来源感知选择、配置持久化与 renderer 失败回滚属于下一任务。
 
 ## 13. 待决策清单
 

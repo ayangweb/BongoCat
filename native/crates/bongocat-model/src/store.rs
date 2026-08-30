@@ -89,8 +89,12 @@ pub struct ModelStoreRecovery {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ModelCatalogEntry {
-    Ready(crate::ModelSnapshot),
+    Ready {
+        origin: crate::ModelOrigin,
+        snapshot: crate::ModelSnapshot,
+    },
     Invalid {
+        origin: crate::ModelOrigin,
         id: ModelId,
         code: crate::ModelDiagnostic,
         resource: Option<String>,
@@ -99,10 +103,23 @@ pub enum ModelCatalogEntry {
 }
 
 impl ModelCatalogEntry {
+    pub const fn origin(&self) -> crate::ModelOrigin {
+        match self {
+            Self::Ready { origin, .. } | Self::Invalid { origin, .. } => *origin,
+        }
+    }
+
     pub fn id(&self) -> &ModelId {
         match self {
-            Self::Ready(snapshot) => &snapshot.id,
+            Self::Ready { snapshot, .. } => &snapshot.id,
             Self::Invalid { id, .. } => id,
+        }
+    }
+
+    pub fn snapshot(&self) -> Option<&crate::ModelSnapshot> {
+        match self {
+            Self::Ready { snapshot, .. } => Some(snapshot),
+            Self::Invalid { .. } => None,
         }
     }
 }
@@ -228,8 +245,12 @@ impl ModelStore {
             })?;
             let catalog_entry = match PreparedModel::prepare(id.clone(), entry.path(), self.limits)
             {
-                Ok(prepared) => ModelCatalogEntry::Ready(prepared.snapshot()),
+                Ok(prepared) => ModelCatalogEntry::Ready {
+                    origin: crate::ModelOrigin::Installed,
+                    snapshot: prepared.snapshot(),
+                },
                 Err(error) => ModelCatalogEntry::Invalid {
+                    origin: crate::ModelOrigin::Installed,
                     id,
                     code: error.code,
                     resource: error.resource,
@@ -884,8 +905,12 @@ mod tests {
         assert_eq!(catalog.len(), 2);
         assert_eq!(catalog[0].id().as_str(), "alpha");
         assert!(matches!(catalog[0], ModelCatalogEntry::Invalid { .. }));
+        assert_eq!(catalog[0].origin(), crate::ModelOrigin::Installed);
+        assert!(catalog[0].snapshot().is_none());
         assert_eq!(catalog[1].id().as_str(), "zeta");
-        assert!(matches!(catalog[1], ModelCatalogEntry::Ready(_)));
+        assert!(matches!(catalog[1], ModelCatalogEntry::Ready { .. }));
+        assert_eq!(catalog[1].origin(), crate::ModelOrigin::Installed);
+        assert!(catalog[1].snapshot().is_some());
         assert_eq!(
             store
                 .load(&ModelId::parse("zeta").expect("model id"))
