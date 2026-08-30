@@ -4,7 +4,9 @@ use bongocat_config::{
     BuildEnvironment, ConfigError, ConfigRevision, ConfigStore, NativeConfig, PlatformStorageError,
     StorageLayout, platform_layout,
 };
-use bongocat_model::{ModelError, ModelId, ModelPackageLimits, PreparedModel};
+use bongocat_model::{
+    ModelError, ModelId, ModelImportError, ModelPackageLimits, ModelStore, PreparedModel,
+};
 use bongocat_runtime::{
     InputProducer, RuntimeClient, RuntimeCommand, RuntimeOwner, RuntimeSnapshot, SendError,
     ShutdownError,
@@ -25,6 +27,7 @@ pub enum ApplicationError {
     PlatformStorage(PlatformStorageError),
     Config(ConfigError),
     Model(ModelError),
+    ModelImport(ModelImportError),
     RuntimeCommand(SendError),
     RuntimeDidNotPublish,
     Shutdown(ShutdownError),
@@ -36,6 +39,7 @@ impl fmt::Display for ApplicationError {
             Self::PlatformStorage(error) => write!(formatter, "storage setup failed: {error}"),
             Self::Config(error) => write!(formatter, "configuration failed: {error}"),
             Self::Model(error) => write!(formatter, "model preparation failed: {error}"),
+            Self::ModelImport(error) => write!(formatter, "model import failed: {error}"),
             Self::RuntimeCommand(error) => write!(formatter, "runtime command failed: {error}"),
             Self::RuntimeDidNotPublish => {
                 formatter.write_str("runtime did not publish the requested revision")
@@ -65,10 +69,17 @@ impl From<ModelError> for ApplicationError {
     }
 }
 
+impl From<ModelImportError> for ApplicationError {
+    fn from(error: ModelImportError) -> Self {
+        Self::ModelImport(error)
+    }
+}
+
 pub struct Application {
     config_store: ConfigStore,
     config: NativeConfig,
     config_revision: ConfigRevision,
+    model_store: ModelStore,
     runtime: RuntimeOwner,
 }
 
@@ -78,6 +89,7 @@ impl Application {
     }
 
     fn start_with_layout(layout: StorageLayout) -> Result<Self, ApplicationError> {
+        let model_store = ModelStore::new(&layout.models, ModelPackageLimits::default())?;
         let config_store = ConfigStore::new(layout)?;
         let (config, config_revision) = config_store.load_or_default()?;
         let runtime = RuntimeOwner::start(config.overlay.visible, COMMAND_CAPACITY);
@@ -89,6 +101,7 @@ impl Application {
             config_store,
             config,
             config_revision,
+            model_store,
             runtime,
         })
     }
@@ -141,6 +154,17 @@ impl Application {
         client
             .wait_for_command(sequence, RUNTIME_TIMEOUT)
             .ok_or(ApplicationError::RuntimeDidNotPublish)
+    }
+
+    pub fn import_model(
+        &self,
+        id: impl Into<String>,
+        source_root: impl AsRef<Path>,
+    ) -> Result<PreparedModel, ApplicationError> {
+        let id = ModelId::parse(id)?;
+        self.model_store
+            .import(id, source_root)
+            .map_err(ApplicationError::ModelImport)
     }
 
     pub fn shutdown(self) -> Result<RuntimeSnapshot, ApplicationError> {
@@ -240,6 +264,28 @@ mod tests {
         let preserved = application.runtime_client().snapshot();
         assert_eq!(preserved.revision, active_revision);
         assert_eq!(preserved.active_model, active.active_model);
+        application.shutdown().expect("clean shutdown");
+    }
+
+    #[test]
+    fn application_imports_into_its_environment_model_store() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let models_root = layout.models.clone();
+        let application = Application::start_with_layout(layout).expect("start application");
+        let source = repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型");
+
+        let imported = application
+            .import_model("unicode", source)
+            .expect("import model");
+        assert_eq!(
+            imported.root(),
+            models_root
+                .canonicalize()
+                .expect("canonical models root")
+                .join("unicode")
+        );
+        assert!(imported.root().join("猫.model3.json").is_file());
         application.shutdown().expect("clean shutdown");
     }
 }

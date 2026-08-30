@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+mod store;
+
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -9,6 +11,8 @@ use std::{
     io::Read,
     path::{Component, Path, PathBuf},
 };
+
+pub use store::{ModelImportDiagnostic, ModelImportError, ModelStore};
 
 pub const INDEX_SCHEMA_VERSION: u32 = 1;
 

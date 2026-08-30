@@ -286,13 +286,13 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 创建 bongocat-app：入口、服务装配和 shutdown。
 - [x] 创建 bongocat-runtime：状态、输入语义、动画和 command。
 - [x] 创建 bongocat-config：环境隔离、schema、验证和原子存储。
-- [ ] 创建 bongocat-model：模型包、导入和资源索引。
-  - 状态（2026-08-30）：正式 `bongocat-model` 已实现可移植 `ModelId`、model3
+- [x] 创建 bongocat-model：模型包、导入和资源索引。
+  - 验收证据（2026-08-30）：正式 `bongocat-model` 已实现可移植 `ModelId`、model3
     索引、引用规范化、文件/包/纹理上限、跨根 symlink 防护和
     `PreparedModel`；三个预置包与缺失 moc、损坏 JSON、非 ASCII、超大纹理、
-    路径穿越、多入口及跨根 symlink 均由产品 workspace 测试。模型复制导入、
-    覆盖保护、完整 sidecar 强类型校验和预置/用户持久索引仍待完成，
-    因此总项保持未勾选。
+    路径穿越、多入口及跨根 symlink 均由产品 workspace 测试。`ModelStore` 又完成
+    环境模型根、受限 staging copy、flush、复验、同根 rename commit 和无覆盖语义；
+    完整 sidecar 强类型校验与预置/用户持久 catalog 继续由 Phase 4 任务跟踪。
 - [ ] 创建 bongocat-live2d：Cubism safe wrapper 和模型求值。
 - [ ] 创建 bongocat-render：render snapshot 和 renderer contract。
 - [ ] 创建 bongocat-ui：GPUI 页面和 design system。
@@ -530,9 +530,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-30）：正式 crate 已验证所有引用存在于 canonical package root，
     moc/普通文件大小、PNG header/尺寸及关联 JSON object 可读性；motion、expression、
     physics、pose、cdi 的完整结构语义仍由 spike 覆盖，尚未全部提升到产品 crate。
-- [ ] 拒绝路径穿越、符号链接逃逸、绝对路径和覆盖安装资源。
-  - 状态（2026-08-30）：路径穿越、绝对/平台前缀和跨根 symlink 已在 prepare 阶段
-    拒绝；复制导入与已有安装模型的无覆盖 commit 尚未实现。
+- [x] 拒绝路径穿越、符号链接逃逸、绝对路径和覆盖安装资源。
+  - 验收证据（2026-08-30）：prepare 拒绝遍历、绝对/平台前缀和跨根 symlink；import
+    进一步拒绝所有 symlink 与特殊文件，使用 `create_new` staging 文件和非覆盖目录
+    rename。重复 ID 测试在第二次导入失败后验证既有用户 marker 未改变。
 - [x] 限制模型总大小、单文件大小、纹理尺寸和 JSON 深度。
   - 验收证据（2026-08-30）：正式 crate 在任何 Cubism/GPU 工作前限制包总 byte、
     文件数、单文件/JSON byte、目录/JSON 结构深度和 PNG IHDR 声明尺寸；超大纹理与
@@ -542,6 +543,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     缺失 moc 的新模型准备失败后，当前模型及 runtime revision 均不变。完整 sidecar
     诊断映射与 GPUI error/retry 状态仍待完成。
 - [ ] 建立预置只读索引和用户模型可写索引。
+  - 状态（2026-08-30）：`ModelPackageIndex` 是已安装包的规范化只读资源索引，app 的
+    `ModelStore` 写入当前环境独立 `models/`；列举、删除、持久 catalog、预置只读根与
+    崩溃 staging 回收策略仍待实现。
 
 ### 5.2 Cubism safe layer
 

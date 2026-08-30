@@ -35,3 +35,9 @@ explicit process governed by `docs/adr/0011-progressive-implementation-release-g
 Model package parsing is also SDK-independent. `bongocat-model` prepares and validates package
 metadata before a typed command transfers ownership to the runtime; Cubism model creation and GPU
 upload remain separate commit stages.
+
+Model imports are copied into a unique staging directory under the current build environment's
+`models/` root. The importer rejects symbolic links and unsupported filesystem entries, reapplies
+package limits while copying, flushes every file, validates the staged package again, and commits it
+with a same-root directory rename. An existing model ID is never overwritten, and a failed import
+removes only the staging directory owned by that operation.
