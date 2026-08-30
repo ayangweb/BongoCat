@@ -28,6 +28,7 @@ const DEFAULT_RUN_SECONDS: u64 = 30;
 struct RunOptions {
     run_duration: Duration,
     settings_window_smoke: bool,
+    models_page_smoke: bool,
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -36,6 +37,7 @@ impl RunOptions {
         let mut arguments = arguments.into_iter();
         let mut run_seconds = DEFAULT_RUN_SECONDS;
         let mut settings_window_smoke = false;
+        let mut models_page_smoke = false;
         while let Some(argument) = arguments.next() {
             match argument.as_str() {
                 "--run-seconds" => {
@@ -47,6 +49,10 @@ impl RunOptions {
                     })?;
                 }
                 "--settings-window-smoke" => settings_window_smoke = true,
+                "--models-page-smoke" => {
+                    models_page_smoke = true;
+                    settings_window_smoke = true;
+                }
                 "--help" | "-h" => return Err(RunOptionsError::help()),
                 _ => {
                     return Err(RunOptionsError::new(format!(
@@ -58,6 +64,7 @@ impl RunOptions {
         Ok(Self {
             run_duration: Duration::from_secs(run_seconds),
             settings_window_smoke,
+            models_page_smoke,
         })
     }
 }
@@ -102,7 +109,7 @@ impl std::error::Error for RunOptionsError {}
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn usage() -> &'static str {
-    "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit."
+    "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit."
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -593,12 +600,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if run_options.settings_window_smoke {
             let smoke_failures = Arc::clone(&run_failures);
-            #[cfg(target_os = "windows")]
             let smoke_window = settings_window;
             #[cfg(target_os = "windows")]
             let smoke_shutdown_requested = Arc::clone(&shutdown_requested);
             cx.spawn(async move |cx| {
                 Timer::after(Duration::from_millis(500)).await;
+                if run_options.models_page_smoke {
+                    #[cfg(target_os = "macos")]
+                    let models_page = cx.update(|cx| -> Result<(), String> {
+                        smoke_window
+                            .update(cx, |view, _, cx| view.show_models_page_for_smoke(cx))
+                            .map_err(|error| error.to_string())?
+                    });
+                    #[cfg(target_os = "windows")]
+                    let models_page = update_windows_settings(cx, smoke_window, |view, _, cx| {
+                        view.show_models_page_for_smoke(cx)
+                    })
+                    .await;
+                    match models_page {
+                        Ok(Ok(())) => {
+                            Timer::after(Duration::from_millis(250)).await;
+                        }
+                        Ok(Err(error)) => {
+                            record_failure(&smoke_failures, error);
+                            #[cfg(target_os = "macos")]
+                            let _ = cx.update(request_product_quit);
+                            #[cfg(target_os = "windows")]
+                            request_windows_product_quit(&smoke_shutdown_requested);
+                            return;
+                        }
+                        Err(error) => {
+                            record_failure(&smoke_failures, error.to_string());
+                            #[cfg(target_os = "macos")]
+                            let _ = cx.update(request_product_quit);
+                            #[cfg(target_os = "windows")]
+                            request_windows_product_quit(&smoke_shutdown_requested);
+                            return;
+                        }
+                    }
+                }
                 #[cfg(target_os = "macos")]
                 let baseline = cx.update(|cx| -> Result<_, String> {
                     let (window_handle, frame_ticks) = {
@@ -817,10 +857,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if !run_options.run_duration.is_zero() {
             #[cfg(target_os = "windows")]
             let quit_shutdown_requested = Arc::clone(&shutdown_requested);
-            cx.spawn(async move |cx| {
+            cx.spawn(async move |_cx| {
                 Timer::after(run_options.run_duration).await;
                 #[cfg(target_os = "macos")]
-                let _ = cx.update(request_product_quit);
+                let _ = _cx.update(request_product_quit);
                 #[cfg(target_os = "windows")]
                 request_windows_product_quit(&quit_shutdown_requested);
             })
@@ -875,6 +915,7 @@ mod tests {
             RunOptions {
                 run_duration: Duration::from_secs(30),
                 settings_window_smoke: false,
+                models_page_smoke: false,
             }
         );
     }
@@ -898,7 +939,16 @@ mod tests {
         ])
         .expect("settings window smoke options");
         assert!(options.settings_window_smoke);
+        assert!(!options.models_page_smoke);
         assert_eq!(options.run_duration, Duration::from_secs(4));
+    }
+
+    #[test]
+    fn models_page_smoke_is_opt_in() {
+        let options = RunOptions::parse(["--models-page-smoke".to_owned()])
+            .expect("models page smoke options");
+        assert!(options.models_page_smoke);
+        assert!(options.settings_window_smoke);
     }
 
     #[test]

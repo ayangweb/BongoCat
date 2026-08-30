@@ -278,8 +278,16 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     Model -> Moc 顺序析构；三个预置模型重复创建 snapshot 的测试均通过。
 - [x] 用 Rust 解析三个预置 model3 和所有关联资源。
   - 验收证据：build `7ee8acd5f2a3d4dcb7a1dbc36623cbe497aeae49` 的 push run `33238204993` 与 PR run `33238206415` 各 16 jobs 全绿。`spikes/model-package/` 强类型解析 model3 v3，验证 moc、纹理、display info、expression、motion/audio、可选 physics/pose/user data 与 companion images，完整包索引冻结在 `shared/fixtures/model-fixtures/preset-model3-index.json`。2026-08-30 又将 3 个 cdi3、6 个 motion3 与 15 个 exp3 纳入强类型结构验证；cdi3 parameter/part 数量与 legacy Core baseline 一致，三个预置包、异常 fixture、跨根 symlink 和目录深度均有 Rust 测试，详见 `docs/phase-0/model-package-spike.md`。本项不包含 Core/model creation、动作求值或 renderer。
-- [ ] Windows D3D11 绘制预置模型的 texture/order/alpha/mask。
-  - 状态（2026-08-29）：Windows overlay 已实现合成几何的 D3D11 shader pipeline、预乘 alpha draw 和 staging texture 像素验证；预置模型 texture、drawable order 和 mask 尚未接入，因此保持未完成。
+- [x] Windows D3D11 绘制预置模型的 texture/order/alpha/mask。
+  - 验收证据（2026-08-31）：commit `4b35d3a` 将三个预置模型的真实 Core drawable 与纹理
+    接入正式 Win32/D3D11/DirectComposition overlay；renderer 按 `(render_order, id)` 排序，
+    实现 normal/additive/multiplicative blend、预乘 alpha、multiply/screen color、逐 drawable
+    mask render target 与 inverted mask，并在首帧和每次切模后执行 staging texture 非空像素
+    readback。commit `a778c5d` 及后续资源稳定性修复加入三预置事务切换、失败 GPU prepare
+    保留与 thread/handle/GPU 门禁；push run `33338724170`、Windows job `99330269568` 完成
+    311 帧、309 个动态 snapshot 和 9 次正式三模型切换，最终 standard 为 21 drawables、
+    5 masked drawables、3 textures，且 `failed_gpu_prepare_preserved=true`。D3D11 debug layer、
+    真实 device-lost 和 driver 专项矩阵仍由 overlay/发布门禁继续跟踪，不反向取消本子项。
 - [x] macOS Metal 绘制同一模型的 texture/order/alpha/mask。
   - 验收证据（2026-08-30）：commit `57118ff` 将三个预置模型的真实 Core drawable
     snapshot 接入独立 `NSPanel`/`CAMetalLayer`，按 render order 绘制 texture、normal/
@@ -1165,17 +1173,17 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
 
 13. [ ] `P0-CUBISM`：确认 SDK/许可证/binding 生成，三个预置模型完成 Core、资源和 renderer spike。
 
-- [x] 完成平台无关 Rust model3/package parser、所有结构化 sidecar 静态 preflight、三个预置规范化索引与异常资源安全 contract；Native Core、binding、Framework 求值和 D3D11/Metal 绘制仍未完成。
+- [x] 完成平台无关 Rust model3/package parser、所有结构化 sidecar 静态 preflight、三个预置规范化索引与异常资源安全 contract；后续任务已完成产品 Core safe wrapper、预置 motion/expression 求值及 D3D11/Metal 绘制，真实 physics/pose 行为样本仍缺失。
 - [x] 完成 6 个预置 motion3 与 15 个 exp3 的强类型结构、segment/Meta 计数、fade/parameter/blend 校验；这不代表 motion/expression 行为求值完成。
 - [x] 完成 3 个预置 cdi3 的强类型 parameter/group/part 与 group 拓扑校验，并将规范化索引升级到 schema v2；跨资源 ID 以未来 Core 表为准。
 - [x] 完成 physics3 v3 静态 preflight、匿名摘要 CLI 和合成错误 contract；13 个历史文件只作为本地结构覆盖，不作为可分发 fixture 或行为求值证据。
 - [x] 完成 pose3 静态 preflight、匿名摘要 CLI 和合成错误 contract；没有授权真实样本或 fade/link 求值证据。
 - [x] 完成 userdata3 v3 静态 preflight、匿名摘要 CLI 和合成错误 contract；三个预置模型没有真实 userdata3。
-- [x] 完成 macOS arm64 真实 r.5 sys binding/Core probe；三个预置 Moc 各 100 次生命周期、drawable 与 r.5 offscreen 数组边界、legacy count 对照和 `leaks` 0-byte 门禁通过。Windows x64/macOS x64 ABI、非零 offscreen fixture、产品 safe wrapper、Framework 求值与 renderer 仍未完成。
+- [x] 完成 macOS arm64 真实 r.5 sys binding/Core probe；三个预置 Moc 各 100 次生命周期、drawable 与 r.5 offscreen 数组边界、legacy count 对照和 `leaks` 0-byte 门禁通过。产品 safe wrapper、Windows x64 Core/D3D11 与 macOS arm64 Core/Metal 已进入正式链路；macOS x64 原生 ABI、非零 offscreen fixture 及真实 physics/pose Framework 求值仍未完成。
 - [ ] 取得可分发授权的 physics3/pose3 fixture 后完成强类型结构和 Framework 求值；三个预置模型不含这两类资源，不得以合成样本冒充兼容证据。
 
 14. [ ] `P0-GO-NO-GO`：汇总证据、阻塞和条件，形成完整功能与 stable 发布决议。
-    - 状态（2026-08-30）：ADR-0011 已形成 `IMPLEMENTATION GO WITH RELEASE CONDITIONS`，允许建立正式 workspace；这不勾选完整 Phase 0 决议。标准 Native `5-r.5` ZIP/hash、产品 safe wrapper、macOS Metal 三预置模型绘制和 Windows x64 交叉 check 已验证；Framework 求值、D3D11 模型绘制、其他原生 ABI、GPUI 辅助功能/IME 与双平台物理输入/GPU 矩阵继续阻塞对应功能声明，最终合规清单只阻塞 stable 发布。
+    - 状态（2026-08-31）：ADR-0011 已形成 `IMPLEMENTATION GO WITH RELEASE CONDITIONS`，允许建立正式 workspace；这不勾选完整 Phase 0 决议。标准 Native `5-r.5` ZIP/hash、产品 safe wrapper、Windows x64 D3D11 与 macOS arm64 Metal 三预置模型绘制已验证；真实 physics/pose Framework 样本、其他原生 ABI、GPUI 辅助功能/IME 与双平台物理输入/GPU 矩阵继续阻塞对应功能声明，最终合规清单只阻塞 stable 发布。
 
 15. [x] `P1-RUNTIME-CONFIG`：建立正式 workspace，提升 runtime 生命周期、强类型 command/snapshot 与 Development/Production 配置隔离闭环。
     - 依赖：ADR-0011、`spikes/runtime-contract/`、`spikes/config-store/`。
@@ -1189,42 +1197,39 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
       decoder 与 motion event/audio contract 已进入正式 workspace；完整 Native format、
       Clippy、test、release check、双 Windows target check 和 CI 结果随对应提交记录。
 17. [ ] `P1-SETTINGS-WINDOW-LIFECYCLE`：设置窗口关闭后保持后台产品运行，并可从当前
-        revisioned snapshot 重建窗口。
-    - 依赖：正式 GPUI 设置窗口、app coordinator、runtime/render owner。
-    - 退出条件：window close 不触发 shutdown；窗口隐藏/销毁期间 frame source 继续推进；
-      macOS reopen 只创建一个新 GPUI Entity，Windows reopen 只重显保留的唯一 Entity，且都
-      从当前 revisioned snapshot 刷新；显式 Quit 仍按既定顺序 join 全部 owner；
-      Windows/macOS release smoke 与完整 Native workspace 门禁通过。
-    - 状态（2026-08-31）：macOS release smoke 和 Windows platform target check 本机通过；
-      Windows run `33328391234`、job `99302481796` 已证明普通 close 隐藏有效，但随后允许真实
-      `WM_DESTROY` 的两阶段退出仍以 `0xC0000409` fast-fail。上游 commit
-      `399258feeaf90ad8a3a208c99221ee87b6452f38` 保留同一同步重入回调，因此当前实现改为先
-      有序停止并 join 全部 BongoCat owner，再由 Windows adapter 跳过最终 GPUI 窗口析构；
-      Windows 原生 lifecycle CI 和完整门禁通过前保持未勾选。
-    - 状态（2026-08-31）：run `33330226417`、Windows job `99307365560` 的编译、Clippy、
-      测试和 release check 均通过，但 lifecycle script 的 `Process.MainWindowHandle` 选中了
-      独立 overlay，导致错误地关闭猫窗口并报告 overlay/设置窗口双失败；macOS job
-      `99307365568` 已通过。runner 现改为按标题和 PID 定位 GPUI 设置窗口并发送真实
-      `WM_CLOSE`。
-    - 状态（2026-08-31）：替代 run `33331197902`、Windows job `99309931267` 的 workspace
-      门禁再次通过，唯一失败仍为 product lifecycle smoke；精确标题查找没有在内部 3 秒隐藏
-      截止前取得 HWND，随后只报告产品已退出且遗漏重定向日志。runner 现按 PID 枚举可见顶层
-      窗口、排除独立 overlay，并在所有失败路径输出 HWND 清单与产品 stdout/stderr；等待新的
-      原生 Windows run 区分窗口发现问题与产品故障。
-    - 状态（2026-08-31）：run `33332271286`、Windows job `99312838431` 证明外部枚举选中的
-      fallback HWND 在延迟投递前已失效，`PostMessage(WM_CLOSE)` 因此失败，产品内部也未观察到
-      settings close。smoke 现由 Windows platform adapter 从 GPUI 公共 raw-window-handle 精确
-      取得设置 HWND 并异步投递真实 `WM_CLOSE`；CI 不再枚举或猜测产品窗口，待原生 run 复验。
-    - 验收证据（2026-08-31）：commit `9365eda` 的 push run `33333789799` 全绿；Windows job
-      `99316966532` 与 macOS job `99316966517` 均通过 release lifecycle smoke、完整 workspace
-      tests 和有序 shutdown，Windows 真实 `WM_CLOSE` 后 frame source 继续、保留 Entity 重显并
-      恢复 snapshot。Ubuntu job `99316966591` 通过共享 contract、Clippy、test 和 release check。
-    - 状态（2026-08-31）：Models 页面提交的 PR run `33338726693`、Windows job
-      `99330277028` 在 release lifecycle smoke 暴露 GPUI `AsyncApp::update` 时序重入并以
-      `RefCell already borrowed`/`0xC0000409` 退出；同提交 push job 偶然通过，不足以维持完成
-      声明。Windows frame tick、close/hide/reopen 检查和定时退出现改为经保留的唯一
-      `WindowHandle` 使用 GPUI 可失败的 window update，并对短暂占用做有界重试；原生 CI 改为
-      连续五轮 lifecycle smoke。等待新 run 全部通过后恢复勾选并记录证据。
+        revisioned snapshot 重建窗口。- 依赖：正式 GPUI 设置窗口、app coordinator、runtime/render owner。- 退出条件：window close 不触发 shutdown；窗口隐藏/销毁期间 frame source 继续推进；
+        macOS reopen 只创建一个新 GPUI Entity，Windows reopen 只重显保留的唯一 Entity，且都
+        从当前 revisioned snapshot 刷新；显式 Quit 仍按既定顺序 join 全部 owner；
+        Windows/macOS release smoke 与完整 Native workspace 门禁通过。- 状态（2026-08-31）：macOS release smoke 和 Windows platform target check 本机通过；
+        Windows run `33328391234`、job `99302481796` 已证明普通 close 隐藏有效，但随后允许真实
+        `WM_DESTROY` 的两阶段退出仍以 `0xC0000409` fast-fail。上游 commit
+        `399258feeaf90ad8a3a208c99221ee87b6452f38` 保留同一同步重入回调，因此当前实现改为先
+        有序停止并 join 全部 BongoCat owner，再由 Windows adapter 跳过最终 GPUI 窗口析构；
+        Windows 原生 lifecycle CI 和完整门禁通过前保持未勾选。- 状态（2026-08-31）：run `33330226417`、Windows job `99307365560` 的编译、Clippy、
+        测试和 release check 均通过，但 lifecycle script 的 `Process.MainWindowHandle` 选中了
+        独立 overlay，导致错误地关闭猫窗口并报告 overlay/设置窗口双失败；macOS job
+        `99307365568` 已通过。runner 现改为按标题和 PID 定位 GPUI 设置窗口并发送真实
+        `WM_CLOSE`。- 状态（2026-08-31）：替代 run `33331197902`、Windows job `99309931267` 的 workspace
+        门禁再次通过，唯一失败仍为 product lifecycle smoke；精确标题查找没有在内部 3 秒隐藏
+        截止前取得 HWND，随后只报告产品已退出且遗漏重定向日志。runner 现按 PID 枚举可见顶层
+        窗口、排除独立 overlay，并在所有失败路径输出 HWND 清单与产品 stdout/stderr；等待新的
+        原生 Windows run 区分窗口发现问题与产品故障。- 状态（2026-08-31）：run `33332271286`、Windows job `99312838431` 证明外部枚举选中的
+        fallback HWND 在延迟投递前已失效，`PostMessage(WM_CLOSE)` 因此失败，产品内部也未观察到
+        settings close。smoke 现由 Windows platform adapter 从 GPUI 公共 raw-window-handle 精确
+        取得设置 HWND 并异步投递真实 `WM_CLOSE`；CI 不再枚举或猜测产品窗口，待原生 run 复验。- 验收证据（2026-08-31）：commit `9365eda` 的 push run `33333789799` 全绿；Windows job
+        `99316966532` 与 macOS job `99316966517` 均通过 release lifecycle smoke、完整 workspace
+        tests 和有序 shutdown，Windows 真实 `WM_CLOSE` 后 frame source 继续、保留 Entity 重显并
+        恢复 snapshot。Ubuntu job `99316966591` 通过共享 contract、Clippy、test 和 release check。- 状态（2026-08-31）：Models 页面提交的 PR run `33338726693`、Windows job
+        `99330277028` 在 release lifecycle smoke 暴露 GPUI `AsyncApp::update` 时序重入并以
+        `RefCell already borrowed`/`0xC0000409` 退出；同提交 push job 偶然通过，不足以维持完成
+        声明。Windows frame tick、close/hide/reopen 检查和定时退出现改为经保留的唯一
+        `WindowHandle` 使用 GPUI 可失败的 window update，并对短暂占用做有界重试；原生 CI 改为
+        连续五轮 lifecycle smoke。等待新 run 全部通过后恢复勾选并记录证据。- 状态（2026-08-31）：push run `33340053848`、Windows job `99333935406` 的完整 backtrace
+        将重入定位到 `ProductOverlaySession::tick -> pump_window_messages -> GPUI window proc ->
+AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows overlay tick 移出
+        GPUI `App`/`Window` borrow，并把 Win32 pump 仅保留给 standalone `run_for`；显式退出改为
+        原子请求，由唯一 frame owner 在 tick 边界执行有序 shutdown。首轮复验的 Windows Clippy
+        只发现 cfg 后未使用的 async context，当前批已修正；真实五连跑通过前仍保持未勾选。
 18. [x] `P4-MODEL-CATALOG`：建立来源感知的预置/用户模型合并目录并投影到设置服务。
     - 依赖：正式 `bongocat-model`、环境 `ModelStore`、只读预置资源和 typed settings snapshot。
     - 退出条件：应用持有 preset catalog；preset/installed 的 ready/invalid 条目都可见且确定
@@ -1322,6 +1327,22 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
       push run `33337621979` 仅因 Linux 未调用私有 validation helper 而触发 dead-code Clippy；
       当前批已按 macOS/Windows/test cfg 收窄该 helper，本机 Linux target Clippy 通过，等待新
       push run 复验。完整 Models 页面 workspace 门禁也随本批统一执行后补充证据。
+26. [ ] `P4-MODEL-MANAGEMENT-UI`：在 Models 页面完成来源感知的激活与删除闭环。
+    - 依赖：`P4-MODEL-CATALOG`、`P4-MODEL-SELECTION`、`P4-MODEL-DELETE-COMMAND` 和正式
+      GPUI settings snapshot。
+    - 退出条件：每行按 `(origin, model_id)` 保持身份，重复 ID 不混淆；ready 且非 active 的
+      模型可激活，invalid 模型不可激活并显示稳定无路径诊断；preset 与 active installed 不提供
+      删除，其他 installed 删除前需显式确认且可取消；操作期间其他模型命令禁用，成功只接受
+      不倒退的 revisioned snapshot，失败保留 catalog/active model 并显示可重试错误；所有动作
+      支持可见 Tab 焦点与 Enter/Space，定向 UI contract、完整 Native 门禁和双平台页面 smoke
+      通过。
+    - 状态（2026-08-31）：页面已按 `(origin, model_id)` 渲染 active/ready/invalid 状态，接入
+      typed activation 与 installed delete，提供 Cancel/Confirm 且保护 preset/active installed；
+      operation 期间禁用冲突命令，异步结果只接受不倒退 revision，错误保留当前 catalog，invalid
+      诊断不含路径。动态 focus handle 覆盖每行 Enter/Space，并修正确认态 Cancel/Confirm 的视觉
+      与 Tab 顺序。14 项 UI 测试覆盖复合身份、删除资格、稳定诊断、按键和焦点顺序；macOS
+      release product smoke 已实际切换并渲染 Models 页面后完成 close/reopen/shutdown。Windows
+      五连跑与完整三平台 CI 尚待当前提交验证，因此保持未勾选。
 
 ## 13. 待决策清单
 

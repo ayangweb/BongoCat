@@ -1,7 +1,8 @@
 use crate::{
     RuntimeHealth, SettingsClient, SettingsError, SettingsErrorCode, SettingsModelAvailability,
-    SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
-    SettingsModelImportStage, SettingsModelOrigin, SettingsOperationId, SettingsSnapshot,
+    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportMonitor,
+    SettingsModelImportOperation, SettingsModelImportRequest, SettingsModelImportStage,
+    SettingsModelKey, SettingsModelOrigin, SettingsOperationId, SettingsSnapshot,
 };
 use bongocat_platform::{DirectoryPickerError, DirectoryPickerOutcome, pick_model_directory};
 use gpui::{
@@ -9,7 +10,13 @@ use gpui::{
     Window, WindowAppearance, WindowBounds, WindowHandle, WindowOptions, div, prelude::*, px, rgb,
     size,
 };
-use std::{path::Path, path::PathBuf, rc::Rc, time::Duration};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::Path,
+    path::PathBuf,
+    rc::Rc,
+    time::Duration,
+};
 
 const WINDOW_WIDTH: f32 = 800.0;
 const WINDOW_HEIGHT: f32 = 600.0;
@@ -65,6 +72,8 @@ enum PendingOperation {
     Refresh,
     OverlayVisibility,
     MotionAudio,
+    ModelSelection,
+    ModelDeletion,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -90,6 +99,45 @@ struct ModelImportDraft {
     id: String,
     source_root: Option<PathBuf>,
     state: ModelImportState,
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct ModelRowKey {
+    origin_rank: u8,
+    id: String,
+}
+
+impl ModelRowKey {
+    fn new(origin: SettingsModelOrigin, id: &str) -> Self {
+        Self {
+            origin_rank: match origin {
+                SettingsModelOrigin::Preset => 0,
+                SettingsModelOrigin::Installed => 1,
+            },
+            id: id.to_owned(),
+        }
+    }
+}
+
+#[derive(Clone)]
+struct ModelRowFocus {
+    activate: FocusHandle,
+    delete: FocusHandle,
+    cancel_delete: FocusHandle,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ModelRowActions {
+    active: bool,
+    can_activate: bool,
+    can_delete: bool,
+}
+
+#[derive(Clone, Copy)]
+enum ModelRowAction {
+    Activate,
+    Delete,
+    CancelDelete,
 }
 
 impl Default for ModelImportDraft {
@@ -179,6 +227,8 @@ pub struct SettingsView {
     error: Option<SettingsError>,
     page: SettingsPage,
     model_import: ModelImportDraft,
+    model_delete_confirmation: Option<SettingsModelKey>,
+    model_row_focus: BTreeMap<ModelRowKey, ModelRowFocus>,
     window_hidden: bool,
     request_quit: Rc<dyn Fn(&mut App)>,
     general_focus: FocusHandle,
@@ -205,6 +255,8 @@ impl SettingsView {
             error: None,
             page: SettingsPage::General,
             model_import: ModelImportDraft::default(),
+            model_delete_confirmation: None,
+            model_row_focus: BTreeMap::new(),
             window_hidden: false,
             request_quit,
             general_focus: cx.focus_handle().tab_index(1).tab_stop(true),
@@ -231,6 +283,55 @@ impl SettingsView {
 
     pub fn window_hidden(&self) -> bool {
         self.window_hidden
+    }
+
+    pub fn show_models_page_for_smoke(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
+        self.page = SettingsPage::Models;
+        cx.notify();
+        let snapshot = self
+            .snapshot
+            .as_ref()
+            .ok_or_else(|| "models page has not received a runtime snapshot".to_owned())?;
+        if snapshot.model_catalog.error.is_some() {
+            return Err("models page received a catalog error".to_owned());
+        }
+        if snapshot.model_catalog.entries.is_empty() {
+            return Err("models page catalog is empty".to_owned());
+        }
+        let active_model = snapshot
+            .active_model
+            .as_ref()
+            .ok_or_else(|| "models page has no active model identity".to_owned())?;
+        let active_entry = snapshot
+            .model_catalog
+            .entries
+            .iter()
+            .find(|entry| entry.origin == active_model.origin && entry.id == active_model.id)
+            .ok_or_else(|| "models page active model is absent from the catalog".to_owned())?;
+        let active_actions = model_row_actions(active_entry, Some(active_model), false);
+        if !active_actions.active || active_actions.can_activate || active_actions.can_delete {
+            return Err("models page did not protect the active model row".to_owned());
+        }
+
+        let mut has_activation_target = false;
+        for entry in &snapshot.model_catalog.entries {
+            let actions = model_row_actions(entry, Some(active_model), false);
+            if entry.origin == SettingsModelOrigin::Preset && actions.can_delete {
+                return Err("models page exposed deletion for a preset model".to_owned());
+            }
+            if matches!(
+                entry.availability,
+                SettingsModelAvailability::Invalid { .. }
+            ) && actions.can_activate
+            {
+                return Err("models page exposed activation for an invalid model".to_owned());
+            }
+            has_activation_target |= actions.can_activate;
+        }
+        if !has_activation_target {
+            return Err("models page has no ready inactive activation target".to_owned());
+        }
+        Ok(())
     }
 
     pub fn reopen(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Result<(), String> {
@@ -391,6 +492,192 @@ impl SettingsView {
         }
     }
 
+    fn sync_model_row_focus(
+        &mut self,
+        entries: &[SettingsModelEntry],
+        active_model: Option<&SettingsModelKey>,
+        commands_blocked: bool,
+        cx: &mut Context<Self>,
+    ) {
+        if self
+            .model_delete_confirmation
+            .as_ref()
+            .is_some_and(|model| !model_delete_confirmation_is_valid(entries, active_model, model))
+        {
+            self.model_delete_confirmation = None;
+        }
+        let keys = entries
+            .iter()
+            .map(|entry| ModelRowKey::new(entry.origin, &entry.id))
+            .collect::<BTreeSet<_>>();
+        self.model_row_focus.retain(|key, _| keys.contains(key));
+        for (index, entry) in entries.iter().enumerate() {
+            let key = ModelRowKey::new(entry.origin, &entry.id);
+            let model = SettingsModelKey {
+                id: entry.id.clone(),
+                origin: entry.origin,
+            };
+            let actions = model_row_actions(entry, active_model, commands_blocked);
+            let confirming_delete = self.model_delete_confirmation.as_ref() == Some(&model);
+            let offset = isize::try_from(index)
+                .unwrap_or(isize::MAX / 3)
+                .saturating_mul(3);
+            let tab_index = 40_isize.saturating_add(offset);
+            let action_tabs = model_row_action_tab_indices(tab_index, confirming_delete);
+            let focus = self
+                .model_row_focus
+                .entry(key)
+                .or_insert_with(|| ModelRowFocus {
+                    activate: cx.focus_handle(),
+                    delete: cx.focus_handle(),
+                    cancel_delete: cx.focus_handle(),
+                });
+            focus.activate = focus
+                .activate
+                .clone()
+                .tab_index(action_tabs.activate)
+                .tab_stop(actions.can_activate);
+            focus.delete = focus
+                .delete
+                .clone()
+                .tab_index(action_tabs.delete)
+                .tab_stop(actions.can_delete);
+            focus.cancel_delete = focus
+                .cancel_delete
+                .clone()
+                .tab_index(action_tabs.cancel_delete)
+                .tab_stop(actions.can_delete && confirming_delete);
+        }
+    }
+
+    fn select_model(&mut self, model: SettingsModelKey, cx: &mut Context<Self>) {
+        if self.pending.is_some() || self.model_import.is_running() {
+            return;
+        }
+        self.pending = Some(PendingOperation::ModelSelection);
+        self.error = None;
+        self.model_delete_confirmation = None;
+        cx.notify();
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = client.select_model(model).await;
+            let _ = this.update(cx, |view, cx| {
+                view.pending = None;
+                match result {
+                    Ok(snapshot)
+                        if view
+                            .snapshot
+                            .as_ref()
+                            .is_none_or(|current| snapshot.revision >= current.revision) =>
+                    {
+                        view.snapshot = Some(snapshot);
+                    }
+                    Ok(_) => {}
+                    Err(error) => view.error = Some(error),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn request_model_delete(&mut self, model: SettingsModelKey, cx: &mut Context<Self>) {
+        if self.pending.is_some() || self.model_import.is_running() {
+            return;
+        }
+        if self.model_delete_confirmation.as_ref() == Some(&model) {
+            self.delete_model(model, cx);
+        } else {
+            self.model_delete_confirmation = Some(model);
+            self.error = None;
+            cx.notify();
+        }
+    }
+
+    fn cancel_model_delete(&mut self, model: &SettingsModelKey, cx: &mut Context<Self>) {
+        if self.model_delete_confirmation.as_ref() == Some(model) {
+            self.model_delete_confirmation = None;
+            cx.notify();
+        }
+    }
+
+    fn delete_model(&mut self, model: SettingsModelKey, cx: &mut Context<Self>) {
+        self.pending = Some(PendingOperation::ModelDeletion);
+        self.error = None;
+        cx.notify();
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = client.delete_model(model).await;
+            let _ = this.update(cx, |view, cx| {
+                view.pending = None;
+                match result {
+                    Ok(snapshot)
+                        if view
+                            .snapshot
+                            .as_ref()
+                            .is_none_or(|current| snapshot.revision >= current.revision) =>
+                    {
+                        view.snapshot = Some(snapshot);
+                        view.model_delete_confirmation = None;
+                    }
+                    Ok(_) => view.model_delete_confirmation = None,
+                    Err(error) => view.error = Some(error),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn run_model_row_action(
+        &mut self,
+        action: ModelRowAction,
+        model: SettingsModelKey,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(entry) = self.snapshot.as_ref().and_then(|snapshot| {
+            snapshot
+                .model_catalog
+                .entries
+                .iter()
+                .find(|entry| entry.origin == model.origin && entry.id == model.id)
+        }) else {
+            return;
+        };
+        let actions = model_row_actions(
+            entry,
+            self.snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.active_model.as_ref()),
+            self.pending.is_some() || self.model_import.is_running(),
+        );
+        let Some(focus) = self
+            .model_row_focus
+            .get(&ModelRowKey::new(model.origin, &model.id))
+            .cloned()
+        else {
+            return;
+        };
+        match action {
+            ModelRowAction::Activate if actions.can_activate => {
+                window.focus(&focus.activate);
+                self.select_model(model, cx);
+            }
+            ModelRowAction::Delete if actions.can_delete => {
+                window.focus(&focus.delete);
+                self.request_model_delete(model, cx);
+            }
+            ModelRowAction::CancelDelete
+                if self.model_delete_confirmation.as_ref() == Some(&model) =>
+            {
+                window.focus(&focus.cancel_delete);
+                self.cancel_model_delete(&model, cx);
+            }
+            _ => {}
+        }
+    }
+
     fn start_request(
         &mut self,
         operation: PendingOperation,
@@ -455,7 +742,12 @@ impl Render for SettingsView {
             self.pending.is_some() || snapshot.is_none() || self.model_import.is_running();
         let status: SharedString = match (&self.error, self.pending, &snapshot) {
             (Some(error), _, _) => error.to_string().into(),
-            (_, Some(_), _) => "Saving...".into(),
+            (_, Some(PendingOperation::Refresh), _) => "Refreshing...".into(),
+            (_, Some(PendingOperation::OverlayVisibility | PendingOperation::MotionAudio), _) => {
+                "Saving...".into()
+            }
+            (_, Some(PendingOperation::ModelSelection), _) => "Activating model...".into(),
+            (_, Some(PendingOperation::ModelDeletion), _) => "Deleting model...".into(),
             (_, None, Some(snapshot)) => {
                 let health = match snapshot.runtime_health {
                     RuntimeHealth::Starting => "Starting",
@@ -650,56 +942,233 @@ impl Render for SettingsView {
         } else {
             self.model_import.id.clone().into()
         };
-        let model_id_disabled = self.model_import.is_running();
-        let model_rows = snapshot
+        let import_running = self.model_import.is_running();
+        let model_id_disabled = import_running;
+        let model_commands_blocked = import_running || self.pending.is_some();
+        let model_entries = snapshot
             .as_ref()
-            .map(|snapshot| {
-                snapshot
-                    .model_catalog
-                    .entries
-                    .iter()
-                    .map(|entry| {
-                        let origin = match entry.origin {
-                            SettingsModelOrigin::Preset => "Preset",
-                            SettingsModelOrigin::Installed => "Installed",
-                        };
-                        let availability: SharedString = match entry.availability {
-                            SettingsModelAvailability::Ready {
-                                texture_count,
-                                expression_count,
-                                motion_count,
-                            } => format!(
-                                "{origin} · {texture_count} textures · {expression_count} expressions · {motion_count} motions"
-                            )
-                            .into(),
-                            SettingsModelAvailability::Invalid { .. } => {
-                                format!("{origin} · Invalid model").into()
+            .map(|snapshot| snapshot.model_catalog.entries.clone())
+            .unwrap_or_default();
+        let active_model = snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.active_model.as_ref());
+        self.sync_model_row_focus(&model_entries, active_model, model_commands_blocked, cx);
+        let mut model_rows = model_entries
+            .into_iter()
+            .enumerate()
+            .map(|(index, entry)| {
+                let model = SettingsModelKey {
+                    id: entry.id.clone(),
+                    origin: entry.origin,
+                };
+                let actions = model_row_actions(&entry, active_model, model_commands_blocked);
+                let confirming_delete = self.model_delete_confirmation.as_ref() == Some(&model);
+                let focus = self
+                    .model_row_focus
+                    .get(&ModelRowKey::new(entry.origin, &entry.id))
+                    .expect("model row focus is synchronized")
+                    .clone();
+                let tab_index = 40_isize.saturating_add(
+                    isize::try_from(index)
+                        .unwrap_or(isize::MAX / 3)
+                        .saturating_mul(3),
+                );
+                let action_tabs = model_row_action_tab_indices(tab_index, confirming_delete);
+                let availability = if confirming_delete {
+                    format!(
+                        "{} · Confirm deletion",
+                        model_availability_status(&entry, actions.active)
+                    )
+                    .into()
+                } else {
+                    model_availability_status(&entry, actions.active)
+                };
+                let activate_label = if actions.active {
+                    "Active"
+                } else if matches!(
+                    entry.availability,
+                    SettingsModelAvailability::Invalid { .. }
+                ) {
+                    "Unavailable"
+                } else {
+                    "Activate"
+                };
+                let activate_model = model.clone();
+                let activate_key_model = model.clone();
+                let mut actions_row = div().flex().items_center().gap_2().child(
+                    command_button(
+                        activate_label,
+                        &focus.activate,
+                        action_tabs.activate,
+                        window,
+                        tokens,
+                        !actions.can_activate,
+                    )
+                    .w(px(92.0))
+                    .id(("activate-model", index))
+                    .on_click(cx.listener(move |view, _, window, cx| {
+                        view.run_model_row_action(
+                            ModelRowAction::Activate,
+                            activate_model.clone(),
+                            window,
+                            cx,
+                        );
+                    }))
+                    .on_key_down(cx.listener(
+                        move |view, event, window, cx| {
+                            if is_activation_key(event) {
+                                cx.stop_propagation();
+                                view.run_model_row_action(
+                                    ModelRowAction::Activate,
+                                    activate_key_model.clone(),
+                                    window,
+                                    cx,
+                                );
                             }
-                        };
+                        },
+                    )),
+                );
+                if actions.can_delete {
+                    if confirming_delete {
+                        let cancel_model = model.clone();
+                        let cancel_key_model = model.clone();
+                        actions_row = actions_row.child(
+                            command_button(
+                                "Cancel",
+                                &focus.cancel_delete,
+                                action_tabs.cancel_delete,
+                                window,
+                                tokens,
+                                false,
+                            )
+                            .id(("cancel-delete-model", index))
+                            .on_click(cx.listener(move |view, _, window, cx| {
+                                view.run_model_row_action(
+                                    ModelRowAction::CancelDelete,
+                                    cancel_model.clone(),
+                                    window,
+                                    cx,
+                                );
+                            }))
+                            .on_key_down(cx.listener(
+                                move |view, event, window, cx| {
+                                    if is_activation_key(event) {
+                                        cx.stop_propagation();
+                                        view.run_model_row_action(
+                                            ModelRowAction::CancelDelete,
+                                            cancel_key_model.clone(),
+                                            window,
+                                            cx,
+                                        );
+                                    }
+                                },
+                            )),
+                        );
+                    }
+                    let delete_model = model.clone();
+                    let delete_key_model = model.clone();
+                    actions_row = actions_row.child(
+                        command_button(
+                            if confirming_delete {
+                                "Confirm"
+                            } else {
+                                "Delete"
+                            },
+                            &focus.delete,
+                            action_tabs.delete,
+                            window,
+                            tokens,
+                            false,
+                        )
+                        .id(("delete-model", index))
+                        .on_click(cx.listener(move |view, _, window, cx| {
+                            view.run_model_row_action(
+                                ModelRowAction::Delete,
+                                delete_model.clone(),
+                                window,
+                                cx,
+                            );
+                        }))
+                        .on_key_down(cx.listener(
+                            move |view, event, window, cx| {
+                                if is_activation_key(event) {
+                                    cx.stop_propagation();
+                                    view.run_model_row_action(
+                                        ModelRowAction::Delete,
+                                        delete_key_model.clone(),
+                                        window,
+                                        cx,
+                                    );
+                                }
+                            },
+                        )),
+                    );
+                }
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .py_3()
+                    .border_b_1()
+                    .border_color(tokens.border)
+                    .child(
                         div()
                             .flex()
                             .items_center()
                             .justify_between()
                             .gap_3()
-                            .py_2()
-                            .border_b_1()
-                            .border_color(tokens.border)
                             .child(
                                 div()
                                     .min_w_0()
                                     .flex_1()
                                     .text_color(tokens.text)
-                                    .child(entry.id.clone()),
+                                    .child(entry.id),
                             )
-                            .child(div().text_sm().text_color(tokens.muted).child(availability))
-                    })
-                    .collect::<Vec<_>>()
+                            .child(actions_row),
+                    )
+                    .child(div().text_sm().text_color(tokens.muted).child(availability))
             })
-            .unwrap_or_default();
-        let import_running = self.model_import.is_running();
+            .collect::<Vec<_>>();
+        let catalog_error = snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.model_catalog.error.is_some());
+        if model_rows.is_empty() {
+            let empty_status = if snapshot.is_none() {
+                "Loading models..."
+            } else if catalog_error {
+                "Model catalog is unavailable"
+            } else {
+                "No models available"
+            };
+            model_rows.push(
+                div()
+                    .py_4()
+                    .text_sm()
+                    .text_color(if catalog_error {
+                        tokens.danger
+                    } else {
+                        tokens.muted
+                    })
+                    .child(empty_status),
+            );
+        }
+        let (management_status, management_failed): (SharedString, bool) =
+            match (&self.error, self.pending, catalog_error) {
+                (Some(error), _, _) => (error.to_string().into(), true),
+                (_, Some(PendingOperation::ModelSelection), _) => {
+                    ("Activating model...".into(), false)
+                }
+                (_, Some(PendingOperation::ModelDeletion), _) => {
+                    ("Deleting model...".into(), false)
+                }
+                (_, Some(PendingOperation::Refresh), _) => ("Refreshing models...".into(), false),
+                (_, _, true) => ("Catalog unavailable".into(), true),
+                _ => ("".into(), false),
+            };
         let picker_disabled = import_running || self.pending.is_some();
         let import_button_label = if import_running { "Cancel" } else { "Import" };
-        let import_disabled = !import_running && !self.model_import.can_import();
+        let import_disabled =
+            !import_running && (!self.model_import.can_import() || self.pending.is_some());
         let models_content = div()
             .min_w_0()
             .flex_1()
@@ -856,9 +1325,23 @@ impl Render for SettingsView {
             )
             .child(
                 div()
+                    .h(px(20.0))
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap_3()
                     .text_sm()
-                    .text_color(tokens.muted)
-                    .child("Available models"),
+                    .child(div().text_color(tokens.muted).child("Available models"))
+                    .child(
+                        div()
+                            .min_w_0()
+                            .text_color(if management_failed {
+                                tokens.danger
+                            } else {
+                                tokens.muted
+                            })
+                            .child(management_status),
+                    ),
             )
             .child(
                 div()
@@ -980,6 +1463,107 @@ fn suggested_model_id(source_root: &Path) -> String {
         format!("model-{tail}")
     } else {
         trimmed
+    }
+}
+
+fn model_row_actions(
+    entry: &SettingsModelEntry,
+    active_model: Option<&SettingsModelKey>,
+    commands_blocked: bool,
+) -> ModelRowActions {
+    let model = SettingsModelKey {
+        id: entry.id.clone(),
+        origin: entry.origin,
+    };
+    let active = active_model == Some(&model);
+    let ready = matches!(entry.availability, SettingsModelAvailability::Ready { .. });
+    ModelRowActions {
+        active,
+        can_activate: ready && !active && !commands_blocked,
+        can_delete: entry.origin == SettingsModelOrigin::Installed && !active && !commands_blocked,
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ModelRowActionTabIndices {
+    activate: isize,
+    delete: isize,
+    cancel_delete: isize,
+}
+
+fn model_row_action_tab_indices(
+    first_tab_index: isize,
+    confirming_delete: bool,
+) -> ModelRowActionTabIndices {
+    let second = first_tab_index.saturating_add(1);
+    let third = first_tab_index.saturating_add(2);
+    ModelRowActionTabIndices {
+        activate: first_tab_index,
+        delete: if confirming_delete { third } else { second },
+        cancel_delete: if confirming_delete { second } else { third },
+    }
+}
+
+fn model_delete_confirmation_is_valid(
+    entries: &[SettingsModelEntry],
+    active_model: Option<&SettingsModelKey>,
+    model: &SettingsModelKey,
+) -> bool {
+    model.origin == SettingsModelOrigin::Installed
+        && active_model != Some(model)
+        && entries
+            .iter()
+            .any(|entry| entry.origin == model.origin && entry.id == model.id)
+}
+
+fn model_availability_status(entry: &SettingsModelEntry, active: bool) -> SharedString {
+    let origin = match entry.origin {
+        SettingsModelOrigin::Preset => "Preset",
+        SettingsModelOrigin::Installed => "Installed",
+    };
+    let active = if active { " · Active" } else { "" };
+    match entry.availability {
+        SettingsModelAvailability::Ready {
+            texture_count,
+            expression_count,
+            motion_count,
+        } => format!(
+            "{origin}{active} · {texture_count} textures · {expression_count} expressions · {motion_count} motions"
+        )
+        .into(),
+        SettingsModelAvailability::Invalid { diagnostic } => {
+            let diagnostic = match diagnostic {
+                SettingsModelDiagnostic::InvalidModelId
+                | SettingsModelDiagnostic::ModelEntryAmbiguous
+                | SettingsModelDiagnostic::ModelEntryMissing
+                | SettingsModelDiagnostic::ModelReferenceEscapesRoot
+                | SettingsModelDiagnostic::ModelReferenceInvalid
+                | SettingsModelDiagnostic::ModelReferenceSymlinkEscape
+                | SettingsModelDiagnostic::ModelSymlinkDirectoryUnsupported => {
+                    "Package layout is invalid"
+                }
+                SettingsModelDiagnostic::ModelFileCountExceeded
+                | SettingsModelDiagnostic::ModelFileTooLarge
+                | SettingsModelDiagnostic::ModelJsonTooLarge
+                | SettingsModelDiagnostic::ModelPackageDepthExceeded
+                | SettingsModelDiagnostic::ModelPackageSizeExceeded
+                | SettingsModelDiagnostic::ModelTextureDimensionExceeded => {
+                    "Package exceeds safety limits"
+                }
+                SettingsModelDiagnostic::ModelJsonInvalid
+                | SettingsModelDiagnostic::ModelUnsupportedVersion => {
+                    "Model definition is unsupported"
+                }
+                SettingsModelDiagnostic::ModelTextureInvalidPng
+                | SettingsModelDiagnostic::ModelTextureMissing => "Texture is invalid",
+                SettingsModelDiagnostic::ModelIoError => "Model files are unavailable",
+                SettingsModelDiagnostic::ModelMocMissing
+                | SettingsModelDiagnostic::ModelResourceInvalid
+                | SettingsModelDiagnostic::ModelResourceMissing
+                | SettingsModelDiagnostic::ModelResourceNotFile => "Model resource is invalid",
+            };
+            format!("{origin} · {diagnostic}").into()
+        }
     }
 }
 
@@ -1328,5 +1912,116 @@ mod tests {
         assert!(failed);
         assert_eq!(status, "Selected folder is unavailable");
         assert!(!status.contains("secret"));
+    }
+
+    #[test]
+    fn model_row_actions_preserve_origin_availability_and_active_identity() {
+        let ready = SettingsModelAvailability::Ready {
+            texture_count: 1,
+            expression_count: 0,
+            motion_count: 0,
+        };
+        let preset = SettingsModelEntry {
+            id: "duplicate".to_owned(),
+            origin: SettingsModelOrigin::Preset,
+            availability: ready,
+        };
+        let installed = SettingsModelEntry {
+            id: "duplicate".to_owned(),
+            origin: SettingsModelOrigin::Installed,
+            availability: ready,
+        };
+        let active_preset = SettingsModelKey {
+            id: "duplicate".to_owned(),
+            origin: SettingsModelOrigin::Preset,
+        };
+
+        assert_eq!(
+            model_row_actions(&preset, Some(&active_preset), false),
+            ModelRowActions {
+                active: true,
+                can_activate: false,
+                can_delete: false,
+            }
+        );
+        assert_eq!(
+            model_row_actions(&installed, Some(&active_preset), false),
+            ModelRowActions {
+                active: false,
+                can_activate: true,
+                can_delete: true,
+            }
+        );
+
+        let invalid = SettingsModelEntry {
+            availability: SettingsModelAvailability::Invalid {
+                diagnostic: SettingsModelDiagnostic::ModelJsonInvalid,
+            },
+            ..installed.clone()
+        };
+        assert_eq!(
+            model_row_actions(&invalid, Some(&active_preset), false),
+            ModelRowActions {
+                active: false,
+                can_activate: false,
+                can_delete: true,
+            }
+        );
+        assert_eq!(
+            model_row_actions(&installed, Some(&active_preset), true),
+            ModelRowActions {
+                active: false,
+                can_activate: false,
+                can_delete: false,
+            }
+        );
+        assert!(model_delete_confirmation_is_valid(
+            &[preset.clone(), installed.clone()],
+            Some(&active_preset),
+            &SettingsModelKey {
+                id: "duplicate".to_owned(),
+                origin: SettingsModelOrigin::Installed,
+            },
+        ));
+        assert!(!model_delete_confirmation_is_valid(
+            &[preset, installed],
+            Some(&active_preset),
+            &active_preset,
+        ));
+    }
+
+    #[test]
+    fn invalid_model_status_is_stable_and_path_free() {
+        let entry = SettingsModelEntry {
+            id: "private-model".to_owned(),
+            origin: SettingsModelOrigin::Installed,
+            availability: SettingsModelAvailability::Invalid {
+                diagnostic: SettingsModelDiagnostic::ModelReferenceSymlinkEscape,
+            },
+        };
+        let status = model_availability_status(&entry, false);
+        assert_eq!(status, "Installed · Package layout is invalid");
+        assert!(!status.contains("private-model"));
+        assert!(!status.contains('/'));
+    }
+
+    #[test]
+    fn model_delete_confirmation_tab_order_matches_visual_order() {
+        assert_eq!(
+            model_row_action_tab_indices(40, false),
+            ModelRowActionTabIndices {
+                activate: 40,
+                delete: 41,
+                cancel_delete: 42,
+            }
+        );
+        assert_eq!(
+            model_row_action_tab_indices(40, true),
+            ModelRowActionTabIndices {
+                activate: 40,
+                cancel_delete: 41,
+                delete: 42,
+            }
+        );
     }
 }
