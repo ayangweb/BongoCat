@@ -12,7 +12,7 @@ bongocat-runtime.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-core-foundation = { version = "=0.3.2", default-features = false, features = ["CFDate", "CFMachPort", "CFRunLoop"] }
-objc2-core-graphics = { version = "=0.3.2", default-features = false, features = ["CGEvent", "CGEventSource", "CGEventTypes", "CGRemoteOperation"] }
+objc2-core-graphics = { version = "=0.3.2", default-features = false, features = ["CGDirectDisplay", "CGError", "CGEvent", "CGEventSource", "CGEventTypes", "CGRemoteOperation"] }
 
 [lints.clippy]
 dbg_macro = "deny"

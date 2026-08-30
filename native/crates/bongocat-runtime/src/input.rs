@@ -3,6 +3,8 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
+use crate::NormalizedCursorPosition;
+
 pub const DEFAULT_MISSING_CONFIRMATIONS: u8 = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -229,12 +231,15 @@ pub struct InputSnapshot {
     pub transport: InputTransportDiagnostics,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ModelInputSnapshot {
     pub left_hand_down: bool,
     pub right_hand_down: bool,
     pub mouse_left_down: bool,
     pub mouse_right_down: bool,
+    pub pointer_x: f32,
+    pub pointer_y: f32,
+    pub pointer_z: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -339,7 +344,11 @@ impl InputState {
         }
     }
 
-    pub(crate) fn model_snapshot(&self, bindings: &InputBindings) -> ModelInputSnapshot {
+    pub(crate) fn model_snapshot(
+        &self,
+        bindings: &InputBindings,
+        cursor: NormalizedCursorPosition,
+    ) -> ModelInputSnapshot {
         let mut snapshot = ModelInputSnapshot {
             mouse_left_down: self
                 .pressed
@@ -347,6 +356,9 @@ impl InputState {
             mouse_right_down: self
                 .pressed
                 .contains_key(&InputControl::Mouse(MouseButton::Right)),
+            pointer_x: cursor.x,
+            pointer_y: cursor.y,
+            pointer_z: cursor.z,
             ..ModelInputSnapshot::default()
         };
         for control in self.pressed.keys() {
@@ -611,17 +623,18 @@ mod tests {
             InputEdge::Down,
         ));
         assert_eq!(
-            state.model_snapshot(&bindings),
+            state.model_snapshot(&bindings, NormalizedCursorPosition::default()),
             ModelInputSnapshot {
                 left_hand_down: true,
                 right_hand_down: true,
                 mouse_left_down: true,
                 mouse_right_down: false,
+                ..ModelInputSnapshot::default()
             }
         );
         state.force_reset(InputResetReason::Test);
         assert_eq!(
-            state.model_snapshot(&bindings),
+            state.model_snapshot(&bindings, NormalizedCursorPosition::default()),
             ModelInputSnapshot::default()
         );
     }

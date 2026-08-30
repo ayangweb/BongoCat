@@ -5,8 +5,9 @@ use bongocat_live2d::{
 use bongocat_model::{ModelId, ModelPackageLimits, PreparedModel};
 use bongocat_platform::MacInputService;
 use bongocat_runtime::{
-    HandSide, InputBindings, InputControl, InputEdge, InputEvent, InputProducer, InputSource,
-    ModelInputSnapshot, MonotonicMillis, MouseButton, PhysicalKey, RuntimeCommand, RuntimeOwner,
+    CursorPosition, CursorProducer, CursorSample, CursorViewport, HandSide, InputBindings,
+    InputControl, InputEdge, InputEvent, InputProducer, InputSource, ModelInputSnapshot,
+    MonotonicMillis, MouseButton, PhysicalKey, RuntimeCommand, RuntimeOwner,
 };
 use image::ImageReader;
 use metal::{
@@ -206,9 +207,10 @@ pub(crate) fn run_model_preview(
         .wait_for_command(binding_sequence, RUNTIME_TIMEOUT)
         .ok_or_else(|| OverlayError::new("preview input bindings were not applied"))?;
     let input_producer = runtime.input_producer();
+    let cursor_producer = runtime.cursor_producer();
     let mut input_driver = PreviewInputDriver::default();
     let input_service = interactive
-        .then(|| MacInputService::start(input_producer.clone()))
+        .then(|| MacInputService::start(input_producer.clone(), cursor_producer.clone()))
         .transpose()
         .map_err(|error| OverlayError::new(error.to_string()))?;
 
@@ -234,7 +236,8 @@ pub(crate) fn run_model_preview(
         });
         let elapsed = started.elapsed();
         if !interactive
-            && let Some(sequence) = input_driver.update(model_id, elapsed, &input_producer)?
+            && let Some(sequence) =
+                input_driver.update(model_id, elapsed, &input_producer, &cursor_producer)?
         {
             runtime_client
                 .wait_for_input_sequence(sequence, RUNTIME_TIMEOUT)
@@ -264,18 +267,19 @@ pub(crate) fn run_model_preview(
         }
     }
 
-    let platform_input_edges = if let Some(input_service) = input_service {
-        input_service
+    let (platform_input_edges, platform_cursor_samples) = if let Some(input_service) = input_service
+    {
+        let diagnostics = input_service
             .stop()
-            .map_err(|error| OverlayError::new(error.to_string()))?
-            .consumed_edges
+            .map_err(|error| OverlayError::new(error.to_string()))?;
+        (diagnostics.consumed_edges, diagnostics.cursor_consumed)
     } else {
         if let Some(sequence) = input_driver.release_all(started.elapsed(), &input_producer)? {
             runtime_client
                 .wait_for_input_sequence(sequence, RUNTIME_TIMEOUT)
                 .ok_or_else(|| OverlayError::new("preview releases did not reach the runtime"))?;
         }
-        0
+        (0, 0)
     };
     let stopped = runtime
         .shutdown(RUNTIME_TIMEOUT)
@@ -286,6 +290,10 @@ pub(crate) fn run_model_preview(
         dynamic_snapshots,
         runtime_input_events: stopped.input.transport.enqueued,
         platform_input_edges,
+        runtime_cursor_published: stopped.cursor.transport.published,
+        runtime_cursor_coalesced: stopped.cursor.transport.coalesced,
+        runtime_cursor_consumed: stopped.cursor.transport.consumed,
+        platform_cursor_samples,
         drawable_count: overlay.meshes.len(),
         masked_drawable_count: overlay.masked_drawable_count,
         texture_count: overlay.textures.len(),
@@ -600,7 +608,6 @@ impl Drop for NativeOverlay {
 #[derive(Default)]
 struct PreviewInputDriver {
     pressed: BTreeSet<InputControl>,
-    events_published: u64,
 }
 
 impl PreviewInputDriver {
@@ -609,7 +616,9 @@ impl PreviewInputDriver {
         model_id: &str,
         elapsed: Duration,
         producer: &InputProducer,
+        cursor: &CursorProducer,
     ) -> Result<Option<u64>, OverlayError> {
+        self.publish_cursor(elapsed, cursor)?;
         let step = (elapsed.as_millis() / 600) % 4;
         let mut desired = BTreeSet::new();
         match model_id {
@@ -679,10 +688,35 @@ impl PreviewInputDriver {
                     })
                     .map_err(|error| OverlayError::new(error.to_string()))?,
             );
-            self.events_published = self.events_published.saturating_add(1);
         }
         self.pressed = desired;
         Ok(last_sequence)
+    }
+
+    fn publish_cursor(
+        &self,
+        elapsed: Duration,
+        producer: &CursorProducer,
+    ) -> Result<(), OverlayError> {
+        let seconds = elapsed.as_secs_f64();
+        let x = (seconds * std::f64::consts::TAU / 4.0).sin();
+        let y = (seconds * std::f64::consts::TAU / 5.0).cos();
+        let sample = CursorSample::new(
+            CursorPosition {
+                x: 1.0 - x,
+                y: 1.0 - y,
+            },
+            CursorViewport {
+                origin: CursorPosition { x: 0.0, y: 0.0 },
+                width: 2.0,
+                height: 2.0,
+            },
+            MonotonicMillis::new(u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)),
+        )
+        .map_err(|error| OverlayError::new(format!("invalid preview cursor sample: {error:?}")))?;
+        producer
+            .publish(sample)
+            .map_err(|error| OverlayError::new(error.to_string()))
     }
 }
 
@@ -721,13 +755,13 @@ fn apply_preview_parameters(
     set_preview_parameters(
         model,
         &[
-            (ProductParameter::MouseX, horizontal),
-            (ProductParameter::MouseY, vertical),
-            (ProductParameter::AngleX, horizontal),
-            (ProductParameter::AngleY, vertical),
-            (ProductParameter::AngleZ, horizontal * vertical),
-            (ProductParameter::EyeBallX, horizontal),
-            (ProductParameter::EyeBallY, vertical),
+            (ProductParameter::MouseX, input.pointer_x),
+            (ProductParameter::MouseY, input.pointer_y),
+            (ProductParameter::AngleX, input.pointer_x),
+            (ProductParameter::AngleY, input.pointer_y),
+            (ProductParameter::AngleZ, input.pointer_z),
+            (ProductParameter::EyeBallX, input.pointer_x),
+            (ProductParameter::EyeBallY, input.pointer_y),
             (
                 ProductParameter::LeftHandDown,
                 f32::from(input.left_hand_down),

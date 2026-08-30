@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod cursor;
 mod input;
 
 use bongocat_model::{InstalledModel, ModelSnapshot};
@@ -7,12 +8,17 @@ use std::{
     fmt,
     sync::{
         Arc, Condvar, Mutex,
-        mpsc::{self, Receiver, SyncSender, TrySendError},
+        mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TrySendError},
     },
     thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
 
+use cursor::CursorSlot;
+pub use cursor::{
+    CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorSampleError,
+    CursorSnapshot, CursorTransportDiagnostics, CursorViewport, NormalizedCursorPosition,
+};
 pub use input::{
     HandSide, InputBindings, InputControl, InputDiagnostics, InputDisposition, InputEdge,
     InputEvent, InputResetReason, InputSnapshot, InputSource, InputTransportDiagnostics,
@@ -20,6 +26,8 @@ pub use input::{
     SequencedInputEvent,
 };
 use input::{InputState, InputTransportCounters};
+
+const CURSOR_SAMPLE_INTERVAL: Duration = Duration::from_millis(16);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RuntimeState {
@@ -38,13 +46,14 @@ pub enum RuntimeCommand {
     ActivateModel(Arc<InstalledModel>),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RuntimeSnapshot {
     pub revision: u64,
     pub state: RuntimeState,
     pub overlay_visible: bool,
     pub active_model: Option<ModelSnapshot>,
     pub input: InputSnapshot,
+    pub cursor: CursorSnapshot,
     pub model_input: ModelInputSnapshot,
     pub last_command_sequence: Option<u64>,
 }
@@ -57,6 +66,7 @@ impl RuntimeSnapshot {
             overlay_visible,
             active_model: None,
             input: InputSnapshot::default(),
+            cursor: CursorSnapshot::default(),
             model_input: ModelInputSnapshot::default(),
             last_command_sequence: None,
         }
@@ -205,6 +215,7 @@ pub struct RuntimeClient {
     snapshot: Arc<SnapshotCell>,
     input_transport: Arc<InputTransportCounters>,
     input_producer_state: Arc<Mutex<InputProducerState>>,
+    cursor_slot: Arc<CursorSlot>,
 }
 
 impl RuntimeClient {
@@ -242,7 +253,7 @@ impl RuntimeClient {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone();
-        self.with_input_transport(snapshot)
+        self.with_transport_diagnostics(snapshot)
     }
 
     pub fn wait_for_revision(
@@ -258,7 +269,7 @@ impl RuntimeClient {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         loop {
             if snapshot.revision >= minimum_revision {
-                return Some(self.with_input_transport(snapshot.clone()));
+                return Some(self.with_transport_diagnostics(snapshot.clone()));
             }
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
@@ -271,6 +282,40 @@ impl RuntimeClient {
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             snapshot = next;
             if result.timed_out() && snapshot.revision < minimum_revision {
+                return None;
+            }
+        }
+    }
+
+    pub fn wait_for_state(
+        &self,
+        expected: RuntimeState,
+        timeout: Duration,
+    ) -> Option<RuntimeSnapshot> {
+        let deadline = Instant::now().checked_add(timeout)?;
+        let mut snapshot = self
+            .snapshot
+            .value
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        loop {
+            if snapshot.state == expected {
+                return Some(self.with_transport_diagnostics(snapshot.clone()));
+            }
+            if snapshot.state == RuntimeState::Stopped {
+                return None;
+            }
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return None;
+            }
+            let (next, result) = self
+                .snapshot
+                .changed
+                .wait_timeout(snapshot, remaining)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            snapshot = next;
+            if result.timed_out() && snapshot.state != expected {
                 return None;
             }
         }
@@ -292,7 +337,7 @@ impl RuntimeClient {
                 .last_command_sequence
                 .is_some_and(|sequence| sequence >= command_sequence)
             {
-                return Some(self.with_input_transport(snapshot.clone()));
+                return Some(self.with_transport_diagnostics(snapshot.clone()));
             }
             if snapshot.state == RuntimeState::Stopped {
                 return None;
@@ -334,7 +379,7 @@ impl RuntimeClient {
                 .last_input_sequence
                 .is_some_and(|sequence| sequence >= input_sequence)
             {
-                return Some(self.with_input_transport(snapshot.clone()));
+                return Some(self.with_transport_diagnostics(snapshot.clone()));
             }
             if snapshot.state == RuntimeState::Stopped {
                 return None;
@@ -360,8 +405,43 @@ impl RuntimeClient {
         }
     }
 
-    fn with_input_transport(&self, mut snapshot: RuntimeSnapshot) -> RuntimeSnapshot {
+    pub fn wait_for_cursor_samples(
+        &self,
+        minimum_consumed: u64,
+        timeout: Duration,
+    ) -> Option<RuntimeSnapshot> {
+        let deadline = Instant::now().checked_add(timeout)?;
+        let mut snapshot = self
+            .snapshot
+            .value
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        loop {
+            if self.cursor_slot.diagnostics().consumed >= minimum_consumed {
+                return Some(self.with_transport_diagnostics(snapshot.clone()));
+            }
+            if snapshot.state == RuntimeState::Stopped {
+                return None;
+            }
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return None;
+            }
+            let (next, result) = self
+                .snapshot
+                .changed
+                .wait_timeout(snapshot, remaining)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            snapshot = next;
+            if result.timed_out() && self.cursor_slot.diagnostics().consumed < minimum_consumed {
+                return None;
+            }
+        }
+    }
+
+    fn with_transport_diagnostics(&self, mut snapshot: RuntimeSnapshot) -> RuntimeSnapshot {
         snapshot.input.transport = self.input_transport.snapshot();
+        snapshot.cursor.transport = self.cursor_slot.diagnostics();
         snapshot
     }
 }
@@ -383,6 +463,7 @@ impl RuntimeOwner {
             changed: Condvar::new(),
         });
         let input_transport = Arc::new(InputTransportCounters::default());
+        let cursor_slot = Arc::new(CursorSlot::default());
         let client = RuntimeClient {
             producer: Arc::new(Producer {
                 sender,
@@ -391,10 +472,11 @@ impl RuntimeOwner {
             snapshot: Arc::clone(&snapshot),
             input_transport,
             input_producer_state: Arc::new(Mutex::new(InputProducerState::default())),
+            cursor_slot: Arc::clone(&cursor_slot),
         };
         let worker = thread::Builder::new()
             .name("bongocat-runtime".into())
-            .spawn(move || run_worker(receiver, snapshot))
+            .spawn(move || run_worker(receiver, snapshot, cursor_slot))
             .expect("failed to start runtime thread");
         Self {
             client,
@@ -410,6 +492,10 @@ impl RuntimeOwner {
         InputProducer::new(self.client())
     }
 
+    pub fn cursor_producer(&self) -> CursorProducer {
+        CursorProducer::new(Arc::clone(&self.client.cursor_slot))
+    }
+
     pub fn shutdown(mut self, timeout: Duration) -> Result<RuntimeSnapshot, ShutdownError> {
         let current = self.client.snapshot();
         if current.state == RuntimeState::Stopped {
@@ -417,11 +503,9 @@ impl RuntimeOwner {
             return Ok(current);
         }
         self.request_shutdown();
-        let minimum_revision = current.revision.saturating_add(2);
         let stopped = self
             .client
-            .wait_for_revision(minimum_revision, timeout)
-            .filter(|snapshot| snapshot.state == RuntimeState::Stopped)
+            .wait_for_state(RuntimeState::Stopped, timeout)
             .ok_or(ShutdownError::TimedOut)?;
         self.join_worker()?;
         Ok(stopped)
@@ -435,6 +519,7 @@ impl RuntimeOwner {
     }
 
     fn request_shutdown(&self) {
+        self.client.cursor_slot.stop();
         let mut next_sequence = self
             .client
             .producer
@@ -471,63 +556,114 @@ fn publish(snapshot_cell: &SnapshotCell, update: impl FnOnce(&mut RuntimeSnapsho
     snapshot_cell.changed.notify_all();
 }
 
-fn run_worker(receiver: Receiver<CommandEnvelope>, snapshot: Arc<SnapshotCell>) {
+fn run_worker(
+    receiver: Receiver<CommandEnvelope>,
+    snapshot: Arc<SnapshotCell>,
+    cursor_slot: Arc<CursorSlot>,
+) {
     let mut active_model = None;
     let mut input_state = InputState::default();
     let mut input_bindings = InputBindings::default();
+    let mut normalized_cursor = NormalizedCursorPosition::default();
     publish(&snapshot, |current| current.state = RuntimeState::Ready);
-    while let Ok(envelope) = receiver.recv() {
-        let sequence = envelope.sequence;
-        match envelope.command {
-            WorkerCommand::Product(RuntimeCommand::SetOverlayVisible(visible)) => {
-                publish(&snapshot, |current| {
-                    current.overlay_visible = visible;
-                    current.last_command_sequence = Some(sequence);
-                });
+    loop {
+        match receiver.recv_timeout(CURSOR_SAMPLE_INTERVAL) {
+            Ok(envelope) => {
+                consume_cursor(
+                    &cursor_slot,
+                    &snapshot,
+                    &input_state,
+                    &input_bindings,
+                    &mut normalized_cursor,
+                );
+                let sequence = envelope.sequence;
+                match envelope.command {
+                    WorkerCommand::Product(RuntimeCommand::SetOverlayVisible(visible)) => {
+                        publish(&snapshot, |current| {
+                            current.overlay_visible = visible;
+                            current.last_command_sequence = Some(sequence);
+                        });
+                    }
+                    WorkerCommand::Product(RuntimeCommand::SetInputBindings(bindings)) => {
+                        input_bindings = Arc::unwrap_or_clone(bindings);
+                        publish(&snapshot, |current| {
+                            current.model_input =
+                                input_state.model_snapshot(&input_bindings, normalized_cursor);
+                            current.last_command_sequence = Some(sequence);
+                        });
+                    }
+                    WorkerCommand::Product(RuntimeCommand::ResetInput(reason)) => {
+                        input_state.force_reset(reason);
+                        publish(&snapshot, |current| {
+                            current.input = input_state.snapshot();
+                            current.model_input =
+                                input_state.model_snapshot(&input_bindings, normalized_cursor);
+                            current.last_command_sequence = Some(sequence);
+                        })
+                    }
+                    WorkerCommand::Product(RuntimeCommand::ApplyInput(envelope)) => {
+                        input_state.apply(Arc::unwrap_or_clone(envelope));
+                        publish(&snapshot, |current| {
+                            current.input = input_state.snapshot();
+                            current.model_input =
+                                input_state.model_snapshot(&input_bindings, normalized_cursor);
+                            current.last_command_sequence = Some(sequence);
+                        });
+                    }
+                    WorkerCommand::Product(RuntimeCommand::ActivateModel(prepared)) => {
+                        let model_snapshot = prepared.snapshot();
+                        active_model = Some(prepared);
+                        publish(&snapshot, |current| {
+                            current.active_model = Some(model_snapshot);
+                            current.last_command_sequence = Some(sequence);
+                        });
+                    }
+                    WorkerCommand::Shutdown => {
+                        publish(&snapshot, |current| {
+                            current.state = RuntimeState::Stopping;
+                            current.last_command_sequence = Some(sequence);
+                        });
+                        publish(&snapshot, |current| current.state = RuntimeState::Stopped);
+                        drop(active_model);
+                        return;
+                    }
+                }
             }
-            WorkerCommand::Product(RuntimeCommand::SetInputBindings(bindings)) => {
-                input_bindings = Arc::unwrap_or_clone(bindings);
-                publish(&snapshot, |current| {
-                    current.model_input = input_state.model_snapshot(&input_bindings);
-                    current.last_command_sequence = Some(sequence);
-                });
-            }
-            WorkerCommand::Product(RuntimeCommand::ResetInput(reason)) => {
-                input_state.force_reset(reason);
-                publish(&snapshot, |current| {
-                    current.input = input_state.snapshot();
-                    current.model_input = input_state.model_snapshot(&input_bindings);
-                    current.last_command_sequence = Some(sequence);
-                })
-            }
-            WorkerCommand::Product(RuntimeCommand::ApplyInput(envelope)) => {
-                input_state.apply(Arc::unwrap_or_clone(envelope));
-                publish(&snapshot, |current| {
-                    current.input = input_state.snapshot();
-                    current.model_input = input_state.model_snapshot(&input_bindings);
-                    current.last_command_sequence = Some(sequence);
-                });
-            }
-            WorkerCommand::Product(RuntimeCommand::ActivateModel(prepared)) => {
-                let model_snapshot = prepared.snapshot();
-                active_model = Some(prepared);
-                publish(&snapshot, |current| {
-                    current.active_model = Some(model_snapshot);
-                    current.last_command_sequence = Some(sequence);
-                });
-            }
-            WorkerCommand::Shutdown => {
-                publish(&snapshot, |current| {
-                    current.state = RuntimeState::Stopping;
-                    current.last_command_sequence = Some(sequence);
-                });
-                publish(&snapshot, |current| current.state = RuntimeState::Stopped);
-                drop(active_model);
-                return;
-            }
+            Err(RecvTimeoutError::Timeout) => consume_cursor(
+                &cursor_slot,
+                &snapshot,
+                &input_state,
+                &input_bindings,
+                &mut normalized_cursor,
+            ),
+            Err(RecvTimeoutError::Disconnected) => break,
         }
     }
+    consume_cursor(
+        &cursor_slot,
+        &snapshot,
+        &input_state,
+        &input_bindings,
+        &mut normalized_cursor,
+    );
     publish(&snapshot, |current| current.state = RuntimeState::Stopped);
+}
+
+fn consume_cursor(
+    cursor_slot: &CursorSlot,
+    snapshot: &SnapshotCell,
+    input_state: &InputState,
+    input_bindings: &InputBindings,
+    normalized_cursor: &mut NormalizedCursorPosition,
+) {
+    let Some(sample) = cursor_slot.take() else {
+        return;
+    };
+    *normalized_cursor = sample.normalized();
+    publish(snapshot, |current| {
+        current.cursor.sample = Some(sample);
+        current.model_input = input_state.model_snapshot(input_bindings, *normalized_cursor);
+    });
 }
 
 #[cfg(test)]
@@ -545,6 +681,19 @@ mod tests {
             .nth(3)
             .expect("repository root")
             .to_owned()
+    }
+
+    fn cursor_sample(x: f64, y: f64, at: u64) -> CursorSample {
+        CursorSample::new(
+            CursorPosition { x, y },
+            CursorViewport {
+                origin: CursorPosition { x: 0.0, y: 0.0 },
+                width: 100.0,
+                height: 100.0,
+            },
+            MonotonicMillis::new(at),
+        )
+        .expect("valid cursor sample")
     }
 
     #[test]
@@ -633,6 +782,103 @@ mod tests {
     }
 
     #[test]
+    fn runtime_coalesces_cursor_flood_without_delaying_reliable_release() {
+        let owner = RuntimeOwner::start(true, 4);
+        let client = owner.client();
+        client
+            .wait_for_revision(1, TIMEOUT)
+            .expect("ready snapshot");
+        let input = owner.input_producer();
+        let cursor = owner.cursor_producer();
+        let down_sequence = input
+            .publish(InputEvent::Edge {
+                control: InputControl::Key(PhysicalKey::KEY_A),
+                edge: InputEdge::Down,
+                source: InputSource::Capture,
+                at: MonotonicMillis::new(0),
+            })
+            .expect("down accepted");
+        client
+            .wait_for_input_sequence(down_sequence, TIMEOUT)
+            .expect("down consumed");
+
+        for index in 1_u32..=10_000 {
+            cursor
+                .publish(cursor_sample(
+                    f64::from(index % 100),
+                    f64::from(index % 80),
+                    u64::from(index),
+                ))
+                .expect("cursor sample accepted");
+        }
+        let release_sequence = input
+            .publish(InputEvent::Edge {
+                control: InputControl::Key(PhysicalKey::KEY_A),
+                edge: InputEdge::Up,
+                source: InputSource::Capture,
+                at: MonotonicMillis::new(10_001),
+            })
+            .expect("release accepted independently of cursor flood");
+        let released = client
+            .wait_for_input_sequence(release_sequence, TIMEOUT)
+            .expect("release consumed");
+        assert_eq!(released.input.pressed_key_count, 0);
+        assert_eq!(released.input.transport.queue_full, 0);
+
+        let stopped = owner.shutdown(TIMEOUT).expect("clean shutdown");
+        assert_eq!(stopped.cursor.transport.published, 10_000);
+        assert!(stopped.cursor.transport.coalesced > 0);
+        assert_eq!(stopped.cursor.transport.pending, 0);
+        assert_eq!(
+            stopped.cursor.transport.published,
+            stopped
+                .cursor
+                .transport
+                .coalesced
+                .saturating_add(stopped.cursor.transport.consumed)
+        );
+    }
+
+    #[test]
+    fn runtime_projects_display_relative_cursor_into_model_snapshot() {
+        let owner = RuntimeOwner::start(true, 4);
+        let client = owner.client();
+        client
+            .wait_for_revision(1, TIMEOUT)
+            .expect("ready snapshot");
+        owner
+            .cursor_producer()
+            .publish(cursor_sample(25.0, 40.0, 1))
+            .expect("cursor accepted");
+        let snapshot = client
+            .wait_for_cursor_samples(1, TIMEOUT)
+            .expect("cursor consumed");
+        assert_eq!(snapshot.cursor.sample, Some(cursor_sample(25.0, 40.0, 1)));
+        assert_eq!(snapshot.model_input.pointer_x, 0.5);
+        assert!((snapshot.model_input.pointer_y - 0.2).abs() < f32::EPSILON);
+        assert!((snapshot.model_input.pointer_z + 0.1).abs() < f32::EPSILON);
+        owner.shutdown(TIMEOUT).expect("clean shutdown");
+    }
+
+    #[test]
+    fn shutdown_flushes_a_pending_cursor_before_stopped_state() {
+        let owner = RuntimeOwner::start(true, 4);
+        owner
+            .client()
+            .wait_for_revision(1, TIMEOUT)
+            .expect("runtime ready");
+        owner
+            .cursor_producer()
+            .publish(cursor_sample(75.0, 60.0, 1))
+            .expect("pending cursor accepted");
+        let stopped = owner.shutdown(TIMEOUT).expect("clean shutdown");
+        assert_eq!(stopped.state, RuntimeState::Stopped);
+        assert_eq!(stopped.cursor.sample, Some(cursor_sample(75.0, 60.0, 1)));
+        assert_eq!(stopped.cursor.transport.consumed, 1);
+        assert_eq!(stopped.cursor.transport.pending, 0);
+    }
+
+    #[test]
     fn runtime_owns_the_committed_installed_model() {
         let data = tempdir().expect("data root");
         let store = ModelStore::new(
@@ -691,6 +937,7 @@ mod tests {
             }),
             input_transport,
             input_producer_state: Arc::new(Mutex::new(InputProducerState::default())),
+            cursor_slot: Arc::new(CursorSlot::default()),
         };
         client
             .send(RuntimeCommand::SetOverlayVisible(false))
@@ -718,6 +965,7 @@ mod tests {
             }),
             input_transport,
             input_producer_state: Arc::new(Mutex::new(InputProducerState::default())),
+            cursor_slot: Arc::new(CursorSlot::default()),
         };
         let producer = InputProducer::new(client.clone());
         let sibling_producer = InputProducer::new(client.clone());

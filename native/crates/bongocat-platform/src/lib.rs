@@ -30,6 +30,12 @@ pub struct PlatformInputDiagnostics {
     pub reconciliation_runs: u64,
     pub tap_restarts: u64,
     pub rejected_after_stop: u64,
+    pub cursor_captured: u64,
+    pub cursor_coalesced: u64,
+    pub cursor_consumed: u64,
+    pub cursor_display_lookup_failures: u64,
+    pub cursor_publish_rejections: u64,
+    pub cursor_rejected_after_stop: u64,
     pub clean_shutdown: bool,
 }
 

@@ -51,9 +51,10 @@ cargo run --manifest-path native/Cargo.toml -p bongocat-overlay --release -- sta
 ```
 
 The interactive path uses the same typed runtime input state as the deterministic preview and
-stops the platform producer before the runtime and Metal overlay. Global pointer position is not
-yet connected, so pointer/head/eye parameters still use deterministic movement. This is not yet
-the assembled application: GPUI settings, the runtime render channel, lifecycle notifications,
+stops the platform producer before the runtime and Metal overlay. It seeds the current global
+cursor position at startup and then coalesces cursor movement through an independent latest-value
+transport; pointer, head, and eye parameters use the active display's logical viewport. This is not
+yet the assembled application: GPUI settings, the runtime render channel, lifecycle notifications,
 and the Windows preset-model renderer remain separate work items.
 
 The fixed-version Cubism Core, header, generated bindings, and preset model development baseline are

@@ -25,6 +25,28 @@
 
 可靠 edge、设备生命周期事件和 command 使用固定容量 FIFO；满载必须返回原事件并触发安全恢复，不能静默丢弃。高频 cursor/axis 使用独立 latest-value 槽位，不得占用可靠 edge 容量。
 
+Cursor sample 使用全局逻辑坐标、光标当前所在显示器的逻辑 viewport 和进程内单调时间。输入服务启动时必须主动查询并发布当前光标位置，不能等待首次移动事件；跨显示器时使用新位置所在显示器的 viewport，不使用主显示器或 overlay 所在显示器代替。
+
+Runtime 将光标按当前显示器归一化到模型坐标：
+
+```text
+x_ratio = (position.x - viewport.origin.x) / viewport.width
+y_ratio = (position.y - viewport.origin.y) / viewport.height
+pointer_x = clamp(1 - 2 * x_ratio, -1, 1)
+pointer_y = clamp(1 - 2 * y_ratio, -1, 1)
+pointer_z = clamp(-pointer_x * pointer_y, -1, 1)
+```
+
+该方向与现有模型语义一致：显示器左上角为 `(1, 1)`，右下角为 `(-1, -1)`。viewport 必须有限且宽高为正；无效几何和单调时间回退必须拒绝并计数，不得向模型传播 `NaN` 或无穷值。
+
+单槽 cursor transport 的每个 accepted sample 最终必须满足以下守恒关系：
+
+```text
+published = coalesced + consumed + pending
+```
+
+`pending` 只能是 `0` 或 `1`。停止 runtime 后的新 sample 必须返回原值并计入 `rejected_after_stop`；shutdown 必须消费已接受的 pending sample，使最终 `pending = 0`。
+
 手柄 axis 槽位以 `{device_id, connection_generation, axis}` 为 key，并限制活动 key 总数。可靠的 `device_connected` 为该连接分配单调 generation；`device_disconnected` 清空该 generation 的 runtime axis/pressed state 和尚未消费的 axis sample。重连即使复用平台 device id 也必须获得新 generation，旧 callback 的迟到 sample 只能被计数并忽略。每个 accepted sample 最终由 coalesced、consumed、disconnect discard 或 pending 之一解释；新增 key 超容量必须显式报错，不能扩成无界 map。
 
 ## 物理键

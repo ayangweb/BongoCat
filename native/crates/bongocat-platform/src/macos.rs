@@ -1,13 +1,14 @@
 use crate::{InputPermission, PlatformInputDiagnostics, PlatformInputError};
 use bongocat_runtime::{
-    InputControl, InputEdge, InputEvent, InputProducer, InputPublishError, InputResetReason,
-    InputSource, MonotonicMillis, MouseButton, PhysicalKey,
+    CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorViewport, InputControl,
+    InputEdge, InputEvent, InputProducer, InputPublishError, InputResetReason, InputSource,
+    MonotonicMillis, MouseButton, PhysicalKey,
 };
-use objc2_core_foundation::{CFMachPort, CFRunLoop, kCFRunLoopDefaultMode};
+use objc2_core_foundation::{CFMachPort, CFRunLoop, CGPoint, kCFRunLoopDefaultMode};
 use objc2_core_graphics::{
-    CGEvent, CGEventField, CGEventFlags, CGEventMask, CGEventSource, CGEventSourceStateID,
-    CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement, CGEventTapProxy, CGEventType,
-    CGMouseButton,
+    CGDirectDisplayID, CGDisplayBounds, CGError, CGEvent, CGEventField, CGEventFlags, CGEventMask,
+    CGEventSource, CGEventSourceStateID, CGEventTapLocation, CGEventTapOptions,
+    CGEventTapPlacement, CGEventTapProxy, CGEventType, CGGetDisplaysWithPoint, CGMouseButton,
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -45,6 +46,74 @@ enum CapturedEvent {
     Reset,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct MacCursorPoint {
+    x: f64,
+    y: f64,
+}
+
+#[derive(Default)]
+struct LatestCursorState {
+    pending: Option<MacCursorPoint>,
+    closed: bool,
+    captured: u64,
+    coalesced: u64,
+    consumed: u64,
+    rejected_after_close: u64,
+}
+
+#[derive(Clone, Default)]
+struct LatestCursor {
+    state: Arc<Mutex<LatestCursorState>>,
+}
+
+impl LatestCursor {
+    fn publish(&self, point: MacCursorPoint) {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.closed {
+            state.rejected_after_close = state.rejected_after_close.saturating_add(1);
+            return;
+        }
+        state.captured = state.captured.saturating_add(1);
+        if state.pending.replace(point).is_some() {
+            state.coalesced = state.coalesced.saturating_add(1);
+        }
+    }
+
+    fn take(&self) -> Option<MacCursorPoint> {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let point = state.pending.take();
+        if point.is_some() {
+            state.consumed = state.consumed.saturating_add(1);
+        }
+        point
+    }
+
+    fn close(&self) {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .closed = true;
+    }
+
+    fn merge_diagnostics(&self, diagnostics: &mut PlatformInputDiagnostics) {
+        let state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        diagnostics.cursor_captured = state.captured;
+        diagnostics.cursor_coalesced = state.coalesced;
+        diagnostics.cursor_consumed = state.consumed;
+        diagnostics.cursor_rejected_after_stop = state.rejected_after_close;
+    }
+}
+
 #[derive(Default)]
 struct CallbackCounters {
     captured_edges: AtomicU64,
@@ -62,6 +131,7 @@ struct TapCallbackContext {
     recovery_requested: Arc<AtomicBool>,
     tap_disabled: Arc<AtomicBool>,
     modifier_keys: Arc<Mutex<BTreeSet<u16>>>,
+    cursor: LatestCursor,
     counters: Arc<CallbackCounters>,
 }
 
@@ -75,6 +145,7 @@ impl TapCallbackContext {
             &self.recovery_requested,
             &self.tap_disabled,
             &self.modifier_keys,
+            &self.cursor,
             &self.counters,
         );
     }
@@ -126,7 +197,10 @@ pub struct MacInputService {
 }
 
 impl MacInputService {
-    pub fn start(producer: InputProducer) -> Result<Self, PlatformInputError> {
+    pub fn start(
+        producer: InputProducer,
+        cursor_producer: CursorProducer,
+    ) -> Result<Self, PlatformInputError> {
         if input_monitoring_permission() != InputPermission::Granted {
             return Err(PlatformInputError::PermissionDenied);
         }
@@ -138,7 +212,7 @@ impl MacInputService {
             .name("bongocat-macos-input".into())
             .spawn(move || {
                 let result = catch_unwind(AssertUnwindSafe(|| {
-                    run_input_worker(producer, worker_stop, startup_sender)
+                    run_input_worker(producer, cursor_producer, worker_stop, startup_sender)
                 }))
                 .unwrap_or(Err(PlatformInputError::WorkerPanicked));
                 let _ = completion_sender.send(result);
@@ -211,6 +285,7 @@ pub fn request_input_monitoring_permission() -> InputPermission {
 
 fn run_input_worker(
     producer: InputProducer,
+    cursor_producer: CursorProducer,
     stop: Arc<AtomicBool>,
     startup: SyncSender<Result<(), PlatformInputError>>,
 ) -> Result<PlatformInputDiagnostics, PlatformInputError> {
@@ -220,6 +295,7 @@ fn run_input_worker(
     let recovery_requested = Arc::new(AtomicBool::new(false));
     let tap_disabled = Arc::new(AtomicBool::new(false));
     let modifier_keys = Arc::new(Mutex::new(BTreeSet::<u16>::new()));
+    let latest_cursor = LatestCursor::default();
     let (capture_sender, capture_receiver) = mpsc::sync_channel(CAPTURE_QUEUE_CAPACITY);
 
     let mut callback_context = Box::new(TapCallbackContext {
@@ -228,6 +304,7 @@ fn run_input_worker(
         recovery_requested: Arc::clone(&recovery_requested),
         tap_disabled: Arc::clone(&tap_disabled),
         modifier_keys: Arc::clone(&modifier_keys),
+        cursor: latest_cursor.clone(),
         counters: Arc::clone(&counters),
     });
     let callback_context_ptr = (&mut *callback_context as *mut TapCallbackContext).cast();
@@ -269,13 +346,20 @@ fn run_input_worker(
     let _ = startup.send(Ok(()));
 
     let mut diagnostics = counters.snapshot();
+    if let Some(event) = CGEvent::new(None) {
+        let location = CGEvent::location(Some(&event));
+        latest_cursor.publish(MacCursorPoint {
+            x: location.x,
+            y: location.y,
+        });
+    }
     let mut candidates = BTreeMap::<InputControl, SystemControl>::new();
     let mut missing_confirmations = BTreeMap::<InputControl, u8>::new();
     let mut next_reconciliation = Instant::now() + RECONCILIATION_INTERVAL;
     let mut recovery_pending = false;
     let mut tap_restart_pending = false;
 
-    let service_result = 'service: loop {
+    let mut service_result = 'service: loop {
         if stop.load(Ordering::Acquire) {
             break Ok(());
         }
@@ -366,6 +450,12 @@ fn run_input_worker(
             }
         }
 
+        if let Err(error) =
+            forward_latest_cursor(&latest_cursor, &cursor_producer, started, &mut diagnostics)
+        {
+            break 'service Err(error);
+        }
+
         if Instant::now() >= next_reconciliation && !candidates.is_empty() {
             let pressed = candidates
                 .iter()
@@ -409,13 +499,91 @@ fn run_input_worker(
     accepting.store(false, Ordering::Release);
     CGEvent::tap_enable(&tap, false);
     run_loop.remove_source(Some(&source), Some(mode));
+    latest_cursor.close();
+    if service_result.is_ok()
+        && let Err(error) =
+            forward_latest_cursor(&latest_cursor, &cursor_producer, started, &mut diagnostics)
+    {
+        service_result = Err(error);
+    }
     diagnostics.capture_queue_discarded = diagnostics
         .capture_queue_discarded
         .saturating_add(drain_capture_queue(&capture_receiver));
     diagnostics.clean_shutdown = publish_final_reset(&producer, started, &mut diagnostics);
     merge_callback_diagnostics(&mut diagnostics, &counters);
+    latest_cursor.merge_diagnostics(&mut diagnostics);
     service_result?;
     Ok(diagnostics)
+}
+
+fn forward_latest_cursor(
+    latest: &LatestCursor,
+    producer: &CursorProducer,
+    started: Instant,
+    diagnostics: &mut PlatformInputDiagnostics,
+) -> Result<(), PlatformInputError> {
+    let Some(point) = latest.take() else {
+        return Ok(());
+    };
+    let Some(viewport) = display_viewport(point) else {
+        diagnostics.cursor_display_lookup_failures =
+            diagnostics.cursor_display_lookup_failures.saturating_add(1);
+        return Ok(());
+    };
+    let sample = match CursorSample::new(
+        CursorPosition {
+            x: point.x,
+            y: point.y,
+        },
+        viewport,
+        monotonic(started),
+    ) {
+        Ok(sample) => sample,
+        Err(_) => {
+            diagnostics.cursor_publish_rejections =
+                diagnostics.cursor_publish_rejections.saturating_add(1);
+            return Ok(());
+        }
+    };
+    match producer.publish(sample) {
+        Ok(()) => Ok(()),
+        Err(CursorPublishError::NonMonotonic(_)) => {
+            diagnostics.cursor_publish_rejections =
+                diagnostics.cursor_publish_rejections.saturating_add(1);
+            Ok(())
+        }
+        Err(CursorPublishError::RuntimeStopped(_)) => Err(PlatformInputError::RuntimeStopped),
+    }
+}
+
+fn display_viewport(point: MacCursorPoint) -> Option<CursorViewport> {
+    let mut display: CGDirectDisplayID = 0;
+    let mut display_count = 0_u32;
+    // SAFETY: both output pointers refer to initialized stack values and
+    // max_displays limits CoreGraphics to the single display slot supplied.
+    let result = unsafe {
+        CGGetDisplaysWithPoint(
+            CGPoint {
+                x: point.x,
+                y: point.y,
+            },
+            1,
+            &mut display,
+            &mut display_count,
+        )
+    };
+    if result != CGError::Success || display_count == 0 {
+        return None;
+    }
+    let bounds = CGDisplayBounds(display);
+    Some(CursorViewport {
+        origin: CursorPosition {
+            x: bounds.origin.x,
+            y: bounds.origin.y,
+        },
+        width: bounds.size.width,
+        height: bounds.size.height,
+    })
 }
 
 fn input_event_mask() -> CGEventMask {
@@ -429,6 +597,10 @@ fn input_event_mask() -> CGEventMask {
         CGEventType::RightMouseUp,
         CGEventType::OtherMouseDown,
         CGEventType::OtherMouseUp,
+        CGEventType::MouseMoved,
+        CGEventType::LeftMouseDragged,
+        CGEventType::RightMouseDragged,
+        CGEventType::OtherMouseDragged,
     ]
     .into_iter()
     .fold(0, |mask, event_type| mask | (1_u64 << event_type.0))
@@ -443,6 +615,7 @@ fn capture_callback_event(
     recovery_requested: &AtomicBool,
     tap_disabled: &AtomicBool,
     modifier_keys: &Mutex<BTreeSet<u16>>,
+    cursor: &LatestCursor,
     counters: &CallbackCounters,
 ) {
     if matches!(
@@ -544,6 +717,17 @@ fn capture_callback_event(
                     InputEdge::Up
                 },
             })
+        }
+        CGEventType::MouseMoved
+        | CGEventType::LeftMouseDragged
+        | CGEventType::RightMouseDragged
+        | CGEventType::OtherMouseDragged => {
+            let location = CGEvent::location(Some(event));
+            cursor.publish(MacCursorPoint {
+                x: location.x,
+                y: location.y,
+            });
+            None
         }
         _ => None,
     };
@@ -844,5 +1028,26 @@ mod tests {
         assert_eq!(map_mouse_button(0), MouseButton::Left);
         assert_eq!(map_mouse_button(4), MouseButton::Forward);
         assert_eq!(map_mouse_button(31), MouseButton::Other(31));
+    }
+
+    #[test]
+    fn cursor_callback_slot_coalesces_without_touching_the_edge_queue() {
+        let cursor = LatestCursor::default();
+        for index in 0_u32..10_000 {
+            cursor.publish(MacCursorPoint {
+                x: f64::from(index),
+                y: 1.0,
+            });
+        }
+        assert_eq!(cursor.take(), Some(MacCursorPoint { x: 9_999.0, y: 1.0 }));
+        cursor.close();
+        cursor.publish(MacCursorPoint { x: 0.0, y: 0.0 });
+        let mut diagnostics = PlatformInputDiagnostics::default();
+        cursor.merge_diagnostics(&mut diagnostics);
+        assert_eq!(diagnostics.cursor_captured, 10_000);
+        assert_eq!(diagnostics.cursor_coalesced, 9_999);
+        assert_eq!(diagnostics.cursor_consumed, 1);
+        assert_eq!(diagnostics.cursor_rejected_after_stop, 1);
+        assert_eq!(diagnostics.captured_edges, 0);
     }
 }
