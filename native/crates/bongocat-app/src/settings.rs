@@ -1,11 +1,15 @@
 use crate::{Application, ApplicationError};
-use bongocat_model::{ModelCatalogEntry, ModelDiagnostic, ModelOrigin, ModelStoreDiagnostic};
+use bongocat_model::{
+    ModelCatalogEntry, ModelDiagnostic, ModelImportProgress, ModelImportStage, ModelOrigin,
+    ModelStoreDiagnostic,
+};
 use bongocat_runtime::RuntimeState;
 use bongocat_ui::{
     RuntimeHealth, SettingsClient, SettingsCommand, SettingsError, SettingsErrorCode,
     SettingsModelAvailability, SettingsModelCatalog, SettingsModelCatalogError,
-    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelKey, SettingsModelOrigin,
-    SettingsServiceEndpoint, SettingsSnapshot,
+    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportProgress,
+    SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsServiceEndpoint,
+    SettingsSnapshot,
 };
 use std::{fmt, thread};
 
@@ -100,9 +104,22 @@ fn run_service(mut application: Application, endpoint: SettingsServiceEndpoint) 
                     .map_err(map_application_error);
                 let _ = reply.respond(result);
             }
-            SettingsCommand::ImportModel { request, reply } => {
+            SettingsCommand::ImportModel {
+                request,
+                operation,
+                reply,
+            } => {
+                let progress = operation.clone();
+                let cancellation = operation.clone();
                 let result = application
-                    .import_model(request.id, request.source_root)
+                    .import_model_with_observer(
+                        request.id,
+                        request.source_root,
+                        move |update| {
+                            let _ = progress.report_progress(settings_import_progress(update));
+                        },
+                        move || cancellation.is_cancelled(),
+                    )
                     .map(|_| snapshot(&application, &mut clock, true))
                     .map_err(map_model_import_error);
                 let _ = reply.respond(result);
@@ -130,6 +147,19 @@ fn run_service(mut application: Application, endpoint: SettingsServiceEndpoint) 
                 break;
             }
         }
+    }
+}
+
+const fn settings_import_progress(progress: ModelImportProgress) -> SettingsModelImportProgress {
+    SettingsModelImportProgress {
+        stage: match progress.stage {
+            ModelImportStage::Preparing => SettingsModelImportStage::Preparing,
+            ModelImportStage::Copying => SettingsModelImportStage::Copying,
+            ModelImportStage::Validating => SettingsModelImportStage::Validating,
+            ModelImportStage::Committing => SettingsModelImportStage::Committing,
+        },
+        files_copied: progress.files_copied,
+        bytes_copied: progress.bytes_copied,
     }
 }
 
@@ -334,6 +364,7 @@ fn map_model_import_error(error: ApplicationError) -> SettingsError {
 const fn map_model_store_import_diagnostic(diagnostic: ModelStoreDiagnostic) -> SettingsErrorCode {
     match diagnostic {
         ModelStoreDiagnostic::AlreadyExists => SettingsErrorCode::ModelAlreadyInstalled,
+        ModelStoreDiagnostic::Cancelled => SettingsErrorCode::ModelImportCancelled,
         ModelStoreDiagnostic::InvalidPackage => SettingsErrorCode::ModelImportInvalidPackage,
         ModelStoreDiagnostic::SourceContainsStore => SettingsErrorCode::ModelImportSourceInvalid,
         ModelStoreDiagnostic::SourceChanged => SettingsErrorCode::ModelImportSourceChanged,
@@ -368,6 +399,7 @@ const fn map_model_store_delete_diagnostic(diagnostic: ModelStoreDiagnostic) -> 
         ModelStoreDiagnostic::NotFound => SettingsErrorCode::ModelNotInstalled,
         ModelStoreDiagnostic::StoreBusy => SettingsErrorCode::ModelStoreBusy,
         ModelStoreDiagnostic::AlreadyExists
+        | ModelStoreDiagnostic::Cancelled
         | ModelStoreDiagnostic::InvalidPackage
         | ModelStoreDiagnostic::IoError
         | ModelStoreDiagnostic::SourceContainsStore
@@ -506,11 +538,58 @@ mod tests {
     }
 
     #[test]
+    fn service_observes_import_cancellation_without_committing_or_revising_catalog() {
+        let source = tempdir().expect("model source");
+        std::fs::write(source.path().join("model.moc3"), b"moc").expect("moc");
+        std::fs::write(
+            source.path().join("cat.model3.json"),
+            r#"{"Version":3,"FileReferences":{"Moc":"model.moc3","Textures":[]}}"#,
+        )
+        .expect("model3");
+        std::fs::File::create(source.path().join("payload.bin"))
+            .and_then(|file| file.set_len(16 * 1024 * 1024))
+            .expect("large payload");
+
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let models_root = layout.models.clone();
+        let application = Application::start_with_layout(layout).expect("application start");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+
+        let operation = client
+            .start_model_import_blocking(SettingsModelImportRequest {
+                id: "cancelled-model".to_owned(),
+                source_root: source.path().to_owned(),
+            })
+            .expect("start import");
+        let operation_id = operation.operation_id();
+        assert!(operation.cancel());
+        let final_result = operation.final_result_blocking();
+        assert_eq!(final_result.operation_id, operation_id);
+        assert_eq!(
+            final_result.result.expect_err("cancelled import").code(),
+            SettingsErrorCode::ModelImportCancelled
+        );
+        let unchanged = client.read_snapshot_blocking().expect("unchanged snapshot");
+        assert_eq!(unchanged.revision, initial.revision);
+        assert!(!models_root.join("cancelled-model").exists());
+
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
+    }
+
+    #[test]
     fn every_model_store_import_diagnostic_has_a_stable_ui_code() {
         let cases = [
             (
                 ModelStoreDiagnostic::AlreadyExists,
                 SettingsErrorCode::ModelAlreadyInstalled,
+            ),
+            (
+                ModelStoreDiagnostic::Cancelled,
+                SettingsErrorCode::ModelImportCancelled,
             ),
             (
                 ModelStoreDiagnostic::InvalidPackage,
@@ -568,6 +647,10 @@ mod tests {
             ),
             (
                 ModelStoreDiagnostic::AlreadyExists,
+                SettingsErrorCode::ModelDeleteFailed,
+            ),
+            (
+                ModelStoreDiagnostic::Cancelled,
                 SettingsErrorCode::ModelDeleteFailed,
             ),
             (

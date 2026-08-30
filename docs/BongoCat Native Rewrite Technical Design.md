@@ -436,8 +436,11 @@ com.ayangweb.bongo-cat
 - 模型导入 command 携带用户确认的 model ID 与文件选择目录，只由 settings service worker
   执行复制和复验；成功后刷新合并目录，但不隐式激活模型或修改选择配置。失败只返回稳定、
   可操作且不含用户路径的导入错误码。settings snapshot revision 同时观察 runtime 变化并为
-  catalog-only 变化递增，禁止返回内容已变但 revision 未变的快照；完整页面再以 operation ID
-  提供 progress 与 cancel。
+  catalog-only 变化递增，禁止返回内容已变但 revision 未变的快照。settings client 为每次导入
+  分配跨 clone 单调递增的强类型 operation ID；operation 只公开 prepare/copy/validate/commit
+  stage、已复制文件数和字节数，不携带用户路径，并通过共享原子取消令牌在 service worker
+  阻塞于分块复制时仍可取消。cancel 在原子 rename 提交前生效并清理 staging，final result
+  携带同一 operation ID；后续 Models 页面只消费该契约，不自行执行文件 I/O。
 - 模型删除 command 同样携带 `(origin, model_id)`；preset 永不可删。installed 模型只有在既
   不是当前 runtime active、也不是配置所选来源时才能以 rename 后删除事务退休；同 ID preset
   不得阻止删除 installed 副本。成功只刷新 catalog，不隐式切模或改写配置。

@@ -2,7 +2,7 @@ use crate::{InstalledModel, ModelError, ModelId, ModelPackageLimits, PreparedMod
 use std::{
     fmt, fs,
     fs::{File, OpenOptions, TryLockError},
-    io::{self, Write},
+    io::{self, Read, Write},
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
 };
@@ -14,6 +14,7 @@ const DELETING_PREFIX: &str = ".deleting-";
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModelStoreDiagnostic {
     AlreadyExists,
+    Cancelled,
     InvalidPackage,
     IoError,
     NotFound,
@@ -23,6 +24,21 @@ pub enum ModelStoreDiagnostic {
     SourceEntryUnsupported,
     StoreBusy,
     StoreEntryUnsupported,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ModelImportStage {
+    Preparing,
+    Copying,
+    Validating,
+    Committing,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ModelImportProgress {
+    pub stage: ModelImportStage,
+    pub files_copied: u64,
+    pub bytes_copied: u64,
 }
 
 #[derive(Debug)]
@@ -296,7 +312,32 @@ impl ModelStore {
         id: ModelId,
         source_root: impl AsRef<Path>,
     ) -> Result<InstalledModel, ModelStoreError> {
+        self.import_with_observer(id, source_root, |_| {}, || false)
+    }
+
+    pub fn import_with_observer<Observe, IsCancelled>(
+        &self,
+        id: ModelId,
+        source_root: impl AsRef<Path>,
+        mut observe: Observe,
+        mut is_cancelled: IsCancelled,
+    ) -> Result<InstalledModel, ModelStoreError>
+    where
+        Observe: FnMut(ModelImportProgress),
+        IsCancelled: FnMut() -> bool,
+    {
+        let mut observation = ImportObservation {
+            observe: &mut observe,
+            is_cancelled: &mut is_cancelled,
+        };
+        observation.report(ModelImportProgress {
+            stage: ModelImportStage::Preparing,
+            files_copied: 0,
+            bytes_copied: 0,
+        });
+        observation.check_cancelled()?;
         let _lock = self.acquire_lock()?;
+        observation.check_cancelled()?;
         let source_root = source_root.as_ref();
         let canonical_source = source_root.canonicalize().map_err(|error| {
             ModelStoreError::new(
@@ -314,6 +355,7 @@ impl ModelStore {
         }
         let prepared_source = PreparedModel::prepare(id.clone(), &canonical_source, self.limits)
             .map_err(ModelStoreError::package)?;
+        observation.check_cancelled()?;
         let destination = self.canonical_root.join(id.as_str());
         if destination.exists() {
             return Err(ModelStoreError::new(
@@ -325,16 +367,30 @@ impl ModelStore {
 
         let staging = self.create_staging_directory(&id)?;
         let mut cleanup = StagingCleanup::new(staging.clone());
+        let mut statistics = CopyStatistics::default();
+        observation.report(ModelImportProgress {
+            stage: ModelImportStage::Copying,
+            files_copied: 0,
+            bytes_copied: 0,
+        });
         copy_package(
             prepared_source.root(),
             prepared_source.root(),
             &staging,
             0,
             self.limits,
-            &mut CopyStatistics::default(),
+            &mut statistics,
+            &mut observation,
         )?;
+        observation.check_cancelled()?;
+        observation.report(ModelImportProgress {
+            stage: ModelImportStage::Validating,
+            files_copied: file_count_for_progress(statistics.file_count),
+            bytes_copied: statistics.total_bytes,
+        });
         let mut prepared_staging = PreparedModel::prepare(id.clone(), &staging, self.limits)
             .map_err(ModelStoreError::package)?;
+        observation.check_cancelled()?;
 
         if destination.exists() {
             return Err(ModelStoreError::new(
@@ -344,6 +400,12 @@ impl ModelStore {
             ));
         }
 
+        observation.report(ModelImportProgress {
+            stage: ModelImportStage::Committing,
+            files_copied: file_count_for_progress(statistics.file_count),
+            bytes_copied: statistics.total_bytes,
+        });
+        observation.check_cancelled()?;
         fs::rename(&staging, &destination).map_err(|error| {
             let (code, detail) = if destination.exists() {
                 (
@@ -535,14 +597,53 @@ struct CopyStatistics {
     total_bytes: u64,
 }
 
-fn copy_package(
+const COPY_BUFFER_BYTES: usize = 64 * 1024;
+
+struct ImportObservation<'a, Observe, IsCancelled> {
+    observe: &'a mut Observe,
+    is_cancelled: &'a mut IsCancelled,
+}
+
+impl<Observe, IsCancelled> ImportObservation<'_, Observe, IsCancelled>
+where
+    Observe: FnMut(ModelImportProgress),
+    IsCancelled: FnMut() -> bool,
+{
+    fn check_cancelled(&mut self) -> Result<(), ModelStoreError> {
+        if (self.is_cancelled)() {
+            Err(ModelStoreError::new(
+                ModelStoreDiagnostic::Cancelled,
+                None,
+                "model import was cancelled",
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn report(&mut self, progress: ModelImportProgress) {
+        (self.observe)(progress);
+    }
+}
+
+fn file_count_for_progress(file_count: usize) -> u64 {
+    u64::try_from(file_count).unwrap_or(u64::MAX)
+}
+
+fn copy_package<Observe, IsCancelled>(
     source_root: &Path,
     source_directory: &Path,
     destination_directory: &Path,
     depth: usize,
     limits: ModelPackageLimits,
     statistics: &mut CopyStatistics,
-) -> Result<(), ModelStoreError> {
+    observation: &mut ImportObservation<'_, Observe, IsCancelled>,
+) -> Result<(), ModelStoreError>
+where
+    Observe: FnMut(ModelImportProgress),
+    IsCancelled: FnMut() -> bool,
+{
+    observation.check_cancelled()?;
     if depth > limits.maximum_directory_depth {
         return Err(ModelStoreError::new(
             ModelStoreDiagnostic::SourceChanged,
@@ -557,6 +658,7 @@ fn copy_package(
             format!("source directory cannot be listed: {error}"),
         )
     })? {
+        observation.check_cancelled()?;
         let entry = entry.map_err(|error| {
             ModelStoreError::new(
                 ModelStoreDiagnostic::IoError,
@@ -609,6 +711,7 @@ fn copy_package(
                 depth + 1,
                 limits,
                 statistics,
+                observation,
             )?;
         } else if file_type.is_file() {
             copy_file(
@@ -618,6 +721,7 @@ fn copy_package(
                 &resource,
                 limits,
                 statistics,
+                observation,
             )?;
         } else {
             return Err(ModelStoreError::new(
@@ -630,14 +734,20 @@ fn copy_package(
     Ok(())
 }
 
-fn copy_file(
+fn copy_file<Observe, IsCancelled>(
     source_root: &Path,
     source: &Path,
     destination: &Path,
     resource: &str,
     limits: ModelPackageLimits,
     statistics: &mut CopyStatistics,
-) -> Result<(), ModelStoreError> {
+    observation: &mut ImportObservation<'_, Observe, IsCancelled>,
+) -> Result<(), ModelStoreError>
+where
+    Observe: FnMut(ModelImportProgress),
+    IsCancelled: FnMut() -> bool,
+{
+    observation.check_cancelled()?;
     let canonical = source.canonicalize().map_err(|error| {
         ModelStoreError::new(
             ModelStoreDiagnostic::IoError,
@@ -705,13 +815,41 @@ fn copy_file(
                 format!("staging file cannot be created: {error}"),
             )
         })?;
-    let copied = io::copy(&mut input, &mut output).map_err(|error| {
-        ModelStoreError::new(
-            ModelStoreDiagnostic::IoError,
-            Some(resource.to_owned()),
-            format!("source file cannot be copied: {error}"),
-        )
-    })?;
+    let mut copied = 0_u64;
+    let mut buffer = [0_u8; COPY_BUFFER_BYTES];
+    loop {
+        observation.check_cancelled()?;
+        let read = input.read(&mut buffer).map_err(|error| {
+            ModelStoreError::new(
+                ModelStoreDiagnostic::IoError,
+                Some(resource.to_owned()),
+                format!("source file cannot be read: {error}"),
+            )
+        })?;
+        if read == 0 {
+            break;
+        }
+        output.write_all(&buffer[..read]).map_err(|error| {
+            ModelStoreError::new(
+                ModelStoreDiagnostic::IoError,
+                Some(resource.to_owned()),
+                format!("source file cannot be copied: {error}"),
+            )
+        })?;
+        copied = copied.saturating_add(u64::try_from(read).unwrap_or(u64::MAX));
+        if copied > size {
+            return Err(ModelStoreError::new(
+                ModelStoreDiagnostic::SourceChanged,
+                Some(resource.to_owned()),
+                "source file grew while copying",
+            ));
+        }
+        observation.report(ModelImportProgress {
+            stage: ModelImportStage::Copying,
+            files_copied: file_count_for_progress(statistics.file_count),
+            bytes_copied: statistics.total_bytes.saturating_add(copied),
+        });
+    }
     if copied != size {
         return Err(ModelStoreError::new(
             ModelStoreDiagnostic::SourceChanged,
@@ -731,6 +869,11 @@ fn copy_file(
         })?;
     statistics.file_count = next_file_count;
     statistics.total_bytes = next_total_bytes;
+    observation.report(ModelImportProgress {
+        stage: ModelImportStage::Copying,
+        files_copied: file_count_for_progress(statistics.file_count),
+        bytes_copied: statistics.total_bytes,
+    });
     Ok(())
 }
 
@@ -759,6 +902,7 @@ impl Drop for StagingCleanup {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::{Cell, RefCell};
     use std::fs::TryLockError;
     use std::path::Path;
     use tempfile::tempdir;
@@ -803,6 +947,100 @@ mod tests {
             source_moc
         );
         assert!(installed.root().join("猫.model3.json").is_file());
+    }
+
+    #[test]
+    fn successful_import_reports_all_stages_and_final_copy_totals() {
+        let data = tempdir().expect("data root");
+        let store = model_store(data.path());
+        let progress = RefCell::new(Vec::new());
+
+        store
+            .import_with_observer(
+                ModelId::parse("observed").expect("model id"),
+                fixture("非 ASCII 模型"),
+                |update| progress.borrow_mut().push(update),
+                || false,
+            )
+            .expect("observed import");
+
+        let progress = progress.into_inner();
+        assert_eq!(
+            progress.first().map(|update| update.stage),
+            Some(ModelImportStage::Preparing)
+        );
+        assert_eq!(
+            progress.last().map(|update| update.stage),
+            Some(ModelImportStage::Committing)
+        );
+        assert!(
+            progress
+                .iter()
+                .any(|update| update.stage == ModelImportStage::Copying)
+        );
+        assert!(
+            progress
+                .iter()
+                .any(|update| update.stage == ModelImportStage::Validating)
+        );
+        let final_progress = progress.last().expect("final progress");
+        assert!(final_progress.files_copied > 0);
+        assert!(final_progress.bytes_copied > 0);
+        for updates in progress.windows(2) {
+            assert!(updates[0].stage <= updates[1].stage);
+            assert!(updates[0].files_copied <= updates[1].files_copied);
+            assert!(updates[0].bytes_copied <= updates[1].bytes_copied);
+        }
+    }
+
+    #[test]
+    fn import_progress_is_monotonic_and_cancellation_removes_partial_state() {
+        let source = tempdir().expect("source");
+        fs::write(source.path().join("model.moc3"), b"moc").expect("moc");
+        fs::write(
+            source.path().join("cat.model3.json"),
+            r#"{"Version":3,"FileReferences":{"Moc":"model.moc3","Textures":[]}}"#,
+        )
+        .expect("model3");
+        fs::write(source.path().join("payload.bin"), vec![0_u8; 512 * 1024]).expect("payload");
+        let data = tempdir().expect("data root");
+        let store = model_store(data.path());
+        let cancelled = Cell::new(false);
+        let progress = RefCell::new(Vec::new());
+
+        let error = store
+            .import_with_observer(
+                ModelId::parse("cancelled").expect("model id"),
+                source.path(),
+                |update| {
+                    progress.borrow_mut().push(update);
+                    if update.stage == ModelImportStage::Copying && update.bytes_copied >= 65_536 {
+                        cancelled.set(true);
+                    }
+                },
+                || cancelled.get(),
+            )
+            .expect_err("cancelled import");
+
+        assert_eq!(error.code, ModelStoreDiagnostic::Cancelled);
+        assert!(store.list().expect("empty catalog").is_empty());
+        assert!(!store.root().join("cancelled").exists());
+        assert!(
+            fs::read_dir(store.root())
+                .expect("store entries")
+                .all(|entry| !entry
+                    .expect("store entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(IMPORTING_PREFIX))
+        );
+        let progress = progress.into_inner();
+        assert!(progress.len() >= 3);
+        for updates in progress.windows(2) {
+            assert!(updates[0].stage <= updates[1].stage);
+            assert!(updates[0].files_copied <= updates[1].files_copied);
+            assert!(updates[0].bytes_copied <= updates[1].bytes_copied);
+        }
     }
 
     #[test]

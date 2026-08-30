@@ -807,6 +807,10 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
 - [ ] 按 app、window、input、model、shortcut、update、diagnostics 定义 command。
 - [ ] command 使用强类型 request/result 和稳定 error code。
 - [ ] 长操作提供 operation id、progress、cancel 和 final result。
+  - 状态（2026-08-31）：模型导入已完成首个正式长操作契约：所有 `SettingsClient` clone
+    共用单调 typed ID，progress 仅含 stage/file count/byte count，共享原子 token 可在 settings
+    worker 复制期间取消，final result 回传同一 ID。系统文件选择、Models 页面消费以及后续
+    update/download 等长操作仍待接入，因此总项保持未勾选。
 - [ ] snapshot 包含 revision，UI 处理过期结果和并发编辑。
 - [ ] 禁止通用 set_value(path, any) API。
 - [ ] 不向 UI 发送逐帧数据、原始按键流或 GPU/model pointer。
@@ -1217,11 +1221,24 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
       复制、复验并原子提交到当前环境且不隐式切换；成功 snapshot 刷新 installed 条目；非法
       ID、重复 ID、无效包、源变化/不支持项、store busy/I/O 映射为稳定且不泄漏路径的错误码；
       ui/app 定向测试与完整 Native workspace 门禁通过。
-    - 验收证据（2026-08-31）：typed request、settings worker 接线和稳定错误映射已实现；operation
-      ID、progress、cancel、系统文件选择 wrapper 及模型页面 loading/error/retry 属于后续任务。
+    - 验收证据（2026-08-31）：typed request、settings worker 接线和稳定错误映射已实现；系统
+      文件选择 wrapper 及模型页面 loading/error/retry 属于后续任务。
       ui/app 定向测试与完整 Native format、Clippy、workspace test、release check、Linux shared
       contract check 本机通过；push run `33333789799` 的三平台 workspace jobs 全部通过。
-21. [x] `P4-MODEL-DELETE-COMMAND`：按来源身份安全删除未选择的 installed 模型。
+21. [x] `P4-MODEL-IMPORT-OPERATION`：为模型导入提供可观测、可取消的长操作契约。
+    - 依赖：`P4-MODEL-IMPORT-COMMAND`、环境 `ModelStore` staging transaction、typed settings
+      command/reply。
+    - 退出条件：所有 client clone 共享单调 typed operation ID；progress 只公开固定 stage、文件数
+      和字节数且三者单调；复制期间 cancellation 无需 settings worker 消费第二条 command；提交前
+      取消清理 staging、不创建目标、不刷新 catalog revision；成功保持既有不隐式选模语义；
+      final result 携带原 operation ID，service shutdown/join 确定完成；model/ui/app contract test
+      与完整 Native 本地门禁通过。
+    - 验收证据（2026-08-31）：`ModelStore` 使用 64 KiB 有界分块复制并在准备、遍历、复制、复验
+      和 rename 前检查取消；settings operation 以共享 atomic token 更新无路径 progress，并返回
+      稳定 `ModelImportCancelled`。测试覆盖跨 clone ID、倒退 progress 拒绝、typed final result、
+      中途取消清理、catalog revision 不变、成功四阶段及 shutdown/join；完整 format、Clippy、
+      workspace test 和 release check 本机通过，三平台 CI 待本批 push 后复验。
+22. [x] `P4-MODEL-DELETE-COMMAND`：按来源身份安全删除未选择的 installed 模型。
     - 依赖：`P4-MODEL-CATALOG`、`P4-MODEL-SELECTION`、`ModelStore` rename-delete transaction。
     - 退出条件：typed command 携带 `(origin, id)`；preset 和当前 runtime/config 所选 installed
       均拒绝；激活同 ID preset 不阻塞删除 installed 副本；成功刷新 catalog/revision 且不切模

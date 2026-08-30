@@ -1,7 +1,14 @@
 #![forbid(unsafe_code)]
 
 use async_channel::{Receiver, Sender};
-use std::{fmt, path::PathBuf};
+use std::{
+    fmt,
+    path::PathBuf,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+    },
+};
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod window;
@@ -36,6 +43,148 @@ pub struct SettingsModelKey {
 pub struct SettingsModelImportRequest {
     pub id: String,
     pub source_root: PathBuf,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct SettingsOperationId(u64);
+
+impl SettingsOperationId {
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum SettingsModelImportStage {
+    Preparing,
+    Copying,
+    Validating,
+    Committing,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SettingsModelImportProgress {
+    pub stage: SettingsModelImportStage,
+    pub files_copied: u64,
+    pub bytes_copied: u64,
+}
+
+pub struct SettingsModelImportFinalResult {
+    pub operation_id: SettingsOperationId,
+    pub result: Result<SettingsSnapshot, SettingsError>,
+}
+
+#[derive(Clone)]
+pub struct SettingsModelImportControl {
+    operation_id: SettingsOperationId,
+    cancelled: Arc<AtomicBool>,
+    progress: Arc<Mutex<SettingsModelImportProgress>>,
+}
+
+impl SettingsModelImportControl {
+    pub const fn operation_id(&self) -> SettingsOperationId {
+        self.operation_id
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::Acquire)
+    }
+
+    pub fn report_progress(&self, progress: SettingsModelImportProgress) -> bool {
+        let mut current = self
+            .progress
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if progress.stage < current.stage
+            || progress.files_copied < current.files_copied
+            || progress.bytes_copied < current.bytes_copied
+        {
+            return false;
+        }
+        *current = progress;
+        true
+    }
+}
+
+pub struct SettingsModelImportOperation {
+    control: SettingsModelImportControl,
+    result: Receiver<Result<SettingsSnapshot, SettingsError>>,
+}
+
+#[derive(Clone)]
+pub struct SettingsModelImportMonitor {
+    control: SettingsModelImportControl,
+}
+
+impl SettingsModelImportMonitor {
+    pub const fn operation_id(&self) -> SettingsOperationId {
+        self.control.operation_id()
+    }
+
+    pub fn progress(&self) -> SettingsModelImportProgress {
+        *self
+            .control
+            .progress
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    pub fn cancel(&self) -> bool {
+        !self.control.cancelled.swap(true, Ordering::AcqRel)
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.control.is_cancelled()
+    }
+}
+
+impl SettingsModelImportOperation {
+    pub const fn operation_id(&self) -> SettingsOperationId {
+        self.control.operation_id()
+    }
+
+    pub fn progress(&self) -> SettingsModelImportProgress {
+        self.monitor().progress()
+    }
+
+    pub fn cancel(&self) -> bool {
+        self.monitor().cancel()
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.control.is_cancelled()
+    }
+
+    pub fn monitor(&self) -> SettingsModelImportMonitor {
+        SettingsModelImportMonitor {
+            control: self.control.clone(),
+        }
+    }
+
+    pub async fn final_result(self) -> SettingsModelImportFinalResult {
+        let operation_id = self.operation_id();
+        let result = self
+            .result
+            .recv()
+            .await
+            .unwrap_or_else(|_| Err(SettingsError::new(SettingsErrorCode::ServiceUnavailable)));
+        SettingsModelImportFinalResult {
+            operation_id,
+            result,
+        }
+    }
+
+    pub fn final_result_blocking(self) -> SettingsModelImportFinalResult {
+        let operation_id = self.operation_id();
+        let result = self
+            .result
+            .recv_blocking()
+            .unwrap_or_else(|_| Err(SettingsError::new(SettingsErrorCode::ServiceUnavailable)));
+        SettingsModelImportFinalResult {
+            operation_id,
+            result,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -113,6 +262,7 @@ pub enum SettingsErrorCode {
     ModelImportSourceInvalid,
     ModelImportSourceChanged,
     ModelImportSourceUnsupported,
+    ModelImportCancelled,
     ModelStoreBusy,
     ModelImportFailed,
     PresetModelCannotBeDeleted,
@@ -154,6 +304,7 @@ impl fmt::Display for SettingsError {
             SettingsErrorCode::ModelImportSourceUnsupported => {
                 "model source contains an unsupported entry"
             }
+            SettingsErrorCode::ModelImportCancelled => "model import was cancelled",
             SettingsErrorCode::ModelStoreBusy => "model storage is busy",
             SettingsErrorCode::ModelImportFailed => "model could not be imported",
             SettingsErrorCode::PresetModelCannotBeDeleted => "preset model cannot be deleted",
@@ -198,6 +349,7 @@ pub enum SettingsCommand {
     },
     ImportModel {
         request: SettingsModelImportRequest,
+        operation: SettingsModelImportControl,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     DeleteModel {
@@ -223,18 +375,28 @@ impl std::error::Error for SettingsServiceClosed {}
 #[derive(Clone)]
 pub struct SettingsClient {
     commands: Sender<SettingsCommand>,
+    next_operation_id: Arc<AtomicU64>,
 }
 
 pub struct SettingsServiceEndpoint {
     commands: Receiver<SettingsCommand>,
 }
 
+type PreparedModelImport = (
+    SettingsModelImportOperation,
+    SettingsModelImportControl,
+    SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+);
+
 impl SettingsClient {
     pub fn bounded(capacity: usize) -> (Self, SettingsServiceEndpoint) {
         assert!(capacity > 0, "settings command capacity must be positive");
         let (commands, receiver) = async_channel::bounded(capacity);
         (
-            Self { commands },
+            Self {
+                commands,
+                next_operation_id: Arc::new(AtomicU64::new(1)),
+            },
             SettingsServiceEndpoint { commands: receiver },
         )
     }
@@ -272,8 +434,27 @@ impl SettingsClient {
         &self,
         request: SettingsModelImportRequest,
     ) -> Result<SettingsSnapshot, SettingsError> {
-        self.request(|reply| SettingsCommand::ImportModel { request, reply })
+        self.start_model_import(request)
+            .await?
+            .final_result()
             .await
+            .result
+    }
+
+    pub async fn start_model_import(
+        &self,
+        request: SettingsModelImportRequest,
+    ) -> Result<SettingsModelImportOperation, SettingsError> {
+        let (operation, control, reply) = self.prepare_model_import()?;
+        self.commands
+            .send(SettingsCommand::ImportModel {
+                request,
+                operation: control,
+                reply,
+            })
+            .await
+            .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))?;
+        Ok(operation)
     }
 
     pub async fn delete_model(
@@ -318,7 +499,24 @@ impl SettingsClient {
         &self,
         request: SettingsModelImportRequest,
     ) -> Result<SettingsSnapshot, SettingsError> {
-        self.request_blocking(|reply| SettingsCommand::ImportModel { request, reply })
+        self.start_model_import_blocking(request)?
+            .final_result_blocking()
+            .result
+    }
+
+    pub fn start_model_import_blocking(
+        &self,
+        request: SettingsModelImportRequest,
+    ) -> Result<SettingsModelImportOperation, SettingsError> {
+        let (operation, control, reply) = self.prepare_model_import()?;
+        self.commands
+            .send_blocking(SettingsCommand::ImportModel {
+                request,
+                operation: control,
+                reply,
+            })
+            .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))?;
+        Ok(operation)
     }
 
     pub fn delete_model_blocking(
@@ -358,6 +556,34 @@ impl SettingsClient {
         receiver
             .recv_blocking()
             .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))?
+    }
+
+    fn prepare_model_import(&self) -> Result<PreparedModelImport, SettingsError> {
+        let operation_id = self
+            .next_operation_id
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
+                next.checked_add(1)
+            })
+            .map(SettingsOperationId)
+            .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))?;
+        let control = SettingsModelImportControl {
+            operation_id,
+            cancelled: Arc::new(AtomicBool::new(false)),
+            progress: Arc::new(Mutex::new(SettingsModelImportProgress {
+                stage: SettingsModelImportStage::Preparing,
+                files_copied: 0,
+                bytes_copied: 0,
+            })),
+        };
+        let (reply, result) = async_channel::bounded(1);
+        Ok((
+            SettingsModelImportOperation {
+                control: control.clone(),
+                result,
+            },
+            control,
+            SettingsReply(reply),
+        ))
     }
 }
 
@@ -427,12 +653,16 @@ mod tests {
         let worker = thread::spawn({
             let expected = expected.clone();
             move || {
-                let SettingsCommand::ImportModel { request, reply } =
-                    endpoint.recv_blocking().expect("import command")
+                let SettingsCommand::ImportModel {
+                    request,
+                    operation,
+                    reply,
+                } = endpoint.recv_blocking().expect("import command")
                 else {
                     panic!("unexpected command");
                 };
                 assert_eq!(request, expected);
+                assert_eq!(operation.operation_id().get(), 1);
                 reply
                     .respond(Ok(snapshot(2, true, true)))
                     .expect("import reply");
@@ -443,6 +673,72 @@ mod tests {
             .import_model_blocking(expected)
             .expect("import snapshot");
         assert_eq!(imported.revision, 2);
+        worker.join().expect("worker join");
+    }
+
+    #[test]
+    fn import_operations_share_monotonic_ids_progress_and_cancellation() {
+        let (client, _endpoint) = SettingsClient::bounded(2);
+        let clone = client.clone();
+        let (first, first_control, _) = client.prepare_model_import().expect("first operation");
+        let (second, _, _) = clone.prepare_model_import().expect("second operation");
+
+        assert_eq!(first.operation_id().get(), 1);
+        assert_eq!(second.operation_id().get(), 2);
+        assert_eq!(
+            first.progress(),
+            SettingsModelImportProgress {
+                stage: SettingsModelImportStage::Preparing,
+                files_copied: 0,
+                bytes_copied: 0,
+            }
+        );
+        assert!(first_control.report_progress(SettingsModelImportProgress {
+            stage: SettingsModelImportStage::Copying,
+            files_copied: 2,
+            bytes_copied: 4_096,
+        }));
+        assert!(!first_control.report_progress(SettingsModelImportProgress {
+            stage: SettingsModelImportStage::Preparing,
+            files_copied: 1,
+            bytes_copied: 128,
+        }));
+        assert_eq!(first.progress().files_copied, 2);
+        assert_eq!(first.progress().bytes_copied, 4_096);
+        let monitor = first.monitor();
+        assert_eq!(monitor.operation_id(), first.operation_id());
+        assert!(monitor.cancel());
+        assert!(!first.cancel());
+        assert!(monitor.is_cancelled());
+        assert!(first_control.is_cancelled());
+    }
+
+    #[test]
+    fn import_operation_returns_a_typed_final_result() {
+        let (client, endpoint) = SettingsClient::bounded(1);
+        let worker = thread::spawn(move || {
+            let SettingsCommand::ImportModel {
+                operation, reply, ..
+            } = endpoint.recv_blocking().expect("import command")
+            else {
+                panic!("unexpected command");
+            };
+            assert_eq!(operation.operation_id().get(), 1);
+            reply
+                .respond(Ok(snapshot(7, true, true)))
+                .expect("import reply");
+        });
+
+        let operation = client
+            .start_model_import_blocking(SettingsModelImportRequest {
+                id: "custom-model".to_owned(),
+                source_root: PathBuf::from("selected/model"),
+            })
+            .expect("start import");
+        let operation_id = operation.operation_id();
+        let final_result = operation.final_result_blocking();
+        assert_eq!(final_result.operation_id, operation_id);
+        assert_eq!(final_result.result.expect("final snapshot").revision, 7);
         worker.join().expect("worker join");
     }
 

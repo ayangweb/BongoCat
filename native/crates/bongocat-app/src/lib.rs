@@ -6,8 +6,8 @@ use bongocat_config::{
     SelectedModelOrigin, StorageLayout, platform_layout,
 };
 use bongocat_model::{
-    CommittedModel, InstalledModel, ModelCatalogEntry, ModelError, ModelId, ModelOrigin,
-    ModelPackageLimits, ModelStore, ModelStoreError, PresetModelCatalog,
+    CommittedModel, InstalledModel, ModelCatalogEntry, ModelError, ModelId, ModelImportProgress,
+    ModelOrigin, ModelPackageLimits, ModelStore, ModelStoreError, PresetModelCatalog,
 };
 use bongocat_render::{ModelCommitToken, RenderConsumer};
 use bongocat_runtime::{
@@ -467,9 +467,23 @@ impl Application {
         id: impl Into<String>,
         source_root: impl AsRef<Path>,
     ) -> Result<InstalledModel, ApplicationError> {
+        self.import_model_with_observer(id, source_root, |_| {}, || false)
+    }
+
+    pub fn import_model_with_observer<Observe, IsCancelled>(
+        &mut self,
+        id: impl Into<String>,
+        source_root: impl AsRef<Path>,
+        observe: Observe,
+        is_cancelled: IsCancelled,
+    ) -> Result<InstalledModel, ApplicationError>
+    where
+        Observe: FnMut(ModelImportProgress),
+        IsCancelled: FnMut() -> bool,
+    {
         let id = ModelId::parse(id)?;
         self.model_store
-            .import(id, source_root)
+            .import_with_observer(id, source_root, observe, is_cancelled)
             .map_err(ApplicationError::ModelStore)
     }
 

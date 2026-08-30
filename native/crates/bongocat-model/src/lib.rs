@@ -13,7 +13,8 @@ use std::{
 };
 
 pub use store::{
-    ModelCatalogEntry, ModelStore, ModelStoreDiagnostic, ModelStoreError, ModelStoreRecovery,
+    ModelCatalogEntry, ModelImportProgress, ModelImportStage, ModelStore, ModelStoreDiagnostic,
+    ModelStoreError, ModelStoreRecovery,
 };
 
 pub const INDEX_SCHEMA_VERSION: u32 = 2;
