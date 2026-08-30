@@ -55,7 +55,7 @@ cargo run --manifest-path native/Cargo.toml -p bongocat-overlay --release -- gam
 ```
 
 On Windows or macOS, exercise transactional GPU model replacement with all three presets by running
-100 complete standard -> keyboard -> gamepad -> standard cycles (300 committed generations):
+100 measured standard -> keyboard -> gamepad -> standard cycles (300 reported generations):
 
 ```text
 cargo run --manifest-path native/Cargo.toml -p bongocat-overlay --release -- standard 0 --switch-cycles 100
@@ -64,10 +64,11 @@ cargo run --manifest-path native/Cargo.toml -p bongocat-overlay --release -- sta
 The switch probe first injects one invalid texture preparation and requires the current CPU model,
 input bindings, and GPU generation to remain active and drawable. Rejected candidate generations
 may create a gap, but committed generations must remain strictly monotonic. Every valid generation
-performs a non-transparent frame readback. The Windows probe additionally rejects process thread
-growth above the two-cycle warmup high-water mark, more than four additional handles, or DXGI
-local-memory growth after warmup; the macOS probe rejects Metal allocation growth between warmed-up
-standard baselines.
+performs a non-transparent frame readback. Before the requested Windows measurement interval, the
+probe runs at least 100 equivalent warmup cycles and waits for driver workers to settle. It then
+rejects persistent process thread growth above the warmup high-water mark, more than four additional
+handles, or DXGI local-memory growth. The macOS probe rejects Metal allocation growth between
+warmed-up standard baselines.
 
 By default the preview applies deterministic, model-specific input through the product runtime so
 hand, pointer, head, and eye changes exercise per-frame Cubism evaluation and GPU buffer updates.
