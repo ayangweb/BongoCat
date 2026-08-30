@@ -963,6 +963,10 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
 - [ ] named mutex + registered message/IPC 唤醒单实例。
 - [ ] 当前用户启动项启用、禁用和状态检测。
 - [ ] 文件选择、外部 URL 和剪贴板使用最小权限 wrapper。
+  - 状态（2026-08-31）：模型目录 picker 已有共享稳定结果/错误和双平台最小 adapter；Windows
+    使用 STA `IFileOpenDialog`、filesystem/folder/path-exists/no-recent flags 与 COM/TaskMem RAII，
+    macOS 使用主线程单目录 `NSOpenPanel`。结果在 Rust 侧重新验证并 canonicalize；外部 URL、
+    clipboard、GPUI Models 页面接线和真实 Windows 对话框 smoke 仍待完成，因此总项不勾选。
 - [ ] 选择并记录 MSIX、WiX 或 NSIS 打包 ADR。
 - [ ] 对安装目录、用户数据目录和更新临时目录分别建模。
 
@@ -972,6 +976,8 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
 - [ ] NSApplication activation/reopen/single-instance 行为。
 - [ ] SMAppService 启动项启用、禁用和状态检测。
 - [ ] NSOpenPanel、NSWorkspace 和 pasteboard 最小权限 wrapper。
+  - 状态（2026-08-31）：`NSOpenPanel` 模型目录 adapter 已实现并通过主线程边界、选择路径与
+    稳定错误 contract；`NSWorkspace`、pasteboard、真实选择/取消交互 smoke 仍待完成。
 - [ ] .app bundle、entitlements、Hardened Runtime 和 notarization 流程。
 - [ ] TCC 权限状态变化可在 UI 实时刷新。
 
@@ -1273,7 +1279,9 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
     - 验收证据（2026-08-31）：6 组 property 每轮共执行 3,072 case，另有固定 limit/depth/
       symlink/oversized fixture；`proptest 1.11.0` 以最小 `std` feature 精确锁定，`cargo update`
       只新增其和两个缺失传递包。完整 format、Clippy、workspace test、release check 及
-      `cargo deny --all-features check licenses sources` 本机通过，三平台 CI 待本批 push 后复验。
+      `cargo deny --all-features check licenses sources` 本机通过；push run `33336116944` 的
+      Ubuntu/Windows/macOS Native workspace jobs `99323200807`/`99323200905`/`99323200915`
+      与 dependency policy job `99323200931` 全部通过。
 24. [x] `P4-MODEL-FIXTURE-CONTRACT`：将共享自定义模型 fixture 提升为正式产品导入契约。
     - 依赖：`shared/fixtures/model-fixtures/cases.json`、`PreparedModel`、transactional
       `ModelStore`。
@@ -1282,7 +1290,23 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
       staging，不修改源；成功只提交一个来源感知 installed model；完整 Native 门禁通过。
     - 验收证据（2026-08-31）：正式 crate 已覆盖 6 个共享合成 package；`bongocat-model`
       33 项、旧 model-package spike 15 项与 Python fixture oracle 全部通过。完整 Native format、
-      Clippy、workspace test 和 release check 本机通过，三平台 CI 待本批 push 后复验。
+      Clippy、workspace test 和 release check 本机通过；push run `33336496654` 与 PR run
+      `33336497984` 全绿，push 的 Windows/macOS/Ubuntu Native workspace jobs
+      `99324223865`/`99324223945`/`99324223963` 全部通过。
+25. [ ] `P7-MODEL-DIRECTORY-PICKER`：以原生最小权限目录选择器接入模型导入。
+    - 依赖：`P4-MODEL-IMPORT-OPERATION`、AppKit `NSOpenPanel`、Shell `IFileOpenDialog`。
+    - 退出条件：共享 API 区分 selected/cancelled 和稳定无路径错误；macOS 强制 AppKit 主线程，
+      Windows 使用 STA、folder/filesystem/path-exists/no-recent 且 COM/TaskMem 成对释放；Rust
+      重新验证并 canonicalize；GPUI Models 页面不阻塞执行文件复制，可消费取消与选择结果；
+      双平台真实选择/取消 smoke 和完整 Native 门禁通过。
+    - 状态（2026-08-31）：共享验证、双平台 adapter、macOS background-thread contract 和
+      Windows x64/ARM64 cross-check 已通过；Models 页面接线及双平台真实 dialog smoke 未完成，
+      因此保持未勾选。`objc2 0.6.4`、AppKit/Foundation `0.3.2` 与 `windows 0.62.2` 均为当前
+      最新稳定版并已在 workspace 锁定；最低 Rust 1.71/1.82、MIT/Zlib/Apache-2.0 许可证兼容
+      workspace，替换边界仅为对应 OS 原生 API binding。完整 Native format、Clippy、workspace
+      test、release check、license/source policy 与双 Windows target platform Clippy 本机通过。
+      可重复 macOS smoke example 已加入；本机临时 bundle 可见但 Computer Use 无法建立其 AX
+      会话，未执行选择/取消动作，因此不计入真实 dialog 证据。
 
 ## 13. 待决策清单
 

@@ -5,6 +5,13 @@
 
 use std::fmt;
 
+mod directory_picker;
+#[cfg(target_os = "macos")]
+mod directory_picker_macos;
+#[cfg(target_os = "windows")]
+mod directory_picker_windows;
+pub use directory_picker::{DirectoryPickerError, DirectoryPickerOutcome};
+
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "macos")]
@@ -20,6 +27,17 @@ pub use windows::{
     NativeWindowError, hide_native_window, request_native_window_close, show_native_window,
     terminate_after_product_shutdown,
 };
+
+pub fn pick_model_directory() -> Result<DirectoryPickerOutcome, DirectoryPickerError> {
+    #[cfg(target_os = "macos")]
+    return directory_picker_macos::pick_model_directory();
+
+    #[cfg(target_os = "windows")]
+    return directory_picker_windows::pick_model_directory();
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    Err(DirectoryPickerError::UnsupportedPlatform)
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InputPermission {
