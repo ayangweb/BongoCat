@@ -65,6 +65,7 @@ pub struct SettingsView {
     snapshot: Option<SettingsSnapshot>,
     pending: Option<PendingOperation>,
     error: Option<SettingsError>,
+    window_hidden: bool,
     overlay_focus: FocusHandle,
     audio_focus: FocusHandle,
     refresh_focus: FocusHandle,
@@ -78,6 +79,7 @@ impl SettingsView {
             snapshot: None,
             pending: None,
             error: None,
+            window_hidden: false,
             overlay_focus: cx.focus_handle().tab_index(1).tab_stop(true),
             audio_focus: cx.focus_handle().tab_index(2).tab_stop(true),
             refresh_focus: cx.focus_handle().tab_index(3).tab_stop(true),
@@ -93,6 +95,19 @@ impl SettingsView {
 
     pub fn snapshot_revision(&self) -> Option<u64> {
         self.snapshot.as_ref().map(|snapshot| snapshot.revision)
+    }
+
+    pub fn window_hidden(&self) -> bool {
+        self.window_hidden
+    }
+
+    pub fn reopen(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Result<(), String> {
+        #[cfg(target_os = "windows")]
+        bongocat_platform::show_native_window(window).map_err(|error| error.to_string())?;
+        self.window_hidden = false;
+        self.refresh(cx);
+        window.activate_window();
+        Ok(())
     }
 
     fn refresh(&mut self, cx: &mut Context<Self>) {
@@ -481,6 +496,24 @@ pub fn open_settings_window(
                     view.refresh(cx);
                     view
                 });
+                #[cfg(target_os = "windows")]
+                {
+                    let weak_view = view.downgrade();
+                    window.on_window_should_close(cx, move |window, cx| {
+                        let result = bongocat_platform::hide_native_window(window);
+                        let _ = weak_view.update(cx, |view, cx| match result {
+                            Ok(()) => {
+                                view.window_hidden = true;
+                                cx.notify();
+                            }
+                            Err(_) => view.report_service_error(
+                                SettingsError::new(crate::SettingsErrorCode::WindowUnavailable),
+                                cx,
+                            ),
+                        });
+                        false
+                    });
+                }
                 window.focus(&view.read(cx).overlay_focus);
                 view
             },

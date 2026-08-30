@@ -761,6 +761,7 @@ dependencies = [
  "bongocat-runtime",
  "objc2-core-foundation",
  "objc2-core-graphics",
+ "raw-window-handle",
  "windows 0.62.2",
 ]
 
@@ -785,6 +786,7 @@ name = "bongocat-ui"
 version = "0.1.0"
 dependencies = [
  "async-channel 2.5.0",
+ "bongocat-platform",
  "gpui",
 ]
 

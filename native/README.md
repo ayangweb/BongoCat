@@ -15,11 +15,13 @@ This is the current formal visible product entry on macOS and Windows. It loads 
 preset (`standard` by default), starts the product runtime and platform input producer, and displays
 the transparent Metal or D3D11 overlay. Closing the settings window leaves the runtime, input, and
 overlay active; reopening the application creates a fresh settings entity from the current runtime
-snapshot. `--run-seconds 0` keeps the application active until an explicit Quit command; omit the
-argument for a bounded 30-second run.
+snapshot on macOS. GPUI 0.2.2 cannot safely destroy its Windows window from `WM_CLOSE`, so Windows
+hides the native window, retains its sole entity, and refreshes that entity when reopened.
+`--run-seconds 0` keeps the application active until an explicit Quit command; omit the argument for
+a bounded 30-second run.
 
-The cross-platform product smoke closes and recreates the settings window while the frame source
-continues to run:
+The cross-platform product smoke closes or hides the settings window, reopens it, and verifies that
+the frame source continued to run and the current snapshot was restored:
 
 ```text
 cargo run --manifest-path native/Cargo.toml -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke

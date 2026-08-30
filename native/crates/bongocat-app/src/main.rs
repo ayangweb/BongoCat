@@ -148,13 +148,15 @@ fn ensure_settings_window(cx: &mut App) -> Result<WindowHandle<SettingsView>, St
     let existing = cx
         .try_global::<ProductCoordinator>()
         .and_then(|coordinator| coordinator.settings_window);
-    if let Some(window_handle) = existing
-        && window_handle
-            .update(cx, |_, window, _| window.activate_window())
-            .is_ok()
-    {
-        cx.activate(true);
-        return Ok(window_handle);
+    if let Some(window_handle) = existing {
+        match window_handle.update(cx, |view, window, cx| view.reopen(window, cx)) {
+            Ok(Ok(())) => {
+                cx.activate(true);
+                return Ok(window_handle);
+            }
+            Ok(Err(error)) => return Err(error),
+            Err(_) => {}
+        }
     }
 
     let settings_client = cx
@@ -381,7 +383,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let smoke_failures = Arc::clone(&run_failures);
             cx.spawn(async move |cx| {
                 Timer::after(Duration::from_millis(500)).await;
-                let baseline_ticks = cx.update(|cx| -> Result<u64, String> {
+                let baseline = cx.update(|cx| -> Result<_, String> {
                     let (window_handle, frame_ticks) = {
                         let coordinator = cx.global::<ProductCoordinator>();
                         (
@@ -397,10 +399,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .map_err(|error| error.to_string())?;
                     #[cfg(target_os = "windows")]
                     let _ = window_handle;
-                    Ok(frame_ticks)
+                    Ok((frame_ticks, window_handle))
                 });
-                let baseline_ticks = match baseline_ticks {
-                    Ok(Ok(frame_ticks)) => frame_ticks,
+                let (baseline_ticks, original_window) = match baseline {
+                    Ok(Ok(baseline)) => baseline,
                     Ok(Err(error)) => {
                         record_failure(&smoke_failures, error);
                         let _ = cx.update(|cx| cx.quit());
@@ -413,15 +415,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 };
 
-                let mut window_closed = false;
+                let mut window_unavailable = false;
                 for _ in 0..60 {
                     Timer::after(Duration::from_millis(50)).await;
-                    match cx.update(|cx| cx.windows().is_empty()) {
-                        Ok(true) => {
-                            window_closed = true;
+                    match cx.update(|cx| -> Result<bool, String> {
+                        #[cfg(target_os = "macos")]
+                        return Ok(cx.windows().is_empty());
+                        #[cfg(target_os = "windows")]
+                        return original_window
+                            .update(cx, |view, _, _| view.window_hidden())
+                            .map_err(|error| error.to_string());
+                    }) {
+                        Ok(Ok(true)) => {
+                            window_unavailable = true;
                             break;
                         }
-                        Ok(false) => {}
+                        Ok(Ok(false)) => {}
+                        Ok(Err(error)) => {
+                            record_failure(&smoke_failures, error);
+                            let _ = cx.update(|cx| cx.quit());
+                            return;
+                        }
                         Err(error) => {
                             record_failure(&smoke_failures, error.to_string());
                             let _ = cx.update(|cx| cx.quit());
@@ -429,8 +443,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                 }
-                if !window_closed {
-                    record_failure(&smoke_failures, "settings window did not close");
+                if !window_unavailable {
+                    record_failure(&smoke_failures, "settings window did not close or hide");
                     let _ = cx.update(|cx| cx.quit());
                     return;
                 }
@@ -442,7 +456,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             "frame source stopped while the settings window was closed".to_owned()
                         );
                     }
-                    ensure_settings_window(cx)
+                    let reopened = ensure_settings_window(cx)?;
+                    if cx.windows().len() != 1 {
+                        return Err("settings reopen created more than one window".to_owned());
+                    }
+                    #[cfg(target_os = "macos")]
+                    if reopened == original_window {
+                        return Err("settings reopen retained the closed macOS entity".to_owned());
+                    }
+                    #[cfg(target_os = "windows")]
+                    if reopened != original_window {
+                        return Err("settings reopen replaced the hidden Windows entity".to_owned());
+                    }
+                    Ok(reopened)
                 });
                 match reopened {
                     Ok(Ok(_)) => {}

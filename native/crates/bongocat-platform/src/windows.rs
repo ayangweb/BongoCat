@@ -4,6 +4,7 @@ use bongocat_runtime::{
     InputEdge, InputEvent, InputProducer, InputPublishError, InputResetReason, InputSource,
     MonotonicMillis, MouseButton, PhysicalKey,
 };
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     ffi::c_void,
@@ -43,11 +44,12 @@ use windows::{
                 GIDC_REMOVAL, GWLP_USERDATA, GetCursorPos, GetMessageW, GetWindowLongPtrW,
                 KillTimer, MSG, PBT_APMRESUMEAUTOMATIC, PBT_APMRESUMECRITICAL,
                 PBT_APMRESUMESTANDBY, PBT_APMRESUMESUSPEND, PBT_APMSTANDBY, PBT_APMSUSPEND,
-                PostQuitMessage, RegisterClassW, SetTimer, SetWindowLongPtrW, TranslateMessage,
-                UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_DESTROY, WM_INPUT,
-                WM_INPUT_DEVICE_CHANGE, WM_NCCREATE, WM_NCDESTROY, WM_POWERBROADCAST, WM_TIMER,
-                WM_WTSSESSION_CHANGE, WNDCLASSW, WTS_CONSOLE_CONNECT, WTS_CONSOLE_DISCONNECT,
-                WTS_REMOTE_CONNECT, WTS_REMOTE_DISCONNECT, WTS_SESSION_LOCK, WTS_SESSION_UNLOCK,
+                PostQuitMessage, RegisterClassW, SW_HIDE, SW_SHOW, SetTimer, SetWindowLongPtrW,
+                ShowWindow, TranslateMessage, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE,
+                WM_CLOSE, WM_DESTROY, WM_INPUT, WM_INPUT_DEVICE_CHANGE, WM_NCCREATE, WM_NCDESTROY,
+                WM_POWERBROADCAST, WM_TIMER, WM_WTSSESSION_CHANGE, WNDCLASSW, WTS_CONSOLE_CONNECT,
+                WTS_CONSOLE_DISCONNECT, WTS_REMOTE_CONNECT, WTS_REMOTE_DISCONNECT,
+                WTS_SESSION_LOCK, WTS_SESSION_UNLOCK,
             },
         },
     },
@@ -64,6 +66,49 @@ const REQUIRED_MISSING_CONFIRMATIONS: u8 = 2;
 const SERVICE_TIMEOUT: Duration = Duration::from_secs(2);
 const FINAL_RESET_ATTEMPTS: usize = 20;
 const FINAL_RESET_RETRY: Duration = Duration::from_millis(5);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeWindowError {
+    HandleUnavailable,
+    UnsupportedHandle,
+}
+
+impl std::fmt::Display for NativeWindowError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::HandleUnavailable => "the native window handle is unavailable",
+            Self::UnsupportedHandle => "the native window handle is not a Win32 HWND",
+        })
+    }
+}
+
+impl std::error::Error for NativeWindowError {}
+
+pub fn hide_native_window(window: &impl HasWindowHandle) -> Result<(), NativeWindowError> {
+    let hwnd = native_hwnd(window)?;
+    // SAFETY: raw-window-handle guarantees that the HWND remains valid while
+    // `window` is borrowed, and the GPUI callback runs on the window owner thread.
+    let _ = unsafe { ShowWindow(hwnd, SW_HIDE) };
+    Ok(())
+}
+
+pub fn show_native_window(window: &impl HasWindowHandle) -> Result<(), NativeWindowError> {
+    let hwnd = native_hwnd(window)?;
+    // SAFETY: raw-window-handle guarantees that the HWND remains valid while
+    // `window` is borrowed, and the GPUI callback runs on the window owner thread.
+    let _ = unsafe { ShowWindow(hwnd, SW_SHOW) };
+    Ok(())
+}
+
+fn native_hwnd(window: &impl HasWindowHandle) -> Result<HWND, NativeWindowError> {
+    let handle = window
+        .window_handle()
+        .map_err(|_| NativeWindowError::HandleUnavailable)?;
+    let RawWindowHandle::Win32(handle) = handle.as_raw() else {
+        return Err(NativeWindowError::UnsupportedHandle);
+    };
+    Ok(HWND(handle.hwnd.get() as *mut c_void))
+}
 
 const RI_KEY_BREAK: u16 = 0x0001;
 const RI_KEY_E0: u16 = 0x0002;

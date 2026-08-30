@@ -22,7 +22,7 @@
 | -------------------------------- | ------------------------------ | ------------------------- | --------------------------------------- |
 | GPUI                             | `0.2.2`                        | Apache-2.0                | Formal settings UI and lifecycle spike  |
 | AccessKit core/macOS/Windows     | `0.25.0` / `0.27.0` / `0.35.0` | MIT OR Apache-2.0         | GPUI semantic AX/UIA adapter            |
-| raw-window-handle                | `0.6.2`                        | MIT OR Apache-2.0 OR Zlib | GPUI native window handle boundary      |
+| raw-window-handle                | `0.6.2`                        | MIT OR Apache-2.0 OR Zlib | GPUI/Win32 native window boundary       |
 | async-channel                    | `2.5.0`                        | MIT OR Apache-2.0         | Formal typed command/reply and spike    |
 | unicode-segmentation             | `1.13.3`                       | MIT OR Apache-2.0         | Grapheme-safe text editing              |
 | futures-lite                     | `2.6.1`                        | MIT OR Apache-2.0         | Test-only executor bridge               |

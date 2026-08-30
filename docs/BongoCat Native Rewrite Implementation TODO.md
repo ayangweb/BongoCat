@@ -311,8 +311,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-31）：正式 `bongocat-app` 已由 GPUI 接管平台主循环，应用 coordinator
     以非阻塞 `ProductOverlaySession::tick` 驱动真实 Cubism/Metal overlay；正式设置窗口
     同时读取 revisioned snapshot，并可持久化 overlay 显隐与 motion audio。macOS release
-    两秒有界 smoke 已按输入 -> runtime/config/audio -> renderer/overlay -> GPUI 顺序退出。
-    Windows hardware runner、设置窗口关闭后后台继续运行和窗口重开仍待验证，因此保持未勾选。
+    smoke 已验证设置 Entity 销毁、后台 frame tick、单 Entity 重建、snapshot 恢复和有序退出。
+    Windows runner `33326619716` / `33327009309` 暴露 GPUI 0.2.2 的 `WM_CLOSE` 同步重入崩溃；
+    当前实现已改为 platform adapter 拦截 close、隐藏原生窗口并在 reopen 时重显同一 Entity，
+    仍待 Windows hardware runner 复验，因此保持未勾选。
 - [ ] Windows/macOS 至少一个预置模型完成输入到原生绘制闭环。
 - [ ] Windows issue #47 复现用例不产生残留键。
 - [ ] macOS 权限拒绝、授予、重启和恢复路径可解释。
@@ -1158,9 +1160,12 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
 17. [ ] `P1-SETTINGS-WINDOW-LIFECYCLE`：设置窗口关闭后保持后台产品运行，并可从当前
         revisioned snapshot 重建窗口。
     - 依赖：正式 GPUI 设置窗口、app coordinator、runtime/render owner。
-    - 退出条件：window close 不触发 shutdown；无窗口期间 frame source 继续推进；reopen
-      只创建一个新 GPUI Entity 并恢复 snapshot；显式 Quit 仍按既定顺序 join 全部 owner；
+    - 退出条件：window close 不触发 shutdown；窗口隐藏/销毁期间 frame source 继续推进；
+      macOS reopen 只创建一个新 GPUI Entity，Windows reopen 只重显保留的唯一 Entity，且都
+      从当前 revisioned snapshot 刷新；显式 Quit 仍按既定顺序 join 全部 owner；
       Windows/macOS release smoke 与完整 Native workspace 门禁通过。
+    - 状态（2026-08-31）：macOS release smoke 和 Windows platform target check 本机通过；
+      Windows 原生 lifecycle smoke 待 CI 复验 GPUI 0.2.2 close interception 后再勾选。
 
 ## 13. 待决策清单
 

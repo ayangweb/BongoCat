@@ -15,6 +15,8 @@ pub use macos::{
 mod windows;
 #[cfg(target_os = "windows")]
 pub use windows::WindowsInputService;
+#[cfg(target_os = "windows")]
+pub use windows::{NativeWindowError, hide_native_window, show_native_window};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InputPermission {

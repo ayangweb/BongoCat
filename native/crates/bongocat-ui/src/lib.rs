@@ -30,6 +30,7 @@ pub enum SettingsErrorCode {
     ServiceUnavailable,
     RuntimeUnavailable,
     ConfigPersistFailed,
+    WindowUnavailable,
     ShutdownFailed,
 }
 
@@ -54,6 +55,7 @@ impl fmt::Display for SettingsError {
             SettingsErrorCode::ServiceUnavailable => "settings service is unavailable",
             SettingsErrorCode::RuntimeUnavailable => "runtime did not apply the setting",
             SettingsErrorCode::ConfigPersistFailed => "setting could not be saved",
+            SettingsErrorCode::WindowUnavailable => "settings window could not be hidden",
             SettingsErrorCode::ShutdownFailed => "application shutdown did not complete",
         })
     }

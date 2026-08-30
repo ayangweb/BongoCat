@@ -103,7 +103,10 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
 - `gpui 0.2.2`（Apache-2.0）只在 Windows/macOS 正式 UI/app target 编译，Linux 共享协议
   不依赖 GPUI；替换边界位于 `bongocat-ui::window` 与 app 主循环，runtime/config/model 不导入
   GPUI 类型。macOS 正式窗口 + Cubism overlay release smoke 已通过，Windows 由 hardware CI 验证；
-- `accesskit 0.25.0`、`accesskit_macos 0.27.0`、`accesskit_windows 0.35.0`、`raw-window-handle 0.6.2` 与 ABI generation 匹配的 `objc2-foundation 0.2.2` 只在 GPUI 设置 spike 中把强类型语义快照和 action 接到原生 AX/UIA，并通过原生窗口事件验证 tooltip hover；替换边界是 GPUI 提供等价稳定 element-level accessibility 和输入测试 API，届时删除 adapter/probe 依赖而不改变 runtime/UI command contract；
+- `accesskit 0.25.0`、`accesskit_macos 0.27.0`、`accesskit_windows 0.35.0` 与 ABI generation 匹配的 `objc2-foundation 0.2.2` 只在 GPUI 设置 spike 中把强类型语义快照和 action 接到原生 AX/UIA，并通过原生窗口事件验证 tooltip hover；替换边界是 GPUI 提供等价稳定 element-level accessibility 和输入测试 API，届时删除 adapter/probe 依赖而不改变 runtime/UI command contract；
+- `raw-window-handle 0.6.2`（MIT OR Apache-2.0 OR Zlib）除 spike 外也由正式 Windows
+  platform adapter 直接使用，只把 GPUI 的公开 handle 转为短期借用的 HWND 以隐藏/重显设置
+  窗口；裸 handle 不离开 adapter，GPUI 修复原生 close 生命周期后可移除这段正式依赖；
 - `atomic-write-file 0.3.1`（BSD-3-Clause）只在正式配置 crate 内提供同目录跨平台原子替换；替换边界是 `ConfigStore` 的私有 commit helper，不进入公共配置类型；`dirs 6.0.0`、`serde 1.0.229` 与 `serde_json 1.0.151` 继续提供路径解析和严格序列化；
 - `rodio 0.22.2`（MIT OR Apache-2.0）只在 `bongocat-audio` 私有 backend 打开系统输出并
   解码现有 FLAC；固定容量的项目 command/diagnostics API 隔离第三方类型，Linux contract
