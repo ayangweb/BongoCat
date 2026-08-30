@@ -8,6 +8,7 @@ const BEZIER_ITERATIONS: usize = 18;
 const MODEL_EYE_BLINK_ID: &str = "EyeBlink";
 const MODEL_LIP_SYNC_ID: &str = "LipSync";
 const MODEL_OPACITY_ID: &str = "Opacity";
+const MAX_USER_DATA_OCCURRENCES_PER_EVALUATION: usize = 256;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MotionCurveTarget {
@@ -46,6 +47,25 @@ pub struct MotionEvaluation {
     pub part_opacities: Vec<MotionPartOpacitySample>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MotionUserDataEvent {
+    pub local_time: Duration,
+    pub value: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MotionUserDataOccurrence {
+    pub cycle: u64,
+    pub local_time: Duration,
+    pub value: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct MotionUserDataEvaluation {
+    pub occurrences: Vec<MotionUserDataOccurrence>,
+    pub skipped_occurrences: u64,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MotionApplyStatus {
     pub finished: bool,
@@ -63,6 +83,7 @@ pub struct MotionClip {
     fade_in_seconds: f32,
     fade_out_seconds: f32,
     curves: Vec<MotionCurve>,
+    user_data: Vec<MotionUserDataEvent>,
 }
 
 #[derive(Clone, Debug)]
@@ -252,6 +273,22 @@ impl MotionClip {
         if user_data_size != raw.meta.total_user_data_size {
             return invalid("Meta.TotalUserDataSize does not match UserData");
         }
+        let user_data = raw
+            .user_data
+            .into_iter()
+            .map(|entry| {
+                let local_time = Duration::try_from_secs_f32(entry.time).map_err(|_| {
+                    Live2dError::new(
+                        Live2dErrorCode::MotionInvalid,
+                        "UserData.Time cannot be represented by the runtime clock",
+                    )
+                })?;
+                Ok(MotionUserDataEvent {
+                    local_time,
+                    value: entry.value,
+                })
+            })
+            .collect::<Result<Vec<_>, Live2dError>>()?;
 
         let mut total_segments = 0usize;
         let mut total_points = 0usize;
@@ -280,6 +317,7 @@ impl MotionClip {
             fade_in_seconds,
             fade_out_seconds,
             curves,
+            user_data,
         })
     }
 
@@ -297,6 +335,99 @@ impl MotionClip {
 
     pub fn fade_out_weight(&self, elapsed: Duration) -> f32 {
         1.0 - fade_weight(elapsed.as_secs_f32(), self.fade_out_seconds)
+    }
+
+    pub fn user_data(&self) -> &[MotionUserDataEvent] {
+        &self.user_data
+    }
+
+    pub fn user_data_events_between(
+        &self,
+        previous_elapsed: Option<Duration>,
+        elapsed: Duration,
+    ) -> MotionUserDataEvaluation {
+        if self.user_data.is_empty() || previous_elapsed.is_some_and(|previous| elapsed < previous)
+        {
+            return MotionUserDataEvaluation::default();
+        }
+
+        #[derive(Clone, Copy)]
+        struct Candidate {
+            absolute_time: f64,
+            source_index: usize,
+            cycle: u64,
+        }
+
+        let previous_seconds = previous_elapsed.map(|value| value.as_secs_f64());
+        let elapsed_seconds = elapsed.as_secs_f64();
+        let duration_seconds = f64::from(self.duration_seconds);
+        let mut total_occurrences = 0u64;
+        let mut candidates = Vec::new();
+
+        for (source_index, event) in self.user_data.iter().enumerate() {
+            let event_seconds = event.local_time.as_secs_f64();
+            if !self.looping || duration_seconds <= 0.0 {
+                let follows_previous = previous_seconds
+                    .is_none_or(|previous| event_seconds > previous + f64::from(TIME_TOLERANCE));
+                if follows_previous && event_seconds <= elapsed_seconds + f64::from(TIME_TOLERANCE)
+                {
+                    total_occurrences = total_occurrences.saturating_add(1);
+                    candidates.push(Candidate {
+                        absolute_time: event_seconds,
+                        source_index,
+                        cycle: 0,
+                    });
+                }
+                continue;
+            }
+
+            let first_cycle = previous_seconds.map_or(0, |previous| {
+                (((previous - event_seconds) / duration_seconds).floor() + 1.0).max(0.0) as u64
+            });
+            let last_cycle = ((elapsed_seconds + f64::from(TIME_TOLERANCE) - event_seconds)
+                / duration_seconds)
+                .floor();
+            if last_cycle < 0.0 || last_cycle < first_cycle as f64 {
+                continue;
+            }
+            let last_cycle = last_cycle as u64;
+            let occurrence_count = last_cycle.saturating_sub(first_cycle).saturating_add(1);
+            total_occurrences = total_occurrences.saturating_add(occurrence_count);
+            for cycle in first_cycle
+                ..=last_cycle.min(
+                    first_cycle.saturating_add(MAX_USER_DATA_OCCURRENCES_PER_EVALUATION as u64 - 1),
+                )
+            {
+                candidates.push(Candidate {
+                    absolute_time: cycle as f64 * duration_seconds + event_seconds,
+                    source_index,
+                    cycle,
+                });
+            }
+        }
+
+        candidates.sort_by(|left, right| {
+            left.absolute_time
+                .total_cmp(&right.absolute_time)
+                .then(left.cycle.cmp(&right.cycle))
+                .then(left.source_index.cmp(&right.source_index))
+        });
+        candidates.truncate(MAX_USER_DATA_OCCURRENCES_PER_EVALUATION);
+        let occurrences = candidates
+            .into_iter()
+            .map(|candidate| {
+                let event = &self.user_data[candidate.source_index];
+                MotionUserDataOccurrence {
+                    cycle: candidate.cycle,
+                    local_time: event.local_time,
+                    value: event.value.clone(),
+                }
+            })
+            .collect::<Vec<_>>();
+        MotionUserDataEvaluation {
+            skipped_occurrences: total_occurrences.saturating_sub(occurrences.len() as u64),
+            occurrences,
+        }
     }
 
     pub fn evaluate(&self, elapsed: Duration) -> MotionEvaluation {
@@ -767,6 +898,60 @@ mod tests {
         );
         assert!(evaluation.parameters.is_empty());
         assert!(evaluation.part_opacities.is_empty());
+    }
+
+    #[test]
+    fn user_data_crossings_are_ordered_non_repeating_and_bounded() {
+        let json = br#"{
+          "Version":3,
+          "Meta":{"Duration":2.0,"Fps":30.0,"Loop":true,"AreBeziersRestricted":true,
+            "CurveCount":0,"TotalSegmentCount":0,"TotalPointCount":0,
+            "UserDataCount":3,"TotalUserDataSize":3},
+          "Curves":[],
+          "UserData":[
+            {"Time":0.0,"Value":"A"},
+            {"Time":0.5,"Value":"B"},
+            {"Time":2.0,"Value":"C"}
+          ]
+        }"#;
+        let clip = MotionClip::from_slice(json, 0.0, 0.0).expect("user data motion");
+        assert_eq!(clip.user_data().len(), 3);
+
+        let at_start = clip.user_data_events_between(None, Duration::ZERO);
+        assert_eq!(at_start.occurrences[0].value, "A");
+        assert_eq!(at_start.occurrences[0].cycle, 0);
+        let first_half =
+            clip.user_data_events_between(Some(Duration::ZERO), Duration::from_millis(500));
+        assert_eq!(
+            first_half
+                .occurrences
+                .iter()
+                .map(|event| event.value.as_str())
+                .collect::<Vec<_>>(),
+            ["B"]
+        );
+        let wrap =
+            clip.user_data_events_between(Some(Duration::from_millis(500)), Duration::from_secs(2));
+        assert_eq!(
+            wrap.occurrences
+                .iter()
+                .map(|event| (event.value.as_str(), event.cycle))
+                .collect::<Vec<_>>(),
+            [("C", 0), ("A", 1)]
+        );
+
+        let bounded =
+            clip.user_data_events_between(Some(Duration::ZERO), Duration::from_secs(1_000));
+        assert_eq!(
+            bounded.occurrences.len(),
+            MAX_USER_DATA_OCCURRENCES_PER_EVALUATION
+        );
+        assert_eq!(bounded.skipped_occurrences, 1_244);
+        assert!(
+            clip.user_data_events_between(Some(Duration::from_secs(3)), Duration::from_secs(2),)
+                .occurrences
+                .is_empty()
+        );
     }
 
     #[test]

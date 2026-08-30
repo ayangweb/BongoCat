@@ -134,6 +134,7 @@ Platform input ---> Runtime thread ---> Model/Animation state
 - `platform`：窗口、输入、托盘、权限、显示器、启动项、文件和更新。
 - `model`：模型包解析、路径安全、资源索引和显式导入。
 - `live2d`：Cubism Core 生命周期、motion/expression/physics/pose 求值。
+- `audio`：motion 音效的有序 command、FLAC 解码、唯一 voice、输出设备和 shutdown。
 - `render`：不可变 render snapshot 和 renderer contract。
 - `config`：环境隔离、版本化 schema、验证、备份和原子提交。
 
@@ -168,6 +169,7 @@ BongoCat/
       bongocat-config/        schema、环境隔离和原子存储
       bongocat-model/         模型包、导入和资源索引
       bongocat-live2d/        Cubism Core 边界与模型求值
+      bongocat-audio/         motion 音效队列、解码与设备 owner
       bongocat-render/        render snapshot/contract
       bongocat-ui/            GPUI 设置界面和 design system
       bongocat-platform/      Windows/macOS 平台服务
@@ -213,7 +215,7 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
   清理；重复 stop 不重启计时，零时长立即清理，旧动作的 stop 不影响后启动动作。
 - render snapshot 不含锁和平台对象，通过双缓冲或 latest-value channel 交给渲染线程。
 - GPUI 通过 command/snapshot 边界交互，不直接持有 runtime mutex。
-- shutdown 顺序：停止输入 -> runtime drain/停止 -> 保存配置 -> 停止渲染 -> 销毁 overlay/GPU -> 关闭 GPUI。
+- shutdown 顺序：停止输入 -> runtime drain/停止 -> 保存配置 -> 停止音频并 join -> 停止渲染 -> 销毁 overlay/GPU -> 关闭 GPUI。
 
 ### 8.2 输入事件
 
@@ -360,6 +362,23 @@ renderer 的模型资源准备结果通过稳定项目 error code 回到 runtime
 
 Linux 阶段再决定增加 Vulkan/OpenGL backend，或基于数据迁移到 wgpu。首发优先保证 Windows/macOS 透明窗口的确定性。
 
+### 11.3 Motion 音效
+
+- `bongocat-audio` 使用精确锁定的 `rodio 0.22.2`，只启用 output playback 与 FLAC；
+  rodio/CPAL 类型不进入 runtime、model、UI 或 renderer 公共接口。
+- runtime 只在 motion priority 与资源解析均成功后，通过固定容量有序队列非阻塞发布
+  强类型 `Play`/`Stop`。解码、文件 I/O 和设备创建全部由独立 worker 执行。
+- 同时最多一个 motion voice。新动作（包括没有 sound 的动作）、显式停止、禁用音效、
+  成功模型 commit 和 shutdown 都停止旧 voice；被 priority 拒绝或加载失败的动作不改变
+  当前 voice。
+- model3 sound 相对路径必须先通过模型包规范化与包根约束，再由 runtime 组合为本地路径；
+  audio backend 不解析 model3，也不接受 URL 或未验证的模型引用。
+- 文件、解码、输出设备和队列故障只更新匿名诊断，不改变 motion、input 或 render 状态。
+  满载恢复丢弃不可信 backlog 并停止 voice，禁止阻塞输入边沿。
+- motion3 UserData 由 Live2D evaluator 保留并按单调 elapsed 的 `(previous, current]` 区间
+  产生强类型 occurrence；循环跨越不重复，时间回退不重放，单 tick 最多发布 256 项并
+  对跳过数量计数，避免睡眠恢复后的无界分配。
+
 ## 12. 配置、模型与安全
 
 应用身份：
@@ -495,6 +514,10 @@ Bundle ID 固定为 `com.ayangweb.bongo-cat`。Development 与 Production 使用
 ### ADR-011：渐进实现与发布门禁分离
 
 允许正式 Rust workspace 在外部证据补齐期间持续开发；Cubism 授权与分发、实机矩阵、签名和稳定性证据保持 stable 发布门禁。
+
+### ADR-012：有序 Motion 音频服务
+
+runtime 非阻塞发布强类型音效命令，独立 Rust worker 使用最小 rodio/FLAC feature 管理唯一 voice、错误恢复和 shutdown；音频失败不影响动作或渲染。
 
 ## 17. 实施阶段
 

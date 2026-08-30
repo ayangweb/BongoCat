@@ -19,7 +19,8 @@ pub use expression::{
 mod motion;
 pub use motion::{
     MotionApplyStatus, MotionClip, MotionCurveTarget, MotionEvaluation, MotionModelSample,
-    MotionParameterSample, MotionPartOpacitySample,
+    MotionParameterSample, MotionPartOpacitySample, MotionUserDataEvaluation, MotionUserDataEvent,
+    MotionUserDataOccurrence,
 };
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]

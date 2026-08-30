@@ -14,10 +14,19 @@ use bongocat_render::RenderFrame;
 use std::sync::Arc;
 use std::time::Duration;
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(crate) struct RenderEvaluation {
     pub(crate) rendered: bool,
     pub(crate) motion_finished: bool,
+    pub(crate) motion_user_data: Vec<RenderMotionUserDataOccurrence>,
+    pub(crate) skipped_motion_user_data: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct RenderMotionUserDataOccurrence {
+    pub(crate) cycle: u64,
+    pub(crate) local_time: Duration,
+    pub(crate) value: String,
 }
 
 pub(crate) struct RuntimeRenderer {
@@ -51,6 +60,7 @@ struct MotionPlayback {
     clip: MotionClip,
     started_at: Duration,
     fade_out_started_at: Option<Duration>,
+    last_event_elapsed: Option<Duration>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -209,6 +219,7 @@ impl RuntimeRenderer {
                 clip,
                 started_at: now,
                 fade_out_started_at: None,
+                last_event_elapsed: None,
             });
             Ok(())
         }
@@ -292,17 +303,39 @@ impl RuntimeRenderer {
                 .model
                 .restore_parameter_defaults()
                 .map_err(|_| RuntimeRenderErrorCode::ModelEvaluationFailed)?;
-            let motion_finished = if let Some(playback) = &active.motion {
+            let mut motion_user_data = Vec::new();
+            let mut skipped_motion_user_data = 0;
+            let motion_finished = if let Some(playback) = &mut active.motion {
+                let elapsed = now.saturating_sub(playback.started_at);
                 let fade_out_elapsed = playback
                     .fade_out_started_at
                     .map(|started_at| now.saturating_sub(started_at));
                 let explicit_fade_finished = fade_out_elapsed
                     .is_some_and(|elapsed| elapsed >= playback.clip.fade_out_duration());
+                let user_data = playback
+                    .clip
+                    .user_data_events_between(playback.last_event_elapsed, elapsed);
+                if playback
+                    .last_event_elapsed
+                    .is_none_or(|previous| elapsed >= previous)
+                {
+                    playback.last_event_elapsed = Some(elapsed);
+                }
+                motion_user_data = user_data
+                    .occurrences
+                    .into_iter()
+                    .map(|occurrence| RenderMotionUserDataOccurrence {
+                        cycle: occurrence.cycle,
+                        local_time: occurrence.local_time,
+                        value: occurrence.value,
+                    })
+                    .collect();
+                skipped_motion_user_data = user_data.skipped_occurrences;
                 let status = active
                     .model
                     .apply_motion_with_weight(
                         &playback.clip,
-                        now.saturating_sub(playback.started_at),
+                        elapsed,
                         fade_out_elapsed
                             .map_or(1.0, |elapsed| playback.clip.fade_out_weight(elapsed)),
                     )
@@ -361,6 +394,8 @@ impl RuntimeRenderer {
             Ok(RenderEvaluation {
                 rendered: true,
                 motion_finished,
+                motion_user_data,
+                skipped_motion_user_data,
             })
         }
 

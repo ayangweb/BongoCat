@@ -34,6 +34,15 @@
   a physically pressed key or button remains authoritative for mapped controls.
 - A successful model commit clears motion and expression state. CPU/GPU preparation failure keeps
   the previous model, motion, expression, and input bindings usable.
-- `audio_trigger` is an ordered side effect. It is not part of the render snapshot and must never block input edges.
+- `audio_trigger` is an ordered side effect. It is not part of the render snapshot and must never
+  block input edges. Only an accepted motion triggers audio. A replacement motion stops the current
+  voice before starting its validated relative sound; a replacement without sound also stops the
+  old voice. Explicit motion stop, disabling audio, successful model commit, and shutdown stop the
+  voice immediately. A rejected motion leaves it unchanged. File, decode, device, and queue errors
+  are observable diagnostics but never fail animation or rendering.
+- Motion UserData is emitted once for every timestamp crossed in `(previous_elapsed, elapsed]`, with
+  time-zero events included on the first evaluation. Loop boundaries preserve chronological order,
+  clock rollback emits nothing, and a bounded batch reports skipped occurrences rather than making
+  an unbounded allocation after a long suspension.
 
 The command IDs in these fixtures are product protocol values, not Cubism group/index identifiers. A model adapter resolves them to validated resources before runtime commit; failed resolution leaves the previous model and animation state usable.

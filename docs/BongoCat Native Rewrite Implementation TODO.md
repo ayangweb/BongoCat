@@ -1,7 +1,7 @@
 # BongoCat Native Rewrite Implementation TODO
 
 状态：Phase 0 证据补齐与 Phase 1 渐进实现并行
-最后更新：2026-08-30
+最后更新：2026-08-31
 当前分支：`next`
 首发平台：Windows 10 1903+、macOS 12+
 后续评估：Linux
@@ -345,12 +345,18 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     `PresetModelCatalog` 以真实只读目录签发预置 `CommittedModel`，拒绝 symlink root/entry
     和 catalog root 逃逸。完整 sidecar 强类型校验与预置/用户合并视图继续由 Phase 4 跟踪。
 - [ ] 创建 bongocat-live2d：Cubism safe wrapper 和模型求值。
-  - 状态（2026-08-30）：正式 crate 已完成 Core 版本门禁、Moc/Model safe owner、
+  - 状态（2026-08-31）：正式 crate 已完成 Core 版本门禁、Moc/Model safe owner、
     drawable snapshot、parameter id/range/default、motion3 curve/fade 和 exp3
     Add/Multiply/Overwrite/transition 求值；三个预置模型均在加载阶段缓存所有声明的
     motion/expression，不向上暴露 raw pointer。motion 主动 stop fade、PartOpacity 以及
-    EyeBlink/LipSync/Opacity Model target 已进入正式 runtime/render contract；physics、pose
-    和 motion event/audio 尚未实现，因此总项保持未完成。
+    EyeBlink/LipSync/Opacity Model target 已进入正式 runtime/render contract；UserData 也已
+    进入跨帧、循环去重和有界诊断 contract。physics 与 pose 求值尚未实现，因此总项保持未完成。
+- [x] 创建 bongocat-audio：motion 音效 command、FLAC、设备 owner 和 shutdown。
+  - 验收证据（2026-08-31）：ADR-0012 精确锁定最新稳定版 `rodio 0.22.2`，只启用
+    `playback + flac`；独立 worker 以容量 16 的强类型队列管理唯一 voice，runtime 只做
+    非阻塞 publish。真实预置 FLAC decoder、缺失/损坏文件、设备 backend 错误映射、
+    motion 抢占、无 sound、显式停止、配置禁用、成功切模、overflow backlog 恢复、迟到
+    command 和 shutdown/join 均有自动化 contract；失败只进入匿名 diagnostics。
 - [x] 创建 bongocat-render：render snapshot 和 renderer contract。
   - 验收证据（2026-08-30）：正式 crate 已从 Cubism 边界接管 `RenderSnapshot`、
     `RenderResources` 和强类型 `DrawableId`/`TextureId`，并提供带 model generation/
@@ -708,7 +714,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     前恢复全部 Core parameter default，再按 motion -> expression -> typed product input
     顺序覆盖，停止 motion 或替换 expression 后不残留旧值。physics 所需的分层状态仍未完成。
 - [ ] 实现 motion curve、fade、priority 和 completion。
-  - 状态（2026-08-30）：正式 `bongocat-live2d` 已严格解析 motion3 v3 Meta、user data 和
+  - 状态（2026-08-31）：正式 `bongocat-live2d` 已严格解析 motion3 v3 Meta、user data 和
     linear/Bezier/stepped/inverse-stepped segment，验证 finite/time/count 边界并以二分反解
     非受限 Bezier 时间。三个预置模型的全部 motion 引用均通过真实解析、循环时间求值和
     Core/drawable 变化测试；非循环自然 completion、model3/curve fade、`idle/normal/force`
@@ -719,8 +725,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     fade。model3 Groups 已进入 v2 产品索引并校验非空 target/name/parameter ID；Model target
     按 R5 顺序实现 EyeBlink 参数乘法、LipSync 参数加法、未覆盖 group 参数的 motion fade
     和独立 Opacity render contract。真实 Core 测试覆盖左右眼、嘴部参数和 opacity snapshot，
-    D3D11/Metal 均只在最终颜色 pass 应用 model opacity。motion event/audio 和 UI 选择入口
-    仍未完成，因此保持未勾选。
+    D3D11/Metal 均只在最终颜色 pass 应用 model opacity。UserData 现按单调 elapsed 的
+    `(previous,current]` 产生 occurrence，循环边界不重复、回退不重放、单 tick 上限 256
+    并计数跳过；accepted motion 的相对 FLAC 音效也已进入独立 owner。UI 选择入口仍未完成，
+    因此保持未勾选。
 - [x] 实现 expression 混合和互斥/叠加语义。
   - 验收证据（2026-08-30）：正式 `bongocat-live2d` 严格解析 Type、fade、parameter、
     duplicate ID 与 Add/Multiply/Overwrite；三个 model3 声明的 9 个 exp3 全部在模型 prepare
@@ -749,11 +757,20 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 5.5 音效
 
-- [ ] 选择跨平台 Rust 音频后端并审查许可证/维护性。
-- [ ] 支持现有 motion 音频格式和相对路径。
-- [ ] 定义并发、打断、音量和模型切换停止语义。
-- [ ] 音频失败不阻塞动画或渲染。
-- [ ] shutdown 停止 stream 并释放设备。
+- [x] 选择跨平台 Rust 音频后端并审查许可证/维护性。
+- [x] 支持现有 motion 音频格式和相对路径。
+- [x] 定义并发、打断、音量和模型切换停止语义。
+- [x] 音频失败不阻塞动画或渲染。
+- [x] shutdown 停止 stream 并释放设备。
+
+验收证据（2026-08-31）：ADR-0012 记录 `rodio 0.22.2` 的 MIT/Apache-2.0、活跃维护、
+Windows/macOS output、最小 feature 和可替换边界，并说明上游仍约束 `cpal 0.17.3`。
+模型 parser 先规范化并限制 sound 相对路径，runtime 仅在 priority/resource 接受后发布；
+唯一 voice 使用 full volume，新 motion/无 sound/stop/disable/成功切模/shutdown 均停止旧
+voice。7 项 audio test 覆盖真实 48 kHz stereo FLAC、资源/解码失败、恢复、抢占、overflow
+和有序释放；runtime/app tests 证明 unavailable backend 不使 motion command 失败，设置
+持久化与 worker join 完成。默认设备热切换、100 次模型/音频资源测量和 8 小时 soak 仍由
+Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
 
 ### 5.6 Phase 4 退出门槛
 
@@ -1110,6 +1127,13 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     - 依赖：ADR-0011、`spikes/runtime-contract/`、`spikes/config-store/`。
     - 退出条件：workspace 默认命令通过；环境由构建产物固定；两个数据根无读取、写入或锁 fallback；runtime 正常启动、更新 snapshot、拒绝队列溢出并有序 shutdown。
     - 验收证据（2026-08-30）：`native/` 仅包含 app/runtime/config；11 项单元测试覆盖严格 schema、共享默认 fixture、原子写入、revision 冲突、双环境根、typed snapshot、队列满返回原 command 和 shutdown。Development 默认构建与 `BONGOCAT_BUILD_ENV=production` 构建使用同一代码、不同编译期常量；format、Clippy、test 和 release check 本机通过，三平台 CI 已配置。
+16. [x] `P4-MOTION-AUDIO`：实现 motion UserData 与不阻塞 runtime 的单 voice 音效闭环。
+    - 依赖：正式 model/live2d/runtime、ADR-0012、预置 model3/FLAC。
+    - 退出条件：UserData 跨帧/loop 不重复且有界；accepted motion 才播放；抢占、无 sound、
+      stop、disable、成功切模、故障、overflow 和 shutdown 行为有自动化证据。
+    - 验收证据（2026-08-31）：`bongocat-audio`、runtime side-effect 接线、真实预置 FLAC
+      decoder 与 motion event/audio contract 已进入正式 workspace；完整 Native format、
+      Clippy、test、release check、双 Windows target check 和 CI 结果随对应提交记录。
 
 ## 13. 待决策清单
 
@@ -1118,7 +1142,6 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 | Windows/macOS 首发 CPU 架构和 target triple                   | `P0-DOC-CONSISTENCY`  | CI、SDK 二进制、签名和安装包矩阵   |
 | GPUI 默认 shader 构建工具链及上游 future-incompatibility 处置 | `P0-GPUI-PACKAGE-MAC` | 产品 workspace 和发布构建          |
 | Cubism Core/Framework 版本、获取方式和再分发条款              | `P0-CUBISM`           | Live2D safe layer、CI 和公开安装包 |
-| Rust 音频后端及现有 FLAC 支持                                 | Phase 4 开始前        | motion sound、资源和许可证         |
 | Windows 安装格式与更新 helper 权限模型                        | Phase 7 开始前        | 签名、升级、回滚和卸载             |
 | macOS 最低系统、Intel 支持和 universal binary 策略            | Phase 1 开始前        | target、依赖、CI 和 notarization   |
 

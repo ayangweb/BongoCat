@@ -9,6 +9,7 @@ publish.workspace = true
 build = "build.rs"
 
 [dependencies]
+bongocat-audio.workspace = true
 bongocat-config.workspace = true
 bongocat-model.workspace = true
 bongocat-overlay.workspace = true

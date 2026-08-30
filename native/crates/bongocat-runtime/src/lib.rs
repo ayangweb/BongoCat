@@ -4,6 +4,10 @@ mod cursor;
 mod input;
 mod rendering;
 
+use bongocat_audio::{
+    MotionAudioClient, MotionAudioCommand, MotionAudioDiagnostics, MotionAudioStopReason,
+    MotionAudioVolume,
+};
 use bongocat_model::{CommittedModel, ModelSnapshot};
 use bongocat_render::{ModelCommitErrorCode, ModelCommitOutcome, ModelCommitToken, RenderConsumer};
 use std::{
@@ -159,6 +163,22 @@ pub struct ActiveExpressionSnapshot {
     pub command_sequence: u64,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MotionUserDataSnapshot {
+    pub event_sequence: u64,
+    pub motion: MotionId,
+    pub cycle: u64,
+    pub local_time: Duration,
+    pub value: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct MotionEventDiagnostics {
+    pub emitted: u64,
+    pub skipped: u64,
+    pub last_event: Option<MotionUserDataSnapshot>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RuntimeCommandFailure {
     pub sequence: u64,
@@ -174,6 +194,7 @@ pub struct PendingModelSnapshot {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RuntimeCommand {
     SetOverlayVisible(bool),
+    SetMotionAudioEnabled(bool),
     SetInputBindings(Arc<InputBindings>),
     ResetInput(InputResetReason),
     ApplyInput(Arc<SequencedInputEvent>),
@@ -195,10 +216,13 @@ pub struct RuntimeSnapshot {
     pub revision: u64,
     pub state: RuntimeState,
     pub overlay_visible: bool,
+    pub motion_audio_enabled: bool,
+    pub motion_audio: MotionAudioDiagnostics,
     pub active_model: Option<ModelSnapshot>,
     pub pending_model: Option<PendingModelSnapshot>,
     pub active_motion: Option<ActiveMotionSnapshot>,
     pub active_expression: Option<ActiveExpressionSnapshot>,
+    pub motion_events: MotionEventDiagnostics,
     pub input: InputSnapshot,
     pub cursor: CursorSnapshot,
     pub model_input: ModelInputSnapshot,
@@ -208,15 +232,22 @@ pub struct RuntimeSnapshot {
 }
 
 impl RuntimeSnapshot {
-    fn starting(overlay_visible: bool) -> Self {
+    fn starting(
+        overlay_visible: bool,
+        motion_audio_enabled: bool,
+        motion_audio: MotionAudioDiagnostics,
+    ) -> Self {
         Self {
             revision: 0,
             state: RuntimeState::Starting,
             overlay_visible,
+            motion_audio_enabled,
+            motion_audio,
             active_model: None,
             pending_model: None,
             active_motion: None,
             active_expression: None,
+            motion_events: MotionEventDiagnostics::default(),
             input: InputSnapshot::default(),
             cursor: CursorSnapshot::default(),
             model_input: ModelInputSnapshot::default(),
@@ -370,6 +401,7 @@ pub struct RuntimeClient {
     input_transport: Arc<InputTransportCounters>,
     input_producer_state: Arc<Mutex<InputProducerState>>,
     cursor_slot: Arc<CursorSlot>,
+    motion_audio: MotionAudioClient,
 }
 
 impl RuntimeClient {
@@ -646,6 +678,7 @@ impl RuntimeClient {
     fn with_transport_diagnostics(&self, mut snapshot: RuntimeSnapshot) -> RuntimeSnapshot {
         snapshot.input.transport = self.input_transport.snapshot();
         snapshot.cursor.transport = self.cursor_slot.diagnostics();
+        snapshot.motion_audio = self.motion_audio.diagnostics();
         snapshot
     }
 }
@@ -659,8 +692,26 @@ impl RuntimeOwner {
     pub fn start(initial_overlay_visible: bool, command_capacity: usize) -> Self {
         Self::start_internal(
             initial_overlay_visible,
+            false,
             command_capacity,
             None,
+            MotionAudioClient::unavailable(),
+            Arc::new(SystemMonotonicClock::start()),
+        )
+    }
+
+    pub fn start_with_audio(
+        initial_overlay_visible: bool,
+        initial_motion_audio_enabled: bool,
+        command_capacity: usize,
+        motion_audio: MotionAudioClient,
+    ) -> Self {
+        Self::start_internal(
+            initial_overlay_visible,
+            initial_motion_audio_enabled,
+            command_capacity,
+            None,
+            motion_audio,
             Arc::new(SystemMonotonicClock::start()),
         )
     }
@@ -673,8 +724,30 @@ impl RuntimeOwner {
         (
             Self::start_internal(
                 initial_overlay_visible,
+                false,
                 command_capacity,
                 Some(renderer),
+                MotionAudioClient::unavailable(),
+                Arc::new(SystemMonotonicClock::start()),
+            ),
+            consumer,
+        )
+    }
+
+    pub fn start_with_rendering_and_audio(
+        initial_overlay_visible: bool,
+        initial_motion_audio_enabled: bool,
+        command_capacity: usize,
+        motion_audio: MotionAudioClient,
+    ) -> (Self, RenderConsumer) {
+        let (renderer, consumer) = RuntimeRenderer::channel();
+        (
+            Self::start_internal(
+                initial_overlay_visible,
+                initial_motion_audio_enabled,
+                command_capacity,
+                Some(renderer),
+                motion_audio,
                 Arc::new(SystemMonotonicClock::start()),
             ),
             consumer,
@@ -686,12 +759,30 @@ impl RuntimeOwner {
         command_capacity: usize,
         clock: Arc<dyn MonotonicClock>,
     ) -> (Self, RenderConsumer) {
+        Self::start_with_rendering_audio_and_clock(
+            initial_overlay_visible,
+            false,
+            command_capacity,
+            MotionAudioClient::unavailable(),
+            clock,
+        )
+    }
+
+    pub fn start_with_rendering_audio_and_clock(
+        initial_overlay_visible: bool,
+        initial_motion_audio_enabled: bool,
+        command_capacity: usize,
+        motion_audio: MotionAudioClient,
+        clock: Arc<dyn MonotonicClock>,
+    ) -> (Self, RenderConsumer) {
         let (renderer, consumer) = RuntimeRenderer::channel();
         (
             Self::start_internal(
                 initial_overlay_visible,
+                initial_motion_audio_enabled,
                 command_capacity,
                 Some(renderer),
+                motion_audio,
                 clock,
             ),
             consumer,
@@ -700,8 +791,10 @@ impl RuntimeOwner {
 
     fn start_internal(
         initial_overlay_visible: bool,
+        initial_motion_audio_enabled: bool,
         command_capacity: usize,
         renderer: Option<RuntimeRenderBootstrap>,
+        motion_audio: MotionAudioClient,
         clock: Arc<dyn MonotonicClock>,
     ) -> Self {
         assert!(
@@ -710,7 +803,11 @@ impl RuntimeOwner {
         );
         let (sender, receiver) = mpsc::sync_channel(command_capacity);
         let snapshot = Arc::new(SnapshotCell {
-            value: Mutex::new(RuntimeSnapshot::starting(initial_overlay_visible)),
+            value: Mutex::new(RuntimeSnapshot::starting(
+                initial_overlay_visible,
+                initial_motion_audio_enabled,
+                motion_audio.diagnostics(),
+            )),
             changed: Condvar::new(),
         });
         let input_transport = Arc::new(InputTransportCounters::default());
@@ -724,17 +821,22 @@ impl RuntimeOwner {
             input_transport,
             input_producer_state: Arc::new(Mutex::new(InputProducerState::default())),
             cursor_slot: Arc::clone(&cursor_slot),
+            motion_audio: motion_audio.clone(),
         };
         let worker = thread::Builder::new()
             .name("bongocat-runtime".into())
             .spawn(move || {
                 run_worker(
                     receiver,
-                    snapshot,
-                    cursor_slot,
-                    initial_overlay_visible,
-                    renderer,
-                    clock,
+                    RuntimeWorkerBootstrap {
+                        snapshot,
+                        cursor_slot,
+                        initial_overlay_visible,
+                        initial_motion_audio_enabled,
+                        renderer,
+                        motion_audio,
+                        clock,
+                    },
                 )
             })
             .expect("failed to start runtime thread");
@@ -822,14 +924,26 @@ struct PendingModelActivation {
     input_bindings: Option<Arc<InputBindings>>,
 }
 
-fn run_worker(
-    receiver: Receiver<CommandEnvelope>,
+struct RuntimeWorkerBootstrap {
     snapshot: Arc<SnapshotCell>,
     cursor_slot: Arc<CursorSlot>,
     initial_overlay_visible: bool,
+    initial_motion_audio_enabled: bool,
     renderer: Option<RuntimeRenderBootstrap>,
+    motion_audio: MotionAudioClient,
     clock: Arc<dyn MonotonicClock>,
-) {
+}
+
+fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBootstrap) {
+    let RuntimeWorkerBootstrap {
+        snapshot,
+        cursor_slot,
+        initial_overlay_visible,
+        initial_motion_audio_enabled,
+        renderer,
+        motion_audio,
+        clock,
+    } = bootstrap;
     let mut renderer = renderer.map(RuntimeRenderer::start);
     let mut active_model = None;
     let mut active_motion = None;
@@ -838,8 +952,10 @@ fn run_worker(
     let mut input_bindings = InputBindings::default();
     let mut normalized_cursor = NormalizedCursorPosition::default();
     let mut overlay_visible = initial_overlay_visible;
+    let mut motion_audio_enabled = initial_motion_audio_enabled;
     let mut pending_model = None;
     let mut deferred_commands = VecDeque::new();
+    let mut next_motion_event_sequence = 0u64;
     publish(&snapshot, |current| current.state = RuntimeState::Ready);
     loop {
         process_model_commit_feedback(
@@ -851,6 +967,8 @@ fn run_worker(
             &mut active_model,
             &mut active_motion,
             &mut active_expression,
+            &motion_audio,
+            &mut next_motion_event_sequence,
             overlay_visible,
             &snapshot,
             clock.now(),
@@ -888,6 +1006,21 @@ fn run_worker(
                         overlay_visible = visible;
                         publish(&snapshot, |current| {
                             current.overlay_visible = visible;
+                            current.last_command_failure = None;
+                            current.last_command_sequence = Some(sequence);
+                        });
+                    }
+                    WorkerCommand::Product(RuntimeCommand::SetMotionAudioEnabled(enabled)) => {
+                        motion_audio_enabled = enabled;
+                        if !enabled {
+                            stop_motion_audio(
+                                &motion_audio,
+                                sequence,
+                                MotionAudioStopReason::Disabled,
+                            );
+                        }
+                        publish(&snapshot, |current| {
+                            current.motion_audio_enabled = enabled;
                             current.last_command_failure = None;
                             current.last_command_sequence = Some(sequence);
                         });
@@ -939,6 +1072,7 @@ fn run_worker(
                             &mut active_motion,
                             &mut active_expression,
                             &mut pending_model,
+                            &motion_audio,
                             &snapshot,
                         );
                     }
@@ -959,6 +1093,7 @@ fn run_worker(
                             &mut active_motion,
                             &mut active_expression,
                             &mut pending_model,
+                            &motion_audio,
                             &snapshot,
                         );
                     }
@@ -977,6 +1112,25 @@ fn run_worker(
                         } else if let Some(renderer) = &mut renderer {
                             match renderer.start_motion(&motion, clock.now()) {
                                 Ok(()) => {
+                                    if motion_audio_enabled {
+                                        if let Some(path) =
+                                            motion_audio_path(active_model.as_deref(), &motion)
+                                        {
+                                            let _ = motion_audio.try_publish(
+                                                MotionAudioCommand::Play {
+                                                    sequence,
+                                                    path,
+                                                    volume: MotionAudioVolume::FULL,
+                                                },
+                                            );
+                                        } else {
+                                            stop_motion_audio(
+                                                &motion_audio,
+                                                sequence,
+                                                MotionAudioStopReason::MotionReplaced,
+                                            );
+                                        }
+                                    }
                                     let started = ActiveMotionSnapshot {
                                         motion,
                                         priority,
@@ -1014,6 +1168,11 @@ fn run_worker(
                             .as_ref()
                             .is_some_and(|active| active.stop_command_sequence.is_some());
                         if matching && !already_stopping {
+                            stop_motion_audio(
+                                &motion_audio,
+                                sequence,
+                                MotionAudioStopReason::MotionStopped,
+                            );
                             let stop_status = renderer
                                 .as_mut()
                                 .map_or(MotionStopStatus::Finished, |renderer| {
@@ -1076,6 +1235,7 @@ fn run_worker(
                         }
                     }
                     WorkerCommand::Shutdown => {
+                        stop_motion_audio(&motion_audio, sequence, MotionAudioStopReason::Shutdown);
                         publish(&snapshot, |current| {
                             current.state = RuntimeState::Stopping;
                             current.pending_model = None;
@@ -1098,6 +1258,7 @@ fn run_worker(
                         &snapshot,
                         clock.now(),
                         &mut active_motion,
+                        &mut next_motion_event_sequence,
                     );
                 }
             }
@@ -1118,6 +1279,8 @@ fn run_worker(
                     &mut active_model,
                     &mut active_motion,
                     &mut active_expression,
+                    &motion_audio,
+                    &mut next_motion_event_sequence,
                     overlay_visible,
                     &snapshot,
                     clock.now(),
@@ -1129,6 +1292,7 @@ fn run_worker(
                         &snapshot,
                         clock.now(),
                         &mut active_motion,
+                        &mut next_motion_event_sequence,
                     );
                 }
             }
@@ -1145,6 +1309,7 @@ fn run_worker(
     if let Some(renderer) = &renderer {
         renderer.close();
     }
+    stop_motion_audio(&motion_audio, u64::MAX, MotionAudioStopReason::Shutdown);
     publish(&snapshot, |current| current.state = RuntimeState::Stopped);
 }
 
@@ -1161,6 +1326,7 @@ fn begin_model_activation(
     active_motion: &mut Option<ActiveMotionSnapshot>,
     active_expression: &mut Option<ActiveExpressionSnapshot>,
     pending_model: &mut Option<PendingModelActivation>,
+    motion_audio: &MotionAudioClient,
     snapshot: &SnapshotCell,
 ) {
     let activation_bindings = proposed_bindings.as_deref().unwrap_or(input_bindings);
@@ -1173,11 +1339,13 @@ fn begin_model_activation(
         *active_model = Some(committed);
         *active_motion = None;
         *active_expression = None;
+        stop_motion_audio(motion_audio, sequence, MotionAudioStopReason::ModelSwitched);
         publish(snapshot, |current| {
             current.state = RuntimeState::Ready;
             current.active_model = Some(model_snapshot);
             current.active_motion = None;
             current.active_expression = None;
+            current.motion_events.last_event = None;
             current.model_input = model_input;
             current.render_error = None;
             current.last_command_failure = None;
@@ -1218,6 +1386,8 @@ fn process_model_commit_feedback(
     active_model: &mut Option<Arc<CommittedModel>>,
     active_motion: &mut Option<ActiveMotionSnapshot>,
     active_expression: &mut Option<ActiveExpressionSnapshot>,
+    motion_audio: &MotionAudioClient,
+    next_motion_event_sequence: &mut u64,
     overlay_visible: bool,
     snapshot: &SnapshotCell,
     now: Duration,
@@ -1247,19 +1417,32 @@ fn process_model_commit_feedback(
             *active_model = Some(pending.model);
             *active_motion = None;
             *active_expression = None;
+            stop_motion_audio(
+                motion_audio,
+                feedback.token.command_sequence,
+                MotionAudioStopReason::ModelSwitched,
+            );
             publish(snapshot, |current| {
                 current.state = RuntimeState::Ready;
                 current.active_model = Some(model_snapshot);
                 current.pending_model = None;
                 current.active_motion = None;
                 current.active_expression = None;
+                current.motion_events.last_event = None;
                 current.model_input = model_input;
                 current.render_error = None;
                 current.last_command_failure = None;
                 current.last_command_sequence = Some(feedback.token.command_sequence);
             });
             if overlay_visible {
-                evaluate_renderer(Some(renderer), model_input, snapshot, now, active_motion);
+                evaluate_renderer(
+                    Some(renderer),
+                    model_input,
+                    snapshot,
+                    now,
+                    active_motion,
+                    next_motion_event_sequence,
+                );
             }
         }
         ModelCommitOutcome::Rejected(ModelCommitErrorCode::ResourcePreparationFailed)
@@ -1276,7 +1459,14 @@ fn process_model_commit_feedback(
                 current.last_command_sequence = Some(feedback.token.command_sequence);
             });
             if overlay_visible {
-                evaluate_renderer(Some(renderer), model_input, snapshot, now, active_motion);
+                evaluate_renderer(
+                    Some(renderer),
+                    model_input,
+                    snapshot,
+                    now,
+                    active_motion,
+                    next_motion_event_sequence,
+                );
             }
         }
         _ => {
@@ -1292,15 +1482,46 @@ fn evaluate_renderer(
     snapshot: &SnapshotCell,
     now: Duration,
     active_motion: &mut Option<ActiveMotionSnapshot>,
+    next_motion_event_sequence: &mut u64,
 ) {
     let Some(renderer) = renderer else {
         return;
     };
+    let event_motion = active_motion.as_ref().map(|active| active.motion.clone());
     match renderer.evaluate(input, now) {
         Ok(RenderEvaluation {
             rendered: false, ..
         }) => {}
         Ok(evaluation) => {
+            if !evaluation.motion_user_data.is_empty() || evaluation.skipped_motion_user_data > 0 {
+                publish(snapshot, |current| {
+                    current.motion_events.skipped = current
+                        .motion_events
+                        .skipped
+                        .saturating_add(evaluation.skipped_motion_user_data);
+                    if let Some(motion) = event_motion {
+                        for occurrence in evaluation.motion_user_data {
+                            let observed = MotionUserDataSnapshot {
+                                event_sequence: *next_motion_event_sequence,
+                                motion: motion.clone(),
+                                cycle: occurrence.cycle,
+                                local_time: occurrence.local_time,
+                                value: occurrence.value,
+                            };
+                            *next_motion_event_sequence =
+                                next_motion_event_sequence.wrapping_add(1);
+                            current.motion_events.emitted =
+                                current.motion_events.emitted.saturating_add(1);
+                            current.motion_events.last_event = Some(observed);
+                        }
+                    } else {
+                        current.motion_events.skipped = current
+                            .motion_events
+                            .skipped
+                            .saturating_add(evaluation.motion_user_data.len() as u64);
+                    }
+                });
+            }
             if evaluation.motion_finished {
                 *active_motion = None;
                 publish(snapshot, |current| current.active_motion = None);
@@ -1333,6 +1554,27 @@ fn evaluate_renderer(
             }
         }
     }
+}
+
+fn motion_audio_path(
+    model: Option<&CommittedModel>,
+    motion: &MotionId,
+) -> Option<std::path::PathBuf> {
+    let model = model?;
+    let sound = model
+        .index()
+        .motion_groups
+        .iter()
+        .find(|group| group.name == motion.group())?
+        .motions
+        .get(motion.index())?
+        .sound
+        .as_deref()?;
+    Some(model.root().join(sound))
+}
+
+fn stop_motion_audio(client: &MotionAudioClient, sequence: u64, reason: MotionAudioStopReason) {
+    let _ = client.try_publish(MotionAudioCommand::Stop { sequence, reason });
 }
 
 fn consume_cursor(
@@ -1832,9 +2074,11 @@ mod tests {
     #[test]
     fn motion_commands_use_priority_identity_and_injectable_time() {
         let clock = Arc::new(ManualClock::default());
-        let (owner, consumer) = RuntimeOwner::start_with_rendering_and_clock(
+        let (owner, consumer) = RuntimeOwner::start_with_rendering_audio_and_clock(
+            true,
             true,
             8,
+            MotionAudioClient::unavailable(),
             Arc::clone(&clock) as Arc<dyn MonotonicClock>,
         );
         let client = owner.client();
@@ -1845,7 +2089,8 @@ mod tests {
             ))))
             .expect("activation command");
         let candidate = wait_for_prepared_model(&client, &consumer, activation_sequence);
-        report_model_prepared(&client, &consumer, &candidate);
+        let activated = report_model_prepared(&client, &consumer, &candidate);
+        let audio_rejections_before_motion = activated.motion_audio.rejected_after_shutdown;
         let baseline = wait_for_render_frame(&consumer, |frame| {
             frame.model_generation == candidate.model_generation
                 && frame.frame_number > candidate.frame_number
@@ -1870,6 +2115,10 @@ mod tests {
                 stop_command_sequence: None,
             })
         );
+        assert_eq!(
+            started.motion_audio.rejected_after_shutdown,
+            audio_rejections_before_motion + 1
+        );
 
         clock.set(Duration::from_millis(500));
         let animated = wait_for_render_frame(&consumer, |frame| {
@@ -1889,6 +2138,10 @@ mod tests {
             .wait_for_command(ignored_sequence, TIMEOUT)
             .expect("lower priority result");
         assert_eq!(ignored.active_motion, started.active_motion);
+        assert_eq!(
+            ignored.motion_audio.rejected_after_shutdown,
+            audio_rejections_before_motion + 1
+        );
 
         let force_sequence = client
             .send(RuntimeCommand::StartMotion {
@@ -1908,6 +2161,10 @@ mod tests {
                 stop_command_sequence: None,
             })
         );
+        assert_eq!(
+            forced.motion_audio.rejected_after_shutdown,
+            audio_rejections_before_motion + 2
+        );
 
         let invalid_sequence = client
             .send(RuntimeCommand::StartMotion {
@@ -1926,6 +2183,10 @@ mod tests {
             })
         );
         assert_eq!(invalid.active_motion, forced.active_motion);
+        assert_eq!(
+            invalid.motion_audio.rejected_after_shutdown,
+            audio_rejections_before_motion + 2
+        );
 
         let stale_stop_sequence = client
             .send(RuntimeCommand::StopMotion(first))
@@ -1934,6 +2195,10 @@ mod tests {
             .wait_for_command(stale_stop_sequence, TIMEOUT)
             .expect("stale stop result");
         assert_eq!(stale_stop.active_motion, forced.active_motion);
+        assert_eq!(
+            stale_stop.motion_audio.rejected_after_shutdown,
+            audio_rejections_before_motion + 2
+        );
 
         let stop_sequence = client
             .send(RuntimeCommand::StopMotion(second))
@@ -1942,6 +2207,10 @@ mod tests {
             .wait_for_command(stop_sequence, TIMEOUT)
             .expect("current stop result");
         assert!(stopped.active_motion.is_none());
+        assert_eq!(
+            stopped.motion_audio.rejected_after_shutdown,
+            audio_rejections_before_motion + 3
+        );
         let duplicate_stop_sequence = client
             .send(RuntimeCommand::StopMotion(
                 MotionId::new("CAT_motion", 1).expect("motion id"),
@@ -2403,18 +2672,24 @@ mod tests {
     fn full_queue_returns_the_original_typed_command() {
         let (sender, _receiver) = mpsc::sync_channel(1);
         let input_transport = Arc::new(InputTransportCounters::default());
+        let motion_audio = MotionAudioClient::unavailable();
         let client = RuntimeClient {
             producer: Arc::new(Producer {
                 sender,
                 next_sequence: Mutex::new(0),
             }),
             snapshot: Arc::new(SnapshotCell {
-                value: Mutex::new(RuntimeSnapshot::starting(true)),
+                value: Mutex::new(RuntimeSnapshot::starting(
+                    true,
+                    false,
+                    motion_audio.diagnostics(),
+                )),
                 changed: Condvar::new(),
             }),
             input_transport,
             input_producer_state: Arc::new(Mutex::new(InputProducerState::default())),
             cursor_slot: Arc::new(CursorSlot::default()),
+            motion_audio,
         };
         client
             .send(RuntimeCommand::SetOverlayVisible(false))
@@ -2431,18 +2706,24 @@ mod tests {
     fn input_producer_overflow_is_observable_and_recovery_resets_state() {
         let (sender, receiver) = mpsc::sync_channel(2);
         let input_transport = Arc::new(InputTransportCounters::default());
+        let motion_audio = MotionAudioClient::unavailable();
         let client = RuntimeClient {
             producer: Arc::new(Producer {
                 sender,
                 next_sequence: Mutex::new(0),
             }),
             snapshot: Arc::new(SnapshotCell {
-                value: Mutex::new(RuntimeSnapshot::starting(true)),
+                value: Mutex::new(RuntimeSnapshot::starting(
+                    true,
+                    false,
+                    motion_audio.diagnostics(),
+                )),
                 changed: Condvar::new(),
             }),
             input_transport,
             input_producer_state: Arc::new(Mutex::new(InputProducerState::default())),
             cursor_slot: Arc::new(CursorSlot::default()),
+            motion_audio,
         };
         let producer = InputProducer::new(client.clone());
         let sibling_producer = InputProducer::new(client.clone());

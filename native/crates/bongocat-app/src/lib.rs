@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+use bongocat_audio::{MotionAudioService, MotionAudioShutdownError};
 use bongocat_config::{
     BuildEnvironment, ConfigError, ConfigRevision, ConfigStore, NativeConfig, PlatformStorageError,
     StorageLayout, platform_layout,
@@ -17,6 +18,7 @@ use bongocat_runtime::{
 use std::{collections::BTreeMap, fmt, path::Path, sync::Arc, time::Duration};
 
 const COMMAND_CAPACITY: usize = 64;
+const AUDIO_COMMAND_CAPACITY: usize = 16;
 const RUNTIME_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[cfg(bongocat_build_environment = "development")]
@@ -40,6 +42,7 @@ pub enum ApplicationError {
     RuntimeDidNotPrepareModel,
     RenderConsumerUnavailable,
     Shutdown(ShutdownError),
+    MotionAudioShutdown(MotionAudioShutdownError),
 }
 
 impl fmt::Display for ApplicationError {
@@ -70,6 +73,9 @@ impl fmt::Display for ApplicationError {
                 formatter.write_str("application render consumer is unavailable")
             }
             Self::Shutdown(error) => write!(formatter, "shutdown failed: {error}"),
+            Self::MotionAudioShutdown(error) => {
+                write!(formatter, "motion audio shutdown failed: {error}")
+            }
         }
     }
 }
@@ -118,6 +124,7 @@ pub struct Application {
     config_revision: ConfigRevision,
     model_store: ModelStore,
     runtime: RuntimeOwner,
+    motion_audio: Option<MotionAudioService>,
     render_consumer: Option<RenderConsumer>,
 }
 
@@ -142,13 +149,30 @@ impl Application {
         )?;
         let config_store = ConfigStore::new(layout)?;
         let (config, config_revision) = config_store.load_or_default()?;
+        let (motion_audio, motion_audio_client) =
+            match MotionAudioService::start(AUDIO_COMMAND_CAPACITY) {
+                Ok(service) => {
+                    let client = service.client();
+                    (Some(service), client)
+                }
+                Err(_) => (None, bongocat_audio::MotionAudioClient::unavailable()),
+            };
         let (runtime, render_consumer) = if enable_rendering {
-            let (runtime, consumer) =
-                RuntimeOwner::start_with_rendering(config.overlay.visible, COMMAND_CAPACITY);
+            let (runtime, consumer) = RuntimeOwner::start_with_rendering_and_audio(
+                config.overlay.visible,
+                config.model.play_motion_audio,
+                COMMAND_CAPACITY,
+                motion_audio_client,
+            );
             (runtime, Some(consumer))
         } else {
             (
-                RuntimeOwner::start(config.overlay.visible, COMMAND_CAPACITY),
+                RuntimeOwner::start_with_audio(
+                    config.overlay.visible,
+                    config.model.play_motion_audio,
+                    COMMAND_CAPACITY,
+                    motion_audio_client,
+                ),
                 None,
             )
         };
@@ -162,6 +186,7 @@ impl Application {
             config_revision,
             model_store,
             runtime,
+            motion_audio,
             render_consumer,
         })
     }
@@ -201,6 +226,28 @@ impl Application {
         let client = self.runtime.client();
         let sequence = client
             .send(RuntimeCommand::SetOverlayVisible(visible))
+            .map_err(ApplicationError::RuntimeCommand)?;
+        let snapshot = client
+            .wait_for_command(sequence, RUNTIME_TIMEOUT)
+            .ok_or(ApplicationError::RuntimeDidNotPublish)?;
+        self.config = next_config;
+        self.config_revision = next_revision;
+        Ok(snapshot)
+    }
+
+    pub fn set_motion_audio_enabled(
+        &mut self,
+        enabled: bool,
+    ) -> Result<RuntimeSnapshot, ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.model.play_motion_audio = enabled;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.config_revision)?;
+
+        let client = self.runtime.client();
+        let sequence = client
+            .send(RuntimeCommand::SetMotionAudioEnabled(enabled))
             .map_err(ApplicationError::RuntimeCommand)?;
         let snapshot = client
             .wait_for_command(sequence, RUNTIME_TIMEOUT)
@@ -340,9 +387,14 @@ impl Application {
     }
 
     pub fn shutdown(self) -> Result<RuntimeSnapshot, ApplicationError> {
-        self.runtime
-            .shutdown(RUNTIME_TIMEOUT)
-            .map_err(ApplicationError::Shutdown)
+        let runtime_result = self.runtime.shutdown(RUNTIME_TIMEOUT);
+        let audio_result = self
+            .motion_audio
+            .map(|service| service.shutdown(RUNTIME_TIMEOUT))
+            .transpose();
+        let stopped = runtime_result.map_err(ApplicationError::Shutdown)?;
+        audio_result.map_err(ApplicationError::MotionAudioShutdown)?;
+        Ok(stopped)
     }
 }
 
@@ -408,8 +460,15 @@ mod tests {
         assert!(!snapshot.overlay_visible);
         assert!(!application.config().overlay.visible);
 
+        let audio_snapshot = application
+            .set_motion_audio_enabled(false)
+            .expect("disable motion audio");
+        assert!(!audio_snapshot.motion_audio_enabled);
+        assert!(!application.config().model.play_motion_audio);
+
         let persisted = std::fs::read_to_string(config_path).expect("persisted config");
         assert!(persisted.contains("\"visible\": false"));
+        assert!(persisted.contains("\"play_motion_audio\": false"));
         let stopped = application.shutdown().expect("clean shutdown");
         assert_eq!(stopped.state, RuntimeState::Stopped);
     }

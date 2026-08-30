@@ -1,7 +1,7 @@
 # Native Rewrite Rust Dependency Version Audit
 
 状态：所有直接依赖已使用 crates.io 最新稳定版；lockfile 已更新到上游约束允许的最新解析结果
-日期：2026-08-29
+日期：2026-08-31
 Rust：`cargo 1.97.1`、`rustc 1.97.1`
 
 ## Scope
@@ -50,6 +50,7 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 | `serde`                               |      `1.0.229` | 从 `1.0.228` 升级      |
 | `serde_json`                          |      `1.0.151` | 从 `1.0.149` 升级      |
 | `raw-window-handle`                   |        `0.6.2` | 新增时即为最新         |
+| `rodio`                               |       `0.22.2` | motion 音效新增时最新  |
 | `sha2`                                |       `0.11.0` | 新增时即为最新         |
 | `tempfile`                            |       `3.27.0` | 已是最新               |
 | `unicode-segmentation`                |       `1.13.3` | 已是最新               |
@@ -73,6 +74,12 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 
 这些版本不能通过手改 lockfile、`cargo update --precise` 或本地 patch 安全升级。解除方式是 GPUI 发布兼容的新版本后升级 GPUI 并重跑双平台 UI/overlay smoke；不为追求表面版本一致而 fork 上游。
 
+`rodio 0.22.2` 在审计日是 crates.io 最新非 yanked 稳定版（MIT OR Apache-2.0，
+Rust 1.87+），但其 playback feature 约束 `cpal 0.17.x`，因此完整 `cargo update` 合法解析
+为 `cpal 0.17.3`，而不是独立最新的 `0.18.2`。Native workspace 不直接依赖 CPAL；
+rodio 仅在 Windows/macOS target 启用 `playback + flac`，录音及其它 codec feature 均关闭。
+替换边界完全位于 `bongocat-audio` 私有 backend，不把第三方类型暴露到 runtime contract。
+
 GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`，虽然 crates.io 最新稳定版分别为 `0.6.4` 与 `0.3.2`。这是类型兼容例外，不是为了回避 API 迁移：`accesskit_macos 0.27.0` 的 adapter 公共对象使用其 `objc2 0.5.x` 依赖构造，本机 AX 诊断和 native tooltip probe 必须使用同一代 Rust Objective-C/Foundation 类型。把这些对象借用为 `objc2 0.6.x` / `objc2-foundation 0.3.x` 类型会跨越两个互不兼容的 Rust 类型世代。该直接依赖只存在于 macOS spike 的平台诊断边界，不进入业务 API；当 AccessKit macOS 升级到 `objc2 0.6`，或诊断不再需要直接检查 adapter 对象时立即移除并重跑 AX/tooltip smoke。
 
 ## Verification
@@ -91,6 +98,10 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
 - `async-channel 2.5.0` 的 GPUI 设置 spike 完成 revisioned snapshot、runtime shutdown 和自动退出；
 - `accesskit 0.25.0`、`accesskit_macos 0.27.0`、`accesskit_windows 0.35.0`、`raw-window-handle 0.6.2` 与 ABI generation 匹配的 `objc2-foundation 0.2.2` 只在 GPUI 设置 spike 中把强类型语义快照和 action 接到原生 AX/UIA，并通过原生窗口事件验证 tooltip hover；替换边界是 GPUI 提供等价稳定 element-level accessibility 和输入测试 API，届时删除 adapter/probe 依赖而不改变 runtime/UI command contract；
 - `atomic-write-file 0.3.1`（BSD-3-Clause）只在正式配置 crate 内提供同目录跨平台原子替换；替换边界是 `ConfigStore` 的私有 commit helper，不进入公共配置类型；`dirs 6.0.0`、`serde 1.0.229` 与 `serde_json 1.0.151` 继续提供路径解析和严格序列化；
+- `rodio 0.22.2`（MIT OR Apache-2.0）只在 `bongocat-audio` 私有 backend 打开系统输出并
+  解码现有 FLAC；固定容量的项目 command/diagnostics API 隔离第三方类型，Linux contract
+  build 不链接 ALSA。真实预置 FLAC header/首样本、资源/解码失败、抢占、overflow 恢复和
+  shutdown 均有 Rust 测试；默认设备热切换与长期资源测量留给后续平台验收；
 - `bindgen 0.72.1` 与 `sha2 0.11.0` 只存在于离线 Cubism raw binding 工具；三个当前可绑定 target 的合成 header golden、外部路径/hash/不可覆盖/provenance 测试和 release check 通过；
 - `cargo-deny 0.20.2` 对全部 15 个 workspace 的四目标 license/source policy执行检查。
 

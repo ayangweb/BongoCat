@@ -107,6 +107,13 @@ final D3D11/Metal color pass, leaving mask generation unchanged.
 Product input is applied after motion curves so an actual pressed key or button remains authoritative
 for hand parameters.
 
+Accepted motions now publish an ordered side effect to the independent `bongocat-audio` worker.
+The worker uses rodio with only playback and FLAC enabled, owns one voice, and resolves no model
+metadata itself. A new motion, explicit stop, disabled audio setting, successful model switch, or
+shutdown stops the old voice. Missing/corrupt audio, output failure, or queue pressure is retained as
+anonymous runtime diagnostics and never fails motion or rendering. Motion3 UserData crossings are
+also evaluated from monotonic elapsed time with loop-safe de-duplication and a bounded batch.
+
 Expression playback uses `Application::set_expression` with the model3 expression name. Every
 declared exp3 resource is parsed and cached during model preparation; Add, Multiply, and Overwrite
 parameters use the file's sine fade times. Replacing an expression fades the immediately previous
