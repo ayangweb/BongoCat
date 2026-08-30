@@ -1,15 +1,11 @@
 use crate::{OverlayError, PreviewReport};
-use bongocat_live2d::{Live2dModel, ProductParameter};
-use bongocat_model::{ModelId, ModelPackageLimits, PreparedModel};
+use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
 use bongocat_platform::MacInputService;
-use bongocat_render::{
-    BlendMode, CanvasInfo, DrawableId, RenderFrame, RenderSnapshot, TextureAsset, TextureId,
-    latest_render_channel,
-};
+use bongocat_render::{BlendMode, CanvasInfo, DrawableId, RenderSnapshot, TextureAsset, TextureId};
 use bongocat_runtime::{
     CursorPosition, CursorProducer, CursorSample, CursorViewport, HandSide, InputBindings,
-    InputControl, InputEdge, InputEvent, InputProducer, InputSource, ModelInputSnapshot,
-    MonotonicMillis, MouseButton, PhysicalKey, RuntimeCommand, RuntimeOwner,
+    InputControl, InputEdge, InputEvent, InputProducer, InputSource, MonotonicMillis, MouseButton,
+    PhysicalKey, RuntimeCommand, RuntimeOwner,
 };
 use image::ImageReader;
 use metal::{
@@ -176,30 +172,48 @@ pub(crate) fn run_model_preview(
     duration: Duration,
     interactive: bool,
 ) -> Result<PreviewReport, OverlayError> {
-    let prepared = PreparedModel::prepare(
-        ModelId::parse(model_id).map_err(|error| OverlayError::new(error.to_string()))?,
-        model_root,
-        ModelPackageLimits::default(),
-    )
-    .map_err(|error| OverlayError::new(error.to_string()))?;
-    let mut model =
-        Live2dModel::load(&prepared).map_err(|error| OverlayError::new(error.to_string()))?;
-    let resources = model.render_resources();
-    let initial_snapshot = model
-        .update_and_snapshot()
+    let model_id =
+        ModelId::parse(model_id).map_err(|error| OverlayError::new(error.to_string()))?;
+    let preset_root = model_root
+        .parent()
+        .ok_or_else(|| OverlayError::new("preset model root has no catalog parent"))?;
+    let committed = PresetModelCatalog::open(preset_root, ModelPackageLimits::default())
+        .and_then(|catalog| catalog.load(&model_id))
         .map_err(|error| OverlayError::new(error.to_string()))?;
-    let (render_producer, render_consumer) = latest_render_channel();
-    render_producer
-        .publish(RenderFrame {
-            model_generation: 0,
-            frame_number: 0,
-            resources: std::sync::Arc::clone(&resources),
-            snapshot: std::sync::Arc::new(initial_snapshot),
-        })
+
+    let (runtime, render_consumer) = RuntimeOwner::start_with_rendering(true, 64);
+    let runtime_client = runtime.client();
+    runtime_client
+        .wait_for_revision(1, RUNTIME_TIMEOUT)
+        .ok_or_else(|| OverlayError::new("preview runtime did not become ready"))?;
+    let binding_sequence = runtime_client
+        .send(RuntimeCommand::SetInputBindings(std::sync::Arc::new(
+            preview_input_bindings(model_id.as_str()),
+        )))
         .map_err(|error| OverlayError::new(error.to_string()))?;
+    runtime_client
+        .wait_for_command(binding_sequence, RUNTIME_TIMEOUT)
+        .ok_or_else(|| OverlayError::new("preview input bindings were not applied"))?;
+    let activation_sequence = runtime_client
+        .send(RuntimeCommand::ActivateModel(std::sync::Arc::new(
+            committed,
+        )))
+        .map_err(|error| OverlayError::new(error.to_string()))?;
+    let activated = runtime_client
+        .wait_for_command(activation_sequence, RUNTIME_TIMEOUT)
+        .ok_or_else(|| OverlayError::new("preview model activation did not complete"))?;
+    if let Some(failure) = activated
+        .last_command_failure
+        .filter(|failure| failure.sequence == activation_sequence)
+    {
+        return Err(OverlayError::new(format!(
+            "preview model activation failed: {:?}",
+            failure.code
+        )));
+    }
     let initial_frame = render_consumer
         .take_latest()
-        .ok_or_else(|| OverlayError::new("initial render frame is unavailable"))?;
+        .ok_or_else(|| OverlayError::new("runtime did not publish the initial render frame"))?;
     let mut previous_snapshot = std::sync::Arc::clone(&initial_frame.snapshot);
     let mtm = MainThreadMarker::new()
         .ok_or_else(|| OverlayError::new("macOS preview must run on the main thread"))?;
@@ -213,19 +227,6 @@ pub(crate) fn run_model_preview(
     )?;
     overlay.panel.orderFrontRegardless();
 
-    let runtime = RuntimeOwner::start(true, 64);
-    let runtime_client = runtime.client();
-    runtime_client
-        .wait_for_revision(1, RUNTIME_TIMEOUT)
-        .ok_or_else(|| OverlayError::new("preview runtime did not become ready"))?;
-    let binding_sequence = runtime_client
-        .send(RuntimeCommand::SetInputBindings(std::sync::Arc::new(
-            preview_input_bindings(model_id),
-        )))
-        .map_err(|error| OverlayError::new(error.to_string()))?;
-    runtime_client
-        .wait_for_command(binding_sequence, RUNTIME_TIMEOUT)
-        .ok_or_else(|| OverlayError::new("preview input bindings were not applied"))?;
     let input_producer = runtime.input_producer();
     let cursor_producer = runtime.cursor_producer();
     let mut input_driver = PreviewInputDriver::default();
@@ -256,40 +257,25 @@ pub(crate) fn run_model_preview(
         });
         let elapsed = started.elapsed();
         if !interactive
-            && let Some(sequence) =
-                input_driver.update(model_id, elapsed, &input_producer, &cursor_producer)?
+            && let Some(sequence) = input_driver.update(
+                model_id.as_str(),
+                elapsed,
+                &input_producer,
+                &cursor_producer,
+            )?
         {
             runtime_client
                 .wait_for_input_sequence(sequence, RUNTIME_TIMEOUT)
                 .ok_or_else(|| OverlayError::new("preview input did not reach the runtime"))?;
         }
-        apply_preview_parameters(
-            &mut model,
-            model_id,
-            elapsed,
-            runtime_client.snapshot().model_input,
-        )?;
-        let snapshot = model
-            .update_and_snapshot()
-            .map_err(|error| OverlayError::new(error.to_string()))?;
-        let frame_number = frames_presented.saturating_add(1);
-        render_producer
-            .publish(RenderFrame {
-                model_generation: 0,
-                frame_number,
-                resources: std::sync::Arc::clone(&resources),
-                snapshot: std::sync::Arc::new(snapshot),
-            })
-            .map_err(|error| OverlayError::new(error.to_string()))?;
-        let frame = render_consumer
-            .take_latest()
-            .ok_or_else(|| OverlayError::new("published render frame is unavailable"))?;
-        if frame.snapshot.as_ref() != previous_snapshot.as_ref() {
-            dynamic_snapshots = dynamic_snapshots.saturating_add(1);
+        if let Some(frame) = render_consumer.take_latest() {
+            if frame.snapshot.as_ref() != previous_snapshot.as_ref() {
+                dynamic_snapshots = dynamic_snapshots.saturating_add(1);
+            }
+            overlay.sync_snapshot(&frame.snapshot)?;
+            previous_snapshot = frame.snapshot;
         }
-        overlay.sync_snapshot(&frame.snapshot)?;
         overlay.draw(frames_presented == 0)?;
-        previous_snapshot = frame.snapshot;
         frames_presented += 1;
         next_frame += FRAME_INTERVAL;
         if let Some(delay) = next_frame.checked_duration_since(Instant::now()) {
@@ -316,7 +302,7 @@ pub(crate) fn run_model_preview(
     let stopped = runtime
         .shutdown(RUNTIME_TIMEOUT)
         .map_err(|error| OverlayError::new(error.to_string()))?;
-    render_producer.close();
+    while render_consumer.take_latest().is_some() {}
     let render_diagnostics = render_consumer.diagnostics();
 
     Ok(PreviewReport {
@@ -783,76 +769,6 @@ fn preview_input_bindings(model_id: &str) -> InputBindings {
         }
     }
     InputBindings::new(key_hands)
-}
-
-fn apply_preview_parameters(
-    model: &mut Live2dModel,
-    model_id: &str,
-    elapsed: Duration,
-    input: ModelInputSnapshot,
-) -> Result<(), OverlayError> {
-    let seconds = elapsed.as_secs_f32();
-    let horizontal = (seconds * std::f32::consts::TAU / 4.0).sin();
-    let vertical = (seconds * std::f32::consts::TAU / 5.0).cos();
-    set_preview_parameters(
-        model,
-        &[
-            (ProductParameter::MouseX, input.pointer_x),
-            (ProductParameter::MouseY, input.pointer_y),
-            (ProductParameter::AngleX, input.pointer_x),
-            (ProductParameter::AngleY, input.pointer_y),
-            (ProductParameter::AngleZ, input.pointer_z),
-            (ProductParameter::EyeBallX, input.pointer_x),
-            (ProductParameter::EyeBallY, input.pointer_y),
-            (
-                ProductParameter::LeftHandDown,
-                f32::from(input.left_hand_down),
-            ),
-            (
-                ProductParameter::RightHandDown,
-                f32::from(input.right_hand_down),
-            ),
-            (
-                ProductParameter::MouseLeftDown,
-                f32::from(input.mouse_left_down),
-            ),
-            (
-                ProductParameter::MouseRightDown,
-                f32::from(input.mouse_right_down),
-            ),
-        ],
-    )?;
-
-    let step = (elapsed.as_millis() / 600) % 4;
-    match model_id {
-        "standard" | "keyboard" => Ok(()),
-        "gamepad" => set_preview_parameters(
-            model,
-            &[
-                (ProductParameter::StickShowLeftHand, 1.0),
-                (ProductParameter::StickShowRightHand, 1.0),
-                (ProductParameter::StickLeftDown, f32::from(step == 0)),
-                (ProductParameter::StickRightDown, f32::from(step == 2)),
-                (ProductParameter::StickLeftX, horizontal),
-                (ProductParameter::StickLeftY, vertical),
-                (ProductParameter::StickRightX, -horizontal),
-                (ProductParameter::StickRightY, -vertical),
-            ],
-        ),
-        _ => Ok(()),
-    }
-}
-
-fn set_preview_parameters(
-    model: &mut Live2dModel,
-    parameters: &[(ProductParameter, f32)],
-) -> Result<(), OverlayError> {
-    for &(parameter, value) in parameters {
-        model
-            .set_normalized_parameter(parameter, value)
-            .map_err(|error| OverlayError::new(error.to_string()))?;
-    }
-    Ok(())
 }
 
 fn upload_slice<T>(buffer: &Buffer, values: &[T], name: &str) -> Result<(), OverlayError> {

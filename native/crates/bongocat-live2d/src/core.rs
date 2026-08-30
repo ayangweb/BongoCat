@@ -644,7 +644,7 @@ unsafe fn checked_slice_mut<'a, T>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bongocat_model::{ModelId, ModelPackageLimits, PreparedModel};
+    use bongocat_model::{CommittedModel, ModelId, ModelPackageLimits, PresetModelCatalog};
 
     fn repository_root() -> std::path::PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -654,16 +654,21 @@ mod tests {
             .to_owned()
     }
 
+    fn preset_model(id: &str) -> CommittedModel {
+        PresetModelCatalog::open(
+            repository_root().join("native/resources/models"),
+            ModelPackageLimits::default(),
+        )
+        .expect("preset catalog")
+        .load(&ModelId::parse(id).expect("model id"))
+        .expect("preset model")
+    }
+
     #[test]
     fn all_preset_models_produce_stable_drawable_snapshots() {
         for id in ["standard", "keyboard", "gamepad"] {
-            let prepared = PreparedModel::prepare(
-                ModelId::parse(id).expect("model id"),
-                repository_root().join("native/resources/models").join(id),
-                ModelPackageLimits::default(),
-            )
-            .expect("prepare preset");
-            let mut model = crate::Live2dModel::load(&prepared).expect("load Cubism model");
+            let committed = preset_model(id);
+            let mut model = crate::Live2dModel::load(&committed).expect("load Cubism model");
             let first = model.update_and_snapshot().expect("first snapshot");
             assert!(!first.drawables.is_empty());
             assert!(first.drawables.iter().all(|drawable| {
@@ -680,13 +685,8 @@ mod tests {
     #[test]
     fn preset_product_parameters_resolve_and_drive_drawables() {
         for id in ["standard", "keyboard", "gamepad"] {
-            let prepared = PreparedModel::prepare(
-                ModelId::parse(id).expect("model id"),
-                repository_root().join("native/resources/models").join(id),
-                ModelPackageLimits::default(),
-            )
-            .expect("prepare preset");
-            let mut model = crate::Live2dModel::load(&prepared).expect("load Cubism model");
+            let committed = preset_model(id);
+            let mut model = crate::Live2dModel::load(&committed).expect("load Cubism model");
             let expected_parameters: &[ProductParameter] = match id {
                 "standard" => &[
                     ProductParameter::AngleX,
@@ -763,13 +763,8 @@ mod tests {
 
     #[test]
     fn parameter_updates_reject_non_finite_and_report_unsupported_ids() {
-        let prepared = PreparedModel::prepare(
-            ModelId::parse("keyboard").expect("model id"),
-            repository_root().join("native/resources/models/keyboard"),
-            ModelPackageLimits::default(),
-        )
-        .expect("prepare preset");
-        let mut model = crate::Live2dModel::load(&prepared).expect("load Cubism model");
+        let committed = preset_model("keyboard");
+        let mut model = crate::Live2dModel::load(&committed).expect("load Cubism model");
         let error = model
             .set_parameter(ProductParameter::LeftHandDown, f32::NAN)
             .expect_err("NaN must fail");

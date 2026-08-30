@@ -215,6 +215,25 @@ pub struct InstalledModel {
     prepared: PreparedModel,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelOrigin {
+    Preset,
+    Installed,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CommittedModel {
+    prepared: PreparedModel,
+    origin: ModelOrigin,
+}
+
+#[derive(Clone, Debug)]
+pub struct PresetModelCatalog {
+    root: PathBuf,
+    limits: ModelPackageLimits,
+}
+
 impl InstalledModel {
     pub(crate) fn from_prepared(prepared: PreparedModel) -> Self {
         Self { prepared }
@@ -234,6 +253,99 @@ impl InstalledModel {
 
     pub fn snapshot(&self) -> ModelSnapshot {
         self.prepared.snapshot()
+    }
+}
+
+impl From<InstalledModel> for CommittedModel {
+    fn from(installed: InstalledModel) -> Self {
+        Self {
+            prepared: installed.prepared,
+            origin: ModelOrigin::Installed,
+        }
+    }
+}
+
+impl CommittedModel {
+    pub fn origin(&self) -> ModelOrigin {
+        self.origin
+    }
+
+    pub fn id(&self) -> &ModelId {
+        self.prepared.id()
+    }
+
+    pub fn root(&self) -> &Path {
+        self.prepared.root()
+    }
+
+    pub fn index(&self) -> &ModelPackageIndex {
+        self.prepared.index()
+    }
+
+    pub fn snapshot(&self) -> ModelSnapshot {
+        self.prepared.snapshot()
+    }
+}
+
+impl PresetModelCatalog {
+    pub fn open(root: impl AsRef<Path>, limits: ModelPackageLimits) -> Result<Self, ModelError> {
+        let root = root.as_ref();
+        let metadata = fs::symlink_metadata(root).map_err(|error| {
+            ModelError::new(
+                ModelDiagnostic::ModelIoError,
+                None,
+                format!("preset catalog root cannot be opened: {error}"),
+            )
+        })?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err(ModelError::new(
+                ModelDiagnostic::ModelSymlinkDirectoryUnsupported,
+                None,
+                "preset catalog root must be a real directory",
+            ));
+        }
+        let root = root.canonicalize().map_err(|error| {
+            ModelError::new(
+                ModelDiagnostic::ModelIoError,
+                None,
+                format!("preset catalog root cannot be resolved: {error}"),
+            )
+        })?;
+        Ok(Self { root, limits })
+    }
+
+    pub fn load(&self, id: &ModelId) -> Result<CommittedModel, ModelError> {
+        let candidate = self.root.join(id.as_str());
+        let metadata = fs::symlink_metadata(&candidate).map_err(|error| {
+            ModelError::new(
+                ModelDiagnostic::ModelIoError,
+                Some(id.as_str()),
+                format!("preset model cannot be opened: {error}"),
+            )
+        })?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err(ModelError::new(
+                ModelDiagnostic::ModelSymlinkDirectoryUnsupported,
+                Some(id.as_str()),
+                "preset model must be a real directory",
+            ));
+        }
+        let prepared = PreparedModel::prepare(id.clone(), candidate, self.limits)?;
+        if prepared.root().parent() != Some(self.root.as_path()) {
+            return Err(ModelError::new(
+                ModelDiagnostic::ModelReferenceEscapesRoot,
+                Some(id.as_str()),
+                "preset model resolves outside the catalog root",
+            ));
+        }
+        Ok(CommittedModel {
+            prepared,
+            origin: ModelOrigin::Preset,
+        })
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
     }
 }
 
@@ -1063,6 +1175,24 @@ mod tests {
     }
 
     #[test]
+    fn preset_catalog_is_the_only_path_from_bundled_resources_to_committed_models() {
+        let catalog = PresetModelCatalog::open(
+            repository_root().join("native/resources/models"),
+            ModelPackageLimits::default(),
+        )
+        .expect("preset catalog");
+        for id in ["standard", "keyboard", "gamepad"] {
+            let model = catalog
+                .load(&ModelId::parse(id).expect("model id"))
+                .expect("committed preset");
+            assert_eq!(model.origin(), ModelOrigin::Preset);
+            assert_eq!(model.id().as_str(), id);
+            assert_eq!(model.root().parent(), Some(catalog.root()));
+            assert!(!model.index().textures.is_empty());
+        }
+    }
+
+    #[test]
     fn rejects_declared_texture_dimensions_before_decode() {
         let source = fixture("oversized-texture");
         let package = tempdir().expect("temporary package");
@@ -1164,5 +1294,27 @@ mod tests {
         )
         .expect_err("escaping symlink");
         assert_eq!(error.code, ModelDiagnostic::ModelReferenceSymlinkEscape);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn preset_catalog_rejects_a_symlinked_model_entry() {
+        use std::os::unix::fs::symlink;
+
+        let catalog_root = tempdir().expect("catalog");
+        symlink(
+            repository_root().join("native/resources/models/standard"),
+            catalog_root.path().join("standard"),
+        )
+        .expect("symlink preset");
+        let catalog = PresetModelCatalog::open(catalog_root.path(), ModelPackageLimits::default())
+            .expect("catalog root");
+        let error = catalog
+            .load(&ModelId::parse("standard").expect("model id"))
+            .expect_err("symlinked preset must fail");
+        assert_eq!(
+            error.code,
+            ModelDiagnostic::ModelSymlinkDirectoryUnsupported
+        );
     }
 }

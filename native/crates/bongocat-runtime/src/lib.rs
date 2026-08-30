@@ -2,8 +2,10 @@
 
 mod cursor;
 mod input;
+mod rendering;
 
-use bongocat_model::{InstalledModel, ModelSnapshot};
+use bongocat_model::{CommittedModel, ModelSnapshot};
+use bongocat_render::RenderConsumer;
 use std::{
     fmt,
     sync::{
@@ -26,6 +28,7 @@ pub use input::{
     SequencedInputEvent,
 };
 use input::{InputState, InputTransportCounters};
+use rendering::{RuntimeRenderBootstrap, RuntimeRenderer};
 
 const CURSOR_SAMPLE_INTERVAL: Duration = Duration::from_millis(16);
 
@@ -33,8 +36,23 @@ const CURSOR_SAMPLE_INTERVAL: Duration = Duration::from_millis(16);
 pub enum RuntimeState {
     Starting,
     Ready,
+    Degraded,
     Stopping,
     Stopped,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RuntimeRenderErrorCode {
+    ModelLoadFailed,
+    ModelEvaluationFailed,
+    PlatformUnsupported,
+    TransportClosed,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RuntimeCommandFailure {
+    pub sequence: u64,
+    pub code: RuntimeRenderErrorCode,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -43,7 +61,7 @@ pub enum RuntimeCommand {
     SetInputBindings(Arc<InputBindings>),
     ResetInput(InputResetReason),
     ApplyInput(Arc<SequencedInputEvent>),
-    ActivateModel(Arc<InstalledModel>),
+    ActivateModel(Arc<CommittedModel>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -55,6 +73,8 @@ pub struct RuntimeSnapshot {
     pub input: InputSnapshot,
     pub cursor: CursorSnapshot,
     pub model_input: ModelInputSnapshot,
+    pub render_error: Option<RuntimeRenderErrorCode>,
+    pub last_command_failure: Option<RuntimeCommandFailure>,
     pub last_command_sequence: Option<u64>,
 }
 
@@ -68,6 +88,8 @@ impl RuntimeSnapshot {
             input: InputSnapshot::default(),
             cursor: CursorSnapshot::default(),
             model_input: ModelInputSnapshot::default(),
+            render_error: None,
+            last_command_failure: None,
             last_command_sequence: None,
         }
     }
@@ -453,6 +475,25 @@ pub struct RuntimeOwner {
 
 impl RuntimeOwner {
     pub fn start(initial_overlay_visible: bool, command_capacity: usize) -> Self {
+        Self::start_internal(initial_overlay_visible, command_capacity, None)
+    }
+
+    pub fn start_with_rendering(
+        initial_overlay_visible: bool,
+        command_capacity: usize,
+    ) -> (Self, RenderConsumer) {
+        let (renderer, consumer) = RuntimeRenderer::channel();
+        (
+            Self::start_internal(initial_overlay_visible, command_capacity, Some(renderer)),
+            consumer,
+        )
+    }
+
+    fn start_internal(
+        initial_overlay_visible: bool,
+        command_capacity: usize,
+        renderer: Option<RuntimeRenderBootstrap>,
+    ) -> Self {
         assert!(
             command_capacity > 0,
             "runtime command capacity must be non-zero"
@@ -476,7 +517,15 @@ impl RuntimeOwner {
         };
         let worker = thread::Builder::new()
             .name("bongocat-runtime".into())
-            .spawn(move || run_worker(receiver, snapshot, cursor_slot))
+            .spawn(move || {
+                run_worker(
+                    receiver,
+                    snapshot,
+                    cursor_slot,
+                    initial_overlay_visible,
+                    renderer,
+                )
+            })
             .expect("failed to start runtime thread");
         Self {
             client,
@@ -560,11 +609,15 @@ fn run_worker(
     receiver: Receiver<CommandEnvelope>,
     snapshot: Arc<SnapshotCell>,
     cursor_slot: Arc<CursorSlot>,
+    initial_overlay_visible: bool,
+    renderer: Option<RuntimeRenderBootstrap>,
 ) {
+    let mut renderer = renderer.map(RuntimeRenderer::start);
     let mut active_model = None;
     let mut input_state = InputState::default();
     let mut input_bindings = InputBindings::default();
     let mut normalized_cursor = NormalizedCursorPosition::default();
+    let mut overlay_visible = initial_overlay_visible;
     publish(&snapshot, |current| current.state = RuntimeState::Ready);
     loop {
         match receiver.recv_timeout(CURSOR_SAMPLE_INTERVAL) {
@@ -577,10 +630,13 @@ fn run_worker(
                     &mut normalized_cursor,
                 );
                 let sequence = envelope.sequence;
+                let mut evaluate_after_command = true;
                 match envelope.command {
                     WorkerCommand::Product(RuntimeCommand::SetOverlayVisible(visible)) => {
+                        overlay_visible = visible;
                         publish(&snapshot, |current| {
                             current.overlay_visible = visible;
+                            current.last_command_failure = None;
                             current.last_command_sequence = Some(sequence);
                         });
                     }
@@ -589,6 +645,7 @@ fn run_worker(
                         publish(&snapshot, |current| {
                             current.model_input =
                                 input_state.model_snapshot(&input_bindings, normalized_cursor);
+                            current.last_command_failure = None;
                             current.last_command_sequence = Some(sequence);
                         });
                     }
@@ -598,6 +655,7 @@ fn run_worker(
                             current.input = input_state.snapshot();
                             current.model_input =
                                 input_state.model_snapshot(&input_bindings, normalized_cursor);
+                            current.last_command_failure = None;
                             current.last_command_sequence = Some(sequence);
                         })
                     }
@@ -607,35 +665,73 @@ fn run_worker(
                             current.input = input_state.snapshot();
                             current.model_input =
                                 input_state.model_snapshot(&input_bindings, normalized_cursor);
+                            current.last_command_failure = None;
                             current.last_command_sequence = Some(sequence);
                         });
                     }
-                    WorkerCommand::Product(RuntimeCommand::ActivateModel(prepared)) => {
-                        let model_snapshot = prepared.snapshot();
-                        active_model = Some(prepared);
-                        publish(&snapshot, |current| {
-                            current.active_model = Some(model_snapshot);
-                            current.last_command_sequence = Some(sequence);
+                    WorkerCommand::Product(RuntimeCommand::ActivateModel(committed)) => {
+                        evaluate_after_command = false;
+                        let model_input =
+                            input_state.model_snapshot(&input_bindings, normalized_cursor);
+                        let activation = renderer.as_mut().map_or(Ok(()), |renderer| {
+                            renderer.activate(&committed, model_input)
                         });
+                        match activation {
+                            Ok(()) => {
+                                let model_snapshot = committed.snapshot();
+                                active_model = Some(committed);
+                                publish(&snapshot, |current| {
+                                    current.state = RuntimeState::Ready;
+                                    current.active_model = Some(model_snapshot);
+                                    current.render_error = None;
+                                    current.last_command_failure = None;
+                                    current.last_command_sequence = Some(sequence);
+                                });
+                            }
+                            Err(code) => publish(&snapshot, |current| {
+                                current.last_command_failure =
+                                    Some(RuntimeCommandFailure { sequence, code });
+                                current.last_command_sequence = Some(sequence);
+                            }),
+                        }
                     }
                     WorkerCommand::Shutdown => {
                         publish(&snapshot, |current| {
                             current.state = RuntimeState::Stopping;
                             current.last_command_sequence = Some(sequence);
                         });
+                        if let Some(renderer) = &renderer {
+                            renderer.close();
+                        }
                         publish(&snapshot, |current| current.state = RuntimeState::Stopped);
                         drop(active_model);
                         return;
                     }
                 }
+                if evaluate_after_command && overlay_visible {
+                    evaluate_renderer(
+                        renderer.as_mut(),
+                        input_state.model_snapshot(&input_bindings, normalized_cursor),
+                        &snapshot,
+                    );
+                }
             }
-            Err(RecvTimeoutError::Timeout) => consume_cursor(
-                &cursor_slot,
-                &snapshot,
-                &input_state,
-                &input_bindings,
-                &mut normalized_cursor,
-            ),
+            Err(RecvTimeoutError::Timeout) => {
+                consume_cursor(
+                    &cursor_slot,
+                    &snapshot,
+                    &input_state,
+                    &input_bindings,
+                    &mut normalized_cursor,
+                );
+                if overlay_visible {
+                    evaluate_renderer(
+                        renderer.as_mut(),
+                        input_state.model_snapshot(&input_bindings, normalized_cursor),
+                        &snapshot,
+                    );
+                }
+            }
             Err(RecvTimeoutError::Disconnected) => break,
         }
     }
@@ -646,7 +742,51 @@ fn run_worker(
         &input_bindings,
         &mut normalized_cursor,
     );
+    if let Some(renderer) = &renderer {
+        renderer.close();
+    }
     publish(&snapshot, |current| current.state = RuntimeState::Stopped);
+}
+
+fn evaluate_renderer(
+    renderer: Option<&mut RuntimeRenderer>,
+    input: ModelInputSnapshot,
+    snapshot: &SnapshotCell,
+) {
+    let Some(renderer) = renderer else {
+        return;
+    };
+    match renderer.evaluate(input) {
+        Ok(false) => {}
+        Ok(true) => {
+            let should_recover = snapshot
+                .value
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .render_error
+                .is_some();
+            if should_recover {
+                publish(snapshot, |current| {
+                    current.state = RuntimeState::Ready;
+                    current.render_error = None;
+                });
+            }
+        }
+        Err(code) => {
+            let should_publish = snapshot
+                .value
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .render_error
+                != Some(code);
+            if should_publish {
+                publish(snapshot, |current| {
+                    current.state = RuntimeState::Degraded;
+                    current.render_error = Some(code);
+                });
+            }
+        }
+    }
 }
 
 fn consume_cursor(
@@ -669,7 +809,13 @@ fn consume_cursor(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bongocat_model::{ModelId, ModelPackageLimits, ModelStore};
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    use bongocat_model::PresetModelCatalog;
+    use bongocat_model::{CommittedModel, ModelId, ModelPackageLimits, ModelStore};
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    use bongocat_render::{RenderConsumer, RenderFrame};
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    use std::collections::BTreeMap;
     use std::path::{Path, PathBuf};
     use tempfile::tempdir;
 
@@ -694,6 +840,34 @@ mod tests {
             MonotonicMillis::new(at),
         )
         .expect("valid cursor sample")
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn preset_model(id: &str) -> CommittedModel {
+        PresetModelCatalog::open(
+            repository_root().join("native/resources/models"),
+            ModelPackageLimits::default(),
+        )
+        .expect("preset catalog")
+        .load(&ModelId::parse(id).expect("model id"))
+        .expect("preset model")
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn wait_for_render_frame(
+        consumer: &RenderConsumer,
+        predicate: impl Fn(&RenderFrame) -> bool,
+    ) -> RenderFrame {
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            if let Some(frame) = consumer.take_latest()
+                && predicate(&frame)
+            {
+                return frame;
+            }
+            assert!(Instant::now() < deadline, "render frame timed out");
+            thread::sleep(Duration::from_millis(2));
+        }
     }
 
     #[test]
@@ -887,19 +1061,21 @@ mod tests {
             ModelPackageLimits::default(),
         )
         .expect("model store");
-        let installed = store
-            .import(
-                ModelId::parse("unicode").expect("model id"),
-                repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型"),
-            )
-            .expect("installed model");
+        let committed = CommittedModel::from(
+            store
+                .import(
+                    ModelId::parse("unicode").expect("model id"),
+                    repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型"),
+                )
+                .expect("installed model"),
+        );
         let owner = RuntimeOwner::start(true, 4);
         let client = owner.client();
         let ready = client
             .wait_for_revision(1, TIMEOUT)
             .expect("ready snapshot");
         client
-            .send(RuntimeCommand::ActivateModel(Arc::new(installed)))
+            .send(RuntimeCommand::ActivateModel(Arc::new(committed)))
             .expect("model command");
         let activated = client
             .wait_for_revision(ready.revision + 1, TIMEOUT)
@@ -914,6 +1090,148 @@ mod tests {
             "unicode"
         );
         owner.shutdown(TIMEOUT).expect("clean shutdown");
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn runtime_worker_owns_model_evaluation_and_render_publication() {
+        let (owner, consumer) = RuntimeOwner::start_with_rendering(true, 8);
+        let client = owner.client();
+        client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+        let bindings = InputBindings::new(BTreeMap::from([(PhysicalKey::KEY_A, HandSide::Left)]));
+        let binding_sequence = client
+            .send(RuntimeCommand::SetInputBindings(Arc::new(bindings)))
+            .expect("bindings command");
+        client
+            .wait_for_command(binding_sequence, TIMEOUT)
+            .expect("bindings applied");
+        let activation_sequence = client
+            .send(RuntimeCommand::ActivateModel(Arc::new(preset_model(
+                "standard",
+            ))))
+            .expect("activation command");
+        let activated = client
+            .wait_for_command(activation_sequence, TIMEOUT)
+            .expect("model activated");
+        assert_eq!(activated.state, RuntimeState::Ready);
+        assert_eq!(activated.last_command_failure, None);
+        assert_eq!(
+            activated
+                .active_model
+                .as_ref()
+                .map(|model| model.id.as_str()),
+            Some("standard")
+        );
+        let initial = wait_for_render_frame(&consumer, |_| true);
+
+        let input = owner.input_producer();
+        let down_sequence = input
+            .publish(InputEvent::Edge {
+                control: InputControl::Key(PhysicalKey::KEY_A),
+                edge: InputEdge::Down,
+                source: InputSource::Capture,
+                at: MonotonicMillis::new(1),
+            })
+            .expect("key down");
+        client
+            .wait_for_input_sequence(down_sequence, TIMEOUT)
+            .expect("key down applied");
+        let pressed = wait_for_render_frame(&consumer, |frame| {
+            frame.model_generation == initial.model_generation
+                && frame.frame_number > initial.frame_number
+        });
+        assert_ne!(pressed.snapshot, initial.snapshot);
+
+        let stopped = owner.shutdown(TIMEOUT).expect("runtime shutdown");
+        assert_eq!(stopped.state, RuntimeState::Stopped);
+        while consumer.take_latest().is_some() {}
+        let diagnostics = consumer.diagnostics();
+        assert_eq!(diagnostics.pending, 0);
+        assert_eq!(
+            diagnostics.published,
+            diagnostics.coalesced.saturating_add(diagnostics.consumed)
+        );
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn failed_render_model_switch_preserves_the_active_model() {
+        let data = tempdir().expect("data root");
+        let store = ModelStore::new(
+            data.path().join("models"),
+            data.path().join("locks/models.writer.lock"),
+            ModelPackageLimits::default(),
+        )
+        .expect("model store");
+        let broken = CommittedModel::from(
+            store
+                .import(
+                    ModelId::parse("broken").expect("model id"),
+                    repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型"),
+                )
+                .expect("install structurally valid model"),
+        );
+        let (owner, consumer) = RuntimeOwner::start_with_rendering(true, 8);
+        let client = owner.client();
+        client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+        let first_sequence = client
+            .send(RuntimeCommand::ActivateModel(Arc::new(preset_model(
+                "standard",
+            ))))
+            .expect("standard activation");
+        client
+            .wait_for_command(first_sequence, TIMEOUT)
+            .expect("standard active");
+        let first = wait_for_render_frame(&consumer, |_| true);
+
+        let broken_sequence = client
+            .send(RuntimeCommand::ActivateModel(Arc::new(broken)))
+            .expect("broken activation command");
+        let rejected = client
+            .wait_for_command(broken_sequence, TIMEOUT)
+            .expect("broken activation result");
+        assert_eq!(
+            rejected.last_command_failure,
+            Some(RuntimeCommandFailure {
+                sequence: broken_sequence,
+                code: RuntimeRenderErrorCode::ModelLoadFailed,
+            })
+        );
+        assert_eq!(rejected.state, RuntimeState::Ready);
+        assert_eq!(
+            rejected
+                .active_model
+                .as_ref()
+                .map(|model| model.id.as_str()),
+            Some("standard")
+        );
+        let preserved = wait_for_render_frame(&consumer, |frame| {
+            frame.model_generation == first.model_generation
+                && frame.frame_number > first.frame_number
+        });
+        assert_eq!(preserved.model_generation, 0);
+
+        let replacement_sequence = client
+            .send(RuntimeCommand::ActivateModel(Arc::new(preset_model(
+                "keyboard",
+            ))))
+            .expect("replacement activation");
+        let replaced = client
+            .wait_for_command(replacement_sequence, TIMEOUT)
+            .expect("replacement active");
+        assert_eq!(replaced.last_command_failure, None);
+        assert_eq!(
+            replaced
+                .active_model
+                .as_ref()
+                .map(|model| model.id.as_str()),
+            Some("keyboard")
+        );
+        let replacement = wait_for_render_frame(&consumer, |frame| {
+            frame.model_generation > preserved.model_generation
+        });
+        assert_eq!(replacement.model_generation, 1);
+        owner.shutdown(TIMEOUT).expect("runtime shutdown");
     }
 
     #[test]

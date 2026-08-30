@@ -5,12 +5,12 @@ use bongocat_config::{
     StorageLayout, platform_layout,
 };
 use bongocat_model::{
-    InstalledModel, ModelCatalogEntry, ModelError, ModelId, ModelPackageLimits, ModelStore,
-    ModelStoreError,
+    CommittedModel, InstalledModel, ModelCatalogEntry, ModelError, ModelId, ModelPackageLimits,
+    ModelStore, ModelStoreError,
 };
 use bongocat_runtime::{
-    InputProducer, RuntimeClient, RuntimeCommand, RuntimeOwner, RuntimeSnapshot, SendError,
-    ShutdownError,
+    InputProducer, RuntimeClient, RuntimeCommand, RuntimeCommandFailure, RuntimeOwner,
+    RuntimeSnapshot, SendError, ShutdownError,
 };
 use std::{fmt, path::Path, sync::Arc, time::Duration};
 
@@ -31,6 +31,7 @@ pub enum ApplicationError {
     ModelStore(ModelStoreError),
     ActiveModelDeletion(ModelId),
     RuntimeCommand(SendError),
+    RuntimeCommandFailed(RuntimeCommandFailure),
     RuntimeDidNotPublish,
     Shutdown(ShutdownError),
 }
@@ -46,6 +47,11 @@ impl fmt::Display for ApplicationError {
                 write!(formatter, "active model cannot be deleted: {}", id.as_str())
             }
             Self::RuntimeCommand(error) => write!(formatter, "runtime command failed: {error}"),
+            Self::RuntimeCommandFailed(failure) => write!(
+                formatter,
+                "runtime command {} failed: {:?}",
+                failure.sequence, failure.code
+            ),
             Self::RuntimeDidNotPublish => {
                 formatter.write_str("runtime did not publish the requested revision")
             }
@@ -160,14 +166,21 @@ impl Application {
         id: impl Into<String>,
     ) -> Result<RuntimeSnapshot, ApplicationError> {
         let id = ModelId::parse(id)?;
-        let prepared = self.model_store.load(&id)?;
+        let committed = CommittedModel::from(self.model_store.load(&id)?);
         let client = self.runtime.client();
         let sequence = client
-            .send(RuntimeCommand::ActivateModel(Arc::new(prepared)))
+            .send(RuntimeCommand::ActivateModel(Arc::new(committed)))
             .map_err(ApplicationError::RuntimeCommand)?;
-        client
+        let snapshot = client
             .wait_for_command(sequence, RUNTIME_TIMEOUT)
-            .ok_or(ApplicationError::RuntimeDidNotPublish)
+            .ok_or(ApplicationError::RuntimeDidNotPublish)?;
+        if let Some(failure) = snapshot
+            .last_command_failure
+            .filter(|failure| failure.sequence == sequence)
+        {
+            return Err(ApplicationError::RuntimeCommandFailed(failure));
+        }
+        Ok(snapshot)
     }
 
     pub fn delete_model(&mut self, id: impl Into<String>) -> Result<(), ApplicationError> {

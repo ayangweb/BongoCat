@@ -3,7 +3,7 @@
     forbid(unsafe_code)
 )]
 
-use bongocat_model::PreparedModel;
+use bongocat_model::CommittedModel;
 use bongocat_render::{RenderResources, RenderSnapshot, TextureAsset, TextureId};
 use std::{fmt, sync::Arc};
 
@@ -88,6 +88,7 @@ impl ProductParameter {
         }
     }
 
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub(crate) const fn slot(self) -> usize {
         self as usize
     }
@@ -153,7 +154,7 @@ pub struct Live2dModel {
 }
 
 impl Live2dModel {
-    pub fn load(model: &PreparedModel) -> Result<Self, Live2dError> {
+    pub fn load(model: &CommittedModel) -> Result<Self, Live2dError> {
         let resources = Arc::new(RenderResources {
             textures: model
                 .index()

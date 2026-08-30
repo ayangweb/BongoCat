@@ -315,8 +315,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     `PreparedModel`；三个预置包与缺失 moc、损坏 JSON、非 ASCII、超大纹理、
     路径穿越、多入口及跨根 symlink 均由产品 workspace 测试。`ModelStore` 又完成
     环境模型根、受限 staging copy、flush、复验、同根 rename commit 和无覆盖语义；
-    用户模型 catalog、加载、删除、writer lock 和崩溃 staging 回收已进入产品入口。
-    完整 sidecar 强类型校验与预置只读 catalog 继续由 Phase 4 任务跟踪。
+    用户模型 catalog、加载、删除、writer lock 和崩溃 staging 回收已进入产品入口；
+    `PresetModelCatalog` 以真实只读目录签发预置 `CommittedModel`，拒绝 symlink root/entry
+    和 catalog root 逃逸。完整 sidecar 强类型校验与预置/用户合并视图继续由 Phase 4 跟踪。
 - [ ] 创建 bongocat-live2d：Cubism safe wrapper 和模型求值。
   - 状态（2026-08-30）：commit `57118ff` 已建立正式 crate，完成 Core 版本门禁、
     Moc/Model safe owner、drawable snapshot 和三个预置模型测试；随后又在加载时解析并
@@ -390,12 +391,13 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-30）：正式 runtime 已有 typed `RuntimeCommand`、带 revision/
     command sequence 的 `RuntimeSnapshot`、模型摘要及项目自有 `InputEvent`/
     `InputSnapshot`；`wait_for_command` 可区分并发 command 的完成。正式
-    `bongocat-render` 已定义不可变 `RenderSnapshot`/资源 contract 和 latest transport，
-    但 producer 尚未由 runtime owner 持有，完整 product command 集也仍待实现。
+    `bongocat-render` 已定义不可变 `RenderSnapshot`/资源 contract 和 latest transport；
+    producer 现由 runtime worker 持有并随 shutdown 关闭，完整 product command 集仍待实现。
 - [ ] 单一 runtime owner 管理可变业务状态。
-  - 状态（2026-08-30）：正式 runtime worker 已独占 overlay、pressed input、输入诊断和
-    `InstalledModel`，应用与 UI client 只通过有界 typed command 和 snapshot 访问；动画与
-    Live2D 状态接入后再完成总项。
+  - 状态（2026-08-30）：正式 runtime worker 已独占 overlay、pressed input、输入诊断、
+    已提交模型和 mutable Cubism model evaluation，并只发布不可变 runtime/render snapshot；
+    Cubism 对象在线程内创建，未使用 `unsafe impl Send/Sync`。应用与 UI client 只通过有界
+    typed command 和 snapshot 访问；motion/expression/physics/pose 动画状态仍待接入。
 - [ ] key/button edge 和 command 使用可靠有序队列。
   - 状态（2026-08-30）：正式 `ApplyInput` 与其他 command 共用有界 FIFO，input event
     另带独立单调 sequence；`InputProducer` 以非阻塞 publish 返回原始拒绝事件，并向
@@ -571,10 +573,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 验收证据（2026-08-30）：`bongocat-live2d` 独占 mutable Cubism Model 并生成不可变
     snapshot/资源包；Metal overlay 只按 contract 创建/更新 GPU resource，不读取 model、
     runtime 配置或输入状态。标准模型 release 预览通过 178 帧 contract 传递和 177 次 present。
-- [ ] 双缓冲/latest snapshot，renderer 不阻塞 runtime。
-  - 状态（2026-08-30）：单槽 latest-frame transport 已实现非阻塞 renderer 消费语义、
-    coalescing、monotonic generation/frame 和关闭后 drain；macOS preview 已通过该通道消费
-    全部帧。producer 尚未迁入正式 runtime owner，因此保持未勾选。
+- [x] 双缓冲/latest snapshot，renderer 不阻塞 runtime。
+  - 验收证据（2026-08-30）：单槽 latest-frame transport 实现非阻塞 publish、coalescing、
+    monotonic generation/frame、关闭后 drain 和 10,000 帧 accounting；producer 由正式
+    runtime worker 持有，Metal overlay 只消费 immutable frame。三个预置 release 预览分别
+    present `174/175/178` 帧，shutdown 后均满足 published = coalesced + consumed 且 pending=0。
 - [ ] 支持目标 FPS、不可见暂停/降频和刷新率变化。
 - [ ] 首帧前不出现黑框或不透明闪烁。
 - [ ] shutdown 先停 frame source，再释放 GPU/window。
@@ -629,10 +632,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     mask、vertex、opacity/color；part 表和完整 custom parameter 诊断尚未完成。
 - [ ] 模型切换使用 prepare/commit/rollback。
 - [ ] 加载失败保留当前可用模型。
-  - 状态（2026-08-30）：文件解析在 runtime 外完成，只有无法由调用方自行构造、由
-    `ModelStore` import/load 产出的 `InstalledModel` 能进入 `ActivateModel` command；
-    runtime 独占已提交模型，准备失败不入队且保留当前模型。Cubism Moc/Model、GPU
-    texture 的 prepare/commit/rollback 尚未接入，因此两项保持未勾选。
+  - 状态（2026-08-30）：文件解析在 runtime 外完成，只有由环境 `ModelStore` 或预置
+    `PresetModelCatalog` 签发、调用方无法自行构造的 `CommittedModel` 能进入
+    `ActivateModel`。runtime worker 在替换 active model 前完成 Cubism load、首轮参数求值
+    和首帧 publish；损坏 Moc 切换会返回稳定 command failure，旧 model generation 继续
+    出帧，随后有效切换才递增 generation。Metal texture/mesh 的跨 generation 事务重建尚未
+    接入，因此两项保持未勾选。
 - [ ] FFI 错误映射为稳定 Rust error code。
 
 ### 5.3 动作与状态

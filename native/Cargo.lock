@@ -109,7 +109,9 @@ version = "0.1.0"
 name = "bongocat-runtime"
 version = "0.1.0"
 dependencies = [
+ "bongocat-live2d",
  "bongocat-model",
+ "bongocat-render",
  "tempfile",
 ]
 

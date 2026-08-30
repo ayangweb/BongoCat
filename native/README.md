@@ -41,10 +41,11 @@ cargo run --manifest-path native/Cargo.toml -p bongocat-overlay --release -- key
 cargo run --manifest-path native/Cargo.toml -p bongocat-overlay --release -- gamepad 30
 ```
 
-By default the preview applies deterministic input through the product runtime so hand, pointer,
-head, eye, and gamepad changes exercise per-frame Cubism evaluation and GPU buffer updates. To use
-the formal macOS listen-only CGEventTap producer for keyboard and mouse button edges instead, grant
-Input Monitoring permission to the launching terminal and run:
+By default the preview applies deterministic, model-specific input through the product runtime so
+hand, pointer, head, and eye changes exercise per-frame Cubism evaluation and GPU buffer updates.
+Formal gamepad button/axis integration remains a separate work item. To use the formal macOS
+listen-only CGEventTap producer for keyboard and mouse button edges instead, grant Input Monitoring
+permission to the launching terminal and run:
 
 ```text
 cargo run --manifest-path native/Cargo.toml -p bongocat-overlay --release -- standard 30 --interactive
@@ -54,13 +55,13 @@ The interactive path uses the same typed runtime input state as the deterministi
 stops the platform producer before the runtime and Metal overlay. It seeds the current global
 cursor position at startup and then coalesces cursor movement through an independent latest-value
 transport; pointer, head, and eye parameters use the active display's logical viewport. This is not
-yet the assembled application: GPUI settings, the runtime-owned render producer, lifecycle
-notifications, and the Windows preset-model renderer remain separate work items.
+yet the assembled application: GPUI settings, lifecycle notifications, GPU model hot switching,
+and the Windows preset-model renderer remain separate work items.
 
 Cubism model evaluation and Metal GPU ownership are separated by the platform-independent
-`bongocat-render` contract. The preview publishes immutable resource/frame pairs through its
-latest-frame transport; the overlay resolves drawables, masks, and textures with strong resource
-IDs and never receives the mutable Cubism model.
+`bongocat-render` contract. The single runtime worker owns the mutable Cubism model and publishes
+immutable resource/frame pairs through its latest-frame transport; the overlay resolves drawables,
+masks, and textures with strong resource IDs and never receives the mutable Cubism model.
 
 The fixed-version Cubism Core, header, generated bindings, and preset model development baseline are
 committed under `vendor/cubism/5-r.5` and `resources/models`. Builds do not download SDK artifacts.
@@ -68,8 +69,8 @@ Their provenance and release gates are documented in
 `docs/adr/0011-progressive-implementation-release-gates.md` and the Phase 0 Cubism records.
 
 Model package parsing is also SDK-independent. `bongocat-model` prepares and validates package
-metadata before a typed command transfers ownership to the runtime; Cubism model creation and GPU
-upload remain separate commit stages.
+metadata before a typed command transfers an opaque committed model to the runtime. The runtime
+creates and evaluates Cubism state; GPU resource upload remains a separate renderer stage.
 
 Model imports are copied into a unique staging directory under the current build environment's
 `models/` root. The importer rejects symbolic links and unsupported filesystem entries, reapplies
@@ -81,5 +82,5 @@ The user-model catalog is rebuilt deterministically from the environment's insta
 no separate database can drift from disk. A writer lock under `locks/` serializes import, catalog,
 load, delete, and startup recovery. Corrupt packages remain visible as per-model diagnostics, while
 well-formed abandoned import/delete directories are removed on the next start. Product code can
-activate only an opaque `InstalledModel` issued after the store commits or reloads a package, and it
-must replace the active model before deleting it.
+activate only an opaque `CommittedModel` issued by either the environment store after commit/load
+or the bundled read-only preset catalog, and it must replace the active model before deleting it.
