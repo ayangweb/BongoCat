@@ -1,7 +1,10 @@
 use crate::{OverlayError, PreviewReport};
 use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
 use bongocat_platform::MacInputService;
-use bongocat_render::{BlendMode, CanvasInfo, DrawableId, RenderSnapshot, TextureAsset, TextureId};
+use bongocat_render::{
+    BlendMode, CanvasInfo, DrawableId, RenderFrame, RenderResources, RenderSnapshot, TextureAsset,
+    TextureId,
+};
 use bongocat_runtime::{
     CursorPosition, CursorProducer, CursorSample, CursorViewport, HandSide, InputBindings,
     InputControl, InputEdge, InputEvent, InputProducer, InputSource, MonotonicMillis, MouseButton,
@@ -30,6 +33,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     mem::{self, ManuallyDrop},
     path::Path,
+    sync::Arc,
     thread,
     time::{Duration, Instant},
 };
@@ -38,6 +42,9 @@ const WINDOW_WIDTH: f64 = 640.0;
 const WINDOW_HEIGHT: f64 = 560.0;
 const FRAME_INTERVAL: Duration = Duration::from_micros(16_667);
 const RUNTIME_TIMEOUT: Duration = Duration::from_millis(250);
+const SWITCH_WARMUP_FRAMES: u64 = 30;
+const SWITCH_SETTLE_FRAMES: u64 = 30;
+const PRESET_MODEL_IDS: [&str; 3] = ["standard", "keyboard", "gamepad"];
 const RIGHT_ARROW: PhysicalKey = PhysicalKey::from_hid_usage(0x4f);
 const SHADER_SOURCE: &str = r#"
     #include <metal_stdlib>
@@ -155,10 +162,17 @@ impl Pipelines {
 
 struct NativeOverlay {
     panel: ManuallyDrop<Retained<NSPanel>>,
+    device: Device,
     layer: MetalLayer,
     queue: CommandQueue,
     pipelines: Pipelines,
     sampler: SamplerState,
+    model_generation: u64,
+    resources: Arc<RenderResources>,
+    model: GpuModel,
+}
+
+struct GpuModel {
     textures: BTreeMap<TextureId, Texture>,
     meshes: Vec<Mesh>,
     empty_mask: Texture,
@@ -171,15 +185,45 @@ pub(crate) fn run_model_preview(
     model_root: &Path,
     duration: Duration,
     interactive: bool,
+    switch_cycles: Option<u32>,
 ) -> Result<PreviewReport, OverlayError> {
+    if interactive && switch_cycles.is_some() {
+        return Err(OverlayError::new(
+            "interactive input and model-switch probing cannot run together",
+        ));
+    }
+    if switch_cycles == Some(0) {
+        return Err(OverlayError::new(
+            "model-switch cycle count must be greater than zero",
+        ));
+    }
     let model_id =
         ModelId::parse(model_id).map_err(|error| OverlayError::new(error.to_string()))?;
     let preset_root = model_root
         .parent()
         .ok_or_else(|| OverlayError::new("preset model root has no catalog parent"))?;
-    let committed = PresetModelCatalog::open(preset_root, ModelPackageLimits::default())
-        .and_then(|catalog| catalog.load(&model_id))
+    let catalog = PresetModelCatalog::open(preset_root, ModelPackageLimits::default())
         .map_err(|error| OverlayError::new(error.to_string()))?;
+    let committed = Arc::new(
+        catalog
+            .load(&model_id)
+            .map_err(|error| OverlayError::new(error.to_string()))?,
+    );
+    let switch_models = switch_cycles
+        .map(|_| {
+            PRESET_MODEL_IDS
+                .iter()
+                .map(|id| {
+                    let id = ModelId::parse(*id)
+                        .map_err(|error| OverlayError::new(error.to_string()))?;
+                    catalog
+                        .load(&id)
+                        .map(Arc::new)
+                        .map_err(|error| OverlayError::new(error.to_string()))
+                })
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .transpose()?;
 
     let (runtime, render_consumer) = RuntimeOwner::start_with_rendering(true, 64);
     let runtime_client = runtime.client();
@@ -195,9 +239,7 @@ pub(crate) fn run_model_preview(
         .wait_for_command(binding_sequence, RUNTIME_TIMEOUT)
         .ok_or_else(|| OverlayError::new("preview input bindings were not applied"))?;
     let activation_sequence = runtime_client
-        .send(RuntimeCommand::ActivateModel(std::sync::Arc::new(
-            committed,
-        )))
+        .send(RuntimeCommand::ActivateModel(Arc::clone(&committed)))
         .map_err(|error| OverlayError::new(error.to_string()))?;
     let activated = runtime_client
         .wait_for_command(activation_sequence, RUNTIME_TIMEOUT)
@@ -220,11 +262,36 @@ pub(crate) fn run_model_preview(
     let application = NSApplication::sharedApplication(mtm);
     application.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
     application.finishLaunching();
-    let mut overlay = NativeOverlay::create(
-        mtm,
-        &initial_frame.resources.textures,
-        &initial_frame.snapshot,
-    )?;
+    let mut overlay = NativeOverlay::create(mtm, &initial_frame)?;
+    let failed_gpu_prepare_preserved = if switch_cycles.is_some() {
+        let mut invalid_resources = initial_frame.resources.as_ref().clone();
+        let Some(first_texture) = invalid_resources.textures.first_mut() else {
+            return Err(OverlayError::new(
+                "model-switch probe requires at least one texture",
+            ));
+        };
+        first_texture.path = model_root.join(".missing-gpu-prepare-texture.png");
+        let probe_frame = RenderFrame {
+            model_generation: initial_frame.model_generation.saturating_add(1),
+            frame_number: 0,
+            resources: Arc::new(invalid_resources),
+            snapshot: Arc::clone(&initial_frame.snapshot),
+        };
+        let generation_before = overlay.model_generation;
+        if overlay.sync_frame(&probe_frame).is_ok() {
+            return Err(OverlayError::new(
+                "invalid GPU model preparation unexpectedly succeeded",
+            ));
+        }
+        if overlay.model_generation != generation_before {
+            return Err(OverlayError::new(
+                "failed GPU model preparation replaced the active generation",
+            ));
+        }
+        true
+    } else {
+        false
+    };
     overlay.panel.orderFrontRegardless();
 
     let input_producer = runtime.input_producer();
@@ -239,7 +306,26 @@ pub(crate) fn run_model_preview(
     let mut next_frame = started;
     let mut frames_presented = 0_u64;
     let mut dynamic_snapshots = 0_u64;
-    while overlay.panel.isVisible() && (duration.is_zero() || started.elapsed() < duration) {
+    let target_model_switches =
+        switch_cycles.map(|cycles| u64::from(cycles).saturating_mul(PRESET_MODEL_IDS.len() as u64));
+    let mut model_switch_commands = 0_u64;
+    let mut model_switches = 0_u64;
+    let mut current_model_index = if switch_cycles.is_some() {
+        PRESET_MODEL_IDS
+            .iter()
+            .position(|id| *id == model_id.as_str())
+            .ok_or_else(|| OverlayError::new("initial preset is not in the switch sequence"))?
+    } else {
+        0
+    };
+    let mut settle_frames = 0_u64;
+    let mut metal_bytes_before = None;
+    while overlay.panel.isVisible()
+        && target_model_switches.map_or_else(
+            || duration.is_zero() || started.elapsed() < duration,
+            |target| model_switches < target || settle_frames < SWITCH_SETTLE_FRAMES,
+        )
+    {
         autoreleasepool(|_| {
             let deadline = NSDate::dateWithTimeIntervalSinceNow(0.0);
             // SAFETY: AppKit exports this immutable process-global run-loop
@@ -268,21 +354,74 @@ pub(crate) fn run_model_preview(
                 .wait_for_input_sequence(sequence, RUNTIME_TIMEOUT)
                 .ok_or_else(|| OverlayError::new("preview input did not reach the runtime"))?;
         }
+        if let (Some(target), Some(models)) = (target_model_switches, switch_models.as_ref())
+            && frames_presented >= SWITCH_WARMUP_FRAMES
+            && model_switch_commands == model_switches
+            && model_switch_commands < target
+        {
+            metal_bytes_before.get_or_insert_with(|| overlay.current_allocated_size());
+            current_model_index = (current_model_index + 1) % models.len();
+            let sequence = runtime_client
+                .send(RuntimeCommand::ActivateModel(Arc::clone(
+                    &models[current_model_index],
+                )))
+                .map_err(|error| OverlayError::new(error.to_string()))?;
+            let switched = runtime_client
+                .wait_for_command(sequence, RUNTIME_TIMEOUT)
+                .ok_or_else(|| OverlayError::new("model switch did not complete"))?;
+            if let Some(failure) = switched
+                .last_command_failure
+                .filter(|failure| failure.sequence == sequence)
+            {
+                return Err(OverlayError::new(format!(
+                    "model switch failed: {:?}",
+                    failure.code
+                )));
+            }
+            model_switch_commands = model_switch_commands.saturating_add(1);
+        }
+        let mut gpu_model_switched = false;
         if let Some(frame) = render_consumer.take_latest() {
             if frame.snapshot.as_ref() != previous_snapshot.as_ref() {
                 dynamic_snapshots = dynamic_snapshots.saturating_add(1);
             }
-            overlay.sync_snapshot(&frame.snapshot)?;
+            let previous_generation = overlay.model_generation;
+            gpu_model_switched = overlay.sync_frame(&frame)?;
+            if gpu_model_switched {
+                debug_assert_eq!(
+                    frame.model_generation,
+                    previous_generation.saturating_add(1)
+                );
+                model_switches = model_switches.saturating_add(1);
+            }
             previous_snapshot = frame.snapshot;
         }
-        overlay.draw(frames_presented == 0)?;
+        overlay.draw(frames_presented == 0 || gpu_model_switched)?;
         frames_presented += 1;
+        if target_model_switches.is_some_and(|target| model_switches == target) {
+            settle_frames = settle_frames.saturating_add(1);
+        }
         next_frame += FRAME_INTERVAL;
         if let Some(delay) = next_frame.checked_duration_since(Instant::now()) {
             thread::sleep(delay);
         } else {
             next_frame = Instant::now();
         }
+    }
+
+    if let Some(target) = target_model_switches
+        && (model_switch_commands != target || model_switches != target)
+    {
+        return Err(OverlayError::new(format!(
+            "model-switch preview stopped after {model_switches}/{target} committed GPU switches"
+        )));
+    }
+    let metal_bytes_before = metal_bytes_before.unwrap_or_else(|| overlay.current_allocated_size());
+    let metal_bytes_after = overlay.current_allocated_size();
+    if target_model_switches.is_some() && metal_bytes_after > metal_bytes_before {
+        return Err(OverlayError::new(format!(
+            "Metal allocation grew from {metal_bytes_before} to {metal_bytes_after} bytes during model switching"
+        )));
     }
 
     let (platform_input_edges, platform_cursor_samples) = if let Some(input_service) = input_service
@@ -317,26 +456,26 @@ pub(crate) fn run_model_preview(
         render_frames_published: render_diagnostics.published,
         render_frames_coalesced: render_diagnostics.coalesced,
         render_frames_consumed: render_diagnostics.consumed,
-        drawable_count: overlay.meshes.len(),
-        masked_drawable_count: overlay.masked_drawable_count,
-        texture_count: overlay.textures.len(),
+        model_switches,
+        failed_gpu_prepare_preserved,
+        metal_bytes_before,
+        metal_bytes_after,
+        drawable_count: overlay.model.meshes.len(),
+        masked_drawable_count: overlay.model.masked_drawable_count,
+        texture_count: overlay.model.textures.len(),
     })
 }
 
 impl NativeOverlay {
-    fn create(
-        mtm: MainThreadMarker,
-        texture_assets: &[TextureAsset],
-        snapshot: &RenderSnapshot,
-    ) -> Result<Self, OverlayError> {
-        let frame = NSRect::new(
+    fn create(mtm: MainThreadMarker, frame: &RenderFrame) -> Result<Self, OverlayError> {
+        let window_frame = NSRect::new(
             NSPoint::new(80.0, 80.0),
             NSSize::new(WINDOW_WIDTH, WINDOW_HEIGHT),
         );
         let style = NSWindowStyleMask::Borderless | NSWindowStyleMask::NonactivatingPanel;
         let panel = NSPanel::initWithContentRect_styleMask_backing_defer(
             NSPanel::alloc(mtm),
-            frame,
+            window_frame,
             style,
             NSBackingStoreType::Buffered,
             false,
@@ -383,16 +522,253 @@ impl NativeOverlay {
         sampler_descriptor.set_address_mode_s(MTLSamplerAddressMode::ClampToEdge);
         sampler_descriptor.set_address_mode_t(MTLSamplerAddressMode::ClampToEdge);
         let sampler = device.new_sampler(&sampler_descriptor);
-        let textures = texture_assets
-            .iter()
-            .map(|asset| load_texture(&device, asset).map(|texture| (asset.id, texture)))
-            .collect::<Result<BTreeMap<_, _>, _>>()?;
-        if textures.len() != texture_assets.len() {
-            return Err(OverlayError::new("texture resource ids are not unique"));
-        }
         let drawable_width = layer.drawable_size().width.round() as u64;
         let drawable_height = layer.drawable_size().height.round() as u64;
-        let meshes = snapshot
+        let model = GpuModel::prepare(
+            &device,
+            &frame.resources,
+            &frame.snapshot,
+            drawable_width,
+            drawable_height,
+        )?;
+        Ok(Self {
+            panel: ManuallyDrop::new(panel),
+            device: device.clone(),
+            layer,
+            queue: device.new_command_queue(),
+            pipelines,
+            sampler,
+            model_generation: frame.model_generation,
+            resources: Arc::clone(&frame.resources),
+            model,
+        })
+    }
+
+    fn sync_frame(&mut self, frame: &RenderFrame) -> Result<bool, OverlayError> {
+        if frame.model_generation != self.model_generation {
+            let expected_generation = self.model_generation.saturating_add(1);
+            if frame.model_generation != expected_generation {
+                return Err(OverlayError::new(format!(
+                    "GPU model generation jumped from {} to {}",
+                    self.model_generation, frame.model_generation
+                )));
+            }
+            let drawable_width = self.layer.drawable_size().width.round() as u64;
+            let drawable_height = self.layer.drawable_size().height.round() as u64;
+            let prepared = GpuModel::prepare(
+                &self.device,
+                &frame.resources,
+                &frame.snapshot,
+                drawable_width,
+                drawable_height,
+            )?;
+            self.model = prepared;
+            self.resources = Arc::clone(&frame.resources);
+            self.model_generation = frame.model_generation;
+            return Ok(true);
+        }
+        if !Arc::ptr_eq(&self.resources, &frame.resources) {
+            return Err(OverlayError::new(
+                "render resources changed within one model generation",
+            ));
+        }
+        self.model.sync_snapshot(&frame.snapshot)?;
+        Ok(false)
+    }
+
+    fn draw(&self, verify_frame: bool) -> Result<(), OverlayError> {
+        autoreleasepool(|_| self.draw_in_autorelease_pool(verify_frame))
+    }
+
+    fn draw_in_autorelease_pool(&self, verify_frame: bool) -> Result<(), OverlayError> {
+        let drawable = self
+            .layer
+            .next_drawable()
+            .ok_or_else(|| OverlayError::new("CAMetalLayer returned no drawable"))?;
+        let pass = RenderPassDescriptor::new();
+        let attachment = pass
+            .color_attachments()
+            .object_at(0)
+            .ok_or_else(|| OverlayError::new("Metal color attachment is unavailable"))?;
+        attachment.set_texture(Some(drawable.texture()));
+        attachment.set_load_action(MTLLoadAction::Clear);
+        attachment.set_store_action(MTLStoreAction::Store);
+        attachment.set_clear_color(MTLClearColor::new(0.0, 0.0, 0.0, 0.0));
+        let command_buffer = self.queue.new_command_buffer();
+        let scale_offset = model_transform(
+            self.model.canvas,
+            drawable.texture().width() as f32,
+            drawable.texture().height() as f32,
+        );
+        for mesh in &self.model.meshes {
+            let Some(mask_texture) = &mesh.mask_texture else {
+                continue;
+            };
+            let mask_pass = RenderPassDescriptor::new();
+            let mask_attachment = mask_pass
+                .color_attachments()
+                .object_at(0)
+                .ok_or_else(|| OverlayError::new("Metal mask attachment is unavailable"))?;
+            mask_attachment.set_texture(Some(mask_texture));
+            mask_attachment.set_load_action(MTLLoadAction::Clear);
+            mask_attachment.set_store_action(MTLStoreAction::Store);
+            mask_attachment.set_clear_color(MTLClearColor::new(0.0, 0.0, 0.0, 0.0));
+            let mask_encoder = command_buffer.new_render_command_encoder(mask_pass);
+            mask_encoder.set_render_pipeline_state(&self.pipelines.mask);
+            for source_id in &mesh.masks {
+                let source = self
+                    .model
+                    .meshes
+                    .iter()
+                    .find(|source| source.id == *source_id)
+                    .ok_or_else(|| {
+                        OverlayError::new(format!("mask source {source_id} is unavailable"))
+                    })?;
+                let uniforms = Uniforms {
+                    scale_offset,
+                    multiply_color: [1.0; 4],
+                    screen_color: [0.0; 4],
+                    mask_settings: [0.0; 4],
+                    opacity: 1.0,
+                    padding: [0.0; 3],
+                };
+                mask_encoder.set_vertex_buffer(0, Some(&source.vertex_buffer), 0);
+                mask_encoder.set_vertex_bytes(
+                    1,
+                    size_of::<Uniforms>() as u64,
+                    std::ptr::from_ref(&uniforms).cast(),
+                );
+                let texture = self.model.textures.get(&source.texture_id).ok_or_else(|| {
+                    OverlayError::new(format!("texture {} is unavailable", source.texture_id))
+                })?;
+                mask_encoder.set_fragment_texture(0, Some(texture));
+                mask_encoder.set_fragment_sampler_state(0, Some(&self.sampler));
+                mask_encoder.draw_indexed_primitives(
+                    MTLPrimitiveType::Triangle,
+                    source.index_count,
+                    MTLIndexType::UInt16,
+                    &source.index_buffer,
+                    0,
+                );
+            }
+            mask_encoder.end_encoding();
+        }
+
+        let encoder = command_buffer.new_render_command_encoder(pass);
+        for mesh in &self.model.meshes {
+            if !mesh.visible || mesh.opacity <= 0.0 {
+                continue;
+            }
+            let mask_texture = &mesh.mask_texture;
+            let uniforms = Uniforms {
+                scale_offset,
+                multiply_color: mesh.multiply_color,
+                screen_color: mesh.screen_color,
+                mask_settings: [
+                    drawable.texture().width() as f32,
+                    drawable.texture().height() as f32,
+                    f32::from(mask_texture.is_some()),
+                    f32::from(mesh.inverted_mask),
+                ],
+                opacity: mesh.opacity,
+                padding: [0.0; 3],
+            };
+            encoder.set_render_pipeline_state(self.pipelines.for_mode(mesh.blend_mode));
+            encoder.set_vertex_buffer(0, Some(&mesh.vertex_buffer), 0);
+            encoder.set_vertex_bytes(
+                1,
+                size_of::<Uniforms>() as u64,
+                std::ptr::from_ref(&uniforms).cast(),
+            );
+            encoder.set_fragment_bytes(
+                1,
+                size_of::<Uniforms>() as u64,
+                std::ptr::from_ref(&uniforms).cast(),
+            );
+            let texture = self.model.textures.get(&mesh.texture_id).ok_or_else(|| {
+                OverlayError::new(format!("texture {} is unavailable", mesh.texture_id))
+            })?;
+            encoder.set_fragment_texture(0, Some(texture));
+            encoder.set_fragment_texture(
+                1,
+                Some(mask_texture.as_ref().unwrap_or(&self.model.empty_mask)),
+            );
+            encoder.set_fragment_sampler_state(0, Some(&self.sampler));
+            encoder.draw_indexed_primitives(
+                MTLPrimitiveType::Triangle,
+                mesh.index_count,
+                MTLIndexType::UInt16,
+                &mesh.index_buffer,
+                0,
+            );
+        }
+        encoder.end_encoding();
+        command_buffer.present_drawable(drawable);
+        command_buffer.commit();
+        // Shared per-drawable buffers cannot be rewritten until this frame
+        // retires. A later renderer revision will replace this correctness
+        // fence with multiple in-flight frame resources.
+        command_buffer.wait_until_completed();
+        if command_buffer.status() != MTLCommandBufferStatus::Completed {
+            return Err(OverlayError::new(format!(
+                "Metal command buffer ended with {:?}",
+                command_buffer.status()
+            )));
+        }
+        if verify_frame {
+            verify_non_empty_frame(drawable.texture())?;
+        }
+        Ok(())
+    }
+
+    fn current_allocated_size(&self) -> u64 {
+        self.device.current_allocated_size()
+    }
+}
+
+impl GpuModel {
+    fn prepare(
+        device: &Device,
+        resources: &RenderResources,
+        snapshot: &RenderSnapshot,
+        drawable_width: u64,
+        drawable_height: u64,
+    ) -> Result<Self, OverlayError> {
+        let textures = resources
+            .textures
+            .iter()
+            .map(|asset| load_texture(device, asset).map(|texture| (asset.id, texture)))
+            .collect::<Result<BTreeMap<_, _>, _>>()?;
+        if textures.len() != resources.textures.len() {
+            return Err(OverlayError::new("texture resource ids are not unique"));
+        }
+        let drawable_ids = snapshot
+            .drawables
+            .iter()
+            .map(|drawable| drawable.id)
+            .collect::<BTreeSet<_>>();
+        if drawable_ids.len() != snapshot.drawables.len() {
+            return Err(OverlayError::new("drawable resource ids are not unique"));
+        }
+        for drawable in &snapshot.drawables {
+            if !textures.contains_key(&drawable.texture_id) {
+                return Err(OverlayError::new(format!(
+                    "drawable {} references missing texture {}",
+                    drawable.id, drawable.texture_id
+                )));
+            }
+            if let Some(mask) = drawable
+                .masks
+                .iter()
+                .find(|mask| !drawable_ids.contains(mask))
+            {
+                return Err(OverlayError::new(format!(
+                    "drawable {} references missing mask source {mask}",
+                    drawable.id
+                )));
+            }
+        }
+        let mut meshes = snapshot
             .drawables
             .iter()
             .map(|drawable| {
@@ -421,20 +797,15 @@ impl NativeOverlay {
                     visible: drawable.visible,
                     inverted_mask: drawable.inverted_mask,
                     mask_texture: (!drawable.masks.is_empty())
-                        .then(|| create_mask_texture(&device, drawable_width, drawable_height)),
+                        .then(|| create_mask_texture(device, drawable_width, drawable_height)),
                 }
             })
             .collect::<Vec<_>>();
-        let empty_mask = create_solid_mask_texture(&device);
+        meshes.sort_by_key(|mesh| (mesh.render_order, mesh.id));
         Ok(Self {
-            panel: ManuallyDrop::new(panel),
-            layer,
-            queue: device.new_command_queue(),
-            pipelines,
-            sampler,
             textures,
             meshes,
-            empty_mask,
+            empty_mask: create_solid_mask_texture(device),
             canvas: snapshot.canvas,
             masked_drawable_count: snapshot
                 .drawables
@@ -481,144 +852,6 @@ impl NativeOverlay {
         }
         self.meshes.sort_by_key(|mesh| (mesh.render_order, mesh.id));
         self.canvas = snapshot.canvas;
-        Ok(())
-    }
-
-    fn draw(&self, verify_frame: bool) -> Result<(), OverlayError> {
-        let drawable = self
-            .layer
-            .next_drawable()
-            .ok_or_else(|| OverlayError::new("CAMetalLayer returned no drawable"))?;
-        let pass = RenderPassDescriptor::new();
-        let attachment = pass
-            .color_attachments()
-            .object_at(0)
-            .ok_or_else(|| OverlayError::new("Metal color attachment is unavailable"))?;
-        attachment.set_texture(Some(drawable.texture()));
-        attachment.set_load_action(MTLLoadAction::Clear);
-        attachment.set_store_action(MTLStoreAction::Store);
-        attachment.set_clear_color(MTLClearColor::new(0.0, 0.0, 0.0, 0.0));
-        let command_buffer = self.queue.new_command_buffer();
-        let scale_offset = model_transform(
-            self.canvas,
-            drawable.texture().width() as f32,
-            drawable.texture().height() as f32,
-        );
-        for mesh in &self.meshes {
-            let Some(mask_texture) = &mesh.mask_texture else {
-                continue;
-            };
-            let mask_pass = RenderPassDescriptor::new();
-            let mask_attachment = mask_pass
-                .color_attachments()
-                .object_at(0)
-                .ok_or_else(|| OverlayError::new("Metal mask attachment is unavailable"))?;
-            mask_attachment.set_texture(Some(mask_texture));
-            mask_attachment.set_load_action(MTLLoadAction::Clear);
-            mask_attachment.set_store_action(MTLStoreAction::Store);
-            mask_attachment.set_clear_color(MTLClearColor::new(0.0, 0.0, 0.0, 0.0));
-            let mask_encoder = command_buffer.new_render_command_encoder(mask_pass);
-            mask_encoder.set_render_pipeline_state(&self.pipelines.mask);
-            for source_id in &mesh.masks {
-                let source = self
-                    .meshes
-                    .iter()
-                    .find(|source| source.id == *source_id)
-                    .ok_or_else(|| {
-                        OverlayError::new(format!("mask source {source_id} is unavailable"))
-                    })?;
-                let uniforms = Uniforms {
-                    scale_offset,
-                    multiply_color: [1.0; 4],
-                    screen_color: [0.0; 4],
-                    mask_settings: [0.0; 4],
-                    opacity: 1.0,
-                    padding: [0.0; 3],
-                };
-                mask_encoder.set_vertex_buffer(0, Some(&source.vertex_buffer), 0);
-                mask_encoder.set_vertex_bytes(
-                    1,
-                    size_of::<Uniforms>() as u64,
-                    std::ptr::from_ref(&uniforms).cast(),
-                );
-                let texture = self.textures.get(&source.texture_id).ok_or_else(|| {
-                    OverlayError::new(format!("texture {} is unavailable", source.texture_id))
-                })?;
-                mask_encoder.set_fragment_texture(0, Some(texture));
-                mask_encoder.set_fragment_sampler_state(0, Some(&self.sampler));
-                mask_encoder.draw_indexed_primitives(
-                    MTLPrimitiveType::Triangle,
-                    source.index_count,
-                    MTLIndexType::UInt16,
-                    &source.index_buffer,
-                    0,
-                );
-            }
-            mask_encoder.end_encoding();
-        }
-
-        let encoder = command_buffer.new_render_command_encoder(pass);
-        for mesh in &self.meshes {
-            if !mesh.visible || mesh.opacity <= 0.0 {
-                continue;
-            }
-            let mask_texture = &mesh.mask_texture;
-            let uniforms = Uniforms {
-                scale_offset,
-                multiply_color: mesh.multiply_color,
-                screen_color: mesh.screen_color,
-                mask_settings: [
-                    drawable.texture().width() as f32,
-                    drawable.texture().height() as f32,
-                    f32::from(mask_texture.is_some()),
-                    f32::from(mesh.inverted_mask),
-                ],
-                opacity: mesh.opacity,
-                padding: [0.0; 3],
-            };
-            encoder.set_render_pipeline_state(self.pipelines.for_mode(mesh.blend_mode));
-            encoder.set_vertex_buffer(0, Some(&mesh.vertex_buffer), 0);
-            encoder.set_vertex_bytes(
-                1,
-                size_of::<Uniforms>() as u64,
-                std::ptr::from_ref(&uniforms).cast(),
-            );
-            encoder.set_fragment_bytes(
-                1,
-                size_of::<Uniforms>() as u64,
-                std::ptr::from_ref(&uniforms).cast(),
-            );
-            let texture = self.textures.get(&mesh.texture_id).ok_or_else(|| {
-                OverlayError::new(format!("texture {} is unavailable", mesh.texture_id))
-            })?;
-            encoder.set_fragment_texture(0, Some(texture));
-            encoder
-                .set_fragment_texture(1, Some(mask_texture.as_ref().unwrap_or(&self.empty_mask)));
-            encoder.set_fragment_sampler_state(0, Some(&self.sampler));
-            encoder.draw_indexed_primitives(
-                MTLPrimitiveType::Triangle,
-                mesh.index_count,
-                MTLIndexType::UInt16,
-                &mesh.index_buffer,
-                0,
-            );
-        }
-        encoder.end_encoding();
-        command_buffer.present_drawable(drawable);
-        command_buffer.commit();
-        // The preview owns one shared vertex buffer per drawable. Waiting here
-        // prevents the next CPU snapshot upload from racing this GPU frame;
-        // the product renderer will replace this with fenced frame resources.
-        command_buffer.wait_until_completed();
-        if command_buffer.status() != MTLCommandBufferStatus::Completed {
-            return Err(OverlayError::new(format!(
-                "Metal command buffer ended with {:?}",
-                command_buffer.status()
-            )));
-        }
-        if verify_frame {
-            verify_non_empty_frame(drawable.texture())?;
-        }
         Ok(())
     }
 }

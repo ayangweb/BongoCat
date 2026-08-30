@@ -41,6 +41,18 @@ cargo run --manifest-path native/Cargo.toml -p bongocat-overlay --release -- key
 cargo run --manifest-path native/Cargo.toml -p bongocat-overlay --release -- gamepad 30
 ```
 
+Exercise transactional GPU model replacement with all three presets by running 100 complete
+standard -> keyboard -> gamepad -> standard cycles (300 committed generations):
+
+```text
+cargo run --manifest-path native/Cargo.toml -p bongocat-overlay --release -- standard 0 --switch-cycles 100
+```
+
+The switch probe first injects one invalid texture preparation and requires the current GPU model
+to remain drawable. Every valid generation performs a non-transparent frame readback, generations
+cannot skip, and the command fails if Metal's current allocated size grows between the warmed-up
+standard baselines.
+
 By default the preview applies deterministic, model-specific input through the product runtime so
 hand, pointer, head, and eye changes exercise per-frame Cubism evaluation and GPU buffer updates.
 Formal gamepad button/axis integration remains a separate work item. To use the formal macOS
@@ -55,8 +67,8 @@ The interactive path uses the same typed runtime input state as the deterministi
 stops the platform producer before the runtime and Metal overlay. It seeds the current global
 cursor position at startup and then coalesces cursor movement through an independent latest-value
 transport; pointer, head, and eye parameters use the active display's logical viewport. This is not
-yet the assembled application: GPUI settings, lifecycle notifications, GPU model hot switching,
-and the Windows preset-model renderer remain separate work items.
+yet the assembled application: GPUI settings, lifecycle notifications, coordinated runtime/GPU
+model-switch acknowledgement, and the Windows preset-model renderer remain separate work items.
 
 Cubism model evaluation and Metal GPU ownership are separated by the platform-independent
 `bongocat-render` contract. The single runtime worker owns the mutable Cubism model and publishes

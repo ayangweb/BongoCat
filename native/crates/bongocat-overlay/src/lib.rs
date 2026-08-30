@@ -16,6 +16,10 @@ pub struct PreviewReport {
     pub render_frames_published: u64,
     pub render_frames_coalesced: u64,
     pub render_frames_consumed: u64,
+    pub model_switches: u64,
+    pub failed_gpu_prepare_preserved: bool,
+    pub metal_bytes_before: u64,
+    pub metal_bytes_after: u64,
     pub drawable_count: usize,
     pub masked_drawable_count: usize,
     pub texture_count: usize,
@@ -45,7 +49,7 @@ pub fn run_model_preview(
 ) -> Result<PreviewReport, OverlayError> {
     #[cfg(target_os = "macos")]
     {
-        macos::run_model_preview(model_id, model_root, duration, false)
+        macos::run_model_preview(model_id, model_root, duration, false, None)
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -64,7 +68,7 @@ pub fn run_interactive_model_preview(
 ) -> Result<PreviewReport, OverlayError> {
     #[cfg(target_os = "macos")]
     {
-        macos::run_model_preview(model_id, model_root, duration, true)
+        macos::run_model_preview(model_id, model_root, duration, true, None)
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -72,6 +76,31 @@ pub fn run_interactive_model_preview(
         let _ = (model_id, model_root, duration);
         Err(OverlayError::new(
             "the first interactive Live2D preview is currently available on macOS",
+        ))
+    }
+}
+
+pub fn run_model_switch_preview(
+    model_id: &str,
+    model_root: &Path,
+    switch_cycles: u32,
+) -> Result<PreviewReport, OverlayError> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::run_model_preview(
+            model_id,
+            model_root,
+            Duration::ZERO,
+            false,
+            Some(switch_cycles),
+        )
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (model_id, model_root, switch_cycles);
+        Err(OverlayError::new(
+            "the first Live2D model-switch preview is currently available on macOS",
         ))
     }
 }

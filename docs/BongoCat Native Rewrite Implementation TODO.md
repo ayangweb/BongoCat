@@ -277,7 +277,14 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     keyboard 175/175、gamepad 179/179 帧均产生变化 snapshot 并完成 Metal present。
 - [ ] 验证 motion、expression、physics、pose 至少各一个真实样本。
   - 状态（2026-08-30）：6 个预置 motion3 与 15 个 exp3 已通过强类型结构解析和计数门禁；本机 13 个历史 physics3 也以匿名只读方式通过 v3 静态 parser，共覆盖 86 setting/139 input/206 output/267 vertex。合成 pose3 已固定 Type/fade/group/part/link 拒绝边界，但不是真实样本。motion/expression 的实际时间求值、参数混合与优先级，physics/pose 的实际求值，以及授权 physics/pose fixture 仍未完成，因此本项保持未勾选。
-- [ ] 验证模型切换/销毁 100 次，无 CPU/GPU 资源增长。
+- [x] 验证模型切换/销毁 100 次，无 CPU/GPU 资源增长。
+  - 验收证据（2026-08-30）：macOS release switch probe 先以不存在的 PNG 验证失败 GPU
+    prepare 不改变 active generation，随后执行 100 个 standard -> keyboard -> gamepad ->
+    standard 完整循环，共提交 300 个连续 Cubism/GPU generation 和 300 次非透明 readback；
+    359 帧中 351 帧为动态 snapshot，Metal current allocated size 在 warmup/settle 后均为
+    `54,427,648` bytes。`leaks --atExit` 的相同 300 次切换退出 footprint `35.5M`、peak
+    `102.8M`，仅保留已知系统 AppIntents/NSXPC 18,816 bytes，无 BongoCat/Cubism/Metal/
+    overlay owner 栈。该项不包含后续 motion audio owner。
 - [x] 记录与 easy-live2d 的差异和必须兼容项；`docs/phase-0/easy-live2d-compatibility.md` 基于 lockfile 固定的 `easy-live2d 0.4.4` 及安装产物 hash，冻结 BongoCat 实际 API 面、跨帧参数 override、update order、motion sound、ready/销毁与 renderer 语义，并明确多 model3、JSON5、破坏性切换、全局 ticker、WebGL/Pixi 和错误吞噬不进入兼容范围。该项只完成旧库边界，不代表 R5 Core/Framework/renderer 已通过。
 - [ ] 若纯 Rust Framework 逻辑不可行，提交 go/no-go ADR；不得静默加入 C++ 业务桥。
 - [x] 建立 Cubism Framework 行为来源清单，逐项说明 motion、expression、physics、pose 的 Rust 实现依据和许可边界。
@@ -636,8 +643,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     `PresetModelCatalog` 签发、调用方无法自行构造的 `CommittedModel` 能进入
     `ActivateModel`。runtime worker 在替换 active model 前完成 Cubism load、首轮参数求值
     和首帧 publish；损坏 Moc 切换会返回稳定 command failure，旧 model generation 继续
-    出帧，随后有效切换才递增 generation。Metal texture/mesh 的跨 generation 事务重建尚未
-    接入，因此两项保持未勾选。
+    出帧，随后有效切换才递增 generation。Metal renderer 又将新 generation 的 texture、
+    mesh、mask target 和 canvas 组装为临时 `GpuModel`，完整验证后一次 commit；失败 prepare
+    保留当前 GPU generation，300 次真实切换无 allocation 增长。runtime 目前尚未等待 GPU
+    commit acknowledgement，GPU 失败时两侧 generation 的协调 rollback 仍待实现，因此两项
+    保持未勾选。
 - [ ] FFI 错误映射为稳定 Rust error code。
 
 ### 5.3 动作与状态
