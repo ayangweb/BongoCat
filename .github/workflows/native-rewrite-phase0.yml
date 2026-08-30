@@ -97,6 +97,8 @@ jobs:
       - name: Smoke Windows D3D11 product overlay
         if: matrix.os == 'windows-latest'
         shell: pwsh
+        env:
+          RUST_BACKTRACE: full
         run: |
           1..5 | ForEach-Object {
             cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release -- --run-seconds 3 --settings-window-smoke
