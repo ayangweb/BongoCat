@@ -827,6 +827,7 @@ impl ProductOverlaySession {
         let started = Instant::now();
         let mut next_frame = started;
         while duration.is_zero() || started.elapsed() < duration {
+            pump_window_messages();
             if self.tick()? == OverlayTickOutcome::Hidden {
                 break;
             }
@@ -841,7 +842,6 @@ impl ProductOverlaySession {
     }
 
     pub(super) fn tick(&mut self) -> Result<OverlayTickOutcome, OverlayError> {
-        pump_window_messages();
         let runtime_snapshot = self.runtime_client.snapshot();
         if runtime_snapshot.state == RuntimeState::Stopped {
             return Err(OverlayError::new(

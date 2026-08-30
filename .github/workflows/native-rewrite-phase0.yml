@@ -97,13 +97,33 @@ jobs:
       - name: Smoke Windows D3D11 product overlay
         if: matrix.os == 'windows-latest'
         shell: pwsh
+        timeout-minutes: 5
         env:
           RUST_BACKTRACE: full
         run: |
+          cargo build --manifest-path native/Cargo.toml --locked -p bongocat-app --release
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+          $executable = Join-Path $PWD "native/target/release/bongocat-app.exe"
           1..5 | ForEach-Object {
-            cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release -- --run-seconds 3 --settings-window-smoke
-            if ($LASTEXITCODE -ne 0) {
-              exit $LASTEXITCODE
+            $stdout = Join-Path $env:RUNNER_TEMP "bongocat-product-$_.stdout.log"
+            $stderr = Join-Path $env:RUNNER_TEMP "bongocat-product-$_.stderr.log"
+            $process = Start-Process `
+              -FilePath $executable `
+              -ArgumentList @("--run-seconds", "3", "--settings-window-smoke") `
+              -NoNewWindow `
+              -PassThru `
+              -RedirectStandardOutput $stdout `
+              -RedirectStandardError $stderr
+            if (!$process.WaitForExit(30000)) {
+              Stop-Process -Id $process.Id -Force
+              Get-Content $stdout, $stderr -ErrorAction SilentlyContinue
+              throw "Windows product lifecycle smoke $_ exceeded 30 seconds"
+            }
+            Get-Content $stdout, $stderr -ErrorAction SilentlyContinue
+            if ($process.ExitCode -ne 0) {
+              exit $process.ExitCode
             }
           }
       - name: Smoke macOS settings window lifecycle

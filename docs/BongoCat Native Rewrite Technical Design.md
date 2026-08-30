@@ -112,6 +112,10 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   `main` 都会在最终 `WM_DESTROY` 同步重入 `AsyncApp` 并触发进程 fast-fail，平台 adapter 只在
   这些产品 owner 全部有序关闭后使用进程退出跳过有缺陷的 GPUI 窗口析构。该兼容措施不得提前
   终止业务 shutdown；升级到修复此回调的固定 GPUI 版本后必须移除，并恢复正常 GPUI 析构门禁。
+- Windows 的 GPUI 平台循环独占线程消息派发；宿主产品调用的 overlay `tick` 不得再次 pump
+  Win32 队列，并且必须在没有持有 GPUI `App`/`Window` borrow 时执行。独立 preview 的
+  `run_for` 循环才负责主动 pump。这一约束防止 D3D11 tick 同步派发设置窗口消息后重入
+  `AsyncApp`。
 - 平台服务不返回 GPUI 类型，避免框架扩散到业务模块。
 - GPUI 升级必须单独提交，附变更说明、双平台构建和 UI smoke test。
 
