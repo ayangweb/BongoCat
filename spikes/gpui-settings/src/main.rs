@@ -341,6 +341,7 @@ impl SettingsWindow {
         }
         self.runtime_request_in_flight = true;
         self.runtime_error = None;
+        cx.notify();
         let bridge = self.runtime_bridge.clone();
         cx.spawn(async move |this, cx| {
             let result = bridge.read_snapshot().await;

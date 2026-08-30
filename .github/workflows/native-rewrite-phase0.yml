@@ -617,7 +617,7 @@ jobs:
             [DateTime]::UtcNow -lt $busyDeadline
           )
           if ($busyValue -ne "Refreshing..." -or $busyProperties -notmatch "busy=true") {
-            throw "Windows UIA runtime status did not expose the loading state"
+            throw "Windows UIA runtime status did not expose the loading state: value='$busyValue' aria='$busyProperties'"
           }
           $errorDeadline = [DateTime]::UtcNow.AddSeconds(5)
           do {
