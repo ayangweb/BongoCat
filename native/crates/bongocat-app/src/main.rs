@@ -143,6 +143,37 @@ fn record_failure(failures: &Arc<Mutex<Vec<String>>>, failure: impl Into<String>
         .push(failure.into());
 }
 
+#[cfg(target_os = "windows")]
+async fn update_windows_settings<R>(
+    cx: &mut gpui::AsyncApp,
+    window_handle: WindowHandle<SettingsView>,
+    mut update: impl FnMut(&mut SettingsView, &mut gpui::Window, &mut gpui::Context<SettingsView>) -> R,
+) -> Result<R, String> {
+    const MAX_ATTEMPTS: u32 = 200;
+    for attempt in 0..MAX_ATTEMPTS {
+        match window_handle.update(cx, |view, window, cx| update(view, window, cx)) {
+            Ok(result) => return Ok(result),
+            Err(_) if attempt + 1 < MAX_ATTEMPTS => {
+                Timer::after(Duration::from_millis(5)).await;
+            }
+            Err(error) => {
+                return Err(format!(
+                    "settings window remained unavailable after {MAX_ATTEMPTS} attempts: {error}"
+                ));
+            }
+        }
+    }
+    unreachable!("the bounded settings update loop always returns")
+}
+
+#[cfg(target_os = "windows")]
+async fn request_windows_product_quit(
+    cx: &mut gpui::AsyncApp,
+    window_handle: WindowHandle<SettingsView>,
+) {
+    let _ = update_windows_settings(cx, window_handle, |_, _, cx| request_product_quit(cx)).await;
+}
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn request_product_quit(cx: &mut App) {
     #[cfg(target_os = "macos")]
@@ -228,7 +259,7 @@ fn windows_product_exit_code(failures: &Arc<Mutex<Vec<String>>>) -> i32 {
     1
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(target_os = "macos")]
 fn ensure_settings_window(cx: &mut App) -> Result<WindowHandle<SettingsView>, String> {
     let existing = cx
         .try_global::<ProductCoordinator>()
@@ -393,9 +424,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .detach();
 
+        #[cfg(target_os = "windows")]
+        let frame_window = settings_window;
+        #[cfg(target_os = "windows")]
+        let frame_failures = Arc::clone(&run_failures);
         cx.spawn(async move |cx| {
             loop {
                 Timer::after(frame_interval).await;
+                #[cfg(target_os = "macos")]
                 let keep_running = cx
                     .update(|cx| {
                         if !cx.has_global::<ProductCoordinator>() {
@@ -442,6 +478,54 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         keep_running
                     })
                     .unwrap_or(false);
+                #[cfg(target_os = "windows")]
+                let keep_running = update_windows_settings(cx, frame_window, |view, _, cx| {
+                    if !cx.has_global::<ProductCoordinator>() {
+                        return false;
+                    }
+                    let (keep_running, failure, failures) = {
+                        let coordinator = cx.global_mut::<ProductCoordinator>();
+                        if !coordinator.frame_source_running {
+                            return false;
+                        }
+                        let result = coordinator
+                            .overlay
+                            .as_mut()
+                            .expect("product overlay owner is present")
+                            .tick();
+                        match result {
+                            Ok(_) => {
+                                coordinator.frame_ticks = coordinator.frame_ticks.saturating_add(1);
+                                (true, None, None)
+                            }
+                            Err(error) => {
+                                coordinator.frame_source_running = false;
+                                (
+                                    false,
+                                    Some(error.to_string()),
+                                    Some(Arc::clone(&coordinator.failures)),
+                                )
+                            }
+                        }
+                    };
+                    if let (Some(failure), Some(failures)) = (failure, failures) {
+                        record_failure(&failures, failure);
+                        view.report_service_error(
+                            SettingsError::new(SettingsErrorCode::RuntimeUnavailable),
+                            cx,
+                        );
+                    }
+                    keep_running
+                })
+                .await;
+                #[cfg(target_os = "windows")]
+                let keep_running = match keep_running {
+                    Ok(keep_running) => keep_running,
+                    Err(error) => {
+                        record_failure(&frame_failures, error);
+                        false
+                    }
+                };
                 if !keep_running {
                     break;
                 }
@@ -451,8 +535,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if run_options.settings_window_smoke {
             let smoke_failures = Arc::clone(&run_failures);
+            #[cfg(target_os = "windows")]
+            let smoke_window = settings_window;
             cx.spawn(async move |cx| {
                 Timer::after(Duration::from_millis(500)).await;
+                #[cfg(target_os = "macos")]
                 let baseline = cx.update(|cx| -> Result<_, String> {
                     let (window_handle, frame_ticks) = {
                         let coordinator = cx.global::<ProductCoordinator>();
@@ -476,16 +563,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .map_err(|error| error.to_string())?;
                     Ok((frame_ticks, window_handle))
                 });
+                #[cfg(target_os = "windows")]
+                let baseline = update_windows_settings(
+                    cx,
+                    smoke_window,
+                    |_, window, cx| -> Result<_, String> {
+                        let frame_ticks = cx.global::<ProductCoordinator>().frame_ticks;
+                        bongocat_platform::request_native_window_close(window)
+                            .map_err(|error| error.to_string())?;
+                        Ok((frame_ticks, smoke_window))
+                    },
+                )
+                .await;
                 let (baseline_ticks, original_window) = match baseline {
                     Ok(Ok(baseline)) => baseline,
                     Ok(Err(error)) => {
                         record_failure(&smoke_failures, error);
+                        #[cfg(target_os = "macos")]
                         let _ = cx.update(request_product_quit);
+                        #[cfg(target_os = "windows")]
+                        request_windows_product_quit(cx, smoke_window).await;
                         return;
                     }
                     Err(error) => {
                         record_failure(&smoke_failures, error.to_string());
+                        #[cfg(target_os = "macos")]
                         let _ = cx.update(request_product_quit);
+                        #[cfg(target_os = "windows")]
+                        request_windows_product_quit(cx, smoke_window).await;
                         return;
                     }
                 };
@@ -493,14 +598,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut window_unavailable = false;
                 for _ in 0..60 {
                     Timer::after(Duration::from_millis(50)).await;
-                    match cx.update(|cx| -> Result<bool, String> {
-                        #[cfg(target_os = "macos")]
-                        return Ok(cx.windows().is_empty());
-                        #[cfg(target_os = "windows")]
-                        return original_window
-                            .update(cx, |view, _, _| view.window_hidden())
-                            .map_err(|error| error.to_string());
-                    }) {
+                    #[cfg(target_os = "macos")]
+                    let hidden =
+                        cx.update(|cx| -> Result<bool, String> { Ok(cx.windows().is_empty()) });
+                    #[cfg(target_os = "windows")]
+                    let hidden = update_windows_settings(cx, original_window, |view, _, _| {
+                        Ok::<_, String>(view.window_hidden())
+                    })
+                    .await;
+                    match hidden {
                         Ok(Ok(true)) => {
                             window_unavailable = true;
                             break;
@@ -508,23 +614,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Ok(Ok(false)) => {}
                         Ok(Err(error)) => {
                             record_failure(&smoke_failures, error);
+                            #[cfg(target_os = "macos")]
                             let _ = cx.update(request_product_quit);
+                            #[cfg(target_os = "windows")]
+                            request_windows_product_quit(cx, original_window).await;
                             return;
                         }
                         Err(error) => {
                             record_failure(&smoke_failures, error.to_string());
+                            #[cfg(target_os = "macos")]
                             let _ = cx.update(request_product_quit);
+                            #[cfg(target_os = "windows")]
+                            request_windows_product_quit(cx, original_window).await;
                             return;
                         }
                     }
                 }
                 if !window_unavailable {
                     record_failure(&smoke_failures, "settings window did not close or hide");
+                    #[cfg(target_os = "macos")]
                     let _ = cx.update(request_product_quit);
+                    #[cfg(target_os = "windows")]
+                    request_windows_product_quit(cx, original_window).await;
                     return;
                 }
 
                 Timer::after(Duration::from_millis(250)).await;
+                #[cfg(target_os = "macos")]
                 let reopened = cx.update(|cx| -> Result<WindowHandle<SettingsView>, String> {
                     if cx.global::<ProductCoordinator>().frame_ticks <= baseline_ticks {
                         return Err(
@@ -545,21 +661,47 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     Ok(reopened)
                 });
+                #[cfg(target_os = "windows")]
+                let reopened = update_windows_settings(
+                    cx,
+                    original_window,
+                    |view, window, cx| -> Result<WindowHandle<SettingsView>, String> {
+                        if cx.global::<ProductCoordinator>().frame_ticks <= baseline_ticks {
+                            return Err(
+                                "frame source stopped while the settings window was closed"
+                                    .to_owned(),
+                            );
+                        }
+                        view.reopen(window, cx)?;
+                        if cx.windows().len() != 1 {
+                            return Err("settings reopen created more than one window".to_owned());
+                        }
+                        Ok(original_window)
+                    },
+                )
+                .await;
                 match reopened {
                     Ok(Ok(_)) => {}
                     Ok(Err(error)) => {
                         record_failure(&smoke_failures, error);
+                        #[cfg(target_os = "macos")]
                         let _ = cx.update(request_product_quit);
+                        #[cfg(target_os = "windows")]
+                        request_windows_product_quit(cx, original_window).await;
                         return;
                     }
                     Err(error) => {
                         record_failure(&smoke_failures, error.to_string());
+                        #[cfg(target_os = "macos")]
                         let _ = cx.update(request_product_quit);
+                        #[cfg(target_os = "windows")]
+                        request_windows_product_quit(cx, original_window).await;
                         return;
                     }
                 }
 
                 Timer::after(Duration::from_millis(500)).await;
+                #[cfg(target_os = "macos")]
                 let restored = cx.update(|cx| -> Result<(), String> {
                     let window_handle = cx
                         .global::<ProductCoordinator>()
@@ -576,15 +718,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     Ok(())
                 });
+                #[cfg(target_os = "windows")]
+                let restored = update_windows_settings(
+                    cx,
+                    original_window,
+                    |view, _, _| -> Result<(), String> {
+                        if view.snapshot_revision().is_none() {
+                            return Err(
+                                "recreated settings window did not restore a runtime snapshot"
+                                    .to_owned(),
+                            );
+                        }
+                        Ok(())
+                    },
+                )
+                .await;
                 match restored {
                     Ok(Ok(())) => {}
                     Ok(Err(error)) => {
                         record_failure(&smoke_failures, error);
+                        #[cfg(target_os = "macos")]
                         let _ = cx.update(request_product_quit);
+                        #[cfg(target_os = "windows")]
+                        request_windows_product_quit(cx, original_window).await;
                     }
                     Err(error) => {
                         record_failure(&smoke_failures, error.to_string());
+                        #[cfg(target_os = "macos")]
                         let _ = cx.update(request_product_quit);
+                        #[cfg(target_os = "windows")]
+                        request_windows_product_quit(cx, original_window).await;
                     }
                 }
             })
@@ -592,9 +755,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         if !run_options.run_duration.is_zero() {
+            #[cfg(target_os = "windows")]
+            let quit_window = settings_window;
             cx.spawn(async move |cx| {
                 Timer::after(run_options.run_duration).await;
+                #[cfg(target_os = "macos")]
                 let _ = cx.update(request_product_quit);
+                #[cfg(target_os = "windows")]
+                request_windows_product_quit(cx, quit_window).await;
             })
             .detach();
         }

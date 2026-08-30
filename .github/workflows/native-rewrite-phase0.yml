@@ -96,7 +96,14 @@ jobs:
         run: cargo check --manifest-path native/Cargo.toml --locked -p bongocat-app --release
       - name: Smoke Windows D3D11 product overlay
         if: matrix.os == 'windows-latest'
-        run: cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release -- --run-seconds 6 --settings-window-smoke
+        shell: pwsh
+        run: |
+          1..5 | ForEach-Object {
+            cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release -- --run-seconds 3 --settings-window-smoke
+            if ($LASTEXITCODE -ne 0) {
+              exit $LASTEXITCODE
+            }
+          }
       - name: Smoke macOS settings window lifecycle
         if: matrix.os == 'macos-latest'
         run: cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke

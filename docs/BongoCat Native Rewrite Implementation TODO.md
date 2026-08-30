@@ -1188,7 +1188,7 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
     - 验收证据（2026-08-31）：`bongocat-audio`、runtime side-effect 接线、真实预置 FLAC
       decoder 与 motion event/audio contract 已进入正式 workspace；完整 Native format、
       Clippy、test、release check、双 Windows target check 和 CI 结果随对应提交记录。
-17. [x] `P1-SETTINGS-WINDOW-LIFECYCLE`：设置窗口关闭后保持后台产品运行，并可从当前
+17. [ ] `P1-SETTINGS-WINDOW-LIFECYCLE`：设置窗口关闭后保持后台产品运行，并可从当前
         revisioned snapshot 重建窗口。
     - 依赖：正式 GPUI 设置窗口、app coordinator、runtime/render owner。
     - 退出条件：window close 不触发 shutdown；窗口隐藏/销毁期间 frame source 继续推进；
@@ -1219,6 +1219,12 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
       `99316966532` 与 macOS job `99316966517` 均通过 release lifecycle smoke、完整 workspace
       tests 和有序 shutdown，Windows 真实 `WM_CLOSE` 后 frame source 继续、保留 Entity 重显并
       恢复 snapshot。Ubuntu job `99316966591` 通过共享 contract、Clippy、test 和 release check。
+    - 状态（2026-08-31）：Models 页面提交的 PR run `33338726693`、Windows job
+      `99330277028` 在 release lifecycle smoke 暴露 GPUI `AsyncApp::update` 时序重入并以
+      `RefCell already borrowed`/`0xC0000409` 退出；同提交 push job 偶然通过，不足以维持完成
+      声明。Windows frame tick、close/hide/reopen 检查和定时退出现改为经保留的唯一
+      `WindowHandle` 使用 GPUI 可失败的 window update，并对短暂占用做有界重试；原生 CI 改为
+      连续五轮 lifecycle smoke。等待新 run 全部通过后恢复勾选并记录证据。
 18. [x] `P4-MODEL-CATALOG`：建立来源感知的预置/用户模型合并目录并投影到设置服务。
     - 依赖：正式 `bongocat-model`、环境 `ModelStore`、只读预置资源和 typed settings snapshot。
     - 退出条件：应用持有 preset catalog；preset/installed 的 ready/invalid 条目都可见且确定
