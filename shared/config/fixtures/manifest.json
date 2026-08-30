@@ -3,6 +3,7 @@
   "cases": [
     { "id": "default", "file": "default.json", "expected": "accept" },
     { "id": "unknown-field", "file": "invalid-unknown-field.json", "expected": "reject" },
+    { "id": "unpaired-model-selection", "file": "invalid-unpaired-model-selection.json", "expected": "reject" },
     { "id": "out-of-range", "file": "invalid-out-of-range.json", "expected": "reject" },
     { "id": "blank-binding", "file": "invalid-blank-binding.json", "expected": "reject" }
   ]

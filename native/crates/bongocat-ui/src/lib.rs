@@ -22,8 +22,14 @@ pub struct SettingsSnapshot {
     pub runtime_health: RuntimeHealth,
     pub overlay_visible: bool,
     pub motion_audio_enabled: bool,
-    pub active_model_id: Option<String>,
+    pub active_model: Option<SettingsModelKey>,
     pub model_catalog: SettingsModelCatalog,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SettingsModelKey {
+    pub id: String,
+    pub origin: SettingsModelOrigin,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -93,6 +99,8 @@ pub enum SettingsErrorCode {
     ServiceUnavailable,
     RuntimeUnavailable,
     ConfigPersistFailed,
+    ModelUnavailable,
+    ModelSwitchFailed,
     WindowUnavailable,
     ShutdownFailed,
 }
@@ -118,6 +126,8 @@ impl fmt::Display for SettingsError {
             SettingsErrorCode::ServiceUnavailable => "settings service is unavailable",
             SettingsErrorCode::RuntimeUnavailable => "runtime did not apply the setting",
             SettingsErrorCode::ConfigPersistFailed => "setting could not be saved",
+            SettingsErrorCode::ModelUnavailable => "selected model is unavailable",
+            SettingsErrorCode::ModelSwitchFailed => "selected model could not be activated",
             SettingsErrorCode::WindowUnavailable => "settings window could not be hidden",
             SettingsErrorCode::ShutdownFailed => "application shutdown did not complete",
         })
@@ -146,6 +156,10 @@ pub enum SettingsCommand {
     },
     SetMotionAudioEnabled {
         enabled: bool,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    SelectModel {
+        model: SettingsModelKey,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     Shutdown {
@@ -204,6 +218,14 @@ impl SettingsClient {
             .await
     }
 
+    pub async fn select_model(
+        &self,
+        model: SettingsModelKey,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SelectModel { model, reply })
+            .await
+    }
+
     pub async fn shutdown(&self) -> Result<SettingsSnapshot, SettingsError> {
         self.request(|reply| SettingsCommand::Shutdown { reply })
             .await
@@ -225,6 +247,13 @@ impl SettingsClient {
         enabled: bool,
     ) -> Result<SettingsSnapshot, SettingsError> {
         self.request_blocking(|reply| SettingsCommand::SetMotionAudioEnabled { enabled, reply })
+    }
+
+    pub fn select_model_blocking(
+        &self,
+        model: SettingsModelKey,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::SelectModel { model, reply })
     }
 
     pub fn shutdown_blocking(&self) -> Result<SettingsSnapshot, SettingsError> {
@@ -326,7 +355,10 @@ mod tests {
             runtime_health: RuntimeHealth::Ready,
             overlay_visible,
             motion_audio_enabled,
-            active_model_id: Some("standard".to_owned()),
+            active_model: Some(SettingsModelKey {
+                id: "standard".to_owned(),
+                origin: SettingsModelOrigin::Preset,
+            }),
             model_catalog: SettingsModelCatalog::default(),
         }
     }

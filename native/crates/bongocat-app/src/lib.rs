@@ -3,11 +3,11 @@
 use bongocat_audio::{MotionAudioService, MotionAudioShutdownError};
 use bongocat_config::{
     BuildEnvironment, ConfigError, ConfigRevision, ConfigStore, NativeConfig, PlatformStorageError,
-    StorageLayout, platform_layout,
+    SelectedModelOrigin, StorageLayout, platform_layout,
 };
 use bongocat_model::{
-    CommittedModel, InstalledModel, ModelCatalogEntry, ModelError, ModelId, ModelPackageLimits,
-    ModelStore, ModelStoreError, PresetModelCatalog,
+    CommittedModel, InstalledModel, ModelCatalogEntry, ModelError, ModelId, ModelOrigin,
+    ModelPackageLimits, ModelStore, ModelStoreError, PresetModelCatalog,
 };
 use bongocat_render::{ModelCommitToken, RenderConsumer};
 use bongocat_runtime::{
@@ -46,6 +46,7 @@ pub enum ApplicationError {
     RenderConsumerUnavailable,
     Shutdown(ShutdownError),
     MotionAudioShutdown(MotionAudioShutdownError),
+    ConfigRollback(ConfigError),
 }
 
 impl fmt::Display for ApplicationError {
@@ -78,6 +79,9 @@ impl fmt::Display for ApplicationError {
             Self::Shutdown(error) => write!(formatter, "shutdown failed: {error}"),
             Self::MotionAudioShutdown(error) => {
                 write!(formatter, "motion audio shutdown failed: {error}")
+            }
+            Self::ConfigRollback(error) => {
+                write!(formatter, "model selection config rollback failed: {error}")
             }
         }
     }
@@ -127,6 +131,7 @@ pub struct Application {
     config_revision: ConfigRevision,
     preset_models: PresetModelCatalog,
     model_store: ModelStore,
+    active_model_origin: Option<ModelOrigin>,
     runtime: RuntimeOwner,
     motion_audio: Option<MotionAudioService>,
     render_consumer: Option<RenderConsumer>,
@@ -190,12 +195,17 @@ impl Application {
             .client()
             .wait_for_revision(1, RUNTIME_TIMEOUT)
             .ok_or(ApplicationError::RuntimeDidNotPublish)?;
+        let active_model_origin = config
+            .model
+            .selected_model_origin
+            .map(model_origin_from_config);
         Ok(Self {
             config_store,
             config,
             config_revision,
             preset_models,
             model_store,
+            active_model_origin,
             runtime,
             motion_audio,
             render_consumer,
@@ -279,6 +289,10 @@ impl Application {
         Ok(entries)
     }
 
+    pub const fn active_model_origin(&self) -> Option<ModelOrigin> {
+        self.active_model_origin
+    }
+
     pub fn start_motion(
         &self,
         group: impl Into<String>,
@@ -306,27 +320,22 @@ impl Application {
         self.wait_for_model_command(RuntimeCommand::SetExpression(ExpressionId::new(name)?))
     }
 
-    pub fn activate_installed_model(
+    pub fn prepare_model(
         &mut self,
-        id: impl Into<String>,
-    ) -> Result<RuntimeSnapshot, ApplicationError> {
-        let id = ModelId::parse(id)?;
-        self.activate_committed_model(CommittedModel::from(self.model_store.load(&id)?))
-    }
-
-    pub fn prepare_preset_model(
-        &mut self,
+        origin: ModelOrigin,
         id: impl Into<String>,
     ) -> Result<ModelCommitToken, ApplicationError> {
         if self.render_consumer.is_none() {
             return Err(ApplicationError::RenderConsumerUnavailable);
         }
         let id = ModelId::parse(id)?;
+        let committed = self.load_model(origin, &id)?;
+        let input_bindings = input_bindings_for_model(origin, id.as_str());
         let client = self.runtime.client();
         let sequence = client
             .send(RuntimeCommand::ActivateModelWithBindings {
-                model: Arc::new(self.preset_models.load(&id)?),
-                input_bindings: Arc::new(preset_input_bindings(id.as_str())),
+                model: Arc::new(committed),
+                input_bindings: Arc::new(input_bindings),
             })
             .map_err(ApplicationError::RuntimeCommand)?;
         let snapshot = client
@@ -338,18 +347,63 @@ impl Application {
         {
             return Err(ApplicationError::RuntimeCommandFailed(failure));
         }
-        snapshot
+        let token = snapshot
             .pending_model
             .filter(|pending| pending.token.command_sequence == sequence)
             .map(|pending| pending.token)
-            .ok_or(ApplicationError::RuntimeDidNotPrepareModel)
+            .ok_or(ApplicationError::RuntimeDidNotPrepareModel)?;
+        self.active_model_origin = Some(origin);
+        Ok(token)
     }
 
-    fn activate_committed_model(
-        &self,
-        committed: CommittedModel,
+    pub fn select_model(
+        &mut self,
+        origin: ModelOrigin,
+        id: impl Into<String>,
     ) -> Result<RuntimeSnapshot, ApplicationError> {
-        self.wait_for_model_command(RuntimeCommand::ActivateModel(Arc::new(committed)))
+        let id = ModelId::parse(id)?;
+        let committed = self.load_model(origin, &id)?;
+        let mut next_config = self.config.clone();
+        next_config.model.selected_model_id = Some(id.as_str().to_owned());
+        next_config.model.selected_model_origin = Some(config_origin_from_model(origin));
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.config_revision)?;
+
+        let result = self.wait_for_model_command(RuntimeCommand::ActivateModelWithBindings {
+            model: Arc::new(committed),
+            input_bindings: Arc::new(input_bindings_for_model(origin, id.as_str())),
+        });
+        match result {
+            Ok(snapshot) => {
+                self.config = next_config;
+                self.config_revision = next_revision;
+                self.active_model_origin = Some(origin);
+                Ok(snapshot)
+            }
+            Err(error) => {
+                self.config_revision = self
+                    .config_store
+                    .commit_if_revision(&self.config, next_revision)
+                    .map_err(ApplicationError::ConfigRollback)?;
+                Err(error)
+            }
+        }
+    }
+
+    fn load_model(
+        &self,
+        origin: ModelOrigin,
+        id: &ModelId,
+    ) -> Result<CommittedModel, ApplicationError> {
+        match origin {
+            ModelOrigin::Preset => self.preset_models.load(id).map_err(ApplicationError::Model),
+            ModelOrigin::Installed => self
+                .model_store
+                .load(id)
+                .map(CommittedModel::from)
+                .map_err(ApplicationError::ModelStore),
+        }
     }
 
     fn wait_for_model_command(
@@ -412,10 +466,24 @@ impl Application {
     }
 }
 
-fn model_origin_order(origin: bongocat_model::ModelOrigin) -> u8 {
+fn model_origin_order(origin: ModelOrigin) -> u8 {
     match origin {
-        bongocat_model::ModelOrigin::Preset => 0,
-        bongocat_model::ModelOrigin::Installed => 1,
+        ModelOrigin::Preset => 0,
+        ModelOrigin::Installed => 1,
+    }
+}
+
+const fn config_origin_from_model(origin: ModelOrigin) -> SelectedModelOrigin {
+    match origin {
+        ModelOrigin::Preset => SelectedModelOrigin::Preset,
+        ModelOrigin::Installed => SelectedModelOrigin::Installed,
+    }
+}
+
+const fn model_origin_from_config(origin: SelectedModelOrigin) -> ModelOrigin {
+    match origin {
+        SelectedModelOrigin::Preset => ModelOrigin::Preset,
+        SelectedModelOrigin::Installed => ModelOrigin::Installed,
     }
 }
 
@@ -428,7 +496,10 @@ fn repository_preset_root() -> std::path::PathBuf {
         .join("native/resources/models")
 }
 
-fn preset_input_bindings(model_id: &str) -> InputBindings {
+fn input_bindings_for_model(origin: ModelOrigin, model_id: &str) -> InputBindings {
+    if origin == ModelOrigin::Installed {
+        return InputBindings::default();
+    }
     const RIGHT_ARROW: PhysicalKey = PhysicalKey::from_hid_usage(0x4f);
     let mut key_hands = BTreeMap::new();
     if matches!(model_id, "standard" | "keyboard") {
@@ -455,8 +526,10 @@ fn preset_input_bindings(model_id: &str) -> InputBindings {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    use bongocat_render::{ModelCommitErrorCode, ModelCommitFeedback, ModelCommitOutcome};
     use bongocat_runtime::RuntimeState;
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     use std::time::Instant;
     use tempfile::tempdir;
 
@@ -557,7 +630,7 @@ mod tests {
             .expect("import model to corrupt");
 
         let active = application
-            .activate_installed_model("active")
+            .select_model(ModelOrigin::Installed, "active")
             .expect("activate valid model");
         let active_revision = active.revision;
         assert_eq!(
@@ -574,7 +647,7 @@ mod tests {
             .expect("corrupt installed model");
 
         let error = application
-            .activate_installed_model("broken")
+            .select_model(ModelOrigin::Installed, "broken")
             .expect_err("invalid model must be rejected");
         assert!(matches!(error, ApplicationError::ModelStore(_)));
         let preserved = application.runtime_client().snapshot();
@@ -652,6 +725,55 @@ mod tests {
     }
 
     #[test]
+    fn installed_duplicate_selection_persists_its_origin_across_restart() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let mut application =
+            Application::start_with_layout(layout.clone()).expect("start application");
+        let source = repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型");
+        application
+            .import_model("standard", source)
+            .expect("install duplicate id");
+        let selected = application
+            .select_model(ModelOrigin::Installed, "standard")
+            .expect("select installed duplicate");
+        assert_eq!(
+            selected
+                .active_model
+                .as_ref()
+                .map(|model| model.id.as_str()),
+            Some("standard")
+        );
+        assert_eq!(
+            application.active_model_origin(),
+            Some(ModelOrigin::Installed)
+        );
+        assert_eq!(
+            application.config().model.selected_model_origin,
+            Some(SelectedModelOrigin::Installed)
+        );
+        application.shutdown().expect("clean shutdown");
+
+        let mut restarted = Application::start_with_layout(layout).expect("restart application");
+        assert_eq!(
+            restarted.config().model.selected_model_id.as_deref(),
+            Some("standard")
+        );
+        assert_eq!(
+            restarted.config().model.selected_model_origin,
+            Some(SelectedModelOrigin::Installed)
+        );
+        restarted
+            .select_model(ModelOrigin::Installed, "standard")
+            .expect("reload installed duplicate");
+        assert_eq!(
+            restarted.active_model_origin(),
+            Some(ModelOrigin::Installed)
+        );
+        restarted.shutdown().expect("clean restart shutdown");
+    }
+
+    #[test]
     fn active_model_must_be_replaced_before_deletion() {
         let base = tempdir().expect("temp directory");
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
@@ -661,7 +783,7 @@ mod tests {
             .import_model("active", source)
             .expect("import model");
         application
-            .activate_installed_model("active")
+            .select_model(ModelOrigin::Installed, "active")
             .expect("activate model");
 
         let error = application
@@ -675,6 +797,71 @@ mod tests {
         application.shutdown().expect("clean shutdown");
     }
 
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn rejected_gpu_model_switch_restores_the_previous_config_selection() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let config_path = layout.config.clone();
+        let mut application = Application::start_with_layout_internal(
+            layout,
+            repository_preset_root().as_path(),
+            true,
+        )
+        .expect("start rendering application");
+        let initial_token = application
+            .prepare_model(ModelOrigin::Preset, "standard")
+            .expect("prepare initial model");
+        let consumer = application
+            .take_render_consumer()
+            .expect("take render consumer");
+        let initial_frame = wait_for_model_commit_frame(&consumer, initial_token);
+        consumer
+            .report_model_commit(ModelCommitFeedback {
+                token: initial_frame.model_commit.expect("initial commit token"),
+                outcome: ModelCommitOutcome::Prepared,
+            })
+            .expect("commit initial model");
+        application
+            .runtime_client()
+            .wait_for_command(initial_token.command_sequence, RUNTIME_TIMEOUT)
+            .expect("initial model activation");
+
+        let switch = std::thread::spawn(move || {
+            let rejected = matches!(
+                application.select_model(ModelOrigin::Preset, "keyboard"),
+                Err(ApplicationError::RuntimeCommandFailed(_))
+            );
+            (application, rejected)
+        });
+        let candidate = wait_for_any_model_commit_frame(&consumer);
+        consumer
+            .report_model_commit(ModelCommitFeedback {
+                token: candidate.model_commit.expect("candidate commit token"),
+                outcome: ModelCommitOutcome::Rejected(
+                    ModelCommitErrorCode::ResourcePreparationFailed,
+                ),
+            })
+            .expect("reject candidate model");
+        let (application, rejected) = switch.join().expect("selection worker");
+        assert!(rejected);
+        assert_eq!(
+            application
+                .runtime_client()
+                .snapshot()
+                .active_model
+                .as_ref()
+                .map(|model| model.id.as_str()),
+            Some("standard")
+        );
+        assert_eq!(application.config().model.selected_model_id, None);
+        assert_eq!(application.config().model.selected_model_origin, None);
+        let persisted = std::fs::read_to_string(config_path).expect("restored config");
+        assert!(persisted.contains("\"selected_model_id\": null"));
+        assert!(persisted.contains("\"selected_model_origin\": null"));
+        application.shutdown().expect("clean shutdown");
+    }
+
     fn installed_catalog_ids(application: &Application) -> Vec<String> {
         application
             .model_catalog()
@@ -683,6 +870,37 @@ mod tests {
             .filter(|entry| entry.origin() == bongocat_model::ModelOrigin::Installed)
             .map(|entry| entry.id().as_str().to_owned())
             .collect()
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn wait_for_model_commit_frame(
+        consumer: &RenderConsumer,
+        token: ModelCommitToken,
+    ) -> bongocat_render::RenderFrame {
+        let deadline = Instant::now() + RUNTIME_TIMEOUT;
+        loop {
+            if let Some(frame) = consumer.take_latest()
+                && frame.model_commit == Some(token)
+            {
+                return frame;
+            }
+            assert!(Instant::now() < deadline, "model frame timed out");
+            std::thread::yield_now();
+        }
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn wait_for_any_model_commit_frame(consumer: &RenderConsumer) -> bongocat_render::RenderFrame {
+        let deadline = Instant::now() + RUNTIME_TIMEOUT;
+        loop {
+            if let Some(frame) = consumer.take_latest()
+                && frame.model_commit.is_some()
+            {
+                return frame;
+            }
+            assert!(Instant::now() < deadline, "model frame timed out");
+            std::thread::yield_now();
+        }
     }
 
     #[cfg(target_os = "macos")]
@@ -697,7 +915,7 @@ mod tests {
         )
         .expect("start rendering application");
         let token = application
-            .prepare_preset_model("standard")
+            .prepare_model(ModelOrigin::Preset, "standard")
             .expect("prepare preset model");
         assert_eq!(token.model_generation, 0);
         assert!(

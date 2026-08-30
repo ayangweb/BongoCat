@@ -10,7 +10,8 @@ use std::{
 };
 
 pub const BUNDLE_ID: &str = "com.ayangweb.bongo-cat";
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
+const PREVIOUS_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BuildEnvironment {
@@ -167,6 +168,7 @@ pub struct OverlayConfig {
 #[serde(deny_unknown_fields)]
 pub struct ModelConfig {
     pub selected_model_id: Option<String>,
+    pub selected_model_origin: Option<SelectedModelOrigin>,
     pub mirror: bool,
     pub mirror_pointer_tracking: bool,
     pub play_motion_audio: bool,
@@ -174,6 +176,13 @@ pub struct ModelConfig {
     pub maximum_fps: u16,
     pub ignore_pointer: bool,
     pub release_fallback_timeout_ms: u32,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SelectedModelOrigin {
+    Preset,
+    Installed,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -225,6 +234,7 @@ impl Default for NativeConfig {
             },
             model: ModelConfig {
                 selected_model_id: None,
+                selected_model_origin: None,
                 mirror: false,
                 mirror_pointer_tracking: false,
                 play_motion_audio: true,
@@ -270,6 +280,9 @@ impl NativeConfig {
             .is_some_and(|value| value.trim().is_empty())
         {
             return Err(ConfigError::InvalidValue("model.selected_model_id"));
+        }
+        if self.model.selected_model_id.is_some() != self.model.selected_model_origin.is_some() {
+            return Err(ConfigError::InvalidValue("model.selected_model_selection"));
         }
         if self
             .shortcuts
@@ -367,7 +380,15 @@ impl ConfigStore {
     pub fn load_or_default(&self) -> Result<(NativeConfig, ConfigRevision), ConfigError> {
         let _lock = self.acquire_writer_lock()?;
         match fs::read(&self.layout.config) {
-            Ok(bytes) => parse_config(&bytes),
+            Ok(bytes) => {
+                let (config, revision, migrated) = parse_config(&bytes)?;
+                if migrated {
+                    let revision = self.commit_unlocked(&config)?;
+                    Ok((config, revision))
+                } else {
+                    Ok((config, revision))
+                }
+            }
             Err(error) if error.kind() == ErrorKind::NotFound => {
                 let config = NativeConfig::default();
                 self.commit_unlocked(&config)?;
@@ -413,7 +434,7 @@ impl ConfigStore {
 
     fn read_revision(&self) -> Result<ConfigRevision, ConfigError> {
         let bytes = fs::read(&self.layout.config)?;
-        let (_, revision) = parse_config(&bytes)?;
+        let (_, revision, _) = parse_config(&bytes)?;
         Ok(revision)
     }
 
@@ -435,12 +456,41 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), ConfigError> {
     Ok(())
 }
 
-fn parse_config(bytes: &[u8]) -> Result<(NativeConfig, ConfigRevision), ConfigError> {
-    let config: NativeConfig = serde_json::from_slice(bytes)?;
+fn parse_config(bytes: &[u8]) -> Result<(NativeConfig, ConfigRevision, bool), ConfigError> {
+    let mut value: serde_json::Value = serde_json::from_slice(bytes)?;
+    let migrated = value
+        .get("schema_version")
+        .and_then(serde_json::Value::as_u64)
+        == Some(u64::from(PREVIOUS_SCHEMA_VERSION));
+    if migrated {
+        migrate_v1_to_v2(&mut value)?;
+    }
+    let config: NativeConfig = serde_json::from_value(value)?;
     config.validate()?;
     let normalized = serde_json::to_vec_pretty(&config)?;
     let revision = revision_for_bytes(&normalized);
-    Ok((config, revision))
+    Ok((config, revision, migrated))
+}
+
+fn migrate_v1_to_v2(value: &mut serde_json::Value) -> Result<(), ConfigError> {
+    let model = value
+        .get_mut("model")
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or(ConfigError::InvalidValue("model"))?;
+    if model.contains_key("selected_model_origin") {
+        return Err(ConfigError::InvalidValue("model.selected_model_origin"));
+    }
+    let origin = if model
+        .get("selected_model_id")
+        .is_some_and(|id| !id.is_null())
+    {
+        serde_json::Value::String("preset".to_owned())
+    } else {
+        serde_json::Value::Null
+    };
+    model.insert("selected_model_origin".to_owned(), origin);
+    value["schema_version"] = serde_json::Value::from(SCHEMA_VERSION);
+    Ok(())
 }
 
 fn revision_for_bytes(bytes: &[u8]) -> ConfigRevision {
@@ -534,5 +584,57 @@ mod tests {
             fs::read(&store.layout().config).expect("config bytes"),
             original
         );
+    }
+
+    #[test]
+    fn selected_model_id_and_origin_are_required_as_a_pair() {
+        let mut config = NativeConfig::default();
+        config.model.selected_model_id = Some("standard".to_owned());
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::InvalidValue("model.selected_model_selection"))
+        ));
+
+        config.model.selected_model_origin = Some(SelectedModelOrigin::Preset);
+        assert!(config.validate().is_ok());
+        config.model.selected_model_id = None;
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::InvalidValue("model.selected_model_selection"))
+        ));
+    }
+
+    #[test]
+    fn native_v1_selection_migrates_once_and_preserves_original_backup() {
+        let base = tempdir().expect("temp directory");
+        let store = ConfigStore::new(StorageLayout::under(
+            base.path(),
+            BuildEnvironment::Development,
+        ))
+        .expect("config store");
+        let mut v1 = serde_json::to_value(NativeConfig::default()).expect("serialize config");
+        v1["schema_version"] = serde_json::Value::from(PREVIOUS_SCHEMA_VERSION);
+        v1["model"]["selected_model_id"] = serde_json::Value::String("standard".to_owned());
+        v1["model"]
+            .as_object_mut()
+            .expect("model object")
+            .remove("selected_model_origin");
+        let original = serde_json::to_vec_pretty(&v1).expect("v1 bytes");
+        fs::write(&store.layout().config, &original).expect("write v1 config");
+
+        let (migrated, revision) = store.load_or_default().expect("migrate v1 config");
+        assert_eq!(migrated.schema_version, SCHEMA_VERSION);
+        assert_eq!(
+            migrated.model.selected_model_origin,
+            Some(SelectedModelOrigin::Preset)
+        );
+        assert_eq!(
+            fs::read(store.layout().backups.join("config.previous.json"))
+                .expect("migration backup"),
+            original
+        );
+        let (reloaded, reloaded_revision) = store.load_or_default().expect("reload v2 config");
+        assert_eq!(reloaded, migrated);
+        assert_eq!(reloaded_revision, revision);
     }
 }

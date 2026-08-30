@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "application": {
     "launch_at_login": false,
     "show_taskbar_icon": true,
@@ -20,6 +20,7 @@
   },
   "model": {
     "selected_model_id": null,
+    "selected_model_origin": null,
     "mirror": false,
     "mirror_pointer_tracking": false,
     "play_motion_audio": true,

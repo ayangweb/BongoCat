@@ -266,12 +266,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let mut application = bongocat_app::Application::start(development_preset_root())?;
 
-    let model_id = application
-        .config()
-        .model
-        .selected_model_id
-        .clone()
-        .unwrap_or_else(|| "standard".to_owned());
+    let (model_origin, model_id) = match (
+        application.config().model.selected_model_origin,
+        application.config().model.selected_model_id.clone(),
+    ) {
+        (Some(bongocat_config::SelectedModelOrigin::Preset), Some(id)) => {
+            (bongocat_model::ModelOrigin::Preset, id)
+        }
+        (Some(bongocat_config::SelectedModelOrigin::Installed), Some(id)) => {
+            (bongocat_model::ModelOrigin::Installed, id)
+        }
+        (None, None) => (bongocat_model::ModelOrigin::Preset, "standard".to_owned()),
+        _ => unreachable!("validated model selection is paired"),
+    };
     let overlay_options = OverlaySessionOptions {
         click_through: application.config().overlay.click_through,
         always_on_top: application.config().overlay.always_on_top,
@@ -279,7 +286,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         opacity_percent: application.config().overlay.opacity_percent,
         maximum_fps: application.config().model.maximum_fps,
     };
-    application.prepare_preset_model(model_id)?;
+    application.prepare_model(model_origin, model_id)?;
     let runtime_client = application.runtime_client();
     let input_producer = application.input_producer();
     let cursor_producer = application.cursor_producer();

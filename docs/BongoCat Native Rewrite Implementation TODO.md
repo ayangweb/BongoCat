@@ -558,7 +558,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] event tap callback 使用 autorelease pool/panic boundary，run loop 停止后不再触达已释放 producer。
 - [ ] 明确辅助功能与 Input Monitoring 各自真正需要的能力，避免请求不必要的 TCC 权限。
 
-### 3.5 配置 v1
+### 3.5 配置 v1/v2
 
 - 状态（2026-08-29）：`spikes/config-store/` 已建立 typed NativeConfig、Bundle ID、Development/Production 隔离目录、snake_case 序列化、schema 校验、原子 commit probe、expected revision、OS writer lock contract、中断提交恢复 contract 和双平台真实 path resolver。Windows jobs 先后暴露只读 handle flush、强杀后锁释放延迟，以及首次启动 recovery 后立即重锁提交默认值的竞态；启动恢复以 10 ms 间隔有界重试最多 1 秒，`load_or_default` 又把 recover/read/create-default 合并到单个 guard，普通 commit 仍立即报告竞争。备份策略和 GPUI command 边界仍待产品 crate 阶段完成，详见 `docs/phase-0/config-store-spike.md`。
 
@@ -885,6 +885,10 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
 - [x] 每个字段记录默认值、范围、单位和跨字段约束；schema、typed validation 与边界 fixture 已对齐，后续新增字段必须同步三者。
 - [ ] 未知字段采用明确的拒绝、忽略或诊断策略。
 - [ ] 只为 Native Rewrite schema 建立 sequential `schema_version` 演进。
+  - 状态（2026-08-31）：正式 config 已实现 v1 -> v2 单步迁移；非空
+    `selected_model_id` 按 v1 产品语义补为 preset origin，空选择保持成对为空。迁移在 writer
+    lock 内备份原 bytes 并原子写回，重复加载幂等；未来版本链、损坏恢复和备份保留上限仍待
+    完成，因此总项保持未勾选。
 - [ ] 不包含旧 Pinia store key、旧字段 alias 或自动导入逻辑。
 
 ### 7.2 环境与持久化事务
@@ -1188,6 +1192,13 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
       model/app/ui 单元测试、Clippy 与完整 Native workspace 门禁通过。
     - 状态（2026-08-31）：model/app/ui 实现和定向测试已完成，完整 Native workspace 门禁
       仍在运行，因此保持未勾选。来源感知选择、配置持久化与 renderer 失败回滚属于下一任务。
+19. [ ] `P4-MODEL-SELECTION`：以 `(origin, model_id)` 从设置服务事务切换并持久化模型。
+    - 依赖：`P4-MODEL-CATALOG`、runtime/renderer model commit、config expected revision。
+    - 退出条件：typed command 不靠字符串推断来源；preset/installed 同 ID 可分别选择；v1
+      配置顺序迁移到成对的 v2 origin/id；CPU/GPU/配置失败保留当前模型，GPU 拒绝恢复旧配置；
+      重启重新加载所选来源；schema fixture、定向测试与完整 Native workspace 门禁通过。
+    - 状态（2026-08-31）：typed client/service、config v2 迁移、重复 ID installed 选择、重启与
+      renderer rejection 配置回滚已实现并通过定向测试；完整门禁与远端双平台 smoke 待验证。
 
 ## 13. 待决策清单
 

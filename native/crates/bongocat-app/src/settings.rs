@@ -4,8 +4,8 @@ use bongocat_runtime::RuntimeState;
 use bongocat_ui::{
     RuntimeHealth, SettingsClient, SettingsCommand, SettingsError, SettingsErrorCode,
     SettingsModelAvailability, SettingsModelCatalog, SettingsModelCatalogError,
-    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelOrigin, SettingsServiceEndpoint,
-    SettingsSnapshot,
+    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelKey, SettingsModelOrigin,
+    SettingsServiceEndpoint, SettingsSnapshot,
 };
 use std::{fmt, thread};
 
@@ -92,6 +92,13 @@ fn run_service(mut application: Application, endpoint: SettingsServiceEndpoint) 
                     .map_err(map_application_error);
                 let _ = reply.respond(result);
             }
+            SettingsCommand::SelectModel { model, reply } => {
+                let result = application
+                    .select_model(model_origin(model.origin), model.id)
+                    .map(|_| snapshot(&application))
+                    .map_err(map_application_error);
+                let _ = reply.respond(result);
+            }
             SettingsCommand::Shutdown { reply } => {
                 let before_shutdown = snapshot(&application);
                 let result = application.shutdown().map(|stopped| SettingsSnapshot {
@@ -120,10 +127,17 @@ fn snapshot(application: &Application) -> SettingsSnapshot {
         },
         overlay_visible: runtime.overlay_visible,
         motion_audio_enabled: runtime.motion_audio_enabled,
-        active_model_id: runtime
+        active_model: runtime
             .active_model
-            .map(|model| model.id.as_str().to_owned())
-            .or_else(|| application.config().model.selected_model_id.clone()),
+            .and_then(|model| {
+                application
+                    .active_model_origin()
+                    .map(|origin| SettingsModelKey {
+                        id: model.id.as_str().to_owned(),
+                        origin: settings_model_origin(origin),
+                    })
+            })
+            .or_else(|| configured_model_key(application)),
         model_catalog: settings_model_catalog(application),
     }
 }
@@ -138,6 +152,32 @@ fn settings_model_catalog(application: &Application) -> SettingsModelCatalog {
             entries: Vec::new(),
             error: Some(SettingsModelCatalogError::Unavailable),
         },
+    }
+}
+
+fn configured_model_key(application: &Application) -> Option<SettingsModelKey> {
+    let id = application.config().model.selected_model_id.clone()?;
+    let origin = application.config().model.selected_model_origin?;
+    Some(SettingsModelKey {
+        id,
+        origin: match origin {
+            bongocat_config::SelectedModelOrigin::Preset => SettingsModelOrigin::Preset,
+            bongocat_config::SelectedModelOrigin::Installed => SettingsModelOrigin::Installed,
+        },
+    })
+}
+
+const fn settings_model_origin(origin: ModelOrigin) -> SettingsModelOrigin {
+    match origin {
+        ModelOrigin::Preset => SettingsModelOrigin::Preset,
+        ModelOrigin::Installed => SettingsModelOrigin::Installed,
+    }
+}
+
+const fn model_origin(origin: SettingsModelOrigin) -> ModelOrigin {
+    match origin {
+        SettingsModelOrigin::Preset => ModelOrigin::Preset,
+        SettingsModelOrigin::Installed => ModelOrigin::Installed,
     }
 }
 
@@ -207,12 +247,19 @@ const fn settings_model_diagnostic(diagnostic: ModelDiagnostic) -> SettingsModel
 
 fn map_application_error(error: ApplicationError) -> SettingsError {
     let code = match error {
-        ApplicationError::PlatformStorage(_) | ApplicationError::Config(_) => {
-            SettingsErrorCode::ConfigPersistFailed
+        ApplicationError::PlatformStorage(_)
+        | ApplicationError::Config(_)
+        | ApplicationError::ConfigRollback(_) => SettingsErrorCode::ConfigPersistFailed,
+        ApplicationError::Model(_) | ApplicationError::ModelStore(_) => {
+            SettingsErrorCode::ModelUnavailable
         }
         ApplicationError::Shutdown(_) | ApplicationError::MotionAudioShutdown(_) => {
             SettingsErrorCode::ShutdownFailed
         }
+        ApplicationError::RuntimeCommand(_)
+        | ApplicationError::RuntimeCommandFailed(_)
+        | ApplicationError::RuntimeDidNotPublish
+        | ApplicationError::RuntimeDidNotPrepareModel => SettingsErrorCode::ModelSwitchFailed,
         _ => SettingsErrorCode::RuntimeUnavailable,
     };
     SettingsError::new(code)
@@ -240,6 +287,19 @@ mod tests {
             entry.origin == SettingsModelOrigin::Preset
                 && matches!(entry.availability, SettingsModelAvailability::Ready { .. })
         }));
+        let selected = client
+            .select_model_blocking(SettingsModelKey {
+                id: "keyboard".to_owned(),
+                origin: SettingsModelOrigin::Preset,
+            })
+            .expect("select preset model");
+        assert_eq!(
+            selected.active_model,
+            Some(SettingsModelKey {
+                id: "keyboard".to_owned(),
+                origin: SettingsModelOrigin::Preset,
+            })
+        );
         let hidden = client
             .set_overlay_visible_blocking(false)
             .expect("hide overlay");
@@ -254,6 +314,8 @@ mod tests {
         let persisted = std::fs::read_to_string(config_path).expect("persisted config");
         assert!(persisted.contains("\"visible\": false"));
         assert!(persisted.contains("\"play_motion_audio\": false"));
+        assert!(persisted.contains("\"selected_model_id\": \"keyboard\""));
+        assert!(persisted.contains("\"selected_model_origin\": \"preset\""));
 
         let stopped = client.shutdown_blocking().expect("service shutdown");
         assert_eq!(stopped.runtime_health, RuntimeHealth::Stopped);

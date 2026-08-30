@@ -416,6 +416,8 @@ com.ayangweb.bongo-cat
 - Native Rewrite 配置从全新 schema 开始，不读取、不探测、不导入旧 Tauri/Pinia store。
 - JSON key 使用 `snake_case`，字段按当前领域语义命名，不提供旧字段 alias。
 - 配置包含显式 `schema_version`，只对 Native Rewrite 自身后续 schema 执行顺序、幂等升级。
+- 当前 v2 将模型选择持久化为成对的 `selected_model_origin` 与 `selected_model_id`；v1
+  非空 ID 按当时产品语义迁移为 preset，迁移在当前环境 writer lock 内备份并原子写回。
 - 写入使用同目录临时文件、flush、原子替换和提交后验证；失败保留当前文件和受限数量的备份。
 - `config.json` 只包含用户设置；窗口布局写入 `state.json`，pressed state、权限结果和模型解析缓存不持久化。
 - 模型导入防止路径穿越、符号链接逃逸、压缩炸弹和覆盖现有用户数据。
@@ -426,6 +428,9 @@ com.ayangweb.bongo-cat
 - 模型目录身份是 `(origin, model_id)`。同一 `model_id` 的 preset 与 installed 条目都保留，
   排序固定为 `model_id` 升序、同 ID 时 preset 在前；后续选择 command 必须携带 origin，
   不得以静默覆盖解决冲突。
+- 模型选择 command 携带完整复合身份。应用先校验并加载候选，再以 expected revision
+  持久化选择并启动 runtime/renderer 两阶段提交；候选被拒绝时 runtime 保留旧模型，应用
+  使用刚取得的 config revision 原子恢复旧选择。配置写入失败时不得发送激活 command。
 - 合并目录通过强类型 settings snapshot 投影来源、可用状态、资源计数和稳定诊断码；无效
   模型继续可见，但用户路径、底层 I/O 文本和模型内容不得进入 UI snapshot 或日志。
 - 更新只允许 HTTPS，安装包和更新包必须签名并支持失败回滚。

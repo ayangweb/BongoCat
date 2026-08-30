@@ -19,7 +19,7 @@
     "keep_inside_work_area": true
   },
   "model": {
-    "selected_model_id": null,
+    "selected_model_id": "standard",
     "selected_model_origin": null,
     "mirror": false,
     "mirror_pointer_tracking": false,
@@ -29,8 +29,5 @@
     "ignore_pointer": false,
     "release_fallback_timeout_ms": 500
   },
-  "shortcuts": {
-    "commands": [{ "command": "  ", "shortcut": "Control+Alt+B" }],
-    "model_behaviors": []
-  }
+  "shortcuts": { "commands": [], "model_behaviors": [] }
 }

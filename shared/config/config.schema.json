@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["schema_version", "application", "appearance", "overlay", "model", "shortcuts"],
   "properties": {
-    "schema_version": { "const": 1 },
+    "schema_version": { "const": 2 },
     "application": {
       "$ref": "#/$defs/application"
     },
@@ -63,9 +63,10 @@
     "model": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["selected_model_id", "mirror", "mirror_pointer_tracking", "play_motion_audio", "enable_behavior_shortcuts", "maximum_fps", "ignore_pointer", "release_fallback_timeout_ms"],
+      "required": ["selected_model_id", "selected_model_origin", "mirror", "mirror_pointer_tracking", "play_motion_audio", "enable_behavior_shortcuts", "maximum_fps", "ignore_pointer", "release_fallback_timeout_ms"],
       "properties": {
         "selected_model_id": { "type": ["string", "null"], "minLength": 1 },
+        "selected_model_origin": { "type": ["string", "null"], "enum": ["preset", "installed", null] },
         "mirror": { "type": "boolean" },
         "mirror_pointer_tracking": { "type": "boolean" },
         "play_motion_audio": { "type": "boolean" },
@@ -73,7 +74,14 @@
         "maximum_fps": { "type": "integer", "minimum": 15, "maximum": 240 },
         "ignore_pointer": { "type": "boolean" },
         "release_fallback_timeout_ms": { "type": "integer", "minimum": 0, "maximum": 60000 }
-      }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "selected_model_id": { "type": "null" } } },
+          "then": { "properties": { "selected_model_origin": { "type": "null" } } },
+          "else": { "properties": { "selected_model_origin": { "enum": ["preset", "installed"] } } }
+        }
+      ]
     },
     "shortcuts": {
       "type": "object",

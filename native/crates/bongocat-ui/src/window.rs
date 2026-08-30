@@ -214,7 +214,8 @@ impl Render for SettingsView {
         };
         let active_model: SharedString = snapshot
             .as_ref()
-            .and_then(|snapshot| snapshot.active_model_id.clone())
+            .and_then(|snapshot| snapshot.active_model.as_ref())
+            .map(|model| model.id.clone())
             .unwrap_or_else(|| "No active model".to_owned())
             .into();
 
