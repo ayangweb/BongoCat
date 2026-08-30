@@ -17,6 +17,8 @@ the transparent Metal or D3D11 overlay. Closing the settings window leaves the r
 overlay active; reopening the application creates a fresh settings entity from the current runtime
 snapshot on macOS. GPUI 0.2.2 cannot safely destroy its Windows window from `WM_CLOSE`, so Windows
 hides the native window, retains its sole entity, and refreshes that entity when reopened.
+Explicit Windows quit posts an allowed native close and waits for `on_window_closed` before stopping
+the GPUI loop, keeping window callbacks outside an active app update.
 `--run-seconds 0` keeps the application active until an explicit Quit command; omit the argument for
 a bounded 30-second run.
 

@@ -3,6 +3,7 @@ use gpui::{
     App, Bounds, Context, FocusHandle, Render, SharedString, TitlebarOptions, Window,
     WindowAppearance, WindowBounds, WindowHandle, WindowOptions, div, prelude::*, px, rgb, size,
 };
+use std::rc::Rc;
 
 const WINDOW_WIDTH: f32 = 680.0;
 const WINDOW_HEIGHT: f32 = 440.0;
@@ -66,6 +67,9 @@ pub struct SettingsView {
     pending: Option<PendingOperation>,
     error: Option<SettingsError>,
     window_hidden: bool,
+    #[cfg(target_os = "windows")]
+    allow_close: bool,
+    request_quit: Rc<dyn Fn(&mut App)>,
     overlay_focus: FocusHandle,
     audio_focus: FocusHandle,
     refresh_focus: FocusHandle,
@@ -73,13 +77,20 @@ pub struct SettingsView {
 }
 
 impl SettingsView {
-    fn new(client: SettingsClient, cx: &mut Context<Self>) -> Self {
+    fn new(
+        client: SettingsClient,
+        request_quit: Rc<dyn Fn(&mut App)>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         Self {
             client,
             snapshot: None,
             pending: None,
             error: None,
             window_hidden: false,
+            #[cfg(target_os = "windows")]
+            allow_close: false,
+            request_quit,
             overlay_focus: cx.focus_handle().tab_index(1).tab_stop(true),
             audio_focus: cx.focus_handle().tab_index(2).tab_stop(true),
             refresh_focus: cx.focus_handle().tab_index(3).tab_stop(true),
@@ -107,6 +118,18 @@ impl SettingsView {
         self.window_hidden = false;
         self.refresh(cx);
         window.activate_window();
+        Ok(())
+    }
+
+    pub fn close_for_quit(&mut self, _window: &Window) -> Result<(), String> {
+        #[cfg(target_os = "windows")]
+        {
+            self.allow_close = true;
+            if let Err(error) = bongocat_platform::request_native_window_close(_window) {
+                self.allow_close = false;
+                return Err(error.to_string());
+            }
+        }
         Ok(())
     }
 
@@ -353,7 +376,7 @@ impl Render for SettingsView {
                             .id("quit-application")
                             .on_click(cx.listener(|view, _, window, cx| {
                                 window.focus(&view.quit_focus);
-                                cx.quit();
+                                (view.request_quit)(cx);
                             })),
                     ),
             );
@@ -477,6 +500,7 @@ fn command_button(
 
 pub fn open_settings_window(
     client: SettingsClient,
+    request_quit: impl Fn(&mut App) + 'static,
     cx: &mut App,
 ) -> Result<WindowHandle<SettingsView>, String> {
     let bounds = Bounds::centered(None, size(px(WINDOW_WIDTH), px(WINDOW_HEIGHT)), cx);
@@ -491,8 +515,9 @@ pub fn open_settings_window(
                 ..Default::default()
             },
             move |window, cx| {
+                let request_quit = Rc::new(request_quit);
                 let view = cx.new(|cx| {
-                    let mut view = SettingsView::new(client, cx);
+                    let mut view = SettingsView::new(client, request_quit, cx);
                     view.refresh(cx);
                     view
                 });
@@ -500,6 +525,12 @@ pub fn open_settings_window(
                 {
                     let weak_view = view.downgrade();
                     window.on_window_should_close(cx, move |window, cx| {
+                        let allow_close = weak_view
+                            .update(cx, |view, _| view.allow_close)
+                            .unwrap_or(true);
+                        if allow_close {
+                            return true;
+                        }
                         let result = bongocat_platform::hide_native_window(window);
                         let _ = weak_view.update(cx, |view, cx| match result {
                             Ok(()) => {

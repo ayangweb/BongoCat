@@ -126,6 +126,7 @@ struct ProductCoordinator {
     overlay: Option<ProductOverlaySession>,
     settings_service: Option<bongocat_app::ApplicationSettingsService>,
     settings_window: Option<WindowHandle<SettingsView>>,
+    quit_after_window_close: bool,
     frame_source_running: bool,
     frame_ticks: u64,
     expect_visible_frame: bool,
@@ -141,6 +142,44 @@ fn record_failure(failures: &Arc<Mutex<Vec<String>>>, failure: impl Into<String>
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .push(failure.into());
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn request_product_quit(cx: &mut App) {
+    #[cfg(target_os = "macos")]
+    cx.quit();
+
+    #[cfg(target_os = "windows")]
+    {
+        let Some((window_handle, failures)) =
+            cx.try_global::<ProductCoordinator>().map(|coordinator| {
+                (
+                    coordinator.settings_window,
+                    Arc::clone(&coordinator.failures),
+                )
+            })
+        else {
+            cx.quit();
+            return;
+        };
+        cx.global_mut::<ProductCoordinator>()
+            .quit_after_window_close = true;
+        let Some(window_handle) = window_handle else {
+            cx.quit();
+            return;
+        };
+        match window_handle.update(cx, |view, window, _| view.close_for_quit(window)) {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => {
+                record_failure(&failures, error);
+                cx.quit();
+            }
+            Err(error) => {
+                record_failure(&failures, error.to_string());
+                cx.quit();
+            }
+        }
+    }
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -164,7 +203,7 @@ fn ensure_settings_window(cx: &mut App) -> Result<WindowHandle<SettingsView>, St
         .and_then(|coordinator| coordinator.settings_service.as_ref())
         .map(bongocat_app::ApplicationSettingsService::client)
         .ok_or_else(|| "settings service owner is unavailable".to_owned())?;
-    let window_handle = open_settings_window(settings_client, cx)?;
+    let window_handle = open_settings_window(settings_client, request_product_quit, cx)?;
     cx.global_mut::<ProductCoordinator>().settings_window = Some(window_handle);
     Ok(window_handle)
 }
@@ -244,7 +283,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         };
         let settings_client = settings_service.client();
-        let settings_window = match open_settings_window(settings_client, cx) {
+        let settings_window = match open_settings_window(settings_client, request_product_quit, cx)
+        {
             Ok(window) => window,
             Err(error) => {
                 record_failure(&run_failures, error);
@@ -269,6 +309,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             overlay: Some(overlay),
             settings_service: Some(settings_service),
             settings_window: Some(settings_window),
+            quit_after_window_close: false,
             frame_source_running: true,
             frame_ticks: 0,
             expect_visible_frame,
@@ -276,14 +317,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
 
         cx.on_window_closed(|cx| {
-            let Some(window_handle) = cx
-                .try_global::<ProductCoordinator>()
-                .and_then(|coordinator| coordinator.settings_window)
+            let Some((window_handle, quit_after_window_close)) =
+                cx.try_global::<ProductCoordinator>().map(|coordinator| {
+                    (
+                        coordinator.settings_window,
+                        coordinator.quit_after_window_close,
+                    )
+                })
             else {
                 return;
             };
-            if window_handle.read(cx).is_err() {
-                cx.global_mut::<ProductCoordinator>().settings_window = None;
+            if window_handle.is_some_and(|window_handle| window_handle.read(cx).is_err()) {
+                let coordinator = cx.global_mut::<ProductCoordinator>();
+                coordinator.settings_window = None;
+                if quit_after_window_close {
+                    cx.quit();
+                }
             }
         })
         .detach();
@@ -405,12 +454,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Ok(Ok(baseline)) => baseline,
                     Ok(Err(error)) => {
                         record_failure(&smoke_failures, error);
-                        let _ = cx.update(|cx| cx.quit());
+                        let _ = cx.update(request_product_quit);
                         return;
                     }
                     Err(error) => {
                         record_failure(&smoke_failures, error.to_string());
-                        let _ = cx.update(|cx| cx.quit());
+                        let _ = cx.update(request_product_quit);
                         return;
                     }
                 };
@@ -433,19 +482,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Ok(Ok(false)) => {}
                         Ok(Err(error)) => {
                             record_failure(&smoke_failures, error);
-                            let _ = cx.update(|cx| cx.quit());
+                            let _ = cx.update(request_product_quit);
                             return;
                         }
                         Err(error) => {
                             record_failure(&smoke_failures, error.to_string());
-                            let _ = cx.update(|cx| cx.quit());
+                            let _ = cx.update(request_product_quit);
                             return;
                         }
                     }
                 }
                 if !window_unavailable {
                     record_failure(&smoke_failures, "settings window did not close or hide");
-                    let _ = cx.update(|cx| cx.quit());
+                    let _ = cx.update(request_product_quit);
                     return;
                 }
 
@@ -474,12 +523,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Ok(Ok(_)) => {}
                     Ok(Err(error)) => {
                         record_failure(&smoke_failures, error);
-                        let _ = cx.update(|cx| cx.quit());
+                        let _ = cx.update(request_product_quit);
                         return;
                     }
                     Err(error) => {
                         record_failure(&smoke_failures, error.to_string());
-                        let _ = cx.update(|cx| cx.quit());
+                        let _ = cx.update(request_product_quit);
                         return;
                     }
                 }
@@ -505,11 +554,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Ok(Ok(())) => {}
                     Ok(Err(error)) => {
                         record_failure(&smoke_failures, error);
-                        let _ = cx.update(|cx| cx.quit());
+                        let _ = cx.update(request_product_quit);
                     }
                     Err(error) => {
                         record_failure(&smoke_failures, error.to_string());
-                        let _ = cx.update(|cx| cx.quit());
+                        let _ = cx.update(request_product_quit);
                     }
                 }
             })
@@ -519,7 +568,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if !run_options.run_duration.is_zero() {
             cx.spawn(async move |cx| {
                 Timer::after(run_options.run_duration).await;
-                let _ = cx.update(|cx| cx.quit());
+                let _ = cx.update(request_product_quit);
             })
             .detach();
         }

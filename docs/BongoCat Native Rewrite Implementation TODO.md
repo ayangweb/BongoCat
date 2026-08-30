@@ -313,7 +313,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     同时读取 revisioned snapshot，并可持久化 overlay 显隐与 motion audio。macOS release
     smoke 已验证设置 Entity 销毁、后台 frame tick、单 Entity 重建、snapshot 恢复和有序退出。
     Windows runner `33326619716` / `33327009309` 暴露 GPUI 0.2.2 的 `WM_CLOSE` 同步重入崩溃；
-    当前实现已改为 platform adapter 拦截 close、隐藏原生窗口并在 reopen 时重显同一 Entity，
+    runner `33327832562` 证明普通 close 已被安全拦截，但随后暴露保留 callback 在显式 quit
+    时的第二处同步重入。当前实现改为两阶段原生 close -> `on_window_closed` -> GPUI quit，
     仍待 Windows hardware runner 复验，因此保持未勾选。
 - [ ] Windows/macOS 至少一个预置模型完成输入到原生绘制闭环。
 - [ ] Windows issue #47 复现用例不产生残留键。
@@ -1165,7 +1166,7 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
       从当前 revisioned snapshot 刷新；显式 Quit 仍按既定顺序 join 全部 owner；
       Windows/macOS release smoke 与完整 Native workspace 门禁通过。
     - 状态（2026-08-31）：macOS release smoke 和 Windows platform target check 本机通过；
-      Windows 原生 lifecycle smoke 待 CI 复验 GPUI 0.2.2 close interception 后再勾选。
+      Windows 原生 lifecycle smoke 待 CI 复验普通 close interception 与两阶段显式 quit 后再勾选。
 
 ## 13. 待决策清单
 

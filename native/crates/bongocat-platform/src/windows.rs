@@ -44,12 +44,12 @@ use windows::{
                 GIDC_REMOVAL, GWLP_USERDATA, GetCursorPos, GetMessageW, GetWindowLongPtrW,
                 KillTimer, MSG, PBT_APMRESUMEAUTOMATIC, PBT_APMRESUMECRITICAL,
                 PBT_APMRESUMESTANDBY, PBT_APMRESUMESUSPEND, PBT_APMSTANDBY, PBT_APMSUSPEND,
-                PostQuitMessage, RegisterClassW, SW_HIDE, SW_SHOW, SetTimer, SetWindowLongPtrW,
-                ShowWindow, TranslateMessage, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE,
-                WM_CLOSE, WM_DESTROY, WM_INPUT, WM_INPUT_DEVICE_CHANGE, WM_NCCREATE, WM_NCDESTROY,
-                WM_POWERBROADCAST, WM_TIMER, WM_WTSSESSION_CHANGE, WNDCLASSW, WTS_CONSOLE_CONNECT,
-                WTS_CONSOLE_DISCONNECT, WTS_REMOTE_CONNECT, WTS_REMOTE_DISCONNECT,
-                WTS_SESSION_LOCK, WTS_SESSION_UNLOCK,
+                PostMessageW, PostQuitMessage, RegisterClassW, SW_HIDE, SW_SHOW, SetTimer,
+                SetWindowLongPtrW, ShowWindow, TranslateMessage, UnregisterClassW, WINDOW_EX_STYLE,
+                WINDOW_STYLE, WM_CLOSE, WM_DESTROY, WM_INPUT, WM_INPUT_DEVICE_CHANGE, WM_NCCREATE,
+                WM_NCDESTROY, WM_POWERBROADCAST, WM_TIMER, WM_WTSSESSION_CHANGE, WNDCLASSW,
+                WTS_CONSOLE_CONNECT, WTS_CONSOLE_DISCONNECT, WTS_REMOTE_CONNECT,
+                WTS_REMOTE_DISCONNECT, WTS_SESSION_LOCK, WTS_SESSION_UNLOCK,
             },
         },
     },
@@ -71,6 +71,7 @@ const FINAL_RESET_RETRY: Duration = Duration::from_millis(5);
 pub enum NativeWindowError {
     HandleUnavailable,
     UnsupportedHandle,
+    CloseRequestFailed,
 }
 
 impl std::fmt::Display for NativeWindowError {
@@ -78,6 +79,7 @@ impl std::fmt::Display for NativeWindowError {
         formatter.write_str(match self {
             Self::HandleUnavailable => "the native window handle is unavailable",
             Self::UnsupportedHandle => "the native window handle is not a Win32 HWND",
+            Self::CloseRequestFailed => "the native window rejected the close request",
         })
     }
 }
@@ -98,6 +100,14 @@ pub fn show_native_window(window: &impl HasWindowHandle) -> Result<(), NativeWin
     // `window` is borrowed, and the GPUI callback runs on the window owner thread.
     let _ = unsafe { ShowWindow(hwnd, SW_SHOW) };
     Ok(())
+}
+
+pub fn request_native_window_close(window: &impl HasWindowHandle) -> Result<(), NativeWindowError> {
+    let hwnd = native_hwnd(window)?;
+    // SAFETY: raw-window-handle guarantees a live HWND for this borrow. Posting
+    // only enqueues WM_CLOSE; GPUI retains ownership until the message runs.
+    unsafe { PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0)) }
+        .map_err(|_| NativeWindowError::CloseRequestFailed)
 }
 
 fn native_hwnd(window: &impl HasWindowHandle) -> Result<HWND, NativeWindowError> {
