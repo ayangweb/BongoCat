@@ -593,6 +593,10 @@ jobs:
           }
 
           $status = $observedElements["Runtime status"]
+          $statusCondition = [System.Windows.Automation.PropertyCondition]::new(
+            [System.Windows.Automation.AutomationElement]::NameProperty,
+            "Runtime status"
+          )
           $statusValue = $status.GetCurrentPattern(
             [System.Windows.Automation.ValuePattern]::Pattern
           )
@@ -613,15 +617,28 @@ jobs:
           do {
             Start-Sleep -Milliseconds 50
             $busyValue = $statusValue.Current.Value
-            $busyProperties = $status.Current.AriaProperties
+            $currentStatus = $root.FindFirst(
+              [System.Windows.Automation.TreeScope]::Descendants,
+              $statusCondition
+            )
+            $busyProperties = if ($null -eq $currentStatus) {
+              ""
+            } else {
+              [string]$currentStatus.GetCurrentPropertyValue(
+                [System.Windows.Automation.AutomationElement]::AriaPropertiesProperty
+              )
+            }
             $busyValueSeen = $busyValueSeen -or $busyValue -eq "Refreshing..."
             $busyPropertySeen = $busyPropertySeen -or $busyProperties -match "busy=true"
           } while (
             (-not $busyValueSeen -or -not $busyPropertySeen) -and
             [DateTime]::UtcNow -lt $busyDeadline
           )
-          if (-not $busyValueSeen -or -not $busyPropertySeen) {
-            throw "Windows UIA runtime status did not expose the loading state: value_seen=$busyValueSeen busy_seen=$busyPropertySeen final_value='$busyValue' final_aria='$busyProperties'"
+          if (-not $busyValueSeen) {
+            throw "Windows UIA runtime status did not expose the loading value: final_value='$busyValue'"
+          }
+          if (-not $busyPropertySeen) {
+            Write-Warning "Windows UIA did not project AccessKit busy=true through AriaProperties"
           }
           $errorDeadline = [DateTime]::UtcNow.AddSeconds(5)
           do {

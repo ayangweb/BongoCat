@@ -838,7 +838,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 8. [ ] `P0-GPUI-PACKAGE-MAC`：使用默认预编译 shader 构建 `.app`，验证 IME、剪贴板、焦点、辅助功能、主题和窗口重开。
    - 状态（2026-08-30）：默认 shader、bundle、菜单、窗口生命周期、主题、基础文本编辑/剪贴板、runtime bridge、性能基线与 AppKit AX tree/action 通过；Reset tooltip help、modal dialog、焦点陷阱、Escape 恢复和背景语义隐藏已完成可见/AX smoke；AX value/invalid 可观察延迟 runtime 的 loading -> error -> retry/revision 恢复。marked-text 纯状态 contract 不替代真实系统 IME；ADR-0009 仍等待真实 VoiceOver、tooltip 实际 hover/朗读、完整菜单等证据。
 9. [ ] `P0-GPUI-WINDOWS`：在 Windows 构建同一 spike，验证字体、IME、DPI、辅助功能和正常退出。
-   - 状态（2026-08-30）：push run `33255204781`、job `99107586036` 已通过窗口、首帧、runtime、有序 shutdown 和进程外 UI Automation role/name/selection action；commit `45b8dba` 的 push run `33273470907`、job `99156013603` 又通过 modal dialog、Cancel 初始焦点、dismiss 与语义子树恢复。本批新增 busy/error/retry/revision 2 UIA 门禁仍待 CI；字体、真实 IME、DPI 切换和 Narrator 仍待 Windows 实机，因此保持未勾选。
+   - 状态（2026-08-30）：push run `33255204781`、job `99107586036` 已通过窗口、首帧、runtime、有序 shutdown 和进程外 UI Automation role/name/selection action；commit `45b8dba` 的 push run `33273470907`、job `99156013603` 又通过 modal dialog、Cancel 初始焦点、dismiss 与语义子树恢复；commit `ea08d3d` 的 push job `99203157592` 可读取 loading value，但 `AriaProperties` 未投影 AccessKit `busy=true`，error/retry/revision 2 仍待后续 CI。字体、真实 IME、DPI 切换和 Narrator 仍待 Windows 实机，因此保持未勾选。
 10. [ ] `P0-OVERLAY`：GPUI 生命周期内完成 Windows D3D11/macOS Metal 透明 clear/present、错误注入和 100 次重建。
 
 - [x] 先完成无平台依赖的 overlay lifecycle contract probe；平台窗口和 GPU 验证仍未完成。
