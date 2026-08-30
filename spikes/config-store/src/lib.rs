@@ -10,7 +10,7 @@ use std::{
 };
 
 pub const BUNDLE_ID: &str = "com.ayangweb.bongo-cat";
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 const RECOVERY_LOCK_TIMEOUT: Duration = Duration::from_secs(1);
 const RECOVERY_LOCK_RETRY_INTERVAL: Duration = Duration::from_millis(10);
 
@@ -185,6 +185,7 @@ pub struct OverlayConfig {
 #[serde(deny_unknown_fields)]
 pub struct ModelConfig {
     pub selected_model_id: Option<String>,
+    pub selected_model_origin: Option<SelectedModelOrigin>,
     pub mirror: bool,
     pub mirror_pointer_tracking: bool,
     pub play_motion_audio: bool,
@@ -192,6 +193,13 @@ pub struct ModelConfig {
     pub maximum_fps: u16,
     pub ignore_pointer: bool,
     pub release_fallback_timeout_ms: u32,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SelectedModelOrigin {
+    Preset,
+    Installed,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
@@ -243,6 +251,7 @@ impl Default for NativeConfig {
             },
             model: ModelConfig {
                 selected_model_id: None,
+                selected_model_origin: None,
                 mirror: false,
                 mirror_pointer_tracking: false,
                 play_motion_audio: true,
@@ -288,6 +297,9 @@ impl NativeConfig {
             .is_some_and(|model_id| model_id.trim().is_empty())
         {
             return Err(ConfigError::InvalidValue("model.selected_model_id"));
+        }
+        if self.model.selected_model_id.is_some() != self.model.selected_model_origin.is_some() {
+            return Err(ConfigError::InvalidValue("model.selected_model_selection"));
         }
         if self
             .shortcuts
@@ -938,6 +950,7 @@ mod tests {
                 .is_some()
         );
         assert!(value["model"].get("release_fallback_timeout_ms").is_some());
+        assert!(value["model"].get("selected_model_origin").is_some());
     }
 
     #[test]
@@ -981,6 +994,23 @@ mod tests {
         assert!(matches!(
             config.validate(),
             Err(ConfigError::InvalidValue("shortcuts.commands.command"))
+        ));
+    }
+
+    #[test]
+    fn selected_model_id_and_origin_are_required_as_a_pair() {
+        let mut id_only = NativeConfig::default();
+        id_only.model.selected_model_id = Some("standard".to_owned());
+        assert!(matches!(
+            id_only.validate(),
+            Err(ConfigError::InvalidValue("model.selected_model_selection"))
+        ));
+
+        let mut origin_only = NativeConfig::default();
+        origin_only.model.selected_model_origin = Some(SelectedModelOrigin::Preset);
+        assert!(matches!(
+            origin_only.validate(),
+            Err(ConfigError::InvalidValue("model.selected_model_selection"))
         ));
     }
 }

@@ -433,6 +433,11 @@ com.ayangweb.bongo-cat
   使用刚取得的 config revision 原子恢复旧选择。配置写入失败时不得发送激活 command。
 - 合并目录通过强类型 settings snapshot 投影来源、可用状态、资源计数和稳定诊断码；无效
   模型继续可见，但用户路径、底层 I/O 文本和模型内容不得进入 UI snapshot 或日志。
+- 模型导入 command 携带用户确认的 model ID 与文件选择目录，只由 settings service worker
+  执行复制和复验；成功后刷新合并目录，但不隐式激活模型或修改选择配置。失败只返回稳定、
+  可操作且不含用户路径的导入错误码。settings snapshot revision 同时观察 runtime 变化并为
+  catalog-only 变化递增，禁止返回内容已变但 revision 未变的快照；完整页面再以 operation ID
+  提供 progress 与 cancel。
 - 更新只允许 HTTPS，安装包和更新包必须签名并支持失败回滚。
 - 日志不记录真实按键序列、剪贴板内容或用户文件内容。
 

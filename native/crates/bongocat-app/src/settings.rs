@@ -1,5 +1,5 @@
 use crate::{Application, ApplicationError};
-use bongocat_model::{ModelCatalogEntry, ModelDiagnostic, ModelOrigin};
+use bongocat_model::{ModelCatalogEntry, ModelDiagnostic, ModelOrigin, ModelStoreDiagnostic};
 use bongocat_runtime::RuntimeState;
 use bongocat_ui::{
     RuntimeHealth, SettingsClient, SettingsCommand, SettingsError, SettingsErrorCode,
@@ -69,6 +69,7 @@ impl fmt::Display for SettingsServiceJoinError {
 impl std::error::Error for SettingsServiceJoinError {}
 
 fn run_service(mut application: Application, endpoint: SettingsServiceEndpoint) {
+    let mut clock = SettingsSnapshotClock::new(application.runtime_client().snapshot().revision);
     loop {
         let Ok(command) = endpoint.recv_blocking() else {
             let _ = application.shutdown();
@@ -76,35 +77,45 @@ fn run_service(mut application: Application, endpoint: SettingsServiceEndpoint) 
         };
         match command {
             SettingsCommand::ReadSnapshot { reply } => {
-                let _ = reply.respond(Ok(snapshot(&application)));
+                let _ = reply.respond(Ok(snapshot(&application, &mut clock, false)));
             }
             SettingsCommand::SetOverlayVisible { visible, reply } => {
                 let result = application
                     .set_overlay_visible(visible)
-                    .map(|_| snapshot(&application))
+                    .map(|_| snapshot(&application, &mut clock, false))
                     .map_err(map_application_error);
                 let _ = reply.respond(result);
             }
             SettingsCommand::SetMotionAudioEnabled { enabled, reply } => {
                 let result = application
                     .set_motion_audio_enabled(enabled)
-                    .map(|_| snapshot(&application))
+                    .map(|_| snapshot(&application, &mut clock, false))
                     .map_err(map_application_error);
                 let _ = reply.respond(result);
             }
             SettingsCommand::SelectModel { model, reply } => {
                 let result = application
                     .select_model(model_origin(model.origin), model.id)
-                    .map(|_| snapshot(&application))
+                    .map(|_| snapshot(&application, &mut clock, false))
                     .map_err(map_application_error);
                 let _ = reply.respond(result);
             }
+            SettingsCommand::ImportModel { request, reply } => {
+                let result = application
+                    .import_model(request.id, request.source_root)
+                    .map(|_| snapshot(&application, &mut clock, true))
+                    .map_err(map_model_import_error);
+                let _ = reply.respond(result);
+            }
             SettingsCommand::Shutdown { reply } => {
-                let before_shutdown = snapshot(&application);
-                let result = application.shutdown().map(|stopped| SettingsSnapshot {
-                    revision: stopped.revision,
-                    runtime_health: RuntimeHealth::Stopped,
-                    ..before_shutdown
+                let before_shutdown = snapshot(&application, &mut clock, false);
+                let result = application.shutdown().map(|stopped| {
+                    clock.observe_runtime(stopped.revision);
+                    SettingsSnapshot {
+                        revision: clock.revision,
+                        runtime_health: RuntimeHealth::Stopped,
+                        ..before_shutdown
+                    }
                 });
                 let _ = reply.respond(
                     result.map_err(|_| SettingsError::new(SettingsErrorCode::ShutdownFailed)),
@@ -115,10 +126,43 @@ fn run_service(mut application: Application, endpoint: SettingsServiceEndpoint) 
     }
 }
 
-fn snapshot(application: &Application) -> SettingsSnapshot {
+struct SettingsSnapshotClock {
+    revision: u64,
+    observed_runtime_revision: u64,
+}
+
+impl SettingsSnapshotClock {
+    const fn new(runtime_revision: u64) -> Self {
+        Self {
+            revision: runtime_revision,
+            observed_runtime_revision: runtime_revision,
+        }
+    }
+
+    fn observe_runtime(&mut self, runtime_revision: u64) {
+        if runtime_revision != self.observed_runtime_revision {
+            self.revision = self.revision.saturating_add(1);
+            self.observed_runtime_revision = runtime_revision;
+        }
+    }
+
+    fn mark_catalog_changed(&mut self) {
+        self.revision = self.revision.saturating_add(1);
+    }
+}
+
+fn snapshot(
+    application: &Application,
+    clock: &mut SettingsSnapshotClock,
+    catalog_changed: bool,
+) -> SettingsSnapshot {
     let runtime = application.runtime_client().snapshot();
+    clock.observe_runtime(runtime.revision);
+    if catalog_changed {
+        clock.mark_catalog_changed();
+    }
     SettingsSnapshot {
-        revision: runtime.revision,
+        revision: clock.revision,
         runtime_health: match runtime.state {
             RuntimeState::Starting => RuntimeHealth::Starting,
             RuntimeState::Ready => RuntimeHealth::Ready,
@@ -265,11 +309,52 @@ fn map_application_error(error: ApplicationError) -> SettingsError {
     SettingsError::new(code)
 }
 
+fn map_model_import_error(error: ApplicationError) -> SettingsError {
+    let code = match error {
+        ApplicationError::Model(error) => {
+            if error.code == ModelDiagnostic::InvalidModelId {
+                SettingsErrorCode::InvalidModelId
+            } else {
+                SettingsErrorCode::ModelImportInvalidPackage
+            }
+        }
+        ApplicationError::ModelStore(error) => map_model_store_import_diagnostic(error.code),
+        error => return map_application_error(error),
+    };
+    SettingsError::new(code)
+}
+
+const fn map_model_store_import_diagnostic(diagnostic: ModelStoreDiagnostic) -> SettingsErrorCode {
+    match diagnostic {
+        ModelStoreDiagnostic::AlreadyExists => SettingsErrorCode::ModelAlreadyInstalled,
+        ModelStoreDiagnostic::InvalidPackage => SettingsErrorCode::ModelImportInvalidPackage,
+        ModelStoreDiagnostic::SourceContainsStore => SettingsErrorCode::ModelImportSourceInvalid,
+        ModelStoreDiagnostic::SourceChanged => SettingsErrorCode::ModelImportSourceChanged,
+        ModelStoreDiagnostic::SourceSymlinkUnsupported
+        | ModelStoreDiagnostic::SourceEntryUnsupported => {
+            SettingsErrorCode::ModelImportSourceUnsupported
+        }
+        ModelStoreDiagnostic::StoreBusy => SettingsErrorCode::ModelStoreBusy,
+        ModelStoreDiagnostic::IoError
+        | ModelStoreDiagnostic::NotFound
+        | ModelStoreDiagnostic::StoreEntryUnsupported => SettingsErrorCode::ModelImportFailed,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use bongocat_config::StorageLayout;
+    use bongocat_ui::SettingsModelImportRequest;
     use tempfile::tempdir;
+
+    fn model_fixture() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repository root")
+            .join("shared/fixtures/model-fixtures/cases/非 ASCII 模型")
+    }
 
     #[test]
     fn service_orders_updates_persists_them_and_stops_runtime() {
@@ -338,6 +423,141 @@ mod tests {
                 .code(),
             SettingsErrorCode::ServiceUnavailable
         );
+    }
+
+    #[test]
+    fn service_imports_a_model_without_selecting_it_and_refreshes_the_catalog() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let models_root = layout.models.clone();
+        let application = Application::start_with_layout(layout).expect("application start");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+
+        let imported = client
+            .import_model_blocking(SettingsModelImportRequest {
+                id: "custom-model".to_owned(),
+                source_root: model_fixture(),
+            })
+            .expect("import model");
+        assert!(imported.revision > initial.revision);
+        assert_eq!(
+            imported.active_model, None,
+            "import must not implicitly activate the model"
+        );
+        assert!(imported.model_catalog.entries.iter().any(|entry| {
+            entry.id == "custom-model"
+                && entry.origin == SettingsModelOrigin::Installed
+                && matches!(entry.availability, SettingsModelAvailability::Ready { .. })
+        }));
+        assert!(models_root.join("custom-model/猫.model3.json").is_file());
+
+        let duplicate = client
+            .import_model_blocking(SettingsModelImportRequest {
+                id: "custom-model".to_owned(),
+                source_root: model_fixture(),
+            })
+            .expect_err("duplicate import");
+        assert_eq!(duplicate.code(), SettingsErrorCode::ModelAlreadyInstalled);
+        let unchanged = client.read_snapshot_blocking().expect("unchanged snapshot");
+        assert_eq!(unchanged.revision, imported.revision);
+        assert_eq!(unchanged.model_catalog, imported.model_catalog);
+
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
+    }
+
+    #[test]
+    fn every_model_store_import_diagnostic_has_a_stable_ui_code() {
+        let cases = [
+            (
+                ModelStoreDiagnostic::AlreadyExists,
+                SettingsErrorCode::ModelAlreadyInstalled,
+            ),
+            (
+                ModelStoreDiagnostic::InvalidPackage,
+                SettingsErrorCode::ModelImportInvalidPackage,
+            ),
+            (
+                ModelStoreDiagnostic::SourceContainsStore,
+                SettingsErrorCode::ModelImportSourceInvalid,
+            ),
+            (
+                ModelStoreDiagnostic::SourceChanged,
+                SettingsErrorCode::ModelImportSourceChanged,
+            ),
+            (
+                ModelStoreDiagnostic::SourceSymlinkUnsupported,
+                SettingsErrorCode::ModelImportSourceUnsupported,
+            ),
+            (
+                ModelStoreDiagnostic::SourceEntryUnsupported,
+                SettingsErrorCode::ModelImportSourceUnsupported,
+            ),
+            (
+                ModelStoreDiagnostic::StoreBusy,
+                SettingsErrorCode::ModelStoreBusy,
+            ),
+            (
+                ModelStoreDiagnostic::IoError,
+                SettingsErrorCode::ModelImportFailed,
+            ),
+            (
+                ModelStoreDiagnostic::NotFound,
+                SettingsErrorCode::ModelImportFailed,
+            ),
+            (
+                ModelStoreDiagnostic::StoreEntryUnsupported,
+                SettingsErrorCode::ModelImportFailed,
+            ),
+        ];
+
+        for (diagnostic, expected) in cases {
+            assert_eq!(map_model_store_import_diagnostic(diagnostic), expected);
+        }
+    }
+
+    #[test]
+    fn service_maps_invalid_import_inputs_to_stable_errors() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application = Application::start_with_layout(layout).expect("application start");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+
+        let invalid_id = client
+            .import_model_blocking(SettingsModelImportRequest {
+                id: "../escape".to_owned(),
+                source_root: model_fixture(),
+            })
+            .expect_err("invalid model id");
+        assert_eq!(invalid_id.code(), SettingsErrorCode::InvalidModelId);
+
+        let invalid_package_source = tempdir().expect("invalid package");
+        std::fs::write(
+            invalid_package_source.path().join("not-a-model.txt"),
+            b"invalid",
+        )
+        .expect("invalid model marker");
+        let invalid_package = client
+            .import_model_blocking(SettingsModelImportRequest {
+                id: "invalid-package".to_owned(),
+                source_root: invalid_package_source.path().to_owned(),
+            })
+            .expect_err("invalid package");
+        assert_eq!(
+            invalid_package.code(),
+            SettingsErrorCode::ModelImportInvalidPackage
+        );
+        assert!(
+            !invalid_package
+                .to_string()
+                .contains(&invalid_package_source.path().display().to_string())
+        );
+
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
     }
 
     #[test]

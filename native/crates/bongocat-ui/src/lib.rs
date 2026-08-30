@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
 use async_channel::{Receiver, Sender};
-use std::fmt;
+use std::{fmt, path::PathBuf};
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod window;
@@ -30,6 +30,12 @@ pub struct SettingsSnapshot {
 pub struct SettingsModelKey {
     pub id: String,
     pub origin: SettingsModelOrigin,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SettingsModelImportRequest {
+    pub id: String,
+    pub source_root: PathBuf,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -101,6 +107,14 @@ pub enum SettingsErrorCode {
     ConfigPersistFailed,
     ModelUnavailable,
     ModelSwitchFailed,
+    InvalidModelId,
+    ModelAlreadyInstalled,
+    ModelImportInvalidPackage,
+    ModelImportSourceInvalid,
+    ModelImportSourceChanged,
+    ModelImportSourceUnsupported,
+    ModelStoreBusy,
+    ModelImportFailed,
     WindowUnavailable,
     ShutdownFailed,
 }
@@ -128,6 +142,16 @@ impl fmt::Display for SettingsError {
             SettingsErrorCode::ConfigPersistFailed => "setting could not be saved",
             SettingsErrorCode::ModelUnavailable => "selected model is unavailable",
             SettingsErrorCode::ModelSwitchFailed => "selected model could not be activated",
+            SettingsErrorCode::InvalidModelId => "model id is invalid",
+            SettingsErrorCode::ModelAlreadyInstalled => "model id is already installed",
+            SettingsErrorCode::ModelImportInvalidPackage => "model package is invalid",
+            SettingsErrorCode::ModelImportSourceInvalid => "model source cannot be imported",
+            SettingsErrorCode::ModelImportSourceChanged => "model source changed during import",
+            SettingsErrorCode::ModelImportSourceUnsupported => {
+                "model source contains an unsupported entry"
+            }
+            SettingsErrorCode::ModelStoreBusy => "model storage is busy",
+            SettingsErrorCode::ModelImportFailed => "model could not be imported",
             SettingsErrorCode::WindowUnavailable => "settings window could not be hidden",
             SettingsErrorCode::ShutdownFailed => "application shutdown did not complete",
         })
@@ -160,6 +184,10 @@ pub enum SettingsCommand {
     },
     SelectModel {
         model: SettingsModelKey,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    ImportModel {
+        request: SettingsModelImportRequest,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     Shutdown {
@@ -226,6 +254,14 @@ impl SettingsClient {
             .await
     }
 
+    pub async fn import_model(
+        &self,
+        request: SettingsModelImportRequest,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::ImportModel { request, reply })
+            .await
+    }
+
     pub async fn shutdown(&self) -> Result<SettingsSnapshot, SettingsError> {
         self.request(|reply| SettingsCommand::Shutdown { reply })
             .await
@@ -254,6 +290,13 @@ impl SettingsClient {
         model: SettingsModelKey,
     ) -> Result<SettingsSnapshot, SettingsError> {
         self.request_blocking(|reply| SettingsCommand::SelectModel { model, reply })
+    }
+
+    pub fn import_model_blocking(
+        &self,
+        request: SettingsModelImportRequest,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::ImportModel { request, reply })
     }
 
     pub fn shutdown_blocking(&self) -> Result<SettingsSnapshot, SettingsError> {
@@ -343,6 +386,35 @@ mod tests {
             result.expect_err("closed service").code(),
             SettingsErrorCode::ServiceUnavailable
         );
+    }
+
+    #[test]
+    fn model_import_command_preserves_the_typed_request() {
+        let (client, endpoint) = SettingsClient::bounded(1);
+        let expected = SettingsModelImportRequest {
+            id: "custom-model".to_owned(),
+            source_root: PathBuf::from("selected/model"),
+        };
+        let worker = thread::spawn({
+            let expected = expected.clone();
+            move || {
+                let SettingsCommand::ImportModel { request, reply } =
+                    endpoint.recv_blocking().expect("import command")
+                else {
+                    panic!("unexpected command");
+                };
+                assert_eq!(request, expected);
+                reply
+                    .respond(Ok(snapshot(2, true, true)))
+                    .expect("import reply");
+            }
+        });
+
+        let imported = client
+            .import_model_blocking(expected)
+            .expect("import snapshot");
+        assert_eq!(imported.revision, 2);
+        worker.join().expect("worker join");
     }
 
     fn snapshot(

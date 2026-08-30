@@ -888,7 +888,8 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
   - 状态（2026-08-31）：正式 config 已实现 v1 -> v2 单步迁移；非空
     `selected_model_id` 按 v1 产品语义补为 preset origin，空选择保持成对为空。迁移在 writer
     lock 内备份原 bytes 并原子写回，重复加载幂等；未来版本链、损坏恢复和备份保留上限仍待
-    完成，因此总项保持未勾选。
+    完成，因此总项保持未勾选。共享默认 fixture 升级后，独立 config-store contract spike 也
+    对齐 v2 成对字段与校验，但不重复承担正式迁移逻辑。
 - [ ] 不包含旧 Pinia store key、旧字段 alias 或自动导入逻辑。
 
 ### 7.2 环境与持久化事务
@@ -1204,6 +1205,16 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
       重启重新加载所选来源；schema fixture、定向测试与完整 Native workspace 门禁通过。
     - 状态（2026-08-31）：typed client/service、config v2 迁移、重复 ID installed 选择、重启与
       renderer rejection 配置回滚已实现并通过定向测试；完整门禁与远端双平台 smoke 待验证。
+20. [ ] `P4-MODEL-IMPORT-COMMAND`：从设置服务显式导入用户确认的外部模型目录。
+    - 依赖：环境 `ModelStore`、来源感知 catalog、typed settings command。
+    - 退出条件：UI command 强类型携带 model ID/source root，文件 I/O 不在 UI executor；导入
+      复制、复验并原子提交到当前环境且不隐式切换；成功 snapshot 刷新 installed 条目；非法
+      ID、重复 ID、无效包、源变化/不支持项、store busy/I/O 映射为稳定且不泄漏路径的错误码；
+      ui/app 定向测试与完整 Native workspace 门禁通过。
+    - 状态（2026-08-31）：typed request、settings worker 接线和稳定错误映射已实现；operation
+      ID、progress、cancel、系统文件选择 wrapper 及模型页面 loading/error/retry 属于后续任务。
+      ui/app 定向测试与完整 Native format、Clippy、workspace test、release check、Linux shared
+      contract check 本机通过，远端 Windows/macOS/Ubuntu 门禁待本提交验证，因此保持未勾选。
 
 ## 13. 待决策清单
 
