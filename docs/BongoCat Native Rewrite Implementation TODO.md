@@ -1184,7 +1184,12 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
       测试和 release check 均通过，但 lifecycle script 的 `Process.MainWindowHandle` 选中了
       独立 overlay，导致错误地关闭猫窗口并报告 overlay/设置窗口双失败；macOS job
       `99307365568` 已通过。runner 现改为按标题和 PID 定位 GPUI 设置窗口并发送真实
-      `WM_CLOSE`，等待替代 run 后再判断退出条件。
+      `WM_CLOSE`。
+    - 状态（2026-08-31）：替代 run `33331197902`、Windows job `99309931267` 的 workspace
+      门禁再次通过，唯一失败仍为 product lifecycle smoke；精确标题查找没有在内部 3 秒隐藏
+      截止前取得 HWND，随后只报告产品已退出且遗漏重定向日志。runner 现按 PID 枚举可见顶层
+      窗口、排除独立 overlay，并在所有失败路径输出 HWND 清单与产品 stdout/stderr；等待新的
+      原生 Windows run 区分窗口发现问题与产品故障。
 18. [ ] `P4-MODEL-CATALOG`：建立来源感知的预置/用户模型合并目录并投影到设置服务。
     - 依赖：正式 `bongocat-model`、环境 `ModelStore`、只读预置资源和 typed settings snapshot。
     - 退出条件：应用持有 preset catalog；preset/installed 的 ready/invalid 条目都可见且确定
