@@ -1191,6 +1191,10 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
       截止前取得 HWND，随后只报告产品已退出且遗漏重定向日志。runner 现按 PID 枚举可见顶层
       窗口、排除独立 overlay，并在所有失败路径输出 HWND 清单与产品 stdout/stderr；等待新的
       原生 Windows run 区分窗口发现问题与产品故障。
+    - 状态（2026-08-31）：run `33332271286`、Windows job `99312838431` 证明外部枚举选中的
+      fallback HWND 在延迟投递前已失效，`PostMessage(WM_CLOSE)` 因此失败，产品内部也未观察到
+      settings close。smoke 现由 Windows platform adapter 从 GPUI 公共 raw-window-handle 精确
+      取得设置 HWND 并异步投递真实 `WM_CLOSE`；CI 不再枚举或猜测产品窗口，待原生 run 复验。
 18. [ ] `P4-MODEL-CATALOG`：建立来源感知的预置/用户模型合并目录并投影到设置服务。
     - 依赖：正式 `bongocat-model`、环境 `ModelStore`、只读预置资源和 typed settings snapshot。
     - 退出条件：应用持有 preset catalog；preset/installed 的 ready/invalid 条目都可见且确定

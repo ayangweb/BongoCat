@@ -17,7 +17,8 @@ mod windows;
 pub use windows::WindowsInputService;
 #[cfg(target_os = "windows")]
 pub use windows::{
-    NativeWindowError, hide_native_window, show_native_window, terminate_after_product_shutdown,
+    NativeWindowError, hide_native_window, request_native_window_close, show_native_window,
+    terminate_after_product_shutdown,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

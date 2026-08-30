@@ -468,7 +468,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .update(cx, |_, window, _| window.remove_window())
                         .map_err(|error| error.to_string())?;
                     #[cfg(target_os = "windows")]
-                    let _ = window_handle;
+                    window_handle
+                        .update(cx, |_, window, _| {
+                            bongocat_platform::request_native_window_close(window)
+                        })
+                        .map_err(|error| error.to_string())?
+                        .map_err(|error| error.to_string())?;
                     Ok((frame_ticks, window_handle))
                 });
                 let (baseline_ticks, original_window) = match baseline {
