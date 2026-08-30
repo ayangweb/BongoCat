@@ -1155,6 +1155,12 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
     - 验收证据（2026-08-31）：`bongocat-audio`、runtime side-effect 接线、真实预置 FLAC
       decoder 与 motion event/audio contract 已进入正式 workspace；完整 Native format、
       Clippy、test、release check、双 Windows target check 和 CI 结果随对应提交记录。
+17. [ ] `P1-SETTINGS-WINDOW-LIFECYCLE`：设置窗口关闭后保持后台产品运行，并可从当前
+        revisioned snapshot 重建窗口。
+    - 依赖：正式 GPUI 设置窗口、app coordinator、runtime/render owner。
+    - 退出条件：window close 不触发 shutdown；无窗口期间 frame source 继续推进；reopen
+      只创建一个新 GPUI Entity 并恢复 snapshot；显式 Quit 仍按既定顺序 join 全部 owner；
+      Windows/macOS release smoke 与完整 Native workspace 门禁通过。
 
 ## 13. 待决策清单
 

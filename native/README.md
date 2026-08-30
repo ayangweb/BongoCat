@@ -13,8 +13,17 @@ cargo run --manifest-path native/Cargo.toml -p bongocat-app --release -- --run-s
 
 This is the current formal visible product entry on macOS and Windows. It loads the selected bundled
 preset (`standard` by default), starts the product runtime and platform input producer, and displays
-the transparent Metal or D3D11 overlay. `--run-seconds 0` keeps it visible until the overlay is
-closed; omit the argument for a bounded 30-second run.
+the transparent Metal or D3D11 overlay. Closing the settings window leaves the runtime, input, and
+overlay active; reopening the application creates a fresh settings entity from the current runtime
+snapshot. `--run-seconds 0` keeps the application active until an explicit Quit command; omit the
+argument for a bounded 30-second run.
+
+The cross-platform product smoke closes and recreates the settings window while the frame source
+continues to run:
+
+```text
+cargo run --manifest-path native/Cargo.toml -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke
+```
 
 On macOS, grant Input Monitoring permission to the launching terminal for global keyboard and
 mouse-button animation. Permission denial is reported as a degraded input state and does not

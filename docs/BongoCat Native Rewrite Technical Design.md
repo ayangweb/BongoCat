@@ -103,6 +103,9 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
 - 辅助功能实现不得使用 GPUI 私有 renderer、隐藏原生控件或独立业务状态副本；可见控件、
   语义节点、焦点、loading/error 和 value 必须由同一份 UI snapshot 更新。
 - GPUI 不加载 Cubism、不持有主猫 GPU 资源、不驱动 Live2D 帧循环。
+- 关闭设置窗口只销毁对应 GPUI `Entity`；runtime、输入、音频、frame source 和 overlay
+  继续由 app coordinator 持有。平台 reopen 或后续托盘 command 只创建一个新设置窗口，
+  并从最新 revisioned snapshot 恢复显示状态；只有显式应用退出才进入全局 shutdown。
 - 平台服务不返回 GPUI 类型，避免框架扩散到业务模块。
 - GPUI 升级必须单独提交，附变更说明、双平台构建和 UI smoke test。
 

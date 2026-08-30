@@ -91,6 +91,10 @@ impl SettingsView {
         cx.notify();
     }
 
+    pub fn snapshot_revision(&self) -> Option<u64> {
+        self.snapshot.as_ref().map(|snapshot| snapshot.revision)
+    }
+
     fn refresh(&mut self, cx: &mut Context<Self>) {
         self.start_request(PendingOperation::Refresh, None, cx);
     }
