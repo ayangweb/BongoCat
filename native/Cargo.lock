@@ -691,6 +691,7 @@ dependencies = [
  "bongocat-config",
  "bongocat-model",
  "bongocat-overlay",
+ "bongocat-platform",
  "bongocat-render",
  "bongocat-runtime",
  "bongocat-ui",
