@@ -38,7 +38,8 @@ pub enum ApplicationError {
     ModelStore(ModelStoreError),
     MotionId(MotionIdError),
     ExpressionId(ExpressionIdError),
-    ActiveModelDeletion(ModelId),
+    PresetModelDeletion(ModelId),
+    SelectedModelDeletion(ModelId),
     RuntimeCommand(SendError),
     RuntimeCommandFailed(RuntimeCommandFailure),
     RuntimeDidNotPublish,
@@ -58,8 +59,15 @@ impl fmt::Display for ApplicationError {
             Self::ModelStore(error) => write!(formatter, "model store failed: {error}"),
             Self::MotionId(error) => write!(formatter, "motion id failed: {error}"),
             Self::ExpressionId(error) => write!(formatter, "expression id failed: {error}"),
-            Self::ActiveModelDeletion(id) => {
-                write!(formatter, "active model cannot be deleted: {}", id.as_str())
+            Self::PresetModelDeletion(id) => {
+                write!(formatter, "preset model cannot be deleted: {}", id.as_str())
+            }
+            Self::SelectedModelDeletion(id) => {
+                write!(
+                    formatter,
+                    "selected model cannot be deleted: {}",
+                    id.as_str()
+                )
             }
             Self::RuntimeCommand(error) => write!(formatter, "runtime command failed: {error}"),
             Self::RuntimeCommandFailed(failure) => write!(
@@ -426,17 +434,28 @@ impl Application {
         Ok(snapshot)
     }
 
-    pub fn delete_model(&mut self, id: impl Into<String>) -> Result<(), ApplicationError> {
+    pub fn delete_model(
+        &mut self,
+        origin: ModelOrigin,
+        id: impl Into<String>,
+    ) -> Result<(), ApplicationError> {
         let id = ModelId::parse(id)?;
-        if self
-            .runtime
-            .client()
-            .snapshot()
-            .active_model
-            .as_ref()
-            .is_some_and(|active| active.id == id)
-        {
-            return Err(ApplicationError::ActiveModelDeletion(id));
+        if origin == ModelOrigin::Preset {
+            return Err(ApplicationError::PresetModelDeletion(id));
+        }
+        let active_installed = self.active_model_origin == Some(ModelOrigin::Installed)
+            && self
+                .runtime
+                .client()
+                .snapshot()
+                .active_model
+                .as_ref()
+                .is_some_and(|active| active.id == id);
+        let configured_installed = self.config.model.selected_model_origin
+            == Some(SelectedModelOrigin::Installed)
+            && self.config.model.selected_model_id.as_deref() == Some(id.as_str());
+        if active_installed || configured_installed {
+            return Err(ApplicationError::SelectedModelDeletion(id));
         }
         self.model_store
             .delete(&id)
@@ -682,7 +701,9 @@ mod tests {
                 && entry.id().as_str() == "unicode"
         }));
 
-        application.delete_model("unicode").expect("delete model");
+        application
+            .delete_model(ModelOrigin::Installed, "unicode")
+            .expect("delete model");
         assert!(installed_catalog_ids(&application).is_empty());
         application.shutdown().expect("clean shutdown");
     }
@@ -774,7 +795,7 @@ mod tests {
     }
 
     #[test]
-    fn active_model_must_be_replaced_before_deletion() {
+    fn selected_installed_model_must_be_replaced_before_deletion() {
         let base = tempdir().expect("temp directory");
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
         let mut application = Application::start_with_layout(layout).expect("start application");
@@ -787,14 +808,70 @@ mod tests {
             .expect("activate model");
 
         let error = application
-            .delete_model("active")
-            .expect_err("active model deletion must fail");
-        assert!(matches!(error, ApplicationError::ActiveModelDeletion(_)));
+            .delete_model(ModelOrigin::Installed, "active")
+            .expect_err("selected model deletion must fail");
+        assert!(matches!(error, ApplicationError::SelectedModelDeletion(_)));
         assert_eq!(
             installed_catalog_ids(&application),
             vec!["active".to_owned()]
         );
         application.shutdown().expect("clean shutdown");
+    }
+
+    #[test]
+    fn installed_duplicate_can_be_deleted_while_same_id_preset_is_selected() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let mut application = Application::start_with_layout(layout).expect("start application");
+        let source = repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型");
+        application
+            .import_model("standard", source)
+            .expect("import duplicate");
+        application
+            .select_model(ModelOrigin::Preset, "standard")
+            .expect("select preset");
+
+        application
+            .delete_model(ModelOrigin::Installed, "standard")
+            .expect("delete installed duplicate");
+        assert!(installed_catalog_ids(&application).is_empty());
+
+        let preset_error = application
+            .delete_model(ModelOrigin::Preset, "standard")
+            .expect_err("preset deletion must fail");
+        assert!(matches!(
+            preset_error,
+            ApplicationError::PresetModelDeletion(_)
+        ));
+        application.shutdown().expect("clean shutdown");
+    }
+
+    #[test]
+    fn configured_installed_model_cannot_be_deleted_before_restart_activation() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let source = repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型");
+        let mut application =
+            Application::start_with_layout(layout.clone()).expect("start application");
+        application
+            .import_model("selected", source)
+            .expect("import model");
+        application
+            .select_model(ModelOrigin::Installed, "selected")
+            .expect("select installed model");
+        application.shutdown().expect("clean shutdown");
+
+        let mut restarted = Application::start_with_layout(layout).expect("restart application");
+        assert!(restarted.runtime_client().snapshot().active_model.is_none());
+        let error = restarted
+            .delete_model(ModelOrigin::Installed, "selected")
+            .expect_err("configured model deletion must fail");
+        assert!(matches!(error, ApplicationError::SelectedModelDeletion(_)));
+        assert_eq!(
+            installed_catalog_ids(&restarted),
+            vec!["selected".to_owned()]
+        );
+        restarted.shutdown().expect("clean restart shutdown");
     }
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]

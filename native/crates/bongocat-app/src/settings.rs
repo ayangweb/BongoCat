@@ -107,6 +107,13 @@ fn run_service(mut application: Application, endpoint: SettingsServiceEndpoint) 
                     .map_err(map_model_import_error);
                 let _ = reply.respond(result);
             }
+            SettingsCommand::DeleteModel { model, reply } => {
+                let result = application
+                    .delete_model(model_origin(model.origin), model.id)
+                    .map(|_| snapshot(&application, &mut clock, true))
+                    .map_err(map_model_delete_error);
+                let _ = reply.respond(result);
+            }
             SettingsCommand::Shutdown { reply } => {
                 let before_shutdown = snapshot(&application, &mut clock, false);
                 let result = application.shutdown().map(|stopped| {
@@ -341,6 +348,36 @@ const fn map_model_store_import_diagnostic(diagnostic: ModelStoreDiagnostic) -> 
     }
 }
 
+fn map_model_delete_error(error: ApplicationError) -> SettingsError {
+    let code = match error {
+        ApplicationError::Model(error) if error.code == ModelDiagnostic::InvalidModelId => {
+            SettingsErrorCode::InvalidModelId
+        }
+        ApplicationError::PresetModelDeletion(_) => SettingsErrorCode::PresetModelCannotBeDeleted,
+        ApplicationError::SelectedModelDeletion(_) => {
+            SettingsErrorCode::SelectedModelCannotBeDeleted
+        }
+        ApplicationError::ModelStore(error) => map_model_store_delete_diagnostic(error.code),
+        error => return map_application_error(error),
+    };
+    SettingsError::new(code)
+}
+
+const fn map_model_store_delete_diagnostic(diagnostic: ModelStoreDiagnostic) -> SettingsErrorCode {
+    match diagnostic {
+        ModelStoreDiagnostic::NotFound => SettingsErrorCode::ModelNotInstalled,
+        ModelStoreDiagnostic::StoreBusy => SettingsErrorCode::ModelStoreBusy,
+        ModelStoreDiagnostic::AlreadyExists
+        | ModelStoreDiagnostic::InvalidPackage
+        | ModelStoreDiagnostic::IoError
+        | ModelStoreDiagnostic::SourceContainsStore
+        | ModelStoreDiagnostic::SourceChanged
+        | ModelStoreDiagnostic::SourceSymlinkUnsupported
+        | ModelStoreDiagnostic::SourceEntryUnsupported
+        | ModelStoreDiagnostic::StoreEntryUnsupported => SettingsErrorCode::ModelDeleteFailed,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -519,7 +556,161 @@ mod tests {
     }
 
     #[test]
-    fn service_maps_invalid_import_inputs_to_stable_errors() {
+    fn every_model_store_delete_diagnostic_has_a_stable_ui_code() {
+        let cases = [
+            (
+                ModelStoreDiagnostic::NotFound,
+                SettingsErrorCode::ModelNotInstalled,
+            ),
+            (
+                ModelStoreDiagnostic::StoreBusy,
+                SettingsErrorCode::ModelStoreBusy,
+            ),
+            (
+                ModelStoreDiagnostic::AlreadyExists,
+                SettingsErrorCode::ModelDeleteFailed,
+            ),
+            (
+                ModelStoreDiagnostic::InvalidPackage,
+                SettingsErrorCode::ModelDeleteFailed,
+            ),
+            (
+                ModelStoreDiagnostic::IoError,
+                SettingsErrorCode::ModelDeleteFailed,
+            ),
+            (
+                ModelStoreDiagnostic::SourceContainsStore,
+                SettingsErrorCode::ModelDeleteFailed,
+            ),
+            (
+                ModelStoreDiagnostic::SourceChanged,
+                SettingsErrorCode::ModelDeleteFailed,
+            ),
+            (
+                ModelStoreDiagnostic::SourceSymlinkUnsupported,
+                SettingsErrorCode::ModelDeleteFailed,
+            ),
+            (
+                ModelStoreDiagnostic::SourceEntryUnsupported,
+                SettingsErrorCode::ModelDeleteFailed,
+            ),
+            (
+                ModelStoreDiagnostic::StoreEntryUnsupported,
+                SettingsErrorCode::ModelDeleteFailed,
+            ),
+        ];
+
+        for (diagnostic, expected) in cases {
+            assert_eq!(map_model_store_delete_diagnostic(diagnostic), expected);
+        }
+    }
+
+    #[test]
+    fn service_deletes_only_unselected_installed_source_identity() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application = Application::start_with_layout(layout).expect("application start");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+
+        let imported = client
+            .import_model_blocking(SettingsModelImportRequest {
+                id: "standard".to_owned(),
+                source_root: model_fixture(),
+            })
+            .expect("import installed duplicate");
+        let selected = client
+            .select_model_blocking(SettingsModelKey {
+                id: "standard".to_owned(),
+                origin: SettingsModelOrigin::Preset,
+            })
+            .expect("select preset duplicate");
+        let deleted = client
+            .delete_model_blocking(SettingsModelKey {
+                id: "standard".to_owned(),
+                origin: SettingsModelOrigin::Installed,
+            })
+            .expect("delete installed duplicate");
+        assert!(selected.revision > imported.revision);
+        assert!(deleted.revision > selected.revision);
+        assert_eq!(
+            deleted.active_model,
+            Some(SettingsModelKey {
+                id: "standard".to_owned(),
+                origin: SettingsModelOrigin::Preset,
+            })
+        );
+        assert!(!deleted.model_catalog.entries.iter().any(|entry| {
+            entry.id == "standard" && entry.origin == SettingsModelOrigin::Installed
+        }));
+        assert!(deleted.model_catalog.entries.iter().any(|entry| {
+            entry.id == "standard" && entry.origin == SettingsModelOrigin::Preset
+        }));
+
+        let preset_error = client
+            .delete_model_blocking(SettingsModelKey {
+                id: "standard".to_owned(),
+                origin: SettingsModelOrigin::Preset,
+            })
+            .expect_err("preset deletion");
+        assert_eq!(
+            preset_error.code(),
+            SettingsErrorCode::PresetModelCannotBeDeleted
+        );
+        let missing_error = client
+            .delete_model_blocking(SettingsModelKey {
+                id: "missing".to_owned(),
+                origin: SettingsModelOrigin::Installed,
+            })
+            .expect_err("missing installed model");
+        assert_eq!(missing_error.code(), SettingsErrorCode::ModelNotInstalled);
+
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
+    }
+
+    #[test]
+    fn service_rejects_deleting_the_selected_installed_model() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application = Application::start_with_layout(layout).expect("application start");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+        client
+            .import_model_blocking(SettingsModelImportRequest {
+                id: "selected".to_owned(),
+                source_root: model_fixture(),
+            })
+            .expect("import model");
+        let selected = client
+            .select_model_blocking(SettingsModelKey {
+                id: "selected".to_owned(),
+                origin: SettingsModelOrigin::Installed,
+            })
+            .expect("select installed model");
+
+        let error = client
+            .delete_model_blocking(SettingsModelKey {
+                id: "selected".to_owned(),
+                origin: SettingsModelOrigin::Installed,
+            })
+            .expect_err("selected deletion");
+        assert_eq!(
+            error.code(),
+            SettingsErrorCode::SelectedModelCannotBeDeleted
+        );
+        let unchanged = client.read_snapshot_blocking().expect("unchanged snapshot");
+        assert_eq!(unchanged.revision, selected.revision);
+        assert!(unchanged.model_catalog.entries.iter().any(|entry| {
+            entry.id == "selected" && entry.origin == SettingsModelOrigin::Installed
+        }));
+
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
+    }
+
+    #[test]
+    fn service_maps_invalid_model_inputs_to_stable_errors() {
         let base = tempdir().expect("temporary storage");
         let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
         let application = Application::start_with_layout(layout).expect("application start");
@@ -533,6 +724,14 @@ mod tests {
             })
             .expect_err("invalid model id");
         assert_eq!(invalid_id.code(), SettingsErrorCode::InvalidModelId);
+
+        let invalid_delete_id = client
+            .delete_model_blocking(SettingsModelKey {
+                id: "../escape".to_owned(),
+                origin: SettingsModelOrigin::Installed,
+            })
+            .expect_err("invalid delete model id");
+        assert_eq!(invalid_delete_id.code(), SettingsErrorCode::InvalidModelId);
 
         let invalid_package_source = tempdir().expect("invalid package");
         std::fs::write(

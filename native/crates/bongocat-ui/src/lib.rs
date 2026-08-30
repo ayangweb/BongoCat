@@ -115,6 +115,10 @@ pub enum SettingsErrorCode {
     ModelImportSourceUnsupported,
     ModelStoreBusy,
     ModelImportFailed,
+    PresetModelCannotBeDeleted,
+    SelectedModelCannotBeDeleted,
+    ModelNotInstalled,
+    ModelDeleteFailed,
     WindowUnavailable,
     ShutdownFailed,
 }
@@ -152,6 +156,12 @@ impl fmt::Display for SettingsError {
             }
             SettingsErrorCode::ModelStoreBusy => "model storage is busy",
             SettingsErrorCode::ModelImportFailed => "model could not be imported",
+            SettingsErrorCode::PresetModelCannotBeDeleted => "preset model cannot be deleted",
+            SettingsErrorCode::SelectedModelCannotBeDeleted => {
+                "selected model must be replaced before deletion"
+            }
+            SettingsErrorCode::ModelNotInstalled => "installed model was not found",
+            SettingsErrorCode::ModelDeleteFailed => "installed model could not be deleted",
             SettingsErrorCode::WindowUnavailable => "settings window could not be hidden",
             SettingsErrorCode::ShutdownFailed => "application shutdown did not complete",
         })
@@ -188,6 +198,10 @@ pub enum SettingsCommand {
     },
     ImportModel {
         request: SettingsModelImportRequest,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    DeleteModel {
+        model: SettingsModelKey,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     Shutdown {
@@ -262,6 +276,14 @@ impl SettingsClient {
             .await
     }
 
+    pub async fn delete_model(
+        &self,
+        model: SettingsModelKey,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::DeleteModel { model, reply })
+            .await
+    }
+
     pub async fn shutdown(&self) -> Result<SettingsSnapshot, SettingsError> {
         self.request(|reply| SettingsCommand::Shutdown { reply })
             .await
@@ -297,6 +319,13 @@ impl SettingsClient {
         request: SettingsModelImportRequest,
     ) -> Result<SettingsSnapshot, SettingsError> {
         self.request_blocking(|reply| SettingsCommand::ImportModel { request, reply })
+    }
+
+    pub fn delete_model_blocking(
+        &self,
+        model: SettingsModelKey,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::DeleteModel { model, reply })
     }
 
     pub fn shutdown_blocking(&self) -> Result<SettingsSnapshot, SettingsError> {
@@ -414,6 +443,35 @@ mod tests {
             .import_model_blocking(expected)
             .expect("import snapshot");
         assert_eq!(imported.revision, 2);
+        worker.join().expect("worker join");
+    }
+
+    #[test]
+    fn model_delete_command_preserves_source_identity() {
+        let (client, endpoint) = SettingsClient::bounded(1);
+        let expected = SettingsModelKey {
+            id: "custom-model".to_owned(),
+            origin: SettingsModelOrigin::Installed,
+        };
+        let worker = thread::spawn({
+            let expected = expected.clone();
+            move || {
+                let SettingsCommand::DeleteModel { model, reply } =
+                    endpoint.recv_blocking().expect("delete command")
+                else {
+                    panic!("unexpected command");
+                };
+                assert_eq!(model, expected);
+                reply
+                    .respond(Ok(snapshot(3, true, true)))
+                    .expect("delete reply");
+            }
+        });
+
+        let deleted = client
+            .delete_model_blocking(expected)
+            .expect("delete snapshot");
+        assert_eq!(deleted.revision, 3);
         worker.join().expect("worker join");
     }
 

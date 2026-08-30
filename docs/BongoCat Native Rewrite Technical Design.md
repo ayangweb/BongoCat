@@ -438,6 +438,9 @@ com.ayangweb.bongo-cat
   可操作且不含用户路径的导入错误码。settings snapshot revision 同时观察 runtime 变化并为
   catalog-only 变化递增，禁止返回内容已变但 revision 未变的快照；完整页面再以 operation ID
   提供 progress 与 cancel。
+- 模型删除 command 同样携带 `(origin, model_id)`；preset 永不可删。installed 模型只有在既
+  不是当前 runtime active、也不是配置所选来源时才能以 rename 后删除事务退休；同 ID preset
+  不得阻止删除 installed 副本。成功只刷新 catalog，不隐式切模或改写配置。
 - 更新只允许 HTTPS，安装包和更新包必须签名并支持失败回滚。
 - 日志不记录真实按键序列、剪贴板内容或用户文件内容。
 

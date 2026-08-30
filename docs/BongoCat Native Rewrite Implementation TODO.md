@@ -1215,6 +1215,15 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
       ID、progress、cancel、系统文件选择 wrapper 及模型页面 loading/error/retry 属于后续任务。
       ui/app 定向测试与完整 Native format、Clippy、workspace test、release check、Linux shared
       contract check 本机通过，远端 Windows/macOS/Ubuntu 门禁待本提交验证，因此保持未勾选。
+21. [ ] `P4-MODEL-DELETE-COMMAND`：按来源身份安全删除未选择的 installed 模型。
+    - 依赖：`P4-MODEL-CATALOG`、`P4-MODEL-SELECTION`、`ModelStore` rename-delete transaction。
+    - 退出条件：typed command 携带 `(origin, id)`；preset 和当前 runtime/config 所选 installed
+      均拒绝；激活同 ID preset 不阻塞删除 installed 副本；成功刷新 catalog/revision 且不切模
+      或改配置；非法 ID、未安装、store busy/I/O 返回稳定无路径错误；app/ui 定向测试与完整
+      Native workspace 门禁通过。
+    - 状态（2026-08-31）：核心来源判断、typed client/service 与错误映射已实现；app/ui 定向
+      测试与完整 Native format、Clippy、workspace test、release check 本机通过，远端
+      Windows/macOS/Ubuntu 门禁待本提交验证，因此保持未勾选。
 
 ## 13. 待决策清单
 
