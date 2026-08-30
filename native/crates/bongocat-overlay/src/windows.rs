@@ -389,6 +389,7 @@ struct Renderer {
     staging_texture: ID3D11Texture2D,
     back_buffer: ID3D11Texture2D,
     swap_chain: IDXGISwapChain1,
+    memory_adapter: IDXGIAdapter3,
     pipelines: Pipelines,
     context: ID3D11DeviceContext,
     device: ID3D11Device,
@@ -422,6 +423,7 @@ impl Renderer {
         let (device, context) = unsafe { create_d3d11_device()? };
         let dxgi_device: IDXGIDevice = device.cast()?;
         let adapter: IDXGIAdapter = unsafe { dxgi_device.GetAdapter()? };
+        let memory_adapter: IDXGIAdapter3 = adapter.cast()?;
         let factory: IDXGIFactory2 = unsafe { adapter.GetParent()? };
         let descriptor = DXGI_SWAP_CHAIN_DESC1 {
             Width: window.width,
@@ -471,6 +473,7 @@ impl Renderer {
             staging_texture,
             back_buffer,
             swap_chain,
+            memory_adapter,
             pipelines,
             context,
             device,
@@ -520,22 +523,14 @@ impl Renderer {
 
     fn current_local_memory_usage(&self) -> Result<u64, OverlayError> {
         self.assert_owner_thread();
-        let dxgi_device: IDXGIDevice = self
-            .device
-            .cast()
-            .map_err(windows_error("query renderer DXGI device"))?;
-        // SAFETY: the adapter is synchronously queried on the renderer owner
-        // thread and is retained by the returned COM interface.
-        let adapter: IDXGIAdapter = unsafe { dxgi_device.GetAdapter() }
-            .map_err(windows_error("query renderer DXGI adapter"))?;
-        let adapter: IDXGIAdapter3 = adapter
-            .cast()
-            .map_err(windows_error("query renderer DXGI adapter3"))?;
         let mut info = DXGI_QUERY_VIDEO_MEMORY_INFO::default();
         // SAFETY: node zero is the primary adapter node and info is writable
         // for the complete synchronous QueryVideoMemoryInfo call.
-        unsafe { adapter.QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &mut info) }
-            .map_err(windows_error("query renderer local video memory"))?;
+        unsafe {
+            self.memory_adapter
+                .QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &mut info)
+        }
+        .map_err(windows_error("query renderer local video memory"))?;
         Ok(info.CurrentUsage)
     }
 
@@ -1051,6 +1046,9 @@ pub(crate) fn run_model_switch_preview(
         ));
     }
 
+    // Initialize the DXGI memory-query path before sampling the warmup thread
+    // high-water mark. Some drivers create a helper thread on the first query.
+    let _ = overlay.renderer.current_local_memory_usage()?;
     let switches_per_cycle = models.len() as u64;
     let warmup_switches = SWITCH_WARMUP_CYCLES.saturating_mul(switches_per_cycle);
     let target_switches = u64::from(switch_cycles).saturating_mul(switches_per_cycle);
