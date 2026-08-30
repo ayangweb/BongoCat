@@ -1,0 +1,506 @@
+use std::collections::{BTreeMap, BTreeSet};
+
+pub const DEFAULT_MISSING_CONFIRMATIONS: u8 = 2;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct MonotonicMillis(u64);
+
+impl MonotonicMillis {
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+
+    pub const fn value(self) -> u64 {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct PhysicalKey(u16);
+
+impl PhysicalKey {
+    pub const KEY_A: Self = Self(0x04);
+    pub const LEFT_CONTROL: Self = Self(0xe0);
+    pub const LEFT_ALT: Self = Self(0xe2);
+
+    pub const fn from_hid_usage(usage: u16) -> Self {
+        Self(usage)
+    }
+
+    pub const fn hid_usage(self) -> u16 {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum MouseButton {
+    Left,
+    Right,
+    Middle,
+    Back,
+    Forward,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum InputControl {
+    Key(PhysicalKey),
+    Mouse(MouseButton),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InputEdge {
+    Down,
+    Up,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InputSource {
+    Capture,
+    Reconciliation,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InputResetReason {
+    SessionLock,
+    Sleep,
+    DeviceRemoved,
+    ServiceRestart,
+    QueueOverflow,
+    PermissionChanged,
+    SequenceGap,
+    NonMonotonicTime,
+    Test,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum InputEvent {
+    Edge {
+        control: InputControl,
+        edge: InputEdge,
+        source: InputSource,
+        at: MonotonicMillis,
+    },
+    Reconcile {
+        pressed: BTreeSet<InputControl>,
+        at: MonotonicMillis,
+    },
+    Reset {
+        reason: InputResetReason,
+        at: MonotonicMillis,
+    },
+}
+
+impl InputEvent {
+    const fn at(&self) -> MonotonicMillis {
+        match self {
+            Self::Edge { at, .. } | Self::Reconcile { at, .. } | Self::Reset { at, .. } => *at,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SequencedInputEvent {
+    pub sequence: u64,
+    pub event: InputEvent,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ReconciliationPolicy {
+    missing_confirmations: u8,
+}
+
+impl ReconciliationPolicy {
+    pub const fn new(missing_confirmations: u8) -> Option<Self> {
+        if missing_confirmations == 0 {
+            None
+        } else {
+            Some(Self {
+                missing_confirmations,
+            })
+        }
+    }
+
+    pub const fn missing_confirmations(self) -> u8 {
+        self.missing_confirmations
+    }
+}
+
+impl Default for ReconciliationPolicy {
+    fn default() -> Self {
+        Self {
+            missing_confirmations: DEFAULT_MISSING_CONFIRMATIONS,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct InputDiagnostics {
+    pub captured_down: u64,
+    pub captured_up: u64,
+    pub reconciled_release: u64,
+    pub released_by_reset: u64,
+    pub duplicate_down: u64,
+    pub unmatched_release: u64,
+    pub invalid_source: u64,
+    pub reset_count: u64,
+    pub sequence_gap_count: u64,
+    pub missing_sequence_count: u64,
+    pub duplicate_sequence_count: u64,
+    pub out_of_order_sequence_count: u64,
+    pub non_monotonic_time_count: u64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct InputSnapshot {
+    pub pressed_key_count: usize,
+    pub pressed_mouse_button_count: usize,
+    pub last_reset_reason: Option<InputResetReason>,
+    pub last_input_sequence: Option<u64>,
+    pub diagnostics: InputDiagnostics,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InputDisposition {
+    Applied,
+    AppliedAfterSequenceGap { missing: u64 },
+    DuplicateSequence,
+    OutOfOrderSequence,
+    ResetForNonMonotonicTime,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct PressedRecord {
+    source: InputSource,
+    pressed_at: MonotonicMillis,
+    last_reconciled_at: Option<MonotonicMillis>,
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct InputState {
+    pressed: BTreeMap<InputControl, PressedRecord>,
+    missing_confirmations: BTreeMap<InputControl, u8>,
+    policy: ReconciliationPolicy,
+    diagnostics: InputDiagnostics,
+    last_sequence: Option<u64>,
+    last_timestamp: Option<MonotonicMillis>,
+    last_reset_reason: Option<InputResetReason>,
+}
+
+impl InputState {
+    pub(crate) fn apply(&mut self, envelope: SequencedInputEvent) -> InputDisposition {
+        let gap = if let Some(last_sequence) = self.last_sequence {
+            if envelope.sequence == last_sequence {
+                self.diagnostics.duplicate_sequence_count =
+                    self.diagnostics.duplicate_sequence_count.saturating_add(1);
+                return InputDisposition::DuplicateSequence;
+            }
+            if envelope.sequence < last_sequence {
+                self.diagnostics.out_of_order_sequence_count = self
+                    .diagnostics
+                    .out_of_order_sequence_count
+                    .saturating_add(1);
+                return InputDisposition::OutOfOrderSequence;
+            }
+            envelope.sequence - last_sequence - 1
+        } else {
+            0
+        };
+        self.last_sequence = Some(envelope.sequence);
+        if gap > 0 {
+            self.diagnostics.sequence_gap_count =
+                self.diagnostics.sequence_gap_count.saturating_add(1);
+            self.diagnostics.missing_sequence_count =
+                self.diagnostics.missing_sequence_count.saturating_add(gap);
+        }
+
+        let event_time = envelope.event.at();
+        if self
+            .last_timestamp
+            .is_some_and(|last_timestamp| event_time < last_timestamp)
+        {
+            self.diagnostics.non_monotonic_time_count =
+                self.diagnostics.non_monotonic_time_count.saturating_add(1);
+            self.reset(InputResetReason::NonMonotonicTime);
+            return InputDisposition::ResetForNonMonotonicTime;
+        }
+        self.last_timestamp = Some(event_time);
+
+        if gap > 0 {
+            self.reset(InputResetReason::SequenceGap);
+            self.apply_event(envelope.event);
+            return InputDisposition::AppliedAfterSequenceGap { missing: gap };
+        }
+        self.apply_event(envelope.event);
+        InputDisposition::Applied
+    }
+
+    pub(crate) fn force_reset(&mut self, reason: InputResetReason) {
+        self.reset(reason);
+    }
+
+    pub(crate) fn snapshot(&self) -> InputSnapshot {
+        InputSnapshot {
+            pressed_key_count: self
+                .pressed
+                .keys()
+                .filter(|control| matches!(control, InputControl::Key(_)))
+                .count(),
+            pressed_mouse_button_count: self
+                .pressed
+                .keys()
+                .filter(|control| matches!(control, InputControl::Mouse(_)))
+                .count(),
+            last_reset_reason: self.last_reset_reason,
+            last_input_sequence: self.last_sequence,
+            diagnostics: self.diagnostics,
+        }
+    }
+
+    #[cfg(test)]
+    fn record(&self, control: InputControl) -> Option<PressedRecord> {
+        self.pressed.get(&control).copied()
+    }
+
+    fn apply_event(&mut self, event: InputEvent) {
+        match event {
+            InputEvent::Edge {
+                control,
+                edge,
+                source,
+                at,
+            } => match edge {
+                InputEdge::Down => {
+                    if source != InputSource::Capture {
+                        self.diagnostics.invalid_source =
+                            self.diagnostics.invalid_source.saturating_add(1);
+                        return;
+                    }
+                    self.missing_confirmations.remove(&control);
+                    match self.pressed.entry(control) {
+                        std::collections::btree_map::Entry::Vacant(entry) => {
+                            entry.insert(PressedRecord {
+                                source,
+                                pressed_at: at,
+                                last_reconciled_at: None,
+                            });
+                            self.diagnostics.captured_down =
+                                self.diagnostics.captured_down.saturating_add(1);
+                        }
+                        std::collections::btree_map::Entry::Occupied(_) => {
+                            self.diagnostics.duplicate_down =
+                                self.diagnostics.duplicate_down.saturating_add(1);
+                        }
+                    }
+                }
+                InputEdge::Up => {
+                    self.missing_confirmations.remove(&control);
+                    let released = self.pressed.remove(&control).is_some();
+                    if !released {
+                        self.diagnostics.unmatched_release =
+                            self.diagnostics.unmatched_release.saturating_add(1);
+                    }
+                    match source {
+                        InputSource::Capture => {
+                            self.diagnostics.captured_up =
+                                self.diagnostics.captured_up.saturating_add(1);
+                        }
+                        InputSource::Reconciliation => {
+                            if released {
+                                self.diagnostics.reconciled_release =
+                                    self.diagnostics.reconciled_release.saturating_add(1);
+                            }
+                        }
+                    }
+                }
+            },
+            InputEvent::Reconcile { pressed, at } => {
+                let controls = self.pressed.keys().copied().collect::<Vec<_>>();
+                for control in controls {
+                    if pressed.contains(&control) {
+                        self.missing_confirmations.remove(&control);
+                        if let Some(record) = self.pressed.get_mut(&control) {
+                            record.last_reconciled_at = Some(at);
+                        }
+                        continue;
+                    }
+                    let confirmations = self.missing_confirmations.entry(control).or_insert(0);
+                    *confirmations = confirmations.saturating_add(1);
+                    if *confirmations >= self.policy.missing_confirmations() {
+                        self.missing_confirmations.remove(&control);
+                        self.pressed.remove(&control);
+                        self.diagnostics.reconciled_release =
+                            self.diagnostics.reconciled_release.saturating_add(1);
+                    }
+                }
+            }
+            InputEvent::Reset { reason, .. } => self.reset(reason),
+        }
+    }
+
+    fn reset(&mut self, reason: InputResetReason) {
+        self.diagnostics.released_by_reset = self
+            .diagnostics
+            .released_by_reset
+            .saturating_add(self.pressed.len() as u64);
+        self.pressed.clear();
+        self.missing_confirmations.clear();
+        self.last_reset_reason = Some(reason);
+        self.diagnostics.reset_count = self.diagnostics.reset_count.saturating_add(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const A: InputControl = InputControl::Key(PhysicalKey::KEY_A);
+    const CTRL: InputControl = InputControl::Key(PhysicalKey::LEFT_CONTROL);
+    const ALT: InputControl = InputControl::Key(PhysicalKey::LEFT_ALT);
+
+    fn edge(sequence: u64, at: u64, control: InputControl, edge: InputEdge) -> SequencedInputEvent {
+        SequencedInputEvent {
+            sequence,
+            event: InputEvent::Edge {
+                control,
+                edge,
+                source: InputSource::Capture,
+                at: MonotonicMillis::new(at),
+            },
+        }
+    }
+
+    #[test]
+    fn issue_47_lost_release_is_reconciled_without_clearing_held_keys_early() {
+        let mut state = InputState::default();
+        state.apply(edge(0, 0, CTRL, InputEdge::Down));
+        state.apply(edge(1, 1, ALT, InputEdge::Down));
+        state.apply(edge(2, 2, A, InputEdge::Down));
+        state.apply(edge(3, 3, ALT, InputEdge::Up));
+        state.apply(edge(4, 4, CTRL, InputEdge::Up));
+
+        state.apply(SequencedInputEvent {
+            sequence: 5,
+            event: InputEvent::Reconcile {
+                pressed: BTreeSet::new(),
+                at: MonotonicMillis::new(250),
+            },
+        });
+        assert!(state.record(A).is_some());
+        state.apply(SequencedInputEvent {
+            sequence: 6,
+            event: InputEvent::Reconcile {
+                pressed: BTreeSet::new(),
+                at: MonotonicMillis::new(500),
+            },
+        });
+
+        assert_eq!(state.snapshot().pressed_key_count, 0);
+        assert_eq!(state.snapshot().diagnostics.reconciled_release, 1);
+    }
+
+    #[test]
+    fn sequence_gap_resets_unknown_state_before_current_edge() {
+        let mut state = InputState::default();
+        state.apply(edge(10, 0, CTRL, InputEdge::Down));
+        assert_eq!(
+            state.apply(edge(12, 1, A, InputEdge::Down)),
+            InputDisposition::AppliedAfterSequenceGap { missing: 1 }
+        );
+        assert!(state.record(CTRL).is_none());
+        assert!(state.record(A).is_some());
+        assert_eq!(
+            state.snapshot().last_reset_reason,
+            Some(InputResetReason::SequenceGap)
+        );
+    }
+
+    #[test]
+    fn duplicate_and_out_of_order_sequences_never_apply_release() {
+        let mut state = InputState::default();
+        state.apply(edge(4, 10, A, InputEdge::Down));
+        assert_eq!(
+            state.apply(edge(4, 11, A, InputEdge::Up)),
+            InputDisposition::DuplicateSequence
+        );
+        assert_eq!(
+            state.apply(edge(3, 12, A, InputEdge::Up)),
+            InputDisposition::OutOfOrderSequence
+        );
+        assert!(state.record(A).is_some());
+    }
+
+    #[test]
+    fn non_monotonic_time_resets_pressed_state() {
+        let mut state = InputState::default();
+        state.apply(edge(0, 10, A, InputEdge::Down));
+        assert_eq!(
+            state.apply(edge(1, 9, CTRL, InputEdge::Down)),
+            InputDisposition::ResetForNonMonotonicTime
+        );
+        assert_eq!(state.snapshot().pressed_key_count, 0);
+        assert_eq!(
+            state.snapshot().last_reset_reason,
+            Some(InputResetReason::NonMonotonicTime)
+        );
+    }
+
+    #[test]
+    fn pressed_record_retains_source_and_monotonic_times() {
+        let mut state = InputState::default();
+        state.apply(edge(0, 10, A, InputEdge::Down));
+        state.apply(SequencedInputEvent {
+            sequence: 1,
+            event: InputEvent::Reconcile {
+                pressed: BTreeSet::from([A]),
+                at: MonotonicMillis::new(250),
+            },
+        });
+        assert_eq!(
+            state.record(A),
+            Some(PressedRecord {
+                source: InputSource::Capture,
+                pressed_at: MonotonicMillis::new(10),
+                last_reconciled_at: Some(MonotonicMillis::new(250)),
+            })
+        );
+    }
+
+    #[test]
+    fn reset_clears_keyboard_and_mouse_together() {
+        let mut state = InputState::default();
+        state.apply(edge(0, 0, A, InputEdge::Down));
+        state.apply(edge(
+            1,
+            1,
+            InputControl::Mouse(MouseButton::Left),
+            InputEdge::Down,
+        ));
+        state.apply(SequencedInputEvent {
+            sequence: 2,
+            event: InputEvent::Reset {
+                reason: InputResetReason::QueueOverflow,
+                at: MonotonicMillis::new(2),
+            },
+        });
+        let snapshot = state.snapshot();
+        assert_eq!(snapshot.pressed_key_count, 0);
+        assert_eq!(snapshot.pressed_mouse_button_count, 0);
+        assert_eq!(snapshot.diagnostics.released_by_reset, 2);
+    }
+
+    #[test]
+    fn reconciliation_cannot_synthesize_a_pressed_control() {
+        let mut state = InputState::default();
+        state.apply(SequencedInputEvent {
+            sequence: 0,
+            event: InputEvent::Edge {
+                control: A,
+                edge: InputEdge::Down,
+                source: InputSource::Reconciliation,
+                at: MonotonicMillis::new(0),
+            },
+        });
+        assert_eq!(state.snapshot().pressed_key_count, 0);
+        assert_eq!(state.snapshot().diagnostics.invalid_source, 1);
+    }
+}

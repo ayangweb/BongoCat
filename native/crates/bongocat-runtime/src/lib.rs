@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+mod input;
+
 use bongocat_model::{ModelSnapshot, PreparedModel};
 use std::{
     fmt,
@@ -11,6 +13,13 @@ use std::{
     time::{Duration, Instant},
 };
 
+use input::InputState;
+pub use input::{
+    InputControl, InputDiagnostics, InputDisposition, InputEdge, InputEvent, InputResetReason,
+    InputSnapshot, InputSource, MonotonicMillis, MouseButton, PhysicalKey, ReconciliationPolicy,
+    SequencedInputEvent,
+};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RuntimeState {
     Starting,
@@ -19,17 +28,11 @@ pub enum RuntimeState {
     Stopped,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum InputResetReason {
-    QueueOverflow,
-    SessionChanged,
-    ProducerRestarted,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RuntimeCommand {
     SetOverlayVisible(bool),
     ResetInput(InputResetReason),
+    ApplyInput(Arc<SequencedInputEvent>),
     ActivateModel(Arc<PreparedModel>),
 }
 
@@ -39,18 +42,18 @@ pub struct RuntimeSnapshot {
     pub state: RuntimeState,
     pub overlay_visible: bool,
     pub active_model: Option<ModelSnapshot>,
-    pub input_reset_count: u64,
+    pub input: InputSnapshot,
     pub last_command_sequence: Option<u64>,
 }
 
 impl RuntimeSnapshot {
-    const fn starting(overlay_visible: bool) -> Self {
+    fn starting(overlay_visible: bool) -> Self {
         Self {
             revision: 0,
             state: RuntimeState::Starting,
             overlay_visible,
             active_model: None,
-            input_reset_count: 0,
+            input: InputSnapshot::default(),
             last_command_sequence: None,
         }
     }
@@ -327,6 +330,7 @@ fn publish(snapshot_cell: &SnapshotCell, update: impl FnOnce(&mut RuntimeSnapsho
 
 fn run_worker(receiver: Receiver<CommandEnvelope>, snapshot: Arc<SnapshotCell>) {
     let mut active_model = None;
+    let mut input_state = InputState::default();
     publish(&snapshot, |current| current.state = RuntimeState::Ready);
     while let Ok(envelope) = receiver.recv() {
         let sequence = envelope.sequence;
@@ -337,11 +341,19 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, snapshot: Arc<SnapshotCell>) 
                     current.last_command_sequence = Some(sequence);
                 });
             }
-            WorkerCommand::Product(RuntimeCommand::ResetInput(_)) => {
+            WorkerCommand::Product(RuntimeCommand::ResetInput(reason)) => {
+                input_state.force_reset(reason);
                 publish(&snapshot, |current| {
-                    current.input_reset_count = current.input_reset_count.saturating_add(1);
+                    current.input = input_state.snapshot();
                     current.last_command_sequence = Some(sequence);
                 })
+            }
+            WorkerCommand::Product(RuntimeCommand::ApplyInput(envelope)) => {
+                input_state.apply(Arc::unwrap_or_clone(envelope));
+                publish(&snapshot, |current| {
+                    current.input = input_state.snapshot();
+                    current.last_command_sequence = Some(sequence);
+                });
             }
             WorkerCommand::Product(RuntimeCommand::ActivateModel(prepared)) => {
                 let model_snapshot = prepared.snapshot();
@@ -411,14 +423,58 @@ mod tests {
             .wait_for_revision(1, TIMEOUT)
             .expect("ready snapshot");
         client
-            .send(RuntimeCommand::ResetInput(
-                InputResetReason::ProducerRestarted,
-            ))
+            .send(RuntimeCommand::ResetInput(InputResetReason::ServiceRestart))
             .expect("reset accepted");
         let reset = client
             .wait_for_revision(ready.revision + 1, TIMEOUT)
             .expect("reset snapshot");
-        assert_eq!(reset.input_reset_count, 1);
+        assert_eq!(reset.input.diagnostics.reset_count, 1);
+        assert_eq!(
+            reset.input.last_reset_reason,
+            Some(InputResetReason::ServiceRestart)
+        );
+        owner.shutdown(TIMEOUT).expect("clean shutdown");
+    }
+
+    #[test]
+    fn runtime_applies_reliable_input_and_reconciled_release() {
+        let owner = RuntimeOwner::start(true, 8);
+        let client = owner.client();
+        client
+            .wait_for_revision(1, TIMEOUT)
+            .expect("ready snapshot");
+        let down_sequence = client
+            .send(RuntimeCommand::ApplyInput(Arc::new(SequencedInputEvent {
+                sequence: 0,
+                event: InputEvent::Edge {
+                    control: InputControl::Key(PhysicalKey::KEY_A),
+                    edge: InputEdge::Down,
+                    source: InputSource::Capture,
+                    at: MonotonicMillis::new(0),
+                },
+            })))
+            .expect("key down accepted");
+        let pressed = client
+            .wait_for_command(down_sequence, TIMEOUT)
+            .expect("pressed snapshot");
+        assert_eq!(pressed.input.pressed_key_count, 1);
+
+        let release_sequence = client
+            .send(RuntimeCommand::ApplyInput(Arc::new(SequencedInputEvent {
+                sequence: 1,
+                event: InputEvent::Edge {
+                    control: InputControl::Key(PhysicalKey::KEY_A),
+                    edge: InputEdge::Up,
+                    source: InputSource::Reconciliation,
+                    at: MonotonicMillis::new(500),
+                },
+            })))
+            .expect("reconciled key up accepted");
+        let released = client
+            .wait_for_command(release_sequence, TIMEOUT)
+            .expect("released snapshot");
+        assert_eq!(released.input.pressed_key_count, 0);
+        assert_eq!(released.input.diagnostics.reconciled_release, 1);
         owner.shutdown(TIMEOUT).expect("clean shutdown");
     }
 

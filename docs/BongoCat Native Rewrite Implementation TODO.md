@@ -348,19 +348,25 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 - [ ] 定义 AppCommand、InputEvent、RuntimeSnapshot、RenderSnapshot。
   - 状态（2026-08-30）：正式 runtime 已有 typed `RuntimeCommand`、带 revision/
-    command sequence 的 `RuntimeSnapshot` 和模型摘要；`wait_for_command` 可区分并发
-    command 的完成。`InputEvent`、`RenderSnapshot` 与完整 product command 集仍待实现。
+    command sequence 的 `RuntimeSnapshot`、模型摘要及项目自有 `InputEvent`/
+    `InputSnapshot`；`wait_for_command` 可区分并发 command 的完成。`RenderSnapshot` 与
+    完整 product command 集仍待实现。
 - [ ] 单一 runtime owner 管理可变业务状态。
-  - 状态（2026-08-30）：正式 runtime worker 已独占 overlay、input reset 计数和
-    `PreparedModel`，应用与 UI client 只通过有界 typed command 和 snapshot 访问；输入、
-    动画与 Live2D 状态接入后再完成总项。
+  - 状态（2026-08-30）：正式 runtime worker 已独占 overlay、pressed input、输入诊断和
+    `PreparedModel`，应用与 UI client 只通过有界 typed command 和 snapshot 访问；动画与
+    Live2D 状态接入后再完成总项。
 - [ ] key/button edge 和 command 使用可靠有序队列。
+  - 状态（2026-08-30）：正式 `ApplyInput` 与其他 command 共用有界 FIFO，input event
+    另带独立单调 sequence；平台 producer 接入及溢出后的主动 recovery publish 仍待完成。
 - [ ] 为每个可靠队列定义容量、生产者、消费者、满载策略和关闭语义，不使用无界队列逃避背压设计。
   - 状态（2026-08-28）：`spikes/input-queue/` 已验证固定容量 FIFO、满载返回原事件、关闭 drain 和 latest-value 槽位；`spikes/runtime-contract/` 进一步验证固定容量 command queue、Condvar 唤醒、溢出 Reset、worker drain 和 join 报告；runtime 的实际容量与产品 channel 选型仍待产品 crate。
 - [ ] edge/command 携带单调 sequence id，诊断可发现乱序、重复和丢失但不记录具体键值。
   - 状态（2026-08-29）：Windows callback queue 的 edge、Reset 和 reconcile tick 已携带单调 `u64` sequence，正常压力路径要求 gap/duplicate 均为 0，受控 overflow 以 discarded backlog 数量产生等量 gap 并由 Reset 恢复。command queue 与产品 runtime 的统一 sequence contract 仍待实现，因此保持未勾选。
   - 状态（2026-08-29）：macOS callback queue 也已为 edge/Reset 分配单调 `u64` sequence，overflow Reset 继承被拒事件序号，consumer 统计 gap 与 duplicate/out-of-order；普通 tap、timeout/user disable 和 lifecycle 本机回归均为 0。commit `d7501dc` 的 push run `33257871184` 已通过 contract job `99114627795` 及原生 macOS job `99114627654` 的 input check/Clippy/test/release 门禁。command queue 与产品 runtime 的统一 contract 仍待实现，因此保持未勾选。
   - 状态（2026-08-28）：`spikes/input-state/` 已验证可靠输入事件的重复/乱序忽略与跳号安全 reset；`spikes/runtime-contract/` 已验证 typed command sequence、跳号前 `WorkerRecovery` reset、重复/过期 sequence 丢弃和诊断计数；平台 producer、输入事件 sequence 与产品 runtime 接入仍待产品 crate。
+  - 状态（2026-08-30）：产品 runtime 现分别维护 command sequence 与 input sequence；
+    input 重复/乱序计数后忽略，跳号计数缺失数量、先以 `SequenceGap` Reset 再应用当前
+    边沿，snapshot 只暴露聚合诊断。Windows/macOS producer 尚未接入正式 crate。
 - [ ] cursor/gamepad axis 使用 latest-value 合并通道。
   - 状态（2026-08-29）：Windows RAWMOUSE movement 已从可靠 edge FIFO 分流到独立 latest-value 槽位；safe decoder 保留 relative/absolute/virtual-desktop 语义，16ms owner tick 在 callback 外查询当前 cursor，pointer flood 要求 captured sample 全部由 coalesced 或 consumed 解释且不影响 keyboard release。commit `098d532` 的 push run `33258305541`、Windows job `99115756881` 已通过强化后的 3072 movement/1536 keyboard edge 回归。Gamepad axis、macOS cursor 和产品 runtime 通道仍待实现，因此保持未勾选。
   - 状态（2026-08-29）：macOS `MouseMoved` 与 left/right/other drag 已分流到独立 latest-value slot，run-loop owner 约每 16ms 消费一次并在 shutdown flush；10,000-sample contract 证明 cursor flood 不占用可靠 button edge 队列，严格报告要求 `captured = coalesced + consumed` 且 close 后无迟到发布。commit `500a956` 的 PR run `33258718745` 中，原生 macOS job `99116842307` 与 contract job `99116842405` 均通过。Gamepad axis、产品 runtime 通道和物理 cursor callback 实测仍待完成，因此保持未勾选。
@@ -380,11 +386,19 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 ### 3.2 输入语义
 
 - [ ] 分离 PhysicalKey、布局字符和显示名称。
+  - 状态（2026-08-30）：正式 runtime 的 `PhysicalKey` 使用平台无关 USB HID usage，
+    已与字符输入分离；布局字符和本地化显示名称类型尚未进入设置 UI。
 - [ ] 定义左右手、组合键、repeat、单键模式和自动释放语义。
 - [ ] 定义鼠标按钮、滚轮、移动和拖动语义。
 - [ ] 定义手柄按钮、axis、trigger、dead-zone 和断开复位。
-- [ ] 每个 pressed key 记录来源、按下时间和最后校正时间。
+- [x] 每个 pressed key 记录来源、按下时间和最后校正时间。
+  - 验收证据（2026-08-30）：runtime owner 的私有 `PressedRecord` 保存 `InputSource`、
+    `MonotonicMillis pressed_at` 与最近一次仍按下校正时间；单元测试固定三字段，并确保
+    具体键值不进入公开诊断 snapshot。
 - [ ] 每个 pressed key 最终经 KeyUp、reconcile 或 Reset 释放。
+  - 状态（2026-08-30）：产品状态机已覆盖 captured/reconciled Up、连续两次缺失确认、
+    lifecycle Reset、sequence gap 和非单调时间恢复；issue #47 合成回归不会残留按键。
+    正式平台 producer 与周期 scheduler 接线及 Windows 实机场景仍待完成。
 - [ ] 实现 fixture runner 和规范化 snapshot 比较。
   - 状态（2026-08-29）：`spikes/fixture-runner/` 已用 Rust 强类型解析并执行全部 9 组共享 fixture，在 24 个 checkpoint 比较完整规范化 snapshot，且已接入 Phase 0 Linux contract matrix；产品 runtime 的 `InputEvent`/`RuntimeSnapshot` 尚未建立，因此本项保持未勾选。
 
