@@ -259,7 +259,7 @@ fn windows_product_exit_code(failures: &Arc<Mutex<Vec<String>>>) -> i32 {
     1
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn ensure_settings_window(cx: &mut App) -> Result<WindowHandle<SettingsView>, String> {
     let existing = cx
         .try_global::<ProductCoordinator>()
