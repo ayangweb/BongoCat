@@ -108,6 +108,22 @@ jobs:
             -RedirectStandardOutput $stdoutPath `
             -RedirectStandardError $stderrPath `
             -PassThru
+          Add-Type @"
+          using System;
+          using System.Runtime.InteropServices;
+
+          public static class BongoCatWindowSmoke {
+              [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+              public static extern IntPtr FindWindow(string className, string windowName);
+
+              [DllImport("user32.dll", SetLastError = true)]
+              public static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+
+              [DllImport("user32.dll", SetLastError = true)]
+              [return: MarshalAs(UnmanagedType.Bool)]
+              public static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+          }
+          "@
           $windowDeadline = [DateTime]::UtcNow.AddSeconds(3)
           do {
             Start-Sleep -Milliseconds 100
@@ -115,12 +131,20 @@ jobs:
             if ($process.HasExited) {
               throw "Windows product exited before its settings window opened"
             }
-          } while ($process.MainWindowHandle -eq 0 -and [DateTime]::UtcNow -lt $windowDeadline)
-          if ($process.MainWindowHandle -eq 0) {
+            $settingsWindow = [BongoCatWindowSmoke]::FindWindow($null, "BongoCat Settings")
+            $windowProcessId = [uint32]0
+            if ($settingsWindow -ne [IntPtr]::Zero) {
+              [void][BongoCatWindowSmoke]::GetWindowThreadProcessId($settingsWindow, [ref]$windowProcessId)
+              if ($windowProcessId -ne $process.Id) {
+                $settingsWindow = [IntPtr]::Zero
+              }
+            }
+          } while ($settingsWindow -eq [IntPtr]::Zero -and [DateTime]::UtcNow -lt $windowDeadline)
+          if ($settingsWindow -eq [IntPtr]::Zero) {
             throw "Windows product settings window did not open"
           }
           Start-Sleep -Seconds 1
-          if (-not $process.CloseMainWindow()) {
+          if (-not [BongoCatWindowSmoke]::PostMessage($settingsWindow, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)) {
             throw "Windows product settings window rejected the close request"
           }
           if (-not $process.WaitForExit(15000)) {
