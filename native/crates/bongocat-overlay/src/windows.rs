@@ -1116,11 +1116,11 @@ pub(crate) fn run_model_switch_preview(
             model_switches = model_switches.saturating_add(1);
         }
         if total_switches == warmup_switches {
-            warmup_thread_high_water =
-                settle_process_thread_high_water(warmup_thread_high_water, THREAD_SETTLE_TIMEOUT)?;
             gpu_bytes_before = Some(overlay.renderer.current_local_memory_usage()?);
             handles_before =
                 Some(process_handle_count().map_err(windows_error("count process handles"))?);
+            warmup_thread_high_water =
+                settle_process_thread_high_water(warmup_thread_high_water, THREAD_SETTLE_TIMEOUT)?;
         }
     }
 
