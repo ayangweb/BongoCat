@@ -15,8 +15,8 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 
-EXPECTED_SDK_RELEASE = "5-r.5"
-EXPECTED_CORE_VERSION = "06.00.0001"
+EXPECTED_SDK_RELEASE = "5-r.4.1"
+EXPECTED_CORE_VERSION = "05.01.0000"
 MAX_ENTRIES = 50_000
 MAX_MEMBER_BYTES = 256 * 1024 * 1024
 MAX_TEXT_BYTES = 4 * 1024 * 1024
@@ -45,24 +45,22 @@ TARGET_ARTIFACTS = {
 
 CORE_HEADER = "include/Live2DCubismCore.h"
 FRAMEWORK_CHANGELOG_SUFFIX = "Framework/CHANGELOG.md"
-FRAMEWORK_TREE_SHA = "a140eec8da452762fcad566329074ad4d1cd6130"
+FRAMEWORK_TREE_SHA = "f426fc4f19852da74480e5aefe5cb99d90fd5d70"
 FRAMEWORK_SOURCE_BLOBS = {
     "Framework/src/CubismModelSettingJson.cpp": "8b9fa84d5d74a0882b2d5f20322862606207c6a6",
     "Framework/src/Effect/CubismBreath.cpp": "9312b1f96b25380670856f9cecc3dee33ea9ad02",
-    "Framework/src/Effect/CubismEyeBlink.cpp": "7b67806753b76cac1fd053ed899ff761aa0156b4",
+    "Framework/src/Effect/CubismEyeBlink.cpp": "40d11c1ac182b33dad784d9ea6543fc7309e5f15",
     "Framework/src/Effect/CubismPose.cpp": "fcb88823d17466359f87c7e2a88e309fc54b19c4",
-    "Framework/src/Motion/CubismExpressionMotion.cpp": "5f79270126c487c38075a853d0081c974b081060",
-    "Framework/src/Motion/CubismMotion.cpp": "702f85a1a4057dc695eba47088f9338409937bce",
+    "Framework/src/Motion/CubismExpressionMotion.cpp": "cb9d5e2854d59265765dc50b3cb125f2dd4d9c7c",
+    "Framework/src/Motion/CubismMotion.cpp": "035a0b608b4a6c68a4689dfb7b72598b487adc3a",
     "Framework/src/Motion/CubismMotionJson.cpp": "6cd35be1923a26014c5bd155ecad9eccbc9cd1e2",
-    "Framework/src/Motion/CubismUpdateScheduler.cpp": "76d967d6a6788165a68e6e34653ead3ba40acee8",
-    "Framework/src/Motion/ICubismUpdater.hpp": "00e1b8000c4a9c7263e36f58d2ac9ea6a8476d4e",
     "Framework/src/Physics/CubismPhysics.cpp": "5cb44241c1f3faeb6dcac7463c0c18eab9dac431",
     "Framework/src/Physics/CubismPhysicsJson.cpp": "8cfdc05564e24ece369035fdf90fb546b94d90c6",
-    "Framework/src/Rendering/CubismRenderer.cpp": "ce008f9148b1fd591d077ab90a963da9431ac08c",
-    "Framework/src/Rendering/D3D11/CubismRenderer_D3D11.cpp": "917b46ba352f4e80566c07369baba3d703ec54fb",
-    "Framework/src/Rendering/D3D11/Shaders/CubismEffect.fx": "bbaca13cbbcfb9b184e6e8a5e63f40e99619f217",
-    "Framework/src/Rendering/Metal/CubismRenderer_Metal.mm": "d46eddfb748669a55e6c47ea22bfba5774ec4504",
-    "Framework/src/Rendering/Metal/Shaders/MetalShaders.metal": "696adec0e2e38e1fa83d499f1369c388bab1576a",
+    "Framework/src/Rendering/CubismRenderer.cpp": "bf89a776296051d3da60c97102e14566df7c11f2",
+    "Framework/src/Rendering/D3D11/CubismRenderer_D3D11.cpp": "ce944547e522aa555807d90a722f9f61b1f21ee1",
+    "Framework/src/Rendering/D3D11/Shaders/CubismEffect.fx": "61b30a5141a639f85fdc86cfb7c069b298867566",
+    "Framework/src/Rendering/Metal/CubismRenderer_Metal.mm": "652490ec670af7fa8cf98626b2d44eeed6fee38b",
+    "Framework/src/Rendering/Metal/MetalShaders.metal": "783dd232d00164239f54d87514d005e7a3c52919",
 }
 
 
@@ -433,7 +431,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "The archive is never extracted and no network request is made."
         )
     )
-    parser.add_argument("sdk_zip", type=Path, help="path to CubismSdkForNative-5-r.5.zip")
+    parser.add_argument(
+        "sdk_zip", type=Path, help="path to CubismSdkForNative-5-r.4.1.zip"
+    )
     parser.add_argument(
         "--expected-sha256",
         type=str.lower,

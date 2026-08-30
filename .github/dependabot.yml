@@ -3,6 +3,7 @@ version: 2
 updates:
   - package-ecosystem: cargo
     directories:
+      - /native
       - /spikes/config-store
       - /spikes/gpui-overlay-macos
       - /spikes/gpui-settings

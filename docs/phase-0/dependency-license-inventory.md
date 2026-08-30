@@ -25,6 +25,7 @@
 | unicode-segmentation             | `1.13.3`                       | MIT OR Apache-2.0         | Grapheme-safe text editing              |
 | futures-lite                     | `2.6.1`                        | MIT OR Apache-2.0         | Test-only executor bridge               |
 | dirs                             | `6.0.0`                        | MIT OR Apache-2.0         | Config path spike                       |
+| atomic-write-file                | `0.3.1`                        | BSD-3-Clause              | Native config atomic replacement        |
 | serde / serde_json               | `1.0.229` / `1.0.151`          | MIT OR Apache-2.0         | Config, model and tool serialization    |
 | tempfile                         | `3.27.0`                       | MIT OR Apache-2.0         | Isolated config/model fixture tests     |
 | core-graphics2 / core-foundation | `0.6.1` / `0.10.1`             | MIT OR Apache-2.0         | macOS input boundary spike              |

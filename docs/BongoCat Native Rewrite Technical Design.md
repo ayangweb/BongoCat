@@ -1,7 +1,7 @@
 # BongoCat Native Rewrite Technical Design
 
-状态：架构决策稿，Phase 0 尚未完成
-最后更新：2026-08-29
+状态：架构决策稿，Phase 0 证据补齐与 Phase 1 渐进实现并行
+最后更新：2026-08-30
 首发平台：Windows 10 1903+、macOS 12+
 后续平台：Linux（首发后评估）
 
@@ -106,7 +106,7 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
 
 所有新的 crates.io 直接依赖同样先选择引入时最新的非 yanked 稳定版，再精确 pin 并提交 lockfile。只有 Rust toolchain、目标平台、许可证或已验证的安全边界不兼容时才允许暂缓，且必须留下可复核的版本差异和解除条件；不能用旧版本回避正常的 API 迁移。传递依赖在上游约束允许的范围内保持最新，不 fork 上游只为修改版本号。
 
-Phase 0 必须验证输入法、文本编辑、缩放、辅助功能、窗口重开、托盘应用生命周期，以及 GPUI 设置窗口与独立 overlay 共存。任何阻塞发布的问题都必须在进入完整 UI 实现前解决并记录。
+Phase 0 必须验证输入法、文本编辑、缩放、辅助功能、窗口重开、托盘应用生命周期，以及 GPUI 设置窗口与独立 overlay 共存。ADR-0011 允许已通过自动化契约的模块进入正式 workspace；未解决的问题继续阻塞对应完整功能或 stable 发布，并必须在进入完整 UI 实现前解决并记录。
 
 ## 6. 总体架构
 
@@ -158,18 +158,19 @@ ui -----------> runtime <----------- platform adapters
 
 ```text
 BongoCat/
-  Cargo.toml
-  Cargo.lock
-  rust-toolchain.toml
-  crates/
-    bongocat-app/             入口、装配和 shutdown
-    bongocat-runtime/         状态、输入语义、动画和命令
-    bongocat-config/          schema、环境隔离和原子存储
-    bongocat-model/           模型包、导入和资源索引
-    bongocat-live2d/          Cubism Core 边界与模型求值
-    bongocat-render/          render snapshot/contract
-    bongocat-ui/              GPUI 设置界面和 design system
-    bongocat-platform/        Windows/macOS 平台服务
+  native/                    正式 Native Rewrite workspace；发布切换时成为根构建入口
+    Cargo.toml
+    Cargo.lock
+    rust-toolchain.toml
+    crates/
+      bongocat-app/           入口、装配和 shutdown
+      bongocat-runtime/       状态、输入语义、动画和命令
+      bongocat-config/        schema、环境隔离和原子存储
+      bongocat-model/         模型包、导入和资源索引
+      bongocat-live2d/        Cubism Core 边界与模型求值
+      bongocat-render/        render snapshot/contract
+      bongocat-ui/            GPUI 设置界面和 design system
+      bongocat-platform/      Windows/macOS 平台服务
   shared/
     config/                   Native JSON schema、命名与存储契约
     behavior/                 输入、动画和快捷键规范
@@ -183,6 +184,10 @@ BongoCat/
 ```
 
 crate 是编译和责任边界，不是动态库。首期不为目录美观建立空 crate；只有依赖方向或测试隔离确实需要时才拆分。
+
+迁移期将正式 workspace 放在 `native/`，使历史 Tauri workspace 和构建入口继续
+作为行为对照且不进入新依赖图。发布切换阶段再把 Native workspace 提升为仓库根
+构建入口；该路径差异不改变 crate 边界或产品架构。
 
 ## 8. Runtime 与并发
 
@@ -416,7 +421,7 @@ Linux 是后续能力，不是隐藏的首发任务：
 | Cubism 授权不明确            | 二进制/许可证清单                | 发布方式有书面结论                |
 | 后续 Linux 不等价            | 单独能力矩阵                     | 不影响 Windows/macOS 首发         |
 
-任一核心退出条件失败，先记录 ADR 并调整选型，不能用完整产品代码掩盖 spike 失败。
+任一核心退出条件失败，先记录 ADR 并调整受影响的实现或发布目标，不能用产品代码、合成测试或编译结果掩盖 spike 失败。按 ADR-0011，未完成的外部证据不阻止无关模块的渐进实现，但持续阻塞对应功能声明和 stable 发布。
 
 ## 16. ADR 摘要
 
@@ -452,6 +457,10 @@ Windows 使用 D3D11，macOS 使用 Metal。主猫窗口不嵌入 GPUI renderer�
 
 Bundle ID 固定为 `com.ayangweb.bongo-cat`。Development 与 Production 使用相同数据结构和不同存储根，Native Rewrite 不读取旧配置。
 
+### ADR-011：渐进实现与发布门禁分离
+
+允许正式 Rust workspace 在外部证据补齐期间持续开发；Cubism 授权与分发、实机矩阵、签名和稳定性证据保持 stable 发布门禁。
+
 ## 17. 实施阶段
 
 ### Phase 0：风险验证和行为冻结
@@ -460,7 +469,7 @@ Bundle ID 固定为 `com.ayangweb.bongo-cat`。Development 与 Production 使用
 
 ### Phase 1：Rust 工程骨架
 
-建立 Cargo workspace、CI、日志、配置最小实现、runtime 生命周期、GPUI 空设置窗口和双平台空 overlay。
+在 Phase 0 外部证据补齐期间渐进建立 Cargo workspace、CI、日志、配置最小实现、runtime 生命周期、GPUI 空设置窗口和双平台空 overlay；只提升已通过对应 contract 的模块。
 
 ### Phase 2：输入到 Live2D 最小闭环
 

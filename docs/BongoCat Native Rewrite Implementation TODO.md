@@ -1,7 +1,7 @@
 # BongoCat Native Rewrite Implementation TODO
 
-状态：Phase 0 执行中
-最后更新：2026-08-29
+状态：Phase 0 证据补齐与 Phase 1 渐进实现并行
+最后更新：2026-08-30
 当前分支：`next`
 首发平台：Windows 10 1903+、macOS 12+
 后续评估：Linux
@@ -41,11 +41,12 @@
 
 ### 0.3 阶段门禁
 
-- [ ] Phase 0 未通过前，不实现完整设置 UI 或批量迁移旧代码。
+- [ ] Phase 0 未通过前，不实现完整设置 UI、批量迁移旧代码或宣称相关平台能力完成；ADR-0011 允许已通过自动化 contract 的模块进入正式 workspace。
 - [ ] GPUI 与原生 overlay 共存 spike 未通过前，不铺开平台窗口实现。
 - [ ] Cubism spike 未通过前，不删除 Pixi/easy-live2d 行为对照。
 - [ ] 存储环境隔离测试未通过前，不允许开发构建使用生产数据根。
-- [ ] 8 小时 soak、签名和更新回滚未通过前，不发布 stable。
+- [ ] Cubism 书面授权、允许分发的 SDK/bindings/Core 清单、目标 ABI 和三个预置模型验证未通过前，不公开发布包含 Cubism artifact 的构建。
+- [ ] 实机输入、辅助功能、GPU、8 小时 soak、签名和更新回滚未通过前，不发布 stable。
 
 ### 0.4 状态、依赖与验收证据
 
@@ -239,7 +240,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 ### 1.8 Cubism/Renderer spike
 
 - [ ] 确认 Cubism SDK/Core 版本、来源、再分发条款和 attribution 要求。
-  - 状态（2026-08-29）：`docs/phase-0/cubism-sdk-source-and-license.md` 已固定 Native R5/Core `06.00.0001`、官方 tag/commit、下载入口和 RedistributableFiles 边界。BongoCat 很可能属于需预先批准和单独协议的 Expandable Application；Framework 到 MIT Rust 实现的许可边界、最终 attribution 和 Live2D 书面授权仍未完成，因此保持未勾选。
+  - 状态（2026-08-30）：`docs/phase-0/cubism-sdk-source-and-license.md` 已固定 Native `5-r.4.1`/Core `05.01.0000`、archive/header/Core hashes、官方 tag/commit、下载入口和 RedistributableFiles 边界；macOS universal Core 本机版本调用通过。BongoCat 很可能属于需预先批准和单独协议的 Expandable Application；Framework 到 MIT Rust 实现的许可边界、最终 attribution、第二来源复核和 Live2D 书面授权仍未完成，因此保持未勾选并阻塞 stable 发布。
 - [ ] 建立目标架构二进制清单、hash 和可重复获取流程。
   - 状态（2026-08-29）：产品目标中的 R5 Windows x64 与 macOS arm64/x64 artifact 路径已形成清单，Windows ARM64 已明确无 desktop artifact，i686 已排除；离线 ZIP 检查流程已定义。合法下载 ZIP 的 archive/file hash、双人复核和真实 ABI 加载仍待完成。
 - [ ] 验证 Rust sys binding 加载 moc、创建 model 并读取 drawable 数据。
@@ -276,25 +277,28 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 目标：建立可持续开发、测试和发布的全 Rust 工程。
 
+状态（2026-08-30）：维护者通过 ADR-0011 授权 Phase 0 外部证据补齐与正式实现并行。
+先提升 runtime/config contract，Cubism、完整 UI 和平台能力仍服从各自门禁。
+
 ### 2.1 目标目录
 
-- [ ] 根 Cargo workspace 仅包含新 Rust 应用和 crate。
-- [ ] 创建 bongocat-app：入口、服务装配和 shutdown。
-- [ ] 创建 bongocat-runtime：状态、输入语义、动画和 command。
-- [ ] 创建 bongocat-config：环境隔离、schema、验证和原子存储。
+- [x] `native/` 正式 Cargo workspace 仅包含新 Rust 应用和 crate；发布切换时再提升为根构建入口，迁移期不破坏历史 Tauri workspace。
+- [x] 创建 bongocat-app：入口、服务装配和 shutdown。
+- [x] 创建 bongocat-runtime：状态、输入语义、动画和 command。
+- [x] 创建 bongocat-config：环境隔离、schema、验证和原子存储。
 - [ ] 创建 bongocat-model：模型包、导入和资源索引。
 - [ ] 创建 bongocat-live2d：Cubism safe wrapper 和模型求值。
 - [ ] 创建 bongocat-render：render snapshot 和 renderer contract。
 - [ ] 创建 bongocat-ui：GPUI 页面和 design system。
 - [ ] 创建 bongocat-platform：Windows/macOS 系统服务。
 - [ ] 创建 shared/config、behavior、fixtures、resources。
-- [ ] 避免空 crate；没有独立依赖/测试价值时先作为模块。
+- [x] 避免空 crate；首批只建立 app/runtime/config 三个有独立依赖和测试价值的 crate。
 
 ### 2.2 工程质量
 
 - [ ] 固定 stable Rust toolchain、target 和必要 components。
 - [ ] 在 workspace manifest 声明 `rust-version`，CI 验证最低版本和当前 stable，不依赖开发机偶然安装的 nightly。
-- [ ] 禁止应用依赖未固定 git branch，提交 Cargo.lock。
+- [x] 禁止应用依赖未固定 git branch，提交 Cargo.lock。
 - [ ] 平台依赖使用 target-specific dependency，Windows feature 不进入 macOS，macOS framework 不进入 Windows。
 - [ ] 审查 Cargo feature union，禁止测试/诊断/运行时 shader feature 意外进入 release 产物。
 - [ ] 业务、配置、模型和 UI crate 使用 forbid unsafe_code。
@@ -314,9 +318,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 验收证据：commit `221f5483976b64b7cbf6c5818ee5714ad47de479`，push run `33182146480` 与 pull request run `33182148815` 均成功；不代表 Windows 字体、IME、DPI、辅助功能或图形实机验收完成。
 - [x] macOS：format、Clippy、unit test、release check；GPUI settings/overlay spike 均纳入 `macos-spikes` job。
 - [x] 缓存 key 包含所有 `Cargo.lock`/`Cargo.toml` 和 Rust toolchain hash；Linux contract 与 macOS GPUI jobs 均使用该 key。
-- [ ] CI 不下载未经版本/hash 固定的 Cubism 二进制。
+- [x] CI 不下载 Cubism 二进制；正式 workspace 的三平台 job 不需要 SDK 即可验证非 Cubism 模块。
 - [ ] GPU、权限、签名测试分离为实机/nightly job。
-- [ ] 共享 crate 增加 Linux cargo check，但不生成首发安装包。
+- [x] 正式 runtime/config/app 在 Ubuntu job 执行 check/test，不生成 Linux 安装包。
 - [ ] CI 校验 fixture JSON Schema、跨文件一致性、本地化 key 和生成文件是否漂移。
   - [x] 已接入 Draft 2020-12 schema、fixture 跨文件一致性和五种历史 locale 的 key/类型/占位符校验。
   - [x] Cubism raw binding 工具已用自有合成 header 对三个当前可绑定 target 执行 deterministic golden 漂移检查；真实 R5 bindings 因许可门禁不进入 CI。
@@ -866,8 +870,13 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 完成 userdata3 v3 静态 preflight、匿名摘要 CLI 和合成错误 contract；三个预置模型没有真实 userdata3。
 - [ ] 取得可分发授权的 physics3/pose3 fixture 后完成强类型结构和 Framework 求值；三个预置模型不含这两类资源，不得以合成样本冒充兼容证据。
 
-14. [ ] `P0-GO-NO-GO`：汇总证据、阻塞和条件，确认后再建立完整产品 workspace。
-    - 状态（2026-08-29）：`docs/phase-0/go-no-go-readiness.md` 已建立 gate matrix、外部 owner、工程队列和三类决策规则；当前结论明确为 `NOT READY FOR DECISION`，不勾选本项。主要阻塞是 Cubism SDK/书面授权、真实 Core/三模型 renderer、GPUI 辅助功能/IME 与双平台物理输入/GPU 矩阵。
+14. [ ] `P0-GO-NO-GO`：汇总证据、阻塞和条件，形成完整功能与 stable 发布决议。
+    - 状态（2026-08-30）：ADR-0011 已形成 `IMPLEMENTATION GO WITH RELEASE CONDITIONS`，允许建立正式 workspace；这不勾选完整 Phase 0 决议。标准 Native `5-r.4.1` ZIP/hash 与 macOS Core 版本调用已验证，书面授权、真实模型/renderer、GPUI 辅助功能/IME 与双平台物理输入/GPU 矩阵继续阻塞对应功能声明和 stable 发布。
+
+15. [x] `P1-RUNTIME-CONFIG`：建立正式 workspace，提升 runtime 生命周期、强类型 command/snapshot 与 Development/Production 配置隔离闭环。
+    - 依赖：ADR-0011、`spikes/runtime-contract/`、`spikes/config-store/`。
+    - 退出条件：workspace 默认命令通过；环境由构建产物固定；两个数据根无读取、写入或锁 fallback；runtime 正常启动、更新 snapshot、拒绝队列溢出并有序 shutdown。
+    - 验收证据（2026-08-30）：`native/` 仅包含 app/runtime/config；11 项单元测试覆盖严格 schema、共享默认 fixture、原子写入、revision 冲突、双环境根、typed snapshot、队列满返回原 command 和 shutdown。Development 默认构建与 `BONGOCAT_BUILD_ENV=production` 构建使用同一代码、不同编译期常量；format、Clippy、test 和 release check 本机通过，三平台 CI 已配置。
 
 ## 13. 待决策清单
 

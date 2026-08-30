@@ -58,6 +58,43 @@ jobs:
       - name: Check licenses and dependency sources
         run: ./tools/check-native-dependencies.sh
 
+  native-workspace:
+    name: Test Native workspace (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.1
+          components: clippy, rustfmt
+      - name: Cache Cargo artifacts
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            native/target/
+          key: ${{ runner.os }}-native-workspace-${{ hashFiles('native/Cargo.lock', 'native/Cargo.toml', 'native/rust-toolchain.toml', 'native/crates/**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-native-workspace-
+      - name: Check formatting
+        run: cargo fmt --manifest-path native/Cargo.toml --all -- --check
+      - name: Run Clippy
+        run: cargo clippy --manifest-path native/Cargo.toml --locked --workspace --all-targets --all-features -- -D warnings
+      - name: Run tests
+        run: cargo test --manifest-path native/Cargo.toml --locked --workspace
+      - name: Check release build
+        run: cargo check --manifest-path native/Cargo.toml --locked --workspace --release
+      - name: Check production environment build
+        shell: bash
+        env:
+          BONGOCAT_BUILD_ENV: production
+        run: cargo check --manifest-path native/Cargo.toml --locked -p bongocat-app --release
+
   cubism-binding-contract:
     name: Check Cubism binding generation contract
     runs-on: ubuntu-latest

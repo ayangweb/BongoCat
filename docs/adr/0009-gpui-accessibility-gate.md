@@ -1,6 +1,6 @@
 # ADR-0009: GPUI Accessibility Gate
 
-状态：Proposed, P0 blocker
+状态：Proposed, release/UI-completion blocker
 日期：2026-08-28
 
 ## Context
@@ -13,7 +13,7 @@ GPUI 0.2.2 的公开源码和 feature 列表没有为普通 element 提供 role/
 
 GPUI 继续作为当前首选设置 UI，但在辅助功能 gate 通过前保持 provisional：
 
-- 不建立完整产品 UI workspace，不把当前 spike 宣称为可发布设置界面；
+- 允许建立正式 UI crate 和最小产品窗口，但在门禁通过前不实现或宣称完整、可发布的设置界面；
 - 不引入 GPUI 私有 API、未维护 fork 或隐藏控件 workaround；
 - 使用 GPUI 公开的 raw window handle 安装项目自有 AccessKit semantic tree；macOS/Windows adapter 只负责系统协议，语义 snapshot 由 UI crate 维护；
 - 辅助技术 action 必须通过有界强类型 channel 回到 GPUI 主线程，不允许平台 callback 直接修改 Entity 或 runtime；
@@ -24,7 +24,7 @@ GPUI 继续作为当前首选设置 UI，但在辅助功能 gate 通过前保持
 
 ## Gate
 
-只有满足以下条件才能将本 ADR 标记 Accepted 并解除 P0 阻塞：
+只有满足以下条件才能将本 ADR 标记 Accepted 并解除完整 UI/stable 发布阻塞：
 
 1. 选定版本的公开 API 能为设置表单提供稳定 role、label、value、错误和进度节点；
 2. macOS AX tree 能读取主题选择、模型名称输入框、Refresh、错误和 loading 状态；
@@ -32,7 +32,7 @@ GPUI 继续作为当前首选设置 UI，但在辅助功能 gate 通过前保持
 4. 键盘导航、真实 IME、剪贴板、缩放和窗口重建回归仍通过；
 5. 方案不依赖私有 crate、未审阅 patch 或平台特定的业务状态副本。
 
-若以上条件在进入 Phase 1 前仍不满足，形成明确的 `NO-GO` 或 `GO WITH CONDITIONS` 决策，并为 Iced 或其他后续方案指定独立 owner、截止阶段和回退条件。
+若以上条件在完整设置 UI 实现前仍不满足，形成明确的 `NO-GO` 或 `GO WITH CONDITIONS` 决策，并为 Iced 或其他后续方案指定独立 owner、截止阶段和回退条件。ADR-0011 允许其他正式产品模块继续开发。
 
 ## Evidence
 

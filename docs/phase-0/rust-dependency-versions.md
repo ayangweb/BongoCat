@@ -21,36 +21,37 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 
 ## Direct Dependencies
 
-| Crate                                 | Pinned version | Result                |
-| ------------------------------------- | -------------: | --------------------- |
-| `accesskit`                           |       `0.25.0` | 新增时即为最新        |
-| `accesskit_macos`                     |       `0.27.0` | 新增时即为最新        |
-| `accesskit_windows`                   |       `0.35.0` | 新增时即为最新        |
-| `async-channel`                       |        `2.5.0` | 从 `1.9.0` 升级       |
-| `bindgen`                             |       `0.72.1` | 新增时即为最新        |
-| `block2`                              |        `0.6.2` | 已是最新              |
-| `core-foundation`                     |       `0.10.1` | 已是最新              |
-| `core-graphics-types`                 |        `0.2.0` | 从 `0.1.3` 升级       |
-| `core-graphics2`                      |        `0.6.1` | 从 `0.4.1` 升级       |
-| `dirs`                                |        `6.0.0` | 从 `5.0.1` 升级       |
-| `futures-lite`                        |        `2.6.1` | 已是最新              |
-| `gpui`                                |        `0.2.2` | 已是最新              |
-| `libc`                                |      `0.2.189` | 新增时即为最新稳定版  |
-| `metal`                               |       `0.33.0` | 从 `0.29.0` 升级      |
-| `objc2`                               |        `0.6.4` | 已是最新              |
-| `objc2`（GPUI AX）                    |        `0.5.2` | 上游 ABI 类型兼容例外 |
-| `objc2-app-kit`                       |        `0.3.2` | 已是最新              |
-| `objc2-foundation`                    |        `0.3.2` | 已是最新              |
-| `objc2-foundation`（GPUI 原生 probe） |        `0.2.2` | 上游 ABI 类型兼容例外 |
-| `objc2-game-controller`               |        `0.3.2` | 新增时即为最新        |
-| `objc2-quartz-core`                   |        `0.3.2` | 已是最新              |
-| `serde`                               |      `1.0.229` | 从 `1.0.228` 升级     |
-| `serde_json`                          |      `1.0.151` | 从 `1.0.149` 升级     |
-| `raw-window-handle`                   |        `0.6.2` | 新增时即为最新        |
-| `sha2`                                |       `0.11.0` | 新增时即为最新        |
-| `tempfile`                            |       `3.27.0` | 已是最新              |
-| `unicode-segmentation`                |       `1.13.3` | 已是最新              |
-| `windows`                             |       `0.62.2` | 从 `0.61.3` 升级      |
+| Crate                                 | Pinned version | Result                 |
+| ------------------------------------- | -------------: | ---------------------- |
+| `accesskit`                           |       `0.25.0` | 新增时即为最新         |
+| `accesskit_macos`                     |       `0.27.0` | 新增时即为最新         |
+| `accesskit_windows`                   |       `0.35.0` | 新增时即为最新         |
+| `async-channel`                       |        `2.5.0` | 从 `1.9.0` 升级        |
+| `atomic-write-file`                   |        `0.3.1` | 正式配置存储新增时最新 |
+| `bindgen`                             |       `0.72.1` | 新增时即为最新         |
+| `block2`                              |        `0.6.2` | 已是最新               |
+| `core-foundation`                     |       `0.10.1` | 已是最新               |
+| `core-graphics-types`                 |        `0.2.0` | 从 `0.1.3` 升级        |
+| `core-graphics2`                      |        `0.6.1` | 从 `0.4.1` 升级        |
+| `dirs`                                |        `6.0.0` | 从 `5.0.1` 升级        |
+| `futures-lite`                        |        `2.6.1` | 已是最新               |
+| `gpui`                                |        `0.2.2` | 已是最新               |
+| `libc`                                |      `0.2.189` | 新增时即为最新稳定版   |
+| `metal`                               |       `0.33.0` | 从 `0.29.0` 升级       |
+| `objc2`                               |        `0.6.4` | 已是最新               |
+| `objc2`（GPUI AX）                    |        `0.5.2` | 上游 ABI 类型兼容例外  |
+| `objc2-app-kit`                       |        `0.3.2` | 已是最新               |
+| `objc2-foundation`                    |        `0.3.2` | 已是最新               |
+| `objc2-foundation`（GPUI 原生 probe） |        `0.2.2` | 上游 ABI 类型兼容例外  |
+| `objc2-game-controller`               |        `0.3.2` | 新增时即为最新         |
+| `objc2-quartz-core`                   |        `0.3.2` | 已是最新               |
+| `serde`                               |      `1.0.229` | 从 `1.0.228` 升级      |
+| `serde_json`                          |      `1.0.151` | 从 `1.0.149` 升级      |
+| `raw-window-handle`                   |        `0.6.2` | 新增时即为最新         |
+| `sha2`                                |       `0.11.0` | 新增时即为最新         |
+| `tempfile`                            |       `3.27.0` | 已是最新               |
+| `unicode-segmentation`                |       `1.13.3` | 已是最新               |
+| `windows`                             |       `0.62.2` | 从 `0.61.3` 升级       |
 
 `windows 0.62.2` 删除了 `Error::from_win32()`；Win32 wrapper 已改为在失败调用后立即使用语义等价的 `Error::from_thread()`，避免清理 API 覆盖 thread last-error。
 
@@ -74,7 +75,7 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
 
 ## Verification
 
-当前 14 个 workspace 均纳入 locked format、Clippy、test 和 dependency policy；有发布构建的 spike 继续执行 release check。无依赖的 contract workspace 同样重新生成/检查 lockfile。附加平台验证包括：
+当前 15 个 workspace 均纳入 locked format、Clippy、test 和 dependency policy；正式 `native/` workspace 还执行三平台 release check。无依赖的 contract workspace 同样重新生成/检查 lockfile。附加平台验证包括：
 
 - `windows 0.62.2` 同时封装 Raw Input、XInput 与原生 overlay 边界；输入和 overlay crate 均在 `x86_64-pc-windows-msvc` 完成 Check/Clippy，输入与 overlay 也对 `aarch64-pc-windows-msvc` 完成 Check；XInput 仅增加同一 package 的 `Win32_UI_Input_XboxController` feature，真实 Windows 输入与 D3D11 生命周期 smoke 由 push CI 执行；
 - `core-graphics2 0.6.1` 在已授予 Input Monitoring 的 macOS 会话创建 listen-only tap，完成 lifecycle Reset 和正常 shutdown；
@@ -83,9 +84,9 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
 - `libc 0.2.189` 只在 macOS overlay spike 的平台边界调用 `proc_pidinfo`，用于 100-cycle 线程/RSS 资源快照；许可证为 MIT OR Apache-2.0，停止使用该系统指标后可直接移除，不进入项目公共 API；
 - `async-channel 2.5.0` 的 GPUI 设置 spike 完成 revisioned snapshot、runtime shutdown 和自动退出；
 - `accesskit 0.25.0`、`accesskit_macos 0.27.0`、`accesskit_windows 0.35.0`、`raw-window-handle 0.6.2` 与 ABI generation 匹配的 `objc2-foundation 0.2.2` 只在 GPUI 设置 spike 中把强类型语义快照和 action 接到原生 AX/UIA，并通过原生窗口事件验证 tooltip hover；替换边界是 GPUI 提供等价稳定 element-level accessibility 和输入测试 API，届时删除 adapter/probe 依赖而不改变 runtime/UI command contract；
-- `dirs 6.0.0`、`serde 1.0.229` 与 `serde_json 1.0.151` 的配置/考古工具继续通过；fixture runner 复用相同最新稳定 serde 版本强类型解析产品 fixture，不引入新的 package 或 unsafe，替换边界是产品 runtime 建立后复用 reducer contract，而不是让 JSON 类型扩散到平台 adapter；
+- `atomic-write-file 0.3.1`（BSD-3-Clause）只在正式配置 crate 内提供同目录跨平台原子替换；替换边界是 `ConfigStore` 的私有 commit helper，不进入公共配置类型；`dirs 6.0.0`、`serde 1.0.229` 与 `serde_json 1.0.151` 继续提供路径解析和严格序列化；
 - `bindgen 0.72.1` 与 `sha2 0.11.0` 只存在于离线 Cubism raw binding 工具；三个当前可绑定 target 的合成 header golden、外部路径/hash/不可覆盖/provenance 测试和 release check 通过；
-- `cargo-deny 0.20.2` 对全部 14 个 workspace 的四目标 license/source policy 通过。
+- `cargo-deny 0.20.2` 对全部 15 个 workspace 的四目标 license/source policy执行检查。
 
 GPUI 图继续报告已单独建档的 `block 0.1.6` 和 `proc-macro-error2 2.0.1` future-incompatibility。两者本身已是各自当前最新版，升级直接依赖没有解除上游约束，产品 workspace 的禁止门槛保持不变。
 
@@ -93,7 +94,7 @@ GPUI 图继续报告已单独建档的 `block 0.1.6` 和 `proc-macro-error2 2.0.
 
 新增依赖时必须先核对当日最新稳定版并选用该版本。若最新版本与已确认 toolchain、target、许可证或安全边界冲突，提交必须同时记录实际选择、阻塞原因、上游解除条件和替换成本。新增或修改 manifest 后必须更新对应 lockfile，运行 license/source policy、format、Clippy、test 和目标平台 build。
 
-`.github/dependabot.yml` 每周扫描这 14 个独立 workspace，并把更新目标固定为 `next`。扫描不包含根目录和 `src-tauri`，避免把历史行为对照混入 Native Rewrite 依赖 PR。自动 PR 仍必须通过双平台 CI 和人工 API/许可证评审，不能因版本号更新而自动合并。
+`.github/dependabot.yml` 每周扫描这 15 个独立 workspace，并把更新目标固定为 `next`。扫描不包含历史根 workspace 和 `src-tauri`，避免把行为对照混入 Native Rewrite 依赖 PR。自动 PR 仍必须通过双平台 CI 和人工 API/许可证评审，不能因版本号更新而自动合并。
 
 版本最新不替代依赖审查。维护状态、许可证、unsafe 面积、平台覆盖和公共 API 泄漏仍按 `AGENTS.md` 的依赖规则独立验收。
 

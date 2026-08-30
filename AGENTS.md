@@ -67,7 +67,8 @@ Technical Design 只描述当前 Rust + GPUI 目标，不写入历史技术路�
 
 ## 4. 当前阶段与执行顺序
 
-当前处于 Phase 0。除非用户明确改变顺序，按以下顺序推进：
+当前处于 Phase 0 证据补齐与 Phase 1 渐进实现并行阶段。ADR-0011 已授权在外部
+证据尚未齐全时建立正式 workspace；除非用户明确改变顺序，按以下顺序推进：
 
 1. 行为、配置和模型资源考古
 2. fixture 与规范化 snapshot 格式
@@ -78,6 +79,9 @@ Technical Design 只描述当前 Rust + GPUI 目标，不写入历史技术路�
 7. Cubism + D3D11/Metal spike
 8. Phase 0 go/no-go 评审
 
+已由自动化 contract 验证且不依赖缺失外部证据的模块可以进入正式实现。每次只
+推进一个最小产品闭环，并继续维护对应 Phase 0/发布证据。
+
 Phase 0 退出条件未满足前：
 
 - 不实现完整设置 UI。
@@ -85,6 +89,11 @@ Phase 0 退出条件未满足前：
 - 不删除历史源码和行为对照。
 - 不声称 Live2D、输入可靠性或双平台渲染已经完成。
 - 不为了目录美观提前创建大量空 crate。
+
+Phase 0 未完成不再阻止正式 workspace、runtime、config、model contract 或最小
+产品窗口的实现。Cubism 书面授权、SDK 分发、Windows ARM64 Core、实机输入、
+辅助功能、GPU、签名和 soak 证据是 stable 发布门禁；缺失时不得生成或公开分发
+包含受限 artifact 的安装包。
 
 ## 5. 架构边界
 
@@ -179,6 +188,8 @@ Issue #47 的“收到按下但未收到释放”必须从架构上处理，不�
 - 小型系统封装优先直接使用 `windows-rs`、`objc2` 等基础 binding，不为了减少少量代码引入不可靠抽象。
 - 不把第三方 crate 的事件、错误、配置或平台类型扩散为项目公共 API。
 - 不提交或下载来源、版本、hash 不明确的 Cubism 二进制。
+- Live2D 书面授权完成前，不提交 SDK/Framework 源码、Core 二进制、由真实 header
+  生成的 bindings 或包含它们的公开构建；仓库外本地验证按 ADR-0011 执行。
 
 ## 10. 配置、文件与安全
 

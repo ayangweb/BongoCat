@@ -1,37 +1,34 @@
 # Cubism Framework Behavior Sources
 
-状态：R5 行为来源已固定；Rust 实现许可仍阻塞
-记录日期：2026-08-29
+状态：R5 `5-r.4.1` 行为来源已固定；Rust 实现许可仍阻塞发布
+记录日期：2026-08-30
 
 > 本文是工程溯源与测试设计，不构成法律意见，也不授权复制、翻译或重新许可 Live2D 源码。
 
 ## 1. Pinned Source Tree
 
-Phase 0 使用 Cubism Native Framework R5 的 tree `a140eec8da452762fcad566329074ad4d1cd6130`。以下两个官方引用指向相同 tree：
-
-- Framework tag `5-r.5` merge commit `145155d2c5bdd8d23475cef9cc3ab46d3220190c`；
-- Samples tag `5-r.5` 中的 Framework submodule commit `c5cc765a885ac95e07fde93f300fab019f8c11f7`。
+当前本地验证使用 Cubism Native Framework R5 tag `5-r.4.1`，commit
+`f426fc4f19852da74480e5aefe5cb99d90fd5d70`。Samples tag `5-r.4.1` 为 commit
+`51b4bc561ecda87045580c01324d2f7c6eec7642`。
 
 `tools/inspect-cubism-sdk.py` 会在维护者合法取得的 SDK ZIP 中校验以下关键文件的 Git blob SHA，并同时输出每个文件的 SHA-256。Git blob SHA 用于证明文件属于固定 tree；最终 SDK archive SHA-256 仍是发布供应链门禁。
 
-| 行为域                   | R5 文件                                                    | Git blob SHA                               |
-| ------------------------ | ---------------------------------------------------------- | ------------------------------------------ |
-| model3 resource setting  | `Framework/src/CubismModelSettingJson.cpp`                 | `8b9fa84d5d74a0882b2d5f20322862606207c6a6` |
-| breath                   | `Framework/src/Effect/CubismBreath.cpp`                    | `9312b1f96b25380670856f9cecc3dee33ea9ad02` |
-| eye blink                | `Framework/src/Effect/CubismEyeBlink.cpp`                  | `7b67806753b76cac1fd053ed899ff761aa0156b4` |
-| pose                     | `Framework/src/Effect/CubismPose.cpp`                      | `fcb88823d17466359f87c7e2a88e309fc54b19c4` |
-| expression               | `Framework/src/Motion/CubismExpressionMotion.cpp`          | `5f79270126c487c38075a853d0081c974b081060` |
-| motion evaluation        | `Framework/src/Motion/CubismMotion.cpp`                    | `702f85a1a4057dc695eba47088f9338409937bce` |
-| motion3 parsing          | `Framework/src/Motion/CubismMotionJson.cpp`                | `6cd35be1923a26014c5bd155ecad9eccbc9cd1e2` |
-| update scheduling        | `Framework/src/Motion/CubismUpdateScheduler.cpp`           | `76d967d6a6788165a68e6e34653ead3ba40acee8` |
-| update order contract    | `Framework/src/Motion/ICubismUpdater.hpp`                  | `00e1b8000c4a9c7263e36f58d2ac9ea6a8476d4e` |
-| physics evaluation       | `Framework/src/Physics/CubismPhysics.cpp`                  | `5cb44241c1f3faeb6dcac7463c0c18eab9dac431` |
-| physics3 parsing         | `Framework/src/Physics/CubismPhysicsJson.cpp`              | `8cfdc05564e24ece369035fdf90fb546b94d90c6` |
-| renderer common contract | `Framework/src/Rendering/CubismRenderer.cpp`               | `ce008f9148b1fd591d077ab90a963da9431ac08c` |
-| D3D11 renderer           | `Framework/src/Rendering/D3D11/CubismRenderer_D3D11.cpp`   | `917b46ba352f4e80566c07369baba3d703ec54fb` |
-| D3D11 effect shader      | `Framework/src/Rendering/D3D11/Shaders/CubismEffect.fx`    | `bbaca13cbbcfb9b184e6e8a5e63f40e99619f217` |
-| Metal renderer           | `Framework/src/Rendering/Metal/CubismRenderer_Metal.mm`    | `d46eddfb748669a55e6c47ea22bfba5774ec4504` |
-| Metal shader set         | `Framework/src/Rendering/Metal/Shaders/MetalShaders.metal` | `696adec0e2e38e1fa83d499f1369c388bab1576a` |
+| 行为域                   | R5 文件                                                  | Git blob SHA                               |
+| ------------------------ | -------------------------------------------------------- | ------------------------------------------ |
+| model3 resource setting  | `Framework/src/CubismModelSettingJson.cpp`               | `8b9fa84d5d74a0882b2d5f20322862606207c6a6` |
+| breath                   | `Framework/src/Effect/CubismBreath.cpp`                  | `9312b1f96b25380670856f9cecc3dee33ea9ad02` |
+| eye blink                | `Framework/src/Effect/CubismEyeBlink.cpp`                | `40d11c1ac182b33dad784d9ea6543fc7309e5f15` |
+| pose                     | `Framework/src/Effect/CubismPose.cpp`                    | `fcb88823d17466359f87c7e2a88e309fc54b19c4` |
+| expression               | `Framework/src/Motion/CubismExpressionMotion.cpp`        | `cb9d5e2854d59265765dc50b3cb125f2dd4d9c7c` |
+| motion evaluation        | `Framework/src/Motion/CubismMotion.cpp`                  | `035a0b608b4a6c68a4689dfb7b72598b487adc3a` |
+| motion3 parsing          | `Framework/src/Motion/CubismMotionJson.cpp`              | `6cd35be1923a26014c5bd155ecad9eccbc9cd1e2` |
+| physics evaluation       | `Framework/src/Physics/CubismPhysics.cpp`                | `5cb44241c1f3faeb6dcac7463c0c18eab9dac431` |
+| physics3 parsing         | `Framework/src/Physics/CubismPhysicsJson.cpp`            | `8cfdc05564e24ece369035fdf90fb546b94d90c6` |
+| renderer common contract | `Framework/src/Rendering/CubismRenderer.cpp`             | `bf89a776296051d3da60c97102e14566df7c11f2` |
+| D3D11 renderer           | `Framework/src/Rendering/D3D11/CubismRenderer_D3D11.cpp` | `ce944547e522aa555807d90a722f9f61b1f21ee1` |
+| D3D11 effect shader      | `Framework/src/Rendering/D3D11/Shaders/CubismEffect.fx`  | `61b30a5141a639f85fdc86cfb7c069b298867566` |
+| Metal renderer           | `Framework/src/Rendering/Metal/CubismRenderer_Metal.mm`  | `652490ec670af7fa8cf98626b2d44eeed6fee38b` |
+| Metal shader set         | `Framework/src/Rendering/Metal/MetalShaders.metal`       | `783dd232d00164239f54d87514d005e7a3c52919` |
 
 平台 Samples 只用于观察官方装配顺序，不作为 BongoCat 架构模板：
 
@@ -54,7 +51,7 @@ Phase 0 使用 Cubism Native Framework R5 的 tree `a140eec8da452762fcad56632907
 | renderer       | Consume Core drawable order, texture index, opacity, culling, blend, multiply/screen color and mask/inverted-mask data using premultiplied alpha                | D3D11 and Metal capture plus normalized drawable command trace; platform pixels may differ within declared tolerance |
 | lifecycle      | Keep moc bytes alive through Model, release Model before Moc, and release GPU resources after the last snapshot                                                 | Repeated load/switch/destroy and failed prepare/validate/commit tests                                                |
 
-R5 introduced a scheduler that applies post-motion updaters by explicit order. BongoCat must freeze the product-visible order as a typed Rust contract and test it. It must not let container iteration order, callback arrival time or platform renderer timing decide parameter results.
+BongoCat must freeze the product-visible update order as a typed Rust contract and test it. It must not let container iteration order, callback arrival time or platform renderer timing decide parameter results.
 
 The three shipped models do not reference physics3 or pose3. They can validate motion, expression and renderer paths, but cannot satisfy physics/pose acceptance. A separately authorized fixture is required; user models found on a developer machine are not copied into the repository or CI.
 
@@ -92,7 +89,7 @@ A long-lived C++ Framework bridge is not an implicit fallback. Any architecture 
 This source inventory is complete, but implementation authorization is not. The following remain P0 blockers:
 
 - Live2D written clarification for Rust binding publication and Framework-derived behavior;
-- legally acquired R5 ZIP hash and source/binary inspection report;
+- second-source review of the supplied R5 ZIP hash and source/binary inspection report;
 - an authorized physics3 + pose3 fixture;
 - black-box R5 parameter traces for motion, expression, physics and pose;
 - D3D11 and Metal command/render evidence.

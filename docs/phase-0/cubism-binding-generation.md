@@ -1,7 +1,7 @@
 # Cubism Core Raw Binding Generation
 
-状态：合成输入的生成契约与漂移检查已完成；真实 R5 header 仍待合法 SDK 和授权
-记录日期：2026-08-29
+状态：合成输入的生成契约与漂移检查已完成；真实 R5 header 已取得但生成物保持仓库外
+记录日期：2026-08-30
 
 ## 1. Scope
 
@@ -17,8 +17,8 @@ CI cache、workflow artifact、issue 或 release。
 
 | Item                   | Fixed value                                                     |
 | ---------------------- | --------------------------------------------------------------- |
-| SDK release            | Cubism 5 SDK for Native R5 (`5-r.5`)                            |
-| Core version           | `06.00.0001`                                                    |
+| SDK release            | Cubism 5 SDK for Native R5 (`5-r.4.1`)                          |
+| Core version           | `05.01.0000`                                                    |
 | Header path inside SDK | `Core/include/Live2DCubismCore.h`                               |
 | Generator              | `bindgen 0.72.1`                                                |
 | Hash implementation    | `sha2 0.11.0`                                                   |
@@ -110,6 +110,8 @@ cargo run --manifest-path tools/cubism-bindgen/Cargo.toml --locked -- check-fixt
 cargo check --manifest-path tools/cubism-bindgen/Cargo.toml --locked --release
 ```
 
-This proves the generation workflow, not compatibility with the unavailable R5
-header or binaries. The P0 raw-binding TODO remains open until the real header hash,
-reviewed outputs and target ABI smoke evidence exist.
+This proves the generation workflow, not complete compatibility with the supplied R5
+header or binaries. The real header SHA-256 is
+`0564a03edd0d56b90bac704bbbcc4e560b3d3d9000b49a0bd5d9cb886b414022`; the P0
+raw-binding TODO remains open until external generated outputs are reviewed and all
+target ABI/model smoke evidence exists.

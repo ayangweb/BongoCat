@@ -19,7 +19,7 @@ sys.modules[SPEC.name] = SDK_INSPECTOR
 SPEC.loader.exec_module(SDK_INSPECTOR)
 
 
-ROOT = "CubismSdkForNative-5-r.5/"
+ROOT = "CubismSdkForNative-5-r.4.1/"
 CORE = f"{ROOT}Core/"
 FRAMEWORK_SOURCE_CONTENTS = {
     f"{ROOT}Framework/src/CubismModelSettingJson.cpp": b"synthetic model setting source\n",
@@ -44,9 +44,9 @@ def valid_entries() -> dict[str, bytes]:
         ]
     ).encode()
     return {
-        f"{ROOT}Framework/CHANGELOG.md": b"# Changelog\n\n## [5-r.5] - 2026-04-02\n",
+        f"{ROOT}Framework/CHANGELOG.md": b"# Changelog\n\n## [5-r.4.1] - 2025-07-17\n",
         f"{CORE}include/Live2DCubismCore.h": b"/* synthetic test header */\n",
-        f"{CORE}CHANGELOG.md": b"## 2026-01-08\n\n* Upgrade Core version to 06.00.0001.\n",
+        f"{CORE}CHANGELOG.md": b"## 2025-04-24\n\n* Upgrade Core version to 05.01.0000.\n",
         f"{CORE}LICENSE.md": b"synthetic proprietary license marker\n",
         f"{CORE}README.md": b"synthetic readme\n",
         f"{CORE}RedistributableFiles.txt": redistributable,
@@ -75,7 +75,7 @@ def inspect(path: Path, expected_hash: str | None = None) -> dict[str, object]:
 class CubismSdkInspectorTests(unittest.TestCase):
     def test_valid_archive_reports_required_targets_and_hashes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "CubismSdkForNative-5-r.5.zip"
+            path = Path(directory) / "CubismSdkForNative-5-r.4.1.zip"
             write_zip(path, valid_entries())
 
             expected_hash = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -83,8 +83,8 @@ class CubismSdkInspectorTests(unittest.TestCase):
 
             self.assertTrue(report["verified"])
             self.assertEqual(report["archive"]["sha256"], expected_hash)
-            self.assertEqual(report["sdk"]["release"], "5-r.5")
-            self.assertEqual(report["sdk"]["core_version"], "06.00.0001")
+            self.assertEqual(report["sdk"]["release"], "5-r.4.1")
+            self.assertEqual(report["sdk"]["core_version"], "05.01.0000")
             self.assertEqual(
                 report["targets"]["aarch64-pc-windows-msvc"]["status"],
                 "unsupported_by_r5",
@@ -177,7 +177,7 @@ class CubismSdkInspectorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "sdk.zip"
             entries = valid_entries()
-            entries[f"{ROOT}Framework/CHANGELOG.md"] = b"## [5-r.4.1]\n"
+            entries[f"{ROOT}Framework/CHANGELOG.md"] = b"## [5-r.4]\n"
             write_zip(path, entries)
 
             with self.assertRaisesRegex(

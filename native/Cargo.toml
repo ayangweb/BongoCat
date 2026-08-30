@@ -1,0 +1,46 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/bongocat-app",
+    "crates/bongocat-config",
+    "crates/bongocat-runtime",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+license = "MIT"
+repository = "https://github.com/ayangweb/BongoCat"
+publish = false
+
+[workspace.dependencies]
+atomic-write-file = "=0.3.1"
+dirs = "=6.0.0"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+tempfile = "=3.27.0"
+
+bongocat-config = { path = "crates/bongocat-config" }
+bongocat-runtime = { path = "crates/bongocat-runtime" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+print_stderr = "deny"
+print_stdout = "deny"
+
+[profile.release]
+strip = "symbols"
+opt-level = 3
+codegen-units = 1
+panic = "abort"
+lto = "thin"
+
+[profile.profiling]
+inherits = "release"
+strip = "none"
+debug = "full"
+lto = false

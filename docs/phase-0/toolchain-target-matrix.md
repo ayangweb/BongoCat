@@ -62,7 +62,7 @@ Windows 工具链尚未在实机记录。`P0-GPUI-WINDOWS` 至少要固定并保
 
 ## 5. Cubism Constraint
 
-Cubism Core 是冻结首发架构矩阵的硬前置条件。`docs/phase-0/cubism-sdk-source-and-license.md` 已固定 Cubism 5 SDK for Native R5、Core `06.00.0001`、官方来源和许可门禁，并确认产品需要的 Windows x64 Core 与 macOS arm64/x64 Core 存在，但 Windows ARM64 desktop Core 不存在。ARM64 因缺少 `aarch64-pc-windows-msvc` 可用的官方 artifact 而保持发布阻塞，不能用 experimental UWP DLL、自制兼容层、未知来源二进制或跨架构模拟补齐；R5 即使提供 x86 Core，也不会恢复已排除的 i686 target。
+Cubism Core 是冻结首发架构矩阵的硬前置条件。`docs/phase-0/cubism-sdk-source-and-license.md` 已固定当前本地 Cubism 5 SDK for Native `5-r.4.1`、Core `05.01.0000`、archive/artifact hash、官方来源和许可门禁，并确认产品需要的 Windows x64 Core 与 macOS arm64/x64 Core 存在，但 Windows ARM64 desktop Core 不存在。ARM64 因缺少 `aarch64-pc-windows-msvc` 可用的官方 artifact 而保持发布阻塞，不能用 experimental UWP DLL、自制兼容层、未知来源二进制或跨架构模拟补齐；R5 即使提供 x86 Core，也不会恢复已排除的 i686 target。
 
 其他候选 target 仍必须记录官方 ZIP SHA-256、目标文件 hash、真实加载和生命周期结果。尚未由维护者合法下载并检查 ZIP，因此本矩阵仍未冻结。
 
