@@ -795,7 +795,11 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
 ### 5.6 Phase 4 退出门槛
 
 - [ ] 三个预置模型通过兼容矩阵。
-- [ ] 自定义模型 fixture 成功/失败行为符合规范。
+- [x] 自定义模型 fixture 成功/失败行为符合规范。
+  - 验收证据（2026-08-31）：正式 `bongocat-model` 严格读取共享 `cases.json`，隔离物化 1 个
+    accept 与 5 个 reject package，并以产品 `PreparedModel` 和 transactional `ModelStore`
+    同时执行。测试逐 case 比对 stable diagnostic 与声明 preflight stage，强制所有 fixture
+    目录注册；成功仅提交目标模型，失败不留下 staging/destination，且两条路径都不修改源包。
 - [ ] 模型切换 100 次无 CPU/GPU/音频持续增长。
 - [ ] 输入、动作、表情、物理和音效闭环不依赖 GPUI。
 - [x] 模型 parser 完成 fuzz/property test，畸形 JSON、索引和尺寸不能触发 panic、越界分配或路径逃逸。
@@ -1247,9 +1251,10 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
       和 rename 前检查取消；settings operation 以共享 atomic token 更新无路径 progress，并返回
       稳定 `ModelImportCancelled`。测试覆盖跨 clone ID、倒退 progress 拒绝、typed final result、
       中途取消清理、catalog revision 不变、成功四阶段及 shutdown/join；完整 format、Clippy、
-      workspace test 和 release check 本机通过；push run `33335183755` 的 Ubuntu/macOS
-      workspace jobs 已通过，Windows workspace 已通过 format、Clippy、tests、release 与
-      production build，D3D11/input 平台 smoke 仍在执行，完成后补最终证据。
+      workspace test 和 release check 本机通过；push run `33335183755` 的 Ubuntu/Windows/
+      macOS workspace jobs `99320715006`/`99320715016`/`99320715124` 全部通过。Windows job
+      同时通过 D3D11 product overlay、missing-release recovery 与 transactional model switch
+      smoke，macOS job 通过 release settings lifecycle smoke。
 22. [x] `P4-MODEL-DELETE-COMMAND`：按来源身份安全删除未选择的 installed 模型。
     - 依赖：`P4-MODEL-CATALOG`、`P4-MODEL-SELECTION`、`ModelStore` rename-delete transaction。
     - 退出条件：typed command 携带 `(origin, id)`；preset 和当前 runtime/config 所选 installed
@@ -1269,6 +1274,15 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
       symlink/oversized fixture；`proptest 1.11.0` 以最小 `std` feature 精确锁定，`cargo update`
       只新增其和两个缺失传递包。完整 format、Clippy、workspace test、release check 及
       `cargo deny --all-features check licenses sources` 本机通过，三平台 CI 待本批 push 后复验。
+24. [x] `P4-MODEL-FIXTURE-CONTRACT`：将共享自定义模型 fixture 提升为正式产品导入契约。
+    - 依赖：`shared/fixtures/model-fixtures/cases.json`、`PreparedModel`、transactional
+      `ModelStore`。
+    - 退出条件：manifest 严格反序列化且每个 case 目录唯一注册；所有 accept/reject case 在
+      隔离物化后由产品 parser 与 store 同时执行；拒绝诊断精确匹配声明 stage，不写目标或
+      staging，不修改源；成功只提交一个来源感知 installed model；完整 Native 门禁通过。
+    - 验收证据（2026-08-31）：正式 crate 已覆盖 6 个共享合成 package；`bongocat-model`
+      33 项、旧 model-package spike 15 项与 Python fixture oracle 全部通过。完整 Native format、
+      Clippy、workspace test 和 release check 本机通过，三平台 CI 待本批 push 后复验。
 
 ## 13. 待决策清单
 

@@ -1249,6 +1249,64 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
+    #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+    #[serde(rename_all = "snake_case")]
+    enum FixtureStage {
+        PackageDiscovery,
+        JsonParse,
+        ReferenceResolution,
+        TextureHeader,
+    }
+
+    #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+    #[serde(rename_all = "snake_case")]
+    enum FixtureExpectation {
+        Accept,
+        Reject,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(rename_all = "camelCase", deny_unknown_fields)]
+    struct FixtureLimits {
+        maximum_texture_dimension: u32,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    enum FixtureEncoding {
+        Hex,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct FixtureMaterialization {
+        source: String,
+        target: String,
+        encoding: FixtureEncoding,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(rename_all = "camelCase", deny_unknown_fields)]
+    struct FixtureCase {
+        id: String,
+        directory: String,
+        stage: FixtureStage,
+        entry_source: Option<String>,
+        materialized_entry: Option<String>,
+        #[serde(default)]
+        materialize: Vec<FixtureMaterialization>,
+        expected: FixtureExpectation,
+        expected_diagnostics: Vec<String>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(rename_all = "camelCase", deny_unknown_fields)]
+    struct FixtureManifest {
+        schema_version: u32,
+        limits: FixtureLimits,
+        cases: Vec<FixtureCase>,
+    }
+
     fn repository_root() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .ancestors()
@@ -1261,6 +1319,268 @@ mod tests {
         repository_root()
             .join("shared/fixtures/model-fixtures/cases")
             .join(name)
+    }
+
+    fn copy_fixture_tree(source: &Path, destination: &Path) {
+        fs::create_dir_all(destination).expect("create fixture destination");
+        for entry in fs::read_dir(source).expect("list fixture source") {
+            let entry = entry.expect("read fixture entry");
+            let source_path = entry.path();
+            let destination_path = destination.join(entry.file_name());
+            let file_type = entry.file_type().expect("read fixture file type");
+            if file_type.is_dir() {
+                copy_fixture_tree(&source_path, &destination_path);
+            } else {
+                assert!(
+                    file_type.is_file(),
+                    "fixture entries must be files or directories"
+                );
+                fs::copy(source_path, destination_path).expect("copy fixture file");
+            }
+        }
+    }
+
+    fn decode_fixture_hex(value: &str) -> Vec<u8> {
+        let value = value.trim().as_bytes();
+        assert!(
+            value.len().is_multiple_of(2),
+            "fixture hex must contain pairs"
+        );
+        value
+            .chunks_exact(2)
+            .map(|pair| {
+                u8::from_str_radix(std::str::from_utf8(pair).expect("ASCII hex pair"), 16)
+                    .expect("valid fixture hex")
+            })
+            .collect()
+    }
+
+    fn fixture_materialization_path(root: &Path, reference: &str) -> PathBuf {
+        let normalized = normalize_reference(reference).expect("fixture materialization reference");
+        assert_eq!(
+            normalized, reference,
+            "fixture references must be normalized"
+        );
+        root.join(path_from_reference(&normalized))
+    }
+
+    fn materialize_fixture_case(case: &FixtureCase) -> tempfile::TempDir {
+        let temporary = tempdir().expect("fixture package");
+        copy_fixture_tree(&fixture(&case.directory), temporary.path());
+        match (&case.entry_source, &case.materialized_entry) {
+            (Some(source), Some(target)) => {
+                fs::copy(
+                    fixture_materialization_path(temporary.path(), source),
+                    fixture_materialization_path(temporary.path(), target),
+                )
+                .expect("materialize fixture entry");
+            }
+            (None, None) => {}
+            _ => panic!("fixture entry source and target must be paired"),
+        }
+        for materialization in &case.materialize {
+            let source = fixture_materialization_path(temporary.path(), &materialization.source);
+            let target = fixture_materialization_path(temporary.path(), &materialization.target);
+            fs::create_dir_all(target.parent().expect("materialization parent"))
+                .expect("create materialization parent");
+            let bytes = match materialization.encoding {
+                FixtureEncoding::Hex => decode_fixture_hex(
+                    &fs::read_to_string(source).expect("read fixture materialization"),
+                ),
+            };
+            fs::write(target, bytes).expect("write fixture materialization");
+        }
+        temporary
+    }
+
+    fn snapshot_fixture_tree(root: &Path) -> BTreeMap<String, Vec<u8>> {
+        fn visit(root: &Path, directory: &Path, snapshot: &mut BTreeMap<String, Vec<u8>>) {
+            for entry in fs::read_dir(directory).expect("list fixture snapshot") {
+                let entry = entry.expect("read fixture snapshot entry");
+                let path = entry.path();
+                let file_type = entry.file_type().expect("read fixture snapshot type");
+                if file_type.is_dir() {
+                    visit(root, &path, snapshot);
+                } else {
+                    assert!(
+                        file_type.is_file(),
+                        "fixture snapshot must not contain links"
+                    );
+                    let reference = relative_reference(root, &path).expect("fixture reference");
+                    snapshot.insert(
+                        reference,
+                        fs::read(path).expect("read fixture snapshot file"),
+                    );
+                }
+            }
+        }
+
+        let mut snapshot = BTreeMap::new();
+        visit(root, root, &mut snapshot);
+        snapshot
+    }
+
+    fn stage_accepts_diagnostic(stage: FixtureStage, diagnostic: ModelDiagnostic) -> bool {
+        match stage {
+            FixtureStage::PackageDiscovery => matches!(
+                diagnostic,
+                ModelDiagnostic::ModelEntryAmbiguous | ModelDiagnostic::ModelEntryMissing
+            ),
+            FixtureStage::JsonParse => matches!(
+                diagnostic,
+                ModelDiagnostic::ModelJsonInvalid
+                    | ModelDiagnostic::ModelJsonTooLarge
+                    | ModelDiagnostic::ModelUnsupportedVersion
+            ),
+            FixtureStage::ReferenceResolution => matches!(
+                diagnostic,
+                ModelDiagnostic::ModelMocMissing
+                    | ModelDiagnostic::ModelReferenceEscapesRoot
+                    | ModelDiagnostic::ModelReferenceInvalid
+                    | ModelDiagnostic::ModelReferenceSymlinkEscape
+                    | ModelDiagnostic::ModelResourceInvalid
+                    | ModelDiagnostic::ModelResourceMissing
+                    | ModelDiagnostic::ModelResourceNotFile
+                    | ModelDiagnostic::ModelSymlinkDirectoryUnsupported
+                    | ModelDiagnostic::ModelTextureMissing
+            ),
+            FixtureStage::TextureHeader => matches!(
+                diagnostic,
+                ModelDiagnostic::ModelTextureDimensionExceeded
+                    | ModelDiagnostic::ModelTextureInvalidPng
+            ),
+        }
+    }
+
+    #[test]
+    fn shared_custom_model_fixtures_match_product_parser_and_store_contract() {
+        let fixture_root = repository_root().join("shared/fixtures/model-fixtures");
+        let manifest: FixtureManifest = serde_json::from_slice(
+            &fs::read(fixture_root.join("cases.json")).expect("read fixture manifest"),
+        )
+        .expect("strict fixture manifest");
+        assert_eq!(manifest.schema_version, 1);
+        assert_eq!(
+            manifest.limits.maximum_texture_dimension,
+            ModelPackageLimits::default().maximum_texture_dimension
+        );
+        assert!(!manifest.cases.is_empty());
+
+        let mut case_ids = BTreeSet::new();
+        let mut registered_directories = BTreeSet::new();
+        for (index, case) in manifest.cases.iter().enumerate() {
+            assert!(case_ids.insert(case.id.as_str()), "duplicate fixture id");
+            assert!(
+                registered_directories.insert(case.directory.as_str()),
+                "duplicate fixture directory"
+            );
+            assert_eq!(
+                Path::new(&case.directory).components().collect::<Vec<_>>(),
+                [Component::Normal(case.directory.as_ref())],
+                "fixture directory must be one normal component"
+            );
+            let unique_diagnostics = case
+                .expected_diagnostics
+                .iter()
+                .map(String::as_str)
+                .collect::<BTreeSet<_>>();
+            assert_eq!(unique_diagnostics.len(), case.expected_diagnostics.len());
+            assert_eq!(
+                case.expected == FixtureExpectation::Accept,
+                case.expected_diagnostics.is_empty(),
+                "fixture accept/reject contract must match diagnostics"
+            );
+
+            let package = materialize_fixture_case(case);
+            let source_before = snapshot_fixture_tree(package.path());
+            let id = ModelId::parse(format!("fixture-{index}")).expect("fixture model id");
+            let prepared =
+                PreparedModel::prepare(id.clone(), package.path(), ModelPackageLimits::default());
+            match (&case.expected, &prepared) {
+                (FixtureExpectation::Accept, Ok(model)) => {
+                    assert_eq!(model.id(), &id, "fixture {} model id", case.id);
+                }
+                (FixtureExpectation::Reject, Err(error)) => {
+                    assert_eq!(
+                        case.expected_diagnostics,
+                        [error.code.as_str()],
+                        "fixture {} diagnostic",
+                        case.id
+                    );
+                    assert!(
+                        stage_accepts_diagnostic(case.stage, error.code),
+                        "fixture {} diagnostic must belong to declared stage",
+                        case.id
+                    );
+                }
+                (FixtureExpectation::Accept, Err(error)) => {
+                    panic!("fixture {} unexpectedly rejected: {error}", case.id)
+                }
+                (FixtureExpectation::Reject, Ok(_)) => {
+                    panic!("fixture {} unexpectedly accepted", case.id)
+                }
+            }
+
+            let data = tempdir().expect("fixture store root");
+            let store = ModelStore::new(
+                data.path().join("models"),
+                data.path().join("locks/models.writer.lock"),
+                ModelPackageLimits::default(),
+            )
+            .expect("fixture model store");
+            let imported = store.import(id.clone(), package.path());
+            match case.expected {
+                FixtureExpectation::Accept => {
+                    let installed = imported.expect("accepted fixture import");
+                    assert_eq!(installed.id(), &id);
+                    let catalog = store.list().expect("fixture catalog");
+                    assert_eq!(catalog.len(), 1);
+                    assert_eq!(catalog[0].origin(), ModelOrigin::Installed);
+                }
+                FixtureExpectation::Reject => {
+                    assert_eq!(
+                        imported.expect_err("rejected fixture import").code,
+                        ModelStoreDiagnostic::InvalidPackage,
+                        "fixture {} store diagnostic",
+                        case.id
+                    );
+                    assert!(store.list().expect("empty fixture catalog").is_empty());
+                    assert!(
+                        fs::read_dir(store.root())
+                            .expect("fixture store entries")
+                            .next()
+                            .is_none(),
+                        "fixture {} must not leave staging or destination entries",
+                        case.id
+                    );
+                }
+            }
+            assert_eq!(
+                snapshot_fixture_tree(package.path()),
+                source_before,
+                "fixture {} source package changed",
+                case.id
+            );
+        }
+
+        let actual_directories = fs::read_dir(fixture_root.join("cases"))
+            .expect("list fixture directories")
+            .map(|entry| {
+                entry
+                    .expect("read fixture directory")
+                    .file_name()
+                    .into_string()
+                    .expect("UTF-8 fixture directory")
+            })
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            actual_directories,
+            registered_directories
+                .into_iter()
+                .map(str::to_owned)
+                .collect::<BTreeSet<_>>(),
+            "every custom model fixture directory must be registered"
+        );
     }
 
     #[test]
