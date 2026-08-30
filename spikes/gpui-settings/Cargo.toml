@@ -18,8 +18,10 @@ unicode-segmentation = "=1.13.3"
 [target.'cfg(target_os = "macos")'.dependencies]
 accesskit_macos = "=0.27.0"
 # Match accesskit_macos' Objective-C ABI types; its public adapter objects use
-# objc2 0.5 and cannot be safely inspected through objc2 0.6 Rust types.
+# objc2 0.5 and cannot be safely inspected through objc2 0.6 Rust types. The
+# matching objc2-foundation generation is 0.2, not the current 0.3 generation.
 objc2 = "=0.5.2"
+objc2-foundation = "=0.2.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 accesskit_windows = "=0.35.0"

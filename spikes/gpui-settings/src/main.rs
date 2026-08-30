@@ -1,6 +1,7 @@
 mod accessibility;
 #[cfg(target_os = "macos")]
 mod macos_menu;
+mod platform_ui_probe;
 mod runtime_bridge;
 mod text_input;
 
@@ -73,6 +74,19 @@ struct Tokens {
     accent: gpui::Rgba,
 }
 
+#[derive(Clone, Default)]
+struct UiProbeState {
+    failed: Arc<AtomicBool>,
+    tooltip_seen: Arc<AtomicBool>,
+    tooltip_hovered: Arc<AtomicBool>,
+}
+
+#[derive(Clone, Copy, Default)]
+struct UiProbeOptions {
+    menu: bool,
+    tooltip: bool,
+}
+
 impl Tokens {
     fn dark() -> Self {
         Self {
@@ -118,7 +132,8 @@ struct SettingsWindow {
     runtime_error: Option<SharedString>,
     accessibility: AccessibilityBridge,
     accessibility_actions: Option<async_channel::Receiver<AccessibilityAction>>,
-    _menu_probe_failed: Arc<AtomicBool>,
+    ui_probe: UiProbeState,
+    tooltip_probe_enabled: bool,
 }
 
 impl SettingsWindow {
@@ -127,7 +142,8 @@ impl SettingsWindow {
         runtime_bridge: RuntimeBridge,
         accessibility: AccessibilityBridge,
         accessibility_actions: async_channel::Receiver<AccessibilityAction>,
-        menu_probe_failed: Arc<AtomicBool>,
+        ui_probe: UiProbeState,
+        tooltip_probe_enabled: bool,
         cx: &mut Context<Self>,
     ) -> Self {
         let dark_theme = matches!(
@@ -171,7 +187,8 @@ impl SettingsWindow {
             runtime_error: None,
             accessibility,
             accessibility_actions: Some(accessibility_actions),
-            _menu_probe_failed: menu_probe_failed,
+            ui_probe,
+            tooltip_probe_enabled,
         }
     }
 
@@ -311,7 +328,7 @@ impl SettingsWindow {
         });
         window.focus(&self.model_name.focus_handle(cx));
         if let Err(error) = macos_menu::verify_structure() {
-            self.fail_menu_probe(error, cx);
+            self.fail_ui_probe(error, cx);
             return;
         }
 
@@ -325,7 +342,7 @@ impl SettingsWindow {
             });
             if !matches!(focused, Ok(Ok(()))) {
                 let _ = this.update(cx, |settings, cx| {
-                    settings.fail_menu_probe("settings window closed before menu probe".into(), cx);
+                    settings.fail_ui_probe("settings window closed before menu probe".into(), cx);
                 });
                 return;
             }
@@ -337,7 +354,7 @@ impl SettingsWindow {
                 Err(error) => Err(error.to_string()),
             };
             if let Err(error) = select_all {
-                let _ = this.update(cx, |settings, cx| settings.fail_menu_probe(error, cx));
+                let _ = this.update(cx, |settings, cx| settings.fail_ui_probe(error, cx));
                 return;
             }
             Timer::after(Duration::from_millis(100)).await;
@@ -348,7 +365,7 @@ impl SettingsWindow {
                 Err(error) => Err(error.to_string()),
             };
             if let Err(error) = cut {
-                let _ = this.update(cx, |settings, cx| settings.fail_menu_probe(error, cx));
+                let _ = this.update(cx, |settings, cx| settings.fail_ui_probe(error, cx));
                 return;
             }
             Timer::after(Duration::from_millis(100)).await;
@@ -368,7 +385,7 @@ impl SettingsWindow {
                 .unwrap_or((false, false));
             if cut_state != (true, true) {
                 let _ = this.update(cx, |settings, cx| {
-                    settings.fail_menu_probe(
+                    settings.fail_ui_probe(
                         format!(
                             "Cut result text_empty={} clipboard_matches={}",
                             cut_state.0, cut_state.1
@@ -385,7 +402,7 @@ impl SettingsWindow {
                 Err(error) => Err(error.to_string()),
             };
             if let Err(error) = paste {
-                let _ = this.update(cx, |settings, cx| settings.fail_menu_probe(error, cx));
+                let _ = this.update(cx, |settings, cx| settings.fail_ui_probe(error, cx));
                 return;
             }
             Timer::after(Duration::from_millis(100)).await;
@@ -399,7 +416,7 @@ impl SettingsWindow {
                 .unwrap_or(false);
             if !paste_verified {
                 let _ = this.update(cx, |settings, cx| {
-                    settings.fail_menu_probe("Paste did not restore text".into(), cx);
+                    settings.fail_ui_probe("Paste did not restore text".into(), cx);
                 });
                 return;
             }
@@ -408,10 +425,98 @@ impl SettingsWindow {
         .detach();
     }
 
-    #[cfg(target_os = "macos")]
-    fn fail_menu_probe(&mut self, error: String, cx: &mut Context<Self>) {
-        self._menu_probe_failed.store(true, Ordering::Release);
-        eprintln!("gpui-settings-spike: menu probe failed: {error}");
+    fn start_tooltip_probe(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.ui_probe.tooltip_seen.store(false, Ordering::Release);
+        self.ui_probe
+            .tooltip_hovered
+            .store(false, Ordering::Release);
+        let window_handle = window.window_handle();
+
+        cx.spawn(async move |this, cx| {
+            Timer::after(Duration::from_millis(100)).await;
+            let mut hovered_y = None;
+            for y in (360..=440).step_by(2) {
+                let posted = window_handle.update(cx, |_, window, cx| {
+                    let _ = cx;
+                    platform_ui_probe::post_mouse_move(window, 580, y, 520)
+                });
+                if !matches!(posted, Ok(Ok(()))) {
+                    let _ = this.update(cx, |settings, cx| {
+                        settings.fail_ui_probe(
+                            "settings window closed before tooltip hover".into(),
+                            cx,
+                        );
+                    });
+                    return;
+                }
+                Timer::after(Duration::from_millis(10)).await;
+                let hovered = this
+                    .update(cx, |settings, _| {
+                        settings.ui_probe.tooltip_hovered.load(Ordering::Acquire)
+                    })
+                    .unwrap_or(false);
+                if hovered {
+                    hovered_y = Some(y);
+                    break;
+                }
+            }
+            if hovered_y.is_none() {
+                let _ = this.update(cx, |settings, cx| {
+                    settings.fail_ui_probe("native mouse moves did not hit Reset".into(), cx);
+                });
+                return;
+            }
+            println!("gpui-settings-spike: native tooltip hover entered");
+
+            // GPUI 0.2.2 intentionally waits 500 ms before constructing a tooltip.
+            Timer::after(Duration::from_millis(650)).await;
+            let visible = this
+                .update(cx, |settings, _| {
+                    settings.ui_probe.tooltip_seen.load(Ordering::Acquire)
+                        && settings.ui_probe.tooltip_hovered.load(Ordering::Acquire)
+                })
+                .unwrap_or(false);
+            if !visible {
+                let _ = this.update(cx, |settings, cx| {
+                    settings
+                        .fail_ui_probe("tooltip was not built after the hover delay".into(), cx);
+                });
+                return;
+            }
+
+            let left = window_handle.update(cx, |_, window, cx| {
+                let _ = cx;
+                platform_ui_probe::post_mouse_move(window, 20, 20, 520)
+            });
+            if !matches!(left, Ok(Ok(()))) {
+                let _ = this.update(cx, |settings, cx| {
+                    settings.fail_ui_probe(
+                        "settings window closed before tooltip hover exit".into(),
+                        cx,
+                    );
+                });
+                return;
+            }
+            Timer::after(Duration::from_millis(100)).await;
+            let hover_cleared = this
+                .update(cx, |settings, _| {
+                    !settings.ui_probe.tooltip_hovered.load(Ordering::Acquire)
+                })
+                .unwrap_or(false);
+            if !hover_cleared {
+                let _ = this.update(cx, |settings, cx| {
+                    settings.fail_ui_probe("tooltip hover state did not clear".into(), cx);
+                });
+                return;
+            }
+            println!("gpui-settings-spike: tooltip hover delay and exit verified");
+        })
+        .detach();
+    }
+
+    fn fail_ui_probe(&mut self, error: String, cx: &mut Context<Self>) {
+        self.ui_probe.failed.store(true, Ordering::Release);
+        eprintln!("gpui-settings-spike: UI probe failed: {error}");
         cx.quit();
     }
 
@@ -666,6 +771,9 @@ impl Render for SettingsWindow {
         );
 
         let reset_tooltip_tokens = tokens;
+        let tooltip_probe_enabled = self.tooltip_probe_enabled;
+        let tooltip_probe_seen = Arc::clone(&self.ui_probe.tooltip_seen);
+        let tooltip_probe_hovered = Arc::clone(&self.ui_probe.tooltip_hovered);
         let content = div()
             .flex()
             .flex_col()
@@ -748,7 +856,20 @@ impl Render for SettingsWindow {
                                     .hover(|style| {
                                         style.bg(tokens.surface_selected).cursor_pointer()
                                     })
+                                    .on_hover(move |hovered, _, _| {
+                                        if tooltip_probe_enabled {
+                                            tooltip_probe_hovered
+                                                .store(*hovered, Ordering::Release);
+                                        }
+                                    })
                                     .tooltip(move |_, cx| {
+                                        if tooltip_probe_enabled
+                                            && !tooltip_probe_seen.swap(true, Ordering::AcqRel)
+                                        {
+                                            println!(
+                                                "gpui-settings-spike: tooltip built after hover delay"
+                                            );
+                                        }
                                         cx.new(|_| SettingsTooltip {
                                             text: "Restore the settings shown in this spike".into(),
                                             tokens: reset_tooltip_tokens,
@@ -921,11 +1042,11 @@ fn open_settings_window(
     cx: &mut App,
     runtime_bridge: RuntimeBridge,
     startup_started_at: Option<Instant>,
-    menu_probe_enabled: bool,
-    menu_probe_failed: Arc<AtomicBool>,
+    probes: UiProbeOptions,
+    ui_probe: UiProbeState,
 ) -> bool {
     #[cfg(not(target_os = "macos"))]
-    let _ = menu_probe_enabled;
+    let _ = probes.menu;
 
     let bounds = Bounds::centered(None, size(px(760.0), px(520.0)), cx);
     let result = cx.open_window(
@@ -948,7 +1069,8 @@ fn open_settings_window(
                     runtime_bridge,
                     accessibility,
                     accessibility_actions,
-                    menu_probe_failed,
+                    ui_probe,
+                    probes.tooltip,
                     cx,
                 )
             });
@@ -963,8 +1085,11 @@ fn open_settings_window(
                 .update(cx, |settings, window, cx| {
                     settings.start_accessibility_action_task(window, cx);
                     #[cfg(target_os = "macos")]
-                    if menu_probe_enabled {
+                    if probes.menu {
                         settings.start_menu_probe(window, cx);
+                    }
+                    if probes.tooltip {
+                        settings.start_tooltip_probe(window, cx);
                     }
                     window.focus(&settings.model_name.focus_handle(cx));
                     settings.request_runtime_snapshot(cx);
@@ -1015,11 +1140,16 @@ fn menu_probe_enabled() -> bool {
     std::env::args().any(|argument| argument == "--menu-probe")
 }
 
+fn tooltip_probe_enabled() -> bool {
+    std::env::args().any(|argument| argument == "--tooltip-probe")
+}
+
 fn main() {
     let startup_started_at = Instant::now();
     let auto_quit_delay = auto_quit_delay();
     let runtime_probe_mode = runtime_probe_mode();
     let menu_probe_enabled = menu_probe_enabled();
+    let tooltip_probe_enabled = tooltip_probe_enabled();
     let application = Application::new();
     let (runtime_bridge, runtime_commands) = RuntimeBridge::new();
     let reopen_bridge = runtime_bridge.clone();
@@ -1027,10 +1157,11 @@ fn main() {
     let reopen_window_failed = Arc::clone(&window_open_failed);
     let startup_window_failed = Arc::clone(&window_open_failed);
     let quit_window_failed = Arc::clone(&window_open_failed);
-    let menu_probe_failed = Arc::new(AtomicBool::new(false));
-    let reopen_menu_probe_failed = Arc::clone(&menu_probe_failed);
-    let startup_menu_probe_failed = Arc::clone(&menu_probe_failed);
-    let quit_menu_probe_failed = Arc::clone(&menu_probe_failed);
+    let ui_probe = UiProbeState::default();
+    let reopen_ui_probe = ui_probe.clone();
+    let startup_ui_probe = ui_probe.clone();
+    let quit_ui_probe = ui_probe.clone();
+    let after_run_ui_probe = ui_probe.clone();
 
     application.on_reopen(move |cx| {
         if cx.windows().is_empty()
@@ -1038,8 +1169,8 @@ fn main() {
                 cx,
                 reopen_bridge.clone(),
                 None,
-                false,
-                Arc::clone(&reopen_menu_probe_failed),
+                UiProbeOptions::default(),
+                reopen_ui_probe.clone(),
             )
         {
             reopen_window_failed.store(true, Ordering::Release);
@@ -1063,7 +1194,7 @@ fn main() {
         cx.on_app_quit(move |_| {
             let bridge = quit_bridge.clone();
             let window_failed = Arc::clone(&quit_window_failed);
-            let menu_probe_failed = Arc::clone(&quit_menu_probe_failed);
+            let ui_probe = quit_ui_probe.clone();
             async move {
                 if let Err(error) = bridge.shutdown().await {
                     eprintln!("gpui-settings-spike: runtime shutdown failed: {error}");
@@ -1073,7 +1204,7 @@ fn main() {
                 if window_failed.load(Ordering::Acquire) {
                     std::process::exit(1);
                 }
-                if menu_probe_failed.load(Ordering::Acquire) {
+                if ui_probe.failed.load(Ordering::Acquire) {
                     std::process::exit(1);
                 }
             }
@@ -1153,8 +1284,11 @@ fn main() {
             cx,
             runtime_bridge.clone(),
             Some(startup_started_at),
-            menu_probe_enabled,
-            Arc::clone(&startup_menu_probe_failed),
+            UiProbeOptions {
+                menu: menu_probe_enabled,
+                tooltip: tooltip_probe_enabled,
+            },
+            startup_ui_probe.clone(),
         ) {
             startup_window_failed.store(true, Ordering::Release);
             cx.quit();
@@ -1171,7 +1305,9 @@ fn main() {
         }
     });
 
-    if window_open_failed.load(Ordering::Acquire) || menu_probe_failed.load(Ordering::Acquire) {
+    if window_open_failed.load(Ordering::Acquire)
+        || after_run_ui_probe.failed.load(Ordering::Acquire)
+    {
         std::process::exit(1);
     }
 }

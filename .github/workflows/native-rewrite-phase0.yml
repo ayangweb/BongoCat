@@ -270,7 +270,13 @@ jobs:
 
           executable = pathlib.Path("spikes/gpui-settings/target/debug/bongocat-gpui-settings-spike")
           completed = subprocess.run(
-              [str(executable), "--auto-quit-ms", "2500", "--menu-probe"],
+              [
+                  str(executable),
+                  "--auto-quit-ms",
+                  "2500",
+                  "--menu-probe",
+                  "--tooltip-probe",
+              ],
               capture_output=True,
               check=False,
               text=True,
@@ -290,6 +296,9 @@ jobs:
               "runtime snapshot revision=1",
               "accessibility action applied",
               "native menu edit actions verified",
+              "native tooltip hover entered",
+              "tooltip built after hover delay",
+              "tooltip hover delay and exit verified",
               "runtime stopped",
               "stopped",
           ):
@@ -531,7 +540,7 @@ jobs:
           Remove-Item $stdout, $stderr -Force -ErrorAction SilentlyContinue
           $process = Start-Process `
             -FilePath $executable `
-            -ArgumentList @("--auto-quit-ms", "20000", "--runtime-error-probe") `
+            -ArgumentList @("--auto-quit-ms", "20000", "--runtime-error-probe", "--tooltip-probe") `
             -NoNewWindow `
             -PassThru `
             -RedirectStandardOutput $stdout `
@@ -740,6 +749,9 @@ jobs:
             "scale_factor=",
             "gpui-settings-spike: runtime snapshot revision=1",
             "gpui-settings-spike: accessibility action applied",
+            "gpui-settings-spike: native tooltip hover entered",
+            "gpui-settings-spike: tooltip built after hover delay",
+            "gpui-settings-spike: tooltip hover delay and exit verified",
             "gpui-settings-spike: runtime stopped",
             "gpui-settings-spike: stopped"
           ) | ForEach-Object {

@@ -49,6 +49,12 @@ the installed `NSMenu` items on later AppKit run-loop turns, then checks the
 focused GPUI text input and clipboard without logging their contents. This does
 not validate the later `NSStatusItem` menu-bar service.
 
+Launch with `--tooltip-probe` to send synthetic native mouse-move messages
+through the platform window and GPUI input path. The probe finds the Reset
+hitbox, waits for GPUI's 500 ms tooltip delay, verifies that the tooltip is
+built, then moves out and verifies hover cleanup. It does not replace a physical
+pointer or screen-reader announcement test.
+
 Build the release binary and collect the macOS Phase 0 performance probe with:
 
 ```text
@@ -68,7 +74,7 @@ LaunchServices:
 
 ```text
 ./scripts/package-macos.sh
-open -W "target/package/BongoCat GPUI Spike.app" --args --auto-quit-ms 2500 --menu-probe
+open -W "target/package/BongoCat GPUI Spike.app" --args --auto-quit-ms 2500 --menu-probe --tooltip-probe
 ```
 
 The ad-hoc signature only validates local bundle integrity. It is not a

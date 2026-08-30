@@ -42,4 +42,5 @@ GPUI 继续作为当前首选设置 UI，但在辅助功能 gate 通过前保持
 - commit `fd9ad85` 的 push run `33255204781`、job `99107586036` 使用进程外 UI Automation client 读取同等节点，并通过 `SelectionItem.Select` 验证 Dark radio 的 selected/action 闭环；
 - 2026-08-30 的 macOS `.app` smoke 读取 Reset 的 help text，并验证打开确认框后只暴露 modal `AlertDialog` 子树、初始 Cancel 焦点、键盘关闭与语义树恢复；commit `45b8dba` 的 push run `33273470907`、job `99156013603` 通过同一实现的 Windows UI Automation dialog 门禁；
 - macOS `.app` 的延迟 runtime probe 已通过 AX value/invalid 状态观察到 `Runtime Ready · revision 1` -> `runtime probe failed` -> `Runtime Ready · revision 2`；commit `21ee8aa` 的 push run `33291750411`、job `99204478369` 与 pull request run `33291751558`、job `99204481348` 已从 Windows UI Automation 依次读取 loading、注入错误、retry 和 revision 2 恢复。runner 托管 UIA client 不提供 `AriaPropertiesProperty` 标识，因此仍无法据此验证 AccessKit 的 `busy=true` 投影；VoiceOver/Narrator 操作和宣读仍未验证；
+- 双平台设置 spike 通过原生合成 mouse-move 进入 GPUI 平台事件链，验证 Reset hitbox、500ms tooltip delay/build 和 hover exit；物理 pointer 与 VoiceOver/Narrator tooltip 朗读仍未验证；
 - Iced 候选版本与 feature 清单通过 `cargo info iced@0.14.0 --verbose` 获取，源码检索未发现通用 accessibility surface。

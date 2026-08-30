@@ -1,6 +1,6 @@
 # GPUI Settings Spike Record
 
-状态：macOS 默认 shader、`.app`、主题、基础文本交互、应用菜单、marked-text contract、runtime bridge、loading/error/retry、tooltip 与 modal dialog/AccessKit AX tree/action 通过；Windows 真实窗口/首帧/shutdown、dialog 与 loading/error/retry UI Automation 已通过，`busy=true` 投影、双平台真实 IME 与真实辅助技术待完成
+状态：macOS 默认 shader、`.app`、主题、基础文本交互、应用菜单、marked-text contract、runtime bridge、loading/error/retry、tooltip hover 与 modal dialog/AccessKit AX tree/action 通过；Windows 真实窗口/首帧/shutdown、tooltip hover、dialog 与 loading/error/retry UI Automation 已通过，`busy=true` 投影、双平台真实 IME 与真实辅助技术待完成
 日期：2026-08-30
 原始重构基线 commit：`94af230`；后续验证源码与本记录保持同一提交
 
@@ -152,8 +152,15 @@ Shift-Tab 在两个 dialog command 之间循环，Enter/Space 只在 `SettingsBu
 激活，不会截获文本框空格，Escape 关闭后焦点返回 Reset。macOS `.app` 的真实窗口 smoke 已
 执行打开、Shift-Tab/Tab、Escape 和 Cmd+Q，并确认 dialog 子树撤销及 runtime-first shutdown。
 commit `45b8dba` 的 push job `99156013603` 已通过进程外 UI Automation 的
-open -> role/focus -> cancel -> subtree removed 门禁；tooltip 的真实 hover 延迟和
-VoiceOver/Narrator 宣读仍待完成。
+open -> role/focus -> cancel -> subtree removed 门禁。
+
+`--tooltip-probe` 在 GPUI 当前更新借用结束后，通过一次性平台消息向窗口投递合成
+mouse-move：macOS 在 Core Foundation main-run-loop timer 中调用 GPUI content view 的标准
+`mouseMoved:` selector，Windows 使用 `PostMessageW(WM_MOUSEMOVE)`。probe 在 Reset 的有限范围内
+寻找真实 hitbox，保持 hover 超过 GPUI 0.2.2 的 500ms delay，要求 tooltip builder 执行，再移出并
+要求 hover 清除；失败会使进程非零退出。macOS 本机链路已通过，Windows 结果由 CI runner 验证。
+这覆盖平台窗口消息 -> GPUI input -> hitbox -> tooltip timer/build/exit，不替代物理 pointer 或
+VoiceOver/Narrator tooltip 朗读。
 
 同日将最小菜单扩展为 Application、Edit 和 Window 三组。自绘 `TextInput` 的编辑命令必须使用
 GPUI action；若错误映射为 Cocoa `cut:`/`paste:` responder selector，菜单会因输入框不是
@@ -174,7 +181,7 @@ Objective-C 对象。该版本例外的解除条件是 AccessKit macOS adapter �
 ## 未完成
 
 - marked-text 纯状态 contract 已通过；真实中文输入法组合态尚未在 macOS 上完成端到端验证，Windows IME、字体、DPI 和辅助技术尚未验证。
-- tooltip builder、modal dialog、焦点陷阱、Escape 和 macOS 原生 Application/Edit/Window 菜单交互已通过；真实 tooltip hover 延迟与双平台辅助技术朗读尚未验证。
+- tooltip 原生合成 mouse-move、500ms delay/build/exit、modal dialog、焦点陷阱、Escape 和 macOS 原生 Application/Edit/Window 菜单交互已通过；物理 pointer 与双平台辅助技术朗读尚未验证。
 - macOS 内容 AX tree/action、错误/retry value 与 Windows UI Automation dialog/loading/error/retry/revision 2 runner 已通过；Windows `busy=true` AriaProperties 投影、真实 VoiceOver/Narrator 操作和宣读顺序仍待完成。
 - 菜单栏常驻策略、隐藏行为和 native overlay 共存尚未验证。
 - Windows 已通过编译和真实窗口/首帧/退出 runner smoke；字体、IME、DPI 切换、辅助技术和系统集成仍未验证。
