@@ -21,16 +21,24 @@ pub struct MotionParameterSample {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct MotionPartOpacitySample {
+    pub id: String,
+    pub value: f32,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct MotionEvaluation {
     pub local_time: Duration,
     pub finished: bool,
     pub parameters: Vec<MotionParameterSample>,
+    pub part_opacities: Vec<MotionPartOpacitySample>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MotionApplyStatus {
     pub finished: bool,
     pub applied_parameter_count: usize,
+    pub applied_part_opacity_count: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -300,10 +308,20 @@ impl MotionClip {
                 ),
             })
             .collect();
+        let part_opacities = self
+            .curves
+            .iter()
+            .filter(|curve| curve.target == MotionCurveTarget::PartOpacity)
+            .map(|curve| MotionPartOpacitySample {
+                id: curve.id.clone(),
+                value: curve.evaluate(local_seconds),
+            })
+            .collect();
         MotionEvaluation {
             local_time: Duration::from_secs_f32(local_seconds),
             finished,
             parameters,
+            part_opacities,
         }
     }
 }
@@ -641,6 +659,28 @@ mod tests {
         assert!((clip.fade_out_weight(Duration::from_millis(500)) - 0.5).abs() < 0.0001);
         assert_eq!(clip.fade_out_weight(Duration::from_secs(1)), 0.0);
         assert_eq!(clip.fade_out_weight(Duration::from_secs(2)), 0.0);
+    }
+
+    #[test]
+    fn evaluates_part_opacity_separately_from_weighted_parameters() {
+        let json = br#"{
+          "Version":3,
+          "Meta":{"Duration":1.0,"Fps":30.0,"Loop":false,"AreBeziersRestricted":true,
+            "CurveCount":2,"TotalSegmentCount":2,"TotalPointCount":4,
+            "UserDataCount":0,"TotalUserDataSize":0},
+          "Curves":[
+            {"Target":"Parameter","Id":"Param","Segments":[0,0,0,1,1]},
+            {"Target":"PartOpacity","Id":"Part","Segments":[0,1,0,1,0]}
+          ]
+        }"#;
+        let clip = MotionClip::from_slice(json, 0.5, 0.5).expect("synthetic motion");
+        let evaluation = clip.evaluate(Duration::from_millis(500));
+
+        assert_eq!(evaluation.parameters.len(), 1);
+        assert_eq!(evaluation.parameters[0].id, "Param");
+        assert_eq!(evaluation.part_opacities.len(), 1);
+        assert_eq!(evaluation.part_opacities[0].id, "Part");
+        assert!((evaluation.part_opacities[0].value - 0.5).abs() < 0.0001);
     }
 
     #[test]

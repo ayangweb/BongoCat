@@ -12,6 +12,9 @@
   reaches zero; runtime snapshots retain the first stop command sequence until completion. Repeated
   stops are idempotent and cannot restart the fade. A zero-duration fade clears the motion
   immediately.
+- A motion `PartOpacity` curve follows the R5 Framework sink: its ID resolves against Core
+  parameters and its evaluated value is written without the ordinary parameter-curve fade weight.
+  Missing IDs are skipped without invalidating the remaining motion.
 - `expression_set` resolves a non-blank expression name against the selected model before changing
   runtime state. A failed resolution leaves the current expression active.
 - Setting an expression fades it in with sine easing. A later expression keeps only the immediately

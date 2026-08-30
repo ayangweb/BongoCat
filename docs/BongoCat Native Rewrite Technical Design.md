@@ -315,7 +315,9 @@ model evaluation + render snapshot
 - `.model3.json`、motion、expression、physics 和 pose 兼容性由 fixture 验证。
 - 每帧从 Core 默认 parameter 开始，依次应用 motion、expression、physics/pose（实现后）、
   类型化产品输入，最后调用 Core update。motion 的自然结束与显式停止均使用 model3/
-  curve fade，显式停止的外层正弦权重与 curve 权重相乘。expression 使用 `.exp3.json` 的
+  curve fade，显式停止的外层正弦权重与 curve 权重相乘。`PartOpacity` motion curve
+  遵循 R5 Framework 语义，按 curve ID 写入 Core parameter sink 且不继承普通 parameter
+  curve 的 fade weight。expression 使用 `.exp3.json` 的
   Add/Multiply/Overwrite 和正弦淡入淡出；替换期间最多保留上一层与当前层，稳定后只保留
   最新 expression，使内存和每帧成本保持有界。真实输入最后覆盖对应产品 parameter，
   避免表情让按下状态失真。

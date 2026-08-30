@@ -19,6 +19,7 @@ pub use expression::{
 mod motion;
 pub use motion::{
     MotionApplyStatus, MotionClip, MotionCurveTarget, MotionEvaluation, MotionParameterSample,
+    MotionPartOpacitySample,
 };
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -368,15 +369,34 @@ impl Live2dModel {
             count
         };
 
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        let applied_part_opacity_count = {
+            let mut count = 0;
+            for sample in &evaluation.part_opacities {
+                if matches!(
+                    self.core
+                        .set_parameter_by_id(&sample.id, sample.value, 1.0)?,
+                    ParameterUpdate::Applied { .. }
+                ) {
+                    count += 1;
+                }
+            }
+            count
+        };
+
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         let applied_parameter_count = {
-            let _ = (&evaluation.parameters, weight);
+            let _ = (&evaluation.parameters, &evaluation.part_opacities, weight);
             0
         };
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        let applied_part_opacity_count = 0;
 
         Ok(MotionApplyStatus {
             finished: evaluation.finished,
             applied_parameter_count,
+            applied_part_opacity_count,
         })
     }
 
@@ -575,5 +595,55 @@ mod tests {
             .expect("eye parameter")
             .expect("supported eye parameter");
         assert!((eye - eye_default * 0.5).abs() < 0.0001);
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn part_opacity_motion_curves_use_the_framework_parameter_sink() {
+        use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
+        use std::path::Path;
+
+        let repository_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repository root");
+        let committed = PresetModelCatalog::open(
+            repository_root.join("native/resources/models"),
+            ModelPackageLimits::default(),
+        )
+        .expect("preset catalog")
+        .load(&ModelId::parse("standard").expect("model id"))
+        .expect("preset model");
+        let mut model = Live2dModel::load(&committed).expect("Live2D model");
+        let clip = MotionClip::from_slice(
+            br#"{
+              "Version":3,
+              "Meta":{"Duration":1.0,"Fps":30.0,"Loop":true,"AreBeziersRestricted":true,
+                "CurveCount":2,"TotalSegmentCount":2,"TotalPointCount":4,
+                "UserDataCount":0,"TotalUserDataSize":0},
+              "Curves":[
+                {"Target":"PartOpacity","Id":"ParamAngleX","Segments":[0,0,0,1,20]},
+                {"Target":"PartOpacity","Id":"MissingPartSink","Segments":[0,0,0,1,1]}
+              ]
+            }"#,
+            0.0,
+            1.0,
+        )
+        .expect("part opacity motion");
+
+        model
+            .restore_parameter_defaults()
+            .expect("restore parameter defaults");
+        let status = model
+            .apply_motion_with_weight(&clip, std::time::Duration::from_millis(500), 0.0)
+            .expect("apply part opacity motion");
+        assert_eq!(status.applied_parameter_count, 0);
+        assert_eq!(status.applied_part_opacity_count, 1);
+        assert_eq!(
+            model
+                .parameter_value(ProductParameter::AngleX)
+                .expect("angle parameter"),
+            Some(10.0)
+        );
     }
 }
