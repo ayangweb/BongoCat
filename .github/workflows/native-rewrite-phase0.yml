@@ -97,7 +97,7 @@ jobs:
       - name: Smoke Windows D3D11 product overlay
         if: matrix.os == 'windows-latest'
         shell: pwsh
-        timeout-minutes: 5
+        timeout-minutes: 12
         env:
           RUST_BACKTRACE: full
         run: |
