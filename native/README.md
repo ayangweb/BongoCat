@@ -8,8 +8,19 @@ historical Tauri behavior reference until the release cutover phase.
 Development is the default and is compiled into the artifact:
 
 ```text
-cargo run --manifest-path native/Cargo.toml -p bongocat-app
+cargo run --manifest-path native/Cargo.toml -p bongocat-app --release -- --run-seconds 0
 ```
+
+On macOS this is the current formal visible product entry. It loads the selected bundled preset
+(`standard` by default), starts the product runtime and listen-only input producer, and displays the
+transparent Metal overlay. `--run-seconds 0` keeps it visible until the overlay is closed; omit the
+argument for a bounded 30-second run. Grant Input Monitoring permission to the launching terminal
+for global keyboard and mouse-button animation. Permission denial is reported as a degraded input
+state and does not prevent the model from appearing.
+
+The assembled Windows entry currently starts and stops the platform-independent application
+services but does not yet draw the preset model. The D3D11 preset-model renderer remains an active
+TODO item.
 
 Production must be selected at build time:
 
@@ -29,11 +40,11 @@ cargo test --manifest-path native/Cargo.toml --workspace
 cargo check --manifest-path native/Cargo.toml --workspace --release
 ```
 
-## macOS Live2D Preview
+## macOS Live2D Diagnostic Preview
 
-The current visible product slice loads the committed Cubism Native 5-r.5 development baseline and
-renders one of the three preset models in a transparent Metal overlay. The final argument is the
-preview duration in seconds:
+`bongocat-overlay` remains a diagnostic executable for selecting presets, injecting deterministic
+input, and exercising model switching. It is not the product entry. The final positional argument
+is the preview duration in seconds:
 
 ```text
 cargo run --manifest-path native/Cargo.toml -p bongocat-overlay --release -- standard 30
@@ -66,9 +77,10 @@ cargo run --manifest-path native/Cargo.toml -p bongocat-overlay --release -- sta
 The interactive path uses the same typed runtime input state as the deterministic preview and
 stops the platform producer before the runtime and Metal overlay. It seeds the current global
 cursor position at startup and then coalesces cursor movement through an independent latest-value
-transport; pointer, head, and eye parameters use the active display's logical viewport. This is not
-yet the assembled application: GPUI settings, lifecycle notifications, coordinated runtime/GPU
-model-switch acknowledgement, and the Windows preset-model renderer remain separate work items.
+transport; pointer, head, and eye parameters use the active display's logical viewport. The product
+entry now owns this runtime/input/render lifecycle. GPUI settings coexistence, lifecycle
+notifications, coordinated runtime/GPU model-switch acknowledgement, installed-model selection,
+and the Windows preset-model renderer remain separate work items.
 
 Cubism model evaluation and Metal GPU ownership are separated by the platform-independent
 `bongocat-render` contract. The single runtime worker owns the mutable Cubism model and publishes

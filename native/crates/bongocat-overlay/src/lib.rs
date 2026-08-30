@@ -1,7 +1,128 @@
 #[cfg(target_os = "macos")]
 mod macos;
 
+use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError};
+use bongocat_render::{RenderConsumer, RenderTransportDiagnostics};
+use bongocat_runtime::{CursorProducer, InputProducer, RuntimeClient};
 use std::{fmt, path::Path, time::Duration};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct OverlaySessionOptions {
+    pub click_through: bool,
+    pub always_on_top: bool,
+    pub scale_percent: u16,
+    pub opacity_percent: u8,
+    pub maximum_fps: u16,
+}
+
+impl Default for OverlaySessionOptions {
+    fn default() -> Self {
+        Self {
+            click_through: true,
+            always_on_top: true,
+            scale_percent: 100,
+            opacity_percent: 100,
+            maximum_fps: 60,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProductOverlayReport {
+    pub frames_presented: u64,
+    pub dynamic_snapshots: u64,
+    pub input_start_error: Option<PlatformInputError>,
+    pub input_diagnostics: Option<PlatformInputDiagnostics>,
+    pub render_diagnostics: RenderTransportDiagnostics,
+    pub model_generation: u64,
+    pub drawable_count: usize,
+    pub masked_drawable_count: usize,
+    pub texture_count: usize,
+}
+
+pub struct ProductOverlaySession {
+    #[cfg(target_os = "macos")]
+    inner: macos::ProductOverlaySession,
+}
+
+impl ProductOverlaySession {
+    pub fn start(
+        runtime_client: RuntimeClient,
+        input_producer: InputProducer,
+        cursor_producer: CursorProducer,
+        render_consumer: RenderConsumer,
+        options: OverlaySessionOptions,
+    ) -> Result<Self, OverlayError> {
+        #[cfg(target_os = "macos")]
+        {
+            macos::ProductOverlaySession::start(
+                runtime_client,
+                input_producer,
+                cursor_producer,
+                render_consumer,
+                options,
+            )
+            .map(|inner| Self { inner })
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = (
+                runtime_client,
+                input_producer,
+                cursor_producer,
+                render_consumer,
+                options,
+            );
+            Err(OverlayError::new(
+                "the product Live2D overlay is currently available on macOS",
+            ))
+        }
+    }
+
+    pub fn run_for(&mut self, duration: Duration) -> Result<(), OverlayError> {
+        #[cfg(target_os = "macos")]
+        {
+            self.inner.run_for(duration)
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = duration;
+            Err(OverlayError::new(
+                "the product Live2D overlay is currently available on macOS",
+            ))
+        }
+    }
+
+    pub fn stop_input(&mut self) -> Result<(), OverlayError> {
+        #[cfg(target_os = "macos")]
+        {
+            self.inner.stop_input()
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            Err(OverlayError::new(
+                "the product Live2D overlay is currently available on macOS",
+            ))
+        }
+    }
+
+    pub fn finish_after_runtime_shutdown(self) -> Result<ProductOverlayReport, OverlayError> {
+        #[cfg(target_os = "macos")]
+        {
+            self.inner.finish_after_runtime_shutdown()
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            Err(OverlayError::new(
+                "the product Live2D overlay is currently available on macOS",
+            ))
+        }
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PreviewReport {

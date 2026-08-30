@@ -11,6 +11,8 @@ build = "build.rs"
 [dependencies]
 bongocat-config.workspace = true
 bongocat-model.workspace = true
+bongocat-overlay.workspace = true
+bongocat-render.workspace = true
 bongocat-runtime.workspace = true
 
 [dev-dependencies]

@@ -62,6 +62,10 @@ pub enum RuntimeCommand {
     ResetInput(InputResetReason),
     ApplyInput(Arc<SequencedInputEvent>),
     ActivateModel(Arc<CommittedModel>),
+    ActivateModelWithBindings {
+        model: Arc<CommittedModel>,
+        input_bindings: Arc<InputBindings>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -671,29 +675,34 @@ fn run_worker(
                     }
                     WorkerCommand::Product(RuntimeCommand::ActivateModel(committed)) => {
                         evaluate_after_command = false;
-                        let model_input =
-                            input_state.model_snapshot(&input_bindings, normalized_cursor);
-                        let activation = renderer.as_mut().map_or(Ok(()), |renderer| {
-                            renderer.activate(&committed, model_input)
-                        });
-                        match activation {
-                            Ok(()) => {
-                                let model_snapshot = committed.snapshot();
-                                active_model = Some(committed);
-                                publish(&snapshot, |current| {
-                                    current.state = RuntimeState::Ready;
-                                    current.active_model = Some(model_snapshot);
-                                    current.render_error = None;
-                                    current.last_command_failure = None;
-                                    current.last_command_sequence = Some(sequence);
-                                });
-                            }
-                            Err(code) => publish(&snapshot, |current| {
-                                current.last_command_failure =
-                                    Some(RuntimeCommandFailure { sequence, code });
-                                current.last_command_sequence = Some(sequence);
-                            }),
-                        }
+                        activate_model(
+                            sequence,
+                            committed,
+                            None,
+                            renderer.as_mut(),
+                            &input_state,
+                            &mut input_bindings,
+                            normalized_cursor,
+                            &mut active_model,
+                            &snapshot,
+                        );
+                    }
+                    WorkerCommand::Product(RuntimeCommand::ActivateModelWithBindings {
+                        model,
+                        input_bindings: proposed_bindings,
+                    }) => {
+                        evaluate_after_command = false;
+                        activate_model(
+                            sequence,
+                            model,
+                            Some(proposed_bindings),
+                            renderer.as_mut(),
+                            &input_state,
+                            &mut input_bindings,
+                            normalized_cursor,
+                            &mut active_model,
+                            &snapshot,
+                        );
                     }
                     WorkerCommand::Shutdown => {
                         publish(&snapshot, |current| {
@@ -746,6 +755,46 @@ fn run_worker(
         renderer.close();
     }
     publish(&snapshot, |current| current.state = RuntimeState::Stopped);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn activate_model(
+    sequence: u64,
+    committed: Arc<CommittedModel>,
+    proposed_bindings: Option<Arc<InputBindings>>,
+    renderer: Option<&mut RuntimeRenderer>,
+    input_state: &InputState,
+    input_bindings: &mut InputBindings,
+    normalized_cursor: NormalizedCursorPosition,
+    active_model: &mut Option<Arc<CommittedModel>>,
+    snapshot: &SnapshotCell,
+) {
+    let activation_bindings = proposed_bindings.as_deref().unwrap_or(input_bindings);
+    let model_input = input_state.model_snapshot(activation_bindings, normalized_cursor);
+    let activation = renderer.map_or(Ok(()), |renderer| {
+        renderer.activate(&committed, model_input)
+    });
+    match activation {
+        Ok(()) => {
+            if let Some(bindings) = proposed_bindings {
+                *input_bindings = Arc::unwrap_or_clone(bindings);
+            }
+            let model_snapshot = committed.snapshot();
+            *active_model = Some(committed);
+            publish(snapshot, |current| {
+                current.state = RuntimeState::Ready;
+                current.active_model = Some(model_snapshot);
+                current.model_input = model_input;
+                current.render_error = None;
+                current.last_command_failure = None;
+                current.last_command_sequence = Some(sequence);
+            });
+        }
+        Err(code) => publish(snapshot, |current| {
+            current.last_command_failure = Some(RuntimeCommandFailure { sequence, code });
+            current.last_command_sequence = Some(sequence);
+        }),
+    }
 }
 
 fn evaluate_renderer(
@@ -1174,18 +1223,30 @@ mod tests {
         let (owner, consumer) = RuntimeOwner::start_with_rendering(true, 8);
         let client = owner.client();
         client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+        let left_bindings = Arc::new(InputBindings::new(BTreeMap::from([(
+            PhysicalKey::KEY_A,
+            HandSide::Left,
+        )])));
         let first_sequence = client
-            .send(RuntimeCommand::ActivateModel(Arc::new(preset_model(
-                "standard",
-            ))))
+            .send(RuntimeCommand::ActivateModelWithBindings {
+                model: Arc::new(preset_model("standard")),
+                input_bindings: left_bindings,
+            })
             .expect("standard activation");
         client
             .wait_for_command(first_sequence, TIMEOUT)
             .expect("standard active");
         let first = wait_for_render_frame(&consumer, |_| true);
 
+        let right_bindings = Arc::new(InputBindings::new(BTreeMap::from([(
+            PhysicalKey::KEY_A,
+            HandSide::Right,
+        )])));
         let broken_sequence = client
-            .send(RuntimeCommand::ActivateModel(Arc::new(broken)))
+            .send(RuntimeCommand::ActivateModelWithBindings {
+                model: Arc::new(broken),
+                input_bindings: right_bindings,
+            })
             .expect("broken activation command");
         let rejected = client
             .wait_for_command(broken_sequence, TIMEOUT)
@@ -1210,6 +1271,20 @@ mod tests {
                 && frame.frame_number > first.frame_number
         });
         assert_eq!(preserved.model_generation, 0);
+        let down_sequence = owner
+            .input_producer()
+            .publish(InputEvent::Edge {
+                control: InputControl::Key(PhysicalKey::KEY_A),
+                edge: InputEdge::Down,
+                source: InputSource::Capture,
+                at: MonotonicMillis::new(1),
+            })
+            .expect("key down");
+        let input_after_rejection = client
+            .wait_for_input_sequence(down_sequence, TIMEOUT)
+            .expect("key down applied");
+        assert!(input_after_rejection.model_input.left_hand_down);
+        assert!(!input_after_rejection.model_input.right_hand_down);
 
         let replacement_sequence = client
             .send(RuntimeCommand::ActivateModel(Arc::new(preset_model(

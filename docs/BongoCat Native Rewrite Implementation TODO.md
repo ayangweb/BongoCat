@@ -314,6 +314,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 - [x] `native/` 正式 Cargo workspace 仅包含新 Rust 应用和 crate；发布切换时再提升为根构建入口，迁移期不破坏历史 Tauri workspace。
 - [x] 创建 bongocat-app：入口、服务装配和 shutdown。
+  - 验收证据（2026-08-30）：正式 macOS `bongocat-app` 入口现装配配置、单一 runtime
+    owner、预置模型与输入映射、listen-only 平台输入、cursor latest-value transport 和
+    Metal overlay；应用拥有唯一 render consumer，并以输入 -> runtime -> renderer/window
+    顺序停止。输入权限/启动失败降级而不阻止模型窗口显示；`--run-seconds 0` 可持续运行，
+    默认 30 秒用于有界开发 smoke。GPUI 共存、installed-model 选择、Windows 预置模型
+    renderer 和 runtime/GPU 模型切换确认仍属后续任务。
 - [x] 创建 bongocat-runtime：状态、输入语义、动画和 command。
 - [x] 创建 bongocat-config：环境隔离、schema、验证和原子存储。
 - [x] 创建 bongocat-model：模型包、导入和资源索引。

@@ -1,14 +1,14 @@
-use crate::{OverlayError, PreviewReport};
+use crate::{OverlayError, OverlaySessionOptions, PreviewReport, ProductOverlayReport};
 use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
-use bongocat_platform::MacInputService;
+use bongocat_platform::{MacInputService, PlatformInputDiagnostics, PlatformInputError};
 use bongocat_render::{
-    BlendMode, CanvasInfo, DrawableId, RenderFrame, RenderResources, RenderSnapshot, TextureAsset,
-    TextureId,
+    BlendMode, CanvasInfo, DrawableId, RenderConsumer, RenderFrame, RenderResources,
+    RenderSnapshot, TextureAsset, TextureId,
 };
 use bongocat_runtime::{
     CursorPosition, CursorProducer, CursorSample, CursorViewport, HandSide, InputBindings,
     InputControl, InputEdge, InputEvent, InputProducer, InputSource, MonotonicMillis, MouseButton,
-    PhysicalKey, RuntimeCommand, RuntimeOwner,
+    PhysicalKey, RuntimeClient, RuntimeCommand, RuntimeOwner, RuntimeState,
 };
 use image::ImageReader;
 use metal::{
@@ -25,8 +25,8 @@ use objc2::{
 };
 use objc2_app_kit::{
     NSApplication, NSApplicationActivationPolicy, NSBackingStoreType, NSColor, NSEventMask,
-    NSFloatingWindowLevel, NSPanel, NSView, NSWindowAnimationBehavior, NSWindowCollectionBehavior,
-    NSWindowStyleMask,
+    NSFloatingWindowLevel, NSNormalWindowLevel, NSPanel, NSView, NSWindowAnimationBehavior,
+    NSWindowCollectionBehavior, NSWindowStyleMask,
 };
 use objc2_foundation::{NSDate, NSDefaultRunLoopMode, NSPoint, NSRect, NSSize};
 use std::{
@@ -180,6 +180,229 @@ struct GpuModel {
     masked_drawable_count: usize,
 }
 
+pub(super) struct ProductOverlaySession {
+    application: Retained<NSApplication>,
+    overlay: NativeOverlay,
+    runtime_client: RuntimeClient,
+    render_consumer: RenderConsumer,
+    input_service: Option<MacInputService>,
+    input_start_error: Option<PlatformInputError>,
+    input_diagnostics: Option<PlatformInputDiagnostics>,
+    input_stopped: bool,
+    frame_interval: Duration,
+    frames_presented: u64,
+    dynamic_snapshots: u64,
+    previous_snapshot: Arc<RenderSnapshot>,
+}
+
+impl ProductOverlaySession {
+    pub(super) fn start(
+        runtime_client: RuntimeClient,
+        input_producer: InputProducer,
+        cursor_producer: CursorProducer,
+        render_consumer: RenderConsumer,
+        options: OverlaySessionOptions,
+    ) -> Result<Self, OverlayError> {
+        validate_product_options(options)?;
+        let initial_frame = render_consumer
+            .take_latest()
+            .ok_or_else(|| OverlayError::new("runtime did not publish an initial render frame"))?;
+        let mtm = MainThreadMarker::new()
+            .ok_or_else(|| OverlayError::new("macOS overlay must start on the main thread"))?;
+        let application = NSApplication::sharedApplication(mtm);
+        application.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
+        application.finishLaunching();
+        let overlay = NativeOverlay::create(mtm, &initial_frame, options)?;
+        overlay.panel.orderFrontRegardless();
+        let (input_service, input_start_error) =
+            match MacInputService::start(input_producer, cursor_producer) {
+                Ok(service) => (Some(service), None),
+                Err(error) => (None, Some(error)),
+            };
+        Ok(Self {
+            application,
+            overlay,
+            runtime_client,
+            render_consumer,
+            input_service,
+            input_start_error,
+            input_diagnostics: None,
+            input_stopped: false,
+            frame_interval: Duration::from_secs_f64(1.0 / f64::from(options.maximum_fps)),
+            frames_presented: 0,
+            dynamic_snapshots: 0,
+            previous_snapshot: initial_frame.snapshot,
+        })
+    }
+
+    pub(super) fn run_for(&mut self, duration: Duration) -> Result<(), OverlayError> {
+        let started = Instant::now();
+        let mut next_frame = started;
+        while self.overlay.panel.isVisible() && (duration.is_zero() || started.elapsed() < duration)
+        {
+            pump_application_events(&self.application);
+            let runtime_snapshot = self.runtime_client.snapshot();
+            if runtime_snapshot.state == RuntimeState::Stopped {
+                return Err(OverlayError::new(
+                    "runtime stopped while the product overlay was active",
+                ));
+            }
+            if !runtime_snapshot.overlay_visible {
+                self.overlay.panel.orderOut(None);
+                break;
+            }
+            let mut gpu_model_switched = false;
+            if let Some(frame) = self.render_consumer.take_latest() {
+                if frame.snapshot.as_ref() != self.previous_snapshot.as_ref() {
+                    self.dynamic_snapshots = self.dynamic_snapshots.saturating_add(1);
+                }
+                gpu_model_switched = self.overlay.sync_frame(&frame)?;
+                self.previous_snapshot = frame.snapshot;
+            }
+            self.overlay
+                .draw(self.frames_presented == 0 || gpu_model_switched)?;
+            self.frames_presented = self.frames_presented.saturating_add(1);
+            next_frame += self.frame_interval;
+            if let Some(delay) = next_frame.checked_duration_since(Instant::now()) {
+                thread::sleep(delay);
+            } else {
+                next_frame = Instant::now();
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) fn stop_input(&mut self) -> Result<(), OverlayError> {
+        if self.input_stopped {
+            return Ok(());
+        }
+        self.input_stopped = true;
+        if let Some(service) = self.input_service.take() {
+            self.input_diagnostics = Some(
+                service
+                    .stop()
+                    .map_err(|error| OverlayError::new(error.to_string()))?,
+            );
+        }
+        Ok(())
+    }
+
+    pub(super) fn finish_after_runtime_shutdown(
+        self,
+    ) -> Result<ProductOverlayReport, OverlayError> {
+        if !self.input_stopped {
+            return Err(OverlayError::new(
+                "platform input must stop before the runtime",
+            ));
+        }
+        if self.runtime_client.snapshot().state != RuntimeState::Stopped {
+            return Err(OverlayError::new(
+                "runtime must stop before releasing the product overlay",
+            ));
+        }
+        while self.render_consumer.take_latest().is_some() {}
+        Ok(ProductOverlayReport {
+            frames_presented: self.frames_presented,
+            dynamic_snapshots: self.dynamic_snapshots,
+            input_start_error: self.input_start_error,
+            input_diagnostics: self.input_diagnostics,
+            render_diagnostics: self.render_consumer.diagnostics(),
+            model_generation: self.overlay.model_generation,
+            drawable_count: self.overlay.model.meshes.len(),
+            masked_drawable_count: self.overlay.model.masked_drawable_count,
+            texture_count: self.overlay.model.textures.len(),
+        })
+    }
+}
+
+fn validate_product_options(options: OverlaySessionOptions) -> Result<(), OverlayError> {
+    if !(25..=400).contains(&options.scale_percent) {
+        return Err(OverlayError::new(
+            "overlay scale must be between 25 and 400 percent",
+        ));
+    }
+    if !(1..=100).contains(&options.opacity_percent) {
+        return Err(OverlayError::new(
+            "overlay opacity must be between 1 and 100 percent",
+        ));
+    }
+    if !(15..=240).contains(&options.maximum_fps) {
+        return Err(OverlayError::new("overlay FPS must be between 15 and 240"));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod product_options_tests {
+    use super::*;
+
+    #[test]
+    fn product_options_accept_config_boundaries() {
+        for options in [
+            OverlaySessionOptions {
+                scale_percent: 25,
+                opacity_percent: 1,
+                maximum_fps: 15,
+                ..OverlaySessionOptions::default()
+            },
+            OverlaySessionOptions {
+                scale_percent: 400,
+                opacity_percent: 100,
+                maximum_fps: 240,
+                ..OverlaySessionOptions::default()
+            },
+        ] {
+            validate_product_options(options).expect("valid product options");
+        }
+    }
+
+    #[test]
+    fn product_options_reject_values_outside_config_boundaries() {
+        for options in [
+            OverlaySessionOptions {
+                scale_percent: 24,
+                ..OverlaySessionOptions::default()
+            },
+            OverlaySessionOptions {
+                scale_percent: 401,
+                ..OverlaySessionOptions::default()
+            },
+            OverlaySessionOptions {
+                opacity_percent: 0,
+                ..OverlaySessionOptions::default()
+            },
+            OverlaySessionOptions {
+                maximum_fps: 14,
+                ..OverlaySessionOptions::default()
+            },
+            OverlaySessionOptions {
+                maximum_fps: 241,
+                ..OverlaySessionOptions::default()
+            },
+        ] {
+            assert!(validate_product_options(options).is_err());
+        }
+    }
+}
+
+fn pump_application_events(application: &NSApplication) {
+    autoreleasepool(|_| {
+        let deadline = NSDate::dateWithTimeIntervalSinceNow(0.0);
+        // SAFETY: AppKit exports this immutable process-global run-loop mode
+        // for use on the application main thread.
+        let run_loop_mode = unsafe { NSDefaultRunLoopMode };
+        if let Some(event) = application.nextEventMatchingMask_untilDate_inMode_dequeue(
+            NSEventMask::Any,
+            Some(&deadline),
+            run_loop_mode,
+            true,
+        ) {
+            application.sendEvent(&event);
+        }
+        application.updateWindows();
+    });
+}
+
 pub(crate) fn run_model_preview(
     model_id: &str,
     model_root: &Path,
@@ -262,7 +485,7 @@ pub(crate) fn run_model_preview(
     let application = NSApplication::sharedApplication(mtm);
     application.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
     application.finishLaunching();
-    let mut overlay = NativeOverlay::create(mtm, &initial_frame)?;
+    let mut overlay = NativeOverlay::create(mtm, &initial_frame, OverlaySessionOptions::default())?;
     let failed_gpu_prepare_preserved = if switch_cycles.is_some() {
         let mut invalid_resources = initial_frame.resources.as_ref().clone();
         let Some(first_texture) = invalid_resources.textures.first_mut() else {
@@ -326,21 +549,7 @@ pub(crate) fn run_model_preview(
             |target| model_switches < target || settle_frames < SWITCH_SETTLE_FRAMES,
         )
     {
-        autoreleasepool(|_| {
-            let deadline = NSDate::dateWithTimeIntervalSinceNow(0.0);
-            // SAFETY: AppKit exports this immutable process-global run-loop
-            // mode for use on the application main thread.
-            let run_loop_mode = unsafe { NSDefaultRunLoopMode };
-            if let Some(event) = application.nextEventMatchingMask_untilDate_inMode_dequeue(
-                NSEventMask::Any,
-                Some(&deadline),
-                run_loop_mode,
-                true,
-            ) {
-                application.sendEvent(&event);
-            }
-            application.updateWindows();
-        });
+        pump_application_events(&application);
         let elapsed = started.elapsed();
         if !interactive
             && let Some(sequence) = input_driver.update(
@@ -467,10 +676,17 @@ pub(crate) fn run_model_preview(
 }
 
 impl NativeOverlay {
-    fn create(mtm: MainThreadMarker, frame: &RenderFrame) -> Result<Self, OverlayError> {
+    fn create(
+        mtm: MainThreadMarker,
+        frame: &RenderFrame,
+        options: OverlaySessionOptions,
+    ) -> Result<Self, OverlayError> {
+        let window_scale = f64::from(options.scale_percent) / 100.0;
+        let window_width = WINDOW_WIDTH * window_scale;
+        let window_height = WINDOW_HEIGHT * window_scale;
         let window_frame = NSRect::new(
             NSPoint::new(80.0, 80.0),
-            NSSize::new(WINDOW_WIDTH, WINDOW_HEIGHT),
+            NSSize::new(window_width, window_height),
         );
         let style = NSWindowStyleMask::Borderless | NSWindowStyleMask::NonactivatingPanel;
         let panel = NSPanel::initWithContentRect_styleMask_backing_defer(
@@ -484,13 +700,18 @@ impl NativeOverlay {
         panel.setHasShadow(false);
         panel.setAnimationBehavior(NSWindowAnimationBehavior::None);
         panel.setBackgroundColor(Some(&NSColor::clearColor()));
-        panel.setLevel(NSFloatingWindowLevel);
+        panel.setAlphaValue(f64::from(options.opacity_percent) / 100.0);
+        panel.setLevel(if options.always_on_top {
+            NSFloatingWindowLevel
+        } else {
+            NSNormalWindowLevel
+        });
         panel.setCollectionBehavior(
             NSWindowCollectionBehavior::CanJoinAllSpaces
                 | NSWindowCollectionBehavior::FullScreenAuxiliary,
         );
         panel.setMovableByWindowBackground(false);
-        panel.setIgnoresMouseEvents(true);
+        panel.setIgnoresMouseEvents(options.click_through);
 
         let view = NSView::new(mtm);
         view.setWantsLayer(true);
@@ -504,8 +725,8 @@ impl NativeOverlay {
         layer.set_framebuffer_only(false);
         let scale = panel.backingScaleFactor();
         layer.set_drawable_size(core_graphics_types::geometry::CGSize::new(
-            WINDOW_WIDTH * scale,
-            WINDOW_HEIGHT * scale,
+            window_width * scale,
+            window_height * scale,
         ));
         // SAFETY: metal::MetalLayerRef and objc2 QuartzCore both wrap the
         // same Objective-C CAMetalLayer instance, which NSView retains.

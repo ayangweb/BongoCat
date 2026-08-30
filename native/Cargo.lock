@@ -42,6 +42,8 @@ version = "0.1.0"
 dependencies = [
  "bongocat-config",
  "bongocat-model",
+ "bongocat-overlay",
+ "bongocat-render",
  "bongocat-runtime",
  "tempfile",
 ]

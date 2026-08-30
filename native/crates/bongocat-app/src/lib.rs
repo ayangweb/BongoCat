@@ -6,13 +6,14 @@ use bongocat_config::{
 };
 use bongocat_model::{
     CommittedModel, InstalledModel, ModelCatalogEntry, ModelError, ModelId, ModelPackageLimits,
-    ModelStore, ModelStoreError,
+    ModelStore, ModelStoreError, PresetModelCatalog,
 };
+use bongocat_render::RenderConsumer;
 use bongocat_runtime::{
-    InputProducer, RuntimeClient, RuntimeCommand, RuntimeCommandFailure, RuntimeOwner,
-    RuntimeSnapshot, SendError, ShutdownError,
+    CursorProducer, HandSide, InputBindings, InputProducer, PhysicalKey, RuntimeClient,
+    RuntimeCommand, RuntimeCommandFailure, RuntimeOwner, RuntimeSnapshot, SendError, ShutdownError,
 };
-use std::{fmt, path::Path, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, fmt, path::Path, sync::Arc, time::Duration};
 
 const COMMAND_CAPACITY: usize = 64;
 const RUNTIME_TIMEOUT: Duration = Duration::from_secs(2);
@@ -33,6 +34,7 @@ pub enum ApplicationError {
     RuntimeCommand(SendError),
     RuntimeCommandFailed(RuntimeCommandFailure),
     RuntimeDidNotPublish,
+    RenderConsumerUnavailable,
     Shutdown(ShutdownError),
 }
 
@@ -54,6 +56,9 @@ impl fmt::Display for ApplicationError {
             ),
             Self::RuntimeDidNotPublish => {
                 formatter.write_str("runtime did not publish the requested revision")
+            }
+            Self::RenderConsumerUnavailable => {
+                formatter.write_str("application render consumer is unavailable")
             }
             Self::Shutdown(error) => write!(formatter, "shutdown failed: {error}"),
         }
@@ -92,14 +97,23 @@ pub struct Application {
     config_revision: ConfigRevision,
     model_store: ModelStore,
     runtime: RuntimeOwner,
+    render_consumer: Option<RenderConsumer>,
 }
 
 impl Application {
     pub fn start() -> Result<Self, ApplicationError> {
-        Self::start_with_layout(platform_layout(BUILD_ENVIRONMENT)?)
+        Self::start_with_layout_internal(platform_layout(BUILD_ENVIRONMENT)?, true)
     }
 
+    #[cfg(test)]
     fn start_with_layout(layout: StorageLayout) -> Result<Self, ApplicationError> {
+        Self::start_with_layout_internal(layout, false)
+    }
+
+    fn start_with_layout_internal(
+        layout: StorageLayout,
+        enable_rendering: bool,
+    ) -> Result<Self, ApplicationError> {
         let model_store = ModelStore::new(
             &layout.models,
             layout.locks.join("models.writer.lock"),
@@ -107,7 +121,16 @@ impl Application {
         )?;
         let config_store = ConfigStore::new(layout)?;
         let (config, config_revision) = config_store.load_or_default()?;
-        let runtime = RuntimeOwner::start(config.overlay.visible, COMMAND_CAPACITY);
+        let (runtime, render_consumer) = if enable_rendering {
+            let (runtime, consumer) =
+                RuntimeOwner::start_with_rendering(config.overlay.visible, COMMAND_CAPACITY);
+            (runtime, Some(consumer))
+        } else {
+            (
+                RuntimeOwner::start(config.overlay.visible, COMMAND_CAPACITY),
+                None,
+            )
+        };
         runtime
             .client()
             .wait_for_revision(1, RUNTIME_TIMEOUT)
@@ -118,6 +141,7 @@ impl Application {
             config_revision,
             model_store,
             runtime,
+            render_consumer,
         })
     }
 
@@ -127,6 +151,16 @@ impl Application {
 
     pub fn input_producer(&self) -> InputProducer {
         self.runtime.input_producer()
+    }
+
+    pub fn cursor_producer(&self) -> CursorProducer {
+        self.runtime.cursor_producer()
+    }
+
+    pub fn take_render_consumer(&mut self) -> Result<RenderConsumer, ApplicationError> {
+        self.render_consumer
+            .take()
+            .ok_or(ApplicationError::RenderConsumerUnavailable)
     }
 
     pub fn config(&self) -> &NativeConfig {
@@ -166,10 +200,36 @@ impl Application {
         id: impl Into<String>,
     ) -> Result<RuntimeSnapshot, ApplicationError> {
         let id = ModelId::parse(id)?;
-        let committed = CommittedModel::from(self.model_store.load(&id)?);
+        self.activate_committed_model(CommittedModel::from(self.model_store.load(&id)?))
+    }
+
+    pub fn activate_preset_model(
+        &mut self,
+        preset_root: impl AsRef<Path>,
+        id: impl Into<String>,
+    ) -> Result<RuntimeSnapshot, ApplicationError> {
+        let id = ModelId::parse(id)?;
+        let catalog = PresetModelCatalog::open(preset_root, ModelPackageLimits::default())?;
+        self.wait_for_model_command(RuntimeCommand::ActivateModelWithBindings {
+            model: Arc::new(catalog.load(&id)?),
+            input_bindings: Arc::new(preset_input_bindings(id.as_str())),
+        })
+    }
+
+    fn activate_committed_model(
+        &self,
+        committed: CommittedModel,
+    ) -> Result<RuntimeSnapshot, ApplicationError> {
+        self.wait_for_model_command(RuntimeCommand::ActivateModel(Arc::new(committed)))
+    }
+
+    fn wait_for_model_command(
+        &self,
+        command: RuntimeCommand,
+    ) -> Result<RuntimeSnapshot, ApplicationError> {
         let client = self.runtime.client();
         let sequence = client
-            .send(RuntimeCommand::ActivateModel(Arc::new(committed)))
+            .send(command)
             .map_err(ApplicationError::RuntimeCommand)?;
         let snapshot = client
             .wait_for_command(sequence, RUNTIME_TIMEOUT)
@@ -218,10 +278,36 @@ impl Application {
     }
 }
 
+fn preset_input_bindings(model_id: &str) -> InputBindings {
+    const RIGHT_ARROW: PhysicalKey = PhysicalKey::from_hid_usage(0x4f);
+    let mut key_hands = BTreeMap::new();
+    if matches!(model_id, "standard" | "keyboard") {
+        for usage in 0x04..=0x27 {
+            key_hands.insert(PhysicalKey::from_hid_usage(usage), HandSide::Left);
+        }
+        for usage in [
+            0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x35, 0x38, 0x39, 0x4c, 0xe0, 0xe1, 0xe2, 0xe3, 0xe4,
+            0xe5, 0xe6, 0xe7,
+        ] {
+            key_hands.insert(PhysicalKey::from_hid_usage(usage), HandSide::Left);
+        }
+    } else {
+        key_hands.insert(PhysicalKey::KEY_A, HandSide::Left);
+    }
+    if matches!(model_id, "keyboard" | "gamepad") {
+        for usage in RIGHT_ARROW.hid_usage()..=0x52 {
+            key_hands.insert(PhysicalKey::from_hid_usage(usage), HandSide::Right);
+        }
+    }
+    InputBindings::new(key_hands)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use bongocat_runtime::RuntimeState;
+    #[cfg(target_os = "macos")]
+    use std::time::Instant;
     use tempfile::tempdir;
 
     fn repository_root() -> std::path::PathBuf {
@@ -393,5 +479,51 @@ mod tests {
         assert!(matches!(error, ApplicationError::ActiveModelDeletion(_)));
         assert_eq!(application.model_catalog().expect("catalog").len(), 1);
         application.shutdown().expect("clean shutdown");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn application_owns_the_rendering_runtime_and_issues_one_consumer() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let mut application = Application::start_with_layout_internal(layout, true)
+            .expect("start rendering application");
+        let activated = application
+            .activate_preset_model(
+                repository_root().join("native/resources/models"),
+                "standard",
+            )
+            .expect("activate preset model");
+        assert_eq!(
+            activated
+                .active_model
+                .as_ref()
+                .map(|model| model.id.as_str()),
+            Some("standard")
+        );
+
+        let consumer = application
+            .take_render_consumer()
+            .expect("take render consumer");
+        assert!(matches!(
+            application.take_render_consumer(),
+            Err(ApplicationError::RenderConsumerUnavailable)
+        ));
+        let deadline = Instant::now() + RUNTIME_TIMEOUT;
+        let frame = loop {
+            if let Some(frame) = consumer.take_latest() {
+                break frame;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "runtime did not publish a render frame"
+            );
+            std::thread::yield_now();
+        };
+        assert_eq!(frame.model_generation, 0);
+        assert!(!frame.snapshot.drawables.is_empty());
+
+        let stopped = application.shutdown().expect("clean shutdown");
+        assert_eq!(stopped.state, RuntimeState::Stopped);
     }
 }
