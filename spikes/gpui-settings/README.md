@@ -43,6 +43,12 @@ Enter/Space activation and Escape dismissal, and replaces the background
 AccessKit subtree while it is open. It remains a Phase 0 interaction probe, not
 a product settings reset implementation.
 
+On macOS, launch with `--menu-probe` to verify the native Application, Edit,
+and Window menu structure. The probe dispatches Select All, Cut, and Paste via
+the installed `NSMenu` items on later AppKit run-loop turns, then checks the
+focused GPUI text input and clipboard without logging their contents. This does
+not validate the later `NSStatusItem` menu-bar service.
+
 Build the release binary and collect the macOS Phase 0 performance probe with:
 
 ```text
@@ -62,7 +68,7 @@ LaunchServices:
 
 ```text
 ./scripts/package-macos.sh
-open -W "target/package/BongoCat GPUI Spike.app" --args --auto-quit-ms 1500
+open -W "target/package/BongoCat GPUI Spike.app" --args --auto-quit-ms 2500 --menu-probe
 ```
 
 The ad-hoc signature only validates local bundle integrity. It is not a

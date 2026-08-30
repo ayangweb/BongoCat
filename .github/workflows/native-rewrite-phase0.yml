@@ -270,7 +270,7 @@ jobs:
 
           executable = pathlib.Path("spikes/gpui-settings/target/debug/bongocat-gpui-settings-spike")
           completed = subprocess.run(
-              [str(executable), "--auto-quit-ms", "1500"],
+              [str(executable), "--auto-quit-ms", "2500", "--menu-probe"],
               capture_output=True,
               check=False,
               text=True,
@@ -289,6 +289,7 @@ jobs:
               "scale_factor=",
               "runtime snapshot revision=1",
               "accessibility action applied",
+              "native menu edit actions verified",
               "runtime stopped",
               "stopped",
           ):

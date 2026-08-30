@@ -1,4 +1,6 @@
 mod accessibility;
+#[cfg(target_os = "macos")]
+mod macos_menu;
 mod runtime_bridge;
 mod text_input;
 
@@ -26,7 +28,18 @@ use text_input::{
 
 actions!(
     gpui_settings_spike,
-    [Quit, Tab, TabPrevious, ActivateFocused, DismissDialog]
+    [
+        Quit,
+        HideApplication,
+        HideOtherApplications,
+        ShowAllApplications,
+        MinimizeWindow,
+        ZoomWindow,
+        Tab,
+        TabPrevious,
+        ActivateFocused,
+        DismissDialog
+    ]
 );
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -105,6 +118,7 @@ struct SettingsWindow {
     runtime_error: Option<SharedString>,
     accessibility: AccessibilityBridge,
     accessibility_actions: Option<async_channel::Receiver<AccessibilityAction>>,
+    _menu_probe_failed: Arc<AtomicBool>,
 }
 
 impl SettingsWindow {
@@ -113,6 +127,7 @@ impl SettingsWindow {
         runtime_bridge: RuntimeBridge,
         accessibility: AccessibilityBridge,
         accessibility_actions: async_channel::Receiver<AccessibilityAction>,
+        menu_probe_failed: Arc<AtomicBool>,
         cx: &mut Context<Self>,
     ) -> Self {
         let dark_theme = matches!(
@@ -156,6 +171,7 @@ impl SettingsWindow {
             runtime_error: None,
             accessibility,
             accessibility_actions: Some(accessibility_actions),
+            _menu_probe_failed: menu_probe_failed,
         }
     }
 
@@ -224,6 +240,19 @@ impl SettingsWindow {
         }
     }
 
+    fn on_minimize_window(
+        &mut self,
+        _: &MinimizeWindow,
+        window: &mut Window,
+        _: &mut Context<Self>,
+    ) {
+        window.minimize_window();
+    }
+
+    fn on_zoom_window(&mut self, _: &ZoomWindow, window: &mut Window, _: &mut Context<Self>) {
+        window.zoom_window();
+    }
+
     fn open_reset_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.reset_dialog_open = true;
         window.focus(&self.dialog_cancel_focus);
@@ -271,6 +300,119 @@ impl SettingsWindow {
             }
         })
         .detach();
+    }
+
+    #[cfg(target_os = "macos")]
+    fn start_menu_probe(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        const PROBE_TEXT: &str = "Menu Probe";
+
+        self.model_name.update(cx, |input, cx| {
+            input.set_content(PROBE_TEXT, window, cx);
+        });
+        window.focus(&self.model_name.focus_handle(cx));
+        if let Err(error) = macos_menu::verify_structure() {
+            self.fail_menu_probe(error, cx);
+            return;
+        }
+
+        let window_handle = window.window_handle();
+        cx.spawn(async move |this, cx| {
+            Timer::after(Duration::from_millis(100)).await;
+            let focused = window_handle.update(cx, |_, window, cx| {
+                this.update(cx, |settings, cx| {
+                    window.focus(&settings.model_name.focus_handle(cx));
+                })
+            });
+            if !matches!(focused, Ok(Ok(()))) {
+                let _ = this.update(cx, |settings, cx| {
+                    settings.fail_menu_probe("settings window closed before menu probe".into(), cx);
+                });
+                return;
+            }
+            Timer::after(Duration::from_millis(100)).await;
+            let select_all = match cx.update(|_| {
+                macos_menu::schedule_perform("Edit", "Select All", Duration::from_millis(10))
+            }) {
+                Ok(result) => result,
+                Err(error) => Err(error.to_string()),
+            };
+            if let Err(error) = select_all {
+                let _ = this.update(cx, |settings, cx| settings.fail_menu_probe(error, cx));
+                return;
+            }
+            Timer::after(Duration::from_millis(100)).await;
+            let cut = match cx
+                .update(|_| macos_menu::schedule_perform("Edit", "Cut", Duration::from_millis(10)))
+            {
+                Ok(result) => result,
+                Err(error) => Err(error.to_string()),
+            };
+            if let Err(error) = cut {
+                let _ = this.update(cx, |settings, cx| settings.fail_menu_probe(error, cx));
+                return;
+            }
+            Timer::after(Duration::from_millis(100)).await;
+            let cut_state = window_handle
+                .update(cx, |_, _, cx| {
+                    this.update(cx, |settings, cx| {
+                        (
+                            settings.model_name.read(cx).content().is_empty(),
+                            cx.read_from_clipboard()
+                                .and_then(|item| item.text())
+                                .as_deref()
+                                == Some(PROBE_TEXT),
+                        )
+                    })
+                    .unwrap_or((false, false))
+                })
+                .unwrap_or((false, false));
+            if cut_state != (true, true) {
+                let _ = this.update(cx, |settings, cx| {
+                    settings.fail_menu_probe(
+                        format!(
+                            "Cut result text_empty={} clipboard_matches={}",
+                            cut_state.0, cut_state.1
+                        ),
+                        cx,
+                    );
+                });
+                return;
+            }
+            let paste = match cx.update(|_| {
+                macos_menu::schedule_perform("Edit", "Paste", Duration::from_millis(10))
+            }) {
+                Ok(result) => result,
+                Err(error) => Err(error.to_string()),
+            };
+            if let Err(error) = paste {
+                let _ = this.update(cx, |settings, cx| settings.fail_menu_probe(error, cx));
+                return;
+            }
+            Timer::after(Duration::from_millis(100)).await;
+            let paste_verified = window_handle
+                .update(cx, |_, _, cx| {
+                    this.update(cx, |settings, cx| {
+                        settings.model_name.read(cx).content() == PROBE_TEXT
+                    })
+                    .unwrap_or(false)
+                })
+                .unwrap_or(false);
+            if !paste_verified {
+                let _ = this.update(cx, |settings, cx| {
+                    settings.fail_menu_probe("Paste did not restore text".into(), cx);
+                });
+                return;
+            }
+            println!("gpui-settings-spike: native menu edit actions verified");
+        })
+        .detach();
+    }
+
+    #[cfg(target_os = "macos")]
+    fn fail_menu_probe(&mut self, error: String, cx: &mut Context<Self>) {
+        self._menu_probe_failed.store(true, Ordering::Release);
+        eprintln!("gpui-settings-spike: menu probe failed: {error}");
+        cx.quit();
     }
 
     fn apply_accessibility_action(
@@ -744,6 +886,8 @@ impl Render for SettingsWindow {
             .on_action(cx.listener(Self::on_tab_previous))
             .on_action(cx.listener(Self::on_activate_focused))
             .on_action(cx.listener(Self::on_dismiss_dialog))
+            .on_action(cx.listener(Self::on_minimize_window))
+            .on_action(cx.listener(Self::on_zoom_window))
             .relative()
             .flex()
             .size_full()
@@ -777,7 +921,12 @@ fn open_settings_window(
     cx: &mut App,
     runtime_bridge: RuntimeBridge,
     startup_started_at: Option<Instant>,
+    menu_probe_enabled: bool,
+    menu_probe_failed: Arc<AtomicBool>,
 ) -> bool {
+    #[cfg(not(target_os = "macos"))]
+    let _ = menu_probe_enabled;
+
     let bounds = Bounds::centered(None, size(px(760.0), px(520.0)), cx);
     let result = cx.open_window(
         WindowOptions {
@@ -799,6 +948,7 @@ fn open_settings_window(
                     runtime_bridge,
                     accessibility,
                     accessibility_actions,
+                    menu_probe_failed,
                     cx,
                 )
             });
@@ -812,6 +962,10 @@ fn open_settings_window(
             let setup = window
                 .update(cx, |settings, window, cx| {
                     settings.start_accessibility_action_task(window, cx);
+                    #[cfg(target_os = "macos")]
+                    if menu_probe_enabled {
+                        settings.start_menu_probe(window, cx);
+                    }
                     window.focus(&settings.model_name.focus_handle(cx));
                     settings.request_runtime_snapshot(cx);
                     if let Some(started_at) = startup_started_at {
@@ -845,10 +999,27 @@ fn quit(_: &Quit, cx: &mut App) {
     cx.quit();
 }
 
+fn hide_application(_: &HideApplication, cx: &mut App) {
+    cx.hide();
+}
+
+fn hide_other_applications(_: &HideOtherApplications, cx: &mut App) {
+    cx.hide_other_apps();
+}
+
+fn show_all_applications(_: &ShowAllApplications, cx: &mut App) {
+    cx.unhide_other_apps();
+}
+
+fn menu_probe_enabled() -> bool {
+    std::env::args().any(|argument| argument == "--menu-probe")
+}
+
 fn main() {
     let startup_started_at = Instant::now();
     let auto_quit_delay = auto_quit_delay();
     let runtime_probe_mode = runtime_probe_mode();
+    let menu_probe_enabled = menu_probe_enabled();
     let application = Application::new();
     let (runtime_bridge, runtime_commands) = RuntimeBridge::new();
     let reopen_bridge = runtime_bridge.clone();
@@ -856,9 +1027,21 @@ fn main() {
     let reopen_window_failed = Arc::clone(&window_open_failed);
     let startup_window_failed = Arc::clone(&window_open_failed);
     let quit_window_failed = Arc::clone(&window_open_failed);
+    let menu_probe_failed = Arc::new(AtomicBool::new(false));
+    let reopen_menu_probe_failed = Arc::clone(&menu_probe_failed);
+    let startup_menu_probe_failed = Arc::clone(&menu_probe_failed);
+    let quit_menu_probe_failed = Arc::clone(&menu_probe_failed);
 
     application.on_reopen(move |cx| {
-        if cx.windows().is_empty() && !open_settings_window(cx, reopen_bridge.clone(), None) {
+        if cx.windows().is_empty()
+            && !open_settings_window(
+                cx,
+                reopen_bridge.clone(),
+                None,
+                false,
+                Arc::clone(&reopen_menu_probe_failed),
+            )
+        {
             reopen_window_failed.store(true, Ordering::Release);
             cx.quit();
             return;
@@ -880,6 +1063,7 @@ fn main() {
         cx.on_app_quit(move |_| {
             let bridge = quit_bridge.clone();
             let window_failed = Arc::clone(&quit_window_failed);
+            let menu_probe_failed = Arc::clone(&quit_menu_probe_failed);
             async move {
                 if let Err(error) = bridge.shutdown().await {
                     eprintln!("gpui-settings-spike: runtime shutdown failed: {error}");
@@ -889,11 +1073,17 @@ fn main() {
                 if window_failed.load(Ordering::Acquire) {
                     std::process::exit(1);
                 }
+                if menu_probe_failed.load(Ordering::Acquire) {
+                    std::process::exit(1);
+                }
             }
         })
         .detach();
 
         cx.on_action(quit);
+        cx.on_action(hide_application);
+        cx.on_action(hide_other_applications);
+        cx.on_action(show_all_applications);
         cx.bind_keys([
             KeyBinding::new("tab", Tab, None),
             KeyBinding::new("shift-tab", TabPrevious, None),
@@ -912,6 +1102,9 @@ fn main() {
         #[cfg(target_os = "macos")]
         cx.bind_keys([
             KeyBinding::new("cmd-q", Quit, None),
+            KeyBinding::new("cmd-h", HideApplication, None),
+            KeyBinding::new("cmd-alt-h", HideOtherApplications, None),
+            KeyBinding::new("cmd-m", MinimizeWindow, None),
             KeyBinding::new("cmd-a", SelectAll, Some("SettingsTextInput")),
             KeyBinding::new("cmd-v", Paste, Some("SettingsTextInput")),
             KeyBinding::new("cmd-c", Copy, Some("SettingsTextInput")),
@@ -925,16 +1118,44 @@ fn main() {
             KeyBinding::new("ctrl-c", Copy, Some("SettingsTextInput")),
             KeyBinding::new("ctrl-x", Cut, Some("SettingsTextInput")),
         ]);
-        cx.set_menus(vec![Menu {
-            name: "BongoCat GPUI Spike".into(),
-            items: vec![
-                MenuItem::os_submenu("Services", SystemMenuType::Services),
-                MenuItem::separator(),
-                MenuItem::action("Quit BongoCat GPUI Spike", Quit),
-            ],
-        }]);
+        cx.set_menus(vec![
+            Menu {
+                name: "BongoCat GPUI Spike".into(),
+                items: vec![
+                    MenuItem::os_submenu("Services", SystemMenuType::Services),
+                    MenuItem::separator(),
+                    MenuItem::action("Hide BongoCat GPUI Spike", HideApplication),
+                    MenuItem::action("Hide Others", HideOtherApplications),
+                    MenuItem::action("Show All", ShowAllApplications),
+                    MenuItem::separator(),
+                    MenuItem::action("Quit BongoCat GPUI Spike", Quit),
+                ],
+            },
+            Menu {
+                name: "Edit".into(),
+                items: vec![
+                    MenuItem::action("Cut", Cut),
+                    MenuItem::action("Copy", Copy),
+                    MenuItem::action("Paste", Paste),
+                    MenuItem::action("Select All", SelectAll),
+                ],
+            },
+            Menu {
+                name: "Window".into(),
+                items: vec![
+                    MenuItem::action("Minimize", MinimizeWindow),
+                    MenuItem::action("Zoom", ZoomWindow),
+                ],
+            },
+        ]);
 
-        if !open_settings_window(cx, runtime_bridge.clone(), Some(startup_started_at)) {
+        if !open_settings_window(
+            cx,
+            runtime_bridge.clone(),
+            Some(startup_started_at),
+            menu_probe_enabled,
+            Arc::clone(&startup_menu_probe_failed),
+        ) {
             startup_window_failed.store(true, Ordering::Release);
             cx.quit();
             return;
@@ -950,7 +1171,7 @@ fn main() {
         }
     });
 
-    if window_open_failed.load(Ordering::Acquire) {
+    if window_open_failed.load(Ordering::Acquire) || menu_probe_failed.load(Ordering::Acquire) {
         std::process::exit(1);
     }
 }

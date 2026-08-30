@@ -1,6 +1,6 @@
 # GPUI Settings Spike Record
 
-状态：macOS 默认 shader、`.app`、主题、基础文本交互、marked-text contract、runtime bridge、loading/error/retry、tooltip 与 modal dialog/AccessKit AX tree/action 通过；Windows 真实窗口/首帧/shutdown、dialog 与 loading/error/retry UI Automation 已通过，`busy=true` 投影、双平台真实 IME 与真实辅助技术待完成
+状态：macOS 默认 shader、`.app`、主题、基础文本交互、应用菜单、marked-text contract、runtime bridge、loading/error/retry、tooltip 与 modal dialog/AccessKit AX tree/action 通过；Windows 真实窗口/首帧/shutdown、dialog 与 loading/error/retry UI Automation 已通过，`busy=true` 投影、双平台真实 IME 与真实辅助技术待完成
 日期：2026-08-30
 原始重构基线 commit：`94af230`；后续验证源码与本记录保持同一提交
 
@@ -114,7 +114,7 @@ xcodebuild -downloadComponent MetalToolchain
 - 最低系统声明：macOS 12.0；
 - `codesign --verify --deep --strict`：通过；
 - 窗口标题：`BongoCat Settings`，760x520 Retina 内容可见且无明显裁剪；
-- 应用菜单：系统可识别 `Services` 和 `Quit BongoCat GPUI Spike`；
+- 应用菜单：原生 `NSMenu` 可识别 Application、Edit 和 Window 结构及 Services、Hide、Quit、Cut/Copy/Paste/Select All、Minimize 和 Zoom；一次性 AppKit run-loop probe 通过真实菜单项依次触发 Select All、Cut、Paste，并验证 focused GPUI text input 和剪贴板结果；
 - 关闭设置窗口后进程保持运行，再次激活应用可重建窗口；
 - `Cmd+Q` 触发 GPUI action，进程正常退出。
 
@@ -155,6 +155,13 @@ commit `45b8dba` 的 push job `99156013603` 已通过进程外 UI Automation 的
 open -> role/focus -> cancel -> subtree removed 门禁；tooltip 的真实 hover 延迟和
 VoiceOver/Narrator 宣读仍待完成。
 
+同日将最小菜单扩展为 Application、Edit 和 Window 三组。自绘 `TextInput` 的编辑命令必须使用
+GPUI action；若错误映射为 Cocoa `cut:`/`paste:` responder selector，菜单会因输入框不是
+`NSTextField` 而禁用。`--menu-probe` 先等待 AX radio action 完成并把焦点恢复到文本框，再通过
+一次性 Core Foundation main-run-loop timer 调用 `NSMenu.performActionForItemAtIndex`，避免在
+`AsyncApp::update` 内同步回调造成可重入借用。Select All -> Cut -> Paste 的文本/剪贴板结果和
+runtime-first shutdown 已在本机通过；该证据不包含后续 `NSStatusItem` 常驻菜单。
+
 `accesskit_macos 0.27.0` 的公开 adapter 类型基于 `objc2 0.5.x`，因此仅用于 AX 诊断消息的
 直接 `objc2` 精确固定为 `0.5.2`，避免通过 `objc2 0.6` Rust 类型访问另一 generation 的
 Objective-C 对象。该版本例外的解除条件是 AccessKit macOS adapter 升级到 0.6 generation；
@@ -167,7 +174,7 @@ Objective-C 对象。该版本例外的解除条件是 AccessKit macOS adapter �
 ## 未完成
 
 - marked-text 纯状态 contract 已通过；真实中文输入法组合态尚未在 macOS 上完成端到端验证，Windows IME、字体、DPI 和辅助技术尚未验证。
-- tooltip builder、modal dialog、焦点陷阱和 Escape 已通过 macOS 可见/AX smoke；真实 tooltip hover 延迟、双平台辅助技术朗读与完整菜单交互尚未验证。
+- tooltip builder、modal dialog、焦点陷阱、Escape 和 macOS 原生 Application/Edit/Window 菜单交互已通过；真实 tooltip hover 延迟与双平台辅助技术朗读尚未验证。
 - macOS 内容 AX tree/action、错误/retry value 与 Windows UI Automation dialog/loading/error/retry/revision 2 runner 已通过；Windows `busy=true` AriaProperties 投影、真实 VoiceOver/Narrator 操作和宣读顺序仍待完成。
 - 菜单栏常驻策略、隐藏行为和 native overlay 共存尚未验证。
 - Windows 已通过编译和真实窗口/首帧/退出 runner smoke；字体、IME、DPI 切换、辅助技术和系统集成仍未验证。
