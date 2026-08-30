@@ -414,12 +414,14 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     command sequence 的 `RuntimeSnapshot`、模型摘要及项目自有 `InputEvent`/
     `InputSnapshot`；`wait_for_command` 可区分并发 command 的完成。正式
     `bongocat-render` 已定义不可变 `RenderSnapshot`/资源 contract 和 latest transport；
-    producer 现由 runtime worker 持有并随 shutdown 关闭，完整 product command 集仍待实现。
+    producer 现由 runtime worker 持有并随 shutdown 关闭；`StartMotion`/`StopMotion` 使用
+    强类型 motion identity 和 priority，完整 product command 集仍待实现。
 - [ ] 单一 runtime owner 管理可变业务状态。
   - 状态（2026-08-30）：正式 runtime worker 已独占 overlay、pressed input、输入诊断、
     已提交模型和 mutable Cubism model evaluation，并只发布不可变 runtime/render snapshot；
     Cubism 对象在线程内创建，未使用 `unsafe impl Send/Sync`。应用与 UI client 只通过有界
-    typed command 和 snapshot 访问；motion/expression/physics/pose 动画状态仍待接入。
+    typed command 和 snapshot 访问；motion playback 也由该 worker 独占并发布
+    `ActiveMotionSnapshot`，expression/physics/pose 动画状态仍待接入。
 - [ ] key/button edge 和 command 使用可靠有序队列。
   - 状态（2026-08-30）：正式 `ApplyInput` 与其他 command 共用有界 FIFO，input event
     另带独立单调 sequence；`InputProducer` 以非阻塞 publish 返回原始拒绝事件，并向
@@ -697,9 +699,17 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 - [ ] 实现 parameter 默认值、保存/恢复和 clamp。
   - 状态（2026-08-30）：Core range/default 已进入类型化查询，绝对值和 normalized 写入
-    拒绝非 finite、自动 clamp 并明确返回 unsupported；motion/expression 前后的参数
-    save/restore 和 runtime owner 接入尚未完成。
+    拒绝非 finite、自动 clamp 并明确返回 unsupported；正式 frame pipeline 现于 motion
+    前恢复全部 Core parameter default，再按 motion -> typed product input 顺序覆盖，停止
+    motion 后不残留曲线值。expression/physics 所需的分层 save/restore 仍未完成。
 - [ ] 实现 motion curve、fade、priority 和 completion。
+  - 状态（2026-08-30）：正式 `bongocat-live2d` 已严格解析 motion3 v3 Meta、user data 和
+    linear/Bezier/stepped/inverse-stepped segment，验证 finite/time/count 边界并以二分反解
+    非受限 Bezier 时间。三个预置模型的全部 motion 引用均通过真实解析、循环时间求值和
+    Core/drawable 变化测试；非循环自然 completion、model3/curve fade、`idle/normal/force`
+    抢占、同级最新请求、旧 stop 隔离、错误资源保留当前动作及模型 commit 后清理均进入
+    typed runtime。主动 stop fade-out、Model/PartOpacity target 应用、motion event/audio 和
+    UI 选择入口仍未完成，因此保持未勾选。
 - [ ] 实现 expression 混合和互斥/叠加语义。
 - [ ] 实现 physics、pose、eye blink、breath 等实际需求。
 - [ ] 实现键盘、鼠标、手柄到参数/动作/表情映射。
@@ -909,6 +919,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 - [ ] Runtime reducer、输入语义和动画单元测试。
 - [ ] motion/expression priority 和可注入 clock 测试。
+  - 状态（2026-08-30）：motion 已使用可注入 `MonotonicClock` 覆盖时间推进、真实 drawable
+    变化、低优先级拒绝、force 抢占、同级替换基础语义、旧 stop 不影响新动作、GPU
+    rejection 保留动作及成功模型切换清理；expression priority 尚未实现，因此保持未勾选。
 - [ ] 配置 schema、Native 版本演进、环境隔离和原子写入测试。
 - [ ] 模型路径安全和损坏资源测试。
 - [ ] Cubism safe wrapper 生命周期测试。

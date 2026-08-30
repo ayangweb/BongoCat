@@ -7,6 +7,7 @@ use bongocat_render::{
 };
 use std::{
     alloc::{Layout, alloc_zeroed, dealloc},
+    collections::BTreeMap,
     ffi::CStr,
     fs,
     mem::ManuallyDrop,
@@ -70,6 +71,7 @@ impl Drop for AlignedMemory {
 pub(crate) struct CoreModel {
     model: NonNull<sys::csmModel>,
     parameters: [Option<ResolvedParameter>; ProductParameter::COUNT],
+    parameters_by_id: BTreeMap<String, ResolvedParameter>,
     model_memory: ManuallyDrop<AlignedMemory>,
     moc_memory: ManuallyDrop<AlignedMemory>,
 }
@@ -78,6 +80,11 @@ pub(crate) struct CoreModel {
 struct ResolvedParameter {
     index: usize,
     range: ParameterRange,
+}
+
+struct ResolvedParameters {
+    product: [Option<ResolvedParameter>; ProductParameter::COUNT],
+    by_id: BTreeMap<String, ResolvedParameter>,
 }
 
 impl CoreModel {
@@ -145,10 +152,11 @@ impl CoreModel {
                     "Cubism Core returned a null Model",
                 )
             })?;
-            let parameters = resolve_product_parameters(model.as_ptr())?;
+            let parameters = resolve_parameters(model.as_ptr())?;
             Ok(Self {
                 model,
-                parameters,
+                parameters: parameters.product,
+                parameters_by_id: parameters.by_id,
                 model_memory: ManuallyDrop::new(model_memory),
                 moc_memory: ManuallyDrop::new(moc_memory),
             })
@@ -243,6 +251,59 @@ impl CoreModel {
             value,
             clamped: value != requested,
         })
+    }
+
+    pub(crate) fn set_parameter_by_id(
+        &mut self,
+        id: &str,
+        requested: f32,
+        weight: f32,
+    ) -> Result<ParameterUpdate, Live2dError> {
+        if !requested.is_finite() || !weight.is_finite() || !(0.0..=1.0).contains(&weight) {
+            return Err(Live2dError::new(
+                Live2dErrorCode::ParameterValueInvalid,
+                format!("{id} received an invalid motion value or weight"),
+            ));
+        }
+        let Some(resolved) = self.parameters_by_id.get(id).copied() else {
+            return Ok(ParameterUpdate::Unsupported);
+        };
+        // SAFETY: self uniquely owns the Model and the index was validated
+        // against this Model's parameter count while building parameters_by_id.
+        let value = unsafe {
+            let count = self.parameter_count()?;
+            let values = checked_slice_mut(
+                sys::csmGetParameterValues(self.model.as_ptr()),
+                count,
+                "parameter values",
+            )?;
+            let current = values[resolved.index];
+            let blended = current + (requested - current) * weight;
+            let clamped = blended.clamp(resolved.range.minimum, resolved.range.maximum);
+            values[resolved.index] = clamped;
+            clamped
+        };
+        Ok(ParameterUpdate::Applied {
+            value,
+            clamped: value != requested,
+        })
+    }
+
+    pub(crate) fn restore_parameter_defaults(&mut self) -> Result<(), Live2dError> {
+        // SAFETY: self uniquely owns the Model. Each parameters_by_id entry
+        // was resolved against this exact parameter array during construction.
+        unsafe {
+            let count = self.parameter_count()?;
+            let values = checked_slice_mut(
+                sys::csmGetParameterValues(self.model.as_ptr()),
+                count,
+                "parameter values",
+            )?;
+            for resolved in self.parameters_by_id.values() {
+                values[resolved.index] = resolved.range.default;
+            }
+        }
+        Ok(())
     }
 
     pub(crate) fn update_and_snapshot(&mut self) -> Result<RenderSnapshot, Live2dError> {
@@ -469,9 +530,7 @@ unsafe fn read_canvas(model: *const sys::csmModel) -> Result<CanvasInfo, Live2dE
     })
 }
 
-unsafe fn resolve_product_parameters(
-    model: *mut sys::csmModel,
-) -> Result<[Option<ResolvedParameter>; ProductParameter::COUNT], Live2dError> {
+unsafe fn resolve_parameters(model: *mut sys::csmModel) -> Result<ResolvedParameters, Live2dError> {
     // SAFETY: model is freshly initialized and remains owned by CoreModel.
     let count = nonnegative(
         unsafe { sys::csmGetParameterCount(model) },
@@ -501,6 +560,7 @@ unsafe fn resolve_product_parameters(
         )?
     };
     let mut resolved = [None; ProductParameter::COUNT];
+    let mut by_id = BTreeMap::new();
     for index in 0..count {
         let id_pointer = ids[index];
         if id_pointer.is_null() {
@@ -519,13 +579,6 @@ unsafe fn resolve_product_parameters(
                     format!("Core returned a non-UTF-8 parameter id at index {index}"),
                 )
             })?;
-        let Some(parameter) = ProductParameter::ALL
-            .iter()
-            .copied()
-            .find(|parameter| parameter.id() == id)
-        else {
-            continue;
-        };
         let range = ParameterRange {
             minimum: minimums[index],
             maximum: maximums[index],
@@ -542,17 +595,25 @@ unsafe fn resolve_product_parameters(
                 format!("Core returned an invalid range for {id}"),
             ));
         }
-        if resolved[parameter.slot()]
-            .replace(ResolvedParameter { index, range })
-            .is_some()
-        {
+        let entry = ResolvedParameter { index, range };
+        if by_id.insert(id.to_owned(), entry).is_some() {
             return Err(Live2dError::new(
                 Live2dErrorCode::InvalidCoreValue,
                 format!("Core returned duplicate parameter id {id}"),
             ));
         }
+        if let Some(parameter) = ProductParameter::ALL
+            .iter()
+            .copied()
+            .find(|parameter| parameter.id() == id)
+        {
+            resolved[parameter.slot()] = Some(entry);
+        }
     }
-    Ok(resolved)
+    Ok(ResolvedParameters {
+        product: resolved,
+        by_id,
+    })
 }
 
 fn decode_blend_mode(mode: i32) -> Result<BlendMode, Live2dError> {

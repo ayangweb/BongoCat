@@ -1,15 +1,22 @@
-use crate::{ModelInputSnapshot, RuntimeRenderErrorCode};
+use crate::{ModelInputSnapshot, MotionId, RuntimeRenderErrorCode};
 use bongocat_model::CommittedModel;
 use bongocat_render::{
     ModelCommitFeedback, ModelCommitToken, RenderConsumer, RenderProducer, latest_render_channel,
 };
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-use bongocat_live2d::{Live2dModel, ParameterUpdate, ProductParameter};
+use bongocat_live2d::{Live2dModel, MotionClip, ParameterUpdate, ProductParameter};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_render::RenderFrame;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::sync::Arc;
+use std::time::Duration;
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct RenderEvaluation {
+    pub(crate) rendered: bool,
+    pub(crate) motion_finished: bool,
+}
 
 pub(crate) struct RuntimeRenderer {
     producer: RenderProducer,
@@ -33,6 +40,13 @@ struct ActiveRenderModel {
     resources: Arc<bongocat_render::RenderResources>,
     model_generation: u64,
     next_frame_number: u64,
+    motion: Option<MotionPlayback>,
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+struct MotionPlayback {
+    clip: MotionClip,
+    started_at: Duration,
 }
 
 impl RuntimeRenderer {
@@ -94,6 +108,7 @@ impl RuntimeRenderer {
                 resources,
                 model_generation,
                 next_frame_number: 1,
+                motion: None,
             });
             Ok(token)
         }
@@ -156,15 +171,69 @@ impl RuntimeRenderer {
         self.producer.record_stale_model_commit_feedback();
     }
 
+    pub(crate) fn start_motion(
+        &mut self,
+        motion: &MotionId,
+        now: Duration,
+    ) -> Result<(), RuntimeRenderErrorCode> {
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            let active = self
+                .active
+                .as_mut()
+                .ok_or(RuntimeRenderErrorCode::MotionLoadFailed)?;
+            let clip = active
+                .model
+                .motion_clip(motion.group(), motion.index())
+                .cloned()
+                .ok_or(RuntimeRenderErrorCode::MotionLoadFailed)?;
+            active.motion = Some(MotionPlayback {
+                clip,
+                started_at: now,
+            });
+            Ok(())
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            let _ = (motion, now);
+            Err(RuntimeRenderErrorCode::PlatformUnsupported)
+        }
+    }
+
+    pub(crate) fn stop_motion(&mut self) {
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        if let Some(active) = &mut self.active {
+            active.motion = None;
+        }
+    }
+
     pub(crate) fn evaluate(
         &mut self,
         input: ModelInputSnapshot,
-    ) -> Result<bool, RuntimeRenderErrorCode> {
+        now: Duration,
+    ) -> Result<RenderEvaluation, RuntimeRenderErrorCode> {
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
             let Some(active) = &mut self.active else {
-                return Ok(false);
+                return Ok(RenderEvaluation::default());
             };
+            active
+                .model
+                .restore_parameter_defaults()
+                .map_err(|_| RuntimeRenderErrorCode::ModelEvaluationFailed)?;
+            let motion_finished = if let Some(playback) = &active.motion {
+                active
+                    .model
+                    .apply_motion(&playback.clip, now.saturating_sub(playback.started_at))
+                    .map_err(|_| RuntimeRenderErrorCode::ModelEvaluationFailed)?
+                    .finished
+            } else {
+                false
+            };
+            if motion_finished {
+                active.motion = None;
+            }
             apply_model_input(&mut active.model, input)?;
             let snapshot = active
                 .model
@@ -182,13 +251,16 @@ impl RuntimeRenderer {
                 .map_err(|_| RuntimeRenderErrorCode::TransportClosed)?;
             active.next_frame_number = active.next_frame_number.wrapping_add(1);
             self.next_transport_sequence = self.next_transport_sequence.wrapping_add(1);
-            Ok(true)
+            Ok(RenderEvaluation {
+                rendered: true,
+                motion_finished,
+            })
         }
 
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
-            let _ = input;
-            Ok(false)
+            let _ = (input, now);
+            Ok(RenderEvaluation::default())
         }
     }
 

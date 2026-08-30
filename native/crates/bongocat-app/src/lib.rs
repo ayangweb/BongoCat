@@ -10,8 +10,9 @@ use bongocat_model::{
 };
 use bongocat_render::{ModelCommitToken, RenderConsumer};
 use bongocat_runtime::{
-    CursorProducer, HandSide, InputBindings, InputProducer, PhysicalKey, RuntimeClient,
-    RuntimeCommand, RuntimeCommandFailure, RuntimeOwner, RuntimeSnapshot, SendError, ShutdownError,
+    CursorProducer, HandSide, InputBindings, InputProducer, MotionId, MotionIdError,
+    MotionPriority, PhysicalKey, RuntimeClient, RuntimeCommand, RuntimeCommandFailure,
+    RuntimeOwner, RuntimeSnapshot, SendError, ShutdownError,
 };
 use std::{collections::BTreeMap, fmt, path::Path, sync::Arc, time::Duration};
 
@@ -30,6 +31,7 @@ pub enum ApplicationError {
     Config(ConfigError),
     Model(ModelError),
     ModelStore(ModelStoreError),
+    MotionId(MotionIdError),
     ActiveModelDeletion(ModelId),
     RuntimeCommand(SendError),
     RuntimeCommandFailed(RuntimeCommandFailure),
@@ -46,6 +48,7 @@ impl fmt::Display for ApplicationError {
             Self::Config(error) => write!(formatter, "configuration failed: {error}"),
             Self::Model(error) => write!(formatter, "model preparation failed: {error}"),
             Self::ModelStore(error) => write!(formatter, "model store failed: {error}"),
+            Self::MotionId(error) => write!(formatter, "motion id failed: {error}"),
             Self::ActiveModelDeletion(id) => {
                 write!(formatter, "active model cannot be deleted: {}", id.as_str())
             }
@@ -86,6 +89,12 @@ impl From<ConfigError> for ApplicationError {
 impl From<ModelError> for ApplicationError {
     fn from(error: ModelError) -> Self {
         Self::Model(error)
+    }
+}
+
+impl From<MotionIdError> for ApplicationError {
+    fn from(error: MotionIdError) -> Self {
+        Self::MotionId(error)
     }
 }
 
@@ -197,6 +206,26 @@ impl Application {
         self.model_store
             .list()
             .map_err(ApplicationError::ModelStore)
+    }
+
+    pub fn start_motion(
+        &self,
+        group: impl Into<String>,
+        index: usize,
+        priority: MotionPriority,
+    ) -> Result<RuntimeSnapshot, ApplicationError> {
+        self.wait_for_model_command(RuntimeCommand::StartMotion {
+            motion: MotionId::new(group, index)?,
+            priority,
+        })
+    }
+
+    pub fn stop_motion(
+        &self,
+        group: impl Into<String>,
+        index: usize,
+    ) -> Result<RuntimeSnapshot, ApplicationError> {
+        self.wait_for_model_command(RuntimeCommand::StopMotion(MotionId::new(group, index)?))
     }
 
     pub fn activate_installed_model(

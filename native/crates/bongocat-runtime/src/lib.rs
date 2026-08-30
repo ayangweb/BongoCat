@@ -29,9 +29,31 @@ pub use input::{
     SequencedInputEvent,
 };
 use input::{InputState, InputTransportCounters};
-use rendering::{RuntimeRenderBootstrap, RuntimeRenderer};
+use rendering::{RenderEvaluation, RuntimeRenderBootstrap, RuntimeRenderer};
 
 const CURSOR_SAMPLE_INTERVAL: Duration = Duration::from_millis(16);
+
+pub trait MonotonicClock: Send + Sync + 'static {
+    fn now(&self) -> Duration;
+}
+
+struct SystemMonotonicClock {
+    origin: Instant,
+}
+
+impl SystemMonotonicClock {
+    fn start() -> Self {
+        Self {
+            origin: Instant::now(),
+        }
+    }
+}
+
+impl MonotonicClock for SystemMonotonicClock {
+    fn now(&self) -> Duration {
+        self.origin.elapsed()
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RuntimeState {
@@ -46,9 +68,59 @@ pub enum RuntimeState {
 pub enum RuntimeRenderErrorCode {
     ModelLoadFailed,
     ModelEvaluationFailed,
+    MotionLoadFailed,
     GpuPreparationFailed,
     PlatformUnsupported,
     TransportClosed,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MotionId {
+    group: String,
+    index: usize,
+}
+
+impl MotionId {
+    pub fn new(group: impl Into<String>, index: usize) -> Result<Self, MotionIdError> {
+        let group = group.into();
+        if group.trim().is_empty() {
+            return Err(MotionIdError);
+        }
+        Ok(Self { group, index })
+    }
+
+    pub fn group(&self) -> &str {
+        &self.group
+    }
+
+    pub const fn index(&self) -> usize {
+        self.index
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MotionIdError;
+
+impl fmt::Display for MotionIdError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("motion group must not be blank")
+    }
+}
+
+impl std::error::Error for MotionIdError {}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum MotionPriority {
+    Idle,
+    Normal,
+    Force,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ActiveMotionSnapshot {
+    pub motion: MotionId,
+    pub priority: MotionPriority,
+    pub command_sequence: u64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -74,6 +146,11 @@ pub enum RuntimeCommand {
         model: Arc<CommittedModel>,
         input_bindings: Arc<InputBindings>,
     },
+    StartMotion {
+        motion: MotionId,
+        priority: MotionPriority,
+    },
+    StopMotion(MotionId),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -83,6 +160,7 @@ pub struct RuntimeSnapshot {
     pub overlay_visible: bool,
     pub active_model: Option<ModelSnapshot>,
     pub pending_model: Option<PendingModelSnapshot>,
+    pub active_motion: Option<ActiveMotionSnapshot>,
     pub input: InputSnapshot,
     pub cursor: CursorSnapshot,
     pub model_input: ModelInputSnapshot,
@@ -99,6 +177,7 @@ impl RuntimeSnapshot {
             overlay_visible,
             active_model: None,
             pending_model: None,
+            active_motion: None,
             input: InputSnapshot::default(),
             cursor: CursorSnapshot::default(),
             model_input: ModelInputSnapshot::default(),
@@ -539,7 +618,12 @@ pub struct RuntimeOwner {
 
 impl RuntimeOwner {
     pub fn start(initial_overlay_visible: bool, command_capacity: usize) -> Self {
-        Self::start_internal(initial_overlay_visible, command_capacity, None)
+        Self::start_internal(
+            initial_overlay_visible,
+            command_capacity,
+            None,
+            Arc::new(SystemMonotonicClock::start()),
+        )
     }
 
     pub fn start_with_rendering(
@@ -548,7 +632,29 @@ impl RuntimeOwner {
     ) -> (Self, RenderConsumer) {
         let (renderer, consumer) = RuntimeRenderer::channel();
         (
-            Self::start_internal(initial_overlay_visible, command_capacity, Some(renderer)),
+            Self::start_internal(
+                initial_overlay_visible,
+                command_capacity,
+                Some(renderer),
+                Arc::new(SystemMonotonicClock::start()),
+            ),
+            consumer,
+        )
+    }
+
+    pub fn start_with_rendering_and_clock(
+        initial_overlay_visible: bool,
+        command_capacity: usize,
+        clock: Arc<dyn MonotonicClock>,
+    ) -> (Self, RenderConsumer) {
+        let (renderer, consumer) = RuntimeRenderer::channel();
+        (
+            Self::start_internal(
+                initial_overlay_visible,
+                command_capacity,
+                Some(renderer),
+                clock,
+            ),
             consumer,
         )
     }
@@ -557,6 +663,7 @@ impl RuntimeOwner {
         initial_overlay_visible: bool,
         command_capacity: usize,
         renderer: Option<RuntimeRenderBootstrap>,
+        clock: Arc<dyn MonotonicClock>,
     ) -> Self {
         assert!(
             command_capacity > 0,
@@ -588,6 +695,7 @@ impl RuntimeOwner {
                     cursor_slot,
                     initial_overlay_visible,
                     renderer,
+                    clock,
                 )
             })
             .expect("failed to start runtime thread");
@@ -681,9 +789,11 @@ fn run_worker(
     cursor_slot: Arc<CursorSlot>,
     initial_overlay_visible: bool,
     renderer: Option<RuntimeRenderBootstrap>,
+    clock: Arc<dyn MonotonicClock>,
 ) {
     let mut renderer = renderer.map(RuntimeRenderer::start);
     let mut active_model = None;
+    let mut active_motion = None;
     let mut input_state = InputState::default();
     let mut input_bindings = InputBindings::default();
     let mut normalized_cursor = NormalizedCursorPosition::default();
@@ -699,8 +809,10 @@ fn run_worker(
             &mut input_bindings,
             normalized_cursor,
             &mut active_model,
+            &mut active_motion,
             overlay_visible,
             &snapshot,
+            clock.now(),
         );
         let received = if pending_model.is_none() {
             deferred_commands
@@ -783,6 +895,7 @@ fn run_worker(
                             &mut input_bindings,
                             normalized_cursor,
                             &mut active_model,
+                            &mut active_motion,
                             &mut pending_model,
                             &snapshot,
                         );
@@ -801,14 +914,80 @@ fn run_worker(
                             &mut input_bindings,
                             normalized_cursor,
                             &mut active_model,
+                            &mut active_motion,
                             &mut pending_model,
                             &snapshot,
                         );
+                    }
+                    WorkerCommand::Product(RuntimeCommand::StartMotion { motion, priority }) => {
+                        let can_replace =
+                            active_motion
+                                .as_ref()
+                                .is_none_or(|active: &ActiveMotionSnapshot| {
+                                    priority >= active.priority
+                                });
+                        if !can_replace {
+                            publish(&snapshot, |current| {
+                                current.last_command_failure = None;
+                                current.last_command_sequence = Some(sequence);
+                            });
+                        } else if let Some(renderer) = &mut renderer {
+                            match renderer.start_motion(&motion, clock.now()) {
+                                Ok(()) => {
+                                    let started = ActiveMotionSnapshot {
+                                        motion,
+                                        priority,
+                                        command_sequence: sequence,
+                                    };
+                                    active_motion = Some(started.clone());
+                                    publish(&snapshot, |current| {
+                                        current.active_motion = Some(started);
+                                        current.last_command_failure = None;
+                                        current.last_command_sequence = Some(sequence);
+                                    });
+                                }
+                                Err(code) => publish(&snapshot, |current| {
+                                    current.last_command_failure =
+                                        Some(RuntimeCommandFailure { sequence, code });
+                                    current.last_command_sequence = Some(sequence);
+                                }),
+                            }
+                        } else {
+                            publish(&snapshot, |current| {
+                                current.last_command_failure = Some(RuntimeCommandFailure {
+                                    sequence,
+                                    code: RuntimeRenderErrorCode::MotionLoadFailed,
+                                });
+                                current.last_command_sequence = Some(sequence);
+                            });
+                        }
+                    }
+                    WorkerCommand::Product(RuntimeCommand::StopMotion(motion)) => {
+                        if active_motion
+                            .as_ref()
+                            .is_some_and(|active| active.motion == motion)
+                        {
+                            if let Some(renderer) = &mut renderer {
+                                renderer.stop_motion();
+                            }
+                            active_motion = None;
+                            publish(&snapshot, |current| {
+                                current.active_motion = None;
+                                current.last_command_failure = None;
+                                current.last_command_sequence = Some(sequence);
+                            });
+                        } else {
+                            publish(&snapshot, |current| {
+                                current.last_command_failure = None;
+                                current.last_command_sequence = Some(sequence);
+                            });
+                        }
                     }
                     WorkerCommand::Shutdown => {
                         publish(&snapshot, |current| {
                             current.state = RuntimeState::Stopping;
                             current.pending_model = None;
+                            current.active_motion = None;
                             current.last_command_sequence = Some(sequence);
                         });
                         if let Some(renderer) = &renderer {
@@ -824,6 +1003,8 @@ fn run_worker(
                         renderer.as_mut(),
                         input_state.model_snapshot(&input_bindings, normalized_cursor),
                         &snapshot,
+                        clock.now(),
+                        &mut active_motion,
                     );
                 }
             }
@@ -842,14 +1023,18 @@ fn run_worker(
                     &mut input_bindings,
                     normalized_cursor,
                     &mut active_model,
+                    &mut active_motion,
                     overlay_visible,
                     &snapshot,
+                    clock.now(),
                 );
                 if overlay_visible && pending_model.is_none() {
                     evaluate_renderer(
                         renderer.as_mut(),
                         input_state.model_snapshot(&input_bindings, normalized_cursor),
                         &snapshot,
+                        clock.now(),
+                        &mut active_motion,
                     );
                 }
             }
@@ -879,6 +1064,7 @@ fn begin_model_activation(
     input_bindings: &mut InputBindings,
     normalized_cursor: NormalizedCursorPosition,
     active_model: &mut Option<Arc<CommittedModel>>,
+    active_motion: &mut Option<ActiveMotionSnapshot>,
     pending_model: &mut Option<PendingModelActivation>,
     snapshot: &SnapshotCell,
 ) {
@@ -890,9 +1076,11 @@ fn begin_model_activation(
         }
         let model_snapshot = committed.snapshot();
         *active_model = Some(committed);
+        *active_motion = None;
         publish(snapshot, |current| {
             current.state = RuntimeState::Ready;
             current.active_model = Some(model_snapshot);
+            current.active_motion = None;
             current.model_input = model_input;
             current.render_error = None;
             current.last_command_failure = None;
@@ -931,8 +1119,10 @@ fn process_model_commit_feedback(
     input_bindings: &mut InputBindings,
     normalized_cursor: NormalizedCursorPosition,
     active_model: &mut Option<Arc<CommittedModel>>,
+    active_motion: &mut Option<ActiveMotionSnapshot>,
     overlay_visible: bool,
     snapshot: &SnapshotCell,
+    now: Duration,
 ) {
     let Some(renderer) = renderer else {
         return;
@@ -957,17 +1147,19 @@ fn process_model_commit_feedback(
             let model_input = input_state.model_snapshot(input_bindings, normalized_cursor);
             let model_snapshot = pending.model.snapshot();
             *active_model = Some(pending.model);
+            *active_motion = None;
             publish(snapshot, |current| {
                 current.state = RuntimeState::Ready;
                 current.active_model = Some(model_snapshot);
                 current.pending_model = None;
+                current.active_motion = None;
                 current.model_input = model_input;
                 current.render_error = None;
                 current.last_command_failure = None;
                 current.last_command_sequence = Some(feedback.token.command_sequence);
             });
             if overlay_visible {
-                evaluate_renderer(Some(renderer), model_input, snapshot);
+                evaluate_renderer(Some(renderer), model_input, snapshot, now, active_motion);
             }
         }
         ModelCommitOutcome::Rejected(ModelCommitErrorCode::ResourcePreparationFailed)
@@ -984,7 +1176,7 @@ fn process_model_commit_feedback(
                 current.last_command_sequence = Some(feedback.token.command_sequence);
             });
             if overlay_visible {
-                evaluate_renderer(Some(renderer), model_input, snapshot);
+                evaluate_renderer(Some(renderer), model_input, snapshot, now, active_motion);
             }
         }
         _ => {
@@ -998,13 +1190,21 @@ fn evaluate_renderer(
     renderer: Option<&mut RuntimeRenderer>,
     input: ModelInputSnapshot,
     snapshot: &SnapshotCell,
+    now: Duration,
+    active_motion: &mut Option<ActiveMotionSnapshot>,
 ) {
     let Some(renderer) = renderer else {
         return;
     };
-    match renderer.evaluate(input) {
-        Ok(false) => {}
-        Ok(true) => {
+    match renderer.evaluate(input, now) {
+        Ok(RenderEvaluation {
+            rendered: false, ..
+        }) => {}
+        Ok(evaluation) => {
+            if evaluation.motion_finished {
+                *active_motion = None;
+                publish(snapshot, |current| current.active_motion = None);
+            }
             let should_recover = snapshot
                 .value
                 .lock()
@@ -1068,6 +1268,32 @@ mod tests {
     use tempfile::tempdir;
 
     const TIMEOUT: Duration = Duration::from_secs(2);
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[derive(Default)]
+    struct ManualClock {
+        now: Mutex<Duration>,
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    impl ManualClock {
+        fn set(&self, now: Duration) {
+            *self
+                .now
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = now;
+        }
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    impl MonotonicClock for ManualClock {
+        fn now(&self) -> Duration {
+            *self
+                .now
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+        }
+    }
 
     fn repository_root() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -1446,6 +1672,121 @@ mod tests {
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
+    fn motion_commands_use_priority_identity_and_injectable_time() {
+        let clock = Arc::new(ManualClock::default());
+        let (owner, consumer) = RuntimeOwner::start_with_rendering_and_clock(
+            true,
+            8,
+            Arc::clone(&clock) as Arc<dyn MonotonicClock>,
+        );
+        let client = owner.client();
+        client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+        let activation_sequence = client
+            .send(RuntimeCommand::ActivateModel(Arc::new(preset_model(
+                "standard",
+            ))))
+            .expect("activation command");
+        let candidate = wait_for_prepared_model(&client, &consumer, activation_sequence);
+        report_model_prepared(&client, &consumer, &candidate);
+        let baseline = wait_for_render_frame(&consumer, |frame| {
+            frame.model_generation == candidate.model_generation
+                && frame.frame_number > candidate.frame_number
+        });
+
+        let first = MotionId::new("CAT_motion", 0).expect("motion id");
+        let first_sequence = client
+            .send(RuntimeCommand::StartMotion {
+                motion: first.clone(),
+                priority: MotionPriority::Normal,
+            })
+            .expect("start motion");
+        let started = client
+            .wait_for_command(first_sequence, TIMEOUT)
+            .expect("motion started");
+        assert_eq!(
+            started.active_motion,
+            Some(ActiveMotionSnapshot {
+                motion: first.clone(),
+                priority: MotionPriority::Normal,
+                command_sequence: first_sequence,
+            })
+        );
+
+        clock.set(Duration::from_millis(500));
+        let animated = wait_for_render_frame(&consumer, |frame| {
+            frame.transport_sequence > baseline.transport_sequence
+                && frame.snapshot != baseline.snapshot
+        });
+        assert_ne!(animated.snapshot, baseline.snapshot);
+
+        let second = MotionId::new("CAT_motion", 1).expect("motion id");
+        let ignored_sequence = client
+            .send(RuntimeCommand::StartMotion {
+                motion: second.clone(),
+                priority: MotionPriority::Idle,
+            })
+            .expect("lower priority request");
+        let ignored = client
+            .wait_for_command(ignored_sequence, TIMEOUT)
+            .expect("lower priority result");
+        assert_eq!(ignored.active_motion, started.active_motion);
+
+        let force_sequence = client
+            .send(RuntimeCommand::StartMotion {
+                motion: second.clone(),
+                priority: MotionPriority::Force,
+            })
+            .expect("force motion");
+        let forced = client
+            .wait_for_command(force_sequence, TIMEOUT)
+            .expect("force motion result");
+        assert_eq!(
+            forced.active_motion,
+            Some(ActiveMotionSnapshot {
+                motion: second.clone(),
+                priority: MotionPriority::Force,
+                command_sequence: force_sequence,
+            })
+        );
+
+        let invalid_sequence = client
+            .send(RuntimeCommand::StartMotion {
+                motion: MotionId::new("missing", 0).expect("syntactically valid motion id"),
+                priority: MotionPriority::Force,
+            })
+            .expect("invalid resource request");
+        let invalid = client
+            .wait_for_command(invalid_sequence, TIMEOUT)
+            .expect("invalid resource result");
+        assert_eq!(
+            invalid.last_command_failure,
+            Some(RuntimeCommandFailure {
+                sequence: invalid_sequence,
+                code: RuntimeRenderErrorCode::MotionLoadFailed,
+            })
+        );
+        assert_eq!(invalid.active_motion, forced.active_motion);
+
+        let stale_stop_sequence = client
+            .send(RuntimeCommand::StopMotion(first))
+            .expect("stale stop");
+        let stale_stop = client
+            .wait_for_command(stale_stop_sequence, TIMEOUT)
+            .expect("stale stop result");
+        assert_eq!(stale_stop.active_motion, forced.active_motion);
+
+        let stop_sequence = client
+            .send(RuntimeCommand::StopMotion(second))
+            .expect("current stop");
+        let stopped = client
+            .wait_for_command(stop_sequence, TIMEOUT)
+            .expect("current stop result");
+        assert!(stopped.active_motion.is_none());
+        owner.shutdown(TIMEOUT).expect("runtime shutdown");
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
     fn reliable_input_bypasses_deferred_commands_during_model_preparation() {
         let (owner, consumer) = RuntimeOwner::start_with_rendering(true, 8);
         let client = owner.client();
@@ -1522,6 +1863,18 @@ mod tests {
                 .map(|model| model.id.as_str()),
             Some("standard")
         );
+        let active_motion_id = MotionId::new("CAT_motion", 0).expect("motion id");
+        let motion_sequence = client
+            .send(RuntimeCommand::StartMotion {
+                motion: active_motion_id.clone(),
+                priority: MotionPriority::Normal,
+            })
+            .expect("motion command");
+        let motion_active = client
+            .wait_for_command(motion_sequence, TIMEOUT)
+            .expect("motion active");
+        let expected_motion = motion_active.active_motion.clone();
+        assert!(expected_motion.is_some());
 
         let right_bindings = Arc::new(InputBindings::new(BTreeMap::from([(
             PhysicalKey::KEY_A,
@@ -1544,6 +1897,7 @@ mod tests {
             })
         );
         assert_eq!(rejected.state, RuntimeState::Ready);
+        assert_eq!(rejected.active_motion, expected_motion);
         assert_eq!(
             rejected
                 .active_model
@@ -1642,6 +1996,7 @@ mod tests {
                 .map(|model| model.id.as_str()),
             Some("standard")
         );
+        assert_eq!(gpu_rejected.active_motion, expected_motion);
         assert!(gpu_rejected.model_input.left_hand_down);
         assert!(!gpu_rejected.model_input.right_hand_down);
         let resumed = wait_for_render_frame(&consumer, |frame| {
@@ -1670,6 +2025,7 @@ mod tests {
                 .map(|model| model.id.as_str()),
             Some("keyboard")
         );
+        assert!(replaced.active_motion.is_none());
         assert!(replaced.model_input.right_hand_down);
         assert!(!replaced.model_input.left_hand_down);
         owner.shutdown(TIMEOUT).expect("runtime shutdown");

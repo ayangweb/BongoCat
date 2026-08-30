@@ -93,6 +93,12 @@ Cubism model evaluation and Metal GPU ownership are separated by the platform-in
 immutable resource/frame pairs through its latest-frame transport; the overlay resolves drawables,
 masks, and textures with strong resource IDs and never receives the mutable Cubism model.
 
+The same worker now owns typed motion playback. `Application::start_motion` resolves a validated
+model3 group/index, applies motion3 linear, Bezier, stepped, or inverse-stepped curves using monotonic
+elapsed time, and publishes the resulting immutable drawable frame. Runtime snapshots expose only
+the active motion identity, priority, and originating command sequence. Product input is applied
+after motion curves so an actual pressed key or button remains authoritative for hand parameters.
+
 The fixed-version Cubism Core, header, generated bindings, and preset model development baseline are
 committed under `vendor/cubism/5-r.5` and `resources/models`. Builds do not download SDK artifacts.
 Their provenance and release gates are documented in

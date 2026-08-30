@@ -11,6 +11,8 @@ build = "build.rs"
 [dependencies]
 bongocat-model.workspace = true
 bongocat-render.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 
 [lints.clippy]
 dbg_macro = "deny"

@@ -5,7 +5,12 @@
 
 use bongocat_model::CommittedModel;
 use bongocat_render::{RenderResources, RenderSnapshot, TextureAsset, TextureId};
-use std::{fmt, sync::Arc};
+use std::{collections::BTreeMap, fmt, sync::Arc};
+
+mod motion;
+pub use motion::{
+    MotionApplyStatus, MotionClip, MotionCurveTarget, MotionEvaluation, MotionParameterSample,
+};
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod core;
@@ -121,6 +126,8 @@ pub enum Live2dErrorCode {
     ResourceIo,
     TextureIndexInvalid,
     ParameterValueInvalid,
+    MotionInvalid,
+    MotionNotFound,
     UnsupportedBlendMode,
 }
 
@@ -149,6 +156,7 @@ impl std::error::Error for Live2dError {}
 
 pub struct Live2dModel {
     resources: Arc<RenderResources>,
+    motions: BTreeMap<String, Vec<MotionClip>>,
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     core: core::CoreModel,
 }
@@ -169,18 +177,36 @@ impl Live2dModel {
                 })
                 .collect::<Vec<_>>(),
         });
+        let motions = model
+            .index()
+            .motion_groups
+            .iter()
+            .map(|group| {
+                let clips = group
+                    .motions
+                    .iter()
+                    .enumerate()
+                    .map(|(index, _)| MotionClip::load(model, &group.name, index))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok((group.name.clone(), clips))
+            })
+            .collect::<Result<BTreeMap<_, _>, _>>()?;
 
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
             let moc_path = model.root().join(&model.index().moc);
             let core = core::CoreModel::load(&moc_path)?;
             core.validate_texture_indices(resources.textures.len())?;
-            Ok(Self { resources, core })
+            Ok(Self {
+                resources,
+                motions,
+                core,
+            })
         }
 
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
-            let _ = resources;
+            let _ = (resources, motions);
             Err(Live2dError::new(
                 Live2dErrorCode::PlatformUnsupported,
                 "Cubism Core is available only on the Windows and macOS product targets",
@@ -194,6 +220,12 @@ impl Live2dModel {
 
     pub fn render_resources(&self) -> Arc<RenderResources> {
         Arc::clone(&self.resources)
+    }
+
+    pub fn motion_clip(&self, group: &str, index: usize) -> Option<&MotionClip> {
+        self.motions
+            .get(group)
+            .and_then(|motions| motions.get(index))
     }
 
     pub fn parameter_range(&self, parameter: ProductParameter) -> Option<ParameterRange> {
@@ -266,6 +298,55 @@ impl Live2dModel {
             range.default + (range.default - range.minimum) * normalized
         };
         self.set_parameter(parameter, mapped)
+    }
+
+    pub fn apply_motion(
+        &mut self,
+        motion: &MotionClip,
+        elapsed: std::time::Duration,
+    ) -> Result<MotionApplyStatus, Live2dError> {
+        let evaluation = motion.evaluate(elapsed);
+
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        let applied_parameter_count = {
+            let mut count = 0;
+            for sample in &evaluation.parameters {
+                if matches!(
+                    self.core
+                        .set_parameter_by_id(&sample.id, sample.value, sample.weight)?,
+                    ParameterUpdate::Applied { .. }
+                ) {
+                    count += 1;
+                }
+            }
+            count
+        };
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        let applied_parameter_count = {
+            let _ = &evaluation.parameters;
+            0
+        };
+
+        Ok(MotionApplyStatus {
+            finished: evaluation.finished,
+            applied_parameter_count,
+        })
+    }
+
+    pub fn restore_parameter_defaults(&mut self) -> Result<(), Live2dError> {
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            self.core.restore_parameter_defaults()
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            Err(Live2dError::new(
+                Live2dErrorCode::PlatformUnsupported,
+                "Cubism Core is available only on the Windows and macOS product targets",
+            ))
+        }
     }
 
     pub fn update_and_snapshot(&mut self) -> Result<RenderSnapshot, Live2dError> {

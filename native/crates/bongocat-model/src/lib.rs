@@ -201,6 +201,20 @@ pub struct MotionGroup {
 pub struct MotionResource {
     pub file: String,
     pub sound: Option<String>,
+    pub fade_in_seconds: Option<FiniteSeconds>,
+    pub fade_out_seconds: Option<FiniteSeconds>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct FiniteSeconds(f32);
+
+impl Eq for FiniteSeconds {}
+
+impl FiniteSeconds {
+    pub const fn get(self) -> f32 {
+        self.0
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -442,6 +456,10 @@ struct RawMotionResource {
     file: String,
     #[serde(rename = "Sound", default)]
     sound: Option<String>,
+    #[serde(rename = "FadeInTime", default)]
+    fade_in_seconds: Option<f32>,
+    #[serde(rename = "FadeOutTime", default)]
+    fade_out_seconds: Option<f32>,
 }
 
 struct PackageReader {
@@ -675,7 +693,24 @@ fn inspect_model_package(
                                 .map(|(normalized, _)| normalized)
                         })
                         .transpose()?;
-                    Ok(MotionResource { file, sound })
+                    for (label, value) in [
+                        ("FadeInTime", motion.fade_in_seconds),
+                        ("FadeOutTime", motion.fade_out_seconds),
+                    ] {
+                        if value.is_some_and(|value| !value.is_finite() || value < 0.0) {
+                            return Err(ModelError::new(
+                                ModelDiagnostic::ModelJsonInvalid,
+                                Some(&file),
+                                format!("motion {label} must be finite and non-negative"),
+                            ));
+                        }
+                    }
+                    Ok(MotionResource {
+                        file,
+                        sound,
+                        fade_in_seconds: motion.fade_in_seconds.map(FiniteSeconds),
+                        fade_out_seconds: motion.fade_out_seconds.map(FiniteSeconds),
+                    })
                 })
                 .collect::<Result<Vec<_>, ModelError>>()?;
             Ok(MotionGroup { name, motions })
