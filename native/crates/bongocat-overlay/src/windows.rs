@@ -1,4 +1,8 @@
-use crate::{OverlayError, OverlaySessionOptions, ProductOverlayReport};
+use crate::{
+    OverlayError, OverlaySessionOptions, PreviewReport, ProductOverlayReport,
+    validate_model_generation_advance,
+};
+use bongocat_model::{CommittedModel, ModelId, ModelPackageLimits, PresetModelCatalog};
 use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError, WindowsInputService};
 use bongocat_render::{
     BlendMode, CanvasInfo, DrawableId, ModelCommitErrorCode, ModelCommitFeedback,
@@ -6,12 +10,15 @@ use bongocat_render::{
     RenderSnapshot, TextureAsset, TextureId,
 };
 use bongocat_runtime::{
-    CursorProducer, InputProducer, RuntimeClient, RuntimeRenderErrorCode, RuntimeState,
+    CursorProducer, HandSide, InputBindings, InputControl, InputEdge, InputEvent, InputProducer,
+    InputSource, MonotonicMillis, PhysicalKey, RuntimeClient, RuntimeCommand, RuntimeOwner,
+    RuntimeRenderErrorCode, RuntimeState,
 };
 use image::ImageReader;
 use std::{
     collections::{BTreeMap, BTreeSet},
     mem::{size_of, size_of_val},
+    path::Path,
     rc::Rc,
     sync::Arc,
     thread,
@@ -20,7 +27,10 @@ use std::{
 };
 use windows::{
     Win32::{
-        Foundation::{HINSTANCE, HMODULE, HWND, LPARAM, LRESULT, WPARAM},
+        Foundation::{
+            CloseHandle, ERROR_NO_MORE_FILES, HANDLE, HINSTANCE, HMODULE, HWND, LPARAM, LRESULT,
+            WPARAM,
+        },
         Graphics::{
             Direct3D::{
                 D3D_DRIVER_TYPE, D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE_WARP,
@@ -54,14 +64,20 @@ use windows::{
                     DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R16_UINT, DXGI_FORMAT_R32G32_FLOAT,
                     DXGI_SAMPLE_DESC,
                 },
-                DXGI_PRESENT, DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1,
-                DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL, DXGI_USAGE_RENDER_TARGET_OUTPUT, IDXGIAdapter,
-                IDXGIDevice, IDXGIFactory2, IDXGISwapChain1,
+                DXGI_MEMORY_SEGMENT_GROUP_LOCAL, DXGI_PRESENT, DXGI_QUERY_VIDEO_MEMORY_INFO,
+                DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
+                DXGI_USAGE_RENDER_TARGET_OUTPUT, IDXGIAdapter, IDXGIAdapter3, IDXGIDevice,
+                IDXGIFactory2, IDXGISwapChain1,
             },
         },
         System::{
             Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize},
+            Diagnostics::ToolHelp::{
+                CreateToolhelp32Snapshot, TH32CS_SNAPTHREAD, THREADENTRY32, Thread32First,
+                Thread32Next,
+            },
             LibraryLoader::GetModuleHandleW,
+            Threading::{GetCurrentProcess, GetCurrentProcessId, GetProcessHandleCount},
         },
         UI::{
             HiDpi::GetDpiForWindow,
@@ -82,6 +98,8 @@ const WINDOW_WIDTH: u32 = 420;
 const WINDOW_HEIGHT: u32 = 520;
 const RUNTIME_TIMEOUT: Duration = Duration::from_secs(2);
 const WINDOW_CLASS: windows::core::PCWSTR = w!("BongoCatProductOverlayWindow");
+const PRESET_MODEL_IDS: [&str; 3] = ["standard", "keyboard", "gamepad"];
+const HANDLE_GROWTH_LIMIT: u32 = 4;
 
 const SHADER_SOURCE: &str = r#"
     cbuffer UniformBuffer : register(b0) {
@@ -469,13 +487,7 @@ impl Renderer {
     fn sync_frame(&mut self, frame: &RenderFrame) -> Result<bool, OverlayError> {
         self.assert_owner_thread();
         if frame.model_generation != self.model_generation {
-            let expected = self.model_generation.saturating_add(1);
-            if frame.model_generation != expected {
-                return Err(OverlayError::new(format!(
-                    "GPU model generation jumped from {} to {}",
-                    self.model_generation, frame.model_generation
-                )));
-            }
+            validate_model_generation_advance(self.model_generation, frame.model_generation)?;
             // SAFETY: candidate resources are prepared against this renderer's
             // live device; self is changed only after every allocation succeeds.
             let candidate = unsafe {
@@ -503,6 +515,27 @@ impl Renderer {
         unsafe { self.model.sync_snapshot(&self.context, &frame.snapshot) }
             .map_err(windows_error("update D3D11 model snapshot"))?;
         Ok(false)
+    }
+
+    fn current_local_memory_usage(&self) -> Result<u64, OverlayError> {
+        self.assert_owner_thread();
+        let dxgi_device: IDXGIDevice = self
+            .device
+            .cast()
+            .map_err(windows_error("query renderer DXGI device"))?;
+        // SAFETY: the adapter is synchronously queried on the renderer owner
+        // thread and is retained by the returned COM interface.
+        let adapter: IDXGIAdapter = unsafe { dxgi_device.GetAdapter() }
+            .map_err(windows_error("query renderer DXGI adapter"))?;
+        let adapter: IDXGIAdapter3 = adapter
+            .cast()
+            .map_err(windows_error("query renderer DXGI adapter3"))?;
+        let mut info = DXGI_QUERY_VIDEO_MEMORY_INFO::default();
+        // SAFETY: node zero is the primary adapter node and info is writable
+        // for the complete synchronous QueryVideoMemoryInfo call.
+        unsafe { adapter.QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &mut info) }
+            .map_err(windows_error("query renderer local video memory"))?;
+        Ok(info.CurrentUsage)
     }
 
     fn draw(&self, verify: bool) -> Result<(), OverlayError> {
@@ -880,6 +913,348 @@ impl ProductOverlaySession {
     }
 }
 
+pub(crate) fn run_model_switch_preview(
+    model_id: &str,
+    model_root: &Path,
+    switch_cycles: u32,
+) -> Result<PreviewReport, OverlayError> {
+    if switch_cycles == 0 {
+        return Err(OverlayError::new(
+            "model-switch cycle count must be greater than zero",
+        ));
+    }
+    let model_id =
+        ModelId::parse(model_id).map_err(|error| OverlayError::new(error.to_string()))?;
+    let preset_root = model_root
+        .parent()
+        .ok_or_else(|| OverlayError::new("preset model root has no catalog parent"))?;
+    let catalog = PresetModelCatalog::open(preset_root, ModelPackageLimits::default())
+        .map_err(|error| OverlayError::new(error.to_string()))?;
+    let models = PRESET_MODEL_IDS
+        .iter()
+        .map(|id| {
+            let id = ModelId::parse(*id).map_err(|error| OverlayError::new(error.to_string()))?;
+            catalog
+                .load(&id)
+                .map(Arc::new)
+                .map_err(|error| OverlayError::new(error.to_string()))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut current_model_index = PRESET_MODEL_IDS
+        .iter()
+        .position(|id| *id == model_id.as_str())
+        .ok_or_else(|| OverlayError::new("initial preset is not in the switch sequence"))?;
+
+    let (runtime, render_consumer) = RuntimeOwner::start_with_rendering(true, 64);
+    let runtime_client = runtime.client();
+    runtime_client
+        .wait_for_revision(1, RUNTIME_TIMEOUT)
+        .ok_or_else(|| OverlayError::new("preview runtime did not become ready"))?;
+    let input_producer = runtime.input_producer();
+    let (initial_token, initial_frame) = prepare_switch_frame(
+        &runtime_client,
+        &render_consumer,
+        Arc::clone(&models[current_model_index]),
+        Arc::new(preview_input_bindings(model_id.as_str())),
+    )?;
+
+    let com_apartment = ComApartment::initialize()?;
+    let mut overlay = match NativeOverlay::create(&initial_frame, OverlaySessionOptions::default())
+    {
+        Ok(overlay) => overlay,
+        Err(error) => {
+            reject_model_commit(&runtime_client, &render_consumer, initial_token)?;
+            return Err(error);
+        }
+    };
+    overlay.window.show()?;
+    overlay.renderer.draw(true)?;
+    report_model_commit(
+        &runtime_client,
+        &render_consumer,
+        initial_token,
+        ModelCommitOutcome::Prepared,
+    )?;
+
+    let mut frames_presented = 1_u64;
+    let mut dynamic_snapshots = 0_u64;
+    let mut previous_snapshot = Arc::clone(&initial_frame.snapshot);
+    let initial_generation = overlay.renderer.model_generation;
+
+    let pressed_sequence = publish_preview_key_edge(&input_producer, InputEdge::Down, 1)?;
+    let pressed = runtime_client
+        .wait_for_input_sequence(pressed_sequence, RUNTIME_TIMEOUT)
+        .ok_or_else(|| OverlayError::new("preview key press did not reach the runtime"))?;
+    if !pressed.model_input.left_hand_down || pressed.model_input.right_hand_down {
+        return Err(OverlayError::new(
+            "initial model bindings did not map the probe key to the left hand",
+        ));
+    }
+
+    let rejected_model_index = (current_model_index + 1) % models.len();
+    let rejected_bindings = Arc::new(InputBindings::new(BTreeMap::from([(
+        PhysicalKey::KEY_A,
+        HandSide::Right,
+    )])));
+    let (rejected_token, rejected_frame) = prepare_switch_frame(
+        &runtime_client,
+        &render_consumer,
+        Arc::clone(&models[rejected_model_index]),
+        rejected_bindings,
+    )?;
+    let mut invalid_resources = rejected_frame.resources.as_ref().clone();
+    let Some(first_texture) = invalid_resources.textures.first_mut() else {
+        return Err(OverlayError::new(
+            "model-switch probe requires at least one texture",
+        ));
+    };
+    first_texture.path = model_root.join(".missing-d3d11-prepare-texture.png");
+    let invalid_frame = RenderFrame {
+        resources: Arc::new(invalid_resources),
+        ..rejected_frame
+    };
+    if overlay.renderer.sync_frame(&invalid_frame).is_ok() {
+        return Err(OverlayError::new(
+            "invalid D3D11 model preparation unexpectedly succeeded",
+        ));
+    }
+    if overlay.renderer.model_generation != initial_generation {
+        return Err(OverlayError::new(
+            "failed D3D11 preparation replaced the active GPU generation",
+        ));
+    }
+    reject_model_commit(&runtime_client, &render_consumer, rejected_token)?;
+    let rejected = runtime_client.snapshot();
+    if rejected.pending_model.is_some()
+        || rejected
+            .active_model
+            .as_ref()
+            .is_none_or(|active| active.id != model_id)
+        || !rejected.model_input.left_hand_down
+        || rejected.model_input.right_hand_down
+    {
+        return Err(OverlayError::new(
+            "GPU rejection did not preserve the active CPU model and input bindings",
+        ));
+    }
+    overlay.renderer.draw(true)?;
+    frames_presented = frames_presented.saturating_add(1);
+
+    let released_sequence = publish_preview_key_edge(&input_producer, InputEdge::Up, 2)?;
+    let released = runtime_client
+        .wait_for_input_sequence(released_sequence, RUNTIME_TIMEOUT)
+        .ok_or_else(|| OverlayError::new("preview key release did not reach the runtime"))?;
+    if released.model_input.left_hand_down || released.model_input.right_hand_down {
+        return Err(OverlayError::new(
+            "preview key release left a pressed hand after GPU rejection",
+        ));
+    }
+
+    let target_switches = u64::from(switch_cycles).saturating_mul(models.len() as u64);
+    let mut model_switches = 0_u64;
+    let mut gpu_bytes_before = None;
+    let mut handles_before = None;
+    let mut threads_before = None;
+    while model_switches < target_switches {
+        pump_window_messages();
+        current_model_index = (current_model_index + 1) % models.len();
+        let target_id = PRESET_MODEL_IDS[current_model_index];
+        let generation_before = overlay.renderer.model_generation;
+        let (token, frame) = prepare_switch_frame(
+            &runtime_client,
+            &render_consumer,
+            Arc::clone(&models[current_model_index]),
+            Arc::new(preview_input_bindings(target_id)),
+        )?;
+        if frame.snapshot.as_ref() != previous_snapshot.as_ref() {
+            dynamic_snapshots = dynamic_snapshots.saturating_add(1);
+        }
+        if !overlay.renderer.sync_frame(&frame)? {
+            return Err(OverlayError::new(
+                "D3D11 renderer did not replace a newer model generation",
+            ));
+        }
+        if overlay.renderer.model_generation <= generation_before {
+            return Err(OverlayError::new(
+                "D3D11 renderer committed a non-monotonic model generation",
+            ));
+        }
+        overlay.renderer.draw(true)?;
+        report_model_commit(
+            &runtime_client,
+            &render_consumer,
+            token,
+            ModelCommitOutcome::Prepared,
+        )?;
+        let committed = runtime_client.snapshot();
+        if committed.pending_model.is_some()
+            || committed
+                .active_model
+                .as_ref()
+                .is_none_or(|active| active.id.as_str() != target_id)
+        {
+            return Err(OverlayError::new(
+                "runtime and D3D11 renderer did not commit the same model",
+            ));
+        }
+        previous_snapshot = frame.snapshot;
+        frames_presented = frames_presented.saturating_add(1);
+        model_switches = model_switches.saturating_add(1);
+
+        if model_switches == models.len() as u64 {
+            gpu_bytes_before = Some(overlay.renderer.current_local_memory_usage()?);
+            threads_before =
+                Some(process_thread_count().map_err(windows_error("count process threads"))?);
+            handles_before =
+                Some(process_handle_count().map_err(windows_error("count process handles"))?);
+        }
+    }
+
+    let gpu_bytes_before = gpu_bytes_before
+        .ok_or_else(|| OverlayError::new("model-switch probe did not finish its warmup cycle"))?;
+    let threads_before = threads_before
+        .ok_or_else(|| OverlayError::new("model-switch probe did not sample thread usage"))?;
+    let handles_before = handles_before
+        .ok_or_else(|| OverlayError::new("model-switch probe did not sample handle usage"))?;
+    let gpu_bytes_after = overlay.renderer.current_local_memory_usage()?;
+    let threads_after =
+        process_thread_count().map_err(windows_error("count process threads after switching"))?;
+    let handles_after =
+        process_handle_count().map_err(windows_error("count process handles after switching"))?;
+    if gpu_bytes_after > gpu_bytes_before {
+        return Err(OverlayError::new(format!(
+            "DXGI local memory usage grew from {gpu_bytes_before} to {gpu_bytes_after} bytes during model switching"
+        )));
+    }
+    if threads_after > threads_before {
+        return Err(OverlayError::new(format!(
+            "process thread count grew from {threads_before} to {threads_after} during model switching"
+        )));
+    }
+    if handles_after > handles_before.saturating_add(HANDLE_GROWTH_LIMIT) {
+        return Err(OverlayError::new(format!(
+            "process handle count grew from {handles_before} to {handles_after} during model switching"
+        )));
+    }
+
+    let final_snapshot = runtime_client.snapshot();
+    if final_snapshot
+        .active_model
+        .as_ref()
+        .is_none_or(|active| active.id != model_id)
+    {
+        return Err(OverlayError::new(
+            "complete model-switch cycles did not return to the initial model",
+        ));
+    }
+    let drawable_count = overlay.renderer.model.meshes.len();
+    let masked_drawable_count = overlay.renderer.model.masked_drawable_count;
+    let texture_count = overlay.renderer.model.textures.len();
+    let stopped = runtime
+        .shutdown(RUNTIME_TIMEOUT)
+        .map_err(|error| OverlayError::new(error.to_string()))?;
+    while render_consumer.take_latest().is_some() {}
+    let render_diagnostics = render_consumer.diagnostics();
+    drop(overlay);
+    drop(com_apartment);
+
+    Ok(PreviewReport {
+        frames_presented,
+        dynamic_snapshots,
+        runtime_input_events: stopped.input.transport.enqueued,
+        platform_input_edges: 0,
+        runtime_cursor_published: stopped.cursor.transport.published,
+        runtime_cursor_coalesced: stopped.cursor.transport.coalesced,
+        runtime_cursor_consumed: stopped.cursor.transport.consumed,
+        platform_cursor_samples: 0,
+        render_frames_published: render_diagnostics.published,
+        render_frames_coalesced: render_diagnostics.coalesced,
+        render_frames_consumed: render_diagnostics.consumed,
+        model_switches,
+        failed_gpu_prepare_preserved: true,
+        gpu_bytes_before,
+        gpu_bytes_after,
+        drawable_count,
+        masked_drawable_count,
+        texture_count,
+    })
+}
+
+fn prepare_switch_frame(
+    runtime_client: &RuntimeClient,
+    render_consumer: &RenderConsumer,
+    model: Arc<CommittedModel>,
+    input_bindings: Arc<InputBindings>,
+) -> Result<(ModelCommitToken, RenderFrame), OverlayError> {
+    let sequence = runtime_client
+        .send(RuntimeCommand::ActivateModelWithBindings {
+            model,
+            input_bindings,
+        })
+        .map_err(|error| OverlayError::new(error.to_string()))?;
+    let prepared = runtime_client
+        .wait_for_model_preparation(sequence, RUNTIME_TIMEOUT)
+        .ok_or_else(|| OverlayError::new("model switch was not prepared"))?;
+    if let Some(failure) = prepared
+        .last_command_failure
+        .filter(|failure| failure.sequence == sequence)
+    {
+        return Err(OverlayError::new(format!(
+            "model switch failed before GPU preparation: {:?}",
+            failure.code
+        )));
+    }
+    let token = prepared
+        .pending_model
+        .as_ref()
+        .filter(|pending| pending.token.command_sequence == sequence)
+        .map(|pending| pending.token)
+        .ok_or_else(|| OverlayError::new("runtime published the wrong pending model token"))?;
+    let frame = render_consumer
+        .take_latest()
+        .filter(|frame| frame.model_commit == Some(token))
+        .ok_or_else(|| OverlayError::new("runtime did not publish the matching model frame"))?;
+    Ok((token, frame))
+}
+
+fn publish_preview_key_edge(
+    producer: &InputProducer,
+    edge: InputEdge,
+    at_millis: u64,
+) -> Result<u64, OverlayError> {
+    producer
+        .publish(InputEvent::Edge {
+            control: InputControl::Key(PhysicalKey::KEY_A),
+            edge,
+            source: InputSource::Capture,
+            at: MonotonicMillis::new(at_millis),
+        })
+        .map_err(|error| OverlayError::new(error.to_string()))
+}
+
+fn preview_input_bindings(model_id: &str) -> InputBindings {
+    let mut key_hands = BTreeMap::new();
+    if matches!(model_id, "standard" | "keyboard") {
+        for usage in 0x04..=0x27 {
+            key_hands.insert(PhysicalKey::from_hid_usage(usage), HandSide::Left);
+        }
+        for usage in [
+            0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x35, 0x38, 0x39, 0x4c, 0xe0, 0xe1, 0xe2, 0xe3, 0xe4,
+            0xe5, 0xe6, 0xe7,
+        ] {
+            key_hands.insert(PhysicalKey::from_hid_usage(usage), HandSide::Left);
+        }
+    } else {
+        key_hands.insert(PhysicalKey::KEY_A, HandSide::Left);
+    }
+    if matches!(model_id, "keyboard" | "gamepad") {
+        for usage in 0x4f..=0x52 {
+            key_hands.insert(PhysicalKey::from_hid_usage(usage), HandSide::Right);
+        }
+    }
+    InputBindings::new(key_hands)
+}
+
 impl GpuModel {
     unsafe fn prepare(
         device: &ID3D11Device,
@@ -1047,6 +1422,53 @@ fn pump_window_messages() {
             let _ = TranslateMessage(&message);
             DispatchMessageW(&message);
         }
+    }
+}
+
+fn process_handle_count() -> WindowsResult<u32> {
+    let mut count = 0;
+    // SAFETY: GetCurrentProcess returns a process pseudo-handle and count is
+    // writable for the complete synchronous query.
+    unsafe { GetProcessHandleCount(GetCurrentProcess(), &mut count)? };
+    Ok(count)
+}
+
+fn process_thread_count() -> WindowsResult<u32> {
+    // SAFETY: the returned snapshot handle is immediately wrapped and closed
+    // by Drop after enumeration; THREADENTRY32 carries the required size.
+    let snapshot = ThreadSnapshot(unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0)? });
+    let process_id = unsafe { GetCurrentProcessId() };
+    let mut entry = THREADENTRY32 {
+        dwSize: size_of::<THREADENTRY32>() as u32,
+        ..Default::default()
+    };
+    unsafe { Thread32First(snapshot.0, &mut entry)? };
+    let mut count = 0_u32;
+    loop {
+        if entry.th32OwnerProcessID == process_id {
+            count = count.saturating_add(1);
+        }
+        match unsafe { Thread32Next(snapshot.0, &mut entry) } {
+            Ok(()) => {}
+            Err(error) if error.code() == ERROR_NO_MORE_FILES.to_hresult() => break,
+            Err(error) => return Err(error),
+        }
+    }
+    if count == 0 {
+        return Err(invariant_error(
+            "thread snapshot did not contain the current process",
+        ));
+    }
+    Ok(count)
+}
+
+struct ThreadSnapshot(HANDLE);
+
+impl Drop for ThreadSnapshot {
+    fn drop(&mut self) {
+        // SAFETY: this owner contains one successful ToolHelp snapshot handle
+        // and Drop runs once after enumeration has stopped.
+        let _ = unsafe { CloseHandle(self.0) };
     }
 }
 

@@ -4,7 +4,7 @@ fn main() -> ExitCode {
     match run() {
         Ok(report) => {
             println!(
-                "BongoCat Live2D preview: frames={} dynamic_snapshots={} runtime_input_events={} platform_input_edges={} runtime_cursor_published={} runtime_cursor_coalesced={} runtime_cursor_consumed={} platform_cursor_samples={} render_frames_published={} render_frames_coalesced={} render_frames_consumed={} model_switches={} failed_gpu_prepare_preserved={} metal_bytes_before={} metal_bytes_after={} drawables={} masked_drawables={} textures={}",
+                "BongoCat Live2D preview: frames={} dynamic_snapshots={} runtime_input_events={} platform_input_edges={} runtime_cursor_published={} runtime_cursor_coalesced={} runtime_cursor_consumed={} platform_cursor_samples={} render_frames_published={} render_frames_coalesced={} render_frames_consumed={} model_switches={} failed_gpu_prepare_preserved={} gpu_bytes_before={} gpu_bytes_after={} drawables={} masked_drawables={} textures={}",
                 report.frames_presented,
                 report.dynamic_snapshots,
                 report.runtime_input_events,
@@ -18,8 +18,8 @@ fn main() -> ExitCode {
                 report.render_frames_consumed,
                 report.model_switches,
                 report.failed_gpu_prepare_preserved,
-                report.metal_bytes_before,
-                report.metal_bytes_after,
+                report.gpu_bytes_before,
+                report.gpu_bytes_after,
                 report.drawable_count,
                 report.masked_drawable_count,
                 report.texture_count

@@ -171,8 +171,8 @@ pub struct PreviewReport {
     pub render_frames_consumed: u64,
     pub model_switches: u64,
     pub failed_gpu_prepare_preserved: bool,
-    pub metal_bytes_before: u64,
-    pub metal_bytes_after: u64,
+    pub gpu_bytes_before: u64,
+    pub gpu_bytes_after: u64,
     pub drawable_count: usize,
     pub masked_drawable_count: usize,
     pub texture_count: usize,
@@ -249,11 +249,40 @@ pub fn run_model_switch_preview(
         )
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        windows::run_model_switch_preview(model_id, model_root, switch_cycles)
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let _ = (model_id, model_root, switch_cycles);
         Err(OverlayError::new(
-            "the first Live2D model-switch preview is currently available on macOS",
+            "the Live2D model-switch preview is available on Windows and macOS",
         ))
+    }
+}
+
+pub(crate) fn validate_model_generation_advance(
+    active_generation: u64,
+    candidate_generation: u64,
+) -> Result<(), OverlayError> {
+    if candidate_generation <= active_generation {
+        return Err(OverlayError::new(format!(
+            "GPU model generation did not advance from {active_generation} to {candidate_generation}"
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn model_generation_may_skip_rejected_candidates_but_never_regress() {
+        validate_model_generation_advance(4, 7).expect("rejected generations may be skipped");
+        assert!(validate_model_generation_advance(4, 4).is_err());
+        assert!(validate_model_generation_advance(4, 3).is_err());
     }
 }

@@ -100,6 +100,9 @@ jobs:
       - name: Smoke formal Windows missing-release recovery
         if: matrix.os == 'windows-latest'
         run: cargo test --manifest-path native/Cargo.toml --locked -p bongocat-platform --lib --release windows::tests::synthetic_missing_release_is_reconciled_in_formal_runtime -- --ignored --exact
+      - name: Smoke transactional Windows D3D11 model switching
+        if: matrix.os == 'windows-latest'
+        run: cargo run --manifest-path native/Cargo.toml --locked -p bongocat-overlay --release -- standard 0 --switch-cycles 3
 
   cubism-binding-contract:
     name: Check Cubism binding generation contract

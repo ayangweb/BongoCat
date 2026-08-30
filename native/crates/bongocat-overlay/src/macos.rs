@@ -1,4 +1,7 @@
-use crate::{OverlayError, OverlaySessionOptions, PreviewReport, ProductOverlayReport};
+use crate::{
+    OverlayError, OverlaySessionOptions, PreviewReport, ProductOverlayReport,
+    validate_model_generation_advance,
+};
 use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
 use bongocat_platform::{MacInputService, PlatformInputDiagnostics, PlatformInputError};
 use bongocat_render::{
@@ -803,8 +806,8 @@ pub(crate) fn run_model_preview(
         render_frames_consumed: render_diagnostics.consumed,
         model_switches,
         failed_gpu_prepare_preserved,
-        metal_bytes_before,
-        metal_bytes_after,
+        gpu_bytes_before: metal_bytes_before,
+        gpu_bytes_after: metal_bytes_after,
         drawable_count: overlay.model.meshes.len(),
         masked_drawable_count: overlay.model.masked_drawable_count,
         texture_count: overlay.model.textures.len(),
@@ -903,13 +906,7 @@ impl NativeOverlay {
 
     fn sync_frame(&mut self, frame: &RenderFrame) -> Result<bool, OverlayError> {
         if frame.model_generation != self.model_generation {
-            let expected_generation = self.model_generation.saturating_add(1);
-            if frame.model_generation != expected_generation {
-                return Err(OverlayError::new(format!(
-                    "GPU model generation jumped from {} to {}",
-                    self.model_generation, frame.model_generation
-                )));
-            }
+            validate_model_generation_advance(self.model_generation, frame.model_generation)?;
             let drawable_width = self.layer.drawable_size().width.round() as u64;
             let drawable_height = self.layer.drawable_size().height.round() as u64;
             let prepared = GpuModel::prepare(
