@@ -1,4 +1,7 @@
-#![cfg_attr(not(target_os = "macos"), forbid(unsafe_code))]
+#![cfg_attr(
+    not(any(target_os = "macos", target_os = "windows")),
+    forbid(unsafe_code)
+)]
 
 use std::fmt;
 
@@ -8,6 +11,10 @@ mod macos;
 pub use macos::{
     MacInputService, input_monitoring_permission, request_input_monitoring_permission,
 };
+#[cfg(target_os = "windows")]
+mod windows;
+#[cfg(target_os = "windows")]
+pub use windows::WindowsInputService;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InputPermission {
@@ -28,6 +35,8 @@ pub struct PlatformInputDiagnostics {
     pub runtime_queue_overflows: u64,
     pub recovery_resets: u64,
     pub reconciliation_runs: u64,
+    pub reconciled_releases: u64,
+    pub decode_errors: u64,
     pub tap_restarts: u64,
     pub rejected_after_stop: u64,
     pub cursor_captured: u64,
@@ -45,6 +54,11 @@ pub enum PlatformInputError {
     PermissionDenied,
     TapCreateFailed,
     RunLoopSourceFailed,
+    WindowClassRegistrationFailed,
+    WindowCreateFailed,
+    SessionNotificationFailed,
+    RawInputRegistrationFailed,
+    TimerCreateFailed,
     RuntimeStopped,
     StartupTimedOut,
     ShutdownTimedOut,
@@ -58,6 +72,11 @@ impl fmt::Display for PlatformInputError {
             Self::PermissionDenied => "input monitoring permission is denied",
             Self::TapCreateFailed => "CGEventTap could not be created",
             Self::RunLoopSourceFailed => "CGEventTap run-loop source could not be created",
+            Self::WindowClassRegistrationFailed => "Raw Input window class registration failed",
+            Self::WindowCreateFailed => "Raw Input owner window creation failed",
+            Self::SessionNotificationFailed => "Windows session notification registration failed",
+            Self::RawInputRegistrationFailed => "Raw Input device registration failed",
+            Self::TimerCreateFailed => "Windows input service timer creation failed",
             Self::RuntimeStopped => "runtime stopped while the input service was active",
             Self::StartupTimedOut => "input service startup timed out",
             Self::ShutdownTimedOut => "input service shutdown timed out",

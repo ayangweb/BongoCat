@@ -1,5 +1,5 @@
 use crate::{OverlayError, OverlaySessionOptions, ProductOverlayReport};
-use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError};
+use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError, WindowsInputService};
 use bongocat_render::{
     BlendMode, CanvasInfo, DrawableId, ModelCommitErrorCode, ModelCommitFeedback,
     ModelCommitOutcome, ModelCommitToken, RenderConsumer, RenderFrame, RenderResources,
@@ -713,6 +713,7 @@ pub(super) struct ProductOverlaySession {
     runtime_client: RuntimeClient,
     render_consumer: RenderConsumer,
     _com_apartment: ComApartment,
+    input_service: Option<WindowsInputService>,
     input_start_error: Option<PlatformInputError>,
     input_diagnostics: Option<PlatformInputDiagnostics>,
     input_stopped: bool,
@@ -753,13 +754,18 @@ impl ProductOverlaySession {
             ModelCommitOutcome::Prepared,
         )?;
         overlay.window.show()?;
-        let _ = (input_producer, cursor_producer);
+        let (input_service, input_start_error) =
+            match WindowsInputService::start(input_producer, cursor_producer) {
+                Ok(service) => (Some(service), None),
+                Err(error) => (None, Some(error)),
+            };
         Ok(Self {
             overlay,
             runtime_client,
             render_consumer,
             _com_apartment: com_apartment,
-            input_start_error: Some(PlatformInputError::BackendUnavailable),
+            input_service,
+            input_start_error,
             input_diagnostics: None,
             input_stopped: false,
             frame_interval: Duration::from_secs_f64(1.0 / f64::from(options.maximum_fps)),
@@ -831,7 +837,17 @@ impl ProductOverlaySession {
     }
 
     pub(super) fn stop_input(&mut self) -> Result<(), OverlayError> {
+        if self.input_stopped {
+            return Ok(());
+        }
         self.input_stopped = true;
+        if let Some(service) = self.input_service.take() {
+            self.input_diagnostics = Some(
+                service
+                    .stop()
+                    .map_err(|error| OverlayError::new(error.to_string()))?,
+            );
+        }
         Ok(())
     }
 

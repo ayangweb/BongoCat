@@ -215,6 +215,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 - [ ] Windows 实现 RegisterRawInputDevices 和 WM_INPUT 最小路径。
   - 状态（2026-08-29）：已实现注册、读取、注销和自动退出路径，并通过 Windows target 交叉 check/Clippy 以及 `windows-latest` 注册/退出 smoke。本批新增 `SendInput` scan-code down/up -> 系统 `WM_INPUT` callback -> raw decode 的闭环命令并接入 Windows runner；物理设备样本仍待实机，因此保持未勾选。
+  - 状态（2026-08-30）：上述 contract 已提升到正式 `bongocat-platform`：专用隐藏 HWND
+    注册 keyboard/mouse `RIDEV_INPUTSINK | RIDEV_DEVNOTIFY`，安全解析 x64 `RAWINPUT`
+    bytes，将 key/button edge 送入正式 runtime，并把 pointer movement 分流到 cursor
+    latest-value。产品 D3D11 session 负责在 runtime 前启动/停止/join 服务；物理设备样本
+    和发布实机矩阵仍缺，因此总项保持未勾选。
 - [x] 冻结 scan code、extended flag、左右修饰键和 RI_KEY_BREAK mapping contract；Win32 packet 接入仍待实机。
   - 状态（2026-08-29）：同一 safe raw-byte boundary 已覆盖 RAWMOUSE `usButtonFlags`，五个 canonical mouse button 的 down/up 与同包顺序由 contract test 固定；button pressed-state/校正已接入 Windows spike，commit `e776867` 的 push run `33256593886`、job `99111304790` 已通过 22 项 contract test 和五个 button VK 的真实查询。pointer movement 和 wheel 的 latest-value 分流仍属于平台 producer 实现。
 - [x] 建立平台无关 pressed set contract；Windows `GetAsyncKeyState` 校正仍待实机接入。
@@ -227,6 +232,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 实测 PixPin Ctrl+Alt+A，丢失 release 时不得永久高亮。
   - [x] contract probe 已覆盖丢失 A-up 后通过 Reconcile 清除残留；尚未在 Windows callback 上实测。
   - 状态（2026-08-29）：本批新增系统合成 A down/up，consumer 故意丢弃已捕获 release，再由两次 `GetAsyncKeyState` 快照清除 candidate 的 Windows runner smoke；它验证 callback 到 reconcile 的实现闭环，但不替代 PixPin/物理键实测。
+  - 状态（2026-08-30）：正式产品 crate 新增同等强度的 ignored Windows smoke，故意吞掉
+    已由 `WM_INPUT` 捕获的 A-up，要求两次 `250 ms` 系统快照最终清除正式 runtime 的
+    `left_hand_down`，并校验 callback/捕获队列/runtime 队列无 overflow 或 panic。该 smoke
+    已加入 Native workspace 的 Windows CI；PixPin 物理交互仍待用户实机验收。
 - [ ] 实测 Win+L、PrintScreen、UAC 和管理员/非管理员场景。
 - [ ] 进行 10 分钟高速鼠标 + 键盘压力测试，edge 丢失计数必须为 0。
   - 状态（2026-08-29）：3 秒有界 `SendInput` 压力 smoke 对 A、S、Space、左 Shift、左 Control 和 E0 右 Control 发送 128 轮、共 1536 个 down/up 边沿；commit `f68b46f` 的 push/PR Windows jobs 均已通过完整、有序、无 duplicate/unmatched/decode/panic/残留门禁。keyboard-under-pointer-flood 模式又在相同键盘边沿之间插入 3072 个不可合并的相对鼠标移动，commit `64dd9d3` 的 push/PR Windows jobs 均验证实际 mouse message 洪峰不阻塞可靠 release。两者都不能替代本项要求的 10 分钟物理键鼠与交互场景，因此保持未勾选。
@@ -314,12 +323,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 - [x] `native/` 正式 Cargo workspace 仅包含新 Rust 应用和 crate；发布切换时再提升为根构建入口，迁移期不破坏历史 Tauri workspace。
 - [x] 创建 bongocat-app：入口、服务装配和 shutdown。
-  - 验收证据（2026-08-30）：正式 macOS `bongocat-app` 入口现装配配置、单一 runtime
-    owner、预置模型与输入映射、listen-only 平台输入、cursor latest-value transport 和
-    Metal overlay；应用拥有唯一 render consumer，并以输入 -> runtime -> renderer/window
-    顺序停止。输入权限/启动失败降级而不阻止模型窗口显示；`--run-seconds 0` 可持续运行，
-    默认 30 秒用于有界开发 smoke。GPUI 共存、installed-model 选择、Windows 预置模型
-    renderer 和 runtime/GPU 模型切换确认仍属后续任务。
+  - 验收证据（2026-08-30）：正式双平台 `bongocat-app` 入口现装配配置、单一 runtime
+    owner、预置模型与输入映射、平台输入、cursor latest-value transport 和 Metal/D3D11
+    overlay；应用拥有唯一 render consumer，并以输入 -> runtime -> renderer/window 顺序
+    停止。输入权限/启动失败降级而不阻止模型窗口显示；`--run-seconds 0` 可持续运行，默认
+    30 秒用于有界开发 smoke。GPUI 共存、installed-model 选择和跨平台多模型切换确认仍属
+    后续任务。
 - [x] 创建 bongocat-runtime：状态、输入语义、动画和 command。
 - [x] 创建 bongocat-config：环境隔离、schema、验证和原子存储。
 - [x] 创建 bongocat-model：模型包、导入和资源索引。
@@ -345,12 +354,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     Live2D 与 macOS Metal overlay 已改用该 contract。
 - [ ] 创建 bongocat-ui：GPUI 页面和 design system。
 - [ ] 创建 bongocat-platform：Windows/macOS 系统服务。
-  - 状态（2026-08-30）：正式 crate 已接入 macOS listen-only CGEventTap、可靠键鼠边沿、
-    周期状态校正、tap 恢复，以及独立 cursor latest-value producer；输入启动时主动发布当前
-    光标，随后按光标所在显示器查询 viewport 并进入正式 runtime。平台类型没有泄漏到
-    runtime，且输入边界使用最新 `objc2-core-graphics 0.3.2`/
-    `objc2-core-foundation 0.3.2`。Windows 正式 producer、macOS 生命周期通知、
-    GameController 与其余系统服务尚未迁入，因此总项保持未完成。
+  - 状态（2026-08-30）：正式 crate 已接入 macOS listen-only CGEventTap 与 Windows Raw
+    Input，两平台都提供可靠键鼠边沿、周期状态校正和独立 cursor latest-value producer；
+    输入启动时主动发布当前光标，随后按光标所在显示器查询 viewport 并进入正式 runtime。
+    Windows 还处理设备移除、WTS session、电源、队列溢出和 shutdown Reset。平台类型没有
+    泄漏到 runtime；macOS 生命周期通知、双平台 GameController/XInput 与其余系统服务尚未
+    迁入，因此总项保持未完成。
 - [ ] 创建 shared/config、behavior、fixtures、resources。
 - [x] 避免空 crate；首批只建立 app/runtime/config 三个有独立依赖和测试价值的 crate。
 
@@ -414,22 +423,23 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] key/button edge 和 command 使用可靠有序队列。
   - 状态（2026-08-30）：正式 `ApplyInput` 与其他 command 共用有界 FIFO，input event
     另带独立单调 sequence；`InputProducer` 以非阻塞 publish 返回原始拒绝事件，并向
-    app/platform 暴露 recovery API。macOS 正式 producer 已接入，Windows 正式 producer
-    仍待建立。
+    app/platform 暴露 recovery API。macOS/Windows 正式 producer 均已接入；command 与
+    input 共用容量 64 的产品 FIFO，正式 gamepad producer 仍待建立。
 - [ ] 为每个可靠队列定义容量、生产者、消费者、满载策略和关闭语义，不使用无界队列逃避背压设计。
   - 状态（2026-08-28）：`spikes/input-queue/` 已验证固定容量 FIFO、满载返回原事件、关闭 drain 和 latest-value 槽位；`spikes/runtime-contract/` 进一步验证固定容量 command queue、Condvar 唤醒、溢出 Reset、worker drain 和 join 报告；runtime 的实际容量与产品 channel 选型仍待产品 crate。
   - 状态（2026-08-30）：正式 app 当前使用容量 64 的共享 command/input FIFO，唯一
     runtime worker 消费，owner shutdown 使用可靠控制消息并 join；cursor 已使用独立单槽
     latest-value transport，停止后拒绝新 sample 并在 shutdown 消费 pending sample。
-    gamepad axis 通道和 Windows 正式 producer 生命周期尚未建立，因此总项保持未勾选。
+    Windows 正式 input owner 也已具备 start/stop/join 和最终 Reset；gamepad axis 通道及
+    producer 生命周期尚未建立，因此总项保持未勾选。
 - [ ] edge/command 携带单调 sequence id，诊断可发现乱序、重复和丢失但不记录具体键值。
   - 状态（2026-08-29）：Windows callback queue 的 edge、Reset 和 reconcile tick 已携带单调 `u64` sequence，正常压力路径要求 gap/duplicate 均为 0，受控 overflow 以 discarded backlog 数量产生等量 gap 并由 Reset 恢复。command queue 与产品 runtime 的统一 sequence contract 仍待实现，因此保持未勾选。
   - 状态（2026-08-29）：macOS callback queue 也已为 edge/Reset 分配单调 `u64` sequence，overflow Reset 继承被拒事件序号，consumer 统计 gap 与 duplicate/out-of-order；普通 tap、timeout/user disable 和 lifecycle 本机回归均为 0。commit `d7501dc` 的 push run `33257871184` 已通过 contract job `99114627795` 及原生 macOS job `99114627654` 的 input check/Clippy/test/release 门禁。command queue 与产品 runtime 的统一 contract 仍待实现，因此保持未勾选。
   - 状态（2026-08-28）：`spikes/input-state/` 已验证可靠输入事件的重复/乱序忽略与跳号安全 reset；`spikes/runtime-contract/` 已验证 typed command sequence、跳号前 `WorkerRecovery` reset、重复/过期 sequence 丢弃和诊断计数；平台 producer、输入事件 sequence 与产品 runtime 接入仍待产品 crate。
   - 状态（2026-08-30）：产品 runtime 现分别维护 command sequence 与 input sequence；
     input 重复/乱序计数后忽略，跳号计数缺失数量、先以 `SequenceGap` Reset 再应用当前
-    边沿，snapshot 只暴露聚合诊断。macOS 正式 producer 已接入，Windows 正式 producer
-    尚未建立。
+    边沿，snapshot 只暴露聚合诊断。macOS/Windows 正式 producer 均经 `InputProducer`
+    分配 sequence；正式 gamepad producer 与完整统一诊断仍待建立。
 - [ ] cursor/gamepad axis 使用 latest-value 合并通道。
   - 状态（2026-08-29）：Windows RAWMOUSE movement 已从可靠 edge FIFO 分流到独立 latest-value 槽位；safe decoder 保留 relative/absolute/virtual-desktop 语义，16ms owner tick 在 callback 外查询当前 cursor，pointer flood 要求 captured sample 全部由 coalesced 或 consumed 解释且不影响 keyboard release。commit `098d532` 的 push run `33258305541`、Windows job `99115756881` 已通过强化后的 3072 movement/1536 keyboard edge 回归。Gamepad axis、macOS cursor 和产品 runtime 通道仍待实现，因此保持未勾选。
   - 状态（2026-08-29）：macOS `MouseMoved` 与 left/right/other drag 已分流到独立 latest-value slot，run-loop owner 约每 16ms 消费一次并在 shutdown flush；10,000-sample contract 证明 cursor flood 不占用可靠 button edge 队列，严格报告要求 `captured = coalesced + consumed` 且 close 后无迟到发布。commit `500a956` 的 PR run `33258718745` 中，原生 macOS job `99116842307` 与 contract job `99116842405` 均通过。Gamepad axis、产品 runtime 通道和物理 cursor callback 实测仍待完成，因此保持未勾选。
@@ -440,8 +450,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     可靠 command 到达时消费；10,000 sample flood 满足
     `published = coalesced + consumed + pending`，且不会延迟可靠 KeyUp。正式 macOS producer
     的 callback 只覆盖原始坐标槽，run-loop worker 在 callback 外查询 active display viewport；
-    启动位置与后续移动均进入 runtime，并驱动 Live2D pointer/head/eye 参数。gamepad axis
-    的正式 runtime/product producer 仍未接入，因此总项保持未勾选。
+    启动位置与后续移动均进入 runtime，并驱动 Live2D pointer/head/eye 参数。Windows 正式
+    producer 同样只在 Raw Input callback 标记 movement，worker 在 callback 外查询 cursor
+    和 monitor viewport 后进入该单槽。gamepad axis 的正式 runtime/product producer 仍未
+    接入，因此总项保持未勾选。
 - [ ] 队列溢出必须计数、记录并触发安全恢复。
   - 状态（2026-08-28）：`spikes/input-queue/` 的 `push_with_overflow_reset` 已固定溢出返回原事件、清空不可信缓存、注入 `Reset` 并记录恢复/丢弃计数；`spikes/runtime-contract/` 已将同一策略应用到 typed command queue 并通过 worker snapshot 暴露诊断；runtime producer、实际容量和输入/command sequence 仍待产品实现。
   - 状态（2026-08-30）：产品 `InputProducer` 已聚合 enqueued、queue full、overflow 后

@@ -11,16 +11,17 @@ Development is the default and is compiled into the artifact:
 cargo run --manifest-path native/Cargo.toml -p bongocat-app --release -- --run-seconds 0
 ```
 
-On macOS this is the current formal visible product entry. It loads the selected bundled preset
-(`standard` by default), starts the product runtime and listen-only input producer, and displays the
-transparent Metal overlay. `--run-seconds 0` keeps it visible until the overlay is closed; omit the
-argument for a bounded 30-second run. Grant Input Monitoring permission to the launching terminal
-for global keyboard and mouse-button animation. Permission denial is reported as a degraded input
-state and does not prevent the model from appearing.
+This is the current formal visible product entry on macOS and Windows. It loads the selected bundled
+preset (`standard` by default), starts the product runtime and platform input producer, and displays
+the transparent Metal or D3D11 overlay. `--run-seconds 0` keeps it visible until the overlay is
+closed; omit the argument for a bounded 30-second run.
 
-The assembled Windows entry currently starts and stops the platform-independent application
-services but does not yet draw the preset model. The D3D11 preset-model renderer remains an active
-TODO item.
+On macOS, grant Input Monitoring permission to the launching terminal for global keyboard and
+mouse-button animation. Permission denial is reported as a degraded input state and does not
+prevent the model from appearing. On Windows, the product uses a dedicated hidden Raw Input owner
+window, periodically reconciles locally pressed candidates with `GetAsyncKeyState`, and resets input
+on device, session, power, queue, and service lifecycle changes. Physical PixPin, Win+L, UAC,
+administrator-boundary, and long-running input tests remain release evidence tasks.
 
 Production must be selected at build time:
 
@@ -78,9 +79,9 @@ The interactive path uses the same typed runtime input state as the deterministi
 stops the platform producer before the runtime and Metal overlay. It seeds the current global
 cursor position at startup and then coalesces cursor movement through an independent latest-value
 transport; pointer, head, and eye parameters use the active display's logical viewport. The product
-entry now owns this runtime/input/render lifecycle. GPUI settings coexistence, lifecycle
-notifications, coordinated runtime/GPU model-switch acknowledgement, installed-model selection,
-and the Windows preset-model renderer remain separate work items.
+entry now owns this runtime/input/render lifecycle on both launch platforms. GPUI settings
+coexistence, installed-model selection, formal gamepad input, and remaining lifecycle evidence are
+separate work items.
 
 Cubism model evaluation and Metal GPU ownership are separated by the platform-independent
 `bongocat-render` contract. The single runtime worker owns the mutable Cubism model and publishes

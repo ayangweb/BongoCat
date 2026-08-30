@@ -102,6 +102,7 @@ dependencies = [
  "bongocat-runtime",
  "objc2-core-foundation",
  "objc2-core-graphics",
+ "windows",
 ]
 
 [[package]]

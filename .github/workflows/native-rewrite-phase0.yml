@@ -97,6 +97,9 @@ jobs:
       - name: Smoke Windows D3D11 product overlay
         if: matrix.os == 'windows-latest'
         run: cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release -- --run-seconds 2
+      - name: Smoke formal Windows missing-release recovery
+        if: matrix.os == 'windows-latest'
+        run: cargo test --manifest-path native/Cargo.toml --locked -p bongocat-platform --lib --release windows::tests::synthetic_missing_release_is_reconciled_in_formal_runtime -- --ignored --exact
 
   cubism-binding-contract:
     name: Check Cubism binding generation contract
