@@ -1,6 +1,6 @@
 # GPUI Settings Spike Record
 
-状态：macOS 默认 shader、`.app`、主题、基础文本交互、marked-text contract、runtime bridge、loading/error/retry、tooltip 与 modal dialog/AccessKit AX tree/action 通过；Windows 真实窗口/首帧/shutdown、dialog 与 loading value UI Automation 已通过，`busy=true` 投影、error/retry UIA、双平台真实 IME 与真实辅助技术待完成
+状态：macOS 默认 shader、`.app`、主题、基础文本交互、marked-text contract、runtime bridge、loading/error/retry、tooltip 与 modal dialog/AccessKit AX tree/action 通过；Windows 真实窗口/首帧/shutdown、dialog 与 loading/error/retry UI Automation 已通过，`busy=true` 投影、双平台真实 IME 与真实辅助技术待完成
 日期：2026-08-30
 原始重构基线 commit：`94af230`；后续验证源码与本记录保持同一提交
 
@@ -57,7 +57,7 @@ spike 使用容量为 8 的 `async-channel 2.5.0` 传递强类型 `ReadSnapshot`
 
 退出时，runtime 先关闭 command receiver，再发送 shutdown acknowledgement，避免 acknowledgement 返回后仍有请求成功入队并永远等待 reply。contract test 覆盖两次 snapshot 的 revision、health、shutdown acknowledgement 和停止后请求失败。macOS release `.app` smoke 同时证明 GPUI executor 能完成首次 snapshot 请求，并在 auto-quit 的 100 ms GPUI shutdown 窗口内收到 acknowledgement；该结果不等于产品 runtime、持久化或高负载 channel 已完成。
 
-`--runtime-error-probe` 使用同一 typed command/reply 边界，并通过 GPUI background executor 的非阻塞 timer 将每次 read 延迟 3000 ms；第二次 read 返回稳定 `BridgeError::ProbeFailure`，第三次重试恢复且 revision 从 1 递增到 2。该 probe 不在 UI executor sleep，也不让 UI 直接控制 runtime 内部状态。macOS 打包 `.app` 的外部 AX smoke 已读取 `Runtime Ready · revision 1 -> runtime probe failed -> Runtime Ready · revision 2`，随后 Cmd+Q 仍先收到 runtime shutdown acknowledgement。AccessKit contract 另验证 loading status 的 `busy=true` 与 error status 的 `Invalid::True`。commit `ea08d3d` 的 push job `99203157592` 已从 Windows UI Automation 读到 `Refreshing...`；commit `fd67e56` 的 push job `99203890645` 进一步确认 runner 托管 UIA client 的 `AutomationElement.AriaPropertiesProperty` 标识为 `null`，因此该 client 不能判定 AccessKit Windows 0.35.0 源码声明的 `busy=true` 投影。workflow 在标识可用时继续探测该属性，并把 loading value、error 与 retry revision 保持为硬门槛。
+`--runtime-error-probe` 使用同一 typed command/reply 边界，并通过 GPUI background executor 的非阻塞 timer 将每次 read 延迟 3000 ms；第二次 read 返回稳定 `BridgeError::ProbeFailure`，第三次重试恢复且 revision 从 1 递增到 2。该 probe 不在 UI executor sleep，也不让 UI 直接控制 runtime 内部状态。macOS 打包 `.app` 的外部 AX smoke 已读取 `Runtime Ready · revision 1 -> runtime probe failed -> Runtime Ready · revision 2`，随后 Cmd+Q 仍先收到 runtime shutdown acknowledgement。AccessKit contract 另验证 loading status 的 `busy=true` 与 error status 的 `Invalid::True`。commit `21ee8aa` 的 push run `33291750411`、job `99204478369` 与 pull request run `33291751558`、job `99204481348` 已从 Windows UI Automation 依次读到 `Refreshing...`、`runtime probe failed` 和重试后的 `Runtime Ready · revision 2`，三者保持硬门槛。runner 托管 UIA client 的 `AutomationElement.AriaPropertiesProperty` 标识为 `null`，因此该 client 不能判定 AccessKit Windows 0.35.0 源码声明的 `busy=true` 投影；workflow 只在标识可用时探测该属性，这一证据缺口仍保留。
 
 760x520 Retina 人工 smoke 确认 `Runtime Ready · revision 1` 和 Refresh 控件完整显示，无文字裁剪或卡片溢出。此次检查没有提交全屏截图，避免把用户桌面内容纳入仓库证据；可重复证据以 contract test、release binary 日志、bundle 校验和本文环境记录为准。
 
@@ -168,7 +168,7 @@ Objective-C 对象。该版本例外的解除条件是 AccessKit macOS adapter �
 
 - marked-text 纯状态 contract 已通过；真实中文输入法组合态尚未在 macOS 上完成端到端验证，Windows IME、字体、DPI 和辅助技术尚未验证。
 - tooltip builder、modal dialog、焦点陷阱和 Escape 已通过 macOS 可见/AX smoke；真实 tooltip hover 延迟、双平台辅助技术朗读与完整菜单交互尚未验证。
-- macOS 内容 AX tree/action、错误/retry value 与 Windows UI Automation dialog/loading value runner 已通过；Windows `busy=true` AriaProperties 投影、error/retry、真实 VoiceOver/Narrator 操作和宣读顺序仍待完成。
+- macOS 内容 AX tree/action、错误/retry value 与 Windows UI Automation dialog/loading/error/retry/revision 2 runner 已通过；Windows `busy=true` AriaProperties 投影、真实 VoiceOver/Narrator 操作和宣读顺序仍待完成。
 - 菜单栏常驻策略、隐藏行为和 native overlay 共存尚未验证。
 - Windows 已通过编译和真实窗口/首帧/退出 runner smoke；字体、IME、DPI 切换、辅助技术和系统集成仍未验证。
 

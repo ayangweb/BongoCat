@@ -155,7 +155,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 1.5 GPUI spike
 
-状态（2026-08-30）：已在 `spikes/gpui-settings/` 建立隔离的 macOS 最小窗口，精确锁定 `gpui = 0.2.2` 并生成独立 lockfile；默认预编译 shader、release `.app`、菜单、窗口关闭/重开和 shutdown smoke 通过。当前 spike 还验证了 System/Light/Dark 主题、焦点边框、Tab/Shift-Tab、Unicode/grapheme 文本编辑、选择、剪切、复制和粘贴，以及 GPUI executor 上的 bounded typed command/revision snapshot/shutdown acknowledgement，并保存浅色/深色截图证据。marked-text 纯状态 contract 已覆盖连续中文组合、已有多字节前缀、surrogate pair 和异常 range。项目自有 AccessKit tree 已由 macOS AppKit AX API 读取 9 个语义节点，Dark radio 的系统 press 经强类型 channel 回到 GPUI；Reset tooltip help 与 modal AlertDialog 又通过可见/AX smoke，dialog 初始 Cancel 焦点、Tab/Shift-Tab 陷阱、Escape 关闭和背景语义隐藏均已验证。Windows UIA runner 已读取基础 role/name 并通过 `SelectionItem.Select` 验证 selected/action，新 dialog 门禁等待本批 CI。真实系统 IME、tooltip 真实 hover/朗读、完整菜单和真实辅助技术操作仍未验证，详见 `docs/phase-0/gpui-settings-spike.md`。
+状态（2026-08-30）：已在 `spikes/gpui-settings/` 建立隔离的 macOS 最小窗口，精确锁定 `gpui = 0.2.2` 并生成独立 lockfile；默认预编译 shader、release `.app`、菜单、窗口关闭/重开和 shutdown smoke 通过。当前 spike 还验证了 System/Light/Dark 主题、焦点边框、Tab/Shift-Tab、Unicode/grapheme 文本编辑、选择、剪切、复制和粘贴，以及 GPUI executor 上的 bounded typed command/revision snapshot/shutdown acknowledgement，并保存浅色/深色截图证据。marked-text 纯状态 contract 已覆盖连续中文组合、已有多字节前缀、surrogate pair 和异常 range。项目自有 AccessKit tree 已由 macOS AppKit AX API 读取 9 个语义节点，Dark radio 的系统 press 经强类型 channel 回到 GPUI；Reset tooltip help 与 modal AlertDialog 又通过可见/AX smoke，dialog 初始 Cancel 焦点、Tab/Shift-Tab 陷阱、Escape 关闭和背景语义隐藏均已验证。Windows UIA runner 已读取基础 role/name、selected/action、dialog，并通过 loading -> error -> retry/revision 2 恢复门禁；`busy=true` 因 runner 托管 UIA client 缺少属性标识而仍未验证。真实系统 IME、tooltip 真实 hover/朗读、完整菜单、目标 DPI 和真实辅助技术操作仍未验证，详见 `docs/phase-0/gpui-settings-spike.md`。
 
 - [x] 建立最小 Rust workspace 和 GPUI hello/settings 窗口。
 - [x] 固定 `gpui = "=0.2.2"` 并提交 Cargo.lock。
@@ -167,7 +167,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 验证窗口关闭、重开和退出生命周期；隐藏到托盘/菜单栏待系统集成阶段验证。
 - [x] 验证 GPUI async executor 与 runtime channel 可安全通信；bounded command/reply、revision 过滤、receiver close 和 shutdown acknowledgement 已通过 contract test 与 macOS release `.app` smoke。
 - [ ] 验证辅助功能树满足设置表单的基础要求。
-  - 状态：macOS 本机已验证 role/title/value、selected/focus、busy/error 属性与 radio action；commit `fd9ad85` 的 push run `33255204781`、job `99107586036` 已通过 Windows UIA role/name、radio selection action 与 selected state。真实 VoiceOver/Narrator 和 error/loading 宣读仍待完成，因此保持未勾选。
+  - 状态（2026-08-30）：macOS 本机已验证 role/title/value、selected/focus、busy/error 属性与 radio action；commit `21ee8aa` 的 push run `33291750411`、job `99204478369` 与 pull request run `33291751558`、job `99204481348` 已通过 Windows UIA role/name、radio selection action、selected state、loading、注入错误与 retry/revision 2 恢复。runner 托管 UIA client 缺少 `AriaPropertiesProperty` 标识，故 `busy=true` 投影仍未验证；真实 VoiceOver/Narrator 操作和宣读仍待完成，因此保持未勾选。
 - [x] 记录首次打开、空闲 CPU、RSS 和二进制增量；`docs/benchmark/data/gpui-settings-macos-248a770-*.csv` 保存原始样本，方法、环境和限制见 `docs/phase-0/gpui-settings-spike.md`。
 - [x] 安装并固定 macOS Metal Toolchain，验证 GPUI 默认预编译 shader 路径；`runtime_shaders` 不作为发布配置。
 - [ ] 将 macOS spike 打包为最小 `.app`，验证 bundle id、菜单、激活、关闭和辅助功能树可被系统识别。
@@ -838,7 +838,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 8. [ ] `P0-GPUI-PACKAGE-MAC`：使用默认预编译 shader 构建 `.app`，验证 IME、剪贴板、焦点、辅助功能、主题和窗口重开。
    - 状态（2026-08-30）：默认 shader、bundle、菜单、窗口生命周期、主题、基础文本编辑/剪贴板、runtime bridge、性能基线与 AppKit AX tree/action 通过；Reset tooltip help、modal dialog、焦点陷阱、Escape 恢复和背景语义隐藏已完成可见/AX smoke；AX value/invalid 可观察延迟 runtime 的 loading -> error -> retry/revision 恢复。marked-text 纯状态 contract 不替代真实系统 IME；ADR-0009 仍等待真实 VoiceOver、tooltip 实际 hover/朗读、完整菜单等证据。
 9. [ ] `P0-GPUI-WINDOWS`：在 Windows 构建同一 spike，验证字体、IME、DPI、辅助功能和正常退出。
-   - 状态（2026-08-30）：push run `33255204781`、job `99107586036` 已通过窗口、首帧、runtime、有序 shutdown 和进程外 UI Automation role/name/selection action；commit `45b8dba` 的 push run `33273470907`、job `99156013603` 又通过 modal dialog、Cancel 初始焦点、dismiss 与语义子树恢复；commit `ea08d3d` 的 push job `99203157592` 可读取 loading value，commit `fd67e56` 的 push job `99203890645` 证明 runner 托管 UIA client 不提供 `AriaPropertiesProperty` 标识，不能用它验证 AccessKit `busy=true`，error/retry/revision 2 仍待后续 CI。字体、真实 IME、DPI 切换和 Narrator 仍待 Windows 实机，因此保持未勾选。
+   - 状态（2026-08-30）：push run `33255204781`、job `99107586036` 已通过窗口、首帧、runtime、有序 shutdown 和进程外 UI Automation role/name/selection action；commit `45b8dba` 的 push run `33273470907`、job `99156013603` 又通过 modal dialog、Cancel 初始焦点、dismiss 与语义子树恢复；commit `21ee8aa` 的 push run `33291750411`、job `99204478369` 与 pull request run `33291751558`、job `99204481348` 已通过 loading、注入错误、retry 和 revision 2 恢复。runner 托管 UIA client 不提供 `AriaPropertiesProperty` 标识，不能用它验证 AccessKit `busy=true`。字体、真实 IME、DPI 切换和 Narrator 仍待 Windows 实机，因此保持未勾选。
 10. [ ] `P0-OVERLAY`：GPUI 生命周期内完成 Windows D3D11/macOS Metal 透明 clear/present、错误注入和 100 次重建。
 
 - [x] 先完成无平台依赖的 overlay lifecycle contract probe；平台窗口和 GPU 验证仍未完成。
