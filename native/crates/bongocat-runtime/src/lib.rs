@@ -1429,6 +1429,7 @@ mod tests {
         let pressed = wait_for_render_frame(&consumer, |frame| {
             frame.model_generation == initial.model_generation
                 && frame.transport_sequence > committed_baseline.transport_sequence
+                && frame.snapshot != committed_baseline.snapshot
         });
         assert_ne!(pressed.snapshot, committed_baseline.snapshot);
 

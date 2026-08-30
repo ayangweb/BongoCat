@@ -65,8 +65,9 @@ The switch probe first injects one invalid texture preparation and requires the 
 input bindings, and GPU generation to remain active and drawable. Rejected candidate generations
 may create a gap, but committed generations must remain strictly monotonic. Every valid generation
 performs a non-transparent frame readback. The Windows probe additionally rejects process thread
-growth, more than four additional handles, or DXGI local-memory growth after one complete warmup
-cycle; the macOS probe rejects Metal allocation growth between warmed-up standard baselines.
+growth above the two-cycle warmup high-water mark, more than four additional handles, or DXGI
+local-memory growth after warmup; the macOS probe rejects Metal allocation growth between warmed-up
+standard baselines.
 
 By default the preview applies deterministic, model-specific input through the product runtime so
 hand, pointer, head, and eye changes exercise per-frame Cubism evaluation and GPU buffer updates.

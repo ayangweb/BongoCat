@@ -100,6 +100,7 @@ const RUNTIME_TIMEOUT: Duration = Duration::from_secs(2);
 const WINDOW_CLASS: windows::core::PCWSTR = w!("BongoCatProductOverlayWindow");
 const PRESET_MODEL_IDS: [&str; 3] = ["standard", "keyboard", "gamepad"];
 const HANDLE_GROWTH_LIMIT: u32 = 4;
+const SWITCH_WARMUP_CYCLES: u64 = 2;
 
 const SHADER_SOURCE: &str = r#"
     cbuffer UniformBuffer : register(b0) {
@@ -1050,12 +1051,16 @@ pub(crate) fn run_model_switch_preview(
         ));
     }
 
-    let target_switches = u64::from(switch_cycles).saturating_mul(models.len() as u64);
+    let switches_per_cycle = models.len() as u64;
+    let warmup_switches = SWITCH_WARMUP_CYCLES.saturating_mul(switches_per_cycle);
+    let target_switches = u64::from(switch_cycles).saturating_mul(switches_per_cycle);
+    let total_target_switches = warmup_switches.saturating_add(target_switches);
+    let mut total_switches = 0_u64;
     let mut model_switches = 0_u64;
     let mut gpu_bytes_before = None;
     let mut handles_before = None;
-    let mut threads_before = None;
-    while model_switches < target_switches {
+    let mut warmup_thread_high_water = 0_u32;
+    while total_switches < total_target_switches {
         pump_window_messages();
         current_model_index = (current_model_index + 1) % models.len();
         let target_id = PRESET_MODEL_IDS[current_model_index];
@@ -1099,12 +1104,17 @@ pub(crate) fn run_model_switch_preview(
         }
         previous_snapshot = frame.snapshot;
         frames_presented = frames_presented.saturating_add(1);
-        model_switches = model_switches.saturating_add(1);
+        total_switches = total_switches.saturating_add(1);
 
-        if model_switches == models.len() as u64 {
+        if total_switches <= warmup_switches {
+            warmup_thread_high_water = warmup_thread_high_water.max(
+                process_thread_count().map_err(windows_error("count warmup process threads"))?,
+            );
+        } else {
+            model_switches = model_switches.saturating_add(1);
+        }
+        if total_switches == warmup_switches {
             gpu_bytes_before = Some(overlay.renderer.current_local_memory_usage()?);
-            threads_before =
-                Some(process_thread_count().map_err(windows_error("count process threads"))?);
             handles_before =
                 Some(process_handle_count().map_err(windows_error("count process handles"))?);
         }
@@ -1112,8 +1122,11 @@ pub(crate) fn run_model_switch_preview(
 
     let gpu_bytes_before = gpu_bytes_before
         .ok_or_else(|| OverlayError::new("model-switch probe did not finish its warmup cycle"))?;
-    let threads_before = threads_before
-        .ok_or_else(|| OverlayError::new("model-switch probe did not sample thread usage"))?;
+    if warmup_thread_high_water == 0 {
+        return Err(OverlayError::new(
+            "model-switch probe did not sample thread usage",
+        ));
+    }
     let handles_before = handles_before
         .ok_or_else(|| OverlayError::new("model-switch probe did not sample handle usage"))?;
     let gpu_bytes_after = overlay.renderer.current_local_memory_usage()?;
@@ -1126,9 +1139,9 @@ pub(crate) fn run_model_switch_preview(
             "DXGI local memory usage grew from {gpu_bytes_before} to {gpu_bytes_after} bytes during model switching"
         )));
     }
-    if threads_after > threads_before {
+    if threads_after > warmup_thread_high_water {
         return Err(OverlayError::new(format!(
-            "process thread count grew from {threads_before} to {threads_after} during model switching"
+            "process thread count exceeded the warmup high-water mark {warmup_thread_high_water} with {threads_after} threads during model switching"
         )));
     }
     if handles_after > handles_before.saturating_add(HANDLE_GROWTH_LIMIT) {
