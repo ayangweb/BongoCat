@@ -5,7 +5,8 @@ use bongocat_config::{
     StorageLayout, platform_layout,
 };
 use bongocat_model::{
-    ModelError, ModelId, ModelImportError, ModelPackageLimits, ModelStore, PreparedModel,
+    InstalledModel, ModelCatalogEntry, ModelError, ModelId, ModelPackageLimits, ModelStore,
+    ModelStoreError,
 };
 use bongocat_runtime::{
     InputProducer, RuntimeClient, RuntimeCommand, RuntimeOwner, RuntimeSnapshot, SendError,
@@ -27,7 +28,8 @@ pub enum ApplicationError {
     PlatformStorage(PlatformStorageError),
     Config(ConfigError),
     Model(ModelError),
-    ModelImport(ModelImportError),
+    ModelStore(ModelStoreError),
+    ActiveModelDeletion(ModelId),
     RuntimeCommand(SendError),
     RuntimeDidNotPublish,
     Shutdown(ShutdownError),
@@ -39,7 +41,10 @@ impl fmt::Display for ApplicationError {
             Self::PlatformStorage(error) => write!(formatter, "storage setup failed: {error}"),
             Self::Config(error) => write!(formatter, "configuration failed: {error}"),
             Self::Model(error) => write!(formatter, "model preparation failed: {error}"),
-            Self::ModelImport(error) => write!(formatter, "model import failed: {error}"),
+            Self::ModelStore(error) => write!(formatter, "model store failed: {error}"),
+            Self::ActiveModelDeletion(id) => {
+                write!(formatter, "active model cannot be deleted: {}", id.as_str())
+            }
             Self::RuntimeCommand(error) => write!(formatter, "runtime command failed: {error}"),
             Self::RuntimeDidNotPublish => {
                 formatter.write_str("runtime did not publish the requested revision")
@@ -69,9 +74,9 @@ impl From<ModelError> for ApplicationError {
     }
 }
 
-impl From<ModelImportError> for ApplicationError {
-    fn from(error: ModelImportError) -> Self {
-        Self::ModelImport(error)
+impl From<ModelStoreError> for ApplicationError {
+    fn from(error: ModelStoreError) -> Self {
+        Self::ModelStore(error)
     }
 }
 
@@ -89,7 +94,11 @@ impl Application {
     }
 
     fn start_with_layout(layout: StorageLayout) -> Result<Self, ApplicationError> {
-        let model_store = ModelStore::new(&layout.models, ModelPackageLimits::default())?;
+        let model_store = ModelStore::new(
+            &layout.models,
+            layout.locks.join("models.writer.lock"),
+            ModelPackageLimits::default(),
+        )?;
         let config_store = ConfigStore::new(layout)?;
         let (config, config_revision) = config_store.load_or_default()?;
         let runtime = RuntimeOwner::start(config.overlay.visible, COMMAND_CAPACITY);
@@ -140,13 +149,18 @@ impl Application {
         Ok(snapshot)
     }
 
-    pub fn activate_model(
-        &self,
+    pub fn model_catalog(&self) -> Result<Vec<ModelCatalogEntry>, ApplicationError> {
+        self.model_store
+            .list()
+            .map_err(ApplicationError::ModelStore)
+    }
+
+    pub fn activate_installed_model(
+        &mut self,
         id: impl Into<String>,
-        package_root: impl AsRef<Path>,
     ) -> Result<RuntimeSnapshot, ApplicationError> {
         let id = ModelId::parse(id)?;
-        let prepared = PreparedModel::prepare(id, package_root, ModelPackageLimits::default())?;
+        let prepared = self.model_store.load(&id)?;
         let client = self.runtime.client();
         let sequence = client
             .send(RuntimeCommand::ActivateModel(Arc::new(prepared)))
@@ -156,15 +170,32 @@ impl Application {
             .ok_or(ApplicationError::RuntimeDidNotPublish)
     }
 
+    pub fn delete_model(&mut self, id: impl Into<String>) -> Result<(), ApplicationError> {
+        let id = ModelId::parse(id)?;
+        if self
+            .runtime
+            .client()
+            .snapshot()
+            .active_model
+            .as_ref()
+            .is_some_and(|active| active.id == id)
+        {
+            return Err(ApplicationError::ActiveModelDeletion(id));
+        }
+        self.model_store
+            .delete(&id)
+            .map_err(ApplicationError::ModelStore)
+    }
+
     pub fn import_model(
-        &self,
+        &mut self,
         id: impl Into<String>,
         source_root: impl AsRef<Path>,
-    ) -> Result<PreparedModel, ApplicationError> {
+    ) -> Result<InstalledModel, ApplicationError> {
         let id = ModelId::parse(id)?;
         self.model_store
             .import(id, source_root)
-            .map_err(ApplicationError::ModelImport)
+            .map_err(ApplicationError::ModelStore)
     }
 
     pub fn shutdown(self) -> Result<RuntimeSnapshot, ApplicationError> {
@@ -224,27 +255,53 @@ mod tests {
         let development_root = development.root.clone();
         let production_root = production.root.clone();
 
-        let development_app =
+        let mut development_app =
             Application::start_with_layout(development).expect("development application");
-        let production_app =
+        let mut production_app =
             Application::start_with_layout(production).expect("production application");
 
         assert!(development_root.join("config.json").is_file());
         assert!(production_root.join("config.json").is_file());
         assert_ne!(development_root, production_root);
+
+        let source = repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型");
+        development_app
+            .import_model("same-id", &source)
+            .expect("development import");
+        production_app
+            .import_model("same-id", source)
+            .expect("production import");
+        assert_eq!(
+            development_app.model_catalog().expect("dev catalog").len(),
+            1
+        );
+        assert_eq!(
+            production_app.model_catalog().expect("prod catalog").len(),
+            1
+        );
+        assert!(development_root.join("models/same-id").is_dir());
+        assert!(production_root.join("models/same-id").is_dir());
         development_app.shutdown().expect("development shutdown");
         production_app.shutdown().expect("production shutdown");
     }
 
     #[test]
-    fn failed_model_preparation_preserves_the_active_model() {
+    fn failed_installed_model_preparation_preserves_the_active_model() {
         let base = tempdir().expect("temp directory");
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
-        let application = Application::start_with_layout(layout).expect("start application");
+        let models_root = layout.models.clone();
+        let mut application = Application::start_with_layout(layout).expect("start application");
         let fixtures = repository_root().join("shared/fixtures/model-fixtures/cases");
 
+        application
+            .import_model("active", fixtures.join("非 ASCII 模型"))
+            .expect("import active model");
+        application
+            .import_model("broken", fixtures.join("非 ASCII 模型"))
+            .expect("import model to corrupt");
+
         let active = application
-            .activate_model("unicode", fixtures.join("非 ASCII 模型"))
+            .activate_installed_model("active")
             .expect("activate valid model");
         let active_revision = active.revision;
         assert_eq!(
@@ -254,13 +311,16 @@ mod tests {
                 .expect("active model")
                 .id
                 .as_str(),
-            "unicode"
+            "active"
         );
 
+        std::fs::remove_file(models_root.join("broken/模型 数据.moc3"))
+            .expect("corrupt installed model");
+
         let error = application
-            .activate_model("broken", fixtures.join("missing-moc"))
+            .activate_installed_model("broken")
             .expect_err("invalid model must be rejected");
-        assert!(matches!(error, ApplicationError::Model(_)));
+        assert!(matches!(error, ApplicationError::ModelStore(_)));
         let preserved = application.runtime_client().snapshot();
         assert_eq!(preserved.revision, active_revision);
         assert_eq!(preserved.active_model, active.active_model);
@@ -272,7 +332,7 @@ mod tests {
         let base = tempdir().expect("temp directory");
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
         let models_root = layout.models.clone();
-        let application = Application::start_with_layout(layout).expect("start application");
+        let mut application = Application::start_with_layout(layout).expect("start application");
         let source = repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型");
 
         let imported = application
@@ -286,6 +346,39 @@ mod tests {
                 .join("unicode")
         );
         assert!(imported.root().join("猫.model3.json").is_file());
+
+        let catalog = application.model_catalog().expect("model catalog");
+        assert_eq!(catalog.len(), 1);
+        assert_eq!(catalog[0].id().as_str(), "unicode");
+
+        application.delete_model("unicode").expect("delete model");
+        assert!(
+            application
+                .model_catalog()
+                .expect("catalog after deletion")
+                .is_empty()
+        );
+        application.shutdown().expect("clean shutdown");
+    }
+
+    #[test]
+    fn active_model_must_be_replaced_before_deletion() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let mut application = Application::start_with_layout(layout).expect("start application");
+        let source = repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型");
+        application
+            .import_model("active", source)
+            .expect("import model");
+        application
+            .activate_installed_model("active")
+            .expect("activate model");
+
+        let error = application
+            .delete_model("active")
+            .expect_err("active model deletion must fail");
+        assert!(matches!(error, ApplicationError::ActiveModelDeletion(_)));
+        assert_eq!(application.model_catalog().expect("catalog").len(), 1);
         application.shutdown().expect("clean shutdown");
     }
 }

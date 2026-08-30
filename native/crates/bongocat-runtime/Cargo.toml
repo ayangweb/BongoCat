@@ -10,5 +10,8 @@ publish.workspace = true
 [dependencies]
 bongocat-model.workspace = true
 
+[dev-dependencies]
+tempfile.workspace = true
+
 [lints]
 workspace = true

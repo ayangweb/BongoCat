@@ -41,3 +41,10 @@ Model imports are copied into a unique staging directory under the current build
 package limits while copying, flushes every file, validates the staged package again, and commits it
 with a same-root directory rename. An existing model ID is never overwritten, and a failed import
 removes only the staging directory owned by that operation.
+
+The user-model catalog is rebuilt deterministically from the environment's installed directories;
+no separate database can drift from disk. A writer lock under `locks/` serializes import, catalog,
+load, delete, and startup recovery. Corrupt packages remain visible as per-model diagnostics, while
+well-formed abandoned import/delete directories are removed on the next start. Product code can
+activate only an opaque `InstalledModel` issued after the store commits or reloads a package, and it
+must replace the active model before deleting it.

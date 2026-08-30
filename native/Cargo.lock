@@ -53,6 +53,7 @@ name = "bongocat-runtime"
 version = "0.1.0"
 dependencies = [
  "bongocat-model",
+ "tempfile",
 ]
 
 [[package]]

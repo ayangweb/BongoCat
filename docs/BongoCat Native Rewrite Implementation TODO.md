@@ -292,7 +292,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     `PreparedModel`；三个预置包与缺失 moc、损坏 JSON、非 ASCII、超大纹理、
     路径穿越、多入口及跨根 symlink 均由产品 workspace 测试。`ModelStore` 又完成
     环境模型根、受限 staging copy、flush、复验、同根 rename commit 和无覆盖语义；
-    完整 sidecar 强类型校验与预置/用户持久 catalog 继续由 Phase 4 任务跟踪。
+    用户模型 catalog、加载、删除、writer lock 和崩溃 staging 回收已进入产品入口。
+    完整 sidecar 强类型校验与预置只读 catalog 继续由 Phase 4 任务跟踪。
 - [ ] 创建 bongocat-live2d：Cubism safe wrapper 和模型求值。
 - [ ] 创建 bongocat-render：render snapshot 和 renderer contract。
 - [ ] 创建 bongocat-ui：GPUI 页面和 design system。
@@ -353,7 +354,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     完整 product command 集仍待实现。
 - [ ] 单一 runtime owner 管理可变业务状态。
   - 状态（2026-08-30）：正式 runtime worker 已独占 overlay、pressed input、输入诊断和
-    `PreparedModel`，应用与 UI client 只通过有界 typed command 和 snapshot 访问；动画与
+    `InstalledModel`，应用与 UI client 只通过有界 typed command 和 snapshot 访问；动画与
     Live2D 状态接入后再完成总项。
 - [ ] key/button edge 和 command 使用可靠有序队列。
   - 状态（2026-08-30）：正式 `ApplyInput` 与其他 command 共用有界 FIFO，input event
@@ -543,9 +544,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     缺失 moc 的新模型准备失败后，当前模型及 runtime revision 均不变。完整 sidecar
     诊断映射与 GPUI error/retry 状态仍待完成。
 - [ ] 建立预置只读索引和用户模型可写索引。
-  - 状态（2026-08-30）：`ModelPackageIndex` 是已安装包的规范化只读资源索引，app 的
-    `ModelStore` 写入当前环境独立 `models/`；列举、删除、持久 catalog、预置只读根与
-    崩溃 staging 回收策略仍待实现。
+  - 状态（2026-08-30）：用户侧已完成。`ModelStore` 以当前环境 `models/` 为持久事实
+    来源，确定性列举 ready/invalid 条目，并提供已安装模型加载、活动模型删除保护、
+    rename 后删除、环境 writer lock 及严格命名的崩溃 staging 回收。预置只读根与
+    预置/用户合并视图仍待实现，因此总项保持未勾选。
 
 ### 5.2 Cubism safe layer
 
@@ -554,10 +556,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 校验 parameter/part/drawable id、index 和范围。
 - [ ] 模型切换使用 prepare/commit/rollback。
 - [ ] 加载失败保留当前可用模型。
-  - 状态（2026-08-30）：文件解析在 runtime 外完成，只有 `PreparedModel` 能进入
-    `ActivateModel` command；runtime 独占已提交模型，准备失败不入队且保留当前模型。
-    Cubism Moc/Model、GPU texture 的 prepare/commit/rollback 尚未接入，因此两项保持
-    未勾选。
+  - 状态（2026-08-30）：文件解析在 runtime 外完成，只有无法由调用方自行构造、由
+    `ModelStore` import/load 产出的 `InstalledModel` 能进入 `ActivateModel` command；
+    runtime 独占已提交模型，准备失败不入队且保留当前模型。Cubism Moc/Model、GPU
+    texture 的 prepare/commit/rollback 尚未接入，因此两项保持未勾选。
 - [ ] FFI 错误映射为稳定 Rust error code。
 
 ### 5.3 动作与状态
@@ -684,14 +686,20 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] spike 中途提交中断后可安全恢复或重试；失败不覆盖当前可用配置。
   - 状态（2026-08-29）：`ConfigStore::recover_interrupted_commit` 覆盖主配置有效/缺失/损坏与临时文件有效/无效组合，恢复在 OS writer lock 内执行并保留诊断副本；父进程强制终止已写入并 flush 临时配置的持锁子进程后，macOS 本机与 Windows runner 均验证 lock 自动释放、当前配置保留和 interrupted archive。产品备份上限仍待完成。
 - [ ] GPUI 显示错误摘要、备份位置和恢复默认 command。
-- [ ] 用户模型只通过显式、受验证的导入进入当前环境，不扫描旧应用目录。
+- [x] 用户模型只通过显式、受验证的导入进入当前环境，不扫描旧应用目录。
+  - 验收证据（2026-08-30）：`bongocat-app` 不再提供任意外部目录激活入口；模型必须
+    先经 `ModelStore::import` 复制、复验和 commit，随后只能按已安装 `ModelId` 加载；
+    runtime 激活 command 只接受 store 签发的 `InstalledModel`。Development/Production
+    两个 app 同时存活并以相同 ID 导入的测试验证目录与 lock 均互不影响。
 
 ### 7.3 跨环境隔离
 
 - [ ] Development 与 Production 的相对目录树和 JSON schema 完全一致。
 - [ ] 配置、state、模型、备份、日志、锁和单实例 namespace 均包含环境边界。
 - [ ] 两个环境可同时运行，不争用 writer lock、模型目录或日志文件。
-  - 状态（2026-08-29）：config-store process test 已在 macOS 和 Windows 同时启动 Development/Production writer，分别提交 sentinel 并在重启后读取各自值，两个 lock root 互斥；模型目录和日志 writer 仍待完成，因此保持未勾选。
+  - 状态（2026-08-30）：config store 已通过双环境进程测试；正式 app 又以相同模型 ID
+    同时写入两套环境，验证 `models/` 和 `locks/models.writer.lock` 分离。日志 writer
+    尚未实现，因此保持未勾选。
 - [ ] 开发构建即使收到指向 Production 的 CLI 参数或进程环境变量也拒绝越界。
 - [ ] Production 不自动复制 Development 数据；需要测试数据时使用显式导入。
 - [ ] 更新 channel 与环境绑定，Development 不能安装 Production 更新或反向覆盖。

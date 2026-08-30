@@ -352,6 +352,8 @@ com.ayangweb.bongo-cat
 - 写入使用同目录临时文件、flush、原子替换和提交后验证；失败保留当前文件和受限数量的备份。
 - `config.json` 只包含用户设置；窗口布局写入 `state.json`，pressed state、权限结果和模型解析缓存不持久化。
 - 模型导入防止路径穿越、符号链接逃逸、压缩炸弹和覆盖现有用户数据。
+- 任意外部目录只能产生待导入的 `PreparedModel`；只有当前环境 `ModelStore` 完成复制、
+  复验和原子提交后签发的 `InstalledModel` 才能进入 runtime 激活 command。
 - 更新只允许 HTTPS，安装包和更新包必须签名并支持失败回滚。
 - 日志不记录真实按键序列、剪贴板内容或用户文件内容。
 

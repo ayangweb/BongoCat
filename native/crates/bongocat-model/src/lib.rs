@@ -12,7 +12,9 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-pub use store::{ModelImportDiagnostic, ModelImportError, ModelStore};
+pub use store::{
+    ModelCatalogEntry, ModelStore, ModelStoreDiagnostic, ModelStoreError, ModelStoreRecovery,
+};
 
 pub const INDEX_SCHEMA_VERSION: u32 = 1;
 
@@ -50,6 +52,7 @@ impl ModelId {
         let value = value.into();
         let valid = !value.is_empty()
             && value.len() <= 64
+            && !value.starts_with('.')
             && value
                 .bytes()
                 .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'));
@@ -57,7 +60,7 @@ impl ModelId {
             return Err(ModelError::new(
                 ModelDiagnostic::InvalidModelId,
                 None,
-                "model id must be 1-64 ASCII letters, digits, dots, dashes, or underscores",
+                "model id must be 1-64 ASCII letters, digits, dots, dashes, or underscores and cannot start with a dot",
             ));
         }
         Ok(Self(value))
@@ -205,6 +208,33 @@ pub struct PreparedModel {
     id: ModelId,
     canonical_root: PathBuf,
     index: ModelPackageIndex,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InstalledModel {
+    prepared: PreparedModel,
+}
+
+impl InstalledModel {
+    pub(crate) fn from_prepared(prepared: PreparedModel) -> Self {
+        Self { prepared }
+    }
+
+    pub fn id(&self) -> &ModelId {
+        self.prepared.id()
+    }
+
+    pub fn root(&self) -> &Path {
+        self.prepared.root()
+    }
+
+    pub fn index(&self) -> &ModelPackageIndex {
+        self.prepared.index()
+    }
+
+    pub fn snapshot(&self) -> ModelSnapshot {
+        self.prepared.snapshot()
+    }
 }
 
 impl PreparedModel {
@@ -1065,7 +1095,7 @@ mod tests {
     #[test]
     fn model_ids_are_portable_store_keys() {
         assert!(ModelId::parse("keyboard-v2_1").is_ok());
-        for invalid in ["", "..", "cat/model", "猫", "model id"] {
+        for invalid in ["", "..", ".hidden", "cat/model", "猫", "model id"] {
             assert_eq!(
                 ModelId::parse(invalid).expect_err("invalid id").code,
                 ModelDiagnostic::InvalidModelId

@@ -2,7 +2,7 @@
 
 mod input;
 
-use bongocat_model::{ModelSnapshot, PreparedModel};
+use bongocat_model::{InstalledModel, ModelSnapshot};
 use std::{
     fmt,
     sync::{
@@ -33,7 +33,7 @@ pub enum RuntimeCommand {
     SetOverlayVisible(bool),
     ResetInput(InputResetReason),
     ApplyInput(Arc<SequencedInputEvent>),
-    ActivateModel(Arc<PreparedModel>),
+    ActivateModel(Arc<InstalledModel>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -476,8 +476,9 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, snapshot: Arc<SnapshotCell>) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bongocat_model::{ModelId, ModelPackageLimits};
+    use bongocat_model::{ModelId, ModelPackageLimits, ModelStore};
     use std::path::{Path, PathBuf};
+    use tempfile::tempdir;
 
     const TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -575,20 +576,27 @@ mod tests {
     }
 
     #[test]
-    fn runtime_owns_the_committed_prepared_model() {
-        let prepared = PreparedModel::prepare(
-            ModelId::parse("unicode").expect("model id"),
-            repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型"),
+    fn runtime_owns_the_committed_installed_model() {
+        let data = tempdir().expect("data root");
+        let store = ModelStore::new(
+            data.path().join("models"),
+            data.path().join("locks/models.writer.lock"),
             ModelPackageLimits::default(),
         )
-        .expect("prepared model");
+        .expect("model store");
+        let installed = store
+            .import(
+                ModelId::parse("unicode").expect("model id"),
+                repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型"),
+            )
+            .expect("installed model");
         let owner = RuntimeOwner::start(true, 4);
         let client = owner.client();
         let ready = client
             .wait_for_revision(1, TIMEOUT)
             .expect("ready snapshot");
         client
-            .send(RuntimeCommand::ActivateModel(Arc::new(prepared)))
+            .send(RuntimeCommand::ActivateModel(Arc::new(installed)))
             .expect("model command");
         let activated = client
             .wait_for_revision(ready.revision + 1, TIMEOUT)
