@@ -181,6 +181,7 @@ struct GpuModel {
     meshes: Vec<Mesh>,
     empty_mask: Texture,
     canvas: CanvasInfo,
+    model_opacity: f32,
     masked_drawable_count: usize,
 }
 
@@ -1024,7 +1025,7 @@ impl NativeOverlay {
                     f32::from(mask_texture.is_some()),
                     f32::from(mesh.inverted_mask),
                 ],
-                opacity: mesh.opacity,
+                opacity: mesh.opacity * self.model.model_opacity,
                 padding: [0.0; 3],
             };
             encoder.set_render_pipeline_state(self.pipelines.for_mode(mesh.blend_mode));
@@ -1088,6 +1089,9 @@ impl GpuModel {
         drawable_width: u64,
         drawable_height: u64,
     ) -> Result<Self, OverlayError> {
+        if !snapshot.model_opacity.is_finite() || !(0.0..=1.0).contains(&snapshot.model_opacity) {
+            return Err(OverlayError::new("model opacity is outside [0, 1]"));
+        }
         let textures = resources
             .textures
             .iter()
@@ -1161,6 +1165,7 @@ impl GpuModel {
             meshes,
             empty_mask: create_solid_mask_texture(device),
             canvas: snapshot.canvas,
+            model_opacity: snapshot.model_opacity,
             masked_drawable_count: snapshot
                 .drawables
                 .iter()
@@ -1170,6 +1175,9 @@ impl GpuModel {
     }
 
     fn sync_snapshot(&mut self, snapshot: &RenderSnapshot) -> Result<(), OverlayError> {
+        if !snapshot.model_opacity.is_finite() || !(0.0..=1.0).contains(&snapshot.model_opacity) {
+            return Err(OverlayError::new("model opacity is outside [0, 1]"));
+        }
         if snapshot.drawables.len() != self.meshes.len() {
             return Err(OverlayError::new(format!(
                 "drawable count changed from {} to {}",
@@ -1206,6 +1214,7 @@ impl GpuModel {
         }
         self.meshes.sort_by_key(|mesh| (mesh.render_order, mesh.id));
         self.canvas = snapshot.canvas;
+        self.model_opacity = snapshot.model_opacity;
         Ok(())
     }
 }

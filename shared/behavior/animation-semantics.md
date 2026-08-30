@@ -15,6 +15,15 @@
 - A motion `PartOpacity` curve follows the R5 Framework sink: its ID resolves against Core
   parameters and its evaluated value is written without the ordinary parameter-curve fade weight.
   Missing IDs are skipped without invalidating the remaining motion.
+- Model3 `Groups` retain their declared order. `EyeBlink` and `LipSync` use the first matching
+  `Parameter` group and at most its first 64 IDs, matching the R5 Framework target bound.
+- A motion `Model/EyeBlink` value multiplies a matching Parameter curve before that curve's fade;
+  `Model/LipSync` adds to a matching Parameter curve. Group parameters without matching motion
+  Parameter curves interpolate toward the model value with the motion fade. Missing Core parameter
+  IDs have no visible effect and do not invalidate the motion.
+- A motion `Model/Opacity` value is clamped to the renderer's `[0, 1]` alpha contract and persists
+  until a later opacity curve updates it or a model switch creates a new model. It multiplies final
+  drawable alpha after mask generation, independently of the configured overlay opacity.
 - `expression_set` resolves a non-blank expression name against the selected model before changing
   runtime state. A failed resolution leaves the current expression active.
 - Setting an expression fades it in with sine easing. A later expression keeps only the immediately

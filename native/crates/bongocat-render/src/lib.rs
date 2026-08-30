@@ -87,6 +87,7 @@ pub struct DrawableSnapshot {
 #[derive(Clone, Debug, PartialEq)]
 pub struct RenderSnapshot {
     pub canvas: CanvasInfo,
+    pub model_opacity: f32,
     pub drawables: Vec<DrawableSnapshot>,
 }
 
@@ -375,6 +376,7 @@ mod tests {
                     origin_y: 0.0,
                     pixels_per_unit: 1.0,
                 },
+                model_opacity: 1.0,
                 drawables: vec![],
             }),
         }

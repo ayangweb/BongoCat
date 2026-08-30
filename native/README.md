@@ -100,7 +100,10 @@ the active motion identity, priority, originating command sequence, and optional
 sequence. Explicit stop preserves the first frame, multiplies curve weights by the model3 sine
 fade-out, and clears the motion only after the fade completes; duplicate stops cannot restart it.
 PartOpacity curves follow the official Framework parameter sink and remain separate from weighted
-parameter samples.
+parameter samples. Model3 Parameter groups drive R5-compatible Model curves: EyeBlink multiplies
+matching parameter curves, LipSync adds to them, and both update unmatched group parameters with the
+motion fade. Model Opacity travels in the immutable render snapshot and is multiplied only in the
+final D3D11/Metal color pass, leaving mask generation unchanged.
 Product input is applied after motion curves so an actual pressed key or button remains authoritative
 for hand parameters.
 

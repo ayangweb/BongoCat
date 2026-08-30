@@ -207,6 +207,7 @@ struct GpuModel {
     meshes: Vec<Mesh>,
     empty_mask: TextureResource,
     canvas: CanvasInfo,
+    model_opacity: f32,
     masked_drawable_count: usize,
 }
 
@@ -638,7 +639,7 @@ impl Renderer {
                     f32::from(mesh.mask_target.is_some()),
                     f32::from(mesh.inverted_mask),
                 ],
-                opacity: mesh.opacity * self.opacity,
+                opacity: mesh.opacity * self.model.model_opacity * self.opacity,
                 padding: [0.0; 3],
             };
             unsafe {
@@ -1282,6 +1283,9 @@ impl GpuModel {
         width: u32,
         height: u32,
     ) -> WindowsResult<Self> {
+        if !snapshot.model_opacity.is_finite() || !(0.0..=1.0).contains(&snapshot.model_opacity) {
+            return Err(invariant_error("model opacity is outside [0, 1]"));
+        }
         let textures = resources
             .textures
             .iter()
@@ -1348,6 +1352,7 @@ impl GpuModel {
             meshes,
             empty_mask: unsafe { create_empty_mask(device)? },
             canvas: snapshot.canvas,
+            model_opacity: snapshot.model_opacity,
             masked_drawable_count: snapshot
                 .drawables
                 .iter()
@@ -1361,6 +1366,9 @@ impl GpuModel {
         context: &ID3D11DeviceContext,
         snapshot: &RenderSnapshot,
     ) -> WindowsResult<()> {
+        if !snapshot.model_opacity.is_finite() || !(0.0..=1.0).contains(&snapshot.model_opacity) {
+            return Err(invariant_error("model opacity is outside [0, 1]"));
+        }
         if snapshot.drawables.len() != self.meshes.len() {
             return Err(invariant_error(
                 "drawable count changed within a generation",
@@ -1411,6 +1419,7 @@ impl GpuModel {
         }
         self.meshes.sort_by_key(|mesh| (mesh.render_order, mesh.id));
         self.canvas = snapshot.canvas;
+        self.model_opacity = snapshot.model_opacity;
         Ok(())
     }
 }

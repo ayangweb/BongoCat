@@ -348,8 +348,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-30）：正式 crate 已完成 Core 版本门禁、Moc/Model safe owner、
     drawable snapshot、parameter id/range/default、motion3 curve/fade 和 exp3
     Add/Multiply/Overwrite/transition 求值；三个预置模型均在加载阶段缓存所有声明的
-    motion/expression，不向上暴露 raw pointer。motion 主动 stop fade 和 PartOpacity target
-    已进入正式 runtime；physics、pose 和 motion event/audio 尚未实现，因此总项保持未完成。
+    motion/expression，不向上暴露 raw pointer。motion 主动 stop fade、PartOpacity 以及
+    EyeBlink/LipSync/Opacity Model target 已进入正式 runtime/render contract；physics、pose
+    和 motion event/audio 尚未实现，因此总项保持未完成。
 - [x] 创建 bongocat-render：render snapshot 和 renderer contract。
   - 验收证据（2026-08-30）：正式 crate 已从 Cubism 边界接管 `RenderSnapshot`、
     `RenderResources` 和强类型 `DrawableId`/`TextureId`，并提供带 model generation/
@@ -714,8 +715,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     抢占、同级最新请求、旧 stop 隔离、错误资源保留当前动作及模型 commit 后清理均进入
     typed runtime。主动 stop 现在按 FadeOutTime 正弦衰减，snapshot 保留首次 stop sequence，
     重复 stop 不重启计时；真实 Core 测试覆盖停止瞬间、半程和结束帧。PartOpacity target
-    已按官方 Framework 的 parameter sink 语义进入真实 Core 求值且不错误套用 parameter fade。
-    Model target、motion event/audio 和 UI 选择入口仍未完成，因此保持未勾选。
+    已按官方 Framework 的 parameter sink 语义进入真实 Core 求值且不错误套用 parameter
+    fade。model3 Groups 已进入 v2 产品索引并校验非空 target/name/parameter ID；Model target
+    按 R5 顺序实现 EyeBlink 参数乘法、LipSync 参数加法、未覆盖 group 参数的 motion fade
+    和独立 Opacity render contract。真实 Core 测试覆盖左右眼、嘴部参数和 opacity snapshot，
+    D3D11/Metal 均只在最终颜色 pass 应用 model opacity。motion event/audio 和 UI 选择入口
+    仍未完成，因此保持未勾选。
 - [x] 实现 expression 混合和互斥/叠加语义。
   - 验收证据（2026-08-30）：正式 `bongocat-live2d` 严格解析 Type、fade、parameter、
     duplicate ID 与 Add/Multiply/Overwrite；三个 model3 声明的 9 个 exp3 全部在模型 prepare

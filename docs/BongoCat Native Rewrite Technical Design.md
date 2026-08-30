@@ -317,7 +317,12 @@ model evaluation + render snapshot
   类型化产品输入，最后调用 Core update。motion 的自然结束与显式停止均使用 model3/
   curve fade，显式停止的外层正弦权重与 curve 权重相乘。`PartOpacity` motion curve
   遵循 R5 Framework 语义，按 curve ID 写入 Core parameter sink 且不继承普通 parameter
-  curve 的 fade weight。expression 使用 `.exp3.json` 的
+  curve 的 fade weight。model3 `Groups` 由模型索引保留并校验；motion `Model` target 中
+  `EyeBlink` 对匹配的 Parameter curve 做乘法、`LipSync` 做加法，对未被 Parameter curve
+  覆盖的首个同名 Parameter group（最多 64 个 ID）使用 motion fade 插值。`Opacity` 作为
+  独立 model opacity 进入 `RenderSnapshot`，只在 renderer 最终颜色 pass 与 drawable/
+  窗口透明度相乘，不参与 mask 生成，并保持到后续 motion opacity curve 更新或模型切换。
+  expression 使用 `.exp3.json` 的
   Add/Multiply/Overwrite 和正弦淡入淡出；替换期间最多保留上一层与当前层，稳定后只保留
   最新 expression，使内存和每帧成本保持有界。真实输入最后覆盖对应产品 parameter，
   避免表情让按下状态失真。
@@ -338,7 +343,7 @@ GPUI renderer 与 Live2D renderer 完全分离：
 
 ```text
 RenderSnapshot
-├── drawables / offscreens / order / opacity / masks
+├── model opacity / drawables / offscreens / order / opacity / masks
 ├── color + alpha blend / multiply + screen color
 ├── vertex / uv / index buffers
 ├── texture ids

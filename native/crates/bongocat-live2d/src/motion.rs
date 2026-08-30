@@ -5,6 +5,9 @@ use std::{fs, time::Duration};
 
 const TIME_TOLERANCE: f32 = 0.000_001;
 const BEZIER_ITERATIONS: usize = 18;
+const MODEL_EYE_BLINK_ID: &str = "EyeBlink";
+const MODEL_LIP_SYNC_ID: &str = "LipSync";
+const MODEL_OPACITY_ID: &str = "Opacity";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MotionCurveTarget {
@@ -26,10 +29,19 @@ pub struct MotionPartOpacitySample {
     pub value: f32,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MotionModelSample {
+    pub eye_blink: Option<f32>,
+    pub lip_sync: Option<f32>,
+    pub opacity: Option<f32>,
+    pub effect_weight: f32,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct MotionEvaluation {
     pub local_time: Duration,
     pub finished: bool,
+    pub model: MotionModelSample,
     pub parameters: Vec<MotionParameterSample>,
     pub part_opacities: Vec<MotionPartOpacitySample>,
 }
@@ -39,6 +51,9 @@ pub struct MotionApplyStatus {
     pub finished: bool,
     pub applied_parameter_count: usize,
     pub applied_part_opacity_count: usize,
+    pub applied_eye_blink_count: usize,
+    pub applied_lip_sync_count: usize,
+    pub model_opacity_applied: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -292,6 +307,29 @@ impl MotionClip {
         } else {
             elapsed_seconds.min(self.duration_seconds)
         };
+        let mut model = MotionModelSample {
+            effect_weight: motion_weight(
+                elapsed_seconds,
+                self.duration_seconds,
+                self.looping,
+                self.fade_in_seconds,
+                self.fade_out_seconds,
+            ),
+            ..MotionModelSample::default()
+        };
+        for curve in self
+            .curves
+            .iter()
+            .filter(|curve| curve.target == MotionCurveTarget::Model)
+        {
+            let value = curve.evaluate(local_seconds);
+            match curve.id.as_str() {
+                MODEL_EYE_BLINK_ID => model.eye_blink = Some(value),
+                MODEL_LIP_SYNC_ID => model.lip_sync = Some(value),
+                MODEL_OPACITY_ID => model.opacity = Some(value),
+                _ => {}
+            }
+        }
         let parameters = self
             .curves
             .iter()
@@ -320,6 +358,7 @@ impl MotionClip {
         MotionEvaluation {
             local_time: Duration::from_secs_f32(local_seconds),
             finished,
+            model,
             parameters,
             part_opacities,
         }
@@ -534,6 +573,22 @@ fn fade_weight(remaining: f32, fade_seconds: f32) -> f32 {
     0.5 - 0.5 * (progress * std::f32::consts::PI).cos()
 }
 
+fn motion_weight(
+    elapsed: f32,
+    duration: f32,
+    looping: bool,
+    fade_in_seconds: f32,
+    fade_out_seconds: f32,
+) -> f32 {
+    let fade_in = fade_weight(elapsed, fade_in_seconds);
+    let fade_out = if looping {
+        1.0
+    } else {
+        fade_weight(duration - elapsed, fade_out_seconds)
+    };
+    (fade_in * fade_out).clamp(0.0, 1.0)
+}
+
 fn validate_time(time: f32, minimum: f32, maximum: f32, label: &str) -> Result<(), Live2dError> {
     if !time.is_finite() || time + TIME_TOLERANCE < minimum || time > maximum + TIME_TOLERANCE {
         return invalid(format!(
@@ -681,6 +736,37 @@ mod tests {
         assert_eq!(evaluation.part_opacities.len(), 1);
         assert_eq!(evaluation.part_opacities[0].id, "Part");
         assert!((evaluation.part_opacities[0].value - 0.5).abs() < 0.0001);
+    }
+
+    #[test]
+    fn evaluates_known_model_curves_separately_and_uses_the_last_value() {
+        let json = br#"{
+          "Version":3,
+          "Meta":{"Duration":1.0,"Fps":30.0,"Loop":false,"AreBeziersRestricted":true,
+            "CurveCount":5,"TotalSegmentCount":5,"TotalPointCount":10,
+            "UserDataCount":0,"TotalUserDataSize":0},
+          "Curves":[
+            {"Target":"Model","Id":"EyeBlink","Segments":[0,0.1,0,1,0.1]},
+            {"Target":"Model","Id":"LipSync","Segments":[0,0.2,0,1,0.2]},
+            {"Target":"Model","Id":"Opacity","Segments":[0,0.4,0,1,0.4]},
+            {"Target":"Model","Id":"Unknown","Segments":[0,9,0,1,9]},
+            {"Target":"Model","Id":"EyeBlink","Segments":[0,0.5,0,1,0.5]}
+          ]
+        }"#;
+        let clip = MotionClip::from_slice(json, 0.0, 0.0).expect("model curves");
+        let evaluation = clip.evaluate(Duration::from_millis(500));
+
+        assert_eq!(
+            evaluation.model,
+            MotionModelSample {
+                eye_blink: Some(0.5),
+                lip_sync: Some(0.2),
+                opacity: Some(0.4),
+                effect_weight: 1.0,
+            }
+        );
+        assert!(evaluation.parameters.is_empty());
+        assert!(evaluation.part_opacities.is_empty());
     }
 
     #[test]

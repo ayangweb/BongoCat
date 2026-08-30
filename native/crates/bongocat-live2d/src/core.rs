@@ -495,6 +495,7 @@ impl CoreModel {
         drawables.sort_by_key(|drawable| (drawable.render_order, drawable.id));
         Ok(RenderSnapshot {
             canvas: unsafe { read_canvas(model)? },
+            model_opacity: 1.0,
             drawables,
         })
     }

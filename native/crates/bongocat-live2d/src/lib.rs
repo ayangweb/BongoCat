@@ -18,8 +18,8 @@ pub use expression::{
 
 mod motion;
 pub use motion::{
-    MotionApplyStatus, MotionClip, MotionCurveTarget, MotionEvaluation, MotionParameterSample,
-    MotionPartOpacitySample,
+    MotionApplyStatus, MotionClip, MotionCurveTarget, MotionEvaluation, MotionModelSample,
+    MotionParameterSample, MotionPartOpacitySample,
 };
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -30,6 +30,8 @@ mod sys;
 pub const CUBISM_SDK_RELEASE: &str = "5-r.5";
 pub const CUBISM_CORE_VERSION: u32 = 0x0600_0001;
 pub const CUBISM_LATEST_MOC_VERSION: u32 = 6;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const MAX_MODEL_EFFECT_TARGETS: usize = 64;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[repr(usize)]
@@ -171,6 +173,12 @@ pub struct Live2dModel {
     motions: BTreeMap<String, Vec<MotionClip>>,
     expressions: BTreeMap<String, ExpressionClip>,
     #[cfg(any(target_os = "macos", target_os = "windows"))]
+    eye_blink_parameter_ids: Vec<String>,
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    lip_sync_parameter_ids: Vec<String>,
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    model_opacity: f32,
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     core: core::CoreModel,
 }
 
@@ -218,6 +226,8 @@ impl Live2dModel {
 
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
+            let eye_blink_parameter_ids = parameter_group_ids(model, "EyeBlink");
+            let lip_sync_parameter_ids = parameter_group_ids(model, "LipSync");
             let moc_path = model.root().join(&model.index().moc);
             let core = core::CoreModel::load(&moc_path)?;
             core.validate_texture_indices(resources.textures.len())?;
@@ -225,6 +235,9 @@ impl Live2dModel {
                 resources,
                 motions,
                 expressions,
+                eye_blink_parameter_ids,
+                lip_sync_parameter_ids,
+                model_opacity: 1.0,
                 core,
             })
         }
@@ -352,21 +365,85 @@ impl Live2dModel {
         let evaluation = motion.evaluate(elapsed);
 
         #[cfg(any(target_os = "macos", target_os = "windows"))]
-        let applied_parameter_count = {
-            let mut count = 0;
+        let model_opacity_applied = if let Some(opacity) = evaluation.model.opacity {
+            self.model_opacity = opacity.clamp(0.0, 1.0);
+            true
+        } else {
+            false
+        };
+
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        let (applied_parameter_count, applied_eye_blink_count, applied_lip_sync_count) = {
+            let mut applied_parameters = 0;
+            let mut applied_eye_blink = 0;
+            let mut applied_lip_sync = 0;
+            let mut eye_blink_curves = vec![false; self.eye_blink_parameter_ids.len()];
+            let mut lip_sync_curves = vec![false; self.lip_sync_parameter_ids.len()];
             for sample in &evaluation.parameters {
+                let mut value = sample.value;
+                let eye_blink_index = evaluation.model.eye_blink.and_then(|_| {
+                    self.eye_blink_parameter_ids
+                        .iter()
+                        .position(|id| id == &sample.id)
+                });
+                if let Some(index) = eye_blink_index {
+                    value *= evaluation
+                        .model
+                        .eye_blink
+                        .expect("checked EyeBlink model curve");
+                    eye_blink_curves[index] = true;
+                }
+                let lip_sync_index = evaluation.model.lip_sync.and_then(|_| {
+                    self.lip_sync_parameter_ids
+                        .iter()
+                        .position(|id| id == &sample.id)
+                });
+                if let Some(index) = lip_sync_index {
+                    value += evaluation
+                        .model
+                        .lip_sync
+                        .expect("checked LipSync model curve");
+                    lip_sync_curves[index] = true;
+                }
                 if matches!(
-                    self.core.set_parameter_by_id(
-                        &sample.id,
-                        sample.value,
-                        sample.weight * weight
-                    )?,
+                    self.core
+                        .set_parameter_by_id(&sample.id, value, sample.weight * weight)?,
                     ParameterUpdate::Applied { .. }
                 ) {
-                    count += 1;
+                    applied_parameters += 1;
+                    applied_eye_blink += usize::from(eye_blink_index.is_some());
+                    applied_lip_sync += usize::from(lip_sync_index.is_some());
                 }
             }
-            count
+            let effect_weight = evaluation.model.effect_weight * weight;
+            if let Some(eye_blink) = evaluation.model.eye_blink {
+                for (index, id) in self.eye_blink_parameter_ids.iter().enumerate() {
+                    if eye_blink_curves[index] {
+                        continue;
+                    }
+                    if matches!(
+                        self.core
+                            .set_parameter_by_id(id, eye_blink, effect_weight)?,
+                        ParameterUpdate::Applied { .. }
+                    ) {
+                        applied_eye_blink += 1;
+                    }
+                }
+            }
+            if let Some(lip_sync) = evaluation.model.lip_sync {
+                for (index, id) in self.lip_sync_parameter_ids.iter().enumerate() {
+                    if lip_sync_curves[index] {
+                        continue;
+                    }
+                    if matches!(
+                        self.core.set_parameter_by_id(id, lip_sync, effect_weight)?,
+                        ParameterUpdate::Applied { .. }
+                    ) {
+                        applied_lip_sync += 1;
+                    }
+                }
+            }
+            (applied_parameters, applied_eye_blink, applied_lip_sync)
         };
 
         #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -386,17 +463,31 @@ impl Live2dModel {
 
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         let applied_parameter_count = {
-            let _ = (&evaluation.parameters, &evaluation.part_opacities, weight);
+            let _ = (
+                &evaluation.model,
+                &evaluation.parameters,
+                &evaluation.part_opacities,
+                weight,
+            );
             0
         };
 
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         let applied_part_opacity_count = 0;
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        let applied_eye_blink_count = 0;
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        let applied_lip_sync_count = 0;
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        let model_opacity_applied = false;
 
         Ok(MotionApplyStatus {
             finished: evaluation.finished,
             applied_parameter_count,
             applied_part_opacity_count,
+            applied_eye_blink_count,
+            applied_lip_sync_count,
+            model_opacity_applied,
         })
     }
 
@@ -486,7 +577,9 @@ impl Live2dModel {
     pub fn update_and_snapshot(&mut self) -> Result<RenderSnapshot, Live2dError> {
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
-            self.core.update_and_snapshot()
+            let mut snapshot = self.core.update_and_snapshot()?;
+            snapshot.model_opacity = self.model_opacity;
+            Ok(snapshot)
         }
 
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -497,6 +590,24 @@ impl Live2dModel {
             ))
         }
     }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn parameter_group_ids(model: &CommittedModel, name: &str) -> Vec<String> {
+    model
+        .index()
+        .groups
+        .iter()
+        .find(|group| group.target == "Parameter" && group.name == name)
+        .map(|group| {
+            group
+                .ids
+                .iter()
+                .take(MAX_MODEL_EFFECT_TARGETS)
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -645,5 +756,82 @@ mod tests {
                 .expect("angle parameter"),
             Some(10.0)
         );
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn model_motion_curves_apply_eye_blink_lip_sync_and_render_opacity() {
+        use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
+        use std::path::Path;
+
+        let repository_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repository root");
+        let committed = PresetModelCatalog::open(
+            repository_root.join("native/resources/models"),
+            ModelPackageLimits::default(),
+        )
+        .expect("preset catalog")
+        .load(&ModelId::parse("standard").expect("model id"))
+        .expect("preset model");
+        let mut model = Live2dModel::load(&committed).expect("Live2D model");
+        assert_eq!(
+            model.eye_blink_parameter_ids,
+            ["ParamEyeLOpen", "ParamEyeROpen"]
+        );
+        assert!(model.lip_sync_parameter_ids.is_empty());
+        model
+            .lip_sync_parameter_ids
+            .push("ParamMouthOpenY".to_owned());
+        let clip = MotionClip::from_slice(
+            br#"{
+              "Version":3,
+              "Meta":{"Duration":1.0,"Fps":30.0,"Loop":true,"AreBeziersRestricted":true,
+                "CurveCount":5,"TotalSegmentCount":5,"TotalPointCount":10,
+                "UserDataCount":0,"TotalUserDataSize":0},
+              "Curves":[
+                {"Target":"Model","Id":"EyeBlink","Segments":[0,0.5,0,1,0.5]},
+                {"Target":"Model","Id":"LipSync","Segments":[0,0.2,0,1,0.2]},
+                {"Target":"Model","Id":"Opacity","Segments":[0,0.4,0,1,0.4]},
+                {"Target":"Parameter","Id":"ParamEyeLOpen","Segments":[0,0.8,0,1,0.8]},
+                {"Target":"Parameter","Id":"ParamMouthOpenY","Segments":[0,0.3,0,1,0.3]}
+              ]
+            }"#,
+            0.0,
+            0.0,
+        )
+        .expect("model effect motion");
+
+        model
+            .restore_parameter_defaults()
+            .expect("restore parameter defaults");
+        let status = model
+            .apply_motion(&clip, std::time::Duration::from_millis(500))
+            .expect("apply model curves");
+        assert_eq!(status.applied_parameter_count, 2);
+        assert_eq!(status.applied_eye_blink_count, 2);
+        assert_eq!(status.applied_lip_sync_count, 1);
+        assert!(status.model_opacity_applied);
+        for (id, expected) in [
+            ("ParamEyeLOpen", 0.4),
+            ("ParamEyeROpen", 0.5),
+            ("ParamMouthOpenY", 0.5),
+        ] {
+            let actual = model
+                .core
+                .parameter_value_by_id(id)
+                .expect("parameter value")
+                .expect("supported parameter");
+            assert!((actual - expected).abs() < 0.0001, "{id}: {actual}");
+        }
+        let snapshot = model.update_and_snapshot().expect("render snapshot");
+        assert!((snapshot.model_opacity - 0.4).abs() < 0.0001);
+
+        model
+            .restore_parameter_defaults()
+            .expect("restore parameter defaults");
+        let snapshot = model.update_and_snapshot().expect("next render snapshot");
+        assert!((snapshot.model_opacity - 0.4).abs() < 0.0001);
     }
 }

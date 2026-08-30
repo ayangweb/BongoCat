@@ -16,7 +16,7 @@ pub use store::{
     ModelCatalogEntry, ModelStore, ModelStoreDiagnostic, ModelStoreError, ModelStoreRecovery,
 };
 
-pub const INDEX_SCHEMA_VERSION: u32 = 1;
+pub const INDEX_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ModelPackageLimits {
@@ -170,6 +170,7 @@ pub struct ModelPackageIndex {
     pub display_info: Option<String>,
     pub expressions: Vec<NamedResource>,
     pub motion_groups: Vec<MotionGroup>,
+    pub groups: Vec<ModelGroup>,
     pub physics: Option<String>,
     pub pose: Option<String>,
     pub user_data: Option<String>,
@@ -203,6 +204,13 @@ pub struct MotionResource {
     pub sound: Option<String>,
     pub fade_in_seconds: Option<FiniteSeconds>,
     pub fade_out_seconds: Option<FiniteSeconds>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct ModelGroup {
+    pub target: String,
+    pub name: String,
+    pub ids: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
@@ -420,6 +428,8 @@ struct ModelDefinition {
     version: u32,
     #[serde(rename = "FileReferences")]
     files: FileReferences,
+    #[serde(rename = "Groups", default)]
+    groups: Vec<RawModelGroup>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -460,6 +470,16 @@ struct RawMotionResource {
     fade_in_seconds: Option<f32>,
     #[serde(rename = "FadeOutTime", default)]
     fade_out_seconds: Option<f32>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawModelGroup {
+    #[serde(rename = "Target")]
+    target: String,
+    #[serde(rename = "Name")]
+    name: String,
+    #[serde(rename = "Ids", default)]
+    ids: Vec<String>,
 }
 
 struct PackageReader {
@@ -716,6 +736,22 @@ fn inspect_model_package(
             Ok(MotionGroup { name, motions })
         })
         .collect::<Result<Vec<_>, ModelError>>()?;
+    let groups = model
+        .groups
+        .into_iter()
+        .map(|group| {
+            require_identifier(&group.target, "group target", &entry_name)?;
+            require_identifier(&group.name, "group name", &entry_name)?;
+            for id in &group.ids {
+                require_identifier(id, "group parameter id", &entry_name)?;
+            }
+            Ok(ModelGroup {
+                target: group.target,
+                name: group.name,
+                ids: group.ids,
+            })
+        })
+        .collect::<Result<Vec<_>, ModelError>>()?;
     let physics = model
         .files
         .physics
@@ -747,6 +783,7 @@ fn inspect_model_package(
             display_info,
             expressions,
             motion_groups,
+            groups,
             physics,
             pose,
             user_data,
@@ -1153,8 +1190,19 @@ mod tests {
             )
             .expect("prepare preset package");
             assert_eq!(prepared.index().model_version, 3);
+            assert_eq!(prepared.index().schema_version, INDEX_SCHEMA_VERSION);
             assert!(!prepared.index().moc.is_empty());
             assert!(!prepared.index().textures.is_empty());
+            let eye_blink = prepared
+                .index()
+                .groups
+                .iter()
+                .find(|group| group.target == "Parameter" && group.name == "EyeBlink")
+                .expect("EyeBlink parameter group");
+            assert_eq!(
+                eye_blink.ids,
+                ["ParamEyeLOpen".to_owned(), "ParamEyeROpen".to_owned()]
+            );
             assert_eq!(
                 prepared.root(),
                 root.canonicalize().expect("canonical root")
@@ -1207,6 +1255,63 @@ mod tests {
         )
         .expect("non-ASCII package");
         assert_eq!(prepared.index().moc, "模型 数据.moc3");
+    }
+
+    #[test]
+    fn model_groups_are_retained_and_blank_identifiers_are_rejected() {
+        let package = tempdir().expect("package");
+        fs::write(package.path().join("model.moc3"), b"moc").expect("moc");
+        fs::write(
+            package.path().join("cat.model3.json"),
+            r#"{
+              "Version":3,
+              "FileReferences":{"Moc":"model.moc3","Textures":[]},
+              "Groups":[
+                {"Target":"Parameter","Name":"LipSync","Ids":["ParamMouthOpenY"]},
+                {"Target":"FutureTarget","Name":"Metadata","Ids":[]}
+              ]
+            }"#,
+        )
+        .expect("model3");
+        let prepared = PreparedModel::prepare(
+            ModelId::parse("groups").expect("model id"),
+            package.path(),
+            ModelPackageLimits::default(),
+        )
+        .expect("grouped model");
+        assert_eq!(
+            prepared.index().groups,
+            [
+                ModelGroup {
+                    target: "Parameter".to_owned(),
+                    name: "LipSync".to_owned(),
+                    ids: vec!["ParamMouthOpenY".to_owned()],
+                },
+                ModelGroup {
+                    target: "FutureTarget".to_owned(),
+                    name: "Metadata".to_owned(),
+                    ids: vec![],
+                },
+            ]
+        );
+
+        fs::write(
+            package.path().join("cat.model3.json"),
+            r#"{
+              "Version":3,
+              "FileReferences":{"Moc":"model.moc3","Textures":[]},
+              "Groups":[{"Target":"Parameter","Name":"LipSync","Ids":[" "]}]
+            }"#,
+        )
+        .expect("invalid model3");
+        let error = PreparedModel::prepare(
+            ModelId::parse("groups").expect("model id"),
+            package.path(),
+            ModelPackageLimits::default(),
+        )
+        .expect_err("blank group parameter id");
+        assert_eq!(error.code, ModelDiagnostic::ModelJsonInvalid);
+        assert!(error.detail.contains("group parameter id"));
     }
 
     #[test]
