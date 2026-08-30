@@ -1,9 +1,11 @@
 use crate::{OverlayError, PreviewReport};
-use bongocat_live2d::{
-    BlendMode, CanvasInfo, Live2dModel, ProductParameter, RenderSnapshot, TextureAsset,
-};
+use bongocat_live2d::{Live2dModel, ProductParameter};
 use bongocat_model::{ModelId, ModelPackageLimits, PreparedModel};
 use bongocat_platform::MacInputService;
+use bongocat_render::{
+    BlendMode, CanvasInfo, DrawableId, RenderFrame, RenderSnapshot, TextureAsset, TextureId,
+    latest_render_channel,
+};
 use bongocat_runtime::{
     CursorPosition, CursorProducer, CursorSample, CursorViewport, HandSide, InputBindings,
     InputControl, InputEdge, InputEvent, InputProducer, InputSource, ModelInputSnapshot,
@@ -122,17 +124,17 @@ struct Uniforms {
 }
 
 struct Mesh {
-    source_index: usize,
+    id: DrawableId,
     render_order: i32,
     vertex_buffer: Buffer,
     index_buffer: Buffer,
     index_count: u64,
-    texture_index: usize,
+    texture_id: TextureId,
     opacity: f32,
     blend_mode: BlendMode,
     multiply_color: [f32; 4],
     screen_color: [f32; 4],
-    masks: Vec<usize>,
+    masks: Vec<DrawableId>,
     visible: bool,
     inverted_mask: bool,
     mask_texture: Option<Texture>,
@@ -161,7 +163,7 @@ struct NativeOverlay {
     queue: CommandQueue,
     pipelines: Pipelines,
     sampler: SamplerState,
-    textures: Vec<Texture>,
+    textures: BTreeMap<TextureId, Texture>,
     meshes: Vec<Mesh>,
     empty_mask: Texture,
     canvas: CanvasInfo,
@@ -182,15 +184,33 @@ pub(crate) fn run_model_preview(
     .map_err(|error| OverlayError::new(error.to_string()))?;
     let mut model =
         Live2dModel::load(&prepared).map_err(|error| OverlayError::new(error.to_string()))?;
-    let mut previous_snapshot = model
+    let resources = model.render_resources();
+    let initial_snapshot = model
         .update_and_snapshot()
         .map_err(|error| OverlayError::new(error.to_string()))?;
+    let (render_producer, render_consumer) = latest_render_channel();
+    render_producer
+        .publish(RenderFrame {
+            model_generation: 0,
+            frame_number: 0,
+            resources: std::sync::Arc::clone(&resources),
+            snapshot: std::sync::Arc::new(initial_snapshot),
+        })
+        .map_err(|error| OverlayError::new(error.to_string()))?;
+    let initial_frame = render_consumer
+        .take_latest()
+        .ok_or_else(|| OverlayError::new("initial render frame is unavailable"))?;
+    let mut previous_snapshot = std::sync::Arc::clone(&initial_frame.snapshot);
     let mtm = MainThreadMarker::new()
         .ok_or_else(|| OverlayError::new("macOS preview must run on the main thread"))?;
     let application = NSApplication::sharedApplication(mtm);
     application.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
     application.finishLaunching();
-    let mut overlay = NativeOverlay::create(mtm, model.texture_assets(), &previous_snapshot)?;
+    let mut overlay = NativeOverlay::create(
+        mtm,
+        &initial_frame.resources.textures,
+        &initial_frame.snapshot,
+    )?;
     overlay.panel.orderFrontRegardless();
 
     let runtime = RuntimeOwner::start(true, 64);
@@ -252,12 +272,24 @@ pub(crate) fn run_model_preview(
         let snapshot = model
             .update_and_snapshot()
             .map_err(|error| OverlayError::new(error.to_string()))?;
-        if snapshot != previous_snapshot {
+        let frame_number = frames_presented.saturating_add(1);
+        render_producer
+            .publish(RenderFrame {
+                model_generation: 0,
+                frame_number,
+                resources: std::sync::Arc::clone(&resources),
+                snapshot: std::sync::Arc::new(snapshot),
+            })
+            .map_err(|error| OverlayError::new(error.to_string()))?;
+        let frame = render_consumer
+            .take_latest()
+            .ok_or_else(|| OverlayError::new("published render frame is unavailable"))?;
+        if frame.snapshot.as_ref() != previous_snapshot.as_ref() {
             dynamic_snapshots = dynamic_snapshots.saturating_add(1);
         }
-        overlay.sync_snapshot(&snapshot)?;
+        overlay.sync_snapshot(&frame.snapshot)?;
         overlay.draw(frames_presented == 0)?;
-        previous_snapshot = snapshot;
+        previous_snapshot = frame.snapshot;
         frames_presented += 1;
         next_frame += FRAME_INTERVAL;
         if let Some(delay) = next_frame.checked_duration_since(Instant::now()) {
@@ -284,6 +316,8 @@ pub(crate) fn run_model_preview(
     let stopped = runtime
         .shutdown(RUNTIME_TIMEOUT)
         .map_err(|error| OverlayError::new(error.to_string()))?;
+    render_producer.close();
+    let render_diagnostics = render_consumer.diagnostics();
 
     Ok(PreviewReport {
         frames_presented,
@@ -294,6 +328,9 @@ pub(crate) fn run_model_preview(
         runtime_cursor_coalesced: stopped.cursor.transport.coalesced,
         runtime_cursor_consumed: stopped.cursor.transport.consumed,
         platform_cursor_samples,
+        render_frames_published: render_diagnostics.published,
+        render_frames_coalesced: render_diagnostics.coalesced,
+        render_frames_consumed: render_diagnostics.consumed,
         drawable_count: overlay.meshes.len(),
         masked_drawable_count: overlay.masked_drawable_count,
         texture_count: overlay.textures.len(),
@@ -362,8 +399,11 @@ impl NativeOverlay {
         let sampler = device.new_sampler(&sampler_descriptor);
         let textures = texture_assets
             .iter()
-            .map(|asset| load_texture(&device, asset))
-            .collect::<Result<Vec<_>, _>>()?;
+            .map(|asset| load_texture(&device, asset).map(|texture| (asset.id, texture)))
+            .collect::<Result<BTreeMap<_, _>, _>>()?;
+        if textures.len() != texture_assets.len() {
+            return Err(OverlayError::new("texture resource ids are not unique"));
+        }
         let drawable_width = layer.drawable_size().width.round() as u64;
         let drawable_height = layer.drawable_size().height.round() as u64;
         let meshes = snapshot
@@ -381,12 +421,12 @@ impl NativeOverlay {
                     MTLResourceOptions::StorageModeShared,
                 );
                 Mesh {
-                    source_index: drawable.source_index,
+                    id: drawable.id,
                     render_order: drawable.render_order,
                     vertex_buffer,
                     index_buffer,
                     index_count: drawable.indices.len() as u64,
-                    texture_index: drawable.texture_index,
+                    texture_id: drawable.texture_id,
                     opacity: drawable.opacity,
                     blend_mode: drawable.blend_mode,
                     multiply_color: drawable.multiply_color,
@@ -430,24 +470,21 @@ impl NativeOverlay {
             let mesh = self
                 .meshes
                 .iter_mut()
-                .find(|mesh| mesh.source_index == drawable.source_index)
+                .find(|mesh| mesh.id == drawable.id)
                 .ok_or_else(|| {
-                    OverlayError::new(format!(
-                        "drawable source {} is unavailable",
-                        drawable.source_index
-                    ))
+                    OverlayError::new(format!("drawable source {} is unavailable", drawable.id))
                 })?;
             if mesh.mask_texture.is_some() != !drawable.masks.is_empty() {
                 return Err(OverlayError::new(format!(
                     "drawable {} changed clipping topology",
-                    drawable.source_index
+                    drawable.id
                 )));
             }
             upload_slice(&mesh.vertex_buffer, &drawable.vertices, "vertices")?;
             upload_slice(&mesh.index_buffer, &drawable.indices, "indices")?;
             mesh.render_order = drawable.render_order;
             mesh.index_count = drawable.indices.len() as u64;
-            mesh.texture_index = drawable.texture_index;
+            mesh.texture_id = drawable.texture_id;
             mesh.opacity = drawable.opacity;
             mesh.blend_mode = drawable.blend_mode;
             mesh.multiply_color = drawable.multiply_color;
@@ -456,8 +493,7 @@ impl NativeOverlay {
             mesh.visible = drawable.visible;
             mesh.inverted_mask = drawable.inverted_mask;
         }
-        self.meshes
-            .sort_by_key(|mesh| (mesh.render_order, mesh.source_index));
+        self.meshes.sort_by_key(|mesh| (mesh.render_order, mesh.id));
         self.canvas = snapshot.canvas;
         Ok(())
     }
@@ -497,13 +533,13 @@ impl NativeOverlay {
             mask_attachment.set_clear_color(MTLClearColor::new(0.0, 0.0, 0.0, 0.0));
             let mask_encoder = command_buffer.new_render_command_encoder(mask_pass);
             mask_encoder.set_render_pipeline_state(&self.pipelines.mask);
-            for source_index in &mesh.masks {
+            for source_id in &mesh.masks {
                 let source = self
                     .meshes
                     .iter()
-                    .find(|source| source.source_index == *source_index)
+                    .find(|source| source.id == *source_id)
                     .ok_or_else(|| {
-                        OverlayError::new(format!("mask source {source_index} is unavailable"))
+                        OverlayError::new(format!("mask source {source_id} is unavailable"))
                     })?;
                 let uniforms = Uniforms {
                     scale_offset,
@@ -519,7 +555,10 @@ impl NativeOverlay {
                     size_of::<Uniforms>() as u64,
                     std::ptr::from_ref(&uniforms).cast(),
                 );
-                mask_encoder.set_fragment_texture(0, Some(&self.textures[source.texture_index]));
+                let texture = self.textures.get(&source.texture_id).ok_or_else(|| {
+                    OverlayError::new(format!("texture {} is unavailable", source.texture_id))
+                })?;
+                mask_encoder.set_fragment_texture(0, Some(texture));
                 mask_encoder.set_fragment_sampler_state(0, Some(&self.sampler));
                 mask_encoder.draw_indexed_primitives(
                     MTLPrimitiveType::Triangle,
@@ -563,7 +602,10 @@ impl NativeOverlay {
                 size_of::<Uniforms>() as u64,
                 std::ptr::from_ref(&uniforms).cast(),
             );
-            encoder.set_fragment_texture(0, Some(&self.textures[mesh.texture_index]));
+            let texture = self.textures.get(&mesh.texture_id).ok_or_else(|| {
+                OverlayError::new(format!("texture {} is unavailable", mesh.texture_id))
+            })?;
+            encoder.set_fragment_texture(0, Some(texture));
             encoder
                 .set_fragment_texture(1, Some(mask_texture.as_ref().unwrap_or(&self.empty_mask)));
             encoder.set_fragment_sampler_state(0, Some(&self.sampler));
@@ -1067,7 +1109,7 @@ mod tests {
 
     #[test]
     fn gpu_structs_match_metal_layout() {
-        assert_eq!(size_of::<bongocat_live2d::Vertex>(), 16);
+        assert_eq!(size_of::<bongocat_render::Vertex>(), 16);
         assert_eq!(size_of::<Uniforms>(), 80);
     }
 }

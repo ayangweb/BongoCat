@@ -10,6 +10,7 @@ build = "build.rs"
 
 [dependencies]
 bongocat-model.workspace = true
+bongocat-render.workspace = true
 
 [lints.clippy]
 dbg_macro = "deny"

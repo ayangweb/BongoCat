@@ -62,6 +62,7 @@ name = "bongocat-live2d"
 version = "0.1.0"
 dependencies = [
  "bongocat-model",
+ "bongocat-render",
 ]
 
 [[package]]
@@ -80,6 +81,7 @@ dependencies = [
  "bongocat-live2d",
  "bongocat-model",
  "bongocat-platform",
+ "bongocat-render",
  "bongocat-runtime",
  "core-graphics-types",
  "image",
@@ -98,6 +100,10 @@ dependencies = [
  "objc2-core-foundation",
  "objc2-core-graphics",
 ]
+
+[[package]]
+name = "bongocat-render"
+version = "0.1.0"
 
 [[package]]
 name = "bongocat-runtime"

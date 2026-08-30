@@ -4,7 +4,7 @@ fn main() -> ExitCode {
     match run() {
         Ok(report) => {
             println!(
-                "BongoCat Live2D preview: frames={} dynamic_snapshots={} runtime_input_events={} platform_input_edges={} runtime_cursor_published={} runtime_cursor_coalesced={} runtime_cursor_consumed={} platform_cursor_samples={} drawables={} masked_drawables={} textures={}",
+                "BongoCat Live2D preview: frames={} dynamic_snapshots={} runtime_input_events={} platform_input_edges={} runtime_cursor_published={} runtime_cursor_coalesced={} runtime_cursor_consumed={} platform_cursor_samples={} render_frames_published={} render_frames_coalesced={} render_frames_consumed={} drawables={} masked_drawables={} textures={}",
                 report.frames_presented,
                 report.dynamic_snapshots,
                 report.runtime_input_events,
@@ -13,6 +13,9 @@ fn main() -> ExitCode {
                 report.runtime_cursor_coalesced,
                 report.runtime_cursor_consumed,
                 report.platform_cursor_samples,
+                report.render_frames_published,
+                report.render_frames_coalesced,
+                report.render_frames_consumed,
                 report.drawable_count,
                 report.masked_drawable_count,
                 report.texture_count

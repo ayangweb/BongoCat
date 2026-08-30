@@ -1,7 +1,9 @@
 use crate::{
-    BlendMode, CUBISM_CORE_VERSION, CUBISM_LATEST_MOC_VERSION, CanvasInfo, DrawableSnapshot,
-    Live2dError, Live2dErrorCode, ParameterRange, ParameterUpdate, ProductParameter,
-    RenderSnapshot, Vertex, sys,
+    CUBISM_CORE_VERSION, CUBISM_LATEST_MOC_VERSION, Live2dError, Live2dErrorCode, ParameterRange,
+    ParameterUpdate, ProductParameter, sys,
+};
+use bongocat_render::{
+    BlendMode, CanvasInfo, DrawableId, DrawableSnapshot, RenderSnapshot, TextureId, Vertex,
 };
 use std::{
     alloc::{Layout, alloc_zeroed, dealloc},
@@ -367,8 +369,9 @@ impl CoreModel {
                         )
                     })
                 })
+                .map(|result| result.map(DrawableId::new))
                 .collect::<Result<Vec<_>, _>>()?;
-            if masks.iter().any(|index| *index >= count) {
+            if masks.iter().any(|id| id.index() >= count) {
                 return Err(Live2dError::new(
                     Live2dErrorCode::InvalidCoreValue,
                     format!("drawable {source_index} has an out-of-range mask index"),
@@ -389,10 +392,10 @@ impl CoreModel {
             }
             let opacity = opacity.clamp(0.0, 1.0);
             drawables.push(DrawableSnapshot {
-                source_index,
+                id: DrawableId::new(source_index),
                 render_order: render_orders[source_index],
                 visible,
-                texture_index,
+                texture_id: TextureId::new(texture_index),
                 opacity,
                 blend_mode: decode_blend_mode(blend_modes[source_index])?,
                 double_sided: constant_flags[source_index] & sys::csmIsDoubleSided as u8 != 0,
@@ -404,7 +407,7 @@ impl CoreModel {
                 indices: drawable_indices.to_vec(),
             });
         }
-        drawables.sort_by_key(|drawable| (drawable.render_order, drawable.source_index));
+        drawables.sort_by_key(|drawable| (drawable.render_order, drawable.id));
         Ok(RenderSnapshot {
             canvas: unsafe { read_canvas(model)? },
             drawables,
@@ -664,7 +667,7 @@ mod tests {
             let first = model.update_and_snapshot().expect("first snapshot");
             assert!(!first.drawables.is_empty());
             assert!(first.drawables.iter().all(|drawable| {
-                drawable.texture_index < model.texture_assets().len()
+                drawable.texture_id.index() < model.texture_assets().len()
                     && !drawable.vertices.is_empty()
                     && !drawable.indices.is_empty()
             }));

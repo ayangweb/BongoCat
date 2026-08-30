@@ -4,7 +4,8 @@
 )]
 
 use bongocat_model::PreparedModel;
-use std::{fmt, path::PathBuf};
+use bongocat_render::{RenderResources, RenderSnapshot, TextureAsset, TextureId};
+use std::{fmt, sync::Arc};
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod core;
@@ -105,60 +106,6 @@ pub enum ParameterUpdate {
     Applied { value: f32, clamped: bool },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CanvasInfo {
-    pub width: f32,
-    pub height: f32,
-    pub origin_x: f32,
-    pub origin_y: f32,
-    pub pixels_per_unit: f32,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum BlendMode {
-    Normal,
-    Additive,
-    Multiplicative,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[repr(C)]
-pub struct Vertex {
-    pub position: [f32; 2],
-    pub uv: [f32; 2],
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct DrawableSnapshot {
-    pub source_index: usize,
-    pub render_order: i32,
-    pub visible: bool,
-    pub texture_index: usize,
-    pub opacity: f32,
-    pub blend_mode: BlendMode,
-    pub double_sided: bool,
-    pub inverted_mask: bool,
-    pub multiply_color: [f32; 4],
-    pub screen_color: [f32; 4],
-    pub masks: Vec<usize>,
-    pub vertices: Vec<Vertex>,
-    pub indices: Vec<u16>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct RenderSnapshot {
-    pub canvas: CanvasInfo,
-    pub drawables: Vec<DrawableSnapshot>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct TextureAsset {
-    pub index: usize,
-    pub path: PathBuf,
-    pub width: u32,
-    pub height: u32,
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Live2dErrorCode {
     CoreVersionMismatch,
@@ -200,37 +147,39 @@ impl fmt::Display for Live2dError {
 impl std::error::Error for Live2dError {}
 
 pub struct Live2dModel {
-    textures: Vec<TextureAsset>,
+    resources: Arc<RenderResources>,
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     core: core::CoreModel,
 }
 
 impl Live2dModel {
     pub fn load(model: &PreparedModel) -> Result<Self, Live2dError> {
-        let textures = model
-            .index()
-            .textures
-            .iter()
-            .enumerate()
-            .map(|(index, texture)| TextureAsset {
-                index,
-                path: model.root().join(&texture.file),
-                width: texture.width,
-                height: texture.height,
-            })
-            .collect::<Vec<_>>();
+        let resources = Arc::new(RenderResources {
+            textures: model
+                .index()
+                .textures
+                .iter()
+                .enumerate()
+                .map(|(index, texture)| TextureAsset {
+                    id: TextureId::new(index),
+                    path: model.root().join(&texture.file),
+                    width: texture.width,
+                    height: texture.height,
+                })
+                .collect::<Vec<_>>(),
+        });
 
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
             let moc_path = model.root().join(&model.index().moc);
             let core = core::CoreModel::load(&moc_path)?;
-            core.validate_texture_indices(textures.len())?;
-            Ok(Self { textures, core })
+            core.validate_texture_indices(resources.textures.len())?;
+            Ok(Self { resources, core })
         }
 
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
-            let _ = textures;
+            let _ = resources;
             Err(Live2dError::new(
                 Live2dErrorCode::PlatformUnsupported,
                 "Cubism Core is available only on the Windows and macOS product targets",
@@ -239,7 +188,11 @@ impl Live2dModel {
     }
 
     pub fn texture_assets(&self) -> &[TextureAsset] {
-        &self.textures
+        &self.resources.textures
+    }
+
+    pub fn render_resources(&self) -> Arc<RenderResources> {
+        Arc::clone(&self.resources)
     }
 
     pub fn parameter_range(&self, parameter: ProductParameter) -> Option<ParameterRange> {
@@ -333,11 +286,12 @@ impl Live2dModel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bongocat_render::BlendMode;
 
     #[test]
     fn vertex_layout_is_tightly_packed_for_gpu_upload() {
-        assert_eq!(size_of::<Vertex>(), 16);
-        assert_eq!(align_of::<Vertex>(), 4);
+        assert_eq!(size_of::<bongocat_render::Vertex>(), 16);
+        assert_eq!(align_of::<bongocat_render::Vertex>(), 4);
     }
 
     #[test]

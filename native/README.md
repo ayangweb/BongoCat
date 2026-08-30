@@ -54,8 +54,13 @@ The interactive path uses the same typed runtime input state as the deterministi
 stops the platform producer before the runtime and Metal overlay. It seeds the current global
 cursor position at startup and then coalesces cursor movement through an independent latest-value
 transport; pointer, head, and eye parameters use the active display's logical viewport. This is not
-yet the assembled application: GPUI settings, the runtime render channel, lifecycle notifications,
-and the Windows preset-model renderer remain separate work items.
+yet the assembled application: GPUI settings, the runtime-owned render producer, lifecycle
+notifications, and the Windows preset-model renderer remain separate work items.
+
+Cubism model evaluation and Metal GPU ownership are separated by the platform-independent
+`bongocat-render` contract. The preview publishes immutable resource/frame pairs through its
+latest-frame transport; the overlay resolves drawables, masks, and textures with strong resource
+IDs and never receives the mutable Cubism model.
 
 The fixed-version Cubism Core, header, generated bindings, and preset model development baseline are
 committed under `vendor/cubism/5-r.5` and `resources/models`. Builds do not download SDK artifacts.

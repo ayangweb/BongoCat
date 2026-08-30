@@ -11,6 +11,7 @@ publish.workspace = true
 bongocat-live2d.workspace = true
 bongocat-model.workspace = true
 bongocat-platform.workspace = true
+bongocat-render.workspace = true
 bongocat-runtime.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]

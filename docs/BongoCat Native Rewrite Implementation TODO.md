@@ -323,7 +323,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     验证 Core parameter id/range/default 表，冻结 19 个类型化产品参数和三预置支持矩阵，
     提供 finite/clamp/normalized update，不向上暴露 raw pointer。motion、expression、
     physics、pose 求值尚未实现，因此总项保持未完成。
-- [ ] 创建 bongocat-render：render snapshot 和 renderer contract。
+- [x] 创建 bongocat-render：render snapshot 和 renderer contract。
+  - 验收证据（2026-08-30）：正式 crate 已从 Cubism 边界接管 `RenderSnapshot`、
+    `RenderResources` 和强类型 `DrawableId`/`TextureId`，并提供带 model generation/
+    frame number 的 latest-frame transport。10,000 帧测试验证 coalescing/accounting，
+    close 后可 drain pending 且拒绝迟到帧，倒退 frame/generation 会显式失败；正式
+    Live2D 与 macOS Metal overlay 已改用该 contract。
 - [ ] 创建 bongocat-ui：GPUI 页面和 design system。
 - [ ] 创建 bongocat-platform：Windows/macOS 系统服务。
   - 状态（2026-08-30）：正式 crate 已接入 macOS listen-only CGEventTap、可靠键鼠边沿、
@@ -384,8 +389,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 定义 AppCommand、InputEvent、RuntimeSnapshot、RenderSnapshot。
   - 状态（2026-08-30）：正式 runtime 已有 typed `RuntimeCommand`、带 revision/
     command sequence 的 `RuntimeSnapshot`、模型摘要及项目自有 `InputEvent`/
-    `InputSnapshot`；`wait_for_command` 可区分并发 command 的完成。`RenderSnapshot` 与
-    完整 product command 集仍待实现。
+    `InputSnapshot`；`wait_for_command` 可区分并发 command 的完成。正式
+    `bongocat-render` 已定义不可变 `RenderSnapshot`/资源 contract 和 latest transport，
+    但 producer 尚未由 runtime owner 持有，完整 product command 集也仍待实现。
 - [ ] 单一 runtime owner 管理可变业务状态。
   - 状态（2026-08-30）：正式 runtime worker 已独占 overlay、pressed input、输入诊断和
     `InstalledModel`，应用与 UI client 只通过有界 typed command 和 snapshot 访问；动画与
@@ -557,9 +563,18 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 4.4 RenderSnapshot
 
-- [ ] snapshot 只含不可变绘制数据和稳定资源 id。
-- [ ] 定义 CPU model evaluation 与 GPU upload 所有权边界。
+- [x] snapshot 只含不可变绘制数据和稳定资源 id。
+  - 验收证据（2026-08-30）：`bongocat-render` 的 frame 只携带 `Arc<RenderResources>`/
+    `Arc<RenderSnapshot>`、model generation 和 frame number；drawable、mask 与 texture
+    通过不可混用的强类型 ID 关联，不含锁、平台对象、GPU handle 或 GPUI 状态。
+- [x] 定义 CPU model evaluation 与 GPU upload 所有权边界。
+  - 验收证据（2026-08-30）：`bongocat-live2d` 独占 mutable Cubism Model 并生成不可变
+    snapshot/资源包；Metal overlay 只按 contract 创建/更新 GPU resource，不读取 model、
+    runtime 配置或输入状态。标准模型 release 预览通过 178 帧 contract 传递和 177 次 present。
 - [ ] 双缓冲/latest snapshot，renderer 不阻塞 runtime。
+  - 状态（2026-08-30）：单槽 latest-frame transport 已实现非阻塞 renderer 消费语义、
+    coalescing、monotonic generation/frame 和关闭后 drain；macOS preview 已通过该通道消费
+    全部帧。producer 尚未迁入正式 runtime owner，因此保持未勾选。
 - [ ] 支持目标 FPS、不可见暂停/降频和刷新率变化。
 - [ ] 首帧前不出现黑框或不透明闪烁。
 - [ ] shutdown 先停 frame source，再释放 GPU/window。
