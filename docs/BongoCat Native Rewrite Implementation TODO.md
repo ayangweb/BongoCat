@@ -240,11 +240,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 ### 1.8 Cubism/Renderer spike
 
 - [ ] 确认 Cubism SDK/Core 版本、来源、再分发条款和 attribution 要求。
-  - 状态（2026-08-30）：`docs/phase-0/cubism-sdk-source-and-license.md` 已固定 Native `5-r.4.1`/Core `05.01.0000`、archive/header/Core hashes、官方 tag/commit、下载入口和 RedistributableFiles 边界；macOS universal Core 本机版本调用通过。BongoCat 很可能属于需预先批准和单独协议的 Expandable Application；Framework 到 MIT Rust 实现的许可边界、最终 attribution、第二来源复核和 Live2D 书面授权仍未完成，因此保持未勾选并阻塞 stable 发布。
+  - 状态（2026-08-30）：`docs/phase-0/cubism-sdk-source-and-license.md` 已固定 Native `5-r.5`/Core `06.00.0001`、archive/header/Core hashes、官方 tag/commit、下载入口和 RedistributableFiles 边界；macOS arm64 真实 Core/model probe 已通过。BongoCat 很可能属于需预先批准和单独协议的 Expandable Application；Framework 到 MIT Rust 实现的许可边界、最终 attribution、第二来源复核和 Live2D 书面授权仍未完成，因此保持未勾选并阻塞 stable 发布。
 - [ ] 建立目标架构二进制清单、hash 和可重复获取流程。
-  - 状态（2026-08-29）：产品目标中的 R5 Windows x64 与 macOS arm64/x64 artifact 路径已形成清单，Windows ARM64 已明确无 desktop artifact，i686 已排除；离线 ZIP 检查流程已定义。合法下载 ZIP 的 archive/file hash、双人复核和真实 ABI 加载仍待完成。
-- [ ] 验证 Rust sys binding 加载 moc、创建 model 并读取 drawable 数据。
-  - 状态（2026-08-29）：已用 hash 固定的 legacy Web Core `5.1.0` 为三个预置 moc 建立可重复 baseline，记录 MOC enum、consistency、parameter/part/drawable count 和 canvas，并接入 CI 漂移检查；这只是未来 R5 wrapper 的对照，尚未完成 Native R5 sys binding 或 drawable 数据读取。
+  - 状态（2026-08-30）：r.5 Windows x64 与 macOS arm64/x64 artifact 路径和 SHA-256 已形成清单，Windows ARM64 已明确无 desktop artifact，i686 已排除；固定 archive hash 的离线 ZIP 检查和 macOS arm64 ABI 已通过。第二人/第二机器复核、Windows x64/macOS x64 原生 ABI 与授权后的可分发获取流程仍待完成。
+- [x] 验证 Rust sys binding 加载 moc、创建 model 并读取 drawable 数据。
+  - 验收证据（2026-08-30）：`tools/cubism-core-probe/` 使用仓库外真实 r.5 arm64 binding 与 Core `06.00.0001`，对三个预置 Moc 各完成 100 次 consistency/revive/initialize/update/array/drop。parameter/part/drawable/canvas 与 legacy baseline 一致，另读取 vertex/UV/index/mask、packed blend、render order、parent 与 r.5 offscreen 数组；`leaks --atExit` 为 0 bytes。详见 `docs/phase-0/cubism-core-r5-probe.md`。该项不代表 Windows ABI、safe wrapper、Framework 求值或 renderer 完成。
 - [ ] 包装 Moc/Model 生命周期，证明 Model 不会比 Moc 存活更久。
 - [x] 用 Rust 解析三个预置 model3 和所有关联资源。
   - 验收证据：build `7ee8acd5f2a3d4dcb7a1dbc36623cbe497aeae49` 的 push run `33238204993` 与 PR run `33238206415` 各 16 jobs 全绿。`spikes/model-package/` 强类型解析 model3 v3，验证 moc、纹理、display info、expression、motion/audio、可选 physics/pose/user data 与 companion images，完整包索引冻结在 `shared/fixtures/model-fixtures/preset-model3-index.json`。2026-08-30 又将 3 个 cdi3、6 个 motion3 与 15 个 exp3 纳入强类型结构验证；cdi3 parameter/part 数量与 legacy Core baseline 一致，三个预置包、异常 fixture、跨根 symlink 和目录深度均有 Rust 测试，详见 `docs/phase-0/model-package-spike.md`。本项不包含 Core/model creation、动作求值或 renderer。
@@ -260,7 +260,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 建立 Cubism Framework 行为来源清单，逐项说明 motion、expression、physics、pose 的 Rust 实现依据和许可边界。
   - 验收证据：`docs/phase-0/cubism-framework-behavior-sources.md` 固定 R5 tree、16 个关键 Framework blob、双平台 sample owner、行为 oracle 与禁止直接翻译的许可边界；离线 SDK inspector 会验证这些 blob。Live2D 对独立 Rust 实现和生成 binding 发布的书面许可仍是 P0 阻塞，不因本项勾选而视为解决。
 - [ ] 对 raw binding 生成流程固定 header、生成器版本和输出审阅方式，禁止手改生成代码后失去可重复性。
-  - 状态（2026-08-29）：`tools/cubism-bindgen/` 已精确锁定最新稳定版 `bindgen 0.72.1`，固定当前 R5 可用且属于产品矩阵的 Windows x64 与 macOS arm64/x64、`csm*` 白名单、Rust 1.85/edition 2024、配置/output hash 和仓库外生成门禁；自有合成 header 的三 target golden、7 项安全测试与 CI 漂移检查已完成。工具明确拒绝 i686 与当前无 Core 的 Windows ARM64。合法 R5 header 的真实 SHA、授权后的生成/双人审阅以及 Core compile/link/ABI smoke 仍待完成，因此保持未勾选。
+  - 状态（2026-08-30）：`tools/cubism-bindgen/` 已精确锁定最新稳定版 `bindgen 0.72.1`，固定当前 r.5 可用且属于产品矩阵的 Windows x64 与 macOS arm64/x64、`csm*` 白名单、Rust 1.85/edition 2024、配置/output hash 和仓库外生成门禁；自有合成 header 的三 target golden 已覆盖 r.5 render order/blend/offscreen API。真实 header SHA 已固定，仓库外 arm64 binding 生成与 Core/model smoke 通过；工具继续拒绝 i686 与当前无 Core 的 Windows ARM64。第二人审阅、Windows x64/macOS x64 generation/ABI 及发布授权仍待完成，因此保持未勾选。
 
 ### 1.9 Phase 0 退出门槛
 
@@ -931,10 +931,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 完成 physics3 v3 静态 preflight、匿名摘要 CLI 和合成错误 contract；13 个历史文件只作为本地结构覆盖，不作为可分发 fixture 或行为求值证据。
 - [x] 完成 pose3 静态 preflight、匿名摘要 CLI 和合成错误 contract；没有授权真实样本或 fade/link 求值证据。
 - [x] 完成 userdata3 v3 静态 preflight、匿名摘要 CLI 和合成错误 contract；三个预置模型没有真实 userdata3。
+- [x] 完成 macOS arm64 真实 r.5 sys binding/Core probe；三个预置 Moc 各 100 次生命周期、drawable 与 r.5 offscreen 数组边界、legacy count 对照和 `leaks` 0-byte 门禁通过。Windows x64/macOS x64 ABI、非零 offscreen fixture、产品 safe wrapper、Framework 求值与 renderer 仍未完成。
 - [ ] 取得可分发授权的 physics3/pose3 fixture 后完成强类型结构和 Framework 求值；三个预置模型不含这两类资源，不得以合成样本冒充兼容证据。
 
 14. [ ] `P0-GO-NO-GO`：汇总证据、阻塞和条件，形成完整功能与 stable 发布决议。
-    - 状态（2026-08-30）：ADR-0011 已形成 `IMPLEMENTATION GO WITH RELEASE CONDITIONS`，允许建立正式 workspace；这不勾选完整 Phase 0 决议。标准 Native `5-r.4.1` ZIP/hash 与 macOS Core 版本调用已验证，书面授权、真实模型/renderer、GPUI 辅助功能/IME 与双平台物理输入/GPU 矩阵继续阻塞对应功能声明和 stable 发布。
+    - 状态（2026-08-30）：ADR-0011 已形成 `IMPLEMENTATION GO WITH RELEASE CONDITIONS`，允许建立正式 workspace；这不勾选完整 Phase 0 决议。标准 Native `5-r.5` ZIP/hash、macOS arm64 真实 binding/Core 与三个预置 Moc lifecycle/array 已验证；书面授权、Framework 求值、D3D11/Metal 模型绘制、其他 ABI、GPUI 辅助功能/IME 与双平台物理输入/GPU 矩阵继续阻塞对应功能声明和 stable 发布。
 
 15. [x] `P1-RUNTIME-CONFIG`：建立正式 workspace，提升 runtime 生命周期、强类型 command/snapshot 与 Development/Production 配置隔离闭环。
     - 依赖：ADR-0011、`spikes/runtime-contract/`、`spikes/config-store/`。

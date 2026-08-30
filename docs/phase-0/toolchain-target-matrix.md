@@ -1,7 +1,7 @@
 # Toolchain and Target Matrix
 
 状态：Provisional；Windows 仅 x64/ARM64，ARM64 被 R5 Core 阻塞，macOS Intel 尚未冻结
-记录日期：2026-08-29
+记录日期：2026-08-30
 
 ## 1. Decision Rule
 
@@ -20,7 +20,7 @@ target 只有同时通过以下检查后才能进入首发支持矩阵：
 | Target                    | Historical v1.1.0   | Native Rewrite status            | Required disposition                                                                                         |
 | ------------------------- | ------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `x86_64-pc-windows-msvc`  | Installer published | Primary validation target        | 首发候选；需 Windows 实机完成 GPUI、Raw Input、D3D11、Cubism 和签名链                                        |
-| `aarch64-apple-darwin`    | DMG/app published   | Primary validation target        | 首发候选；当前仅 GPUI runtime-shader 生命周期 spike 通过                                                     |
+| `aarch64-apple-darwin`    | DMG/app published   | Primary validation target        | 首发候选；GPUI/Metal overlay、真实 r.5 Core ABI 与三个预置 Moc 生命周期已通过，仍需完整 renderer/输入/签名链 |
 | `aarch64-pc-windows-msvc` | Installer published | Product target / release blocked | 官方 R5 仅提供 experimental UWP ARM64 DLL，没有 desktop Windows ARM64 Core；获得可用官方 artifact 前不可发布 |
 | `i686-pc-windows-msvc`    | Installer published | Out of scope                     | Native Rewrite 不构建、测试、打包或更新 x86；历史安装包只作考古输入                                          |
 | `x86_64-apple-darwin`     | DMG/app published   | Compatibility decision pending   | R5 Core 提供 x64 static library；仍需 Intel 实机验证 GPUI、Metal、输入、签名和发布形式                       |
@@ -62,9 +62,12 @@ Windows 工具链尚未在实机记录。`P0-GPUI-WINDOWS` 至少要固定并保
 
 ## 5. Cubism Constraint
 
-Cubism Core 是冻结首发架构矩阵的硬前置条件。`docs/phase-0/cubism-sdk-source-and-license.md` 已固定当前本地 Cubism 5 SDK for Native `5-r.4.1`、Core `05.01.0000`、archive/artifact hash、官方来源和许可门禁，并确认产品需要的 Windows x64 Core 与 macOS arm64/x64 Core 存在，但 Windows ARM64 desktop Core 不存在。ARM64 因缺少 `aarch64-pc-windows-msvc` 可用的官方 artifact 而保持发布阻塞，不能用 experimental UWP DLL、自制兼容层、未知来源二进制或跨架构模拟补齐；R5 即使提供 x86 Core，也不会恢复已排除的 i686 target。
+Cubism Core 是冻结首发架构矩阵的硬前置条件。`docs/phase-0/cubism-sdk-source-and-license.md` 已固定当前本地 Cubism 5 SDK for Native `5-r.5`、Core `06.00.0001`、archive/artifact hash、官方来源和许可门禁，并确认产品需要的 Windows x64 Core 与 macOS arm64/x64 Core 存在，但 Windows ARM64 desktop Core 不存在。ARM64 因缺少 `aarch64-pc-windows-msvc` 可用的官方 artifact 而保持发布阻塞，不能用 experimental UWP DLL、自制兼容层、未知来源二进制或跨架构模拟补齐；R5 即使提供 x86 Core，也不会恢复已排除的 i686 target。
 
-其他候选 target 仍必须记录官方 ZIP SHA-256、目标文件 hash、真实加载和生命周期结果。尚未由维护者合法下载并检查 ZIP，因此本矩阵仍未冻结。
+macOS arm64 已用仓库外真实 binding 和 universal dylib 完成 Core 版本、三个预置 Moc
+各 100 次 lifecycle、drawable/offscreen 数组与 `leaks` 0-byte 验证，详见
+`cubism-core-r5-probe.md`。Windows x64 和 macOS x64 仍必须分别完成生成、真实加载和
+生命周期结果；第二来源复核与发布授权也未完成，因此本矩阵仍未冻结。
 
 ## 6. Freeze Gate
 

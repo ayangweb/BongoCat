@@ -119,7 +119,7 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             tools/cubism-bindgen/target/
-          key: ${{ runner.os }}-cubism-bindgen-${{ steps.rust-toolchain.outputs.hash }}-${{ hashFiles('tools/cubism-bindgen/Cargo.lock', 'tools/cubism-bindgen/Cargo.toml') }}
+          key: ${{ runner.os }}-cubism-bindgen-${{ steps.rust-toolchain.outputs.hash }}-${{ hashFiles('tools/cubism-bindgen/Cargo.lock', 'tools/cubism-bindgen/Cargo.toml', 'tools/cubism-core-probe/Cargo.lock', 'tools/cubism-core-probe/Cargo.toml') }}
           restore-keys: |
             ${{ runner.os }}-cubism-bindgen-${{ steps.rust-toolchain.outputs.hash }}-
             ${{ runner.os }}-cubism-bindgen-
@@ -131,6 +131,13 @@ jobs:
         run: cargo test --manifest-path tools/cubism-bindgen/Cargo.toml --locked
       - name: Check deterministic synthetic bindings
         run: cargo run --manifest-path tools/cubism-bindgen/Cargo.toml --locked -- check-fixtures
+      - name: Compile Core probe against synthetic bindings
+        env:
+          BONGOCAT_CUBISM_BINDINGS: ${{ github.workspace }}/tools/cubism-bindgen/fixtures/expected/x86_64-pc-windows-msvc.rs
+        run: |
+          cargo fmt --manifest-path tools/cubism-core-probe/Cargo.toml -- --check
+          cargo clippy --manifest-path tools/cubism-core-probe/Cargo.toml --locked --all-targets --target-dir tools/cubism-bindgen/target/core-probe -- -D warnings
+          cargo check --manifest-path tools/cubism-core-probe/Cargo.toml --locked --release --target-dir tools/cubism-bindgen/target/core-probe
       - name: Compile synthetic bindings for every Core target
         shell: bash
         run: |

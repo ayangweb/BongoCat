@@ -26,13 +26,25 @@ const REQUIRED_SYMBOLS: &[&str] = &[
     "csmGetSizeofModel",
     "csmInitializeModelInPlace",
     "csmUpdateModel",
+    "csmGetRenderOrders",
     "csmReadCanvasInfo",
     "csmGetParameterCount",
     "csmGetPartCount",
+    "csmGetPartOffscreenIndices",
     "csmGetDrawableCount",
+    "csmGetDrawableBlendModes",
     "csmGetDrawableVertexPositions",
     "csmGetDrawableIndices",
     "csmResetDrawableDynamicFlags",
+    "csmGetOffscreenCount",
+    "csmGetOffscreenBlendModes",
+    "csmGetOffscreenOpacities",
+    "csmGetOffscreenOwnerIndices",
+    "csmGetOffscreenMultiplyColors",
+    "csmGetOffscreenScreenColors",
+    "csmGetOffscreenMaskCounts",
+    "csmGetOffscreenMasks",
+    "csmGetOffscreenConstantFlags",
 ];
 
 const CONFIG_DESCRIPTION: &str = concat!(
@@ -585,6 +597,8 @@ mod tests {
             "clang 21.0.0\nlocal",
         );
         assert!(provenance.contains("\\nlocal"));
+        assert!(provenance.contains("\"sdk_release\": \"5-r.5\""));
+        assert!(provenance.contains("\"core_version\": \"06.00.0001\""));
         assert!(!provenance.contains(env!("CARGO_MANIFEST_DIR")));
     }
 

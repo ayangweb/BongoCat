@@ -10,7 +10,7 @@ Phase 0 已通过独立 spike 验证 runtime、配置隔离、GPUI 设置窗口�
 物理设备、辅助技术、目标系统和签名环境。把这些外部证据全部作为创建产品
 workspace 的前置条件，会阻止已经具备自动化契约的业务模块进入正式实现。
 
-维护者已提供仓库外的 `CubismSdkForNative-5-r.4.1.zip`，并明确授权本地技术
+维护者已提供仓库外的 `CubismSdkForNative-5-r.5.zip`，并明确授权本地技术
 验证和正式产品代码开发；公开发布授权和实机验收延后到产品完成后处理。
 
 ## Decision
@@ -34,9 +34,9 @@ workspace 的前置条件，会阻止已经具备自动化契约的业务模块�
 
 ## Supplied SDK Disposition
 
-当前本地基线是 Cubism SDK for Native `5-r.4.1`，archive SHA-256 为
-`b71ec6bafc6578cce3b4cbbaa42a1cb51ae6eb477557932b02d22af957e733c7`，Core
-版本为 `05.01.0000`。它包含 Windows x64 和 macOS arm64/x64 Core，不包含
+当前本地基线是 Cubism SDK for Native `5-r.5`，archive SHA-256 为
+`7ff3a4bbc19c0a8728965aa522ab77eb11b252916453e68a8a78d3b71188bb12`，Core
+版本为 `06.00.0001`。它包含 Windows x64 和 macOS arm64/x64 Core，不包含
 desktop Windows ARM64 Core。
 
 此前提供的 `CubismSdkMotionSyncPluginForNative-5-r.2.1.zip` 是可选 MotionSync

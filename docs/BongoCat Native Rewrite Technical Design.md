@@ -300,6 +300,9 @@ model evaluation + render snapshot
 ```
 
 - Core 二进制按平台分发，版本、hash、来源和许可证记录在构建清单中。
+- 当前验证基线固定为 Cubism Native `5-r.5` / Core `06.00.0001`；升级必须重跑
+  header/binding provenance、目标 ABI、三个预置 Moc、offscreen/enhanced rendering
+  fixture 和双 renderer 门禁。
 - raw binding 只由精确锁定的离线生成工具从 hash 固定的官方 header 生成；生成配置、target ABI、libclang 版本和输出 hash 必须进入 provenance，禁止手改生成代码。
 - 在 Live2D 书面确认 header 派生 binding 的发布权限前，官方 header 与真实生成物均保留在仓库和 CI 外；仓库只提交自有合成 header 的生成契约与漂移测试。
 - 原始指针不离开 safe wrapper；Moc 必须比 Model 活得更久。
@@ -315,7 +318,8 @@ GPUI renderer 与 Live2D renderer 完全分离：
 
 ```text
 RenderSnapshot
-├── drawables / order / opacity / masks
+├── drawables / offscreens / order / opacity / masks
+├── color + alpha blend / multiply + screen color
 ├── vertex / uv / index buffers
 ├── texture ids
 └── transform / viewport

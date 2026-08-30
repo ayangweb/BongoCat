@@ -7,13 +7,13 @@
 
 ## 1. Version Decision
 
-当前本地实现以 **Cubism 5 SDK for Native R5**（`5-r.4.1`，2025-07-17）作为固定验证版本。该版本对应 Core `05.01.0000`。
+当前本地实现以 **Cubism 5 SDK for Native R5**（`5-r.5`，2026-04-02）作为固定验证版本。该版本对应 Core `06.00.0001`。
 
-| 内容                     | 固定来源                                                                        | 固定引用                                                                                                     |
-| ------------------------ | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Native Framework         | [Live2D/CubismNativeFramework](https://github.com/Live2D/CubismNativeFramework) | tag `5-r.4.1`，commit `f426fc4f19852da74480e5aefe5cb99d90fd5d70`                                             |
-| Native Samples           | [Live2D/CubismNativeSamples](https://github.com/Live2D/CubismNativeSamples)     | tag `5-r.4.1`，commit `51b4bc561ecda87045580c01324d2f7c6eec7642`                                             |
-| Core header 与平台二进制 | [官方 Native SDK 下载页](https://www.live2d.com/en/sdk/download/native/)        | `CubismSdkForNative-5-r.4.1.zip`；SHA-256 `b71ec6bafc6578cce3b4cbbaa42a1cb51ae6eb477557932b02d22af957e733c7` |
+| 内容                     | 固定来源                                                                        | 固定引用                                                                                                   |
+| ------------------------ | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Native Framework         | [Live2D/CubismNativeFramework](https://github.com/Live2D/CubismNativeFramework) | tag `5-r.5`，commit `145155d2c5bdd8d23475cef9cc3ab46d3220190c`                                             |
+| Native Samples           | [Live2D/CubismNativeSamples](https://github.com/Live2D/CubismNativeSamples)     | tag `5-r.5`，commit `b8024738f108e6003e4925193e8d5ec04cd18196`                                             |
+| Core header 与平台二进制 | [官方 Native SDK 下载页](https://www.live2d.com/en/sdk/download/native/)        | `CubismSdkForNative-5-r.5.zip`；SHA-256 `7ff3a4bbc19c0a8728965aa522ab77eb11b252916453e68a8a78d3b71188bb12` |
 
 两个 GitHub release 都没有附带 release asset。Samples 仓库只提交 Core 的 README、CHANGELOG、LICENSE 和 `RedistributableFiles.txt`，明确声明 Core 二进制不在仓库中。不能从第三方镜像、旧安装包或未知来源补齐 Core。
 
@@ -23,17 +23,19 @@
 
 | Artifact                           | SHA-256                                                            |
 | ---------------------------------- | ------------------------------------------------------------------ |
-| `Core/include/Live2DCubismCore.h`  | `0564a03edd0d56b90bac704bbbcc4e560b3d3d9000b49a0bd5d9cb886b414022` |
-| Windows x64 `Live2DCubismCore.dll` | `c4599835b0349fcae774cedc6dbd0057743fa503d4cc0af8f9022ca3dd845634` |
-| Windows x64 import `.lib`          | `88a3428b466d85776b9d50e38b1e7daa9aa6f270d1bea549d5ae0acadaa3865f` |
-| macOS arm64 static library         | `b37198e8fa6e1cfc64300fa9ae42721e5c45889bfa15d6ee57389836c6acbe84` |
-| macOS x64 static library           | `0489f2e2b07f208501f1bab3b8fc175cb6fa8dd50d8936b97b4506336cf94390` |
-| macOS universal dylib              | `0cddec2342f983be3814ec5bf2159f580a28de818d2eef8d44b39ba98e80d896` |
+| `Core/include/Live2DCubismCore.h`  | `6f1802780d1eb36ff39705e0764f9eeed9b41c313a13ac155270c6f4ad51d53f` |
+| Windows x64 `Live2DCubismCore.dll` | `d883c00d114fdf6cef61f439feb23e02d000fdf683e092803010470b80dfaf09` |
+| Windows x64 import `.lib`          | `a033703a03d2f0ee201e5b54de7ee46c7fea3dcbd00fa904dfdf3242bb62797e` |
+| macOS arm64 static library         | `318da4dcfb4ced7221f7ec1487541152dee8c5275059b74156768d66499f0238` |
+| macOS x64 static library           | `288c0cb9ff03242c5ef043f601fa4dbbb6a238ebb8c45c7132bad7d51adb7dfd` |
+| macOS universal dylib              | `d6b029354e47e81c1e063ad2de3cfc63bdd0b7bf3fe8dd079de17c2a4b43b27f` |
 
 本机只把 macOS universal dylib 解压到临时目录；`file`/`lipo` 确认同时包含 arm64
-和 x86_64，动态调用 `csmGetVersion()` 返回 `0x05010000`，
-`csmGetLatestMocVersion()` 返回 `5`。临时二进制、header、Framework 源码和
-inspector JSON 均未复制到仓库。Windows ABI、第二机器复核和真实模型 lifecycle
+和 x86_64，动态调用 `csmGetVersion()` 返回 `0x06000001`，
+`csmGetLatestMocVersion()` 返回 `6`。外部生成的 arm64 binding 随后完成三个预置
+Moc 各 100 次 revive/model/update/array/drop，并由 `leaks` 得到 0-byte leak；详见
+`cubism-core-r5-probe.md`。临时二进制、header、Framework 源码、真实 binding 和
+inspector JSON 均未复制到仓库。Windows ABI、macOS Intel 原生验证和第二机器复核
 仍保持未完成。
 
 下载页要求下载者先阅读并同意 Live2D Proprietary Software License Agreement 与 Live2D Open Software License Agreement，并写明下载或启动软件即表示同意。因此 AI、CI、bootstrap 脚本和构建脚本均不得代替维护者勾选协议、绕过下载页或自动获取 ZIP。
@@ -93,9 +95,9 @@ Proprietary Software License 将“通过增加或组合文件/数据，使用�
 
 合法取得 SDK 后执行以下流程：
 
-1. 维护者在官方页面自行阅读并接受当时有效的两份协议，下载固定版本；当前文件为 `CubismSdkForNative-5-r.4.1.zip`。
+1. 维护者在官方页面自行阅读并接受当时有效的两份协议，下载固定版本；当前文件为 `CubismSdkForNative-5-r.5.zip`。
 2. ZIP 保存在仓库外的受控开发目录，不提交到 Git，不复制到 CI cache 或公开 artifact。
-3. 运行 `python3 tools/inspect-cubism-sdk.py /absolute/path/CubismSdkForNative-5-r.4.1.zip --expected-sha256 b71ec6bafc6578cce3b4cbbaa42a1cb51ae6eb477557932b02d22af957e733c7`。
+3. 运行 `python3 tools/inspect-cubism-sdk.py /absolute/path/CubismSdkForNative-5-r.5.zip --expected-sha256 7ff3a4bbc19c0a8728965aa522ab77eb11b252916453e68a8a78d3b71188bb12`。
 4. 首次验证记录 ZIP SHA-256、Core version、每个目标文件的路径/大小/hash，并由另一位维护者或独立机器复核。
 5. 维护者只在仓库外的受控目录准备 `Core/include/Live2DCubismCore.h`，使用 inspector 报告中的 header SHA-256 运行 `tools/cubism-bindgen`；真实 bindings 与 provenance 仍留在仓库外。
 6. 第二位维护者使用记录的 bindgen/libclang/target 配置独立生成并比较 output/config hash，再执行对应 Core 的 compile/link/ABI smoke；详见 `cubism-binding-generation.md`。
@@ -109,9 +111,9 @@ Proprietary Software License 将“通过增加或组合文件/数据，使用�
 以下事项尚未完成，不能由版本/许可文档替代：
 
 - 当前官方 ZIP SHA-256 已记录；第二来源复核仍待完成；
-- 已建立合成输入的可重复 raw binding 契约；仍缺 R5 header 真实 hash、授权后的生成、双人审阅与 ABI smoke；
-- Windows x64 和 macOS arm64/x64 Core 的真实加载、版本查询和 ABI smoke；
-- 三个预置 moc 的 consistency、model 创建、drawable 读取和析构；
+- 已建立合成输入的可重复 raw binding 契约，并在仓库外由真实 r.5 header 生成 arm64 binding；仍缺双人审阅、Windows x64 与 macOS x64 原生生成/ABI smoke；
+- macOS arm64 已完成真实 Core 加载、版本查询、三个预置 Moc 的 consistency/model/drawable/offscreen 数组与 100-cycle 析构；Windows x64 和 macOS x64 仍待完成；
+- 缺少包含非零 r.5 offscreen/enhanced rendering 数据的授权模型 fixture；
 - motion、expression、physics、pose 的独立 Rust 实现依据及许可书面结论；
 - Live2D 对 BongoCat Expandable Application 与公开发布方式的书面答复；
 - 最终安装包中 Core、license、notice、签名和更新方式的审计。
@@ -122,5 +124,5 @@ Proprietary Software License 将“通过增加或组合文件/数据，使用�
 - [Live2D Proprietary Software License Agreement](https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html)
 - [Live2D Open Software License Agreement](https://www.live2d.com/eula/live2d-open-software-license-agreement_en.html)
 - [Cubism SDK Release License](https://www.live2d.com/en/sdk/license/)
-- [Cubism Native Framework 5-r.4.1 release](https://github.com/Live2D/CubismNativeFramework/releases/tag/5-r.4.1)
-- [Cubism Native Samples 5-r.4.1 release](https://github.com/Live2D/CubismNativeSamples/releases/tag/5-r.4.1)
+- [Cubism Native Framework 5-r.5 release](https://github.com/Live2D/CubismNativeFramework/releases/tag/5-r.5)
+- [Cubism Native Samples 5-r.5 release](https://github.com/Live2D/CubismNativeSamples/releases/tag/5-r.5)

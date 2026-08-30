@@ -17,8 +17,8 @@ CI cache、workflow artifact、issue 或 release。
 
 | Item                   | Fixed value                                                     |
 | ---------------------- | --------------------------------------------------------------- |
-| SDK release            | Cubism 5 SDK for Native R5 (`5-r.4.1`)                          |
-| Core version           | `05.01.0000`                                                    |
+| SDK release            | Cubism 5 SDK for Native R5 (`5-r.5`)                            |
+| Core version           | `06.00.0001`                                                    |
 | Header path inside SDK | `Core/include/Live2DCubismCore.h`                               |
 | Generator              | `bindgen 0.72.1`                                                |
 | Hash implementation    | `sha2 0.11.0`                                                   |
@@ -96,6 +96,7 @@ not an SDK-derived file. Three generated goldens verify:
 - deterministic repeated output;
 - the `csm*` allowlist excludes unrelated vendor declarations;
 - required lifecycle and drawable symbols remain present;
+- the standalone Core probe compiles and passes Clippy against synthetic bindings without an SDK;
 - all three available product/R5 target intersections use the expected C ABI;
 - each generated file compiles as Rust 2024 metadata for its matching target;
 - generated-file changes fail CI until explicitly reviewed and refreshed.
@@ -110,8 +111,11 @@ cargo run --manifest-path tools/cubism-bindgen/Cargo.toml --locked -- check-fixt
 cargo check --manifest-path tools/cubism-bindgen/Cargo.toml --locked --release
 ```
 
-This proves the generation workflow, not complete compatibility with the supplied R5
-header or binaries. The real header SHA-256 is
-`0564a03edd0d56b90bac704bbbcc4e560b3d3d9000b49a0bd5d9cb886b414022`; the P0
-raw-binding TODO remains open until external generated outputs are reviewed and all
-target ABI/model smoke evidence exists.
+This proves the generation workflow. The real r.5 header SHA-256 is
+`6f1802780d1eb36ff39705e0764f9eeed9b41c313a13ac155270c6f4ad51d53f`; an external
+arm64 generation produced binding SHA-256
+`6cd53ddbb173d73a842b33a507c5c03c879adcb05a8c005730b58c1f0f061364` and passed the
+macOS arm64 Core/model probe in `cubism-core-r5-probe.md`. The synthetic contract now
+requires r.5's `csmGetRenderOrders`, drawable blend modes, part offscreen indices and
+all offscreen arrays. The P0 raw-binding TODO remains open until a second review and
+Windows x64/macOS x64 target ABI evidence exist.
