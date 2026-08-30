@@ -264,6 +264,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     additive/multiplicative blend、预乘 alpha、multiply/screen color 和 inverted mask。
     本机 release preview 分别连续提交 standard 716 帧、keyboard 596 帧、gamepad
     597 帧，三者首帧 GPU readback 和截图检查均通过；每个模型含 5 个 masked drawable。
+    后续产品 renderer 已按 Core `source_index` 每帧同步 vertex、index、render order、
+    visibility、opacity、blend/color 和 mask 引用；类型化预览驱动下 standard 177/177、
+    keyboard 175/175、gamepad 179/179 帧均产生变化 snapshot 并完成 Metal present。
 - [ ] 验证 motion、expression、physics、pose 至少各一个真实样本。
   - 状态（2026-08-30）：6 个预置 motion3 与 15 个 exp3 已通过强类型结构解析和计数门禁；本机 13 个历史 physics3 也以匿名只读方式通过 v3 静态 parser，共覆盖 86 setting/139 input/206 output/267 vertex。合成 pose3 已固定 Type/fade/group/part/link 拒绝边界，但不是真实样本。motion/expression 的实际时间求值、参数混合与优先级，physics/pose 的实际求值，以及授权 physics/pose fixture 仍未完成，因此本项保持未勾选。
 - [ ] 验证模型切换/销毁 100 次，无 CPU/GPU 资源增长。
@@ -308,7 +311,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     完整 sidecar 强类型校验与预置只读 catalog 继续由 Phase 4 任务跟踪。
 - [ ] 创建 bongocat-live2d：Cubism safe wrapper 和模型求值。
   - 状态（2026-08-30）：commit `57118ff` 已建立正式 crate，完成 Core 版本门禁、
-    Moc/Model safe owner、drawable snapshot 和三个预置模型测试；motion、expression、
+    Moc/Model safe owner、drawable snapshot 和三个预置模型测试；随后又在加载时解析并
+    验证 Core parameter id/range/default 表，冻结 19 个类型化产品参数和三预置支持矩阵，
+    提供 finite/clamp/normalized update，不向上暴露 raw pointer。motion、expression、
     physics、pose 求值尚未实现，因此总项保持未完成。
 - [ ] 创建 bongocat-render：render snapshot 和 renderer contract。
 - [ ] 创建 bongocat-ui：GPUI 页面和 design system。
@@ -567,8 +572,13 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 ### 5.2 Cubism safe layer
 
 - [ ] 封装 Core version、logging、Moc consistency 和 Model creation。
+  - 状态（2026-08-30）：Core version、Moc consistency 和 Model creation 已进入正式
+    safe wrapper；Core logging callback 与稳定日志边界尚未实现。
 - [ ] 用 Rust owner 保证 Moc、Model 和 buffer 析构顺序。
 - [ ] 校验 parameter/part/drawable id、index 和范围。
+  - 状态（2026-08-30）：正式 wrapper 已在 Model 创建时一次性验证 product parameter
+    ID/range/default，按模型解析 stable index，并验证 drawable array、index、texture、
+    mask、vertex、opacity/color；part 表和完整 custom parameter 诊断尚未完成。
 - [ ] 模型切换使用 prepare/commit/rollback。
 - [ ] 加载失败保留当前可用模型。
   - 状态（2026-08-30）：文件解析在 runtime 外完成，只有无法由调用方自行构造、由
@@ -580,6 +590,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 ### 5.3 动作与状态
 
 - [ ] 实现 parameter 默认值、保存/恢复和 clamp。
+  - 状态（2026-08-30）：Core range/default 已进入类型化查询，绝对值和 normalized 写入
+    拒绝非 finite、自动 clamp 并明确返回 unsupported；motion/expression 前后的参数
+    save/restore 和 runtime owner 接入尚未完成。
 - [ ] 实现 motion curve、fade、priority 和 completion。
 - [ ] 实现 expression 混合和互斥/叠加语义。
 - [ ] 实现 physics、pose、eye blink、breath 等实际需求。
@@ -591,6 +604,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 ### 5.4 GPU 绘制
 
 - [ ] 实现 drawable order、visibility、opacity 和 dynamic flags。
+  - 状态（2026-08-30）：macOS Metal renderer 已消费每帧 Core snapshot，并按 stable
+    `source_index` 更新固定 GPU buffer、重新应用 render order/visibility/opacity/color/
+    mask 状态；基于 Core dynamic flags 的 dirty-only upload 与 Windows 对等实现尚未完成。
 - [ ] 实现 normal/additive/multiplicative blend。
 - [ ] 实现 clipping mask、inverted mask 和 mask texture 生命周期。
 - [ ] 实现 texture upload、sampler、过滤和颜色空间策略。

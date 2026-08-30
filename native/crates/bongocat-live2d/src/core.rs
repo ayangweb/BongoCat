@@ -1,9 +1,11 @@
 use crate::{
     BlendMode, CUBISM_CORE_VERSION, CUBISM_LATEST_MOC_VERSION, CanvasInfo, DrawableSnapshot,
-    Live2dError, Live2dErrorCode, RenderSnapshot, Vertex, sys,
+    Live2dError, Live2dErrorCode, ParameterRange, ParameterUpdate, ProductParameter,
+    RenderSnapshot, Vertex, sys,
 };
 use std::{
     alloc::{Layout, alloc_zeroed, dealloc},
+    ffi::CStr,
     fs,
     mem::ManuallyDrop,
     path::Path,
@@ -65,8 +67,15 @@ impl Drop for AlignedMemory {
 
 pub(crate) struct CoreModel {
     model: NonNull<sys::csmModel>,
+    parameters: [Option<ResolvedParameter>; ProductParameter::COUNT],
     model_memory: ManuallyDrop<AlignedMemory>,
     moc_memory: ManuallyDrop<AlignedMemory>,
+}
+
+#[derive(Clone, Copy)]
+struct ResolvedParameter {
+    index: usize,
+    range: ParameterRange,
 }
 
 impl CoreModel {
@@ -134,8 +143,10 @@ impl CoreModel {
                     "Cubism Core returned a null Model",
                 )
             })?;
+            let parameters = resolve_product_parameters(model.as_ptr())?;
             Ok(Self {
                 model,
+                parameters,
                 model_memory: ManuallyDrop::new(model_memory),
                 moc_memory: ManuallyDrop::new(moc_memory),
             })
@@ -168,6 +179,68 @@ impl CoreModel {
             }
         }
         Ok(())
+    }
+
+    pub(crate) fn parameter_range(&self, parameter: ProductParameter) -> Option<ParameterRange> {
+        self.parameters[parameter.slot()].map(|resolved| resolved.range)
+    }
+
+    pub(crate) fn parameter_value(
+        &self,
+        parameter: ProductParameter,
+    ) -> Result<Option<f32>, Live2dError> {
+        let Some(resolved) = self.parameters[parameter.slot()] else {
+            return Ok(None);
+        };
+        // SAFETY: the parameter table and values belong to the live Model.
+        let value = unsafe {
+            let count = self.parameter_count()?;
+            let values = checked_slice(
+                sys::csmGetParameterValues(self.model.as_ptr()),
+                count,
+                "parameter values",
+            )?;
+            values[resolved.index]
+        };
+        if !value.is_finite() {
+            return Err(Live2dError::new(
+                Live2dErrorCode::InvalidCoreValue,
+                format!("{} has a non-finite current value", parameter.id()),
+            ));
+        }
+        Ok(Some(value))
+    }
+
+    pub(crate) fn set_parameter(
+        &mut self,
+        parameter: ProductParameter,
+        requested: f32,
+    ) -> Result<ParameterUpdate, Live2dError> {
+        if !requested.is_finite() {
+            return Err(Live2dError::new(
+                Live2dErrorCode::ParameterValueInvalid,
+                format!("{} received a non-finite value", parameter.id()),
+            ));
+        }
+        let Some(resolved) = self.parameters[parameter.slot()] else {
+            return Ok(ParameterUpdate::Unsupported);
+        };
+        let value = requested.clamp(resolved.range.minimum, resolved.range.maximum);
+        // SAFETY: self uniquely owns the live Model and the resolved index was
+        // validated against this Model's parameter count during construction.
+        unsafe {
+            let count = self.parameter_count()?;
+            let values = checked_slice_mut(
+                sys::csmGetParameterValues(self.model.as_ptr()),
+                count,
+                "parameter values",
+            )?;
+            values[resolved.index] = value;
+        }
+        Ok(ParameterUpdate::Applied {
+            value,
+            clamped: value != requested,
+        })
     }
 
     pub(crate) fn update_and_snapshot(&mut self) -> Result<RenderSnapshot, Live2dError> {
@@ -345,6 +418,14 @@ impl CoreModel {
             "drawable count",
         )
     }
+
+    unsafe fn parameter_count(&self) -> Result<usize, Live2dError> {
+        // SAFETY: self.model points into the live model allocation.
+        nonnegative(
+            unsafe { sys::csmGetParameterCount(self.model.as_ptr()) },
+            "parameter count",
+        )
+    }
 }
 
 impl Drop for CoreModel {
@@ -383,6 +464,92 @@ unsafe fn read_canvas(model: *const sys::csmModel) -> Result<CanvasInfo, Live2dE
         origin_y: origin.Y,
         pixels_per_unit,
     })
+}
+
+unsafe fn resolve_product_parameters(
+    model: *mut sys::csmModel,
+) -> Result<[Option<ResolvedParameter>; ProductParameter::COUNT], Live2dError> {
+    // SAFETY: model is freshly initialized and remains owned by CoreModel.
+    let count = nonnegative(
+        unsafe { sys::csmGetParameterCount(model) },
+        "parameter count",
+    )?;
+    // SAFETY: all pointer/count pairs come from the same live Model.
+    let ids = unsafe { checked_slice(sys::csmGetParameterIds(model), count, "parameter ids")? };
+    let minimums = unsafe {
+        checked_slice(
+            sys::csmGetParameterMinimumValues(model),
+            count,
+            "parameter minimums",
+        )?
+    };
+    let maximums = unsafe {
+        checked_slice(
+            sys::csmGetParameterMaximumValues(model),
+            count,
+            "parameter maximums",
+        )?
+    };
+    let defaults = unsafe {
+        checked_slice(
+            sys::csmGetParameterDefaultValues(model),
+            count,
+            "parameter defaults",
+        )?
+    };
+    let mut resolved = [None; ProductParameter::COUNT];
+    for index in 0..count {
+        let id_pointer = ids[index];
+        if id_pointer.is_null() {
+            return Err(Live2dError::new(
+                Live2dErrorCode::InvalidCoreArray,
+                format!("Core returned a null parameter id at index {index}"),
+            ));
+        }
+        // SAFETY: Cubism Core parameter IDs are documented as NUL-terminated
+        // strings whose storage remains valid for the Model lifetime.
+        let id = unsafe { CStr::from_ptr(id_pointer) }
+            .to_str()
+            .map_err(|_| {
+                Live2dError::new(
+                    Live2dErrorCode::InvalidCoreValue,
+                    format!("Core returned a non-UTF-8 parameter id at index {index}"),
+                )
+            })?;
+        let Some(parameter) = ProductParameter::ALL
+            .iter()
+            .copied()
+            .find(|parameter| parameter.id() == id)
+        else {
+            continue;
+        };
+        let range = ParameterRange {
+            minimum: minimums[index],
+            maximum: maximums[index],
+            default: defaults[index],
+        };
+        if !range.minimum.is_finite()
+            || !range.maximum.is_finite()
+            || !range.default.is_finite()
+            || range.minimum > range.maximum
+            || !(range.minimum..=range.maximum).contains(&range.default)
+        {
+            return Err(Live2dError::new(
+                Live2dErrorCode::InvalidCoreValue,
+                format!("Core returned an invalid range for {id}"),
+            ));
+        }
+        if resolved[parameter.slot()]
+            .replace(ResolvedParameter { index, range })
+            .is_some()
+        {
+            return Err(Live2dError::new(
+                Live2dErrorCode::InvalidCoreValue,
+                format!("Core returned duplicate parameter id {id}"),
+            ));
+        }
+    }
+    Ok(resolved)
 }
 
 fn decode_blend_mode(mode: i32) -> Result<BlendMode, Live2dError> {
@@ -452,6 +619,25 @@ unsafe fn checked_slice<'a, T>(
     Ok(unsafe { std::slice::from_raw_parts(pointer, count) })
 }
 
+unsafe fn checked_slice_mut<'a, T>(
+    pointer: *mut T,
+    count: usize,
+    name: &str,
+) -> Result<&'a mut [T], Live2dError> {
+    if count == 0 {
+        return Ok(&mut []);
+    }
+    if pointer.is_null() {
+        return Err(Live2dError::new(
+            Live2dErrorCode::InvalidCoreArray,
+            format!("Core returned a null {name} array for {count} values"),
+        ));
+    }
+    // SAFETY: the Core owns at least count uniquely writable elements for
+    // this pointer/count pair while the caller's Model owner remains alive.
+    Ok(unsafe { std::slice::from_raw_parts_mut(pointer, count) })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -486,5 +672,111 @@ mod tests {
                 assert_eq!(model.update_and_snapshot().expect("repeat snapshot"), first);
             }
         }
+    }
+
+    #[test]
+    fn preset_product_parameters_resolve_and_drive_drawables() {
+        for id in ["standard", "keyboard", "gamepad"] {
+            let prepared = PreparedModel::prepare(
+                ModelId::parse(id).expect("model id"),
+                repository_root().join("native/resources/models").join(id),
+                ModelPackageLimits::default(),
+            )
+            .expect("prepare preset");
+            let mut model = crate::Live2dModel::load(&prepared).expect("load Cubism model");
+            let expected_parameters: &[ProductParameter] = match id {
+                "standard" => &[
+                    ProductParameter::AngleX,
+                    ProductParameter::AngleY,
+                    ProductParameter::AngleZ,
+                    ProductParameter::EyeBallX,
+                    ProductParameter::EyeBallY,
+                    ProductParameter::LeftHandDown,
+                    ProductParameter::MouseX,
+                    ProductParameter::MouseY,
+                    ProductParameter::MouseLeftDown,
+                    ProductParameter::MouseRightDown,
+                ],
+                "keyboard" => &[
+                    ProductParameter::AngleX,
+                    ProductParameter::AngleY,
+                    ProductParameter::AngleZ,
+                    ProductParameter::EyeBallX,
+                    ProductParameter::EyeBallY,
+                    ProductParameter::LeftHandDown,
+                    ProductParameter::RightHandDown,
+                ],
+                "gamepad" => &[
+                    ProductParameter::AngleX,
+                    ProductParameter::AngleY,
+                    ProductParameter::AngleZ,
+                    ProductParameter::EyeBallX,
+                    ProductParameter::EyeBallY,
+                    ProductParameter::LeftHandDown,
+                    ProductParameter::RightHandDown,
+                    ProductParameter::StickLeftDown,
+                    ProductParameter::StickRightDown,
+                    ProductParameter::StickShowLeftHand,
+                    ProductParameter::StickShowRightHand,
+                    ProductParameter::StickLeftX,
+                    ProductParameter::StickLeftY,
+                    ProductParameter::StickRightX,
+                    ProductParameter::StickRightY,
+                ],
+                _ => unreachable!("preset model list is fixed"),
+            };
+            for parameter in ProductParameter::ALL {
+                assert_eq!(
+                    model.parameter_range(parameter).is_some(),
+                    expected_parameters.contains(&parameter),
+                    "{id} support mismatch for {}",
+                    parameter.id()
+                );
+            }
+            let baseline = model.update_and_snapshot().expect("baseline snapshot");
+            let range = model
+                .parameter_range(ProductParameter::LeftHandDown)
+                .expect("left hand parameter");
+            let update = model
+                .set_parameter(ProductParameter::LeftHandDown, f32::MAX)
+                .expect("set parameter");
+            assert_eq!(
+                update,
+                ParameterUpdate::Applied {
+                    value: range.maximum,
+                    clamped: true,
+                }
+            );
+            assert_eq!(
+                model
+                    .parameter_value(ProductParameter::LeftHandDown)
+                    .expect("read parameter"),
+                Some(range.maximum)
+            );
+            let pressed = model.update_and_snapshot().expect("pressed snapshot");
+            assert_ne!(pressed, baseline, "{id} left hand must affect drawables");
+        }
+    }
+
+    #[test]
+    fn parameter_updates_reject_non_finite_and_report_unsupported_ids() {
+        let prepared = PreparedModel::prepare(
+            ModelId::parse("keyboard").expect("model id"),
+            repository_root().join("native/resources/models/keyboard"),
+            ModelPackageLimits::default(),
+        )
+        .expect("prepare preset");
+        let mut model = crate::Live2dModel::load(&prepared).expect("load Cubism model");
+        let error = model
+            .set_parameter(ProductParameter::LeftHandDown, f32::NAN)
+            .expect_err("NaN must fail");
+        assert_eq!(error.code, Live2dErrorCode::ParameterValueInvalid);
+        assert_eq!(
+            model
+                .set_parameter(ProductParameter::MouseLeftDown, 1.0)
+                .expect("unsupported is not corrupt"),
+            ParameterUpdate::Unsupported
+        );
+        assert_eq!(model.parameter_range(ProductParameter::MouseLeftDown), None);
     }
 }

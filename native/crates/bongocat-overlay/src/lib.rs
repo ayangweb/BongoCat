@@ -6,6 +6,7 @@ use std::{fmt, path::Path, time::Duration};
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PreviewReport {
     pub frames_presented: u64,
+    pub dynamic_snapshots: u64,
     pub drawable_count: usize,
     pub masked_drawable_count: usize,
     pub texture_count: usize,

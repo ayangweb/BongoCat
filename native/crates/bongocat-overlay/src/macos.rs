@@ -1,5 +1,7 @@
 use crate::{OverlayError, PreviewReport};
-use bongocat_live2d::{BlendMode, CanvasInfo, Live2dModel, RenderSnapshot, TextureAsset};
+use bongocat_live2d::{
+    BlendMode, CanvasInfo, Live2dModel, ProductParameter, RenderSnapshot, TextureAsset,
+};
 use bongocat_model::{ModelId, ModelPackageLimits, PreparedModel};
 use image::ImageReader;
 use metal::{
@@ -112,6 +114,7 @@ struct Uniforms {
 
 struct Mesh {
     source_index: usize,
+    render_order: i32,
     vertex_buffer: Buffer,
     index_buffer: Buffer,
     index_count: u64,
@@ -123,6 +126,7 @@ struct Mesh {
     masks: Vec<usize>,
     visible: bool,
     inverted_mask: bool,
+    mask_texture: Option<Texture>,
 }
 
 struct Pipelines {
@@ -150,7 +154,6 @@ struct NativeOverlay {
     sampler: SamplerState,
     textures: Vec<Texture>,
     meshes: Vec<Mesh>,
-    masks: Vec<Option<Texture>>,
     empty_mask: Texture,
     canvas: CanvasInfo,
     masked_drawable_count: usize,
@@ -169,7 +172,7 @@ pub(crate) fn run_model_preview(
     .map_err(|error| OverlayError::new(error.to_string()))?;
     let mut model =
         Live2dModel::load(&prepared).map_err(|error| OverlayError::new(error.to_string()))?;
-    let snapshot = model
+    let mut previous_snapshot = model
         .update_and_snapshot()
         .map_err(|error| OverlayError::new(error.to_string()))?;
     let mtm = MainThreadMarker::new()
@@ -177,12 +180,13 @@ pub(crate) fn run_model_preview(
     let application = NSApplication::sharedApplication(mtm);
     application.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
     application.finishLaunching();
-    let overlay = NativeOverlay::create(mtm, model.texture_assets(), &snapshot)?;
+    let mut overlay = NativeOverlay::create(mtm, model.texture_assets(), &previous_snapshot)?;
     overlay.panel.orderFrontRegardless();
 
     let started = Instant::now();
     let mut next_frame = started;
     let mut frames_presented = 0_u64;
+    let mut dynamic_snapshots = 0_u64;
     while overlay.panel.isVisible() && (duration.is_zero() || started.elapsed() < duration) {
         autoreleasepool(|_| {
             let deadline = NSDate::dateWithTimeIntervalSinceNow(0.0);
@@ -199,7 +203,16 @@ pub(crate) fn run_model_preview(
             }
             application.updateWindows();
         });
+        apply_preview_parameters(&mut model, model_id, started.elapsed())?;
+        let snapshot = model
+            .update_and_snapshot()
+            .map_err(|error| OverlayError::new(error.to_string()))?;
+        if snapshot != previous_snapshot {
+            dynamic_snapshots = dynamic_snapshots.saturating_add(1);
+        }
+        overlay.sync_snapshot(&snapshot)?;
         overlay.draw(frames_presented == 0)?;
+        previous_snapshot = snapshot;
         frames_presented += 1;
         next_frame += FRAME_INTERVAL;
         if let Some(delay) = next_frame.checked_duration_since(Instant::now()) {
@@ -211,6 +224,7 @@ pub(crate) fn run_model_preview(
 
     Ok(PreviewReport {
         frames_presented,
+        dynamic_snapshots,
         drawable_count: overlay.meshes.len(),
         masked_drawable_count: overlay.masked_drawable_count,
         texture_count: overlay.textures.len(),
@@ -281,6 +295,8 @@ impl NativeOverlay {
             .iter()
             .map(|asset| load_texture(&device, asset))
             .collect::<Result<Vec<_>, _>>()?;
+        let drawable_width = layer.drawable_size().width.round() as u64;
+        let drawable_height = layer.drawable_size().height.round() as u64;
         let meshes = snapshot
             .drawables
             .iter()
@@ -297,6 +313,7 @@ impl NativeOverlay {
                 );
                 Mesh {
                     source_index: drawable.source_index,
+                    render_order: drawable.render_order,
                     vertex_buffer,
                     index_buffer,
                     index_count: drawable.indices.len() as u64,
@@ -308,16 +325,9 @@ impl NativeOverlay {
                     masks: drawable.masks.clone(),
                     visible: drawable.visible,
                     inverted_mask: drawable.inverted_mask,
+                    mask_texture: (!drawable.masks.is_empty())
+                        .then(|| create_mask_texture(&device, drawable_width, drawable_height)),
                 }
-            })
-            .collect::<Vec<_>>();
-        let drawable_width = layer.drawable_size().width.round() as u64;
-        let drawable_height = layer.drawable_size().height.round() as u64;
-        let masks = meshes
-            .iter()
-            .map(|mesh| {
-                (!mesh.masks.is_empty())
-                    .then(|| create_mask_texture(&device, drawable_width, drawable_height))
             })
             .collect::<Vec<_>>();
         let empty_mask = create_solid_mask_texture(&device);
@@ -329,7 +339,6 @@ impl NativeOverlay {
             sampler,
             textures,
             meshes,
-            masks,
             empty_mask,
             canvas: snapshot.canvas,
             masked_drawable_count: snapshot
@@ -338,6 +347,50 @@ impl NativeOverlay {
                 .filter(|drawable| !drawable.masks.is_empty())
                 .count(),
         })
+    }
+
+    fn sync_snapshot(&mut self, snapshot: &RenderSnapshot) -> Result<(), OverlayError> {
+        if snapshot.drawables.len() != self.meshes.len() {
+            return Err(OverlayError::new(format!(
+                "drawable count changed from {} to {}",
+                self.meshes.len(),
+                snapshot.drawables.len()
+            )));
+        }
+        for drawable in &snapshot.drawables {
+            let mesh = self
+                .meshes
+                .iter_mut()
+                .find(|mesh| mesh.source_index == drawable.source_index)
+                .ok_or_else(|| {
+                    OverlayError::new(format!(
+                        "drawable source {} is unavailable",
+                        drawable.source_index
+                    ))
+                })?;
+            if mesh.mask_texture.is_some() != !drawable.masks.is_empty() {
+                return Err(OverlayError::new(format!(
+                    "drawable {} changed clipping topology",
+                    drawable.source_index
+                )));
+            }
+            upload_slice(&mesh.vertex_buffer, &drawable.vertices, "vertices")?;
+            upload_slice(&mesh.index_buffer, &drawable.indices, "indices")?;
+            mesh.render_order = drawable.render_order;
+            mesh.index_count = drawable.indices.len() as u64;
+            mesh.texture_index = drawable.texture_index;
+            mesh.opacity = drawable.opacity;
+            mesh.blend_mode = drawable.blend_mode;
+            mesh.multiply_color = drawable.multiply_color;
+            mesh.screen_color = drawable.screen_color;
+            mesh.masks.clone_from(&drawable.masks);
+            mesh.visible = drawable.visible;
+            mesh.inverted_mask = drawable.inverted_mask;
+        }
+        self.meshes
+            .sort_by_key(|mesh| (mesh.render_order, mesh.source_index));
+        self.canvas = snapshot.canvas;
+        Ok(())
     }
 
     fn draw(&self, verify_frame: bool) -> Result<(), OverlayError> {
@@ -360,8 +413,8 @@ impl NativeOverlay {
             drawable.texture().width() as f32,
             drawable.texture().height() as f32,
         );
-        for (mesh, mask_texture) in self.meshes.iter().zip(&self.masks) {
-            let Some(mask_texture) = mask_texture else {
+        for mesh in &self.meshes {
+            let Some(mask_texture) = &mesh.mask_texture else {
                 continue;
             };
             let mask_pass = RenderPassDescriptor::new();
@@ -411,10 +464,11 @@ impl NativeOverlay {
         }
 
         let encoder = command_buffer.new_render_command_encoder(pass);
-        for (mesh, mask_texture) in self.meshes.iter().zip(&self.masks) {
+        for mesh in &self.meshes {
             if !mesh.visible || mesh.opacity <= 0.0 {
                 continue;
             }
+            let mask_texture = &mesh.mask_texture;
             let uniforms = Uniforms {
                 scale_offset,
                 multiply_color: mesh.multiply_color,
@@ -455,14 +509,17 @@ impl NativeOverlay {
         encoder.end_encoding();
         command_buffer.present_drawable(drawable);
         command_buffer.commit();
+        // The preview owns one shared vertex buffer per drawable. Waiting here
+        // prevents the next CPU snapshot upload from racing this GPU frame;
+        // the product renderer will replace this with fenced frame resources.
+        command_buffer.wait_until_completed();
+        if command_buffer.status() != MTLCommandBufferStatus::Completed {
+            return Err(OverlayError::new(format!(
+                "Metal command buffer ended with {:?}",
+                command_buffer.status()
+            )));
+        }
         if verify_frame {
-            command_buffer.wait_until_completed();
-            if command_buffer.status() != MTLCommandBufferStatus::Completed {
-                return Err(OverlayError::new(format!(
-                    "Metal command buffer ended with {:?}",
-                    command_buffer.status()
-                )));
-            }
             verify_non_empty_frame(drawable.texture())?;
         }
         Ok(())
@@ -477,6 +534,100 @@ impl Drop for NativeOverlay {
         unsafe { self.panel.setReleasedWhenClosed(true) };
         self.panel.close();
     }
+}
+
+fn apply_preview_parameters(
+    model: &mut Live2dModel,
+    model_id: &str,
+    elapsed: Duration,
+) -> Result<(), OverlayError> {
+    let seconds = elapsed.as_secs_f32();
+    let horizontal = (seconds * std::f32::consts::TAU / 4.0).sin();
+    let vertical = (seconds * std::f32::consts::TAU / 5.0).cos();
+    set_preview_parameters(
+        model,
+        &[
+            (ProductParameter::MouseX, horizontal),
+            (ProductParameter::MouseY, vertical),
+            (ProductParameter::AngleX, horizontal),
+            (ProductParameter::AngleY, vertical),
+            (ProductParameter::AngleZ, horizontal * vertical),
+            (ProductParameter::EyeBallX, horizontal),
+            (ProductParameter::EyeBallY, vertical),
+        ],
+    )?;
+
+    let step = (elapsed.as_millis() / 600) % 4;
+    let left = f32::from(step < 2);
+    let right = f32::from(step >= 2);
+    match model_id {
+        "standard" => set_preview_parameters(
+            model,
+            &[
+                (ProductParameter::LeftHandDown, left),
+                (ProductParameter::MouseLeftDown, f32::from(step == 0)),
+                (ProductParameter::MouseRightDown, f32::from(step == 1)),
+            ],
+        ),
+        "keyboard" => set_preview_parameters(
+            model,
+            &[
+                (ProductParameter::LeftHandDown, left),
+                (ProductParameter::RightHandDown, right),
+            ],
+        ),
+        "gamepad" => set_preview_parameters(
+            model,
+            &[
+                (ProductParameter::LeftHandDown, left),
+                (ProductParameter::RightHandDown, right),
+                (ProductParameter::StickShowLeftHand, 1.0),
+                (ProductParameter::StickShowRightHand, 1.0),
+                (ProductParameter::StickLeftDown, f32::from(step == 0)),
+                (ProductParameter::StickRightDown, f32::from(step == 2)),
+                (ProductParameter::StickLeftX, horizontal),
+                (ProductParameter::StickLeftY, vertical),
+                (ProductParameter::StickRightX, -horizontal),
+                (ProductParameter::StickRightY, -vertical),
+            ],
+        ),
+        _ => Ok(()),
+    }
+}
+
+fn set_preview_parameters(
+    model: &mut Live2dModel,
+    parameters: &[(ProductParameter, f32)],
+) -> Result<(), OverlayError> {
+    for &(parameter, value) in parameters {
+        model
+            .set_normalized_parameter(parameter, value)
+            .map_err(|error| OverlayError::new(error.to_string()))?;
+    }
+    Ok(())
+}
+
+fn upload_slice<T>(buffer: &Buffer, values: &[T], name: &str) -> Result<(), OverlayError> {
+    let bytes = std::mem::size_of_val(values) as u64;
+    if buffer.length() != bytes {
+        return Err(OverlayError::new(format!(
+            "{name} buffer size changed from {} to {bytes}",
+            buffer.length()
+        )));
+    }
+    if bytes == 0 {
+        return Ok(());
+    }
+    // SAFETY: StorageModeShared exposes a writable CPU mapping for the full
+    // fixed-size buffer, and source and destination cannot overlap.
+    unsafe {
+        std::ptr::copy_nonoverlapping(
+            values.as_ptr().cast::<u8>(),
+            buffer.contents().cast::<u8>(),
+            bytes as usize,
+        )
+    };
+    Ok(())
 }
 
 fn create_pipelines(device: &Device) -> Result<Pipelines, OverlayError> {

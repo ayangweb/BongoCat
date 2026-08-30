@@ -29,8 +29,27 @@ cargo test --manifest-path native/Cargo.toml --workspace
 cargo check --manifest-path native/Cargo.toml --workspace --release
 ```
 
-The workspace does not download or bundle Cubism artifacts. Local Cubism setup remains a separate,
-explicit process governed by `docs/adr/0011-progressive-implementation-release-gates.md`.
+## macOS Live2D Preview
+
+The current visible product slice loads the committed Cubism Native 5-r.5 development baseline and
+renders one of the three preset models in a transparent Metal overlay. The final argument is the
+preview duration in seconds:
+
+```text
+cargo run --manifest-path native/Cargo.toml -p bongocat-overlay --release -- standard 30
+cargo run --manifest-path native/Cargo.toml -p bongocat-overlay --release -- keyboard 30
+cargo run --manifest-path native/Cargo.toml -p bongocat-overlay --release -- gamepad 30
+```
+
+The preview applies deterministic typed parameter input so hand, pointer, head, eye, and gamepad
+changes exercise per-frame Cubism evaluation and GPU buffer updates. It is not yet the assembled
+application: platform input producers, the runtime render channel, GPUI settings, and the Windows
+preset-model renderer remain separate work items.
+
+The fixed-version Cubism Core, header, generated bindings, and preset model development baseline are
+committed under `vendor/cubism/5-r.5` and `resources/models`. Builds do not download SDK artifacts.
+Their provenance and release gates are documented in
+`docs/adr/0011-progressive-implementation-release-gates.md` and the Phase 0 Cubism records.
 
 Model package parsing is also SDK-independent. `bongocat-model` prepares and validates package
 metadata before a typed command transfers ownership to the runtime; Cubism model creation and GPU

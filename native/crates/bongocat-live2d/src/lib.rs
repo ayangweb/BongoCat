@@ -15,6 +15,96 @@ pub const CUBISM_SDK_RELEASE: &str = "5-r.5";
 pub const CUBISM_CORE_VERSION: u32 = 0x0600_0001;
 pub const CUBISM_LATEST_MOC_VERSION: u32 = 6;
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[repr(usize)]
+pub enum ProductParameter {
+    AngleX,
+    AngleY,
+    AngleZ,
+    EyeBallX,
+    EyeBallY,
+    LeftHandDown,
+    RightHandDown,
+    MouseX,
+    MouseY,
+    MouseLeftDown,
+    MouseRightDown,
+    StickLeftDown,
+    StickRightDown,
+    StickShowLeftHand,
+    StickShowRightHand,
+    StickLeftX,
+    StickLeftY,
+    StickRightX,
+    StickRightY,
+}
+
+impl ProductParameter {
+    pub const ALL: [Self; Self::COUNT] = [
+        Self::AngleX,
+        Self::AngleY,
+        Self::AngleZ,
+        Self::EyeBallX,
+        Self::EyeBallY,
+        Self::LeftHandDown,
+        Self::RightHandDown,
+        Self::MouseX,
+        Self::MouseY,
+        Self::MouseLeftDown,
+        Self::MouseRightDown,
+        Self::StickLeftDown,
+        Self::StickRightDown,
+        Self::StickShowLeftHand,
+        Self::StickShowRightHand,
+        Self::StickLeftX,
+        Self::StickLeftY,
+        Self::StickRightX,
+        Self::StickRightY,
+    ];
+    pub(crate) const COUNT: usize = 19;
+
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::AngleX => "ParamAngleX",
+            Self::AngleY => "ParamAngleY",
+            Self::AngleZ => "ParamAngleZ",
+            Self::EyeBallX => "ParamEyeBallX",
+            Self::EyeBallY => "ParamEyeBallY",
+            Self::LeftHandDown => "CatParamLeftHandDown",
+            Self::RightHandDown => "CatParamRightHandDown",
+            Self::MouseX => "ParamMouseX",
+            Self::MouseY => "ParamMouseY",
+            Self::MouseLeftDown => "ParamMouseLeftDown",
+            Self::MouseRightDown => "ParamMouseRightDown",
+            Self::StickLeftDown => "CatParamStickLeftDown",
+            Self::StickRightDown => "CatParamStickRightDown",
+            Self::StickShowLeftHand => "CatParamStickShowLeftHand",
+            Self::StickShowRightHand => "CatParamStickShowRightHand",
+            Self::StickLeftX => "CatParamStickLX",
+            Self::StickLeftY => "CatParamStickLY",
+            Self::StickRightX => "CatParamStickRX",
+            Self::StickRightY => "CatParamStickRY",
+        }
+    }
+
+    pub(crate) const fn slot(self) -> usize {
+        self as usize
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ParameterRange {
+    pub minimum: f32,
+    pub maximum: f32,
+    pub default: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ParameterUpdate {
+    Unsupported,
+    Applied { value: f32, clamped: bool },
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CanvasInfo {
     pub width: f32,
@@ -82,6 +172,7 @@ pub enum Live2dErrorCode {
     PlatformUnsupported,
     ResourceIo,
     TextureIndexInvalid,
+    ParameterValueInvalid,
     UnsupportedBlendMode,
 }
 
@@ -151,6 +242,78 @@ impl Live2dModel {
         &self.textures
     }
 
+    pub fn parameter_range(&self, parameter: ProductParameter) -> Option<ParameterRange> {
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            self.core.parameter_range(parameter)
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            let _ = parameter;
+            None
+        }
+    }
+
+    pub fn parameter_value(&self, parameter: ProductParameter) -> Result<Option<f32>, Live2dError> {
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            self.core.parameter_value(parameter)
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            let _ = parameter;
+            Err(Live2dError::new(
+                Live2dErrorCode::PlatformUnsupported,
+                "Cubism Core is available only on the Windows and macOS product targets",
+            ))
+        }
+    }
+
+    pub fn set_parameter(
+        &mut self,
+        parameter: ProductParameter,
+        value: f32,
+    ) -> Result<ParameterUpdate, Live2dError> {
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            self.core.set_parameter(parameter, value)
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            let _ = (parameter, value);
+            Err(Live2dError::new(
+                Live2dErrorCode::PlatformUnsupported,
+                "Cubism Core is available only on the Windows and macOS product targets",
+            ))
+        }
+    }
+
+    pub fn set_normalized_parameter(
+        &mut self,
+        parameter: ProductParameter,
+        value: f32,
+    ) -> Result<ParameterUpdate, Live2dError> {
+        if !value.is_finite() {
+            return Err(Live2dError::new(
+                Live2dErrorCode::ParameterValueInvalid,
+                format!("{} received a non-finite normalized value", parameter.id()),
+            ));
+        }
+        let Some(range) = self.parameter_range(parameter) else {
+            return Ok(ParameterUpdate::Unsupported);
+        };
+        let normalized = value.clamp(-1.0, 1.0);
+        let mapped = if normalized >= 0.0 {
+            range.default + (range.maximum - range.default) * normalized
+        } else {
+            range.default + (range.default - range.minimum) * normalized
+        };
+        self.set_parameter(parameter, mapped)
+    }
+
     pub fn update_and_snapshot(&mut self) -> Result<RenderSnapshot, Live2dError> {
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
@@ -181,5 +344,18 @@ mod tests {
     fn supported_blend_modes_are_explicit() {
         assert_ne!(BlendMode::Normal, BlendMode::Additive);
         assert_ne!(BlendMode::Additive, BlendMode::Multiplicative);
+    }
+
+    #[test]
+    fn product_parameter_ids_are_stable_and_unique() {
+        let mut ids = ProductParameter::ALL
+            .iter()
+            .map(|parameter| parameter.id())
+            .collect::<Vec<_>>();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), ProductParameter::ALL.len());
+        assert_eq!(ProductParameter::LeftHandDown.id(), "CatParamLeftHandDown");
+        assert_eq!(ProductParameter::StickRightY.id(), "CatParamStickRY");
     }
 }
