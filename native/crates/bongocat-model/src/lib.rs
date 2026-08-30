@@ -54,14 +54,16 @@ impl ModelId {
         let valid = !value.is_empty()
             && value.len() <= 64
             && !value.starts_with('.')
+            && !value.ends_with('.')
             && value
                 .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'));
-        if !valid || matches!(value.as_str(), "." | "..") {
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+            && !is_windows_reserved_name(&value);
+        if !valid {
             return Err(ModelError::new(
                 ModelDiagnostic::InvalidModelId,
                 None,
-                "model id must be 1-64 ASCII letters, digits, dots, dashes, or underscores and cannot start with a dot",
+                "model id must be a portable 1-64 character ASCII store key",
             ));
         }
         Ok(Self(value))
@@ -70,6 +72,20 @@ impl ModelId {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+}
+
+fn is_windows_reserved_name(value: &str) -> bool {
+    let stem = value.split('.').next().unwrap_or(value);
+    if ["CON", "PRN", "AUX", "NUL"]
+        .iter()
+        .any(|reserved| stem.eq_ignore_ascii_case(reserved))
+    {
+        return true;
+    }
+    let bytes = stem.as_bytes();
+    bytes.len() == 4
+        && (stem[..3].eq_ignore_ascii_case("COM") || stem[..3].eq_ignore_ascii_case("LPT"))
+        && matches!(bytes[3], b'1'..=b'9')
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -613,18 +629,12 @@ impl PackageReader {
         let (normalized, path) =
             self.resolve_file(reference, ModelDiagnostic::ModelTextureMissing)?;
         let (width, height) = read_png_dimensions(&path, &normalized)?;
-        if width > self.limits.maximum_texture_dimension
-            || height > self.limits.maximum_texture_dimension
-        {
-            return Err(ModelError::new(
-                ModelDiagnostic::ModelTextureDimensionExceeded,
-                Some(&normalized),
-                format!(
-                    "texture is {width}x{height}; maximum side is {}",
-                    self.limits.maximum_texture_dimension
-                ),
-            ));
-        }
+        validate_texture_dimensions(
+            width,
+            height,
+            self.limits.maximum_texture_dimension,
+            &normalized,
+        )?;
         Ok(ImageResource {
             file: normalized,
             width,
@@ -935,7 +945,16 @@ fn read_json<T: DeserializeOwned>(
     diagnostic: ModelDiagnostic,
 ) -> Result<T, ModelError> {
     let bytes = read_bounded(path, reference, maximum_bytes)?;
-    let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|error| {
+    parse_json_bytes(&bytes, reference, maximum_depth, diagnostic)
+}
+
+fn parse_json_bytes<T: DeserializeOwned>(
+    bytes: &[u8],
+    reference: &str,
+    maximum_depth: usize,
+    diagnostic: ModelDiagnostic,
+) -> Result<T, ModelError> {
+    let value: serde_json::Value = serde_json::from_slice(bytes).map_err(|error| {
         ModelError::new(
             diagnostic,
             Some(reference),
@@ -1044,7 +1063,11 @@ fn read_png_dimensions(path: &Path, reference: &str) -> Result<(u32, u32), Model
                 format!("PNG header cannot be read: {error}"),
             )
         })?;
-    if header[..8] != *b"\x89PNG\r\n\x1a\n" || header[12..16] != *b"IHDR" {
+    parse_png_dimensions(&header, reference)
+}
+
+fn parse_png_dimensions(header: &[u8], reference: &str) -> Result<(u32, u32), ModelError> {
+    if header.len() < 24 || header[..8] != *b"\x89PNG\r\n\x1a\n" || header[12..16] != *b"IHDR" {
         return Err(ModelError::new(
             ModelDiagnostic::ModelTextureInvalidPng,
             Some(reference),
@@ -1061,6 +1084,22 @@ fn read_png_dimensions(path: &Path, reference: &str) -> Result<(u32, u32), Model
         ));
     }
     Ok((width, height))
+}
+
+fn validate_texture_dimensions(
+    width: u32,
+    height: u32,
+    maximum_dimension: u32,
+    reference: &str,
+) -> Result<(), ModelError> {
+    if width > maximum_dimension || height > maximum_dimension {
+        return Err(ModelError::new(
+            ModelDiagnostic::ModelTextureDimensionExceeded,
+            Some(reference),
+            format!("texture is {width}x{height}; maximum side is {maximum_dimension}"),
+        ));
+    }
+    Ok(())
 }
 
 fn require_identifier(value: &str, label: &str, resource: &str) -> Result<(), ModelError> {
@@ -1206,6 +1245,7 @@ fn relative_reference(root: &Path, path: &Path) -> Result<String, ModelError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
     use std::fs;
     use tempfile::tempdir;
 
@@ -1448,7 +1488,19 @@ mod tests {
     #[test]
     fn model_ids_are_portable_store_keys() {
         assert!(ModelId::parse("keyboard-v2_1").is_ok());
-        for invalid in ["", "..", ".hidden", "cat/model", "猫", "model id"] {
+        for invalid in [
+            "",
+            "..",
+            ".hidden",
+            "trailing.",
+            "CON",
+            "nul.custom",
+            "Com1",
+            "LPT9.backup",
+            "cat/model",
+            "猫",
+            "model id",
+        ] {
             assert_eq!(
                 ModelId::parse(invalid).expect_err("invalid id").code,
                 ModelDiagnostic::InvalidModelId
@@ -1489,6 +1541,173 @@ mod tests {
         .expect_err("deep JSON must be rejected");
         assert_eq!(error.code, ModelDiagnostic::ModelJsonInvalid);
         assert!(error.detail.contains("nesting"));
+    }
+
+    #[test]
+    fn package_byte_and_file_limits_fail_before_unbounded_loading() {
+        let package = tempdir().expect("package");
+        let model = r#"{"Version":3,"FileReferences":{"Moc":"model.moc3","Textures":[]}}"#;
+        fs::write(package.path().join("cat.model3.json"), model).expect("model3");
+        fs::write(package.path().join("model.moc3"), b"moc").expect("moc");
+        fs::write(package.path().join("unreferenced.bin"), b"extra").expect("extra file");
+
+        let json_limited = PreparedModel::prepare(
+            ModelId::parse("limited").expect("model id"),
+            package.path(),
+            ModelPackageLimits {
+                maximum_json_bytes: 16,
+                ..ModelPackageLimits::default()
+            },
+        )
+        .expect_err("JSON byte limit");
+        assert_eq!(json_limited.code, ModelDiagnostic::ModelJsonTooLarge);
+
+        let file_limited = PreparedModel::prepare(
+            ModelId::parse("limited").expect("model id"),
+            package.path(),
+            ModelPackageLimits {
+                maximum_file_count: 2,
+                ..ModelPackageLimits::default()
+            },
+        )
+        .expect_err("file count limit");
+        assert_eq!(file_limited.code, ModelDiagnostic::ModelFileCountExceeded);
+
+        let package_limited = PreparedModel::prepare(
+            ModelId::parse("limited").expect("model id"),
+            package.path(),
+            ModelPackageLimits {
+                maximum_package_bytes: 1,
+                ..ModelPackageLimits::default()
+            },
+        )
+        .expect_err("package byte limit");
+        assert_eq!(
+            package_limited.code,
+            ModelDiagnostic::ModelPackageSizeExceeded
+        );
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(512))]
+
+        #[test]
+        fn arbitrary_model_json_bytes_never_escape_the_bounded_parser(
+            bytes in proptest::collection::vec(any::<u8>(), 0..8_192),
+            maximum_depth in 1_usize..=64,
+        ) {
+            let result: Result<ModelDefinition, ModelError> = parse_json_bytes(
+                &bytes,
+                "generated.model3.json",
+                maximum_depth,
+                ModelDiagnostic::ModelJsonInvalid,
+            );
+            if let Err(error) = result {
+                prop_assert_eq!(error.code, ModelDiagnostic::ModelJsonInvalid);
+                prop_assert_eq!(error.resource.as_deref(), Some("generated.model3.json"));
+            }
+        }
+
+        #[test]
+        fn generated_model_array_indices_round_trip_without_loss(
+            textures in proptest::collection::vec(any::<String>(), 0..64),
+            group_ids in proptest::collection::vec(any::<String>(), 0..64),
+        ) {
+            let bytes = serde_json::to_vec(&serde_json::json!({
+                "Version": 3,
+                "FileReferences": {
+                    "Moc": "model.moc3",
+                    "Textures": textures,
+                },
+                "Groups": [{
+                    "Target": "Parameter",
+                    "Name": "Generated",
+                    "Ids": group_ids,
+                }],
+            }))
+            .expect("generated model JSON");
+            let parsed: ModelDefinition = parse_json_bytes(
+                &bytes,
+                "generated.model3.json",
+                16,
+                ModelDiagnostic::ModelJsonInvalid,
+            )?;
+
+            prop_assert_eq!(parsed.files.textures, textures);
+            prop_assert_eq!(parsed.groups.len(), 1);
+            prop_assert_eq!(&parsed.groups[0].ids, &group_ids);
+        }
+
+        #[test]
+        fn accepted_model_ids_exactly_match_the_portable_store_key_contract(value in any::<String>()) {
+            let expected = !value.is_empty()
+                && value.len() <= 64
+                && !value.starts_with('.')
+                && !value.ends_with('.')
+                && value.bytes().all(|byte| {
+                    byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.')
+                })
+                && !is_windows_reserved_name(&value);
+            prop_assert_eq!(ModelId::parse(value).is_ok(), expected);
+        }
+
+        #[test]
+        fn normalized_references_are_idempotent_relative_paths(reference in any::<String>()) {
+            if let Ok(normalized) = normalize_reference(&reference) {
+                let renormalized = normalize_reference(&normalized);
+                prop_assert_eq!(renormalized.as_deref(), Ok(normalized.as_str()));
+                prop_assert!(!normalized.chars().any(|character| matches!(character, '\\' | '\0' | ':')));
+                prop_assert!(!Path::new(&normalized).is_absolute());
+                prop_assert!(normalized.split('/').all(|part| !part.is_empty() && part != "." && part != ".."));
+                prop_assert!(path_from_reference(&normalized)
+                    .components()
+                    .all(|component| matches!(component, Component::Normal(_))));
+            }
+        }
+
+        #[test]
+        fn png_dimensions_are_parsed_and_limited_without_pixel_allocation(
+            width in any::<u32>(),
+            height in any::<u32>(),
+            maximum_dimension in any::<u32>(),
+        ) {
+            let mut header = [0_u8; 24];
+            header[..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
+            header[12..16].copy_from_slice(b"IHDR");
+            header[16..20].copy_from_slice(&width.to_be_bytes());
+            header[20..24].copy_from_slice(&height.to_be_bytes());
+
+            let parsed = parse_png_dimensions(&header, "generated.png");
+            if width == 0 || height == 0 {
+                prop_assert_eq!(parsed.expect_err("zero dimension").code, ModelDiagnostic::ModelTextureInvalidPng);
+            } else {
+                prop_assert_eq!(parsed?, (width, height));
+                let limited = validate_texture_dimensions(
+                    width,
+                    height,
+                    maximum_dimension,
+                    "generated.png",
+                );
+                prop_assert_eq!(limited.is_ok(), width <= maximum_dimension && height <= maximum_dimension);
+                if let Err(error) = limited {
+                    prop_assert_eq!(error.code, ModelDiagnostic::ModelTextureDimensionExceeded);
+                }
+            }
+        }
+
+        #[test]
+        fn arbitrary_png_headers_cannot_produce_unrelated_dimensions(
+            header in proptest::collection::vec(any::<u8>(), 0..64),
+        ) {
+            if let Ok((width, height)) = parse_png_dimensions(&header, "generated.png") {
+                prop_assert!(header.len() >= 24);
+                prop_assert_eq!(&header[..8], b"\x89PNG\r\n\x1a\n");
+                prop_assert_eq!(&header[12..16], b"IHDR");
+                prop_assert_eq!(width, u32::from_be_bytes(header[16..20].try_into().expect("width slice")));
+                prop_assert_eq!(height, u32::from_be_bytes(header[20..24].try_into().expect("height slice")));
+                prop_assert!(width > 0 && height > 0);
+            }
+        }
     }
 
     #[cfg(unix)]

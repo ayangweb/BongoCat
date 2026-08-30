@@ -421,6 +421,13 @@ com.ayangweb.bongo-cat
 - 写入使用同目录临时文件、flush、原子替换和提交后验证；失败保留当前文件和受限数量的备份。
 - `config.json` 只包含用户设置；窗口布局写入 `state.json`，pressed state、权限结果和模型解析缓存不持久化。
 - 模型导入防止路径穿越、符号链接逃逸、压缩炸弹和覆盖现有用户数据。
+- 模型包在反序列化或图片解码前执行 JSON 字节/深度、单文件/整包字节、文件数、目录深度
+  和纹理尺寸上限。model ID、资源路径、model3 数组索引、任意 JSON bytes 和 PNG header/
+  dimensions 具有可收缩 property contract；接受的资源路径必须规范化为幂等、相对且只含
+  normal component 的包内引用，任何随机输入不得 panic、越界索引或绕过分配上限。
+- model ID 是跨 Windows/macOS 可移植的 ASCII store key：禁止前导/尾随点、路径分隔符及
+  Windows 保留设备 stem（含带扩展名的 `CON`、`PRN`、`AUX`、`NUL`、`COM1..9`、
+  `LPT1..9`），不得让同一 installed identity 在目标平台解析为设备或隐藏路径。
 - 任意外部目录只能产生待导入的 `PreparedModel`；只有当前环境 `ModelStore` 完成复制、
   复验和原子提交后签发的 `InstalledModel` 才能进入 runtime 激活 command。
 - 应用装配时打开并持有只读 `PresetModelCatalog`；设置与模型管理只消费预置目录和当前

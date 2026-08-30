@@ -798,7 +798,17 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
 - [ ] 自定义模型 fixture 成功/失败行为符合规范。
 - [ ] 模型切换 100 次无 CPU/GPU/音频持续增长。
 - [ ] 输入、动作、表情、物理和音效闭环不依赖 GPUI。
-- [ ] 模型 parser 完成 fuzz/property test，畸形 JSON、索引和尺寸不能触发 panic、越界分配或路径逃逸。
+- [x] 模型 parser 完成 fuzz/property test，畸形 JSON、索引和尺寸不能触发 panic、越界分配或路径逃逸。
+  - 验收证据（2026-08-31）：`bongocat-model` 每次测试执行 6 组、每组 512 case 的可收缩
+    property contract，覆盖任意 model3 bytes、随机 texture/group 数组位置、任意 model ID、
+    UTF-8/平台路径、截断或随机 PNG header 及全范围 `u32` dimensions/limit；portable model
+    ID 固定拒绝尾点及大小写不敏感的 Windows 设备 stem（含扩展名）；纯 byte-slice parser
+    与产品文件入口共用实现。固定回归另证明 JSON bytes、package bytes 和 file count
+    在解析/清单增长前拒绝，既有深度、symlink 和 oversized texture fixture 继续通过。
+    最新稳定 `proptest 1.11.0` 仅作 dev dependency，关闭 fork/timeout 等默认 feature，只启用
+    `std`；其 Rust 1.85 下限兼容 workspace 1.97，MIT/Apache-2.0 且仍活跃维护，替换边界仅为
+    本 crate 测试生成器。完整 format、Clippy、workspace test、release check 与 license/source
+    policy 本机通过。
 
 ## 6. Phase 5：GPUI 设置应用
 
@@ -1237,7 +1247,9 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
       和 rename 前检查取消；settings operation 以共享 atomic token 更新无路径 progress，并返回
       稳定 `ModelImportCancelled`。测试覆盖跨 clone ID、倒退 progress 拒绝、typed final result、
       中途取消清理、catalog revision 不变、成功四阶段及 shutdown/join；完整 format、Clippy、
-      workspace test 和 release check 本机通过，三平台 CI 待本批 push 后复验。
+      workspace test 和 release check 本机通过；push run `33335183755` 的 Ubuntu/macOS
+      workspace jobs 已通过，Windows workspace 已通过 format、Clippy、tests、release 与
+      production build，D3D11/input 平台 smoke 仍在执行，完成后补最终证据。
 22. [x] `P4-MODEL-DELETE-COMMAND`：按来源身份安全删除未选择的 installed 模型。
     - 依赖：`P4-MODEL-CATALOG`、`P4-MODEL-SELECTION`、`ModelStore` rename-delete transaction。
     - 退出条件：typed command 携带 `(origin, id)`；preset 和当前 runtime/config 所选 installed
@@ -1247,6 +1259,16 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
     - 验收证据（2026-08-31）：核心来源判断、typed client/service、全部 store diagnostic
       的稳定错误映射及 app/ui 定向测试已进入 `next`；push run `33333789799` 的 Windows/macOS/
       Ubuntu workspace jobs `99316966532`/`99316966517`/`99316966591` 全部通过。
+23. [x] `P4-MODEL-PARSER-PROPERTY`：固定模型包解析的随机输入安全边界。
+    - 依赖：`bongocat-model` package limits、路径规范化、model3 JSON 与 PNG header parser。
+    - 退出条件：可收缩生成器覆盖畸形 JSON、数组位置、portable ID、平台路径和任意长度 PNG
+      header/dimensions；接受路径保持包内相对且幂等，parser 不 panic/OOB；JSON/package/file/
+      dimension 上限在无界解析或像素分配前失败；测试依赖版本/许可证/维护性/替换边界有记录；
+      完整 Native 本地门禁和 license/source policy 通过。
+    - 验收证据（2026-08-31）：6 组 property 每轮共执行 3,072 case，另有固定 limit/depth/
+      symlink/oversized fixture；`proptest 1.11.0` 以最小 `std` feature 精确锁定，`cargo update`
+      只新增其和两个缺失传递包。完整 format、Clippy、workspace test、release check 及
+      `cargo deny --all-features check licenses sources` 本机通过，三平台 CI 待本批 push 后复验。
 
 ## 13. 待决策清单
 
