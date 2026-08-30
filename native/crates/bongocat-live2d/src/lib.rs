@@ -7,6 +7,15 @@ use bongocat_model::CommittedModel;
 use bongocat_render::{RenderResources, RenderSnapshot, TextureAsset, TextureId};
 use std::{collections::BTreeMap, fmt, sync::Arc};
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use std::collections::BTreeSet;
+
+mod expression;
+pub use expression::{
+    ExpressionApplyStatus, ExpressionBlendMode, ExpressionClip, ExpressionLayer,
+    ExpressionParameter,
+};
+
 mod motion;
 pub use motion::{
     MotionApplyStatus, MotionClip, MotionCurveTarget, MotionEvaluation, MotionParameterSample,
@@ -128,6 +137,8 @@ pub enum Live2dErrorCode {
     ParameterValueInvalid,
     MotionInvalid,
     MotionNotFound,
+    ExpressionInvalid,
+    ExpressionNotFound,
     UnsupportedBlendMode,
 }
 
@@ -157,6 +168,7 @@ impl std::error::Error for Live2dError {}
 pub struct Live2dModel {
     resources: Arc<RenderResources>,
     motions: BTreeMap<String, Vec<MotionClip>>,
+    expressions: BTreeMap<String, ExpressionClip>,
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     core: core::CoreModel,
 }
@@ -191,6 +203,17 @@ impl Live2dModel {
                 Ok((group.name.clone(), clips))
             })
             .collect::<Result<BTreeMap<_, _>, _>>()?;
+        let mut expressions = BTreeMap::new();
+        for resource in &model.index().expressions {
+            let name = resource.name.clone();
+            let clip = ExpressionClip::load(model, &name)?;
+            if expressions.insert(name.clone(), clip).is_some() {
+                return Err(Live2dError::new(
+                    Live2dErrorCode::ExpressionInvalid,
+                    format!("model3 declares expression name {name:?} more than once"),
+                ));
+            }
+        }
 
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
@@ -200,13 +223,14 @@ impl Live2dModel {
             Ok(Self {
                 resources,
                 motions,
+                expressions,
                 core,
             })
         }
 
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
-            let _ = (resources, motions);
+            let _ = (resources, motions, expressions);
             Err(Live2dError::new(
                 Live2dErrorCode::PlatformUnsupported,
                 "Cubism Core is available only on the Windows and macOS product targets",
@@ -226,6 +250,10 @@ impl Live2dModel {
         self.motions
             .get(group)
             .and_then(|motions| motions.get(index))
+    }
+
+    pub fn expression_clip(&self, name: &str) -> Option<&ExpressionClip> {
+        self.expressions.get(name)
     }
 
     pub fn parameter_range(&self, parameter: ProductParameter) -> Option<ParameterRange> {
@@ -334,6 +362,74 @@ impl Live2dModel {
         })
     }
 
+    pub fn apply_expression_layers(
+        &mut self,
+        layers: &[ExpressionLayer<'_>],
+    ) -> Result<ExpressionApplyStatus, Live2dError> {
+        for layer in layers {
+            if !layer.weight.is_finite() || !(0.0..=1.0).contains(&layer.weight) {
+                return Err(Live2dError::new(
+                    Live2dErrorCode::ParameterValueInvalid,
+                    "expression layer received an invalid weight",
+                ));
+            }
+        }
+
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        let applied_parameter_count = {
+            let parameter_ids = layers
+                .iter()
+                .flat_map(|layer| {
+                    layer
+                        .clip
+                        .parameters()
+                        .map(|parameter| parameter.id.as_str())
+                })
+                .collect::<BTreeSet<_>>();
+            let mut applied = 0;
+            for id in parameter_ids {
+                let Some(current) = self.core.parameter_value_by_id(id)? else {
+                    continue;
+                };
+                let mut overwrite = current;
+                let mut additive = 0.0;
+                let mut multiply = 1.0;
+                for layer in layers {
+                    let (next_overwrite, next_additive, next_multiply) =
+                        match layer.clip.parameter(id) {
+                            Some(parameter) => match parameter.blend {
+                                ExpressionBlendMode::Additive => (current, parameter.value, 1.0),
+                                ExpressionBlendMode::Multiply => (current, 0.0, parameter.value),
+                                ExpressionBlendMode::Overwrite => (parameter.value, 0.0, 1.0),
+                            },
+                            None => (current, 0.0, 1.0),
+                        };
+                    overwrite += (next_overwrite - overwrite) * layer.weight;
+                    additive += (next_additive - additive) * layer.weight;
+                    multiply += (next_multiply - multiply) * layer.weight;
+                }
+                let target = (overwrite + additive) * multiply;
+                if matches!(
+                    self.core.set_parameter_by_id(id, target, 1.0)?,
+                    ParameterUpdate::Applied { .. }
+                ) {
+                    applied += 1;
+                }
+            }
+            applied
+        };
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        let applied_parameter_count = {
+            let _ = layers;
+            0
+        };
+
+        Ok(ExpressionApplyStatus {
+            applied_parameter_count,
+        })
+    }
+
     pub fn restore_parameter_defaults(&mut self) -> Result<(), Live2dError> {
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
@@ -393,5 +489,73 @@ mod tests {
         assert_eq!(ids.len(), ProductParameter::ALL.len());
         assert_eq!(ProductParameter::LeftHandDown.id(), "CatParamLeftHandDown");
         assert_eq!(ProductParameter::StickRightY.id(), "CatParamStickRY");
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn expression_layers_apply_add_multiply_and_overwrite_to_core_parameters() {
+        use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
+        use std::path::Path;
+
+        let repository_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repository root");
+        let committed = PresetModelCatalog::open(
+            repository_root.join("native/resources/models"),
+            ModelPackageLimits::default(),
+        )
+        .expect("preset catalog")
+        .load(&ModelId::parse("standard").expect("model id"))
+        .expect("preset model");
+        let mut model = Live2dModel::load(&committed).expect("Live2D model");
+
+        let clip = ExpressionClip::from_slice(
+            br#"{
+              "Type":"Live2D Expression",
+              "FadeInTime":0,
+              "Parameters":[
+                {"Id":"ParamAngleX","Value":10,"Blend":"Add"},
+                {"Id":"ParamEyeLOpen","Value":0.5,"Blend":"Multiply"},
+                {"Id":"ParamAngleY","Value":-15,"Blend":"Overwrite"}
+              ]
+            }"#,
+        )
+        .expect("expression clip");
+        model
+            .restore_parameter_defaults()
+            .expect("restore parameter defaults");
+        let eye_default = model
+            .core
+            .parameter_value_by_id("ParamEyeLOpen")
+            .expect("eye parameter")
+            .expect("supported eye parameter");
+        let applied = model
+            .apply_expression_layers(&[ExpressionLayer {
+                clip: &clip,
+                weight: 1.0,
+            }])
+            .expect("apply expression");
+        assert_eq!(applied.applied_parameter_count, 3);
+        assert_eq!(
+            model
+                .core
+                .parameter_value_by_id("ParamAngleX")
+                .expect("angle x"),
+            Some(10.0)
+        );
+        assert_eq!(
+            model
+                .core
+                .parameter_value_by_id("ParamAngleY")
+                .expect("angle y"),
+            Some(-15.0)
+        );
+        let eye = model
+            .core
+            .parameter_value_by_id("ParamEyeLOpen")
+            .expect("eye parameter")
+            .expect("supported eye parameter");
+        assert!((eye - eye_default * 0.5).abs() < 0.0001);
     }
 }

@@ -10,9 +10,9 @@ use bongocat_model::{
 };
 use bongocat_render::{ModelCommitToken, RenderConsumer};
 use bongocat_runtime::{
-    CursorProducer, HandSide, InputBindings, InputProducer, MotionId, MotionIdError,
-    MotionPriority, PhysicalKey, RuntimeClient, RuntimeCommand, RuntimeCommandFailure,
-    RuntimeOwner, RuntimeSnapshot, SendError, ShutdownError,
+    CursorProducer, ExpressionId, ExpressionIdError, HandSide, InputBindings, InputProducer,
+    MotionId, MotionIdError, MotionPriority, PhysicalKey, RuntimeClient, RuntimeCommand,
+    RuntimeCommandFailure, RuntimeOwner, RuntimeSnapshot, SendError, ShutdownError,
 };
 use std::{collections::BTreeMap, fmt, path::Path, sync::Arc, time::Duration};
 
@@ -32,6 +32,7 @@ pub enum ApplicationError {
     Model(ModelError),
     ModelStore(ModelStoreError),
     MotionId(MotionIdError),
+    ExpressionId(ExpressionIdError),
     ActiveModelDeletion(ModelId),
     RuntimeCommand(SendError),
     RuntimeCommandFailed(RuntimeCommandFailure),
@@ -49,6 +50,7 @@ impl fmt::Display for ApplicationError {
             Self::Model(error) => write!(formatter, "model preparation failed: {error}"),
             Self::ModelStore(error) => write!(formatter, "model store failed: {error}"),
             Self::MotionId(error) => write!(formatter, "motion id failed: {error}"),
+            Self::ExpressionId(error) => write!(formatter, "expression id failed: {error}"),
             Self::ActiveModelDeletion(id) => {
                 write!(formatter, "active model cannot be deleted: {}", id.as_str())
             }
@@ -95,6 +97,12 @@ impl From<ModelError> for ApplicationError {
 impl From<MotionIdError> for ApplicationError {
     fn from(error: MotionIdError) -> Self {
         Self::MotionId(error)
+    }
+}
+
+impl From<ExpressionIdError> for ApplicationError {
+    fn from(error: ExpressionIdError) -> Self {
+        Self::ExpressionId(error)
     }
 }
 
@@ -226,6 +234,13 @@ impl Application {
         index: usize,
     ) -> Result<RuntimeSnapshot, ApplicationError> {
         self.wait_for_model_command(RuntimeCommand::StopMotion(MotionId::new(group, index)?))
+    }
+
+    pub fn set_expression(
+        &self,
+        name: impl Into<String>,
+    ) -> Result<RuntimeSnapshot, ApplicationError> {
+        self.wait_for_model_command(RuntimeCommand::SetExpression(ExpressionId::new(name)?))
     }
 
     pub fn activate_installed_model(

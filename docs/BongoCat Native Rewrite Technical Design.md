@@ -310,6 +310,11 @@ model evaluation + render snapshot
 - 原始指针不离开 safe wrapper；Moc 必须比 Model 活得更久。
 - 不把未经验证的新纯 Rust Cubism 兼容 crate 作为生产基础。
 - `.model3.json`、motion、expression、physics 和 pose 兼容性由 fixture 验证。
+- 每帧从 Core 默认 parameter 开始，依次应用 motion、expression、physics/pose（实现后）、
+  类型化产品输入，最后调用 Core update。expression 使用 `.exp3.json` 的
+  Add/Multiply/Overwrite 和正弦淡入淡出；替换期间最多保留上一层与当前层，稳定后只保留
+  最新 expression，使内存和每帧成本保持有界。真实输入最后覆盖对应产品 parameter，
+  避免表情让按下状态失真。
 - 模型加载采用 prepare/commit/rollback，失败时保留当前可用模型。
 - 模型切换是 CPU/GPU 两阶段提交：runtime 先保留旧 active model/bindings，准备新的
   Cubism generation，并随候选 `RenderSnapshot` 发布一次性强类型 commit token；平台

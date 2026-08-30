@@ -69,6 +69,7 @@ pub enum RuntimeRenderErrorCode {
     ModelLoadFailed,
     ModelEvaluationFailed,
     MotionLoadFailed,
+    ExpressionLoadFailed,
     GpuPreparationFailed,
     PlatformUnsupported,
     TransportClosed,
@@ -109,6 +110,34 @@ impl fmt::Display for MotionIdError {
 
 impl std::error::Error for MotionIdError {}
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExpressionId(String);
+
+impl ExpressionId {
+    pub fn new(name: impl Into<String>) -> Result<Self, ExpressionIdError> {
+        let name = name.into();
+        if name.trim().is_empty() {
+            return Err(ExpressionIdError);
+        }
+        Ok(Self(name))
+    }
+
+    pub fn name(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ExpressionIdError;
+
+impl fmt::Display for ExpressionIdError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("expression name must not be blank")
+    }
+}
+
+impl std::error::Error for ExpressionIdError {}
+
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum MotionPriority {
     Idle,
@@ -120,6 +149,12 @@ pub enum MotionPriority {
 pub struct ActiveMotionSnapshot {
     pub motion: MotionId,
     pub priority: MotionPriority,
+    pub command_sequence: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ActiveExpressionSnapshot {
+    pub expression: ExpressionId,
     pub command_sequence: u64,
 }
 
@@ -151,6 +186,7 @@ pub enum RuntimeCommand {
         priority: MotionPriority,
     },
     StopMotion(MotionId),
+    SetExpression(ExpressionId),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -161,6 +197,7 @@ pub struct RuntimeSnapshot {
     pub active_model: Option<ModelSnapshot>,
     pub pending_model: Option<PendingModelSnapshot>,
     pub active_motion: Option<ActiveMotionSnapshot>,
+    pub active_expression: Option<ActiveExpressionSnapshot>,
     pub input: InputSnapshot,
     pub cursor: CursorSnapshot,
     pub model_input: ModelInputSnapshot,
@@ -178,6 +215,7 @@ impl RuntimeSnapshot {
             active_model: None,
             pending_model: None,
             active_motion: None,
+            active_expression: None,
             input: InputSnapshot::default(),
             cursor: CursorSnapshot::default(),
             model_input: ModelInputSnapshot::default(),
@@ -794,6 +832,7 @@ fn run_worker(
     let mut renderer = renderer.map(RuntimeRenderer::start);
     let mut active_model = None;
     let mut active_motion = None;
+    let mut active_expression = None;
     let mut input_state = InputState::default();
     let mut input_bindings = InputBindings::default();
     let mut normalized_cursor = NormalizedCursorPosition::default();
@@ -810,6 +849,7 @@ fn run_worker(
             normalized_cursor,
             &mut active_model,
             &mut active_motion,
+            &mut active_expression,
             overlay_visible,
             &snapshot,
             clock.now(),
@@ -896,6 +936,7 @@ fn run_worker(
                             normalized_cursor,
                             &mut active_model,
                             &mut active_motion,
+                            &mut active_expression,
                             &mut pending_model,
                             &snapshot,
                         );
@@ -915,6 +956,7 @@ fn run_worker(
                             normalized_cursor,
                             &mut active_model,
                             &mut active_motion,
+                            &mut active_expression,
                             &mut pending_model,
                             &snapshot,
                         );
@@ -983,11 +1025,43 @@ fn run_worker(
                             });
                         }
                     }
+                    WorkerCommand::Product(RuntimeCommand::SetExpression(expression)) => {
+                        if let Some(renderer) = &mut renderer {
+                            match renderer.set_expression(&expression, clock.now()) {
+                                Ok(()) => {
+                                    let active = ActiveExpressionSnapshot {
+                                        expression,
+                                        command_sequence: sequence,
+                                    };
+                                    active_expression = Some(active.clone());
+                                    publish(&snapshot, |current| {
+                                        current.active_expression = Some(active);
+                                        current.last_command_failure = None;
+                                        current.last_command_sequence = Some(sequence);
+                                    });
+                                }
+                                Err(code) => publish(&snapshot, |current| {
+                                    current.last_command_failure =
+                                        Some(RuntimeCommandFailure { sequence, code });
+                                    current.last_command_sequence = Some(sequence);
+                                }),
+                            }
+                        } else {
+                            publish(&snapshot, |current| {
+                                current.last_command_failure = Some(RuntimeCommandFailure {
+                                    sequence,
+                                    code: RuntimeRenderErrorCode::ExpressionLoadFailed,
+                                });
+                                current.last_command_sequence = Some(sequence);
+                            });
+                        }
+                    }
                     WorkerCommand::Shutdown => {
                         publish(&snapshot, |current| {
                             current.state = RuntimeState::Stopping;
                             current.pending_model = None;
                             current.active_motion = None;
+                            current.active_expression = None;
                             current.last_command_sequence = Some(sequence);
                         });
                         if let Some(renderer) = &renderer {
@@ -1024,6 +1098,7 @@ fn run_worker(
                     normalized_cursor,
                     &mut active_model,
                     &mut active_motion,
+                    &mut active_expression,
                     overlay_visible,
                     &snapshot,
                     clock.now(),
@@ -1065,6 +1140,7 @@ fn begin_model_activation(
     normalized_cursor: NormalizedCursorPosition,
     active_model: &mut Option<Arc<CommittedModel>>,
     active_motion: &mut Option<ActiveMotionSnapshot>,
+    active_expression: &mut Option<ActiveExpressionSnapshot>,
     pending_model: &mut Option<PendingModelActivation>,
     snapshot: &SnapshotCell,
 ) {
@@ -1077,10 +1153,12 @@ fn begin_model_activation(
         let model_snapshot = committed.snapshot();
         *active_model = Some(committed);
         *active_motion = None;
+        *active_expression = None;
         publish(snapshot, |current| {
             current.state = RuntimeState::Ready;
             current.active_model = Some(model_snapshot);
             current.active_motion = None;
+            current.active_expression = None;
             current.model_input = model_input;
             current.render_error = None;
             current.last_command_failure = None;
@@ -1120,6 +1198,7 @@ fn process_model_commit_feedback(
     normalized_cursor: NormalizedCursorPosition,
     active_model: &mut Option<Arc<CommittedModel>>,
     active_motion: &mut Option<ActiveMotionSnapshot>,
+    active_expression: &mut Option<ActiveExpressionSnapshot>,
     overlay_visible: bool,
     snapshot: &SnapshotCell,
     now: Duration,
@@ -1148,11 +1227,13 @@ fn process_model_commit_feedback(
             let model_snapshot = pending.model.snapshot();
             *active_model = Some(pending.model);
             *active_motion = None;
+            *active_expression = None;
             publish(snapshot, |current| {
                 current.state = RuntimeState::Ready;
                 current.active_model = Some(model_snapshot);
                 current.pending_model = None;
                 current.active_motion = None;
+                current.active_expression = None;
                 current.model_input = model_input;
                 current.render_error = None;
                 current.last_command_failure = None;
@@ -1787,6 +1868,92 @@ mod tests {
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
+    fn expression_commands_crossfade_and_preserve_the_active_expression_on_error() {
+        let clock = Arc::new(ManualClock::default());
+        let (owner, consumer) = RuntimeOwner::start_with_rendering_and_clock(
+            true,
+            8,
+            Arc::clone(&clock) as Arc<dyn MonotonicClock>,
+        );
+        let client = owner.client();
+        client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+        let activation_sequence = client
+            .send(RuntimeCommand::ActivateModel(Arc::new(preset_model(
+                "standard",
+            ))))
+            .expect("activation command");
+        let candidate = wait_for_prepared_model(&client, &consumer, activation_sequence);
+        report_model_prepared(&client, &consumer, &candidate);
+        let baseline = wait_for_render_frame(&consumer, |frame| {
+            frame.model_generation == candidate.model_generation
+                && frame.frame_number > candidate.frame_number
+        });
+
+        let first = ExpressionId::new("live2d_expression1.exp3.json").expect("expression id");
+        let first_sequence = client
+            .send(RuntimeCommand::SetExpression(first.clone()))
+            .expect("set first expression");
+        let first_active = client
+            .wait_for_command(first_sequence, TIMEOUT)
+            .expect("first expression active");
+        assert_eq!(
+            first_active.active_expression,
+            Some(ActiveExpressionSnapshot {
+                expression: first.clone(),
+                command_sequence: first_sequence,
+            })
+        );
+
+        clock.set(Duration::from_millis(400));
+        let first_frame = wait_for_render_frame(&consumer, |frame| {
+            frame.transport_sequence > baseline.transport_sequence
+                && frame.snapshot != baseline.snapshot
+        });
+
+        let second = ExpressionId::new("live2d_expression2.exp3.json").expect("expression id");
+        let second_sequence = client
+            .send(RuntimeCommand::SetExpression(second.clone()))
+            .expect("replace expression");
+        let second_active = client
+            .wait_for_command(second_sequence, TIMEOUT)
+            .expect("replacement expression active");
+        assert_eq!(
+            second_active.active_expression,
+            Some(ActiveExpressionSnapshot {
+                expression: second.clone(),
+                command_sequence: second_sequence,
+            })
+        );
+        clock.set(Duration::from_millis(650));
+        let crossfaded = wait_for_render_frame(&consumer, |frame| {
+            frame.transport_sequence > first_frame.transport_sequence
+                && frame.snapshot != first_frame.snapshot
+        });
+        assert_ne!(crossfaded.snapshot, first_frame.snapshot);
+
+        let invalid_sequence = client
+            .send(RuntimeCommand::SetExpression(
+                ExpressionId::new("missing").expect("syntactically valid expression id"),
+            ))
+            .expect("invalid expression request");
+        let invalid = client
+            .wait_for_command(invalid_sequence, TIMEOUT)
+            .expect("invalid expression result");
+        assert_eq!(
+            invalid.last_command_failure,
+            Some(RuntimeCommandFailure {
+                sequence: invalid_sequence,
+                code: RuntimeRenderErrorCode::ExpressionLoadFailed,
+            })
+        );
+        assert_eq!(invalid.active_expression, second_active.active_expression);
+
+        let stopped = owner.shutdown(TIMEOUT).expect("runtime shutdown");
+        assert!(stopped.active_expression.is_none());
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
     fn reliable_input_bypasses_deferred_commands_during_model_preparation() {
         let (owner, consumer) = RuntimeOwner::start_with_rendering(true, 8);
         let client = owner.client();
@@ -1875,6 +2042,16 @@ mod tests {
             .expect("motion active");
         let expected_motion = motion_active.active_motion.clone();
         assert!(expected_motion.is_some());
+        let expression_sequence = client
+            .send(RuntimeCommand::SetExpression(
+                ExpressionId::new("live2d_expression1.exp3.json").expect("expression id"),
+            ))
+            .expect("expression command");
+        let expression_active = client
+            .wait_for_command(expression_sequence, TIMEOUT)
+            .expect("expression active");
+        let expected_expression = expression_active.active_expression.clone();
+        assert!(expected_expression.is_some());
 
         let right_bindings = Arc::new(InputBindings::new(BTreeMap::from([(
             PhysicalKey::KEY_A,
@@ -1898,6 +2075,7 @@ mod tests {
         );
         assert_eq!(rejected.state, RuntimeState::Ready);
         assert_eq!(rejected.active_motion, expected_motion);
+        assert_eq!(rejected.active_expression, expected_expression);
         assert_eq!(
             rejected
                 .active_model
@@ -1997,6 +2175,7 @@ mod tests {
             Some("standard")
         );
         assert_eq!(gpu_rejected.active_motion, expected_motion);
+        assert_eq!(gpu_rejected.active_expression, expected_expression);
         assert!(gpu_rejected.model_input.left_hand_down);
         assert!(!gpu_rejected.model_input.right_hand_down);
         let resumed = wait_for_render_frame(&consumer, |frame| {
@@ -2026,6 +2205,7 @@ mod tests {
             Some("keyboard")
         );
         assert!(replaced.active_motion.is_none());
+        assert!(replaced.active_expression.is_none());
         assert!(replaced.model_input.right_hand_down);
         assert!(!replaced.model_input.left_hand_down);
         owner.shutdown(TIMEOUT).expect("runtime shutdown");

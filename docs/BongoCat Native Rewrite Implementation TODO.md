@@ -285,7 +285,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     visibility、opacity、blend/color 和 mask 引用；类型化预览驱动下 standard 177/177、
     keyboard 175/175、gamepad 179/179 帧均产生变化 snapshot 并完成 Metal present。
 - [ ] 验证 motion、expression、physics、pose 至少各一个真实样本。
-  - 状态（2026-08-30）：6 个预置 motion3 与 15 个 exp3 已通过强类型结构解析和计数门禁；本机 13 个历史 physics3 也以匿名只读方式通过 v3 静态 parser，共覆盖 86 setting/139 input/206 output/267 vertex。合成 pose3 已固定 Type/fade/group/part/link 拒绝边界，但不是真实样本。motion/expression 的实际时间求值、参数混合与优先级，physics/pose 的实际求值，以及授权 physics/pose fixture 仍未完成，因此本项保持未勾选。
+  - 状态（2026-08-30）：6 个预置 motion3 已完成实际时间求值，三个 model3 声明的
+    9 个 exp3 已进入正式 runtime 并以真实 Core/drawable 验证 Add 淡入与替换；合成
+    Core 测试另覆盖 Multiply/Overwrite。15 个预置 exp3 均已有结构门禁。本机 13 个历史
+    physics3 仍只以匿名只读方式通过静态 parser，合成 pose3 也仅固定结构拒绝边界；
+    physics/pose 的实际求值和可分发真实 fixture 尚未完成，因此总项保持未勾选。
 - [x] 验证模型切换/销毁 100 次，无 CPU/GPU 资源增长。
   - 验收证据（2026-08-30）：macOS release switch probe 先以不存在的 PNG 验证失败 GPU
     prepare 不改变 active generation，随后执行 100 个 standard -> keyboard -> gamepad ->
@@ -341,11 +345,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     `PresetModelCatalog` 以真实只读目录签发预置 `CommittedModel`，拒绝 symlink root/entry
     和 catalog root 逃逸。完整 sidecar 强类型校验与预置/用户合并视图继续由 Phase 4 跟踪。
 - [ ] 创建 bongocat-live2d：Cubism safe wrapper 和模型求值。
-  - 状态（2026-08-30）：commit `57118ff` 已建立正式 crate，完成 Core 版本门禁、
-    Moc/Model safe owner、drawable snapshot 和三个预置模型测试；随后又在加载时解析并
-    验证 Core parameter id/range/default 表，冻结 19 个类型化产品参数和三预置支持矩阵，
-    提供 finite/clamp/normalized update，不向上暴露 raw pointer。motion、expression、
-    physics、pose 求值尚未实现，因此总项保持未完成。
+  - 状态（2026-08-30）：正式 crate 已完成 Core 版本门禁、Moc/Model safe owner、
+    drawable snapshot、parameter id/range/default、motion3 curve/fade 和 exp3
+    Add/Multiply/Overwrite/transition 求值；三个预置模型均在加载阶段缓存所有声明的
+    motion/expression，不向上暴露 raw pointer。physics、pose 和 motion 主动 stop fade/
+    event/audio 尚未实现，因此总项保持未完成。
 - [x] 创建 bongocat-render：render snapshot 和 renderer contract。
   - 验收证据（2026-08-30）：正式 crate 已从 Cubism 边界接管 `RenderSnapshot`、
     `RenderResources` 和强类型 `DrawableId`/`TextureId`，并提供带 model generation/
@@ -700,8 +704,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 实现 parameter 默认值、保存/恢复和 clamp。
   - 状态（2026-08-30）：Core range/default 已进入类型化查询，绝对值和 normalized 写入
     拒绝非 finite、自动 clamp 并明确返回 unsupported；正式 frame pipeline 现于 motion
-    前恢复全部 Core parameter default，再按 motion -> typed product input 顺序覆盖，停止
-    motion 后不残留曲线值。expression/physics 所需的分层 save/restore 仍未完成。
+    前恢复全部 Core parameter default，再按 motion -> expression -> typed product input
+    顺序覆盖，停止 motion 或替换 expression 后不残留旧值。physics 所需的分层状态仍未完成。
 - [ ] 实现 motion curve、fade、priority 和 completion。
   - 状态（2026-08-30）：正式 `bongocat-live2d` 已严格解析 motion3 v3 Meta、user data 和
     linear/Bezier/stepped/inverse-stepped segment，验证 finite/time/count 边界并以二分反解
@@ -710,7 +714,13 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     抢占、同级最新请求、旧 stop 隔离、错误资源保留当前动作及模型 commit 后清理均进入
     typed runtime。主动 stop fade-out、Model/PartOpacity target 应用、motion event/audio 和
     UI 选择入口仍未完成，因此保持未勾选。
-- [ ] 实现 expression 混合和互斥/叠加语义。
+- [x] 实现 expression 混合和互斥/叠加语义。
+  - 验收证据（2026-08-30）：正式 `bongocat-live2d` 严格解析 Type、fade、parameter、
+    duplicate ID 与 Add/Multiply/Overwrite；三个 model3 声明的 9 个 exp3 全部在模型 prepare
+    阶段缓存。`SetExpression` 使用强类型 name/command/snapshot 和可注入单调时钟，上一层
+    按 FadeOutTime、当前层按 FadeInTime 正弦过渡，最多同时保留两层。真实 Core
+    测试覆盖三种 blend，runtime 测试覆盖 drawable 变化、快速替换、无效请求保留、GPU
+    rejection 保留和成功模型 commit 清理；产品输入最后应用。快捷键/GPUI 入口由后续项跟踪。
 - [ ] 实现 physics、pose、eye blink、breath 等实际需求。
 - [ ] 实现键盘、鼠标、手柄到参数/动作/表情映射。
 - [ ] 实现镜像、鼠标镜像和坐标归一化。
@@ -920,8 +930,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] Runtime reducer、输入语义和动画单元测试。
 - [ ] motion/expression priority 和可注入 clock 测试。
   - 状态（2026-08-30）：motion 已使用可注入 `MonotonicClock` 覆盖时间推进、真实 drawable
-    变化、低优先级拒绝、force 抢占、同级替换基础语义、旧 stop 不影响新动作、GPU
-    rejection 保留动作及成功模型切换清理；expression priority 尚未实现，因此保持未勾选。
+    变化、低优先级拒绝、force 抢占、同级替换、旧 stop 不影响新动作、GPU rejection
+    保留及成功模型切换清理；expression 也使用同一 clock 覆盖淡入、替换、错误保留和
+    模型事务边界。expression 产品协议采用 latest-set-wins，不另设 priority；motion 主动
+    stop fade-out 和完整 fixture 对接仍未完成，因此总项保持未勾选。
 - [ ] 配置 schema、Native 版本演进、环境隔离和原子写入测试。
 - [ ] 模型路径安全和损坏资源测试。
 - [ ] Cubism safe wrapper 生命周期测试。

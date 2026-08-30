@@ -5,7 +5,9 @@ use bongocat_render::{
 };
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-use bongocat_live2d::{Live2dModel, MotionClip, ParameterUpdate, ProductParameter};
+use bongocat_live2d::{
+    ExpressionClip, ExpressionLayer, Live2dModel, MotionClip, ParameterUpdate, ProductParameter,
+};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_render::RenderFrame;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -41,12 +43,20 @@ struct ActiveRenderModel {
     model_generation: u64,
     next_frame_number: u64,
     motion: Option<MotionPlayback>,
+    expressions: Vec<ExpressionPlayback>,
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 struct MotionPlayback {
     clip: MotionClip,
     started_at: Duration,
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+struct ExpressionPlayback {
+    clip: ExpressionClip,
+    started_at: Duration,
+    fade_out_started_at: Option<Duration>,
 }
 
 impl RuntimeRenderer {
@@ -109,6 +119,7 @@ impl RuntimeRenderer {
                 model_generation,
                 next_frame_number: 1,
                 motion: None,
+                expressions: Vec::new(),
             });
             Ok(token)
         }
@@ -208,6 +219,49 @@ impl RuntimeRenderer {
         }
     }
 
+    pub(crate) fn set_expression(
+        &mut self,
+        expression: &crate::ExpressionId,
+        now: Duration,
+    ) -> Result<(), RuntimeRenderErrorCode> {
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            let active = self
+                .active
+                .as_mut()
+                .ok_or(RuntimeRenderErrorCode::ExpressionLoadFailed)?;
+            let clip = active
+                .model
+                .expression_clip(expression.name())
+                .cloned()
+                .ok_or(RuntimeRenderErrorCode::ExpressionLoadFailed)?;
+            if active.expressions.len() > 1 {
+                let previous = active
+                    .expressions
+                    .pop()
+                    .expect("expression stack has a newest layer");
+                active.expressions.clear();
+                active.expressions.push(previous);
+            }
+            for playback in &mut active.expressions {
+                playback.fade_out_started_at = Some(now);
+            }
+            active.expressions.push(ExpressionPlayback {
+                clip,
+                started_at: now,
+                fade_out_started_at: None,
+            });
+            debug_assert!(active.expressions.len() <= 2);
+            Ok(())
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            let _ = (expression, now);
+            Err(RuntimeRenderErrorCode::PlatformUnsupported)
+        }
+    }
+
     pub(crate) fn evaluate(
         &mut self,
         input: ModelInputSnapshot,
@@ -234,6 +288,33 @@ impl RuntimeRenderer {
             if motion_finished {
                 active.motion = None;
             }
+            active.expressions.retain(|playback| {
+                playback.fade_out_started_at.is_none_or(|started_at| {
+                    now.saturating_sub(started_at) < playback.clip.fade_out_duration()
+                })
+            });
+            let expression_layers = active
+                .expressions
+                .iter()
+                .map(|playback| {
+                    let fade_in = playback
+                        .clip
+                        .fade_in_weight(now.saturating_sub(playback.started_at));
+                    let fade_out = playback.fade_out_started_at.map_or(1.0, |started_at| {
+                        playback
+                            .clip
+                            .fade_out_weight(now.saturating_sub(started_at))
+                    });
+                    ExpressionLayer {
+                        clip: &playback.clip,
+                        weight: fade_in * fade_out,
+                    }
+                })
+                .collect::<Vec<_>>();
+            active
+                .model
+                .apply_expression_layers(&expression_layers)
+                .map_err(|_| RuntimeRenderErrorCode::ModelEvaluationFailed)?;
             apply_model_input(&mut active.model, input)?;
             let snapshot = active
                 .model

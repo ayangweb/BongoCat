@@ -289,6 +289,30 @@ impl CoreModel {
         })
     }
 
+    pub(crate) fn parameter_value_by_id(&self, id: &str) -> Result<Option<f32>, Live2dError> {
+        let Some(resolved) = self.parameters_by_id.get(id).copied() else {
+            return Ok(None);
+        };
+        // SAFETY: self owns the live Model and the resolved index was checked
+        // against this Model's parameter array during construction.
+        let value = unsafe {
+            let count = self.parameter_count()?;
+            let values = checked_slice(
+                sys::csmGetParameterValues(self.model.as_ptr()),
+                count,
+                "parameter values",
+            )?;
+            values[resolved.index]
+        };
+        if !value.is_finite() {
+            return Err(Live2dError::new(
+                Live2dErrorCode::InvalidCoreValue,
+                format!("{id} has a non-finite current value"),
+            ));
+        }
+        Ok(Some(value))
+    }
+
     pub(crate) fn restore_parameter_defaults(&mut self) -> Result<(), Live2dError> {
         // SAFETY: self uniquely owns the Model. Each parameters_by_id entry
         // was resolved against this exact parameter array during construction.
