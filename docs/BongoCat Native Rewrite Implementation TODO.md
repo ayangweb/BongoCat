@@ -180,7 +180,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 将 macOS spike 打包为最小 `.app`，验证 bundle id、菜单、激活、关闭和辅助功能树可被系统识别。
   - 状态：Bundle ID `com.ayangweb.bongo-cat`、菜单、激活、关闭/重开、退出、WeType 拼音组合提交与最小内容 AX tree/action 已通过；真实 VoiceOver、Apple 拼音和 error/loading 宣读仍待完成，因此保持未勾选。
 - [ ] 生成 Windows spike 可执行文件，验证 MSVC、Windows SDK、D3D shader 工具和 manifest 前置条件。
-- [x] 跟踪 `block 0.1.6`、`proc-macro-error2 2.0.1` future-incompatibility；`docs/phase-0/future-incompatibility.md` 明确当前图只接受用于 spike，macOS 输入产品边界迁移到 `objc2-core-graphics`，GPUI 图必须在进入产品 workspace 前通过升级或审计 patch 消除两条 warning。
+- [x] 跟踪 `block 0.1.6`、`proc-macro-error2 2.0.1` future-incompatibility；`docs/phase-0/future-incompatibility.md` 记录 macOS 输入产品边界已迁移到 `objc2-core-graphics`，ADR-0011 允许 GPUI 精确锁定图进入最小产品窗口，但两条 warning 继续阻塞受影响的未来 Rust 工具链与 stable 发布，解除需上游升级或审计 patch。
 - [x] 若存在发布阻塞，提交 GPUI go/no-go ADR；备选只评估 Iced。ADR-0009 记录 GPUI 0.2.2 的 AX gate、Iced 0.14.0 初步检查和解除条件；当前阻塞仍未解除。
 
 ### 1.6 原生 Overlay spike
@@ -308,6 +308,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 ### 1.9 Phase 0 退出门槛
 
 - [ ] GPUI 设置窗口与原生 overlay 可同时运行、关闭和重开。
+  - 状态（2026-08-31）：正式 `bongocat-app` 已由 GPUI 接管平台主循环，应用 coordinator
+    以非阻塞 `ProductOverlaySession::tick` 驱动真实 Cubism/Metal overlay；正式设置窗口
+    同时读取 revisioned snapshot，并可持久化 overlay 显隐与 motion audio。macOS release
+    两秒有界 smoke 已按输入 -> runtime/config/audio -> renderer/overlay -> GPUI 顺序退出。
+    Windows hardware runner、设置窗口关闭后后台继续运行和窗口重开仍待验证，因此保持未勾选。
 - [ ] Windows/macOS 至少一个预置模型完成输入到原生绘制闭环。
 - [ ] Windows issue #47 复现用例不产生残留键。
 - [ ] macOS 权限拒绝、授予、重启和恢复路径可解释。
@@ -331,8 +336,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     owner、预置模型与输入映射、平台输入、cursor latest-value transport 和 Metal/D3D11
     overlay；应用拥有唯一 render consumer，并以输入 -> runtime -> renderer/window 顺序
     停止。输入权限/启动失败降级而不阻止模型窗口显示；`--run-seconds 0` 可持续运行，默认
-    30 秒用于有界开发 smoke。GPUI 共存、installed-model 选择和跨平台多模型切换确认仍属
-    后续任务。
+    30 秒用于有界开发 smoke。正式 GPUI 最小设置窗口现与产品 overlay/runtime 共存，
+    有界 service worker 提供 revisioned snapshot、显隐/音效持久化和显式 shutdown；
+    installed-model 选择、窗口重开和跨平台多模型切换确认仍属后续任务。
 - [x] 创建 bongocat-runtime：状态、输入语义、动画和 command。
 - [x] 创建 bongocat-config：环境隔离、schema、验证和原子存储。
 - [x] 创建 bongocat-model：模型包、导入和资源索引。
@@ -364,6 +370,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     close 后可 drain pending 且拒绝迟到帧，倒退 frame/generation 会显式失败；正式
     Live2D 与 macOS Metal overlay 已改用该 contract。
 - [ ] 创建 bongocat-ui：GPUI 页面和 design system。
+  - 状态（2026-08-31）：正式 crate 已建立平台无关的有界 typed command/reply、稳定错误码、
+    revisioned snapshot 与 closed-service contract；Windows/macOS GPUI 最小窗口提供真实
+    loading/error/disabled 状态、可见焦点、系统明暗配色、overlay 显隐和 motion audio
+    switch。完整基础控件、页面、AccessKit adapter、IME/本地化和窗口重建尚未完成，
+    因此保持未勾选。
 - [ ] 创建 bongocat-platform：Windows/macOS 系统服务。
   - 状态（2026-08-30）：正式 crate 已接入 macOS listen-only CGEventTap 与 Windows Raw
     Input，两平台都提供可靠键鼠边沿、周期状态校正和独立 cursor latest-value producer；
@@ -412,6 +423,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 - [ ] Windows/macOS debug/release 骨架均可构建。
 - [ ] GPUI 空设置窗口可打开，overlay 可显示测试帧。
+  - 状态（2026-08-31）：macOS 本机已提升为正式设置窗口 + 真实 Cubism/Metal 模型绘制并
+    通过 release 有界 smoke；Windows x64 hardware CI 与正式窗口截图仍待当前提交验证。
 - [ ] CI 在干净环境复现构建。
 - [ ] 应用可正常退出，所有 worker 有明确 join 结果。
 - [ ] Windows/macOS release dependency tree 与批准清单一致，无意外 Tauri/WebView/JavaScript runtime。
@@ -554,6 +567,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 在 spike 中拒绝损坏配置并保留原始文件；中断提交恢复会保守提升有效临时文件并归档无效/陈旧副本，隔离备份保留策略、默认恢复和 GPUI 用户诊断仍未完成。
 - [ ] 配置写入去抖，退出前强制 flush。
 - [ ] GPUI 只通过 typed command 获取 snapshot 和提交 patch。
+  - 状态（2026-08-31）：正式 UI 对已接入的显隐与 motion audio 只使用有界 typed
+    command/reply，成功结果携带新 runtime revision，文件写入在 app service worker 完成；
+    其余配置域尚未接入，故总项保持未勾选。
 - [x] 在 spike 中以包含环境目录的持久 `locks/config.writer.lock` 拒绝并发 writer，并通过 OS advisory lock 在 guard drop 后允许重试。
 - [x] 强制终止持锁进程后由内核释放 writer lock，下一进程可恢复已 flush 的临时配置且不覆盖当前配置。
   - 验收证据（2026-08-29）：macOS 本机与 Windows push run `33251278193`、job `99097261951` 均通过；平台文件权限仍待产品 crate。
@@ -791,6 +807,9 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
 - [ ] 禁止通用 set_value(path, any) API。
 - [ ] 不向 UI 发送逐帧数据、原始按键流或 GPU/model pointer。
 - [ ] command/snapshot 有纯 Rust contract test。
+  - 状态（2026-08-31）：首批正式 contract 已覆盖 FIFO command、typed reply、receiver
+    close、revision 单调更新、两项配置原子持久化和 shutdown acknowledgement；完整 app、
+    model、shortcut、update、diagnostics command 集尚未定义，因此保持未勾选。
 
 ### 6.2 GPUI 状态规则
 
@@ -800,6 +819,8 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
 - [ ] command 失败恢复草稿并显示可操作错误。
 - [ ] 设置窗口重建时从 runtime 恢复，不依赖旧 Entity。
 - [ ] UI executor 不持有 runtime 写锁或执行阻塞文件操作。
+  - 状态（2026-08-31）：当前最小窗口仅 await `SettingsClient`，独立有界 worker 独占
+    `Application`、配置 I/O 和 runtime 等待；后续页面仍须持续遵守该边界。
 
 ### 6.3 Design System
 

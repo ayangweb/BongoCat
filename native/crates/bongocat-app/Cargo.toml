@@ -15,6 +15,10 @@ bongocat-model.workspace = true
 bongocat-overlay.workspace = true
 bongocat-render.workspace = true
 bongocat-runtime.workspace = true
+bongocat-ui.workspace = true
+
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+gpui.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

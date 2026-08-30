@@ -1,0 +1,17 @@
+[package]
+name = "bongocat-ui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+async-channel.workspace = true
+
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+gpui.workspace = true
+
+[lints]
+workspace = true

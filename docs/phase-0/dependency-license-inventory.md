@@ -1,11 +1,13 @@
 # Phase 0 Dependency License Inventory
 
-状态：Native spike 依赖许可证与来源策略已自动化
-日期：2026-08-29
+状态：Native workspace 与 spike 依赖许可证/来源策略已自动化
+日期：2026-08-31
 
 ## Scope
 
-`deny.toml` 使用 `cargo-deny 0.20.2` 扫描所有 `spikes/*/Cargo.toml`、`tools/cubism-bindgen/Cargo.toml` 与 `tools/legacy-config-inspector/Cargo.toml`，并以已提交的 lockfile 为输入。检查目标是：
+`deny.toml` 使用 `cargo-deny 0.20.2` 扫描正式 `native/Cargo.toml`、所有
+`spikes/*/Cargo.toml`、`tools/cubism-bindgen/Cargo.toml` 与
+`tools/legacy-config-inspector/Cargo.toml`，并以已提交的 lockfile 为输入。检查目标是：
 
 - `aarch64-apple-darwin`
 - `x86_64-apple-darwin`
@@ -18,10 +20,10 @@
 
 | Dependency family                | Locked version                 | License                   | Role                                    |
 | -------------------------------- | ------------------------------ | ------------------------- | --------------------------------------- |
-| GPUI                             | `0.2.2`                        | Apache-2.0                | Settings UI spike                       |
+| GPUI                             | `0.2.2`                        | Apache-2.0                | Formal settings UI and lifecycle spike  |
 | AccessKit core/macOS/Windows     | `0.25.0` / `0.27.0` / `0.35.0` | MIT OR Apache-2.0         | GPUI semantic AX/UIA adapter            |
 | raw-window-handle                | `0.6.2`                        | MIT OR Apache-2.0 OR Zlib | GPUI native window handle boundary      |
-| async-channel                    | `2.5.0`                        | MIT OR Apache-2.0         | Typed command/reply spike               |
+| async-channel                    | `2.5.0`                        | MIT OR Apache-2.0         | Formal typed command/reply and spike    |
 | unicode-segmentation             | `1.13.3`                       | MIT OR Apache-2.0         | Grapheme-safe text editing              |
 | futures-lite                     | `2.6.1`                        | MIT OR Apache-2.0         | Test-only executor bridge               |
 | dirs                             | `6.0.0`                        | MIT OR Apache-2.0         | Config path spike                       |
@@ -62,7 +64,7 @@ cargo install cargo-deny --version 0.20.2 --locked
 
 - 历史 Tauri/Vue 产品的发布依赖；
 - 官方 Cubism Core 二进制、SDK 资源和 attribution；
-- 未来的音频、更新、打包或产品 workspace 新依赖；
+- 未来的更新、打包或尚未加入 workspace 的新依赖；
 - 发布阶段的 SBOM 与 notice bundle 生成。
 
 Cubism 版本、来源、hash、再分发条款和 attribution 必须在 `P0-CUBISM` 单独形成书面结论；完成前不得制作可公开分发的 Native Rewrite 安装包。
@@ -71,4 +73,7 @@ AccessKit 由同一上游仓库维护，core 与双平台 adapter 的公开边�
 
 ## Future-Incompatibility
 
-当前 stable Rust 报告 `block 0.1.6` 与 `proc-macro-error2 2.0.1` 将在未来版本成为硬错误。两者仅允许保留在 Phase 0 spike lockfile 中，不获准直接进入产品 workspace。依赖路径、rustc 诊断、替换策略和产品门禁见 `docs/phase-0/future-incompatibility.md`。
+当前 stable Rust 报告 `block 0.1.6` 与 `proc-macro-error2 2.0.1` 将在未来版本成为硬错误。
+ADR-0011 允许当前精确锁定 GPUI 图进入最小正式窗口用于本地开发和 CI；这不解除未来
+Rust 工具链与 stable 发布门禁。依赖路径、rustc 诊断和替换策略见
+`docs/phase-0/future-incompatibility.md`。

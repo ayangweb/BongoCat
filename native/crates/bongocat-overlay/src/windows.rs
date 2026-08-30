@@ -1,5 +1,5 @@
 use crate::{
-    OverlayError, OverlaySessionOptions, PreviewReport, ProductOverlayReport,
+    OverlayError, OverlaySessionOptions, OverlayTickOutcome, PreviewReport, ProductOverlayReport,
     validate_model_generation_advance,
 };
 use bongocat_model::{CommittedModel, ModelId, ModelPackageLimits, PresetModelCatalog};
@@ -741,6 +741,16 @@ impl NativeOverlay {
         let renderer = Renderer::create(&window, frame, options.opacity_percent)?;
         Ok(Self { renderer, window })
     }
+
+    fn set_visible(&self, visible: bool) -> Result<(), OverlayError> {
+        if visible {
+            self.window.show()
+        } else {
+            // SAFETY: the HWND is live and accessed only from its owner thread.
+            let _ = unsafe { ShowWindow(self.window.hwnd, SW_HIDE) };
+            Ok(())
+        }
+    }
 }
 
 pub(super) struct ProductOverlaySession {
@@ -788,7 +798,9 @@ impl ProductOverlaySession {
             token,
             ModelCommitOutcome::Prepared,
         )?;
-        overlay.window.show()?;
+        if runtime_client.snapshot().overlay_visible {
+            overlay.window.show()?;
+        }
         let (input_service, input_start_error) =
             match WindowsInputService::start(input_producer, cursor_producer) {
                 Ok(service) => (Some(service), None),
@@ -814,53 +826,10 @@ impl ProductOverlaySession {
     pub(super) fn run_for(&mut self, duration: Duration) -> Result<(), OverlayError> {
         let started = Instant::now();
         let mut next_frame = started;
-        while self.overlay.window.visible() && (duration.is_zero() || started.elapsed() < duration)
-        {
-            pump_window_messages();
-            let runtime_snapshot = self.runtime_client.snapshot();
-            if runtime_snapshot.state == RuntimeState::Stopped {
-                return Err(OverlayError::new(
-                    "runtime stopped while the product overlay was active",
-                ));
-            }
-            if !runtime_snapshot.overlay_visible {
+        while duration.is_zero() || started.elapsed() < duration {
+            if self.tick()? == OverlayTickOutcome::Hidden {
                 break;
             }
-            let mut model_switched = false;
-            if let Some(frame) = self.render_consumer.take_latest() {
-                match self.overlay.renderer.sync_frame(&frame) {
-                    Ok(switched) => {
-                        if let Some(token) = frame.model_commit {
-                            report_model_commit(
-                                &self.runtime_client,
-                                &self.render_consumer,
-                                token,
-                                ModelCommitOutcome::Prepared,
-                            )?;
-                        }
-                        if frame.snapshot.as_ref() != self.previous_snapshot.as_ref() {
-                            self.dynamic_snapshots = self.dynamic_snapshots.saturating_add(1);
-                        }
-                        model_switched = switched;
-                        self.previous_snapshot = frame.snapshot;
-                    }
-                    Err(error) if frame.model_commit.is_some() => {
-                        reject_model_commit(
-                            &self.runtime_client,
-                            &self.render_consumer,
-                            frame.model_commit.expect("checked model commit token"),
-                        )?;
-                        self.model_commit_rejections =
-                            self.model_commit_rejections.saturating_add(1);
-                        let _ = error;
-                    }
-                    Err(error) => return Err(error),
-                }
-            }
-            self.overlay
-                .renderer
-                .draw(self.frames_presented == 0 || model_switched)?;
-            self.frames_presented = self.frames_presented.saturating_add(1);
             next_frame += self.frame_interval;
             if let Some(delay) = next_frame.checked_duration_since(Instant::now()) {
                 thread::sleep(delay);
@@ -869,6 +838,59 @@ impl ProductOverlaySession {
             }
         }
         Ok(())
+    }
+
+    pub(super) fn tick(&mut self) -> Result<OverlayTickOutcome, OverlayError> {
+        pump_window_messages();
+        let runtime_snapshot = self.runtime_client.snapshot();
+        if runtime_snapshot.state == RuntimeState::Stopped {
+            return Err(OverlayError::new(
+                "runtime stopped while the product overlay was active",
+            ));
+        }
+        if !runtime_snapshot.overlay_visible {
+            self.overlay.set_visible(false)?;
+            return Ok(OverlayTickOutcome::Hidden);
+        }
+        if !self.overlay.window.visible() {
+            self.overlay.set_visible(true)?;
+        }
+
+        let mut model_switched = false;
+        if let Some(frame) = self.render_consumer.take_latest() {
+            match self.overlay.renderer.sync_frame(&frame) {
+                Ok(switched) => {
+                    if let Some(token) = frame.model_commit {
+                        report_model_commit(
+                            &self.runtime_client,
+                            &self.render_consumer,
+                            token,
+                            ModelCommitOutcome::Prepared,
+                        )?;
+                    }
+                    if frame.snapshot.as_ref() != self.previous_snapshot.as_ref() {
+                        self.dynamic_snapshots = self.dynamic_snapshots.saturating_add(1);
+                    }
+                    model_switched = switched;
+                    self.previous_snapshot = frame.snapshot;
+                }
+                Err(error) if frame.model_commit.is_some() => {
+                    reject_model_commit(
+                        &self.runtime_client,
+                        &self.render_consumer,
+                        frame.model_commit.expect("checked model commit token"),
+                    )?;
+                    self.model_commit_rejections = self.model_commit_rejections.saturating_add(1);
+                    let _ = error;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        self.overlay
+            .renderer
+            .draw(self.frames_presented == 0 || model_switched)?;
+        self.frames_presented = self.frames_presented.saturating_add(1);
+        Ok(OverlayTickOutcome::Presented)
     }
 
     pub(super) fn stop_input(&mut self) -> Result<(), OverlayError> {

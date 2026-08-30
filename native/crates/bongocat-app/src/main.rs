@@ -3,11 +3,16 @@
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_overlay::{OverlaySessionOptions, ProductOverlaySession};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
+use bongocat_ui::{SettingsError, SettingsErrorCode, SettingsView, open_settings_window};
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use gpui::{App, Application as GpuiApplication, Global, Timer, WindowHandle};
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::{
     env, fmt,
     io::{self, Write},
     path::Path,
     path::PathBuf,
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
@@ -113,6 +118,27 @@ impl fmt::Display for ProductRunError {
 impl std::error::Error for ProductRunError {}
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
+struct ProductCoordinator {
+    overlay: Option<ProductOverlaySession>,
+    settings_service: Option<bongocat_app::ApplicationSettingsService>,
+    settings_window: WindowHandle<SettingsView>,
+    frame_source_running: bool,
+    expect_visible_frame: bool,
+    failures: Arc<Mutex<Vec<String>>>,
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+impl Global for ProductCoordinator {}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn record_failure(failures: &Arc<Mutex<Vec<String>>>, failure: impl Into<String>) {
+    failures
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .push(failure.into());
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let run_options = match RunOptions::parse(env::args().skip(1)) {
         Ok(options) => options,
@@ -123,10 +149,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(error) => return Err(Box::new(error)),
     };
     let mut application = bongocat_app::Application::start()?;
-    if !application.config().overlay.visible {
-        application.shutdown()?;
-        return Ok(());
-    }
 
     let model_id = application
         .config()
@@ -142,43 +164,176 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         maximum_fps: application.config().model.maximum_fps,
     };
     application.prepare_preset_model(development_preset_root(), model_id)?;
+    let runtime_client = application.runtime_client();
+    let input_producer = application.input_producer();
+    let cursor_producer = application.cursor_producer();
+    let render_consumer = application.take_render_consumer()?;
+    let expect_visible_frame = application.config().overlay.visible;
+    let frame_interval = Duration::from_secs_f64(1.0 / f64::from(overlay_options.maximum_fps));
+    let failures = Arc::new(Mutex::new(Vec::new()));
+    let run_failures = Arc::clone(&failures);
 
-    let session = ProductOverlaySession::start(
-        application.runtime_client(),
-        application.input_producer(),
-        application.cursor_producer(),
-        application.take_render_consumer()?,
-        overlay_options,
-    );
-    let mut session = match session {
-        Ok(session) => session,
-        Err(error) => {
-            let mut failures = vec![error.to_string()];
-            if let Err(error) = application.shutdown() {
-                failures.push(error.to_string());
+    GpuiApplication::new().run(move |cx: &mut App| {
+        let overlay = match ProductOverlaySession::start(
+            runtime_client,
+            input_producer,
+            cursor_producer,
+            render_consumer,
+            overlay_options,
+        ) {
+            Ok(overlay) => overlay,
+            Err(error) => {
+                record_failure(&run_failures, error.to_string());
+                if let Err(error) = application.shutdown() {
+                    record_failure(&run_failures, error.to_string());
+                }
+                cx.quit();
+                return;
             }
-            return Err(Box::new(ProductRunError { failures }));
-        }
-    };
+        };
+        let settings_service = match bongocat_app::ApplicationSettingsService::start(application) {
+            Ok(service) => service,
+            Err(error) => {
+                record_failure(&run_failures, error.to_string());
+                let mut overlay = overlay;
+                if let Err(error) = overlay.stop_input() {
+                    record_failure(&run_failures, error.to_string());
+                }
+                cx.quit();
+                return;
+            }
+        };
+        let settings_client = settings_service.client();
+        let settings_window = match open_settings_window(settings_client, cx) {
+            Ok(window) => window,
+            Err(error) => {
+                record_failure(&run_failures, error);
+                let mut overlay = overlay;
+                if let Err(error) = overlay.stop_input() {
+                    record_failure(&run_failures, error.to_string());
+                }
+                let client = settings_service.client();
+                let _ = client.shutdown_blocking();
+                if let Err(error) = settings_service.join() {
+                    record_failure(&run_failures, error.to_string());
+                }
+                if let Err(error) = overlay.finish_after_runtime_shutdown() {
+                    record_failure(&run_failures, error.to_string());
+                }
+                cx.quit();
+                return;
+            }
+        };
 
-    let mut failures = Vec::new();
-    if let Err(error) = session.run_for(run_options.run_duration) {
-        failures.push(error.to_string());
-    }
-    if let Err(error) = session.stop_input() {
-        failures.push(error.to_string());
-    }
-    if let Err(error) = application.shutdown() {
-        failures.push(error.to_string());
-    }
-    match session.finish_after_runtime_shutdown() {
-        Ok(report) if report.frames_presented == 0 => {
-            failures.push("product overlay presented no frames".to_owned());
-        }
-        Ok(_) => {}
-        Err(error) => failures.push(error.to_string()),
-    }
+        cx.set_global(ProductCoordinator {
+            overlay: Some(overlay),
+            settings_service: Some(settings_service),
+            settings_window,
+            frame_source_running: true,
+            expect_visible_frame,
+            failures: Arc::clone(&run_failures),
+        });
 
+        cx.on_app_quit(|cx| {
+            let mut coordinator = cx.remove_global::<ProductCoordinator>();
+            coordinator.frame_source_running = false;
+            let mut overlay = coordinator
+                .overlay
+                .take()
+                .expect("product overlay owner is present");
+            if let Err(error) = overlay.stop_input() {
+                record_failure(&coordinator.failures, error.to_string());
+            }
+            let settings_service = coordinator
+                .settings_service
+                .take()
+                .expect("settings service owner is present");
+            let settings_client = settings_service.client();
+            async move {
+                if let Err(error) = settings_client.shutdown().await {
+                    record_failure(&coordinator.failures, error.to_string());
+                }
+                if let Err(error) = settings_service.join() {
+                    record_failure(&coordinator.failures, error.to_string());
+                }
+                match overlay.finish_after_runtime_shutdown() {
+                    Ok(report)
+                        if coordinator.expect_visible_frame && report.frames_presented == 0 =>
+                    {
+                        record_failure(
+                            &coordinator.failures,
+                            "product overlay presented no frames",
+                        );
+                    }
+                    Ok(_) => {}
+                    Err(error) => record_failure(&coordinator.failures, error.to_string()),
+                }
+            }
+        })
+        .detach();
+
+        cx.spawn(async move |cx| {
+            loop {
+                Timer::after(frame_interval).await;
+                let keep_running = cx
+                    .update(|cx| {
+                        let (keep_running, failure, settings_window, failures) = {
+                            let coordinator = cx.global_mut::<ProductCoordinator>();
+                            if !coordinator.frame_source_running {
+                                return false;
+                            }
+                            let result = coordinator
+                                .overlay
+                                .as_mut()
+                                .expect("product overlay owner is present")
+                                .tick();
+                            match result {
+                                Ok(_) => (true, None, None, None),
+                                Err(error) => {
+                                    coordinator.frame_source_running = false;
+                                    (
+                                        false,
+                                        Some(error.to_string()),
+                                        Some(coordinator.settings_window),
+                                        Some(Arc::clone(&coordinator.failures)),
+                                    )
+                                }
+                            }
+                        };
+                        if let (Some(failure), Some(settings_window), Some(failures)) =
+                            (failure, settings_window, failures)
+                        {
+                            record_failure(&failures, failure);
+                            let _ = settings_window.update(cx, |view, _, cx| {
+                                view.report_service_error(
+                                    SettingsError::new(SettingsErrorCode::RuntimeUnavailable),
+                                    cx,
+                                );
+                            });
+                        }
+                        keep_running
+                    })
+                    .unwrap_or(false);
+                if !keep_running {
+                    break;
+                }
+            }
+        })
+        .detach();
+
+        if !run_options.run_duration.is_zero() {
+            cx.spawn(async move |cx| {
+                Timer::after(run_options.run_duration).await;
+                let _ = cx.update(|cx| cx.quit());
+            })
+            .detach();
+        }
+    });
+
+    let failures = Arc::try_unwrap(failures)
+        .unwrap_or_else(|_| panic!("product failure accumulator is still shared"))
+        .into_inner()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if failures.is_empty() {
         Ok(())
     } else {

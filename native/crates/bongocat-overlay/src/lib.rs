@@ -43,6 +43,12 @@ pub struct ProductOverlayReport {
     pub texture_count: usize,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OverlayTickOutcome {
+    Presented,
+    Hidden,
+}
+
 pub struct ProductOverlaySession {
     #[cfg(target_os = "macos")]
     inner: macos::ProductOverlaySession,
@@ -111,6 +117,25 @@ impl ProductOverlaySession {
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             let _ = duration;
+            Err(OverlayError::new(
+                "the product Live2D overlay is available on Windows and macOS",
+            ))
+        }
+    }
+
+    pub fn tick(&mut self) -> Result<OverlayTickOutcome, OverlayError> {
+        #[cfg(target_os = "macos")]
+        {
+            self.inner.tick()
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            self.inner.tick()
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
             Err(OverlayError::new(
                 "the product Live2D overlay is available on Windows and macOS",
             ))

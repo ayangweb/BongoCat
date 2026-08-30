@@ -6,7 +6,9 @@ Rust：`cargo 1.97.1`、`rustc 1.97.1`
 
 ## Scope
 
-本次审计最初覆盖 Native Rewrite 的 9 个 `spikes/*` 独立 workspace 和 `tools/legacy-config-inspector`；新增 `spikes/model-package`、`tools/cubism-bindgen`、`spikes/overlay-windows` 与 `spikes/fixture-runner` 后当前共 14 个独立 workspace。仓库根 workspace、`src-tauri/` 和其插件属于历史行为对照，不是 Native Rewrite 的依赖图；Phase 0 不借依赖升级修改历史应用。
+本次审计覆盖正式 `native/` workspace，以及 12 个 `spikes/*`/2 个 `tools/*` 独立 workspace，
+当前共 15 个 workspace。仓库根 workspace、`src-tauri/` 和其插件属于历史行为对照，
+不是 Native Rewrite 的依赖图；Phase 0 不借依赖升级修改历史应用。
 
 版本来源使用 crates.io stable release：
 
@@ -95,7 +97,12 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
 - `objc2-game-controller 0.3.2` 只在 macOS 输入 spike 的窄平台边界枚举 `GCExtendedGamepad`、安装 value-change handler 并管理 background delivery；许可证为 Zlib OR Apache-2.0 OR MIT，项目公共协议只接收自有 snapshot/event 类型，停止使用 GameController 时可替换该 adapter 而不改变 producer contract；
 - `metal 0.33.0` 创建透明 `CAMetalLayer`，完成两次 clear/present、隐藏/重显和自动退出；
 - `libc 0.2.189` 只在 macOS overlay spike 的平台边界调用 `proc_pidinfo`，用于 100-cycle 线程/RSS 资源快照；许可证为 MIT OR Apache-2.0，停止使用该系统指标后可直接移除，不进入项目公共 API；
-- `async-channel 2.5.0` 的 GPUI 设置 spike 完成 revisioned snapshot、runtime shutdown 和自动退出；
+- `async-channel 2.5.0`（MIT OR Apache-2.0）已进入正式 `bongocat-ui`，只封装容量 16 的
+  typed command/reply；第三方 sender/receiver 不进入 runtime/config API。正式 app service
+  已验证 FIFO、receiver close、revisioned snapshot、配置持久化与 shutdown acknowledgement；
+- `gpui 0.2.2`（Apache-2.0）只在 Windows/macOS 正式 UI/app target 编译，Linux 共享协议
+  不依赖 GPUI；替换边界位于 `bongocat-ui::window` 与 app 主循环，runtime/config/model 不导入
+  GPUI 类型。macOS 正式窗口 + Cubism overlay release smoke 已通过，Windows 由 hardware CI 验证；
 - `accesskit 0.25.0`、`accesskit_macos 0.27.0`、`accesskit_windows 0.35.0`、`raw-window-handle 0.6.2` 与 ABI generation 匹配的 `objc2-foundation 0.2.2` 只在 GPUI 设置 spike 中把强类型语义快照和 action 接到原生 AX/UIA，并通过原生窗口事件验证 tooltip hover；替换边界是 GPUI 提供等价稳定 element-level accessibility 和输入测试 API，届时删除 adapter/probe 依赖而不改变 runtime/UI command contract；
 - `atomic-write-file 0.3.1`（BSD-3-Clause）只在正式配置 crate 内提供同目录跨平台原子替换；替换边界是 `ConfigStore` 的私有 commit helper，不进入公共配置类型；`dirs 6.0.0`、`serde 1.0.229` 与 `serde_json 1.0.151` 继续提供路径解析和严格序列化；
 - `rodio 0.22.2`（MIT OR Apache-2.0）只在 `bongocat-audio` 私有 backend 打开系统输出并
@@ -105,7 +112,10 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
 - `bindgen 0.72.1` 与 `sha2 0.11.0` 只存在于离线 Cubism raw binding 工具；三个当前可绑定 target 的合成 header golden、外部路径/hash/不可覆盖/provenance 测试和 release check 通过；
 - `cargo-deny 0.20.2` 对全部 15 个 workspace 的四目标 license/source policy执行检查。
 
-GPUI 图继续报告已单独建档的 `block 0.1.6` 和 `proc-macro-error2 2.0.1` future-incompatibility。两者本身已是各自当前最新版，升级直接依赖没有解除上游约束，产品 workspace 的禁止门槛保持不变。
+GPUI 图继续报告已单独建档的 `block 0.1.6` 和 `proc-macro-error2 2.0.1`
+future-incompatibility。两者本身已是各自当前最新版，升级直接依赖没有解除上游约束；
+ADR-0011 允许精确锁定图用于正式最小窗口的本地开发/CI，但受影响的未来 Rust 工具链与
+stable 发布保持阻塞，详见 `future-incompatibility.md`。
 
 ## Future Additions
 

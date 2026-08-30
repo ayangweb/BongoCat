@@ -1,7 +1,7 @@
 # BongoCat Native Rewrite Technical Design
 
 状态：架构决策稿，Phase 0 证据补齐与 Phase 1 渐进实现并行
-最后更新：2026-08-30
+最后更新：2026-08-31
 首发平台：Windows 10 1903+、macOS 12+
 后续平台：Linux（首发后评估）
 
@@ -96,6 +96,8 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
 - 不自动跟随 Zed main，不直接依赖 Zed 应用内部 UI crate。
 - 项目内建立小型 design system：颜色、排版、间距、焦点、按钮、表单、列表、弹窗和通知。
 - GPUI `Entity` 只保存视图状态；真实输入、动画、配置和模型状态由 runtime 管理。
+- 正式 `bongocat-ui` 只定义设置 command/snapshot 协议和 GPUI 视图；`bongocat-app`
+  的有界 service worker 独占配置写入和 runtime command，UI executor 不执行阻塞 I/O。
 - 设置控件的辅助功能语义由 UI crate 维护项目自有 AccessKit tree；平台 adapter 只通过
   GPUI 公开的 raw window handle 安装，辅助技术 action 经有界强类型通道回到 GPUI 主线程。
 - 辅助功能实现不得使用 GPUI 私有 renderer、隐藏原生控件或独立业务状态副本；可见控件、
@@ -114,6 +116,8 @@ Phase 0 必须验证输入法、文本编辑、缩放、辅助功能、窗口重
                        GPUI settings window
                               |
                        Commands / Snapshots
+                              |
+                     App coordinator/service
                               |
 Platform input ---> Runtime thread ---> Model/Animation state
      |                    |                    |
@@ -141,16 +145,16 @@ Platform input ---> Runtime thread ---> Model/Animation state
 ### 6.2 依赖方向
 
 ```text
-ui -----------> runtime <----------- platform adapters
-                    |
-                    v
-               model / live2d
-                    |
-                    v
-              render contract
-                    ^
-                    |
-       D3D11 renderer / Metal renderer
+ui protocol <------- app -------> runtime <------- platform adapters
+                                  |
+                                  v
+                             model / live2d
+                                  |
+                                  v
+                            render contract
+                                  ^
+                                  |
+                     D3D11 renderer / Metal renderer
 ```
 
 业务 crate 不得导入 Win32、Objective-C、GPUI 或 GPU handle。平台实现可以依赖业务定义的 command/event 类型。
@@ -215,6 +219,8 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
   清理；重复 stop 不重启计时，零时长立即清理，旧动作的 stop 不影响后启动动作。
 - render snapshot 不含锁和平台对象，通过双缓冲或 latest-value channel 交给渲染线程。
 - GPUI 通过 command/snapshot 边界交互，不直接持有 runtime mutex。
+- GPUI 拥有平台主事件循环；应用 coordinator 在该主线程调度 overlay `tick`，GPUI
+  `Entity` 不持有 renderer、render snapshot 或 frame-loop 状态。
 - shutdown 顺序：停止输入 -> runtime drain/停止 -> 保存配置 -> 停止音频并 join -> 停止渲染 -> 销毁 overlay/GPU -> 关闭 GPUI。
 
 ### 8.2 输入事件

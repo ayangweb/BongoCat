@@ -17,6 +17,9 @@ use bongocat_runtime::{
 };
 use std::{collections::BTreeMap, fmt, path::Path, sync::Arc, time::Duration};
 
+mod settings;
+pub use settings::{ApplicationSettingsService, SettingsServiceJoinError};
+
 const COMMAND_CAPACITY: usize = 64;
 const AUDIO_COMMAND_CAPACITY: usize = 16;
 const RUNTIME_TIMEOUT: Duration = Duration::from_secs(2);

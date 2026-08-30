@@ -1,7 +1,7 @@
 # Rust Future-Incompatibility Gate
 
-状态：macOS 输入产品路径已迁移；Metal/GPUI 上游风险继续跟踪
-日期：2026-08-30
+状态：macOS 输入产品路径已迁移；GPUI 开发图获准，未来工具链/stable 发布继续阻塞
+日期：2026-08-31
 
 ## Findings
 
@@ -38,10 +38,15 @@ GPUI 0.2.2 自身和 macOS 图中的 cocoa/metal/core-video 仍会引入 `block 
 ## Decision
 
 - Phase 0 spike 可以继续使用已锁定依赖，因为当前 stable Rust、双平台 CI 和既有 smoke 仍通过。
-- 当前 warning 不得作为产品 workspace 的长期接受项，也不得仅用 `--cap-lints`、忽略 warning 或未审阅 git fork 隐藏。
+- 当前 warning 不得作为 stable 发布或未来不兼容 Rust 工具链的长期接受项，也不得仅用
+  `--cap-lints`、忽略 warning 或未审阅 git fork 隐藏。
 - macOS 输入产品实现已迁移到 `objc2-core-graphics`；合成 tap/callback/runtime/shutdown
   闭环已通过，TCC 撤销、物理输入、系统自然 timeout 和生命周期实机矩阵继续作为发布门禁。
-- GPUI 保持 provisional。进入产品 workspace 前，选定图必须消除 `block 0.1.6` 与 `proc-macro-error2 2.0.1`，并通过 Windows/macOS locked build、Clippy、test 和 future-incompatibility check。
+- ADR-0011 允许精确锁定的 GPUI 0.2.2 图进入正式 `bongocat-ui` 最小窗口，用于不公开
+  分发的本地开发和 CI；正式图必须持续执行 Windows/macOS locked build、Clippy、test
+  和 future-incompatibility check。若当前 stable 尚只报告 warning，可继续功能开发；若
+  项目 Rust toolchain 将其提升为错误，则该 toolchain 升级与 stable 发布保持阻塞。
 - 若上游版本未及时解除依赖，允许的下一步是形成独立 patch 评审：记录来源、diff、许可证、维护责任和退出版本；不得在本结论中预先批准 patch。
 
-这项结论关闭的是“是否接受当前风险”的调研任务，答案为“不接受进入产品”。它不解除 ADR-0009 的 GPUI accessibility P0 gate，也不表示 GPUI 已获最终 GO。
+这项结论不解除 ADR-0009 的 GPUI accessibility P0 gate，也不表示 GPUI 已获 stable 发布
+GO。开发期接受的是可观测、精确锁定且有退出条件的上游风险，不是永久接受 warning。

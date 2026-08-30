@@ -10,6 +10,7 @@ members = [
     "crates/bongocat-platform",
     "crates/bongocat-render",
     "crates/bongocat-runtime",
+    "crates/bongocat-ui",
 ]
 
 [workspace.package]
@@ -22,7 +23,9 @@ publish = false
 
 [workspace.dependencies]
 atomic-write-file = "=0.3.1"
+async-channel = "=2.5.0"
 dirs = "=6.0.0"
+gpui = "=0.2.2"
 image = { version = "=0.25.10", default-features = false, features = ["png"] }
 rodio = { version = "=0.22.2", default-features = false, features = ["playback", "flac"] }
 serde = { version = "=1.0.229", features = ["derive"] }
@@ -37,6 +40,7 @@ bongocat-overlay = { path = "crates/bongocat-overlay" }
 bongocat-platform = { path = "crates/bongocat-platform" }
 bongocat-render = { path = "crates/bongocat-render" }
 bongocat-runtime = { path = "crates/bongocat-runtime" }
+bongocat-ui = { path = "crates/bongocat-ui" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
