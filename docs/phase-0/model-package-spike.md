@@ -90,4 +90,7 @@ motion3/exp3 强类型验证提交 `3f8f5bc` 的 push run `33269920418` 与 PR r
 
 ## Disposition
 
-当前结论为 `promote candidate`：静态 package contract 可作为未来 `bongocat-model` 的输入，但只有在 `P0-CUBISM` 完成 Native Core、Framework 行为和双 renderer 门禁后才迁移到产品 workspace。当前 spike 保持隔离，不解除 Cubism 授权、binding、Moc/Model 生命周期或绘制阻塞。
+静态 package contract 已提升到正式 `bongocat-model`；Phase 0 spike 继续作为异常
+fixture、sidecar 解析和资源考古证据。commit `57118ff` 又把三个预置包接入正式
+`bongocat-live2d` safe owner 和 macOS Metal renderer。该提升不代表 motion、
+expression、physics、pose 求值、Windows D3D11 或发布清单已经完成。

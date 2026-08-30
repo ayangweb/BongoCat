@@ -92,6 +92,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 新增 ADR-008：固定 Bundle ID，并隔离 Development/Production 存储环境。
 - [x] 新增 ADR-010：Windows 只保留 x64/ARM64，移除 i686，并把缺少 R5 desktop ARM64 Core 固定为发布阻塞。
 - [x] 记录 `master`、`next`、旧版本 tag 和可回退 commit。
+- [x] 固定上游 Bongo-Cat-Mver 行为参考仓库、commit、关键文件和使用边界。
+  - 验收证据（2026-08-30）：`docs/migration/bongo-cat-mver-reference.md` 固定
+    `MMmmmoko/Bongo-Cat-Mver` commit `4da0b9468ad3b6ffaa096eba3f080501d6ab0b5c`，
+    记录模型装配、更新顺序、纹理/alpha、输入模式和窗口行为的查阅入口；该仓库
+    只作为行为证据，不进入 Native workspace 依赖图。
 - [ ] 确认旧 Vue/Tauri 应用仍可构建和运行，保存命令与产物信息。
 - [x] 建立 `docs/adr/`、`docs/benchmark/`、`docs/migration/` 目录。
 - [x] 建立依赖许可证清单，确认当前 Native spike crate graph 与项目 MIT 发布兼容。
@@ -244,23 +249,30 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 建立目标架构二进制清单、hash 和可重复获取流程。
   - 状态（2026-08-30）：r.5 Windows x64 与 macOS arm64/x64 artifact 路径和 SHA-256 已形成清单，Windows ARM64 已明确无 desktop artifact，i686 已排除；固定 archive hash 的离线 ZIP 检查和 macOS arm64 ABI 已通过。第二人/第二机器复核、Windows x64/macOS x64 原生 ABI 与授权后的可分发获取流程仍待完成。
 - [x] 验证 Rust sys binding 加载 moc、创建 model 并读取 drawable 数据。
-  - 验收证据（2026-08-30）：`tools/cubism-core-probe/` 使用仓库外真实 r.5 arm64 binding 与 Core `06.00.0001`，对三个预置 Moc 各完成 100 次 consistency/revive/initialize/update/array/drop。parameter/part/drawable/canvas 与 legacy baseline 一致，另读取 vertex/UV/index/mask、packed blend、render order、parent 与 r.5 offscreen 数组；`leaks --atExit` 为 0 bytes。详见 `docs/phase-0/cubism-core-r5-probe.md`。该项不代表 Windows ABI、safe wrapper、Framework 求值或 renderer 完成。
-- [ ] 包装 Moc/Model 生命周期，证明 Model 不会比 Moc 存活更久。
+  - 验收证据（2026-08-30）：`tools/cubism-core-probe/` 首先使用隔离的真实 r.5 arm64 binding 与 Core `06.00.0001`，对三个预置 Moc 各完成 100 次 consistency/revive/initialize/update/array/drop。parameter/part/drawable/canvas 与 legacy baseline 一致，另读取 vertex/UV/index/mask、packed blend、render order、parent 与 r.5 offscreen 数组；`leaks --atExit` 为 0 bytes。commit `57118ff` 随后把审阅后的 binding 和 safe wrapper 提升到产品 workspace，并通过三个模型测试与 Windows x64 release 交叉 check。详见 `docs/phase-0/cubism-core-r5-probe.md`。
+- [x] 包装 Moc/Model 生命周期，证明 Model 不会比 Moc 存活更久。
+  - 验收证据（2026-08-30）：commit `57118ff` 的 `bongocat-live2d` 使用 Rust 对齐
+    allocation 分别持有 revived Moc 与 Model，raw pointer 不离开 crate，显式按
+    Model -> Moc 顺序析构；三个预置模型重复创建 snapshot 的测试均通过。
 - [x] 用 Rust 解析三个预置 model3 和所有关联资源。
   - 验收证据：build `7ee8acd5f2a3d4dcb7a1dbc36623cbe497aeae49` 的 push run `33238204993` 与 PR run `33238206415` 各 16 jobs 全绿。`spikes/model-package/` 强类型解析 model3 v3，验证 moc、纹理、display info、expression、motion/audio、可选 physics/pose/user data 与 companion images，完整包索引冻结在 `shared/fixtures/model-fixtures/preset-model3-index.json`。2026-08-30 又将 3 个 cdi3、6 个 motion3 与 15 个 exp3 纳入强类型结构验证；cdi3 parameter/part 数量与 legacy Core baseline 一致，三个预置包、异常 fixture、跨根 symlink 和目录深度均有 Rust 测试，详见 `docs/phase-0/model-package-spike.md`。本项不包含 Core/model creation、动作求值或 renderer。
 - [ ] Windows D3D11 绘制预置模型的 texture/order/alpha/mask。
   - 状态（2026-08-29）：Windows overlay 已实现合成几何的 D3D11 shader pipeline、预乘 alpha draw 和 staging texture 像素验证；预置模型 texture、drawable order 和 mask 尚未接入，因此保持未完成。
-- [ ] macOS Metal 绘制同一模型的 texture/order/alpha/mask。
-  - 状态（2026-08-29）：macOS overlay 已完成合成几何的真实 Metal pipeline、预乘 alpha draw 和 100 帧 GPU readback，不再只是透明 clear/present；预置模型 texture、drawable order 和 mask 尚未接入，因此保持未完成。
+- [x] macOS Metal 绘制同一模型的 texture/order/alpha/mask。
+  - 验收证据（2026-08-30）：commit `57118ff` 将三个预置模型的真实 Core drawable
+    snapshot 接入独立 `NSPanel`/`CAMetalLayer`，按 render order 绘制 texture、normal/
+    additive/multiplicative blend、预乘 alpha、multiply/screen color 和 inverted mask。
+    本机 release preview 分别连续提交 standard 716 帧、keyboard 596 帧、gamepad
+    597 帧，三者首帧 GPU readback 和截图检查均通过；每个模型含 5 个 masked drawable。
 - [ ] 验证 motion、expression、physics、pose 至少各一个真实样本。
   - 状态（2026-08-30）：6 个预置 motion3 与 15 个 exp3 已通过强类型结构解析和计数门禁；本机 13 个历史 physics3 也以匿名只读方式通过 v3 静态 parser，共覆盖 86 setting/139 input/206 output/267 vertex。合成 pose3 已固定 Type/fade/group/part/link 拒绝边界，但不是真实样本。motion/expression 的实际时间求值、参数混合与优先级，physics/pose 的实际求值，以及授权 physics/pose fixture 仍未完成，因此本项保持未勾选。
 - [ ] 验证模型切换/销毁 100 次，无 CPU/GPU 资源增长。
 - [x] 记录与 easy-live2d 的差异和必须兼容项；`docs/phase-0/easy-live2d-compatibility.md` 基于 lockfile 固定的 `easy-live2d 0.4.4` 及安装产物 hash，冻结 BongoCat 实际 API 面、跨帧参数 override、update order、motion sound、ready/销毁与 renderer 语义，并明确多 model3、JSON5、破坏性切换、全局 ticker、WebGL/Pixi 和错误吞噬不进入兼容范围。该项只完成旧库边界，不代表 R5 Core/Framework/renderer 已通过。
 - [ ] 若纯 Rust Framework 逻辑不可行，提交 go/no-go ADR；不得静默加入 C++ 业务桥。
 - [x] 建立 Cubism Framework 行为来源清单，逐项说明 motion、expression、physics、pose 的 Rust 实现依据和许可边界。
-  - 验收证据：`docs/phase-0/cubism-framework-behavior-sources.md` 固定 R5 tree、16 个关键 Framework blob、双平台 sample owner、行为 oracle 与禁止直接翻译的许可边界；离线 SDK inspector 会验证这些 blob。Live2D 对独立 Rust 实现和生成 binding 发布的书面许可仍是 P0 阻塞，不因本项勾选而视为解决。
+  - 验收证据：`docs/phase-0/cubism-framework-behavior-sources.md` 固定 R5 tree、16 个关键 Framework blob、双平台 sample owner、行为 oracle 与禁止直接翻译的许可边界；离线 SDK inspector 会验证这些 blob。最终发布方式与 attribution 留在发布清单，不再阻塞 Rust 功能实现。
 - [ ] 对 raw binding 生成流程固定 header、生成器版本和输出审阅方式，禁止手改生成代码后失去可重复性。
-  - 状态（2026-08-30）：`tools/cubism-bindgen/` 已精确锁定最新稳定版 `bindgen 0.72.1`，固定当前 r.5 可用且属于产品矩阵的 Windows x64 与 macOS arm64/x64、`csm*` 白名单、Rust 1.85/edition 2024、配置/output hash 和仓库外生成门禁；自有合成 header 的三 target golden 已覆盖 r.5 render order/blend/offscreen API。真实 header SHA 已固定，仓库外 arm64 binding 生成与 Core/model smoke 通过；工具继续拒绝 i686 与当前无 Core 的 Windows ARM64。第二人审阅、Windows x64/macOS x64 generation/ABI 及发布授权仍待完成，因此保持未勾选。
+  - 状态（2026-08-30）：`tools/cubism-bindgen/` 已精确锁定最新稳定版 `bindgen 0.72.1`，固定当前 r.5 可用且属于产品矩阵的 Windows x64 与 macOS arm64/x64、`csm*` 白名单、Rust 1.85/edition 2024、配置/output hash 和隔离 staging；自有合成 header 的三 target golden 已覆盖 r.5 render order/blend/offscreen API。commit `57118ff` 已固定真实 target bindings；工具继续拒绝 i686 与当前无 Core 的 Windows ARM64。第二人重生成审阅、Windows x64/macOS x64 原生 ABI 仍待完成，因此保持未勾选。
 
 ### 1.9 Phase 0 退出门槛
 
@@ -295,6 +307,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     用户模型 catalog、加载、删除、writer lock 和崩溃 staging 回收已进入产品入口。
     完整 sidecar 强类型校验与预置只读 catalog 继续由 Phase 4 任务跟踪。
 - [ ] 创建 bongocat-live2d：Cubism safe wrapper 和模型求值。
+  - 状态（2026-08-30）：commit `57118ff` 已建立正式 crate，完成 Core 版本门禁、
+    Moc/Model safe owner、drawable snapshot 和三个预置模型测试；motion、expression、
+    physics、pose 求值尚未实现，因此总项保持未完成。
 - [ ] 创建 bongocat-render：render snapshot 和 renderer contract。
 - [ ] 创建 bongocat-ui：GPUI 页面和 design system。
 - [ ] 创建 bongocat-platform：Windows/macOS 系统服务。
@@ -935,7 +950,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 取得可分发授权的 physics3/pose3 fixture 后完成强类型结构和 Framework 求值；三个预置模型不含这两类资源，不得以合成样本冒充兼容证据。
 
 14. [ ] `P0-GO-NO-GO`：汇总证据、阻塞和条件，形成完整功能与 stable 发布决议。
-    - 状态（2026-08-30）：ADR-0011 已形成 `IMPLEMENTATION GO WITH RELEASE CONDITIONS`，允许建立正式 workspace；这不勾选完整 Phase 0 决议。标准 Native `5-r.5` ZIP/hash、macOS arm64 真实 binding/Core 与三个预置 Moc lifecycle/array 已验证；书面授权、Framework 求值、D3D11/Metal 模型绘制、其他 ABI、GPUI 辅助功能/IME 与双平台物理输入/GPU 矩阵继续阻塞对应功能声明和 stable 发布。
+    - 状态（2026-08-30）：ADR-0011 已形成 `IMPLEMENTATION GO WITH RELEASE CONDITIONS`，允许建立正式 workspace；这不勾选完整 Phase 0 决议。标准 Native `5-r.5` ZIP/hash、产品 safe wrapper、macOS Metal 三预置模型绘制和 Windows x64 交叉 check 已验证；Framework 求值、D3D11 模型绘制、其他原生 ABI、GPUI 辅助功能/IME 与双平台物理输入/GPU 矩阵继续阻塞对应功能声明，最终合规清单只阻塞 stable 发布。
 
 15. [x] `P1-RUNTIME-CONFIG`：建立正式 workspace，提升 runtime 生命周期、强类型 command/snapshot 与 Development/Production 配置隔离闭环。
     - 依赖：ADR-0011、`spikes/runtime-contract/`、`spikes/config-store/`。

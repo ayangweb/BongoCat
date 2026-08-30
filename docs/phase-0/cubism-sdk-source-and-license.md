@@ -1,6 +1,6 @@
 # Cubism SDK Source and License Gate
 
-状态：本地 SDK/hash 已固定；书面许可与发布清单仍阻塞 stable
+状态：开发基线已固定并进入 workspace；最终发布清单仍待完成
 记录日期：2026-08-30
 
 > 本文记录工程门禁，不构成法律意见。许可证的最终解释、Expandable Application 的认定和发布授权只能由 Live2D 或合格的法律顾问确认。
@@ -30,13 +30,14 @@
 | macOS x64 static library           | `288c0cb9ff03242c5ef043f601fa4dbbb6a238ebb8c45c7132bad7d51adb7dfd` |
 | macOS universal dylib              | `d6b029354e47e81c1e063ad2de3cfc63bdd0b7bf3fe8dd079de17c2a4b43b27f` |
 
-本机只把 macOS universal dylib 解压到临时目录；`file`/`lipo` 确认同时包含 arm64
+最初验证只把 macOS universal dylib 解压到临时目录；`file`/`lipo` 确认同时包含 arm64
 和 x86_64，动态调用 `csmGetVersion()` 返回 `0x06000001`，
 `csmGetLatestMocVersion()` 返回 `6`。外部生成的 arm64 binding 随后完成三个预置
 Moc 各 100 次 revive/model/update/array/drop，并由 `leaks` 得到 0-byte leak；详见
-`cubism-core-r5-probe.md`。临时二进制、header、Framework 源码、真实 binding 和
-inspector JSON 均未复制到仓库。Windows ABI、macOS Intel 原生验证和第二机器复核
-仍保持未完成。
+`cubism-core-r5-probe.md`。维护者之后批准把产品开发所需的最小 Core/header 子集和
+真实 target bindings 固定到 `native/vendor/cubism/5-r.5` 与 `bongocat-live2d`；
+完整 ZIP、Framework 源码、临时 universal dylib 和 inspector JSON 仍不进入仓库。
+Windows 原生 ABI、macOS Intel 原生验证和第二机器复核仍保持未完成。
 
 下载页要求下载者先阅读并同意 Live2D Proprietary Software License Agreement 与 Live2D Open Software License Agreement，并写明下载或启动软件即表示同意。因此 AI、CI、bootstrap 脚本和构建脚本均不得代替维护者勾选协议、绕过下载页或自动获取 ZIP。
 
@@ -96,13 +97,15 @@ Proprietary Software License 将“通过增加或组合文件/数据，使用�
 合法取得 SDK 后执行以下流程：
 
 1. 维护者在官方页面自行阅读并接受当时有效的两份协议，下载固定版本；当前文件为 `CubismSdkForNative-5-r.5.zip`。
-2. ZIP 保存在仓库外的受控开发目录，不提交到 Git，不复制到 CI cache 或公开 artifact。
+2. 完整 ZIP 保存在仓库外的受控开发目录，不提交到 Git，不复制到 CI cache 或公开 artifact。
 3. 运行 `python3 tools/inspect-cubism-sdk.py /absolute/path/CubismSdkForNative-5-r.5.zip --expected-sha256 7ff3a4bbc19c0a8728965aa522ab77eb11b252916453e68a8a78d3b71188bb12`。
 4. 首次验证记录 ZIP SHA-256、Core version、每个目标文件的路径/大小/hash，并由另一位维护者或独立机器复核。
-5. 维护者只在仓库外的受控目录准备 `Core/include/Live2DCubismCore.h`，使用 inspector 报告中的 header SHA-256 运行 `tools/cubism-bindgen`；真实 bindings 与 provenance 仍留在仓库外。
+5. 维护者从已验证 ZIP 选择产品所需的最小 Core/header 子集，保持原始文件 bytes，
+   使用 inspector 报告中的 header SHA-256 运行 `tools/cubism-bindgen`；经维护者批准的
+   bindings 固定到 `bongocat-live2d/src/sys`，不在 build 时重新生成。
 6. 第二位维护者使用记录的 bindgen/libclang/target 配置独立生成并比较 output/config hash，再执行对应 Core 的 compile/link/ABI smoke；详见 `cubism-binding-generation.md`。
 7. 当前 expected SHA-256 已写入本文；后续运行使用 `--expected-sha256` 拒绝漂移，第二人或第二机器复核仍待完成。
-8. 只有在发布授权结论完成后，才设计私有 SDK 缓存、构建时复制和安装包 notice 生成；构建与 CI 默认保持离线。
+8. 发布阶段再设计安装包中的 Core 复制、notice 生成和签名流程；构建与 CI 默认保持离线。
 
 检查器只读取 ZIP central directory 和所需文件并计算 hash，不解压文件、不接受许可、不联网。它拒绝路径穿越、绝对路径、反斜杠路径、重复路径、符号链接、加密 entry 和异常膨胀 archive，并按 `cubism-framework-behavior-sources.md` 校验关键 Framework 文件属于固定的 R5 Git tree。
 
@@ -111,7 +114,9 @@ Proprietary Software License 将“通过增加或组合文件/数据，使用�
 以下事项尚未完成，不能由版本/许可文档替代：
 
 - 当前官方 ZIP SHA-256 已记录；第二来源复核仍待完成；
-- 已建立合成输入的可重复 raw binding 契约，并在仓库外由真实 r.5 header 生成 arm64 binding；仍缺双人审阅、Windows x64 与 macOS x64 原生生成/ABI smoke；
+- 已建立可重复 raw binding 契约并把真实 r.5 的 macOS/Windows target binding 固定到
+  产品 crate；macOS arm64 Core/model 与 Windows x64 Rust 交叉 check 已通过，仍缺
+  双人审阅、Windows x64 原生 link/ABI 和 macOS x64 原生 ABI smoke；
 - macOS arm64 已完成真实 Core 加载、版本查询、三个预置 Moc 的 consistency/model/drawable/offscreen 数组与 100-cycle 析构；Windows x64 和 macOS x64 仍待完成；
 - 缺少包含非零 r.5 offscreen/enhanced rendering 数据的授权模型 fixture；
 - motion、expression、physics、pose 的独立 Rust 实现依据及许可书面结论；

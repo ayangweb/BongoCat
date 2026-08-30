@@ -304,7 +304,9 @@ model evaluation + render snapshot
   header/binding provenance、目标 ABI、三个预置 Moc、offscreen/enhanced rendering
   fixture 和双 renderer 门禁。
 - raw binding 只由精确锁定的离线生成工具从 hash 固定的官方 header 生成；生成配置、target ABI、libclang 版本和输出 hash 必须进入 provenance，禁止手改生成代码。
-- 在 Live2D 书面确认 header 派生 binding 的发布权限前，官方 header 与真实生成物均保留在仓库和 CI 外；仓库只提交自有合成 header 的生成契约与漂移测试。
+- 维护者提供并批准用于开发的固定基线已存入 `native/vendor/cubism/5-r.5`，包括
+  Core、官方 header 和由该 header 生成的 target binding。公开发布前另行核对
+  attribution 与再分发清单；该发布工作不阻塞本地功能实现和 `next` 开发提交。
 - 原始指针不离开 safe wrapper；Moc 必须比 Model 活得更久。
 - 不把未经验证的新纯 Rust Cubism 兼容 crate 作为生产基础。
 - `.model3.json`、motion、expression、physics 和 pose 兼容性由 fixture 验证。

@@ -24,9 +24,10 @@ workspace 的前置条件，会阻止已经具备自动化契约的业务模块�
 - Cubism 发布授权、最终 SDK/二进制清单、Windows ARM64 desktop Core、实机矩阵、
   签名、notarization、更新回滚和 soak 结果全部是 stable 发布门禁，不再阻止
   不公开分发的本地开发。
-- 在获得书面许可前，不提交或公开分发 SDK ZIP、Core/Framework 源文件、由厂商
-  header 生成的 bindings、厂商二进制或包含这些内容的安装包。仓库只记录版本、
-  文件名、hash、目标能力和本地验证结果。
+- 维护者批准把功能开发所需的最小 Core、header、生成 bindings 和预置模型固定到
+  `native/vendor/` 与 `native/resources/`，使本地开发和目标 ABI 检查可复现。完整
+  SDK ZIP 与 Framework 源码不进入仓库；公开安装包仍在发布阶段核对 attribution、
+  再分发范围和最终合规清单。
 - 产品构建默认不联网，也不从未固定来源下载 SDK。缺少本地 SDK 时，与 Cubism
   无关的 workspace、测试和 CI 必须保持可用。
 - 完整设置 UI 仍受 ADR-0009 的辅助功能条件约束；允许建立 UI crate 和最小产品
@@ -46,7 +47,7 @@ desktop Windows ARM64 Core。
 
 ## Consequences
 
-正式实现可以从已验证的 runtime/config 契约开始，不再等待外部测试人员或法律
-流程。发布状态必须单独判断；“功能已实现”不表示“可以公开分发”。如果后续授权、
-SDK ABI 或实机验证失败，受影响的发布目标保持阻塞，并通过后续 ADR 调整能力或
-目标矩阵，不能用未经授权的 artifact 或模拟结果绕过。
+正式实现可以从已验证的 runtime/config 契约开始，不再等待外部测试人员或合规
+流程。发布状态必须单独判断；“功能已实现”不表示“可以公开分发”。如果后续发布
+核对、SDK ABI 或实机验证失败，受影响的发布目标保持阻塞，并通过后续 ADR 调整
+能力或目标矩阵，不能用错误架构的 artifact 或模拟结果绕过。

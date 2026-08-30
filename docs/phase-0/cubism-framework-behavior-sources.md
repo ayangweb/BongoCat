@@ -1,6 +1,6 @@
 # Cubism Framework Behavior Sources
 
-状态：R5 `5-r.5` 行为来源已固定；Rust 实现许可仍阻塞发布
+状态：R5 `5-r.5` 行为来源已固定；最终发布合规清单待完成
 记录日期：2026-08-30
 
 > 本文是工程溯源与测试设计，不构成法律意见，也不授权复制、翻译或重新许可 Live2D 源码。
@@ -86,9 +86,9 @@ A long-lived C++ Framework bridge is not an implicit fallback. Any architecture 
 
 ## 5. Remaining Gate
 
-This source inventory is complete, but implementation authorization is not. The following remain P0 blockers:
+This source inventory is complete. The following remain implementation evidence or stable-release gates:
 
-- Live2D written clarification for Rust binding publication and Framework-derived behavior;
+- final publication/attribution review for Rust bindings and Framework-observed behavior;
 - second-source review of the supplied R5 ZIP hash and source/binary inspection report;
 - an authorized physics3 + pose3 fixture;
 - black-box R5 parameter traces for motion, expression, physics and pose;

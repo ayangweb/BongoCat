@@ -165,6 +165,9 @@ Issue #47 的“收到按下但未收到释放”必须从架构上处理，不�
 - 模型、motion、expression、physics、pose 和 mask 行为必须由 fixture 验证。
 - 未完成三个预置模型 spike 前，不得宣称 Cubism 兼容完成。
 - 不得加入长期的非 Rust 业务 bridge 来绕过 Phase 0 go/no-go。
+- 维护者已授权把固定版本的 Cubism Core、header、生成 bindings 和三个预置模型作为
+  开发基线提交到 `native/vendor/` 与 `native/resources/`。授权手续不得再阻塞本地开发、
+  功能实现或 `next` 提交；公开发布前仍须完成 attribution、再分发清单和最终合规核对。
 
 ## 8. `unsafe` 与 FFI
 
@@ -188,8 +191,8 @@ Issue #47 的“收到按下但未收到释放”必须从架构上处理，不�
 - 小型系统封装优先直接使用 `windows-rs`、`objc2` 等基础 binding，不为了减少少量代码引入不可靠抽象。
 - 不把第三方 crate 的事件、错误、配置或平台类型扩散为项目公共 API。
 - 不提交或下载来源、版本、hash 不明确的 Cubism 二进制。
-- Live2D 书面授权完成前，不提交 SDK/Framework 源码、Core 二进制、由真实 header
-  生成的 bindings 或包含它们的公开构建；仓库外本地验证按 ADR-0011 执行。
+- 仓库内 Cubism artifact 必须来自已固定版本和 hash 的开发基线。升级、替换或新增
+  artifact 时同步 provenance、目标 ABI 和模型验证；不得混入来源不明的 SDK 文件。
 
 ## 10. 配置、文件与安全
 
@@ -260,6 +263,10 @@ cargo check --workspace --release
 - 已有 legacy config inspector 只作为历史考古工具保留，不得接入产品启动、设置或发布依赖。
 - 读取历史配置和模型样本时不得原地修改。
 - 对历史源码的结论必须以实际代码、配置文件或实机行为为证据。
+- 上游原版 [MMmmmoko/Bongo-Cat-Mver](https://github.com/MMmmmoko/Bongo-Cat-Mver)
+  是输入、模型装配、Live2D 更新顺序和产品行为的固定参考。遇到相关问题时先查阅
+  `docs/migration/bongo-cat-mver-reference.md` 记录的 commit 和关键文件，再结合当前
+  Technical Design 独立实现；不得直接复制其 C++ 业务代码或让旧架构覆盖当前边界。
 
 ## 14. 文档与 TODO 维护
 

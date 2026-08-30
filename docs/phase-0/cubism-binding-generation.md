@@ -1,6 +1,6 @@
 # Cubism Core Raw Binding Generation
 
-状态：合成输入的生成契约与漂移检查已完成；真实 R5 header 已取得但生成物保持仓库外
+状态：生成契约已固定；真实 R5 target bindings 已进入产品 crate
 记录日期：2026-08-30
 
 ## 1. Scope
@@ -9,9 +9,10 @@
 Cubism Core C header 转换为 raw Rust declarations，不加载 Core、不创建模型，
 也不包含动作、物理、渲染或其他业务逻辑。
 
-真实 R5 header 和由它派生的 bindings 当前都受 Live2D 许可门禁约束。在
-Live2D 书面确认可发布前，两者只能位于仓库外的受控开发目录，不能进入 Git、
-CI cache、workflow artifact、issue 或 release。
+真实 R5 header 和由它派生的 bindings 已由维护者批准作为开发基线固定到
+`native/vendor/cubism/5-r.5` 与 `native/crates/bongocat-live2d/src/sys`。生成仍是
+显式离线维护操作，不在普通 build 或 CI 中运行；完整 SDK ZIP 和 Framework 源码
+不进入 Git、CI cache、workflow artifact、issue 或 release。
 
 ## 2. Fixed Generator Contract
 
@@ -62,18 +63,17 @@ output is visible rather than silently accepted.
 
 ## 4. Safety and Review Flow
 
-The real generation command requires:
+重新生成命令要求：
 
-- an absolute header path named exactly `Live2DCubismCore.h`;
-- an expected 64-character header SHA-256 from the offline SDK inspector;
-- one of the three explicit generation targets;
-- a new absolute output directory outside the repository.
+- header 必须是名为 `Live2DCubismCore.h` 的绝对路径；
+- 必须提供 offline SDK inspector 记录的 64 字符 header SHA-256；
+- target 必须属于三个显式 generation target；
+- 输出必须是全新的绝对 staging 目录，review 完成前不得覆盖产品 binding。
 
-The canonical header and output parent are checked against the repository root. The
-tool refuses an existing output directory and never overwrites review evidence. It
-does not include the source path in generated bindings or provenance. Output is
-created only after header hashing, bindgen generation, required-symbol checks,
-allowlist checks and calling-convention checks succeed.
+生成前会检查 canonical header 与 staging output。工具拒绝已存在的输出目录，不会
+覆盖 review 证据，也不会把源路径写入 binding 或 provenance。只有 header hash、
+bindgen generation、required-symbol、allowlist 和 calling-convention 检查全部成功后
+才创建输出。
 
 Review requires all of the following before a generated file can be used locally:
 
@@ -84,9 +84,8 @@ Review requires all of the following before a generated file can be used locally
 5. Compile and link against the matching official Core artifact.
 6. Query Core version, then run Moc/Model/drawable lifecycle smoke tests.
 
-No generated raw binding becomes a product source merely because steps 1-4 pass.
-Publication permission, safe wrapper review and real platform ABI evidence remain
-separate gates.
+生成结果只有在 target ABI、symbol diff、safe wrapper 和模型 smoke review 后才能
+更新产品 source。最终发布清单与真实平台 ABI evidence 仍是独立门禁。
 
 ## 5. Synthetic Evidence
 
@@ -115,7 +114,8 @@ This proves the generation workflow. The real r.5 header SHA-256 is
 `6f1802780d1eb36ff39705e0764f9eeed9b41c313a13ac155270c6f4ad51d53f`; an external
 arm64 generation produced binding SHA-256
 `6cd53ddbb173d73a842b33a507c5c03c879adcb05a8c005730b58c1f0f061364` and passed the
-macOS arm64 Core/model probe in `cubism-core-r5-probe.md`. The synthetic contract now
-requires r.5's `csmGetRenderOrders`, drawable blend modes, part offscreen indices and
-all offscreen arrays. The P0 raw-binding TODO remains open until a second review and
-Windows x64/macOS x64 target ABI evidence exist.
+macOS arm64 Core/model probe in `cubism-core-r5-probe.md`. Commit `57118ff` 将审阅后的
+macOS arm64/x64 与 Windows x64 binding 固定到产品 crate，Windows x64 release
+交叉 check 已通过。Synthetic contract 现在要求 r.5 的 `csmGetRenderOrders`、drawable
+blend mode、part offscreen index 和全部 offscreen array。第二人重生成 review 及
+Windows x64/macOS x64 原生 ABI evidence 完成前，P0 raw-binding TODO 保持未完成。
