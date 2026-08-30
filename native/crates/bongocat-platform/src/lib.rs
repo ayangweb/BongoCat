@@ -41,6 +41,7 @@ pub struct PlatformInputDiagnostics {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PlatformInputError {
+    BackendUnavailable,
     PermissionDenied,
     TapCreateFailed,
     RunLoopSourceFailed,
@@ -53,6 +54,7 @@ pub enum PlatformInputError {
 impl fmt::Display for PlatformInputError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
+            Self::BackendUnavailable => "the platform input backend is not available",
             Self::PermissionDenied => "input monitoring permission is denied",
             Self::TapCreateFailed => "CGEventTap could not be created",
             Self::RunLoopSourceFailed => "CGEventTap run-loop source could not be created",

@@ -1,8 +1,8 @@
 #![forbid(unsafe_code)]
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_overlay::{OverlaySessionOptions, ProductOverlaySession};
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::{
     env, fmt,
     io::{self, Write},
@@ -11,16 +11,16 @@ use std::{
     time::Duration,
 };
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 const DEFAULT_RUN_SECONDS: u64 = 30;
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct RunOptions {
     run_duration: Duration,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl RunOptions {
     fn parse(arguments: impl IntoIterator<Item = String>) -> Result<Self, RunOptionsError> {
         let mut arguments = arguments.into_iter();
@@ -49,14 +49,14 @@ impl RunOptions {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Debug, Eq, PartialEq)]
 struct RunOptionsError {
     message: String,
     help: bool,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl RunOptionsError {
     fn new(message: impl Into<String>) -> Self {
         Self {
@@ -73,7 +73,7 @@ impl RunOptionsError {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl fmt::Display for RunOptionsError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.help {
@@ -84,21 +84,21 @@ impl fmt::Display for RunOptionsError {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl std::error::Error for RunOptionsError {}
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn usage() -> &'static str {
     "Usage: bongocat-app [--run-seconds <seconds>]\n\nA value of 0 keeps the overlay running until its window is closed."
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Debug)]
 struct ProductRunError {
     failures: Vec<String>,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl fmt::Display for ProductRunError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -109,10 +109,10 @@ impl fmt::Display for ProductRunError {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl std::error::Error for ProductRunError {}
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let run_options = match RunOptions::parse(env::args().skip(1)) {
         Ok(options) => options,
@@ -186,7 +186,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn development_preset_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
@@ -195,14 +195,14 @@ fn development_preset_root() -> PathBuf {
         .join("native/resources/models")
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let application = bongocat_app::Application::start()?;
     application.shutdown()?;
     Ok(())
 }
 
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(all(test, any(target_os = "macos", target_os = "windows")))]
 mod tests {
     use super::*;
 

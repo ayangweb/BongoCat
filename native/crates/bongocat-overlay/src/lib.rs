@@ -1,5 +1,7 @@
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(target_os = "windows")]
+mod windows;
 
 use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError};
 use bongocat_render::{RenderConsumer, RenderTransportDiagnostics};
@@ -44,6 +46,8 @@ pub struct ProductOverlayReport {
 pub struct ProductOverlaySession {
     #[cfg(target_os = "macos")]
     inner: macos::ProductOverlaySession,
+    #[cfg(target_os = "windows")]
+    inner: windows::ProductOverlaySession,
 }
 
 impl ProductOverlaySession {
@@ -66,7 +70,19 @@ impl ProductOverlaySession {
             .map(|inner| Self { inner })
         }
 
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
+        {
+            windows::ProductOverlaySession::start(
+                runtime_client,
+                input_producer,
+                cursor_producer,
+                render_consumer,
+                options,
+            )
+            .map(|inner| Self { inner })
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             let _ = (
                 runtime_client,
@@ -76,7 +92,7 @@ impl ProductOverlaySession {
                 options,
             );
             Err(OverlayError::new(
-                "the product Live2D overlay is currently available on macOS",
+                "the product Live2D overlay is available on Windows and macOS",
             ))
         }
     }
@@ -87,11 +103,16 @@ impl ProductOverlaySession {
             self.inner.run_for(duration)
         }
 
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
+        {
+            self.inner.run_for(duration)
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             let _ = duration;
             Err(OverlayError::new(
-                "the product Live2D overlay is currently available on macOS",
+                "the product Live2D overlay is available on Windows and macOS",
             ))
         }
     }
@@ -102,10 +123,15 @@ impl ProductOverlaySession {
             self.inner.stop_input()
         }
 
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
+        {
+            self.inner.stop_input()
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             Err(OverlayError::new(
-                "the product Live2D overlay is currently available on macOS",
+                "the product Live2D overlay is available on Windows and macOS",
             ))
         }
     }
@@ -116,10 +142,15 @@ impl ProductOverlaySession {
             self.inner.finish_after_runtime_shutdown()
         }
 
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
+        {
+            self.inner.finish_after_runtime_shutdown()
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             Err(OverlayError::new(
-                "the product Live2D overlay is currently available on macOS",
+                "the product Live2D overlay is available on Windows and macOS",
             ))
         }
     }

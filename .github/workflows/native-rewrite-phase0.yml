@@ -94,6 +94,9 @@ jobs:
         env:
           BONGOCAT_BUILD_ENV: production
         run: cargo check --manifest-path native/Cargo.toml --locked -p bongocat-app --release
+      - name: Smoke Windows D3D11 product overlay
+        if: matrix.os == 'windows-latest'
+        run: cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release -- --run-seconds 2
 
   cubism-binding-contract:
     name: Check Cubism binding generation contract
