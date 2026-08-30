@@ -100,9 +100,13 @@ jobs:
         run: |
           cargo build --manifest-path native/Cargo.toml --locked -p bongocat-app --release
           $executable = Join-Path $PWD "native/target/release/bongocat-app.exe"
+          $stdoutPath = Join-Path $env:RUNNER_TEMP "bongocat-product-stdout.log"
+          $stderrPath = Join-Path $env:RUNNER_TEMP "bongocat-product-stderr.log"
           $process = Start-Process `
             -FilePath $executable `
             -ArgumentList @("--run-seconds", "6", "--settings-window-smoke") `
+            -RedirectStandardOutput $stdoutPath `
+            -RedirectStandardError $stderrPath `
             -PassThru
           $windowDeadline = [DateTime]::UtcNow.AddSeconds(3)
           do {
@@ -122,8 +126,12 @@ jobs:
           if (-not $process.WaitForExit(15000)) {
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
             $process.WaitForExit()
+            Get-Content $stdoutPath -ErrorAction SilentlyContinue
+            Get-Content $stderrPath -ErrorAction SilentlyContinue
             throw "Windows product lifecycle smoke exceeded 15 seconds"
           }
+          Get-Content $stdoutPath -ErrorAction SilentlyContinue
+          Get-Content $stderrPath -ErrorAction SilentlyContinue
           if ($process.ExitCode -ne 0) {
             throw "Windows product lifecycle smoke exited with $($process.ExitCode)"
           }

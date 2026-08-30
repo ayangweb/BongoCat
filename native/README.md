@@ -17,8 +17,10 @@ the transparent Metal or D3D11 overlay. Closing the settings window leaves the r
 overlay active; reopening the application creates a fresh settings entity from the current runtime
 snapshot on macOS. GPUI 0.2.2 cannot safely destroy its Windows window from `WM_CLOSE`, so Windows
 hides the native window, retains its sole entity, and refreshes that entity when reopened.
-Explicit Windows quit posts an allowed native close and waits for `on_window_closed` before stopping
-the GPUI loop, keeping window callbacks outside an active app update.
+Explicit Windows quit first stops and joins every BongoCat-owned runtime, input, audio, renderer,
+GPU, and overlay owner. The platform adapter then terminates the process without dropping the retained
+GPUI window, because GPUI 0.2.2 synchronously re-enters its borrowed `AsyncApp` from `WM_DESTROY`.
+This final-step workaround must be removed when a fixed GPUI revision is adopted.
 `--run-seconds 0` keeps the application active until an explicit Quit command; omit the argument for
 a bounded 30-second run.
 

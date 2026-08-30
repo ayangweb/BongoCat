@@ -126,7 +126,6 @@ struct ProductCoordinator {
     overlay: Option<ProductOverlaySession>,
     settings_service: Option<bongocat_app::ApplicationSettingsService>,
     settings_window: Option<WindowHandle<SettingsView>>,
-    quit_after_window_close: bool,
     frame_source_running: bool,
     frame_ticks: u64,
     expect_visible_frame: bool,
@@ -151,35 +150,82 @@ fn request_product_quit(cx: &mut App) {
 
     #[cfg(target_os = "windows")]
     {
-        let Some((window_handle, failures)) =
-            cx.try_global::<ProductCoordinator>().map(|coordinator| {
-                (
-                    coordinator.settings_window,
-                    Arc::clone(&coordinator.failures),
-                )
-            })
-        else {
-            cx.quit();
+        if !cx.has_global::<ProductCoordinator>() {
             return;
-        };
-        cx.global_mut::<ProductCoordinator>()
-            .quit_after_window_close = true;
-        let Some(window_handle) = window_handle else {
-            cx.quit();
-            return;
-        };
-        match window_handle.update(cx, |view, window, _| view.close_for_quit(window)) {
-            Ok(Ok(())) => {}
-            Ok(Err(error)) => {
-                record_failure(&failures, error);
-                cx.quit();
-            }
-            Err(error) => {
-                record_failure(&failures, error.to_string());
-                cx.quit();
-            }
         }
+        let shutdown = begin_product_shutdown(cx);
+        cx.spawn(async move |_| {
+            let failures = shutdown.finish().await;
+            let exit_code = windows_product_exit_code(&failures);
+            bongocat_platform::terminate_after_product_shutdown(exit_code);
+        })
+        .detach();
     }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+struct ProductShutdown {
+    coordinator: ProductCoordinator,
+    overlay: ProductOverlaySession,
+    settings_service: bongocat_app::ApplicationSettingsService,
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+impl ProductShutdown {
+    async fn finish(self) -> Arc<Mutex<Vec<String>>> {
+        let failures = Arc::clone(&self.coordinator.failures);
+        let settings_client = self.settings_service.client();
+        if let Err(error) = settings_client.shutdown().await {
+            record_failure(&failures, error.to_string());
+        }
+        if let Err(error) = self.settings_service.join() {
+            record_failure(&failures, error.to_string());
+        }
+        match self.overlay.finish_after_runtime_shutdown() {
+            Ok(report) if self.coordinator.expect_visible_frame && report.frames_presented == 0 => {
+                record_failure(&failures, "product overlay presented no frames");
+            }
+            Ok(_) => {}
+            Err(error) => record_failure(&failures, error.to_string()),
+        }
+        failures
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn begin_product_shutdown(cx: &mut App) -> ProductShutdown {
+    let mut coordinator = cx.remove_global::<ProductCoordinator>();
+    coordinator.frame_source_running = false;
+    let mut overlay = coordinator
+        .overlay
+        .take()
+        .expect("product overlay owner is present");
+    if let Err(error) = overlay.stop_input() {
+        record_failure(&coordinator.failures, error.to_string());
+    }
+    let settings_service = coordinator
+        .settings_service
+        .take()
+        .expect("settings service owner is present");
+    ProductShutdown {
+        coordinator,
+        overlay,
+        settings_service,
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn windows_product_exit_code(failures: &Arc<Mutex<Vec<String>>>) -> i32 {
+    let failures = failures
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if failures.is_empty() {
+        return 0;
+    }
+    let mut stderr = io::stderr().lock();
+    let _ = writeln!(stderr, "product run failed: {}", failures.join("; "));
+    let _ = stderr.flush();
+    1
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -309,7 +355,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             overlay: Some(overlay),
             settings_service: Some(settings_service),
             settings_window: Some(settings_window),
-            quit_after_window_close: false,
             frame_source_running: true,
             frame_ticks: 0,
             expect_visible_frame,
@@ -317,59 +362,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
 
         cx.on_window_closed(|cx| {
-            let Some((window_handle, quit_after_window_close)) =
-                cx.try_global::<ProductCoordinator>().map(|coordinator| {
-                    (
-                        coordinator.settings_window,
-                        coordinator.quit_after_window_close,
-                    )
-                })
+            let Some(window_handle) = cx
+                .try_global::<ProductCoordinator>()
+                .and_then(|coordinator| coordinator.settings_window)
             else {
                 return;
             };
-            if window_handle.is_some_and(|window_handle| window_handle.read(cx).is_err()) {
-                let coordinator = cx.global_mut::<ProductCoordinator>();
-                coordinator.settings_window = None;
-                if quit_after_window_close {
-                    cx.quit();
-                }
+            if window_handle.read(cx).is_err() {
+                cx.global_mut::<ProductCoordinator>().settings_window = None;
             }
         })
         .detach();
 
         cx.on_app_quit(|cx| {
-            let mut coordinator = cx.remove_global::<ProductCoordinator>();
-            coordinator.frame_source_running = false;
-            let mut overlay = coordinator
-                .overlay
-                .take()
-                .expect("product overlay owner is present");
-            if let Err(error) = overlay.stop_input() {
-                record_failure(&coordinator.failures, error.to_string());
-            }
-            let settings_service = coordinator
-                .settings_service
-                .take()
-                .expect("settings service owner is present");
-            let settings_client = settings_service.client();
+            let shutdown = cx
+                .has_global::<ProductCoordinator>()
+                .then(|| begin_product_shutdown(cx));
             async move {
-                if let Err(error) = settings_client.shutdown().await {
-                    record_failure(&coordinator.failures, error.to_string());
-                }
-                if let Err(error) = settings_service.join() {
-                    record_failure(&coordinator.failures, error.to_string());
-                }
-                match overlay.finish_after_runtime_shutdown() {
-                    Ok(report)
-                        if coordinator.expect_visible_frame && report.frames_presented == 0 =>
-                    {
-                        record_failure(
-                            &coordinator.failures,
-                            "product overlay presented no frames",
-                        );
-                    }
-                    Ok(_) => {}
-                    Err(error) => record_failure(&coordinator.failures, error.to_string()),
+                if let Some(shutdown) = shutdown {
+                    let _ = shutdown.finish().await;
                 }
             }
         })
@@ -380,6 +391,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Timer::after(frame_interval).await;
                 let keep_running = cx
                     .update(|cx| {
+                        if !cx.has_global::<ProductCoordinator>() {
+                            return false;
+                        }
                         let (keep_running, failure, settings_window, failures) = {
                             let coordinator = cx.global_mut::<ProductCoordinator>();
                             if !coordinator.frame_source_running {

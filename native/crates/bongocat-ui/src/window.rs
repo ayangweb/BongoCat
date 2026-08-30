@@ -67,8 +67,6 @@ pub struct SettingsView {
     pending: Option<PendingOperation>,
     error: Option<SettingsError>,
     window_hidden: bool,
-    #[cfg(target_os = "windows")]
-    allow_close: bool,
     request_quit: Rc<dyn Fn(&mut App)>,
     overlay_focus: FocusHandle,
     audio_focus: FocusHandle,
@@ -88,8 +86,6 @@ impl SettingsView {
             pending: None,
             error: None,
             window_hidden: false,
-            #[cfg(target_os = "windows")]
-            allow_close: false,
             request_quit,
             overlay_focus: cx.focus_handle().tab_index(1).tab_stop(true),
             audio_focus: cx.focus_handle().tab_index(2).tab_stop(true),
@@ -118,18 +114,6 @@ impl SettingsView {
         self.window_hidden = false;
         self.refresh(cx);
         window.activate_window();
-        Ok(())
-    }
-
-    pub fn close_for_quit(&mut self, _window: &Window) -> Result<(), String> {
-        #[cfg(target_os = "windows")]
-        {
-            self.allow_close = true;
-            if let Err(error) = bongocat_platform::request_native_window_close(_window) {
-                self.allow_close = false;
-                return Err(error.to_string());
-            }
-        }
         Ok(())
     }
 
@@ -525,12 +509,6 @@ pub fn open_settings_window(
                 {
                     let weak_view = view.downgrade();
                     window.on_window_should_close(cx, move |window, cx| {
-                        let allow_close = weak_view
-                            .update(cx, |view, _| view.allow_close)
-                            .unwrap_or(true);
-                        if allow_close {
-                            return true;
-                        }
                         let result = bongocat_platform::hide_native_window(window);
                         let _ = weak_view.update(cx, |view, cx| match result {
                             Ok(()) => {

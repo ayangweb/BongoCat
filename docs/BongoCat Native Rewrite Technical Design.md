@@ -107,9 +107,11 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   coordinator 持有。macOS 销毁对应 GPUI `Entity`，reopen 创建一个新窗口；GPUI 0.2.2
   的 Windows `WM_CLOSE` 销毁回调存在同步重入缺陷，因此 Windows platform adapter 拦截 close、
   使用 `ShowWindow(SW_HIDE)` 保留唯一 Entity，并在 reopen 时重显。两条路径都主动读取最新
-  revisioned snapshot。Windows 显式退出先标记窗口可销毁并投递原生 `WM_CLOSE`，收到
-  `on_window_closed` 后才请求 GPUI quit，避免在 app borrow 内同步销毁；只有该显式路径才
-  进入全局 shutdown。
+  revisioned snapshot。Windows 显式退出先停止 frame source 与输入生产者，再 shutdown/join
+  runtime、配置和音频 owner，最后释放 renderer/GPU 与 overlay；由于 GPUI 0.2.2 及当前上游
+  `main` 都会在最终 `WM_DESTROY` 同步重入 `AsyncApp` 并触发进程 fast-fail，平台 adapter 只在
+  这些产品 owner 全部有序关闭后使用进程退出跳过有缺陷的 GPUI 窗口析构。该兼容措施不得提前
+  终止业务 shutdown；升级到修复此回调的固定 GPUI 版本后必须移除，并恢复正常 GPUI 析构门禁。
 - 平台服务不返回 GPUI 类型，避免框架扩散到业务模块。
 - GPUI 升级必须单独提交，附变更说明、双平台构建和 UI smoke test。
 

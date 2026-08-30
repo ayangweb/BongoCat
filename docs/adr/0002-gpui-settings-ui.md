@@ -19,7 +19,15 @@ GPUI `Entity` 只拥有临时视图状态。运行时配置和业务状态通过
 - 不依赖 Zed 应用内部 UI crate 或 GPUI renderer 私有接口。
 - GPUI 升级必须独立验证，不能无约束跟随上游。
 - GPUI 设置窗口关闭后，输入、动画和 overlay 必须继续运行。
+- GPUI 0.2.2 的 Windows `WM_DESTROY` 回调会同步重入已借用的 `AsyncApp`；在固定上游修复前，
+  普通 close 只隐藏并保留唯一窗口，显式 Quit 必须先完成全部 BongoCat owner 的 shutdown/join，
+  再由平台适配器跳过有缺陷的最终 GPUI 析构。不得用进程退出代替或提前截断业务 shutdown。
 
 ## Verification
 
 Phase 0 验证双平台字体、中文输入法、焦点、键盘导航、辅助功能、DPI/Retina、窗口重建、后台生命周期和 shutdown。
+
+2026-08-31 的 Windows CI run `33328391234`、job `99302481796` 证明保留窗口后的真实
+`WM_DESTROY` 仍以 `0xC0000409` fast-fail；同期检查确认 Zed commit
+`399258feeaf90ad8a3a208c99221ee87b6452f38` 的 `main` close callback 仍执行同步
+`handle.update`。该证据限定上述兼容措施，并不解除未来恢复正常 GPUI 析构的门禁。

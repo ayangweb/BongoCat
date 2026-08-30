@@ -1166,7 +1166,11 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
       从当前 revisioned snapshot 刷新；显式 Quit 仍按既定顺序 join 全部 owner；
       Windows/macOS release smoke 与完整 Native workspace 门禁通过。
     - 状态（2026-08-31）：macOS release smoke 和 Windows platform target check 本机通过；
-      Windows 原生 lifecycle smoke 待 CI 复验普通 close interception 与两阶段显式 quit 后再勾选。
+      Windows run `33328391234`、job `99302481796` 已证明普通 close 隐藏有效，但随后允许真实
+      `WM_DESTROY` 的两阶段退出仍以 `0xC0000409` fast-fail。上游 commit
+      `399258feeaf90ad8a3a208c99221ee87b6452f38` 保留同一同步重入回调，因此当前实现改为先
+      有序停止并 join 全部 BongoCat owner，再由 Windows adapter 跳过最终 GPUI 窗口析构；
+      Windows 原生 lifecycle CI 和完整门禁通过前保持未勾选。
 
 ## 13. 待决策清单
 
