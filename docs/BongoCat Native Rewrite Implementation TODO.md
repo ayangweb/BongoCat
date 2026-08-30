@@ -201,6 +201,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 连续创建/销毁 overlay 100 次，无窗口、swapchain、layer 或线程泄漏。
   - 状态（2026-08-29）：Windows 已在一个 100-cycle driver-pool 预热批次后，对第二个等长 batch 使用 ToolHelp thread snapshot、`IDXGIAdapter3::QueryVideoMemoryInfo(LOCAL)` 和 process handle 执行零增长门禁；真实 hardware D3D11 已在 runner 通过。macOS release 100-cycle 在普通与 NSZombie 模式均通过，AppKit windows 与 Rust owner 都回到 0；1/10/100-cycle `leaks` 基线定位并消除了 AppKit transform animation retain cycle。macOS runner 在 commit `5baa6ba` 即使观测到两批 `currentAllocatedSize` 相等，随后 300-cycle 仍由 `5242880` 扩展到 `8388608`，证明无显示 compositor 的一次相等读数不是可靠收敛信号。当前 probe 对 window/owner/thread 保持零增长，并把 Metal 增长限制为按真实 drawable 尺寸和 `maximumDrawableCount` 计算的一个三缓冲 pool；超出仍失败，driver 零斜率留给 Instruments/Metal System Trace 长期采样。本机仍为 `393216 -> 393216`；新 runner 与 driver 专项证据待完成，因此保持未勾选。
   - 状态（2026-08-30）：push run `33270546247` 与本机均复现 macOS 瞬时进程线程数 `7 -> 8`，采样栈显示变化来自 AppKit/Metal/libdispatch/GPUI `async-io` worker，窗口数、Rust overlay owner 和 Metal allocation 均未增长。probe 现逐个预热 cycle 记录线程高水位，再拒绝测量 batch 超出该上界；这避免把系统 worker 池在两次瞬时采样间的收缩/恢复误报为 overlay 泄漏，同时仍会捕获随等长 batch 持续增长的线程。CI 复验和 driver 专项证据仍待完成。
+  - 状态（2026-08-31）：run `33329882403` 与 `33330226417` 又稳定复现三批预热均为 7、
+    首个等长测量批次才变为 8，证明固定预热高水位仍会误报延迟系统 worker。线程门禁现将
+    首个测量批次纳入 baseline，后续两个等长批次不得继续突破；单元回归固定 `7 -> 8,8`
+    通过、`7 -> 8,9` 失败。本机 release 100-cycle 结果为三批测量均 8、window/owner
+    `0 -> 0`、Metal `393216 -> 393216`；新 CI 与 driver 专项证据仍待完成。
 - [ ] 验证退出顺序：frame source -> renderer -> GPU -> overlay -> GPUI。
   - 状态（2026-08-29）：GPUI executor 上的 60 Hz 定时 frame source 已连续驱动双平台 renderer，并在退出时通过停止确认后才释放 renderer/GPU/window；macOS 本机与 Windows hardware D3D11 runner 均已验证连续帧、resize、hide/show 和有序退出。生产 display-linked frame source 与 runtime 尚未接入，因此保持未完成。
 - [x] 写明 GPUI/AppKit/Win32 主线程所有权、overlay 创建线程和跨线程 command 不变量。

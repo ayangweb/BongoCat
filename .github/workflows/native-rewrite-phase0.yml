@@ -561,6 +561,7 @@ jobs:
               "non_empty_frames=300",
               "threads_before=",
               "threads_after=",
+              "threads_baseline_high_water=",
               "metal_bytes_before=",
               "metal_bytes_after=",
               "clean_shutdown=true",

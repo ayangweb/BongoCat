@@ -100,16 +100,22 @@ AppIntents/LinkServices 的 3 个系统 `NSXPCConnection` 常驻 cycle。普通 
 Metal driver/GPU memory 和线程的专项采样。
 
 当前 resource probe 先执行三个等长的 100-cycle warm-up batch，再建立资源基线并执行三个
-100-cycle 测量批次。每次 GPU completion、readback 和 owner 析构后，probe 把主线程让回
-AppKit 一个 60 Hz 刷新周期，使 compositor 有机会回收已经 present 的
+100-cycle 测量批次。runner run `33329882403` 与 `33330226417` 都在三次预热线程数为
+`7,7,7` 后，首个等长测量批次延迟启动一个 AppKit/Metal/libdispatch 系统 worker 并变为 8，
+证明固定预热次数不能完整预测进程级线程池。probe 现在把首个测量批次纳入线程基线，随后
+两个等长批次都不得再突破该高水位；因此 `7 -> 8,8,8` 不再误报，`7 -> 8,9` 仍会失败。
+窗口和 Rust owner 在全部测量批次前后仍严格要求零增长。每次 GPU completion、readback
+和 owner 析构后，probe 把主线程让回 AppKit 一个 60 Hz 刷新周期，使 compositor 有机会
+回收已经 present 的
 `CAMetalDrawable`，再创建下一窗口。probe 读取 `proc_pidinfo(PROC_PIDTASKINFO)` 的线程/RSS
-与 `MTLDevice.currentAllocatedSize`；窗口、Rust owner 和线程仍要求零增长。Metal 指标允许
+与 `MTLDevice.currentAllocatedSize`。Metal 指标允许
 最多一个 `CAMetalLayer` drawable pool：按本轮真实 drawable 物理像素、BGRA 每像素 4 bytes、
 1 MiB driver allocation bucket 和 layer 的 `maximumDrawableCount` 计算预算，超出即失败。
 这不是通用显存容差，而是把无显示 runner 可能延迟释放的 compositor surface 与应用 owner
 泄漏分开；RSS 只输出原始值，不作为单点泄漏判定。零斜率 driver memory 仍必须由
-Instruments/Metal System Trace 的长期稳定窗口验证。本机 debug 测量完成 300 个非空帧，
-结果为 `threads 8 -> 8`、`metal_bytes 393216 -> 393216`、window/owner `0 -> 0`。
+Instruments/Metal System Trace 的长期稳定窗口验证。本机 release 测量完成 300 个非空帧，
+结果为 `threads 8 -> 8`、`metal_bytes 393216 -> 393216`、window/owner `0 -> 0`；首批延迟
+worker 与后续增长的分界另有单元回归。
 
 commit `aeaa1be` 首次接入 runner 时仍以 1 ms 间隔高速创建并立即销毁窗口；push run
 `33252550911` 的 macOS job `99100622848` 在第三批观察到 Metal allocation

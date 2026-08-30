@@ -89,7 +89,7 @@ mod macos_overlay {
         pub owners_after: usize,
         pub threads_before: i32,
         pub threads_after: i32,
-        pub threads_warmup_high_water: i32,
+        pub threads_baseline_high_water: i32,
         pub resident_bytes_before: u64,
         pub resident_bytes_after: u64,
         pub metal_bytes_before: u64,
@@ -566,7 +566,7 @@ mod macos_overlay {
         cycles: u32,
         before: ResourceCounts,
         after: ResourceCounts,
-        threads_warmup_high_water: i32,
+        threads_baseline_high_water: i32,
         metal_growth_budget_bytes: u64,
     ) -> Result<CycleReport, String> {
         if cycles == 0 {
@@ -584,15 +584,15 @@ mod macos_overlay {
                 before.owners, after.owners
             ));
         }
-        if threads_warmup_high_water < before.threads {
+        if threads_baseline_high_water < before.threads {
             return Err(format!(
-                "thread warmup high-water {threads_warmup_high_water} is below the pre-measurement count {}",
+                "thread baseline high-water {threads_baseline_high_water} is below the pre-measurement count {}",
                 before.threads
             ));
         }
-        if after.threads > threads_warmup_high_water {
+        if after.threads > threads_baseline_high_water {
             return Err(format!(
-                "process thread count grew beyond warmup high-water {threads_warmup_high_water} to {} after {cycles} cycles",
+                "process thread count grew beyond baseline high-water {threads_baseline_high_water} to {} after {cycles} cycles",
                 after.threads
             ));
         }
@@ -612,13 +612,28 @@ mod macos_overlay {
             owners_after: after.owners,
             threads_before: before.threads,
             threads_after: after.threads,
-            threads_warmup_high_water,
+            threads_baseline_high_water,
             resident_bytes_before: before.resident_bytes,
             resident_bytes_after: after.resident_bytes,
             metal_bytes_before: before.metal_bytes,
             metal_bytes_after: after.metal_bytes,
             metal_growth_budget_bytes,
         })
+    }
+
+    pub fn observe_measurement_threads(
+        batch: u32,
+        threads: i32,
+        baseline_high_water: &mut i32,
+    ) -> Result<(), String> {
+        if batch == 1 {
+            *baseline_high_water = (*baseline_high_water).max(threads);
+        } else if threads > *baseline_high_water {
+            return Err(format!(
+                "process thread count grew beyond baseline high-water {baseline_high_water} to {threads} in measurement batch {batch}",
+            ));
+        }
+        Ok(())
     }
 
     pub fn resource_counts(mtm: MainThreadMarker) -> Result<ResourceCounts, String> {
@@ -692,7 +707,7 @@ mod macos_overlay {
     mod tests {
         use super::{
             OVERLAY_VERTICES, OverlayVertex, ResourceCounts, drawable_sizes_match,
-            validate_creation_cycles, validated_drawable_size,
+            observe_measurement_threads, validate_creation_cycles, validated_drawable_size,
         };
         use core_graphics_types::geometry::CGSize;
         use objc2_foundation::NSSize;
@@ -780,7 +795,7 @@ mod macos_overlay {
                     .unwrap();
             assert_eq!(report.threads_before, 12);
             assert_eq!(report.threads_after, 13);
-            assert_eq!(report.threads_warmup_high_water, 13);
+            assert_eq!(report.threads_baseline_high_water, 13);
 
             let thread_error = validate_creation_cycles(
                 100,
@@ -793,11 +808,22 @@ mod macos_overlay {
                 0,
             )
             .unwrap_err();
-            assert!(thread_error.contains("grew beyond warmup high-water 13 to 14"));
+            assert!(thread_error.contains("grew beyond baseline high-water 13 to 14"));
 
             let invalid_baseline =
                 validate_creation_cycles(100, before, before, before.threads - 1, 0).unwrap_err();
             assert!(invalid_baseline.contains("below the pre-measurement count 12"));
+        }
+
+        #[test]
+        fn first_measurement_may_extend_the_pool_baseline_once() {
+            let mut baseline = 7;
+            observe_measurement_threads(1, 8, &mut baseline).unwrap();
+            observe_measurement_threads(2, 8, &mut baseline).unwrap();
+            assert_eq!(baseline, 8);
+
+            let error = observe_measurement_threads(3, 9, &mut baseline).unwrap_err();
+            assert!(error.contains("baseline high-water 8 to 9 in measurement batch 3"));
         }
 
         #[test]
@@ -1017,7 +1043,7 @@ fn main() {
                     // Yield one 60 Hz frame after each destroyed panel so the
                     // compositor can retire its presented CAMetalDrawable.
                     let mut metal_growth_budget_bytes = 0;
-                    let mut threads_warmup_high_water = 0;
+                    let mut threads_baseline_high_water = 0;
                     for batch in 1..=3 {
                         for _ in 0..cycles {
                             let cycle_metrics = cx
@@ -1029,8 +1055,8 @@ fn main() {
                                 .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
                             metal_growth_budget_bytes = metal_growth_budget_bytes
                                 .max(cycle_metrics.drawable_pool_budget_bytes);
-                            threads_warmup_high_water =
-                                threads_warmup_high_water.max(cycle_metrics.process_threads);
+                            threads_baseline_high_water =
+                                threads_baseline_high_water.max(cycle_metrics.process_threads);
                             Timer::after(MACOS_COMPOSITOR_SETTLE_INTERVAL).await;
                         }
                         Timer::after(Duration::from_millis(100)).await;
@@ -1041,10 +1067,10 @@ fn main() {
                                 macos_overlay::resource_counts(mtm)
                             })
                             .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
-                        threads_warmup_high_water =
-                            threads_warmup_high_water.max(warmup_counts.threads());
+                        threads_baseline_high_water =
+                            threads_baseline_high_water.max(warmup_counts.threads());
                         println!(
-                            "gpui-overlay-spike: macOS resource warmup batch={batch} threads={} threads_high_water={threads_warmup_high_water} metal_bytes={} drawable_pool_budget_bytes={metal_growth_budget_bytes}",
+                            "gpui-overlay-spike: macOS resource warmup batch={batch} threads={} threads_high_water={threads_baseline_high_water} metal_bytes={} drawable_pool_budget_bytes={metal_growth_budget_bytes}",
                             warmup_counts.threads(),
                             warmup_counts.metal_bytes(),
                         );
@@ -1056,9 +1082,10 @@ fn main() {
                             macos_overlay::resource_counts(mtm)
                         })
                         .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
-                    threads_warmup_high_water = threads_warmup_high_water.max(before.threads());
+                    threads_baseline_high_water = threads_baseline_high_water.max(before.threads());
 
-                    for _ in 0..3 {
+                    let mut after = None;
+                    for batch in 1..=3 {
                         for _ in 0..cycles {
                             cx.update(|_| {
                                 let mtm = objc2::MainThreadMarker::new()
@@ -1069,19 +1096,35 @@ fn main() {
                             Timer::after(MACOS_COMPOSITOR_SETTLE_INTERVAL).await;
                         }
                         Timer::after(Duration::from_millis(100)).await;
+                        let measurement_counts = cx
+                            .update(|_| {
+                                let mtm = objc2::MainThreadMarker::new()
+                                    .expect("GPUI must run on AppKit main thread");
+                                macos_overlay::resource_counts(mtm)
+                            })
+                            .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
+                        // Some process-global AppKit/Metal/libdispatch workers
+                        // start only after the first post-warmup batch. Treat
+                        // that equal-sized batch as the final pool baseline;
+                        // subsequent batches must not grow beyond it.
+                        macos_overlay::observe_measurement_threads(
+                            batch,
+                            measurement_counts.threads(),
+                            &mut threads_baseline_high_water,
+                        )?;
+                        println!(
+                            "gpui-overlay-spike: macOS resource measurement batch={batch} threads={} threads_baseline_high_water={threads_baseline_high_water} metal_bytes={}",
+                            measurement_counts.threads(),
+                            measurement_counts.metal_bytes(),
+                        );
+                        after = Some(measurement_counts);
                     }
-                    let after = cx
-                        .update(|_| {
-                            let mtm = objc2::MainThreadMarker::new()
-                                .expect("GPUI must run on AppKit main thread");
-                            macos_overlay::resource_counts(mtm)
-                        })
-                        .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
+                    let after = after.expect("three measurement batches always produce metrics");
                     macos_overlay::validate_creation_cycles(
                         cycles,
                         before,
                         after,
-                        threads_warmup_high_water,
+                        threads_baseline_high_water,
                         metal_growth_budget_bytes,
                     )
                 }
@@ -1090,7 +1133,7 @@ fn main() {
                 match result {
                     Ok(report) => {
                         println!(
-                            "gpui-overlay-spike: macOS cycles={} non_empty_frames={} windows_before={} windows_after={} owners_before={} owners_after={} threads_before={} threads_after={} threads_warmup_high_water={} resident_bytes_before={} resident_bytes_after={} metal_bytes_before={} metal_bytes_after={} metal_growth_budget_bytes={} clean_shutdown=true",
+                            "gpui-overlay-spike: macOS cycles={} non_empty_frames={} windows_before={} windows_after={} owners_before={} owners_after={} threads_before={} threads_after={} threads_baseline_high_water={} resident_bytes_before={} resident_bytes_after={} metal_bytes_before={} metal_bytes_after={} metal_growth_budget_bytes={} clean_shutdown=true",
                             report.cycles,
                             report.cycles * 3,
                             report.windows_before,
@@ -1099,7 +1142,7 @@ fn main() {
                             report.owners_after,
                             report.threads_before,
                             report.threads_after,
-                            report.threads_warmup_high_water,
+                            report.threads_baseline_high_water,
                             report.resident_bytes_before,
                             report.resident_bytes_after,
                             report.metal_bytes_before,
