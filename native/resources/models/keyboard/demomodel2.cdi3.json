@@ -1,0 +1,233 @@
+{
+  "Version": 3,
+  "Parameters": [
+    {
+      "Id": "ParamAngleX",
+      "GroupId": "",
+      "Name": "角度 X"
+    },
+    {
+      "Id": "ParamAngleY",
+      "GroupId": "",
+      "Name": "角度 Y"
+    },
+    {
+      "Id": "CatParamRightHandDown",
+      "GroupId": "",
+      "Name": "右手按下"
+    },
+    {
+      "Id": "CatParamLeftHandDown",
+      "GroupId": "",
+      "Name": "左手按下"
+    },
+    {
+      "Id": "ParamAngleZ",
+      "GroupId": "",
+      "Name": "角度 Z"
+    },
+    {
+      "Id": "ParamEyeLOpen",
+      "GroupId": "",
+      "Name": "左眼 开闭"
+    },
+    {
+      "Id": "ParamEyeLSmile",
+      "GroupId": "",
+      "Name": "左眼 微笑"
+    },
+    {
+      "Id": "ParamEyeROpen",
+      "GroupId": "",
+      "Name": "右眼"
+    },
+    {
+      "Id": "ParamEyeRSmile",
+      "GroupId": "",
+      "Name": "右眼 微笑"
+    },
+    {
+      "Id": "Param3",
+      "GroupId": "",
+      "Name": "挥手"
+    },
+    {
+      "Id": "Param",
+      "GroupId": "ParamGroup",
+      "Name": "开启闪电"
+    },
+    {
+      "Id": "Param2",
+      "GroupId": "ParamGroup",
+      "Name": "闪电划过"
+    },
+    {
+      "Id": "Param4",
+      "GroupId": "ParamGroup2",
+      "Name": "表情:thuglife"
+    },
+    {
+      "Id": "Param5",
+      "GroupId": "ParamGroup2",
+      "Name": "表情:升天"
+    },
+    {
+      "Id": "ParamEyeBallX",
+      "GroupId": "",
+      "Name": "眼球 X"
+    },
+    {
+      "Id": "ParamEyeBallY",
+      "GroupId": "",
+      "Name": "眼球 Y"
+    },
+    {
+      "Id": "ParamBrowLY",
+      "GroupId": "",
+      "Name": "左眉上下"
+    },
+    {
+      "Id": "ParamBrowRY",
+      "GroupId": "",
+      "Name": "右眉 上下"
+    },
+    {
+      "Id": "ParamBrowLX",
+      "GroupId": "",
+      "Name": "左眉 左右"
+    },
+    {
+      "Id": "ParamBrowRX",
+      "GroupId": "",
+      "Name": "右眉 左右"
+    },
+    {
+      "Id": "ParamBrowLAngle",
+      "GroupId": "",
+      "Name": "左眉 角度"
+    },
+    {
+      "Id": "ParamBrowRAngle",
+      "GroupId": "",
+      "Name": "右眉 角度"
+    },
+    {
+      "Id": "ParamBrowLForm",
+      "GroupId": "",
+      "Name": "左眉 変形"
+    },
+    {
+      "Id": "ParamBrowRForm",
+      "GroupId": "",
+      "Name": "右眉 変形"
+    },
+    {
+      "Id": "ParamMouthForm",
+      "GroupId": "",
+      "Name": "嘴部 变形"
+    },
+    {
+      "Id": "ParamMouthOpenY",
+      "GroupId": "",
+      "Name": "嘴巴 张开和闭合"
+    },
+    {
+      "Id": "ParamCheek",
+      "GroupId": "",
+      "Name": "脸颊"
+    },
+    {
+      "Id": "ParamBodyAngleX",
+      "GroupId": "",
+      "Name": "身体旋转 X"
+    },
+    {
+      "Id": "ParamBodyAngleY",
+      "GroupId": "",
+      "Name": "身体旋转 Y"
+    },
+    {
+      "Id": "ParamBodyAngleZ",
+      "GroupId": "",
+      "Name": "身体旋转 Z"
+    },
+    {
+      "Id": "ParamBreath",
+      "GroupId": "",
+      "Name": "呼吸"
+    },
+    {
+      "Id": "ParamHairFront",
+      "GroupId": "",
+      "Name": "摇动 前发"
+    },
+    {
+      "Id": "ParamHairSide",
+      "GroupId": "",
+      "Name": "摇动 侧发"
+    },
+    {
+      "Id": "ParamHairBack",
+      "GroupId": "",
+      "Name": "摇动 后发"
+    }
+  ],
+  "ParameterGroups": [
+    {
+      "Id": "ParamGroup",
+      "GroupId": "",
+      "Name": "闪电"
+    },
+    {
+      "Id": "ParamGroup2",
+      "GroupId": "",
+      "Name": "表情"
+    }
+  ],
+  "Parts": [
+    {
+      "Id": "Part11",
+      "Name": "demomodel.psd(未找到对应图层)"
+    },
+    {
+      "Id": "Part7",
+      "Name": "demomodel.psd(未找到对应图层)"
+    },
+    {
+      "Id": "Part3",
+      "Name": "demomodel.psd(未找到对应图层)"
+    },
+    {
+      "Id": "Part2",
+      "Name": "demomodel.psd(未找到对应图层)"
+    },
+    {
+      "Id": "Part",
+      "Name": "demomodel.psd(未找到对应图层)"
+    },
+    {
+      "Id": "Part10",
+      "Name": "天使环"
+    },
+    {
+      "Id": "Part5",
+      "Name": "demomodel.psd(未找到对应图层)"
+    },
+    {
+      "Id": "PartSketch0",
+      "Name": "[ 参考图 ]"
+    },
+    {
+      "Id": "Part8",
+      "Name": "thug life"
+    },
+    {
+      "Id": "Part6",
+      "Name": "闪电"
+    },
+    {
+      "Id": "Part4",
+      "Name": "闪电"
+    }
+  ]
+}

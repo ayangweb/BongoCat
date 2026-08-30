@@ -3,7 +3,9 @@ resolver = "3"
 members = [
     "crates/bongocat-app",
     "crates/bongocat-config",
+    "crates/bongocat-live2d",
     "crates/bongocat-model",
+    "crates/bongocat-overlay",
     "crates/bongocat-runtime",
 ]
 
@@ -18,12 +20,15 @@ publish = false
 [workspace.dependencies]
 atomic-write-file = "=0.3.1"
 dirs = "=6.0.0"
+image = { version = "=0.25.10", default-features = false, features = ["png"] }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
 tempfile = "=3.27.0"
 
 bongocat-config = { path = "crates/bongocat-config" }
+bongocat-live2d = { path = "crates/bongocat-live2d" }
 bongocat-model = { path = "crates/bongocat-model" }
+bongocat-overlay = { path = "crates/bongocat-overlay" }
 bongocat-runtime = { path = "crates/bongocat-runtime" }
 
 [workspace.lints.rust]
