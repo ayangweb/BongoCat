@@ -1300,13 +1300,22 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
       重新验证并 canonicalize；GPUI Models 页面不阻塞执行文件复制，可消费取消与选择结果；
       双平台真实选择/取消 smoke 和完整 Native 门禁通过。
     - 状态（2026-08-31）：共享验证、双平台 adapter、macOS background-thread contract 和
-      Windows x64/ARM64 cross-check 已通过；Models 页面接线及双平台真实 dialog smoke 未完成，
-      因此保持未勾选。`objc2 0.6.4`、AppKit/Foundation `0.3.2` 与 `windows 0.62.2` 均为当前
+      Windows x64/ARM64 platform cross-check 已通过。Models 页面现已接入真实导航、64-byte
+      ASCII model ID 草稿、无路径 folder 状态、typed operation、100 ms progress、cancel、retry
+      和 catalog refresh，全部命令支持 Tab 焦点及 Enter/Space 激活；11 项 UI 定向测试覆盖建议
+      ID 的 portable/长度/保留名边界、输入过滤、键盘激活、状态脱敏，以及 operation 入队前的
+      cancel 请求在 control 建立后立即生效。复制、解析和复验仍只在 settings worker 执行，不
+      阻塞 GPUI executor。
+      双平台真实 dialog 选择/取消 smoke 与 Windows 原生页面 CI 尚未完成，因此保持未勾选。
+      `objc2 0.6.4`、AppKit/Foundation `0.3.2` 与 `windows 0.62.2` 均为当前
       最新稳定版并已在 workspace 锁定；最低 Rust 1.71/1.82、MIT/Zlib/Apache-2.0 许可证兼容
       workspace，替换边界仅为对应 OS 原生 API binding。完整 Native format、Clippy、workspace
       test、release check、license/source policy 与双 Windows target platform Clippy 本机通过。
       可重复 macOS smoke example 已加入；本机临时 bundle 可见但 Computer Use 无法建立其 AX
-      会话，未执行选择/取消动作，因此不计入真实 dialog 证据。
+      会话，未执行选择/取消动作，因此不计入真实 dialog 证据。adapter commit `5cf1e39` 的首个
+      push run `33337621979` 仅因 Linux 未调用私有 validation helper 而触发 dead-code Clippy；
+      当前批已按 macOS/Windows/test cfg 收窄该 helper，本机 Linux target Clippy 通过，等待新
+      push run 复验。完整 Models 页面 workspace 门禁也随本批统一执行后补充证据。
 
 ## 13. 待决策清单
 

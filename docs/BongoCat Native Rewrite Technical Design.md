@@ -453,6 +453,11 @@ com.ayangweb.bongo-cat
   并禁止写入 recent。adapter 只向上返回 `Selected(PathBuf)`/`Cancelled` 和稳定无路径错误码；
   Rust 侧重新检查绝对、存在、目录并 canonicalize，真正的包解析/复制仍只由 settings worker
   执行。对话框取消不是错误，错误不得携带系统文本或用户路径。
+- Models 页面只在 GPUI Entity 中保存用户可编辑的 model ID、临时选择目录和 operation monitor。
+  目录只显示匿名 selected/cancelled/error 状态，不进入 snapshot、状态文案或日志；ASCII 建议 ID
+  只是表单草稿，最终仍由正式 `ModelId` contract 校验。页面提交 typed import 后以 100 ms UI
+  timer 读取无路径 progress，cancel 直接设置共享原子令牌，失败可使用同一草稿 retry；GPUI
+  executor 不遍历、解析或复制模型文件，成功只刷新 catalog，不隐式切换 active model。
 - 模型删除 command 同样携带 `(origin, model_id)`；preset 永不可删。installed 模型只有在既
   不是当前 runtime active、也不是配置所选来源时才能以 rename 后删除事务退休；同 ID preset
   不得阻止删除 installed 副本。成功只刷新 catalog，不隐式切模或改写配置。

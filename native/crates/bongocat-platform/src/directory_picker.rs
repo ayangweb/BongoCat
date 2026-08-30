@@ -1,4 +1,7 @@
-use std::{fmt, fs, path::PathBuf};
+use std::{fmt, path::PathBuf};
+
+#[cfg(any(target_os = "macos", target_os = "windows", test))]
+use std::fs;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DirectoryPickerOutcome {
@@ -35,6 +38,7 @@ impl fmt::Display for DirectoryPickerError {
 
 impl std::error::Error for DirectoryPickerError {}
 
+#[cfg(any(target_os = "macos", target_os = "windows", test))]
 pub(crate) fn validate_selected_directory(
     selected: PathBuf,
 ) -> Result<DirectoryPickerOutcome, DirectoryPickerError> {
