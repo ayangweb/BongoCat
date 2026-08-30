@@ -268,6 +268,14 @@ impl MotionClip {
         self.looping
     }
 
+    pub fn fade_out_duration(&self) -> Duration {
+        Duration::from_secs_f32(self.fade_out_seconds)
+    }
+
+    pub fn fade_out_weight(&self, elapsed: Duration) -> f32 {
+        1.0 - fade_weight(elapsed.as_secs_f32(), self.fade_out_seconds)
+    }
+
     pub fn evaluate(&self, elapsed: Duration) -> MotionEvaluation {
         let elapsed_seconds = elapsed.as_secs_f32();
         let finished = !self.looping && elapsed_seconds >= self.duration_seconds;
@@ -615,6 +623,24 @@ mod tests {
         let wrapped = clip.evaluate(clip.duration() + Duration::from_millis(100));
         let initial = clip.evaluate(Duration::from_millis(100));
         assert!((wrapped.parameters[0].value - initial.parameters[0].value).abs() < 0.001);
+    }
+
+    #[test]
+    fn explicit_fade_out_preserves_the_first_frame_and_reaches_zero() {
+        let json = br#"{
+          "Version":3,
+          "Meta":{"Duration":2.0,"Fps":30.0,"Loop":true,"AreBeziersRestricted":true,
+            "CurveCount":1,"TotalSegmentCount":1,"TotalPointCount":2,
+            "UserDataCount":0,"TotalUserDataSize":0},
+          "Curves":[{"Target":"Parameter","Id":"P","Segments":[0,1,0,2,1]}]
+        }"#;
+        let clip = MotionClip::from_slice(json, 0.0, 1.0).expect("synthetic motion");
+
+        assert_eq!(clip.fade_out_duration(), Duration::from_secs(1));
+        assert_eq!(clip.fade_out_weight(Duration::ZERO), 1.0);
+        assert!((clip.fade_out_weight(Duration::from_millis(500)) - 0.5).abs() < 0.0001);
+        assert_eq!(clip.fade_out_weight(Duration::from_secs(1)), 0.0);
+        assert_eq!(clip.fade_out_weight(Duration::from_secs(2)), 0.0);
     }
 
     #[test]

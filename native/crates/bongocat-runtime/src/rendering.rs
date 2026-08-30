@@ -50,6 +50,13 @@ struct ActiveRenderModel {
 struct MotionPlayback {
     clip: MotionClip,
     started_at: Duration,
+    fade_out_started_at: Option<Duration>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum MotionStopStatus {
+    Fading,
+    Finished,
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -201,6 +208,7 @@ impl RuntimeRenderer {
             active.motion = Some(MotionPlayback {
                 clip,
                 started_at: now,
+                fade_out_started_at: None,
             });
             Ok(())
         }
@@ -212,11 +220,19 @@ impl RuntimeRenderer {
         }
     }
 
-    pub(crate) fn stop_motion(&mut self) {
+    pub(crate) fn stop_motion(&mut self, _now: Duration) -> MotionStopStatus {
         #[cfg(any(target_os = "macos", target_os = "windows"))]
-        if let Some(active) = &mut self.active {
-            active.motion = None;
+        if let Some(active) = &mut self.active
+            && let Some(playback) = &mut active.motion
+        {
+            if playback.clip.fade_out_duration().is_zero() {
+                active.motion = None;
+                return MotionStopStatus::Finished;
+            }
+            playback.fade_out_started_at.get_or_insert(_now);
+            return MotionStopStatus::Fading;
         }
+        MotionStopStatus::Finished
     }
 
     pub(crate) fn set_expression(
@@ -277,11 +293,21 @@ impl RuntimeRenderer {
                 .restore_parameter_defaults()
                 .map_err(|_| RuntimeRenderErrorCode::ModelEvaluationFailed)?;
             let motion_finished = if let Some(playback) = &active.motion {
-                active
+                let fade_out_elapsed = playback
+                    .fade_out_started_at
+                    .map(|started_at| now.saturating_sub(started_at));
+                let explicit_fade_finished = fade_out_elapsed
+                    .is_some_and(|elapsed| elapsed >= playback.clip.fade_out_duration());
+                let status = active
                     .model
-                    .apply_motion(&playback.clip, now.saturating_sub(playback.started_at))
-                    .map_err(|_| RuntimeRenderErrorCode::ModelEvaluationFailed)?
-                    .finished
+                    .apply_motion_with_weight(
+                        &playback.clip,
+                        now.saturating_sub(playback.started_at),
+                        fade_out_elapsed
+                            .map_or(1.0, |elapsed| playback.clip.fade_out_weight(elapsed)),
+                    )
+                    .map_err(|_| RuntimeRenderErrorCode::ModelEvaluationFailed)?;
+                status.finished || explicit_fade_finished
             } else {
                 false
             };

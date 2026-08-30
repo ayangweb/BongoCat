@@ -29,7 +29,7 @@ pub use input::{
     SequencedInputEvent,
 };
 use input::{InputState, InputTransportCounters};
-use rendering::{RenderEvaluation, RuntimeRenderBootstrap, RuntimeRenderer};
+use rendering::{MotionStopStatus, RenderEvaluation, RuntimeRenderBootstrap, RuntimeRenderer};
 
 const CURSOR_SAMPLE_INTERVAL: Duration = Duration::from_millis(16);
 
@@ -150,6 +150,7 @@ pub struct ActiveMotionSnapshot {
     pub motion: MotionId,
     pub priority: MotionPriority,
     pub command_sequence: u64,
+    pub stop_command_sequence: Option<u64>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -980,6 +981,7 @@ fn run_worker(
                                         motion,
                                         priority,
                                         command_sequence: sequence,
+                                        stop_command_sequence: None,
                                     };
                                     active_motion = Some(started.clone());
                                     publish(&snapshot, |current| {
@@ -1005,19 +1007,36 @@ fn run_worker(
                         }
                     }
                     WorkerCommand::Product(RuntimeCommand::StopMotion(motion)) => {
-                        if active_motion
+                        let matching = active_motion
                             .as_ref()
-                            .is_some_and(|active| active.motion == motion)
-                        {
-                            if let Some(renderer) = &mut renderer {
-                                renderer.stop_motion();
+                            .is_some_and(|active| active.motion == motion);
+                        let already_stopping = active_motion
+                            .as_ref()
+                            .is_some_and(|active| active.stop_command_sequence.is_some());
+                        if matching && !already_stopping {
+                            let stop_status = renderer
+                                .as_mut()
+                                .map_or(MotionStopStatus::Finished, |renderer| {
+                                    renderer.stop_motion(clock.now())
+                                });
+                            if stop_status == MotionStopStatus::Fading {
+                                let stopping =
+                                    active_motion.as_mut().expect("matching motion is active");
+                                stopping.stop_command_sequence = Some(sequence);
+                                let stopping = stopping.clone();
+                                publish(&snapshot, |current| {
+                                    current.active_motion = Some(stopping);
+                                    current.last_command_failure = None;
+                                    current.last_command_sequence = Some(sequence);
+                                });
+                            } else {
+                                active_motion = None;
+                                publish(&snapshot, |current| {
+                                    current.active_motion = None;
+                                    current.last_command_failure = None;
+                                    current.last_command_sequence = Some(sequence);
+                                });
                             }
-                            active_motion = None;
-                            publish(&snapshot, |current| {
-                                current.active_motion = None;
-                                current.last_command_failure = None;
-                                current.last_command_sequence = Some(sequence);
-                            });
                         } else {
                             publish(&snapshot, |current| {
                                 current.last_command_failure = None;
@@ -1345,7 +1364,11 @@ mod tests {
     };
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     use std::collections::BTreeMap;
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    use std::fs;
     use std::path::{Path, PathBuf};
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    use tempfile::TempDir;
     use tempfile::tempdir;
 
     const TIMEOUT: Duration = Duration::from_secs(2);
@@ -1406,6 +1429,60 @@ mod tests {
         .expect("preset catalog")
         .load(&ModelId::parse(id).expect("model id"))
         .expect("preset model")
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn preset_model_with_motion_fade_out(fade_out_seconds: f64) -> (TempDir, CommittedModel) {
+        let catalog = tempdir().expect("temporary preset catalog");
+        let source = repository_root().join("native/resources/models/standard");
+        let destination = catalog.path().join("fade-out-model");
+        clone_model_tree(&source, &destination);
+
+        let model3_path = destination.join("cat.model3.json");
+        let mut model3: serde_json::Value =
+            serde_json::from_slice(&fs::read(&model3_path).expect("read copied model3"))
+                .expect("parse copied model3");
+        let motions = model3
+            .get_mut("FileReferences")
+            .and_then(|references| references.get_mut("Motions"))
+            .and_then(serde_json::Value::as_object_mut)
+            .expect("model3 motion groups");
+        for group in motions.values_mut() {
+            for motion in group.as_array_mut().expect("motion array") {
+                motion.as_object_mut().expect("motion object").insert(
+                    "FadeOutTime".to_owned(),
+                    serde_json::Value::from(fade_out_seconds),
+                );
+            }
+        }
+        fs::write(
+            &model3_path,
+            serde_json::to_vec_pretty(&model3).expect("serialize copied model3"),
+        )
+        .expect("write copied model3");
+
+        let model = PresetModelCatalog::open(catalog.path(), ModelPackageLimits::default())
+            .expect("temporary preset catalog")
+            .load(&ModelId::parse("fade-out-model").expect("model id"))
+            .expect("temporary preset model");
+        (catalog, model)
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn clone_model_tree(source: &Path, destination: &Path) {
+        fs::create_dir_all(destination).expect("create copied model directory");
+        for entry in fs::read_dir(source).expect("read source model directory") {
+            let entry = entry.expect("source model entry");
+            let source_path = entry.path();
+            let destination_path = destination.join(entry.file_name());
+            if entry.file_type().expect("source entry type").is_dir() {
+                clone_model_tree(&source_path, &destination_path);
+            } else if source_path.extension().and_then(|value| value.to_str()) == Some("json") {
+                fs::copy(&source_path, &destination_path).expect("copy model JSON");
+            } else if fs::hard_link(&source_path, &destination_path).is_err() {
+                fs::copy(&source_path, &destination_path).expect("copy model resource");
+            }
+        }
     }
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -1790,6 +1867,7 @@ mod tests {
                 motion: first.clone(),
                 priority: MotionPriority::Normal,
                 command_sequence: first_sequence,
+                stop_command_sequence: None,
             })
         );
 
@@ -1827,6 +1905,7 @@ mod tests {
                 motion: second.clone(),
                 priority: MotionPriority::Force,
                 command_sequence: force_sequence,
+                stop_command_sequence: None,
             })
         );
 
@@ -1863,6 +1942,109 @@ mod tests {
             .wait_for_command(stop_sequence, TIMEOUT)
             .expect("current stop result");
         assert!(stopped.active_motion.is_none());
+        let duplicate_stop_sequence = client
+            .send(RuntimeCommand::StopMotion(
+                MotionId::new("CAT_motion", 1).expect("motion id"),
+            ))
+            .expect("duplicate stop");
+        let duplicate_stop = client
+            .wait_for_command(duplicate_stop_sequence, TIMEOUT)
+            .expect("duplicate stop result");
+        assert!(duplicate_stop.active_motion.is_none());
+        owner.shutdown(TIMEOUT).expect("runtime shutdown");
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn stopped_motion_fades_without_a_jump_and_duplicate_stop_does_not_restart_it() {
+        let (_catalog, model) = preset_model_with_motion_fade_out(1.0);
+        let clock = Arc::new(ManualClock::default());
+        let (owner, consumer) = RuntimeOwner::start_with_rendering_and_clock(
+            true,
+            8,
+            Arc::clone(&clock) as Arc<dyn MonotonicClock>,
+        );
+        let client = owner.client();
+        client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+        let activation_sequence = client
+            .send(RuntimeCommand::ActivateModel(Arc::new(model)))
+            .expect("activation command");
+        let candidate = wait_for_prepared_model(&client, &consumer, activation_sequence);
+        report_model_prepared(&client, &consumer, &candidate);
+        let baseline = wait_for_render_frame(&consumer, |frame| {
+            frame.model_generation == candidate.model_generation
+                && frame.frame_number > candidate.frame_number
+        });
+
+        let motion = MotionId::new("CAT_motion", 0).expect("motion id");
+        let start_sequence = client
+            .send(RuntimeCommand::StartMotion {
+                motion: motion.clone(),
+                priority: MotionPriority::Normal,
+            })
+            .expect("start motion");
+        client
+            .wait_for_command(start_sequence, TIMEOUT)
+            .expect("motion started");
+        clock.set(Duration::from_millis(500));
+        let before_stop = wait_for_render_frame(&consumer, |frame| {
+            frame.transport_sequence > baseline.transport_sequence
+                && frame.snapshot != baseline.snapshot
+        });
+
+        let stop_sequence = client
+            .send(RuntimeCommand::StopMotion(motion.clone()))
+            .expect("stop motion");
+        let stopping = client
+            .wait_for_command(stop_sequence, TIMEOUT)
+            .expect("motion stopping");
+        assert_eq!(
+            stopping.active_motion,
+            Some(ActiveMotionSnapshot {
+                motion: motion.clone(),
+                priority: MotionPriority::Normal,
+                command_sequence: start_sequence,
+                stop_command_sequence: Some(stop_sequence),
+            })
+        );
+        let first_fade_frame = wait_for_render_frame(&consumer, |frame| {
+            frame.transport_sequence > before_stop.transport_sequence
+        });
+        assert_eq!(first_fade_frame.snapshot, before_stop.snapshot);
+
+        clock.set(Duration::from_millis(700));
+        let duplicate_sequence = client
+            .send(RuntimeCommand::StopMotion(motion))
+            .expect("duplicate stop");
+        let duplicate = client
+            .wait_for_command(duplicate_sequence, TIMEOUT)
+            .expect("duplicate stop completed");
+        assert_eq!(
+            duplicate
+                .active_motion
+                .as_ref()
+                .and_then(|active| active.stop_command_sequence),
+            Some(stop_sequence)
+        );
+
+        clock.set(Duration::from_secs(1));
+        let half_faded = wait_for_render_frame(&consumer, |frame| {
+            frame.transport_sequence > first_fade_frame.transport_sequence
+                && frame.snapshot != first_fade_frame.snapshot
+                && frame.snapshot != baseline.snapshot
+        });
+        assert_ne!(half_faded.snapshot, before_stop.snapshot);
+
+        clock.set(Duration::from_millis(1500));
+        let completed = client
+            .wait_for_revision(duplicate.revision.saturating_add(1), TIMEOUT)
+            .expect("fade completion");
+        assert!(completed.active_motion.is_none());
+        let final_frame = wait_for_render_frame(&consumer, |frame| {
+            frame.transport_sequence > half_faded.transport_sequence
+        });
+        assert_eq!(final_frame.snapshot, baseline.snapshot);
+
         owner.shutdown(TIMEOUT).expect("runtime shutdown");
     }
 

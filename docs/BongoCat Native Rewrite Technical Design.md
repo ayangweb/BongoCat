@@ -208,6 +208,9 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
 - 鼠标移动和摇杆轴可以合并为最新值，不能阻塞边沿事件。
 - 手柄 axis latest-value 以 `{device_id, connection_generation, axis}` 为 key 并限制总 key 数；每次连接分配新 generation，断开后旧 generation 的迟到样本不得作用于重连设备。
 - 动画和延迟使用单调时钟 `Instant`，持久化时间才使用墙上时钟。
+- `motion_stop` 只作用于匹配的当前动作。非零 `FadeOutTime` 在 runtime snapshot 中保留
+  active identity 和首次 stop command sequence，renderer 以正弦权重淡出并在结束帧后
+  清理；重复 stop 不重启计时，零时长立即清理，旧动作的 stop 不影响后启动动作。
 - render snapshot 不含锁和平台对象，通过双缓冲或 latest-value channel 交给渲染线程。
 - GPUI 通过 command/snapshot 边界交互，不直接持有 runtime mutex。
 - shutdown 顺序：停止输入 -> runtime drain/停止 -> 保存配置 -> 停止渲染 -> 销毁 overlay/GPU -> 关闭 GPUI。
@@ -311,7 +314,8 @@ model evaluation + render snapshot
 - 不把未经验证的新纯 Rust Cubism 兼容 crate 作为生产基础。
 - `.model3.json`、motion、expression、physics 和 pose 兼容性由 fixture 验证。
 - 每帧从 Core 默认 parameter 开始，依次应用 motion、expression、physics/pose（实现后）、
-  类型化产品输入，最后调用 Core update。expression 使用 `.exp3.json` 的
+  类型化产品输入，最后调用 Core update。motion 的自然结束与显式停止均使用 model3/
+  curve fade，显式停止的外层正弦权重与 curve 权重相乘。expression 使用 `.exp3.json` 的
   Add/Multiply/Overwrite 和正弦淡入淡出；替换期间最多保留上一层与当前层，稳定后只保留
   最新 expression，使内存和每帧成本保持有界。真实输入最后覆盖对应产品 parameter，
   避免表情让按下状态失真。

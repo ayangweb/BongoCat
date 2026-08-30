@@ -118,6 +118,7 @@ dependencies = [
  "bongocat-live2d",
  "bongocat-model",
  "bongocat-render",
+ "serde_json",
  "tempfile",
 ]
 

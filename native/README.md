@@ -96,8 +96,11 @@ masks, and textures with strong resource IDs and never receives the mutable Cubi
 The same worker now owns typed motion playback. `Application::start_motion` resolves a validated
 model3 group/index, applies motion3 linear, Bezier, stepped, or inverse-stepped curves using monotonic
 elapsed time, and publishes the resulting immutable drawable frame. Runtime snapshots expose only
-the active motion identity, priority, and originating command sequence. Product input is applied
-after motion curves so an actual pressed key or button remains authoritative for hand parameters.
+the active motion identity, priority, originating command sequence, and optional first stop command
+sequence. Explicit stop preserves the first frame, multiplies curve weights by the model3 sine
+fade-out, and clears the motion only after the fade completes; duplicate stops cannot restart it.
+Product input is applied after motion curves so an actual pressed key or button remains authoritative
+for hand parameters.
 
 Expression playback uses `Application::set_expression` with the model3 expression name. Every
 declared exp3 resource is parsed and cached during model preparation; Add, Multiply, and Overwrite

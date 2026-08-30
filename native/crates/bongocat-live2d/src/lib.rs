@@ -333,6 +333,21 @@ impl Live2dModel {
         motion: &MotionClip,
         elapsed: std::time::Duration,
     ) -> Result<MotionApplyStatus, Live2dError> {
+        self.apply_motion_with_weight(motion, elapsed, 1.0)
+    }
+
+    pub fn apply_motion_with_weight(
+        &mut self,
+        motion: &MotionClip,
+        elapsed: std::time::Duration,
+        weight: f32,
+    ) -> Result<MotionApplyStatus, Live2dError> {
+        if !weight.is_finite() || !(0.0..=1.0).contains(&weight) {
+            return Err(Live2dError::new(
+                Live2dErrorCode::ParameterValueInvalid,
+                "motion received an invalid playback weight",
+            ));
+        }
         let evaluation = motion.evaluate(elapsed);
 
         #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -340,8 +355,11 @@ impl Live2dModel {
             let mut count = 0;
             for sample in &evaluation.parameters {
                 if matches!(
-                    self.core
-                        .set_parameter_by_id(&sample.id, sample.value, sample.weight)?,
+                    self.core.set_parameter_by_id(
+                        &sample.id,
+                        sample.value,
+                        sample.weight * weight
+                    )?,
                     ParameterUpdate::Applied { .. }
                 ) {
                     count += 1;
@@ -352,7 +370,7 @@ impl Live2dModel {
 
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         let applied_parameter_count = {
-            let _ = &evaluation.parameters;
+            let _ = (&evaluation.parameters, weight);
             0
         };
 

@@ -7,7 +7,11 @@
 
 - `model_switch` changes the selected model and clears the active motion and expression only after the switch command is accepted.
 - `motion_start` carries an explicit `idle`, `normal`, or `force` priority. A lower-priority request cannot replace an active higher-priority motion; equal priority uses the latest request.
-- `motion_stop` only stops the named active motion. Stopping an old motion must not cancel a newer motion.
+- `motion_stop` only stops the named active motion. Stopping an old motion must not cancel a newer
+  motion. A non-zero model3 `FadeOutTime` keeps the motion active while a sine-eased outer weight
+  reaches zero; runtime snapshots retain the first stop command sequence until completion. Repeated
+  stops are idempotent and cannot restart the fade. A zero-duration fade clears the motion
+  immediately.
 - `expression_set` resolves a non-blank expression name against the selected model before changing
   runtime state. A failed resolution leaves the current expression active.
 - Setting an expression fades it in with sine easing. A later expression keeps only the immediately
