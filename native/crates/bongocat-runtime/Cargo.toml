@@ -7,5 +7,8 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[dependencies]
+bongocat-model.workspace = true
+
 [lints]
 workspace = true

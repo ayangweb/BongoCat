@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/bongocat-app",
     "crates/bongocat-config",
+    "crates/bongocat-model",
     "crates/bongocat-runtime",
 ]
 
@@ -22,6 +23,7 @@ serde_json = "=1.0.151"
 tempfile = "=3.27.0"
 
 bongocat-config = { path = "crates/bongocat-config" }
+bongocat-model = { path = "crates/bongocat-model" }
 bongocat-runtime = { path = "crates/bongocat-runtime" }
 
 [workspace.lints.rust]

@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+use bongocat_model::{ModelSnapshot, PreparedModel};
 use std::{
     fmt,
     sync::{
@@ -29,6 +30,7 @@ pub enum InputResetReason {
 pub enum RuntimeCommand {
     SetOverlayVisible(bool),
     ResetInput(InputResetReason),
+    ActivateModel(Arc<PreparedModel>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -36,6 +38,7 @@ pub struct RuntimeSnapshot {
     pub revision: u64,
     pub state: RuntimeState,
     pub overlay_visible: bool,
+    pub active_model: Option<ModelSnapshot>,
     pub input_reset_count: u64,
     pub last_command_sequence: Option<u64>,
 }
@@ -46,6 +49,7 @@ impl RuntimeSnapshot {
             revision: 0,
             state: RuntimeState::Starting,
             overlay_visible,
+            active_model: None,
             input_reset_count: 0,
             last_command_sequence: None,
         }
@@ -180,6 +184,47 @@ impl RuntimeClient {
             }
         }
     }
+
+    pub fn wait_for_command(
+        &self,
+        command_sequence: u64,
+        timeout: Duration,
+    ) -> Option<RuntimeSnapshot> {
+        let deadline = Instant::now().checked_add(timeout)?;
+        let mut snapshot = self
+            .snapshot
+            .value
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        loop {
+            if snapshot
+                .last_command_sequence
+                .is_some_and(|sequence| sequence >= command_sequence)
+            {
+                return Some(snapshot.clone());
+            }
+            if snapshot.state == RuntimeState::Stopped {
+                return None;
+            }
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return None;
+            }
+            let (next, result) = self
+                .snapshot
+                .changed
+                .wait_timeout(snapshot, remaining)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            snapshot = next;
+            if result.timed_out()
+                && !snapshot
+                    .last_command_sequence
+                    .is_some_and(|sequence| sequence >= command_sequence)
+            {
+                return None;
+            }
+        }
+    }
 }
 
 pub struct RuntimeOwner {
@@ -281,6 +326,7 @@ fn publish(snapshot_cell: &SnapshotCell, update: impl FnOnce(&mut RuntimeSnapsho
 }
 
 fn run_worker(receiver: Receiver<CommandEnvelope>, snapshot: Arc<SnapshotCell>) {
+    let mut active_model = None;
     publish(&snapshot, |current| current.state = RuntimeState::Ready);
     while let Ok(envelope) = receiver.recv() {
         let sequence = envelope.sequence;
@@ -297,12 +343,21 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, snapshot: Arc<SnapshotCell>) 
                     current.last_command_sequence = Some(sequence);
                 })
             }
+            WorkerCommand::Product(RuntimeCommand::ActivateModel(prepared)) => {
+                let model_snapshot = prepared.snapshot();
+                active_model = Some(prepared);
+                publish(&snapshot, |current| {
+                    current.active_model = Some(model_snapshot);
+                    current.last_command_sequence = Some(sequence);
+                });
+            }
             WorkerCommand::Shutdown => {
                 publish(&snapshot, |current| {
                     current.state = RuntimeState::Stopping;
                     current.last_command_sequence = Some(sequence);
                 });
                 publish(&snapshot, |current| current.state = RuntimeState::Stopped);
+                drop(active_model);
                 return;
             }
         }
@@ -313,8 +368,18 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, snapshot: Arc<SnapshotCell>) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bongocat_model::{ModelId, ModelPackageLimits};
+    use std::path::{Path, PathBuf};
 
     const TIMEOUT: Duration = Duration::from_secs(2);
+
+    fn repository_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repository root")
+            .to_owned()
+    }
 
     #[test]
     fn lifecycle_publishes_typed_snapshots_and_stops_cleanly() {
@@ -354,6 +419,37 @@ mod tests {
             .wait_for_revision(ready.revision + 1, TIMEOUT)
             .expect("reset snapshot");
         assert_eq!(reset.input_reset_count, 1);
+        owner.shutdown(TIMEOUT).expect("clean shutdown");
+    }
+
+    #[test]
+    fn runtime_owns_the_committed_prepared_model() {
+        let prepared = PreparedModel::prepare(
+            ModelId::parse("unicode").expect("model id"),
+            repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型"),
+            ModelPackageLimits::default(),
+        )
+        .expect("prepared model");
+        let owner = RuntimeOwner::start(true, 4);
+        let client = owner.client();
+        let ready = client
+            .wait_for_revision(1, TIMEOUT)
+            .expect("ready snapshot");
+        client
+            .send(RuntimeCommand::ActivateModel(Arc::new(prepared)))
+            .expect("model command");
+        let activated = client
+            .wait_for_revision(ready.revision + 1, TIMEOUT)
+            .expect("model snapshot");
+        assert_eq!(
+            activated
+                .active_model
+                .as_ref()
+                .expect("active model")
+                .id
+                .as_str(),
+            "unicode"
+        );
         owner.shutdown(TIMEOUT).expect("clean shutdown");
     }
 

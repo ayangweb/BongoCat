@@ -4,10 +4,11 @@ use bongocat_config::{
     BuildEnvironment, ConfigError, ConfigRevision, ConfigStore, NativeConfig, PlatformStorageError,
     StorageLayout, platform_layout,
 };
+use bongocat_model::{ModelError, ModelId, ModelPackageLimits, PreparedModel};
 use bongocat_runtime::{
     RuntimeClient, RuntimeCommand, RuntimeOwner, RuntimeSnapshot, SendError, ShutdownError,
 };
-use std::{fmt, time::Duration};
+use std::{fmt, path::Path, sync::Arc, time::Duration};
 
 const COMMAND_CAPACITY: usize = 64;
 const RUNTIME_TIMEOUT: Duration = Duration::from_secs(2);
@@ -22,6 +23,7 @@ pub const BUILD_ENVIRONMENT: BuildEnvironment = BuildEnvironment::Production;
 pub enum ApplicationError {
     PlatformStorage(PlatformStorageError),
     Config(ConfigError),
+    Model(ModelError),
     RuntimeCommand(SendError),
     RuntimeDidNotPublish,
     Shutdown(ShutdownError),
@@ -32,6 +34,7 @@ impl fmt::Display for ApplicationError {
         match self {
             Self::PlatformStorage(error) => write!(formatter, "storage setup failed: {error}"),
             Self::Config(error) => write!(formatter, "configuration failed: {error}"),
+            Self::Model(error) => write!(formatter, "model preparation failed: {error}"),
             Self::RuntimeCommand(error) => write!(formatter, "runtime command failed: {error}"),
             Self::RuntimeDidNotPublish => {
                 formatter.write_str("runtime did not publish the requested revision")
@@ -52,6 +55,12 @@ impl From<PlatformStorageError> for ApplicationError {
 impl From<ConfigError> for ApplicationError {
     fn from(error: ConfigError) -> Self {
         Self::Config(error)
+    }
+}
+
+impl From<ModelError> for ApplicationError {
+    fn from(error: ModelError) -> Self {
+        Self::Model(error)
     }
 }
 
@@ -102,16 +111,31 @@ impl Application {
             .commit_if_revision(&next_config, self.config_revision)?;
 
         let client = self.runtime.client();
-        let current_runtime_revision = client.snapshot().revision;
-        client
+        let sequence = client
             .send(RuntimeCommand::SetOverlayVisible(visible))
             .map_err(ApplicationError::RuntimeCommand)?;
         let snapshot = client
-            .wait_for_revision(current_runtime_revision.saturating_add(1), RUNTIME_TIMEOUT)
+            .wait_for_command(sequence, RUNTIME_TIMEOUT)
             .ok_or(ApplicationError::RuntimeDidNotPublish)?;
         self.config = next_config;
         self.config_revision = next_revision;
         Ok(snapshot)
+    }
+
+    pub fn activate_model(
+        &self,
+        id: impl Into<String>,
+        package_root: impl AsRef<Path>,
+    ) -> Result<RuntimeSnapshot, ApplicationError> {
+        let id = ModelId::parse(id)?;
+        let prepared = PreparedModel::prepare(id, package_root, ModelPackageLimits::default())?;
+        let client = self.runtime.client();
+        let sequence = client
+            .send(RuntimeCommand::ActivateModel(Arc::new(prepared)))
+            .map_err(ApplicationError::RuntimeCommand)?;
+        client
+            .wait_for_command(sequence, RUNTIME_TIMEOUT)
+            .ok_or(ApplicationError::RuntimeDidNotPublish)
     }
 
     pub fn shutdown(self) -> Result<RuntimeSnapshot, ApplicationError> {
@@ -126,6 +150,14 @@ mod tests {
     use super::*;
     use bongocat_runtime::RuntimeState;
     use tempfile::tempdir;
+
+    fn repository_root() -> std::path::PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repository root")
+            .to_owned()
+    }
 
     #[test]
     fn build_environment_is_compiled_into_the_application() {
@@ -173,5 +205,36 @@ mod tests {
         assert_ne!(development_root, production_root);
         development_app.shutdown().expect("development shutdown");
         production_app.shutdown().expect("production shutdown");
+    }
+
+    #[test]
+    fn failed_model_preparation_preserves_the_active_model() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let application = Application::start_with_layout(layout).expect("start application");
+        let fixtures = repository_root().join("shared/fixtures/model-fixtures/cases");
+
+        let active = application
+            .activate_model("unicode", fixtures.join("非 ASCII 模型"))
+            .expect("activate valid model");
+        let active_revision = active.revision;
+        assert_eq!(
+            active
+                .active_model
+                .as_ref()
+                .expect("active model")
+                .id
+                .as_str(),
+            "unicode"
+        );
+
+        let error = application
+            .activate_model("broken", fixtures.join("missing-moc"))
+            .expect_err("invalid model must be rejected");
+        assert!(matches!(error, ApplicationError::Model(_)));
+        let preserved = application.runtime_client().snapshot();
+        assert_eq!(preserved.revision, active_revision);
+        assert_eq!(preserved.active_model, active.active_model);
+        application.shutdown().expect("clean shutdown");
     }
 }

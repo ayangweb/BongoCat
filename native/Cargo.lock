@@ -23,6 +23,7 @@ name = "bongocat-app"
 version = "0.1.0"
 dependencies = [
  "bongocat-config",
+ "bongocat-model",
  "bongocat-runtime",
  "tempfile",
 ]
@@ -39,8 +40,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "bongocat-model"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "bongocat-runtime"
 version = "0.1.0"
+dependencies = [
+ "bongocat-model",
+]
 
 [[package]]
 name = "cfg-if"

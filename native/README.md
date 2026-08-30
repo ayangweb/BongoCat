@@ -31,3 +31,7 @@ cargo check --manifest-path native/Cargo.toml --workspace --release
 
 The workspace does not download or bundle Cubism artifacts. Local Cubism setup remains a separate,
 explicit process governed by `docs/adr/0011-progressive-implementation-release-gates.md`.
+
+Model package parsing is also SDK-independent. `bongocat-model` prepares and validates package
+metadata before a typed command transfers ownership to the runtime; Cubism model creation and GPU
+upload remain separate commit stages.

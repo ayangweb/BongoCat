@@ -287,6 +287,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 创建 bongocat-runtime：状态、输入语义、动画和 command。
 - [x] 创建 bongocat-config：环境隔离、schema、验证和原子存储。
 - [ ] 创建 bongocat-model：模型包、导入和资源索引。
+  - 状态（2026-08-30）：正式 `bongocat-model` 已实现可移植 `ModelId`、model3
+    索引、引用规范化、文件/包/纹理上限、跨根 symlink 防护和
+    `PreparedModel`；三个预置包与缺失 moc、损坏 JSON、非 ASCII、超大纹理、
+    路径穿越、多入口及跨根 symlink 均由产品 workspace 测试。模型复制导入、
+    覆盖保护、完整 sidecar 强类型校验和预置/用户持久索引仍待完成，
+    因此总项保持未勾选。
 - [ ] 创建 bongocat-live2d：Cubism safe wrapper 和模型求值。
 - [ ] 创建 bongocat-render：render snapshot 和 renderer contract。
 - [ ] 创建 bongocat-ui：GPUI 页面和 design system。
@@ -341,7 +347,13 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 ### 3.1 Runtime
 
 - [ ] 定义 AppCommand、InputEvent、RuntimeSnapshot、RenderSnapshot。
+  - 状态（2026-08-30）：正式 runtime 已有 typed `RuntimeCommand`、带 revision/
+    command sequence 的 `RuntimeSnapshot` 和模型摘要；`wait_for_command` 可区分并发
+    command 的完成。`InputEvent`、`RenderSnapshot` 与完整 product command 集仍待实现。
 - [ ] 单一 runtime owner 管理可变业务状态。
+  - 状态（2026-08-30）：正式 runtime worker 已独占 overlay、input reset 计数和
+    `PreparedModel`，应用与 UI client 只通过有界 typed command 和 snapshot 访问；输入、
+    动画与 Live2D 状态接入后再完成总项。
 - [ ] key/button edge 和 command 使用可靠有序队列。
 - [ ] 为每个可靠队列定义容量、生产者、消费者、满载策略和关闭语义，不使用无界队列逃避背压设计。
   - 状态（2026-08-28）：`spikes/input-queue/` 已验证固定容量 FIFO、满载返回原事件、关闭 drain 和 latest-value 槽位；`spikes/runtime-contract/` 进一步验证固定容量 command queue、Condvar 唤醒、溢出 Reset、worker drain 和 join 报告；runtime 的实际容量与产品 channel 选型仍待产品 crate。
@@ -490,10 +502,23 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 ### 5.1 模型包
 
 - [ ] 解析 model3 并规范化相对路径。
+  - 状态（2026-08-30）：该能力已进入正式 `bongocat-model` 并覆盖三个预置包及
+    非 ASCII/反斜杠/遍历拒绝；待完整 sidecar contract 和导入链完成后统一勾选。
 - [ ] 验证 moc、texture、motion、expression、physics、pose、cdi 和音频。
+  - 状态（2026-08-30）：正式 crate 已验证所有引用存在于 canonical package root，
+    moc/普通文件大小、PNG header/尺寸及关联 JSON object 可读性；motion、expression、
+    physics、pose、cdi 的完整结构语义仍由 spike 覆盖，尚未全部提升到产品 crate。
 - [ ] 拒绝路径穿越、符号链接逃逸、绝对路径和覆盖安装资源。
-- [ ] 限制模型总大小、单文件大小、纹理尺寸和 JSON 深度。
+  - 状态（2026-08-30）：路径穿越、绝对/平台前缀和跨根 symlink 已在 prepare 阶段
+    拒绝；复制导入与已有安装模型的无覆盖 commit 尚未实现。
+- [x] 限制模型总大小、单文件大小、纹理尺寸和 JSON 深度。
+  - 验收证据（2026-08-30）：正式 crate 在任何 Cubism/GPU 工作前限制包总 byte、
+    文件数、单文件/JSON byte、目录/JSON 结构深度和 PNG IHDR 声明尺寸；超大纹理与
+    65 层嵌套 JSON 均有产品测试，所有上限集中在 `ModelPackageLimits`。
 - [ ] 资源缺失/损坏返回具体错误，不使应用整体退出。
+  - 状态（2026-08-30）：稳定 `ModelDiagnostic`/`ModelError` 已接入 app；集成测试证明
+    缺失 moc 的新模型准备失败后，当前模型及 runtime revision 均不变。完整 sidecar
+    诊断映射与 GPUI error/retry 状态仍待完成。
 - [ ] 建立预置只读索引和用户模型可写索引。
 
 ### 5.2 Cubism safe layer
@@ -503,6 +528,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 校验 parameter/part/drawable id、index 和范围。
 - [ ] 模型切换使用 prepare/commit/rollback。
 - [ ] 加载失败保留当前可用模型。
+  - 状态（2026-08-30）：文件解析在 runtime 外完成，只有 `PreparedModel` 能进入
+    `ActivateModel` command；runtime 独占已提交模型，准备失败不入队且保留当前模型。
+    Cubism Moc/Model、GPU texture 的 prepare/commit/rollback 尚未接入，因此两项保持
+    未勾选。
 - [ ] FFI 错误映射为稳定 Rust error code。
 
 ### 5.3 动作与状态
