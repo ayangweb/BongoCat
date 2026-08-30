@@ -34,7 +34,7 @@ cargo test --locked
 Launch with `--runtime-error-probe` to exercise non-blocking loading, typed
 failure, retry, and revision recovery. The first refresh resolves to revision
 1, the second reports `runtime probe failed`, and the retry resolves to revision
-2; each read waits on the GPUI background executor rather than blocking the UI
+2; each read waits three seconds on the GPUI background executor rather than blocking the UI
 thread.
 
 The Reset command exercises GPUI's public tooltip API and a project-owned modal

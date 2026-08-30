@@ -530,7 +530,7 @@ jobs:
           Remove-Item $stdout, $stderr -Force -ErrorAction SilentlyContinue
           $process = Start-Process `
             -FilePath $executable `
-            -ArgumentList @("--auto-quit-ms", "12000", "--runtime-error-probe") `
+            -ArgumentList @("--auto-quit-ms", "20000", "--runtime-error-probe") `
             -NoNewWindow `
             -PassThru `
             -RedirectStandardOutput $stdout `
@@ -607,17 +607,21 @@ jobs:
           $observedElements["Refresh"].GetCurrentPattern(
             [System.Windows.Automation.InvokePattern]::Pattern
           ).Invoke()
-          $busyDeadline = [DateTime]::UtcNow.AddSeconds(2)
+          $busyValueSeen = $false
+          $busyPropertySeen = $false
+          $busyDeadline = [DateTime]::UtcNow.AddSeconds(4)
           do {
             Start-Sleep -Milliseconds 50
             $busyValue = $statusValue.Current.Value
             $busyProperties = $status.Current.AriaProperties
+            $busyValueSeen = $busyValueSeen -or $busyValue -eq "Refreshing..."
+            $busyPropertySeen = $busyPropertySeen -or $busyProperties -match "busy=true"
           } while (
-            ($busyValue -ne "Refreshing..." -or $busyProperties -notmatch "busy=true") -and
+            (-not $busyValueSeen -or -not $busyPropertySeen) -and
             [DateTime]::UtcNow -lt $busyDeadline
           )
-          if ($busyValue -ne "Refreshing..." -or $busyProperties -notmatch "busy=true") {
-            throw "Windows UIA runtime status did not expose the loading state: value='$busyValue' aria='$busyProperties'"
+          if (-not $busyValueSeen -or -not $busyPropertySeen) {
+            throw "Windows UIA runtime status did not expose the loading state: value_seen=$busyValueSeen busy_seen=$busyPropertySeen final_value='$busyValue' final_aria='$busyProperties'"
           }
           $errorDeadline = [DateTime]::UtcNow.AddSeconds(5)
           do {

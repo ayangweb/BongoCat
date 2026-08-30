@@ -57,7 +57,7 @@ spike 使用容量为 8 的 `async-channel 2.5.0` 传递强类型 `ReadSnapshot`
 
 退出时，runtime 先关闭 command receiver，再发送 shutdown acknowledgement，避免 acknowledgement 返回后仍有请求成功入队并永远等待 reply。contract test 覆盖两次 snapshot 的 revision、health、shutdown acknowledgement 和停止后请求失败。macOS release `.app` smoke 同时证明 GPUI executor 能完成首次 snapshot 请求，并在 auto-quit 的 100 ms GPUI shutdown 窗口内收到 acknowledgement；该结果不等于产品 runtime、持久化或高负载 channel 已完成。
 
-`--runtime-error-probe` 使用同一 typed command/reply 边界，并通过 GPUI background executor 的非阻塞 timer 将每次 read 延迟 1500 ms；第二次 read 返回稳定 `BridgeError::ProbeFailure`，第三次重试恢复且 revision 从 1 递增到 2。该 probe 不在 UI executor sleep，也不让 UI 直接控制 runtime 内部状态。macOS 打包 `.app` 的外部 AX smoke 已读取 `Runtime Ready · revision 1 -> runtime probe failed -> Runtime Ready · revision 2`，随后 Cmd+Q 仍先收到 runtime shutdown acknowledgement。AccessKit contract 另验证 loading status 的 `busy=true` 与 error status 的 `Invalid::True`。Windows UI Automation 已加入 ValuePattern、ARIA `busy=true`、错误值和 retry revision 门禁，结果需以本批 push/PR runner 为准。
+`--runtime-error-probe` 使用同一 typed command/reply 边界，并通过 GPUI background executor 的非阻塞 timer 将每次 read 延迟 3000 ms；第二次 read 返回稳定 `BridgeError::ProbeFailure`，第三次重试恢复且 revision 从 1 递增到 2。该 probe 不在 UI executor sleep，也不让 UI 直接控制 runtime 内部状态。macOS 打包 `.app` 的外部 AX smoke 已读取 `Runtime Ready · revision 1 -> runtime probe failed -> Runtime Ready · revision 2`，随后 Cmd+Q 仍先收到 runtime shutdown acknowledgement。AccessKit contract 另验证 loading status 的 `busy=true` 与 error status 的 `Invalid::True`。Windows UI Automation 已加入 ValuePattern、ARIA `busy=true`、错误值和 retry revision 门禁，结果需以本批 push/PR runner 为准。
 
 760x520 Retina 人工 smoke 确认 `Runtime Ready · revision 1` 和 Refresh 控件完整显示，无文字裁剪或卡片溢出。此次检查没有提交全屏截图，避免把用户桌面内容纳入仓库证据；可重复证据以 contract test、release binary 日志、bundle 校验和本文环境记录为准。
 

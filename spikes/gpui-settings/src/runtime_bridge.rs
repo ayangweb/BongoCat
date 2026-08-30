@@ -87,7 +87,7 @@ impl RuntimeProbeMode {
     fn response_delay(self) -> Duration {
         match self {
             Self::Normal => Duration::ZERO,
-            Self::DelayedErrorRecovery => Duration::from_millis(1_500),
+            Self::DelayedErrorRecovery => Duration::from_millis(3_000),
         }
     }
 
@@ -167,7 +167,7 @@ mod tests {
     fn delayed_probe_fails_only_the_second_read() {
         assert_eq!(
             RuntimeProbeMode::DelayedErrorRecovery.response_delay(),
-            Duration::from_millis(1_500)
+            Duration::from_millis(3_000)
         );
         assert!(!RuntimeProbeMode::DelayedErrorRecovery.fails_read(1));
         assert!(RuntimeProbeMode::DelayedErrorRecovery.fails_read(2));
