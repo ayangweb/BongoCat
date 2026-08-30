@@ -96,7 +96,37 @@ jobs:
         run: cargo check --manifest-path native/Cargo.toml --locked -p bongocat-app --release
       - name: Smoke Windows D3D11 product overlay
         if: matrix.os == 'windows-latest'
-        run: cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke
+        shell: pwsh
+        run: |
+          cargo build --manifest-path native/Cargo.toml --locked -p bongocat-app --release
+          $executable = Join-Path $PWD "native/target/release/bongocat-app.exe"
+          $process = Start-Process `
+            -FilePath $executable `
+            -ArgumentList @("--run-seconds", "6", "--settings-window-smoke") `
+            -PassThru
+          $windowDeadline = [DateTime]::UtcNow.AddSeconds(3)
+          do {
+            Start-Sleep -Milliseconds 100
+            $process.Refresh()
+            if ($process.HasExited) {
+              throw "Windows product exited before its settings window opened"
+            }
+          } while ($process.MainWindowHandle -eq 0 -and [DateTime]::UtcNow -lt $windowDeadline)
+          if ($process.MainWindowHandle -eq 0) {
+            throw "Windows product settings window did not open"
+          }
+          Start-Sleep -Seconds 1
+          if (-not $process.CloseMainWindow()) {
+            throw "Windows product settings window rejected the close request"
+          }
+          if (-not $process.WaitForExit(15000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            $process.WaitForExit()
+            throw "Windows product lifecycle smoke exceeded 15 seconds"
+          }
+          if ($process.ExitCode -ne 0) {
+            throw "Windows product lifecycle smoke exited with $($process.ExitCode)"
+          }
       - name: Smoke macOS settings window lifecycle
         if: matrix.os == 'macos-latest'
         run: cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke

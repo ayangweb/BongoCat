@@ -391,9 +391,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             coordinator.frame_ticks,
                         )
                     };
+                    #[cfg(target_os = "macos")]
                     window_handle
                         .update(cx, |_, window, _| window.remove_window())
                         .map_err(|error| error.to_string())?;
+                    #[cfg(target_os = "windows")]
+                    let _ = window_handle;
                     Ok(frame_ticks)
                 });
                 let baseline_ticks = match baseline_ticks {
@@ -410,11 +413,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 };
 
-                Timer::after(Duration::from_millis(500)).await;
-                let reopened = cx.update(|cx| -> Result<WindowHandle<SettingsView>, String> {
-                    if !cx.windows().is_empty() {
-                        return Err("settings window did not close".to_owned());
+                let mut window_closed = false;
+                for _ in 0..60 {
+                    Timer::after(Duration::from_millis(50)).await;
+                    match cx.update(|cx| cx.windows().is_empty()) {
+                        Ok(true) => {
+                            window_closed = true;
+                            break;
+                        }
+                        Ok(false) => {}
+                        Err(error) => {
+                            record_failure(&smoke_failures, error.to_string());
+                            let _ = cx.update(|cx| cx.quit());
+                            return;
+                        }
                     }
+                }
+                if !window_closed {
+                    record_failure(&smoke_failures, "settings window did not close");
+                    let _ = cx.update(|cx| cx.quit());
+                    return;
+                }
+
+                Timer::after(Duration::from_millis(250)).await;
+                let reopened = cx.update(|cx| -> Result<WindowHandle<SettingsView>, String> {
                     if cx.global::<ProductCoordinator>().frame_ticks <= baseline_ticks {
                         return Err(
                             "frame source stopped while the settings window was closed".to_owned()
