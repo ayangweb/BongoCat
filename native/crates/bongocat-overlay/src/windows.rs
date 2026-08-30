@@ -101,6 +101,9 @@ const WINDOW_CLASS: windows::core::PCWSTR = w!("BongoCatProductOverlayWindow");
 const PRESET_MODEL_IDS: [&str; 3] = ["standard", "keyboard", "gamepad"];
 const HANDLE_GROWTH_LIMIT: u32 = 4;
 const SWITCH_WARMUP_CYCLES: u64 = 2;
+const THREAD_SETTLE_INTERVAL: Duration = Duration::from_millis(10);
+const THREAD_SETTLE_SAMPLES: u32 = 25;
+const THREAD_SETTLE_TIMEOUT: Duration = Duration::from_secs(2);
 
 const SHADER_SOURCE: &str = r#"
     cbuffer UniformBuffer : register(b0) {
@@ -1050,7 +1053,8 @@ pub(crate) fn run_model_switch_preview(
     // high-water mark. Some drivers create a helper thread on the first query.
     let _ = overlay.renderer.current_local_memory_usage()?;
     let switches_per_cycle = models.len() as u64;
-    let warmup_switches = SWITCH_WARMUP_CYCLES.saturating_mul(switches_per_cycle);
+    let warmup_cycles = SWITCH_WARMUP_CYCLES.max(u64::from(switch_cycles));
+    let warmup_switches = warmup_cycles.saturating_mul(switches_per_cycle);
     let target_switches = u64::from(switch_cycles).saturating_mul(switches_per_cycle);
     let total_target_switches = warmup_switches.saturating_add(target_switches);
     let mut total_switches = 0_u64;
@@ -1112,6 +1116,8 @@ pub(crate) fn run_model_switch_preview(
             model_switches = model_switches.saturating_add(1);
         }
         if total_switches == warmup_switches {
+            warmup_thread_high_water =
+                settle_process_thread_high_water(warmup_thread_high_water, THREAD_SETTLE_TIMEOUT)?;
             gpu_bytes_before = Some(overlay.renderer.current_local_memory_usage()?);
             handles_before =
                 Some(process_handle_count().map_err(windows_error("count process handles"))?);
@@ -1471,6 +1477,32 @@ fn process_thread_count() -> WindowsResult<u32> {
         ));
     }
     Ok(count)
+}
+
+fn settle_process_thread_high_water(
+    mut high_water: u32,
+    timeout: Duration,
+) -> Result<u32, OverlayError> {
+    let deadline = Instant::now() + timeout;
+    let mut stable_samples = 0_u32;
+    while Instant::now() < deadline {
+        pump_window_messages();
+        thread::sleep(THREAD_SETTLE_INTERVAL);
+        let current = process_thread_count()
+            .map_err(windows_error("count process threads while settling warmup"))?;
+        if current > high_water {
+            high_water = current;
+            stable_samples = 0;
+        } else {
+            stable_samples = stable_samples.saturating_add(1);
+            if stable_samples >= THREAD_SETTLE_SAMPLES {
+                return Ok(high_water);
+            }
+        }
+    }
+    Err(OverlayError::new(format!(
+        "process thread count did not stabilize below high-water mark {high_water} after warmup"
+    )))
 }
 
 struct ThreadSnapshot(HANDLE);
