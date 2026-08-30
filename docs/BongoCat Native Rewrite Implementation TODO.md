@@ -155,12 +155,13 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 1.5 GPUI spike
 
-状态（2026-08-30）：已在 `spikes/gpui-settings/` 建立隔离的 macOS 最小窗口，精确锁定 `gpui = 0.2.2` 并生成独立 lockfile；默认预编译 shader、release `.app`、原生 Application/Edit/Window 菜单、窗口关闭/重开和 shutdown smoke 通过。当前 spike 还验证了 System/Light/Dark 主题、焦点边框、Tab/Shift-Tab、Unicode/grapheme 文本编辑、选择、剪切、复制和粘贴，以及 GPUI executor 上的 bounded typed command/revision snapshot/shutdown acknowledgement，并保存浅色/深色截图证据。marked-text 纯状态 contract 已覆盖连续中文组合、已有多字节前缀、surrogate pair 和异常 range。项目自有 AccessKit tree 已由 macOS AppKit AX API 读取 9 个语义节点，Dark radio 的系统 press 经强类型 channel 回到 GPUI；Reset tooltip 已通过双平台原生合成 mouse-move -> GPUI 500ms delay -> build -> hover exit 链路，modal AlertDialog 的 Cancel 初始焦点、Tab/Shift-Tab 陷阱、Escape 关闭和背景语义隐藏也已验证。Windows UIA runner 已读取基础 role/name、selected/action、dialog，并通过 loading -> error -> retry/revision 2 恢复门禁；`busy=true` 因 runner 托管 UIA client 缺少属性标识而仍未验证。真实系统 IME、物理 pointer/tooltip 朗读、目标 DPI 和真实辅助技术操作仍未验证，详见 `docs/phase-0/gpui-settings-spike.md`。
+状态（2026-08-30）：已在 `spikes/gpui-settings/` 建立隔离的 macOS 最小窗口，精确锁定 `gpui = 0.2.2` 并生成独立 lockfile；默认预编译 shader、release `.app`、原生 Application/Edit/Window 菜单、窗口关闭/重开和 shutdown smoke 通过。当前 spike 还验证了 System/Light/Dark 主题、焦点边框、Tab/Shift-Tab、Unicode/grapheme 文本编辑、选择、剪切、复制和粘贴，以及 GPUI executor 上的 bounded typed command/revision snapshot/shutdown acknowledgement，并保存浅色/深色截图证据。marked-text 纯状态 contract 已覆盖连续中文组合、已有多字节前缀、surrogate pair 和异常 range；本机 WeType 拼音 2.2.3 进一步通过真实系统组合更新、候选提交和已有中文前缀后的再次组合。项目自有 AccessKit tree 已由 macOS AppKit AX API 读取 9 个语义节点，Dark radio 的系统 press 经强类型 channel 回到 GPUI；Reset tooltip 已通过双平台原生合成 mouse-move -> GPUI 500ms delay -> build -> hover exit 链路，modal AlertDialog 的 Cancel 初始焦点、Tab/Shift-Tab 陷阱、Escape 关闭和背景语义隐藏也已验证。Windows UIA runner 已读取基础 role/name、selected/action、dialog，并通过 loading -> error -> retry/revision 2 恢复门禁；`busy=true` 因 runner 托管 UIA client 缺少属性标识而仍未验证。Apple 拼音、Windows IME、物理键盘/pointer、tooltip 朗读、目标 DPI 和真实辅助技术操作仍未验证，详见 `docs/phase-0/gpui-settings-spike.md`。
 
 - [x] 建立最小 Rust workspace 和 GPUI hello/settings 窗口。
 - [x] 固定 `gpui = "=0.2.2"` 并提交 Cargo.lock。
 - [x] 禁止依赖 Zed 私有 UI crate；建立最小本地 design token。
 - [ ] 验证 Windows/macOS 字体、中文输入法、复制粘贴和文本选择。
+  - 状态（2026-08-30）：macOS release `.app` 已使用 WeType 拼音 2.2.3 逐键完成 `ni -> ni'hao -> 你好`，并在中文前缀后完成第二次 marked-text update/commit；未使用 paste 或直接 set-value。Apple 拼音、物理键盘和 Windows 字体/IME 仍待完成，因此保持未勾选。
 - [ ] 验证键盘导航、焦点、tooltip、dialog 和菜单。
   - 状态（2026-08-30）：macOS `.app` 已验证 Reset command、modal dialog、Cancel 初始焦点、dialog 内 Tab/Shift-Tab 循环、Enter/Space button context、Escape 关闭和 GPUI 公共 tooltip help；AccessKit 隐藏 modal 背景节点。原生 Application/Edit/Window 菜单结构与 Select All/Cut/Paste 菜单动作已通过 AppKit run-loop smoke；双平台 probe 使用 `NSEvent mouseMoved:`/`WM_MOUSEMOVE` 进入 GPUI 平台回调，命中 Reset 后验证 500ms tooltip build 和 hover exit；Windows UIA 已加入 dialog open/focus/cancel 门禁。物理 pointer 与 VoiceOver/Narrator tooltip 朗读仍待完成，因此保持未勾选。
 - [ ] 验证系统浅色/深色、缩放、Retina 和 Windows 高 DPI。
@@ -171,7 +172,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 记录首次打开、空闲 CPU、RSS 和二进制增量；`docs/benchmark/data/gpui-settings-macos-248a770-*.csv` 保存原始样本，方法、环境和限制见 `docs/phase-0/gpui-settings-spike.md`。
 - [x] 安装并固定 macOS Metal Toolchain，验证 GPUI 默认预编译 shader 路径；`runtime_shaders` 不作为发布配置。
 - [ ] 将 macOS spike 打包为最小 `.app`，验证 bundle id、菜单、激活、关闭和辅助功能树可被系统识别。
-  - 状态：Bundle ID `com.ayangweb.bongo-cat`、菜单、激活、关闭/重开、退出与最小内容 AX tree/action 已通过；真实 VoiceOver、IME 和 error/loading 宣读仍待完成，因此保持未勾选。
+  - 状态：Bundle ID `com.ayangweb.bongo-cat`、菜单、激活、关闭/重开、退出、WeType 拼音组合提交与最小内容 AX tree/action 已通过；真实 VoiceOver、Apple 拼音和 error/loading 宣读仍待完成，因此保持未勾选。
 - [ ] 生成 Windows spike 可执行文件，验证 MSVC、Windows SDK、D3D shader 工具和 manifest 前置条件。
 - [x] 跟踪 `block 0.1.6`、`proc-macro-error2 2.0.1` future-incompatibility；`docs/phase-0/future-incompatibility.md` 明确当前图只接受用于 spike，macOS 输入产品边界迁移到 `objc2-core-graphics`，GPUI 图必须在进入产品 workspace 前通过升级或审计 patch 消除两条 warning。
 - [x] 若存在发布阻塞，提交 GPUI go/no-go ADR；备选只评估 Iced。ADR-0009 记录 GPUI 0.2.2 的 AX gate、Iced 0.14.0 初步检查和解除条件；当前阻塞仍未解除。
@@ -836,7 +837,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 7. [x] `P0-RUNTIME-CONTRACT`：冻结生命周期、单调 tick、operation 去重、shutdown drain 与超时结果。
    - 状态（2026-08-28）：`spikes/runtime-contract/` 已通过 14 项 contract test 并接入 CI，补齐 typed bounded worker、snapshot revision、command sequence gap/duplicate、overflow Reset、shutdown drain/timeout 和 panic/join 诊断；实际输入、模型、配置服务和平台 runtime 仍待 Phase 1/2。
 8. [ ] `P0-GPUI-PACKAGE-MAC`：使用默认预编译 shader 构建 `.app`，验证 IME、剪贴板、焦点、辅助功能、主题和窗口重开。
-   - 状态（2026-08-30）：默认 shader、bundle、Application/Edit/Window 原生菜单与编辑动作、窗口生命周期、主题、基础文本编辑/剪贴板、runtime bridge、性能基线与 AppKit AX tree/action 通过；Reset tooltip 已通过原生合成 mouse-move、500ms build 和 hover exit，modal dialog、焦点陷阱、Escape 恢复和背景语义隐藏已完成可见/AX smoke；AX value/invalid 可观察延迟 runtime 的 loading -> error -> retry/revision 恢复。marked-text 纯状态 contract 不替代真实系统 IME；ADR-0009 仍等待真实 VoiceOver、物理 pointer 与 tooltip 朗读等证据。
+   - 状态（2026-08-30）：默认 shader、bundle、Application/Edit/Window 原生菜单与编辑动作、窗口生命周期、主题、基础文本编辑/剪贴板、runtime bridge、性能基线与 AppKit AX tree/action 通过；WeType 拼音 2.2.3 已在 release `.app` 完成真实 marked-text update/commit 和已有中文前缀后的再次组合。Reset tooltip 已通过原生合成 mouse-move、500ms build 和 hover exit，modal dialog、焦点陷阱、Escape 恢复和背景语义隐藏已完成可见/AX smoke；AX value/invalid 可观察延迟 runtime 的 loading -> error -> retry/revision 恢复。ADR-0009 仍等待 Apple 拼音、物理键盘、真实 VoiceOver、物理 pointer 与 tooltip 朗读等证据。
 9. [ ] `P0-GPUI-WINDOWS`：在 Windows 构建同一 spike，验证字体、IME、DPI、辅助功能和正常退出。
    - 状态（2026-08-30）：push run `33255204781`、job `99107586036` 已通过窗口、首帧、runtime、有序 shutdown 和进程外 UI Automation role/name/selection action；commit `45b8dba` 的 push run `33273470907`、job `99156013603` 又通过 modal dialog、Cancel 初始焦点、dismiss 与语义子树恢复；commit `21ee8aa` 的 push run `33291750411`、job `99204478369` 与 pull request run `33291751558`、job `99204481348` 已通过 loading、注入错误、retry 和 revision 2 恢复。runner 托管 UIA client 不提供 `AriaPropertiesProperty` 标识，不能用它验证 AccessKit `busy=true`。字体、真实 IME、DPI 切换和 Narrator 仍待 Windows 实机，因此保持未勾选。
 10. [ ] `P0-OVERLAY`：GPUI 生命周期内完成 Windows D3D11/macOS Metal 透明 clear/present、错误注入和 100 次重建。

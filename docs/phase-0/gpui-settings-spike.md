@@ -1,6 +1,6 @@
 # GPUI Settings Spike Record
 
-状态：macOS 默认 shader、`.app`、主题、基础文本交互、应用菜单、marked-text contract、runtime bridge、loading/error/retry、tooltip hover 与 modal dialog/AccessKit AX tree/action 通过；Windows 真实窗口/首帧/shutdown、tooltip hover、dialog 与 loading/error/retry UI Automation 已通过，`busy=true` 投影、双平台真实 IME 与真实辅助技术待完成
+状态：macOS 默认 shader、`.app`、主题、基础文本交互、应用菜单、marked-text contract、WeType 拼音端到端组合、runtime bridge、loading/error/retry、tooltip hover 与 modal dialog/AccessKit AX tree/action 通过；Windows 真实窗口/首帧/shutdown、tooltip hover、dialog 与 loading/error/retry UI Automation 已通过，`busy=true` 投影、Windows/Apple 拼音 IME 与真实辅助技术待完成
 日期：2026-08-30
 原始重构基线 commit：`94af230`；后续验证源码与本记录保持同一提交
 
@@ -51,6 +51,20 @@ open -W "target/package/BongoCat GPUI Spike.app" --args --auto-quit-ms 1500
 
 同日将文本、选择和 marked range 收敛为不依赖 GPUI context 的 `TextBuffer` 并增加 4 项 IME contract 回归。测试发现并修复了 `replace_and_mark_text_in_range` 将 IME 的相对 UTF-16 selection 错按完整输入内容换算的问题；已有中文前缀时，旧逻辑可能产生越界 selection。当前测试覆盖连续 `ni -> 你`、`hao -> 好` 组合更新、surrogate pair、反向选择提交清理和异常 range 归一化，并同时进入 macOS/Windows GPUI test job。该证据验证文本协议和纯状态实现，不替代系统输入法端到端 smoke。
 
+### macOS 系统输入法结果
+
+2026-08-30 在 source commit `722a0ab296d9fbb055a69642c4f4dd48d38861c4` 重新执行 release 打包和 strict codesign 校验；测试 executable SHA-256 为 `3f240b5640781189b5fe3fd6fac3b6a3aabb044b092360c1ebbad3a6065224db`。环境沿用上表的 Apple M1 Pro、macOS 26.5.2 和 Retina 内屏，当前系统输入模式为 WeType Pinyin `com.tencent.inputmethod.wetype.pinyin`，应用版本 `2.2.3`（build `657`）。
+
+测试通过逐个系统 key event 输入，不使用 paste、AccessKit `SetValue` 或直接调用 `TextBuffer`：
+
+1. `n`、`i` 令字段和 AX value 显示组合态 `ni`；
+2. 继续输入 `h`、`a`、`o` 后显示带 marked-text 下划线的 `ni'hao`；
+3. Space 由输入法提交候选，字段和 AX value 变为 `你好`，marked range 清除；
+4. 在该多字节前缀后输入 `m`、`a`、`o`，字段保持前缀并显示组合态 `你好mao`；再次 Space 提交为 `你好毛`；
+5. Cmd+Q 进入既有 shutdown 路径，进程退出后没有残留 spike process。
+
+这证明 GPUI 0.2.2 的 `EntityInputHandler` 在当前 AppKit `.app` 中实际经过第三方系统输入法的 marked-text update/commit 链路，并覆盖已有 UTF-8 多字节前缀的替换位置。自动化 key event 仍不等同于物理键盘；Apple 拼音、候选翻页/取消、VoiceOver 宣读、Windows IME 和目标版本矩阵仍需单独实测。
+
 ## Runtime Bridge 结果
 
 spike 使用容量为 8 的 `async-channel 2.5.0` 传递强类型 `ReadSnapshot` 和 `Shutdown` command。每个 command 携带容量为 1 的 reply channel；UI 通过 GPUI `Context::spawn` 等待结果，再使用 weak entity 更新视图状态。snapshot 带单调递增 revision，UI 忽略不比当前 revision 更新的结果，runtime worker 在 GPUI background executor 上运行。
@@ -81,13 +95,13 @@ spike 使用容量为 8 的 `async-channel 2.5.0` 传递强类型 `ReadSnapshot`
 已验证：
 
 - 主题选项可切换，浅色/深色表面、文本和输入框样式同步更新；System 模式能跟随系统 appearance；
-- 文本框可输入普通 Unicode 和中文粘贴内容；字符计数与内容更新；
+- 文本框可输入普通 Unicode 和中文粘贴内容；WeType 拼音可完成组合更新与候选提交，字符计数与内容更新；
 - 鼠标选择、Shift-方向键扩展选择、Cmd/Ctrl-A、剪切、复制和粘贴可用；换行粘贴会被归一化为空格；
 - Tab 和 Shift-Tab 在主题选项与文本框之间移动焦点；焦点控件显示 accent border；
 - 关闭设置窗口不会退出进程，重新激活应用可重建窗口；
 - 截图证据：`docs/phase-0/evidence/gpui-settings-light-760x520.jpg`（SHA-256 `e9343ae1cfeed487dbe368121c35a4ec4146eab2fd72da38d3f7eb9755fa2401`）和 `docs/phase-0/evidence/gpui-settings-dark-760x520.jpg`（SHA-256 `6c84b9e2473586e556a647e44e3584c2c6b5ec334564b7b423c1428cb5d3d158`）。
 
-这些结果是 macOS 当前环境下的视觉和交互 smoke，不等价于跨平台验收。GPUI 输入实现已接入 UTF-16 selection、grapheme 边界和 marked-text 公共协议，纯状态 contract 已覆盖已有多字节内容上的连续中文组合更新，但尚未用系统中文输入法完成真实组合态验证；Windows 字体、IME、DPI 和辅助技术也尚未验证。
+这些结果是 macOS 当前环境下的视觉和交互 smoke，不等价于跨平台验收。GPUI 输入实现已接入 UTF-16 selection、grapheme 边界和 marked-text 公共协议，纯状态 contract 与 WeType 拼音端到端 smoke 已覆盖已有多字节内容上的连续中文组合更新；Apple 拼音、物理键盘、Windows 字体/IME/DPI 和双平台真实辅助技术仍未验证。
 
 2026-08-28 按 ADR-0008 将 Bundle ID 更新为 `com.ayangweb.bongo-cat` 后重新执行打包、strict codesign 和 LaunchServices auto-quit，三项均通过。打包脚本会在签名前读取 Info.plist 并拒绝任何非预期 Bundle ID。
 
@@ -180,10 +194,10 @@ Objective-C 对象。该版本例外的解除条件是 AccessKit macOS adapter �
 
 ## 未完成
 
-- marked-text 纯状态 contract 已通过；真实中文输入法组合态尚未在 macOS 上完成端到端验证，Windows IME、字体、DPI 和辅助技术尚未验证。
+- marked-text 纯状态 contract 与 macOS WeType 拼音端到端组合已通过；Apple 拼音、物理键盘及 Windows IME、字体、DPI 和辅助技术尚未验证。
 - tooltip 原生合成 mouse-move、500ms delay/build/exit、modal dialog、焦点陷阱、Escape 和 macOS 原生 Application/Edit/Window 菜单交互已通过；物理 pointer 与双平台辅助技术朗读尚未验证。
 - macOS 内容 AX tree/action、错误/retry value 与 Windows UI Automation dialog/loading/error/retry/revision 2 runner 已通过；Windows `busy=true` AriaProperties 投影、真实 VoiceOver/Narrator 操作和宣读顺序仍待完成。
 - 菜单栏常驻策略、隐藏行为和 native overlay 共存尚未验证。
 - Windows 已通过编译和真实窗口/首帧/退出 runner smoke；字体、IME、DPI 切换、辅助技术和系统集成仍未验证。
 
-因此默认 shader 工具链、`.app` bundle/lifecycle、主题、基础编辑交互与双平台最小 AX/UIA tree/action 子项可以单独记录为通过；真实辅助技术/IME、overlay 共存和完整 GPUI spike 仍保持未完成。GPUI go/no-go 决策必须等 ADR-0009 的全部 gate 有证据后再做。
+因此默认 shader 工具链、`.app` bundle/lifecycle、主题、基础编辑交互、macOS WeType 拼音与双平台最小 AX/UIA tree/action 子项可以单独记录为通过；Apple 拼音、Windows IME、真实辅助技术、overlay 共存和完整 GPUI spike 仍保持未完成。GPUI go/no-go 决策必须等 ADR-0009 的全部 gate 有证据后再做。
