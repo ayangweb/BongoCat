@@ -100,7 +100,9 @@ const RUNTIME_TIMEOUT: Duration = Duration::from_secs(2);
 const WINDOW_CLASS: windows::core::PCWSTR = w!("BongoCatProductOverlayWindow");
 const PRESET_MODEL_IDS: [&str; 3] = ["standard", "keyboard", "gamepad"];
 const HANDLE_GROWTH_LIMIT: u32 = 4;
-const SWITCH_WARMUP_CYCLES: u64 = 2;
+// Match the proven overlay lifecycle probe so delayed driver pools are fully
+// initialized before the model-switch resource interval begins.
+const SWITCH_WARMUP_CYCLES: u64 = 100;
 const THREAD_SETTLE_INTERVAL: Duration = Duration::from_millis(10);
 const THREAD_SETTLE_SAMPLES: u32 = 25;
 const THREAD_SETTLE_TIMEOUT: Duration = Duration::from_secs(2);
