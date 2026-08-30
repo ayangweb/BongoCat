@@ -66,8 +66,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Hash Rust toolchain
         id: rust-toolchain
-        shell: bash
-        run: echo "hash=$(rustc -Vv | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+        shell: python
+        run: |
+          import hashlib
+          import os
+          import subprocess
+
+          version = subprocess.check_output(["rustc", "-Vv"])
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"hash={hashlib.sha256(version).hexdigest()}\n")
       - name: Cache Cargo artifacts
         uses: actions/cache@v6
         with:
@@ -125,31 +132,48 @@ jobs:
         include:
           - name: input-state
             manifest: spikes/input-state/Cargo.toml
+            workspace: spikes/input-state
           - name: fixture-runner
             manifest: spikes/fixture-runner/Cargo.toml
+            workspace: spikes/fixture-runner
           - name: input-queue
             manifest: spikes/input-queue/Cargo.toml
+            workspace: spikes/input-queue
           - name: input-windows
             manifest: spikes/input-windows/Cargo.toml
+            workspace: spikes/input-windows
           - name: overlay-lifecycle
             manifest: spikes/overlay-lifecycle/Cargo.toml
+            workspace: spikes/overlay-lifecycle
           - name: overlay-windows
             manifest: spikes/overlay-windows/Cargo.toml
+            workspace: spikes/overlay-windows
           - name: config-store
             manifest: spikes/config-store/Cargo.toml
+            workspace: spikes/config-store
           - name: runtime-contract
             manifest: spikes/runtime-contract/Cargo.toml
+            workspace: spikes/runtime-contract
           - name: input-macos
             manifest: spikes/input-macos/Cargo.toml
+            workspace: spikes/input-macos
           - name: model-package
             manifest: spikes/model-package/Cargo.toml
+            workspace: spikes/model-package
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Hash Rust toolchain
         id: rust-toolchain
-        shell: bash
-        run: echo "hash=$(rustc -Vv | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+        shell: python
+        run: |
+          import hashlib
+          import os
+          import subprocess
+
+          version = subprocess.check_output(["rustc", "-Vv"])
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"hash={hashlib.sha256(version).hexdigest()}\n")
       - name: Cache Cargo artifacts
         uses: actions/cache@v6
         with:
@@ -157,11 +181,11 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            spikes/*/target/
-          key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.hash }}-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+            ${{ matrix.workspace }}/target/
+          key: ${{ runner.os }}-${{ matrix.name }}-${{ steps.rust-toolchain.outputs.hash }}-${{ hashFiles(matrix.manifest) }}-${{ hashFiles(format('{0}/Cargo.lock', matrix.workspace)) }}
           restore-keys: |
-            ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.hash }}-
-            ${{ runner.os }}-cargo-
+            ${{ runner.os }}-${{ matrix.name }}-${{ steps.rust-toolchain.outputs.hash }}-
+            ${{ runner.os }}-${{ matrix.name }}-
       - name: Check formatting
         run: cargo fmt --manifest-path ${{ matrix.manifest }} -- --check
       - name: Run Clippy
@@ -183,8 +207,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Hash Rust toolchain
         id: rust-toolchain
-        shell: bash
-        run: echo "hash=$(rustc -Vv | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+        shell: python
+        run: |
+          import hashlib
+          import os
+          import subprocess
+
+          version = subprocess.check_output(["rustc", "-Vv"])
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"hash={hashlib.sha256(version).hexdigest()}\n")
       - name: Cache Cargo artifacts
         uses: actions/cache@v6
         with:
@@ -214,8 +245,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Hash Rust toolchain
         id: rust-toolchain
-        shell: bash
-        run: echo "hash=$(rustc -Vv | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+        shell: python
+        run: |
+          import hashlib
+          import os
+          import subprocess
+
+          version = subprocess.check_output(["rustc", "-Vv"])
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"hash={hashlib.sha256(version).hexdigest()}\n")
       - name: Cache Cargo artifacts
         uses: actions/cache@v6
         with:
@@ -223,11 +261,13 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            spikes/*/target/
-          key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.hash }}-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+            spikes/gpui-settings/target/
+            spikes/gpui-overlay-macos/target/
+            spikes/input-macos/target/
+          key: ${{ runner.os }}-macos-spikes-${{ steps.rust-toolchain.outputs.hash }}-${{ hashFiles('spikes/gpui-settings/Cargo.lock', 'spikes/gpui-settings/Cargo.toml', 'spikes/gpui-overlay-macos/Cargo.lock', 'spikes/gpui-overlay-macos/Cargo.toml', 'spikes/input-macos/Cargo.lock', 'spikes/input-macos/Cargo.toml') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.hash }}-
-            ${{ runner.os }}-cargo-
+            ${{ runner.os }}-macos-spikes-${{ steps.rust-toolchain.outputs.hash }}-
+            ${{ runner.os }}-macos-spikes-
       - name: Check settings spike
         run: cargo check --manifest-path spikes/gpui-settings/Cargo.toml --locked
       - name: Check overlay spike
@@ -443,8 +483,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Hash Rust toolchain
         id: rust-toolchain
-        shell: bash
-        run: echo "hash=$(rustc -Vv | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+        shell: python
+        run: |
+          import hashlib
+          import os
+          import subprocess
+
+          version = subprocess.check_output(["rustc", "-Vv"])
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"hash={hashlib.sha256(version).hexdigest()}\n")
       - name: Cache Cargo artifacts
         uses: actions/cache@v6
         with:
@@ -488,21 +535,32 @@ jobs:
         run: cargo test --manifest-path spikes/config-store/Cargo.toml --locked
 
   windows-gpui-spikes:
-    name: Build Windows GPUI spikes
+    name: Build Windows GPUI ${{ matrix.name }} spike
     runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:
-        manifest:
-          - spikes/gpui-settings/Cargo.toml
-          - spikes/gpui-overlay-macos/Cargo.toml
+        include:
+          - name: settings
+            manifest: spikes/gpui-settings/Cargo.toml
+            workspace: spikes/gpui-settings
+          - name: overlay
+            manifest: spikes/gpui-overlay-macos/Cargo.toml
+            workspace: spikes/gpui-overlay-macos
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Hash Rust toolchain
         id: rust-toolchain
-        shell: bash
-        run: echo "hash=$(rustc -Vv | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+        shell: python
+        run: |
+          import hashlib
+          import os
+          import subprocess
+
+          version = subprocess.check_output(["rustc", "-Vv"])
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"hash={hashlib.sha256(version).hexdigest()}\n")
       - name: Cache Cargo artifacts
         uses: actions/cache@v6
         with:
@@ -510,11 +568,11 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            spikes/*/target/
-          key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.hash }}-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+            ${{ matrix.workspace }}/target/
+          key: ${{ runner.os }}-gpui-${{ matrix.name }}-${{ steps.rust-toolchain.outputs.hash }}-${{ hashFiles(matrix.manifest) }}-${{ hashFiles(format('{0}/Cargo.lock', matrix.workspace)) }}
           restore-keys: |
-            ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.hash }}-
-            ${{ runner.os }}-cargo-
+            ${{ runner.os }}-gpui-${{ matrix.name }}-${{ steps.rust-toolchain.outputs.hash }}-
+            ${{ runner.os }}-gpui-${{ matrix.name }}-
       - name: Check formatting
         run: cargo fmt --manifest-path ${{ matrix.manifest }} -- --check
       - name: Check Windows build
