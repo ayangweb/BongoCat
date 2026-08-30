@@ -11,7 +11,7 @@ use gpui::{
     SharedString, SystemMenuType, Timer, TitlebarOptions, Window, WindowAppearance, WindowBounds,
     WindowOptions, actions, div, prelude::*, px, rgb, rgba, size,
 };
-use runtime_bridge::{RuntimeBridge, RuntimeSnapshot, run_runtime};
+use runtime_bridge::{RuntimeBridge, RuntimeProbeMode, RuntimeSnapshot, run_runtime};
 use std::{
     sync::{
         Arc,
@@ -390,6 +390,14 @@ fn auto_quit_delay() -> Option<Duration> {
             eprintln!("invalid auto-quit duration: {error}");
             None
         }
+    }
+}
+
+fn runtime_probe_mode() -> RuntimeProbeMode {
+    if std::env::args().any(|argument| argument == "--runtime-error-probe") {
+        RuntimeProbeMode::DelayedErrorRecovery
+    } else {
+        RuntimeProbeMode::Normal
     }
 }
 
@@ -839,6 +847,7 @@ fn quit(_: &Quit, cx: &mut App) {
 fn main() {
     let startup_started_at = Instant::now();
     let auto_quit_delay = auto_quit_delay();
+    let runtime_probe_mode = runtime_probe_mode();
     let application = Application::new();
     let (runtime_bridge, runtime_commands) = RuntimeBridge::new();
     let reopen_bridge = runtime_bridge.clone();
@@ -857,8 +866,14 @@ fn main() {
     });
 
     application.run(move |cx: &mut App| {
-        cx.background_executor()
-            .spawn(run_runtime(runtime_commands))
+        let executor = cx.background_executor().clone();
+        let delay_executor = executor.clone();
+        executor
+            .spawn(run_runtime(
+                runtime_commands,
+                runtime_probe_mode,
+                move |delay| delay_executor.timer(delay),
+            ))
             .detach();
         let quit_bridge = runtime_bridge.clone();
         cx.on_app_quit(move |_| {

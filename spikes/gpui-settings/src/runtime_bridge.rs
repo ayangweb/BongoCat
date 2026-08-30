@@ -1,5 +1,5 @@
 use async_channel::{Receiver, Sender};
-use std::fmt;
+use std::{fmt, future::Future, time::Duration};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RuntimeHealth {
@@ -13,8 +13,12 @@ pub struct RuntimeSnapshot {
 }
 
 enum RuntimeCommand {
-    ReadSnapshot { reply: Sender<RuntimeSnapshot> },
-    Shutdown { acknowledged: Sender<()> },
+    ReadSnapshot {
+        reply: Sender<Result<RuntimeSnapshot, BridgeError>>,
+    },
+    Shutdown {
+        acknowledged: Sender<()>,
+    },
 }
 
 #[derive(Clone)]
@@ -25,12 +29,14 @@ pub struct RuntimeBridge {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BridgeError {
     RuntimeStopped,
+    ProbeFailure,
 }
 
 impl fmt::Display for BridgeError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::RuntimeStopped => formatter.write_str("runtime bridge is stopped"),
+            Self::ProbeFailure => formatter.write_str("runtime probe failed"),
         }
     }
 }
@@ -52,7 +58,7 @@ impl RuntimeBridge {
         response
             .recv()
             .await
-            .map_err(|_| BridgeError::RuntimeStopped)
+            .map_err(|_| BridgeError::RuntimeStopped)?
     }
 
     pub async fn shutdown(&self) -> Result<(), BridgeError> {
@@ -70,18 +76,51 @@ impl RuntimeBridge {
 
 pub struct RuntimeCommandReceiver(Receiver<RuntimeCommand>);
 
-pub async fn run_runtime(receiver: RuntimeCommandReceiver) {
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum RuntimeProbeMode {
+    #[default]
+    Normal,
+    DelayedErrorRecovery,
+}
+
+impl RuntimeProbeMode {
+    fn response_delay(self) -> Duration {
+        match self {
+            Self::Normal => Duration::ZERO,
+            Self::DelayedErrorRecovery => Duration::from_millis(1_500),
+        }
+    }
+
+    fn fails_read(self, read_number: u64) -> bool {
+        self == Self::DelayedErrorRecovery && read_number == 2
+    }
+}
+
+pub async fn run_runtime<Delay, DelayFuture>(
+    receiver: RuntimeCommandReceiver,
+    probe_mode: RuntimeProbeMode,
+    mut delay: Delay,
+) where
+    Delay: FnMut(Duration) -> DelayFuture,
+    DelayFuture: Future<Output = ()>,
+{
     let mut revision = 0;
+    let mut read_number = 0;
     while let Ok(command) = receiver.0.recv().await {
         match command {
             RuntimeCommand::ReadSnapshot { reply } => {
-                revision += 1;
-                let _ = reply
-                    .send(RuntimeSnapshot {
+                read_number += 1;
+                delay(probe_mode.response_delay()).await;
+                let result = if probe_mode.fails_read(read_number) {
+                    Err(BridgeError::ProbeFailure)
+                } else {
+                    revision += 1;
+                    Ok(RuntimeSnapshot {
                         revision,
                         health: RuntimeHealth::Ready,
                     })
-                    .await;
+                };
+                let _ = reply.send(result).await;
             }
             RuntimeCommand::Shutdown { acknowledged } => {
                 receiver.0.close();
@@ -99,7 +138,11 @@ mod tests {
     #[test]
     fn runtime_delivers_snapshots_and_closes_the_bridge() {
         let (bridge, commands) = RuntimeBridge::new();
-        let worker = std::thread::spawn(|| futures_lite::future::block_on(run_runtime(commands)));
+        let worker = std::thread::spawn(move || {
+            futures_lite::future::block_on(run_runtime(commands, RuntimeProbeMode::Normal, |_| {
+                std::future::ready(())
+            }))
+        });
 
         futures_lite::future::block_on(async {
             let first = bridge.read_snapshot().await.unwrap();
@@ -118,5 +161,17 @@ mod tests {
         });
 
         worker.join().unwrap();
+    }
+
+    #[test]
+    fn delayed_probe_fails_only_the_second_read() {
+        assert_eq!(
+            RuntimeProbeMode::DelayedErrorRecovery.response_delay(),
+            Duration::from_millis(1_500)
+        );
+        assert!(!RuntimeProbeMode::DelayedErrorRecovery.fails_read(1));
+        assert!(RuntimeProbeMode::DelayedErrorRecovery.fails_read(2));
+        assert!(!RuntimeProbeMode::DelayedErrorRecovery.fails_read(3));
+        assert!(!RuntimeProbeMode::Normal.fails_read(2));
     }
 }

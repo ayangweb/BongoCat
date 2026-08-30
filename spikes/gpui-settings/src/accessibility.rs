@@ -555,6 +555,40 @@ mod tests {
     }
 
     #[test]
+    fn status_tree_exposes_loading_and_error_states() {
+        let loading = AccessibilitySnapshot {
+            runtime_status: "Refreshing...".into(),
+            runtime_busy: true,
+            ..AccessibilitySnapshot::default()
+        }
+        .tree_update();
+        let loading_status = loading
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == STATUS_ID)
+            .map(|(_, node)| node)
+            .unwrap();
+        assert_eq!(loading_status.value(), Some("Refreshing..."));
+        assert!(loading_status.is_busy());
+
+        let failed = AccessibilitySnapshot {
+            runtime_status: "runtime probe failed".into(),
+            runtime_error: true,
+            ..AccessibilitySnapshot::default()
+        }
+        .tree_update();
+        let failed_status = failed
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == STATUS_ID)
+            .map(|(_, node)| node)
+            .unwrap();
+        assert_eq!(failed_status.value(), Some("runtime probe failed"));
+        assert_eq!(failed_status.invalid(), Some(Invalid::True));
+        assert!(!failed_status.is_busy());
+    }
+
+    #[test]
     fn translates_supported_platform_actions_to_typed_ui_actions() {
         let request = |target_node, action, data| ActionRequest {
             action,

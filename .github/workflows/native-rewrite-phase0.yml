@@ -530,7 +530,7 @@ jobs:
           Remove-Item $stdout, $stderr -Force -ErrorAction SilentlyContinue
           $process = Start-Process `
             -FilePath $executable `
-            -ArgumentList @("--auto-quit-ms", "5000") `
+            -ArgumentList @("--auto-quit-ms", "12000", "--runtime-error-probe") `
             -NoNewWindow `
             -PassThru `
             -RedirectStandardOutput $stdout `
@@ -590,6 +590,53 @@ jobs:
           } while (-not $selected -and [DateTime]::UtcNow -lt $selectionDeadline)
           if (-not $selected) {
             throw "Windows UIA Dark radio action did not update selected state"
+          }
+
+          $status = $observedElements["Runtime status"]
+          $statusValue = $status.GetCurrentPattern(
+            [System.Windows.Automation.ValuePattern]::Pattern
+          )
+          $readyDeadline = [DateTime]::UtcNow.AddSeconds(5)
+          do {
+            Start-Sleep -Milliseconds 100
+            $readyValue = $statusValue.Current.Value
+          } while ($readyValue -ne "Runtime Ready · revision 1" -and [DateTime]::UtcNow -lt $readyDeadline)
+          if ($readyValue -ne "Runtime Ready · revision 1") {
+            throw "Windows UIA runtime status did not reach the first ready snapshot"
+          }
+          $observedElements["Refresh"].GetCurrentPattern(
+            [System.Windows.Automation.InvokePattern]::Pattern
+          ).Invoke()
+          $busyDeadline = [DateTime]::UtcNow.AddSeconds(2)
+          do {
+            Start-Sleep -Milliseconds 50
+            $busyValue = $statusValue.Current.Value
+            $busyProperties = $status.Current.AriaProperties
+          } while (
+            ($busyValue -ne "Refreshing..." -or $busyProperties -notmatch "busy=true") -and
+            [DateTime]::UtcNow -lt $busyDeadline
+          )
+          if ($busyValue -ne "Refreshing..." -or $busyProperties -notmatch "busy=true") {
+            throw "Windows UIA runtime status did not expose the loading state"
+          }
+          $errorDeadline = [DateTime]::UtcNow.AddSeconds(5)
+          do {
+            Start-Sleep -Milliseconds 100
+            $errorValue = $statusValue.Current.Value
+          } while ($errorValue -ne "runtime probe failed" -and [DateTime]::UtcNow -lt $errorDeadline)
+          if ($errorValue -ne "runtime probe failed") {
+            throw "Windows UIA runtime status did not expose the injected error"
+          }
+          $observedElements["Refresh"].GetCurrentPattern(
+            [System.Windows.Automation.InvokePattern]::Pattern
+          ).Invoke()
+          $recoveryDeadline = [DateTime]::UtcNow.AddSeconds(5)
+          do {
+            Start-Sleep -Milliseconds 100
+            $recoveredValue = $statusValue.Current.Value
+          } while ($recoveredValue -ne "Runtime Ready · revision 2" -and [DateTime]::UtcNow -lt $recoveryDeadline)
+          if ($recoveredValue -ne "Runtime Ready · revision 2") {
+            throw "Windows UIA runtime status did not recover after retry"
           }
 
           $resetPattern = $observedElements["Reset settings..."].GetCurrentPattern(
