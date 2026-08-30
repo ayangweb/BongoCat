@@ -2,13 +2,14 @@ use crate::{OverlayError, OverlaySessionOptions, PreviewReport, ProductOverlayRe
 use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
 use bongocat_platform::{MacInputService, PlatformInputDiagnostics, PlatformInputError};
 use bongocat_render::{
-    BlendMode, CanvasInfo, DrawableId, RenderConsumer, RenderFrame, RenderResources,
+    BlendMode, CanvasInfo, DrawableId, ModelCommitErrorCode, ModelCommitFeedback,
+    ModelCommitOutcome, ModelCommitToken, RenderConsumer, RenderFrame, RenderResources,
     RenderSnapshot, TextureAsset, TextureId,
 };
 use bongocat_runtime::{
     CursorPosition, CursorProducer, CursorSample, CursorViewport, HandSide, InputBindings,
     InputControl, InputEdge, InputEvent, InputProducer, InputSource, MonotonicMillis, MouseButton,
-    PhysicalKey, RuntimeClient, RuntimeCommand, RuntimeOwner, RuntimeState,
+    PhysicalKey, RuntimeClient, RuntimeCommand, RuntimeOwner, RuntimeRenderErrorCode, RuntimeState,
 };
 use image::ImageReader;
 use metal::{
@@ -192,6 +193,7 @@ pub(super) struct ProductOverlaySession {
     frame_interval: Duration,
     frames_presented: u64,
     dynamic_snapshots: u64,
+    model_commit_rejections: u64,
     previous_snapshot: Arc<RenderSnapshot>,
 }
 
@@ -207,12 +209,31 @@ impl ProductOverlaySession {
         let initial_frame = render_consumer
             .take_latest()
             .ok_or_else(|| OverlayError::new("runtime did not publish an initial render frame"))?;
-        let mtm = MainThreadMarker::new()
-            .ok_or_else(|| OverlayError::new("macOS overlay must start on the main thread"))?;
+        let token = initial_frame
+            .model_commit
+            .ok_or_else(|| OverlayError::new("initial render frame has no model commit token"))?;
+        let Some(mtm) = MainThreadMarker::new() else {
+            reject_model_commit(&runtime_client, &render_consumer, token)?;
+            return Err(OverlayError::new(
+                "macOS overlay must start on the main thread",
+            ));
+        };
         let application = NSApplication::sharedApplication(mtm);
         application.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
         application.finishLaunching();
-        let overlay = NativeOverlay::create(mtm, &initial_frame, options)?;
+        let overlay = match NativeOverlay::create(mtm, &initial_frame, options) {
+            Ok(overlay) => overlay,
+            Err(error) => {
+                reject_model_commit(&runtime_client, &render_consumer, token)?;
+                return Err(error);
+            }
+        };
+        report_model_commit(
+            &runtime_client,
+            &render_consumer,
+            token,
+            ModelCommitOutcome::Prepared,
+        )?;
         overlay.panel.orderFrontRegardless();
         let (input_service, input_start_error) =
             match MacInputService::start(input_producer, cursor_producer) {
@@ -231,6 +252,7 @@ impl ProductOverlaySession {
             frame_interval: Duration::from_secs_f64(1.0 / f64::from(options.maximum_fps)),
             frames_presented: 0,
             dynamic_snapshots: 0,
+            model_commit_rejections: 0,
             previous_snapshot: initial_frame.snapshot,
         })
     }
@@ -253,11 +275,34 @@ impl ProductOverlaySession {
             }
             let mut gpu_model_switched = false;
             if let Some(frame) = self.render_consumer.take_latest() {
-                if frame.snapshot.as_ref() != self.previous_snapshot.as_ref() {
-                    self.dynamic_snapshots = self.dynamic_snapshots.saturating_add(1);
+                match self.overlay.sync_frame(&frame) {
+                    Ok(switched) => {
+                        if let Some(token) = frame.model_commit {
+                            report_model_commit(
+                                &self.runtime_client,
+                                &self.render_consumer,
+                                token,
+                                ModelCommitOutcome::Prepared,
+                            )?;
+                        }
+                        if frame.snapshot.as_ref() != self.previous_snapshot.as_ref() {
+                            self.dynamic_snapshots = self.dynamic_snapshots.saturating_add(1);
+                        }
+                        gpu_model_switched = switched;
+                        self.previous_snapshot = frame.snapshot;
+                    }
+                    Err(error) if frame.model_commit.is_some() => {
+                        reject_model_commit(
+                            &self.runtime_client,
+                            &self.render_consumer,
+                            frame.model_commit.expect("checked model commit token"),
+                        )?;
+                        self.model_commit_rejections =
+                            self.model_commit_rejections.saturating_add(1);
+                        let _ = error;
+                    }
+                    Err(error) => return Err(error),
                 }
-                gpu_model_switched = self.overlay.sync_frame(&frame)?;
-                self.previous_snapshot = frame.snapshot;
             }
             self.overlay
                 .draw(self.frames_presented == 0 || gpu_model_switched)?;
@@ -304,6 +349,7 @@ impl ProductOverlaySession {
         Ok(ProductOverlayReport {
             frames_presented: self.frames_presented,
             dynamic_snapshots: self.dynamic_snapshots,
+            model_commit_rejections: self.model_commit_rejections,
             input_start_error: self.input_start_error,
             input_diagnostics: self.input_diagnostics,
             render_diagnostics: self.render_consumer.diagnostics(),
@@ -312,6 +358,57 @@ impl ProductOverlaySession {
             masked_drawable_count: self.overlay.model.masked_drawable_count,
             texture_count: self.overlay.model.textures.len(),
         })
+    }
+}
+
+fn reject_model_commit(
+    runtime_client: &RuntimeClient,
+    render_consumer: &RenderConsumer,
+    token: ModelCommitToken,
+) -> Result<(), OverlayError> {
+    report_model_commit(
+        runtime_client,
+        render_consumer,
+        token,
+        ModelCommitOutcome::Rejected(ModelCommitErrorCode::ResourcePreparationFailed),
+    )
+}
+
+fn report_model_commit(
+    runtime_client: &RuntimeClient,
+    render_consumer: &RenderConsumer,
+    token: ModelCommitToken,
+    outcome: ModelCommitOutcome,
+) -> Result<(), OverlayError> {
+    render_consumer
+        .report_model_commit(ModelCommitFeedback { token, outcome })
+        .map_err(|error| OverlayError::new(error.to_string()))?;
+    let completed = runtime_client
+        .wait_for_command(token.command_sequence, RUNTIME_TIMEOUT)
+        .ok_or_else(|| OverlayError::new("runtime did not finish the model commit"))?;
+    let failure = completed
+        .last_command_failure
+        .filter(|failure| failure.sequence == token.command_sequence);
+    match (outcome, failure) {
+        (ModelCommitOutcome::Prepared, None)
+        | (
+            ModelCommitOutcome::Rejected(ModelCommitErrorCode::ResourcePreparationFailed),
+            Some(bongocat_runtime::RuntimeCommandFailure {
+                code: RuntimeRenderErrorCode::GpuPreparationFailed,
+                ..
+            }),
+        ) => Ok(()),
+        (ModelCommitOutcome::Prepared, Some(failure)) => Err(OverlayError::new(format!(
+            "runtime rejected prepared model generation: {:?}",
+            failure.code
+        ))),
+        (ModelCommitOutcome::Rejected(_), None) => Err(OverlayError::new(
+            "runtime committed a renderer-rejected model generation",
+        )),
+        (ModelCommitOutcome::Rejected(_), Some(failure)) => Err(OverlayError::new(format!(
+            "runtime reported the wrong model rejection: {:?}",
+            failure.code
+        ))),
     }
 }
 
@@ -464,10 +561,10 @@ pub(crate) fn run_model_preview(
     let activation_sequence = runtime_client
         .send(RuntimeCommand::ActivateModel(Arc::clone(&committed)))
         .map_err(|error| OverlayError::new(error.to_string()))?;
-    let activated = runtime_client
-        .wait_for_command(activation_sequence, RUNTIME_TIMEOUT)
-        .ok_or_else(|| OverlayError::new("preview model activation did not complete"))?;
-    if let Some(failure) = activated
+    let prepared = runtime_client
+        .wait_for_model_preparation(activation_sequence, RUNTIME_TIMEOUT)
+        .ok_or_else(|| OverlayError::new("preview model activation was not prepared"))?;
+    if let Some(failure) = prepared
         .last_command_failure
         .filter(|failure| failure.sequence == activation_sequence)
     {
@@ -479,13 +576,30 @@ pub(crate) fn run_model_preview(
     let initial_frame = render_consumer
         .take_latest()
         .ok_or_else(|| OverlayError::new("runtime did not publish the initial render frame"))?;
+    let initial_token = initial_frame
+        .model_commit
+        .filter(|token| token.command_sequence == activation_sequence)
+        .ok_or_else(|| OverlayError::new("initial frame has the wrong model commit token"))?;
     let mut previous_snapshot = std::sync::Arc::clone(&initial_frame.snapshot);
     let mtm = MainThreadMarker::new()
         .ok_or_else(|| OverlayError::new("macOS preview must run on the main thread"))?;
     let application = NSApplication::sharedApplication(mtm);
     application.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
     application.finishLaunching();
-    let mut overlay = NativeOverlay::create(mtm, &initial_frame, OverlaySessionOptions::default())?;
+    let mut overlay =
+        match NativeOverlay::create(mtm, &initial_frame, OverlaySessionOptions::default()) {
+            Ok(overlay) => overlay,
+            Err(error) => {
+                reject_model_commit(&runtime_client, &render_consumer, initial_token)?;
+                return Err(error);
+            }
+        };
+    report_model_commit(
+        &runtime_client,
+        &render_consumer,
+        initial_token,
+        ModelCommitOutcome::Prepared,
+    )?;
     let failed_gpu_prepare_preserved = if switch_cycles.is_some() {
         let mut invalid_resources = initial_frame.resources.as_ref().clone();
         let Some(first_texture) = invalid_resources.textures.first_mut() else {
@@ -495,8 +609,10 @@ pub(crate) fn run_model_preview(
         };
         first_texture.path = model_root.join(".missing-gpu-prepare-texture.png");
         let probe_frame = RenderFrame {
+            transport_sequence: initial_frame.transport_sequence.saturating_add(1),
             model_generation: initial_frame.model_generation.saturating_add(1),
             frame_number: 0,
+            model_commit: None,
             resources: Arc::new(invalid_resources),
             snapshot: Arc::clone(&initial_frame.snapshot),
         };
@@ -575,10 +691,10 @@ pub(crate) fn run_model_preview(
                     &models[current_model_index],
                 )))
                 .map_err(|error| OverlayError::new(error.to_string()))?;
-            let switched = runtime_client
-                .wait_for_command(sequence, RUNTIME_TIMEOUT)
-                .ok_or_else(|| OverlayError::new("model switch did not complete"))?;
-            if let Some(failure) = switched
+            let prepared = runtime_client
+                .wait_for_model_preparation(sequence, RUNTIME_TIMEOUT)
+                .ok_or_else(|| OverlayError::new("model switch was not prepared"))?;
+            if let Some(failure) = prepared
                 .last_command_failure
                 .filter(|failure| failure.sequence == sequence)
             {
@@ -595,8 +711,28 @@ pub(crate) fn run_model_preview(
                 dynamic_snapshots = dynamic_snapshots.saturating_add(1);
             }
             let previous_generation = overlay.model_generation;
-            gpu_model_switched = overlay.sync_frame(&frame)?;
+            gpu_model_switched = match overlay.sync_frame(&frame) {
+                Ok(switched) => switched,
+                Err(error) if frame.model_commit.is_some() => {
+                    reject_model_commit(
+                        &runtime_client,
+                        &render_consumer,
+                        frame.model_commit.expect("checked model commit token"),
+                    )?;
+                    return Err(error);
+                }
+                Err(error) => return Err(error),
+            };
             if gpu_model_switched {
+                let token = frame
+                    .model_commit
+                    .ok_or_else(|| OverlayError::new("model switch frame has no commit token"))?;
+                report_model_commit(
+                    &runtime_client,
+                    &render_consumer,
+                    token,
+                    ModelCommitOutcome::Prepared,
+                )?;
                 debug_assert_eq!(
                     frame.model_generation,
                     previous_generation.saturating_add(1)

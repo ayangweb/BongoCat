@@ -5,8 +5,9 @@ mod input;
 mod rendering;
 
 use bongocat_model::{CommittedModel, ModelSnapshot};
-use bongocat_render::RenderConsumer;
+use bongocat_render::{ModelCommitErrorCode, ModelCommitOutcome, ModelCommitToken, RenderConsumer};
 use std::{
+    collections::VecDeque,
     fmt,
     sync::{
         Arc, Condvar, Mutex,
@@ -45,6 +46,7 @@ pub enum RuntimeState {
 pub enum RuntimeRenderErrorCode {
     ModelLoadFailed,
     ModelEvaluationFailed,
+    GpuPreparationFailed,
     PlatformUnsupported,
     TransportClosed,
 }
@@ -53,6 +55,12 @@ pub enum RuntimeRenderErrorCode {
 pub struct RuntimeCommandFailure {
     pub sequence: u64,
     pub code: RuntimeRenderErrorCode,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct PendingModelSnapshot {
+    pub token: ModelCommitToken,
+    pub model: ModelSnapshot,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -74,6 +82,7 @@ pub struct RuntimeSnapshot {
     pub state: RuntimeState,
     pub overlay_visible: bool,
     pub active_model: Option<ModelSnapshot>,
+    pub pending_model: Option<PendingModelSnapshot>,
     pub input: InputSnapshot,
     pub cursor: CursorSnapshot,
     pub model_input: ModelInputSnapshot,
@@ -89,6 +98,7 @@ impl RuntimeSnapshot {
             state: RuntimeState::Starting,
             overlay_visible,
             active_model: None,
+            pending_model: None,
             input: InputSnapshot::default(),
             cursor: CursorSnapshot::default(),
             model_input: ModelInputSnapshot::default(),
@@ -388,6 +398,56 @@ impl RuntimeClient {
         }
     }
 
+    pub fn wait_for_model_preparation(
+        &self,
+        command_sequence: u64,
+        timeout: Duration,
+    ) -> Option<RuntimeSnapshot> {
+        let deadline = Instant::now().checked_add(timeout)?;
+        let mut snapshot = self
+            .snapshot
+            .value
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        loop {
+            let prepared = snapshot
+                .pending_model
+                .as_ref()
+                .is_some_and(|pending| pending.token.command_sequence == command_sequence);
+            let completed = snapshot
+                .last_command_sequence
+                .is_some_and(|sequence| sequence >= command_sequence);
+            if prepared || completed {
+                return Some(self.with_transport_diagnostics(snapshot.clone()));
+            }
+            if snapshot.state == RuntimeState::Stopped {
+                return None;
+            }
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return None;
+            }
+            let (next, result) = self
+                .snapshot
+                .changed
+                .wait_timeout(snapshot, remaining)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            snapshot = next;
+            if result.timed_out() {
+                let prepared = snapshot
+                    .pending_model
+                    .as_ref()
+                    .is_some_and(|pending| pending.token.command_sequence == command_sequence);
+                let completed = snapshot
+                    .last_command_sequence
+                    .is_some_and(|sequence| sequence >= command_sequence);
+                if !prepared && !completed {
+                    return None;
+                }
+            }
+        }
+    }
+
     pub fn wait_for_input_sequence(
         &self,
         input_sequence: u64,
@@ -609,6 +669,12 @@ fn publish(snapshot_cell: &SnapshotCell, update: impl FnOnce(&mut RuntimeSnapsho
     snapshot_cell.changed.notify_all();
 }
 
+struct PendingModelActivation {
+    token: ModelCommitToken,
+    model: Arc<CommittedModel>,
+    input_bindings: Option<Arc<InputBindings>>,
+}
+
 fn run_worker(
     receiver: Receiver<CommandEnvelope>,
     snapshot: Arc<SnapshotCell>,
@@ -622,9 +688,28 @@ fn run_worker(
     let mut input_bindings = InputBindings::default();
     let mut normalized_cursor = NormalizedCursorPosition::default();
     let mut overlay_visible = initial_overlay_visible;
+    let mut pending_model = None;
+    let mut deferred_commands = VecDeque::new();
     publish(&snapshot, |current| current.state = RuntimeState::Ready);
     loop {
-        match receiver.recv_timeout(CURSOR_SAMPLE_INTERVAL) {
+        process_model_commit_feedback(
+            renderer.as_mut(),
+            &mut pending_model,
+            &input_state,
+            &mut input_bindings,
+            normalized_cursor,
+            &mut active_model,
+            overlay_visible,
+            &snapshot,
+        );
+        let received = if pending_model.is_none() {
+            deferred_commands
+                .pop_front()
+                .map_or_else(|| receiver.recv_timeout(CURSOR_SAMPLE_INTERVAL), Ok)
+        } else {
+            receiver.recv_timeout(CURSOR_SAMPLE_INTERVAL)
+        };
+        match received {
             Ok(envelope) => {
                 consume_cursor(
                     &cursor_slot,
@@ -633,6 +718,16 @@ fn run_worker(
                     &input_bindings,
                     &mut normalized_cursor,
                 );
+                if pending_model.is_some()
+                    && !matches!(envelope.command, WorkerCommand::Shutdown)
+                    && !matches!(
+                        envelope.command,
+                        WorkerCommand::Product(RuntimeCommand::ApplyInput(_))
+                    )
+                {
+                    deferred_commands.push_back(envelope);
+                    continue;
+                }
                 let sequence = envelope.sequence;
                 let mut evaluate_after_command = true;
                 match envelope.command {
@@ -665,17 +760,21 @@ fn run_worker(
                     }
                     WorkerCommand::Product(RuntimeCommand::ApplyInput(envelope)) => {
                         input_state.apply(Arc::unwrap_or_clone(envelope));
+                        let activation_pending = pending_model.is_some();
                         publish(&snapshot, |current| {
                             current.input = input_state.snapshot();
                             current.model_input =
                                 input_state.model_snapshot(&input_bindings, normalized_cursor);
                             current.last_command_failure = None;
-                            current.last_command_sequence = Some(sequence);
+                            if !activation_pending {
+                                current.last_command_sequence = Some(sequence);
+                            }
                         });
+                        evaluate_after_command = !activation_pending;
                     }
                     WorkerCommand::Product(RuntimeCommand::ActivateModel(committed)) => {
                         evaluate_after_command = false;
-                        activate_model(
+                        begin_model_activation(
                             sequence,
                             committed,
                             None,
@@ -684,6 +783,7 @@ fn run_worker(
                             &mut input_bindings,
                             normalized_cursor,
                             &mut active_model,
+                            &mut pending_model,
                             &snapshot,
                         );
                     }
@@ -692,7 +792,7 @@ fn run_worker(
                         input_bindings: proposed_bindings,
                     }) => {
                         evaluate_after_command = false;
-                        activate_model(
+                        begin_model_activation(
                             sequence,
                             model,
                             Some(proposed_bindings),
@@ -701,12 +801,14 @@ fn run_worker(
                             &mut input_bindings,
                             normalized_cursor,
                             &mut active_model,
+                            &mut pending_model,
                             &snapshot,
                         );
                     }
                     WorkerCommand::Shutdown => {
                         publish(&snapshot, |current| {
                             current.state = RuntimeState::Stopping;
+                            current.pending_model = None;
                             current.last_command_sequence = Some(sequence);
                         });
                         if let Some(renderer) = &renderer {
@@ -717,7 +819,7 @@ fn run_worker(
                         return;
                     }
                 }
-                if evaluate_after_command && overlay_visible {
+                if evaluate_after_command && overlay_visible && pending_model.is_none() {
                     evaluate_renderer(
                         renderer.as_mut(),
                         input_state.model_snapshot(&input_bindings, normalized_cursor),
@@ -733,7 +835,17 @@ fn run_worker(
                     &input_bindings,
                     &mut normalized_cursor,
                 );
-                if overlay_visible {
+                process_model_commit_feedback(
+                    renderer.as_mut(),
+                    &mut pending_model,
+                    &input_state,
+                    &mut input_bindings,
+                    normalized_cursor,
+                    &mut active_model,
+                    overlay_visible,
+                    &snapshot,
+                );
+                if overlay_visible && pending_model.is_none() {
                     evaluate_renderer(
                         renderer.as_mut(),
                         input_state.model_snapshot(&input_bindings, normalized_cursor),
@@ -758,7 +870,7 @@ fn run_worker(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn activate_model(
+fn begin_model_activation(
     sequence: u64,
     committed: Arc<CommittedModel>,
     proposed_bindings: Option<Arc<InputBindings>>,
@@ -767,33 +879,118 @@ fn activate_model(
     input_bindings: &mut InputBindings,
     normalized_cursor: NormalizedCursorPosition,
     active_model: &mut Option<Arc<CommittedModel>>,
+    pending_model: &mut Option<PendingModelActivation>,
     snapshot: &SnapshotCell,
 ) {
     let activation_bindings = proposed_bindings.as_deref().unwrap_or(input_bindings);
     let model_input = input_state.model_snapshot(activation_bindings, normalized_cursor);
-    let activation = renderer.map_or(Ok(()), |renderer| {
-        renderer.activate(&committed, model_input)
-    });
-    match activation {
-        Ok(()) => {
-            if let Some(bindings) = proposed_bindings {
-                *input_bindings = Arc::unwrap_or_clone(bindings);
-            }
+    let Some(renderer) = renderer else {
+        if let Some(bindings) = proposed_bindings {
+            *input_bindings = Arc::unwrap_or_clone(bindings);
+        }
+        let model_snapshot = committed.snapshot();
+        *active_model = Some(committed);
+        publish(snapshot, |current| {
+            current.state = RuntimeState::Ready;
+            current.active_model = Some(model_snapshot);
+            current.model_input = model_input;
+            current.render_error = None;
+            current.last_command_failure = None;
+            current.last_command_sequence = Some(sequence);
+        });
+        return;
+    };
+    match renderer.prepare(sequence, &committed, model_input) {
+        Ok(token) => {
             let model_snapshot = committed.snapshot();
-            *active_model = Some(committed);
+            *pending_model = Some(PendingModelActivation {
+                token,
+                model: committed,
+                input_bindings: proposed_bindings,
+            });
             publish(snapshot, |current| {
-                current.state = RuntimeState::Ready;
-                current.active_model = Some(model_snapshot);
-                current.model_input = model_input;
-                current.render_error = None;
+                current.pending_model = Some(PendingModelSnapshot {
+                    token,
+                    model: model_snapshot,
+                });
                 current.last_command_failure = None;
-                current.last_command_sequence = Some(sequence);
             });
         }
         Err(code) => publish(snapshot, |current| {
             current.last_command_failure = Some(RuntimeCommandFailure { sequence, code });
             current.last_command_sequence = Some(sequence);
         }),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn process_model_commit_feedback(
+    renderer: Option<&mut RuntimeRenderer>,
+    pending_model: &mut Option<PendingModelActivation>,
+    input_state: &InputState,
+    input_bindings: &mut InputBindings,
+    normalized_cursor: NormalizedCursorPosition,
+    active_model: &mut Option<Arc<CommittedModel>>,
+    overlay_visible: bool,
+    snapshot: &SnapshotCell,
+) {
+    let Some(renderer) = renderer else {
+        return;
+    };
+    let Some(feedback) = renderer.take_model_commit_feedback() else {
+        return;
+    };
+    let Some(pending) = pending_model.as_ref() else {
+        renderer.record_stale_model_commit_feedback();
+        return;
+    };
+    if pending.token != feedback.token {
+        renderer.record_stale_model_commit_feedback();
+        return;
+    }
+    let pending = pending_model.take().expect("checked pending model");
+    match feedback.outcome {
+        ModelCommitOutcome::Prepared if renderer.commit(feedback.token) => {
+            if let Some(bindings) = pending.input_bindings {
+                *input_bindings = Arc::unwrap_or_clone(bindings);
+            }
+            let model_input = input_state.model_snapshot(input_bindings, normalized_cursor);
+            let model_snapshot = pending.model.snapshot();
+            *active_model = Some(pending.model);
+            publish(snapshot, |current| {
+                current.state = RuntimeState::Ready;
+                current.active_model = Some(model_snapshot);
+                current.pending_model = None;
+                current.model_input = model_input;
+                current.render_error = None;
+                current.last_command_failure = None;
+                current.last_command_sequence = Some(feedback.token.command_sequence);
+            });
+            if overlay_visible {
+                evaluate_renderer(Some(renderer), model_input, snapshot);
+            }
+        }
+        ModelCommitOutcome::Rejected(ModelCommitErrorCode::ResourcePreparationFailed)
+            if renderer.reject(feedback.token) =>
+        {
+            let model_input = input_state.model_snapshot(input_bindings, normalized_cursor);
+            publish(snapshot, |current| {
+                current.pending_model = None;
+                current.model_input = model_input;
+                current.last_command_failure = Some(RuntimeCommandFailure {
+                    sequence: feedback.token.command_sequence,
+                    code: RuntimeRenderErrorCode::GpuPreparationFailed,
+                });
+                current.last_command_sequence = Some(feedback.token.command_sequence);
+            });
+            if overlay_visible {
+                evaluate_renderer(Some(renderer), model_input, snapshot);
+            }
+        }
+        _ => {
+            *pending_model = Some(pending);
+            renderer.record_stale_model_commit_feedback();
+        }
     }
 }
 
@@ -862,7 +1059,9 @@ mod tests {
     use bongocat_model::PresetModelCatalog;
     use bongocat_model::{CommittedModel, ModelId, ModelPackageLimits, ModelStore};
     #[cfg(any(target_os = "macos", target_os = "windows"))]
-    use bongocat_render::{RenderConsumer, RenderFrame};
+    use bongocat_render::{
+        ModelCommitErrorCode, ModelCommitFeedback, ModelCommitOutcome, RenderConsumer, RenderFrame,
+    };
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     use std::collections::BTreeMap;
     use std::path::{Path, PathBuf};
@@ -917,6 +1116,46 @@ mod tests {
             assert!(Instant::now() < deadline, "render frame timed out");
             thread::sleep(Duration::from_millis(2));
         }
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn wait_for_prepared_model(
+        client: &RuntimeClient,
+        consumer: &RenderConsumer,
+        command_sequence: u64,
+    ) -> RenderFrame {
+        let prepared = client
+            .wait_for_model_preparation(command_sequence, TIMEOUT)
+            .expect("model prepared");
+        assert_eq!(prepared.last_command_failure, None);
+        let frame = wait_for_render_frame(consumer, |frame| {
+            frame
+                .model_commit
+                .is_some_and(|token| token.command_sequence == command_sequence)
+        });
+        assert_eq!(
+            prepared.pending_model.as_ref().map(|pending| pending.token),
+            frame.model_commit
+        );
+        frame
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn report_model_prepared(
+        client: &RuntimeClient,
+        consumer: &RenderConsumer,
+        frame: &RenderFrame,
+    ) -> RuntimeSnapshot {
+        let token = frame.model_commit.expect("model commit token");
+        consumer
+            .report_model_commit(ModelCommitFeedback {
+                token,
+                outcome: ModelCommitOutcome::Prepared,
+            })
+            .expect("report prepared model");
+        client
+            .wait_for_command(token.command_sequence, TIMEOUT)
+            .expect("model committed")
     }
 
     #[test]
@@ -1159,9 +1398,9 @@ mod tests {
                 "standard",
             ))))
             .expect("activation command");
-        let activated = client
-            .wait_for_command(activation_sequence, TIMEOUT)
-            .expect("model activated");
+        let initial = wait_for_prepared_model(&client, &consumer, activation_sequence);
+        assert!(client.snapshot().active_model.is_none());
+        let activated = report_model_prepared(&client, &consumer, &initial);
         assert_eq!(activated.state, RuntimeState::Ready);
         assert_eq!(activated.last_command_failure, None);
         assert_eq!(
@@ -1171,8 +1410,10 @@ mod tests {
                 .map(|model| model.id.as_str()),
             Some("standard")
         );
-        let initial = wait_for_render_frame(&consumer, |_| true);
-
+        let committed_baseline = wait_for_render_frame(&consumer, |frame| {
+            frame.model_generation == initial.model_generation
+                && frame.frame_number > initial.frame_number
+        });
         let input = owner.input_producer();
         let down_sequence = input
             .publish(InputEvent::Edge {
@@ -1187,9 +1428,9 @@ mod tests {
             .expect("key down applied");
         let pressed = wait_for_render_frame(&consumer, |frame| {
             frame.model_generation == initial.model_generation
-                && frame.frame_number > initial.frame_number
+                && frame.transport_sequence > committed_baseline.transport_sequence
         });
-        assert_ne!(pressed.snapshot, initial.snapshot);
+        assert_ne!(pressed.snapshot, committed_baseline.snapshot);
 
         let stopped = owner.shutdown(TIMEOUT).expect("runtime shutdown");
         assert_eq!(stopped.state, RuntimeState::Stopped);
@@ -1204,7 +1445,45 @@ mod tests {
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
-    fn failed_render_model_switch_preserves_the_active_model() {
+    fn reliable_input_bypasses_deferred_commands_during_model_preparation() {
+        let (owner, consumer) = RuntimeOwner::start_with_rendering(true, 8);
+        let client = owner.client();
+        client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+        let activation_sequence = client
+            .send(RuntimeCommand::ActivateModel(Arc::new(preset_model(
+                "standard",
+            ))))
+            .expect("activation command");
+        let candidate = wait_for_prepared_model(&client, &consumer, activation_sequence);
+        let visibility_sequence = client
+            .send(RuntimeCommand::SetOverlayVisible(false))
+            .expect("deferred visibility command");
+        let input_sequence = owner
+            .input_producer()
+            .publish(InputEvent::Edge {
+                control: InputControl::Key(PhysicalKey::KEY_A),
+                edge: InputEdge::Down,
+                source: InputSource::Capture,
+                at: MonotonicMillis::new(1),
+            })
+            .expect("key down behind deferred command");
+        let input_applied = client
+            .wait_for_input_sequence(input_sequence, TIMEOUT)
+            .expect("reliable input bypasses deferred non-input command");
+        assert_eq!(input_applied.input.pressed_key_count, 1);
+        assert!(input_applied.overlay_visible);
+
+        report_model_prepared(&client, &consumer, &candidate);
+        let visibility_applied = client
+            .wait_for_command(visibility_sequence, TIMEOUT)
+            .expect("deferred command resumes after model commit");
+        assert!(!visibility_applied.overlay_visible);
+        owner.shutdown(TIMEOUT).expect("runtime shutdown");
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn cpu_and_gpu_model_failures_preserve_the_active_model_and_bindings() {
         let data = tempdir().expect("data root");
         let store = ModelStore::new(
             data.path().join("models"),
@@ -1233,10 +1512,15 @@ mod tests {
                 input_bindings: left_bindings,
             })
             .expect("standard activation");
-        client
-            .wait_for_command(first_sequence, TIMEOUT)
-            .expect("standard active");
-        let first = wait_for_render_frame(&consumer, |_| true);
+        let first = wait_for_prepared_model(&client, &consumer, first_sequence);
+        let first_active = report_model_prepared(&client, &consumer, &first);
+        assert_eq!(
+            first_active
+                .active_model
+                .as_ref()
+                .map(|model| model.id.as_str()),
+            Some("standard")
+        );
 
         let right_bindings = Arc::new(InputBindings::new(BTreeMap::from([(
             PhysicalKey::KEY_A,
@@ -1271,8 +1555,8 @@ mod tests {
                 && frame.frame_number > first.frame_number
         });
         assert_eq!(preserved.model_generation, 0);
-        let down_sequence = owner
-            .input_producer()
+        let input_producer = owner.input_producer();
+        let down_sequence = input_producer
             .publish(InputEvent::Edge {
                 control: InputControl::Key(PhysicalKey::KEY_A),
                 edge: InputEdge::Down,
@@ -1286,14 +1570,97 @@ mod tests {
         assert!(input_after_rejection.model_input.left_hand_down);
         assert!(!input_after_rejection.model_input.right_hand_down);
 
+        let gpu_rejected_sequence = client
+            .send(RuntimeCommand::ActivateModelWithBindings {
+                model: Arc::new(preset_model("keyboard")),
+                input_bindings: Arc::new(InputBindings::new(BTreeMap::from([(
+                    PhysicalKey::KEY_A,
+                    HandSide::Right,
+                )]))),
+            })
+            .expect("GPU-rejected activation");
+        let gpu_candidate = wait_for_prepared_model(&client, &consumer, gpu_rejected_sequence);
+        assert_eq!(gpu_candidate.model_generation, 1);
+        let pending_release_sequence = input_producer
+            .publish(InputEvent::Edge {
+                control: InputControl::Key(PhysicalKey::KEY_A),
+                edge: InputEdge::Up,
+                source: InputSource::Capture,
+                at: MonotonicMillis::new(2),
+            })
+            .expect("key up while model commit is pending");
+        let released_while_pending = client
+            .wait_for_input_sequence(pending_release_sequence, TIMEOUT)
+            .expect("pending model does not block key release");
+        assert!(!released_while_pending.model_input.left_hand_down);
+        assert!(!released_while_pending.model_input.right_hand_down);
+        let pending_down_sequence = input_producer
+            .publish(InputEvent::Edge {
+                control: InputControl::Key(PhysicalKey::KEY_A),
+                edge: InputEdge::Down,
+                source: InputSource::Capture,
+                at: MonotonicMillis::new(3),
+            })
+            .expect("key down while model commit is pending");
+        let while_pending = client
+            .wait_for_input_sequence(pending_down_sequence, TIMEOUT)
+            .expect("pending model does not block key down");
+        assert_eq!(
+            while_pending
+                .active_model
+                .as_ref()
+                .map(|model| model.id.as_str()),
+            Some("standard")
+        );
+        assert!(while_pending.model_input.left_hand_down);
+        assert!(!while_pending.model_input.right_hand_down);
+
+        let rejected_token = gpu_candidate.model_commit.expect("candidate token");
+        consumer
+            .report_model_commit(ModelCommitFeedback {
+                token: rejected_token,
+                outcome: ModelCommitOutcome::Rejected(
+                    ModelCommitErrorCode::ResourcePreparationFailed,
+                ),
+            })
+            .expect("reject GPU candidate");
+        let gpu_rejected = client
+            .wait_for_command(gpu_rejected_sequence, TIMEOUT)
+            .expect("GPU rejection applied");
+        assert_eq!(
+            gpu_rejected.last_command_failure,
+            Some(RuntimeCommandFailure {
+                sequence: gpu_rejected_sequence,
+                code: RuntimeRenderErrorCode::GpuPreparationFailed,
+            })
+        );
+        assert_eq!(
+            gpu_rejected
+                .active_model
+                .as_ref()
+                .map(|model| model.id.as_str()),
+            Some("standard")
+        );
+        assert!(gpu_rejected.model_input.left_hand_down);
+        assert!(!gpu_rejected.model_input.right_hand_down);
+        let resumed = wait_for_render_frame(&consumer, |frame| {
+            frame.model_generation == first.model_generation
+                && frame.transport_sequence > gpu_candidate.transport_sequence
+        });
+        assert!(resumed.frame_number > first.frame_number);
+
         let replacement_sequence = client
-            .send(RuntimeCommand::ActivateModel(Arc::new(preset_model(
-                "keyboard",
-            ))))
+            .send(RuntimeCommand::ActivateModelWithBindings {
+                model: Arc::new(preset_model("keyboard")),
+                input_bindings: Arc::new(InputBindings::new(BTreeMap::from([(
+                    PhysicalKey::KEY_A,
+                    HandSide::Right,
+                )]))),
+            })
             .expect("replacement activation");
-        let replaced = client
-            .wait_for_command(replacement_sequence, TIMEOUT)
-            .expect("replacement active");
+        let replacement = wait_for_prepared_model(&client, &consumer, replacement_sequence);
+        assert_eq!(replacement.model_generation, 2);
+        let replaced = report_model_prepared(&client, &consumer, &replacement);
         assert_eq!(replaced.last_command_failure, None);
         assert_eq!(
             replaced
@@ -1302,10 +1669,8 @@ mod tests {
                 .map(|model| model.id.as_str()),
             Some("keyboard")
         );
-        let replacement = wait_for_render_frame(&consumer, |frame| {
-            frame.model_generation > preserved.model_generation
-        });
-        assert_eq!(replacement.model_generation, 1);
+        assert!(replaced.model_input.right_hand_down);
+        assert!(!replaced.model_input.left_hand_down);
         owner.shutdown(TIMEOUT).expect("runtime shutdown");
     }
 

@@ -103,10 +103,35 @@ pub struct RenderResources {
     pub textures: Vec<TextureAsset>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct ModelCommitToken {
+    pub command_sequence: u64,
+    pub model_generation: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ModelCommitErrorCode {
+    ResourcePreparationFailed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ModelCommitOutcome {
+    Prepared,
+    Rejected(ModelCommitErrorCode),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ModelCommitFeedback {
+    pub token: ModelCommitToken,
+    pub outcome: ModelCommitOutcome,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct RenderFrame {
+    pub transport_sequence: u64,
     pub model_generation: u64,
     pub frame_number: u64,
+    pub model_commit: Option<ModelCommitToken>,
     pub resources: Arc<RenderResources>,
     pub snapshot: Arc<RenderSnapshot>,
 }
@@ -119,6 +144,12 @@ pub struct RenderTransportDiagnostics {
     pub non_monotonic: u64,
     pub rejected_after_close: u64,
     pub pending: u64,
+    pub feedback_reported: u64,
+    pub feedback_consumed: u64,
+    pub feedback_occupied: u64,
+    pub feedback_rejected_after_close: u64,
+    pub feedback_stale: u64,
+    pub feedback_pending: u64,
 }
 
 #[derive(Debug)]
@@ -146,10 +177,36 @@ impl fmt::Display for RenderPublishError {
 
 impl std::error::Error for RenderPublishError {}
 
+#[derive(Debug)]
+pub enum ModelCommitFeedbackError {
+    Occupied(ModelCommitFeedback),
+    Closed(ModelCommitFeedback),
+}
+
+impl ModelCommitFeedbackError {
+    pub fn into_feedback(self) -> ModelCommitFeedback {
+        match self {
+            Self::Occupied(feedback) | Self::Closed(feedback) => feedback,
+        }
+    }
+}
+
+impl fmt::Display for ModelCommitFeedbackError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Occupied(_) => "a model commit result is already pending",
+            Self::Closed(_) => "render transport is closed",
+        })
+    }
+}
+
+impl std::error::Error for ModelCommitFeedbackError {}
+
 #[derive(Default)]
 struct LatestFrameState {
     pending: Option<RenderFrame>,
-    last_published: Option<(u64, u64)>,
+    last_transport_sequence: Option<u64>,
+    feedback: Option<ModelCommitFeedback>,
     closed: bool,
     diagnostics: RenderTransportDiagnostics,
 }
@@ -175,15 +232,14 @@ impl RenderProducer {
                 state.diagnostics.rejected_after_close.saturating_add(1);
             return Err(RenderPublishError::Closed(frame));
         }
-        let sequence = (frame.model_generation, frame.frame_number);
         if state
-            .last_published
-            .is_some_and(|previous| sequence <= previous)
+            .last_transport_sequence
+            .is_some_and(|previous| frame.transport_sequence <= previous)
         {
             state.diagnostics.non_monotonic = state.diagnostics.non_monotonic.saturating_add(1);
             return Err(RenderPublishError::NonMonotonic(frame));
         }
-        state.last_published = Some(sequence);
+        state.last_transport_sequence = Some(frame.transport_sequence);
         state.diagnostics.published = state.diagnostics.published.saturating_add(1);
         if state.pending.replace(frame).is_some() {
             state.diagnostics.coalesced = state.diagnostics.coalesced.saturating_add(1);
@@ -201,6 +257,29 @@ impl RenderProducer {
 
     pub fn diagnostics(&self) -> RenderTransportDiagnostics {
         self.slot.diagnostics()
+    }
+
+    pub fn take_model_commit_feedback(&self) -> Option<ModelCommitFeedback> {
+        let mut state = self
+            .slot
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let feedback = state.feedback.take();
+        if feedback.is_some() {
+            state.diagnostics.feedback_consumed =
+                state.diagnostics.feedback_consumed.saturating_add(1);
+        }
+        feedback
+    }
+
+    pub fn record_stale_model_commit_feedback(&self) {
+        let mut state = self
+            .slot
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.diagnostics.feedback_stale = state.diagnostics.feedback_stale.saturating_add(1);
     }
 }
 
@@ -225,6 +304,32 @@ impl RenderConsumer {
     pub fn diagnostics(&self) -> RenderTransportDiagnostics {
         self.slot.diagnostics()
     }
+
+    pub fn report_model_commit(
+        &self,
+        feedback: ModelCommitFeedback,
+    ) -> Result<(), ModelCommitFeedbackError> {
+        let mut state = self
+            .slot
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.closed {
+            state.diagnostics.feedback_rejected_after_close = state
+                .diagnostics
+                .feedback_rejected_after_close
+                .saturating_add(1);
+            return Err(ModelCommitFeedbackError::Closed(feedback));
+        }
+        if state.feedback.is_some() {
+            state.diagnostics.feedback_occupied =
+                state.diagnostics.feedback_occupied.saturating_add(1);
+            return Err(ModelCommitFeedbackError::Occupied(feedback));
+        }
+        state.feedback = Some(feedback);
+        state.diagnostics.feedback_reported = state.diagnostics.feedback_reported.saturating_add(1);
+        Ok(())
+    }
 }
 
 impl LatestFrameSlot {
@@ -235,6 +340,7 @@ impl LatestFrameSlot {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         RenderTransportDiagnostics {
             pending: u64::from(state.pending.is_some()),
+            feedback_pending: u64::from(state.feedback.is_some()),
             ..state.diagnostics
         }
     }
@@ -256,8 +362,10 @@ mod tests {
 
     fn frame(number: u64) -> RenderFrame {
         RenderFrame {
+            transport_sequence: number,
             model_generation: 3,
             frame_number: number,
+            model_commit: None,
             resources: Arc::new(RenderResources { textures: vec![] }),
             snapshot: Arc::new(RenderSnapshot {
                 canvas: CanvasInfo {
@@ -281,7 +389,7 @@ mod tests {
     }
 
     #[test]
-    fn latest_frame_transport_coalesces_without_renderer_acknowledgement() {
+    fn latest_frame_transport_coalesces_without_blocking_the_producer() {
         let (producer, consumer) = latest_render_channel();
         for number in 0..10_000 {
             producer.publish(frame(number)).expect("publish frame");
@@ -329,8 +437,9 @@ mod tests {
         producer.publish(frame(2)).expect("first frame");
         let rejected = producer.publish(frame(1)).expect_err("older frame");
         assert!(matches!(rejected, RenderPublishError::NonMonotonic(_)));
-        let mut replacement = frame(0);
+        let mut replacement = frame(3);
         replacement.model_generation = 4;
+        replacement.frame_number = 0;
         producer
             .publish(replacement)
             .expect("new model generation may reset frame number");
@@ -339,5 +448,61 @@ mod tests {
             Some(4)
         );
         assert_eq!(consumer.diagnostics().non_monotonic, 1);
+    }
+
+    #[test]
+    fn model_commit_feedback_is_reliable_and_never_overwrites() {
+        let (producer, consumer) = latest_render_channel();
+        let first = ModelCommitFeedback {
+            token: ModelCommitToken {
+                command_sequence: 7,
+                model_generation: 3,
+            },
+            outcome: ModelCommitOutcome::Prepared,
+        };
+        let second = ModelCommitFeedback {
+            token: ModelCommitToken {
+                command_sequence: 8,
+                model_generation: 4,
+            },
+            outcome: ModelCommitOutcome::Rejected(ModelCommitErrorCode::ResourcePreparationFailed),
+        };
+        consumer.report_model_commit(first).expect("first feedback");
+        let occupied = consumer
+            .report_model_commit(second)
+            .expect_err("feedback cannot overwrite");
+        assert_eq!(occupied.into_feedback(), second);
+        assert_eq!(producer.take_model_commit_feedback(), Some(first));
+        consumer
+            .report_model_commit(second)
+            .expect("second feedback after drain");
+        assert_eq!(producer.take_model_commit_feedback(), Some(second));
+        assert_eq!(
+            producer.diagnostics(),
+            RenderTransportDiagnostics {
+                feedback_reported: 2,
+                feedback_consumed: 2,
+                feedback_occupied: 1,
+                ..RenderTransportDiagnostics::default()
+            }
+        );
+    }
+
+    #[test]
+    fn model_commit_feedback_is_rejected_after_close() {
+        let (producer, consumer) = latest_render_channel();
+        producer.close();
+        let feedback = ModelCommitFeedback {
+            token: ModelCommitToken {
+                command_sequence: 1,
+                model_generation: 0,
+            },
+            outcome: ModelCommitOutcome::Prepared,
+        };
+        let rejected = consumer
+            .report_model_commit(feedback)
+            .expect_err("closed feedback");
+        assert_eq!(rejected.into_feedback(), feedback);
+        assert_eq!(consumer.diagnostics().feedback_rejected_after_close, 1);
     }
 }

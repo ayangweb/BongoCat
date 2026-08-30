@@ -141,7 +141,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         opacity_percent: application.config().overlay.opacity_percent,
         maximum_fps: application.config().model.maximum_fps,
     };
-    application.activate_preset_model(development_preset_root(), model_id)?;
+    application.prepare_preset_model(development_preset_root(), model_id)?;
 
     let session = ProductOverlaySession::start(
         application.runtime_client(),

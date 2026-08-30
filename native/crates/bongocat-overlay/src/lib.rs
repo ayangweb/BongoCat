@@ -31,6 +31,7 @@ impl Default for OverlaySessionOptions {
 pub struct ProductOverlayReport {
     pub frames_presented: u64,
     pub dynamic_snapshots: u64,
+    pub model_commit_rejections: u64,
     pub input_start_error: Option<PlatformInputError>,
     pub input_diagnostics: Option<PlatformInputDiagnostics>,
     pub render_diagnostics: RenderTransportDiagnostics,

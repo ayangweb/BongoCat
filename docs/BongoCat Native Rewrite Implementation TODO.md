@@ -580,7 +580,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 - [x] snapshot 只含不可变绘制数据和稳定资源 id。
   - 验收证据（2026-08-30）：`bongocat-render` 的 frame 只携带 `Arc<RenderResources>`/
-    `Arc<RenderSnapshot>`、model generation 和 frame number；drawable、mask 与 texture
+    `Arc<RenderSnapshot>`、独立单调 transport sequence、model generation、frame number
+    和可选模型提交 token；drawable、mask 与 texture
     通过不可混用的强类型 ID 关联，不含锁、平台对象、GPU handle 或 GPUI 状态。
 - [x] 定义 CPU model evaluation 与 GPU upload 所有权边界。
   - 验收证据（2026-08-30）：`bongocat-live2d` 独占 mutable Cubism Model 并生成不可变
@@ -588,9 +589,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     runtime 配置或输入状态。标准模型 release 预览通过 178 帧 contract 传递和 177 次 present。
 - [x] 双缓冲/latest snapshot，renderer 不阻塞 runtime。
   - 验收证据（2026-08-30）：单槽 latest-frame transport 实现非阻塞 publish、coalescing、
-    monotonic generation/frame、关闭后 drain 和 10,000 帧 accounting；producer 由正式
+    单调 transport sequence、关闭后 drain 和 10,000 帧 accounting；producer 由正式
     runtime worker 持有，Metal overlay 只消费 immutable frame。三个预置 release 预览分别
     present `174/175/178` 帧，shutdown 后均满足 published = coalesced + consumed 且 pending=0。
+  - 状态（2026-08-30）：模型 commit feedback 与 latest frame 分离为不可覆盖的可靠单槽；
+    occupied/closed/stale 均有计数，普通 frame coalescing 不会丢模型提交结果。runtime 等待
+    GPU token 时仍消费可靠 input edge，renderer 不持有 runtime 锁。
 - [ ] 支持目标 FPS、不可见暂停/降频和刷新率变化。
 - [ ] 首帧前不出现黑框或不透明闪烁。
 - [ ] shutdown 先停 frame source，再释放 GPU/window。
@@ -644,6 +648,14 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     ID/range/default，按模型解析 stable index，并验证 drawable array、index、texture、
     mask、vertex、opacity/color；part 表和完整 custom parameter 诊断尚未完成。
 - [ ] 模型切换使用 prepare/commit/rollback。
+  - 状态（2026-08-30）：正式 runtime/Metal 产品链已实现 CPU/GPU 两阶段提交。runtime
+    在候选 generation 的 texture/mesh/mask 全部由 Metal prepare 并回报匹配 token 前保留
+    旧 `active_model`、Cubism owner 和 input bindings；GPU 拒绝映射为稳定
+    `GpuPreparationFailed`，旧 generation 以更高 transport sequence 继续动态出帧。
+    单元回归覆盖 CPU load 失败、GPU 拒绝、迟到状态不提交、等待期间 KeyUp/KeyDown 不受
+    阻塞、输入越过已排队普通命令及后续有效 generation；本机真实预览完成 100 轮/300 次 standard -> keyboard ->
+    gamepad 切换，343 个动态 snapshot，Metal allocation `54,427,648 -> 54,427,648` bytes。
+    Windows D3D11 产品 renderer 尚未接入相同 token，因此总项保持未勾选。
 - [ ] 加载失败保留当前可用模型。
   - 状态（2026-08-30）：文件解析在 runtime 外完成，只有由环境 `ModelStore` 或预置
     `PresetModelCatalog` 签发、调用方无法自行构造的 `CommittedModel` 能进入
@@ -651,9 +663,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     和首帧 publish；损坏 Moc 切换会返回稳定 command failure，旧 model generation 继续
     出帧，随后有效切换才递增 generation。Metal renderer 又将新 generation 的 texture、
     mesh、mask target 和 canvas 组装为临时 `GpuModel`，完整验证后一次 commit；失败 prepare
-    保留当前 GPU generation，300 次真实切换无 allocation 增长。runtime 目前尚未等待 GPU
-    commit acknowledgement，GPU 失败时两侧 generation 的协调 rollback 仍待实现，因此两项
-    保持未勾选。
+    保留当前 GPU generation，300 次真实切换无 allocation 增长。正式产品链随后增加
+    runtime/GPU commit token 和稳定拒绝反馈，GPU 失败时旧 Cubism/model/bindings/GPU
+    generation 均保持 active 并恢复出帧；Windows 产品 renderer 与实际损坏资源注入仍待
+    完成，因此两项保持未勾选。
 - [ ] FFI 错误映射为稳定 Rust error code。
 
 ### 5.3 动作与状态

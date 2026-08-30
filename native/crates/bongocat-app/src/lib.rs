@@ -8,7 +8,7 @@ use bongocat_model::{
     CommittedModel, InstalledModel, ModelCatalogEntry, ModelError, ModelId, ModelPackageLimits,
     ModelStore, ModelStoreError, PresetModelCatalog,
 };
-use bongocat_render::RenderConsumer;
+use bongocat_render::{ModelCommitToken, RenderConsumer};
 use bongocat_runtime::{
     CursorProducer, HandSide, InputBindings, InputProducer, PhysicalKey, RuntimeClient,
     RuntimeCommand, RuntimeCommandFailure, RuntimeOwner, RuntimeSnapshot, SendError, ShutdownError,
@@ -34,6 +34,7 @@ pub enum ApplicationError {
     RuntimeCommand(SendError),
     RuntimeCommandFailed(RuntimeCommandFailure),
     RuntimeDidNotPublish,
+    RuntimeDidNotPrepareModel,
     RenderConsumerUnavailable,
     Shutdown(ShutdownError),
 }
@@ -56,6 +57,9 @@ impl fmt::Display for ApplicationError {
             ),
             Self::RuntimeDidNotPublish => {
                 formatter.write_str("runtime did not publish the requested revision")
+            }
+            Self::RuntimeDidNotPrepareModel => {
+                formatter.write_str("runtime did not prepare the requested render model")
             }
             Self::RenderConsumerUnavailable => {
                 formatter.write_str("application render consumer is unavailable")
@@ -203,17 +207,37 @@ impl Application {
         self.activate_committed_model(CommittedModel::from(self.model_store.load(&id)?))
     }
 
-    pub fn activate_preset_model(
+    pub fn prepare_preset_model(
         &mut self,
         preset_root: impl AsRef<Path>,
         id: impl Into<String>,
-    ) -> Result<RuntimeSnapshot, ApplicationError> {
+    ) -> Result<ModelCommitToken, ApplicationError> {
+        if self.render_consumer.is_none() {
+            return Err(ApplicationError::RenderConsumerUnavailable);
+        }
         let id = ModelId::parse(id)?;
         let catalog = PresetModelCatalog::open(preset_root, ModelPackageLimits::default())?;
-        self.wait_for_model_command(RuntimeCommand::ActivateModelWithBindings {
-            model: Arc::new(catalog.load(&id)?),
-            input_bindings: Arc::new(preset_input_bindings(id.as_str())),
-        })
+        let client = self.runtime.client();
+        let sequence = client
+            .send(RuntimeCommand::ActivateModelWithBindings {
+                model: Arc::new(catalog.load(&id)?),
+                input_bindings: Arc::new(preset_input_bindings(id.as_str())),
+            })
+            .map_err(ApplicationError::RuntimeCommand)?;
+        let snapshot = client
+            .wait_for_model_preparation(sequence, RUNTIME_TIMEOUT)
+            .ok_or(ApplicationError::RuntimeDidNotPrepareModel)?;
+        if let Some(failure) = snapshot
+            .last_command_failure
+            .filter(|failure| failure.sequence == sequence)
+        {
+            return Err(ApplicationError::RuntimeCommandFailed(failure));
+        }
+        snapshot
+            .pending_model
+            .filter(|pending| pending.token.command_sequence == sequence)
+            .map(|pending| pending.token)
+            .ok_or(ApplicationError::RuntimeDidNotPrepareModel)
     }
 
     fn activate_committed_model(
@@ -488,18 +512,19 @@ mod tests {
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
         let mut application = Application::start_with_layout_internal(layout, true)
             .expect("start rendering application");
-        let activated = application
-            .activate_preset_model(
+        let token = application
+            .prepare_preset_model(
                 repository_root().join("native/resources/models"),
                 "standard",
             )
-            .expect("activate preset model");
-        assert_eq!(
-            activated
+            .expect("prepare preset model");
+        assert_eq!(token.model_generation, 0);
+        assert!(
+            application
+                .runtime_client()
+                .snapshot()
                 .active_model
-                .as_ref()
-                .map(|model| model.id.as_str()),
-            Some("standard")
+                .is_none()
         );
 
         let consumer = application
@@ -522,6 +547,25 @@ mod tests {
         };
         assert_eq!(frame.model_generation, 0);
         assert!(!frame.snapshot.drawables.is_empty());
+        assert_eq!(frame.model_commit, Some(token));
+        consumer
+            .report_model_commit(bongocat_render::ModelCommitFeedback {
+                token,
+                outcome: bongocat_render::ModelCommitOutcome::Prepared,
+            })
+            .expect("report prepared GPU model");
+        let activated = application
+            .runtime_client()
+            .wait_for_command(token.command_sequence, RUNTIME_TIMEOUT)
+            .expect("commit preset model");
+        assert_eq!(
+            activated
+                .active_model
+                .as_ref()
+                .map(|model| model.id.as_str()),
+            Some("standard")
+        );
+        assert!(activated.pending_model.is_none());
 
         let stopped = application.shutdown().expect("clean shutdown");
         assert_eq!(stopped.state, RuntimeState::Stopped);

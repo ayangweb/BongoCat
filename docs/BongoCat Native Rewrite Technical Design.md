@@ -311,6 +311,13 @@ model evaluation + render snapshot
 - 不把未经验证的新纯 Rust Cubism 兼容 crate 作为生产基础。
 - `.model3.json`、motion、expression、physics 和 pose 兼容性由 fixture 验证。
 - 模型加载采用 prepare/commit/rollback，失败时保留当前可用模型。
+- 模型切换是 CPU/GPU 两阶段提交：runtime 先保留旧 active model/bindings，准备新的
+  Cubism generation，并随候选 `RenderSnapshot` 发布一次性强类型 commit token；平台
+  renderer 只有在纹理、mesh、mask 和 pipeline 资源全部准备成功后才能确认。runtime
+  收到匹配 token 的确认后才替换产品事实状态；renderer 拒绝时双方继续使用旧模型。
+- 普通 render frame 使用独立单调 transport sequence，可以按 latest-value 合并；模型
+  commit feedback 使用不可覆盖的可靠单槽并且同时只允许一个候选 generation，不能被
+  普通帧、cursor 或输入事件合并。等待 GPU 确认期间可靠输入仍由旧 bindings 消费。
 
 官方 Cubism Framework 的动作、物理等逻辑必须在 Phase 0 验证 Rust 实现的兼容性。未达到退出门槛时必须形成 go/no-go ADR，不能绕过该门槛扩大实现范围。
 
@@ -330,6 +337,10 @@ RenderSnapshot
 ```
 
 renderer 负责遮罩、混合、裁剪、纹理上传、dirty flag、present 和 GPU 生命周期；不读取配置、不决定动作、不访问 GPUI entity。
+
+renderer 的模型资源准备结果通过稳定项目 error code 回到 runtime，不返回 GPU handle、
+平台对象或任意字符串协议。候选准备失败只结束对应模型 command，不得终止 frame loop、
+清空当前 GPU model 或让 runtime 提前宣布候选模型 active。
 
 Linux 阶段再决定增加 Vulkan/OpenGL backend，或基于数据迁移到 wgpu。首发优先保证 Windows/macOS 透明窗口的确定性。
 
