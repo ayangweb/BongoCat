@@ -312,15 +312,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 1.9 Phase 0 退出门槛
 
-- [ ] GPUI 设置窗口与原生 overlay 可同时运行、关闭和重开。
-  - 状态（2026-08-31）：正式 `bongocat-app` 已由 GPUI 接管平台主循环，应用 coordinator
-    以非阻塞 `ProductOverlaySession::tick` 驱动真实 Cubism/Metal overlay；正式设置窗口
-    同时读取 revisioned snapshot，并可持久化 overlay 显隐与 motion audio。macOS release
-    smoke 已验证设置 Entity 销毁、后台 frame tick、单 Entity 重建、snapshot 恢复和有序退出。
-    Windows runner `33326619716` / `33327009309` 暴露 GPUI 0.2.2 的 `WM_CLOSE` 同步重入崩溃；
-    runner `33327832562` 证明普通 close 已被安全拦截，但随后暴露保留 callback 在显式 quit
-    时的第二处同步重入。当前实现改为两阶段原生 close -> `on_window_closed` -> GPUI quit，
-    仍待 Windows hardware runner 复验，因此保持未勾选。
+- [x] GPUI 设置窗口与原生 overlay 可同时运行、关闭和重开。
+  - 验收证据（2026-08-31）：commit `9365eda` 的 push run `33333789799` 中，Windows job
+    `99316966532` 通过真实 `WM_CLOSE`、保留 Entity 隐藏、后台 frame tick、同一 Entity 重显、
+    revisioned snapshot 恢复和全部产品 owner 有序 shutdown；macOS job `99316966517` 通过
+    Entity 销毁、单一新 Entity 重建和同等 lifecycle，Ubuntu job `99316966591` 通过共享门禁。
 - [ ] Windows/macOS 至少一个预置模型完成输入到原生绘制闭环。
 - [ ] Windows issue #47 复现用例不产生残留键。
 - [ ] macOS 权限拒绝、授予、重启和恢复路径可解释。
@@ -1168,7 +1164,7 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
     - 验收证据（2026-08-31）：`bongocat-audio`、runtime side-effect 接线、真实预置 FLAC
       decoder 与 motion event/audio contract 已进入正式 workspace；完整 Native format、
       Clippy、test、release check、双 Windows target check 和 CI 结果随对应提交记录。
-17. [ ] `P1-SETTINGS-WINDOW-LIFECYCLE`：设置窗口关闭后保持后台产品运行，并可从当前
+17. [x] `P1-SETTINGS-WINDOW-LIFECYCLE`：设置窗口关闭后保持后台产品运行，并可从当前
         revisioned snapshot 重建窗口。
     - 依赖：正式 GPUI 设置窗口、app coordinator、runtime/render owner。
     - 退出条件：window close 不触发 shutdown；窗口隐藏/销毁期间 frame source 继续推进；
@@ -1195,39 +1191,45 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
       fallback HWND 在延迟投递前已失效，`PostMessage(WM_CLOSE)` 因此失败，产品内部也未观察到
       settings close。smoke 现由 Windows platform adapter 从 GPUI 公共 raw-window-handle 精确
       取得设置 HWND 并异步投递真实 `WM_CLOSE`；CI 不再枚举或猜测产品窗口，待原生 run 复验。
-18. [ ] `P4-MODEL-CATALOG`：建立来源感知的预置/用户模型合并目录并投影到设置服务。
+    - 验收证据（2026-08-31）：commit `9365eda` 的 push run `33333789799` 全绿；Windows job
+      `99316966532` 与 macOS job `99316966517` 均通过 release lifecycle smoke、完整 workspace
+      tests 和有序 shutdown，Windows 真实 `WM_CLOSE` 后 frame source 继续、保留 Entity 重显并
+      恢复 snapshot。Ubuntu job `99316966591` 通过共享 contract、Clippy、test 和 release check。
+18. [x] `P4-MODEL-CATALOG`：建立来源感知的预置/用户模型合并目录并投影到设置服务。
     - 依赖：正式 `bongocat-model`、环境 `ModelStore`、只读预置资源和 typed settings snapshot。
     - 退出条件：应用持有 preset catalog；preset/installed 的 ready/invalid 条目都可见且确定
       排序；重复 ID 保留 `(origin, id)` 复合身份；snapshot 只暴露稳定诊断而不泄漏路径；
       model/app/ui 单元测试、Clippy 与完整 Native workspace 门禁通过。
-    - 状态（2026-08-31）：model/app/ui 实现和定向测试已完成，完整 Native workspace 门禁
-      仍在运行，因此保持未勾选。来源感知选择、配置持久化与 renderer 失败回滚属于下一任务。
-19. [ ] `P4-MODEL-SELECTION`：以 `(origin, model_id)` 从设置服务事务切换并持久化模型。
+    - 验收证据（2026-08-31）：来源合并、无效条目、重复 ID、确定排序、路径脱敏与 typed
+      snapshot 测试均进入 `next`；push run `33333789799` 的 Windows/macOS/Ubuntu workspace
+      jobs `99316966532`/`99316966517`/`99316966591` 全部通过。
+19. [x] `P4-MODEL-SELECTION`：以 `(origin, model_id)` 从设置服务事务切换并持久化模型。
     - 依赖：`P4-MODEL-CATALOG`、runtime/renderer model commit、config expected revision。
     - 退出条件：typed command 不靠字符串推断来源；preset/installed 同 ID 可分别选择；v1
       配置顺序迁移到成对的 v2 origin/id；CPU/GPU/配置失败保留当前模型，GPU 拒绝恢复旧配置；
       重启重新加载所选来源；schema fixture、定向测试与完整 Native workspace 门禁通过。
-    - 状态（2026-08-31）：typed client/service、config v2 迁移、重复 ID installed 选择、重启与
-      renderer rejection 配置回滚已实现并通过定向测试；完整门禁与远端双平台 smoke 待验证。
-20. [ ] `P4-MODEL-IMPORT-COMMAND`：从设置服务显式导入用户确认的外部模型目录。
+    - 验收证据（2026-08-31）：config v2 迁移、复合身份选择、重启、CPU/GPU/config rollback
+      与 Windows/macOS renderer rejection 测试均进入 `next`；push run `33333789799` 的三平台
+      workspace jobs 全部通过，Windows job 又通过 transactional D3D11 model switching smoke。
+20. [x] `P4-MODEL-IMPORT-COMMAND`：从设置服务显式导入用户确认的外部模型目录。
     - 依赖：环境 `ModelStore`、来源感知 catalog、typed settings command。
     - 退出条件：UI command 强类型携带 model ID/source root，文件 I/O 不在 UI executor；导入
       复制、复验并原子提交到当前环境且不隐式切换；成功 snapshot 刷新 installed 条目；非法
       ID、重复 ID、无效包、源变化/不支持项、store busy/I/O 映射为稳定且不泄漏路径的错误码；
       ui/app 定向测试与完整 Native workspace 门禁通过。
-    - 状态（2026-08-31）：typed request、settings worker 接线和稳定错误映射已实现；operation
+    - 验收证据（2026-08-31）：typed request、settings worker 接线和稳定错误映射已实现；operation
       ID、progress、cancel、系统文件选择 wrapper 及模型页面 loading/error/retry 属于后续任务。
       ui/app 定向测试与完整 Native format、Clippy、workspace test、release check、Linux shared
-      contract check 本机通过，远端 Windows/macOS/Ubuntu 门禁待本提交验证，因此保持未勾选。
-21. [ ] `P4-MODEL-DELETE-COMMAND`：按来源身份安全删除未选择的 installed 模型。
+      contract check 本机通过；push run `33333789799` 的三平台 workspace jobs 全部通过。
+21. [x] `P4-MODEL-DELETE-COMMAND`：按来源身份安全删除未选择的 installed 模型。
     - 依赖：`P4-MODEL-CATALOG`、`P4-MODEL-SELECTION`、`ModelStore` rename-delete transaction。
     - 退出条件：typed command 携带 `(origin, id)`；preset 和当前 runtime/config 所选 installed
       均拒绝；激活同 ID preset 不阻塞删除 installed 副本；成功刷新 catalog/revision 且不切模
       或改配置；非法 ID、未安装、store busy/I/O 返回稳定无路径错误；app/ui 定向测试与完整
       Native workspace 门禁通过。
-    - 状态（2026-08-31）：核心来源判断、typed client/service 与错误映射已实现；app/ui 定向
-      测试与完整 Native format、Clippy、workspace test、release check 本机通过，远端
-      Windows/macOS/Ubuntu 门禁待本提交验证，因此保持未勾选。
+    - 验收证据（2026-08-31）：核心来源判断、typed client/service、全部 store diagnostic
+      的稳定错误映射及 app/ui 定向测试已进入 `next`；push run `33333789799` 的 Windows/macOS/
+      Ubuntu workspace jobs `99316966532`/`99316966517`/`99316966591` 全部通过。
 
 ## 13. 待决策清单
 
