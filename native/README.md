@@ -41,10 +41,20 @@ cargo run --manifest-path native/Cargo.toml -p bongocat-overlay --release -- key
 cargo run --manifest-path native/Cargo.toml -p bongocat-overlay --release -- gamepad 30
 ```
 
-The preview applies deterministic typed parameter input so hand, pointer, head, eye, and gamepad
-changes exercise per-frame Cubism evaluation and GPU buffer updates. It is not yet the assembled
-application: platform input producers, the runtime render channel, GPUI settings, and the Windows
-preset-model renderer remain separate work items.
+By default the preview applies deterministic input through the product runtime so hand, pointer,
+head, eye, and gamepad changes exercise per-frame Cubism evaluation and GPU buffer updates. To use
+the formal macOS listen-only CGEventTap producer for keyboard and mouse button edges instead, grant
+Input Monitoring permission to the launching terminal and run:
+
+```text
+cargo run --manifest-path native/Cargo.toml -p bongocat-overlay --release -- standard 30 --interactive
+```
+
+The interactive path uses the same typed runtime input state as the deterministic preview and
+stops the platform producer before the runtime and Metal overlay. Global pointer position is not
+yet connected, so pointer/head/eye parameters still use deterministic movement. This is not yet
+the assembled application: GPUI settings, the runtime render channel, lifecycle notifications,
+and the Windows preset-model renderer remain separate work items.
 
 The fixed-version Cubism Core, header, generated bindings, and preset model development baseline are
 committed under `vendor/cubism/5-r.5` and `resources/models`. Builds do not download SDK artifacts.

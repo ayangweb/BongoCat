@@ -6,6 +6,7 @@ members = [
     "crates/bongocat-live2d",
     "crates/bongocat-model",
     "crates/bongocat-overlay",
+    "crates/bongocat-platform",
     "crates/bongocat-runtime",
 ]
 
@@ -29,6 +30,7 @@ bongocat-config = { path = "crates/bongocat-config" }
 bongocat-live2d = { path = "crates/bongocat-live2d" }
 bongocat-model = { path = "crates/bongocat-model" }
 bongocat-overlay = { path = "crates/bongocat-overlay" }
+bongocat-platform = { path = "crates/bongocat-platform" }
 bongocat-runtime = { path = "crates/bongocat-runtime" }
 
 [workspace.lints.rust]

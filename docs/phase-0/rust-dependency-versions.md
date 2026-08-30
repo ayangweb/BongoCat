@@ -41,6 +41,8 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 | `objc2`                               |        `0.6.4` | 已是最新               |
 | `objc2`（GPUI AX）                    |        `0.5.2` | 上游 ABI 类型兼容例外  |
 | `objc2-app-kit`                       |        `0.3.2` | 已是最新               |
+| `objc2-core-foundation`               |        `0.3.2` | 正式输入边界新增时最新 |
+| `objc2-core-graphics`                 |        `0.3.2` | 正式输入边界新增时最新 |
 | `objc2-foundation`                    |        `0.3.2` | 已是最新               |
 | `objc2-foundation`（GPUI 原生 probe） |        `0.2.2` | 上游 ABI 类型兼容例外  |
 | `objc2-game-controller`               |        `0.3.2` | 新增时即为最新         |
@@ -79,6 +81,10 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
 
 - `windows 0.62.2` 同时封装 Raw Input、XInput 与原生 overlay 边界；输入和 overlay crate 均在 `x86_64-pc-windows-msvc` 完成 Check/Clippy，输入与 overlay 也对 `aarch64-pc-windows-msvc` 完成 Check；XInput 仅增加同一 package 的 `Win32_UI_Input_XboxController` feature，真实 Windows 输入与 D3D11 生命周期 smoke 由 push CI 执行；
 - `core-graphics2 0.6.1` 在已授予 Input Monitoring 的 macOS 会话创建 listen-only tap，完成 lifecycle Reset 和正常 shutdown；
+- `objc2-core-graphics 0.3.2` 与 `objc2-core-foundation 0.3.2` 只存在于正式 macOS
+  platform adapter，取代会为输入路径引入 `block 0.1.6` 的 `core-graphics2`；窄 wrapper
+  管理 callback context、CFRunLoop source 和 tap 的统一析构，项目公共 API 仅暴露自有
+  permission、diagnostics 和 error 类型。替换边界是 `MacInputService` 私有实现，不影响 runtime；
 - `objc2-game-controller 0.3.2` 只在 macOS 输入 spike 的窄平台边界枚举 `GCExtendedGamepad`、安装 value-change handler 并管理 background delivery；许可证为 Zlib OR Apache-2.0 OR MIT，项目公共协议只接收自有 snapshot/event 类型，停止使用 GameController 时可替换该 adapter 而不改变 producer contract；
 - `metal 0.33.0` 创建透明 `CAMetalLayer`，完成两次 clear/present、隐藏/重显和自动退出；
 - `libc 0.2.189` 只在 macOS overlay spike 的平台边界调用 `proc_pidinfo`，用于 100-cycle 线程/RSS 资源快照；许可证为 MIT OR Apache-2.0，停止使用该系统指标后可直接移除，不进入项目公共 API；

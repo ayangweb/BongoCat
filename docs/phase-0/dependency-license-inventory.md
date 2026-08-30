@@ -29,6 +29,7 @@
 | serde / serde_json               | `1.0.229` / `1.0.151`          | MIT OR Apache-2.0         | Config, model and tool serialization    |
 | tempfile                         | `3.27.0`                       | MIT OR Apache-2.0         | Isolated config/model fixture tests     |
 | core-graphics2 / core-foundation | `0.6.1` / `0.10.1`             | MIT OR Apache-2.0         | macOS input boundary spike              |
+| objc2-core-graphics / foundation | `0.3.2` / `0.3.2`              | Zlib OR Apache-2.0 OR MIT | formal macOS input adapter              |
 | objc2 / block2 family            | `0.6.4` / `0.3.2`              | MIT OR Apache-2.0 / Zlib  | macOS overlay/input lifecycle           |
 | objc2 (GPUI AX compatibility)    | `0.5.2`                        | MIT                       | Inspect AccessKit macOS adapter objects |
 | metal / core-graphics-types      | `0.33.0` / `0.2.0`             | MIT OR Apache-2.0         | macOS transparent present spike         |

@@ -1,0 +1,21 @@
+[package]
+name = "bongocat-platform"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+bongocat-runtime.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-core-foundation = { version = "=0.3.2", default-features = false, features = ["CFDate", "CFMachPort", "CFRunLoop"] }
+objc2-core-graphics = { version = "=0.3.2", default-features = false, features = ["CGEvent", "CGEventSource", "CGEventTypes", "CGRemoteOperation"] }
+
+[lints.clippy]
+dbg_macro = "deny"
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"

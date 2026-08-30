@@ -42,12 +42,34 @@ pub enum MouseButton {
     Middle,
     Back,
     Forward,
+    Other(u8),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum InputControl {
     Key(PhysicalKey),
     Mouse(MouseButton),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HandSide {
+    Left,
+    Right,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct InputBindings {
+    key_hands: BTreeMap<PhysicalKey, HandSide>,
+}
+
+impl InputBindings {
+    pub fn new(key_hands: BTreeMap<PhysicalKey, HandSide>) -> Self {
+        Self { key_hands }
+    }
+
+    pub fn hand_for(&self, key: PhysicalKey) -> Option<HandSide> {
+        self.key_hands.get(&key).copied()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -207,6 +229,14 @@ pub struct InputSnapshot {
     pub transport: InputTransportDiagnostics,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ModelInputSnapshot {
+    pub left_hand_down: bool,
+    pub right_hand_down: bool,
+    pub mouse_left_down: bool,
+    pub mouse_right_down: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InputDisposition {
     Applied,
@@ -307,6 +337,29 @@ impl InputState {
             diagnostics: self.diagnostics,
             transport: InputTransportDiagnostics::default(),
         }
+    }
+
+    pub(crate) fn model_snapshot(&self, bindings: &InputBindings) -> ModelInputSnapshot {
+        let mut snapshot = ModelInputSnapshot {
+            mouse_left_down: self
+                .pressed
+                .contains_key(&InputControl::Mouse(MouseButton::Left)),
+            mouse_right_down: self
+                .pressed
+                .contains_key(&InputControl::Mouse(MouseButton::Right)),
+            ..ModelInputSnapshot::default()
+        };
+        for control in self.pressed.keys() {
+            let InputControl::Key(key) = control else {
+                continue;
+            };
+            match bindings.hand_for(*key) {
+                Some(HandSide::Left) => snapshot.left_hand_down = true,
+                Some(HandSide::Right) => snapshot.right_hand_down = true,
+                None => {}
+            }
+        }
+        snapshot
     }
 
     #[cfg(test)]
@@ -539,6 +592,38 @@ mod tests {
         assert_eq!(snapshot.pressed_key_count, 0);
         assert_eq!(snapshot.pressed_mouse_button_count, 0);
         assert_eq!(snapshot.diagnostics.released_by_reset, 2);
+    }
+
+    #[test]
+    fn model_snapshot_applies_bindings_without_exposing_pressed_keys() {
+        let right = PhysicalKey::from_hid_usage(0x4f);
+        let bindings = InputBindings::new(BTreeMap::from([
+            (PhysicalKey::KEY_A, HandSide::Left),
+            (right, HandSide::Right),
+        ]));
+        let mut state = InputState::default();
+        state.apply(edge(0, 0, A, InputEdge::Down));
+        state.apply(edge(1, 1, InputControl::Key(right), InputEdge::Down));
+        state.apply(edge(
+            2,
+            2,
+            InputControl::Mouse(MouseButton::Left),
+            InputEdge::Down,
+        ));
+        assert_eq!(
+            state.model_snapshot(&bindings),
+            ModelInputSnapshot {
+                left_hand_down: true,
+                right_hand_down: true,
+                mouse_left_down: true,
+                mouse_right_down: false,
+            }
+        );
+        state.force_reset(InputResetReason::Test);
+        assert_eq!(
+            state.model_snapshot(&bindings),
+            ModelInputSnapshot::default()
+        );
     }
 
     #[test]

@@ -4,9 +4,11 @@ fn main() -> ExitCode {
     match run() {
         Ok(report) => {
             println!(
-                "BongoCat Live2D preview: frames={} dynamic_snapshots={} drawables={} masked_drawables={} textures={}",
+                "BongoCat Live2D preview: frames={} dynamic_snapshots={} runtime_input_events={} platform_input_edges={} drawables={} masked_drawables={} textures={}",
                 report.frames_presented,
                 report.dynamic_snapshots,
+                report.runtime_input_events,
+                report.platform_input_edges,
                 report.drawable_count,
                 report.masked_drawable_count,
                 report.texture_count
@@ -35,20 +37,34 @@ fn run() -> Result<bongocat_overlay::PreviewReport, String> {
         })
         .transpose()?
         .unwrap_or(15);
+    let interactive = match arguments.next().as_deref() {
+        None => false,
+        Some("--interactive") => true,
+        Some(_) => {
+            return Err(
+                "usage: bongocat-overlay [standard|keyboard|gamepad] [seconds] [--interactive]"
+                    .to_owned(),
+            );
+        }
+    };
     if arguments.next().is_some() {
-        return Err("usage: bongocat-overlay [standard|keyboard|gamepad] [seconds]".to_owned());
+        return Err(
+            "usage: bongocat-overlay [standard|keyboard|gamepad] [seconds] [--interactive]"
+                .to_owned(),
+        );
     }
     let repository_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .nth(3)
         .ok_or_else(|| "cannot locate repository root".to_owned())?
         .to_owned();
-    bongocat_overlay::run_model_preview(
-        &model_id,
-        &repository_root
-            .join("native/resources/models")
-            .join(&model_id),
-        Duration::from_secs(seconds),
-    )
-    .map_err(|error| error.to_string())
+    let model_root = repository_root
+        .join("native/resources/models")
+        .join(&model_id);
+    let run = if interactive {
+        bongocat_overlay::run_interactive_model_preview
+    } else {
+        bongocat_overlay::run_model_preview
+    };
+    run(&model_id, &model_root, Duration::from_secs(seconds)).map_err(|error| error.to_string())
 }

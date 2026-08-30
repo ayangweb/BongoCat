@@ -3,6 +3,11 @@ use bongocat_live2d::{
     BlendMode, CanvasInfo, Live2dModel, ProductParameter, RenderSnapshot, TextureAsset,
 };
 use bongocat_model::{ModelId, ModelPackageLimits, PreparedModel};
+use bongocat_platform::MacInputService;
+use bongocat_runtime::{
+    HandSide, InputBindings, InputControl, InputEdge, InputEvent, InputProducer, InputSource,
+    ModelInputSnapshot, MonotonicMillis, MouseButton, PhysicalKey, RuntimeCommand, RuntimeOwner,
+};
 use image::ImageReader;
 use metal::{
     Buffer, CommandQueue, CompileOptions, Device, MTLBlendFactor, MTLClearColor,
@@ -23,6 +28,7 @@ use objc2_app_kit::{
 };
 use objc2_foundation::{NSDate, NSDefaultRunLoopMode, NSPoint, NSRect, NSSize};
 use std::{
+    collections::{BTreeMap, BTreeSet},
     mem::{self, ManuallyDrop},
     path::Path,
     thread,
@@ -32,6 +38,8 @@ use std::{
 const WINDOW_WIDTH: f64 = 640.0;
 const WINDOW_HEIGHT: f64 = 560.0;
 const FRAME_INTERVAL: Duration = Duration::from_micros(16_667);
+const RUNTIME_TIMEOUT: Duration = Duration::from_millis(250);
+const RIGHT_ARROW: PhysicalKey = PhysicalKey::from_hid_usage(0x4f);
 const SHADER_SOURCE: &str = r#"
     #include <metal_stdlib>
     using namespace metal;
@@ -163,6 +171,7 @@ pub(crate) fn run_model_preview(
     model_id: &str,
     model_root: &Path,
     duration: Duration,
+    interactive: bool,
 ) -> Result<PreviewReport, OverlayError> {
     let prepared = PreparedModel::prepare(
         ModelId::parse(model_id).map_err(|error| OverlayError::new(error.to_string()))?,
@@ -182,6 +191,26 @@ pub(crate) fn run_model_preview(
     application.finishLaunching();
     let mut overlay = NativeOverlay::create(mtm, model.texture_assets(), &previous_snapshot)?;
     overlay.panel.orderFrontRegardless();
+
+    let runtime = RuntimeOwner::start(true, 64);
+    let runtime_client = runtime.client();
+    runtime_client
+        .wait_for_revision(1, RUNTIME_TIMEOUT)
+        .ok_or_else(|| OverlayError::new("preview runtime did not become ready"))?;
+    let binding_sequence = runtime_client
+        .send(RuntimeCommand::SetInputBindings(std::sync::Arc::new(
+            preview_input_bindings(model_id),
+        )))
+        .map_err(|error| OverlayError::new(error.to_string()))?;
+    runtime_client
+        .wait_for_command(binding_sequence, RUNTIME_TIMEOUT)
+        .ok_or_else(|| OverlayError::new("preview input bindings were not applied"))?;
+    let input_producer = runtime.input_producer();
+    let mut input_driver = PreviewInputDriver::default();
+    let input_service = interactive
+        .then(|| MacInputService::start(input_producer.clone()))
+        .transpose()
+        .map_err(|error| OverlayError::new(error.to_string()))?;
 
     let started = Instant::now();
     let mut next_frame = started;
@@ -203,7 +232,20 @@ pub(crate) fn run_model_preview(
             }
             application.updateWindows();
         });
-        apply_preview_parameters(&mut model, model_id, started.elapsed())?;
+        let elapsed = started.elapsed();
+        if !interactive
+            && let Some(sequence) = input_driver.update(model_id, elapsed, &input_producer)?
+        {
+            runtime_client
+                .wait_for_input_sequence(sequence, RUNTIME_TIMEOUT)
+                .ok_or_else(|| OverlayError::new("preview input did not reach the runtime"))?;
+        }
+        apply_preview_parameters(
+            &mut model,
+            model_id,
+            elapsed,
+            runtime_client.snapshot().model_input,
+        )?;
         let snapshot = model
             .update_and_snapshot()
             .map_err(|error| OverlayError::new(error.to_string()))?;
@@ -222,9 +264,28 @@ pub(crate) fn run_model_preview(
         }
     }
 
+    let platform_input_edges = if let Some(input_service) = input_service {
+        input_service
+            .stop()
+            .map_err(|error| OverlayError::new(error.to_string()))?
+            .consumed_edges
+    } else {
+        if let Some(sequence) = input_driver.release_all(started.elapsed(), &input_producer)? {
+            runtime_client
+                .wait_for_input_sequence(sequence, RUNTIME_TIMEOUT)
+                .ok_or_else(|| OverlayError::new("preview releases did not reach the runtime"))?;
+        }
+        0
+    };
+    let stopped = runtime
+        .shutdown(RUNTIME_TIMEOUT)
+        .map_err(|error| OverlayError::new(error.to_string()))?;
+
     Ok(PreviewReport {
         frames_presented,
         dynamic_snapshots,
+        runtime_input_events: stopped.input.transport.enqueued,
+        platform_input_edges,
         drawable_count: overlay.meshes.len(),
         masked_drawable_count: overlay.masked_drawable_count,
         texture_count: overlay.textures.len(),
@@ -536,10 +597,123 @@ impl Drop for NativeOverlay {
     }
 }
 
+#[derive(Default)]
+struct PreviewInputDriver {
+    pressed: BTreeSet<InputControl>,
+    events_published: u64,
+}
+
+impl PreviewInputDriver {
+    fn update(
+        &mut self,
+        model_id: &str,
+        elapsed: Duration,
+        producer: &InputProducer,
+    ) -> Result<Option<u64>, OverlayError> {
+        let step = (elapsed.as_millis() / 600) % 4;
+        let mut desired = BTreeSet::new();
+        match model_id {
+            "standard" => {
+                if step < 2 {
+                    desired.insert(InputControl::Key(PhysicalKey::KEY_A));
+                }
+                if step == 0 {
+                    desired.insert(InputControl::Mouse(MouseButton::Left));
+                } else if step == 1 {
+                    desired.insert(InputControl::Mouse(MouseButton::Right));
+                }
+            }
+            "keyboard" | "gamepad" => {
+                desired.insert(InputControl::Key(if step < 2 {
+                    PhysicalKey::KEY_A
+                } else {
+                    RIGHT_ARROW
+                }));
+            }
+            _ => {}
+        }
+        self.apply(desired, elapsed, producer)
+    }
+
+    fn release_all(
+        &mut self,
+        elapsed: Duration,
+        producer: &InputProducer,
+    ) -> Result<Option<u64>, OverlayError> {
+        self.apply(BTreeSet::new(), elapsed, producer)
+    }
+
+    fn apply(
+        &mut self,
+        desired: BTreeSet<InputControl>,
+        elapsed: Duration,
+        producer: &InputProducer,
+    ) -> Result<Option<u64>, OverlayError> {
+        let at = MonotonicMillis::new(u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX));
+        let releases = self
+            .pressed
+            .difference(&desired)
+            .copied()
+            .collect::<Vec<_>>();
+        let presses = desired
+            .difference(&self.pressed)
+            .copied()
+            .collect::<Vec<_>>();
+        let mut last_sequence = None;
+        for (control, edge) in releases
+            .into_iter()
+            .map(|control| (control, InputEdge::Up))
+            .chain(
+                presses
+                    .into_iter()
+                    .map(|control| (control, InputEdge::Down)),
+            )
+        {
+            last_sequence = Some(
+                producer
+                    .publish(InputEvent::Edge {
+                        control,
+                        edge,
+                        source: InputSource::Capture,
+                        at,
+                    })
+                    .map_err(|error| OverlayError::new(error.to_string()))?,
+            );
+            self.events_published = self.events_published.saturating_add(1);
+        }
+        self.pressed = desired;
+        Ok(last_sequence)
+    }
+}
+
+fn preview_input_bindings(model_id: &str) -> InputBindings {
+    let mut key_hands = BTreeMap::new();
+    if matches!(model_id, "standard" | "keyboard") {
+        for usage in 0x04..=0x27 {
+            key_hands.insert(PhysicalKey::from_hid_usage(usage), HandSide::Left);
+        }
+        for usage in [
+            0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x35, 0x38, 0x39, 0x4c, 0xe0, 0xe1, 0xe2, 0xe3, 0xe4,
+            0xe5, 0xe6, 0xe7,
+        ] {
+            key_hands.insert(PhysicalKey::from_hid_usage(usage), HandSide::Left);
+        }
+    } else {
+        key_hands.insert(PhysicalKey::KEY_A, HandSide::Left);
+    }
+    if matches!(model_id, "keyboard" | "gamepad") {
+        for usage in 0x4f..=0x52 {
+            key_hands.insert(PhysicalKey::from_hid_usage(usage), HandSide::Right);
+        }
+    }
+    InputBindings::new(key_hands)
+}
+
 fn apply_preview_parameters(
     model: &mut Live2dModel,
     model_id: &str,
     elapsed: Duration,
+    input: ModelInputSnapshot,
 ) -> Result<(), OverlayError> {
     let seconds = elapsed.as_secs_f32();
     let horizontal = (seconds * std::f32::consts::TAU / 4.0).sin();
@@ -554,33 +728,31 @@ fn apply_preview_parameters(
             (ProductParameter::AngleZ, horizontal * vertical),
             (ProductParameter::EyeBallX, horizontal),
             (ProductParameter::EyeBallY, vertical),
+            (
+                ProductParameter::LeftHandDown,
+                f32::from(input.left_hand_down),
+            ),
+            (
+                ProductParameter::RightHandDown,
+                f32::from(input.right_hand_down),
+            ),
+            (
+                ProductParameter::MouseLeftDown,
+                f32::from(input.mouse_left_down),
+            ),
+            (
+                ProductParameter::MouseRightDown,
+                f32::from(input.mouse_right_down),
+            ),
         ],
     )?;
 
     let step = (elapsed.as_millis() / 600) % 4;
-    let left = f32::from(step < 2);
-    let right = f32::from(step >= 2);
     match model_id {
-        "standard" => set_preview_parameters(
-            model,
-            &[
-                (ProductParameter::LeftHandDown, left),
-                (ProductParameter::MouseLeftDown, f32::from(step == 0)),
-                (ProductParameter::MouseRightDown, f32::from(step == 1)),
-            ],
-        ),
-        "keyboard" => set_preview_parameters(
-            model,
-            &[
-                (ProductParameter::LeftHandDown, left),
-                (ProductParameter::RightHandDown, right),
-            ],
-        ),
+        "standard" | "keyboard" => Ok(()),
         "gamepad" => set_preview_parameters(
             model,
             &[
-                (ProductParameter::LeftHandDown, left),
-                (ProductParameter::RightHandDown, right),
                 (ProductParameter::StickShowLeftHand, 1.0),
                 (ProductParameter::StickShowRightHand, 1.0),
                 (ProductParameter::StickLeftDown, f32::from(step == 0)),

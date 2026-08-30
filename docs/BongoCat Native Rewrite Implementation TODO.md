@@ -231,9 +231,17 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 进行 10 分钟高速鼠标 + 键盘压力测试，edge 丢失计数必须为 0。
   - 状态（2026-08-29）：3 秒有界 `SendInput` 压力 smoke 对 A、S、Space、左 Shift、左 Control 和 E0 右 Control 发送 128 轮、共 1536 个 down/up 边沿；commit `f68b46f` 的 push/PR Windows jobs 均已通过完整、有序、无 duplicate/unmatched/decode/panic/残留门禁。keyboard-under-pointer-flood 模式又在相同键盘边沿之间插入 3072 个不可合并的相对鼠标移动，commit `64dd9d3` 的 push/PR Windows jobs 均验证实际 mouse message 洪峰不阻塞可靠 release。两者都不能替代本项要求的 10 分钟物理键鼠与交互场景，因此保持未勾选。
 - [ ] macOS 实现 CGEventTap、权限拒绝/授予和 tap 自动重启。
-  - 状态（2026-08-29）：真实 listen-only tap 与受控 timeout/user-disable Reset + re-enable 已通过；TCC 拒绝、撤销、重新授予和系统自然 timeout 矩阵仍待实机完成。
+  - 状态（2026-08-30）：正式 `bongocat-platform` 已实现 listen-only tap、专用 run loop、
+    callback panic boundary、固定容量边沿队列、overflow Reset 和受控 timeout/user-disable
+    Reset + re-enable；TCC 拒绝、撤销、重新授予和系统自然 timeout 矩阵仍待实机完成。
 - [ ] macOS 使用 CGEventSourceKeyState/CGEventSourceButtonState 校正 pressed state。
-  - 状态（2026-08-30）：run-loop consumer 已从 KeyDown/Up、带 callback-time pressed 方向的 `FlagsChanged`、MouseDown/Up 和 Reset 分别维护 key/button 候选集合，每 `250 ms` 使用 `CGEventSourceKeyState`/`CGEventSourceButtonState` 校正，连续 `2` 次缺失才释放。keyboard、left Shift modifier 和匿名 button 31 的 session event-tap callback 均在故意丢 release 后只由校正清零；modifier/mouse 分别通过 20-cycle，且 `unsupported_modifier_resets=0`。物理输入/系统自然丢事件与产品 runtime pressed state 接入仍待完成，因此保持未勾选。
+  - 状态（2026-08-30）：正式 run-loop consumer 已从 KeyDown/Up、带 callback-time pressed
+    方向的 `FlagsChanged`、MouseDown/Up 和 Reset 维护 key/button 候选集合，每 `250 ms`
+    使用 `CGEventSourceKeyState`/`CGEventSourceButtonState` 校正，连续 `2` 次缺失才释放。
+    同进程 ignored 集成测试已证明合成 left Shift down/up 经正式 CGEventTap 进入 runtime
+    `ModelInputSnapshot`，并以 `capture_queue_overflows=0`、`runtime_queue_overflows=0`、
+    `callback_panics=0` 有序停止；runtime 提前停止路径亦已证明统一 disable/remove/join 后
+    可立即重建第二个 tap。物理输入、系统自然丢事件与生命周期实测仍待完成，因此保持未勾选。
 - [x] 连续 start/stop/restart 输入服务 100 次，无资源泄漏。
   - 验收证据（2026-08-29）：release probe 现在严格校验每个 cycle 的 enabled 恢复、callback panic、queue overflow/closed event 和 NSWorkspace observer 成对注销，任一失败均非零退出。`leaks --atExit` 的 100-cycle 报告 `0 leaks for 0 total leaked bytes`、physical footprint `5232K`，`NSZombieEnabled=YES` 另完成 100/100；两次均为 `queue_overflows=0 callback_panics=0 clean_shutdown=true`，且每个 tap worker 都已 join。timeout/user-disable 各 20 次恢复已另行通过；权限故障循环留在 TCC 矩阵，不阻塞本 restart owner 子项。
 - [x] 记录 monio 对照结果，但不引入生产依赖；`docs/phase-0/monio-comparison.md` 基于 commit `d1766e0dcd20dea0435be16cd80adaa749b86e30` 记录 Raw Input、channel、reconciliation、Reset、callback 和许可证差异。
@@ -318,6 +326,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 创建 bongocat-render：render snapshot 和 renderer contract。
 - [ ] 创建 bongocat-ui：GPUI 页面和 design system。
 - [ ] 创建 bongocat-platform：Windows/macOS 系统服务。
+  - 状态（2026-08-30）：正式 crate 已建立 macOS 键鼠输入首个产品闭环，输入只发布强类型
+    `InputEvent`，不会向 runtime 泄漏 CoreGraphics 类型；Windows Raw Input、macOS 生命周期
+    通知、GameController 与其余系统服务尚未迁入，因此总项保持未完成。平台边界使用最新
+    `objc2-core-graphics 0.3.2`/`objc2-core-foundation 0.3.2`，没有把 Phase 0 spike 的
+    `core-graphics2` future-incompatibility 路径带入正式输入 crate。
 - [ ] 创建 shared/config、behavior、fixtures、resources。
 - [x] 避免空 crate；首批只建立 app/runtime/config 三个有独立依赖和测试价值的 crate。
 
@@ -447,10 +460,19 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 3.4 macOS 输入
 
-- [ ] 创建 listen-only CGEventTap 和专用 run loop/source。
-- [ ] 映射 keycode、flags changed 和左右修饰键。
+- [x] 创建 listen-only CGEventTap 和专用 run loop/source。
+  - 验收证据（2026-08-30）：正式 `MacInputService` 在独立 worker 上创建 session-level
+    listen-only tap 和 CFRunLoop source；同进程合成 Shift down/up 集成测试通过后，stop
+    禁用 tap、移除 source、发布最终 Reset 并 join worker。
+- [x] 映射 keycode、flags changed 和左右修饰键。
+  - 验收证据（2026-08-30）：macOS virtual keycode 映射为稳定 USB HID usage；
+    `FlagsChanged` 结合事件 flags 和 callback-time modifier set 区分左右修饰键方向，
+    unit test 与 left Shift callback→runtime 集成测试均通过。
 - [ ] 处理 tap timeout、user disable、权限变化和自动重建。
-- [ ] 通过 CGEventSourceKeyState 校正 pressed set。
+- [x] 通过 CGEventSourceKeyState 校正 pressed set。
+  - 验收证据（2026-08-30）：正式服务按 `250 ms` 周期查询候选 key/button 的系统状态，
+    连续 `2` 次缺失才由 runtime reconcile 释放；按键、修饰键和 button 31 的受控丢失
+    release 测试在 Phase 0 spike 通过，正式服务的 down/up runtime 闭环亦已通过。
 - [ ] 权限拒绝时进入 degraded，不产生重试风暴。
 - [ ] 锁屏、睡眠、快速用户切换和 tap 重启发送 Reset。
 - [ ] GameController 设备和 profile 映射进入统一事件。
@@ -951,7 +973,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 12. [ ] `P0-INPUT-MAC`：完成 CGEventTap 权限拒绝/授予/恢复、状态校正、GameController 和 100 次 restart。
 
 - [x] 完成权限/tap 生命周期 contract、只读 preflight、真实 callback 和受控 disable 恢复；TCC 权限矩阵与系统自然 timeout 仍未完成。
-- [x] 完成候选 pressed set 到 `CGEventSourceKeyState` 校正快照的边界和周期调度；真实 callback release 受控丢弃后的 20-cycle 闭环已通过，物理输入/系统自然丢事件、runtime 接入和生命周期实测仍未完成。
+- [x] 完成候选 pressed set 到 `CGEventSourceKeyState` 校正快照的边界和周期调度；真实 callback release 受控丢弃后的 20-cycle 闭环已通过，正式 `MacInputService` 又完成 left Shift down/up 到 runtime `ModelInputSnapshot` 的同进程集成测试。物理输入、系统自然丢事件和生命周期实测仍未完成。
 - [x] 完成 GameController extended-profile producer、可靠按钮边沿、keyed axis、连接 generation、background delivery 和 handler shutdown contract；framework 无设备 smoke 已通过，物理 controller/profile/热插拔矩阵仍待完成。
 
 13. [ ] `P0-CUBISM`：确认 SDK/许可证/binding 生成，三个预置模型完成 Core、资源和 renderer spike。

@@ -14,9 +14,10 @@ use std::{
 };
 
 pub use input::{
-    InputControl, InputDiagnostics, InputDisposition, InputEdge, InputEvent, InputResetReason,
-    InputSnapshot, InputSource, InputTransportDiagnostics, MonotonicMillis, MouseButton,
-    PhysicalKey, ReconciliationPolicy, SequencedInputEvent,
+    HandSide, InputBindings, InputControl, InputDiagnostics, InputDisposition, InputEdge,
+    InputEvent, InputResetReason, InputSnapshot, InputSource, InputTransportDiagnostics,
+    ModelInputSnapshot, MonotonicMillis, MouseButton, PhysicalKey, ReconciliationPolicy,
+    SequencedInputEvent,
 };
 use input::{InputState, InputTransportCounters};
 
@@ -31,6 +32,7 @@ pub enum RuntimeState {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RuntimeCommand {
     SetOverlayVisible(bool),
+    SetInputBindings(Arc<InputBindings>),
     ResetInput(InputResetReason),
     ApplyInput(Arc<SequencedInputEvent>),
     ActivateModel(Arc<InstalledModel>),
@@ -43,6 +45,7 @@ pub struct RuntimeSnapshot {
     pub overlay_visible: bool,
     pub active_model: Option<ModelSnapshot>,
     pub input: InputSnapshot,
+    pub model_input: ModelInputSnapshot,
     pub last_command_sequence: Option<u64>,
 }
 
@@ -54,6 +57,7 @@ impl RuntimeSnapshot {
             overlay_visible,
             active_model: None,
             input: InputSnapshot::default(),
+            model_input: ModelInputSnapshot::default(),
             last_command_sequence: None,
         }
     }
@@ -313,6 +317,49 @@ impl RuntimeClient {
         }
     }
 
+    pub fn wait_for_input_sequence(
+        &self,
+        input_sequence: u64,
+        timeout: Duration,
+    ) -> Option<RuntimeSnapshot> {
+        let deadline = Instant::now().checked_add(timeout)?;
+        let mut snapshot = self
+            .snapshot
+            .value
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        loop {
+            if snapshot
+                .input
+                .last_input_sequence
+                .is_some_and(|sequence| sequence >= input_sequence)
+            {
+                return Some(self.with_input_transport(snapshot.clone()));
+            }
+            if snapshot.state == RuntimeState::Stopped {
+                return None;
+            }
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return None;
+            }
+            let (next, result) = self
+                .snapshot
+                .changed
+                .wait_timeout(snapshot, remaining)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            snapshot = next;
+            if result.timed_out()
+                && !snapshot
+                    .input
+                    .last_input_sequence
+                    .is_some_and(|sequence| sequence >= input_sequence)
+            {
+                return None;
+            }
+        }
+    }
+
     fn with_input_transport(&self, mut snapshot: RuntimeSnapshot) -> RuntimeSnapshot {
         snapshot.input.transport = self.input_transport.snapshot();
         snapshot
@@ -427,6 +474,7 @@ fn publish(snapshot_cell: &SnapshotCell, update: impl FnOnce(&mut RuntimeSnapsho
 fn run_worker(receiver: Receiver<CommandEnvelope>, snapshot: Arc<SnapshotCell>) {
     let mut active_model = None;
     let mut input_state = InputState::default();
+    let mut input_bindings = InputBindings::default();
     publish(&snapshot, |current| current.state = RuntimeState::Ready);
     while let Ok(envelope) = receiver.recv() {
         let sequence = envelope.sequence;
@@ -437,10 +485,18 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, snapshot: Arc<SnapshotCell>) 
                     current.last_command_sequence = Some(sequence);
                 });
             }
+            WorkerCommand::Product(RuntimeCommand::SetInputBindings(bindings)) => {
+                input_bindings = Arc::unwrap_or_clone(bindings);
+                publish(&snapshot, |current| {
+                    current.model_input = input_state.model_snapshot(&input_bindings);
+                    current.last_command_sequence = Some(sequence);
+                });
+            }
             WorkerCommand::Product(RuntimeCommand::ResetInput(reason)) => {
                 input_state.force_reset(reason);
                 publish(&snapshot, |current| {
                     current.input = input_state.snapshot();
+                    current.model_input = input_state.model_snapshot(&input_bindings);
                     current.last_command_sequence = Some(sequence);
                 })
             }
@@ -448,6 +504,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, snapshot: Arc<SnapshotCell>) 
                 input_state.apply(Arc::unwrap_or_clone(envelope));
                 publish(&snapshot, |current| {
                     current.input = input_state.snapshot();
+                    current.model_input = input_state.model_snapshot(&input_bindings);
                     current.last_command_sequence = Some(sequence);
                 });
             }
