@@ -357,9 +357,13 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     Live2D 状态接入后再完成总项。
 - [ ] key/button edge 和 command 使用可靠有序队列。
   - 状态（2026-08-30）：正式 `ApplyInput` 与其他 command 共用有界 FIFO，input event
-    另带独立单调 sequence；平台 producer 接入及溢出后的主动 recovery publish 仍待完成。
+    另带独立单调 sequence；`InputProducer` 以非阻塞 publish 返回原始拒绝事件，并向
+    app/platform 暴露 recovery API。Windows/macOS producer 仍待接入。
 - [ ] 为每个可靠队列定义容量、生产者、消费者、满载策略和关闭语义，不使用无界队列逃避背压设计。
   - 状态（2026-08-28）：`spikes/input-queue/` 已验证固定容量 FIFO、满载返回原事件、关闭 drain 和 latest-value 槽位；`spikes/runtime-contract/` 进一步验证固定容量 command queue、Condvar 唤醒、溢出 Reset、worker drain 和 join 报告；runtime 的实际容量与产品 channel 选型仍待产品 crate。
+  - 状态（2026-08-30）：正式 app 当前使用容量 64 的共享 command/input FIFO，唯一
+    runtime worker 消费，owner shutdown 使用可靠控制消息并 join；未来 cursor/axis 独立
+    latest-value 通道及平台 producer 生命周期尚未建立，因此总项保持未勾选。
 - [ ] edge/command 携带单调 sequence id，诊断可发现乱序、重复和丢失但不记录具体键值。
   - 状态（2026-08-29）：Windows callback queue 的 edge、Reset 和 reconcile tick 已携带单调 `u64` sequence，正常压力路径要求 gap/duplicate 均为 0，受控 overflow 以 discarded backlog 数量产生等量 gap 并由 Reset 恢复。command queue 与产品 runtime 的统一 sequence contract 仍待实现，因此保持未勾选。
   - 状态（2026-08-29）：macOS callback queue 也已为 edge/Reset 分配单调 `u64` sequence，overflow Reset 继承被拒事件序号，consumer 统计 gap 与 duplicate/out-of-order；普通 tap、timeout/user disable 和 lifecycle 本机回归均为 0。commit `d7501dc` 的 push run `33257871184` 已通过 contract job `99114627795` 及原生 macOS job `99114627654` 的 input check/Clippy/test/release 门禁。command queue 与产品 runtime 的统一 contract 仍待实现，因此保持未勾选。
@@ -375,6 +379,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-29）：Windows Phase 0 producer 已把 XInput 0–3 slot 的连接/断开/标准按钮映射到可靠 FIFO，把六轴映射到 generation-keyed latest-values；33 项 library test 覆盖全范围归一化、10,000-axis flood、overflow Reset、断开丢弃、slot 重连和 shutdown。x64/ARM64 MSVC check 已通过；commit `b6bbd73` 的 push run `33260707799`、job `99122041439` 与 PR run `33260709475`、job `99122046077` 均通过真实 XInput API smoke，push job 完成 124 次无错误 slot 查询并干净关闭。runner `peak_connected=0`，物理手柄和产品 runtime 仍待完成，因此总项保持未勾选。
 - [ ] 队列溢出必须计数、记录并触发安全恢复。
   - 状态（2026-08-28）：`spikes/input-queue/` 的 `push_with_overflow_reset` 已固定溢出返回原事件、清空不可信缓存、注入 `Reset` 并记录恢复/丢弃计数；`spikes/runtime-contract/` 已将同一策略应用到 typed command queue 并通过 worker snapshot 暴露诊断；runtime producer、实际容量和输入/command sequence 仍待产品实现。
+  - 状态（2026-08-30）：产品 `InputProducer` 已聚合 enqueued、queue full、overflow 后
+    recovery 和 stopped 数量，所有 clone 共用 sequence；被拒事件消耗 sequence，使下一次
+    成功 publish 在 runtime 触发 gap Reset，显式 recovery Reset 保留 `QueueOverflow`
+    原因且只计一次。真实平台 callback 尚未改用该 producer，故保持未勾选。
 - [ ] 动画、长按和延迟统一使用 Instant。
 - [ ] 实现可注入 clock 和确定性 tick。
 - [ ] 实现 starting、ready、degraded、stopping、stopped 状态。

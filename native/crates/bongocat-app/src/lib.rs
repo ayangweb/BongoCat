@@ -6,7 +6,8 @@ use bongocat_config::{
 };
 use bongocat_model::{ModelError, ModelId, ModelPackageLimits, PreparedModel};
 use bongocat_runtime::{
-    RuntimeClient, RuntimeCommand, RuntimeOwner, RuntimeSnapshot, SendError, ShutdownError,
+    InputProducer, RuntimeClient, RuntimeCommand, RuntimeOwner, RuntimeSnapshot, SendError,
+    ShutdownError,
 };
 use std::{fmt, path::Path, sync::Arc, time::Duration};
 
@@ -94,6 +95,10 @@ impl Application {
 
     pub fn runtime_client(&self) -> RuntimeClient {
         self.runtime.client()
+    }
+
+    pub fn input_producer(&self) -> InputProducer {
+        self.runtime.input_producer()
     }
 
     pub fn config(&self) -> &NativeConfig {

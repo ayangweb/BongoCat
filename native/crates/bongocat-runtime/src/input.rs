@@ -1,4 +1,7 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 pub const DEFAULT_MISSING_CONFIRMATIONS: u8 = 2;
 
@@ -150,6 +153,50 @@ pub struct InputDiagnostics {
     pub non_monotonic_time_count: u64,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct InputTransportDiagnostics {
+    pub enqueued: u64,
+    pub queue_full: u64,
+    pub recovered_after_overflow: u64,
+    pub runtime_stopped: u64,
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct InputTransportCounters {
+    enqueued: AtomicU64,
+    queue_full: AtomicU64,
+    recovered_after_overflow: AtomicU64,
+    runtime_stopped: AtomicU64,
+}
+
+impl InputTransportCounters {
+    pub(crate) fn enqueued(&self) {
+        self.enqueued.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(crate) fn queue_full(&self) {
+        self.queue_full.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(crate) fn recovered_after_overflow(&self) {
+        self.recovered_after_overflow
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(crate) fn runtime_stopped(&self) {
+        self.runtime_stopped.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(crate) fn snapshot(&self) -> InputTransportDiagnostics {
+        InputTransportDiagnostics {
+            enqueued: self.enqueued.load(Ordering::Relaxed),
+            queue_full: self.queue_full.load(Ordering::Relaxed),
+            recovered_after_overflow: self.recovered_after_overflow.load(Ordering::Relaxed),
+            runtime_stopped: self.runtime_stopped.load(Ordering::Relaxed),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct InputSnapshot {
     pub pressed_key_count: usize,
@@ -157,6 +204,7 @@ pub struct InputSnapshot {
     pub last_reset_reason: Option<InputResetReason>,
     pub last_input_sequence: Option<u64>,
     pub diagnostics: InputDiagnostics,
+    pub transport: InputTransportDiagnostics,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -226,8 +274,12 @@ impl InputState {
         self.last_timestamp = Some(event_time);
 
         if gap > 0 {
-            self.reset(InputResetReason::SequenceGap);
-            self.apply_event(envelope.event);
+            if matches!(envelope.event, InputEvent::Reset { .. }) {
+                self.apply_event(envelope.event);
+            } else {
+                self.reset(InputResetReason::SequenceGap);
+                self.apply_event(envelope.event);
+            }
             return InputDisposition::AppliedAfterSequenceGap { missing: gap };
         }
         self.apply_event(envelope.event);
@@ -253,6 +305,7 @@ impl InputState {
             last_reset_reason: self.last_reset_reason,
             last_input_sequence: self.last_sequence,
             diagnostics: self.diagnostics,
+            transport: InputTransportDiagnostics::default(),
         }
     }
 

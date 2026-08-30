@@ -13,12 +13,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use input::InputState;
 pub use input::{
     InputControl, InputDiagnostics, InputDisposition, InputEdge, InputEvent, InputResetReason,
-    InputSnapshot, InputSource, MonotonicMillis, MouseButton, PhysicalKey, ReconciliationPolicy,
-    SequencedInputEvent,
+    InputSnapshot, InputSource, InputTransportDiagnostics, MonotonicMillis, MouseButton,
+    PhysicalKey, ReconciliationPolicy, SequencedInputEvent,
 };
+use input::{InputState, InputTransportCounters};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RuntimeState {
@@ -115,10 +115,92 @@ struct Producer {
     next_sequence: Mutex<u64>,
 }
 
+#[derive(Default)]
+struct InputProducerState {
+    next_sequence: u64,
+    recovery_pending: bool,
+}
+
+#[derive(Clone)]
+pub struct InputProducer {
+    runtime: RuntimeClient,
+    state: Arc<Mutex<InputProducerState>>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum InputPublishError {
+    QueueFull(InputEvent),
+    RuntimeStopped(InputEvent),
+}
+
+impl fmt::Display for InputPublishError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::QueueFull(_) => formatter.write_str("runtime input queue is full"),
+            Self::RuntimeStopped(_) => formatter.write_str("runtime is stopped"),
+        }
+    }
+}
+
+impl std::error::Error for InputPublishError {}
+
+impl InputProducer {
+    fn new(runtime: RuntimeClient) -> Self {
+        let state = Arc::clone(&runtime.input_producer_state);
+        Self { runtime, state }
+    }
+
+    pub fn publish(&self, event: InputEvent) -> Result<u64, InputPublishError> {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let input_sequence = state.next_sequence;
+        state.next_sequence = state.next_sequence.wrapping_add(1);
+        let command = RuntimeCommand::ApplyInput(Arc::new(SequencedInputEvent {
+            sequence: input_sequence,
+            event: event.clone(),
+        }));
+        match self.runtime.send(command) {
+            Ok(_) => {
+                self.runtime.input_transport.enqueued();
+                if state.recovery_pending {
+                    state.recovery_pending = false;
+                    self.runtime.input_transport.recovered_after_overflow();
+                }
+                Ok(input_sequence)
+            }
+            Err(SendError::QueueFull(_)) => {
+                state.recovery_pending = true;
+                self.runtime.input_transport.queue_full();
+                Err(InputPublishError::QueueFull(event))
+            }
+            Err(SendError::RuntimeStopped(_)) => {
+                self.runtime.input_transport.runtime_stopped();
+                Err(InputPublishError::RuntimeStopped(event))
+            }
+        }
+    }
+
+    pub fn recover(
+        &self,
+        reason: InputResetReason,
+        at: MonotonicMillis,
+    ) -> Result<u64, InputPublishError> {
+        self.publish(InputEvent::Reset { reason, at })
+    }
+
+    pub fn diagnostics(&self) -> InputTransportDiagnostics {
+        self.runtime.input_transport.snapshot()
+    }
+}
+
 #[derive(Clone)]
 pub struct RuntimeClient {
     producer: Arc<Producer>,
     snapshot: Arc<SnapshotCell>,
+    input_transport: Arc<InputTransportCounters>,
+    input_producer_state: Arc<Mutex<InputProducerState>>,
 }
 
 impl RuntimeClient {
@@ -150,11 +232,13 @@ impl RuntimeClient {
     }
 
     pub fn snapshot(&self) -> RuntimeSnapshot {
-        self.snapshot
+        let snapshot = self
+            .snapshot
             .value
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone()
+            .clone();
+        self.with_input_transport(snapshot)
     }
 
     pub fn wait_for_revision(
@@ -170,7 +254,7 @@ impl RuntimeClient {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         loop {
             if snapshot.revision >= minimum_revision {
-                return Some(snapshot.clone());
+                return Some(self.with_input_transport(snapshot.clone()));
             }
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
@@ -204,7 +288,7 @@ impl RuntimeClient {
                 .last_command_sequence
                 .is_some_and(|sequence| sequence >= command_sequence)
             {
-                return Some(snapshot.clone());
+                return Some(self.with_input_transport(snapshot.clone()));
             }
             if snapshot.state == RuntimeState::Stopped {
                 return None;
@@ -228,6 +312,11 @@ impl RuntimeClient {
             }
         }
     }
+
+    fn with_input_transport(&self, mut snapshot: RuntimeSnapshot) -> RuntimeSnapshot {
+        snapshot.input.transport = self.input_transport.snapshot();
+        snapshot
+    }
 }
 
 pub struct RuntimeOwner {
@@ -246,12 +335,15 @@ impl RuntimeOwner {
             value: Mutex::new(RuntimeSnapshot::starting(initial_overlay_visible)),
             changed: Condvar::new(),
         });
+        let input_transport = Arc::new(InputTransportCounters::default());
         let client = RuntimeClient {
             producer: Arc::new(Producer {
                 sender,
                 next_sequence: Mutex::new(0),
             }),
             snapshot: Arc::clone(&snapshot),
+            input_transport,
+            input_producer_state: Arc::new(Mutex::new(InputProducerState::default())),
         };
         let worker = thread::Builder::new()
             .name("bongocat-runtime".into())
@@ -265,6 +357,10 @@ impl RuntimeOwner {
 
     pub fn client(&self) -> RuntimeClient {
         self.client.clone()
+    }
+
+    pub fn input_producer(&self) -> InputProducer {
+        InputProducer::new(self.client())
     }
 
     pub fn shutdown(mut self, timeout: Duration) -> Result<RuntimeSnapshot, ShutdownError> {
@@ -518,6 +614,7 @@ mod tests {
     #[test]
     fn full_queue_returns_the_original_typed_command() {
         let (sender, _receiver) = mpsc::sync_channel(1);
+        let input_transport = Arc::new(InputTransportCounters::default());
         let client = RuntimeClient {
             producer: Arc::new(Producer {
                 sender,
@@ -527,6 +624,8 @@ mod tests {
                 value: Mutex::new(RuntimeSnapshot::starting(true)),
                 changed: Condvar::new(),
             }),
+            input_transport,
+            input_producer_state: Arc::new(Mutex::new(InputProducerState::default())),
         };
         client
             .send(RuntimeCommand::SetOverlayVisible(false))
@@ -537,5 +636,83 @@ mod tests {
                 InputResetReason::QueueOverflow,
             )))
         );
+    }
+
+    #[test]
+    fn input_producer_overflow_is_observable_and_recovery_resets_state() {
+        let (sender, receiver) = mpsc::sync_channel(2);
+        let input_transport = Arc::new(InputTransportCounters::default());
+        let client = RuntimeClient {
+            producer: Arc::new(Producer {
+                sender,
+                next_sequence: Mutex::new(0),
+            }),
+            snapshot: Arc::new(SnapshotCell {
+                value: Mutex::new(RuntimeSnapshot::starting(true)),
+                changed: Condvar::new(),
+            }),
+            input_transport,
+            input_producer_state: Arc::new(Mutex::new(InputProducerState::default())),
+        };
+        let producer = InputProducer::new(client.clone());
+        let sibling_producer = InputProducer::new(client.clone());
+        let down = InputEvent::Edge {
+            control: InputControl::Key(PhysicalKey::KEY_A),
+            edge: InputEdge::Down,
+            source: InputSource::Capture,
+            at: MonotonicMillis::new(0),
+        };
+        producer.publish(down).expect("down enqueued");
+        client
+            .send(RuntimeCommand::SetOverlayVisible(false))
+            .expect("queue filler");
+        let release = InputEvent::Edge {
+            control: InputControl::Key(PhysicalKey::KEY_A),
+            edge: InputEdge::Up,
+            source: InputSource::Capture,
+            at: MonotonicMillis::new(1),
+        };
+        assert_eq!(
+            sibling_producer.publish(release.clone()),
+            Err(InputPublishError::QueueFull(release))
+        );
+
+        let first = receiver.recv().expect("queued input");
+        let WorkerCommand::Product(RuntimeCommand::ApplyInput(first)) = first.command else {
+            panic!("first command must be input");
+        };
+        let mut state = InputState::default();
+        state.apply(Arc::unwrap_or_clone(first));
+        assert_eq!(state.snapshot().pressed_key_count, 1);
+        receiver.recv().expect("queue filler");
+
+        producer
+            .recover(InputResetReason::QueueOverflow, MonotonicMillis::new(2))
+            .expect("recovery enqueued");
+        let recovery = receiver.recv().expect("recovery input");
+        let WorkerCommand::Product(RuntimeCommand::ApplyInput(recovery)) = recovery.command else {
+            panic!("recovery command must be input");
+        };
+        assert_eq!(
+            state.apply(Arc::unwrap_or_clone(recovery)),
+            InputDisposition::AppliedAfterSequenceGap { missing: 1 }
+        );
+        let snapshot = state.snapshot();
+        assert_eq!(snapshot.pressed_key_count, 0);
+        assert_eq!(
+            snapshot.last_reset_reason,
+            Some(InputResetReason::QueueOverflow)
+        );
+        assert_eq!(snapshot.diagnostics.reset_count, 1);
+        assert_eq!(
+            producer.diagnostics(),
+            InputTransportDiagnostics {
+                enqueued: 2,
+                queue_full: 1,
+                recovered_after_overflow: 1,
+                runtime_stopped: 0,
+            }
+        );
+        assert_eq!(client.snapshot().input.transport, producer.diagnostics());
     }
 }
