@@ -1120,7 +1120,7 @@ pub(crate) fn run_model_switch_preview(
             handles_before =
                 Some(process_handle_count().map_err(windows_error("count process handles"))?);
             warmup_thread_high_water =
-                settle_process_thread_high_water(warmup_thread_high_water, THREAD_SETTLE_TIMEOUT)?;
+                settle_process_threads(warmup_thread_high_water, THREAD_SETTLE_TIMEOUT)?.high_water;
         }
     }
 
@@ -1134,10 +1134,10 @@ pub(crate) fn run_model_switch_preview(
     let handles_before = handles_before
         .ok_or_else(|| OverlayError::new("model-switch probe did not sample handle usage"))?;
     let gpu_bytes_after = overlay.renderer.current_local_memory_usage()?;
-    let threads_after =
-        process_thread_count().map_err(windows_error("count process threads after switching"))?;
     let handles_after =
         process_handle_count().map_err(windows_error("count process handles after switching"))?;
+    let threads_after =
+        settle_process_threads(warmup_thread_high_water, THREAD_SETTLE_TIMEOUT)?.settled_count;
     if gpu_bytes_after > gpu_bytes_before {
         return Err(OverlayError::new(format!(
             "DXGI local memory usage grew from {gpu_bytes_before} to {gpu_bytes_after} bytes during model switching"
@@ -1479,29 +1479,40 @@ fn process_thread_count() -> WindowsResult<u32> {
     Ok(count)
 }
 
-fn settle_process_thread_high_water(
+struct SettledProcessThreads {
+    high_water: u32,
+    settled_count: u32,
+}
+
+fn settle_process_threads(
     mut high_water: u32,
     timeout: Duration,
-) -> Result<u32, OverlayError> {
+) -> Result<SettledProcessThreads, OverlayError> {
     let deadline = Instant::now() + timeout;
+    let mut last_count = None;
     let mut stable_samples = 0_u32;
     while Instant::now() < deadline {
         pump_window_messages();
         thread::sleep(THREAD_SETTLE_INTERVAL);
-        let current = process_thread_count()
-            .map_err(windows_error("count process threads while settling warmup"))?;
-        if current > high_water {
-            high_water = current;
-            stable_samples = 0;
-        } else {
+        let current = process_thread_count().map_err(windows_error(
+            "count process threads while settling resource probe",
+        ))?;
+        high_water = high_water.max(current);
+        if last_count == Some(current) {
             stable_samples = stable_samples.saturating_add(1);
-            if stable_samples >= THREAD_SETTLE_SAMPLES {
-                return Ok(high_water);
-            }
+        } else {
+            last_count = Some(current);
+            stable_samples = 1;
+        }
+        if stable_samples >= THREAD_SETTLE_SAMPLES {
+            return Ok(SettledProcessThreads {
+                high_water,
+                settled_count: current,
+            });
         }
     }
     Err(OverlayError::new(format!(
-        "process thread count did not stabilize below high-water mark {high_water} after warmup"
+        "process thread count did not stabilize below high-water mark {high_water}"
     )))
 }
 
