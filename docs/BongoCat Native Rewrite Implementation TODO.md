@@ -1333,7 +1333,8 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       阻塞 COM dialog 也移至专用 STA worker。macOS 26.5.2 arm64 已通过真实 `NSOpenPanel`
       Cancel 和仓库预置 `standard` 目录 Select：页面分别显示 `Selection cancelled` 与
       `Folder selected`/建议 ID `standard`，进程未崩溃且最终经产品 Quit 正常退出；未触发导入。
-      Windows 真实 dialog 选择/取消 smoke 与原生页面 CI 尚未完成，因此保持未勾选。
+      Windows release smoke 已用 PID 限定的 Win32 controller 驱动真实 dialog 标准取消/确认路径，
+      并由 callback 超时及 Rust 目录复验保护；等待原生 Windows CI 实机确认，因此保持未勾选。
       `block2 0.6.2`、`objc2 0.6.4`、AppKit/Foundation `0.3.2` 与 `windows 0.62.2` 均为当前
       最新稳定版并已在 workspace 锁定；最低 Rust 1.71/1.82、MIT/Zlib/Apache-2.0 许可证兼容
       workspace，替换边界仅为对应 OS 原生 API binding。完整 Native format、Clippy、workspace

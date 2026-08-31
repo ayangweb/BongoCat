@@ -94,6 +94,21 @@ jobs:
         env:
           BONGOCAT_BUILD_ENV: production
         run: cargo check --manifest-path native/Cargo.toml --locked -p bongocat-app --release
+      - name: Smoke Windows model directory picker
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        timeout-minutes: 3
+        env:
+          RUST_BACKTRACE: full
+        run: |
+          cargo run --manifest-path native/Cargo.toml --locked --release -p bongocat-platform --example model_directory_picker_smoke -- --expect-cancel --auto
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+          cargo run --manifest-path native/Cargo.toml --locked --release -p bongocat-platform --example model_directory_picker_smoke -- --expect-selected-any --auto
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
       - name: Check Windows ARM64 platform source
         if: matrix.os == 'windows-latest'
         shell: bash
