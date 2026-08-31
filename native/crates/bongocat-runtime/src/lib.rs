@@ -228,6 +228,19 @@ pub enum MotionPriority {
     Force,
 }
 
+/// A shortcut action resolved by the configuration/platform boundary.
+/// Runtime receives the already-typed model identity and never parses a
+/// behavior string or platform key code on its real-time thread.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ShortcutAction {
+    StartMotion {
+        motion: MotionId,
+        priority: MotionPriority,
+    },
+    StopMotion(MotionId),
+    SetExpression(ExpressionId),
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ActiveMotionSnapshot {
     pub motion: MotionId,
@@ -291,6 +304,18 @@ pub enum RuntimeCommand {
     },
     StopMotion(MotionId),
     SetExpression(ExpressionId),
+}
+
+impl ShortcutAction {
+    fn into_runtime_command(self) -> RuntimeCommand {
+        match self {
+            Self::StartMotion { motion, priority } => {
+                RuntimeCommand::StartMotion { motion, priority }
+            }
+            Self::StopMotion(motion) => RuntimeCommand::StopMotion(motion),
+            Self::SetExpression(expression) => RuntimeCommand::SetExpression(expression),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -524,6 +549,10 @@ impl RuntimeClient {
                 WorkerCommand::Shutdown => unreachable!("clients cannot send shutdown"),
             },
         }
+    }
+
+    pub fn trigger_shortcut(&self, action: ShortcutAction) -> Result<u64, SendError> {
+        self.send(action.into_runtime_command())
     }
 
     pub fn snapshot(&self) -> RuntimeSnapshot {
@@ -2786,6 +2815,61 @@ mod tests {
             .wait_for_command(duplicate_stop_sequence, TIMEOUT)
             .expect("duplicate stop result");
         assert!(duplicate_stop.active_motion.is_none());
+        owner.shutdown(TIMEOUT).expect("runtime shutdown");
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn shortcut_action_dispatch_reuses_typed_motion_and_expression_commands() {
+        let (owner, consumer) = RuntimeOwner::start_with_rendering(true, 8);
+        let client = owner.client();
+        client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+        let activation_sequence = client
+            .send(RuntimeCommand::ActivateModel(Arc::new(preset_model(
+                "standard",
+            ))))
+            .expect("activation command");
+        let candidate = wait_for_prepared_model(&client, &consumer, activation_sequence);
+        report_model_prepared(&client, &consumer, &candidate);
+
+        let motion = MotionId::new("CAT_motion", 0).expect("motion id");
+        let start_sequence = client
+            .trigger_shortcut(ShortcutAction::StartMotion {
+                motion: motion.clone(),
+                priority: MotionPriority::Normal,
+            })
+            .expect("shortcut start");
+        let started = client
+            .wait_for_command(start_sequence, TIMEOUT)
+            .expect("shortcut motion result");
+        assert_eq!(
+            started.active_motion.as_ref().map(|active| &active.motion),
+            Some(&motion)
+        );
+
+        let expression = ExpressionId::new("live2d_expression0.exp3.json")
+            .expect("expression id");
+        let expression_sequence = client
+            .trigger_shortcut(ShortcutAction::SetExpression(expression.clone()))
+            .expect("shortcut expression");
+        let expressed = client
+            .wait_for_command(expression_sequence, TIMEOUT)
+            .expect("shortcut expression result");
+        assert_eq!(
+            expressed
+                .active_expression
+                .as_ref()
+                .map(|active| &active.expression),
+            Some(&expression)
+        );
+
+        let stop_sequence = client
+            .trigger_shortcut(ShortcutAction::StopMotion(motion))
+            .expect("shortcut stop");
+        let stopped = client
+            .wait_for_command(stop_sequence, TIMEOUT)
+            .expect("shortcut stop result");
+        assert!(stopped.active_motion.is_none());
         owner.shutdown(TIMEOUT).expect("runtime shutdown");
     }
 

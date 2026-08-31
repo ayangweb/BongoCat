@@ -67,6 +67,12 @@ key 必须是无空白的可打印 ASCII token。校验器以固定顺序
 命名空间；同一 chord 不能绑定多个 command 或模型行为。该规则只冻结持久化和冲突
 检测语义，物理 key 映射、系统注册和捕获仍由后续平台 adapter 负责。
 
+应用 command 使用闭合集合：`toggle_overlay`、`open_settings`、`toggle_mirror`、
+`toggle_click_through` 和 `toggle_always_on_top`。未知 command 在配置提交前拒绝。
+模型行为使用 `motion:<group>:<index>` 或 `expression:<name>` 形式；`model_id` 仍由
+绑定单独提供，runtime 在动作进入队列前接收解析后的强类型 motion/expression identity。
+行为 ID 不接受旧版的复合模型路径或任意未定义 kind。
+
 窗口坐标、pressed state、权限结果、模型解析缓存和 renderer 状态不属于 `config.json`。可恢复窗口布局写入 `state.json`；其余瞬时/派生状态不持久化。
 
 ## Application State v1

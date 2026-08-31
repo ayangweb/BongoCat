@@ -1882,9 +1882,11 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
     - 退出条件：字符串绑定在配置提交前解析为平台无关的单 key chord；别名/顺序规范化稳定，
       非法或重复绑定返回可重试错误；不把平台 keycode、窗口句柄或原始按键流带入 config；
       后续平台捕获、清除、恢复默认和动作触发必须复用该 canonical contract。
-    - 状态（2026-09-01）：Rust parser、跨 `commands`/`model_behaviors` 冲突检测、单元测试和
-      `shared/config/native-config-contract.md` 已进入 `next`；平台注册、捕获 UI、runtime
-      action dispatch 与实机快捷键证据仍未完成。
+    - 状态（2026-09-01）：Rust parser、跨 `commands`/`model_behaviors` 冲突检测、闭合的
+      application command 与 `motion:<group>:<index>`/`expression:<name>` behavior action
+      解析、runtime typed shortcut dispatch、单元测试和 `shared/config/native-config-contract.md`
+      已进入 `next`；配置持久化 settings command、平台注册、捕获 UI、清除/恢复默认和实机
+      快捷键证据仍未完成。
 
 ## 13. 待决策清单
 

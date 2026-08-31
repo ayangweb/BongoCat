@@ -228,6 +228,59 @@ pub struct ShortcutConfig {
     pub model_behaviors: Vec<ModelBehaviorBinding>,
 }
 
+/// Application-level commands that may be persisted as global shortcuts.
+/// Keeping this list closed prevents an unvalidated string from becoming a
+/// platform registration or runtime command.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ShortcutCommand {
+    ToggleOverlay,
+    OpenSettings,
+    ToggleMirror,
+    ToggleClickThrough,
+    ToggleAlwaysOnTop,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ShortcutCommandParseError {
+    Empty,
+    Unknown,
+}
+
+impl ShortcutCommand {
+    pub fn parse(value: &str) -> Result<Self, ShortcutCommandParseError> {
+        match value.trim() {
+            "toggle_overlay" => Ok(Self::ToggleOverlay),
+            "open_settings" => Ok(Self::OpenSettings),
+            "toggle_mirror" => Ok(Self::ToggleMirror),
+            "toggle_click_through" => Ok(Self::ToggleClickThrough),
+            "toggle_always_on_top" => Ok(Self::ToggleAlwaysOnTop),
+            "" => Err(ShortcutCommandParseError::Empty),
+            _ => Err(ShortcutCommandParseError::Unknown),
+        }
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ToggleOverlay => "toggle_overlay",
+            Self::OpenSettings => "open_settings",
+            Self::ToggleMirror => "toggle_mirror",
+            Self::ToggleClickThrough => "toggle_click_through",
+            Self::ToggleAlwaysOnTop => "toggle_always_on_top",
+        }
+    }
+}
+
+impl fmt::Display for ShortcutCommandParseError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Empty => "shortcut command must not be blank",
+            Self::Unknown => "shortcut command is not supported",
+        })
+    }
+}
+
+impl std::error::Error for ShortcutCommandParseError {}
+
 /// A platform-neutral keyboard chord used to validate persisted shortcut
 /// bindings before a platform adapter attempts to capture or register them.
 /// The key is kept as a canonical token because mapping it to a physical key
@@ -360,6 +413,74 @@ pub struct ModelBehaviorBinding {
     pub shortcut: String,
 }
 
+/// A model action encoded by the Native shortcut contract. The model ID is
+/// kept on the binding so the application can scope the action to one model.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ModelBehaviorAction {
+    Motion { group: String, index: usize },
+    Expression { name: String },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ModelBehaviorParseError {
+    Empty,
+    InvalidMotion,
+    InvalidExpression,
+    UnknownKind,
+}
+
+impl ModelBehaviorBinding {
+    pub fn parse_action(&self) -> Result<ModelBehaviorAction, ModelBehaviorParseError> {
+        let value = self.behavior_id.trim();
+        if value.is_empty() {
+            return Err(ModelBehaviorParseError::Empty);
+        }
+        let mut parts = value.split(':');
+        match parts.next() {
+            Some("motion") => {
+                let group = parts.next().unwrap_or_default().trim();
+                let Some(index) = parts.next() else {
+                    return Err(ModelBehaviorParseError::InvalidMotion);
+                };
+                if group.is_empty() || parts.next().is_some() {
+                    return Err(ModelBehaviorParseError::InvalidMotion);
+                }
+                let index = index
+                    .parse::<usize>()
+                    .map_err(|_| ModelBehaviorParseError::InvalidMotion)?;
+                Ok(ModelBehaviorAction::Motion {
+                    group: group.to_owned(),
+                    index,
+                })
+            }
+            Some("expression") => {
+                let name = parts.collect::<Vec<_>>().join(":");
+                if name.trim().is_empty() {
+                    return Err(ModelBehaviorParseError::InvalidExpression);
+                }
+                Ok(ModelBehaviorAction::Expression {
+                    name: name.trim().to_owned(),
+                })
+            }
+            Some(_) => Err(ModelBehaviorParseError::UnknownKind),
+            None => Err(ModelBehaviorParseError::Empty),
+        }
+    }
+}
+
+impl fmt::Display for ModelBehaviorParseError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Empty => "model behavior must not be blank",
+            Self::InvalidMotion => "model motion behavior must be motion:<group>:<index>",
+            Self::InvalidExpression => "model expression behavior must be expression:<name>",
+            Self::UnknownKind => "model behavior kind is not supported",
+        })
+    }
+}
+
+impl std::error::Error for ModelBehaviorParseError {}
+
 impl Default for NativeConfig {
     fn default() -> Self {
         Self {
@@ -465,6 +586,15 @@ impl NativeConfig {
                 || binding.shortcut.trim().is_empty()
         }) {
             return Err(ConfigError::InvalidValue("shortcuts.model_behaviors"));
+        }
+        for binding in &self.shortcuts.commands {
+            ShortcutCommand::parse(&binding.command)
+                .map_err(|_| ConfigError::InvalidValue("shortcuts.command"))?;
+        }
+        for binding in &self.shortcuts.model_behaviors {
+            binding
+                .parse_action()
+                .map_err(|_| ConfigError::InvalidValue("shortcuts.behavior"))?;
         }
         let mut canonical_shortcuts = std::collections::BTreeSet::new();
         for shortcut in self
@@ -2014,7 +2144,7 @@ mod tests {
         });
         config.shortcuts.model_behaviors.push(ModelBehaviorBinding {
             model_id: "standard".to_owned(),
-            behavior_id: "motion:tap".to_owned(),
+            behavior_id: "motion:tap:0".to_owned(),
             shortcut: "alt + ctrl + b".to_owned(),
         });
         assert!(matches!(
@@ -2026,6 +2156,82 @@ mod tests {
         assert!(matches!(
             config.validate(),
             Err(ConfigError::InvalidValue("shortcuts.binding"))
+        ));
+    }
+
+    #[test]
+    fn shortcut_commands_and_model_behaviors_parse_as_closed_actions() {
+        assert_eq!(
+            ShortcutCommand::parse("toggle_overlay").expect("command"),
+            ShortcutCommand::ToggleOverlay
+        );
+        assert_eq!(
+            ShortcutCommand::parse("open_settings").expect("command"),
+            ShortcutCommand::OpenSettings
+        );
+        assert_eq!(
+            ShortcutCommand::ToggleAlwaysOnTop.as_str(),
+            "toggle_always_on_top"
+        );
+        assert_eq!(
+            ShortcutCommand::parse("unknown"),
+            Err(ShortcutCommandParseError::Unknown)
+        );
+
+        let motion = ModelBehaviorBinding {
+            model_id: "standard".to_owned(),
+            behavior_id: "motion:CAT_motion:12".to_owned(),
+            shortcut: "Control+1".to_owned(),
+        };
+        assert_eq!(
+            motion.parse_action().expect("motion action"),
+            ModelBehaviorAction::Motion {
+                group: "CAT_motion".to_owned(),
+                index: 12,
+            }
+        );
+        let expression = ModelBehaviorBinding {
+            model_id: "standard".to_owned(),
+            behavior_id: "expression:happy:variant".to_owned(),
+            shortcut: "Control+2".to_owned(),
+        };
+        assert_eq!(
+            expression.parse_action().expect("expression action"),
+            ModelBehaviorAction::Expression {
+                name: "happy:variant".to_owned(),
+            }
+        );
+        for behavior_id in ["motion:group", "motion:group:nope", "unknown:name"] {
+            let binding = ModelBehaviorBinding {
+                model_id: "standard".to_owned(),
+                behavior_id: behavior_id.to_owned(),
+                shortcut: "Control+3".to_owned(),
+            };
+            assert!(binding.parse_action().is_err(), "{behavior_id}");
+        }
+    }
+
+    #[test]
+    fn config_rejects_unknown_shortcut_actions_before_commit() {
+        let mut config = NativeConfig::default();
+        config.shortcuts.commands.push(ShortcutBinding {
+            command: "future_command".to_owned(),
+            shortcut: "Control+1".to_owned(),
+        });
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::InvalidValue("shortcuts.command"))
+        ));
+
+        config.shortcuts.commands.clear();
+        config.shortcuts.model_behaviors.push(ModelBehaviorBinding {
+            model_id: "standard".to_owned(),
+            behavior_id: "motion:CAT_motion".to_owned(),
+            shortcut: "Control+1".to_owned(),
+        });
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::InvalidValue("shortcuts.behavior"))
         ));
     }
 
