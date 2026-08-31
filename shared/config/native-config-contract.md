@@ -72,6 +72,18 @@ shortcuts
 - 每个环境最多保留最新 8 份、总计最多 8 MiB，最旧优先清理。其他文件不参与计数或删除。
 - 备份创建或 retention 收敛失败会中止配置替换，继续保留当前 `config.json`。
 
+## Write Failure Contract
+
+- 项目稳定区分 `PermissionDenied`、`StorageFull` 和 `TargetOccupied`。前两类分别覆盖操作系统的
+  权限/只读文件系统与空间/配额不足结果；固定 `config.json.tmp` 已存在，或原子写入返回等价
+  的文件/目录占用结果时归为 `TargetOccupied`。其他 I/O 失败保持通用错误。
+- settings service 将三类原因映射为匿名且可操作的 typed error code，不公开配置路径、临时路径或
+  操作系统原始错误文本；失败 command 不推进 settings revision，也不修改 runtime snapshot。
+- atomic writer 只删除本次调用已成功创建的 temp。创建前已存在的文件、目录或符号链接，以及在
+  检查与 `create_new` 之间并发出现的条目都不得删除；写入失败继续逐字节保留 current。
+- 测试在 temp 创建前注入权限失败、创建后注入空间不足，并使用真实文件/目录占用 temp target；每种情况
+  都验证 current 保留、partial temp 清理边界和稳定 settings error。
+
 ## Corruption Recovery
 
 - 当前 `config.json` 无法 parse、迁移或 validate 时，在当前环境 writer lock 内按文件名从新到旧

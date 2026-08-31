@@ -378,6 +378,7 @@ pub enum ConfigError {
     BackupTooLarge,
     RecoveryArchiveTooLarge,
     InterruptedArchiveTooLarge,
+    WriteTargetOccupied,
     RecoveryNotRequired,
     NoValidRecoveryBackup {
         candidates: usize,
@@ -408,6 +409,9 @@ impl fmt::Display for ConfigError {
             Self::InterruptedArchiveTooLarge => {
                 formatter.write_str("interrupted config exceeds archive budget")
             }
+            Self::WriteTargetOccupied => {
+                formatter.write_str("configuration write target is occupied")
+            }
             Self::RecoveryNotRequired => {
                 formatter.write_str("configuration recovery is not required")
             }
@@ -436,6 +440,35 @@ impl From<serde_json::Error> for ConfigError {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ConfigWriteFailureReason {
+    PermissionDenied,
+    StorageFull,
+    TargetOccupied,
+}
+
+impl ConfigError {
+    pub fn write_failure_reason(&self) -> Option<ConfigWriteFailureReason> {
+        match self {
+            Self::WriteTargetOccupied => Some(ConfigWriteFailureReason::TargetOccupied),
+            Self::Io(error) => match error.kind() {
+                ErrorKind::PermissionDenied | ErrorKind::ReadOnlyFilesystem => {
+                    Some(ConfigWriteFailureReason::PermissionDenied)
+                }
+                ErrorKind::StorageFull | ErrorKind::QuotaExceeded => {
+                    Some(ConfigWriteFailureReason::StorageFull)
+                }
+                ErrorKind::AlreadyExists
+                | ErrorKind::IsADirectory
+                | ErrorKind::NotADirectory
+                | ErrorKind::DirectoryNotEmpty => Some(ConfigWriteFailureReason::TargetOccupied),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+}
+
 struct WriterLock {
     _file: File,
 }
@@ -454,18 +487,42 @@ enum InterruptedArchiveKind {
     Invalid,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ConfigWriteStage {
+    BeforeTempCreate,
+    AfterTempCreate,
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum InjectedConfigWriteFailure {
+    PermissionDenied,
+    StorageFull,
+}
+
 pub struct ConfigStore {
     layout: StorageLayout,
+    #[cfg(test)]
+    injected_write_failure: Option<InjectedConfigWriteFailure>,
 }
 
 impl ConfigStore {
     pub fn new(layout: StorageLayout) -> Result<Self, ConfigError> {
         layout.create_directories()?;
-        Ok(Self { layout })
+        Ok(Self {
+            layout,
+            #[cfg(test)]
+            injected_write_failure: None,
+        })
     }
 
     pub const fn layout(&self) -> &StorageLayout {
         &self.layout
+    }
+
+    #[cfg(test)]
+    fn inject_write_failure(&mut self, failure: InjectedConfigWriteFailure) {
+        self.injected_write_failure = Some(failure);
     }
 
     pub fn load_or_default(&self) -> Result<ConfigLoadOutcome, ConfigError> {
@@ -527,7 +584,7 @@ impl ConfigStore {
         self.archive_invalid_config_unlocked(&invalid_current)?;
         let config = NativeConfig::default();
         let bytes = serde_json::to_vec_pretty(&config)?;
-        write_config_atomic(&self.layout.config, &bytes)?;
+        self.write_config_atomic(&self.layout.config, &bytes)?;
         let verified = fs::read(&self.layout.config)?;
         let Ok((verified_config, revision, false)) = parse_config(&verified) else {
             restore_config_bytes(&self.layout.config, Some(&invalid_current))?;
@@ -611,7 +668,7 @@ impl ConfigStore {
             Err(error) if error.kind() == ErrorKind::NotFound => None,
             Err(error) => return Err(error.into()),
         };
-        write_config_atomic(&self.layout.config, &bytes)?;
+        self.write_config_atomic(&self.layout.config, &bytes)?;
         let verification = fs::read(&self.layout.config)
             .map_err(ConfigError::from)
             .and_then(|verified| parse_config(&verified));
@@ -624,6 +681,26 @@ impl ConfigStore {
             return Err(ConfigError::RecoveryVerificationFailed);
         }
         Ok(revision)
+    }
+
+    fn write_config_atomic(&self, path: &Path, bytes: &[u8]) -> Result<(), ConfigError> {
+        #[cfg(test)]
+        if let Some(failure) = self.injected_write_failure {
+            return write_config_atomic_with_hook(path, bytes, move |stage| {
+                match (failure, stage) {
+                    (
+                        InjectedConfigWriteFailure::PermissionDenied,
+                        ConfigWriteStage::BeforeTempCreate,
+                    ) => Err(io::Error::from(ErrorKind::PermissionDenied).into()),
+                    (
+                        InjectedConfigWriteFailure::StorageFull,
+                        ConfigWriteStage::AfterTempCreate,
+                    ) => Err(io::Error::from(ErrorKind::StorageFull).into()),
+                    _ => Ok(()),
+                }
+            });
+        }
+        write_config_atomic(path, bytes)
     }
 
     fn recover_interrupted_commit_unlocked(
@@ -764,7 +841,7 @@ impl ConfigStore {
             };
             let restored = serde_json::to_vec_pretty(&config)?;
             self.archive_invalid_config_unlocked(invalid_current)?;
-            write_config_atomic(&self.layout.config, &restored)?;
+            self.write_config_atomic(&self.layout.config, &restored)?;
             let verified = fs::read(&self.layout.config)?;
             let Ok((verified_config, verified_revision, false)) = parse_config(&verified) else {
                 write_config_atomic(&self.layout.config, invalid_current)?;
@@ -1109,6 +1186,14 @@ fn inspect_config_file(path: &Path) -> Result<ConfigFileStatus, ConfigError> {
 }
 
 fn write_config_atomic(path: &Path, bytes: &[u8]) -> Result<(), ConfigError> {
+    write_config_atomic_with_hook(path, bytes, |_| Ok(()))
+}
+
+fn write_config_atomic_with_hook(
+    path: &Path,
+    bytes: &[u8],
+    mut hook: impl FnMut(ConfigWriteStage) -> Result<(), ConfigError>,
+) -> Result<(), ConfigError> {
     let previous = match fs::read(path) {
         Ok(previous) => Some(previous),
         Err(error) if error.kind() == ErrorKind::NotFound => None,
@@ -1116,11 +1201,20 @@ fn write_config_atomic(path: &Path, bytes: &[u8]) -> Result<(), ConfigError> {
     };
     let temp_path = config_temp_path(path);
     let mut replaced = false;
+    let mut temp_created = false;
     let result = (|| -> Result<(), ConfigError> {
+        match fs::symlink_metadata(&temp_path) {
+            Ok(_) => return Err(ConfigError::WriteTargetOccupied),
+            Err(error) if error.kind() == ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+        hook(ConfigWriteStage::BeforeTempCreate)?;
         let mut file = OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&temp_path)?;
+        temp_created = true;
+        hook(ConfigWriteStage::AfterTempCreate)?;
         file.write_all(bytes)?;
         file.sync_all()?;
         drop(file);
@@ -1132,7 +1226,7 @@ fn write_config_atomic(path: &Path, bytes: &[u8]) -> Result<(), ConfigError> {
     if let Err(error) = result {
         if replaced {
             restore_config_bytes(path, previous.as_deref())?;
-        } else {
+        } else if temp_created {
             match fs::remove_file(&temp_path) {
                 Ok(()) => {}
                 Err(remove_error) if remove_error.kind() == ErrorKind::NotFound => {}
@@ -1257,6 +1351,85 @@ mod tests {
         let stale = store.commit_if_revision(&config, initial_revision);
         assert!(matches!(stale, Err(ConfigError::RevisionConflict { .. })));
         assert_eq!(config_backup_paths(store.layout()).len(), 1);
+    }
+
+    #[test]
+    fn injected_permission_and_storage_failures_preserve_current_and_clean_temp() {
+        for (failure, expected_reason) in [
+            (
+                InjectedConfigWriteFailure::PermissionDenied,
+                ConfigWriteFailureReason::PermissionDenied,
+            ),
+            (
+                InjectedConfigWriteFailure::StorageFull,
+                ConfigWriteFailureReason::StorageFull,
+            ),
+        ] {
+            let base = tempdir().expect("temp directory");
+            let mut store = ConfigStore::new(StorageLayout::under(
+                base.path(),
+                BuildEnvironment::Development,
+            ))
+            .expect("config store");
+            let loaded = store.load_or_default().expect("default config");
+            let original = fs::read(&store.layout().config).expect("original config");
+            let mut next = loaded.config;
+            next.overlay.visible = false;
+            store.inject_write_failure(failure);
+
+            let error = store
+                .commit_if_revision(&next, loaded.revision)
+                .expect_err("injected write failure");
+            assert_eq!(error.write_failure_reason(), Some(expected_reason));
+            assert_eq!(
+                fs::read(&store.layout().config).expect("preserved current"),
+                original
+            );
+            assert!(!config_temp_path(&store.layout().config).exists());
+        }
+    }
+
+    #[test]
+    fn occupied_temp_file_or_directory_is_retained_and_never_replaces_current() {
+        for directory in [false, true] {
+            let base = tempdir().expect("temp directory");
+            let store = ConfigStore::new(StorageLayout::under(
+                base.path(),
+                BuildEnvironment::Production,
+            ))
+            .expect("config store");
+            let loaded = store.load_or_default().expect("default config");
+            let original = fs::read(&store.layout().config).expect("original config");
+            let occupied = config_temp_path(&store.layout().config);
+            if directory {
+                fs::create_dir(&occupied).expect("occupied temp directory");
+            } else {
+                fs::write(&occupied, b"unowned occupied target").expect("occupied temp file");
+            }
+            let mut next = loaded.config;
+            next.overlay.visible = false;
+
+            let error = store
+                .commit_if_revision(&next, loaded.revision)
+                .expect_err("occupied target failure");
+            assert!(matches!(error, ConfigError::WriteTargetOccupied));
+            assert_eq!(
+                error.write_failure_reason(),
+                Some(ConfigWriteFailureReason::TargetOccupied)
+            );
+            assert_eq!(
+                fs::read(&store.layout().config).expect("preserved current"),
+                original
+            );
+            if directory {
+                assert!(occupied.is_dir());
+            } else {
+                assert_eq!(
+                    fs::read(&occupied).expect("preserved occupied file"),
+                    b"unowned occupied target"
+                );
+            }
+        }
     }
 
     #[test]

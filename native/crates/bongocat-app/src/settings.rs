@@ -1,4 +1,5 @@
 use crate::{Application, ApplicationConfigStatus, ApplicationError};
+use bongocat_config::{ConfigError, ConfigWriteFailureReason};
 use bongocat_model::{
     ModelCatalogEntry, ModelDiagnostic, ModelImportProgress, ModelImportStage, ModelOrigin,
     ModelStoreDiagnostic,
@@ -201,9 +202,7 @@ fn run_service(
                 let result = application
                     .restore_default_configuration()
                     .map(|()| snapshot(&application, &mut clock, false, startup_item.state()))
-                    .map_err(|_| {
-                        SettingsError::new(SettingsErrorCode::ConfigurationRecoveryFailed)
-                    });
+                    .map_err(map_configuration_recovery_error);
                 let _ = reply.respond(result);
             }
             SettingsCommand::Shutdown { reply } => {
@@ -565,9 +564,10 @@ const fn settings_model_diagnostic(diagnostic: ModelDiagnostic) -> SettingsModel
 
 fn map_application_error(error: ApplicationError) -> SettingsError {
     let code = match error {
-        ApplicationError::PlatformStorage(_)
-        | ApplicationError::Config(_)
-        | ApplicationError::ConfigRollback(_) => SettingsErrorCode::ConfigPersistFailed,
+        ApplicationError::PlatformStorage(_) => SettingsErrorCode::ConfigPersistFailed,
+        ApplicationError::Config(error) | ApplicationError::ConfigRollback(error) => {
+            settings_config_error_code(&error).unwrap_or(SettingsErrorCode::ConfigPersistFailed)
+        }
         ApplicationError::ConfigurationRecoveryRequired => {
             SettingsErrorCode::ConfigurationRecoveryRequired
         }
@@ -584,6 +584,25 @@ fn map_application_error(error: ApplicationError) -> SettingsError {
         _ => SettingsErrorCode::RuntimeUnavailable,
     };
     SettingsError::new(code)
+}
+
+fn map_configuration_recovery_error(error: ApplicationError) -> SettingsError {
+    let code = match error {
+        ApplicationError::Config(error) => settings_config_error_code(&error)
+            .unwrap_or(SettingsErrorCode::ConfigurationRecoveryFailed),
+        _ => SettingsErrorCode::ConfigurationRecoveryFailed,
+    };
+    SettingsError::new(code)
+}
+
+fn settings_config_error_code(error: &ConfigError) -> Option<SettingsErrorCode> {
+    match error.write_failure_reason()? {
+        ConfigWriteFailureReason::PermissionDenied => {
+            Some(SettingsErrorCode::ConfigPermissionDenied)
+        }
+        ConfigWriteFailureReason::StorageFull => Some(SettingsErrorCode::ConfigStorageFull),
+        ConfigWriteFailureReason::TargetOccupied => Some(SettingsErrorCode::ConfigTargetOccupied),
+    }
 }
 
 fn map_model_import_error(error: ApplicationError) -> SettingsError {
@@ -656,9 +675,12 @@ mod tests {
     use bongocat_config::{ConfigStore, StorageLayout};
     use bongocat_runtime::{InputDiagnostics, InputTransportDiagnostics};
     use bongocat_ui::{SettingsModelImportRequest, SettingsStartupItemError};
-    use std::sync::{
-        Mutex,
-        atomic::{AtomicBool, Ordering},
+    use std::{
+        io,
+        sync::{
+            Mutex,
+            atomic::{AtomicBool, Ordering},
+        },
     };
     use tempfile::tempdir;
 
@@ -705,6 +727,37 @@ mod tests {
             self.replace(SettingsStartupItemStatus::State(state));
             Ok(state)
         }
+    }
+
+    #[test]
+    fn config_write_failures_map_to_stable_settings_codes() {
+        for (error, expected) in [
+            (
+                ConfigError::Io(io::Error::from(io::ErrorKind::PermissionDenied)),
+                SettingsErrorCode::ConfigPermissionDenied,
+            ),
+            (
+                ConfigError::Io(io::Error::from(io::ErrorKind::StorageFull)),
+                SettingsErrorCode::ConfigStorageFull,
+            ),
+            (
+                ConfigError::WriteTargetOccupied,
+                SettingsErrorCode::ConfigTargetOccupied,
+            ),
+        ] {
+            assert_eq!(settings_config_error_code(&error), Some(expected));
+            assert_eq!(
+                map_application_error(ApplicationError::Config(error)).code(),
+                expected
+            );
+        }
+        assert_eq!(
+            map_configuration_recovery_error(ApplicationError::Config(ConfigError::Io(
+                io::Error::from(io::ErrorKind::StorageFull)
+            )))
+            .code(),
+            SettingsErrorCode::ConfigStorageFull
+        );
     }
 
     #[test]
@@ -915,6 +968,36 @@ mod tests {
 
         let stopped = client.shutdown_blocking().expect("service shutdown");
         assert_eq!(stopped.runtime_health, RuntimeHealth::Stopped);
+        service.join().expect("service join");
+    }
+
+    #[test]
+    fn service_reports_an_occupied_config_target_without_changing_snapshot_or_current() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let config_path = layout.config.clone();
+        let occupied = config_path.with_extension("json.tmp");
+        let application = Application::start_with_layout(layout).expect("application start");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        let original = std::fs::read(&config_path).expect("initial config");
+        std::fs::create_dir(&occupied).expect("occupied temp target");
+
+        let error = client
+            .set_overlay_visible_blocking(!initial.overlay_visible)
+            .expect_err("occupied target error");
+        assert_eq!(error.code(), SettingsErrorCode::ConfigTargetOccupied);
+        let unchanged = client.read_snapshot_blocking().expect("unchanged snapshot");
+        assert_eq!(unchanged.revision, initial.revision);
+        assert_eq!(unchanged.overlay_visible, initial.overlay_visible);
+        assert_eq!(
+            std::fs::read(&config_path).expect("preserved config"),
+            original
+        );
+        assert!(occupied.is_dir());
+
+        client.shutdown_blocking().expect("service shutdown");
         service.join().expect("service join");
     }
 

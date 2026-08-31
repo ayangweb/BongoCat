@@ -71,6 +71,8 @@ current 且无备份的 recovery-only 产品窗口。正式产品现已增加只
 `--configuration-recovery-smoke`，本机 macOS 已验证 recovery snapshot、真实窗口、service join
 和临时数据清理；commit `175e7a4` 的 run `33376471972` 随后在 Windows/macOS Native jobs
 `99438972370`/`99438972328` 实际通过同一 recovery window smoke，`P6-CONFIG-SAFE-RECOVERY`
-退出条件满足。权限、磁盘满和目标占用失败注入仍未完成；这些必须在 Phase 6 配置 crate 与正式
-settings service 中分别验证。进程存活不通过 PID、时间戳
+退出条件满足。正式 config crate 随后增加权限/只读、空间/配额不足和目标占用的稳定匿名
+分类；单元测试在 temp 创建前后注入权限与磁盘满，并用真实文件/目录占用固定 temp，验证 current 与
+非自有占用条目保留。settings service 已投影独立可操作错误并验证失败不推进 snapshot；完整 CI
+证据仍由 `P6-CONFIG-WRITE-FAILURES` 跟踪。进程存活不通过 PID、时间戳
 或删除 lock file 猜测，异常退出后的释放由 OS file lock 生命周期保证。

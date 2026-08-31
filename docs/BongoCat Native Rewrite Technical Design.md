@@ -454,6 +454,10 @@ com.ayangweb.bongo-cat
   在 writer lock 内再次确认 current 仍不可恢复，将原字节放入 quarantine 后写入并验证 v2 默认配置，
   返回 `DefaultsRestoredRestartRequired`。恢复前所有业务写入、模型、启动项和 overlay 操作都被拒绝，
   恢复后必须重启才重新进入正常 runtime；未来 schema 或 I/O/归档错误仍直接报告，不进入该安全模式。
+- 配置写入将权限/只读文件系统、存储空间/配额不足和 temp 目标占用分类为稳定的匿名失败原因；
+  settings 只显示可操作的项目文案，不泄漏路径或操作系统原始错误。写入只清理由当前调用成功创建的
+  temp；若固定 temp 已被文件、目录、符号链接或并发创建占用，则保留该条目和 current 并明确失败。
+  权限与磁盘满在 temp 创建前后都必须可受控注入，验证失败不改变当前 snapshot/revision。
 - `config.json` 只包含用户设置；窗口布局写入 `state.json`，pressed state、权限结果和模型解析缓存不持久化。
 - 模型导入防止路径穿越、符号链接逃逸、压缩炸弹和覆盖现有用户数据。
 - 模型包在反序列化或图片解码前执行 JSON 字节/深度、单文件/整包字节、文件数、目录深度

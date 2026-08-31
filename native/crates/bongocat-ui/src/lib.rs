@@ -333,6 +333,9 @@ pub enum SettingsErrorCode {
     ServiceUnavailable,
     RuntimeUnavailable,
     ConfigPersistFailed,
+    ConfigPermissionDenied,
+    ConfigStorageFull,
+    ConfigTargetOccupied,
     ConfigurationRecoveryRequired,
     ConfigurationRecoveryFailed,
     ModelUnavailable,
@@ -376,6 +379,15 @@ impl fmt::Display for SettingsError {
             SettingsErrorCode::ServiceUnavailable => "settings service is unavailable",
             SettingsErrorCode::RuntimeUnavailable => "runtime did not apply the setting",
             SettingsErrorCode::ConfigPersistFailed => "setting could not be saved",
+            SettingsErrorCode::ConfigPermissionDenied => {
+                "configuration storage is not writable; check permissions and retry"
+            }
+            SettingsErrorCode::ConfigStorageFull => {
+                "configuration storage is full; free space and retry"
+            }
+            SettingsErrorCode::ConfigTargetOccupied => {
+                "configuration storage is blocked; remove the blocking item and retry"
+            }
             SettingsErrorCode::ConfigurationRecoveryRequired => {
                 "configuration must be recovered before this action"
             }
@@ -763,6 +775,28 @@ mod tests {
             result.expect_err("closed service").code(),
             SettingsErrorCode::ServiceUnavailable
         );
+    }
+
+    #[test]
+    fn config_write_errors_are_actionable_and_anonymous() {
+        for (code, expected) in [
+            (
+                SettingsErrorCode::ConfigPermissionDenied,
+                "configuration storage is not writable; check permissions and retry",
+            ),
+            (
+                SettingsErrorCode::ConfigStorageFull,
+                "configuration storage is full; free space and retry",
+            ),
+            (
+                SettingsErrorCode::ConfigTargetOccupied,
+                "configuration storage is blocked; remove the blocking item and retry",
+            ),
+        ] {
+            let message = SettingsError::new(code).to_string();
+            assert_eq!(message, expected);
+            assert!(!message.contains('/') && !message.contains('\\'));
+        }
     }
 
     #[test]
