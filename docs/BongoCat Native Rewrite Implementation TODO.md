@@ -1372,18 +1372,30 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       恢复 -> 显式 Quit 的 release smoke，Ubuntu job `99345364707` 通过完整共享 workspace 门禁。
       Windows x64/ARM64 platform Clippy、完整 Native format/Clippy/test/release check 本机通过；
       callback 只入队，菜单 owner 在 input/runtime/config/frame/renderer/overlay 之前停止。
-28. [ ] `P7-WINDOWS-SINGLE-INSTANCE`：按构建环境隔离 Windows 单实例并唤醒现有设置窗口。
+28. [x] `P7-WINDOWS-SINGLE-INSTANCE`：按构建环境隔离 Windows 单实例并唤醒现有设置窗口。
     - 依赖：`P1-SETTINGS-WINDOW-LIFECYCLE`、ADR-0008、Windows GPUI message loop。
     - 退出条件：Development/Production 使用不同的 local named mutex、owner window class 和
       registered wake message；primary 在任何 config/model writer 前取得 owner，secondary 不启动
       配置/runtime/input/GPU，只通知 primary 后成功退出；primary 将消息转为强类型
       `OpenSettings`，不创建重复 Entity，恢复当前 snapshot；owner 在产品 shutdown 中显式释放；
       双进程 release smoke、Windows x64/ARM64 source check 与完整 Native 门禁通过。
-    - 状态（2026-08-31）：平台 adapter、应用启动前判定、typed wake queue、owner RAII 和有序
-      shutdown 已实现；双进程 smoke 会先隐藏唯一设置窗口，再启动真实 secondary，要求其在
-      10 秒内只完成通知并退出，随后验证 primary frame source 继续、原 Entity 重显、snapshot
-      有效并正常退出。本机完整 Native 门禁和 Windows x64/ARM64 platform Clippy 通过；macOS
-      无法链接 MSVC 产品二进制，等待原生 Windows CI 后再勾选。
+    - 验收证据（2026-08-31）：commit `c889115` 的 push run `33345266089`、Windows job
+      `99348057229` 与 PR run `33345268535`、Windows job `99348064645` 均通过真实双进程
+      release smoke：secondary 只通知 primary 后成功退出，primary 保持 frame source、重显
+      原 Entity、恢复当前 snapshot 并完成有序 shutdown。两次 run 的 macOS/Ubuntu workspace
+      门禁也通过；本机完整 Native 门禁及 Windows x64/ARM64 platform Clippy 通过。
+29. [ ] `P7-MACOS-APPLICATION-REOPEN`：通过正式 `.app` 和 LaunchServices 唤醒后台产品。
+    - 依赖：`P1-SETTINGS-WINDOW-LIFECYCLE`、GPUI `on_reopen`、ADR-0008、产品资源目录。
+    - 退出条件：`.app` 固定 Bundle ID、最低系统和禁止多实例 metadata，内置三个预置模型且
+      executable 从 `Contents/Resources` 加载；再次 `open` 只触发既有进程的 AppKit reopen，
+      已销毁设置 Entity 只重建一个并恢复当前 snapshot，后台 frame source 持续；退出仍进入
+      shutdown coordinator；ad-hoc strict codesign、release LaunchServices smoke 和完整 Native
+      门禁通过。Distribution signing、Hardened Runtime/notarization 继续由发布门禁跟踪。
+    - 状态（2026-08-31）：最小产品 `Info.plist`、可重复打包脚本、bundle resource resolver 与
+      application-reopen smoke 已实现；本机 release `.app` 先销毁设置 Entity，再从外部执行
+      第二次 `open`，验证进程数保持 1、新 Entity 恢复 revisioned snapshot、frame source 持续、
+      ad-hoc strict codesign 和正常 shutdown。完整 Native format/Clippy/test/release check 与依赖
+      策略均通过；等待原生 macOS CI 复验后勾选。
 
 ## 13. 待决策清单
 

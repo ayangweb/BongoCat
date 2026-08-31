@@ -36,6 +36,8 @@ struct RunOptions {
     settings_window_smoke: bool,
     models_page_smoke: bool,
     system_menu_smoke: bool,
+    #[cfg(target_os = "macos")]
+    application_reopen_smoke: bool,
     #[cfg(target_os = "windows")]
     single_instance_smoke: bool,
 }
@@ -48,6 +50,8 @@ impl RunOptions {
         let mut settings_window_smoke = false;
         let mut models_page_smoke = false;
         let mut system_menu_smoke = false;
+        #[cfg(target_os = "macos")]
+        let mut application_reopen_smoke = false;
         #[cfg(target_os = "windows")]
         let mut single_instance_smoke = false;
         while let Some(argument) = arguments.next() {
@@ -66,6 +70,8 @@ impl RunOptions {
                     settings_window_smoke = true;
                 }
                 "--system-menu-smoke" => system_menu_smoke = true,
+                #[cfg(target_os = "macos")]
+                "--application-reopen-smoke" => application_reopen_smoke = true,
                 #[cfg(target_os = "windows")]
                 "--single-instance-smoke" => single_instance_smoke = true,
                 "--help" | "-h" => return Err(RunOptionsError::help()),
@@ -81,6 +87,8 @@ impl RunOptions {
             settings_window_smoke,
             models_page_smoke,
             system_menu_smoke,
+            #[cfg(target_os = "macos")]
+            application_reopen_smoke,
             #[cfg(target_os = "windows")]
             single_instance_smoke,
         })
@@ -131,7 +139,7 @@ fn usage() -> &'static str {
     return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit.";
 
     #[cfg(target_os = "macos")]
-    "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--system-menu-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit."
+    "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--system-menu-smoke] [--application-reopen-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit."
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -163,6 +171,8 @@ struct ProductCoordinator {
     settings_service: Option<bongocat_app::ApplicationSettingsService>,
     settings_window: Option<WindowHandle<SettingsView>>,
     system_menu: Option<SystemMenu>,
+    #[cfg(target_os = "macos")]
+    application_reopens: u64,
     #[cfg(target_os = "windows")]
     single_instance: Option<SingleInstance>,
     #[cfg(target_os = "windows")]
@@ -366,7 +376,6 @@ fn build_single_instance_environment() -> SingleInstanceEnvironment {
     }
 }
 
-#[cfg(target_os = "windows")]
 fn write_smoke_status(status: &str) -> io::Result<()> {
     let mut stdout = io::stdout().lock();
     writeln!(stdout, "bongocat-app: {status}")?;
@@ -424,14 +433,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let run_failures = Arc::clone(&failures);
     #[cfg(target_os = "windows")]
     let shutdown_requested = Arc::new(AtomicBool::new(false));
-
     let gpui_application = GpuiApplication::new();
     let reopen_failures = Arc::clone(&run_failures);
+    #[cfg(target_os = "macos")]
+    let application_reopen_smoke = run_options.application_reopen_smoke;
     gpui_application.on_reopen(move |cx| {
-        if cx.has_global::<ProductCoordinator>()
-            && let Err(error) = ensure_settings_window(cx)
+        #[cfg(target_os = "macos")]
+        if application_reopen_smoke
+            && let Err(error) = write_smoke_status("application-reopen callback received")
         {
-            record_failure(&reopen_failures, error);
+            record_failure(&reopen_failures, error.to_string());
+        }
+        if cx.has_global::<ProductCoordinator>() {
+            match ensure_settings_window(cx) {
+                Ok(_) => {
+                    #[cfg(target_os = "macos")]
+                    {
+                        let coordinator = cx.global_mut::<ProductCoordinator>();
+                        coordinator.application_reopens =
+                            coordinator.application_reopens.saturating_add(1);
+                    }
+                }
+                Err(error) => record_failure(&reopen_failures, error),
+            }
         }
     });
     gpui_application.run(move |cx: &mut App| {
@@ -519,6 +543,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             settings_service: Some(settings_service),
             settings_window: Some(settings_window),
             system_menu: Some(system_menu),
+            #[cfg(target_os = "macos")]
+            application_reopens: 0,
             #[cfg(target_os = "windows")]
             single_instance: Some(single_instance),
             #[cfg(target_os = "windows")]
@@ -544,7 +570,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .detach();
 
-        cx.on_app_quit(|cx| {
+        cx.on_app_quit(move |cx| {
+            #[cfg(target_os = "macos")]
+            if run_options.application_reopen_smoke
+                && let Err(error) = write_smoke_status("application-reopen quit received")
+                && let Some(coordinator) = cx.try_global::<ProductCoordinator>()
+            {
+                record_failure(&coordinator.failures, error.to_string());
+            }
             let shutdown = cx
                 .has_global::<ProductCoordinator>()
                 .then(|| begin_product_shutdown(cx));
@@ -1072,6 +1105,139 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .detach();
         }
 
+        #[cfg(target_os = "macos")]
+        if run_options.application_reopen_smoke {
+            let smoke_failures = Arc::clone(&run_failures);
+            cx.spawn(async move |cx| {
+                Timer::after(Duration::from_millis(500)).await;
+                let baseline = cx.update(|cx| -> Result<_, String> {
+                    let coordinator = cx.global::<ProductCoordinator>();
+                    let original_window = coordinator
+                        .settings_window
+                        .ok_or_else(|| "settings window is not open".to_owned())?;
+                    let frame_ticks = coordinator.frame_ticks;
+                    let application_reopens = coordinator.application_reopens;
+                    original_window
+                        .update(cx, |_, window, _| window.remove_window())
+                        .map_err(|error| error.to_string())?;
+                    Ok((original_window, frame_ticks, application_reopens))
+                });
+                let (original_window, baseline_ticks, baseline_reopens) = match baseline {
+                    Ok(Ok(baseline)) => baseline,
+                    Ok(Err(error)) => {
+                        record_failure(&smoke_failures, error);
+                        let _ = cx.update(request_product_quit);
+                        return;
+                    }
+                    Err(error) => {
+                        record_failure(&smoke_failures, error.to_string());
+                        let _ = cx.update(request_product_quit);
+                        return;
+                    }
+                };
+
+                let mut closed = false;
+                for _ in 0..60 {
+                    Timer::after(Duration::from_millis(50)).await;
+                    match cx.update(|cx| {
+                        cx.windows().is_empty()
+                            && cx.global::<ProductCoordinator>().settings_window.is_none()
+                    }) {
+                        Ok(true) => {
+                            closed = true;
+                            break;
+                        }
+                        Ok(false) => {}
+                        Err(error) => {
+                            record_failure(&smoke_failures, error.to_string());
+                            let _ = cx.update(request_product_quit);
+                            return;
+                        }
+                    }
+                }
+                if !closed {
+                    let _ = write_smoke_status("application-reopen close failed");
+                    record_failure(
+                        &smoke_failures,
+                        "application-reopen smoke could not destroy the settings window",
+                    );
+                    let _ = cx.update(request_product_quit);
+                    return;
+                }
+                if let Err(error) = write_smoke_status("application-reopen primary ready") {
+                    record_failure(&smoke_failures, error.to_string());
+                    let _ = cx.update(request_product_quit);
+                    return;
+                }
+
+                for _ in 0..100 {
+                    Timer::after(Duration::from_millis(50)).await;
+                    let restored = cx.update(|cx| -> Result<bool, String> {
+                        let coordinator = cx.global::<ProductCoordinator>();
+                        if coordinator.application_reopens <= baseline_reopens {
+                            return Ok(false);
+                        }
+                        if coordinator.frame_ticks <= baseline_ticks {
+                            return Ok(false);
+                        }
+                        let reopened = coordinator.settings_window.ok_or_else(|| {
+                            "application reopen did not retain a settings window".to_owned()
+                        })?;
+                        if reopened == original_window {
+                            return Err(
+                                "application reopen retained the destroyed macOS Entity".to_owned()
+                            );
+                        }
+                        if cx.windows().len() != 1 {
+                            return Err("application reopen created more than one settings window"
+                                .to_owned());
+                        }
+                        let revision = reopened
+                            .update(cx, |view, _, _| view.snapshot_revision())
+                            .map_err(|error| error.to_string())?;
+                        if revision.is_none() {
+                            return Ok(false);
+                        }
+                        Ok(true)
+                    });
+                    match restored {
+                        Ok(Ok(true)) => {
+                            if let Err(error) = write_smoke_status(
+                                "application reopen restored the settings window",
+                            ) {
+                                record_failure(&smoke_failures, error.to_string());
+                                let _ = cx.update(request_product_quit);
+                                return;
+                            }
+                            Timer::after(Duration::from_secs(1)).await;
+                            let _ = cx.update(request_product_quit);
+                            return;
+                        }
+                        Ok(Ok(false)) => {}
+                        Ok(Err(error)) => {
+                            let _ = write_smoke_status("application-reopen invariant failed");
+                            record_failure(&smoke_failures, error);
+                            let _ = cx.update(request_product_quit);
+                            return;
+                        }
+                        Err(error) => {
+                            let _ = write_smoke_status("application-reopen update failed");
+                            record_failure(&smoke_failures, error.to_string());
+                            let _ = cx.update(request_product_quit);
+                            return;
+                        }
+                    }
+                }
+                record_failure(
+                    &smoke_failures,
+                    "running macOS application did not receive the LaunchServices reopen",
+                );
+                let _ = write_smoke_status("application-reopen timed out");
+                let _ = cx.update(request_product_quit);
+            })
+            .detach();
+        }
+
         #[cfg(target_os = "windows")]
         if run_options.single_instance_smoke {
             let smoke_failures = Arc::clone(&run_failures);
@@ -1221,11 +1387,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn development_preset_root() -> PathBuf {
+    #[cfg(target_os = "macos")]
+    if let Ok(executable) = env::current_exe()
+        && let Some(root) = bundled_preset_root(&executable)
+        && root.is_dir()
+    {
+        return root;
+    }
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .nth(3)
         .expect("repository root")
         .join("native/resources/models")
+}
+
+#[cfg(target_os = "macos")]
+fn bundled_preset_root(executable: &Path) -> Option<PathBuf> {
+    let macos = executable.parent()?;
+    if macos.file_name()?.to_str()? != "MacOS" {
+        return None;
+    }
+    let contents = macos.parent()?;
+    if contents.file_name()?.to_str()? != "Contents" {
+        return None;
+    }
+    Some(contents.join("Resources/models"))
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -1257,6 +1443,8 @@ mod tests {
                 settings_window_smoke: false,
                 models_page_smoke: false,
                 system_menu_smoke: false,
+                #[cfg(target_os = "macos")]
+                application_reopen_smoke: false,
                 #[cfg(target_os = "windows")]
                 single_instance_smoke: false,
             }
@@ -1293,6 +1481,8 @@ mod tests {
         assert!(options.models_page_smoke);
         assert!(options.settings_window_smoke);
         assert!(!options.system_menu_smoke);
+        #[cfg(target_os = "macos")]
+        assert!(!options.application_reopen_smoke);
         #[cfg(target_os = "windows")]
         assert!(!options.single_instance_smoke);
     }
@@ -1303,6 +1493,32 @@ mod tests {
             .expect("system menu smoke options");
         assert!(options.system_menu_smoke);
         assert!(!options.settings_window_smoke);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn application_reopen_smoke_is_opt_in() {
+        let options = RunOptions::parse(["--application-reopen-smoke".to_owned()])
+            .expect("application-reopen smoke options");
+        assert!(options.application_reopen_smoke);
+        assert!(!options.settings_window_smoke);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn bundled_preset_models_resolve_from_contents_resources() {
+        assert_eq!(
+            bundled_preset_root(Path::new(
+                "/Applications/BongoCat.app/Contents/MacOS/bongocat-app"
+            )),
+            Some(PathBuf::from(
+                "/Applications/BongoCat.app/Contents/Resources/models"
+            ))
+        );
+        assert_eq!(
+            bundled_preset_root(Path::new("/tmp/native/target/release/bongocat-app")),
+            None
+        );
     }
 
     #[cfg(target_os = "windows")]

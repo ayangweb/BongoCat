@@ -143,6 +143,64 @@ jobs:
       - name: Smoke macOS settings window lifecycle
         if: matrix.os == 'macos-latest'
         run: cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke --models-page-smoke
+      - name: Smoke macOS application reopen lifecycle
+        if: matrix.os == 'macos-latest'
+        timeout-minutes: 2
+        run: |
+          app_path=$(./native/scripts/package-macos.sh)
+          stdout_path="$RUNNER_TEMP/macos-application-reopen.stdout.log"
+          stderr_path="$RUNNER_TEMP/macos-application-reopen.stderr.log"
+          rm -f "$stdout_path" "$stderr_path"
+          open \
+            -n \
+            -W \
+            -o "$stdout_path" \
+            --stderr "$stderr_path" \
+            "$app_path" \
+            --args \
+            --run-seconds 10 \
+            --application-reopen-smoke &
+          open_waiter=$!
+
+          ready=0
+          for _ in $(seq 1 150); do
+            if grep -Fq 'bongocat-app: application-reopen primary ready' "$stdout_path" 2>/dev/null; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$open_waiter" 2>/dev/null; then
+              break
+            fi
+            sleep 0.1
+          done
+          if [ "$ready" -ne 1 ]; then
+            cat "$stdout_path" "$stderr_path" 2>/dev/null || true
+            pkill -f -- "$app_path/Contents/MacOS/bongocat-app" || true
+            wait "$open_waiter" || true
+            printf '%s\n' 'macOS product did not reach the application-reopen gate' >&2
+            exit 1
+          fi
+
+          open "$app_path"
+          sleep 0.5
+          pid_path="$RUNNER_TEMP/macos-application-reopen.pids"
+          pgrep -f "$app_path/Contents/MacOS/bongocat-app" > "$pid_path" || true
+          process_count=$(wc -l < "$pid_path" | tr -d ' ')
+          if [ "$process_count" -ne 1 ]; then
+            pkill -f -- "$app_path/Contents/MacOS/bongocat-app" || true
+            wait "$open_waiter" || true
+            printf 'LaunchServices observed %s BongoCat processes after reopen\n' "$process_count" >&2
+            exit 1
+          fi
+
+          wait "$open_waiter"
+          cat "$stdout_path" "$stderr_path" 2>/dev/null || true
+          grep -Fq \
+            'bongocat-app: application reopen restored the settings window' \
+            "$stdout_path"
+          test "$(plutil -extract CFBundleIdentifier raw -o - "$app_path/Contents/Info.plist")" = \
+            'com.ayangweb.bongo-cat'
+          codesign --verify --deep --strict "$app_path"
       - name: Smoke native system menu lifecycle
         if: matrix.os == 'windows-latest' || matrix.os == 'macos-latest'
         timeout-minutes: 2
