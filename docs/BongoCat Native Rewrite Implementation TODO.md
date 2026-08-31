@@ -1425,7 +1425,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       HKCU lifecycle，macOS job `99373058428` 明确输出 `NotFound` -> register/unregister ->
       `Disabled`，并完成 `/Applications` 临时安装、LaunchServices 注销和目录清理。双平台
       workspace、Production build、平台 source check 与其余 release smoke 同时通过，退出条件满足。
-31. [ ] `P5-STARTUP-ITEM-UI`：以 typed settings command/snapshot 接入 General 启动项控件。
+31. [x] `P5-STARTUP-ITEM-UI`：以 typed settings command/snapshot 接入 General 启动项控件。
     - 依赖：`P7-STARTUP-ITEM-PLATFORM`、现有 revisioned `SettingsSnapshot` 和 settings worker。
     - 退出条件：状态读取与启用/禁用不阻塞 GPUI executor；控件覆盖 loading、enabled、disabled、
       stale、requires-approval、unsupported 和 retry；Development/macOS 12 不允许 mutation；窗口重建
@@ -1446,9 +1446,11 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       `cargo test -p bongocat-platform -p bongocat-ui` 已通过 tree validation、toggle/value/action
       contract；本机 release product smoke 已从正式 AppKit AX 对象读取 startup 的
       `AXCheckBox`/`AXSwitch`、布尔值、enabled 和 press selector，且未触发登录项 mutation。
-      Windows product workflow 已增加 UIA Button/switch、TogglePattern、enabled/focusable 和
-      SetFocus 门禁，真实 runner 结果尚待 push CI；真实 VoiceOver/Narrator 操作仍属于更宽的
-      Phase 0 辅助技术门禁，因此本项保持未勾选，待 Windows UIA 证据后再关闭。
+      commit `718e3f4` 的 pull request run `33364047140` 全绿；Windows job `99400940944`
+      通过真实 UIA Button/switch、TogglePattern off/on 状态切换与恢复、enabled/focusable 和
+      SetFocus，并同时通过完整 D3D11、输入和模型 smoke。macOS job `99400940878`、Ubuntu job
+      `99400940817` 与其余 contract jobs 同时通过。真实 VoiceOver/Narrator 操作仍属于更宽的
+      Phase 0 辅助技术门禁，不阻塞本项 typed UI 闭环完成。
 32. [x] `P5-INPUT-DIAGNOSTICS-UI`：把 runtime 输入可靠性计数投影到真实 Diagnostics 页面。
     - 依赖：正式 `RuntimeSnapshot.input`、revisioned `SettingsSnapshot` 和双平台 settings lifecycle。
     - 退出条件：UI 协议只包含 pressed 数量及 captured/reconciled/reset、sequence、overflow 的匿名
