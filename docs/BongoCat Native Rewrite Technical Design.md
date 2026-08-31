@@ -541,6 +541,9 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
   不得阻止删除 installed 副本。成功只刷新 catalog，不隐式切模或改写配置。
 - 更新只允许 HTTPS，安装包和更新包必须签名并支持失败回滚。
 - 日志不记录真实按键序列、剪贴板内容或用户文件内容。
+- Diagnostics 导出由 settings service 的强类型 command 触发，在当前环境 logs 目录以同目录
+  原子替换写出固定格式的 JSON。导出只包含稳定错误码、匿名聚合计数、模型来源计数和 revision；
+  不包含模型 ID、用户路径、按键值、原始配置/事件内容、时间戳或动态平台错误文本。
 
 初始字段命名和数据分类见 `shared/config/native-config-contract.md`，环境和 Bundle ID 决策见 ADR-0008。
 

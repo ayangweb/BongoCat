@@ -188,6 +188,12 @@ pub struct SettingsConfigRecovery {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SettingsDiagnosticsExportStatus {
+    pub format_version: u32,
+    pub bytes_written: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SettingsConfigurationStatus {
     Ready,
     RecoveryRequired { checked_backups: u32 },
@@ -206,6 +212,7 @@ pub struct SettingsSnapshot {
     pub startup_item: SettingsStartupItemStatus,
     pub configuration_status: SettingsConfigurationStatus,
     pub config_recovery: Option<SettingsConfigRecovery>,
+    pub diagnostics_export: Option<SettingsDiagnosticsExportStatus>,
     pub input_diagnostics: SettingsInputDiagnostics,
     pub active_model: Option<SettingsModelKey>,
     pub model_catalog: SettingsModelCatalog,
@@ -480,6 +487,35 @@ pub enum SettingsModelDiagnostic {
     ModelUnsupportedVersion,
 }
 
+impl SettingsModelDiagnostic {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::InvalidModelId => "invalid_model_id",
+            Self::ModelEntryAmbiguous => "model_entry_ambiguous",
+            Self::ModelEntryMissing => "model_entry_missing",
+            Self::ModelFileCountExceeded => "model_file_count_exceeded",
+            Self::ModelFileTooLarge => "model_file_too_large",
+            Self::ModelIoError => "model_io_error",
+            Self::ModelJsonInvalid => "model_json_invalid",
+            Self::ModelJsonTooLarge => "model_json_too_large",
+            Self::ModelMocMissing => "model_moc_missing",
+            Self::ModelPackageDepthExceeded => "model_package_depth_exceeded",
+            Self::ModelPackageSizeExceeded => "model_package_size_exceeded",
+            Self::ModelReferenceEscapesRoot => "model_reference_escapes_root",
+            Self::ModelReferenceInvalid => "model_reference_invalid",
+            Self::ModelReferenceSymlinkEscape => "model_reference_symlink_escape",
+            Self::ModelResourceInvalid => "model_resource_invalid",
+            Self::ModelResourceMissing => "model_resource_missing",
+            Self::ModelResourceNotFile => "model_resource_not_file",
+            Self::ModelSymlinkDirectoryUnsupported => "model_symlink_directory_unsupported",
+            Self::ModelTextureDimensionExceeded => "model_texture_dimension_exceeded",
+            Self::ModelTextureInvalidPng => "model_texture_invalid_png",
+            Self::ModelTextureMissing => "model_texture_missing",
+            Self::ModelUnsupportedVersion => "model_unsupported_version",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SettingsModelCatalogError {
     Unavailable,
@@ -512,6 +548,7 @@ pub enum SettingsErrorCode {
     SelectedModelCannotBeDeleted,
     ModelNotInstalled,
     ModelDeleteFailed,
+    DiagnosticsExportFailed,
     StartupItemUpdateFailed,
     WindowUnavailable,
     StatePersistFailed,
@@ -519,7 +556,7 @@ pub enum SettingsErrorCode {
 }
 
 impl SettingsErrorCode {
-    pub const ALL: [Self; 29] = [
+    pub const ALL: [Self; 30] = [
         Self::ServiceUnavailable,
         Self::SnapshotOutdated,
         Self::RuntimeUnavailable,
@@ -545,6 +582,7 @@ impl SettingsErrorCode {
         Self::SelectedModelCannotBeDeleted,
         Self::ModelNotInstalled,
         Self::ModelDeleteFailed,
+        Self::DiagnosticsExportFailed,
         Self::StartupItemUpdateFailed,
         Self::WindowUnavailable,
         Self::StatePersistFailed,
@@ -578,6 +616,7 @@ impl SettingsErrorCode {
             Self::SelectedModelCannotBeDeleted => "selected_model_cannot_be_deleted",
             Self::ModelNotInstalled => "model_not_installed",
             Self::ModelDeleteFailed => "model_delete_failed",
+            Self::DiagnosticsExportFailed => "diagnostics_export_failed",
             Self::StartupItemUpdateFailed => "startup_item_update_failed",
             Self::WindowUnavailable => "window_unavailable",
             Self::StatePersistFailed => "state_persist_failed",
@@ -647,6 +686,7 @@ impl fmt::Display for SettingsError {
             }
             SettingsErrorCode::ModelNotInstalled => "installed model was not found",
             SettingsErrorCode::ModelDeleteFailed => "installed model could not be deleted",
+            SettingsErrorCode::DiagnosticsExportFailed => "diagnostics could not be exported",
             SettingsErrorCode::StartupItemUpdateFailed => "startup setting could not be updated",
             SettingsErrorCode::WindowUnavailable => "settings window could not be hidden",
             SettingsErrorCode::StatePersistFailed => "window layout could not be saved",
@@ -708,6 +748,9 @@ pub enum SettingsCommand {
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     OpenConfigBackupLocation {
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    ExportDiagnostics {
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     Shutdown {
@@ -865,6 +908,11 @@ impl SettingsClient {
             .await
     }
 
+    pub async fn export_diagnostics(&self) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::ExportDiagnostics { reply })
+            .await
+    }
+
     pub async fn shutdown(&self) -> Result<SettingsSnapshot, SettingsError> {
         self.request(|reply| SettingsCommand::Shutdown { reply })
             .await
@@ -968,6 +1016,10 @@ impl SettingsClient {
 
     pub fn open_config_backup_location_blocking(&self) -> Result<SettingsSnapshot, SettingsError> {
         self.request_blocking(|reply| SettingsCommand::OpenConfigBackupLocation { reply })
+    }
+
+    pub fn export_diagnostics_blocking(&self) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::ExportDiagnostics { reply })
     }
 
     pub fn shutdown_blocking(&self) -> Result<SettingsSnapshot, SettingsError> {
@@ -1362,6 +1414,37 @@ mod tests {
     }
 
     #[test]
+    fn diagnostics_export_is_a_typed_command() {
+        let (client, endpoint) = SettingsClient::bounded(1);
+        let worker = thread::spawn(move || {
+            let SettingsCommand::ExportDiagnostics { reply } = endpoint
+                .recv_blocking()
+                .expect("diagnostics export command")
+            else {
+                panic!("unexpected command");
+            };
+            let mut exported = snapshot(12, true, true);
+            exported.diagnostics_export = Some(SettingsDiagnosticsExportStatus {
+                format_version: 1,
+                bytes_written: 512,
+            });
+            reply.respond(Ok(exported)).expect("export reply");
+        });
+
+        let exported = client
+            .export_diagnostics_blocking()
+            .expect("diagnostics export snapshot");
+        assert_eq!(
+            exported.diagnostics_export,
+            Some(SettingsDiagnosticsExportStatus {
+                format_version: 1,
+                bytes_written: 512,
+            })
+        );
+        worker.join().expect("worker join");
+    }
+
+    #[test]
     fn settings_window_state_is_validated_and_shared_across_clones() {
         assert!(SettingsWindowPlacement::new(0, 0, 639, 600, false).is_none());
         assert!(SettingsWindowPlacement::new(1_000_001, 0, 800, 600, false).is_none());
@@ -1392,6 +1475,7 @@ mod tests {
             startup_item: SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),
             configuration_status: SettingsConfigurationStatus::Ready,
             config_recovery: None,
+            diagnostics_export: None,
             input_diagnostics: SettingsInputDiagnostics::default(),
             active_model: Some(SettingsModelKey {
                 id: "standard".to_owned(),

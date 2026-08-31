@@ -67,6 +67,8 @@ const ACCESSIBILITY_RESTORE_DEFAULTS: AccessibilityNodeId = AccessibilityNodeId:
 const ACCESSIBILITY_REFRESH: AccessibilityNodeId = AccessibilityNodeId::new(30);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_QUIT: AccessibilityNodeId = AccessibilityNodeId::new(31);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_EXPORT_DIAGNOSTICS: AccessibilityNodeId = AccessibilityNodeId::new(32);
 
 #[derive(Clone, Copy)]
 struct Tokens {
@@ -125,6 +127,7 @@ enum PendingOperation {
     ModelDeletion,
     OpenConfigBackupLocation,
     RestoreDefaultConfiguration,
+    ExportDiagnostics,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -308,6 +311,7 @@ pub struct SettingsView {
     import_model_focus: FocusHandle,
     open_backups_focus: FocusHandle,
     restore_defaults_focus: FocusHandle,
+    export_diagnostics_focus: FocusHandle,
     refresh_focus: FocusHandle,
     quit_focus: FocusHandle,
     #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -350,6 +354,7 @@ impl SettingsView {
             import_model_focus: cx.focus_handle().tab_index(22).tab_stop(true),
             open_backups_focus: cx.focus_handle().tab_index(28).tab_stop(true),
             restore_defaults_focus: cx.focus_handle().tab_index(29).tab_stop(true),
+            export_diagnostics_focus: cx.focus_handle().tab_index(32).tab_stop(true),
             refresh_focus: cx.focus_handle().tab_index(30).tab_stop(true),
             quit_focus: cx.focus_handle().tab_index(31).tab_stop(true),
             #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -533,6 +538,17 @@ impl SettingsView {
         if open_backups_available {
             open_backups_node = open_backups_node.clickable().focusable();
         }
+        let export_available = snapshot.is_some() && self.pending.is_none();
+        let mut diagnostics_export_node = AccessibilityNode::new(
+            ACCESSIBILITY_EXPORT_DIAGNOSTICS,
+            AccessibilityRole::Button,
+            "Export diagnostics",
+        )
+        .with_value("Write an anonymous diagnostics report to the current environment logs")
+        .disabled(!export_available);
+        if export_available {
+            diagnostics_export_node = diagnostics_export_node.clickable().focusable();
+        }
         let mut nodes = vec![
             AccessibilityNode::new(
                 ACCESSIBILITY_ROOT,
@@ -554,6 +570,7 @@ impl SettingsView {
                 ACCESSIBILITY_STARTUP,
                 ACCESSIBILITY_OPEN_BACKUPS,
                 ACCESSIBILITY_RESTORE_DEFAULTS,
+                ACCESSIBILITY_EXPORT_DIAGNOSTICS,
                 ACCESSIBILITY_REFRESH,
                 ACCESSIBILITY_QUIT,
             ]),
@@ -581,6 +598,7 @@ impl SettingsView {
             startup_node,
             open_backups_node,
             restore_node,
+            diagnostics_export_node,
             refresh_node,
             AccessibilityNode::new(ACCESSIBILITY_QUIT, AccessibilityRole::Button, "Quit")
                 .clickable()
@@ -661,6 +679,7 @@ impl SettingsView {
                     self.restore_default_configuration(cx);
                 }
             }
+            ACCESSIBILITY_EXPORT_DIAGNOSTICS => self.export_diagnostics(cx),
             ACCESSIBILITY_REFRESH => self.refresh(cx),
             ACCESSIBILITY_QUIT => (self.request_quit)(cx),
             _ => {}
@@ -716,6 +735,10 @@ impl SettingsView {
             (ACCESSIBILITY_STARTUP, &self.startup_item_focus),
             (ACCESSIBILITY_OPEN_BACKUPS, &self.open_backups_focus),
             (ACCESSIBILITY_RESTORE_DEFAULTS, &self.restore_defaults_focus),
+            (
+                ACCESSIBILITY_EXPORT_DIAGNOSTICS,
+                &self.export_diagnostics_focus,
+            ),
             (ACCESSIBILITY_REFRESH, &self.refresh_focus),
             (ACCESSIBILITY_QUIT, &self.quit_focus),
         ]
@@ -984,6 +1007,20 @@ impl SettingsView {
         {
             return Err("backup location accessibility semantics are invalid".to_owned());
         }
+        let export = self
+            .accessibility_tree()
+            .nodes
+            .into_iter()
+            .find(|node| node.id == ACCESSIBILITY_EXPORT_DIAGNOSTICS)
+            .ok_or_else(|| "diagnostics omitted the accessible export action".to_owned())?;
+        if export.role != AccessibilityRole::Button
+            || export.label != "Export diagnostics"
+            || export.disabled
+            || !export.supports_click
+            || !export.supports_focus
+        {
+            return Err("diagnostics export accessibility semantics are invalid".to_owned());
+        }
         if matches!(
             snapshot.configuration_status,
             SettingsConfigurationStatus::RecoveryRequired { .. }
@@ -1130,6 +1167,14 @@ impl SettingsView {
         self.start_request(
             PendingOperation::OpenConfigBackupLocation,
             Some(SettingValue::OpenConfigBackupLocation),
+            cx,
+        );
+    }
+
+    fn export_diagnostics(&mut self, cx: &mut Context<Self>) {
+        self.start_request(
+            PendingOperation::ExportDiagnostics,
+            Some(SettingValue::ExportDiagnostics),
             cx,
         );
     }
@@ -1532,6 +1577,7 @@ impl SettingsView {
                 Some(SettingValue::RestoreDefaultConfiguration) => {
                     client.restore_default_configuration().await
                 }
+                Some(SettingValue::ExportDiagnostics) => client.export_diagnostics().await,
             };
             let refreshed = if result
                 .as_ref()
@@ -1589,6 +1635,7 @@ enum SettingValue {
     StartupItemEnabled(bool),
     OpenConfigBackupLocation,
     RestoreDefaultConfiguration,
+    ExportDiagnostics,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1699,6 +1746,7 @@ impl Render for SettingsView {
                     ACCESSIBILITY_STARTUP => &self.startup_item_focus,
                     ACCESSIBILITY_OPEN_BACKUPS => &self.open_backups_focus,
                     ACCESSIBILITY_RESTORE_DEFAULTS => &self.restore_defaults_focus,
+                    ACCESSIBILITY_EXPORT_DIAGNOSTICS => &self.export_diagnostics_focus,
                     ACCESSIBILITY_REFRESH => &self.refresh_focus,
                     ACCESSIBILITY_QUIT => &self.quit_focus,
                     _ => &self.general_focus,
@@ -1747,6 +1795,7 @@ impl Render for SettingsView {
             (_, Some(PendingOperation::RestoreDefaultConfiguration), _) => {
                 "Restoring default configuration...".into()
             }
+            (_, Some(PendingOperation::ExportDiagnostics), _) => "Exporting diagnostics...".into(),
             (_, None, Some(snapshot)) => {
                 let health = match snapshot.runtime_health {
                     RuntimeHealth::Starting => "Starting",
@@ -2761,6 +2810,75 @@ impl Render for SettingsView {
                                                 tokens.muted
                                             })
                                             .child(runtime_diagnostics.detail),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .id("diagnostics-export")
+                                    .pb_3()
+                                    .mb_3()
+                                    .border_b_1()
+                                    .border_color(tokens.border)
+                                    .flex()
+                                    .items_center()
+                                    .justify_between()
+                                    .gap_4()
+                                    .child(
+                                        div()
+                                            .min_w_0()
+                                            .flex_1()
+                                            .flex()
+                                            .flex_col()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .text_sm()
+                                                    .text_color(tokens.muted)
+                                                    .child("Diagnostics export"),
+                                            )
+                                            .child(
+                                                div().text_sm().child(
+                                                    snapshot
+                                                        .diagnostics_export
+                                                        .map(|status| {
+                                                            format!(
+                                                                "Exported {} bytes",
+                                                                status.bytes_written
+                                                            )
+                                                        })
+                                                        .unwrap_or_else(|| {
+                                                            "No report exported".to_owned()
+                                                        }),
+                                                ),
+                                            ),
+                                    )
+                                    .child(
+                                        command_button(
+                                            "Export",
+                                            &self.export_diagnostics_focus,
+                                            32,
+                                            window,
+                                            tokens,
+                                            config_action_disabled,
+                                        )
+                                        .id("export-diagnostics")
+                                        .on_click(cx.listener(|view, _, window, cx| {
+                                            if view.pending.is_none() {
+                                                window.focus(&view.export_diagnostics_focus);
+                                                view.export_diagnostics(cx);
+                                            }
+                                        }))
+                                        .on_key_down(
+                                            cx.listener(|view, event, window, cx| {
+                                                if view.pending.is_none()
+                                                    && is_activation_key(event)
+                                                {
+                                                    cx.stop_propagation();
+                                                    window.focus(&view.export_diagnostics_focus);
+                                                    view.export_diagnostics(cx);
+                                                }
+                                            }),
+                                        ),
                                     ),
                             )
                             .child(

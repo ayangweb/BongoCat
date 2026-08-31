@@ -12,6 +12,7 @@ build = "build.rs"
 storage-test-injection = []
 
 [dependencies]
+atomic-write-file.workspace = true
 bongocat-audio.workspace = true
 bongocat-config.workspace = true
 bongocat-live2d.workspace = true
@@ -20,6 +21,8 @@ bongocat-overlay.workspace = true
 bongocat-render.workspace = true
 bongocat-runtime.workspace = true
 bongocat-ui.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 bongocat-platform.workspace = true

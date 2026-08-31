@@ -743,6 +743,7 @@ dependencies = [
 name = "bongocat-app"
 version = "0.1.0"
 dependencies = [
+ "atomic-write-file",
  "bongocat-audio",
  "bongocat-config",
  "bongocat-live2d",
@@ -753,6 +754,8 @@ dependencies = [
  "bongocat-runtime",
  "bongocat-ui",
  "gpui",
+ "serde",
+ "serde_json",
  "tempfile",
 ]
 

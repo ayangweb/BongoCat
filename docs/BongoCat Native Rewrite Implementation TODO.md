@@ -1168,6 +1168,13 @@ overlay owner；设置更新失败时保留旧 snapshot。scale/opacity 的可�
     页面。input/config/model 已有各自 typed code，但统一诊断导出和 update code 尚未完成，因此保持
     未勾选。
 - [ ] 日志导出生成可预览的脱敏包。
+  - 状态（2026-09-01）：settings service 已新增有界 `ExportDiagnostics` command，使用当前环境
+    `logs/diagnostics.json` 的同目录原子写入生成 format v1 JSON。导出只包含稳定 runtime/input/
+    configuration code、匿名聚合计数、模型来源计数和 settings/config revision；不包含模型 ID、
+    路径、按键值、原始 JSON、时间戳或动态 I/O 文本。Diagnostics 页面提供键盘和 AccessKit 可访问
+    的 Export 控件，并显示本次导出的字节数；app/ui 定向测试覆盖原子写入、聚合排序、隐私边界和
+    typed command。应用级 Core 日志的按天清理、轮转文件合并和跨域历史日志打包仍待完成，因此
+    本项保持未勾选。
 - [ ] 更新 manifest 定义 schemaVersion、channel、最低可升级版本、发布时间和防回滚字段。
 - [ ] 更新 helper/installer 的权限边界、替换原子性和失败恢复经过单独威胁建模。
 
