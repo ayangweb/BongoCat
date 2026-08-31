@@ -1572,14 +1572,18 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       Windows/macOS/Ubuntu Native jobs `99438972370`/`99438972328`/`99438972320` 通过完整门禁，
       Windows 与 macOS Native jobs 均实际通过新增 recovery window smoke；Windows input/config job
       `99438972066` 及双平台 GPUI spike jobs 同时通过，退出条件满足。
-39. [ ] `P6-CONFIG-WRITE-FAILURES`：稳定分类并投影配置写入的可恢复存储失败。
+39. [x] `P6-CONFIG-WRITE-FAILURES`：稳定分类并投影配置写入的可恢复存储失败。
     - 依赖：`P6-CONFIG-INTERRUPTED-COMMIT`、正式 settings error contract 和原子 writer。
     - 退出条件：权限/只读、空间/配额不足和固定 temp 目标占用具有稳定匿名原因与独立 settings
       error；temp 创建前权限失败、创建后磁盘满和真实文件/目录占用均可重复注入，失败逐字节保留
       current、不推进 snapshot/revision，只清理本次调用创建的 partial temp，绝不删除预先/并发占用
       条目；config/app/ui 定向测试、完整 Native workspace、三平台 CI 和 Windows config job 通过。
-    - 状态（2026-08-31）：config 25、app 31、ui 22 项定向测试已通过；完整 workspace 与 CI 证据
-      仍待本项提交，保持未勾选。
+    - 验收证据（2026-08-31）：config 25、app 31、ui 22 项定向测试覆盖阶段注入、真实文件/目录
+      占用、current/占用条目保留、partial temp 清理、snapshot revision 不变和匿名 settings error。
+      commit `0549f33` 的 pull request run `33378437342` 全绿；Windows/macOS/Ubuntu Native jobs
+      `99445071780`/`99445071706`/`99445071635` 通过完整 format、Clippy、workspace test、release/
+      Production 与平台 smoke，Windows input/config job `99445071726` 和 config-store job
+      `99445071760` 同时通过，退出条件满足。
 
 ## 13. 待决策清单
 
