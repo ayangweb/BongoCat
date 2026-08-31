@@ -1561,8 +1561,12 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       在 writer lock 内二次确认、quarantine 原字节、原子写入并验证 v2 默认配置，恢复后要求重启；
       未来 schema、归档/验证失败保留原文件并返回稳定错误；config/app/ui 定向测试、完整 Native
       workspace、三平台 CI 和 recovery window smoke 通过。
-    - 状态（2026-08-31）：config/app/ui 定向测试已通过（config 23、app 29、ui 21）；recovery-only
-      产品入口与完整 UI/三平台 smoke 仍待验证，保持未勾选。
+    - 状态（2026-08-31）：config/app/ui 定向测试已通过（config 23、app 29、ui 21）。commit
+      `e2ced51` 的 pull request run `33374202985` 全绿；Windows/macOS/Ubuntu Native jobs
+      `99431897523`/`99431897620`/`99431897612`、Windows input/config job `99431897588`、
+      Windows GPUI jobs `99431897503`/`99431897512` 和 macOS GPUI job `99431897618` 均通过。
+      现有 CI 尚未专门启动损坏 current 且无备份的 recovery-only 产品入口，因此 recovery window
+      smoke 仍待补齐，保持未勾选。
 
 ## 13. 待决策清单
 
