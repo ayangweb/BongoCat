@@ -566,6 +566,7 @@ pub enum SettingsCommand {
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     SelectModel {
+        expected_config_revision: u64,
         model: SettingsModelKey,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
@@ -683,10 +684,15 @@ impl SettingsClient {
 
     pub async fn select_model(
         &self,
+        expected_config_revision: u64,
         model: SettingsModelKey,
     ) -> Result<SettingsSnapshot, SettingsError> {
-        self.request(|reply| SettingsCommand::SelectModel { model, reply })
-            .await
+        self.request(|reply| SettingsCommand::SelectModel {
+            expected_config_revision,
+            model,
+            reply,
+        })
+        .await
     }
 
     pub async fn import_model(
@@ -788,9 +794,14 @@ impl SettingsClient {
 
     pub fn select_model_blocking(
         &self,
+        expected_config_revision: u64,
         model: SettingsModelKey,
     ) -> Result<SettingsSnapshot, SettingsError> {
-        self.request_blocking(|reply| SettingsCommand::SelectModel { model, reply })
+        self.request_blocking(|reply| SettingsCommand::SelectModel {
+            expected_config_revision,
+            model,
+            reply,
+        })
     }
 
     pub fn import_model_blocking(

@@ -13,7 +13,7 @@ compare-and-swap，防止窗口中的旧编辑覆盖后台配置。若两者共�
 - `SettingsSnapshot.revision` 是 UI 可观察内容的单调版本，只用于丢弃过期异步结果和刷新视图。
 - `SettingsSnapshot.config_revision` 是当前环境持久化配置的版本；恢复模式没有可编辑版本时为
   `None`。
-- 所有已接入的直接配置 command（overlay visible/settings、motion audio）携带
+- 所有已接入的配置/模型选择 command（overlay visible/settings、motion audio、model selection）携带
   `expected_config_revision`，settings worker 在调用 Application 写入前比较它。
 - 比较失败返回匿名 `SnapshotOutdated`，不改变 runtime、配置文件或任何 revision；UI 读取最新
   snapshot 并保留可操作错误。

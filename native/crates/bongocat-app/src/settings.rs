@@ -265,15 +265,26 @@ fn run_service(
                     });
                 let _ = reply.respond(result);
             }
-            SettingsCommand::SelectModel { model, reply } => {
+            SettingsCommand::SelectModel {
+                expected_config_revision,
+                model,
+                reply,
+            } => {
                 let result = require_operational(&application)
+                    .map_err(map_application_error)
                     .and_then(|()| {
-                        application
-                            .select_model(model_origin(model.origin), model.id)
-                            .map(|_| ())
+                        let current =
+                            snapshot(&application, &mut clock, false, startup_item.state());
+                        if current.config_revision != Some(expected_config_revision) {
+                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
+                        } else {
+                            application
+                                .select_model(model_origin(model.origin), model.id)
+                                .map(|_| ())
+                                .map_err(map_application_error)
+                        }
                     })
-                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()))
-                    .map_err(map_application_error);
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
             SettingsCommand::ImportModel {
@@ -1288,6 +1299,7 @@ mod tests {
         let client = service.client();
 
         let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        let initial_config_revision = initial.config_revision.expect("config revision");
         assert_eq!(initial.model_catalog.entries.len(), 3);
         assert!(initial.model_catalog.error.is_none());
         assert!(initial.model_catalog.entries.iter().all(|entry| {
@@ -1295,10 +1307,13 @@ mod tests {
                 && matches!(entry.availability, SettingsModelAvailability::Ready { .. })
         }));
         let selected = client
-            .select_model_blocking(SettingsModelKey {
-                id: "keyboard".to_owned(),
-                origin: SettingsModelOrigin::Preset,
-            })
+            .select_model_blocking(
+                initial_config_revision,
+                SettingsModelKey {
+                    id: "keyboard".to_owned(),
+                    origin: SettingsModelOrigin::Preset,
+                },
+            )
             .expect("select preset model");
         let selected_config_revision = selected.config_revision.expect("config revision");
         assert_eq!(
@@ -1411,10 +1426,34 @@ mod tests {
 
         let initial = client.read_snapshot_blocking().expect("initial snapshot");
         let initial_config_revision = initial.config_revision.expect("config revision");
+        let initial_active_model = initial.active_model.clone();
         let hidden = client
             .set_overlay_visible_blocking(initial_config_revision, false)
             .expect("hide overlay");
         let hidden_config = std::fs::read(&config_path).expect("hidden config");
+
+        let stale_model_error = client
+            .select_model_blocking(
+                initial_config_revision,
+                SettingsModelKey {
+                    id: "keyboard".to_owned(),
+                    origin: SettingsModelOrigin::Preset,
+                },
+            )
+            .expect_err("stale model selection");
+        assert_eq!(
+            stale_model_error.code(),
+            SettingsErrorCode::SnapshotOutdated
+        );
+        let after_stale_model = client
+            .read_snapshot_blocking()
+            .expect("snapshot after stale model");
+        assert_eq!(after_stale_model.revision, hidden.revision);
+        assert_eq!(after_stale_model.active_model, initial_active_model);
+        assert_eq!(
+            std::fs::read(&config_path).expect("preserved hidden config"),
+            hidden_config
+        );
 
         let stale_audio_error = client
             .set_motion_audio_enabled_blocking(initial_config_revision, false)
@@ -1793,10 +1832,13 @@ mod tests {
             })
             .expect("import installed duplicate");
         let selected = client
-            .select_model_blocking(SettingsModelKey {
-                id: "standard".to_owned(),
-                origin: SettingsModelOrigin::Preset,
-            })
+            .select_model_blocking(
+                imported.config_revision.expect("config revision"),
+                SettingsModelKey {
+                    id: "standard".to_owned(),
+                    origin: SettingsModelOrigin::Preset,
+                },
+            )
             .expect("select preset duplicate");
         let deleted = client
             .delete_model_blocking(SettingsModelKey {
@@ -1849,17 +1891,20 @@ mod tests {
         let application = Application::start_with_layout(layout).expect("application start");
         let service = ApplicationSettingsService::start(application).expect("service start");
         let client = service.client();
-        client
+        let imported = client
             .import_model_blocking(SettingsModelImportRequest {
                 id: "selected".to_owned(),
                 source_root: model_fixture(),
             })
             .expect("import model");
         let selected = client
-            .select_model_blocking(SettingsModelKey {
-                id: "selected".to_owned(),
-                origin: SettingsModelOrigin::Installed,
-            })
+            .select_model_blocking(
+                imported.config_revision.expect("config revision"),
+                SettingsModelKey {
+                    id: "selected".to_owned(),
+                    origin: SettingsModelOrigin::Installed,
+                },
+            )
             .expect("select installed model");
 
         let error = client

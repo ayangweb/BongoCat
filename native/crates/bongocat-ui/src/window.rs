@@ -1351,13 +1351,20 @@ impl SettingsView {
         if self.pending.is_some() || self.model_import.is_running() {
             return;
         }
+        let Some(expected_config_revision) = self
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.config_revision)
+        else {
+            return;
+        };
         self.pending = Some(PendingOperation::ModelSelection);
         self.error = None;
         self.model_delete_confirmation = None;
         cx.notify();
         let client = self.client.clone();
         cx.spawn(async move |this, cx| {
-            let result = client.select_model(model).await;
+            let result = client.select_model(expected_config_revision, model).await;
             let _ = this.update(cx, |view, cx| {
                 view.pending = None;
                 match result {
