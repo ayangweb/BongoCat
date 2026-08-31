@@ -10,10 +10,10 @@ use bongocat_render::{
     RenderSnapshot, TextureAsset, TextureId,
 };
 use bongocat_runtime::{
-    CursorPosition, CursorProducer, CursorSample, CursorViewport, GamepadAxisProducer, HandSide,
-    InputBindings, InputControl, InputEdge, InputEvent, InputProducer, InputSource,
-    MonotonicMillis, MouseButton, PhysicalKey, RuntimeClient, RuntimeCommand, RuntimeOwner,
-    RuntimeRenderErrorCode, RuntimeState,
+    CursorPosition, CursorProducer, CursorSample, CursorViewport, GamepadAxisProducer,
+    GamepadButton, HandSide, InputBindings, InputControl, InputEdge, InputEvent, InputProducer,
+    InputSource, MonotonicMillis, MouseButton, PhysicalKey, RuntimeClient, RuntimeCommand,
+    RuntimeOwner, RuntimeRenderErrorCode, RuntimeState,
 };
 use image::ImageReader;
 use metal::{
@@ -1417,7 +1417,15 @@ fn preview_input_bindings(model_id: &str) -> InputBindings {
             key_hands.insert(PhysicalKey::from_hid_usage(usage), HandSide::Right);
         }
     }
-    InputBindings::new(key_hands)
+    let gamepad_hands = if model_id == "gamepad" {
+        BTreeMap::from([
+            (GamepadButton::South, HandSide::Left),
+            (GamepadButton::East, HandSide::Right),
+        ])
+    } else {
+        BTreeMap::new()
+    };
+    InputBindings::with_gamepad_hands(key_hands, gamepad_hands)
 }
 
 fn upload_slice<T>(buffer: &Buffer, values: &[T], name: &str) -> Result<(), OverlayError> {

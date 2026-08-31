@@ -846,6 +846,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     `motion -> expression -> automatic effects -> product input -> Core update`，眨眼/呼吸不会被旧层残留值
     覆盖。physics/pose 仍等待可授权真实 fixture、R5 黑盒轨迹和求值实现，不得以合成数据宣称完成。
 - [ ] 实现键盘、鼠标、手柄到参数/动作/表情映射。
+  - 状态（2026-09-01）：正式 `InputBindings` 现支持按 `GamepadButton` 的强类型左右手映射，
+    `gamepad` 预置将 South/East 分别投影到左右手；Windows/macOS 预览路径与 runtime 共用该
+    contract，release 后仍需动作/表情快捷键映射、用户可编辑绑定和物理设备回归，因此保持未勾选。
 - [ ] 实现镜像、鼠标镜像和坐标归一化。
 - [ ] 随机行为支持测试 seed。
 - [ ] 逐项记录与旧版的可接受差异。

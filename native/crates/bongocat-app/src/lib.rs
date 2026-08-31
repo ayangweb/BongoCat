@@ -19,7 +19,7 @@ use bongocat_model::{
 use bongocat_render::{ModelCommitToken, RenderConsumer};
 use bongocat_runtime::{
     CursorProducer, ExpressionId, ExpressionIdError, GamepadAxisProducer, GamepadAxisSettings,
-    HandSide, InputBindings, InputProducer, MotionId, MotionIdError, MotionPriority,
+    GamepadButton, HandSide, InputBindings, InputProducer, MotionId, MotionIdError, MotionPriority,
     OverlaySettings, PhysicalKey, RuntimeClient, RuntimeCommand, RuntimeCommandFailure,
     RuntimeOwner, RuntimeRenderErrorCode, RuntimeSnapshot, SendError, ShutdownError,
 };
@@ -855,7 +855,15 @@ fn input_bindings_for_model(origin: ModelOrigin, model_id: &str) -> InputBinding
             key_hands.insert(PhysicalKey::from_hid_usage(usage), HandSide::Right);
         }
     }
-    InputBindings::new(key_hands)
+    let gamepad_hands = if model_id == "gamepad" {
+        BTreeMap::from([
+            (GamepadButton::South, HandSide::Left),
+            (GamepadButton::East, HandSide::Right),
+        ])
+    } else {
+        BTreeMap::new()
+    };
+    InputBindings::with_gamepad_hands(key_hands, gamepad_hands)
 }
 
 #[cfg(test)]

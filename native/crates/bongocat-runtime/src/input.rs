@@ -147,15 +147,30 @@ pub enum HandSide {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct InputBindings {
     key_hands: BTreeMap<PhysicalKey, HandSide>,
+    gamepad_hands: BTreeMap<GamepadButton, HandSide>,
 }
 
 impl InputBindings {
     pub fn new(key_hands: BTreeMap<PhysicalKey, HandSide>) -> Self {
-        Self { key_hands }
+        Self::with_gamepad_hands(key_hands, BTreeMap::new())
+    }
+
+    pub fn with_gamepad_hands(
+        key_hands: BTreeMap<PhysicalKey, HandSide>,
+        gamepad_hands: BTreeMap<GamepadButton, HandSide>,
+    ) -> Self {
+        Self {
+            key_hands,
+            gamepad_hands,
+        }
     }
 
     pub fn hand_for(&self, key: PhysicalKey) -> Option<HandSide> {
         self.key_hands.get(&key).copied()
+    }
+
+    pub fn hand_for_gamepad(&self, button: GamepadButton) -> Option<HandSide> {
+        self.gamepad_hands.get(&button).copied()
     }
 }
 
@@ -489,7 +504,11 @@ impl InputState {
                 InputControl::Gamepad(button) => match button.button {
                     GamepadButton::LeftStick => snapshot.stick_left_down = true,
                     GamepadButton::RightStick => snapshot.stick_right_down = true,
-                    _ => {}
+                    button => match bindings.hand_for_gamepad(button) {
+                        Some(HandSide::Left) => snapshot.left_hand_down = true,
+                        Some(HandSide::Right) => snapshot.right_hand_down = true,
+                        None => {}
+                    },
                 },
                 InputControl::Mouse(_) => {}
             }
@@ -873,6 +892,55 @@ mod tests {
             ),
             ModelInputSnapshot::default()
         );
+    }
+
+    #[test]
+    fn configured_gamepad_buttons_project_to_the_bound_hand() {
+        let connection = GamepadConnection {
+            device_id: 4,
+            generation: 2,
+        };
+        let south = InputControl::Gamepad(GamepadButtonKey {
+            connection,
+            button: GamepadButton::South,
+        });
+        let east = InputControl::Gamepad(GamepadButtonKey {
+            connection,
+            button: GamepadButton::East,
+        });
+        let bindings = InputBindings::with_gamepad_hands(
+            BTreeMap::new(),
+            BTreeMap::from([
+                (GamepadButton::South, HandSide::Left),
+                (GamepadButton::East, HandSide::Right),
+            ]),
+        );
+        let mut state = InputState::default();
+        state.apply(SequencedInputEvent {
+            sequence: 0,
+            event: InputEvent::GamepadConnected {
+                connection,
+                at: MonotonicMillis::new(0),
+            },
+        });
+        state.apply(edge(1, 1, south, InputEdge::Down));
+        assert_eq!(
+            state.model_snapshot(&bindings, NormalizedCursorPosition::default()),
+            ModelInputSnapshot {
+                left_hand_down: true,
+                ..ModelInputSnapshot::default()
+            }
+        );
+        state.apply(edge(2, 2, east, InputEdge::Down));
+        assert!(
+            state
+                .model_snapshot(&bindings, NormalizedCursorPosition::default())
+                .right_hand_down
+        );
+        state.apply(edge(3, 3, south, InputEdge::Up));
+        let after_release = state.model_snapshot(&bindings, NormalizedCursorPosition::default());
+        assert!(!after_release.left_hand_down);
+        assert!(after_release.right_hand_down);
     }
 
     #[test]
