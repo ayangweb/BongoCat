@@ -1405,7 +1405,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       application reopen callback、设置窗口恢复和正常 quit；同一 job 的 format、Clippy、workspace
       test、release、Production build 与系统菜单 smoke 均通过。Distribution signing、Hardened
       Runtime/notarization 仍由发布门禁跟踪，不计入本项完成声明。
-30. [ ] `P7-STARTUP-ITEM-PLATFORM`：实现环境隔离的双平台当前用户启动项 adapter。
+30. [x] `P7-STARTUP-ITEM-PLATFORM`：实现环境隔离的双平台当前用户启动项 adapter。
     - 依赖：ADR-0008、ADR-0013、正式 build environment 和产品 executable identity。
     - 退出条件：共享稳定 state/error 区分 disabled/enabled/stale/requires-approval/unsupported；
       Windows HKCU Run value 按环境分名、精确匹配当前 executable + `--run-seconds 0` 且无需管理员；
@@ -1420,8 +1420,11 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       disabled 恢复 smoke；commit `17f9a3c` 的 push run `33352737430`、macOS job
       `99369071727` 进一步证明复制到 `/Applications` 唯一目录并由 LaunchServices 启动的 ad-hoc
       bundle 初态仍为 `NotFound`，但旧 smoke 在注册前错误拒绝该可操作状态。本机 Production
-      `.app` 已真实通过 `NotFound` -> register -> unregister -> `Disabled` 并清理安装目录；修正后
-      的 hosted runner 证据待新 push 验证，因此保持未勾选。
+      `.app` 已真实通过 `NotFound` -> register -> unregister -> `Disabled` 并清理安装目录。
+      commit `62f8c8f` 的 push run `33354177622` 全绿；Windows job `99373058496` 再次通过真实
+      HKCU lifecycle，macOS job `99373058428` 明确输出 `NotFound` -> register/unregister ->
+      `Disabled`，并完成 `/Applications` 临时安装、LaunchServices 注销和目录清理。双平台
+      workspace、Production build、平台 source check 与其余 release smoke 同时通过，退出条件满足。
 31. [ ] `P5-STARTUP-ITEM-UI`：以 typed settings command/snapshot 接入 General 启动项控件。
     - 依赖：`P7-STARTUP-ITEM-PLATFORM`、现有 revisioned `SettingsSnapshot` 和 settings worker。
     - 退出条件：状态读取与启用/禁用不阻塞 GPUI executor；控件覆盖 loading、enabled、disabled、
@@ -1434,8 +1437,11 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       模拟服务测试证明外部状态/read error 会递增 revision，变更失败和成功都不改 config/runtime，
       shutdown 保留最后状态；General product smoke 已进入双平台既有 settings lifecycle。完整 Native
       format/Clippy/test/release/Production、license/source policy 和 Windows x64/ARM64 platform Clippy
-      本机通过；双平台页面 smoke 与 macOS 安装态 startup-item smoke 待新 push 取证，故保持未勾选。
-32. [ ] `P5-INPUT-DIAGNOSTICS-UI`：把 runtime 输入可靠性计数投影到真实 Diagnostics 页面。
+      本机通过；commit `62f8c8f` 的 push run `33354177622` 中 Windows/macOS jobs
+      `99373058496`/`99373058428` 均通过 General 页面、窗口重建和 shutdown，macOS 同时通过安装态
+      startup-item mutation smoke。项目级 AccessKit tree 尚未为该开关提供 role/value/action，故
+      accessibility 退出条件仍未满足，本项保持未勾选。
+32. [x] `P5-INPUT-DIAGNOSTICS-UI`：把 runtime 输入可靠性计数投影到真实 Diagnostics 页面。
     - 依赖：正式 `RuntimeSnapshot.input`、revisioned `SettingsSnapshot` 和双平台 settings lifecycle。
     - 退出条件：UI 协议只包含 pressed 数量及 captured/reconciled/reset、sequence、overflow 的匿名
       聚合计数，不含具体键值、原始事件、路径或平台类型；transport-only 变化推进 settings revision；
@@ -1446,8 +1452,10 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       Refresh 提供 loading/error/retry，双平台 settings lifecycle smoke 会先验证 General 再切换
       Diagnostics。本机 800x600 Production `.app` 可视检查证明 19 项指标与底部操作无重叠；
       Development release settings lifecycle、完整 Native format/Clippy/test/release/Production、
-      license/source policy、Linux app Clippy 与 Windows x64/ARM64 platform Clippy 均通过；新 push
-      双平台证据待完成。
+      license/source policy、Linux app Clippy 与 Windows x64/ARM64 platform Clippy 均通过。
+      commit `62f8c8f` 的 push run `33354177622` 全绿；Windows/macOS jobs
+      `99373058496`/`99373058428` 均实际通过 General -> Diagnostics 页面切换、close/reopen 和有序
+      shutdown，Ubuntu job `99373058388` 通过共享 UI contract 与完整 workspace 门禁，退出条件满足。
 
 ## 13. 待决策清单
 
