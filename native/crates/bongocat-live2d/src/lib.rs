@@ -380,6 +380,28 @@ impl Live2dModel {
         }
     }
 
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    pub fn apply_automatic_effects(
+        &mut self,
+        breath: f32,
+        eye_blink: f32,
+    ) -> Result<usize, Live2dError> {
+        let mut applied = usize::from(matches!(
+            self.set_normalized_parameter_by_id("ParamBreath", breath)?,
+            ParameterUpdate::Applied { .. }
+        ));
+        let eye_blink_ids = self.eye_blink_parameter_ids.clone();
+        for id in eye_blink_ids {
+            if matches!(
+                self.set_normalized_parameter_by_id(&id, eye_blink)?,
+                ParameterUpdate::Applied { .. }
+            ) {
+                applied += 1;
+            }
+        }
+        Ok(applied)
+    }
+
     pub fn apply_motion(
         &mut self,
         motion: &MotionClip,
@@ -871,5 +893,53 @@ mod tests {
             .expect("restore parameter defaults");
         let snapshot = model.update_and_snapshot().expect("next render snapshot");
         assert!((snapshot.model_opacity - 0.4).abs() < 0.0001);
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn automatic_effects_use_declared_group_and_optional_breath_parameter() {
+        use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
+        use std::path::Path;
+
+        let repository_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repository root");
+        let committed = PresetModelCatalog::open(
+            repository_root.join("native/resources/models"),
+            ModelPackageLimits::default(),
+        )
+        .expect("preset catalog")
+        .load(&ModelId::parse("standard").expect("model id"))
+        .expect("preset model");
+        let mut model = Live2dModel::load(&committed).expect("Live2D model");
+        model
+            .restore_parameter_defaults()
+            .expect("restore parameter defaults");
+        let applied = model
+            .apply_automatic_effects(1.0, -1.0)
+            .expect("automatic effects");
+        assert_eq!(applied, 3);
+        assert_eq!(
+            model
+                .core
+                .parameter_value_by_id("ParamEyeLOpen")
+                .expect("left eye"),
+            Some(0.0)
+        );
+        assert_eq!(
+            model
+                .core
+                .parameter_value_by_id("ParamEyeROpen")
+                .expect("right eye"),
+            Some(0.0)
+        );
+        assert_eq!(
+            model
+                .core
+                .parameter_value_by_id("ParamBreath")
+                .expect("breath"),
+            Some(1.0)
+        );
     }
 }

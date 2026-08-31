@@ -15,8 +15,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-const BREATH_PARAMETER_ID: &str = "ParamBreath";
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 const BREATH_PERIOD: Duration = Duration::from_secs(4);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const BLINK_PERIOD: Duration = Duration::from_secs(5);
@@ -428,13 +426,8 @@ fn apply_automatic_effects(
 ) -> Result<(), RuntimeRenderErrorCode> {
     let (breath, blink) = automatic_effect_values(now);
     model
-        .set_normalized_parameter_by_id(BREATH_PARAMETER_ID, breath)
+        .apply_automatic_effects(breath, blink)
         .map_err(|_| RuntimeRenderErrorCode::ModelEvaluationFailed)?;
-    for id in ["ParamEyeLOpen", "ParamEyeROpen"] {
-        model
-            .set_normalized_parameter_by_id(id, blink)
-            .map_err(|_| RuntimeRenderErrorCode::ModelEvaluationFailed)?;
-    }
     Ok(())
 }
 
@@ -445,9 +438,9 @@ fn automatic_effect_values(now: Duration) -> (f32, f32) {
     let breath = (std::f64::consts::TAU * breath_phase).sin() as f32;
     let blink_phase = now.as_secs_f64() % BLINK_PERIOD.as_secs_f64();
     let blink = if blink_phase < BLINK_CLOSED_DURATION.as_secs_f64() {
-        0.0
+        -1.0
     } else {
-        1.0
+        0.0
     };
     (breath, blink)
 }
@@ -514,9 +507,9 @@ mod tests {
         assert_eq!(start.0, 0.0);
         assert!((quarter.0 - 1.0).abs() < 0.000_001);
         assert!((full_cycle.0 - start.0).abs() < 0.000_001);
-        assert_eq!(start.1, 0.0);
-        assert_eq!(automatic_effect_values(BLINK_CLOSED_DURATION).1, 1.0);
-        assert_eq!(automatic_effect_values(BLINK_PERIOD).1, 0.0);
+        assert_eq!(start.1, -1.0);
+        assert_eq!(automatic_effect_values(BLINK_CLOSED_DURATION).1, 0.0);
+        assert_eq!(automatic_effect_values(BLINK_PERIOD).1, -1.0);
     }
 
     #[test]
@@ -526,7 +519,7 @@ mod tests {
                 u64::try_from(millis).expect("duration fits u64"),
             ));
             assert!((-1.0..=1.0).contains(&breath));
-            assert!(blink == 0.0 || blink == 1.0);
+            assert!(blink == -1.0 || blink == 0.0);
         }
     }
 }

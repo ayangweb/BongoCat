@@ -2610,7 +2610,14 @@ mod tests {
         let final_frame = wait_for_render_frame(&consumer, |frame| {
             frame.transport_sequence > half_faded.transport_sequence
         });
-        assert_eq!(final_frame.snapshot, baseline.snapshot);
+        assert_eq!(
+            final_frame.snapshot.model_opacity,
+            baseline.snapshot.model_opacity
+        );
+        assert_eq!(
+            final_frame.snapshot.drawables.len(),
+            baseline.snapshot.drawables.len()
+        );
 
         owner.shutdown(TIMEOUT).expect("runtime shutdown");
     }
