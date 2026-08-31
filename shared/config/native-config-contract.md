@@ -1,6 +1,6 @@
 # Native Configuration Contract
 
-状态：Native schema v2；JSON schema、Rust 类型与 fixtures 同步维护
+状态：Native schema v3；JSON schema、Rust 类型与 fixtures 同步维护
 
 ## Naming
 
@@ -53,6 +53,19 @@ shortcuts
 | `model`       | `release_fallback_timeout_ms`     | 输入校正失败后的最后保险，不是主语义   |
 | `shortcuts`   | `commands`                        | 应用 command 到快捷键绑定              |
 | `shortcuts`   | `model_behaviors`                 | 模型动作/表情绑定                      |
+
+## Shortcut Chords
+
+快捷键配置仍以字符串持久化，但在写入前必须通过平台无关的 chord 校验。每个 chord
+包含零个或多个修饰键和恰好一个 key，使用 `+` 分隔；修饰键接受
+`Control`/`Ctrl`、`Alt`/`Option`、`Shift` 和 `Meta`/`Command`/`Cmd`/`Win` 别名。
+key 必须是无空白的可打印 ASCII token。校验器以固定顺序
+`Control+Alt+Shift+Meta+Key` 规范化别名和输入顺序，并拒绝重复修饰键、多 key、空
+片段及非法 key。
+
+规范化后的 chord 在 `shortcuts.commands` 与 `shortcuts.model_behaviors` 之间共享唯一
+命名空间；同一 chord 不能绑定多个 command 或模型行为。该规则只冻结持久化和冲突
+检测语义，物理 key 映射、系统注册和捕获仍由后续平台 adapter 负责。
 
 窗口坐标、pressed state、权限结果、模型解析缓存和 renderer 状态不属于 `config.json`。可恢复窗口布局写入 `state.json`；其余瞬时/派生状态不持久化。
 

@@ -228,6 +228,123 @@ pub struct ShortcutConfig {
     pub model_behaviors: Vec<ModelBehaviorBinding>,
 }
 
+/// A platform-neutral keyboard chord used to validate persisted shortcut
+/// bindings before a platform adapter attempts to capture or register them.
+/// The key is kept as a canonical token because mapping it to a physical key
+/// is platform-specific and belongs outside the configuration crate.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ShortcutChord {
+    modifiers: ShortcutModifiers,
+    key: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ShortcutModifiers(u8);
+
+impl ShortcutModifiers {
+    pub const CONTROL: u8 = 1 << 0;
+    pub const ALT: u8 = 1 << 1;
+    pub const SHIFT: u8 = 1 << 2;
+    pub const META: u8 = 1 << 3;
+
+    pub const fn bits(self) -> u8 {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ShortcutParseError {
+    MissingKey,
+    EmptyPart,
+    DuplicateModifier,
+    MultipleKeys,
+    InvalidKey,
+}
+
+impl fmt::Display for ShortcutParseError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let message = match self {
+            Self::MissingKey => "shortcut must contain a key",
+            Self::EmptyPart => "shortcut contains an empty part",
+            Self::DuplicateModifier => "shortcut contains a duplicate modifier",
+            Self::MultipleKeys => "shortcut must contain exactly one key",
+            Self::InvalidKey => "shortcut key must be printable ASCII without whitespace",
+        };
+        formatter.write_str(message)
+    }
+}
+
+impl std::error::Error for ShortcutParseError {}
+
+impl ShortcutChord {
+    pub fn parse(value: &str) -> Result<Self, ShortcutParseError> {
+        let mut modifiers = 0_u8;
+        let mut key = None;
+        for part in value.split('+') {
+            let part = part.trim();
+            if part.is_empty() {
+                return Err(ShortcutParseError::EmptyPart);
+            }
+            let modifier = match part.to_ascii_lowercase().as_str() {
+                "control" | "ctrl" => Some(ShortcutModifiers::CONTROL),
+                "alt" | "option" => Some(ShortcutModifiers::ALT),
+                "shift" => Some(ShortcutModifiers::SHIFT),
+                "meta" | "command" | "cmd" | "win" | "windows" => Some(ShortcutModifiers::META),
+                _ => None,
+            };
+            if let Some(modifier) = modifier {
+                if modifiers & modifier != 0 {
+                    return Err(ShortcutParseError::DuplicateModifier);
+                }
+                modifiers |= modifier;
+                continue;
+            }
+            if key.is_some() {
+                return Err(ShortcutParseError::MultipleKeys);
+            }
+            if !part.is_ascii()
+                || part.chars().any(char::is_whitespace)
+                || part.chars().any(|character| !character.is_ascii_graphic())
+            {
+                return Err(ShortcutParseError::InvalidKey);
+            }
+            key = Some(part.to_ascii_uppercase());
+        }
+        let key = key.ok_or(ShortcutParseError::MissingKey)?;
+        Ok(Self {
+            modifiers: ShortcutModifiers(modifiers),
+            key,
+        })
+    }
+
+    pub const fn modifiers(&self) -> ShortcutModifiers {
+        self.modifiers
+    }
+
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+
+    /// Return a stable representation used for conflict detection and later
+    /// platform registration. Modifier aliases and input ordering collapse to
+    /// this one form.
+    pub fn canonical(&self) -> String {
+        let mut parts = Vec::with_capacity(5);
+        for (bit, name) in [
+            (ShortcutModifiers::CONTROL, "Control"),
+            (ShortcutModifiers::ALT, "Alt"),
+            (ShortcutModifiers::SHIFT, "Shift"),
+            (ShortcutModifiers::META, "Meta"),
+        ] {
+            if self.modifiers.0 & bit != 0 {
+                parts.push(name);
+            }
+        }
+        parts.push(self.key.as_str());
+        parts.join("+")
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ShortcutBinding {
@@ -348,6 +465,25 @@ impl NativeConfig {
                 || binding.shortcut.trim().is_empty()
         }) {
             return Err(ConfigError::InvalidValue("shortcuts.model_behaviors"));
+        }
+        let mut canonical_shortcuts = std::collections::BTreeSet::new();
+        for shortcut in self
+            .shortcuts
+            .commands
+            .iter()
+            .map(|binding| binding.shortcut.as_str())
+            .chain(
+                self.shortcuts
+                    .model_behaviors
+                    .iter()
+                    .map(|binding| binding.shortcut.as_str()),
+            )
+        {
+            let chord = ShortcutChord::parse(shortcut)
+                .map_err(|_| ConfigError::InvalidValue("shortcuts.binding"))?;
+            if !canonical_shortcuts.insert(chord.canonical()) {
+                return Err(ConfigError::InvalidValue("shortcuts.conflict"));
+            }
         }
         Ok(())
     }
@@ -1840,6 +1976,57 @@ mod tests {
                 Err(ConfigError::InvalidValue(actual)) if actual == field
             ));
         }
+    }
+
+    #[test]
+    fn shortcut_chords_normalize_aliases_and_modifier_order() {
+        let chord = ShortcutChord::parse(" shift + ctrl + b ").expect("valid chord");
+        assert_eq!(
+            chord.modifiers().bits(),
+            ShortcutModifiers::CONTROL | ShortcutModifiers::SHIFT
+        );
+        assert_eq!(chord.key(), "B");
+        assert_eq!(chord.canonical(), "Control+Shift+B");
+
+        let meta = ShortcutChord::parse("CMD+option+P").expect("valid mac chord");
+        assert_eq!(meta.canonical(), "Alt+Meta+P");
+    }
+
+    #[test]
+    fn shortcut_chords_reject_ambiguous_parts() {
+        for (value, expected) in [
+            ("Control+", ShortcutParseError::EmptyPart),
+            ("Control+Control+A", ShortcutParseError::DuplicateModifier),
+            ("A+B", ShortcutParseError::MultipleKeys),
+            ("Control", ShortcutParseError::MissingKey),
+            ("Control+bad key", ShortcutParseError::InvalidKey),
+        ] {
+            assert_eq!(ShortcutChord::parse(value), Err(expected), "{value}");
+        }
+    }
+
+    #[test]
+    fn config_rejects_shortcut_parse_errors_and_cross_domain_conflicts() {
+        let mut config = NativeConfig::default();
+        config.shortcuts.commands.push(ShortcutBinding {
+            command: "open_settings".to_owned(),
+            shortcut: "Control+Alt+B".to_owned(),
+        });
+        config.shortcuts.model_behaviors.push(ModelBehaviorBinding {
+            model_id: "standard".to_owned(),
+            behavior_id: "motion:tap".to_owned(),
+            shortcut: "alt + ctrl + b".to_owned(),
+        });
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::InvalidValue("shortcuts.conflict"))
+        ));
+
+        config.shortcuts.model_behaviors[0].shortcut = "Control+".to_owned();
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::InvalidValue("shortcuts.binding"))
+        ));
     }
 
     #[test]

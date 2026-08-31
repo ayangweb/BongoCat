@@ -982,6 +982,7 @@ overlay owner；设置更新失败时保留旧 snapshot。scale/opacity 的可�
 - [ ] 模型：预置/用户模型、导入、删除、切换和兼容诊断。
 - [ ] 输入：键鼠、手柄、忽略鼠标、单键模式和校正状态。
 - [ ] 快捷键：捕获、冲突、清除和恢复默认。
+  - 状态（2026-09-01）：正式 `bongocat-config` 已加入平台无关的 typed chord 校验；修饰键别名和顺序会规范化，重复修饰键、多 key、空片段和非法 key 会被拒绝，`commands` 与 `model_behaviors` 共享冲突命名空间。该 contract 不执行平台注册或捕获，UI 编辑、清除/恢复默认和 runtime 触发仍待完成。
 - [ ] 动作/表情：绑定、预览 command 和错误状态。
 - [ ] 权限：macOS 状态/跳转和 Windows 权限差异。
 - [ ] 更新：检查、下载、验证、安装和回滚提示。
@@ -1873,6 +1874,15 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
         保留最后值。共享 transport、双平台合并 contract 和权限实机 smoke 的 final-snapshot 断言已覆盖。
     - 状态（2026-09-01）：共享 runtime、正式配置、运行期诊断与双平台正式 producer 已接线；
       物理 controller、多手柄/profile 和热插拔 smoke 仍未完成，未声称手柄功能完成。
+
+46. [ ] `P5-SHORTCUT-CONTRACT`：冻结快捷键 chord 的规范化与冲突校验前置契约。
+    - 依赖：Native config v3、`InputEvent`/`PhysicalKey` 语义和后续 GPUI 快捷键编辑页。
+    - 退出条件：字符串绑定在配置提交前解析为平台无关的单 key chord；别名/顺序规范化稳定，
+      非法或重复绑定返回可重试错误；不把平台 keycode、窗口句柄或原始按键流带入 config；
+      后续平台捕获、清除、恢复默认和动作触发必须复用该 canonical contract。
+    - 状态（2026-09-01）：Rust parser、跨 `commands`/`model_behaviors` 冲突检测、单元测试和
+      `shared/config/native-config-contract.md` 已进入 `next`；平台注册、捕获 UI、runtime
+      action dispatch 与实机快捷键证据仍未完成。
 
 ## 13. 待决策清单
 
