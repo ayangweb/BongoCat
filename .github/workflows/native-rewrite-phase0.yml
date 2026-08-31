@@ -1424,6 +1424,7 @@ jobs:
             "threads_before=",
             "threads_after=",
             "threads_baseline_high_water=",
+            "measurement_batches=",
             "gpu_bytes_before=",
             "gpu_bytes_after=",
             "clean_shutdown=true"

@@ -212,6 +212,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     worker。Windows probe 现让首个测量批次建立最终线程高水位，后续两个等长批次不得
     再突破；handle 与 DXGI local memory 仍从预热后跨全部 300 个测量 cycle 执行增长门禁。
     新 CI 与 driver 专项证据仍待完成。
+  - 状态（2026-08-31）：run `33365732170`、job `99405876909` 又在第三测量批次才观察到
+    系统线程池 `8 -> 9`，而窗口/GPU/handle、正常绘制和两类 renderer recovery 均已通过，证明
+    固定“首批建立最终基线”仍依赖 worker 创建时机。Windows probe 现执行至少 3、最多 6 个
+    等长 batch，每次 high-water 增长后要求连续 2 批稳定；持续逐批增长无法在上限内收敛并失败。
+    handle 与 DXGI local memory 继续从预热后跨全部测量区间执行增长门禁；新 CI 证据待完成。
 - [ ] 验证退出顺序：frame source -> renderer -> GPU -> overlay -> GPUI。
   - 状态（2026-08-29）：GPUI executor 上的 60 Hz 定时 frame source 已连续驱动双平台 renderer，并在退出时通过停止确认后才释放 renderer/GPU/window；macOS 本机与 Windows hardware D3D11 runner 均已验证连续帧、resize、hide/show 和有序退出。生产 display-linked frame source 与 runtime 尚未接入，因此保持未完成。
 - [x] 写明 GPUI/AppKit/Win32 主线程所有权、overlay 创建线程和跨线程 command 不变量。

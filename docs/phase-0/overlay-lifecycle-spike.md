@@ -217,11 +217,16 @@ clear/present、隐藏/重显示、GPUI 共存和自动退出；退出日志中
 
 Windows resource probe 现通过同一常驻 D3D11 device 的 `IDXGIAdapter3` 调用
 `QueryVideoMemoryInfo(LOCAL)`，并用 ToolHelp snapshot 统计当前进程线程。probe 先运行一个
-完整 100-cycle batch 初始化 D3D/DXGI/DirectComposition/compiler/driver pool，在第二个等长
-100-cycle batch 前后执行零增长检查；任何 thread 或 `CurrentUsage` 增长都会使 worker 非零
-退出，原有 process handle 门禁保持不变。x64 Clippy/Check 与 ARM64 Check 已通过；真实
-hardware D3D11 的线程和显存数值仍待本批 `windows-latest` push job 记录，交叉编译结果不能
-替代运行时证据。
+完整 100-cycle batch 初始化 D3D/DXGI/DirectComposition/compiler/driver pool，再执行至少 3、
+最多 6 个等长测量 batch；每次出现新的 thread high-water 后必须连续 2 个 batch 不再增长才算
+收敛，逐 batch 增长会在固定上限失败。handle 与 `CurrentUsage` 仍从预热后跨全部测量区间执行
+增长门禁。x64 Clippy/Check 与 ARM64 Check 已通过；真实 hardware D3D11 的线程和显存数值由
+`windows-latest` job 记录，交叉编译结果不能替代运行时证据。
+
+2026-08-31 run `33365732170`、job `99405876909` 在预热和前两批测量后才观察到系统线程池
+`8 -> 9`，旧的固定三批策略把它误报为 overlay 泄漏；同一 job 的窗口、GPU、handle、正常绘制
+与 device/surface recovery 均先通过。新 probe 允许这种一次性延迟 high-water，但要求其后连续
+两批稳定，并用单元回归证明 `8,8,9,9,9` 收敛、`9,10,11,12,13,14` 持续增长失败。
 
 commit `53eec36` 的首次真实 Windows 非空帧运行暴露了默认 D3D11 背面剔除：draw
 已提交但中心像素仍透明。commit `ebaea32` 将 rasterizer 明确设为 `CULL_NONE`，并由

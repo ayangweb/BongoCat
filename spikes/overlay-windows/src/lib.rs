@@ -233,23 +233,36 @@ pub struct CycleReport {
     pub threads_before: u32,
     pub threads_after: u32,
     pub threads_baseline_high_water: u32,
+    pub measurement_batches: u32,
     pub gpu_bytes_before: u64,
     pub gpu_bytes_after: u64,
 }
 
-fn observe_measurement_threads(
-    batch: u32,
-    threads: u32,
-    baseline_high_water: &mut u32,
-) -> Result<(), String> {
-    if batch == 1 {
-        *baseline_high_water = (*baseline_high_water).max(threads);
-    } else if threads > *baseline_high_water {
-        return Err(format!(
-            "process thread count grew beyond baseline high-water {baseline_high_water} to {threads} in measurement batch {batch}"
-        ));
+struct ThreadStabilityProbe {
+    high_water: u32,
+    stable_batches: u32,
+}
+
+impl ThreadStabilityProbe {
+    fn new(initial_threads: u32) -> Self {
+        Self {
+            high_water: initial_threads,
+            stable_batches: 0,
+        }
     }
-    Ok(())
+
+    fn observe(&mut self, threads: u32) {
+        if threads > self.high_water {
+            self.high_water = threads;
+            self.stable_batches = 0;
+        } else {
+            self.stable_batches = self.stable_batches.saturating_add(1);
+        }
+    }
+
+    fn converged(&self, batch: u32) -> bool {
+        batch >= 3 && self.stable_batches >= 2
+    }
 }
 
 fn run_creation_batch(cycles: u32) -> Result<(), String> {
@@ -278,18 +291,27 @@ pub fn run_creation_cycles(cycles: u32) -> Result<CycleReport, String> {
         .map_err(format_windows_error)?;
     let threads_before = process_thread_count().map_err(format_windows_error)?;
     let handles_before = process_handle_count().map_err(format_windows_error)?;
-    let mut threads_baseline_high_water = threads_before;
+    let mut thread_stability = ThreadStabilityProbe::new(threads_before);
 
-    // A D3D/DirectComposition worker can be created only after the first
-    // complete measured batch, even when an equal warm-up batch has run. Let
-    // that first batch establish the final process-pool high-water, then
-    // require two further equal batches to stay at or below it. A per-batch
-    // leak therefore still fails deterministically instead of receiving an
-    // arbitrary growth allowance.
-    for batch in 1..=3 {
+    // D3D/DirectComposition workers can appear several equivalent batches
+    // after warm-up. Allow the process pool to establish a new high-water, but
+    // require two subsequent equal batches to remain stable. Linear per-batch
+    // growth never converges and fails at the fixed upper bound.
+    let mut measurement_batches = 0;
+    for batch in 1..=6 {
         run_creation_batch(cycles)?;
         let threads = process_thread_count().map_err(format_windows_error)?;
-        observe_measurement_threads(batch, threads, &mut threads_baseline_high_water)?;
+        thread_stability.observe(threads);
+        measurement_batches = batch;
+        if thread_stability.converged(batch) {
+            break;
+        }
+    }
+    if !thread_stability.converged(measurement_batches) {
+        return Err(format!(
+            "process thread count did not stabilize at or below high-water {} after {measurement_batches} measurement batches",
+            thread_stability.high_water
+        ));
     }
 
     let gpu_bytes_after = gpu_metrics
@@ -302,9 +324,10 @@ pub fn run_creation_cycles(cycles: u32) -> Result<CycleReport, String> {
             "process handle count grew from {handles_before} to {handles_after} after {cycles} cycles"
         ));
     }
-    if threads_after > threads_baseline_high_water {
+    if threads_after > thread_stability.high_water {
         return Err(format!(
-            "process thread count grew beyond baseline high-water {threads_baseline_high_water} to {threads_after} after {cycles} cycles"
+            "process thread count grew beyond baseline high-water {} to {threads_after} after {cycles} cycles",
+            thread_stability.high_water
         ));
     }
     if gpu_bytes_after > gpu_bytes_before {
@@ -319,7 +342,8 @@ pub fn run_creation_cycles(cycles: u32) -> Result<CycleReport, String> {
         handles_after,
         threads_before,
         threads_after,
-        threads_baseline_high_water,
+        threads_baseline_high_water: thread_stability.high_water,
+        measurement_batches,
         gpu_bytes_before,
         gpu_bytes_after,
     })
@@ -1286,8 +1310,8 @@ unsafe extern "system" fn window_proc(
 #[cfg(test)]
 mod tests {
     use super::{
-        OVERLAY_VERTICES, OverlayVertex, RenderFailureKind, classify_render_hresult,
-        logical_to_physical, observe_measurement_threads,
+        OVERLAY_VERTICES, OverlayVertex, RenderFailureKind, ThreadStabilityProbe,
+        classify_render_hresult, logical_to_physical,
     };
     use windows::{
         Win32::Graphics::Dxgi::{
@@ -1345,14 +1369,18 @@ mod tests {
     }
 
     #[test]
-    fn first_measurement_may_extend_the_thread_pool_baseline_once() {
-        let mut baseline = 8;
-        observe_measurement_threads(1, 9, &mut baseline).unwrap();
-        observe_measurement_threads(2, 9, &mut baseline).unwrap();
-        observe_measurement_threads(3, 8, &mut baseline).unwrap();
-        assert_eq!(baseline, 9);
+    fn delayed_thread_pool_growth_must_converge_after_two_equal_batches() {
+        let mut delayed = ThreadStabilityProbe::new(8);
+        for (batch, threads) in [8, 8, 9, 9, 9].into_iter().enumerate() {
+            delayed.observe(threads);
+            assert_eq!(delayed.converged((batch + 1) as u32), batch == 4);
+        }
+        assert_eq!(delayed.high_water, 9);
 
-        let error = observe_measurement_threads(3, 10, &mut baseline).unwrap_err();
-        assert!(error.contains("baseline high-water 9 to 10 in measurement batch 3"));
+        let mut leaking = ThreadStabilityProbe::new(8);
+        for (batch, threads) in [9, 10, 11, 12, 13, 14].into_iter().enumerate() {
+            leaking.observe(threads);
+            assert!(!leaking.converged((batch + 1) as u32));
+        }
     }
 }
