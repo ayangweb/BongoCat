@@ -1888,8 +1888,11 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       解析、runtime typed shortcut dispatch、settings typed command、revision-checked 原子
       持久化、snapshot projection、重启恢复回归、`RestoreDefaultShortcuts` 清除/恢复默认
       command、canonicalization 回归、单元测试和
-      `shared/config/native-config-contract.md` 已进入 `next`；平台注册、捕获 UI、GPUI 清除/
-      恢复默认入口和实机快捷键证据仍未完成。
+      `shared/config/native-config-contract.md` 已进入 `next`。2026-09-01 又增加
+      `CompiledShortcuts` typed table 和 `Application::compiled_shortcuts()` 只读投影：配置提交
+      后可一次性解析为闭合 command/model action，并按 modifier mask + 稳定 key token 确定性匹配；
+      非法 action、非法 chord 和跨域冲突仍在编译边界拒绝。平台注册、捕获 UI、GPUI 清除/
+      恢复默认入口、匹配后的 app/runtime 执行接线和实机快捷键证据仍未完成。
 
 ## 13. 待决策清单
 

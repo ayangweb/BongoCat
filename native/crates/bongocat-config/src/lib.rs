@@ -275,6 +275,107 @@ impl ShortcutConfig {
             model_behaviors,
         })
     }
+
+    /// Compile persisted bindings once at the configuration/platform
+    /// boundary. The resulting table contains only closed, typed targets;
+    /// platform adapters can match a mapped key token without reparsing
+    /// user-controlled strings on an input callback.
+    pub fn compile(&self) -> Result<CompiledShortcuts, ConfigError> {
+        CompiledShortcuts::compile(self)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ShortcutTarget {
+    Application(ShortcutCommand),
+    ModelBehavior {
+        model_id: String,
+        action: ModelBehaviorAction,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CompiledShortcut {
+    chord: ShortcutChord,
+    target: ShortcutTarget,
+}
+
+impl CompiledShortcut {
+    pub fn chord(&self) -> &ShortcutChord {
+        &self.chord
+    }
+
+    pub fn target(&self) -> &ShortcutTarget {
+        &self.target
+    }
+
+    pub fn matches(&self, modifiers: ShortcutModifiers, key: &str) -> bool {
+        self.chord.matches(modifiers, key)
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CompiledShortcuts {
+    bindings: Vec<CompiledShortcut>,
+}
+
+impl CompiledShortcuts {
+    pub fn compile(config: &ShortcutConfig) -> Result<Self, ConfigError> {
+        let mut bindings = Vec::with_capacity(
+            config
+                .commands
+                .len()
+                .saturating_add(config.model_behaviors.len()),
+        );
+        let mut seen = std::collections::BTreeSet::new();
+
+        for binding in &config.commands {
+            let chord = ShortcutChord::parse(&binding.shortcut)
+                .map_err(|_| ConfigError::InvalidValue("shortcuts.binding"))?;
+            if !seen.insert(chord.canonical()) {
+                return Err(ConfigError::InvalidValue("shortcuts.conflict"));
+            }
+            let command = ShortcutCommand::parse(&binding.command)
+                .map_err(|_| ConfigError::InvalidValue("shortcuts.command"))?;
+            bindings.push(CompiledShortcut {
+                chord,
+                target: ShortcutTarget::Application(command),
+            });
+        }
+
+        for binding in &config.model_behaviors {
+            if binding.model_id.trim().is_empty() {
+                return Err(ConfigError::InvalidValue("shortcuts.model_behaviors"));
+            }
+            let chord = ShortcutChord::parse(&binding.shortcut)
+                .map_err(|_| ConfigError::InvalidValue("shortcuts.binding"))?;
+            if !seen.insert(chord.canonical()) {
+                return Err(ConfigError::InvalidValue("shortcuts.conflict"));
+            }
+            let action = binding
+                .parse_action()
+                .map_err(|_| ConfigError::InvalidValue("shortcuts.behavior"))?;
+            bindings.push(CompiledShortcut {
+                chord,
+                target: ShortcutTarget::ModelBehavior {
+                    model_id: binding.model_id.trim().to_owned(),
+                    action,
+                },
+            });
+        }
+
+        Ok(Self { bindings })
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &CompiledShortcut> {
+        self.bindings.iter()
+    }
+
+    pub fn resolve(&self, modifiers: ShortcutModifiers, key: &str) -> Option<&CompiledShortcut> {
+        self.bindings
+            .iter()
+            .find(|binding| binding.matches(modifiers, key))
+    }
 }
 
 /// Application-level commands that may be persisted as global shortcuts.
@@ -348,6 +449,16 @@ impl ShortcutModifiers {
     pub const ALT: u8 = 1 << 1;
     pub const SHIFT: u8 = 1 << 2;
     pub const META: u8 = 1 << 3;
+
+    const VALID_BITS: u8 = Self::CONTROL | Self::ALT | Self::SHIFT | Self::META;
+
+    pub const fn from_bits(bits: u8) -> Option<Self> {
+        if bits & !Self::VALID_BITS == 0 {
+            Some(Self(bits))
+        } else {
+            None
+        }
+    }
 
     pub const fn bits(self) -> u8 {
         self.0
@@ -425,6 +536,10 @@ impl ShortcutChord {
 
     pub fn key(&self) -> &str {
         &self.key
+    }
+
+    pub fn matches(&self, modifiers: ShortcutModifiers, key: &str) -> bool {
+        self.modifiers == modifiers && self.key.eq_ignore_ascii_case(key.trim())
     }
 
     /// Return a stable representation used for conflict detection and later
@@ -2287,6 +2402,87 @@ mod tests {
             };
             assert!(binding.parse_action().is_err(), "{behavior_id}");
         }
+    }
+
+    #[test]
+    fn compiled_shortcuts_match_mapped_tokens_and_preserve_typed_targets() {
+        let config = ShortcutConfig {
+            commands: vec![ShortcutBinding {
+                command: "toggle_overlay".to_owned(),
+                shortcut: "ctrl+shift+b".to_owned(),
+            }],
+            model_behaviors: vec![ModelBehaviorBinding {
+                model_id: "standard".to_owned(),
+                behavior_id: "motion:CAT_motion:2".to_owned(),
+                shortcut: "Alt+M".to_owned(),
+            }],
+        };
+        let compiled = config.compile().expect("compile shortcuts");
+        let modifiers =
+            ShortcutModifiers::from_bits(ShortcutModifiers::CONTROL | ShortcutModifiers::SHIFT)
+                .expect("valid modifiers");
+        assert!(compiled.resolve(modifiers, "B").is_some());
+        assert!(compiled.resolve(modifiers, " b ").is_some());
+        assert!(compiled.resolve(modifiers, "N").is_none());
+        assert_eq!(compiled.iter().count(), 2);
+        assert_eq!(
+            compiled
+                .resolve(modifiers, "B")
+                .expect("command binding")
+                .target(),
+            &ShortcutTarget::Application(ShortcutCommand::ToggleOverlay)
+        );
+
+        let alt = ShortcutModifiers::from_bits(ShortcutModifiers::ALT).expect("valid modifiers");
+        assert_eq!(
+            compiled
+                .resolve(alt, "m")
+                .expect("behavior binding")
+                .target(),
+            &ShortcutTarget::ModelBehavior {
+                model_id: "standard".to_owned(),
+                action: ModelBehaviorAction::Motion {
+                    group: "CAT_motion".to_owned(),
+                    index: 2,
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn compiled_shortcuts_reject_invalid_and_conflicting_bindings() {
+        let invalid = ShortcutConfig {
+            commands: vec![ShortcutBinding {
+                command: "unknown".to_owned(),
+                shortcut: "Control+A".to_owned(),
+            }],
+            ..ShortcutConfig::default()
+        };
+        assert!(matches!(
+            invalid.compile(),
+            Err(ConfigError::InvalidValue("shortcuts.command"))
+        ));
+
+        let conflict = ShortcutConfig {
+            commands: vec![ShortcutBinding {
+                command: "open_settings".to_owned(),
+                shortcut: "Control+A".to_owned(),
+            }],
+            model_behaviors: vec![ModelBehaviorBinding {
+                model_id: "standard".to_owned(),
+                behavior_id: "expression:happy".to_owned(),
+                shortcut: "ctrl+a".to_owned(),
+            }],
+        };
+        assert!(matches!(
+            conflict.compile(),
+            Err(ConfigError::InvalidValue("shortcuts.conflict"))
+        ));
+    }
+
+    #[test]
+    fn shortcut_modifier_bits_reject_unknown_flags() {
+        assert!(ShortcutModifiers::from_bits(1 << 7).is_none());
     }
 
     #[test]

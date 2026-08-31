@@ -81,6 +81,13 @@ Settings service 提供 `SetShortcuts` 与 `RestoreDefaultShortcuts` 两个 type
 提交前会把已接受的 application command、model behavior 和 chord 写成 canonical spelling，
 因此别名、输入顺序和多余空白不会在重启后改变 snapshot 表示。
 
+平台层在启动或快捷键配置成功提交后，可调用 `ShortcutConfig::compile()` 将这些持久化绑定
+编译为 `CompiledShortcuts`。编译结果只包含闭合的 application command 或带 model id 的
+typed model action，并拒绝非法 action、非法 chord 和跨域重复 chord。平台 adapter 负责把
+原始事件映射为稳定 key token 与四位 modifier mask，再通过 `CompiledShortcuts::resolve()`
+匹配；原始平台 keycode、窗口句柄和 callback 数据不会进入配置或编译结果。系统级注册、
+事件捕获、清除/恢复默认 UI 和匹配后的 command 执行仍属于后续平台/UI/runtime 接线工作。
+
 窗口坐标、pressed state、权限结果、模型解析缓存和 renderer 状态不属于 `config.json`。可恢复窗口布局写入 `state.json`；其余瞬时/派生状态不持久化。
 
 ## Application State v1

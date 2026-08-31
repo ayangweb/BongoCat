@@ -8,10 +8,10 @@ compile_error!("storage-test-injection cannot be enabled for Production builds")
 
 use bongocat_audio::{MotionAudioService, MotionAudioShutdownError};
 use bongocat_config::{
-    ApplicationState, BuildEnvironment, ConfigError, ConfigRecovery, ConfigRevision, ConfigStore,
-    InterruptedConfigRecovery, ModelBehaviorBinding, NativeConfig, PlatformStorageError,
-    SelectedModelOrigin, ShortcutBinding, ShortcutConfig, StateError, StateStore, StorageLayout,
-    WindowPlacement, platform_layout,
+    ApplicationState, BuildEnvironment, CompiledShortcuts, ConfigError, ConfigRecovery,
+    ConfigRevision, ConfigStore, InterruptedConfigRecovery, ModelBehaviorBinding, NativeConfig,
+    PlatformStorageError, SelectedModelOrigin, ShortcutBinding, ShortcutConfig, StateError,
+    StateStore, StorageLayout, WindowPlacement, platform_layout,
 };
 use bongocat_model::{
     CommittedModel, InstalledModel, ModelCatalogEntry, ModelError, ModelId, ModelImportProgress,
@@ -369,6 +369,15 @@ impl Application {
 
     pub fn config(&self) -> &NativeConfig {
         &self.config
+    }
+
+    /// Compile the currently committed shortcut bindings for a platform
+    /// adapter. This is read-only and never performs registration or capture.
+    pub fn compiled_shortcuts(&self) -> Result<CompiledShortcuts, ApplicationError> {
+        self.config
+            .shortcuts
+            .compile()
+            .map_err(ApplicationError::Config)
     }
 
     pub fn logs_directory(&self) -> &Path {
@@ -989,6 +998,33 @@ mod tests {
             BUILD_ENVIRONMENT,
             BuildEnvironment::Development | BuildEnvironment::Production
         ));
+    }
+
+    #[test]
+    fn application_compiles_committed_shortcuts_for_platform_adapters() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let mut application = Application::start_with_layout(layout).expect("start application");
+        let shortcuts = bongocat_ui::SettingsShortcuts {
+            commands: vec![bongocat_ui::SettingsShortcutBinding {
+                command: "toggle_overlay".to_owned(),
+                shortcut: "ctrl+shift+b".to_owned(),
+            }],
+            model_behaviors: Vec::new(),
+        };
+        application
+            .set_shortcuts(shortcuts)
+            .expect("persist shortcuts");
+        let compiled = application
+            .compiled_shortcuts()
+            .expect("compile committed shortcuts");
+        let modifiers = bongocat_config::ShortcutModifiers::from_bits(
+            bongocat_config::ShortcutModifiers::CONTROL | bongocat_config::ShortcutModifiers::SHIFT,
+        )
+        .expect("valid modifiers");
+        assert!(compiled.resolve(modifiers, "B").is_some());
+        assert!(compiled.resolve(modifiers, "C").is_none());
+        application.shutdown().expect("clean shutdown");
     }
 
     #[test]
