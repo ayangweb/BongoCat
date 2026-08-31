@@ -32,6 +32,11 @@
 - Expression parameters support `Add`, `Multiply`, and `Overwrite`. Layers are folded oldest to
   newest from the post-motion parameter value. Product input is applied after expression layers so
   a physically pressed key or button remains authoritative for mapped controls.
+- Automatic model effects are evaluated after motion and expression layers and before product input.
+  `ParamBreath` receives a deterministic four-second sine cycle when declared by the model. The
+  first `EyeBlink` group parameters (`ParamEyeLOpen` and `ParamEyeROpen` when present) remain open
+  except for a deterministic 180ms closed window at the start of each five-second cycle. Missing
+  parameters are ignored, and product input remains authoritative for mapped controls.
 - A successful model commit clears motion and expression state. CPU/GPU preparation failure keeps
   the previous model, motion, expression, and input bindings usable.
 - `audio_trigger` is an ordered side effect. It is not part of the render snapshot and must never

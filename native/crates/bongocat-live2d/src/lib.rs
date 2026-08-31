@@ -343,6 +343,43 @@ impl Live2dModel {
         self.set_parameter(parameter, mapped)
     }
 
+    /// Set a model-declared parameter using the same normalized [-1, 1] input
+    /// contract as product parameters. Unknown IDs are intentionally ignored
+    /// so optional model effects remain portable across presets.
+    pub fn set_normalized_parameter_by_id(
+        &mut self,
+        id: &str,
+        value: f32,
+    ) -> Result<ParameterUpdate, Live2dError> {
+        if !value.is_finite() {
+            return Err(Live2dError::new(
+                Live2dErrorCode::ParameterValueInvalid,
+                format!("{id} received a non-finite normalized value"),
+            ));
+        }
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            let Some(range) = self.core.parameter_range_by_id(id) else {
+                return Ok(ParameterUpdate::Unsupported);
+            };
+            let normalized = value.clamp(-1.0, 1.0);
+            let mapped = if normalized >= 0.0 {
+                range.default + (range.maximum - range.default) * normalized
+            } else {
+                range.default + (range.default - range.minimum) * normalized
+            };
+            self.core.set_parameter_by_id(id, mapped, 1.0)
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            let _ = id;
+            Err(Live2dError::new(
+                Live2dErrorCode::PlatformUnsupported,
+                "Cubism Core is available only on the Windows and macOS product targets",
+            ))
+        }
+    }
+
     pub fn apply_motion(
         &mut self,
         motion: &MotionClip,

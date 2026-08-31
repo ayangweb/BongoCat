@@ -289,6 +289,10 @@ impl CoreModel {
         })
     }
 
+    pub(crate) fn parameter_range_by_id(&self, id: &str) -> Option<ParameterRange> {
+        self.parameters_by_id.get(id).map(|resolved| resolved.range)
+    }
+
     pub(crate) fn parameter_value_by_id(&self, id: &str) -> Result<Option<f32>, Live2dError> {
         let Some(resolved) = self.parameters_by_id.get(id).copied() else {
             return Ok(None);

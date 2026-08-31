@@ -830,6 +830,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     测试覆盖三种 blend，runtime 测试覆盖 drawable 变化、快速替换、无效请求保留、GPU
     rejection 保留和成功模型 commit 清理；产品输入最后应用。快捷键/GPUI 入口由后续项跟踪。
 - [ ] 实现 physics、pose、eye blink、breath 等实际需求。
+  - 状态（2026-09-01）：正式 runtime 已在 motion/expression 之后、产品输入之前加入可注入单调时钟驱动的
+    `ParamBreath` 四秒正弦周期和 `EyeBlink` 五秒周期（每周期 180ms 闭眼）；缺失参数安全跳过，纯函数
+    边界测试固定周期与范围。physics/pose 仍等待可授权真实 fixture、R5 黑盒轨迹和求值实现，不得以合成
+    数据宣称完成。
 - [ ] 实现键盘、鼠标、手柄到参数/动作/表情映射。
 - [ ] 实现镜像、鼠标镜像和坐标归一化。
 - [ ] 随机行为支持测试 seed。

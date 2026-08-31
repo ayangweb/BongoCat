@@ -14,6 +14,15 @@ use bongocat_render::RenderFrame;
 use std::sync::Arc;
 use std::time::Duration;
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const BREATH_PARAMETER_ID: &str = "ParamBreath";
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const BREATH_PERIOD: Duration = Duration::from_secs(4);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const BLINK_PERIOD: Duration = Duration::from_secs(5);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const BLINK_CLOSED_DURATION: Duration = Duration::from_millis(180);
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(crate) struct RenderEvaluation {
     pub(crate) rendered: bool,
@@ -374,6 +383,7 @@ impl RuntimeRenderer {
                 .model
                 .apply_expression_layers(&expression_layers)
                 .map_err(|_| RuntimeRenderErrorCode::ModelEvaluationFailed)?;
+            apply_automatic_effects(&mut active.model, now)?;
             apply_model_input(&mut active.model, input)?;
             let snapshot = active
                 .model
@@ -409,6 +419,37 @@ impl RuntimeRenderer {
     pub(crate) fn close(&self) {
         self.producer.close();
     }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn apply_automatic_effects(
+    model: &mut Live2dModel,
+    now: Duration,
+) -> Result<(), RuntimeRenderErrorCode> {
+    let (breath, blink) = automatic_effect_values(now);
+    model
+        .set_normalized_parameter_by_id(BREATH_PARAMETER_ID, breath)
+        .map_err(|_| RuntimeRenderErrorCode::ModelEvaluationFailed)?;
+    for id in ["ParamEyeLOpen", "ParamEyeROpen"] {
+        model
+            .set_normalized_parameter_by_id(id, blink)
+            .map_err(|_| RuntimeRenderErrorCode::ModelEvaluationFailed)?;
+    }
+    Ok(())
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn automatic_effect_values(now: Duration) -> (f32, f32) {
+    let breath_phase =
+        (now.as_secs_f64() % BREATH_PERIOD.as_secs_f64()) / BREATH_PERIOD.as_secs_f64();
+    let breath = (std::f64::consts::TAU * breath_phase).sin() as f32;
+    let blink_phase = now.as_secs_f64() % BLINK_PERIOD.as_secs_f64();
+    let blink = if blink_phase < BLINK_CLOSED_DURATION.as_secs_f64() {
+        0.0
+    } else {
+        1.0
+    };
+    (breath, blink)
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -459,4 +500,33 @@ fn apply_model_input(
         }
     }
     Ok(())
+}
+
+#[cfg(all(test, any(target_os = "macos", target_os = "windows")))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn automatic_effects_are_periodic_and_deterministic() {
+        let start = automatic_effect_values(Duration::ZERO);
+        let quarter = automatic_effect_values(Duration::from_secs(1));
+        let full_cycle = automatic_effect_values(BREATH_PERIOD);
+        assert_eq!(start.0, 0.0);
+        assert!((quarter.0 - 1.0).abs() < 0.000_001);
+        assert!((full_cycle.0 - start.0).abs() < 0.000_001);
+        assert_eq!(start.1, 0.0);
+        assert_eq!(automatic_effect_values(BLINK_CLOSED_DURATION).1, 1.0);
+        assert_eq!(automatic_effect_values(BLINK_PERIOD).1, 0.0);
+    }
+
+    #[test]
+    fn automatic_effects_keep_breath_in_normalized_range() {
+        for millis in (0..=BREATH_PERIOD.as_millis()).step_by(37) {
+            let (breath, blink) = automatic_effect_values(Duration::from_millis(
+                u64::try_from(millis).expect("duration fits u64"),
+            ));
+            assert!((-1.0..=1.0).contains(&breath));
+            assert!(blink == 0.0 || blink == 1.0);
+        }
+    }
 }
