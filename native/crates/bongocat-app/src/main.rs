@@ -462,6 +462,27 @@ fn run_startup_item_smoke() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
+fn run_configuration_recovery_mode(
+    application: bongocat_app::Application,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let settings_service = bongocat_app::ApplicationSettingsService::start(application)?;
+    let settings_client = settings_service.client();
+    let gpui_application = GpuiApplication::new();
+    gpui_application.run(move |cx| {
+        if let Err(error) = open_settings_window(settings_client.clone(), |cx| cx.quit(), cx) {
+            let mut stderr = io::stderr().lock();
+            let _ = writeln!(stderr, "configuration recovery window failed: {error}");
+            let _ = stderr.flush();
+            cx.quit();
+        }
+    });
+    let client = settings_service.client();
+    let _ = client.shutdown_blocking();
+    settings_service.join()?;
+    Ok(())
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let run_options = match RunOptions::parse(env::args().skip(1)) {
         Ok(options) => options,
@@ -484,6 +505,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
     let mut application = bongocat_app::Application::start(development_preset_root())?;
+    if !application.is_operational() {
+        return run_configuration_recovery_mode(application);
+    }
 
     let (model_origin, model_id) = match (
         application.config().model.selected_model_origin,

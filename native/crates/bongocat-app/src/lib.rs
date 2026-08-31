@@ -49,6 +49,7 @@ pub enum ApplicationError {
     Shutdown(ShutdownError),
     MotionAudioShutdown(MotionAudioShutdownError),
     ConfigRollback(ConfigError),
+    ConfigurationRecoveryRequired,
 }
 
 impl fmt::Display for ApplicationError {
@@ -92,6 +93,9 @@ impl fmt::Display for ApplicationError {
             Self::ConfigRollback(error) => {
                 write!(formatter, "model selection config rollback failed: {error}")
             }
+            Self::ConfigurationRecoveryRequired => {
+                formatter.write_str("configuration recovery is required")
+            }
         }
     }
 }
@@ -134,10 +138,18 @@ impl From<ModelStoreError> for ApplicationError {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ApplicationConfigStatus {
+    Ready,
+    RecoveryRequired { checked_backups: usize },
+    DefaultsRestoredRestartRequired,
+}
+
 pub struct Application {
     config_store: ConfigStore,
     config: NativeConfig,
-    config_revision: ConfigRevision,
+    config_revision: Option<ConfigRevision>,
+    config_status: ApplicationConfigStatus,
     config_recovery: Option<ConfigRecovery>,
     interrupted_config_recovery: Option<InterruptedConfigRecovery>,
     preset_models: PresetModelCatalog,
@@ -174,11 +186,27 @@ impl Application {
             ModelPackageLimits::default(),
         )?;
         let config_store = ConfigStore::new(layout)?;
-        let loaded_config = config_store.load_or_default()?;
-        let config = loaded_config.config;
-        let config_revision = loaded_config.revision;
-        let config_recovery = loaded_config.recovery;
-        let interrupted_config_recovery = loaded_config.interrupted_recovery;
+        let (config, config_revision, config_recovery, interrupted_config_recovery, config_status) =
+            match config_store.load_or_default() {
+                Ok(loaded) => (
+                    loaded.config,
+                    Some(loaded.revision),
+                    loaded.recovery,
+                    loaded.interrupted_recovery,
+                    ApplicationConfigStatus::Ready,
+                ),
+                Err(ConfigError::NoValidRecoveryBackup { candidates }) => (
+                    NativeConfig::default(),
+                    None,
+                    None,
+                    None,
+                    ApplicationConfigStatus::RecoveryRequired {
+                        checked_backups: candidates,
+                    },
+                ),
+                Err(error) => return Err(error.into()),
+            };
+        let operational = config_status == ApplicationConfigStatus::Ready;
         let (motion_audio, motion_audio_client) =
             match MotionAudioService::start(AUDIO_COMMAND_CAPACITY) {
                 Ok(service) => {
@@ -187,10 +215,12 @@ impl Application {
                 }
                 Err(_) => (None, bongocat_audio::MotionAudioClient::unavailable()),
             };
-        let (runtime, render_consumer) = if enable_rendering {
+        let runtime_overlay_visible = operational && config.overlay.visible;
+        let runtime_motion_audio_enabled = operational && config.model.play_motion_audio;
+        let (runtime, render_consumer) = if enable_rendering && operational {
             let (runtime, consumer) = RuntimeOwner::start_with_rendering_and_audio(
-                config.overlay.visible,
-                config.model.play_motion_audio,
+                runtime_overlay_visible,
+                runtime_motion_audio_enabled,
                 COMMAND_CAPACITY,
                 motion_audio_client,
             );
@@ -198,8 +228,8 @@ impl Application {
         } else {
             (
                 RuntimeOwner::start_with_audio(
-                    config.overlay.visible,
-                    config.model.play_motion_audio,
+                    runtime_overlay_visible,
+                    runtime_motion_audio_enabled,
                     COMMAND_CAPACITY,
                     motion_audio_client,
                 ),
@@ -218,6 +248,7 @@ impl Application {
             config_store,
             config,
             config_revision,
+            config_status,
             config_recovery,
             interrupted_config_recovery,
             preset_models,
@@ -259,6 +290,38 @@ impl Application {
         self.interrupted_config_recovery
     }
 
+    pub const fn config_status(&self) -> ApplicationConfigStatus {
+        self.config_status
+    }
+
+    pub const fn is_operational(&self) -> bool {
+        matches!(self.config_status, ApplicationConfigStatus::Ready)
+    }
+
+    pub fn restore_default_configuration(&mut self) -> Result<(), ApplicationError> {
+        if !matches!(
+            self.config_status,
+            ApplicationConfigStatus::RecoveryRequired { .. }
+        ) {
+            return Err(ApplicationError::Config(ConfigError::RecoveryNotRequired));
+        }
+        let loaded = self.config_store.restore_default_after_failed_recovery()?;
+        self.config = loaded.config;
+        self.config_revision = Some(loaded.revision);
+        self.config_recovery = loaded.recovery;
+        self.interrupted_config_recovery = loaded.interrupted_recovery;
+        self.config_status = ApplicationConfigStatus::DefaultsRestoredRestartRequired;
+        Ok(())
+    }
+
+    fn ready_config_revision(&self) -> Result<ConfigRevision, ApplicationError> {
+        if self.config_status != ApplicationConfigStatus::Ready {
+            return Err(ApplicationError::ConfigurationRecoveryRequired);
+        }
+        self.config_revision
+            .ok_or(ApplicationError::ConfigurationRecoveryRequired)
+    }
+
     pub fn set_overlay_visible(
         &mut self,
         visible: bool,
@@ -267,7 +330,7 @@ impl Application {
         next_config.overlay.visible = visible;
         let next_revision = self
             .config_store
-            .commit_if_revision(&next_config, self.config_revision)?;
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
 
         let client = self.runtime.client();
         let sequence = client
@@ -277,7 +340,7 @@ impl Application {
             .wait_for_command(sequence, RUNTIME_TIMEOUT)
             .ok_or(ApplicationError::RuntimeDidNotPublish)?;
         self.config = next_config;
-        self.config_revision = next_revision;
+        self.config_revision = Some(next_revision);
         Ok(snapshot)
     }
 
@@ -289,7 +352,7 @@ impl Application {
         next_config.model.play_motion_audio = enabled;
         let next_revision = self
             .config_store
-            .commit_if_revision(&next_config, self.config_revision)?;
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
 
         let client = self.runtime.client();
         let sequence = client
@@ -299,7 +362,7 @@ impl Application {
             .wait_for_command(sequence, RUNTIME_TIMEOUT)
             .ok_or(ApplicationError::RuntimeDidNotPublish)?;
         self.config = next_config;
-        self.config_revision = next_revision;
+        self.config_revision = Some(next_revision);
         Ok(snapshot)
     }
 
@@ -393,7 +456,7 @@ impl Application {
         next_config.model.selected_model_origin = Some(config_origin_from_model(origin));
         let next_revision = self
             .config_store
-            .commit_if_revision(&next_config, self.config_revision)?;
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
 
         let result = self.wait_for_model_command(RuntimeCommand::ActivateModelWithBindings {
             model: Arc::new(committed),
@@ -402,15 +465,16 @@ impl Application {
         match result {
             Ok(snapshot) => {
                 self.config = next_config;
-                self.config_revision = next_revision;
+                self.config_revision = Some(next_revision);
                 self.active_model_origin = Some(origin);
                 Ok(snapshot)
             }
             Err(error) => {
-                self.config_revision = self
-                    .config_store
-                    .commit_if_revision(&self.config, next_revision)
-                    .map_err(ApplicationError::ConfigRollback)?;
+                self.config_revision = Some(
+                    self.config_store
+                        .commit_if_revision(&self.config, next_revision)
+                        .map_err(ApplicationError::ConfigRollback)?,
+                );
                 Err(error)
             }
         }
@@ -659,6 +723,61 @@ mod tests {
                 })
         );
         application.shutdown().expect("clean shutdown");
+    }
+
+    #[test]
+    fn application_enters_restricted_recovery_until_defaults_are_explicitly_restored() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let invalid = b"invalid-current-without-backups";
+        std::fs::create_dir_all(
+            layout
+                .config
+                .parent()
+                .expect("configuration parent directory"),
+        )
+        .expect("configuration directory");
+        std::fs::write(&layout.config, invalid).expect("invalid current config");
+
+        let mut application = Application::start_with_layout_internal(
+            layout.clone(),
+            repository_preset_root().as_path(),
+            true,
+        )
+        .expect("restricted recovery application");
+        assert_eq!(
+            application.config_status(),
+            ApplicationConfigStatus::RecoveryRequired { checked_backups: 0 }
+        );
+        assert!(!application.is_operational());
+        assert!(!application.runtime_client().snapshot().overlay_visible);
+        assert!(matches!(
+            application.take_render_consumer(),
+            Err(ApplicationError::RenderConsumerUnavailable)
+        ));
+        assert!(matches!(
+            application.set_overlay_visible(true),
+            Err(ApplicationError::ConfigurationRecoveryRequired)
+        ));
+        assert_eq!(
+            std::fs::read(&layout.config).expect("preserved invalid"),
+            invalid
+        );
+
+        application
+            .restore_default_configuration()
+            .expect("restore defaults");
+        assert_eq!(
+            application.config_status(),
+            ApplicationConfigStatus::DefaultsRestoredRestartRequired
+        );
+        assert!(!application.is_operational());
+        application.shutdown().expect("recovery shutdown");
+
+        let restarted = Application::start_with_layout(layout).expect("restart after recovery");
+        assert_eq!(restarted.config_status(), ApplicationConfigStatus::Ready);
+        assert!(restarted.is_operational());
+        restarted.shutdown().expect("restart shutdown");
     }
 
     #[test]

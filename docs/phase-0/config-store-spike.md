@@ -63,6 +63,8 @@ test；input/config job `99111304790` 随后再次执行完整 config-store test
 stale/invalid interrupted archive 提升到产品实现。正式 store 的普通备份和损坏 current
 quarantine 也已各自具有独立有界保留策略。
 
-权限、磁盘满和目标占用失败注入，以及无有效备份时的安全模式与恢复默认 typed command 仍未完成；
-这些必须在 Phase 6 配置 crate 与正式 settings service 中分别验证。进程存活不通过 PID、时间戳
+状态（2026-08-31）：正式 app/settings service 已增加无有效备份的 `RecoveryRequired` 安全模式、
+recovery-only GPUI 窗口和显式 typed 恢复默认 command；恢复前禁止业务写入，恢复后要求重启，原
+损坏字节继续进入有界 quarantine。权限、磁盘满和目标占用失败注入仍未完成；这些必须在 Phase 6
+配置 crate 与正式 settings service 中分别验证。进程存活不通过 PID、时间戳
 或删除 lock file 猜测，异常退出后的释放由 OS file lock 生命周期保证。

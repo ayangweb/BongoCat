@@ -378,6 +378,7 @@ pub enum ConfigError {
     BackupTooLarge,
     RecoveryArchiveTooLarge,
     InterruptedArchiveTooLarge,
+    RecoveryNotRequired,
     NoValidRecoveryBackup {
         candidates: usize,
     },
@@ -406,6 +407,9 @@ impl fmt::Display for ConfigError {
             }
             Self::InterruptedArchiveTooLarge => {
                 formatter.write_str("interrupted config exceeds archive budget")
+            }
+            Self::RecoveryNotRequired => {
+                formatter.write_str("configuration recovery is not required")
             }
             Self::NoValidRecoveryBackup { candidates } => write!(
                 formatter,
@@ -506,6 +510,39 @@ impl ConfigStore {
     ) -> Result<Option<InterruptedConfigRecovery>, ConfigError> {
         let _lock = self.acquire_recovery_lock(RECOVERY_LOCK_TIMEOUT)?;
         self.recover_interrupted_commit_unlocked()
+    }
+
+    pub fn restore_default_after_failed_recovery(&self) -> Result<ConfigLoadOutcome, ConfigError> {
+        let _lock = self.acquire_recovery_lock(RECOVERY_LOCK_TIMEOUT)?;
+        let interrupted_recovery = self.recover_interrupted_commit_unlocked()?;
+        let invalid_current = match inspect_config_file(&self.layout.config)? {
+            ConfigFileStatus::Invalid => fs::read(&self.layout.config)?,
+            ConfigFileStatus::UnsupportedSchema(version) => {
+                return Err(ConfigError::UnsupportedSchema(version));
+            }
+            ConfigFileStatus::Missing | ConfigFileStatus::Valid => {
+                return Err(ConfigError::RecoveryNotRequired);
+            }
+        };
+        self.archive_invalid_config_unlocked(&invalid_current)?;
+        let config = NativeConfig::default();
+        let bytes = serde_json::to_vec_pretty(&config)?;
+        write_config_atomic(&self.layout.config, &bytes)?;
+        let verified = fs::read(&self.layout.config)?;
+        let Ok((verified_config, revision, false)) = parse_config(&verified) else {
+            restore_config_bytes(&self.layout.config, Some(&invalid_current))?;
+            return Err(ConfigError::RecoveryVerificationFailed);
+        };
+        if verified_config != config {
+            restore_config_bytes(&self.layout.config, Some(&invalid_current))?;
+            return Err(ConfigError::RecoveryVerificationFailed);
+        }
+        Ok(ConfigLoadOutcome {
+            config,
+            revision,
+            recovery: None,
+            interrupted_recovery,
+        })
     }
 
     pub fn commit(&self, config: &NativeConfig) -> Result<ConfigRevision, ConfigError> {
@@ -1731,6 +1768,67 @@ mod tests {
         assert_eq!(
             fs::read(&store.layout().config).expect("preserved current config"),
             invalid_current
+        );
+        assert!(config_quarantine_paths(store.layout()).is_empty());
+    }
+
+    #[test]
+    fn explicit_default_recovery_archives_invalid_current_and_is_restart_idempotent() {
+        let base = tempdir().expect("temp directory");
+        let store = ConfigStore::new(StorageLayout::under(
+            base.path(),
+            BuildEnvironment::Development,
+        ))
+        .expect("config store");
+        let invalid_current = b"invalid-current-without-backup";
+        fs::write(&store.layout().config, invalid_current).expect("invalid current config");
+
+        assert!(matches!(
+            store.load_or_default(),
+            Err(ConfigError::NoValidRecoveryBackup { candidates: 0 })
+        ));
+        let recovered = store
+            .restore_default_after_failed_recovery()
+            .expect("explicit default recovery");
+        assert_eq!(recovered.config, NativeConfig::default());
+        assert_eq!(recovered.recovery, None);
+        let quarantines = config_quarantine_paths(store.layout());
+        assert_eq!(quarantines.len(), 1);
+        assert_eq!(
+            fs::read(&quarantines[0]).expect("quarantine bytes"),
+            invalid_current
+        );
+
+        let restarted = store.load_or_default().expect("restart with defaults");
+        assert_eq!(restarted.config, recovered.config);
+        assert_eq!(restarted.revision, recovered.revision);
+        assert!(matches!(
+            store.restore_default_after_failed_recovery(),
+            Err(ConfigError::RecoveryNotRequired)
+        ));
+        assert_eq!(config_quarantine_paths(store.layout()).len(), 1);
+    }
+
+    #[test]
+    fn explicit_default_recovery_never_downgrades_a_future_schema() {
+        let base = tempdir().expect("temp directory");
+        let store = ConfigStore::new(StorageLayout::under(
+            base.path(),
+            BuildEnvironment::Production,
+        ))
+        .expect("config store");
+        let mut future = serde_json::to_value(NativeConfig::default()).expect("future config");
+        future["schema_version"] = serde_json::Value::from(SCHEMA_VERSION + 1);
+        let bytes = serde_json::to_vec_pretty(&future).expect("future bytes");
+        fs::write(&store.layout().config, &bytes).expect("future current config");
+
+        assert!(matches!(
+            store.restore_default_after_failed_recovery(),
+            Err(ConfigError::UnsupportedSchema(version)) if version == SCHEMA_VERSION + 1
+        ));
+        assert_eq!(
+            fs::read(&store.layout().config).expect("preserved future config"),
+            bytes
         );
         assert!(config_quarantine_paths(store.layout()).is_empty());
     }

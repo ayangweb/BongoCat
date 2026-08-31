@@ -448,6 +448,12 @@ com.ayangweb.bongo-cat
   不公开备份/配置路径、原始 JSON、时间戳或底层 I/O 文本。没有有效候选、quarantine 失败或恢复验证失败时
   不回落默认值，也不读取另一环境；当前损坏原文继续保留在 `config.json` 或 quarantine 中。
   高于当前版本的 schema 直接报告不支持并保持原文件，禁止降级覆盖较新配置。
+- 若 current 损坏且没有任何完整有效的 Native backup，Application 不得静默覆盖或继续使用默认值；
+  它以 `RecoveryRequired` 受限状态启动，仅创建无 overlay/GPU 的 recovery-only settings 窗口。
+  Diagnostics 显示匿名候选计数，并提供强类型 `RestoreDefaultConfiguration` command；该 command
+  在 writer lock 内再次确认 current 仍不可恢复，将原字节放入 quarantine 后写入并验证 v2 默认配置，
+  返回 `DefaultsRestoredRestartRequired`。恢复前所有业务写入、模型、启动项和 overlay 操作都被拒绝，
+  恢复后必须重启才重新进入正常 runtime；未来 schema 或 I/O/归档错误仍直接报告，不进入该安全模式。
 - `config.json` 只包含用户设置；窗口布局写入 `state.json`，pressed state、权限结果和模型解析缓存不持久化。
 - 模型导入防止路径穿越、符号链接逃逸、压缩炸弹和覆盖现有用户数据。
 - 模型包在反序列化或图片解码前执行 JSON 字节/深度、单文件/整包字节、文件数、目录深度

@@ -1,4 +1,4 @@
-use crate::{Application, ApplicationError};
+use crate::{Application, ApplicationConfigStatus, ApplicationError};
 use bongocat_model::{
     ModelCatalogEntry, ModelDiagnostic, ModelImportProgress, ModelImportStage, ModelOrigin,
     ModelStoreDiagnostic,
@@ -12,11 +12,12 @@ use bongocat_runtime::{InputSnapshot, RuntimeState};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_ui::SettingsStartupItemError;
 use bongocat_ui::{
-    RuntimeHealth, SettingsClient, SettingsCommand, SettingsConfigRecovery, SettingsError,
-    SettingsErrorCode, SettingsInputDiagnostics, SettingsModelAvailability, SettingsModelCatalog,
-    SettingsModelCatalogError, SettingsModelDiagnostic, SettingsModelEntry,
-    SettingsModelImportProgress, SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin,
-    SettingsServiceEndpoint, SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
+    RuntimeHealth, SettingsClient, SettingsCommand, SettingsConfigRecovery,
+    SettingsConfigurationStatus, SettingsError, SettingsErrorCode, SettingsInputDiagnostics,
+    SettingsModelAvailability, SettingsModelCatalog, SettingsModelCatalogError,
+    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportProgress,
+    SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsServiceEndpoint,
+    SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
     SettingsStartupItemUnsupportedReason,
 };
 use std::{fmt, sync::Arc, thread};
@@ -126,33 +127,40 @@ fn run_service(
                 )));
             }
             SettingsCommand::SetOverlayVisible { visible, reply } => {
-                let result = application
-                    .set_overlay_visible(visible)
+                let result = require_operational(&application)
+                    .and_then(|()| application.set_overlay_visible(visible).map(|_| ()))
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()))
                     .map_err(map_application_error);
                 let _ = reply.respond(result);
             }
             SettingsCommand::SetMotionAudioEnabled { enabled, reply } => {
-                let result = application
-                    .set_motion_audio_enabled(enabled)
+                let result = require_operational(&application)
+                    .and_then(|()| application.set_motion_audio_enabled(enabled).map(|_| ()))
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()))
                     .map_err(map_application_error);
                 let _ = reply.respond(result);
             }
             SettingsCommand::SetStartupItemEnabled { enabled, reply } => {
-                let result = startup_item.set_enabled(enabled).map(|state| {
-                    snapshot(
-                        &application,
-                        &mut clock,
-                        false,
-                        SettingsStartupItemStatus::State(state),
-                    )
-                });
+                let result = require_operational(&application)
+                    .map_err(map_application_error)
+                    .and_then(|()| startup_item.set_enabled(enabled))
+                    .map(|state| {
+                        snapshot(
+                            &application,
+                            &mut clock,
+                            false,
+                            SettingsStartupItemStatus::State(state),
+                        )
+                    });
                 let _ = reply.respond(result);
             }
             SettingsCommand::SelectModel { model, reply } => {
-                let result = application
-                    .select_model(model_origin(model.origin), model.id)
+                let result = require_operational(&application)
+                    .and_then(|()| {
+                        application
+                            .select_model(model_origin(model.origin), model.id)
+                            .map(|_| ())
+                    })
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()))
                     .map_err(map_application_error);
                 let _ = reply.respond(result);
@@ -164,24 +172,38 @@ fn run_service(
             } => {
                 let progress = operation.clone();
                 let cancellation = operation.clone();
-                let result = application
-                    .import_model_with_observer(
-                        request.id,
-                        request.source_root,
-                        move |update| {
-                            let _ = progress.report_progress(settings_import_progress(update));
-                        },
-                        move || cancellation.is_cancelled(),
-                    )
+                let result = require_operational(&application)
+                    .and_then(|()| {
+                        application
+                            .import_model_with_observer(
+                                request.id,
+                                request.source_root,
+                                move |update| {
+                                    let _ =
+                                        progress.report_progress(settings_import_progress(update));
+                                },
+                                move || cancellation.is_cancelled(),
+                            )
+                            .map(|_| ())
+                    })
                     .map(|_| snapshot(&application, &mut clock, true, startup_item.state()))
                     .map_err(map_model_import_error);
                 let _ = reply.respond(result);
             }
             SettingsCommand::DeleteModel { model, reply } => {
-                let result = application
-                    .delete_model(model_origin(model.origin), model.id)
+                let result = require_operational(&application)
+                    .and_then(|()| application.delete_model(model_origin(model.origin), model.id))
                     .map(|_| snapshot(&application, &mut clock, true, startup_item.state()))
                     .map_err(map_model_delete_error);
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::RestoreDefaultConfiguration { reply } => {
+                let result = application
+                    .restore_default_configuration()
+                    .map(|()| snapshot(&application, &mut clock, false, startup_item.state()))
+                    .map_err(|_| {
+                        SettingsError::new(SettingsErrorCode::ConfigurationRecoveryFailed)
+                    });
                 let _ = reply.respond(result);
             }
             SettingsCommand::Shutdown { reply } => {
@@ -202,6 +224,13 @@ fn run_service(
             }
         }
     }
+}
+
+fn require_operational(application: &Application) -> Result<(), ApplicationError> {
+    application
+        .is_operational()
+        .then_some(())
+        .ok_or(ApplicationError::ConfigurationRecoveryRequired)
 }
 
 const fn settings_import_progress(progress: ModelImportProgress) -> SettingsModelImportProgress {
@@ -280,15 +309,30 @@ fn snapshot(
     }
     SettingsSnapshot {
         revision: clock.revision,
-        runtime_health: match runtime.state {
-            RuntimeState::Starting => RuntimeHealth::Starting,
-            RuntimeState::Ready => RuntimeHealth::Ready,
-            RuntimeState::Degraded | RuntimeState::Stopping => RuntimeHealth::Degraded,
-            RuntimeState::Stopped => RuntimeHealth::Stopped,
+        runtime_health: if application.is_operational() {
+            match runtime.state {
+                RuntimeState::Starting => RuntimeHealth::Starting,
+                RuntimeState::Ready => RuntimeHealth::Ready,
+                RuntimeState::Degraded | RuntimeState::Stopping => RuntimeHealth::Degraded,
+                RuntimeState::Stopped => RuntimeHealth::Stopped,
+            }
+        } else {
+            RuntimeHealth::Degraded
         },
         overlay_visible: runtime.overlay_visible,
         motion_audio_enabled: runtime.motion_audio_enabled,
         startup_item,
+        configuration_status: match application.config_status() {
+            ApplicationConfigStatus::Ready => SettingsConfigurationStatus::Ready,
+            ApplicationConfigStatus::RecoveryRequired { checked_backups } => {
+                SettingsConfigurationStatus::RecoveryRequired {
+                    checked_backups: u32::try_from(checked_backups).unwrap_or(u32::MAX),
+                }
+            }
+            ApplicationConfigStatus::DefaultsRestoredRestartRequired => {
+                SettingsConfigurationStatus::DefaultsRestoredRestartRequired
+            }
+        },
         config_recovery: application
             .config_recovery()
             .map(|recovery| SettingsConfigRecovery {
@@ -524,6 +568,9 @@ fn map_application_error(error: ApplicationError) -> SettingsError {
         ApplicationError::PlatformStorage(_)
         | ApplicationError::Config(_)
         | ApplicationError::ConfigRollback(_) => SettingsErrorCode::ConfigPersistFailed,
+        ApplicationError::ConfigurationRecoveryRequired => {
+            SettingsErrorCode::ConfigurationRecoveryRequired
+        }
         ApplicationError::Model(_) | ApplicationError::ModelStore(_) => {
             SettingsErrorCode::ModelUnavailable
         }
@@ -750,6 +797,66 @@ mod tests {
         let stopped = client.shutdown_blocking().expect("service shutdown");
         assert_eq!(stopped.config_recovery, expected);
         service.join().expect("service join");
+    }
+
+    #[test]
+    fn service_restricts_commands_until_invalid_configuration_is_explicitly_replaced() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let store = ConfigStore::new(layout.clone()).expect("config store");
+        let invalid = b"invalid-current-without-backup";
+        std::fs::write(&layout.config, invalid).expect("invalid current config");
+
+        let application = Application::start_with_layout(layout.clone()).expect("safe mode start");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+        let initial = client.read_snapshot_blocking().expect("safe mode snapshot");
+        assert_eq!(
+            initial.configuration_status,
+            SettingsConfigurationStatus::RecoveryRequired { checked_backups: 0 }
+        );
+        assert_eq!(initial.runtime_health, RuntimeHealth::Degraded);
+        assert_eq!(
+            client
+                .set_overlay_visible_blocking(true)
+                .expect_err("business command rejected")
+                .code(),
+            SettingsErrorCode::ConfigurationRecoveryRequired
+        );
+        assert_eq!(
+            std::fs::read(&layout.config).expect("preserved invalid"),
+            invalid
+        );
+
+        let recovered = client
+            .restore_default_configuration_blocking()
+            .expect("restore defaults command");
+        assert_eq!(
+            recovered.configuration_status,
+            SettingsConfigurationStatus::DefaultsRestoredRestartRequired
+        );
+        assert_eq!(recovered.runtime_health, RuntimeHealth::Degraded);
+        assert_eq!(
+            client
+                .restore_default_configuration_blocking()
+                .expect_err("second restore rejected")
+                .code(),
+            SettingsErrorCode::ConfigurationRecoveryFailed
+        );
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
+
+        let restarted = store.load_or_default().expect("restart config");
+        assert_eq!(restarted.config, bongocat_config::NativeConfig::default());
+        assert!(
+            std::fs::read_dir(&layout.backups)
+                .expect("backup directory")
+                .any(|entry| entry
+                    .expect("backup entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("config-corrupt-"))
+        );
     }
 
     fn model_fixture() -> std::path::PathBuf {

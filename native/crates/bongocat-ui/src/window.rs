@@ -1,10 +1,10 @@
 use crate::{
-    RuntimeHealth, SettingsClient, SettingsConfigRecovery, SettingsError, SettingsErrorCode,
-    SettingsInputDiagnostics, SettingsModelAvailability, SettingsModelDiagnostic,
-    SettingsModelEntry, SettingsModelImportMonitor, SettingsModelImportOperation,
-    SettingsModelImportRequest, SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin,
-    SettingsOperationId, SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
-    SettingsStartupItemUnsupportedReason,
+    RuntimeHealth, SettingsClient, SettingsConfigRecovery, SettingsConfigurationStatus,
+    SettingsError, SettingsErrorCode, SettingsInputDiagnostics, SettingsModelAvailability,
+    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportMonitor,
+    SettingsModelImportOperation, SettingsModelImportRequest, SettingsModelImportStage,
+    SettingsModelKey, SettingsModelOrigin, SettingsOperationId, SettingsSnapshot,
+    SettingsStartupItemState, SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason,
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_platform::{
@@ -45,6 +45,8 @@ const ACCESSIBILITY_OVERLAY: AccessibilityNodeId = AccessibilityNodeId::new(10);
 const ACCESSIBILITY_AUDIO: AccessibilityNodeId = AccessibilityNodeId::new(11);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_STARTUP: AccessibilityNodeId = AccessibilityNodeId::new(12);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_RESTORE_DEFAULTS: AccessibilityNodeId = AccessibilityNodeId::new(29);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_REFRESH: AccessibilityNodeId = AccessibilityNodeId::new(30);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -104,6 +106,7 @@ enum PendingOperation {
     StartupItem,
     ModelSelection,
     ModelDeletion,
+    RestoreDefaultConfiguration,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -279,6 +282,7 @@ pub struct SettingsView {
     model_id_focus: FocusHandle,
     choose_model_focus: FocusHandle,
     import_model_focus: FocusHandle,
+    restore_defaults_focus: FocusHandle,
     refresh_focus: FocusHandle,
     quit_focus: FocusHandle,
     #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -313,6 +317,7 @@ impl SettingsView {
             model_id_focus: cx.focus_handle().tab_index(20).tab_stop(true),
             choose_model_focus: cx.focus_handle().tab_index(21).tab_stop(true),
             import_model_focus: cx.focus_handle().tab_index(22).tab_stop(true),
+            restore_defaults_focus: cx.focus_handle().tab_index(29).tab_stop(true),
             refresh_focus: cx.focus_handle().tab_index(30).tab_stop(true),
             quit_focus: cx.focus_handle().tab_index(31).tab_stop(true),
             #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -335,8 +340,13 @@ impl SettingsView {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn accessibility_tree_with_focus(&self, focus: AccessibilityNodeId) -> AccessibilityTree {
         let snapshot = self.snapshot.as_ref();
-        let disabled =
-            self.pending.is_some() || snapshot.is_none() || self.model_import.is_running();
+        let configuration_ready = snapshot.is_some_and(|snapshot| {
+            snapshot.configuration_status == SettingsConfigurationStatus::Ready
+        });
+        let disabled = self.pending.is_some()
+            || snapshot.is_none()
+            || self.model_import.is_running()
+            || !configuration_ready;
         let startup = startup_item_presentation(snapshot.map(|s| s.startup_item), disabled);
         let mut overlay_node = AccessibilityNode::new(
             ACCESSIBILITY_OVERLAY,
@@ -389,6 +399,22 @@ impl SettingsView {
         if self.pending.is_none() && !self.model_import.is_running() {
             refresh_node = refresh_node.clickable().focusable();
         }
+        let restore_available = snapshot.is_some_and(|snapshot| {
+            matches!(
+                snapshot.configuration_status,
+                SettingsConfigurationStatus::RecoveryRequired { .. }
+            )
+        }) && self.pending.is_none();
+        let mut restore_node = AccessibilityNode::new(
+            ACCESSIBILITY_RESTORE_DEFAULTS,
+            AccessibilityRole::Button,
+            "Restore default configuration",
+        )
+        .with_value("Archive the invalid configuration and create verified defaults")
+        .disabled(!restore_available);
+        if restore_available {
+            restore_node = restore_node.clickable().focusable();
+        }
         let mut nodes = vec![
             AccessibilityNode::new(
                 ACCESSIBILITY_ROOT,
@@ -402,6 +428,7 @@ impl SettingsView {
                 ACCESSIBILITY_OVERLAY,
                 ACCESSIBILITY_AUDIO,
                 ACCESSIBILITY_STARTUP,
+                ACCESSIBILITY_RESTORE_DEFAULTS,
                 ACCESSIBILITY_REFRESH,
                 ACCESSIBILITY_QUIT,
             ]),
@@ -421,6 +448,7 @@ impl SettingsView {
             overlay_node,
             audio_node,
             startup_node,
+            restore_node,
             refresh_node,
             AccessibilityNode::new(ACCESSIBILITY_QUIT, AccessibilityRole::Button, "Quit")
                 .clickable()
@@ -472,6 +500,16 @@ impl SettingsView {
                 StartupItemAction::Retry => self.refresh(cx),
                 StartupItemAction::None => {}
             },
+            ACCESSIBILITY_RESTORE_DEFAULTS => {
+                if self.snapshot.as_ref().is_some_and(|snapshot| {
+                    matches!(
+                        snapshot.configuration_status,
+                        SettingsConfigurationStatus::RecoveryRequired { .. }
+                    )
+                }) {
+                    self.restore_default_configuration(cx);
+                }
+            }
             ACCESSIBILITY_REFRESH => self.refresh(cx),
             ACCESSIBILITY_QUIT => (self.request_quit)(cx),
             _ => {}
@@ -665,7 +703,8 @@ impl SettingsView {
         if input_diagnostic_metrics(snapshot.input_diagnostics).len() != 19 {
             return Err("diagnostics page did not project every input counter".to_owned());
         }
-        let recovery = config_recovery_presentation(snapshot.config_recovery);
+        let recovery =
+            config_recovery_presentation(snapshot.configuration_status, snapshot.config_recovery);
         if recovery.title.is_empty() || recovery.detail.is_empty() {
             return Err("diagnostics page did not project configuration recovery".to_owned());
         }
@@ -705,6 +744,14 @@ impl SettingsView {
         self.start_request(
             PendingOperation::StartupItem,
             Some(SettingValue::StartupItemEnabled(enabled)),
+            cx,
+        );
+    }
+
+    fn restore_default_configuration(&mut self, cx: &mut Context<Self>) {
+        self.start_request(
+            PendingOperation::RestoreDefaultConfiguration,
+            Some(SettingValue::RestoreDefaultConfiguration),
             cx,
         );
     }
@@ -1076,6 +1123,9 @@ impl SettingsView {
                 Some(SettingValue::StartupItemEnabled(enabled)) => {
                     client.set_startup_item_enabled(enabled).await
                 }
+                Some(SettingValue::RestoreDefaultConfiguration) => {
+                    client.restore_default_configuration().await
+                }
             };
             let _ = this.update(cx, |view, cx| {
                 view.pending = None;
@@ -1086,6 +1136,9 @@ impl SettingsView {
                             .as_ref()
                             .is_none_or(|current| snapshot.revision >= current.revision) =>
                     {
+                        if snapshot.configuration_status != SettingsConfigurationStatus::Ready {
+                            view.page = SettingsPage::Diagnostics;
+                        }
                         view.snapshot = Some(snapshot);
                     }
                     Ok(_) => {}
@@ -1103,6 +1156,7 @@ enum SettingValue {
     OverlayVisible(bool),
     MotionAudioEnabled(bool),
     StartupItemEnabled(bool),
+    RestoreDefaultConfiguration,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1205,6 +1259,7 @@ impl Render for SettingsView {
                     ACCESSIBILITY_OVERLAY => &self.overlay_focus,
                     ACCESSIBILITY_AUDIO => &self.audio_focus,
                     ACCESSIBILITY_STARTUP => &self.startup_item_focus,
+                    ACCESSIBILITY_RESTORE_DEFAULTS => &self.restore_defaults_focus,
                     ACCESSIBILITY_REFRESH => &self.refresh_focus,
                     ACCESSIBILITY_QUIT => &self.quit_focus,
                     _ => &self.general_focus,
@@ -1221,8 +1276,13 @@ impl Render for SettingsView {
         let motion_audio_enabled = snapshot
             .as_ref()
             .is_some_and(|snapshot| snapshot.motion_audio_enabled);
-        let disabled =
-            self.pending.is_some() || snapshot.is_none() || self.model_import.is_running();
+        let configuration_ready = snapshot.as_ref().is_some_and(|snapshot| {
+            snapshot.configuration_status == SettingsConfigurationStatus::Ready
+        });
+        let disabled = self.pending.is_some()
+            || snapshot.is_none()
+            || self.model_import.is_running()
+            || !configuration_ready;
         let status: SharedString = match (&self.error, self.pending, &snapshot) {
             (Some(error), _, _) => error.to_string().into(),
             (_, Some(PendingOperation::Refresh), _) => "Refreshing...".into(),
@@ -1232,6 +1292,9 @@ impl Render for SettingsView {
             (_, Some(PendingOperation::StartupItem), _) => "Updating login startup...".into(),
             (_, Some(PendingOperation::ModelSelection), _) => "Activating model...".into(),
             (_, Some(PendingOperation::ModelDeletion), _) => "Deleting model...".into(),
+            (_, Some(PendingOperation::RestoreDefaultConfiguration), _) => {
+                "Restoring default configuration...".into()
+            }
             (_, None, Some(snapshot)) => {
                 let health = match snapshot.runtime_health {
                     RuntimeHealth::Starting => "Starting",
@@ -1949,7 +2012,11 @@ impl Render for SettingsView {
                     .overflow_y_scroll()
                     .when_some(snapshot.as_ref(), |content, snapshot| {
                         let metrics = input_diagnostic_metrics(snapshot.input_diagnostics);
-                        let recovery = config_recovery_presentation(snapshot.config_recovery);
+                        let recovery = config_recovery_presentation(
+                            snapshot.configuration_status,
+                            snapshot.config_recovery,
+                        );
+                        let restore_disabled = self.pending.is_some();
                         content
                             .child(
                                 div()
@@ -1980,13 +2047,54 @@ impl Render for SettingsView {
                                     .child(
                                         div()
                                             .flex_none()
+                                            .flex()
+                                            .items_center()
+                                            .gap_3()
                                             .text_sm()
-                                            .text_color(if recovery.recovered {
+                                            .text_color(if recovery.attention {
+                                                tokens.danger
+                                            } else if recovery.recovered {
                                                 tokens.accent
                                             } else {
                                                 tokens.muted
                                             })
-                                            .child(recovery.detail),
+                                            .child(recovery.detail)
+                                            .when(recovery.can_restore, |content| {
+                                                content.child(
+                                                    command_button(
+                                                        "Restore defaults",
+                                                        &self.restore_defaults_focus,
+                                                        29,
+                                                        window,
+                                                        tokens,
+                                                        restore_disabled,
+                                                    )
+                                                    .id("restore-default-configuration")
+                                                    .on_click(cx.listener(|view, _, window, cx| {
+                                                        if view.pending.is_none() {
+                                                            window.focus(
+                                                                &view.restore_defaults_focus,
+                                                            );
+                                                            view.restore_default_configuration(cx);
+                                                        }
+                                                    }))
+                                                    .on_key_down(cx.listener(
+                                                        |view, event, window, cx| {
+                                                            if view.pending.is_none()
+                                                                && is_activation_key(event)
+                                                            {
+                                                                cx.stop_propagation();
+                                                                window.focus(
+                                                                    &view.restore_defaults_focus,
+                                                                );
+                                                                view.restore_default_configuration(
+                                                                    cx,
+                                                                );
+                                                            }
+                                                        },
+                                                    )),
+                                                )
+                                            }),
                                     ),
                             )
                             .child(
@@ -2149,30 +2257,62 @@ struct ConfigRecoveryPresentation {
     title: &'static str,
     detail: String,
     recovered: bool,
+    attention: bool,
+    can_restore: bool,
 }
 
 fn config_recovery_presentation(
+    status: SettingsConfigurationStatus,
     recovery: Option<SettingsConfigRecovery>,
 ) -> ConfigRecoveryPresentation {
-    match recovery {
-        Some(recovery) => ConfigRecoveryPresentation {
-            title: "Recovered from backup",
-            detail: format!(
-                "Schema v{} · {} newer backup{} skipped",
-                recovery.source_schema_version,
-                recovery.skipped_newer_backups,
-                if recovery.skipped_newer_backups == 1 {
-                    ""
-                } else {
-                    "s"
-                }
-            ),
-            recovered: true,
-        },
-        None => ConfigRecoveryPresentation {
+    match status {
+        SettingsConfigurationStatus::RecoveryRequired { checked_backups } => {
+            ConfigRecoveryPresentation {
+                title: "Configuration unavailable",
+                detail: format!(
+                    "{} backup candidate{} checked",
+                    checked_backups,
+                    if checked_backups == 1 { "" } else { "s" }
+                ),
+                recovered: false,
+                attention: true,
+                can_restore: true,
+            }
+        }
+        SettingsConfigurationStatus::DefaultsRestoredRestartRequired => {
+            ConfigRecoveryPresentation {
+                title: "Defaults restored",
+                detail: "Restart BongoCat to continue".to_owned(),
+                recovered: true,
+                attention: false,
+                can_restore: false,
+            }
+        }
+        SettingsConfigurationStatus::Ready if recovery.is_some() => {
+            let recovery = recovery.expect("ready recovered configuration is present");
+            ConfigRecoveryPresentation {
+                title: "Recovered from backup",
+                detail: format!(
+                    "Schema v{} · {} newer backup{} skipped",
+                    recovery.source_schema_version,
+                    recovery.skipped_newer_backups,
+                    if recovery.skipped_newer_backups == 1 {
+                        ""
+                    } else {
+                        "s"
+                    }
+                ),
+                recovered: true,
+                attention: false,
+                can_restore: false,
+            }
+        }
+        SettingsConfigurationStatus::Ready => ConfigRecoveryPresentation {
             title: "Loaded normally",
             detail: "No recovery".to_owned(),
             recovered: false,
+            attention: false,
+            can_restore: false,
         },
     }
 }
@@ -2680,25 +2820,49 @@ mod tests {
 
     #[test]
     fn configuration_recovery_presentation_is_anonymous_and_complete() {
-        let normal = config_recovery_presentation(None);
+        let normal = config_recovery_presentation(SettingsConfigurationStatus::Ready, None);
         assert_eq!(normal.title, "Loaded normally");
         assert_eq!(normal.detail, "No recovery");
         assert!(!normal.recovered);
+        assert!(!normal.can_restore);
 
-        let recovered = config_recovery_presentation(Some(SettingsConfigRecovery {
-            source_schema_version: 2,
-            skipped_newer_backups: 3,
-        }));
+        let recovered = config_recovery_presentation(
+            SettingsConfigurationStatus::Ready,
+            Some(SettingsConfigRecovery {
+                source_schema_version: 2,
+                skipped_newer_backups: 3,
+            }),
+        );
         assert_eq!(recovered.title, "Recovered from backup");
         assert_eq!(recovered.detail, "Schema v2 · 3 newer backups skipped");
         assert!(recovered.recovered);
         assert!(!recovered.detail.contains('/') && !recovered.detail.contains('\\'));
 
-        let one_skipped = config_recovery_presentation(Some(SettingsConfigRecovery {
-            source_schema_version: 2,
-            skipped_newer_backups: 1,
-        }));
+        let one_skipped = config_recovery_presentation(
+            SettingsConfigurationStatus::Ready,
+            Some(SettingsConfigRecovery {
+                source_schema_version: 2,
+                skipped_newer_backups: 1,
+            }),
+        );
         assert_eq!(one_skipped.detail, "Schema v2 · 1 newer backup skipped");
+
+        let required = config_recovery_presentation(
+            SettingsConfigurationStatus::RecoveryRequired { checked_backups: 2 },
+            None,
+        );
+        assert_eq!(required.title, "Configuration unavailable");
+        assert_eq!(required.detail, "2 backup candidates checked");
+        assert!(required.attention);
+        assert!(required.can_restore);
+
+        let restored = config_recovery_presentation(
+            SettingsConfigurationStatus::DefaultsRestoredRestartRequired,
+            None,
+        );
+        assert_eq!(restored.title, "Defaults restored");
+        assert_eq!(restored.detail, "Restart BongoCat to continue");
+        assert!(!restored.can_restore);
     }
 
     #[test]

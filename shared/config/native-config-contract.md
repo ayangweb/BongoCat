@@ -88,6 +88,19 @@ shortcuts
 - 没有有效候选、损坏原文超过 quarantine 上限、归档/收敛失败或写回验证失败时明确报错；不得
   静默创建默认配置。写回验证失败会尝试把原始损坏字节恢复到 `config.json`，quarantine 仍保留。
 
+## Safe Recovery Mode
+
+- 当 current 损坏且所有自有 backup 候选均无效时，`ConfigStore::load_or_default` 返回
+  `NoValidRecoveryBackup`，不得创建默认配置或覆盖原文件。Application 将该结果转换为匿名的
+  `RecoveryRequired { checked_backups }`，启动 recovery-only settings 窗口，不创建 overlay/GPU、
+  不激活模型；所有业务写入、模型、启动项和 overlay command 在此状态被拒绝。
+- 用户必须显式发送 typed `RestoreDefaultConfiguration`。store 在同一 writer lock 内重新检查
+  current，拒绝未来 schema、有效 current 或已恢复状态；确认仍损坏后把原字节写入现有有界
+  `config-corrupt-*` quarantine，再原子写入、flush、读取并验证 v2 默认配置。成功后返回
+  `DefaultsRestoredRestartRequired`，保留 recovery-only runtime，必须重启才恢复正常业务状态。
+- 恢复 command 失败不得覆盖 current；quarantine、默认写入或验证失败均返回稳定错误。Diagnostics
+  只显示状态和候选计数，不显示路径、原始 bytes、时间戳或底层 I/O 文本。
+
 ## Interrupted Commit Recovery
 
 - 正式提交先以 `create_new` 在 `config.json` 同目录写入固定的 `config.json.tmp`，完整写入并

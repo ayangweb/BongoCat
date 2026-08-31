@@ -52,6 +52,13 @@ pub struct SettingsConfigRecovery {
     pub skipped_newer_backups: u32,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SettingsConfigurationStatus {
+    Ready,
+    RecoveryRequired { checked_backups: u32 },
+    DefaultsRestoredRestartRequired,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SettingsSnapshot {
     pub revision: u64,
@@ -59,6 +66,7 @@ pub struct SettingsSnapshot {
     pub overlay_visible: bool,
     pub motion_audio_enabled: bool,
     pub startup_item: SettingsStartupItemStatus,
+    pub configuration_status: SettingsConfigurationStatus,
     pub config_recovery: Option<SettingsConfigRecovery>,
     pub input_diagnostics: SettingsInputDiagnostics,
     pub active_model: Option<SettingsModelKey>,
@@ -325,6 +333,8 @@ pub enum SettingsErrorCode {
     ServiceUnavailable,
     RuntimeUnavailable,
     ConfigPersistFailed,
+    ConfigurationRecoveryRequired,
+    ConfigurationRecoveryFailed,
     ModelUnavailable,
     ModelSwitchFailed,
     InvalidModelId,
@@ -366,6 +376,12 @@ impl fmt::Display for SettingsError {
             SettingsErrorCode::ServiceUnavailable => "settings service is unavailable",
             SettingsErrorCode::RuntimeUnavailable => "runtime did not apply the setting",
             SettingsErrorCode::ConfigPersistFailed => "setting could not be saved",
+            SettingsErrorCode::ConfigurationRecoveryRequired => {
+                "configuration must be recovered before this action"
+            }
+            SettingsErrorCode::ConfigurationRecoveryFailed => {
+                "default configuration could not be restored"
+            }
             SettingsErrorCode::ModelUnavailable => "selected model is unavailable",
             SettingsErrorCode::ModelSwitchFailed => "selected model could not be activated",
             SettingsErrorCode::InvalidModelId => "model id is invalid",
@@ -431,6 +447,9 @@ pub enum SettingsCommand {
     },
     DeleteModel {
         model: SettingsModelKey,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    RestoreDefaultConfiguration {
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     Shutdown {
@@ -550,6 +569,11 @@ impl SettingsClient {
             .await
     }
 
+    pub async fn restore_default_configuration(&self) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::RestoreDefaultConfiguration { reply })
+            .await
+    }
+
     pub async fn shutdown(&self) -> Result<SettingsSnapshot, SettingsError> {
         self.request(|reply| SettingsCommand::Shutdown { reply })
             .await
@@ -616,6 +640,12 @@ impl SettingsClient {
         model: SettingsModelKey,
     ) -> Result<SettingsSnapshot, SettingsError> {
         self.request_blocking(|reply| SettingsCommand::DeleteModel { model, reply })
+    }
+
+    pub fn restore_default_configuration_blocking(
+        &self,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::RestoreDefaultConfiguration { reply })
     }
 
     pub fn shutdown_blocking(&self) -> Result<SettingsSnapshot, SettingsError> {
@@ -907,6 +937,31 @@ mod tests {
         worker.join().expect("worker join");
     }
 
+    #[test]
+    fn default_configuration_recovery_is_a_typed_command() {
+        let (client, endpoint) = SettingsClient::bounded(1);
+        let worker = thread::spawn(move || {
+            let SettingsCommand::RestoreDefaultConfiguration { reply } =
+                endpoint.recv_blocking().expect("recovery command")
+            else {
+                panic!("unexpected command");
+            };
+            let mut recovered = snapshot(2, false, false);
+            recovered.configuration_status =
+                SettingsConfigurationStatus::DefaultsRestoredRestartRequired;
+            reply.respond(Ok(recovered)).expect("recovery reply");
+        });
+
+        let recovered = client
+            .restore_default_configuration_blocking()
+            .expect("recovery snapshot");
+        assert_eq!(
+            recovered.configuration_status,
+            SettingsConfigurationStatus::DefaultsRestoredRestartRequired
+        );
+        worker.join().expect("worker join");
+    }
+
     fn snapshot(
         revision: u64,
         overlay_visible: bool,
@@ -918,6 +973,7 @@ mod tests {
             overlay_visible,
             motion_audio_enabled,
             startup_item: SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),
+            configuration_status: SettingsConfigurationStatus::Ready,
             config_recovery: None,
             input_diagnostics: SettingsInputDiagnostics::default(),
             active_model: Some(SettingsModelKey {

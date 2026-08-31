@@ -954,6 +954,10 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
   - 状态（2026-08-31）：成功从备份恢复时，正式 settings snapshot 已投影匿名的源 schema 与
     跳过候选数，Diagnostics 显示正常加载或恢复成功状态；无有效备份的安全模式、可操作错误摘要、
     备份位置和恢复默认 command 仍未实现，因此总项保持未勾选。
+  - 状态（2026-08-31）：正式 Application/settings service 已实现无有效备份时的
+    `RecoveryRequired` recovery-only 窗口、匿名候选计数和 `RestoreDefaultConfiguration` typed
+    command；恢复前业务 command 被拒，恢复后标记需重启。可操作的磁盘满/目标占用错误摘要、
+    权限失败注入和完整三平台证据仍待完成，因此总项保持未勾选。
 - [x] 用户模型只通过显式、受验证的导入进入当前环境，不扫描旧应用目录。
   - 验收证据（2026-08-30）：`bongocat-app` 不再提供任意外部目录激活入口；模型必须
     先经 `ModelStore::import` 复制、复验和 commit，随后只能按已安装 `ModelId` 加载；
@@ -1550,6 +1554,15 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       `99424654786`/`99424654816`/`99424654950` 通过完整 format、Clippy、workspace test、
       release/Production 与平台 smoke，Windows input/config job `99424654701` 实际通过 Windows
       原子替换、强杀 lock 释放、启动恢复和真实存储路径测试。
+38. [ ] `P6-CONFIG-SAFE-RECOVERY`：在无有效备份时进入受限设置并提供显式恢复默认 command。
+    - 依赖：`P6-CONFIG-BACKUP-RECOVERY`、`P6-CONFIG-RECOVERY-DIAGNOSTIC` 和 typed settings command。
+    - 退出条件：无有效候选时不覆盖 current、不启动 overlay/GPU，Application 进入 recovery-only
+      settings；snapshot 公开匿名状态与候选计数，所有业务写入/模型/启动项操作被拒；显式恢复默认
+      在 writer lock 内二次确认、quarantine 原字节、原子写入并验证 v2 默认配置，恢复后要求重启；
+      未来 schema、归档/验证失败保留原文件并返回稳定错误；config/app/ui 定向测试、完整 Native
+      workspace、三平台 CI 和 recovery window smoke 通过。
+    - 状态（2026-08-31）：config/app/ui 定向测试已通过（config 23、app 29、ui 21）；recovery-only
+      产品入口与完整 UI/三平台 smoke 仍待验证，保持未勾选。
 
 ## 13. 待决策清单
 
