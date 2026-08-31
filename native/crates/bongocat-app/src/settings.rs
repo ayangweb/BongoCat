@@ -11,7 +11,7 @@ use bongocat_platform::{
 };
 use bongocat_runtime::{
     InputSnapshot, OverlaySettings, PlatformInputDiagnostics, PlatformInputServiceStatus,
-    RuntimeState,
+    RuntimeRenderErrorCode, RuntimeState,
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_ui::SettingsStartupItemError;
@@ -21,7 +21,8 @@ use bongocat_ui::{
     SettingsInputServiceStatus, SettingsModelAvailability, SettingsModelCatalog,
     SettingsModelCatalogError, SettingsModelDiagnostic, SettingsModelEntry,
     SettingsModelImportProgress, SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin,
-    SettingsOverlay, SettingsServiceEndpoint, SettingsSnapshot, SettingsStartupItemState,
+    SettingsOverlay, SettingsRuntimeCommandFailure, SettingsRuntimeDiagnostics,
+    SettingsRuntimeErrorCode, SettingsServiceEndpoint, SettingsSnapshot, SettingsStartupItemState,
     SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsWindowPlacement,
     SettingsWindowState,
 };
@@ -499,6 +500,7 @@ fn snapshot(
         } else {
             RuntimeHealth::Degraded
         },
+        runtime_diagnostics: settings_runtime_diagnostics(&runtime),
         overlay_visible: runtime.overlay_visible,
         overlay: SettingsOverlay {
             click_through: runtime.overlay_settings.click_through,
@@ -538,6 +540,43 @@ fn snapshot(
             })
             .or_else(|| configured_model_key(application)),
         model_catalog: settings_model_catalog(application),
+    }
+}
+
+const fn settings_runtime_error_code(code: RuntimeRenderErrorCode) -> SettingsRuntimeErrorCode {
+    match code {
+        RuntimeRenderErrorCode::ModelLoadFailed => SettingsRuntimeErrorCode::ModelLoadFailed,
+        RuntimeRenderErrorCode::ModelEvaluationFailed => {
+            SettingsRuntimeErrorCode::ModelEvaluationFailed
+        }
+        RuntimeRenderErrorCode::MotionLoadFailed => SettingsRuntimeErrorCode::MotionLoadFailed,
+        RuntimeRenderErrorCode::ExpressionLoadFailed => {
+            SettingsRuntimeErrorCode::ExpressionLoadFailed
+        }
+        RuntimeRenderErrorCode::GpuPreparationFailed => {
+            SettingsRuntimeErrorCode::GpuPreparationFailed
+        }
+        RuntimeRenderErrorCode::PlatformUnsupported => {
+            SettingsRuntimeErrorCode::PlatformUnsupported
+        }
+        RuntimeRenderErrorCode::TransportClosed => SettingsRuntimeErrorCode::TransportClosed,
+        RuntimeRenderErrorCode::OverlaySettingsInvalid => {
+            SettingsRuntimeErrorCode::OverlaySettingsInvalid
+        }
+    }
+}
+
+fn settings_runtime_diagnostics(
+    runtime: &bongocat_runtime::RuntimeSnapshot,
+) -> SettingsRuntimeDiagnostics {
+    SettingsRuntimeDiagnostics {
+        render_error: runtime.render_error.map(settings_runtime_error_code),
+        last_command_failure: runtime.last_command_failure.map(|failure| {
+            SettingsRuntimeCommandFailure {
+                sequence: failure.sequence,
+                code: settings_runtime_error_code(failure.code),
+            }
+        }),
     }
 }
 

@@ -920,7 +920,10 @@ overlay owner；设置更新失败时保留旧 snapshot。scale/opacity 的可�
 - [ ] command 使用强类型 request/result 和稳定 error code。
   - 状态（2026-09-01）：`SettingsErrorCode` 已提供固定 snake_case 标识和 29 项唯一性 contract，
     与既有用户可读文案分离；Service、model import/delete、config、startup、window 和 shutdown
-    错误均沿用该枚举。统一 Diagnostics 导出、renderer/input/config/update 跨域聚合仍待完成。
+    错误均沿用该枚举。`RuntimeRenderErrorCode` 已通过 UI 自有的
+    `SettingsRuntimeErrorCode` 投影到 `SettingsSnapshot.runtime_diagnostics`，Diagnostics 页面显示
+    匿名 renderer 错误和最近失败 command 序号；统一 Diagnostics 导出、input/model/config/update
+    跨域聚合仍待完成。
 - [ ] 长操作提供 operation id、progress、cancel 和 final result。
   - 状态（2026-08-31）：模型导入已完成首个正式长操作契约：所有 `SettingsClient` clone
     共用单调 typed ID，progress 仅含 stage/file count/byte count，共享原子 token 可在 settings
@@ -1161,8 +1164,9 @@ overlay owner；设置更新失败时保留旧 snapshot。scale/opacity 的可�
 - [ ] 记录 renderer/input/model/config/update 的稳定 error code。
   - 状态（2026-09-01）：runtime renderer 已为 model load/evaluation、motion/expression load、GPU
     prepare、platform、transport 和 overlay validation 定义 8 个固定 snake_case code，并以唯一性
-    contract 防止诊断协议依赖 Rust `Debug` 名称。input/config/model 已有各自 typed code，但统一
-    诊断导出和 update code 尚未完成，因此保持未勾选。
+    contract 防止诊断协议依赖 Rust `Debug` 名称；该 code 已投影到 SettingsSnapshot 和 Diagnostics
+    页面。input/config/model 已有各自 typed code，但统一诊断导出和 update code 尚未完成，因此保持
+    未勾选。
 - [ ] 日志导出生成可预览的脱敏包。
 - [ ] 更新 manifest 定义 schemaVersion、channel、最低可升级版本、发布时间和防回滚字段。
 - [ ] 更新 helper/installer 的权限边界、替换原子性和失败恢复经过单独威胁建模。

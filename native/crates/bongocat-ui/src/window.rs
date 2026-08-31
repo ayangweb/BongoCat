@@ -4,8 +4,9 @@ use crate::{
     SettingsModelAvailability, SettingsModelDiagnostic, SettingsModelEntry,
     SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
     SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsOperationId,
-    SettingsOverlay, SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
-    SettingsStartupItemUnsupportedReason, SettingsWindowPlacement, SettingsWindowState,
+    SettingsOverlay, SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode, SettingsSnapshot,
+    SettingsStartupItemState, SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason,
+    SettingsWindowPlacement, SettingsWindowState,
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_platform::{
@@ -2714,12 +2715,54 @@ impl Render for SettingsView {
                     .when_some(snapshot.as_ref(), |content, snapshot| {
                         let metrics = input_diagnostic_metrics(snapshot.input_diagnostics);
                         let input_service = input_service_presentation(snapshot.input_diagnostics);
+                        let runtime_diagnostics =
+                            runtime_diagnostics_presentation(snapshot.runtime_diagnostics);
                         let recovery = config_recovery_presentation(
                             snapshot.configuration_status,
                             snapshot.config_recovery,
                         );
                         let config_action_disabled = self.pending.is_some();
                         content
+                            .child(
+                                div()
+                                    .id("runtime-diagnostics")
+                                    .pb_3()
+                                    .mb_3()
+                                    .border_b_1()
+                                    .border_color(tokens.border)
+                                    .flex()
+                                    .items_center()
+                                    .justify_between()
+                                    .gap_4()
+                                    .child(
+                                        div()
+                                            .min_w_0()
+                                            .flex_1()
+                                            .flex()
+                                            .flex_col()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .text_sm()
+                                                    .text_color(tokens.muted)
+                                                    .child("Runtime renderer"),
+                                            )
+                                            .child(
+                                                div().text_sm().child(runtime_diagnostics.title),
+                                            ),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex_none()
+                                            .text_sm()
+                                            .text_color(if runtime_diagnostics.attention {
+                                                tokens.danger
+                                            } else {
+                                                tokens.muted
+                                            })
+                                            .child(runtime_diagnostics.detail),
+                                    ),
+                            )
                             .child(
                                 div()
                                     .id("input-service-diagnostics")
@@ -3055,6 +3098,39 @@ fn input_service_presentation(diagnostics: SettingsInputDiagnostics) -> InputSer
         title,
         detail: format!("Start attempts: {}", diagnostics.service_start_attempts),
         running,
+        attention,
+    }
+}
+
+struct RuntimeDiagnosticsPresentation {
+    title: String,
+    detail: String,
+    attention: bool,
+}
+
+fn runtime_diagnostics_presentation(
+    diagnostics: SettingsRuntimeDiagnostics,
+) -> RuntimeDiagnosticsPresentation {
+    let (title, attention) = match diagnostics.render_error {
+        Some(SettingsRuntimeErrorCode::GpuPreparationFailed) => ("GPU preparation failed", true),
+        Some(SettingsRuntimeErrorCode::ModelLoadFailed) => ("Model load failed", true),
+        Some(SettingsRuntimeErrorCode::ModelEvaluationFailed) => ("Model evaluation failed", true),
+        Some(SettingsRuntimeErrorCode::MotionLoadFailed) => ("Motion load failed", true),
+        Some(SettingsRuntimeErrorCode::ExpressionLoadFailed) => ("Expression load failed", true),
+        Some(SettingsRuntimeErrorCode::PlatformUnsupported) => ("Platform unsupported", true),
+        Some(SettingsRuntimeErrorCode::TransportClosed) => ("Runtime transport closed", true),
+        Some(SettingsRuntimeErrorCode::OverlaySettingsInvalid) => {
+            ("Overlay settings invalid", true)
+        }
+        None => ("No renderer error", false),
+    };
+    let detail = match diagnostics.last_command_failure {
+        Some(failure) => format!("{} · command #{}", failure.code, failure.sequence),
+        None => "No command failures".to_owned(),
+    };
+    RuntimeDiagnosticsPresentation {
+        title: title.to_owned(),
+        detail,
         attention,
     }
 }
@@ -3720,6 +3796,21 @@ mod tests {
         assert_eq!(service.detail, "Start attempts: 1");
         assert!(service.running);
         assert!(!service.attention);
+    }
+
+    #[test]
+    fn runtime_diagnostics_presentation_keeps_codes_anonymous_and_actionable() {
+        let presentation = runtime_diagnostics_presentation(SettingsRuntimeDiagnostics {
+            render_error: Some(SettingsRuntimeErrorCode::GpuPreparationFailed),
+            last_command_failure: Some(crate::SettingsRuntimeCommandFailure {
+                sequence: 17,
+                code: SettingsRuntimeErrorCode::GpuPreparationFailed,
+            }),
+        });
+        assert_eq!(presentation.title, "GPU preparation failed");
+        assert!(presentation.attention);
+        assert_eq!(presentation.detail, "gpu_preparation_failed · command #17");
+        assert!(!presentation.detail.contains('/'));
     }
 
     #[test]

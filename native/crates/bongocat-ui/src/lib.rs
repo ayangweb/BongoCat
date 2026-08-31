@@ -83,6 +83,62 @@ pub enum RuntimeHealth {
     Stopped,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SettingsRuntimeErrorCode {
+    ModelLoadFailed,
+    ModelEvaluationFailed,
+    MotionLoadFailed,
+    ExpressionLoadFailed,
+    GpuPreparationFailed,
+    PlatformUnsupported,
+    TransportClosed,
+    OverlaySettingsInvalid,
+}
+
+impl SettingsRuntimeErrorCode {
+    pub const ALL: [Self; 8] = [
+        Self::ModelLoadFailed,
+        Self::ModelEvaluationFailed,
+        Self::MotionLoadFailed,
+        Self::ExpressionLoadFailed,
+        Self::GpuPreparationFailed,
+        Self::PlatformUnsupported,
+        Self::TransportClosed,
+        Self::OverlaySettingsInvalid,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ModelLoadFailed => "model_load_failed",
+            Self::ModelEvaluationFailed => "model_evaluation_failed",
+            Self::MotionLoadFailed => "motion_load_failed",
+            Self::ExpressionLoadFailed => "expression_load_failed",
+            Self::GpuPreparationFailed => "gpu_preparation_failed",
+            Self::PlatformUnsupported => "platform_unsupported",
+            Self::TransportClosed => "transport_closed",
+            Self::OverlaySettingsInvalid => "overlay_settings_invalid",
+        }
+    }
+}
+
+impl fmt::Display for SettingsRuntimeErrorCode {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SettingsRuntimeCommandFailure {
+    pub sequence: u64,
+    pub code: SettingsRuntimeErrorCode,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct SettingsRuntimeDiagnostics {
+    pub render_error: Option<SettingsRuntimeErrorCode>,
+    pub last_command_failure: Option<SettingsRuntimeCommandFailure>,
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct SettingsInputDiagnostics {
     pub service_status: SettingsInputServiceStatus,
@@ -143,6 +199,7 @@ pub struct SettingsSnapshot {
     pub revision: u64,
     pub config_revision: Option<u64>,
     pub runtime_health: RuntimeHealth,
+    pub runtime_diagnostics: SettingsRuntimeDiagnostics,
     pub overlay_visible: bool,
     pub overlay: SettingsOverlay,
     pub motion_audio_enabled: bool,
@@ -1328,6 +1385,7 @@ mod tests {
             revision,
             config_revision: Some(revision),
             runtime_health: RuntimeHealth::Ready,
+            runtime_diagnostics: SettingsRuntimeDiagnostics::default(),
             overlay_visible,
             overlay: SettingsOverlay::default(),
             motion_audio_enabled,
