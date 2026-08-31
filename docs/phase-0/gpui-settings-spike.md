@@ -159,6 +159,10 @@ job `99107586036` 已由外部 .NET UIA client 读取 Appearance group、三个 
 status bar 和 Refresh button，再调用 Dark radio 的 `SelectionItem.Select` 并验证
 `SelectionItem.IsSelected` 与 GPUI typed action marker。该证据覆盖 Windows 原生 UIA
 role/name/action/selected，不替代 Narrator、错误/loading 宣读、IME、DPI 或窗口重建实测。
+部分 GitHub-hosted Windows UI Automation client 不暴露 `UIA_AriaRoleProperty (30101)`；
+workflow 在属性可用时继续严格验证 `switch`，不可用时依赖 `ControlType.Button`、
+`TogglePattern`、focusability 和实际 focus 检查并记录 warning。这只是 runner 能力限制，
+不构成真实辅助功能语义或 Narrator 验证通过的证据。
 
 2026-08-30 增加只通过 GPUI 公共 `tooltip` API 构建的 Reset 说明，以及项目自有的 modal
 确认框。Reset command 在 760x520 下使用固定 command group 宽度，状态文本占用剩余空间；可见

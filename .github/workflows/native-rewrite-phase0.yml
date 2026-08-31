@@ -2,9 +2,6 @@ name: Native Rewrite Phase 0
 
 on:
   pull_request:
-  push:
-    branches:
-      - next
 
 permissions:
   contents: read
@@ -192,9 +189,9 @@ jobs:
               if ($startup.Current.ControlType -ne [System.Windows.Automation.ControlType]::Button) {
                 throw "Windows UIA startup switch did not use the button control type"
               }
-              # Some GitHub-hosted runner UIAutomationClient builds omit the
-              # managed AriaRoleProperty field even though the native property
-              # is available. Resolve the stable UIA property id directly.
+              # Some GitHub-hosted runner UIAutomationClient builds do not
+              # expose the optional ARIA role property at all. Resolve the
+              # stable UIA property id directly when the client supports it.
               $ariaRoleProperty = $null
               try {
                 $ariaRoleProperty = [System.Windows.Automation.AutomationProperty]::LookupById(30101)
@@ -202,11 +199,12 @@ jobs:
                 $ariaRoleProperty = $null
               }
               if ($null -eq $ariaRoleProperty) {
-                throw "Windows UIA client does not expose UIA_AriaRoleProperty (30101)"
-              }
-              $ariaRole = [string]$startup.GetCurrentPropertyValue($ariaRoleProperty)
-              if ($ariaRole -ne "switch") {
-                throw "Windows UIA startup control did not expose aria role switch: '$ariaRole'"
+                Write-Warning "Windows UIA client does not expose optional UIA_AriaRoleProperty (30101); relying on ControlType and TogglePattern checks"
+              } else {
+                $ariaRole = [string]$startup.GetCurrentPropertyValue($ariaRoleProperty)
+                if ($ariaRole -ne "switch") {
+                  throw "Windows UIA startup control did not expose aria role switch: '$ariaRole'"
+                }
               }
               if (-not $startup.Current.IsEnabled -or -not $startup.Current.IsKeyboardFocusable) {
                 throw "Windows UIA startup switch was not enabled and focusable"
