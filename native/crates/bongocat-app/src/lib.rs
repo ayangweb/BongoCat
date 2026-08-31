@@ -19,9 +19,9 @@ use bongocat_model::{
 use bongocat_render::{ModelCommitToken, RenderConsumer};
 use bongocat_runtime::{
     CursorProducer, ExpressionId, ExpressionIdError, GamepadAxisProducer, GamepadAxisSettings,
-    HandSide, InputBindings, InputProducer, MotionId, MotionIdError, MotionPriority, PhysicalKey,
-    RuntimeClient, RuntimeCommand, RuntimeCommandFailure, RuntimeOwner, RuntimeSnapshot, SendError,
-    ShutdownError,
+    HandSide, InputBindings, InputProducer, MotionId, MotionIdError, MotionPriority,
+    OverlaySettings, PhysicalKey, RuntimeClient, RuntimeCommand, RuntimeCommandFailure,
+    RuntimeOwner, RuntimeRenderErrorCode, RuntimeSnapshot, SendError, ShutdownError,
 };
 use std::{collections::BTreeMap, fmt, path::Path, sync::Arc, time::Duration};
 
@@ -280,6 +280,14 @@ impl Application {
             client
                 .wait_for_command(sequence, RUNTIME_TIMEOUT)
                 .ok_or(ApplicationError::RuntimeDidNotPublish)?;
+            let sequence = client
+                .send(RuntimeCommand::SetOverlaySettings(
+                    overlay_settings_from_config(&config),
+                ))
+                .map_err(ApplicationError::RuntimeCommand)?;
+            client
+                .wait_for_command(sequence, RUNTIME_TIMEOUT)
+                .ok_or(ApplicationError::RuntimeDidNotPublish)?;
         }
         let active_model_origin = config
             .model
@@ -408,6 +416,44 @@ impl Application {
         let snapshot = client
             .wait_for_command(sequence, RUNTIME_TIMEOUT)
             .ok_or(ApplicationError::RuntimeDidNotPublish)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(snapshot)
+    }
+
+    pub fn set_overlay_settings(
+        &mut self,
+        settings: OverlaySettings,
+    ) -> Result<RuntimeSnapshot, ApplicationError> {
+        if !settings.is_valid() {
+            return Err(ApplicationError::RuntimeCommandFailed(
+                RuntimeCommandFailure {
+                    sequence: 0,
+                    code: RuntimeRenderErrorCode::OverlaySettingsInvalid,
+                },
+            ));
+        }
+        let mut next_config = self.config.clone();
+        next_config.overlay.click_through = settings.click_through;
+        next_config.overlay.always_on_top = settings.always_on_top;
+        next_config.overlay.scale_percent = settings.scale_percent;
+        next_config.overlay.opacity_percent = settings.opacity_percent;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        let client = self.runtime.client();
+        let sequence = client
+            .send(RuntimeCommand::SetOverlaySettings(settings))
+            .map_err(ApplicationError::RuntimeCommand)?;
+        let snapshot = client
+            .wait_for_command(sequence, RUNTIME_TIMEOUT)
+            .ok_or(ApplicationError::RuntimeDidNotPublish)?;
+        if let Some(failure) = snapshot
+            .last_command_failure
+            .filter(|failure| failure.sequence == sequence)
+        {
+            return Err(ApplicationError::RuntimeCommandFailed(failure));
+        }
         self.config = next_config;
         self.config_revision = Some(next_revision);
         Ok(snapshot)
@@ -694,6 +740,15 @@ const fn model_origin_from_config(origin: SelectedModelOrigin) -> ModelOrigin {
     }
 }
 
+fn overlay_settings_from_config(config: &NativeConfig) -> OverlaySettings {
+    OverlaySettings {
+        click_through: config.overlay.click_through,
+        always_on_top: config.overlay.always_on_top,
+        scale_percent: config.overlay.scale_percent,
+        opacity_percent: config.overlay.opacity_percent,
+    }
+}
+
 fn gamepad_axis_settings_from_config(
     config: &NativeConfig,
 ) -> Result<GamepadAxisSettings, ConfigError> {
@@ -801,6 +856,22 @@ mod tests {
         assert!(!snapshot.overlay_visible);
         assert!(!application.config().overlay.visible);
 
+        let overlay_settings = OverlaySettings {
+            click_through: false,
+            always_on_top: false,
+            scale_percent: 150,
+            opacity_percent: 75,
+        };
+        let settings_snapshot = application
+            .set_overlay_settings(overlay_settings)
+            .expect("update overlay settings");
+        assert_eq!(settings_snapshot.overlay_settings, overlay_settings);
+        assert_eq!(
+            application.config().overlay.scale_percent,
+            overlay_settings.scale_percent
+        );
+        assert!(!application.config().overlay.click_through);
+
         let audio_snapshot = application
             .set_motion_audio_enabled(false)
             .expect("disable motion audio");
@@ -810,6 +881,7 @@ mod tests {
         let persisted = std::fs::read_to_string(config_path).expect("persisted config");
         assert!(persisted.contains("\"visible\": false"));
         assert!(persisted.contains("\"play_motion_audio\": false"));
+        assert!(persisted.contains("\"scale_percent\": 150"));
         let stopped = application.shutdown().expect("clean shutdown");
         assert_eq!(stopped.state, RuntimeState::Stopped);
     }

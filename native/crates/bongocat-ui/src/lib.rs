@@ -143,6 +143,7 @@ pub struct SettingsSnapshot {
     pub revision: u64,
     pub runtime_health: RuntimeHealth,
     pub overlay_visible: bool,
+    pub overlay: SettingsOverlay,
     pub motion_audio_enabled: bool,
     pub startup_item: SettingsStartupItemStatus,
     pub configuration_status: SettingsConfigurationStatus,
@@ -150,6 +151,25 @@ pub struct SettingsSnapshot {
     pub input_diagnostics: SettingsInputDiagnostics,
     pub active_model: Option<SettingsModelKey>,
     pub model_catalog: SettingsModelCatalog,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SettingsOverlay {
+    pub click_through: bool,
+    pub always_on_top: bool,
+    pub scale_percent: u16,
+    pub opacity_percent: u8,
+}
+
+impl Default for SettingsOverlay {
+    fn default() -> Self {
+        Self {
+            click_through: true,
+            always_on_top: true,
+            scale_percent: 100,
+            opacity_percent: 100,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -525,6 +545,10 @@ pub enum SettingsCommand {
         visible: bool,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    SetOverlaySettings {
+        settings: SettingsOverlay,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     SetMotionAudioEnabled {
         enabled: bool,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
@@ -618,6 +642,14 @@ impl SettingsClient {
             .await
     }
 
+    pub async fn set_overlay_settings(
+        &self,
+        settings: SettingsOverlay,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetOverlaySettings { settings, reply })
+            .await
+    }
+
     pub async fn set_startup_item_enabled(
         &self,
         enabled: bool,
@@ -700,6 +732,13 @@ impl SettingsClient {
         enabled: bool,
     ) -> Result<SettingsSnapshot, SettingsError> {
         self.request_blocking(|reply| SettingsCommand::SetMotionAudioEnabled { enabled, reply })
+    }
+
+    pub fn set_overlay_settings_blocking(
+        &self,
+        settings: SettingsOverlay,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::SetOverlaySettings { settings, reply })
     }
 
     pub fn set_startup_item_enabled_blocking(
@@ -1140,6 +1179,7 @@ mod tests {
             revision,
             runtime_health: RuntimeHealth::Ready,
             overlay_visible,
+            overlay: SettingsOverlay::default(),
             motion_audio_enabled,
             startup_item: SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),
             configuration_status: SettingsConfigurationStatus::Ready,

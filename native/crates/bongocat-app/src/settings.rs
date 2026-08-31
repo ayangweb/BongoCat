@@ -10,7 +10,8 @@ use bongocat_platform::{
     open_directory, set_startup_item_enabled, startup_item_state,
 };
 use bongocat_runtime::{
-    InputSnapshot, PlatformInputDiagnostics, PlatformInputServiceStatus, RuntimeState,
+    InputSnapshot, OverlaySettings, PlatformInputDiagnostics, PlatformInputServiceStatus,
+    RuntimeState,
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_ui::SettingsStartupItemError;
@@ -20,8 +21,9 @@ use bongocat_ui::{
     SettingsInputServiceStatus, SettingsModelAvailability, SettingsModelCatalog,
     SettingsModelCatalogError, SettingsModelDiagnostic, SettingsModelEntry,
     SettingsModelImportProgress, SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin,
-    SettingsServiceEndpoint, SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
-    SettingsStartupItemUnsupportedReason, SettingsWindowPlacement, SettingsWindowState,
+    SettingsOverlay, SettingsServiceEndpoint, SettingsSnapshot, SettingsStartupItemState,
+    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsWindowPlacement,
+    SettingsWindowState,
 };
 use std::{fmt, path::PathBuf, sync::Arc, thread};
 
@@ -180,6 +182,23 @@ fn run_service(
             SettingsCommand::SetOverlayVisible { visible, reply } => {
                 let result = require_operational(&application)
                     .and_then(|()| application.set_overlay_visible(visible).map(|_| ()))
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()))
+                    .map_err(map_application_error);
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::SetOverlaySettings { settings, reply } => {
+                let runtime_settings = OverlaySettings {
+                    click_through: settings.click_through,
+                    always_on_top: settings.always_on_top,
+                    scale_percent: settings.scale_percent,
+                    opacity_percent: settings.opacity_percent,
+                };
+                let result = require_operational(&application)
+                    .and_then(|()| {
+                        application
+                            .set_overlay_settings(runtime_settings)
+                            .map(|_| ())
+                    })
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()))
                     .map_err(map_application_error);
                 let _ = reply.respond(result);
@@ -428,6 +447,12 @@ fn snapshot(
             RuntimeHealth::Degraded
         },
         overlay_visible: runtime.overlay_visible,
+        overlay: SettingsOverlay {
+            click_through: runtime.overlay_settings.click_through,
+            always_on_top: runtime.overlay_settings.always_on_top,
+            scale_percent: runtime.overlay_settings.scale_percent,
+            opacity_percent: runtime.overlay_settings.opacity_percent,
+        },
         motion_audio_enabled: runtime.motion_audio_enabled,
         startup_item,
         configuration_status: match application.config_status() {
@@ -1240,6 +1265,19 @@ mod tests {
                 origin: SettingsModelOrigin::Preset,
             })
         );
+        let overlay_settings = SettingsOverlay {
+            click_through: false,
+            always_on_top: false,
+            scale_percent: 125,
+            opacity_percent: 80,
+        };
+        let configured = client
+            .set_overlay_settings_blocking(overlay_settings)
+            .expect("update overlay settings");
+        assert_eq!(
+            configured.overlay, overlay_settings,
+            "settings snapshot must acknowledge the committed overlay settings"
+        );
         let hidden = client
             .set_overlay_visible_blocking(false)
             .expect("hide overlay");
@@ -1256,6 +1294,7 @@ mod tests {
         assert!(persisted.contains("\"play_motion_audio\": false"));
         assert!(persisted.contains("\"selected_model_id\": \"keyboard\""));
         assert!(persisted.contains("\"selected_model_origin\": \"preset\""));
+        assert!(persisted.contains("\"opacity_percent\": 80"));
 
         let stopped = client.shutdown_blocking().expect("service shutdown");
         assert_eq!(stopped.runtime_health, RuntimeHealth::Stopped);

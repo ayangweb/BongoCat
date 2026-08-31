@@ -88,6 +88,35 @@ pub enum RuntimeRenderErrorCode {
     GpuPreparationFailed,
     PlatformUnsupported,
     TransportClosed,
+    OverlaySettingsInvalid,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct OverlaySettings {
+    pub click_through: bool,
+    pub always_on_top: bool,
+    pub scale_percent: u16,
+    pub opacity_percent: u8,
+}
+
+impl Default for OverlaySettings {
+    fn default() -> Self {
+        Self {
+            click_through: true,
+            always_on_top: true,
+            scale_percent: 100,
+            opacity_percent: 100,
+        }
+    }
+}
+
+impl OverlaySettings {
+    pub const fn is_valid(self) -> bool {
+        self.scale_percent >= 25
+            && self.scale_percent <= 400
+            && self.opacity_percent >= 1
+            && self.opacity_percent <= 100
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -205,6 +234,7 @@ pub struct PendingModelSnapshot {
 #[derive(Clone, Debug, PartialEq)]
 pub enum RuntimeCommand {
     SetOverlayVisible(bool),
+    SetOverlaySettings(OverlaySettings),
     SetMotionAudioEnabled(bool),
     SetInputBindings(Arc<InputBindings>),
     SetGamepadAxisSettings(GamepadAxisSettings),
@@ -228,6 +258,7 @@ pub struct RuntimeSnapshot {
     pub revision: u64,
     pub state: RuntimeState,
     pub overlay_visible: bool,
+    pub overlay_settings: OverlaySettings,
     pub motion_audio_enabled: bool,
     pub motion_audio: MotionAudioDiagnostics,
     pub active_model: Option<ModelSnapshot>,
@@ -255,6 +286,7 @@ impl RuntimeSnapshot {
             revision: 0,
             state: RuntimeState::Starting,
             overlay_visible,
+            overlay_settings: OverlaySettings::default(),
             motion_audio_enabled,
             motion_audio,
             active_model: None,
@@ -1112,6 +1144,23 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                             current.last_command_failure = None;
                             current.last_command_sequence = Some(sequence);
                         });
+                    }
+                    WorkerCommand::Product(RuntimeCommand::SetOverlaySettings(settings)) => {
+                        if !settings.is_valid() {
+                            publish(&snapshot, |current| {
+                                current.last_command_failure = Some(RuntimeCommandFailure {
+                                    sequence,
+                                    code: RuntimeRenderErrorCode::OverlaySettingsInvalid,
+                                });
+                                current.last_command_sequence = Some(sequence);
+                            });
+                        } else {
+                            publish(&snapshot, |current| {
+                                current.overlay_settings = settings;
+                                current.last_command_failure = None;
+                                current.last_command_sequence = Some(sequence);
+                            });
+                        }
                     }
                     WorkerCommand::Product(RuntimeCommand::SetMotionAudioEnabled(enabled)) => {
                         motion_audio_enabled = enabled;
@@ -1997,6 +2046,40 @@ mod tests {
             .expect("updated snapshot");
         assert!(!changed.overlay_visible);
         assert_eq!(changed.last_command_sequence, Some(sequence));
+
+        let settings = OverlaySettings {
+            click_through: false,
+            always_on_top: false,
+            scale_percent: 125,
+            opacity_percent: 80,
+        };
+        let sequence = client
+            .send(RuntimeCommand::SetOverlaySettings(settings))
+            .expect("overlay settings command accepted");
+        let updated = client
+            .wait_for_command(sequence, TIMEOUT)
+            .expect("overlay settings snapshot");
+        assert_eq!(updated.overlay_settings, settings);
+        assert_eq!(updated.last_command_failure, None);
+
+        let invalid = OverlaySettings {
+            scale_percent: 0,
+            ..settings
+        };
+        let sequence = client
+            .send(RuntimeCommand::SetOverlaySettings(invalid))
+            .expect("invalid settings command accepted for typed rejection");
+        let rejected = client
+            .wait_for_command(sequence, TIMEOUT)
+            .expect("invalid settings rejection");
+        assert_eq!(rejected.overlay_settings, settings);
+        assert_eq!(
+            rejected.last_command_failure,
+            Some(RuntimeCommandFailure {
+                sequence,
+                code: RuntimeRenderErrorCode::OverlaySettingsInvalid,
+            })
+        );
 
         let stopped = owner.shutdown(TIMEOUT).expect("clean shutdown");
         assert_eq!(stopped.state, RuntimeState::Stopped);

@@ -900,6 +900,12 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
 
 ### 6.1 Command/Snapshot 边界
 
+状态（2026-09-01）：overlay 的 click-through、always-on-top、scale 和 opacity 已定义为
+`bongocat-runtime::OverlaySettings`，通过 revisioned runtime snapshot 与 typed settings
+command 在配置事务后更新；非法范围由 runtime 拒绝并保留上一组值。`Application` 和
+`SettingsClient` 已接线并有 persistence/rejection contract。GPUI 控件和双平台原生窗口
+动态应用仍待完成，故不将 Phase 5 或 P0 overlay 门禁标记完成。
+
 - [ ] 按 app、window、input、model、shortcut、update、diagnostics 定义 command。
 - [ ] command 使用强类型 request/result 和稳定 error code。
 - [ ] 长操作提供 operation id、progress、cancel 和 final result。
