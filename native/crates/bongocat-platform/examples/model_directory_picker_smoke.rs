@@ -1,5 +1,5 @@
 use bongocat_platform::{DirectoryPickerOutcome, pick_model_directory};
-use std::{env, error::Error, io, path::PathBuf};
+use std::{env, error::Error, io, path::PathBuf, sync::mpsc};
 
 #[cfg(target_os = "macos")]
 fn prepare_native_application() {
@@ -12,8 +12,20 @@ fn prepare_native_application() {
     application.activate();
 }
 
+#[cfg(target_os = "macos")]
+fn run_native_application() {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::NSApplication;
+
+    let mtm = MainThreadMarker::new().expect("picker smoke must run on the AppKit main thread");
+    NSApplication::sharedApplication(mtm).run();
+}
+
 #[cfg(not(target_os = "macos"))]
 fn prepare_native_application() {}
+
+#[cfg(not(target_os = "macos"))]
+fn run_native_application() {}
 
 enum ExpectedOutcome {
     Cancelled,
@@ -45,7 +57,24 @@ fn expected_outcome() -> Result<ExpectedOutcome, io::Error> {
 fn main() -> Result<(), Box<dyn Error>> {
     let expected = expected_outcome()?;
     prepare_native_application();
-    match (expected, pick_model_directory()?) {
+    let (sender, receiver) = mpsc::sync_channel(1);
+    pick_model_directory(move |result| {
+        let _ = sender.send(result);
+        #[cfg(target_os = "macos")]
+        {
+            use objc2::MainThreadMarker;
+            use objc2_app_kit::NSApplication;
+
+            if let Some(mtm) = MainThreadMarker::new() {
+                NSApplication::sharedApplication(mtm).stop(None);
+            }
+        }
+    })?;
+    run_native_application();
+    let actual = receiver
+        .recv()
+        .map_err(|_| io::Error::other("directory picker callback was dropped"))??;
+    match (expected, actual) {
         (ExpectedOutcome::Cancelled, DirectoryPickerOutcome::Cancelled) => Ok(()),
         (ExpectedOutcome::Selected(expected), DirectoryPickerOutcome::Selected(actual))
             if actual == expected =>

@@ -987,11 +987,11 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
 ### 8.3 macOS
 
 - [x] NSStatusItem + NSMenu 菜单栏。
-- [ ] NSApplication activation/reopen/single-instance 行为。
+- [x] NSApplication activation/reopen/single-instance 行为。
 - [ ] SMAppService 启动项启用、禁用和状态检测。
 - [ ] NSOpenPanel、NSWorkspace 和 pasteboard 最小权限 wrapper。
-  - 状态（2026-08-31）：`NSOpenPanel` 模型目录 adapter 已实现并通过主线程边界、选择路径与
-    稳定错误 contract；`NSWorkspace`、pasteboard、真实选择/取消交互 smoke 仍待完成。
+  - 状态（2026-08-31）：`NSOpenPanel` 模型目录 adapter 已实现并通过主线程边界、稳定错误
+    contract 和 macOS 26.5.2 arm64 真实选择/取消交互 smoke；`NSWorkspace`、pasteboard 仍待完成。
 - [ ] .app bundle、entitlements、Hardened Runtime 和 notarization 流程。
 - [ ] TCC 权限状态变化可在 UI 实时刷新。
 
@@ -1324,20 +1324,21 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
     - 状态（2026-08-31）：共享验证、双平台 adapter、macOS background-thread contract 和
       Windows x64/ARM64 platform cross-check 已通过。Models 页面现已接入真实导航、64-byte
       ASCII model ID 草稿、无路径 folder 状态、typed operation、100 ms progress、cancel、retry
-      和 catalog refresh，全部命令支持 Tab 焦点及 Enter/Space 激活；11 项 UI 定向测试覆盖建议
+      和 catalog refresh，全部命令支持 Tab 焦点及 Enter/Space 激活；UI 测试覆盖建议
       ID 的 portable/长度/保留名边界、输入过滤、键盘激活、状态脱敏，以及 operation 入队前的
       cancel 请求在 control 建立后立即生效。复制、解析和复验仍只在 settings worker 执行，不
       阻塞 GPUI executor。
-      双平台真实 dialog 选择/取消 smoke 与 Windows 原生页面 CI 尚未完成，因此保持未勾选。
-      `objc2 0.6.4`、AppKit/Foundation `0.3.2` 与 `windows 0.62.2` 均为当前
+      初次产品实机交互发现同步 `runModal` 会重入 GPUI 并触发 `RefCell already borrowed`；现已
+      改用 AppKit completion handler，选择后的文件系统复验移至短生命周期 worker，Windows
+      阻塞 COM dialog 也移至专用 STA worker。macOS 26.5.2 arm64 已通过真实 `NSOpenPanel`
+      Cancel 和仓库预置 `standard` 目录 Select：页面分别显示 `Selection cancelled` 与
+      `Folder selected`/建议 ID `standard`，进程未崩溃且最终经产品 Quit 正常退出；未触发导入。
+      Windows 真实 dialog 选择/取消 smoke 与原生页面 CI 尚未完成，因此保持未勾选。
+      `block2 0.6.2`、`objc2 0.6.4`、AppKit/Foundation `0.3.2` 与 `windows 0.62.2` 均为当前
       最新稳定版并已在 workspace 锁定；最低 Rust 1.71/1.82、MIT/Zlib/Apache-2.0 许可证兼容
       workspace，替换边界仅为对应 OS 原生 API binding。完整 Native format、Clippy、workspace
-      test、release check、license/source policy 与双 Windows target platform Clippy 本机通过。
-      可重复 macOS smoke example 已加入；本机临时 bundle 可见但 Computer Use 无法建立其 AX
-      会话，未执行选择/取消动作，因此不计入真实 dialog 证据。adapter commit `5cf1e39` 的首个
-      push run `33337621979` 仅因 Linux 未调用私有 validation helper 而触发 dead-code Clippy；
-      当前批已按 macOS/Windows/test cfg 收窄该 helper，本机 Linux target Clippy 通过，等待新
-      push run 复验。完整 Models 页面 workspace 门禁也随本批统一执行后补充证据。
+      test、release/Production check、license/source policy、Linux workspace Clippy 与双 Windows
+      target platform Clippy 本机通过；macOS 可重复 callback smoke example 已同步更新。
 26. [x] `P4-MODEL-MANAGEMENT-UI`：在 Models 页面完成来源感知的激活与删除闭环。
     - 依赖：`P4-MODEL-CATALOG`、`P4-MODEL-SELECTION`、`P4-MODEL-DELETE-COMMAND` 和正式
       GPUI settings snapshot。
@@ -1384,18 +1385,21 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       release smoke：secondary 只通知 primary 后成功退出，primary 保持 frame source、重显
       原 Entity、恢复当前 snapshot 并完成有序 shutdown。两次 run 的 macOS/Ubuntu workspace
       门禁也通过；本机完整 Native 门禁及 Windows x64/ARM64 platform Clippy 通过。
-29. [ ] `P7-MACOS-APPLICATION-REOPEN`：通过正式 `.app` 和 LaunchServices 唤醒后台产品。
+29. [x] `P7-MACOS-APPLICATION-REOPEN`：通过正式 `.app` 和 LaunchServices 唤醒后台产品。
     - 依赖：`P1-SETTINGS-WINDOW-LIFECYCLE`、GPUI `on_reopen`、ADR-0008、产品资源目录。
     - 退出条件：`.app` 固定 Bundle ID、最低系统和禁止多实例 metadata，内置三个预置模型且
       executable 从 `Contents/Resources` 加载；再次 `open` 只触发既有进程的 AppKit reopen，
       已销毁设置 Entity 只重建一个并恢复当前 snapshot，后台 frame source 持续；退出仍进入
       shutdown coordinator；ad-hoc strict codesign、release LaunchServices smoke 和完整 Native
       门禁通过。Distribution signing、Hardened Runtime/notarization 继续由发布门禁跟踪。
-    - 状态（2026-08-31）：最小产品 `Info.plist`、可重复打包脚本、bundle resource resolver 与
-      application-reopen smoke 已实现；本机 release `.app` 先销毁设置 Entity，再从外部执行
+    - 验收证据（2026-08-31）：最小产品 `Info.plist`、可重复打包脚本、bundle resource resolver
+      与 application-reopen smoke 已实现；本机 release `.app` 先销毁设置 Entity，再从外部执行
       第二次 `open`，验证进程数保持 1、新 Entity 恢复 revisioned snapshot、frame source 持续、
-      ad-hoc strict codesign 和正常 shutdown。完整 Native format/Clippy/test/release check 与依赖
-      策略均通过；等待原生 macOS CI 复验后勾选。
+      ad-hoc strict codesign 和正常 shutdown。commit `2aba0e8` 的 push run `33347041829` 全绿，
+      macOS Native job `99353029349` 的正式 `.app` LaunchServices smoke 明确报告 primary ready、
+      application reopen callback、设置窗口恢复和正常 quit；同一 job 的 format、Clippy、workspace
+      test、release、Production build 与系统菜单 smoke 均通过。Distribution signing、Hardened
+      Runtime/notarization 仍由发布门禁跟踪，不计入本项完成声明。
 
 ## 13. 待决策清单
 

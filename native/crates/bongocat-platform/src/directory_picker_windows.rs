@@ -63,7 +63,7 @@ impl Drop for TaskMemWide {
     }
 }
 
-pub(crate) fn pick_model_directory() -> Result<DirectoryPickerOutcome, DirectoryPickerError> {
+fn pick_model_directory_blocking() -> Result<DirectoryPickerOutcome, DirectoryPickerError> {
     let _apartment = ComApartment::initialize()?;
     // SAFETY: FileOpenDialog is an in-process COM class requested after STA initialization.
     let dialog: IFileOpenDialog = unsafe {
@@ -108,4 +108,18 @@ pub(crate) fn pick_model_directory() -> Result<DirectoryPickerOutcome, Directory
             .map_err(|_| DirectoryPickerError::SelectionUnavailable)?
     });
     validate_selected_directory(selected.to_path_buf()?)
+}
+
+pub(crate) fn pick_model_directory(
+    on_complete: impl FnOnce(Result<DirectoryPickerOutcome, DirectoryPickerError>) + Send + 'static,
+) -> Result<(), DirectoryPickerError> {
+    std::thread::Builder::new()
+        .name("bongocat-directory-picker".to_owned())
+        .spawn(move || {
+            let result = std::panic::catch_unwind(pick_model_directory_blocking)
+                .unwrap_or(Err(DirectoryPickerError::BackendUnavailable));
+            on_complete(result);
+        })
+        .map(|_| ())
+        .map_err(|_| DirectoryPickerError::BackendUnavailable)
 }

@@ -46,15 +46,20 @@ pub use windows::{
     terminate_after_product_shutdown,
 };
 
-pub fn pick_model_directory() -> Result<DirectoryPickerOutcome, DirectoryPickerError> {
+pub fn pick_model_directory(
+    on_complete: impl FnOnce(Result<DirectoryPickerOutcome, DirectoryPickerError>) + Send + 'static,
+) -> Result<(), DirectoryPickerError> {
     #[cfg(target_os = "macos")]
-    return directory_picker_macos::pick_model_directory();
+    return directory_picker_macos::pick_model_directory(on_complete);
 
     #[cfg(target_os = "windows")]
-    return directory_picker_windows::pick_model_directory();
+    return directory_picker_windows::pick_model_directory(on_complete);
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    Err(DirectoryPickerError::UnsupportedPlatform)
+    {
+        let _ = on_complete;
+        Err(DirectoryPickerError::UnsupportedPlatform)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

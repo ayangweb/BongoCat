@@ -86,6 +86,7 @@ enum SettingsPage {
 enum ModelImportState {
     Empty,
     Ready,
+    Picking,
     PickerCancelled,
     PickerFailed(DirectoryPickerError),
     Starting { cancel_requested: bool },
@@ -159,7 +160,14 @@ impl ModelImportDraft {
     }
 
     fn can_import(&self) -> bool {
-        self.source_root.is_some() && !self.id.is_empty() && !self.is_running()
+        self.source_root.is_some()
+            && !self.id.is_empty()
+            && !self.is_running()
+            && !self.is_picker_open()
+    }
+
+    fn is_picker_open(&self) -> bool {
+        matches!(self.state, ModelImportState::Picking)
     }
 
     fn running_operation_id(&self) -> Option<SettingsOperationId> {
@@ -364,10 +372,38 @@ impl SettingsView {
     }
 
     fn choose_model_directory(&mut self, cx: &mut Context<Self>) {
-        if self.model_import.is_running() {
+        if self.model_import.is_running() || self.model_import.is_picker_open() {
             return;
         }
-        match pick_model_directory() {
+        self.model_import.state = ModelImportState::Picking;
+        cx.notify();
+
+        let (sender, receiver) = async_channel::bounded(1);
+        if let Err(error) = pick_model_directory(move |result| {
+            let _ = sender.try_send(result);
+        }) {
+            self.apply_model_directory_result(Err(error));
+            cx.notify();
+            return;
+        }
+        cx.spawn(async move |this, cx| {
+            let result = receiver
+                .recv()
+                .await
+                .unwrap_or(Err(DirectoryPickerError::BackendUnavailable));
+            let _ = this.update(cx, |view, cx| {
+                view.apply_model_directory_result(result);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn apply_model_directory_result(
+        &mut self,
+        result: Result<DirectoryPickerOutcome, DirectoryPickerError>,
+    ) {
+        match result {
             Ok(DirectoryPickerOutcome::Selected(source_root)) => {
                 self.model_import.id = suggested_model_id(&source_root);
                 self.model_import.source_root = Some(source_root);
@@ -380,7 +416,6 @@ impl SettingsView {
                 self.model_import.state = ModelImportState::PickerFailed(error);
             }
         }
-        cx.notify();
     }
 
     fn start_model_import(&mut self, cx: &mut Context<Self>) {
@@ -943,8 +978,9 @@ impl Render for SettingsView {
             self.model_import.id.clone().into()
         };
         let import_running = self.model_import.is_running();
-        let model_id_disabled = import_running;
-        let model_commands_blocked = import_running || self.pending.is_some();
+        let picker_open = self.model_import.is_picker_open();
+        let model_id_disabled = import_running || picker_open;
+        let model_commands_blocked = import_running || picker_open || self.pending.is_some();
         let model_entries = snapshot
             .as_ref()
             .map(|snapshot| snapshot.model_catalog.entries.clone())
@@ -1165,7 +1201,12 @@ impl Render for SettingsView {
                 (_, _, true) => ("Catalog unavailable".into(), true),
                 _ => ("".into(), false),
             };
-        let picker_disabled = import_running || self.pending.is_some();
+        let picker_disabled = import_running || picker_open || self.pending.is_some();
+        let picker_button_label = if picker_open {
+            "Choosing..."
+        } else {
+            "Choose folder"
+        };
         let import_button_label = if import_running { "Cancel" } else { "Import" };
         let import_disabled =
             !import_running && (!self.model_import.can_import() || self.pending.is_some());
@@ -1248,7 +1289,7 @@ impl Render for SettingsView {
                             )
                             .child(
                                 command_button(
-                                    "Choose folder",
+                                    picker_button_label,
                                     &self.choose_model_focus,
                                     21,
                                     window,
@@ -1258,7 +1299,10 @@ impl Render for SettingsView {
                                 .w(px(112.0))
                                 .id("choose-model-directory")
                                 .on_click(cx.listener(|view, _, window, cx| {
-                                    if !view.model_import.is_running() && view.pending.is_none() {
+                                    if !view.model_import.is_running()
+                                        && !view.model_import.is_picker_open()
+                                        && view.pending.is_none()
+                                    {
                                         window.focus(&view.choose_model_focus);
                                         view.choose_model_directory(cx);
                                     }
@@ -1266,6 +1310,7 @@ impl Render for SettingsView {
                                 .on_key_down(cx.listener(
                                     |view, event, window, cx| {
                                         if !view.model_import.is_running()
+                                            && !view.model_import.is_picker_open()
                                             && view.pending.is_none()
                                             && is_activation_key(event)
                                         {
@@ -1369,11 +1414,16 @@ impl Render for SettingsView {
                         30,
                         window,
                         tokens,
-                        self.pending.is_some() || self.model_import.is_running(),
+                        self.pending.is_some()
+                            || self.model_import.is_running()
+                            || self.model_import.is_picker_open(),
                     )
                     .id("refresh-settings")
                     .on_click(cx.listener(|view, _, window, cx| {
-                        if view.pending.is_none() && !view.model_import.is_running() {
+                        if view.pending.is_none()
+                            && !view.model_import.is_running()
+                            && !view.model_import.is_picker_open()
+                        {
                             window.focus(&view.refresh_focus);
                             view.refresh(cx);
                         }
@@ -1381,6 +1431,7 @@ impl Render for SettingsView {
                     .on_key_down(cx.listener(|view, event, window, cx| {
                         if view.pending.is_none()
                             && !view.model_import.is_running()
+                            && !view.model_import.is_picker_open()
                             && is_activation_key(event)
                         {
                             cx.stop_propagation();
@@ -1571,6 +1622,7 @@ fn model_import_status(draft: &ModelImportDraft) -> (SharedString, bool) {
     match &draft.state {
         ModelImportState::Empty => ("No folder selected".into(), false),
         ModelImportState::Ready => ("Folder selected".into(), false),
+        ModelImportState::Picking => ("Choosing folder...".into(), false),
         ModelImportState::PickerCancelled if draft.source_root.is_some() => (
             "Selection cancelled; previous folder retained".into(),
             false,
@@ -1912,6 +1964,21 @@ mod tests {
         assert!(failed);
         assert_eq!(status, "Selected folder is unavailable");
         assert!(!status.contains("secret"));
+    }
+
+    #[test]
+    fn picker_open_state_blocks_conflicting_import_actions() {
+        let draft = ModelImportDraft {
+            id: "custom-model".to_owned(),
+            source_root: Some(PathBuf::from("/private/source")),
+            state: ModelImportState::Picking,
+        };
+
+        assert!(draft.is_picker_open());
+        assert!(!draft.can_import());
+        let (status, failed) = model_import_status(&draft);
+        assert!(!failed);
+        assert_eq!(status, "Choosing folder...");
     }
 
     #[test]
