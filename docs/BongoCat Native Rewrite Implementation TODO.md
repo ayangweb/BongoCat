@@ -918,6 +918,9 @@ overlay owner；设置更新失败时保留旧 snapshot。scale/opacity 的可�
 
 - [ ] 按 app、window、input、model、shortcut、update、diagnostics 定义 command。
 - [ ] command 使用强类型 request/result 和稳定 error code。
+  - 状态（2026-09-01）：`SettingsErrorCode` 已提供固定 snake_case 标识和 29 项唯一性 contract，
+    与既有用户可读文案分离；Service、model import/delete、config、startup、window 和 shutdown
+    错误均沿用该枚举。统一 Diagnostics 导出、renderer/input/config/update 跨域聚合仍待完成。
 - [ ] 长操作提供 operation id、progress、cancel 和 final result。
   - 状态（2026-08-31）：模型导入已完成首个正式长操作契约：所有 `SettingsClient` clone
     共用单调 typed ID，progress 仅含 stage/file count/byte count，共享原子 token 可在 settings

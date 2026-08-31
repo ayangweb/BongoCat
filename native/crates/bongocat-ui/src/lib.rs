@@ -461,6 +461,74 @@ pub enum SettingsErrorCode {
     ShutdownFailed,
 }
 
+impl SettingsErrorCode {
+    pub const ALL: [Self; 29] = [
+        Self::ServiceUnavailable,
+        Self::SnapshotOutdated,
+        Self::RuntimeUnavailable,
+        Self::ConfigPersistFailed,
+        Self::ConfigPermissionDenied,
+        Self::ConfigStorageFull,
+        Self::ConfigTargetOccupied,
+        Self::BackupLocationOpenFailed,
+        Self::ConfigurationRecoveryRequired,
+        Self::ConfigurationRecoveryFailed,
+        Self::ModelUnavailable,
+        Self::ModelSwitchFailed,
+        Self::InvalidModelId,
+        Self::ModelAlreadyInstalled,
+        Self::ModelImportInvalidPackage,
+        Self::ModelImportSourceInvalid,
+        Self::ModelImportSourceChanged,
+        Self::ModelImportSourceUnsupported,
+        Self::ModelImportCancelled,
+        Self::ModelStoreBusy,
+        Self::ModelImportFailed,
+        Self::PresetModelCannotBeDeleted,
+        Self::SelectedModelCannotBeDeleted,
+        Self::ModelNotInstalled,
+        Self::ModelDeleteFailed,
+        Self::StartupItemUpdateFailed,
+        Self::WindowUnavailable,
+        Self::StatePersistFailed,
+        Self::ShutdownFailed,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ServiceUnavailable => "service_unavailable",
+            Self::SnapshotOutdated => "snapshot_outdated",
+            Self::RuntimeUnavailable => "runtime_unavailable",
+            Self::ConfigPersistFailed => "config_persist_failed",
+            Self::ConfigPermissionDenied => "config_permission_denied",
+            Self::ConfigStorageFull => "config_storage_full",
+            Self::ConfigTargetOccupied => "config_target_occupied",
+            Self::BackupLocationOpenFailed => "backup_location_open_failed",
+            Self::ConfigurationRecoveryRequired => "configuration_recovery_required",
+            Self::ConfigurationRecoveryFailed => "configuration_recovery_failed",
+            Self::ModelUnavailable => "model_unavailable",
+            Self::ModelSwitchFailed => "model_switch_failed",
+            Self::InvalidModelId => "invalid_model_id",
+            Self::ModelAlreadyInstalled => "model_already_installed",
+            Self::ModelImportInvalidPackage => "model_import_invalid_package",
+            Self::ModelImportSourceInvalid => "model_import_source_invalid",
+            Self::ModelImportSourceChanged => "model_import_source_changed",
+            Self::ModelImportSourceUnsupported => "model_import_source_unsupported",
+            Self::ModelImportCancelled => "model_import_cancelled",
+            Self::ModelStoreBusy => "model_store_busy",
+            Self::ModelImportFailed => "model_import_failed",
+            Self::PresetModelCannotBeDeleted => "preset_model_cannot_be_deleted",
+            Self::SelectedModelCannotBeDeleted => "selected_model_cannot_be_deleted",
+            Self::ModelNotInstalled => "model_not_installed",
+            Self::ModelDeleteFailed => "model_delete_failed",
+            Self::StartupItemUpdateFailed => "startup_item_update_failed",
+            Self::WindowUnavailable => "window_unavailable",
+            Self::StatePersistFailed => "state_persist_failed",
+            Self::ShutdownFailed => "shutdown_failed",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SettingsError {
     code: SettingsErrorCode,
@@ -918,6 +986,26 @@ impl SettingsServiceEndpoint {
 mod tests {
     use super::*;
     use std::thread;
+
+    #[test]
+    fn settings_error_codes_are_stable_and_unique() {
+        let mut codes = SettingsErrorCode::ALL
+            .iter()
+            .map(|code| code.as_str())
+            .collect::<Vec<_>>();
+        assert!(codes.iter().all(|code| !code.is_empty()));
+        codes.sort_unstable();
+        codes.dedup();
+        assert_eq!(codes.len(), SettingsErrorCode::ALL.len());
+        assert_eq!(
+            SettingsErrorCode::SnapshotOutdated.as_str(),
+            "snapshot_outdated"
+        );
+        assert_eq!(
+            SettingsError::new(SettingsErrorCode::ModelSwitchFailed).code(),
+            SettingsErrorCode::ModelSwitchFailed
+        );
+    }
 
     #[test]
     fn commands_are_bounded_ordered_and_receive_typed_replies() {
