@@ -83,4 +83,7 @@ command；Application 只把当前环境 `StorageLayout.backups` 交给 platform
 分别以独立进程参数启动 Finder/Explorer，不使用 shell。Diagnostics 的 Backups 按钮覆盖 pending、
 匿名 error、Tab 与 Enter/Space 以及 accessibility button 语义；成功不推进 snapshot revision，
 recovery-only 状态仍可调用。本机 platform/ui/app 定向测试和严格 Clippy 已通过，三平台完整门禁
-由 `P6-CONFIG-BACKUP-LOCATION` 当前提交的 CI 跟踪。
+由 `P6-CONFIG-BACKUP-LOCATION` 当前提交的 CI 跟踪。commit `6b41808` 的 run `33381198560`
+随后全绿；Windows/macOS/Ubuntu Native jobs `99453718576`/`99453718477`/`99453718406`、Windows
+input/config job `99453718404`、Windows/macOS GPUI jobs `99453718327`/`99453718079` 和独立
+config-store job `99453718598` 均通过，退出条件满足。

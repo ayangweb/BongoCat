@@ -950,7 +950,7 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
   - 状态（2026-08-31）：正式产品已实现固定 `config.json.tmp`、跨平台原子替换、current/temp
     状态机、有界 interrupted archive、启动锁重试和匿名 app action；本机定向测试已通过，三平台
     CI 与最终验收证据由当前执行队列 `P6-CONFIG-INTERRUPTED-COMMIT` 跟踪。
-- [ ] GPUI 显示错误摘要、备份位置和恢复默认 command。
+- [x] GPUI 显示错误摘要、备份位置和恢复默认 command。
   - 状态（2026-08-31）：成功从备份恢复时，正式 settings snapshot 已投影匿名的源 schema 与
     跳过候选数，Diagnostics 显示正常加载或恢复成功状态。
   - 状态（2026-08-31）：正式 Application/settings service 已实现无有效备份时的
@@ -960,8 +960,8 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
     crate 已加入权限/磁盘满阶段注入及真实目标占用测试。
   - 状态（2026-08-31）：Diagnostics 已增加当前环境 Backups 入口、typed command、pending/error、
     键盘与 accessibility 状态；路径只存在于 Application/platform adapter，成功不推进 revision，
-    recovery-only 同样可用。本机定向测试通过，三平台 CI 证据由 `P6-CONFIG-BACKUP-LOCATION` 跟踪，
-    因此总项暂不勾选。
+    recovery-only 同样可用。commit `6b41808` 的 run `33381198560` 已通过三平台完整门禁、双平台
+    GPUI smoke 与 Windows config job；`P6-CONFIG-BACKUP-LOCATION` 退出条件满足，因此总项完成。
 - [x] 用户模型只通过显式、受验证的导入进入当前环境，不扫描旧应用目录。
   - 验收证据（2026-08-30）：`bongocat-app` 不再提供任意外部目录激活入口；模型必须
     先经 `ModelStore::import` 复制、复验和 commit，随后只能按已安装 `ModelId` 加载；
@@ -1558,6 +1558,11 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       `99424654786`/`99424654816`/`99424654950` 通过完整 format、Clippy、workspace test、
       release/Production 与平台 smoke，Windows input/config job `99424654701` 实际通过 Windows
       原子替换、强杀 lock 释放、启动恢复和真实存储路径测试。
+    - 补充证据（2026-08-31）：workspace 并行测试在 `File` 析构后紧接重入时观察到瞬时
+      `LockUnavailable`，commit `a760ce0` 为 writer lock RAII guard 增加显式 `unlock()`；本机
+      32 测试线程重复运行与完整
+      workspace 均通过，后续 run `33381198560` 的独立 config-store job `99453718598` 和三平台
+      workspace 再次全绿，普通 commit 的非阻塞竞争语义保持不变。
 38. [x] `P6-CONFIG-SAFE-RECOVERY`：在无有效备份时进入受限设置并提供显式恢复默认 command。
     - 依赖：`P6-CONFIG-BACKUP-RECOVERY`、`P6-CONFIG-RECOVERY-DIAGNOSTIC` 和 typed settings command。
     - 退出条件：无有效候选时不覆盖 current、不启动 overlay/GPU，Application 进入 recovery-only
@@ -1587,7 +1592,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       `99445071780`/`99445071706`/`99445071635` 通过完整 format、Clippy、workspace test、release/
       Production 与平台 smoke，Windows input/config job `99445071726` 和 config-store job
       `99445071760` 同时通过，退出条件满足。
-40. [ ] `P6-CONFIG-BACKUP-LOCATION`：从 Diagnostics 安全打开当前环境配置备份目录。
+40. [x] `P6-CONFIG-BACKUP-LOCATION`：从 Diagnostics 安全打开当前环境配置备份目录。
     - 依赖：正式环境 `StorageLayout`、revisioned settings protocol、`P6-CONFIG-SAFE-RECOVERY` 和
       双平台 platform adapter。
     - 退出条件：无路径参数的 typed command 只打开 Application 派生的当前环境 `backups/`；UI、
@@ -1595,8 +1600,13 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       独立参数启动 Finder/Explorer，不使用 shell；成功不推进 revision，失败保留 snapshot 并返回
       稳定匿名错误，recovery-only 可用；Diagnostics 覆盖 pending、键盘和 accessibility 状态；
       platform/app/ui 定向测试、完整 Native workspace、三平台 CI 和双平台 GPUI smoke 通过。
-    - 状态（2026-08-31）：typed protocol、Application capability、platform adapter、Diagnostics
-      控件与本机定向测试已完成；完整 workspace 与跨平台 CI 证据随当前提交验证。
+    - 验收证据（2026-08-31）：typed protocol、Application capability、Finder/Explorer adapter、
+      Diagnostics 控件与匿名错误/不变 revision/recovery-only 回归已完成；本机 platform 17、ui 23、
+      app 33 项定向测试、严格 Clippy、完整 workspace、release/Production 与真实 recovery window
+      smoke 通过。commit `6b41808` 的 run `33381198560` 全绿；Windows/macOS/Ubuntu Native jobs
+      `99453718576`/`99453718477`/`99453718406` 通过完整门禁，Windows/macOS 分别执行 opener
+      参数 contract；Windows input/config job `99453718404`、Windows/macOS GPUI jobs
+      `99453718327`/`99453718079` 和 config-store job `99453718598` 同时通过，退出条件满足。
 
 ## 13. 待决策清单
 
