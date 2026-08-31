@@ -149,6 +149,11 @@ pub struct PlatformInputDiagnostics {
     pub cursor_display_lookup_failures: u64,
     pub cursor_publish_rejections: u64,
     pub cursor_rejected_after_stop: u64,
+    pub gamepad_polls: u64,
+    pub gamepad_query_errors: u64,
+    pub gamepad_connections: u64,
+    pub gamepad_disconnections: u64,
+    pub gamepad_axis_samples: u64,
     pub clean_shutdown: bool,
 }
 

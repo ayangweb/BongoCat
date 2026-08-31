@@ -1717,6 +1717,9 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       - 状态（2026-08-31）：Windows/macOS 正式服务启动与所有 opt-in smoke 调用均持有 runtime
         producer；服务尚未消费平台 gamepad API，当前 plumbing 不改变无手柄启动行为。
     - [ ] 接入 Windows XInput 和 macOS GameController producer 的连接、按钮、axis 生命周期。
+      - 状态（2026-08-31）：Windows Raw Input owner 已在 16ms service tick 查询 XInput 0..3，
+        将按钮边沿、六轴归一化和 disconnect Reset 送入同一 runtime producer；macOS
+        GameController callback 尚未接入正式服务，Windows 物理手柄/多手柄热插拔仍待实机。
     - [ ] 将 producer overflow、断开/重连和 shutdown 诊断统一映射到 runtime snapshot。
     - 状态（2026-08-31）：本批完成共享 runtime axis 闭环和 contract 回归；平台 producer 与
       实机 smoke 仍未接入，未声称手柄功能完成。

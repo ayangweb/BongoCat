@@ -1,7 +1,8 @@
 use crate::{PlatformInputDiagnostics, PlatformInputError};
 use bongocat_runtime::{
-    CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorViewport,
-    GamepadAxisProducer, InputControl, InputEdge, InputEvent, InputProducer, InputPublishError,
+    CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorViewport, GamepadAxis,
+    GamepadAxisKey, GamepadAxisProducer, GamepadAxisSample, GamepadButton, GamepadButtonKey,
+    GamepadConnection, InputControl, InputEdge, InputEvent, InputProducer, InputPublishError,
     InputResetReason, InputSource, MonotonicMillis, MouseButton, PhysicalKey,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -66,6 +67,47 @@ const REQUIRED_MISSING_CONFIRMATIONS: u8 = 2;
 const SERVICE_TIMEOUT: Duration = Duration::from_secs(2);
 const FINAL_RESET_ATTEMPTS: usize = 20;
 const FINAL_RESET_RETRY: Duration = Duration::from_millis(5);
+
+const XINPUT_ERROR_SUCCESS: u32 = 0;
+const XINPUT_ERROR_DEVICE_NOT_CONNECTED: u32 = 1167;
+const XINPUT_GAMEPAD_DPAD_UP: u16 = 0x0001;
+const XINPUT_GAMEPAD_DPAD_DOWN: u16 = 0x0002;
+const XINPUT_GAMEPAD_DPAD_LEFT: u16 = 0x0004;
+const XINPUT_GAMEPAD_DPAD_RIGHT: u16 = 0x0008;
+const XINPUT_GAMEPAD_START: u16 = 0x0010;
+const XINPUT_GAMEPAD_BACK: u16 = 0x0020;
+const XINPUT_GAMEPAD_LEFT_THUMB: u16 = 0x0040;
+const XINPUT_GAMEPAD_RIGHT_THUMB: u16 = 0x0080;
+const XINPUT_GAMEPAD_LEFT_SHOULDER: u16 = 0x0100;
+const XINPUT_GAMEPAD_RIGHT_SHOULDER: u16 = 0x0200;
+const XINPUT_GAMEPAD_A: u16 = 0x1000;
+const XINPUT_GAMEPAD_B: u16 = 0x2000;
+const XINPUT_GAMEPAD_X: u16 = 0x4000;
+const XINPUT_GAMEPAD_Y: u16 = 0x8000;
+
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct XInputGamepad {
+    buttons: u16,
+    left_trigger: u8,
+    right_trigger: u8,
+    left_thumb_x: i16,
+    left_thumb_y: i16,
+    right_thumb_x: i16,
+    right_thumb_y: i16,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct XInputState {
+    packet_number: u32,
+    gamepad: XInputGamepad,
+}
+
+#[link(name = "xinput1_4")]
+unsafe extern "system" {
+    fn XInputGetState(user_index: u32, state: *mut XInputState) -> u32;
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NativeWindowError {
@@ -179,10 +221,172 @@ struct WorkerOptions {
     drop_next_key_release: bool,
 }
 
+#[derive(Clone, Copy)]
+struct XInputSlot {
+    connection: GamepadConnection,
+    buttons: u16,
+}
+
+struct XInputPoller {
+    slots: [Option<XInputSlot>; 4],
+    next_generation: u64,
+}
+
+impl Default for XInputPoller {
+    fn default() -> Self {
+        Self {
+            slots: [None; 4],
+            next_generation: 1,
+        }
+    }
+}
+
+impl XInputPoller {
+    fn poll(
+        &mut self,
+        producer: &InputProducer,
+        axis_producer: &GamepadAxisProducer,
+        at: MonotonicMillis,
+        diagnostics: &mut PlatformInputDiagnostics,
+    ) -> Result<(), InputPublishError> {
+        for slot in 0..4_usize {
+            let mut state = XInputState::default();
+            // SAFETY: XInputGetState writes exactly one initialized XInputState
+            // to the stack pointer, and the user index is limited to 0..4.
+            let result = unsafe { XInputGetState(slot as u32, &mut state) };
+            diagnostics.gamepad_polls = diagnostics.gamepad_polls.saturating_add(1);
+            if result == XINPUT_ERROR_DEVICE_NOT_CONNECTED {
+                if let Some(previous) = self.slots[slot].take() {
+                    axis_producer.disconnect(previous.connection);
+                    diagnostics.gamepad_disconnections =
+                        diagnostics.gamepad_disconnections.saturating_add(1);
+                    producer.recover(InputResetReason::DeviceRemoved, at)?;
+                }
+                continue;
+            }
+            if result != XINPUT_ERROR_SUCCESS {
+                diagnostics.gamepad_query_errors =
+                    diagnostics.gamepad_query_errors.saturating_add(1);
+                continue;
+            }
+            let connection = if let Some(previous) = self.slots[slot] {
+                previous.connection
+            } else {
+                let connection = GamepadConnection {
+                    device_id: slot as u8,
+                    generation: self.next_generation,
+                };
+                self.next_generation = self.next_generation.saturating_add(1);
+                diagnostics.gamepad_connections = diagnostics.gamepad_connections.saturating_add(1);
+                connection
+            };
+            let old_buttons = self.slots[slot].map_or(0, |value| value.buttons);
+            let new_buttons = state.gamepad.buttons
+                | (u16::from(state.gamepad.left_trigger >= 128) << 8)
+                | (u16::from(state.gamepad.right_trigger >= 128) << 9);
+            for (button, bit) in XINPUT_BUTTON_BITS {
+                let was_pressed = old_buttons & bit != 0;
+                let is_pressed = new_buttons & bit != 0;
+                if was_pressed == is_pressed {
+                    continue;
+                }
+                producer.publish(InputEvent::Edge {
+                    control: InputControl::Gamepad(GamepadButtonKey { connection, button }),
+                    edge: if is_pressed {
+                        InputEdge::Down
+                    } else {
+                        InputEdge::Up
+                    },
+                    source: InputSource::Capture,
+                    at,
+                })?;
+            }
+            for (axis, value) in [
+                (
+                    GamepadAxis::LeftStickX,
+                    normalize_thumb(state.gamepad.left_thumb_x),
+                ),
+                (
+                    GamepadAxis::LeftStickY,
+                    normalize_thumb(state.gamepad.left_thumb_y),
+                ),
+                (
+                    GamepadAxis::RightStickX,
+                    normalize_thumb(state.gamepad.right_thumb_x),
+                ),
+                (
+                    GamepadAxis::RightStickY,
+                    normalize_thumb(state.gamepad.right_thumb_y),
+                ),
+                (
+                    GamepadAxis::LeftTrigger,
+                    normalize_trigger(state.gamepad.left_trigger),
+                ),
+                (
+                    GamepadAxis::RightTrigger,
+                    normalize_trigger(state.gamepad.right_trigger),
+                ),
+            ] {
+                axis_producer
+                    .publish(GamepadAxisSample {
+                        key: GamepadAxisKey { connection, axis },
+                        value,
+                        at,
+                    })
+                    .map_err(|_| {
+                        InputPublishError::QueueFull(InputEvent::Reset {
+                            reason: InputResetReason::QueueOverflow,
+                            at,
+                        })
+                    })?;
+                diagnostics.gamepad_axis_samples =
+                    diagnostics.gamepad_axis_samples.saturating_add(1);
+            }
+            self.slots[slot] = Some(XInputSlot {
+                connection,
+                buttons: new_buttons,
+            });
+        }
+        Ok(())
+    }
+}
+
+const XINPUT_BUTTON_BITS: [(GamepadButton, u16); 16] = [
+    (GamepadButton::DpadUp, XINPUT_GAMEPAD_DPAD_UP),
+    (GamepadButton::DpadDown, XINPUT_GAMEPAD_DPAD_DOWN),
+    (GamepadButton::DpadLeft, XINPUT_GAMEPAD_DPAD_LEFT),
+    (GamepadButton::DpadRight, XINPUT_GAMEPAD_DPAD_RIGHT),
+    (GamepadButton::Start, XINPUT_GAMEPAD_START),
+    (GamepadButton::Select, XINPUT_GAMEPAD_BACK),
+    (GamepadButton::LeftStick, XINPUT_GAMEPAD_LEFT_THUMB),
+    (GamepadButton::RightStick, XINPUT_GAMEPAD_RIGHT_THUMB),
+    (GamepadButton::LeftShoulder, XINPUT_GAMEPAD_LEFT_SHOULDER),
+    (GamepadButton::RightShoulder, XINPUT_GAMEPAD_RIGHT_SHOULDER),
+    (GamepadButton::South, XINPUT_GAMEPAD_A),
+    (GamepadButton::East, XINPUT_GAMEPAD_B),
+    (GamepadButton::West, XINPUT_GAMEPAD_X),
+    (GamepadButton::North, XINPUT_GAMEPAD_Y),
+    (GamepadButton::LeftTrigger, 1 << 8),
+    (GamepadButton::RightTrigger, 1 << 9),
+];
+
+fn normalize_thumb(value: i16) -> f32 {
+    if value < 0 {
+        f32::from(value) / 32_768.0
+    } else {
+        f32::from(value) / 32_767.0
+    }
+}
+
+fn normalize_trigger(value: u8) -> f32 {
+    f32::from(value) / 255.0
+}
+
 struct WindowState {
     producer: InputProducer,
     cursor_producer: CursorProducer,
     _gamepad_axis_producer: GamepadAxisProducer,
+    gamepad_poller: XInputPoller,
     stop: Arc<AtomicBool>,
     started: Instant,
     queue: VecDeque<CapturedEvent>,
@@ -211,6 +415,7 @@ impl WindowState {
             producer,
             cursor_producer,
             _gamepad_axis_producer: gamepad_axis_producer,
+            gamepad_poller: XInputPoller::default(),
             stop,
             started: Instant::now(),
             queue: VecDeque::with_capacity(CAPTURE_QUEUE_CAPACITY),
@@ -373,6 +578,21 @@ impl WindowState {
                     return;
                 }
             }
+        }
+
+        if let Err(error) = self.gamepad_poller.poll(
+            &self.producer,
+            &self._gamepad_axis_producer,
+            self.monotonic(),
+            &mut self.diagnostics,
+        ) {
+            match error {
+                InputPublishError::QueueFull(_) => self.request_recovery(),
+                InputPublishError::RuntimeStopped(_) => {
+                    self.terminal_error = Some(PlatformInputError::RuntimeStopped)
+                }
+            }
+            return;
         }
 
         while let Some(event) = self.queue.pop_front() {
