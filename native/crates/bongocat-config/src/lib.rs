@@ -196,8 +196,8 @@ pub struct OverlayConfig {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct InputConfig {
-    pub gamepad_stick_dead_zone: f32,
-    pub gamepad_trigger_dead_zone: f32,
+    pub gamepad_stick_dead_zone: f64,
+    pub gamepad_trigger_dead_zone: f64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -1793,6 +1793,10 @@ mod tests {
         let fixture = include_str!("../../../../shared/config/fixtures/default.json");
         let expected: NativeConfig = serde_json::from_str(fixture).expect("shared fixture");
         assert_eq!(NativeConfig::default(), expected);
+
+        let expected: serde_json::Value = serde_json::from_str(fixture).expect("fixture value");
+        let actual = serde_json::to_value(NativeConfig::default()).expect("default value");
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -1823,10 +1827,10 @@ mod tests {
         for (stick, trigger, field) in [
             (-0.01, 0.0, "input.gamepad_stick_dead_zone"),
             (1.0, 0.0, "input.gamepad_stick_dead_zone"),
-            (f32::NAN, 0.0, "input.gamepad_stick_dead_zone"),
+            (f64::NAN, 0.0, "input.gamepad_stick_dead_zone"),
             (0.15, -0.01, "input.gamepad_trigger_dead_zone"),
             (0.15, 1.0, "input.gamepad_trigger_dead_zone"),
-            (0.15, f32::INFINITY, "input.gamepad_trigger_dead_zone"),
+            (0.15, f64::INFINITY, "input.gamepad_trigger_dead_zone"),
         ] {
             let mut config = NativeConfig::default();
             config.input.gamepad_stick_dead_zone = stick;

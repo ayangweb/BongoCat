@@ -436,8 +436,9 @@ impl Application {
         settings: GamepadAxisSettings,
     ) -> Result<RuntimeSnapshot, ApplicationError> {
         let mut next_config = self.config.clone();
-        next_config.input.gamepad_stick_dead_zone = settings.stick_dead_zone;
-        next_config.input.gamepad_trigger_dead_zone = settings.trigger_dead_zone;
+        next_config.input.gamepad_stick_dead_zone = persistent_dead_zone(settings.stick_dead_zone);
+        next_config.input.gamepad_trigger_dead_zone =
+            persistent_dead_zone(settings.trigger_dead_zone);
         let next_revision = self
             .config_store
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;
@@ -692,11 +693,29 @@ const fn model_origin_from_config(origin: SelectedModelOrigin) -> ModelOrigin {
 fn gamepad_axis_settings_from_config(
     config: &NativeConfig,
 ) -> Result<GamepadAxisSettings, ConfigError> {
-    GamepadAxisSettings::new(
+    let stick_dead_zone = runtime_dead_zone(
         config.input.gamepad_stick_dead_zone,
+        "input.gamepad_stick_dead_zone",
+    )?;
+    let trigger_dead_zone = runtime_dead_zone(
         config.input.gamepad_trigger_dead_zone,
-    )
-    .ok_or(ConfigError::InvalidValue("input.gamepad_dead_zone"))
+        "input.gamepad_trigger_dead_zone",
+    )?;
+    GamepadAxisSettings::new(stick_dead_zone, trigger_dead_zone)
+        .ok_or(ConfigError::InvalidValue("input.gamepad_dead_zone"))
+}
+
+fn runtime_dead_zone(value: f64, field: &'static str) -> Result<f32, ConfigError> {
+    let value = value as f32;
+    if value.is_finite() && (0.0..1.0).contains(&value) {
+        Ok(value)
+    } else {
+        Err(ConfigError::InvalidValue(field))
+    }
+}
+
+fn persistent_dead_zone(value: f32) -> f64 {
+    value.to_string().parse().unwrap_or(f64::NAN)
 }
 
 #[cfg(test)]

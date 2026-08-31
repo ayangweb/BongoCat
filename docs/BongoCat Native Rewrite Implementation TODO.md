@@ -602,7 +602,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] event tap callback 使用 autorelease pool/panic boundary，run loop 停止后不再触达已释放 producer。
 - [ ] 明确辅助功能与 Input Monitoring 各自真正需要的能力，避免请求不必要的 TCC 权限。
 
-### 3.5 配置 v1/v2
+### 3.5 配置 v1/v2/v3
 
 - 状态（2026-08-29）：`spikes/config-store/` 已建立 typed NativeConfig、Bundle ID、Development/Production 隔离目录、snake_case 序列化、schema 校验、原子 commit probe、expected revision、OS writer lock contract、中断提交恢复 contract 和双平台真实 path resolver。Windows jobs 先后暴露只读 handle flush、强杀后锁释放延迟，以及首次启动 recovery 后立即重锁提交默认值的竞态；启动恢复以 10 ms 间隔有界重试最多 1 秒，`load_or_default` 又把 recover/read/create-default 合并到单个 guard，普通 commit 仍立即报告竞争。备份策略和 GPUI command 边界仍待产品 crate 阶段完成，详见 `docs/phase-0/config-store-spike.md`。
 
@@ -951,11 +951,12 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
     application 域注入 `legacy_alias` 并由固定 Draft 2020-12 validator 拒绝，正式 crate 另有
     unknown/legacy 字段拒绝测试。
 - [ ] 只为 Native Rewrite schema 建立 sequential `schema_version` 演进。
-  - 状态（2026-08-31）：正式 config 已实现 v1 -> v2 单步迁移；非空
-    `selected_model_id` 按 v1 产品语义补为 preset origin，空选择保持成对为空。迁移在 writer
-    lock 内备份原 bytes 并原子写回，重复加载幂等；正式 store 已能从验证通过的 v1/v2 备份恢复
-    并规范化写回 v2。未来版本链仍待实现，因此总项保持未勾选。共享默认 fixture 升级后，独立
-    config-store contract spike 也对齐 v2 成对字段与校验，但不重复承担正式迁移逻辑。
+  - 状态（2026-09-01）：正式 config 已实现 v1 -> v2 -> v3 顺序迁移；非空
+    `selected_model_id` 按 v1 产品语义补为 preset origin，空选择保持成对为空，v3 再补入默认
+    gamepad dead-zone。迁移在 writer lock 内备份原 bytes 并原子写回，重复加载幂等；正式 store
+    已能从验证通过的 v1/v2/v3 备份恢复并规范化写回 v3。未来版本链仍待实现，因此总项保持
+    未勾选。独立 config-store contract spike 已对齐 v3 typed config、范围校验和共享默认 fixture；
+    持久化浮点字段使用 `f64`，避免默认 `0.15` 经 `f32` 序列化后偏离共享 JSON contract。
 - [x] 不包含旧 Pinia store key、旧字段 alias 或自动导入逻辑。
   - 验收证据（2026-08-31）：Native schema/Rust 类型没有 serde alias 或 legacy 字段，严格未知
     字段 fixture 与单元测试拒绝 `legacy_alias`/`old_pinia_field`；产品 `ConfigStore` 只解析当前
@@ -1737,6 +1738,9 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
         补入 `0.15`/`0.0` 默认值。Application 启动会在 runtime Ready 后发送强类型 settings，
         运行中更新先做 revision-checked 原子配置提交再重投影现有 axis；启动、更新、重启和 schema
         accept/reject 回归已覆盖。
+      - 验收证据（2026-09-01）：正式 config 与独立 config-store spike 使用 `f64` 保存 JSON 数值，
+        Application 在 runtime 边界受检转换为 `f32`，运行时更新按最短十进制表示写回；共享默认
+        fixture 的 value-level 序列化回归覆盖 `0.15`，修复 schema v3 后独立 CI contract 漂移。
     - [x] 将同一 `GamepadAxisProducer` 从 Application 传递到独立 overlay/input service owner。
       - 状态（2026-08-31）：Windows/macOS 正式服务启动与所有 opt-in smoke 调用均持有 runtime
         producer；双平台服务现分别消费 XInput/GameController，无手柄启动行为不变。

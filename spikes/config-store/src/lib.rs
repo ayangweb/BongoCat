@@ -10,7 +10,7 @@ use std::{
 };
 
 pub const BUNDLE_ID: &str = "com.ayangweb.bongo-cat";
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 const RECOVERY_LOCK_TIMEOUT: Duration = Duration::from_secs(1);
 const RECOVERY_LOCK_RETRY_INTERVAL: Duration = Duration::from_millis(10);
 
@@ -139,6 +139,7 @@ pub struct NativeConfig {
     pub application: ApplicationConfig,
     pub appearance: AppearanceConfig,
     pub overlay: OverlayConfig,
+    pub input: InputConfig,
     pub model: ModelConfig,
     pub shortcuts: ShortcutConfig,
 }
@@ -179,6 +180,13 @@ pub struct OverlayConfig {
     pub hide_on_pointer_hover: bool,
     pub hide_on_pointer_hover_delay_ms: u32,
     pub keep_inside_work_area: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct InputConfig {
+    pub gamepad_stick_dead_zone: f64,
+    pub gamepad_trigger_dead_zone: f64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -249,6 +257,10 @@ impl Default for NativeConfig {
                 hide_on_pointer_hover_delay_ms: 250,
                 keep_inside_work_area: true,
             },
+            input: InputConfig {
+                gamepad_stick_dead_zone: 0.15,
+                gamepad_trigger_dead_zone: 0.0,
+            },
             model: ModelConfig {
                 selected_model_id: None,
                 selected_model_origin: None,
@@ -278,6 +290,16 @@ impl NativeConfig {
         }
         if self.overlay.corner_radius_percent > 100 {
             return Err(ConfigError::InvalidValue("overlay.corner_radius_percent"));
+        }
+        if !(0.0..1.0).contains(&self.input.gamepad_stick_dead_zone)
+            || !self.input.gamepad_stick_dead_zone.is_finite()
+        {
+            return Err(ConfigError::InvalidValue("input.gamepad_stick_dead_zone"));
+        }
+        if !(0.0..1.0).contains(&self.input.gamepad_trigger_dead_zone)
+            || !self.input.gamepad_trigger_dead_zone.is_finite()
+        {
+            return Err(ConfigError::InvalidValue("input.gamepad_trigger_dead_zone"));
         }
         if !(15..=240).contains(&self.model.maximum_fps) {
             return Err(ConfigError::InvalidValue("model.maximum_fps"));
@@ -949,6 +971,8 @@ mod tests {
                 .get("hide_on_pointer_hover_delay_ms")
                 .is_some()
         );
+        assert!(value["input"].get("gamepad_stick_dead_zone").is_some());
+        assert!(value["input"].get("gamepad_trigger_dead_zone").is_some());
         assert!(value["model"].get("release_fallback_timeout_ms").is_some());
         assert!(value["model"].get("selected_model_origin").is_some());
     }
@@ -1012,5 +1036,25 @@ mod tests {
             origin_only.validate(),
             Err(ConfigError::InvalidValue("model.selected_model_selection"))
         ));
+    }
+
+    #[test]
+    fn gamepad_dead_zones_follow_the_shared_range_contract() {
+        for (stick, trigger, field) in [
+            (-0.01, 0.0, "input.gamepad_stick_dead_zone"),
+            (1.0, 0.0, "input.gamepad_stick_dead_zone"),
+            (f64::NAN, 0.0, "input.gamepad_stick_dead_zone"),
+            (0.15, -0.01, "input.gamepad_trigger_dead_zone"),
+            (0.15, 1.0, "input.gamepad_trigger_dead_zone"),
+            (0.15, f64::INFINITY, "input.gamepad_trigger_dead_zone"),
+        ] {
+            let mut config = NativeConfig::default();
+            config.input.gamepad_stick_dead_zone = stick;
+            config.input.gamepad_trigger_dead_zone = trigger;
+            assert!(matches!(
+                config.validate(),
+                Err(ConfigError::InvalidValue(actual)) if actual == field
+            ));
+        }
     }
 }
