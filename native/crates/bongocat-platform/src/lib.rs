@@ -5,6 +5,15 @@
 
 use std::fmt;
 
+mod accessibility;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub use accessibility::SettingsAccessibilityBridge;
+pub use accessibility::{
+    AccessibilityAction, AccessibilityActionRequest, AccessibilityBounds, AccessibilityDiagnostics,
+    AccessibilityError, AccessibilityNode, AccessibilityNodeId, AccessibilityRole,
+    AccessibilityToggle, AccessibilityTree,
+};
+
 mod directory_picker;
 #[cfg(target_os = "macos")]
 mod directory_picker_macos;

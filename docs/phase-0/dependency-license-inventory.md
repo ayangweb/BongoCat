@@ -21,7 +21,7 @@
 | Dependency family                | Locked version                 | License                   | Role                                    |
 | -------------------------------- | ------------------------------ | ------------------------- | --------------------------------------- |
 | GPUI                             | `0.2.2`                        | Apache-2.0                | Formal settings UI and lifecycle spike  |
-| AccessKit core/macOS/Windows     | `0.25.0` / `0.27.0` / `0.35.0` | MIT OR Apache-2.0         | GPUI semantic AX/UIA adapter            |
+| AccessKit core/macOS/Windows     | `0.25.0` / `0.27.0` / `0.35.0` | MIT OR Apache-2.0         | Formal settings AX/UIA semantic adapter |
 | raw-window-handle                | `0.6.2`                        | MIT OR Apache-2.0 OR Zlib | GPUI/Win32 native window boundary       |
 | async-channel                    | `2.5.0`                        | MIT OR Apache-2.0         | Formal typed command/reply and spike    |
 | unicode-segmentation             | `1.13.3`                       | MIT OR Apache-2.0         | Grapheme-safe text editing              |
@@ -69,7 +69,7 @@ cargo install cargo-deny --version 0.20.2 --locked
 
 Cubism 版本、来源、hash、再分发条款和 attribution 必须在 `P0-CUBISM` 单独形成书面结论；完成前不得制作可公开分发的 Native Rewrite 安装包。
 
-AccessKit 由同一上游仓库维护，core 与双平台 adapter 的公开边界仅接收语义树、action 和原生窗口 handle；其节点、事件和错误类型不进入 BongoCat runtime 公共 API。若 GPUI 后续提供稳定的 element-level accessibility API，则删除该 adapter。`objc2 0.5.2` 是 `accesskit_macos 0.27.0` 的 ABI 类型世代兼容例外，仅用于本机 AX 诊断；AccessKit 切换到 `objc2 0.6` 或诊断边界移除后不再保留旧版本。
+AccessKit 由同一上游仓库维护，core 与双平台 adapter 已进入正式 `bongocat-platform`，公开边界仅接收 UI 自有语义树、action 和 GPUI 原生窗口 handle；其节点、事件和错误类型不进入 BongoCat runtime 公共 API。action 通过容量 32 的强类型 channel 回到 GPUI 主线程，队列拒绝计数进入平台诊断。若 GPUI 后续提供稳定的 element-level accessibility API，则删除该 adapter。`objc2 0.5.2` 是 `accesskit_macos 0.27.0` 的 ABI 类型世代兼容例外，仅用于 adapter 所需的 macOS 类型；AccessKit 切换到 `objc2 0.6` 或边界移除后不再保留旧版本。
 
 ## Future-Incompatibility
 

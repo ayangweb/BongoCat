@@ -1439,8 +1439,13 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       format/Clippy/test/release/Production、license/source policy 和 Windows x64/ARM64 platform Clippy
       本机通过；commit `62f8c8f` 的 push run `33354177622` 中 Windows/macOS jobs
       `99373058496`/`99373058428` 均通过 General 页面、窗口重建和 shutdown，macOS 同时通过安装态
-      startup-item mutation smoke。项目级 AccessKit tree 尚未为该开关提供 role/value/action，故
-      accessibility 退出条件仍未满足，本项保持未勾选。
+      startup-item mutation smoke。2026-08-31 已在正式 `bongocat-platform` 接入项目自有
+      AccessKit tree：General、Models、Diagnostics、overlay/audio/startup switches、Refresh 和
+      Quit 均有稳定 role/label/value/toggle/focus/click 投影；loading/unsupported 状态不暴露
+      mutation action，action 经容量 32 的 typed channel 回到 GPUI 并复用现有 focus/command 路径。
+      `cargo test -p bongocat-platform -p bongocat-ui` 已通过 tree validation、toggle/value/action
+      contract；真实 VoiceOver/Narrator 操作、macOS AX/Windows UIA 物理辅助技术 smoke 仍未运行，
+      因此本项保持未勾选，待双平台 runner/实机证据补齐后再关闭。
 32. [x] `P5-INPUT-DIAGNOSTICS-UI`：把 runtime 输入可靠性计数投影到真实 Diagnostics 页面。
     - 依赖：正式 `RuntimeSnapshot.input`、revisioned `SettingsSnapshot` 和双平台 settings lifecycle。
     - 退出条件：UI 协议只包含 pressed 数量及 captured/reconciled/reset、sequence、overflow 的匿名

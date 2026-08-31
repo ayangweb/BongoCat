@@ -6,13 +6,21 @@ use crate::{
     SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
     SettingsStartupItemUnsupportedReason,
 };
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use bongocat_platform::{
+    AccessibilityAction, AccessibilityActionRequest, AccessibilityNode, AccessibilityNodeId,
+    AccessibilityRole, AccessibilityToggle, AccessibilityTree, SettingsAccessibilityBridge,
+};
 use bongocat_platform::{DirectoryPickerError, DirectoryPickerOutcome, pick_model_directory};
 use gpui::{
     App, Bounds, Context, FocusHandle, KeyDownEvent, Render, SharedString, Timer, TitlebarOptions,
     Window, WindowAppearance, WindowBounds, WindowHandle, WindowOptions, div, prelude::*, px, rgb,
     size,
 };
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use raw_window_handle::HasWindowHandle;
 use std::{
+    cell::RefCell,
     collections::{BTreeMap, BTreeSet},
     path::Path,
     path::PathBuf,
@@ -22,6 +30,25 @@ use std::{
 
 const WINDOW_WIDTH: f32 = 800.0;
 const WINDOW_HEIGHT: f32 = 600.0;
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_ROOT: AccessibilityNodeId = AccessibilityNodeId::new(1);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_GENERAL: AccessibilityNodeId = AccessibilityNodeId::new(2);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_MODELS: AccessibilityNodeId = AccessibilityNodeId::new(3);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_DIAGNOSTICS: AccessibilityNodeId = AccessibilityNodeId::new(4);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_OVERLAY: AccessibilityNodeId = AccessibilityNodeId::new(10);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_AUDIO: AccessibilityNodeId = AccessibilityNodeId::new(11);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_STARTUP: AccessibilityNodeId = AccessibilityNodeId::new(12);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_REFRESH: AccessibilityNodeId = AccessibilityNodeId::new(30);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_QUIT: AccessibilityNodeId = AccessibilityNodeId::new(31);
 
 #[derive(Clone, Copy)]
 struct Tokens {
@@ -254,6 +281,10 @@ pub struct SettingsView {
     import_model_focus: FocusHandle,
     refresh_focus: FocusHandle,
     quit_focus: FocusHandle,
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    accessibility: Option<SettingsAccessibilityBridge>,
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    accessibility_focus: Option<AccessibilityNodeId>,
 }
 
 impl SettingsView {
@@ -284,7 +315,188 @@ impl SettingsView {
             import_model_focus: cx.focus_handle().tab_index(22).tab_stop(true),
             refresh_focus: cx.focus_handle().tab_index(30).tab_stop(true),
             quit_focus: cx.focus_handle().tab_index(31).tab_stop(true),
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            accessibility: None,
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            accessibility_focus: None,
         }
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn accessibility_tree(&self) -> AccessibilityTree {
+        let snapshot = self.snapshot.as_ref();
+        let disabled =
+            self.pending.is_some() || snapshot.is_none() || self.model_import.is_running();
+        let startup = startup_item_presentation(snapshot.map(|s| s.startup_item), disabled);
+        let mut overlay_node = AccessibilityNode::new(
+            ACCESSIBILITY_OVERLAY,
+            AccessibilityRole::Switch,
+            "Show desktop cat",
+        )
+        .with_value("Keep the Live2D overlay visible")
+        .with_toggle(if snapshot.is_some_and(|s| s.overlay_visible) {
+            AccessibilityToggle::On
+        } else {
+            AccessibilityToggle::Off
+        })
+        .disabled(disabled);
+        if !disabled {
+            overlay_node = overlay_node.clickable().focusable();
+        }
+        let mut audio_node = AccessibilityNode::new(
+            ACCESSIBILITY_AUDIO,
+            AccessibilityRole::Switch,
+            "Motion audio",
+        )
+        .with_value("Play audio attached to model motions")
+        .with_toggle(if snapshot.is_some_and(|s| s.motion_audio_enabled) {
+            AccessibilityToggle::On
+        } else {
+            AccessibilityToggle::Off
+        })
+        .disabled(disabled);
+        if !disabled {
+            audio_node = audio_node.clickable().focusable();
+        }
+        let mut startup_node = AccessibilityNode::new(
+            ACCESSIBILITY_STARTUP,
+            AccessibilityRole::Switch,
+            "Open at login",
+        )
+        .with_value(startup.description)
+        .with_toggle(if startup.enabled {
+            AccessibilityToggle::On
+        } else {
+            AccessibilityToggle::Off
+        })
+        .disabled(startup.action == StartupItemAction::None);
+        if startup.action != StartupItemAction::None {
+            startup_node = startup_node.clickable().focusable();
+        }
+        let mut refresh_node =
+            AccessibilityNode::new(ACCESSIBILITY_REFRESH, AccessibilityRole::Button, "Refresh")
+                .disabled(self.pending.is_some() || self.model_import.is_running());
+        if self.pending.is_none() && !self.model_import.is_running() {
+            refresh_node = refresh_node.clickable().focusable();
+        }
+        let mut nodes = vec![
+            AccessibilityNode::new(
+                ACCESSIBILITY_ROOT,
+                AccessibilityRole::Window,
+                "BongoCat Settings",
+            )
+            .with_children(vec![
+                ACCESSIBILITY_GENERAL,
+                ACCESSIBILITY_MODELS,
+                ACCESSIBILITY_DIAGNOSTICS,
+                ACCESSIBILITY_OVERLAY,
+                ACCESSIBILITY_AUDIO,
+                ACCESSIBILITY_STARTUP,
+                ACCESSIBILITY_REFRESH,
+                ACCESSIBILITY_QUIT,
+            ]),
+            AccessibilityNode::new(ACCESSIBILITY_GENERAL, AccessibilityRole::Button, "General")
+                .clickable()
+                .focusable(),
+            AccessibilityNode::new(ACCESSIBILITY_MODELS, AccessibilityRole::Button, "Models")
+                .clickable()
+                .focusable(),
+            AccessibilityNode::new(
+                ACCESSIBILITY_DIAGNOSTICS,
+                AccessibilityRole::Button,
+                "Diagnostics",
+            )
+            .clickable()
+            .focusable(),
+            overlay_node,
+            audio_node,
+            startup_node,
+            refresh_node,
+            AccessibilityNode::new(ACCESSIBILITY_QUIT, AccessibilityRole::Button, "Quit")
+                .clickable()
+                .focusable(),
+        ];
+        let focus = match self.page {
+            SettingsPage::General => ACCESSIBILITY_GENERAL,
+            SettingsPage::Models => ACCESSIBILITY_MODELS,
+            SettingsPage::Diagnostics => ACCESSIBILITY_DIAGNOSTICS,
+        };
+        if !nodes.iter().any(|node| node.id == focus) {
+            nodes.push(AccessibilityNode::new(focus, AccessibilityRole::Status, ""));
+        }
+        AccessibilityTree {
+            root: ACCESSIBILITY_ROOT,
+            focus,
+            nodes,
+        }
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn handle_accessibility_action(
+        &mut self,
+        request: AccessibilityActionRequest,
+        cx: &mut Context<Self>,
+    ) {
+        self.accessibility_focus = Some(request.target);
+        if request.action != AccessibilityAction::Click {
+            return;
+        }
+        match request.target {
+            ACCESSIBILITY_GENERAL => self.page = SettingsPage::General,
+            ACCESSIBILITY_MODELS => self.page = SettingsPage::Models,
+            ACCESSIBILITY_DIAGNOSTICS => self.page = SettingsPage::Diagnostics,
+            ACCESSIBILITY_OVERLAY => {
+                if let Some(snapshot) = self.snapshot.as_ref() {
+                    self.set_overlay_visible(!snapshot.overlay_visible, cx);
+                }
+            }
+            ACCESSIBILITY_AUDIO => {
+                if let Some(snapshot) = self.snapshot.as_ref() {
+                    self.set_motion_audio_enabled(!snapshot.motion_audio_enabled, cx);
+                }
+            }
+            ACCESSIBILITY_STARTUP => match startup_item_presentation(
+                self.snapshot.as_ref().map(|s| s.startup_item),
+                self.pending.is_some() || self.snapshot.is_none(),
+            )
+            .action
+            {
+                StartupItemAction::SetEnabled(enabled) => {
+                    self.set_startup_item_enabled(enabled, cx)
+                }
+                StartupItemAction::Retry => self.refresh(cx),
+                StartupItemAction::None => {}
+            },
+            ACCESSIBILITY_REFRESH => self.refresh(cx),
+            ACCESSIBILITY_QUIT => (self.request_quit)(cx),
+            _ => {}
+        }
+        cx.notify();
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn start_accessibility_actions(
+        &mut self,
+        receiver: async_channel::Receiver<AccessibilityActionRequest>,
+        cx: &mut Context<Self>,
+    ) {
+        cx.spawn(async move |this, cx| {
+            while let Ok(request) = receiver.recv().await {
+                let _ = this.update(cx, |view, cx| {
+                    view.handle_accessibility_action(request, cx);
+                });
+            }
+        })
+        .detach();
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn update_accessibility(&mut self, window: &Window) {
+        let tree = self.accessibility_tree();
+        if let Some(bridge) = self.accessibility.as_mut() {
+            let _ = bridge.update(tree);
+        }
+        let _ = window;
     }
 
     pub fn report_service_error(&mut self, error: SettingsError, cx: &mut Context<Self>) {
@@ -373,6 +585,33 @@ impl SettingsView {
                 if !matches!(presentation.action, StartupItemAction::SetEnabled(_)) {
                     return Err("actionable startup item did not expose a mutation".to_owned());
                 }
+            }
+        }
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            let tree = self.accessibility_tree();
+            tree.validate().map_err(|error| error.to_string())?;
+            let startup = tree
+                .nodes
+                .iter()
+                .find(|node| node.id == ACCESSIBILITY_STARTUP)
+                .ok_or_else(|| "accessibility tree omitted the startup item".to_owned())?;
+            if startup.role != AccessibilityRole::Switch
+                || startup.label != "Open at login"
+                || startup.value.as_deref() != Some(presentation.description)
+                || startup.toggled
+                    != Some(if presentation.enabled {
+                        AccessibilityToggle::On
+                    } else {
+                        AccessibilityToggle::Off
+                    })
+                || startup.disabled != (presentation.action == StartupItemAction::None)
+                || startup.supports_click != (presentation.action != StartupItemAction::None)
+                || startup.supports_focus != (presentation.action != StartupItemAction::None)
+            {
+                return Err(
+                    "startup accessibility semantics diverged from the visible control".to_owned(),
+                );
             }
         }
         Ok(())
@@ -917,6 +1156,24 @@ fn startup_item_presentation(
 
 impl Render for SettingsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            self.update_accessibility(window);
+            if let Some(target) = self.accessibility_focus.take() {
+                let focus = match target {
+                    ACCESSIBILITY_GENERAL => &self.general_focus,
+                    ACCESSIBILITY_MODELS => &self.models_focus,
+                    ACCESSIBILITY_DIAGNOSTICS => &self.diagnostics_focus,
+                    ACCESSIBILITY_OVERLAY => &self.overlay_focus,
+                    ACCESSIBILITY_AUDIO => &self.audio_focus,
+                    ACCESSIBILITY_STARTUP => &self.startup_item_focus,
+                    ACCESSIBILITY_REFRESH => &self.refresh_focus,
+                    ACCESSIBILITY_QUIT => &self.quit_focus,
+                    _ => &self.general_focus,
+                };
+                window.focus(focus);
+            }
+        }
         let tokens = Tokens::for_window(window);
         let snapshot = self.snapshot.clone();
         let overlay_visible = snapshot
@@ -2182,6 +2439,8 @@ pub fn open_settings_window(
     cx: &mut App,
 ) -> Result<WindowHandle<SettingsView>, String> {
     let bounds = Bounds::centered(None, size(px(WINDOW_WIDTH), px(WINDOW_HEIGHT)), cx);
+    let accessibility_error = Rc::new(RefCell::new(None));
+    let open_accessibility_error = Rc::clone(&accessibility_error);
     let handle = cx
         .open_window(
             WindowOptions {
@@ -2190,6 +2449,8 @@ pub fn open_settings_window(
                     title: Some("BongoCat Settings".into()),
                     ..Default::default()
                 }),
+                focus: false,
+                show: false,
                 ..Default::default()
             },
             move |window, cx| {
@@ -2199,6 +2460,27 @@ pub fn open_settings_window(
                     view.refresh(cx);
                     view
                 });
+                #[cfg(any(target_os = "macos", target_os = "windows"))]
+                {
+                    let result = HasWindowHandle::window_handle(window)
+                        .map_err(|error| error.to_string())
+                        .and_then(|handle| {
+                            SettingsAccessibilityBridge::attach(
+                                handle.as_raw(),
+                                view.read(cx).accessibility_tree(),
+                            )
+                            .map_err(|error| error.to_string())
+                        });
+                    match result {
+                        Ok((bridge, receiver)) => {
+                            view.update(cx, |view, cx| {
+                                view.accessibility = Some(bridge);
+                                view.start_accessibility_actions(receiver, cx);
+                            });
+                        }
+                        Err(error) => *open_accessibility_error.borrow_mut() = Some(error),
+                    }
+                }
                 #[cfg(target_os = "windows")]
                 {
                     let weak_view = view.downgrade();
@@ -2218,10 +2500,17 @@ pub fn open_settings_window(
                     });
                 }
                 window.focus(&view.read(cx).overlay_focus);
+                if open_accessibility_error.borrow().is_none() {
+                    window.activate_window();
+                }
                 view
             },
         )
         .map_err(|error| error.to_string())?;
+    if let Some(error) = accessibility_error.borrow_mut().take() {
+        let _ = handle.update(cx, |_, window, _| window.remove_window());
+        return Err(format!("attach settings accessibility bridge: {error}"));
+    }
     cx.activate(true);
     Ok(handle)
 }

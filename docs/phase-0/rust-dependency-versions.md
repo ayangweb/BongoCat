@@ -109,7 +109,7 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
 - `gpui 0.2.2`（Apache-2.0）只在 Windows/macOS 正式 UI/app target 编译，Linux 共享协议
   不依赖 GPUI；替换边界位于 `bongocat-ui::window` 与 app 主循环，runtime/config/model 不导入
   GPUI 类型。macOS 正式窗口 + Cubism overlay release smoke 已通过，Windows 由 hardware CI 验证；
-- `accesskit 0.25.0`、`accesskit_macos 0.27.0`、`accesskit_windows 0.35.0` 与 ABI generation 匹配的 `objc2-foundation 0.2.2` 只在 GPUI 设置 spike 中把强类型语义快照和 action 接到原生 AX/UIA，并通过原生窗口事件验证 tooltip hover；替换边界是 GPUI 提供等价稳定 element-level accessibility 和输入测试 API，届时删除 adapter/probe 依赖而不改变 runtime/UI command contract；
+- `accesskit 0.25.0`、`accesskit_macos 0.27.0`、`accesskit_windows 0.35.0` 与 ABI generation 匹配的 `objc2-foundation 0.2.2` 已用于正式 `bongocat-platform` 的设置语义树和 action bridge，并由 `bongocat-ui` 在 GPUI render 生命周期更新；平台 adapter 只接收项目自有 tree、action 和 raw window handle，action 以容量 32 的有界通道回到 GPUI 主线程。替换边界是 GPUI 提供等价稳定 element-level accessibility 和输入测试 API，届时删除 adapter 依赖而不改变 runtime/UI command contract；
 - `raw-window-handle 0.6.2`（MIT OR Apache-2.0 OR Zlib）除 spike 外也由正式 Windows
   platform adapter 直接使用，只把 GPUI 的公开 handle 转为短期借用的 HWND 以隐藏/重显设置
   窗口；裸 handle 不离开 adapter，GPUI 修复原生 close 生命周期后可移除这段正式依赖；

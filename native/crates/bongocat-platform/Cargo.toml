@@ -8,9 +8,15 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+async-channel.workspace = true
 bongocat-runtime.workspace = true
 
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+accesskit.workspace = true
+raw-window-handle.workspace = true
+
 [target.'cfg(target_os = "macos")'.dependencies]
+accesskit_macos.workspace = true
 block2 = "=0.6.2"
 objc2 = "=0.6.4"
 objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["NSApplication", "NSButton", "NSControl", "NSMenu", "NSMenuItem", "NSOpenPanel", "NSPanel", "NSResponder", "NSRunningApplication", "NSSavePanel", "NSStatusBar", "NSStatusBarButton", "NSStatusItem", "NSView", "NSWindow", "block2", "objc2-core-foundation"] }
@@ -20,7 +26,7 @@ objc2-foundation = { version = "=0.3.2", default-features = false, features = ["
 objc2-service-management = { version = "=0.3.2", default-features = false, features = ["SMAppService", "objc2", "objc2-foundation"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-raw-window-handle.workspace = true
+accesskit_windows.workspace = true
 windows = { version = "=0.62.2", features = [
     "Win32_Foundation",
     "Win32_Security",

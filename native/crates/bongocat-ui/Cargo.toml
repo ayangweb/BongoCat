@@ -13,6 +13,7 @@ async-channel.workspace = true
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 bongocat-platform.workspace = true
 gpui.workspace = true
+raw-window-handle.workspace = true
 
 [lints]
 workspace = true
