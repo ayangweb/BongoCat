@@ -1,9 +1,10 @@
 use crate::{
-    RuntimeHealth, SettingsClient, SettingsError, SettingsErrorCode, SettingsModelAvailability,
-    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportMonitor,
-    SettingsModelImportOperation, SettingsModelImportRequest, SettingsModelImportStage,
-    SettingsModelKey, SettingsModelOrigin, SettingsOperationId, SettingsSnapshot,
-    SettingsStartupItemState, SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason,
+    RuntimeHealth, SettingsClient, SettingsError, SettingsErrorCode, SettingsInputDiagnostics,
+    SettingsModelAvailability, SettingsModelDiagnostic, SettingsModelEntry,
+    SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
+    SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsOperationId,
+    SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
+    SettingsStartupItemUnsupportedReason,
 };
 use bongocat_platform::{DirectoryPickerError, DirectoryPickerOutcome, pick_model_directory};
 use gpui::{
@@ -83,6 +84,7 @@ enum SettingsPage {
     #[default]
     General,
     Models,
+    Diagnostics,
 }
 
 enum ModelImportState {
@@ -243,6 +245,7 @@ pub struct SettingsView {
     request_quit: Rc<dyn Fn(&mut App)>,
     general_focus: FocusHandle,
     models_focus: FocusHandle,
+    diagnostics_focus: FocusHandle,
     overlay_focus: FocusHandle,
     audio_focus: FocusHandle,
     startup_item_focus: FocusHandle,
@@ -272,6 +275,7 @@ impl SettingsView {
             request_quit,
             general_focus: cx.focus_handle().tab_index(1).tab_stop(true),
             models_focus: cx.focus_handle().tab_index(2).tab_stop(true),
+            diagnostics_focus: cx.focus_handle().tab_index(3).tab_stop(true),
             overlay_focus: cx.focus_handle().tab_index(10).tab_stop(true),
             audio_focus: cx.focus_handle().tab_index(11).tab_stop(true),
             startup_item_focus: cx.focus_handle().tab_index(12).tab_stop(true),
@@ -370,6 +374,22 @@ impl SettingsView {
                     return Err("actionable startup item did not expose a mutation".to_owned());
                 }
             }
+        }
+        Ok(())
+    }
+
+    pub fn show_diagnostics_page_for_smoke(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        self.page = SettingsPage::Diagnostics;
+        cx.notify();
+        let snapshot = self
+            .snapshot
+            .as_ref()
+            .ok_or_else(|| "diagnostics page has not received a settings snapshot".to_owned())?;
+        if input_diagnostic_metrics(snapshot.input_diagnostics).len() != 19 {
+            return Err("diagnostics page did not project every input counter".to_owned());
         }
         Ok(())
     }
@@ -936,6 +956,7 @@ impl Render for SettingsView {
 
         let general_selected = self.page == SettingsPage::General;
         let models_selected = self.page == SettingsPage::Models;
+        let diagnostics_selected = self.page == SettingsPage::Diagnostics;
         let sidebar = div()
             .w(px(164.0))
             .h_full()
@@ -1002,7 +1023,30 @@ impl Render for SettingsView {
                 })),
             )
             .child(div().p_3().text_color(tokens.muted).child("Shortcuts"))
-            .child(div().p_3().text_color(tokens.muted).child("Diagnostics"));
+            .child(
+                navigation_item(
+                    "Diagnostics",
+                    diagnostics_selected,
+                    &self.diagnostics_focus,
+                    3,
+                    window,
+                    tokens,
+                )
+                .id("diagnostics-page")
+                .on_click(cx.listener(|view, _, window, cx| {
+                    window.focus(&view.diagnostics_focus);
+                    view.page = SettingsPage::Diagnostics;
+                    cx.notify();
+                }))
+                .on_key_down(cx.listener(|view, event, window, cx| {
+                    if is_activation_key(event) {
+                        cx.stop_propagation();
+                        window.focus(&view.diagnostics_focus);
+                        view.page = SettingsPage::Diagnostics;
+                        cx.notify();
+                    }
+                })),
+            );
 
         let overlay_row = setting_row(
             "Show desktop cat",
@@ -1576,9 +1620,82 @@ impl Render for SettingsView {
                     .children(model_rows),
             );
 
+        let diagnostics_content = div()
+            .min_w_0()
+            .flex_1()
+            .h_full()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .p_5()
+            .bg(tokens.canvas)
+            .text_color(tokens.text)
+            .child(div().text_2xl().child("Diagnostics"))
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(if self.error.is_some() {
+                        tokens.danger
+                    } else {
+                        tokens.muted
+                    })
+                    .child(match &self.error {
+                        Some(error) => format!("Diagnostics unavailable · {error}"),
+                        None if snapshot.is_none() => "Loading diagnostics...".to_owned(),
+                        None => "Input reliability counters".to_owned(),
+                    }),
+            )
+            .child(
+                div()
+                    .id("input-diagnostics")
+                    .min_h_0()
+                    .flex_1()
+                    .overflow_y_scroll()
+                    .when_some(snapshot.as_ref(), |content, snapshot| {
+                        let metrics = input_diagnostic_metrics(snapshot.input_diagnostics);
+                        content.child(
+                            div()
+                                .flex()
+                                .items_start()
+                                .gap_5()
+                                .child(
+                                    div()
+                                        .min_w_0()
+                                        .flex_1()
+                                        .child(diagnostic_group(
+                                            "Current state",
+                                            &metrics[..2],
+                                            tokens,
+                                        ))
+                                        .child(diagnostic_group(
+                                            "Input processing",
+                                            &metrics[2..10],
+                                            tokens,
+                                        )),
+                                )
+                                .child(
+                                    div()
+                                        .min_w_0()
+                                        .flex_1()
+                                        .child(diagnostic_group(
+                                            "Sequence recovery",
+                                            &metrics[10..15],
+                                            tokens,
+                                        ))
+                                        .child(diagnostic_group(
+                                            "Transport",
+                                            &metrics[15..],
+                                            tokens,
+                                        )),
+                                ),
+                        )
+                    }),
+            );
+
         let content = match self.page {
             SettingsPage::General => general_content,
             SettingsPage::Models => models_content,
+            SettingsPage::Diagnostics => diagnostics_content,
         }
         .child(
             div()
@@ -1651,6 +1768,76 @@ fn is_activation_key(event: &KeyDownEvent) -> bool {
         && !event.keystroke.modifiers.alt
         && (matches!(event.keystroke.key.as_str(), "enter" | "space")
             || event.keystroke.key_char.as_deref() == Some(" "))
+}
+
+fn input_diagnostic_metrics(diagnostics: SettingsInputDiagnostics) -> [(&'static str, u64); 19] {
+    [
+        ("Pressed keys", diagnostics.pressed_key_count as u64),
+        (
+            "Pressed mouse buttons",
+            diagnostics.pressed_mouse_button_count as u64,
+        ),
+        ("Captured presses", diagnostics.captured_down),
+        ("Captured releases", diagnostics.captured_up),
+        ("Reconciled releases", diagnostics.reconciled_release),
+        ("Released by reset", diagnostics.released_by_reset),
+        ("Duplicate presses", diagnostics.duplicate_down),
+        ("Unmatched releases", diagnostics.unmatched_release),
+        ("Invalid sources", diagnostics.invalid_source),
+        ("Resets", diagnostics.reset_count),
+        ("Sequence gaps", diagnostics.sequence_gap_count),
+        ("Missing events", diagnostics.missing_sequence_count),
+        ("Duplicate events", diagnostics.duplicate_sequence_count),
+        (
+            "Out-of-order events",
+            diagnostics.out_of_order_sequence_count,
+        ),
+        (
+            "Non-monotonic timestamps",
+            diagnostics.non_monotonic_time_count,
+        ),
+        ("Events enqueued", diagnostics.transport_enqueued),
+        ("Queue overflows", diagnostics.transport_queue_full),
+        (
+            "Overflow recoveries",
+            diagnostics.transport_recovered_after_overflow,
+        ),
+        (
+            "Rejected after shutdown",
+            diagnostics.transport_runtime_stopped,
+        ),
+    ]
+}
+
+fn diagnostic_group(
+    title: &'static str,
+    metrics: &[(&'static str, u64)],
+    tokens: Tokens,
+) -> gpui::Div {
+    div()
+        .flex()
+        .flex_col()
+        .pb_3()
+        .mb_3()
+        .border_b_1()
+        .border_color(tokens.border)
+        .child(div().pb_2().text_sm().text_color(tokens.muted).child(title))
+        .children(metrics.iter().map(|(label, value)| {
+            div()
+                .h(px(30.0))
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap_3()
+                .text_sm()
+                .child(div().min_w_0().flex_1().child(*label))
+                .child(
+                    div()
+                        .flex_none()
+                        .text_color(tokens.muted)
+                        .child(value.to_string()),
+                )
+        }))
 }
 
 fn suggested_model_id(source_root: &Path) -> String {
@@ -2053,6 +2240,42 @@ mod tests {
             },
             is_held: false,
         }
+    }
+
+    #[test]
+    fn diagnostics_page_projects_only_named_aggregate_counters() {
+        let diagnostics = SettingsInputDiagnostics {
+            pressed_key_count: 1,
+            pressed_mouse_button_count: 2,
+            captured_down: 3,
+            captured_up: 4,
+            reconciled_release: 5,
+            released_by_reset: 6,
+            duplicate_down: 7,
+            unmatched_release: 8,
+            invalid_source: 9,
+            reset_count: 10,
+            sequence_gap_count: 11,
+            missing_sequence_count: 12,
+            duplicate_sequence_count: 13,
+            out_of_order_sequence_count: 14,
+            non_monotonic_time_count: 15,
+            transport_enqueued: 16,
+            transport_queue_full: 17,
+            transport_recovered_after_overflow: 18,
+            transport_runtime_stopped: 19,
+        };
+        let metrics = input_diagnostic_metrics(diagnostics);
+        assert_eq!(metrics.len(), 19);
+        assert_eq!(metrics.first(), Some(&("Pressed keys", 1)));
+        assert_eq!(metrics.last(), Some(&("Rejected after shutdown", 19)));
+        assert_eq!(
+            metrics.iter().map(|(_, value)| *value).collect::<Vec<_>>(),
+            (1..=19).collect::<Vec<_>>()
+        );
+        assert!(metrics.iter().all(|(label, _)| {
+            !label.contains("HID") && !label.contains("path") && !label.contains("timestamp value")
+        }));
     }
 
     #[test]

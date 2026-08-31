@@ -1417,9 +1417,11 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       双平台 smoke 已实现。`objc2-service-management 0.3.2` 为当前最新稳定 binding，许可证、
       维护方与替换边界已审计；完整本地门禁通过。commit `b84c910` 的 push run
       `33351444078`、Windows job `99365495806` 已通过真实 HKCU disabled -> enabled -> stale ->
-      disabled 恢复 smoke；macOS job `99365495890` 证明仅通过 LaunchServices 启动 workspace
-      bundle 仍返回 `NotFound`。后续 smoke 已改为复制到 `/Applications` 的唯一临时目录后启动，
-      并在退出时恢复状态、注销和清理；该证据待新 push 验证，因此保持未勾选。
+      disabled 恢复 smoke；commit `17f9a3c` 的 push run `33352737430`、macOS job
+      `99369071727` 进一步证明复制到 `/Applications` 唯一目录并由 LaunchServices 启动的 ad-hoc
+      bundle 初态仍为 `NotFound`，但旧 smoke 在注册前错误拒绝该可操作状态。本机 Production
+      `.app` 已真实通过 `NotFound` -> register -> unregister -> `Disabled` 并清理安装目录；修正后
+      的 hosted runner 证据待新 push 验证，因此保持未勾选。
 31. [ ] `P5-STARTUP-ITEM-UI`：以 typed settings command/snapshot 接入 General 启动项控件。
     - 依赖：`P7-STARTUP-ITEM-PLATFORM`、现有 revisioned `SettingsSnapshot` 和 settings worker。
     - 退出条件：状态读取与启用/禁用不阻塞 GPUI executor；控件覆盖 loading、enabled、disabled、
@@ -1433,6 +1435,19 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       shutdown 保留最后状态；General product smoke 已进入双平台既有 settings lifecycle。完整 Native
       format/Clippy/test/release/Production、license/source policy 和 Windows x64/ARM64 platform Clippy
       本机通过；双平台页面 smoke 与 macOS 安装态 startup-item smoke 待新 push 取证，故保持未勾选。
+32. [ ] `P5-INPUT-DIAGNOSTICS-UI`：把 runtime 输入可靠性计数投影到真实 Diagnostics 页面。
+    - 依赖：正式 `RuntimeSnapshot.input`、revisioned `SettingsSnapshot` 和双平台 settings lifecycle。
+    - 退出条件：UI 协议只包含 pressed 数量及 captured/reconciled/reset、sequence、overflow 的匿名
+      聚合计数，不含具体键值、原始事件、路径或平台类型；transport-only 变化推进 settings revision；
+      页面覆盖 loading、service error 和 retry，导航/刷新支持 Tab 与 Enter/Space；双平台 release
+      settings smoke 实际切换并渲染页面，定向 contract 与完整 Native 门禁通过。
+    - 状态（2026-08-31）：`SettingsInputDiagnostics` 已逐字段投影 19 项 runtime/transport 计数，
+      settings clock 独立观察该投影；侧栏占位已替换为可键盘访问的双列 Diagnostics 页面，既有
+      Refresh 提供 loading/error/retry，双平台 settings lifecycle smoke 会先验证 General 再切换
+      Diagnostics。本机 800x600 Production `.app` 可视检查证明 19 项指标与底部操作无重叠；
+      Development release settings lifecycle、完整 Native format/Clippy/test/release/Production、
+      license/source policy、Linux app Clippy 与 Windows x64/ARM64 platform Clippy 均通过；新 push
+      双平台证据待完成。
 
 ## 13. 待决策清单
 

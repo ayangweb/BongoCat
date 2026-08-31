@@ -8,15 +8,15 @@ use bongocat_platform::{
     StartupItemEnvironment, StartupItemError, StartupItemState, StartupItemUnsupportedReason,
     set_startup_item_enabled, startup_item_state,
 };
-use bongocat_runtime::RuntimeState;
+use bongocat_runtime::{InputSnapshot, RuntimeState};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_ui::SettingsStartupItemError;
 use bongocat_ui::{
     RuntimeHealth, SettingsClient, SettingsCommand, SettingsError, SettingsErrorCode,
-    SettingsModelAvailability, SettingsModelCatalog, SettingsModelCatalogError,
-    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportProgress,
-    SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsServiceEndpoint,
-    SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
+    SettingsInputDiagnostics, SettingsModelAvailability, SettingsModelCatalog,
+    SettingsModelCatalogError, SettingsModelDiagnostic, SettingsModelEntry,
+    SettingsModelImportProgress, SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin,
+    SettingsServiceEndpoint, SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
     SettingsStartupItemUnsupportedReason,
 };
 use std::{fmt, sync::Arc, thread};
@@ -220,6 +220,7 @@ const fn settings_import_progress(progress: ModelImportProgress) -> SettingsMode
 struct SettingsSnapshotClock {
     revision: u64,
     observed_runtime_revision: u64,
+    observed_input_diagnostics: Option<SettingsInputDiagnostics>,
     observed_startup_item: Option<SettingsStartupItemStatus>,
 }
 
@@ -228,6 +229,7 @@ impl SettingsSnapshotClock {
         Self {
             revision: runtime_revision,
             observed_runtime_revision: runtime_revision,
+            observed_input_diagnostics: None,
             observed_startup_item: None,
         }
     }
@@ -241,6 +243,15 @@ impl SettingsSnapshotClock {
 
     fn mark_catalog_changed(&mut self) {
         self.revision = self.revision.saturating_add(1);
+    }
+
+    fn observe_input_diagnostics(&mut self, diagnostics: SettingsInputDiagnostics) {
+        match self.observed_input_diagnostics.replace(diagnostics) {
+            Some(previous) if previous != diagnostics => {
+                self.revision = self.revision.saturating_add(1);
+            }
+            Some(_) | None => {}
+        }
     }
 
     fn observe_startup_item(&mut self, status: SettingsStartupItemStatus) {
@@ -260,7 +271,9 @@ fn snapshot(
     startup_item: SettingsStartupItemStatus,
 ) -> SettingsSnapshot {
     let runtime = application.runtime_client().snapshot();
+    let input_diagnostics = settings_input_diagnostics(&runtime.input);
     clock.observe_runtime(runtime.revision);
+    clock.observe_input_diagnostics(input_diagnostics);
     clock.observe_startup_item(startup_item);
     if catalog_changed {
         clock.mark_catalog_changed();
@@ -276,6 +289,7 @@ fn snapshot(
         overlay_visible: runtime.overlay_visible,
         motion_audio_enabled: runtime.motion_audio_enabled,
         startup_item,
+        input_diagnostics,
         active_model: runtime
             .active_model
             .and_then(|model| {
@@ -288,6 +302,30 @@ fn snapshot(
             })
             .or_else(|| configured_model_key(application)),
         model_catalog: settings_model_catalog(application),
+    }
+}
+
+const fn settings_input_diagnostics(input: &InputSnapshot) -> SettingsInputDiagnostics {
+    SettingsInputDiagnostics {
+        pressed_key_count: input.pressed_key_count,
+        pressed_mouse_button_count: input.pressed_mouse_button_count,
+        captured_down: input.diagnostics.captured_down,
+        captured_up: input.diagnostics.captured_up,
+        reconciled_release: input.diagnostics.reconciled_release,
+        released_by_reset: input.diagnostics.released_by_reset,
+        duplicate_down: input.diagnostics.duplicate_down,
+        unmatched_release: input.diagnostics.unmatched_release,
+        invalid_source: input.diagnostics.invalid_source,
+        reset_count: input.diagnostics.reset_count,
+        sequence_gap_count: input.diagnostics.sequence_gap_count,
+        missing_sequence_count: input.diagnostics.missing_sequence_count,
+        duplicate_sequence_count: input.diagnostics.duplicate_sequence_count,
+        out_of_order_sequence_count: input.diagnostics.out_of_order_sequence_count,
+        non_monotonic_time_count: input.diagnostics.non_monotonic_time_count,
+        transport_enqueued: input.transport.enqueued,
+        transport_queue_full: input.transport.queue_full,
+        transport_recovered_after_overflow: input.transport.recovered_after_overflow,
+        transport_runtime_stopped: input.transport.runtime_stopped,
     }
 }
 
@@ -563,6 +601,7 @@ const fn map_model_store_delete_diagnostic(diagnostic: ModelStoreDiagnostic) -> 
 mod tests {
     use super::*;
     use bongocat_config::StorageLayout;
+    use bongocat_runtime::{InputDiagnostics, InputTransportDiagnostics};
     use bongocat_ui::{SettingsModelImportRequest, SettingsStartupItemError};
     use std::sync::{
         Mutex,
@@ -613,6 +652,68 @@ mod tests {
             self.replace(SettingsStartupItemStatus::State(state));
             Ok(state)
         }
+    }
+
+    #[test]
+    fn input_diagnostics_projection_is_complete_and_advances_its_own_revision() {
+        let input = InputSnapshot {
+            pressed_key_count: 1,
+            pressed_mouse_button_count: 2,
+            diagnostics: InputDiagnostics {
+                captured_down: 3,
+                captured_up: 4,
+                reconciled_release: 5,
+                released_by_reset: 6,
+                duplicate_down: 7,
+                unmatched_release: 8,
+                invalid_source: 9,
+                reset_count: 10,
+                sequence_gap_count: 11,
+                missing_sequence_count: 12,
+                duplicate_sequence_count: 13,
+                out_of_order_sequence_count: 14,
+                non_monotonic_time_count: 15,
+            },
+            transport: InputTransportDiagnostics {
+                enqueued: 16,
+                queue_full: 17,
+                recovered_after_overflow: 18,
+                runtime_stopped: 19,
+            },
+            ..InputSnapshot::default()
+        };
+        let projected = settings_input_diagnostics(&input);
+        assert_eq!(projected.pressed_key_count, 1);
+        assert_eq!(projected.pressed_mouse_button_count, 2);
+        assert_eq!(projected.captured_down, 3);
+        assert_eq!(projected.captured_up, 4);
+        assert_eq!(projected.reconciled_release, 5);
+        assert_eq!(projected.released_by_reset, 6);
+        assert_eq!(projected.duplicate_down, 7);
+        assert_eq!(projected.unmatched_release, 8);
+        assert_eq!(projected.invalid_source, 9);
+        assert_eq!(projected.reset_count, 10);
+        assert_eq!(projected.sequence_gap_count, 11);
+        assert_eq!(projected.missing_sequence_count, 12);
+        assert_eq!(projected.duplicate_sequence_count, 13);
+        assert_eq!(projected.out_of_order_sequence_count, 14);
+        assert_eq!(projected.non_monotonic_time_count, 15);
+        assert_eq!(projected.transport_enqueued, 16);
+        assert_eq!(projected.transport_queue_full, 17);
+        assert_eq!(projected.transport_recovered_after_overflow, 18);
+        assert_eq!(projected.transport_runtime_stopped, 19);
+
+        let mut clock = SettingsSnapshotClock::new(40);
+        clock.observe_input_diagnostics(projected);
+        assert_eq!(clock.revision, 40);
+        let changed = SettingsInputDiagnostics {
+            transport_queue_full: 20,
+            ..projected
+        };
+        clock.observe_input_diagnostics(changed);
+        assert_eq!(clock.revision, 41);
+        clock.observe_input_diagnostics(changed);
+        assert_eq!(clock.revision, 41);
     }
 
     fn model_fixture() -> std::path::PathBuf {

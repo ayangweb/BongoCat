@@ -405,7 +405,7 @@ fn run_startup_item_smoke() -> Result<(), Box<dyn std::error::Error>> {
     write_smoke_status(&format!("startup-item original state {original:?}"))?;
 
     let exercise: Result<(), String> = (|| match original {
-        StartupItemState::Disabled => {
+        StartupItemState::Disabled | StartupItemState::NotFound => {
             let enabled =
                 set_startup_item_enabled(environment, true).map_err(|error| error.to_string())?;
             if !matches!(
@@ -433,13 +433,15 @@ fn run_startup_item_smoke() -> Result<(), Box<dyn std::error::Error>> {
         StartupItemState::Unsupported(reason) => Err(format!(
             "startup-item capability is unsupported: {reason:?}"
         )),
-        StartupItemState::Stale | StartupItemState::NotFound => Err(format!(
+        StartupItemState::Stale => Err(format!(
             "startup-item bundle produced an invalid initial state: {original:?}"
         )),
     })();
 
     let restoration = match original {
-        StartupItemState::Disabled => set_startup_item_enabled(environment, false),
+        StartupItemState::Disabled | StartupItemState::NotFound => {
+            set_startup_item_enabled(environment, false)
+        }
         StartupItemState::Enabled | StartupItemState::RequiresApproval => {
             set_startup_item_enabled(environment, true)
         }
@@ -447,7 +449,9 @@ fn run_startup_item_smoke() -> Result<(), Box<dyn std::error::Error>> {
     };
     exercise.map_err(io::Error::other)?;
     let restored = restoration?;
-    if restored != original {
+    let restored_matches = restored == original
+        || (original == StartupItemState::NotFound && restored == StartupItemState::Disabled);
+    if !restored_matches {
         return Err(format!(
             "startup-item state was not restored: expected {original:?}, got {restored:?}"
         )
@@ -877,17 +881,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             cx.spawn(async move |cx| {
                 Timer::after(Duration::from_millis(500)).await;
                 #[cfg(target_os = "macos")]
-                let general_page = cx.update(|cx| -> Result<(), String> {
+                let settings_pages = cx.update(|cx| -> Result<(), String> {
                     smoke_window
-                        .update(cx, |view, _, cx| view.show_general_page_for_smoke(cx))
+                        .update(cx, |view, _, cx| {
+                            view.show_general_page_for_smoke(cx)?;
+                            view.show_diagnostics_page_for_smoke(cx)
+                        })
                         .map_err(|error| error.to_string())?
                 });
                 #[cfg(target_os = "windows")]
-                let general_page = update_windows_settings(cx, smoke_window, |view, _, cx| {
-                    view.show_general_page_for_smoke(cx)
+                let settings_pages = update_windows_settings(cx, smoke_window, |view, _, cx| {
+                    view.show_general_page_for_smoke(cx)?;
+                    view.show_diagnostics_page_for_smoke(cx)
                 })
                 .await;
-                match general_page {
+                match settings_pages {
                     Ok(Ok(())) => {}
                     Ok(Err(error)) => {
                         record_failure(&smoke_failures, error);

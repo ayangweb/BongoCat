@@ -101,6 +101,9 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
 - 启动项等系统能力通过 UI 自有的 typed platform snapshot 显示，由 settings service worker
   读取和显式变更；外部状态变化递增 settings revision。读取失败只形成可重试状态，写入失败
   不改变 config/runtime，Development macOS 的 unsupported 状态不允许发出变更 command。
+- 输入诊断通过 UI 自有的计数型 snapshot 投影 captured/reconciled/reset、sequence 和可靠队列
+  transport 指标；不得包含具体按键、原始事件或时间戳。即使 queue full 等 transport-only 变化
+  未推进 runtime revision，settings service 也必须观察投影变化并推进 settings revision。
 - 设置控件的辅助功能语义由 UI crate 维护项目自有 AccessKit tree；平台 adapter 只通过
   GPUI 公开的 raw window handle 安装，辅助技术 action 经有界强类型通道回到 GPUI 主线程。
 - 辅助功能实现不得使用 GPUI 私有 renderer、隐藏原生控件或独立业务状态副本；可见控件、

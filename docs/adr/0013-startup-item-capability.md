@@ -22,8 +22,8 @@ app login item，会覆盖同一用户的生产启动项系统状态。Windows �
   路径和 `--run-seconds 0`；状态检测必须区分完全匹配与 stale value；禁用只删除当前环境的
   value，不读取或修改另一环境。
 - macOS 13+ Production `.app` 使用 `SMAppService.mainAppService`。状态映射保留
-  not-registered、enabled、requires-approval 和 not-found；注册/取消注册错误只向上返回稳定
-  匿名 code。
+  not-registered、enabled、requires-approval 和 not-found；`not-found` 是可显式尝试注册的
+  预注册状态，不在 adapter 或 UI 提前判为无效。注册/取消注册错误只向上返回稳定匿名 code。
 - macOS 12 返回明确的 unsupported capability，应用其余功能继续运行。不得回退到已废弃的
   `SMLoginItemSetEnabled`、自行写 LaunchAgent 或修改用户登录项数据库。
 - macOS Development 构建只报告 unsupported build environment，不注册或取消注册
@@ -49,5 +49,6 @@ app login item，会覆盖同一用户的生产启动项系统状态。Windows �
   触及当前环境 value。
 - macOS 12 availability probe 不引用缺失 class；macOS 13+ Production bundle smoke 从
   `/Applications` 的临时安装目录覆盖 status、register/unregister 和 requires-approval 映射，
-  结束时恢复原状态并注销/删除临时 bundle。
+  结束时恢复原状态并注销/删除临时 bundle。首次 `not-found` 注册后取消注册允许规范化为
+  `not-registered`，因为两者都不留下启用的登录项。
 - 双平台 smoke 后运行完整 Native format、Clippy、workspace test 和 release check。

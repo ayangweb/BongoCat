@@ -23,6 +23,29 @@ pub enum RuntimeHealth {
     Stopped,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct SettingsInputDiagnostics {
+    pub pressed_key_count: usize,
+    pub pressed_mouse_button_count: usize,
+    pub captured_down: u64,
+    pub captured_up: u64,
+    pub reconciled_release: u64,
+    pub released_by_reset: u64,
+    pub duplicate_down: u64,
+    pub unmatched_release: u64,
+    pub invalid_source: u64,
+    pub reset_count: u64,
+    pub sequence_gap_count: u64,
+    pub missing_sequence_count: u64,
+    pub duplicate_sequence_count: u64,
+    pub out_of_order_sequence_count: u64,
+    pub non_monotonic_time_count: u64,
+    pub transport_enqueued: u64,
+    pub transport_queue_full: u64,
+    pub transport_recovered_after_overflow: u64,
+    pub transport_runtime_stopped: u64,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SettingsSnapshot {
     pub revision: u64,
@@ -30,6 +53,7 @@ pub struct SettingsSnapshot {
     pub overlay_visible: bool,
     pub motion_audio_enabled: bool,
     pub startup_item: SettingsStartupItemStatus,
+    pub input_diagnostics: SettingsInputDiagnostics,
     pub active_model: Option<SettingsModelKey>,
     pub model_catalog: SettingsModelCatalog,
 }
@@ -887,6 +911,7 @@ mod tests {
             overlay_visible,
             motion_audio_enabled,
             startup_item: SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),
+            input_diagnostics: SettingsInputDiagnostics::default(),
             active_model: Some(SettingsModelKey {
                 id: "standard".to_owned(),
                 origin: SettingsModelOrigin::Preset,
