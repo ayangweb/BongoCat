@@ -50,6 +50,9 @@ BONGOCAT_BUILD_ENV=production cargo build -p bongocat-app --release
 
 The application does not expose a runtime environment switch. Both environments use the same
 schema and relative layout under separate `development/` and `production/` roots.
+The formal startup API always resolves that root from the compiled environment. Process-level tests
+that require an isolated temporary layout must explicitly enable `storage-test-injection`; the
+feature is absent from the default CLI/API and is rejected at compile time for Production builds.
 
 ## Verification
 

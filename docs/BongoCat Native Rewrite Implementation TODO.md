@@ -946,6 +946,10 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
     `99459402171`/`99459401995`、Windows input/config job `99459402076` 和 config-store job
     `99459402352` 同时通过。
 - [ ] path resolver 返回当前平台与环境的数据根，不能接受任意外部生产路径。
+  - 状态（2026-08-31）：正式 `Application::start` 已只使用编译期环境和平台 resolver；任意
+    `StorageLayout` 注入现仅编译进显式 Development `storage-test-injection` 测试产物，默认
+    CLI/API 不包含该入口，Production 与该 feature 的组合在编译期拒绝。定向与完整跨平台证据由
+    `P6-STORAGE-LAYOUT-BOUNDARY` 跟踪，因此总项暂不勾选。
 - [ ] 实现 load -> parse -> validate -> upgrade native schema -> atomic commit -> verify。
 - [x] backup 包含 Native schema 版本和时间，并限制数量与总大小。
   - 验收证据（2026-08-31）：正式 `bongocat-config` 在替换前生成 v1 envelope，保存真实墙上
@@ -1581,9 +1585,10 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       `e2ced51` 的 pull request run `33374202985` 全绿；Windows/macOS/Ubuntu Native jobs
       `99431897523`/`99431897620`/`99431897612`、Windows input/config job `99431897588`、
       Windows GPUI jobs `99431897503`/`99431897512` 和 macOS GPUI job `99431897618` 均通过。
-      正式产品另已加入 `--configuration-recovery-smoke`，只在独立临时存储根写入损坏 current，
-      验证匿名 recovery snapshot、真实 recovery-only GPUI 窗口、settings service 有序停止与临时
-      数据清理；本机 macOS smoke 通过。commit `175e7a4` 的 pull request run `33376471972` 全绿，
+      显式 Development 测试产物另提供 `--configuration-recovery-smoke`，只在独立临时存储根
+      写入损坏 current，验证匿名 recovery snapshot、真实 recovery-only GPUI 窗口、settings service
+      有序停止与临时数据清理；本机 macOS smoke 通过。commit `175e7a4` 的 pull request run
+      `33376471972` 全绿，
       Windows/macOS/Ubuntu Native jobs `99438972370`/`99438972328`/`99438972320` 通过完整门禁，
       Windows 与 macOS Native jobs 均实际通过新增 recovery window smoke；Windows input/config job
       `99438972066` 及双平台 GPUI spike jobs 同时通过，退出条件满足。
@@ -1626,6 +1631,15 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       release、显式 Production 和隐式环境拒绝门禁；macOS job 还在 Cargo 前覆盖缺失、空与未知
       packaging 值，双平台 GPUI、Windows input/config、dependency policy 与 config-store jobs
       同时通过，退出条件满足。
+42. [ ] `P6-STORAGE-LAYOUT-BOUNDARY`：隔离正式平台路径解析与临时测试存储注入。
+    - 依赖：`P6-BUILD-ENV-METADATA`、ADR-0008、正式 `Application::start` 与 recovery window smoke。
+    - 退出条件：默认产品 API/CLI 不接受 `StorageLayout`、根目录或 recovery storage override；
+      正式启动只以 immutable build environment 调用当前平台 resolver；临时根注入必须显式启用
+      Development-only feature，Production 组合在编译期失败；恢复窗口 smoke 使用独立测试产物且
+      不覆盖默认 release binary；默认/feature 参数 contract、Production 拒绝、完整 Native workspace、
+      三平台 CI、Windows input/config 与双平台 recovery window smoke 通过。
+    - 状态（2026-08-31）：产品/测试 API、CLI feature gate、Production compile guard、独立 CI target
+      和本机 contract 已实现；完整 workspace 与跨平台证据随当前提交验证。
 
 ## 13. 待决策清单
 

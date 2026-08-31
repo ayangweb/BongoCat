@@ -8,6 +8,9 @@ repository.workspace = true
 publish.workspace = true
 build = "build.rs"
 
+[features]
+storage-test-injection = []
+
 [dependencies]
 bongocat-audio.workspace = true
 bongocat-config.workspace = true

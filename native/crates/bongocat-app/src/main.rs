@@ -35,6 +35,7 @@ struct RunOptions {
     run_duration: Duration,
     settings_window_smoke: bool,
     models_page_smoke: bool,
+    #[cfg(feature = "storage-test-injection")]
     configuration_recovery_smoke: bool,
     system_menu_smoke: bool,
     #[cfg(target_os = "macos")]
@@ -52,6 +53,7 @@ impl RunOptions {
         let mut run_seconds = DEFAULT_RUN_SECONDS;
         let mut settings_window_smoke = false;
         let mut models_page_smoke = false;
+        #[cfg(feature = "storage-test-injection")]
         let mut configuration_recovery_smoke = false;
         let mut system_menu_smoke = false;
         #[cfg(target_os = "macos")]
@@ -75,6 +77,7 @@ impl RunOptions {
                     models_page_smoke = true;
                     settings_window_smoke = true;
                 }
+                #[cfg(feature = "storage-test-injection")]
                 "--configuration-recovery-smoke" => configuration_recovery_smoke = true,
                 "--system-menu-smoke" => system_menu_smoke = true,
                 #[cfg(target_os = "macos")]
@@ -95,6 +98,7 @@ impl RunOptions {
             run_duration: Duration::from_secs(run_seconds),
             settings_window_smoke,
             models_page_smoke,
+            #[cfg(feature = "storage-test-injection")]
             configuration_recovery_smoke,
             system_menu_smoke,
             #[cfg(target_os = "macos")]
@@ -147,11 +151,17 @@ impl std::error::Error for RunOptionsError {}
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn usage() -> &'static str {
-    #[cfg(target_os = "windows")]
+    #[cfg(all(target_os = "windows", feature = "storage-test-injection"))]
     return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--configuration-recovery-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit.";
 
-    #[cfg(target_os = "macos")]
-    "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--configuration-recovery-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit."
+    #[cfg(all(target_os = "windows", not(feature = "storage-test-injection")))]
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit.";
+
+    #[cfg(all(target_os = "macos", feature = "storage-test-injection"))]
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--configuration-recovery-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit.";
+
+    #[cfg(all(target_os = "macos", not(feature = "storage-test-injection")))]
+    "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit."
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -486,10 +496,16 @@ fn run_configuration_recovery_mode(
     Ok(())
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(all(
+    feature = "storage-test-injection",
+    any(target_os = "macos", target_os = "windows")
+))]
 struct RecoverySmokeRoot(PathBuf);
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(all(
+    feature = "storage-test-injection",
+    any(target_os = "macos", target_os = "windows")
+))]
 impl RecoverySmokeRoot {
     fn cleanup(mut self) -> io::Result<()> {
         let result = std::fs::remove_dir_all(&self.0);
@@ -498,7 +514,10 @@ impl RecoverySmokeRoot {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(all(
+    feature = "storage-test-injection",
+    any(target_os = "macos", target_os = "windows")
+))]
 impl Drop for RecoverySmokeRoot {
     fn drop(&mut self) {
         if !self.0.as_os_str().is_empty() {
@@ -507,7 +526,10 @@ impl Drop for RecoverySmokeRoot {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(all(
+    feature = "storage-test-injection",
+    any(target_os = "macos", target_os = "windows")
+))]
 fn run_configuration_recovery_smoke() -> Result<(), Box<dyn std::error::Error>> {
     use bongocat_config::{BuildEnvironment, ConfigStore, StorageLayout};
 
@@ -587,6 +609,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Err(error) => return Err(Box::new(error)),
     };
+    #[cfg(feature = "storage-test-injection")]
     if run_options.configuration_recovery_smoke {
         return run_configuration_recovery_smoke();
     }
@@ -1681,6 +1704,7 @@ mod tests {
                 run_duration: Duration::from_secs(30),
                 settings_window_smoke: false,
                 models_page_smoke: false,
+                #[cfg(feature = "storage-test-injection")]
                 configuration_recovery_smoke: false,
                 system_menu_smoke: false,
                 #[cfg(target_os = "macos")]
@@ -1731,6 +1755,7 @@ mod tests {
         assert!(!options.single_instance_smoke);
     }
 
+    #[cfg(feature = "storage-test-injection")]
     #[test]
     fn configuration_recovery_smoke_is_opt_in() {
         let options = RunOptions::parse(["--configuration-recovery-smoke".to_owned()])
@@ -1738,6 +1763,15 @@ mod tests {
         assert!(options.configuration_recovery_smoke);
         assert!(!options.settings_window_smoke);
         assert!(!options.models_page_smoke);
+    }
+
+    #[cfg(not(feature = "storage-test-injection"))]
+    #[test]
+    fn product_options_reject_storage_test_injection() {
+        let error = RunOptions::parse(["--configuration-recovery-smoke".to_owned()])
+            .expect_err("default product options must reject storage injection");
+        assert!(error.message.contains("unknown argument"));
+        assert!(!usage().contains("configuration-recovery-smoke"));
     }
 
     #[test]

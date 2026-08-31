@@ -1,5 +1,11 @@
 #![forbid(unsafe_code)]
 
+#[cfg(all(
+    feature = "storage-test-injection",
+    bongocat_build_environment = "production"
+))]
+compile_error!("storage-test-injection cannot be enabled for Production builds");
+
 use bongocat_audio::{MotionAudioService, MotionAudioShutdownError};
 use bongocat_config::{
     BuildEnvironment, ConfigError, ConfigRecovery, ConfigRevision, ConfigStore,
@@ -171,6 +177,7 @@ impl Application {
         )
     }
 
+    #[cfg(feature = "storage-test-injection")]
     #[doc(hidden)]
     pub fn start_with_layout_for_smoke(
         layout: StorageLayout,

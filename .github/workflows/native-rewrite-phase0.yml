@@ -103,6 +103,10 @@ jobs:
             echo 'app build accepted an unknown build environment' >&2
             exit 1
           fi
+          if BONGOCAT_BUILD_ENV=production cargo check --manifest-path native/Cargo.toml --locked -p bongocat-app --release --features storage-test-injection; then
+            echo 'Production app build accepted storage test injection' >&2
+            exit 1
+          fi
       - name: Check release build
         run: cargo check --manifest-path native/Cargo.toml --locked --workspace --release
       - name: Check production environment build
@@ -307,7 +311,7 @@ jobs:
       - name: Smoke macOS configuration recovery window
         if: matrix.os == 'macos-latest'
         run: |
-          output=$(cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release -- --configuration-recovery-smoke 2>&1)
+          output=$(cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release --features storage-test-injection --target-dir native/target/storage-test-injection -- --configuration-recovery-smoke 2>&1)
           printf '%s\n' "$output"
           grep -Fq 'bongocat-app: configuration recovery required' <<<"$output"
           grep -Fq 'bongocat-app: recovery window opened' <<<"$output"
@@ -318,10 +322,12 @@ jobs:
         shell: pwsh
         timeout-minutes: 3
         run: |
-          $executable = Join-Path $PWD "native/target/release/bongocat-app.exe"
+          $smokeTarget = Join-Path $PWD "native/target/storage-test-injection"
+          cargo build --manifest-path native/Cargo.toml --locked -p bongocat-app --release --features storage-test-injection --target-dir $smokeTarget
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $executable = Join-Path $smokeTarget "release/bongocat-app.exe"
           if (-not (Test-Path $executable)) {
-            cargo build --manifest-path native/Cargo.toml --locked -p bongocat-app --release
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            throw "storage injection smoke executable was not built"
           }
           $stdout = Join-Path $env:RUNNER_TEMP "bongocat-recovery-window.stdout.log"
           $stderr = Join-Path $env:RUNNER_TEMP "bongocat-recovery-window.stderr.log"

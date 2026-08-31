@@ -24,7 +24,10 @@ Development
 Production
 ```
 
-环境由受控构建入口显式写入构建元数据。应用启动后不能通过 CLI、环境变量或设置项切换环境；测试必须显式注入隔离临时根目录。
+环境由受控构建入口显式写入构建元数据。应用启动后不能通过 CLI、环境变量或设置项切换环境。
+正式启动 API 只从当前平台与该编译期环境解析数据根，不接受调用方传入 `StorageLayout` 或路径。
+需要隔离临时根目录的进程级测试必须显式启用 `storage-test-injection`，该能力不进入默认产品
+CLI/API，并且 Production 构建与该 feature 的组合在编译期失败。
 
 持久数据根目录为：
 
@@ -55,10 +58,12 @@ Native Rewrite 不读取或导入旧 Tauri/Pinia 配置。配置 JSON 键统一�
 - 旧配置目录和字段只保留为历史行为参考，不进入生产 dependency graph 或发布产物。
 - 用户模型仍可通过受验证的显式导入流程加入；不会根据旧配置路径自动发现或搬运。
 - 构建和打包任务必须拒绝缺失或未知的环境值。
+- Production 构建不能携带存储根注入能力；恢复窗口等进程级测试使用独立 Development 测试产物。
 
 ## Verification
 
 - 对 Windows/macOS path resolver 分别测试 Development 和 Production，断言根目录不同且内部相对结构一致。
+- 默认产品参数拒绝存储测试入口；CI 证明 Production + `storage-test-injection` 构建失败。
 - 在两个环境写入不同 sentinel，重启后只读取各自数据。
 - 验证锁、日志、备份、模型目录和更新 channel 均无跨环境访问。
 - 发布产物验证 Bundle ID 精确等于 `com.ayangweb.bongo-cat`。

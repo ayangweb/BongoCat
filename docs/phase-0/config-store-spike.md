@@ -67,9 +67,10 @@ quarantine 也已各自具有独立有界保留策略。
 recovery-only GPUI 窗口和显式 typed 恢复默认 command；恢复前禁止业务写入，恢复后要求重启，原
 损坏字节继续进入有界 quarantine。commit `e2ced51` 的 run `33374202985` 已通过 Windows/macOS/
 Ubuntu Native workspace、双平台 GPUI smoke 和 Windows input/config job，但尚未专门启动损坏
-current 且无备份的 recovery-only 产品窗口。正式产品现已增加只使用独立临时存储根的受控
-`--configuration-recovery-smoke`，本机 macOS 已验证 recovery snapshot、真实窗口、service join
-和临时数据清理；commit `175e7a4` 的 run `33376471972` 随后在 Windows/macOS Native jobs
+current 且无备份的 recovery-only 产品窗口。显式 `storage-test-injection` Development 测试产物
+现提供只使用独立临时存储根的受控 `--configuration-recovery-smoke`，本机 macOS 已验证
+recovery snapshot、真实窗口、service join 和临时数据清理；commit `175e7a4` 的 run
+`33376471972` 随后在 Windows/macOS Native jobs
 `99438972370`/`99438972328` 实际通过同一 recovery window smoke，`P6-CONFIG-SAFE-RECOVERY`
 退出条件满足。正式 config crate 随后增加权限/只读、空间/配额不足和目标占用的稳定匿名
 分类；单元测试在 temp 创建前后注入权限与磁盘满，并用真实文件/目录占用固定 temp，验证 current 与
