@@ -438,7 +438,8 @@ com.ayangweb.bongo-cat
 - 当前配置 parse/validate 失败且不是未来 schema 时，只在同一 writer lock 内从新到旧检查
   自有备份，并同时验证 envelope 格式、源 schema、源 revision 和完整 typed config。恢复前将损坏原文写入独立的
   `config-corrupt-*.bin` 自有 quarantine，最多 4 份且总计不超过 8 MiB；恢复后重新读取验证，
-  app 只公开源 schema 与跳过候选数等匿名诊断。没有有效候选、quarantine 失败或恢复验证失败时
+  app 只公开源 schema 与跳过候选数等匿名诊断；settings service 将该诊断投影到 Diagnostics，
+  不公开备份/配置路径、原始 JSON、时间戳或底层 I/O 文本。没有有效候选、quarantine 失败或恢复验证失败时
   不回落默认值，也不读取另一环境；当前损坏原文继续保留在 `config.json` 或 quarantine 中。
   高于当前版本的 schema 直接报告不支持并保持原文件，禁止降级覆盖较新配置。
 - `config.json` 只包含用户设置；窗口布局写入 `state.json`，pressed state、权限结果和模型解析缓存不持久化。

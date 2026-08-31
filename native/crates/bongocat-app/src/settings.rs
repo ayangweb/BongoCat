@@ -12,8 +12,8 @@ use bongocat_runtime::{InputSnapshot, RuntimeState};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_ui::SettingsStartupItemError;
 use bongocat_ui::{
-    RuntimeHealth, SettingsClient, SettingsCommand, SettingsError, SettingsErrorCode,
-    SettingsInputDiagnostics, SettingsModelAvailability, SettingsModelCatalog,
+    RuntimeHealth, SettingsClient, SettingsCommand, SettingsConfigRecovery, SettingsError,
+    SettingsErrorCode, SettingsInputDiagnostics, SettingsModelAvailability, SettingsModelCatalog,
     SettingsModelCatalogError, SettingsModelDiagnostic, SettingsModelEntry,
     SettingsModelImportProgress, SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin,
     SettingsServiceEndpoint, SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
@@ -289,6 +289,12 @@ fn snapshot(
         overlay_visible: runtime.overlay_visible,
         motion_audio_enabled: runtime.motion_audio_enabled,
         startup_item,
+        config_recovery: application
+            .config_recovery()
+            .map(|recovery| SettingsConfigRecovery {
+                source_schema_version: recovery.source_schema_version(),
+                skipped_newer_backups: recovery.skipped_newer_backups(),
+            }),
         input_diagnostics,
         active_model: runtime
             .active_model
@@ -600,7 +606,7 @@ const fn map_model_store_delete_diagnostic(diagnostic: ModelStoreDiagnostic) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bongocat_config::StorageLayout;
+    use bongocat_config::{ConfigStore, StorageLayout};
     use bongocat_runtime::{InputDiagnostics, InputTransportDiagnostics};
     use bongocat_ui::{SettingsModelImportRequest, SettingsStartupItemError};
     use std::sync::{
@@ -714,6 +720,36 @@ mod tests {
         assert_eq!(clock.revision, 41);
         clock.observe_input_diagnostics(changed);
         assert_eq!(clock.revision, 41);
+    }
+
+    #[test]
+    fn service_projects_anonymous_configuration_recovery_across_refresh_and_shutdown() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let store = ConfigStore::new(layout.clone()).expect("config store");
+        let mut config = store.load_or_default().expect("default config").config;
+        config.overlay.visible = false;
+        store.commit(&config).expect("hidden config commit");
+        config.overlay.visible = true;
+        store.commit(&config).expect("visible config commit");
+        std::fs::write(&layout.config, b"corrupt-current").expect("corrupt current config");
+
+        let application = Application::start_with_layout(layout).expect("recovered application");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+        let expected = Some(SettingsConfigRecovery {
+            source_schema_version: bongocat_config::SCHEMA_VERSION,
+            skipped_newer_backups: 0,
+        });
+
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        assert_eq!(initial.config_recovery, expected);
+        let refreshed = client.read_snapshot_blocking().expect("refreshed snapshot");
+        assert_eq!(refreshed.config_recovery, expected);
+        assert_eq!(refreshed.revision, initial.revision);
+        let stopped = client.shutdown_blocking().expect("service shutdown");
+        assert_eq!(stopped.config_recovery, expected);
+        service.join().expect("service join");
     }
 
     fn model_fixture() -> std::path::PathBuf {

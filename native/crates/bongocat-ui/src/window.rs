@@ -1,9 +1,9 @@
 use crate::{
-    RuntimeHealth, SettingsClient, SettingsError, SettingsErrorCode, SettingsInputDiagnostics,
-    SettingsModelAvailability, SettingsModelDiagnostic, SettingsModelEntry,
-    SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
-    SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsOperationId,
-    SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
+    RuntimeHealth, SettingsClient, SettingsConfigRecovery, SettingsError, SettingsErrorCode,
+    SettingsInputDiagnostics, SettingsModelAvailability, SettingsModelDiagnostic,
+    SettingsModelEntry, SettingsModelImportMonitor, SettingsModelImportOperation,
+    SettingsModelImportRequest, SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin,
+    SettingsOperationId, SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
     SettingsStartupItemUnsupportedReason,
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -664,6 +664,10 @@ impl SettingsView {
             .ok_or_else(|| "diagnostics page has not received a settings snapshot".to_owned())?;
         if input_diagnostic_metrics(snapshot.input_diagnostics).len() != 19 {
             return Err("diagnostics page did not project every input counter".to_owned());
+        }
+        let recovery = config_recovery_presentation(snapshot.config_recovery);
+        if recovery.title.is_empty() || recovery.detail.is_empty() {
+            return Err("diagnostics page did not project configuration recovery".to_owned());
         }
         Ok(())
     }
@@ -1945,42 +1949,82 @@ impl Render for SettingsView {
                     .overflow_y_scroll()
                     .when_some(snapshot.as_ref(), |content, snapshot| {
                         let metrics = input_diagnostic_metrics(snapshot.input_diagnostics);
-                        content.child(
-                            div()
-                                .flex()
-                                .items_start()
-                                .gap_5()
-                                .child(
-                                    div()
-                                        .min_w_0()
-                                        .flex_1()
-                                        .child(diagnostic_group(
-                                            "Current state",
-                                            &metrics[..2],
-                                            tokens,
-                                        ))
-                                        .child(diagnostic_group(
-                                            "Input processing",
-                                            &metrics[2..10],
-                                            tokens,
-                                        )),
-                                )
-                                .child(
-                                    div()
-                                        .min_w_0()
-                                        .flex_1()
-                                        .child(diagnostic_group(
-                                            "Sequence recovery",
-                                            &metrics[10..15],
-                                            tokens,
-                                        ))
-                                        .child(diagnostic_group(
-                                            "Transport",
-                                            &metrics[15..],
-                                            tokens,
-                                        )),
-                                ),
-                        )
+                        let recovery = config_recovery_presentation(snapshot.config_recovery);
+                        content
+                            .child(
+                                div()
+                                    .id("config-recovery-diagnostics")
+                                    .pb_3()
+                                    .mb_3()
+                                    .border_b_1()
+                                    .border_color(tokens.border)
+                                    .flex()
+                                    .items_center()
+                                    .justify_between()
+                                    .gap_4()
+                                    .child(
+                                        div()
+                                            .min_w_0()
+                                            .flex_1()
+                                            .flex()
+                                            .flex_col()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .text_sm()
+                                                    .text_color(tokens.muted)
+                                                    .child("Configuration"),
+                                            )
+                                            .child(div().text_sm().child(recovery.title)),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex_none()
+                                            .text_sm()
+                                            .text_color(if recovery.recovered {
+                                                tokens.accent
+                                            } else {
+                                                tokens.muted
+                                            })
+                                            .child(recovery.detail),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_start()
+                                    .gap_5()
+                                    .child(
+                                        div()
+                                            .min_w_0()
+                                            .flex_1()
+                                            .child(diagnostic_group(
+                                                "Current state",
+                                                &metrics[..2],
+                                                tokens,
+                                            ))
+                                            .child(diagnostic_group(
+                                                "Input processing",
+                                                &metrics[2..10],
+                                                tokens,
+                                            )),
+                                    )
+                                    .child(
+                                        div()
+                                            .min_w_0()
+                                            .flex_1()
+                                            .child(diagnostic_group(
+                                                "Sequence recovery",
+                                                &metrics[10..15],
+                                                tokens,
+                                            ))
+                                            .child(diagnostic_group(
+                                                "Transport",
+                                                &metrics[15..],
+                                                tokens,
+                                            )),
+                                    ),
+                            )
                     }),
             );
 
@@ -2099,6 +2143,38 @@ fn input_diagnostic_metrics(diagnostics: SettingsInputDiagnostics) -> [(&'static
             diagnostics.transport_runtime_stopped,
         ),
     ]
+}
+
+struct ConfigRecoveryPresentation {
+    title: &'static str,
+    detail: String,
+    recovered: bool,
+}
+
+fn config_recovery_presentation(
+    recovery: Option<SettingsConfigRecovery>,
+) -> ConfigRecoveryPresentation {
+    match recovery {
+        Some(recovery) => ConfigRecoveryPresentation {
+            title: "Recovered from backup",
+            detail: format!(
+                "Schema v{} · {} newer backup{} skipped",
+                recovery.source_schema_version,
+                recovery.skipped_newer_backups,
+                if recovery.skipped_newer_backups == 1 {
+                    ""
+                } else {
+                    "s"
+                }
+            ),
+            recovered: true,
+        },
+        None => ConfigRecoveryPresentation {
+            title: "Loaded normally",
+            detail: "No recovery".to_owned(),
+            recovered: false,
+        },
+    }
 }
 
 fn diagnostic_group(
@@ -2600,6 +2676,29 @@ mod tests {
         assert!(metrics.iter().all(|(label, _)| {
             !label.contains("HID") && !label.contains("path") && !label.contains("timestamp value")
         }));
+    }
+
+    #[test]
+    fn configuration_recovery_presentation_is_anonymous_and_complete() {
+        let normal = config_recovery_presentation(None);
+        assert_eq!(normal.title, "Loaded normally");
+        assert_eq!(normal.detail, "No recovery");
+        assert!(!normal.recovered);
+
+        let recovered = config_recovery_presentation(Some(SettingsConfigRecovery {
+            source_schema_version: 2,
+            skipped_newer_backups: 3,
+        }));
+        assert_eq!(recovered.title, "Recovered from backup");
+        assert_eq!(recovered.detail, "Schema v2 · 3 newer backups skipped");
+        assert!(recovered.recovered);
+        assert!(!recovered.detail.contains('/') && !recovered.detail.contains('\\'));
+
+        let one_skipped = config_recovery_presentation(Some(SettingsConfigRecovery {
+            source_schema_version: 2,
+            skipped_newer_backups: 1,
+        }));
+        assert_eq!(one_skipped.detail, "Schema v2 · 1 newer backup skipped");
     }
 
     #[test]

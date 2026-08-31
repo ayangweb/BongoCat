@@ -46,6 +46,12 @@ pub struct SettingsInputDiagnostics {
     pub transport_runtime_stopped: u64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SettingsConfigRecovery {
+    pub source_schema_version: u32,
+    pub skipped_newer_backups: u32,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SettingsSnapshot {
     pub revision: u64,
@@ -53,6 +59,7 @@ pub struct SettingsSnapshot {
     pub overlay_visible: bool,
     pub motion_audio_enabled: bool,
     pub startup_item: SettingsStartupItemStatus,
+    pub config_recovery: Option<SettingsConfigRecovery>,
     pub input_diagnostics: SettingsInputDiagnostics,
     pub active_model: Option<SettingsModelKey>,
     pub model_catalog: SettingsModelCatalog,
@@ -911,6 +918,7 @@ mod tests {
             overlay_visible,
             motion_audio_enabled,
             startup_item: SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),
+            config_recovery: None,
             input_diagnostics: SettingsInputDiagnostics::default(),
             active_model: Some(SettingsModelKey {
                 id: "standard".to_owned(),
