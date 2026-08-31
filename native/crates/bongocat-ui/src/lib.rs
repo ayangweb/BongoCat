@@ -210,6 +210,7 @@ pub struct SettingsSnapshot {
     pub overlay: SettingsOverlay,
     pub motion_audio_enabled: bool,
     pub model_settings: SettingsModelSettings,
+    pub gamepad_axis_settings: SettingsGamepadAxisSettings,
     pub startup_item: SettingsStartupItemStatus,
     pub configuration_status: SettingsConfigurationStatus,
     pub config_recovery: Option<SettingsConfigRecovery>,
@@ -224,6 +225,12 @@ pub struct SettingsModelSettings {
     pub mirror: bool,
     pub mirror_pointer_tracking: bool,
     pub ignore_pointer: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct SettingsGamepadAxisSettings {
+    pub stick_dead_zone_percent: u8,
+    pub trigger_dead_zone_percent: u8,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -534,6 +541,7 @@ pub enum SettingsErrorCode {
     ServiceUnavailable,
     SnapshotOutdated,
     RuntimeUnavailable,
+    InvalidGamepadAxisSettings,
     ConfigPersistFailed,
     ConfigPermissionDenied,
     ConfigStorageFull,
@@ -564,10 +572,11 @@ pub enum SettingsErrorCode {
 }
 
 impl SettingsErrorCode {
-    pub const ALL: [Self; 30] = [
+    pub const ALL: [Self; 31] = [
         Self::ServiceUnavailable,
         Self::SnapshotOutdated,
         Self::RuntimeUnavailable,
+        Self::InvalidGamepadAxisSettings,
         Self::ConfigPersistFailed,
         Self::ConfigPermissionDenied,
         Self::ConfigStorageFull,
@@ -602,6 +611,7 @@ impl SettingsErrorCode {
             Self::ServiceUnavailable => "service_unavailable",
             Self::SnapshotOutdated => "snapshot_outdated",
             Self::RuntimeUnavailable => "runtime_unavailable",
+            Self::InvalidGamepadAxisSettings => "invalid_gamepad_axis_settings",
             Self::ConfigPersistFailed => "config_persist_failed",
             Self::ConfigPermissionDenied => "config_permission_denied",
             Self::ConfigStorageFull => "config_storage_full",
@@ -656,6 +666,9 @@ impl fmt::Display for SettingsError {
                 "settings changed in the background; review the latest values and retry"
             }
             SettingsErrorCode::RuntimeUnavailable => "runtime did not apply the setting",
+            SettingsErrorCode::InvalidGamepadAxisSettings => {
+                "gamepad dead-zone settings are out of range"
+            }
             SettingsErrorCode::ConfigPersistFailed => "setting could not be saved",
             SettingsErrorCode::ConfigPermissionDenied => {
                 "configuration storage is not writable; check permissions and retry"
@@ -737,6 +750,11 @@ pub enum SettingsCommand {
     SetModelSettings {
         expected_config_revision: u64,
         settings: SettingsModelSettings,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    SetGamepadAxisSettings {
+        expected_config_revision: u64,
+        settings: SettingsGamepadAxisSettings,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     SetStartupItemEnabled {
@@ -848,6 +866,19 @@ impl SettingsClient {
         settings: SettingsModelSettings,
     ) -> Result<SettingsSnapshot, SettingsError> {
         self.request(|reply| SettingsCommand::SetModelSettings {
+            expected_config_revision,
+            settings,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn set_gamepad_axis_settings(
+        &self,
+        expected_config_revision: u64,
+        settings: SettingsGamepadAxisSettings,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetGamepadAxisSettings {
             expected_config_revision,
             settings,
             reply,
@@ -978,6 +1009,18 @@ impl SettingsClient {
         settings: SettingsModelSettings,
     ) -> Result<SettingsSnapshot, SettingsError> {
         self.request_blocking(|reply| SettingsCommand::SetModelSettings {
+            expected_config_revision,
+            settings,
+            reply,
+        })
+    }
+
+    pub fn set_gamepad_axis_settings_blocking(
+        &self,
+        expected_config_revision: u64,
+        settings: SettingsGamepadAxisSettings,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::SetGamepadAxisSettings {
             expected_config_revision,
             settings,
             reply,
@@ -1511,6 +1554,7 @@ mod tests {
             overlay: SettingsOverlay::default(),
             motion_audio_enabled,
             model_settings: SettingsModelSettings::default(),
+            gamepad_axis_settings: SettingsGamepadAxisSettings::default(),
             startup_item: SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),
             configuration_status: SettingsConfigurationStatus::Ready,
             config_recovery: None,

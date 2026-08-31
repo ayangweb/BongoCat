@@ -553,8 +553,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 定义手柄按钮、axis、trigger、dead-zone 和断开复位。
   - 状态（2026-08-31）：正式 runtime 已接入带 device generation 的 16 个标准手柄按钮、可靠
     pressed edge、匿名计数和 Reset；六轴/trigger 的 generation-keyed latest-value、dead-zone
-    与 Stick 参数投影已完成。平台采集、连接/断开生命周期和实机验证仍由后续
-    `P2-GAMEPAD-RUNTIME` 子任务完成。
+    与 Stick 参数投影已完成；Settings service/client 与 General 页面现可 revision-checked
+    持久化 stick/trigger dead-zone。平台采集、连接/断开生命周期和实机验证仍待完成。
 - [x] 每个 pressed key 记录来源、按下时间和最后校正时间。
   - 验收证据（2026-08-30）：runtime owner 的私有 `PressedRecord` 保存 `InputSource`、
     `MonotonicMillis pressed_at` 与最近一次仍按下校正时间；单元测试固定三字段，并确保
@@ -644,8 +644,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 在 spike 中拒绝损坏配置并保留原始文件；中断提交恢复会保守提升有效临时文件并归档无效/陈旧副本，隔离备份保留策略、默认恢复和 GPUI 用户诊断仍未完成。
 - [ ] 配置写入去抖，退出前强制 flush。
 - [ ] GPUI 只通过 typed command 获取 snapshot 和提交 patch。
-  - 状态（2026-08-31）：正式 UI 对已接入的显隐与 motion audio 只使用有界 typed
-    command/reply，成功结果携带新 runtime revision，文件写入在 app service worker 完成；
+  - 状态（2026-09-01）：正式 UI 对显隐、motion audio、模型交互和 gamepad dead-zone 使用有界
+    typed command/reply，成功结果携带新 runtime revision，文件写入在 app service worker 完成；
     其余配置域尚未接入，故总项保持未勾选。
 - [x] 在 spike 中以包含环境目录的持久 `locks/config.writer.lock` 拒绝并发 writer，并通过 OS advisory lock 在 guard drop 后允许重试。
 - [x] 强制终止持锁进程后由内核释放 writer lock，下一进程可恢复已 flush 的临时配置且不覆盖当前配置。
@@ -943,7 +943,7 @@ overlay owner；设置更新失败时保留旧 snapshot。scale/opacity 的可�
     只接受不早于当前快照的 revision。已接入的显隐、overlay 设置和 motion audio command
     均携带提交时的 `expected_config_revision`，settings worker 在配置/runtime/模型切换前拒绝过期编辑并返回匿名
     `SnapshotOutdated`；冲突后 UI 自动读取最新 snapshot 并保留可操作错误。正式 app 回归
-    验证显隐、overlay、motion audio 和模型选择的过期提交不改变 runtime 状态、配置字节或 revision，成功提交、错误文案和 shutdown
+    验证显隐、overlay、motion audio、模型交互和 gamepad dead-zone 的过期提交不改变 runtime 状态、配置字节或 revision，成功提交、错误文案和 shutdown
     路径均通过 `bongocat-app`/`bongocat-ui` 定向测试。
 - [ ] 禁止通用 set_value(path, any) API。
 - [ ] 不向 UI 发送逐帧数据、原始按键流或 GPU/model pointer。

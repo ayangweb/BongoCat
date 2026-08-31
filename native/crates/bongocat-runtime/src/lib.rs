@@ -300,6 +300,7 @@ pub struct RuntimeSnapshot {
     pub overlay_visible: bool,
     pub overlay_settings: OverlaySettings,
     pub model_settings: ModelSettings,
+    pub gamepad_axis_settings: GamepadAxisSettings,
     pub motion_audio_enabled: bool,
     pub motion_audio: MotionAudioDiagnostics,
     pub active_model: Option<ModelSnapshot>,
@@ -329,6 +330,7 @@ impl RuntimeSnapshot {
             overlay_visible,
             overlay_settings: OverlaySettings::default(),
             model_settings: ModelSettings::default(),
+            gamepad_axis_settings: GamepadAxisSettings::default(),
             motion_audio_enabled,
             motion_audio,
             active_model: None,
@@ -1246,6 +1248,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                     WorkerCommand::Product(RuntimeCommand::SetGamepadAxisSettings(settings)) => {
                         gamepad_axis_settings = settings;
                         publish(&snapshot, |current| {
+                            current.gamepad_axis_settings = settings;
                             current.model_input = compose_model_input(
                                 &input_state,
                                 &input_bindings,

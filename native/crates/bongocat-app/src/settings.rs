@@ -22,13 +22,14 @@ use bongocat_ui::SettingsStartupItemError;
 use bongocat_ui::{
     RuntimeHealth, SettingsClient, SettingsCommand, SettingsConfigRecovery,
     SettingsConfigurationStatus, SettingsDiagnosticsExportStatus, SettingsError, SettingsErrorCode,
-    SettingsInputDiagnostics, SettingsInputServiceStatus, SettingsModelAvailability,
-    SettingsModelCatalog, SettingsModelCatalogError, SettingsModelDiagnostic, SettingsModelEntry,
-    SettingsModelImportProgress, SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin,
-    SettingsModelSettings, SettingsOverlay, SettingsRuntimeCommandFailure,
-    SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode, SettingsServiceEndpoint,
-    SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
-    SettingsStartupItemUnsupportedReason, SettingsWindowPlacement, SettingsWindowState,
+    SettingsGamepadAxisSettings, SettingsInputDiagnostics, SettingsInputServiceStatus,
+    SettingsModelAvailability, SettingsModelCatalog, SettingsModelCatalogError,
+    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportProgress,
+    SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsModelSettings,
+    SettingsOverlay, SettingsRuntimeCommandFailure, SettingsRuntimeDiagnostics,
+    SettingsRuntimeErrorCode, SettingsServiceEndpoint, SettingsSnapshot, SettingsStartupItemState,
+    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsWindowPlacement,
+    SettingsWindowState,
 };
 use serde::Serialize;
 use std::fs;
@@ -311,6 +312,41 @@ fn run_service(
                         } else {
                             application
                                 .set_model_settings(runtime_settings)
+                                .map(|_| ())
+                                .map_err(map_application_error)
+                        }
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::SetGamepadAxisSettings {
+                expected_config_revision,
+                settings,
+                reply,
+            } => {
+                let valid = settings.stick_dead_zone_percent < 100
+                    && settings.trigger_dead_zone_percent < 100;
+                let result = require_operational(&application)
+                    .map_err(map_application_error)
+                    .and_then(|()| {
+                        let current =
+                            snapshot(&application, &mut clock, false, startup_item.state());
+                        if current.config_revision != Some(expected_config_revision) {
+                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
+                        } else if !valid {
+                            Err(SettingsError::new(
+                                SettingsErrorCode::InvalidGamepadAxisSettings,
+                            ))
+                        } else {
+                            let runtime_settings = bongocat_runtime::GamepadAxisSettings::new(
+                                f32::from(settings.stick_dead_zone_percent) / 100.0,
+                                f32::from(settings.trigger_dead_zone_percent) / 100.0,
+                            )
+                            .ok_or_else(|| {
+                                SettingsError::new(SettingsErrorCode::InvalidGamepadAxisSettings)
+                            })?;
+                            application
+                                .set_gamepad_axis_settings(runtime_settings)
                                 .map(|_| ())
                                 .map_err(map_application_error)
                         }
@@ -607,6 +643,14 @@ fn snapshot(
             mirror: runtime.model_settings.mirror,
             mirror_pointer_tracking: runtime.model_settings.mirror_pointer_tracking,
             ignore_pointer: runtime.model_settings.ignore_pointer,
+        },
+        gamepad_axis_settings: SettingsGamepadAxisSettings {
+            stick_dead_zone_percent: (runtime.gamepad_axis_settings.stick_dead_zone * 100.0)
+                .round()
+                .clamp(0.0, 99.0) as u8,
+            trigger_dead_zone_percent: (runtime.gamepad_axis_settings.trigger_dead_zone * 100.0)
+                .round()
+                .clamp(0.0, 99.0) as u8,
         },
         startup_item,
         configuration_status: match application.config_status() {
@@ -1416,6 +1460,7 @@ mod tests {
             overlay: SettingsOverlay::default(),
             motion_audio_enabled: true,
             model_settings: bongocat_ui::SettingsModelSettings::default(),
+            gamepad_axis_settings: bongocat_ui::SettingsGamepadAxisSettings::default(),
             startup_item: SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),
             configuration_status: SettingsConfigurationStatus::Ready,
             config_recovery: None,
@@ -1912,6 +1957,17 @@ mod tests {
             )
             .expect("update model settings");
         assert_eq!(configured_model.model_settings, model_settings);
+        let gamepad_settings = bongocat_ui::SettingsGamepadAxisSettings {
+            stick_dead_zone_percent: 20,
+            trigger_dead_zone_percent: 10,
+        };
+        let configured_gamepad = client
+            .set_gamepad_axis_settings_blocking(
+                configured_model.config_revision.expect("config revision"),
+                gamepad_settings,
+            )
+            .expect("update gamepad settings");
+        assert_eq!(configured_gamepad.gamepad_axis_settings, gamepad_settings);
         assert!(hidden.revision > initial.revision);
         assert!(muted.revision > hidden.revision);
         assert!(!muted.overlay_visible);
@@ -1926,6 +1982,8 @@ mod tests {
         assert!(persisted.contains("\"mirror\": true"));
         assert!(persisted.contains("\"mirror_pointer_tracking\": true"));
         assert!(persisted.contains("\"ignore_pointer\": true"));
+        assert!(persisted.contains("\"gamepad_stick_dead_zone\": 0.2"));
+        assert!(persisted.contains("\"gamepad_trigger_dead_zone\": 0.1"));
 
         let stopped = client.shutdown_blocking().expect("service shutdown");
         assert_eq!(stopped.runtime_health, RuntimeHealth::Stopped);
@@ -2024,6 +2082,20 @@ mod tests {
         assert_eq!(
             std::fs::read(&config_path).expect("preserved hidden config"),
             hidden_config
+        );
+
+        let stale_gamepad_error = client
+            .set_gamepad_axis_settings_blocking(
+                initial_config_revision,
+                bongocat_ui::SettingsGamepadAxisSettings {
+                    stick_dead_zone_percent: 20,
+                    trigger_dead_zone_percent: 10,
+                },
+            )
+            .expect_err("stale gamepad settings update");
+        assert_eq!(
+            stale_gamepad_error.code(),
+            SettingsErrorCode::SnapshotOutdated
         );
 
         let stale_model_error = client

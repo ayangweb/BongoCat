@@ -1,12 +1,13 @@
 use crate::{
     RuntimeHealth, SettingsClient, SettingsConfigRecovery, SettingsConfigurationStatus,
-    SettingsError, SettingsErrorCode, SettingsInputDiagnostics, SettingsInputServiceStatus,
-    SettingsModelAvailability, SettingsModelDiagnostic, SettingsModelEntry,
-    SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
-    SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsModelSettings,
-    SettingsOperationId, SettingsOverlay, SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode,
-    SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
-    SettingsStartupItemUnsupportedReason, SettingsWindowPlacement, SettingsWindowState,
+    SettingsError, SettingsErrorCode, SettingsGamepadAxisSettings, SettingsInputDiagnostics,
+    SettingsInputServiceStatus, SettingsModelAvailability, SettingsModelDiagnostic,
+    SettingsModelEntry, SettingsModelImportMonitor, SettingsModelImportOperation,
+    SettingsModelImportRequest, SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin,
+    SettingsModelSettings, SettingsOperationId, SettingsOverlay, SettingsRuntimeDiagnostics,
+    SettingsRuntimeErrorCode, SettingsSnapshot, SettingsStartupItemState,
+    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsWindowPlacement,
+    SettingsWindowState,
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_platform::{
@@ -75,6 +76,10 @@ const ACCESSIBILITY_MIRROR: AccessibilityNodeId = AccessibilityNodeId::new(19);
 const ACCESSIBILITY_MIRROR_POINTER: AccessibilityNodeId = AccessibilityNodeId::new(20);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_IGNORE_POINTER: AccessibilityNodeId = AccessibilityNodeId::new(21);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_STICK_DEAD_ZONE: AccessibilityNodeId = AccessibilityNodeId::new(22);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_TRIGGER_DEAD_ZONE: AccessibilityNodeId = AccessibilityNodeId::new(23);
 
 #[derive(Clone, Copy)]
 struct Tokens {
@@ -129,6 +134,7 @@ enum PendingOperation {
     OverlaySettings,
     MotionAudio,
     ModelSettings,
+    GamepadAxisSettings,
     StartupItem,
     ModelSelection,
     ModelDeletion,
@@ -315,6 +321,8 @@ pub struct SettingsView {
     mirror_focus: FocusHandle,
     mirror_pointer_focus: FocusHandle,
     ignore_pointer_focus: FocusHandle,
+    stick_dead_zone_focus: FocusHandle,
+    trigger_dead_zone_focus: FocusHandle,
     startup_item_focus: FocusHandle,
     model_id_focus: FocusHandle,
     choose_model_focus: FocusHandle,
@@ -361,6 +369,8 @@ impl SettingsView {
             mirror_focus: cx.focus_handle().tab_index(6).tab_stop(true),
             mirror_pointer_focus: cx.focus_handle().tab_index(7).tab_stop(true),
             ignore_pointer_focus: cx.focus_handle().tab_index(8).tab_stop(true),
+            stick_dead_zone_focus: cx.focus_handle().tab_index(24).tab_stop(true),
+            trigger_dead_zone_focus: cx.focus_handle().tab_index(25).tab_stop(true),
             startup_item_focus: cx.focus_handle().tab_index(12).tab_stop(true),
             model_id_focus: cx.focus_handle().tab_index(20).tab_stop(true),
             choose_model_focus: cx.focus_handle().tab_index(21).tab_stop(true),
@@ -471,6 +481,27 @@ impl SettingsView {
             mirror_node = mirror_node.clickable().focusable();
             mirror_pointer_node = mirror_pointer_node.clickable().focusable();
             ignore_pointer_node = ignore_pointer_node.clickable().focusable();
+        }
+        let axis_settings = snapshot
+            .map(|snapshot| snapshot.gamepad_axis_settings)
+            .unwrap_or_default();
+        let mut stick_node = AccessibilityNode::new(
+            ACCESSIBILITY_STICK_DEAD_ZONE,
+            AccessibilityRole::Button,
+            "Gamepad stick dead zone",
+        )
+        .with_value(format!("{}%", axis_settings.stick_dead_zone_percent))
+        .disabled(disabled);
+        let mut trigger_node = AccessibilityNode::new(
+            ACCESSIBILITY_TRIGGER_DEAD_ZONE,
+            AccessibilityRole::Button,
+            "Gamepad trigger dead zone",
+        )
+        .with_value(format!("{}%", axis_settings.trigger_dead_zone_percent))
+        .disabled(disabled);
+        if !disabled {
+            stick_node = stick_node.clickable().focusable();
+            trigger_node = trigger_node.clickable().focusable();
         }
         let overlay_settings = snapshot
             .map(|snapshot| snapshot.overlay)
@@ -627,6 +658,8 @@ impl SettingsView {
                 ACCESSIBILITY_MIRROR,
                 ACCESSIBILITY_MIRROR_POINTER,
                 ACCESSIBILITY_IGNORE_POINTER,
+                ACCESSIBILITY_STICK_DEAD_ZONE,
+                ACCESSIBILITY_TRIGGER_DEAD_ZONE,
                 ACCESSIBILITY_STARTUP,
                 ACCESSIBILITY_OPEN_BACKUPS,
                 ACCESSIBILITY_RESTORE_DEFAULTS,
@@ -658,6 +691,8 @@ impl SettingsView {
             mirror_node,
             mirror_pointer_node,
             ignore_pointer_node,
+            stick_node,
+            trigger_node,
             startup_node,
             open_backups_node,
             restore_node,
@@ -735,6 +770,8 @@ impl SettingsView {
                     self.set_model_settings(settings, cx);
                 }
             }
+            ACCESSIBILITY_STICK_DEAD_ZONE => self.adjust_gamepad_dead_zone(true, 5, cx),
+            ACCESSIBILITY_TRIGGER_DEAD_ZONE => self.adjust_gamepad_dead_zone(false, 5, cx),
             ACCESSIBILITY_STARTUP => match startup_item_presentation(
                 self.snapshot.as_ref().map(|s| s.startup_item),
                 self.pending.is_some() || self.snapshot.is_none(),
@@ -814,6 +851,11 @@ impl SettingsView {
             (ACCESSIBILITY_MIRROR, &self.mirror_focus),
             (ACCESSIBILITY_MIRROR_POINTER, &self.mirror_pointer_focus),
             (ACCESSIBILITY_IGNORE_POINTER, &self.ignore_pointer_focus),
+            (ACCESSIBILITY_STICK_DEAD_ZONE, &self.stick_dead_zone_focus),
+            (
+                ACCESSIBILITY_TRIGGER_DEAD_ZONE,
+                &self.trigger_dead_zone_focus,
+            ),
             (ACCESSIBILITY_STARTUP, &self.startup_item_focus),
             (ACCESSIBILITY_OPEN_BACKUPS, &self.open_backups_focus),
             (ACCESSIBILITY_RESTORE_DEFAULTS, &self.restore_defaults_focus),
@@ -1293,6 +1335,48 @@ impl SettingsView {
         );
     }
 
+    fn adjust_gamepad_dead_zone(&mut self, stick: bool, delta: i16, cx: &mut Context<Self>) {
+        if self.pending.is_some() || self.model_import.is_running() {
+            return;
+        }
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        if snapshot.configuration_status != SettingsConfigurationStatus::Ready {
+            return;
+        }
+        let mut settings = snapshot.gamepad_axis_settings;
+        let value = if stick {
+            &mut settings.stick_dead_zone_percent
+        } else {
+            &mut settings.trigger_dead_zone_percent
+        };
+        *value = (i16::from(*value) + delta).clamp(0, 99) as u8;
+        self.set_gamepad_axis_settings(settings, cx);
+    }
+
+    fn set_gamepad_axis_settings(
+        &mut self,
+        settings: SettingsGamepadAxisSettings,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(expected_config_revision) = self
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.config_revision)
+        else {
+            return;
+        };
+        self.start_request(
+            PendingOperation::GamepadAxisSettings,
+            Some(SettingValue::GamepadAxisSettings {
+                expected_config_revision,
+                settings,
+            }),
+            cx,
+        );
+    }
+
     fn set_startup_item_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
         self.start_request(
             PendingOperation::StartupItem,
@@ -1722,6 +1806,14 @@ impl SettingsView {
                         .set_model_settings(expected_config_revision, settings)
                         .await
                 }
+                Some(SettingValue::GamepadAxisSettings {
+                    expected_config_revision,
+                    settings,
+                }) => {
+                    client
+                        .set_gamepad_axis_settings(expected_config_revision, settings)
+                        .await
+                }
                 Some(SettingValue::StartupItemEnabled(enabled)) => {
                     client.set_startup_item_enabled(enabled).await
                 }
@@ -1789,6 +1881,10 @@ enum SettingValue {
     ModelSettings {
         expected_config_revision: u64,
         settings: SettingsModelSettings,
+    },
+    GamepadAxisSettings {
+        expected_config_revision: u64,
+        settings: SettingsGamepadAxisSettings,
     },
     StartupItemEnabled(bool),
     OpenConfigBackupLocation,
@@ -1904,6 +2000,8 @@ impl Render for SettingsView {
                     ACCESSIBILITY_MIRROR => &self.mirror_focus,
                     ACCESSIBILITY_MIRROR_POINTER => &self.mirror_pointer_focus,
                     ACCESSIBILITY_IGNORE_POINTER => &self.ignore_pointer_focus,
+                    ACCESSIBILITY_STICK_DEAD_ZONE => &self.stick_dead_zone_focus,
+                    ACCESSIBILITY_TRIGGER_DEAD_ZONE => &self.trigger_dead_zone_focus,
                     ACCESSIBILITY_STARTUP => &self.startup_item_focus,
                     ACCESSIBILITY_OPEN_BACKUPS => &self.open_backups_focus,
                     ACCESSIBILITY_RESTORE_DEFAULTS => &self.restore_defaults_focus,
@@ -1931,6 +2029,10 @@ impl Render for SettingsView {
         let model_settings = snapshot
             .as_ref()
             .map(|snapshot| snapshot.model_settings)
+            .unwrap_or_default();
+        let axis_settings = snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.gamepad_axis_settings)
             .unwrap_or_default();
         let configuration_ready = snapshot.as_ref().is_some_and(|snapshot| {
             snapshot.configuration_status == SettingsConfigurationStatus::Ready
@@ -2472,6 +2574,50 @@ impl Render for SettingsView {
                 view.set_model_settings(settings, cx);
             }
         }));
+        let stick_dead_zone = axis_settings.stick_dead_zone_percent;
+        let stick_dead_zone_row = dead_zone_row(
+            "Gamepad stick dead zone",
+            stick_dead_zone,
+            &self.stick_dead_zone_focus,
+            24,
+            window,
+            tokens,
+            disabled,
+        )
+        .id("gamepad-stick-dead-zone")
+        .on_click(cx.listener(|view, _, window, cx| {
+            window.focus(&view.stick_dead_zone_focus);
+            view.adjust_gamepad_dead_zone(true, 5, cx);
+        }))
+        .on_key_down(cx.listener(|view, event, window, cx| {
+            if is_activation_key(event) {
+                cx.stop_propagation();
+                window.focus(&view.stick_dead_zone_focus);
+                view.adjust_gamepad_dead_zone(true, 5, cx);
+            }
+        }));
+        let trigger_dead_zone = axis_settings.trigger_dead_zone_percent;
+        let trigger_dead_zone_row = dead_zone_row(
+            "Gamepad trigger dead zone",
+            trigger_dead_zone,
+            &self.trigger_dead_zone_focus,
+            25,
+            window,
+            tokens,
+            disabled,
+        )
+        .id("gamepad-trigger-dead-zone")
+        .on_click(cx.listener(|view, _, window, cx| {
+            window.focus(&view.trigger_dead_zone_focus);
+            view.adjust_gamepad_dead_zone(false, 5, cx);
+        }))
+        .on_key_down(cx.listener(|view, event, window, cx| {
+            if is_activation_key(event) {
+                cx.stop_propagation();
+                window.focus(&view.trigger_dead_zone_focus);
+                view.adjust_gamepad_dead_zone(false, 5, cx);
+            }
+        }));
         let startup_item_action = startup_item.action;
         let startup_item_row = setting_row(
             "Open at login",
@@ -2564,6 +2710,8 @@ impl Render for SettingsView {
             .child(mirror_row)
             .child(mirror_pointer_row)
             .child(ignore_pointer_row)
+            .child(stick_dead_zone_row)
+            .child(trigger_dead_zone_row)
             .child(startup_item_row)
             .child(div().flex_1());
 
@@ -3905,6 +4053,60 @@ fn setting_row(
                         .rounded(px(8.0))
                         .bg(tokens.surface),
                 ),
+        )
+}
+
+fn dead_zone_row(
+    title: &'static str,
+    percent: u8,
+    focus: &FocusHandle,
+    tab_index: isize,
+    window: &Window,
+    tokens: Tokens,
+    disabled: bool,
+) -> gpui::Div {
+    let focused = focus.is_focused(window);
+    div()
+        .key_context("SettingsControl")
+        .track_focus(focus)
+        .tab_index(if disabled { -1 } else { tab_index })
+        .flex()
+        .items_center()
+        .justify_between()
+        .p_4()
+        .rounded_md()
+        .border_1()
+        .border_color(if focused {
+            tokens.accent
+        } else {
+            tokens.border
+        })
+        .bg(tokens.surface)
+        .text_color(if disabled { tokens.muted } else { tokens.text })
+        .when(!disabled, |row| {
+            row.hover(|style| style.bg(tokens.selected).cursor_pointer())
+        })
+        .child(
+            div()
+                .min_w_0()
+                .flex_1()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(div().child(title))
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(tokens.muted)
+                        .child("Adjust gamepad response threshold"),
+                ),
+        )
+        .child(
+            div()
+                .w(px(56.0))
+                .flex()
+                .justify_center()
+                .child(format!("{percent}%")),
         )
 }
 
