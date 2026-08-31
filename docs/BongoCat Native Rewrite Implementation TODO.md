@@ -1510,15 +1510,19 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       完整 Native workspace 门禁通过。
     - 状态（2026-08-31）：正式 crate 已加入五类无效输入逐字节保留测试和 10 次 migration
       reload 门禁；本机定向测试与 Clippy 通过，完整 workspace/CI 证据随本项提交记录。
-35. [ ] `P6-CONFIG-BACKUP-RECOVERY`：从验证通过的 Native 备份恢复损坏的正式配置。
+35. [x] `P6-CONFIG-BACKUP-RECOVERY`：从验证通过的 Native 备份恢复损坏的正式配置。
     - 依赖：`P6-CONFIG-BACKUP-RETENTION`、`P6-CONFIG-INVALID-LOAD` 和正式 app 启动装配。
     - 退出条件：按新到旧验证格式/schema/revision/typed config，只提交首个有效候选；损坏 current
       逐字节进入有界环境内 quarantine；无有效候选或归档/验证失败时不默认覆盖；恢复重启幂等，
       Development/Production 隔离；app 暴露不含路径的恢复诊断；config/app 定向测试、Clippy 和
       完整 Native workspace/三平台 CI 门禁通过。
-    - 状态（2026-08-31）：正式 store 与 app 实现、定向测试、本机完整 format/Clippy/workspace
-      test/release/Production、依赖来源和 schema/fixture 校验均通过；Windows/macOS/Ubuntu CI
-      证据待本项提交后记录，因此保持未勾选。
+    - 验收证据（2026-08-31）：正式 store 从新到旧验证 backup format、源 schema/revision 与
+      typed config，未来格式/schema 和 revision mismatch 均被跳过；损坏 current 逐字节进入每环境
+      4 份/8 MiB quarantine，无候选、未来 current schema、重复启动和双环境隔离均有单元回归，
+      app 集成测试确认恢复值进入 runtime 且只保留匿名诊断。commit `11f5509` 的 pull request run
+      `33367819458` 全绿；Windows/macOS/Ubuntu Native jobs `99412066607`/`99412066610`/
+      `99412066583` 通过完整 format、Clippy、workspace test、release/Production 与平台 smoke，
+      Windows input/config job `99412066542` 也通过真实路径与存储测试。
 
 ## 13. 待决策清单
 
