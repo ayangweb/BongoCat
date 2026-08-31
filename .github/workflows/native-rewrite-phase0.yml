@@ -192,8 +192,13 @@ jobs:
               if ($startup.Current.ControlType -ne [System.Windows.Automation.ControlType]::Button) {
                 throw "Windows UIA startup switch did not use the button control type"
               }
-              if ($startup.Current.LocalizedControlType -ne "switch") {
-                throw "Windows UIA startup control did not expose the switch role"
+              $ariaRoleProperty = [System.Windows.Automation.AutomationElement]::AriaRoleProperty
+              if ($null -eq $ariaRoleProperty) {
+                throw "Windows UIA client does not expose AriaRoleProperty"
+              }
+              $ariaRole = [string]$startup.GetCurrentPropertyValue($ariaRoleProperty)
+              if ($ariaRole -ne "switch") {
+                throw "Windows UIA startup control did not expose aria role switch: '$ariaRole'"
               }
               if (-not $startup.Current.IsEnabled -or -not $startup.Current.IsKeyboardFocusable) {
                 throw "Windows UIA startup switch was not enabled and focusable"
