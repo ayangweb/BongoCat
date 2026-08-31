@@ -2,6 +2,7 @@
 
 use bongocat_platform::{MacInputService, PlatformInputError};
 use bongocat_runtime::{HandSide, InputBindings, PhysicalKey, RuntimeCommand, RuntimeOwner};
+use objc2_app_kit::{NSWorkspace, NSWorkspaceSessionDidResignActiveNotification};
 use objc2_core_graphics::{
     CGEvent, CGEventFlags, CGEventSource, CGEventSourceStateID, CGEventTapLocation, CGEventType,
     CGMouseButton,
@@ -9,6 +10,12 @@ use objc2_core_graphics::{
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 const TIMEOUT: Duration = Duration::from_secs(2);
+
+fn post_key(key_code: u16, down: bool) {
+    let source = CGEventSource::new(CGEventSourceStateID::Private).expect("event source");
+    let event = CGEvent::new_keyboard_event(Some(&source), key_code, down).expect("keyboard event");
+    CGEvent::post(CGEventTapLocation::SessionEventTap, Some(&event));
+}
 
 #[test]
 #[ignore = "requires macOS Input Monitoring and Accessibility permissions"]
@@ -167,4 +174,82 @@ fn runtime_stop_cleans_up_tap_before_a_second_service_starts() {
     replacement_runtime
         .shutdown(TIMEOUT)
         .expect("replacement runtime stop");
+}
+
+#[test]
+#[ignore = "requires macOS Input Monitoring and Accessibility permissions"]
+fn workspace_lifecycle_resets_pressed_state_and_rebuilds_the_tap() {
+    let runtime = RuntimeOwner::start(true, 64);
+    let client = runtime.client();
+    client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+    let key = PhysicalKey::KEY_A;
+    let binding_sequence = client
+        .send(RuntimeCommand::SetInputBindings(Arc::new(
+            InputBindings::new(BTreeMap::from([(key, HandSide::Left)])),
+        )))
+        .expect("binding command");
+    client
+        .wait_for_command(binding_sequence, TIMEOUT)
+        .expect("bindings applied");
+    let service = MacInputService::start_with_diagnostics(
+        runtime.input_producer(),
+        runtime.cursor_producer(),
+        runtime.gamepad_axis_producer(),
+        runtime.platform_input_diagnostics_producer(),
+    )
+    .expect("input service");
+
+    let down_sequence = client
+        .snapshot()
+        .input
+        .last_input_sequence
+        .unwrap_or(0)
+        .saturating_add(1);
+    post_key(0, true);
+    let pressed = client
+        .wait_for_input_sequence(down_sequence, TIMEOUT)
+        .expect("key down reached runtime");
+    assert!(pressed.model_input.left_hand_down);
+
+    let reset_sequence = pressed
+        .input
+        .last_input_sequence
+        .expect("key down sequence")
+        .saturating_add(1);
+    let center = NSWorkspace::sharedWorkspace().notificationCenter();
+    // SAFETY: this is an immutable AppKit notification name and the smoke uses no payload.
+    unsafe {
+        center.postNotificationName_object(NSWorkspaceSessionDidResignActiveNotification, None)
+    };
+    let reset = client
+        .wait_for_input_sequence(reset_sequence, TIMEOUT)
+        .expect("workspace reset reached runtime");
+    assert!(!reset.model_input.left_hand_down);
+
+    let replacement_down_sequence = reset
+        .input
+        .last_input_sequence
+        .expect("reset sequence")
+        .saturating_add(1);
+    post_key(0, true);
+    let replacement_pressed = client
+        .wait_for_input_sequence(replacement_down_sequence, TIMEOUT)
+        .expect("replacement tap key down");
+    assert!(replacement_pressed.model_input.left_hand_down);
+    let replacement_up_sequence = replacement_pressed
+        .input
+        .last_input_sequence
+        .expect("replacement down sequence")
+        .saturating_add(1);
+    post_key(0, false);
+    let replacement_released = client
+        .wait_for_input_sequence(replacement_up_sequence, TIMEOUT)
+        .expect("replacement tap key up");
+    assert!(!replacement_released.model_input.left_hand_down);
+
+    let diagnostics = service.stop().expect("input service stop");
+    assert!(diagnostics.recovery_resets >= 1);
+    assert!(diagnostics.tap_restarts >= 1);
+    assert!(diagnostics.clean_shutdown);
+    runtime.shutdown(TIMEOUT).expect("runtime stop");
 }
