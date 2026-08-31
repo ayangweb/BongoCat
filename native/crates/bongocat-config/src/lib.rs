@@ -754,9 +754,49 @@ mod tests {
         assert_eq!(backup.config, v1);
         assert!(backup.created_at_unix_ms > 0);
         assert_eq!(backup.source_revision.len(), 16);
-        let (reloaded, reloaded_revision) = store.load_or_default().expect("reload v2 config");
-        assert_eq!(reloaded, migrated);
-        assert_eq!(reloaded_revision, revision);
+        for _ in 0..10 {
+            let (reloaded, reloaded_revision) = store.load_or_default().expect("reload v2 config");
+            assert_eq!(reloaded, migrated);
+            assert_eq!(reloaded_revision, revision);
+        }
+        assert_eq!(config_backup_paths(store.layout()).len(), 1);
+    }
+
+    #[test]
+    fn invalid_existing_configs_are_reported_without_replacement_or_backup() {
+        let mut wrong_type = serde_json::to_value(NativeConfig::default()).expect("config value");
+        wrong_type["overlay"]["visible"] = serde_json::Value::String("yes".to_owned());
+        let mut out_of_range = serde_json::to_value(NativeConfig::default()).expect("config value");
+        out_of_range["overlay"]["opacity_percent"] = serde_json::Value::from(0);
+        let mut unknown = serde_json::to_value(NativeConfig::default()).expect("config value");
+        unknown["application"]["legacy_alias"] = serde_json::Value::Bool(true);
+        let cases = [
+            b"not-json".to_vec(),
+            br#"{"schema_version":2,"application":{"#.to_vec(),
+            serde_json::to_vec_pretty(&wrong_type).expect("wrong type bytes"),
+            serde_json::to_vec_pretty(&out_of_range).expect("out of range bytes"),
+            serde_json::to_vec_pretty(&unknown).expect("unknown field bytes"),
+        ];
+
+        for (index, bytes) in cases.into_iter().enumerate() {
+            let base = tempdir().expect("temp directory");
+            let store = ConfigStore::new(StorageLayout::under(
+                base.path(),
+                BuildEnvironment::Development,
+            ))
+            .expect("config store");
+            fs::write(&store.layout().config, &bytes).expect("invalid config");
+
+            assert!(
+                store.load_or_default().is_err(),
+                "invalid config case {index} was accepted"
+            );
+            assert_eq!(
+                fs::read(&store.layout().config).expect("preserved config"),
+                bytes
+            );
+            assert!(config_backup_paths(store.layout()).is_empty());
+        }
     }
 
     #[test]

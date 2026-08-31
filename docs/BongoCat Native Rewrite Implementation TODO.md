@@ -963,10 +963,15 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
 - [x] 在平台无关 spike 中验证 Development/Production 根目录不同且相对结构一致，并在 Windows/macOS target-specific test 验证真实 resolver。
 - [x] 两个环境写入不同 sentinel，重启和并发运行后仍只读取各自数据。
   - 验收证据（2026-08-29）：macOS 本机与 commit `cf16291e8cee027b6983abcf919a32fb5a0278a5` 的 Windows push run `33251410654`、job `99097619545` 均通过 `development_and_production_processes_commit_and_restart_independently`；产品 state/model/log 服务仍由各自阶段验证。
-- [ ] 覆盖损坏、截断、错误类型、越界值和未知字段。
+- [x] 覆盖损坏、截断、错误类型、越界值和未知字段。
+  - 验收证据（2026-08-31）：正式 `ConfigStore::load_or_default` 产品测试逐项写入非 JSON、
+    截断 JSON、错误布尔类型、越界 opacity 和嵌套未知字段，全部返回错误且逐字节保留当前
+    `config.json`，不创建备份或静默回落默认值。
 - [ ] 覆盖无权限、磁盘满、目标占用和中途退出。
 - [ ] 覆盖非 ASCII/超长路径、缺失和重复模型。
-- [ ] Native schema upgrade 重复执行 10 次结果一致。
+- [x] Native schema upgrade 重复执行 10 次结果一致。
+  - 验收证据（2026-08-31）：v1 selection 首次迁移到 v2 后连续加载 10 次，typed config 与
+    revision 始终一致且备份数量保持 1，证明迁移不会重复写回或重复备份。
 - [ ] 失败注入不丢当前环境的配置或用户模型。
 - [ ] 发布依赖和运行日志中没有旧 Tauri/Pinia 配置探测。
 - [ ] Bundle ID 精确验证为 `com.ayangweb.bongo-cat`。
@@ -1488,6 +1493,13 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       `99403612087`/`99403611991`/`99403612068` 通过完整 format、Clippy、workspace test、
       release/Production 和平台 smoke，dependency policy、shared schema 与 config-store jobs
       同时通过。
+34. [x] `P6-CONFIG-INVALID-LOAD`：固定无效配置保留和 schema migration 幂等契约。
+    - 依赖：正式 `ConfigStore`、严格 Native schema 和 v1 -> v2 migration。
+    - 退出条件：损坏、截断、错误类型、越界值和未知字段均返回错误且不覆盖/备份当前文件；
+      首次迁移后连续加载 10 次结果和 revision 不变且不重复备份；config 定向测试、Clippy 与
+      完整 Native workspace 门禁通过。
+    - 状态（2026-08-31）：正式 crate 已加入五类无效输入逐字节保留测试和 10 次 migration
+      reload 门禁；本机定向测试与 Clippy 通过，完整 workspace/CI 证据随本项提交记录。
 
 ## 13. 待决策清单
 
