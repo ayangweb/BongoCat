@@ -2847,8 +2847,7 @@ mod tests {
             Some(&motion)
         );
 
-        let expression = ExpressionId::new("live2d_expression0.exp3.json")
-            .expect("expression id");
+        let expression = ExpressionId::new("live2d_expression0.exp3.json").expect("expression id");
         let expression_sequence = client
             .trigger_shortcut(ShortcutAction::SetExpression(expression.clone()))
             .expect("shortcut expression");

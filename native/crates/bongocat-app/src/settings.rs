@@ -382,6 +382,27 @@ fn run_service(
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
+            SettingsCommand::RestoreDefaultShortcuts {
+                expected_config_revision,
+                reply,
+            } => {
+                let result = require_operational(&application)
+                    .map_err(map_application_error)
+                    .and_then(|()| {
+                        let current =
+                            snapshot(&application, &mut clock, false, startup_item.state());
+                        if current.config_revision != Some(expected_config_revision) {
+                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
+                        } else {
+                            application
+                                .restore_default_shortcuts()
+                                .map(|_| ())
+                                .map_err(map_application_error)
+                        }
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
             SettingsCommand::SetStartupItemEnabled { enabled, reply } => {
                 let result = require_operational(&application)
                     .map_err(map_application_error)
@@ -2114,6 +2135,65 @@ mod tests {
         assert_eq!(
             std::fs::read(&layout.config).expect("preserved config"),
             committed_config
+        );
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
+    }
+
+    #[test]
+    fn service_restores_default_shortcuts_with_revision_check() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application =
+            Application::start_with_layout(layout.clone()).expect("application start");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        let configured = client
+            .set_shortcuts_blocking(
+                initial.config_revision.expect("config revision"),
+                shortcut_fixture(),
+            )
+            .expect("configure shortcuts");
+        let restored = client
+            .restore_default_shortcuts_blocking(
+                configured.config_revision.expect("config revision"),
+            )
+            .expect("restore defaults");
+        assert_eq!(restored.shortcuts, SettingsShortcuts::default());
+        assert!(restored.revision > configured.revision);
+        let persisted = std::fs::read_to_string(&layout.config).expect("persisted config");
+        assert!(persisted.contains("\"commands\": []"));
+        assert!(persisted.contains("\"model_behaviors\": []"));
+
+        let stale = client
+            .restore_default_shortcuts_blocking(
+                configured.config_revision.expect("stale config revision"),
+            )
+            .expect_err("stale restore");
+        assert_eq!(stale.code(), SettingsErrorCode::SnapshotOutdated);
+        let unchanged = client.read_snapshot_blocking().expect("unchanged snapshot");
+        assert_eq!(unchanged, restored);
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
+    }
+
+    #[test]
+    fn service_rejects_shortcut_restore_while_configuration_recovery_is_required() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        ConfigStore::new(layout.clone()).expect("config store");
+        std::fs::write(&layout.config, b"invalid-current-without-backup")
+            .expect("invalid current config");
+        let application = Application::start_with_layout(layout).expect("safe mode start");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+        let error = client
+            .restore_default_shortcuts_blocking(0)
+            .expect_err("restore shortcuts in recovery");
+        assert_eq!(
+            error.code(),
+            SettingsErrorCode::ConfigurationRecoveryRequired
         );
         client.shutdown_blocking().expect("service shutdown");
         service.join().expect("service join");

@@ -797,6 +797,10 @@ pub enum SettingsCommand {
         shortcuts: SettingsShortcuts,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    RestoreDefaultShortcuts {
+        expected_config_revision: u64,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     SetStartupItemEnabled {
         enabled: bool,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
@@ -934,6 +938,17 @@ impl SettingsClient {
         self.request(|reply| SettingsCommand::SetShortcuts {
             expected_config_revision,
             shortcuts,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn restore_default_shortcuts(
+        &self,
+        expected_config_revision: u64,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::RestoreDefaultShortcuts {
+            expected_config_revision,
             reply,
         })
         .await
@@ -1088,6 +1103,16 @@ impl SettingsClient {
         self.request_blocking(|reply| SettingsCommand::SetShortcuts {
             expected_config_revision,
             shortcuts,
+            reply,
+        })
+    }
+
+    pub fn restore_default_shortcuts_blocking(
+        &self,
+        expected_config_revision: u64,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::RestoreDefaultShortcuts {
+            expected_config_revision,
             reply,
         })
     }
@@ -1375,6 +1400,30 @@ mod tests {
             .expect("shortcut snapshot");
         assert_eq!(result.shortcuts.commands.len(), 1);
         assert_eq!(result.shortcuts.model_behaviors.len(), 1);
+        worker.join().expect("worker join");
+    }
+
+    #[test]
+    fn restore_default_shortcuts_command_preserves_expected_revision() {
+        let (client, endpoint) = SettingsClient::bounded(1);
+        let worker = thread::spawn(move || {
+            let SettingsCommand::RestoreDefaultShortcuts {
+                expected_config_revision,
+                reply,
+            } = endpoint.recv_blocking().expect("restore shortcut command")
+            else {
+                panic!("unexpected command");
+            };
+            assert_eq!(expected_config_revision, 9);
+            let mut result = snapshot(10, true, true);
+            result.shortcuts = SettingsShortcuts::default();
+            reply.respond(Ok(result)).expect("restore shortcut reply");
+        });
+
+        let result = client
+            .restore_default_shortcuts_blocking(9)
+            .expect("restore shortcut snapshot");
+        assert_eq!(result.shortcuts, SettingsShortcuts::default());
         worker.join().expect("worker join");
     }
 

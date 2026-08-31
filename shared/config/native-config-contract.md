@@ -73,6 +73,12 @@ key 必须是无空白的可打印 ASCII token。校验器以固定顺序
 绑定单独提供，runtime 在动作进入队列前接收解析后的强类型 motion/expression identity。
 行为 ID 不接受旧版的复合模型路径或任意未定义 kind。
 
+Settings service 提供 `SetShortcuts` 与 `RestoreDefaultShortcuts` 两个 typed command。
+两者都携带 `expected_config_revision`，在当前环境 writer lock 内执行原子提交；revision
+过期或绑定校验失败时保留当前 config、runtime 和 snapshot。恢复默认使用当前
+`ShortcutConfig::default()`（目前为空绑定集合），不读取旧配置，也不触发平台注册、按键
+捕获或 runtime 动作；清除绑定可通过提交空的 `commands`/`model_behaviors` 集合完成。
+
 窗口坐标、pressed state、权限结果、模型解析缓存和 renderer 状态不属于 `config.json`。可恢复窗口布局写入 `state.json`；其余瞬时/派生状态不持久化。
 
 ## Application State v1

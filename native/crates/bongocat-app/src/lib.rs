@@ -611,6 +611,19 @@ impl Application {
         Ok(snapshot)
     }
 
+    pub fn restore_default_shortcuts(&mut self) -> Result<RuntimeSnapshot, ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.shortcuts = ShortcutConfig::default();
+        next_config.validate()?;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        let snapshot = self.runtime.client().snapshot();
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(snapshot)
+    }
+
     pub fn model_catalog(&self) -> Result<Vec<ModelCatalogEntry>, ApplicationError> {
         let mut entries = self.preset_models.list()?;
         entries.extend(self.model_store.list()?);
