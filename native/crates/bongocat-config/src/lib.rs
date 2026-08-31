@@ -497,6 +497,7 @@ enum InterruptedArchiveKind {
 enum ConfigWriteStage {
     BeforeTempCreate,
     AfterTempCreate,
+    AfterReplace,
 }
 
 #[cfg(test)]
@@ -504,6 +505,7 @@ enum ConfigWriteStage {
 enum InjectedConfigWriteFailure {
     PermissionDenied,
     StorageFull,
+    VerificationCorruption,
 }
 
 pub struct ConfigStore {
@@ -692,6 +694,7 @@ impl ConfigStore {
     fn write_config_atomic(&self, path: &Path, bytes: &[u8]) -> Result<(), ConfigError> {
         #[cfg(test)]
         if let Some(failure) = self.injected_write_failure {
+            let verification_path = path.to_path_buf();
             return write_config_atomic_with_hook(path, bytes, move |stage| {
                 match (failure, stage) {
                     (
@@ -702,6 +705,13 @@ impl ConfigStore {
                         InjectedConfigWriteFailure::StorageFull,
                         ConfigWriteStage::AfterTempCreate,
                     ) => Err(io::Error::from(ErrorKind::StorageFull).into()),
+                    (
+                        InjectedConfigWriteFailure::VerificationCorruption,
+                        ConfigWriteStage::AfterReplace,
+                    ) => {
+                        fs::write(&verification_path, b"post-replace verification corruption")?;
+                        Ok(())
+                    }
                     _ => Ok(()),
                 }
             });
@@ -1226,6 +1236,7 @@ fn write_config_atomic_with_hook(
         drop(file);
         write_atomic(path, bytes)?;
         replaced = true;
+        hook(ConfigWriteStage::AfterReplace)?;
         fs::remove_file(&temp_path)?;
         Ok(())
     })();
@@ -1792,6 +1803,44 @@ mod tests {
             assert_eq!(reloaded.recovery, None);
         }
         assert_eq!(config_backup_paths(store.layout()).len(), 1);
+    }
+
+    #[test]
+    fn post_replace_verification_failure_restores_v1_bytes_and_allows_retry() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BuildEnvironment::Development);
+        let mut v1 = serde_json::to_value(NativeConfig::default()).expect("serialize config");
+        v1["schema_version"] = serde_json::Value::from(PREVIOUS_SCHEMA_VERSION);
+        v1["model"]
+            .as_object_mut()
+            .expect("model object")
+            .remove("selected_model_origin");
+        let original = serde_json::to_vec_pretty(&v1).expect("v1 bytes");
+
+        let mut faulting_store = ConfigStore::new(layout.clone()).expect("config store");
+        fs::write(&faulting_store.layout().config, &original).expect("write v1 config");
+        faulting_store.inject_write_failure(InjectedConfigWriteFailure::VerificationCorruption);
+
+        assert!(matches!(
+            faulting_store.load_or_default(),
+            Err(ConfigError::RecoveryVerificationFailed)
+        ));
+        assert_eq!(
+            fs::read(&faulting_store.layout().config).expect("restored v1 config"),
+            original
+        );
+        assert!(!config_temp_path(&faulting_store.layout().config).exists());
+        drop(faulting_store);
+
+        let retry_store = ConfigStore::new(layout).expect("retry config store");
+        let retried = retry_store.load_or_default().expect("retry v1 migration");
+        assert_eq!(retried.config.schema_version, SCHEMA_VERSION);
+        assert_eq!(retried.config.model.selected_model_id, None);
+        assert_eq!(retried.config.model.selected_model_origin, None);
+        assert_eq!(
+            retry_store.read_revision().expect("verified revision"),
+            retried.revision
+        );
     }
 
     #[test]

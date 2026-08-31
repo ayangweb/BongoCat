@@ -442,7 +442,8 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
 - 写入使用同目录临时文件、flush、原子替换和提交后验证；替换前把当前配置封装为带格式版本、
   墙上时间、源 schema 和 revision 的环境内备份。每个环境只管理 `config-*.json` 自有命名空间，
   按持久排序键保留最新 8 份且总计不超过 8 MiB；系统时钟回退不得让新备份被误删，未知文件
-  不参与清理。备份写入或收敛失败时保留当前配置。
+  不参与清理。备份写入或收敛失败时保留当前配置；原子替换后的重读、typed validation、revision
+  或值比较失败时逐字节恢复替换前配置，固定 temp 不得残留，后续启动必须可以重新尝试提交。
 - 正式配置提交先以只创建方式写入并 flush 固定的同目录 `config.json.tmp`，再使用平台原子替换
   提交 `config.json`。启动在同一 writer lock 内先处理残留 temp：有效 current 优先并把有效 temp
   归档为 stale；current 缺失或损坏时才提升有效 temp；无效 temp 单独归档且不覆盖 current；未来

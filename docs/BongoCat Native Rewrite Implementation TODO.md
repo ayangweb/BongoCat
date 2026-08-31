@@ -1646,6 +1646,16 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       test、release/Production 与平台 smoke，Windows/macOS jobs 均实际通过 recovery window；
       Windows input/config job `99469896784`、config-store job `99469896999`、双平台 GPUI 和依赖
       策略 jobs 同时通过，退出条件满足。
+43. [ ] `P6-CONFIG-TRANSACTION-PIPELINE`：验收正式配置加载、迁移、提交与最终验证闭环。
+    - 依赖：正式 `ConfigStore`、v1 -> v2 migration、`P6-CONFIG-BACKUP-RETENTION` 和
+      `P6-CONFIG-INTERRUPTED-COMMIT`。
+    - 退出条件：current 在 writer lock 内按 load -> parse -> typed validate -> sequential Native upgrade
+      执行；迁移先保存原 bytes，再经固定同目录 temp、flush 和原子替换提交，最终重读比较 typed
+      config/revision；替换后验证破坏可受控注入，失败逐字节恢复旧 v1、清理 temp 且无故障重启可
+      再次迁移；有效 v2 不重写，无效/未来 schema 不被覆盖；config 定向测试、严格 Clippy、完整
+      Native workspace、三平台 CI、Windows input/config 和独立 config-store job 通过。
+    - 状态（2026-08-31）：正式成功路径与无效/未来 schema 保留已有覆盖；替换后验证破坏注入、旧
+      bytes 回滚和重启重试回归已实现，完整本机与跨平台门禁随当前提交验证。
 
 ## 13. 待决策清单
 
