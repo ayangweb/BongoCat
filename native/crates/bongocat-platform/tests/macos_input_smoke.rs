@@ -40,17 +40,26 @@ fn synthetic_shift_reaches_runtime_and_releases_cleanly() {
     CGEvent::set_type(Some(&up), CGEventType::FlagsChanged);
     CGEvent::set_flags(Some(&up), CGEventFlags::empty());
 
-    let before_down = client.snapshot().revision;
+    let down_sequence = client
+        .snapshot()
+        .input
+        .last_input_sequence
+        .unwrap_or(0)
+        .saturating_add(1);
     CGEvent::post(CGEventTapLocation::SessionEventTap, Some(&down));
     let pressed = client
-        .wait_for_revision(before_down + 1, TIMEOUT)
+        .wait_for_input_sequence(down_sequence, TIMEOUT)
         .expect("shift down reached runtime");
     assert!(pressed.model_input.left_hand_down);
 
-    let before_up = pressed.revision;
+    let up_sequence = pressed
+        .input
+        .last_input_sequence
+        .expect("shift down input sequence")
+        .saturating_add(1);
     CGEvent::post(CGEventTapLocation::SessionEventTap, Some(&up));
     let released = client
-        .wait_for_revision(before_up + 1, TIMEOUT)
+        .wait_for_input_sequence(up_sequence, TIMEOUT)
         .expect("shift up reached runtime");
     assert!(!released.model_input.left_hand_down);
 

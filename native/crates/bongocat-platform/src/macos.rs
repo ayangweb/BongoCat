@@ -7,8 +7,10 @@ use bongocat_runtime::{
     InputEvent, InputProducer, InputPublishError, InputResetReason, InputSource, MonotonicMillis,
     MouseButton, PhysicalKey, PlatformInputDiagnosticsProducer,
 };
-use objc2::rc::Retained;
-use objc2_core_foundation::{CFMachPort, CFRunLoop, CGPoint, kCFRunLoopDefaultMode};
+use objc2::rc::{Retained, autoreleasepool};
+use objc2_core_foundation::{
+    CFMachPort, CFRetained, CFRunLoop, CFRunLoopSource, CGPoint, kCFRunLoopDefaultMode,
+};
 use objc2_core_graphics::{
     CGDirectDisplayID, CGDisplayBounds, CGError, CGEvent, CGEventField, CGEventFlags, CGEventMask,
     CGEventSource, CGEventSourceStateID, CGEventTapLocation, CGEventTapOptions,
@@ -356,29 +358,27 @@ impl MacGamepadOwner {
                                 .fetch_add(1, Ordering::Relaxed);
                             return;
                         }
-                        if catch_unwind(AssertUnwindSafe(|| {
-                            // SAFETY: GameController supplies a valid retained
-                            // profile for the duration of this copied block call.
-                            let snapshot = unsafe { snapshot_extended_gamepad(profile.as_ref()) };
-                            capture_gamepad_snapshot(
-                                snapshot,
-                                connection,
-                                &callback_sender,
-                                &callback_pressed,
-                                &callback_axes,
-                                &callback_accepting,
-                                &callback_recovery,
-                                &callback_counters,
-                            );
-                        }))
-                        .is_err()
-                        {
-                            callback_counters
-                                .callback_panics
-                                .fetch_add(1, Ordering::Relaxed);
-                            callback_accepting.store(false, Ordering::Release);
-                            callback_recovery.store(true, Ordering::Release);
-                        }
+                        callback_boundary(
+                            &callback_accepting,
+                            &callback_recovery,
+                            &callback_counters,
+                            || {
+                                // SAFETY: GameController supplies a valid retained
+                                // profile for the duration of this copied block call.
+                                let snapshot =
+                                    unsafe { snapshot_extended_gamepad(profile.as_ref()) };
+                                capture_gamepad_snapshot(
+                                    snapshot,
+                                    connection,
+                                    &callback_sender,
+                                    &callback_pressed,
+                                    &callback_axes,
+                                    &callback_accepting,
+                                    &callback_recovery,
+                                    &callback_counters,
+                                );
+                            },
+                        );
                     },
                 );
             // SAFETY: the retained profile copies the block. The closure owns
@@ -752,22 +752,57 @@ unsafe extern "C-unwind" fn event_tap_callback(
     event: NonNull<CGEvent>,
     user_info: *mut c_void,
 ) -> *mut CGEvent {
-    // SAFETY: `run_input_worker` passes a pointer to a pinned Box that outlives
-    // the enabled tap. The worker disables the tap and removes its run-loop
-    // source before dropping the Box, so callbacks cannot observe freed state.
+    // SAFETY: `run_input_worker` passes a pointer to a stable Box allocation
+    // that outlives every enabled tap. The worker disables the tap and removes
+    // its run-loop source before dropping the Box, so callbacks cannot observe
+    // freed state.
     let context = unsafe { &*user_info.cast::<TapCallbackContext>() };
     // SAFETY: CoreGraphics guarantees that the callback event is non-null and
     // valid for the duration of this callback.
     let event_ref = unsafe { event.as_ref() };
-    if catch_unwind(AssertUnwindSafe(|| context.capture(event_type, event_ref))).is_err() {
-        context
-            .counters
-            .callback_panics
-            .fetch_add(1, Ordering::Relaxed);
-        context.accepting.store(false, Ordering::Release);
-        context.recovery_requested.store(true, Ordering::Release);
-    }
+    callback_boundary(
+        &context.accepting,
+        &context.recovery_requested,
+        &context.counters,
+        || context.capture(event_type, event_ref),
+    );
     event.as_ptr()
+}
+
+fn callback_boundary(
+    accepting: &AtomicBool,
+    recovery_requested: &AtomicBool,
+    counters: &CallbackCounters,
+    callback: impl FnOnce(),
+) {
+    autoreleasepool(|_| {
+        if catch_unwind(AssertUnwindSafe(callback)).is_err() {
+            counters.callback_panics.fetch_add(1, Ordering::Relaxed);
+            accepting.store(false, Ordering::Release);
+            recovery_requested.store(true, Ordering::Release);
+        }
+    });
+}
+
+fn create_event_tap(
+    callback_context: *mut c_void,
+) -> Result<(CFRetained<CFMachPort>, CFRetained<CFRunLoopSource>), PlatformInputError> {
+    // SAFETY: the caller keeps `callback_context` alive until the returned tap
+    // is disabled and detached from its run loop.
+    let tap = unsafe {
+        CGEvent::tap_create(
+            CGEventTapLocation::SessionEventTap,
+            CGEventTapPlacement::TailAppendEventTap,
+            CGEventTapOptions::ListenOnly,
+            input_event_mask(),
+            Some(event_tap_callback),
+            callback_context,
+        )
+    }
+    .ok_or(PlatformInputError::TapCreateFailed)?;
+    let source = CFMachPort::new_run_loop_source(None, Some(&tap), 0)
+        .ok_or(PlatformInputError::RunLoopSourceFailed)?;
+    Ok((tap, source))
 }
 
 impl CallbackCounters {
@@ -947,29 +982,11 @@ fn run_input_worker(
         counters: Arc::clone(&counters),
     });
     let callback_context_ptr = (&mut *callback_context as *mut TapCallbackContext).cast();
-    // SAFETY: `callback_context_ptr` points to the stable Box above. It remains
-    // alive until after the tap is disabled and detached from this run loop.
-    let tap = match unsafe {
-        CGEvent::tap_create(
-            CGEventTapLocation::SessionEventTap,
-            CGEventTapPlacement::TailAppendEventTap,
-            CGEventTapOptions::ListenOnly,
-            input_event_mask(),
-            Some(event_tap_callback),
-            callback_context_ptr,
-        )
-    } {
-        Some(tap) => tap,
-        None => {
-            let _ = startup.send(Err(PlatformInputError::TapCreateFailed));
-            return Err(PlatformInputError::TapCreateFailed);
-        }
-    };
-    let source = match CFMachPort::new_run_loop_source(None, Some(&tap), 0) {
-        Some(source) => source,
-        None => {
-            let _ = startup.send(Err(PlatformInputError::RunLoopSourceFailed));
-            return Err(PlatformInputError::RunLoopSourceFailed);
+    let (mut tap, mut source) = match create_event_tap(callback_context_ptr) {
+        Ok(tap) => tap,
+        Err(error) => {
+            let _ = startup.send(Err(error));
+            return Err(error);
         }
     };
     let run_loop = CFRunLoop::current().ok_or(PlatformInputError::RunLoopSourceFailed)?;
@@ -1045,7 +1062,21 @@ fn run_input_worker(
                         if input_monitoring_permission() != InputPermission::Granted {
                             break 'service Err(PlatformInputError::PermissionDenied);
                         }
-                        CGEvent::tap_enable(&tap, true);
+                        CGEvent::tap_enable(&tap, false);
+                        run_loop.remove_source(Some(&source), Some(mode));
+                        let (replacement_tap, replacement_source) =
+                            match create_event_tap(callback_context_ptr) {
+                                Ok(replacement) => replacement,
+                                Err(error) => break 'service Err(error),
+                            };
+                        run_loop.add_source(Some(&replacement_source), Some(mode));
+                        CGEvent::tap_enable(&replacement_tap, true);
+                        if !CGEvent::tap_is_enabled(&replacement_tap) {
+                            run_loop.remove_source(Some(&replacement_source), Some(mode));
+                            break 'service Err(PlatformInputError::TapCreateFailed);
+                        }
+                        tap = replacement_tap;
+                        source = replacement_source;
                         diagnostics.tap_restarts = diagnostics.tap_restarts.saturating_add(1);
                         tap_restart_pending = false;
                     }
@@ -1716,6 +1747,53 @@ fn system_pressed(system: SystemControl) -> bool {
 mod tests {
     use super::*;
     use bongocat_runtime::RuntimeOwner;
+
+    #[test]
+    fn callback_boundary_contains_panics_and_requests_recovery() {
+        let accepting = AtomicBool::new(true);
+        let recovery = AtomicBool::new(false);
+        let counters = CallbackCounters::default();
+
+        callback_boundary(&accepting, &recovery, &counters, || {
+            panic!("controlled callback panic");
+        });
+
+        assert!(!accepting.load(Ordering::Acquire));
+        assert!(recovery.load(Ordering::Acquire));
+        assert_eq!(counters.callback_panics.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn disabled_tap_signals_stop_capture_and_clear_modifier_decoder() {
+        for event_type in [
+            CGEventType::TapDisabledByTimeout,
+            CGEventType::TapDisabledByUserInput,
+        ] {
+            let (sender, receiver) = mpsc::sync_channel(1);
+            let accepting = Arc::new(AtomicBool::new(true));
+            let recovery = Arc::new(AtomicBool::new(false));
+            let tap_disabled = Arc::new(AtomicBool::new(false));
+            let modifier_keys = Arc::new(Mutex::new(BTreeSet::from([56])));
+            let counters = Arc::new(CallbackCounters::default());
+            let context = TapCallbackContext {
+                sender,
+                accepting: Arc::clone(&accepting),
+                recovery_requested: recovery,
+                tap_disabled: Arc::clone(&tap_disabled),
+                modifier_keys: Arc::clone(&modifier_keys),
+                cursor: LatestCursor::default(),
+                counters,
+            };
+            let event = CGEvent::new(None).expect("event");
+
+            context.capture(event_type, &event);
+
+            assert!(!accepting.load(Ordering::Acquire));
+            assert!(tap_disabled.load(Ordering::Acquire));
+            assert!(modifier_keys.lock().expect("modifier keys").is_empty());
+            assert!(matches!(receiver.try_recv(), Err(TryRecvError::Empty)));
+        }
+    }
 
     #[test]
     fn mac_key_codes_map_to_usb_hid_usages() {

@@ -591,6 +591,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     `FlagsChanged` 结合事件 flags 和 callback-time modifier set 区分左右修饰键方向，
     unit test 与 left Shift callback→runtime 集成测试均通过。
 - [ ] 处理 tap timeout、user disable、权限变化和自动重建。
+  - 状态（2026-09-01）：正式服务识别 timeout/user-disable 后先停止 callback 接收、丢弃未消费
+    capture、向 runtime 发送 `ServiceRestart` Reset，再从同一稳定 callback context 创建并启用新的
+    listen-only tap/source；旧 source 在替换前从专用 run loop 移除，`tap_restarts` 进入实时诊断。
+    permission 已撤销时只结束 worker 并报告 `PermissionDenied`，不会形成重试风暴。系统自然 timeout、
+    TCC grant/revoke 和 session 变化的实机矩阵尚未完成，因此总项保持未勾选。
 - [x] 通过 CGEventSourceKeyState 校正 pressed set。
   - 验收证据（2026-08-30）：正式服务按 `250 ms` 周期查询候选 key/button 的系统状态，
     连续 `2` 次缺失才由 runtime reconcile 释放；按键、修饰键和 button 31 的受控丢失
@@ -599,7 +604,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 锁屏、睡眠、快速用户切换和 tap 重启发送 Reset。
 - [ ] GameController 设备和 profile 映射进入统一事件。
   - 状态（2026-08-29）：extended profile 已映射 south/east/west/north、shoulder、trigger、menu/options、stick button、D-pad 与六个标准 axis 到项目类型；按钮阈值、axis/trigger 范围、generation、可靠 overflow Reset 和 latest-value accounting 均有 contract test。真实 controller 连接/热插拔/profile callback 尚未取得设备证据，统一产品 `InputEvent` 也尚未建立，因此保持未勾选。
-- [ ] event tap callback 使用 autorelease pool/panic boundary，run loop 停止后不再触达已释放 producer。
+- [x] event tap callback 使用 autorelease pool/panic boundary，run loop 停止后不再触达已释放 producer。
+  - 验收证据（2026-09-01）：event tap 与 GameController block 共用 autorelease/panic boundary；受控
+    panic 被匿名计数、关闭 capture 并请求可靠恢复，不会穿越 FFI。callback context 使用稳定 Box，
+    shutdown 先关闭 accepting gate、禁用 tap 并移除 source，再释放 context；unit contract 和既有
+    runtime stop -> tap cleanup -> second service start smoke 覆盖恢复与析构顺序。
 - [ ] 明确辅助功能与 Input Monitoring 各自真正需要的能力，避免请求不必要的 TCC 权限。
 
 ### 3.5 配置 v1/v2/v3
@@ -1741,6 +1750,8 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       - 验收证据（2026-09-01）：正式 config 与独立 config-store spike 使用 `f64` 保存 JSON 数值，
         Application 在 runtime 边界受检转换为 `f32`，运行时更新按最短十进制表示写回；共享默认
         fixture 的 value-level 序列化回归覆盖 `0.15`，修复 schema v3 后独立 CI contract 漂移。
+        commit `c388cf2` 的 run `33414582196` 全绿，config-store job `99562067963` 与 Windows
+        input/config job `99562067572` 均通过更新后的 v3 contract。
     - [x] 将同一 `GamepadAxisProducer` 从 Application 传递到独立 overlay/input service owner。
       - 状态（2026-08-31）：Windows/macOS 正式服务启动与所有 opt-in smoke 调用均持有 runtime
         producer；双平台服务现分别消费 XInput/GameController，无手柄启动行为不变。
