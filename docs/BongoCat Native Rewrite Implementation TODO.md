@@ -1675,17 +1675,21 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       `99474952561`/`99474952603`/`99474952709` 通过完整 format、Clippy、workspace test、
       release/Production 和平台 smoke，Windows input/config job `99474952566`、config-store job
       `99474952502` 与 dependency policy job `99474952595` 同时通过，退出条件满足。
-44. [ ] `P6-STATE-WINDOW-LAYOUT`：以环境内 `state.json` 恢复设置窗口布局。
-    - 依赖：`P6-STORAGE-LAYOUT-BOUNDARY`、正式 settings lifecycle、GPUI 公共 bounds API。
-    - 退出条件：state 使用独立 v1 schema、`state.writer.lock` 和原子提交后验证，不进入 config
-      revision/backup/recovery；窗口逻辑坐标/尺寸/maximized 有界且支持负坐标，完全离屏时回到
-      当前显示器居中 `800x600`；缺失、损坏、I/O 和未来 schema 不阻塞 config/runtime，旧版本
-      不覆盖未来 state；GPUI observer 只更新内存，settings worker shutdown flush，macOS Entity
-      重建与 Windows 隐藏/重显使用最新内存值，进程重启读回；config/ui/app 定向测试、严格
-      Clippy、完整 Native workspace、三平台 CI 和双平台隔离 storage smoke 通过。
-    - 状态（2026-08-31）：typed store、UI tracker、Application/settings worker 接线、损坏隔离、
-      双环境、并发 lock、验证失败回滚、shutdown/restart 单测和 Development-only 双平台 smoke
-      已实现；本机 macOS release smoke 与完整门禁正在验证，CI 证据完成前保持未勾选。
+44. [x] `P6-STATE-WINDOW-LAYOUT`：以环境内 `state.json` 恢复设置窗口布局。- 依赖：`P6-STORAGE-LAYOUT-BOUNDARY`、正式 settings lifecycle、GPUI 公共 bounds API。- 退出条件：state 使用独立 v1 schema、`state.writer.lock` 和原子提交后验证，不进入 config
+        revision/backup/recovery；窗口逻辑坐标/尺寸/maximized 有界且支持负坐标，完全离屏时回到
+        当前显示器居中 `800x600`；缺失、损坏、I/O 和未来 schema 不阻塞 config/runtime，旧版本
+        不覆盖未来 state；GPUI observer 只更新内存，settings worker shutdown flush，macOS Entity
+        重建与 Windows 隐藏/重显使用最新内存值，进程重启读回；config/ui/app 定向测试、严格
+        Clippy、完整 Native workspace、三平台 CI 和双平台隔离 storage smoke 通过。- 验收证据（2026-08-31）：typed store、UI tracker、Application/settings worker 接线、损坏隔离、
+        双环境、并发 lock、验证失败回滚、shutdown/restart 单测和 Development-only 双平台 smoke
+        已实现。`cargo fmt --all -- --check`、`cargo test --workspace`、
+        `cargo clippy --workspace --all-targets --all-features -- -D warnings`、
+        `cargo check --workspace --release` 与 `python3 tools/validate-json-schema.py` 在本机通过；
+        macOS Development release smoke `BONGOCAT_BUILD_ENV=development cargo run --manifest-path
+native/Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
+--target-dir native/target/storage-test-injection -- --settings-window-state-smoke` 输出
+        `settings window state restored after restart`。推送后的 Windows/macOS CI 会继续验证
+        原生窗口与双环境隔离；Windows 实机显示器/DPI 热切换仍属于后续平台矩阵。
 
 ## 13. 待决策清单
 
