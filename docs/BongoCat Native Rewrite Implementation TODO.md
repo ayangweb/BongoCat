@@ -937,11 +937,14 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
 
 ### 7.2 环境与持久化事务
 
-- [ ] 构建系统显式产生 Development/Production 元数据，发布构建拒绝默认值。
-  - 状态（2026-08-31）：正式 app build script 已删除隐式 Development fallback；Native workspace
+- [x] 构建系统显式产生 Development/Production 元数据，发布构建拒绝默认值。
+  - 验收证据（2026-08-31）：正式 app build script 已删除隐式 Development fallback；Native workspace
     Cargo config 与 CI 显式选择 Development，Production step 显式覆盖，macOS packaging 在 Cargo
-    前拒绝缺失/空/未知值。解析器、失败路径与本机定向 Clippy/test 已通过，跨平台完整门禁由
-    `P6-BUILD-ENV-METADATA` 跟踪，因此总项暂不勾选。
+    前拒绝缺失/空/未知值。commit `2810f4a` 的 pull request run `33383026191` 全绿；Windows/
+    macOS/Ubuntu Native jobs `99459402028`/`99459402083`/`99459402181` 通过完整 workspace、
+    Development/release、显式 Production 和拒绝隐式环境门禁，Windows/macOS GPUI jobs
+    `99459402171`/`99459401995`、Windows input/config job `99459402076` 和 config-store job
+    `99459402352` 同时通过。
 - [ ] path resolver 返回当前平台与环境的数据根，不能接受任意外部生产路径。
 - [ ] 实现 load -> parse -> validate -> upgrade native schema -> atomic commit -> verify。
 - [x] backup 包含 Native schema 版本和时间，并限制数量与总大小。
@@ -1611,14 +1614,18 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       `99453718576`/`99453718477`/`99453718406` 通过完整门禁，Windows/macOS 分别执行 opener
       参数 contract；Windows input/config job `99453718404`、Windows/macOS GPUI jobs
       `99453718327`/`99453718079` 和 config-store job `99453718598` 同时通过，退出条件满足。
-41. [ ] `P6-BUILD-ENV-METADATA`：让正式构建和打包入口显式固定 Development/Production。
+41. [x] `P6-BUILD-ENV-METADATA`：让正式构建和打包入口显式固定 Development/Production。
     - 依赖：ADR-0008、正式 app build script、Native workspace/CI 与 macOS packaging baseline。
     - 退出条件：build script 不含隐式 fallback，只接受精确的 `development`/`production` 并把结果
       编译为 immutable cfg；Native workspace 和 CI 显式选择 Development，Production check/package
       显式覆盖；packaging 在调用 Cargo 前拒绝缺失、空和未知值；运行时 CLI/env/settings 不能切换；
       解析 contract、缺失/未知失败 smoke、完整 Native workspace 与三平台 CI 通过。
-    - 状态（2026-08-31）：严格解析器、workspace/CI 选择、packaging guard 与本机成功/拒绝路径已
-      实现；完整 workspace 和跨平台 CI 证据随当前提交验证。
+    - 验收证据（2026-08-31）：严格解析器、workspace/CI 选择、packaging guard 与本机成功/拒绝
+      路径已实现；commit `2810f4a` 的 pull request run `33383026191` 全绿。Windows/macOS/Ubuntu
+      Native jobs `99459402028`/`99459402083`/`99459402181` 通过完整 workspace、Development
+      release、显式 Production 和隐式环境拒绝门禁；macOS job 还在 Cargo 前覆盖缺失、空与未知
+      packaging 值，双平台 GPUI、Windows input/config、dependency policy 与 config-store jobs
+      同时通过，退出条件满足。
 
 ## 13. 待决策清单
 
