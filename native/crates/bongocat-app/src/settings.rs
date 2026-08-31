@@ -3,7 +3,9 @@ use crate::{
     ApplicationLogComponent, ApplicationLogDiagnostics, ApplicationLogEvent, ApplicationLogLevel,
 };
 use atomic_write_file::AtomicWriteFile;
-use bongocat_config::{ConfigError, ConfigWriteFailureReason, StateError, WindowPlacement};
+use bongocat_config::{
+    ConfigError, ConfigWriteFailureReason, NativeConfig, StateError, WindowPlacement,
+};
 use bongocat_model::{
     ModelCatalogEntry, ModelDiagnostic, ModelImportProgress, ModelImportStage, ModelOrigin,
     ModelStoreDiagnostic,
@@ -23,11 +25,12 @@ use bongocat_ui::{
     RuntimeHealth, SettingsClient, SettingsCommand, SettingsConfigRecovery,
     SettingsConfigurationStatus, SettingsDiagnosticsExportStatus, SettingsError, SettingsErrorCode,
     SettingsGamepadAxisSettings, SettingsInputDiagnostics, SettingsInputServiceStatus,
-    SettingsModelAvailability, SettingsModelCatalog, SettingsModelCatalogError,
-    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportProgress,
-    SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsModelSettings,
-    SettingsOverlay, SettingsRuntimeCommandFailure, SettingsRuntimeDiagnostics,
-    SettingsRuntimeErrorCode, SettingsServiceEndpoint, SettingsSnapshot, SettingsStartupItemState,
+    SettingsModelAvailability, SettingsModelBehaviorBinding, SettingsModelCatalog,
+    SettingsModelCatalogError, SettingsModelDiagnostic, SettingsModelEntry,
+    SettingsModelImportProgress, SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin,
+    SettingsModelSettings, SettingsOverlay, SettingsRuntimeCommandFailure,
+    SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode, SettingsServiceEndpoint,
+    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
     SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsWindowPlacement,
     SettingsWindowState,
 };
@@ -204,7 +207,10 @@ fn run_service(
     diagnostics_export: Arc<dyn DiagnosticsExportCapability>,
     window_state: SettingsWindowState,
 ) {
-    let mut clock = SettingsSnapshotClock::new(application.runtime_client().snapshot().revision);
+    let mut clock = SettingsSnapshotClock::new(
+        application.runtime_client().snapshot().revision,
+        application.config_revision(),
+    );
     loop {
         let Ok(command) = endpoint.recv_blocking() else {
             let _ = persist_window_state(&mut application, &window_state);
@@ -347,6 +353,28 @@ fn run_service(
                             })?;
                             application
                                 .set_gamepad_axis_settings(runtime_settings)
+                                .map(|_| ())
+                                .map_err(map_application_error)
+                        }
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::SetShortcuts {
+                expected_config_revision,
+                shortcuts,
+                reply,
+            } => {
+                let result = require_operational(&application)
+                    .map_err(map_application_error)
+                    .and_then(|()| {
+                        let current =
+                            snapshot(&application, &mut clock, false, startup_item.state());
+                        if current.config_revision != Some(expected_config_revision) {
+                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
+                        } else {
+                            application
+                                .set_shortcuts(shortcuts)
                                 .map(|_| ())
                                 .map_err(map_application_error)
                         }
@@ -548,16 +576,18 @@ const fn settings_import_progress(progress: ModelImportProgress) -> SettingsMode
 struct SettingsSnapshotClock {
     revision: u64,
     observed_runtime_revision: u64,
+    observed_config_revision: Option<u64>,
     observed_input_diagnostics: Option<SettingsInputDiagnostics>,
     observed_startup_item: Option<SettingsStartupItemStatus>,
     diagnostics_export: Option<SettingsDiagnosticsExportStatus>,
 }
 
 impl SettingsSnapshotClock {
-    const fn new(runtime_revision: u64) -> Self {
+    const fn new(runtime_revision: u64, config_revision: Option<u64>) -> Self {
         Self {
             revision: runtime_revision,
             observed_runtime_revision: runtime_revision,
+            observed_config_revision: config_revision,
             observed_input_diagnostics: None,
             observed_startup_item: None,
             diagnostics_export: None,
@@ -568,6 +598,13 @@ impl SettingsSnapshotClock {
         if runtime_revision != self.observed_runtime_revision {
             self.revision = self.revision.saturating_add(1);
             self.observed_runtime_revision = runtime_revision;
+        }
+    }
+
+    fn observe_config(&mut self, config_revision: Option<u64>) {
+        if config_revision != self.observed_config_revision {
+            self.revision = self.revision.saturating_add(1);
+            self.observed_config_revision = config_revision;
         }
     }
 
@@ -610,6 +647,7 @@ fn snapshot(
     let runtime = application.runtime_client().snapshot();
     let input_diagnostics = settings_input_diagnostics(&runtime.input, runtime.platform_input);
     clock.observe_runtime(runtime.revision);
+    clock.observe_config(application.config_revision());
     clock.observe_input_diagnostics(input_diagnostics);
     clock.observe_startup_item(startup_item);
     if catalog_changed {
@@ -652,6 +690,7 @@ fn snapshot(
                 .round()
                 .clamp(0.0, 99.0) as u8,
         },
+        shortcuts: settings_shortcuts(application.config()),
         startup_item,
         configuration_status: match application.config_status() {
             ApplicationConfigStatus::Ready => SettingsConfigurationStatus::Ready,
@@ -684,6 +723,30 @@ fn snapshot(
             })
             .or_else(|| configured_model_key(application)),
         model_catalog: settings_model_catalog(application),
+    }
+}
+
+fn settings_shortcuts(config: &NativeConfig) -> SettingsShortcuts {
+    SettingsShortcuts {
+        commands: config
+            .shortcuts
+            .commands
+            .iter()
+            .map(|binding| SettingsShortcutBinding {
+                command: binding.command.clone(),
+                shortcut: binding.shortcut.clone(),
+            })
+            .collect(),
+        model_behaviors: config
+            .shortcuts
+            .model_behaviors
+            .iter()
+            .map(|binding| SettingsModelBehaviorBinding {
+                model_id: binding.model_id.clone(),
+                behavior_id: binding.behavior_id.clone(),
+                shortcut: binding.shortcut.clone(),
+            })
+            .collect(),
     }
 }
 
@@ -1266,6 +1329,9 @@ fn map_configuration_recovery_error(error: ApplicationError) -> SettingsError {
 }
 
 fn settings_config_error_code(error: &ConfigError) -> Option<SettingsErrorCode> {
+    if matches!(error, ConfigError::InvalidValue(field) if field.starts_with("shortcuts.")) {
+        return Some(SettingsErrorCode::InvalidShortcutBindings);
+    }
     match error.write_failure_reason()? {
         ConfigWriteFailureReason::PermissionDenied => {
             Some(SettingsErrorCode::ConfigPermissionDenied)
@@ -1461,6 +1527,7 @@ mod tests {
             motion_audio_enabled: true,
             model_settings: bongocat_ui::SettingsModelSettings::default(),
             gamepad_axis_settings: bongocat_ui::SettingsGamepadAxisSettings::default(),
+            shortcuts: SettingsShortcuts::default(),
             startup_item: SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),
             configuration_status: SettingsConfigurationStatus::Ready,
             config_recovery: None,
@@ -1638,7 +1705,7 @@ mod tests {
         assert_eq!(projected.transport_recovered_after_overflow, 18);
         assert_eq!(projected.transport_runtime_stopped, 19);
 
-        let mut clock = SettingsSnapshotClock::new(40);
+        let mut clock = SettingsSnapshotClock::new(40, Some(7));
         clock.observe_input_diagnostics(projected);
         assert_eq!(clock.revision, 40);
         let changed = SettingsInputDiagnostics {
@@ -1884,6 +1951,172 @@ mod tests {
             .nth(3)
             .expect("repository root")
             .join("shared/fixtures/model-fixtures/cases/非 ASCII 模型")
+    }
+
+    fn shortcut_fixture() -> SettingsShortcuts {
+        SettingsShortcuts {
+            commands: vec![SettingsShortcutBinding {
+                command: "toggle_overlay".to_owned(),
+                shortcut: "Control+Alt+B".to_owned(),
+            }],
+            model_behaviors: vec![SettingsModelBehaviorBinding {
+                model_id: "standard".to_owned(),
+                behavior_id: "motion:TapBody:0".to_owned(),
+                shortcut: "Control+Alt+M".to_owned(),
+            }],
+        }
+    }
+
+    #[test]
+    fn shortcut_config_errors_map_to_a_stable_settings_code() {
+        for field in [
+            "shortcuts.commands",
+            "shortcuts.command",
+            "shortcuts.behavior",
+            "shortcuts.binding",
+            "shortcuts.conflict",
+        ] {
+            assert_eq!(
+                settings_config_error_code(&ConfigError::InvalidValue(field)),
+                Some(SettingsErrorCode::InvalidShortcutBindings),
+                "field {field}"
+            );
+        }
+        assert_eq!(
+            settings_config_error_code(&ConfigError::InvalidValue("appearance.language")),
+            None
+        );
+    }
+
+    #[test]
+    fn service_persists_shortcuts_and_restores_them_after_restart() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let expected = shortcut_fixture();
+        let application =
+            Application::start_with_layout(layout.clone()).expect("application start");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        let updated = client
+            .set_shortcuts_blocking(
+                initial.config_revision.expect("config revision"),
+                expected.clone(),
+            )
+            .expect("persist shortcuts");
+        assert_eq!(updated.shortcuts, expected);
+        assert!(updated.revision > initial.revision);
+        assert!(updated.config_revision > initial.config_revision);
+        let persisted = std::fs::read_to_string(&layout.config).expect("persisted config");
+        assert!(persisted.contains("toggle_overlay"));
+        assert!(persisted.contains("Control+Alt+B"));
+        assert!(persisted.contains("motion:TapBody:0"));
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
+
+        let restarted = Application::start_with_layout(layout).expect("application restart");
+        let restarted_service =
+            ApplicationSettingsService::start(restarted).expect("service restart");
+        let restored = restarted_service
+            .client()
+            .read_snapshot_blocking()
+            .expect("restored snapshot");
+        assert_eq!(restored.shortcuts, expected);
+        restarted_service
+            .client()
+            .shutdown_blocking()
+            .expect("restarted service shutdown");
+        restarted_service.join().expect("restarted service join");
+    }
+
+    #[test]
+    fn service_rejects_invalid_shortcuts_without_mutating_config() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application =
+            Application::start_with_layout(layout.clone()).expect("application start");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        let original_config = std::fs::read(&layout.config).expect("initial config");
+        let cases = [
+            SettingsShortcuts {
+                commands: vec![SettingsShortcutBinding {
+                    command: "unknown".to_owned(),
+                    shortcut: "Control+Alt+B".to_owned(),
+                }],
+                ..SettingsShortcuts::default()
+            },
+            SettingsShortcuts {
+                commands: vec![SettingsShortcutBinding {
+                    command: "toggle_overlay".to_owned(),
+                    shortcut: "Control+".to_owned(),
+                }],
+                ..SettingsShortcuts::default()
+            },
+            SettingsShortcuts {
+                model_behaviors: vec![SettingsModelBehaviorBinding {
+                    model_id: "standard".to_owned(),
+                    behavior_id: "physics:0".to_owned(),
+                    shortcut: "Control+Alt+M".to_owned(),
+                }],
+                ..SettingsShortcuts::default()
+            },
+        ];
+        for shortcuts in cases {
+            let error = client
+                .set_shortcuts_blocking(
+                    initial.config_revision.expect("config revision"),
+                    shortcuts,
+                )
+                .expect_err("invalid shortcut binding");
+            assert_eq!(error.code(), SettingsErrorCode::InvalidShortcutBindings);
+            assert_eq!(
+                std::fs::read(&layout.config).expect("config remains readable"),
+                original_config
+            );
+        }
+        let unchanged = client.read_snapshot_blocking().expect("unchanged snapshot");
+        assert_eq!(unchanged, initial);
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
+    }
+
+    #[test]
+    fn service_rejects_stale_shortcuts_without_mutating_config_or_snapshot() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application =
+            Application::start_with_layout(layout.clone()).expect("application start");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        let committed = client
+            .set_shortcuts_blocking(
+                initial.config_revision.expect("config revision"),
+                shortcut_fixture(),
+            )
+            .expect("first shortcut update");
+        let committed_config = std::fs::read(&layout.config).expect("committed config");
+        let stale = SettingsShortcuts {
+            commands: vec![SettingsShortcutBinding {
+                command: "toggle_mirror".to_owned(),
+                shortcut: "Control+Alt+X".to_owned(),
+            }],
+            ..SettingsShortcuts::default()
+        };
+        let error = client
+            .set_shortcuts_blocking(initial.config_revision.expect("config revision"), stale)
+            .expect_err("stale shortcut update");
+        assert_eq!(error.code(), SettingsErrorCode::SnapshotOutdated);
+        let unchanged = client.read_snapshot_blocking().expect("unchanged snapshot");
+        assert_eq!(unchanged, committed);
+        assert_eq!(
+            std::fs::read(&layout.config).expect("preserved config"),
+            committed_config
+        );
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
     }
 
     #[test]

@@ -948,9 +948,10 @@ overlay owner；设置更新失败时保留旧 snapshot。scale/opacity 的可�
 - [ ] 禁止通用 set_value(path, any) API。
 - [ ] 不向 UI 发送逐帧数据、原始按键流或 GPU/model pointer。
 - [ ] command/snapshot 有纯 Rust contract test。
-  - 状态（2026-08-31）：首批正式 contract 已覆盖 FIFO command、typed reply、receiver
-    close、revision 单调更新、两项配置原子持久化和 shutdown acknowledgement；完整 app、
-    model、shortcut、update、diagnostics command 集尚未定义，因此保持未勾选。
+  - 状态（2026-09-01）：正式 contract 已覆盖 FIFO command、typed reply、receiver close、
+    revision 单调更新、配置原子持久化和 shutdown acknowledgement；shortcut settings command
+    现使用 typed request/result，支持 revision 检查、校验错误映射、snapshot projection 和重启
+    恢复回归。完整 app、model、update、diagnostics command 集及平台捕获仍待定义，因此保持未勾选。
 
 ### 6.2 GPUI 状态规则
 
@@ -982,7 +983,7 @@ overlay owner；设置更新失败时保留旧 snapshot。scale/opacity 的可�
 - [ ] 模型：预置/用户模型、导入、删除、切换和兼容诊断。
 - [ ] 输入：键鼠、手柄、忽略鼠标、单键模式和校正状态。
 - [ ] 快捷键：捕获、冲突、清除和恢复默认。
-  - 状态（2026-09-01）：正式 `bongocat-config` 已加入平台无关的 typed chord 校验；修饰键别名和顺序会规范化，重复修饰键、多 key、空片段和非法 key 会被拒绝，`commands` 与 `model_behaviors` 共享冲突命名空间。该 contract 不执行平台注册或捕获，UI 编辑、清除/恢复默认和 runtime 触发仍待完成。
+  - 状态（2026-09-01）：正式 `bongocat-config` 已加入平台无关的 typed chord 校验；修饰键别名和顺序会规范化，重复修饰键、多 key、空片段和非法 key 会被拒绝，`commands` 与 `model_behaviors` 共享冲突命名空间。settings service 现以 typed command 完成 revision-checked 原子持久化，并在 snapshot 暴露绑定且支持重启恢复；该 contract 仍不执行平台注册或捕获，UI 编辑、清除/恢复默认和 runtime 触发仍待完成。
 - [ ] 动作/表情：绑定、预览 command 和错误状态。
 - [ ] 权限：macOS 状态/跳转和 Windows 权限差异。
 - [ ] 更新：检查、下载、验证、安装和回滚提示。
@@ -1884,9 +1885,10 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       后续平台捕获、清除、恢复默认和动作触发必须复用该 canonical contract。
     - 状态（2026-09-01）：Rust parser、跨 `commands`/`model_behaviors` 冲突检测、闭合的
       application command 与 `motion:<group>:<index>`/`expression:<name>` behavior action
-      解析、runtime typed shortcut dispatch、单元测试和 `shared/config/native-config-contract.md`
-      已进入 `next`；配置持久化 settings command、平台注册、捕获 UI、清除/恢复默认和实机
-      快捷键证据仍未完成。
+      解析、runtime typed shortcut dispatch、settings typed command、revision-checked 原子
+      持久化、snapshot projection、重启恢复回归、单元测试和
+      `shared/config/native-config-contract.md` 已进入 `next`；平台注册、捕获 UI、清除/恢复
+      默认和实机快捷键证据仍未完成。
 
 ## 13. 待决策清单
 

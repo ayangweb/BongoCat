@@ -9,8 +9,9 @@ compile_error!("storage-test-injection cannot be enabled for Production builds")
 use bongocat_audio::{MotionAudioService, MotionAudioShutdownError};
 use bongocat_config::{
     ApplicationState, BuildEnvironment, ConfigError, ConfigRecovery, ConfigRevision, ConfigStore,
-    InterruptedConfigRecovery, NativeConfig, PlatformStorageError, SelectedModelOrigin, StateError,
-    StateStore, StorageLayout, WindowPlacement, platform_layout,
+    InterruptedConfigRecovery, ModelBehaviorBinding, NativeConfig, PlatformStorageError,
+    SelectedModelOrigin, ShortcutBinding, ShortcutConfig, StateError, StateStore, StorageLayout,
+    WindowPlacement, platform_layout,
 };
 use bongocat_model::{
     CommittedModel, InstalledModel, ModelCatalogEntry, ModelError, ModelId, ModelImportProgress,
@@ -571,6 +572,40 @@ impl Application {
         let snapshot = client
             .wait_for_command(sequence, RUNTIME_TIMEOUT)
             .ok_or(ApplicationError::RuntimeDidNotPublish)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(snapshot)
+    }
+
+    pub fn set_shortcuts(
+        &mut self,
+        shortcuts: bongocat_ui::SettingsShortcuts,
+    ) -> Result<RuntimeSnapshot, ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.shortcuts = ShortcutConfig {
+            commands: shortcuts
+                .commands
+                .into_iter()
+                .map(|binding| ShortcutBinding {
+                    command: binding.command,
+                    shortcut: binding.shortcut,
+                })
+                .collect(),
+            model_behaviors: shortcuts
+                .model_behaviors
+                .into_iter()
+                .map(|binding| ModelBehaviorBinding {
+                    model_id: binding.model_id,
+                    behavior_id: binding.behavior_id,
+                    shortcut: binding.shortcut,
+                })
+                .collect(),
+        };
+        next_config.validate()?;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        let snapshot = self.runtime.client().snapshot();
         self.config = next_config;
         self.config_revision = Some(next_revision);
         Ok(snapshot)

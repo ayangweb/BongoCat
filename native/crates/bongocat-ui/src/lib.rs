@@ -211,6 +211,7 @@ pub struct SettingsSnapshot {
     pub motion_audio_enabled: bool,
     pub model_settings: SettingsModelSettings,
     pub gamepad_axis_settings: SettingsGamepadAxisSettings,
+    pub shortcuts: SettingsShortcuts,
     pub startup_item: SettingsStartupItemStatus,
     pub configuration_status: SettingsConfigurationStatus,
     pub config_recovery: Option<SettingsConfigRecovery>,
@@ -218,6 +219,25 @@ pub struct SettingsSnapshot {
     pub input_diagnostics: SettingsInputDiagnostics,
     pub active_model: Option<SettingsModelKey>,
     pub model_catalog: SettingsModelCatalog,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct SettingsShortcuts {
+    pub commands: Vec<SettingsShortcutBinding>,
+    pub model_behaviors: Vec<SettingsModelBehaviorBinding>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SettingsShortcutBinding {
+    pub command: String,
+    pub shortcut: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SettingsModelBehaviorBinding {
+    pub model_id: String,
+    pub behavior_id: String,
+    pub shortcut: String,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -551,6 +571,7 @@ pub enum SettingsErrorCode {
     SnapshotOutdated,
     RuntimeUnavailable,
     InvalidGamepadAxisSettings,
+    InvalidShortcutBindings,
     ConfigPersistFailed,
     ConfigPermissionDenied,
     ConfigStorageFull,
@@ -581,11 +602,12 @@ pub enum SettingsErrorCode {
 }
 
 impl SettingsErrorCode {
-    pub const ALL: [Self; 31] = [
+    pub const ALL: [Self; 32] = [
         Self::ServiceUnavailable,
         Self::SnapshotOutdated,
         Self::RuntimeUnavailable,
         Self::InvalidGamepadAxisSettings,
+        Self::InvalidShortcutBindings,
         Self::ConfigPersistFailed,
         Self::ConfigPermissionDenied,
         Self::ConfigStorageFull,
@@ -621,6 +643,7 @@ impl SettingsErrorCode {
             Self::SnapshotOutdated => "snapshot_outdated",
             Self::RuntimeUnavailable => "runtime_unavailable",
             Self::InvalidGamepadAxisSettings => "invalid_gamepad_axis_settings",
+            Self::InvalidShortcutBindings => "invalid_shortcut_bindings",
             Self::ConfigPersistFailed => "config_persist_failed",
             Self::ConfigPermissionDenied => "config_permission_denied",
             Self::ConfigStorageFull => "config_storage_full",
@@ -677,6 +700,9 @@ impl fmt::Display for SettingsError {
             SettingsErrorCode::RuntimeUnavailable => "runtime did not apply the setting",
             SettingsErrorCode::InvalidGamepadAxisSettings => {
                 "gamepad dead-zone settings are out of range"
+            }
+            SettingsErrorCode::InvalidShortcutBindings => {
+                "shortcut bindings are invalid or conflict"
             }
             SettingsErrorCode::ConfigPersistFailed => "setting could not be saved",
             SettingsErrorCode::ConfigPermissionDenied => {
@@ -764,6 +790,11 @@ pub enum SettingsCommand {
     SetGamepadAxisSettings {
         expected_config_revision: u64,
         settings: SettingsGamepadAxisSettings,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    SetShortcuts {
+        expected_config_revision: u64,
+        shortcuts: SettingsShortcuts,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     SetStartupItemEnabled {
@@ -890,6 +921,19 @@ impl SettingsClient {
         self.request(|reply| SettingsCommand::SetGamepadAxisSettings {
             expected_config_revision,
             settings,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn set_shortcuts(
+        &self,
+        expected_config_revision: u64,
+        shortcuts: SettingsShortcuts,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetShortcuts {
+            expected_config_revision,
+            shortcuts,
             reply,
         })
         .await
@@ -1032,6 +1076,18 @@ impl SettingsClient {
         self.request_blocking(|reply| SettingsCommand::SetGamepadAxisSettings {
             expected_config_revision,
             settings,
+            reply,
+        })
+    }
+
+    pub fn set_shortcuts_blocking(
+        &self,
+        expected_config_revision: u64,
+        shortcuts: SettingsShortcuts,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::SetShortcuts {
+            expected_config_revision,
+            shortcuts,
             reply,
         })
     }
@@ -1280,6 +1336,45 @@ mod tests {
             )
             .expect("gamepad snapshot");
         assert_eq!(result.gamepad_axis_settings.stick_dead_zone_percent, 25);
+        worker.join().expect("worker join");
+    }
+
+    #[test]
+    fn shortcut_command_preserves_typed_bindings() {
+        let (client, endpoint) = SettingsClient::bounded(1);
+        let shortcuts = SettingsShortcuts {
+            commands: vec![SettingsShortcutBinding {
+                command: "toggle_overlay".to_owned(),
+                shortcut: "Control+Alt+B".to_owned(),
+            }],
+            model_behaviors: vec![SettingsModelBehaviorBinding {
+                model_id: "standard".to_owned(),
+                behavior_id: "motion:TapBody:0".to_owned(),
+                shortcut: "Control+Alt+M".to_owned(),
+            }],
+        };
+        let expected = shortcuts.clone();
+        let worker = thread::spawn(move || {
+            let SettingsCommand::SetShortcuts {
+                expected_config_revision,
+                shortcuts,
+                reply,
+            } = endpoint.recv_blocking().expect("shortcut command")
+            else {
+                panic!("unexpected command");
+            };
+            assert_eq!(expected_config_revision, 7);
+            assert_eq!(shortcuts, expected);
+            let mut result = snapshot(8, true, true);
+            result.shortcuts = shortcuts;
+            reply.respond(Ok(result)).expect("shortcut reply");
+        });
+
+        let result = client
+            .set_shortcuts_blocking(7, shortcuts)
+            .expect("shortcut snapshot");
+        assert_eq!(result.shortcuts.commands.len(), 1);
+        assert_eq!(result.shortcuts.model_behaviors.len(), 1);
         worker.join().expect("worker join");
     }
 
@@ -1612,6 +1707,7 @@ mod tests {
             motion_audio_enabled,
             model_settings: SettingsModelSettings::default(),
             gamepad_axis_settings: SettingsGamepadAxisSettings::default(),
+            shortcuts: SettingsShortcuts::default(),
             startup_item: SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),
             configuration_status: SettingsConfigurationStatus::Ready,
             config_recovery: None,
