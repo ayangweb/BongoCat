@@ -3,9 +3,12 @@ mod macos;
 #[cfg(target_os = "windows")]
 mod windows;
 
-use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError};
+use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError, PlatformInputServiceStatus};
 use bongocat_render::{RenderConsumer, RenderTransportDiagnostics};
-use bongocat_runtime::{CursorProducer, GamepadAxisProducer, InputProducer, RuntimeClient};
+use bongocat_runtime::{
+    CursorProducer, GamepadAxisProducer, InputProducer, PlatformInputDiagnosticsProducer,
+    RuntimeClient,
+};
 use std::{fmt, path::Path, time::Duration};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -47,6 +50,33 @@ pub struct ProductOverlayReport {
 pub enum OverlayTickOutcome {
     Presented,
     Hidden,
+}
+
+fn input_start_failure_diagnostics(error: PlatformInputError) -> PlatformInputDiagnostics {
+    PlatformInputDiagnostics {
+        service_status: match error {
+            PlatformInputError::PermissionDenied => PlatformInputServiceStatus::PermissionDenied,
+            PlatformInputError::BackendUnavailable => {
+                PlatformInputServiceStatus::BackendUnavailable
+            }
+            _ => PlatformInputServiceStatus::Failed,
+        },
+        service_start_attempts: 1,
+        ..PlatformInputDiagnostics::default()
+    }
+}
+
+fn start_platform_input<T>(
+    diagnostics_producer: &PlatformInputDiagnosticsProducer,
+    start: impl FnOnce() -> Result<T, PlatformInputError>,
+) -> (Option<T>, Option<PlatformInputError>) {
+    match start() {
+        Ok(service) => (Some(service), None),
+        Err(error) => {
+            let _ = diagnostics_producer.publish(input_start_failure_diagnostics(error));
+            (None, Some(error))
+        }
+    }
 }
 
 pub struct ProductOverlaySession {
@@ -308,11 +338,57 @@ pub(crate) fn validate_model_generation_advance(
 #[cfg(all(test, any(target_os = "macos", target_os = "windows")))]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn model_generation_may_skip_rejected_candidates_but_never_regress() {
         validate_model_generation_advance(4, 7).expect("rejected generations may be skipped");
         assert!(validate_model_generation_advance(4, 4).is_err());
         assert!(validate_model_generation_advance(4, 3).is_err());
+    }
+
+    #[test]
+    fn input_start_failures_publish_one_anonymous_degraded_attempt() {
+        for (error, expected) in [
+            (
+                PlatformInputError::PermissionDenied,
+                PlatformInputServiceStatus::PermissionDenied,
+            ),
+            (
+                PlatformInputError::BackendUnavailable,
+                PlatformInputServiceStatus::BackendUnavailable,
+            ),
+            (
+                PlatformInputError::TapCreateFailed,
+                PlatformInputServiceStatus::Failed,
+            ),
+        ] {
+            let diagnostics = input_start_failure_diagnostics(error);
+            assert_eq!(diagnostics.service_status, expected);
+            assert_eq!(diagnostics.service_start_attempts, 1);
+            assert_eq!(diagnostics.captured_edges, 0);
+        }
+    }
+
+    #[test]
+    fn platform_input_owner_attempts_a_denied_start_only_once() {
+        let attempts = AtomicUsize::new(0);
+        let producer = PlatformInputDiagnosticsProducer::default();
+        let (service, error) = start_platform_input(&producer, || {
+            attempts.fetch_add(1, Ordering::Relaxed);
+            Err::<(), _>(PlatformInputError::PermissionDenied)
+        });
+
+        assert_eq!(service, None);
+        assert_eq!(error, Some(PlatformInputError::PermissionDenied));
+        assert_eq!(attempts.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            producer.diagnostics(),
+            PlatformInputDiagnostics {
+                service_status: PlatformInputServiceStatus::PermissionDenied,
+                service_start_attempts: 1,
+                ..PlatformInputDiagnostics::default()
+            }
+        );
     }
 }

@@ -600,7 +600,13 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 验收证据（2026-08-30）：正式服务按 `250 ms` 周期查询候选 key/button 的系统状态，
     连续 `2` 次缺失才由 runtime reconcile 释放；按键、修饰键和 button 31 的受控丢失
     release 测试在 Phase 0 spike 通过，正式服务的 down/up runtime 闭环亦已通过。
-- [ ] 权限拒绝时进入 degraded，不产生重试风暴。
+- [x] 权限拒绝时进入 degraded，不产生重试风暴。
+  - 验收证据（2026-09-01）：共享 `PlatformInputDiagnostics` 新增匿名强类型 service status 与
+    `service_start_attempts`；双平台 worker 发布 Running/Stopped，overlay owner 的 `FnOnce` contract
+    将 PermissionDenied/backend/其他启动失败映射为 degraded snapshot 且只调用 backend 一次。
+    settings revision/health 与 Diagnostics 投影该状态。重新 ad-hoc 签名的 Development `.app` 在未获
+    Input Monitoring 时真实显示 `Runtime Degraded`、`Permission required`、`Start attempts: 1`，
+    overlay/settings 保持可用；800px 宽可视检查无重叠或裁剪，未触发权限请求或重试。
 - [ ] 锁屏、睡眠、快速用户切换和 tap 重启发送 Reset。
   - 状态（2026-09-01）：正式 macOS worker 注册 NSWorkspace will-sleep/did-wake 与 session
     resign/active 四类公开通知；通知在 autorelease/panic boundary 内合并为原子 lifecycle signal，
@@ -1577,6 +1583,9 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       commit `62f8c8f` 的 push run `33354177622` 全绿；Windows/macOS jobs
       `99373058496`/`99373058428` 均实际通过 General -> Diagnostics 页面切换、close/reopen 和有序
       shutdown，Ubuntu job `99373058388` 通过共享 UI contract 与完整 workspace 门禁，退出条件满足。
+    - 增量证据（2026-09-01）：Diagnostics 在配置状态与 25 项计数前新增平台输入服务状态带，
+      stable status/单次尝试计数进入 settings 独立 revision；真实 Development permission-denied
+      bundle 的 800px 宽可视与 AppKit accessibility tree 检查通过，未显示平台错误文本。
 33. [x] `P6-CONFIG-BACKUP-RETENTION`：为正式配置提交建立有界、可审计的备份集合。
     - 依赖：正式 `ConfigStore`、v1 -> v2 顺序迁移和环境 writer lock。
     - 退出条件：每份备份携带格式版本、墙上时间、源 schema/revision 和原始配置；按环境限制

@@ -1,7 +1,20 @@
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum PlatformInputServiceStatus {
+    #[default]
+    NotStarted,
+    Running,
+    PermissionDenied,
+    BackendUnavailable,
+    Failed,
+    Stopped,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct PlatformInputDiagnostics {
+    pub service_status: PlatformInputServiceStatus,
+    pub service_start_attempts: u64,
     pub captured_edges: u64,
     pub queued_edges: u64,
     pub consumed_edges: u64,

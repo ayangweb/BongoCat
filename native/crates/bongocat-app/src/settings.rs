@@ -9,16 +9,18 @@ use bongocat_platform::{
     StartupItemEnvironment, StartupItemError, StartupItemState, StartupItemUnsupportedReason,
     open_directory, set_startup_item_enabled, startup_item_state,
 };
-use bongocat_runtime::{InputSnapshot, RuntimeState};
+use bongocat_runtime::{
+    InputSnapshot, PlatformInputDiagnostics, PlatformInputServiceStatus, RuntimeState,
+};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_ui::SettingsStartupItemError;
 use bongocat_ui::{
     RuntimeHealth, SettingsClient, SettingsCommand, SettingsConfigRecovery,
     SettingsConfigurationStatus, SettingsError, SettingsErrorCode, SettingsInputDiagnostics,
-    SettingsModelAvailability, SettingsModelCatalog, SettingsModelCatalogError,
-    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportProgress,
-    SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsServiceEndpoint,
-    SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
+    SettingsInputServiceStatus, SettingsModelAvailability, SettingsModelCatalog,
+    SettingsModelCatalogError, SettingsModelDiagnostic, SettingsModelEntry,
+    SettingsModelImportProgress, SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin,
+    SettingsServiceEndpoint, SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
     SettingsStartupItemUnsupportedReason, SettingsWindowPlacement, SettingsWindowState,
 };
 use std::{fmt, path::PathBuf, sync::Arc, thread};
@@ -404,7 +406,7 @@ fn snapshot(
     startup_item: SettingsStartupItemStatus,
 ) -> SettingsSnapshot {
     let runtime = application.runtime_client().snapshot();
-    let input_diagnostics = settings_input_diagnostics(&runtime.input);
+    let input_diagnostics = settings_input_diagnostics(&runtime.input, runtime.platform_input);
     clock.observe_runtime(runtime.revision);
     clock.observe_input_diagnostics(input_diagnostics);
     clock.observe_startup_item(startup_item);
@@ -413,7 +415,9 @@ fn snapshot(
     }
     SettingsSnapshot {
         revision: clock.revision,
-        runtime_health: if application.is_operational() {
+        runtime_health: if input_service_is_degraded(input_diagnostics.service_status) {
+            RuntimeHealth::Degraded
+        } else if application.is_operational() {
             match runtime.state {
                 RuntimeState::Starting => RuntimeHealth::Starting,
                 RuntimeState::Ready => RuntimeHealth::Ready,
@@ -459,8 +463,24 @@ fn snapshot(
     }
 }
 
-const fn settings_input_diagnostics(input: &InputSnapshot) -> SettingsInputDiagnostics {
+const fn settings_input_diagnostics(
+    input: &InputSnapshot,
+    platform: PlatformInputDiagnostics,
+) -> SettingsInputDiagnostics {
     SettingsInputDiagnostics {
+        service_status: match platform.service_status {
+            PlatformInputServiceStatus::NotStarted => SettingsInputServiceStatus::NotStarted,
+            PlatformInputServiceStatus::Running => SettingsInputServiceStatus::Running,
+            PlatformInputServiceStatus::PermissionDenied => {
+                SettingsInputServiceStatus::PermissionDenied
+            }
+            PlatformInputServiceStatus::BackendUnavailable => {
+                SettingsInputServiceStatus::BackendUnavailable
+            }
+            PlatformInputServiceStatus::Failed => SettingsInputServiceStatus::Failed,
+            PlatformInputServiceStatus::Stopped => SettingsInputServiceStatus::Stopped,
+        },
+        service_start_attempts: platform.service_start_attempts,
         pressed_key_count: input.pressed_key_count,
         pressed_mouse_button_count: input.pressed_mouse_button_count,
         pressed_gamepad_button_count: input.pressed_gamepad_button_count,
@@ -487,6 +507,15 @@ const fn settings_input_diagnostics(input: &InputSnapshot) -> SettingsInputDiagn
         transport_recovered_after_overflow: input.transport.recovered_after_overflow,
         transport_runtime_stopped: input.transport.runtime_stopped,
     }
+}
+
+const fn input_service_is_degraded(status: SettingsInputServiceStatus) -> bool {
+    matches!(
+        status,
+        SettingsInputServiceStatus::PermissionDenied
+            | SettingsInputServiceStatus::BackendUnavailable
+            | SettingsInputServiceStatus::Failed
+    )
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -933,7 +962,19 @@ mod tests {
             },
             ..InputSnapshot::default()
         };
-        let projected = settings_input_diagnostics(&input);
+        let projected = settings_input_diagnostics(
+            &input,
+            PlatformInputDiagnostics {
+                service_status: PlatformInputServiceStatus::PermissionDenied,
+                service_start_attempts: 1,
+                ..PlatformInputDiagnostics::default()
+            },
+        );
+        assert_eq!(
+            projected.service_status,
+            SettingsInputServiceStatus::PermissionDenied
+        );
+        assert_eq!(projected.service_start_attempts, 1);
         assert_eq!(projected.pressed_key_count, 1);
         assert_eq!(projected.pressed_mouse_button_count, 2);
         assert_eq!(projected.pressed_gamepad_button_count, 20);
@@ -971,6 +1012,24 @@ mod tests {
         assert_eq!(clock.revision, 41);
         clock.observe_input_diagnostics(changed);
         assert_eq!(clock.revision, 41);
+    }
+
+    #[test]
+    fn input_start_failures_degrade_health_without_treating_stop_as_failure() {
+        for status in [
+            SettingsInputServiceStatus::PermissionDenied,
+            SettingsInputServiceStatus::BackendUnavailable,
+            SettingsInputServiceStatus::Failed,
+        ] {
+            assert!(input_service_is_degraded(status));
+        }
+        for status in [
+            SettingsInputServiceStatus::NotStarted,
+            SettingsInputServiceStatus::Running,
+            SettingsInputServiceStatus::Stopped,
+        ] {
+            assert!(!input_service_is_degraded(status));
+        }
     }
 
     #[test]

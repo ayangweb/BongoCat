@@ -85,6 +85,8 @@ pub enum RuntimeHealth {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct SettingsInputDiagnostics {
+    pub service_status: SettingsInputServiceStatus,
+    pub service_start_attempts: u64,
     pub pressed_key_count: usize,
     pub pressed_mouse_button_count: usize,
     pub pressed_gamepad_button_count: usize,
@@ -110,6 +112,17 @@ pub struct SettingsInputDiagnostics {
     pub transport_queue_full: u64,
     pub transport_recovered_after_overflow: u64,
     pub transport_runtime_stopped: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum SettingsInputServiceStatus {
+    #[default]
+    NotStarted,
+    Running,
+    PermissionDenied,
+    BackendUnavailable,
+    Failed,
+    Stopped,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

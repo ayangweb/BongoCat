@@ -42,7 +42,7 @@ pub use input::{
 use input::{InputState, InputTransportCounters};
 pub use platform_input::{
     PlatformInputDiagnostics, PlatformInputDiagnosticsProducer,
-    PlatformInputDiagnosticsPublishError,
+    PlatformInputDiagnosticsPublishError, PlatformInputServiceStatus,
 };
 use rendering::{MotionStopStatus, RenderEvaluation, RuntimeRenderBootstrap, RuntimeRenderer};
 
@@ -2011,6 +2011,8 @@ mod tests {
             .expect("ready snapshot");
         let producer = owner.platform_input_diagnostics_producer();
         let live = PlatformInputDiagnostics {
+            service_status: PlatformInputServiceStatus::Running,
+            service_start_attempts: 1,
             runtime_queue_overflows: 2,
             recovery_resets: 3,
             gamepad_connections: 4,
@@ -2022,6 +2024,7 @@ mod tests {
         assert_eq!(client.snapshot().platform_input, live);
 
         let final_diagnostics = PlatformInputDiagnostics {
+            service_status: PlatformInputServiceStatus::Stopped,
             clean_shutdown: true,
             ..live
         };

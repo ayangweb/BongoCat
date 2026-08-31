@@ -1,6 +1,6 @@
 #![cfg(target_os = "macos")]
 
-use bongocat_platform::{MacInputService, PlatformInputError};
+use bongocat_platform::{MacInputService, PlatformInputError, PlatformInputServiceStatus};
 use bongocat_runtime::{HandSide, InputBindings, PhysicalKey, RuntimeCommand, RuntimeOwner};
 use objc2_app_kit::{NSWorkspace, NSWorkspaceSessionDidResignActiveNotification};
 use objc2_core_graphics::{
@@ -71,6 +71,11 @@ fn synthetic_shift_reaches_runtime_and_releases_cleanly() {
     assert!(!released.model_input.left_hand_down);
 
     let diagnostics = service.stop().expect("input service stop");
+    assert_eq!(
+        diagnostics.service_status,
+        PlatformInputServiceStatus::Stopped
+    );
+    assert_eq!(diagnostics.service_start_attempts, 1);
     assert_eq!(diagnostics.callback_panics, 0);
     assert_eq!(diagnostics.capture_queue_overflows, 0);
     assert_eq!(diagnostics.runtime_queue_overflows, 0);

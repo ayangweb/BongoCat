@@ -1,4 +1,6 @@
-use crate::{InputPermission, PlatformInputDiagnostics, PlatformInputError};
+use crate::{
+    InputPermission, PlatformInputDiagnostics, PlatformInputError, PlatformInputServiceStatus,
+};
 use block2::RcBlock;
 use bongocat_runtime::{
     CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorViewport, GamepadAxis,
@@ -1132,9 +1134,9 @@ fn run_input_worker(
         let _ = startup.send(Err(PlatformInputError::TapCreateFailed));
         return Err(PlatformInputError::TapCreateFailed);
     }
-    let _ = startup.send(Ok(()));
-
     let mut diagnostics = PlatformInputDiagnostics {
+        service_status: PlatformInputServiceStatus::Running,
+        service_start_attempts: 1,
         gamepad_background_monitoring_enabled: gamepad_owner.background_monitoring_enabled,
         ..PlatformInputDiagnostics::default()
     };
@@ -1144,6 +1146,7 @@ fn run_input_worker(
         &counters,
         &latest_cursor,
     );
+    let _ = startup.send(Ok(()));
     if let Some(event) = CGEvent::new(None) {
         let location = CGEvent::location(Some(&event));
         latest_cursor.publish(MacCursorPoint {
@@ -1346,6 +1349,11 @@ fn run_input_worker(
         .saturating_add(drain_capture_queue(&capture_receiver));
     diagnostics.clean_shutdown = diagnostics.gamepad_background_monitoring_restored
         && publish_final_reset(&producer, started, &mut diagnostics);
+    diagnostics.service_status = if service_result.is_ok() && diagnostics.clean_shutdown {
+        PlatformInputServiceStatus::Stopped
+    } else {
+        PlatformInputServiceStatus::Failed
+    };
     merge_callback_diagnostics(&mut diagnostics, &counters);
     latest_cursor.merge_diagnostics(&mut diagnostics);
     let _ = diagnostics_producer.publish(diagnostics);

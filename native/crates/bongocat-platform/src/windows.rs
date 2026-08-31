@@ -1,4 +1,4 @@
-use crate::{PlatformInputDiagnostics, PlatformInputError};
+use crate::{PlatformInputDiagnostics, PlatformInputError, PlatformInputServiceStatus};
 use bongocat_runtime::{
     CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorViewport, GamepadAxis,
     GamepadAxisKey, GamepadAxisProducer, GamepadAxisPublishError, GamepadAxisSample, GamepadButton,
@@ -519,6 +519,8 @@ impl WindowState {
             final_reset_published: false,
             drop_next_key_release: options.drop_next_key_release,
             diagnostics: PlatformInputDiagnostics {
+                service_status: PlatformInputServiceStatus::Running,
+                service_start_attempts: 1,
                 cursor_captured: 1,
                 ..PlatformInputDiagnostics::default()
             },
@@ -1059,7 +1061,6 @@ unsafe fn run_input_worker_inner(
         return Err(PlatformInputError::SessionNotificationFailed);
     }
     state.session_notifications_registered = true;
-    state.publish_diagnostics();
     let devices = [
         raw_input_device(0x02, window),
         raw_input_device(0x06, window),
@@ -1090,6 +1091,7 @@ unsafe fn run_input_worker_inner(
         let _ = startup.send(Err(PlatformInputError::TimerCreateFailed));
         return Err(PlatformInputError::TimerCreateFailed);
     }
+    state.publish_diagnostics();
     let _ = startup.send(Ok(()));
 
     let mut message = MSG::default();
@@ -1131,6 +1133,12 @@ unsafe fn run_input_worker_inner(
         && raw_unregistered
         && state.session_notifications_unregistered
         && final_reset;
+    state.diagnostics.service_status =
+        if !message_failed && state.terminal_error.is_none() && state.diagnostics.clean_shutdown {
+            PlatformInputServiceStatus::Stopped
+        } else {
+            PlatformInputServiceStatus::Failed
+        };
     state.publish_diagnostics();
     let _ = unsafe { UnregisterClassW(WINDOW_CLASS, Some(instance)) };
     if message_failed {

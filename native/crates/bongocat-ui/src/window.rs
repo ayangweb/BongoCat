@@ -1,11 +1,11 @@
 use crate::{
     RuntimeHealth, SettingsClient, SettingsConfigRecovery, SettingsConfigurationStatus,
-    SettingsError, SettingsErrorCode, SettingsInputDiagnostics, SettingsModelAvailability,
-    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportMonitor,
-    SettingsModelImportOperation, SettingsModelImportRequest, SettingsModelImportStage,
-    SettingsModelKey, SettingsModelOrigin, SettingsOperationId, SettingsSnapshot,
-    SettingsStartupItemState, SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason,
-    SettingsWindowPlacement, SettingsWindowState,
+    SettingsError, SettingsErrorCode, SettingsInputDiagnostics, SettingsInputServiceStatus,
+    SettingsModelAvailability, SettingsModelDiagnostic, SettingsModelEntry,
+    SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
+    SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsOperationId,
+    SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
+    SettingsStartupItemUnsupportedReason, SettingsWindowPlacement, SettingsWindowState,
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_platform::{
@@ -2088,12 +2088,53 @@ impl Render for SettingsView {
                     .overflow_y_scroll()
                     .when_some(snapshot.as_ref(), |content, snapshot| {
                         let metrics = input_diagnostic_metrics(snapshot.input_diagnostics);
+                        let input_service = input_service_presentation(snapshot.input_diagnostics);
                         let recovery = config_recovery_presentation(
                             snapshot.configuration_status,
                             snapshot.config_recovery,
                         );
                         let config_action_disabled = self.pending.is_some();
                         content
+                            .child(
+                                div()
+                                    .id("input-service-diagnostics")
+                                    .pb_3()
+                                    .mb_3()
+                                    .border_b_1()
+                                    .border_color(tokens.border)
+                                    .flex()
+                                    .items_center()
+                                    .justify_between()
+                                    .gap_4()
+                                    .child(
+                                        div()
+                                            .min_w_0()
+                                            .flex_1()
+                                            .flex()
+                                            .flex_col()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .text_sm()
+                                                    .text_color(tokens.muted)
+                                                    .child("Input service"),
+                                            )
+                                            .child(div().text_sm().child(input_service.title)),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex_none()
+                                            .text_sm()
+                                            .text_color(if input_service.attention {
+                                                tokens.danger
+                                            } else if input_service.running {
+                                                tokens.accent
+                                            } else {
+                                                tokens.muted
+                                            })
+                                            .child(input_service.detail),
+                                    ),
+                            )
                             .child(
                                 div()
                                     .id("config-recovery-diagnostics")
@@ -2367,6 +2408,30 @@ fn input_diagnostic_metrics(diagnostics: SettingsInputDiagnostics) -> [(&'static
             diagnostics.transport_runtime_stopped,
         ),
     ]
+}
+
+struct InputServicePresentation {
+    title: &'static str,
+    detail: String,
+    running: bool,
+    attention: bool,
+}
+
+fn input_service_presentation(diagnostics: SettingsInputDiagnostics) -> InputServicePresentation {
+    let (title, running, attention) = match diagnostics.service_status {
+        SettingsInputServiceStatus::NotStarted => ("Not started", false, false),
+        SettingsInputServiceStatus::Running => ("Running", true, false),
+        SettingsInputServiceStatus::PermissionDenied => ("Permission required", false, true),
+        SettingsInputServiceStatus::BackendUnavailable => ("Backend unavailable", false, true),
+        SettingsInputServiceStatus::Failed => ("Startup failed", false, true),
+        SettingsInputServiceStatus::Stopped => ("Stopped", false, false),
+    };
+    InputServicePresentation {
+        title,
+        detail: format!("Start attempts: {}", diagnostics.service_start_attempts),
+        running,
+        attention,
+    }
 }
 
 struct ConfigRecoveryPresentation {
@@ -2974,6 +3039,8 @@ mod tests {
     #[test]
     fn diagnostics_page_projects_only_named_aggregate_counters() {
         let diagnostics = SettingsInputDiagnostics {
+            service_status: SettingsInputServiceStatus::Running,
+            service_start_attempts: 1,
             pressed_key_count: 1,
             pressed_mouse_button_count: 2,
             pressed_gamepad_button_count: 3,
@@ -3011,6 +3078,24 @@ mod tests {
         assert!(metrics.iter().all(|(label, _)| {
             !label.contains("HID") && !label.contains("path") && !label.contains("timestamp value")
         }));
+        let service = input_service_presentation(diagnostics);
+        assert_eq!(service.title, "Running");
+        assert_eq!(service.detail, "Start attempts: 1");
+        assert!(service.running);
+        assert!(!service.attention);
+    }
+
+    #[test]
+    fn input_service_status_keeps_permission_failure_actionable_and_anonymous() {
+        let service = input_service_presentation(SettingsInputDiagnostics {
+            service_status: SettingsInputServiceStatus::PermissionDenied,
+            service_start_attempts: 1,
+            ..SettingsInputDiagnostics::default()
+        });
+        assert_eq!(service.title, "Permission required");
+        assert_eq!(service.detail, "Start attempts: 1");
+        assert!(service.attention);
+        assert!(!service.detail.contains("path"));
     }
 
     #[test]

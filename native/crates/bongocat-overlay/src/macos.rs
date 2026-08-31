@@ -243,15 +243,16 @@ impl ProductOverlaySession {
         if runtime_client.snapshot().overlay_visible {
             overlay.panel.orderFrontRegardless();
         }
-        let (input_service, input_start_error) = match MacInputService::start_with_diagnostics(
-            input_producer,
-            cursor_producer,
-            gamepad_axis_producer,
-            runtime_client.platform_input_diagnostics_producer(),
-        ) {
-            Ok(service) => (Some(service), None),
-            Err(error) => (None, Some(error)),
-        };
+        let diagnostics_producer = runtime_client.platform_input_diagnostics_producer();
+        let (input_service, input_start_error) =
+            super::start_platform_input(&diagnostics_producer, || {
+                MacInputService::start_with_diagnostics(
+                    input_producer,
+                    cursor_producer,
+                    gamepad_axis_producer,
+                    diagnostics_producer.clone(),
+                )
+            });
         Ok(Self {
             application,
             overlay,
