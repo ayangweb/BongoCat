@@ -3,15 +3,21 @@ use bongocat_model::{
     ModelCatalogEntry, ModelDiagnostic, ModelImportProgress, ModelImportStage, ModelOrigin,
     ModelStoreDiagnostic,
 };
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use bongocat_platform::{
+    StartupItemEnvironment, StartupItemError, StartupItemState, StartupItemUnsupportedReason,
+    set_startup_item_enabled, startup_item_state,
+};
 use bongocat_runtime::RuntimeState;
 use bongocat_ui::{
     RuntimeHealth, SettingsClient, SettingsCommand, SettingsError, SettingsErrorCode,
     SettingsModelAvailability, SettingsModelCatalog, SettingsModelCatalogError,
     SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportProgress,
     SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsServiceEndpoint,
-    SettingsSnapshot,
+    SettingsSnapshot, SettingsStartupItemError, SettingsStartupItemState,
+    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason,
 };
-use std::{fmt, thread};
+use std::{fmt, sync::Arc, thread};
 
 const SETTINGS_COMMAND_CAPACITY: usize = 16;
 
@@ -22,10 +28,17 @@ pub struct ApplicationSettingsService {
 
 impl ApplicationSettingsService {
     pub fn start(application: Application) -> Result<Self, SettingsServiceJoinError> {
+        Self::start_with_startup_item(application, Arc::new(SystemStartupItem))
+    }
+
+    fn start_with_startup_item(
+        application: Application,
+        startup_item: Arc<dyn StartupItemCapability>,
+    ) -> Result<Self, SettingsServiceJoinError> {
         let (client, endpoint) = SettingsClient::bounded(SETTINGS_COMMAND_CAPACITY);
         let worker = thread::Builder::new()
             .name("bongocat-settings-service".to_owned())
-            .spawn(move || run_service(application, endpoint))
+            .spawn(move || run_service(application, endpoint, startup_item))
             .map_err(SettingsServiceJoinError::Spawn)?;
         Ok(Self {
             client,
@@ -43,6 +56,24 @@ impl ApplicationSettingsService {
             .expect("settings service worker is present")
             .join()
             .map_err(|_| SettingsServiceJoinError::Panicked)
+    }
+}
+
+trait StartupItemCapability: Send + Sync + 'static {
+    fn state(&self) -> SettingsStartupItemStatus;
+
+    fn set_enabled(&self, enabled: bool) -> Result<SettingsStartupItemState, SettingsError>;
+}
+
+struct SystemStartupItem;
+
+impl StartupItemCapability for SystemStartupItem {
+    fn state(&self) -> SettingsStartupItemStatus {
+        system_startup_item_state()
+    }
+
+    fn set_enabled(&self, enabled: bool) -> Result<SettingsStartupItemState, SettingsError> {
+        system_set_startup_item_enabled(enabled)
     }
 }
 
@@ -72,7 +103,11 @@ impl fmt::Display for SettingsServiceJoinError {
 
 impl std::error::Error for SettingsServiceJoinError {}
 
-fn run_service(mut application: Application, endpoint: SettingsServiceEndpoint) {
+fn run_service(
+    mut application: Application,
+    endpoint: SettingsServiceEndpoint,
+    startup_item: Arc<dyn StartupItemCapability>,
+) {
     let mut clock = SettingsSnapshotClock::new(application.runtime_client().snapshot().revision);
     loop {
         let Ok(command) = endpoint.recv_blocking() else {
@@ -81,26 +116,42 @@ fn run_service(mut application: Application, endpoint: SettingsServiceEndpoint) 
         };
         match command {
             SettingsCommand::ReadSnapshot { reply } => {
-                let _ = reply.respond(Ok(snapshot(&application, &mut clock, false)));
+                let _ = reply.respond(Ok(snapshot(
+                    &application,
+                    &mut clock,
+                    false,
+                    startup_item.state(),
+                )));
             }
             SettingsCommand::SetOverlayVisible { visible, reply } => {
                 let result = application
                     .set_overlay_visible(visible)
-                    .map(|_| snapshot(&application, &mut clock, false))
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()))
                     .map_err(map_application_error);
                 let _ = reply.respond(result);
             }
             SettingsCommand::SetMotionAudioEnabled { enabled, reply } => {
                 let result = application
                     .set_motion_audio_enabled(enabled)
-                    .map(|_| snapshot(&application, &mut clock, false))
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()))
                     .map_err(map_application_error);
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::SetStartupItemEnabled { enabled, reply } => {
+                let result = startup_item.set_enabled(enabled).map(|state| {
+                    snapshot(
+                        &application,
+                        &mut clock,
+                        false,
+                        SettingsStartupItemStatus::State(state),
+                    )
+                });
                 let _ = reply.respond(result);
             }
             SettingsCommand::SelectModel { model, reply } => {
                 let result = application
                     .select_model(model_origin(model.origin), model.id)
-                    .map(|_| snapshot(&application, &mut clock, false))
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()))
                     .map_err(map_application_error);
                 let _ = reply.respond(result);
             }
@@ -120,19 +171,20 @@ fn run_service(mut application: Application, endpoint: SettingsServiceEndpoint) 
                         },
                         move || cancellation.is_cancelled(),
                     )
-                    .map(|_| snapshot(&application, &mut clock, true))
+                    .map(|_| snapshot(&application, &mut clock, true, startup_item.state()))
                     .map_err(map_model_import_error);
                 let _ = reply.respond(result);
             }
             SettingsCommand::DeleteModel { model, reply } => {
                 let result = application
                     .delete_model(model_origin(model.origin), model.id)
-                    .map(|_| snapshot(&application, &mut clock, true))
+                    .map(|_| snapshot(&application, &mut clock, true, startup_item.state()))
                     .map_err(map_model_delete_error);
                 let _ = reply.respond(result);
             }
             SettingsCommand::Shutdown { reply } => {
-                let before_shutdown = snapshot(&application, &mut clock, false);
+                let before_shutdown =
+                    snapshot(&application, &mut clock, false, startup_item.state());
                 let result = application.shutdown().map(|stopped| {
                     clock.observe_runtime(stopped.revision);
                     SettingsSnapshot {
@@ -166,6 +218,7 @@ const fn settings_import_progress(progress: ModelImportProgress) -> SettingsMode
 struct SettingsSnapshotClock {
     revision: u64,
     observed_runtime_revision: u64,
+    observed_startup_item: Option<SettingsStartupItemStatus>,
 }
 
 impl SettingsSnapshotClock {
@@ -173,6 +226,7 @@ impl SettingsSnapshotClock {
         Self {
             revision: runtime_revision,
             observed_runtime_revision: runtime_revision,
+            observed_startup_item: None,
         }
     }
 
@@ -186,15 +240,26 @@ impl SettingsSnapshotClock {
     fn mark_catalog_changed(&mut self) {
         self.revision = self.revision.saturating_add(1);
     }
+
+    fn observe_startup_item(&mut self, status: SettingsStartupItemStatus) {
+        match self.observed_startup_item.replace(status) {
+            Some(previous) if previous != status => {
+                self.revision = self.revision.saturating_add(1);
+            }
+            Some(_) | None => {}
+        }
+    }
 }
 
 fn snapshot(
     application: &Application,
     clock: &mut SettingsSnapshotClock,
     catalog_changed: bool,
+    startup_item: SettingsStartupItemStatus,
 ) -> SettingsSnapshot {
     let runtime = application.runtime_client().snapshot();
     clock.observe_runtime(runtime.revision);
+    clock.observe_startup_item(startup_item);
     if catalog_changed {
         clock.mark_catalog_changed();
     }
@@ -208,6 +273,7 @@ fn snapshot(
         },
         overlay_visible: runtime.overlay_visible,
         motion_audio_enabled: runtime.motion_audio_enabled,
+        startup_item,
         active_model: runtime
             .active_model
             .and_then(|model| {
@@ -220,6 +286,87 @@ fn snapshot(
             })
             .or_else(|| configured_model_key(application)),
         model_catalog: settings_model_catalog(application),
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn system_startup_item_state() -> SettingsStartupItemStatus {
+    startup_item_state(startup_item_environment())
+        .map(settings_startup_item_state)
+        .map(SettingsStartupItemStatus::State)
+        .unwrap_or_else(|error| {
+            SettingsStartupItemStatus::ReadError(settings_startup_item_error(error))
+        })
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const fn system_startup_item_state() -> SettingsStartupItemStatus {
+    SettingsStartupItemStatus::State(SettingsStartupItemState::Unsupported(
+        SettingsStartupItemUnsupportedReason::Platform,
+    ))
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn system_set_startup_item_enabled(
+    enabled: bool,
+) -> Result<SettingsStartupItemState, SettingsError> {
+    set_startup_item_enabled(startup_item_environment(), enabled)
+        .map(settings_startup_item_state)
+        .map_err(|_| SettingsError::new(SettingsErrorCode::StartupItemUpdateFailed))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn system_set_startup_item_enabled(
+    _enabled: bool,
+) -> Result<SettingsStartupItemState, SettingsError> {
+    Err(SettingsError::new(
+        SettingsErrorCode::StartupItemUpdateFailed,
+    ))
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const fn startup_item_environment() -> StartupItemEnvironment {
+    match crate::BUILD_ENVIRONMENT {
+        bongocat_config::BuildEnvironment::Development => StartupItemEnvironment::Development,
+        bongocat_config::BuildEnvironment::Production => StartupItemEnvironment::Production,
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const fn settings_startup_item_state(state: StartupItemState) -> SettingsStartupItemState {
+    match state {
+        StartupItemState::Unsupported(reason) => {
+            SettingsStartupItemState::Unsupported(match reason {
+                StartupItemUnsupportedReason::Platform => {
+                    SettingsStartupItemUnsupportedReason::Platform
+                }
+                StartupItemUnsupportedReason::OperatingSystem => {
+                    SettingsStartupItemUnsupportedReason::OperatingSystem
+                }
+                StartupItemUnsupportedReason::BuildEnvironment => {
+                    SettingsStartupItemUnsupportedReason::BuildEnvironment
+                }
+            })
+        }
+        StartupItemState::Disabled => SettingsStartupItemState::Disabled,
+        StartupItemState::Enabled => SettingsStartupItemState::Enabled,
+        StartupItemState::Stale => SettingsStartupItemState::Stale,
+        StartupItemState::RequiresApproval => SettingsStartupItemState::RequiresApproval,
+        StartupItemState::NotFound => SettingsStartupItemState::NotFound,
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const fn settings_startup_item_error(error: StartupItemError) -> SettingsStartupItemError {
+    match error {
+        StartupItemError::CurrentExecutableUnavailable => {
+            SettingsStartupItemError::CurrentExecutableUnavailable
+        }
+        StartupItemError::InvalidExecutablePath => SettingsStartupItemError::InvalidExecutablePath,
+        StartupItemError::BackendUnavailable => SettingsStartupItemError::BackendUnavailable,
+        StartupItemError::StateReadFailed => SettingsStartupItemError::StateReadFailed,
+        StartupItemError::EnableFailed => SettingsStartupItemError::EnableFailed,
+        StartupItemError::DisableFailed => SettingsStartupItemError::DisableFailed,
     }
 }
 
@@ -415,7 +562,56 @@ mod tests {
     use super::*;
     use bongocat_config::StorageLayout;
     use bongocat_ui::SettingsModelImportRequest;
+    use std::sync::{
+        Mutex,
+        atomic::{AtomicBool, Ordering},
+    };
     use tempfile::tempdir;
+
+    struct TestStartupItem {
+        status: Mutex<SettingsStartupItemStatus>,
+        fail_updates: AtomicBool,
+    }
+
+    impl TestStartupItem {
+        fn new(status: SettingsStartupItemStatus) -> Self {
+            Self {
+                status: Mutex::new(status),
+                fail_updates: AtomicBool::new(false),
+            }
+        }
+
+        fn replace(&self, status: SettingsStartupItemStatus) {
+            *self
+                .status
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = status;
+        }
+    }
+
+    impl StartupItemCapability for TestStartupItem {
+        fn state(&self) -> SettingsStartupItemStatus {
+            *self
+                .status
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+        }
+
+        fn set_enabled(&self, enabled: bool) -> Result<SettingsStartupItemState, SettingsError> {
+            if self.fail_updates.load(Ordering::Acquire) {
+                return Err(SettingsError::new(
+                    SettingsErrorCode::StartupItemUpdateFailed,
+                ));
+            }
+            let state = if enabled {
+                SettingsStartupItemState::Enabled
+            } else {
+                SettingsStartupItemState::Disabled
+            };
+            self.replace(SettingsStartupItemStatus::State(state));
+            Ok(state)
+        }
+    }
 
     fn model_fixture() -> std::path::PathBuf {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -473,6 +669,80 @@ mod tests {
 
         let stopped = client.shutdown_blocking().expect("service shutdown");
         assert_eq!(stopped.runtime_health, RuntimeHealth::Stopped);
+        service.join().expect("service join");
+    }
+
+    #[test]
+    fn service_observes_and_updates_startup_item_without_touching_config() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let config_path = layout.config.clone();
+        let application = Application::start_with_layout(layout).expect("application start");
+        let startup_item = Arc::new(TestStartupItem::new(SettingsStartupItemStatus::State(
+            SettingsStartupItemState::Disabled,
+        )));
+        let service =
+            ApplicationSettingsService::start_with_startup_item(application, startup_item.clone())
+                .expect("service start");
+        let client = service.client();
+
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        let initial_config = std::fs::read(&config_path).expect("initial config");
+        assert_eq!(
+            initial.startup_item,
+            SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled)
+        );
+
+        startup_item.replace(SettingsStartupItemStatus::ReadError(
+            SettingsStartupItemError::StateReadFailed,
+        ));
+        let read_failed = client
+            .read_snapshot_blocking()
+            .expect("read failure remains a snapshot");
+        assert!(read_failed.revision > initial.revision);
+        assert_eq!(
+            read_failed.startup_item,
+            SettingsStartupItemStatus::ReadError(SettingsStartupItemError::StateReadFailed)
+        );
+
+        startup_item.replace(SettingsStartupItemStatus::State(
+            SettingsStartupItemState::Stale,
+        ));
+        let externally_changed = client.read_snapshot_blocking().expect("external change");
+        assert!(externally_changed.revision > read_failed.revision);
+        assert_eq!(
+            externally_changed.startup_item,
+            SettingsStartupItemStatus::State(SettingsStartupItemState::Stale)
+        );
+
+        let enabled = client
+            .set_startup_item_enabled_blocking(true)
+            .expect("enable startup item");
+        assert!(enabled.revision > externally_changed.revision);
+        assert_eq!(
+            enabled.startup_item,
+            SettingsStartupItemStatus::State(SettingsStartupItemState::Enabled)
+        );
+        assert_eq!(
+            std::fs::read(&config_path).expect("unchanged config"),
+            initial_config
+        );
+
+        startup_item.fail_updates.store(true, Ordering::Release);
+        let failed = client
+            .set_startup_item_enabled_blocking(false)
+            .expect_err("failed startup update");
+        assert_eq!(failed.code(), SettingsErrorCode::StartupItemUpdateFailed);
+        let unchanged = client.read_snapshot_blocking().expect("unchanged state");
+        assert_eq!(unchanged.revision, enabled.revision);
+        assert_eq!(unchanged.startup_item, enabled.startup_item);
+        assert_eq!(
+            std::fs::read(&config_path).expect("config after failure"),
+            initial_config
+        );
+
+        let stopped = client.shutdown_blocking().expect("service shutdown");
+        assert_eq!(stopped.startup_item, unchanged.startup_item);
         service.join().expect("service join");
     }
 

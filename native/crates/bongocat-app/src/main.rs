@@ -876,6 +876,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let smoke_shutdown_requested = Arc::clone(&shutdown_requested);
             cx.spawn(async move |cx| {
                 Timer::after(Duration::from_millis(500)).await;
+                #[cfg(target_os = "macos")]
+                let general_page = cx.update(|cx| -> Result<(), String> {
+                    smoke_window
+                        .update(cx, |view, _, cx| view.show_general_page_for_smoke(cx))
+                        .map_err(|error| error.to_string())?
+                });
+                #[cfg(target_os = "windows")]
+                let general_page = update_windows_settings(cx, smoke_window, |view, _, cx| {
+                    view.show_general_page_for_smoke(cx)
+                })
+                .await;
+                match general_page {
+                    Ok(Ok(())) => {}
+                    Ok(Err(error)) => {
+                        record_failure(&smoke_failures, error);
+                        #[cfg(target_os = "macos")]
+                        let _ = cx.update(request_product_quit);
+                        #[cfg(target_os = "windows")]
+                        request_windows_product_quit(&smoke_shutdown_requested);
+                        return;
+                    }
+                    Err(error) => {
+                        record_failure(&smoke_failures, error.to_string());
+                        #[cfg(target_os = "macos")]
+                        let _ = cx.update(request_product_quit);
+                        #[cfg(target_os = "windows")]
+                        request_windows_product_quit(&smoke_shutdown_requested);
+                        return;
+                    }
+                }
                 if run_options.models_page_smoke {
                     #[cfg(target_os = "macos")]
                     let models_page = cx.update(|cx| -> Result<(), String> {

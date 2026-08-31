@@ -29,8 +29,48 @@ pub struct SettingsSnapshot {
     pub runtime_health: RuntimeHealth,
     pub overlay_visible: bool,
     pub motion_audio_enabled: bool,
+    pub startup_item: SettingsStartupItemStatus,
     pub active_model: Option<SettingsModelKey>,
     pub model_catalog: SettingsModelCatalog,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SettingsStartupItemStatus {
+    State(SettingsStartupItemState),
+    ReadError(SettingsStartupItemError),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SettingsStartupItemState {
+    Unsupported(SettingsStartupItemUnsupportedReason),
+    Disabled,
+    Enabled,
+    Stale,
+    RequiresApproval,
+    NotFound,
+}
+
+impl SettingsStartupItemState {
+    pub const fn can_set_enabled(self) -> bool {
+        !matches!(self, Self::Unsupported(_))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SettingsStartupItemUnsupportedReason {
+    Platform,
+    OperatingSystem,
+    BuildEnvironment,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SettingsStartupItemError {
+    CurrentExecutableUnavailable,
+    InvalidExecutablePath,
+    BackendUnavailable,
+    StateReadFailed,
+    EnableFailed,
+    DisableFailed,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -269,6 +309,7 @@ pub enum SettingsErrorCode {
     SelectedModelCannotBeDeleted,
     ModelNotInstalled,
     ModelDeleteFailed,
+    StartupItemUpdateFailed,
     WindowUnavailable,
     ShutdownFailed,
 }
@@ -313,6 +354,7 @@ impl fmt::Display for SettingsError {
             }
             SettingsErrorCode::ModelNotInstalled => "installed model was not found",
             SettingsErrorCode::ModelDeleteFailed => "installed model could not be deleted",
+            SettingsErrorCode::StartupItemUpdateFailed => "startup setting could not be updated",
             SettingsErrorCode::WindowUnavailable => "settings window could not be hidden",
             SettingsErrorCode::ShutdownFailed => "application shutdown did not complete",
         })
@@ -340,6 +382,10 @@ pub enum SettingsCommand {
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     SetMotionAudioEnabled {
+        enabled: bool,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    SetStartupItemEnabled {
         enabled: bool,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
@@ -422,6 +468,14 @@ impl SettingsClient {
             .await
     }
 
+    pub async fn set_startup_item_enabled(
+        &self,
+        enabled: bool,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetStartupItemEnabled { enabled, reply })
+            .await
+    }
+
     pub async fn select_model(
         &self,
         model: SettingsModelKey,
@@ -486,6 +540,13 @@ impl SettingsClient {
         enabled: bool,
     ) -> Result<SettingsSnapshot, SettingsError> {
         self.request_blocking(|reply| SettingsCommand::SetMotionAudioEnabled { enabled, reply })
+    }
+
+    pub fn set_startup_item_enabled_blocking(
+        &self,
+        enabled: bool,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::SetStartupItemEnabled { enabled, reply })
     }
 
     pub fn select_model_blocking(
@@ -644,6 +705,50 @@ mod tests {
     }
 
     #[test]
+    fn startup_item_command_preserves_the_requested_state() {
+        let (client, endpoint) = SettingsClient::bounded(1);
+        let worker = thread::spawn(move || {
+            let SettingsCommand::SetStartupItemEnabled { enabled, reply } =
+                endpoint.recv_blocking().expect("startup item command")
+            else {
+                panic!("unexpected command");
+            };
+            assert!(enabled);
+            let mut updated = snapshot(2, true, true);
+            updated.startup_item =
+                SettingsStartupItemStatus::State(SettingsStartupItemState::Enabled);
+            reply.respond(Ok(updated)).expect("startup item reply");
+        });
+
+        let updated = client
+            .set_startup_item_enabled_blocking(true)
+            .expect("startup item snapshot");
+        assert_eq!(
+            updated.startup_item,
+            SettingsStartupItemStatus::State(SettingsStartupItemState::Enabled)
+        );
+        worker.join().expect("worker join");
+    }
+
+    #[test]
+    fn only_unsupported_startup_states_reject_mutation() {
+        let actionable = [
+            SettingsStartupItemState::Disabled,
+            SettingsStartupItemState::Enabled,
+            SettingsStartupItemState::Stale,
+            SettingsStartupItemState::RequiresApproval,
+            SettingsStartupItemState::NotFound,
+        ];
+        assert!(actionable.into_iter().all(|state| state.can_set_enabled()));
+        assert!(
+            !SettingsStartupItemState::Unsupported(
+                SettingsStartupItemUnsupportedReason::BuildEnvironment
+            )
+            .can_set_enabled()
+        );
+    }
+
+    #[test]
     fn model_import_command_preserves_the_typed_request() {
         let (client, endpoint) = SettingsClient::bounded(1);
         let expected = SettingsModelImportRequest {
@@ -781,6 +886,7 @@ mod tests {
             runtime_health: RuntimeHealth::Ready,
             overlay_visible,
             motion_audio_enabled,
+            startup_item: SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),
             active_model: Some(SettingsModelKey {
                 id: "standard".to_owned(),
                 origin: SettingsModelOrigin::Preset,

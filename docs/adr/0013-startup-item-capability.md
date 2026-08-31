@@ -28,7 +28,8 @@ app login item，会覆盖同一用户的生产启动项系统状态。Windows �
   `SMLoginItemSetEnabled`、自行写 LaunchAgent 或修改用户登录项数据库。
 - macOS Development 构建只报告 unsupported build environment，不注册或取消注册
   `mainAppService`，从而不改变 Production 的系统登录项状态。真实变更 smoke 使用临时签名的
-  Production `.app` 和隔离测试用户/CI runner。
+  Production `.app` 和隔离测试用户/CI runner，并从 `/Applications` 下的临时唯一安装目录
+  启动，使 LaunchServices 与 `SMAppService` 验证的是安装态 main application。
 - 启用、禁用只能由显式用户 command 触发；正常启动只读取状态。平台失败不改变配置，也不
   阻塞 input/runtime/renderer。
 
@@ -46,6 +47,7 @@ app login item，会覆盖同一用户的生产启动项系统状态。Windows �
 - 纯 contract test 覆盖所有 state/error code、环境命名和 Windows command 编码。
 - Windows 临时当前用户 value smoke 覆盖 disabled -> enabled -> stale -> disabled，并保证只
   触及当前环境 value。
-- macOS 12 availability probe 不引用缺失 class；macOS 13+ Production bundle smoke 覆盖
-  status、register/unregister 和 requires-approval 映射，结束时恢复原状态。
+- macOS 12 availability probe 不引用缺失 class；macOS 13+ Production bundle smoke 从
+  `/Applications` 的临时安装目录覆盖 status、register/unregister 和 requires-approval 映射，
+  结束时恢复原状态并注销/删除临时 bundle。
 - 双平台 smoke 后运行完整 Native format、Clippy、workspace test 和 release check。

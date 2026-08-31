@@ -165,21 +165,40 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           app_path=$(BONGOCAT_BUILD_ENV=production ./native/scripts/package-macos.sh)
+          install_root=$(mktemp -d '/Applications/bongocat-startup-item-smoke.XXXXXX')
+          installed_app="$install_root/BongoCat.app"
           stdout_path="$RUNNER_TEMP/macos-startup-item.stdout.log"
           stderr_path="$RUNNER_TEMP/macos-startup-item.stderr.log"
+          cleanup() {
+            /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
+              -u "$installed_app" >/dev/null 2>&1 || true
+            rm -rf "$install_root"
+          }
+          trap cleanup EXIT
+          ditto "$app_path" "$installed_app"
+          codesign --verify --deep --strict "$installed_app"
           rm -f "$stdout_path" "$stderr_path"
           open \
             -n \
-            -W \
             -o "$stdout_path" \
             --stderr "$stderr_path" \
-            "$app_path" \
+            "$installed_app" \
             --args \
             --startup-item-smoke
+          restored=false
+          for _ in {1..120}; do
+            if grep -Fq 'bongocat-app: startup-item restored state' "$stdout_path"; then
+              restored=true
+              break
+            fi
+            if grep -Fq 'Error:' "$stderr_path"; then
+              break
+            fi
+            sleep 0.5
+          done
           cat "$stdout_path" "$stderr_path" 2>/dev/null || true
           grep -Fq 'bongocat-app: startup-item original state' "$stdout_path"
-          grep -Fq 'bongocat-app: startup-item restored state' "$stdout_path"
-          codesign --verify --deep --strict "$app_path"
+          test "$restored" = true
       - name: Smoke macOS application reopen lifecycle
         if: matrix.os == 'macos-latest'
         timeout-minutes: 2

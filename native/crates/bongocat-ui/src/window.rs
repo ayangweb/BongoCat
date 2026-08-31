@@ -3,6 +3,7 @@ use crate::{
     SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportMonitor,
     SettingsModelImportOperation, SettingsModelImportRequest, SettingsModelImportStage,
     SettingsModelKey, SettingsModelOrigin, SettingsOperationId, SettingsSnapshot,
+    SettingsStartupItemState, SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason,
 };
 use bongocat_platform::{DirectoryPickerError, DirectoryPickerOutcome, pick_model_directory};
 use gpui::{
@@ -72,6 +73,7 @@ enum PendingOperation {
     Refresh,
     OverlayVisibility,
     MotionAudio,
+    StartupItem,
     ModelSelection,
     ModelDeletion,
 }
@@ -243,6 +245,7 @@ pub struct SettingsView {
     models_focus: FocusHandle,
     overlay_focus: FocusHandle,
     audio_focus: FocusHandle,
+    startup_item_focus: FocusHandle,
     model_id_focus: FocusHandle,
     choose_model_focus: FocusHandle,
     import_model_focus: FocusHandle,
@@ -271,6 +274,7 @@ impl SettingsView {
             models_focus: cx.focus_handle().tab_index(2).tab_stop(true),
             overlay_focus: cx.focus_handle().tab_index(10).tab_stop(true),
             audio_focus: cx.focus_handle().tab_index(11).tab_stop(true),
+            startup_item_focus: cx.focus_handle().tab_index(12).tab_stop(true),
             model_id_focus: cx.focus_handle().tab_index(20).tab_stop(true),
             choose_model_focus: cx.focus_handle().tab_index(21).tab_stop(true),
             import_model_focus: cx.focus_handle().tab_index(22).tab_stop(true),
@@ -342,6 +346,34 @@ impl SettingsView {
         Ok(())
     }
 
+    pub fn show_general_page_for_smoke(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
+        self.page = SettingsPage::General;
+        cx.notify();
+        let snapshot = self
+            .snapshot
+            .as_ref()
+            .ok_or_else(|| "general page has not received a settings snapshot".to_owned())?;
+        let presentation = startup_item_presentation(Some(snapshot.startup_item), false);
+        match snapshot.startup_item {
+            SettingsStartupItemStatus::State(SettingsStartupItemState::Unsupported(_)) => {
+                if presentation.action != StartupItemAction::None {
+                    return Err("unsupported startup item exposed a mutation".to_owned());
+                }
+            }
+            SettingsStartupItemStatus::ReadError(_) => {
+                if presentation.action != StartupItemAction::Retry {
+                    return Err("startup item read error did not expose retry".to_owned());
+                }
+            }
+            SettingsStartupItemStatus::State(_) => {
+                if !matches!(presentation.action, StartupItemAction::SetEnabled(_)) {
+                    return Err("actionable startup item did not expose a mutation".to_owned());
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub fn reopen(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Result<(), String> {
         #[cfg(target_os = "windows")]
         bongocat_platform::show_native_window(window).map_err(|error| error.to_string())?;
@@ -367,6 +399,14 @@ impl SettingsView {
         self.start_request(
             PendingOperation::MotionAudio,
             Some(SettingValue::MotionAudioEnabled(enabled)),
+            cx,
+        );
+    }
+
+    fn set_startup_item_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.start_request(
+            PendingOperation::StartupItem,
+            Some(SettingValue::StartupItemEnabled(enabled)),
             cx,
         );
     }
@@ -735,6 +775,9 @@ impl SettingsView {
                 Some(SettingValue::MotionAudioEnabled(enabled)) => {
                     client.set_motion_audio_enabled(enabled).await
                 }
+                Some(SettingValue::StartupItemEnabled(enabled)) => {
+                    client.set_startup_item_enabled(enabled).await
+                }
             };
             let _ = this.update(cx, |view, cx| {
                 view.pending = None;
@@ -761,6 +804,95 @@ impl SettingsView {
 enum SettingValue {
     OverlayVisible(bool),
     MotionAudioEnabled(bool),
+    StartupItemEnabled(bool),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StartupItemAction {
+    None,
+    Retry,
+    SetEnabled(bool),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct StartupItemPresentation {
+    description: &'static str,
+    enabled: bool,
+    action: StartupItemAction,
+}
+
+fn startup_item_presentation(
+    status: Option<SettingsStartupItemStatus>,
+    blocked: bool,
+) -> StartupItemPresentation {
+    let mut presentation = match status {
+        None => StartupItemPresentation {
+            description: "Checking login startup...",
+            enabled: false,
+            action: StartupItemAction::None,
+        },
+        Some(SettingsStartupItemStatus::ReadError(_)) => StartupItemPresentation {
+            description: "Status unavailable; activate to retry",
+            enabled: false,
+            action: StartupItemAction::Retry,
+        },
+        Some(SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled)) => {
+            StartupItemPresentation {
+                description: "Open BongoCat when you sign in",
+                enabled: false,
+                action: StartupItemAction::SetEnabled(true),
+            }
+        }
+        Some(SettingsStartupItemStatus::State(SettingsStartupItemState::Enabled)) => {
+            StartupItemPresentation {
+                description: "BongoCat opens when you sign in",
+                enabled: true,
+                action: StartupItemAction::SetEnabled(false),
+            }
+        }
+        Some(SettingsStartupItemStatus::State(SettingsStartupItemState::Stale)) => {
+            StartupItemPresentation {
+                description: "Saved app location changed; enable to repair",
+                enabled: false,
+                action: StartupItemAction::SetEnabled(true),
+            }
+        }
+        Some(SettingsStartupItemStatus::State(SettingsStartupItemState::RequiresApproval)) => {
+            StartupItemPresentation {
+                description: "Approval required in System Settings",
+                enabled: true,
+                action: StartupItemAction::SetEnabled(false),
+            }
+        }
+        Some(SettingsStartupItemStatus::State(SettingsStartupItemState::NotFound)) => {
+            StartupItemPresentation {
+                description: "App login item is missing; enable to repair",
+                enabled: false,
+                action: StartupItemAction::SetEnabled(true),
+            }
+        }
+        Some(SettingsStartupItemStatus::State(SettingsStartupItemState::Unsupported(reason))) => {
+            StartupItemPresentation {
+                description: match reason {
+                    SettingsStartupItemUnsupportedReason::Platform => {
+                        "Login startup is unavailable on this platform"
+                    }
+                    SettingsStartupItemUnsupportedReason::OperatingSystem => {
+                        "Login startup requires macOS 13 or later"
+                    }
+                    SettingsStartupItemUnsupportedReason::BuildEnvironment => {
+                        "Login startup is unavailable in development builds"
+                    }
+                },
+                enabled: false,
+                action: StartupItemAction::None,
+            }
+        }
+    };
+    if blocked {
+        presentation.action = StartupItemAction::None;
+    }
+    presentation
 }
 
 impl Render for SettingsView {
@@ -781,6 +913,7 @@ impl Render for SettingsView {
             (_, Some(PendingOperation::OverlayVisibility | PendingOperation::MotionAudio), _) => {
                 "Saving...".into()
             }
+            (_, Some(PendingOperation::StartupItem), _) => "Updating login startup...".into(),
             (_, Some(PendingOperation::ModelSelection), _) => "Activating model...".into(),
             (_, Some(PendingOperation::ModelDeletion), _) => "Deleting model...".into(),
             (_, None, Some(snapshot)) => {
@@ -873,7 +1006,7 @@ impl Render for SettingsView {
 
         let overlay_row = setting_row(
             "Show desktop cat",
-            "Keep the Live2D overlay visible",
+            "Keep the Live2D overlay visible".into(),
             SettingRowState {
                 enabled: overlay_visible,
                 disabled,
@@ -900,7 +1033,7 @@ impl Render for SettingsView {
 
         let audio_row = setting_row(
             "Motion audio",
-            "Play audio attached to model motions",
+            "Play audio attached to model motions".into(),
             SettingRowState {
                 enabled: motion_audio_enabled,
                 disabled,
@@ -922,6 +1055,51 @@ impl Render for SettingsView {
                 cx.stop_propagation();
                 window.focus(&view.audio_focus);
                 view.set_motion_audio_enabled(!motion_audio_enabled, cx);
+            }
+        }));
+
+        let startup_item = startup_item_presentation(
+            snapshot.as_ref().map(|snapshot| snapshot.startup_item),
+            disabled,
+        );
+        let startup_item_action = startup_item.action;
+        let startup_item_row = setting_row(
+            "Open at login",
+            startup_item.description.into(),
+            SettingRowState {
+                enabled: startup_item.enabled,
+                disabled: startup_item.action == StartupItemAction::None,
+                tab_index: 3,
+            },
+            &self.startup_item_focus,
+            window,
+            tokens,
+        )
+        .id("startup-item")
+        .on_click(
+            cx.listener(move |view, _, window, cx| match startup_item_action {
+                StartupItemAction::None => {}
+                StartupItemAction::Retry => {
+                    window.focus(&view.startup_item_focus);
+                    view.refresh(cx);
+                }
+                StartupItemAction::SetEnabled(enabled) => {
+                    window.focus(&view.startup_item_focus);
+                    view.set_startup_item_enabled(enabled, cx);
+                }
+            }),
+        )
+        .on_key_down(cx.listener(move |view, event, window, cx| {
+            if startup_item_action != StartupItemAction::None && is_activation_key(event) {
+                cx.stop_propagation();
+                window.focus(&view.startup_item_focus);
+                match startup_item_action {
+                    StartupItemAction::None => {}
+                    StartupItemAction::Retry => view.refresh(cx),
+                    StartupItemAction::SetEnabled(enabled) => {
+                        view.set_startup_item_enabled(enabled, cx);
+                    }
+                }
             }
         }));
 
@@ -969,6 +1147,7 @@ impl Render for SettingsView {
             )
             .child(overlay_row)
             .child(audio_row)
+            .child(startup_item_row)
             .child(div().flex_1());
 
         let (import_status, import_failed) = model_import_status(&self.model_import);
@@ -1704,7 +1883,7 @@ fn navigation_item(
 
 fn setting_row(
     title: &'static str,
-    description: &'static str,
+    description: SharedString,
     state: SettingRowState,
     focus: &FocusHandle,
     window: &Window,
@@ -1714,7 +1893,7 @@ fn setting_row(
     div()
         .key_context("SettingsControl")
         .track_focus(focus)
-        .tab_index(state.tab_index)
+        .tab_index(if state.disabled { -1 } else { state.tab_index })
         .flex()
         .items_center()
         .justify_between()
@@ -2089,6 +2268,66 @@ mod tests {
                 cancel_delete: 41,
                 delete: 42,
             }
+        );
+    }
+
+    #[test]
+    fn startup_item_presentations_cover_every_platform_state_and_retry() {
+        let cases = [
+            (
+                SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),
+                false,
+                StartupItemAction::SetEnabled(true),
+            ),
+            (
+                SettingsStartupItemStatus::State(SettingsStartupItemState::Enabled),
+                true,
+                StartupItemAction::SetEnabled(false),
+            ),
+            (
+                SettingsStartupItemStatus::State(SettingsStartupItemState::Stale),
+                false,
+                StartupItemAction::SetEnabled(true),
+            ),
+            (
+                SettingsStartupItemStatus::State(SettingsStartupItemState::RequiresApproval),
+                true,
+                StartupItemAction::SetEnabled(false),
+            ),
+            (
+                SettingsStartupItemStatus::State(SettingsStartupItemState::NotFound),
+                false,
+                StartupItemAction::SetEnabled(true),
+            ),
+            (
+                SettingsStartupItemStatus::State(SettingsStartupItemState::Unsupported(
+                    SettingsStartupItemUnsupportedReason::BuildEnvironment,
+                )),
+                false,
+                StartupItemAction::None,
+            ),
+            (
+                SettingsStartupItemStatus::ReadError(
+                    crate::SettingsStartupItemError::StateReadFailed,
+                ),
+                false,
+                StartupItemAction::Retry,
+            ),
+        ];
+
+        for (status, enabled, action) in cases {
+            let presentation = startup_item_presentation(Some(status), false);
+            assert_eq!(presentation.enabled, enabled);
+            assert_eq!(presentation.action, action);
+            assert!(!presentation.description.is_empty());
+            assert_eq!(
+                startup_item_presentation(Some(status), true).action,
+                StartupItemAction::None
+            );
+        }
+        assert_eq!(
+            startup_item_presentation(None, false).action,
+            StartupItemAction::None
         );
     }
 }

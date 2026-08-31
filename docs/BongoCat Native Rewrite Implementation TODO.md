@@ -1415,14 +1415,24 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
     - 状态（2026-08-31）：ADR-0013 已接受；共享 state/error、Windows UTF-16 HKCU Run
       adapter、macOS runtime class availability/Production-only `SMAppService` adapter 和恢复型
       双平台 smoke 已实现。`objc2-service-management 0.3.2` 为当前最新稳定 binding，许可证、
-      维护方与替换边界已审计；完整本地门禁通过，真实 Windows/macOS CI smoke 待 push 取证，
-      因此保持未勾选。
+      维护方与替换边界已审计；完整本地门禁通过。commit `b84c910` 的 push run
+      `33351444078`、Windows job `99365495806` 已通过真实 HKCU disabled -> enabled -> stale ->
+      disabled 恢复 smoke；macOS job `99365495890` 证明仅通过 LaunchServices 启动 workspace
+      bundle 仍返回 `NotFound`。后续 smoke 已改为复制到 `/Applications` 的唯一临时目录后启动，
+      并在退出时恢复状态、注销和清理；该证据待新 push 验证，因此保持未勾选。
 31. [ ] `P5-STARTUP-ITEM-UI`：以 typed settings command/snapshot 接入 General 启动项控件。
     - 依赖：`P7-STARTUP-ITEM-PLATFORM`、现有 revisioned `SettingsSnapshot` 和 settings worker。
     - 退出条件：状态读取与启用/禁用不阻塞 GPUI executor；控件覆盖 loading、enabled、disabled、
       stale、requires-approval、unsupported 和 retry；Development/macOS 12 不允许 mutation；窗口重建
       从新 snapshot 恢复，错误不改变 runtime/config；键盘、accessibility、双平台页面 smoke 与完整
       Native 门禁通过。
+    - 状态（2026-08-31）：UI 自有 startup state/error、typed enable command、settings worker
+      平台映射和 revision observation 已接入；General 控件覆盖 loading、disabled、enabled、stale、
+      requires-approval、not-found、unsupported 与 read-error retry，操作支持 Tab 和 Enter/Space。
+      模拟服务测试证明外部状态/read error 会递增 revision，变更失败和成功都不改 config/runtime，
+      shutdown 保留最后状态；General product smoke 已进入双平台既有 settings lifecycle。完整 Native
+      format/Clippy/test/release/Production、license/source policy 和 Windows x64/ARM64 platform Clippy
+      本机通过；双平台页面 smoke 与 macOS 安装态 startup-item smoke 待新 push 取证，故保持未勾选。
 
 ## 13. 待决策清单
 
