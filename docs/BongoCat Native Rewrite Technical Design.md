@@ -295,7 +295,8 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 - DPI：Per-Monitor-V2，处理 `WM_DPICHANGED`、显示器热插拔和负坐标。
 - 输入：Raw Input、状态校正、可选低级 hook、XInput 手柄。
 - 托盘：`Shell_NotifyIcon` + `HMENU`。
-- 启动项：当前用户范围，默认不要求管理员权限。
+- 启动项：当前用户 HKCU Run，Development/Production 使用不同 value name，命令固定为当前
+  executable 加 `--run-seconds 0`，默认不要求管理员权限。
 
 ### 10.2 macOS
 
@@ -304,7 +305,9 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 - Renderer：Metal + `CAMetalLayer`，drawable size 跟随 backing scale。
 - Spaces：按配置设置 collection behavior 和 full-screen auxiliary。
 - 输入：CGEventTap、状态校正、GameController，必要时 IOHIDManager。
-- 菜单栏：`NSStatusItem` + `NSMenu`；登录启动：`SMAppService`。
+- 菜单栏：`NSStatusItem` + `NSMenu`；登录启动在 macOS 13+ Production `.app` 使用
+  `SMAppService.mainAppService`。macOS 12 和 Development 构建明确报告 capability unsupported，
+  不回退到废弃 API 或自行写 LaunchAgent。
 - 发布：Hardened Runtime、签名、notarization 和 TCC 权限说明。
 
 平台 `unsafe` 必须集中在小型 wrapper，写明安全不变量并有 smoke test。业务和 UI crate 默认禁止 `unsafe_code`。
@@ -577,6 +580,11 @@ Bundle ID 固定为 `com.ayangweb.bongo-cat`。Development 与 Production 使用
 ### ADR-012：有序 Motion 音频服务
 
 runtime 非阻塞发布强类型音效命令，独立 Rust worker 使用最小 rodio/FLAC feature 管理唯一 voice、错误恢复和 shutdown；音频失败不影响动作或渲染。
+
+### ADR-013：启动项能力与环境隔离
+
+Windows 当前用户 Run value 按 Development/Production 分名；macOS 13+ 只允许 Production
+`.app` 使用 `SMAppService.mainAppService`，macOS 12 与 Development 明确报告不支持且不回退。
 
 ## 17. 实施阶段
 

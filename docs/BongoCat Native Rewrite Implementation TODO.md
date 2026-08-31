@@ -1405,6 +1405,24 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       application reopen callback、设置窗口恢复和正常 quit；同一 job 的 format、Clippy、workspace
       test、release、Production build 与系统菜单 smoke 均通过。Distribution signing、Hardened
       Runtime/notarization 仍由发布门禁跟踪，不计入本项完成声明。
+30. [ ] `P7-STARTUP-ITEM-PLATFORM`：实现环境隔离的双平台当前用户启动项 adapter。
+    - 依赖：ADR-0008、ADR-0013、正式 build environment 和产品 executable identity。
+    - 退出条件：共享稳定 state/error 区分 disabled/enabled/stale/requires-approval/unsupported；
+      Windows HKCU Run value 按环境分名、精确匹配当前 executable + `--run-seconds 0` 且无需管理员；
+      macOS 13+ Production 使用 `SMAppService.mainAppService`，macOS 12 与 Development 明确
+      unsupported 且不触及生产登录项；读取不改变系统状态，显式启用/禁用可恢复原状态；双平台
+      平台 smoke、Windows x64/ARM64 source check 与完整 Native 门禁通过。
+    - 状态（2026-08-31）：ADR-0013 已接受；共享 state/error、Windows UTF-16 HKCU Run
+      adapter、macOS runtime class availability/Production-only `SMAppService` adapter 和恢复型
+      双平台 smoke 已实现。`objc2-service-management 0.3.2` 为当前最新稳定 binding，许可证、
+      维护方与替换边界已审计；完整本地门禁通过，真实 Windows/macOS CI smoke 待 push 取证，
+      因此保持未勾选。
+31. [ ] `P5-STARTUP-ITEM-UI`：以 typed settings command/snapshot 接入 General 启动项控件。
+    - 依赖：`P7-STARTUP-ITEM-PLATFORM`、现有 revisioned `SettingsSnapshot` 和 settings worker。
+    - 退出条件：状态读取与启用/禁用不阻塞 GPUI executor；控件覆盖 loading、enabled、disabled、
+      stale、requires-approval、unsupported 和 retry；Development/macOS 12 不允许 mutation；窗口重建
+      从新 snapshot 恢复，错误不改变 runtime/config；键盘、accessibility、双平台页面 smoke 与完整
+      Native 门禁通过。
 
 ## 13. 待决策清单
 

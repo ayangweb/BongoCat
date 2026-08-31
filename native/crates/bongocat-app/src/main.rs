@@ -38,6 +38,8 @@ struct RunOptions {
     system_menu_smoke: bool,
     #[cfg(target_os = "macos")]
     application_reopen_smoke: bool,
+    #[cfg(target_os = "macos")]
+    startup_item_smoke: bool,
     #[cfg(target_os = "windows")]
     single_instance_smoke: bool,
 }
@@ -52,6 +54,8 @@ impl RunOptions {
         let mut system_menu_smoke = false;
         #[cfg(target_os = "macos")]
         let mut application_reopen_smoke = false;
+        #[cfg(target_os = "macos")]
+        let mut startup_item_smoke = false;
         #[cfg(target_os = "windows")]
         let mut single_instance_smoke = false;
         while let Some(argument) = arguments.next() {
@@ -72,6 +76,8 @@ impl RunOptions {
                 "--system-menu-smoke" => system_menu_smoke = true,
                 #[cfg(target_os = "macos")]
                 "--application-reopen-smoke" => application_reopen_smoke = true,
+                #[cfg(target_os = "macos")]
+                "--startup-item-smoke" => startup_item_smoke = true,
                 #[cfg(target_os = "windows")]
                 "--single-instance-smoke" => single_instance_smoke = true,
                 "--help" | "-h" => return Err(RunOptionsError::help()),
@@ -89,6 +95,8 @@ impl RunOptions {
             system_menu_smoke,
             #[cfg(target_os = "macos")]
             application_reopen_smoke,
+            #[cfg(target_os = "macos")]
+            startup_item_smoke,
             #[cfg(target_os = "windows")]
             single_instance_smoke,
         })
@@ -139,7 +147,7 @@ fn usage() -> &'static str {
     return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit.";
 
     #[cfg(target_os = "macos")]
-    "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--system-menu-smoke] [--application-reopen-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit."
+    "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit."
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -383,6 +391,72 @@ fn write_smoke_status(status: &str) -> io::Result<()> {
     stdout.flush()
 }
 
+#[cfg(target_os = "macos")]
+fn run_startup_item_smoke() -> Result<(), Box<dyn std::error::Error>> {
+    use bongocat_platform::{
+        StartupItemEnvironment, StartupItemState, set_startup_item_enabled, startup_item_state,
+    };
+
+    if bongocat_app::BUILD_ENVIRONMENT != bongocat_config::BuildEnvironment::Production {
+        return Err("startup-item mutation smoke requires a Production build".into());
+    }
+    let environment = StartupItemEnvironment::Production;
+    let original = startup_item_state(environment)?;
+    write_smoke_status(&format!("startup-item original state {original:?}"))?;
+
+    let exercise: Result<(), String> = (|| match original {
+        StartupItemState::Disabled => {
+            let enabled =
+                set_startup_item_enabled(environment, true).map_err(|error| error.to_string())?;
+            if !matches!(
+                enabled,
+                StartupItemState::Enabled | StartupItemState::RequiresApproval
+            ) {
+                Err(format!(
+                    "startup-item enable returned an unexpected state: {enabled:?}"
+                ))
+            } else {
+                Ok(())
+            }
+        }
+        StartupItemState::Enabled | StartupItemState::RequiresApproval => {
+            let disabled =
+                set_startup_item_enabled(environment, false).map_err(|error| error.to_string())?;
+            if disabled != StartupItemState::Disabled {
+                Err(format!(
+                    "startup-item disable returned an unexpected state: {disabled:?}"
+                ))
+            } else {
+                Ok(())
+            }
+        }
+        StartupItemState::Unsupported(reason) => Err(format!(
+            "startup-item capability is unsupported: {reason:?}"
+        )),
+        StartupItemState::Stale | StartupItemState::NotFound => Err(format!(
+            "startup-item bundle produced an invalid initial state: {original:?}"
+        )),
+    })();
+
+    let restoration = match original {
+        StartupItemState::Disabled => set_startup_item_enabled(environment, false),
+        StartupItemState::Enabled | StartupItemState::RequiresApproval => {
+            set_startup_item_enabled(environment, true)
+        }
+        state => Ok(state),
+    };
+    exercise.map_err(io::Error::other)?;
+    let restored = restoration?;
+    if restored != original {
+        return Err(format!(
+            "startup-item state was not restored: expected {original:?}, got {restored:?}"
+        )
+        .into());
+    }
+    write_smoke_status(&format!("startup-item restored state {restored:?}"))?;
+    Ok(())
+}
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let run_options = match RunOptions::parse(env::args().skip(1)) {
@@ -393,6 +467,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Err(error) => return Err(Box::new(error)),
     };
+    #[cfg(target_os = "macos")]
+    if run_options.startup_item_smoke {
+        return run_startup_item_smoke();
+    }
     #[cfg(target_os = "windows")]
     let single_instance = match SingleInstance::acquire(build_single_instance_environment())? {
         SingleInstanceStart::Primary(single_instance) => single_instance,
@@ -1446,6 +1524,8 @@ mod tests {
                 system_menu_smoke: false,
                 #[cfg(target_os = "macos")]
                 application_reopen_smoke: false,
+                #[cfg(target_os = "macos")]
+                startup_item_smoke: false,
                 #[cfg(target_os = "windows")]
                 single_instance_smoke: false,
             }
@@ -1484,6 +1564,8 @@ mod tests {
         assert!(!options.system_menu_smoke);
         #[cfg(target_os = "macos")]
         assert!(!options.application_reopen_smoke);
+        #[cfg(target_os = "macos")]
+        assert!(!options.startup_item_smoke);
         #[cfg(target_os = "windows")]
         assert!(!options.single_instance_smoke);
     }
@@ -1503,6 +1585,16 @@ mod tests {
             .expect("application-reopen smoke options");
         assert!(options.application_reopen_smoke);
         assert!(!options.settings_window_smoke);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn startup_item_smoke_is_opt_in() {
+        let options = RunOptions::parse(["--startup-item-smoke".to_owned()])
+            .expect("startup-item smoke options");
+        assert!(options.startup_item_smoke);
+        assert!(!options.settings_window_smoke);
+        assert!(!options.application_reopen_smoke);
     }
 
     #[cfg(target_os = "macos")]

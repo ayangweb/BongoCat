@@ -23,40 +23,41 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 
 ## Direct Dependencies
 
-| Crate                                 | Pinned version | Result                 |
-| ------------------------------------- | -------------: | ---------------------- |
-| `accesskit`                           |       `0.25.0` | 新增时即为最新         |
-| `accesskit_macos`                     |       `0.27.0` | 新增时即为最新         |
-| `accesskit_windows`                   |       `0.35.0` | 新增时即为最新         |
-| `async-channel`                       |        `2.5.0` | 从 `1.9.0` 升级        |
-| `atomic-write-file`                   |        `0.3.1` | 正式配置存储新增时最新 |
-| `bindgen`                             |       `0.72.1` | 新增时即为最新         |
-| `block2`                              |        `0.6.2` | 已是最新               |
-| `core-foundation`                     |       `0.10.1` | 已是最新               |
-| `core-graphics-types`                 |        `0.2.0` | 从 `0.1.3` 升级        |
-| `core-graphics2`                      |        `0.6.1` | 从 `0.4.1` 升级        |
-| `dirs`                                |        `6.0.0` | 从 `5.0.1` 升级        |
-| `futures-lite`                        |        `2.6.1` | 已是最新               |
-| `gpui`                                |        `0.2.2` | 已是最新               |
-| `libc`                                |      `0.2.189` | 新增时即为最新稳定版   |
-| `metal`                               |       `0.33.0` | 从 `0.29.0` 升级       |
-| `objc2`                               |        `0.6.4` | 已是最新               |
-| `objc2`（GPUI AX）                    |        `0.5.2` | 上游 ABI 类型兼容例外  |
-| `objc2-app-kit`                       |        `0.3.2` | 已是最新               |
-| `objc2-core-foundation`               |        `0.3.2` | 正式输入边界新增时最新 |
-| `objc2-core-graphics`                 |        `0.3.2` | 正式输入边界新增时最新 |
-| `objc2-foundation`                    |        `0.3.2` | 已是最新               |
-| `objc2-foundation`（GPUI 原生 probe） |        `0.2.2` | 上游 ABI 类型兼容例外  |
-| `objc2-game-controller`               |        `0.3.2` | 新增时即为最新         |
-| `objc2-quartz-core`                   |        `0.3.2` | 已是最新               |
-| `serde`                               |      `1.0.229` | 从 `1.0.228` 升级      |
-| `serde_json`                          |      `1.0.151` | 从 `1.0.149` 升级      |
-| `raw-window-handle`                   |        `0.6.2` | 新增时即为最新         |
-| `rodio`                               |       `0.22.2` | motion 音效新增时最新  |
-| `sha2`                                |       `0.11.0` | 新增时即为最新         |
-| `tempfile`                            |       `3.27.0` | 已是最新               |
-| `unicode-segmentation`                |       `1.13.3` | 已是最新               |
-| `windows`                             |       `0.62.2` | 从 `0.61.3` 升级       |
+| Crate                                 | Pinned version | Result                    |
+| ------------------------------------- | -------------: | ------------------------- |
+| `accesskit`                           |       `0.25.0` | 新增时即为最新            |
+| `accesskit_macos`                     |       `0.27.0` | 新增时即为最新            |
+| `accesskit_windows`                   |       `0.35.0` | 新增时即为最新            |
+| `async-channel`                       |        `2.5.0` | 从 `1.9.0` 升级           |
+| `atomic-write-file`                   |        `0.3.1` | 正式配置存储新增时最新    |
+| `bindgen`                             |       `0.72.1` | 新增时即为最新            |
+| `block2`                              |        `0.6.2` | 已是最新                  |
+| `core-foundation`                     |       `0.10.1` | 已是最新                  |
+| `core-graphics-types`                 |        `0.2.0` | 从 `0.1.3` 升级           |
+| `core-graphics2`                      |        `0.6.1` | 从 `0.4.1` 升级           |
+| `dirs`                                |        `6.0.0` | 从 `5.0.1` 升级           |
+| `futures-lite`                        |        `2.6.1` | 已是最新                  |
+| `gpui`                                |        `0.2.2` | 已是最新                  |
+| `libc`                                |      `0.2.189` | 新增时即为最新稳定版      |
+| `metal`                               |       `0.33.0` | 从 `0.29.0` 升级          |
+| `objc2`                               |        `0.6.4` | 已是最新                  |
+| `objc2`（GPUI AX）                    |        `0.5.2` | 上游 ABI 类型兼容例外     |
+| `objc2-app-kit`                       |        `0.3.2` | 已是最新                  |
+| `objc2-core-foundation`               |        `0.3.2` | 正式输入边界新增时最新    |
+| `objc2-core-graphics`                 |        `0.3.2` | 正式输入边界新增时最新    |
+| `objc2-foundation`                    |        `0.3.2` | 已是最新                  |
+| `objc2-foundation`（GPUI 原生 probe） |        `0.2.2` | 上游 ABI 类型兼容例外     |
+| `objc2-game-controller`               |        `0.3.2` | 新增时即为最新            |
+| `objc2-quartz-core`                   |        `0.3.2` | 已是最新                  |
+| `objc2-service-management`            |        `0.3.2` | 启动项 adapter 新增时最新 |
+| `serde`                               |      `1.0.229` | 从 `1.0.228` 升级         |
+| `serde_json`                          |      `1.0.151` | 从 `1.0.149` 升级         |
+| `raw-window-handle`                   |        `0.6.2` | 新增时即为最新            |
+| `rodio`                               |       `0.22.2` | motion 音效新增时最新     |
+| `sha2`                                |       `0.11.0` | 新增时即为最新            |
+| `tempfile`                            |       `3.27.0` | 已是最新                  |
+| `unicode-segmentation`                |       `1.13.3` | 已是最新                  |
+| `windows`                             |       `0.62.2` | 从 `0.61.3` 升级          |
 
 `windows 0.62.2` 删除了 `Error::from_win32()`；Win32 wrapper 已改为在失败调用后立即使用语义等价的 `Error::from_thread()`，避免清理 API 覆盖 thread last-error。
 
@@ -95,6 +96,11 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
   管理 callback context、CFRunLoop source 和 tap 的统一析构，项目公共 API 仅暴露自有
   permission、diagnostics 和 error 类型。替换边界是 `MacInputService` 私有实现，不影响 runtime；
 - `objc2-game-controller 0.3.2` 只在 macOS 输入 spike 的窄平台边界枚举 `GCExtendedGamepad`、安装 value-change handler 并管理 background delivery；许可证为 Zlib OR Apache-2.0 OR MIT，项目公共协议只接收自有 snapshot/event 类型，停止使用 GameController 时可替换该 adapter 而不改变 producer contract；
+- `objc2-service-management 0.3.2`（Zlib OR Apache-2.0 OR MIT，Rust 1.71+）来自持续维护
+  `objc2` binding 集，只在 macOS platform adapter 以最小 `SMAppService`/Foundation feature
+  调用 macOS 13+ main-app login item；运行时先检查 class availability，macOS 12 与 Development
+  不触发 mutation。Objective-C/NSError 不离开 wrapper，替换边界是未来系统 API 或 binding
+  变化时重写该 adapter，不影响 settings/runtime/config contract；
 - `metal 0.33.0` 创建透明 `CAMetalLayer`，完成两次 clear/present、隐藏/重显和自动退出；
 - `libc 0.2.189` 只在 macOS overlay spike 的平台边界调用 `proc_pidinfo`，用于 100-cycle 线程/RSS 资源快照；许可证为 MIT OR Apache-2.0，停止使用该系统指标后可直接移除，不进入项目公共 API；
 - `async-channel 2.5.0`（MIT OR Apache-2.0）已进入正式 `bongocat-ui`，只封装容量 16 的

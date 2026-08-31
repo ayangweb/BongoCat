@@ -17,6 +17,7 @@ objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["NSA
 objc2-core-foundation = { version = "=0.3.2", default-features = false, features = ["CFDate", "CFMachPort", "CFRunLoop"] }
 objc2-core-graphics = { version = "=0.3.2", default-features = false, features = ["CGDirectDisplay", "CGError", "CGEvent", "CGEventSource", "CGEventTypes", "CGRemoteOperation"] }
 objc2-foundation = { version = "=0.3.2", default-features = false, features = ["NSArray", "NSString", "NSURL"] }
+objc2-service-management = { version = "=0.3.2", default-features = false, features = ["SMAppService", "objc2", "objc2-foundation"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 raw-window-handle.workspace = true
@@ -27,6 +28,7 @@ windows = { version = "=0.62.2", features = [
     "Win32_System_Com",
     "Win32_System_LibraryLoader",
     "Win32_System_RemoteDesktop",
+    "Win32_System_Registry",
     "Win32_System_StationsAndDesktops",
     "Win32_System_Threading",
     "Win32_UI_Input",

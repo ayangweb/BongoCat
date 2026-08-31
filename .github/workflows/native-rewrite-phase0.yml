@@ -158,6 +158,15 @@ jobs:
       - name: Smoke macOS settings window lifecycle
         if: matrix.os == 'macos-latest'
         run: cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke --models-page-smoke
+      - name: Smoke Windows startup item lifecycle
+        if: matrix.os == 'windows-latest'
+        run: cargo test --manifest-path native/Cargo.toml --locked --release -p bongocat-platform windows_startup_item_registry_smoke_restores_original_value -- --ignored
+      - name: Smoke macOS startup item lifecycle
+        if: matrix.os == 'macos-latest'
+        run: |
+          app_path=$(BONGOCAT_BUILD_ENV=production ./native/scripts/package-macos.sh)
+          "$app_path/Contents/MacOS/bongocat-app" --startup-item-smoke
+          codesign --verify --deep --strict "$app_path"
       - name: Smoke macOS application reopen lifecycle
         if: matrix.os == 'macos-latest'
         timeout-minutes: 2

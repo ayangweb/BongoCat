@@ -30,6 +30,15 @@ mod system_menu_windows;
 #[cfg(target_os = "windows")]
 pub use system_menu_windows::SystemMenu;
 
+mod startup_item;
+pub use startup_item::{
+    StartupItemEnvironment, StartupItemError, StartupItemState, StartupItemUnsupportedReason,
+};
+#[cfg(target_os = "macos")]
+mod startup_item_macos;
+#[cfg(target_os = "windows")]
+mod startup_item_windows;
+
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "macos")]
@@ -59,6 +68,43 @@ pub fn pick_model_directory(
     {
         let _ = on_complete;
         Err(DirectoryPickerError::UnsupportedPlatform)
+    }
+}
+
+pub fn startup_item_state(
+    environment: StartupItemEnvironment,
+) -> Result<StartupItemState, StartupItemError> {
+    #[cfg(target_os = "macos")]
+    return startup_item_macos::state(environment);
+
+    #[cfg(target_os = "windows")]
+    return startup_item_windows::state(environment);
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let _ = environment;
+        Ok(StartupItemState::Unsupported(
+            StartupItemUnsupportedReason::Platform,
+        ))
+    }
+}
+
+pub fn set_startup_item_enabled(
+    environment: StartupItemEnvironment,
+    enabled: bool,
+) -> Result<StartupItemState, StartupItemError> {
+    #[cfg(target_os = "macos")]
+    return startup_item_macos::set_enabled(environment, enabled);
+
+    #[cfg(target_os = "windows")]
+    return startup_item_windows::set_enabled(environment, enabled);
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let _ = (environment, enabled);
+        Ok(StartupItemState::Unsupported(
+            StartupItemUnsupportedReason::Platform,
+        ))
     }
 }
 
