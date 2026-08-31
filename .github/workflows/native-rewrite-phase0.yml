@@ -219,6 +219,38 @@ jobs:
               )) {
                 throw "Windows UIA startup switch exposed an indeterminate value"
               }
+              $initialToggleState = $toggleState
+              # Exercise the real UIA action and wait for the revisioned settings
+              # snapshot to project the new state. The runner uses an ephemeral
+              # HKCU profile, so toggling twice restores the initial disabled/
+              # enabled state without changing a user's login item.
+              if ($toggleState -eq [System.Windows.Automation.ToggleState]::Off) {
+                $expectedToggleState = [System.Windows.Automation.ToggleState]::On
+              } else {
+                $expectedToggleState = [System.Windows.Automation.ToggleState]::Off
+              }
+              $toggle.Toggle()
+              $toggleDeadline = [DateTime]::UtcNow.AddSeconds(5)
+              do {
+                Start-Sleep -Milliseconds 100
+                $toggleState = $startup.GetCurrentPattern(
+                  [System.Windows.Automation.TogglePattern]::Pattern
+                ).Current.ToggleState
+              } while ($toggleState -ne $expectedToggleState -and [DateTime]::UtcNow -lt $toggleDeadline)
+              if ($toggleState -ne $expectedToggleState) {
+                throw "Windows UIA startup switch action did not update state: expected '$expectedToggleState', found '$toggleState'"
+              }
+              $toggle.Toggle()
+              $restoreDeadline = [DateTime]::UtcNow.AddSeconds(5)
+              do {
+                Start-Sleep -Milliseconds 100
+                $toggleState = $startup.GetCurrentPattern(
+                  [System.Windows.Automation.TogglePattern]::Pattern
+                ).Current.ToggleState
+              } while ($toggleState -ne $initialToggleState -and [DateTime]::UtcNow -lt $restoreDeadline)
+              if ($toggleState -ne $initialToggleState) {
+                throw "Windows UIA startup switch action did not restore state: expected '$initialToggleState', found '$toggleState'"
+              }
               $startup.SetFocus()
               $focusDeadline = [DateTime]::UtcNow.AddSeconds(2)
               do {
