@@ -473,6 +473,12 @@ struct WriterLock {
     _file: File,
 }
 
+impl Drop for WriterLock {
+    fn drop(&mut self) {
+        let _ = self._file.unlock();
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ConfigFileStatus {
     Missing,
