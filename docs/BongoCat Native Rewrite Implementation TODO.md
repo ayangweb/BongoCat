@@ -1526,14 +1526,16 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       `33367819458` 全绿；Windows/macOS/Ubuntu Native jobs `99412066607`/`99412066610`/
       `99412066583` 通过完整 format、Clippy、workspace test、release/Production 与平台 smoke，
       Windows input/config job `99412066542` 也通过真实路径与存储测试。
-36. [ ] `P6-CONFIG-RECOVERY-DIAGNOSTIC`：把成功配置恢复投影到正式 Diagnostics 页面。
+36. [x] `P6-CONFIG-RECOVERY-DIAGNOSTIC`：把成功配置恢复投影到正式 Diagnostics 页面。
     - 依赖：`P6-CONFIG-BACKUP-RECOVERY`、revisioned `SettingsSnapshot` 和正式 Diagnostics 页面。
     - 退出条件：settings 协议只公开源 schema 与跳过候选数，不包含路径、原始 JSON、时间戳或
       I/O 文本；正常加载与恢复成功均有明确状态；refresh、shutdown snapshot 和 800x600 页面
       smoke 保持一致且无重叠；UI/app 定向测试、完整 Native 门禁和三平台 CI 通过。
-    - 状态（2026-08-31）：协议、service 投影、Diagnostics 状态行、正常/恢复 presentation 测试和
-      service refresh/shutdown 回归已实现；本机 800x600 release `.app` 可视检查通过。等待本项提交
-      的完整 workspace 与三平台 CI 证据后勾选。
+    - 验收证据（2026-08-31）：协议、service 投影、Diagnostics 状态行、正常/恢复 presentation
+      测试和 service refresh/shutdown 回归已实现；本机 800x600 release `.app` 可视检查通过。
+      commit `260083d` 的 pull request run `33369531252` 全绿；Windows/macOS/Ubuntu Native jobs
+      `99417224388`/`99417224402`/`99417224398` 通过完整 format、Clippy、workspace test、
+      release/Production 与平台 smoke，Windows input/config job `99417224387` 同时通过。
 
 ## 13. 待决策清单
 
