@@ -27,10 +27,10 @@ pub use cursor::{
     CursorSnapshot, CursorTransportDiagnostics, CursorViewport, NormalizedCursorPosition,
 };
 pub use input::{
-    HandSide, InputBindings, InputControl, InputDiagnostics, InputDisposition, InputEdge,
-    InputEvent, InputResetReason, InputSnapshot, InputSource, InputTransportDiagnostics,
-    ModelInputSnapshot, MonotonicMillis, MouseButton, PhysicalKey, ReconciliationPolicy,
-    SequencedInputEvent,
+    GamepadButton, GamepadButtonKey, GamepadConnection, HandSide, InputBindings, InputControl,
+    InputDiagnostics, InputDisposition, InputEdge, InputEvent, InputResetReason, InputSnapshot,
+    InputSource, InputTransportDiagnostics, ModelInputSnapshot, MonotonicMillis, MouseButton,
+    PhysicalKey, ReconciliationPolicy, SequencedInputEvent,
 };
 use input::{InputState, InputTransportCounters};
 use rendering::{MotionStopStatus, RenderEvaluation, RuntimeRenderBootstrap, RuntimeRenderer};

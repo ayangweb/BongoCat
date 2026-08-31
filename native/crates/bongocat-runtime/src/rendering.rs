@@ -440,6 +440,14 @@ fn apply_model_input(
             ProductParameter::MouseRightDown,
             f32::from(input.mouse_right_down),
         ),
+        (
+            ProductParameter::StickLeftDown,
+            f32::from(input.stick_left_down),
+        ),
+        (
+            ProductParameter::StickRightDown,
+            f32::from(input.stick_right_down),
+        ),
     ] {
         match model.set_normalized_parameter(parameter, value) {
             Ok(ParameterUpdate::Applied { .. } | ParameterUpdate::Unsupported) => {}

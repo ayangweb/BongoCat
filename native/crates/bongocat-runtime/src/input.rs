@@ -48,9 +48,63 @@ pub enum MouseButton {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct GamepadConnection {
+    pub device_id: u8,
+    pub generation: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum GamepadButton {
+    South,
+    East,
+    West,
+    North,
+    LeftShoulder,
+    RightShoulder,
+    LeftTrigger,
+    RightTrigger,
+    Select,
+    Start,
+    LeftStick,
+    RightStick,
+    DpadUp,
+    DpadDown,
+    DpadLeft,
+    DpadRight,
+}
+
+impl GamepadButton {
+    pub const ALL: [Self; 16] = [
+        Self::South,
+        Self::East,
+        Self::West,
+        Self::North,
+        Self::LeftShoulder,
+        Self::RightShoulder,
+        Self::LeftTrigger,
+        Self::RightTrigger,
+        Self::Select,
+        Self::Start,
+        Self::LeftStick,
+        Self::RightStick,
+        Self::DpadUp,
+        Self::DpadDown,
+        Self::DpadLeft,
+        Self::DpadRight,
+    ];
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct GamepadButtonKey {
+    pub connection: GamepadConnection,
+    pub button: GamepadButton,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum InputControl {
     Key(PhysicalKey),
     Mouse(MouseButton),
+    Gamepad(GamepadButtonKey),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -225,6 +279,7 @@ impl InputTransportCounters {
 pub struct InputSnapshot {
     pub pressed_key_count: usize,
     pub pressed_mouse_button_count: usize,
+    pub pressed_gamepad_button_count: usize,
     pub last_reset_reason: Option<InputResetReason>,
     pub last_input_sequence: Option<u64>,
     pub diagnostics: InputDiagnostics,
@@ -237,6 +292,8 @@ pub struct ModelInputSnapshot {
     pub right_hand_down: bool,
     pub mouse_left_down: bool,
     pub mouse_right_down: bool,
+    pub stick_left_down: bool,
+    pub stick_right_down: bool,
     pub pointer_x: f32,
     pub pointer_y: f32,
     pub pointer_z: f32,
@@ -337,6 +394,11 @@ impl InputState {
                 .keys()
                 .filter(|control| matches!(control, InputControl::Mouse(_)))
                 .count(),
+            pressed_gamepad_button_count: self
+                .pressed
+                .keys()
+                .filter(|control| matches!(control, InputControl::Gamepad(_)))
+                .count(),
             last_reset_reason: self.last_reset_reason,
             last_input_sequence: self.last_sequence,
             diagnostics: self.diagnostics,
@@ -362,13 +424,18 @@ impl InputState {
             ..ModelInputSnapshot::default()
         };
         for control in self.pressed.keys() {
-            let InputControl::Key(key) = control else {
-                continue;
-            };
-            match bindings.hand_for(*key) {
-                Some(HandSide::Left) => snapshot.left_hand_down = true,
-                Some(HandSide::Right) => snapshot.right_hand_down = true,
-                None => {}
+            match control {
+                InputControl::Key(key) => match bindings.hand_for(*key) {
+                    Some(HandSide::Left) => snapshot.left_hand_down = true,
+                    Some(HandSide::Right) => snapshot.right_hand_down = true,
+                    None => {}
+                },
+                InputControl::Gamepad(button) => match button.button {
+                    GamepadButton::LeftStick => snapshot.stick_left_down = true,
+                    GamepadButton::RightStick => snapshot.stick_right_down = true,
+                    _ => {}
+                },
+                InputControl::Mouse(_) => {}
             }
         }
         snapshot
@@ -635,6 +702,48 @@ mod tests {
         state.force_reset(InputResetReason::Test);
         assert_eq!(
             state.model_snapshot(&bindings, NormalizedCursorPosition::default()),
+            ModelInputSnapshot::default()
+        );
+    }
+
+    #[test]
+    fn gamepad_button_edges_project_to_stick_parameters_and_reset_cleanly() {
+        let connection = GamepadConnection {
+            device_id: 2,
+            generation: 7,
+        };
+        let left_stick = InputControl::Gamepad(GamepadButtonKey {
+            connection,
+            button: GamepadButton::LeftStick,
+        });
+        let right_stick = InputControl::Gamepad(GamepadButtonKey {
+            connection,
+            button: GamepadButton::RightStick,
+        });
+        let mut state = InputState::default();
+        state.apply(edge(0, 0, left_stick, InputEdge::Down));
+        state.apply(edge(1, 1, right_stick, InputEdge::Down));
+        let snapshot = state.snapshot();
+        assert_eq!(snapshot.pressed_gamepad_button_count, 2);
+        assert_eq!(
+            state.model_snapshot(
+                &InputBindings::default(),
+                NormalizedCursorPosition::default()
+            ),
+            ModelInputSnapshot {
+                stick_left_down: true,
+                stick_right_down: true,
+                ..ModelInputSnapshot::default()
+            }
+        );
+
+        state.force_reset(InputResetReason::DeviceRemoved);
+        assert_eq!(state.snapshot().pressed_gamepad_button_count, 0);
+        assert_eq!(
+            state.model_snapshot(
+                &InputBindings::default(),
+                NormalizedCursorPosition::default()
+            ),
             ModelInputSnapshot::default()
         );
     }

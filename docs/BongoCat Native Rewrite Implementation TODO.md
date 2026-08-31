@@ -529,6 +529,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 定义左右手、组合键、repeat、单键模式和自动释放语义。
 - [ ] 定义鼠标按钮、滚轮、移动和拖动语义。
 - [ ] 定义手柄按钮、axis、trigger、dead-zone 和断开复位。
+  - 状态（2026-08-31）：正式 runtime 已接入带 device generation 的 16 个标准手柄按钮、可靠
+    pressed edge、匿名计数和 Reset；左右摇杆按键已投影到 Cubism Stick 参数。Gamepad axis/
+    trigger 的 latest-value producer、dead-zone、平台采集与连接/断开生命周期仍由后续
+    `P2-GAMEPAD-RUNTIME` 任务完成。
 - [x] 每个 pressed key 记录来源、按下时间和最后校正时间。
   - 验收证据（2026-08-30）：runtime owner 的私有 `PressedRecord` 保存 `InputSource`、
     `MonotonicMillis pressed_at` 与最近一次仍按下校正时间；单元测试固定三字段，并确保
@@ -1695,6 +1699,14 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       jobs `99500010100`（Ubuntu）、`99500010122`（macOS）和 `99500010167`（Windows）以及
       Windows input/config job `99500010128` 全部通过；Windows 原生状态 smoke 输出与 macOS
       release smoke 一致。Windows 实机显示器/DPI 热切换仍属于后续平台矩阵。
+45. [ ] `P2-GAMEPAD-RUNTIME`：将双平台 GameController/XInput producer 接入正式 runtime。
+    - 依赖：`InputControl::Gamepad` 按钮语义、Gamepad axis keyed latest-value contract、现有
+      Windows/macOS 平台 producer spike。
+    - 退出条件：按钮边沿与连接代次进入可靠 runtime 队列，六轴/trigger 使用独立 latest-value
+      通道并应用 dead-zone/范围归一化；断开、重连、overflow 和 shutdown 不残留 pressed 或旧
+      axis；三平台 contract、双平台 producer smoke、模型 Stick 参数回归和完整 Native 门禁通过。
+    - 状态（2026-08-31）：本批先提升共享按钮类型和 runtime/model snapshot 投影；平台 producer
+      与 axis 通道仍未接入，未声称手柄功能完成。
 
 ## 13. 待决策清单
 
