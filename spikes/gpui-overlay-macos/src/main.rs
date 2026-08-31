@@ -908,6 +908,9 @@ use std::time::Duration;
 #[cfg(target_os = "macos")]
 const MACOS_COMPOSITOR_SETTLE_INTERVAL: Duration = Duration::from_millis(17);
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const AUTO_QUIT_MILESTONE_WAIT_ATTEMPTS: usize = 200;
+
 #[cfg(target_os = "macos")]
 type PlatformOverlay = macos_overlay::NativeOverlay;
 
@@ -1311,8 +1314,26 @@ fn main() {
             println!("gpui-overlay-spike: auto quit scheduled milliseconds={milliseconds}");
             cx.spawn(async move |cx| {
                 Timer::after(Duration::from_millis(milliseconds)).await;
+                println!("gpui-overlay-spike: auto quit requested");
+
+                #[cfg(any(target_os = "macos", target_os = "windows"))]
+                for _ in 0..AUTO_QUIT_MILESTONE_WAIT_ATTEMPTS {
+                    let milestone_complete = cx
+                        .update(|cx| {
+                            frame_smoke_milestone_complete(
+                                &cx.global::<OverlayGlobal>().frame_source,
+                                simulate_renderer_loss_at_frame.is_some()
+                                    || simulate_surface_unavailable_at_frame.is_some(),
+                            )
+                        })
+                        .unwrap_or(true);
+                    if milestone_complete {
+                        break;
+                    }
+                    Timer::after(Duration::from_millis(10)).await;
+                }
+
                 cx.update(|cx| {
-                    println!("gpui-overlay-spike: auto quit requested");
                     #[cfg(any(target_os = "macos", target_os = "windows"))]
                     {
                         cx.global_mut::<OverlayGlobal>().frame_source.running = false;
@@ -1362,6 +1383,48 @@ fn main() {
             .detach();
         }
     });
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn frame_smoke_milestone_complete(
+    frame_source: &FrameSourceState,
+    recovery_expected: bool,
+) -> bool {
+    if !frame_source.started || frame_source.recovery_disabled {
+        return true;
+    }
+    frame_source.resize_completed
+        && (!recovery_expected || (frame_source.injected_failure && frame_source.recoveries > 0))
+}
+
+#[cfg(all(test, any(target_os = "macos", target_os = "windows")))]
+mod frame_source_tests {
+    use super::*;
+
+    #[test]
+    fn auto_quit_waits_for_resize_and_expected_recovery() {
+        let mut frame_source = FrameSourceState {
+            started: true,
+            running: true,
+            ..FrameSourceState::default()
+        };
+        assert!(!frame_smoke_milestone_complete(&frame_source, false));
+        frame_source.resize_completed = true;
+        assert!(frame_smoke_milestone_complete(&frame_source, false));
+        assert!(!frame_smoke_milestone_complete(&frame_source, true));
+        frame_source.injected_failure = true;
+        frame_source.recoveries = 1;
+        assert!(frame_smoke_milestone_complete(&frame_source, true));
+    }
+
+    #[test]
+    fn auto_quit_does_not_wait_for_an_unstarted_or_fatal_frame_source() {
+        let mut frame_source = FrameSourceState::default();
+        assert!(frame_smoke_milestone_complete(&frame_source, true));
+        frame_source.started = true;
+        frame_source.recovery_disabled = true;
+        assert!(frame_smoke_milestone_complete(&frame_source, true));
+    }
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
