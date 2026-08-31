@@ -25,10 +25,11 @@ fn synthetic_shift_reaches_runtime_and_releases_cleanly() {
         .wait_for_command(binding_sequence, TIMEOUT)
         .expect("bindings applied");
 
-    let service = MacInputService::start(
+    let service = MacInputService::start_with_diagnostics(
         runtime.input_producer(),
         runtime.cursor_producer(),
         runtime.gamepad_axis_producer(),
+        runtime.platform_input_diagnostics_producer(),
     )
     .expect("input service");
     let source = CGEventSource::new(CGEventSourceStateID::Private).expect("event source");
@@ -59,6 +60,7 @@ fn synthetic_shift_reaches_runtime_and_releases_cleanly() {
     assert_eq!(diagnostics.runtime_queue_overflows, 0);
     assert!(diagnostics.consumed_edges >= 2);
     assert!(diagnostics.clean_shutdown);
+    assert_eq!(client.snapshot().platform_input, diagnostics);
     let stopped = runtime.shutdown(TIMEOUT).expect("runtime stop");
     assert!(!stopped.model_input.left_hand_down);
 }
@@ -69,10 +71,11 @@ fn synthetic_cursor_reaches_runtime_latest_value_snapshot() {
     let runtime = RuntimeOwner::start(true, 8);
     let client = runtime.client();
     client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
-    let service = MacInputService::start(
+    let service = MacInputService::start_with_diagnostics(
         runtime.input_producer(),
         runtime.cursor_producer(),
         runtime.gamepad_axis_producer(),
+        runtime.platform_input_diagnostics_producer(),
     )
     .expect("input service");
     let initial = client
@@ -106,6 +109,7 @@ fn synthetic_cursor_reaches_runtime_latest_value_snapshot() {
     assert!(diagnostics.cursor_consumed >= 1);
     assert_eq!(diagnostics.cursor_display_lookup_failures, 0);
     assert_eq!(diagnostics.cursor_publish_rejections, 0);
+    assert_eq!(client.snapshot().platform_input, diagnostics);
     let stopped = runtime.shutdown(TIMEOUT).expect("runtime stop");
     assert!(stopped.cursor.transport.published >= 1);
     assert!(stopped.cursor.transport.consumed >= 1);
@@ -139,16 +143,18 @@ fn runtime_stop_cleans_up_tap_before_a_second_service_starts() {
     replacement_client
         .wait_for_revision(1, TIMEOUT)
         .expect("replacement runtime ready");
-    let replacement_service = MacInputService::start(
+    let replacement_service = MacInputService::start_with_diagnostics(
         replacement_runtime.input_producer(),
         replacement_runtime.cursor_producer(),
         replacement_runtime.gamepad_axis_producer(),
+        replacement_runtime.platform_input_diagnostics_producer(),
     )
     .expect("replacement input service");
     let diagnostics = replacement_service
         .stop()
         .expect("replacement input service stop");
     assert!(diagnostics.clean_shutdown);
+    assert_eq!(replacement_client.snapshot().platform_input, diagnostics);
     replacement_runtime
         .shutdown(TIMEOUT)
         .expect("replacement runtime stop");

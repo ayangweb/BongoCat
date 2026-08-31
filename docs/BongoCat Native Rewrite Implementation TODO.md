@@ -1762,15 +1762,19 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
         synthetic runtime contract 与真实无设备 framework owner smoke 已通过；commit `119ea66`
         的 run `33408664176`、macOS Native job `99542490494` 与 dependency job `99542490215`
         已通过完整 workspace/许可证门禁。物理 controller、profile 差异和热插拔矩阵仍待实机。
-    - [ ] 将 producer overflow、断开/重连和 shutdown 诊断统一映射到 runtime snapshot。
+    - [x] 将 producer overflow、断开/重连和 shutdown 诊断统一映射到 runtime snapshot。
       - 状态（2026-08-31）：共享 axis transport 现为每个 device id 分配跨 service restart
         单调 generation，并在 snapshot 统计连接、断开、discard 和各类拒绝；可靠 input reducer
         新增 typed connect/disconnect、active connection、stale event、scoped release 诊断，设置
         Diagnostics 页完整投影 25 个输入计数。Windows 断开不再用全局 Reset 清除其他手柄或
-        键鼠，键鼠 reconcile 也不再错误释放手柄按钮。macOS callback/backend 诊断已进入平台
-        shutdown report，但尚未在运行期间完整汇入 runtime snapshot。
-    - 状态（2026-08-31）：共享 runtime 与双平台正式 producer 已接线；物理设备 smoke、完整
-      运行时诊断汇总仍未完成，未声称手柄功能完成。
+        键鼠，键鼠 reconcile 也不再错误释放手柄按钮。
+      - 状态（2026-09-01）：稳定的 `PlatformInputDiagnostics` 与 latest producer 已归入 runtime
+        contract；Windows 每个 service tick、macOS 每个 run-loop slice 分别发布 worker/callback/
+        cursor 合并快照，且不占用 command 或可靠 edge 队列。overlay 正式路径共享该 producer，
+        input stop 会在 runtime shutdown 前发布最终 `clean_shutdown` 快照；runtime stop 后拒绝更新并
+        保留最后值。共享 transport、双平台合并 contract 和权限实机 smoke 的 final-snapshot 断言已覆盖。
+    - 状态（2026-09-01）：共享 runtime、正式配置、运行期诊断与双平台正式 producer 已接线；
+      物理 controller、多手柄/profile 和热插拔 smoke 仍未完成，未声称手柄功能完成。
 
 ## 13. 待决策清单
 

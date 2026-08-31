@@ -235,6 +235,10 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
 - Runtime 在 latest-value 消费后统一应用 `GamepadAxisSettings` 的 stick/trigger dead-zone；平台
   adapter 只负责原始范围归一化和无效值诊断，不把设备默认 dead-zone 写入共享协议。轴值随后以
   `ModelInputSnapshot` 的不可变字段投影给 renderer。
+- 平台 input worker 通过独立 latest diagnostics producer 发布项目稳定计数；该通道不占用可靠
+  command/input edge 队列，Windows service tick 与 macOS run-loop slice 都刷新 live snapshot。
+  callback 原子计数、worker 恢复计数和 cursor latest 统计在平台 owner 内合并后进入
+  `RuntimeSnapshot::platform_input`；停止输入时须先发布包含 `clean_shutdown` 的最终快照，再停止 runtime。
 - 动画和延迟使用单调时钟 `Instant`，持久化时间才使用墙上时钟。
 - `motion_stop` 只作用于匹配的当前动作。非零 `FadeOutTime` 在 runtime snapshot 中保留
   active identity 和首次 stop command sequence，renderer 以正弦权重淡出并在结束帧后

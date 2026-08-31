@@ -5,7 +5,7 @@ use bongocat_runtime::{
     GamepadAxisKey, GamepadAxisProducer, GamepadAxisPublishError, GamepadAxisSample, GamepadButton,
     GamepadButtonKey, GamepadConnection, GamepadConnectionError, InputControl, InputEdge,
     InputEvent, InputProducer, InputPublishError, InputResetReason, InputSource, MonotonicMillis,
-    MouseButton, PhysicalKey,
+    MouseButton, PhysicalKey, PlatformInputDiagnosticsProducer,
 };
 use objc2::rc::Retained;
 use objc2_core_foundation::{CFMachPort, CFRunLoop, CGPoint, kCFRunLoopDefaultMode};
@@ -808,6 +808,20 @@ impl MacInputService {
         cursor_producer: CursorProducer,
         gamepad_axis_producer: GamepadAxisProducer,
     ) -> Result<Self, PlatformInputError> {
+        Self::start_with_diagnostics(
+            producer,
+            cursor_producer,
+            gamepad_axis_producer,
+            PlatformInputDiagnosticsProducer::default(),
+        )
+    }
+
+    pub fn start_with_diagnostics(
+        producer: InputProducer,
+        cursor_producer: CursorProducer,
+        gamepad_axis_producer: GamepadAxisProducer,
+        diagnostics_producer: PlatformInputDiagnosticsProducer,
+    ) -> Result<Self, PlatformInputError> {
         if input_monitoring_permission() != InputPermission::Granted {
             return Err(PlatformInputError::PermissionDenied);
         }
@@ -823,6 +837,7 @@ impl MacInputService {
                         producer,
                         cursor_producer,
                         gamepad_axis_producer,
+                        diagnostics_producer,
                         worker_stop,
                         startup_sender,
                     )
@@ -900,6 +915,7 @@ fn run_input_worker(
     producer: InputProducer,
     cursor_producer: CursorProducer,
     gamepad_axis_producer: GamepadAxisProducer,
+    diagnostics_producer: PlatformInputDiagnosticsProducer,
     stop: Arc<AtomicBool>,
     startup: SyncSender<Result<(), PlatformInputError>>,
 ) -> Result<PlatformInputDiagnostics, PlatformInputError> {
@@ -968,7 +984,16 @@ fn run_input_worker(
     }
     let _ = startup.send(Ok(()));
 
-    let mut diagnostics = counters.snapshot();
+    let mut diagnostics = PlatformInputDiagnostics {
+        gamepad_background_monitoring_enabled: gamepad_owner.background_monitoring_enabled,
+        ..PlatformInputDiagnostics::default()
+    };
+    publish_live_diagnostics(
+        &diagnostics_producer,
+        diagnostics,
+        &counters,
+        &latest_cursor,
+    );
     if let Some(event) = CGEvent::new(None) {
         let location = CGEvent::location(Some(&event));
         latest_cursor.publish(MacCursorPoint {
@@ -987,6 +1012,12 @@ fn run_input_worker(
             break Ok(());
         }
         CFRunLoop::run_in_mode(Some(mode), RUN_LOOP_SLICE.as_secs_f64(), true);
+        publish_live_diagnostics(
+            &diagnostics_producer,
+            diagnostics,
+            &counters,
+            &latest_cursor,
+        );
 
         if recovery_requested.swap(false, Ordering::AcqRel) {
             recovery_pending = true;
@@ -1147,6 +1178,7 @@ fn run_input_worker(
         && publish_final_reset(&producer, started, &mut diagnostics);
     merge_callback_diagnostics(&mut diagnostics, &counters);
     latest_cursor.merge_diagnostics(&mut diagnostics);
+    let _ = diagnostics_producer.publish(diagnostics);
     service_result?;
     Ok(diagnostics)
 }
@@ -1508,6 +1540,18 @@ fn merge_callback_diagnostics(
     diagnostics.gamepad_invalid_values = callback.gamepad_invalid_values;
 }
 
+fn publish_live_diagnostics(
+    producer: &PlatformInputDiagnosticsProducer,
+    diagnostics: PlatformInputDiagnostics,
+    counters: &CallbackCounters,
+    cursor: &LatestCursor,
+) {
+    let mut snapshot = diagnostics;
+    merge_callback_diagnostics(&mut snapshot, counters);
+    cursor.merge_diagnostics(&mut snapshot);
+    let _ = producer.publish(snapshot);
+}
+
 fn monotonic(started: Instant) -> MonotonicMillis {
     MonotonicMillis::new(u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX))
 }
@@ -1709,6 +1753,39 @@ mod tests {
         assert_eq!(diagnostics.cursor_consumed, 1);
         assert_eq!(diagnostics.cursor_rejected_after_stop, 1);
         assert_eq!(diagnostics.captured_edges, 0);
+    }
+
+    #[test]
+    fn live_diagnostics_merge_worker_callback_and_cursor_without_accumulating() {
+        let producer = PlatformInputDiagnosticsProducer::default();
+        let counters = CallbackCounters::default();
+        counters
+            .gamepad_runtime_queue_overflows
+            .store(3, Ordering::Relaxed);
+        counters.gamepad_connections.store(4, Ordering::Relaxed);
+        counters
+            .gamepad_axis_publish_rejections
+            .store(5, Ordering::Relaxed);
+        let cursor = LatestCursor::default();
+        cursor.publish(MacCursorPoint { x: 1.0, y: 2.0 });
+        cursor.publish(MacCursorPoint { x: 3.0, y: 4.0 });
+        assert_eq!(cursor.take(), Some(MacCursorPoint { x: 3.0, y: 4.0 }));
+        let worker = PlatformInputDiagnostics {
+            runtime_queue_overflows: 2,
+            recovery_resets: 6,
+            ..PlatformInputDiagnostics::default()
+        };
+
+        publish_live_diagnostics(&producer, worker, &counters, &cursor);
+        publish_live_diagnostics(&producer, worker, &counters, &cursor);
+        let live = producer.diagnostics();
+        assert_eq!(live.runtime_queue_overflows, 5);
+        assert_eq!(live.gamepad_connections, 4);
+        assert_eq!(live.gamepad_axis_publish_rejections, 5);
+        assert_eq!(live.recovery_resets, 6);
+        assert_eq!(live.cursor_captured, 2);
+        assert_eq!(live.cursor_coalesced, 1);
+        assert_eq!(live.cursor_consumed, 1);
     }
 
     #[test]

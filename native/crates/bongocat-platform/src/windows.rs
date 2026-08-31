@@ -4,7 +4,7 @@ use bongocat_runtime::{
     GamepadAxisKey, GamepadAxisProducer, GamepadAxisPublishError, GamepadAxisSample, GamepadButton,
     GamepadButtonKey, GamepadConnection, GamepadConnectionError, InputControl, InputEdge,
     InputEvent, InputProducer, InputPublishError, InputResetReason, InputSource, MonotonicMillis,
-    MouseButton, PhysicalKey,
+    MouseButton, PhysicalKey, PlatformInputDiagnosticsProducer,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::{
@@ -488,6 +488,7 @@ struct WindowState {
     final_reset_published: bool,
     drop_next_key_release: bool,
     diagnostics: PlatformInputDiagnostics,
+    diagnostics_producer: PlatformInputDiagnosticsProducer,
 }
 
 impl WindowState {
@@ -495,6 +496,7 @@ impl WindowState {
         producer: InputProducer,
         cursor_producer: CursorProducer,
         gamepad_axis_producer: GamepadAxisProducer,
+        diagnostics_producer: PlatformInputDiagnosticsProducer,
         stop: Arc<AtomicBool>,
         options: WorkerOptions,
     ) -> Self {
@@ -520,6 +522,7 @@ impl WindowState {
                 cursor_captured: 1,
                 ..PlatformInputDiagnostics::default()
             },
+            diagnostics_producer,
         }
     }
 
@@ -639,6 +642,11 @@ impl WindowState {
     }
 
     fn service_tick(&mut self) {
+        self.service_tick_inner();
+        self.publish_diagnostics();
+    }
+
+    fn service_tick_inner(&mut self) {
         if self.terminal_error.is_some() {
             return;
         }
@@ -698,6 +706,10 @@ impl WindowState {
             }
         }
         self.forward_cursor();
+    }
+
+    fn publish_diagnostics(&self) {
+        let _ = self.diagnostics_producer.publish(self.diagnostics);
     }
 
     fn publish(&mut self, event: CapturedEvent) -> Result<(), InputPublishError> {
@@ -853,18 +865,34 @@ impl WindowsInputService {
         cursor_producer: CursorProducer,
         gamepad_axis_producer: GamepadAxisProducer,
     ) -> Result<Self, PlatformInputError> {
-        Self::start_with_options(
+        Self::start_with_diagnostics(
             producer,
             cursor_producer,
             gamepad_axis_producer,
+            PlatformInputDiagnosticsProducer::default(),
+        )
+    }
+
+    pub fn start_with_diagnostics(
+        producer: InputProducer,
+        cursor_producer: CursorProducer,
+        gamepad_axis_producer: GamepadAxisProducer,
+        diagnostics_producer: PlatformInputDiagnosticsProducer,
+    ) -> Result<Self, PlatformInputError> {
+        Self::start_with_diagnostics_and_options(
+            producer,
+            cursor_producer,
+            gamepad_axis_producer,
+            diagnostics_producer,
             WorkerOptions::default(),
         )
     }
 
-    fn start_with_options(
+    fn start_with_diagnostics_and_options(
         producer: InputProducer,
         cursor_producer: CursorProducer,
         gamepad_axis_producer: GamepadAxisProducer,
+        diagnostics_producer: PlatformInputDiagnosticsProducer,
         options: WorkerOptions,
     ) -> Result<Self, PlatformInputError> {
         let stop = Arc::new(AtomicBool::new(false));
@@ -879,6 +907,7 @@ impl WindowsInputService {
                         producer,
                         cursor_producer,
                         gamepad_axis_producer,
+                        diagnostics_producer,
                         worker_stop,
                         options,
                         startup_sender,
@@ -941,6 +970,7 @@ fn run_input_worker(
     producer: InputProducer,
     cursor_producer: CursorProducer,
     gamepad_axis_producer: GamepadAxisProducer,
+    diagnostics_producer: PlatformInputDiagnosticsProducer,
     stop: Arc<AtomicBool>,
     options: WorkerOptions,
     startup: SyncSender<Result<(), PlatformInputError>>,
@@ -953,6 +983,7 @@ fn run_input_worker(
             producer,
             cursor_producer,
             gamepad_axis_producer,
+            diagnostics_producer,
             stop,
             options,
             startup,
@@ -964,6 +995,7 @@ unsafe fn run_input_worker_inner(
     producer: InputProducer,
     cursor_producer: CursorProducer,
     gamepad_axis_producer: GamepadAxisProducer,
+    diagnostics_producer: PlatformInputDiagnosticsProducer,
     stop: Arc<AtomicBool>,
     options: WorkerOptions,
     startup: SyncSender<Result<(), PlatformInputError>>,
@@ -991,6 +1023,7 @@ unsafe fn run_input_worker_inner(
         producer,
         cursor_producer,
         gamepad_axis_producer,
+        diagnostics_producer,
         stop,
         options,
     ));
@@ -1026,6 +1059,7 @@ unsafe fn run_input_worker_inner(
         return Err(PlatformInputError::SessionNotificationFailed);
     }
     state.session_notifications_registered = true;
+    state.publish_diagnostics();
     let devices = [
         raw_input_device(0x02, window),
         raw_input_device(0x06, window),
@@ -1097,6 +1131,7 @@ unsafe fn run_input_worker_inner(
         && raw_unregistered
         && state.session_notifications_unregistered
         && final_reset;
+    state.publish_diagnostics();
     let _ = unsafe { UnregisterClassW(WINDOW_CLASS, Some(instance)) };
     if message_failed {
         return Err(PlatformInputError::WorkerPanicked);
@@ -1499,6 +1534,35 @@ mod tests {
     };
 
     #[test]
+    fn window_state_publishes_live_platform_diagnostics() {
+        const TIMEOUT: Duration = Duration::from_secs(2);
+        let runtime = RuntimeOwner::start(true, 8);
+        let client = runtime.client();
+        client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+        let diagnostics_producer = runtime.platform_input_diagnostics_producer();
+        let mut state = WindowState::new(
+            runtime.input_producer(),
+            runtime.cursor_producer(),
+            runtime.gamepad_axis_producer(),
+            diagnostics_producer,
+            Arc::new(AtomicBool::new(false)),
+            WorkerOptions::default(),
+        );
+        state.diagnostics.runtime_queue_overflows = 2;
+        state.diagnostics.gamepad_connections = 3;
+        state.diagnostics.gamepad_disconnections = 1;
+        state.diagnostics.gamepad_axis_publish_rejections = 4;
+        state.publish_diagnostics();
+
+        let live = client.snapshot().platform_input;
+        assert_eq!(live.runtime_queue_overflows, 2);
+        assert_eq!(live.gamepad_connections, 3);
+        assert_eq!(live.gamepad_disconnections, 1);
+        assert_eq!(live.gamepad_axis_publish_rejections, 4);
+        runtime.shutdown(TIMEOUT).expect("runtime stop");
+    }
+
+    #[test]
     fn scan_codes_preserve_hid_identity_and_modifier_side() {
         assert_eq!(map_scan_code(0x1e, 0), Some(PhysicalKey::KEY_A));
         assert_eq!(map_scan_code(0x1d, 0), Some(PhysicalKey::LEFT_CONTROL));
@@ -1712,10 +1776,11 @@ mod tests {
         client
             .wait_for_command(sequence, TIMEOUT)
             .expect("bindings applied");
-        let service = WindowsInputService::start_with_options(
+        let service = WindowsInputService::start_with_diagnostics_and_options(
             runtime.input_producer(),
             runtime.cursor_producer(),
             runtime.gamepad_axis_producer(),
+            runtime.platform_input_diagnostics_producer(),
             WorkerOptions {
                 drop_next_key_release: true,
             },
@@ -1750,6 +1815,7 @@ mod tests {
         assert_eq!(diagnostics.runtime_queue_overflows, 0);
         assert!(diagnostics.reconciliation_runs >= 2);
         assert!(diagnostics.clean_shutdown);
+        assert_eq!(client.snapshot().platform_input, diagnostics);
         let stopped = runtime.shutdown(TIMEOUT).expect("runtime stop");
         assert_eq!(stopped.input.pressed_key_count, 0);
     }

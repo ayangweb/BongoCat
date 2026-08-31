@@ -3,6 +3,7 @@
 mod cursor;
 mod gamepad;
 mod input;
+mod platform_input;
 mod rendering;
 
 use bongocat_audio::{
@@ -39,6 +40,10 @@ pub use input::{
     MonotonicMillis, MouseButton, PhysicalKey, ReconciliationPolicy, SequencedInputEvent,
 };
 use input::{InputState, InputTransportCounters};
+pub use platform_input::{
+    PlatformInputDiagnostics, PlatformInputDiagnosticsProducer,
+    PlatformInputDiagnosticsPublishError,
+};
 use rendering::{MotionStopStatus, RenderEvaluation, RuntimeRenderBootstrap, RuntimeRenderer};
 
 const CURSOR_SAMPLE_INTERVAL: Duration = Duration::from_millis(16);
@@ -233,6 +238,7 @@ pub struct RuntimeSnapshot {
     pub input: InputSnapshot,
     pub cursor: CursorSnapshot,
     pub gamepad_axis_transport: GamepadAxisTransportDiagnostics,
+    pub platform_input: PlatformInputDiagnostics,
     pub model_input: ModelInputSnapshot,
     pub render_error: Option<RuntimeRenderErrorCode>,
     pub last_command_failure: Option<RuntimeCommandFailure>,
@@ -259,6 +265,7 @@ impl RuntimeSnapshot {
             input: InputSnapshot::default(),
             cursor: CursorSnapshot::default(),
             gamepad_axis_transport: GamepadAxisTransportDiagnostics::default(),
+            platform_input: PlatformInputDiagnostics::default(),
             model_input: ModelInputSnapshot::default(),
             render_error: None,
             last_command_failure: None,
@@ -411,6 +418,7 @@ pub struct RuntimeClient {
     input_producer_state: Arc<Mutex<InputProducerState>>,
     cursor_slot: Arc<CursorSlot>,
     gamepad_axis_slot: Arc<GamepadAxisSlot>,
+    platform_input_diagnostics: PlatformInputDiagnosticsProducer,
     motion_audio: MotionAudioClient,
 }
 
@@ -454,6 +462,10 @@ impl RuntimeClient {
 
     pub fn gamepad_axis_producer(&self) -> GamepadAxisProducer {
         GamepadAxisProducer::new(Arc::clone(&self.gamepad_axis_slot))
+    }
+
+    pub fn platform_input_diagnostics_producer(&self) -> PlatformInputDiagnosticsProducer {
+        self.platform_input_diagnostics.clone()
     }
 
     pub fn wait_for_revision(
@@ -693,6 +705,7 @@ impl RuntimeClient {
         snapshot.input.transport = self.input_transport.snapshot();
         snapshot.cursor.transport = self.cursor_slot.diagnostics();
         snapshot.gamepad_axis_transport = self.gamepad_axis_slot.diagnostics();
+        snapshot.platform_input = self.platform_input_diagnostics.diagnostics();
         snapshot.motion_audio = self.motion_audio.diagnostics();
         snapshot
     }
@@ -830,6 +843,7 @@ impl RuntimeOwner {
         let gamepad_axis_slot = Arc::new(GamepadAxisSlot::with_capacity(
             DEFAULT_GAMEPAD_AXIS_CAPACITY,
         ));
+        let platform_input_diagnostics = PlatformInputDiagnosticsProducer::default();
         let client = RuntimeClient {
             producer: Arc::new(Producer {
                 sender,
@@ -840,6 +854,7 @@ impl RuntimeOwner {
             input_producer_state: Arc::new(Mutex::new(InputProducerState::default())),
             cursor_slot: Arc::clone(&cursor_slot),
             gamepad_axis_slot: Arc::clone(&gamepad_axis_slot),
+            platform_input_diagnostics,
             motion_audio: motion_audio.clone(),
         };
         let worker = thread::Builder::new()
@@ -882,6 +897,10 @@ impl RuntimeOwner {
         self.client.gamepad_axis_producer()
     }
 
+    pub fn platform_input_diagnostics_producer(&self) -> PlatformInputDiagnosticsProducer {
+        self.client.platform_input_diagnostics_producer()
+    }
+
     pub fn shutdown(mut self, timeout: Duration) -> Result<RuntimeSnapshot, ShutdownError> {
         let current = self.client.snapshot();
         if current.state == RuntimeState::Stopped {
@@ -907,6 +926,7 @@ impl RuntimeOwner {
     fn request_shutdown(&self) {
         self.client.cursor_slot.stop();
         self.client.gamepad_axis_slot.stop();
+        self.client.platform_input_diagnostics.stop();
         let mut next_sequence = self
             .client
             .producer
@@ -1983,6 +2003,41 @@ mod tests {
     }
 
     #[test]
+    fn platform_input_diagnostics_are_live_and_freeze_at_runtime_shutdown() {
+        let owner = RuntimeOwner::start(true, 8);
+        let client = owner.client();
+        client
+            .wait_for_revision(1, TIMEOUT)
+            .expect("ready snapshot");
+        let producer = owner.platform_input_diagnostics_producer();
+        let live = PlatformInputDiagnostics {
+            runtime_queue_overflows: 2,
+            recovery_resets: 3,
+            gamepad_connections: 4,
+            gamepad_disconnections: 1,
+            gamepad_axis_publish_rejections: 5,
+            ..PlatformInputDiagnostics::default()
+        };
+        producer.publish(live).expect("live diagnostics accepted");
+        assert_eq!(client.snapshot().platform_input, live);
+
+        let final_diagnostics = PlatformInputDiagnostics {
+            clean_shutdown: true,
+            ..live
+        };
+        producer
+            .publish(final_diagnostics)
+            .expect("final diagnostics accepted");
+        let stopped = owner.shutdown(TIMEOUT).expect("clean runtime stop");
+        assert_eq!(stopped.platform_input, final_diagnostics);
+        assert_eq!(
+            producer.publish(PlatformInputDiagnostics::default()),
+            Err(PlatformInputDiagnosticsPublishError::RuntimeStopped)
+        );
+        assert_eq!(client.snapshot().platform_input, final_diagnostics);
+    }
+
+    #[test]
     fn input_reset_is_observable() {
         let owner = RuntimeOwner::start(true, 4);
         let client = owner.client();
@@ -2932,6 +2987,7 @@ mod tests {
             gamepad_axis_slot: Arc::new(GamepadAxisSlot::with_capacity(
                 DEFAULT_GAMEPAD_AXIS_CAPACITY,
             )),
+            platform_input_diagnostics: PlatformInputDiagnosticsProducer::default(),
             motion_audio,
         };
         client
@@ -2969,6 +3025,7 @@ mod tests {
             gamepad_axis_slot: Arc::new(GamepadAxisSlot::with_capacity(
                 DEFAULT_GAMEPAD_AXIS_CAPACITY,
             )),
+            platform_input_diagnostics: PlatformInputDiagnosticsProducer::default(),
             motion_audio,
         };
         let producer = InputProducer::new(client.clone());

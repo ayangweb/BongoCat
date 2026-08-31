@@ -802,10 +802,11 @@ impl ProductOverlaySession {
         if runtime_client.snapshot().overlay_visible {
             overlay.window.show()?;
         }
-        let (input_service, input_start_error) = match WindowsInputService::start(
+        let (input_service, input_start_error) = match WindowsInputService::start_with_diagnostics(
             input_producer,
             cursor_producer,
             gamepad_axis_producer,
+            runtime_client.platform_input_diagnostics_producer(),
         ) {
             Ok(service) => (Some(service), None),
             Err(error) => (None, Some(error)),
