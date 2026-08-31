@@ -206,6 +206,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     首个测量批次纳入 baseline，后续两个等长批次不得继续突破；单元回归固定 `7 -> 8,8`
     通过、`7 -> 8,9` 失败。本机 release 100-cycle 结果为三批测量均 8、window/owner
     `0 -> 0`、Metal `393216 -> 393216`；新 CI 与 driver 专项证据仍待完成。
+  - 状态（2026-08-31）：Windows push run `33344285573`、job `99345359251` 在完整
+    100-cycle 预热后仍于首个等长测量批次观察到线程 `8 -> 9`，而同提交 PR job
+    `99345364672` 通过，确认一次瞬时 before/after 也会误报延迟 D3D/DirectComposition
+    worker。Windows probe 现让首个测量批次建立最终线程高水位，后续两个等长批次不得
+    再突破；handle 与 DXGI local memory 仍从预热后跨全部 300 个测量 cycle 执行增长门禁。
+    新 CI 与 driver 专项证据仍待完成。
 - [ ] 验证退出顺序：frame source -> renderer -> GPU -> overlay -> GPUI。
   - 状态（2026-08-29）：GPUI executor 上的 60 Hz 定时 frame source 已连续驱动双平台 renderer，并在退出时通过停止确认后才释放 renderer/GPU/window；macOS 本机与 Windows hardware D3D11 runner 均已验证连续帧、resize、hide/show 和有序退出。生产 display-linked frame source 与 runtime 尚未接入，因此保持未完成。
 - [x] 写明 GPUI/AppKit/Win32 主线程所有权、overlay 创建线程和跨线程 command 不变量。
@@ -967,7 +973,7 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
 
 ### 8.2 Windows
 
-- [ ] Shell_NotifyIcon + HMENU 托盘。
+- [x] Shell_NotifyIcon + HMENU 托盘。
 - [ ] named mutex + registered message/IPC 唤醒单实例。
 - [ ] 当前用户启动项启用、禁用和状态检测。
 - [ ] 文件选择、外部 URL 和剪贴板使用最小权限 wrapper。
@@ -980,7 +986,7 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
 
 ### 8.3 macOS
 
-- [ ] NSStatusItem + NSMenu 菜单栏。
+- [x] NSStatusItem + NSMenu 菜单栏。
 - [ ] NSApplication activation/reopen/single-instance 行为。
 - [ ] SMAppService 启动项启用、禁用和状态检测。
 - [ ] NSOpenPanel、NSWorkspace 和 pasteboard 最小权限 wrapper。
@@ -1351,7 +1357,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       `33342466529` 验证；Windows jobs `99340456964`/`99340462222` 各自连续五轮通过 Models
       页面 release product smoke，macOS jobs `99340456930`/`99340462228` 通过对应页面 smoke，
       Ubuntu jobs `99340456922`/`99340462194` 通过共享 UI contract 与完整 workspace 门禁。
-27. [ ] `P7-SYSTEM-MENU-LIFECYCLE`：提供双平台后台产品的系统菜单恢复入口与显式退出。
+27. [x] `P7-SYSTEM-MENU-LIFECYCLE`：提供双平台后台产品的系统菜单恢复入口与显式退出。
     - 依赖：`P1-SETTINGS-WINDOW-LIFECYCLE`、app shutdown coordinator、平台 UI 主线程。
     - 退出条件：Windows `Shell_NotifyIcon` + `HMENU` 与 macOS `NSStatusItem` + `NSMenu` 由明确
       owner 管理；Open Settings 不创建重复窗口并恢复当前 revisioned snapshot；Quit 停止菜单
@@ -1360,8 +1366,12 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
     - 状态（2026-08-31）：共享 `OpenSettings`/`Quit` contract、macOS 主线程 target/action、Windows
       隐藏 HWND callback 与显式菜单/status item cleanup 已接入 app coordinator；不新增第三方 tray
       crate，继续使用已锁定的 `objc2 0.6.4`/AppKit `0.3.2` 与 `windows 0.62.2`。macOS 本机真实
-      status item owner + Objective-C target/action smoke 及既有 settings/Models release smoke 通过；
-      Windows 原生 tray smoke、ARM64 source check 与完整 CI 尚待当前提交验证，因此保持未勾选。
+      status item owner + Objective-C target/action smoke 及既有 settings/Models release smoke 通过。
+    - 验收证据（2026-08-31）：commit `9e97704` 的 PR run `33344287629` 全绿；Windows job
+      `99345364734` 与 macOS job `99345364649` 均通过原生菜单 callback -> typed action -> settings
+      恢复 -> 显式 Quit 的 release smoke，Ubuntu job `99345364707` 通过完整共享 workspace 门禁。
+      Windows x64/ARM64 platform Clippy、完整 Native format/Clippy/test/release check 本机通过；
+      callback 只入队，菜单 owner 在 input/runtime/config/frame/renderer/overlay 之前停止。
 
 ## 13. 待决策清单
 
