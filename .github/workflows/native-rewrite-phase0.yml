@@ -252,24 +252,92 @@ jobs:
               } else {
                 $expectedToggleState = [System.Windows.Automation.ToggleState]::Off
               }
-              $toggle.Toggle()
+              $actionSucceeded = $false
+              $actionError = "startup switch was unavailable"
+              $actionDeadline = [DateTime]::UtcNow.AddSeconds(2)
+              do {
+                $startup = $root.FindFirst(
+                  [System.Windows.Automation.TreeScope]::Descendants,
+                  $startupCondition
+                )
+                if ($null -ne $startup) {
+                  try {
+                    $startup.GetCurrentPattern(
+                      [System.Windows.Automation.TogglePattern]::Pattern
+                    ).Toggle()
+                    $actionSucceeded = $true
+                  } catch {
+                    $actionError = $_.Exception.Message
+                  }
+                }
+                if (-not $actionSucceeded) {
+                  Start-Sleep -Milliseconds 50
+                }
+              } while (-not $actionSucceeded -and [DateTime]::UtcNow -lt $actionDeadline)
+              if (-not $actionSucceeded) {
+                throw "Windows UIA startup switch action failed after reacquiring the current node: $actionError"
+              }
               $toggleDeadline = [DateTime]::UtcNow.AddSeconds(5)
               do {
                 Start-Sleep -Milliseconds 100
-                $toggleState = $startup.GetCurrentPattern(
-                  [System.Windows.Automation.TogglePattern]::Pattern
-                ).Current.ToggleState
+                $startup = $root.FindFirst(
+                  [System.Windows.Automation.TreeScope]::Descendants,
+                  $startupCondition
+                )
+                if ($null -ne $startup) {
+                  try {
+                    $toggleState = $startup.GetCurrentPattern(
+                      [System.Windows.Automation.TogglePattern]::Pattern
+                    ).Current.ToggleState
+                  } catch {
+                    $toggleState = $null
+                  }
+                }
               } while ($toggleState -ne $expectedToggleState -and [DateTime]::UtcNow -lt $toggleDeadline)
               if ($toggleState -ne $expectedToggleState) {
                 throw "Windows UIA startup switch action did not update state: expected '$expectedToggleState', found '$toggleState'"
               }
-              $toggle.Toggle()
+              $actionSucceeded = $false
+              $actionError = "startup switch was unavailable"
+              $actionDeadline = [DateTime]::UtcNow.AddSeconds(2)
+              do {
+                $startup = $root.FindFirst(
+                  [System.Windows.Automation.TreeScope]::Descendants,
+                  $startupCondition
+                )
+                if ($null -ne $startup) {
+                  try {
+                    $startup.GetCurrentPattern(
+                      [System.Windows.Automation.TogglePattern]::Pattern
+                    ).Toggle()
+                    $actionSucceeded = $true
+                  } catch {
+                    $actionError = $_.Exception.Message
+                  }
+                }
+                if (-not $actionSucceeded) {
+                  Start-Sleep -Milliseconds 50
+                }
+              } while (-not $actionSucceeded -and [DateTime]::UtcNow -lt $actionDeadline)
+              if (-not $actionSucceeded) {
+                throw "Windows UIA startup switch restore action failed after reacquiring the current node: $actionError"
+              }
               $restoreDeadline = [DateTime]::UtcNow.AddSeconds(5)
               do {
                 Start-Sleep -Milliseconds 100
-                $toggleState = $startup.GetCurrentPattern(
-                  [System.Windows.Automation.TogglePattern]::Pattern
-                ).Current.ToggleState
+                $startup = $root.FindFirst(
+                  [System.Windows.Automation.TreeScope]::Descendants,
+                  $startupCondition
+                )
+                if ($null -ne $startup) {
+                  try {
+                    $toggleState = $startup.GetCurrentPattern(
+                      [System.Windows.Automation.TogglePattern]::Pattern
+                    ).Current.ToggleState
+                  } catch {
+                    $toggleState = $null
+                  }
+                }
               } while ($toggleState -ne $initialToggleState -and [DateTime]::UtcNow -lt $restoreDeadline)
               if ($toggleState -ne $initialToggleState) {
                 throw "Windows UIA startup switch action did not restore state: expected '$initialToggleState', found '$toggleState'"

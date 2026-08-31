@@ -175,6 +175,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 验证 GPUI async executor 与 runtime channel 可安全通信；bounded command/reply、revision 过滤、receiver close 和 shutdown acknowledgement 已通过 contract test 与 macOS release `.app` smoke。
 - [ ] 验证辅助功能树满足设置表单的基础要求。
   - 状态（2026-08-30）：macOS 本机已验证 role/title/value、selected/focus、busy/error 属性与 radio action；commit `21ee8aa` 的 push run `33291750411`、job `99204478369` 与 pull request run `33291751558`、job `99204481348` 已通过 Windows UIA role/name、radio selection action、selected state、loading、注入错误与 retry/revision 2 恢复。runner 托管 UIA client 缺少 `AriaPropertiesProperty` 标识，故 `busy=true` 投影仍未验证；真实 VoiceOver/Narrator 操作和宣读仍待完成，因此保持未勾选。
+  - 状态（2026-08-31）：run `33407515845` 的 Windows Native 单测已通过 XInput
+    trigger/shoulder 回归，但产品 smoke 在 settings snapshot 替换 AccessKit 节点期间对旧 UIA
+    element 调用 `Toggle()` 得到瞬时 `Unrecognized error`。runner 现为两次 action 和状态轮询
+    重新按 name 解析当前节点，并分别使用 2 秒 action/5 秒投影上限；action 未执行、状态未变化
+    或未恢复仍失败。新 Windows CI 与真实 Narrator 证据仍待完成，因此保持未勾选。
 - [x] 记录首次打开、空闲 CPU、RSS 和二进制增量；`docs/benchmark/data/gpui-settings-macos-248a770-*.csv` 保存原始样本，方法、环境和限制见 `docs/phase-0/gpui-settings-spike.md`。
 - [x] 安装并固定 macOS Metal Toolchain，验证 GPUI 默认预编译 shader 路径；`runtime_shaders` 不作为发布配置。
 - [ ] 将 macOS spike 打包为最小 `.app`，验证 bundle id、菜单、激活、关闭和辅助功能树可被系统识别。
