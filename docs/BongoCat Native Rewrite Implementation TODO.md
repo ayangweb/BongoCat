@@ -1715,11 +1715,16 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
         `StickLeft/Right X/Y` 已进入 renderer 参数，Reset 会清空轴值。
     - [x] 将同一 `GamepadAxisProducer` 从 Application 传递到独立 overlay/input service owner。
       - 状态（2026-08-31）：Windows/macOS 正式服务启动与所有 opt-in smoke 调用均持有 runtime
-        producer；服务尚未消费平台 gamepad API，当前 plumbing 不改变无手柄启动行为。
+        producer；Windows 服务已消费 XInput，macOS 仍只完成 plumbing，无手柄启动行为不变。
     - [ ] 接入 Windows XInput 和 macOS GameController producer 的连接、按钮、axis 生命周期。
       - 状态（2026-08-31）：Windows Raw Input owner 已在 16ms service tick 查询 XInput 0..3，
         将按钮边沿、六轴归一化和 disconnect Reset 送入同一 runtime producer；macOS
         GameController callback 尚未接入正式服务，Windows 物理手柄/多手柄热插拔仍待实机。
+      - 状态（2026-08-31）：正式 Windows adapter 改为只从 System32 动态解析
+        `xinput1_4.dll`，消除 Native workspace 测试对 SDK `xinput1_4.lib` 的链接依赖；backend
+        缺失和 axis publish 拒绝分别计数。可注入 poll contract 覆盖首次连接按钮边沿、trigger
+        `128/255` 阈值、多 slot、断开/重连 generation，以及 stopped axis 不伪装成可靠队列
+        overflow；Windows CI 与物理设备证据仍待补齐。
     - [ ] 将 producer overflow、断开/重连和 shutdown 诊断统一映射到 runtime snapshot。
     - 状态（2026-08-31）：本批完成共享 runtime axis 闭环和 contract 回归；平台 producer 与
       实机 smoke 仍未接入，未声称手柄功能完成。

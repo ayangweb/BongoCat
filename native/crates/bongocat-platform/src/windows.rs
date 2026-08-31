@@ -1,9 +1,9 @@
 use crate::{PlatformInputDiagnostics, PlatformInputError};
 use bongocat_runtime::{
     CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorViewport, GamepadAxis,
-    GamepadAxisKey, GamepadAxisProducer, GamepadAxisSample, GamepadButton, GamepadButtonKey,
-    GamepadConnection, InputControl, InputEdge, InputEvent, InputProducer, InputPublishError,
-    InputResetReason, InputSource, MonotonicMillis, MouseButton, PhysicalKey,
+    GamepadAxisKey, GamepadAxisProducer, GamepadAxisPublishError, GamepadAxisSample, GamepadButton,
+    GamepadButtonKey, GamepadConnection, InputControl, InputEdge, InputEvent, InputProducer,
+    InputPublishError, InputResetReason, InputSource, MonotonicMillis, MouseButton, PhysicalKey,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::{
@@ -22,10 +22,12 @@ use std::{
 };
 use windows::{
     Win32::{
-        Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM},
+        Foundation::{FreeLibrary, HINSTANCE, HMODULE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM},
         Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint},
         System::{
-            LibraryLoader::GetModuleHandleW,
+            LibraryLoader::{
+                GetModuleHandleW, GetProcAddress, LOAD_LIBRARY_SEARCH_SYSTEM32, LoadLibraryExW,
+            },
             RemoteDesktop::{
                 NOTIFY_FOR_THIS_SESSION, WTSRegisterSessionNotification,
                 WTSUnRegisterSessionNotification,
@@ -54,7 +56,7 @@ use windows::{
             },
         },
     },
-    core::w,
+    core::{PCSTR, w},
 };
 
 const WINDOW_CLASS: windows::core::PCWSTR = w!("BongoCatProductRawInputWindow");
@@ -104,9 +106,36 @@ struct XInputState {
     gamepad: XInputGamepad,
 }
 
-#[link(name = "xinput1_4")]
-unsafe extern "system" {
-    fn XInputGetState(user_index: u32, state: *mut XInputState) -> u32;
+type XInputGetState = unsafe extern "system" fn(user_index: u32, state: *mut XInputState) -> u32;
+
+struct XInputApi {
+    module: HMODULE,
+    get_state: XInputGetState,
+}
+
+impl XInputApi {
+    fn load() -> Option<Self> {
+        // SAFETY: the DLL name is a fixed system component and the restricted
+        // search flag prevents loading an untrusted copy from the current path.
+        let module = unsafe {
+            LoadLibraryExW(w!("xinput1_4.dll"), None, LOAD_LIBRARY_SEARCH_SYSTEM32).ok()?
+        };
+        // SAFETY: `XInputGetState` is the documented export with the ABI used
+        // by `XInputState`; the module is retained for the poller's lifetime.
+        let get_state = unsafe {
+            GetProcAddress(module, PCSTR(c"XInputGetState".as_ptr().cast()))
+                .map(|function| std::mem::transmute::<_, XInputGetState>(function))?
+        };
+        Some(Self { module, get_state })
+    }
+}
+
+impl Drop for XInputApi {
+    fn drop(&mut self) {
+        // SAFETY: this adapter owns the matching LoadLibraryExW reference and
+        // the poller cannot invoke `get_state` after dropping this field.
+        unsafe { FreeLibrary(self.module) }.ok();
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -230,6 +259,7 @@ struct XInputSlot {
 struct XInputPoller {
     slots: [Option<XInputSlot>; 4],
     next_generation: u64,
+    api: Option<XInputApi>,
 }
 
 impl Default for XInputPoller {
@@ -237,6 +267,7 @@ impl Default for XInputPoller {
         Self {
             slots: [None; 4],
             next_generation: 1,
+            api: XInputApi::load(),
         }
     }
 }
@@ -249,11 +280,30 @@ impl XInputPoller {
         at: MonotonicMillis,
         diagnostics: &mut PlatformInputDiagnostics,
     ) -> Result<(), InputPublishError> {
+        let Some(api) = self.api.as_ref() else {
+            diagnostics.gamepad_backend_unavailable =
+                diagnostics.gamepad_backend_unavailable.saturating_add(1);
+            return Ok(());
+        };
+        let get_state = api.get_state;
+        self.poll_with(producer, axis_producer, at, diagnostics, |slot, state| {
+            // SAFETY: `state` is a valid writable pointer and slot is
+            // constrained by `poll_with` to the documented 0..4 range.
+            unsafe { get_state(slot, state) }
+        })
+    }
+
+    fn poll_with(
+        &mut self,
+        producer: &InputProducer,
+        axis_producer: &GamepadAxisProducer,
+        at: MonotonicMillis,
+        diagnostics: &mut PlatformInputDiagnostics,
+        mut query: impl FnMut(u32, *mut XInputState) -> u32,
+    ) -> Result<(), InputPublishError> {
         for slot in 0..4_usize {
             let mut state = XInputState::default();
-            // SAFETY: XInputGetState writes exactly one initialized XInputState
-            // to the stack pointer, and the user index is limited to 0..4.
-            let result = unsafe { XInputGetState(slot as u32, &mut state) };
+            let result = query(slot as u32, &mut state);
             diagnostics.gamepad_polls = diagnostics.gamepad_polls.saturating_add(1);
             if result == XINPUT_ERROR_DEVICE_NOT_CONNECTED {
                 if let Some(previous) = self.slots[slot].take() {
@@ -327,20 +377,27 @@ impl XInputPoller {
                     normalize_trigger(state.gamepad.right_trigger),
                 ),
             ] {
-                axis_producer
-                    .publish(GamepadAxisSample {
-                        key: GamepadAxisKey { connection, axis },
-                        value,
-                        at,
-                    })
-                    .map_err(|_| {
-                        InputPublishError::QueueFull(InputEvent::Reset {
-                            reason: InputResetReason::QueueOverflow,
+                match axis_producer.publish(GamepadAxisSample {
+                    key: GamepadAxisKey { connection, axis },
+                    value,
+                    at,
+                }) {
+                    Ok(()) => {
+                        diagnostics.gamepad_axis_samples =
+                            diagnostics.gamepad_axis_samples.saturating_add(1);
+                    }
+                    Err(GamepadAxisPublishError::RuntimeStopped(_)) => {
+                        return Err(InputPublishError::RuntimeStopped(InputEvent::Reset {
+                            reason: InputResetReason::ServiceRestart,
                             at,
-                        })
-                    })?;
-                diagnostics.gamepad_axis_samples =
-                    diagnostics.gamepad_axis_samples.saturating_add(1);
+                        }));
+                    }
+                    Err(_) => {
+                        diagnostics.gamepad_axis_publish_rejections = diagnostics
+                            .gamepad_axis_publish_rejections
+                            .saturating_add(1);
+                    }
+                }
             }
             self.slots[slot] = Some(XInputSlot {
                 connection,
@@ -1439,6 +1496,165 @@ mod tests {
         assert_eq!(packet.flags, RI_KEY_BREAK);
         assert_eq!(packet.virtual_key, 0x41);
         assert!(decode_raw_input_bytes(&bytes[..header_size + 3], header_size).is_err());
+    }
+
+    #[test]
+    fn xinput_loader_resolves_the_system_api_without_an_import_library() {
+        assert!(XInputApi::load().is_some());
+    }
+
+    #[test]
+    fn xinput_poller_maps_initial_edges_multiple_slots_and_reconnect_generation() {
+        const TIMEOUT: Duration = Duration::from_secs(2);
+        let runtime = RuntimeOwner::start(true, 64);
+        let client = runtime.client();
+        client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+        let producer = runtime.input_producer();
+        let axis_producer = runtime.gamepad_axis_producer();
+        let mut poller = XInputPoller::default();
+        let mut diagnostics = PlatformInputDiagnostics::default();
+        let mut states = [None; 4];
+        states[0] = Some(XInputState {
+            gamepad: XInputGamepad {
+                buttons: XINPUT_GAMEPAD_A,
+                left_trigger: 128,
+                ..XInputGamepad::default()
+            },
+            ..XInputState::default()
+        });
+        states[2] = Some(XInputState {
+            gamepad: XInputGamepad {
+                buttons: XINPUT_GAMEPAD_B,
+                ..XInputGamepad::default()
+            },
+            ..XInputState::default()
+        });
+
+        poll_synthetic(
+            &mut poller,
+            &producer,
+            &axis_producer,
+            MonotonicMillis::new(1),
+            &mut diagnostics,
+            states,
+        )
+        .expect("initial poll");
+        wait_for_input_sequence(&client, 2, TIMEOUT);
+        let first = client.snapshot();
+        assert_eq!(first.input.pressed_gamepad_button_count, 3);
+        assert_eq!(diagnostics.gamepad_connections, 2);
+        assert_eq!(diagnostics.gamepad_axis_samples, 12);
+        let first_generation = poller.slots[0]
+            .expect("slot 0 connected")
+            .connection
+            .generation;
+        assert_ne!(
+            first_generation,
+            poller.slots[2]
+                .expect("slot 2 connected")
+                .connection
+                .generation
+        );
+
+        states[0] = None;
+        poll_synthetic(
+            &mut poller,
+            &producer,
+            &axis_producer,
+            MonotonicMillis::new(2),
+            &mut diagnostics,
+            states,
+        )
+        .expect("disconnect poll");
+        states[0] = Some(XInputState {
+            gamepad: XInputGamepad {
+                left_trigger: 127,
+                ..XInputGamepad::default()
+            },
+            ..XInputState::default()
+        });
+        poll_synthetic(
+            &mut poller,
+            &producer,
+            &axis_producer,
+            MonotonicMillis::new(3),
+            &mut diagnostics,
+            states,
+        )
+        .expect("reconnect poll");
+        let reconnected = poller.slots[0].expect("slot 0 reconnected");
+        assert!(reconnected.connection.generation > first_generation);
+        assert_eq!(reconnected.buttons & (1 << 8), 0);
+        assert_eq!(diagnostics.gamepad_disconnections, 1);
+        assert_eq!(diagnostics.gamepad_connections, 3);
+        assert_eq!(diagnostics.gamepad_axis_publish_rejections, 0);
+
+        runtime.shutdown(TIMEOUT).expect("runtime stop");
+    }
+
+    #[test]
+    fn stopped_axis_transport_is_not_reported_as_reliable_queue_overflow() {
+        const TIMEOUT: Duration = Duration::from_secs(2);
+        let runtime = RuntimeOwner::start(true, 64);
+        let producer = runtime.input_producer();
+        let axis_producer = runtime.gamepad_axis_producer();
+        runtime.shutdown(TIMEOUT).expect("runtime stop");
+        let mut poller = XInputPoller::default();
+        let mut diagnostics = PlatformInputDiagnostics::default();
+        let mut states = [None; 4];
+        states[0] = Some(XInputState::default());
+
+        let error = poll_synthetic(
+            &mut poller,
+            &producer,
+            &axis_producer,
+            MonotonicMillis::new(1),
+            &mut diagnostics,
+            states,
+        )
+        .expect_err("stopped axis transport must fail");
+        assert!(matches!(error, InputPublishError::RuntimeStopped(_)));
+        assert_eq!(diagnostics.gamepad_axis_publish_rejections, 0);
+    }
+
+    fn poll_synthetic(
+        poller: &mut XInputPoller,
+        producer: &InputProducer,
+        axis_producer: &GamepadAxisProducer,
+        at: MonotonicMillis,
+        diagnostics: &mut PlatformInputDiagnostics,
+        states: [Option<XInputState>; 4],
+    ) -> Result<(), InputPublishError> {
+        poller.poll_with(
+            producer,
+            axis_producer,
+            at,
+            diagnostics,
+            |slot, output| match states[slot as usize] {
+                Some(state) => {
+                    // SAFETY: `poll_with` supplies a valid pointer to its
+                    // initialized stack state for the duration of this call.
+                    unsafe { output.write(state) };
+                    XINPUT_ERROR_SUCCESS
+                }
+                None => XINPUT_ERROR_DEVICE_NOT_CONNECTED,
+            },
+        )
+    }
+
+    fn wait_for_input_sequence(
+        client: &bongocat_runtime::RuntimeClient,
+        expected: u64,
+        timeout: Duration,
+    ) {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            if client.snapshot().input.last_input_sequence == Some(expected) {
+                return;
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+        panic!("input sequence {expected} did not reach runtime");
     }
 
     #[test]
