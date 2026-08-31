@@ -1196,7 +1196,7 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
     - 验收证据（2026-08-31）：`bongocat-audio`、runtime side-effect 接线、真实预置 FLAC
       decoder 与 motion event/audio contract 已进入正式 workspace；完整 Native format、
       Clippy、test、release check、双 Windows target check 和 CI 结果随对应提交记录。
-17. [ ] `P1-SETTINGS-WINDOW-LIFECYCLE`：设置窗口关闭后保持后台产品运行，并可从当前
+17. [x] `P1-SETTINGS-WINDOW-LIFECYCLE`：设置窗口关闭后保持后台产品运行，并可从当前
         revisioned snapshot 重建窗口。- 依赖：正式 GPUI 设置窗口、app coordinator、runtime/render owner。- 退出条件：window close 不触发 shutdown；窗口隐藏/销毁期间 frame source 继续推进；
         macOS reopen 只创建一个新 GPUI Entity，Windows reopen 只重显保留的唯一 Entity，且都
         从当前 revisioned snapshot 刷新；显式 Quit 仍按既定顺序 join 全部 owner；
@@ -1229,7 +1229,12 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
 AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows overlay tick 移出
         GPUI `App`/`Window` borrow，并把 Win32 pump 仅保留给 standalone `run_for`；显式退出改为
         原子请求，由唯一 frame owner 在 tick 边界执行有序 shutdown。首轮复验的 Windows Clippy
-        只发现 cfg 后未使用的 async context，当前批已修正；真实五连跑通过前仍保持未勾选。
+        只发现 cfg 后未使用的 async context，当前批已修正；真实五连跑通过前仍保持未勾选。- 验收证据（2026-08-31）：commit `b54080a` 的 push run `33342464726` 与 PR run
+        `33342466529` 全绿；Windows jobs `99340456964`/`99340462222` 各自连续五轮通过真实
+        `WM_CLOSE`、frame source 继续、唯一 Entity 重显、revisioned snapshot 刷新、Models 页面
+        操作与显式有序 shutdown。macOS jobs `99340456930`/`99340462228` 通过 release close/reopen、
+        Entity 重建、Models 页面与 shutdown smoke，Ubuntu jobs `99340456922`/`99340462194` 通过
+        共享 contract、Clippy、workspace tests 和 release check。
 18. [x] `P4-MODEL-CATALOG`：建立来源感知的预置/用户模型合并目录并投影到设置服务。
     - 依赖：正式 `bongocat-model`、环境 `ModelStore`、只读预置资源和 typed settings snapshot。
     - 退出条件：应用持有 preset catalog；preset/installed 的 ready/invalid 条目都可见且确定
@@ -1327,7 +1332,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       push run `33337621979` 仅因 Linux 未调用私有 validation helper 而触发 dead-code Clippy；
       当前批已按 macOS/Windows/test cfg 收窄该 helper，本机 Linux target Clippy 通过，等待新
       push run 复验。完整 Models 页面 workspace 门禁也随本批统一执行后补充证据。
-26. [ ] `P4-MODEL-MANAGEMENT-UI`：在 Models 页面完成来源感知的激活与删除闭环。
+26. [x] `P4-MODEL-MANAGEMENT-UI`：在 Models 页面完成来源感知的激活与删除闭环。
     - 依赖：`P4-MODEL-CATALOG`、`P4-MODEL-SELECTION`、`P4-MODEL-DELETE-COMMAND` 和正式
       GPUI settings snapshot。
     - 退出条件：每行按 `(origin, model_id)` 保持身份，重复 ID 不混淆；ready 且非 active 的
@@ -1342,7 +1347,10 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       诊断不含路径。动态 focus handle 覆盖每行 Enter/Space，并修正确认态 Cancel/Confirm 的视觉
       与 Tab 顺序。14 项 UI 测试覆盖复合身份、删除资格、稳定诊断、按键和焦点顺序；macOS
       release product smoke 已实际切换并渲染 Models 页面后完成 close/reopen/shutdown。Windows
-      五连跑与完整三平台 CI 尚待当前提交验证，因此保持未勾选。
+      五连跑与完整三平台 CI 已由 commit `b54080a` 的 push run `33342464726` 和 PR run
+      `33342466529` 验证；Windows jobs `99340456964`/`99340462222` 各自连续五轮通过 Models
+      页面 release product smoke，macOS jobs `99340456930`/`99340462228` 通过对应页面 smoke，
+      Ubuntu jobs `99340456922`/`99340462194` 通过共享 UI contract 与完整 workspace 门禁。
 
 ## 13. 待决策清单
 
