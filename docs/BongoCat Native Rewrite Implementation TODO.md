@@ -921,10 +921,10 @@ overlay owner；设置更新失败时保留旧 snapshot。scale/opacity 的可�
     update/download 等长操作仍待接入，因此总项保持未勾选。
 - [x] snapshot 包含 revision，UI 处理过期结果和并发编辑。
   - 验收证据（2026-09-01）：正式 `SettingsSnapshot` 始终携带单调 revision；UI 对异步结果
-    只接受不早于当前快照的 revision。Overlay 设置 command 额外携带提交时的
-    `expected_revision`，settings worker 在配置/runtime 写入前拒绝过期编辑并返回匿名
+    只接受不早于当前快照的 revision。已接入的显隐、overlay 设置和 motion audio command
+    均携带提交时的 `expected_config_revision`，settings worker 在配置/runtime 写入前拒绝过期编辑并返回匿名
     `SnapshotOutdated`；冲突后 UI 自动读取最新 snapshot 并保留可操作错误。正式 app 回归
-    验证过期提交不改变 runtime overlay、配置字节或 revision，成功提交、错误文案和 shutdown
+    验证三类过期提交不改变 runtime 状态、配置字节或 revision，成功提交、错误文案和 shutdown
     路径均通过 `bongocat-app`/`bongocat-ui` 定向测试。
 - [ ] 禁止通用 set_value(path, any) API。
 - [ ] 不向 UI 发送逐帧数据、原始按键流或 GPU/model pointer。

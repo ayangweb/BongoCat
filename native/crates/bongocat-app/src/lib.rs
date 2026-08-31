@@ -315,6 +315,10 @@ impl Application {
         self.runtime.client()
     }
 
+    pub fn config_revision(&self) -> Option<u64> {
+        self.config_revision.map(ConfigRevision::value)
+    }
+
     pub fn input_producer(&self) -> InputProducer {
         self.runtime.input_producer()
     }

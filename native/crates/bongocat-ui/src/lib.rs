@@ -141,6 +141,7 @@ pub enum SettingsConfigurationStatus {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SettingsSnapshot {
     pub revision: u64,
+    pub config_revision: Option<u64>,
     pub runtime_health: RuntimeHealth,
     pub overlay_visible: bool,
     pub overlay: SettingsOverlay,
@@ -546,15 +547,17 @@ pub enum SettingsCommand {
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     SetOverlayVisible {
+        expected_config_revision: u64,
         visible: bool,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     SetOverlaySettings {
-        expected_revision: u64,
+        expected_config_revision: u64,
         settings: SettingsOverlay,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     SetMotionAudioEnabled {
+        expected_config_revision: u64,
         enabled: bool,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
@@ -633,27 +636,37 @@ impl SettingsClient {
 
     pub async fn set_overlay_visible(
         &self,
+        expected_config_revision: u64,
         visible: bool,
     ) -> Result<SettingsSnapshot, SettingsError> {
-        self.request(|reply| SettingsCommand::SetOverlayVisible { visible, reply })
-            .await
+        self.request(|reply| SettingsCommand::SetOverlayVisible {
+            expected_config_revision,
+            visible,
+            reply,
+        })
+        .await
     }
 
     pub async fn set_motion_audio_enabled(
         &self,
+        expected_config_revision: u64,
         enabled: bool,
     ) -> Result<SettingsSnapshot, SettingsError> {
-        self.request(|reply| SettingsCommand::SetMotionAudioEnabled { enabled, reply })
-            .await
+        self.request(|reply| SettingsCommand::SetMotionAudioEnabled {
+            expected_config_revision,
+            enabled,
+            reply,
+        })
+        .await
     }
 
     pub async fn set_overlay_settings(
         &self,
-        expected_revision: u64,
+        expected_config_revision: u64,
         settings: SettingsOverlay,
     ) -> Result<SettingsSnapshot, SettingsError> {
         self.request(|reply| SettingsCommand::SetOverlaySettings {
-            expected_revision,
+            expected_config_revision,
             settings,
             reply,
         })
@@ -732,25 +745,35 @@ impl SettingsClient {
 
     pub fn set_overlay_visible_blocking(
         &self,
+        expected_config_revision: u64,
         visible: bool,
     ) -> Result<SettingsSnapshot, SettingsError> {
-        self.request_blocking(|reply| SettingsCommand::SetOverlayVisible { visible, reply })
+        self.request_blocking(|reply| SettingsCommand::SetOverlayVisible {
+            expected_config_revision,
+            visible,
+            reply,
+        })
     }
 
     pub fn set_motion_audio_enabled_blocking(
         &self,
+        expected_config_revision: u64,
         enabled: bool,
     ) -> Result<SettingsSnapshot, SettingsError> {
-        self.request_blocking(|reply| SettingsCommand::SetMotionAudioEnabled { enabled, reply })
+        self.request_blocking(|reply| SettingsCommand::SetMotionAudioEnabled {
+            expected_config_revision,
+            enabled,
+            reply,
+        })
     }
 
     pub fn set_overlay_settings_blocking(
         &self,
-        expected_revision: u64,
+        expected_config_revision: u64,
         settings: SettingsOverlay,
     ) -> Result<SettingsSnapshot, SettingsError> {
         self.request_blocking(|reply| SettingsCommand::SetOverlaySettings {
-            expected_revision,
+            expected_config_revision,
             settings,
             reply,
         })
@@ -889,29 +912,37 @@ mod tests {
     fn commands_are_bounded_ordered_and_receive_typed_replies() {
         let (client, endpoint) = SettingsClient::bounded(2);
         let worker = thread::spawn(move || {
-            let SettingsCommand::SetOverlayVisible { visible, reply } =
-                endpoint.recv_blocking().expect("first command")
+            let SettingsCommand::SetOverlayVisible {
+                expected_config_revision,
+                visible,
+                reply,
+            } = endpoint.recv_blocking().expect("first command")
             else {
                 panic!("unexpected first command");
             };
+            assert_eq!(expected_config_revision, 1);
             assert!(!visible);
             reply
                 .respond(Ok(snapshot(2, false, true)))
                 .expect("first reply");
 
-            let SettingsCommand::SetMotionAudioEnabled { enabled, reply } =
-                endpoint.recv_blocking().expect("second command")
+            let SettingsCommand::SetMotionAudioEnabled {
+                expected_config_revision,
+                enabled,
+                reply,
+            } = endpoint.recv_blocking().expect("second command")
             else {
                 panic!("unexpected second command");
             };
+            assert_eq!(expected_config_revision, 2);
             assert!(!enabled);
             reply
                 .respond(Ok(snapshot(3, false, false)))
                 .expect("second reply");
         });
 
-        let first = client.set_overlay_visible_blocking(false);
-        let second = client.set_motion_audio_enabled_blocking(false);
+        let first = client.set_overlay_visible_blocking(1, false);
+        let second = client.set_motion_audio_enabled_blocking(2, false);
         assert_eq!(first.expect("first snapshot").revision, 2);
         assert_eq!(second.expect("second snapshot").revision, 3);
         worker.join().expect("worker join");
@@ -1196,6 +1227,7 @@ mod tests {
     ) -> SettingsSnapshot {
         SettingsSnapshot {
             revision,
+            config_revision: Some(revision),
             runtime_health: RuntimeHealth::Ready,
             overlay_visible,
             overlay: SettingsOverlay::default(),

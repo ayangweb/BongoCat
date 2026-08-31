@@ -98,6 +98,10 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
 - GPUI `Entity` 只保存视图状态；真实输入、动画、配置和模型状态由 runtime 管理。
 - 正式 `bongocat-ui` 只定义设置 command/snapshot 协议和 GPUI 视图；`bongocat-app`
   的有界 service worker 独占配置写入和 runtime command，UI executor 不执行阻塞 I/O。
+- `SettingsSnapshot.revision` 是 UI 快照排序用的单调版本，能够因 runtime、平台状态、诊断或
+  catalog 变化推进；可编辑配置另携带可选 `config_revision`，仅由当前环境的持久化配置版本
+  驱动。修改配置的 command 必须携带 `expected_config_revision`，在任何 config/runtime 写入
+  前执行 compare-and-swap，避免输入诊断等无关变化制造假冲突。
 - 启动项等系统能力通过 UI 自有的 typed platform snapshot 显示，由 settings service worker
   读取和显式变更；外部状态变化递增 settings revision。读取失败只形成可重试状态，写入失败
   不改变 config/runtime，Development macOS 的 unsupported 状态不允许发出变更 command。

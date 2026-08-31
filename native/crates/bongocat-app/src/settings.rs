@@ -179,15 +179,30 @@ fn run_service(
                     startup_item.state(),
                 )));
             }
-            SettingsCommand::SetOverlayVisible { visible, reply } => {
+            SettingsCommand::SetOverlayVisible {
+                expected_config_revision,
+                visible,
+                reply,
+            } => {
                 let result = require_operational(&application)
-                    .and_then(|()| application.set_overlay_visible(visible).map(|_| ()))
-                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()))
-                    .map_err(map_application_error);
+                    .map_err(map_application_error)
+                    .and_then(|()| {
+                        let current =
+                            snapshot(&application, &mut clock, false, startup_item.state());
+                        if current.config_revision != Some(expected_config_revision) {
+                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
+                        } else {
+                            application
+                                .set_overlay_visible(visible)
+                                .map(|_| ())
+                                .map_err(map_application_error)
+                        }
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
             SettingsCommand::SetOverlaySettings {
-                expected_revision,
+                expected_config_revision,
                 settings,
                 reply,
             } => {
@@ -197,26 +212,43 @@ fn run_service(
                     scale_percent: settings.scale_percent,
                     opacity_percent: settings.opacity_percent,
                 };
-                let current = snapshot(&application, &mut clock, false, startup_item.state());
-                let result = if current.revision != expected_revision {
-                    Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
-                } else {
-                    require_operational(&application)
-                        .and_then(|()| {
+                let result = require_operational(&application)
+                    .map_err(map_application_error)
+                    .and_then(|()| {
+                        let current =
+                            snapshot(&application, &mut clock, false, startup_item.state());
+                        if current.config_revision != Some(expected_config_revision) {
+                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
+                        } else {
                             application
                                 .set_overlay_settings(runtime_settings)
                                 .map(|_| ())
-                        })
-                        .map(|_| snapshot(&application, &mut clock, false, startup_item.state()))
-                        .map_err(map_application_error)
-                };
+                                .map_err(map_application_error)
+                        }
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
-            SettingsCommand::SetMotionAudioEnabled { enabled, reply } => {
+            SettingsCommand::SetMotionAudioEnabled {
+                expected_config_revision,
+                enabled,
+                reply,
+            } => {
                 let result = require_operational(&application)
-                    .and_then(|()| application.set_motion_audio_enabled(enabled).map(|_| ()))
-                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()))
-                    .map_err(map_application_error);
+                    .map_err(map_application_error)
+                    .and_then(|()| {
+                        let current =
+                            snapshot(&application, &mut clock, false, startup_item.state());
+                        if current.config_revision != Some(expected_config_revision) {
+                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
+                        } else {
+                            application
+                                .set_motion_audio_enabled(enabled)
+                                .map(|_| ())
+                                .map_err(map_application_error)
+                        }
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
             SettingsCommand::SetStartupItemEnabled { enabled, reply } => {
@@ -443,6 +475,7 @@ fn snapshot(
     }
     SettingsSnapshot {
         revision: clock.revision,
+        config_revision: application.config_revision(),
         runtime_health: if input_service_is_degraded(input_diagnostics.service_status) {
             RuntimeHealth::Degraded
         } else if application.is_operational() {
@@ -1115,7 +1148,7 @@ mod tests {
         assert_eq!(initial.runtime_health, RuntimeHealth::Degraded);
         assert_eq!(
             client
-                .set_overlay_visible_blocking(true)
+                .set_overlay_visible_blocking(0, true)
                 .expect_err("business command rejected")
                 .code(),
             SettingsErrorCode::ConfigurationRecoveryRequired
@@ -1267,6 +1300,7 @@ mod tests {
                 origin: SettingsModelOrigin::Preset,
             })
             .expect("select preset model");
+        let selected_config_revision = selected.config_revision.expect("config revision");
         assert_eq!(
             selected.active_model,
             Some(SettingsModelKey {
@@ -1281,17 +1315,23 @@ mod tests {
             opacity_percent: 80,
         };
         let configured = client
-            .set_overlay_settings_blocking(selected.revision, overlay_settings)
+            .set_overlay_settings_blocking(selected_config_revision, overlay_settings)
             .expect("update overlay settings");
         assert_eq!(
             configured.overlay, overlay_settings,
             "settings snapshot must acknowledge the committed overlay settings"
         );
         let hidden = client
-            .set_overlay_visible_blocking(false)
+            .set_overlay_visible_blocking(
+                configured.config_revision.expect("config revision"),
+                false,
+            )
             .expect("hide overlay");
         let muted = client
-            .set_motion_audio_enabled_blocking(false)
+            .set_motion_audio_enabled_blocking(
+                hidden.config_revision.expect("config revision"),
+                false,
+            )
             .expect("disable motion audio");
         assert!(hidden.revision > initial.revision);
         assert!(muted.revision > hidden.revision);
@@ -1320,6 +1360,7 @@ mod tests {
         let client = service.client();
 
         let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        let initial_config_revision = initial.config_revision.expect("config revision");
         let original_settings = SettingsOverlay {
             click_through: false,
             always_on_top: false,
@@ -1327,7 +1368,7 @@ mod tests {
             opacity_percent: 80,
         };
         let committed = client
-            .set_overlay_settings_blocking(initial.revision, original_settings)
+            .set_overlay_settings_blocking(initial_config_revision, original_settings)
             .expect("first overlay update");
         let committed_config = std::fs::read(&config_path).expect("committed config");
 
@@ -1338,7 +1379,7 @@ mod tests {
             opacity_percent: 10,
         };
         let error = client
-            .set_overlay_settings_blocking(initial.revision, stale_settings)
+            .set_overlay_settings_blocking(initial_config_revision, stale_settings)
             .expect_err("stale overlay update");
         assert_eq!(error.code(), SettingsErrorCode::SnapshotOutdated);
         assert_eq!(
@@ -1360,6 +1401,67 @@ mod tests {
     }
 
     #[test]
+    fn service_rejects_stale_direct_settings_without_mutating_runtime_or_config() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let config_path = layout.config.clone();
+        let application = Application::start_with_layout(layout).expect("application start");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        let initial_config_revision = initial.config_revision.expect("config revision");
+        let hidden = client
+            .set_overlay_visible_blocking(initial_config_revision, false)
+            .expect("hide overlay");
+        let hidden_config = std::fs::read(&config_path).expect("hidden config");
+
+        let stale_audio_error = client
+            .set_motion_audio_enabled_blocking(initial_config_revision, false)
+            .expect_err("stale motion audio update");
+        assert_eq!(
+            stale_audio_error.code(),
+            SettingsErrorCode::SnapshotOutdated
+        );
+        let after_stale_audio = client
+            .read_snapshot_blocking()
+            .expect("snapshot after stale audio");
+        assert_eq!(after_stale_audio.revision, hidden.revision);
+        assert!(!after_stale_audio.overlay_visible);
+        assert!(after_stale_audio.motion_audio_enabled);
+        assert_eq!(
+            std::fs::read(&config_path).expect("preserved hidden config"),
+            hidden_config
+        );
+
+        let muted = client
+            .set_motion_audio_enabled_blocking(
+                hidden.config_revision.expect("config revision"),
+                false,
+            )
+            .expect("disable motion audio");
+        let muted_config = std::fs::read(&config_path).expect("muted config");
+        let stale_visibility_error = client
+            .set_overlay_visible_blocking(hidden.config_revision.expect("config revision"), true)
+            .expect_err("stale overlay visibility update");
+        assert_eq!(
+            stale_visibility_error.code(),
+            SettingsErrorCode::SnapshotOutdated
+        );
+        let unchanged = client.read_snapshot_blocking().expect("unchanged snapshot");
+        assert_eq!(unchanged.revision, muted.revision);
+        assert!(!unchanged.overlay_visible);
+        assert!(!unchanged.motion_audio_enabled);
+        assert_eq!(
+            std::fs::read(&config_path).expect("preserved muted config"),
+            muted_config
+        );
+
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
+    }
+
+    #[test]
     fn service_reports_an_occupied_config_target_without_changing_snapshot_or_current() {
         let base = tempdir().expect("temporary storage");
         let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
@@ -1372,8 +1474,9 @@ mod tests {
         let original = std::fs::read(&config_path).expect("initial config");
         std::fs::create_dir(&occupied).expect("occupied temp target");
 
+        let initial_config_revision = initial.config_revision.expect("config revision");
         let error = client
-            .set_overlay_visible_blocking(!initial.overlay_visible)
+            .set_overlay_visible_blocking(initial_config_revision, !initial.overlay_visible)
             .expect_err("occupied target error");
         assert_eq!(error.code(), SettingsErrorCode::ConfigTargetOccupied);
         let unchanged = client.read_snapshot_blocking().expect("unchanged snapshot");

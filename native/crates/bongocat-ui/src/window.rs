@@ -1024,22 +1024,35 @@ impl SettingsView {
     }
 
     fn set_overlay_visible(&mut self, visible: bool, cx: &mut Context<Self>) {
+        let Some(expected_config_revision) = self
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.config_revision)
+        else {
+            return;
+        };
         self.start_request(
             PendingOperation::OverlayVisibility,
-            Some(SettingValue::OverlayVisible(visible)),
+            Some(SettingValue::OverlayVisible {
+                expected_config_revision,
+                visible,
+            }),
             cx,
         );
     }
 
     fn set_overlay_settings(&mut self, settings: SettingsOverlay, cx: &mut Context<Self>) {
-        let Some(expected_revision) = self.snapshot.as_ref().map(|snapshot| snapshot.revision)
+        let Some(expected_config_revision) = self
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.config_revision)
         else {
             return;
         };
         self.start_request(
             PendingOperation::OverlaySettings,
             Some(SettingValue::OverlaySettings {
-                expected_revision,
+                expected_config_revision,
                 settings,
             }),
             cx,
@@ -1079,9 +1092,19 @@ impl SettingsView {
     }
 
     fn set_motion_audio_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        let Some(expected_config_revision) = self
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.config_revision)
+        else {
+            return;
+        };
         self.start_request(
             PendingOperation::MotionAudio,
-            Some(SettingValue::MotionAudioEnabled(enabled)),
+            Some(SettingValue::MotionAudioEnabled {
+                expected_config_revision,
+                enabled,
+            }),
             cx,
         );
     }
@@ -1468,19 +1491,29 @@ impl SettingsView {
         cx.spawn(async move |this, cx| {
             let result = match value {
                 None => client.read_snapshot().await,
-                Some(SettingValue::OverlayVisible(visible)) => {
-                    client.set_overlay_visible(visible).await
+                Some(SettingValue::OverlayVisible {
+                    expected_config_revision,
+                    visible,
+                }) => {
+                    client
+                        .set_overlay_visible(expected_config_revision, visible)
+                        .await
                 }
                 Some(SettingValue::OverlaySettings {
-                    expected_revision,
+                    expected_config_revision,
                     settings,
                 }) => {
                     client
-                        .set_overlay_settings(expected_revision, settings)
+                        .set_overlay_settings(expected_config_revision, settings)
                         .await
                 }
-                Some(SettingValue::MotionAudioEnabled(enabled)) => {
-                    client.set_motion_audio_enabled(enabled).await
+                Some(SettingValue::MotionAudioEnabled {
+                    expected_config_revision,
+                    enabled,
+                }) => {
+                    client
+                        .set_motion_audio_enabled(expected_config_revision, enabled)
+                        .await
                 }
                 Some(SettingValue::StartupItemEnabled(enabled)) => {
                     client.set_startup_item_enabled(enabled).await
@@ -1533,12 +1566,18 @@ impl SettingsView {
 
 #[derive(Clone, Copy)]
 enum SettingValue {
-    OverlayVisible(bool),
+    OverlayVisible {
+        expected_config_revision: u64,
+        visible: bool,
+    },
     OverlaySettings {
-        expected_revision: u64,
+        expected_config_revision: u64,
         settings: SettingsOverlay,
     },
-    MotionAudioEnabled(bool),
+    MotionAudioEnabled {
+        expected_config_revision: u64,
+        enabled: bool,
+    },
     StartupItemEnabled(bool),
     OpenConfigBackupLocation,
     RestoreDefaultConfiguration,
