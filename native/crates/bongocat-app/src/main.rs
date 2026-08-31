@@ -376,6 +376,7 @@ fn build_single_instance_environment() -> SingleInstanceEnvironment {
     }
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn write_smoke_status(status: &str) -> io::Result<()> {
     let mut stdout = io::stdout().lock();
     writeln!(stdout, "bongocat-app: {status}")?;
