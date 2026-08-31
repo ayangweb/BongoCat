@@ -995,6 +995,52 @@ impl SettingsView {
                     );
                 }
             }
+            for (id, label, value, toggled) in [
+                (
+                    ACCESSIBILITY_MIRROR,
+                    "Mirror model",
+                    "Render the model mirrored horizontally",
+                    snapshot.model_settings.mirror,
+                ),
+                (
+                    ACCESSIBILITY_MIRROR_POINTER,
+                    "Mirror pointer tracking",
+                    "Mirror horizontal pointer tracking with the model",
+                    snapshot.model_settings.mirror_pointer_tracking,
+                ),
+                (
+                    ACCESSIBILITY_IGNORE_POINTER,
+                    "Ignore pointer input",
+                    "Do not apply pointer movement to the model",
+                    snapshot.model_settings.ignore_pointer,
+                ),
+            ] {
+                let node = tree
+                    .nodes
+                    .iter()
+                    .find(|node| node.id == id)
+                    .ok_or_else(|| {
+                        "general accessibility tree omitted a model setting".to_owned()
+                    })?;
+                if node.role != AccessibilityRole::Switch
+                    || node.label != label
+                    || node.value.as_deref() != Some(value)
+                    || node.disabled != controls_disabled
+                    || node.supports_click != !controls_disabled
+                    || node.supports_focus != !controls_disabled
+                    || node.toggled
+                        != Some(if toggled {
+                            AccessibilityToggle::On
+                        } else {
+                            AccessibilityToggle::Off
+                        })
+                {
+                    return Err(
+                        "model accessibility semantics diverged from the visible control"
+                            .to_owned(),
+                    );
+                }
+            }
             for (id, label, unavailable) in [
                 (
                     ACCESSIBILITY_OVERLAY_SCALE_DECREASE,
