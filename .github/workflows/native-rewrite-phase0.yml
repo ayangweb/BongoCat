@@ -192,9 +192,17 @@ jobs:
               if ($startup.Current.ControlType -ne [System.Windows.Automation.ControlType]::Button) {
                 throw "Windows UIA startup switch did not use the button control type"
               }
-              $ariaRoleProperty = [System.Windows.Automation.AutomationElement]::AriaRoleProperty
+              # Some GitHub-hosted runner UIAutomationClient builds omit the
+              # managed AriaRoleProperty field even though the native property
+              # is available. Resolve the stable UIA property id directly.
+              $ariaRoleProperty = $null
+              try {
+                $ariaRoleProperty = [System.Windows.Automation.AutomationProperty]::LookupById(30101)
+              } catch {
+                $ariaRoleProperty = $null
+              }
               if ($null -eq $ariaRoleProperty) {
-                throw "Windows UIA client does not expose AriaRoleProperty"
+                throw "Windows UIA client does not expose UIA_AriaRoleProperty (30101)"
               }
               $ariaRole = [string]$startup.GetCurrentPropertyValue($ariaRoleProperty)
               if ($ariaRole -ne "switch") {
@@ -987,19 +995,33 @@ jobs:
             -RedirectStandardError $stderr
           Add-Type -AssemblyName UIAutomationClient
           $windowDeadline = [DateTime]::UtcNow.AddSeconds(15)
+          $processCondition = [System.Windows.Automation.PropertyCondition]::new(
+            [System.Windows.Automation.AutomationElement]::ProcessIdProperty,
+            $process.Id
+          )
+          $windowNameCondition = [System.Windows.Automation.PropertyCondition]::new(
+            [System.Windows.Automation.AutomationElement]::NameProperty,
+            "BongoCat Settings"
+          )
+          $settingsWindowCondition = [System.Windows.Automation.AndCondition]::new(
+            $processCondition,
+            $windowNameCondition
+          )
+          $root = $null
           do {
             Start-Sleep -Milliseconds 100
             $process.Refresh()
             if ($process.HasExited) {
               throw "Windows GPUI settings exited before UI Automation inspection"
             }
-          } while ($process.MainWindowHandle -eq 0 -and [DateTime]::UtcNow -lt $windowDeadline)
-          if ($process.MainWindowHandle -eq 0) {
-            throw "Windows GPUI settings did not expose a main HWND"
+            $root = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
+              [System.Windows.Automation.TreeScope]::Children,
+              $settingsWindowCondition
+            )
+          } while ($null -eq $root -and [DateTime]::UtcNow -lt $windowDeadline)
+          if ($null -eq $root) {
+            throw "Windows GPUI settings did not expose a settings UIA window"
           }
-          $root = [System.Windows.Automation.AutomationElement]::FromHandle(
-            [IntPtr]$process.MainWindowHandle
-          )
           $elements = $root.FindAll(
             [System.Windows.Automation.TreeScope]::Descendants,
             [System.Windows.Automation.Condition]::TrueCondition
