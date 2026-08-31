@@ -979,8 +979,8 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
 - [ ] 文件选择、外部 URL 和剪贴板使用最小权限 wrapper。
   - 状态（2026-08-31）：模型目录 picker 已有共享稳定结果/错误和双平台最小 adapter；Windows
     使用 STA `IFileOpenDialog`、filesystem/folder/path-exists/no-recent flags 与 COM/TaskMem RAII，
-    macOS 使用主线程单目录 `NSOpenPanel`。结果在 Rust 侧重新验证并 canonicalize；外部 URL、
-    clipboard、GPUI Models 页面接线和真实 Windows 对话框 smoke 仍待完成，因此总项不勾选。
+    macOS 使用主线程单目录 `NSOpenPanel`。结果在 Rust 侧重新验证并 canonicalize，GPUI Models
+    页面及双平台真实选择/取消 smoke 已通过；外部 URL、clipboard 仍待完成，因此总项不勾选。
 - [ ] 选择并记录 MSIX、WiX 或 NSIS 打包 ADR。
 - [ ] 对安装目录、用户数据目录和更新临时目录分别建模。
 
@@ -1315,7 +1315,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       Clippy、workspace test 和 release check 本机通过；push run `33336496654` 与 PR run
       `33336497984` 全绿，push 的 Windows/macOS/Ubuntu Native workspace jobs
       `99324223865`/`99324223945`/`99324223963` 全部通过。
-25. [ ] `P7-MODEL-DIRECTORY-PICKER`：以原生最小权限目录选择器接入模型导入。
+25. [x] `P7-MODEL-DIRECTORY-PICKER`：以原生最小权限目录选择器接入模型导入。
     - 依赖：`P4-MODEL-IMPORT-OPERATION`、AppKit `NSOpenPanel`、Shell `IFileOpenDialog`。
     - 退出条件：共享 API 区分 selected/cancelled 和稳定无路径错误；macOS 强制 AppKit 主线程，
       Windows 使用 STA、folder/filesystem/path-exists/no-recent 且 COM/TaskMem 成对释放；Rust
@@ -1333,8 +1333,12 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       阻塞 COM dialog 也移至专用 STA worker。macOS 26.5.2 arm64 已通过真实 `NSOpenPanel`
       Cancel 和仓库预置 `standard` 目录 Select：页面分别显示 `Selection cancelled` 与
       `Folder selected`/建议 ID `standard`，进程未崩溃且最终经产品 Quit 正常退出；未触发导入。
-      Windows release smoke 已用 PID 限定的 Win32 controller 驱动真实 dialog 标准取消/确认路径，
-      并由 callback 超时及 Rust 目录复验保护；等待原生 Windows CI 实机确认，因此保持未勾选。
+      Windows release smoke 用 PID 限定的 Win32 controller 驱动真实 dialog 标准取消/确认路径，
+      并由 callback 超时及 Rust 目录复验保护。commit `5f88fb8` 的 push run `33348859607` 全绿，
+      Windows/macOS/Ubuntu Native jobs `99358134554`/`99358134575`/`99358134545` 均通过完整
+      format、Clippy、workspace test、release/Production 和平台 smoke 门禁；commit `0e5072e`
+      的 push run `33349095568`、Windows job `99358790654` 进一步通过真实 dialog cancel/select
+      release smoke。结合本机 macOS 真实交互证据，双平台退出条件已满足。
       `block2 0.6.2`、`objc2 0.6.4`、AppKit/Foundation `0.3.2` 与 `windows 0.62.2` 均为当前
       最新稳定版并已在 workspace 锁定；最低 Rust 1.71/1.82、MIT/Zlib/Apache-2.0 许可证兼容
       workspace，替换边界仅为对应 OS 原生 API binding。完整 Native format、Clippy、workspace
