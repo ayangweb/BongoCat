@@ -13,6 +13,7 @@ use std::{
 };
 
 const MAX_LOG_BYTES: u64 = 1024 * 1024;
+const MAX_LOG_FILES: u32 = 4;
 const MAX_MESSAGE_BYTES: usize = 512;
 
 #[derive(Debug)]
@@ -43,7 +44,8 @@ pub struct CoreLogStats {
 
 #[derive(Debug)]
 struct CoreLogState {
-    file: File,
+    file: Option<File>,
+    path: PathBuf,
     bytes: u64,
     stats: CoreLogStats,
 }
@@ -91,7 +93,8 @@ impl CoreLogHandle {
         let bytes = file.metadata().map(|metadata| metadata.len()).unwrap_or(0);
         let sink = Arc::new(CoreLogSink {
             state: Mutex::new(CoreLogState {
-                file,
+                file: Some(file),
+                path: path.clone(),
                 bytes,
                 stats: CoreLogStats {
                     bytes,
@@ -184,11 +187,15 @@ impl CoreLogSink {
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if state.bytes.saturating_add(line_len) > MAX_LOG_BYTES {
+        if state.bytes.saturating_add(line_len) > MAX_LOG_BYTES && !rotate_logs(&mut state) {
             state.stats.dropped = state.stats.dropped.saturating_add(1);
             return;
         }
-        if state.file.write_all(&line).is_err() || state.file.flush().is_err() {
+        let Some(file) = state.file.as_mut() else {
+            state.stats.dropped = state.stats.dropped.saturating_add(1);
+            return;
+        };
+        if file.write_all(&line).is_err() || file.flush().is_err() {
             state.stats.dropped = state.stats.dropped.saturating_add(1);
             return;
         }
@@ -196,6 +203,61 @@ impl CoreLogSink {
         state.stats.written = state.stats.written.saturating_add(1);
         state.stats.bytes = state.bytes;
     }
+}
+
+fn rotate_logs(state: &mut CoreLogState) -> bool {
+    let Some(file) = state.file.take() else {
+        return false;
+    };
+    drop(file);
+
+    for generation in (1..MAX_LOG_FILES).rev() {
+        let source = rotated_log_path(&state.path, generation);
+        let destination = rotated_log_path(&state.path, generation + 1);
+        let _ = fs::remove_file(&destination);
+        if source.exists() && fs::rename(&source, &destination).is_err() {
+            reopen_active_log(state);
+            return false;
+        }
+    }
+    let first = rotated_log_path(&state.path, 1);
+    let _ = fs::remove_file(&first);
+    if fs::rename(&state.path, &first).is_err() {
+        reopen_active_log(state);
+        return false;
+    }
+
+    // Re-open the active path after moving the old file into the rotation set.
+    if reopen_active_log(state) {
+        state.bytes = 0;
+        state.stats.bytes = 0;
+        true
+    } else {
+        let _ = fs::rename(&first, &state.path);
+        reopen_active_log(state);
+        false
+    }
+}
+
+fn reopen_active_log(state: &mut CoreLogState) -> bool {
+    let Ok(file) = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&state.path)
+    else {
+        return false;
+    };
+    let bytes = file.metadata().map(|metadata| metadata.len()).unwrap_or(0);
+    state.file = Some(file);
+    state.bytes = bytes;
+    state.stats.bytes = bytes;
+    true
+}
+
+fn rotated_log_path(path: &Path, generation: u32) -> PathBuf {
+    let mut rotated = path.as_os_str().to_owned();
+    rotated.push(format!(".{generation}"));
+    PathBuf::from(rotated)
 }
 
 fn sanitize_message(bytes: &[u8]) -> String {
@@ -231,7 +293,7 @@ mod tests {
     }
 
     #[test]
-    fn sink_is_bounded_and_reports_dropped_records() {
+    fn sink_rotates_before_dropping_records_at_the_file_limit() {
         let directory = tempdir().expect("temporary directory");
         let path = directory.path().join("logs/core.jsonl");
         fs::create_dir_all(path.parent().expect("log parent")).expect("log directory");
@@ -242,7 +304,8 @@ mod tests {
             .expect("log file");
         let sink = CoreLogSink {
             state: Mutex::new(CoreLogState {
-                file,
+                file: Some(file),
+                path: path.clone(),
                 bytes: MAX_LOG_BYTES - 1,
                 stats: CoreLogStats {
                     bytes: MAX_LOG_BYTES - 1,
@@ -252,9 +315,64 @@ mod tests {
         };
         sink.record(b"one");
         let stats = sink.state.lock().expect("state lock").stats;
-        assert_eq!(stats.written, 0);
-        assert_eq!(stats.dropped, 1);
-        assert_eq!(stats.bytes, MAX_LOG_BYTES - 1);
+        assert_eq!(stats.written, 1);
+        assert_eq!(stats.dropped, 0);
+        assert!(stats.bytes < MAX_LOG_BYTES);
+        assert!(rotated_log_path(&path, 1).is_file());
+        assert!(fs::metadata(&path).expect("active log").len() > 0);
+    }
+
+    #[test]
+    fn rotation_retains_only_the_configured_number_of_files() {
+        let directory = tempdir().expect("temporary directory");
+        let path = directory.path().join("core.jsonl");
+        fs::write(&path, vec![b'x'; MAX_LOG_BYTES as usize]).expect("seed active log");
+        for generation in 1..=MAX_LOG_FILES {
+            fs::write(rotated_log_path(&path, generation), b"old").expect("seed rotated log");
+        }
+        let file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .expect("log file");
+        let sink = CoreLogSink {
+            state: Mutex::new(CoreLogState {
+                file: Some(file),
+                path: path.clone(),
+                bytes: MAX_LOG_BYTES,
+                stats: CoreLogStats {
+                    bytes: MAX_LOG_BYTES,
+                    ..CoreLogStats::default()
+                },
+            }),
+        };
+        sink.record(b"rotation");
+        assert!(rotated_log_path(&path, MAX_LOG_FILES).is_file());
+        assert!(!rotated_log_path(&path, MAX_LOG_FILES + 1).exists());
+        assert!(fs::read(&path).expect("active contents").contains(&b'\n'));
+    }
+
+    #[test]
+    fn missing_active_file_handle_can_be_reopened_after_a_rotation_failure() {
+        let directory = tempdir().expect("temporary directory");
+        let path = directory.path().join("core.jsonl");
+        fs::write(&path, b"active").expect("seed active log");
+        let sink = CoreLogSink {
+            state: Mutex::new(CoreLogState {
+                file: None,
+                path: path.clone(),
+                bytes: 0,
+                stats: CoreLogStats {
+                    bytes: 0,
+                    ..CoreLogStats::default()
+                },
+            }),
+        };
+
+        let mut state = sink.state.lock().expect("state lock");
+        assert!(reopen_active_log(&mut state));
+        assert!(state.file.is_some());
+        assert_eq!(state.bytes, b"active".len() as u64);
     }
 
     #[test]

@@ -1148,6 +1148,9 @@ overlay owner；设置更新失败时保留旧 snapshot。scale/opacity 的可�
 - [ ] 安装前协调 runtime/renderer shutdown，失败可回滚。
 - [ ] 测试断网、代理、中断、签名错误和降级攻击。
 - [ ] 日志 rotation、总大小和保留天数有上限。
+  - 状态（2026-09-01）：Cubism Core 日志 sink 已在单文件达到 1 MiB 时执行有界路径轮转，最多保留
+    4 个轮转文件，活动文件和轮转失败均有有界 dropped 计数；测试覆盖触发轮转、保留上限和
+    活动文件恢复写入。应用级统一日志 writer、按天/保留期限清理和导出脱敏包仍待完成。
 - [ ] 记录 renderer/input/model/config/update 的稳定 error code。
 - [ ] 日志导出生成可预览的脱敏包。
 - [ ] 更新 manifest 定义 schemaVersion、channel、最低可升级版本、发布时间和防回滚字段。
