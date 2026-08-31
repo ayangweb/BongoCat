@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://bongocat.dev/schemas/native-config-v1.json",
+  "$id": "https://bongocat.dev/schemas/native-config-v3.json",
   "title": "BongoCat Native Rewrite configuration",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "application", "appearance", "overlay", "model", "shortcuts"],
+  "required": ["schema_version", "application", "appearance", "overlay", "input", "model", "shortcuts"],
   "properties": {
-    "schema_version": { "const": 2 },
+    "schema_version": { "const": 3 },
     "application": {
       "$ref": "#/$defs/application"
     },
@@ -15,6 +15,9 @@
     },
     "overlay": {
       "$ref": "#/$defs/overlay"
+    },
+    "input": {
+      "$ref": "#/$defs/input"
     },
     "model": {
       "$ref": "#/$defs/model"
@@ -58,6 +61,15 @@
         "hide_on_pointer_hover": { "type": "boolean" },
         "hide_on_pointer_hover_delay_ms": { "type": "integer", "minimum": 0 },
         "keep_inside_work_area": { "type": "boolean" }
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gamepad_stick_dead_zone", "gamepad_trigger_dead_zone"],
+      "properties": {
+        "gamepad_stick_dead_zone": { "type": "number", "minimum": 0, "exclusiveMaximum": 1 },
+        "gamepad_trigger_dead_zone": { "type": "number", "minimum": 0, "exclusiveMaximum": 1 }
       }
     },
     "model": {

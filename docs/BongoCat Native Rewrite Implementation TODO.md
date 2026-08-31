@@ -1730,8 +1730,13 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
         样本和 shutdown 拒绝发布；transport 诊断进入 `RuntimeSnapshot`。
     - [x] 在 runtime 应用可配置 stick/trigger dead-zone，并投影到 ModelInputSnapshot。
       - 状态（2026-08-31）：`GamepadAxisSettings` 拒绝无效 dead-zone，stick 使用对称重映射、
-        trigger 使用单侧重映射；默认值仅为 runtime fallback，正式配置字段仍待设置 schema。
-        `StickLeft/Right X/Y` 已进入 renderer 参数，Reset 会清空轴值。
+        trigger 使用单侧重映射；`StickLeft/Right X/Y` 已进入 renderer 参数，Reset 会清空轴值。
+    - [x] 将 stick/trigger dead-zone 纳入正式配置并接入 Application runtime 生命周期。
+      - 状态（2026-08-31）：Native config v3 新增 `[0, 1)` 的
+        `input.gamepad_stick_dead_zone`/`gamepad_trigger_dead_zone`，v1/v2 通过带原始备份的顺序迁移
+        补入 `0.15`/`0.0` 默认值。Application 启动会在 runtime Ready 后发送强类型 settings，
+        运行中更新先做 revision-checked 原子配置提交再重投影现有 axis；启动、更新、重启和 schema
+        accept/reject 回归已覆盖。
     - [x] 将同一 `GamepadAxisProducer` 从 Application 传递到独立 overlay/input service owner。
       - 状态（2026-08-31）：Windows/macOS 正式服务启动与所有 opt-in smoke 调用均持有 runtime
         producer；双平台服务现分别消费 XInput/GameController，无手柄启动行为不变。
@@ -1765,7 +1770,7 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
         键鼠，键鼠 reconcile 也不再错误释放手柄按钮。macOS callback/backend 诊断已进入平台
         shutdown report，但尚未在运行期间完整汇入 runtime snapshot。
     - 状态（2026-08-31）：共享 runtime 与双平台正式 producer 已接线；物理设备 smoke、完整
-      运行时诊断汇总和正式配置 dead-zone 字段仍未完成，未声称手柄功能完成。
+      运行时诊断汇总仍未完成，未声称手柄功能完成。
 
 ## 13. 待决策清单
 

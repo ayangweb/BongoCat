@@ -18,9 +18,10 @@ use bongocat_model::{
 };
 use bongocat_render::{ModelCommitToken, RenderConsumer};
 use bongocat_runtime::{
-    CursorProducer, ExpressionId, ExpressionIdError, GamepadAxisProducer, HandSide, InputBindings,
-    InputProducer, MotionId, MotionIdError, MotionPriority, PhysicalKey, RuntimeClient,
-    RuntimeCommand, RuntimeCommandFailure, RuntimeOwner, RuntimeSnapshot, SendError, ShutdownError,
+    CursorProducer, ExpressionId, ExpressionIdError, GamepadAxisProducer, GamepadAxisSettings,
+    HandSide, InputBindings, InputProducer, MotionId, MotionIdError, MotionPriority, PhysicalKey,
+    RuntimeClient, RuntimeCommand, RuntimeCommandFailure, RuntimeOwner, RuntimeSnapshot, SendError,
+    ShutdownError,
 };
 use std::{collections::BTreeMap, fmt, path::Path, sync::Arc, time::Duration};
 
@@ -269,6 +270,17 @@ impl Application {
             .client()
             .wait_for_revision(1, RUNTIME_TIMEOUT)
             .ok_or(ApplicationError::RuntimeDidNotPublish)?;
+        if operational {
+            let client = runtime.client();
+            let sequence = client
+                .send(RuntimeCommand::SetGamepadAxisSettings(
+                    gamepad_axis_settings_from_config(&config)?,
+                ))
+                .map_err(ApplicationError::RuntimeCommand)?;
+            client
+                .wait_for_command(sequence, RUNTIME_TIMEOUT)
+                .ok_or(ApplicationError::RuntimeDidNotPublish)?;
+        }
         let active_model_origin = config
             .model
             .selected_model_origin
@@ -410,6 +422,29 @@ impl Application {
         let client = self.runtime.client();
         let sequence = client
             .send(RuntimeCommand::SetMotionAudioEnabled(enabled))
+            .map_err(ApplicationError::RuntimeCommand)?;
+        let snapshot = client
+            .wait_for_command(sequence, RUNTIME_TIMEOUT)
+            .ok_or(ApplicationError::RuntimeDidNotPublish)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(snapshot)
+    }
+
+    pub fn set_gamepad_axis_settings(
+        &mut self,
+        settings: GamepadAxisSettings,
+    ) -> Result<RuntimeSnapshot, ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.input.gamepad_stick_dead_zone = settings.stick_dead_zone;
+        next_config.input.gamepad_trigger_dead_zone = settings.trigger_dead_zone;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+
+        let client = self.runtime.client();
+        let sequence = client
+            .send(RuntimeCommand::SetGamepadAxisSettings(settings))
             .map_err(ApplicationError::RuntimeCommand)?;
         let snapshot = client
             .wait_for_command(sequence, RUNTIME_TIMEOUT)
@@ -654,6 +689,16 @@ const fn model_origin_from_config(origin: SelectedModelOrigin) -> ModelOrigin {
     }
 }
 
+fn gamepad_axis_settings_from_config(
+    config: &NativeConfig,
+) -> Result<GamepadAxisSettings, ConfigError> {
+    GamepadAxisSettings::new(
+        config.input.gamepad_stick_dead_zone,
+        config.input.gamepad_trigger_dead_zone,
+    )
+    .ok_or(ConfigError::InvalidValue("input.gamepad_dead_zone"))
+}
+
 #[cfg(test)]
 fn repository_preset_root() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -695,7 +740,10 @@ mod tests {
     use super::*;
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     use bongocat_render::{ModelCommitErrorCode, ModelCommitFeedback, ModelCommitOutcome};
-    use bongocat_runtime::RuntimeState;
+    use bongocat_runtime::{
+        GamepadAxis, GamepadAxisKey, GamepadAxisSample, GamepadButton, GamepadButtonKey,
+        InputControl, InputEdge, InputEvent, InputSource, MonotonicMillis, RuntimeState,
+    };
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     use std::time::Instant;
     use tempfile::tempdir;
@@ -741,6 +789,74 @@ mod tests {
         assert!(persisted.contains("\"play_motion_audio\": false"));
         let stopped = application.shutdown().expect("clean shutdown");
         assert_eq!(stopped.state, RuntimeState::Stopped);
+    }
+
+    #[test]
+    fn configured_gamepad_dead_zones_apply_at_start_and_persist_updates() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let store = ConfigStore::new(layout.clone()).expect("config store");
+        let mut config = store.load_or_default().expect("default config").config;
+        config.input.gamepad_stick_dead_zone = 0.4;
+        config.input.gamepad_trigger_dead_zone = 0.2;
+        store.commit(&config).expect("custom input config");
+        drop(store);
+
+        let mut application = Application::start_with_layout(layout.clone()).expect("start app");
+        let axis = application.gamepad_axis_producer();
+        let connection = axis.connect(0).expect("gamepad connection");
+        let input = application.input_producer();
+        input
+            .publish(InputEvent::GamepadConnected {
+                connection,
+                at: MonotonicMillis::new(0),
+            })
+            .expect("connection event");
+        for (axis_kind, value) in [
+            (GamepadAxis::LeftStickX, 0.3),
+            (GamepadAxis::LeftTrigger, 0.1),
+        ] {
+            axis.publish(GamepadAxisSample {
+                key: GamepadAxisKey {
+                    connection,
+                    axis: axis_kind,
+                },
+                value,
+                at: MonotonicMillis::new(1),
+            })
+            .expect("axis sample");
+        }
+        let edge = input
+            .publish(InputEvent::Edge {
+                control: InputControl::Gamepad(GamepadButtonKey {
+                    connection,
+                    button: GamepadButton::South,
+                }),
+                edge: InputEdge::Down,
+                source: InputSource::Capture,
+                at: MonotonicMillis::new(2),
+            })
+            .expect("button edge");
+        let initial = application
+            .runtime_client()
+            .wait_for_input_sequence(edge, RUNTIME_TIMEOUT)
+            .expect("initial axis projection");
+        assert_eq!(initial.model_input.stick_left_x, 0.0);
+        assert_eq!(initial.model_input.left_trigger, 0.0);
+
+        let updated = application
+            .set_gamepad_axis_settings(GamepadAxisSettings::new(0.1, 0.05).expect("valid settings"))
+            .expect("update dead zones");
+        assert!((updated.model_input.stick_left_x - (0.2 / 0.9)).abs() < 0.0001);
+        assert!((updated.model_input.left_trigger - (0.05 / 0.95)).abs() < 0.0001);
+        assert_eq!(application.config().input.gamepad_stick_dead_zone, 0.1);
+        assert_eq!(application.config().input.gamepad_trigger_dead_zone, 0.05);
+        application.shutdown().expect("clean shutdown");
+
+        let restarted = Application::start_with_layout(layout).expect("restart app");
+        assert_eq!(restarted.config().input.gamepad_stick_dead_zone, 0.1);
+        assert_eq!(restarted.config().input.gamepad_trigger_dead_zone, 0.05);
+        restarted.shutdown().expect("clean restart shutdown");
     }
 
     #[test]

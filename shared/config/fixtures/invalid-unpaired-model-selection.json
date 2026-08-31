@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "application": {
     "launch_at_login": false,
     "show_taskbar_icon": true,
@@ -17,6 +17,10 @@
     "hide_on_pointer_hover": false,
     "hide_on_pointer_hover_delay_ms": 250,
     "keep_inside_work_area": true
+  },
+  "input": {
+    "gamepad_stick_dead_zone": 0.15,
+    "gamepad_trigger_dead_zone": 0.0
   },
   "model": {
     "selected_model_id": "standard",

@@ -18,8 +18,9 @@ pub use state::{
 };
 
 pub const BUNDLE_ID: &str = "com.ayangweb.bongo-cat";
-pub const SCHEMA_VERSION: u32 = 2;
-const PREVIOUS_SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 3;
+const V1_SCHEMA_VERSION: u32 = 1;
+const V2_SCHEMA_VERSION: u32 = 2;
 const BACKUP_FORMAT_VERSION: u32 = 1;
 const MAX_CONFIG_BACKUPS: usize = 8;
 const MAX_CONFIG_BACKUP_BYTES: u64 = 8 * 1024 * 1024;
@@ -149,6 +150,7 @@ pub struct NativeConfig {
     pub application: ApplicationConfig,
     pub appearance: AppearanceConfig,
     pub overlay: OverlayConfig,
+    pub input: InputConfig,
     pub model: ModelConfig,
     pub shortcuts: ShortcutConfig,
 }
@@ -189,6 +191,13 @@ pub struct OverlayConfig {
     pub hide_on_pointer_hover: bool,
     pub hide_on_pointer_hover_delay_ms: u32,
     pub keep_inside_work_area: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct InputConfig {
+    pub gamepad_stick_dead_zone: f32,
+    pub gamepad_trigger_dead_zone: f32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -259,6 +268,10 @@ impl Default for NativeConfig {
                 hide_on_pointer_hover_delay_ms: 250,
                 keep_inside_work_area: true,
             },
+            input: InputConfig {
+                gamepad_stick_dead_zone: 0.15,
+                gamepad_trigger_dead_zone: 0.0,
+            },
             model: ModelConfig {
                 selected_model_id: None,
                 selected_model_origin: None,
@@ -288,6 +301,16 @@ impl NativeConfig {
         }
         if self.overlay.corner_radius_percent > 100 {
             return Err(ConfigError::InvalidValue("overlay.corner_radius_percent"));
+        }
+        if !(0.0..1.0).contains(&self.input.gamepad_stick_dead_zone)
+            || !self.input.gamepad_stick_dead_zone.is_finite()
+        {
+            return Err(ConfigError::InvalidValue("input.gamepad_stick_dead_zone"));
+        }
+        if !(0.0..1.0).contains(&self.input.gamepad_trigger_dead_zone)
+            || !self.input.gamepad_trigger_dead_zone.is_finite()
+        {
+            return Err(ConfigError::InvalidValue("input.gamepad_trigger_dead_zone"));
         }
         if !(15..=240).contains(&self.model.maximum_fps) {
             return Err(ConfigError::InvalidValue("model.maximum_fps"));
@@ -1290,12 +1313,15 @@ fn parse_config(bytes: &[u8]) -> Result<(NativeConfig, ConfigRevision, bool), Co
         .and_then(serde_json::Value::as_u64)
         .and_then(|version| u32::try_from(version).ok())
         .ok_or(ConfigError::InvalidValue("schema_version"))?;
-    if schema_version != PREVIOUS_SCHEMA_VERSION && schema_version != SCHEMA_VERSION {
-        return Err(ConfigError::UnsupportedSchema(schema_version));
-    }
-    let migrated = schema_version == PREVIOUS_SCHEMA_VERSION;
-    if migrated {
-        migrate_v1_to_v2(&mut value)?;
+    let migrated = schema_version != SCHEMA_VERSION;
+    match schema_version {
+        V1_SCHEMA_VERSION => {
+            migrate_v1_to_v2(&mut value)?;
+            migrate_v2_to_v3(&mut value)?;
+        }
+        V2_SCHEMA_VERSION => migrate_v2_to_v3(&mut value)?,
+        SCHEMA_VERSION => {}
+        _ => return Err(ConfigError::UnsupportedSchema(schema_version)),
     }
     let config: NativeConfig = serde_json::from_value(value)?;
     config.validate()?;
@@ -1321,7 +1347,28 @@ fn migrate_v1_to_v2(value: &mut serde_json::Value) -> Result<(), ConfigError> {
         serde_json::Value::Null
     };
     model.insert("selected_model_origin".to_owned(), origin);
-    value["schema_version"] = serde_json::Value::from(SCHEMA_VERSION);
+    value["schema_version"] = serde_json::Value::from(V2_SCHEMA_VERSION);
+    Ok(())
+}
+
+fn migrate_v2_to_v3(value: &mut serde_json::Value) -> Result<(), ConfigError> {
+    let root = value
+        .as_object_mut()
+        .ok_or(ConfigError::InvalidValue("configuration"))?;
+    if root.contains_key("input") {
+        return Err(ConfigError::InvalidValue("input"));
+    }
+    root.insert(
+        "input".to_owned(),
+        serde_json::json!({
+            "gamepad_stick_dead_zone": 0.15,
+            "gamepad_trigger_dead_zone": 0.0,
+        }),
+    );
+    root.insert(
+        "schema_version".to_owned(),
+        serde_json::Value::from(SCHEMA_VERSION),
+    );
     Ok(())
 }
 
@@ -1342,6 +1389,26 @@ mod tests {
 
     const CRASH_PROBE_BASE: &str = "BONGOCAT_CONFIG_CRASH_PROBE_BASE";
     const CRASH_PROBE_READY: &str = "BONGOCAT_CONFIG_CRASH_PROBE_READY";
+
+    fn native_v2_config_value() -> serde_json::Value {
+        let mut value = serde_json::to_value(NativeConfig::default()).expect("serialize config");
+        value["schema_version"] = serde_json::Value::from(V2_SCHEMA_VERSION);
+        value
+            .as_object_mut()
+            .expect("configuration object")
+            .remove("input");
+        value
+    }
+
+    fn native_v1_config_value() -> serde_json::Value {
+        let mut value = native_v2_config_value();
+        value["schema_version"] = serde_json::Value::from(V1_SCHEMA_VERSION);
+        value["model"]
+            .as_object_mut()
+            .expect("model object")
+            .remove("selected_model_origin");
+        value
+    }
 
     #[test]
     fn environments_have_identical_shape_and_disjoint_roots() {
@@ -1752,6 +1819,26 @@ mod tests {
     }
 
     #[test]
+    fn gamepad_dead_zones_must_be_finite_and_below_one() {
+        for (stick, trigger, field) in [
+            (-0.01, 0.0, "input.gamepad_stick_dead_zone"),
+            (1.0, 0.0, "input.gamepad_stick_dead_zone"),
+            (f32::NAN, 0.0, "input.gamepad_stick_dead_zone"),
+            (0.15, -0.01, "input.gamepad_trigger_dead_zone"),
+            (0.15, 1.0, "input.gamepad_trigger_dead_zone"),
+            (0.15, f32::INFINITY, "input.gamepad_trigger_dead_zone"),
+        ] {
+            let mut config = NativeConfig::default();
+            config.input.gamepad_stick_dead_zone = stick;
+            config.input.gamepad_trigger_dead_zone = trigger;
+            assert!(matches!(
+                config.validate(),
+                Err(ConfigError::InvalidValue(actual)) if actual == field
+            ));
+        }
+    }
+
+    #[test]
     fn selected_model_id_and_origin_are_required_as_a_pair() {
         let mut config = NativeConfig::default();
         config.model.selected_model_id = Some("standard".to_owned());
@@ -1777,13 +1864,8 @@ mod tests {
             BuildEnvironment::Development,
         ))
         .expect("config store");
-        let mut v1 = serde_json::to_value(NativeConfig::default()).expect("serialize config");
-        v1["schema_version"] = serde_json::Value::from(PREVIOUS_SCHEMA_VERSION);
+        let mut v1 = native_v1_config_value();
         v1["model"]["selected_model_id"] = serde_json::Value::String("standard".to_owned());
-        v1["model"]
-            .as_object_mut()
-            .expect("model object")
-            .remove("selected_model_origin");
         let original = serde_json::to_vec_pretty(&v1).expect("v1 bytes");
         fs::write(&store.layout().config, &original).expect("write v1 config");
 
@@ -1802,12 +1884,12 @@ mod tests {
             serde_json::from_slice(&fs::read(&backup_paths[0]).expect("migration backup"))
                 .expect("backup envelope");
         assert_eq!(backup.backup_format_version, BACKUP_FORMAT_VERSION);
-        assert_eq!(backup.source_schema_version, PREVIOUS_SCHEMA_VERSION);
+        assert_eq!(backup.source_schema_version, V1_SCHEMA_VERSION);
         assert_eq!(backup.config, v1);
         assert!(backup.created_at_unix_ms > 0);
         assert_eq!(backup.source_revision.len(), 16);
         for _ in 0..10 {
-            let reloaded = store.load_or_default().expect("reload v2 config");
+            let reloaded = store.load_or_default().expect("reload v3 config");
             assert_eq!(reloaded.config, migrated);
             assert_eq!(reloaded.revision, revision);
             assert_eq!(reloaded.recovery, None);
@@ -1816,15 +1898,39 @@ mod tests {
     }
 
     #[test]
+    fn native_v2_adds_default_input_settings_once_and_preserves_original_backup() {
+        let base = tempdir().expect("temp directory");
+        let store = ConfigStore::new(StorageLayout::under(
+            base.path(),
+            BuildEnvironment::Development,
+        ))
+        .expect("config store");
+        let v2 = native_v2_config_value();
+        let original = serde_json::to_vec_pretty(&v2).expect("v2 bytes");
+        fs::write(&store.layout().config, &original).expect("write v2 config");
+
+        let loaded = store.load_or_default().expect("migrate v2 config");
+        assert_eq!(loaded.config, NativeConfig::default());
+        assert_eq!(loaded.recovery, None);
+        let backup_paths = config_backup_paths(store.layout());
+        assert_eq!(backup_paths.len(), 1);
+        let backup: ConfigBackup =
+            serde_json::from_slice(&fs::read(&backup_paths[0]).expect("migration backup"))
+                .expect("backup envelope");
+        assert_eq!(backup.source_schema_version, V2_SCHEMA_VERSION);
+        assert_eq!(backup.config, v2);
+
+        let reloaded = store.load_or_default().expect("reload v3 config");
+        assert_eq!(reloaded.config, NativeConfig::default());
+        assert_eq!(reloaded.revision, loaded.revision);
+        assert_eq!(config_backup_paths(store.layout()).len(), 1);
+    }
+
+    #[test]
     fn post_replace_verification_failure_restores_v1_bytes_and_allows_retry() {
         let base = tempdir().expect("temp directory");
         let layout = StorageLayout::under(base.path(), BuildEnvironment::Development);
-        let mut v1 = serde_json::to_value(NativeConfig::default()).expect("serialize config");
-        v1["schema_version"] = serde_json::Value::from(PREVIOUS_SCHEMA_VERSION);
-        v1["model"]
-            .as_object_mut()
-            .expect("model object")
-            .remove("selected_model_origin");
+        let v1 = native_v1_config_value();
         let original = serde_json::to_vec_pretty(&v1).expect("v1 bytes");
 
         let mut faulting_store = ConfigStore::new(layout.clone()).expect("config store");

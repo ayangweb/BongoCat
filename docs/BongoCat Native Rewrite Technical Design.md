@@ -440,8 +440,10 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
 - Native Rewrite 配置从全新 schema 开始，不读取、不探测、不导入旧 Tauri/Pinia store。
 - JSON key 使用 `snake_case`，字段按当前领域语义命名，不提供旧字段 alias。
 - 配置包含显式 `schema_version`，只对 Native Rewrite 自身后续 schema 执行顺序、幂等升级。
-- 当前 v2 将模型选择持久化为成对的 `selected_model_origin` 与 `selected_model_id`；v1
-  非空 ID 按当时产品语义迁移为 preset，迁移在当前环境 writer lock 内备份并原子写回。
+- 当前 v3 在保留成对 `selected_model_origin`/`selected_model_id` 的同时，以
+  `input.gamepad_stick_dead_zone` 和 `input.gamepad_trigger_dead_zone` 持久化 runtime 输入语义；
+  两者必须是 `[0, 1)` 的有限数。v1 非空模型 ID 按当时产品语义迁移为 preset，v2 增加默认
+  input 设置，升级严格按 v1 -> v2 -> v3 顺序执行，并在当前环境 writer lock 内备份原文后原子写回。
 - 写入使用同目录临时文件、flush、原子替换和提交后验证；替换前把当前配置封装为带格式版本、
   墙上时间、源 schema 和 revision 的环境内备份。每个环境只管理 `config-*.json` 自有命名空间，
   按持久排序键保留最新 8 份且总计不超过 8 MiB；系统时钟回退不得让新备份被误删，未知文件
@@ -463,7 +465,7 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
 - 若 current 损坏且没有任何完整有效的 Native backup，Application 不得静默覆盖或继续使用默认值；
   它以 `RecoveryRequired` 受限状态启动，仅创建无 overlay/GPU 的 recovery-only settings 窗口。
   Diagnostics 显示匿名候选计数，并提供强类型 `RestoreDefaultConfiguration` command；该 command
-  在 writer lock 内再次确认 current 仍不可恢复，将原字节放入 quarantine 后写入并验证 v2 默认配置，
+  在 writer lock 内再次确认 current 仍不可恢复，将原字节放入 quarantine 后写入并验证当前 schema 默认配置，
   返回 `DefaultsRestoredRestartRequired`。恢复前所有业务写入、模型、启动项和 overlay 操作都被拒绝，
   恢复后必须重启才重新进入正常 runtime；未来 schema 或 I/O/归档错误仍直接报告，不进入该安全模式。
 - 配置写入将权限/只读文件系统、存储空间/配额不足和 temp 目标占用分类为稳定的匿名失败原因；
