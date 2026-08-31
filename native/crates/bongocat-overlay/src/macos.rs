@@ -200,6 +200,8 @@ pub(super) struct ProductOverlaySession {
     dynamic_snapshots: u64,
     model_commit_rejections: u64,
     previous_snapshot: Arc<RenderSnapshot>,
+    options: OverlaySessionOptions,
+    last_frame: RenderFrame,
 }
 
 impl ProductOverlaySession {
@@ -266,7 +268,9 @@ impl ProductOverlaySession {
             frames_presented: 0,
             dynamic_snapshots: 0,
             model_commit_rejections: 0,
-            previous_snapshot: initial_frame.snapshot,
+            previous_snapshot: Arc::clone(&initial_frame.snapshot),
+            options,
+            last_frame: initial_frame,
         })
     }
 
@@ -295,6 +299,27 @@ impl ProductOverlaySession {
                 "runtime stopped while the product overlay was active",
             ));
         }
+        if self
+            .options
+            .with_runtime_settings(runtime_snapshot.overlay_settings)
+            != self.options
+        {
+            let next_options = self
+                .options
+                .with_runtime_settings(runtime_snapshot.overlay_settings);
+            let replacement = NativeOverlay::create(
+                MainThreadMarker::new().ok_or_else(|| {
+                    OverlayError::new("macOS overlay settings update lost the main thread")
+                })?,
+                &self.last_frame,
+                next_options,
+            )?;
+            if runtime_snapshot.overlay_visible {
+                replacement.panel.orderFrontRegardless();
+            }
+            self.overlay = replacement;
+            self.options = next_options;
+        }
         if !runtime_snapshot.overlay_visible {
             if self.overlay.panel.isVisible() {
                 self.overlay.panel.orderOut(None);
@@ -307,6 +332,7 @@ impl ProductOverlaySession {
 
         let mut gpu_model_switched = false;
         if let Some(frame) = self.render_consumer.take_latest() {
+            self.last_frame = frame.clone();
             match self.overlay.sync_frame(&frame) {
                 Ok(switched) => {
                     if let Some(token) = frame.model_commit {

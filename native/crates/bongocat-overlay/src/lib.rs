@@ -9,7 +9,9 @@ use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError};
 use bongocat_render::{RenderConsumer, RenderTransportDiagnostics};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_runtime::PlatformInputDiagnosticsProducer;
-use bongocat_runtime::{CursorProducer, GamepadAxisProducer, InputProducer, RuntimeClient};
+use bongocat_runtime::{
+    CursorProducer, GamepadAxisProducer, InputProducer, OverlaySettings, RuntimeClient,
+};
 use std::{fmt, path::Path, time::Duration};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -19,6 +21,18 @@ pub struct OverlaySessionOptions {
     pub scale_percent: u16,
     pub opacity_percent: u8,
     pub maximum_fps: u16,
+}
+
+impl OverlaySessionOptions {
+    pub const fn with_runtime_settings(self, settings: OverlaySettings) -> Self {
+        Self {
+            click_through: settings.click_through,
+            always_on_top: settings.always_on_top,
+            scale_percent: settings.scale_percent,
+            opacity_percent: settings.opacity_percent,
+            maximum_fps: self.maximum_fps,
+        }
+    }
 }
 
 impl Default for OverlaySessionOptions {

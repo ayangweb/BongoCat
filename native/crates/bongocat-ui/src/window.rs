@@ -4,7 +4,7 @@ use crate::{
     SettingsModelAvailability, SettingsModelDiagnostic, SettingsModelEntry,
     SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
     SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsOperationId,
-    SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
+    SettingsOverlay, SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
     SettingsStartupItemUnsupportedReason, SettingsWindowPlacement, SettingsWindowState,
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -46,6 +46,10 @@ const ACCESSIBILITY_OVERLAY: AccessibilityNodeId = AccessibilityNodeId::new(10);
 const ACCESSIBILITY_AUDIO: AccessibilityNodeId = AccessibilityNodeId::new(11);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_STARTUP: AccessibilityNodeId = AccessibilityNodeId::new(12);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_OVERLAY_TOPMOST: AccessibilityNodeId = AccessibilityNodeId::new(13);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_OVERLAY_CLICK_THROUGH: AccessibilityNodeId = AccessibilityNodeId::new(14);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_OPEN_BACKUPS: AccessibilityNodeId = AccessibilityNodeId::new(28);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -105,6 +109,7 @@ impl Tokens {
 enum PendingOperation {
     Refresh,
     OverlayVisibility,
+    OverlaySettings,
     MotionAudio,
     StartupItem,
     ModelSelection,
@@ -281,6 +286,8 @@ pub struct SettingsView {
     models_focus: FocusHandle,
     diagnostics_focus: FocusHandle,
     overlay_focus: FocusHandle,
+    overlay_topmost_focus: FocusHandle,
+    overlay_click_through_focus: FocusHandle,
     audio_focus: FocusHandle,
     startup_item_focus: FocusHandle,
     model_id_focus: FocusHandle,
@@ -317,6 +324,8 @@ impl SettingsView {
             models_focus: cx.focus_handle().tab_index(2).tab_stop(true),
             diagnostics_focus: cx.focus_handle().tab_index(3).tab_stop(true),
             overlay_focus: cx.focus_handle().tab_index(10).tab_stop(true),
+            overlay_topmost_focus: cx.focus_handle().tab_index(13).tab_stop(true),
+            overlay_click_through_focus: cx.focus_handle().tab_index(14).tab_stop(true),
             audio_focus: cx.focus_handle().tab_index(11).tab_stop(true),
             startup_item_focus: cx.focus_handle().tab_index(12).tab_stop(true),
             model_id_focus: cx.focus_handle().tab_index(20).tab_stop(true),
@@ -384,6 +393,37 @@ impl SettingsView {
         if !disabled {
             audio_node = audio_node.clickable().focusable();
         }
+        let overlay_settings = snapshot
+            .map(|snapshot| snapshot.overlay)
+            .unwrap_or_default();
+        let mut topmost_node = AccessibilityNode::new(
+            ACCESSIBILITY_OVERLAY_TOPMOST,
+            AccessibilityRole::Switch,
+            "Always on top",
+        )
+        .with_value("Keep the Live2D overlay above other windows")
+        .with_toggle(if overlay_settings.always_on_top {
+            AccessibilityToggle::On
+        } else {
+            AccessibilityToggle::Off
+        })
+        .disabled(disabled);
+        let mut click_through_node = AccessibilityNode::new(
+            ACCESSIBILITY_OVERLAY_CLICK_THROUGH,
+            AccessibilityRole::Switch,
+            "Click-through overlay",
+        )
+        .with_value("Let pointer input pass through the Live2D overlay")
+        .with_toggle(if overlay_settings.click_through {
+            AccessibilityToggle::On
+        } else {
+            AccessibilityToggle::Off
+        })
+        .disabled(disabled);
+        if !disabled {
+            topmost_node = topmost_node.clickable().focusable();
+            click_through_node = click_through_node.clickable().focusable();
+        }
         let mut startup_node = AccessibilityNode::new(
             ACCESSIBILITY_STARTUP,
             AccessibilityRole::Switch,
@@ -443,6 +483,8 @@ impl SettingsView {
                 ACCESSIBILITY_MODELS,
                 ACCESSIBILITY_DIAGNOSTICS,
                 ACCESSIBILITY_OVERLAY,
+                ACCESSIBILITY_OVERLAY_TOPMOST,
+                ACCESSIBILITY_OVERLAY_CLICK_THROUGH,
                 ACCESSIBILITY_AUDIO,
                 ACCESSIBILITY_STARTUP,
                 ACCESSIBILITY_OPEN_BACKUPS,
@@ -464,6 +506,8 @@ impl SettingsView {
             .clickable()
             .focusable(),
             overlay_node,
+            topmost_node,
+            click_through_node,
             audio_node,
             startup_node,
             open_backups_node,
@@ -500,6 +544,20 @@ impl SettingsView {
             ACCESSIBILITY_OVERLAY => {
                 if let Some(snapshot) = self.snapshot.as_ref() {
                     self.set_overlay_visible(!snapshot.overlay_visible, cx);
+                }
+            }
+            ACCESSIBILITY_OVERLAY_TOPMOST => {
+                if let Some(snapshot) = self.snapshot.as_ref() {
+                    let mut settings = snapshot.overlay;
+                    settings.always_on_top = !settings.always_on_top;
+                    self.set_overlay_settings(settings, cx);
+                }
+            }
+            ACCESSIBILITY_OVERLAY_CLICK_THROUGH => {
+                if let Some(snapshot) = self.snapshot.as_ref() {
+                    let mut settings = snapshot.overlay;
+                    settings.click_through = !settings.click_through;
+                    self.set_overlay_settings(settings, cx);
                 }
             }
             ACCESSIBILITY_AUDIO => {
@@ -560,6 +618,11 @@ impl SettingsView {
             (ACCESSIBILITY_MODELS, &self.models_focus),
             (ACCESSIBILITY_DIAGNOSTICS, &self.diagnostics_focus),
             (ACCESSIBILITY_OVERLAY, &self.overlay_focus),
+            (ACCESSIBILITY_OVERLAY_TOPMOST, &self.overlay_topmost_focus),
+            (
+                ACCESSIBILITY_OVERLAY_CLICK_THROUGH,
+                &self.overlay_click_through_focus,
+            ),
             (ACCESSIBILITY_AUDIO, &self.audio_focus),
             (ACCESSIBILITY_STARTUP, &self.startup_item_focus),
             (ACCESSIBILITY_OPEN_BACKUPS, &self.open_backups_focus),
@@ -651,6 +714,9 @@ impl SettingsView {
             .snapshot
             .as_ref()
             .ok_or_else(|| "general page has not received a settings snapshot".to_owned())?;
+        let controls_disabled = self.pending.is_some()
+            || self.model_import.is_running()
+            || snapshot.configuration_status != SettingsConfigurationStatus::Ready;
         let presentation = startup_item_presentation(Some(snapshot.startup_item), false);
         match snapshot.startup_item {
             SettingsStartupItemStatus::State(SettingsStartupItemState::Unsupported(_)) => {
@@ -694,6 +760,46 @@ impl SettingsView {
                 return Err(
                     "startup accessibility semantics diverged from the visible control".to_owned(),
                 );
+            }
+            for (id, label, value, toggled) in [
+                (
+                    ACCESSIBILITY_OVERLAY_TOPMOST,
+                    "Always on top",
+                    "Keep the Live2D overlay above other windows",
+                    snapshot.overlay.always_on_top,
+                ),
+                (
+                    ACCESSIBILITY_OVERLAY_CLICK_THROUGH,
+                    "Click-through overlay",
+                    "Let pointer input pass through the Live2D overlay",
+                    snapshot.overlay.click_through,
+                ),
+            ] {
+                let node = tree
+                    .nodes
+                    .iter()
+                    .find(|node| node.id == id)
+                    .ok_or_else(|| {
+                        "general accessibility tree omitted an overlay setting".to_owned()
+                    })?;
+                if node.role != AccessibilityRole::Switch
+                    || node.label != label
+                    || node.value.as_deref() != Some(value)
+                    || node.disabled != controls_disabled
+                    || node.supports_click != !controls_disabled
+                    || node.supports_focus != !controls_disabled
+                    || node.toggled
+                        != Some(if toggled {
+                            AccessibilityToggle::On
+                        } else {
+                            AccessibilityToggle::Off
+                        })
+                {
+                    return Err(
+                        "overlay accessibility semantics diverged from the visible control"
+                            .to_owned(),
+                    );
+                }
             }
             #[cfg(target_os = "macos")]
             self.accessibility
@@ -788,6 +894,14 @@ impl SettingsView {
         self.start_request(
             PendingOperation::OverlayVisibility,
             Some(SettingValue::OverlayVisible(visible)),
+            cx,
+        );
+    }
+
+    fn set_overlay_settings(&mut self, settings: SettingsOverlay, cx: &mut Context<Self>) {
+        self.start_request(
+            PendingOperation::OverlaySettings,
+            Some(SettingValue::OverlaySettings(settings)),
             cx,
         );
     }
@@ -1185,6 +1299,9 @@ impl SettingsView {
                 Some(SettingValue::OverlayVisible(visible)) => {
                     client.set_overlay_visible(visible).await
                 }
+                Some(SettingValue::OverlaySettings(settings)) => {
+                    client.set_overlay_settings(settings).await
+                }
                 Some(SettingValue::MotionAudioEnabled(enabled)) => {
                     client.set_motion_audio_enabled(enabled).await
                 }
@@ -1225,6 +1342,7 @@ impl SettingsView {
 #[derive(Clone, Copy)]
 enum SettingValue {
     OverlayVisible(bool),
+    OverlaySettings(SettingsOverlay),
     MotionAudioEnabled(bool),
     StartupItemEnabled(bool),
     OpenConfigBackupLocation,
@@ -1329,6 +1447,8 @@ impl Render for SettingsView {
                     ACCESSIBILITY_MODELS => &self.models_focus,
                     ACCESSIBILITY_DIAGNOSTICS => &self.diagnostics_focus,
                     ACCESSIBILITY_OVERLAY => &self.overlay_focus,
+                    ACCESSIBILITY_OVERLAY_TOPMOST => &self.overlay_topmost_focus,
+                    ACCESSIBILITY_OVERLAY_CLICK_THROUGH => &self.overlay_click_through_focus,
                     ACCESSIBILITY_AUDIO => &self.audio_focus,
                     ACCESSIBILITY_STARTUP => &self.startup_item_focus,
                     ACCESSIBILITY_OPEN_BACKUPS => &self.open_backups_focus,
@@ -1346,6 +1466,10 @@ impl Render for SettingsView {
         let overlay_visible = snapshot
             .as_ref()
             .is_some_and(|snapshot| snapshot.overlay_visible);
+        let overlay_settings = snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.overlay)
+            .unwrap_or_default();
         let motion_audio_enabled = snapshot
             .as_ref()
             .is_some_and(|snapshot| snapshot.motion_audio_enabled);
@@ -1359,9 +1483,15 @@ impl Render for SettingsView {
         let status: SharedString = match (&self.error, self.pending, &snapshot) {
             (Some(error), _, _) => error.to_string().into(),
             (_, Some(PendingOperation::Refresh), _) => "Refreshing...".into(),
-            (_, Some(PendingOperation::OverlayVisibility | PendingOperation::MotionAudio), _) => {
-                "Saving...".into()
-            }
+            (
+                _,
+                Some(
+                    PendingOperation::OverlayVisibility
+                    | PendingOperation::OverlaySettings
+                    | PendingOperation::MotionAudio,
+                ),
+                _,
+            ) => "Saving...".into(),
             (_, Some(PendingOperation::StartupItem), _) => "Updating login startup...".into(),
             (_, Some(PendingOperation::ModelSelection), _) => "Activating model...".into(),
             (_, Some(PendingOperation::ModelDeletion), _) => "Deleting model...".into(),
@@ -1537,6 +1667,70 @@ impl Render for SettingsView {
             }
         }));
 
+        let always_on_top = overlay_settings.always_on_top;
+        let topmost_row = setting_row(
+            "Always on top",
+            "Keep the Live2D overlay above other windows".into(),
+            SettingRowState {
+                enabled: always_on_top,
+                disabled,
+                tab_index: 4,
+            },
+            &self.overlay_topmost_focus,
+            window,
+            tokens,
+        )
+        .id("overlay-always-on-top")
+        .on_click(cx.listener(move |view, _, window, cx| {
+            if !disabled {
+                window.focus(&view.overlay_topmost_focus);
+                let mut settings = overlay_settings;
+                settings.always_on_top = !always_on_top;
+                view.set_overlay_settings(settings, cx);
+            }
+        }))
+        .on_key_down(cx.listener(move |view, event, window, cx| {
+            if !disabled && is_activation_key(event) {
+                cx.stop_propagation();
+                window.focus(&view.overlay_topmost_focus);
+                let mut settings = overlay_settings;
+                settings.always_on_top = !always_on_top;
+                view.set_overlay_settings(settings, cx);
+            }
+        }));
+
+        let click_through = overlay_settings.click_through;
+        let click_through_row = setting_row(
+            "Click-through overlay",
+            "Let pointer input pass through the Live2D overlay".into(),
+            SettingRowState {
+                enabled: click_through,
+                disabled,
+                tab_index: 5,
+            },
+            &self.overlay_click_through_focus,
+            window,
+            tokens,
+        )
+        .id("overlay-click-through")
+        .on_click(cx.listener(move |view, _, window, cx| {
+            if !disabled {
+                window.focus(&view.overlay_click_through_focus);
+                let mut settings = overlay_settings;
+                settings.click_through = !click_through;
+                view.set_overlay_settings(settings, cx);
+            }
+        }))
+        .on_key_down(cx.listener(move |view, event, window, cx| {
+            if !disabled && is_activation_key(event) {
+                cx.stop_propagation();
+                window.focus(&view.overlay_click_through_focus);
+                let mut settings = overlay_settings;
+                settings.click_through = !click_through;
+                view.set_overlay_settings(settings, cx);
+            }
+        }));
+
         let startup_item = startup_item_presentation(
             snapshot.as_ref().map(|snapshot| snapshot.startup_item),
             disabled,
@@ -1625,6 +1819,8 @@ impl Render for SettingsView {
                     ),
             )
             .child(overlay_row)
+            .child(topmost_row)
+            .child(click_through_row)
             .child(audio_row)
             .child(startup_item_row)
             .child(div().flex_1());
