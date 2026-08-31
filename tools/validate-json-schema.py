@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 INPUT_DIR = ROOT / "shared" / "fixtures" / "input-sequences"
 EXPECTED_DIR = ROOT / "shared" / "fixtures" / "expected-state"
 CONFIG_DIR = ROOT / "shared" / "config" / "fixtures"
+STATE_DIR = ROOT / "shared" / "config" / "state-fixtures"
 MODEL_FIXTURE_DIR = ROOT / "shared" / "fixtures" / "model-fixtures"
 
 
@@ -60,8 +61,10 @@ def validate_file(path: Path, validator: Draft202012Validator) -> None:
     print(f"ok json-schema {path.relative_to(ROOT)}")
 
 
-def validate_config_fixtures(validator: Draft202012Validator) -> int:
-    manifest_path = CONFIG_DIR / "manifest.json"
+def validate_manifest_fixtures(
+    directory: Path, validator: Draft202012Validator, label: str
+) -> int:
+    manifest_path = directory / "manifest.json"
     manifest = load(manifest_path)
     if not isinstance(manifest, dict) or manifest.get("schemaVersion") != 1:
         raise RuntimeError(f"{manifest_path.relative_to(ROOT)}: schemaVersion must be 1")
@@ -87,7 +90,7 @@ def validate_config_fixtures(validator: Draft202012Validator) -> int:
             or expected not in {"accept", "reject"}
         ):
             raise RuntimeError(f"{manifest_path.relative_to(ROOT)}: invalid or duplicate case")
-        path = CONFIG_DIR / file_name
+        path = directory / file_name
         if not path.is_file():
             raise RuntimeError(f"{manifest_path.relative_to(ROOT)}: missing fixture {file_name}")
         listed_ids.add(case_id)
@@ -97,10 +100,10 @@ def validate_config_fixtures(validator: Draft202012Validator) -> int:
         if accepted != (expected == "accept"):
             detail = "fixture unexpectedly accepted" if accepted else errors[0].message
             raise RuntimeError(f"{path.relative_to(ROOT)}: expected {expected}, got {detail}")
-        print(f"ok json-schema config {case_id} ({expected})")
+        print(f"ok json-schema {label} {case_id} ({expected})")
 
     actual_files = {
-        path.name for path in CONFIG_DIR.glob("*.json") if path.name != "manifest.json"
+        path.name for path in directory.glob("*.json") if path.name != "manifest.json"
     }
     if actual_files != listed_files:
         raise RuntimeError(
@@ -118,8 +121,15 @@ def main() -> int:
     expected_count = validate_directory(
         EXPECTED_DIR, validate_schema(EXPECTED_DIR / "schema.json")
     )
-    config_count = validate_config_fixtures(
-        validate_schema(ROOT / "shared" / "config" / "config.schema.json")
+    config_count = validate_manifest_fixtures(
+        CONFIG_DIR,
+        validate_schema(ROOT / "shared" / "config" / "config.schema.json"),
+        "config",
+    )
+    state_count = validate_manifest_fixtures(
+        STATE_DIR,
+        validate_schema(ROOT / "shared" / "config" / "state.schema.json"),
+        "state",
     )
     validate_file(
         MODEL_FIXTURE_DIR / "legacy-core-baseline.json",
@@ -127,7 +137,7 @@ def main() -> int:
     )
     print(
         f"validated {input_count} input, {expected_count} expected, and "
-        f"{config_count} config fixture(s), plus the legacy Core baseline "
+        f"{config_count} config and {state_count} state fixture(s), plus the legacy Core baseline "
         "with Draft 2020-12"
     )
     return 0

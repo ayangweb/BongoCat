@@ -317,6 +317,12 @@ jobs:
           grep -Fq 'bongocat-app: recovery window opened' <<<"$output"
           grep -Fq 'bongocat-app: recovery diagnostics verified' <<<"$output"
           grep -Fq 'bongocat-app: recovery service stopped' <<<"$output"
+      - name: Smoke macOS settings window state restore
+        if: matrix.os == 'macos-latest'
+        run: |
+          output=$(cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release --features storage-test-injection --target-dir native/target/storage-test-injection -- --settings-window-state-smoke 2>&1)
+          printf '%s\n' "$output"
+          grep -Fq 'bongocat-app: settings window state restored after restart' <<<"$output"
       - name: Smoke Windows configuration recovery window
         if: matrix.os == 'windows-latest'
         shell: pwsh
@@ -384,6 +390,29 @@ jobs:
             "bongocat-app: recovery service stopped"
           )) {
             if (-not $output.Contains($expected)) { throw "Windows recovery smoke did not report: $expected" }
+          }
+          $stateStdout = Join-Path $env:RUNNER_TEMP "bongocat-settings-window-state.stdout.log"
+          $stateStderr = Join-Path $env:RUNNER_TEMP "bongocat-settings-window-state.stderr.log"
+          Remove-Item $stateStdout, $stateStderr -Force -ErrorAction SilentlyContinue
+          $stateProcess = Start-Process `
+            -FilePath $executable `
+            -ArgumentList @("--settings-window-state-smoke") `
+            -NoNewWindow `
+            -PassThru `
+            -RedirectStandardOutput $stateStdout `
+            -RedirectStandardError $stateStderr
+          if (-not $stateProcess.WaitForExit(20000)) {
+            Stop-Process -Id $stateProcess.Id -Force -ErrorAction SilentlyContinue
+            throw "Windows settings window state smoke exceeded 20 seconds"
+          }
+          $stateOutput = @(
+            Get-Content $stateStdout -Raw -ErrorAction SilentlyContinue
+            Get-Content $stateStderr -Raw -ErrorAction SilentlyContinue
+          ) -join "`n"
+          Write-Host $stateOutput
+          if ($stateProcess.ExitCode -ne 0) { throw "Windows settings window state smoke exited with $($stateProcess.ExitCode)" }
+          if (-not $stateOutput.Contains("bongocat-app: settings window state restored after restart")) {
+            throw "Windows settings window state smoke did not report restart restore"
           }
       - name: Smoke Windows startup item lifecycle
         if: matrix.os == 'windows-latest'

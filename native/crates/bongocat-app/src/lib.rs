@@ -8,9 +8,9 @@ compile_error!("storage-test-injection cannot be enabled for Production builds")
 
 use bongocat_audio::{MotionAudioService, MotionAudioShutdownError};
 use bongocat_config::{
-    BuildEnvironment, ConfigError, ConfigRecovery, ConfigRevision, ConfigStore,
-    InterruptedConfigRecovery, NativeConfig, PlatformStorageError, SelectedModelOrigin,
-    StorageLayout, platform_layout,
+    ApplicationState, BuildEnvironment, ConfigError, ConfigRecovery, ConfigRevision, ConfigStore,
+    InterruptedConfigRecovery, NativeConfig, PlatformStorageError, SelectedModelOrigin, StateError,
+    StateStore, StorageLayout, WindowPlacement, platform_layout,
 };
 use bongocat_model::{
     CommittedModel, InstalledModel, ModelCatalogEntry, ModelError, ModelId, ModelImportProgress,
@@ -57,6 +57,7 @@ pub enum ApplicationError {
     Shutdown(ShutdownError),
     MotionAudioShutdown(MotionAudioShutdownError),
     ConfigRollback(ConfigError),
+    State(StateError),
     ConfigurationRecoveryRequired,
 }
 
@@ -101,6 +102,7 @@ impl fmt::Display for ApplicationError {
             Self::ConfigRollback(error) => {
                 write!(formatter, "model selection config rollback failed: {error}")
             }
+            Self::State(error) => write!(formatter, "application state failed: {error}"),
             Self::ConfigurationRecoveryRequired => {
                 formatter.write_str("configuration recovery is required")
             }
@@ -119,6 +121,12 @@ impl From<PlatformStorageError> for ApplicationError {
 impl From<ConfigError> for ApplicationError {
     fn from(error: ConfigError) -> Self {
         Self::Config(error)
+    }
+}
+
+impl From<StateError> for ApplicationError {
+    fn from(error: StateError) -> Self {
+        Self::State(error)
     }
 }
 
@@ -155,6 +163,8 @@ pub enum ApplicationConfigStatus {
 
 pub struct Application {
     config_store: ConfigStore,
+    state_store: StateStore,
+    state: ApplicationState,
     config: NativeConfig,
     config_revision: Option<ConfigRevision>,
     config_status: ApplicationConfigStatus,
@@ -202,7 +212,9 @@ impl Application {
             layout.locks.join("models.writer.lock"),
             ModelPackageLimits::default(),
         )?;
-        let config_store = ConfigStore::new(layout)?;
+        let config_store = ConfigStore::new(layout.clone())?;
+        let state_store = StateStore::new(layout);
+        let state = state_store.load_or_default().state;
         let (config, config_revision, config_recovery, interrupted_config_recovery, config_status) =
             match config_store.load_or_default() {
                 Ok(loaded) => (
@@ -263,6 +275,8 @@ impl Application {
             .map(model_origin_from_config);
         Ok(Self {
             config_store,
+            state_store,
+            state,
             config,
             config_revision,
             config_status,
@@ -309,6 +323,20 @@ impl Application {
 
     pub const fn config_status(&self) -> ApplicationConfigStatus {
         self.config_status
+    }
+
+    pub const fn settings_window_placement(&self) -> Option<WindowPlacement> {
+        self.state.settings_window
+    }
+
+    pub fn persist_settings_window_placement(
+        &mut self,
+        placement: Option<WindowPlacement>,
+    ) -> Result<(), ApplicationError> {
+        let state = ApplicationState::with_settings_window(placement);
+        self.state_store.commit(&state)?;
+        self.state = state;
+        Ok(())
     }
 
     pub(crate) fn config_backup_directory(&self) -> &Path {

@@ -1,5 +1,5 @@
 use crate::{Application, ApplicationConfigStatus, ApplicationError};
-use bongocat_config::{ConfigError, ConfigWriteFailureReason};
+use bongocat_config::{ConfigError, ConfigWriteFailureReason, StateError, WindowPlacement};
 use bongocat_model::{
     ModelCatalogEntry, ModelDiagnostic, ModelImportProgress, ModelImportStage, ModelOrigin,
     ModelStoreDiagnostic,
@@ -19,7 +19,7 @@ use bongocat_ui::{
     SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportProgress,
     SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsServiceEndpoint,
     SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
-    SettingsStartupItemUnsupportedReason,
+    SettingsStartupItemUnsupportedReason, SettingsWindowPlacement, SettingsWindowState,
 };
 use std::{fmt, path::PathBuf, sync::Arc, thread};
 
@@ -27,6 +27,7 @@ const SETTINGS_COMMAND_CAPACITY: usize = 16;
 
 pub struct ApplicationSettingsService {
     client: SettingsClient,
+    window_state: SettingsWindowState,
     worker: Option<thread::JoinHandle<()>>,
 }
 
@@ -51,18 +52,37 @@ impl ApplicationSettingsService {
         backup_location: Arc<dyn BackupLocationCapability>,
     ) -> Result<Self, SettingsServiceJoinError> {
         let (client, endpoint) = SettingsClient::bounded(SETTINGS_COMMAND_CAPACITY);
+        let window_state = SettingsWindowState::new(
+            application
+                .settings_window_placement()
+                .and_then(settings_window_placement),
+        );
+        let worker_window_state = window_state.clone();
         let worker = thread::Builder::new()
             .name("bongocat-settings-service".to_owned())
-            .spawn(move || run_service(application, endpoint, startup_item, backup_location))
+            .spawn(move || {
+                run_service(
+                    application,
+                    endpoint,
+                    startup_item,
+                    backup_location,
+                    worker_window_state,
+                )
+            })
             .map_err(SettingsServiceJoinError::Spawn)?;
         Ok(Self {
             client,
+            window_state,
             worker: Some(worker),
         })
     }
 
     pub fn client(&self) -> SettingsClient {
         self.client.clone()
+    }
+
+    pub fn window_state(&self) -> SettingsWindowState {
+        self.window_state.clone()
     }
 
     pub fn join(mut self) -> Result<(), SettingsServiceJoinError> {
@@ -137,10 +157,12 @@ fn run_service(
     endpoint: SettingsServiceEndpoint,
     startup_item: Arc<dyn StartupItemCapability>,
     backup_location: Arc<dyn BackupLocationCapability>,
+    window_state: SettingsWindowState,
 ) {
     let mut clock = SettingsSnapshotClock::new(application.runtime_client().snapshot().revision);
     loop {
         let Ok(command) = endpoint.recv_blocking() else {
+            let _ = persist_window_state(&mut application, &window_state);
             let _ = application.shutdown();
             break;
         };
@@ -240,20 +262,58 @@ fn run_service(
             SettingsCommand::Shutdown { reply } => {
                 let before_shutdown =
                     snapshot(&application, &mut clock, false, startup_item.state());
-                let result = application.shutdown().map(|stopped| {
-                    clock.observe_runtime(stopped.revision);
-                    SettingsSnapshot {
-                        revision: clock.revision,
-                        runtime_health: RuntimeHealth::Stopped,
-                        ..before_shutdown
+                let state_result = persist_window_state(&mut application, &window_state);
+                let shutdown_result = application.shutdown();
+                let result = match (state_result, shutdown_result) {
+                    (Ok(()), Ok(stopped)) => {
+                        clock.observe_runtime(stopped.revision);
+                        Ok(SettingsSnapshot {
+                            revision: clock.revision,
+                            runtime_health: RuntimeHealth::Stopped,
+                            ..before_shutdown
+                        })
                     }
-                });
-                let _ = reply.respond(
-                    result.map_err(|_| SettingsError::new(SettingsErrorCode::ShutdownFailed)),
-                );
+                    (Err(_), Ok(_)) => {
+                        Err(SettingsError::new(SettingsErrorCode::StatePersistFailed))
+                    }
+                    (_, Err(_)) => Err(SettingsError::new(SettingsErrorCode::ShutdownFailed)),
+                };
+                let _ = reply.respond(result);
                 break;
             }
         }
+    }
+}
+
+fn settings_window_placement(placement: WindowPlacement) -> Option<SettingsWindowPlacement> {
+    SettingsWindowPlacement::new(
+        placement.x,
+        placement.y,
+        placement.width,
+        placement.height,
+        placement.maximized,
+    )
+}
+
+fn persist_window_state(
+    application: &mut Application,
+    window_state: &SettingsWindowState,
+) -> Result<(), ApplicationError> {
+    let placement = window_state
+        .placement()
+        .map(|placement| {
+            WindowPlacement::new(
+                placement.x,
+                placement.y,
+                placement.width,
+                placement.height,
+                placement.maximized,
+            )
+        })
+        .transpose()?;
+    match application.persist_settings_window_placement(placement) {
+        Err(ApplicationError::State(StateError::UnsupportedSchema(_))) => Ok(()),
+        result => result,
     }
 }
 
@@ -613,6 +673,7 @@ fn map_application_error(error: ApplicationError) -> SettingsError {
         ApplicationError::Config(error) | ApplicationError::ConfigRollback(error) => {
             settings_config_error_code(&error).unwrap_or(SettingsErrorCode::ConfigPersistFailed)
         }
+        ApplicationError::State(_) => SettingsErrorCode::StatePersistFailed,
         ApplicationError::ConfigurationRecoveryRequired => {
             SettingsErrorCode::ConfigurationRecoveryRequired
         }
@@ -1592,6 +1653,116 @@ mod tests {
 
         client.shutdown_blocking().expect("service shutdown");
         service.join().expect("service join");
+    }
+
+    #[test]
+    fn settings_window_layout_flushes_on_shutdown_and_restores_after_restart() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application =
+            Application::start_with_layout(layout.clone()).expect("application start");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let expected = SettingsWindowPlacement::new(-240, 96, 960, 720, true)
+            .expect("valid settings window placement");
+        service.window_state().update(expected);
+
+        service
+            .client()
+            .shutdown_blocking()
+            .expect("service shutdown");
+        service.join().expect("service join");
+
+        let restarted =
+            Application::start_with_layout(layout.clone()).expect("application restart");
+        assert_eq!(
+            restarted.settings_window_placement(),
+            Some(
+                WindowPlacement::new(-240, 96, 960, 720, true).expect("valid persisted placement")
+            )
+        );
+        let config =
+            std::fs::read_to_string(&layout.config).expect("configuration remains readable");
+        assert!(!config.contains("settings_window"));
+        restarted.shutdown().expect("restart shutdown");
+    }
+
+    #[test]
+    fn corrupt_state_never_blocks_configuration_or_runtime_startup() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let store = ConfigStore::new(layout.clone()).expect("config store");
+        let loaded = store.load_or_default().expect("default config");
+        let config_before = std::fs::read(&layout.config).expect("config bytes");
+        std::fs::write(&layout.state, b"corrupt-state").expect("corrupt state fixture");
+
+        let application = Application::start_with_layout(layout.clone())
+            .expect("corrupt state must not block application startup");
+        assert!(application.is_operational());
+        assert_eq!(application.settings_window_placement(), None);
+        assert_eq!(application.config(), &loaded.config);
+        assert_eq!(
+            std::fs::read(&layout.config).expect("config preserved"),
+            config_before
+        );
+        assert_eq!(
+            std::fs::read(&layout.state).expect("state preserved until flush"),
+            b"corrupt-state"
+        );
+        application.shutdown().expect("clean shutdown");
+    }
+
+    #[test]
+    fn future_state_is_preserved_without_failing_service_shutdown() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let store = ConfigStore::new(layout.clone()).expect("config store");
+        store.load_or_default().expect("default config");
+        let future = br#"{"schema_version":2,"settings_window":null}"#;
+        std::fs::write(&layout.state, future).expect("future state");
+
+        let application = Application::start_with_layout(layout.clone())
+            .expect("future state must not block startup");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        service
+            .client()
+            .shutdown_blocking()
+            .expect("future state must not fail shutdown");
+        service.join().expect("service join");
+        assert_eq!(
+            std::fs::read(&layout.state).expect("future state preserved"),
+            future
+        );
+    }
+
+    #[test]
+    fn state_write_failure_is_reported_after_runtime_still_stops() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application =
+            Application::start_with_layout(layout.clone()).expect("application start");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        service.window_state().update(
+            SettingsWindowPlacement::new(20, 40, 800, 600, false)
+                .expect("valid settings window placement"),
+        );
+        let state_lock = std::fs::File::options()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(layout.locks.join("state.writer.lock"))
+            .expect("state writer lock");
+        state_lock.lock().expect("hold state writer lock");
+
+        let error = service
+            .client()
+            .shutdown_blocking()
+            .expect_err("state lock must report persistence failure");
+        assert_eq!(error.code(), SettingsErrorCode::StatePersistFailed);
+        service
+            .join()
+            .expect("runtime shutdown and service join still complete");
+        state_lock.unlock().expect("release state writer lock");
     }
 
     #[test]

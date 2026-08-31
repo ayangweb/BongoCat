@@ -934,6 +934,11 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
   - 验收证据（2026-08-31）：Native schema/Rust 类型没有 serde alias 或 legacy 字段，严格未知
     字段 fixture 与单元测试拒绝 `legacy_alias`/`old_pinia_field`；产品 `ConfigStore` 只解析当前
     环境的 Native `config.json` 并仅执行 v1 -> v2 顺序迁移。
+- [ ] 独立 `state.json` schema 只保存可恢复窗口布局，不进入用户配置事务。
+  - 状态（2026-08-31）：正式 `StateStore` v1、有限逻辑坐标/尺寸、maximized、独立 writer lock、
+    原子提交后验证/回滚、损坏/未来 schema 非阻塞回退和未来文件防降级已实现；settings worker
+    shutdown flush、进程重启恢复与 macOS release GPUI resize smoke 已进入当前批次。双平台 CI
+    和 Windows 原生窗口 smoke 通过前保持未勾选，由 `P6-STATE-WINDOW-LAYOUT` 跟踪。
 
 ### 7.2 环境与持久化事务
 
@@ -989,10 +994,15 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
 
 - [ ] Development 与 Production 的相对目录树和 JSON schema 完全一致。
 - [ ] 配置、state、模型、备份、日志、锁和单实例 namespace 均包含环境边界。
+  - 状态（2026-08-31）：config、state、模型、备份、对应 writer lock 和 Windows 单实例均已按
+    环境隔离；state 双环境 sentinel/restart/lock 测试已进入当前批次。日志 writer 与更新 channel
+    仍未实现，因此总项保持未勾选。
 - [ ] 两个环境可同时运行，不争用 writer lock、模型目录或日志文件。
   - 状态（2026-08-30）：config store 已通过双环境进程测试；正式 app 又以相同模型 ID
     同时写入两套环境，验证 `models/` 和 `locks/models.writer.lock` 分离。日志 writer
     尚未实现，因此保持未勾选。
+  - 状态（2026-08-31）：state 进一步使用独立环境根和 `locks/state.writer.lock`，Development/
+    Production 写入不同窗口布局并重启读回；日志 writer 缺失仍阻止总项勾选。
 - [ ] 开发构建即使收到指向 Production 的 CLI 参数或进程环境变量也拒绝越界。
 - [ ] Production 不自动复制 Development 数据；需要测试数据时使用显式导入。
 - [ ] 更新 channel 与环境绑定，Development 不能安装 Production 更新或反向覆盖。
@@ -1665,6 +1675,17 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       `99474952561`/`99474952603`/`99474952709` 通过完整 format、Clippy、workspace test、
       release/Production 和平台 smoke，Windows input/config job `99474952566`、config-store job
       `99474952502` 与 dependency policy job `99474952595` 同时通过，退出条件满足。
+44. [ ] `P6-STATE-WINDOW-LAYOUT`：以环境内 `state.json` 恢复设置窗口布局。
+    - 依赖：`P6-STORAGE-LAYOUT-BOUNDARY`、正式 settings lifecycle、GPUI 公共 bounds API。
+    - 退出条件：state 使用独立 v1 schema、`state.writer.lock` 和原子提交后验证，不进入 config
+      revision/backup/recovery；窗口逻辑坐标/尺寸/maximized 有界且支持负坐标，完全离屏时回到
+      当前显示器居中 `800x600`；缺失、损坏、I/O 和未来 schema 不阻塞 config/runtime，旧版本
+      不覆盖未来 state；GPUI observer 只更新内存，settings worker shutdown flush，macOS Entity
+      重建与 Windows 隐藏/重显使用最新内存值，进程重启读回；config/ui/app 定向测试、严格
+      Clippy、完整 Native workspace、三平台 CI 和双平台隔离 storage smoke 通过。
+    - 状态（2026-08-31）：typed store、UI tracker、Application/settings worker 接线、损坏隔离、
+      双环境、并发 lock、验证失败回滚、shutdown/restart 单测和 Development-only 双平台 smoke
+      已实现；本机 macOS release smoke 与完整门禁正在验证，CI 证据完成前保持未勾选。
 
 ## 13. 待决策清单
 

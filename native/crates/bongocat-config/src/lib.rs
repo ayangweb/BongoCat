@@ -11,6 +11,12 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+mod state;
+pub use state::{
+    ApplicationState, STATE_SCHEMA_VERSION, StateError, StateLoadOutcome, StateLoadStatus,
+    StateStore, WindowPlacement,
+};
+
 pub const BUNDLE_ID: &str = "com.ayangweb.bongo-cat";
 pub const SCHEMA_VERSION: u32 = 2;
 const PREVIOUS_SCHEMA_VERSION: u32 = 1;
@@ -1267,6 +1273,10 @@ fn restore_config_bytes(path: &Path, previous: Option<&[u8]>) -> Result<(), Conf
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), ConfigError> {
+    write_atomic_io(path, bytes).map_err(ConfigError::from)
+}
+
+fn write_atomic_io(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let mut file = AtomicWriteFile::open(path)?;
     file.write_all(bytes)?;
     file.commit()?;

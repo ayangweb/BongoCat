@@ -37,6 +37,8 @@ struct RunOptions {
     models_page_smoke: bool,
     #[cfg(feature = "storage-test-injection")]
     configuration_recovery_smoke: bool,
+    #[cfg(feature = "storage-test-injection")]
+    settings_window_state_smoke: bool,
     system_menu_smoke: bool,
     #[cfg(target_os = "macos")]
     application_reopen_smoke: bool,
@@ -55,6 +57,8 @@ impl RunOptions {
         let mut models_page_smoke = false;
         #[cfg(feature = "storage-test-injection")]
         let mut configuration_recovery_smoke = false;
+        #[cfg(feature = "storage-test-injection")]
+        let mut settings_window_state_smoke = false;
         let mut system_menu_smoke = false;
         #[cfg(target_os = "macos")]
         let mut application_reopen_smoke = false;
@@ -79,6 +83,8 @@ impl RunOptions {
                 }
                 #[cfg(feature = "storage-test-injection")]
                 "--configuration-recovery-smoke" => configuration_recovery_smoke = true,
+                #[cfg(feature = "storage-test-injection")]
+                "--settings-window-state-smoke" => settings_window_state_smoke = true,
                 "--system-menu-smoke" => system_menu_smoke = true,
                 #[cfg(target_os = "macos")]
                 "--application-reopen-smoke" => application_reopen_smoke = true,
@@ -100,6 +106,8 @@ impl RunOptions {
             models_page_smoke,
             #[cfg(feature = "storage-test-injection")]
             configuration_recovery_smoke,
+            #[cfg(feature = "storage-test-injection")]
+            settings_window_state_smoke,
             system_menu_smoke,
             #[cfg(target_os = "macos")]
             application_reopen_smoke,
@@ -152,13 +160,13 @@ impl std::error::Error for RunOptionsError {}
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn usage() -> &'static str {
     #[cfg(all(target_os = "windows", feature = "storage-test-injection"))]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--configuration-recovery-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit.";
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit.";
 
     #[cfg(all(target_os = "windows", not(feature = "storage-test-injection")))]
     return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit.";
 
     #[cfg(all(target_os = "macos", feature = "storage-test-injection"))]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--configuration-recovery-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit.";
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit.";
 
     #[cfg(all(target_os = "macos", not(feature = "storage-test-injection")))]
     "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit."
@@ -380,12 +388,13 @@ fn ensure_settings_window(cx: &mut App) -> Result<WindowHandle<SettingsView>, St
         }
     }
 
-    let settings_client = cx
+    let (settings_client, window_state) = cx
         .try_global::<ProductCoordinator>()
         .and_then(|coordinator| coordinator.settings_service.as_ref())
-        .map(bongocat_app::ApplicationSettingsService::client)
+        .map(|service| (service.client(), service.window_state()))
         .ok_or_else(|| "settings service owner is unavailable".to_owned())?;
-    let window_handle = open_settings_window(settings_client, request_product_quit, cx)?;
+    let window_handle =
+        open_settings_window(settings_client, window_state, request_product_quit, cx)?;
     cx.global_mut::<ProductCoordinator>().settings_window = Some(window_handle);
     Ok(window_handle)
 }
@@ -481,9 +490,15 @@ fn run_configuration_recovery_mode(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let settings_service = bongocat_app::ApplicationSettingsService::start(application)?;
     let settings_client = settings_service.client();
+    let window_state = settings_service.window_state();
     let gpui_application = GpuiApplication::new();
     gpui_application.run(move |cx| {
-        if let Err(error) = open_settings_window(settings_client.clone(), |cx| cx.quit(), cx) {
+        if let Err(error) = open_settings_window(
+            settings_client.clone(),
+            window_state.clone(),
+            |cx| cx.quit(),
+            cx,
+        ) {
             let mut stderr = io::stderr().lock();
             let _ = writeln!(stderr, "configuration recovery window failed: {error}");
             let _ = stderr.flush();
@@ -552,6 +567,7 @@ fn run_configuration_recovery_smoke() -> Result<(), Box<dyn std::error::Error>> 
     write_smoke_status("configuration recovery required")?;
     let service = bongocat_app::ApplicationSettingsService::start(application)?;
     let client = service.client();
+    let window_state = service.window_state();
     let snapshot = client.read_snapshot_blocking()?;
     if !matches!(
         snapshot.configuration_status,
@@ -562,7 +578,7 @@ fn run_configuration_recovery_smoke() -> Result<(), Box<dyn std::error::Error>> 
     let gpui_application = GpuiApplication::new();
     let smoke_client = client.clone();
     gpui_application.run(move |cx| {
-        let window = match open_settings_window(smoke_client, |cx| cx.quit(), cx) {
+        let window = match open_settings_window(smoke_client, window_state, |cx| cx.quit(), cx) {
             Ok(window) => window,
             Err(error) => {
                 let _ = write_smoke_status(&format!("recovery window failed: {error}"));
@@ -599,6 +615,127 @@ fn run_configuration_recovery_smoke() -> Result<(), Box<dyn std::error::Error>> 
     Ok(())
 }
 
+#[cfg(all(
+    feature = "storage-test-injection",
+    any(target_os = "macos", target_os = "windows")
+))]
+fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
+    use bongocat_config::{
+        ApplicationState, BuildEnvironment, StateStore, StorageLayout, WindowPlacement,
+    };
+
+    let root = env::temp_dir().join(format!(
+        "bongocat-settings-window-state-smoke-{}",
+        std::process::id()
+    ));
+    if root.exists() {
+        std::fs::remove_dir_all(&root)?;
+    }
+    let root = RecoverySmokeRoot(root);
+    let layout = StorageLayout::under(&root.0, BuildEnvironment::Development);
+    StateStore::new(layout.clone()).commit(&ApplicationState::with_settings_window(Some(
+        WindowPlacement::new(999_000, 999_000, 800, 600, false)?,
+    )))?;
+    let application = bongocat_app::Application::start_with_layout_for_smoke(
+        layout.clone(),
+        development_preset_root(),
+    )?;
+    let service = bongocat_app::ApplicationSettingsService::start(application)?;
+    let client = service.client();
+    let window_state = service.window_state();
+    let gpui_application = GpuiApplication::new();
+    gpui_application.run(move |cx| {
+        let window =
+            match open_settings_window(client.clone(), window_state.clone(), |cx| cx.quit(), cx) {
+                Ok(window) => window,
+                Err(error) => {
+                    let _ = writeln!(
+                        io::stderr().lock(),
+                        "settings window state smoke failed: {error}"
+                    );
+                    let _ = std::fs::remove_dir_all(&root.0);
+                    std::process::exit(1);
+                }
+            };
+        cx.spawn(async move |cx| {
+            let result = async {
+                let initial = window_state.placement();
+                if initial.is_none_or(|placement| placement.x == 999_000 && placement.y == 999_000)
+                {
+                    return Err(io::Error::other(
+                        "offscreen settings window state did not fall back to a visible display",
+                    )
+                    .into());
+                }
+                window
+                    .update(cx, |_, window, _| {
+                        window.resize(gpui::size(gpui::px(920.0), gpui::px(680.0)));
+                    })
+                    .map_err(|error| {
+                        io::Error::other(format!("resize settings window: {error}"))
+                    })?;
+                let mut expected = None;
+                for _ in 0..200 {
+                    let current = window_state.placement();
+                    if current.is_some() && current != initial {
+                        expected = current;
+                        break;
+                    }
+                    Timer::after(Duration::from_millis(10)).await;
+                }
+                let expected = expected.ok_or_else(|| {
+                    io::Error::other("settings window bounds observer did not publish resize")
+                })?;
+                client
+                    .shutdown()
+                    .await
+                    .map_err(|error| io::Error::other(error.to_string()))?;
+                service
+                    .join()
+                    .map_err(|error| io::Error::other(error.to_string()))?;
+                let persisted = StateStore::new(layout.clone()).load_or_default().state;
+                let expected = WindowPlacement::new(
+                    expected.x,
+                    expected.y,
+                    expected.width,
+                    expected.height,
+                    expected.maximized,
+                )?;
+                if persisted.settings_window != Some(expected) {
+                    return Err(io::Error::other(
+                        "settings window state did not match observed GPUI bounds",
+                    )
+                    .into());
+                }
+                let restarted = bongocat_app::Application::start_with_layout_for_smoke(
+                    layout,
+                    development_preset_root(),
+                )?;
+                if restarted.settings_window_placement() != Some(expected) {
+                    return Err(io::Error::other(
+                        "application restart did not restore settings window state",
+                    )
+                    .into());
+                }
+                restarted.shutdown()?;
+                root.cleanup()?;
+                write_smoke_status("settings window state restored after restart")?;
+                Ok::<(), Box<dyn std::error::Error>>(())
+            }
+            .await;
+            if let Err(error) = result {
+                let mut stderr = io::stderr().lock();
+                let _ = writeln!(stderr, "settings window state smoke failed: {error}");
+                let _ = stderr.flush();
+                std::process::exit(1);
+            }
+            let _ = cx.update(|cx| cx.quit());
+        })
+        .detach();
+    });
+    Ok(())
+}
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let run_options = match RunOptions::parse(env::args().skip(1)) {
@@ -612,6 +749,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "storage-test-injection")]
     if run_options.configuration_recovery_smoke {
         return run_configuration_recovery_smoke();
+    }
+    #[cfg(feature = "storage-test-injection")]
+    if run_options.settings_window_state_smoke {
+        return run_settings_window_state_smoke();
     }
     #[cfg(target_os = "macos")]
     if run_options.startup_item_smoke {
@@ -737,27 +878,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         };
         let settings_client = settings_service.client();
-        let settings_window = match open_settings_window(settings_client, request_product_quit, cx)
-        {
-            Ok(window) => window,
-            Err(error) => {
-                record_failure(&run_failures, error);
-                let mut overlay = overlay;
-                if let Err(error) = overlay.stop_input() {
-                    record_failure(&run_failures, error.to_string());
+        let window_state = settings_service.window_state();
+        let settings_window =
+            match open_settings_window(settings_client, window_state, request_product_quit, cx) {
+                Ok(window) => window,
+                Err(error) => {
+                    record_failure(&run_failures, error);
+                    let mut overlay = overlay;
+                    if let Err(error) = overlay.stop_input() {
+                        record_failure(&run_failures, error.to_string());
+                    }
+                    let client = settings_service.client();
+                    let _ = client.shutdown_blocking();
+                    if let Err(error) = settings_service.join() {
+                        record_failure(&run_failures, error.to_string());
+                    }
+                    if let Err(error) = overlay.finish_after_runtime_shutdown() {
+                        record_failure(&run_failures, error.to_string());
+                    }
+                    cx.quit();
+                    return;
                 }
-                let client = settings_service.client();
-                let _ = client.shutdown_blocking();
-                if let Err(error) = settings_service.join() {
-                    record_failure(&run_failures, error.to_string());
-                }
-                if let Err(error) = overlay.finish_after_runtime_shutdown() {
-                    record_failure(&run_failures, error.to_string());
-                }
-                cx.quit();
-                return;
-            }
-        };
+            };
 
         #[cfg(target_os = "windows")]
         let overlay = Rc::new(RefCell::new(Some(overlay)));
@@ -1706,6 +1848,8 @@ mod tests {
                 models_page_smoke: false,
                 #[cfg(feature = "storage-test-injection")]
                 configuration_recovery_smoke: false,
+                #[cfg(feature = "storage-test-injection")]
+                settings_window_state_smoke: false,
                 system_menu_smoke: false,
                 #[cfg(target_os = "macos")]
                 application_reopen_smoke: false,
@@ -1761,8 +1905,19 @@ mod tests {
         let options = RunOptions::parse(["--configuration-recovery-smoke".to_owned()])
             .expect("configuration recovery smoke options");
         assert!(options.configuration_recovery_smoke);
+        assert!(!options.settings_window_state_smoke);
         assert!(!options.settings_window_smoke);
         assert!(!options.models_page_smoke);
+    }
+
+    #[cfg(feature = "storage-test-injection")]
+    #[test]
+    fn settings_window_state_smoke_is_opt_in() {
+        let options = RunOptions::parse(["--settings-window-state-smoke".to_owned()])
+            .expect("settings window state smoke options");
+        assert!(options.settings_window_state_smoke);
+        assert!(!options.configuration_recovery_smoke);
+        assert!(!options.settings_window_smoke);
     }
 
     #[cfg(not(feature = "storage-test-injection"))]
@@ -1772,6 +1927,10 @@ mod tests {
             .expect_err("default product options must reject storage injection");
         assert!(error.message.contains("unknown argument"));
         assert!(!usage().contains("configuration-recovery-smoke"));
+        let state_error = RunOptions::parse(["--settings-window-state-smoke".to_owned()])
+            .expect_err("default product options must reject state storage injection");
+        assert!(state_error.message.contains("unknown argument"));
+        assert!(!usage().contains("settings-window-state-smoke"));
     }
 
     #[test]

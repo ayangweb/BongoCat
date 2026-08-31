@@ -15,6 +15,66 @@ mod window;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub use window::{SettingsView, open_settings_window};
 
+const MIN_SETTINGS_WINDOW_WIDTH: u32 = 640;
+const MIN_SETTINGS_WINDOW_HEIGHT: u32 = 480;
+const MAX_SETTINGS_WINDOW_DIMENSION: u32 = 16_384;
+const MAX_SETTINGS_WINDOW_COORDINATE: i32 = 1_000_000;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SettingsWindowPlacement {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+    pub maximized: bool,
+}
+
+impl SettingsWindowPlacement {
+    pub fn new(x: i32, y: i32, width: u32, height: u32, maximized: bool) -> Option<Self> {
+        if !(-MAX_SETTINGS_WINDOW_COORDINATE..=MAX_SETTINGS_WINDOW_COORDINATE).contains(&x)
+            || !(-MAX_SETTINGS_WINDOW_COORDINATE..=MAX_SETTINGS_WINDOW_COORDINATE).contains(&y)
+            || !(MIN_SETTINGS_WINDOW_WIDTH..=MAX_SETTINGS_WINDOW_DIMENSION).contains(&width)
+            || !(MIN_SETTINGS_WINDOW_HEIGHT..=MAX_SETTINGS_WINDOW_DIMENSION).contains(&height)
+        {
+            return None;
+        }
+        Some(Self {
+            x,
+            y,
+            width,
+            height,
+            maximized,
+        })
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct SettingsWindowState {
+    placement: Arc<Mutex<Option<SettingsWindowPlacement>>>,
+}
+
+impl SettingsWindowState {
+    pub fn new(placement: Option<SettingsWindowPlacement>) -> Self {
+        Self {
+            placement: Arc::new(Mutex::new(placement)),
+        }
+    }
+
+    pub fn placement(&self) -> Option<SettingsWindowPlacement> {
+        *self
+            .placement
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    pub fn update(&self, placement: SettingsWindowPlacement) {
+        *self
+            .placement
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(placement);
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RuntimeHealth {
     Starting,
@@ -356,6 +416,7 @@ pub enum SettingsErrorCode {
     ModelDeleteFailed,
     StartupItemUpdateFailed,
     WindowUnavailable,
+    StatePersistFailed,
     ShutdownFailed,
 }
 
@@ -419,6 +480,7 @@ impl fmt::Display for SettingsError {
             SettingsErrorCode::ModelDeleteFailed => "installed model could not be deleted",
             SettingsErrorCode::StartupItemUpdateFailed => "startup setting could not be updated",
             SettingsErrorCode::WindowUnavailable => "settings window could not be hidden",
+            SettingsErrorCode::StatePersistFailed => "window layout could not be saved",
             SettingsErrorCode::ShutdownFailed => "application shutdown did not complete",
         })
     }
@@ -1033,6 +1095,21 @@ mod tests {
         assert!(unchanged.overlay_visible);
         assert!(!unchanged.motion_audio_enabled);
         worker.join().expect("worker join");
+    }
+
+    #[test]
+    fn settings_window_state_is_validated_and_shared_across_clones() {
+        assert!(SettingsWindowPlacement::new(0, 0, 639, 600, false).is_none());
+        assert!(SettingsWindowPlacement::new(1_000_001, 0, 800, 600, false).is_none());
+
+        let initial = SettingsWindowPlacement::new(-120, 80, 800, 600, false)
+            .expect("valid initial placement");
+        let updated = SettingsWindowPlacement::new(240, 160, 1024, 768, true)
+            .expect("valid updated placement");
+        let state = SettingsWindowState::new(Some(initial));
+        let cloned = state.clone();
+        cloned.update(updated);
+        assert_eq!(state.placement(), Some(updated));
     }
 
     fn snapshot(
