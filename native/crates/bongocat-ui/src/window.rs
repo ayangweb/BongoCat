@@ -324,6 +324,16 @@ impl SettingsView {
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn accessibility_tree(&self) -> AccessibilityTree {
+        let focus = match self.page {
+            SettingsPage::General => ACCESSIBILITY_GENERAL,
+            SettingsPage::Models => ACCESSIBILITY_MODELS,
+            SettingsPage::Diagnostics => ACCESSIBILITY_DIAGNOSTICS,
+        };
+        self.accessibility_tree_with_focus(focus)
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn accessibility_tree_with_focus(&self, focus: AccessibilityNodeId) -> AccessibilityTree {
         let snapshot = self.snapshot.as_ref();
         let disabled =
             self.pending.is_some() || snapshot.is_none() || self.model_import.is_running();
@@ -416,11 +426,6 @@ impl SettingsView {
                 .clickable()
                 .focusable(),
         ];
-        let focus = match self.page {
-            SettingsPage::General => ACCESSIBILITY_GENERAL,
-            SettingsPage::Models => ACCESSIBILITY_MODELS,
-            SettingsPage::Diagnostics => ACCESSIBILITY_DIAGNOSTICS,
-        };
         if !nodes.iter().any(|node| node.id == focus) {
             nodes.push(AccessibilityNode::new(focus, AccessibilityRole::Status, ""));
         }
@@ -492,7 +497,24 @@ impl SettingsView {
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn update_accessibility(&mut self, window: &Window) {
-        let tree = self.accessibility_tree();
+        let focus = [
+            (ACCESSIBILITY_GENERAL, &self.general_focus),
+            (ACCESSIBILITY_MODELS, &self.models_focus),
+            (ACCESSIBILITY_DIAGNOSTICS, &self.diagnostics_focus),
+            (ACCESSIBILITY_OVERLAY, &self.overlay_focus),
+            (ACCESSIBILITY_AUDIO, &self.audio_focus),
+            (ACCESSIBILITY_STARTUP, &self.startup_item_focus),
+            (ACCESSIBILITY_REFRESH, &self.refresh_focus),
+            (ACCESSIBILITY_QUIT, &self.quit_focus),
+        ]
+        .into_iter()
+        .find_map(|(id, handle)| handle.is_focused(window).then_some(id))
+        .unwrap_or(match self.page {
+            SettingsPage::General => ACCESSIBILITY_GENERAL,
+            SettingsPage::Models => ACCESSIBILITY_MODELS,
+            SettingsPage::Diagnostics => ACCESSIBILITY_DIAGNOSTICS,
+        });
+        let tree = self.accessibility_tree_with_focus(focus);
         if let Some(bridge) = self.accessibility.as_mut() {
             let _ = bridge.update(tree);
         }
@@ -1171,7 +1193,6 @@ impl Render for SettingsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
-            self.update_accessibility(window);
             if let Some(target) = self.accessibility_focus.take() {
                 let focus = match target {
                     ACCESSIBILITY_GENERAL => &self.general_focus,
@@ -1186,6 +1207,7 @@ impl Render for SettingsView {
                 };
                 window.focus(focus);
             }
+            self.update_accessibility(window);
         }
         let tokens = Tokens::for_window(window);
         let snapshot = self.snapshot.clone();
