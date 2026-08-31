@@ -95,3 +95,9 @@ Development feature，Production 组合在编译期拒绝，默认 CLI/API 与 r
 run `33386401135` 全绿；Windows/macOS Native jobs `99469897044`/`99469896758` 实际打开并验证
 recovery-only 窗口，Windows input/config job `99469896784` 同时通过真实平台路径测试，
 `P6-STORAGE-LAYOUT-BOUNDARY` 退出条件满足。
+
+状态（2026-08-31）：正式配置的 load/parse/typed validation/v1 -> v2 upgrade/atomic commit/final
+verify 已形成单一 writer-lock 事务。测试可在原子替换后破坏 current，证明最终验证失败会逐字节
+恢复旧 v1、清理固定 temp，且无故障重启可再次完成迁移。commit `fd0f1d2` 的 run
+`33388021697` 全绿；三平台 Native workspace、Windows input/config job `99474952566` 和独立
+config-store job `99474952502` 均通过，`P6-CONFIG-TRANSACTION-PIPELINE` 退出条件满足。

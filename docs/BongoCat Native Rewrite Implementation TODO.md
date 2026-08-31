@@ -951,7 +951,12 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
     不包含该入口，Production 组合在编译期拒绝。commit `696319e` 的 pull request run
     `33386401135` 全绿，三平台完整门禁、Windows 真实路径测试和双平台 recovery window smoke
     均通过，详见 `P6-STORAGE-LAYOUT-BOUNDARY`。
-- [ ] 实现 load -> parse -> validate -> upgrade native schema -> atomic commit -> verify。
+- [x] 实现 load -> parse -> validate -> upgrade native schema -> atomic commit -> verify。
+  - 验收证据（2026-08-31）：正式 store 在单一 writer lock 内严格 parse/typed validate，v1 顺序迁移
+    先备份原 bytes，再经固定 temp、flush、原子替换和重读 typed config/revision 验证。commit
+    `fd0f1d2` 增加替换后破坏注入，验证失败逐字节恢复 v1、清理 temp，重启后可重新完成迁移；
+    pull request run `33388021697` 的三平台完整门禁及 config 定向 jobs 全部通过，详见
+    `P6-CONFIG-TRANSACTION-PIPELINE`。
 - [x] backup 包含 Native schema 版本和时间，并限制数量与总大小。
   - 验收证据（2026-08-31）：正式 `bongocat-config` 在替换前生成 v1 envelope，保存真实墙上
     时间、源 schema/revision 和未迁移配置；每环境仅管理固定命名空间，按不受时钟回退影响的
@@ -1646,7 +1651,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       test、release/Production 与平台 smoke，Windows/macOS jobs 均实际通过 recovery window；
       Windows input/config job `99469896784`、config-store job `99469896999`、双平台 GPUI 和依赖
       策略 jobs 同时通过，退出条件满足。
-43. [ ] `P6-CONFIG-TRANSACTION-PIPELINE`：验收正式配置加载、迁移、提交与最终验证闭环。
+43. [x] `P6-CONFIG-TRANSACTION-PIPELINE`：验收正式配置加载、迁移、提交与最终验证闭环。
     - 依赖：正式 `ConfigStore`、v1 -> v2 migration、`P6-CONFIG-BACKUP-RETENTION` 和
       `P6-CONFIG-INTERRUPTED-COMMIT`。
     - 退出条件：current 在 writer lock 内按 load -> parse -> typed validate -> sequential Native upgrade
@@ -1654,8 +1659,12 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       config/revision；替换后验证破坏可受控注入，失败逐字节恢复旧 v1、清理 temp 且无故障重启可
       再次迁移；有效 v2 不重写，无效/未来 schema 不被覆盖；config 定向测试、严格 Clippy、完整
       Native workspace、三平台 CI、Windows input/config 和独立 config-store job 通过。
-    - 状态（2026-08-31）：正式成功路径与无效/未来 schema 保留已有覆盖；替换后验证破坏注入、旧
-      bytes 回滚和重启重试回归已实现，完整本机与跨平台门禁随当前提交验证。
+    - 验收证据（2026-08-31）：正式成功路径、有效 v2 幂等、无效/未来 schema 保留，以及替换后
+      验证破坏注入、旧 bytes 回滚、temp 清理和重启重试均有正式 crate 回归。commit `fd0f1d2` 的
+      pull request run `33388021697` 全绿；Windows/macOS/Ubuntu Native jobs
+      `99474952561`/`99474952603`/`99474952709` 通过完整 format、Clippy、workspace test、
+      release/Production 和平台 smoke，Windows input/config job `99474952566`、config-store job
+      `99474952502` 与 dependency policy job `99474952595` 同时通过，退出条件满足。
 
 ## 13. 待决策清单
 
