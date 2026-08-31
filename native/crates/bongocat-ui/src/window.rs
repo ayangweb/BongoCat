@@ -51,6 +51,14 @@ const ACCESSIBILITY_OVERLAY_TOPMOST: AccessibilityNodeId = AccessibilityNodeId::
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_OVERLAY_CLICK_THROUGH: AccessibilityNodeId = AccessibilityNodeId::new(14);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_OVERLAY_SCALE_DECREASE: AccessibilityNodeId = AccessibilityNodeId::new(15);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_OVERLAY_SCALE_INCREASE: AccessibilityNodeId = AccessibilityNodeId::new(16);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_OVERLAY_OPACITY_DECREASE: AccessibilityNodeId = AccessibilityNodeId::new(17);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_OVERLAY_OPACITY_INCREASE: AccessibilityNodeId = AccessibilityNodeId::new(18);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_OPEN_BACKUPS: AccessibilityNodeId = AccessibilityNodeId::new(28);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_RESTORE_DEFAULTS: AccessibilityNodeId = AccessibilityNodeId::new(29);
@@ -288,6 +296,10 @@ pub struct SettingsView {
     overlay_focus: FocusHandle,
     overlay_topmost_focus: FocusHandle,
     overlay_click_through_focus: FocusHandle,
+    overlay_scale_decrease_focus: FocusHandle,
+    overlay_scale_increase_focus: FocusHandle,
+    overlay_opacity_decrease_focus: FocusHandle,
+    overlay_opacity_increase_focus: FocusHandle,
     audio_focus: FocusHandle,
     startup_item_focus: FocusHandle,
     model_id_focus: FocusHandle,
@@ -326,6 +338,10 @@ impl SettingsView {
             overlay_focus: cx.focus_handle().tab_index(10).tab_stop(true),
             overlay_topmost_focus: cx.focus_handle().tab_index(13).tab_stop(true),
             overlay_click_through_focus: cx.focus_handle().tab_index(14).tab_stop(true),
+            overlay_scale_decrease_focus: cx.focus_handle().tab_index(15).tab_stop(true),
+            overlay_scale_increase_focus: cx.focus_handle().tab_index(16).tab_stop(true),
+            overlay_opacity_decrease_focus: cx.focus_handle().tab_index(17).tab_stop(true),
+            overlay_opacity_increase_focus: cx.focus_handle().tab_index(18).tab_stop(true),
             audio_focus: cx.focus_handle().tab_index(11).tab_stop(true),
             startup_item_focus: cx.focus_handle().tab_index(12).tab_stop(true),
             model_id_focus: cx.focus_handle().tab_index(20).tab_stop(true),
@@ -424,6 +440,50 @@ impl SettingsView {
             topmost_node = topmost_node.clickable().focusable();
             click_through_node = click_through_node.clickable().focusable();
         }
+        let scale = overlay_settings.scale_percent;
+        let opacity = overlay_settings.opacity_percent;
+        let mut scale_decrease_node = AccessibilityNode::new(
+            ACCESSIBILITY_OVERLAY_SCALE_DECREASE,
+            AccessibilityRole::Button,
+            "Decrease overlay scale",
+        )
+        .with_value(format!("{scale}%"))
+        .disabled(disabled || scale <= 25);
+        let mut scale_increase_node = AccessibilityNode::new(
+            ACCESSIBILITY_OVERLAY_SCALE_INCREASE,
+            AccessibilityRole::Button,
+            "Increase overlay scale",
+        )
+        .with_value(format!("{scale}%"))
+        .disabled(disabled || scale >= 400);
+        let mut opacity_decrease_node = AccessibilityNode::new(
+            ACCESSIBILITY_OVERLAY_OPACITY_DECREASE,
+            AccessibilityRole::Button,
+            "Decrease overlay opacity",
+        )
+        .with_value(format!("{opacity}%"))
+        .disabled(disabled || opacity <= 1);
+        let mut opacity_increase_node = AccessibilityNode::new(
+            ACCESSIBILITY_OVERLAY_OPACITY_INCREASE,
+            AccessibilityRole::Button,
+            "Increase overlay opacity",
+        )
+        .with_value(format!("{opacity}%"))
+        .disabled(disabled || opacity >= 100);
+        if !disabled {
+            if scale > 25 {
+                scale_decrease_node = scale_decrease_node.clickable().focusable();
+            }
+            if scale < 400 {
+                scale_increase_node = scale_increase_node.clickable().focusable();
+            }
+            if opacity > 1 {
+                opacity_decrease_node = opacity_decrease_node.clickable().focusable();
+            }
+            if opacity < 100 {
+                opacity_increase_node = opacity_increase_node.clickable().focusable();
+            }
+        }
         let mut startup_node = AccessibilityNode::new(
             ACCESSIBILITY_STARTUP,
             AccessibilityRole::Switch,
@@ -485,6 +545,10 @@ impl SettingsView {
                 ACCESSIBILITY_OVERLAY,
                 ACCESSIBILITY_OVERLAY_TOPMOST,
                 ACCESSIBILITY_OVERLAY_CLICK_THROUGH,
+                ACCESSIBILITY_OVERLAY_SCALE_DECREASE,
+                ACCESSIBILITY_OVERLAY_SCALE_INCREASE,
+                ACCESSIBILITY_OVERLAY_OPACITY_DECREASE,
+                ACCESSIBILITY_OVERLAY_OPACITY_INCREASE,
                 ACCESSIBILITY_AUDIO,
                 ACCESSIBILITY_STARTUP,
                 ACCESSIBILITY_OPEN_BACKUPS,
@@ -508,6 +572,10 @@ impl SettingsView {
             overlay_node,
             topmost_node,
             click_through_node,
+            scale_decrease_node,
+            scale_increase_node,
+            opacity_decrease_node,
+            opacity_increase_node,
             audio_node,
             startup_node,
             open_backups_node,
@@ -560,6 +628,10 @@ impl SettingsView {
                     self.set_overlay_settings(settings, cx);
                 }
             }
+            ACCESSIBILITY_OVERLAY_SCALE_DECREASE => self.adjust_overlay_scale(-25, cx),
+            ACCESSIBILITY_OVERLAY_SCALE_INCREASE => self.adjust_overlay_scale(25, cx),
+            ACCESSIBILITY_OVERLAY_OPACITY_DECREASE => self.adjust_overlay_opacity(-10, cx),
+            ACCESSIBILITY_OVERLAY_OPACITY_INCREASE => self.adjust_overlay_opacity(10, cx),
             ACCESSIBILITY_AUDIO => {
                 if let Some(snapshot) = self.snapshot.as_ref() {
                     self.set_motion_audio_enabled(!snapshot.motion_audio_enabled, cx);
@@ -622,6 +694,22 @@ impl SettingsView {
             (
                 ACCESSIBILITY_OVERLAY_CLICK_THROUGH,
                 &self.overlay_click_through_focus,
+            ),
+            (
+                ACCESSIBILITY_OVERLAY_SCALE_DECREASE,
+                &self.overlay_scale_decrease_focus,
+            ),
+            (
+                ACCESSIBILITY_OVERLAY_SCALE_INCREASE,
+                &self.overlay_scale_increase_focus,
+            ),
+            (
+                ACCESSIBILITY_OVERLAY_OPACITY_DECREASE,
+                &self.overlay_opacity_decrease_focus,
+            ),
+            (
+                ACCESSIBILITY_OVERLAY_OPACITY_INCREASE,
+                &self.overlay_opacity_increase_focus,
             ),
             (ACCESSIBILITY_AUDIO, &self.audio_focus),
             (ACCESSIBILITY_STARTUP, &self.startup_item_focus),
@@ -801,6 +889,51 @@ impl SettingsView {
                     );
                 }
             }
+            for (id, label, unavailable) in [
+                (
+                    ACCESSIBILITY_OVERLAY_SCALE_DECREASE,
+                    "Decrease overlay scale",
+                    snapshot.overlay.scale_percent <= 25,
+                ),
+                (
+                    ACCESSIBILITY_OVERLAY_SCALE_INCREASE,
+                    "Increase overlay scale",
+                    snapshot.overlay.scale_percent >= 400,
+                ),
+                (
+                    ACCESSIBILITY_OVERLAY_OPACITY_DECREASE,
+                    "Decrease overlay opacity",
+                    snapshot.overlay.opacity_percent <= 1,
+                ),
+                (
+                    ACCESSIBILITY_OVERLAY_OPACITY_INCREASE,
+                    "Increase overlay opacity",
+                    snapshot.overlay.opacity_percent >= 100,
+                ),
+            ] {
+                let node = tree
+                    .nodes
+                    .iter()
+                    .find(|node| node.id == id)
+                    .ok_or_else(|| {
+                        "general accessibility tree omitted an overlay stepper".to_owned()
+                    })?;
+                if node.role != AccessibilityRole::Button
+                    || node.label != label
+                    || node
+                        .value
+                        .as_deref()
+                        .is_none_or(|value| !value.ends_with('%'))
+                    || node.disabled != (controls_disabled || unavailable)
+                    || node.supports_click != !(controls_disabled || unavailable)
+                    || node.supports_focus != !(controls_disabled || unavailable)
+                {
+                    return Err(
+                        "overlay stepper accessibility semantics diverged from the visible control"
+                            .to_owned(),
+                    );
+                }
+            }
             #[cfg(target_os = "macos")]
             self.accessibility
                 .as_ref()
@@ -904,6 +1037,42 @@ impl SettingsView {
             Some(SettingValue::OverlaySettings(settings)),
             cx,
         );
+    }
+
+    fn adjust_overlay_scale(&mut self, delta: i16, cx: &mut Context<Self>) {
+        if self.pending.is_some() || self.model_import.is_running() {
+            return;
+        }
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        if snapshot.configuration_status != SettingsConfigurationStatus::Ready {
+            return;
+        }
+        let mut settings = snapshot.overlay;
+        let next = i32::from(settings.scale_percent) + i32::from(delta);
+        settings.scale_percent = next.clamp(25, 400) as u16;
+        if settings.scale_percent != snapshot.overlay.scale_percent {
+            self.set_overlay_settings(settings, cx);
+        }
+    }
+
+    fn adjust_overlay_opacity(&mut self, delta: i16, cx: &mut Context<Self>) {
+        if self.pending.is_some() || self.model_import.is_running() {
+            return;
+        }
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        if snapshot.configuration_status != SettingsConfigurationStatus::Ready {
+            return;
+        }
+        let mut settings = snapshot.overlay;
+        let next = i16::from(settings.opacity_percent) + delta;
+        settings.opacity_percent = next.clamp(1, 100) as u8;
+        if settings.opacity_percent != snapshot.overlay.opacity_percent {
+            self.set_overlay_settings(settings, cx);
+        }
     }
 
     fn set_motion_audio_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
@@ -1449,6 +1618,10 @@ impl Render for SettingsView {
                     ACCESSIBILITY_OVERLAY => &self.overlay_focus,
                     ACCESSIBILITY_OVERLAY_TOPMOST => &self.overlay_topmost_focus,
                     ACCESSIBILITY_OVERLAY_CLICK_THROUGH => &self.overlay_click_through_focus,
+                    ACCESSIBILITY_OVERLAY_SCALE_DECREASE => &self.overlay_scale_decrease_focus,
+                    ACCESSIBILITY_OVERLAY_SCALE_INCREASE => &self.overlay_scale_increase_focus,
+                    ACCESSIBILITY_OVERLAY_OPACITY_DECREASE => &self.overlay_opacity_decrease_focus,
+                    ACCESSIBILITY_OVERLAY_OPACITY_INCREASE => &self.overlay_opacity_increase_focus,
                     ACCESSIBILITY_AUDIO => &self.audio_focus,
                     ACCESSIBILITY_STARTUP => &self.startup_item_focus,
                     ACCESSIBILITY_OPEN_BACKUPS => &self.open_backups_focus,
@@ -1731,6 +1904,188 @@ impl Render for SettingsView {
             }
         }));
 
+        let scale_percent = overlay_settings.scale_percent;
+        let scale_decrease_disabled = disabled || scale_percent <= 25;
+        let scale_increase_disabled = disabled || scale_percent >= 400;
+        let scale_row = div()
+            .flex()
+            .items_center()
+            .justify_between()
+            .p_4()
+            .rounded_md()
+            .border_1()
+            .border_color(tokens.border)
+            .bg(tokens.surface)
+            .text_color(if disabled { tokens.muted } else { tokens.text })
+            .child(
+                div()
+                    .min_w_0()
+                    .flex_1()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .child(div().child("Overlay scale"))
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(tokens.muted)
+                            .child("Resize the Live2D overlay"),
+                    ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        command_button(
+                            "-",
+                            &self.overlay_scale_decrease_focus,
+                            15,
+                            window,
+                            tokens,
+                            scale_decrease_disabled,
+                        )
+                        .id("overlay-scale-decrease")
+                        .on_click(cx.listener(|view, _, window, cx| {
+                            window.focus(&view.overlay_scale_decrease_focus);
+                            view.adjust_overlay_scale(-25, cx);
+                        }))
+                        .on_key_down(cx.listener(
+                            |view, event, window, cx| {
+                                if is_activation_key(event) {
+                                    cx.stop_propagation();
+                                    window.focus(&view.overlay_scale_decrease_focus);
+                                    view.adjust_overlay_scale(-25, cx);
+                                }
+                            },
+                        )),
+                    )
+                    .child(
+                        div()
+                            .w(px(56.0))
+                            .flex()
+                            .justify_center()
+                            .text_sm()
+                            .child(format!("{scale_percent}%")),
+                    )
+                    .child(
+                        command_button(
+                            "+",
+                            &self.overlay_scale_increase_focus,
+                            16,
+                            window,
+                            tokens,
+                            scale_increase_disabled,
+                        )
+                        .id("overlay-scale-increase")
+                        .on_click(cx.listener(|view, _, window, cx| {
+                            window.focus(&view.overlay_scale_increase_focus);
+                            view.adjust_overlay_scale(25, cx);
+                        }))
+                        .on_key_down(cx.listener(
+                            |view, event, window, cx| {
+                                if is_activation_key(event) {
+                                    cx.stop_propagation();
+                                    window.focus(&view.overlay_scale_increase_focus);
+                                    view.adjust_overlay_scale(25, cx);
+                                }
+                            },
+                        )),
+                    ),
+            );
+
+        let opacity_percent = overlay_settings.opacity_percent;
+        let opacity_decrease_disabled = disabled || opacity_percent <= 1;
+        let opacity_increase_disabled = disabled || opacity_percent >= 100;
+        let opacity_row = div()
+            .flex()
+            .items_center()
+            .justify_between()
+            .p_4()
+            .rounded_md()
+            .border_1()
+            .border_color(tokens.border)
+            .bg(tokens.surface)
+            .text_color(if disabled { tokens.muted } else { tokens.text })
+            .child(
+                div()
+                    .min_w_0()
+                    .flex_1()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .child(div().child("Overlay opacity"))
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(tokens.muted)
+                            .child("Adjust the overlay transparency"),
+                    ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        command_button(
+                            "-",
+                            &self.overlay_opacity_decrease_focus,
+                            17,
+                            window,
+                            tokens,
+                            opacity_decrease_disabled,
+                        )
+                        .id("overlay-opacity-decrease")
+                        .on_click(cx.listener(|view, _, window, cx| {
+                            window.focus(&view.overlay_opacity_decrease_focus);
+                            view.adjust_overlay_opacity(-10, cx);
+                        }))
+                        .on_key_down(cx.listener(
+                            |view, event, window, cx| {
+                                if is_activation_key(event) {
+                                    cx.stop_propagation();
+                                    window.focus(&view.overlay_opacity_decrease_focus);
+                                    view.adjust_overlay_opacity(-10, cx);
+                                }
+                            },
+                        )),
+                    )
+                    .child(
+                        div()
+                            .w(px(56.0))
+                            .flex()
+                            .justify_center()
+                            .text_sm()
+                            .child(format!("{opacity_percent}%")),
+                    )
+                    .child(
+                        command_button(
+                            "+",
+                            &self.overlay_opacity_increase_focus,
+                            18,
+                            window,
+                            tokens,
+                            opacity_increase_disabled,
+                        )
+                        .id("overlay-opacity-increase")
+                        .on_click(cx.listener(|view, _, window, cx| {
+                            window.focus(&view.overlay_opacity_increase_focus);
+                            view.adjust_overlay_opacity(10, cx);
+                        }))
+                        .on_key_down(cx.listener(
+                            |view, event, window, cx| {
+                                if is_activation_key(event) {
+                                    cx.stop_propagation();
+                                    window.focus(&view.overlay_opacity_increase_focus);
+                                    view.adjust_overlay_opacity(10, cx);
+                                }
+                            },
+                        )),
+                    ),
+            );
+
         let startup_item = startup_item_presentation(
             snapshot.as_ref().map(|snapshot| snapshot.startup_item),
             disabled,
@@ -1821,6 +2176,8 @@ impl Render for SettingsView {
             .child(overlay_row)
             .child(topmost_row)
             .child(click_through_row)
+            .child(scale_row)
+            .child(opacity_row)
             .child(audio_row)
             .child(startup_item_row)
             .child(div().flex_1());

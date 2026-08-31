@@ -908,7 +908,9 @@ command 在配置事务后更新；非法范围由 runtime 拒绝并保留上一
 `SettingsClient` 已接线并有 persistence/rejection contract。General 页面现已通过
 typed command/snapshot 暴露 click-through 与 always-on-top，并将设置变更应用到双平台
 overlay owner；设置更新失败时保留旧 snapshot。scale/opacity 的可见控件、双平台实机
-动态重建与 device/display 专项证据仍待完成，故不将 Phase 5 或 P0 overlay 门禁标记完成。
+动态重建与 device/display 专项证据仍待完成。General 页面现已增加 25–400% 的 25% 步进缩放
+和 1–100% 的 10% 步进透明度控件，按钮和 AccessKit 语义复用同一 snapshot，并在边界禁用。
+双平台实机动态重建与 device/display 专项证据仍待完成，故不将 Phase 5 或 P0 overlay 门禁标记完成。
 
 - [ ] 按 app、window、input、model、shortcut、update、diagnostics 定义 command。
 - [ ] command 使用强类型 request/result 和稳定 error code。
