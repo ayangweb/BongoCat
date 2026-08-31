@@ -1691,8 +1691,10 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
         macOS Development release smoke `BONGOCAT_BUILD_ENV=development cargo run --manifest-path
         native/Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
         --target-dir native/target/storage-test-injection -- --settings-window-state-smoke` 输出
-        `settings window state restored after restart`。推送后的 Windows/macOS CI 会继续验证
-        原生窗口与双环境隔离；Windows 实机显示器/DPI 热切换仍属于后续平台矩阵。
+      `settings window state restored after restart`。workflow `33395834870` 的 Native workspace
+      jobs `99500010100`（Ubuntu）、`99500010122`（macOS）和 `99500010167`（Windows）以及
+      Windows input/config job `99500010128` 全部通过；Windows 原生状态 smoke 输出与 macOS
+      release smoke 一致。Windows 实机显示器/DPI 热切换仍属于后续平台矩阵。
 
 ## 13. 待决策清单
 
