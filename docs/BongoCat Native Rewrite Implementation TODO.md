@@ -911,14 +911,21 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
 - [x] 发布 `shared/config/config.schema.json`，并用有效/拒绝样本验证 schema 边界。
 - [ ] 实现 `shared/config/native-config-contract.md` 中的首版字段，调整时同步 contract 和测试。
 - [x] 每个字段记录默认值、范围、单位和跨字段约束；schema、typed validation 与边界 fixture 已对齐，后续新增字段必须同步三者。
-- [ ] 未知字段采用明确的拒绝、忽略或诊断策略。
+- [x] 未知字段采用明确的拒绝、忽略或诊断策略。
+  - 验收证据（2026-08-31）：JSON Schema 的所有对象使用 `additionalProperties: false`，正式
+    Rust 配置类型逐层使用 `deny_unknown_fields`；共享 `invalid-unknown-field.json` 在嵌套
+    application 域注入 `legacy_alias` 并由固定 Draft 2020-12 validator 拒绝，正式 crate 另有
+    unknown/legacy 字段拒绝测试。
 - [ ] 只为 Native Rewrite schema 建立 sequential `schema_version` 演进。
   - 状态（2026-08-31）：正式 config 已实现 v1 -> v2 单步迁移；非空
     `selected_model_id` 按 v1 产品语义补为 preset origin，空选择保持成对为空。迁移在 writer
     lock 内备份原 bytes 并原子写回，重复加载幂等；未来版本链、损坏恢复和备份保留上限仍待
     完成，因此总项保持未勾选。共享默认 fixture 升级后，独立 config-store contract spike 也
     对齐 v2 成对字段与校验，但不重复承担正式迁移逻辑。
-- [ ] 不包含旧 Pinia store key、旧字段 alias 或自动导入逻辑。
+- [x] 不包含旧 Pinia store key、旧字段 alias 或自动导入逻辑。
+  - 验收证据（2026-08-31）：Native schema/Rust 类型没有 serde alias 或 legacy 字段，严格未知
+    字段 fixture 与单元测试拒绝 `legacy_alias`/`old_pinia_field`；产品 `ConfigStore` 只解析当前
+    环境的 Native `config.json` 并仅执行 v1 -> v2 顺序迁移。
 
 ### 7.2 环境与持久化事务
 
@@ -1476,8 +1483,11 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       数量与总大小；系统时钟回退不误删新备份；不删除非自有文件；备份失败不替换当前配置；
       config 定向测试、Clippy 和完整 Native workspace 门禁通过。
     - 验收证据（2026-08-31）：v1 迁移 envelope、12 次提交后的 8 份/8 MiB 收敛、未知文件保留、
-      排序键时钟回退和 expected-revision 提交均有正式 crate 单元测试；本机完整门禁和 CI 证据
-      随本项提交记录。
+      排序键时钟回退和 expected-revision 提交均有正式 crate 单元测试；commit `25d5030` 的
+      pull request run `33364970646` 全绿，Windows/macOS/Ubuntu Native jobs
+      `99403612087`/`99403611991`/`99403612068` 通过完整 format、Clippy、workspace test、
+      release/Production 和平台 smoke，dependency policy、shared schema 与 config-store jobs
+      同时通过。
 
 ## 13. 待决策清单
 
