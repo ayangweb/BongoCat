@@ -1554,7 +1554,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       `99424654786`/`99424654816`/`99424654950` 通过完整 format、Clippy、workspace test、
       release/Production 与平台 smoke，Windows input/config job `99424654701` 实际通过 Windows
       原子替换、强杀 lock 释放、启动恢复和真实存储路径测试。
-38. [ ] `P6-CONFIG-SAFE-RECOVERY`：在无有效备份时进入受限设置并提供显式恢复默认 command。
+38. [x] `P6-CONFIG-SAFE-RECOVERY`：在无有效备份时进入受限设置并提供显式恢复默认 command。
     - 依赖：`P6-CONFIG-BACKUP-RECOVERY`、`P6-CONFIG-RECOVERY-DIAGNOSTIC` 和 typed settings command。
     - 退出条件：无有效候选时不覆盖 current、不启动 overlay/GPU，Application 进入 recovery-only
       settings；snapshot 公开匿名状态与候选计数，所有业务写入/模型/启动项操作被拒；显式恢复默认
@@ -1567,7 +1567,10 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       Windows GPUI jobs `99431897503`/`99431897512` 和 macOS GPUI job `99431897618` 均通过。
       正式产品另已加入 `--configuration-recovery-smoke`，只在独立临时存储根写入损坏 current，
       验证匿名 recovery snapshot、真实 recovery-only GPUI 窗口、settings service 有序停止与临时
-      数据清理；本机 macOS smoke 通过，Windows/macOS CI smoke 仍待本项提交验证，保持未勾选。
+      数据清理；本机 macOS smoke 通过。commit `175e7a4` 的 pull request run `33376471972` 全绿，
+      Windows/macOS/Ubuntu Native jobs `99438972370`/`99438972328`/`99438972320` 通过完整门禁，
+      Windows 与 macOS Native jobs 均实际通过新增 recovery window smoke；Windows input/config job
+      `99438972066` 及双平台 GPUI spike jobs 同时通过，退出条件满足。
 
 ## 13. 待决策清单
 

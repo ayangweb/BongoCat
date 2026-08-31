@@ -69,6 +69,8 @@ recovery-only GPUI 窗口和显式 typed 恢复默认 command；恢复前禁止�
 Ubuntu Native workspace、双平台 GPUI smoke 和 Windows input/config job，但尚未专门启动损坏
 current 且无备份的 recovery-only 产品窗口。正式产品现已增加只使用独立临时存储根的受控
 `--configuration-recovery-smoke`，本机 macOS 已验证 recovery snapshot、真实窗口、service join
-和临时数据清理；双平台 CI 证据仍待本项提交。权限、磁盘满和目标占用失败注入仍未完成；这些
-必须在 Phase 6 配置 crate 与正式 settings service 中分别验证。进程存活不通过 PID、时间戳
+和临时数据清理；commit `175e7a4` 的 run `33376471972` 随后在 Windows/macOS Native jobs
+`99438972370`/`99438972328` 实际通过同一 recovery window smoke，`P6-CONFIG-SAFE-RECOVERY`
+退出条件满足。权限、磁盘满和目标占用失败注入仍未完成；这些必须在 Phase 6 配置 crate 与正式
+settings service 中分别验证。进程存活不通过 PID、时间戳
 或删除 lock file 猜测，异常退出后的释放由 OS file lock 生命周期保证。
