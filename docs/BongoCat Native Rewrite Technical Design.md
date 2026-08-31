@@ -544,6 +544,13 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
 - Diagnostics 导出由 settings service 的强类型 command 触发，在当前环境 logs 目录以同目录
   原子替换写出固定格式的 JSON。导出只包含稳定错误码、匿名聚合计数、模型来源计数和 revision；
   不包含模型 ID、用户路径、按键值、原始配置/事件内容、时间戳或动态平台错误文本。
+- 应用日志由 app-owned writer 以固定组件、级别和 code 写入 `application-<utc_day>.jsonl`，
+  不接受自由文本。单文件上限为 1 MiB，应用日志总量上限为 8 MiB、最多保留 8 个文件，且只
+  保留最近 7 个 UTC 日；达到文件上限时执行有界轮转，启动和日期切换时执行过期/总量清理。
+  清理或写入失败只增加匿名 dropped/pruned 计数，不删除当前配置或模型数据。
+- Diagnostics 导出只读取 app-owned writer 的匿名 written/dropped/rotated/pruned/bytes/
+  retained_files 统计，不读取或复制应用日志正文；Cubism Core 历史轮转文件的跨域合并仍需
+  独立的发布前设计和验证。
 
 初始字段命名和数据分类见 `shared/config/native-config-contract.md`，环境和 Bundle ID 决策见 ADR-0008。
 

@@ -1,4 +1,7 @@
-use crate::{Application, ApplicationConfigStatus, ApplicationError};
+use crate::{
+    Application, ApplicationConfigStatus, ApplicationError, ApplicationLogCode,
+    ApplicationLogComponent, ApplicationLogDiagnostics, ApplicationLogEvent, ApplicationLogLevel,
+};
 use atomic_write_file::AtomicWriteFile;
 use bongocat_config::{ConfigError, ConfigWriteFailureReason, StateError, WindowPlacement};
 use bongocat_model::{
@@ -126,6 +129,7 @@ trait DiagnosticsExportCapability: Send + Sync + 'static {
     fn export(
         &self,
         snapshot: &SettingsSnapshot,
+        application_logs: ApplicationLogDiagnostics,
     ) -> Result<SettingsDiagnosticsExportStatus, SettingsError>;
 }
 
@@ -159,8 +163,9 @@ impl DiagnosticsExportCapability for SystemDiagnosticsExport {
     fn export(
         &self,
         snapshot: &SettingsSnapshot,
+        application_logs: ApplicationLogDiagnostics,
     ) -> Result<SettingsDiagnosticsExportStatus, SettingsError> {
-        export_diagnostics_file(&self.path, snapshot)
+        export_diagnostics_file(&self.path, snapshot, application_logs)
     }
 }
 
@@ -370,11 +375,20 @@ fn run_service(
             SettingsCommand::ExportDiagnostics { reply } => {
                 let result = {
                     let current = snapshot(&application, &mut clock, false, startup_item.state());
-                    diagnostics_export.export(&current).map(|status| {
-                        clock.observe_diagnostics_export(status);
-                        snapshot(&application, &mut clock, false, startup_item.state())
-                    })
+                    diagnostics_export
+                        .export(&current, application.application_log_diagnostics())
+                        .map(|status| {
+                            clock.observe_diagnostics_export(status);
+                            snapshot(&application, &mut clock, false, startup_item.state())
+                        })
                 };
+                if result.is_err() {
+                    application.record_log(ApplicationLogEvent {
+                        component: ApplicationLogComponent::Settings,
+                        level: ApplicationLogLevel::Error,
+                        code: ApplicationLogCode::DiagnosticsExportFailed,
+                    });
+                }
                 let _ = reply.respond(result);
             }
             SettingsCommand::Shutdown { reply } => {
@@ -844,6 +858,7 @@ struct DiagnosticsExportDocument {
     input: DiagnosticsInput,
     configuration: DiagnosticsConfiguration,
     models: DiagnosticsModels,
+    application_logs: DiagnosticsApplicationLogs,
 }
 
 #[derive(Serialize)]
@@ -909,11 +924,22 @@ struct DiagnosticsCodeCount {
     count: u64,
 }
 
+#[derive(Serialize)]
+struct DiagnosticsApplicationLogs {
+    written: u64,
+    dropped: u64,
+    rotated: u64,
+    pruned: u64,
+    bytes: u64,
+    retained_files: u64,
+}
+
 fn export_diagnostics_file(
     path: &std::path::Path,
     snapshot: &SettingsSnapshot,
+    application_logs: ApplicationLogDiagnostics,
 ) -> Result<SettingsDiagnosticsExportStatus, SettingsError> {
-    let document = diagnostics_document(snapshot);
+    let document = diagnostics_document(snapshot, application_logs);
     let bytes = serde_json::to_vec_pretty(&document)
         .map_err(|_| SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))?;
     fs::create_dir_all(path.parent().unwrap_or_else(|| std::path::Path::new(".")))
@@ -930,7 +956,10 @@ fn export_diagnostics_file(
     })
 }
 
-fn diagnostics_document(snapshot: &SettingsSnapshot) -> DiagnosticsExportDocument {
+fn diagnostics_document(
+    snapshot: &SettingsSnapshot,
+    application_logs: ApplicationLogDiagnostics,
+) -> DiagnosticsExportDocument {
     let input = snapshot.input_diagnostics;
     let runtime = snapshot.runtime_diagnostics;
     let mut invalid_diagnostic_codes = Vec::new();
@@ -999,6 +1028,14 @@ fn diagnostics_document(snapshot: &SettingsSnapshot) -> DiagnosticsExportDocumen
                     SettingsModelOrigin::Preset => "preset",
                     SettingsModelOrigin::Installed => "installed",
                 }),
+        },
+        application_logs: DiagnosticsApplicationLogs {
+            written: application_logs.written,
+            dropped: application_logs.dropped,
+            rotated: application_logs.rotated,
+            pruned: application_logs.pruned,
+            bytes: application_logs.bytes,
+            retained_files: application_logs.retained_files,
         },
     }
 }
@@ -1319,6 +1356,7 @@ mod tests {
         fn export(
             &self,
             _snapshot: &SettingsSnapshot,
+            _application_logs: ApplicationLogDiagnostics,
         ) -> Result<SettingsDiagnosticsExportStatus, SettingsError> {
             Ok(SettingsDiagnosticsExportStatus {
                 format_version: DIAGNOSTICS_EXPORT_FORMAT_VERSION,
@@ -1381,7 +1419,19 @@ mod tests {
             },
         };
 
-        let status = export_diagnostics_file(&path, &snapshot).expect("export diagnostics");
+        let status = export_diagnostics_file(
+            &path,
+            &snapshot,
+            ApplicationLogDiagnostics {
+                written: 3,
+                dropped: 1,
+                rotated: 2,
+                pruned: 4,
+                bytes: 128,
+                retained_files: 2,
+            },
+        )
+        .expect("export diagnostics");
         let bytes = std::fs::read(&path).expect("read exported diagnostics");
         assert_eq!(status.format_version, DIAGNOSTICS_EXPORT_FORMAT_VERSION);
         assert_eq!(status.bytes_written, bytes.len() as u64);
@@ -1394,6 +1444,8 @@ mod tests {
         );
         assert_eq!(document["input"]["transport_queue_full"], 2);
         assert_eq!(document["models"]["ready_installed"], 1);
+        assert_eq!(document["application_logs"]["written"], 3);
+        assert_eq!(document["application_logs"]["dropped"], 1);
         assert_eq!(document["models"]["invalid_installed"], 1);
         assert_eq!(
             document["models"]["invalid_diagnostic_codes"][0]["code"],

@@ -25,9 +25,14 @@ use bongocat_runtime::{
 };
 use std::{collections::BTreeMap, fmt, path::Path, sync::Arc, time::Duration};
 
+mod app_log;
 #[cfg(test)]
 mod build_environment_contract;
 mod settings;
+pub use app_log::{
+    ApplicationLogCode, ApplicationLogComponent, ApplicationLogDiagnostics, ApplicationLogError,
+    ApplicationLogEvent, ApplicationLogHandle, ApplicationLogLevel,
+};
 pub use settings::{ApplicationSettingsService, SettingsServiceJoinError};
 
 const COMMAND_CAPACITY: usize = 64;
@@ -57,6 +62,7 @@ pub enum ApplicationError {
     RenderConsumerUnavailable,
     Shutdown(ShutdownError),
     MotionAudioShutdown(MotionAudioShutdownError),
+    ApplicationLog(ApplicationLogError),
     ConfigRollback(ConfigError),
     State(StateError),
     ConfigurationRecoveryRequired,
@@ -100,6 +106,7 @@ impl fmt::Display for ApplicationError {
             Self::MotionAudioShutdown(error) => {
                 write!(formatter, "motion audio shutdown failed: {error}")
             }
+            Self::ApplicationLog(error) => write!(formatter, "application logging failed: {error}"),
             Self::ConfigRollback(error) => {
                 write!(formatter, "model selection config rollback failed: {error}")
             }
@@ -155,6 +162,12 @@ impl From<ModelStoreError> for ApplicationError {
     }
 }
 
+impl From<ApplicationLogError> for ApplicationError {
+    fn from(error: ApplicationLogError) -> Self {
+        Self::ApplicationLog(error)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ApplicationConfigStatus {
     Ready,
@@ -177,6 +190,7 @@ pub struct Application {
     runtime: RuntimeOwner,
     motion_audio: Option<MotionAudioService>,
     render_consumer: Option<RenderConsumer>,
+    application_log: ApplicationLogHandle,
 }
 
 impl Application {
@@ -214,6 +228,7 @@ impl Application {
             ModelPackageLimits::default(),
         )?;
         let config_store = ConfigStore::new(layout.clone())?;
+        let application_log = ApplicationLogHandle::install(&layout.logs)?;
         let state_store = StateStore::new(layout);
         let state = state_store.load_or_default().state;
         let (config, config_revision, config_recovery, interrupted_config_recovery, config_status) =
@@ -293,7 +308,7 @@ impl Application {
             .model
             .selected_model_origin
             .map(model_origin_from_config);
-        Ok(Self {
+        let application = Self {
             config_store,
             state_store,
             state,
@@ -308,7 +323,12 @@ impl Application {
             runtime,
             motion_audio,
             render_consumer,
-        })
+            application_log,
+        };
+        application
+            .application_log
+            .record(ApplicationLogEvent::started());
+        Ok(application)
     }
 
     pub fn runtime_client(&self) -> RuntimeClient {
@@ -343,6 +363,14 @@ impl Application {
 
     pub fn logs_directory(&self) -> &Path {
         &self.config_store.layout().logs
+    }
+
+    pub fn application_log_diagnostics(&self) -> ApplicationLogDiagnostics {
+        self.application_log.diagnostics()
+    }
+
+    pub fn record_log(&self, event: ApplicationLogEvent) {
+        self.application_log.record(event);
     }
 
     pub const fn config_recovery(&self) -> Option<ConfigRecovery> {
@@ -712,13 +740,26 @@ impl Application {
     }
 
     pub fn shutdown(self) -> Result<RuntimeSnapshot, ApplicationError> {
+        self.application_log
+            .record(ApplicationLogEvent::shutdown_started());
         let runtime_result = self.runtime.shutdown(RUNTIME_TIMEOUT);
         let audio_result = self
             .motion_audio
             .map(|service| service.shutdown(RUNTIME_TIMEOUT))
             .transpose();
-        let stopped = runtime_result.map_err(ApplicationError::Shutdown)?;
-        audio_result.map_err(ApplicationError::MotionAudioShutdown)?;
+        let stopped = match runtime_result {
+            Ok(stopped) => stopped,
+            Err(error) => {
+                self.application_log
+                    .record(ApplicationLogEvent::shutdown_failed());
+                return Err(ApplicationError::Shutdown(error));
+            }
+        };
+        if let Err(error) = audio_result {
+            self.application_log
+                .record(ApplicationLogEvent::shutdown_failed());
+            return Err(ApplicationError::MotionAudioShutdown(error));
+        }
         Ok(stopped)
     }
 }

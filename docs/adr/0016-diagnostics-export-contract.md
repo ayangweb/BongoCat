@@ -20,8 +20,11 @@ Diagnostics 页面已经聚合 runtime、输入、配置和模型目录状态，
   `diagnostics_export_failed`，不暴露操作系统文本。
 - Diagnostics 页面提供键盘和 AccessKit 可访问的导出操作；“无报告”与成功字节数属于显示状态，
   不影响配置 revision。
+- 导出额外包含 app-owned 日志 writer 的匿名聚合统计（written、dropped、rotated、pruned、bytes
+  和 retained_files），但不读取或复制任何日志正文。
 
 ## 后续边界
 
-应用级日志 writer 的按天清理、跨域历史日志合并、预览器和更新系统的诊断 manifest 仍需单独设计。
+应用级日志 writer 的实现与有界清理已记录在 ADR-0017；跨域历史日志合并、预览器和更新系统的
+诊断 manifest 仍需单独设计。
 实现不得为了导出而放宽日志隐私、环境隔离或原子写入约束。

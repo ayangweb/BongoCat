@@ -1160,7 +1160,9 @@ overlay owner；设置更新失败时保留旧 snapshot。scale/opacity 的可�
 - [ ] 日志 rotation、总大小和保留天数有上限。
   - 状态（2026-09-01）：Cubism Core 日志 sink 已在单文件达到 1 MiB 时执行有界路径轮转，最多保留
     4 个轮转文件，活动文件和轮转失败均有有界 dropped 计数；测试覆盖触发轮转、保留上限和
-    活动文件恢复写入。应用级统一日志 writer、按天/保留期限清理和导出脱敏包仍待完成。
+    活动文件恢复写入。应用级 writer 现按 UTC 日分文件，单文件 1 MiB、总量 8 MiB、最多 8 个文件、
+    保留最近 7 日，并覆盖日期切换、轮转、过期/总量清理和失败计数；Core 历史日志仍未纳入同一
+    retention policy，因此本项保持未勾选。
 - [ ] 记录 renderer/input/model/config/update 的稳定 error code。
   - 状态（2026-09-01）：runtime renderer 已为 model load/evaluation、motion/expression load、GPU
     prepare、platform、transport 和 overlay validation 定义 8 个固定 snake_case code，并以唯一性
@@ -1173,8 +1175,9 @@ overlay owner；设置更新失败时保留旧 snapshot。scale/opacity 的可�
     configuration code、匿名聚合计数、模型来源计数和 settings/config revision；不包含模型 ID、
     路径、按键值、原始 JSON、时间戳或动态 I/O 文本。Diagnostics 页面提供键盘和 AccessKit 可访问
     的 Export 控件，并显示本次导出的字节数；app/ui 定向测试覆盖原子写入、聚合排序、隐私边界和
-    typed command。应用级 Core 日志的按天清理、轮转文件合并和跨域历史日志打包仍待完成，因此
-    本项保持未勾选。
+    typed command。应用级 writer 的匿名 written/dropped/rotated/pruned/bytes/retained_files
+    统计现已并入导出，但导出仍不读取或合并 Core/应用原始日志正文，预览器和跨域历史日志打包
+    仍待完成，因此本项保持未勾选。
 - [ ] 更新 manifest 定义 schemaVersion、channel、最低可升级版本、发布时间和防回滚字段。
 - [ ] 更新 helper/installer 的权限边界、替换原子性和失败恢复经过单独威胁建模。
 
