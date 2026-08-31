@@ -148,19 +148,32 @@ jobs:
               -RedirectStandardError $stderr
             if ($_ -eq 1) {
               $windowDeadline = [DateTime]::UtcNow.AddSeconds(10)
+              $processCondition = [System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::ProcessIdProperty,
+                $process.Id
+              )
+              $windowNameCondition = [System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::NameProperty,
+                "BongoCat Settings"
+              )
+              $settingsWindowCondition = [System.Windows.Automation.AndCondition]::new(
+                $processCondition,
+                $windowNameCondition
+              )
               do {
                 Start-Sleep -Milliseconds 100
                 $process.Refresh()
                 if ($process.HasExited) {
                   throw "Windows product exited before UI Automation inspection"
                 }
-              } while ($process.MainWindowHandle -eq 0 -and [DateTime]::UtcNow -lt $windowDeadline)
-              if ($process.MainWindowHandle -eq 0) {
+                $root = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
+                  [System.Windows.Automation.TreeScope]::Children,
+                  $settingsWindowCondition
+                )
+              } while ($null -eq $root -and [DateTime]::UtcNow -lt $windowDeadline)
+              if ($null -eq $root) {
                 throw "Windows product did not expose a settings HWND"
               }
-              $root = [System.Windows.Automation.AutomationElement]::FromHandle(
-                [IntPtr]$process.MainWindowHandle
-              )
               $startupCondition = [System.Windows.Automation.PropertyCondition]::new(
                 [System.Windows.Automation.AutomationElement]::NameProperty,
                 "Open at login"
