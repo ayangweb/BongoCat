@@ -1975,15 +1975,29 @@ mod tests {
     }
 
     fn shortcut_fixture() -> SettingsShortcuts {
+        shortcut_fixture_with(
+            "toggle_overlay",
+            "Control+Alt+B",
+            "motion:TapBody:0",
+            "Control+Alt+M",
+        )
+    }
+
+    fn shortcut_fixture_with(
+        command: &str,
+        command_shortcut: &str,
+        behavior_id: &str,
+        behavior_shortcut: &str,
+    ) -> SettingsShortcuts {
         SettingsShortcuts {
             commands: vec![SettingsShortcutBinding {
-                command: "toggle_overlay".to_owned(),
-                shortcut: "Control+Alt+B".to_owned(),
+                command: command.to_owned(),
+                shortcut: command_shortcut.to_owned(),
             }],
             model_behaviors: vec![SettingsModelBehaviorBinding {
                 model_id: "standard".to_owned(),
-                behavior_id: "motion:TapBody:0".to_owned(),
-                shortcut: "Control+Alt+M".to_owned(),
+                behavior_id: behavior_id.to_owned(),
+                shortcut: behavior_shortcut.to_owned(),
             }],
         }
     }
@@ -2048,6 +2062,44 @@ mod tests {
             .shutdown_blocking()
             .expect("restarted service shutdown");
         restarted_service.join().expect("restarted service join");
+    }
+
+    #[test]
+    fn service_canonicalizes_shortcuts_before_persisting_them() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let submitted = SettingsShortcuts {
+            commands: vec![SettingsShortcutBinding {
+                command: " toggle_overlay ".to_owned(),
+                shortcut: " shift + ctrl + b ".to_owned(),
+            }],
+            model_behaviors: vec![SettingsModelBehaviorBinding {
+                model_id: "standard".to_owned(),
+                behavior_id: " expression: happy ".to_owned(),
+                shortcut: "cmd+option+p".to_owned(),
+            }],
+        };
+        let expected = shortcut_fixture_with(
+            "toggle_overlay",
+            "Control+Shift+B",
+            "expression:happy",
+            "Alt+Meta+P",
+        );
+        let application =
+            Application::start_with_layout(layout.clone()).expect("application start");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        let updated = client
+            .set_shortcuts_blocking(initial.config_revision.expect("config revision"), submitted)
+            .expect("canonicalize shortcuts");
+        assert_eq!(updated.shortcuts, expected);
+        let persisted = std::fs::read_to_string(&layout.config).expect("persisted config");
+        assert!(!persisted.contains(" shift + ctrl + b "));
+        assert!(persisted.contains("Control+Shift+B"));
+        assert!(persisted.contains("expression:happy"));
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
     }
 
     #[test]

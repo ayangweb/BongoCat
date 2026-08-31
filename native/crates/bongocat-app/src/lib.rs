@@ -601,6 +601,7 @@ impl Application {
                 })
                 .collect(),
         };
+        next_config.shortcuts = next_config.shortcuts.canonicalized()?;
         next_config.validate()?;
         let next_revision = self
             .config_store

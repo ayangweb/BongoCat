@@ -78,6 +78,8 @@ Settings service 提供 `SetShortcuts` 与 `RestoreDefaultShortcuts` 两个 type
 过期或绑定校验失败时保留当前 config、runtime 和 snapshot。恢复默认使用当前
 `ShortcutConfig::default()`（目前为空绑定集合），不读取旧配置，也不触发平台注册、按键
 捕获或 runtime 动作；清除绑定可通过提交空的 `commands`/`model_behaviors` 集合完成。
+提交前会把已接受的 application command、model behavior 和 chord 写成 canonical spelling，
+因此别名、输入顺序和多余空白不会在重启后改变 snapshot 表示。
 
 窗口坐标、pressed state、权限结果、模型解析缓存和 renderer 状态不属于 `config.json`。可恢复窗口布局写入 `state.json`；其余瞬时/派生状态不持久化。
 

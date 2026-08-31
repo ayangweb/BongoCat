@@ -228,6 +228,55 @@ pub struct ShortcutConfig {
     pub model_behaviors: Vec<ModelBehaviorBinding>,
 }
 
+impl ShortcutConfig {
+    /// Return the persisted representation with every accepted binding in its
+    /// stable spelling. Validation remains a separate step so callers can
+    /// choose whether to normalize before an atomic commit.
+    pub fn canonicalized(&self) -> Result<Self, ConfigError> {
+        let commands = self
+            .commands
+            .iter()
+            .map(|binding| {
+                let command = ShortcutCommand::parse(&binding.command)
+                    .map_err(|_| ConfigError::InvalidValue("shortcuts.command"))?
+                    .as_str()
+                    .to_owned();
+                let shortcut = ShortcutChord::parse(&binding.shortcut)
+                    .map_err(|_| ConfigError::InvalidValue("shortcuts.binding"))?
+                    .canonical();
+                Ok(ShortcutBinding { command, shortcut })
+            })
+            .collect::<Result<Vec<_>, ConfigError>>()?;
+        let model_behaviors = self
+            .model_behaviors
+            .iter()
+            .map(|binding| {
+                let behavior_id = match binding
+                    .parse_action()
+                    .map_err(|_| ConfigError::InvalidValue("shortcuts.behavior"))?
+                {
+                    ModelBehaviorAction::Motion { group, index } => {
+                        format!("motion:{group}:{index}")
+                    }
+                    ModelBehaviorAction::Expression { name } => format!("expression:{name}"),
+                };
+                let shortcut = ShortcutChord::parse(&binding.shortcut)
+                    .map_err(|_| ConfigError::InvalidValue("shortcuts.binding"))?
+                    .canonical();
+                Ok(ModelBehaviorBinding {
+                    model_id: binding.model_id.clone(),
+                    behavior_id,
+                    shortcut,
+                })
+            })
+            .collect::<Result<Vec<_>, ConfigError>>()?;
+        Ok(Self {
+            commands,
+            model_behaviors,
+        })
+    }
+}
+
 /// Application-level commands that may be persisted as global shortcuts.
 /// Keeping this list closed prevents an unvalidated string from becoming a
 /// platform registration or runtime command.
@@ -2133,6 +2182,35 @@ mod tests {
         ] {
             assert_eq!(ShortcutChord::parse(value), Err(expected), "{value}");
         }
+    }
+
+    #[test]
+    fn shortcut_config_canonicalized_stabilizes_commands_behaviors_and_chords() {
+        let config = ShortcutConfig {
+            commands: vec![ShortcutBinding {
+                command: " toggle_overlay ".to_owned(),
+                shortcut: " shift + ctrl + b ".to_owned(),
+            }],
+            model_behaviors: vec![ModelBehaviorBinding {
+                model_id: "standard".to_owned(),
+                behavior_id: " expression: happy ".to_owned(),
+                shortcut: "cmd+option+p".to_owned(),
+            }],
+        };
+        assert_eq!(
+            config.canonicalized().expect("canonical shortcuts"),
+            ShortcutConfig {
+                commands: vec![ShortcutBinding {
+                    command: "toggle_overlay".to_owned(),
+                    shortcut: "Control+Shift+B".to_owned(),
+                }],
+                model_behaviors: vec![ModelBehaviorBinding {
+                    model_id: "standard".to_owned(),
+                    behavior_id: "expression:happy".to_owned(),
+                    shortcut: "Alt+Meta+P".to_owned(),
+                }],
+            }
+        );
     }
 
     #[test]
