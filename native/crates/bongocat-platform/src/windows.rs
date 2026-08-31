@@ -254,7 +254,7 @@ struct WorkerOptions {
 #[derive(Clone, Copy)]
 struct XInputSlot {
     connection: GamepadConnection,
-    buttons: u16,
+    buttons: u32,
 }
 
 struct XInputPoller {
@@ -355,9 +355,9 @@ impl XInputPoller {
                 connection
             };
             let old_buttons = self.slots[slot].map_or(0, |value| value.buttons);
-            let new_buttons = state.gamepad.buttons
-                | (u16::from(state.gamepad.left_trigger >= 128) << 8)
-                | (u16::from(state.gamepad.right_trigger >= 128) << 9);
+            let new_buttons = u32::from(state.gamepad.buttons)
+                | (u32::from(state.gamepad.left_trigger >= 128) << 16)
+                | (u32::from(state.gamepad.right_trigger >= 128) << 17);
             for (button, bit) in XINPUT_BUTTON_BITS {
                 let was_pressed = old_buttons & bit != 0;
                 let is_pressed = new_buttons & bit != 0;
@@ -432,23 +432,29 @@ impl XInputPoller {
     }
 }
 
-const XINPUT_BUTTON_BITS: [(GamepadButton, u16); 16] = [
-    (GamepadButton::DpadUp, XINPUT_GAMEPAD_DPAD_UP),
-    (GamepadButton::DpadDown, XINPUT_GAMEPAD_DPAD_DOWN),
-    (GamepadButton::DpadLeft, XINPUT_GAMEPAD_DPAD_LEFT),
-    (GamepadButton::DpadRight, XINPUT_GAMEPAD_DPAD_RIGHT),
-    (GamepadButton::Start, XINPUT_GAMEPAD_START),
-    (GamepadButton::Select, XINPUT_GAMEPAD_BACK),
-    (GamepadButton::LeftStick, XINPUT_GAMEPAD_LEFT_THUMB),
-    (GamepadButton::RightStick, XINPUT_GAMEPAD_RIGHT_THUMB),
-    (GamepadButton::LeftShoulder, XINPUT_GAMEPAD_LEFT_SHOULDER),
-    (GamepadButton::RightShoulder, XINPUT_GAMEPAD_RIGHT_SHOULDER),
-    (GamepadButton::South, XINPUT_GAMEPAD_A),
-    (GamepadButton::East, XINPUT_GAMEPAD_B),
-    (GamepadButton::West, XINPUT_GAMEPAD_X),
-    (GamepadButton::North, XINPUT_GAMEPAD_Y),
-    (GamepadButton::LeftTrigger, 1 << 8),
-    (GamepadButton::RightTrigger, 1 << 9),
+const XINPUT_BUTTON_BITS: [(GamepadButton, u32); 16] = [
+    (GamepadButton::DpadUp, XINPUT_GAMEPAD_DPAD_UP as u32),
+    (GamepadButton::DpadDown, XINPUT_GAMEPAD_DPAD_DOWN as u32),
+    (GamepadButton::DpadLeft, XINPUT_GAMEPAD_DPAD_LEFT as u32),
+    (GamepadButton::DpadRight, XINPUT_GAMEPAD_DPAD_RIGHT as u32),
+    (GamepadButton::Start, XINPUT_GAMEPAD_START as u32),
+    (GamepadButton::Select, XINPUT_GAMEPAD_BACK as u32),
+    (GamepadButton::LeftStick, XINPUT_GAMEPAD_LEFT_THUMB as u32),
+    (GamepadButton::RightStick, XINPUT_GAMEPAD_RIGHT_THUMB as u32),
+    (
+        GamepadButton::LeftShoulder,
+        XINPUT_GAMEPAD_LEFT_SHOULDER as u32,
+    ),
+    (
+        GamepadButton::RightShoulder,
+        XINPUT_GAMEPAD_RIGHT_SHOULDER as u32,
+    ),
+    (GamepadButton::South, XINPUT_GAMEPAD_A as u32),
+    (GamepadButton::East, XINPUT_GAMEPAD_B as u32),
+    (GamepadButton::West, XINPUT_GAMEPAD_X as u32),
+    (GamepadButton::North, XINPUT_GAMEPAD_Y as u32),
+    (GamepadButton::LeftTrigger, 1 << 16),
+    (GamepadButton::RightTrigger, 1 << 17),
 ];
 
 fn normalize_thumb(value: i16) -> f32 {
@@ -1614,7 +1620,7 @@ mod tests {
         .expect("reconnect poll");
         let reconnected = poller.slots[0].expect("slot 0 reconnected");
         assert!(reconnected.connection.generation > first_generation);
-        assert_eq!(reconnected.buttons & (1 << 8), 0);
+        assert_eq!(reconnected.buttons & (1 << 16), 0);
         assert_eq!(diagnostics.gamepad_disconnections, 1);
         assert_eq!(diagnostics.gamepad_connections, 3);
         assert_eq!(diagnostics.gamepad_axis_publish_rejections, 0);

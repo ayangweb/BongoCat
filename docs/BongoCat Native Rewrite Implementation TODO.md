@@ -1727,6 +1727,10 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
         缺失和 axis publish 拒绝分别计数。可注入 poll contract 覆盖首次连接按钮边沿、trigger
         `128/255` 阈值、多 slot、断开/重连 generation，以及 stopped axis 不伪装成可靠队列
         overflow；Windows CI 与物理设备证据仍待补齐。
+      - 状态（2026-08-31）：run `33406476868` 的 Windows Native workspace 由 contract 发现
+        trigger 合成位 8/9 与 XInput shoulder 原生位冲突，左 trigger 被重复发布为 left shoulder。
+        adapter 内部 pressed mask 已扩为 `u32`，原生按钮保留低 16 位，trigger 改用位 16/17；
+        Windows x64 all-target check/Clippy 通过，原生测试复验待新 CI。
       - 状态（2026-08-31）：macOS 正式 input worker 使用最新稳定版
         `objc2-game-controller 0.3.2` 枚举至多四个 extended profile，连接/断开与 16 个按钮走
         可靠 runtime producer，六轴走 generation-keyed latest-value；callback 使用原子 pressed
