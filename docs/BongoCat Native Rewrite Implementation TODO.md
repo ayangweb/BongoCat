@@ -853,8 +853,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-09-01）：正式 runtime 已加入 typed `ModelSettings` command/snapshot；`mirror`
     进入不可变 `RenderSnapshot::mirror_horizontal`，Windows D3D11 与 macOS Metal 共享同一
     中心变换规则；`mirror_pointer_tracking` 按旧行为反转 X/Z 指针参数，`ignore_pointer`
-    跳过指针覆盖。启动配置投影、runtime/renderer 回归和 macOS 参数/变换测试已通过；设置页
-    动态编辑、平滑坐标策略、多显示器实机和完整 mirror fixture 仍未完成，checkbox 保持未勾选。
+    跳过指针覆盖。启动配置投影、runtime/renderer 回归和 macOS 参数/变换测试已通过；Settings
+    service/client 已支持 revision-checked 原子持久化，General 页面已提供三个可键盘/无障碍操作的
+    toggle。平滑坐标策略、多显示器实机和完整 mirror fixture 仍未完成，checkbox 保持未勾选。
 - [ ] 随机行为支持测试 seed。
 - [ ] 逐项记录与旧版的可接受差异。
 

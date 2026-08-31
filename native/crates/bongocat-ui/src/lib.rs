@@ -209,6 +209,7 @@ pub struct SettingsSnapshot {
     pub overlay_visible: bool,
     pub overlay: SettingsOverlay,
     pub motion_audio_enabled: bool,
+    pub model_settings: SettingsModelSettings,
     pub startup_item: SettingsStartupItemStatus,
     pub configuration_status: SettingsConfigurationStatus,
     pub config_recovery: Option<SettingsConfigRecovery>,
@@ -216,6 +217,13 @@ pub struct SettingsSnapshot {
     pub input_diagnostics: SettingsInputDiagnostics,
     pub active_model: Option<SettingsModelKey>,
     pub model_catalog: SettingsModelCatalog,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct SettingsModelSettings {
+    pub mirror: bool,
+    pub mirror_pointer_tracking: bool,
+    pub ignore_pointer: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -726,6 +734,11 @@ pub enum SettingsCommand {
         enabled: bool,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    SetModelSettings {
+        expected_config_revision: u64,
+        settings: SettingsModelSettings,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     SetStartupItemEnabled {
         enabled: bool,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
@@ -824,6 +837,19 @@ impl SettingsClient {
         self.request(|reply| SettingsCommand::SetMotionAudioEnabled {
             expected_config_revision,
             enabled,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn set_model_settings(
+        &self,
+        expected_config_revision: u64,
+        settings: SettingsModelSettings,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetModelSettings {
+            expected_config_revision,
+            settings,
             reply,
         })
         .await
@@ -942,6 +968,18 @@ impl SettingsClient {
         self.request_blocking(|reply| SettingsCommand::SetMotionAudioEnabled {
             expected_config_revision,
             enabled,
+            reply,
+        })
+    }
+
+    pub fn set_model_settings_blocking(
+        &self,
+        expected_config_revision: u64,
+        settings: SettingsModelSettings,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::SetModelSettings {
+            expected_config_revision,
+            settings,
             reply,
         })
     }
@@ -1472,6 +1510,7 @@ mod tests {
             overlay_visible,
             overlay: SettingsOverlay::default(),
             motion_audio_enabled,
+            model_settings: SettingsModelSettings::default(),
             startup_item: SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),
             configuration_status: SettingsConfigurationStatus::Ready,
             config_recovery: None,

@@ -522,6 +522,36 @@ impl Application {
         Ok(snapshot)
     }
 
+    pub fn set_model_settings(
+        &mut self,
+        settings: ModelSettings,
+    ) -> Result<RuntimeSnapshot, ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.model.mirror = settings.mirror;
+        next_config.model.mirror_pointer_tracking = settings.mirror_pointer_tracking;
+        next_config.model.ignore_pointer = settings.ignore_pointer;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+
+        let client = self.runtime.client();
+        let sequence = client
+            .send(RuntimeCommand::SetModelSettings(settings))
+            .map_err(ApplicationError::RuntimeCommand)?;
+        let snapshot = client
+            .wait_for_command(sequence, RUNTIME_TIMEOUT)
+            .ok_or(ApplicationError::RuntimeDidNotPublish)?;
+        if let Some(failure) = snapshot
+            .last_command_failure
+            .filter(|failure| failure.sequence == sequence)
+        {
+            return Err(ApplicationError::RuntimeCommandFailed(failure));
+        }
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(snapshot)
+    }
+
     pub fn set_gamepad_axis_settings(
         &mut self,
         settings: GamepadAxisSettings,

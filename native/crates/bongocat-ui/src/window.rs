@@ -3,10 +3,10 @@ use crate::{
     SettingsError, SettingsErrorCode, SettingsInputDiagnostics, SettingsInputServiceStatus,
     SettingsModelAvailability, SettingsModelDiagnostic, SettingsModelEntry,
     SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
-    SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsOperationId,
-    SettingsOverlay, SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode, SettingsSnapshot,
-    SettingsStartupItemState, SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason,
-    SettingsWindowPlacement, SettingsWindowState,
+    SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsModelSettings,
+    SettingsOperationId, SettingsOverlay, SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode,
+    SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
+    SettingsStartupItemUnsupportedReason, SettingsWindowPlacement, SettingsWindowState,
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_platform::{
@@ -69,6 +69,12 @@ const ACCESSIBILITY_REFRESH: AccessibilityNodeId = AccessibilityNodeId::new(30);
 const ACCESSIBILITY_QUIT: AccessibilityNodeId = AccessibilityNodeId::new(31);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_EXPORT_DIAGNOSTICS: AccessibilityNodeId = AccessibilityNodeId::new(32);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_MIRROR: AccessibilityNodeId = AccessibilityNodeId::new(19);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_MIRROR_POINTER: AccessibilityNodeId = AccessibilityNodeId::new(20);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_IGNORE_POINTER: AccessibilityNodeId = AccessibilityNodeId::new(21);
 
 #[derive(Clone, Copy)]
 struct Tokens {
@@ -122,6 +128,7 @@ enum PendingOperation {
     OverlayVisibility,
     OverlaySettings,
     MotionAudio,
+    ModelSettings,
     StartupItem,
     ModelSelection,
     ModelDeletion,
@@ -305,6 +312,9 @@ pub struct SettingsView {
     overlay_opacity_decrease_focus: FocusHandle,
     overlay_opacity_increase_focus: FocusHandle,
     audio_focus: FocusHandle,
+    mirror_focus: FocusHandle,
+    mirror_pointer_focus: FocusHandle,
+    ignore_pointer_focus: FocusHandle,
     startup_item_focus: FocusHandle,
     model_id_focus: FocusHandle,
     choose_model_focus: FocusHandle,
@@ -348,6 +358,9 @@ impl SettingsView {
             overlay_opacity_decrease_focus: cx.focus_handle().tab_index(17).tab_stop(true),
             overlay_opacity_increase_focus: cx.focus_handle().tab_index(18).tab_stop(true),
             audio_focus: cx.focus_handle().tab_index(11).tab_stop(true),
+            mirror_focus: cx.focus_handle().tab_index(6).tab_stop(true),
+            mirror_pointer_focus: cx.focus_handle().tab_index(7).tab_stop(true),
+            ignore_pointer_focus: cx.focus_handle().tab_index(8).tab_stop(true),
             startup_item_focus: cx.focus_handle().tab_index(12).tab_stop(true),
             model_id_focus: cx.focus_handle().tab_index(20).tab_stop(true),
             choose_model_focus: cx.focus_handle().tab_index(21).tab_stop(true),
@@ -414,6 +427,50 @@ impl SettingsView {
         .disabled(disabled);
         if !disabled {
             audio_node = audio_node.clickable().focusable();
+        }
+        let model_settings = snapshot
+            .map(|snapshot| snapshot.model_settings)
+            .unwrap_or_default();
+        let mut mirror_node = AccessibilityNode::new(
+            ACCESSIBILITY_MIRROR,
+            AccessibilityRole::Switch,
+            "Mirror model",
+        )
+        .with_value("Render the model mirrored horizontally")
+        .with_toggle(if model_settings.mirror {
+            AccessibilityToggle::On
+        } else {
+            AccessibilityToggle::Off
+        })
+        .disabled(disabled);
+        let mut mirror_pointer_node = AccessibilityNode::new(
+            ACCESSIBILITY_MIRROR_POINTER,
+            AccessibilityRole::Switch,
+            "Mirror pointer tracking",
+        )
+        .with_value("Mirror horizontal pointer tracking with the model")
+        .with_toggle(if model_settings.mirror_pointer_tracking {
+            AccessibilityToggle::On
+        } else {
+            AccessibilityToggle::Off
+        })
+        .disabled(disabled);
+        let mut ignore_pointer_node = AccessibilityNode::new(
+            ACCESSIBILITY_IGNORE_POINTER,
+            AccessibilityRole::Switch,
+            "Ignore pointer input",
+        )
+        .with_value("Do not apply pointer movement to the model")
+        .with_toggle(if model_settings.ignore_pointer {
+            AccessibilityToggle::On
+        } else {
+            AccessibilityToggle::Off
+        })
+        .disabled(disabled);
+        if !disabled {
+            mirror_node = mirror_node.clickable().focusable();
+            mirror_pointer_node = mirror_pointer_node.clickable().focusable();
+            ignore_pointer_node = ignore_pointer_node.clickable().focusable();
         }
         let overlay_settings = snapshot
             .map(|snapshot| snapshot.overlay)
@@ -567,6 +624,9 @@ impl SettingsView {
                 ACCESSIBILITY_OVERLAY_OPACITY_DECREASE,
                 ACCESSIBILITY_OVERLAY_OPACITY_INCREASE,
                 ACCESSIBILITY_AUDIO,
+                ACCESSIBILITY_MIRROR,
+                ACCESSIBILITY_MIRROR_POINTER,
+                ACCESSIBILITY_IGNORE_POINTER,
                 ACCESSIBILITY_STARTUP,
                 ACCESSIBILITY_OPEN_BACKUPS,
                 ACCESSIBILITY_RESTORE_DEFAULTS,
@@ -595,6 +655,9 @@ impl SettingsView {
             opacity_decrease_node,
             opacity_increase_node,
             audio_node,
+            mirror_node,
+            mirror_pointer_node,
+            ignore_pointer_node,
             startup_node,
             open_backups_node,
             restore_node,
@@ -654,6 +717,22 @@ impl SettingsView {
             ACCESSIBILITY_AUDIO => {
                 if let Some(snapshot) = self.snapshot.as_ref() {
                     self.set_motion_audio_enabled(!snapshot.motion_audio_enabled, cx);
+                }
+            }
+            ACCESSIBILITY_MIRROR | ACCESSIBILITY_MIRROR_POINTER | ACCESSIBILITY_IGNORE_POINTER => {
+                if let Some(snapshot) = self.snapshot.as_ref() {
+                    let mut settings = snapshot.model_settings;
+                    match request.target {
+                        ACCESSIBILITY_MIRROR => settings.mirror = !settings.mirror,
+                        ACCESSIBILITY_MIRROR_POINTER => {
+                            settings.mirror_pointer_tracking = !settings.mirror_pointer_tracking
+                        }
+                        ACCESSIBILITY_IGNORE_POINTER => {
+                            settings.ignore_pointer = !settings.ignore_pointer
+                        }
+                        _ => unreachable!(),
+                    }
+                    self.set_model_settings(settings, cx);
                 }
             }
             ACCESSIBILITY_STARTUP => match startup_item_presentation(
@@ -732,6 +811,9 @@ impl SettingsView {
                 &self.overlay_opacity_increase_focus,
             ),
             (ACCESSIBILITY_AUDIO, &self.audio_focus),
+            (ACCESSIBILITY_MIRROR, &self.mirror_focus),
+            (ACCESSIBILITY_MIRROR_POINTER, &self.mirror_pointer_focus),
+            (ACCESSIBILITY_IGNORE_POINTER, &self.ignore_pointer_focus),
             (ACCESSIBILITY_STARTUP, &self.startup_item_focus),
             (ACCESSIBILITY_OPEN_BACKUPS, &self.open_backups_focus),
             (ACCESSIBILITY_RESTORE_DEFAULTS, &self.restore_defaults_focus),
@@ -1142,6 +1224,24 @@ impl SettingsView {
             Some(SettingValue::MotionAudioEnabled {
                 expected_config_revision,
                 enabled,
+            }),
+            cx,
+        );
+    }
+
+    fn set_model_settings(&mut self, settings: SettingsModelSettings, cx: &mut Context<Self>) {
+        let Some(expected_config_revision) = self
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.config_revision)
+        else {
+            return;
+        };
+        self.start_request(
+            PendingOperation::ModelSettings,
+            Some(SettingValue::ModelSettings {
+                expected_config_revision,
+                settings,
             }),
             cx,
         );
@@ -1568,6 +1668,14 @@ impl SettingsView {
                         .set_motion_audio_enabled(expected_config_revision, enabled)
                         .await
                 }
+                Some(SettingValue::ModelSettings {
+                    expected_config_revision,
+                    settings,
+                }) => {
+                    client
+                        .set_model_settings(expected_config_revision, settings)
+                        .await
+                }
                 Some(SettingValue::StartupItemEnabled(enabled)) => {
                     client.set_startup_item_enabled(enabled).await
                 }
@@ -1631,6 +1739,10 @@ enum SettingValue {
     MotionAudioEnabled {
         expected_config_revision: u64,
         enabled: bool,
+    },
+    ModelSettings {
+        expected_config_revision: u64,
+        settings: SettingsModelSettings,
     },
     StartupItemEnabled(bool),
     OpenConfigBackupLocation,
@@ -1743,6 +1855,9 @@ impl Render for SettingsView {
                     ACCESSIBILITY_OVERLAY_OPACITY_DECREASE => &self.overlay_opacity_decrease_focus,
                     ACCESSIBILITY_OVERLAY_OPACITY_INCREASE => &self.overlay_opacity_increase_focus,
                     ACCESSIBILITY_AUDIO => &self.audio_focus,
+                    ACCESSIBILITY_MIRROR => &self.mirror_focus,
+                    ACCESSIBILITY_MIRROR_POINTER => &self.mirror_pointer_focus,
+                    ACCESSIBILITY_IGNORE_POINTER => &self.ignore_pointer_focus,
                     ACCESSIBILITY_STARTUP => &self.startup_item_focus,
                     ACCESSIBILITY_OPEN_BACKUPS => &self.open_backups_focus,
                     ACCESSIBILITY_RESTORE_DEFAULTS => &self.restore_defaults_focus,
@@ -1767,6 +1882,10 @@ impl Render for SettingsView {
         let motion_audio_enabled = snapshot
             .as_ref()
             .is_some_and(|snapshot| snapshot.motion_audio_enabled);
+        let model_settings = snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.model_settings)
+            .unwrap_or_default();
         let configuration_ready = snapshot.as_ref().is_some_and(|snapshot| {
             snapshot.configuration_status == SettingsConfigurationStatus::Ready
         });
@@ -1782,7 +1901,8 @@ impl Render for SettingsView {
                 Some(
                     PendingOperation::OverlayVisibility
                     | PendingOperation::OverlaySettings
-                    | PendingOperation::MotionAudio,
+                    | PendingOperation::MotionAudio
+                    | PendingOperation::ModelSettings,
                 ),
                 _,
             ) => "Saving...".into(),
@@ -2212,6 +2332,100 @@ impl Render for SettingsView {
             snapshot.as_ref().map(|snapshot| snapshot.startup_item),
             disabled,
         );
+
+        let mirror = model_settings.mirror;
+        let mirror_row = setting_row(
+            "Mirror model",
+            "Render the model mirrored horizontally".into(),
+            SettingRowState {
+                enabled: mirror,
+                disabled,
+                tab_index: 6,
+            },
+            &self.mirror_focus,
+            window,
+            tokens,
+        )
+        .id("model-mirror")
+        .on_click(cx.listener(move |view, _, window, cx| {
+            if !disabled {
+                window.focus(&view.mirror_focus);
+                let mut settings = model_settings;
+                settings.mirror = !mirror;
+                view.set_model_settings(settings, cx);
+            }
+        }))
+        .on_key_down(cx.listener(move |view, event, window, cx| {
+            if !disabled && is_activation_key(event) {
+                cx.stop_propagation();
+                window.focus(&view.mirror_focus);
+                let mut settings = model_settings;
+                settings.mirror = !mirror;
+                view.set_model_settings(settings, cx);
+            }
+        }));
+        let mirror_pointer = model_settings.mirror_pointer_tracking;
+        let mirror_pointer_row = setting_row(
+            "Mirror pointer tracking",
+            "Mirror horizontal pointer movement with the model".into(),
+            SettingRowState {
+                enabled: mirror_pointer,
+                disabled,
+                tab_index: 7,
+            },
+            &self.mirror_pointer_focus,
+            window,
+            tokens,
+        )
+        .id("model-mirror-pointer")
+        .on_click(cx.listener(move |view, _, window, cx| {
+            if !disabled {
+                window.focus(&view.mirror_pointer_focus);
+                let mut settings = model_settings;
+                settings.mirror_pointer_tracking = !mirror_pointer;
+                view.set_model_settings(settings, cx);
+            }
+        }))
+        .on_key_down(cx.listener(move |view, event, window, cx| {
+            if !disabled && is_activation_key(event) {
+                cx.stop_propagation();
+                window.focus(&view.mirror_pointer_focus);
+                let mut settings = model_settings;
+                settings.mirror_pointer_tracking = !mirror_pointer;
+                view.set_model_settings(settings, cx);
+            }
+        }));
+        let ignore_pointer = model_settings.ignore_pointer;
+        let ignore_pointer_row = setting_row(
+            "Ignore pointer input",
+            "Do not apply pointer movement to the model".into(),
+            SettingRowState {
+                enabled: ignore_pointer,
+                disabled,
+                tab_index: 8,
+            },
+            &self.ignore_pointer_focus,
+            window,
+            tokens,
+        )
+        .id("model-ignore-pointer")
+        .on_click(cx.listener(move |view, _, window, cx| {
+            if !disabled {
+                window.focus(&view.ignore_pointer_focus);
+                let mut settings = model_settings;
+                settings.ignore_pointer = !ignore_pointer;
+                view.set_model_settings(settings, cx);
+            }
+        }))
+        .on_key_down(cx.listener(move |view, event, window, cx| {
+            if !disabled && is_activation_key(event) {
+                cx.stop_propagation();
+                window.focus(&view.ignore_pointer_focus);
+                let mut settings = model_settings;
+                settings.ignore_pointer = !ignore_pointer;
+                view.set_model_settings(settings, cx);
+            }
+        }));
         let startup_item_action = startup_item.action;
         let startup_item_row = setting_row(
             "Open at login",
@@ -2301,6 +2515,9 @@ impl Render for SettingsView {
             .child(scale_row)
             .child(opacity_row)
             .child(audio_row)
+            .child(mirror_row)
+            .child(mirror_pointer_row)
+            .child(ignore_pointer_row)
             .child(startup_item_row)
             .child(div().flex_1());
 

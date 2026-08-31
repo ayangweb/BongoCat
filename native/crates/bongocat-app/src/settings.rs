@@ -14,8 +14,8 @@ use bongocat_platform::{
     open_directory, set_startup_item_enabled, startup_item_state,
 };
 use bongocat_runtime::{
-    InputSnapshot, OverlaySettings, PlatformInputDiagnostics, PlatformInputServiceStatus,
-    RuntimeRenderErrorCode, RuntimeState,
+    InputSnapshot, ModelSettings, OverlaySettings, PlatformInputDiagnostics,
+    PlatformInputServiceStatus, RuntimeRenderErrorCode, RuntimeState,
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_ui::SettingsStartupItemError;
@@ -25,10 +25,10 @@ use bongocat_ui::{
     SettingsInputDiagnostics, SettingsInputServiceStatus, SettingsModelAvailability,
     SettingsModelCatalog, SettingsModelCatalogError, SettingsModelDiagnostic, SettingsModelEntry,
     SettingsModelImportProgress, SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin,
-    SettingsOverlay, SettingsRuntimeCommandFailure, SettingsRuntimeDiagnostics,
-    SettingsRuntimeErrorCode, SettingsServiceEndpoint, SettingsSnapshot, SettingsStartupItemState,
-    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsWindowPlacement,
-    SettingsWindowState,
+    SettingsModelSettings, SettingsOverlay, SettingsRuntimeCommandFailure,
+    SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode, SettingsServiceEndpoint,
+    SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
+    SettingsStartupItemUnsupportedReason, SettingsWindowPlacement, SettingsWindowState,
 };
 use serde::Serialize;
 use std::fs;
@@ -284,6 +284,33 @@ fn run_service(
                         } else {
                             application
                                 .set_motion_audio_enabled(enabled)
+                                .map(|_| ())
+                                .map_err(map_application_error)
+                        }
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::SetModelSettings {
+                expected_config_revision,
+                settings,
+                reply,
+            } => {
+                let runtime_settings = ModelSettings {
+                    mirror: settings.mirror,
+                    mirror_pointer_tracking: settings.mirror_pointer_tracking,
+                    ignore_pointer: settings.ignore_pointer,
+                };
+                let result = require_operational(&application)
+                    .map_err(map_application_error)
+                    .and_then(|()| {
+                        let current =
+                            snapshot(&application, &mut clock, false, startup_item.state());
+                        if current.config_revision != Some(expected_config_revision) {
+                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
+                        } else {
+                            application
+                                .set_model_settings(runtime_settings)
                                 .map(|_| ())
                                 .map_err(map_application_error)
                         }
@@ -576,6 +603,11 @@ fn snapshot(
             opacity_percent: runtime.overlay_settings.opacity_percent,
         },
         motion_audio_enabled: runtime.motion_audio_enabled,
+        model_settings: SettingsModelSettings {
+            mirror: runtime.model_settings.mirror,
+            mirror_pointer_tracking: runtime.model_settings.mirror_pointer_tracking,
+            ignore_pointer: runtime.model_settings.ignore_pointer,
+        },
         startup_item,
         configuration_status: match application.config_status() {
             ApplicationConfigStatus::Ready => SettingsConfigurationStatus::Ready,
@@ -1383,6 +1415,7 @@ mod tests {
             overlay_visible: true,
             overlay: SettingsOverlay::default(),
             motion_audio_enabled: true,
+            model_settings: bongocat_ui::SettingsModelSettings::default(),
             startup_item: SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),
             configuration_status: SettingsConfigurationStatus::Ready,
             config_recovery: None,
@@ -1867,6 +1900,18 @@ mod tests {
                 false,
             )
             .expect("disable motion audio");
+        let model_settings = bongocat_ui::SettingsModelSettings {
+            mirror: true,
+            mirror_pointer_tracking: true,
+            ignore_pointer: true,
+        };
+        let configured_model = client
+            .set_model_settings_blocking(
+                muted.config_revision.expect("config revision"),
+                model_settings,
+            )
+            .expect("update model settings");
+        assert_eq!(configured_model.model_settings, model_settings);
         assert!(hidden.revision > initial.revision);
         assert!(muted.revision > hidden.revision);
         assert!(!muted.overlay_visible);
@@ -1878,6 +1923,9 @@ mod tests {
         assert!(persisted.contains("\"selected_model_id\": \"keyboard\""));
         assert!(persisted.contains("\"selected_model_origin\": \"preset\""));
         assert!(persisted.contains("\"opacity_percent\": 80"));
+        assert!(persisted.contains("\"mirror\": true"));
+        assert!(persisted.contains("\"mirror_pointer_tracking\": true"));
+        assert!(persisted.contains("\"ignore_pointer\": true"));
 
         let stopped = client.shutdown_blocking().expect("service shutdown");
         assert_eq!(stopped.runtime_health, RuntimeHealth::Stopped);
@@ -1950,6 +1998,33 @@ mod tests {
             .set_overlay_visible_blocking(initial_config_revision, false)
             .expect("hide overlay");
         let hidden_config = std::fs::read(&config_path).expect("hidden config");
+
+        let stale_model_error = client
+            .set_model_settings_blocking(
+                initial_config_revision,
+                bongocat_ui::SettingsModelSettings {
+                    mirror: true,
+                    mirror_pointer_tracking: true,
+                    ignore_pointer: true,
+                },
+            )
+            .expect_err("stale model settings update");
+        assert_eq!(
+            stale_model_error.code(),
+            SettingsErrorCode::SnapshotOutdated
+        );
+        let after_stale_model_settings = client
+            .read_snapshot_blocking()
+            .expect("snapshot after stale model settings");
+        assert_eq!(after_stale_model_settings.revision, hidden.revision);
+        assert_eq!(
+            after_stale_model_settings.model_settings,
+            bongocat_ui::SettingsModelSettings::default()
+        );
+        assert_eq!(
+            std::fs::read(&config_path).expect("preserved hidden config"),
+            hidden_config
+        );
 
         let stale_model_error = client
             .select_model_blocking(
