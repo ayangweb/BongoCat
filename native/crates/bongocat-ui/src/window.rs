@@ -722,7 +722,7 @@ impl SettingsView {
             .snapshot
             .as_ref()
             .ok_or_else(|| "diagnostics page has not received a settings snapshot".to_owned())?;
-        if input_diagnostic_metrics(snapshot.input_diagnostics).len() != 19 {
+        if input_diagnostic_metrics(snapshot.input_diagnostics).len() != 25 {
             return Err("diagnostics page did not project every input counter".to_owned());
         }
         let recovery =
@@ -2318,12 +2318,20 @@ fn is_activation_key(event: &KeyDownEvent) -> bool {
             || event.keystroke.key_char.as_deref() == Some(" "))
 }
 
-fn input_diagnostic_metrics(diagnostics: SettingsInputDiagnostics) -> [(&'static str, u64); 19] {
+fn input_diagnostic_metrics(diagnostics: SettingsInputDiagnostics) -> [(&'static str, u64); 25] {
     [
         ("Pressed keys", diagnostics.pressed_key_count as u64),
         (
             "Pressed mouse buttons",
             diagnostics.pressed_mouse_button_count as u64,
+        ),
+        (
+            "Pressed gamepad buttons",
+            diagnostics.pressed_gamepad_button_count as u64,
+        ),
+        (
+            "Connected gamepads",
+            diagnostics.connected_gamepad_count as u64,
         ),
         ("Captured presses", diagnostics.captured_down),
         ("Captured releases", diagnostics.captured_up),
@@ -2344,6 +2352,10 @@ fn input_diagnostic_metrics(diagnostics: SettingsInputDiagnostics) -> [(&'static
             "Non-monotonic timestamps",
             diagnostics.non_monotonic_time_count,
         ),
+        ("Gamepad connections", diagnostics.gamepad_connections),
+        ("Gamepad disconnections", diagnostics.gamepad_disconnections),
+        ("Stale gamepad events", diagnostics.stale_gamepad_events),
+        ("Released on disconnect", diagnostics.released_by_disconnect),
         ("Events enqueued", diagnostics.transport_enqueued),
         ("Queue overflows", diagnostics.transport_queue_full),
         (
@@ -2964,31 +2976,37 @@ mod tests {
         let diagnostics = SettingsInputDiagnostics {
             pressed_key_count: 1,
             pressed_mouse_button_count: 2,
-            captured_down: 3,
-            captured_up: 4,
-            reconciled_release: 5,
-            released_by_reset: 6,
-            duplicate_down: 7,
-            unmatched_release: 8,
-            invalid_source: 9,
-            reset_count: 10,
-            sequence_gap_count: 11,
-            missing_sequence_count: 12,
-            duplicate_sequence_count: 13,
-            out_of_order_sequence_count: 14,
-            non_monotonic_time_count: 15,
-            transport_enqueued: 16,
-            transport_queue_full: 17,
-            transport_recovered_after_overflow: 18,
-            transport_runtime_stopped: 19,
+            pressed_gamepad_button_count: 3,
+            connected_gamepad_count: 4,
+            captured_down: 5,
+            captured_up: 6,
+            reconciled_release: 7,
+            released_by_reset: 8,
+            duplicate_down: 9,
+            unmatched_release: 10,
+            invalid_source: 11,
+            reset_count: 12,
+            sequence_gap_count: 13,
+            missing_sequence_count: 14,
+            duplicate_sequence_count: 15,
+            out_of_order_sequence_count: 16,
+            non_monotonic_time_count: 17,
+            gamepad_connections: 18,
+            gamepad_disconnections: 19,
+            stale_gamepad_events: 20,
+            released_by_disconnect: 21,
+            transport_enqueued: 22,
+            transport_queue_full: 23,
+            transport_recovered_after_overflow: 24,
+            transport_runtime_stopped: 25,
         };
         let metrics = input_diagnostic_metrics(diagnostics);
-        assert_eq!(metrics.len(), 19);
+        assert_eq!(metrics.len(), 25);
         assert_eq!(metrics.first(), Some(&("Pressed keys", 1)));
-        assert_eq!(metrics.last(), Some(&("Rejected after shutdown", 19)));
+        assert_eq!(metrics.last(), Some(&("Rejected after shutdown", 25)));
         assert_eq!(
             metrics.iter().map(|(_, value)| *value).collect::<Vec<_>>(),
-            (1..=19).collect::<Vec<_>>()
+            (1..=25).collect::<Vec<_>>()
         );
         assert!(metrics.iter().all(|(label, _)| {
             !label.contains("HID") && !label.contains("path") && !label.contains("timestamp value")

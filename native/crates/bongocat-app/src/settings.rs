@@ -463,6 +463,8 @@ const fn settings_input_diagnostics(input: &InputSnapshot) -> SettingsInputDiagn
     SettingsInputDiagnostics {
         pressed_key_count: input.pressed_key_count,
         pressed_mouse_button_count: input.pressed_mouse_button_count,
+        pressed_gamepad_button_count: input.pressed_gamepad_button_count,
+        connected_gamepad_count: input.connected_gamepad_count,
         captured_down: input.diagnostics.captured_down,
         captured_up: input.diagnostics.captured_up,
         reconciled_release: input.diagnostics.reconciled_release,
@@ -476,6 +478,10 @@ const fn settings_input_diagnostics(input: &InputSnapshot) -> SettingsInputDiagn
         duplicate_sequence_count: input.diagnostics.duplicate_sequence_count,
         out_of_order_sequence_count: input.diagnostics.out_of_order_sequence_count,
         non_monotonic_time_count: input.diagnostics.non_monotonic_time_count,
+        gamepad_connections: input.diagnostics.gamepad_connections,
+        gamepad_disconnections: input.diagnostics.gamepad_disconnections,
+        stale_gamepad_events: input.diagnostics.stale_gamepad_events,
+        released_by_disconnect: input.diagnostics.released_by_disconnect,
         transport_enqueued: input.transport.enqueued,
         transport_queue_full: input.transport.queue_full,
         transport_recovered_after_overflow: input.transport.recovered_after_overflow,
@@ -898,6 +904,8 @@ mod tests {
         let input = InputSnapshot {
             pressed_key_count: 1,
             pressed_mouse_button_count: 2,
+            pressed_gamepad_button_count: 20,
+            connected_gamepad_count: 21,
             diagnostics: InputDiagnostics {
                 captured_down: 3,
                 captured_up: 4,
@@ -912,6 +920,10 @@ mod tests {
                 duplicate_sequence_count: 13,
                 out_of_order_sequence_count: 14,
                 non_monotonic_time_count: 15,
+                gamepad_connections: 22,
+                gamepad_disconnections: 23,
+                stale_gamepad_events: 24,
+                released_by_disconnect: 25,
             },
             transport: InputTransportDiagnostics {
                 enqueued: 16,
@@ -924,6 +936,8 @@ mod tests {
         let projected = settings_input_diagnostics(&input);
         assert_eq!(projected.pressed_key_count, 1);
         assert_eq!(projected.pressed_mouse_button_count, 2);
+        assert_eq!(projected.pressed_gamepad_button_count, 20);
+        assert_eq!(projected.connected_gamepad_count, 21);
         assert_eq!(projected.captured_down, 3);
         assert_eq!(projected.captured_up, 4);
         assert_eq!(projected.reconciled_release, 5);
@@ -937,6 +951,10 @@ mod tests {
         assert_eq!(projected.duplicate_sequence_count, 13);
         assert_eq!(projected.out_of_order_sequence_count, 14);
         assert_eq!(projected.non_monotonic_time_count, 15);
+        assert_eq!(projected.gamepad_connections, 22);
+        assert_eq!(projected.gamepad_disconnections, 23);
+        assert_eq!(projected.stale_gamepad_events, 24);
+        assert_eq!(projected.released_by_disconnect, 25);
         assert_eq!(projected.transport_enqueued, 16);
         assert_eq!(projected.transport_queue_full, 17);
         assert_eq!(projected.transport_recovered_after_overflow, 18);

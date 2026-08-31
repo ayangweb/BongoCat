@@ -30,7 +30,7 @@ pub use cursor::{
 use gamepad::{DEFAULT_GAMEPAD_AXIS_CAPACITY, GamepadAxisSlot};
 pub use gamepad::{
     GamepadAxisProducer, GamepadAxisPublishError, GamepadAxisSample, GamepadAxisSettings,
-    GamepadAxisTransportDiagnostics,
+    GamepadAxisTransportDiagnostics, GamepadConnectionError,
 };
 pub use input::{
     GamepadAxis, GamepadAxisKey, GamepadButton, GamepadButtonKey, GamepadConnection, HandSide,
@@ -988,6 +988,10 @@ impl GamepadAxisValues {
     fn clear(&mut self) {
         self.values.clear();
     }
+
+    fn clear_connection(&mut self, connection: GamepadConnection) {
+        self.values.retain(|key, _| key.connection != connection);
+    }
 }
 
 struct RuntimeWorkerBootstrap {
@@ -1151,9 +1155,15 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                     WorkerCommand::Product(RuntimeCommand::ApplyInput(envelope)) => {
                         let envelope = Arc::unwrap_or_clone(envelope);
                         let input_reset = matches!(envelope.event, InputEvent::Reset { .. });
+                        let disconnected = match &envelope.event {
+                            InputEvent::GamepadDisconnected { connection, .. } => Some(*connection),
+                            _ => None,
+                        };
                         input_state.apply(envelope);
                         if input_reset {
                             gamepad_axis_values.clear();
+                        } else if let Some(connection) = disconnected {
+                            gamepad_axis_values.clear_connection(connection);
                         }
                         let activation_pending = pending_model.is_some();
                         publish(&snapshot, |current| {
@@ -2106,10 +2116,14 @@ mod tests {
             ))
             .expect("axis settings accepted");
         let axis = owner.gamepad_axis_producer();
-        let connection = GamepadConnection {
-            device_id: 0,
-            generation: 1,
-        };
+        let connection = axis.connect(0).expect("gamepad connection allocated");
+        let input = owner.input_producer();
+        input
+            .publish(InputEvent::GamepadConnected {
+                connection,
+                at: MonotonicMillis::new(0),
+            })
+            .expect("connection accepted");
         for index in 0..10_000 {
             axis.publish(GamepadAxisSample {
                 key: GamepadAxisKey {
@@ -2121,7 +2135,6 @@ mod tests {
             })
             .expect("axis sample accepted");
         }
-        let input = owner.input_producer();
         let down = input
             .publish(InputEvent::Edge {
                 control: InputControl::Gamepad(GamepadButtonKey {

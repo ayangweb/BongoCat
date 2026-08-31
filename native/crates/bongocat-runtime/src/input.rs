@@ -186,6 +186,14 @@ pub enum InputResetReason {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InputEvent {
+    GamepadConnected {
+        connection: GamepadConnection,
+        at: MonotonicMillis,
+    },
+    GamepadDisconnected {
+        connection: GamepadConnection,
+        at: MonotonicMillis,
+    },
     Edge {
         control: InputControl,
         edge: InputEdge,
@@ -205,7 +213,11 @@ pub enum InputEvent {
 impl InputEvent {
     const fn at(&self) -> MonotonicMillis {
         match self {
-            Self::Edge { at, .. } | Self::Reconcile { at, .. } | Self::Reset { at, .. } => *at,
+            Self::GamepadConnected { at, .. }
+            | Self::GamepadDisconnected { at, .. }
+            | Self::Edge { at, .. }
+            | Self::Reconcile { at, .. }
+            | Self::Reset { at, .. } => *at,
         }
     }
 }
@@ -260,6 +272,10 @@ pub struct InputDiagnostics {
     pub duplicate_sequence_count: u64,
     pub out_of_order_sequence_count: u64,
     pub non_monotonic_time_count: u64,
+    pub gamepad_connections: u64,
+    pub gamepad_disconnections: u64,
+    pub stale_gamepad_events: u64,
+    pub released_by_disconnect: u64,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -311,6 +327,7 @@ pub struct InputSnapshot {
     pub pressed_key_count: usize,
     pub pressed_mouse_button_count: usize,
     pub pressed_gamepad_button_count: usize,
+    pub connected_gamepad_count: usize,
     pub last_reset_reason: Option<InputResetReason>,
     pub last_input_sequence: Option<u64>,
     pub diagnostics: InputDiagnostics,
@@ -355,6 +372,7 @@ struct PressedRecord {
 #[derive(Debug, Default)]
 pub(crate) struct InputState {
     pressed: BTreeMap<InputControl, PressedRecord>,
+    active_gamepads: BTreeSet<GamepadConnection>,
     missing_confirmations: BTreeMap<InputControl, u8>,
     policy: ReconciliationPolicy,
     diagnostics: InputDiagnostics,
@@ -436,6 +454,7 @@ impl InputState {
                 .keys()
                 .filter(|control| matches!(control, InputControl::Gamepad(_)))
                 .count(),
+            connected_gamepad_count: self.active_gamepads.len(),
             last_reset_reason: self.last_reset_reason,
             last_input_sequence: self.last_sequence,
             diagnostics: self.diagnostics,
@@ -485,58 +504,104 @@ impl InputState {
 
     fn apply_event(&mut self, event: InputEvent) {
         match event {
+            InputEvent::GamepadConnected { connection, .. } => {
+                if self.active_gamepads.iter().any(|active| {
+                    active.device_id == connection.device_id
+                        && active.generation >= connection.generation
+                }) {
+                    self.diagnostics.stale_gamepad_events =
+                        self.diagnostics.stale_gamepad_events.saturating_add(1);
+                    return;
+                }
+                let replaced = self
+                    .active_gamepads
+                    .iter()
+                    .copied()
+                    .filter(|active| active.device_id == connection.device_id)
+                    .collect::<BTreeSet<_>>();
+                for previous in replaced {
+                    self.disconnect_gamepad(previous);
+                }
+                self.active_gamepads.insert(connection);
+                self.diagnostics.gamepad_connections =
+                    self.diagnostics.gamepad_connections.saturating_add(1);
+            }
+            InputEvent::GamepadDisconnected { connection, .. } => {
+                if self.active_gamepads.contains(&connection) {
+                    self.disconnect_gamepad(connection);
+                    self.diagnostics.gamepad_disconnections =
+                        self.diagnostics.gamepad_disconnections.saturating_add(1);
+                } else {
+                    self.diagnostics.stale_gamepad_events =
+                        self.diagnostics.stale_gamepad_events.saturating_add(1);
+                }
+            }
             InputEvent::Edge {
                 control,
                 edge,
                 source,
                 at,
-            } => match edge {
-                InputEdge::Down => {
-                    if source != InputSource::Capture {
-                        self.diagnostics.invalid_source =
-                            self.diagnostics.invalid_source.saturating_add(1);
-                        return;
-                    }
-                    self.missing_confirmations.remove(&control);
-                    match self.pressed.entry(control) {
-                        std::collections::btree_map::Entry::Vacant(entry) => {
-                            entry.insert(PressedRecord {
-                                source,
-                                pressed_at: at,
-                                last_reconciled_at: None,
-                            });
-                            self.diagnostics.captured_down =
-                                self.diagnostics.captured_down.saturating_add(1);
-                        }
-                        std::collections::btree_map::Entry::Occupied(_) => {
-                            self.diagnostics.duplicate_down =
-                                self.diagnostics.duplicate_down.saturating_add(1);
-                        }
-                    }
+            } => {
+                if let InputControl::Gamepad(key) = control
+                    && !self.active_gamepads.contains(&key.connection)
+                {
+                    self.diagnostics.stale_gamepad_events =
+                        self.diagnostics.stale_gamepad_events.saturating_add(1);
+                    return;
                 }
-                InputEdge::Up => {
-                    self.missing_confirmations.remove(&control);
-                    let released = self.pressed.remove(&control).is_some();
-                    if !released {
-                        self.diagnostics.unmatched_release =
-                            self.diagnostics.unmatched_release.saturating_add(1);
-                    }
-                    match source {
-                        InputSource::Capture => {
-                            self.diagnostics.captured_up =
-                                self.diagnostics.captured_up.saturating_add(1);
+                match edge {
+                    InputEdge::Down => {
+                        if source != InputSource::Capture {
+                            self.diagnostics.invalid_source =
+                                self.diagnostics.invalid_source.saturating_add(1);
+                            return;
                         }
-                        InputSource::Reconciliation => {
-                            if released {
-                                self.diagnostics.reconciled_release =
-                                    self.diagnostics.reconciled_release.saturating_add(1);
+                        self.missing_confirmations.remove(&control);
+                        match self.pressed.entry(control) {
+                            std::collections::btree_map::Entry::Vacant(entry) => {
+                                entry.insert(PressedRecord {
+                                    source,
+                                    pressed_at: at,
+                                    last_reconciled_at: None,
+                                });
+                                self.diagnostics.captured_down =
+                                    self.diagnostics.captured_down.saturating_add(1);
+                            }
+                            std::collections::btree_map::Entry::Occupied(_) => {
+                                self.diagnostics.duplicate_down =
+                                    self.diagnostics.duplicate_down.saturating_add(1);
+                            }
+                        }
+                    }
+                    InputEdge::Up => {
+                        self.missing_confirmations.remove(&control);
+                        let released = self.pressed.remove(&control).is_some();
+                        if !released {
+                            self.diagnostics.unmatched_release =
+                                self.diagnostics.unmatched_release.saturating_add(1);
+                        }
+                        match source {
+                            InputSource::Capture => {
+                                self.diagnostics.captured_up =
+                                    self.diagnostics.captured_up.saturating_add(1);
+                            }
+                            InputSource::Reconciliation => {
+                                if released {
+                                    self.diagnostics.reconciled_release =
+                                        self.diagnostics.reconciled_release.saturating_add(1);
+                                }
                             }
                         }
                     }
                 }
-            },
+            }
             InputEvent::Reconcile { pressed, at } => {
-                let controls = self.pressed.keys().copied().collect::<Vec<_>>();
+                let controls = self
+                    .pressed
+                    .keys()
+                    .filter(|control| !matches!(control, InputControl::Gamepad(_)))
+                    .copied()
+                    .collect::<Vec<_>>();
                 for control in controls {
                     if pressed.contains(&control) {
                         self.missing_confirmations.remove(&control);
@@ -565,9 +630,25 @@ impl InputState {
             .released_by_reset
             .saturating_add(self.pressed.len() as u64);
         self.pressed.clear();
+        self.active_gamepads.clear();
         self.missing_confirmations.clear();
         self.last_reset_reason = Some(reason);
         self.diagnostics.reset_count = self.diagnostics.reset_count.saturating_add(1);
+    }
+
+    fn disconnect_gamepad(&mut self, connection: GamepadConnection) {
+        self.active_gamepads.remove(&connection);
+        let before = self.pressed.len();
+        self.pressed.retain(|control, _| {
+            !matches!(control, InputControl::Gamepad(key) if key.connection == connection)
+        });
+        self.diagnostics.released_by_disconnect = self
+            .diagnostics
+            .released_by_disconnect
+            .saturating_add((before - self.pressed.len()) as u64);
+        self.missing_confirmations.retain(|control, _| {
+            !matches!(control, InputControl::Gamepad(key) if key.connection == connection)
+        });
     }
 }
 
@@ -758,10 +839,18 @@ mod tests {
             button: GamepadButton::RightStick,
         });
         let mut state = InputState::default();
-        state.apply(edge(0, 0, left_stick, InputEdge::Down));
-        state.apply(edge(1, 1, right_stick, InputEdge::Down));
+        state.apply(SequencedInputEvent {
+            sequence: 0,
+            event: InputEvent::GamepadConnected {
+                connection,
+                at: MonotonicMillis::new(0),
+            },
+        });
+        state.apply(edge(1, 1, left_stick, InputEdge::Down));
+        state.apply(edge(2, 2, right_stick, InputEdge::Down));
         let snapshot = state.snapshot();
         assert_eq!(snapshot.pressed_gamepad_button_count, 2);
+        assert_eq!(snapshot.connected_gamepad_count, 1);
         assert_eq!(
             state.model_snapshot(
                 &InputBindings::default(),
@@ -776,6 +865,7 @@ mod tests {
 
         state.force_reset(InputResetReason::DeviceRemoved);
         assert_eq!(state.snapshot().pressed_gamepad_button_count, 0);
+        assert_eq!(state.snapshot().connected_gamepad_count, 0);
         assert_eq!(
             state.model_snapshot(
                 &InputBindings::default(),
@@ -783,6 +873,59 @@ mod tests {
             ),
             ModelInputSnapshot::default()
         );
+    }
+
+    #[test]
+    fn disconnect_is_scoped_and_keyboard_reconciliation_ignores_gamepads() {
+        let first = GamepadConnection {
+            device_id: 0,
+            generation: 1,
+        };
+        let second = GamepadConnection {
+            device_id: 1,
+            generation: 1,
+        };
+        let first_button = InputControl::Gamepad(GamepadButtonKey {
+            connection: first,
+            button: GamepadButton::South,
+        });
+        let second_button = InputControl::Gamepad(GamepadButtonKey {
+            connection: second,
+            button: GamepadButton::East,
+        });
+        let mut state = InputState::default();
+        for (sequence, connection) in [(0, first), (1, second)] {
+            state.apply(SequencedInputEvent {
+                sequence,
+                event: InputEvent::GamepadConnected {
+                    connection,
+                    at: MonotonicMillis::new(sequence),
+                },
+            });
+        }
+        state.apply(edge(2, 2, first_button, InputEdge::Down));
+        state.apply(edge(3, 3, second_button, InputEdge::Down));
+        state.apply(SequencedInputEvent {
+            sequence: 4,
+            event: InputEvent::Reconcile {
+                pressed: BTreeSet::new(),
+                at: MonotonicMillis::new(4),
+            },
+        });
+        state.apply(SequencedInputEvent {
+            sequence: 5,
+            event: InputEvent::GamepadDisconnected {
+                connection: first,
+                at: MonotonicMillis::new(5),
+            },
+        });
+
+        let snapshot = state.snapshot();
+        assert_eq!(snapshot.connected_gamepad_count, 1);
+        assert_eq!(snapshot.pressed_gamepad_button_count, 1);
+        assert!(state.record(first_button).is_none());
+        assert!(state.record(second_button).is_some());
+        assert_eq!(snapshot.diagnostics.released_by_disconnect, 1);
     }
 
     #[test]

@@ -1718,7 +1718,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
         producer；Windows 服务已消费 XInput，macOS 仍只完成 plumbing，无手柄启动行为不变。
     - [ ] 接入 Windows XInput 和 macOS GameController producer 的连接、按钮、axis 生命周期。
       - 状态（2026-08-31）：Windows Raw Input owner 已在 16ms service tick 查询 XInput 0..3，
-        将按钮边沿、六轴归一化和 disconnect Reset 送入同一 runtime producer；macOS
+        将连接/断开、按钮边沿和六轴归一化送入同一 runtime producer；macOS
         GameController callback 尚未接入正式服务，Windows 物理手柄/多手柄热插拔仍待实机。
       - 状态（2026-08-31）：正式 Windows adapter 改为只从 System32 动态解析
         `xinput1_4.dll`，消除 Native workspace 测试对 SDK `xinput1_4.lib` 的链接依赖；backend
@@ -1726,6 +1726,11 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
         `128/255` 阈值、多 slot、断开/重连 generation，以及 stopped axis 不伪装成可靠队列
         overflow；Windows CI 与物理设备证据仍待补齐。
     - [ ] 将 producer overflow、断开/重连和 shutdown 诊断统一映射到 runtime snapshot。
+      - 状态（2026-08-31）：共享 axis transport 现为每个 device id 分配跨 service restart
+        单调 generation，并在 snapshot 统计连接、断开、discard 和各类拒绝；可靠 input reducer
+        新增 typed connect/disconnect、active connection、stale event、scoped release 诊断，设置
+        Diagnostics 页完整投影 25 个输入计数。Windows 断开不再用全局 Reset 清除其他手柄或
+        键鼠，键鼠 reconcile 也不再错误释放手柄按钮；macOS producer 诊断接线仍待完成。
     - 状态（2026-08-31）：本批完成共享 runtime axis 闭环和 contract 回归；平台 producer 与
       实机 smoke 仍未接入，未声称手柄功能完成。
 

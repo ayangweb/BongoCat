@@ -96,6 +96,23 @@ pub enum GamepadAxisPublishError {
     StaleGeneration(GamepadAxisSample),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GamepadConnectionError {
+    RuntimeStopped,
+    GenerationExhausted,
+}
+
+impl std::fmt::Display for GamepadConnectionError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::RuntimeStopped => "runtime is stopped",
+            Self::GenerationExhausted => "gamepad connection generation is exhausted",
+        })
+    }
+}
+
+impl std::error::Error for GamepadConnectionError {}
+
 impl std::fmt::Display for GamepadAxisPublishError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(match self {
@@ -113,6 +130,8 @@ impl std::error::Error for GamepadAxisPublishError {}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct GamepadAxisTransportDiagnostics {
+    pub connections: u64,
+    pub disconnections: u64,
     pub published: u64,
     pub coalesced: u64,
     pub consumed: u64,
@@ -231,6 +250,40 @@ impl GamepadAxisSlot {
         Ok(())
     }
 
+    fn connect(&self, device_id: u8) -> Result<GamepadConnection, GamepadConnectionError> {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.stopped {
+            return Err(GamepadConnectionError::RuntimeStopped);
+        }
+        let generation = state
+            .highest_generation
+            .get(&device_id)
+            .copied()
+            .unwrap_or(0)
+            .checked_add(1)
+            .ok_or(GamepadConnectionError::GenerationExhausted)?;
+        let before = state.pending.len();
+        state
+            .pending
+            .retain(|key, _| key.connection.device_id != device_id);
+        state.diagnostics.discarded = state
+            .diagnostics
+            .discarded
+            .saturating_add((before - state.pending.len()) as u64);
+        state
+            .last_published_at
+            .retain(|key, _| key.connection.device_id != device_id);
+        state.highest_generation.insert(device_id, generation);
+        state.diagnostics.connections = state.diagnostics.connections.saturating_add(1);
+        Ok(GamepadConnection {
+            device_id,
+            generation,
+        })
+    }
+
     pub(crate) fn take(&self) -> Vec<GamepadAxisSample> {
         let mut state = self
             .state
@@ -260,6 +313,7 @@ impl GamepadAxisSlot {
         state
             .last_published_at
             .retain(|key, _| key.connection != connection);
+        state.diagnostics.disconnections = state.diagnostics.disconnections.saturating_add(1);
     }
 
     pub(crate) fn stop(&self) {
@@ -293,6 +347,10 @@ impl GamepadAxisProducer {
 
     pub fn publish(&self, sample: GamepadAxisSample) -> Result<(), GamepadAxisPublishError> {
         self.slot.publish(sample)
+    }
+
+    pub fn connect(&self, device_id: u8) -> Result<GamepadConnection, GamepadConnectionError> {
+        self.slot.connect(device_id)
     }
 
     pub fn disconnect(&self, connection: GamepadConnection) {
@@ -375,6 +433,46 @@ mod tests {
             slot.publish(sample(GamepadAxis::LeftStickX, 0.75, 3)),
             Err(GamepadAxisPublishError::StaleGeneration(_))
         ));
+    }
+
+    #[test]
+    fn connection_allocator_is_monotonic_per_device_and_stops_with_runtime() {
+        let slot = Arc::new(GamepadAxisSlot::with_capacity(12));
+        let producer = GamepadAxisProducer::new(Arc::clone(&slot));
+        let first = producer.connect(3).expect("first connection");
+        producer
+            .publish(GamepadAxisSample {
+                key: GamepadAxisKey {
+                    connection: first,
+                    axis: GamepadAxis::LeftStickX,
+                },
+                value: 0.5,
+                at: MonotonicMillis::new(1),
+            })
+            .expect("first sample");
+        let second = producer.connect(3).expect("replacement connection");
+        assert!(second.generation > first.generation);
+        assert!(matches!(
+            producer.publish(GamepadAxisSample {
+                key: GamepadAxisKey {
+                    connection: first,
+                    axis: GamepadAxis::LeftStickX,
+                },
+                value: 0.25,
+                at: MonotonicMillis::new(2),
+            }),
+            Err(GamepadAxisPublishError::StaleGeneration(_))
+        ));
+        producer.disconnect(second);
+        slot.stop();
+        assert_eq!(
+            producer.connect(3),
+            Err(GamepadConnectionError::RuntimeStopped)
+        );
+        let diagnostics = slot.diagnostics();
+        assert_eq!(diagnostics.connections, 2);
+        assert_eq!(diagnostics.disconnections, 1);
+        assert_eq!(diagnostics.discarded, 1);
     }
 
     #[test]
