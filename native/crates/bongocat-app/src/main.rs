@@ -795,6 +795,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let runtime_client = application.runtime_client();
     let input_producer = application.input_producer();
     let cursor_producer = application.cursor_producer();
+    let gamepad_axis_producer = application.gamepad_axis_producer();
     let render_consumer = application.take_render_consumer()?;
     let expect_visible_frame = application.config().overlay.visible;
     let frame_interval = Duration::from_secs_f64(1.0 / f64::from(overlay_options.maximum_fps));
@@ -832,6 +833,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             runtime_client,
             input_producer,
             cursor_producer,
+            gamepad_axis_producer,
             render_consumer,
             overlay_options,
         ) {

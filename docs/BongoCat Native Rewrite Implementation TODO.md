@@ -1713,6 +1713,9 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       - 状态（2026-08-31）：`GamepadAxisSettings` 拒绝无效 dead-zone，stick 使用对称重映射、
         trigger 使用单侧重映射；默认值仅为 runtime fallback，正式配置字段仍待设置 schema。
         `StickLeft/Right X/Y` 已进入 renderer 参数，Reset 会清空轴值。
+    - [x] 将同一 `GamepadAxisProducer` 从 Application 传递到独立 overlay/input service owner。
+      - 状态（2026-08-31）：Windows/macOS 正式服务启动与所有 opt-in smoke 调用均持有 runtime
+        producer；服务尚未消费平台 gamepad API，当前 plumbing 不改变无手柄启动行为。
     - [ ] 接入 Windows XInput 和 macOS GameController producer 的连接、按钮、axis 生命周期。
     - [ ] 将 producer overflow、断开/重连和 shutdown 诊断统一映射到 runtime snapshot。
     - 状态（2026-08-31）：本批完成共享 runtime axis 闭环和 contract 回归；平台 producer 与

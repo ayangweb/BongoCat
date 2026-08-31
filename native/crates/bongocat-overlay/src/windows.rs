@@ -10,9 +10,9 @@ use bongocat_render::{
     RenderSnapshot, TextureAsset, TextureId,
 };
 use bongocat_runtime::{
-    CursorProducer, HandSide, InputBindings, InputControl, InputEdge, InputEvent, InputProducer,
-    InputSource, MonotonicMillis, PhysicalKey, RuntimeClient, RuntimeCommand, RuntimeOwner,
-    RuntimeRenderErrorCode, RuntimeState,
+    CursorProducer, GamepadAxisProducer, HandSide, InputBindings, InputControl, InputEdge,
+    InputEvent, InputProducer, InputSource, MonotonicMillis, PhysicalKey, RuntimeClient,
+    RuntimeCommand, RuntimeOwner, RuntimeRenderErrorCode, RuntimeState,
 };
 use image::ImageReader;
 use std::{
@@ -774,6 +774,7 @@ impl ProductOverlaySession {
         runtime_client: RuntimeClient,
         input_producer: InputProducer,
         cursor_producer: CursorProducer,
+        gamepad_axis_producer: GamepadAxisProducer,
         render_consumer: RenderConsumer,
         options: OverlaySessionOptions,
     ) -> Result<Self, OverlayError> {
@@ -801,11 +802,14 @@ impl ProductOverlaySession {
         if runtime_client.snapshot().overlay_visible {
             overlay.window.show()?;
         }
-        let (input_service, input_start_error) =
-            match WindowsInputService::start(input_producer, cursor_producer) {
-                Ok(service) => (Some(service), None),
-                Err(error) => (None, Some(error)),
-            };
+        let (input_service, input_start_error) = match WindowsInputService::start(
+            input_producer,
+            cursor_producer,
+            gamepad_axis_producer,
+        ) {
+            Ok(service) => (Some(service), None),
+            Err(error) => (None, Some(error)),
+        };
         Ok(Self {
             overlay,
             runtime_client,

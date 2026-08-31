@@ -1,8 +1,8 @@
 use crate::{InputPermission, PlatformInputDiagnostics, PlatformInputError};
 use bongocat_runtime::{
-    CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorViewport, InputControl,
-    InputEdge, InputEvent, InputProducer, InputPublishError, InputResetReason, InputSource,
-    MonotonicMillis, MouseButton, PhysicalKey,
+    CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorViewport,
+    GamepadAxisProducer, InputControl, InputEdge, InputEvent, InputProducer, InputPublishError,
+    InputResetReason, InputSource, MonotonicMillis, MouseButton, PhysicalKey,
 };
 use objc2_core_foundation::{CFMachPort, CFRunLoop, CGPoint, kCFRunLoopDefaultMode};
 use objc2_core_graphics::{
@@ -200,6 +200,7 @@ impl MacInputService {
     pub fn start(
         producer: InputProducer,
         cursor_producer: CursorProducer,
+        gamepad_axis_producer: GamepadAxisProducer,
     ) -> Result<Self, PlatformInputError> {
         if input_monitoring_permission() != InputPermission::Granted {
             return Err(PlatformInputError::PermissionDenied);
@@ -212,7 +213,13 @@ impl MacInputService {
             .name("bongocat-macos-input".into())
             .spawn(move || {
                 let result = catch_unwind(AssertUnwindSafe(|| {
-                    run_input_worker(producer, cursor_producer, worker_stop, startup_sender)
+                    run_input_worker(
+                        producer,
+                        cursor_producer,
+                        gamepad_axis_producer,
+                        worker_stop,
+                        startup_sender,
+                    )
                 }))
                 .unwrap_or(Err(PlatformInputError::WorkerPanicked));
                 let _ = completion_sender.send(result);
@@ -286,6 +293,7 @@ pub fn request_input_monitoring_permission() -> InputPermission {
 fn run_input_worker(
     producer: InputProducer,
     cursor_producer: CursorProducer,
+    _gamepad_axis_producer: GamepadAxisProducer,
     stop: Arc<AtomicBool>,
     startup: SyncSender<Result<(), PlatformInputError>>,
 ) -> Result<PlatformInputDiagnostics, PlatformInputError> {

@@ -25,8 +25,12 @@ fn synthetic_shift_reaches_runtime_and_releases_cleanly() {
         .wait_for_command(binding_sequence, TIMEOUT)
         .expect("bindings applied");
 
-    let service = MacInputService::start(runtime.input_producer(), runtime.cursor_producer())
-        .expect("input service");
+    let service = MacInputService::start(
+        runtime.input_producer(),
+        runtime.cursor_producer(),
+        runtime.gamepad_axis_producer(),
+    )
+    .expect("input service");
     let source = CGEventSource::new(CGEventSourceStateID::Private).expect("event source");
     let down = CGEvent::new_keyboard_event(Some(&source), 56, true).expect("shift down");
     CGEvent::set_type(Some(&down), CGEventType::FlagsChanged);
@@ -65,8 +69,12 @@ fn synthetic_cursor_reaches_runtime_latest_value_snapshot() {
     let runtime = RuntimeOwner::start(true, 8);
     let client = runtime.client();
     client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
-    let service = MacInputService::start(runtime.input_producer(), runtime.cursor_producer())
-        .expect("input service");
+    let service = MacInputService::start(
+        runtime.input_producer(),
+        runtime.cursor_producer(),
+        runtime.gamepad_axis_producer(),
+    )
+    .expect("input service");
     let initial = client
         .wait_for_cursor_samples(1, TIMEOUT)
         .expect("initial cursor reached runtime");
@@ -112,8 +120,12 @@ fn runtime_stop_cleans_up_tap_before_a_second_service_starts() {
     client
         .wait_for_revision(1, TIMEOUT)
         .expect("first runtime ready");
-    let service = MacInputService::start(runtime.input_producer(), runtime.cursor_producer())
-        .expect("first input service");
+    let service = MacInputService::start(
+        runtime.input_producer(),
+        runtime.cursor_producer(),
+        runtime.gamepad_axis_producer(),
+    )
+    .expect("first input service");
     runtime.shutdown(TIMEOUT).expect("first runtime stop");
 
     let source = CGEventSource::new(CGEventSourceStateID::Private).expect("event source");
@@ -130,6 +142,7 @@ fn runtime_stop_cleans_up_tap_before_a_second_service_starts() {
     let replacement_service = MacInputService::start(
         replacement_runtime.input_producer(),
         replacement_runtime.cursor_producer(),
+        replacement_runtime.gamepad_axis_producer(),
     )
     .expect("replacement input service");
     let diagnostics = replacement_service

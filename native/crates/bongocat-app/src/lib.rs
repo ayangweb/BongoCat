@@ -18,9 +18,9 @@ use bongocat_model::{
 };
 use bongocat_render::{ModelCommitToken, RenderConsumer};
 use bongocat_runtime::{
-    CursorProducer, ExpressionId, ExpressionIdError, HandSide, InputBindings, InputProducer,
-    MotionId, MotionIdError, MotionPriority, PhysicalKey, RuntimeClient, RuntimeCommand,
-    RuntimeCommandFailure, RuntimeOwner, RuntimeSnapshot, SendError, ShutdownError,
+    CursorProducer, ExpressionId, ExpressionIdError, GamepadAxisProducer, HandSide, InputBindings,
+    InputProducer, MotionId, MotionIdError, MotionPriority, PhysicalKey, RuntimeClient,
+    RuntimeCommand, RuntimeCommandFailure, RuntimeOwner, RuntimeSnapshot, SendError, ShutdownError,
 };
 use std::{collections::BTreeMap, fmt, path::Path, sync::Arc, time::Duration};
 
@@ -301,6 +301,10 @@ impl Application {
 
     pub fn cursor_producer(&self) -> CursorProducer {
         self.runtime.cursor_producer()
+    }
+
+    pub fn gamepad_axis_producer(&self) -> GamepadAxisProducer {
+        self.runtime.gamepad_axis_producer()
     }
 
     pub fn take_render_consumer(&mut self) -> Result<RenderConsumer, ApplicationError> {

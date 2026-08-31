@@ -1,8 +1,8 @@
 use crate::{PlatformInputDiagnostics, PlatformInputError};
 use bongocat_runtime::{
-    CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorViewport, InputControl,
-    InputEdge, InputEvent, InputProducer, InputPublishError, InputResetReason, InputSource,
-    MonotonicMillis, MouseButton, PhysicalKey,
+    CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorViewport,
+    GamepadAxisProducer, InputControl, InputEdge, InputEvent, InputProducer, InputPublishError,
+    InputResetReason, InputSource, MonotonicMillis, MouseButton, PhysicalKey,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::{
@@ -182,6 +182,7 @@ struct WorkerOptions {
 struct WindowState {
     producer: InputProducer,
     cursor_producer: CursorProducer,
+    _gamepad_axis_producer: GamepadAxisProducer,
     stop: Arc<AtomicBool>,
     started: Instant,
     queue: VecDeque<CapturedEvent>,
@@ -202,12 +203,14 @@ impl WindowState {
     fn new(
         producer: InputProducer,
         cursor_producer: CursorProducer,
+        gamepad_axis_producer: GamepadAxisProducer,
         stop: Arc<AtomicBool>,
         options: WorkerOptions,
     ) -> Self {
         Self {
             producer,
             cursor_producer,
+            _gamepad_axis_producer: gamepad_axis_producer,
             stop,
             started: Instant::now(),
             queue: VecDeque::with_capacity(CAPTURE_QUEUE_CAPACITY),
@@ -541,13 +544,20 @@ impl WindowsInputService {
     pub fn start(
         producer: InputProducer,
         cursor_producer: CursorProducer,
+        gamepad_axis_producer: GamepadAxisProducer,
     ) -> Result<Self, PlatformInputError> {
-        Self::start_with_options(producer, cursor_producer, WorkerOptions::default())
+        Self::start_with_options(
+            producer,
+            cursor_producer,
+            gamepad_axis_producer,
+            WorkerOptions::default(),
+        )
     }
 
     fn start_with_options(
         producer: InputProducer,
         cursor_producer: CursorProducer,
+        gamepad_axis_producer: GamepadAxisProducer,
         options: WorkerOptions,
     ) -> Result<Self, PlatformInputError> {
         let stop = Arc::new(AtomicBool::new(false));
@@ -561,6 +571,7 @@ impl WindowsInputService {
                     run_input_worker(
                         producer,
                         cursor_producer,
+                        gamepad_axis_producer,
                         worker_stop,
                         options,
                         startup_sender,
@@ -622,6 +633,7 @@ impl Drop for WindowsInputService {
 fn run_input_worker(
     producer: InputProducer,
     cursor_producer: CursorProducer,
+    gamepad_axis_producer: GamepadAxisProducer,
     stop: Arc<AtomicBool>,
     options: WorkerOptions,
     startup: SyncSender<Result<(), PlatformInputError>>,
@@ -629,12 +641,22 @@ fn run_input_worker(
     // SAFETY: every Win32 object and callback state is confined to this worker
     // thread. The boxed state outlives the HWND and is dropped only after
     // WM_NCDESTROY clears GWLP_USERDATA and the message loop terminates.
-    unsafe { run_input_worker_inner(producer, cursor_producer, stop, options, startup) }
+    unsafe {
+        run_input_worker_inner(
+            producer,
+            cursor_producer,
+            gamepad_axis_producer,
+            stop,
+            options,
+            startup,
+        )
+    }
 }
 
 unsafe fn run_input_worker_inner(
     producer: InputProducer,
     cursor_producer: CursorProducer,
+    gamepad_axis_producer: GamepadAxisProducer,
     stop: Arc<AtomicBool>,
     options: WorkerOptions,
     startup: SyncSender<Result<(), PlatformInputError>>,
@@ -658,7 +680,13 @@ unsafe fn run_input_worker_inner(
         return Err(PlatformInputError::WindowClassRegistrationFailed);
     }
 
-    let mut state = Box::new(WindowState::new(producer, cursor_producer, stop, options));
+    let mut state = Box::new(WindowState::new(
+        producer,
+        cursor_producer,
+        gamepad_axis_producer,
+        stop,
+        options,
+    ));
     let state_ptr = (&mut *state) as *mut WindowState;
     let window = match unsafe {
         CreateWindowExW(
@@ -1210,6 +1238,7 @@ mod tests {
         let service = WindowsInputService::start_with_options(
             runtime.input_producer(),
             runtime.cursor_producer(),
+            runtime.gamepad_axis_producer(),
             WorkerOptions {
                 drop_next_key_release: true,
             },

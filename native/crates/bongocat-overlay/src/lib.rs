@@ -5,7 +5,7 @@ mod windows;
 
 use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError};
 use bongocat_render::{RenderConsumer, RenderTransportDiagnostics};
-use bongocat_runtime::{CursorProducer, InputProducer, RuntimeClient};
+use bongocat_runtime::{CursorProducer, GamepadAxisProducer, InputProducer, RuntimeClient};
 use std::{fmt, path::Path, time::Duration};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -61,6 +61,7 @@ impl ProductOverlaySession {
         runtime_client: RuntimeClient,
         input_producer: InputProducer,
         cursor_producer: CursorProducer,
+        gamepad_axis_producer: GamepadAxisProducer,
         render_consumer: RenderConsumer,
         options: OverlaySessionOptions,
     ) -> Result<Self, OverlayError> {
@@ -70,6 +71,7 @@ impl ProductOverlaySession {
                 runtime_client,
                 input_producer,
                 cursor_producer,
+                gamepad_axis_producer,
                 render_consumer,
                 options,
             )
@@ -82,6 +84,7 @@ impl ProductOverlaySession {
                 runtime_client,
                 input_producer,
                 cursor_producer,
+                gamepad_axis_producer,
                 render_consumer,
                 options,
             )
@@ -94,6 +97,7 @@ impl ProductOverlaySession {
                 runtime_client,
                 input_producer,
                 cursor_producer,
+                gamepad_axis_producer,
                 render_consumer,
                 options,
             );

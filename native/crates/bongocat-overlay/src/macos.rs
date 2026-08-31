@@ -10,9 +10,10 @@ use bongocat_render::{
     RenderSnapshot, TextureAsset, TextureId,
 };
 use bongocat_runtime::{
-    CursorPosition, CursorProducer, CursorSample, CursorViewport, HandSide, InputBindings,
-    InputControl, InputEdge, InputEvent, InputProducer, InputSource, MonotonicMillis, MouseButton,
-    PhysicalKey, RuntimeClient, RuntimeCommand, RuntimeOwner, RuntimeRenderErrorCode, RuntimeState,
+    CursorPosition, CursorProducer, CursorSample, CursorViewport, GamepadAxisProducer, HandSide,
+    InputBindings, InputControl, InputEdge, InputEvent, InputProducer, InputSource,
+    MonotonicMillis, MouseButton, PhysicalKey, RuntimeClient, RuntimeCommand, RuntimeOwner,
+    RuntimeRenderErrorCode, RuntimeState,
 };
 use image::ImageReader;
 use metal::{
@@ -206,6 +207,7 @@ impl ProductOverlaySession {
         runtime_client: RuntimeClient,
         input_producer: InputProducer,
         cursor_producer: CursorProducer,
+        gamepad_axis_producer: GamepadAxisProducer,
         render_consumer: RenderConsumer,
         options: OverlaySessionOptions,
     ) -> Result<Self, OverlayError> {
@@ -242,7 +244,7 @@ impl ProductOverlaySession {
             overlay.panel.orderFrontRegardless();
         }
         let (input_service, input_start_error) =
-            match MacInputService::start(input_producer, cursor_producer) {
+            match MacInputService::start(input_producer, cursor_producer, gamepad_axis_producer) {
                 Ok(service) => (Some(service), None),
                 Err(error) => (None, Some(error)),
             };
@@ -652,9 +654,16 @@ pub(crate) fn run_model_preview(
 
     let input_producer = runtime.input_producer();
     let cursor_producer = runtime.cursor_producer();
+    let gamepad_axis_producer = runtime.gamepad_axis_producer();
     let mut input_driver = PreviewInputDriver::default();
     let input_service = interactive
-        .then(|| MacInputService::start(input_producer.clone(), cursor_producer.clone()))
+        .then(|| {
+            MacInputService::start(
+                input_producer.clone(),
+                cursor_producer.clone(),
+                gamepad_axis_producer.clone(),
+            )
+        })
         .transpose()
         .map_err(|error| OverlayError::new(error.to_string()))?;
 
