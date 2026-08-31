@@ -94,9 +94,8 @@ warmed-up standard baselines.
 
 By default the preview applies deterministic, model-specific input through the product runtime so
 hand, pointer, head, and eye changes exercise per-frame Cubism evaluation and GPU buffer updates.
-Formal gamepad button/axis integration remains a separate work item. To use the formal macOS
-listen-only CGEventTap producer for keyboard and mouse button edges instead, grant Input Monitoring
-permission to the launching terminal and run:
+To use the formal macOS listen-only CGEventTap and GameController producers for keyboard, mouse and
+gamepad input instead, grant Input Monitoring permission to the launching terminal and run:
 
 ```text
 cargo run -p bongocat-overlay --release -- standard 30 --interactive
@@ -107,7 +106,7 @@ stops the platform producer before the runtime and Metal overlay. It seeds the c
 cursor position at startup and then coalesces cursor movement through an independent latest-value
 transport; pointer, head, and eye parameters use the active display's logical viewport. The product
 entry now owns this runtime/input/render lifecycle on both launch platforms. GPUI settings
-coexistence, installed-model selection, formal gamepad input, and remaining lifecycle evidence are
+coexistence, installed-model selection, physical gamepad validation, and remaining lifecycle evidence are
 separate work items.
 
 Cubism model evaluation and Metal GPU ownership are separated by the platform-independent

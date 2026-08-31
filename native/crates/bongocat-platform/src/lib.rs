@@ -154,8 +154,14 @@ pub struct PlatformInputDiagnostics {
     pub gamepad_query_errors: u64,
     pub gamepad_connections: u64,
     pub gamepad_disconnections: u64,
+    pub gamepad_button_edges: u64,
     pub gamepad_axis_samples: u64,
     pub gamepad_axis_publish_rejections: u64,
+    pub gamepad_unsupported_profiles: u64,
+    pub gamepad_rejected_after_stop: u64,
+    pub gamepad_invalid_values: u64,
+    pub gamepad_background_monitoring_enabled: bool,
+    pub gamepad_background_monitoring_restored: bool,
     pub clean_shutdown: bool,
 }
 

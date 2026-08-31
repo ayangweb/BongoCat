@@ -1,15 +1,20 @@
 use crate::{InputPermission, PlatformInputDiagnostics, PlatformInputError};
+use block2::RcBlock;
 use bongocat_runtime::{
-    CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorViewport,
-    GamepadAxisProducer, InputControl, InputEdge, InputEvent, InputProducer, InputPublishError,
-    InputResetReason, InputSource, MonotonicMillis, MouseButton, PhysicalKey,
+    CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorViewport, GamepadAxis,
+    GamepadAxisKey, GamepadAxisProducer, GamepadAxisPublishError, GamepadAxisSample, GamepadButton,
+    GamepadButtonKey, GamepadConnection, GamepadConnectionError, InputControl, InputEdge,
+    InputEvent, InputProducer, InputPublishError, InputResetReason, InputSource, MonotonicMillis,
+    MouseButton, PhysicalKey,
 };
+use objc2::rc::Retained;
 use objc2_core_foundation::{CFMachPort, CFRunLoop, CGPoint, kCFRunLoopDefaultMode};
 use objc2_core_graphics::{
     CGDirectDisplayID, CGDisplayBounds, CGError, CGEvent, CGEventField, CGEventFlags, CGEventMask,
     CGEventSource, CGEventSourceStateID, CGEventTapLocation, CGEventTapOptions,
     CGEventTapPlacement, CGEventTapProxy, CGEventType, CGGetDisplaysWithPoint, CGMouseButton,
 };
+use objc2_game_controller::{GCController, GCControllerElement, GCExtendedGamepad};
 use std::{
     collections::{BTreeMap, BTreeSet},
     ffi::c_void,
@@ -17,7 +22,7 @@ use std::{
     ptr::NonNull,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering},
         mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError},
     },
     thread::{self, JoinHandle},
@@ -29,6 +34,8 @@ const RUN_LOOP_SLICE: Duration = Duration::from_millis(10);
 const RECONCILIATION_INTERVAL: Duration = Duration::from_millis(250);
 const REQUIRED_MISSING_CONFIRMATIONS: u8 = 2;
 const SERVICE_TIMEOUT: Duration = Duration::from_secs(2);
+const MAX_GAMEPADS: usize = 4;
+const GAMEPAD_BUTTON_THRESHOLD: f32 = 0.5;
 
 #[derive(Clone, Copy, Debug)]
 enum SystemControl {
@@ -41,6 +48,11 @@ enum CapturedEvent {
     Edge {
         control: InputControl,
         system: SystemControl,
+        edge: InputEdge,
+    },
+    GamepadEdge {
+        connection: GamepadConnection,
+        button: GamepadButton,
         edge: InputEdge,
     },
     Reset,
@@ -114,6 +126,580 @@ impl LatestCursor {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+struct MacGamepadSnapshot {
+    buttons: u16,
+    axes: [f32; 6],
+    invalid_values: u64,
+}
+
+struct LatestGamepadAxes {
+    values: [std::sync::atomic::AtomicU32; 6],
+    version: AtomicU64,
+    dirty: AtomicBool,
+    closed: AtomicBool,
+}
+
+impl Default for LatestGamepadAxes {
+    fn default() -> Self {
+        Self {
+            values: std::array::from_fn(|_| std::sync::atomic::AtomicU32::new(0.0_f32.to_bits())),
+            version: AtomicU64::new(0),
+            dirty: AtomicBool::new(false),
+            closed: AtomicBool::new(false),
+        }
+    }
+}
+
+impl LatestGamepadAxes {
+    fn publish(&self, values: [f32; 6]) {
+        loop {
+            if self.closed.load(Ordering::Acquire) {
+                return;
+            }
+            let version = self.version.load(Ordering::Acquire);
+            if version & 1 != 0 {
+                thread::yield_now();
+                continue;
+            }
+            if self
+                .version
+                .compare_exchange(
+                    version,
+                    version.wrapping_add(1),
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                )
+                .is_err()
+            {
+                continue;
+            }
+            if self.closed.load(Ordering::Acquire) {
+                self.version.fetch_add(1, Ordering::Release);
+                return;
+            }
+            for (slot, value) in self.values.iter().zip(values) {
+                slot.store(value.to_bits(), Ordering::Relaxed);
+            }
+            self.version.fetch_add(1, Ordering::Release);
+            self.dirty.store(true, Ordering::Release);
+            return;
+        }
+    }
+
+    fn take(&self) -> Option<[f32; 6]> {
+        if !self.dirty.swap(false, Ordering::AcqRel) {
+            return None;
+        }
+        for _ in 0..8 {
+            let before = self.version.load(Ordering::Acquire);
+            if before & 1 != 0 {
+                thread::yield_now();
+                continue;
+            }
+            let values = self
+                .values
+                .each_ref()
+                .map(|value| f32::from_bits(value.load(Ordering::Relaxed)));
+            if self.version.load(Ordering::Acquire) == before {
+                return Some(values);
+            }
+            thread::yield_now();
+        }
+        self.dirty.store(true, Ordering::Release);
+        None
+    }
+
+    fn close(&self) {
+        self.closed.store(true, Ordering::Release);
+        loop {
+            if self.version.load(Ordering::Acquire) & 1 == 0 {
+                self.dirty.store(false, Ordering::Release);
+                return;
+            }
+            thread::yield_now();
+        }
+    }
+}
+
+struct AttachedGamepad {
+    connection: GamepadConnection,
+    profile: Retained<GCExtendedGamepad>,
+    pressed: Arc<AtomicU16>,
+    axes: Arc<LatestGamepadAxes>,
+}
+
+impl AttachedGamepad {
+    fn clear_handler(&self) {
+        // SAFETY: this owner retains the profile and removes its copied block
+        // before releasing any Rust state captured by the callback.
+        unsafe { self.profile.setValueChangedHandler(std::ptr::null_mut()) };
+    }
+}
+
+struct MacGamepadOwner {
+    producer: InputProducer,
+    axis_producer: GamepadAxisProducer,
+    capture_sender: SyncSender<CapturedEvent>,
+    started: Instant,
+    accepting: Arc<AtomicBool>,
+    recovery_requested: Arc<AtomicBool>,
+    counters: Arc<CallbackCounters>,
+    attached: BTreeMap<usize, AttachedGamepad>,
+    unsupported: BTreeSet<usize>,
+    free_slots: BTreeSet<u8>,
+    original_background_monitoring: bool,
+    background_monitoring_enabled: bool,
+    background_monitoring_restored: bool,
+    shutdown: bool,
+}
+
+impl MacGamepadOwner {
+    fn new(
+        producer: InputProducer,
+        axis_producer: GamepadAxisProducer,
+        capture_sender: SyncSender<CapturedEvent>,
+        started: Instant,
+        accepting: Arc<AtomicBool>,
+        recovery_requested: Arc<AtomicBool>,
+        counters: Arc<CallbackCounters>,
+    ) -> Self {
+        // SAFETY: this owner serializes access to GameController's process-wide
+        // background policy and restores the prior value during shutdown.
+        let original_background_monitoring =
+            unsafe { GCController::shouldMonitorBackgroundEvents() };
+        unsafe { GCController::setShouldMonitorBackgroundEvents(true) };
+        let background_monitoring_enabled =
+            unsafe { GCController::shouldMonitorBackgroundEvents() };
+        Self {
+            producer,
+            axis_producer,
+            capture_sender,
+            started,
+            accepting,
+            recovery_requested,
+            counters,
+            attached: BTreeMap::new(),
+            unsupported: BTreeSet::new(),
+            free_slots: (0..MAX_GAMEPADS as u8).collect(),
+            original_background_monitoring,
+            background_monitoring_enabled,
+            background_monitoring_restored: false,
+            shutdown: false,
+        }
+    }
+
+    fn reconcile(&mut self) -> Result<(), PlatformInputError> {
+        // SAFETY: GameController returns an owned immutable NSArray and each
+        // retained controller remains valid through this reconciliation pass.
+        let controllers = unsafe { GCController::controllers() }.to_vec();
+        let mut present = BTreeSet::new();
+        for controller in controllers {
+            let identity = Retained::as_ptr(&controller) as usize;
+            present.insert(identity);
+            if self.attached.contains_key(&identity) || self.unsupported.contains(&identity) {
+                continue;
+            }
+            // SAFETY: the retained controller is valid and the returned
+            // extended profile, when present, is independently retained.
+            let Some(profile) = (unsafe { controller.extendedGamepad() }) else {
+                self.unsupported.insert(identity);
+                self.counters
+                    .gamepad_unsupported_profiles
+                    .fetch_add(1, Ordering::Relaxed);
+                continue;
+            };
+            let Some(device_id) = self.free_slots.pop_first() else {
+                continue;
+            };
+            let connection = match self.axis_producer.connect(device_id) {
+                Ok(connection) => connection,
+                Err(GamepadConnectionError::RuntimeStopped) => {
+                    self.free_slots.insert(device_id);
+                    return Err(PlatformInputError::RuntimeStopped);
+                }
+                Err(GamepadConnectionError::GenerationExhausted) => {
+                    self.free_slots.insert(device_id);
+                    self.counters
+                        .gamepad_axis_publish_rejections
+                        .fetch_add(1, Ordering::Relaxed);
+                    continue;
+                }
+            };
+            if let Err(error) = self.producer.publish(InputEvent::GamepadConnected {
+                connection,
+                at: monotonic(self.started),
+            }) {
+                self.axis_producer.disconnect(connection);
+                self.free_slots.insert(device_id);
+                self.handle_input_error(error)?;
+                continue;
+            }
+            self.counters
+                .gamepad_connections
+                .fetch_add(1, Ordering::Relaxed);
+            let pressed = Arc::new(AtomicU16::new(0));
+            let axes = Arc::new(LatestGamepadAxes::default());
+            let callback_sender = self.capture_sender.clone();
+            let callback_pressed = Arc::clone(&pressed);
+            let callback_axes = Arc::clone(&axes);
+            let callback_accepting = Arc::clone(&self.accepting);
+            let callback_recovery = Arc::clone(&self.recovery_requested);
+            let callback_counters = Arc::clone(&self.counters);
+            let block: RcBlock<dyn Fn(NonNull<GCExtendedGamepad>, NonNull<GCControllerElement>)> =
+                RcBlock::new(
+                    move |profile: NonNull<GCExtendedGamepad>,
+                          _element: NonNull<GCControllerElement>| {
+                        if !callback_accepting.load(Ordering::Acquire) {
+                            callback_counters
+                                .gamepad_rejected_after_stop
+                                .fetch_add(1, Ordering::Relaxed);
+                            return;
+                        }
+                        if catch_unwind(AssertUnwindSafe(|| {
+                            // SAFETY: GameController supplies a valid retained
+                            // profile for the duration of this copied block call.
+                            let snapshot = unsafe { snapshot_extended_gamepad(profile.as_ref()) };
+                            capture_gamepad_snapshot(
+                                snapshot,
+                                connection,
+                                &callback_sender,
+                                &callback_pressed,
+                                &callback_axes,
+                                &callback_accepting,
+                                &callback_recovery,
+                                &callback_counters,
+                            );
+                        }))
+                        .is_err()
+                        {
+                            callback_counters
+                                .callback_panics
+                                .fetch_add(1, Ordering::Relaxed);
+                            callback_accepting.store(false, Ordering::Release);
+                            callback_recovery.store(true, Ordering::Release);
+                        }
+                    },
+                );
+            // SAFETY: the retained profile copies the block. The closure owns
+            // only Send + Sync Rust producers, atomics and value identifiers.
+            unsafe { profile.setValueChangedHandler(RcBlock::as_ptr(&block)) };
+            // SAFETY: all profile elements are retained for each immediate
+            // scalar read and the profile remains owned by this handler.
+            let snapshot = unsafe { snapshot_extended_gamepad(&profile) };
+            capture_gamepad_snapshot(
+                snapshot,
+                connection,
+                &self.capture_sender,
+                &pressed,
+                &axes,
+                &self.accepting,
+                &self.recovery_requested,
+                &self.counters,
+            );
+            self.attached.insert(
+                identity,
+                AttachedGamepad {
+                    connection,
+                    profile,
+                    pressed,
+                    axes,
+                },
+            );
+        }
+
+        let removed = self
+            .attached
+            .keys()
+            .copied()
+            .filter(|identity| !present.contains(identity))
+            .collect::<Vec<_>>();
+        for identity in removed {
+            let Some(handler) = self.attached.remove(&identity) else {
+                continue;
+            };
+            handler.clear_handler();
+            handler.axes.close();
+            self.axis_producer.disconnect(handler.connection);
+            self.free_slots.insert(handler.connection.device_id);
+            self.counters
+                .gamepad_disconnections
+                .fetch_add(1, Ordering::Relaxed);
+            if let Err(error) = self.producer.publish(InputEvent::GamepadDisconnected {
+                connection: handler.connection,
+                at: monotonic(self.started),
+            }) {
+                self.handle_input_error(error)?;
+            }
+        }
+        self.unsupported
+            .retain(|identity| present.contains(identity));
+        Ok(())
+    }
+
+    fn reseed(&self) {
+        for handler in self.attached.values() {
+            handler.pressed.store(0, Ordering::Release);
+            // SAFETY: the owner retains each attached profile through this
+            // synchronous state read.
+            let snapshot = unsafe { snapshot_extended_gamepad(&handler.profile) };
+            capture_gamepad_snapshot(
+                snapshot,
+                handler.connection,
+                &self.capture_sender,
+                &handler.pressed,
+                &handler.axes,
+                &self.accepting,
+                &self.recovery_requested,
+                &self.counters,
+            );
+        }
+    }
+
+    fn forward_axes(&self) -> Result<(), PlatformInputError> {
+        let at = monotonic(self.started);
+        for handler in self.attached.values() {
+            let Some(values) = handler.axes.take() else {
+                continue;
+            };
+            for axis in GamepadAxis::ALL {
+                match self.axis_producer.publish(GamepadAxisSample {
+                    key: GamepadAxisKey {
+                        connection: handler.connection,
+                        axis,
+                    },
+                    value: values[axis as usize],
+                    at,
+                }) {
+                    Ok(()) => {
+                        self.counters
+                            .gamepad_axis_samples
+                            .fetch_add(1, Ordering::Relaxed);
+                    }
+                    Err(GamepadAxisPublishError::RuntimeStopped(_)) => {
+                        return Err(PlatformInputError::RuntimeStopped);
+                    }
+                    Err(_) => {
+                        self.counters
+                            .gamepad_axis_publish_rejections
+                            .fetch_add(1, Ordering::Relaxed);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_input_error(&self, error: InputPublishError) -> Result<(), PlatformInputError> {
+        match error {
+            InputPublishError::QueueFull(_) => {
+                self.counters
+                    .gamepad_runtime_queue_overflows
+                    .fetch_add(1, Ordering::Relaxed);
+                self.accepting.store(false, Ordering::Release);
+                self.recovery_requested.store(true, Ordering::Release);
+                Ok(())
+            }
+            InputPublishError::RuntimeStopped(_) => Err(PlatformInputError::RuntimeStopped),
+        }
+    }
+
+    fn shutdown(&mut self) -> bool {
+        if self.shutdown {
+            return self.background_monitoring_restored;
+        }
+        self.accepting.store(false, Ordering::Release);
+        for (_, handler) in std::mem::take(&mut self.attached) {
+            handler.clear_handler();
+            handler.axes.close();
+            self.axis_producer.disconnect(handler.connection);
+            self.counters
+                .gamepad_disconnections
+                .fetch_add(1, Ordering::Relaxed);
+        }
+        // SAFETY: all handlers are removed before restoring the process-wide
+        // delivery policy, so no callback can retain this owner's Rust state.
+        unsafe {
+            GCController::setShouldMonitorBackgroundEvents(self.original_background_monitoring)
+        };
+        self.background_monitoring_restored =
+            unsafe { GCController::shouldMonitorBackgroundEvents() }
+                == self.original_background_monitoring;
+        self.shutdown = true;
+        self.background_monitoring_restored
+    }
+}
+
+impl Drop for MacGamepadOwner {
+    fn drop(&mut self) {
+        let _ = self.shutdown();
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn capture_gamepad_snapshot(
+    snapshot: MacGamepadSnapshot,
+    connection: GamepadConnection,
+    sender: &SyncSender<CapturedEvent>,
+    pressed: &AtomicU16,
+    axes: &LatestGamepadAxes,
+    accepting: &AtomicBool,
+    recovery_requested: &AtomicBool,
+    counters: &CallbackCounters,
+) {
+    counters
+        .gamepad_invalid_values
+        .fetch_add(snapshot.invalid_values, Ordering::Relaxed);
+    let previous = pressed.load(Ordering::Acquire);
+    let changed = previous ^ snapshot.buttons;
+    for button in GamepadButton::ALL {
+        let bit = 1_u16 << button as u16;
+        if changed & bit == 0 {
+            continue;
+        }
+        let event = CapturedEvent::GamepadEdge {
+            connection,
+            button,
+            edge: if snapshot.buttons & bit != 0 {
+                InputEdge::Down
+            } else {
+                InputEdge::Up
+            },
+        };
+        match sender.try_send(event) {
+            Ok(()) => {
+                counters
+                    .gamepad_button_edges
+                    .fetch_add(1, Ordering::Relaxed);
+                counters.queued_edges.fetch_add(1, Ordering::Relaxed);
+            }
+            Err(TrySendError::Full(_)) => {
+                counters
+                    .capture_queue_overflows
+                    .fetch_add(1, Ordering::Relaxed);
+                accepting.store(false, Ordering::Release);
+                recovery_requested.store(true, Ordering::Release);
+                return;
+            }
+            Err(TrySendError::Disconnected(_)) => {
+                counters
+                    .gamepad_rejected_after_stop
+                    .fetch_add(1, Ordering::Relaxed);
+                return;
+            }
+        }
+    }
+    pressed.store(snapshot.buttons, Ordering::Release);
+    axes.publish(snapshot.axes);
+}
+
+unsafe fn snapshot_extended_gamepad(profile: &GCExtendedGamepad) -> MacGamepadSnapshot {
+    use objc2_game_controller::GCControllerButtonInput;
+
+    unsafe fn button(
+        profile: &GCExtendedGamepad,
+        getter: unsafe fn(&GCExtendedGamepad) -> Retained<GCControllerButtonInput>,
+    ) -> f32 {
+        // SAFETY: the caller supplies a getter for this retained profile.
+        unsafe { getter(profile).value() }
+    }
+
+    fn normalized(value: f32, trigger: bool, invalid_values: &mut u64) -> f32 {
+        if !value.is_finite() {
+            *invalid_values = invalid_values.saturating_add(1);
+            return 0.0;
+        }
+        if trigger {
+            value.clamp(0.0, 1.0)
+        } else {
+            value.clamp(-1.0, 1.0)
+        }
+    }
+
+    fn set_button(buttons: &mut u16, button: GamepadButton, value: f32, invalid_values: &mut u64) {
+        if normalized(value, true, invalid_values) >= GAMEPAD_BUTTON_THRESHOLD {
+            *buttons |= 1_u16 << button as u16;
+        }
+    }
+
+    // SAFETY: all getters belong to a retained extended profile and returned
+    // elements are retained for each immediate scalar read.
+    unsafe {
+        let left = profile.leftThumbstick();
+        let right = profile.rightThumbstick();
+        let dpad = profile.dpad();
+        let left_trigger = profile.leftTrigger().value();
+        let right_trigger = profile.rightTrigger().value();
+        let mut snapshot = MacGamepadSnapshot::default();
+        for (button_id, value) in [
+            (
+                GamepadButton::South,
+                button(profile, GCExtendedGamepad::buttonA),
+            ),
+            (
+                GamepadButton::East,
+                button(profile, GCExtendedGamepad::buttonB),
+            ),
+            (
+                GamepadButton::West,
+                button(profile, GCExtendedGamepad::buttonX),
+            ),
+            (
+                GamepadButton::North,
+                button(profile, GCExtendedGamepad::buttonY),
+            ),
+            (
+                GamepadButton::LeftShoulder,
+                button(profile, GCExtendedGamepad::leftShoulder),
+            ),
+            (
+                GamepadButton::RightShoulder,
+                button(profile, GCExtendedGamepad::rightShoulder),
+            ),
+            (GamepadButton::LeftTrigger, left_trigger),
+            (GamepadButton::RightTrigger, right_trigger),
+            (GamepadButton::Start, profile.buttonMenu().value()),
+            (GamepadButton::DpadUp, dpad.up().value()),
+            (GamepadButton::DpadDown, dpad.down().value()),
+            (GamepadButton::DpadLeft, dpad.left().value()),
+            (GamepadButton::DpadRight, dpad.right().value()),
+        ] {
+            set_button(
+                &mut snapshot.buttons,
+                button_id,
+                value,
+                &mut snapshot.invalid_values,
+            );
+        }
+        for (button_id, input) in [
+            (GamepadButton::Select, profile.buttonOptions()),
+            (GamepadButton::LeftStick, profile.leftThumbstickButton()),
+            (GamepadButton::RightStick, profile.rightThumbstickButton()),
+        ] {
+            if let Some(input) = input {
+                set_button(
+                    &mut snapshot.buttons,
+                    button_id,
+                    input.value(),
+                    &mut snapshot.invalid_values,
+                );
+            }
+        }
+        for (axis, value) in [
+            (GamepadAxis::LeftStickX, left.xAxis().value()),
+            (GamepadAxis::LeftStickY, left.yAxis().value()),
+            (GamepadAxis::RightStickX, right.xAxis().value()),
+            (GamepadAxis::RightStickY, right.yAxis().value()),
+            (GamepadAxis::LeftTrigger, left_trigger),
+            (GamepadAxis::RightTrigger, right_trigger),
+        ] {
+            snapshot.axes[axis as usize] =
+                normalized(value, axis.is_trigger(), &mut snapshot.invalid_values);
+        }
+        snapshot
+    }
+}
+
 #[derive(Default)]
 struct CallbackCounters {
     captured_edges: AtomicU64,
@@ -123,6 +709,15 @@ struct CallbackCounters {
     callback_panics: AtomicU64,
     capture_queue_overflows: AtomicU64,
     rejected_after_stop: AtomicU64,
+    gamepad_connections: AtomicU64,
+    gamepad_disconnections: AtomicU64,
+    gamepad_button_edges: AtomicU64,
+    gamepad_axis_samples: AtomicU64,
+    gamepad_axis_publish_rejections: AtomicU64,
+    gamepad_runtime_queue_overflows: AtomicU64,
+    gamepad_unsupported_profiles: AtomicU64,
+    gamepad_rejected_after_stop: AtomicU64,
+    gamepad_invalid_values: AtomicU64,
 }
 
 struct TapCallbackContext {
@@ -185,6 +780,17 @@ impl CallbackCounters {
             callback_panics: self.callback_panics.load(Ordering::Relaxed),
             capture_queue_overflows: self.capture_queue_overflows.load(Ordering::Relaxed),
             rejected_after_stop: self.rejected_after_stop.load(Ordering::Relaxed),
+            gamepad_connections: self.gamepad_connections.load(Ordering::Relaxed),
+            gamepad_disconnections: self.gamepad_disconnections.load(Ordering::Relaxed),
+            gamepad_button_edges: self.gamepad_button_edges.load(Ordering::Relaxed),
+            gamepad_axis_samples: self.gamepad_axis_samples.load(Ordering::Relaxed),
+            gamepad_axis_publish_rejections: self
+                .gamepad_axis_publish_rejections
+                .load(Ordering::Relaxed),
+            runtime_queue_overflows: self.gamepad_runtime_queue_overflows.load(Ordering::Relaxed),
+            gamepad_unsupported_profiles: self.gamepad_unsupported_profiles.load(Ordering::Relaxed),
+            gamepad_rejected_after_stop: self.gamepad_rejected_after_stop.load(Ordering::Relaxed),
+            gamepad_invalid_values: self.gamepad_invalid_values.load(Ordering::Relaxed),
             ..PlatformInputDiagnostics::default()
         }
     }
@@ -293,7 +899,7 @@ pub fn request_input_monitoring_permission() -> InputPermission {
 fn run_input_worker(
     producer: InputProducer,
     cursor_producer: CursorProducer,
-    _gamepad_axis_producer: GamepadAxisProducer,
+    gamepad_axis_producer: GamepadAxisProducer,
     stop: Arc<AtomicBool>,
     startup: SyncSender<Result<(), PlatformInputError>>,
 ) -> Result<PlatformInputDiagnostics, PlatformInputError> {
@@ -305,6 +911,15 @@ fn run_input_worker(
     let modifier_keys = Arc::new(Mutex::new(BTreeSet::<u16>::new()));
     let latest_cursor = LatestCursor::default();
     let (capture_sender, capture_receiver) = mpsc::sync_channel(CAPTURE_QUEUE_CAPACITY);
+    let mut gamepad_owner = MacGamepadOwner::new(
+        producer.clone(),
+        gamepad_axis_producer,
+        capture_sender.clone(),
+        started,
+        Arc::clone(&accepting),
+        Arc::clone(&recovery_requested),
+        Arc::clone(&counters),
+    );
 
     let mut callback_context = Box::new(TapCallbackContext {
         sender: capture_sender,
@@ -404,6 +1019,7 @@ fn run_input_worker(
                         tap_restart_pending = false;
                     }
                     accepting.store(true, Ordering::Release);
+                    gamepad_owner.reseed();
                 }
                 Err(InputPublishError::QueueFull(_)) => {
                     diagnostics.runtime_queue_overflows =
@@ -427,6 +1043,10 @@ fn run_input_worker(
             recovery_pending = true;
             tap_restart_pending = true;
             continue;
+        }
+
+        if let Err(error) = gamepad_owner.reconcile() {
+            break 'service Err(error);
         }
 
         loop {
@@ -456,6 +1076,10 @@ fn run_input_worker(
                     }
                 }
             }
+        }
+
+        if let Err(error) = gamepad_owner.forward_axes() {
+            break 'service Err(error);
         }
 
         if let Err(error) =
@@ -507,6 +1131,8 @@ fn run_input_worker(
     accepting.store(false, Ordering::Release);
     CGEvent::tap_enable(&tap, false);
     run_loop.remove_source(Some(&source), Some(mode));
+    diagnostics.gamepad_background_monitoring_enabled = gamepad_owner.background_monitoring_enabled;
+    diagnostics.gamepad_background_monitoring_restored = gamepad_owner.shutdown();
     latest_cursor.close();
     if service_result.is_ok()
         && let Err(error) =
@@ -517,7 +1143,8 @@ fn run_input_worker(
     diagnostics.capture_queue_discarded = diagnostics
         .capture_queue_discarded
         .saturating_add(drain_capture_queue(&capture_receiver));
-    diagnostics.clean_shutdown = publish_final_reset(&producer, started, &mut diagnostics);
+    diagnostics.clean_shutdown = diagnostics.gamepad_background_monitoring_restored
+        && publish_final_reset(&producer, started, &mut diagnostics);
     merge_callback_diagnostics(&mut diagnostics, &counters);
     latest_cursor.merge_diagnostics(&mut diagnostics);
     service_result?;
@@ -801,6 +1428,19 @@ fn publish_captured(
             }
             diagnostics.consumed_edges = diagnostics.consumed_edges.saturating_add(1);
         }
+        CapturedEvent::GamepadEdge {
+            connection,
+            button,
+            edge,
+        } => {
+            producer.publish(InputEvent::Edge {
+                control: InputControl::Gamepad(GamepadButtonKey { connection, button }),
+                edge,
+                source: InputSource::Capture,
+                at,
+            })?;
+            diagnostics.consumed_edges = diagnostics.consumed_edges.saturating_add(1);
+        }
         CapturedEvent::Reset => {
             producer.recover(InputResetReason::ServiceRestart, at)?;
             candidates.clear();
@@ -855,6 +1495,17 @@ fn merge_callback_diagnostics(
     diagnostics.callback_panics = callback.callback_panics;
     diagnostics.capture_queue_overflows = callback.capture_queue_overflows;
     diagnostics.rejected_after_stop = callback.rejected_after_stop;
+    diagnostics.runtime_queue_overflows = diagnostics
+        .runtime_queue_overflows
+        .saturating_add(callback.runtime_queue_overflows);
+    diagnostics.gamepad_connections = callback.gamepad_connections;
+    diagnostics.gamepad_disconnections = callback.gamepad_disconnections;
+    diagnostics.gamepad_button_edges = callback.gamepad_button_edges;
+    diagnostics.gamepad_axis_samples = callback.gamepad_axis_samples;
+    diagnostics.gamepad_axis_publish_rejections = callback.gamepad_axis_publish_rejections;
+    diagnostics.gamepad_unsupported_profiles = callback.gamepad_unsupported_profiles;
+    diagnostics.gamepad_rejected_after_stop = callback.gamepad_rejected_after_stop;
+    diagnostics.gamepad_invalid_values = callback.gamepad_invalid_values;
 }
 
 fn monotonic(started: Instant) -> MonotonicMillis {
@@ -1020,6 +1671,7 @@ fn system_pressed(system: SystemControl) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bongocat_runtime::RuntimeOwner;
 
     #[test]
     fn mac_key_codes_map_to_usb_hid_usages() {
@@ -1057,5 +1709,143 @@ mod tests {
         assert_eq!(diagnostics.cursor_consumed, 1);
         assert_eq!(diagnostics.cursor_rejected_after_stop, 1);
         assert_eq!(diagnostics.captured_edges, 0);
+    }
+
+    #[test]
+    fn gamepad_callback_queues_reliable_edges_and_atomic_latest_axes() {
+        const TIMEOUT: Duration = Duration::from_secs(2);
+        let runtime = RuntimeOwner::start(true, 64);
+        let client = runtime.client();
+        client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+        let producer = runtime.input_producer();
+        let axis_producer = runtime.gamepad_axis_producer();
+        let connection = axis_producer.connect(0).expect("connection");
+        producer
+            .publish(InputEvent::GamepadConnected {
+                connection,
+                at: MonotonicMillis::new(0),
+            })
+            .expect("connected event");
+        let pressed = AtomicU16::new(0);
+        let accepting = AtomicBool::new(true);
+        let recovery = AtomicBool::new(false);
+        let counters = CallbackCounters::default();
+        let axes = LatestGamepadAxes::default();
+        let (sender, receiver) = mpsc::sync_channel(8);
+        let mut down = MacGamepadSnapshot {
+            buttons: 1_u16 << GamepadButton::South as u16,
+            ..MacGamepadSnapshot::default()
+        };
+        down.axes[GamepadAxis::LeftStickX as usize] = 0.75;
+        down.axes[GamepadAxis::RightTrigger as usize] = 0.5;
+        capture_gamepad_snapshot(
+            down, connection, &sender, &pressed, &axes, &accepting, &recovery, &counters,
+        );
+        let mut candidates = BTreeMap::new();
+        let mut missing = BTreeMap::new();
+        let mut diagnostics = PlatformInputDiagnostics::default();
+        let values = axes.take().expect("axis snapshot");
+        for axis in GamepadAxis::ALL {
+            axis_producer
+                .publish(GamepadAxisSample {
+                    key: GamepadAxisKey { connection, axis },
+                    value: values[axis as usize],
+                    at: MonotonicMillis::new(1),
+                })
+                .expect("axis published");
+        }
+        publish_captured(
+            &producer,
+            receiver.recv().expect("button edge"),
+            MonotonicMillis::new(1),
+            &mut candidates,
+            &mut missing,
+            &mut diagnostics,
+        )
+        .expect("button down published");
+        let down_snapshot = client
+            .wait_for_input_sequence(1, TIMEOUT)
+            .expect("button down consumed");
+        assert_eq!(down_snapshot.input.connected_gamepad_count, 1);
+        assert_eq!(down_snapshot.input.pressed_gamepad_button_count, 1);
+        assert!(down_snapshot.model_input.stick_left_x > 0.7);
+        assert_eq!(down_snapshot.model_input.right_trigger, 0.5);
+
+        capture_gamepad_snapshot(
+            MacGamepadSnapshot::default(),
+            connection,
+            &sender,
+            &pressed,
+            &axes,
+            &accepting,
+            &recovery,
+            &counters,
+        );
+        publish_captured(
+            &producer,
+            receiver.recv().expect("button release"),
+            MonotonicMillis::new(2),
+            &mut candidates,
+            &mut missing,
+            &mut diagnostics,
+        )
+        .expect("button up published");
+        let released = client
+            .wait_for_input_sequence(2, TIMEOUT)
+            .expect("button up consumed");
+        assert_eq!(released.input.pressed_gamepad_button_count, 0);
+        assert_eq!(counters.gamepad_button_edges.load(Ordering::Relaxed), 2);
+        assert!(!recovery.load(Ordering::Acquire));
+
+        runtime.shutdown(TIMEOUT).expect("runtime stop");
+    }
+
+    #[test]
+    fn latest_gamepad_axes_never_exposes_a_mixed_snapshot() {
+        let axes = Arc::new(LatestGamepadAxes::default());
+        let writer_axes = Arc::clone(&axes);
+        let writer = thread::spawn(move || {
+            for value in 1..=50_000_u32 {
+                let value = value as f32;
+                writer_axes.publish([value; 6]);
+            }
+        });
+        while !writer.is_finished() {
+            if let Some(values) = axes.take() {
+                assert!(values.iter().all(|value| *value == values[0]));
+            }
+            thread::yield_now();
+        }
+        writer.join().expect("axis writer");
+        while let Some(values) = axes.take() {
+            assert!(values.iter().all(|value| *value == values[0]));
+        }
+        axes.close();
+    }
+
+    #[test]
+    fn gamecontroller_owner_restores_background_policy_and_handlers() {
+        const TIMEOUT: Duration = Duration::from_secs(2);
+        let runtime = RuntimeOwner::start(true, 64);
+        let counters = Arc::new(CallbackCounters::default());
+        let accepting = Arc::new(AtomicBool::new(true));
+        let recovery = Arc::new(AtomicBool::new(false));
+        let (sender, _receiver) = mpsc::sync_channel(8);
+        let mut owner = MacGamepadOwner::new(
+            runtime.input_producer(),
+            runtime.gamepad_axis_producer(),
+            sender,
+            Instant::now(),
+            Arc::clone(&accepting),
+            Arc::clone(&recovery),
+            Arc::clone(&counters),
+        );
+        assert!(owner.background_monitoring_enabled);
+        owner.reconcile().expect("controller enumeration");
+        assert!(owner.shutdown());
+        assert!(owner.attached.is_empty());
+        assert!(!accepting.load(Ordering::Acquire));
+        assert_eq!(counters.callback_panics.load(Ordering::Relaxed), 0);
+        runtime.shutdown(TIMEOUT).expect("runtime stop");
     }
 }

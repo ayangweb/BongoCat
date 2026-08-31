@@ -1679,23 +1679,20 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       `99474952561`/`99474952603`/`99474952709` 通过完整 format、Clippy、workspace test、
       release/Production 和平台 smoke，Windows input/config job `99474952566`、config-store job
       `99474952502` 与 dependency policy job `99474952595` 同时通过，退出条件满足。
-44. [x] `P6-STATE-WINDOW-LAYOUT`：以环境内 `state.json` 恢复设置窗口布局。
-    - 依赖：`P6-STORAGE-LAYOUT-BOUNDARY`、正式 settings lifecycle、GPUI 公共 bounds API。
-    - 退出条件：state 使用独立 v1 schema、`state.writer.lock` 和原子提交后验证，不进入 config
+44. [x] `P6-STATE-WINDOW-LAYOUT`：以环境内 `state.json` 恢复设置窗口布局。- 依赖：`P6-STORAGE-LAYOUT-BOUNDARY`、正式 settings lifecycle、GPUI 公共 bounds API。- 退出条件：state 使用独立 v1 schema、`state.writer.lock` 和原子提交后验证，不进入 config
         revision/backup/recovery；窗口逻辑坐标/尺寸/maximized 有界且支持负坐标，完全离屏时回到
         当前显示器居中 `800x600`；缺失、损坏、I/O 和未来 schema 不阻塞 config/runtime，旧版本
         不覆盖未来 state；GPUI observer 只更新内存，settings worker shutdown flush，macOS Entity
         重建与 Windows 隐藏/重显使用最新内存值，进程重启读回；config/ui/app 定向测试、严格
-        Clippy、完整 Native workspace、三平台 CI 和双平台隔离 storage smoke 通过。
-    - 验收证据（2026-08-31）：typed store、UI tracker、Application/settings worker 接线、损坏隔离、
+        Clippy、完整 Native workspace、三平台 CI 和双平台隔离 storage smoke 通过。- 验收证据（2026-08-31）：typed store、UI tracker、Application/settings worker 接线、损坏隔离、
         双环境、并发 lock、验证失败回滚、shutdown/restart 单测和 Development-only 双平台 smoke
         已实现。`cargo fmt --all -- --check`、`cargo test --workspace`、
         `cargo clippy --workspace --all-targets --all-features -- -D warnings`、
         `cargo check --workspace --release` 与 `python3 tools/validate-json-schema.py` 在本机通过；
         macOS Development release smoke `BONGOCAT_BUILD_ENV=development cargo run --manifest-path
-        native/Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
-        --target-dir native/target/storage-test-injection -- --settings-window-state-smoke` 输出
-      `settings window state restored after restart`。workflow `33395834870` 的 Native workspace
+native/Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
+--target-dir native/target/storage-test-injection -- --settings-window-state-smoke` 输出
+        `settings window state restored after restart`。workflow `33395834870` 的 Native workspace
         jobs `99500010100`（Ubuntu）、`99500010122`（macOS）和 `99500010167`（Windows）以及
         Windows input/config job `99500010128` 全部通过；Windows 原生状态 smoke 输出与 macOS
         release smoke 一致。Windows 实机显示器/DPI 热切换仍属于后续平台矩阵。
@@ -1715,24 +1712,32 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
         `StickLeft/Right X/Y` 已进入 renderer 参数，Reset 会清空轴值。
     - [x] 将同一 `GamepadAxisProducer` 从 Application 传递到独立 overlay/input service owner。
       - 状态（2026-08-31）：Windows/macOS 正式服务启动与所有 opt-in smoke 调用均持有 runtime
-        producer；Windows 服务已消费 XInput，macOS 仍只完成 plumbing，无手柄启动行为不变。
-    - [ ] 接入 Windows XInput 和 macOS GameController producer 的连接、按钮、axis 生命周期。
+        producer；双平台服务现分别消费 XInput/GameController，无手柄启动行为不变。
+    - [x] 接入 Windows XInput 和 macOS GameController producer 的连接、按钮、axis 生命周期。
       - 状态（2026-08-31）：Windows Raw Input owner 已在 16ms service tick 查询 XInput 0..3，
-        将连接/断开、按钮边沿和六轴归一化送入同一 runtime producer；macOS
-        GameController callback 尚未接入正式服务，Windows 物理手柄/多手柄热插拔仍待实机。
+        将连接/断开、按钮边沿和六轴归一化送入同一 runtime producer；Windows
+        物理手柄/多手柄热插拔仍待实机。
       - 状态（2026-08-31）：正式 Windows adapter 改为只从 System32 动态解析
         `xinput1_4.dll`，消除 Native workspace 测试对 SDK `xinput1_4.lib` 的链接依赖；backend
         缺失和 axis publish 拒绝分别计数。可注入 poll contract 覆盖首次连接按钮边沿、trigger
         `128/255` 阈值、多 slot、断开/重连 generation，以及 stopped axis 不伪装成可靠队列
         overflow；Windows CI 与物理设备证据仍待补齐。
+      - 状态（2026-08-31）：macOS 正式 input worker 使用最新稳定版
+        `objc2-game-controller 0.3.2` 枚举至多四个 extended profile，连接/断开与 16 个按钮走
+        可靠 runtime producer，六轴走 generation-keyed latest-value；callback 使用原子 pressed
+        bitset，不持有 runtime 锁或执行 UI/文件工作。owner 启用并恢复后台投递、清除 copied
+        handler、复用 slot、拒绝迟到 generation，并在 overflow recovery 后重播当前状态。
+        synthetic runtime contract 与真实无设备 framework owner smoke 已通过；物理 controller、
+        profile 差异和热插拔矩阵仍待实机。
     - [ ] 将 producer overflow、断开/重连和 shutdown 诊断统一映射到 runtime snapshot。
       - 状态（2026-08-31）：共享 axis transport 现为每个 device id 分配跨 service restart
         单调 generation，并在 snapshot 统计连接、断开、discard 和各类拒绝；可靠 input reducer
         新增 typed connect/disconnect、active connection、stale event、scoped release 诊断，设置
         Diagnostics 页完整投影 25 个输入计数。Windows 断开不再用全局 Reset 清除其他手柄或
-        键鼠，键鼠 reconcile 也不再错误释放手柄按钮；macOS producer 诊断接线仍待完成。
-    - 状态（2026-08-31）：本批完成共享 runtime axis 闭环和 contract 回归；平台 producer 与
-      实机 smoke 仍未接入，未声称手柄功能完成。
+        键鼠，键鼠 reconcile 也不再错误释放手柄按钮。macOS callback/backend 诊断已进入平台
+        shutdown report，但尚未在运行期间完整汇入 runtime snapshot。
+    - 状态（2026-08-31）：共享 runtime 与双平台正式 producer 已接线；物理设备 smoke、完整
+      运行时诊断汇总和正式配置 dead-zone 字段仍未完成，未声称手柄功能完成。
 
 ## 13. 待决策清单
 
