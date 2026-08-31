@@ -198,6 +198,8 @@ pub enum AccessibilityError {
     MissingRoot,
     MissingFocus,
     MissingChild,
+    PlatformTreeUnavailable,
+    PlatformSemanticMismatch,
 }
 
 impl fmt::Display for AccessibilityError {
@@ -209,6 +211,10 @@ impl fmt::Display for AccessibilityError {
             Self::MissingRoot => "accessibility tree root is missing",
             Self::MissingFocus => "accessibility tree focus is missing",
             Self::MissingChild => "accessibility tree contains a missing child",
+            Self::PlatformTreeUnavailable => "the platform accessibility tree is unavailable",
+            Self::PlatformSemanticMismatch => {
+                "the platform accessibility semantics do not match the project tree"
+            }
         })
     }
 }
@@ -282,6 +288,8 @@ pub struct SettingsAccessibilityBridge {
     counters: Arc<AccessibilityCounters>,
     #[cfg(target_os = "macos")]
     adapter: accesskit_macos::SubclassingAdapter,
+    #[cfg(target_os = "macos")]
+    view: *mut core::ffi::c_void,
     #[cfg(target_os = "windows")]
     adapter: accesskit_windows::SubclassingAdapter,
 }
@@ -303,18 +311,19 @@ impl SettingsAccessibilityBridge {
         };
 
         #[cfg(target_os = "macos")]
-        let adapter = match raw {
+        let (adapter, view) = match raw {
             RawWindowHandle::AppKit(handle) => {
                 // SAFETY: GPUI owns the NSView for the complete Window lifetime. The bridge is
                 // installed before the window is shown, retained by SettingsView, and dropped
                 // before GPUI destroys the corresponding Window.
-                unsafe {
+                let adapter = unsafe {
                     accesskit_macos::SubclassingAdapter::new(
                         handle.ns_view.as_ptr(),
                         provider,
                         handler,
                     )
-                }
+                };
+                (adapter, handle.ns_view.as_ptr())
             }
             _ => return Err(AccessibilityError::UnsupportedWindowHandle),
         };
@@ -333,6 +342,8 @@ impl SettingsAccessibilityBridge {
                 tree,
                 counters,
                 adapter,
+                #[cfg(target_os = "macos")]
+                view,
             },
             receiver,
         ))
@@ -352,6 +363,93 @@ impl SettingsAccessibilityBridge {
 
     pub fn diagnostics(&self) -> AccessibilityDiagnostics {
         self.counters.snapshot()
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn verify_startup_control(
+        &self,
+        toggled: AccessibilityToggle,
+        enabled: bool,
+    ) -> Result<(), AccessibilityError> {
+        use objc2::{msg_send, runtime::AnyObject, sel};
+        use std::{ffi::CStr, os::raw::c_char};
+
+        unsafe fn string_value(value: *mut AnyObject) -> Option<String> {
+            if value.is_null() {
+                return None;
+            }
+            // SAFETY: the caller passes an NSString returned by an AppKit accessibility property.
+            let utf8: *const c_char = unsafe { msg_send![value, UTF8String] };
+            (!utf8.is_null()).then(|| {
+                // SAFETY: NSString provides a NUL-terminated UTF-8 view for its lifetime.
+                unsafe { CStr::from_ptr(utf8) }
+                    .to_string_lossy()
+                    .into_owned()
+            })
+        }
+
+        unsafe fn property_string(object: *mut AnyObject, property: &str) -> Option<String> {
+            let value: *mut AnyObject = match property {
+                // SAFETY: object is an AccessKit accessibility element on the AppKit main thread.
+                "title" => unsafe { msg_send![object, accessibilityTitle] },
+                // SAFETY: object is an AccessKit accessibility element on the AppKit main thread.
+                "role" => unsafe { msg_send![object, accessibilityRole] },
+                // SAFETY: object is an AccessKit accessibility element on the AppKit main thread.
+                "subrole" => unsafe { msg_send![object, accessibilitySubrole] },
+                _ => return None,
+            };
+            // SAFETY: these accessibility properties return NSString or nil.
+            unsafe { string_value(value) }
+        }
+
+        // SAFETY: SettingsAccessibilityBridge retains the dynamically subclassed GPUI NSView.
+        // This method is called from the GPUI/AppKit main thread while the view and adapter live;
+        // returned accessibility objects remain owned by the adapter for this inspection.
+        unsafe {
+            let view = self.view.cast::<AnyObject>();
+            let children: *mut AnyObject = msg_send![view, accessibilityChildren];
+            if children.is_null() {
+                return Err(AccessibilityError::PlatformTreeUnavailable);
+            }
+            let count: usize = msg_send![children, count];
+            if count == 0 {
+                return Err(AccessibilityError::PlatformTreeUnavailable);
+            }
+            let root: *mut AnyObject = msg_send![children, objectAtIndex: 0_usize];
+            let controls: *mut AnyObject = msg_send![root, accessibilityChildren];
+            if controls.is_null() {
+                return Err(AccessibilityError::PlatformTreeUnavailable);
+            }
+            let control_count: usize = msg_send![controls, count];
+            let mut startup = None;
+            for index in 0..control_count {
+                let control: *mut AnyObject = msg_send![controls, objectAtIndex: index];
+                if property_string(control, "title").as_deref() == Some("Open at login") {
+                    startup = Some(control);
+                    break;
+                }
+            }
+            let startup = startup.ok_or(AccessibilityError::PlatformTreeUnavailable)?;
+            let role = property_string(startup, "role");
+            let subrole = property_string(startup, "subrole");
+            let value: *mut AnyObject = msg_send![startup, accessibilityValue];
+            if value.is_null() {
+                return Err(AccessibilityError::PlatformSemanticMismatch);
+            }
+            let value: bool = msg_send![value, boolValue];
+            let actual_enabled: bool = msg_send![startup, isAccessibilityEnabled];
+            let supports_press: bool =
+                msg_send![startup, respondsToSelector: sel!(accessibilityPerformPress)];
+            if role.as_deref() != Some("AXCheckBox")
+                || subrole.as_deref() != Some("AXSwitch")
+                || value != (toggled == AccessibilityToggle::On)
+                || actual_enabled != enabled
+                || !supports_press
+            {
+                return Err(AccessibilityError::PlatformSemanticMismatch);
+            }
+        }
+        Ok(())
     }
 }
 

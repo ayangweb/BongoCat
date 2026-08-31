@@ -135,6 +135,7 @@ jobs:
             exit $LASTEXITCODE
           }
           $executable = Join-Path $PWD "native/target/release/bongocat-app.exe"
+          Add-Type -AssemblyName UIAutomationClient
           1..5 | ForEach-Object {
             $stdout = Join-Path $env:RUNNER_TEMP "bongocat-product-$_.stdout.log"
             $stderr = Join-Path $env:RUNNER_TEMP "bongocat-product-$_.stderr.log"
@@ -145,6 +146,67 @@ jobs:
               -PassThru `
               -RedirectStandardOutput $stdout `
               -RedirectStandardError $stderr
+            if ($_ -eq 1) {
+              $windowDeadline = [DateTime]::UtcNow.AddSeconds(10)
+              do {
+                Start-Sleep -Milliseconds 100
+                $process.Refresh()
+                if ($process.HasExited) {
+                  throw "Windows product exited before UI Automation inspection"
+                }
+              } while ($process.MainWindowHandle -eq 0 -and [DateTime]::UtcNow -lt $windowDeadline)
+              if ($process.MainWindowHandle -eq 0) {
+                throw "Windows product did not expose a settings HWND"
+              }
+              $root = [System.Windows.Automation.AutomationElement]::FromHandle(
+                [IntPtr]$process.MainWindowHandle
+              )
+              $startupCondition = [System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::NameProperty,
+                "Open at login"
+              )
+              $startupDeadline = [DateTime]::UtcNow.AddSeconds(5)
+              do {
+                Start-Sleep -Milliseconds 100
+                $startup = $root.FindFirst(
+                  [System.Windows.Automation.TreeScope]::Descendants,
+                  $startupCondition
+                )
+              } while ($null -eq $startup -and [DateTime]::UtcNow -lt $startupDeadline)
+              if ($null -eq $startup) {
+                throw "Windows UIA did not expose the startup switch"
+              }
+              if ($startup.Current.ControlType -ne [System.Windows.Automation.ControlType]::Button) {
+                throw "Windows UIA startup switch did not use the button control type"
+              }
+              if ($startup.Current.LocalizedControlType -ne "switch") {
+                throw "Windows UIA startup control did not expose the switch role"
+              }
+              if (-not $startup.Current.IsEnabled -or -not $startup.Current.IsKeyboardFocusable) {
+                throw "Windows UIA startup switch was not enabled and focusable"
+              }
+              $toggle = $startup.GetCurrentPattern(
+                [System.Windows.Automation.TogglePattern]::Pattern
+              )
+              $toggleState = $toggle.Current.ToggleState
+              if ($toggleState -notin @(
+                [System.Windows.Automation.ToggleState]::On,
+                [System.Windows.Automation.ToggleState]::Off
+              )) {
+                throw "Windows UIA startup switch exposed an indeterminate value"
+              }
+              $startup.SetFocus()
+              $focusDeadline = [DateTime]::UtcNow.AddSeconds(2)
+              do {
+                Start-Sleep -Milliseconds 50
+                $focused = [System.Windows.Automation.AutomationElement]::FocusedElement
+                $focusedName = if ($null -eq $focused) { "" } else { $focused.Current.Name }
+              } while ($focusedName -ne "Open at login" -and [DateTime]::UtcNow -lt $focusDeadline)
+              if ($focusedName -ne "Open at login") {
+                throw "Windows UIA startup switch rejected focus action"
+              }
+              Write-Host "bongocat-app: Windows UIA startup switch role/value/action verified"
+            }
             if (!$process.WaitForExit(30000)) {
               Stop-Process -Id $process.Id -Force
               Get-Content $stdout, $stderr -ErrorAction SilentlyContinue

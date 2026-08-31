@@ -1444,8 +1444,11 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       Quit 均有稳定 role/label/value/toggle/focus/click 投影；loading/unsupported 状态不暴露
       mutation action，action 经容量 32 的 typed channel 回到 GPUI 并复用现有 focus/command 路径。
       `cargo test -p bongocat-platform -p bongocat-ui` 已通过 tree validation、toggle/value/action
-      contract；真实 VoiceOver/Narrator 操作、macOS AX/Windows UIA 物理辅助技术 smoke 仍未运行，
-      因此本项保持未勾选，待双平台 runner/实机证据补齐后再关闭。
+      contract；本机 release product smoke 已从正式 AppKit AX 对象读取 startup 的
+      `AXCheckBox`/`AXSwitch`、布尔值、enabled 和 press selector，且未触发登录项 mutation。
+      Windows product workflow 已增加 UIA Button/switch、TogglePattern、enabled/focusable 和
+      SetFocus 门禁，真实 runner 结果尚待 push CI；真实 VoiceOver/Narrator 操作仍属于更宽的
+      Phase 0 辅助技术门禁，因此本项保持未勾选，待 Windows UIA 证据后再关闭。
 32. [x] `P5-INPUT-DIAGNOSTICS-UI`：把 runtime 输入可靠性计数投影到真实 Diagnostics 页面。
     - 依赖：正式 `RuntimeSnapshot.input`、revisioned `SettingsSnapshot` 和双平台 settings lifecycle。
     - 退出条件：UI 协议只包含 pressed 数量及 captured/reconciled/reset、sequence、overflow 的匿名

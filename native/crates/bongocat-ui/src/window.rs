@@ -613,6 +613,19 @@ impl SettingsView {
                     "startup accessibility semantics diverged from the visible control".to_owned(),
                 );
             }
+            #[cfg(target_os = "macos")]
+            self.accessibility
+                .as_ref()
+                .ok_or_else(|| "settings accessibility bridge is unavailable".to_owned())?
+                .verify_startup_control(
+                    if presentation.enabled {
+                        AccessibilityToggle::On
+                    } else {
+                        AccessibilityToggle::Off
+                    },
+                    presentation.action != StartupItemAction::None,
+                )
+                .map_err(|error| error.to_string())?;
         }
         Ok(())
     }

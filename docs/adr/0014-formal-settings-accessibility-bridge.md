@@ -19,6 +19,9 @@ API, while platform accessibility adapters must not become a second business-sta
   `FocusHandle`s on the next render.
 - Disabled/loading/unsupported controls do not expose mutation actions. Adapter diagnostics count
   forwarded and rejected actions without recording labels, key identities or user content.
+- Product smoke may inspect the native AX/UIA role, value, enabled/focusable state and advertised
+  action pattern. It must not toggle the startup item; platform lifecycle smoke remains responsible
+  for mutation and restoration.
 - The bridge is attached after the GPUI native handle exists but while `WindowOptions::show` is
   still false, then the window is activated. It is retained by `SettingsView` and dropped before
   the corresponding GPUI window is destroyed; attachment failure leaves the window hidden and is
