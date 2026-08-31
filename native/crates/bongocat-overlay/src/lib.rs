@@ -3,12 +3,13 @@ mod macos;
 #[cfg(target_os = "windows")]
 mod windows;
 
-use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError, PlatformInputServiceStatus};
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use bongocat_platform::PlatformInputServiceStatus;
+use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError};
 use bongocat_render::{RenderConsumer, RenderTransportDiagnostics};
-use bongocat_runtime::{
-    CursorProducer, GamepadAxisProducer, InputProducer, PlatformInputDiagnosticsProducer,
-    RuntimeClient,
-};
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use bongocat_runtime::PlatformInputDiagnosticsProducer;
+use bongocat_runtime::{CursorProducer, GamepadAxisProducer, InputProducer, RuntimeClient};
 use std::{fmt, path::Path, time::Duration};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -52,6 +53,7 @@ pub enum OverlayTickOutcome {
     Hidden,
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn input_start_failure_diagnostics(error: PlatformInputError) -> PlatformInputDiagnostics {
     PlatformInputDiagnostics {
         service_status: match error {
@@ -66,6 +68,7 @@ fn input_start_failure_diagnostics(error: PlatformInputError) -> PlatformInputDi
     }
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn start_platform_input<T>(
     diagnostics_producer: &PlatformInputDiagnosticsProducer,
     start: impl FnOnce() -> Result<T, PlatformInputError>,
