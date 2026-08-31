@@ -9,13 +9,15 @@ use bongocat_platform::{
     set_startup_item_enabled, startup_item_state,
 };
 use bongocat_runtime::RuntimeState;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use bongocat_ui::SettingsStartupItemError;
 use bongocat_ui::{
     RuntimeHealth, SettingsClient, SettingsCommand, SettingsError, SettingsErrorCode,
     SettingsModelAvailability, SettingsModelCatalog, SettingsModelCatalogError,
     SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportProgress,
     SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsServiceEndpoint,
-    SettingsSnapshot, SettingsStartupItemError, SettingsStartupItemState,
-    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason,
+    SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
+    SettingsStartupItemUnsupportedReason,
 };
 use std::{fmt, sync::Arc, thread};
 
@@ -561,7 +563,7 @@ const fn map_model_store_delete_diagnostic(diagnostic: ModelStoreDiagnostic) -> 
 mod tests {
     use super::*;
     use bongocat_config::StorageLayout;
-    use bongocat_ui::SettingsModelImportRequest;
+    use bongocat_ui::{SettingsModelImportRequest, SettingsStartupItemError};
     use std::sync::{
         Mutex,
         atomic::{AtomicBool, Ordering},
