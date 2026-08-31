@@ -31,10 +31,136 @@ use std::{
     time::{Duration, Instant},
 };
 
+const WORKSPACE_WILL_SLEEP: u8 = 1 << 0;
+const WORKSPACE_DID_WAKE: u8 = 1 << 1;
+const WORKSPACE_SESSION_RESIGNED: u8 = 1 << 2;
+const WORKSPACE_SESSION_ACTIVE: u8 = 1 << 3;
+
+#[derive(Default)]
+struct WorkspaceLifecycleSignals(AtomicU16);
+
+impl WorkspaceLifecycleSignals {
+    fn signal(&self, bit: u8) {
+        self.0.fetch_or(u16::from(bit), Ordering::Release);
+    }
+
+    fn take(&self) -> u16 {
+        self.0.swap(0, Ordering::Acquire)
+    }
+}
+
+struct WorkspaceLifecycleObserver {
+    center: Retained<objc2_foundation::NSNotificationCenter>,
+    tokens: Vec<Retained<objc2::runtime::ProtocolObject<dyn objc2::runtime::NSObjectProtocol>>>,
+    accepting: Arc<AtomicBool>,
+}
+
+impl WorkspaceLifecycleObserver {
+    fn register(
+        signals: Arc<WorkspaceLifecycleSignals>,
+        accepting: Arc<AtomicBool>,
+        recovery_requested: Arc<AtomicBool>,
+        counters: Arc<CallbackCounters>,
+    ) -> Self {
+        use objc2_app_kit::{
+            NSWorkspace, NSWorkspaceDidWakeNotification,
+            NSWorkspaceSessionDidBecomeActiveNotification,
+            NSWorkspaceSessionDidResignActiveNotification, NSWorkspaceWillSleepNotification,
+        };
+        use objc2_foundation::NSNotification;
+
+        let center = NSWorkspace::sharedWorkspace().notificationCenter();
+        // SAFETY: these are immutable notification-name constants exported by AppKit.
+        let registrations = unsafe {
+            [
+                (NSWorkspaceWillSleepNotification, WORKSPACE_WILL_SLEEP),
+                (NSWorkspaceDidWakeNotification, WORKSPACE_DID_WAKE),
+                (
+                    NSWorkspaceSessionDidResignActiveNotification,
+                    WORKSPACE_SESSION_RESIGNED,
+                ),
+                (
+                    NSWorkspaceSessionDidBecomeActiveNotification,
+                    WORKSPACE_SESSION_ACTIVE,
+                ),
+            ]
+        };
+        let mut tokens = Vec::with_capacity(registrations.len());
+        for (name, bit) in registrations {
+            let callback_signals = Arc::clone(&signals);
+            let callback_accepting = Arc::clone(&accepting);
+            let callback_recovery = Arc::clone(&recovery_requested);
+            let callback_counters = Arc::clone(&counters);
+            let block: RcBlock<dyn Fn(NonNull<NSNotification>)> =
+                RcBlock::new(move |_notification: NonNull<NSNotification>| {
+                    callback_boundary(
+                        &callback_accepting,
+                        &callback_recovery,
+                        &callback_counters,
+                        || {
+                            if callback_accepting.load(Ordering::Acquire) {
+                                callback_signals.signal(bit);
+                            }
+                        },
+                    );
+                });
+            // SAFETY: no object filter is used and the block captures only thread-safe state.
+            let token = unsafe {
+                center.addObserverForName_object_queue_usingBlock(Some(name), None, None, &block)
+            };
+            tokens.push(token);
+        }
+        Self {
+            center,
+            tokens,
+            accepting,
+        }
+    }
+
+    fn close_sink(&self) {
+        self.accepting.store(false, Ordering::Release);
+    }
+
+    #[cfg(test)]
+    fn post_for_test(&self, bit: u8) {
+        use objc2_app_kit::{
+            NSWorkspaceDidWakeNotification, NSWorkspaceSessionDidBecomeActiveNotification,
+            NSWorkspaceSessionDidResignActiveNotification, NSWorkspaceWillSleepNotification,
+        };
+        // SAFETY: these are immutable notification-name constants exported by AppKit.
+        let name = unsafe {
+            match bit {
+                WORKSPACE_WILL_SLEEP => NSWorkspaceWillSleepNotification,
+                WORKSPACE_DID_WAKE => NSWorkspaceDidWakeNotification,
+                WORKSPACE_SESSION_RESIGNED => NSWorkspaceSessionDidResignActiveNotification,
+                WORKSPACE_SESSION_ACTIVE => NSWorkspaceSessionDidBecomeActiveNotification,
+                _ => panic!("unknown workspace lifecycle bit"),
+            }
+        };
+        // SAFETY: the test posts a public workspace notification without object or user info.
+        unsafe { self.center.postNotificationName_object(name, None) };
+    }
+}
+
+impl Drop for WorkspaceLifecycleObserver {
+    fn drop(&mut self) {
+        self.close_sink();
+        use objc2::runtime::AnyObject;
+        for token in self.tokens.drain(..) {
+            let token_ref: &objc2::runtime::ProtocolObject<dyn objc2::runtime::NSObjectProtocol> =
+                &token;
+            let observer: &AnyObject = token_ref.as_ref();
+            // SAFETY: each token came from this center and is removed once.
+            unsafe { self.center.removeObserver(observer) };
+        }
+    }
+}
+
 const CAPTURE_QUEUE_CAPACITY: usize = 256;
 const RUN_LOOP_SLICE: Duration = Duration::from_millis(10);
 const RECONCILIATION_INTERVAL: Duration = Duration::from_millis(250);
 const REQUIRED_MISSING_CONFIRMATIONS: u8 = 2;
+const STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
 const SERVICE_TIMEOUT: Duration = Duration::from_secs(2);
 const MAX_GAMEPADS: usize = 4;
 const GAMEPAD_BUTTON_THRESHOLD: f32 = 0.5;
@@ -881,7 +1007,7 @@ impl MacInputService {
                 let _ = completion_sender.send(result);
             })
             .map_err(|_| PlatformInputError::WorkerPanicked)?;
-        match startup_receiver.recv_timeout(SERVICE_TIMEOUT) {
+        match startup_receiver.recv_timeout(STARTUP_TIMEOUT) {
             Ok(Ok(())) => Ok(Self {
                 stop,
                 completion: completion_receiver,
@@ -958,6 +1084,13 @@ fn run_input_worker(
     let counters = Arc::new(CallbackCounters::default());
     let accepting = Arc::new(AtomicBool::new(true));
     let recovery_requested = Arc::new(AtomicBool::new(false));
+    let workspace_signals = Arc::new(WorkspaceLifecycleSignals::default());
+    let workspace_observer = WorkspaceLifecycleObserver::register(
+        Arc::clone(&workspace_signals),
+        Arc::clone(&accepting),
+        Arc::clone(&recovery_requested),
+        Arc::clone(&counters),
+    );
     let tap_disabled = Arc::new(AtomicBool::new(false));
     let modifier_keys = Arc::new(Mutex::new(BTreeSet::<u16>::new()));
     let latest_cursor = LatestCursor::default();
@@ -1038,6 +1171,11 @@ fn run_input_worker(
 
         if recovery_requested.swap(false, Ordering::AcqRel) {
             recovery_pending = true;
+        }
+        if workspace_signals.take() != 0 {
+            accepting.store(false, Ordering::Release);
+            recovery_pending = true;
+            tap_restart_pending = true;
         }
         if recovery_pending {
             diagnostics.capture_queue_discarded = diagnostics
@@ -1191,6 +1329,7 @@ fn run_input_worker(
     };
 
     accepting.store(false, Ordering::Release);
+    workspace_observer.close_sink();
     CGEvent::tap_enable(&tap, false);
     run_loop.remove_source(Some(&source), Some(mode));
     diagnostics.gamepad_background_monitoring_enabled = gamepad_owner.background_monitoring_enabled;
@@ -1747,6 +1886,47 @@ fn system_pressed(system: SystemControl) -> bool {
 mod tests {
     use super::*;
     use bongocat_runtime::RuntimeOwner;
+
+    #[test]
+    fn workspace_lifecycle_signals_merge_and_clear_atomically() {
+        let signals = WorkspaceLifecycleSignals::default();
+        signals.signal(WORKSPACE_WILL_SLEEP);
+        signals.signal(WORKSPACE_SESSION_RESIGNED);
+        assert_eq!(
+            signals.take(),
+            u16::from(WORKSPACE_WILL_SLEEP | WORKSPACE_SESSION_RESIGNED)
+        );
+        assert_eq!(signals.take(), 0);
+    }
+
+    #[test]
+    fn workspace_observer_receives_all_notifications_and_closes_its_sink() {
+        let signals = Arc::new(WorkspaceLifecycleSignals::default());
+        let accepting = Arc::new(AtomicBool::new(true));
+        let recovery = Arc::new(AtomicBool::new(false));
+        let counters = Arc::new(CallbackCounters::default());
+        let observer = WorkspaceLifecycleObserver::register(
+            Arc::clone(&signals),
+            accepting,
+            recovery,
+            Arc::clone(&counters),
+        );
+
+        for bit in [
+            WORKSPACE_WILL_SLEEP,
+            WORKSPACE_DID_WAKE,
+            WORKSPACE_SESSION_RESIGNED,
+            WORKSPACE_SESSION_ACTIVE,
+        ] {
+            observer.post_for_test(bit);
+        }
+        assert_eq!(signals.take(), 0b1111);
+        assert_eq!(counters.callback_panics.load(Ordering::Relaxed), 0);
+
+        observer.close_sink();
+        observer.post_for_test(WORKSPACE_DID_WAKE);
+        assert_eq!(signals.take(), 0);
+    }
 
     #[test]
     fn callback_boundary_contains_panics_and_requests_recovery() {

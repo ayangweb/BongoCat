@@ -602,6 +602,14 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     release 测试在 Phase 0 spike 通过，正式服务的 down/up runtime 闭环亦已通过。
 - [ ] 权限拒绝时进入 degraded，不产生重试风暴。
 - [ ] 锁屏、睡眠、快速用户切换和 tap 重启发送 Reset。
+  - 状态（2026-09-01）：正式 macOS worker 注册 NSWorkspace will-sleep/did-wake 与 session
+    resign/active 四类公开通知；通知在 autorelease/panic boundary 内合并为原子 lifecycle signal，
+    每个 run-loop slice 最多触发一次 `ServiceRestart` Reset，并复用 tap/source 重建与候选清理。
+    observer token 在 worker shutdown 时先关闭 callback gate 后逐一注销。受控 signal contract 已通过，
+    NSWorkspace notification-center 注册/投递/关闭 contract 也覆盖四类公开通知。加入 AppKit cold
+    initialization 后 startup 独立使用 5 秒上限，shutdown/join 仍保持 2 秒；三项真实 callback/
+    cursor/restart smoke 连续 3 轮通过。真实锁屏、睡眠、快速用户切换和系统通知时序仍待 macOS
+    实机矩阵，因此总项保持未勾选。
 - [ ] GameController 设备和 profile 映射进入统一事件。
   - 状态（2026-08-29）：extended profile 已映射 south/east/west/north、shoulder、trigger、menu/options、stick button、D-pad 与六个标准 axis 到项目类型；按钮阈值、axis/trigger 范围、generation、可靠 overflow Reset 和 latest-value accounting 均有 contract test。真实 controller 连接/热插拔/profile callback 尚未取得设备证据，统一产品 `InputEvent` 也尚未建立，因此保持未勾选。
 - [x] event tap callback 使用 autorelease pool/panic boundary，run loop 停止后不再触达已释放 producer。
