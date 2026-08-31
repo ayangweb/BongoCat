@@ -500,6 +500,7 @@ impl CoreModel {
         Ok(RenderSnapshot {
             canvas: unsafe { read_canvas(model)? },
             model_opacity: 1.0,
+            mirror_horizontal: false,
             drawables,
         })
     }

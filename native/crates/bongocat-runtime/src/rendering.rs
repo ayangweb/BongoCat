@@ -1,4 +1,4 @@
-use crate::{ModelInputSnapshot, MotionId, RuntimeRenderErrorCode};
+use crate::{ModelInputSnapshot, ModelSettings, MotionId, RuntimeRenderErrorCode};
 use bongocat_model::CommittedModel;
 use bongocat_render::{
     ModelCommitFeedback, ModelCommitToken, RenderConsumer, RenderProducer, latest_render_channel,
@@ -38,6 +38,8 @@ pub(crate) struct RenderMotionUserDataOccurrence {
 
 pub(crate) struct RuntimeRenderer {
     producer: RenderProducer,
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    model_settings: ModelSettings,
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     next_model_generation: u64,
     #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -93,6 +95,8 @@ impl RuntimeRenderer {
         Self {
             producer: bootstrap.producer,
             #[cfg(any(target_os = "macos", target_os = "windows"))]
+            model_settings: ModelSettings::default(),
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             next_model_generation: 0,
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             next_transport_sequence: 0,
@@ -100,6 +104,17 @@ impl RuntimeRenderer {
             active: None,
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             pending: None,
+        }
+    }
+
+    pub(crate) fn set_model_settings(&mut self, settings: ModelSettings) {
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            self.model_settings = settings;
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            let _ = settings;
         }
     }
 
@@ -114,10 +129,11 @@ impl RuntimeRenderer {
             debug_assert!(self.pending.is_none());
             let mut model = Live2dModel::load(committed)
                 .map_err(|_| RuntimeRenderErrorCode::ModelLoadFailed)?;
-            apply_model_input(&mut model, input)?;
-            let snapshot = model
+            apply_model_input(&mut model, input, self.model_settings)?;
+            let mut snapshot = model
                 .update_and_snapshot()
                 .map_err(|_| RuntimeRenderErrorCode::ModelEvaluationFailed)?;
+            snapshot.mirror_horizontal = self.model_settings.mirror;
             let resources = model.render_resources();
             let model_generation = self.next_model_generation;
             let token = ModelCommitToken {
@@ -382,11 +398,12 @@ impl RuntimeRenderer {
                 .apply_expression_layers(&expression_layers)
                 .map_err(|_| RuntimeRenderErrorCode::ModelEvaluationFailed)?;
             apply_automatic_effects(&mut active.model, now)?;
-            apply_model_input(&mut active.model, input)?;
-            let snapshot = active
+            apply_model_input(&mut active.model, input, self.model_settings)?;
+            let mut snapshot = active
                 .model
                 .update_and_snapshot()
                 .map_err(|_| RuntimeRenderErrorCode::ModelEvaluationFailed)?;
+            snapshot.mirror_horizontal = self.model_settings.mirror;
             self.producer
                 .publish(RenderFrame {
                     transport_sequence: self.next_transport_sequence,
@@ -449,15 +466,30 @@ fn automatic_effect_values(now: Duration) -> (f32, f32) {
 fn apply_model_input(
     model: &mut Live2dModel,
     input: ModelInputSnapshot,
+    settings: ModelSettings,
 ) -> Result<(), RuntimeRenderErrorCode> {
+    let (pointer_x, pointer_y, pointer_z) = if settings.ignore_pointer {
+        (0.0, 0.0, 0.0)
+    } else {
+        let horizontal_sign = if settings.mirror_pointer_tracking {
+            -1.0
+        } else {
+            1.0
+        };
+        (
+            input.pointer_x * horizontal_sign,
+            input.pointer_y,
+            input.pointer_z * horizontal_sign,
+        )
+    };
     for (parameter, value) in [
-        (ProductParameter::MouseX, input.pointer_x),
-        (ProductParameter::MouseY, input.pointer_y),
-        (ProductParameter::AngleX, input.pointer_x),
-        (ProductParameter::AngleY, input.pointer_y),
-        (ProductParameter::AngleZ, input.pointer_z),
-        (ProductParameter::EyeBallX, input.pointer_x),
-        (ProductParameter::EyeBallY, input.pointer_y),
+        (ProductParameter::MouseX, pointer_x),
+        (ProductParameter::MouseY, pointer_y),
+        (ProductParameter::AngleX, pointer_x),
+        (ProductParameter::AngleY, pointer_y),
+        (ProductParameter::AngleZ, pointer_z),
+        (ProductParameter::EyeBallX, pointer_x),
+        (ProductParameter::EyeBallY, pointer_y),
         (
             ProductParameter::LeftHandDown,
             f32::from(input.left_hand_down),
@@ -610,5 +642,68 @@ mod tests {
                 .expect("supported parameter");
             assert!((actual - expected).abs() < 0.0001, "{id}: {actual}");
         }
+    }
+
+    #[test]
+    fn model_settings_control_pointer_tracking_and_render_mirroring() {
+        let (bootstrap, consumer) = RuntimeRenderer::channel();
+        let mut renderer = RuntimeRenderer::start(bootstrap);
+        renderer.set_model_settings(ModelSettings {
+            mirror: true,
+            mirror_pointer_tracking: true,
+            ignore_pointer: false,
+        });
+        let token = renderer
+            .prepare(1, &preset_model("standard"), ModelInputSnapshot::default())
+            .expect("prepare model");
+        assert!(renderer.commit(token));
+        let initial = consumer.take_latest().expect("initial frame");
+        assert!(initial.snapshot.mirror_horizontal);
+
+        renderer
+            .evaluate(
+                ModelInputSnapshot {
+                    pointer_x: 0.5,
+                    pointer_y: 0.25,
+                    pointer_z: 0.5,
+                    ..ModelInputSnapshot::default()
+                },
+                Duration::ZERO,
+            )
+            .expect("mirrored pointer frame");
+        let model = &renderer.active.as_ref().expect("active model").model;
+        let mirrored_angle = model
+            .parameter_value_by_id("ParamAngleX")
+            .expect("parameter value")
+            .expect("supported parameter");
+        assert!(mirrored_angle < 0.0);
+
+        renderer.set_model_settings(ModelSettings {
+            mirror: false,
+            mirror_pointer_tracking: false,
+            ignore_pointer: true,
+        });
+        renderer
+            .evaluate(
+                ModelInputSnapshot {
+                    pointer_x: -1.0,
+                    pointer_y: 1.0,
+                    pointer_z: -1.0,
+                    ..ModelInputSnapshot::default()
+                },
+                Duration::from_millis(1),
+            )
+            .expect("ignored pointer frame");
+        let ignored_angle = renderer
+            .active
+            .as_ref()
+            .expect("active model")
+            .model
+            .parameter_value_by_id("ParamAngleX")
+            .expect("parameter value")
+            .expect("supported parameter");
+        assert!(ignored_angle.abs() < 0.0001);
+        let frame = consumer.take_latest().expect("updated frame");
+        assert!(!frame.snapshot.mirror_horizontal);
     }
 }

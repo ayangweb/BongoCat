@@ -208,6 +208,7 @@ struct GpuModel {
     empty_mask: TextureResource,
     canvas: CanvasInfo,
     model_opacity: f32,
+    mirror_horizontal: bool,
     masked_drawable_count: usize,
 }
 
@@ -571,8 +572,12 @@ impl Renderer {
             self.context
                 .PSSetSamplers(0, Some(&[Some(self.pipelines.sampler.clone())]));
         }
-        let scale_offset =
-            model_transform(self.model.canvas, self.width as f32, self.height as f32);
+        let scale_offset = model_transform(
+            self.model.canvas,
+            self.width as f32,
+            self.height as f32,
+            self.model.mirror_horizontal,
+        );
         for mesh in &self.model.meshes {
             let Some(mask_target) = &mesh.mask_target else {
                 continue;
@@ -1409,6 +1414,7 @@ impl GpuModel {
             empty_mask: unsafe { create_empty_mask(device)? },
             canvas: snapshot.canvas,
             model_opacity: snapshot.model_opacity,
+            mirror_horizontal: snapshot.mirror_horizontal,
             masked_drawable_count: snapshot
                 .drawables
                 .iter()
@@ -1476,6 +1482,7 @@ impl GpuModel {
         self.meshes.sort_by_key(|mesh| (mesh.render_order, mesh.id));
         self.canvas = snapshot.canvas;
         self.model_opacity = snapshot.model_opacity;
+        self.mirror_horizontal = snapshot.mirror_horizontal;
         Ok(())
     }
 }
@@ -2049,7 +2056,12 @@ unsafe fn blob_message(blob: &ID3DBlob) -> String {
         .to_owned()
 }
 
-fn model_transform(canvas: CanvasInfo, width: f32, height: f32) -> [f32; 4] {
+fn model_transform(
+    canvas: CanvasInfo,
+    width: f32,
+    height: f32,
+    mirror_horizontal: bool,
+) -> [f32; 4] {
     let model_width = canvas.width / canvas.pixels_per_unit;
     let model_height = canvas.height / canvas.pixels_per_unit;
     let center_x = (canvas.width * 0.5 - canvas.origin_x) / canvas.pixels_per_unit;
@@ -2062,7 +2074,12 @@ fn model_transform(canvas: CanvasInfo, width: f32, height: f32) -> [f32; 4] {
     } else {
         scale_y *= viewport_aspect / model_aspect;
     }
-    [scale_x, scale_y, -center_x * scale_x, -center_y * scale_y]
+    let mut offset_x = -center_x * scale_x;
+    if mirror_horizontal {
+        scale_x = -scale_x;
+        offset_x = -offset_x;
+    }
+    [scale_x, scale_y, offset_x, -center_y * scale_y]
 }
 
 fn logical_to_physical(logical: u32, dpi: u32) -> WindowsResult<u32> {
@@ -2127,12 +2144,16 @@ mod tests {
             pixels_per_unit: 1024.0,
         };
         assert_eq!(
-            model_transform(canvas, 800.0, 800.0),
+            model_transform(canvas, 800.0, 800.0, false),
             [1.0, 1.0, -0.0, -0.0]
         );
         assert_eq!(
-            model_transform(canvas, 1600.0, 800.0),
+            model_transform(canvas, 1600.0, 800.0, false),
             [0.5, 1.0, -0.0, -0.0]
+        );
+        assert_eq!(
+            model_transform(canvas, 800.0, 800.0, true),
+            [-1.0, 1.0, 0.0, -0.0]
         );
     }
 

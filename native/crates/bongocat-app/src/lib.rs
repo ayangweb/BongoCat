@@ -19,9 +19,10 @@ use bongocat_model::{
 use bongocat_render::{ModelCommitToken, RenderConsumer};
 use bongocat_runtime::{
     CursorProducer, ExpressionId, ExpressionIdError, GamepadAxisProducer, GamepadAxisSettings,
-    GamepadButton, HandSide, InputBindings, InputProducer, MotionId, MotionIdError, MotionPriority,
-    OverlaySettings, PhysicalKey, RuntimeClient, RuntimeCommand, RuntimeCommandFailure,
-    RuntimeOwner, RuntimeRenderErrorCode, RuntimeSnapshot, SendError, ShutdownError,
+    GamepadButton, HandSide, InputBindings, InputProducer, ModelSettings, MotionId, MotionIdError,
+    MotionPriority, OverlaySettings, PhysicalKey, RuntimeClient, RuntimeCommand,
+    RuntimeCommandFailure, RuntimeOwner, RuntimeRenderErrorCode, RuntimeSnapshot, SendError,
+    ShutdownError,
 };
 use std::{collections::BTreeMap, fmt, path::Path, sync::Arc, time::Duration};
 
@@ -298,6 +299,14 @@ impl Application {
             let sequence = client
                 .send(RuntimeCommand::SetOverlaySettings(
                     overlay_settings_from_config(&config),
+                ))
+                .map_err(ApplicationError::RuntimeCommand)?;
+            client
+                .wait_for_command(sequence, RUNTIME_TIMEOUT)
+                .ok_or(ApplicationError::RuntimeDidNotPublish)?;
+            let sequence = client
+                .send(RuntimeCommand::SetModelSettings(
+                    model_settings_from_config(&config),
                 ))
                 .map_err(ApplicationError::RuntimeCommand)?;
             client
@@ -794,6 +803,14 @@ fn overlay_settings_from_config(config: &NativeConfig) -> OverlaySettings {
     }
 }
 
+const fn model_settings_from_config(config: &NativeConfig) -> ModelSettings {
+    ModelSettings {
+        mirror: config.model.mirror,
+        mirror_pointer_tracking: config.model.mirror_pointer_tracking,
+        ignore_pointer: config.model.ignore_pointer,
+    }
+}
+
 fn gamepad_axis_settings_from_config(
     config: &NativeConfig,
 ) -> Result<GamepadAxisSettings, ConfigError> {
@@ -937,6 +954,30 @@ mod tests {
         assert!(persisted.contains("\"scale_percent\": 150"));
         let stopped = application.shutdown().expect("clean shutdown");
         assert_eq!(stopped.state, RuntimeState::Stopped);
+    }
+
+    #[test]
+    fn application_projects_model_interaction_settings_at_startup() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let store = ConfigStore::new(layout.clone()).expect("config store");
+        let mut config = store.load_or_default().expect("default config").config;
+        config.model.mirror = true;
+        config.model.mirror_pointer_tracking = true;
+        config.model.ignore_pointer = true;
+        store.commit(&config).expect("persist model settings");
+        drop(store);
+
+        let application = Application::start_with_layout(layout).expect("start application");
+        assert_eq!(
+            application.runtime_client().snapshot().model_settings,
+            ModelSettings {
+                mirror: true,
+                mirror_pointer_tracking: true,
+                ignore_pointer: true,
+            }
+        );
+        application.shutdown().expect("clean shutdown");
     }
 
     #[test]

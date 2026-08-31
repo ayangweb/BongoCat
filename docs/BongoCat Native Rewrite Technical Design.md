@@ -248,6 +248,10 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
   active identity 和首次 stop command sequence，renderer 以正弦权重淡出并在结束帧后
   清理；重复 stop 不重启计时，零时长立即清理，旧动作的 stop 不影响后启动动作。
 - render snapshot 不含锁和平台对象，通过双缓冲或 latest-value channel 交给渲染线程。
+- `ModelSettings` 是 runtime 的强类型模型交互设置：`mirror` 只影响不可变
+  `RenderSnapshot::mirror_horizontal` 的水平变换，`mirror_pointer_tracking` 只反转
+  指针的 X/Z 产品参数，`ignore_pointer` 跳过所有指针参数覆盖；三者通过
+  `SetModelSettings` command 和 revisioned snapshot 传播，renderer 不读取配置。
 - GPUI 通过 command/snapshot 边界交互，不直接持有 runtime mutex。
 - GPUI 拥有平台主事件循环；应用 coordinator 在该主线程调度 overlay `tick`，GPUI
   `Entity` 不持有 renderer、render snapshot 或 frame-loop 状态。
@@ -358,8 +362,8 @@ model evaluation + render snapshot
 - 原始指针不离开 safe wrapper；Moc 必须比 Model 活得更久。
 - 不把未经验证的新纯 Rust Cubism 兼容 crate 作为生产基础。
 - `.model3.json`、motion、expression、physics 和 pose 兼容性由 fixture 验证。
-- 每帧从 Core 默认 parameter 开始，依次应用 motion、expression、physics/pose（实现后）、
-  类型化产品输入，最后调用 Core update。motion 的自然结束与显式停止均使用 model3/
+- 每帧从 Core 默认 parameter 开始，依次应用 motion、expression、自动 EyeBlink/Breath、
+  physics/pose（实现后）、类型化产品输入，最后调用 Core update。motion 的自然结束与显式停止均使用 model3/
   curve fade，显式停止的外层正弦权重与 curve 权重相乘。`PartOpacity` motion curve
   遵循 R5 Framework 语义，按 curve ID 写入 Core parameter sink 且不继承普通 parameter
   curve 的 fade weight。model3 `Groups` 由模型索引保留并校验；motion `Model` target 中
@@ -388,7 +392,7 @@ GPUI renderer 与 Live2D renderer 完全分离：
 
 ```text
 RenderSnapshot
-├── model opacity / drawables / offscreens / order / opacity / masks
+├── model opacity / horizontal mirror / drawables / offscreens / order / opacity / masks
 ├── color + alpha blend / multiply + screen color
 ├── vertex / uv / index buffers
 ├── texture ids

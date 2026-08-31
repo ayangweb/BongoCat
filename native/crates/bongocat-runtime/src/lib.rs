@@ -151,6 +151,13 @@ impl OverlaySettings {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ModelSettings {
+    pub mirror: bool,
+    pub mirror_pointer_tracking: bool,
+    pub ignore_pointer: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MotionId {
     group: String,
@@ -267,6 +274,7 @@ pub struct PendingModelSnapshot {
 pub enum RuntimeCommand {
     SetOverlayVisible(bool),
     SetOverlaySettings(OverlaySettings),
+    SetModelSettings(ModelSettings),
     SetMotionAudioEnabled(bool),
     SetInputBindings(Arc<InputBindings>),
     SetGamepadAxisSettings(GamepadAxisSettings),
@@ -291,6 +299,7 @@ pub struct RuntimeSnapshot {
     pub state: RuntimeState,
     pub overlay_visible: bool,
     pub overlay_settings: OverlaySettings,
+    pub model_settings: ModelSettings,
     pub motion_audio_enabled: bool,
     pub motion_audio: MotionAudioDiagnostics,
     pub active_model: Option<ModelSnapshot>,
@@ -319,6 +328,7 @@ impl RuntimeSnapshot {
             state: RuntimeState::Starting,
             overlay_visible,
             overlay_settings: OverlaySettings::default(),
+            model_settings: ModelSettings::default(),
             motion_audio_enabled,
             motion_audio,
             active_model: None,
@@ -1193,6 +1203,16 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                                 current.last_command_sequence = Some(sequence);
                             });
                         }
+                    }
+                    WorkerCommand::Product(RuntimeCommand::SetModelSettings(settings)) => {
+                        if let Some(renderer) = &mut renderer {
+                            renderer.set_model_settings(settings);
+                        }
+                        publish(&snapshot, |current| {
+                            current.model_settings = settings;
+                            current.last_command_failure = None;
+                            current.last_command_sequence = Some(sequence);
+                        });
                     }
                     WorkerCommand::Product(RuntimeCommand::SetMotionAudioEnabled(enabled)) => {
                         motion_audio_enabled = enabled;
@@ -2131,6 +2151,34 @@ mod tests {
 
         let stopped = owner.shutdown(TIMEOUT).expect("clean shutdown");
         assert_eq!(stopped.state, RuntimeState::Stopped);
+    }
+
+    #[test]
+    fn model_settings_command_is_revisioned_and_published() {
+        let owner = RuntimeOwner::start(true, 8);
+        let client = owner.client();
+        let ready = client
+            .wait_for_state(RuntimeState::Ready, TIMEOUT)
+            .expect("ready snapshot");
+        assert_eq!(ready.model_settings, ModelSettings::default());
+
+        let settings = ModelSettings {
+            mirror: true,
+            mirror_pointer_tracking: true,
+            ignore_pointer: true,
+        };
+        let sequence = client
+            .send(RuntimeCommand::SetModelSettings(settings))
+            .expect("model settings command accepted");
+        let updated = client
+            .wait_for_command(sequence, TIMEOUT)
+            .expect("model settings snapshot");
+        assert_eq!(updated.model_settings, settings);
+        assert_eq!(updated.last_command_failure, None);
+
+        let stopped = owner.shutdown(TIMEOUT).expect("clean shutdown");
+        assert_eq!(stopped.state, RuntimeState::Stopped);
+        assert_eq!(stopped.model_settings, settings);
     }
 
     #[test]

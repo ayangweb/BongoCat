@@ -88,6 +88,7 @@ pub struct DrawableSnapshot {
 pub struct RenderSnapshot {
     pub canvas: CanvasInfo,
     pub model_opacity: f32,
+    pub mirror_horizontal: bool,
     pub drawables: Vec<DrawableSnapshot>,
 }
 
@@ -377,6 +378,7 @@ mod tests {
                     pixels_per_unit: 1.0,
                 },
                 model_opacity: 1.0,
+                mirror_horizontal: false,
                 drawables: vec![],
             }),
         }
