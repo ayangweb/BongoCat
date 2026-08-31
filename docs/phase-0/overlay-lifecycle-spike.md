@@ -228,6 +228,12 @@ Windows resource probe 现通过同一常驻 D3D11 device 的 `IDXGIAdapter3` �
 与 device/surface recovery 均先通过。新 probe 允许这种一次性延迟 high-water，但要求其后连续
 两批稳定，并用单元回归证明 `8,8,9,9,9` 收敛、`9,10,11,12,13,14` 持续增长失败。
 
+commit `b947816` 的 pull request run `33366352371`、job `99407700219` 已通过新门禁：实际执行
+4 个 100-cycle 测量 batch 后线程从 8 扩展到 high-water 9 并连续两批稳定，handle
+`194 -> 194`、DXGI local memory `0 -> 0`、`non_empty_frames=400` 且
+`clean_shutdown=true`。同一 run 的 Windows/macOS/Ubuntu workspace 与其余 spike/contract jobs
+全部通过；该证据排除了固定批次时序误报，不替代 driver 专项长期采样。
+
 commit `53eec36` 的首次真实 Windows 非空帧运行暴露了默认 D3D11 背面剔除：draw
 已提交但中心像素仍透明。commit `ebaea32` 将 rasterizer 明确设为 `CULL_NONE`，并由
 push run `33247687689` 和 PR run `33247689437` 的 hardware D3D11 smoke 验证连续帧、
