@@ -251,6 +251,15 @@ jobs:
               if ($toggleState -ne $initialToggleState) {
                 throw "Windows UIA startup switch action did not restore state: expected '$initialToggleState', found '$toggleState'"
               }
+              # The settings snapshot revision rebuilds the GPUI control tree;
+              # reacquire the element before exercising focus on the new node.
+              $startup = $root.FindFirst(
+                [System.Windows.Automation.TreeScope]::Descendants,
+                $startupCondition
+              )
+              if ($null -eq $startup) {
+                throw "Windows UIA startup switch disappeared after state update"
+              }
               $startup.SetFocus()
               $focusDeadline = [DateTime]::UtcNow.AddSeconds(2)
               do {
