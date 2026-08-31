@@ -232,8 +232,34 @@ pub struct CycleReport {
     pub handles_after: u32,
     pub threads_before: u32,
     pub threads_after: u32,
+    pub threads_baseline_high_water: u32,
     pub gpu_bytes_before: u64,
     pub gpu_bytes_after: u64,
+}
+
+fn observe_measurement_threads(
+    batch: u32,
+    threads: u32,
+    baseline_high_water: &mut u32,
+) -> Result<(), String> {
+    if batch == 1 {
+        *baseline_high_water = (*baseline_high_water).max(threads);
+    } else if threads > *baseline_high_water {
+        return Err(format!(
+            "process thread count grew beyond baseline high-water {baseline_high_water} to {threads} in measurement batch {batch}"
+        ));
+    }
+    Ok(())
+}
+
+fn run_creation_batch(cycles: u32) -> Result<(), String> {
+    for _ in 0..cycles {
+        let overlay = NativeOverlay::create_with_logging(false)?;
+        overlay.show()?;
+        overlay.clear_present()?;
+        overlay.hide()?;
+    }
+    Ok(())
 }
 
 pub fn run_creation_cycles(cycles: u32) -> Result<CycleReport, String> {
@@ -246,23 +272,24 @@ pub fn run_creation_cycles(cycles: u32) -> Result<CycleReport, String> {
 
     // Use one complete, equivalent batch to initialize process-global D3D,
     // DXGI, DirectComposition, compiler, and driver pools before measuring.
-    for _ in 0..cycles {
-        let overlay = NativeOverlay::create_with_logging(false)?;
-        overlay.show()?;
-        overlay.clear_present()?;
-        overlay.hide()?;
-    }
+    run_creation_batch(cycles)?;
     let gpu_bytes_before = gpu_metrics
         .current_local_usage()
         .map_err(format_windows_error)?;
     let threads_before = process_thread_count().map_err(format_windows_error)?;
     let handles_before = process_handle_count().map_err(format_windows_error)?;
+    let mut threads_baseline_high_water = threads_before;
 
-    for _ in 0..cycles {
-        let overlay = NativeOverlay::create_with_logging(false)?;
-        overlay.show()?;
-        overlay.clear_present()?;
-        overlay.hide()?;
+    // A D3D/DirectComposition worker can be created only after the first
+    // complete measured batch, even when an equal warm-up batch has run. Let
+    // that first batch establish the final process-pool high-water, then
+    // require two further equal batches to stay at or below it. A per-batch
+    // leak therefore still fails deterministically instead of receiving an
+    // arbitrary growth allowance.
+    for batch in 1..=3 {
+        run_creation_batch(cycles)?;
+        let threads = process_thread_count().map_err(format_windows_error)?;
+        observe_measurement_threads(batch, threads, &mut threads_baseline_high_water)?;
     }
 
     let gpu_bytes_after = gpu_metrics
@@ -275,9 +302,9 @@ pub fn run_creation_cycles(cycles: u32) -> Result<CycleReport, String> {
             "process handle count grew from {handles_before} to {handles_after} after {cycles} cycles"
         ));
     }
-    if threads_after > threads_before {
+    if threads_after > threads_baseline_high_water {
         return Err(format!(
-            "process thread count grew from {threads_before} to {threads_after} after {cycles} cycles"
+            "process thread count grew beyond baseline high-water {threads_baseline_high_water} to {threads_after} after {cycles} cycles"
         ));
     }
     if gpu_bytes_after > gpu_bytes_before {
@@ -287,11 +314,12 @@ pub fn run_creation_cycles(cycles: u32) -> Result<CycleReport, String> {
     }
     Ok(CycleReport {
         cycles,
-        non_empty_frames: cycles.saturating_mul(2),
+        non_empty_frames: cycles.saturating_mul(4),
         handles_before,
         handles_after,
         threads_before,
         threads_after,
+        threads_baseline_high_water,
         gpu_bytes_before,
         gpu_bytes_after,
     })
@@ -1259,7 +1287,7 @@ unsafe extern "system" fn window_proc(
 mod tests {
     use super::{
         OVERLAY_VERTICES, OverlayVertex, RenderFailureKind, classify_render_hresult,
-        logical_to_physical,
+        logical_to_physical, observe_measurement_threads,
     };
     use windows::{
         Win32::Graphics::Dxgi::{
@@ -1314,5 +1342,17 @@ mod tests {
             classify_render_hresult(HRESULT(0x8000_4005_u32 as i32)),
             RenderFailureKind::Fatal
         );
+    }
+
+    #[test]
+    fn first_measurement_may_extend_the_thread_pool_baseline_once() {
+        let mut baseline = 8;
+        observe_measurement_threads(1, 9, &mut baseline).unwrap();
+        observe_measurement_threads(2, 9, &mut baseline).unwrap();
+        observe_measurement_threads(3, 8, &mut baseline).unwrap();
+        assert_eq!(baseline, 9);
+
+        let error = observe_measurement_threads(3, 10, &mut baseline).unwrap_err();
+        assert!(error.contains("baseline high-water 9 to 10 in measurement batch 3"));
     }
 }

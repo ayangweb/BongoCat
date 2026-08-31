@@ -1067,9 +1067,10 @@ jobs:
             -Arguments @("--windows-overlay-cycles", "100")
           @(
             "Windows cycles=100",
-            "non_empty_frames=200",
+            "non_empty_frames=400",
             "threads_before=",
             "threads_after=",
+            "threads_baseline_high_water=",
             "gpu_bytes_before=",
             "gpu_bytes_after=",
             "clean_shutdown=true"
