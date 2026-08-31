@@ -764,7 +764,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 - [ ] 封装 Core version、logging、Moc consistency 和 Model creation。
   - 状态（2026-08-30）：Core version、Moc consistency 和 Model creation 已进入正式
-    safe wrapper；Core logging callback 与稳定日志边界尚未实现。
+    safe wrapper；2026-09-01 已在 `bongocat-live2d::CoreLogHandle` 接入 Core logging
+    callback。callback 以 panic-safe、最大 512 bytes 消息、路径脱敏和 1 MiB 单文件预算
+    写入当前 Development/Production 环境的 `logs/cubism-core.jsonl`，超出预算计数丢弃，
+    handle drop 先卸载 callback 再释放 sink；纯 Rust 测试覆盖过滤、容量、写入和卸载。
+    Core logging 已完成，但该行仍等待 FFI 错误映射、完整 Moc/Model 资源矩阵和双平台
+    实机证据后再勾选。
 - [ ] 用 Rust owner 保证 Moc、Model 和 buffer 析构顺序。
 - [ ] 校验 parameter/part/drawable id、index 和范围。
   - 状态（2026-08-30）：正式 wrapper 已在 Model 创建时一次性验证 product parameter

@@ -14,6 +14,7 @@ storage-test-injection = []
 [dependencies]
 bongocat-audio.workspace = true
 bongocat-config.workspace = true
+bongocat-live2d.workspace = true
 bongocat-model.workspace = true
 bongocat-overlay.workspace = true
 bongocat-render.workspace = true

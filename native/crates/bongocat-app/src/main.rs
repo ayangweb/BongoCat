@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
+use bongocat_live2d::CoreLogHandle;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_overlay::{OverlaySessionOptions, ProductOverlaySession};
 #[cfg(target_os = "windows")]
 use bongocat_platform::{
@@ -194,6 +196,7 @@ impl std::error::Error for ProductRunError {}
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 struct ProductCoordinator {
+    _core_log: CoreLogHandle,
     #[cfg(target_os = "macos")]
     overlay: Option<ProductOverlaySession>,
     #[cfg(target_os = "windows")]
@@ -767,6 +770,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
     let mut application = bongocat_app::Application::start(development_preset_root())?;
+    let core_log = CoreLogHandle::install(application.logs_directory().join("cubism-core.jsonl"))?;
     if !application.is_operational() {
         return run_configuration_recovery_mode(application);
     }
@@ -908,6 +912,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         #[cfg(target_os = "windows")]
         let frame_overlay = Rc::clone(&overlay);
         cx.set_global(ProductCoordinator {
+            _core_log: core_log,
             #[cfg(target_os = "macos")]
             overlay: Some(overlay),
             #[cfg(target_os = "windows")]

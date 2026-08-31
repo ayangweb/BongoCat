@@ -329,6 +329,10 @@ impl Application {
         &self.config
     }
 
+    pub fn logs_directory(&self) -> &Path {
+        &self.config_store.layout().logs
+    }
+
     pub const fn config_recovery(&self) -> Option<ConfigRecovery> {
         self.config_recovery
     }

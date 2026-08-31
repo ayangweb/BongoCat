@@ -26,7 +26,12 @@ pub use motion::{
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod core;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
+mod core_log;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod sys;
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub use core_log::{CoreLogError, CoreLogHandle, CoreLogStats};
 
 pub const CUBISM_SDK_RELEASE: &str = "5-r.5";
 pub const CUBISM_CORE_VERSION: u32 = 0x0600_0001;
