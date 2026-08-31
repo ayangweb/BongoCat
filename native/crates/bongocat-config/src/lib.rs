@@ -16,6 +16,8 @@ const PREVIOUS_SCHEMA_VERSION: u32 = 1;
 const BACKUP_FORMAT_VERSION: u32 = 1;
 const MAX_CONFIG_BACKUPS: usize = 8;
 const MAX_CONFIG_BACKUP_BYTES: u64 = 8 * 1024 * 1024;
+const MAX_CONFIG_QUARANTINES: usize = 4;
+const MAX_CONFIG_QUARANTINE_BYTES: u64 = 8 * 1024 * 1024;
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -326,6 +328,29 @@ impl ConfigRevision {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ConfigRecovery {
+    source_schema_version: u32,
+    skipped_newer_backups: u32,
+}
+
+impl ConfigRecovery {
+    pub const fn source_schema_version(self) -> u32 {
+        self.source_schema_version
+    }
+
+    pub const fn skipped_newer_backups(self) -> u32 {
+        self.skipped_newer_backups
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ConfigLoadOutcome {
+    pub config: NativeConfig,
+    pub revision: ConfigRevision,
+    pub recovery: Option<ConfigRecovery>,
+}
+
 #[derive(Debug)]
 pub enum ConfigError {
     Io(io::Error),
@@ -338,6 +363,11 @@ pub enum ConfigError {
     UnsupportedSchema(u32),
     InvalidValue(&'static str),
     BackupTooLarge,
+    RecoveryArchiveTooLarge,
+    NoValidRecoveryBackup {
+        candidates: usize,
+    },
+    RecoveryVerificationFailed,
 }
 
 impl fmt::Display for ConfigError {
@@ -357,6 +387,16 @@ impl fmt::Display for ConfigError {
             }
             Self::InvalidValue(field) => write!(formatter, "invalid config value: {field}"),
             Self::BackupTooLarge => formatter.write_str("config backup exceeds retention budget"),
+            Self::RecoveryArchiveTooLarge => {
+                formatter.write_str("invalid config exceeds recovery archive budget")
+            }
+            Self::NoValidRecoveryBackup { candidates } => write!(
+                formatter,
+                "invalid config has no valid recovery backup among {candidates} candidates"
+            ),
+            Self::RecoveryVerificationFailed => {
+                formatter.write_str("restored configuration failed verification")
+            }
         }
     }
 }
@@ -393,23 +433,33 @@ impl ConfigStore {
         &self.layout
     }
 
-    pub fn load_or_default(&self) -> Result<(NativeConfig, ConfigRevision), ConfigError> {
+    pub fn load_or_default(&self) -> Result<ConfigLoadOutcome, ConfigError> {
         let _lock = self.acquire_writer_lock()?;
         match fs::read(&self.layout.config) {
-            Ok(bytes) => {
-                let (config, revision, migrated) = parse_config(&bytes)?;
-                if migrated {
-                    let revision = self.commit_unlocked(&config)?;
-                    Ok((config, revision))
-                } else {
-                    Ok((config, revision))
+            Ok(bytes) => match parse_config(&bytes) {
+                Ok((config, revision, migrated)) => {
+                    let revision = if migrated {
+                        self.commit_unlocked(&config)?
+                    } else {
+                        revision
+                    };
+                    Ok(ConfigLoadOutcome {
+                        config,
+                        revision,
+                        recovery: None,
+                    })
                 }
-            }
+                Err(error @ ConfigError::UnsupportedSchema(_)) => Err(error),
+                Err(_) => self.recover_from_backup_unlocked(&bytes),
+            },
             Err(error) if error.kind() == ErrorKind::NotFound => {
                 let config = NativeConfig::default();
-                self.commit_unlocked(&config)?;
-                let bytes = serde_json::to_vec_pretty(&config)?;
-                Ok((config, revision_for_bytes(&bytes)))
+                let revision = self.commit_unlocked(&config)?;
+                Ok(ConfigLoadOutcome {
+                    config,
+                    revision,
+                    recovery: None,
+                })
             }
             Err(error) => Err(error.into()),
         }
@@ -472,12 +522,7 @@ impl ConfigStore {
             .and_then(|version| u32::try_from(version).ok())
             .ok_or(ConfigError::InvalidValue("schema_version"))?;
         let (_, source_revision, _) = parse_config(current)?;
-        let created_at_unix_ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|_| ConfigError::InvalidValue("backup.created_at_unix_ms"))?
-            .as_millis()
-            .try_into()
-            .map_err(|_| ConfigError::InvalidValue("backup.created_at_unix_ms"))?;
+        let created_at_unix_ms = unix_time_millis()?;
         let backup = ConfigBackup {
             backup_format_version: BACKUP_FORMAT_VERSION,
             created_at_unix_ms,
@@ -493,6 +538,108 @@ impl ConfigStore {
         write_atomic(&path, &bytes)?;
         prune_config_backups(&self.layout.backups)
     }
+
+    fn recover_from_backup_unlocked(
+        &self,
+        invalid_current: &[u8],
+    ) -> Result<ConfigLoadOutcome, ConfigError> {
+        let mut candidates = owned_config_backup_paths(&self.layout.backups)?;
+        candidates.sort_by(|left, right| right.cmp(left));
+        let candidate_count = candidates.len();
+        let mut skipped_newer_backups = 0_u32;
+
+        for path in candidates {
+            let bytes = fs::read(path)?;
+            let Ok((config, revision, source_schema_version)) = validate_config_backup(&bytes)
+            else {
+                skipped_newer_backups = skipped_newer_backups.saturating_add(1);
+                continue;
+            };
+            let restored = serde_json::to_vec_pretty(&config)?;
+            self.archive_invalid_config_unlocked(invalid_current)?;
+            write_atomic(&self.layout.config, &restored)?;
+            let verified = fs::read(&self.layout.config)?;
+            let Ok((verified_config, verified_revision, false)) = parse_config(&verified) else {
+                write_atomic(&self.layout.config, invalid_current)?;
+                return Err(ConfigError::RecoveryVerificationFailed);
+            };
+            if verified_config != config || verified_revision != revision {
+                write_atomic(&self.layout.config, invalid_current)?;
+                return Err(ConfigError::RecoveryVerificationFailed);
+            }
+            return Ok(ConfigLoadOutcome {
+                config,
+                revision,
+                recovery: Some(ConfigRecovery {
+                    source_schema_version,
+                    skipped_newer_backups,
+                }),
+            });
+        }
+
+        Err(ConfigError::NoValidRecoveryBackup {
+            candidates: candidate_count,
+        })
+    }
+
+    fn archive_invalid_config_unlocked(&self, invalid_current: &[u8]) -> Result<(), ConfigError> {
+        if u64::try_from(invalid_current.len()).unwrap_or(u64::MAX) > MAX_CONFIG_QUARANTINE_BYTES {
+            return Err(ConfigError::RecoveryArchiveTooLarge);
+        }
+        let created_at_unix_ms = unix_time_millis()?;
+        let path = next_quarantine_path(&self.layout.backups, created_at_unix_ms)?;
+        write_atomic(&path, invalid_current)?;
+        prune_config_quarantines(&self.layout.backups)
+    }
+}
+
+fn unix_time_millis() -> Result<u64, ConfigError> {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| ConfigError::InvalidValue("backup.created_at_unix_ms"))?
+        .as_millis()
+        .try_into()
+        .map_err(|_| ConfigError::InvalidValue("backup.created_at_unix_ms"))
+}
+
+fn validate_config_backup(
+    bytes: &[u8],
+) -> Result<(NativeConfig, ConfigRevision, u32), ConfigError> {
+    if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_CONFIG_BACKUP_BYTES {
+        return Err(ConfigError::BackupTooLarge);
+    }
+    let backup: ConfigBackup = serde_json::from_slice(bytes)?;
+    if backup.backup_format_version != BACKUP_FORMAT_VERSION || backup.created_at_unix_ms == 0 {
+        return Err(ConfigError::InvalidValue("backup.format"));
+    }
+    let actual_schema_version = backup
+        .config
+        .get("schema_version")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|version| u32::try_from(version).ok())
+        .ok_or(ConfigError::InvalidValue("backup.source_schema_version"))?;
+    if actual_schema_version != backup.source_schema_version {
+        return Err(ConfigError::InvalidValue("backup.source_schema_version"));
+    }
+    let config_bytes = serde_json::to_vec(&backup.config)?;
+    let (config, revision, _) = parse_config(&config_bytes)?;
+    if backup.source_revision != format!("{:016x}", revision.value()) {
+        return Err(ConfigError::InvalidValue("backup.source_revision"));
+    }
+    Ok((config, revision, backup.source_schema_version))
+}
+
+fn owned_config_backup_paths(backups: &Path) -> Result<Vec<PathBuf>, ConfigError> {
+    let mut paths = Vec::new();
+    for entry in fs::read_dir(backups)? {
+        let entry = entry?;
+        if entry.file_type()?.is_file()
+            && entry.file_name().to_str().is_some_and(is_owned_backup_name)
+        {
+            paths.push(entry.path());
+        }
+    }
+    Ok(paths)
 }
 
 fn next_backup_path(backups: &Path, created_at_unix_ms: u64) -> Result<PathBuf, ConfigError> {
@@ -527,6 +674,40 @@ fn next_backup_path(backups: &Path, created_at_unix_ms: u64) -> Result<PathBuf, 
     )))
 }
 
+fn next_quarantine_path(backups: &Path, created_at_unix_ms: u64) -> Result<PathBuf, ConfigError> {
+    let mut newest = None;
+    for entry in fs::read_dir(backups)? {
+        let entry = entry?;
+        let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        if let Some(order) = parse_owned_quarantine_name(&name) {
+            newest = Some(newest.map_or(order, |current| std::cmp::max(current, order)));
+        }
+    }
+    let (order_millis, first_sequence) = match newest {
+        Some((newest_millis, newest_sequence)) if newest_millis >= created_at_unix_ms => {
+            match newest_sequence.checked_add(1) {
+                Some(sequence) => (newest_millis, sequence),
+                None => (newest_millis.saturating_add(1), 0),
+            }
+        }
+        _ => (created_at_unix_ms, 0),
+    };
+    for sequence in first_sequence..=u16::MAX {
+        let path = backups.join(format!(
+            "config-corrupt-{order_millis:020}-{sequence:05}.bin"
+        ));
+        if !path.exists() {
+            return Ok(path);
+        }
+    }
+    Err(ConfigError::Io(io::Error::new(
+        ErrorKind::AlreadyExists,
+        "config quarantine filename space exhausted",
+    )))
+}
+
 fn prune_config_backups(backups: &Path) -> Result<(), ConfigError> {
     let mut entries = Vec::new();
     for entry in fs::read_dir(backups)? {
@@ -544,6 +725,31 @@ fn prune_config_backups(backups: &Path) -> Result<(), ConfigError> {
     let mut removed = 0_usize;
     for (_, path, size) in entries {
         if removed < remove_count || total_bytes > MAX_CONFIG_BACKUP_BYTES {
+            fs::remove_file(path)?;
+            total_bytes = total_bytes.saturating_sub(size);
+            removed += 1;
+        }
+    }
+    Ok(())
+}
+
+fn prune_config_quarantines(backups: &Path) -> Result<(), ConfigError> {
+    let mut entries = Vec::new();
+    for entry in fs::read_dir(backups)? {
+        let entry = entry?;
+        let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        if is_owned_quarantine_name(&name) {
+            entries.push((name, entry.path(), entry.metadata()?.len()));
+        }
+    }
+    entries.sort_by(|left, right| left.0.cmp(&right.0));
+    let mut total_bytes = entries.iter().map(|entry| entry.2).sum::<u64>();
+    let remove_count = entries.len().saturating_sub(MAX_CONFIG_QUARANTINES);
+    let mut removed = 0_usize;
+    for (_, path, size) in entries {
+        if removed < remove_count || total_bytes > MAX_CONFIG_QUARANTINE_BYTES {
             fs::remove_file(path)?;
             total_bytes = total_bytes.saturating_sub(size);
             removed += 1;
@@ -571,6 +777,25 @@ fn parse_owned_backup_name(name: &str) -> Option<(u64, u16)> {
     Some((timestamp.parse().ok()?, sequence.parse().ok()?))
 }
 
+fn is_owned_quarantine_name(name: &str) -> bool {
+    parse_owned_quarantine_name(name).is_some()
+}
+
+fn parse_owned_quarantine_name(name: &str) -> Option<(u64, u16)> {
+    let stem = name
+        .strip_prefix("config-corrupt-")
+        .and_then(|name| name.strip_suffix(".bin"))?;
+    let (timestamp, sequence) = stem.split_once('-')?;
+    if timestamp.len() != 20
+        || sequence.len() != 5
+        || !timestamp.bytes().all(|byte| byte.is_ascii_digit())
+        || !sequence.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return None;
+    }
+    Some((timestamp.parse().ok()?, sequence.parse().ok()?))
+}
+
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), ConfigError> {
     let mut file = AtomicWriteFile::open(path)?;
     file.write_all(bytes)?;
@@ -580,10 +805,15 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), ConfigError> {
 
 fn parse_config(bytes: &[u8]) -> Result<(NativeConfig, ConfigRevision, bool), ConfigError> {
     let mut value: serde_json::Value = serde_json::from_slice(bytes)?;
-    let migrated = value
+    let schema_version = value
         .get("schema_version")
         .and_then(serde_json::Value::as_u64)
-        == Some(u64::from(PREVIOUS_SCHEMA_VERSION));
+        .and_then(|version| u32::try_from(version).ok())
+        .ok_or(ConfigError::InvalidValue("schema_version"))?;
+    if schema_version != PREVIOUS_SCHEMA_VERSION && schema_version != SCHEMA_VERSION {
+        return Err(ConfigError::UnsupportedSchema(schema_version));
+    }
+    let migrated = schema_version == PREVIOUS_SCHEMA_VERSION;
     if migrated {
         migrate_v1_to_v2(&mut value)?;
     }
@@ -651,7 +881,9 @@ mod tests {
             BuildEnvironment::Development,
         ))
         .expect("config store");
-        let (mut config, initial_revision) = store.load_or_default().expect("default config");
+        let loaded = store.load_or_default().expect("default config");
+        let mut config = loaded.config;
+        let initial_revision = loaded.revision;
         assert_eq!(config, NativeConfig::default());
 
         config.overlay.visible = false;
@@ -687,7 +919,7 @@ mod tests {
             BuildEnvironment::Production,
         ))
         .expect("config store");
-        let (config, _) = store.load_or_default().expect("default config");
+        let config = store.load_or_default().expect("default config").config;
         let original = fs::read(&store.layout().config).expect("original bytes");
 
         let mut invalid = config;
@@ -738,7 +970,10 @@ mod tests {
         let original = serde_json::to_vec_pretty(&v1).expect("v1 bytes");
         fs::write(&store.layout().config, &original).expect("write v1 config");
 
-        let (migrated, revision) = store.load_or_default().expect("migrate v1 config");
+        let loaded = store.load_or_default().expect("migrate v1 config");
+        let migrated = loaded.config;
+        let revision = loaded.revision;
+        assert_eq!(loaded.recovery, None);
         assert_eq!(migrated.schema_version, SCHEMA_VERSION);
         assert_eq!(
             migrated.model.selected_model_origin,
@@ -755,9 +990,10 @@ mod tests {
         assert!(backup.created_at_unix_ms > 0);
         assert_eq!(backup.source_revision.len(), 16);
         for _ in 0..10 {
-            let (reloaded, reloaded_revision) = store.load_or_default().expect("reload v2 config");
-            assert_eq!(reloaded, migrated);
-            assert_eq!(reloaded_revision, revision);
+            let reloaded = store.load_or_default().expect("reload v2 config");
+            assert_eq!(reloaded.config, migrated);
+            assert_eq!(reloaded.revision, revision);
+            assert_eq!(reloaded.recovery, None);
         }
         assert_eq!(config_backup_paths(store.layout()).len(), 1);
     }
@@ -800,6 +1036,213 @@ mod tests {
     }
 
     #[test]
+    fn corrupt_current_config_recovers_newest_valid_backup_and_is_idempotent() {
+        let base = tempdir().expect("temp directory");
+        let store = ConfigStore::new(StorageLayout::under(
+            base.path(),
+            BuildEnvironment::Development,
+        ))
+        .expect("config store");
+        let mut config = store.load_or_default().expect("default config").config;
+        config.overlay.scale_percent = 110;
+        store.commit(&config).expect("first config commit");
+        config.overlay.scale_percent = 120;
+        store.commit(&config).expect("second config commit");
+
+        let invalid = br#"{"schema_version":2,"overlay":{"#;
+        fs::write(&store.layout().config, invalid).expect("corrupt current config");
+        let recovered = store.load_or_default().expect("recover valid backup");
+        assert_eq!(recovered.config.overlay.scale_percent, 110);
+        let recovery = recovered.recovery.expect("recovery diagnostic");
+        assert_eq!(recovery.source_schema_version(), SCHEMA_VERSION);
+        assert_eq!(recovery.skipped_newer_backups(), 0);
+        let quarantines = config_quarantine_paths(store.layout());
+        assert_eq!(quarantines.len(), 1);
+        assert_eq!(
+            fs::read(&quarantines[0]).expect("quarantine bytes"),
+            invalid
+        );
+
+        let reloaded = store.load_or_default().expect("reload recovered config");
+        assert_eq!(reloaded.config, recovered.config);
+        assert_eq!(reloaded.revision, recovered.revision);
+        assert_eq!(reloaded.recovery, None);
+        assert_eq!(config_quarantine_paths(store.layout()).len(), 1);
+    }
+
+    #[test]
+    fn recovery_skips_future_format_schema_and_revision_mismatch() {
+        let base = tempdir().expect("temp directory");
+        let store = ConfigStore::new(StorageLayout::under(
+            base.path(),
+            BuildEnvironment::Development,
+        ))
+        .expect("config store");
+        let mut config = store.load_or_default().expect("default config").config;
+        for scale_percent in [105, 110, 120, 130] {
+            config.overlay.scale_percent = scale_percent;
+            store.commit(&config).expect("config commit");
+        }
+
+        let backups = config_backup_paths(store.layout());
+        let mut future_schema: ConfigBackup =
+            serde_json::from_slice(&fs::read(&backups[1]).expect("backup bytes"))
+                .expect("backup envelope");
+        future_schema.source_schema_version = SCHEMA_VERSION + 1;
+        future_schema.config["schema_version"] = serde_json::Value::from(SCHEMA_VERSION + 1);
+        fs::write(
+            &backups[1],
+            serde_json::to_vec_pretty(&future_schema).expect("future schema backup"),
+        )
+        .expect("replace backup with future schema");
+        let mut revision_mismatch: ConfigBackup =
+            serde_json::from_slice(&fs::read(&backups[2]).expect("backup bytes"))
+                .expect("backup envelope");
+        revision_mismatch.source_revision = "0000000000000000".to_owned();
+        fs::write(
+            &backups[2],
+            serde_json::to_vec_pretty(&revision_mismatch).expect("revision mismatch backup"),
+        )
+        .expect("replace backup with revision mismatch");
+        let mut future_format: ConfigBackup =
+            serde_json::from_slice(&fs::read(&backups[3]).expect("backup bytes"))
+                .expect("backup envelope");
+        future_format.backup_format_version = BACKUP_FORMAT_VERSION + 1;
+        fs::write(
+            &backups[3],
+            serde_json::to_vec_pretty(&future_format).expect("future format backup"),
+        )
+        .expect("replace backup with future format");
+
+        fs::write(&store.layout().config, b"invalid-current").expect("corrupt current config");
+        let recovered = store.load_or_default().expect("recover older backup");
+        assert_eq!(recovered.config, NativeConfig::default());
+        assert_eq!(
+            recovered
+                .recovery
+                .expect("recovery diagnostic")
+                .skipped_newer_backups(),
+            3
+        );
+    }
+
+    #[test]
+    fn recovery_failure_preserves_current_config_when_all_backups_are_invalid() {
+        let base = tempdir().expect("temp directory");
+        let store = ConfigStore::new(StorageLayout::under(
+            base.path(),
+            BuildEnvironment::Production,
+        ))
+        .expect("config store");
+        let mut config = store.load_or_default().expect("default config").config;
+        config.overlay.scale_percent = 110;
+        store.commit(&config).expect("config commit");
+        let backup = config_backup_paths(store.layout())
+            .pop()
+            .expect("config backup");
+        fs::write(backup, b"invalid-backup").expect("corrupt backup");
+        let invalid_current = b"invalid-current";
+        fs::write(&store.layout().config, invalid_current).expect("corrupt current config");
+
+        assert!(matches!(
+            store.load_or_default(),
+            Err(ConfigError::NoValidRecoveryBackup { candidates: 1 })
+        ));
+        assert_eq!(
+            fs::read(&store.layout().config).expect("preserved current config"),
+            invalid_current
+        );
+        assert!(config_quarantine_paths(store.layout()).is_empty());
+    }
+
+    #[test]
+    fn future_current_schema_is_not_rolled_back_to_an_older_backup() {
+        let base = tempdir().expect("temp directory");
+        let store = ConfigStore::new(StorageLayout::under(
+            base.path(),
+            BuildEnvironment::Production,
+        ))
+        .expect("config store");
+        let mut config = store.load_or_default().expect("default config").config;
+        config.overlay.scale_percent = 110;
+        store.commit(&config).expect("config commit");
+        let mut future = serde_json::to_value(&config).expect("config value");
+        future["schema_version"] = serde_json::Value::from(SCHEMA_VERSION + 1);
+        future["future_section"] = serde_json::json!({ "new_field": true });
+        let future_bytes = serde_json::to_vec_pretty(&future).expect("future config bytes");
+        fs::write(&store.layout().config, &future_bytes).expect("future current config");
+
+        assert!(matches!(
+            store.load_or_default(),
+            Err(ConfigError::UnsupportedSchema(version)) if version == SCHEMA_VERSION + 1
+        ));
+        assert_eq!(
+            fs::read(&store.layout().config).expect("preserved future config"),
+            future_bytes
+        );
+        assert!(config_quarantine_paths(store.layout()).is_empty());
+    }
+
+    #[test]
+    fn recovery_quarantines_are_bounded_and_environment_local() {
+        let base = tempdir().expect("temp directory");
+        let development = ConfigStore::new(StorageLayout::under(
+            base.path(),
+            BuildEnvironment::Development,
+        ))
+        .expect("development config store");
+        let production = ConfigStore::new(StorageLayout::under(
+            base.path(),
+            BuildEnvironment::Production,
+        ))
+        .expect("production config store");
+        let mut development_config = development
+            .load_or_default()
+            .expect("development default")
+            .config;
+        development_config.overlay.scale_percent = 110;
+        development
+            .commit(&development_config)
+            .expect("development commit");
+        let mut production_config = production
+            .load_or_default()
+            .expect("production default")
+            .config;
+        production_config.overlay.scale_percent = 130;
+        production
+            .commit(&production_config)
+            .expect("production commit");
+
+        for index in 0..6 {
+            let invalid = format!("invalid-development-config-{index}");
+            fs::write(&development.layout().config, invalid).expect("corrupt development config");
+            development
+                .load_or_default()
+                .expect("recover development config");
+        }
+
+        let quarantines = config_quarantine_paths(development.layout());
+        assert_eq!(quarantines.len(), MAX_CONFIG_QUARANTINES);
+        assert!(
+            quarantines
+                .iter()
+                .map(|path| fs::metadata(path).expect("quarantine metadata").len())
+                .sum::<u64>()
+                <= MAX_CONFIG_QUARANTINE_BYTES
+        );
+        assert!(config_quarantine_paths(production.layout()).is_empty());
+        assert_eq!(
+            production
+                .load_or_default()
+                .expect("production reload")
+                .config
+                .overlay
+                .scale_percent,
+            130
+        );
+    }
+
+    #[test]
     fn config_backups_are_bounded_and_do_not_remove_unowned_files() {
         let base = tempdir().expect("temp directory");
         let store = ConfigStore::new(StorageLayout::under(
@@ -807,7 +1250,7 @@ mod tests {
             BuildEnvironment::Development,
         ))
         .expect("config store");
-        let (mut config, _) = store.load_or_default().expect("default config");
+        let mut config = store.load_or_default().expect("default config").config;
         let unowned = store.layout().backups.join("manual-note.json");
         fs::write(&unowned, b"keep").expect("unowned backup marker");
 
@@ -860,6 +1303,22 @@ mod tests {
             .expect("backup directory")
             .map(|entry| entry.expect("backup entry"))
             .filter(|entry| entry.file_name().to_str().is_some_and(is_owned_backup_name))
+            .map(|entry| entry.path())
+            .collect::<Vec<_>>();
+        paths.sort();
+        paths
+    }
+
+    fn config_quarantine_paths(layout: &StorageLayout) -> Vec<PathBuf> {
+        let mut paths = fs::read_dir(&layout.backups)
+            .expect("backup directory")
+            .map(|entry| entry.expect("backup entry"))
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_str()
+                    .is_some_and(is_owned_quarantine_name)
+            })
             .map(|entry| entry.path())
             .collect::<Vec<_>>();
         paths.sort();

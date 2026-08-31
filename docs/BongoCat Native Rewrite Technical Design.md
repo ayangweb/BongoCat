@@ -435,6 +435,12 @@ com.ayangweb.bongo-cat
   墙上时间、源 schema 和 revision 的环境内备份。每个环境只管理 `config-*.json` 自有命名空间，
   按持久排序键保留最新 8 份且总计不超过 8 MiB；系统时钟回退不得让新备份被误删，未知文件
   不参与清理。备份写入或收敛失败时保留当前配置。
+- 当前配置 parse/validate 失败且不是未来 schema 时，只在同一 writer lock 内从新到旧检查
+  自有备份，并同时验证 envelope 格式、源 schema、源 revision 和完整 typed config。恢复前将损坏原文写入独立的
+  `config-corrupt-*.bin` 自有 quarantine，最多 4 份且总计不超过 8 MiB；恢复后重新读取验证，
+  app 只公开源 schema 与跳过候选数等匿名诊断。没有有效候选、quarantine 失败或恢复验证失败时
+  不回落默认值，也不读取另一环境；当前损坏原文继续保留在 `config.json` 或 quarantine 中。
+  高于当前版本的 schema 直接报告不支持并保持原文件，禁止降级覆盖较新配置。
 - `config.json` 只包含用户设置；窗口布局写入 `state.json`，pressed state、权限结果和模型解析缓存不持久化。
 - 模型导入防止路径穿越、符号链接逃逸、压缩炸弹和覆盖现有用户数据。
 - 模型包在反序列化或图片解码前执行 JSON 字节/深度、单文件/整包字节、文件数、目录深度

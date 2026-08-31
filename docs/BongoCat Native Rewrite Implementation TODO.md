@@ -927,9 +927,9 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
 - [ ] 只为 Native Rewrite schema 建立 sequential `schema_version` 演进。
   - 状态（2026-08-31）：正式 config 已实现 v1 -> v2 单步迁移；非空
     `selected_model_id` 按 v1 产品语义补为 preset origin，空选择保持成对为空。迁移在 writer
-    lock 内备份原 bytes 并原子写回，重复加载幂等；未来版本链、损坏恢复和备份保留上限仍待
-    完成，因此总项保持未勾选。共享默认 fixture 升级后，独立 config-store contract spike 也
-    对齐 v2 成对字段与校验，但不重复承担正式迁移逻辑。
+    lock 内备份原 bytes 并原子写回，重复加载幂等；正式 store 已能从验证通过的 v1/v2 备份恢复
+    并规范化写回 v2。未来版本链仍待实现，因此总项保持未勾选。共享默认 fixture 升级后，独立
+    config-store contract spike 也对齐 v2 成对字段与校验，但不重复承担正式迁移逻辑。
 - [x] 不包含旧 Pinia store key、旧字段 alias 或自动导入逻辑。
   - 验收证据（2026-08-31）：Native schema/Rust 类型没有 serde alias 或 legacy 字段，严格未知
     字段 fixture 与单元测试拒绝 `legacy_alias`/`old_pinia_field`；产品 `ConfigStore` 只解析当前
@@ -946,7 +946,9 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
     排序键保留最新 8 份且总计不超过 8 MiB。单元测试覆盖 v1 -> v2 原文备份、12 次提交收敛、
     未知文件保留和时钟回退顺序；完整 Native workspace 门禁随当前队列提交验证。
 - [x] spike 中途提交中断后可安全恢复或重试；失败不覆盖当前可用配置。
-  - 状态（2026-08-29）：`ConfigStore::recover_interrupted_commit` 覆盖主配置有效/缺失/损坏与临时文件有效/无效组合，恢复在 OS writer lock 内执行并保留诊断副本；父进程强制终止已写入并 flush 临时配置的持锁子进程后，macOS 本机与 Windows runner 均验证 lock 自动释放、当前配置保留和 interrupted archive。产品备份上限仍待完成。
+  - 状态（2026-08-29）：`ConfigStore::recover_interrupted_commit` 覆盖主配置有效/缺失/损坏与临时文件有效/无效组合，恢复在 OS writer lock 内执行并保留诊断副本；父进程强制终止已写入并 flush 临时配置的持锁子进程后，macOS 本机与 Windows runner 均验证 lock 自动释放、当前配置保留和 interrupted archive。
+  - 状态（2026-08-31）：正式产品已具备有界备份和损坏 current 从验证备份恢复；spike 的
+    `config.json.tmp` 中断恢复尚未提升到正式 crate，因此本项只表示 Phase 0 证据已通过。
 - [ ] GPUI 显示错误摘要、备份位置和恢复默认 command。
 - [x] 用户模型只通过显式、受验证的导入进入当前环境，不扫描旧应用目录。
   - 验收证据（2026-08-30）：`bongocat-app` 不再提供任意外部目录激活入口；模型必须
@@ -974,7 +976,7 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
 - [x] 覆盖损坏、截断、错误类型、越界值和未知字段。
   - 验收证据（2026-08-31）：正式 `ConfigStore::load_or_default` 产品测试逐项写入非 JSON、
     截断 JSON、错误布尔类型、越界 opacity 和嵌套未知字段，全部返回错误且逐字节保留当前
-    `config.json`，不创建备份或静默回落默认值。
+    `config.json`；没有有效备份时不创建 quarantine 或静默回落默认值。
 - [ ] 覆盖无权限、磁盘满、目标占用和中途退出。
 - [ ] 覆盖非 ASCII/超长路径、缺失和重复模型。
 - [x] Native schema upgrade 重复执行 10 次结果一致。
@@ -1508,6 +1510,15 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       完整 Native workspace 门禁通过。
     - 状态（2026-08-31）：正式 crate 已加入五类无效输入逐字节保留测试和 10 次 migration
       reload 门禁；本机定向测试与 Clippy 通过，完整 workspace/CI 证据随本项提交记录。
+35. [ ] `P6-CONFIG-BACKUP-RECOVERY`：从验证通过的 Native 备份恢复损坏的正式配置。
+    - 依赖：`P6-CONFIG-BACKUP-RETENTION`、`P6-CONFIG-INVALID-LOAD` 和正式 app 启动装配。
+    - 退出条件：按新到旧验证格式/schema/revision/typed config，只提交首个有效候选；损坏 current
+      逐字节进入有界环境内 quarantine；无有效候选或归档/验证失败时不默认覆盖；恢复重启幂等，
+      Development/Production 隔离；app 暴露不含路径的恢复诊断；config/app 定向测试、Clippy 和
+      完整 Native workspace/三平台 CI 门禁通过。
+    - 状态（2026-08-31）：正式 store 与 app 实现、定向测试、本机完整 format/Clippy/workspace
+      test/release/Production、依赖来源和 schema/fixture 校验均通过；Windows/macOS/Ubuntu CI
+      证据待本项提交后记录，因此保持未勾选。
 
 ## 13. 待决策清单
 

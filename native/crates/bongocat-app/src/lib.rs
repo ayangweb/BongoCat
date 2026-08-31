@@ -2,8 +2,8 @@
 
 use bongocat_audio::{MotionAudioService, MotionAudioShutdownError};
 use bongocat_config::{
-    BuildEnvironment, ConfigError, ConfigRevision, ConfigStore, NativeConfig, PlatformStorageError,
-    SelectedModelOrigin, StorageLayout, platform_layout,
+    BuildEnvironment, ConfigError, ConfigRecovery, ConfigRevision, ConfigStore, NativeConfig,
+    PlatformStorageError, SelectedModelOrigin, StorageLayout, platform_layout,
 };
 use bongocat_model::{
     CommittedModel, InstalledModel, ModelCatalogEntry, ModelError, ModelId, ModelImportProgress,
@@ -137,6 +137,7 @@ pub struct Application {
     config_store: ConfigStore,
     config: NativeConfig,
     config_revision: ConfigRevision,
+    config_recovery: Option<ConfigRecovery>,
     preset_models: PresetModelCatalog,
     model_store: ModelStore,
     active_model_origin: Option<ModelOrigin>,
@@ -171,7 +172,10 @@ impl Application {
             ModelPackageLimits::default(),
         )?;
         let config_store = ConfigStore::new(layout)?;
-        let (config, config_revision) = config_store.load_or_default()?;
+        let loaded_config = config_store.load_or_default()?;
+        let config = loaded_config.config;
+        let config_revision = loaded_config.revision;
+        let config_recovery = loaded_config.recovery;
         let (motion_audio, motion_audio_client) =
             match MotionAudioService::start(AUDIO_COMMAND_CAPACITY) {
                 Ok(service) => {
@@ -211,6 +215,7 @@ impl Application {
             config_store,
             config,
             config_revision,
+            config_recovery,
             preset_models,
             model_store,
             active_model_origin,
@@ -240,6 +245,10 @@ impl Application {
 
     pub fn config(&self) -> &NativeConfig {
         &self.config
+    }
+
+    pub const fn config_recovery(&self) -> Option<ConfigRecovery> {
+        self.config_recovery
     }
 
     pub fn set_overlay_visible(
@@ -607,6 +616,41 @@ mod tests {
         assert!(persisted.contains("\"play_motion_audio\": false"));
         let stopped = application.shutdown().expect("clean shutdown");
         assert_eq!(stopped.state, RuntimeState::Stopped);
+    }
+
+    #[test]
+    fn application_starts_from_validated_config_backup_after_corruption() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let store = ConfigStore::new(layout.clone()).expect("config store");
+        let mut config = store.load_or_default().expect("default config").config;
+        config.overlay.visible = false;
+        store.commit(&config).expect("hidden config commit");
+        config.overlay.visible = true;
+        store.commit(&config).expect("visible config commit");
+        std::fs::write(&layout.config, b"corrupt-current").expect("corrupt current config");
+
+        let application = Application::start_with_layout(layout.clone()).expect("recover startup");
+        assert!(!application.config().overlay.visible);
+        assert!(!application.runtime_client().snapshot().overlay_visible);
+        let recovery = application.config_recovery().expect("recovery diagnostic");
+        assert_eq!(
+            recovery.source_schema_version(),
+            bongocat_config::SCHEMA_VERSION
+        );
+        assert_eq!(recovery.skipped_newer_backups(), 0);
+        assert!(
+            std::fs::read_dir(&layout.backups)
+                .expect("backup directory")
+                .any(|entry| {
+                    entry
+                        .expect("backup entry")
+                        .file_name()
+                        .to_string_lossy()
+                        .starts_with("config-corrupt-")
+                })
+        );
+        application.shutdown().expect("clean shutdown");
     }
 
     #[test]

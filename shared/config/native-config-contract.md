@@ -72,6 +72,22 @@ shortcuts
 - 每个环境最多保留最新 8 份、总计最多 8 MiB，最旧优先清理。其他文件不参与计数或删除。
 - 备份创建或 retention 收敛失败会中止配置替换，继续保留当前 `config.json`。
 
+## Corruption Recovery
+
+- 当前 `config.json` 无法 parse、迁移或 validate 时，在当前环境 writer lock 内按文件名从新到旧
+  检查自有备份；未知文件、目录和符号链接不作为候选，也不得读取另一环境。高于当前版本的
+  schema 直接报告不支持并逐字节保留，禁止把较新配置自动降级为旧备份。
+- 候选必须同时通过 envelope 格式版本、非零创建时间、源 schema 与内嵌 config 一致性、
+  16 位规范化 source revision 以及完整 Native typed validation。未来格式、未来 schema、revision
+  不匹配和损坏候选会被跳过；只恢复第一个完全有效的候选，并原子写回当前 v2 规范化 JSON。
+- 替换前把损坏的当前文件逐字节保存为
+  `config-corrupt-<20-digit-order>-<5-digit-sequence>.bin`。该自有 quarantine 每环境最多保留
+  最新 4 份、总计最多 8 MiB；其他文件不参与计数或删除。
+- 写回后必须重新读取并验证 config 与 revision。应用只保留恢复源 schema 和跳过的较新候选数，
+  不把路径、原始配置或底层 I/O 文本放入 snapshot。
+- 没有有效候选、损坏原文超过 quarantine 上限、归档/收敛失败或写回验证失败时明确报错；不得
+  静默创建默认配置。写回验证失败会尝试把原始损坏字节恢复到 `config.json`，quarantine 仍保留。
+
 ## Environment Isolation
 
 `Development` 与 `Production` 使用同一 schema、默认值和相对目录结构，只由数据根目录区分。配置内容不保存环境字段，也不能引用另一环境的绝对路径。
