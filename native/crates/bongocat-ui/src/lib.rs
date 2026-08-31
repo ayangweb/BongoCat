@@ -227,10 +227,19 @@ pub struct SettingsModelSettings {
     pub ignore_pointer: bool,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SettingsGamepadAxisSettings {
     pub stick_dead_zone_percent: u8,
     pub trigger_dead_zone_percent: u8,
+}
+
+impl Default for SettingsGamepadAxisSettings {
+    fn default() -> Self {
+        Self {
+            stick_dead_zone_percent: 15,
+            trigger_dead_zone_percent: 0,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1272,6 +1281,17 @@ mod tests {
             .expect("gamepad snapshot");
         assert_eq!(result.gamepad_axis_settings.stick_dead_zone_percent, 25);
         worker.join().expect("worker join");
+    }
+
+    #[test]
+    fn gamepad_axis_settings_default_matches_native_config() {
+        assert_eq!(
+            SettingsGamepadAxisSettings::default(),
+            SettingsGamepadAxisSettings {
+                stick_dead_zone_percent: 15,
+                trigger_dead_zone_percent: 0,
+            }
+        );
     }
 
     #[test]
