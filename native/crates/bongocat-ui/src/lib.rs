@@ -336,6 +336,7 @@ pub enum SettingsErrorCode {
     ConfigPermissionDenied,
     ConfigStorageFull,
     ConfigTargetOccupied,
+    BackupLocationOpenFailed,
     ConfigurationRecoveryRequired,
     ConfigurationRecoveryFailed,
     ModelUnavailable,
@@ -387,6 +388,9 @@ impl fmt::Display for SettingsError {
             }
             SettingsErrorCode::ConfigTargetOccupied => {
                 "configuration storage is blocked; remove the blocking item and retry"
+            }
+            SettingsErrorCode::BackupLocationOpenFailed => {
+                "configuration backup folder could not be opened"
             }
             SettingsErrorCode::ConfigurationRecoveryRequired => {
                 "configuration must be recovered before this action"
@@ -462,6 +466,9 @@ pub enum SettingsCommand {
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     RestoreDefaultConfiguration {
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    OpenConfigBackupLocation {
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     Shutdown {
@@ -586,6 +593,11 @@ impl SettingsClient {
             .await
     }
 
+    pub async fn open_config_backup_location(&self) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::OpenConfigBackupLocation { reply })
+            .await
+    }
+
     pub async fn shutdown(&self) -> Result<SettingsSnapshot, SettingsError> {
         self.request(|reply| SettingsCommand::Shutdown { reply })
             .await
@@ -658,6 +670,10 @@ impl SettingsClient {
         &self,
     ) -> Result<SettingsSnapshot, SettingsError> {
         self.request_blocking(|reply| SettingsCommand::RestoreDefaultConfiguration { reply })
+    }
+
+    pub fn open_config_backup_location_blocking(&self) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::OpenConfigBackupLocation { reply })
     }
 
     pub fn shutdown_blocking(&self) -> Result<SettingsSnapshot, SettingsError> {
@@ -993,6 +1009,29 @@ mod tests {
             recovered.configuration_status,
             SettingsConfigurationStatus::DefaultsRestoredRestartRequired
         );
+        worker.join().expect("worker join");
+    }
+
+    #[test]
+    fn configuration_backup_location_is_a_typed_command() {
+        let (client, endpoint) = SettingsClient::bounded(1);
+        let worker = thread::spawn(move || {
+            let SettingsCommand::OpenConfigBackupLocation { reply } =
+                endpoint.recv_blocking().expect("backup location command")
+            else {
+                panic!("unexpected command");
+            };
+            reply
+                .respond(Ok(snapshot(11, true, false)))
+                .expect("backup location reply");
+        });
+
+        let unchanged = client
+            .open_config_backup_location_blocking()
+            .expect("backup location snapshot");
+        assert_eq!(unchanged.revision, 11);
+        assert!(unchanged.overlay_visible);
+        assert!(!unchanged.motion_audio_enabled);
         worker.join().expect("worker join");
     }
 

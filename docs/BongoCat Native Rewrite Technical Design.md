@@ -458,6 +458,11 @@ com.ayangweb.bongo-cat
   settings 只显示可操作的项目文案，不泄漏路径或操作系统原始错误。写入只清理由当前调用成功创建的
   temp；若固定 temp 已被文件、目录、符号链接或并发创建占用，则保留该条目和 current 并明确失败。
   权限与磁盘满在 temp 创建前后都必须可受控注入，验证失败不改变当前 snapshot/revision。
+- Diagnostics 通过强类型 `OpenConfigBackupLocation` command 打开当前构建环境的 `backups/`；
+  路径只由 Application 从正式 `StorageLayout` 派生并传给 platform adapter，不进入 command、
+  snapshot、错误或 GPUI Entity。platform adapter 先验证绝对目录并 canonicalize，再以独立参数调用
+  Finder/Explorer，不经 shell 或字符串拼接；成功只返回当前 snapshot 且不推进 revision，失败只返回
+  `BackupLocationOpenFailed`。该 command 在 `RecoveryRequired` 受限状态仍可使用。
 - `config.json` 只包含用户设置；窗口布局写入 `state.json`，pressed state、权限结果和模型解析缓存不持久化。
 - 模型导入防止路径穿越、符号链接逃逸、压缩炸弹和覆盖现有用户数据。
 - 模型包在反序列化或图片解码前执行 JSON 字节/深度、单文件/整包字节、文件数、目录深度

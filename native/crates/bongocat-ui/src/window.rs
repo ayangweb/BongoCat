@@ -46,6 +46,8 @@ const ACCESSIBILITY_AUDIO: AccessibilityNodeId = AccessibilityNodeId::new(11);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_STARTUP: AccessibilityNodeId = AccessibilityNodeId::new(12);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_OPEN_BACKUPS: AccessibilityNodeId = AccessibilityNodeId::new(28);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_RESTORE_DEFAULTS: AccessibilityNodeId = AccessibilityNodeId::new(29);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_REFRESH: AccessibilityNodeId = AccessibilityNodeId::new(30);
@@ -106,6 +108,7 @@ enum PendingOperation {
     StartupItem,
     ModelSelection,
     ModelDeletion,
+    OpenConfigBackupLocation,
     RestoreDefaultConfiguration,
 }
 
@@ -282,6 +285,7 @@ pub struct SettingsView {
     model_id_focus: FocusHandle,
     choose_model_focus: FocusHandle,
     import_model_focus: FocusHandle,
+    open_backups_focus: FocusHandle,
     restore_defaults_focus: FocusHandle,
     refresh_focus: FocusHandle,
     quit_focus: FocusHandle,
@@ -317,6 +321,7 @@ impl SettingsView {
             model_id_focus: cx.focus_handle().tab_index(20).tab_stop(true),
             choose_model_focus: cx.focus_handle().tab_index(21).tab_stop(true),
             import_model_focus: cx.focus_handle().tab_index(22).tab_stop(true),
+            open_backups_focus: cx.focus_handle().tab_index(28).tab_stop(true),
             restore_defaults_focus: cx.focus_handle().tab_index(29).tab_stop(true),
             refresh_focus: cx.focus_handle().tab_index(30).tab_stop(true),
             quit_focus: cx.focus_handle().tab_index(31).tab_stop(true),
@@ -415,6 +420,17 @@ impl SettingsView {
         if restore_available {
             restore_node = restore_node.clickable().focusable();
         }
+        let open_backups_available = snapshot.is_some() && self.pending.is_none();
+        let mut open_backups_node = AccessibilityNode::new(
+            ACCESSIBILITY_OPEN_BACKUPS,
+            AccessibilityRole::Button,
+            "Open configuration backups folder",
+        )
+        .with_value("Open the current environment's backup folder")
+        .disabled(!open_backups_available);
+        if open_backups_available {
+            open_backups_node = open_backups_node.clickable().focusable();
+        }
         let mut nodes = vec![
             AccessibilityNode::new(
                 ACCESSIBILITY_ROOT,
@@ -428,6 +444,7 @@ impl SettingsView {
                 ACCESSIBILITY_OVERLAY,
                 ACCESSIBILITY_AUDIO,
                 ACCESSIBILITY_STARTUP,
+                ACCESSIBILITY_OPEN_BACKUPS,
                 ACCESSIBILITY_RESTORE_DEFAULTS,
                 ACCESSIBILITY_REFRESH,
                 ACCESSIBILITY_QUIT,
@@ -448,6 +465,7 @@ impl SettingsView {
             overlay_node,
             audio_node,
             startup_node,
+            open_backups_node,
             restore_node,
             refresh_node,
             AccessibilityNode::new(ACCESSIBILITY_QUIT, AccessibilityRole::Button, "Quit")
@@ -500,6 +518,7 @@ impl SettingsView {
                 StartupItemAction::Retry => self.refresh(cx),
                 StartupItemAction::None => {}
             },
+            ACCESSIBILITY_OPEN_BACKUPS => self.open_config_backup_location(cx),
             ACCESSIBILITY_RESTORE_DEFAULTS => {
                 if self.snapshot.as_ref().is_some_and(|snapshot| {
                     matches!(
@@ -542,6 +561,8 @@ impl SettingsView {
             (ACCESSIBILITY_OVERLAY, &self.overlay_focus),
             (ACCESSIBILITY_AUDIO, &self.audio_focus),
             (ACCESSIBILITY_STARTUP, &self.startup_item_focus),
+            (ACCESSIBILITY_OPEN_BACKUPS, &self.open_backups_focus),
+            (ACCESSIBILITY_RESTORE_DEFAULTS, &self.restore_defaults_focus),
             (ACCESSIBILITY_REFRESH, &self.refresh_focus),
             (ACCESSIBILITY_QUIT, &self.quit_focus),
         ]
@@ -708,6 +729,20 @@ impl SettingsView {
         if recovery.title.is_empty() || recovery.detail.is_empty() {
             return Err("diagnostics page did not project configuration recovery".to_owned());
         }
+        let open_backups = self
+            .accessibility_tree()
+            .nodes
+            .into_iter()
+            .find(|node| node.id == ACCESSIBILITY_OPEN_BACKUPS)
+            .ok_or_else(|| "diagnostics omitted the accessible backup location".to_owned())?;
+        if open_backups.role != AccessibilityRole::Button
+            || open_backups.label != "Open configuration backups folder"
+            || open_backups.disabled
+            || !open_backups.supports_click
+            || !open_backups.supports_focus
+        {
+            return Err("backup location accessibility semantics are invalid".to_owned());
+        }
         if matches!(
             snapshot.configuration_status,
             SettingsConfigurationStatus::RecoveryRequired { .. }
@@ -776,6 +811,14 @@ impl SettingsView {
         self.start_request(
             PendingOperation::RestoreDefaultConfiguration,
             Some(SettingValue::RestoreDefaultConfiguration),
+            cx,
+        );
+    }
+
+    fn open_config_backup_location(&mut self, cx: &mut Context<Self>) {
+        self.start_request(
+            PendingOperation::OpenConfigBackupLocation,
+            Some(SettingValue::OpenConfigBackupLocation),
             cx,
         );
     }
@@ -1147,6 +1190,9 @@ impl SettingsView {
                 Some(SettingValue::StartupItemEnabled(enabled)) => {
                     client.set_startup_item_enabled(enabled).await
                 }
+                Some(SettingValue::OpenConfigBackupLocation) => {
+                    client.open_config_backup_location().await
+                }
                 Some(SettingValue::RestoreDefaultConfiguration) => {
                     client.restore_default_configuration().await
                 }
@@ -1180,6 +1226,7 @@ enum SettingValue {
     OverlayVisible(bool),
     MotionAudioEnabled(bool),
     StartupItemEnabled(bool),
+    OpenConfigBackupLocation,
     RestoreDefaultConfiguration,
 }
 
@@ -1283,6 +1330,7 @@ impl Render for SettingsView {
                     ACCESSIBILITY_OVERLAY => &self.overlay_focus,
                     ACCESSIBILITY_AUDIO => &self.audio_focus,
                     ACCESSIBILITY_STARTUP => &self.startup_item_focus,
+                    ACCESSIBILITY_OPEN_BACKUPS => &self.open_backups_focus,
                     ACCESSIBILITY_RESTORE_DEFAULTS => &self.restore_defaults_focus,
                     ACCESSIBILITY_REFRESH => &self.refresh_focus,
                     ACCESSIBILITY_QUIT => &self.quit_focus,
@@ -1316,6 +1364,9 @@ impl Render for SettingsView {
             (_, Some(PendingOperation::StartupItem), _) => "Updating login startup...".into(),
             (_, Some(PendingOperation::ModelSelection), _) => "Activating model...".into(),
             (_, Some(PendingOperation::ModelDeletion), _) => "Deleting model...".into(),
+            (_, Some(PendingOperation::OpenConfigBackupLocation), _) => {
+                "Opening configuration backups...".into()
+            }
             (_, Some(PendingOperation::RestoreDefaultConfiguration), _) => {
                 "Restoring default configuration...".into()
             }
@@ -2040,7 +2091,7 @@ impl Render for SettingsView {
                             snapshot.configuration_status,
                             snapshot.config_recovery,
                         );
-                        let restore_disabled = self.pending.is_some();
+                        let config_action_disabled = self.pending.is_some();
                         content
                             .child(
                                 div()
@@ -2083,6 +2134,34 @@ impl Render for SettingsView {
                                                 tokens.muted
                                             })
                                             .child(recovery.detail)
+                                            .child(
+                                                command_button(
+                                                    "Backups",
+                                                    &self.open_backups_focus,
+                                                    28,
+                                                    window,
+                                                    tokens,
+                                                    config_action_disabled,
+                                                )
+                                                .id("open-config-backups")
+                                                .on_click(cx.listener(|view, _, window, cx| {
+                                                    if view.pending.is_none() {
+                                                        window.focus(&view.open_backups_focus);
+                                                        view.open_config_backup_location(cx);
+                                                    }
+                                                }))
+                                                .on_key_down(cx.listener(
+                                                    |view, event, window, cx| {
+                                                        if view.pending.is_none()
+                                                            && is_activation_key(event)
+                                                        {
+                                                            cx.stop_propagation();
+                                                            window.focus(&view.open_backups_focus);
+                                                            view.open_config_backup_location(cx);
+                                                        }
+                                                    },
+                                                )),
+                                            )
                                             .when(recovery.can_restore, |content| {
                                                 content.child(
                                                     command_button(
@@ -2091,7 +2170,7 @@ impl Render for SettingsView {
                                                         29,
                                                         window,
                                                         tokens,
-                                                        restore_disabled,
+                                                        config_action_disabled,
                                                     )
                                                     .id("restore-default-configuration")
                                                     .on_click(cx.listener(|view, _, window, cx| {

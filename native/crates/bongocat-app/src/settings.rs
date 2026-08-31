@@ -7,7 +7,7 @@ use bongocat_model::{
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_platform::{
     StartupItemEnvironment, StartupItemError, StartupItemState, StartupItemUnsupportedReason,
-    set_startup_item_enabled, startup_item_state,
+    open_directory, set_startup_item_enabled, startup_item_state,
 };
 use bongocat_runtime::{InputSnapshot, RuntimeState};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -21,7 +21,7 @@ use bongocat_ui::{
     SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
     SettingsStartupItemUnsupportedReason,
 };
-use std::{fmt, sync::Arc, thread};
+use std::{fmt, path::PathBuf, sync::Arc, thread};
 
 const SETTINGS_COMMAND_CAPACITY: usize = 16;
 
@@ -39,10 +39,21 @@ impl ApplicationSettingsService {
         application: Application,
         startup_item: Arc<dyn StartupItemCapability>,
     ) -> Result<Self, SettingsServiceJoinError> {
+        let backup_location = Arc::new(SystemBackupLocation {
+            path: application.config_backup_directory().to_owned(),
+        });
+        Self::start_with_capabilities(application, startup_item, backup_location)
+    }
+
+    fn start_with_capabilities(
+        application: Application,
+        startup_item: Arc<dyn StartupItemCapability>,
+        backup_location: Arc<dyn BackupLocationCapability>,
+    ) -> Result<Self, SettingsServiceJoinError> {
         let (client, endpoint) = SettingsClient::bounded(SETTINGS_COMMAND_CAPACITY);
         let worker = thread::Builder::new()
             .name("bongocat-settings-service".to_owned())
-            .spawn(move || run_service(application, endpoint, startup_item))
+            .spawn(move || run_service(application, endpoint, startup_item, backup_location))
             .map_err(SettingsServiceJoinError::Spawn)?;
         Ok(Self {
             client,
@@ -69,7 +80,15 @@ trait StartupItemCapability: Send + Sync + 'static {
     fn set_enabled(&self, enabled: bool) -> Result<SettingsStartupItemState, SettingsError>;
 }
 
+trait BackupLocationCapability: Send + Sync + 'static {
+    fn open(&self) -> Result<(), SettingsError>;
+}
+
 struct SystemStartupItem;
+
+struct SystemBackupLocation {
+    path: PathBuf,
+}
 
 impl StartupItemCapability for SystemStartupItem {
     fn state(&self) -> SettingsStartupItemStatus {
@@ -78,6 +97,12 @@ impl StartupItemCapability for SystemStartupItem {
 
     fn set_enabled(&self, enabled: bool) -> Result<SettingsStartupItemState, SettingsError> {
         system_set_startup_item_enabled(enabled)
+    }
+}
+
+impl BackupLocationCapability for SystemBackupLocation {
+    fn open(&self) -> Result<(), SettingsError> {
+        system_open_backup_location(&self.path)
     }
 }
 
@@ -111,6 +136,7 @@ fn run_service(
     mut application: Application,
     endpoint: SettingsServiceEndpoint,
     startup_item: Arc<dyn StartupItemCapability>,
+    backup_location: Arc<dyn BackupLocationCapability>,
 ) {
     let mut clock = SettingsSnapshotClock::new(application.runtime_client().snapshot().revision);
     loop {
@@ -205,6 +231,12 @@ fn run_service(
                     .map_err(map_configuration_recovery_error);
                 let _ = reply.respond(result);
             }
+            SettingsCommand::OpenConfigBackupLocation { reply } => {
+                let result = backup_location
+                    .open()
+                    .map(|()| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
             SettingsCommand::Shutdown { reply } => {
                 let before_shutdown =
                     snapshot(&application, &mut clock, false, startup_item.state());
@@ -223,6 +255,19 @@ fn run_service(
             }
         }
     }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn system_open_backup_location(path: &std::path::Path) -> Result<(), SettingsError> {
+    open_directory(path)
+        .map_err(|_| SettingsError::new(SettingsErrorCode::BackupLocationOpenFailed))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn system_open_backup_location(_path: &std::path::Path) -> Result<(), SettingsError> {
+    Err(SettingsError::new(
+        SettingsErrorCode::BackupLocationOpenFailed,
+    ))
 }
 
 fn require_operational(application: &Application) -> Result<(), ApplicationError> {
@@ -679,7 +724,7 @@ mod tests {
         io,
         sync::{
             Mutex,
-            atomic::{AtomicBool, Ordering},
+            atomic::{AtomicBool, AtomicUsize, Ordering},
         },
     };
     use tempfile::tempdir;
@@ -726,6 +771,33 @@ mod tests {
             };
             self.replace(SettingsStartupItemStatus::State(state));
             Ok(state)
+        }
+    }
+
+    struct TestBackupLocation {
+        invocations: AtomicUsize,
+        fail: AtomicBool,
+    }
+
+    impl TestBackupLocation {
+        fn new() -> Self {
+            Self {
+                invocations: AtomicUsize::new(0),
+                fail: AtomicBool::new(false),
+            }
+        }
+    }
+
+    impl BackupLocationCapability for TestBackupLocation {
+        fn open(&self) -> Result<(), SettingsError> {
+            self.invocations.fetch_add(1, Ordering::AcqRel);
+            if self.fail.load(Ordering::Acquire) {
+                Err(SettingsError::new(
+                    SettingsErrorCode::BackupLocationOpenFailed,
+                ))
+            } else {
+                Ok(())
+            }
         }
     }
 
@@ -910,6 +982,87 @@ mod tests {
                     .to_string_lossy()
                     .starts_with("config-corrupt-"))
         );
+    }
+
+    #[test]
+    fn service_opens_anonymous_backup_location_without_advancing_revision() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application = Application::start_with_layout(layout).expect("application start");
+        let startup_item = Arc::new(TestStartupItem::new(SettingsStartupItemStatus::State(
+            SettingsStartupItemState::Disabled,
+        )));
+        let backup_location = Arc::new(TestBackupLocation::new());
+        let service = ApplicationSettingsService::start_with_capabilities(
+            application,
+            startup_item,
+            backup_location.clone(),
+        )
+        .expect("service start");
+        let client = service.client();
+
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        let opened = client
+            .open_config_backup_location_blocking()
+            .expect("open backup location");
+        assert_eq!(opened, initial);
+        assert_eq!(backup_location.invocations.load(Ordering::Acquire), 1);
+
+        backup_location.fail.store(true, Ordering::Release);
+        let error = client
+            .open_config_backup_location_blocking()
+            .expect_err("backup location failure");
+        assert_eq!(error.code(), SettingsErrorCode::BackupLocationOpenFailed);
+        assert_eq!(
+            error.to_string(),
+            "configuration backup folder could not be opened"
+        );
+        assert!(
+            !error
+                .to_string()
+                .contains(base.path().to_string_lossy().as_ref())
+        );
+        let unchanged = client.read_snapshot_blocking().expect("unchanged snapshot");
+        assert_eq!(unchanged, initial);
+        assert_eq!(backup_location.invocations.load(Ordering::Acquire), 2);
+
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
+    }
+
+    #[test]
+    fn service_can_open_backup_location_while_configuration_recovery_is_required() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        ConfigStore::new(layout.clone()).expect("config store");
+        std::fs::write(&layout.config, b"invalid-current-without-backup")
+            .expect("invalid current config");
+        let application = Application::start_with_layout(layout).expect("safe mode start");
+        let startup_item = Arc::new(TestStartupItem::new(SettingsStartupItemStatus::State(
+            SettingsStartupItemState::Disabled,
+        )));
+        let backup_location = Arc::new(TestBackupLocation::new());
+        let service = ApplicationSettingsService::start_with_capabilities(
+            application,
+            startup_item,
+            backup_location.clone(),
+        )
+        .expect("service start");
+        let client = service.client();
+
+        let initial = client.read_snapshot_blocking().expect("safe mode snapshot");
+        assert!(matches!(
+            initial.configuration_status,
+            SettingsConfigurationStatus::RecoveryRequired { .. }
+        ));
+        let opened = client
+            .open_config_backup_location_blocking()
+            .expect("open backup location in safe mode");
+        assert_eq!(opened, initial);
+        assert_eq!(backup_location.invocations.load(Ordering::Acquire), 1);
+
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
     }
 
     fn model_fixture() -> std::path::PathBuf {

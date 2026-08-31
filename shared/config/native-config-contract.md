@@ -112,6 +112,10 @@ shortcuts
   `DefaultsRestoredRestartRequired`，保留 recovery-only runtime，必须重启才恢复正常业务状态。
 - 恢复 command 失败不得覆盖 current；quarantine、默认写入或验证失败均返回稳定错误。Diagnostics
   只显示状态和候选计数，不显示路径、原始 bytes、时间戳或底层 I/O 文本。
+- Diagnostics 始终提供 typed `OpenConfigBackupLocation` command，包括 `RecoveryRequired` 状态。
+  settings 协议不携带目录参数：Application 从当前环境 `StorageLayout.backups` 派生路径并交给 platform
+  adapter；UI/snapshot/error 不得接收绝对路径或原始 OS 错误。成功打开目录不改变业务状态或 settings
+  revision，失败映射为稳定的 `BackupLocationOpenFailed`。
 
 ## Interrupted Commit Recovery
 

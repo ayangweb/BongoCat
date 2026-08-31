@@ -21,6 +21,9 @@ mod directory_picker_macos;
 mod directory_picker_windows;
 pub use directory_picker::{DirectoryPickerError, DirectoryPickerOutcome};
 
+mod directory_opener;
+pub use directory_opener::{DirectoryOpenError, open_directory};
+
 mod single_instance;
 pub use single_instance::{SingleInstanceAction, SingleInstanceEnvironment, SingleInstanceError};
 #[cfg(target_os = "windows")]

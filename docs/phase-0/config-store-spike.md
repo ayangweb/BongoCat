@@ -77,3 +77,10 @@ current 且无备份的 recovery-only 产品窗口。正式产品现已增加只
 `0549f33` 的 run `33378437342` 已通过三平台 Native workspace、Windows input/config 和独立
 config-store jobs，`P6-CONFIG-WRITE-FAILURES` 退出条件满足。进程存活不通过 PID、时间戳
 或删除 lock file 猜测，异常退出后的释放由 OS file lock 生命周期保证。
+
+状态（2026-08-31）：正式 settings 协议已增加无路径参数的 `OpenConfigBackupLocation` typed
+command；Application 只把当前环境 `StorageLayout.backups` 交给 platform adapter，macOS/Windows
+分别以独立进程参数启动 Finder/Explorer，不使用 shell。Diagnostics 的 Backups 按钮覆盖 pending、
+匿名 error、Tab 与 Enter/Space 以及 accessibility button 语义；成功不推进 snapshot revision，
+recovery-only 状态仍可调用。本机 platform/ui/app 定向测试和严格 Clippy 已通过，三平台完整门禁
+由 `P6-CONFIG-BACKUP-LOCATION` 当前提交的 CI 跟踪。

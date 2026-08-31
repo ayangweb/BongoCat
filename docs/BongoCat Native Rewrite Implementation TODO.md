@@ -952,13 +952,16 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
     CI 与最终验收证据由当前执行队列 `P6-CONFIG-INTERRUPTED-COMMIT` 跟踪。
 - [ ] GPUI 显示错误摘要、备份位置和恢复默认 command。
   - 状态（2026-08-31）：成功从备份恢复时，正式 settings snapshot 已投影匿名的源 schema 与
-    跳过候选数，Diagnostics 显示正常加载或恢复成功状态；无有效备份的安全模式、可操作错误摘要、
-    备份位置和恢复默认 command 仍未实现，因此总项保持未勾选。
+    跳过候选数，Diagnostics 显示正常加载或恢复成功状态。
   - 状态（2026-08-31）：正式 Application/settings service 已实现无有效备份时的
     `RecoveryRequired` recovery-only 窗口、匿名候选计数和 `RestoreDefaultConfiguration` typed
     command；恢复前业务 command 被拒，恢复后标记需重启。
   - 状态（2026-08-31）：settings 已增加权限、空间不足和目标占用的独立匿名错误摘要；config
-    crate 已加入权限/磁盘满阶段注入及真实目标占用测试。备份位置入口仍未实现，因此总项保持未勾选。
+    crate 已加入权限/磁盘满阶段注入及真实目标占用测试。
+  - 状态（2026-08-31）：Diagnostics 已增加当前环境 Backups 入口、typed command、pending/error、
+    键盘与 accessibility 状态；路径只存在于 Application/platform adapter，成功不推进 revision，
+    recovery-only 同样可用。本机定向测试通过，三平台 CI 证据由 `P6-CONFIG-BACKUP-LOCATION` 跟踪，
+    因此总项暂不勾选。
 - [x] 用户模型只通过显式、受验证的导入进入当前环境，不扫描旧应用目录。
   - 验收证据（2026-08-30）：`bongocat-app` 不再提供任意外部目录激活入口；模型必须
     先经 `ModelStore::import` 复制、复验和 commit，随后只能按已安装 `ModelId` 加载；
@@ -1584,6 +1587,16 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       `99445071780`/`99445071706`/`99445071635` 通过完整 format、Clippy、workspace test、release/
       Production 与平台 smoke，Windows input/config job `99445071726` 和 config-store job
       `99445071760` 同时通过，退出条件满足。
+40. [ ] `P6-CONFIG-BACKUP-LOCATION`：从 Diagnostics 安全打开当前环境配置备份目录。
+    - 依赖：正式环境 `StorageLayout`、revisioned settings protocol、`P6-CONFIG-SAFE-RECOVERY` 和
+      双平台 platform adapter。
+    - 退出条件：无路径参数的 typed command 只打开 Application 派生的当前环境 `backups/`；UI、
+      snapshot 和 error 不包含路径或原始 OS 文本；platform adapter 验证/canonicalize 绝对目录并以
+      独立参数启动 Finder/Explorer，不使用 shell；成功不推进 revision，失败保留 snapshot 并返回
+      稳定匿名错误，recovery-only 可用；Diagnostics 覆盖 pending、键盘和 accessibility 状态；
+      platform/app/ui 定向测试、完整 Native workspace、三平台 CI 和双平台 GPUI smoke 通过。
+    - 状态（2026-08-31）：typed protocol、Application capability、platform adapter、Diagnostics
+      控件与本机定向测试已完成；完整 workspace 与跨平台 CI 证据随当前提交验证。
 
 ## 13. 待决策清单
 

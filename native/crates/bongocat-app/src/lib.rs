@@ -302,6 +302,10 @@ impl Application {
         self.config_status
     }
 
+    pub(crate) fn config_backup_directory(&self) -> &Path {
+        &self.config_store.layout().backups
+    }
+
     pub const fn is_operational(&self) -> bool {
         matches!(self.config_status, ApplicationConfigStatus::Ready)
     }
