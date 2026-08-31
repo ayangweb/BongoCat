@@ -179,7 +179,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     trigger/shoulder 回归，但产品 smoke 在 settings snapshot 替换 AccessKit 节点期间对旧 UIA
     element 调用 `Toggle()` 得到瞬时 `Unrecognized error`。runner 现为两次 action 和状态轮询
     重新按 name 解析当前节点，并分别使用 2 秒 action/5 秒投影上限；action 未执行、状态未变化
-    或未恢复仍失败。新 Windows CI 与真实 Narrator 证据仍待完成，因此保持未勾选。
+    或未恢复仍失败。commit `119ea66` 的 run `33408664176`、Windows Native job
+    `99542490478` 已通过 role/value、两次 action、状态恢复和 focus；真实 Narrator 证据仍待
+    完成，因此保持未勾选。
 - [x] 记录首次打开、空闲 CPU、RSS 和二进制增量；`docs/benchmark/data/gpui-settings-macos-248a770-*.csv` 保存原始样本，方法、环境和限制见 `docs/phase-0/gpui-settings-spike.md`。
 - [x] 安装并固定 macOS Metal Toolchain，验证 GPUI 默认预编译 shader 路径；`runtime_shaders` 不作为发布配置。
 - [ ] 将 macOS spike 打包为最小 `.app`，验证 bundle id、菜单、激活、关闭和辅助功能树可被系统识别。
@@ -230,14 +232,18 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     macOS probe 现与 Windows 一致，最多执行 6 个等长 batch，每次 high-water 增长后要求连续
     2 批稳定，逐批增长仍失败；输出和 CI 按实际 `measurement_batches` 校验非空帧守恒。本机
     release 100-cycle 以 3 批、300 帧、window/owner `0 -> 0`、thread `7 -> 7`、Metal
-    `393216 -> 393216` 通过；新 CI 与 driver 专项长期采样仍待完成。
+    `393216 -> 393216` 通过。commit `119ea66` 的 run `33408664176`、macOS spike job
+    `99542490704` 也以 3 批、300 帧、window/owner `0 -> 0`、thread `8 -> 8` 通过；Metal
+    `3145728 -> 5242880` 未超过一个三缓冲 pool 预算。driver 专项长期采样仍待完成。
 - [ ] 验证退出顺序：frame source -> renderer -> GPU -> overlay -> GPUI。
   - 状态（2026-08-29）：GPUI executor 上的 60 Hz 定时 frame source 已连续驱动双平台 renderer，并在退出时通过停止确认后才释放 renderer/GPU/window；macOS 本机与 Windows hardware D3D11 runner 均已验证连续帧、resize、hide/show 和有序退出。生产 display-linked frame source 与 runtime 尚未接入，因此保持未完成。
   - 状态（2026-08-31）：修复 headless runner 将多个 GPUI timer 同批唤醒时 auto-quit
     抢先停止 frame source 的竞态；有界退出现先等待 resize，故障注入时还等待 renderer
     recovery，超时仍由原有 teardown 断言失败。本机 normal/recovery smoke 分别提交 65/80
-    帧，均 `resize_completed=true`，recovery 路径为 `failures=1 recoveries=1`；Windows runner
-    复验仍待新 CI，因此不改变总项状态。
+    帧，均 `resize_completed=true`，recovery 路径为 `failures=1 recoveries=1`。commit
+    `119ea66` 的 run `33408664176` 已由 Windows spike job `99542490539` 验证 normal 68 帧、
+    device/surface recovery 70/63 帧，并由 macOS spike job `99542490704` 验证 normal 56 帧、
+    recovery 73 帧；均在 teardown 前完成 resize/recovery，因此不改变总项状态。
 - [x] 写明 GPUI/AppKit/Win32 主线程所有权、overlay 创建线程和跨线程 command 不变量。
 - [ ] 注入 renderer 初始化失败、drawable/swapchain unavailable 和 device lost，设置窗口仍可打开并显示诊断。
   - 状态（2026-08-29）：Windows push/PR runner 已通过 renderer 初始化失败与 GPUI degraded 状态；macOS push/PR runner 已通过受控 drawable unavailable、GPUI degraded、正常 quit 与 owner 释放。运行中故障的双平台恢复状态机先释放旧 owner，有限退避后完整重建，GPUI 显示 recovering/recovered；device-lost 注入已通过 macOS 本机与 Windows runner。本批又为 Windows runner 增加独立 surface-unavailable 注入，要求 D3D11/DirectComposition owner 和 HWND 均早于重建释放，并验证 `failures=1 recoveries=1`。真实 swapchain unavailable 与双平台真实驱动 device loss 仍待完成。
@@ -1741,14 +1747,16 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       - 状态（2026-08-31）：run `33406476868` 的 Windows Native workspace 由 contract 发现
         trigger 合成位 8/9 与 XInput shoulder 原生位冲突，左 trigger 被重复发布为 left shoulder。
         adapter 内部 pressed mask 已扩为 `u32`，原生按钮保留低 16 位，trigger 改用位 16/17；
-        Windows x64 all-target check/Clippy 通过，原生测试复验待新 CI。
+        Windows x64 all-target check/Clippy 通过；commit `119ea66` 的 run `33408664176`、Windows
+        Native job `99542490478` 与 input job `99542490550` 已通过原生 unit/adapter smoke。
       - 状态（2026-08-31）：macOS 正式 input worker 使用最新稳定版
         `objc2-game-controller 0.3.2` 枚举至多四个 extended profile，连接/断开与 16 个按钮走
         可靠 runtime producer，六轴走 generation-keyed latest-value；callback 使用原子 pressed
         bitset，不持有 runtime 锁或执行 UI/文件工作。owner 启用并恢复后台投递、清除 copied
         handler、复用 slot、拒绝迟到 generation，并在 overflow recovery 后重播当前状态。
-        synthetic runtime contract 与真实无设备 framework owner smoke 已通过；物理 controller、
-        profile 差异和热插拔矩阵仍待实机。
+        synthetic runtime contract 与真实无设备 framework owner smoke 已通过；commit `119ea66`
+        的 run `33408664176`、macOS Native job `99542490494` 与 dependency job `99542490215`
+        已通过完整 workspace/许可证门禁。物理 controller、profile 差异和热插拔矩阵仍待实机。
     - [ ] 将 producer overflow、断开/重连和 shutdown 诊断统一映射到 runtime snapshot。
       - 状态（2026-08-31）：共享 axis transport 现为每个 device id 分配跨 service restart
         单调 generation，并在 snapshot 统计连接、断开、discard 和各类拒绝；可靠 input reducer
