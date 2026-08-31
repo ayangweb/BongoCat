@@ -220,6 +220,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     的 pull request run `33366352371`、job `99407700219` 在 4 个测量 batch 后通过：线程
     `8 -> 9` 后稳定、handle `194 -> 194`、DXGI local memory `0 -> 0`、400 个非空帧且
     clean shutdown；三平台 workspace 与其余 jobs 同时全绿。driver 专项长期采样仍待完成。
+  - 状态（2026-08-31）：run `33406956326` 的 macOS job 也在第 3 个测量批次才从线程 7
+    增至 8；normal/recovery smoke 已分别以 67/81 帧通过，失败仅来自旧的固定三批线程门禁。
+    macOS probe 现与 Windows 一致，最多执行 6 个等长 batch，每次 high-water 增长后要求连续
+    2 批稳定，逐批增长仍失败；输出和 CI 按实际 `measurement_batches` 校验非空帧守恒。本机
+    release 100-cycle 以 3 批、300 帧、window/owner `0 -> 0`、thread `7 -> 7`、Metal
+    `393216 -> 393216` 通过；新 CI 与 driver 专项长期采样仍待完成。
 - [ ] 验证退出顺序：frame source -> renderer -> GPU -> overlay -> GPUI。
   - 状态（2026-08-29）：GPUI executor 上的 60 Hz 定时 frame source 已连续驱动双平台 renderer，并在退出时通过停止确认后才释放 renderer/GPU/window；macOS 本机与 Windows hardware D3D11 runner 均已验证连续帧、resize、hide/show 和有序退出。生产 display-linked frame source 与 runtime 尚未接入，因此保持未完成。
   - 状态（2026-08-31）：修复 headless runner 将多个 GPUI timer 同批唤醒时 auto-quit

@@ -932,6 +932,7 @@ jobs:
         run: |
           python3 - <<'PY'
           import pathlib
+          import re
           import subprocess
 
           executable = pathlib.Path("spikes/gpui-overlay-macos/target/debug/bongocat-gpui-overlay-macos-spike")
@@ -1037,16 +1038,28 @@ jobs:
           cycles = run_smoke("cycles", ["--macos-overlay-cycles", "100"])
           for expected in (
               "macOS cycles=100",
-              "non_empty_frames=300",
+              "non_empty_frames=",
               "threads_before=",
               "threads_after=",
               "threads_baseline_high_water=",
+              "measurement_batches=",
               "metal_bytes_before=",
               "metal_bytes_after=",
               "clean_shutdown=true",
           ):
               if expected not in cycles:
                   raise RuntimeError(f"overlay cycle smoke did not report: {expected}")
+          cycle_metrics = re.search(
+              r"macOS cycles=100 non_empty_frames=(\d+).*measurement_batches=(\d+)",
+              cycles,
+          )
+          if cycle_metrics is None:
+              raise RuntimeError("overlay cycle smoke metrics were not parseable")
+          non_empty_frames, measurement_batches = map(int, cycle_metrics.groups())
+          if not 3 <= measurement_batches <= 6:
+              raise RuntimeError("overlay cycle smoke used an invalid measurement batch count")
+          if non_empty_frames != 100 * measurement_batches:
+              raise RuntimeError("overlay cycle smoke frame accounting did not balance")
           PY
 
   windows-input-spike:

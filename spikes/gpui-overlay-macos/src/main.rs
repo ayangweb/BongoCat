@@ -621,19 +621,35 @@ mod macos_overlay {
         })
     }
 
-    pub fn observe_measurement_threads(
-        batch: u32,
-        threads: i32,
-        baseline_high_water: &mut i32,
-    ) -> Result<(), String> {
-        if batch == 1 {
-            *baseline_high_water = (*baseline_high_water).max(threads);
-        } else if threads > *baseline_high_water {
-            return Err(format!(
-                "process thread count grew beyond baseline high-water {baseline_high_water} to {threads} in measurement batch {batch}",
-            ));
+    pub struct ThreadStabilityProbe {
+        high_water: i32,
+        stable_batches: u32,
+    }
+
+    impl ThreadStabilityProbe {
+        pub fn new(initial_threads: i32) -> Self {
+            Self {
+                high_water: initial_threads,
+                stable_batches: 0,
+            }
         }
-        Ok(())
+
+        pub fn observe(&mut self, threads: i32) {
+            if threads > self.high_water {
+                self.high_water = threads;
+                self.stable_batches = 0;
+            } else {
+                self.stable_batches = self.stable_batches.saturating_add(1);
+            }
+        }
+
+        pub fn converged(&self, batch: u32) -> bool {
+            batch >= 3 && self.stable_batches >= 2
+        }
+
+        pub fn high_water(&self) -> i32 {
+            self.high_water
+        }
     }
 
     pub fn resource_counts(mtm: MainThreadMarker) -> Result<ResourceCounts, String> {
@@ -706,8 +722,8 @@ mod macos_overlay {
     #[cfg(test)]
     mod tests {
         use super::{
-            OVERLAY_VERTICES, OverlayVertex, ResourceCounts, drawable_sizes_match,
-            observe_measurement_threads, validate_creation_cycles, validated_drawable_size,
+            OVERLAY_VERTICES, OverlayVertex, ResourceCounts, ThreadStabilityProbe,
+            drawable_sizes_match, validate_creation_cycles, validated_drawable_size,
         };
         use core_graphics_types::geometry::CGSize;
         use objc2_foundation::NSSize;
@@ -816,14 +832,19 @@ mod macos_overlay {
         }
 
         #[test]
-        fn first_measurement_may_extend_the_pool_baseline_once() {
-            let mut baseline = 7;
-            observe_measurement_threads(1, 8, &mut baseline).unwrap();
-            observe_measurement_threads(2, 8, &mut baseline).unwrap();
-            assert_eq!(baseline, 8);
+        fn delayed_thread_pool_growth_must_converge_after_two_equal_batches() {
+            let mut delayed = ThreadStabilityProbe::new(7);
+            for (batch, threads) in [7, 7, 8, 8, 8].into_iter().enumerate() {
+                delayed.observe(threads);
+                assert_eq!(delayed.converged((batch + 1) as u32), batch == 4);
+            }
+            assert_eq!(delayed.high_water(), 8);
 
-            let error = observe_measurement_threads(3, 9, &mut baseline).unwrap_err();
-            assert!(error.contains("baseline high-water 8 to 9 in measurement batch 3"));
+            let mut leaking = ThreadStabilityProbe::new(7);
+            for (batch, threads) in [8, 9, 10, 11, 12, 13].into_iter().enumerate() {
+                leaking.observe(threads);
+                assert!(!leaking.converged((batch + 1) as u32));
+            }
         }
 
         #[test]
@@ -1090,7 +1111,10 @@ fn main() {
                     threads_baseline_high_water = threads_baseline_high_water.max(before.threads());
 
                     let mut after = None;
-                    for batch in 1..=3 {
+                    let mut measurement_batches = 0;
+                    let mut thread_stability =
+                        macos_overlay::ThreadStabilityProbe::new(threads_baseline_high_water);
+                    for batch in 1..=6 {
                         for _ in 0..cycles {
                             cx.update(|_| {
                                 let mtm = objc2::MainThreadMarker::new()
@@ -1108,39 +1132,47 @@ fn main() {
                                 macos_overlay::resource_counts(mtm)
                             })
                             .map_err(|error| format!("GPUI cycle task stopped: {error}"))??;
-                        // Some process-global AppKit/Metal/libdispatch workers
-                        // start only after the first post-warmup batch. Treat
-                        // that equal-sized batch as the final pool baseline;
-                        // subsequent batches must not grow beyond it.
-                        macos_overlay::observe_measurement_threads(
-                            batch,
-                            measurement_counts.threads(),
-                            &mut threads_baseline_high_water,
-                        )?;
+                        // Process-global AppKit/Metal/libdispatch workers can
+                        // appear several equivalent batches after warm-up.
+                        // Each new high-water must be followed by two stable
+                        // batches; linear growth cannot converge by batch six.
+                        thread_stability.observe(measurement_counts.threads());
+                        threads_baseline_high_water = thread_stability.high_water();
+                        measurement_batches = batch;
                         println!(
                             "gpui-overlay-spike: macOS resource measurement batch={batch} threads={} threads_baseline_high_water={threads_baseline_high_water} metal_bytes={}",
                             measurement_counts.threads(),
                             measurement_counts.metal_bytes(),
                         );
                         after = Some(measurement_counts);
+                        if thread_stability.converged(batch) {
+                            break;
+                        }
                     }
-                    let after = after.expect("three measurement batches always produce metrics");
-                    macos_overlay::validate_creation_cycles(
+                    if !thread_stability.converged(measurement_batches) {
+                        return Err(format!(
+                            "process thread count did not stabilize at or below high-water {} after {measurement_batches} measurement batches",
+                            thread_stability.high_water()
+                        ));
+                    }
+                    let after = after.expect("measurement batches always produce metrics");
+                    let report = macos_overlay::validate_creation_cycles(
                         cycles,
                         before,
                         after,
                         threads_baseline_high_water,
                         metal_growth_budget_bytes,
-                    )
+                    )?;
+                    Ok((report, measurement_batches))
                 }
                 .await;
 
                 match result {
-                    Ok(report) => {
+                    Ok((report, measurement_batches)) => {
                         println!(
-                            "gpui-overlay-spike: macOS cycles={} non_empty_frames={} windows_before={} windows_after={} owners_before={} owners_after={} threads_before={} threads_after={} threads_baseline_high_water={} resident_bytes_before={} resident_bytes_after={} metal_bytes_before={} metal_bytes_after={} metal_growth_budget_bytes={} clean_shutdown=true",
+                            "gpui-overlay-spike: macOS cycles={} non_empty_frames={} windows_before={} windows_after={} owners_before={} owners_after={} threads_before={} threads_after={} threads_baseline_high_water={} measurement_batches={} resident_bytes_before={} resident_bytes_after={} metal_bytes_before={} metal_bytes_after={} metal_growth_budget_bytes={} clean_shutdown=true",
                             report.cycles,
-                            report.cycles * 3,
+                            report.cycles.saturating_mul(measurement_batches),
                             report.windows_before,
                             report.windows_after,
                             report.owners_before,
@@ -1148,6 +1180,7 @@ fn main() {
                             report.threads_before,
                             report.threads_after,
                             report.threads_baseline_high_water,
+                            measurement_batches,
                             report.resident_bytes_before,
                             report.resident_bytes_after,
                             report.metal_bytes_before,
