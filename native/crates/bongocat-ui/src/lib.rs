@@ -1238,6 +1238,43 @@ mod tests {
     }
 
     #[test]
+    fn gamepad_axis_settings_command_preserves_typed_values() {
+        let (client, endpoint) = SettingsClient::bounded(1);
+        let worker = thread::spawn(move || {
+            let SettingsCommand::SetGamepadAxisSettings {
+                expected_config_revision,
+                settings,
+                reply,
+            } = endpoint.recv_blocking().expect("gamepad command")
+            else {
+                panic!("unexpected command");
+            };
+            assert_eq!(expected_config_revision, 7);
+            assert_eq!(
+                settings,
+                SettingsGamepadAxisSettings {
+                    stick_dead_zone_percent: 25,
+                    trigger_dead_zone_percent: 10,
+                }
+            );
+            let mut result = snapshot(8, true, true);
+            result.gamepad_axis_settings = settings;
+            reply.respond(Ok(result)).expect("gamepad reply");
+        });
+        let result = client
+            .set_gamepad_axis_settings_blocking(
+                7,
+                SettingsGamepadAxisSettings {
+                    stick_dead_zone_percent: 25,
+                    trigger_dead_zone_percent: 10,
+                },
+            )
+            .expect("gamepad snapshot");
+        assert_eq!(result.gamepad_axis_settings.stick_dead_zone_percent, 25);
+        worker.join().expect("worker join");
+    }
+
+    #[test]
     fn a_closed_service_returns_a_stable_error() {
         let (client, endpoint) = SettingsClient::bounded(1);
         drop(endpoint);
