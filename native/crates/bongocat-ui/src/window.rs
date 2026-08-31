@@ -1049,9 +1049,7 @@ impl SettingsView {
         if snapshot.configuration_status != SettingsConfigurationStatus::Ready {
             return;
         }
-        let mut settings = snapshot.overlay;
-        let next = i32::from(settings.scale_percent) + i32::from(delta);
-        settings.scale_percent = next.clamp(25, 400) as u16;
+        let settings = stepped_overlay_scale(snapshot.overlay, delta);
         if settings.scale_percent != snapshot.overlay.scale_percent {
             self.set_overlay_settings(settings, cx);
         }
@@ -1067,9 +1065,7 @@ impl SettingsView {
         if snapshot.configuration_status != SettingsConfigurationStatus::Ready {
             return;
         }
-        let mut settings = snapshot.overlay;
-        let next = i16::from(settings.opacity_percent) + delta;
-        settings.opacity_percent = next.clamp(1, 100) as u8;
+        let settings = stepped_overlay_opacity(snapshot.overlay, delta);
         if settings.opacity_percent != snapshot.overlay.opacity_percent {
             self.set_overlay_settings(settings, cx);
         }
@@ -3386,6 +3382,18 @@ struct SettingRowState {
     tab_index: isize,
 }
 
+fn stepped_overlay_scale(mut settings: SettingsOverlay, delta: i16) -> SettingsOverlay {
+    let next = i32::from(settings.scale_percent) + i32::from(delta);
+    settings.scale_percent = next.clamp(25, 400) as u16;
+    settings
+}
+
+fn stepped_overlay_opacity(mut settings: SettingsOverlay, delta: i16) -> SettingsOverlay {
+    let next = i16::from(settings.opacity_percent) + delta;
+    settings.opacity_percent = next.clamp(1, 100) as u8;
+    settings
+}
+
 fn command_button(
     label: &'static str,
     focus: &FocusHandle,
@@ -3747,6 +3755,28 @@ mod tests {
         let mut modified = key("enter", None);
         modified.keystroke.modifiers.platform = true;
         assert!(!is_activation_key(&modified));
+    }
+
+    #[test]
+    fn overlay_stepper_values_are_bounded_and_preserve_other_settings() {
+        let settings = SettingsOverlay {
+            click_through: false,
+            always_on_top: false,
+            scale_percent: 100,
+            opacity_percent: 50,
+        };
+        assert_eq!(stepped_overlay_scale(settings, -25).scale_percent, 75);
+        assert_eq!(stepped_overlay_scale(settings, 25).scale_percent, 125);
+        assert_eq!(stepped_overlay_scale(settings, -500).scale_percent, 25);
+        assert_eq!(stepped_overlay_scale(settings, 500).scale_percent, 400);
+        assert_eq!(stepped_overlay_opacity(settings, -10).opacity_percent, 40);
+        assert_eq!(stepped_overlay_opacity(settings, 10).opacity_percent, 60);
+        assert_eq!(stepped_overlay_opacity(settings, -500).opacity_percent, 1);
+        assert_eq!(stepped_overlay_opacity(settings, 500).opacity_percent, 100);
+        let changed = stepped_overlay_scale(settings, 25);
+        assert!(!changed.click_through);
+        assert!(!changed.always_on_top);
+        assert_eq!(changed.opacity_percent, 50);
     }
 
     #[test]
