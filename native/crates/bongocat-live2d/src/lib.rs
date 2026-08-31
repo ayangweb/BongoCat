@@ -305,6 +305,24 @@ impl Live2dModel {
         }
     }
 
+    /// Read a model-declared parameter by its stable Core identifier.
+    /// Unknown IDs return `None` so optional effect groups remain portable.
+    pub fn parameter_value_by_id(&self, id: &str) -> Result<Option<f32>, Live2dError> {
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            self.core.parameter_value_by_id(id)
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            let _ = id;
+            Err(Live2dError::new(
+                Live2dErrorCode::PlatformUnsupported,
+                "Cubism Core is available only on the Windows and macOS product targets",
+            ))
+        }
+    }
+
     pub fn set_parameter(
         &mut self,
         parameter: ProductParameter,
@@ -946,5 +964,47 @@ mod tests {
                 .expect("breath"),
             Some(1.0)
         );
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn all_preset_models_expose_the_automatic_effect_parameter_contract() {
+        use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
+        use std::path::Path;
+
+        let repository_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repository root");
+        let catalog = PresetModelCatalog::open(
+            repository_root.join("native/resources/models"),
+            ModelPackageLimits::default(),
+        )
+        .expect("preset catalog");
+        for id in ["standard", "keyboard", "gamepad"] {
+            let committed = catalog
+                .load(&ModelId::parse(id).expect("model id"))
+                .expect("preset model");
+            let mut model = Live2dModel::load(&committed).expect("Live2D model");
+            assert_eq!(
+                model.eye_blink_parameter_ids,
+                ["ParamEyeLOpen", "ParamEyeROpen"],
+                "{id} EyeBlink group"
+            );
+            assert!(
+                model.core.parameter_range_by_id("ParamBreath").is_some(),
+                "{id} breath parameter"
+            );
+            model
+                .restore_parameter_defaults()
+                .expect("restore parameter defaults");
+            assert_eq!(
+                model
+                    .apply_automatic_effects(1.0, -1.0)
+                    .expect("automatic effects"),
+                3,
+                "{id} automatic effect count"
+            );
+        }
     }
 }

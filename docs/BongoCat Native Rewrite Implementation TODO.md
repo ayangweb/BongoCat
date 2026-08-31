@@ -837,8 +837,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 实现 physics、pose、eye blink、breath 等实际需求。
   - 状态（2026-09-01）：正式 runtime 已在 motion/expression 之后、产品输入之前加入可注入单调时钟驱动的
     `ParamBreath` 四秒正弦周期和 `EyeBlink` 五秒周期（每周期 180ms 闭眼）；缺失参数安全跳过，纯函数
-    边界测试固定周期与范围。physics/pose 仍等待可授权真实 fixture、R5 黑盒轨迹和求值实现，不得以合成
-    数据宣称完成。
+    边界测试固定周期与范围。新增三预置模型 contract 验证，确认 `EyeBlink` group 的双眼参数与
+    `ParamBreath` 均可通过同一 safe parameter API 驱动；新增 runtime precedence 回归锁定
+    `motion -> expression -> automatic effects -> product input -> Core update`，眨眼/呼吸不会被旧层残留值
+    覆盖。physics/pose 仍等待可授权真实 fixture、R5 黑盒轨迹和求值实现，不得以合成数据宣称完成。
 - [ ] 实现键盘、鼠标、手柄到参数/动作/表情映射。
 - [ ] 实现镜像、鼠标镜像和坐标归一化。
 - [ ] 随机行为支持测试 seed。
