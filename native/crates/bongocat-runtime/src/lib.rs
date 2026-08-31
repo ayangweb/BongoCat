@@ -91,6 +91,38 @@ pub enum RuntimeRenderErrorCode {
     OverlaySettingsInvalid,
 }
 
+impl RuntimeRenderErrorCode {
+    pub const ALL: [Self; 8] = [
+        Self::ModelLoadFailed,
+        Self::ModelEvaluationFailed,
+        Self::MotionLoadFailed,
+        Self::ExpressionLoadFailed,
+        Self::GpuPreparationFailed,
+        Self::PlatformUnsupported,
+        Self::TransportClosed,
+        Self::OverlaySettingsInvalid,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ModelLoadFailed => "model_load_failed",
+            Self::ModelEvaluationFailed => "model_evaluation_failed",
+            Self::MotionLoadFailed => "motion_load_failed",
+            Self::ExpressionLoadFailed => "expression_load_failed",
+            Self::GpuPreparationFailed => "gpu_preparation_failed",
+            Self::PlatformUnsupported => "platform_unsupported",
+            Self::TransportClosed => "transport_closed",
+            Self::OverlaySettingsInvalid => "overlay_settings_invalid",
+        }
+    }
+}
+
+impl fmt::Display for RuntimeRenderErrorCode {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct OverlaySettings {
     pub click_through: bool,
@@ -1859,6 +1891,22 @@ mod tests {
     use tempfile::tempdir;
 
     const TIMEOUT: Duration = Duration::from_secs(2);
+
+    #[test]
+    fn render_error_codes_are_stable_and_unique() {
+        let mut codes = RuntimeRenderErrorCode::ALL
+            .iter()
+            .map(|code| code.as_str())
+            .collect::<Vec<_>>();
+        assert!(codes.iter().all(|code| !code.is_empty()));
+        codes.sort_unstable();
+        codes.dedup();
+        assert_eq!(codes.len(), RuntimeRenderErrorCode::ALL.len());
+        assert_eq!(
+            RuntimeRenderErrorCode::GpuPreparationFailed.to_string(),
+            "gpu_preparation_failed"
+        );
+    }
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[derive(Default)]
