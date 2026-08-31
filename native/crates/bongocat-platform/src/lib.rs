@@ -12,6 +12,13 @@ mod directory_picker_macos;
 mod directory_picker_windows;
 pub use directory_picker::{DirectoryPickerError, DirectoryPickerOutcome};
 
+mod single_instance;
+pub use single_instance::{SingleInstanceAction, SingleInstanceEnvironment, SingleInstanceError};
+#[cfg(target_os = "windows")]
+mod single_instance_windows;
+#[cfg(target_os = "windows")]
+pub use single_instance_windows::{SingleInstance, SingleInstanceStart};
+
 mod system_menu;
 pub use system_menu::{SystemMenuAction, SystemMenuError};
 #[cfg(target_os = "macos")]

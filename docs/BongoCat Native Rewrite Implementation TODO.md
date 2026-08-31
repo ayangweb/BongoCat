@@ -1372,6 +1372,18 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       恢复 -> 显式 Quit 的 release smoke，Ubuntu job `99345364707` 通过完整共享 workspace 门禁。
       Windows x64/ARM64 platform Clippy、完整 Native format/Clippy/test/release check 本机通过；
       callback 只入队，菜单 owner 在 input/runtime/config/frame/renderer/overlay 之前停止。
+28. [ ] `P7-WINDOWS-SINGLE-INSTANCE`：按构建环境隔离 Windows 单实例并唤醒现有设置窗口。
+    - 依赖：`P1-SETTINGS-WINDOW-LIFECYCLE`、ADR-0008、Windows GPUI message loop。
+    - 退出条件：Development/Production 使用不同的 local named mutex、owner window class 和
+      registered wake message；primary 在任何 config/model writer 前取得 owner，secondary 不启动
+      配置/runtime/input/GPU，只通知 primary 后成功退出；primary 将消息转为强类型
+      `OpenSettings`，不创建重复 Entity，恢复当前 snapshot；owner 在产品 shutdown 中显式释放；
+      双进程 release smoke、Windows x64/ARM64 source check 与完整 Native 门禁通过。
+    - 状态（2026-08-31）：平台 adapter、应用启动前判定、typed wake queue、owner RAII 和有序
+      shutdown 已实现；双进程 smoke 会先隐藏唯一设置窗口，再启动真实 secondary，要求其在
+      10 秒内只完成通知并退出，随后验证 primary frame source 继续、原 Entity 重显、snapshot
+      有效并正常退出。本机完整 Native 门禁和 Windows x64/ARM64 platform Clippy 通过；macOS
+      无法链接 MSVC 产品二进制，等待原生 Windows CI 后再勾选。
 
 ## 13. 待决策清单
 

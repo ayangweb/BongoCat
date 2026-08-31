@@ -94,6 +94,20 @@ jobs:
         env:
           BONGOCAT_BUILD_ENV: production
         run: cargo check --manifest-path native/Cargo.toml --locked -p bongocat-app --release
+      - name: Check Windows ARM64 platform source
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          rustup target add aarch64-pc-windows-msvc
+          cargo clippy \
+            --manifest-path native/Cargo.toml \
+            --locked \
+            -p bongocat-platform \
+            --target aarch64-pc-windows-msvc \
+            --all-targets \
+            --all-features \
+            -- \
+            -D warnings
       - name: Smoke Windows D3D11 product overlay
         if: matrix.os == 'windows-latest'
         shell: pwsh
@@ -133,6 +147,90 @@ jobs:
         if: matrix.os == 'windows-latest' || matrix.os == 'macos-latest'
         timeout-minutes: 2
         run: cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release -- --run-seconds 10 --system-menu-smoke
+      - name: Smoke Windows single-instance wake
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          $executable = Join-Path $PWD "native/target/release/bongocat-app.exe"
+          $primaryStdout = Join-Path $env:RUNNER_TEMP "single-instance-primary.stdout.log"
+          $primaryStderr = Join-Path $env:RUNNER_TEMP "single-instance-primary.stderr.log"
+          $secondaryStdout = Join-Path $env:RUNNER_TEMP "single-instance-secondary.stdout.log"
+          $secondaryStderr = Join-Path $env:RUNNER_TEMP "single-instance-secondary.stderr.log"
+          Remove-Item `
+            $primaryStdout, $primaryStderr, $secondaryStdout, $secondaryStderr `
+            -Force `
+            -ErrorAction SilentlyContinue
+
+          $primary = Start-Process `
+            -FilePath $executable `
+            -ArgumentList @("--run-seconds", "10", "--single-instance-smoke") `
+            -NoNewWindow `
+            -PassThru `
+            -RedirectStandardOutput $primaryStdout `
+            -RedirectStandardError $primaryStderr
+          $readyDeadline = [DateTime]::UtcNow.AddSeconds(15)
+          do {
+            Start-Sleep -Milliseconds 100
+            $primaryOutput = @(
+              Get-Content $primaryStdout -Raw -ErrorAction SilentlyContinue
+              Get-Content $primaryStderr -Raw -ErrorAction SilentlyContinue
+            ) -join "`n"
+            $primary.Refresh()
+          } while (
+            -not $primaryOutput.Contains("bongocat-app: single-instance primary ready") -and
+            -not $primary.HasExited -and
+            [DateTime]::UtcNow -lt $readyDeadline
+          )
+          if (-not $primaryOutput.Contains("bongocat-app: single-instance primary ready")) {
+            Stop-Process -Id $primary.Id -Force -ErrorAction SilentlyContinue
+            $primary.WaitForExit()
+            Write-Host $primaryOutput
+            throw "primary instance did not reach the hidden-window wake gate"
+          }
+
+          $secondary = Start-Process `
+            -FilePath $executable `
+            -ArgumentList @("--run-seconds", "1", "--single-instance-smoke") `
+            -NoNewWindow `
+            -PassThru `
+            -RedirectStandardOutput $secondaryStdout `
+            -RedirectStandardError $secondaryStderr
+          if (-not $secondary.WaitForExit(10000)) {
+            Stop-Process -Id $secondary.Id -Force -ErrorAction SilentlyContinue
+            Stop-Process -Id $primary.Id -Force -ErrorAction SilentlyContinue
+            throw "secondary instance did not exit after notifying the primary"
+          }
+          $secondaryOutput = @(
+            Get-Content $secondaryStdout -Raw -ErrorAction SilentlyContinue
+            Get-Content $secondaryStderr -Raw -ErrorAction SilentlyContinue
+          ) -join "`n"
+          Write-Host $secondaryOutput
+          if ($secondary.ExitCode -ne 0) {
+            Stop-Process -Id $primary.Id -Force -ErrorAction SilentlyContinue
+            throw "secondary instance exited with $($secondary.ExitCode)"
+          }
+          if (-not $secondaryOutput.Contains("bongocat-app: secondary instance notified primary")) {
+            Stop-Process -Id $primary.Id -Force -ErrorAction SilentlyContinue
+            throw "secondary instance did not report a successful primary notification"
+          }
+
+          if (-not $primary.WaitForExit(30000)) {
+            Stop-Process -Id $primary.Id -Force -ErrorAction SilentlyContinue
+            $primary.WaitForExit()
+            throw "primary instance did not finish ordered shutdown after the wake"
+          }
+          $primaryOutput = @(
+            Get-Content $primaryStdout -Raw -ErrorAction SilentlyContinue
+            Get-Content $primaryStderr -Raw -ErrorAction SilentlyContinue
+          ) -join "`n"
+          Write-Host $primaryOutput
+          if ($primary.ExitCode -ne 0) {
+            throw "primary instance exited with $($primary.ExitCode)"
+          }
+          if (-not $primaryOutput.Contains("bongocat-app: single-instance wake restored the settings window")) {
+            throw "primary instance did not restore the existing settings window after the wake"
+          }
       - name: Smoke formal Windows missing-release recovery
         if: matrix.os == 'windows-latest'
         run: cargo test --manifest-path native/Cargo.toml --locked -p bongocat-platform --lib --release windows::tests::synthetic_missing_release_is_reconciled_in_formal_runtime -- --ignored --exact

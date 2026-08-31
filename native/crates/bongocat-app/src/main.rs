@@ -2,6 +2,10 @@
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_overlay::{OverlaySessionOptions, ProductOverlaySession};
+#[cfg(target_os = "windows")]
+use bongocat_platform::{
+    SingleInstance, SingleInstanceAction, SingleInstanceEnvironment, SingleInstanceStart,
+};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_platform::{SystemMenu, SystemMenuAction};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -32,6 +36,8 @@ struct RunOptions {
     settings_window_smoke: bool,
     models_page_smoke: bool,
     system_menu_smoke: bool,
+    #[cfg(target_os = "windows")]
+    single_instance_smoke: bool,
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -42,6 +48,8 @@ impl RunOptions {
         let mut settings_window_smoke = false;
         let mut models_page_smoke = false;
         let mut system_menu_smoke = false;
+        #[cfg(target_os = "windows")]
+        let mut single_instance_smoke = false;
         while let Some(argument) = arguments.next() {
             match argument.as_str() {
                 "--run-seconds" => {
@@ -58,6 +66,8 @@ impl RunOptions {
                     settings_window_smoke = true;
                 }
                 "--system-menu-smoke" => system_menu_smoke = true,
+                #[cfg(target_os = "windows")]
+                "--single-instance-smoke" => single_instance_smoke = true,
                 "--help" | "-h" => return Err(RunOptionsError::help()),
                 _ => {
                     return Err(RunOptionsError::new(format!(
@@ -71,6 +81,8 @@ impl RunOptions {
             settings_window_smoke,
             models_page_smoke,
             system_menu_smoke,
+            #[cfg(target_os = "windows")]
+            single_instance_smoke,
         })
     }
 }
@@ -115,6 +127,10 @@ impl std::error::Error for RunOptionsError {}
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn usage() -> &'static str {
+    #[cfg(target_os = "windows")]
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit.";
+
+    #[cfg(target_os = "macos")]
     "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--system-menu-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit."
 }
 
@@ -147,6 +163,10 @@ struct ProductCoordinator {
     settings_service: Option<bongocat_app::ApplicationSettingsService>,
     settings_window: Option<WindowHandle<SettingsView>>,
     system_menu: Option<SystemMenu>,
+    #[cfg(target_os = "windows")]
+    single_instance: Option<SingleInstance>,
+    #[cfg(target_os = "windows")]
+    single_instance_wakes: u64,
     frame_source_running: bool,
     frame_ticks: u64,
     expect_visible_frame: bool,
@@ -263,6 +283,12 @@ impl ProductShutdown {
 fn begin_product_shutdown(cx: &mut App) -> ProductShutdown {
     let mut coordinator = cx.remove_global::<ProductCoordinator>();
     coordinator.frame_source_running = false;
+    #[cfg(target_os = "windows")]
+    if let Some(single_instance) = coordinator.single_instance.take()
+        && let Err(error) = single_instance.shutdown()
+    {
+        record_failure(&coordinator.failures, error.to_string());
+    }
     if let Some(system_menu) = coordinator.system_menu.take()
         && let Err(error) = system_menu.shutdown()
     {
@@ -332,6 +358,21 @@ fn ensure_settings_window(cx: &mut App) -> Result<WindowHandle<SettingsView>, St
     Ok(window_handle)
 }
 
+#[cfg(target_os = "windows")]
+fn build_single_instance_environment() -> SingleInstanceEnvironment {
+    match bongocat_app::BUILD_ENVIRONMENT {
+        bongocat_config::BuildEnvironment::Development => SingleInstanceEnvironment::Development,
+        bongocat_config::BuildEnvironment::Production => SingleInstanceEnvironment::Production,
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn write_smoke_status(status: &str) -> io::Result<()> {
+    let mut stdout = io::stdout().lock();
+    writeln!(stdout, "bongocat-app: {status}")?;
+    stdout.flush()
+}
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let run_options = match RunOptions::parse(env::args().skip(1)) {
@@ -341,6 +382,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
         Err(error) => return Err(Box::new(error)),
+    };
+    #[cfg(target_os = "windows")]
+    let single_instance = match SingleInstance::acquire(build_single_instance_environment())? {
+        SingleInstanceStart::Primary(single_instance) => single_instance,
+        SingleInstanceStart::SecondaryNotified => {
+            write_smoke_status("secondary instance notified primary")?;
+            return Ok(());
+        }
     };
     let mut application = bongocat_app::Application::start(development_preset_root())?;
 
@@ -470,6 +519,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             settings_service: Some(settings_service),
             settings_window: Some(settings_window),
             system_menu: Some(system_menu),
+            #[cfg(target_os = "windows")]
+            single_instance: Some(single_instance),
+            #[cfg(target_os = "windows")]
+            single_instance_wakes: 0,
             frame_source_running: true,
             frame_ticks: 0,
             expect_visible_frame,
@@ -529,6 +582,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Ok(Ok(true)) => {}
                     Ok(Ok(false)) | Err(_) => break,
                     Ok(Err(error)) => record_failure(&system_menu_failures, error),
+                }
+            }
+        })
+        .detach();
+
+        #[cfg(target_os = "windows")]
+        let single_instance_failures = Arc::clone(&run_failures);
+        #[cfg(target_os = "windows")]
+        cx.spawn(async move |cx| {
+            loop {
+                Timer::after(Duration::from_millis(25)).await;
+                let action = match cx.update(|cx| {
+                    cx.try_global::<ProductCoordinator>()
+                        .and_then(|coordinator| coordinator.single_instance.as_ref())
+                        .and_then(SingleInstance::try_recv)
+                }) {
+                    Ok(action) => action,
+                    Err(_) => break,
+                };
+                let Some(action) = action else {
+                    continue;
+                };
+                let handled = cx.update(|cx| match action {
+                    SingleInstanceAction::OpenSettings => {
+                        ensure_settings_window(cx)?;
+                        let coordinator = cx.global_mut::<ProductCoordinator>();
+                        coordinator.single_instance_wakes =
+                            coordinator.single_instance_wakes.saturating_add(1);
+                        Ok::<_, String>(())
+                    }
+                });
+                match handled {
+                    Ok(Ok(())) => {}
+                    Ok(Err(error)) => record_failure(&single_instance_failures, error),
+                    Err(_) => break,
                 }
             }
         })
@@ -984,6 +1072,128 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .detach();
         }
 
+        #[cfg(target_os = "windows")]
+        if run_options.single_instance_smoke {
+            let smoke_failures = Arc::clone(&run_failures);
+            let smoke_shutdown_requested = Arc::clone(&shutdown_requested);
+            cx.spawn(async move |cx| {
+                Timer::after(Duration::from_millis(500)).await;
+                let baseline = update_windows_settings(
+                    cx,
+                    settings_window,
+                    |_, window, cx| -> Result<u64, String> {
+                        let frame_ticks = cx.global::<ProductCoordinator>().frame_ticks;
+                        bongocat_platform::request_native_window_close(window)
+                            .map_err(|error| error.to_string())?;
+                        Ok(frame_ticks)
+                    },
+                )
+                .await;
+                let baseline_ticks = match baseline {
+                    Ok(Ok(frame_ticks)) => frame_ticks,
+                    Ok(Err(error)) | Err(error) => {
+                        record_failure(&smoke_failures, error.to_string());
+                        request_windows_product_quit(&smoke_shutdown_requested);
+                        return;
+                    }
+                };
+
+                let mut hidden = false;
+                for _ in 0..60 {
+                    Timer::after(Duration::from_millis(50)).await;
+                    match update_windows_settings(cx, settings_window, |view, _, _| {
+                        view.window_hidden()
+                    })
+                    .await
+                    {
+                        Ok(true) => {
+                            hidden = true;
+                            break;
+                        }
+                        Ok(false) => {}
+                        Err(error) => {
+                            record_failure(&smoke_failures, error);
+                            request_windows_product_quit(&smoke_shutdown_requested);
+                            return;
+                        }
+                    }
+                }
+                if !hidden {
+                    record_failure(
+                        &smoke_failures,
+                        "single-instance smoke could not hide the settings window",
+                    );
+                    request_windows_product_quit(&smoke_shutdown_requested);
+                    return;
+                }
+                if let Err(error) = write_smoke_status("single-instance primary ready") {
+                    record_failure(&smoke_failures, error.to_string());
+                    request_windows_product_quit(&smoke_shutdown_requested);
+                    return;
+                }
+
+                for _ in 0..100 {
+                    Timer::after(Duration::from_millis(50)).await;
+                    let restored = update_windows_settings(
+                        cx,
+                        settings_window,
+                        |view, _, cx| -> Result<bool, String> {
+                            let coordinator = cx.global::<ProductCoordinator>();
+                            if coordinator.single_instance_wakes == 0 {
+                                return Ok(false);
+                            }
+                            if coordinator.frame_ticks <= baseline_ticks {
+                                return Err(
+                                    "frame source stopped while waiting for an instance wake"
+                                        .to_owned(),
+                                );
+                            }
+                            if cx.windows().len() != 1 {
+                                return Err("instance wake created more than one settings window"
+                                    .to_owned());
+                            }
+                            if view.window_hidden() {
+                                return Err(
+                                    "instance wake did not show the existing settings window"
+                                        .to_owned(),
+                                );
+                            }
+                            if view.snapshot_revision().is_none() {
+                                return Err(
+                                    "instance wake did not restore a runtime snapshot".to_owned()
+                                );
+                            }
+                            Ok(true)
+                        },
+                    )
+                    .await;
+                    match restored {
+                        Ok(Ok(true)) => {
+                            if let Err(error) = write_smoke_status(
+                                "single-instance wake restored the settings window",
+                            ) {
+                                record_failure(&smoke_failures, error.to_string());
+                            }
+                            request_windows_product_quit(&smoke_shutdown_requested);
+                            return;
+                        }
+                        Ok(Ok(false)) => {}
+                        Ok(Err(error)) | Err(error) => {
+                            record_failure(&smoke_failures, error.to_string());
+                            request_windows_product_quit(&smoke_shutdown_requested);
+                            return;
+                        }
+                    }
+                }
+                record_failure(
+                    &smoke_failures,
+                    "primary instance did not receive the secondary wake",
+                );
+                request_windows_product_quit(&smoke_shutdown_requested);
+            })
+            .detach();
+        }
+
         if !run_options.run_duration.is_zero() {
             #[cfg(target_os = "windows")]
             let quit_shutdown_requested = Arc::clone(&shutdown_requested);
@@ -1047,6 +1257,8 @@ mod tests {
                 settings_window_smoke: false,
                 models_page_smoke: false,
                 system_menu_smoke: false,
+                #[cfg(target_os = "windows")]
+                single_instance_smoke: false,
             }
         );
     }
@@ -1081,6 +1293,8 @@ mod tests {
         assert!(options.models_page_smoke);
         assert!(options.settings_window_smoke);
         assert!(!options.system_menu_smoke);
+        #[cfg(target_os = "windows")]
+        assert!(!options.single_instance_smoke);
     }
 
     #[test]
@@ -1088,6 +1302,15 @@ mod tests {
         let options = RunOptions::parse(["--system-menu-smoke".to_owned()])
             .expect("system menu smoke options");
         assert!(options.system_menu_smoke);
+        assert!(!options.settings_window_smoke);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn single_instance_smoke_is_opt_in() {
+        let options = RunOptions::parse(["--single-instance-smoke".to_owned()])
+            .expect("single-instance smoke options");
+        assert!(options.single_instance_smoke);
         assert!(!options.settings_window_smoke);
     }
 
