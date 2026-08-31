@@ -12,6 +12,17 @@ mod directory_picker_macos;
 mod directory_picker_windows;
 pub use directory_picker::{DirectoryPickerError, DirectoryPickerOutcome};
 
+mod system_menu;
+pub use system_menu::{SystemMenuAction, SystemMenuError};
+#[cfg(target_os = "macos")]
+mod system_menu_macos;
+#[cfg(target_os = "macos")]
+pub use system_menu_macos::SystemMenu;
+#[cfg(target_os = "windows")]
+mod system_menu_windows;
+#[cfg(target_os = "windows")]
+pub use system_menu_windows::SystemMenu;
+
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "macos")]

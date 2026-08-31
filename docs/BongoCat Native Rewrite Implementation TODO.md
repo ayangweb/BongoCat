@@ -1351,6 +1351,17 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       `33342466529` 验证；Windows jobs `99340456964`/`99340462222` 各自连续五轮通过 Models
       页面 release product smoke，macOS jobs `99340456930`/`99340462228` 通过对应页面 smoke，
       Ubuntu jobs `99340456922`/`99340462194` 通过共享 UI contract 与完整 workspace 门禁。
+27. [ ] `P7-SYSTEM-MENU-LIFECYCLE`：提供双平台后台产品的系统菜单恢复入口与显式退出。
+    - 依赖：`P1-SETTINGS-WINDOW-LIFECYCLE`、app shutdown coordinator、平台 UI 主线程。
+    - 退出条件：Windows `Shell_NotifyIcon` + `HMENU` 与 macOS `NSStatusItem` + `NSMenu` 由明确
+      owner 管理；Open Settings 不创建重复窗口并恢复当前 revisioned snapshot；Quit 停止菜单
+      事件后进入既定 input/runtime/config/frame/renderer/overlay shutdown；callback 只发送强类型
+      有序事件；双平台 release smoke、Windows x64/ARM64 source check 与完整 Native 门禁通过。
+    - 状态（2026-08-31）：共享 `OpenSettings`/`Quit` contract、macOS 主线程 target/action、Windows
+      隐藏 HWND callback 与显式菜单/status item cleanup 已接入 app coordinator；不新增第三方 tray
+      crate，继续使用已锁定的 `objc2 0.6.4`/AppKit `0.3.2` 与 `windows 0.62.2`。macOS 本机真实
+      status item owner + Objective-C target/action smoke 及既有 settings/Models release smoke 通过；
+      Windows 原生 tray smoke、ARM64 source check 与完整 CI 尚待当前提交验证，因此保持未勾选。
 
 ## 13. 待决策清单
 

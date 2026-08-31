@@ -12,7 +12,7 @@ bongocat-runtime.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "=0.6.4"
-objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["NSApplication", "NSOpenPanel", "NSPanel", "NSResponder", "NSRunningApplication", "NSSavePanel", "NSWindow"] }
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["NSApplication", "NSButton", "NSControl", "NSMenu", "NSMenuItem", "NSOpenPanel", "NSPanel", "NSResponder", "NSRunningApplication", "NSSavePanel", "NSStatusBar", "NSStatusBarButton", "NSStatusItem", "NSView", "NSWindow", "objc2-core-foundation"] }
 objc2-core-foundation = { version = "=0.3.2", default-features = false, features = ["CFDate", "CFMachPort", "CFRunLoop"] }
 objc2-core-graphics = { version = "=0.3.2", default-features = false, features = ["CGDirectDisplay", "CGError", "CGEvent", "CGEventSource", "CGEventTypes", "CGRemoteOperation"] }
 objc2-foundation = { version = "=0.3.2", default-features = false, features = ["NSArray", "NSString", "NSURL"] }

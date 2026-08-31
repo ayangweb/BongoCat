@@ -18,10 +18,8 @@ bongocat-runtime.workspace = true
 bongocat-ui.workspace = true
 
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
-gpui.workspace = true
-
-[target.'cfg(target_os = "windows")'.dependencies]
 bongocat-platform.workspace = true
+gpui.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -3,6 +3,8 @@
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_overlay::{OverlaySessionOptions, ProductOverlaySession};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
+use bongocat_platform::{SystemMenu, SystemMenuAction};
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_ui::{SettingsError, SettingsErrorCode, SettingsView, open_settings_window};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use gpui::{App, Application as GpuiApplication, Global, Timer, WindowHandle};
@@ -29,6 +31,7 @@ struct RunOptions {
     run_duration: Duration,
     settings_window_smoke: bool,
     models_page_smoke: bool,
+    system_menu_smoke: bool,
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -38,6 +41,7 @@ impl RunOptions {
         let mut run_seconds = DEFAULT_RUN_SECONDS;
         let mut settings_window_smoke = false;
         let mut models_page_smoke = false;
+        let mut system_menu_smoke = false;
         while let Some(argument) = arguments.next() {
             match argument.as_str() {
                 "--run-seconds" => {
@@ -53,6 +57,7 @@ impl RunOptions {
                     models_page_smoke = true;
                     settings_window_smoke = true;
                 }
+                "--system-menu-smoke" => system_menu_smoke = true,
                 "--help" | "-h" => return Err(RunOptionsError::help()),
                 _ => {
                     return Err(RunOptionsError::new(format!(
@@ -65,6 +70,7 @@ impl RunOptions {
             run_duration: Duration::from_secs(run_seconds),
             settings_window_smoke,
             models_page_smoke,
+            system_menu_smoke,
         })
     }
 }
@@ -109,7 +115,7 @@ impl std::error::Error for RunOptionsError {}
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn usage() -> &'static str {
-    "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit."
+    "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--system-menu-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit."
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -140,6 +146,7 @@ struct ProductCoordinator {
     overlay: Rc<RefCell<Option<ProductOverlaySession>>>,
     settings_service: Option<bongocat_app::ApplicationSettingsService>,
     settings_window: Option<WindowHandle<SettingsView>>,
+    system_menu: Option<SystemMenu>,
     frame_source_running: bool,
     frame_ticks: u64,
     expect_visible_frame: bool,
@@ -157,6 +164,13 @@ fn record_failure(failures: &Arc<Mutex<Vec<String>>>, failure: impl Into<String>
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .push(failure.into());
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn flatten_update_result<E: fmt::Display>(
+    result: Result<Result<(), String>, E>,
+) -> Result<(), String> {
+    result.map_err(|error| error.to_string())?
 }
 
 #[cfg(target_os = "windows")]
@@ -249,6 +263,11 @@ impl ProductShutdown {
 fn begin_product_shutdown(cx: &mut App) -> ProductShutdown {
     let mut coordinator = cx.remove_global::<ProductCoordinator>();
     coordinator.frame_source_running = false;
+    if let Some(system_menu) = coordinator.system_menu.take()
+        && let Err(error) = system_menu.shutdown()
+    {
+        record_failure(&coordinator.failures, error.to_string());
+    }
     #[cfg(target_os = "macos")]
     let mut overlay = coordinator
         .overlay
@@ -396,6 +415,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 return;
             }
         };
+        let system_menu = match SystemMenu::start() {
+            Ok(system_menu) => system_menu,
+            Err(error) => {
+                record_failure(&run_failures, error.to_string());
+                let mut overlay = overlay;
+                if let Err(error) = overlay.stop_input() {
+                    record_failure(&run_failures, error.to_string());
+                }
+                let client = settings_service.client();
+                let _ = client.shutdown_blocking();
+                if let Err(error) = settings_service.join() {
+                    record_failure(&run_failures, error.to_string());
+                }
+                if let Err(error) = overlay.finish_after_runtime_shutdown() {
+                    record_failure(&run_failures, error.to_string());
+                }
+                cx.quit();
+                return;
+            }
+        };
         let settings_client = settings_service.client();
         let settings_window = match open_settings_window(settings_client, request_product_quit, cx)
         {
@@ -430,6 +469,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             overlay,
             settings_service: Some(settings_service),
             settings_window: Some(settings_window),
+            system_menu: Some(system_menu),
             frame_source_running: true,
             frame_ticks: 0,
             expect_visible_frame,
@@ -458,6 +498,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             async move {
                 if let Some(shutdown) = shutdown {
                     let _ = shutdown.finish().await;
+                }
+            }
+        })
+        .detach();
+
+        let system_menu_failures = Arc::clone(&run_failures);
+        cx.spawn(async move |cx| {
+            loop {
+                Timer::after(Duration::from_millis(50)).await;
+                let action = match cx.update(|cx| {
+                    cx.try_global::<ProductCoordinator>()
+                        .and_then(|coordinator| coordinator.system_menu.as_ref())
+                        .and_then(SystemMenu::try_recv)
+                }) {
+                    Ok(action) => action,
+                    Err(_) => break,
+                };
+                let Some(action) = action else {
+                    continue;
+                };
+                let handled = cx.update(|cx| match action {
+                    SystemMenuAction::OpenSettings => ensure_settings_window(cx).map(|_| true),
+                    SystemMenuAction::Quit => {
+                        request_product_quit(cx);
+                        Ok(false)
+                    }
+                });
+                match handled {
+                    Ok(Ok(true)) => {}
+                    Ok(Ok(false)) | Err(_) => break,
+                    Ok(Err(error)) => record_failure(&system_menu_failures, error),
                 }
             }
         })
@@ -739,7 +810,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return;
                 }
 
-                Timer::after(Duration::from_millis(250)).await;
+                Timer::after(Duration::from_millis(500)).await;
                 #[cfg(target_os = "macos")]
                 let reopened = cx.update(|cx| -> Result<WindowHandle<SettingsView>, String> {
                     if cx.global::<ProductCoordinator>().frame_ticks <= baseline_ticks {
@@ -854,6 +925,65 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .detach();
         }
 
+        if run_options.system_menu_smoke {
+            let smoke_failures = Arc::clone(&run_failures);
+            cx.spawn(async move |cx| {
+                Timer::after(Duration::from_millis(500)).await;
+                let open_requested = cx.update(|cx| {
+                    cx.global::<ProductCoordinator>()
+                        .system_menu
+                        .as_ref()
+                        .ok_or_else(|| "system menu owner is unavailable".to_owned())?
+                        .request_action_for_smoke(SystemMenuAction::OpenSettings)
+                        .map_err(|error| error.to_string())
+                });
+                if let Err(error) = flatten_update_result(open_requested) {
+                    record_failure(&smoke_failures, error.to_string());
+                    let _ = cx.update(request_product_quit);
+                    return;
+                }
+
+                Timer::after(Duration::from_millis(250)).await;
+                let open_verified = cx.update(|cx| -> Result<(), String> {
+                    if cx.windows().len() != 1 {
+                        return Err("Open Settings created a duplicate GPUI window".to_owned());
+                    }
+                    let window = cx
+                        .global::<ProductCoordinator>()
+                        .settings_window
+                        .ok_or_else(|| {
+                            "Open Settings did not retain a settings window".to_owned()
+                        })?;
+                    let revision = window
+                        .update(cx, |view, _, _| view.snapshot_revision())
+                        .map_err(|error| error.to_string())?;
+                    if revision.is_none() {
+                        return Err("Open Settings did not restore a runtime snapshot".to_owned());
+                    }
+                    Ok(())
+                });
+                if let Err(error) = flatten_update_result(open_verified) {
+                    record_failure(&smoke_failures, error.to_string());
+                    let _ = cx.update(request_product_quit);
+                    return;
+                }
+
+                let quit_requested = cx.update(|cx| {
+                    cx.global::<ProductCoordinator>()
+                        .system_menu
+                        .as_ref()
+                        .ok_or_else(|| "system menu owner is unavailable".to_owned())?
+                        .request_action_for_smoke(SystemMenuAction::Quit)
+                        .map_err(|error| error.to_string())
+                });
+                if let Err(error) = flatten_update_result(quit_requested) {
+                    record_failure(&smoke_failures, error.to_string());
+                    let _ = cx.update(request_product_quit);
+                }
+            })
+            .detach();
+        }
+
         if !run_options.run_duration.is_zero() {
             #[cfg(target_os = "windows")]
             let quit_shutdown_requested = Arc::clone(&shutdown_requested);
@@ -916,6 +1046,7 @@ mod tests {
                 run_duration: Duration::from_secs(30),
                 settings_window_smoke: false,
                 models_page_smoke: false,
+                system_menu_smoke: false,
             }
         );
     }
@@ -949,6 +1080,15 @@ mod tests {
             .expect("models page smoke options");
         assert!(options.models_page_smoke);
         assert!(options.settings_window_smoke);
+        assert!(!options.system_menu_smoke);
+    }
+
+    #[test]
+    fn system_menu_smoke_is_opt_in() {
+        let options = RunOptions::parse(["--system-menu-smoke".to_owned()])
+            .expect("system menu smoke options");
+        assert!(options.system_menu_smoke);
+        assert!(!options.settings_window_smoke);
     }
 
     #[test]
