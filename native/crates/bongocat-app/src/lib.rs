@@ -2,8 +2,9 @@
 
 use bongocat_audio::{MotionAudioService, MotionAudioShutdownError};
 use bongocat_config::{
-    BuildEnvironment, ConfigError, ConfigRecovery, ConfigRevision, ConfigStore, NativeConfig,
-    PlatformStorageError, SelectedModelOrigin, StorageLayout, platform_layout,
+    BuildEnvironment, ConfigError, ConfigRecovery, ConfigRevision, ConfigStore,
+    InterruptedConfigRecovery, NativeConfig, PlatformStorageError, SelectedModelOrigin,
+    StorageLayout, platform_layout,
 };
 use bongocat_model::{
     CommittedModel, InstalledModel, ModelCatalogEntry, ModelError, ModelId, ModelImportProgress,
@@ -138,6 +139,7 @@ pub struct Application {
     config: NativeConfig,
     config_revision: ConfigRevision,
     config_recovery: Option<ConfigRecovery>,
+    interrupted_config_recovery: Option<InterruptedConfigRecovery>,
     preset_models: PresetModelCatalog,
     model_store: ModelStore,
     active_model_origin: Option<ModelOrigin>,
@@ -176,6 +178,7 @@ impl Application {
         let config = loaded_config.config;
         let config_revision = loaded_config.revision;
         let config_recovery = loaded_config.recovery;
+        let interrupted_config_recovery = loaded_config.interrupted_recovery;
         let (motion_audio, motion_audio_client) =
             match MotionAudioService::start(AUDIO_COMMAND_CAPACITY) {
                 Ok(service) => {
@@ -216,6 +219,7 @@ impl Application {
             config,
             config_revision,
             config_recovery,
+            interrupted_config_recovery,
             preset_models,
             model_store,
             active_model_origin,
@@ -249,6 +253,10 @@ impl Application {
 
     pub const fn config_recovery(&self) -> Option<ConfigRecovery> {
         self.config_recovery
+    }
+
+    pub const fn interrupted_config_recovery(&self) -> Option<InterruptedConfigRecovery> {
+        self.interrupted_config_recovery
     }
 
     pub fn set_overlay_visible(
@@ -649,6 +657,27 @@ mod tests {
                         .to_string_lossy()
                         .starts_with("config-corrupt-")
                 })
+        );
+        application.shutdown().expect("clean shutdown");
+    }
+
+    #[test]
+    fn application_starts_from_interrupted_config_without_exposing_storage_details() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let store = ConfigStore::new(layout.clone()).expect("config store");
+        let mut current = store.load_or_default().expect("default config").config;
+        let interrupted_bytes = std::fs::read(&layout.config).expect("visible config bytes");
+        current.overlay.visible = false;
+        store.commit(&current).expect("hidden current config");
+        std::fs::write(layout.config.with_extension("json.tmp"), interrupted_bytes)
+            .expect("interrupted config temp");
+
+        let application = Application::start_with_layout(layout).expect("recover startup");
+        assert!(!application.config().overlay.visible);
+        assert_eq!(
+            application.interrupted_config_recovery(),
+            Some(InterruptedConfigRecovery::ArchivedStaleTemp)
         );
         application.shutdown().expect("clean shutdown");
     }

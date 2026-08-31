@@ -435,6 +435,12 @@ com.ayangweb.bongo-cat
   墙上时间、源 schema 和 revision 的环境内备份。每个环境只管理 `config-*.json` 自有命名空间，
   按持久排序键保留最新 8 份且总计不超过 8 MiB；系统时钟回退不得让新备份被误删，未知文件
   不参与清理。备份写入或收敛失败时保留当前配置。
+- 正式配置提交先以只创建方式写入并 flush 固定的同目录 `config.json.tmp`，再使用平台原子替换
+  提交 `config.json`。启动在同一 writer lock 内先处理残留 temp：有效 current 优先并把有效 temp
+  归档为 stale；current 缺失或损坏时才提升有效 temp；无效 temp 单独归档且不覆盖 current；未来
+  schema temp 原样保留并明确报错。stale/invalid 归档共用每环境最多 4 份、总计 8 MiB 的自有
+  命名空间，未知文件不参与清理。仅启动恢复以 10 ms 间隔重试 writer lock 最多 1 秒，普通提交
+  仍立即报告竞争；app 只保留不含路径、原始字节或 I/O 文本的匿名恢复动作。
 - 当前配置 parse/validate 失败且不是未来 schema 时，只在同一 writer lock 内从新到旧检查
   自有备份，并同时验证 envelope 格式、源 schema、源 revision 和完整 typed config。恢复前将损坏原文写入独立的
   `config-corrupt-*.bin` 自有 quarantine，最多 4 份且总计不超过 8 MiB；恢复后重新读取验证，

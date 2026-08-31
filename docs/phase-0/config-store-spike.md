@@ -1,6 +1,6 @@
 # Native Configuration Store Spike
 
-状态：typed config、Development/Production 隔离、双平台 path resolver、schema validation、原子提交、expected revision、OS writer lock 和强制进程终止恢复 contract 已通过；产品级备份策略待后续阶段完成
+状态：typed config、Development/Production 隔离、双平台 path resolver、schema validation、原子提交、expected revision、OS writer lock 和强制进程终止恢复 contract 已通过；正式产品已提升有界备份、损坏恢复和中断提交恢复
 日期：2026-08-28
 
 ## 已固定的行为
@@ -57,4 +57,12 @@ test；input/config job `99111304790` 随后再次执行完整 config-store test
 
 ## 未完成
 
-权限/磁盘满/目标占用、备份保留策略和 GPUI typed command 尚未完成；这些必须在 Phase 6 配置 crate 中分别验证。进程存活不再通过 PID、时间戳或删除 lock file 猜测，异常退出后的释放由 OS file lock 生命周期保证。
+状态（2026-08-31）：正式 `bongocat-config` 已把产品提交固定为同目录
+`config.json.tmp` -> flush -> 跨平台原子替换 -> 重新读取验证，并把上述 current/temp 状态机、
+1 秒 crash-release lock 重试、强杀子进程回归、匿名 app action，以及每环境 4 份/8 MiB 的
+stale/invalid interrupted archive 提升到产品实现。正式 store 的普通备份和损坏 current
+quarantine 也已各自具有独立有界保留策略。
+
+权限、磁盘满和目标占用失败注入，以及无有效备份时的安全模式与恢复默认 typed command 仍未完成；
+这些必须在 Phase 6 配置 crate 与正式 settings service 中分别验证。进程存活不通过 PID、时间戳
+或删除 lock file 猜测，异常退出后的释放由 OS file lock 生命周期保证。

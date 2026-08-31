@@ -7,7 +7,8 @@ use std::{
     fs::{File, OpenOptions, TryLockError},
     io::{self, ErrorKind, Write},
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
+    thread,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 pub const BUNDLE_ID: &str = "com.ayangweb.bongo-cat";
@@ -18,6 +19,10 @@ const MAX_CONFIG_BACKUPS: usize = 8;
 const MAX_CONFIG_BACKUP_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_CONFIG_QUARANTINES: usize = 4;
 const MAX_CONFIG_QUARANTINE_BYTES: u64 = 8 * 1024 * 1024;
+const MAX_INTERRUPTED_ARCHIVES: usize = 4;
+const MAX_INTERRUPTED_ARCHIVE_BYTES: u64 = 8 * 1024 * 1024;
+const RECOVERY_LOCK_RETRY_INTERVAL: Duration = Duration::from_millis(10);
+const RECOVERY_LOCK_TIMEOUT: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -344,11 +349,19 @@ impl ConfigRecovery {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InterruptedConfigRecovery {
+    ArchivedStaleTemp,
+    ArchivedInvalidTemp,
+    PromotedTemp { replaced_invalid_current: bool },
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ConfigLoadOutcome {
     pub config: NativeConfig,
     pub revision: ConfigRevision,
     pub recovery: Option<ConfigRecovery>,
+    pub interrupted_recovery: Option<InterruptedConfigRecovery>,
 }
 
 #[derive(Debug)]
@@ -364,6 +377,7 @@ pub enum ConfigError {
     InvalidValue(&'static str),
     BackupTooLarge,
     RecoveryArchiveTooLarge,
+    InterruptedArchiveTooLarge,
     NoValidRecoveryBackup {
         candidates: usize,
     },
@@ -389,6 +403,9 @@ impl fmt::Display for ConfigError {
             Self::BackupTooLarge => formatter.write_str("config backup exceeds retention budget"),
             Self::RecoveryArchiveTooLarge => {
                 formatter.write_str("invalid config exceeds recovery archive budget")
+            }
+            Self::InterruptedArchiveTooLarge => {
+                formatter.write_str("interrupted config exceeds archive budget")
             }
             Self::NoValidRecoveryBackup { candidates } => write!(
                 formatter,
@@ -419,6 +436,20 @@ struct WriterLock {
     _file: File,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ConfigFileStatus {
+    Missing,
+    Valid,
+    Invalid,
+    UnsupportedSchema(u32),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum InterruptedArchiveKind {
+    Stale,
+    Invalid,
+}
+
 pub struct ConfigStore {
     layout: StorageLayout,
 }
@@ -434,8 +465,9 @@ impl ConfigStore {
     }
 
     pub fn load_or_default(&self) -> Result<ConfigLoadOutcome, ConfigError> {
-        let _lock = self.acquire_writer_lock()?;
-        match fs::read(&self.layout.config) {
+        let _lock = self.acquire_recovery_lock(RECOVERY_LOCK_TIMEOUT)?;
+        let interrupted_recovery = self.recover_interrupted_commit_unlocked()?;
+        let mut outcome = match fs::read(&self.layout.config) {
             Ok(bytes) => match parse_config(&bytes) {
                 Ok((config, revision, migrated)) => {
                     let revision = if migrated {
@@ -447,6 +479,7 @@ impl ConfigStore {
                         config,
                         revision,
                         recovery: None,
+                        interrupted_recovery: None,
                     })
                 }
                 Err(error @ ConfigError::UnsupportedSchema(_)) => Err(error),
@@ -459,10 +492,20 @@ impl ConfigStore {
                     config,
                     revision,
                     recovery: None,
+                    interrupted_recovery: None,
                 })
             }
             Err(error) => Err(error.into()),
-        }
+        }?;
+        outcome.interrupted_recovery = interrupted_recovery;
+        Ok(outcome)
+    }
+
+    pub fn recover_interrupted_commit(
+        &self,
+    ) -> Result<Option<InterruptedConfigRecovery>, ConfigError> {
+        let _lock = self.acquire_recovery_lock(RECOVERY_LOCK_TIMEOUT)?;
+        self.recover_interrupted_commit_unlocked()
     }
 
     pub fn commit(&self, config: &NativeConfig) -> Result<ConfigRevision, ConfigError> {
@@ -498,6 +541,22 @@ impl ConfigStore {
         }
     }
 
+    fn acquire_recovery_lock(&self, timeout: Duration) -> Result<WriterLock, ConfigError> {
+        let deadline = Instant::now()
+            .checked_add(timeout)
+            .unwrap_or_else(Instant::now);
+        loop {
+            match self.acquire_writer_lock() {
+                Ok(lock) => return Ok(lock),
+                Err(ConfigError::LockUnavailable) if Instant::now() < deadline => {
+                    let remaining = deadline.saturating_duration_since(Instant::now());
+                    thread::sleep(RECOVERY_LOCK_RETRY_INTERVAL.min(remaining));
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
     fn read_revision(&self) -> Result<ConfigRevision, ConfigError> {
         let bytes = fs::read(&self.layout.config)?;
         let (_, revision, _) = parse_config(&bytes)?;
@@ -507,11 +566,122 @@ impl ConfigStore {
     fn commit_unlocked(&self, config: &NativeConfig) -> Result<ConfigRevision, ConfigError> {
         config.validate()?;
         let bytes = serde_json::to_vec_pretty(config)?;
-        if let Ok(current) = fs::read(&self.layout.config) {
-            self.backup_current_unlocked(&current)?;
+        let previous = match fs::read(&self.layout.config) {
+            Ok(current) => {
+                self.backup_current_unlocked(&current)?;
+                Some(current)
+            }
+            Err(error) if error.kind() == ErrorKind::NotFound => None,
+            Err(error) => return Err(error.into()),
+        };
+        write_config_atomic(&self.layout.config, &bytes)?;
+        let verification = fs::read(&self.layout.config)
+            .map_err(ConfigError::from)
+            .and_then(|verified| parse_config(&verified));
+        let Ok((verified_config, revision, false)) = verification else {
+            restore_config_bytes(&self.layout.config, previous.as_deref())?;
+            return Err(ConfigError::RecoveryVerificationFailed);
+        };
+        if verified_config != *config {
+            restore_config_bytes(&self.layout.config, previous.as_deref())?;
+            return Err(ConfigError::RecoveryVerificationFailed);
         }
-        write_atomic(&self.layout.config, &bytes)?;
-        Ok(revision_for_bytes(&bytes))
+        Ok(revision)
+    }
+
+    fn recover_interrupted_commit_unlocked(
+        &self,
+    ) -> Result<Option<InterruptedConfigRecovery>, ConfigError> {
+        let temp_path = config_temp_path(&self.layout.config);
+        let temp_status = inspect_config_file(&temp_path)?;
+        match temp_status {
+            ConfigFileStatus::Missing => return Ok(None),
+            ConfigFileStatus::UnsupportedSchema(version) => {
+                return Err(ConfigError::UnsupportedSchema(version));
+            }
+            ConfigFileStatus::Invalid => {
+                let bytes = fs::read(&temp_path)?;
+                self.archive_interrupted_temp_unlocked(
+                    &temp_path,
+                    &bytes,
+                    InterruptedArchiveKind::Invalid,
+                )?;
+                return Ok(Some(InterruptedConfigRecovery::ArchivedInvalidTemp));
+            }
+            ConfigFileStatus::Valid => {}
+        }
+
+        let current_status = inspect_config_file(&self.layout.config)?;
+        match current_status {
+            ConfigFileStatus::Valid | ConfigFileStatus::UnsupportedSchema(_) => {
+                let bytes = fs::read(&temp_path)?;
+                self.archive_interrupted_temp_unlocked(
+                    &temp_path,
+                    &bytes,
+                    InterruptedArchiveKind::Stale,
+                )?;
+                Ok(Some(InterruptedConfigRecovery::ArchivedStaleTemp))
+            }
+            ConfigFileStatus::Missing => {
+                self.promote_interrupted_temp_unlocked(&temp_path, None)?;
+                Ok(Some(InterruptedConfigRecovery::PromotedTemp {
+                    replaced_invalid_current: false,
+                }))
+            }
+            ConfigFileStatus::Invalid => {
+                let invalid_current = fs::read(&self.layout.config)?;
+                self.archive_invalid_config_unlocked(&invalid_current)?;
+                self.promote_interrupted_temp_unlocked(&temp_path, Some(&invalid_current))?;
+                Ok(Some(InterruptedConfigRecovery::PromotedTemp {
+                    replaced_invalid_current: true,
+                }))
+            }
+        }
+    }
+
+    fn promote_interrupted_temp_unlocked(
+        &self,
+        temp_path: &Path,
+        replaced_current: Option<&[u8]>,
+    ) -> Result<(), ConfigError> {
+        let candidate = fs::read(temp_path)?;
+        let (candidate_config, candidate_revision, _) = parse_config(&candidate)?;
+        write_atomic(&self.layout.config, &candidate)?;
+
+        let verification = fs::read(&self.layout.config)
+            .map_err(ConfigError::from)
+            .and_then(|verified| parse_config(&verified));
+        if verification.as_ref().is_ok_and(|(config, revision, _)| {
+            *config == candidate_config && *revision == candidate_revision
+        }) {
+            match fs::remove_file(temp_path) {
+                Ok(()) => return Ok(()),
+                Err(error) => {
+                    restore_config_bytes(&self.layout.config, replaced_current)?;
+                    return Err(error.into());
+                }
+            }
+        }
+
+        restore_config_bytes(&self.layout.config, replaced_current)?;
+        Err(ConfigError::RecoveryVerificationFailed)
+    }
+
+    fn archive_interrupted_temp_unlocked(
+        &self,
+        temp_path: &Path,
+        bytes: &[u8],
+        kind: InterruptedArchiveKind,
+    ) -> Result<(), ConfigError> {
+        if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_INTERRUPTED_ARCHIVE_BYTES {
+            return Err(ConfigError::InterruptedArchiveTooLarge);
+        }
+        let created_at_unix_ms = unix_time_millis()?;
+        let path = next_interrupted_archive_path(&self.layout.backups, created_at_unix_ms, kind)?;
+        write_atomic(&path, bytes)?;
+        prune_interrupted_archives(&self.layout.backups)?;
+        fs::remove_file(temp_path)?;
+        Ok(())
     }
 
     fn backup_current_unlocked(&self, current: &[u8]) -> Result<(), ConfigError> {
@@ -557,14 +727,14 @@ impl ConfigStore {
             };
             let restored = serde_json::to_vec_pretty(&config)?;
             self.archive_invalid_config_unlocked(invalid_current)?;
-            write_atomic(&self.layout.config, &restored)?;
+            write_config_atomic(&self.layout.config, &restored)?;
             let verified = fs::read(&self.layout.config)?;
             let Ok((verified_config, verified_revision, false)) = parse_config(&verified) else {
-                write_atomic(&self.layout.config, invalid_current)?;
+                write_config_atomic(&self.layout.config, invalid_current)?;
                 return Err(ConfigError::RecoveryVerificationFailed);
             };
             if verified_config != config || verified_revision != revision {
-                write_atomic(&self.layout.config, invalid_current)?;
+                write_config_atomic(&self.layout.config, invalid_current)?;
                 return Err(ConfigError::RecoveryVerificationFailed);
             }
             return Ok(ConfigLoadOutcome {
@@ -574,6 +744,7 @@ impl ConfigStore {
                     source_schema_version,
                     skipped_newer_backups,
                 }),
+                interrupted_recovery: None,
             });
         }
 
@@ -708,6 +879,48 @@ fn next_quarantine_path(backups: &Path, created_at_unix_ms: u64) -> Result<PathB
     )))
 }
 
+fn next_interrupted_archive_path(
+    backups: &Path,
+    created_at_unix_ms: u64,
+    kind: InterruptedArchiveKind,
+) -> Result<PathBuf, ConfigError> {
+    let mut newest = None;
+    for entry in fs::read_dir(backups)? {
+        let entry = entry?;
+        let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        if let Some(order) = parse_owned_interrupted_archive_name(&name) {
+            newest = Some(newest.map_or(order, |current| std::cmp::max(current, order)));
+        }
+    }
+    let (order_millis, first_sequence) = match newest {
+        Some((newest_millis, newest_sequence)) if newest_millis >= created_at_unix_ms => {
+            match newest_sequence.checked_add(1) {
+                Some(sequence) => (newest_millis, sequence),
+                None => (newest_millis.saturating_add(1), 0),
+            }
+        }
+        _ => (created_at_unix_ms, 0),
+    };
+    let kind = match kind {
+        InterruptedArchiveKind::Stale => "stale",
+        InterruptedArchiveKind::Invalid => "invalid",
+    };
+    for sequence in first_sequence..=u16::MAX {
+        let path = backups.join(format!(
+            "config-interrupted-{kind}-{order_millis:020}-{sequence:05}.bin"
+        ));
+        if !path.exists() {
+            return Ok(path);
+        }
+    }
+    Err(ConfigError::Io(io::Error::new(
+        ErrorKind::AlreadyExists,
+        "interrupted config archive filename space exhausted",
+    )))
+}
+
 fn prune_config_backups(backups: &Path) -> Result<(), ConfigError> {
     let mut entries = Vec::new();
     for entry in fs::read_dir(backups)? {
@@ -758,6 +971,31 @@ fn prune_config_quarantines(backups: &Path) -> Result<(), ConfigError> {
     Ok(())
 }
 
+fn prune_interrupted_archives(backups: &Path) -> Result<(), ConfigError> {
+    let mut entries = Vec::new();
+    for entry in fs::read_dir(backups)? {
+        let entry = entry?;
+        let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        if let Some(order) = parse_owned_interrupted_archive_name(&name) {
+            entries.push((order, name, entry.path(), entry.metadata()?.len()));
+        }
+    }
+    entries.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
+    let mut total_bytes = entries.iter().map(|entry| entry.3).sum::<u64>();
+    let remove_count = entries.len().saturating_sub(MAX_INTERRUPTED_ARCHIVES);
+    let mut removed = 0_usize;
+    for (_, _, path, size) in entries {
+        if removed < remove_count || total_bytes > MAX_INTERRUPTED_ARCHIVE_BYTES {
+            fs::remove_file(path)?;
+            total_bytes = total_bytes.saturating_sub(size);
+            removed += 1;
+        }
+    }
+    Ok(())
+}
+
 fn is_owned_backup_name(name: &str) -> bool {
     parse_owned_backup_name(name).is_some()
 }
@@ -794,6 +1032,90 @@ fn parse_owned_quarantine_name(name: &str) -> Option<(u64, u16)> {
         return None;
     }
     Some((timestamp.parse().ok()?, sequence.parse().ok()?))
+}
+
+fn parse_owned_interrupted_archive_name(name: &str) -> Option<(u64, u16)> {
+    let stem = name
+        .strip_prefix("config-interrupted-stale-")
+        .or_else(|| name.strip_prefix("config-interrupted-invalid-"))
+        .and_then(|name| name.strip_suffix(".bin"))?;
+    let (timestamp, sequence) = stem.split_once('-')?;
+    if timestamp.len() != 20
+        || sequence.len() != 5
+        || !timestamp.bytes().all(|byte| byte.is_ascii_digit())
+        || !sequence.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return None;
+    }
+    Some((timestamp.parse().ok()?, sequence.parse().ok()?))
+}
+
+fn config_temp_path(config: &Path) -> PathBuf {
+    config.with_extension("json.tmp")
+}
+
+fn inspect_config_file(path: &Path) -> Result<ConfigFileStatus, ConfigError> {
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == ErrorKind::NotFound => {
+            return Ok(ConfigFileStatus::Missing);
+        }
+        Err(error) => return Err(error.into()),
+    };
+    match parse_config(&bytes) {
+        Ok(_) => Ok(ConfigFileStatus::Valid),
+        Err(ConfigError::UnsupportedSchema(version)) => {
+            Ok(ConfigFileStatus::UnsupportedSchema(version))
+        }
+        Err(_) => Ok(ConfigFileStatus::Invalid),
+    }
+}
+
+fn write_config_atomic(path: &Path, bytes: &[u8]) -> Result<(), ConfigError> {
+    let previous = match fs::read(path) {
+        Ok(previous) => Some(previous),
+        Err(error) if error.kind() == ErrorKind::NotFound => None,
+        Err(error) => return Err(error.into()),
+    };
+    let temp_path = config_temp_path(path);
+    let mut replaced = false;
+    let result = (|| -> Result<(), ConfigError> {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_path)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        drop(file);
+        write_atomic(path, bytes)?;
+        replaced = true;
+        fs::remove_file(&temp_path)?;
+        Ok(())
+    })();
+    if let Err(error) = result {
+        if replaced {
+            restore_config_bytes(path, previous.as_deref())?;
+        } else {
+            match fs::remove_file(&temp_path) {
+                Ok(()) => {}
+                Err(remove_error) if remove_error.kind() == ErrorKind::NotFound => {}
+                Err(remove_error) => return Err(remove_error.into()),
+            }
+        }
+        return Err(error);
+    }
+    Ok(())
+}
+
+fn restore_config_bytes(path: &Path, previous: Option<&[u8]>) -> Result<(), ConfigError> {
+    match previous {
+        Some(bytes) => write_atomic(path, bytes),
+        None => match fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error.into()),
+        },
+    }
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), ConfigError> {
@@ -857,7 +1179,11 @@ fn revision_for_bytes(bytes: &[u8]) -> ConfigRevision {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::{Command, Stdio};
     use tempfile::tempdir;
+
+    const CRASH_PROBE_BASE: &str = "BONGOCAT_CONFIG_CRASH_PROBE_BASE";
+    const CRASH_PROBE_READY: &str = "BONGOCAT_CONFIG_CRASH_PROBE_READY";
 
     #[test]
     fn environments_have_identical_shape_and_disjoint_roots() {
@@ -894,6 +1220,260 @@ mod tests {
         let stale = store.commit_if_revision(&config, initial_revision);
         assert!(matches!(stale, Err(ConfigError::RevisionConflict { .. })));
         assert_eq!(config_backup_paths(store.layout()).len(), 1);
+    }
+
+    #[test]
+    fn interrupted_commit_preserves_valid_current_and_archives_stale_temp() {
+        let base = tempdir().expect("temp directory");
+        let store = ConfigStore::new(StorageLayout::under(
+            base.path(),
+            BuildEnvironment::Development,
+        ))
+        .expect("config store");
+        let current = store.load_or_default().expect("default config").config;
+        let mut candidate = current.clone();
+        candidate.appearance.language = "zh-CN".to_owned();
+        let candidate_bytes = write_interrupted_temp(&store, &candidate);
+
+        let recovered = store.load_or_default().expect("recover stale temp");
+        assert_eq!(recovered.config, current);
+        assert_eq!(
+            recovered.interrupted_recovery,
+            Some(InterruptedConfigRecovery::ArchivedStaleTemp)
+        );
+        assert_eq!(
+            fs::read(
+                interrupted_archive_paths(store.layout())
+                    .first()
+                    .expect("interrupted archive"),
+            )
+            .expect("interrupted archive bytes"),
+            candidate_bytes
+        );
+        assert!(!config_temp_path(&store.layout().config).exists());
+
+        let reloaded = store.load_or_default().expect("idempotent reload");
+        assert_eq!(reloaded.interrupted_recovery, None);
+        assert_eq!(interrupted_archive_paths(store.layout()).len(), 1);
+    }
+
+    #[test]
+    fn interrupted_commit_promotes_valid_temp_when_current_is_missing_or_invalid() {
+        for invalid_current in [None, Some(b"invalid-current".as_slice())] {
+            let base = tempdir().expect("temp directory");
+            let store = ConfigStore::new(StorageLayout::under(
+                base.path(),
+                BuildEnvironment::Production,
+            ))
+            .expect("config store");
+            if let Some(bytes) = invalid_current {
+                fs::write(&store.layout().config, bytes).expect("invalid current config");
+            }
+            let mut candidate = NativeConfig::default();
+            candidate.overlay.scale_percent = if invalid_current.is_some() { 125 } else { 150 };
+            write_interrupted_temp(&store, &candidate);
+
+            let recovered = store.load_or_default().expect("promote interrupted temp");
+            assert_eq!(recovered.config, candidate);
+            assert_eq!(
+                recovered.interrupted_recovery,
+                Some(InterruptedConfigRecovery::PromotedTemp {
+                    replaced_invalid_current: invalid_current.is_some(),
+                })
+            );
+            assert!(!config_temp_path(&store.layout().config).exists());
+            assert!(interrupted_archive_paths(store.layout()).is_empty());
+            let quarantines = config_quarantine_paths(store.layout());
+            assert_eq!(quarantines.len(), usize::from(invalid_current.is_some()));
+            if let Some(bytes) = invalid_current {
+                assert_eq!(fs::read(&quarantines[0]).expect("quarantine bytes"), bytes);
+            }
+        }
+    }
+
+    #[test]
+    fn interrupted_commit_archives_invalid_temp_without_replacing_current_or_defaulting_it() {
+        for create_current in [false, true] {
+            let base = tempdir().expect("temp directory");
+            let store = ConfigStore::new(StorageLayout::under(
+                base.path(),
+                BuildEnvironment::Development,
+            ))
+            .expect("config store");
+            let expected = if create_current {
+                store.load_or_default().expect("default config").config
+            } else {
+                NativeConfig::default()
+            };
+            let invalid_temp = b"{interrupted";
+            fs::write(config_temp_path(&store.layout().config), invalid_temp)
+                .expect("invalid interrupted temp");
+
+            let recovered = store.load_or_default().expect("archive invalid temp");
+            assert_eq!(recovered.config, expected);
+            assert_eq!(
+                recovered.interrupted_recovery,
+                Some(InterruptedConfigRecovery::ArchivedInvalidTemp)
+            );
+            let archives = interrupted_archive_paths(store.layout());
+            assert_eq!(archives.len(), 1);
+            assert_eq!(fs::read(&archives[0]).expect("archive bytes"), invalid_temp);
+        }
+    }
+
+    #[test]
+    fn future_interrupted_schema_is_preserved_without_touching_current() {
+        let base = tempdir().expect("temp directory");
+        let store = ConfigStore::new(StorageLayout::under(
+            base.path(),
+            BuildEnvironment::Production,
+        ))
+        .expect("config store");
+        let current = store.load_or_default().expect("default config").config;
+        let mut future = serde_json::to_value(NativeConfig::default()).expect("future value");
+        future["schema_version"] = serde_json::Value::from(SCHEMA_VERSION + 1);
+        future["future_section"] = serde_json::json!({ "new_field": true });
+        let future_bytes = serde_json::to_vec_pretty(&future).expect("future bytes");
+        let temp_path = config_temp_path(&store.layout().config);
+        fs::write(&temp_path, &future_bytes).expect("future interrupted temp");
+
+        assert!(matches!(
+            store.load_or_default(),
+            Err(ConfigError::UnsupportedSchema(version)) if version == SCHEMA_VERSION + 1
+        ));
+        assert_eq!(
+            fs::read(&temp_path).expect("preserved future temp"),
+            future_bytes
+        );
+        assert_eq!(
+            store.load_or_default().err().map(|error| error.to_string()),
+            Some(format!("unsupported schema_version {}", SCHEMA_VERSION + 1))
+        );
+        assert_eq!(
+            parse_config(&fs::read(&store.layout().config).expect("current bytes"))
+                .expect("current config")
+                .0,
+            current
+        );
+        assert!(interrupted_archive_paths(store.layout()).is_empty());
+    }
+
+    #[test]
+    fn interrupted_archives_are_bounded_environment_local_and_ignore_unowned_files() {
+        let base = tempdir().expect("temp directory");
+        let development = ConfigStore::new(StorageLayout::under(
+            base.path(),
+            BuildEnvironment::Development,
+        ))
+        .expect("development store");
+        let production = ConfigStore::new(StorageLayout::under(
+            base.path(),
+            BuildEnvironment::Production,
+        ))
+        .expect("production store");
+        let mut current = development
+            .load_or_default()
+            .expect("development config")
+            .config;
+        production.load_or_default().expect("production config");
+        let unowned = development
+            .layout()
+            .backups
+            .join("config-interrupted-note.bin");
+        fs::write(&unowned, b"keep").expect("unowned marker");
+
+        for index in 0..6 {
+            current.overlay.scale_percent = 100 + index;
+            write_interrupted_temp(&development, &current);
+            development.load_or_default().expect("archive stale temp");
+        }
+
+        let archives = interrupted_archive_paths(development.layout());
+        assert_eq!(archives.len(), MAX_INTERRUPTED_ARCHIVES);
+        assert!(
+            archives
+                .iter()
+                .map(|path| fs::metadata(path).expect("archive metadata").len())
+                .sum::<u64>()
+                <= MAX_INTERRUPTED_ARCHIVE_BYTES
+        );
+        assert_eq!(fs::read(unowned).expect("unowned marker"), b"keep");
+        assert!(interrupted_archive_paths(production.layout()).is_empty());
+    }
+
+    #[test]
+    fn forced_process_exit_releases_writer_lock_and_recovers_synced_temp() {
+        let base = tempdir().expect("temp directory");
+        let ready = base.path().join("crash-probe.ready");
+        let store = ConfigStore::new(StorageLayout::under(
+            base.path(),
+            BuildEnvironment::Development,
+        ))
+        .expect("config store");
+        let current = store.load_or_default().expect("default config").config;
+        let mut child = Command::new(std::env::current_exe().expect("test executable"))
+            .arg("--ignored")
+            .arg("--exact")
+            .arg("tests::interrupted_commit_crash_probe_child")
+            .arg("--nocapture")
+            .env(CRASH_PROBE_BASE, base.path())
+            .env(CRASH_PROBE_READY, &ready)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn crash probe");
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !ready.exists() {
+            if let Some(status) = child.try_wait().expect("poll crash probe") {
+                panic!("crash probe exited before ready: {status}");
+            }
+            assert!(
+                Instant::now() < deadline,
+                "crash probe did not become ready"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+        let mut rejected = current.clone();
+        rejected.overlay.scale_percent = 175;
+        assert!(matches!(
+            store.commit(&rejected),
+            Err(ConfigError::LockUnavailable)
+        ));
+
+        child.kill().expect("terminate crash probe");
+        child.wait().expect("wait for crash probe");
+        let recovered = store.load_or_default().expect("recover after process exit");
+        assert_eq!(recovered.config, current);
+        assert_eq!(
+            recovered.interrupted_recovery,
+            Some(InterruptedConfigRecovery::ArchivedStaleTemp)
+        );
+        assert_eq!(interrupted_archive_paths(store.layout()).len(), 1);
+        assert!(!config_temp_path(&store.layout().config).exists());
+    }
+
+    #[test]
+    #[ignore = "spawned by forced_process_exit_releases_writer_lock_and_recovers_synced_temp"]
+    fn interrupted_commit_crash_probe_child() {
+        let Some(base) = std::env::var_os(CRASH_PROBE_BASE) else {
+            return;
+        };
+        let ready =
+            PathBuf::from(std::env::var_os(CRASH_PROBE_READY).expect("crash probe ready path"));
+        let store = ConfigStore::new(StorageLayout::under(base, BuildEnvironment::Development))
+            .expect("crash probe store");
+        let mut candidate = store.load_or_default().expect("crash probe config").config;
+        candidate.overlay.scale_percent = 150;
+        let _lock = store
+            .acquire_writer_lock()
+            .expect("crash probe writer lock");
+        write_interrupted_temp(&store, &candidate);
+        fs::write(ready, b"ready").expect("crash probe ready marker");
+        loop {
+            thread::sleep(Duration::from_secs(1));
+        }
     }
 
     #[test]
@@ -1323,5 +1903,34 @@ mod tests {
             .collect::<Vec<_>>();
         paths.sort();
         paths
+    }
+
+    fn interrupted_archive_paths(layout: &StorageLayout) -> Vec<PathBuf> {
+        let mut paths = fs::read_dir(&layout.backups)
+            .expect("backup directory")
+            .map(|entry| entry.expect("backup entry"))
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_str()
+                    .is_some_and(|name| parse_owned_interrupted_archive_name(name).is_some())
+            })
+            .map(|entry| entry.path())
+            .collect::<Vec<_>>();
+        paths.sort();
+        paths
+    }
+
+    fn write_interrupted_temp(store: &ConfigStore, config: &NativeConfig) -> Vec<u8> {
+        let bytes = serde_json::to_vec_pretty(config).expect("interrupted config bytes");
+        let path = config_temp_path(&store.layout().config);
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+            .expect("interrupted config temp");
+        file.write_all(&bytes).expect("write interrupted config");
+        file.sync_all().expect("sync interrupted config");
+        bytes
     }
 }

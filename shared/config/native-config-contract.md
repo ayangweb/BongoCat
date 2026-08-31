@@ -88,6 +88,25 @@ shortcuts
 - 没有有效候选、损坏原文超过 quarantine 上限、归档/收敛失败或写回验证失败时明确报错；不得
   静默创建默认配置。写回验证失败会尝试把原始损坏字节恢复到 `config.json`，quarantine 仍保留。
 
+## Interrupted Commit Recovery
+
+- 正式提交先以 `create_new` 在 `config.json` 同目录写入固定的 `config.json.tmp`，完整写入并
+  `sync_all` 后才执行跨平台原子替换。替换后重新读取并验证 typed config/revision，再删除 temp；
+  可处理的写入、替换、清理或验证失败会尝试恢复旧 current 并清理 partial temp。进程被强制终止
+  时，已经 flush 的 temp 可保留到下一次启动。
+- 启动恢复与后续 load/default creation 共用一个 writer lock guard。只有该路径以 10 ms 间隔、
+  最多 1 秒等待异常退出后的 OS lock 释放；普通 commit 冲突立即返回 `LockUnavailable`。
+- temp 有效且 current 有效或使用未来 schema 时，current 优先，temp 归档为 stale；current 缺失时
+  提升 temp；current 损坏时先逐字节 quarantine current，再提升 temp。temp 无法 parse、迁移或
+  validate 时归档为 invalid，不覆盖 current；若 current 也缺失，归档后按正常首次启动创建默认值。
+  temp 使用未来 schema 时逐字节原样保留并返回 `UnsupportedSchema`，不得归档或降级。
+- interrupted archive 使用
+  `config-interrupted-{stale|invalid}-<20-digit-order>-<5-digit-sequence>.bin` 自有命名空间；两类
+  合计每环境最多保留最新 4 份、总计最多 8 MiB，未知文件不计数、不读取且不删除。恢复重启必须
+  幂等，Development/Production 不得共享 candidate、archive 或 lock。
+- app 只保留 `ArchivedStaleTemp`、`ArchivedInvalidTemp` 或是否替换损坏 current 的
+  `PromotedTemp` 匿名动作；不得向 runtime/settings 暴露路径、配置内容、时间戳或底层 I/O 文本。
+
 ## Environment Isolation
 
 `Development` 与 `Production` 使用同一 schema、默认值和相对目录结构，只由数据根目录区分。配置内容不保存环境字段，也不能引用另一环境的绝对路径。
