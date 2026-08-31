@@ -151,6 +151,57 @@ pub enum Live2dErrorCode {
     UnsupportedBlendMode,
 }
 
+impl Live2dErrorCode {
+    pub const ALL: [Self; 17] = [
+        Self::CoreVersionMismatch,
+        Self::EmptyMoc,
+        Self::InvalidCoreArray,
+        Self::InvalidCoreValue,
+        Self::MocConsistencyFailed,
+        Self::MocReviveFailed,
+        Self::ModelInitializeFailed,
+        Self::ModelMemoryInvalid,
+        Self::PlatformUnsupported,
+        Self::ResourceIo,
+        Self::TextureIndexInvalid,
+        Self::ParameterValueInvalid,
+        Self::MotionInvalid,
+        Self::MotionNotFound,
+        Self::ExpressionInvalid,
+        Self::ExpressionNotFound,
+        Self::UnsupportedBlendMode,
+    ];
+
+    /// Stable, path-free identifier for diagnostics and typed callers.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::CoreVersionMismatch => "core_version_mismatch",
+            Self::EmptyMoc => "empty_moc",
+            Self::InvalidCoreArray => "invalid_core_array",
+            Self::InvalidCoreValue => "invalid_core_value",
+            Self::MocConsistencyFailed => "moc_consistency_failed",
+            Self::MocReviveFailed => "moc_revive_failed",
+            Self::ModelInitializeFailed => "model_initialize_failed",
+            Self::ModelMemoryInvalid => "model_memory_invalid",
+            Self::PlatformUnsupported => "platform_unsupported",
+            Self::ResourceIo => "resource_io",
+            Self::TextureIndexInvalid => "texture_index_invalid",
+            Self::ParameterValueInvalid => "parameter_value_invalid",
+            Self::MotionInvalid => "motion_invalid",
+            Self::MotionNotFound => "motion_not_found",
+            Self::ExpressionInvalid => "expression_invalid",
+            Self::ExpressionNotFound => "expression_not_found",
+            Self::UnsupportedBlendMode => "unsupported_blend_mode",
+        }
+    }
+}
+
+impl fmt::Display for Live2dErrorCode {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
 #[derive(Debug)]
 pub struct Live2dError {
     pub code: Live2dErrorCode,
@@ -168,7 +219,7 @@ impl Live2dError {
 
 impl fmt::Display for Live2dError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{:?}: {}", self.code, self.detail)
+        write!(formatter, "{}: {}", self.code, self.detail)
     }
 }
 
@@ -721,6 +772,21 @@ mod tests {
         assert_eq!(ids.len(), ProductParameter::ALL.len());
         assert_eq!(ProductParameter::LeftHandDown.id(), "CatParamLeftHandDown");
         assert_eq!(ProductParameter::StickRightY.id(), "CatParamStickRY");
+    }
+
+    #[test]
+    fn live2d_error_codes_are_stable_and_unique() {
+        let mut codes = Live2dErrorCode::ALL
+            .iter()
+            .map(|code| code.as_str())
+            .collect::<Vec<_>>();
+        assert!(codes.iter().all(|code| !code.is_empty()));
+        codes.sort_unstable();
+        codes.dedup();
+        assert_eq!(codes.len(), Live2dErrorCode::ALL.len());
+        assert_eq!(Live2dErrorCode::MotionInvalid.to_string(), "motion_invalid");
+        let error = Live2dError::new(Live2dErrorCode::ResourceIo, "/private/model.moc3");
+        assert!(error.to_string().starts_with("resource_io: "));
     }
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]

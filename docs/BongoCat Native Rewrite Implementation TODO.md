@@ -803,6 +803,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     验证同一回滚语义。完整损坏资源矩阵、device-loss 和用户模型失败路径仍待完成，因此
     两项保持未勾选。
 - [ ] FFI 错误映射为稳定 Rust error code。
+  - 状态（2026-09-01）：`Live2dErrorCode` 已提供固定 snake_case `as_str`/`Display` 标识，所有
+    Core、模型、motion 和 expression 错误共用 17 个唯一 code；`Live2dError` 的 detail 仍可包含
+    诊断信息，但 code 本身不含路径或其他动态内容。纯 Rust 唯一性和格式测试已通过；跨 crate
+    UI/诊断投影及完整错误矩阵仍待完成。
 
 ### 5.3 动作与状态
 
