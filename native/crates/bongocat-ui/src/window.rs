@@ -1032,9 +1032,16 @@ impl SettingsView {
     }
 
     fn set_overlay_settings(&mut self, settings: SettingsOverlay, cx: &mut Context<Self>) {
+        let Some(expected_revision) = self.snapshot.as_ref().map(|snapshot| snapshot.revision)
+        else {
+            return;
+        };
         self.start_request(
             PendingOperation::OverlaySettings,
-            Some(SettingValue::OverlaySettings(settings)),
+            Some(SettingValue::OverlaySettings {
+                expected_revision,
+                settings,
+            }),
             cx,
         );
     }
@@ -1464,8 +1471,13 @@ impl SettingsView {
                 Some(SettingValue::OverlayVisible(visible)) => {
                     client.set_overlay_visible(visible).await
                 }
-                Some(SettingValue::OverlaySettings(settings)) => {
-                    client.set_overlay_settings(settings).await
+                Some(SettingValue::OverlaySettings {
+                    expected_revision,
+                    settings,
+                }) => {
+                    client
+                        .set_overlay_settings(expected_revision, settings)
+                        .await
                 }
                 Some(SettingValue::MotionAudioEnabled(enabled)) => {
                     client.set_motion_audio_enabled(enabled).await
@@ -1480,8 +1492,23 @@ impl SettingsView {
                     client.restore_default_configuration().await
                 }
             };
+            let refreshed = if result
+                .as_ref()
+                .is_err_and(|error| error.code() == SettingsErrorCode::SnapshotOutdated)
+            {
+                client.read_snapshot().await.ok()
+            } else {
+                None
+            };
             let _ = this.update(cx, |view, cx| {
                 view.pending = None;
+                if let Some(snapshot) = refreshed.filter(|snapshot| {
+                    view.snapshot
+                        .as_ref()
+                        .is_none_or(|current| snapshot.revision >= current.revision)
+                }) {
+                    view.snapshot = Some(snapshot);
+                }
                 match result {
                     Ok(snapshot)
                         if view
@@ -1507,7 +1534,10 @@ impl SettingsView {
 #[derive(Clone, Copy)]
 enum SettingValue {
     OverlayVisible(bool),
-    OverlaySettings(SettingsOverlay),
+    OverlaySettings {
+        expected_revision: u64,
+        settings: SettingsOverlay,
+    },
     MotionAudioEnabled(bool),
     StartupItemEnabled(bool),
     OpenConfigBackupLocation,

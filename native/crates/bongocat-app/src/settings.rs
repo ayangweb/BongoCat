@@ -186,21 +186,30 @@ fn run_service(
                     .map_err(map_application_error);
                 let _ = reply.respond(result);
             }
-            SettingsCommand::SetOverlaySettings { settings, reply } => {
+            SettingsCommand::SetOverlaySettings {
+                expected_revision,
+                settings,
+                reply,
+            } => {
                 let runtime_settings = OverlaySettings {
                     click_through: settings.click_through,
                     always_on_top: settings.always_on_top,
                     scale_percent: settings.scale_percent,
                     opacity_percent: settings.opacity_percent,
                 };
-                let result = require_operational(&application)
-                    .and_then(|()| {
-                        application
-                            .set_overlay_settings(runtime_settings)
-                            .map(|_| ())
-                    })
-                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()))
-                    .map_err(map_application_error);
+                let current = snapshot(&application, &mut clock, false, startup_item.state());
+                let result = if current.revision != expected_revision {
+                    Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
+                } else {
+                    require_operational(&application)
+                        .and_then(|()| {
+                            application
+                                .set_overlay_settings(runtime_settings)
+                                .map(|_| ())
+                        })
+                        .map(|_| snapshot(&application, &mut clock, false, startup_item.state()))
+                        .map_err(map_application_error)
+                };
                 let _ = reply.respond(result);
             }
             SettingsCommand::SetMotionAudioEnabled { enabled, reply } => {
@@ -1272,7 +1281,7 @@ mod tests {
             opacity_percent: 80,
         };
         let configured = client
-            .set_overlay_settings_blocking(overlay_settings)
+            .set_overlay_settings_blocking(selected.revision, overlay_settings)
             .expect("update overlay settings");
         assert_eq!(
             configured.overlay, overlay_settings,
@@ -1298,6 +1307,55 @@ mod tests {
 
         let stopped = client.shutdown_blocking().expect("service shutdown");
         assert_eq!(stopped.runtime_health, RuntimeHealth::Stopped);
+        service.join().expect("service join");
+    }
+
+    #[test]
+    fn service_rejects_stale_overlay_settings_without_mutating_runtime_or_config() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let config_path = layout.config.clone();
+        let application = Application::start_with_layout(layout).expect("application start");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        let original_settings = SettingsOverlay {
+            click_through: false,
+            always_on_top: false,
+            scale_percent: 125,
+            opacity_percent: 80,
+        };
+        let committed = client
+            .set_overlay_settings_blocking(initial.revision, original_settings)
+            .expect("first overlay update");
+        let committed_config = std::fs::read(&config_path).expect("committed config");
+
+        let stale_settings = SettingsOverlay {
+            click_through: true,
+            always_on_top: true,
+            scale_percent: 400,
+            opacity_percent: 10,
+        };
+        let error = client
+            .set_overlay_settings_blocking(initial.revision, stale_settings)
+            .expect_err("stale overlay update");
+        assert_eq!(error.code(), SettingsErrorCode::SnapshotOutdated);
+        assert_eq!(
+            error.to_string(),
+            "settings changed in the background; review the latest values and retry"
+        );
+        assert!(!error.to_string().contains('/') && !error.to_string().contains('\\'));
+
+        let unchanged = client.read_snapshot_blocking().expect("unchanged snapshot");
+        assert_eq!(unchanged.revision, committed.revision);
+        assert_eq!(unchanged.overlay, original_settings);
+        assert_eq!(
+            std::fs::read(&config_path).expect("preserved config"),
+            committed_config
+        );
+
+        client.shutdown_blocking().expect("service shutdown");
         service.join().expect("service join");
     }
 

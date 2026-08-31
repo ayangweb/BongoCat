@@ -430,6 +430,7 @@ pub enum SettingsModelCatalogError {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SettingsErrorCode {
     ServiceUnavailable,
+    SnapshotOutdated,
     RuntimeUnavailable,
     ConfigPersistFailed,
     ConfigPermissionDenied,
@@ -478,6 +479,9 @@ impl fmt::Display for SettingsError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self.code {
             SettingsErrorCode::ServiceUnavailable => "settings service is unavailable",
+            SettingsErrorCode::SnapshotOutdated => {
+                "settings changed in the background; review the latest values and retry"
+            }
             SettingsErrorCode::RuntimeUnavailable => "runtime did not apply the setting",
             SettingsErrorCode::ConfigPersistFailed => "setting could not be saved",
             SettingsErrorCode::ConfigPermissionDenied => {
@@ -546,6 +550,7 @@ pub enum SettingsCommand {
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     SetOverlaySettings {
+        expected_revision: u64,
         settings: SettingsOverlay,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
@@ -644,10 +649,15 @@ impl SettingsClient {
 
     pub async fn set_overlay_settings(
         &self,
+        expected_revision: u64,
         settings: SettingsOverlay,
     ) -> Result<SettingsSnapshot, SettingsError> {
-        self.request(|reply| SettingsCommand::SetOverlaySettings { settings, reply })
-            .await
+        self.request(|reply| SettingsCommand::SetOverlaySettings {
+            expected_revision,
+            settings,
+            reply,
+        })
+        .await
     }
 
     pub async fn set_startup_item_enabled(
@@ -736,9 +746,14 @@ impl SettingsClient {
 
     pub fn set_overlay_settings_blocking(
         &self,
+        expected_revision: u64,
         settings: SettingsOverlay,
     ) -> Result<SettingsSnapshot, SettingsError> {
-        self.request_blocking(|reply| SettingsCommand::SetOverlaySettings { settings, reply })
+        self.request_blocking(|reply| SettingsCommand::SetOverlaySettings {
+            expected_revision,
+            settings,
+            reply,
+        })
     }
 
     pub fn set_startup_item_enabled_blocking(
@@ -916,6 +931,10 @@ mod tests {
     #[test]
     fn config_write_errors_are_actionable_and_anonymous() {
         for (code, expected) in [
+            (
+                SettingsErrorCode::SnapshotOutdated,
+                "settings changed in the background; review the latest values and retry",
+            ),
             (
                 SettingsErrorCode::ConfigPermissionDenied,
                 "configuration storage is not writable; check permissions and retry",
