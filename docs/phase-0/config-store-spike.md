@@ -88,3 +88,10 @@ recovery-only 状态仍可调用。本机 platform/ui/app 定向测试和严格 
 随后全绿；Windows/macOS/Ubuntu Native jobs `99453718576`/`99453718477`/`99453718406`、Windows
 input/config job `99453718404`、Windows/macOS GPUI jobs `99453718327`/`99453718079` 和独立
 config-store job `99453718598` 均通过，退出条件满足。
+
+状态（2026-08-31）：正式启动不再接受外部 `StorageLayout`；测试存储注入只编译进显式
+Development feature，Production 组合在编译期拒绝，默认 CLI/API 与 release binary 均无恢复
+存储覆盖入口。隔离 target 的 recovery 测试产物不会覆盖默认产品二进制。commit `696319e` 的
+run `33386401135` 全绿；Windows/macOS Native jobs `99469897044`/`99469896758` 实际打开并验证
+recovery-only 窗口，Windows input/config job `99469896784` 同时通过真实平台路径测试，
+`P6-STORAGE-LAYOUT-BOUNDARY` 退出条件满足。
