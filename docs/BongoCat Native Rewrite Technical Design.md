@@ -417,6 +417,11 @@ com.ayangweb.bongo-cat
 
 构建产物携带不可变的 `Development` 或 `Production` 环境。环境由构建入口显式选择，运行时参数、环境变量和设置项均不能切换。两个环境使用相同 schema 和相对目录结构，只改变数据根目录：
 
+正式 app build script 不提供隐式 fallback，只接受精确的 `development`/`production`；Native
+workspace 的受控 Cargo config 与 CI 显式选择 Development，Production build/package step 必须显式
+覆盖为 Production。packaging 在调用 Cargo 前拒绝缺失、空或未知值，构建完成后的运行时环境变量
+不参与选择。
+
 | 平台    | Development                                                         | Production                                                         |
 | ------- | ------------------------------------------------------------------- | ------------------------------------------------------------------ |
 | Windows | `%APPDATA%\BongoCat\development\`                                   | `%APPDATA%\BongoCat\production\`                                   |

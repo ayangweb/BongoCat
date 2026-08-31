@@ -5,10 +5,13 @@ historical Tauri behavior reference until the release cutover phase.
 
 ## Build Environments
 
-Development is the default and is compiled into the artifact:
+The Native workspace explicitly selects Development in `.cargo/config.toml`; the selection is
+compiled into the artifact. Run product commands from the Native workspace so Cargo loads that
+controlled entry configuration:
 
 ```text
-cargo run --manifest-path native/Cargo.toml -p bongocat-app --release -- --run-seconds 0
+cd native
+cargo run -p bongocat-app --release -- --run-seconds 0
 ```
 
 This is the current formal visible product entry on macOS and Windows. It loads the selected bundled
@@ -28,7 +31,7 @@ The cross-platform product smoke closes or hides the settings window, reopens it
 the frame source continued to run and the current snapshot was restored:
 
 ```text
-cargo run --manifest-path native/Cargo.toml -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke
+cargo run -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke
 ```
 
 On macOS, grant Input Monitoring permission to the launching terminal for global keyboard and
@@ -38,10 +41,11 @@ window, periodically reconciles locally pressed candidates with `GetAsyncKeyStat
 on device, session, power, queue, and service lifecycle changes. Physical PixPin, Win+L, UAC,
 administrator-boundary, and long-running input tests remain release evidence tasks.
 
-Production must be selected at build time:
+Production must be selected at build time. Packaging scripts reject a missing, empty, or unknown
+selection before invoking Cargo:
 
 ```text
-BONGOCAT_BUILD_ENV=production cargo build --manifest-path native/Cargo.toml -p bongocat-app --release
+BONGOCAT_BUILD_ENV=production cargo build -p bongocat-app --release
 ```
 
 The application does not expose a runtime environment switch. Both environments use the same
@@ -50,10 +54,10 @@ schema and relative layout under separate `development/` and `production/` roots
 ## Verification
 
 ```text
-cargo fmt --manifest-path native/Cargo.toml --all -- --check
-cargo clippy --manifest-path native/Cargo.toml --workspace --all-targets --all-features -- -D warnings
-cargo test --manifest-path native/Cargo.toml --workspace
-cargo check --manifest-path native/Cargo.toml --workspace --release
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace
+cargo check --workspace --release
 ```
 
 ## Live2D Diagnostic Preview
@@ -64,16 +68,16 @@ is the preview duration in seconds. The interactive and fixed-duration preview i
 available on macOS:
 
 ```text
-cargo run --manifest-path native/Cargo.toml -p bongocat-overlay --release -- standard 30
-cargo run --manifest-path native/Cargo.toml -p bongocat-overlay --release -- keyboard 30
-cargo run --manifest-path native/Cargo.toml -p bongocat-overlay --release -- gamepad 30
+cargo run -p bongocat-overlay --release -- standard 30
+cargo run -p bongocat-overlay --release -- keyboard 30
+cargo run -p bongocat-overlay --release -- gamepad 30
 ```
 
 On Windows or macOS, exercise transactional GPU model replacement with all three presets by running
 100 measured standard -> keyboard -> gamepad -> standard cycles (300 reported generations):
 
 ```text
-cargo run --manifest-path native/Cargo.toml -p bongocat-overlay --release -- standard 0 --switch-cycles 100
+cargo run -p bongocat-overlay --release -- standard 0 --switch-cycles 100
 ```
 
 The switch probe first injects one invalid texture preparation and requires the current CPU model,
@@ -92,7 +96,7 @@ listen-only CGEventTap producer for keyboard and mouse button edges instead, gra
 permission to the launching terminal and run:
 
 ```text
-cargo run --manifest-path native/Cargo.toml -p bongocat-overlay --release -- standard 30 --interactive
+cargo run -p bongocat-overlay --release -- standard 30 --interactive
 ```
 
 The interactive path uses the same typed runtime input state as the deterministic preview and

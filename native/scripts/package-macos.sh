@@ -2,6 +2,18 @@
 
 set -eu
 
+if [ -z "${BONGOCAT_BUILD_ENV+x}" ]; then
+    printf '%s\n' 'BONGOCAT_BUILD_ENV must be explicitly set to development or production' >&2
+    exit 1
+fi
+case "$BONGOCAT_BUILD_ENV" in
+    development|production) ;;
+    *)
+        printf 'invalid BONGOCAT_BUILD_ENV: %s\n' "$BONGOCAT_BUILD_ENV" >&2
+        exit 1
+        ;;
+esac
+
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 NATIVE_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 APP_PATH="$NATIVE_DIR/target/package/BongoCat.app"

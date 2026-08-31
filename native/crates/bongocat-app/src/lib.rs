@@ -18,6 +18,8 @@ use bongocat_runtime::{
 };
 use std::{collections::BTreeMap, fmt, path::Path, sync::Arc, time::Duration};
 
+#[cfg(test)]
+mod build_environment_contract;
 mod settings;
 pub use settings::{ApplicationSettingsService, SettingsServiceJoinError};
 

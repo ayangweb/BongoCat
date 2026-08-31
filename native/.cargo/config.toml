@@ -1,0 +1,2 @@
+[env]
+BONGOCAT_BUILD_ENV = { value = "development", force = false }

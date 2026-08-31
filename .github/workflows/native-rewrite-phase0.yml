@@ -6,6 +6,9 @@ on:
 permissions:
   contents: read
 
+env:
+  BONGOCAT_BUILD_ENV: development
+
 jobs:
   fixtures:
     name: Validate shared fixtures
@@ -84,6 +87,22 @@ jobs:
         run: cargo clippy --manifest-path native/Cargo.toml --locked --workspace --all-targets --all-features -- -D warnings
       - name: Run tests
         run: cargo test --manifest-path native/Cargo.toml --locked --workspace
+      - name: Reject implicit app build environment
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          if env -u BONGOCAT_BUILD_ENV cargo check --manifest-path native/Cargo.toml --locked -p bongocat-app; then
+            echo 'app build accepted a missing build environment' >&2
+            exit 1
+          fi
+          if BONGOCAT_BUILD_ENV= cargo check --manifest-path native/Cargo.toml --locked -p bongocat-app; then
+            echo 'app build accepted an empty build environment' >&2
+            exit 1
+          fi
+          if BONGOCAT_BUILD_ENV=unknown cargo check --manifest-path native/Cargo.toml --locked -p bongocat-app; then
+            echo 'app build accepted an unknown build environment' >&2
+            exit 1
+          fi
       - name: Check release build
         run: cargo check --manifest-path native/Cargo.toml --locked --workspace --release
       - name: Check production environment build
@@ -363,6 +382,22 @@ jobs:
       - name: Smoke Windows startup item lifecycle
         if: matrix.os == 'windows-latest'
         run: cargo test --manifest-path native/Cargo.toml --locked --release -p bongocat-platform windows_startup_item_registry_smoke_restores_original_value -- --ignored
+      - name: Reject implicit macOS package environment
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          if env -u BONGOCAT_BUILD_ENV ./native/scripts/package-macos.sh; then
+            echo 'package script accepted a missing build environment' >&2
+            exit 1
+          fi
+          if BONGOCAT_BUILD_ENV= ./native/scripts/package-macos.sh; then
+            echo 'package script accepted an empty build environment' >&2
+            exit 1
+          fi
+          if BONGOCAT_BUILD_ENV=unknown ./native/scripts/package-macos.sh; then
+            echo 'package script accepted an unknown build environment' >&2
+            exit 1
+          fi
       - name: Smoke macOS startup item lifecycle
         if: matrix.os == 'macos-latest'
         run: |
