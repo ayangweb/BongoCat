@@ -431,7 +431,10 @@ com.ayangweb.bongo-cat
 - 配置包含显式 `schema_version`，只对 Native Rewrite 自身后续 schema 执行顺序、幂等升级。
 - 当前 v2 将模型选择持久化为成对的 `selected_model_origin` 与 `selected_model_id`；v1
   非空 ID 按当时产品语义迁移为 preset，迁移在当前环境 writer lock 内备份并原子写回。
-- 写入使用同目录临时文件、flush、原子替换和提交后验证；失败保留当前文件和受限数量的备份。
+- 写入使用同目录临时文件、flush、原子替换和提交后验证；替换前把当前配置封装为带格式版本、
+  墙上时间、源 schema 和 revision 的环境内备份。每个环境只管理 `config-*.json` 自有命名空间，
+  按持久排序键保留最新 8 份且总计不超过 8 MiB；系统时钟回退不得让新备份被误删，未知文件
+  不参与清理。备份写入或收敛失败时保留当前配置。
 - `config.json` 只包含用户设置；窗口布局写入 `state.json`，pressed state、权限结果和模型解析缓存不持久化。
 - 模型导入防止路径穿越、符号链接逃逸、压缩炸弹和覆盖现有用户数据。
 - 模型包在反序列化或图片解码前执行 JSON 字节/深度、单文件/整包字节、文件数、目录深度

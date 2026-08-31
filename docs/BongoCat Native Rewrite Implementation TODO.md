@@ -925,7 +925,11 @@ Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
 - [ ] 构建系统显式产生 Development/Production 元数据，发布构建拒绝默认值。
 - [ ] path resolver 返回当前平台与环境的数据根，不能接受任意外部生产路径。
 - [ ] 实现 load -> parse -> validate -> upgrade native schema -> atomic commit -> verify。
-- [ ] backup 包含 Native schema 版本和时间，并限制数量与总大小。
+- [x] backup 包含 Native schema 版本和时间，并限制数量与总大小。
+  - 验收证据（2026-08-31）：正式 `bongocat-config` 在替换前生成 v1 envelope，保存真实墙上
+    时间、源 schema/revision 和未迁移配置；每环境仅管理固定命名空间，按不受时钟回退影响的
+    排序键保留最新 8 份且总计不超过 8 MiB。单元测试覆盖 v1 -> v2 原文备份、12 次提交收敛、
+    未知文件保留和时钟回退顺序；完整 Native workspace 门禁随当前队列提交验证。
 - [x] spike 中途提交中断后可安全恢复或重试；失败不覆盖当前可用配置。
   - 状态（2026-08-29）：`ConfigStore::recover_interrupted_commit` 覆盖主配置有效/缺失/损坏与临时文件有效/无效组合，恢复在 OS writer lock 内执行并保留诊断副本；父进程强制终止已写入并 flush 临时配置的持锁子进程后，macOS 本机与 Windows runner 均验证 lock 自动释放、当前配置保留和 interrupted archive。产品备份上限仍待完成。
 - [ ] GPUI 显示错误摘要、备份位置和恢复默认 command。
@@ -1466,6 +1470,14 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       commit `62f8c8f` 的 push run `33354177622` 全绿；Windows/macOS jobs
       `99373058496`/`99373058428` 均实际通过 General -> Diagnostics 页面切换、close/reopen 和有序
       shutdown，Ubuntu job `99373058388` 通过共享 UI contract 与完整 workspace 门禁，退出条件满足。
+33. [x] `P6-CONFIG-BACKUP-RETENTION`：为正式配置提交建立有界、可审计的备份集合。
+    - 依赖：正式 `ConfigStore`、v1 -> v2 顺序迁移和环境 writer lock。
+    - 退出条件：每份备份携带格式版本、墙上时间、源 schema/revision 和原始配置；按环境限制
+      数量与总大小；系统时钟回退不误删新备份；不删除非自有文件；备份失败不替换当前配置；
+      config 定向测试、Clippy 和完整 Native workspace 门禁通过。
+    - 验收证据（2026-08-31）：v1 迁移 envelope、12 次提交后的 8 份/8 MiB 收敛、未知文件保留、
+      排序键时钟回退和 expected-revision 提交均有正式 crate 单元测试；本机完整门禁和 CI 证据
+      随本项提交记录。
 
 ## 13. 待决策清单
 

@@ -60,8 +60,17 @@ shortcuts
 
 - v1 只有 `selected_model_id`，产品启动时将非空值解释为预置模型。
 - v2 增加 `selected_model_origin`；v1 的非空 ID 顺序迁移为 `preset`，空 ID 迁移为
-  空 origin。迁移在当前环境 writer lock 内保留 `config.previous.json` 并原子写回。
+  空 origin。迁移在当前环境 writer lock 内先生成配置备份，再原子写回。
 - v2 要求 ID 与 origin 同时有值或同时为空；不探测旧 Tauri/Pinia 字段，不接受 alias。
+
+## Backup Retention
+
+- 每份备份是内部 JSON envelope，包含 `backup_format_version`、`created_at_unix_ms`、
+  `source_schema_version`、16 位小写十六进制 `source_revision` 和未迁移的原始 `config` 值。
+- 文件名使用 `config-<20-digit-order>-<5-digit-sequence>.json` 自有命名空间。排序键不会因
+  系统时钟回退而倒退；envelope 时间仍记录真实持久化墙上时间。
+- 每个环境最多保留最新 8 份、总计最多 8 MiB，最旧优先清理。其他文件不参与计数或删除。
+- 备份创建或 retention 收敛失败会中止配置替换，继续保留当前 `config.json`。
 
 ## Environment Isolation
 

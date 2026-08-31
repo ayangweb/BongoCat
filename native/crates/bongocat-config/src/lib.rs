@@ -7,11 +7,25 @@ use std::{
     fs::{File, OpenOptions, TryLockError},
     io::{self, ErrorKind, Write},
     path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 pub const BUNDLE_ID: &str = "com.ayangweb.bongo-cat";
 pub const SCHEMA_VERSION: u32 = 2;
 const PREVIOUS_SCHEMA_VERSION: u32 = 1;
+const BACKUP_FORMAT_VERSION: u32 = 1;
+const MAX_CONFIG_BACKUPS: usize = 8;
+const MAX_CONFIG_BACKUP_BYTES: u64 = 8 * 1024 * 1024;
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ConfigBackup {
+    backup_format_version: u32,
+    created_at_unix_ms: u64,
+    source_schema_version: u32,
+    source_revision: String,
+    config: serde_json::Value,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BuildEnvironment {
@@ -323,6 +337,7 @@ pub enum ConfigError {
     },
     UnsupportedSchema(u32),
     InvalidValue(&'static str),
+    BackupTooLarge,
 }
 
 impl fmt::Display for ConfigError {
@@ -341,6 +356,7 @@ impl fmt::Display for ConfigError {
                 write!(formatter, "unsupported schema_version {version}")
             }
             Self::InvalidValue(field) => write!(formatter, "invalid config value: {field}"),
+            Self::BackupTooLarge => formatter.write_str("config backup exceeds retention budget"),
         }
     }
 }
@@ -442,11 +458,117 @@ impl ConfigStore {
         config.validate()?;
         let bytes = serde_json::to_vec_pretty(config)?;
         if let Ok(current) = fs::read(&self.layout.config) {
-            write_atomic(&self.layout.backups.join("config.previous.json"), &current)?;
+            self.backup_current_unlocked(&current)?;
         }
         write_atomic(&self.layout.config, &bytes)?;
         Ok(revision_for_bytes(&bytes))
     }
+
+    fn backup_current_unlocked(&self, current: &[u8]) -> Result<(), ConfigError> {
+        let value: serde_json::Value = serde_json::from_slice(current)?;
+        let source_schema_version = value
+            .get("schema_version")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|version| u32::try_from(version).ok())
+            .ok_or(ConfigError::InvalidValue("schema_version"))?;
+        let (_, source_revision, _) = parse_config(current)?;
+        let created_at_unix_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|_| ConfigError::InvalidValue("backup.created_at_unix_ms"))?
+            .as_millis()
+            .try_into()
+            .map_err(|_| ConfigError::InvalidValue("backup.created_at_unix_ms"))?;
+        let backup = ConfigBackup {
+            backup_format_version: BACKUP_FORMAT_VERSION,
+            created_at_unix_ms,
+            source_schema_version,
+            source_revision: format!("{:016x}", source_revision.value()),
+            config: value,
+        };
+        let bytes = serde_json::to_vec_pretty(&backup)?;
+        if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_CONFIG_BACKUP_BYTES {
+            return Err(ConfigError::BackupTooLarge);
+        }
+        let path = next_backup_path(&self.layout.backups, created_at_unix_ms)?;
+        write_atomic(&path, &bytes)?;
+        prune_config_backups(&self.layout.backups)
+    }
+}
+
+fn next_backup_path(backups: &Path, created_at_unix_ms: u64) -> Result<PathBuf, ConfigError> {
+    let mut newest = None;
+    for entry in fs::read_dir(backups)? {
+        let entry = entry?;
+        let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        if let Some(order) = parse_owned_backup_name(&name) {
+            newest = Some(newest.map_or(order, |current| std::cmp::max(current, order)));
+        }
+    }
+    let (order_millis, first_sequence) = match newest {
+        Some((newest_millis, newest_sequence)) if newest_millis >= created_at_unix_ms => {
+            match newest_sequence.checked_add(1) {
+                Some(sequence) => (newest_millis, sequence),
+                None => (newest_millis.saturating_add(1), 0),
+            }
+        }
+        _ => (created_at_unix_ms, 0),
+    };
+    for sequence in first_sequence..=u16::MAX {
+        let path = backups.join(format!("config-{order_millis:020}-{sequence:05}.json"));
+        if !path.exists() {
+            return Ok(path);
+        }
+    }
+    Err(ConfigError::Io(io::Error::new(
+        ErrorKind::AlreadyExists,
+        "config backup filename space exhausted",
+    )))
+}
+
+fn prune_config_backups(backups: &Path) -> Result<(), ConfigError> {
+    let mut entries = Vec::new();
+    for entry in fs::read_dir(backups)? {
+        let entry = entry?;
+        let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        if is_owned_backup_name(&name) {
+            entries.push((name, entry.path(), entry.metadata()?.len()));
+        }
+    }
+    entries.sort_by(|left, right| left.0.cmp(&right.0));
+    let mut total_bytes = entries.iter().map(|entry| entry.2).sum::<u64>();
+    let remove_count = entries.len().saturating_sub(MAX_CONFIG_BACKUPS);
+    let mut removed = 0_usize;
+    for (_, path, size) in entries {
+        if removed < remove_count || total_bytes > MAX_CONFIG_BACKUP_BYTES {
+            fs::remove_file(path)?;
+            total_bytes = total_bytes.saturating_sub(size);
+            removed += 1;
+        }
+    }
+    Ok(())
+}
+
+fn is_owned_backup_name(name: &str) -> bool {
+    parse_owned_backup_name(name).is_some()
+}
+
+fn parse_owned_backup_name(name: &str) -> Option<(u64, u16)> {
+    let stem = name
+        .strip_prefix("config-")
+        .and_then(|name| name.strip_suffix(".json"))?;
+    let (timestamp, sequence) = stem.split_once('-')?;
+    if timestamp.len() != 20
+        || sequence.len() != 5
+        || !timestamp.bytes().all(|byte| byte.is_ascii_digit())
+        || !sequence.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return None;
+    }
+    Some((timestamp.parse().ok()?, sequence.parse().ok()?))
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), ConfigError> {
@@ -539,13 +661,7 @@ mod tests {
         assert_ne!(next_revision, initial_revision);
         let stale = store.commit_if_revision(&config, initial_revision);
         assert!(matches!(stale, Err(ConfigError::RevisionConflict { .. })));
-        assert!(
-            store
-                .layout()
-                .backups
-                .join("config.previous.json")
-                .is_file()
-        );
+        assert_eq!(config_backup_paths(store.layout()).len(), 1);
     }
 
     #[test]
@@ -628,13 +744,85 @@ mod tests {
             migrated.model.selected_model_origin,
             Some(SelectedModelOrigin::Preset)
         );
-        assert_eq!(
-            fs::read(store.layout().backups.join("config.previous.json"))
-                .expect("migration backup"),
-            original
-        );
+        let backup_paths = config_backup_paths(store.layout());
+        assert_eq!(backup_paths.len(), 1);
+        let backup: ConfigBackup =
+            serde_json::from_slice(&fs::read(&backup_paths[0]).expect("migration backup"))
+                .expect("backup envelope");
+        assert_eq!(backup.backup_format_version, BACKUP_FORMAT_VERSION);
+        assert_eq!(backup.source_schema_version, PREVIOUS_SCHEMA_VERSION);
+        assert_eq!(backup.config, v1);
+        assert!(backup.created_at_unix_ms > 0);
+        assert_eq!(backup.source_revision.len(), 16);
         let (reloaded, reloaded_revision) = store.load_or_default().expect("reload v2 config");
         assert_eq!(reloaded, migrated);
         assert_eq!(reloaded_revision, revision);
+    }
+
+    #[test]
+    fn config_backups_are_bounded_and_do_not_remove_unowned_files() {
+        let base = tempdir().expect("temp directory");
+        let store = ConfigStore::new(StorageLayout::under(
+            base.path(),
+            BuildEnvironment::Development,
+        ))
+        .expect("config store");
+        let (mut config, _) = store.load_or_default().expect("default config");
+        let unowned = store.layout().backups.join("manual-note.json");
+        fs::write(&unowned, b"keep").expect("unowned backup marker");
+
+        for scale_percent in 101..=112 {
+            config.overlay.scale_percent = scale_percent;
+            store.commit(&config).expect("bounded backup commit");
+        }
+
+        let backup_paths = config_backup_paths(store.layout());
+        assert_eq!(backup_paths.len(), MAX_CONFIG_BACKUPS);
+        let total_bytes = backup_paths
+            .iter()
+            .map(|path| fs::metadata(path).expect("backup metadata").len())
+            .sum::<u64>();
+        assert!(total_bytes <= MAX_CONFIG_BACKUP_BYTES);
+        assert_eq!(fs::read(unowned).expect("unowned marker"), b"keep");
+
+        let retained_scales = backup_paths
+            .iter()
+            .map(|path| {
+                let backup: ConfigBackup =
+                    serde_json::from_slice(&fs::read(path).expect("backup bytes"))
+                        .expect("backup envelope");
+                assert_eq!(backup.source_schema_version, SCHEMA_VERSION);
+                backup.config["overlay"]["scale_percent"]
+                    .as_u64()
+                    .expect("backup scale")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(retained_scales, (104..=111).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn backup_order_does_not_regress_when_the_wall_clock_moves_backwards() {
+        let base = tempdir().expect("temp directory");
+        let backups = base.path();
+        let newest = backups.join("config-00000000000000000100-00004.json");
+        fs::write(&newest, b"existing").expect("existing backup");
+
+        assert_eq!(
+            next_backup_path(backups, 50).expect("next backup path"),
+            backups.join("config-00000000000000000100-00005.json")
+        );
+        assert!(!is_owned_backup_name("config-100-5.json"));
+        assert!(!is_owned_backup_name("manual-note.json"));
+    }
+
+    fn config_backup_paths(layout: &StorageLayout) -> Vec<PathBuf> {
+        let mut paths = fs::read_dir(&layout.backups)
+            .expect("backup directory")
+            .map(|entry| entry.expect("backup entry"))
+            .filter(|entry| entry.file_name().to_str().is_some_and(is_owned_backup_name))
+            .map(|entry| entry.path())
+            .collect::<Vec<_>>();
+        paths.sort();
+        paths
     }
 }
