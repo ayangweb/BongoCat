@@ -1537,16 +1537,19 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       commit `260083d` 的 pull request run `33369531252` 全绿；Windows/macOS/Ubuntu Native jobs
       `99417224388`/`99417224402`/`99417224398` 通过完整 format、Clippy、workspace test、
       release/Production 与平台 smoke，Windows input/config job `99417224387` 同时通过。
-37. [ ] `P6-CONFIG-INTERRUPTED-COMMIT`：把强杀中断后的确定性配置恢复提升到正式产品 store。
+37. [x] `P6-CONFIG-INTERRUPTED-COMMIT`：把强杀中断后的确定性配置恢复提升到正式产品 store。
     - 依赖：正式 `ConfigStore`、`P6-CONFIG-BACKUP-RECOVERY` 和环境 writer lock。
     - 退出条件：正式提交以固定同目录 `config.json.tmp` 执行 flush、备份、跨平台原子替换和提交后
       验证；有效/缺失/损坏 current 与有效/无效 temp 组合均保守恢复；未来 schema temp 原样保留；
       stale/invalid archive 每环境合计最多 4 份/8 MiB，未知文件与另一环境不受影响；强杀持锁
       子进程后 OS lock 释放且启动在 1 秒内有界重试；app 只公开匿名 action；config/app 定向测试、
       完整 Native workspace、三平台 CI 和 Windows input/config job 通过。
-    - 状态（2026-08-31）：正式 store、状态机、归档、强杀子进程回归和 app 集成已在本机实现；
-      `bongocat-config` 21 passed（另 1 个 child helper ignored）、`bongocat-app` 27 passed，定向
-      Clippy 通过。等待完整本地门禁与三平台 CI 后勾选。
+    - 验收证据（2026-08-31）：正式 store、状态机、有界归档、未来 schema 保留、强杀子进程
+      回归和匿名 app action 已实现；本机完整 Native workspace 与仓库策略门禁通过。commit
+      `0b7b118` 的 pull request run `33371888571` 全绿；Windows/macOS/Ubuntu Native jobs
+      `99424654786`/`99424654816`/`99424654950` 通过完整 format、Clippy、workspace test、
+      release/Production 与平台 smoke，Windows input/config job `99424654701` 实际通过 Windows
+      原子替换、强杀 lock 释放、启动恢复和真实存储路径测试。
 
 ## 13. 待决策清单
 
