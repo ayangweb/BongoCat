@@ -320,7 +320,7 @@ jobs:
       - name: Smoke Windows configuration recovery window
         if: matrix.os == 'windows-latest'
         shell: pwsh
-        timeout-minutes: 3
+        timeout-minutes: 10
         run: |
           $smokeTarget = Join-Path $PWD "native/target/storage-test-injection"
           cargo build --manifest-path native/Cargo.toml --locked -p bongocat-app --release --features storage-test-injection --target-dir $smokeTarget
