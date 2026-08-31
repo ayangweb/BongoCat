@@ -232,6 +232,9 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
 - 可靠队列溢出时必须清空无法证明顺序的缓存，并在队首注入 `Reset`；原始失败 item 返回 producer，溢出、恢复和被清理 item 数量进入诊断 snapshot。
 - 鼠标移动和摇杆轴可以合并为最新值，不能阻塞边沿事件。
 - 手柄 axis latest-value 以 `{device_id, connection_generation, axis}` 为 key 并限制总 key 数；每次连接分配新 generation，断开后旧 generation 的迟到样本不得作用于重连设备。
+- Runtime 在 latest-value 消费后统一应用 `GamepadAxisSettings` 的 stick/trigger dead-zone；平台
+  adapter 只负责原始范围归一化和无效值诊断，不把设备默认 dead-zone 写入共享协议。轴值随后以
+  `ModelInputSnapshot` 的不可变字段投影给 renderer。
 - 动画和延迟使用单调时钟 `Instant`，持久化时间才使用墙上时钟。
 - `motion_stop` 只作用于匹配的当前动作。非零 `FadeOutTime` 在 runtime snapshot 中保留
   active identity 和首次 stop command sequence，renderer 以正弦权重淡出并在结束帧后

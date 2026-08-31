@@ -530,9 +530,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 定义鼠标按钮、滚轮、移动和拖动语义。
 - [ ] 定义手柄按钮、axis、trigger、dead-zone 和断开复位。
   - 状态（2026-08-31）：正式 runtime 已接入带 device generation 的 16 个标准手柄按钮、可靠
-    pressed edge、匿名计数和 Reset；左右摇杆按键已投影到 Cubism Stick 参数。Gamepad axis/
-    trigger 的 latest-value producer、dead-zone、平台采集与连接/断开生命周期仍由后续
-    `P2-GAMEPAD-RUNTIME` 任务完成。
+    pressed edge、匿名计数和 Reset；六轴/trigger 的 generation-keyed latest-value、dead-zone
+    与 Stick 参数投影已完成。平台采集、连接/断开生命周期和实机验证仍由后续
+    `P2-GAMEPAD-RUNTIME` 子任务完成。
 - [x] 每个 pressed key 记录来源、按下时间和最后校正时间。
   - 验收证据（2026-08-30）：runtime owner 的私有 `PressedRecord` 保存 `InputSource`、
     `MonotonicMillis pressed_at` 与最近一次仍按下校正时间；单元测试固定三字段，并确保
@@ -1696,17 +1696,27 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
         native/Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
         --target-dir native/target/storage-test-injection -- --settings-window-state-smoke` 输出
       `settings window state restored after restart`。workflow `33395834870` 的 Native workspace
-      jobs `99500010100`（Ubuntu）、`99500010122`（macOS）和 `99500010167`（Windows）以及
-      Windows input/config job `99500010128` 全部通过；Windows 原生状态 smoke 输出与 macOS
-      release smoke 一致。Windows 实机显示器/DPI 热切换仍属于后续平台矩阵。
+        jobs `99500010100`（Ubuntu）、`99500010122`（macOS）和 `99500010167`（Windows）以及
+        Windows input/config job `99500010128` 全部通过；Windows 原生状态 smoke 输出与 macOS
+        release smoke 一致。Windows 实机显示器/DPI 热切换仍属于后续平台矩阵。
 45. [ ] `P2-GAMEPAD-RUNTIME`：将双平台 GameController/XInput producer 接入正式 runtime。
     - 依赖：`InputControl::Gamepad` 按钮语义、Gamepad axis keyed latest-value contract、现有
       Windows/macOS 平台 producer spike。
     - 退出条件：按钮边沿与连接代次进入可靠 runtime 队列，六轴/trigger 使用独立 latest-value
       通道并应用 dead-zone/范围归一化；断开、重连、overflow 和 shutdown 不残留 pressed 或旧
       axis；三平台 contract、双平台 producer smoke、模型 Stick 参数回归和完整 Native 门禁通过。
-    - 状态（2026-08-31）：本批先提升共享按钮类型和 runtime/model snapshot 投影；平台 producer
-      与 axis 通道仍未接入，未声称手柄功能完成。
+    - [x] 建立正式 runtime 的 generation-keyed axis latest-value transport。
+      - 状态（2026-08-31）：`bongocat-runtime` 新增六轴/trigger 强类型 key/sample、固定 24 key
+        容量、按 key 合并、非单调时间/非有限/越界/过期 generation 拒绝、重连淘汰旧 pending
+        样本和 shutdown 拒绝发布；transport 诊断进入 `RuntimeSnapshot`。
+    - [x] 在 runtime 应用可配置 stick/trigger dead-zone，并投影到 ModelInputSnapshot。
+      - 状态（2026-08-31）：`GamepadAxisSettings` 拒绝无效 dead-zone，stick 使用对称重映射、
+        trigger 使用单侧重映射；默认值仅为 runtime fallback，正式配置字段仍待设置 schema。
+        `StickLeft/Right X/Y` 已进入 renderer 参数，Reset 会清空轴值。
+    - [ ] 接入 Windows XInput 和 macOS GameController producer 的连接、按钮、axis 生命周期。
+    - [ ] 将 producer overflow、断开/重连和 shutdown 诊断统一映射到 runtime snapshot。
+    - 状态（2026-08-31）：本批完成共享 runtime axis 闭环和 contract 回归；平台 producer 与
+      实机 smoke 仍未接入，未声称手柄功能完成。
 
 ## 13. 待决策清单
 

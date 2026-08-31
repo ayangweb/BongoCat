@@ -448,6 +448,10 @@ fn apply_model_input(
             ProductParameter::StickRightDown,
             f32::from(input.stick_right_down),
         ),
+        (ProductParameter::StickLeftX, input.stick_left_x),
+        (ProductParameter::StickLeftY, input.stick_left_y),
+        (ProductParameter::StickRightX, input.stick_right_x),
+        (ProductParameter::StickRightY, input.stick_right_y),
     ] {
         match model.set_normalized_parameter(parameter, value) {
             Ok(ParameterUpdate::Applied { .. } | ParameterUpdate::Unsupported) => {}

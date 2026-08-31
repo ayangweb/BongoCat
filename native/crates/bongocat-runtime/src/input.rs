@@ -101,6 +101,37 @@ pub struct GamepadButtonKey {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum GamepadAxis {
+    LeftStickX,
+    LeftStickY,
+    RightStickX,
+    RightStickY,
+    LeftTrigger,
+    RightTrigger,
+}
+
+impl GamepadAxis {
+    pub const ALL: [Self; 6] = [
+        Self::LeftStickX,
+        Self::LeftStickY,
+        Self::RightStickX,
+        Self::RightStickY,
+        Self::LeftTrigger,
+        Self::RightTrigger,
+    ];
+
+    pub const fn is_trigger(self) -> bool {
+        matches!(self, Self::LeftTrigger | Self::RightTrigger)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct GamepadAxisKey {
+    pub connection: GamepadConnection,
+    pub axis: GamepadAxis,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum InputControl {
     Key(PhysicalKey),
     Mouse(MouseButton),
@@ -294,6 +325,12 @@ pub struct ModelInputSnapshot {
     pub mouse_right_down: bool,
     pub stick_left_down: bool,
     pub stick_right_down: bool,
+    pub stick_left_x: f32,
+    pub stick_left_y: f32,
+    pub stick_right_x: f32,
+    pub stick_right_y: f32,
+    pub left_trigger: f32,
+    pub right_trigger: f32,
     pub pointer_x: f32,
     pub pointer_y: f32,
     pub pointer_z: f32,
