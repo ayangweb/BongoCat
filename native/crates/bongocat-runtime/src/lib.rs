@@ -1047,7 +1047,7 @@ struct PendingModelActivation {
 
 #[derive(Default)]
 struct GamepadAxisValues {
-    values: BTreeMap<GamepadAxisKey, f32>,
+    values: BTreeMap<GamepadAxisKey, GamepadAxisSample>,
 }
 
 impl GamepadAxisValues {
@@ -1061,22 +1061,35 @@ impl GamepadAxisValues {
                 key.connection.device_id != sample.key.connection.device_id
                     || key.connection.generation == sample.key.connection.generation
             });
-            self.values.insert(sample.key, sample.value);
+            self.values.insert(sample.key, sample);
         }
         true
     }
 
-    fn project(&self, settings: GamepadAxisSettings) -> [f32; 6] {
-        let Some(connection) = self.values.keys().map(|key| key.connection).min() else {
+    fn activate_connection(
+        &mut self,
+        connection: GamepadConnection,
+        connected_at: MonotonicMillis,
+    ) {
+        self.values
+            .retain(|key, sample| key.connection != connection || sample.at >= connected_at);
+    }
+
+    fn project(&self, input_state: &InputState, settings: GamepadAxisSettings) -> [f32; 6] {
+        let Some(connection) = self
+            .values
+            .keys()
+            .filter(|key| input_state.is_gamepad_connected(key.connection))
+            .map(|key| key.connection)
+            .min()
+        else {
             return [0.0; 6];
         };
         let mut values = [0.0; 6];
-        for (key, value) in self
-            .values
-            .iter()
-            .filter(|(key, _)| key.connection == connection)
-        {
-            values[key.axis as usize] = settings.apply(key.axis, *value);
+        for (key, value) in self.values.iter().filter(|(key, _)| {
+            key.connection == connection && input_state.is_gamepad_connected(key.connection)
+        }) {
+            values[key.axis as usize] = settings.apply(key.axis, value.value);
         }
         values
     }
@@ -1279,15 +1292,30 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                     WorkerCommand::Product(RuntimeCommand::ApplyInput(envelope)) => {
                         let envelope = Arc::unwrap_or_clone(envelope);
                         let input_reset = matches!(envelope.event, InputEvent::Reset { .. });
+                        let connected = match &envelope.event {
+                            InputEvent::GamepadConnected { connection, at } => {
+                                Some((*connection, *at))
+                            }
+                            _ => None,
+                        };
                         let disconnected = match &envelope.event {
                             InputEvent::GamepadDisconnected { connection, .. } => Some(*connection),
                             _ => None,
                         };
-                        input_state.apply(envelope);
+                        let disposition = input_state.apply(envelope);
                         if input_reset {
                             gamepad_axis_values.clear();
                         } else if let Some(connection) = disconnected {
                             gamepad_axis_values.clear_connection(connection);
+                        }
+                        if let Some((connection, at)) = connected
+                            && matches!(
+                                disposition,
+                                InputDisposition::Applied
+                                    | InputDisposition::AppliedAfterSequenceGap { .. }
+                            )
+                        {
+                            gamepad_axis_values.activate_connection(connection, at);
                         }
                         let activation_pending = pending_model.is_some();
                         publish(&snapshot, |current| {
@@ -1884,7 +1912,7 @@ fn compose_model_input(
     gamepad_axis_settings: GamepadAxisSettings,
 ) -> ModelInputSnapshot {
     let mut input = input_state.model_snapshot(input_bindings, normalized_cursor);
-    let axes = gamepad_axis_values.project(gamepad_axis_settings);
+    let axes = gamepad_axis_values.project(input_state, gamepad_axis_settings);
     input.stick_left_x = axes[GamepadAxis::LeftStickX as usize];
     input.stick_left_y = axes[GamepadAxis::LeftStickY as usize];
     input.stick_right_x = axes[GamepadAxis::RightStickX as usize];
@@ -2405,6 +2433,64 @@ mod tests {
         let stopped = owner.shutdown(TIMEOUT).expect("clean shutdown");
         assert_eq!(stopped.model_input.stick_left_x, 0.0);
         assert_eq!(stopped.gamepad_axis_transport.pending, 0);
+    }
+
+    #[test]
+    fn runtime_discards_axis_samples_until_the_connection_is_active() {
+        let owner = RuntimeOwner::start(true, 8);
+        let client = owner.client();
+        client
+            .wait_for_revision(1, TIMEOUT)
+            .expect("ready snapshot");
+        let axis = owner.gamepad_axis_producer();
+        let connection = axis.connect(0).expect("gamepad connection allocated");
+        let input = owner.input_producer();
+
+        axis.publish(GamepadAxisSample {
+            key: GamepadAxisKey {
+                connection,
+                axis: GamepadAxis::LeftStickX,
+            },
+            value: 0.9,
+            at: MonotonicMillis::new(0),
+        })
+        .expect("axis sample accepted");
+        let connected = input
+            .publish(InputEvent::GamepadConnected {
+                connection,
+                at: MonotonicMillis::new(1),
+            })
+            .expect("connection accepted");
+        let before_axis = client
+            .wait_for_input_sequence(connected, TIMEOUT)
+            .expect("connection consumed");
+        assert_eq!(before_axis.model_input.stick_left_x, 0.0);
+
+        axis.publish(GamepadAxisSample {
+            key: GamepadAxisKey {
+                connection,
+                axis: GamepadAxis::LeftStickX,
+            },
+            value: 0.9,
+            at: MonotonicMillis::new(2),
+        })
+        .expect("active axis sample accepted");
+        let edge = input
+            .publish(InputEvent::Edge {
+                control: InputControl::Gamepad(GamepadButtonKey {
+                    connection,
+                    button: GamepadButton::South,
+                }),
+                edge: InputEdge::Down,
+                source: InputSource::Capture,
+                at: MonotonicMillis::new(2),
+            })
+            .expect("button edge accepted");
+        let active = client
+            .wait_for_input_sequence(edge, TIMEOUT)
+            .expect("active edge consumed");
+        assert!(active.model_input.stick_left_x > 0.8);
+        owner.shutdown(TIMEOUT).expect("clean shutdown");
     }
 
     #[test]

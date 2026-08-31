@@ -49,6 +49,10 @@ published = coalesced + consumed + pending
 
 手柄 axis 槽位以 `{device_id, connection_generation, axis}` 为 key，并限制活动 key 总数。可靠的 `device_connected` 为该连接分配单调 generation；`device_disconnected` 清空该 generation 的 runtime axis/pressed state 和尚未消费的 axis sample。重连即使复用平台 device id 也必须获得新 generation，旧 callback 的迟到 sample 只能被计数并忽略。每个 accepted sample 最终由 coalesced、consumed、disconnect discard 或 pending 之一解释；新增 key 超容量必须显式报错，不能扩成无界 map。
 
+Axis sample 只有在对应 connection 已被 runtime 接受后才可进入模型输入；连接事件之前到达
+latest-value 槽位的 sample 直接丢弃，不能在后续连接时回放。投影阶段仍需再次过滤 active
+connection，防止 worker 在连接/断开边界观察到陈旧 generation。
+
 ## 物理键
 
 Runtime 使用布局无关的稳定物理键名。左右修饰键必须区分，例如 `ControlLeft` 和 `ControlRight`。字符和 UI 显示名称由单独映射层产生。

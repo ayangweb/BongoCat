@@ -1873,7 +1873,9 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
         input stop 会在 runtime shutdown 前发布最终 `clean_shutdown` 快照；runtime stop 后拒绝更新并
         保留最后值。共享 transport、双平台合并 contract 和权限实机 smoke 的 final-snapshot 断言已覆盖。
     - 状态（2026-09-01）：共享 runtime、正式配置、运行期诊断与双平台正式 producer 已接线；
-      物理 controller、多手柄/profile 和热插拔 smoke 仍未完成，未声称手柄功能完成。
+      物理 controller、多手柄/profile 和热插拔 smoke 仍未完成，未声称手柄功能完成。runtime
+      现仅接受 active connection 的 axis sample，连接前缓存和陈旧 generation 不会在后续连接时回放，
+      并有回归测试锁定该边界。
 
 46. [ ] `P5-SHORTCUT-CONTRACT`：冻结快捷键 chord 的规范化与冲突校验前置契约。
     - 依赖：Native config v3、`InputEvent`/`PhysicalKey` 语义和后续 GPUI 快捷键编辑页。

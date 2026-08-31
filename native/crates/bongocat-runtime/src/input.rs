@@ -397,6 +397,10 @@ pub(crate) struct InputState {
 }
 
 impl InputState {
+    pub(crate) fn is_gamepad_connected(&self, connection: GamepadConnection) -> bool {
+        self.active_gamepads.contains(&connection)
+    }
+
     pub(crate) fn apply(&mut self, envelope: SequencedInputEvent) -> InputDisposition {
         let gap = if let Some(last_sequence) = self.last_sequence {
             if envelope.sequence == last_sequence {
