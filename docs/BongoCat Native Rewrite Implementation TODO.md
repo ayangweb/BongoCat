@@ -1565,8 +1565,9 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       `e2ced51` 的 pull request run `33374202985` 全绿；Windows/macOS/Ubuntu Native jobs
       `99431897523`/`99431897620`/`99431897612`、Windows input/config job `99431897588`、
       Windows GPUI jobs `99431897503`/`99431897512` 和 macOS GPUI job `99431897618` 均通过。
-      现有 CI 尚未专门启动损坏 current 且无备份的 recovery-only 产品入口，因此 recovery window
-      smoke 仍待补齐，保持未勾选。
+      正式产品另已加入 `--configuration-recovery-smoke`，只在独立临时存储根写入损坏 current，
+      验证匿名 recovery snapshot、真实 recovery-only GPUI 窗口、settings service 有序停止与临时
+      数据清理；本机 macOS smoke 通过，Windows/macOS CI smoke 仍待本项提交验证，保持未勾选。
 
 ## 13. 待决策清单
 

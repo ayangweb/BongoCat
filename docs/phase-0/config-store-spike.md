@@ -67,6 +67,8 @@ quarantine 也已各自具有独立有界保留策略。
 recovery-only GPUI 窗口和显式 typed 恢复默认 command；恢复前禁止业务写入，恢复后要求重启，原
 损坏字节继续进入有界 quarantine。commit `e2ced51` 的 run `33374202985` 已通过 Windows/macOS/
 Ubuntu Native workspace、双平台 GPUI smoke 和 Windows input/config job，但尚未专门启动损坏
-current 且无备份的 recovery-only 产品窗口。权限、磁盘满和目标占用失败注入仍未完成；这些必须
-在 Phase 6 配置 crate 与正式 settings service 中分别验证。进程存活不通过 PID、时间戳
+current 且无备份的 recovery-only 产品窗口。正式产品现已增加只使用独立临时存储根的受控
+`--configuration-recovery-smoke`，本机 macOS 已验证 recovery snapshot、真实窗口、service join
+和临时数据清理；双平台 CI 证据仍待本项提交。权限、磁盘满和目标占用失败注入仍未完成；这些
+必须在 Phase 6 配置 crate 与正式 settings service 中分别验证。进程存活不通过 PID、时间戳
 或删除 lock file 猜测，异常退出后的释放由 OS file lock 生命周期保证。

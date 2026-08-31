@@ -169,6 +169,14 @@ impl Application {
         )
     }
 
+    #[doc(hidden)]
+    pub fn start_with_layout_for_smoke(
+        layout: StorageLayout,
+        preset_root: impl AsRef<Path>,
+    ) -> Result<Self, ApplicationError> {
+        Self::start_with_layout_internal(layout, preset_root.as_ref(), true)
+    }
+
     #[cfg(test)]
     fn start_with_layout(layout: StorageLayout) -> Result<Self, ApplicationError> {
         Self::start_with_layout_internal(layout, repository_preset_root().as_path(), false)

@@ -708,6 +708,30 @@ impl SettingsView {
         if recovery.title.is_empty() || recovery.detail.is_empty() {
             return Err("diagnostics page did not project configuration recovery".to_owned());
         }
+        if matches!(
+            snapshot.configuration_status,
+            SettingsConfigurationStatus::RecoveryRequired { .. }
+        ) {
+            if !recovery.attention || !recovery.can_restore {
+                return Err("recovery diagnostics omitted the restore action".to_owned());
+            }
+            let restore = self
+                .accessibility_tree()
+                .nodes
+                .into_iter()
+                .find(|node| node.id == ACCESSIBILITY_RESTORE_DEFAULTS)
+                .ok_or_else(|| {
+                    "recovery diagnostics omitted the accessible restore action".to_owned()
+                })?;
+            if restore.role != AccessibilityRole::Button
+                || restore.label != "Restore default configuration"
+                || restore.disabled
+                || !restore.supports_click
+                || !restore.supports_focus
+            {
+                return Err("recovery restore accessibility semantics are invalid".to_owned());
+            }
+        }
         Ok(())
     }
 

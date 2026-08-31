@@ -35,6 +35,7 @@ struct RunOptions {
     run_duration: Duration,
     settings_window_smoke: bool,
     models_page_smoke: bool,
+    configuration_recovery_smoke: bool,
     system_menu_smoke: bool,
     #[cfg(target_os = "macos")]
     application_reopen_smoke: bool,
@@ -51,6 +52,7 @@ impl RunOptions {
         let mut run_seconds = DEFAULT_RUN_SECONDS;
         let mut settings_window_smoke = false;
         let mut models_page_smoke = false;
+        let mut configuration_recovery_smoke = false;
         let mut system_menu_smoke = false;
         #[cfg(target_os = "macos")]
         let mut application_reopen_smoke = false;
@@ -73,6 +75,7 @@ impl RunOptions {
                     models_page_smoke = true;
                     settings_window_smoke = true;
                 }
+                "--configuration-recovery-smoke" => configuration_recovery_smoke = true,
                 "--system-menu-smoke" => system_menu_smoke = true,
                 #[cfg(target_os = "macos")]
                 "--application-reopen-smoke" => application_reopen_smoke = true,
@@ -92,6 +95,7 @@ impl RunOptions {
             run_duration: Duration::from_secs(run_seconds),
             settings_window_smoke,
             models_page_smoke,
+            configuration_recovery_smoke,
             system_menu_smoke,
             #[cfg(target_os = "macos")]
             application_reopen_smoke,
@@ -144,10 +148,10 @@ impl std::error::Error for RunOptionsError {}
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn usage() -> &'static str {
     #[cfg(target_os = "windows")]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit.";
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--configuration-recovery-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit.";
 
     #[cfg(target_os = "macos")]
-    "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit."
+    "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--configuration-recovery-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit."
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -483,6 +487,97 @@ fn run_configuration_recovery_mode(
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
+struct RecoverySmokeRoot(PathBuf);
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+impl RecoverySmokeRoot {
+    fn cleanup(mut self) -> io::Result<()> {
+        let result = std::fs::remove_dir_all(&self.0);
+        self.0 = PathBuf::new();
+        result
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+impl Drop for RecoverySmokeRoot {
+    fn drop(&mut self) {
+        if !self.0.as_os_str().is_empty() {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn run_configuration_recovery_smoke() -> Result<(), Box<dyn std::error::Error>> {
+    use bongocat_config::{BuildEnvironment, ConfigStore, StorageLayout};
+
+    let root = env::temp_dir().join(format!(
+        "bongocat-recovery-window-smoke-{}",
+        std::process::id()
+    ));
+    if root.exists() {
+        std::fs::remove_dir_all(&root)?;
+    }
+    let root = RecoverySmokeRoot(root);
+    let layout = StorageLayout::under(&root.0, BuildEnvironment::Development);
+    let _store = ConfigStore::new(layout.clone())?;
+    std::fs::write(&layout.config, b"corrupt-current-without-backups")?;
+    let application =
+        bongocat_app::Application::start_with_layout_for_smoke(layout, development_preset_root())?;
+    if application.is_operational() {
+        return Err("recovery smoke unexpectedly started an operational application".into());
+    }
+    write_smoke_status("configuration recovery required")?;
+    let service = bongocat_app::ApplicationSettingsService::start(application)?;
+    let client = service.client();
+    let snapshot = client.read_snapshot_blocking()?;
+    if !matches!(
+        snapshot.configuration_status,
+        bongocat_ui::SettingsConfigurationStatus::RecoveryRequired { checked_backups: 0 }
+    ) {
+        return Err("recovery smoke did not project the expected recovery snapshot".into());
+    }
+    let gpui_application = GpuiApplication::new();
+    let smoke_client = client.clone();
+    gpui_application.run(move |cx| {
+        let window = match open_settings_window(smoke_client, |cx| cx.quit(), cx) {
+            Ok(window) => window,
+            Err(error) => {
+                let _ = write_smoke_status(&format!("recovery window failed: {error}"));
+                cx.quit();
+                return;
+            }
+        };
+        let _ = write_smoke_status("recovery window opened");
+        cx.spawn(async move |cx| {
+            let mut diagnostics_verified = false;
+            for _ in 0..200 {
+                let diagnostics =
+                    window.update(cx, |view, _, cx| view.show_diagnostics_page_for_smoke(cx));
+                if matches!(diagnostics, Ok(Ok(()))) {
+                    diagnostics_verified = true;
+                    break;
+                }
+                Timer::after(Duration::from_millis(10)).await;
+            }
+            if diagnostics_verified {
+                let _ = write_smoke_status("recovery diagnostics verified");
+            }
+            Timer::after(Duration::from_millis(1000)).await;
+            let shutdown = client.shutdown().await;
+            let joined = service.join();
+            let cleanup = root.cleanup();
+            if shutdown.is_ok() && joined.is_ok() && cleanup.is_ok() {
+                let _ = write_smoke_status("recovery service stopped");
+            }
+            let _ = cx.update(|cx| cx.quit());
+        })
+        .detach();
+    });
+    Ok(())
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let run_options = match RunOptions::parse(env::args().skip(1)) {
         Ok(options) => options,
@@ -492,6 +587,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Err(error) => return Err(Box::new(error)),
     };
+    if run_options.configuration_recovery_smoke {
+        return run_configuration_recovery_smoke();
+    }
     #[cfg(target_os = "macos")]
     if run_options.startup_item_smoke {
         return run_startup_item_smoke();
@@ -1583,6 +1681,7 @@ mod tests {
                 run_duration: Duration::from_secs(30),
                 settings_window_smoke: false,
                 models_page_smoke: false,
+                configuration_recovery_smoke: false,
                 system_menu_smoke: false,
                 #[cfg(target_os = "macos")]
                 application_reopen_smoke: false,
@@ -1630,6 +1729,15 @@ mod tests {
         assert!(!options.startup_item_smoke);
         #[cfg(target_os = "windows")]
         assert!(!options.single_instance_smoke);
+    }
+
+    #[test]
+    fn configuration_recovery_smoke_is_opt_in() {
+        let options = RunOptions::parse(["--configuration-recovery-smoke".to_owned()])
+            .expect("configuration recovery smoke options");
+        assert!(options.configuration_recovery_smoke);
+        assert!(!options.settings_window_smoke);
+        assert!(!options.models_page_smoke);
     }
 
     #[test]
