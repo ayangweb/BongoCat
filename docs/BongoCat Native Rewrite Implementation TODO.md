@@ -697,15 +697,27 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 - 状态（2026-08-29）：`spikes/config-store/` 已建立 typed NativeConfig、Bundle ID、Development/Production 隔离目录、snake_case 序列化、schema 校验、原子 commit probe、expected revision、OS writer lock contract、中断提交恢复 contract 和双平台真实 path resolver。Windows jobs 先后暴露只读 handle flush、强杀后锁释放延迟，以及首次启动 recovery 后立即重锁提交默认值的竞态；启动恢复以 10 ms 间隔有界重试最多 1 秒，`load_or_default` 又把 recover/read/create-default 合并到单个 guard，普通 commit 仍立即报告竞争。备份策略和 GPUI command 边界仍待产品 crate 阶段完成，详见 `docs/phase-0/config-store-spike.md`。
 
-- [ ] 定义带 `schema_version` 的 Rust 配置结构和 JSON schema，JSON key 使用 `snake_case`。
-- [ ] 区分用户配置、运行时状态和诊断数据。
-- [ ] 为字段定义范围、默认值和跨字段约束。
+- [x] 定义带 `schema_version` 的 Rust 配置结构和 JSON schema，JSON key 使用 `snake_case`。
+  - 验收证据（2026-09-01）：`bongocat-config` 的 `NativeConfig`/`ApplicationState` 与
+    `shared/config/config.schema.json`、`state.schema.json` 同步；serde 输出使用 `snake_case`，
+    Draft 2020-12 validator 和 Native config/state fixtures 已在 workspace tests 与 CI 校验。
+- [x] 区分用户配置、运行时状态和诊断数据。
+  - 验收证据（2026-09-01）：用户配置写入 `config.json`，窗口状态写入独立 `state.json`，运行时
+    snapshot/输入诊断只经 typed API 暴露，日志和匿名 diagnostics export 不复用用户配置结构。
+- [x] 为字段定义范围、默认值和跨字段约束。
+  - 验收证据（2026-09-01）：Rust `NativeConfig::validate` 与 JSON Schema 固定 FPS、缩放、透明度、
+    dead-zone、超时和语言约束，并拒绝未配对的 model id/origin、未知字段和非法快捷键；对应
+    valid/invalid fixtures 与 config crate tests 通过。
 - [x] 在 spike 中实现不可变 `BuildEnvironment::{Development, Production}`；未知或缺失环境的打包构建失败仍待产品构建链验证。
 - [x] Windows 使用 `%APPDATA%\BongoCat\<environment>\` 数据根。
 - [x] macOS 使用 `Application Support/com.ayangweb.bongo-cat/<environment>/` 数据根。
   - 双平台 target-specific resolver test 已通过。
 - [x] 两个环境的 `config.json`、`state.json`、`models/`、`backups/`、`logs/` 和 `locks/` 相对结构一致；spike 测试逐项比较相对路径。
-- [ ] 环境不能由 CLI、进程环境变量或设置项在运行时切换，也不能 fallback 到另一环境。
+- [x] 环境不能由 CLI、进程环境变量或设置项在运行时切换，也不能 fallback 到另一环境。
+  - 验收证据（2026-09-01）：`bongocat-app/build.rs` 只在编译期读取并严格校验
+    `BONGOCAT_BUILD_ENV`，将不可变 cfg 注入应用；运行时 API 只使用该 cfg 对应的
+    `BuildEnvironment`，无 CLI/设置切换或另一环境 fallback。build-environment contract、
+    Development/Production root 隔离和跨环境应用测试通过。
 - [x] 在 spike 中实现同目录临时文件、flush、原子替换、提交后验证和上一份有效配置备份；双平台 OS file lock 与强制进程终止恢复已通过。
 - [x] 在 spike 中拒绝损坏配置并保留原始文件；中断提交恢复会保守提升有效临时文件并归档无效/陈旧副本，隔离备份保留策略、默认恢复和 GPUI 用户诊断仍未完成。
 - [ ] 配置写入去抖，退出前强制 flush。
