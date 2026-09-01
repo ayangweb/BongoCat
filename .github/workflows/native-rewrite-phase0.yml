@@ -969,7 +969,7 @@ jobs:
               [
                   str(executable),
                   "--auto-quit-ms",
-                  "2500",
+                  "6000",
                   "--menu-probe",
                   "--tooltip-probe",
               ],

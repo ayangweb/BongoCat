@@ -74,7 +74,7 @@ LaunchServices:
 
 ```text
 ./scripts/package-macos.sh
-open -W "target/package/BongoCat GPUI Spike.app" --args --auto-quit-ms 2500 --menu-probe --tooltip-probe
+open -W "target/package/BongoCat GPUI Spike.app" --args --auto-quit-ms 6000 --menu-probe --tooltip-probe
 ```
 
 The ad-hoc signature only validates local bundle integrity. It is not a
