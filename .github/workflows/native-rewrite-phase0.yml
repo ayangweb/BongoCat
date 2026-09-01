@@ -161,7 +161,7 @@ jobs:
             $stderr = Join-Path $env:RUNNER_TEMP "bongocat-product-$_.stderr.log"
             $process = Start-Process `
               -FilePath $executable `
-              -ArgumentList @("--run-seconds", "3", "--settings-window-smoke", "--models-page-smoke") `
+              -ArgumentList @("--run-seconds", "30", "--settings-window-smoke", "--models-page-smoke") `
               -NoNewWindow `
               -PassThru `
               -RedirectStandardOutput $stdout `
