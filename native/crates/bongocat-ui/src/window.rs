@@ -1243,6 +1243,22 @@ impl SettingsView {
         {
             return Err("diagnostics export accessibility semantics are invalid".to_owned());
         }
+        let clear_shortcuts = self
+            .accessibility_tree()
+            .nodes
+            .into_iter()
+            .find(|node| node.id == ACCESSIBILITY_CLEAR_SHORTCUTS)
+            .ok_or_else(|| "diagnostics omitted the accessible shortcut clear action".to_owned())?;
+        let shortcuts_present = !snapshot.shortcuts.commands.is_empty()
+            || !snapshot.shortcuts.model_behaviors.is_empty();
+        if clear_shortcuts.role != AccessibilityRole::Button
+            || clear_shortcuts.label != "Clear all shortcuts"
+            || clear_shortcuts.disabled != !shortcuts_present
+            || clear_shortcuts.supports_click != shortcuts_present
+            || clear_shortcuts.supports_focus != shortcuts_present
+        {
+            return Err("shortcut clear accessibility semantics are invalid".to_owned());
+        }
         if matches!(
             snapshot.configuration_status,
             SettingsConfigurationStatus::RecoveryRequired { .. }
