@@ -1017,6 +1017,7 @@ impl Drop for WindowsInputService {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_input_worker(
     producer: InputProducer,
     cursor_producer: CursorProducer,
@@ -1044,6 +1045,7 @@ fn run_input_worker(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 unsafe fn run_input_worker_inner(
     producer: InputProducer,
     cursor_producer: CursorProducer,
@@ -1608,6 +1610,7 @@ mod tests {
             diagnostics_producer,
             Arc::new(AtomicBool::new(false)),
             WorkerOptions::default(),
+            None,
         );
         state.diagnostics.runtime_queue_overflows = 2;
         state.diagnostics.gamepad_connections = 3;
@@ -1862,6 +1865,7 @@ mod tests {
             runtime.cursor_producer(),
             runtime.gamepad_axis_producer(),
             runtime.platform_input_diagnostics_producer(),
+            None,
             WorkerOptions {
                 drop_next_key_release: true,
             },
