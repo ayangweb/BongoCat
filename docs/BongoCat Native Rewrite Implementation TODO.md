@@ -442,12 +442,22 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 固定 stable Rust toolchain、target 和必要 components。
 - [ ] 在 workspace manifest 声明 `rust-version`，CI 验证最低版本和当前 stable，不依赖开发机偶然安装的 nightly。
 - [x] 禁止应用依赖未固定 git branch，提交 Cargo.lock。
-- [ ] 平台依赖使用 target-specific dependency，Windows feature 不进入 macOS，macOS framework 不进入 Windows。
+- [x] 平台依赖使用 target-specific dependency，Windows feature 不进入 macOS，macOS framework 不进入 Windows。
+  - 验收证据（2026-09-01）：`bongocat-platform`、`bongocat-overlay`、`bongocat-audio`、`bongocat-runtime`、
+    `bongocat-ui` 和 `bongocat-app` 的平台依赖均位于 target-specific manifest；三平台 Native workspace
+    CI 的 locked check/Clippy/test/release 组合验证了目标条件解析。
 - [ ] 审查 Cargo feature union，禁止测试/诊断/运行时 shader feature 意外进入 release 产物。
-- [ ] 业务、配置、模型和 UI crate 使用 forbid unsafe_code。
+- [x] 业务、配置、模型和 UI crate 使用 forbid unsafe_code。
+  - 验收证据（2026-09-01）：runtime/config/model/UI/app/audio/render/live2d 源入口均声明
+    `#![forbid(unsafe_code)]`；overlay 在非 Windows/macOS 共享编译路径增加同一门禁，平台 FFI 仅保留
+    target-specific wrapper，Native workspace Clippy/test/release check 通过。
 - [ ] 平台 unsafe wrapper 写明线程、指针、所有权和析构不变量。
-- [ ] 配置 rustfmt、Clippy -D warnings、cargo test 和许可证检查。
-- [ ] 配置 `cargo deny`/等价检查：license、advisory、banned source、重复高风险依赖和 unknown registry。
+- [x] 配置 rustfmt、Clippy -D warnings、cargo test 和许可证检查。
+  - 验收证据（2026-09-01）：Native 三平台 workflow 执行 locked format、workspace Clippy `-D warnings`、
+    workspace tests、release check 和 pinned dependency policy；本机同命令通过。
+- [x] 配置 `cargo deny`/等价检查：license、advisory、banned source、重复高风险依赖和 unknown registry。
+  - 验收证据（2026-09-01）：`tools/check-native-dependencies.sh` 固定 `cargo-deny 0.20.2`，对 Native
+    workspace 和独立工具执行 locked license/source policy，workflow `33480729115` 及后续 run 通过。
 - [ ] 配置 panic hook 和 release 可诊断退出。
   - 状态（2026-09-01）：正式 `Application` 入口在完成日志 writer 初始化后安装可恢复的
     process panic hook；hook 只写固定 `application/error/panicked` JSONL 事件，不读取 panic

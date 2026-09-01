@@ -1,3 +1,8 @@
+#![cfg_attr(
+    not(any(target_os = "macos", target_os = "windows")),
+    forbid(unsafe_code)
+)]
+
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "windows")]
