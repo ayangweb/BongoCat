@@ -663,8 +663,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     typed `InputEvent`、cursor/axis latest producer 和 `RuntimeCommand::Tick`，对 8 组纯输入 fixture
     的 17 个 checkpoint 比较匿名计数、左右手/鼠标投影、Reset 原因和 cursor 样本；Native workspace
     CI 会随 `cargo test --workspace` 执行，且 `Gamepad*Down` 参数会映射到正式手柄/左右手投影并断言。
-    含 model switch、motion、expression、audio 的第 9 组
-    仍只由 spike runner 验证，完整产品模型/音频 snapshot 对接仍待完成，因此总项保持未勾选。
+    状态（2026-09-01）：在 macOS/Windows 正式 runtime 集成测试中，使用三个预置模型中的
+    `standard`/`keyboard` 包、真实 model commit feedback 和可注入单调时钟执行第 9 组
+    `model-motion-expression-audio` fixture；5 个 checkpoint 已验证 model switch 清理、motion
+    priority/stop、expression selection 以及音频触发不进入 render snapshot 的契约。音频不可用时
+    motion side effect 仍被 runtime 诊断为 rejected，未阻塞动作或渲染。fixture 的物理模型轨迹、
+    可用音频设备和 GPU/实机证据仍待完成，因此总项保持未勾选。
 
 ### 3.3 Windows 输入
 

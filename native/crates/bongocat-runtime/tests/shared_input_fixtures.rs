@@ -8,6 +8,18 @@ use bongocat_runtime::{
 };
 use serde_json::Value;
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use std::sync::Arc;
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use bongocat_audio::MotionAudioClient;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use bongocat_render::{ModelCommitFeedback, ModelCommitOutcome, RenderConsumer, RenderFrame};
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use bongocat_runtime::{ExpressionId, MonotonicClock, MotionId, MotionPriority};
+
 const TIMEOUT: Duration = Duration::from_secs(2);
 
 fn repository_root() -> PathBuf {
@@ -352,6 +364,224 @@ fn assert_checkpoint(
             checkpoint["atMs"]
         );
     }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[derive(Default)]
+struct FixtureClock(std::sync::Mutex<Duration>);
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+impl FixtureClock {
+    fn set_ms(&self, value: u64) {
+        *self.0.lock().expect("fixture clock") = Duration::from_millis(value);
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+impl MonotonicClock for FixtureClock {
+    fn now(&self) -> Duration {
+        *self.0.lock().expect("fixture clock")
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn wait_for_render_frame(
+    consumer: &RenderConsumer,
+    predicate: impl Fn(&RenderFrame) -> bool,
+) -> RenderFrame {
+    let deadline = std::time::Instant::now() + TIMEOUT;
+    loop {
+        if let Some(frame) = consumer.take_latest()
+            && predicate(&frame)
+        {
+            return frame;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "render frame timed out"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn activate_fixture_model(
+    client: &bongocat_runtime::RuntimeClient,
+    consumer: &RenderConsumer,
+    model_id: &str,
+) -> bongocat_runtime::RuntimeSnapshot {
+    let actual_id = match model_id {
+        "fixture-model-a" => "standard",
+        "fixture-model-b" => "keyboard",
+        other => panic!("unsupported fixture model {other}"),
+    };
+    let model = PresetModelCatalog::open(
+        repository_root().join("native/resources/models"),
+        ModelPackageLimits::default(),
+    )
+    .expect("preset catalog")
+    .load(&ModelId::parse(actual_id).expect("model id"))
+    .expect("preset model");
+    let sequence = client
+        .send(RuntimeCommand::ActivateModel(Arc::new(model)))
+        .expect("activate fixture model");
+    let frame = wait_for_render_frame(consumer, |frame| {
+        frame
+            .model_commit
+            .is_some_and(|token| token.command_sequence == sequence)
+    });
+    let token = frame.model_commit.expect("model commit token");
+    consumer
+        .report_model_commit(ModelCommitFeedback {
+            token,
+            outcome: ModelCommitOutcome::Prepared,
+        })
+        .expect("report model commit");
+    client
+        .wait_for_command(sequence, TIMEOUT)
+        .expect("model committed")
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn fixture_motion(motion_id: &str) -> MotionId {
+    let (group, index) = match motion_id {
+        "walk" => ("CAT_motion", 0),
+        "idle" => ("CAT_motion", 1),
+        "blink" => ("CAT_motion_lock", 0),
+        other => panic!("unsupported fixture motion {other}"),
+    };
+    MotionId::new(group, index).expect("fixture motion id")
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[test]
+fn model_motion_expression_audio_fixture_matches_product_runtime() {
+    let root = repository_root().join("shared/fixtures");
+    let sequence = load(root.join("input-sequences/model-motion-expression-audio.json"));
+    let expected = load(root.join("expected-state/model-motion-expression-audio.json"));
+    let clock = Arc::new(FixtureClock::default());
+    let (owner, consumer) = RuntimeOwner::start_with_rendering_audio_and_clock(
+        true,
+        true,
+        32,
+        MotionAudioClient::unavailable(),
+        Arc::clone(&clock) as Arc<dyn MonotonicClock>,
+    );
+    let client = owner.client();
+    client
+        .wait_for_state(RuntimeState::Ready, TIMEOUT)
+        .expect("runtime ready");
+
+    let mut event_index = 0;
+    let mut audio_triggers = 0;
+    for checkpoint in expected["checkpoints"].as_array().expect("checkpoints") {
+        let at_ms = checkpoint["atMs"].as_u64().expect("checkpoint time");
+        while event_index < sequence["events"].as_array().expect("events").len()
+            && sequence["events"][event_index]["atMs"]
+                .as_u64()
+                .expect("event time")
+                <= at_ms
+        {
+            let event = &sequence["events"][event_index];
+            let event_at = event["atMs"].as_u64().expect("event time");
+            clock.set_ms(event_at);
+            match event["type"].as_str().expect("event type") {
+                "model_switch" => {
+                    activate_fixture_model(
+                        &client,
+                        &consumer,
+                        event["modelId"].as_str().expect("model id"),
+                    );
+                }
+                "motion_start" => {
+                    let priority = match event["priority"].as_str().expect("priority") {
+                        "idle" => MotionPriority::Idle,
+                        "normal" => MotionPriority::Normal,
+                        "force" => MotionPriority::Force,
+                        other => panic!("unsupported fixture priority {other}"),
+                    };
+                    let command = client
+                        .send(RuntimeCommand::StartMotion {
+                            motion: fixture_motion(event["motionId"].as_str().expect("motion id")),
+                            priority,
+                        })
+                        .expect("start fixture motion");
+                    client
+                        .wait_for_command(command, TIMEOUT)
+                        .expect("motion command");
+                }
+                "motion_stop" => {
+                    let command = client
+                        .send(RuntimeCommand::StopMotion(fixture_motion(
+                            event["motionId"].as_str().expect("motion id"),
+                        )))
+                        .expect("stop fixture motion");
+                    client
+                        .wait_for_command(command, TIMEOUT)
+                        .expect("stop command");
+                }
+                "expression_set" => {
+                    let expression = match event["expressionId"].as_str().expect("expression id") {
+                        "smile" => "live2d_expression1.exp3.json",
+                        other => panic!("unsupported fixture expression {other}"),
+                    };
+                    let command = client
+                        .send(RuntimeCommand::SetExpression(
+                            ExpressionId::new(expression).expect("expression id"),
+                        ))
+                        .expect("set fixture expression");
+                    client
+                        .wait_for_command(command, TIMEOUT)
+                        .expect("expression command");
+                }
+                "audio_trigger" => audio_triggers += 1,
+                other => panic!("unexpected non-model event {other}"),
+            }
+            event_index += 1;
+        }
+        clock.set_ms(at_ms);
+        let tick = client.send(RuntimeCommand::Tick).expect("fixture tick");
+        let snapshot = client
+            .wait_for_command(tick, TIMEOUT)
+            .expect("tick snapshot");
+        let model = snapshot.active_model.as_ref().expect("active model");
+        let expected_model = &checkpoint["model"];
+        let expected_id = match expected_model["selectedModelId"]
+            .as_str()
+            .expect("model id")
+        {
+            "fixture-model-a" => "standard",
+            "fixture-model-b" => "keyboard",
+            other => panic!("unsupported expected model {other}"),
+        };
+        assert_eq!(model.id.as_str(), expected_id, "model at {at_ms}ms");
+        let expected_motion = expected_model["activeMotion"].as_str();
+        assert_eq!(
+            snapshot
+                .active_motion
+                .as_ref()
+                .map(|active| active.motion.index()),
+            expected_motion.map(|id| fixture_motion(id).index()),
+            "motion at {at_ms}ms"
+        );
+        let expected_expression = expected_model["activeExpression"]
+            .as_str()
+            .map(|id| match id {
+                "smile" => "live2d_expression1.exp3.json",
+                other => panic!("unsupported expected expression {other}"),
+            });
+        assert_eq!(
+            snapshot
+                .active_expression
+                .as_ref()
+                .map(|active| active.expression.name()),
+            expected_expression,
+            "expression at {at_ms}ms"
+        );
+    }
+    assert_eq!(audio_triggers, 1);
+    assert!(client.snapshot().motion_audio.rejected_after_shutdown >= 1);
+    owner.shutdown(TIMEOUT).expect("fixture runtime shutdown");
 }
 
 #[test]
