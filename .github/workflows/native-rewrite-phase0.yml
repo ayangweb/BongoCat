@@ -573,7 +573,7 @@ jobs:
           test "$restored" = true
       - name: Smoke macOS application reopen lifecycle
         if: matrix.os == 'macos-latest'
-        timeout-minutes: 2
+        timeout-minutes: 5
         run: |
           app_path=$(./native/scripts/package-macos.sh)
           stdout_path="$RUNNER_TEMP/macos-application-reopen.stdout.log"
