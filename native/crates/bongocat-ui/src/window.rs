@@ -71,6 +71,8 @@ const ACCESSIBILITY_QUIT: AccessibilityNodeId = AccessibilityNodeId::new(31);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_EXPORT_DIAGNOSTICS: AccessibilityNodeId = AccessibilityNodeId::new(32);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_RESTORE_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeId::new(33);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_MIRROR: AccessibilityNodeId = AccessibilityNodeId::new(19);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_MIRROR_POINTER: AccessibilityNodeId = AccessibilityNodeId::new(20);
@@ -140,6 +142,7 @@ enum PendingOperation {
     ModelDeletion,
     OpenConfigBackupLocation,
     RestoreDefaultConfiguration,
+    RestoreDefaultShortcuts,
     ExportDiagnostics,
 }
 
@@ -329,6 +332,7 @@ pub struct SettingsView {
     import_model_focus: FocusHandle,
     open_backups_focus: FocusHandle,
     restore_defaults_focus: FocusHandle,
+    restore_shortcuts_focus: FocusHandle,
     export_diagnostics_focus: FocusHandle,
     refresh_focus: FocusHandle,
     quit_focus: FocusHandle,
@@ -377,6 +381,7 @@ impl SettingsView {
             import_model_focus: cx.focus_handle().tab_index(22).tab_stop(true),
             open_backups_focus: cx.focus_handle().tab_index(28).tab_stop(true),
             restore_defaults_focus: cx.focus_handle().tab_index(29).tab_stop(true),
+            restore_shortcuts_focus: cx.focus_handle().tab_index(33).tab_stop(true),
             export_diagnostics_focus: cx.focus_handle().tab_index(32).tab_stop(true),
             refresh_focus: cx.focus_handle().tab_index(30).tab_stop(true),
             quit_focus: cx.focus_handle().tab_index(31).tab_stop(true),
@@ -637,6 +642,16 @@ impl SettingsView {
         if export_available {
             diagnostics_export_node = diagnostics_export_node.clickable().focusable();
         }
+        let mut restore_shortcuts_node = AccessibilityNode::new(
+            ACCESSIBILITY_RESTORE_SHORTCUTS,
+            AccessibilityRole::Button,
+            "Restore default shortcuts",
+        )
+        .with_value("Replace custom shortcut bindings with the verified defaults")
+        .disabled(disabled);
+        if !disabled {
+            restore_shortcuts_node = restore_shortcuts_node.clickable().focusable();
+        }
         let mut nodes = vec![
             AccessibilityNode::new(
                 ACCESSIBILITY_ROOT,
@@ -664,6 +679,7 @@ impl SettingsView {
                 ACCESSIBILITY_OPEN_BACKUPS,
                 ACCESSIBILITY_RESTORE_DEFAULTS,
                 ACCESSIBILITY_EXPORT_DIAGNOSTICS,
+                ACCESSIBILITY_RESTORE_SHORTCUTS,
                 ACCESSIBILITY_REFRESH,
                 ACCESSIBILITY_QUIT,
             ]),
@@ -697,6 +713,7 @@ impl SettingsView {
             open_backups_node,
             restore_node,
             diagnostics_export_node,
+            restore_shortcuts_node,
             refresh_node,
             AccessibilityNode::new(ACCESSIBILITY_QUIT, AccessibilityRole::Button, "Quit")
                 .clickable()
@@ -796,6 +813,7 @@ impl SettingsView {
                 }
             }
             ACCESSIBILITY_EXPORT_DIAGNOSTICS => self.export_diagnostics(cx),
+            ACCESSIBILITY_RESTORE_SHORTCUTS => self.restore_default_shortcuts(cx),
             ACCESSIBILITY_REFRESH => self.refresh(cx),
             ACCESSIBILITY_QUIT => (self.request_quit)(cx),
             _ => {}
@@ -859,6 +877,10 @@ impl SettingsView {
             (ACCESSIBILITY_STARTUP, &self.startup_item_focus),
             (ACCESSIBILITY_OPEN_BACKUPS, &self.open_backups_focus),
             (ACCESSIBILITY_RESTORE_DEFAULTS, &self.restore_defaults_focus),
+            (
+                ACCESSIBILITY_RESTORE_SHORTCUTS,
+                &self.restore_shortcuts_focus,
+            ),
             (
                 ACCESSIBILITY_EXPORT_DIAGNOSTICS,
                 &self.export_diagnostics_focus,
@@ -1409,6 +1431,23 @@ impl SettingsView {
         );
     }
 
+    fn restore_default_shortcuts(&mut self, cx: &mut Context<Self>) {
+        let Some(expected_config_revision) = self
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.config_revision)
+        else {
+            return;
+        };
+        self.start_request(
+            PendingOperation::RestoreDefaultShortcuts,
+            Some(SettingValue::RestoreDefaultShortcuts {
+                expected_config_revision,
+            }),
+            cx,
+        );
+    }
+
     fn choose_model_directory(&mut self, cx: &mut Context<Self>) {
         if self.model_import.is_running() || self.model_import.is_picker_open() {
             return;
@@ -1823,6 +1862,13 @@ impl SettingsView {
                 Some(SettingValue::RestoreDefaultConfiguration) => {
                     client.restore_default_configuration().await
                 }
+                Some(SettingValue::RestoreDefaultShortcuts {
+                    expected_config_revision,
+                }) => {
+                    client
+                        .restore_default_shortcuts(expected_config_revision)
+                        .await
+                }
                 Some(SettingValue::ExportDiagnostics) => client.export_diagnostics().await,
             };
             let refreshed = if result
@@ -1889,6 +1935,9 @@ enum SettingValue {
     StartupItemEnabled(bool),
     OpenConfigBackupLocation,
     RestoreDefaultConfiguration,
+    RestoreDefaultShortcuts {
+        expected_config_revision: u64,
+    },
     ExportDiagnostics,
 }
 
@@ -2005,6 +2054,7 @@ impl Render for SettingsView {
                     ACCESSIBILITY_STARTUP => &self.startup_item_focus,
                     ACCESSIBILITY_OPEN_BACKUPS => &self.open_backups_focus,
                     ACCESSIBILITY_RESTORE_DEFAULTS => &self.restore_defaults_focus,
+                    ACCESSIBILITY_RESTORE_SHORTCUTS => &self.restore_shortcuts_focus,
                     ACCESSIBILITY_EXPORT_DIAGNOSTICS => &self.export_diagnostics_focus,
                     ACCESSIBILITY_REFRESH => &self.refresh_focus,
                     ACCESSIBILITY_QUIT => &self.quit_focus,
@@ -2062,6 +2112,9 @@ impl Render for SettingsView {
             }
             (_, Some(PendingOperation::RestoreDefaultConfiguration), _) => {
                 "Restoring default configuration...".into()
+            }
+            (_, Some(PendingOperation::RestoreDefaultShortcuts), _) => {
+                "Restoring default shortcuts...".into()
             }
             (_, Some(PendingOperation::ExportDiagnostics), _) => "Exporting diagnostics...".into(),
             (_, None, Some(snapshot)) => {
@@ -3291,6 +3344,91 @@ impl Render for SettingsView {
                                             }),
                                         ),
                                     ),
+                            )
+                            .child(
+                                div()
+                                    .id("shortcut-diagnostics")
+                                    .pb_3()
+                                    .mb_3()
+                                    .border_b_1()
+                                    .border_color(tokens.border)
+                                    .flex()
+                                    .flex_col()
+                                    .gap_2()
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .justify_between()
+                                            .gap_3()
+                                            .child(
+                                                div()
+                                                    .text_sm()
+                                                    .text_color(tokens.muted)
+                                                    .child("Shortcuts"),
+                                            )
+                                            .child(
+                                                command_button(
+                                                    "Restore defaults",
+                                                    &self.restore_shortcuts_focus,
+                                                    33,
+                                                    window,
+                                                    tokens,
+                                                    config_action_disabled,
+                                                )
+                                                .id("restore-default-shortcuts")
+                                                .on_click(cx.listener(|view, _, window, cx| {
+                                                    if view.pending.is_none() {
+                                                        window.focus(&view.restore_shortcuts_focus);
+                                                        view.restore_default_shortcuts(cx);
+                                                    }
+                                                }))
+                                                .on_key_down(cx.listener(
+                                                    |view, event, window, cx| {
+                                                        if view.pending.is_none()
+                                                            && is_activation_key(event)
+                                                        {
+                                                            cx.stop_propagation();
+                                                            window.focus(
+                                                                &view.restore_shortcuts_focus,
+                                                            );
+                                                            view.restore_default_shortcuts(cx);
+                                                        }
+                                                    },
+                                                )),
+                                            ),
+                                    )
+                                    .children(snapshot.shortcuts.commands.iter().map(|binding| {
+                                        div()
+                                            .flex()
+                                            .justify_between()
+                                            .gap_3()
+                                            .text_sm()
+                                            .child(binding.command.clone())
+                                            .child(
+                                                div()
+                                                    .text_color(tokens.muted)
+                                                    .child(binding.shortcut.clone()),
+                                            )
+                                    }))
+                                    .children(snapshot.shortcuts.model_behaviors.iter().map(
+                                        |binding| {
+                                            div()
+                                                .flex()
+                                                .justify_between()
+                                                .gap_3()
+                                                .text_sm()
+                                                .child(format!(
+                                                    "{} ({})",
+                                                    binding.model_id, binding.behavior_id
+                                                ))
+                                                .child(
+                                                    div()
+                                                        .text_color(tokens.muted)
+                                                        .child(binding.shortcut.clone()),
+                                                )
+                                        },
+                                    )),
                             )
                             .child(
                                 div()
