@@ -1913,10 +1913,10 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       `open_settings` 现经 settings service 设置线程安全请求位，由 GPUI frame source 消费并复用
       `ensure_settings_window` 重开窗口；forwarder 使用停止标志和有界轮询，避免 shutdown join
       卡住。注册/捕获 UI、GPUI 清除/恢复默认入口和 Windows/macOS 实机快捷键证据仍未完成。
-    - 状态（2026-09-01）：Diagnostics 页面现展示当前 command/model shortcut 的匿名绑定文本，并
-      提供带 expected config revision 的“Restore default shortcuts”typed 操作；按钮复用 settings
-      worker、稳定错误映射、可见焦点和 AccessKit tree，配置冲突或服务关闭时保持原快照。快捷键
-      捕获编辑器、冲突预览和双平台实机触发证据仍待完成。
+      - 状态（2026-09-01）：Diagnostics 页面现展示当前 command/model shortcut 的匿名绑定文本，并
+        提供带 expected config revision 的“Restore default shortcuts”和“Clear all” typed 操作；按钮
+        复用 settings worker、稳定错误映射、可见焦点和 AccessKit tree，配置冲突或服务关闭时保持原
+        快照。快捷键捕获编辑器、冲突预览和双平台实机触发证据仍待完成。
 
 ## 13. 待决策清单
 

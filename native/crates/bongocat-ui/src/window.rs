@@ -5,7 +5,7 @@ use crate::{
     SettingsModelEntry, SettingsModelImportMonitor, SettingsModelImportOperation,
     SettingsModelImportRequest, SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin,
     SettingsModelSettings, SettingsOperationId, SettingsOverlay, SettingsRuntimeDiagnostics,
-    SettingsRuntimeErrorCode, SettingsSnapshot, SettingsStartupItemState,
+    SettingsRuntimeErrorCode, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
     SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsWindowPlacement,
     SettingsWindowState,
 };
@@ -72,6 +72,8 @@ const ACCESSIBILITY_QUIT: AccessibilityNodeId = AccessibilityNodeId::new(31);
 const ACCESSIBILITY_EXPORT_DIAGNOSTICS: AccessibilityNodeId = AccessibilityNodeId::new(32);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_RESTORE_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeId::new(33);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_CLEAR_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeId::new(34);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_MIRROR: AccessibilityNodeId = AccessibilityNodeId::new(19);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -143,6 +145,7 @@ enum PendingOperation {
     OpenConfigBackupLocation,
     RestoreDefaultConfiguration,
     RestoreDefaultShortcuts,
+    ClearShortcuts,
     ExportDiagnostics,
 }
 
@@ -333,6 +336,7 @@ pub struct SettingsView {
     open_backups_focus: FocusHandle,
     restore_defaults_focus: FocusHandle,
     restore_shortcuts_focus: FocusHandle,
+    clear_shortcuts_focus: FocusHandle,
     export_diagnostics_focus: FocusHandle,
     refresh_focus: FocusHandle,
     quit_focus: FocusHandle,
@@ -382,6 +386,7 @@ impl SettingsView {
             open_backups_focus: cx.focus_handle().tab_index(28).tab_stop(true),
             restore_defaults_focus: cx.focus_handle().tab_index(29).tab_stop(true),
             restore_shortcuts_focus: cx.focus_handle().tab_index(33).tab_stop(true),
+            clear_shortcuts_focus: cx.focus_handle().tab_index(34).tab_stop(true),
             export_diagnostics_focus: cx.focus_handle().tab_index(32).tab_stop(true),
             refresh_focus: cx.focus_handle().tab_index(30).tab_stop(true),
             quit_focus: cx.focus_handle().tab_index(31).tab_stop(true),
@@ -652,6 +657,27 @@ impl SettingsView {
         if !disabled {
             restore_shortcuts_node = restore_shortcuts_node.clickable().focusable();
         }
+        let mut clear_shortcuts_node = AccessibilityNode::new(
+            ACCESSIBILITY_CLEAR_SHORTCUTS,
+            AccessibilityRole::Button,
+            "Clear all shortcuts",
+        )
+        .with_value("Remove all custom shortcut bindings")
+        .disabled(
+            disabled
+                || snapshot.is_none_or(|snapshot| {
+                    snapshot.shortcuts.commands.is_empty()
+                        && snapshot.shortcuts.model_behaviors.is_empty()
+                }),
+        );
+        if !disabled
+            && snapshot.is_some_and(|snapshot| {
+                !snapshot.shortcuts.commands.is_empty()
+                    || !snapshot.shortcuts.model_behaviors.is_empty()
+            })
+        {
+            clear_shortcuts_node = clear_shortcuts_node.clickable().focusable();
+        }
         let mut nodes = vec![
             AccessibilityNode::new(
                 ACCESSIBILITY_ROOT,
@@ -680,6 +706,7 @@ impl SettingsView {
                 ACCESSIBILITY_RESTORE_DEFAULTS,
                 ACCESSIBILITY_EXPORT_DIAGNOSTICS,
                 ACCESSIBILITY_RESTORE_SHORTCUTS,
+                ACCESSIBILITY_CLEAR_SHORTCUTS,
                 ACCESSIBILITY_REFRESH,
                 ACCESSIBILITY_QUIT,
             ]),
@@ -714,6 +741,7 @@ impl SettingsView {
             restore_node,
             diagnostics_export_node,
             restore_shortcuts_node,
+            clear_shortcuts_node,
             refresh_node,
             AccessibilityNode::new(ACCESSIBILITY_QUIT, AccessibilityRole::Button, "Quit")
                 .clickable()
@@ -814,6 +842,7 @@ impl SettingsView {
             }
             ACCESSIBILITY_EXPORT_DIAGNOSTICS => self.export_diagnostics(cx),
             ACCESSIBILITY_RESTORE_SHORTCUTS => self.restore_default_shortcuts(cx),
+            ACCESSIBILITY_CLEAR_SHORTCUTS => self.clear_shortcuts(cx),
             ACCESSIBILITY_REFRESH => self.refresh(cx),
             ACCESSIBILITY_QUIT => (self.request_quit)(cx),
             _ => {}
@@ -881,6 +910,7 @@ impl SettingsView {
                 ACCESSIBILITY_RESTORE_SHORTCUTS,
                 &self.restore_shortcuts_focus,
             ),
+            (ACCESSIBILITY_CLEAR_SHORTCUTS, &self.clear_shortcuts_focus),
             (
                 ACCESSIBILITY_EXPORT_DIAGNOSTICS,
                 &self.export_diagnostics_focus,
@@ -1448,6 +1478,24 @@ impl SettingsView {
         );
     }
 
+    fn clear_shortcuts(&mut self, cx: &mut Context<Self>) {
+        let Some(expected_config_revision) = self
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.config_revision)
+        else {
+            return;
+        };
+        self.start_request(
+            PendingOperation::ClearShortcuts,
+            Some(SettingValue::Shortcuts {
+                expected_config_revision,
+                shortcuts: SettingsShortcuts::default(),
+            }),
+            cx,
+        );
+    }
+
     fn choose_model_directory(&mut self, cx: &mut Context<Self>) {
         if self.model_import.is_running() || self.model_import.is_picker_open() {
             return;
@@ -1869,6 +1917,14 @@ impl SettingsView {
                         .restore_default_shortcuts(expected_config_revision)
                         .await
                 }
+                Some(SettingValue::Shortcuts {
+                    expected_config_revision,
+                    shortcuts,
+                }) => {
+                    client
+                        .set_shortcuts(expected_config_revision, shortcuts)
+                        .await
+                }
                 Some(SettingValue::ExportDiagnostics) => client.export_diagnostics().await,
             };
             let refreshed = if result
@@ -1910,7 +1966,7 @@ impl SettingsView {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum SettingValue {
     OverlayVisible {
         expected_config_revision: u64,
@@ -1937,6 +1993,10 @@ enum SettingValue {
     RestoreDefaultConfiguration,
     RestoreDefaultShortcuts {
         expected_config_revision: u64,
+    },
+    Shortcuts {
+        expected_config_revision: u64,
+        shortcuts: SettingsShortcuts,
     },
     ExportDiagnostics,
 }
@@ -2055,6 +2115,7 @@ impl Render for SettingsView {
                     ACCESSIBILITY_OPEN_BACKUPS => &self.open_backups_focus,
                     ACCESSIBILITY_RESTORE_DEFAULTS => &self.restore_defaults_focus,
                     ACCESSIBILITY_RESTORE_SHORTCUTS => &self.restore_shortcuts_focus,
+                    ACCESSIBILITY_CLEAR_SHORTCUTS => &self.clear_shortcuts_focus,
                     ACCESSIBILITY_EXPORT_DIAGNOSTICS => &self.export_diagnostics_focus,
                     ACCESSIBILITY_REFRESH => &self.refresh_focus,
                     ACCESSIBILITY_QUIT => &self.quit_focus,
@@ -2116,6 +2177,7 @@ impl Render for SettingsView {
             (_, Some(PendingOperation::RestoreDefaultShortcuts), _) => {
                 "Restoring default shortcuts...".into()
             }
+            (_, Some(PendingOperation::ClearShortcuts), _) => "Clearing shortcuts...".into(),
             (_, Some(PendingOperation::ExportDiagnostics), _) => "Exporting diagnostics...".into(),
             (_, None, Some(snapshot)) => {
                 let health = match snapshot.runtime_health {
@@ -3393,6 +3455,40 @@ impl Render for SettingsView {
                                                                 &view.restore_shortcuts_focus,
                                                             );
                                                             view.restore_default_shortcuts(cx);
+                                                        }
+                                                    },
+                                                )),
+                                            )
+                                            .child(
+                                                command_button(
+                                                    "Clear all",
+                                                    &self.clear_shortcuts_focus,
+                                                    34,
+                                                    window,
+                                                    tokens,
+                                                    config_action_disabled
+                                                        || snapshot.shortcuts.commands.is_empty()
+                                                            && snapshot
+                                                                .shortcuts
+                                                                .model_behaviors
+                                                                .is_empty(),
+                                                )
+                                                .id("clear-shortcuts")
+                                                .on_click(cx.listener(|view, _, window, cx| {
+                                                    if view.pending.is_none() {
+                                                        window.focus(&view.clear_shortcuts_focus);
+                                                        view.clear_shortcuts(cx);
+                                                    }
+                                                }))
+                                                .on_key_down(cx.listener(
+                                                    |view, event, window, cx| {
+                                                        if view.pending.is_none()
+                                                            && is_activation_key(event)
+                                                        {
+                                                            cx.stop_propagation();
+                                                            window
+                                                                .focus(&view.clear_shortcuts_focus);
+                                                            view.clear_shortcuts(cx);
                                                         }
                                                     },
                                                 )),
