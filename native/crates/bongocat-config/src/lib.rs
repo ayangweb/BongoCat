@@ -91,8 +91,10 @@ impl StorageLayout {
 
     fn create_directories(&self) -> io::Result<()> {
         fs::create_dir_all(&self.root)?;
+        set_private_directory(&self.root)?;
         for directory in [&self.models, &self.backups, &self.logs, &self.locks] {
             fs::create_dir_all(directory)?;
+            set_private_directory(directory)?;
         }
         Ok(())
     }
@@ -1260,6 +1262,7 @@ impl ConfigStore {
             .create(true)
             .truncate(false)
             .open(path)?;
+        set_private_file(&file)?;
         match file.try_lock() {
             Ok(()) => Ok(WriterLock { _file: file }),
             Err(TryLockError::WouldBlock) => Err(ConfigError::LockUnavailable),
@@ -1853,6 +1856,7 @@ fn write_config_atomic_with_hook(
             .write(true)
             .create_new(true)
             .open(&temp_path)?;
+        set_private_file(&file)?;
         temp_created = true;
         hook(ConfigWriteStage::AfterTempCreate)?;
         file.write_all(bytes)?;
@@ -1898,6 +1902,43 @@ fn write_atomic_io(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let mut file = AtomicWriteFile::open(path)?;
     file.write_all(bytes)?;
     file.commit()?;
+    set_private_path(path)?;
+    Ok(())
+}
+
+// Native configuration is user-private data. Unix permissions are applied
+// after every directory/file creation and atomic replacement; Windows uses
+// the profile directory ACL, which is the platform's user-private boundary.
+fn set_private_directory(path: &Path) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+    Ok(())
+}
+
+fn set_private_file(file: &File) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(fs::Permissions::from_mode(0o600))?;
+    }
+    #[cfg(not(unix))]
+    let _ = file;
+    Ok(())
+}
+
+fn set_private_path(path: &Path) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
+    }
+    #[cfg(not(unix))]
+    let _ = path;
     Ok(())
 }
 
@@ -3190,6 +3231,73 @@ mod tests {
         );
         assert!(!is_owned_backup_name("config-100-5.json"));
         assert!(!is_owned_backup_name("manual-note.json"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn configuration_storage_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let base = tempdir().expect("temp directory");
+        let store = ConfigStore::new(StorageLayout::under(
+            base.path(),
+            BuildEnvironment::Development,
+        ))
+        .expect("config store");
+        store
+            .commit(&NativeConfig::default())
+            .expect("initial commit");
+        store
+            .commit(&NativeConfig {
+                overlay: OverlayConfig {
+                    scale_percent: 110,
+                    ..NativeConfig::default().overlay
+                },
+                ..NativeConfig::default()
+            })
+            .expect("backup commit");
+
+        for directory in [
+            &store.layout.root,
+            &store.layout.models,
+            &store.layout.backups,
+            &store.layout.logs,
+            &store.layout.locks,
+        ] {
+            assert_eq!(
+                fs::metadata(directory)
+                    .expect("directory metadata")
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o700
+            );
+        }
+        for file in [
+            store.layout.config.clone(),
+            store.layout.locks.join("config.writer.lock"),
+        ] {
+            assert_eq!(
+                fs::metadata(file)
+                    .expect("file metadata")
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o600
+            );
+        }
+        let backup = config_backup_paths(store.layout())
+            .into_iter()
+            .next()
+            .expect("backup");
+        assert_eq!(
+            fs::metadata(backup)
+                .expect("backup metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
     }
 
     fn config_backup_paths(layout: &StorageLayout) -> Vec<PathBuf> {

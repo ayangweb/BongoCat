@@ -564,14 +564,14 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-30）：正式 `ApplyInput` 与其他 command 共用有界 FIFO，input event
     另带独立单调 sequence；`InputProducer` 以非阻塞 publish 返回原始拒绝事件，并向
     app/platform 暴露 recovery API。macOS/Windows 正式 producer 均已接入；command 与
-    input 共用容量 64 的产品 FIFO，正式 gamepad producer 仍待建立。
+    input 共用容量 64 的产品 FIFO，gamepad producer 已在双平台平台层接入，产品实机闭环仍待完成。
 - [ ] 为每个可靠队列定义容量、生产者、消费者、满载策略和关闭语义，不使用无界队列逃避背压设计。
   - 状态（2026-08-28）：`spikes/input-queue/` 已验证固定容量 FIFO、满载返回原事件、关闭 drain 和 latest-value 槽位；`spikes/runtime-contract/` 进一步验证固定容量 command queue、Condvar 唤醒、溢出 Reset、worker drain 和 join 报告；runtime 的实际容量与产品 channel 选型仍待产品 crate。
   - 状态（2026-08-30）：正式 app 当前使用容量 64 的共享 command/input FIFO，唯一
     runtime worker 消费，owner shutdown 使用可靠控制消息并 join；cursor 已使用独立单槽
     latest-value transport，停止后拒绝新 sample 并在 shutdown 消费 pending sample。
     Windows 正式 input owner 也已具备 start/stop/join 和最终 Reset；gamepad axis 通道及
-    producer 生命周期尚未建立，因此总项保持未勾选。
+    producer 生命周期已建立，实机手柄证据仍待完成，因此总项保持未勾选。
 - [ ] edge/command 携带单调 sequence id，诊断可发现乱序、重复和丢失但不记录具体键值。
   - 状态（2026-08-29）：Windows callback queue 的 edge、Reset 和 reconcile tick 已携带单调 `u64` sequence，正常压力路径要求 gap/duplicate 均为 0，受控 overflow 以 discarded backlog 数量产生等量 gap 并由 Reset 恢复。command queue 与产品 runtime 的统一 sequence contract 仍待实现，因此保持未勾选。
   - 状态（2026-08-29）：macOS callback queue 也已为 edge/Reset 分配单调 `u64` sequence，overflow Reset 继承被拒事件序号，consumer 统计 gap 与 duplicate/out-of-order；普通 tap、timeout/user disable 和 lifecycle 本机回归均为 0。commit `d7501dc` 的 push run `33257871184` 已通过 contract job `99114627795` 及原生 macOS job `99114627654` 的 input check/Clippy/test/release 门禁。command queue 与产品 runtime 的统一 contract 仍待实现，因此保持未勾选。
@@ -586,14 +586,14 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-29）：平台无关 keyed latest-values contract 已为 gamepad axis 固定容量、按 key 合并、完整 accounting、关闭语义和连接 generation；10,000 次同轴更新只消费最终值，新 key 超容量明确失败，断开后的旧 generation 不会污染复用 device id 的重连。commit `16a51bb` 的 push run `33259120950`、job `99117907732` 已通过 11 项测试；该提交只完成容器契约，不包含平台 producer 或产品 runtime。
   - 状态（2026-08-29）：macOS Phase 0 producer 已使用最新稳定版 `objc2-game-controller 0.3.2` 枚举 `GCExtendedGamepad`，把连接/断开/按钮放入可靠 FIFO，把六轴放入 `{device_id, generation, axis}` latest-values，并处理后台投递策略、slot 复用、迟到 callback、断开丢弃和 shutdown。30 项 library test 中的 10,000-axis flood 不阻塞按钮 release；本机 1 秒 framework smoke 完成 37 次枚举和干净恢复全局策略，但 `observed_controllers=0`，物理手柄和产品 runtime 仍待完成，因此总项保持未勾选。
   - 状态（2026-08-29）：Windows Phase 0 producer 已把 XInput 0–3 slot 的连接/断开/标准按钮映射到可靠 FIFO，把六轴映射到 generation-keyed latest-values；33 项 library test 覆盖全范围归一化、10,000-axis flood、overflow Reset、断开丢弃、slot 重连和 shutdown。x64/ARM64 MSVC check 已通过；commit `b6bbd73` 的 push run `33260707799`、job `99122041439` 与 PR run `33260709475`、job `99122046077` 均通过真实 XInput API smoke，push job 完成 124 次无错误 slot 查询并干净关闭。runner `peak_connected=0`，物理手柄和产品 runtime 仍待完成，因此总项保持未勾选。
-  - 状态（2026-08-30）：正式 runtime 已增加独立 cursor latest-value 单槽，每 `16 ms` 或
+  - 状态（2026-09-01）：正式 runtime 已增加独立 cursor latest-value 单槽，每 `16 ms` 或
     可靠 command 到达时消费；10,000 sample flood 满足
     `published = coalesced + consumed + pending`，且不会延迟可靠 KeyUp。正式 macOS producer
     的 callback 只覆盖原始坐标槽，run-loop worker 在 callback 外查询 active display viewport；
     启动位置与后续移动均进入 runtime，并驱动 Live2D pointer/head/eye 参数。Windows 正式
     producer 同样只在 Raw Input callback 标记 movement，worker 在 callback 外查询 cursor
-    和 monitor viewport 后进入该单槽。gamepad axis 的正式 runtime/product producer 仍未
-    接入，因此总项保持未勾选。
+    和 monitor viewport 后进入该单槽。gamepad axis 已接入双平台服务，实机手柄证据仍待完成，
+    因此总项保持未勾选。
 - [ ] 队列溢出必须计数、记录并触发安全恢复。
   - 状态（2026-08-28）：`spikes/input-queue/` 的 `push_with_overflow_reset` 已固定溢出返回原事件、清空不可信缓存、注入 `Reset` 并记录恢复/丢弃计数；`spikes/runtime-contract/` 已将同一策略应用到 typed command queue 并通过 worker snapshot 暴露诊断；runtime producer、实际容量和输入/command sequence 仍待产品实现。
   - 状态（2026-08-30）：产品 `InputProducer` 已聚合 enqueued、queue full、overflow 后
@@ -716,7 +716,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 在 spike 中以包含环境目录的持久 `locks/config.writer.lock` 拒绝并发 writer，并通过 OS advisory lock 在 guard drop 后允许重试。
 - [x] 强制终止持锁进程后由内核释放 writer lock，下一进程可恢复已 flush 的临时配置且不覆盖当前配置。
   - 验收证据（2026-08-29）：macOS 本机与 Windows push run `33251278193`、job `99097261951` 均通过；平台文件权限仍待产品 crate。
-- [ ] 新配置文件和备份使用最小用户权限，不继承过宽 ACL/文件 mode。
+- [x] 新配置文件和备份使用最小用户权限，不继承过宽 ACL/文件 mode。
+  - 验收证据（2026-09-01）：`bongocat-config` 的 `StorageLayout` 创建 root、models、backups、logs 和
+    locks 目录时在 Unix 强制 `0700`；config/state、备份、锁和原子替换结果统一为 `0600`，覆盖
+    首次创建、恢复和 verification rollback。Windows 依赖 `%APPDATA%` 用户目录 ACL，不修改系统
+    ACL；Unix 权限回归测试验证目录/文件 mode，config crate 46 项测试和 Native workspace tests 通过。
 - [x] 在 spike 中以稳定 NativeConfig revision 拒绝过期 writer，避免静默覆盖较新的用户修改；GPUI snapshot/command 携带 revision 仍待产品 crate。
 
 ### 3.6 Phase 2 退出门槛

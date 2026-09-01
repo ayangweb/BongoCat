@@ -210,7 +210,9 @@ impl StateStore {
     pub fn commit(&self, state: &ApplicationState) -> Result<(), StateError> {
         state.validate()?;
         fs::create_dir_all(&self.layout.root)?;
+        super::set_private_directory(&self.layout.root)?;
         fs::create_dir_all(&self.layout.locks)?;
+        super::set_private_directory(&self.layout.locks)?;
         let _lock = self.acquire_writer_lock()?;
         if let Ok(current) = fs::read(&self.layout.state)
             && let Err(StateError::UnsupportedSchema(version)) = parse_state(&current)
@@ -245,6 +247,7 @@ impl StateStore {
             .create(true)
             .truncate(false)
             .open(self.layout.locks.join("state.writer.lock"))?;
+        super::set_private_file(&file)?;
         match file.try_lock() {
             Ok(()) => Ok(WriterLock { _file: file }),
             Err(TryLockError::WouldBlock) => Err(StateError::LockUnavailable),
@@ -456,5 +459,48 @@ mod tests {
             Err(StateError::LockUnavailable)
         ));
         assert_eq!(store.load_or_default().state, original);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn state_storage_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = TempDir::new().expect("tempdir");
+        let store = state_store(&root, BuildEnvironment::Development);
+        store
+            .commit(&ApplicationState::with_settings_window(Some(placement(
+                10, 20,
+            ))))
+            .expect("state commit");
+        assert_eq!(
+            fs::metadata(&store.layout.root)
+                .expect("root metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+        assert_eq!(
+            fs::metadata(&store.layout.locks)
+                .expect("locks metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+        for path in [
+            store.layout.state.clone(),
+            store.layout.locks.join("state.writer.lock"),
+        ] {
+            assert_eq!(
+                fs::metadata(path)
+                    .expect("state file metadata")
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o600
+            );
+        }
     }
 }
