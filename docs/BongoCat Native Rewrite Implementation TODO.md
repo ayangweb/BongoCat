@@ -486,7 +486,13 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     callback 使用独立结构化 sink 并将路径、换行和超长消息脱敏/截断；panic hook 不读取 payload，
     Diagnostics 导出只包含匿名统计与固定事件计数。app/Core 单元测试覆盖路径脱敏、长度上限、
     callback panic boundary、日志轮转和导出无路径，三平台 Native CI 通过。
-- [ ] 提供开发/测试所需 Cubism 二进制的可验证安装说明。
+- [x] 提供开发/测试所需 Cubism 二进制的可验证安装说明。
+  - 验收证据（2026-09-01）：`docs/phase-0/cubism-sdk-source-and-license.md` 第 4 节提供
+    维护者人工接受 Live2D 协议后下载固定 `5-r.5` ZIP、校验 archive/header/Core SHA-256、
+    运行离线 inspector、生成并审阅 target bindings、执行 Core/模型 ABI smoke 的逐步流程；
+    完整 SDK 保存在仓库外，普通构建、CI 和打包不联网或下载 artifact。`native/README.md`
+    同步说明固定 vendor 基线和离线构建边界。第二来源复核、Windows/macOS 全 ABI 以及最终
+    再分发授权仍由 P0-CUBISM/stable 发布门禁跟踪，不扩大本项完成范围。
 - [ ] 构建脚本默认不联网；外部 SDK、shader compiler 和生成器必须先由显式 bootstrap 步骤准备。
 - [x] 定义 debug、release、profiling 三种 profile，profiling 产物不得误发布。
   - 验收证据（2026-09-01）：`native/Cargo.toml` 显式定义 dev（debug、incremental、unwind）、
