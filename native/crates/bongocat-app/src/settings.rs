@@ -1759,6 +1759,9 @@ mod tests {
 
     #[test]
     fn diagnostics_export_is_atomic_aggregated_and_path_free() {
+        #[cfg(unix)]
+        use std::os::unix::fs::PermissionsExt;
+
         let directory = tempdir().expect("diagnostics directory");
         let path = directory.path().join("logs").join("diagnostics.json");
         let snapshot = SettingsSnapshot {
@@ -1833,6 +1836,15 @@ mod tests {
         )
         .expect("export diagnostics");
         let bytes = std::fs::read(&path).expect("read exported diagnostics");
+        #[cfg(unix)]
+        assert_eq!(
+            fs::metadata(&path)
+                .expect("diagnostics metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
         assert_eq!(status.format_version, DIAGNOSTICS_EXPORT_FORMAT_VERSION);
         assert_eq!(status.bytes_written, bytes.len() as u64);
         let document: serde_json::Value = serde_json::from_slice(&bytes).expect("valid JSON");
