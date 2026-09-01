@@ -455,7 +455,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     在 owner drop 时恢复之前的 hook；单元测试覆盖含用户路径 payload 的脱敏、日志锁占用时
     直接丢弃和 hook 恢复。新增环境隔离的持久运行标记：只有完整 runtime/audio shutdown 才清理，
     下次启动会记录匿名 `previous_run_unclean` 事件；panic、shutdown 错误和强制终止会保留标记。
-    release 实机崩溃收集仍待完成，因此本项保持未勾选。
+    release 实机崩溃收集仍待完成，因此本项保持未勾选。`bongocat-app` 63 项 app/lib 测试和
+    app Clippy 已在本机通过；marker 逻辑随 commit `19afddf`（远端合并提交 `b6244cc`）进入 `next`。
 - [ ] 定义线程、任务、channel、窗口和 GPU object owner。
 - [ ] 建立结构化日志字段和用户路径脱敏规则。
 - [ ] 提供开发/测试所需 Cubism 二进制的可验证安装说明。
@@ -480,7 +481,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - [x] `tools/record-native-provenance.py` 生成无绝对路径的 JSON；Native 三平台 CI 上传 runner
         provenance，macOS `.app` 将其放入 `Contents/Resources/build-provenance.json`。工具测试验证
         commit、锁文件 hash、toolchain、target、profile、feature set 和 environment 字段；签名安装包
-        与 Windows 最终发布 artifact 仍待发布 workflow 迁移后接入。
+        与 Windows 最终发布 artifact 仍待发布 workflow 迁移后接入。commit `6c6120b` 的 Native
+        workflow run `33479155904`（后续 `d6d27b3`/`33479624906`）三平台 provenance artifact 已成功上传。
 
 ### 2.4 Phase 1 退出门槛
 
