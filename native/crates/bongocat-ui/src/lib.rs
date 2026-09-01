@@ -193,6 +193,9 @@ pub struct SettingsDiagnosticsExportStatus {
     pub bytes_written: u64,
 }
 
+/// Version of the anonymous diagnostics export JSON contract.
+pub const DIAGNOSTICS_EXPORT_FORMAT_VERSION: u32 = 2;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SettingsConfigurationStatus {
     Ready,
@@ -1746,7 +1749,7 @@ mod tests {
             };
             let mut exported = snapshot(12, true, true);
             exported.diagnostics_export = Some(SettingsDiagnosticsExportStatus {
-                format_version: 1,
+                format_version: DIAGNOSTICS_EXPORT_FORMAT_VERSION,
                 bytes_written: 512,
             });
             reply.respond(Ok(exported)).expect("export reply");
@@ -1758,7 +1761,7 @@ mod tests {
         assert_eq!(
             exported.diagnostics_export,
             Some(SettingsDiagnosticsExportStatus {
-                format_version: 1,
+                format_version: DIAGNOSTICS_EXPORT_FORMAT_VERSION,
                 bytes_written: 512,
             })
         );

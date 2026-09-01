@@ -24,17 +24,17 @@ use bongocat_runtime::{
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_ui::SettingsStartupItemError;
 use bongocat_ui::{
-    RuntimeHealth, SettingsApplicationShortcut, SettingsClient, SettingsCommand,
-    SettingsConfigRecovery, SettingsConfigurationStatus, SettingsDiagnosticsExportStatus,
-    SettingsError, SettingsErrorCode, SettingsGamepadAxisSettings, SettingsInputDiagnostics,
-    SettingsInputServiceStatus, SettingsModelAvailability, SettingsModelBehaviorBinding,
-    SettingsModelCatalog, SettingsModelCatalogError, SettingsModelDiagnostic, SettingsModelEntry,
-    SettingsModelImportProgress, SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin,
-    SettingsModelSettings, SettingsOverlay, SettingsRuntimeCommandFailure,
-    SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode, SettingsServiceEndpoint,
-    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
-    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsWindowPlacement,
-    SettingsWindowState,
+    DIAGNOSTICS_EXPORT_FORMAT_VERSION, RuntimeHealth, SettingsApplicationShortcut, SettingsClient,
+    SettingsCommand, SettingsConfigRecovery, SettingsConfigurationStatus,
+    SettingsDiagnosticsExportStatus, SettingsError, SettingsErrorCode, SettingsGamepadAxisSettings,
+    SettingsInputDiagnostics, SettingsInputServiceStatus, SettingsModelAvailability,
+    SettingsModelBehaviorBinding, SettingsModelCatalog, SettingsModelCatalogError,
+    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportProgress,
+    SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsModelSettings,
+    SettingsOverlay, SettingsRuntimeCommandFailure, SettingsRuntimeDiagnostics,
+    SettingsRuntimeErrorCode, SettingsServiceEndpoint, SettingsShortcutBinding, SettingsShortcuts,
+    SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
+    SettingsStartupItemUnsupportedReason, SettingsWindowPlacement, SettingsWindowState,
 };
 use serde::Serialize;
 use std::fs;
@@ -1177,8 +1177,6 @@ fn settings_model_entry(entry: ModelCatalogEntry) -> SettingsModelEntry {
         availability,
     }
 }
-
-const DIAGNOSTICS_EXPORT_FORMAT_VERSION: u32 = 2;
 
 #[derive(Serialize)]
 struct DiagnosticsExportDocument {
