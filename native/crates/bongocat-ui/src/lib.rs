@@ -134,9 +134,21 @@ pub struct SettingsRuntimeCommandFailure {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct SettingsRuntimeCommandTransportDiagnostics {
+    pub enqueued: u64,
+    pub queue_full: u64,
+    pub runtime_stopped: u64,
+    pub sequence_gap_count: u64,
+    pub missing_sequence_count: u64,
+    pub duplicate_sequence_count: u64,
+    pub out_of_order_sequence_count: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct SettingsRuntimeDiagnostics {
     pub render_error: Option<SettingsRuntimeErrorCode>,
     pub last_command_failure: Option<SettingsRuntimeCommandFailure>,
+    pub command_transport: SettingsRuntimeCommandTransportDiagnostics,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

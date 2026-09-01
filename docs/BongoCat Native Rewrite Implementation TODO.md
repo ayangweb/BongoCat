@@ -584,6 +584,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     input 重复/乱序计数后忽略，跳号计数缺失数量、先以 `SequenceGap` Reset 再应用当前
     边沿，snapshot 只暴露聚合诊断。macOS/Windows 正式 producer 均经 `InputProducer`
     分配 sequence；正式 gamepad producer 与完整统一诊断仍待建立。
+  - 状态（2026-09-01）：command queue 现由 runtime worker 使用单调 sequence tracker，
+    跳号累计缺失数量后继续处理当前 command，重复或乱序 envelope 被安全丢弃；四类计数
+    进入匿名 `RuntimeSnapshot.command_transport`，并覆盖 `u64` wraparound 的纯 Rust 回归。
+    平台 producer 的真实压力与跨进程故障注入仍待完成，因此总项保持未勾选。
 - [ ] cursor/gamepad axis 使用 latest-value 合并通道。
   - 状态（2026-08-29）：Windows RAWMOUSE movement 已从可靠 edge FIFO 分流到独立 latest-value 槽位；safe decoder 保留 relative/absolute/virtual-desktop 语义，16ms owner tick 在 callback 外查询当前 cursor，pointer flood 要求 captured sample 全部由 coalesced 或 consumed 解释且不影响 keyboard release。commit `098d532` 的 push run `33258305541`、Windows job `99115756881` 已通过强化后的 3072 movement/1536 keyboard edge 回归。Gamepad axis、macOS cursor 和产品 runtime 通道仍待实现，因此保持未勾选。
   - 状态（2026-08-29）：macOS `MouseMoved` 与 left/right/other drag 已分流到独立 latest-value slot，run-loop owner 约每 16ms 消费一次并在 shutdown flush；10,000-sample contract 证明 cursor flood 不占用可靠 button edge 队列，严格报告要求 `captured = coalesced + consumed` 且 close 后无迟到发布。commit `500a956` 的 PR run `33258718745` 中，原生 macOS job `99116842307` 与 contract job `99116842405` 均通过。Gamepad axis、产品 runtime 通道和物理 cursor callback 实测仍待完成，因此保持未勾选。

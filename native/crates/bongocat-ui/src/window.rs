@@ -5329,6 +5329,7 @@ mod tests {
                 sequence: 17,
                 code: SettingsRuntimeErrorCode::GpuPreparationFailed,
             }),
+            command_transport: Default::default(),
         });
         assert_eq!(presentation.title, "GPU preparation failed");
         assert!(presentation.attention);

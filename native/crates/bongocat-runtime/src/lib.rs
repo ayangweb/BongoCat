@@ -13,7 +13,7 @@ use bongocat_audio::{
 use bongocat_model::{CommittedModel, ModelSnapshot};
 use bongocat_render::{ModelCommitErrorCode, ModelCommitOutcome, ModelCommitToken, RenderConsumer};
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     fmt,
     sync::{
         Arc, Condvar, Mutex,
@@ -287,6 +287,10 @@ pub struct RuntimeCommandTransportDiagnostics {
     pub enqueued: u64,
     pub queue_full: u64,
     pub runtime_stopped: u64,
+    pub sequence_gap_count: u64,
+    pub missing_sequence_count: u64,
+    pub duplicate_sequence_count: u64,
+    pub out_of_order_sequence_count: u64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -443,7 +447,7 @@ struct SnapshotCell {
 struct Producer {
     sender: SyncSender<CommandEnvelope>,
     next_sequence: Mutex<u64>,
-    command_transport: CommandTransportCounters,
+    command_transport: Arc<CommandTransportCounters>,
 }
 
 #[derive(Default)]
@@ -451,6 +455,10 @@ struct CommandTransportCounters {
     enqueued: AtomicU64,
     queue_full: AtomicU64,
     runtime_stopped: AtomicU64,
+    sequence_gap_count: AtomicU64,
+    missing_sequence_count: AtomicU64,
+    duplicate_sequence_count: AtomicU64,
+    out_of_order_sequence_count: AtomicU64,
 }
 
 impl CommandTransportCounters {
@@ -466,11 +474,76 @@ impl CommandTransportCounters {
         self.runtime_stopped.fetch_add(1, Ordering::Relaxed);
     }
 
+    fn sequence_gap(&self, missing: u64) {
+        self.sequence_gap_count.fetch_add(1, Ordering::Relaxed);
+        self.missing_sequence_count
+            .fetch_add(missing, Ordering::Relaxed);
+    }
+
+    fn duplicate_sequence(&self) {
+        self.duplicate_sequence_count
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn out_of_order_sequence(&self) {
+        self.out_of_order_sequence_count
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
     fn snapshot(&self) -> RuntimeCommandTransportDiagnostics {
         RuntimeCommandTransportDiagnostics {
             enqueued: self.enqueued.load(Ordering::Relaxed),
             queue_full: self.queue_full.load(Ordering::Relaxed),
             runtime_stopped: self.runtime_stopped.load(Ordering::Relaxed),
+            sequence_gap_count: self.sequence_gap_count.load(Ordering::Relaxed),
+            missing_sequence_count: self.missing_sequence_count.load(Ordering::Relaxed),
+            duplicate_sequence_count: self.duplicate_sequence_count.load(Ordering::Relaxed),
+            out_of_order_sequence_count: self.out_of_order_sequence_count.load(Ordering::Relaxed),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CommandSequenceDisposition {
+    First,
+    InOrder,
+    Deferred,
+    Gap { missing: u64 },
+    Duplicate,
+    OutOfOrder,
+}
+
+#[derive(Default)]
+struct CommandSequenceTracker {
+    last: Option<u64>,
+    deferred: BTreeSet<u64>,
+}
+
+impl CommandSequenceTracker {
+    fn defer(&mut self, sequence: u64) {
+        self.deferred.insert(sequence);
+    }
+
+    fn observe(&mut self, sequence: u64) -> CommandSequenceDisposition {
+        if self.deferred.remove(&sequence) {
+            return CommandSequenceDisposition::Deferred;
+        }
+        let Some(last) = self.last else {
+            self.last = Some(sequence);
+            return CommandSequenceDisposition::First;
+        };
+        let expected = last.wrapping_add(1);
+        if sequence == expected {
+            self.last = Some(sequence);
+            CommandSequenceDisposition::InOrder
+        } else if sequence == last {
+            CommandSequenceDisposition::Duplicate
+        } else if sequence > last {
+            let missing = sequence.saturating_sub(expected);
+            self.last = Some(sequence);
+            CommandSequenceDisposition::Gap { missing }
+        } else {
+            CommandSequenceDisposition::OutOfOrder
         }
     }
 }
@@ -1001,11 +1074,12 @@ impl RuntimeOwner {
             DEFAULT_GAMEPAD_AXIS_CAPACITY,
         ));
         let platform_input_diagnostics = PlatformInputDiagnosticsProducer::default();
+        let command_transport = Arc::new(CommandTransportCounters::default());
         let client = RuntimeClient {
             producer: Arc::new(Producer {
                 sender,
                 next_sequence: Mutex::new(0),
-                command_transport: CommandTransportCounters::default(),
+                command_transport: Arc::clone(&command_transport),
             }),
             snapshot: Arc::clone(&snapshot),
             input_transport,
@@ -1029,6 +1103,7 @@ impl RuntimeOwner {
                         renderer,
                         motion_audio,
                         clock,
+                        command_transport,
                     },
                 )
             })
@@ -1194,6 +1269,7 @@ struct RuntimeWorkerBootstrap {
     renderer: Option<RuntimeRenderBootstrap>,
     motion_audio: MotionAudioClient,
     clock: Arc<dyn MonotonicClock>,
+    command_transport: Arc<CommandTransportCounters>,
 }
 
 fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBootstrap) {
@@ -1206,6 +1282,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
         renderer,
         motion_audio,
         clock,
+        command_transport,
     } = bootstrap;
     let mut renderer = renderer.map(RuntimeRenderer::start);
     let mut active_model = None;
@@ -1221,6 +1298,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
     let mut pending_model = None;
     let mut deferred_commands = VecDeque::new();
     let mut next_motion_event_sequence = 0u64;
+    let mut command_sequences = CommandSequenceTracker::default();
     publish(&snapshot, |current| current.state = RuntimeState::Ready);
     loop {
         process_model_commit_feedback(
@@ -1270,8 +1348,26 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                         WorkerCommand::Product(RuntimeCommand::ApplyInput(_))
                     )
                 {
+                    let sequence = envelope.sequence;
                     deferred_commands.push_back(envelope);
+                    command_sequences.defer(sequence);
                     continue;
+                }
+                match command_sequences.observe(envelope.sequence) {
+                    CommandSequenceDisposition::Gap { missing } => {
+                        command_transport.sequence_gap(missing);
+                    }
+                    CommandSequenceDisposition::Duplicate => {
+                        command_transport.duplicate_sequence();
+                        continue;
+                    }
+                    CommandSequenceDisposition::OutOfOrder => {
+                        command_transport.out_of_order_sequence();
+                        continue;
+                    }
+                    CommandSequenceDisposition::First
+                    | CommandSequenceDisposition::InOrder
+                    | CommandSequenceDisposition::Deferred => {}
                 }
                 let sequence = envelope.sequence;
                 let mut evaluate_after_command = true;
@@ -3393,7 +3489,7 @@ mod tests {
             producer: Arc::new(Producer {
                 sender,
                 next_sequence: Mutex::new(0),
-                command_transport: CommandTransportCounters::default(),
+                command_transport: Arc::new(CommandTransportCounters::default()),
             }),
             snapshot: Arc::new(SnapshotCell {
                 value: Mutex::new(RuntimeSnapshot::starting(
@@ -3427,8 +3523,30 @@ mod tests {
                 enqueued: 1,
                 queue_full: 1,
                 runtime_stopped: 0,
+                sequence_gap_count: 0,
+                missing_sequence_count: 0,
+                duplicate_sequence_count: 0,
+                out_of_order_sequence_count: 0,
             }
         );
+    }
+
+    #[test]
+    fn command_sequence_tracker_classifies_gaps_duplicates_and_wraparound() {
+        let mut tracker = CommandSequenceTracker::default();
+        assert_eq!(tracker.observe(7), CommandSequenceDisposition::First);
+        assert_eq!(
+            tracker.observe(9),
+            CommandSequenceDisposition::Gap { missing: 1 }
+        );
+        assert_eq!(tracker.observe(9), CommandSequenceDisposition::Duplicate);
+        assert_eq!(tracker.observe(8), CommandSequenceDisposition::OutOfOrder);
+
+        let mut wrapping = CommandSequenceTracker {
+            last: Some(u64::MAX),
+            ..Default::default()
+        };
+        assert_eq!(wrapping.observe(0), CommandSequenceDisposition::InOrder);
     }
 
     #[test]
@@ -3440,7 +3558,7 @@ mod tests {
             producer: Arc::new(Producer {
                 sender,
                 next_sequence: Mutex::new(0),
-                command_transport: CommandTransportCounters::default(),
+                command_transport: Arc::new(CommandTransportCounters::default()),
             }),
             snapshot: Arc::new(SnapshotCell {
                 value: Mutex::new(RuntimeSnapshot::starting(

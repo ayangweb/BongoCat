@@ -31,10 +31,11 @@ use bongocat_ui::{
     SettingsModelBehaviorBinding, SettingsModelCatalog, SettingsModelCatalogError,
     SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportProgress,
     SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsModelSettings,
-    SettingsOverlay, SettingsRuntimeCommandFailure, SettingsRuntimeDiagnostics,
-    SettingsRuntimeErrorCode, SettingsServiceEndpoint, SettingsShortcutBinding, SettingsShortcuts,
-    SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
-    SettingsStartupItemUnsupportedReason, SettingsWindowPlacement, SettingsWindowState,
+    SettingsOverlay, SettingsRuntimeCommandFailure, SettingsRuntimeCommandTransportDiagnostics,
+    SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode, SettingsServiceEndpoint,
+    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
+    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsWindowPlacement,
+    SettingsWindowState,
 };
 use serde::Serialize;
 use std::fs;
@@ -977,6 +978,15 @@ fn settings_runtime_diagnostics(
                 code: settings_runtime_error_code(failure.code),
             }
         }),
+        command_transport: SettingsRuntimeCommandTransportDiagnostics {
+            enqueued: runtime.command_transport.enqueued,
+            queue_full: runtime.command_transport.queue_full,
+            runtime_stopped: runtime.command_transport.runtime_stopped,
+            sequence_gap_count: runtime.command_transport.sequence_gap_count,
+            missing_sequence_count: runtime.command_transport.missing_sequence_count,
+            duplicate_sequence_count: runtime.command_transport.duplicate_sequence_count,
+            out_of_order_sequence_count: runtime.command_transport.out_of_order_sequence_count,
+        },
     }
 }
 
@@ -1196,6 +1206,13 @@ struct DiagnosticsRuntime {
     render_error_code: Option<&'static str>,
     last_command_failure_code: Option<&'static str>,
     last_command_failure_sequence: Option<u64>,
+    command_enqueued: u64,
+    command_queue_full: u64,
+    command_runtime_stopped: u64,
+    command_sequence_gap_count: u64,
+    command_missing_sequence_count: u64,
+    command_duplicate_sequence_count: u64,
+    command_out_of_order_sequence_count: u64,
 }
 
 #[derive(Serialize)]
@@ -1389,6 +1406,15 @@ fn diagnostics_document(
             last_command_failure_sequence: runtime
                 .last_command_failure
                 .map(|failure| failure.sequence),
+            command_enqueued: runtime.command_transport.enqueued,
+            command_queue_full: runtime.command_transport.queue_full,
+            command_runtime_stopped: runtime.command_transport.runtime_stopped,
+            command_sequence_gap_count: runtime.command_transport.sequence_gap_count,
+            command_missing_sequence_count: runtime.command_transport.missing_sequence_count,
+            command_duplicate_sequence_count: runtime.command_transport.duplicate_sequence_count,
+            command_out_of_order_sequence_count: runtime
+                .command_transport
+                .out_of_order_sequence_count,
         },
         input: diagnostics_input(input),
         configuration: diagnostics_configuration(snapshot),
@@ -1774,6 +1800,7 @@ mod tests {
                     sequence: 9,
                     code: SettingsRuntimeErrorCode::TransportClosed,
                 }),
+                command_transport: SettingsRuntimeCommandTransportDiagnostics::default(),
             },
             overlay_visible: true,
             overlay: SettingsOverlay::default(),
