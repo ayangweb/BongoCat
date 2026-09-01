@@ -651,7 +651,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     lifecycle Reset、sequence gap 和非单调时间恢复；issue #47 合成回归不会残留按键。
     正式平台 producer 与周期 scheduler 接线及 Windows 实机场景仍待完成。
 - [ ] 实现 fixture runner 和规范化 snapshot 比较。
-  - 状态（2026-08-29）：`spikes/fixture-runner/` 已用 Rust 强类型解析并执行全部 9 组共享 fixture，在 24 个 checkpoint 比较完整规范化 snapshot，且已接入 Phase 0 Linux contract matrix；产品 runtime 的 `InputEvent`/`RuntimeSnapshot` 尚未建立，因此本项保持未勾选。
+  - 状态（2026-08-29）：`spikes/fixture-runner/` 已用 Rust 强类型解析并执行全部 9 组共享 fixture，在 24 个 checkpoint 比较完整规范化 snapshot，且已接入 Phase 0 Linux contract matrix。
+  - 状态（2026-09-01）：正式 `bongocat-runtime` 新增 `shared_input_fixtures` 集成测试，真实驱动
+    typed `InputEvent`、cursor/axis latest producer 和 `RuntimeCommand::Tick`，对 8 组纯输入 fixture
+    的 17 个 checkpoint 比较匿名计数、左右手/鼠标投影、Reset 原因和 cursor 样本；Native workspace
+    CI 会随 `cargo test --workspace` 执行。含 model switch、motion、expression、audio 的第 9 组
+    仍只由 spike runner 验证，完整产品模型/音频 snapshot 对接仍待完成，因此总项保持未勾选。
 
 ### 3.3 Windows 输入
 
