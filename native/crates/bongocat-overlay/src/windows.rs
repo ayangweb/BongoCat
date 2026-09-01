@@ -871,7 +871,7 @@ impl ProductOverlaySession {
             let next_options = self
                 .options
                 .with_runtime_settings(runtime_snapshot.overlay_settings);
-            let mut replacement = NativeOverlay::create(&self.last_frame, next_options)?;
+            let replacement = NativeOverlay::create(&self.last_frame, next_options)?;
             if runtime_snapshot.overlay_visible {
                 replacement.set_visible(true)?;
             }
