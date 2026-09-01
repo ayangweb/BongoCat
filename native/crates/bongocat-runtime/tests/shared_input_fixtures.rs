@@ -259,7 +259,11 @@ fn publish_event(owner: &RuntimeOwner, event: &Value, ids: &mut BTreeMap<String,
     }
 }
 
-fn assert_checkpoint(snapshot: &bongocat_runtime::RuntimeSnapshot, checkpoint: &Value) {
+fn assert_checkpoint(
+    snapshot: &bongocat_runtime::RuntimeSnapshot,
+    checkpoint: &Value,
+    gamepad_bindings: &BTreeMap<GamepadButton, HandSide>,
+) {
     let expected_input = &checkpoint["input"];
     assert_eq!(
         snapshot.input.pressed_key_count,
@@ -327,7 +331,19 @@ fn assert_checkpoint(snapshot: &bongocat_runtime::RuntimeSnapshot, checkpoint: &
             "CatParamRightHandDown" => model.right_hand_down as u8 as f32,
             "ParamMouseLeftDown" => model.mouse_left_down as u8 as f32,
             "ParamMouseRightDown" => model.mouse_right_down as u8 as f32,
-            other if other.starts_with("Gamepad") => continue,
+            other if other.starts_with("Gamepad") && other.ends_with("Down") => {
+                let binding = gamepad_button_key(other.trim_end_matches("Down"));
+                let pressed = match binding {
+                    GamepadButton::LeftStick => model.stick_left_down,
+                    GamepadButton::RightStick => model.stick_right_down,
+                    button => match gamepad_bindings.get(&button) {
+                        Some(HandSide::Left) => model.left_hand_down,
+                        Some(HandSide::Right) => model.right_hand_down,
+                        None => false,
+                    },
+                };
+                pressed as u8 as f32
+            }
             other => panic!("unsupported product parameter {other}"),
         };
         assert_eq!(
@@ -379,7 +395,7 @@ fn shared_input_fixtures_match_product_runtime_projection() {
             .expect("runtime ready");
         client
             .send(RuntimeCommand::SetInputBindings(std::sync::Arc::new(
-                InputBindings::with_gamepad_hands(key_bindings, gamepad_bindings),
+                InputBindings::with_gamepad_hands(key_bindings, gamepad_bindings.clone()),
             )))
             .expect("set fixture bindings");
         let mut event_index = 0;
@@ -401,7 +417,7 @@ fn shared_input_fixtures_match_product_runtime_projection() {
             let snapshot = client
                 .wait_for_command(tick, TIMEOUT)
                 .expect("tick snapshot");
-            assert_checkpoint(&snapshot, checkpoint);
+            assert_checkpoint(&snapshot, checkpoint, &gamepad_bindings);
         }
         owner.shutdown(TIMEOUT).expect("fixture runtime shutdown");
     }
