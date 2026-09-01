@@ -1899,7 +1899,10 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), ConfigError> {
 }
 
 fn write_atomic_io(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    #[cfg(unix)]
     let mut options = AtomicWriteFile::options();
+    #[cfg(not(unix))]
+    let options = AtomicWriteFile::options();
     #[cfg(unix)]
     {
         use atomic_write_file::unix::OpenOptionsExt;
