@@ -1903,7 +1903,10 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       input owner；边沿仍先进入可靠 `InputEvent`，随后在 worker 外匹配并将 active model 的
       motion/expression target 转成 typed runtime command，Reset 会清理 matcher transient state。
       应用级 target 目前显式记录为 ignored，待 coordinator 提供带配置 revision 的 typed action；
-      注册/捕获 UI、GPUI 清除/恢复默认入口和 Windows/macOS 实机快捷键证据仍未完成。
+      配置提交后共享 `ShortcutTable` 会在下一条边沿前原子替换，运行中的 input owner 无需重启
+      即可读取新 compiled bindings；旧 pressed set 会按 matcher 规则保留或由 Reset 清除。
+      注册/捕获 UI、应用级 coordinator action、GPUI 清除/恢复默认入口和 Windows/macOS 实机
+      快捷键证据仍未完成。
 
 ## 13. 待决策清单
 
