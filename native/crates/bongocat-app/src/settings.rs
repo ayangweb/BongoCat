@@ -1311,7 +1311,9 @@ fn export_diagnostics_file(
     let options = {
         use atomic_write_file::unix::OpenOptionsExt;
         use std::os::unix::fs::OpenOptionsExt as _;
-        AtomicWriteFile::options().preserve_mode(false).mode(0o600)
+        let mut options = AtomicWriteFile::options();
+        options.preserve_mode(false).mode(0o600);
+        options
     };
     #[cfg(not(unix))]
     let options = AtomicWriteFile::options();
