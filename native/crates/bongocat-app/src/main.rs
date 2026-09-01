@@ -1485,6 +1485,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         request_windows_product_quit(&smoke_shutdown_requested);
                     }
                 }
+                #[cfg(target_os = "macos")]
+                let _ = cx.update(request_product_quit);
+                #[cfg(target_os = "windows")]
+                request_windows_product_quit(&smoke_shutdown_requested);
             })
             .detach();
         }
