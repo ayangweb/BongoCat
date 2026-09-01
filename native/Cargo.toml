@@ -55,6 +55,11 @@ dbg_macro = "deny"
 print_stderr = "deny"
 print_stdout = "deny"
 
+[profile.dev]
+debug = true
+incremental = true
+panic = "unwind"
+
 [profile.release]
 strip = "symbols"
 opt-level = 3

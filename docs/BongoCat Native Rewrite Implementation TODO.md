@@ -446,7 +446,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 验收证据（2026-09-01）：`bongocat-platform`、`bongocat-overlay`、`bongocat-audio`、`bongocat-runtime`、
     `bongocat-ui` 和 `bongocat-app` 的平台依赖均位于 target-specific manifest；三平台 Native workspace
     CI 的 locked check/Clippy/test/release 组合验证了目标条件解析。
-- [ ] 审查 Cargo feature union，禁止测试/诊断/运行时 shader feature 意外进入 release 产物。
+- [x] 审查 Cargo feature union，禁止测试/诊断/运行时 shader feature 意外进入 release 产物。
+  - 验收证据（2026-09-01）：正式 workspace 只有 Development-only `storage-test-injection`
+    feature；`bongocat-app` 在 Production cfg 下以编译期错误拒绝该 feature，默认 release/
+    Production 构建不携带测试存储根覆盖；workspace 没有 runtime shader 或诊断 release feature。
+    CI 的 `--all-features` Clippy 与默认 release/Production check 分离执行，并通过组合拒绝回归。
 - [x] 业务、配置、模型和 UI crate 使用 forbid unsafe_code。
   - 验收证据（2026-09-01）：runtime/config/model/UI/app/audio/render/live2d 源入口均声明
     `#![forbid(unsafe_code)]`；overlay 在非 Windows/macOS 共享编译路径增加同一门禁，平台 FFI 仅保留
@@ -484,7 +488,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     callback panic boundary、日志轮转和导出无路径，三平台 Native CI 通过。
 - [ ] 提供开发/测试所需 Cubism 二进制的可验证安装说明。
 - [ ] 构建脚本默认不联网；外部 SDK、shader compiler 和生成器必须先由显式 bootstrap 步骤准备。
-- [ ] 定义 debug、release、profiling 三种 profile，profiling 产物不得误发布。
+- [x] 定义 debug、release、profiling 三种 profile，profiling 产物不得误发布。
+  - 验收证据（2026-09-01）：`native/Cargo.toml` 显式定义 dev（debug、incremental、unwind）、
+    release（symbols stripped、LTO、abort）和 profiling（继承 release、保留完整 debug、关闭
+    LTO）profile；CI 与打包入口只使用 release，provenance 记录 profile，profiling 不进入发布
+    workflow。三平台 Native workspace release check 通过。
 
 ### 2.3 CI
 
