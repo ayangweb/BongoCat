@@ -13,6 +13,8 @@ use std::{
 
 const LOG_FILE_PREFIX: &str = "application-";
 const LOG_FILE_SUFFIX: &str = ".jsonl";
+const RUN_MARKER_NAME: &str = "application-running.marker";
+const RUN_MARKER_CONTENTS: &[u8] = b"{\"schema_version\":1}\n";
 const MAX_LOG_BYTES: u64 = 1024 * 1024;
 const MAX_LOG_FILES: usize = 8;
 const MAX_TOTAL_LOG_BYTES: u64 = 8 * 1024 * 1024;
@@ -64,7 +66,9 @@ impl ApplicationLogLevel {
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum ApplicationLogCode {
     Started,
+    PreviousRunUnclean,
     ShutdownStarted,
+    ShutdownCompleted,
     ShutdownFailed,
     Panicked,
     RuntimeUnavailable,
@@ -75,7 +79,9 @@ impl ApplicationLogCode {
     const fn as_str(self) -> &'static str {
         match self {
             Self::Started => "started",
+            Self::PreviousRunUnclean => "previous_run_unclean",
             Self::ShutdownStarted => "shutdown_started",
+            Self::ShutdownCompleted => "shutdown_completed",
             Self::ShutdownFailed => "shutdown_failed",
             Self::Panicked => "panicked",
             Self::RuntimeUnavailable => "runtime_unavailable",
@@ -105,6 +111,22 @@ impl ApplicationLogEvent {
             component: ApplicationLogComponent::Application,
             level: ApplicationLogLevel::Info,
             code: ApplicationLogCode::ShutdownStarted,
+        }
+    }
+
+    pub const fn previous_run_unclean() -> Self {
+        Self {
+            component: ApplicationLogComponent::Application,
+            level: ApplicationLogLevel::Warn,
+            code: ApplicationLogCode::PreviousRunUnclean,
+        }
+    }
+
+    pub const fn shutdown_completed() -> Self {
+        Self {
+            component: ApplicationLogComponent::Application,
+            level: ApplicationLogLevel::Info,
+            code: ApplicationLogCode::ShutdownCompleted,
         }
     }
 
@@ -139,6 +161,8 @@ pub struct ApplicationLogDiagnostics {
 pub enum ApplicationLogError {
     CreateDirectory(io::Error),
     OpenFile(io::Error),
+    WriteRunMarker(io::Error),
+    RemoveRunMarker(io::Error),
 }
 
 impl std::fmt::Display for ApplicationLogError {
@@ -151,6 +175,12 @@ impl std::fmt::Display for ApplicationLogError {
                 )
             }
             Self::OpenFile(error) => write!(formatter, "cannot open application log file: {error}"),
+            Self::WriteRunMarker(error) => {
+                write!(formatter, "cannot write application run marker: {error}")
+            }
+            Self::RemoveRunMarker(error) => {
+                write!(formatter, "cannot remove application run marker: {error}")
+            }
         }
     }
 }
@@ -176,6 +206,11 @@ struct ApplicationLogSink {
 #[derive(Clone, Debug)]
 pub struct ApplicationLogHandle {
     sink: Arc<ApplicationLogSink>,
+}
+
+#[derive(Debug)]
+pub(crate) struct ApplicationRunMarker {
+    path: PathBuf,
 }
 
 type PanicHook = dyn Fn(&PanicHookInfo<'_>) + Send + Sync + 'static;
@@ -246,6 +281,35 @@ impl ApplicationLogHandle {
         ApplicationPanicHook {
             previous: Some(previous),
         }
+    }
+
+    pub(crate) fn begin_run(&self) -> Result<(ApplicationRunMarker, bool), ApplicationLogError> {
+        let directory = self
+            .sink
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .directory
+            .clone();
+        let path = directory.join(RUN_MARKER_NAME);
+        let previous_run_unclean = path.exists();
+        let mut marker = OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(&path)
+            .map_err(ApplicationLogError::WriteRunMarker)?;
+        marker
+            .write_all(RUN_MARKER_CONTENTS)
+            .and_then(|()| marker.sync_all())
+            .map_err(ApplicationLogError::WriteRunMarker)?;
+        Ok((ApplicationRunMarker { path }, previous_run_unclean))
+    }
+}
+
+impl ApplicationRunMarker {
+    pub(crate) fn complete(self) -> Result<(), ApplicationLogError> {
+        fs::remove_file(&self.path).map_err(ApplicationLogError::RemoveRunMarker)
     }
 }
 
@@ -595,5 +659,24 @@ mod tests {
             .sink
             .try_record(current_day(), ApplicationLogEvent::panicked());
         assert_eq!(state.diagnostics.written, 0);
+    }
+
+    #[test]
+    fn run_marker_survives_unclean_drop_and_is_removed_on_completion() {
+        let directory = tempdir().expect("temporary directory");
+        let handle = ApplicationLogHandle::install(directory.path()).expect("application log");
+        let (marker, previous) = handle.begin_run().expect("begin first run");
+        assert!(!previous);
+        let marker_path = directory.path().join(RUN_MARKER_NAME);
+        assert_eq!(
+            fs::read(&marker_path).expect("marker bytes"),
+            RUN_MARKER_CONTENTS
+        );
+        drop(marker);
+
+        let (marker, previous) = handle.begin_run().expect("begin recovered run");
+        assert!(previous);
+        marker.complete().expect("complete run");
+        assert!(!marker_path.exists());
     }
 }

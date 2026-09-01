@@ -40,6 +40,7 @@ mod app_log;
 #[cfg(test)]
 mod build_environment_contract;
 mod settings;
+use app_log::ApplicationRunMarker;
 pub use app_log::{
     ApplicationLogCode, ApplicationLogComponent, ApplicationLogDiagnostics, ApplicationLogError,
     ApplicationLogEvent, ApplicationLogHandle, ApplicationLogLevel, ApplicationPanicHook,
@@ -217,6 +218,7 @@ pub struct Application {
     motion_audio: Option<MotionAudioService>,
     render_consumer: Option<RenderConsumer>,
     application_log: ApplicationLogHandle,
+    run_marker: ApplicationRunMarker,
     panic_hook: Option<ApplicationPanicHook>,
     shortcut_table: ShortcutTable,
 }
@@ -257,6 +259,7 @@ impl Application {
         )?;
         let config_store = ConfigStore::new(layout.clone())?;
         let application_log = ApplicationLogHandle::install(&layout.logs)?;
+        let (run_marker, previous_run_unclean) = application_log.begin_run()?;
         let state_store = StateStore::new(layout);
         let state = state_store.load_or_default().state;
         let (config, config_revision, config_recovery, interrupted_config_recovery, config_status) =
@@ -361,9 +364,15 @@ impl Application {
             motion_audio,
             render_consumer,
             application_log,
+            run_marker,
             panic_hook: None,
             shortcut_table,
         };
+        if previous_run_unclean {
+            application
+                .application_log
+                .record(ApplicationLogEvent::previous_run_unclean());
+        }
         application
             .application_log
             .record(ApplicationLogEvent::started());
@@ -900,6 +909,9 @@ impl Application {
                 .record(ApplicationLogEvent::shutdown_failed());
             return Err(ApplicationError::MotionAudioShutdown(error));
         }
+        self.application_log
+            .record(ApplicationLogEvent::shutdown_completed());
+        self.run_marker.complete()?;
         Ok(stopped)
     }
 }

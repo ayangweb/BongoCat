@@ -453,8 +453,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     process panic hook；hook 只写固定 `application/error/panicked` JSONL 事件，不读取 panic
     payload、源码位置或 backtrace，并使用非阻塞锁避免二次 panic/死锁。`ApplicationPanicHook`
     在 owner drop 时恢复之前的 hook；单元测试覆盖含用户路径 payload 的脱敏、日志锁占用时
-    直接丢弃和 hook 恢复。崩溃后的启动标记、异常退出识别与 release 实机崩溃收集仍待完成，
-    因此本项保持未勾选。
+    直接丢弃和 hook 恢复。新增环境隔离的持久运行标记：只有完整 runtime/audio shutdown 才清理，
+    下次启动会记录匿名 `previous_run_unclean` 事件；panic、shutdown 错误和强制终止会保留标记。
+    release 实机崩溃收集仍待完成，因此本项保持未勾选。
 - [ ] 定义线程、任务、channel、窗口和 GPU object owner。
 - [ ] 建立结构化日志字段和用户路径脱敏规则。
 - [ ] 提供开发/测试所需 Cubism 二进制的可验证安装说明。
