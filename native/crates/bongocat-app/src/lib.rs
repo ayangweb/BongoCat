@@ -10,8 +10,8 @@ use bongocat_audio::{MotionAudioService, MotionAudioShutdownError};
 use bongocat_config::{
     ApplicationState, BuildEnvironment, CompiledShortcuts, ConfigError, ConfigRecovery,
     ConfigRevision, ConfigStore, InterruptedConfigRecovery, ModelBehaviorBinding, NativeConfig,
-    PlatformStorageError, SelectedModelOrigin, ShortcutBinding, ShortcutConfig, StateError,
-    StateStore, StorageLayout, ShortcutTable, WindowPlacement, platform_layout,
+    PlatformStorageError, SelectedModelOrigin, ShortcutBinding, ShortcutConfig, ShortcutTable,
+    StateError, StateStore, StorageLayout, WindowPlacement, platform_layout,
 };
 use bongocat_model::{
     CommittedModel, InstalledModel, ModelCatalogEntry, ModelError, ModelId, ModelImportProgress,
@@ -29,7 +29,10 @@ use std::{
     collections::BTreeMap,
     fmt,
     path::Path,
-    sync::{Arc, atomic::{AtomicBool, Ordering}},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 

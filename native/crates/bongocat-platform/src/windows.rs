@@ -1,4 +1,6 @@
-use crate::{PlatformInputDiagnostics, PlatformInputError, PlatformInputServiceStatus, ShortcutDispatcher};
+use crate::{
+    PlatformInputDiagnostics, PlatformInputError, PlatformInputServiceStatus, ShortcutDispatcher,
+};
 use bongocat_runtime::{
     CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorViewport, GamepadAxis,
     GamepadAxisKey, GamepadAxisProducer, GamepadAxisPublishError, GamepadAxisSample, GamepadButton,
@@ -749,10 +751,8 @@ impl WindowState {
                             bongocat_runtime::SendError::QueueFull(_),
                         ))
                         | Err(crate::ShortcutDispatchError::ApplicationQueueFull) => {
-                            self.diagnostics.runtime_queue_overflows = self
-                                .diagnostics
-                                .runtime_queue_overflows
-                                .saturating_add(1);
+                            self.diagnostics.runtime_queue_overflows =
+                                self.diagnostics.runtime_queue_overflows.saturating_add(1);
                         }
                         Err(crate::ShortcutDispatchError::Runtime(
                             bongocat_runtime::SendError::RuntimeStopped(_),

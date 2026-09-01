@@ -980,7 +980,7 @@ impl MacInputService {
         )
     }
 
-pub fn start_with_diagnostics(
+    pub fn start_with_diagnostics(
         producer: InputProducer,
         cursor_producer: CursorProducer,
         gamepad_axis_producer: GamepadAxisProducer,
@@ -1663,9 +1663,8 @@ fn publish_captured(
                         bongocat_runtime::SendError::QueueFull(_),
                     ))
                     | Err(crate::ShortcutDispatchError::ApplicationQueueFull) => {
-                        diagnostics.runtime_queue_overflows = diagnostics
-                            .runtime_queue_overflows
-                            .saturating_add(1);
+                        diagnostics.runtime_queue_overflows =
+                            diagnostics.runtime_queue_overflows.saturating_add(1);
                     }
                     Err(crate::ShortcutDispatchError::Runtime(
                         bongocat_runtime::SendError::RuntimeStopped(_),

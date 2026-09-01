@@ -3,7 +3,9 @@ use crate::{
     validate_model_generation_advance,
 };
 use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
-use bongocat_platform::{MacInputService, PlatformInputDiagnostics, PlatformInputError, ShortcutDispatcher};
+use bongocat_platform::{
+    MacInputService, PlatformInputDiagnostics, PlatformInputError, ShortcutDispatcher,
+};
 use bongocat_render::{
     BlendMode, CanvasInfo, DrawableId, ModelCommitErrorCode, ModelCommitFeedback,
     ModelCommitOutcome, ModelCommitToken, RenderConsumer, RenderFrame, RenderResources,

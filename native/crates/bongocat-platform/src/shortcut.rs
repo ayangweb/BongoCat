@@ -1,7 +1,10 @@
 use bongocat_config::{
     CompiledShortcuts, ModelBehaviorAction, ShortcutModifiers, ShortcutTable, ShortcutTarget,
 };
-use bongocat_runtime::{ExpressionId, InputEdge, MotionId, MotionPriority, PhysicalKey, RuntimeClient, SendError, ShortcutAction};
+use bongocat_runtime::{
+    ExpressionId, InputEdge, MotionId, MotionPriority, PhysicalKey, RuntimeClient, SendError,
+    ShortcutAction,
+};
 use std::{collections::BTreeSet, sync::mpsc::SyncSender};
 
 /// Platform-neutral shortcut edge matcher used after native key codes have
@@ -240,14 +243,26 @@ mod tests {
         let alt = PhysicalKey::from_hid_usage(0xe2);
         let b = PhysicalKey::from_hid_usage(0x05);
         let m = PhysicalKey::from_hid_usage(0x10);
-        assert_eq!(dispatcher.apply(control, InputEdge::Down), Ok(ShortcutDispatch::NoMatch));
+        assert_eq!(
+            dispatcher.apply(control, InputEdge::Down),
+            Ok(ShortcutDispatch::NoMatch)
+        );
         assert_eq!(
             dispatcher.apply(b, InputEdge::Down),
             Ok(ShortcutDispatch::IgnoredApplicationCommand)
         );
-        assert_eq!(dispatcher.apply(b, InputEdge::Up), Ok(ShortcutDispatch::NoMatch));
-        assert_eq!(dispatcher.apply(control, InputEdge::Up), Ok(ShortcutDispatch::NoMatch));
-        assert_eq!(dispatcher.apply(alt, InputEdge::Down), Ok(ShortcutDispatch::NoMatch));
+        assert_eq!(
+            dispatcher.apply(b, InputEdge::Up),
+            Ok(ShortcutDispatch::NoMatch)
+        );
+        assert_eq!(
+            dispatcher.apply(control, InputEdge::Up),
+            Ok(ShortcutDispatch::NoMatch)
+        );
+        assert_eq!(
+            dispatcher.apply(alt, InputEdge::Down),
+            Ok(ShortcutDispatch::NoMatch)
+        );
         assert_eq!(
             dispatcher.apply(m, InputEdge::Down),
             Ok(ShortcutDispatch::IgnoredInactiveModel)
@@ -264,11 +279,22 @@ mod tests {
             .compile()
             .expect("replacement shortcuts"),
         );
-        assert_eq!(dispatcher.apply(alt, InputEdge::Up), Ok(ShortcutDispatch::NoMatch));
+        assert_eq!(
+            dispatcher.apply(alt, InputEdge::Up),
+            Ok(ShortcutDispatch::NoMatch)
+        );
         let shift = PhysicalKey::from_hid_usage(0xe1);
-        assert_eq!(dispatcher.apply(shift, InputEdge::Down), Ok(ShortcutDispatch::NoMatch));
-        assert_eq!(dispatcher.apply(m, InputEdge::Down), Ok(ShortcutDispatch::IgnoredApplicationCommand));
-        runtime.shutdown(std::time::Duration::from_secs(1)).expect("runtime stop");
+        assert_eq!(
+            dispatcher.apply(shift, InputEdge::Down),
+            Ok(ShortcutDispatch::NoMatch)
+        );
+        assert_eq!(
+            dispatcher.apply(m, InputEdge::Down),
+            Ok(ShortcutDispatch::IgnoredApplicationCommand)
+        );
+        runtime
+            .shutdown(std::time::Duration::from_secs(1))
+            .expect("runtime stop");
     }
 
     #[test]

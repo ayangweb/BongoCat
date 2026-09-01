@@ -24,17 +24,17 @@ use bongocat_runtime::{
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_ui::SettingsStartupItemError;
 use bongocat_ui::{
-    RuntimeHealth, SettingsClient, SettingsCommand, SettingsConfigRecovery,
-    SettingsConfigurationStatus, SettingsDiagnosticsExportStatus, SettingsError, SettingsErrorCode,
-    SettingsGamepadAxisSettings, SettingsInputDiagnostics, SettingsInputServiceStatus,
-    SettingsModelAvailability, SettingsModelBehaviorBinding, SettingsModelCatalog,
-    SettingsModelCatalogError, SettingsModelDiagnostic, SettingsModelEntry,
+    RuntimeHealth, SettingsApplicationShortcut, SettingsClient, SettingsCommand,
+    SettingsConfigRecovery, SettingsConfigurationStatus, SettingsDiagnosticsExportStatus,
+    SettingsError, SettingsErrorCode, SettingsGamepadAxisSettings, SettingsInputDiagnostics,
+    SettingsInputServiceStatus, SettingsModelAvailability, SettingsModelBehaviorBinding,
+    SettingsModelCatalog, SettingsModelCatalogError, SettingsModelDiagnostic, SettingsModelEntry,
     SettingsModelImportProgress, SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin,
     SettingsModelSettings, SettingsOverlay, SettingsRuntimeCommandFailure,
     SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode, SettingsServiceEndpoint,
     SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
     SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsWindowPlacement,
-    SettingsWindowState, SettingsApplicationShortcut,
+    SettingsWindowState,
 };
 use serde::Serialize;
 use std::fs;
@@ -899,9 +899,7 @@ fn settings_shortcuts(config: &NativeConfig) -> SettingsShortcuts {
     }
 }
 
-fn settings_shortcut(
-    command: ShortcutCommand,
-) -> Option<SettingsApplicationShortcut> {
+fn settings_shortcut(command: ShortcutCommand) -> Option<SettingsApplicationShortcut> {
     Some(match command {
         ShortcutCommand::ToggleOverlay => SettingsApplicationShortcut::ToggleOverlay,
         ShortcutCommand::ToggleMirror => SettingsApplicationShortcut::ToggleMirror,
@@ -2244,8 +2242,9 @@ mod tests {
         let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
         let application = Application::start_with_layout(layout).expect("start application");
         let (sender, receiver) = std::sync::mpsc::sync_channel(4);
-        let service = ApplicationSettingsService::start_with_shortcut_receiver(application, receiver)
-            .expect("start settings service");
+        let service =
+            ApplicationSettingsService::start_with_shortcut_receiver(application, receiver)
+                .expect("start settings service");
         let client = service.client();
         let initial = client.read_snapshot_blocking().expect("initial snapshot");
         sender
@@ -2290,7 +2289,10 @@ mod tests {
         }
         assert!(observed);
         drop(sender);
-        service.client().shutdown_blocking().expect("shutdown service");
+        service
+            .client()
+            .shutdown_blocking()
+            .expect("shutdown service");
         service.join().expect("join service");
     }
 
@@ -2300,8 +2302,9 @@ mod tests {
         let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
         let application = Application::start_with_layout(layout).expect("start application");
         let (sender, receiver) = std::sync::mpsc::sync_channel(1);
-        let service = ApplicationSettingsService::start_with_shortcut_receiver(application, receiver)
-            .expect("start settings service");
+        let service =
+            ApplicationSettingsService::start_with_shortcut_receiver(application, receiver)
+                .expect("start settings service");
 
         drop(service);
 

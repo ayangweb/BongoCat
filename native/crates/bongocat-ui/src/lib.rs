@@ -1129,7 +1129,10 @@ impl SettingsClient {
         })
     }
 
-    pub fn enqueue_application_shortcut(&self, command: SettingsApplicationShortcut) -> Result<(), SettingsServiceClosed> {
+    pub fn enqueue_application_shortcut(
+        &self,
+        command: SettingsApplicationShortcut,
+    ) -> Result<(), SettingsServiceClosed> {
         self.commands
             .send_blocking(SettingsCommand::TriggerApplicationShortcut { command })
             .map_err(|_| SettingsServiceClosed)
