@@ -821,6 +821,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-30）：模型 commit feedback 与 latest frame 分离为不可覆盖的可靠单槽；
     occupied/closed/stale 均有计数，普通 frame coalescing 不会丢模型提交结果。runtime 等待
     GPU token 时仍消费可靠 input edge，renderer 不持有 runtime 锁。
+  - 状态（2026-09-01）：`bongocat-render` 将带 `model_commit` 的控制帧放入独立可靠槽，
+    普通 latest 数据帧即使连续 coalesce 也不会覆盖待确认的模型提交；7 项 render contract
+    与 Windows 失败回归均通过，双槽 pending accounting 保持守恒。
 - [ ] 支持目标 FPS、不可见暂停/降频和刷新率变化。
 - [ ] 首帧前不出现黑框或不透明闪烁。
 - [ ] shutdown 先停 frame source，再释放 GPU/window。

@@ -207,6 +207,9 @@ impl std::error::Error for ModelCommitFeedbackError {}
 #[derive(Default)]
 struct LatestFrameState {
     pending: Option<RenderFrame>,
+    // Model commit frames are control-plane messages. Keep them reliable even
+    // when the data-plane latest frame is replaced by a faster producer.
+    pending_model_commit: Option<RenderFrame>,
     last_transport_sequence: Option<u64>,
     feedback: Option<ModelCommitFeedback>,
     closed: bool,
@@ -243,7 +246,11 @@ impl RenderProducer {
         }
         state.last_transport_sequence = Some(frame.transport_sequence);
         state.diagnostics.published = state.diagnostics.published.saturating_add(1);
-        if state.pending.replace(frame).is_some() {
+        if frame.model_commit.is_some() {
+            if state.pending_model_commit.replace(frame).is_some() {
+                state.diagnostics.coalesced = state.diagnostics.coalesced.saturating_add(1);
+            }
+        } else if state.pending.replace(frame).is_some() {
             state.diagnostics.coalesced = state.diagnostics.coalesced.saturating_add(1);
         }
         Ok(())
@@ -296,7 +303,10 @@ impl RenderConsumer {
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let frame = state.pending.take();
+        let frame = state
+            .pending_model_commit
+            .take()
+            .or_else(|| state.pending.take());
         if frame.is_some() {
             state.diagnostics.consumed = state.diagnostics.consumed.saturating_add(1);
         }
@@ -341,7 +351,8 @@ impl LatestFrameSlot {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         RenderTransportDiagnostics {
-            pending: u64::from(state.pending.is_some()),
+            pending: u64::from(state.pending.is_some())
+                .saturating_add(u64::from(state.pending_model_commit.is_some())),
             feedback_pending: u64::from(state.feedback.is_some()),
             ..state.diagnostics
         }
@@ -408,6 +419,37 @@ mod tests {
                 published: 10_000,
                 coalesced: 9_999,
                 consumed: 1,
+                ..RenderTransportDiagnostics::default()
+            }
+        );
+    }
+
+    #[test]
+    fn model_commit_frame_survives_latest_frame_coalescing() {
+        let (producer, consumer) = latest_render_channel();
+        let token = ModelCommitToken {
+            command_sequence: 7,
+            model_generation: 3,
+        };
+        let mut commit = frame(1);
+        commit.model_commit = Some(token);
+        producer.publish(commit).expect("publish model commit");
+        for number in 2..10_000 {
+            producer.publish(frame(number)).expect("publish frame");
+        }
+
+        let commit = consumer.take_latest().expect("reliable commit frame");
+        assert_eq!(commit.model_commit, Some(token));
+        assert_eq!(commit.frame_number, 1);
+        let latest = consumer.take_latest().expect("latest data frame");
+        assert_eq!(latest.model_commit, None);
+        assert_eq!(latest.frame_number, 9_999);
+        assert_eq!(
+            consumer.diagnostics(),
+            RenderTransportDiagnostics {
+                published: 9_999,
+                coalesced: 9_997,
+                consumed: 2,
                 ..RenderTransportDiagnostics::default()
             }
         );
