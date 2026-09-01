@@ -43,7 +43,8 @@ mod settings;
 use app_log::ApplicationRunMarker;
 pub use app_log::{
     ApplicationLogCode, ApplicationLogComponent, ApplicationLogDiagnostics, ApplicationLogError,
-    ApplicationLogEvent, ApplicationLogHandle, ApplicationLogLevel, ApplicationPanicHook,
+    ApplicationLogEvent, ApplicationLogEventCounts, ApplicationLogHandle, ApplicationLogLevel,
+    ApplicationPanicHook,
 };
 pub use settings::{ApplicationSettingsService, SettingsServiceJoinError};
 

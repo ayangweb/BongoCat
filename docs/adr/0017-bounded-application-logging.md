@@ -25,12 +25,14 @@ Native Rewrite 需要可诊断的应用生命周期记录，但不能把按键�
   after runtime/audio shutdown and the `shutdown_completed` event. A leftover marker causes the next
   startup to record `previous_run_unclean`; panic, forced termination, and failed shutdown therefore
   remain diagnosable without recording payloads or paths.
+- Diagnostics export may include aggregate counts for the fixed application event codes. It never
+  embeds JSONL records, panic payloads, paths, key values, or user file content.
 
 ## 验证
 
 `bongocat-app` 单元测试覆盖固定字段、日期切换和过期清理、1 MiB 轮转、文件数量上限、无效
 目录失败路径以及运行标记的异常保留/正常清理；settings 测试验证导出包含匿名应用日志统计
-且不泄漏路径或模型身份。
+和固定事件计数且不泄漏路径或模型身份。
 
 ## 后续边界
 

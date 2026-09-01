@@ -1264,6 +1264,19 @@ struct DiagnosticsApplicationLogs {
     pruned: u64,
     bytes: u64,
     retained_files: u64,
+    events: DiagnosticsApplicationLogEvents,
+}
+
+#[derive(Serialize)]
+struct DiagnosticsApplicationLogEvents {
+    started: u64,
+    previous_run_unclean: u64,
+    shutdown_started: u64,
+    shutdown_completed: u64,
+    shutdown_failed: u64,
+    panicked: u64,
+    runtime_unavailable: u64,
+    diagnostics_export_failed: u64,
 }
 
 fn export_diagnostics_file(
@@ -1368,6 +1381,16 @@ fn diagnostics_document(
             pruned: application_logs.pruned,
             bytes: application_logs.bytes,
             retained_files: application_logs.retained_files,
+            events: DiagnosticsApplicationLogEvents {
+                started: application_logs.events.started,
+                previous_run_unclean: application_logs.events.previous_run_unclean,
+                shutdown_started: application_logs.events.shutdown_started,
+                shutdown_completed: application_logs.events.shutdown_completed,
+                shutdown_failed: application_logs.events.shutdown_failed,
+                panicked: application_logs.events.panicked,
+                runtime_unavailable: application_logs.events.runtime_unavailable,
+                diagnostics_export_failed: application_logs.events.diagnostics_export_failed,
+            },
         },
     }
 }
@@ -1601,6 +1624,7 @@ const fn map_model_store_delete_diagnostic(diagnostic: ModelStoreDiagnostic) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ApplicationLogEventCounts;
     use bongocat_config::{ConfigStore, StorageLayout};
     use bongocat_runtime::{InputDiagnostics, InputTransportDiagnostics};
     use bongocat_ui::{SettingsModelImportRequest, SettingsStartupItemError};
@@ -1767,6 +1791,11 @@ mod tests {
                 pruned: 4,
                 bytes: 128,
                 retained_files: 2,
+                events: ApplicationLogEventCounts {
+                    started: 1,
+                    panicked: 2,
+                    ..ApplicationLogEventCounts::default()
+                },
             },
         )
         .expect("export diagnostics");
@@ -1784,6 +1813,8 @@ mod tests {
         assert_eq!(document["models"]["ready_installed"], 1);
         assert_eq!(document["application_logs"]["written"], 3);
         assert_eq!(document["application_logs"]["dropped"], 1);
+        assert_eq!(document["application_logs"]["events"]["started"], 1);
+        assert_eq!(document["application_logs"]["events"]["panicked"], 2);
         assert_eq!(document["models"]["invalid_installed"], 1);
         assert_eq!(
             document["models"]["invalid_diagnostic_codes"][0]["code"],

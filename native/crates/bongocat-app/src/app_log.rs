@@ -148,6 +148,18 @@ impl ApplicationLogEvent {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ApplicationLogEventCounts {
+    pub started: u64,
+    pub previous_run_unclean: u64,
+    pub shutdown_started: u64,
+    pub shutdown_completed: u64,
+    pub shutdown_failed: u64,
+    pub panicked: u64,
+    pub runtime_unavailable: u64,
+    pub diagnostics_export_failed: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ApplicationLogDiagnostics {
     pub written: u64,
     pub dropped: u64,
@@ -155,6 +167,7 @@ pub struct ApplicationLogDiagnostics {
     pub pruned: u64,
     pub bytes: u64,
     pub retained_files: u64,
+    pub events: ApplicationLogEventCounts,
 }
 
 #[derive(Debug)]
@@ -398,6 +411,21 @@ fn record_locked(state: &mut ApplicationLogState, day: u64, event: ApplicationLo
         .copied()
         .unwrap_or(0)
         .saturating_add(1);
+    let count = match event.code {
+        ApplicationLogCode::Started => &mut state.diagnostics.events.started,
+        ApplicationLogCode::PreviousRunUnclean => {
+            &mut state.diagnostics.events.previous_run_unclean
+        }
+        ApplicationLogCode::ShutdownStarted => &mut state.diagnostics.events.shutdown_started,
+        ApplicationLogCode::ShutdownCompleted => &mut state.diagnostics.events.shutdown_completed,
+        ApplicationLogCode::ShutdownFailed => &mut state.diagnostics.events.shutdown_failed,
+        ApplicationLogCode::Panicked => &mut state.diagnostics.events.panicked,
+        ApplicationLogCode::RuntimeUnavailable => &mut state.diagnostics.events.runtime_unavailable,
+        ApplicationLogCode::DiagnosticsExportFailed => {
+            &mut state.diagnostics.events.diagnostics_export_failed
+        }
+    };
+    *count = count.saturating_add(1);
     prune_logs(state, day);
     refresh_totals(state);
 }

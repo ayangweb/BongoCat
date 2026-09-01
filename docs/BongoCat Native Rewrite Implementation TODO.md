@@ -465,6 +465,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     在 owner drop 时恢复之前的 hook；单元测试覆盖含用户路径 payload 的脱敏、日志锁占用时
     直接丢弃和 hook 恢复。新增环境隔离的持久运行标记：只有完整 runtime/audio shutdown 才清理，
     下次启动会记录匿名 `previous_run_unclean` 事件；panic、shutdown 错误和强制终止会保留标记。
+    Diagnostics 导出现在只增加固定事件 code 的聚合计数，不导出原始日志、panic payload 或路径；
     release 实机崩溃收集仍待完成，因此本项保持未勾选。`bongocat-app` 63 项 app/lib 测试和
     app Clippy 已在本机通过；marker 逻辑随 commit `19afddf`（远端合并提交 `b6244cc`）进入 `next`。
 - [ ] 定义线程、任务、channel、窗口和 GPU object owner。
