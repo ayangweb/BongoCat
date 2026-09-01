@@ -1924,6 +1924,12 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
         canonical chord，提交前执行跨域冲突预览并复用 revision-checked `SetShortcuts`；非法键与冲突
         保持原快照并显示可重试诊断。新增 3 项 UI contract 测试覆盖 modifier/key 规范化、非法键和
         冲突检测。双平台实机触发证据仍待完成。
+      - 状态（2026-09-01）：每条 Capture 控件现以 command 或 `(model_id, behavior_id)` 稳定身份
+        持有独立焦点，不再共享一个 `FocusHandle` 或依赖可能重排的数组下标；Tab 可逐行导航，
+        Enter/Space、pointer 与 AccessKit click 都进入同一捕获状态，Escape 可取消。动态 accessibility
+        节点公开当前 chord 与 waiting 状态，配置恢复或模型导入期间会同时撤销 click/focus/action。
+        纯 Rust 回归覆盖逐行 tab order、快照重排后精确更新、缺失目标拒绝和 accessibility target
+        映射；双平台真实快捷键触发与屏幕阅读器操作仍待实机完成，因此总项保持未勾选。
 
 ## 13. 待决策清单
 

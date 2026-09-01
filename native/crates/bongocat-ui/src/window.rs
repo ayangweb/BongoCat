@@ -76,6 +76,8 @@ const ACCESSIBILITY_RESTORE_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeId
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_CLEAR_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeId::new(34);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_SHORTCUT_CAPTURE_BASE: u64 = 1_000;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_MIRROR: AccessibilityNodeId = AccessibilityNodeId::new(19);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_MIRROR_POINTER: AccessibilityNodeId = AccessibilityNodeId::new(20);
@@ -151,10 +153,13 @@ enum PendingOperation {
     ExportDiagnostics,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum ShortcutCaptureTarget {
-    Command(usize),
-    ModelBehavior(usize),
+    Command(String),
+    ModelBehavior {
+        model_id: String,
+        behavior_id: String,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -321,6 +326,7 @@ pub struct SettingsView {
     model_row_focus: BTreeMap<ModelRowKey, ModelRowFocus>,
     shortcut_capture: Option<ShortcutCaptureTarget>,
     shortcut_capture_error: Option<String>,
+    shortcut_row_focus: BTreeMap<ShortcutCaptureTarget, FocusHandle>,
     window_hidden: bool,
     request_quit: Rc<dyn Fn(&mut App)>,
     general_focus: FocusHandle,
@@ -347,7 +353,6 @@ pub struct SettingsView {
     restore_defaults_focus: FocusHandle,
     restore_shortcuts_focus: FocusHandle,
     clear_shortcuts_focus: FocusHandle,
-    shortcut_capture_focus: FocusHandle,
     export_diagnostics_focus: FocusHandle,
     refresh_focus: FocusHandle,
     quit_focus: FocusHandle,
@@ -374,6 +379,7 @@ impl SettingsView {
             model_row_focus: BTreeMap::new(),
             shortcut_capture: None,
             shortcut_capture_error: None,
+            shortcut_row_focus: BTreeMap::new(),
             window_hidden: false,
             request_quit,
             general_focus: cx.focus_handle().tab_index(1).tab_stop(true),
@@ -400,7 +406,6 @@ impl SettingsView {
             restore_defaults_focus: cx.focus_handle().tab_index(29).tab_stop(true),
             restore_shortcuts_focus: cx.focus_handle().tab_index(33).tab_stop(true),
             clear_shortcuts_focus: cx.focus_handle().tab_index(34).tab_stop(true),
-            shortcut_capture_focus: cx.focus_handle().tab_index(35).tab_stop(true),
             export_diagnostics_focus: cx.focus_handle().tab_index(32).tab_stop(true),
             refresh_focus: cx.focus_handle().tab_index(30).tab_stop(true),
             quit_focus: cx.focus_handle().tab_index(31).tab_stop(true),
@@ -692,38 +697,67 @@ impl SettingsView {
         {
             clear_shortcuts_node = clear_shortcuts_node.clickable().focusable();
         }
+        let shortcut_rows = snapshot
+            .map(|snapshot| shortcut_accessibility_rows(&snapshot.shortcuts))
+            .unwrap_or_default();
+        let shortcut_node_ids = (0..shortcut_rows.len())
+            .map(shortcut_accessibility_node_id)
+            .collect::<Vec<_>>();
+        let shortcut_nodes = shortcut_rows
+            .into_iter()
+            .enumerate()
+            .map(|(index, (target, label, value))| {
+                let capturing = self.shortcut_capture.as_ref() == Some(&target);
+                let mut node = AccessibilityNode::new(
+                    shortcut_accessibility_node_id(index),
+                    AccessibilityRole::Button,
+                    label,
+                )
+                .with_value(if capturing {
+                    "Waiting for a key combination".to_owned()
+                } else {
+                    value
+                })
+                .disabled(disabled);
+                if !disabled {
+                    node = node.clickable().focusable();
+                }
+                node
+            })
+            .collect::<Vec<_>>();
+        let mut root_children = vec![
+            ACCESSIBILITY_GENERAL,
+            ACCESSIBILITY_MODELS,
+            ACCESSIBILITY_DIAGNOSTICS,
+            ACCESSIBILITY_OVERLAY,
+            ACCESSIBILITY_OVERLAY_TOPMOST,
+            ACCESSIBILITY_OVERLAY_CLICK_THROUGH,
+            ACCESSIBILITY_OVERLAY_SCALE_DECREASE,
+            ACCESSIBILITY_OVERLAY_SCALE_INCREASE,
+            ACCESSIBILITY_OVERLAY_OPACITY_DECREASE,
+            ACCESSIBILITY_OVERLAY_OPACITY_INCREASE,
+            ACCESSIBILITY_AUDIO,
+            ACCESSIBILITY_MIRROR,
+            ACCESSIBILITY_MIRROR_POINTER,
+            ACCESSIBILITY_IGNORE_POINTER,
+            ACCESSIBILITY_STICK_DEAD_ZONE,
+            ACCESSIBILITY_TRIGGER_DEAD_ZONE,
+            ACCESSIBILITY_STARTUP,
+            ACCESSIBILITY_OPEN_BACKUPS,
+            ACCESSIBILITY_RESTORE_DEFAULTS,
+            ACCESSIBILITY_EXPORT_DIAGNOSTICS,
+            ACCESSIBILITY_RESTORE_SHORTCUTS,
+            ACCESSIBILITY_CLEAR_SHORTCUTS,
+        ];
+        root_children.extend(shortcut_node_ids);
+        root_children.extend([ACCESSIBILITY_REFRESH, ACCESSIBILITY_QUIT]);
         let mut nodes = vec![
             AccessibilityNode::new(
                 ACCESSIBILITY_ROOT,
                 AccessibilityRole::Window,
                 "BongoCat Settings",
             )
-            .with_children(vec![
-                ACCESSIBILITY_GENERAL,
-                ACCESSIBILITY_MODELS,
-                ACCESSIBILITY_DIAGNOSTICS,
-                ACCESSIBILITY_OVERLAY,
-                ACCESSIBILITY_OVERLAY_TOPMOST,
-                ACCESSIBILITY_OVERLAY_CLICK_THROUGH,
-                ACCESSIBILITY_OVERLAY_SCALE_DECREASE,
-                ACCESSIBILITY_OVERLAY_SCALE_INCREASE,
-                ACCESSIBILITY_OVERLAY_OPACITY_DECREASE,
-                ACCESSIBILITY_OVERLAY_OPACITY_INCREASE,
-                ACCESSIBILITY_AUDIO,
-                ACCESSIBILITY_MIRROR,
-                ACCESSIBILITY_MIRROR_POINTER,
-                ACCESSIBILITY_IGNORE_POINTER,
-                ACCESSIBILITY_STICK_DEAD_ZONE,
-                ACCESSIBILITY_TRIGGER_DEAD_ZONE,
-                ACCESSIBILITY_STARTUP,
-                ACCESSIBILITY_OPEN_BACKUPS,
-                ACCESSIBILITY_RESTORE_DEFAULTS,
-                ACCESSIBILITY_EXPORT_DIAGNOSTICS,
-                ACCESSIBILITY_RESTORE_SHORTCUTS,
-                ACCESSIBILITY_CLEAR_SHORTCUTS,
-                ACCESSIBILITY_REFRESH,
-                ACCESSIBILITY_QUIT,
-            ]),
+            .with_children(root_children),
             AccessibilityNode::new(ACCESSIBILITY_GENERAL, AccessibilityRole::Button, "General")
                 .clickable()
                 .focusable(),
@@ -761,6 +795,7 @@ impl SettingsView {
                 .clickable()
                 .focusable(),
         ];
+        nodes.extend(shortcut_nodes);
         if !nodes.iter().any(|node| node.id == focus) {
             nodes.push(AccessibilityNode::new(focus, AccessibilityRole::Status, ""));
         }
@@ -777,6 +812,9 @@ impl SettingsView {
         request: AccessibilityActionRequest,
         cx: &mut Context<Self>,
     ) {
+        let shortcut_target = self.snapshot.as_ref().and_then(|snapshot| {
+            shortcut_target_for_accessibility_node(&snapshot.shortcuts, request.target)
+        });
         self.accessibility_focus = Some(request.target);
         if request.action != AccessibilityAction::Click {
             return;
@@ -859,7 +897,17 @@ impl SettingsView {
             ACCESSIBILITY_CLEAR_SHORTCUTS => self.clear_shortcuts(cx),
             ACCESSIBILITY_REFRESH => self.refresh(cx),
             ACCESSIBILITY_QUIT => (self.request_quit)(cx),
-            _ => {}
+            _ => {
+                if let Some(target) = shortcut_target
+                    && self.pending.is_none()
+                    && self.snapshot.as_ref().is_some_and(|snapshot| {
+                        snapshot.configuration_status == SettingsConfigurationStatus::Ready
+                    })
+                {
+                    self.shortcut_capture = Some(target);
+                    self.shortcut_capture_error = None;
+                }
+            }
         }
         cx.notify();
     }
@@ -934,6 +982,19 @@ impl SettingsView {
         ]
         .into_iter()
         .find_map(|(id, handle)| handle.is_focused(window).then_some(id))
+        .or_else(|| {
+            self.snapshot.as_ref().and_then(|snapshot| {
+                shortcut_targets(&snapshot.shortcuts)
+                    .into_iter()
+                    .enumerate()
+                    .find_map(|(index, target)| {
+                        self.shortcut_row_focus
+                            .get(&target)
+                            .is_some_and(|focus| focus.is_focused(window))
+                            .then_some(shortcut_accessibility_node_id(index))
+                    })
+            })
+        })
         .unwrap_or(match self.page {
             SettingsPage::General => ACCESSIBILITY_GENERAL,
             SettingsPage::Models => ACCESSIBILITY_MODELS,
@@ -1273,6 +1334,24 @@ impl SettingsView {
         {
             return Err("shortcut clear accessibility semantics are invalid".to_owned());
         }
+        let capture_nodes = self
+            .accessibility_tree()
+            .nodes
+            .into_iter()
+            .filter(|node| node.id.get() >= ACCESSIBILITY_SHORTCUT_CAPTURE_BASE)
+            .collect::<Vec<_>>();
+        let shortcut_count =
+            snapshot.shortcuts.commands.len() + snapshot.shortcuts.model_behaviors.len();
+        if capture_nodes.len() != shortcut_count
+            || capture_nodes.iter().any(|node| {
+                node.role != AccessibilityRole::Button
+                    || node.disabled
+                    || !node.supports_click
+                    || !node.supports_focus
+            })
+        {
+            return Err("shortcut capture accessibility semantics are invalid".to_owned());
+        }
         if matches!(
             snapshot.configuration_status,
             SettingsConfigurationStatus::RecoveryRequired { .. }
@@ -1491,7 +1570,19 @@ impl SettingsView {
         );
     }
 
+    fn shortcut_commands_available(&self) -> bool {
+        self.pending.is_none()
+            && !self.model_import.is_running()
+            && self.snapshot.as_ref().is_some_and(|snapshot| {
+                snapshot.configuration_status == SettingsConfigurationStatus::Ready
+                    && snapshot.config_revision.is_some()
+            })
+    }
+
     fn restore_default_shortcuts(&mut self, cx: &mut Context<Self>) {
+        if !self.shortcut_commands_available() {
+            return;
+        }
         let Some(expected_config_revision) = self
             .snapshot
             .as_ref()
@@ -1509,6 +1600,9 @@ impl SettingsView {
     }
 
     fn clear_shortcuts(&mut self, cx: &mut Context<Self>) {
+        if !self.shortcut_commands_available() {
+            return;
+        }
         let Some(expected_config_revision) = self
             .snapshot
             .as_ref()
@@ -1526,23 +1620,57 @@ impl SettingsView {
         );
     }
 
+    fn sync_shortcut_row_focus(
+        &mut self,
+        shortcuts: &SettingsShortcuts,
+        commands_blocked: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let targets = shortcut_targets(shortcuts);
+        let target_set = targets.iter().cloned().collect::<BTreeSet<_>>();
+        self.shortcut_row_focus
+            .retain(|target, _| target_set.contains(target));
+        if self
+            .shortcut_capture
+            .as_ref()
+            .is_some_and(|target| !target_set.contains(target))
+        {
+            self.shortcut_capture = None;
+            self.shortcut_capture_error = None;
+        }
+        for (index, target) in targets.into_iter().enumerate() {
+            let tab_index = shortcut_capture_tab_index(index);
+            let focus = self
+                .shortcut_row_focus
+                .entry(target)
+                .or_insert_with(|| cx.focus_handle());
+            *focus = focus
+                .clone()
+                .tab_index(tab_index)
+                .tab_stop(!commands_blocked);
+        }
+    }
+
     fn begin_shortcut_capture(
         &mut self,
         target: ShortcutCaptureTarget,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.pending.is_some() || self.snapshot.is_none() {
+        if !self.shortcut_commands_available() {
             return;
         }
+        let Some(focus) = self.shortcut_row_focus.get(&target).cloned() else {
+            return;
+        };
         self.shortcut_capture = Some(target);
         self.shortcut_capture_error = None;
-        window.focus(&self.shortcut_capture_focus);
+        window.focus(&focus);
         cx.notify();
     }
 
     fn capture_shortcut(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
-        let Some(target) = self.shortcut_capture else {
+        let Some(target) = self.shortcut_capture.clone() else {
             return;
         };
         if is_capture_cancel(event) {
@@ -1560,21 +1688,11 @@ impl SettingsView {
             return;
         };
         let mut shortcuts = snapshot.shortcuts.clone();
-        match target {
-            ShortcutCaptureTarget::Command(index) => {
-                let Some(binding) = shortcuts.commands.get_mut(index) else {
-                    self.shortcut_capture = None;
-                    return;
-                };
-                binding.shortcut = shortcut.clone();
-            }
-            ShortcutCaptureTarget::ModelBehavior(index) => {
-                let Some(binding) = shortcuts.model_behaviors.get_mut(index) else {
-                    self.shortcut_capture = None;
-                    return;
-                };
-                binding.shortcut = shortcut.clone();
-            }
+        if !replace_shortcut(&mut shortcuts, &target, shortcut) {
+            self.shortcut_capture = None;
+            self.shortcut_capture_error = None;
+            cx.notify();
+            return;
         }
         if shortcut_conflicts(&shortcuts) {
             self.shortcut_capture_error = Some("Shortcut is already assigned".to_owned());
@@ -2194,34 +2312,50 @@ impl Render for SettingsView {
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
             if let Some(target) = self.accessibility_focus.take() {
-                let focus = match target {
-                    ACCESSIBILITY_GENERAL => &self.general_focus,
-                    ACCESSIBILITY_MODELS => &self.models_focus,
-                    ACCESSIBILITY_DIAGNOSTICS => &self.diagnostics_focus,
-                    ACCESSIBILITY_OVERLAY => &self.overlay_focus,
-                    ACCESSIBILITY_OVERLAY_TOPMOST => &self.overlay_topmost_focus,
-                    ACCESSIBILITY_OVERLAY_CLICK_THROUGH => &self.overlay_click_through_focus,
-                    ACCESSIBILITY_OVERLAY_SCALE_DECREASE => &self.overlay_scale_decrease_focus,
-                    ACCESSIBILITY_OVERLAY_SCALE_INCREASE => &self.overlay_scale_increase_focus,
-                    ACCESSIBILITY_OVERLAY_OPACITY_DECREASE => &self.overlay_opacity_decrease_focus,
-                    ACCESSIBILITY_OVERLAY_OPACITY_INCREASE => &self.overlay_opacity_increase_focus,
-                    ACCESSIBILITY_AUDIO => &self.audio_focus,
-                    ACCESSIBILITY_MIRROR => &self.mirror_focus,
-                    ACCESSIBILITY_MIRROR_POINTER => &self.mirror_pointer_focus,
-                    ACCESSIBILITY_IGNORE_POINTER => &self.ignore_pointer_focus,
-                    ACCESSIBILITY_STICK_DEAD_ZONE => &self.stick_dead_zone_focus,
-                    ACCESSIBILITY_TRIGGER_DEAD_ZONE => &self.trigger_dead_zone_focus,
-                    ACCESSIBILITY_STARTUP => &self.startup_item_focus,
-                    ACCESSIBILITY_OPEN_BACKUPS => &self.open_backups_focus,
-                    ACCESSIBILITY_RESTORE_DEFAULTS => &self.restore_defaults_focus,
-                    ACCESSIBILITY_RESTORE_SHORTCUTS => &self.restore_shortcuts_focus,
-                    ACCESSIBILITY_CLEAR_SHORTCUTS => &self.clear_shortcuts_focus,
-                    ACCESSIBILITY_EXPORT_DIAGNOSTICS => &self.export_diagnostics_focus,
-                    ACCESSIBILITY_REFRESH => &self.refresh_focus,
-                    ACCESSIBILITY_QUIT => &self.quit_focus,
-                    _ => &self.general_focus,
+                let static_focus = match target {
+                    ACCESSIBILITY_GENERAL => Some(&self.general_focus),
+                    ACCESSIBILITY_MODELS => Some(&self.models_focus),
+                    ACCESSIBILITY_DIAGNOSTICS => Some(&self.diagnostics_focus),
+                    ACCESSIBILITY_OVERLAY => Some(&self.overlay_focus),
+                    ACCESSIBILITY_OVERLAY_TOPMOST => Some(&self.overlay_topmost_focus),
+                    ACCESSIBILITY_OVERLAY_CLICK_THROUGH => Some(&self.overlay_click_through_focus),
+                    ACCESSIBILITY_OVERLAY_SCALE_DECREASE => {
+                        Some(&self.overlay_scale_decrease_focus)
+                    }
+                    ACCESSIBILITY_OVERLAY_SCALE_INCREASE => {
+                        Some(&self.overlay_scale_increase_focus)
+                    }
+                    ACCESSIBILITY_OVERLAY_OPACITY_DECREASE => {
+                        Some(&self.overlay_opacity_decrease_focus)
+                    }
+                    ACCESSIBILITY_OVERLAY_OPACITY_INCREASE => {
+                        Some(&self.overlay_opacity_increase_focus)
+                    }
+                    ACCESSIBILITY_AUDIO => Some(&self.audio_focus),
+                    ACCESSIBILITY_MIRROR => Some(&self.mirror_focus),
+                    ACCESSIBILITY_MIRROR_POINTER => Some(&self.mirror_pointer_focus),
+                    ACCESSIBILITY_IGNORE_POINTER => Some(&self.ignore_pointer_focus),
+                    ACCESSIBILITY_STICK_DEAD_ZONE => Some(&self.stick_dead_zone_focus),
+                    ACCESSIBILITY_TRIGGER_DEAD_ZONE => Some(&self.trigger_dead_zone_focus),
+                    ACCESSIBILITY_STARTUP => Some(&self.startup_item_focus),
+                    ACCESSIBILITY_OPEN_BACKUPS => Some(&self.open_backups_focus),
+                    ACCESSIBILITY_RESTORE_DEFAULTS => Some(&self.restore_defaults_focus),
+                    ACCESSIBILITY_RESTORE_SHORTCUTS => Some(&self.restore_shortcuts_focus),
+                    ACCESSIBILITY_CLEAR_SHORTCUTS => Some(&self.clear_shortcuts_focus),
+                    ACCESSIBILITY_EXPORT_DIAGNOSTICS => Some(&self.export_diagnostics_focus),
+                    ACCESSIBILITY_REFRESH => Some(&self.refresh_focus),
+                    ACCESSIBILITY_QUIT => Some(&self.quit_focus),
+                    _ => None,
                 };
-                window.focus(focus);
+                let shortcut_focus = self.snapshot.as_ref().and_then(|snapshot| {
+                    shortcut_target_for_accessibility_node(&snapshot.shortcuts, target)
+                        .and_then(|target| self.shortcut_row_focus.get(&target))
+                });
+                window.focus(
+                    static_focus
+                        .or(shortcut_focus)
+                        .unwrap_or(&self.general_focus),
+                );
             }
             self.update_accessibility(window);
         }
@@ -2252,6 +2386,11 @@ impl Render for SettingsView {
             || snapshot.is_none()
             || self.model_import.is_running()
             || !configuration_ready;
+        let shortcuts = snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.shortcuts.clone())
+            .unwrap_or_default();
+        self.sync_shortcut_row_focus(&shortcuts, disabled, cx);
         let status: SharedString = match (&self.error, self.pending, &snapshot) {
             (Some(error), _, _) => error.to_string().into(),
             (_, Some(PendingOperation::Refresh), _) => "Refreshing...".into(),
@@ -3398,6 +3537,7 @@ impl Render for SettingsView {
                             snapshot.config_recovery,
                         );
                         let config_action_disabled = self.pending.is_some();
+                        let shortcut_action_disabled = disabled;
                         content
                             .child(
                                 div()
@@ -3537,7 +3677,7 @@ impl Render for SettingsView {
                                                     33,
                                                     window,
                                                     tokens,
-                                                    config_action_disabled,
+                                                    shortcut_action_disabled,
                                                 )
                                                 .id("restore-default-shortcuts")
                                                 .on_click(cx.listener(|view, _, window, cx| {
@@ -3567,7 +3707,7 @@ impl Render for SettingsView {
                                                     34,
                                                     window,
                                                     tokens,
-                                                    config_action_disabled
+                                                    shortcut_action_disabled
                                                         || snapshot.shortcuts.commands.is_empty()
                                                             && snapshot
                                                                 .shortcuts
@@ -3606,14 +3746,16 @@ impl Render for SettingsView {
                                             )
                                         },
                                     )
-                                    .when_some(self.shortcut_capture, |content, target| {
+                                    .when_some(self.shortcut_capture.clone(), |content, target| {
                                         content.child(
                                             div().text_sm().text_color(tokens.accent).child(
                                                 match target {
                                                     ShortcutCaptureTarget::Command(_) => {
                                                         "Press a key combination for this command"
                                                     }
-                                                    ShortcutCaptureTarget::ModelBehavior(_) => {
+                                                    ShortcutCaptureTarget::ModelBehavior {
+                                                        ..
+                                                    } => {
                                                         "Press a key combination for this behavior"
                                                     }
                                                 },
@@ -3622,9 +3764,19 @@ impl Render for SettingsView {
                                     })
                                     .children(snapshot.shortcuts.commands.iter().enumerate().map(
                                         |(index, binding)| {
-                                            let target = ShortcutCaptureTarget::Command(index);
-                                            let capturing = self.shortcut_capture == Some(target);
-                                            let disabled = config_action_disabled;
+                                            let target = ShortcutCaptureTarget::Command(
+                                                binding.command.clone(),
+                                            );
+                                            let capturing =
+                                                self.shortcut_capture.as_ref() == Some(&target);
+                                            let disabled = shortcut_action_disabled;
+                                            let focus = self
+                                                .shortcut_row_focus
+                                                .get(&target)
+                                                .expect("shortcut row focus is synchronized")
+                                                .clone();
+                                            let tab_index = shortcut_capture_tab_index(index);
+                                            let keyboard_target = target.clone();
                                             div()
                                                 .flex()
                                                 .items_center()
@@ -3649,8 +3801,8 @@ impl Render for SettingsView {
                                                         } else {
                                                             "Capture"
                                                         },
-                                                        &self.shortcut_capture_focus,
-                                                        35,
+                                                        &focus,
+                                                        tab_index,
                                                         window,
                                                         tokens,
                                                         disabled,
@@ -3659,8 +3811,24 @@ impl Render for SettingsView {
                                                     .on_click(cx.listener(
                                                         move |view, _, window, cx| {
                                                             view.begin_shortcut_capture(
-                                                                target, window, cx,
+                                                                target.clone(),
+                                                                window,
+                                                                cx,
                                                             );
+                                                        },
+                                                    ))
+                                                    .on_key_down(cx.listener(
+                                                        move |view, event, window, cx| {
+                                                            if view.shortcut_capture.is_none()
+                                                                && is_activation_key(event)
+                                                            {
+                                                                cx.stop_propagation();
+                                                                view.begin_shortcut_capture(
+                                                                    keyboard_target.clone(),
+                                                                    window,
+                                                                    cx,
+                                                                );
+                                                            }
                                                         },
                                                     )),
                                                 )
@@ -3669,11 +3837,22 @@ impl Render for SettingsView {
                                     .children(
                                         snapshot.shortcuts.model_behaviors.iter().enumerate().map(
                                             |(index, binding)| {
-                                                let target =
-                                                    ShortcutCaptureTarget::ModelBehavior(index);
+                                                let target = ShortcutCaptureTarget::ModelBehavior {
+                                                    model_id: binding.model_id.clone(),
+                                                    behavior_id: binding.behavior_id.clone(),
+                                                };
                                                 let capturing =
-                                                    self.shortcut_capture == Some(target);
-                                                let disabled = config_action_disabled;
+                                                    self.shortcut_capture.as_ref() == Some(&target);
+                                                let disabled = shortcut_action_disabled;
+                                                let focus = self
+                                                    .shortcut_row_focus
+                                                    .get(&target)
+                                                    .expect("shortcut row focus is synchronized")
+                                                    .clone();
+                                                let tab_index = shortcut_capture_tab_index(
+                                                    snapshot.shortcuts.commands.len() + index,
+                                                );
+                                                let keyboard_target = target.clone();
                                                 div()
                                                     .flex()
                                                     .items_center()
@@ -3696,8 +3875,8 @@ impl Render for SettingsView {
                                                             } else {
                                                                 "Capture"
                                                             },
-                                                            &self.shortcut_capture_focus,
-                                                            35,
+                                                            &focus,
+                                                            tab_index,
                                                             window,
                                                             tokens,
                                                             disabled,
@@ -3706,8 +3885,24 @@ impl Render for SettingsView {
                                                         .on_click(cx.listener(
                                                             move |view, _, window, cx| {
                                                                 view.begin_shortcut_capture(
-                                                                    target, window, cx,
+                                                                    target.clone(),
+                                                                    window,
+                                                                    cx,
                                                                 );
+                                                            },
+                                                        ))
+                                                        .on_key_down(cx.listener(
+                                                            move |view, event, window, cx| {
+                                                                if view.shortcut_capture.is_none()
+                                                                    && is_activation_key(event)
+                                                                {
+                                                                    cx.stop_propagation();
+                                                                    view.begin_shortcut_capture(
+                                                                        keyboard_target.clone(),
+                                                                        window,
+                                                                        cx,
+                                                                    );
+                                                                }
                                                             },
                                                         )),
                                                     )
@@ -4014,6 +4209,105 @@ fn is_capture_cancel(event: &KeyDownEvent) -> bool {
         && !event.keystroke.modifiers.platform
         && !event.keystroke.modifiers.alt
         && !event.keystroke.modifiers.shift
+}
+
+fn shortcut_targets(shortcuts: &SettingsShortcuts) -> Vec<ShortcutCaptureTarget> {
+    shortcuts
+        .commands
+        .iter()
+        .map(|binding| ShortcutCaptureTarget::Command(binding.command.clone()))
+        .chain(shortcuts.model_behaviors.iter().map(|binding| {
+            ShortcutCaptureTarget::ModelBehavior {
+                model_id: binding.model_id.clone(),
+                behavior_id: binding.behavior_id.clone(),
+            }
+        }))
+        .collect()
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn shortcut_accessibility_rows(
+    shortcuts: &SettingsShortcuts,
+) -> Vec<(ShortcutCaptureTarget, String, String)> {
+    shortcuts
+        .commands
+        .iter()
+        .map(|binding| {
+            (
+                ShortcutCaptureTarget::Command(binding.command.clone()),
+                format!("Capture shortcut for {}", binding.command),
+                binding.shortcut.clone(),
+            )
+        })
+        .chain(shortcuts.model_behaviors.iter().map(|binding| {
+            (
+                ShortcutCaptureTarget::ModelBehavior {
+                    model_id: binding.model_id.clone(),
+                    behavior_id: binding.behavior_id.clone(),
+                },
+                format!(
+                    "Capture shortcut for {} {}",
+                    binding.model_id, binding.behavior_id
+                ),
+                binding.shortcut.clone(),
+            )
+        }))
+        .collect()
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn shortcut_accessibility_node_id(index: usize) -> AccessibilityNodeId {
+    AccessibilityNodeId::new(
+        ACCESSIBILITY_SHORTCUT_CAPTURE_BASE
+            .saturating_add(u64::try_from(index).unwrap_or(u64::MAX)),
+    )
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn shortcut_target_for_accessibility_node(
+    shortcuts: &SettingsShortcuts,
+    node_id: AccessibilityNodeId,
+) -> Option<ShortcutCaptureTarget> {
+    let index = node_id
+        .get()
+        .checked_sub(ACCESSIBILITY_SHORTCUT_CAPTURE_BASE)
+        .and_then(|index| usize::try_from(index).ok())?;
+    shortcut_targets(shortcuts).get(index).cloned()
+}
+
+fn shortcut_capture_tab_index(index: usize) -> isize {
+    35_isize.saturating_add(isize::try_from(index).unwrap_or(isize::MAX - 35))
+}
+
+fn replace_shortcut(
+    shortcuts: &mut SettingsShortcuts,
+    target: &ShortcutCaptureTarget,
+    shortcut: String,
+) -> bool {
+    match target {
+        ShortcutCaptureTarget::Command(command) => {
+            let Some(binding) = shortcuts
+                .commands
+                .iter_mut()
+                .find(|binding| binding.command == *command)
+            else {
+                return false;
+            };
+            binding.shortcut = shortcut;
+        }
+        ShortcutCaptureTarget::ModelBehavior {
+            model_id,
+            behavior_id,
+        } => {
+            let Some(binding) = shortcuts.model_behaviors.iter_mut().find(|binding| {
+                binding.model_id == *model_id && binding.behavior_id == *behavior_id
+            }) else {
+                return false;
+            };
+            binding.shortcut = shortcut;
+        }
+    }
+    true
 }
 
 fn canonical_capture_key(key: &str) -> Option<String> {
@@ -4841,7 +5135,7 @@ fn rounded_u32(value: gpui::Pixels) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::SettingsShortcutBinding;
+    use crate::{SettingsModelBehaviorBinding, SettingsShortcutBinding};
     use gpui::{Keystroke, Modifiers};
 
     fn key(key: &str, key_char: Option<&str>) -> KeyDownEvent {
@@ -4901,6 +5195,81 @@ mod tests {
             model_behaviors: Vec::new(),
         };
         assert!(shortcut_conflicts(&shortcuts));
+    }
+
+    #[test]
+    fn shortcut_capture_targets_have_independent_tab_stops() {
+        let shortcuts = SettingsShortcuts {
+            commands: vec![
+                SettingsShortcutBinding {
+                    command: "toggle_overlay".to_owned(),
+                    shortcut: "Control+B".to_owned(),
+                },
+                SettingsShortcutBinding {
+                    command: "open_settings".to_owned(),
+                    shortcut: "Control+S".to_owned(),
+                },
+            ],
+            model_behaviors: vec![SettingsModelBehaviorBinding {
+                model_id: "standard".to_owned(),
+                behavior_id: "motion:tap:0".to_owned(),
+                shortcut: "Control+M".to_owned(),
+            }],
+        };
+        let targets = shortcut_targets(&shortcuts);
+        assert_eq!(targets.len(), 3);
+        assert_eq!(shortcut_capture_tab_index(0), 35);
+        assert_eq!(shortcut_capture_tab_index(1), 36);
+        assert_eq!(shortcut_capture_tab_index(2), 37);
+        assert_eq!(targets.into_iter().collect::<BTreeSet<_>>().len(), 3);
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            let rows = shortcut_accessibility_rows(&shortcuts);
+            assert_eq!(rows.len(), 3);
+            assert!(rows[0].1.contains("toggle_overlay"));
+            assert_eq!(rows[2].2, "Control+M");
+            assert_eq!(
+                shortcut_target_for_accessibility_node(
+                    &shortcuts,
+                    shortcut_accessibility_node_id(2)
+                ),
+                Some(ShortcutCaptureTarget::ModelBehavior {
+                    model_id: "standard".to_owned(),
+                    behavior_id: "motion:tap:0".to_owned(),
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn captured_shortcut_updates_stable_identity_after_reordering() {
+        let target = ShortcutCaptureTarget::Command("toggle_overlay".to_owned());
+        let mut shortcuts = SettingsShortcuts {
+            commands: vec![
+                SettingsShortcutBinding {
+                    command: "open_settings".to_owned(),
+                    shortcut: "Control+S".to_owned(),
+                },
+                SettingsShortcutBinding {
+                    command: "toggle_overlay".to_owned(),
+                    shortcut: "Control+B".to_owned(),
+                },
+            ],
+            model_behaviors: Vec::new(),
+        };
+
+        assert!(replace_shortcut(
+            &mut shortcuts,
+            &target,
+            "Control+O".to_owned()
+        ));
+        assert_eq!(shortcuts.commands[0].shortcut, "Control+S");
+        assert_eq!(shortcuts.commands[1].shortcut, "Control+O");
+        assert!(!replace_shortcut(
+            &mut shortcuts,
+            &ShortcutCaptureTarget::Command("missing".to_owned()),
+            "Control+X".to_owned()
+        ));
     }
 
     #[test]
