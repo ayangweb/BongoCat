@@ -1178,7 +1178,7 @@ fn settings_model_entry(entry: ModelCatalogEntry) -> SettingsModelEntry {
     }
 }
 
-const DIAGNOSTICS_EXPORT_FORMAT_VERSION: u32 = 1;
+const DIAGNOSTICS_EXPORT_FORMAT_VERSION: u32 = 2;
 
 #[derive(Serialize)]
 struct DiagnosticsExportDocument {
@@ -1803,7 +1803,7 @@ mod tests {
         assert_eq!(status.format_version, DIAGNOSTICS_EXPORT_FORMAT_VERSION);
         assert_eq!(status.bytes_written, bytes.len() as u64);
         let document: serde_json::Value = serde_json::from_slice(&bytes).expect("valid JSON");
-        assert_eq!(document["format_version"], 1);
+        assert_eq!(document["format_version"], 2);
         assert_eq!(document["settings_revision"], 42);
         assert_eq!(
             document["runtime"]["render_error_code"],

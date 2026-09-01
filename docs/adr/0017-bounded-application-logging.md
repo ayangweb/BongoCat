@@ -25,8 +25,9 @@ Native Rewrite 需要可诊断的应用生命周期记录，但不能把按键�
   after runtime/audio shutdown and the `shutdown_completed` event. A leftover marker causes the next
   startup to record `previous_run_unclean`; panic, forced termination, and failed shutdown therefore
   remain diagnosable without recording payloads or paths.
-- Diagnostics export may include aggregate counts for the fixed application event codes. It never
-  embeds JSONL records, panic payloads, paths, key values, or user file content.
+- Diagnostics export may include aggregate counts for the fixed application event codes. This
+  additive shape is format version 2; consumers must reject unknown versions rather than guessing.
+  The export never embeds JSONL records, panic payloads, paths, key values, or user file content.
 
 ## 验证
 
