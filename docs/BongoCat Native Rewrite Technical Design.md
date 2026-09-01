@@ -254,6 +254,9 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
   callback 原子计数、worker 恢复计数和 cursor latest 统计在平台 owner 内合并后进入
   `RuntimeSnapshot::platform_input`；停止输入时须先发布包含 `clean_shutdown` 的最终快照，再停止 runtime。
 - 动画和延迟使用单调时钟 `Instant`，持久化时间才使用墙上时钟。
+- Runtime 可接收 typed `Tick` command，在使用注入单调时钟的 contract/fixture 或受控
+  coordinator 场景显式驱动一次评估；生产环境仍由 runtime worker 的定时等待负责周期 tick，
+  UI 和平台 adapter 不直接调用 renderer。
 - `motion_stop` 只作用于匹配的当前动作。非零 `FadeOutTime` 在 runtime snapshot 中保留
   active identity 和首次 stop command sequence，renderer 以正弦权重淡出并在结束帧后
   清理；重复 stop 不重启计时，零时长立即清理，旧动作的 stop 不影响后启动动作。
