@@ -468,7 +468,15 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     Diagnostics 导出格式版本已提升到 2，并增加固定事件 code 的聚合计数；不导出原始日志、panic payload 或路径；
     release 实机崩溃收集仍待完成，因此本项保持未勾选。`bongocat-app` 63 项 app/lib 测试和
     app Clippy 已在本机通过；marker 逻辑随 commit `19afddf`（远端合并提交 `b6244cc`）进入 `next`。
-- [ ] 定义线程、任务、channel、窗口和 GPU object owner。
+- [x] 定义线程、任务、channel、窗口和 GPU object owner。
+  - 验收证据（2026-09-01）：Technical Design 第 8 节冻结 runtime、输入 producer、GPUI
+    主线程、frame source、renderer/GPU 和 settings service 的 owner 边界及 shutdown 顺序；
+    正式 app coordinator、runtime、overlay/platform adapter 与 settings worker 分别持有这些
+    owner，跨线程只使用有界 typed channel/latest-value transport。Windows/macOS release
+    lifecycle、overlay recovery、model switch、recovery window 和显式 Quit smoke 均验证
+    stop -> runtime/config -> audio/renderer/GPU/overlay 的 join 与析构顺序；Native 三平台
+    workspace format、Clippy、test 和 release check 通过。平台真实驱动、权限和长时 soak
+    仍由对应 Phase 0/8 门禁跟踪，不扩大本项完成范围。
 - [x] 建立结构化日志字段和用户路径脱敏规则。
   - 验收证据（2026-09-01）：Application sink 只接受固定 component/level/code 字段，Cubism Core
     callback 使用独立结构化 sink 并将路径、换行和超长消息脱敏/截断；panic hook 不读取 payload，
