@@ -1800,7 +1800,15 @@ mod tests {
                     sequence: 9,
                     code: SettingsRuntimeErrorCode::TransportClosed,
                 }),
-                command_transport: SettingsRuntimeCommandTransportDiagnostics::default(),
+                command_transport: SettingsRuntimeCommandTransportDiagnostics {
+                    enqueued: 11,
+                    queue_full: 2,
+                    runtime_stopped: 1,
+                    sequence_gap_count: 3,
+                    missing_sequence_count: 5,
+                    duplicate_sequence_count: 4,
+                    out_of_order_sequence_count: 6,
+                },
             },
             overlay_visible: true,
             overlay: SettingsOverlay::default(),
@@ -1881,6 +1889,10 @@ mod tests {
             document["runtime"]["render_error_code"],
             "gpu_preparation_failed"
         );
+        assert_eq!(document["runtime"]["command_enqueued"], 11);
+        assert_eq!(document["runtime"]["command_queue_full"], 2);
+        assert_eq!(document["runtime"]["command_sequence_gap_count"], 3);
+        assert_eq!(document["runtime"]["command_missing_sequence_count"], 5);
         assert_eq!(document["input"]["transport_queue_full"], 2);
         assert_eq!(document["models"]["ready_installed"], 1);
         assert_eq!(document["application_logs"]["written"], 3);
