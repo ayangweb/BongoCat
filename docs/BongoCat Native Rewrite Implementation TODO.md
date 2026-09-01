@@ -617,6 +617,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     接入，故保持未勾选。
 - [ ] 动画、长按和延迟统一使用 Instant。
 - [ ] 实现可注入 clock 和确定性 tick。
+  - 状态（2026-09-01）：正式 runtime 已使用 `MonotonicClock` 驱动动作、表情和自动效果，
+    并新增 typed `RuntimeCommand::Tick` 允许 coordinator/fixture 在注入时钟下显式驱动
+    单次评估；定时 loop 仍保留用于生产运行，完整动画/长按迁移和 fixture 对接仍待完成。
 - [ ] 实现 starting、ready、degraded、stopping、stopped 状态。
 - [ ] 实现 shutdown drain、超时和错误聚合。
 - [ ] command 定义幂等性和重复提交语义；有副作用的长操作使用 operation id 去重。

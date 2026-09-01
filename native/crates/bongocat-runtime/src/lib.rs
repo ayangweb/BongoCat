@@ -301,6 +301,8 @@ pub struct PendingModelSnapshot {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum RuntimeCommand {
+    /// Drive one deterministic runtime evaluation using the injected clock.
+    Tick,
     SetOverlayVisible(bool),
     SetOverlaySettings(OverlaySettings),
     SetModelSettings(ModelSettings),
@@ -1382,6 +1384,12 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                 let sequence = envelope.sequence;
                 let mut evaluate_after_command = true;
                 match envelope.command {
+                    WorkerCommand::Product(RuntimeCommand::Tick) => {
+                        publish(&snapshot, |current| {
+                            current.last_command_failure = None;
+                            current.last_command_sequence = Some(sequence);
+                        });
+                    }
                     WorkerCommand::Product(RuntimeCommand::SetOverlayVisible(visible)) => {
                         overlay_visible = visible;
                         publish(&snapshot, |current| {
@@ -2886,6 +2894,12 @@ mod tests {
         );
 
         clock.set(Duration::from_millis(500));
+        let tick_sequence = client
+            .send(RuntimeCommand::Tick)
+            .expect("deterministic tick");
+        client
+            .wait_for_command(tick_sequence, TIMEOUT)
+            .expect("tick completed");
         let animated = wait_for_render_frame(&consumer, |frame| {
             frame.transport_sequence > baseline.transport_sequence
                 && frame.snapshot != baseline.snapshot
