@@ -439,8 +439,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 2.2 工程质量
 
-- [ ] 固定 stable Rust toolchain、target 和必要 components。
-- [ ] 在 workspace manifest 声明 `rust-version`，CI 验证最低版本和当前 stable，不依赖开发机偶然安装的 nightly。
+- [x] 固定 stable Rust toolchain、target 和必要 components。
+  - 验收证据（2026-09-01）：`native/rust-toolchain.toml` 固定 Rust `1.97.1`、`clippy` 和 `rustfmt`，`toolchain-target-matrix.md` 记录 host/target 矩阵；Native workflow 的 `native-toolchain` job 同时使用当前 stable 与声明的最低 `1.97.1` 执行 locked workspace check。
+- [x] 在 workspace manifest 声明 `rust-version`，CI 验证最低版本和当前 stable，不依赖开发机偶然安装的 nightly。
+  - 验收证据（2026-09-01）：`native/Cargo.toml` 的 workspace package 声明 `rust-version = "1.97"`，全部 Native crate 继承该字段；`native-toolchain` job 对当前 stable 和 `1.97.1` 均执行 `cargo check --locked --workspace`。
 - [x] 禁止应用依赖未固定 git branch，提交 Cargo.lock。
 - [x] 平台依赖使用 target-specific dependency，Windows feature 不进入 macOS，macOS framework 不进入 Windows。
   - 验收证据（2026-09-01）：`bongocat-platform`、`bongocat-overlay`、`bongocat-audio`、`bongocat-runtime`、

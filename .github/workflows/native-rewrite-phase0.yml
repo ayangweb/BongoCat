@@ -10,6 +10,23 @@ env:
   BONGOCAT_BUILD_ENV: development
 
 jobs:
+  native-toolchain:
+    name: Verify Native Rust toolchains
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check current stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build Native workspace with current stable
+        run: cargo check --manifest-path native/Cargo.toml --locked --workspace
+      - name: Check declared minimum toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.1
+          components: clippy, rustfmt
+      - name: Build Native workspace with declared minimum
+        run: cargo check --manifest-path native/Cargo.toml --locked --workspace
+
   fixtures:
     name: Validate shared fixtures
     runs-on: ubuntu-latest
