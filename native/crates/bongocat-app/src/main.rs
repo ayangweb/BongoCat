@@ -4,6 +4,8 @@
 use bongocat_live2d::CoreLogHandle;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_overlay::{OverlaySessionOptions, ProductOverlaySession};
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use bongocat_platform::ShortcutDispatcher;
 #[cfg(target_os = "windows")]
 use bongocat_platform::{
     SingleInstance, SingleInstanceAction, SingleInstanceEnvironment, SingleInstanceStart,
@@ -797,6 +799,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     application.prepare_model(model_origin, model_id)?;
     let runtime_client = application.runtime_client();
+    let shortcut_dispatcher = Some(ShortcutDispatcher::new(
+        application.compiled_shortcuts()?,
+        runtime_client.clone(),
+    ));
     let input_producer = application.input_producer();
     let cursor_producer = application.cursor_producer();
     let gamepad_axis_producer = application.gamepad_axis_producer();
@@ -833,13 +839,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
     gpui_application.run(move |cx: &mut App| {
-        let overlay = match ProductOverlaySession::start(
+        let overlay = match ProductOverlaySession::start_with_shortcuts(
             runtime_client,
             input_producer,
             cursor_producer,
             gamepad_axis_producer,
             render_consumer,
             overlay_options,
+            shortcut_dispatcher,
         ) {
             Ok(overlay) => overlay,
             Err(error) => {

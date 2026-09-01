@@ -1,5 +1,5 @@
-use bongocat_config::{CompiledShortcuts, ShortcutModifiers, ShortcutTarget};
-use bongocat_runtime::{InputEdge, PhysicalKey};
+use bongocat_config::{CompiledShortcuts, ModelBehaviorAction, ShortcutModifiers, ShortcutTarget};
+use bongocat_runtime::{ExpressionId, InputEdge, MotionId, MotionPriority, PhysicalKey, RuntimeClient, SendError, ShortcutAction};
 use std::collections::BTreeSet;
 
 /// Platform-neutral shortcut edge matcher used after native key codes have
@@ -10,6 +10,66 @@ use std::collections::BTreeSet;
 pub struct ShortcutMatcher {
     shortcuts: CompiledShortcuts,
     pressed: BTreeSet<PhysicalKey>,
+}
+
+/// Dispatches matched model behavior shortcuts without exposing configuration
+/// strings or platform key codes to the runtime. Application-level targets are
+/// intentionally reported as ignored until the settings service owns their
+/// persistence-aware command path.
+#[derive(Clone)]
+pub struct ShortcutDispatcher {
+    matcher: ShortcutMatcher,
+    runtime: RuntimeClient,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ShortcutDispatch {
+    Triggered,
+    IgnoredApplicationCommand,
+    IgnoredInactiveModel,
+    NoMatch,
+}
+
+impl ShortcutDispatcher {
+    pub fn new(shortcuts: CompiledShortcuts, runtime: RuntimeClient) -> Self {
+        Self {
+            matcher: ShortcutMatcher::new(shortcuts),
+            runtime,
+        }
+    }
+
+    pub fn apply(
+        &mut self,
+        key: PhysicalKey,
+        edge: InputEdge,
+    ) -> Result<ShortcutDispatch, SendError> {
+        let Some(target) = self.matcher.apply(key, edge) else {
+            return Ok(ShortcutDispatch::NoMatch);
+        };
+        let ShortcutTarget::ModelBehavior { model_id, action } = target else {
+            return Ok(ShortcutDispatch::IgnoredApplicationCommand);
+        };
+        let Some(active) = self.runtime.snapshot().active_model else {
+            return Ok(ShortcutDispatch::IgnoredInactiveModel);
+        };
+        if active.id.as_str() != model_id {
+            return Ok(ShortcutDispatch::IgnoredInactiveModel);
+        }
+        let action = match action {
+            ModelBehaviorAction::Motion { group, index } => ShortcutAction::StartMotion {
+                motion: MotionId::new(group, index).expect("validated motion group"),
+                priority: MotionPriority::Normal,
+            },
+            ModelBehaviorAction::Expression { name } => ShortcutAction::SetExpression(
+                ExpressionId::new(name).expect("validated expression name"),
+            ),
+        };
+        self.runtime.trigger_shortcut(action).map(|_| ShortcutDispatch::Triggered)
+    }
+
+    pub fn reset(&mut self) {
+        self.matcher.reset();
+    }
 }
 
 impl ShortcutMatcher {
@@ -96,6 +156,46 @@ mod tests {
             .compile()
             .expect("compiled shortcuts"),
         )
+    }
+
+    #[test]
+    fn dispatcher_keeps_application_targets_out_of_runtime_and_handles_no_active_model() {
+        let runtime = bongocat_runtime::RuntimeOwner::start(true, 16);
+        let client = runtime.client();
+        client
+            .wait_for_revision(1, std::time::Duration::from_secs(1))
+            .expect("runtime ready");
+        let compiled = ShortcutConfig {
+            commands: vec![ShortcutBinding {
+                command: "toggle_overlay".to_owned(),
+                shortcut: "Control+B".to_owned(),
+            }],
+            model_behaviors: vec![ModelBehaviorBinding {
+                model_id: "standard".to_owned(),
+                behavior_id: "expression:happy".to_owned(),
+                shortcut: "Alt+M".to_owned(),
+            }],
+        }
+        .compile()
+        .expect("compiled shortcuts");
+        let mut dispatcher = ShortcutDispatcher::new(compiled, client.clone());
+        let control = PhysicalKey::from_hid_usage(0xe0);
+        let alt = PhysicalKey::from_hid_usage(0xe2);
+        let b = PhysicalKey::from_hid_usage(0x05);
+        let m = PhysicalKey::from_hid_usage(0x10);
+        assert_eq!(dispatcher.apply(control, InputEdge::Down), Ok(ShortcutDispatch::NoMatch));
+        assert_eq!(
+            dispatcher.apply(b, InputEdge::Down),
+            Ok(ShortcutDispatch::IgnoredApplicationCommand)
+        );
+        assert_eq!(dispatcher.apply(b, InputEdge::Up), Ok(ShortcutDispatch::NoMatch));
+        assert_eq!(dispatcher.apply(control, InputEdge::Up), Ok(ShortcutDispatch::NoMatch));
+        assert_eq!(dispatcher.apply(alt, InputEdge::Down), Ok(ShortcutDispatch::NoMatch));
+        assert_eq!(
+            dispatcher.apply(m, InputEdge::Down),
+            Ok(ShortcutDispatch::IgnoredInactiveModel)
+        );
+        runtime.shutdown(std::time::Duration::from_secs(1)).expect("runtime stop");
     }
 
     #[test]

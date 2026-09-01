@@ -1,4 +1,4 @@
-use crate::{PlatformInputDiagnostics, PlatformInputError, PlatformInputServiceStatus};
+use crate::{PlatformInputDiagnostics, PlatformInputError, PlatformInputServiceStatus, ShortcutDispatcher};
 use bongocat_runtime::{
     CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorViewport, GamepadAxis,
     GamepadAxisKey, GamepadAxisProducer, GamepadAxisPublishError, GamepadAxisSample, GamepadButton,
@@ -489,6 +489,7 @@ struct WindowState {
     drop_next_key_release: bool,
     diagnostics: PlatformInputDiagnostics,
     diagnostics_producer: PlatformInputDiagnosticsProducer,
+    shortcut_dispatcher: Option<ShortcutDispatcher>,
 }
 
 impl WindowState {
@@ -499,6 +500,7 @@ impl WindowState {
         diagnostics_producer: PlatformInputDiagnosticsProducer,
         stop: Arc<AtomicBool>,
         options: WorkerOptions,
+        shortcut_dispatcher: Option<ShortcutDispatcher>,
     ) -> Self {
         Self {
             producer,
@@ -525,6 +527,7 @@ impl WindowState {
                 ..PlatformInputDiagnostics::default()
             },
             diagnostics_producer,
+            shortcut_dispatcher,
         }
     }
 
@@ -660,6 +663,9 @@ impl WindowState {
                 Ok(_) => {
                     self.candidates.clear();
                     self.missing_confirmations.clear();
+                    if let Some(dispatcher) = self.shortcut_dispatcher.as_mut() {
+                        dispatcher.reset();
+                    }
                     self.recovery_pending = false;
                     self.accepting = true;
                     self.diagnostics.recovery_resets =
@@ -734,6 +740,22 @@ impl WindowState {
                     source: InputSource::Capture,
                     at: self.monotonic(),
                 })?;
+                if let InputControl::Key(key) = control
+                    && let Some(dispatcher) = self.shortcut_dispatcher.as_mut()
+                {
+                    match dispatcher.apply(key, edge) {
+                        Ok(_) => {}
+                        Err(bongocat_runtime::SendError::QueueFull(_)) => {
+                            self.diagnostics.runtime_queue_overflows = self
+                                .diagnostics
+                                .runtime_queue_overflows
+                                .saturating_add(1);
+                        }
+                        Err(bongocat_runtime::SendError::RuntimeStopped(_)) => {
+                            self.terminal_error = Some(PlatformInputError::RuntimeStopped);
+                        }
+                    }
+                }
                 match edge {
                     InputEdge::Down => {
                         self.candidates.insert(control, system);
@@ -750,6 +772,9 @@ impl WindowState {
                 self.producer.recover(reason, self.monotonic())?;
                 self.candidates.clear();
                 self.missing_confirmations.clear();
+                if let Some(dispatcher) = self.shortcut_dispatcher.as_mut() {
+                    dispatcher.reset();
+                }
                 self.diagnostics.recovery_resets =
                     self.diagnostics.recovery_resets.saturating_add(1);
             }
@@ -881,11 +906,28 @@ impl WindowsInputService {
         gamepad_axis_producer: GamepadAxisProducer,
         diagnostics_producer: PlatformInputDiagnosticsProducer,
     ) -> Result<Self, PlatformInputError> {
+        Self::start_with_diagnostics_and_shortcuts(
+            producer,
+            cursor_producer,
+            gamepad_axis_producer,
+            diagnostics_producer,
+            None,
+        )
+    }
+
+    pub fn start_with_diagnostics_and_shortcuts(
+        producer: InputProducer,
+        cursor_producer: CursorProducer,
+        gamepad_axis_producer: GamepadAxisProducer,
+        diagnostics_producer: PlatformInputDiagnosticsProducer,
+        shortcut_dispatcher: Option<ShortcutDispatcher>,
+    ) -> Result<Self, PlatformInputError> {
         Self::start_with_diagnostics_and_options(
             producer,
             cursor_producer,
             gamepad_axis_producer,
             diagnostics_producer,
+            shortcut_dispatcher,
             WorkerOptions::default(),
         )
     }
@@ -895,6 +937,7 @@ impl WindowsInputService {
         cursor_producer: CursorProducer,
         gamepad_axis_producer: GamepadAxisProducer,
         diagnostics_producer: PlatformInputDiagnosticsProducer,
+        shortcut_dispatcher: Option<ShortcutDispatcher>,
         options: WorkerOptions,
     ) -> Result<Self, PlatformInputError> {
         let stop = Arc::new(AtomicBool::new(false));
@@ -910,6 +953,7 @@ impl WindowsInputService {
                         cursor_producer,
                         gamepad_axis_producer,
                         diagnostics_producer,
+                        shortcut_dispatcher,
                         worker_stop,
                         options,
                         startup_sender,
@@ -973,6 +1017,7 @@ fn run_input_worker(
     cursor_producer: CursorProducer,
     gamepad_axis_producer: GamepadAxisProducer,
     diagnostics_producer: PlatformInputDiagnosticsProducer,
+    shortcut_dispatcher: Option<ShortcutDispatcher>,
     stop: Arc<AtomicBool>,
     options: WorkerOptions,
     startup: SyncSender<Result<(), PlatformInputError>>,
@@ -986,6 +1031,7 @@ fn run_input_worker(
             cursor_producer,
             gamepad_axis_producer,
             diagnostics_producer,
+            shortcut_dispatcher,
             stop,
             options,
             startup,
@@ -998,6 +1044,7 @@ unsafe fn run_input_worker_inner(
     cursor_producer: CursorProducer,
     gamepad_axis_producer: GamepadAxisProducer,
     diagnostics_producer: PlatformInputDiagnosticsProducer,
+    shortcut_dispatcher: Option<ShortcutDispatcher>,
     stop: Arc<AtomicBool>,
     options: WorkerOptions,
     startup: SyncSender<Result<(), PlatformInputError>>,
@@ -1028,6 +1075,7 @@ unsafe fn run_input_worker_inner(
         diagnostics_producer,
         stop,
         options,
+        shortcut_dispatcher,
     ));
     let state_ptr = (&mut *state) as *mut WindowState;
     let window = match unsafe {

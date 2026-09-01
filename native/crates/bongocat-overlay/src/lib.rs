@@ -5,7 +5,7 @@ mod windows;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_platform::PlatformInputServiceStatus;
-use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError};
+use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError, ShortcutDispatcher};
 use bongocat_render::{RenderConsumer, RenderTransportDiagnostics};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_runtime::PlatformInputDiagnosticsProducer;
@@ -112,6 +112,26 @@ impl ProductOverlaySession {
         render_consumer: RenderConsumer,
         options: OverlaySessionOptions,
     ) -> Result<Self, OverlayError> {
+        Self::start_with_shortcuts(
+            runtime_client,
+            input_producer,
+            cursor_producer,
+            gamepad_axis_producer,
+            render_consumer,
+            options,
+            None,
+        )
+    }
+
+    pub fn start_with_shortcuts(
+        runtime_client: RuntimeClient,
+        input_producer: InputProducer,
+        cursor_producer: CursorProducer,
+        gamepad_axis_producer: GamepadAxisProducer,
+        render_consumer: RenderConsumer,
+        options: OverlaySessionOptions,
+        shortcut_dispatcher: Option<ShortcutDispatcher>,
+    ) -> Result<Self, OverlayError> {
         #[cfg(target_os = "macos")]
         {
             macos::ProductOverlaySession::start(
@@ -121,6 +141,7 @@ impl ProductOverlaySession {
                 gamepad_axis_producer,
                 render_consumer,
                 options,
+                shortcut_dispatcher,
             )
             .map(|inner| Self { inner })
         }
@@ -134,6 +155,7 @@ impl ProductOverlaySession {
                 gamepad_axis_producer,
                 render_consumer,
                 options,
+                shortcut_dispatcher,
             )
             .map(|inner| Self { inner })
         }

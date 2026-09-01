@@ -1,7 +1,7 @@
 # BongoCat Native Rewrite Technical Design
 
 状态：架构决策稿，Phase 0 证据补齐与 Phase 1 渐进实现并行
-最后更新：2026-08-31
+最后更新：2026-09-01
 首发平台：Windows 10 1903+、macOS 12+
 后续平台：Linux（首发后评估）
 
@@ -113,6 +113,10 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
 - 辅助功能实现不得使用 GPUI 私有 renderer、隐藏原生控件或独立业务状态副本；可见控件、
   语义节点、焦点、loading/error 和 value 必须由同一份 UI snapshot 更新。
 - GPUI 不加载 Cubism、不持有主猫 GPU 资源、不驱动 Live2D 帧循环。
+- 全局快捷键使用配置边界编译出的 `CompiledShortcuts`。平台 input owner 在回调外以 HID
+  identity 驱动短生命周期 matcher；只有匹配当前 active model 的 motion/expression target
+  才能转成 typed runtime command。应用级 target 必须经 coordinator 的配置 revision-aware
+  command 执行，平台层不得直接改 overlay 或设置状态。
 - 关闭设置窗口不影响 runtime、输入、音频、frame source 和 overlay，它们继续由 app
   coordinator 持有。macOS 销毁对应 GPUI `Entity`，reopen 创建一个新窗口；GPUI 0.2.2
   的 Windows `WM_CLOSE` 销毁回调存在同步重入缺陷，因此 Windows platform adapter 拦截 close、

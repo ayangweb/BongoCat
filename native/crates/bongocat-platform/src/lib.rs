@@ -30,7 +30,7 @@ mod single_instance;
 pub use single_instance::{SingleInstanceAction, SingleInstanceEnvironment, SingleInstanceError};
 
 mod shortcut;
-pub use shortcut::ShortcutMatcher;
+pub use shortcut::{ShortcutDispatch, ShortcutDispatcher, ShortcutMatcher};
 #[cfg(target_os = "windows")]
 mod single_instance_windows;
 #[cfg(target_os = "windows")]

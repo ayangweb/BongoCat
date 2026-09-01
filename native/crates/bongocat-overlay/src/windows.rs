@@ -3,7 +3,7 @@ use crate::{
     validate_model_generation_advance,
 };
 use bongocat_model::{CommittedModel, ModelId, ModelPackageLimits, PresetModelCatalog};
-use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError, WindowsInputService};
+use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError, ShortcutDispatcher, WindowsInputService};
 use bongocat_render::{
     BlendMode, CanvasInfo, DrawableId, ModelCommitErrorCode, ModelCommitFeedback,
     ModelCommitOutcome, ModelCommitToken, RenderConsumer, RenderFrame, RenderResources,
@@ -784,6 +784,7 @@ impl ProductOverlaySession {
         gamepad_axis_producer: GamepadAxisProducer,
         render_consumer: RenderConsumer,
         options: OverlaySessionOptions,
+        shortcut_dispatcher: Option<ShortcutDispatcher>,
     ) -> Result<Self, OverlayError> {
         validate_options(options)?;
         let initial_frame = render_consumer
@@ -812,11 +813,12 @@ impl ProductOverlaySession {
         let diagnostics_producer = runtime_client.platform_input_diagnostics_producer();
         let (input_service, input_start_error) =
             super::start_platform_input(&diagnostics_producer, || {
-                WindowsInputService::start_with_diagnostics(
+                WindowsInputService::start_with_diagnostics_and_shortcuts(
                     input_producer,
                     cursor_producer,
                     gamepad_axis_producer,
                     diagnostics_producer.clone(),
+                    shortcut_dispatcher,
                 )
             });
         Ok(Self {

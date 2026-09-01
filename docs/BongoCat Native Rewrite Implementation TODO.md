@@ -1899,8 +1899,11 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       重复 down，binding replace 保留 pressed set 防止 held-key repeat 误触发，reset/reconcile 分别
       清理或校正 transient pressed state。Windows scan code 与
       macOS keycode 映射已通过同一 compiled chord 回归；非法 action、非法 chord 和跨域冲突仍在
-      编译边界拒绝。平台注册、捕获 UI、GPUI 清除/恢复默认入口、产品 worker 投递 matcher target、
-      匹配后的 app/runtime 执行接线和实机快捷键证据仍未完成。
+      编译边界拒绝。2026-09-01：产品 overlay 将同一 compiled table 和 runtime client 交给双平台
+      input owner；边沿仍先进入可靠 `InputEvent`，随后在 worker 外匹配并将 active model 的
+      motion/expression target 转成 typed runtime command，Reset 会清理 matcher transient state。
+      应用级 target 目前显式记录为 ignored，待 coordinator 提供带配置 revision 的 typed action；
+      注册/捕获 UI、GPUI 清除/恢复默认入口和 Windows/macOS 实机快捷键证据仍未完成。
 
 ## 13. 待决策清单
 
