@@ -591,6 +591,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-09-01）：tracker 改用 wrapping distance 判断序列方向，跨 `u64::MAX -> 0`
     的丢失、重复和反向 envelope 均有确定分类；模型准备期间的 deferred command 会在
     实际消费时才记账，避免被输入边沿绕行误报为乱序。runtime 46 项定向测试通过。
+  - 状态（2026-09-01）：`wait_for_command`、模型准备等待和输入序列等待统一使用同一
+    wrapping-forward 判定，避免序列回绕后因普通 `>=` 比较提前返回或永久等待；新增纯
+    Rust 回归覆盖边界。
 - [ ] cursor/gamepad axis 使用 latest-value 合并通道。
   - 状态（2026-08-29）：Windows RAWMOUSE movement 已从可靠 edge FIFO 分流到独立 latest-value 槽位；safe decoder 保留 relative/absolute/virtual-desktop 语义，16ms owner tick 在 callback 外查询当前 cursor，pointer flood 要求 captured sample 全部由 coalesced 或 consumed 解释且不影响 keyboard release。commit `098d532` 的 push run `33258305541`、Windows job `99115756881` 已通过强化后的 3072 movement/1536 keyboard edge 回归。Gamepad axis、macOS cursor 和产品 runtime 通道仍待实现，因此保持未勾选。
   - 状态（2026-08-29）：macOS `MouseMoved` 与 left/right/other drag 已分流到独立 latest-value slot，run-loop owner 约每 16ms 消费一次并在 shutdown flush；10,000-sample contract 证明 cursor flood 不占用可靠 button edge 队列，严格报告要求 `captured = coalesced + consumed` 且 close 后无迟到发布。commit `500a956` 的 PR run `33258718745` 中，原生 macOS job `99116842307` 与 contract job `99116842405` 均通过。Gamepad axis、产品 runtime 通道和物理 cursor callback 实测仍待完成，因此保持未勾选。

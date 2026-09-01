@@ -519,6 +519,16 @@ struct CommandSequenceTracker {
     deferred: BTreeSet<u64>,
 }
 
+/// Returns whether an observed sequence has reached a target in the forward
+/// direction, including across the `u64::MAX -> 0` boundary.
+///
+/// Sequence producers are monotonic modulo `u64`; treating the forward half
+/// of the number line as newer keeps waits correct after a wrap while still
+/// rejecting stale observations from the backward half.
+fn sequence_reached(observed: u64, target: u64) -> bool {
+    observed.wrapping_sub(target) <= u64::MAX / 2
+}
+
 impl CommandSequenceTracker {
     fn defer(&mut self, sequence: u64) {
         self.deferred.insert(sequence);
@@ -776,7 +786,7 @@ impl RuntimeClient {
         loop {
             if snapshot
                 .last_command_sequence
-                .is_some_and(|sequence| sequence >= command_sequence)
+                .is_some_and(|sequence| sequence_reached(sequence, command_sequence))
             {
                 return Some(self.with_transport_diagnostics(snapshot.clone()));
             }
@@ -796,7 +806,7 @@ impl RuntimeClient {
             if result.timed_out()
                 && !snapshot
                     .last_command_sequence
-                    .is_some_and(|sequence| sequence >= command_sequence)
+                    .is_some_and(|sequence| sequence_reached(sequence, command_sequence))
             {
                 return None;
             }
@@ -821,7 +831,7 @@ impl RuntimeClient {
                 .is_some_and(|pending| pending.token.command_sequence == command_sequence);
             let completed = snapshot
                 .last_command_sequence
-                .is_some_and(|sequence| sequence >= command_sequence);
+                .is_some_and(|sequence| sequence_reached(sequence, command_sequence));
             if prepared || completed {
                 return Some(self.with_transport_diagnostics(snapshot.clone()));
             }
@@ -845,7 +855,7 @@ impl RuntimeClient {
                     .is_some_and(|pending| pending.token.command_sequence == command_sequence);
                 let completed = snapshot
                     .last_command_sequence
-                    .is_some_and(|sequence| sequence >= command_sequence);
+                    .is_some_and(|sequence| sequence_reached(sequence, command_sequence));
                 if !prepared && !completed {
                     return None;
                 }
@@ -868,7 +878,7 @@ impl RuntimeClient {
             if snapshot
                 .input
                 .last_input_sequence
-                .is_some_and(|sequence| sequence >= input_sequence)
+                .is_some_and(|sequence| sequence_reached(sequence, input_sequence))
             {
                 return Some(self.with_transport_diagnostics(snapshot.clone()));
             }
@@ -889,7 +899,7 @@ impl RuntimeClient {
                 && !snapshot
                     .input
                     .last_input_sequence
-                    .is_some_and(|sequence| sequence >= input_sequence)
+                    .is_some_and(|sequence| sequence_reached(sequence, input_sequence))
             {
                 return None;
             }
@@ -2135,6 +2145,15 @@ mod tests {
             RuntimeRenderErrorCode::GpuPreparationFailed.to_string(),
             "gpu_preparation_failed"
         );
+    }
+
+    #[test]
+    fn sequence_wait_predicate_handles_wraparound() {
+        assert!(sequence_reached(42, 42));
+        assert!(sequence_reached(0, u64::MAX));
+        assert!(sequence_reached(1, u64::MAX));
+        assert!(!sequence_reached(u64::MAX, 0));
+        assert!(!sequence_reached(10, 11));
     }
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
