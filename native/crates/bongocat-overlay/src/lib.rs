@@ -169,6 +169,7 @@ impl ProductOverlaySession {
                 gamepad_axis_producer,
                 render_consumer,
                 options,
+                shortcut_dispatcher,
             );
             Err(OverlayError::new(
                 "the product Live2D overlay is available on Windows and macOS",
