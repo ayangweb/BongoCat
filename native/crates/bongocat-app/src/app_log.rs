@@ -5,6 +5,7 @@ use std::{
     collections::BTreeMap,
     fs::{self, File, OpenOptions},
     io::{self, Write},
+    panic::{self, PanicHookInfo},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
@@ -65,6 +66,7 @@ pub enum ApplicationLogCode {
     Started,
     ShutdownStarted,
     ShutdownFailed,
+    Panicked,
     RuntimeUnavailable,
     DiagnosticsExportFailed,
 }
@@ -75,6 +77,7 @@ impl ApplicationLogCode {
             Self::Started => "started",
             Self::ShutdownStarted => "shutdown_started",
             Self::ShutdownFailed => "shutdown_failed",
+            Self::Panicked => "panicked",
             Self::RuntimeUnavailable => "runtime_unavailable",
             Self::DiagnosticsExportFailed => "diagnostics_export_failed",
         }
@@ -110,6 +113,14 @@ impl ApplicationLogEvent {
             component: ApplicationLogComponent::Application,
             level: ApplicationLogLevel::Error,
             code: ApplicationLogCode::ShutdownFailed,
+        }
+    }
+
+    pub const fn panicked() -> Self {
+        Self {
+            component: ApplicationLogComponent::Application,
+            level: ApplicationLogLevel::Error,
+            code: ApplicationLogCode::Panicked,
         }
     }
 }
@@ -162,9 +173,34 @@ struct ApplicationLogSink {
     state: Mutex<ApplicationLogState>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ApplicationLogHandle {
     sink: Arc<ApplicationLogSink>,
+}
+
+type PanicHook = dyn Fn(&PanicHookInfo<'_>) + Send + Sync + 'static;
+
+pub struct ApplicationPanicHook {
+    previous: Option<Box<PanicHook>>,
+}
+
+impl std::fmt::Debug for ApplicationPanicHook {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ApplicationPanicHook")
+            .finish_non_exhaustive()
+    }
+}
+
+impl Drop for ApplicationPanicHook {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            return;
+        }
+        if let Some(previous) = self.previous.take() {
+            panic::set_hook(previous);
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -199,6 +235,17 @@ impl ApplicationLogHandle {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .diagnostics
+    }
+
+    pub fn install_panic_hook(&self) -> ApplicationPanicHook {
+        let previous = panic::take_hook();
+        let sink = Arc::clone(&self.sink);
+        panic::set_hook(Box::new(move |_| {
+            sink.try_record(current_day(), ApplicationLogEvent::panicked());
+        }));
+        ApplicationPanicHook {
+            previous: Some(previous),
+        }
     }
 }
 
@@ -237,47 +284,58 @@ impl ApplicationLogSink {
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if day != state.day {
-            switch_day(&mut state, day);
-        }
-        let record = ApplicationLogRecord {
-            component: event.component.as_str(),
-            level: event.level.as_str(),
-            code: event.code.as_str(),
-        };
-        let Ok(mut line) = serde_json::to_vec(&record) else {
-            state.diagnostics.dropped = state.diagnostics.dropped.saturating_add(1);
-            return;
-        };
-        line.push(b'\n');
-        let Ok(line_len) = u64::try_from(line.len()) else {
-            state.diagnostics.dropped = state.diagnostics.dropped.saturating_add(1);
-            return;
-        };
-        if state.bytes.saturating_add(line_len) > MAX_LOG_BYTES && !rotate_active(&mut state) {
-            state.diagnostics.dropped = state.diagnostics.dropped.saturating_add(1);
-            return;
-        }
-        let Some(file) = state.file.as_mut() else {
-            state.diagnostics.dropped = state.diagnostics.dropped.saturating_add(1);
-            return;
-        };
-        if file.write_all(&line).is_err() || file.flush().is_err() {
-            state.diagnostics.dropped = state.diagnostics.dropped.saturating_add(1);
-            return;
-        }
-        state.bytes = state.bytes.saturating_add(line_len);
-        state.diagnostics.written = state.diagnostics.written.saturating_add(1);
-        state.diagnostics.bytes = state.diagnostics.bytes.saturating_add(line_len);
-        *state.code_counts.entry(event).or_default() = state
-            .code_counts
-            .get(&event)
-            .copied()
-            .unwrap_or(0)
-            .saturating_add(1);
-        prune_logs(&mut state, day);
-        refresh_totals(&mut state);
+        record_locked(&mut state, day, event);
     }
+
+    fn try_record(&self, day: u64, event: ApplicationLogEvent) {
+        let Ok(mut state) = self.state.try_lock() else {
+            return;
+        };
+        record_locked(&mut state, day, event);
+    }
+}
+
+fn record_locked(state: &mut ApplicationLogState, day: u64, event: ApplicationLogEvent) {
+    if day != state.day {
+        switch_day(state, day);
+    }
+    let record = ApplicationLogRecord {
+        component: event.component.as_str(),
+        level: event.level.as_str(),
+        code: event.code.as_str(),
+    };
+    let Ok(mut line) = serde_json::to_vec(&record) else {
+        state.diagnostics.dropped = state.diagnostics.dropped.saturating_add(1);
+        return;
+    };
+    line.push(b'\n');
+    let Ok(line_len) = u64::try_from(line.len()) else {
+        state.diagnostics.dropped = state.diagnostics.dropped.saturating_add(1);
+        return;
+    };
+    if state.bytes.saturating_add(line_len) > MAX_LOG_BYTES && !rotate_active(state) {
+        state.diagnostics.dropped = state.diagnostics.dropped.saturating_add(1);
+        return;
+    }
+    let Some(file) = state.file.as_mut() else {
+        state.diagnostics.dropped = state.diagnostics.dropped.saturating_add(1);
+        return;
+    };
+    if file.write_all(&line).is_err() || file.flush().is_err() {
+        state.diagnostics.dropped = state.diagnostics.dropped.saturating_add(1);
+        return;
+    }
+    state.bytes = state.bytes.saturating_add(line_len);
+    state.diagnostics.written = state.diagnostics.written.saturating_add(1);
+    state.diagnostics.bytes = state.diagnostics.bytes.saturating_add(line_len);
+    *state.code_counts.entry(event).or_default() = state
+        .code_counts
+        .get(&event)
+        .copied()
+        .unwrap_or(0)
+        .saturating_add(1);
+    prune_logs(state, day);
+    refresh_totals(state);
 }
 
 fn switch_day(state: &mut ApplicationLogState, day: u64) {
@@ -504,5 +562,38 @@ mod tests {
             ApplicationLogHandle::install(&file),
             Err(ApplicationLogError::CreateDirectory(_))
         ));
+    }
+
+    #[test]
+    fn panic_hook_writes_only_a_stable_event_and_restores_the_previous_hook() {
+        let directory = tempdir().expect("temporary directory");
+        let handle = ApplicationLogHandle::install(directory.path()).expect("application log");
+        let hook = handle.install_panic_hook();
+        let panic = std::thread::spawn(|| {
+            panic!("private payload /Users/example/secret-model/model3.json")
+        })
+        .join();
+        assert!(panic.is_err());
+        drop(hook);
+
+        let state = handle.sink.state.lock().expect("state lock");
+        let contents = fs::read_to_string(&state.path).expect("log contents");
+        assert_eq!(
+            contents,
+            "{\"component\":\"application\",\"level\":\"error\",\"code\":\"panicked\"}\n"
+        );
+        assert!(!contents.contains("secret-model"));
+        assert_eq!(state.diagnostics.written, 1);
+    }
+
+    #[test]
+    fn panic_record_drops_instead_of_waiting_for_the_log_lock() {
+        let directory = tempdir().expect("temporary directory");
+        let handle = ApplicationLogHandle::install(directory.path()).expect("application log");
+        let state = handle.sink.state.lock().expect("state lock");
+        handle
+            .sink
+            .try_record(current_day(), ApplicationLogEvent::panicked());
+        assert_eq!(state.diagnostics.written, 0);
     }
 }

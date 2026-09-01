@@ -42,7 +42,7 @@ mod build_environment_contract;
 mod settings;
 pub use app_log::{
     ApplicationLogCode, ApplicationLogComponent, ApplicationLogDiagnostics, ApplicationLogError,
-    ApplicationLogEvent, ApplicationLogHandle, ApplicationLogLevel,
+    ApplicationLogEvent, ApplicationLogHandle, ApplicationLogLevel, ApplicationPanicHook,
 };
 pub use settings::{ApplicationSettingsService, SettingsServiceJoinError};
 
@@ -217,6 +217,7 @@ pub struct Application {
     motion_audio: Option<MotionAudioService>,
     render_consumer: Option<RenderConsumer>,
     application_log: ApplicationLogHandle,
+    panic_hook: Option<ApplicationPanicHook>,
     shortcut_table: ShortcutTable,
 }
 
@@ -360,6 +361,7 @@ impl Application {
             motion_audio,
             render_consumer,
             application_log,
+            panic_hook: None,
             shortcut_table,
         };
         application
@@ -421,6 +423,12 @@ impl Application {
 
     pub fn record_log(&self, event: ApplicationLogEvent) {
         self.application_log.record(event);
+    }
+
+    pub fn install_process_panic_hook(&mut self) {
+        if self.panic_hook.is_none() {
+            self.panic_hook = Some(self.application_log.install_panic_hook());
+        }
     }
 
     pub const fn config_recovery(&self) -> Option<ConfigRecovery> {

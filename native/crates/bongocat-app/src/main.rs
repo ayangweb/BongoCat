@@ -790,6 +790,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
     let mut application = bongocat_app::Application::start(development_preset_root())?;
+    application.install_process_panic_hook();
     let core_log = CoreLogHandle::install(application.logs_directory().join("cubism-core.jsonl"))?;
     if !application.is_operational() {
         return run_configuration_recovery_mode(application);
@@ -1867,7 +1868,8 @@ fn development_preset_root() -> std::path::PathBuf {
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let application = bongocat_app::Application::start(development_preset_root())?;
+    let mut application = bongocat_app::Application::start(development_preset_root())?;
+    application.install_process_panic_hook();
     application.shutdown()?;
     Ok(())
 }
