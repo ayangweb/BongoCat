@@ -1186,10 +1186,13 @@ impl RuntimeOwner {
             return Ok(current);
         }
         self.request_shutdown();
-        let stopped = self
-            .client
-            .wait_for_state(RuntimeState::Stopped, timeout)
-            .ok_or(ShutdownError::TimedOut)?;
+        let Some(stopped) = self.client.wait_for_state(RuntimeState::Stopped, timeout) else {
+            // An explicit timeout is a bounded API contract. Dropping the join handle
+            // lets the worker finish its already-admitted drain asynchronously instead
+            // of making `Drop` block without a deadline after returning the error.
+            self.worker.take();
+            return Err(ShutdownError::TimedOut);
+        };
         self.join_worker()?;
         Ok(stopped)
     }
@@ -2472,6 +2475,31 @@ mod tests {
             Err(SendError::RuntimeStopped(_))
         ));
         let stopped = owner.shutdown(TIMEOUT).expect("shutdown drains queue");
+        assert_eq!(stopped.state, RuntimeState::Stopped);
+    }
+
+    #[test]
+    fn shutdown_timeout_returns_without_waiting_for_worker_join() {
+        let owner = RuntimeOwner::start(true, 1);
+        let client = owner.client();
+        client
+            .wait_for_state(RuntimeState::Ready, TIMEOUT)
+            .expect("runtime ready");
+        client
+            .send(RuntimeCommand::SetOverlayVisible(false))
+            .expect("queue accepts one command");
+
+        let started = Instant::now();
+        let result = owner.shutdown(Duration::ZERO);
+        assert_eq!(result, Err(ShutdownError::TimedOut));
+        assert!(
+            started.elapsed() < Duration::from_millis(500),
+            "explicit shutdown timeout must bound the caller wait"
+        );
+
+        let stopped = client
+            .wait_for_state(RuntimeState::Stopped, TIMEOUT)
+            .expect("detached worker eventually drains and stops");
         assert_eq!(stopped.state, RuntimeState::Stopped);
     }
 
