@@ -493,7 +493,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     完整 SDK 保存在仓库外，普通构建、CI 和打包不联网或下载 artifact。`native/README.md`
     同步说明固定 vendor 基线和离线构建边界。第二来源复核、Windows/macOS 全 ABI 以及最终
     再分发授权仍由 P0-CUBISM/stable 发布门禁跟踪，不扩大本项完成范围。
-- [ ] 构建脚本默认不联网；外部 SDK、shader compiler 和生成器必须先由显式 bootstrap 步骤准备。
+- [x] 构建脚本默认不联网；外部 SDK、shader compiler 和生成器必须先由显式 bootstrap 步骤准备。
+  - 验收证据（2026-09-01）：正式 `bongocat-app`/`bongocat-live2d` build script 只读取显式
+    build environment、本地 vendor header 和已提交资源，不执行下载或网络命令；macOS packaging
+    只调用本地 Cargo、provenance 和 bundle 工具。Cubism inspector、bindgen 与 Core probe
+    均是离线 CLI，要求维护者先准备并校验 SDK，CI 不下载 Cubism、shader compiler 或生成器。
+    Native 三平台 locked format、Clippy、test、release/Production check 及依赖策略通过。
 - [x] 定义 debug、release、profiling 三种 profile，profiling 产物不得误发布。
   - 验收证据（2026-09-01）：`native/Cargo.toml` 显式定义 dev（debug、incremental、unwind）、
     release（symbols stripped、LTO、abort）和 profiling（继承 release、保留完整 debug、关闭
