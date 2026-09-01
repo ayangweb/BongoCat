@@ -17,6 +17,7 @@ use std::{
     fmt,
     sync::{
         Arc, Condvar, Mutex,
+        atomic::{AtomicU64, Ordering},
         mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TrySendError},
     },
     thread::{self, JoinHandle},
@@ -277,6 +278,17 @@ pub struct RuntimeCommandFailure {
     pub code: RuntimeRenderErrorCode,
 }
 
+/// Aggregate counters for the bounded command queue.
+///
+/// The counters intentionally contain no command payloads or platform data so
+/// they can be safely exposed in runtime snapshots and diagnostics.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct RuntimeCommandTransportDiagnostics {
+    pub enqueued: u64,
+    pub queue_full: u64,
+    pub runtime_stopped: u64,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct PendingModelSnapshot {
     pub token: ModelCommitToken,
@@ -337,6 +349,7 @@ pub struct RuntimeSnapshot {
     pub cursor: CursorSnapshot,
     pub gamepad_axis_transport: GamepadAxisTransportDiagnostics,
     pub platform_input: PlatformInputDiagnostics,
+    pub command_transport: RuntimeCommandTransportDiagnostics,
     pub model_input: ModelInputSnapshot,
     pub render_error: Option<RuntimeRenderErrorCode>,
     pub last_command_failure: Option<RuntimeCommandFailure>,
@@ -367,6 +380,7 @@ impl RuntimeSnapshot {
             cursor: CursorSnapshot::default(),
             gamepad_axis_transport: GamepadAxisTransportDiagnostics::default(),
             platform_input: PlatformInputDiagnostics::default(),
+            command_transport: RuntimeCommandTransportDiagnostics::default(),
             model_input: ModelInputSnapshot::default(),
             render_error: None,
             last_command_failure: None,
@@ -429,6 +443,36 @@ struct SnapshotCell {
 struct Producer {
     sender: SyncSender<CommandEnvelope>,
     next_sequence: Mutex<u64>,
+    command_transport: CommandTransportCounters,
+}
+
+#[derive(Default)]
+struct CommandTransportCounters {
+    enqueued: AtomicU64,
+    queue_full: AtomicU64,
+    runtime_stopped: AtomicU64,
+}
+
+impl CommandTransportCounters {
+    fn enqueued(&self) {
+        self.enqueued.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn queue_full(&self) {
+        self.queue_full.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn runtime_stopped(&self) {
+        self.runtime_stopped.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn snapshot(&self) -> RuntimeCommandTransportDiagnostics {
+        RuntimeCommandTransportDiagnostics {
+            enqueued: self.enqueued.load(Ordering::Relaxed),
+            queue_full: self.queue_full.load(Ordering::Relaxed),
+            runtime_stopped: self.runtime_stopped.load(Ordering::Relaxed),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -538,14 +582,21 @@ impl RuntimeClient {
             Ok(()) => {
                 let accepted = *next_sequence;
                 *next_sequence = next_sequence.wrapping_add(1);
+                self.producer.command_transport.enqueued();
                 Ok(accepted)
             }
             Err(TrySendError::Full(envelope)) => match envelope.command {
-                WorkerCommand::Product(command) => Err(SendError::QueueFull(command)),
+                WorkerCommand::Product(command) => {
+                    self.producer.command_transport.queue_full();
+                    Err(SendError::QueueFull(command))
+                }
                 WorkerCommand::Shutdown => unreachable!("clients cannot send shutdown"),
             },
             Err(TrySendError::Disconnected(envelope)) => match envelope.command {
-                WorkerCommand::Product(command) => Err(SendError::RuntimeStopped(command)),
+                WorkerCommand::Product(command) => {
+                    self.producer.command_transport.runtime_stopped();
+                    Err(SendError::RuntimeStopped(command))
+                }
                 WorkerCommand::Shutdown => unreachable!("clients cannot send shutdown"),
             },
         }
@@ -808,6 +859,7 @@ impl RuntimeClient {
 
     fn with_transport_diagnostics(&self, mut snapshot: RuntimeSnapshot) -> RuntimeSnapshot {
         snapshot.input.transport = self.input_transport.snapshot();
+        snapshot.command_transport = self.producer.command_transport.snapshot();
         snapshot.cursor.transport = self.cursor_slot.diagnostics();
         snapshot.gamepad_axis_transport = self.gamepad_axis_slot.diagnostics();
         snapshot.platform_input = self.platform_input_diagnostics.diagnostics();
@@ -953,6 +1005,7 @@ impl RuntimeOwner {
             producer: Arc::new(Producer {
                 sender,
                 next_sequence: Mutex::new(0),
+                command_transport: CommandTransportCounters::default(),
             }),
             snapshot: Arc::clone(&snapshot),
             input_transport,
@@ -2174,6 +2227,8 @@ mod tests {
             .expect("updated snapshot");
         assert!(!changed.overlay_visible);
         assert_eq!(changed.last_command_sequence, Some(sequence));
+        assert_eq!(changed.command_transport.enqueued, 1);
+        assert_eq!(changed.command_transport.queue_full, 0);
 
         let settings = OverlaySettings {
             click_through: false,
@@ -2816,6 +2871,11 @@ mod tests {
             .expect("duplicate stop result");
         assert!(duplicate_stop.active_motion.is_none());
         owner.shutdown(TIMEOUT).expect("runtime shutdown");
+        assert!(matches!(
+            client.send(RuntimeCommand::SetOverlayVisible(true)),
+            Err(SendError::RuntimeStopped(_))
+        ));
+        assert_eq!(client.snapshot().command_transport.runtime_stopped, 1);
     }
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -3333,6 +3393,7 @@ mod tests {
             producer: Arc::new(Producer {
                 sender,
                 next_sequence: Mutex::new(0),
+                command_transport: CommandTransportCounters::default(),
             }),
             snapshot: Arc::new(SnapshotCell {
                 value: Mutex::new(RuntimeSnapshot::starting(
@@ -3360,6 +3421,14 @@ mod tests {
                 InputResetReason::QueueOverflow,
             )))
         );
+        assert_eq!(
+            client.snapshot().command_transport,
+            RuntimeCommandTransportDiagnostics {
+                enqueued: 1,
+                queue_full: 1,
+                runtime_stopped: 0,
+            }
+        );
     }
 
     #[test]
@@ -3371,6 +3440,7 @@ mod tests {
             producer: Arc::new(Producer {
                 sender,
                 next_sequence: Mutex::new(0),
+                command_transport: CommandTransportCounters::default(),
             }),
             snapshot: Arc::new(SnapshotCell {
                 value: Mutex::new(RuntimeSnapshot::starting(

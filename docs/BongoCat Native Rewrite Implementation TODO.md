@@ -572,6 +572,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     latest-value transport，停止后拒绝新 sample 并在 shutdown 消费 pending sample。
     Windows 正式 input owner 也已具备 start/stop/join 和最终 Reset；gamepad axis 通道及
     producer 生命周期已建立，实机手柄证据仍待完成，因此总项保持未勾选。
+  - 状态（2026-09-01）：runtime command producer 现为 bounded FIFO 的正式匿名诊断来源，
+    snapshot 记录 `enqueued`、`queue_full` 和 `runtime_stopped`，并在队列满载及 shutdown
+    后发送回归中验证计数不泄露 command payload。该计数与既有 input/cursor/gamepad
+    transport 诊断保持独立；双平台真实压力与手柄证据仍待完成，因此总项保持未勾选。
 - [ ] edge/command 携带单调 sequence id，诊断可发现乱序、重复和丢失但不记录具体键值。
   - 状态（2026-08-29）：Windows callback queue 的 edge、Reset 和 reconcile tick 已携带单调 `u64` sequence，正常压力路径要求 gap/duplicate 均为 0，受控 overflow 以 discarded backlog 数量产生等量 gap 并由 Reset 恢复。command queue 与产品 runtime 的统一 sequence contract 仍待实现，因此保持未勾选。
   - 状态（2026-08-29）：macOS callback queue 也已为 edge/Reset 分配单调 `u64` sequence，overflow Reset 继承被拒事件序号，consumer 统计 gap 与 duplicate/out-of-order；普通 tap、timeout/user disable 和 lifecycle 本机回归均为 0。commit `d7501dc` 的 push run `33257871184` 已通过 contract job `99114627795` 及原生 macOS job `99114627654` 的 input check/Clippy/test/release 门禁。command queue 与产品 runtime 的统一 contract 仍待实现，因此保持未勾选。
