@@ -11,6 +11,30 @@ static STAGING_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 const IMPORTING_PREFIX: &str = ".importing-";
 const DELETING_PREFIX: &str = ".deleting-";
 
+// Installed models and their lock metadata are user-owned data. Unix modes
+// enforce that boundary; Windows relies on the profile directory ACL.
+fn set_private_directory(path: &Path) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+    Ok(())
+}
+
+fn set_private_file(file: &File) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(fs::Permissions::from_mode(0o600))?;
+    }
+    #[cfg(not(unix))]
+    let _ = file;
+    Ok(())
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModelStoreDiagnostic {
     AlreadyExists,
@@ -153,6 +177,13 @@ impl ModelStore {
                 format!("model store cannot be created: {error}"),
             )
         })?;
+        set_private_directory(root.as_ref()).map_err(|error| {
+            ModelStoreError::new(
+                ModelStoreDiagnostic::IoError,
+                None,
+                format!("model store permissions cannot be set: {error}"),
+            )
+        })?;
         let canonical_root = root.as_ref().canonicalize().map_err(|error| {
             ModelStoreError::new(
                 ModelStoreDiagnostic::IoError,
@@ -179,6 +210,13 @@ impl ModelStore {
                 ModelStoreDiagnostic::IoError,
                 None,
                 format!("model store lock directory cannot be created: {error}"),
+            )
+        })?;
+        set_private_directory(lock_parent).map_err(|error| {
+            ModelStoreError::new(
+                ModelStoreDiagnostic::IoError,
+                None,
+                format!("model store lock directory permissions cannot be set: {error}"),
             )
         })?;
         let canonical_lock_parent = lock_parent.canonicalize().map_err(|error| {
@@ -434,6 +472,13 @@ impl ModelStore {
                 format!("model staging directory cannot be created: {error}"),
             )
         })?;
+        set_private_directory(&path).map_err(|error| {
+            ModelStoreError::new(
+                ModelStoreDiagnostic::IoError,
+                Some(id.as_str().to_owned()),
+                format!("model staging directory permissions cannot be set: {error}"),
+            )
+        })?;
         Ok(path)
     }
 
@@ -471,6 +516,13 @@ impl ModelStore {
                     format!("model store lock cannot be opened: {error}"),
                 )
             })?;
+        set_private_file(&file).map_err(|error| {
+            ModelStoreError::new(
+                ModelStoreDiagnostic::IoError,
+                None,
+                format!("model store lock permissions cannot be set: {error}"),
+            )
+        })?;
         match file.try_lock() {
             Ok(()) => Ok(ModelStoreLock { _file: file }),
             Err(TryLockError::WouldBlock) => Err(ModelStoreError::new(
@@ -704,6 +756,13 @@ where
                     format!("staging directory cannot be created: {error}"),
                 )
             })?;
+            set_private_directory(&destination).map_err(|error| {
+                ModelStoreError::new(
+                    ModelStoreDiagnostic::IoError,
+                    Some(resource.clone()),
+                    format!("staging directory permissions cannot be set: {error}"),
+                )
+            })?;
             copy_package(
                 source_root,
                 &source,
@@ -815,6 +874,13 @@ where
                 format!("staging file cannot be created: {error}"),
             )
         })?;
+    set_private_file(&output).map_err(|error| {
+        ModelStoreError::new(
+            ModelStoreDiagnostic::IoError,
+            Some(resource.to_owned()),
+            format!("staging file permissions cannot be set: {error}"),
+        )
+    })?;
     let mut copied = 0_u64;
     let mut buffer = [0_u8; COPY_BUFFER_BYTES];
     loop {
@@ -947,6 +1013,62 @@ mod tests {
             source_moc
         );
         assert!(installed.root().join("猫.model3.json").is_file());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn model_store_data_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let data = tempdir().expect("data root");
+        let store = model_store(data.path());
+        let installed = store
+            .import(
+                ModelId::parse("private").expect("model id"),
+                fixture("非 ASCII 模型"),
+            )
+            .expect("import model");
+
+        assert_eq!(
+            fs::metadata(store.root())
+                .expect("model root metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+        assert_eq!(
+            fs::metadata(installed.root())
+                .expect("installed model metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+        assert_eq!(
+            fs::metadata(installed.root().join("猫.model3.json"))
+                .expect("installed model file metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+        assert_eq!(
+            fs::metadata(data.path().join("locks"))
+                .expect("lock directory metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+        assert_eq!(
+            fs::metadata(data.path().join("locks/models.writer.lock"))
+                .expect("lock file metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
     }
 
     #[test]

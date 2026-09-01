@@ -312,6 +312,7 @@ impl ApplicationLogHandle {
             .write(true)
             .open(&path)
             .map_err(ApplicationLogError::WriteRunMarker)?;
+        set_private_file(&marker).map_err(ApplicationLogError::WriteRunMarker)?;
         marker
             .write_all(RUN_MARKER_CONTENTS)
             .and_then(|()| marker.sync_all())
@@ -329,12 +330,14 @@ impl ApplicationRunMarker {
 impl ApplicationLogSink {
     fn open(directory: &Path, day: u64) -> Result<Self, ApplicationLogError> {
         fs::create_dir_all(directory).map_err(ApplicationLogError::CreateDirectory)?;
+        set_private_directory(directory).map_err(ApplicationLogError::CreateDirectory)?;
         let path = active_path(directory, day);
         let file = OpenOptions::new()
             .create(true)
             .append(true)
             .open(&path)
             .map_err(ApplicationLogError::OpenFile)?;
+        set_private_file(&file).map_err(ApplicationLogError::OpenFile)?;
         let bytes = file.metadata().map(|metadata| metadata.len()).unwrap_or(0);
         let mut state = ApplicationLogState {
             directory: directory.to_owned(),
@@ -443,6 +446,7 @@ fn switch_day(state: &mut ApplicationLogState, day: u64) {
         .open(&state.path)
         .ok();
     if let Some(file) = state.file.as_ref() {
+        let _ = set_private_file(file);
         state.bytes = file.metadata().map(|metadata| metadata.len()).unwrap_or(0);
     }
     prune_logs(state, day);
@@ -492,9 +496,47 @@ fn reopen_active(state: &mut ApplicationLogState) -> bool {
     else {
         return false;
     };
+    if set_private_file(&file).is_err() {
+        return false;
+    }
     state.bytes = file.metadata().map(|metadata| metadata.len()).unwrap_or(0);
     state.file = Some(file);
     true
+}
+
+// Logs and run markers can contain operational state, so keep them private to
+// the current user on Unix. Windows relies on the profile directory ACL.
+fn set_private_directory(path: &Path) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+    Ok(())
+}
+
+fn set_private_file(file: &File) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(fs::Permissions::from_mode(0o600))?;
+    }
+    #[cfg(not(unix))]
+    let _ = file;
+    Ok(())
+}
+
+fn set_private_path(path: &Path) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+    Ok(())
 }
 
 fn prune_logs(state: &mut ApplicationLogState, current_day: u64) {
@@ -561,6 +603,7 @@ fn collect_log_files(directory: &Path) -> Vec<LogFile> {
             };
             let day = day_text.parse::<u64>().ok()?;
             let bytes = entry.metadata().ok()?.len();
+            let _ = set_private_path(&path);
             Some(LogFile {
                 day,
                 generation,
@@ -706,5 +749,44 @@ mod tests {
         assert!(previous);
         marker.complete().expect("complete run");
         assert!(!marker_path.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn application_logs_are_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempdir().expect("temporary directory");
+        let handle = ApplicationLogHandle::install(directory.path()).expect("application log");
+        handle.record(ApplicationLogEvent::started());
+        let state = handle.sink.state.lock().expect("state lock");
+        assert_eq!(
+            fs::metadata(directory.path())
+                .expect("log directory metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+        assert_eq!(
+            fs::metadata(&state.path)
+                .expect("active log metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+        drop(state);
+        let (marker, _) = handle.begin_run().expect("run marker");
+        let marker_path = directory.path().join(RUN_MARKER_NAME);
+        assert_eq!(
+            fs::metadata(marker_path)
+                .expect("marker metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+        marker.complete().expect("complete run");
     }
 }
