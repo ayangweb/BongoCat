@@ -469,7 +469,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     release 实机崩溃收集仍待完成，因此本项保持未勾选。`bongocat-app` 63 项 app/lib 测试和
     app Clippy 已在本机通过；marker 逻辑随 commit `19afddf`（远端合并提交 `b6244cc`）进入 `next`。
 - [ ] 定义线程、任务、channel、窗口和 GPU object owner。
-- [ ] 建立结构化日志字段和用户路径脱敏规则。
+- [x] 建立结构化日志字段和用户路径脱敏规则。
+  - 验收证据（2026-09-01）：Application sink 只接受固定 component/level/code 字段，Cubism Core
+    callback 使用独立结构化 sink 并将路径、换行和超长消息脱敏/截断；panic hook 不读取 payload，
+    Diagnostics 导出只包含匿名统计与固定事件计数。app/Core 单元测试覆盖路径脱敏、长度上限、
+    callback panic boundary、日志轮转和导出无路径，三平台 Native CI 通过。
 - [ ] 提供开发/测试所需 Cubism 二进制的可验证安装说明。
 - [ ] 构建脚本默认不联网；外部 SDK、shader compiler 和生成器必须先由显式 bootstrap 步骤准备。
 - [ ] 定义 debug、release、profiling 三种 profile，profiling 产物不得误发布。
