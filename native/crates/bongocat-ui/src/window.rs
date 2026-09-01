@@ -1545,6 +1545,12 @@ impl SettingsView {
         let Some(target) = self.shortcut_capture else {
             return;
         };
+        if is_capture_cancel(event) {
+            self.shortcut_capture = None;
+            self.shortcut_capture_error = None;
+            cx.notify();
+            return;
+        }
         let Some(shortcut) = shortcut_from_key_event(event) else {
             self.shortcut_capture_error = Some("Unsupported key".to_owned());
             cx.notify();
@@ -4002,6 +4008,14 @@ fn shortcut_from_key_event(event: &KeyDownEvent) -> Option<String> {
         .map(|chord| chord.canonical())
 }
 
+fn is_capture_cancel(event: &KeyDownEvent) -> bool {
+    event.keystroke.key.eq_ignore_ascii_case("escape")
+        && !event.keystroke.modifiers.control
+        && !event.keystroke.modifiers.platform
+        && !event.keystroke.modifiers.alt
+        && !event.keystroke.modifiers.shift
+}
+
 fn canonical_capture_key(key: &str) -> Option<String> {
     let lower = key.to_ascii_lowercase();
     if lower.len() == 1 && lower.as_bytes()[0].is_ascii_alphanumeric() {
@@ -4859,6 +4873,16 @@ mod tests {
     fn shortcut_capture_rejects_modifier_only_and_unsupported_keys() {
         assert!(shortcut_from_key_event(&key("shift", None)).is_none());
         assert!(shortcut_from_key_event(&key("media-play", None)).is_none());
+    }
+
+    #[test]
+    fn escape_is_reserved_for_cancelling_capture() {
+        let event = key("escape", None);
+        assert!(is_capture_cancel(&event));
+
+        let mut modified = key("escape", None);
+        modified.keystroke.modifiers.control = true;
+        assert!(!is_capture_cancel(&modified));
     }
 
     #[test]
