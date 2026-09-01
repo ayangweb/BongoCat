@@ -799,9 +799,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     application.prepare_model(model_origin, model_id)?;
     let runtime_client = application.runtime_client();
-    let shortcut_dispatcher = Some(ShortcutDispatcher::with_table(
+    let (shortcut_sender, shortcut_receiver) = std::sync::mpsc::sync_channel(64);
+    let shortcut_dispatcher = Some(ShortcutDispatcher::with_application_sink(
         application.shortcut_table(),
         runtime_client.clone(),
+        shortcut_sender,
     ));
     let input_producer = application.input_producer();
     let cursor_producer = application.cursor_producer();
@@ -858,7 +860,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 return;
             }
         };
-        let settings_service = match bongocat_app::ApplicationSettingsService::start(application) {
+        let settings_service = match bongocat_app::ApplicationSettingsService::start_with_shortcut_receiver(application, shortcut_receiver) {
             Ok(service) => service,
             Err(error) => {
                 record_failure(&run_failures, error.to_string());

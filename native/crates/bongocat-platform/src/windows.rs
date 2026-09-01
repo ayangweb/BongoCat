@@ -745,13 +745,18 @@ impl WindowState {
                 {
                     match dispatcher.apply(key, edge) {
                         Ok(_) => {}
-                        Err(bongocat_runtime::SendError::QueueFull(_)) => {
+                        Err(crate::ShortcutDispatchError::Runtime(
+                            bongocat_runtime::SendError::QueueFull(_),
+                        ))
+                        | Err(crate::ShortcutDispatchError::ApplicationQueueFull) => {
                             self.diagnostics.runtime_queue_overflows = self
                                 .diagnostics
                                 .runtime_queue_overflows
                                 .saturating_add(1);
                         }
-                        Err(bongocat_runtime::SendError::RuntimeStopped(_)) => {
+                        Err(crate::ShortcutDispatchError::Runtime(
+                            bongocat_runtime::SendError::RuntimeStopped(_),
+                        )) => {
                             self.terminal_error = Some(PlatformInputError::RuntimeStopped);
                         }
                     }

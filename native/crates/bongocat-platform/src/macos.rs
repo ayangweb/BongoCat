@@ -1659,12 +1659,17 @@ fn publish_captured(
             {
                 match dispatcher.apply(key, edge) {
                     Ok(_) => {}
-                    Err(bongocat_runtime::SendError::QueueFull(_)) => {
+                    Err(crate::ShortcutDispatchError::Runtime(
+                        bongocat_runtime::SendError::QueueFull(_),
+                    ))
+                    | Err(crate::ShortcutDispatchError::ApplicationQueueFull) => {
                         diagnostics.runtime_queue_overflows = diagnostics
                             .runtime_queue_overflows
                             .saturating_add(1);
                     }
-                    Err(bongocat_runtime::SendError::RuntimeStopped(_)) => {
+                    Err(crate::ShortcutDispatchError::Runtime(
+                        bongocat_runtime::SendError::RuntimeStopped(_),
+                    )) => {
                         return Err(InputPublishError::RuntimeStopped(InputEvent::Reset {
                             reason: InputResetReason::ServiceRestart,
                             at,

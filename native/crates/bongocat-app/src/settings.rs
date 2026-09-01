@@ -4,7 +4,8 @@ use crate::{
 };
 use atomic_write_file::AtomicWriteFile;
 use bongocat_config::{
-    ConfigError, ConfigWriteFailureReason, NativeConfig, StateError, WindowPlacement,
+    ConfigError, ConfigWriteFailureReason, NativeConfig, ShortcutCommand, StateError,
+    WindowPlacement,
 };
 use bongocat_model::{
     ModelCatalogEntry, ModelDiagnostic, ModelImportProgress, ModelImportStage, ModelOrigin,
@@ -32,11 +33,11 @@ use bongocat_ui::{
     SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode, SettingsServiceEndpoint,
     SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
     SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsWindowPlacement,
-    SettingsWindowState,
+    SettingsWindowState, SettingsApplicationShortcut,
 };
 use serde::Serialize;
 use std::fs;
-use std::{fmt, path::PathBuf, sync::Arc, thread};
+use std::{fmt, path::PathBuf, sync::{mpsc::Receiver as ShortcutReceiver, Arc}, thread};
 
 const SETTINGS_COMMAND_CAPACITY: usize = 16;
 
@@ -44,16 +45,37 @@ pub struct ApplicationSettingsService {
     client: SettingsClient,
     window_state: SettingsWindowState,
     worker: Option<thread::JoinHandle<()>>,
+    shortcut_forwarder: Option<thread::JoinHandle<()>>,
 }
 
 impl ApplicationSettingsService {
     pub fn start(application: Application) -> Result<Self, SettingsServiceJoinError> {
-        Self::start_with_startup_item(application, Arc::new(SystemStartupItem))
+        Self::start_with_startup_item_and_shortcuts(application, Arc::new(SystemStartupItem), None)
     }
 
+    pub fn start_with_shortcut_receiver(
+        application: Application,
+        receiver: ShortcutReceiver<bongocat_config::ShortcutCommand>,
+    ) -> Result<Self, SettingsServiceJoinError> {
+        Self::start_with_startup_item_and_shortcuts(
+            application,
+            Arc::new(SystemStartupItem),
+            Some(receiver),
+        )
+    }
+
+    #[cfg(test)]
     fn start_with_startup_item(
         application: Application,
         startup_item: Arc<dyn StartupItemCapability>,
+    ) -> Result<Self, SettingsServiceJoinError> {
+        Self::start_with_startup_item_and_shortcuts(application, startup_item, None)
+    }
+
+    fn start_with_startup_item_and_shortcuts(
+        application: Application,
+        startup_item: Arc<dyn StartupItemCapability>,
+        shortcut_receiver: Option<ShortcutReceiver<bongocat_config::ShortcutCommand>>,
     ) -> Result<Self, SettingsServiceJoinError> {
         let backup_location = Arc::new(SystemBackupLocation {
             path: application.config_backup_directory().to_owned(),
@@ -61,19 +83,37 @@ impl ApplicationSettingsService {
         let diagnostics_export = Arc::new(SystemDiagnosticsExport {
             path: application.logs_directory().join("diagnostics.json"),
         });
-        Self::start_with_capabilities(
+        Self::start_with_capabilities_and_shortcuts(
             application,
             startup_item,
             backup_location,
             diagnostics_export,
+            shortcut_receiver,
         )
     }
 
+    #[cfg(test)]
     fn start_with_capabilities(
         application: Application,
         startup_item: Arc<dyn StartupItemCapability>,
         backup_location: Arc<dyn BackupLocationCapability>,
         diagnostics_export: Arc<dyn DiagnosticsExportCapability>,
+    ) -> Result<Self, SettingsServiceJoinError> {
+        Self::start_with_capabilities_and_shortcuts(
+            application,
+            startup_item,
+            backup_location,
+            diagnostics_export,
+            None,
+        )
+    }
+
+    fn start_with_capabilities_and_shortcuts(
+        application: Application,
+        startup_item: Arc<dyn StartupItemCapability>,
+        backup_location: Arc<dyn BackupLocationCapability>,
+        diagnostics_export: Arc<dyn DiagnosticsExportCapability>,
+        shortcut_receiver: Option<ShortcutReceiver<bongocat_config::ShortcutCommand>>,
     ) -> Result<Self, SettingsServiceJoinError> {
         let (client, endpoint) = SettingsClient::bounded(SETTINGS_COMMAND_CAPACITY);
         let window_state = SettingsWindowState::new(
@@ -95,10 +135,27 @@ impl ApplicationSettingsService {
                 )
             })
             .map_err(SettingsServiceJoinError::Spawn)?;
+        let shortcut_forwarder = shortcut_receiver.map(|receiver| {
+            let client = client.clone();
+            thread::Builder::new()
+                .name("bongocat-shortcut-forwarder".to_owned())
+                .spawn(move || {
+                    while let Ok(command) = receiver.recv() {
+                        let Some(command) = settings_shortcut(command) else {
+                            continue;
+                        };
+                        if client.enqueue_application_shortcut(command).is_err() {
+                            break;
+                        }
+                    }
+                })
+                .expect("shortcut forwarder thread")
+        });
         Ok(Self {
             client,
             window_state,
             worker: Some(worker),
+            shortcut_forwarder,
         })
     }
 
@@ -111,6 +168,9 @@ impl ApplicationSettingsService {
     }
 
     pub fn join(mut self) -> Result<(), SettingsServiceJoinError> {
+        if let Some(forwarder) = self.shortcut_forwarder.take() {
+            let _ = forwarder.join();
+        }
         self.worker
             .take()
             .expect("settings service worker is present")
@@ -179,6 +239,7 @@ impl Drop for ApplicationSettingsService {
             let _ = self.client.shutdown_blocking();
             let _ = worker.join();
         }
+        self.shortcut_forwarder.take();
     }
 }
 
@@ -218,6 +279,16 @@ fn run_service(
             break;
         };
         match command {
+            SettingsCommand::TriggerApplicationShortcut { command } => {
+                if let Err(error) = apply_application_shortcut(&mut application, command) {
+                    application.record_log(ApplicationLogEvent {
+                        component: ApplicationLogComponent::Settings,
+                        level: ApplicationLogLevel::Error,
+                        code: ApplicationLogCode::RuntimeUnavailable,
+                    });
+                    let _ = error;
+                }
+            }
             SettingsCommand::ReadSnapshot { reply } => {
                 let _ = reply.respond(Ok(snapshot(
                     &application,
@@ -769,6 +840,51 @@ fn settings_shortcuts(config: &NativeConfig) -> SettingsShortcuts {
             })
             .collect(),
     }
+}
+
+fn settings_shortcut(
+    command: ShortcutCommand,
+) -> Option<SettingsApplicationShortcut> {
+    Some(match command {
+        ShortcutCommand::ToggleOverlay => SettingsApplicationShortcut::ToggleOverlay,
+        ShortcutCommand::ToggleMirror => SettingsApplicationShortcut::ToggleMirror,
+        ShortcutCommand::ToggleClickThrough => SettingsApplicationShortcut::ToggleClickThrough,
+        ShortcutCommand::ToggleAlwaysOnTop => SettingsApplicationShortcut::ToggleAlwaysOnTop,
+        ShortcutCommand::OpenSettings => return None,
+    })
+}
+
+fn apply_application_shortcut(
+    application: &mut Application,
+    command: SettingsApplicationShortcut,
+) -> Result<(), ApplicationError> {
+    match command {
+        SettingsApplicationShortcut::ToggleOverlay => {
+            application.set_overlay_visible(!application.config().overlay.visible)?;
+        }
+        SettingsApplicationShortcut::ToggleMirror => {
+            let settings = application.runtime_client().snapshot().model_settings;
+            application.set_model_settings(ModelSettings {
+                mirror: !settings.mirror,
+                ..settings
+            })?;
+        }
+        SettingsApplicationShortcut::ToggleClickThrough => {
+            let current = application.runtime_client().snapshot().overlay_settings;
+            application.set_overlay_settings(OverlaySettings {
+                click_through: !current.click_through,
+                ..current
+            })?;
+        }
+        SettingsApplicationShortcut::ToggleAlwaysOnTop => {
+            let current = application.runtime_client().snapshot().overlay_settings;
+            application.set_overlay_settings(OverlaySettings {
+                always_on_top: !current.always_on_top,
+                ..current
+            })?;
+        }
+    }
+    Ok(())
 }
 
 const fn settings_runtime_error_code(code: RuntimeRenderErrorCode) -> SettingsRuntimeErrorCode {
@@ -2062,6 +2178,34 @@ mod tests {
             .shutdown_blocking()
             .expect("restarted service shutdown");
         restarted_service.join().expect("restarted service join");
+    }
+
+    #[test]
+    fn service_executes_application_shortcuts_from_the_platform_handoff() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application = Application::start_with_layout(layout).expect("start application");
+        let (sender, receiver) = std::sync::mpsc::sync_channel(4);
+        let service = ApplicationSettingsService::start_with_shortcut_receiver(application, receiver)
+            .expect("start settings service");
+        let client = service.client();
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        sender
+            .send(ShortcutCommand::ToggleOverlay)
+            .expect("queue application shortcut");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        let updated = loop {
+            let snapshot = client.read_snapshot_blocking().expect("updated snapshot");
+            if !snapshot.overlay_visible || std::time::Instant::now() >= deadline {
+                break snapshot;
+            }
+            std::thread::yield_now();
+        };
+        assert!(!updated.overlay_visible);
+        assert!(updated.config_revision > initial.config_revision);
+        drop(sender);
+        client.shutdown_blocking().expect("shutdown service");
+        service.join().expect("join service");
     }
 
     #[test]

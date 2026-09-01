@@ -801,6 +801,9 @@ pub enum SettingsCommand {
         expected_config_revision: u64,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    TriggerApplicationShortcut {
+        command: SettingsApplicationShortcut,
+    },
     SetStartupItemEnabled {
         enabled: bool,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
@@ -831,6 +834,14 @@ pub enum SettingsCommand {
     Shutdown {
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SettingsApplicationShortcut {
+    ToggleOverlay,
+    ToggleMirror,
+    ToggleClickThrough,
+    ToggleAlwaysOnTop,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1117,6 +1128,12 @@ impl SettingsClient {
         })
     }
 
+    pub fn enqueue_application_shortcut(&self, command: SettingsApplicationShortcut) -> Result<(), SettingsServiceClosed> {
+        self.commands
+            .send_blocking(SettingsCommand::TriggerApplicationShortcut { command })
+            .map_err(|_| SettingsServiceClosed)
+    }
+
     pub fn set_overlay_settings_blocking(
         &self,
         expected_config_revision: u64,
@@ -1400,6 +1417,24 @@ mod tests {
             .expect("shortcut snapshot");
         assert_eq!(result.shortcuts.commands.len(), 1);
         assert_eq!(result.shortcuts.model_behaviors.len(), 1);
+        worker.join().expect("worker join");
+    }
+
+    #[test]
+    fn application_shortcut_handoff_is_typed_and_fire_and_forget() {
+        let (client, endpoint) = SettingsClient::bounded(1);
+        let worker = thread::spawn(move || {
+            let SettingsCommand::TriggerApplicationShortcut { command } = endpoint
+                .recv_blocking()
+                .expect("application shortcut command")
+            else {
+                panic!("unexpected command");
+            };
+            assert_eq!(command, SettingsApplicationShortcut::ToggleOverlay);
+        });
+        client
+            .enqueue_application_shortcut(SettingsApplicationShortcut::ToggleOverlay)
+            .expect("queue application shortcut");
         worker.join().expect("worker join");
     }
 

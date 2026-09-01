@@ -987,7 +987,11 @@ overlay owner；设置更新失败时保留旧 snapshot。scale/opacity 的可�
   - 状态（2026-09-01）：chord key 已收敛为 legacy 可录制键的闭合集合并映射到 USB HID usage；
     `ShortcutMatcher` 聚合左右 modifier、抑制重复 down；binding replace 保留 pressed set 防止
     held-key repeat 误触发，reset/reconcile 分别清除或校正 transient pressed state。Windows scan code 与 macOS keycode 的现有映射均有定向回归证明可命中
-    同一 compiled chord；产品输入 worker 尚未投递 matcher target，故不宣称全局快捷键可用。
+    同一 compiled chord；产品输入 worker 已投递 matcher target，active model 的 motion/expression
+    会转成 typed runtime command。应用级 target 通过有界 typed handoff 进入 settings service，
+    显隐/镜像/穿透/置顶会在唯一 Application owner 内按当前配置持久化切换；`open_settings` 仍由
+    GPUI coordinator 待接管，服务关闭和队列满均有边界处理。平台注册/捕获 UI、GPUI 清除/恢复默认
+    入口和 Windows/macOS 实机快捷键证据仍未完成。
 - [ ] 动作/表情：绑定、预览 command 和错误状态。
 - [ ] 权限：macOS 状态/跳转和 Windows 权限差异。
 - [ ] 更新：检查、下载、验证、安装和回滚提示。
@@ -1902,7 +1906,8 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       编译边界拒绝。2026-09-01：产品 overlay 将同一 compiled table 和 runtime client 交给双平台
       input owner；边沿仍先进入可靠 `InputEvent`，随后在 worker 外匹配并将 active model 的
       motion/expression target 转成 typed runtime command，Reset 会清理 matcher transient state。
-      应用级 target 目前显式记录为 ignored，待 coordinator 提供带配置 revision 的 typed action；
+      应用级 target 目前通过有界 typed handoff 交给 settings service；显隐、镜像、穿透和置顶
+      在 service owner 内执行并持久化，`open_settings` 保留给 GPUI coordinator；
       配置提交后共享 `ShortcutTable` 会在下一条边沿前原子替换，运行中的 input owner 无需重启
       即可读取新 compiled bindings；旧 pressed set 会按 matcher 规则保留或由 Reset 清除。
       注册/捕获 UI、应用级 coordinator action、GPUI 清除/恢复默认入口和 Windows/macOS 实机

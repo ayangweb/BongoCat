@@ -2,7 +2,7 @@ use bongocat_config::{
     CompiledShortcuts, ModelBehaviorAction, ShortcutModifiers, ShortcutTable, ShortcutTarget,
 };
 use bongocat_runtime::{ExpressionId, InputEdge, MotionId, MotionPriority, PhysicalKey, RuntimeClient, SendError, ShortcutAction};
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, sync::mpsc::SyncSender};
 
 /// Platform-neutral shortcut edge matcher used after native key codes have
 /// already been mapped to USB HID usages. It owns only transient pressed state
@@ -23,15 +23,35 @@ pub struct ShortcutDispatcher {
     table: ShortcutTable,
     matcher: ShortcutMatcher,
     runtime: RuntimeClient,
+    application_sink: Option<SyncSender<bongocat_config::ShortcutCommand>>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ShortcutDispatch {
     Triggered,
+    ApplicationQueued,
     IgnoredApplicationCommand,
     IgnoredInactiveModel,
     NoMatch,
 }
+
+#[derive(Debug)]
+pub enum ShortcutDispatchError {
+    Runtime(SendError),
+    ApplicationQueueFull,
+}
+
+impl PartialEq for ShortcutDispatchError {
+    fn eq(&self, other: &Self) -> bool {
+        matches!(
+            (self, other),
+            (Self::ApplicationQueueFull, Self::ApplicationQueueFull)
+                | (Self::Runtime(_), Self::Runtime(_))
+        )
+    }
+}
+
+impl Eq for ShortcutDispatchError {}
 
 impl ShortcutDispatcher {
     pub fn new(shortcuts: CompiledShortcuts, runtime: RuntimeClient) -> Self {
@@ -43,14 +63,25 @@ impl ShortcutDispatcher {
             matcher: ShortcutMatcher::new(table.load()),
             table,
             runtime,
+            application_sink: None,
         }
+    }
+
+    pub fn with_application_sink(
+        table: ShortcutTable,
+        runtime: RuntimeClient,
+        application_sink: SyncSender<bongocat_config::ShortcutCommand>,
+    ) -> Self {
+        let mut dispatcher = Self::with_table(table, runtime);
+        dispatcher.application_sink = Some(application_sink);
+        dispatcher
     }
 
     pub fn apply(
         &mut self,
         key: PhysicalKey,
         edge: InputEdge,
-    ) -> Result<ShortcutDispatch, SendError> {
+    ) -> Result<ShortcutDispatch, ShortcutDispatchError> {
         let latest = self.table.load();
         if latest != self.matcher.shortcuts {
             self.matcher.replace(latest);
@@ -58,9 +89,19 @@ impl ShortcutDispatcher {
         let Some(target) = self.matcher.apply(key, edge) else {
             return Ok(ShortcutDispatch::NoMatch);
         };
-        let ShortcutTarget::ModelBehavior { model_id, action } = target else {
-            return Ok(ShortcutDispatch::IgnoredApplicationCommand);
+        let target = match target {
+            ShortcutTarget::Application(command) => {
+                return match self.application_sink.as_ref() {
+                    Some(sender) => sender
+                        .try_send(command)
+                        .map(|()| ShortcutDispatch::ApplicationQueued)
+                        .map_err(|_| ShortcutDispatchError::ApplicationQueueFull),
+                    None => Ok(ShortcutDispatch::IgnoredApplicationCommand),
+                };
+            }
+            ShortcutTarget::ModelBehavior { model_id, action } => (model_id, action),
         };
+        let (model_id, action) = target;
         let Some(active) = self.runtime.snapshot().active_model else {
             return Ok(ShortcutDispatch::IgnoredInactiveModel);
         };
@@ -76,7 +117,10 @@ impl ShortcutDispatcher {
                 ExpressionId::new(name).expect("validated expression name"),
             ),
         };
-        self.runtime.trigger_shortcut(action).map(|_| ShortcutDispatch::Triggered)
+        self.runtime
+            .trigger_shortcut(action)
+            .map(|_| ShortcutDispatch::Triggered)
+            .map_err(ShortcutDispatchError::Runtime)
     }
 
     pub fn reset(&mut self) {
