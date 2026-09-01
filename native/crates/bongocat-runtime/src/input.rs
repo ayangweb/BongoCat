@@ -403,19 +403,23 @@ impl InputState {
 
     pub(crate) fn apply(&mut self, envelope: SequencedInputEvent) -> InputDisposition {
         let gap = if let Some(last_sequence) = self.last_sequence {
-            if envelope.sequence == last_sequence {
-                self.diagnostics.duplicate_sequence_count =
-                    self.diagnostics.duplicate_sequence_count.saturating_add(1);
-                return InputDisposition::DuplicateSequence;
+            let distance = envelope.sequence.wrapping_sub(last_sequence);
+            match distance {
+                0 => {
+                    self.diagnostics.duplicate_sequence_count =
+                        self.diagnostics.duplicate_sequence_count.saturating_add(1);
+                    return InputDisposition::DuplicateSequence;
+                }
+                1 => 0,
+                distance if distance <= u64::MAX / 2 => distance - 1,
+                _ => {
+                    self.diagnostics.out_of_order_sequence_count = self
+                        .diagnostics
+                        .out_of_order_sequence_count
+                        .saturating_add(1);
+                    return InputDisposition::OutOfOrderSequence;
+                }
             }
-            if envelope.sequence < last_sequence {
-                self.diagnostics.out_of_order_sequence_count = self
-                    .diagnostics
-                    .out_of_order_sequence_count
-                    .saturating_add(1);
-                return InputDisposition::OutOfOrderSequence;
-            }
-            envelope.sequence - last_sequence - 1
         } else {
             0
         };
@@ -737,6 +741,26 @@ mod tests {
         assert_eq!(
             state.snapshot().last_reset_reason,
             Some(InputResetReason::SequenceGap)
+        );
+    }
+
+    #[test]
+    fn input_sequence_tracker_handles_u64_wraparound() {
+        let mut state = InputState::default();
+        state.apply(edge(u64::MAX - 2, 0, A, InputEdge::Down));
+        assert_eq!(
+            state.apply(edge(u64::MAX, 1, A, InputEdge::Up)),
+            InputDisposition::AppliedAfterSequenceGap { missing: 1 }
+        );
+        assert_eq!(
+            state.apply(edge(0, 2, A, InputEdge::Down)),
+            InputDisposition::Applied
+        );
+        assert_eq!(state.snapshot().pressed_key_count, 1);
+        assert_eq!(state.snapshot().diagnostics.missing_sequence_count, 1);
+        assert_eq!(
+            state.apply(edge(u64::MAX, 3, A, InputEdge::Up)),
+            InputDisposition::OutOfOrderSequence
         );
     }
 

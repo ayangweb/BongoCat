@@ -588,6 +588,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     跳号累计缺失数量后继续处理当前 command，重复或乱序 envelope 被安全丢弃；四类计数
     进入匿名 `RuntimeSnapshot.command_transport`，并覆盖 `u64` wraparound 的纯 Rust 回归。
     平台 producer 的真实压力与跨进程故障注入仍待完成，因此总项保持未勾选。
+  - 状态（2026-09-01）：正式 `InputState` 也改用 wrapping-forward distance 判断 sequence，
+    正确接受 `u64::MAX -> 0` 的连续边沿，并在回绕后的 gap、重复和反向 envelope 上保持确定的
+    Reset/忽略语义；新增边界回归通过。双平台真实压力与跨进程故障注入仍待完成，因此总项保持未勾选。
   - 状态（2026-09-01）：tracker 改用 wrapping distance 判断序列方向，跨 `u64::MAX -> 0`
     的丢失、重复和反向 envelope 均有确定分类；模型准备期间的 deferred command 会在
     实际消费时才记账，避免被输入边沿绕行误报为乱序。runtime 46 项定向测试通过。
