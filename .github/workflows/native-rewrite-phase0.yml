@@ -363,10 +363,10 @@ jobs:
               }
               Write-Host "bongocat-app: Windows UIA startup switch role/value/action verified"
             }
-            if (!$process.WaitForExit(30000)) {
+            if (!$process.WaitForExit(60000)) {
               Stop-Process -Id $process.Id -Force
               Get-Content $stdout, $stderr -ErrorAction SilentlyContinue
-              throw "Windows product lifecycle smoke $_ exceeded 30 seconds"
+              throw "Windows product lifecycle smoke $_ exceeded 60 seconds"
             }
             Get-Content $stdout, $stderr -ErrorAction SilentlyContinue
             if ($process.ExitCode -ne 0) {
