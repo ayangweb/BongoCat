@@ -84,12 +84,14 @@ impl CoreLogHandle {
         let path = path.as_ref().to_owned();
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(CoreLogError::CreateDirectory)?;
+            set_private_directory(parent).map_err(CoreLogError::CreateDirectory)?;
         }
         let file = OpenOptions::new()
             .create(true)
             .append(true)
             .open(&path)
             .map_err(CoreLogError::OpenFile)?;
+        set_private_file(&file).map_err(CoreLogError::OpenFile)?;
         let bytes = file.metadata().map(|metadata| metadata.len()).unwrap_or(0);
         let sink = Arc::new(CoreLogSink {
             state: Mutex::new(CoreLogState {
@@ -247,11 +249,36 @@ fn reopen_active_log(state: &mut CoreLogState) -> bool {
     else {
         return false;
     };
+    if set_private_file(&file).is_err() {
+        return false;
+    }
     let bytes = file.metadata().map(|metadata| metadata.len()).unwrap_or(0);
     state.file = Some(file);
     state.bytes = bytes;
     state.stats.bytes = bytes;
     true
+}
+
+fn set_private_directory(path: &Path) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+    Ok(())
+}
+
+fn set_private_file(file: &File) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(fs::Permissions::from_mode(0o600))?;
+    }
+    #[cfg(not(unix))]
+    let _ = file;
+    Ok(())
 }
 
 fn rotated_log_path(path: &Path, generation: u32) -> PathBuf {
@@ -395,5 +422,32 @@ mod tests {
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .is_none()
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn core_log_storage_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempdir().expect("temporary directory");
+        let path = directory.path().join("logs/core.jsonl");
+        let handle = CoreLogHandle::install(&path).expect("install Core logger");
+        assert_eq!(
+            fs::metadata(path.parent().expect("log parent"))
+                .expect("log directory metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+        assert_eq!(
+            fs::metadata(&path)
+                .expect("log file metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+        drop(handle);
     }
 }

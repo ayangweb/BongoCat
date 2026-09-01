@@ -1285,18 +1285,53 @@ fn export_diagnostics_file(
     let document = diagnostics_document(snapshot, application_logs);
     let bytes = serde_json::to_vec_pretty(&document)
         .map_err(|_| SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))?;
-    fs::create_dir_all(path.parent().unwrap_or_else(|| std::path::Path::new(".")))
+    let parent = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    fs::create_dir_all(parent)
         .map_err(|_| SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))?;
-    let mut file = AtomicWriteFile::open(path)
+    set_private_directory(parent)
+        .map_err(|_| SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))?;
+    let mut options = AtomicWriteFile::options();
+    #[cfg(unix)]
+    {
+        use atomic_write_file::unix::OpenOptionsExt;
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.preserve_mode(false).mode(0o600);
+    }
+    let mut file = options
+        .open(path)
         .map_err(|_| SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))?;
     std::io::Write::write_all(&mut file, &bytes)
         .map_err(|_| SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))?;
     file.commit()
         .map_err(|_| SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))?;
+    set_private_path(path)
+        .map_err(|_| SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))?;
     Ok(SettingsDiagnosticsExportStatus {
         format_version: DIAGNOSTICS_EXPORT_FORMAT_VERSION,
         bytes_written: u64::try_from(bytes.len()).unwrap_or(u64::MAX),
     })
+}
+
+fn set_private_directory(path: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+    Ok(())
+}
+
+fn set_private_path(path: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+    Ok(())
 }
 
 fn diagnostics_document(

@@ -735,7 +735,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     ACL；Unix 权限回归测试验证目录/文件 mode，config crate 46 项测试和 Native workspace tests 通过。
     `bongocat-app` 的 application logs、轮转日志和运行标记，以及 `bongocat-model` 的 installed
     model、导入 staging 文件和 model writer lock 也在创建/重开时强制相同的 `0700`/`0600` 边界；
-    app/model 权限回归测试覆盖首次创建、轮转和导入提交。
+    app/model 权限回归测试覆盖首次创建、轮转和导入提交。Cubism Core 日志与 diagnostics
+    导出同样使用 `0700` 父目录和 `0600` 原子替换文件，live2d core-log 权限回归测试通过。
 - [x] 在 spike 中以稳定 NativeConfig revision 拒绝过期 writer，避免静默覆盖较新的用户修改；GPUI snapshot/command 携带 revision 仍待产品 crate。
 
 ### 3.6 Phase 2 退出门槛
