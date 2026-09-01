@@ -1,6 +1,7 @@
 use crate::{
     Application, ApplicationConfigStatus, ApplicationError, ApplicationLogCode,
     ApplicationLogComponent, ApplicationLogDiagnostics, ApplicationLogEvent, ApplicationLogLevel,
+    ApplicationShortcutSignals,
 };
 use atomic_write_file::AtomicWriteFile;
 use bongocat_config::{
@@ -37,7 +38,17 @@ use bongocat_ui::{
 };
 use serde::Serialize;
 use std::fs;
-use std::{fmt, path::PathBuf, sync::{mpsc::Receiver as ShortcutReceiver, Arc}, thread};
+use std::{
+    fmt,
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+        mpsc::{Receiver as ShortcutReceiver, RecvTimeoutError},
+    },
+    thread,
+    time::Duration,
+};
 
 const SETTINGS_COMMAND_CAPACITY: usize = 16;
 
@@ -46,11 +57,17 @@ pub struct ApplicationSettingsService {
     window_state: SettingsWindowState,
     worker: Option<thread::JoinHandle<()>>,
     shortcut_forwarder: Option<thread::JoinHandle<()>>,
+    shortcut_forwarder_stop: Arc<AtomicBool>,
 }
 
 impl ApplicationSettingsService {
     pub fn start(application: Application) -> Result<Self, SettingsServiceJoinError> {
-        Self::start_with_startup_item_and_shortcuts(application, Arc::new(SystemStartupItem), None)
+        Self::start_with_startup_item_and_shortcuts(
+            application,
+            Arc::new(SystemStartupItem),
+            None,
+            None,
+        )
     }
 
     pub fn start_with_shortcut_receiver(
@@ -61,6 +78,20 @@ impl ApplicationSettingsService {
             application,
             Arc::new(SystemStartupItem),
             Some(receiver),
+            None,
+        )
+    }
+
+    pub fn start_with_shortcut_receiver_and_signals(
+        application: Application,
+        receiver: ShortcutReceiver<bongocat_config::ShortcutCommand>,
+        signals: ApplicationShortcutSignals,
+    ) -> Result<Self, SettingsServiceJoinError> {
+        Self::start_with_startup_item_and_shortcuts(
+            application,
+            Arc::new(SystemStartupItem),
+            Some(receiver),
+            Some(signals),
         )
     }
 
@@ -69,13 +100,14 @@ impl ApplicationSettingsService {
         application: Application,
         startup_item: Arc<dyn StartupItemCapability>,
     ) -> Result<Self, SettingsServiceJoinError> {
-        Self::start_with_startup_item_and_shortcuts(application, startup_item, None)
+        Self::start_with_startup_item_and_shortcuts(application, startup_item, None, None)
     }
 
     fn start_with_startup_item_and_shortcuts(
         application: Application,
         startup_item: Arc<dyn StartupItemCapability>,
         shortcut_receiver: Option<ShortcutReceiver<bongocat_config::ShortcutCommand>>,
+        shortcut_signals: Option<ApplicationShortcutSignals>,
     ) -> Result<Self, SettingsServiceJoinError> {
         let backup_location = Arc::new(SystemBackupLocation {
             path: application.config_backup_directory().to_owned(),
@@ -89,6 +121,7 @@ impl ApplicationSettingsService {
             backup_location,
             diagnostics_export,
             shortcut_receiver,
+            shortcut_signals,
         )
     }
 
@@ -105,6 +138,7 @@ impl ApplicationSettingsService {
             backup_location,
             diagnostics_export,
             None,
+            None,
         )
     }
 
@@ -114,6 +148,7 @@ impl ApplicationSettingsService {
         backup_location: Arc<dyn BackupLocationCapability>,
         diagnostics_export: Arc<dyn DiagnosticsExportCapability>,
         shortcut_receiver: Option<ShortcutReceiver<bongocat_config::ShortcutCommand>>,
+        shortcut_signals: Option<ApplicationShortcutSignals>,
     ) -> Result<Self, SettingsServiceJoinError> {
         let (client, endpoint) = SettingsClient::bounded(SETTINGS_COMMAND_CAPACITY);
         let window_state = SettingsWindowState::new(
@@ -135,12 +170,26 @@ impl ApplicationSettingsService {
                 )
             })
             .map_err(SettingsServiceJoinError::Spawn)?;
+        let shortcut_forwarder_stop = Arc::new(AtomicBool::new(false));
         let shortcut_forwarder = shortcut_receiver.map(|receiver| {
             let client = client.clone();
+            let signals = shortcut_signals;
+            let worker_stop = Arc::clone(&shortcut_forwarder_stop);
             thread::Builder::new()
                 .name("bongocat-shortcut-forwarder".to_owned())
                 .spawn(move || {
-                    while let Ok(command) = receiver.recv() {
+                    while !worker_stop.load(Ordering::Acquire) {
+                        let command = match receiver.recv_timeout(Duration::from_millis(50)) {
+                            Ok(command) => command,
+                            Err(RecvTimeoutError::Timeout) => continue,
+                            Err(RecvTimeoutError::Disconnected) => break,
+                        };
+                        if command == bongocat_config::ShortcutCommand::OpenSettings {
+                            if let Some(signals) = signals.as_ref() {
+                                signals.request_open_settings();
+                            }
+                            continue;
+                        }
                         let Some(command) = settings_shortcut(command) else {
                             continue;
                         };
@@ -156,6 +205,7 @@ impl ApplicationSettingsService {
             window_state,
             worker: Some(worker),
             shortcut_forwarder,
+            shortcut_forwarder_stop,
         })
     }
 
@@ -168,6 +218,7 @@ impl ApplicationSettingsService {
     }
 
     pub fn join(mut self) -> Result<(), SettingsServiceJoinError> {
+        self.shortcut_forwarder_stop.store(true, Ordering::Release);
         if let Some(forwarder) = self.shortcut_forwarder.take() {
             let _ = forwarder.join();
         }
@@ -236,6 +287,7 @@ impl DiagnosticsExportCapability for SystemDiagnosticsExport {
 impl Drop for ApplicationSettingsService {
     fn drop(&mut self) {
         if let Some(worker) = self.worker.take() {
+            self.shortcut_forwarder_stop.store(true, Ordering::Release);
             let _ = self.client.shutdown_blocking();
             let _ = worker.join();
         }
@@ -850,7 +902,7 @@ fn settings_shortcut(
         ShortcutCommand::ToggleMirror => SettingsApplicationShortcut::ToggleMirror,
         ShortcutCommand::ToggleClickThrough => SettingsApplicationShortcut::ToggleClickThrough,
         ShortcutCommand::ToggleAlwaysOnTop => SettingsApplicationShortcut::ToggleAlwaysOnTop,
-        ShortcutCommand::OpenSettings => return None,
+        ShortcutCommand::OpenSettings => SettingsApplicationShortcut::OpenSettings,
     })
 }
 
@@ -859,6 +911,7 @@ fn apply_application_shortcut(
     command: SettingsApplicationShortcut,
 ) -> Result<(), ApplicationError> {
     match command {
+        SettingsApplicationShortcut::OpenSettings => return Ok(()),
         SettingsApplicationShortcut::ToggleOverlay => {
             application.set_overlay_visible(!application.config().overlay.visible)?;
         }
@@ -2205,6 +2258,34 @@ mod tests {
         assert!(updated.config_revision > initial.config_revision);
         drop(sender);
         client.shutdown_blocking().expect("shutdown service");
+        service.join().expect("join service");
+    }
+
+    #[test]
+    fn service_routes_open_settings_to_the_gpui_signal_without_touching_ui() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application = Application::start_with_layout(layout).expect("start application");
+        let (sender, receiver) = std::sync::mpsc::sync_channel(2);
+        let signals = ApplicationShortcutSignals::default();
+        let service = ApplicationSettingsService::start_with_shortcut_receiver_and_signals(
+            application,
+            receiver,
+            signals.clone(),
+        )
+        .expect("start settings service");
+        sender
+            .send(ShortcutCommand::OpenSettings)
+            .expect("queue open settings");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        let mut observed = false;
+        while !observed && std::time::Instant::now() < deadline {
+            observed = signals.take_open_settings_request();
+            std::thread::yield_now();
+        }
+        assert!(observed);
+        drop(sender);
+        service.client().shutdown_blocking().expect("shutdown service");
         service.join().expect("join service");
     }
 

@@ -121,7 +121,8 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   已按下集合，Reset/reconcile 仍负责 transient state 的最终一致性。应用级 target 通过有界
   typed handoff 进入 settings service；显隐、镜像、穿透和置顶由唯一 Application owner
   按当前配置 revision 持久化，`open_settings` 交给 GPUI coordinator，避免平台线程直接触碰
-  UI 生命周期。
+  UI 生命周期。`open_settings` 通过线程安全的一次性请求位交给 GPUI frame source，后者在
+  owner 线程复用现有窗口重开路径；forwarder 必须支持有界停止与 join。
 - 关闭设置窗口不影响 runtime、输入、音频、frame source 和 overlay，它们继续由 app
   coordinator 持有。macOS 销毁对应 GPUI `Entity`，reopen 创建一个新窗口；GPUI 0.2.2
   的 Windows `WM_CLOSE` 销毁回调存在同步重入缺陷，因此 Windows platform adapter 拦截 close、

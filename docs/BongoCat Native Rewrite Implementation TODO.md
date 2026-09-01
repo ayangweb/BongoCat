@@ -983,7 +983,7 @@ overlay owner；设置更新失败时保留旧 snapshot。scale/opacity 的可�
 - [ ] 模型：预置/用户模型、导入、删除、切换和兼容诊断。
 - [ ] 输入：键鼠、手柄、忽略鼠标、单键模式和校正状态。
 - [ ] 快捷键：捕获、冲突、清除和恢复默认。
-  - 状态（2026-09-01）：正式 `bongocat-config` 已加入平台无关的 typed chord 校验和 canonicalization；修饰键别名、顺序和多余空白会稳定化，重复修饰键、多 key、空片段和非法 key 会被拒绝，`commands` 与 `model_behaviors` 共享冲突命名空间。settings service 现以 typed command 完成 revision-checked 原子持久化、snapshot 投影、重启恢复和 `RestoreDefaultShortcuts` 恢复默认；空集合可清除全部绑定。该 contract 仍不执行平台注册或捕获，UI 编辑入口、平台捕获/注册和 runtime 触发仍待完成。
+  - 状态（2026-09-01）：正式 `bongocat-config` 已加入平台无关的 typed chord 校验和 canonicalization；修饰键别名、顺序和多余空白会稳定化，重复修饰键、多 key、空片段和非法 key 会被拒绝，`commands` 与 `model_behaviors` 共享冲突命名空间。settings service 现以 typed command 完成 revision-checked 原子持久化、snapshot 投影、重启恢复和 `RestoreDefaultShortcuts` 恢复默认；空集合可清除全部绑定。平台输入 owner 已将匹配 target 投递到 runtime 或 settings handoff；UI 编辑入口、平台注册/捕获和实机证据仍待完成。
   - 状态（2026-09-01）：chord key 已收敛为 legacy 可录制键的闭合集合并映射到 USB HID usage；
     `ShortcutMatcher` 聚合左右 modifier、抑制重复 down；binding replace 保留 pressed set 防止
     held-key repeat 误触发，reset/reconcile 分别清除或校正 transient pressed state。Windows scan code 与 macOS keycode 的现有映射均有定向回归证明可命中
@@ -1910,8 +1910,9 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       在 service owner 内执行并持久化，`open_settings` 保留给 GPUI coordinator；
       配置提交后共享 `ShortcutTable` 会在下一条边沿前原子替换，运行中的 input owner 无需重启
       即可读取新 compiled bindings；旧 pressed set 会按 matcher 规则保留或由 Reset 清除。
-      注册/捕获 UI、应用级 coordinator action、GPUI 清除/恢复默认入口和 Windows/macOS 实机
-      快捷键证据仍未完成。
+      `open_settings` 现经 settings service 设置线程安全请求位，由 GPUI frame source 消费并复用
+      `ensure_settings_window` 重开窗口；forwarder 使用停止标志和有界轮询，避免 shutdown join
+      卡住。注册/捕获 UI、GPUI 清除/恢复默认入口和 Windows/macOS 实机快捷键证据仍未完成。
 
 ## 13. 待决策清单
 

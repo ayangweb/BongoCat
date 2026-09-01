@@ -842,6 +842,7 @@ pub enum SettingsApplicationShortcut {
     ToggleMirror,
     ToggleClickThrough,
     ToggleAlwaysOnTop,
+    OpenSettings,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

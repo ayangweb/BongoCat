@@ -25,7 +25,13 @@ use bongocat_runtime::{
     RuntimeCommandFailure, RuntimeOwner, RuntimeRenderErrorCode, RuntimeSnapshot, SendError,
     ShutdownError,
 };
-use std::{collections::BTreeMap, fmt, path::Path, sync::Arc, time::Duration};
+use std::{
+    collections::BTreeMap,
+    fmt,
+    path::Path,
+    sync::{Arc, atomic::{AtomicBool, Ordering}},
+    time::Duration,
+};
 
 mod app_log;
 #[cfg(test)]
@@ -36,6 +42,21 @@ pub use app_log::{
     ApplicationLogEvent, ApplicationLogHandle, ApplicationLogLevel,
 };
 pub use settings::{ApplicationSettingsService, SettingsServiceJoinError};
+
+#[derive(Clone, Default)]
+pub struct ApplicationShortcutSignals {
+    open_settings: Arc<AtomicBool>,
+}
+
+impl ApplicationShortcutSignals {
+    pub fn request_open_settings(&self) {
+        self.open_settings.store(true, Ordering::Release);
+    }
+
+    pub fn take_open_settings_request(&self) -> bool {
+        self.open_settings.swap(false, Ordering::AcqRel)
+    }
+}
 
 const COMMAND_CAPACITY: usize = 64;
 const AUDIO_COMMAND_CAPACITY: usize = 16;

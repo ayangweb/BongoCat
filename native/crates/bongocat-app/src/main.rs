@@ -213,6 +213,7 @@ struct ProductCoordinator {
     #[cfg(target_os = "windows")]
     single_instance_wakes: u64,
     frame_source_running: bool,
+    shortcut_signals: bongocat_app::ApplicationShortcutSignals,
     frame_ticks: u64,
     expect_visible_frame: bool,
     failures: Arc<Mutex<Vec<String>>>,
@@ -402,6 +403,23 @@ fn ensure_settings_window(cx: &mut App) -> Result<WindowHandle<SettingsView>, St
         open_settings_window(settings_client, window_state, request_product_quit, cx)?;
     cx.global_mut::<ProductCoordinator>().settings_window = Some(window_handle);
     Ok(window_handle)
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn handle_shortcut_open_settings(cx: &mut App) {
+    let requested = cx
+        .try_global::<ProductCoordinator>()
+        .is_some_and(|coordinator| coordinator.shortcut_signals.take_open_settings_request());
+    if !requested {
+        return;
+    }
+    if let Err(error) = ensure_settings_window(cx)
+        && let Some(failures) = cx
+            .try_global::<ProductCoordinator>()
+            .map(|coordinator| Arc::clone(&coordinator.failures))
+    {
+        record_failure(&failures, error);
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -800,6 +818,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     application.prepare_model(model_origin, model_id)?;
     let runtime_client = application.runtime_client();
     let (shortcut_sender, shortcut_receiver) = std::sync::mpsc::sync_channel(64);
+    let shortcut_signals = bongocat_app::ApplicationShortcutSignals::default();
     let shortcut_dispatcher = Some(ShortcutDispatcher::with_application_sink(
         application.shortcut_table(),
         runtime_client.clone(),
@@ -860,7 +879,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 return;
             }
         };
-        let settings_service = match bongocat_app::ApplicationSettingsService::start_with_shortcut_receiver(application, shortcut_receiver) {
+        let settings_service = match bongocat_app::ApplicationSettingsService::start_with_shortcut_receiver_and_signals(application, shortcut_receiver, shortcut_signals.clone()) {
             Ok(service) => service,
             Err(error) => {
                 record_failure(&run_failures, error.to_string());
@@ -936,6 +955,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(target_os = "windows")]
             single_instance_wakes: 0,
             frame_source_running: true,
+            shortcut_signals,
             frame_ticks: 0,
             expect_visible_frame,
             failures: Arc::clone(&run_failures),
@@ -1060,6 +1080,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if !cx.has_global::<ProductCoordinator>() {
                             return false;
                         }
+                        handle_shortcut_open_settings(cx);
                         let (keep_running, failure, settings_window, failures) = {
                             let coordinator = cx.global_mut::<ProductCoordinator>();
                             if !coordinator.frame_source_running {
@@ -1120,6 +1141,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if !cx.has_global::<ProductCoordinator>() {
                         return false;
                     }
+                    handle_shortcut_open_settings(cx);
                     let (failure, failures) = {
                         let coordinator = cx.global_mut::<ProductCoordinator>();
                         match tick_result
