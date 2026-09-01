@@ -217,16 +217,22 @@ impl ApplicationSettingsService {
         self.window_state.clone()
     }
 
-    pub fn join(mut self) -> Result<(), SettingsServiceJoinError> {
+    fn stop_shortcut_forwarder(&mut self) {
         self.shortcut_forwarder_stop.store(true, Ordering::Release);
         if let Some(forwarder) = self.shortcut_forwarder.take() {
             let _ = forwarder.join();
         }
-        self.worker
+    }
+
+    pub fn join(mut self) -> Result<(), SettingsServiceJoinError> {
+        let worker_result = self
+            .worker
             .take()
             .expect("settings service worker is present")
             .join()
-            .map_err(|_| SettingsServiceJoinError::Panicked)
+            .map_err(|_| SettingsServiceJoinError::Panicked);
+        self.stop_shortcut_forwarder();
+        worker_result
     }
 }
 
@@ -287,11 +293,10 @@ impl DiagnosticsExportCapability for SystemDiagnosticsExport {
 impl Drop for ApplicationSettingsService {
     fn drop(&mut self) {
         if let Some(worker) = self.worker.take() {
-            self.shortcut_forwarder_stop.store(true, Ordering::Release);
             let _ = self.client.shutdown_blocking();
             let _ = worker.join();
         }
-        self.shortcut_forwarder.take();
+        self.stop_shortcut_forwarder();
     }
 }
 
@@ -2287,6 +2292,23 @@ mod tests {
         drop(sender);
         service.client().shutdown_blocking().expect("shutdown service");
         service.join().expect("join service");
+    }
+
+    #[test]
+    fn dropping_service_joins_shortcut_forwarder_while_sender_is_alive() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application = Application::start_with_layout(layout).expect("start application");
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+        let service = ApplicationSettingsService::start_with_shortcut_receiver(application, receiver)
+            .expect("start settings service");
+
+        drop(service);
+
+        assert!(
+            sender.send(ShortcutCommand::OpenSettings).is_err(),
+            "shortcut receiver must be dropped before the service drop returns"
+        );
     }
 
     #[test]
