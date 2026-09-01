@@ -622,6 +622,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     单次评估；定时 loop 仍保留用于生产运行，完整动画/长按迁移和 fixture 对接仍待完成。
 - [ ] 实现 starting、ready、degraded、stopping、stopped 状态。
 - [ ] 实现 shutdown drain、超时和错误聚合。
+  - 状态（2026-09-01）：runtime shutdown 现在先关闭 command producer gate，避免关闭开始后新
+    command 进入队列；worker 以非阻塞方式排空已接收 command 后处理 shutdown，即使命令队列已满
+    也不会在 shutdown timeout 内卡在发送端。新增满队列拒绝/排空 contract 已通过；超时错误
+    聚合和真实阻塞工作预算仍待完成。
 - [ ] command 定义幂等性和重复提交语义；有副作用的长操作使用 operation id 去重。
 - [ ] runtime tick 设置工作预算，模型解析、磁盘、音频初始化和 GPU 上传不得阻塞实时队列。
   - 状态（2026-08-28）：`spikes/runtime-contract/` 已通过 14 项测试，覆盖状态机、单调 tick、operation 去重、typed bounded worker、递增 snapshot revision、sequence gap/duplicate、overflow Reset、shutdown drain/timeout、command error 和 panic/join 诊断；产品 runtime 的输入、模型、配置服务、工作预算和真实线程 owner 仍待 Phase 1/2。

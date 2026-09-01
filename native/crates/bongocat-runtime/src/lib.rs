@@ -17,8 +17,8 @@ use std::{
     fmt,
     sync::{
         Arc, Condvar, Mutex,
-        atomic::{AtomicU64, Ordering},
-        mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TrySendError},
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TryRecvError, TrySendError},
     },
     thread::{self, JoinHandle},
     time::{Duration, Instant},
@@ -450,6 +450,7 @@ struct Producer {
     sender: SyncSender<CommandEnvelope>,
     next_sequence: Mutex<u64>,
     command_transport: Arc<CommandTransportCounters>,
+    accepting: Arc<AtomicBool>,
 }
 
 #[derive(Default)]
@@ -659,6 +660,10 @@ impl RuntimeClient {
             .next_sequence
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if !self.producer.accepting.load(Ordering::Acquire) {
+            self.producer.command_transport.runtime_stopped();
+            return Err(SendError::RuntimeStopped(command));
+        }
         let envelope = CommandEnvelope {
             sequence: *next_sequence,
             command: WorkerCommand::Product(command),
@@ -956,6 +961,28 @@ impl RuntimeClient {
 pub struct RuntimeOwner {
     client: RuntimeClient,
     worker: Option<JoinHandle<()>>,
+    shutdown: Arc<ShutdownSignal>,
+}
+
+#[derive(Default)]
+struct ShutdownSignal {
+    sequence: Mutex<Option<u64>>,
+}
+
+impl ShutdownSignal {
+    fn request(&self, sequence: u64) {
+        *self
+            .sequence
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(sequence);
+    }
+
+    fn sequence(&self) -> Option<u64> {
+        *self
+            .sequence
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
 }
 
 impl RuntimeOwner {
@@ -1087,11 +1114,15 @@ impl RuntimeOwner {
         ));
         let platform_input_diagnostics = PlatformInputDiagnosticsProducer::default();
         let command_transport = Arc::new(CommandTransportCounters::default());
+        let accepting = Arc::new(AtomicBool::new(true));
+        let shutdown = Arc::new(ShutdownSignal::default());
+        let worker_shutdown = Arc::clone(&shutdown);
         let client = RuntimeClient {
             producer: Arc::new(Producer {
                 sender,
                 next_sequence: Mutex::new(0),
                 command_transport: Arc::clone(&command_transport),
+                accepting: Arc::clone(&accepting),
             }),
             snapshot: Arc::clone(&snapshot),
             input_transport,
@@ -1116,6 +1147,7 @@ impl RuntimeOwner {
                         motion_audio,
                         clock,
                         command_transport,
+                        shutdown: worker_shutdown,
                     },
                 )
             })
@@ -1123,6 +1155,7 @@ impl RuntimeOwner {
         Self {
             client,
             worker: Some(worker),
+            shutdown,
         }
     }
 
@@ -1178,12 +1211,10 @@ impl RuntimeOwner {
             .next_sequence
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let envelope = CommandEnvelope {
-            sequence: *next_sequence,
-            command: WorkerCommand::Shutdown,
-        };
-        if self.client.producer.sender.send(envelope).is_ok() {
+        if self.client.producer.accepting.swap(false, Ordering::AcqRel) {
+            let sequence = *next_sequence;
             *next_sequence = next_sequence.wrapping_add(1);
+            self.shutdown.request(sequence);
         }
     }
 }
@@ -1282,6 +1313,7 @@ struct RuntimeWorkerBootstrap {
     motion_audio: MotionAudioClient,
     clock: Arc<dyn MonotonicClock>,
     command_transport: Arc<CommandTransportCounters>,
+    shutdown: Arc<ShutdownSignal>,
 }
 
 fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBootstrap) {
@@ -1295,6 +1327,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
         motion_audio,
         clock,
         command_transport,
+        shutdown,
     } = bootstrap;
     let mut renderer = renderer.map(RuntimeRenderer::start);
     let mut active_model = None;
@@ -1328,7 +1361,29 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
             &snapshot,
             clock.now(),
         );
-        let received = if pending_model.is_none() {
+        let received = if let Some(sequence) = shutdown.sequence() {
+            if pending_model.is_some() {
+                // A model commit may be waiting for an overlay acknowledgement. Do not
+                // requeue deferred work forever during shutdown; the active model remains
+                // valid and the shutdown command must be allowed to release its resources.
+                deferred_commands.clear();
+                Ok(CommandEnvelope {
+                    sequence,
+                    command: WorkerCommand::Shutdown,
+                })
+            } else if let Some(envelope) = deferred_commands.pop_front() {
+                Ok(envelope)
+            } else {
+                match receiver.try_recv() {
+                    Ok(envelope) => Ok(envelope),
+                    Err(TryRecvError::Empty) => Ok(CommandEnvelope {
+                        sequence,
+                        command: WorkerCommand::Shutdown,
+                    }),
+                    Err(TryRecvError::Disconnected) => Err(RecvTimeoutError::Disconnected),
+                }
+            }
+        } else if pending_model.is_none() {
             deferred_commands
                 .pop_front()
                 .map_or_else(|| receiver.recv_timeout(CURSOR_SAMPLE_INTERVAL), Ok)
@@ -2388,6 +2443,35 @@ mod tests {
         );
 
         let stopped = owner.shutdown(TIMEOUT).expect("clean shutdown");
+        assert_eq!(stopped.state, RuntimeState::Stopped);
+    }
+
+    #[test]
+    fn shutdown_rejects_new_commands_and_drains_a_full_queue() {
+        let owner = RuntimeOwner::start(true, 1);
+        let client = owner.client();
+        client
+            .wait_for_state(RuntimeState::Ready, TIMEOUT)
+            .expect("runtime ready");
+        let mut queue_full = false;
+        for _ in 0..100_000 {
+            match client.send(RuntimeCommand::SetOverlayVisible(false)) {
+                Ok(_) => {}
+                Err(SendError::QueueFull(_)) => {
+                    queue_full = true;
+                    break;
+                }
+                Err(SendError::RuntimeStopped(_)) => panic!("runtime stopped unexpectedly"),
+            }
+        }
+        assert!(queue_full, "test must observe a full command queue");
+
+        owner.request_shutdown();
+        assert!(matches!(
+            client.send(RuntimeCommand::SetOverlayVisible(true)),
+            Err(SendError::RuntimeStopped(_))
+        ));
+        let stopped = owner.shutdown(TIMEOUT).expect("shutdown drains queue");
         assert_eq!(stopped.state, RuntimeState::Stopped);
     }
 
@@ -3523,6 +3607,7 @@ mod tests {
                 sender,
                 next_sequence: Mutex::new(0),
                 command_transport: Arc::new(CommandTransportCounters::default()),
+                accepting: Arc::new(AtomicBool::new(true)),
             }),
             snapshot: Arc::new(SnapshotCell {
                 value: Mutex::new(RuntimeSnapshot::starting(
@@ -3601,6 +3686,7 @@ mod tests {
                 sender,
                 next_sequence: Mutex::new(0),
                 command_transport: Arc::new(CommandTransportCounters::default()),
+                accepting: Arc::new(AtomicBool::new(true)),
             }),
             snapshot: Arc::new(SnapshotCell {
                 value: Mutex::new(RuntimeSnapshot::starting(
