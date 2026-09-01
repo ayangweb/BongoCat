@@ -1021,18 +1021,23 @@ jobs:
           executable = pathlib.Path("spikes/gpui-overlay-macos/target/debug/bongocat-gpui-overlay-macos-spike")
 
           def run_smoke(name, arguments):
+              # The 100-cycle path waits for AppKit/Metal teardown on every cycle;
+              # keep a bounded subprocess timeout without racing the workflow step.
+              timeout_seconds = 90 if "--macos-overlay-cycles" in arguments else 30
               try:
                   completed = subprocess.run(
                       [str(executable), *arguments],
                       capture_output=True,
                       check=False,
                       text=True,
-                      timeout=30,
+                      timeout=timeout_seconds,
                   )
               except subprocess.TimeoutExpired as error:
                   output = (error.stdout or "") + "\n" + (error.stderr or "")
                   print(output)
-                  raise RuntimeError(f"{name} overlay smoke exceeded 30 seconds") from error
+                  raise RuntimeError(
+                      f"{name} overlay smoke exceeded {timeout_seconds} seconds"
+                  ) from error
               output = completed.stdout + "\n" + completed.stderr
               print(output)
               if completed.returncode != 0:
