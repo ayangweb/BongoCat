@@ -7,6 +7,7 @@ use std::{
     fs::{File, OpenOptions, TryLockError},
     io::{self, ErrorKind, Write},
     path::{Path, PathBuf},
+    sync::{Arc, RwLock},
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -321,6 +322,36 @@ impl CompiledShortcut {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct CompiledShortcuts {
     bindings: Vec<CompiledShortcut>,
+}
+
+/// Shared, atomically replaceable shortcut table used by the input owner.
+/// Configuration commits publish a complete compiled table; readers never
+/// observe partially parsed bindings or hold a config writer lock.
+#[derive(Clone, Default)]
+pub struct ShortcutTable {
+    value: Arc<RwLock<CompiledShortcuts>>,
+}
+
+impl ShortcutTable {
+    pub fn new(value: CompiledShortcuts) -> Self {
+        Self {
+            value: Arc::new(RwLock::new(value)),
+        }
+    }
+
+    pub fn load(&self) -> CompiledShortcuts {
+        self.value
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    pub fn replace(&self, value: CompiledShortcuts) {
+        *self
+            .value
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = value;
+    }
 }
 
 impl CompiledShortcuts {

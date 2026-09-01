@@ -1,4 +1,6 @@
-use bongocat_config::{CompiledShortcuts, ModelBehaviorAction, ShortcutModifiers, ShortcutTarget};
+use bongocat_config::{
+    CompiledShortcuts, ModelBehaviorAction, ShortcutModifiers, ShortcutTable, ShortcutTarget,
+};
 use bongocat_runtime::{ExpressionId, InputEdge, MotionId, MotionPriority, PhysicalKey, RuntimeClient, SendError, ShortcutAction};
 use std::collections::BTreeSet;
 
@@ -18,6 +20,7 @@ pub struct ShortcutMatcher {
 /// persistence-aware command path.
 #[derive(Clone)]
 pub struct ShortcutDispatcher {
+    table: ShortcutTable,
     matcher: ShortcutMatcher,
     runtime: RuntimeClient,
 }
@@ -32,8 +35,13 @@ pub enum ShortcutDispatch {
 
 impl ShortcutDispatcher {
     pub fn new(shortcuts: CompiledShortcuts, runtime: RuntimeClient) -> Self {
+        Self::with_table(ShortcutTable::new(shortcuts), runtime)
+    }
+
+    pub fn with_table(table: ShortcutTable, runtime: RuntimeClient) -> Self {
         Self {
-            matcher: ShortcutMatcher::new(shortcuts),
+            matcher: ShortcutMatcher::new(table.load()),
+            table,
             runtime,
         }
     }
@@ -43,6 +51,10 @@ impl ShortcutDispatcher {
         key: PhysicalKey,
         edge: InputEdge,
     ) -> Result<ShortcutDispatch, SendError> {
+        let latest = self.table.load();
+        if latest != self.matcher.shortcuts {
+            self.matcher.replace(latest);
+        }
         let Some(target) = self.matcher.apply(key, edge) else {
             return Ok(ShortcutDispatch::NoMatch);
         };
@@ -178,7 +190,8 @@ mod tests {
         }
         .compile()
         .expect("compiled shortcuts");
-        let mut dispatcher = ShortcutDispatcher::new(compiled, client.clone());
+        let table = ShortcutTable::new(compiled);
+        let mut dispatcher = ShortcutDispatcher::with_table(table.clone(), client.clone());
         let control = PhysicalKey::from_hid_usage(0xe0);
         let alt = PhysicalKey::from_hid_usage(0xe2);
         let b = PhysicalKey::from_hid_usage(0x05);
@@ -195,6 +208,22 @@ mod tests {
             dispatcher.apply(m, InputEdge::Down),
             Ok(ShortcutDispatch::IgnoredInactiveModel)
         );
+        dispatcher.apply(m, InputEdge::Up).expect("release");
+        table.replace(
+            ShortcutConfig {
+                commands: vec![ShortcutBinding {
+                    command: "open_settings".to_owned(),
+                    shortcut: "Shift+M".to_owned(),
+                }],
+                model_behaviors: Vec::new(),
+            }
+            .compile()
+            .expect("replacement shortcuts"),
+        );
+        assert_eq!(dispatcher.apply(alt, InputEdge::Up), Ok(ShortcutDispatch::NoMatch));
+        let shift = PhysicalKey::from_hid_usage(0xe1);
+        assert_eq!(dispatcher.apply(shift, InputEdge::Down), Ok(ShortcutDispatch::NoMatch));
+        assert_eq!(dispatcher.apply(m, InputEdge::Down), Ok(ShortcutDispatch::IgnoredApplicationCommand));
         runtime.shutdown(std::time::Duration::from_secs(1)).expect("runtime stop");
     }
 

@@ -799,8 +799,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     application.prepare_model(model_origin, model_id)?;
     let runtime_client = application.runtime_client();
-    let shortcut_dispatcher = Some(ShortcutDispatcher::new(
-        application.compiled_shortcuts()?,
+    let shortcut_dispatcher = Some(ShortcutDispatcher::with_table(
+        application.shortcut_table(),
         runtime_client.clone(),
     ));
     let input_producer = application.input_producer();

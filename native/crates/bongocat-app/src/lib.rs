@@ -11,7 +11,7 @@ use bongocat_config::{
     ApplicationState, BuildEnvironment, CompiledShortcuts, ConfigError, ConfigRecovery,
     ConfigRevision, ConfigStore, InterruptedConfigRecovery, ModelBehaviorBinding, NativeConfig,
     PlatformStorageError, SelectedModelOrigin, ShortcutBinding, ShortcutConfig, StateError,
-    StateStore, StorageLayout, WindowPlacement, platform_layout,
+    StateStore, StorageLayout, ShortcutTable, WindowPlacement, platform_layout,
 };
 use bongocat_model::{
     CommittedModel, InstalledModel, ModelCatalogEntry, ModelError, ModelId, ModelImportProgress,
@@ -193,6 +193,7 @@ pub struct Application {
     motion_audio: Option<MotionAudioService>,
     render_consumer: Option<RenderConsumer>,
     application_log: ApplicationLogHandle,
+    shortcut_table: ShortcutTable,
 }
 
 impl Application {
@@ -254,6 +255,7 @@ impl Application {
                 Err(error) => return Err(error.into()),
             };
         let operational = config_status == ApplicationConfigStatus::Ready;
+        let shortcut_table = ShortcutTable::new(config.shortcuts.compile()?);
         let (motion_audio, motion_audio_client) =
             match MotionAudioService::start(AUDIO_COMMAND_CAPACITY) {
                 Ok(service) => {
@@ -334,6 +336,7 @@ impl Application {
             motion_audio,
             render_consumer,
             application_log,
+            shortcut_table,
         };
         application
             .application_log
@@ -378,6 +381,10 @@ impl Application {
             .shortcuts
             .compile()
             .map_err(ApplicationError::Config)
+    }
+
+    pub fn shortcut_table(&self) -> ShortcutTable {
+        self.shortcut_table.clone()
     }
 
     pub fn logs_directory(&self) -> &Path {
@@ -617,6 +624,8 @@ impl Application {
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;
         let snapshot = self.runtime.client().snapshot();
         self.config = next_config;
+        self.shortcut_table
+            .replace(self.config.shortcuts.compile()?);
         self.config_revision = Some(next_revision);
         Ok(snapshot)
     }
@@ -630,6 +639,8 @@ impl Application {
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;
         let snapshot = self.runtime.client().snapshot();
         self.config = next_config;
+        self.shortcut_table
+            .replace(self.config.shortcuts.compile()?);
         self.config_revision = Some(next_revision);
         Ok(snapshot)
     }
