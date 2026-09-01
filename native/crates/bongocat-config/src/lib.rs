@@ -1899,7 +1899,14 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), ConfigError> {
 }
 
 fn write_atomic_io(path: &Path, bytes: &[u8]) -> io::Result<()> {
-    let mut file = AtomicWriteFile::open(path)?;
+    let mut options = AtomicWriteFile::options();
+    #[cfg(unix)]
+    {
+        use atomic_write_file::unix::OpenOptionsExt;
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.preserve_mode(false).mode(0o600);
+    }
+    let mut file = options.open(path)?;
     file.write_all(bytes)?;
     file.commit()?;
     set_private_path(path)?;
