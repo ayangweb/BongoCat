@@ -98,6 +98,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     记录模型装配、更新顺序、纹理/alpha、输入模式和窗口行为的查阅入口；该仓库
     只作为行为证据，不进入 Native workspace 依赖图。
 - [ ] 确认旧 Vue/Tauri 应用仍可构建和运行，保存命令与产物信息。
+  - 状态（2026-09-01）：在 macOS 26.5.2 使用仓库锁定的 pnpm 依赖运行 `pnpm build` 成功；
+    Vite 完成 4,406 个模块的 production bundle，`dist/` 生成 18 个资源文件，随后图标脚本
+    完成 macOS/Windows/移动端图标生成。该命令只验证旧前端静态构建，Tauri native 编译、安装
+    和运行仍待隔离环境复核，因此本项保持未勾选。
 - [x] 建立 `docs/adr/`、`docs/benchmark/`、`docs/migration/` 目录。
 - [x] 建立依赖许可证清单，确认当前 Native spike crate graph 与项目 MIT 发布兼容。
   - 状态（2026-08-29）：最新稳定版 `cargo-deny 0.20.2` 以四个 Windows/macOS target 扫描 13 个独立 workspace，license/source policy 通过并接入 CI；依赖升级后 package 节点数由 lockfile 动态决定，不再把旧的 535 节点快照当作当前事实。Cubism 厂商许可、未来产品依赖、SBOM 和 notice bundle 仍由各自后续门禁处理。

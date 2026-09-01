@@ -72,7 +72,15 @@ Release 中的 `.sig` 是 Tauri updater 签名，用于旧更新协议的内容�
 - 不使用 release `.sig` 判断操作系统签名状态。
 - 不覆盖现有用户配置做回滚测试；需要观察旧版时复制到隔离数据目录运行。Native Rewrite 不读取这些旧配置。
 
-## 6. Remaining Evidence
+## 6. Historical Frontend Build Probe
+
+2026-09-01 在 macOS 26.5.2、仓库根目录以已安装 pnpm 依赖运行 `pnpm build` 成功。Vite
+production build 转换 4,406 个模块并生成 `dist/` 下 18 个资源文件；随后
+`scripts/buildIcon.ts` 成功生成 macOS、Windows、iOS 和 Android 图标变体。该 probe 只验证
+旧 Vue 前端的静态构建，不等同于 Tauri native 编译、安装或运行证据；后续需在隔离数据根中
+补充 Tauri desktop smoke，避免触碰用户生产配置。
+
+## 7. Remaining Evidence
 
 - 在 Windows 实机核对三个 installer 的 Authenticode、实际 payload architecture、安装和启动结果。
 - 下载并校验两个 DMG 与 Windows arm64/x86 installer，而不只依赖 GitHub metadata。
