@@ -1204,6 +1204,9 @@ overlay owner；设置更新失败时保留旧 snapshot。scale/opacity 的可�
 ### 7.3 跨环境隔离
 
 - [ ] Development 与 Production 的相对目录树和 JSON schema 完全一致。
+  - 状态（2026-09-01）：`StorageLayout` contract test 现逐项比较 config、state、models、
+    backups、logs 和 locks 的相对路径，并确认两个环境根目录互不包含；NativeConfig schema
+    仍由同一 typed 定义生成，待独立 schema fixture 门禁后再勾选本项。
 - [ ] 配置、state、模型、备份、日志、锁和单实例 namespace 均包含环境边界。
   - 状态（2026-08-31）：config、state、模型、备份、对应 writer lock 和 Windows 单实例均已按
     环境隔离；state 双环境 sentinel/restart/lock 测试已进入当前批次。日志 writer 与更新 channel

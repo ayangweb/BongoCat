@@ -2062,10 +2062,24 @@ mod tests {
         let development = StorageLayout::under(base.path(), BuildEnvironment::Development);
         let production = StorageLayout::under(base.path(), BuildEnvironment::Production);
         assert_ne!(development.root, production.root);
-        assert_eq!(
-            development.config.file_name(),
-            production.config.file_name()
-        );
+        let relative_shape = |layout: &StorageLayout| {
+            [
+                &layout.config,
+                &layout.state,
+                &layout.models,
+                &layout.backups,
+                &layout.logs,
+                &layout.locks,
+            ]
+            .into_iter()
+            .map(|path| {
+                path.strip_prefix(&layout.root)
+                    .expect("layout child")
+                    .to_owned()
+            })
+            .collect::<Vec<_>>()
+        };
+        assert_eq!(relative_shape(&development), relative_shape(&production));
         assert!(!development.root.starts_with(&production.root));
         assert!(!production.root.starts_with(&development.root));
     }
