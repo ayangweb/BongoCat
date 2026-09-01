@@ -1307,13 +1307,14 @@ fn export_diagnostics_file(
         .map_err(|_| SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))?;
     set_private_directory(parent)
         .map_err(|_| SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))?;
-    let mut options = AtomicWriteFile::options();
     #[cfg(unix)]
-    {
+    let options = {
         use atomic_write_file::unix::OpenOptionsExt;
         use std::os::unix::fs::OpenOptionsExt as _;
-        options.preserve_mode(false).mode(0o600);
-    }
+        AtomicWriteFile::options().preserve_mode(false).mode(0o600)
+    };
+    #[cfg(not(unix))]
+    let options = AtomicWriteFile::options();
     let mut file = options
         .open(path)
         .map_err(|_| SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))?;
