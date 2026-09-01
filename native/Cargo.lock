@@ -826,6 +826,7 @@ dependencies = [
  "accesskit_windows",
  "async-channel 2.5.0",
  "block2 0.6.2",
+ "bongocat-config",
  "bongocat-runtime",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
@@ -3343,9 +3344,9 @@ dependencies = [
 
 [[package]]
 name = "lyon_algorithms"
-version = "1.0.20"
+version = "1.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8575c0d003ae459399623c4def180c63b77f343b1a7fee64f249b349e7699a31"
+checksum = "cdfa8785f95e57914ddb35e3b59994aeba6f5e79e9cfd03da1c269f010f36009"
 dependencies = [
  "lyon_path",
  "num-traits",
@@ -3374,9 +3375,9 @@ dependencies = [
 
 [[package]]
 name = "lyon_tessellation"
-version = "1.0.20"
+version = "1.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e43b7e44161571868f5c931d12583592c223c5583eef86b08aa02b7048a3552"
+checksum = "dabea159dc6eea9171a541b458134b70ca95e3162d068132b2b3b9bc01aad06e"
 dependencies = [
  "float_next_after",
  "lyon_path",
@@ -6561,9 +6562,9 @@ dependencies = [
 
 [[package]]
 name = "value-bag"
-version = "1.14.0"
+version = "1.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11d4788a546b899f8656382fe210e0c478fe3d2dcd6263d50cb6cc268240de6c"
+checksum = "068e763e8279de7ab94b6afebded2cb701678af094feb1c12ccb061b4783c1be"
 dependencies = [
  "value-bag-serde1",
  "value-bag-sval2",

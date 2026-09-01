@@ -28,6 +28,9 @@ pub use directory_opener::{DirectoryOpenError, open_directory};
 
 mod single_instance;
 pub use single_instance::{SingleInstanceAction, SingleInstanceEnvironment, SingleInstanceError};
+
+mod shortcut;
+pub use shortcut::ShortcutMatcher;
 #[cfg(target_os = "windows")]
 mod single_instance_windows;
 #[cfg(target_os = "windows")]

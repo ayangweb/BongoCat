@@ -59,7 +59,10 @@ shortcuts
 快捷键配置仍以字符串持久化，但在写入前必须通过平台无关的 chord 校验。每个 chord
 包含零个或多个修饰键和恰好一个 key，使用 `+` 分隔；修饰键接受
 `Control`/`Ctrl`、`Alt`/`Option`、`Shift` 和 `Meta`/`Command`/`Cmd`/`Win` 别名。
-key 必须是无空白的可打印 ASCII token。校验器以固定顺序
+key 必须属于稳定的物理键闭合集合：`A`-`Z`、`0`-`9`、`F1`-`F12`、legacy 设置页
+支持的标点、编辑键和导航键；`KeyA`/`Digit1` DOM code 作为输入 alias 接受，持久化仍分别
+规范化为 `A`/`1`。每个 key 在编译后携带平台无关的 USB HID usage，未知 token 在配置
+提交前拒绝。校验器以固定顺序
 `Control+Alt+Shift+Meta+Key` 规范化别名和输入顺序，并拒绝重复修饰键、多 key、空
 片段及非法 key。
 
@@ -84,8 +87,11 @@ Settings service 提供 `SetShortcuts` 与 `RestoreDefaultShortcuts` 两个 type
 平台层在启动或快捷键配置成功提交后，可调用 `ShortcutConfig::compile()` 将这些持久化绑定
 编译为 `CompiledShortcuts`。编译结果只包含闭合的 application command 或带 model id 的
 typed model action，并拒绝非法 action、非法 chord 和跨域重复 chord。平台 adapter 负责把
-原始事件映射为稳定 key token 与四位 modifier mask，再通过 `CompiledShortcuts::resolve()`
-匹配；原始平台 keycode、窗口句柄和 callback 数据不会进入配置或编译结果。系统级注册、
+原始事件映射为 USB HID usage 与四位 modifier mask，再通过
+`CompiledShortcuts::resolve_hid_usage()` 匹配；原始平台 keycode、窗口句柄和 callback 数据
+不会进入配置或编译结果。正式平台 crate 的 `ShortcutMatcher` 复用该解析结果，聚合左右
+modifier、抑制重复 key down；binding replace 保留 pressed set 以避免 held-key repeat 误触发，
+明确 reset 清空、reconcile 以平台状态覆盖 transient pressed state。系统级注册、
 事件捕获、清除/恢复默认 UI 和匹配后的 command 执行仍属于后续平台/UI/runtime 接线工作。
 
 窗口坐标、pressed state、权限结果、模型解析缓存和 renderer 状态不属于 `config.json`。可恢复窗口布局写入 `state.json`；其余瞬时/派生状态不持久化。

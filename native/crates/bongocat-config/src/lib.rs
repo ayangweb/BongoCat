@@ -312,6 +312,10 @@ impl CompiledShortcut {
     pub fn matches(&self, modifiers: ShortcutModifiers, key: &str) -> bool {
         self.chord.matches(modifiers, key)
     }
+
+    pub fn matches_hid_usage(&self, modifiers: ShortcutModifiers, hid_usage: u16) -> bool {
+        self.chord.matches_hid_usage(modifiers, hid_usage)
+    }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -376,6 +380,16 @@ impl CompiledShortcuts {
             .iter()
             .find(|binding| binding.matches(modifiers, key))
     }
+
+    pub fn resolve_hid_usage(
+        &self,
+        modifiers: ShortcutModifiers,
+        hid_usage: u16,
+    ) -> Option<&CompiledShortcut> {
+        self.bindings
+            .iter()
+            .find(|binding| binding.matches_hid_usage(modifiers, hid_usage))
+    }
 }
 
 /// Application-level commands that may be persisted as global shortcuts.
@@ -438,8 +452,125 @@ impl std::error::Error for ShortcutCommandParseError {}
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ShortcutChord {
     modifiers: ShortcutModifiers,
-    key: String,
+    key: ShortcutKey,
 }
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ShortcutKey {
+    canonical: String,
+    hid_usage: u16,
+}
+
+impl ShortcutKey {
+    pub fn parse(value: &str) -> Result<Self, ShortcutParseError> {
+        let value = value.trim();
+        if value.is_empty()
+            || !value.is_ascii()
+            || value.chars().any(char::is_whitespace)
+            || value.chars().any(|character| !character.is_ascii_graphic())
+        {
+            return Err(ShortcutParseError::InvalidKey);
+        }
+
+        if value.len() == 1 {
+            let byte = value.as_bytes()[0];
+            if byte.is_ascii_alphabetic() {
+                let upper = byte.to_ascii_uppercase();
+                return Ok(Self {
+                    canonical: char::from(upper).to_string(),
+                    hid_usage: 0x04 + u16::from(upper - b'A'),
+                });
+            }
+            if byte.is_ascii_digit() {
+                let hid_usage = if byte == b'0' {
+                    0x27
+                } else {
+                    0x1e + u16::from(byte - b'1')
+                };
+                return Ok(Self {
+                    canonical: char::from(byte).to_string(),
+                    hid_usage,
+                });
+            }
+        }
+
+        if value.len() == 4 && value[..3].eq_ignore_ascii_case("key") {
+            return Self::parse(&value[3..]);
+        }
+        if value.len() == 6 && value[..5].eq_ignore_ascii_case("digit") {
+            return Self::parse(&value[5..]);
+        }
+
+        let (canonical, hid_usage) = NAMED_SHORTCUT_KEYS
+            .iter()
+            .find_map(|(alias, canonical, usage)| {
+                value
+                    .eq_ignore_ascii_case(alias)
+                    .then_some((*canonical, *usage))
+            })
+            .ok_or(ShortcutParseError::InvalidKey)?;
+        Ok(Self {
+            canonical: canonical.to_owned(),
+            hid_usage,
+        })
+    }
+
+    pub fn canonical(&self) -> &str {
+        &self.canonical
+    }
+
+    pub const fn hid_usage(&self) -> u16 {
+        self.hid_usage
+    }
+}
+
+const NAMED_SHORTCUT_KEYS: &[(&str, &str, u16)] = &[
+    ("-", "-", 0x2d),
+    ("Minus", "-", 0x2d),
+    ("=", "=", 0x2e),
+    ("Equal", "=", 0x2e),
+    ("Enter", "Enter", 0x28),
+    ("Escape", "Escape", 0x29),
+    ("Esc", "Escape", 0x29),
+    ("Backspace", "Backspace", 0x2a),
+    ("Tab", "Tab", 0x2b),
+    ("Space", "Space", 0x2c),
+    ("BracketLeft", "BracketLeft", 0x2f),
+    ("BracketRight", "BracketRight", 0x30),
+    ("Backslash", "Backslash", 0x31),
+    ("Semicolon", "Semicolon", 0x33),
+    ("Quote", "Quote", 0x34),
+    ("Backquote", "Backquote", 0x35),
+    ("Comma", "Comma", 0x36),
+    ("Period", "Period", 0x37),
+    ("Slash", "Slash", 0x38),
+    ("CapsLock", "CapsLock", 0x39),
+    ("F1", "F1", 0x3a),
+    ("F2", "F2", 0x3b),
+    ("F3", "F3", 0x3c),
+    ("F4", "F4", 0x3d),
+    ("F5", "F5", 0x3e),
+    ("F6", "F6", 0x3f),
+    ("F7", "F7", 0x40),
+    ("F8", "F8", 0x41),
+    ("F9", "F9", 0x42),
+    ("F10", "F10", 0x43),
+    ("F11", "F11", 0x44),
+    ("F12", "F12", 0x45),
+    ("PrintScreen", "PrintScreen", 0x46),
+    ("ScrollLock", "ScrollLock", 0x47),
+    ("Pause", "Pause", 0x48),
+    ("Insert", "Insert", 0x49),
+    ("Home", "Home", 0x4a),
+    ("PageUp", "PageUp", 0x4b),
+    ("Delete", "Delete", 0x4c),
+    ("End", "End", 0x4d),
+    ("PageDown", "PageDown", 0x4e),
+    ("ArrowRight", "ArrowRight", 0x4f),
+    ("ArrowLeft", "ArrowLeft", 0x50),
+    ("ArrowDown", "ArrowDown", 0x51),
+    ("ArrowUp", "ArrowUp", 0x52),
+];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ShortcutModifiers(u8);
@@ -481,7 +612,7 @@ impl fmt::Display for ShortcutParseError {
             Self::EmptyPart => "shortcut contains an empty part",
             Self::DuplicateModifier => "shortcut contains a duplicate modifier",
             Self::MultipleKeys => "shortcut must contain exactly one key",
-            Self::InvalidKey => "shortcut key must be printable ASCII without whitespace",
+            Self::InvalidKey => "shortcut key is not a supported physical key token",
         };
         formatter.write_str(message)
     }
@@ -515,13 +646,7 @@ impl ShortcutChord {
             if key.is_some() {
                 return Err(ShortcutParseError::MultipleKeys);
             }
-            if !part.is_ascii()
-                || part.chars().any(char::is_whitespace)
-                || part.chars().any(|character| !character.is_ascii_graphic())
-            {
-                return Err(ShortcutParseError::InvalidKey);
-            }
-            key = Some(part.to_ascii_uppercase());
+            key = Some(ShortcutKey::parse(part)?);
         }
         let key = key.ok_or(ShortcutParseError::MissingKey)?;
         Ok(Self {
@@ -535,11 +660,20 @@ impl ShortcutChord {
     }
 
     pub fn key(&self) -> &str {
-        &self.key
+        self.key.canonical()
+    }
+
+    pub const fn key_hid_usage(&self) -> u16 {
+        self.key.hid_usage()
     }
 
     pub fn matches(&self, modifiers: ShortcutModifiers, key: &str) -> bool {
-        self.modifiers == modifiers && self.key.eq_ignore_ascii_case(key.trim())
+        self.modifiers == modifiers
+            && ShortcutKey::parse(key).is_ok_and(|key| key.hid_usage() == self.key.hid_usage())
+    }
+
+    pub fn matches_hid_usage(&self, modifiers: ShortcutModifiers, hid_usage: u16) -> bool {
+        self.modifiers == modifiers && self.key.hid_usage() == hid_usage
     }
 
     /// Return a stable representation used for conflict detection and later
@@ -557,7 +691,7 @@ impl ShortcutChord {
                 parts.push(name);
             }
         }
-        parts.push(self.key.as_str());
+        parts.push(self.key.canonical());
         parts.join("+")
     }
 }
@@ -2280,10 +2414,23 @@ mod tests {
             ShortcutModifiers::CONTROL | ShortcutModifiers::SHIFT
         );
         assert_eq!(chord.key(), "B");
+        assert_eq!(chord.key_hid_usage(), 0x05);
         assert_eq!(chord.canonical(), "Control+Shift+B");
 
         let meta = ShortcutChord::parse("CMD+option+P").expect("valid mac chord");
         assert_eq!(meta.canonical(), "Alt+Meta+P");
+        assert_eq!(
+            ShortcutChord::parse("Control+KeyB")
+                .expect("DOM key alias")
+                .canonical(),
+            "Control+B"
+        );
+        assert_eq!(
+            ShortcutChord::parse("Shift+Digit1")
+                .expect("DOM digit alias")
+                .canonical(),
+            "Shift+1"
+        );
     }
 
     #[test]
@@ -2294,8 +2441,29 @@ mod tests {
             ("A+B", ShortcutParseError::MultipleKeys),
             ("Control", ShortcutParseError::MissingKey),
             ("Control+bad key", ShortcutParseError::InvalidKey),
+            ("Control+Mouse1", ShortcutParseError::InvalidKey),
         ] {
             assert_eq!(ShortcutChord::parse(value), Err(expected), "{value}");
+        }
+    }
+
+    #[test]
+    fn shortcut_key_tokens_map_to_usb_hid_usages() {
+        for (token, canonical, usage) in [
+            ("a", "A", 0x04),
+            ("Z", "Z", 0x1d),
+            ("1", "1", 0x1e),
+            ("0", "0", 0x27),
+            ("Escape", "Escape", 0x29),
+            ("F12", "F12", 0x45),
+            ("ArrowLeft", "ArrowLeft", 0x50),
+            ("Delete", "Delete", 0x4c),
+            ("Minus", "-", 0x2d),
+            ("Equal", "=", 0x2e),
+        ] {
+            let key = ShortcutKey::parse(token).expect("supported shortcut key");
+            assert_eq!(key.canonical(), canonical, "{token}");
+            assert_eq!(key.hid_usage(), usage, "{token}");
         }
     }
 
@@ -2423,6 +2591,8 @@ mod tests {
                 .expect("valid modifiers");
         assert!(compiled.resolve(modifiers, "B").is_some());
         assert!(compiled.resolve(modifiers, " b ").is_some());
+        assert!(compiled.resolve(modifiers, "KeyB").is_some());
+        assert!(compiled.resolve_hid_usage(modifiers, 0x05).is_some());
         assert!(compiled.resolve(modifiers, "N").is_none());
         assert_eq!(compiled.iter().count(), 2);
         assert_eq!(

@@ -1991,6 +1991,25 @@ mod tests {
         assert_eq!(map_key_code(123).map(PhysicalKey::hid_usage), Some(0x50));
         assert_eq!(map_key_code(124).map(PhysicalKey::hid_usage), Some(0x4f));
         assert_eq!(map_key_code(u16::MAX), None);
+
+        let shortcuts = bongocat_config::ShortcutConfig {
+            commands: vec![bongocat_config::ShortcutBinding {
+                command: "toggle_overlay".to_owned(),
+                shortcut: "Meta+A".to_owned(),
+            }],
+            ..bongocat_config::ShortcutConfig::default()
+        }
+        .compile()
+        .expect("compiled shortcut");
+        let modifiers =
+            bongocat_config::ShortcutModifiers::from_bits(bongocat_config::ShortcutModifiers::META)
+                .expect("meta modifier");
+        let mapped = map_key_code(0).expect("mapped A");
+        assert!(
+            shortcuts
+                .resolve_hid_usage(modifiers, mapped.hid_usage())
+                .is_some()
+        );
     }
 
     #[test]

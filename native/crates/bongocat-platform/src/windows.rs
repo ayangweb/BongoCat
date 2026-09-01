@@ -1583,6 +1583,26 @@ mod tests {
             Some(PhysicalKey::from_hid_usage(0x46))
         );
         assert_eq!(map_scan_code(0x7f, 0), None);
+
+        let shortcuts = bongocat_config::ShortcutConfig {
+            commands: vec![bongocat_config::ShortcutBinding {
+                command: "toggle_overlay".to_owned(),
+                shortcut: "Control+A".to_owned(),
+            }],
+            ..bongocat_config::ShortcutConfig::default()
+        }
+        .compile()
+        .expect("compiled shortcut");
+        let modifiers = bongocat_config::ShortcutModifiers::from_bits(
+            bongocat_config::ShortcutModifiers::CONTROL,
+        )
+        .expect("control modifier");
+        let mapped = map_scan_code(0x1e, 0).expect("mapped A");
+        assert!(
+            shortcuts
+                .resolve_hid_usage(modifiers, mapped.hid_usage())
+                .is_some()
+        );
     }
 
     #[test]
