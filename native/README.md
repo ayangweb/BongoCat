@@ -48,6 +48,10 @@ selection before invoking Cargo:
 BONGOCAT_BUILD_ENV=production cargo build -p bongocat-app --release
 ```
 
+Native build provenance is written as path-free JSON with the source commit, `Cargo.lock` SHA-256,
+Rust toolchain, target, profile, feature set, and build environment. The macOS package includes
+`Contents/Resources/build-provenance.json`; CI stores one provenance artifact per native runner.
+
 The application does not expose a runtime environment switch. Both environments use the same
 schema and relative layout under separate `development/` and `production/` roots.
 The formal startup API always resolves that root from the compiled environment. Process-level tests

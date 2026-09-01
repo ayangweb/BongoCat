@@ -31,6 +31,13 @@ mkdir -p "$MACOS_PATH" "$RESOURCES_PATH"
 cp "$NATIVE_DIR/macos/Info.plist" "$CONTENTS_PATH/Info.plist"
 cp "$NATIVE_DIR/target/release/$EXECUTABLE_NAME" "$MACOS_PATH/$EXECUTABLE_NAME"
 cp -R "$NATIVE_DIR/resources/models" "$RESOURCES_PATH/models"
+python3 "$NATIVE_DIR/../tools/record-native-provenance.py" \
+    --workspace "$NATIVE_DIR" \
+    --output "$RESOURCES_PATH/build-provenance.json" \
+    --target "$(rustc -vV | awk -F': ' '$1 == \"host\" { print $2; exit }')" \
+    --profile release \
+    --features default \
+    --environment "$BONGOCAT_BUILD_ENV"
 
 ACTUAL_BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw -o - "$CONTENTS_PATH/Info.plist")
 if [ "$ACTUAL_BUNDLE_ID" != "$EXPECTED_BUNDLE_ID" ]; then

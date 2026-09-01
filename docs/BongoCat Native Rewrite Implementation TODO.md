@@ -476,6 +476,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - [ ] 生成文件漂移校验仍待 Native 资源生成链建立后补齐。
 - [ ] 保存失败测试日志、截图和 renderer validation 输出，同时执行路径/按键隐私清理。
 - [ ] 构建产物记录 source commit、Cargo.lock hash、toolchain、target 和 feature set。
+  - [x] `tools/record-native-provenance.py` 生成无绝对路径的 JSON；Native 三平台 CI 上传 runner
+        provenance，macOS `.app` 将其放入 `Contents/Resources/build-provenance.json`。工具测试验证
+        commit、锁文件 hash、toolchain、target、profile、feature set 和 environment 字段；签名安装包
+        与 Windows 最终发布 artifact 仍待发布 workflow 迁移后接入。
 
 ### 2.4 Phase 1 退出门槛
 

@@ -114,6 +114,21 @@ jobs:
         env:
           BONGOCAT_BUILD_ENV: production
         run: cargo check --manifest-path native/Cargo.toml --locked -p bongocat-app --release
+      - name: Record Native build provenance
+        shell: bash
+        run: |
+          python3 tools/record-native-provenance.py \
+            --workspace native \
+            --output "native/target/provenance/${RUNNER_OS}.json" \
+            --profile release \
+            --features default \
+            --environment "$BONGOCAT_BUILD_ENV"
+      - name: Upload Native build provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-provenance-${{ matrix.os }}
+          path: native/target/provenance/${{ runner.os }}.json
+          if-no-files-found: error
       - name: Smoke Windows model directory picker
         if: matrix.os == 'windows-latest'
         shell: pwsh
