@@ -455,7 +455,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 验收证据（2026-09-01）：runtime/config/model/UI/app/audio/render/live2d 源入口均声明
     `#![forbid(unsafe_code)]`；overlay 在非 Windows/macOS 共享编译路径增加同一门禁，平台 FFI 仅保留
     target-specific wrapper，Native workspace Clippy/test/release check 通过。
-- [ ] 平台 unsafe wrapper 写明线程、指针、所有权和析构不变量。
+- [x] 平台 unsafe wrapper 写明线程、指针、所有权和析构不变量。
+  - 验收证据（2026-09-01）：`bongocat-platform`、`bongocat-overlay` 和 `bongocat-live2d`
+    的每个非平凡 `unsafe` block 都有紧邻的 `SAFETY:` 不变量说明，覆盖主线程/owner thread
+    限定、裸指针与 slice 的有效范围、COM/AppKit/Metal/Cubism handle 所有权及析构顺序；
+    共享业务 crate 继续使用 `#![forbid(unsafe_code)]`。静态扫描未发现缺少说明的 block，
+    Native 三平台 Clippy `-D warnings`、workspace tests 和 release check 通过。
 - [x] 配置 rustfmt、Clippy -D warnings、cargo test 和许可证检查。
   - 验收证据（2026-09-01）：Native 三平台 workflow 执行 locked format、workspace Clippy `-D warnings`、
     workspace tests、release check 和 pinned dependency policy；本机同命令通过。
