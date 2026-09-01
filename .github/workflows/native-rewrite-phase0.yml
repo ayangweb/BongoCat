@@ -407,7 +407,7 @@ jobs:
           }
       - name: Smoke macOS settings window lifecycle
         if: matrix.os == 'macos-latest'
-        run: cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke --models-page-smoke
+        run: cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release -- --run-seconds 8 --settings-window-smoke --models-page-smoke
       - name: Smoke macOS configuration recovery window
         if: matrix.os == 'macos-latest'
         run: |
