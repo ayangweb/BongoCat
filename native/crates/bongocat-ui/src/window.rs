@@ -9,6 +9,7 @@ use crate::{
     SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsWindowPlacement,
     SettingsWindowState,
 };
+use bongocat_config::ShortcutChord;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_platform::{
     AccessibilityAction, AccessibilityActionRequest, AccessibilityNode, AccessibilityNodeId,
@@ -146,7 +147,14 @@ enum PendingOperation {
     RestoreDefaultConfiguration,
     RestoreDefaultShortcuts,
     ClearShortcuts,
+    SetShortcuts,
     ExportDiagnostics,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ShortcutCaptureTarget {
+    Command(usize),
+    ModelBehavior(usize),
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -311,6 +319,8 @@ pub struct SettingsView {
     model_import: ModelImportDraft,
     model_delete_confirmation: Option<SettingsModelKey>,
     model_row_focus: BTreeMap<ModelRowKey, ModelRowFocus>,
+    shortcut_capture: Option<ShortcutCaptureTarget>,
+    shortcut_capture_error: Option<String>,
     window_hidden: bool,
     request_quit: Rc<dyn Fn(&mut App)>,
     general_focus: FocusHandle,
@@ -337,6 +347,7 @@ pub struct SettingsView {
     restore_defaults_focus: FocusHandle,
     restore_shortcuts_focus: FocusHandle,
     clear_shortcuts_focus: FocusHandle,
+    shortcut_capture_focus: FocusHandle,
     export_diagnostics_focus: FocusHandle,
     refresh_focus: FocusHandle,
     quit_focus: FocusHandle,
@@ -361,6 +372,8 @@ impl SettingsView {
             model_import: ModelImportDraft::default(),
             model_delete_confirmation: None,
             model_row_focus: BTreeMap::new(),
+            shortcut_capture: None,
+            shortcut_capture_error: None,
             window_hidden: false,
             request_quit,
             general_focus: cx.focus_handle().tab_index(1).tab_stop(true),
@@ -387,6 +400,7 @@ impl SettingsView {
             restore_defaults_focus: cx.focus_handle().tab_index(29).tab_stop(true),
             restore_shortcuts_focus: cx.focus_handle().tab_index(33).tab_stop(true),
             clear_shortcuts_focus: cx.focus_handle().tab_index(34).tab_stop(true),
+            shortcut_capture_focus: cx.focus_handle().tab_index(35).tab_stop(true),
             export_diagnostics_focus: cx.focus_handle().tab_index(32).tab_stop(true),
             refresh_focus: cx.focus_handle().tab_index(30).tab_stop(true),
             quit_focus: cx.focus_handle().tab_index(31).tab_stop(true),
@@ -1512,6 +1526,70 @@ impl SettingsView {
         );
     }
 
+    fn begin_shortcut_capture(
+        &mut self,
+        target: ShortcutCaptureTarget,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.pending.is_some() || self.snapshot.is_none() {
+            return;
+        }
+        self.shortcut_capture = Some(target);
+        self.shortcut_capture_error = None;
+        window.focus(&self.shortcut_capture_focus);
+        cx.notify();
+    }
+
+    fn capture_shortcut(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
+        let Some(target) = self.shortcut_capture else {
+            return;
+        };
+        let Some(shortcut) = shortcut_from_key_event(event) else {
+            self.shortcut_capture_error = Some("Unsupported key".to_owned());
+            cx.notify();
+            return;
+        };
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        let mut shortcuts = snapshot.shortcuts.clone();
+        match target {
+            ShortcutCaptureTarget::Command(index) => {
+                let Some(binding) = shortcuts.commands.get_mut(index) else {
+                    self.shortcut_capture = None;
+                    return;
+                };
+                binding.shortcut = shortcut.clone();
+            }
+            ShortcutCaptureTarget::ModelBehavior(index) => {
+                let Some(binding) = shortcuts.model_behaviors.get_mut(index) else {
+                    self.shortcut_capture = None;
+                    return;
+                };
+                binding.shortcut = shortcut.clone();
+            }
+        }
+        if shortcut_conflicts(&shortcuts) {
+            self.shortcut_capture_error = Some("Shortcut is already assigned".to_owned());
+            cx.notify();
+            return;
+        }
+        let Some(expected_config_revision) = snapshot.config_revision else {
+            return;
+        };
+        self.shortcut_capture = None;
+        self.shortcut_capture_error = None;
+        self.start_request(
+            PendingOperation::SetShortcuts,
+            Some(SettingValue::Shortcuts {
+                expected_config_revision,
+                shortcuts,
+            }),
+            cx,
+        );
+    }
+
     fn choose_model_directory(&mut self, cx: &mut Context<Self>) {
         if self.model_import.is_running() || self.model_import.is_picker_open() {
             return;
@@ -2194,6 +2272,7 @@ impl Render for SettingsView {
                 "Restoring default shortcuts...".into()
             }
             (_, Some(PendingOperation::ClearShortcuts), _) => "Clearing shortcuts...".into(),
+            (_, Some(PendingOperation::SetShortcuts), _) => "Saving shortcut...".into(),
             (_, Some(PendingOperation::ExportDiagnostics), _) => "Exporting diagnostics...".into(),
             (_, None, Some(snapshot)) => {
                 let health = match snapshot.runtime_health {
@@ -3510,37 +3589,125 @@ impl Render for SettingsView {
                                                 )),
                                             ),
                                     )
-                                    .children(snapshot.shortcuts.commands.iter().map(|binding| {
-                                        div()
-                                            .flex()
-                                            .justify_between()
-                                            .gap_3()
-                                            .text_sm()
-                                            .child(binding.command.clone())
-                                            .child(
+                                    .when_some(
+                                        self.shortcut_capture_error.clone(),
+                                        |content, error| {
+                                            content.child(
                                                 div()
-                                                    .text_color(tokens.muted)
-                                                    .child(binding.shortcut.clone()),
+                                                    .text_sm()
+                                                    .text_color(tokens.danger)
+                                                    .child(error),
                                             )
-                                    }))
-                                    .children(snapshot.shortcuts.model_behaviors.iter().map(
-                                        |binding| {
+                                        },
+                                    )
+                                    .when_some(self.shortcut_capture, |content, target| {
+                                        content.child(
+                                            div().text_sm().text_color(tokens.accent).child(
+                                                match target {
+                                                    ShortcutCaptureTarget::Command(_) => {
+                                                        "Press a key combination for this command"
+                                                    }
+                                                    ShortcutCaptureTarget::ModelBehavior(_) => {
+                                                        "Press a key combination for this behavior"
+                                                    }
+                                                },
+                                            ),
+                                        )
+                                    })
+                                    .children(snapshot.shortcuts.commands.iter().enumerate().map(
+                                        |(index, binding)| {
+                                            let target = ShortcutCaptureTarget::Command(index);
+                                            let capturing = self.shortcut_capture == Some(target);
+                                            let disabled = config_action_disabled;
                                             div()
                                                 .flex()
+                                                .items_center()
                                                 .justify_between()
                                                 .gap_3()
                                                 .text_sm()
-                                                .child(format!(
-                                                    "{} ({})",
-                                                    binding.model_id, binding.behavior_id
-                                                ))
+                                                .child(
+                                                    div()
+                                                        .min_w_0()
+                                                        .flex_1()
+                                                        .child(binding.command.clone()),
+                                                )
                                                 .child(
                                                     div()
                                                         .text_color(tokens.muted)
                                                         .child(binding.shortcut.clone()),
                                                 )
+                                                .child(
+                                                    command_button(
+                                                        if capturing {
+                                                            "Press key"
+                                                        } else {
+                                                            "Capture"
+                                                        },
+                                                        &self.shortcut_capture_focus,
+                                                        35,
+                                                        window,
+                                                        tokens,
+                                                        disabled,
+                                                    )
+                                                    .id(("capture-command", index))
+                                                    .on_click(cx.listener(
+                                                        move |view, _, window, cx| {
+                                                            view.begin_shortcut_capture(
+                                                                target, window, cx,
+                                                            );
+                                                        },
+                                                    )),
+                                                )
                                         },
-                                    )),
+                                    ))
+                                    .children(
+                                        snapshot.shortcuts.model_behaviors.iter().enumerate().map(
+                                            |(index, binding)| {
+                                                let target =
+                                                    ShortcutCaptureTarget::ModelBehavior(index);
+                                                let capturing =
+                                                    self.shortcut_capture == Some(target);
+                                                let disabled = config_action_disabled;
+                                                div()
+                                                    .flex()
+                                                    .items_center()
+                                                    .justify_between()
+                                                    .gap_3()
+                                                    .text_sm()
+                                                    .child(div().min_w_0().flex_1().child(format!(
+                                                        "{} ({})",
+                                                        binding.model_id, binding.behavior_id
+                                                    )))
+                                                    .child(
+                                                        div()
+                                                            .text_color(tokens.muted)
+                                                            .child(binding.shortcut.clone()),
+                                                    )
+                                                    .child(
+                                                        command_button(
+                                                            if capturing {
+                                                                "Press key"
+                                                            } else {
+                                                                "Capture"
+                                                            },
+                                                            &self.shortcut_capture_focus,
+                                                            35,
+                                                            window,
+                                                            tokens,
+                                                            disabled,
+                                                        )
+                                                        .id(("capture-behavior", index))
+                                                        .on_click(cx.listener(
+                                                            move |view, _, window, cx| {
+                                                                view.begin_shortcut_capture(
+                                                                    target, window, cx,
+                                                                );
+                                                            },
+                                                        )),
+                                                    )
+                                            },
+                                        ),
+                                    ),
                             )
                             .child(
                                 div()
@@ -3791,6 +3958,12 @@ impl Render for SettingsView {
 
         div()
             .id("bongocat-settings-root")
+            .on_key_down(cx.listener(|view, event, _, cx| {
+                if view.shortcut_capture.is_some() {
+                    cx.stop_propagation();
+                    view.capture_shortcut(event, cx);
+                }
+            }))
             .size_full()
             .flex()
             .child(sidebar)
@@ -3804,6 +3977,91 @@ fn is_activation_key(event: &KeyDownEvent) -> bool {
         && !event.keystroke.modifiers.alt
         && (matches!(event.keystroke.key.as_str(), "enter" | "space")
             || event.keystroke.key_char.as_deref() == Some(" "))
+}
+
+fn shortcut_from_key_event(event: &KeyDownEvent) -> Option<String> {
+    let key = canonical_capture_key(event.keystroke.key.as_str())?;
+    let modifiers = &event.keystroke.modifiers;
+    let mut parts: Vec<String> = Vec::with_capacity(5);
+    if modifiers.control {
+        parts.push("Control".to_owned());
+    }
+    if modifiers.alt {
+        parts.push("Alt".to_owned());
+    }
+    if modifiers.shift {
+        parts.push("Shift".to_owned());
+    }
+    if modifiers.platform {
+        parts.push("Meta".to_owned());
+    }
+    parts.push(key);
+    let candidate = parts.join("+");
+    ShortcutChord::parse(&candidate)
+        .ok()
+        .map(|chord| chord.canonical())
+}
+
+fn canonical_capture_key(key: &str) -> Option<String> {
+    let lower = key.to_ascii_lowercase();
+    if lower.len() == 1 && lower.as_bytes()[0].is_ascii_alphanumeric() {
+        return Some(lower.to_ascii_uppercase());
+    }
+    Some(
+        match lower.as_str() {
+            "minus" => "-",
+            "equal" => "=",
+            "space" => "Space",
+            "enter" | "return" => "Enter",
+            "escape" | "esc" => "Escape",
+            "backspace" => "Backspace",
+            "tab" => "Tab",
+            "delete" | "forwarddelete" => "Delete",
+            "insert" => "Insert",
+            "home" => "Home",
+            "end" => "End",
+            "pageup" => "PageUp",
+            "pagedown" => "PageDown",
+            "left" | "arrowleft" => "ArrowLeft",
+            "right" | "arrowright" => "ArrowRight",
+            "up" | "arrowup" => "ArrowUp",
+            "down" | "arrowdown" => "ArrowDown",
+            "capslock" => "CapsLock",
+            "printscreen" => "PrintScreen",
+            "scrolllock" => "ScrollLock",
+            "pause" => "Pause",
+            "f1" => "F1",
+            "f2" => "F2",
+            "f3" => "F3",
+            "f4" => "F4",
+            "f5" => "F5",
+            "f6" => "F6",
+            "f7" => "F7",
+            "f8" => "F8",
+            "f9" => "F9",
+            "f10" => "F10",
+            "f11" => "F11",
+            "f12" => "F12",
+            _ => return None,
+        }
+        .to_owned(),
+    )
+}
+
+fn shortcut_conflicts(shortcuts: &SettingsShortcuts) -> bool {
+    let mut seen = BTreeSet::new();
+    shortcuts
+        .commands
+        .iter()
+        .map(|binding| binding.shortcut.as_str())
+        .chain(
+            shortcuts
+                .model_behaviors
+                .iter()
+                .map(|binding| binding.shortcut.as_str()),
+        )
+        .filter_map(|value| ShortcutChord::parse(value).ok())
+        .any(|chord| !seen.insert(chord.canonical()))
 }
 
 fn input_diagnostic_metrics(diagnostics: SettingsInputDiagnostics) -> [(&'static str, u64); 25] {
@@ -4569,6 +4827,7 @@ fn rounded_u32(value: gpui::Pixels) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::SettingsShortcutBinding;
     use gpui::{Keystroke, Modifiers};
 
     fn key(key: &str, key_char: Option<&str>) -> KeyDownEvent {
@@ -4580,6 +4839,44 @@ mod tests {
             },
             is_held: false,
         }
+    }
+
+    #[test]
+    fn shortcut_capture_canonicalizes_modifiers_and_named_keys() {
+        let mut event = key("arrowleft", None);
+        event.keystroke.modifiers.control = true;
+        event.keystroke.modifiers.shift = true;
+        assert_eq!(
+            shortcut_from_key_event(&event).as_deref(),
+            Some("Control+Shift+ArrowLeft")
+        );
+
+        let event = key("return", None);
+        assert_eq!(shortcut_from_key_event(&event).as_deref(), Some("Enter"));
+    }
+
+    #[test]
+    fn shortcut_capture_rejects_modifier_only_and_unsupported_keys() {
+        assert!(shortcut_from_key_event(&key("shift", None)).is_none());
+        assert!(shortcut_from_key_event(&key("media-play", None)).is_none());
+    }
+
+    #[test]
+    fn shortcut_capture_conflict_preview_is_order_independent() {
+        let shortcuts = SettingsShortcuts {
+            commands: vec![
+                SettingsShortcutBinding {
+                    command: "toggle_overlay".to_owned(),
+                    shortcut: "ctrl+b".to_owned(),
+                },
+                SettingsShortcutBinding {
+                    command: "toggle_mirror".to_owned(),
+                    shortcut: "Control+B".to_owned(),
+                },
+            ],
+            model_behaviors: Vec::new(),
+        };
+        assert!(shortcut_conflicts(&shortcuts));
     }
 
     #[test]

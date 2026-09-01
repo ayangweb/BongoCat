@@ -861,6 +861,7 @@ name = "bongocat-ui"
 version = "0.1.0"
 dependencies = [
  "async-channel 2.5.0",
+ "bongocat-config",
  "bongocat-platform",
  "gpui",
  "raw-window-handle",
