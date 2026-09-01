@@ -910,9 +910,9 @@ impl Application {
                 .record(ApplicationLogEvent::shutdown_failed());
             return Err(ApplicationError::MotionAudioShutdown(error));
         }
+        self.run_marker.complete()?;
         self.application_log
             .record(ApplicationLogEvent::shutdown_completed());
-        self.run_marker.complete()?;
         Ok(stopped)
     }
 }
