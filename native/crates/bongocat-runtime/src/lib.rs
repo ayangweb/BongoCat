@@ -532,14 +532,14 @@ impl CommandSequenceTracker {
             self.last = Some(sequence);
             return CommandSequenceDisposition::First;
         };
-        let expected = last.wrapping_add(1);
-        if sequence == expected {
+        let distance = sequence.wrapping_sub(last);
+        if distance == 1 {
             self.last = Some(sequence);
             CommandSequenceDisposition::InOrder
-        } else if sequence == last {
+        } else if distance == 0 {
             CommandSequenceDisposition::Duplicate
-        } else if sequence > last {
-            let missing = sequence.saturating_sub(expected);
+        } else if distance <= u64::MAX / 2 {
+            let missing = distance - 1;
             self.last = Some(sequence);
             CommandSequenceDisposition::Gap { missing }
         } else {
@@ -3547,6 +3547,15 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(wrapping.observe(0), CommandSequenceDisposition::InOrder);
+        assert_eq!(
+            wrapping.observe(2),
+            CommandSequenceDisposition::Gap { missing: 1 }
+        );
+        assert_eq!(wrapping.observe(2), CommandSequenceDisposition::Duplicate);
+        assert_eq!(
+            wrapping.observe(u64::MAX),
+            CommandSequenceDisposition::OutOfOrder
+        );
     }
 
     #[test]
