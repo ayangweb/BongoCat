@@ -17,14 +17,18 @@ use bongocat_platform::{
 };
 use bongocat_platform::{DirectoryPickerError, DirectoryPickerOutcome, pick_model_directory};
 use gpui::{
-    App, Bounds, Context, Entity, FocusHandle, Hsla, KeyDownEvent, Render, SharedString, Timer,
-    TitlebarOptions, Window, WindowAppearance, WindowBounds, WindowHandle, WindowOptions, div,
-    point, prelude::*, px, size,
+    App, AppContext, Bounds, Context, Entity, FocusHandle, Hsla, KeyDownEvent, Render,
+    SharedString, Timer, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowHandle,
+    WindowOptions, div, point, prelude::*, px, size,
 };
-use guise::theme::ColorName;
-use guise::{
-    Badge, Button, Card, Divider, NavLink, NumberInput, NumberInputEvent, Switch, TextInput,
-    TextInputEvent, Theme,
+use gpui_component::{
+    ActiveTheme, Disableable, Root, Theme,
+    button::Button,
+    divider::Divider,
+    group_box::{GroupBox, GroupBoxVariants},
+    input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent, StepAction},
+    switch::Switch,
+    tag::Tag,
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use raw_window_handle::HasWindowHandle;
@@ -109,16 +113,16 @@ struct Tokens {
 
 impl Tokens {
     fn from_theme(cx: &App) -> Self {
-        let theme = guise::theme(cx);
+        let theme = cx.theme();
         Self {
-            canvas: theme.body().hsla(),
-            sidebar: theme.surface().hsla(),
-            selected: theme.surface_hover().hsla(),
-            border: theme.border().hsla(),
-            text: theme.text().hsla(),
-            muted: theme.dimmed().hsla(),
-            accent: theme.primary().hsla(),
-            danger: theme.danger().hsla(),
+            canvas: theme.background,
+            sidebar: theme.sidebar,
+            selected: theme.sidebar_accent,
+            border: theme.border,
+            text: theme.foreground,
+            muted: theme.muted_foreground,
+            accent: theme.primary,
+            danger: theme.danger,
         }
     }
 }
@@ -314,120 +318,211 @@ pub struct SettingsView {
     export_diagnostics_focus: FocusHandle,
     refresh_focus: FocusHandle,
     quit_focus: FocusHandle,
-    overlay_scale_input: Entity<NumberInput>,
-    overlay_opacity_input: Entity<NumberInput>,
-    stick_dead_zone_input: Entity<NumberInput>,
-    trigger_dead_zone_input: Entity<NumberInput>,
-    model_id_input: Entity<TextInput>,
-    syncing_guise_inputs: bool,
+    overlay_scale_input: Entity<InputState>,
+    overlay_opacity_input: Entity<InputState>,
+    stick_dead_zone_input: Entity<InputState>,
+    trigger_dead_zone_input: Entity<InputState>,
+    model_id_input: Entity<InputState>,
+    syncing_component_inputs: bool,
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     accessibility: Option<SettingsAccessibilityBridge>,
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     accessibility_focus: Option<AccessibilityNodeId>,
 }
 
+#[derive(Clone)]
+pub struct SettingsWindowHandle {
+    window: WindowHandle<Root>,
+    view: WeakEntity<SettingsView>,
+}
+
+impl SettingsWindowHandle {
+    pub fn read(&self, cx: &App) -> gpui::Result<()> {
+        self.window.read(cx)?;
+        self.view
+            .upgrade()
+            .map(|_| ())
+            .ok_or_else(|| gpui::private::anyhow::anyhow!("settings view was released"))
+    }
+
+    pub fn update<C, R>(
+        &self,
+        cx: &mut C,
+        update: impl FnOnce(&mut SettingsView, &mut Window, &mut Context<SettingsView>) -> R,
+    ) -> gpui::Result<R>
+    where
+        C: AppContext,
+    {
+        self.window.update(cx, |_, window, cx| {
+            self.view.update(cx, |view, cx| update(view, window, cx))
+        })?
+    }
+}
+
+impl PartialEq for SettingsWindowHandle {
+    fn eq(&self, other: &Self) -> bool {
+        self.window == other.window
+    }
+}
+
+impl Eq for SettingsWindowHandle {}
+
 impl SettingsView {
-    fn sync_guise_inputs(&mut self, snapshot: &SettingsSnapshot, cx: &mut Context<Self>) {
-        self.syncing_guise_inputs = true;
+    fn sync_component_inputs(
+        &mut self,
+        snapshot: &SettingsSnapshot,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.syncing_component_inputs = true;
         let scale = f64::from(snapshot.overlay.scale_percent);
         let opacity = f64::from(snapshot.overlay.opacity_percent);
         let stick = f64::from(snapshot.gamepad_axis_settings.stick_dead_zone_percent);
         let trigger = f64::from(snapshot.gamepad_axis_settings.trigger_dead_zone_percent);
-        self.overlay_scale_input
-            .update(cx, |input, cx| input.set_value(scale, cx));
-        self.overlay_opacity_input
-            .update(cx, |input, cx| input.set_value(opacity, cx));
-        self.stick_dead_zone_input
-            .update(cx, |input, cx| input.set_value(stick, cx));
-        self.trigger_dead_zone_input
-            .update(cx, |input, cx| input.set_value(trigger, cx));
-        self.model_id_input
-            .update(cx, |input, cx| input.set_text(&self.model_import.id, cx));
-        self.syncing_guise_inputs = false;
+        self.overlay_scale_input.update(cx, |input, cx| {
+            input.set_value(scale.to_string(), window, cx)
+        });
+        self.overlay_opacity_input.update(cx, |input, cx| {
+            input.set_value(opacity.to_string(), window, cx)
+        });
+        self.stick_dead_zone_input.update(cx, |input, cx| {
+            input.set_value(stick.to_string(), window, cx)
+        });
+        self.trigger_dead_zone_input.update(cx, |input, cx| {
+            input.set_value(trigger.to_string(), window, cx)
+        });
+        self.model_id_input.update(cx, |input, cx| {
+            input.set_value(&self.model_import.id, window, cx)
+        });
+        self.syncing_component_inputs = false;
     }
 
     fn new(
         client: SettingsClient,
         request_quit: Rc<dyn Fn(&mut App)>,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let overlay_scale_input = cx.new(|cx| {
-            NumberInput::new(cx)
-                .min(25.0)
-                .max(400.0)
-                .step(25.0)
-                .value(100.0)
-        });
-        let overlay_opacity_input = cx.new(|cx| {
-            NumberInput::new(cx)
-                .min(1.0)
-                .max(100.0)
-                .step(10.0)
-                .value(100.0)
-        });
-        let stick_dead_zone_input = cx.new(|cx| {
-            NumberInput::new(cx)
-                .min(0.0)
-                .max(99.0)
-                .step(5.0)
-                .value(15.0)
-        });
-        let trigger_dead_zone_input =
-            cx.new(|cx| NumberInput::new(cx).min(0.0).max(99.0).step(5.0).value(0.0));
-        let model_id_input = cx.new(|cx| TextInput::new(cx).placeholder("Model ID").max_length(64));
+        let overlay_scale_input = cx.new(|cx| InputState::new(window, cx).placeholder("100"));
+        let overlay_opacity_input = cx.new(|cx| InputState::new(window, cx).placeholder("100"));
+        let stick_dead_zone_input = cx.new(|cx| InputState::new(window, cx).placeholder("15"));
+        let trigger_dead_zone_input = cx.new(|cx| InputState::new(window, cx).placeholder("0"));
+        let model_id_input = cx.new(|cx| InputState::new(window, cx).placeholder("Model ID"));
         cx.subscribe(
             &overlay_scale_input,
-            |view, _, event: &NumberInputEvent, cx| {
-                if view.syncing_guise_inputs {
+            |view, input, event: &NumberInputEvent, cx| {
+                if view.syncing_component_inputs {
                     return;
                 }
-                view.set_overlay_scale_value(event.0, cx);
+                let current = input.read(cx).value().parse::<f64>().unwrap_or(100.0);
+                let value = match event {
+                    NumberInputEvent::Step(StepAction::Increment) => current + 25.0,
+                    NumberInputEvent::Step(StepAction::Decrement) => current - 25.0,
+                };
+                view.set_overlay_scale_value(value, cx);
+            },
+        )
+        .detach();
+        cx.subscribe(
+            &overlay_scale_input,
+            |view, input, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change)
+                    && !view.syncing_component_inputs
+                    && let Ok(value) = input.read(cx).value().parse::<f64>()
+                {
+                    view.set_overlay_scale_value(value, cx);
+                }
             },
         )
         .detach();
         cx.subscribe(
             &overlay_opacity_input,
-            |view, _, event: &NumberInputEvent, cx| {
-                if view.syncing_guise_inputs {
+            |view, input, event: &NumberInputEvent, cx| {
+                if view.syncing_component_inputs {
                     return;
                 }
-                view.set_overlay_opacity_value(event.0, cx);
+                let current = input.read(cx).value().parse::<f64>().unwrap_or(100.0);
+                let value = match event {
+                    NumberInputEvent::Step(StepAction::Increment) => current + 10.0,
+                    NumberInputEvent::Step(StepAction::Decrement) => current - 10.0,
+                };
+                view.set_overlay_opacity_value(value, cx);
+            },
+        )
+        .detach();
+        cx.subscribe(
+            &overlay_opacity_input,
+            |view, input, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change)
+                    && !view.syncing_component_inputs
+                    && let Ok(value) = input.read(cx).value().parse::<f64>()
+                {
+                    view.set_overlay_opacity_value(value, cx);
+                }
             },
         )
         .detach();
         cx.subscribe(
             &stick_dead_zone_input,
-            |view, _, event: &NumberInputEvent, cx| {
-                if view.syncing_guise_inputs {
+            |view, input, event: &NumberInputEvent, cx| {
+                if view.syncing_component_inputs {
                     return;
                 }
-                view.set_gamepad_dead_zone_value(true, event.0, cx);
+                let current = input.read(cx).value().parse::<f64>().unwrap_or(15.0);
+                let value = match event {
+                    NumberInputEvent::Step(StepAction::Increment) => current + 5.0,
+                    NumberInputEvent::Step(StepAction::Decrement) => current - 5.0,
+                };
+                view.set_gamepad_dead_zone_value(true, value, cx);
+            },
+        )
+        .detach();
+        cx.subscribe(
+            &stick_dead_zone_input,
+            |view, input, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change)
+                    && !view.syncing_component_inputs
+                    && let Ok(value) = input.read(cx).value().parse::<f64>()
+                {
+                    view.set_gamepad_dead_zone_value(true, value, cx);
+                }
             },
         )
         .detach();
         cx.subscribe(
             &trigger_dead_zone_input,
-            |view, _, event: &NumberInputEvent, cx| {
-                if view.syncing_guise_inputs {
+            |view, input, event: &NumberInputEvent, cx| {
+                if view.syncing_component_inputs {
                     return;
                 }
-                view.set_gamepad_dead_zone_value(false, event.0, cx);
+                let current = input.read(cx).value().parse::<f64>().unwrap_or(0.0);
+                let value = match event {
+                    NumberInputEvent::Step(StepAction::Increment) => current + 5.0,
+                    NumberInputEvent::Step(StepAction::Decrement) => current - 5.0,
+                };
+                view.set_gamepad_dead_zone_value(false, value, cx);
             },
         )
         .detach();
-        cx.subscribe(&model_id_input, |view, _, event: &TextInputEvent, cx| {
-            if let TextInputEvent::Change(value) = event {
-                if view.syncing_guise_inputs || view.model_import.is_running() {
+        cx.subscribe(
+            &trigger_dead_zone_input,
+            |view, input, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change)
+                    && !view.syncing_component_inputs
+                    && let Ok(value) = input.read(cx).value().parse::<f64>()
+                {
+                    view.set_gamepad_dead_zone_value(false, value, cx);
+                }
+            },
+        )
+        .detach();
+        cx.subscribe(&model_id_input, |view, input, event: &InputEvent, cx| {
+            if matches!(event, InputEvent::Change) {
+                if view.syncing_component_inputs || view.model_import.is_running() {
                     return;
                 }
-                let sanitized = sanitize_model_id_input(value);
-                if sanitized != *value {
-                    view.syncing_guise_inputs = true;
-                    view.model_id_input
-                        .update(cx, |input, cx| input.set_text(&sanitized, cx));
-                    view.syncing_guise_inputs = false;
-                }
-                view.model_import.id = sanitized;
+                let value = input.read(cx).value();
+                view.model_import.id = sanitize_model_id_input(&value);
                 view.model_import.reset_result_state();
                 cx.notify();
             }
@@ -479,7 +574,7 @@ impl SettingsView {
             stick_dead_zone_input,
             trigger_dead_zone_input,
             model_id_input,
-            syncing_guise_inputs: false,
+            syncing_component_inputs: false,
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             accessibility: None,
             #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -2502,7 +2597,7 @@ impl Render for SettingsView {
         let tokens = Tokens::from_theme(cx);
         let snapshot = self.snapshot.clone();
         if let Some(snapshot) = snapshot.as_ref() {
-            self.sync_guise_inputs(snapshot, cx);
+            self.sync_component_inputs(snapshot, window, cx);
         }
         let overlay_visible = snapshot
             .as_ref()
@@ -2676,26 +2771,14 @@ impl Render for SettingsView {
             SettingRowState {
                 enabled: overlay_visible,
                 disabled,
-                tab_index: 1,
             },
-            &self.overlay_focus,
-            window,
+            cx.listener(move |view, _, _, cx| {
+                if !disabled {
+                    view.set_overlay_visible(!overlay_visible, cx);
+                }
+            }),
             tokens,
-        )
-        .id("overlay-visible")
-        .on_click(cx.listener(move |view, _, window, cx| {
-            if !disabled {
-                window.focus(&view.overlay_focus);
-                view.set_overlay_visible(!overlay_visible, cx);
-            }
-        }))
-        .on_key_down(cx.listener(move |view, event, window, cx| {
-            if !disabled && is_activation_key(event) {
-                cx.stop_propagation();
-                window.focus(&view.overlay_focus);
-                view.set_overlay_visible(!overlay_visible, cx);
-            }
-        }));
+        );
 
         let audio_row = setting_row(
             "Motion audio",
@@ -2703,26 +2786,14 @@ impl Render for SettingsView {
             SettingRowState {
                 enabled: motion_audio_enabled,
                 disabled,
-                tab_index: 2,
             },
-            &self.audio_focus,
-            window,
+            cx.listener(move |view, _, _, cx| {
+                if !disabled {
+                    view.set_motion_audio_enabled(!motion_audio_enabled, cx);
+                }
+            }),
             tokens,
-        )
-        .id("motion-audio")
-        .on_click(cx.listener(move |view, _, window, cx| {
-            if !disabled {
-                window.focus(&view.audio_focus);
-                view.set_motion_audio_enabled(!motion_audio_enabled, cx);
-            }
-        }))
-        .on_key_down(cx.listener(move |view, event, window, cx| {
-            if !disabled && is_activation_key(event) {
-                cx.stop_propagation();
-                window.focus(&view.audio_focus);
-                view.set_motion_audio_enabled(!motion_audio_enabled, cx);
-            }
-        }));
+        );
 
         let always_on_top = overlay_settings.always_on_top;
         let topmost_row = setting_row(
@@ -2731,30 +2802,16 @@ impl Render for SettingsView {
             SettingRowState {
                 enabled: always_on_top,
                 disabled,
-                tab_index: 4,
             },
-            &self.overlay_topmost_focus,
-            window,
+            cx.listener(move |view, _, _, cx| {
+                if !disabled {
+                    let mut settings = overlay_settings;
+                    settings.always_on_top = !always_on_top;
+                    view.set_overlay_settings(settings, cx);
+                }
+            }),
             tokens,
-        )
-        .id("overlay-always-on-top")
-        .on_click(cx.listener(move |view, _, window, cx| {
-            if !disabled {
-                window.focus(&view.overlay_topmost_focus);
-                let mut settings = overlay_settings;
-                settings.always_on_top = !always_on_top;
-                view.set_overlay_settings(settings, cx);
-            }
-        }))
-        .on_key_down(cx.listener(move |view, event, window, cx| {
-            if !disabled && is_activation_key(event) {
-                cx.stop_propagation();
-                window.focus(&view.overlay_topmost_focus);
-                let mut settings = overlay_settings;
-                settings.always_on_top = !always_on_top;
-                view.set_overlay_settings(settings, cx);
-            }
-        }));
+        );
 
         let click_through = overlay_settings.click_through;
         let click_through_row = setting_row(
@@ -2763,35 +2820,21 @@ impl Render for SettingsView {
             SettingRowState {
                 enabled: click_through,
                 disabled,
-                tab_index: 5,
             },
-            &self.overlay_click_through_focus,
-            window,
+            cx.listener(move |view, _, _, cx| {
+                if !disabled {
+                    let mut settings = overlay_settings;
+                    settings.click_through = !click_through;
+                    view.set_overlay_settings(settings, cx);
+                }
+            }),
             tokens,
-        )
-        .id("overlay-click-through")
-        .on_click(cx.listener(move |view, _, window, cx| {
-            if !disabled {
-                window.focus(&view.overlay_click_through_focus);
-                let mut settings = overlay_settings;
-                settings.click_through = !click_through;
-                view.set_overlay_settings(settings, cx);
-            }
-        }))
-        .on_key_down(cx.listener(move |view, event, window, cx| {
-            if !disabled && is_activation_key(event) {
-                cx.stop_propagation();
-                window.focus(&view.overlay_click_through_focus);
-                let mut settings = overlay_settings;
-                settings.click_through = !click_through;
-                view.set_overlay_settings(settings, cx);
-            }
-        }));
+        );
 
         let scale_row = div()
             .text_color(if disabled { tokens.muted } else { tokens.text })
             .child(
-                Card::new().child(
+                GroupBox::new().outline().child(
                     div()
                         .flex()
                         .items_center()
@@ -2812,14 +2855,14 @@ impl Render for SettingsView {
                                         .child("Resize the Live2D overlay"),
                                 ),
                         )
-                        .child(self.overlay_scale_input.clone()),
+                        .child(NumberInput::new(&self.overlay_scale_input)),
                 ),
             );
 
         let opacity_row = div()
             .text_color(if disabled { tokens.muted } else { tokens.text })
             .child(
-                Card::new().child(
+                GroupBox::new().outline().child(
                     div()
                         .flex()
                         .items_center()
@@ -2840,7 +2883,7 @@ impl Render for SettingsView {
                                         .child("Adjust the overlay transparency"),
                                 ),
                         )
-                        .child(self.overlay_opacity_input.clone()),
+                        .child(NumberInput::new(&self.overlay_opacity_input)),
                 ),
             );
 
@@ -2856,30 +2899,16 @@ impl Render for SettingsView {
             SettingRowState {
                 enabled: mirror,
                 disabled,
-                tab_index: 6,
             },
-            &self.mirror_focus,
-            window,
+            cx.listener(move |view, _, _, cx| {
+                if !disabled {
+                    let mut settings = model_settings;
+                    settings.mirror = !mirror;
+                    view.set_model_settings(settings, cx);
+                }
+            }),
             tokens,
-        )
-        .id("model-mirror")
-        .on_click(cx.listener(move |view, _, window, cx| {
-            if !disabled {
-                window.focus(&view.mirror_focus);
-                let mut settings = model_settings;
-                settings.mirror = !mirror;
-                view.set_model_settings(settings, cx);
-            }
-        }))
-        .on_key_down(cx.listener(move |view, event, window, cx| {
-            if !disabled && is_activation_key(event) {
-                cx.stop_propagation();
-                window.focus(&view.mirror_focus);
-                let mut settings = model_settings;
-                settings.mirror = !mirror;
-                view.set_model_settings(settings, cx);
-            }
-        }));
+        );
         let mirror_pointer = model_settings.mirror_pointer_tracking;
         let mirror_pointer_row = setting_row(
             "Mirror pointer tracking",
@@ -2887,30 +2916,16 @@ impl Render for SettingsView {
             SettingRowState {
                 enabled: mirror_pointer,
                 disabled,
-                tab_index: 7,
             },
-            &self.mirror_pointer_focus,
-            window,
+            cx.listener(move |view, _, _, cx| {
+                if !disabled {
+                    let mut settings = model_settings;
+                    settings.mirror_pointer_tracking = !mirror_pointer;
+                    view.set_model_settings(settings, cx);
+                }
+            }),
             tokens,
-        )
-        .id("model-mirror-pointer")
-        .on_click(cx.listener(move |view, _, window, cx| {
-            if !disabled {
-                window.focus(&view.mirror_pointer_focus);
-                let mut settings = model_settings;
-                settings.mirror_pointer_tracking = !mirror_pointer;
-                view.set_model_settings(settings, cx);
-            }
-        }))
-        .on_key_down(cx.listener(move |view, event, window, cx| {
-            if !disabled && is_activation_key(event) {
-                cx.stop_propagation();
-                window.focus(&view.mirror_pointer_focus);
-                let mut settings = model_settings;
-                settings.mirror_pointer_tracking = !mirror_pointer;
-                view.set_model_settings(settings, cx);
-            }
-        }));
+        );
         let ignore_pointer = model_settings.ignore_pointer;
         let ignore_pointer_row = setting_row(
             "Ignore pointer input",
@@ -2918,54 +2933,40 @@ impl Render for SettingsView {
             SettingRowState {
                 enabled: ignore_pointer,
                 disabled,
-                tab_index: 8,
             },
-            &self.ignore_pointer_focus,
-            window,
+            cx.listener(move |view, _, _, cx| {
+                if !disabled {
+                    let mut settings = model_settings;
+                    settings.ignore_pointer = !ignore_pointer;
+                    view.set_model_settings(settings, cx);
+                }
+            }),
             tokens,
-        )
-        .id("model-ignore-pointer")
-        .on_click(cx.listener(move |view, _, window, cx| {
-            if !disabled {
-                window.focus(&view.ignore_pointer_focus);
-                let mut settings = model_settings;
-                settings.ignore_pointer = !ignore_pointer;
-                view.set_model_settings(settings, cx);
-            }
-        }))
-        .on_key_down(cx.listener(move |view, event, window, cx| {
-            if !disabled && is_activation_key(event) {
-                cx.stop_propagation();
-                window.focus(&view.ignore_pointer_focus);
-                let mut settings = model_settings;
-                settings.ignore_pointer = !ignore_pointer;
-                view.set_model_settings(settings, cx);
-            }
-        }));
+        );
         let stick_dead_zone_row = div()
             .text_color(if disabled { tokens.muted } else { tokens.text })
             .child(
-                Card::new().child(
+                GroupBox::new().outline().child(
                     div()
                         .flex()
                         .items_center()
                         .justify_between()
                         .gap_3()
                         .child(div().flex_1().child("Gamepad stick dead zone"))
-                        .child(self.stick_dead_zone_input.clone()),
+                        .child(NumberInput::new(&self.stick_dead_zone_input)),
                 ),
             );
         let trigger_dead_zone_row = div()
             .text_color(if disabled { tokens.muted } else { tokens.text })
             .child(
-                Card::new().child(
+                GroupBox::new().outline().child(
                     div()
                         .flex()
                         .items_center()
                         .justify_between()
                         .gap_3()
                         .child(div().flex_1().child("Gamepad trigger dead zone"))
-                        .child(self.trigger_dead_zone_input.clone()),
+                        .child(NumberInput::new(&self.trigger_dead_zone_input)),
                 ),
             );
         let startup_item_action = startup_item.action;
@@ -2975,39 +2976,16 @@ impl Render for SettingsView {
             SettingRowState {
                 enabled: startup_item.enabled,
                 disabled: startup_item.action == StartupItemAction::None,
-                tab_index: 3,
             },
-            &self.startup_item_focus,
-            window,
-            tokens,
-        )
-        .id("startup-item")
-        .on_click(
-            cx.listener(move |view, _, window, cx| match startup_item_action {
+            cx.listener(move |view, _, _, cx| match startup_item_action {
                 StartupItemAction::None => {}
-                StartupItemAction::Retry => {
-                    window.focus(&view.startup_item_focus);
-                    view.refresh(cx);
-                }
+                StartupItemAction::Retry => view.refresh(cx),
                 StartupItemAction::SetEnabled(enabled) => {
-                    window.focus(&view.startup_item_focus);
-                    view.set_startup_item_enabled(enabled, cx);
+                    view.set_startup_item_enabled(enabled, cx)
                 }
             }),
-        )
-        .on_key_down(cx.listener(move |view, event, window, cx| {
-            if startup_item_action != StartupItemAction::None && is_activation_key(event) {
-                cx.stop_propagation();
-                window.focus(&view.startup_item_focus);
-                match startup_item_action {
-                    StartupItemAction::None => {}
-                    StartupItemAction::Retry => view.refresh(cx),
-                    StartupItemAction::SetEnabled(enabled) => {
-                        view.set_startup_item_enabled(enabled, cx);
-                    }
-                }
-            }
-        }));
+            tokens,
+        );
 
         let general_content = div()
             .min_w_0()
@@ -3024,7 +3002,7 @@ impl Render for SettingsView {
             .overflow_y_scroll()
             .child(div().text_2xl().child("General"))
             .child(
-                Card::new().child(
+                GroupBox::new().outline().child(
                     div()
                         .flex()
                         .items_center()
@@ -3043,9 +3021,9 @@ impl Render for SettingsView {
                                 ),
                         )
                         .child(if self.error.is_some() {
-                            Badge::new(status).color(ColorName::Red).into_any_element()
+                            Tag::danger().child(status).into_any_element()
                         } else {
-                            Badge::new(status).into_any_element()
+                            Tag::secondary().child(status).into_any_element()
                         }),
                 ),
             )
@@ -3227,7 +3205,7 @@ impl Render for SettingsView {
                         )),
                     );
                 }
-                Card::new().child(
+                GroupBox::new().outline().child(
                     div()
                         .flex()
                         .flex_col()
@@ -3263,7 +3241,7 @@ impl Render for SettingsView {
                 "No models available"
             };
             model_rows.push(
-                Card::new().child(
+                GroupBox::new().outline().child(
                     div()
                         .py_4()
                         .text_sm()
@@ -3311,7 +3289,7 @@ impl Render for SettingsView {
             .id("models-content")
             .child(div().text_2xl().child("Models"))
             .child(
-                Card::new().child(
+                GroupBox::new().outline().child(
                     div()
                         .flex()
                         .flex_col()
@@ -3334,7 +3312,7 @@ impl Render for SettingsView {
                                                     window.focus(&view.model_id_focus);
                                                 }
                                             }))
-                                            .child(self.model_id_input.clone())
+                                            .child(Input::new(&self.model_id_input))
                                             .when(model_id_disabled, |input| input.opacity(0.6)),
                                     ),
                                 )
@@ -3404,11 +3382,9 @@ impl Render for SettingsView {
                                 ),
                         )
                         .child(if import_failed {
-                            Badge::new(import_status)
-                                .color(ColorName::Red)
-                                .into_any_element()
+                            Tag::danger().child(import_status).into_any_element()
                         } else {
-                            Badge::new(import_status).into_any_element()
+                            Tag::secondary().child(import_status).into_any_element()
                         }),
                 ),
             )
@@ -4494,7 +4470,7 @@ fn diagnostic_group(
     title: &'static str,
     metrics: &[(&'static str, u64)],
     tokens: Tokens,
-) -> gpui::Div {
+) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
@@ -4517,7 +4493,7 @@ fn diagnostic_group(
                         .child(value.to_string()),
                 )
         }))
-        .child(Divider::new())
+        .child(Divider::horizontal())
 }
 
 fn suggested_model_id(source_root: &Path) -> String {
@@ -4731,75 +4707,68 @@ fn navigation_item(
         .when(focus.is_focused(window), |item| {
             item.border_1().border_color(tokens.accent)
         })
-        .child(NavLink::new(label, label).active(selected))
+        .child(
+            div()
+                .id(label)
+                .px_3()
+                .py_2()
+                .rounded(px(6.0))
+                .when(selected, |item| {
+                    item.bg(tokens.selected).text_color(tokens.text)
+                })
+                .when(!selected, |item| {
+                    item.text_color(tokens.muted)
+                        .hover(|style| style.bg(tokens.selected).text_color(tokens.text))
+                })
+                .child(label),
+        )
 }
 
-fn install_guise_theme(window: &Window, cx: &mut App) {
-    let theme = match window.appearance() {
-        WindowAppearance::Dark | WindowAppearance::VibrantDark => Theme::dark(),
-        WindowAppearance::Light | WindowAppearance::VibrantLight => Theme::light(),
-    };
-    theme.init(cx);
+fn install_component_theme(window: &mut Window, cx: &mut App) {
+    Theme::sync_system_appearance(Some(window), cx);
 }
 
 fn setting_row(
     title: &'static str,
     description: SharedString,
     state: SettingRowState,
-    focus: &FocusHandle,
-    window: &Window,
+    on_toggle: impl Fn(&bool, &mut Window, &mut App) + 'static,
     tokens: Tokens,
-) -> gpui::Div {
-    let focused = focus.is_focused(window);
-    div()
-        .key_context("SettingsControl")
-        .track_focus(focus)
-        .tab_index(if state.disabled { -1 } else { state.tab_index })
-        .when(focused, |row| row.border_1().border_color(tokens.accent))
-        .text_color(if state.disabled {
-            tokens.muted
-        } else {
-            tokens.text
-        })
-        .when(!state.disabled, |row| {
-            row.hover(|style| style.bg(tokens.selected).cursor_pointer())
-        })
-        .child(
-            Card::new().child(
+) -> impl IntoElement {
+    GroupBox::new().outline().child(
+        div()
+            .flex()
+            .items_center()
+            .justify_between()
+            .gap_3()
+            .text_color(if state.disabled {
+                tokens.muted
+            } else {
+                tokens.text
+            })
+            .child(
                 div()
+                    .min_w_0()
+                    .flex_1()
                     .flex()
-                    .items_center()
-                    .justify_between()
-                    .gap_3()
-                    .text_color(if state.disabled {
-                        tokens.muted
-                    } else {
-                        tokens.text
-                    })
-                    .child(
-                        div()
-                            .min_w_0()
-                            .flex_1()
-                            .flex()
-                            .flex_col()
-                            .gap_1()
-                            .child(div().child(title))
-                            .child(div().text_sm().text_color(tokens.muted).child(description)),
-                    )
-                    .child(
-                        Switch::new(title)
-                            .checked(state.enabled)
-                            .disabled(state.disabled),
-                    ),
+                    .flex_col()
+                    .gap_1()
+                    .child(div().child(title))
+                    .child(div().text_sm().text_color(tokens.muted).child(description)),
+            )
+            .child(
+                Switch::new(title)
+                    .checked(state.enabled)
+                    .disabled(state.disabled)
+                    .on_click(on_toggle),
             ),
-        )
+    )
 }
 
 #[derive(Clone, Copy)]
 struct SettingRowState {
     enabled: bool,
     disabled: bool,
-    tab_index: isize,
 }
 
 fn stepped_overlay_scale(mut settings: SettingsOverlay, delta: i16) -> SettingsOverlay {
@@ -4826,7 +4795,7 @@ fn command_button(
         .key_context("SettingsControl")
         .track_focus(focus)
         .tab_index(tab_index)
-        .child(Button::new(label, label).disabled(disabled))
+        .child(Button::new(label).label(label).disabled(disabled))
 }
 
 pub fn open_settings_window(
@@ -4834,10 +4803,12 @@ pub fn open_settings_window(
     window_state: SettingsWindowState,
     request_quit: impl Fn(&mut App) + 'static,
     cx: &mut App,
-) -> Result<WindowHandle<SettingsView>, String> {
+) -> Result<SettingsWindowHandle, String> {
     let window_bounds = initial_window_bounds(&window_state, cx);
     let accessibility_error = Rc::new(RefCell::new(None));
     let open_accessibility_error = Rc::clone(&accessibility_error);
+    let settings_view = Rc::new(RefCell::new(None));
+    let opened_settings_view = Rc::clone(&settings_view);
     let handle = cx
         .open_window(
             WindowOptions {
@@ -4852,10 +4823,13 @@ pub fn open_settings_window(
                 ..Default::default()
             },
             move |window, cx| {
-                install_guise_theme(window, cx);
+                if !cx.has_global::<Theme>() {
+                    gpui_component::init(cx);
+                }
+                install_component_theme(window, cx);
                 window
                     .observe_window_appearance(|window, cx| {
-                        install_guise_theme(window, cx);
+                        install_component_theme(window, cx);
                     })
                     .detach();
                 if let Some(placement) = placement_from_window(window) {
@@ -4870,10 +4844,11 @@ pub fn open_settings_window(
                         }
                     })
                     .detach();
-                    let mut view = SettingsView::new(client, request_quit, cx);
+                    let mut view = SettingsView::new(client, request_quit, window, cx);
                     view.refresh(cx);
                     view
                 });
+                opened_settings_view.borrow_mut().replace(view.clone());
                 #[cfg(any(target_os = "macos", target_os = "windows"))]
                 {
                     let result = HasWindowHandle::window_handle(window)
@@ -4917,7 +4892,7 @@ pub fn open_settings_window(
                 if open_accessibility_error.borrow().is_none() {
                     window.activate_window();
                 }
-                view
+                cx.new(|cx| Root::new(view, window, cx))
             },
         )
         .map_err(|error| error.to_string())?;
@@ -4926,7 +4901,14 @@ pub fn open_settings_window(
         return Err(format!("attach settings accessibility bridge: {error}"));
     }
     cx.activate(true);
-    Ok(handle)
+    let view = settings_view
+        .borrow_mut()
+        .take()
+        .ok_or_else(|| "settings view was not created".to_owned())?;
+    Ok(SettingsWindowHandle {
+        window: handle,
+        view: view.downgrade(),
+    })
 }
 
 fn initial_window_bounds(window_state: &SettingsWindowState, cx: &App) -> WindowBounds {

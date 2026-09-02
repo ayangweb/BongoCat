@@ -27,6 +27,7 @@ serde_json.workspace = true
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 bongocat-platform.workspace = true
 gpui.workspace = true
+gpui-component-assets.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

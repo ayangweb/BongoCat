@@ -13,7 +13,7 @@ use std::{
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod window;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-pub use window::{SettingsView, open_settings_window};
+pub use window::{SettingsView, SettingsWindowHandle, open_settings_window};
 
 const MIN_SETTINGS_WINDOW_WIDTH: u32 = 640;
 const MIN_SETTINGS_WINDOW_HEIGHT: u32 = 480;

@@ -210,31 +210,27 @@ Issue #47 的“收到按下但未收到释放”必须从架构上处理，不�
 
 ## 11. UI 要求
 
-### 11.1 Guise UI 组件规范
+### 11.1 gpui-component 组件规范
 
-Native GPUI 设置界面统一使用官方 `guise-ui = "=1.5.3"`（library 名称为 `guise`），
-该版本基于 crates.io `gpui = "=0.2.2"`。开发 UI 前必须先查阅官方仓库
-<https://github.com/wess/guise>、组件文档 <https://wess.io/guise/components.html> 和
-对应的专题文档；不得根据其他组件库、旧版本记忆或猜测臆造 API。
+Native GPUI 设置界面统一使用 `gpui-component = "=0.5.1"`，该版本基于 crates.io
+`gpui = "=0.2.2"`。开发 UI 前必须先查阅官方仓库
+<https://github.com/longbridge/gpui-component>、组件文档
+<https://longbridge.github.io/gpui-component/docs/components/> 和对应专题文档；不得根据
+其他组件库、旧版本记忆或猜测臆造 API。
 
-- 优先使用 `guise::prelude::*` 导出的官方组件；只有明确的业务特殊行为才保留自定义控件。
-- 主题在 GPUI 应用启动/窗口创建时调用 `guise::Theme::light().init(cx)` 或
-  `guise::Theme::dark().init(cx)` 安装为全局；组件从 `guise::theme(cx)` 读取语义色。
-- 不在业务代码重复硬编码默认颜色、字号、间距、圆角或控件高度。除非有明确设计需求，
-  不显式传入 `color(...)`、`size(...)`、`radius(...)`；让 Guise 默认值和 Theme 生效。
-- 常用官方组件及核心 API：`Button::new(id, label)`；`Switch::new(id).checked(bool)`；
-  `Checkbox::new(id).checked(bool)`；`Radio::new(id).checked(bool)`；`TextInput::new(cx)`、
-  `NumberInput::new(cx)`、`Select::new(cx)`、`Slider::new(cx)`（实体通过 `cx.new` 创建）；
-  `Tabs::new(cx)`、`Card::new()`、`Panel::new()`、`Divider::new()`、`Badge::new(label)`、
-  `Progress::new(percent)`、`Icon::new(IconName::...)`、`Tooltip`/`Modal`/`Menu` 等。
-- 受控组件通过 `.on_change(cx.listener(...))` 或官方 `Binding` 连接状态；有内部编辑/选择状态
-  的实体必须订阅官方事件（例如 `NumberInputEvent`、`SliderEvent`、`TextInputEvent`、
-  `SelectEvent`），不要绕过事件协议直接伪造控件状态。
-- `NumberInput` 的构造顺序遵循官方 API：`NumberInput::new(cx).min(...).max(...).step(...).value(...)`；
-  `Slider` 遵循 `Slider::new(cx).min(...).max(...).step(...).value(...)`。范围约束来自业务 schema，
-  不得把显示步进器重新实现成自绘按钮。
-- `guise::flex` 与 `guise::layout` 名称有重叠，使用前按官方文档显式导入正确模块；不要混用
-  `gpui-component` 或其他组件库的同名 API。
+- 优先使用 `gpui_component` 对应模块导出的组件；只有明确的业务特殊行为或组件库没有等价
+  primitive 时才保留项目内薄封装。
+- 每个 GPUI 应用在创建组件前调用 `gpui_component::init(cx)`，并以
+  `gpui_component::Root` 作为窗口根视图；系统外观变化通过
+  `Theme::sync_system_appearance(Some(window), cx)` 同步。
+- 组件语义色通过 `ActiveTheme::theme()` 读取。不在业务代码重复硬编码默认颜色、字号、间距、
+  圆角或控件高度；除非有明确产品需求，让组件默认值和 `Theme` 生效。
+- 常用组件及核心 API：`Button::new(id).label(label)`、`Switch::new(id).checked(bool)`、
+  `Checkbox::new(id).checked(bool)`、`Radio::new(id)`、`InputState::new(window, cx)`、
+  `Input::new(&state)`、`NumberInput::new(&state)`、`Select`、`Slider`、`TabBar`、
+  `Divider::horizontal()`、`Badge::new()`、`Progress`、`Icon`、`Tooltip`、`Dialog` 和 `Menu`。
+- `Input`/`NumberInput` 绑定 `Entity<InputState>`；文本编辑订阅 `InputEvent`，数字步进另订阅
+  `NumberInputEvent`。范围、步长和最终校验仍来自业务 schema，组件事件不得绕过 typed command。
 - 迁移组件后删除不再使用的自定义绘制、模块导出和依赖；更新 TODO 记录已迁移组件、剩余
   特殊控件和官方文档依据。
 

@@ -12,10 +12,12 @@ use bongocat_platform::{
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_platform::{SystemMenu, SystemMenuAction};
+#[cfg(target_os = "windows")]
+use bongocat_ui::SettingsView;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-use bongocat_ui::{SettingsError, SettingsErrorCode, SettingsView, open_settings_window};
+use bongocat_ui::{SettingsError, SettingsErrorCode, SettingsWindowHandle, open_settings_window};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-use gpui::{App, Application as GpuiApplication, Global, Timer, WindowHandle};
+use gpui::{App, Application as GpuiApplication, Global, Timer};
 #[cfg(target_os = "windows")]
 use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(target_os = "windows")]
@@ -204,7 +206,7 @@ struct ProductCoordinator {
     #[cfg(target_os = "windows")]
     overlay: Rc<RefCell<Option<ProductOverlaySession>>>,
     settings_service: Option<bongocat_app::ApplicationSettingsService>,
-    settings_window: Option<WindowHandle<SettingsView>>,
+    settings_window: Option<SettingsWindowHandle>,
     system_menu: Option<SystemMenu>,
     #[cfg(target_os = "macos")]
     application_reopens: u64,
@@ -242,7 +244,7 @@ fn flatten_update_result<E: fmt::Display>(
 #[cfg(target_os = "windows")]
 async fn update_windows_settings<R>(
     cx: &mut gpui::AsyncApp,
-    window_handle: WindowHandle<SettingsView>,
+    window_handle: SettingsWindowHandle,
     mut update: impl FnMut(&mut SettingsView, &mut gpui::Window, &mut gpui::Context<SettingsView>) -> R,
 ) -> Result<R, String> {
     const MAX_ATTEMPTS: u32 = 200;
@@ -379,10 +381,10 @@ fn windows_product_exit_code(failures: &Arc<Mutex<Vec<String>>>) -> i32 {
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-fn ensure_settings_window(cx: &mut App) -> Result<WindowHandle<SettingsView>, String> {
+fn ensure_settings_window(cx: &mut App) -> Result<SettingsWindowHandle, String> {
     let existing = cx
         .try_global::<ProductCoordinator>()
-        .and_then(|coordinator| coordinator.settings_window);
+        .and_then(|coordinator| coordinator.settings_window.clone());
     if let Some(window_handle) = existing {
         match window_handle.update(cx, |view, window, cx| view.reopen(window, cx)) {
             Ok(Ok(())) => {
@@ -401,7 +403,7 @@ fn ensure_settings_window(cx: &mut App) -> Result<WindowHandle<SettingsView>, St
         .ok_or_else(|| "settings service owner is unavailable".to_owned())?;
     let window_handle =
         open_settings_window(settings_client, window_state, request_product_quit, cx)?;
-    cx.global_mut::<ProductCoordinator>().settings_window = Some(window_handle);
+    cx.global_mut::<ProductCoordinator>().settings_window = Some(window_handle.clone());
     Ok(window_handle)
 }
 
@@ -514,7 +516,7 @@ fn run_configuration_recovery_mode(
     let settings_service = bongocat_app::ApplicationSettingsService::start(application)?;
     let settings_client = settings_service.client();
     let window_state = settings_service.window_state();
-    let gpui_application = GpuiApplication::new();
+    let gpui_application = GpuiApplication::new().with_assets(gpui_component_assets::Assets);
     gpui_application.run(move |cx| {
         if let Err(error) = open_settings_window(
             settings_client.clone(),
@@ -598,7 +600,7 @@ fn run_configuration_recovery_smoke() -> Result<(), Box<dyn std::error::Error>> 
     ) {
         return Err("recovery smoke did not project the expected recovery snapshot".into());
     }
-    let gpui_application = GpuiApplication::new();
+    let gpui_application = GpuiApplication::new().with_assets(gpui_component_assets::Assets);
     let smoke_client = client.clone();
     gpui_application.run(move |cx| {
         let window = match open_settings_window(smoke_client, window_state, |cx| cx.quit(), cx) {
@@ -666,7 +668,7 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
     let service = bongocat_app::ApplicationSettingsService::start(application)?;
     let client = service.client();
     let window_state = service.window_state();
-    let gpui_application = GpuiApplication::new();
+    let gpui_application = GpuiApplication::new().with_assets(gpui_component_assets::Assets);
     gpui_application.run(move |cx| {
         let window =
             match open_settings_window(client.clone(), window_state.clone(), |cx| cx.quit(), cx) {
@@ -835,7 +837,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let run_failures = Arc::clone(&failures);
     #[cfg(target_os = "windows")]
     let shutdown_requested = Arc::new(AtomicBool::new(false));
-    let gpui_application = GpuiApplication::new();
+    let gpui_application = GpuiApplication::new().with_assets(gpui_component_assets::Assets);
     let reopen_failures = Arc::clone(&run_failures);
     #[cfg(target_os = "macos")]
     let application_reopen_smoke = run_options.application_reopen_smoke;
@@ -947,7 +949,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(target_os = "windows")]
             overlay,
             settings_service: Some(settings_service),
-            settings_window: Some(settings_window),
+            settings_window: Some(settings_window.clone()),
             system_menu: Some(system_menu),
             #[cfg(target_os = "macos")]
             application_reopens: 0,
@@ -967,7 +969,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         cx.on_window_closed(|cx| {
             let Some(window_handle) = cx
                 .try_global::<ProductCoordinator>()
-                .and_then(|coordinator| coordinator.settings_window)
+                .and_then(|coordinator| coordinator.settings_window.clone())
             else {
                 return;
             };
@@ -1103,7 +1105,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     (
                                         false,
                                         Some(error.to_string()),
-                                        coordinator.settings_window,
+                                        coordinator.settings_window.clone(),
                                         Some(Arc::clone(&coordinator.failures)),
                                     )
                                 }
@@ -1281,6 +1283,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         (
                             coordinator
                                 .settings_window
+                                .clone()
                                 .ok_or_else(|| "settings window is not open".to_owned())?,
                             coordinator.frame_ticks,
                         )
@@ -1376,7 +1379,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 Timer::after(Duration::from_millis(500)).await;
                 #[cfg(target_os = "macos")]
-                let reopened = cx.update(|cx| -> Result<WindowHandle<SettingsView>, String> {
+                let reopened = cx.update(|cx| -> Result<SettingsWindowHandle, String> {
                     if cx.global::<ProductCoordinator>().frame_ticks <= baseline_ticks {
                         return Err(
                             "frame source stopped while the settings window was closed".to_owned()
@@ -1400,7 +1403,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let reopened = update_windows_settings(
                     cx,
                     original_window,
-                    |view, window, cx| -> Result<WindowHandle<SettingsView>, String> {
+                    |view, window, cx| -> Result<SettingsWindowHandle, String> {
                         if cx.global::<ProductCoordinator>().frame_ticks <= baseline_ticks {
                             return Err(
                                 "frame source stopped while the settings window was closed"
@@ -1411,7 +1414,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if cx.windows().len() != 1 {
                             return Err("settings reopen created more than one window".to_owned());
                         }
-                        Ok(original_window)
+                        Ok(original_window.clone())
                     },
                 )
                 .await;
@@ -1441,6 +1444,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let window_handle = cx
                         .global::<ProductCoordinator>()
                         .settings_window
+                        .clone()
                         .ok_or_else(|| "settings window was not recreated".to_owned())?;
                     let revision = window_handle
                         .update(cx, |view, _, _| view.snapshot_revision())
@@ -1519,6 +1523,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let window = cx
                         .global::<ProductCoordinator>()
                         .settings_window
+                        .clone()
                         .ok_or_else(|| {
                             "Open Settings did not retain a settings window".to_owned()
                         })?;
@@ -1561,6 +1566,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let coordinator = cx.global::<ProductCoordinator>();
                     let original_window = coordinator
                         .settings_window
+                        .clone()
                         .ok_or_else(|| "settings window is not open".to_owned())?;
                     let frame_ticks = coordinator.frame_ticks;
                     let application_reopens = coordinator.application_reopens;
@@ -1627,7 +1633,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if coordinator.frame_ticks <= baseline_ticks {
                             return Ok(false);
                         }
-                        let reopened = coordinator.settings_window.ok_or_else(|| {
+                        let reopened = coordinator.settings_window.clone().ok_or_else(|| {
                             "application reopen did not retain a settings window".to_owned()
                         })?;
                         if reopened == original_window {

@@ -14,7 +14,7 @@ bongocat-config.workspace = true
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 bongocat-platform.workspace = true
 gpui.workspace = true
-guise-ui.workspace = true
+gpui-component.workspace = true
 raw-window-handle.workspace = true
 
 [lints]
