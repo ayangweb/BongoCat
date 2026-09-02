@@ -223,7 +223,20 @@ impl Render for SettingsView {
                 })),
             );
 
-        let general_content = general::content(self, window, cx, snapshot.as_ref(), disabled, overlay_visible, overlay_settings, motion_audio_enabled, model_settings, active_model, status, tokens);
+        let general_content = general::content(
+            self,
+            window,
+            cx,
+            snapshot.as_ref(),
+            disabled,
+            overlay_visible,
+            overlay_settings,
+            motion_audio_enabled,
+            model_settings,
+            active_model,
+            status,
+            tokens,
+        );
         let models_content = models::content(self, window, cx, snapshot.as_ref(), tokens);
         let diagnostics_content =
             diagnostics::content(self, window, cx, snapshot.as_ref(), disabled, tokens);

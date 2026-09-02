@@ -11,7 +11,10 @@ impl SettingsView {
     }
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
-    pub(super) fn accessibility_tree_with_focus(&self, focus: AccessibilityNodeId) -> AccessibilityTree {
+    pub(super) fn accessibility_tree_with_focus(
+        &self,
+        focus: AccessibilityNodeId,
+    ) -> AccessibilityTree {
         let snapshot = self.snapshot.as_ref();
         let configuration_ready = snapshot.is_some_and(|snapshot| {
             snapshot.configuration_status == SettingsConfigurationStatus::Ready
@@ -590,5 +593,4 @@ impl SettingsView {
         }
         let _ = window;
     }
-
 }

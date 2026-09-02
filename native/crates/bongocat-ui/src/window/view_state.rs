@@ -214,5 +214,4 @@ impl SettingsView {
             accessibility_focus: None,
         }
     }
-
 }

@@ -349,5 +349,4 @@ impl SettingsView {
             _ => {}
         }
     }
-
 }

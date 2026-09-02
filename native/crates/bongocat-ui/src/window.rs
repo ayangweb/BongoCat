@@ -43,17 +43,17 @@ use std::{
 
 mod presentation;
 use presentation::*;
-mod diagnostics;
 mod accessibility;
-mod view_state;
-mod smoke;
-mod settings;
-mod shortcuts;
-mod model_actions;
+mod diagnostics;
 mod general;
+mod lifecycle;
+mod model_actions;
 mod models;
 mod render;
-mod lifecycle;
+mod settings;
+mod shortcuts;
+mod smoke;
+mod view_state;
 pub use lifecycle::open_settings_window;
 #[cfg(test)]
 mod tests;

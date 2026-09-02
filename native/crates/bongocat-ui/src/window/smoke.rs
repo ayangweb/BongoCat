@@ -382,5 +382,4 @@ impl SettingsView {
         window.activate_window();
         Ok(())
     }
-
 }

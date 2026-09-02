@@ -311,6 +311,8 @@ mod tests {
     use std::ffi::CString;
     use tempfile::tempdir;
 
+    static CORE_LOG_INSTALL_TEST_LOCK: Mutex<()> = Mutex::new(());
+
     #[test]
     fn sanitizes_paths_and_bounds_message_bytes() {
         let message =
@@ -404,6 +406,9 @@ mod tests {
 
     #[test]
     fn installed_callback_writes_structured_record_and_is_removed_on_drop() {
+        let _install_guard = CORE_LOG_INSTALL_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let directory = tempdir().expect("temporary directory");
         let path = directory.path().join("core.jsonl");
         let handle = CoreLogHandle::install(&path).expect("install Core logger");
@@ -429,6 +434,9 @@ mod tests {
     fn core_log_storage_is_owner_only() {
         use std::os::unix::fs::PermissionsExt;
 
+        let _install_guard = CORE_LOG_INSTALL_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let directory = tempdir().expect("temporary directory");
         let path = directory.path().join("logs/core.jsonl");
         let handle = CoreLogHandle::install(&path).expect("install Core logger");

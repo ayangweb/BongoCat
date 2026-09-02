@@ -199,7 +199,9 @@ pub(super) fn shortcut_conflicts(shortcuts: &SettingsShortcuts) -> bool {
         .any(|chord| !seen.insert(chord.canonical()))
 }
 
-pub(super) fn input_diagnostic_metrics(diagnostics: SettingsInputDiagnostics) -> [(&'static str, u64); 25] {
+pub(super) fn input_diagnostic_metrics(
+    diagnostics: SettingsInputDiagnostics,
+) -> [(&'static str, u64); 25] {
     [
         ("Pressed keys", diagnostics.pressed_key_count as u64),
         (
@@ -257,7 +259,9 @@ pub(super) struct InputServicePresentation {
     pub(super) attention: bool,
 }
 
-pub(super) fn input_service_presentation(diagnostics: SettingsInputDiagnostics) -> InputServicePresentation {
+pub(super) fn input_service_presentation(
+    diagnostics: SettingsInputDiagnostics,
+) -> InputServicePresentation {
     let (title, running, attention) = match diagnostics.service_status {
         SettingsInputServiceStatus::NotStarted => ("Not started", false, false),
         SettingsInputServiceStatus::Running => ("Running", true, false),

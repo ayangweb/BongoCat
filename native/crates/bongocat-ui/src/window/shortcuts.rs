@@ -94,5 +94,4 @@ impl SettingsView {
             cx,
         );
     }
-
 }

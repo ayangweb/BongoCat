@@ -23,7 +23,11 @@ impl SettingsView {
         );
     }
 
-    pub(super) fn set_overlay_settings(&mut self, settings: SettingsOverlay, cx: &mut Context<Self>) {
+    pub(super) fn set_overlay_settings(
+        &mut self,
+        settings: SettingsOverlay,
+        cx: &mut Context<Self>,
+    ) {
         let Some(expected_config_revision) = self
             .snapshot
             .as_ref()
@@ -127,7 +131,11 @@ impl SettingsView {
         );
     }
 
-    pub(super) fn set_model_settings(&mut self, settings: SettingsModelSettings, cx: &mut Context<Self>) {
+    pub(super) fn set_model_settings(
+        &mut self,
+        settings: SettingsModelSettings,
+        cx: &mut Context<Self>,
+    ) {
         let Some(expected_config_revision) = self
             .snapshot
             .as_ref()
@@ -145,7 +153,12 @@ impl SettingsView {
         );
     }
 
-    pub(super) fn adjust_gamepad_dead_zone(&mut self, stick: bool, delta: i16, cx: &mut Context<Self>) {
+    pub(super) fn adjust_gamepad_dead_zone(
+        &mut self,
+        stick: bool,
+        delta: i16,
+        cx: &mut Context<Self>,
+    ) {
         if self.pending.is_some() || self.model_import.is_running() {
             return;
         }
@@ -165,7 +178,12 @@ impl SettingsView {
         self.set_gamepad_axis_settings(settings, cx);
     }
 
-    pub(super) fn set_gamepad_dead_zone_value(&mut self, stick: bool, raw: f64, cx: &mut Context<Self>) {
+    pub(super) fn set_gamepad_dead_zone_value(
+        &mut self,
+        stick: bool,
+        raw: f64,
+        cx: &mut Context<Self>,
+    ) {
         if self.pending.is_some() || self.model_import.is_running() {
             return;
         }
@@ -292,5 +310,4 @@ impl SettingsView {
             cx,
         );
     }
-
 }
