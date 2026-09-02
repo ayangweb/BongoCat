@@ -36,6 +36,7 @@ use objc2_app_kit::{
     NSWindowCollectionBehavior, NSWindowStyleMask,
 };
 use objc2_foundation::{NSDate, NSDefaultRunLoopMode, NSPoint, NSRect, NSSize};
+use objc2_quartz_core::CAMetalLayer as ObjcMetalLayer;
 use std::{
     collections::{BTreeMap, BTreeSet},
     mem::{self, ManuallyDrop},
@@ -48,6 +49,7 @@ use std::{
 const MIN_WINDOW_DIMENSION: f64 = 64.0;
 const FRAME_INTERVAL: Duration = Duration::from_micros(16_667);
 const RUNTIME_TIMEOUT: Duration = Duration::from_millis(250);
+const METAL_COMPLETION_TIMEOUT: Duration = Duration::from_secs(2);
 const SWITCH_WARMUP_FRAMES: u64 = 30;
 const SWITCH_SETTLE_FRAMES: u64 = 30;
 const PRESET_MODEL_IDS: [&str; 3] = ["standard", "keyboard", "gamepad"];
@@ -985,9 +987,13 @@ impl NativeOverlay {
         ));
         // SAFETY: metal::MetalLayerRef and objc2 QuartzCore both wrap the
         // same Objective-C CAMetalLayer instance, which NSView retains.
-        let layer_ref = unsafe {
-            mem::transmute::<&metal::MetalLayerRef, &objc2_quartz_core::CALayer>(layer.as_ref())
-        };
+        let layer_ref =
+            unsafe { mem::transmute::<&metal::MetalLayerRef, &ObjcMetalLayer>(layer.as_ref()) };
+        // A headless or temporarily occluded compositor must not leave
+        // nextDrawable waiting forever; return None so the caller can report
+        // a recoverable renderer failure instead.
+        layer_ref.setAllowsNextDrawableTimeout(true);
+        layer_ref.setMaximumDrawableCount(3);
         view.setLayer(Some(layer_ref));
         panel.setContentView(Some(&view));
 
@@ -1248,7 +1254,14 @@ impl NativeOverlay {
         // Shared per-drawable buffers cannot be rewritten until this frame
         // retires. A later renderer revision will replace this correctness
         // fence with multiple in-flight frame resources.
-        command_buffer.wait_until_completed();
+        let completion_deadline = Instant::now() + METAL_COMPLETION_TIMEOUT;
+        loop {
+            match command_buffer.status() {
+                MTLCommandBufferStatus::Completed | MTLCommandBufferStatus::Error => break,
+                _ if Instant::now() >= completion_deadline => break,
+                _ => thread::sleep(Duration::from_millis(1)),
+            }
+        }
         if command_buffer.status() != MTLCommandBufferStatus::Completed {
             return Err(OverlayError::new(format!(
                 "Metal command buffer ended with {:?}",
