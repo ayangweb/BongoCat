@@ -210,6 +210,34 @@ Issue #47 的“收到按下但未收到释放”必须从架构上处理，不�
 
 ## 11. UI 要求
 
+### 11.1 Guise UI 组件规范
+
+Native GPUI 设置界面统一使用官方 `guise-ui = "=1.5.3"`（library 名称为 `guise`），
+该版本基于 crates.io `gpui = "=0.2.2"`。开发 UI 前必须先查阅官方仓库
+<https://github.com/wess/guise>、组件文档 <https://wess.io/guise/components.html> 和
+对应的专题文档；不得根据其他组件库、旧版本记忆或猜测臆造 API。
+
+- 优先使用 `guise::prelude::*` 导出的官方组件；只有明确的业务特殊行为才保留自定义控件。
+- 主题在 GPUI 应用启动/窗口创建时调用 `guise::Theme::light().init(cx)` 或
+  `guise::Theme::dark().init(cx)` 安装为全局；组件从 `guise::theme(cx)` 读取语义色。
+- 不在业务代码重复硬编码默认颜色、字号、间距、圆角或控件高度。除非有明确设计需求，
+  不显式传入 `color(...)`、`size(...)`、`radius(...)`；让 Guise 默认值和 Theme 生效。
+- 常用官方组件及核心 API：`Button::new(id, label)`；`Switch::new(id).checked(bool)`；
+  `Checkbox::new(id).checked(bool)`；`Radio::new(id).checked(bool)`；`TextInput::new(cx)`、
+  `NumberInput::new(cx)`、`Select::new(cx)`、`Slider::new(cx)`（实体通过 `cx.new` 创建）；
+  `Tabs::new(cx)`、`Card::new()`、`Panel::new()`、`Divider::new()`、`Badge::new(label)`、
+  `Progress::new(percent)`、`Icon::new(IconName::...)`、`Tooltip`/`Modal`/`Menu` 等。
+- 受控组件通过 `.on_change(cx.listener(...))` 或官方 `Binding` 连接状态；有内部编辑/选择状态
+  的实体必须订阅官方事件（例如 `NumberInputEvent`、`SliderEvent`、`TextInputEvent`、
+  `SelectEvent`），不要绕过事件协议直接伪造控件状态。
+- `NumberInput` 的构造顺序遵循官方 API：`NumberInput::new(cx).min(...).max(...).step(...).value(...)`；
+  `Slider` 遵循 `Slider::new(cx).min(...).max(...).step(...).value(...)`。范围约束来自业务 schema，
+  不得把显示步进器重新实现成自绘按钮。
+- `guise::flex` 与 `guise::layout` 名称有重叠，使用前按官方文档显式导入正确模块；不要混用
+  `gpui-component` 或其他组件库的同名 API。
+- 迁移组件后删除不再使用的自定义绘制、模块导出和依赖；更新 TODO 记录已迁移组件、剩余
+  特殊控件和官方文档依据。
+
 - 设置界面应安静、紧凑、适合重复操作，不使用营销页式布局。
 - 建立项目自己的 design tokens 和基础控件，不直接依赖产品私有组件。
 - 使用熟悉的图标表达工具操作，并为不熟悉图标提供 tooltip/accessibility label。

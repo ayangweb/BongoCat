@@ -17,9 +17,14 @@ use bongocat_platform::{
 };
 use bongocat_platform::{DirectoryPickerError, DirectoryPickerOutcome, pick_model_directory};
 use gpui::{
-    App, Bounds, Context, FocusHandle, KeyDownEvent, Render, SharedString, Timer, TitlebarOptions,
-    Window, WindowAppearance, WindowBounds, WindowHandle, WindowOptions, div, point, prelude::*,
-    px, rgb, size,
+    App, Bounds, Context, Entity, FocusHandle, Hsla, KeyDownEvent, Render, SharedString, Timer,
+    TitlebarOptions, Window, WindowAppearance, WindowBounds, WindowHandle, WindowOptions, div,
+    point, prelude::*, px, size,
+};
+use guise::theme::ColorName;
+use guise::{
+    Badge, Button, Card, Divider, NavLink, NumberInput, NumberInputEvent, Switch, TextInput,
+    TextInputEvent, Theme,
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use raw_window_handle::HasWindowHandle;
@@ -92,46 +97,28 @@ const ACCESSIBILITY_TRIGGER_DEAD_ZONE: AccessibilityNodeId = AccessibilityNodeId
 
 #[derive(Clone, Copy)]
 struct Tokens {
-    canvas: gpui::Rgba,
-    sidebar: gpui::Rgba,
-    surface: gpui::Rgba,
-    selected: gpui::Rgba,
-    border: gpui::Rgba,
-    text: gpui::Rgba,
-    muted: gpui::Rgba,
-    accent: gpui::Rgba,
-    danger: gpui::Rgba,
+    canvas: Hsla,
+    sidebar: Hsla,
+    selected: Hsla,
+    border: Hsla,
+    text: Hsla,
+    muted: Hsla,
+    accent: Hsla,
+    danger: Hsla,
 }
 
 impl Tokens {
-    fn for_window(window: &Window) -> Self {
-        if matches!(
-            window.appearance(),
-            WindowAppearance::Dark | WindowAppearance::VibrantDark
-        ) {
-            Self {
-                canvas: rgb(0x1f2227),
-                sidebar: rgb(0x181a1e),
-                surface: rgb(0x292d33),
-                selected: rgb(0x343b45),
-                border: rgb(0x414750),
-                text: rgb(0xf4f5f7),
-                muted: rgb(0xa8afb9),
-                accent: rgb(0x55b9a6),
-                danger: rgb(0xff8c82),
-            }
-        } else {
-            Self {
-                canvas: rgb(0xf4f5f7),
-                sidebar: rgb(0xe7e9ed),
-                surface: rgb(0xffffff),
-                selected: rgb(0xdceeea),
-                border: rgb(0xc8cdd4),
-                text: rgb(0x20242a),
-                muted: rgb(0x626b76),
-                accent: rgb(0x167563),
-                danger: rgb(0xb42318),
-            }
+    fn from_theme(cx: &App) -> Self {
+        let theme = guise::theme(cx);
+        Self {
+            canvas: theme.body().hsla(),
+            sidebar: theme.surface().hsla(),
+            selected: theme.surface_hover().hsla(),
+            border: theme.border().hsla(),
+            text: theme.text().hsla(),
+            muted: theme.dimmed().hsla(),
+            accent: theme.primary().hsla(),
+            danger: theme.danger().hsla(),
         }
     }
 }
@@ -277,37 +264,6 @@ impl ModelImportDraft {
         }
     }
 
-    fn edit_id(&mut self, event: &KeyDownEvent) -> bool {
-        if self.is_running()
-            || event.keystroke.modifiers.control
-            || event.keystroke.modifiers.platform
-            || event.keystroke.modifiers.alt
-        {
-            return false;
-        }
-        if event.keystroke.key == "backspace" {
-            let changed = self.id.pop().is_some();
-            if changed {
-                self.reset_result_state();
-            }
-            return changed;
-        }
-        let Some(character) = event.keystroke.key_char.as_deref() else {
-            return false;
-        };
-        if self.id.len() >= 64
-            || character.len() != 1
-            || !character
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
-        {
-            return false;
-        }
-        self.id.push_str(character);
-        self.reset_result_state();
-        true
-    }
-
     fn reset_result_state(&mut self) {
         self.state = if self.source_root.is_some() {
             ModelImportState::Ready
@@ -358,6 +314,12 @@ pub struct SettingsView {
     export_diagnostics_focus: FocusHandle,
     refresh_focus: FocusHandle,
     quit_focus: FocusHandle,
+    overlay_scale_input: Entity<NumberInput>,
+    overlay_opacity_input: Entity<NumberInput>,
+    stick_dead_zone_input: Entity<NumberInput>,
+    trigger_dead_zone_input: Entity<NumberInput>,
+    model_id_input: Entity<TextInput>,
+    syncing_guise_inputs: bool,
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     accessibility: Option<SettingsAccessibilityBridge>,
     #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -365,11 +327,112 @@ pub struct SettingsView {
 }
 
 impl SettingsView {
+    fn sync_guise_inputs(&mut self, snapshot: &SettingsSnapshot, cx: &mut Context<Self>) {
+        self.syncing_guise_inputs = true;
+        let scale = f64::from(snapshot.overlay.scale_percent);
+        let opacity = f64::from(snapshot.overlay.opacity_percent);
+        let stick = f64::from(snapshot.gamepad_axis_settings.stick_dead_zone_percent);
+        let trigger = f64::from(snapshot.gamepad_axis_settings.trigger_dead_zone_percent);
+        self.overlay_scale_input
+            .update(cx, |input, cx| input.set_value(scale, cx));
+        self.overlay_opacity_input
+            .update(cx, |input, cx| input.set_value(opacity, cx));
+        self.stick_dead_zone_input
+            .update(cx, |input, cx| input.set_value(stick, cx));
+        self.trigger_dead_zone_input
+            .update(cx, |input, cx| input.set_value(trigger, cx));
+        self.model_id_input
+            .update(cx, |input, cx| input.set_text(&self.model_import.id, cx));
+        self.syncing_guise_inputs = false;
+    }
+
     fn new(
         client: SettingsClient,
         request_quit: Rc<dyn Fn(&mut App)>,
         cx: &mut Context<Self>,
     ) -> Self {
+        let overlay_scale_input = cx.new(|cx| {
+            NumberInput::new(cx)
+                .min(25.0)
+                .max(400.0)
+                .step(25.0)
+                .value(100.0)
+        });
+        let overlay_opacity_input = cx.new(|cx| {
+            NumberInput::new(cx)
+                .min(1.0)
+                .max(100.0)
+                .step(10.0)
+                .value(100.0)
+        });
+        let stick_dead_zone_input = cx.new(|cx| {
+            NumberInput::new(cx)
+                .min(0.0)
+                .max(99.0)
+                .step(5.0)
+                .value(15.0)
+        });
+        let trigger_dead_zone_input =
+            cx.new(|cx| NumberInput::new(cx).min(0.0).max(99.0).step(5.0).value(0.0));
+        let model_id_input = cx.new(|cx| TextInput::new(cx).placeholder("Model ID").max_length(64));
+        cx.subscribe(
+            &overlay_scale_input,
+            |view, _, event: &NumberInputEvent, cx| {
+                if view.syncing_guise_inputs {
+                    return;
+                }
+                view.set_overlay_scale_value(event.0, cx);
+            },
+        )
+        .detach();
+        cx.subscribe(
+            &overlay_opacity_input,
+            |view, _, event: &NumberInputEvent, cx| {
+                if view.syncing_guise_inputs {
+                    return;
+                }
+                view.set_overlay_opacity_value(event.0, cx);
+            },
+        )
+        .detach();
+        cx.subscribe(
+            &stick_dead_zone_input,
+            |view, _, event: &NumberInputEvent, cx| {
+                if view.syncing_guise_inputs {
+                    return;
+                }
+                view.set_gamepad_dead_zone_value(true, event.0, cx);
+            },
+        )
+        .detach();
+        cx.subscribe(
+            &trigger_dead_zone_input,
+            |view, _, event: &NumberInputEvent, cx| {
+                if view.syncing_guise_inputs {
+                    return;
+                }
+                view.set_gamepad_dead_zone_value(false, event.0, cx);
+            },
+        )
+        .detach();
+        cx.subscribe(&model_id_input, |view, _, event: &TextInputEvent, cx| {
+            if let TextInputEvent::Change(value) = event {
+                if view.syncing_guise_inputs || view.model_import.is_running() {
+                    return;
+                }
+                let sanitized = sanitize_model_id_input(value);
+                if sanitized != *value {
+                    view.syncing_guise_inputs = true;
+                    view.model_id_input
+                        .update(cx, |input, cx| input.set_text(&sanitized, cx));
+                    view.syncing_guise_inputs = false;
+                }
+                view.model_import.id = sanitized;
+                view.model_import.reset_result_state();
+                cx.notify();
+            }
+        })
+        .detach();
         Self {
             client,
             snapshot: None,
@@ -411,6 +474,12 @@ impl SettingsView {
             export_diagnostics_focus: cx.focus_handle().tab_index(32).tab_stop(true),
             refresh_focus: cx.focus_handle().tab_index(30).tab_stop(true),
             quit_focus: cx.focus_handle().tab_index(31).tab_stop(true),
+            overlay_scale_input,
+            overlay_opacity_input,
+            stick_dead_zone_input,
+            trigger_dead_zone_input,
+            model_id_input,
+            syncing_guise_inputs: false,
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             accessibility: None,
             #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -1446,6 +1515,24 @@ impl SettingsView {
         }
     }
 
+    fn set_overlay_scale_value(&mut self, raw: f64, cx: &mut Context<Self>) {
+        if self.pending.is_some() || self.model_import.is_running() {
+            return;
+        }
+        let value = raw.round().clamp(25.0, 400.0) as u16;
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        if snapshot.configuration_status != SettingsConfigurationStatus::Ready
+            || snapshot.overlay.scale_percent == value
+        {
+            return;
+        }
+        let mut settings = snapshot.overlay;
+        settings.scale_percent = value;
+        self.set_overlay_settings(settings, cx);
+    }
+
     fn adjust_overlay_opacity(&mut self, delta: i16, cx: &mut Context<Self>) {
         if self.pending.is_some() || self.model_import.is_running() {
             return;
@@ -1460,6 +1547,24 @@ impl SettingsView {
         if settings.opacity_percent != snapshot.overlay.opacity_percent {
             self.set_overlay_settings(settings, cx);
         }
+    }
+
+    fn set_overlay_opacity_value(&mut self, raw: f64, cx: &mut Context<Self>) {
+        if self.pending.is_some() || self.model_import.is_running() {
+            return;
+        }
+        let value = raw.round().clamp(1.0, 100.0) as u8;
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        if snapshot.configuration_status != SettingsConfigurationStatus::Ready
+            || snapshot.overlay.opacity_percent == value
+        {
+            return;
+        }
+        let mut settings = snapshot.overlay;
+        settings.opacity_percent = value;
+        self.set_overlay_settings(settings, cx);
     }
 
     fn set_motion_audio_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
@@ -1515,6 +1620,30 @@ impl SettingsView {
             &mut settings.trigger_dead_zone_percent
         };
         *value = (i16::from(*value) + delta).clamp(0, 99) as u8;
+        self.set_gamepad_axis_settings(settings, cx);
+    }
+
+    fn set_gamepad_dead_zone_value(&mut self, stick: bool, raw: f64, cx: &mut Context<Self>) {
+        if self.pending.is_some() || self.model_import.is_running() {
+            return;
+        }
+        let value = raw.round().clamp(0.0, 99.0) as u8;
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        if snapshot.configuration_status != SettingsConfigurationStatus::Ready {
+            return;
+        }
+        let mut settings = snapshot.gamepad_axis_settings;
+        let current = if stick {
+            &mut settings.stick_dead_zone_percent
+        } else {
+            &mut settings.trigger_dead_zone_percent
+        };
+        if *current == value {
+            return;
+        }
+        *current = value;
         self.set_gamepad_axis_settings(settings, cx);
     }
 
@@ -2186,6 +2315,15 @@ impl SettingsView {
     }
 }
 
+fn sanitize_model_id_input(value: &str) -> String {
+    value
+        .bytes()
+        .filter(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+        .take(64)
+        .map(char::from)
+        .collect()
+}
+
 #[derive(Clone)]
 enum SettingValue {
     OverlayVisible {
@@ -2361,8 +2499,11 @@ impl Render for SettingsView {
             }
             self.update_accessibility(window);
         }
-        let tokens = Tokens::for_window(window);
+        let tokens = Tokens::from_theme(cx);
         let snapshot = self.snapshot.clone();
+        if let Some(snapshot) = snapshot.as_ref() {
+            self.sync_guise_inputs(snapshot, cx);
+        }
         let overlay_visible = snapshot
             .as_ref()
             .is_some_and(|snapshot| snapshot.overlay_visible);
@@ -2376,10 +2517,6 @@ impl Render for SettingsView {
         let model_settings = snapshot
             .as_ref()
             .map(|snapshot| snapshot.model_settings)
-            .unwrap_or_default();
-        let axis_settings = snapshot
-            .as_ref()
-            .map(|snapshot| snapshot.gamepad_axis_settings)
             .unwrap_or_default();
         let configuration_ready = snapshot.as_ref().is_some_and(|snapshot| {
             snapshot.configuration_status == SettingsConfigurationStatus::Ready
@@ -2651,186 +2788,60 @@ impl Render for SettingsView {
             }
         }));
 
-        let scale_percent = overlay_settings.scale_percent;
-        let scale_decrease_disabled = disabled || scale_percent <= 25;
-        let scale_increase_disabled = disabled || scale_percent >= 400;
         let scale_row = div()
-            .flex()
-            .items_center()
-            .justify_between()
-            .p_4()
-            .rounded_md()
-            .border_1()
-            .border_color(tokens.border)
-            .bg(tokens.surface)
             .text_color(if disabled { tokens.muted } else { tokens.text })
             .child(
-                div()
-                    .min_w_0()
-                    .flex_1()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(div().child("Overlay scale"))
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(tokens.muted)
-                            .child("Resize the Live2D overlay"),
-                    ),
-            )
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .child(
-                        command_button(
-                            "-",
-                            &self.overlay_scale_decrease_focus,
-                            15,
-                            window,
-                            tokens,
-                            scale_decrease_disabled,
+                Card::new().child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .gap_3()
+                        .child(
+                            div()
+                                .min_w_0()
+                                .flex_1()
+                                .flex()
+                                .flex_col()
+                                .gap_1()
+                                .child(div().child("Overlay scale"))
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(tokens.muted)
+                                        .child("Resize the Live2D overlay"),
+                                ),
                         )
-                        .id("overlay-scale-decrease")
-                        .on_click(cx.listener(|view, _, window, cx| {
-                            window.focus(&view.overlay_scale_decrease_focus);
-                            view.adjust_overlay_scale(-25, cx);
-                        }))
-                        .on_key_down(cx.listener(
-                            |view, event, window, cx| {
-                                if is_activation_key(event) {
-                                    cx.stop_propagation();
-                                    window.focus(&view.overlay_scale_decrease_focus);
-                                    view.adjust_overlay_scale(-25, cx);
-                                }
-                            },
-                        )),
-                    )
-                    .child(
-                        div()
-                            .w(px(56.0))
-                            .flex()
-                            .justify_center()
-                            .text_sm()
-                            .child(format!("{scale_percent}%")),
-                    )
-                    .child(
-                        command_button(
-                            "+",
-                            &self.overlay_scale_increase_focus,
-                            16,
-                            window,
-                            tokens,
-                            scale_increase_disabled,
-                        )
-                        .id("overlay-scale-increase")
-                        .on_click(cx.listener(|view, _, window, cx| {
-                            window.focus(&view.overlay_scale_increase_focus);
-                            view.adjust_overlay_scale(25, cx);
-                        }))
-                        .on_key_down(cx.listener(
-                            |view, event, window, cx| {
-                                if is_activation_key(event) {
-                                    cx.stop_propagation();
-                                    window.focus(&view.overlay_scale_increase_focus);
-                                    view.adjust_overlay_scale(25, cx);
-                                }
-                            },
-                        )),
-                    ),
+                        .child(self.overlay_scale_input.clone()),
+                ),
             );
 
-        let opacity_percent = overlay_settings.opacity_percent;
-        let opacity_decrease_disabled = disabled || opacity_percent <= 1;
-        let opacity_increase_disabled = disabled || opacity_percent >= 100;
         let opacity_row = div()
-            .flex()
-            .items_center()
-            .justify_between()
-            .p_4()
-            .rounded_md()
-            .border_1()
-            .border_color(tokens.border)
-            .bg(tokens.surface)
             .text_color(if disabled { tokens.muted } else { tokens.text })
             .child(
-                div()
-                    .min_w_0()
-                    .flex_1()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(div().child("Overlay opacity"))
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(tokens.muted)
-                            .child("Adjust the overlay transparency"),
-                    ),
-            )
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .child(
-                        command_button(
-                            "-",
-                            &self.overlay_opacity_decrease_focus,
-                            17,
-                            window,
-                            tokens,
-                            opacity_decrease_disabled,
+                Card::new().child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .gap_3()
+                        .child(
+                            div()
+                                .min_w_0()
+                                .flex_1()
+                                .flex()
+                                .flex_col()
+                                .gap_1()
+                                .child(div().child("Overlay opacity"))
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(tokens.muted)
+                                        .child("Adjust the overlay transparency"),
+                                ),
                         )
-                        .id("overlay-opacity-decrease")
-                        .on_click(cx.listener(|view, _, window, cx| {
-                            window.focus(&view.overlay_opacity_decrease_focus);
-                            view.adjust_overlay_opacity(-10, cx);
-                        }))
-                        .on_key_down(cx.listener(
-                            |view, event, window, cx| {
-                                if is_activation_key(event) {
-                                    cx.stop_propagation();
-                                    window.focus(&view.overlay_opacity_decrease_focus);
-                                    view.adjust_overlay_opacity(-10, cx);
-                                }
-                            },
-                        )),
-                    )
-                    .child(
-                        div()
-                            .w(px(56.0))
-                            .flex()
-                            .justify_center()
-                            .text_sm()
-                            .child(format!("{opacity_percent}%")),
-                    )
-                    .child(
-                        command_button(
-                            "+",
-                            &self.overlay_opacity_increase_focus,
-                            18,
-                            window,
-                            tokens,
-                            opacity_increase_disabled,
-                        )
-                        .id("overlay-opacity-increase")
-                        .on_click(cx.listener(|view, _, window, cx| {
-                            window.focus(&view.overlay_opacity_increase_focus);
-                            view.adjust_overlay_opacity(10, cx);
-                        }))
-                        .on_key_down(cx.listener(
-                            |view, event, window, cx| {
-                                if is_activation_key(event) {
-                                    cx.stop_propagation();
-                                    window.focus(&view.overlay_opacity_increase_focus);
-                                    view.adjust_overlay_opacity(10, cx);
-                                }
-                            },
-                        )),
-                    ),
+                        .child(self.overlay_opacity_input.clone()),
+                ),
             );
 
         let startup_item = startup_item_presentation(
@@ -2931,50 +2942,32 @@ impl Render for SettingsView {
                 view.set_model_settings(settings, cx);
             }
         }));
-        let stick_dead_zone = axis_settings.stick_dead_zone_percent;
-        let stick_dead_zone_row = dead_zone_row(
-            "Gamepad stick dead zone",
-            stick_dead_zone,
-            &self.stick_dead_zone_focus,
-            24,
-            window,
-            tokens,
-            disabled,
-        )
-        .id("gamepad-stick-dead-zone")
-        .on_click(cx.listener(|view, _, window, cx| {
-            window.focus(&view.stick_dead_zone_focus);
-            view.adjust_gamepad_dead_zone(true, 5, cx);
-        }))
-        .on_key_down(cx.listener(|view, event, window, cx| {
-            if is_activation_key(event) {
-                cx.stop_propagation();
-                window.focus(&view.stick_dead_zone_focus);
-                view.adjust_gamepad_dead_zone(true, 5, cx);
-            }
-        }));
-        let trigger_dead_zone = axis_settings.trigger_dead_zone_percent;
-        let trigger_dead_zone_row = dead_zone_row(
-            "Gamepad trigger dead zone",
-            trigger_dead_zone,
-            &self.trigger_dead_zone_focus,
-            25,
-            window,
-            tokens,
-            disabled,
-        )
-        .id("gamepad-trigger-dead-zone")
-        .on_click(cx.listener(|view, _, window, cx| {
-            window.focus(&view.trigger_dead_zone_focus);
-            view.adjust_gamepad_dead_zone(false, 5, cx);
-        }))
-        .on_key_down(cx.listener(|view, event, window, cx| {
-            if is_activation_key(event) {
-                cx.stop_propagation();
-                window.focus(&view.trigger_dead_zone_focus);
-                view.adjust_gamepad_dead_zone(false, 5, cx);
-            }
-        }));
+        let stick_dead_zone_row = div()
+            .text_color(if disabled { tokens.muted } else { tokens.text })
+            .child(
+                Card::new().child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .gap_3()
+                        .child(div().flex_1().child("Gamepad stick dead zone"))
+                        .child(self.stick_dead_zone_input.clone()),
+                ),
+            );
+        let trigger_dead_zone_row = div()
+            .text_color(if disabled { tokens.muted } else { tokens.text })
+            .child(
+                Card::new().child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .gap_3()
+                        .child(div().flex_1().child("Gamepad trigger dead zone"))
+                        .child(self.trigger_dead_zone_input.clone()),
+                ),
+            );
         let startup_item_action = startup_item.action;
         let startup_item_row = setting_row(
             "Open at login",
@@ -3031,35 +3024,30 @@ impl Render for SettingsView {
             .overflow_y_scroll()
             .child(div().text_2xl().child("General"))
             .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .p_4()
-                    .rounded_md()
-                    .border_1()
-                    .border_color(tokens.border)
-                    .bg(tokens.surface)
-                    .child(
-                        div()
-                            .min_w_0()
-                            .flex_1()
-                            .flex()
-                            .flex_col()
-                            .gap_1()
-                            .child(div().child("Active model"))
-                            .child(div().text_sm().text_color(tokens.muted).child(active_model)),
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(if self.error.is_some() {
-                                tokens.danger
-                            } else {
-                                tokens.muted
-                            })
-                            .child(status),
-                    ),
+                Card::new().child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .gap_3()
+                        .child(
+                            div()
+                                .min_w_0()
+                                .flex_1()
+                                .flex()
+                                .flex_col()
+                                .gap_1()
+                                .child(div().child("Active model"))
+                                .child(
+                                    div().text_sm().text_color(tokens.muted).child(active_model),
+                                ),
+                        )
+                        .child(if self.error.is_some() {
+                            Badge::new(status).color(ColorName::Red).into_any_element()
+                        } else {
+                            Badge::new(status).into_any_element()
+                        }),
+                ),
             )
             .child(overlay_row)
             .child(topmost_row)
@@ -3076,11 +3064,6 @@ impl Render for SettingsView {
             .child(div().flex_1());
 
         let (import_status, import_failed) = model_import_status(&self.model_import);
-        let model_id: SharedString = if self.model_import.id.is_empty() {
-            "Model ID".into()
-        } else {
-            self.model_import.id.clone().into()
-        };
         let import_running = self.model_import.is_running();
         let picker_open = self.model_import.is_picker_open();
         let model_id_disabled = import_running || picker_open;
@@ -3244,29 +3227,28 @@ impl Render for SettingsView {
                         )),
                     );
                 }
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .py_3()
-                    .border_b_1()
-                    .border_color(tokens.border)
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .justify_between()
-                            .gap_3()
-                            .child(
-                                div()
-                                    .min_w_0()
-                                    .flex_1()
-                                    .text_color(tokens.text)
-                                    .child(entry.id),
-                            )
-                            .child(actions_row),
-                    )
-                    .child(div().text_sm().text_color(tokens.muted).child(availability))
+                Card::new().child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .gap_3()
+                                .child(
+                                    div()
+                                        .min_w_0()
+                                        .flex_1()
+                                        .text_color(tokens.text)
+                                        .child(entry.id),
+                                )
+                                .child(actions_row),
+                        )
+                        .child(div().text_sm().text_color(tokens.muted).child(availability)),
+                )
             })
             .collect::<Vec<_>>();
         let catalog_error = snapshot
@@ -3281,15 +3263,17 @@ impl Render for SettingsView {
                 "No models available"
             };
             model_rows.push(
-                div()
-                    .py_4()
-                    .text_sm()
-                    .text_color(if catalog_error {
-                        tokens.danger
-                    } else {
-                        tokens.muted
-                    })
-                    .child(empty_status),
+                Card::new().child(
+                    div()
+                        .py_4()
+                        .text_sm()
+                        .text_color(if catalog_error {
+                            tokens.danger
+                        } else {
+                            tokens.muted
+                        })
+                        .child(empty_status),
+                ),
             );
         }
         let (management_status, management_failed): (SharedString, bool) =
@@ -3327,93 +3311,54 @@ impl Render for SettingsView {
             .id("models-content")
             .child(div().text_2xl().child("Models"))
             .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_3()
-                    .pb_4()
-                    .border_b_1()
-                    .border_color(tokens.border)
-                    .child(
-                        div()
-                            .flex()
-                            .items_end()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .min_w_0()
-                                    .flex_1()
-                                    .flex()
-                                    .flex_col()
-                                    .gap_1()
-                                    .child(
-                                        div().text_sm().text_color(tokens.muted).child("Model ID"),
-                                    )
-                                    .child(
+                Card::new().child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_3()
+                        .child(
+                            div()
+                                .flex()
+                                .items_end()
+                                .gap_2()
+                                .child(
+                                    div().min_w_0().flex_1().flex().flex_col().gap_1().child(
                                         div()
                                             .id("model-id-input")
                                             .key_context("SettingsModelId")
                                             .track_focus(&self.model_id_focus)
                                             .tab_index(20)
-                                            .h(px(34.0))
                                             .w_full()
-                                            .flex()
-                                            .items_center()
-                                            .px_3()
-                                            .border_1()
-                                            .border_color(
-                                                if self.model_id_focus.is_focused(window) {
-                                                    tokens.accent
-                                                } else {
-                                                    tokens.border
-                                                },
-                                            )
-                                            .rounded_md()
-                                            .bg(tokens.surface)
-                                            .text_color(if self.model_import.id.is_empty() {
-                                                tokens.muted
-                                            } else {
-                                                tokens.text
-                                            })
-                                            .when(!model_id_disabled, |input| {
-                                                input.hover(|style| style.cursor_text())
-                                            })
                                             .on_click(cx.listener(|view, _, window, _| {
                                                 if !view.model_import.is_running() {
                                                     window.focus(&view.model_id_focus);
                                                 }
                                             }))
-                                            .on_key_down(cx.listener(|view, event, _, cx| {
-                                                if view.model_import.edit_id(event) {
-                                                    cx.stop_propagation();
-                                                    cx.notify();
-                                                }
-                                            }))
-                                            .child(model_id),
+                                            .child(self.model_id_input.clone())
+                                            .when(model_id_disabled, |input| input.opacity(0.6)),
                                     ),
-                            )
-                            .child(
-                                command_button(
-                                    picker_button_label,
-                                    &self.choose_model_focus,
-                                    21,
-                                    window,
-                                    tokens,
-                                    picker_disabled,
                                 )
-                                .w(px(112.0))
-                                .id("choose-model-directory")
-                                .on_click(cx.listener(|view, _, window, cx| {
-                                    if !view.model_import.is_running()
-                                        && !view.model_import.is_picker_open()
-                                        && view.pending.is_none()
-                                    {
-                                        window.focus(&view.choose_model_focus);
-                                        view.choose_model_directory(cx);
-                                    }
-                                }))
-                                .on_key_down(cx.listener(
-                                    |view, event, window, cx| {
+                                .child(
+                                    command_button(
+                                        picker_button_label,
+                                        &self.choose_model_focus,
+                                        21,
+                                        window,
+                                        tokens,
+                                        picker_disabled,
+                                    )
+                                    .w(px(112.0))
+                                    .id("choose-model-directory")
+                                    .on_click(cx.listener(|view, _, window, cx| {
+                                        if !view.model_import.is_running()
+                                            && !view.model_import.is_picker_open()
+                                            && view.pending.is_none()
+                                        {
+                                            window.focus(&view.choose_model_focus);
+                                            view.choose_model_directory(cx);
+                                        }
+                                    }))
+                                    .on_key_down(cx.listener(|view, event, window, cx| {
                                         if !view.model_import.is_running()
                                             && !view.model_import.is_picker_open()
                                             && view.pending.is_none()
@@ -3423,31 +3368,29 @@ impl Render for SettingsView {
                                             window.focus(&view.choose_model_focus);
                                             view.choose_model_directory(cx);
                                         }
-                                    },
-                                )),
-                            )
-                            .child(
-                                command_button(
-                                    import_button_label,
-                                    &self.import_model_focus,
-                                    22,
-                                    window,
-                                    tokens,
-                                    import_disabled,
+                                    })),
                                 )
-                                .id("import-model")
-                                .on_click(cx.listener(move |view, _, window, cx| {
-                                    if !import_disabled {
-                                        window.focus(&view.import_model_focus);
-                                        if import_running {
-                                            view.cancel_model_import(cx);
-                                        } else {
-                                            view.start_model_import(cx);
+                                .child(
+                                    command_button(
+                                        import_button_label,
+                                        &self.import_model_focus,
+                                        22,
+                                        window,
+                                        tokens,
+                                        import_disabled,
+                                    )
+                                    .id("import-model")
+                                    .on_click(cx.listener(move |view, _, window, cx| {
+                                        if !import_disabled {
+                                            window.focus(&view.import_model_focus);
+                                            if import_running {
+                                                view.cancel_model_import(cx);
+                                            } else {
+                                                view.start_model_import(cx);
+                                            }
                                         }
-                                    }
-                                }))
-                                .on_key_down(cx.listener(
-                                    move |view, event, window, cx| {
+                                    }))
+                                    .on_key_down(cx.listener(move |view, event, window, cx| {
                                         if !import_disabled && is_activation_key(event) {
                                             cx.stop_propagation();
                                             window.focus(&view.import_model_focus);
@@ -3457,21 +3400,17 @@ impl Render for SettingsView {
                                                 view.start_model_import(cx);
                                             }
                                         }
-                                    },
-                                )),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .h(px(20.0))
-                            .text_sm()
-                            .text_color(if import_failed {
-                                tokens.danger
-                            } else {
-                                tokens.muted
-                            })
-                            .child(import_status),
-                    ),
+                                    })),
+                                ),
+                        )
+                        .child(if import_failed {
+                            Badge::new(import_status)
+                                .color(ColorName::Red)
+                                .into_any_element()
+                        } else {
+                            Badge::new(import_status).into_any_element()
+                        }),
+                ),
             )
             .child(
                 div()
@@ -4561,8 +4500,6 @@ fn diagnostic_group(
         .flex_col()
         .pb_3()
         .mb_3()
-        .border_b_1()
-        .border_color(tokens.border)
         .child(div().pb_2().text_sm().text_color(tokens.muted).child(title))
         .children(metrics.iter().map(|(label, value)| {
             div()
@@ -4580,6 +4517,7 @@ fn diagnostic_group(
                         .child(value.to_string()),
                 )
         }))
+        .child(Divider::new())
 }
 
 fn suggested_model_id(source_root: &Path) -> String {
@@ -4790,24 +4728,18 @@ fn navigation_item(
         .key_context("SettingsNavigation")
         .track_focus(focus)
         .tab_index(tab_index)
-        .p_3()
-        .rounded_md()
-        .border_1()
-        .border_color(if focus.is_focused(window) {
-            tokens.accent
-        } else if selected {
-            tokens.selected
-        } else {
-            tokens.sidebar
+        .when(focus.is_focused(window), |item| {
+            item.border_1().border_color(tokens.accent)
         })
-        .bg(if selected {
-            tokens.selected
-        } else {
-            tokens.sidebar
-        })
-        .text_color(if selected { tokens.text } else { tokens.muted })
-        .hover(|style| style.bg(tokens.selected).cursor_pointer())
-        .child(label)
+        .child(NavLink::new(label, label).active(selected))
+}
+
+fn install_guise_theme(window: &Window, cx: &mut App) {
+    let theme = match window.appearance() {
+        WindowAppearance::Dark | WindowAppearance::VibrantDark => Theme::dark(),
+        WindowAppearance::Light | WindowAppearance::VibrantLight => Theme::light(),
+    };
+    theme.init(cx);
 }
 
 fn setting_row(
@@ -4823,18 +4755,7 @@ fn setting_row(
         .key_context("SettingsControl")
         .track_focus(focus)
         .tab_index(if state.disabled { -1 } else { state.tab_index })
-        .flex()
-        .items_center()
-        .justify_between()
-        .p_4()
-        .rounded_md()
-        .border_1()
-        .border_color(if focused {
-            tokens.accent
-        } else {
-            tokens.border
-        })
-        .bg(tokens.surface)
+        .when(focused, |row| row.border_1().border_color(tokens.accent))
         .text_color(if state.disabled {
             tokens.muted
         } else {
@@ -4844,92 +4765,33 @@ fn setting_row(
             row.hover(|style| style.bg(tokens.selected).cursor_pointer())
         })
         .child(
-            div()
-                .min_w_0()
-                .flex_1()
-                .flex()
-                .flex_col()
-                .gap_1()
-                .child(div().child(title))
-                .child(div().text_sm().text_color(tokens.muted).child(description)),
-        )
-        .child(
-            div()
-                .w(px(38.0))
-                .h(px(22.0))
-                .flex_none()
-                .flex()
-                .items_center()
-                .p(px(3.0))
-                .rounded(px(11.0))
-                .bg(if state.enabled && !state.disabled {
-                    tokens.accent
-                } else {
-                    tokens.border
-                })
-                .when(state.enabled, |toggle| toggle.justify_end())
-                .when(!state.enabled, |toggle| toggle.justify_start())
-                .child(
-                    div()
-                        .w(px(16.0))
-                        .h(px(16.0))
-                        .rounded(px(8.0))
-                        .bg(tokens.surface),
-                ),
-        )
-}
-
-fn dead_zone_row(
-    title: &'static str,
-    percent: u8,
-    focus: &FocusHandle,
-    tab_index: isize,
-    window: &Window,
-    tokens: Tokens,
-    disabled: bool,
-) -> gpui::Div {
-    let focused = focus.is_focused(window);
-    div()
-        .key_context("SettingsControl")
-        .track_focus(focus)
-        .tab_index(if disabled { -1 } else { tab_index })
-        .flex()
-        .items_center()
-        .justify_between()
-        .p_4()
-        .rounded_md()
-        .border_1()
-        .border_color(if focused {
-            tokens.accent
-        } else {
-            tokens.border
-        })
-        .bg(tokens.surface)
-        .text_color(if disabled { tokens.muted } else { tokens.text })
-        .when(!disabled, |row| {
-            row.hover(|style| style.bg(tokens.selected).cursor_pointer())
-        })
-        .child(
-            div()
-                .min_w_0()
-                .flex_1()
-                .flex()
-                .flex_col()
-                .gap_1()
-                .child(div().child(title))
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(tokens.muted)
-                        .child("Adjust gamepad response threshold"),
-                ),
-        )
-        .child(
-            div()
-                .w(px(56.0))
-                .flex()
-                .justify_center()
-                .child(format!("{percent}%")),
+            Card::new().child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap_3()
+                    .text_color(if state.disabled {
+                        tokens.muted
+                    } else {
+                        tokens.text
+                    })
+                    .child(
+                        div()
+                            .min_w_0()
+                            .flex_1()
+                            .flex()
+                            .flex_col()
+                            .gap_1()
+                            .child(div().child(title))
+                            .child(div().text_sm().text_color(tokens.muted).child(description)),
+                    )
+                    .child(
+                        Switch::new(title)
+                            .checked(state.enabled)
+                            .disabled(state.disabled),
+                    ),
+            ),
         )
 }
 
@@ -4956,32 +4818,15 @@ fn command_button(
     label: &'static str,
     focus: &FocusHandle,
     tab_index: isize,
-    window: &Window,
-    tokens: Tokens,
+    _window: &Window,
+    _tokens: Tokens,
     disabled: bool,
 ) -> gpui::Div {
     div()
         .key_context("SettingsControl")
         .track_focus(focus)
         .tab_index(tab_index)
-        .w(px(86.0))
-        .h(px(32.0))
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded_md()
-        .border_1()
-        .border_color(if focus.is_focused(window) {
-            tokens.accent
-        } else {
-            tokens.border
-        })
-        .bg(tokens.surface)
-        .text_color(if disabled { tokens.muted } else { tokens.text })
-        .when(!disabled, |button| {
-            button.hover(|style| style.bg(tokens.selected).cursor_pointer())
-        })
-        .child(label)
+        .child(Button::new(label, label).disabled(disabled))
 }
 
 pub fn open_settings_window(
@@ -5007,6 +4852,12 @@ pub fn open_settings_window(
                 ..Default::default()
             },
             move |window, cx| {
+                install_guise_theme(window, cx);
+                window
+                    .observe_window_appearance(|window, cx| {
+                        install_guise_theme(window, cx);
+                    })
+                    .detach();
                 if let Some(placement) = placement_from_window(window) {
                     window_state.update(placement);
                 }
@@ -5427,23 +5278,10 @@ mod tests {
     }
 
     #[test]
-    fn model_id_draft_accepts_only_the_product_ascii_shape() {
-        let mut draft = ModelImportDraft {
-            id: String::new(),
-            source_root: Some(PathBuf::from("/private/source")),
-            state: ModelImportState::Failed(SettingsError::new(SettingsErrorCode::InvalidModelId)),
-        };
-        assert!(draft.edit_id(&key("a", Some("a"))));
-        assert!(draft.edit_id(&key("-", Some("-"))));
-        assert!(!draft.edit_id(&key("/", Some("/"))));
-        assert_eq!(draft.id, "a-");
-        assert!(matches!(draft.state, ModelImportState::Ready));
-        assert!(draft.edit_id(&key("backspace", None)));
-        assert_eq!(draft.id, "a");
-
-        draft.id = "x".repeat(64);
-        assert!(!draft.edit_id(&key("y", Some("y"))));
-        assert_eq!(draft.id.len(), 64);
+    fn model_id_input_accepts_only_the_product_ascii_shape() {
+        assert_eq!(sanitize_model_id_input("a-/b_c.d"), "a-b_c.d");
+        assert_eq!(sanitize_model_id_input("模型目录"), "");
+        assert_eq!(sanitize_model_id_input(&"x".repeat(80)).len(), 64);
     }
 
     #[test]

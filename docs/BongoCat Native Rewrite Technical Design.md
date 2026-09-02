@@ -94,7 +94,7 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
 
 - 首个 spike 使用审计时 crates.io 最新稳定版并固定为 `gpui = "=0.2.2"`，提交 `Cargo.lock`，禁止 `version = "*"`。
 - 不自动跟随 Zed main，不直接依赖 Zed 应用内部 UI crate。
-- 项目内建立小型 design system：颜色、排版、间距、焦点、按钮、表单、列表、弹窗和通知。
+- 以官方 `guise-ui = "=1.5.3"`（基于 crates.io `gpui 0.2.2`）提供的主题和基础组件为 design system 基础；项目只保留领域适配、产品 token 覆盖和未被 `guise` 覆盖的业务控件。
 - GPUI `Entity` 只保存视图状态；真实输入、动画、配置和模型状态由 runtime 管理。
 - 正式 `bongocat-ui` 只定义设置 command/snapshot 协议和 GPUI 视图；`bongocat-app`
   的有界 service worker 独占配置写入和 runtime command，UI executor 不执行阻塞 I/O。

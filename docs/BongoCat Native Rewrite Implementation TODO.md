@@ -1093,6 +1093,16 @@ overlay owner；设置更新失败时保留旧 snapshot。scale/opacity 的可�
 
 ### 6.3 Design System
 
+状态（2026-09-02）：按 `guise` 官方仓库 `v1.5.3` 与文档确认其基于 crates.io
+`gpui 0.2.2`，Native workspace 已精确加入 `guise-ui = 1.5.3`（关闭未使用的默认
+WebView feature）。设置窗口创建与系统外观变化时安装 `guise::Theme`；导航、设置卡片、
+状态标签、分隔线、开关、按钮、模型 ID、overlay scale/opacity 与 gamepad dead-zone 已迁移
+到官方 `NavLink`、`Card`、`Badge`、`Divider`、`Switch`、`Button`、`TextInput` 和
+`NumberInput`。实体输入通过官方事件接入现有 typed command/draft，并从 snapshot 同步而不
+重复发事件。快捷键捕获、确认删除和平台辅助功能焦点继续保留领域适配层；当前页面没有选择器、
+标签页或浮层需求，后续出现对应交互时直接使用 `Select`、`Tabs`、`Modal`/`ConfirmModal`，
+不预建无业务用途的组件。双平台辅助功能与缩放实机证据仍待补齐。
+
 - [ ] 定义颜色、排版、间距、圆角、边框、阴影和焦点 token。
 - [ ] 实现 Button、IconButton、TextInput、NumberInput、Slider、Switch。
 - [ ] 实现 Select、Menu、Tabs、Tooltip、Dialog、Toast。
