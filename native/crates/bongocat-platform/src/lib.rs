@@ -84,6 +84,7 @@ pub struct DisplayBounds {
 }
 
 impl DisplayBounds {
+    #[cfg(any(test, target_os = "macos", target_os = "windows"))]
     fn intersects_window(self, x: f32, y: f32, width: f32, height: f32) -> bool {
         x < self.x + self.width
             && x + width > self.x

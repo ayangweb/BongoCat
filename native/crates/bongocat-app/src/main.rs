@@ -244,7 +244,7 @@ fn flatten_update_result<E: fmt::Display>(
 #[cfg(target_os = "windows")]
 async fn update_windows_settings<R>(
     cx: &mut gpui::AsyncApp,
-    window_handle: SettingsWindowHandle,
+    window_handle: &SettingsWindowHandle,
     mut update: impl FnMut(&mut SettingsView, &mut gpui::Window, &mut gpui::Context<SettingsView>) -> R,
 ) -> Result<R, String> {
     const MAX_ATTEMPTS: u32 = 200;
@@ -1084,7 +1084,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .detach();
 
         #[cfg(target_os = "windows")]
-        let frame_window = settings_window;
+        let frame_window = settings_window.clone();
         #[cfg(target_os = "windows")]
         let frame_failures = Arc::clone(&run_failures);
         #[cfg(target_os = "windows")]
@@ -1192,7 +1192,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 #[cfg(target_os = "windows")]
                 let mut tick_result = Some(tick_result);
                 #[cfg(target_os = "windows")]
-                let keep_running = update_windows_settings(cx, frame_window, |view, _, cx| {
+                let keep_running = update_windows_settings(cx, &frame_window, |view, _, cx| {
                     if !cx.has_global::<ProductCoordinator>() {
                         return false;
                     }
@@ -1255,7 +1255,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if run_options.settings_window_smoke {
             let smoke_failures = Arc::clone(&run_failures);
-            let smoke_window = settings_window;
+            let smoke_window = settings_window.clone();
             #[cfg(target_os = "windows")]
             let smoke_shutdown_requested = Arc::clone(&shutdown_requested);
             cx.spawn(async move |cx| {
@@ -1270,7 +1270,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .map_err(|error| error.to_string())?
                 });
                 #[cfg(target_os = "windows")]
-                let settings_pages = update_windows_settings(cx, smoke_window, |view, _, cx| {
+                let settings_pages = update_windows_settings(cx, &smoke_window, |view, _, cx| {
                     view.show_general_page_for_smoke(cx)?;
                     view.show_diagnostics_page_for_smoke(cx)
                 })
@@ -1302,7 +1302,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .map_err(|error| error.to_string())?
                     });
                     #[cfg(target_os = "windows")]
-                    let models_page = update_windows_settings(cx, smoke_window, |view, _, cx| {
+                    let models_page = update_windows_settings(cx, &smoke_window, |view, _, cx| {
                         view.show_models_page_for_smoke(cx)
                     })
                     .await;
@@ -1356,12 +1356,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 #[cfg(target_os = "windows")]
                 let baseline = update_windows_settings(
                     cx,
-                    smoke_window,
+                    &smoke_window,
                     |_, window, cx| -> Result<_, String> {
                         let frame_ticks = cx.global::<ProductCoordinator>().frame_ticks;
                         bongocat_platform::request_native_window_close(window)
                             .map_err(|error| error.to_string())?;
-                        Ok((frame_ticks, smoke_window))
+                        Ok((frame_ticks, smoke_window.clone()))
                     },
                 )
                 .await;
@@ -1392,7 +1392,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let hidden =
                         cx.update(|cx| -> Result<bool, String> { Ok(cx.windows().is_empty()) });
                     #[cfg(target_os = "windows")]
-                    let hidden = update_windows_settings(cx, original_window, |view, _, _| {
+                    let hidden = update_windows_settings(cx, &original_window, |view, _, _| {
                         Ok::<_, String>(view.window_hidden())
                     })
                     .await;
@@ -1454,7 +1454,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 #[cfg(target_os = "windows")]
                 let reopened = update_windows_settings(
                     cx,
-                    original_window,
+                    &original_window,
                     |view, window, cx| -> Result<SettingsWindowHandle, String> {
                         if cx.global::<ProductCoordinator>().frame_ticks <= baseline_ticks {
                             return Err(
@@ -1512,7 +1512,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 #[cfg(target_os = "windows")]
                 let restored = update_windows_settings(
                     cx,
-                    original_window,
+                    &original_window,
                     |view, _, _| -> Result<(), String> {
                         if view.snapshot_revision().is_none() {
                             return Err(
@@ -1751,7 +1751,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Timer::after(Duration::from_millis(500)).await;
                 let baseline = update_windows_settings(
                     cx,
-                    settings_window,
+                    &settings_window,
                     |_, window, cx| -> Result<u64, String> {
                         let frame_ticks = cx.global::<ProductCoordinator>().frame_ticks;
                         bongocat_platform::request_native_window_close(window)
@@ -1772,7 +1772,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut hidden = false;
                 for _ in 0..60 {
                     Timer::after(Duration::from_millis(50)).await;
-                    match update_windows_settings(cx, settings_window, |view, _, _| {
+                    match update_windows_settings(cx, &settings_window, |view, _, _| {
                         view.window_hidden()
                     })
                     .await
@@ -1807,7 +1807,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Timer::after(Duration::from_millis(50)).await;
                     let restored = update_windows_settings(
                         cx,
-                        settings_window,
+                        &settings_window,
                         |view, _, cx| -> Result<bool, String> {
                             let coordinator = cx.global::<ProductCoordinator>();
                             if coordinator.single_instance_wakes == 0 {
