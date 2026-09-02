@@ -73,6 +73,7 @@ impl OverlayWindowBounds {
         }
     }
 
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub(crate) fn validate(self) -> Result<Self, OverlayError> {
         const MAX_COORDINATE: i32 = 1_000_000;
         const MIN_DIMENSION: u32 = 64;
@@ -87,6 +88,7 @@ impl OverlayWindowBounds {
         Ok(self)
     }
 
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub(crate) fn rescale(self, previous_percent: u16, next_percent: u16) -> Self {
         let ratio = f64::from(next_percent) / f64::from(previous_percent);
         Self {

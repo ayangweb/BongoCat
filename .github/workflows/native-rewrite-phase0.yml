@@ -310,8 +310,10 @@ jobs:
                 throw "Windows UIA startup switch action failed after reacquiring the current node: $actionError"
               }
               $toggleDeadline = [DateTime]::UtcNow.AddSeconds(5)
+              $startupReady = $false
               do {
                 Start-Sleep -Milliseconds 100
+                $startupReady = $false
                 $startup = $root.FindFirst(
                   [System.Windows.Automation.TreeScope]::Descendants,
                   $startupCondition
@@ -321,17 +323,21 @@ jobs:
                     $toggleState = $startup.GetCurrentPattern(
                       [System.Windows.Automation.TogglePattern]::Pattern
                     ).Current.ToggleState
+                    $startupReady = $startup.Current.IsEnabled
                   } catch {
                     $toggleState = $null
                   }
                 }
-              } while ($toggleState -ne $expectedToggleState -and [DateTime]::UtcNow -lt $toggleDeadline)
+              } while (($toggleState -ne $expectedToggleState -or -not $startupReady) -and [DateTime]::UtcNow -lt $toggleDeadline)
               if ($toggleState -ne $expectedToggleState) {
                 throw "Windows UIA startup switch action did not update state: expected '$expectedToggleState', found '$toggleState'"
               }
+              if (-not $startupReady) {
+                throw "Windows UIA startup switch did not become enabled after updating state"
+              }
               $actionSucceeded = $false
               $actionError = "startup switch was unavailable"
-              $actionDeadline = [DateTime]::UtcNow.AddSeconds(2)
+              $actionDeadline = [DateTime]::UtcNow.AddSeconds(5)
               do {
                 $startup = $root.FindFirst(
                   [System.Windows.Automation.TreeScope]::Descendants,
@@ -339,10 +345,14 @@ jobs:
                 )
                 if ($null -ne $startup) {
                   try {
-                    $startup.GetCurrentPattern(
-                      [System.Windows.Automation.TogglePattern]::Pattern
-                    ).Toggle()
-                    $actionSucceeded = $true
+                    if ($startup.Current.IsEnabled) {
+                      $startup.GetCurrentPattern(
+                        [System.Windows.Automation.TogglePattern]::Pattern
+                      ).Toggle()
+                      $actionSucceeded = $true
+                    } else {
+                      $actionError = "startup switch was disabled"
+                    }
                   } catch {
                     $actionError = $_.Exception.Message
                   }
