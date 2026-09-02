@@ -1,4 +1,6 @@
 use crate::{ModelInputSnapshot, ModelSettings, MotionId, RuntimeRenderErrorCode};
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use bongocat_live2d::resolve_key_overlays;
 use bongocat_model::CommittedModel;
 use bongocat_render::{
     ModelCommitFeedback, ModelCommitToken, RenderConsumer, RenderProducer, latest_render_channel,
@@ -129,12 +131,13 @@ impl RuntimeRenderer {
             debug_assert!(self.pending.is_none());
             let mut model = Live2dModel::load(committed)
                 .map_err(|_| RuntimeRenderErrorCode::ModelLoadFailed)?;
+            let resources = model.render_resources();
             apply_model_input(&mut model, input, self.model_settings)?;
             let mut snapshot = model
                 .update_and_snapshot()
                 .map_err(|_| RuntimeRenderErrorCode::ModelEvaluationFailed)?;
+            snapshot.active_keys = resolve_key_overlays(&resources, input.key_presses);
             snapshot.mirror_horizontal = self.model_settings.mirror;
-            let resources = model.render_resources();
             let model_generation = self.next_model_generation;
             let token = ModelCommitToken {
                 command_sequence,
@@ -403,6 +406,7 @@ impl RuntimeRenderer {
                 .model
                 .update_and_snapshot()
                 .map_err(|_| RuntimeRenderErrorCode::ModelEvaluationFailed)?;
+            snapshot.active_keys = resolve_key_overlays(&active.resources, input.key_presses);
             snapshot.mirror_horizontal = self.model_settings.mirror;
             self.producer
                 .publish(RenderFrame {

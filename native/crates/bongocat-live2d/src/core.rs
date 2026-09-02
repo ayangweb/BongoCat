@@ -3,7 +3,8 @@ use crate::{
     ParameterUpdate, ProductParameter, sys,
 };
 use bongocat_render::{
-    BlendMode, CanvasInfo, DrawableId, DrawableSnapshot, RenderSnapshot, TextureId, Vertex,
+    BlendMode, CanvasInfo, DrawableId, DrawableSnapshot, ModelBounds, RenderSnapshot, TextureId,
+    Vertex,
 };
 use std::{
     alloc::{Layout, alloc_zeroed, dealloc},
@@ -497,8 +498,12 @@ impl CoreModel {
             });
         }
         drawables.sort_by_key(|drawable| (drawable.render_order, drawable.id));
+        let canvas = unsafe { read_canvas(model)? };
+        let bounds = ModelBounds::from_canvas(canvas);
         Ok(RenderSnapshot {
-            canvas: unsafe { read_canvas(model)? },
+            canvas,
+            bounds,
+            active_keys: Vec::new(),
             model_opacity: 1.0,
             mirror_horizontal: false,
             drawables,
@@ -762,6 +767,7 @@ mod tests {
             let mut model = crate::Live2dModel::load(&committed).expect("load Cubism model");
             let first = model.update_and_snapshot().expect("first snapshot");
             assert!(!first.drawables.is_empty());
+            assert_eq!(first.bounds, ModelBounds::from_canvas(first.canvas));
             assert!(first.drawables.iter().all(|drawable| {
                 drawable.texture_id.index() < model.texture_assets().len()
                     && !drawable.vertices.is_empty()

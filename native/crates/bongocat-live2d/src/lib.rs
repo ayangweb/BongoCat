@@ -5,7 +5,8 @@
 
 use bongocat_model::CommittedModel;
 use bongocat_render::{RenderResources, RenderSnapshot, TextureAsset, TextureId};
-use std::{collections::BTreeMap, fmt, sync::Arc};
+use image::ImageReader;
+use std::{collections::BTreeMap, fmt, fs, sync::Arc};
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::collections::BTreeSet;
@@ -241,6 +242,8 @@ pub struct Live2dModel {
 
 impl Live2dModel {
     pub fn load(model: &CommittedModel) -> Result<Self, Live2dError> {
+        let background = load_background_asset(model.root())?;
+        let key_assets = load_key_assets(model.root())?;
         let resources = Arc::new(RenderResources {
             textures: model
                 .index()
@@ -254,6 +257,8 @@ impl Live2dModel {
                     height: texture.height,
                 })
                 .collect::<Vec<_>>(),
+            key_assets,
+            background,
         });
         let motions = model
             .index()
@@ -726,6 +731,149 @@ impl Live2dModel {
     }
 }
 
+pub fn resolve_key_overlays(
+    resources: &RenderResources,
+    presses: bongocat_render::KeyPressSet,
+) -> Vec<bongocat_render::KeyOverlay> {
+    let mut selected = [None, None];
+    for press in presses.iter() {
+        let side_index = match press.side {
+            bongocat_render::KeySide::Left => 0,
+            bongocat_render::KeySide::Right => 1,
+        };
+        // Runtime supplies the most recently pressed key for each side. Clear
+        // the slot before resolving so an unavailable current key never
+        // reuses an older overlay from that side.
+        selected[side_index] = None;
+        let candidates = key_name_candidates(press.hid_usage);
+        let Some(asset) = candidates.iter().find_map(|candidate| {
+            resources
+                .key_assets
+                .iter()
+                .find(|asset| asset.side == press.side && asset.name == *candidate)
+        }) else {
+            continue;
+        };
+        selected[side_index] = Some(bongocat_render::KeyOverlay {
+            asset_id: asset.id,
+            side: press.side,
+        });
+    }
+    selected.into_iter().flatten().collect()
+}
+
+fn load_key_assets(root: &std::path::Path) -> Result<Vec<bongocat_render::KeyAsset>, Live2dError> {
+    let mut assets = Vec::new();
+    for (side, directory) in [
+        (bongocat_render::KeySide::Left, "left-keys"),
+        (bongocat_render::KeySide::Right, "right-keys"),
+    ] {
+        let path = root.join("resources").join(directory);
+        let Ok(entries) = fs::read_dir(path) else {
+            continue;
+        };
+        let mut files = entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|file| {
+                file.is_file()
+                    && file
+                        .extension()
+                        .is_some_and(|extension| extension.eq_ignore_ascii_case("png"))
+            })
+            .collect::<Vec<_>>();
+        files.sort();
+        for file in files {
+            let image = ImageReader::open(&file)
+                .map_err(|error| Live2dError::new(Live2dErrorCode::ResourceIo, error.to_string()))?
+                .decode()
+                .map_err(|error| {
+                    Live2dError::new(Live2dErrorCode::ResourceIo, error.to_string())
+                })?;
+            let Some(name) = file.file_stem().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            assets.push(bongocat_render::KeyAsset {
+                id: bongocat_render::KeyAssetId::new(assets.len()),
+                side,
+                name: name.to_owned(),
+                path: file,
+                width: image.width(),
+                height: image.height(),
+            });
+        }
+    }
+    Ok(assets)
+}
+
+fn key_name_candidates(hid_usage: u16) -> Vec<&'static str> {
+    let exact = match hid_usage {
+        0x04..=0x1d => Some(KEY_LETTERS[usize::from(hid_usage - 0x04)]),
+        0x1e..=0x27 => Some(KEY_NUMBERS[usize::from(hid_usage - 0x1e)]),
+        0x28 => Some("Return"),
+        0x29 => Some("Escape"),
+        0x2a => Some("Backspace"),
+        0x2b => Some("Tab"),
+        0x2c => Some("Space"),
+        0x35 => Some("BackQuote"),
+        0x38 => Some("Slash"),
+        0x39 => Some("CapsLock"),
+        0x4f => Some("RightArrow"),
+        0x50 => Some("LeftArrow"),
+        0x51 => Some("DownArrow"),
+        0x52 => Some("UpArrow"),
+        0xe0 => Some("ControlLeft"),
+        0xe1 => Some("ShiftLeft"),
+        0xe2 => Some("AltLeft"),
+        0xe3 => Some("MetaLeft"),
+        0xe4 => Some("ControlRight"),
+        0xe5 => Some("ShiftRight"),
+        0xe6 => Some("AltRight"),
+        0xe7 => Some("MetaRight"),
+        _ => None,
+    };
+    let mut candidates = Vec::with_capacity(2);
+    if let Some(exact) = exact {
+        candidates.push(exact);
+    }
+    match hid_usage {
+        0x3a..=0x45 => candidates.push("Fn"),
+        0xe0 | 0xe4 => candidates.push("Control"),
+        0xe1 | 0xe5 => candidates.push("Shift"),
+        0xe2 | 0xe6 => candidates.push("Alt"),
+        0xe3 | 0xe7 => candidates.push("Meta"),
+        _ => {}
+    }
+    candidates
+}
+
+const KEY_LETTERS: [&str; 26] = [
+    "KeyA", "KeyB", "KeyC", "KeyD", "KeyE", "KeyF", "KeyG", "KeyH", "KeyI", "KeyJ", "KeyK", "KeyL",
+    "KeyM", "KeyN", "KeyO", "KeyP", "KeyQ", "KeyR", "KeyS", "KeyT", "KeyU", "KeyV", "KeyW", "KeyX",
+    "KeyY", "KeyZ",
+];
+const KEY_NUMBERS: [&str; 10] = [
+    "Num1", "Num2", "Num3", "Num4", "Num5", "Num6", "Num7", "Num8", "Num9", "Num0",
+];
+
+fn load_background_asset(
+    root: &std::path::Path,
+) -> Result<Option<bongocat_render::BackgroundAsset>, Live2dError> {
+    let path = root.join("resources/background.png");
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let image = ImageReader::open(&path)
+        .map_err(|error| Live2dError::new(Live2dErrorCode::ResourceIo, error.to_string()))?
+        .decode()
+        .map_err(|error| Live2dError::new(Live2dErrorCode::ResourceIo, error.to_string()))?;
+    Ok(Some(bongocat_render::BackgroundAsset {
+        path,
+        width: image.width(),
+        height: image.height(),
+    }))
+}
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn parameter_group_ids(model: &CommittedModel, name: &str) -> Vec<String> {
     model
@@ -759,6 +907,96 @@ mod tests {
     fn supported_blend_modes_are_explicit() {
         assert_ne!(BlendMode::Normal, BlendMode::Additive);
         assert_ne!(BlendMode::Additive, BlendMode::Multiplicative);
+    }
+
+    #[test]
+    fn key_overlay_resolution_is_side_scoped_and_resource_strict() {
+        use bongocat_render::{
+            KeyAsset, KeyAssetId, KeyPress, KeyPressSet, KeySide, RenderResources,
+        };
+        use std::path::PathBuf;
+
+        let asset = |id: usize, side: KeySide, name: &str| KeyAsset {
+            id: KeyAssetId::new(id),
+            side,
+            name: name.to_owned(),
+            path: PathBuf::from(format!("{name}.png")),
+            width: 612,
+            height: 354,
+        };
+        let resources = RenderResources {
+            textures: Vec::new(),
+            key_assets: vec![
+                asset(0, KeySide::Left, "KeyA"),
+                asset(1, KeySide::Left, "Fn"),
+                asset(2, KeySide::Left, "Shift"),
+                asset(3, KeySide::Left, "ShiftLeft"),
+                asset(4, KeySide::Right, "UpArrow"),
+            ],
+            background: None,
+        };
+
+        let mut presses = KeyPressSet::default();
+        presses.push(KeyPress {
+            hid_usage: 0x04,
+            side: KeySide::Left,
+        });
+        assert_eq!(
+            resolve_key_overlays(&resources, presses)
+                .into_iter()
+                .map(|overlay| overlay.asset_id.index())
+                .collect::<Vec<_>>(),
+            vec![0]
+        );
+
+        let mut presses = KeyPressSet::default();
+        presses.push(KeyPress {
+            hid_usage: 0x3a,
+            side: KeySide::Left,
+        });
+        assert_eq!(
+            resolve_key_overlays(&resources, presses)[0]
+                .asset_id
+                .index(),
+            1
+        );
+
+        let mut presses = KeyPressSet::default();
+        presses.push(KeyPress {
+            hid_usage: 0xe1,
+            side: KeySide::Left,
+        });
+        assert_eq!(
+            resolve_key_overlays(&resources, presses)[0]
+                .asset_id
+                .index(),
+            3
+        );
+
+        let mut presses = KeyPressSet::default();
+        presses.push(KeyPress {
+            hid_usage: 0x52,
+            side: KeySide::Left,
+        });
+        assert!(resolve_key_overlays(&resources, presses).is_empty());
+    }
+
+    #[test]
+    fn preset_models_expose_valid_background_assets() {
+        use bongocat_model::{ModelPackageLimits, PresetModelCatalog};
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/models");
+        let catalog = PresetModelCatalog::open(&root, ModelPackageLimits::default())
+            .expect("preset model catalog");
+        for id in ["standard", "keyboard", "gamepad"] {
+            let model = catalog
+                .load(&bongocat_model::ModelId::parse(id).expect("model id"))
+                .expect("preset model");
+            let background = load_background_asset(model.root())
+                .expect("background can be decoded")
+                .expect("preset background");
+            assert_eq!(background.width, 612);
+            assert_eq!(background.height, 354);
+        }
     }
 
     #[test]

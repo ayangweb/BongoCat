@@ -328,7 +328,9 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 ### 10.1 Windows
 
 - 应用：GPUI/Win32 主事件循环，单实例使用 named mutex + 唤醒消息。
-- Overlay：Win32 透明无边框 popup；设置变化时切换 topmost 和 click-through。
+- Overlay：Win32 透明无边框 popup；窗口逻辑尺寸按 Cubism Core 返回的当前模型 Canvas
+  像素尺寸和缩放设置计算，设置/模型切换时重建窗口；非 click-through 模式的客户区支持
+  拖动，click-through 仍返回 `HTTRANSPARENT`。
 - Renderer：D3D11 + DXGI + DirectComposition/DWM，预乘 alpha。
 - DPI：Per-Monitor-V2，处理 `WM_DPICHANGED`、显示器热插拔和负坐标。
 - 输入：Raw Input、状态校正、可选低级 hook、XInput 手柄。
@@ -339,7 +341,8 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 ### 10.2 macOS
 
 - 应用：GPUI/AppKit 主事件循环，平台 UI 操作固定在 main thread。
-- Overlay：通过 `objc2` 创建透明 nonactivating `NSPanel`。
+- Overlay：通过 `objc2` 创建透明 nonactivating `NSPanel`；窗口尺寸按 Cubism Core 返回的
+  当前模型 Canvas 像素尺寸和缩放设置计算，允许通过窗口背景拖动。
 - Renderer：Metal + `CAMetalLayer`，drawable size 跟随 backing scale。
 - Spaces：按配置设置 collection behavior 和 full-screen auxiliary。
 - 输入：CGEventTap、状态校正、GameController，必要时 IOHIDManager。
@@ -351,6 +354,11 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 平台 `unsafe` 必须集中在小型 wrapper，写明安全不变量并有 smoke test。业务和 UI crate 默认禁止 `unsafe_code`。
 
 ## 11. Live2D 与渲染
+
+模型资源中的 `resources/background.png` 作为独立背景资产随渲染资源提交，在 drawable
+之前绘制；背景缺失时保持透明 overlay，背景文件损坏则拒绝该模型提交。按键图片从
+`resources/left-keys` 和 `resources/right-keys` 按目录绑定，当前按下键优先使用精确文件名，
+F1-F12 和左右修饰键仅在存在约定通用资源名时回退；没有匹配资源时不绘制按键层。
 
 ### 11.1 Cubism 边界
 

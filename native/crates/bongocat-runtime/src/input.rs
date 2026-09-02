@@ -4,6 +4,7 @@ use std::{
 };
 
 use crate::NormalizedCursorPosition;
+use bongocat_render::{KeyPress, KeyPressSet, KeySide};
 
 pub const DEFAULT_MISSING_CONFIRMATIONS: u8 = 2;
 
@@ -351,6 +352,7 @@ pub struct InputSnapshot {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ModelInputSnapshot {
+    pub key_presses: KeyPressSet,
     pub left_hand_down: bool,
     pub right_hand_down: bool,
     pub mouse_left_down: bool,
@@ -502,11 +504,33 @@ impl InputState {
             pointer_z: cursor.z,
             ..ModelInputSnapshot::default()
         };
+        let mut latest_left_key: Option<(MonotonicMillis, KeyPress)> = None;
+        let mut latest_right_key: Option<(MonotonicMillis, KeyPress)> = None;
         for control in self.pressed.keys() {
             match control {
                 InputControl::Key(key) => match bindings.hand_for(*key) {
-                    Some(HandSide::Left) => snapshot.left_hand_down = true,
-                    Some(HandSide::Right) => snapshot.right_hand_down = true,
+                    Some(HandSide::Left) => {
+                        snapshot.left_hand_down = true;
+                        let press = KeyPress {
+                            hid_usage: key.hid_usage(),
+                            side: KeySide::Left,
+                        };
+                        let record = self.pressed.get(control).expect("pressed key record");
+                        if latest_left_key.is_none_or(|(at, _)| record.pressed_at >= at) {
+                            latest_left_key = Some((record.pressed_at, press));
+                        }
+                    }
+                    Some(HandSide::Right) => {
+                        snapshot.right_hand_down = true;
+                        let press = KeyPress {
+                            hid_usage: key.hid_usage(),
+                            side: KeySide::Right,
+                        };
+                        let record = self.pressed.get(control).expect("pressed key record");
+                        if latest_right_key.is_none_or(|(at, _)| record.pressed_at >= at) {
+                            latest_right_key = Some((record.pressed_at, press));
+                        }
+                    }
                     None => {}
                 },
                 InputControl::Gamepad(button) => match button.button {
@@ -520,6 +544,12 @@ impl InputState {
                 },
                 InputControl::Mouse(_) => {}
             }
+        }
+        if let Some((_, press)) = latest_left_key {
+            snapshot.key_presses.push(press);
+        }
+        if let Some((_, press)) = latest_right_key {
+            snapshot.key_presses.push(press);
         }
         snapshot
     }
@@ -857,6 +887,18 @@ mod tests {
         assert_eq!(
             state.model_snapshot(&bindings, NormalizedCursorPosition::default()),
             ModelInputSnapshot {
+                key_presses: {
+                    let mut presses = KeyPressSet::default();
+                    presses.push(KeyPress {
+                        hid_usage: PhysicalKey::KEY_A.hid_usage(),
+                        side: KeySide::Left,
+                    });
+                    presses.push(KeyPress {
+                        hid_usage: right.hid_usage(),
+                        side: KeySide::Right,
+                    });
+                    presses
+                },
                 left_hand_down: true,
                 right_hand_down: true,
                 mouse_left_down: true,

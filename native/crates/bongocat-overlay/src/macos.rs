@@ -7,9 +7,9 @@ use bongocat_platform::{
     MacInputService, PlatformInputDiagnostics, PlatformInputError, ShortcutDispatcher,
 };
 use bongocat_render::{
-    BlendMode, CanvasInfo, DrawableId, ModelCommitErrorCode, ModelCommitFeedback,
-    ModelCommitOutcome, ModelCommitToken, RenderConsumer, RenderFrame, RenderResources,
-    RenderSnapshot, TextureAsset, TextureId,
+    BlendMode, CanvasInfo, DrawableId, KeyAssetId, KeyOverlay, ModelBounds, ModelCommitErrorCode,
+    ModelCommitFeedback, ModelCommitOutcome, ModelCommitToken, RenderConsumer, RenderFrame,
+    RenderResources, RenderSnapshot, TextureAsset, TextureId,
 };
 use bongocat_runtime::{
     CursorPosition, CursorProducer, CursorSample, CursorViewport, GamepadAxisProducer,
@@ -45,8 +45,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-const WINDOW_WIDTH: f64 = 640.0;
-const WINDOW_HEIGHT: f64 = 560.0;
+const MIN_WINDOW_DIMENSION: f64 = 64.0;
 const FRAME_INTERVAL: Duration = Duration::from_micros(16_667);
 const RUNTIME_TIMEOUT: Duration = Duration::from_millis(250);
 const SWITCH_WARMUP_FRAMES: u64 = 30;
@@ -179,13 +178,24 @@ struct NativeOverlay {
     model: GpuModel,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct WindowOrigin {
+    x: f64,
+    y: f64,
+}
+
 struct GpuModel {
     textures: BTreeMap<TextureId, Texture>,
+    key_textures: BTreeMap<KeyAssetId, Texture>,
+    background: Option<Texture>,
+    background_vertex_buffer: Buffer,
+    background_index_buffer: Buffer,
     meshes: Vec<Mesh>,
     empty_mask: Texture,
-    canvas: CanvasInfo,
+    bounds: ModelBounds,
     model_opacity: f32,
     mirror_horizontal: bool,
+    active_keys: Vec<KeyOverlay>,
     masked_drawable_count: usize,
 }
 
@@ -233,7 +243,7 @@ impl ProductOverlaySession {
         let application = NSApplication::sharedApplication(mtm);
         application.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
         application.finishLaunching();
-        let overlay = match NativeOverlay::create(mtm, &initial_frame, options) {
+        let overlay = match NativeOverlay::create(mtm, &initial_frame, options, None) {
             Ok(overlay) => overlay,
             Err(error) => {
                 reject_model_commit(&runtime_client, &render_consumer, token)?;
@@ -312,12 +322,17 @@ impl ProductOverlaySession {
             let next_options = self
                 .options
                 .with_runtime_settings(runtime_snapshot.overlay_settings);
+            let frame = self.overlay.panel.frame();
             let replacement = NativeOverlay::create(
                 MainThreadMarker::new().ok_or_else(|| {
                     OverlayError::new("macOS overlay settings update lost the main thread")
                 })?,
                 &self.last_frame,
                 next_options,
+                Some(WindowOrigin {
+                    x: frame.origin.x,
+                    y: frame.origin.y,
+                }),
             )?;
             if runtime_snapshot.overlay_visible {
                 replacement.panel.orderFrontRegardless();
@@ -338,7 +353,47 @@ impl ProductOverlaySession {
         let mut gpu_model_switched = false;
         if let Some(frame) = self.render_consumer.take_latest() {
             self.last_frame = frame.clone();
-            match self.overlay.sync_frame(&frame) {
+            let model_changed = frame.model_generation != self.overlay.model_generation;
+            if model_changed {
+                let window_frame = self.overlay.panel.frame();
+                let replacement = NativeOverlay::create(
+                    MainThreadMarker::new().ok_or_else(|| {
+                        OverlayError::new("macOS overlay model update lost the main thread")
+                    })?,
+                    &frame,
+                    self.options,
+                    Some(WindowOrigin {
+                        x: window_frame.origin.x,
+                        y: window_frame.origin.y,
+                    }),
+                );
+                let replacement = match replacement {
+                    Ok(replacement) => replacement,
+                    Err(error) if frame.model_commit.is_some() => {
+                        reject_model_commit(
+                            &self.runtime_client,
+                            &self.render_consumer,
+                            frame.model_commit.expect("checked model commit token"),
+                        )?;
+                        self.model_commit_rejections =
+                            self.model_commit_rejections.saturating_add(1);
+                        let _ = error;
+                        self.overlay.draw(self.frames_presented == 0)?;
+                        self.frames_presented = self.frames_presented.saturating_add(1);
+                        return Ok(OverlayTickOutcome::Presented);
+                    }
+                    Err(error) => return Err(error),
+                };
+                if runtime_snapshot.overlay_visible {
+                    replacement.panel.orderFrontRegardless();
+                }
+                self.overlay = replacement;
+            }
+            match if model_changed {
+                Ok(true)
+            } else {
+                self.overlay.sync_frame(&frame)
+            } {
                 Ok(switched) => {
                     if let Some(token) = frame.model_commit {
                         report_model_commit(
@@ -642,7 +697,7 @@ pub(crate) fn run_model_preview(
     application.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
     application.finishLaunching();
     let mut overlay =
-        match NativeOverlay::create(mtm, &initial_frame, OverlaySessionOptions::default()) {
+        match NativeOverlay::create(mtm, &initial_frame, OverlaySessionOptions::default(), None) {
             Ok(overlay) => overlay,
             Err(error) => {
                 reject_model_commit(&runtime_client, &render_consumer, initial_token)?;
@@ -878,14 +933,16 @@ impl NativeOverlay {
         mtm: MainThreadMarker,
         frame: &RenderFrame,
         options: OverlaySessionOptions,
+        origin: Option<WindowOrigin>,
     ) -> Result<Self, OverlayError> {
         let window_scale = f64::from(options.scale_percent) / 100.0;
-        let window_width = WINDOW_WIDTH * window_scale;
-        let window_height = WINDOW_HEIGHT * window_scale;
-        let window_frame = NSRect::new(
-            NSPoint::new(80.0, 80.0),
-            NSSize::new(window_width, window_height),
-        );
+        let (base_width, base_height) = content_dimensions(frame.snapshot.canvas);
+        let window_width = base_width * window_scale;
+        let window_height = base_height * window_scale;
+        let origin = origin.map_or(NSPoint::new(80.0, 80.0), |origin| {
+            NSPoint::new(origin.x, origin.y)
+        });
+        let window_frame = NSRect::new(origin, NSSize::new(window_width, window_height));
         let style = NSWindowStyleMask::Borderless | NSWindowStyleMask::NonactivatingPanel;
         let panel = NSPanel::initWithContentRect_styleMask_backing_defer(
             NSPanel::alloc(mtm),
@@ -908,7 +965,7 @@ impl NativeOverlay {
             NSWindowCollectionBehavior::CanJoinAllSpaces
                 | NSWindowCollectionBehavior::FullScreenAuxiliary,
         );
-        panel.setMovableByWindowBackground(false);
+        panel.setMovableByWindowBackground(true);
         panel.setIgnoresMouseEvents(options.click_through);
 
         let view = NSView::new(mtm);
@@ -1009,7 +1066,7 @@ impl NativeOverlay {
         attachment.set_clear_color(MTLClearColor::new(0.0, 0.0, 0.0, 0.0));
         let command_buffer = self.queue.new_command_buffer();
         let scale_offset = model_transform(
-            self.model.canvas,
+            self.model.bounds,
             drawable.texture().width() as f32,
             drawable.texture().height() as f32,
             self.model.mirror_horizontal,
@@ -1069,6 +1126,38 @@ impl NativeOverlay {
         }
 
         let encoder = command_buffer.new_render_command_encoder(pass);
+        if let Some(background) = &self.model.background {
+            let uniforms = Uniforms {
+                scale_offset,
+                multiply_color: [1.0; 4],
+                screen_color: [0.0; 4],
+                mask_settings: [0.0; 4],
+                opacity: 1.0,
+                padding: [0.0; 3],
+            };
+            encoder.set_render_pipeline_state(&self.pipelines.normal);
+            encoder.set_vertex_buffer(0, Some(&self.model.background_vertex_buffer), 0);
+            encoder.set_vertex_bytes(
+                1,
+                size_of::<Uniforms>() as u64,
+                std::ptr::from_ref(&uniforms).cast(),
+            );
+            encoder.set_fragment_bytes(
+                1,
+                size_of::<Uniforms>() as u64,
+                std::ptr::from_ref(&uniforms).cast(),
+            );
+            encoder.set_fragment_texture(0, Some(background));
+            encoder.set_fragment_texture(1, Some(&self.model.empty_mask));
+            encoder.set_fragment_sampler_state(0, Some(&self.sampler));
+            encoder.draw_indexed_primitives(
+                MTLPrimitiveType::Triangle,
+                6,
+                MTLIndexType::UInt16,
+                &self.model.background_index_buffer,
+                0,
+            );
+        }
         for mesh in &self.model.meshes {
             if !mesh.visible || mesh.opacity <= 0.0 {
                 continue;
@@ -1116,6 +1205,43 @@ impl NativeOverlay {
                 0,
             );
         }
+        // Key overlays are the topmost layer so pressed-key imagery remains
+        // visible above both the background and Live2D model drawables.
+        for overlay in &self.model.active_keys {
+            let Some(texture) = self.model.key_textures.get(&overlay.asset_id) else {
+                continue;
+            };
+            let uniforms = Uniforms {
+                scale_offset,
+                multiply_color: [1.0; 4],
+                screen_color: [0.0; 4],
+                mask_settings: [0.0; 4],
+                opacity: 1.0,
+                padding: [0.0; 3],
+            };
+            encoder.set_render_pipeline_state(&self.pipelines.normal);
+            encoder.set_vertex_buffer(0, Some(&self.model.background_vertex_buffer), 0);
+            encoder.set_vertex_bytes(
+                1,
+                size_of::<Uniforms>() as u64,
+                std::ptr::from_ref(&uniforms).cast(),
+            );
+            encoder.set_fragment_bytes(
+                1,
+                size_of::<Uniforms>() as u64,
+                std::ptr::from_ref(&uniforms).cast(),
+            );
+            encoder.set_fragment_texture(0, Some(texture));
+            encoder.set_fragment_texture(1, Some(&self.model.empty_mask));
+            encoder.set_fragment_sampler_state(0, Some(&self.sampler));
+            encoder.draw_indexed_primitives(
+                MTLPrimitiveType::Triangle,
+                6,
+                MTLIndexType::UInt16,
+                &self.model.background_index_buffer,
+                0,
+            );
+        }
         encoder.end_encoding();
         command_buffer.present_drawable(drawable);
         command_buffer.commit();
@@ -1156,6 +1282,57 @@ impl GpuModel {
             .iter()
             .map(|asset| load_texture(device, asset).map(|texture| (asset.id, texture)))
             .collect::<Result<BTreeMap<_, _>, _>>()?;
+        let key_textures = resources
+            .key_assets
+            .iter()
+            .map(|asset| {
+                load_texture(
+                    device,
+                    &TextureAsset {
+                        id: TextureId::new(asset.id.index()),
+                        path: asset.path.clone(),
+                        width: asset.width,
+                        height: asset.height,
+                    },
+                )
+                .map(|texture| (asset.id, texture))
+            })
+            .collect::<Result<BTreeMap<_, _>, _>>()?;
+        let background = resources
+            .background
+            .as_ref()
+            .map(|asset| {
+                load_texture(
+                    device,
+                    &TextureAsset {
+                        id: TextureId::new(usize::MAX),
+                        path: asset.path.clone(),
+                        width: asset.width,
+                        height: asset.height,
+                    },
+                )
+            })
+            .transpose()?;
+        let canvas_bounds = ModelBounds::from_canvas(snapshot.canvas);
+        let background_vertices = [
+            bongocat_render::Vertex {
+                position: [canvas_bounds.min_x, canvas_bounds.min_y],
+                uv: [0.0, 0.0],
+            },
+            bongocat_render::Vertex {
+                position: [canvas_bounds.max_x, canvas_bounds.min_y],
+                uv: [1.0, 0.0],
+            },
+            bongocat_render::Vertex {
+                position: [canvas_bounds.max_x, canvas_bounds.max_y],
+                uv: [1.0, 1.0],
+            },
+            bongocat_render::Vertex {
+                position: [canvas_bounds.min_x, canvas_bounds.max_y],
+                uv: [0.0, 1.0],
+            },
+        ];
+        let background_indices = [0_u16, 1, 2, 0, 2, 3];
         if textures.len() != resources.textures.len() {
             return Err(OverlayError::new("texture resource ids are not unique"));
         }
@@ -1221,11 +1398,24 @@ impl GpuModel {
         meshes.sort_by_key(|mesh| (mesh.render_order, mesh.id));
         Ok(Self {
             textures,
+            key_textures,
+            background,
+            background_vertex_buffer: device.new_buffer_with_data(
+                background_vertices.as_ptr().cast(),
+                std::mem::size_of_val(&background_vertices) as u64,
+                MTLResourceOptions::StorageModeShared,
+            ),
+            background_index_buffer: device.new_buffer_with_data(
+                background_indices.as_ptr().cast(),
+                std::mem::size_of_val(&background_indices) as u64,
+                MTLResourceOptions::StorageModeShared,
+            ),
             meshes,
             empty_mask: create_solid_mask_texture(device),
-            canvas: snapshot.canvas,
+            bounds: snapshot.bounds,
             model_opacity: snapshot.model_opacity,
             mirror_horizontal: snapshot.mirror_horizontal,
+            active_keys: snapshot.active_keys.clone(),
             masked_drawable_count: snapshot
                 .drawables
                 .iter()
@@ -1273,11 +1463,19 @@ impl GpuModel {
             mesh.inverted_mask = drawable.inverted_mask;
         }
         self.meshes.sort_by_key(|mesh| (mesh.render_order, mesh.id));
-        self.canvas = snapshot.canvas;
+        self.bounds = snapshot.bounds;
+        self.active_keys.clone_from(&snapshot.active_keys);
         self.model_opacity = snapshot.model_opacity;
         self.mirror_horizontal = snapshot.mirror_horizontal;
         Ok(())
     }
+}
+
+fn content_dimensions(canvas: CanvasInfo) -> (f64, f64) {
+    (
+        f64::from(canvas.width.max(MIN_WINDOW_DIMENSION as f32)),
+        f64::from(canvas.height.max(MIN_WINDOW_DIMENSION as f32)),
+    )
 }
 
 impl Drop for NativeOverlay {
@@ -1617,15 +1815,16 @@ fn load_texture(device: &Device, asset: &TextureAsset) -> Result<Texture, Overla
 }
 
 fn model_transform(
-    canvas: CanvasInfo,
+    bounds: ModelBounds,
     width: f32,
     height: f32,
     mirror_horizontal: bool,
 ) -> [f32; 4] {
-    let model_width = canvas.width / canvas.pixels_per_unit;
-    let model_height = canvas.height / canvas.pixels_per_unit;
-    let center_x = (canvas.width * 0.5 - canvas.origin_x) / canvas.pixels_per_unit;
-    let center_y = (canvas.origin_y - canvas.height * 0.5) / canvas.pixels_per_unit;
+    let model_width = bounds.width();
+    let model_height = bounds.height();
+    let center = bounds.center();
+    let center_x = center[0];
+    let center_y = center[1];
     let model_aspect = model_width / model_height;
     let viewport_aspect = width / height;
     let (mut scale_x, mut scale_y) = (2.0 / model_width, 2.0 / model_height);
@@ -1689,17 +1888,29 @@ mod tests {
             pixels_per_unit: 1024.0,
         };
         assert_eq!(
-            model_transform(canvas, 800.0, 800.0, false),
+            model_transform(ModelBounds::from_canvas(canvas), 800.0, 800.0, false),
             [1.0, 1.0, -0.0, -0.0]
         );
         assert_eq!(
-            model_transform(canvas, 1600.0, 800.0, false),
+            model_transform(ModelBounds::from_canvas(canvas), 1600.0, 800.0, false),
             [0.5, 1.0, -0.0, -0.0]
         );
         assert_eq!(
-            model_transform(canvas, 800.0, 800.0, true),
+            model_transform(ModelBounds::from_canvas(canvas), 800.0, 800.0, true),
             [-1.0, 1.0, 0.0, -0.0]
         );
+    }
+
+    #[test]
+    fn window_dimensions_follow_canvas_pixels() {
+        let canvas = CanvasInfo {
+            width: 612.0,
+            height: 354.0,
+            origin_x: 306.0,
+            origin_y: 177.0,
+            pixels_per_unit: 354.0,
+        };
+        assert_eq!(content_dimensions(canvas), (612.0, 354.0));
     }
 
     #[test]

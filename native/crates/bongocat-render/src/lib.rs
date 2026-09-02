@@ -53,6 +53,88 @@ pub struct CanvasInfo {
     pub pixels_per_unit: f32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ModelBounds {
+    pub min_x: f32,
+    pub max_x: f32,
+    pub min_y: f32,
+    pub max_y: f32,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum KeySide {
+    #[default]
+    Left,
+    Right,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct KeyPress {
+    pub hid_usage: u16,
+    pub side: KeySide,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct KeyPressSet {
+    entries: [KeyPress; 64],
+    len: u8,
+}
+
+impl Default for KeyPressSet {
+    fn default() -> Self {
+        Self {
+            entries: [KeyPress::default(); 64],
+            len: 0,
+        }
+    }
+}
+
+impl KeyPressSet {
+    pub fn push(&mut self, press: KeyPress) {
+        if self.entries[..usize::from(self.len)].contains(&press) {
+            return;
+        }
+        if usize::from(self.len) < self.entries.len() {
+            self.entries[usize::from(self.len)] = press;
+            self.len += 1;
+        }
+    }
+
+    pub fn iter(self) -> impl Iterator<Item = KeyPress> {
+        self.entries.into_iter().take(usize::from(self.len))
+    }
+}
+
+impl ModelBounds {
+    pub const fn from_canvas(canvas: CanvasInfo) -> Self {
+        let half_width = canvas.width / canvas.pixels_per_unit * 0.5;
+        let half_height = canvas.height / canvas.pixels_per_unit * 0.5;
+        let center_x = (canvas.width * 0.5 - canvas.origin_x) / canvas.pixels_per_unit;
+        let center_y = (canvas.origin_y - canvas.height * 0.5) / canvas.pixels_per_unit;
+        Self {
+            min_x: center_x - half_width,
+            max_x: center_x + half_width,
+            min_y: center_y - half_height,
+            max_y: center_y + half_height,
+        }
+    }
+
+    pub fn width(self) -> f32 {
+        (self.max_x - self.min_x).max(f32::EPSILON)
+    }
+
+    pub fn height(self) -> f32 {
+        (self.max_y - self.min_y).max(f32::EPSILON)
+    }
+
+    pub fn center(self) -> [f32; 2] {
+        [
+            (self.min_x + self.max_x) * 0.5,
+            (self.min_y + self.max_y) * 0.5,
+        ]
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BlendMode {
     Normal,
@@ -87,6 +169,8 @@ pub struct DrawableSnapshot {
 #[derive(Clone, Debug, PartialEq)]
 pub struct RenderSnapshot {
     pub canvas: CanvasInfo,
+    pub bounds: ModelBounds,
+    pub active_keys: Vec<KeyOverlay>,
     pub model_opacity: f32,
     pub mirror_horizontal: bool,
     pub drawables: Vec<DrawableSnapshot>,
@@ -100,9 +184,47 @@ pub struct TextureAsset {
     pub height: u32,
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct KeyAssetId(usize);
+
+impl KeyAssetId {
+    pub const fn new(index: usize) -> Self {
+        Self(index)
+    }
+
+    pub const fn index(self) -> usize {
+        self.0
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct KeyAsset {
+    pub id: KeyAssetId,
+    pub side: KeySide,
+    pub name: String,
+    pub path: PathBuf,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct KeyOverlay {
+    pub asset_id: KeyAssetId,
+    pub side: KeySide,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BackgroundAsset {
+    pub path: PathBuf,
+    pub width: u32,
+    pub height: u32,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RenderResources {
     pub textures: Vec<TextureAsset>,
+    pub key_assets: Vec<KeyAsset>,
+    pub background: Option<BackgroundAsset>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -379,7 +501,11 @@ mod tests {
             model_generation: 3,
             frame_number: number,
             model_commit: None,
-            resources: Arc::new(RenderResources { textures: vec![] }),
+            resources: Arc::new(RenderResources {
+                textures: vec![],
+                key_assets: vec![],
+                background: None,
+            }),
             snapshot: Arc::new(RenderSnapshot {
                 canvas: CanvasInfo {
                     width: 1.0,
@@ -388,6 +514,13 @@ mod tests {
                     origin_y: 0.0,
                     pixels_per_unit: 1.0,
                 },
+                bounds: ModelBounds {
+                    min_x: -0.5,
+                    max_x: 0.5,
+                    min_y: -0.5,
+                    max_y: 0.5,
+                },
+                active_keys: Vec::new(),
                 model_opacity: 1.0,
                 mirror_horizontal: false,
                 drawables: vec![],
@@ -401,6 +534,39 @@ mod tests {
         assert_eq!(TextureId::new(2).index(), 2);
         assert_eq!(DrawableId::new(7).to_string(), "7");
         assert_eq!(TextureId::new(2).to_string(), "2");
+    }
+
+    #[test]
+    fn canvas_bounds_keep_core_origin_orientation() {
+        let bounds = ModelBounds::from_canvas(CanvasInfo {
+            width: 100.0,
+            height: 80.0,
+            origin_x: 20.0,
+            origin_y: 30.0,
+            pixels_per_unit: 10.0,
+        });
+        assert_eq!(bounds.center(), [3.0, -1.0]);
+        assert_eq!(bounds.width(), 10.0);
+        assert_eq!(bounds.height(), 8.0);
+    }
+
+    #[test]
+    fn key_press_set_deduplicates_and_has_bounded_capacity() {
+        let mut presses = KeyPressSet::default();
+        let press = KeyPress {
+            hid_usage: 0x04,
+            side: KeySide::Left,
+        };
+        presses.push(press);
+        presses.push(press);
+        for usage in 0x05..=0x50 {
+            presses.push(KeyPress {
+                hid_usage: usage,
+                side: KeySide::Left,
+            });
+        }
+        assert_eq!(presses.iter().count(), 64);
+        assert_eq!(presses.iter().filter(|entry| *entry == press).count(), 1);
     }
 
     #[test]

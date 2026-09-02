@@ -7,9 +7,9 @@ use bongocat_platform::{
     PlatformInputDiagnostics, PlatformInputError, ShortcutDispatcher, WindowsInputService,
 };
 use bongocat_render::{
-    BlendMode, CanvasInfo, DrawableId, ModelCommitErrorCode, ModelCommitFeedback,
-    ModelCommitOutcome, ModelCommitToken, RenderConsumer, RenderFrame, RenderResources,
-    RenderSnapshot, TextureAsset, TextureId,
+    BlendMode, CanvasInfo, DrawableId, KeyAssetId, KeyOverlay, ModelBounds, ModelCommitErrorCode,
+    ModelCommitFeedback, ModelCommitOutcome, ModelCommitToken, RenderConsumer, RenderFrame,
+    RenderResources, RenderSnapshot, TextureAsset, TextureId,
 };
 use bongocat_runtime::{
     CursorProducer, GamepadAxisProducer, GamepadButton, HandSide, InputBindings, InputControl,
@@ -31,7 +31,7 @@ use windows::{
     Win32::{
         Foundation::{
             CloseHandle, ERROR_NO_MORE_FILES, HANDLE, HINSTANCE, HMODULE, HWND, LPARAM, LRESULT,
-            WPARAM,
+            RECT, WPARAM,
         },
         Graphics::{
             Direct3D::{
@@ -85,19 +85,18 @@ use windows::{
             HiDpi::GetDpiForWindow,
             WindowsAndMessaging::{
                 CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GWL_EXSTYLE,
-                GetWindowLongPtrW, HTTRANSPARENT, HWND_NOTOPMOST, HWND_TOPMOST, IsWindowVisible,
-                MSG, PM_REMOVE, PeekMessageW, RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE,
-                SWP_NOACTIVATE, SWP_NOMOVE, SetWindowPos, ShowWindow, TranslateMessage,
-                UnregisterClassW, WM_CLOSE, WM_NCHITTEST, WNDCLASSW, WS_EX_NOACTIVATE,
-                WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_POPUP,
+                GetWindowLongPtrW, GetWindowRect, HTCAPTION, HTTRANSPARENT, HWND_NOTOPMOST,
+                HWND_TOPMOST, IsWindowVisible, MSG, PM_REMOVE, PeekMessageW, RegisterClassW,
+                SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SetWindowPos, ShowWindow,
+                TranslateMessage, UnregisterClassW, WM_CLOSE, WM_NCHITTEST, WNDCLASSW,
+                WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
+                WS_POPUP,
             },
         },
     },
     core::{Error, HRESULT, Interface, PCSTR, Result as WindowsResult, s, w},
 };
 
-const WINDOW_WIDTH: u32 = 420;
-const WINDOW_HEIGHT: u32 = 520;
 const RUNTIME_TIMEOUT: Duration = Duration::from_secs(2);
 const WINDOW_CLASS: windows::core::PCWSTR = w!("BongoCatProductOverlayWindow");
 const PRESET_MODEL_IDS: [&str; 3] = ["standard", "keyboard", "gamepad"];
@@ -206,11 +205,16 @@ struct TextureResource {
 
 struct GpuModel {
     textures: BTreeMap<TextureId, TextureResource>,
+    key_textures: BTreeMap<KeyAssetId, TextureResource>,
+    background: Option<TextureResource>,
+    background_vertex_buffer: ID3D11Buffer,
+    background_index_buffer: ID3D11Buffer,
     meshes: Vec<Mesh>,
     empty_mask: TextureResource,
-    canvas: CanvasInfo,
+    bounds: ModelBounds,
     model_opacity: f32,
     mirror_horizontal: bool,
+    active_keys: Vec<KeyOverlay>,
     masked_drawable_count: usize,
 }
 
@@ -274,14 +278,29 @@ struct OverlayWindow {
     _not_send_or_sync: std::marker::PhantomData<Rc<()>>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct WindowPosition {
+    x: i32,
+    y: i32,
+}
+
 impl OverlayWindow {
-    fn create(options: OverlaySessionOptions) -> Result<Self, OverlayError> {
+    fn create(
+        options: OverlaySessionOptions,
+        canvas: CanvasInfo,
+        position: Option<WindowPosition>,
+    ) -> Result<Self, OverlayError> {
         // SAFETY: the class and HWND are created and subsequently used only on
         // the current UI thread. No borrowed Win32 pointers escape this owner.
-        unsafe { Self::create_inner(options) }.map_err(windows_error("create Win32 overlay"))
+        unsafe { Self::create_inner(options, canvas, position) }
+            .map_err(windows_error("create Win32 overlay"))
     }
 
-    unsafe fn create_inner(options: OverlaySessionOptions) -> WindowsResult<Self> {
+    unsafe fn create_inner(
+        options: OverlaySessionOptions,
+        canvas: CanvasInfo,
+        position: Option<WindowPosition>,
+    ) -> WindowsResult<Self> {
         let module = unsafe { GetModuleHandleW(None)? };
         let instance = HINSTANCE(module.0);
         let class = WNDCLASSW {
@@ -297,17 +316,18 @@ impl OverlayWindow {
         if options.click_through {
             extended |= WS_EX_TRANSPARENT;
         }
-        let scale = u32::from(options.scale_percent);
-        let logical_width = WINDOW_WIDTH.saturating_mul(scale) / 100;
-        let logical_height = WINDOW_HEIGHT.saturating_mul(scale) / 100;
+        let scale = options.scale_percent;
+        let (base_width, base_height) = content_dimensions(canvas);
+        let logical_width = (base_width * f32::from(scale) / 100.0).round() as u32;
+        let logical_height = (base_height * f32::from(scale) / 100.0).round() as u32;
         let hwnd = match unsafe {
             CreateWindowExW(
                 extended,
                 WINDOW_CLASS,
                 w!("BongoCat"),
                 WS_POPUP,
-                80,
-                80,
+                position.map_or(80, |value| value.x),
+                position.map_or(80, |value| value.y),
                 logical_width as i32,
                 logical_height as i32,
                 None,
@@ -374,6 +394,18 @@ impl OverlayWindow {
 
     fn assert_owner_thread(&self) {
         assert_eq!(self.owner_thread, thread::current().id());
+    }
+
+    fn position(&self) -> Result<WindowPosition, OverlayError> {
+        self.assert_owner_thread();
+        let mut rect = RECT::default();
+        // SAFETY: the HWND is live and accessed only from its owner thread.
+        unsafe { GetWindowRect(self.hwnd, &mut rect) }
+            .map_err(windows_error("read overlay window position"))?;
+        Ok(WindowPosition {
+            x: rect.left,
+            y: rect.top,
+        })
     }
 }
 
@@ -575,7 +607,7 @@ impl Renderer {
                 .PSSetSamplers(0, Some(&[Some(self.pipelines.sampler.clone())]));
         }
         let scale_offset = model_transform(
-            self.model.canvas,
+            self.model.bounds,
             self.width as f32,
             self.height as f32,
             self.model.mirror_horizontal,
@@ -626,6 +658,51 @@ impl Renderer {
             self.context
                 .PSSetShader(&self.pipelines.fragment_shader, None);
         }
+        if let Some(background) = &self.model.background {
+            let uniforms = Uniforms {
+                scale_offset,
+                multiply_color: [1.0; 4],
+                screen_color: [0.0; 4],
+                mask_settings: [0.0; 4],
+                opacity: self.opacity,
+                padding: [0.0; 3],
+            };
+            unsafe {
+                self.context
+                    .OMSetBlendState(&self.pipelines.normal_blend, None, u32::MAX);
+                self.context.UpdateSubresource(
+                    &self.pipelines.constant_buffer,
+                    0,
+                    None,
+                    std::ptr::from_ref(&uniforms).cast(),
+                    0,
+                    0,
+                );
+                let vertex_buffer = Some(self.model.background_vertex_buffer.clone());
+                let stride = size_of::<bongocat_render::Vertex>() as u32;
+                let offset = 0_u32;
+                self.context.IASetVertexBuffers(
+                    0,
+                    1,
+                    Some(&raw const vertex_buffer),
+                    Some(&raw const stride),
+                    Some(&raw const offset),
+                );
+                self.context.IASetIndexBuffer(
+                    &self.model.background_index_buffer,
+                    DXGI_FORMAT_R16_UINT,
+                    0,
+                );
+                self.context.PSSetShaderResources(
+                    0,
+                    Some(&[
+                        Some(background.shader_resource.clone()),
+                        Some(self.model.empty_mask.shader_resource.clone()),
+                    ]),
+                );
+                self.context.DrawIndexed(6, 0, 0);
+            }
+        }
         for mesh in &self.model.meshes {
             if !mesh.visible || mesh.opacity <= 0.0 {
                 continue;
@@ -653,6 +730,56 @@ impl Renderer {
                 self.context
                     .OMSetBlendState(self.pipelines.blend(mesh.blend_mode), None, u32::MAX);
                 self.bind_mesh(mesh, &uniforms, mask)?;
+            }
+        }
+        // Key overlays are the topmost layer so pressed-key imagery remains
+        // visible above both the background and Live2D model drawables.
+        for overlay in &self.model.active_keys {
+            let Some(texture) = self.model.key_textures.get(&overlay.asset_id) else {
+                continue;
+            };
+            let uniforms = Uniforms {
+                scale_offset,
+                multiply_color: [1.0; 4],
+                screen_color: [0.0; 4],
+                mask_settings: [0.0; 4],
+                opacity: self.opacity,
+                padding: [0.0; 3],
+            };
+            unsafe {
+                self.context
+                    .OMSetBlendState(&self.pipelines.normal_blend, None, u32::MAX);
+                self.context.UpdateSubresource(
+                    &self.pipelines.constant_buffer,
+                    0,
+                    None,
+                    std::ptr::from_ref(&uniforms).cast(),
+                    0,
+                    0,
+                );
+                let vertex_buffer = Some(self.model.background_vertex_buffer.clone());
+                let stride = size_of::<bongocat_render::Vertex>() as u32;
+                let offset = 0_u32;
+                self.context.IASetVertexBuffers(
+                    0,
+                    1,
+                    Some(&raw const vertex_buffer),
+                    Some(&raw const stride),
+                    Some(&raw const offset),
+                );
+                self.context.IASetIndexBuffer(
+                    &self.model.background_index_buffer,
+                    DXGI_FORMAT_R16_UINT,
+                    0,
+                );
+                self.context.PSSetShaderResources(
+                    0,
+                    Some(&[
+                        Some(texture.shader_resource.clone()),
+                        Some(self.model.empty_mask.shader_resource.clone()),
+                    ]),
+                );
+                self.context.DrawIndexed(6, 0, 0);
             }
         }
         if verify {
@@ -742,9 +869,13 @@ struct NativeOverlay {
 }
 
 impl NativeOverlay {
-    fn create(frame: &RenderFrame, options: OverlaySessionOptions) -> Result<Self, OverlayError> {
+    fn create(
+        frame: &RenderFrame,
+        options: OverlaySessionOptions,
+        position: Option<WindowPosition>,
+    ) -> Result<Self, OverlayError> {
         validate_options(options)?;
-        let window = OverlayWindow::create(options)?;
+        let window = OverlayWindow::create(options, frame.snapshot.canvas, position)?;
         let renderer = Renderer::create(&window, frame, options.opacity_percent)?;
         Ok(Self { renderer, window })
     }
@@ -796,7 +927,7 @@ impl ProductOverlaySession {
             .model_commit
             .ok_or_else(|| OverlayError::new("initial render frame has no model commit token"))?;
         let com_apartment = ComApartment::initialize()?;
-        let overlay = match NativeOverlay::create(&initial_frame, options) {
+        let overlay = match NativeOverlay::create(&initial_frame, options, None) {
             Ok(overlay) => overlay,
             Err(error) => {
                 reject_model_commit(&runtime_client, &render_consumer, token)?;
@@ -875,7 +1006,9 @@ impl ProductOverlaySession {
             let next_options = self
                 .options
                 .with_runtime_settings(runtime_snapshot.overlay_settings);
-            let replacement = NativeOverlay::create(&self.last_frame, next_options)?;
+            let position = self.overlay.window.position()?;
+            let replacement =
+                NativeOverlay::create(&self.last_frame, next_options, Some(position))?;
             if runtime_snapshot.overlay_visible {
                 replacement.set_visible(true)?;
             }
@@ -893,7 +1026,35 @@ impl ProductOverlaySession {
         let mut model_switched = false;
         if let Some(frame) = self.render_consumer.take_latest() {
             self.last_frame = frame.clone();
-            match self.overlay.renderer.sync_frame(&frame) {
+            let model_changed = frame.model_generation != self.overlay.renderer.model_generation;
+            if model_changed {
+                let position = self.overlay.window.position()?;
+                let replacement = match NativeOverlay::create(&frame, self.options, Some(position))
+                {
+                    Ok(replacement) => replacement,
+                    Err(error) if frame.model_commit.is_some() => {
+                        reject_model_commit(
+                            &self.runtime_client,
+                            &self.render_consumer,
+                            frame.model_commit.expect("checked model commit token"),
+                        )?;
+                        self.model_commit_rejections =
+                            self.model_commit_rejections.saturating_add(1);
+                        let _ = error;
+                        self.overlay.renderer.draw(self.frames_presented == 0)?;
+                        self.frames_presented = self.frames_presented.saturating_add(1);
+                        return Ok(OverlayTickOutcome::Presented);
+                    }
+                    Err(error) => return Err(error),
+                };
+                replacement.set_visible(runtime_snapshot.overlay_visible)?;
+                self.overlay = replacement;
+            }
+            match if model_changed {
+                Ok(true)
+            } else {
+                self.overlay.renderer.sync_frame(&frame)
+            } {
                 Ok(switched) => {
                     if let Some(token) = frame.model_commit {
                         report_model_commit(
@@ -1018,14 +1179,14 @@ pub(crate) fn run_model_switch_preview(
     )?;
 
     let com_apartment = ComApartment::initialize()?;
-    let mut overlay = match NativeOverlay::create(&initial_frame, OverlaySessionOptions::default())
-    {
-        Ok(overlay) => overlay,
-        Err(error) => {
-            reject_model_commit(&runtime_client, &render_consumer, initial_token)?;
-            return Err(error);
-        }
-    };
+    let mut overlay =
+        match NativeOverlay::create(&initial_frame, OverlaySessionOptions::default(), None) {
+            Ok(overlay) => overlay,
+            Err(error) => {
+                reject_model_commit(&runtime_client, &render_consumer, initial_token)?;
+                return Err(error);
+            }
+        };
     overlay.window.show()?;
     overlay.renderer.draw(true)?;
     report_model_commit(
@@ -1356,6 +1517,54 @@ impl GpuModel {
             .iter()
             .map(|asset| unsafe { load_texture(device, asset) }.map(|texture| (asset.id, texture)))
             .collect::<WindowsResult<BTreeMap<_, _>>>()?;
+        let key_textures = resources
+            .key_assets
+            .iter()
+            .map(|asset| {
+                let texture = TextureAsset {
+                    id: TextureId::new(asset.id.index()),
+                    path: asset.path.clone(),
+                    width: asset.width,
+                    height: asset.height,
+                };
+                unsafe { load_texture(device, &texture) }.map(|texture| (asset.id, texture))
+            })
+            .collect::<WindowsResult<BTreeMap<_, _>>>()?;
+        let background = resources
+            .background
+            .as_ref()
+            .map(|asset| unsafe {
+                load_texture(
+                    device,
+                    &TextureAsset {
+                        id: TextureId::new(usize::MAX),
+                        path: asset.path.clone(),
+                        width: asset.width,
+                        height: asset.height,
+                    },
+                )
+            })
+            .transpose()?;
+        let canvas_bounds = ModelBounds::from_canvas(snapshot.canvas);
+        let background_vertices = [
+            bongocat_render::Vertex {
+                position: [canvas_bounds.min_x, canvas_bounds.min_y],
+                uv: [0.0, 0.0],
+            },
+            bongocat_render::Vertex {
+                position: [canvas_bounds.max_x, canvas_bounds.min_y],
+                uv: [1.0, 0.0],
+            },
+            bongocat_render::Vertex {
+                position: [canvas_bounds.max_x, canvas_bounds.max_y],
+                uv: [1.0, 1.0],
+            },
+            bongocat_render::Vertex {
+                position: [canvas_bounds.min_x, canvas_bounds.max_y],
+                uv: [0.0, 1.0],
+            },
+        ];
+        let background_indices = [0_u16, 1, 2, 0, 2, 3];
         if textures.len() != resources.textures.len() {
             return Err(invariant_error("texture resource ids are not unique"));
         }
@@ -1414,11 +1623,28 @@ impl GpuModel {
         meshes.sort_by_key(|mesh| (mesh.render_order, mesh.id));
         Ok(Self {
             textures,
+            key_textures,
+            background,
+            background_vertex_buffer: unsafe {
+                create_buffer(
+                    device,
+                    &background_vertices,
+                    D3D11_BIND_VERTEX_BUFFER.0 as u32,
+                )?
+            },
+            background_index_buffer: unsafe {
+                create_buffer(
+                    device,
+                    &background_indices,
+                    D3D11_BIND_INDEX_BUFFER.0 as u32,
+                )?
+            },
             meshes,
             empty_mask: unsafe { create_empty_mask(device)? },
-            canvas: snapshot.canvas,
+            bounds: snapshot.bounds,
             model_opacity: snapshot.model_opacity,
             mirror_horizontal: snapshot.mirror_horizontal,
+            active_keys: snapshot.active_keys.clone(),
             masked_drawable_count: snapshot
                 .drawables
                 .iter()
@@ -1484,7 +1710,8 @@ impl GpuModel {
             mesh.inverted_mask = drawable.inverted_mask;
         }
         self.meshes.sort_by_key(|mesh| (mesh.render_order, mesh.id));
-        self.canvas = snapshot.canvas;
+        self.bounds = snapshot.bounds;
+        self.active_keys.clone_from(&snapshot.active_keys);
         self.model_opacity = snapshot.model_opacity;
         self.mirror_horizontal = snapshot.mirror_horizontal;
         Ok(())
@@ -2061,15 +2288,16 @@ unsafe fn blob_message(blob: &ID3DBlob) -> String {
 }
 
 fn model_transform(
-    canvas: CanvasInfo,
+    bounds: ModelBounds,
     width: f32,
     height: f32,
     mirror_horizontal: bool,
 ) -> [f32; 4] {
-    let model_width = canvas.width / canvas.pixels_per_unit;
-    let model_height = canvas.height / canvas.pixels_per_unit;
-    let center_x = (canvas.width * 0.5 - canvas.origin_x) / canvas.pixels_per_unit;
-    let center_y = (canvas.origin_y - canvas.height * 0.5) / canvas.pixels_per_unit;
+    let model_width = bounds.width();
+    let model_height = bounds.height();
+    let center = bounds.center();
+    let center_x = center[0];
+    let center_y = center[1];
     let model_aspect = model_width / model_height;
     let viewport_aspect = width / height;
     let (mut scale_x, mut scale_y) = (2.0 / model_width, 2.0 / model_height);
@@ -2084,6 +2312,10 @@ fn model_transform(
         offset_x = -offset_x;
     }
     [scale_x, scale_y, offset_x, -center_y * scale_y]
+}
+
+fn content_dimensions(canvas: CanvasInfo) -> (f32, f32) {
+    (canvas.width.max(64.0), canvas.height.max(64.0))
 }
 
 fn logical_to_physical(logical: u32, dpi: u32) -> WindowsResult<u32> {
@@ -2120,6 +2352,7 @@ unsafe extern "system" fn window_proc(
             if style & WS_EX_TRANSPARENT.0 as isize != 0 {
                 return LRESULT(HTTRANSPARENT as isize);
             }
+            return LRESULT(HTCAPTION as isize);
         }
         WM_CLOSE => {
             // SAFETY: WM_CLOSE is delivered to this owned top-level window and
@@ -2148,17 +2381,29 @@ mod tests {
             pixels_per_unit: 1024.0,
         };
         assert_eq!(
-            model_transform(canvas, 800.0, 800.0, false),
+            model_transform(ModelBounds::from_canvas(canvas), 800.0, 800.0, false),
             [1.0, 1.0, -0.0, -0.0]
         );
         assert_eq!(
-            model_transform(canvas, 1600.0, 800.0, false),
+            model_transform(ModelBounds::from_canvas(canvas), 1600.0, 800.0, false),
             [0.5, 1.0, -0.0, -0.0]
         );
         assert_eq!(
-            model_transform(canvas, 800.0, 800.0, true),
+            model_transform(ModelBounds::from_canvas(canvas), 800.0, 800.0, true),
             [-1.0, 1.0, 0.0, -0.0]
         );
+    }
+
+    #[test]
+    fn window_dimensions_follow_canvas_pixels() {
+        let canvas = CanvasInfo {
+            width: 612.0,
+            height: 354.0,
+            origin_x: 306.0,
+            origin_y: 177.0,
+            pixels_per_unit: 354.0,
+        };
+        assert_eq!(content_dimensions(canvas), (612.0, 354.0));
     }
 
     #[test]

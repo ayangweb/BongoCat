@@ -783,6 +783,7 @@ version = "0.1.0"
 dependencies = [
  "bongocat-model",
  "bongocat-render",
+ "image",
  "serde",
  "serde_json",
  "tempfile",
