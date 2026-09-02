@@ -34,6 +34,8 @@ use std::{
 
 const WINDOW_WIDTH: f32 = 800.0;
 const WINDOW_HEIGHT: f32 = 600.0;
+const WINDOW_MIN_WIDTH: f32 = crate::MIN_SETTINGS_WINDOW_WIDTH as f32;
+const WINDOW_MIN_HEIGHT: f32 = crate::MIN_SETTINGS_WINDOW_HEIGHT as f32;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_ROOT: AccessibilityNodeId = AccessibilityNodeId::new(1);
@@ -3016,6 +3018,7 @@ impl Render for SettingsView {
 
         let general_content = div()
             .min_w_0()
+            .min_h_0()
             .flex_1()
             .h_full()
             .flex()
@@ -3024,6 +3027,8 @@ impl Render for SettingsView {
             .p_5()
             .bg(tokens.canvas)
             .text_color(tokens.text)
+            .id("general-content")
+            .overflow_y_scroll()
             .child(div().text_2xl().child("General"))
             .child(
                 div()
@@ -3319,6 +3324,7 @@ impl Render for SettingsView {
             .p_5()
             .bg(tokens.canvas)
             .text_color(tokens.text)
+            .id("models-content")
             .child(div().text_2xl().child("Models"))
             .child(
                 div()
@@ -3506,6 +3512,7 @@ impl Render for SettingsView {
             .p_5()
             .bg(tokens.canvas)
             .text_color(tokens.text)
+            .id("diagnostics-content")
             .child(div().text_2xl().child("Diagnostics"))
             .child(
                 div()
@@ -4990,6 +4997,7 @@ pub fn open_settings_window(
         .open_window(
             WindowOptions {
                 window_bounds: Some(window_bounds),
+                window_min_size: Some(size(px(WINDOW_MIN_WIDTH), px(WINDOW_MIN_HEIGHT))),
                 titlebar: Some(TitlebarOptions {
                     title: Some("BongoCat Settings".into()),
                     ..Default::default()
