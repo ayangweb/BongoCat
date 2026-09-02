@@ -10,8 +10,9 @@ use bongocat_audio::{MotionAudioService, MotionAudioShutdownError};
 use bongocat_config::{
     ApplicationState, BuildEnvironment, CompiledShortcuts, ConfigError, ConfigRecovery,
     ConfigRevision, ConfigStore, InterruptedConfigRecovery, ModelBehaviorBinding, NativeConfig,
-    PlatformStorageError, SelectedModelOrigin, ShortcutBinding, ShortcutConfig, ShortcutTable,
-    StateError, StateStore, StorageLayout, WindowPlacement, platform_layout,
+    OverlayWindowPlacement, PlatformStorageError, SelectedModelOrigin, ShortcutBinding,
+    ShortcutConfig, ShortcutTable, StateError, StateStore, StorageLayout, WindowPlacement,
+    platform_layout,
 };
 use bongocat_model::{
     CommittedModel, InstalledModel, ModelCatalogEntry, ModelError, ModelId, ModelImportProgress,
@@ -457,11 +458,31 @@ impl Application {
         self.state.settings_window
     }
 
+    pub const fn overlay_window_placement(&self) -> Option<OverlayWindowPlacement> {
+        self.state.overlay_window
+    }
+
     pub fn persist_settings_window_placement(
         &mut self,
         placement: Option<WindowPlacement>,
     ) -> Result<(), ApplicationError> {
-        let state = ApplicationState::with_settings_window(placement);
+        if self.state.settings_window == placement {
+            return Ok(());
+        }
+        let state = ApplicationState::with_windows(placement, self.state.overlay_window);
+        self.state_store.commit(&state)?;
+        self.state = state;
+        Ok(())
+    }
+
+    pub fn persist_overlay_window_placement(
+        &mut self,
+        placement: OverlayWindowPlacement,
+    ) -> Result<(), ApplicationError> {
+        if self.state.overlay_window == Some(placement) {
+            return Ok(());
+        }
+        let state = ApplicationState::with_windows(self.state.settings_window, Some(placement));
         self.state_store.commit(&state)?;
         self.state = state;
         Ok(())

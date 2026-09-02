@@ -1,6 +1,6 @@
 use crate::{
-    OverlayError, OverlaySessionOptions, OverlayTickOutcome, PreviewReport, ProductOverlayReport,
-    validate_model_generation_advance,
+    OverlayError, OverlaySessionOptions, OverlayTickOutcome, OverlayWindowBounds, PreviewReport,
+    ProductOverlayReport, validate_model_generation_advance,
 };
 use bongocat_model::{CommittedModel, ModelId, ModelPackageLimits, PresetModelCatalog};
 use bongocat_platform::{
@@ -31,7 +31,7 @@ use windows::{
     Win32::{
         Foundation::{
             CloseHandle, ERROR_NO_MORE_FILES, HANDLE, HINSTANCE, HMODULE, HWND, LPARAM, LRESULT,
-            RECT, WPARAM,
+            POINT, RECT, WPARAM,
         },
         Graphics::{
             Direct3D::{
@@ -71,6 +71,10 @@ use windows::{
                 DXGI_USAGE_RENDER_TARGET_OUTPUT, IDXGIAdapter, IDXGIAdapter3, IDXGIDevice,
                 IDXGIFactory2, IDXGISwapChain1,
             },
+            Gdi::{
+                GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTONULL, MONITORINFO,
+                MonitorFromPoint, MonitorFromRect,
+            },
         },
         System::{
             Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize},
@@ -85,10 +89,10 @@ use windows::{
             HiDpi::GetDpiForWindow,
             WindowsAndMessaging::{
                 CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GWL_EXSTYLE,
-                GetWindowLongPtrW, GetWindowRect, HTCAPTION, HTTRANSPARENT, HWND_NOTOPMOST,
-                HWND_TOPMOST, IsWindowVisible, MSG, PM_REMOVE, PeekMessageW, RegisterClassW,
-                SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SetWindowPos, ShowWindow,
-                TranslateMessage, UnregisterClassW, WM_CLOSE, WM_NCHITTEST, WNDCLASSW,
+                GetCursorPos, GetWindowLongPtrW, GetWindowRect, HTCAPTION, HTTRANSPARENT,
+                HWND_NOTOPMOST, HWND_TOPMOST, IsWindowVisible, MSG, PM_REMOVE, PeekMessageW,
+                RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SetWindowPos,
+                ShowWindow, TranslateMessage, UnregisterClassW, WM_CLOSE, WM_NCHITTEST, WNDCLASSW,
                 WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
                 WS_POPUP,
             },
@@ -107,6 +111,45 @@ const SWITCH_WARMUP_CYCLES: u64 = 100;
 const THREAD_SETTLE_INTERVAL: Duration = Duration::from_millis(10);
 const THREAD_SETTLE_SAMPLES: u32 = 25;
 const THREAD_SETTLE_TIMEOUT: Duration = Duration::from_secs(2);
+
+fn current_cursor_position() -> POINT {
+    let mut point = POINT { x: 80, y: 80 };
+    // SAFETY: GetCursorPos writes only to the initialized stack value.
+    let _ = unsafe { GetCursorPos(&mut point) };
+    point
+}
+
+fn centered_position(cursor: POINT, width: u32, height: u32) -> (i32, i32) {
+    // SAFETY: the monitor handle is used only for the immediate bounds query,
+    // whose output points to initialized stack storage.
+    unsafe {
+        let monitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST);
+        let mut info = MONITORINFO {
+            cbSize: size_of::<MONITORINFO>() as u32,
+            rcMonitor: RECT::default(),
+            rcWork: RECT::default(),
+            dwFlags: 0,
+        };
+        if monitor.is_invalid() || !GetMonitorInfoW(monitor, &mut info).as_bool() {
+            return (80, 80);
+        }
+        (
+            info.rcMonitor.left + (info.rcMonitor.right - info.rcMonitor.left - width as i32) / 2,
+            info.rcMonitor.top + (info.rcMonitor.bottom - info.rcMonitor.top - height as i32) / 2,
+        )
+    }
+}
+
+fn overlay_bounds_visible(bounds: OverlayWindowBounds) -> bool {
+    let rect = RECT {
+        left: bounds.x,
+        top: bounds.y,
+        right: bounds.x.saturating_add_unsigned(bounds.width),
+        bottom: bounds.y.saturating_add_unsigned(bounds.height),
+    };
+    // SAFETY: MonitorFromRect only reads the initialized rectangle.
+    !unsafe { MonitorFromRect(&rect, MONITOR_DEFAULTTONULL) }.is_invalid()
+}
 
 const SHADER_SOURCE: &str = r#"
     cbuffer UniformBuffer : register(b0) {
@@ -278,29 +321,24 @@ struct OverlayWindow {
     _not_send_or_sync: std::marker::PhantomData<Rc<()>>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct WindowPosition {
-    x: i32,
-    y: i32,
-}
-
 impl OverlayWindow {
     fn create(
         options: OverlaySessionOptions,
         canvas: CanvasInfo,
-        position: Option<WindowPosition>,
+        bounds: Option<OverlayWindowBounds>,
     ) -> Result<Self, OverlayError> {
         // SAFETY: the class and HWND are created and subsequently used only on
         // the current UI thread. No borrowed Win32 pointers escape this owner.
-        unsafe { Self::create_inner(options, canvas, position) }
+        unsafe { Self::create_inner(options, canvas, bounds) }
             .map_err(windows_error("create Win32 overlay"))
     }
 
     unsafe fn create_inner(
         options: OverlaySessionOptions,
         canvas: CanvasInfo,
-        position: Option<WindowPosition>,
+        bounds: Option<OverlayWindowBounds>,
     ) -> WindowsResult<Self> {
+        let bounds = bounds.filter(|bounds| overlay_bounds_visible(*bounds));
         let module = unsafe { GetModuleHandleW(None)? };
         let instance = HINSTANCE(module.0);
         let class = WNDCLASSW {
@@ -320,14 +358,17 @@ impl OverlayWindow {
         let (base_width, base_height) = content_dimensions(canvas);
         let logical_width = (base_width * f32::from(scale) / 100.0).round() as u32;
         let logical_height = (base_height * f32::from(scale) / 100.0).round() as u32;
+        let cursor = current_cursor_position();
+        let initial_x = bounds.map_or(cursor.x, |value| value.x);
+        let initial_y = bounds.map_or(cursor.y, |value| value.y);
         let hwnd = match unsafe {
             CreateWindowExW(
                 extended,
                 WINDOW_CLASS,
                 w!("BongoCat"),
                 WS_POPUP,
-                position.map_or(80, |value| value.x),
-                position.map_or(80, |value| value.y),
+                initial_x,
+                initial_y,
                 logical_width as i32,
                 logical_height as i32,
                 None,
@@ -348,8 +389,16 @@ impl OverlayWindow {
             let _ = unsafe { UnregisterClassW(WINDOW_CLASS, Some(instance)) };
             return Err(invariant_error("GetDpiForWindow returned zero"));
         }
-        let width = logical_to_physical(logical_width, dpi)?;
-        let height = logical_to_physical(logical_height, dpi)?;
+        let width = bounds.map_or(logical_to_physical(logical_width, dpi)?, |value| {
+            value.width
+        });
+        let height = bounds.map_or(logical_to_physical(logical_height, dpi)?, |value| {
+            value.height
+        });
+        let (x, y) = bounds.map_or_else(
+            || centered_position(cursor, width, height),
+            |value| (value.x, value.y),
+        );
         unsafe {
             SetWindowPos(
                 hwnd,
@@ -358,11 +407,11 @@ impl OverlayWindow {
                 } else {
                     Some(HWND_NOTOPMOST)
                 },
-                0,
-                0,
+                x,
+                y,
                 width as i32,
                 height as i32,
-                SWP_NOMOVE | SWP_NOACTIVATE,
+                SWP_NOACTIVATE,
             )?;
         }
         Ok(Self {
@@ -396,16 +445,19 @@ impl OverlayWindow {
         assert_eq!(self.owner_thread, thread::current().id());
     }
 
-    fn position(&self) -> Result<WindowPosition, OverlayError> {
+    fn bounds(&self) -> Result<OverlayWindowBounds, OverlayError> {
         self.assert_owner_thread();
         let mut rect = RECT::default();
         // SAFETY: the HWND is live and accessed only from its owner thread.
         unsafe { GetWindowRect(self.hwnd, &mut rect) }
             .map_err(windows_error("read overlay window position"))?;
-        Ok(WindowPosition {
-            x: rect.left,
-            y: rect.top,
-        })
+        OverlayWindowBounds::new(
+            rect.left,
+            rect.top,
+            (rect.right - rect.left) as u32,
+            (rect.bottom - rect.top) as u32,
+        )
+        .validate()
     }
 }
 
@@ -872,10 +924,10 @@ impl NativeOverlay {
     fn create(
         frame: &RenderFrame,
         options: OverlaySessionOptions,
-        position: Option<WindowPosition>,
+        bounds: Option<OverlayWindowBounds>,
     ) -> Result<Self, OverlayError> {
         validate_options(options)?;
-        let window = OverlayWindow::create(options, frame.snapshot.canvas, position)?;
+        let window = OverlayWindow::create(options, frame.snapshot.canvas, bounds)?;
         let renderer = Renderer::create(&window, frame, options.opacity_percent)?;
         Ok(Self { renderer, window })
     }
@@ -927,7 +979,7 @@ impl ProductOverlaySession {
             .model_commit
             .ok_or_else(|| OverlayError::new("initial render frame has no model commit token"))?;
         let com_apartment = ComApartment::initialize()?;
-        let overlay = match NativeOverlay::create(&initial_frame, options, None) {
+        let overlay = match NativeOverlay::create(&initial_frame, options, options.window_bounds) {
             Ok(overlay) => overlay,
             Err(error) => {
                 reject_model_commit(&runtime_client, &render_consumer, token)?;
@@ -1006,9 +1058,13 @@ impl ProductOverlaySession {
             let next_options = self
                 .options
                 .with_runtime_settings(runtime_snapshot.overlay_settings);
-            let position = self.overlay.window.position()?;
-            let replacement =
-                NativeOverlay::create(&self.last_frame, next_options, Some(position))?;
+            let bounds = self.overlay.window.bounds()?;
+            let bounds = if next_options.scale_percent != self.options.scale_percent {
+                bounds.rescale(self.options.scale_percent, next_options.scale_percent)
+            } else {
+                bounds
+            };
+            let replacement = NativeOverlay::create(&self.last_frame, next_options, Some(bounds))?;
             if runtime_snapshot.overlay_visible {
                 replacement.set_visible(true)?;
             }
@@ -1028,9 +1084,8 @@ impl ProductOverlaySession {
             self.last_frame = frame.clone();
             let model_changed = frame.model_generation != self.overlay.renderer.model_generation;
             if model_changed {
-                let position = self.overlay.window.position()?;
-                let replacement = match NativeOverlay::create(&frame, self.options, Some(position))
-                {
+                let bounds = self.overlay.window.bounds()?;
+                let replacement = match NativeOverlay::create(&frame, self.options, Some(bounds)) {
                     Ok(replacement) => replacement,
                     Err(error) if frame.model_commit.is_some() => {
                         reject_model_commit(
@@ -1087,6 +1142,10 @@ impl ProductOverlaySession {
             .draw(self.frames_presented == 0 || model_switched)?;
         self.frames_presented = self.frames_presented.saturating_add(1);
         Ok(OverlayTickOutcome::Presented)
+    }
+
+    pub(super) fn window_bounds(&self) -> Result<OverlayWindowBounds, OverlayError> {
+        self.overlay.window.bounds()
     }
 
     pub(super) fn stop_input(&mut self) -> Result<(), OverlayError> {
@@ -1719,6 +1778,9 @@ impl GpuModel {
 }
 
 fn validate_options(options: OverlaySessionOptions) -> Result<(), OverlayError> {
+    if let Some(bounds) = options.window_bounds {
+        bounds.validate()?;
+    }
     if !(25..=400).contains(&options.scale_percent) {
         return Err(OverlayError::new(
             "overlay scale must be between 25 and 400 percent",

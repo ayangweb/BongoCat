@@ -1,6 +1,6 @@
 use crate::{
-    OverlayError, OverlaySessionOptions, OverlayTickOutcome, PreviewReport, ProductOverlayReport,
-    validate_model_generation_advance,
+    OverlayError, OverlaySessionOptions, OverlayTickOutcome, OverlayWindowBounds, PreviewReport,
+    ProductOverlayReport, validate_model_generation_advance,
 };
 use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
 use bongocat_platform::{
@@ -31,9 +31,9 @@ use objc2::{
     rc::{Retained, autoreleasepool},
 };
 use objc2_app_kit::{
-    NSApplication, NSApplicationActivationPolicy, NSBackingStoreType, NSColor, NSEventMask,
-    NSFloatingWindowLevel, NSNormalWindowLevel, NSPanel, NSView, NSWindowAnimationBehavior,
-    NSWindowCollectionBehavior, NSWindowStyleMask,
+    NSApplication, NSApplicationActivationPolicy, NSBackingStoreType, NSColor, NSEvent,
+    NSEventMask, NSFloatingWindowLevel, NSNormalWindowLevel, NSPanel, NSScreen, NSView,
+    NSWindowAnimationBehavior, NSWindowCollectionBehavior, NSWindowStyleMask,
 };
 use objc2_foundation::{NSDate, NSDefaultRunLoopMode, NSPoint, NSRect, NSSize};
 use objc2_quartz_core::CAMetalLayer as ObjcMetalLayer;
@@ -180,12 +180,6 @@ struct NativeOverlay {
     model: GpuModel,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct WindowOrigin {
-    x: f64,
-    y: f64,
-}
-
 struct GpuModel {
     textures: BTreeMap<TextureId, Texture>,
     key_textures: BTreeMap<KeyAssetId, Texture>,
@@ -245,13 +239,14 @@ impl ProductOverlaySession {
         let application = NSApplication::sharedApplication(mtm);
         application.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
         application.finishLaunching();
-        let overlay = match NativeOverlay::create(mtm, &initial_frame, options, None) {
-            Ok(overlay) => overlay,
-            Err(error) => {
-                reject_model_commit(&runtime_client, &render_consumer, token)?;
-                return Err(error);
-            }
-        };
+        let overlay =
+            match NativeOverlay::create(mtm, &initial_frame, options, options.window_bounds) {
+                Ok(overlay) => overlay,
+                Err(error) => {
+                    reject_model_commit(&runtime_client, &render_consumer, token)?;
+                    return Err(error);
+                }
+            };
         report_model_commit(
             &runtime_client,
             &render_consumer,
@@ -324,17 +319,19 @@ impl ProductOverlaySession {
             let next_options = self
                 .options
                 .with_runtime_settings(runtime_snapshot.overlay_settings);
-            let frame = self.overlay.panel.frame();
+            let bounds = self.window_bounds()?;
+            let bounds = if next_options.scale_percent != self.options.scale_percent {
+                bounds.rescale(self.options.scale_percent, next_options.scale_percent)
+            } else {
+                bounds
+            };
             let replacement = NativeOverlay::create(
                 MainThreadMarker::new().ok_or_else(|| {
                     OverlayError::new("macOS overlay settings update lost the main thread")
                 })?,
                 &self.last_frame,
                 next_options,
-                Some(WindowOrigin {
-                    x: frame.origin.x,
-                    y: frame.origin.y,
-                }),
+                Some(bounds),
             )?;
             if runtime_snapshot.overlay_visible {
                 replacement.panel.orderFrontRegardless();
@@ -357,17 +354,14 @@ impl ProductOverlaySession {
             self.last_frame = frame.clone();
             let model_changed = frame.model_generation != self.overlay.model_generation;
             if model_changed {
-                let window_frame = self.overlay.panel.frame();
+                let bounds = self.window_bounds()?;
                 let replacement = NativeOverlay::create(
                     MainThreadMarker::new().ok_or_else(|| {
                         OverlayError::new("macOS overlay model update lost the main thread")
                     })?,
                     &frame,
                     self.options,
-                    Some(WindowOrigin {
-                        x: window_frame.origin.x,
-                        y: window_frame.origin.y,
-                    }),
+                    Some(bounds),
                 );
                 let replacement = match replacement {
                     Ok(replacement) => replacement,
@@ -427,6 +421,17 @@ impl ProductOverlaySession {
             .draw(self.frames_presented == 0 || gpu_model_switched)?;
         self.frames_presented = self.frames_presented.saturating_add(1);
         Ok(OverlayTickOutcome::Presented)
+    }
+
+    pub(super) fn window_bounds(&self) -> Result<OverlayWindowBounds, OverlayError> {
+        let frame = self.overlay.panel.frame();
+        OverlayWindowBounds::new(
+            rounded_i32(frame.origin.x)?,
+            rounded_i32(frame.origin.y)?,
+            rounded_u32(frame.size.width)?,
+            rounded_u32(frame.size.height)?,
+        )
+        .validate()
     }
 
     pub(super) fn stop_input(&mut self) -> Result<(), OverlayError> {
@@ -525,6 +530,9 @@ fn report_model_commit(
 }
 
 fn validate_product_options(options: OverlaySessionOptions) -> Result<(), OverlayError> {
+    if let Some(bounds) = options.window_bounds {
+        bounds.validate()?;
+    }
     if !(25..=400).contains(&options.scale_percent) {
         return Err(OverlayError::new(
             "overlay scale must be between 25 and 400 percent",
@@ -935,15 +943,20 @@ impl NativeOverlay {
         mtm: MainThreadMarker,
         frame: &RenderFrame,
         options: OverlaySessionOptions,
-        origin: Option<WindowOrigin>,
+        bounds: Option<OverlayWindowBounds>,
     ) -> Result<Self, OverlayError> {
+        let bounds = bounds.filter(|bounds| overlay_bounds_visible(mtm, *bounds));
         let window_scale = f64::from(options.scale_percent) / 100.0;
         let (base_width, base_height) = content_dimensions(frame.snapshot.canvas);
-        let window_width = base_width * window_scale;
-        let window_height = base_height * window_scale;
-        let origin = origin.map_or(NSPoint::new(80.0, 80.0), |origin| {
-            NSPoint::new(origin.x, origin.y)
+        let window_width =
+            bounds.map_or(base_width * window_scale, |bounds| f64::from(bounds.width));
+        let window_height = bounds.map_or(base_height * window_scale, |bounds| {
+            f64::from(bounds.height)
         });
+        let origin = bounds.map_or_else(
+            || centered_origin(mtm, window_width, window_height),
+            |bounds| NSPoint::new(f64::from(bounds.x), f64::from(bounds.y)),
+        );
         let window_frame = NSRect::new(origin, NSSize::new(window_width, window_height));
         let style = NSWindowStyleMask::Borderless | NSWindowStyleMask::NonactivatingPanel;
         let panel = NSPanel::initWithContentRect_styleMask_backing_defer(
@@ -1277,6 +1290,56 @@ impl NativeOverlay {
     fn current_allocated_size(&self) -> u64 {
         self.device.current_allocated_size()
     }
+}
+
+fn centered_origin(mtm: MainThreadMarker, width: f64, height: f64) -> NSPoint {
+    let mouse = NSEvent::mouseLocation();
+    let screens = NSScreen::screens(mtm);
+    let screen = screens
+        .iter()
+        .find(|screen| {
+            let frame = screen.frame();
+            mouse.x >= frame.origin.x
+                && mouse.x < frame.origin.x + frame.size.width
+                && mouse.y >= frame.origin.y
+                && mouse.y < frame.origin.y + frame.size.height
+        })
+        .map(|screen| screen.frame())
+        .or_else(|| NSScreen::mainScreen(mtm).map(|screen| screen.frame()));
+    screen.map_or(NSPoint::new(80.0, 80.0), |screen| {
+        NSPoint::new(
+            screen.origin.x + (screen.size.width - width) / 2.0,
+            screen.origin.y + (screen.size.height - height) / 2.0,
+        )
+    })
+}
+
+fn overlay_bounds_visible(mtm: MainThreadMarker, bounds: OverlayWindowBounds) -> bool {
+    let left = f64::from(bounds.x);
+    let bottom = f64::from(bounds.y);
+    let right = left + f64::from(bounds.width);
+    let top = bottom + f64::from(bounds.height);
+    NSScreen::screens(mtm).iter().any(|screen| {
+        let frame = screen.frame();
+        left < frame.origin.x + frame.size.width
+            && right > frame.origin.x
+            && bottom < frame.origin.y + frame.size.height
+            && top > frame.origin.y
+    })
+}
+
+fn rounded_i32(value: f64) -> Result<i32, OverlayError> {
+    if !value.is_finite() || value < f64::from(i32::MIN) || value > f64::from(i32::MAX) {
+        return Err(OverlayError::new("overlay window coordinate is invalid"));
+    }
+    Ok(value.round() as i32)
+}
+
+fn rounded_u32(value: f64) -> Result<u32, OverlayError> {
+    if !value.is_finite() || value < 0.0 || value > f64::from(u32::MAX) {
+        return Err(OverlayError::new("overlay window dimension is invalid"));
+    }
+    Ok(value.round() as u32)
 }
 
 impl GpuModel {

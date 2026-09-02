@@ -3,7 +3,7 @@
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_live2d::CoreLogHandle;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-use bongocat_overlay::{OverlaySessionOptions, ProductOverlaySession};
+use bongocat_overlay::{OverlaySessionOptions, OverlayWindowBounds, ProductOverlaySession};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_platform::ShortcutDispatcher;
 #[cfg(target_os = "windows")]
@@ -310,6 +310,22 @@ impl ProductShutdown {
     async fn finish(self) -> Arc<Mutex<Vec<String>>> {
         let failures = Arc::clone(&self.coordinator.failures);
         let settings_client = self.settings_service.client();
+        if let Ok(bounds) = self.overlay.window_bounds() {
+            for _ in 0..20 {
+                if settings_client
+                    .update_overlay_window_placement(
+                        bounds.x,
+                        bounds.y,
+                        bounds.width,
+                        bounds.height,
+                    )
+                    .is_ok()
+                {
+                    break;
+                }
+                Timer::after(Duration::from_millis(10)).await;
+            }
+        }
         if let Err(error) = settings_client.shutdown().await {
             record_failure(&failures, error.to_string());
         }
@@ -817,6 +833,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         scale_percent: application.config().overlay.scale_percent,
         opacity_percent: application.config().overlay.opacity_percent,
         maximum_fps: application.config().model.maximum_fps,
+        window_bounds: application.overlay_window_placement().map(|placement| {
+            OverlayWindowBounds::new(placement.x, placement.y, placement.width, placement.height)
+        }),
     };
     application.prepare_model(model_origin, model_id)?;
     let runtime_client = application.runtime_client();
@@ -917,7 +936,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let settings_client = settings_service.client();
         let window_state = settings_service.window_state();
         let settings_window =
-            match open_settings_window(settings_client, window_state, request_product_quit, cx) {
+            match open_settings_window(settings_client.clone(), window_state, request_product_quit, cx) {
                 Ok(window) => window,
                 Err(error) => {
                     record_failure(&run_failures, error);
@@ -1073,6 +1092,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         cx.spawn(async move |cx| {
             #[cfg(target_os = "windows")]
             let mut frame_active = true;
+            let mut last_overlay_bounds = None;
             #[cfg(target_os = "windows")]
             let mut update_failure_reported = false;
             loop {
@@ -1096,6 +1116,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .tick();
                             match result {
                                 Ok(_) => {
+                                    if let Ok(bounds) = coordinator
+                                        .overlay
+                                        .as_ref()
+                                        .expect("product overlay owner is present")
+                                        .window_bounds()
+                                        && last_overlay_bounds != Some(bounds)
+                                        && settings_client
+                                            .update_overlay_window_placement(
+                                                bounds.x,
+                                                bounds.y,
+                                                bounds.width,
+                                                bounds.height,
+                                            )
+                                            .is_ok()
+                                    {
+                                        last_overlay_bounds = Some(bounds);
+                                    }
                                     coordinator.frame_ticks =
                                         coordinator.frame_ticks.saturating_add(1);
                                     (true, None, None, None)
@@ -1127,11 +1164,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .unwrap_or(false);
                 #[cfg(target_os = "windows")]
                 let tick_result = frame_active.then(|| {
-                    frame_overlay
-                        .borrow_mut()
+                    let mut overlay = frame_overlay.borrow_mut();
+                    let overlay = overlay
                         .as_mut()
-                        .expect("product overlay owner is present while the frame source runs")
-                        .tick()
+                        .expect("product overlay owner is present while the frame source runs");
+                    let result = overlay.tick();
+                    if result.is_ok()
+                        && let Ok(bounds) = overlay.window_bounds()
+                        && last_overlay_bounds != Some(bounds)
+                        && settings_client
+                            .update_overlay_window_placement(
+                                bounds.x,
+                                bounds.y,
+                                bounds.width,
+                                bounds.height,
+                            )
+                            .is_ok()
+                    {
+                        last_overlay_bounds = Some(bounds);
+                    }
+                    result
                 });
                 #[cfg(target_os = "windows")]
                 if tick_result.as_ref().is_some_and(Result::is_err) {

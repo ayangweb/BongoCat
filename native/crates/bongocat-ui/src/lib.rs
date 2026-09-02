@@ -51,12 +51,27 @@ impl SettingsWindowPlacement {
 #[derive(Clone, Default)]
 pub struct SettingsWindowState {
     placement: Arc<Mutex<Option<SettingsWindowPlacement>>>,
+    change_revision: Arc<AtomicU64>,
+    commands: Option<Sender<SettingsCommand>>,
 }
 
 impl SettingsWindowState {
     pub fn new(placement: Option<SettingsWindowPlacement>) -> Self {
         Self {
             placement: Arc::new(Mutex::new(placement)),
+            change_revision: Arc::new(AtomicU64::new(0)),
+            commands: None,
+        }
+    }
+
+    fn tracked(
+        placement: Option<SettingsWindowPlacement>,
+        commands: Sender<SettingsCommand>,
+    ) -> Self {
+        Self {
+            placement: Arc::new(Mutex::new(placement)),
+            change_revision: Arc::new(AtomicU64::new(0)),
+            commands: Some(commands),
         }
     }
 
@@ -67,11 +82,29 @@ impl SettingsWindowState {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    pub fn update(&self, placement: SettingsWindowPlacement) {
-        *self
+    pub fn update(&self, placement: SettingsWindowPlacement) -> Option<u64> {
+        let mut current = self
             .placement
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(placement);
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if *current == Some(placement) {
+            return None;
+        }
+        *current = Some(placement);
+        Some(self.change_revision.fetch_add(1, Ordering::AcqRel) + 1)
+    }
+
+    pub fn request_persist_if_current(&self, revision: u64) -> bool {
+        if self.change_revision.load(Ordering::Acquire) != revision {
+            return true;
+        }
+        if let Some(commands) = self.commands.as_ref() {
+            return match commands.try_send(SettingsCommand::SettingsWindowPlacementChanged) {
+                Ok(()) | Err(async_channel::TrySendError::Closed(_)) => true,
+                Err(async_channel::TrySendError::Full(_)) => false,
+            };
+        }
+        true
     }
 }
 
@@ -779,6 +812,13 @@ impl<T> SettingsReply<T> {
 }
 
 pub enum SettingsCommand {
+    SettingsWindowPlacementChanged,
+    OverlayWindowPlacementChanged {
+        x: i32,
+        y: i32,
+        width: u32,
+        height: u32,
+    },
     ReadSnapshot {
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
@@ -898,6 +938,30 @@ impl SettingsClient {
             },
             SettingsServiceEndpoint { commands: receiver },
         )
+    }
+
+    pub fn track_window_state(
+        &self,
+        placement: Option<SettingsWindowPlacement>,
+    ) -> SettingsWindowState {
+        SettingsWindowState::tracked(placement, self.commands.clone())
+    }
+
+    pub fn update_overlay_window_placement(
+        &self,
+        x: i32,
+        y: i32,
+        width: u32,
+        height: u32,
+    ) -> Result<(), SettingsServiceClosed> {
+        self.commands
+            .try_send(SettingsCommand::OverlayWindowPlacementChanged {
+                x,
+                y,
+                width,
+                height,
+            })
+            .map_err(|_| SettingsServiceClosed)
     }
 
     pub async fn read_snapshot(&self) -> Result<SettingsSnapshot, SettingsError> {

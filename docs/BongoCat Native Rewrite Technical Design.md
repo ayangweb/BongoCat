@@ -515,14 +515,17 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
   Finder/Explorer，不经 shell 或字符串拼接；成功只返回当前 snapshot 且不推进 revision，失败只返回
   `BackupLocationOpenFailed`。该 command 在 `RecoveryRequired` 受限状态仍可使用。
 - `config.json` 只包含用户设置；窗口布局写入 `state.json`，pressed state、权限结果和模型解析缓存不持久化。
-- `state.json` 使用独立 v1 schema，只保存设置窗口的逻辑坐标、尺寸与 maximized 状态；坐标支持
-  多显示器负值并设有有限范围，尺寸限制为 `640x480..16384x16384`。缺失、损坏、越界、未知字段
-  或读取失败只回退到当前显示器居中的 `800x600`，不得阻塞 config、runtime 或 recovery-only 启动；
-  未来 state schema 也回退显示但禁止被旧版本覆盖。
+- `state.json` 使用独立 v2 schema，保存设置窗口的逻辑坐标、尺寸与 maximized 状态，以及 overlay
+  的坐标与尺寸；v1 按顺序迁移为 overlay 尚无布局的 v2。坐标支持多显示器负值并设有有限范围，
+  设置窗口尺寸限制为 `640x480..16384x16384`，overlay 尺寸限制为
+  `64x64..16384x16384`。缺失、损坏、越界、未知字段或读取失败只回退到鼠标当前所在显示器
+  居中的默认尺寸，不得阻塞 config、runtime 或 recovery-only 启动；未来 state schema 也回退显示
+  但禁止被旧版本覆盖。
 - state 通过环境内独立的 `state.writer.lock` 和原子替换提交，提交后重读 typed state，失败恢复
-  替换前 bytes；它不进入 config revision、backup、quarantine 或 migration。GPUI bounds observer
-  只更新 typed 内存 tracker，settings worker 在正常 shutdown 前 flush；窗口完全离开当前显示器时
-  重建回退居中，fullscreen 不持久化。
+  替换前 bytes；它不进入 config revision、backup 或 quarantine。GPUI bounds observer 对连续变化
+  合并 150 ms 后通知 settings worker，overlay frame source 仅在几何真正变化时通知同一 worker；
+  正常 shutdown 前仍强制 flush。配置提交、模型切换和窗口重建必须保留另一窗口已保存的几何，
+  窗口完全离开当前显示器时回退到鼠标当前所在显示器居中，fullscreen 不持久化。
 - 模型导入防止路径穿越、符号链接逃逸、压缩炸弹和覆盖现有用户数据。
 - 模型包在反序列化或图片解码前执行 JSON 字节/深度、单文件/整包字节、文件数、目录深度
   和纹理尺寸上限。model ID、资源路径、model3 数组索引、任意 JSON bytes 和 PNG header/

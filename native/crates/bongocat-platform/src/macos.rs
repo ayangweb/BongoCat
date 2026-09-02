@@ -1,6 +1,6 @@
 use crate::{
-    InputPermission, PlatformInputDiagnostics, PlatformInputError, PlatformInputServiceStatus,
-    ShortcutDispatcher,
+    DisplayBounds, InputPermission, PlatformInputDiagnostics, PlatformInputError,
+    PlatformInputServiceStatus, ShortcutDispatcher,
 };
 use block2::RcBlock;
 use bongocat_runtime::{
@@ -17,7 +17,8 @@ use objc2_core_foundation::{
 use objc2_core_graphics::{
     CGDirectDisplayID, CGDisplayBounds, CGError, CGEvent, CGEventField, CGEventFlags, CGEventMask,
     CGEventSource, CGEventSourceStateID, CGEventTapLocation, CGEventTapOptions,
-    CGEventTapPlacement, CGEventTapProxy, CGEventType, CGGetDisplaysWithPoint, CGMouseButton,
+    CGEventTapPlacement, CGEventTapProxy, CGEventType, CGGetActiveDisplayList,
+    CGGetDisplaysWithPoint, CGMouseButton,
 };
 use objc2_game_controller::{GCController, GCControllerElement, GCExtendedGamepad};
 use std::{
@@ -1429,6 +1430,19 @@ fn forward_latest_cursor(
 }
 
 fn display_viewport(point: MacCursorPoint) -> Option<CursorViewport> {
+    let display = display_at_point(point)?;
+    let bounds = CGDisplayBounds(display);
+    Some(CursorViewport {
+        origin: CursorPosition {
+            x: bounds.origin.x,
+            y: bounds.origin.y,
+        },
+        width: bounds.size.width,
+        height: bounds.size.height,
+    })
+}
+
+fn display_at_point(point: MacCursorPoint) -> Option<CGDirectDisplayID> {
     let mut display: CGDirectDisplayID = 0;
     let mut display_count = 0_u32;
     // SAFETY: both output pointers refer to initialized stack values and
@@ -1447,14 +1461,70 @@ fn display_viewport(point: MacCursorPoint) -> Option<CursorViewport> {
     if result != CGError::Success || display_count == 0 {
         return None;
     }
+    Some(display)
+}
+
+pub fn current_display_bounds() -> Option<DisplayBounds> {
+    let event = CGEvent::new(None)?;
+    let location = CGEvent::location(Some(&event));
+    let point = MacCursorPoint {
+        x: location.x,
+        y: location.y,
+    };
+    let display = display_at_point(point)?;
+    display_bounds(display)
+}
+
+pub fn display_bounds_for_window(x: f32, y: f32, width: f32, height: f32) -> Option<DisplayBounds> {
+    active_display_bounds()
+        .into_iter()
+        .find(|display| display.intersects_window(x, y, width, height))
+}
+
+pub fn local_window_origin(display: DisplayBounds, x: f32, y: f32) -> (f32, f32) {
+    (x - display.x, y - display.y)
+}
+
+pub fn global_window_origin(display_id: Option<u32>, x: f32, y: f32) -> (f32, f32) {
+    display_id
+        .and_then(display_bounds)
+        .map_or((x, y), |display| (display.x + x, display.y + y))
+}
+
+fn active_display_bounds() -> Vec<DisplayBounds> {
+    const MAX_DISPLAYS: usize = 32;
+    let mut displays = [0_u32; MAX_DISPLAYS];
+    let mut count = 0_u32;
+    // SAFETY: CoreGraphics writes at most MAX_DISPLAYS IDs into the initialized
+    // stack array and writes the actual count to a valid stack pointer.
+    let result =
+        unsafe { CGGetActiveDisplayList(MAX_DISPLAYS as u32, displays.as_mut_ptr(), &mut count) };
+    if result != CGError::Success {
+        return Vec::new();
+    }
+    displays[..count.min(MAX_DISPLAYS as u32) as usize]
+        .iter()
+        .filter_map(|display| display_bounds(*display))
+        .collect()
+}
+
+fn display_bounds(display: CGDirectDisplayID) -> Option<DisplayBounds> {
     let bounds = CGDisplayBounds(display);
-    Some(CursorViewport {
-        origin: CursorPosition {
-            x: bounds.origin.x,
-            y: bounds.origin.y,
-        },
-        width: bounds.size.width,
-        height: bounds.size.height,
+    if !bounds.origin.x.is_finite()
+        || !bounds.origin.y.is_finite()
+        || !bounds.size.width.is_finite()
+        || !bounds.size.height.is_finite()
+        || bounds.size.width <= 0.0
+        || bounds.size.height <= 0.0
+    {
+        return None;
+    }
+    Some(DisplayBounds {
+        display_id: Some(display),
+        x: bounds.origin.x as f32,
+        y: bounds.origin.y as f32,
+        width: bounds.size.width as f32,
+        height: bounds.size.height as f32,
     })
 }
 

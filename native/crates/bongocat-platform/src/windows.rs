@@ -1,5 +1,6 @@
 use crate::{
-    PlatformInputDiagnostics, PlatformInputError, PlatformInputServiceStatus, ShortcutDispatcher,
+    DisplayBounds, PlatformInputDiagnostics, PlatformInputError, PlatformInputServiceStatus,
+    ShortcutDispatcher,
 };
 use bongocat_runtime::{
     CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorViewport, GamepadAxis,
@@ -26,7 +27,10 @@ use std::{
 use windows::{
     Win32::{
         Foundation::{FreeLibrary, HINSTANCE, HMODULE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM},
-        Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint},
+        Graphics::Gdi::{
+            EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITOR_DEFAULTTONEAREST,
+            MONITORINFO, MonitorFromPoint,
+        },
         System::{
             LibraryLoader::{
                 GetModuleHandleW, GetProcAddress, LOAD_LIBRARY_SEARCH_SYSTEM32, LoadLibraryExW,
@@ -40,6 +44,7 @@ use windows::{
             },
         },
         UI::{
+            HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI},
             Input::{
                 GetRawInputData, HRAWINPUT, KeyboardAndMouse::GetAsyncKeyState, RAWINPUTDEVICE,
                 RAWINPUTHEADER, RID_INPUT, RIDEV_DEVNOTIFY, RIDEV_INPUTSINK, RIDEV_REMOVE,
@@ -59,7 +64,7 @@ use windows::{
             },
         },
     },
-    core::{PCSTR, w},
+    core::{BOOL, PCSTR, w},
 };
 
 const WINDOW_CLASS: windows::core::PCWSTR = w!("BongoCatProductRawInputWindow");
@@ -89,6 +94,106 @@ const XINPUT_GAMEPAD_A: u16 = 0x1000;
 const XINPUT_GAMEPAD_B: u16 = 0x2000;
 const XINPUT_GAMEPAD_X: u16 = 0x4000;
 const XINPUT_GAMEPAD_Y: u16 = 0x8000;
+
+pub fn current_display_bounds() -> Option<DisplayBounds> {
+    // SAFETY: every query receives initialized stack storage and the monitor
+    // handle remains valid for the duration of these immediate read-only calls.
+    unsafe {
+        let mut cursor = POINT::default();
+        GetCursorPos(&mut cursor).ok()?;
+        let monitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST);
+        if monitor.is_invalid() {
+            return None;
+        }
+        let display_id = active_monitors()
+            .iter()
+            .position(|candidate| *candidate == monitor)? as u32;
+        display_bounds(monitor, display_id)
+    }
+}
+
+pub fn display_bounds_for_window(x: f32, y: f32, width: f32, height: f32) -> Option<DisplayBounds> {
+    active_monitors()
+        .into_iter()
+        .enumerate()
+        .filter_map(|(display_id, monitor)| {
+            // SAFETY: EnumDisplayMonitors returned a live monitor handle for
+            // this immediate read-only query.
+            unsafe { display_bounds(monitor, display_id as u32) }
+        })
+        .find(|display| display.intersects_window(x, y, width, height))
+}
+
+fn active_monitors() -> Vec<HMONITOR> {
+    let mut monitors = Vec::new();
+    // SAFETY: the callback receives a valid pointer to `monitors` only for the
+    // synchronous enumeration and copies each monitor handle without retaining
+    // any borrowed Win32 storage.
+    let result = unsafe {
+        EnumDisplayMonitors(
+            None,
+            None,
+            Some(collect_monitor),
+            LPARAM(std::ptr::from_mut(&mut monitors) as isize),
+        )
+    };
+    if result.as_bool() {
+        monitors
+    } else {
+        Vec::new()
+    }
+}
+
+unsafe extern "system" fn collect_monitor(
+    monitor: HMONITOR,
+    _device_context: HDC,
+    _monitor_rect: *mut RECT,
+    data: LPARAM,
+) -> BOOL {
+    // SAFETY: `data` was created from a live `Vec<HMONITOR>` for this
+    // synchronous EnumDisplayMonitors call.
+    let monitors = unsafe { &mut *(data.0 as *mut Vec<HMONITOR>) };
+    monitors.push(monitor);
+    BOOL(1)
+}
+
+pub fn local_window_origin(_display: DisplayBounds, x: f32, y: f32) -> (f32, f32) {
+    (x, y)
+}
+
+pub fn global_window_origin(_display_id: Option<u32>, x: f32, y: f32) -> (f32, f32) {
+    (x, y)
+}
+
+unsafe fn display_bounds(
+    monitor: windows::Win32::Graphics::Gdi::HMONITOR,
+    display_id: u32,
+) -> Option<DisplayBounds> {
+    let mut info = MONITORINFO {
+        cbSize: size_of::<MONITORINFO>() as u32,
+        rcMonitor: RECT::default(),
+        rcWork: RECT::default(),
+        dwFlags: 0,
+    };
+    if !unsafe { GetMonitorInfoW(monitor, &mut info) }.as_bool() {
+        return None;
+    }
+    let mut dpi_x = 0_u32;
+    let mut dpi_y = 0_u32;
+    unsafe { GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y) }.ok()?;
+    if dpi_x == 0 || dpi_y == 0 {
+        return None;
+    }
+    let scale_x = dpi_x as f32 / 96.0;
+    let scale_y = dpi_y as f32 / 96.0;
+    Some(DisplayBounds {
+        display_id: Some(display_id),
+        x: info.rcMonitor.left as f32 / scale_x,
+        y: info.rcMonitor.top as f32 / scale_y,
+        width: (info.rcMonitor.right - info.rcMonitor.left) as f32 / scale_x,
+        height: (info.rcMonitor.bottom - info.rcMonitor.top) as f32 / scale_y,
+    })
+}
 
 #[repr(C)]
 #[derive(Clone, Copy, Default)]

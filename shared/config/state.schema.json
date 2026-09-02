@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ayangweb.com/bongocat/native-state-v1.schema.json",
-  "title": "BongoCat Native Application State v1",
+  "$id": "https://ayangweb.com/bongocat/native-state-v2.schema.json",
+  "title": "BongoCat Native Application State v2",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "settings_window"],
+  "required": ["schema_version", "settings_window", "overlay_window"],
   "properties": {
     "schema_version": {
-      "const": 1
+      "const": 2
     },
     "settings_window": {
       "oneOf": [
@@ -41,6 +41,40 @@
             },
             "maximized": {
               "type": "boolean"
+            }
+          }
+        }
+      ]
+    },
+    "overlay_window": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["x", "y", "width", "height"],
+          "properties": {
+            "x": {
+              "type": "integer",
+              "minimum": -1000000,
+              "maximum": 1000000
+            },
+            "y": {
+              "type": "integer",
+              "minimum": -1000000,
+              "maximum": 1000000
+            },
+            "width": {
+              "type": "integer",
+              "minimum": 64,
+              "maximum": 16384
+            },
+            "height": {
+              "type": "integer",
+              "minimum": 64,
+              "maximum": 16384
             }
           }
         }

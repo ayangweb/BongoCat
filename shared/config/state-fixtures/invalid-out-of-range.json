@@ -1,10 +1,11 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "settings_window": {
     "x": 0,
     "y": 0,
     "width": 639,
     "height": 600,
     "maximized": false
-  }
+  },
+  "overlay_window": null
 }

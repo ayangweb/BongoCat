@@ -26,6 +26,7 @@ pub struct OverlaySessionOptions {
     pub scale_percent: u16,
     pub opacity_percent: u8,
     pub maximum_fps: u16,
+    pub window_bounds: Option<OverlayWindowBounds>,
 }
 
 impl OverlaySessionOptions {
@@ -36,6 +37,7 @@ impl OverlaySessionOptions {
             scale_percent: settings.scale_percent,
             opacity_percent: settings.opacity_percent,
             maximum_fps: self.maximum_fps,
+            window_bounds: self.window_bounds,
         }
     }
 }
@@ -48,6 +50,49 @@ impl Default for OverlaySessionOptions {
             scale_percent: 100,
             opacity_percent: 100,
             maximum_fps: 60,
+            window_bounds: None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct OverlayWindowBounds {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl OverlayWindowBounds {
+    pub const fn new(x: i32, y: i32, width: u32, height: u32) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    pub(crate) fn validate(self) -> Result<Self, OverlayError> {
+        const MAX_COORDINATE: i32 = 1_000_000;
+        const MIN_DIMENSION: u32 = 64;
+        const MAX_DIMENSION: u32 = 16_384;
+        if !(-MAX_COORDINATE..=MAX_COORDINATE).contains(&self.x)
+            || !(-MAX_COORDINATE..=MAX_COORDINATE).contains(&self.y)
+            || !(MIN_DIMENSION..=MAX_DIMENSION).contains(&self.width)
+            || !(MIN_DIMENSION..=MAX_DIMENSION).contains(&self.height)
+        {
+            return Err(OverlayError::new("overlay window bounds are invalid"));
+        }
+        Ok(self)
+    }
+
+    pub(crate) fn rescale(self, previous_percent: u16, next_percent: u16) -> Self {
+        let ratio = f64::from(next_percent) / f64::from(previous_percent);
+        Self {
+            width: ((f64::from(self.width) * ratio).round() as u32).clamp(64, 16_384),
+            height: ((f64::from(self.height) * ratio).round() as u32).clamp(64, 16_384),
+            ..self
         }
     }
 }
@@ -211,6 +256,25 @@ impl ProductOverlaySession {
         #[cfg(target_os = "windows")]
         {
             self.inner.tick()
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            Err(OverlayError::new(
+                "the product Live2D overlay is available on Windows and macOS",
+            ))
+        }
+    }
+
+    pub fn window_bounds(&self) -> Result<OverlayWindowBounds, OverlayError> {
+        #[cfg(target_os = "macos")]
+        {
+            self.inner.window_bounds()
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            self.inner.window_bounds()
         }
 
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -413,6 +477,23 @@ mod tests {
             assert_eq!(diagnostics.service_start_attempts, 1);
             assert_eq!(diagnostics.captured_edges, 0);
         }
+    }
+
+    #[test]
+    fn persisted_overlay_bounds_are_bounded_and_scale_explicitly() {
+        let bounds = OverlayWindowBounds::new(-640, 120, 400, 600)
+            .validate()
+            .expect("valid overlay bounds");
+        assert_eq!(
+            bounds.rescale(100, 125),
+            OverlayWindowBounds::new(-640, 120, 500, 750)
+        );
+        assert!(OverlayWindowBounds::new(0, 0, 63, 600).validate().is_err());
+        assert!(
+            OverlayWindowBounds::new(1_000_001, 0, 400, 600)
+                .validate()
+                .is_err()
+        );
     }
 
     #[test]

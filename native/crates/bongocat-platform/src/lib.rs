@@ -60,7 +60,8 @@ mod startup_item_windows;
 mod macos;
 #[cfg(target_os = "macos")]
 pub use macos::{
-    MacInputService, input_monitoring_permission, request_input_monitoring_permission,
+    MacInputService, current_display_bounds, display_bounds_for_window, global_window_origin,
+    input_monitoring_permission, local_window_origin, request_input_monitoring_permission,
 };
 #[cfg(target_os = "windows")]
 mod windows;
@@ -68,9 +69,48 @@ mod windows;
 pub use windows::WindowsInputService;
 #[cfg(target_os = "windows")]
 pub use windows::{
-    NativeWindowError, hide_native_window, request_native_window_close, show_native_window,
+    NativeWindowError, current_display_bounds, display_bounds_for_window, global_window_origin,
+    hide_native_window, local_window_origin, request_native_window_close, show_native_window,
     terminate_after_product_shutdown,
 };
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DisplayBounds {
+    pub display_id: Option<u32>,
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+}
+
+impl DisplayBounds {
+    fn intersects_window(self, x: f32, y: f32, width: f32, height: f32) -> bool {
+        x < self.x + self.width
+            && x + width > self.x
+            && y < self.y + self.height
+            && y + height > self.y
+    }
+}
+
+#[cfg(test)]
+mod display_bounds_tests {
+    use super::DisplayBounds;
+
+    #[test]
+    fn window_visibility_handles_negative_and_edge_touching_displays() {
+        let secondary = DisplayBounds {
+            display_id: Some(1),
+            x: -1920.0,
+            y: -240.0,
+            width: 1920.0,
+            height: 1080.0,
+        };
+        assert!(secondary.intersects_window(-1200.0, 100.0, 800.0, 600.0));
+        assert!(secondary.intersects_window(-10.0, 100.0, 800.0, 600.0));
+        assert!(!secondary.intersects_window(0.0, 100.0, 800.0, 600.0));
+        assert!(!secondary.intersects_window(-1200.0, 840.0, 800.0, 600.0));
+    }
+}
 
 pub fn pick_model_directory(
     on_complete: impl FnOnce(Result<DirectoryPickerOutcome, DirectoryPickerError>) + Send + 'static,

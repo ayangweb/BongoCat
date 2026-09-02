@@ -17,7 +17,7 @@ use bongocat_platform::{
 };
 use bongocat_platform::{DirectoryPickerError, DirectoryPickerOutcome, pick_model_directory};
 use gpui::{
-    App, AppContext, Bounds, Context, Entity, FocusHandle, Hsla, KeyDownEvent, Render,
+    App, AppContext, Bounds, Context, DisplayId, Entity, FocusHandle, Hsla, KeyDownEvent, Render,
     SharedString, Timer, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowHandle,
     WindowOptions, div, point, prelude::*, px, size,
 };

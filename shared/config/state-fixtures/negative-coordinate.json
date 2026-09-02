@@ -1,10 +1,16 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "settings_window": {
     "x": -1280,
     "y": 96,
     "width": 960,
     "height": 720,
     "maximized": true
+  },
+  "overlay_window": {
+    "x": -1440,
+    "y": 120,
+    "width": 480,
+    "height": 640
   }
 }

@@ -1183,10 +1183,11 @@ primitive，设置内容容器使用官方 `GroupBox::outline()`，导航继续�
     字段 fixture 与单元测试拒绝 `legacy_alias`/`old_pinia_field`；产品 `ConfigStore` 只解析当前
     环境的 Native `config.json` 并仅执行 v1 -> v2 顺序迁移。
 - [ ] 独立 `state.json` schema 只保存可恢复窗口布局，不进入用户配置事务。
-  - 状态（2026-08-31）：正式 `StateStore` v1、有限逻辑坐标/尺寸、maximized、独立 writer lock、
-    原子提交后验证/回滚、损坏/未来 schema 非阻塞回退和未来文件防降级已实现；settings worker
-    shutdown flush、进程重启恢复与 macOS release GPUI resize smoke 已进入当前批次。双平台 CI
-    和 Windows 原生窗口 smoke 通过前保持未勾选，由 `P6-STATE-WINDOW-LAYOUT` 跟踪。
+  - 状态（2026-09-02）：正式 `StateStore` v2 保存 settings 与 overlay 的有限坐标/尺寸，顺序读取 v1，
+    settings 的 maximized、独立 writer lock、原子提交后验证/回滚、损坏/未来 schema 非阻塞回退和
+    未来文件防降级已实现；settings worker 接收合并后的 GPUI bounds 更新和 overlay 几何变化并及时
+    落盘，shutdown 仍强制 flush。更新后的双平台实机多显示器恢复证据尚未完成，因此保持未勾选，
+    由 `P6-STATE-WINDOW-LAYOUT` 跟踪。
 
 ### 7.2 环境与持久化事务
 
@@ -1947,11 +1948,12 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       `99474952561`/`99474952603`/`99474952709` 通过完整 format、Clippy、workspace test、
       release/Production 和平台 smoke，Windows input/config job `99474952566`、config-store job
       `99474952502` 与 dependency policy job `99474952595` 同时通过，退出条件满足。
-44. [x] `P6-STATE-WINDOW-LAYOUT`：以环境内 `state.json` 恢复设置窗口布局。- 依赖：`P6-STORAGE-LAYOUT-BOUNDARY`、正式 settings lifecycle、GPUI 公共 bounds API。- 退出条件：state 使用独立 v1 schema、`state.writer.lock` 和原子提交后验证，不进入 config
-        revision/backup/recovery；窗口逻辑坐标/尺寸/maximized 有界且支持负坐标，完全离屏时回到
-        当前显示器居中 `800x600`；缺失、损坏、I/O 和未来 schema 不阻塞 config/runtime，旧版本
-        不覆盖未来 state；GPUI observer 只更新内存，settings worker shutdown flush，macOS Entity
-        重建与 Windows 隐藏/重显使用最新内存值，进程重启读回；config/ui/app 定向测试、严格
+44. [x] `P6-STATE-WINDOW-LAYOUT`：以环境内 `state.json` 恢复所有产品窗口布局。- 依赖：`P6-STORAGE-LAYOUT-BOUNDARY`、正式 settings lifecycle、GPUI 公共 bounds API。- 退出条件：state 使用独立 v2 schema、顺序读取 v1、`state.writer.lock` 和原子提交后验证，不进入 config
+        revision/backup/recovery；settings 与 overlay 坐标/尺寸有界且支持负坐标，settings 另保存
+        maximized；完全离屏或无已存状态时回到鼠标当前所在显示器居中；缺失、损坏、I/O 和未来 schema
+        不阻塞 config/runtime，旧版本不覆盖未来 state；GPUI observer 合并变化后及时写入，overlay
+        只在几何变化时写入，settings worker shutdown 强制 flush，配置更新、模型切换、macOS Entity
+        重建与 Windows 隐藏/重显均保留最新几何，进程重启读回；config/ui/app 定向测试、严格
         Clippy、完整 Native workspace、三平台 CI 和双平台隔离 storage smoke 通过。- 验收证据（2026-08-31）：typed store、UI tracker、Application/settings worker 接线、损坏隔离、
         双环境、并发 lock、验证失败回滚、shutdown/restart 单测和 Development-only 双平台 smoke
         已实现。`cargo fmt --all -- --check`、`cargo test --workspace`、
@@ -1963,7 +1965,8 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
         `settings window state restored after restart`。workflow `33395834870` 的 Native workspace
         jobs `99500010100`（Ubuntu）、`99500010122`（macOS）和 `99500010167`（Windows）以及
         Windows input/config job `99500010128` 全部通过；Windows 原生状态 smoke 输出与 macOS
-        release smoke 一致。Windows 实机显示器/DPI 热切换仍属于后续平台矩阵。
+        release smoke 一致。2026-09-02 增补 v2、运行中落盘、配置/模型更新不覆盖状态和 overlay
+        完整 bounds 恢复；更新后的 Windows/macOS 实机显示器/DPI 热切换仍属于后续平台矩阵。
 45. [ ] `P2-GAMEPAD-RUNTIME`：将双平台 GameController/XInput producer 接入正式 runtime。
     - 依赖：`InputControl::Gamepad` 按钮语义、Gamepad axis keyed latest-value contract、现有
       Windows/macOS 平台 producer spike。

@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "settings_window": {
     "x": 0,
     "y": 0,
@@ -7,5 +7,6 @@
     "height": 600,
     "maximized": false,
     "display_name": "legacy"
-  }
+  },
+  "overlay_window": null
 }

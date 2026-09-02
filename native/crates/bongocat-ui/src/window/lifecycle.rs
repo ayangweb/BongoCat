@@ -6,7 +6,7 @@ pub fn open_settings_window(
     request_quit: impl Fn(&mut App) + 'static,
     cx: &mut App,
 ) -> Result<SettingsWindowHandle, String> {
-    let window_bounds = initial_window_bounds(&window_state, cx);
+    let (window_bounds, display_id) = initial_window_bounds(&window_state, cx);
     let accessibility_error = Rc::new(RefCell::new(None));
     let open_accessibility_error = Rc::clone(&accessibility_error);
     let settings_view = Rc::new(RefCell::new(None));
@@ -15,6 +15,7 @@ pub fn open_settings_window(
         .open_window(
             WindowOptions {
                 window_bounds: Some(window_bounds),
+                display_id,
                 window_min_size: Some(size(px(WINDOW_MIN_WIDTH), px(WINDOW_MIN_HEIGHT))),
                 titlebar: Some(TitlebarOptions {
                     title: Some("BongoCat Settings".into()),
@@ -34,15 +35,29 @@ pub fn open_settings_window(
                         install_component_theme(window, cx);
                     })
                     .detach();
-                if let Some(placement) = placement_from_window(window) {
-                    window_state.update(placement);
+                if let Some(placement) = placement_from_window(window, cx)
+                    && let Some(revision) = window_state.update(placement)
+                {
+                    let _ = window_state.request_persist_if_current(revision);
                 }
                 let request_quit = Rc::new(request_quit);
                 let view = cx.new(|cx| {
                     let observed_window_state = window_state.clone();
-                    cx.observe_window_bounds(window, move |_, window, _| {
-                        if let Some(placement) = placement_from_window(window) {
-                            observed_window_state.update(placement);
+                    cx.observe_window_bounds(window, move |_, window, cx| {
+                        if let Some(placement) = placement_from_window(window, cx)
+                            && let Some(revision) = observed_window_state.update(placement)
+                        {
+                            let pending_window_state = observed_window_state.clone();
+                            cx.spawn(async move |_, _| {
+                                Timer::after(Duration::from_millis(150)).await;
+                                for _ in 0..20 {
+                                    if pending_window_state.request_persist_if_current(revision) {
+                                        break;
+                                    }
+                                    Timer::after(Duration::from_millis(50)).await;
+                                }
+                            })
+                            .detach();
                         }
                     })
                     .detach();
@@ -113,36 +128,60 @@ pub fn open_settings_window(
     })
 }
 
-fn initial_window_bounds(window_state: &SettingsWindowState, cx: &App) -> WindowBounds {
+fn initial_window_bounds(
+    window_state: &SettingsWindowState,
+    cx: &App,
+) -> (WindowBounds, Option<DisplayId>) {
     let centered = || {
-        WindowBounds::Windowed(Bounds::centered(
-            None,
-            size(px(WINDOW_WIDTH), px(WINDOW_HEIGHT)),
-            cx,
-        ))
+        let window_size = size(px(WINDOW_WIDTH), px(WINDOW_HEIGHT));
+        let Some(display) = bongocat_platform::current_display_bounds() else {
+            return (
+                WindowBounds::Windowed(Bounds::centered(None, window_size, cx)),
+                None,
+            );
+        };
+        let global_x = display.x + (display.width - WINDOW_WIDTH) / 2.0;
+        let global_y = display.y + (display.height - WINDOW_HEIGHT) / 2.0;
+        let (x, y) = bongocat_platform::local_window_origin(display, global_x, global_y);
+        (
+            WindowBounds::Windowed(Bounds::new(point(px(x), px(y)), window_size)),
+            gpui_display_id(display.display_id, cx),
+        )
     };
     let Some(placement) = window_state.placement() else {
         return centered();
     };
+    let Some(display) = bongocat_platform::display_bounds_for_window(
+        placement.x as f32,
+        placement.y as f32,
+        placement.width as f32,
+        placement.height as f32,
+    ) else {
+        return centered();
+    };
+    let (x, y) =
+        bongocat_platform::local_window_origin(display, placement.x as f32, placement.y as f32);
     let bounds = Bounds::new(
-        point(px(placement.x as f32), px(placement.y as f32)),
+        point(px(x), px(y)),
         size(px(placement.width as f32), px(placement.height as f32)),
     );
-    if !cx
-        .displays()
-        .iter()
-        .any(|display| bounds.intersects(&display.bounds()))
-    {
-        return centered();
-    }
-    if placement.maximized {
+    let bounds = if placement.maximized {
         WindowBounds::Maximized(bounds)
     } else {
         WindowBounds::Windowed(bounds)
-    }
+    };
+    (bounds, gpui_display_id(display.display_id, cx))
 }
 
-fn placement_from_window(window: &Window) -> Option<SettingsWindowPlacement> {
+fn gpui_display_id(display_id: Option<u32>, cx: &App) -> Option<DisplayId> {
+    let display_id = display_id?;
+    cx.displays()
+        .into_iter()
+        .find(|display| u32::from(display.id()) == display_id)
+        .map(|display| display.id())
+}
+
+fn placement_from_window(window: &Window, cx: &App) -> Option<SettingsWindowPlacement> {
     let window_bounds = window.window_bounds();
     let maximized = match window_bounds {
         WindowBounds::Windowed(_) => false,
@@ -150,17 +189,21 @@ fn placement_from_window(window: &Window) -> Option<SettingsWindowPlacement> {
         WindowBounds::Fullscreen(_) => return None,
     };
     let bounds = window_bounds.get_bounds();
+    let (x, y) = bongocat_platform::global_window_origin(
+        window.display(cx).map(|display| u32::from(display.id())),
+        f32::from(bounds.origin.x),
+        f32::from(bounds.origin.y),
+    );
     SettingsWindowPlacement::new(
-        rounded_i32(bounds.origin.x)?,
-        rounded_i32(bounds.origin.y)?,
+        rounded_f32_i32(x)?,
+        rounded_f32_i32(y)?,
         rounded_u32(bounds.size.width)?,
         rounded_u32(bounds.size.height)?,
         maximized,
     )
 }
 
-fn rounded_i32(value: gpui::Pixels) -> Option<i32> {
-    let value = f32::from(value);
+fn rounded_f32_i32(value: f32) -> Option<i32> {
     if !value.is_finite() || value < i32::MIN as f32 || value > i32::MAX as f32 {
         return None;
     }

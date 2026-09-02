@@ -14,8 +14,8 @@ use std::{
 
 mod state;
 pub use state::{
-    ApplicationState, STATE_SCHEMA_VERSION, StateError, StateLoadOutcome, StateLoadStatus,
-    StateStore, WindowPlacement,
+    ApplicationState, OverlayWindowPlacement, STATE_SCHEMA_VERSION, StateError, StateLoadOutcome,
+    StateLoadStatus, StateStore, WindowPlacement,
 };
 
 pub const BUNDLE_ID: &str = "com.ayangweb.bongo-cat";

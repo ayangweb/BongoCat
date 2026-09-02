@@ -5,8 +5,8 @@ use crate::{
 };
 use atomic_write_file::AtomicWriteFile;
 use bongocat_config::{
-    ConfigError, ConfigWriteFailureReason, NativeConfig, ShortcutCommand, StateError,
-    WindowPlacement,
+    ConfigError, ConfigWriteFailureReason, NativeConfig, OverlayWindowPlacement, ShortcutCommand,
+    StateError, WindowPlacement,
 };
 use bongocat_model::{
     ModelCatalogEntry, ModelDiagnostic, ModelImportProgress, ModelImportStage, ModelOrigin,
@@ -152,7 +152,7 @@ impl ApplicationSettingsService {
         shortcut_signals: Option<ApplicationShortcutSignals>,
     ) -> Result<Self, SettingsServiceJoinError> {
         let (client, endpoint) = SettingsClient::bounded(SETTINGS_COMMAND_CAPACITY);
-        let window_state = SettingsWindowState::new(
+        let window_state = client.track_window_state(
             application
                 .settings_window_placement()
                 .and_then(settings_window_placement),
@@ -337,6 +337,19 @@ fn run_service(
             break;
         };
         match command {
+            SettingsCommand::SettingsWindowPlacementChanged => {
+                let _ = persist_window_state(&mut application, &window_state);
+            }
+            SettingsCommand::OverlayWindowPlacementChanged {
+                x,
+                y,
+                width,
+                height,
+            } => {
+                if let Ok(placement) = OverlayWindowPlacement::new(x, y, width, height) {
+                    let _ = application.persist_overlay_window_placement(placement);
+                }
+            }
             SettingsCommand::TriggerApplicationShortcut { command } => {
                 if let Err(error) = apply_application_shortcut(&mut application, command) {
                     application.record_log(ApplicationLogEvent {
@@ -1687,7 +1700,7 @@ const fn map_model_store_delete_diagnostic(diagnostic: ModelStoreDiagnostic) -> 
 mod tests {
     use super::*;
     use crate::ApplicationLogEventCounts;
-    use bongocat_config::{ConfigStore, StorageLayout};
+    use bongocat_config::{ConfigStore, OverlayWindowPlacement, StateStore, StorageLayout};
     use bongocat_runtime::{InputDiagnostics, InputTransportDiagnostics};
     use bongocat_ui::{SettingsModelImportRequest, SettingsStartupItemError};
     use std::{
@@ -3408,6 +3421,78 @@ mod tests {
     }
 
     #[test]
+    fn settings_window_layout_is_saved_while_running_and_survives_product_updates() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application =
+            Application::start_with_layout(layout.clone()).expect("application start");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+        let expected = SettingsWindowPlacement::new(-360, 144, 1040, 760, false)
+            .expect("valid settings window placement");
+        let window_state = service.window_state();
+        let revision = window_state.update(expected).expect("changed placement");
+        window_state.request_persist_if_current(revision);
+        client
+            .update_overlay_window_placement(-640, 220, 420, 560)
+            .expect("publish overlay placement");
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        loop {
+            let state = StateStore::new(layout.clone()).load_or_default().state;
+            if state.settings_window
+                == Some(
+                    WindowPlacement::new(-360, 144, 1040, 760, false)
+                        .expect("valid persisted placement"),
+                )
+                && state.overlay_window
+                    == Some(
+                        OverlayWindowPlacement::new(-640, 220, 420, 560)
+                            .expect("valid overlay placement"),
+                    )
+            {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "window placement was not saved before shutdown"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        let selected = client
+            .select_model_blocking(
+                initial.config_revision.expect("config revision"),
+                SettingsModelKey {
+                    id: "keyboard".to_owned(),
+                    origin: SettingsModelOrigin::Preset,
+                },
+            )
+            .expect("select model");
+        client
+            .set_overlay_visible_blocking(selected.config_revision.expect("config revision"), false)
+            .expect("update configuration");
+
+        let persisted_state = StateStore::new(layout).load_or_default().state;
+        assert_eq!(
+            persisted_state.settings_window,
+            Some(
+                WindowPlacement::new(-360, 144, 1040, 760, false)
+                    .expect("valid persisted placement")
+            )
+        );
+        assert_eq!(
+            persisted_state.overlay_window,
+            Some(
+                OverlayWindowPlacement::new(-640, 220, 420, 560).expect("valid overlay placement")
+            )
+        );
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
+    }
+
+    #[test]
     fn corrupt_state_never_blocks_configuration_or_runtime_startup() {
         let base = tempdir().expect("temporary storage");
         let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
@@ -3438,7 +3523,7 @@ mod tests {
         let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
         let store = ConfigStore::new(layout.clone()).expect("config store");
         store.load_or_default().expect("default config");
-        let future = br#"{"schema_version":2,"settings_window":null}"#;
+        let future = br#"{"schema_version":3,"settings_window":null,"overlay_window":null}"#;
         std::fs::write(&layout.state, future).expect("future state");
 
         let application = Application::start_with_layout(layout.clone())
