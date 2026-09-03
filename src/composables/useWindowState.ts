@@ -5,7 +5,7 @@ import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { availableMonitors } from '@tauri-apps/api/window'
 import { useDebounceFn } from '@vueuse/core'
 import { isNumber } from 'es-toolkit/compat'
-import { onMounted, ref, watch } from 'vue'
+import { onUnmounted, ref, watch } from 'vue'
 
 import { WINDOW_LABEL } from '@/constants'
 import { useAppStore } from '@/stores/app'
@@ -14,6 +14,11 @@ import { getCursorMonitor } from '@/utils/monitor'
 
 export type WindowState = Record<string, Partial<PhysicalPosition & PhysicalSize> | undefined>
 
+export const DEFAULT_PREFERENCE_WINDOW_SIZE = Object.freeze({
+  width: 800,
+  height: 600,
+})
+
 const appWindow = getCurrentWebviewWindow()
 const { label } = appWindow
 
@@ -21,14 +26,12 @@ export function useWindowState() {
   const appStore = useAppStore()
   const catStore = useCatStore()
   const isRestored = ref(false)
-
-  onMounted(() => {
-    appWindow.onMoved(onChange)
-
-    appWindow.onResized(onChange)
-
-    appWindow.onScaleChanged(clampToMonitor)
-  })
+  let tracking = false
+  let disposed = false
+  let restorePromise: Promise<void> | undefined
+  let unlistenMoved: (() => void) | undefined
+  let unlistenResized: (() => void) | undefined
+  let unlistenScaleChanged: (() => void) | undefined
 
   const clampToMonitor = useDebounceFn(async () => {
     if (label !== WINDOW_LABEL.MAIN || !catStore.window.keepInScreen) return
@@ -57,9 +60,11 @@ export function useWindowState() {
   watch(() => catStore.window.keepInScreen, clampToMonitor)
 
   const onChange = async (event: Event<PhysicalPosition | PhysicalSize>) => {
+    if (!tracking || !isRestored.value || disposed) return
+
     const minimized = await appWindow.isMinimized()
 
-    if (minimized) return
+    if (minimized || !tracking || disposed) return
 
     appStore.windowState[label] ??= {}
 
@@ -68,34 +73,70 @@ export function useWindowState() {
     clampToMonitor()
   }
 
-  const restoreState = async () => {
-    const { x, y, width, height } = appStore.windowState[label] ?? {}
+  const restoreState = () => {
+    if (restorePromise) return restorePromise
 
-    if (isNumber(x) && isNumber(y)) {
-      const monitors = await availableMonitors()
+    restorePromise = (async () => {
+      const { x, y, width, height } = appStore.windowState[label] ?? {}
 
-      const monitor = monitors.find((monitor) => {
-        const { position, size } = monitor
+      if (isNumber(x) && isNumber(y)) {
+        const monitors = await availableMonitors()
 
-        const inBoundsX = x >= position.x && x <= position.x + size.width
-        const inBoundsY = y >= position.y && y <= position.y + size.height
+        const monitor = monitors.find((monitor) => {
+          const { position, size } = monitor
 
-        return inBoundsX && inBoundsY
-      })
+          const inBoundsX = x >= position.x && x <= position.x + size.width
+          const inBoundsY = y >= position.y && y <= position.y + size.height
 
-      if (monitor) {
-        await appWindow.setPosition(new PhysicalPosition(x, y))
+          return inBoundsX && inBoundsY
+        })
+
+        if (monitor) {
+          await appWindow.setPosition(new PhysicalPosition(x, y))
+        }
       }
-    }
 
-    if (width && height) {
-      await appWindow.setSize(new PhysicalSize(width, height))
-    }
+      const hasSavedSize = isNumber(width) && width > 0 && isNumber(height) && height > 0
 
-    isRestored.value = true
+      if (hasSavedSize) {
+        await appWindow.setSize(new PhysicalSize(width, height))
+      } else if (label === WINDOW_LABEL.PREFERENCE) {
+        await appWindow.setSize(new PhysicalSize(DEFAULT_PREFERENCE_WINDOW_SIZE))
+      }
 
-    clampToMonitor()
+      if (disposed) return
+
+      // Native windows can emit their initial geometry while the store is still
+      // hydrating. Start observing only after the persisted/default size wins.
+      const unlisteners = await Promise.all([
+        appWindow.onMoved(onChange),
+        appWindow.onResized(onChange),
+        appWindow.onScaleChanged(clampToMonitor),
+      ])
+      if (disposed) {
+        unlisteners.forEach(unlisten => unlisten())
+        return
+      }
+
+      unlistenMoved = unlisteners[0]
+      unlistenResized = unlisteners[1]
+      unlistenScaleChanged = unlisteners[2]
+      tracking = true
+      isRestored.value = true
+
+      clampToMonitor()
+    })()
+
+    return restorePromise
   }
+
+  onUnmounted(() => {
+    disposed = true
+    tracking = false
+    unlistenMoved?.()
+    unlistenResized?.()
+    unlistenScaleChanged?.()
+  })
 
   return {
     isRestored,
