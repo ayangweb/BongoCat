@@ -3432,35 +3432,28 @@ mod tests {
             .expect("valid settings window placement");
         let window_state = service.window_state();
         let revision = window_state.update(expected).expect("changed placement");
-        window_state.request_persist_if_current(revision);
+        assert!(window_state.request_persist_if_current(revision));
         client
             .update_overlay_window_placement(-640, 220, 420, 560)
             .expect("publish overlay placement");
+        let initial = client
+            .read_snapshot_blocking()
+            .expect("wait for queued window placement writes");
 
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
-        loop {
-            let state = StateStore::new(layout.clone()).load_or_default().state;
-            if state.settings_window
-                == Some(
-                    WindowPlacement::new(-360, 144, 1040, 760, false)
-                        .expect("valid persisted placement"),
-                )
-                && state.overlay_window
-                    == Some(
-                        OverlayWindowPlacement::new(-640, 220, 420, 560)
-                            .expect("valid overlay placement"),
-                    )
-            {
-                break;
-            }
-            assert!(
-                std::time::Instant::now() < deadline,
-                "window placement was not saved before shutdown"
-            );
-            std::thread::sleep(std::time::Duration::from_millis(10));
-        }
-
-        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        let state = StateStore::new(layout.clone()).load_or_default().state;
+        assert_eq!(
+            state.settings_window,
+            Some(
+                WindowPlacement::new(-360, 144, 1040, 760, false)
+                    .expect("valid persisted placement")
+            )
+        );
+        assert_eq!(
+            state.overlay_window,
+            Some(
+                OverlayWindowPlacement::new(-640, 220, 420, 560).expect("valid overlay placement")
+            )
+        );
         let selected = client
             .select_model_blocking(
                 initial.config_revision.expect("config revision"),
