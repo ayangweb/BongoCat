@@ -203,13 +203,18 @@ jobs:
               $exception = $_.Exception
               while ($null -ne $exception) {
                 if ($exception -is [System.Runtime.InteropServices.COMException]) {
-                  return $null
+                  if ($exception.HResult -eq -2147418113) {
+                    return $null
+                  }
+                  throw
                 }
                 $exception = $exception.InnerException
               }
               throw
             }
           }
+          $childrenScope = [System.Windows.Automation.TreeScope]::Children
+          $descendantsScope = [System.Windows.Automation.TreeScope]::Descendants
           1..5 | ForEach-Object {
             $stdout = Join-Path $env:RUNNER_TEMP "bongocat-product-$_.stdout.log"
             $stderr = Join-Path $env:RUNNER_TEMP "bongocat-product-$_.stderr.log"
@@ -242,7 +247,7 @@ jobs:
                 }
                 $root = Find-UiAutomationElement `
                   -Owner ([System.Windows.Automation.AutomationElement]::RootElement) `
-                  -Scope [System.Windows.Automation.TreeScope]::Children `
+                  -Scope $childrenScope `
                   -Condition $settingsWindowCondition
               } while ($null -eq $root -and [DateTime]::UtcNow -lt $windowDeadline)
               if ($null -eq $root) {
@@ -257,7 +262,7 @@ jobs:
                 Start-Sleep -Milliseconds 100
                 $startup = Find-UiAutomationElement `
                   -Owner $root `
-                  -Scope [System.Windows.Automation.TreeScope]::Descendants `
+                  -Scope $descendantsScope `
                   -Condition $startupCondition
               } while ($null -eq $startup -and [DateTime]::UtcNow -lt $startupDeadline)
               if ($null -eq $startup) {
@@ -312,7 +317,7 @@ jobs:
               do {
                 $startup = Find-UiAutomationElement `
                   -Owner $root `
-                  -Scope [System.Windows.Automation.TreeScope]::Descendants `
+                  -Scope $descendantsScope `
                   -Condition $startupCondition
                 if ($null -ne $startup) {
                   try {
@@ -338,7 +343,7 @@ jobs:
                 $startupReady = $false
                 $startup = Find-UiAutomationElement `
                   -Owner $root `
-                  -Scope [System.Windows.Automation.TreeScope]::Descendants `
+                  -Scope $descendantsScope `
                   -Condition $startupCondition
                 if ($null -ne $startup) {
                   try {
@@ -363,7 +368,7 @@ jobs:
               do {
                 $startup = Find-UiAutomationElement `
                   -Owner $root `
-                  -Scope [System.Windows.Automation.TreeScope]::Descendants `
+                  -Scope $descendantsScope `
                   -Condition $startupCondition
                 if ($null -ne $startup) {
                   try {
@@ -391,7 +396,7 @@ jobs:
                 Start-Sleep -Milliseconds 100
                 $startup = Find-UiAutomationElement `
                   -Owner $root `
-                  -Scope [System.Windows.Automation.TreeScope]::Descendants `
+                  -Scope $descendantsScope `
                   -Condition $startupCondition
                 if ($null -ne $startup) {
                   try {
@@ -408,10 +413,16 @@ jobs:
               }
               # The settings snapshot revision rebuilds the GPUI control tree;
               # reacquire the element before exercising focus on the new node.
-              $startup = Find-UiAutomationElement `
-                -Owner $root `
-                -Scope [System.Windows.Automation.TreeScope]::Descendants `
-                -Condition $startupCondition
+              $focusElementDeadline = [DateTime]::UtcNow.AddSeconds(2)
+              do {
+                $startup = Find-UiAutomationElement `
+                  -Owner $root `
+                  -Scope $descendantsScope `
+                  -Condition $startupCondition
+                if ($null -eq $startup) {
+                  Start-Sleep -Milliseconds 50
+                }
+              } while ($null -eq $startup -and [DateTime]::UtcNow -lt $focusElementDeadline)
               if ($null -eq $startup) {
                 throw "Windows UIA startup switch disappeared after state update"
               }
