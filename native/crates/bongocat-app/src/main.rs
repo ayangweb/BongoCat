@@ -19,7 +19,16 @@ use bongocat_ui::SettingsView;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_ui::{SettingsError, SettingsErrorCode, SettingsWindowHandle, open_settings_window};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-use gpui::{App, Application as GpuiApplication, Global};
+use gpui_kit::{
+    App, Application as GpuiApplication, Global, assets::Assets, platform::current_platform,
+};
+#[cfg(target_os = "windows")]
+use gpui_kit::{AsyncApp, Context, Window};
+#[cfg(all(
+    feature = "storage-test-injection",
+    any(target_os = "macos", target_os = "windows")
+))]
+use gpui_kit::{px, size};
 #[cfg(target_os = "windows")]
 use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(target_os = "windows")]
@@ -41,7 +50,7 @@ const DEFAULT_RUN_SECONDS: u64 = 30;
 fn gpui_application() -> GpuiApplication {
     // SettingsAccessibilityBridge owns the window's AccessKit adapter. Current GPUI also
     // installs one by default, but two adapters cannot subclass the same native view.
-    GpuiApplication::new_inaccessible(gpui_platform::current_platform(false))
+    GpuiApplication::new_inaccessible(current_platform(false))
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -245,12 +254,12 @@ fn record_failure(failures: &Arc<Mutex<Vec<String>>>, failure: impl Into<String>
 
 #[cfg(target_os = "windows")]
 async fn update_windows_settings<R>(
-    cx: &mut gpui::AsyncApp,
+    cx: &mut AsyncApp,
     window_handle: &SettingsWindowHandle,
     mut update: impl FnMut(
         &mut SettingsView,
-        &mut gpui::Window,
-        &mut gpui::Context<SettingsView>,
+        &mut Window,
+        &mut Context<SettingsView>,
     ) -> Result<R, String>,
 ) -> Result<R, String> {
     const MAX_ATTEMPTS: u32 = 200;
@@ -539,7 +548,7 @@ fn run_configuration_recovery_mode(
     let settings_service = bongocat_app::ApplicationSettingsService::start(application)?;
     let settings_client = settings_service.client();
     let window_state = settings_service.window_state();
-    let gpui_application = gpui_application().with_assets(gpui_component_assets::Assets);
+    let gpui_application = gpui_application().with_assets(Assets);
     gpui_application.run(move |cx| {
         if let Err(error) = open_settings_window(
             settings_client.clone(),
@@ -623,7 +632,7 @@ fn run_configuration_recovery_smoke() -> Result<(), Box<dyn std::error::Error>> 
     ) {
         return Err("recovery smoke did not project the expected recovery snapshot".into());
     }
-    let gpui_application = gpui_application().with_assets(gpui_component_assets::Assets);
+    let gpui_application = gpui_application().with_assets(Assets);
     let smoke_client = client.clone();
     gpui_application.run(move |cx| {
         let window = match open_settings_window(smoke_client, window_state, |cx| cx.quit(), cx) {
@@ -691,7 +700,7 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
     let service = bongocat_app::ApplicationSettingsService::start(application)?;
     let client = service.client();
     let window_state = service.window_state();
-    let gpui_application = gpui_application().with_assets(gpui_component_assets::Assets);
+    let gpui_application = gpui_application().with_assets(Assets);
     gpui_application.run(move |cx| {
         let window =
             match open_settings_window(client.clone(), window_state.clone(), |cx| cx.quit(), cx) {
@@ -717,7 +726,7 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 window
                     .update(cx, |_, window, _| {
-                        window.resize(gpui::size(gpui::px(920.0), gpui::px(680.0)));
+                        window.resize(size(px(920.0), px(680.0)));
                     })
                     .map_err(|error| {
                         io::Error::other(format!("resize settings window: {error}"))
@@ -863,7 +872,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let run_failures = Arc::clone(&failures);
     #[cfg(target_os = "windows")]
     let shutdown_requested = Arc::new(AtomicBool::new(false));
-    let gpui_application = gpui_application().with_assets(gpui_component_assets::Assets);
+    let gpui_application = gpui_application().with_assets(Assets);
     let reopen_failures = Arc::clone(&run_failures);
     #[cfg(target_os = "macos")]
     let application_reopen_smoke = run_options.application_reopen_smoke;

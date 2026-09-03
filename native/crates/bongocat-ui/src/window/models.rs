@@ -6,7 +6,7 @@ pub(super) fn content(
     cx: &mut Context<SettingsView>,
     snapshot: Option<&SettingsSnapshot>,
     tokens: Tokens,
-) -> gpui::Stateful<gpui::Div> {
+) -> Stateful<Div> {
     let (import_status, import_failed) = model_import_status(&view.model_import);
     let import_running = view.model_import.is_running();
     let picker_open = view.model_import.is_picker_open();

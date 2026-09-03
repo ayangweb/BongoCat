@@ -1,6 +1,6 @@
 use super::*;
 use crate::{SettingsModelBehaviorBinding, SettingsShortcutBinding};
-use gpui::{Keystroke, Modifiers};
+use gpui_kit::{Keystroke, Modifiers};
 
 fn key(key: &str, key_char: Option<&str>) -> KeyDownEvent {
     KeyDownEvent {

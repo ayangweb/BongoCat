@@ -7,7 +7,7 @@ pub(super) fn content(
     snapshot: Option<&SettingsSnapshot>,
     disabled: bool,
     tokens: Tokens,
-) -> gpui::Stateful<gpui::Div> {
+) -> Stateful<Div> {
     div()
         .min_w_0()
         .flex_1()

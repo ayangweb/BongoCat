@@ -1,6 +1,6 @@
 # ADR-0019: gpui-component Design System
 
-状态：已接受（2026-09-02）
+状态：已被 ADR-0020 取代（2026-09-04）
 
 ## 背景
 

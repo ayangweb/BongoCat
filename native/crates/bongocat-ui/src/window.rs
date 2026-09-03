@@ -16,18 +16,21 @@ use bongocat_platform::{
     AccessibilityRole, AccessibilityToggle, AccessibilityTree, SettingsAccessibilityBridge,
 };
 use bongocat_platform::{DirectoryPickerError, DirectoryPickerOutcome, pick_model_directory};
-use gpui::{
-    App, AppContext, Bounds, Context, DisplayId, Entity, FocusHandle, Hsla, KeyDownEvent, Render,
-    SharedString, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowHandle, WindowOptions,
-    div, point, prelude::*, px, size,
-};
-use gpui_component::{
+use gpui_kit::component::{
     ActiveTheme, Disableable, Root, Theme,
     button::Button,
-    group_box::{GroupBox, GroupBoxVariants},
+    group_box::{GroupBox, GroupBoxVariant, GroupBoxVariants},
     input::{Input, InputEvent, InputState, NumberInputEvent, StepAction},
-    setting::{SettingField, SettingGroup, SettingItem, SettingPage, Settings},
+    setting::{
+        NumberFieldOptions, RenderOptions, SettingField, SettingGroup, SettingItem, SettingPage,
+        Settings,
+    },
     tag::Tag,
+};
+use gpui_kit::{
+    App, AppContext, Axis, Bounds, Context, DisplayId, Div, Entity, FocusHandle, Hsla,
+    KeyDownEvent, Pixels, Render, SharedString, Stateful, TitlebarOptions, WeakEntity, Window,
+    WindowBounds, WindowHandle, WindowOptions, div, point, prelude::*, px, size,
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use raw_window_handle::HasWindowHandle;
@@ -347,19 +350,19 @@ pub struct SettingsWindowHandle {
 }
 
 impl SettingsWindowHandle {
-    pub fn read(&self, cx: &App) -> gpui::Result<()> {
+    pub fn read(&self, cx: &App) -> gpui_kit::Result<()> {
         self.window.read(cx)?;
         self.view
             .upgrade()
             .map(|_| ())
-            .ok_or_else(|| gpui::private::anyhow::anyhow!("settings view was released"))
+            .ok_or_else(|| gpui_kit::private::anyhow::anyhow!("settings view was released"))
     }
 
     pub fn update<C, R>(
         &self,
         cx: &mut C,
         update: impl FnOnce(&mut SettingsView, &mut Window, &mut Context<SettingsView>) -> R,
-    ) -> gpui::Result<R>
+    ) -> gpui_kit::Result<R>
     where
         C: AppContext,
     {
@@ -880,7 +883,7 @@ fn command_button(
     _window: &Window,
     _tokens: Tokens,
     disabled: bool,
-) -> gpui::Div {
+) -> Div {
     div()
         .key_context("SettingsControl")
         .track_focus(focus)

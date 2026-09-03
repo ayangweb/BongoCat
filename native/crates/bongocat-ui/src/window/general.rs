@@ -14,7 +14,7 @@ pub(super) fn content(
     active_model: SharedString,
     status: SharedString,
     tokens: Tokens,
-) -> gpui::Stateful<gpui::Div> {
+) -> Stateful<Div> {
     let overlay_row = setting_row(
         "Show desktop cat",
         "Keep the Live2D overlay visible".into(),

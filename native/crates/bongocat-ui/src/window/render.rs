@@ -97,9 +97,7 @@ impl Render for SettingsView {
                         "Runtime status",
                         SettingField::element({
                             let status = status.clone();
-                            move |_: &gpui_component::setting::RenderOptions,
-                                  _: &mut Window,
-                                  _: &mut App| {
+                            move |_: &RenderOptions, _: &mut Window, _: &mut App| {
                                 if status_is_error {
                                     Tag::danger().child(status.clone()).into_any_element()
                                 } else {
@@ -216,7 +214,7 @@ impl Render for SettingsView {
                     SettingItem::new(
                         "Overlay scale",
                         SettingField::number_input(
-                            gpui_component::setting::NumberFieldOptions {
+                            NumberFieldOptions {
                                 min: 25.0,
                                 max: 400.0,
                                 step: 25.0,
@@ -246,7 +244,7 @@ impl Render for SettingsView {
                     SettingItem::new(
                         "Overlay opacity",
                         SettingField::number_input(
-                            gpui_component::setting::NumberFieldOptions {
+                            NumberFieldOptions {
                                 min: 1.0,
                                 max: 100.0,
                                 step: 10.0,
@@ -363,7 +361,7 @@ impl Render for SettingsView {
                     SettingItem::new(
                         "Gamepad stick dead zone",
                         SettingField::number_input(
-                            gpui_component::setting::NumberFieldOptions {
+                            NumberFieldOptions {
                                 min: 0.0,
                                 max: 99.0,
                                 step: 5.0,
@@ -392,7 +390,7 @@ impl Render for SettingsView {
                     SettingItem::new(
                         "Gamepad trigger dead zone",
                         SettingField::number_input(
-                            gpui_component::setting::NumberFieldOptions {
+                            NumberFieldOptions {
                                 min: 0.0,
                                 max: 99.0,
                                 step: 5.0,
@@ -455,7 +453,7 @@ impl Render for SettingsView {
                 "Installed models",
                 SettingField::element({
                     let view = view_entity.clone();
-                    move |_: &gpui_component::setting::RenderOptions,
+                    move |_: &RenderOptions,
                           window: &mut Window,
                           app: &mut App| {
                         let snapshot = view.read(app).snapshot.clone();
@@ -467,7 +465,7 @@ impl Render for SettingsView {
                         .into_any_element()
                     }
                 }),
-            ).layout(gpui::Axis::Vertical).description("Import a model folder, validate package safety and choose the active model. Search: import, activate, Live2D.")));
+            ).layout(Axis::Vertical).description("Import a model folder, validate package safety and choose the active model. Search: import, activate, Live2D.")));
 
         let diagnostics_page = SettingPage::new("Diagnostics")
             .description("Inspect runtime health, input reliability and shortcut bindings.")
@@ -475,7 +473,7 @@ impl Render for SettingsView {
                 "Runtime diagnostics",
                 SettingField::element({
                     let view = view_entity.clone();
-                    move |_: &gpui_component::setting::RenderOptions,
+                    move |_: &RenderOptions,
                           window: &mut Window,
                           app: &mut App| {
                         let snapshot = view.read(app).snapshot.clone();
@@ -487,11 +485,11 @@ impl Render for SettingsView {
                         .into_any_element()
                     }
                 }),
-            ).layout(gpui::Axis::Vertical).description("Review renderer status, input counters and keyboard shortcuts. Search: renderer, input, shortcut.")));
+            ).layout(Axis::Vertical).description("Review renderer status, input counters and keyboard shortcuts. Search: renderer, input, shortcut.")));
 
         let settings = Settings::new("bongocat-settings")
             .sidebar_width(px(220.0))
-            .with_group_variant(gpui_component::group_box::GroupBoxVariant::Outline)
+            .with_group_variant(GroupBoxVariant::Outline)
             .pages(vec![general_page, models_page, diagnostics_page]);
         let footer = div()
             .flex()

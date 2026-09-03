@@ -27,7 +27,7 @@ pub fn open_settings_window(
             },
             move |window, cx| {
                 if !cx.has_global::<Theme>() {
-                    gpui_component::init(cx);
+                    gpui_kit::init(cx);
                 }
                 install_component_theme(window, cx);
                 window
@@ -214,7 +214,7 @@ fn rounded_f32_i32(value: f32) -> Option<i32> {
     Some(value.round() as i32)
 }
 
-fn rounded_u32(value: gpui::Pixels) -> Option<u32> {
+fn rounded_u32(value: Pixels) -> Option<u32> {
     let value = f32::from(value);
     if !value.is_finite() || value < 0.0 || value > u32::MAX as f32 {
         return None;

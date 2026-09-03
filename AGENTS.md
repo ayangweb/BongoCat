@@ -210,28 +210,30 @@ Issue #47 的“收到按下但未收到释放”必须从架构上处理，不�
 
 ## 11. UI 要求
 
-### 11.1 gpui-component 组件规范
+### 11.1 GPUI Kit 组件规范
 
-Native GPUI 设置界面统一使用 `gpui-component = "=0.5.1"`，该版本基于 crates.io
-`gpui = "=0.2.2"`。开发 UI 前必须先查阅官方仓库
-<https://github.com/longbridge/gpui-component>、组件文档
-<https://longbridge.github.io/gpui-component/docs/components/> 和对应专题文档；不得根据
-其他组件库、旧版本记忆或猜测臆造 API。
+Native GPUI 设置界面统一使用 `gpui-kit = "=0.6.0"`，并以它作为唯一直接 GPUI 依赖。
+不得再直接声明 `gpui`、`gpui_platform`、`gpui-component` 或单独的 assets crate，也不得通过
+git source 覆写 GPUI。GPUI Kit 当前通过 crates.io 的 `gpui-pre` 同步包提供 crate 名为 `gpui`
+的实现，其元数据对应 Zed `gpui 0.2.2`。开发 UI 前必须先查阅官方仓库
+<https://github.com/longbridge/gpui-kit>、组件文档 <https://gpui-kit.com/docs/components> 和
+<https://docs.rs/gpui-kit/> 对应专题文档；不得根据其他组件库、旧版本记忆或猜测臆造 API。
 
-- 优先使用 `gpui_component` 对应模块导出的组件；只有明确的业务特殊行为或组件库没有等价
+- GPUI 类型从 `gpui_kit` 根导出使用，平台、组件和资源分别从 `gpui_kit::platform`、
+  `gpui_kit::component` 与 `gpui_kit::assets` 使用；只有明确的业务特殊行为或组件库没有等价
   primitive 时才保留项目内薄封装。
-- 每个 GPUI 应用在创建组件前调用 `gpui_component::init(cx)`，并以
-  `gpui_component::Root` 作为窗口根视图；系统外观变化通过
+- 每个 GPUI 应用在创建组件前调用 `gpui_kit::init(cx)`，并以
+  `gpui_kit::component::Root` 作为窗口根视图；系统外观变化通过
   `Theme::sync_system_appearance(Some(window), cx)` 同步。
 - 组件语义色通过 `ActiveTheme::theme()` 读取。不在业务代码重复硬编码默认颜色、字号、间距、
   圆角或控件高度；除非有明确产品需求，让组件默认值和 `Theme` 生效。
 - 常用组件及核心 API：`Button::new(id).label(label)`、`Switch::new(id).checked(bool)`、
   `Checkbox::new(id).checked(bool)`、`Radio::new(id)`、`InputState::new(window, cx)`、
   `Input::new(&state)`、`NumberInput::new(&state)`、`Select`、`Slider`、`TabBar`、
-  `Divider::horizontal()`、`Badge::new()`、`Progress`、`Icon`、`Tooltip`、`Dialog` 和 `Menu`。
+  `Separator::horizontal()`、`Badge::new()`、`Progress`、`Icon`、`Tooltip`、`Dialog` 和 `Menu`。
 - `Input`/`NumberInput` 绑定 `Entity<InputState>`；文本编辑订阅 `InputEvent`，数字步进另订阅
   `NumberInputEvent`。范围、步长和最终校验仍来自业务 schema，组件事件不得绕过 typed command。
-- 迁移组件后删除不再使用的自定义绘制、模块导出和依赖；更新 TODO 记录已迁移组件、剩余
+- 迁移组件后删除不再使用的直接 GPUI 依赖、自定义绘制和模块导出；更新 TODO 记录已迁移组件、剩余
   特殊控件和官方文档依据。
 
 - 设置界面应安静、紧凑、适合重复操作，不使用营销页式布局。

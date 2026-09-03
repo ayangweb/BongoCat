@@ -1093,28 +1093,34 @@ overlay owner；设置更新失败时保留旧 snapshot。scale/opacity 的可�
 
 ### 6.3 Design System
 
-状态（2026-09-02）：按 `gpui-component` 官方仓库、组件文档和 crates.io metadata 确认
-`0.5.1` 是当时最新稳定版、使用 Apache-2.0 许可证并基于 `gpui 0.2.2`；Native workspace
-现改用官方开发版 `gpui-component 0.5.2` revision
-`c0946e6acdc9e2f984f317ef7f998ee2c79f1a87`，并移除 `guise-ui`。设置窗口调用
-`gpui_component::init`，使用官方 `Root` 并随系统外观同步 `Theme`；状态标签、开关、
+状态（2026-09-04）：按 GPUI Kit 官方仓库、docs.rs 和 crates.io metadata 确认 `gpui-kit 0.6.0`
+是当前最新稳定版，使用 Apache-2.0 许可证并默认提供 component/assets。Native workspace
+现以精确固定的 crates.io `gpui-kit = "=0.6.0"` 作为唯一直接 GPUI 依赖，已删除 Zed 与旧组件
+git source 及 `gpui`、platform、component、assets 的直接 manifest 依赖。完整 `cargo update`
+解析到 `gpui-pre 0.3.3`；该同步包元数据对应 Zed `gpui 0.2.2` revision
+`5b055fa789a8b8d38ac951a6e0cde272f66b4495`。设置窗口调用 `gpui_kit::init`，使用
+`gpui_kit::component::Root` 并随系统外观同步 `Theme`；状态标签、开关、
 按钮、模型 ID、overlay scale/opacity 与 gamepad dead-zone 已迁移到 `Tag`、
 `Switch`、`Button`、`Input` 和 `NumberInput`。输入实体通过 `InputEvent` 与
-`NumberInputEvent` 接入现有 typed command/draft，并从 snapshot 同步。`0.5.2` 没有普通 Card
+`NumberInputEvent` 接入现有 typed command/draft，并从 snapshot 同步。`0.6.0` 没有普通 Card
 primitive，设置内容容器使用官方 `GroupBox::outline()`，导航继续保留无状态薄封装；快捷键捕获、确认删除和平台辅助功能焦点
 继续保留领域适配层。当前页面没有选择器、标签页或浮层需求，后续出现对应交互时直接使用
 `Select`、`TabBar`、`Dialog`/`Menu`，不预建无业务用途的组件。双平台辅助功能与缩放实机证据
-仍待补齐，详见 ADR-0019。2026-09-03：偏好设置整体已迁移到 `gpui_component::setting`
+仍待补齐，详见 ADR-0020。偏好设置整体使用 `gpui_kit::component::setting`
 官方 `Settings`、`SettingPage`、`SettingGroup`、`SettingItem` 和 `SettingField` 结构；General
 按 Overlay、Model interaction、Input、Startup 分组，Models 与 Diagnostics 使用独立页面和
 纵向设置项。官方 Settings sidebar 提供页面切换与搜索过滤，搜索覆盖设置标题、描述和显式关键词；
-所有变更仍经原有 revisioned snapshot 与 typed command 回调。图标由官方 `gpui-component-assets = 0.5.1` 提供，并在所有 GPUI
+所有变更仍经原有 revisioned snapshot 与 typed command 回调。图标由 `gpui_kit::assets` 提供，并在所有 GPUI
 应用入口通过 `Application::with_assets` 注册，NumberInput 的 `Minus`/`Plus` SVG 可正常加载。
-开发版 GPUI 同时新增内置 element-level AccessKit adapter；现有项目语义桥接仍负责已验证的
+当前 GPUI 同步包内置 element-level AccessKit adapter；现有项目语义桥接仍负责已验证的
 双平台 AX/UIA contract，因此所有应用入口集中使用 `Application::new_inaccessible` 只关闭
 重复的 GPUI adapter，避免两套 `accesskit_macos` 在同一个 NSView 注册固定 Objective-C 类名并
 触发 `SIGABRT`。本机 release 设置 smoke 已验证启动、项目桥接语义和有序退出；迁移到 GPUI
 原生 element 语义及删除项目桥接/兼容构造仍是后续 Design System 工作，不据此勾选总项。
+本次迁移已通过 macOS workspace format、Clippy、unit/doc tests、release check，以及 release
+设置窗口与 Models 页面 smoke。macOS 到 `x86_64-pc-windows-msvc` 的交叉 check 会在
+GPUI Kit 配套 HTTP/TLS 链编译 `aws-lc-sys`/`ring` 时因本机没有 Windows SDK headers 停止；
+Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-latest` runner 验证。
 
 - [ ] 定义颜色、排版、间距、圆角、边框、阴影和焦点 token。
 - [ ] 实现 Button、IconButton、TextInput、NumberInput、Slider、Switch。
@@ -1375,7 +1381,7 @@ primitive，设置内容容器使用官方 `GroupBox::outline()`，导航继续�
 - [ ] 模型路径安全和损坏资源测试。
 - [ ] Cubism safe wrapper 生命周期测试。
 - [ ] 输入 fixture 和丢 release 恢复测试。
-- [ ] GPUI component、command 和窗口重建测试。
+- [ ] GPUI Kit component、command 和窗口重建测试。
 - [ ] Windows/macOS 安装、首次启动、升级和卸载 smoke test。
 - [ ] 公共 contract/schema 兼容性测试；支持窗口内的 Native config、UI snapshot 和更新 manifest 可读取。
 - [ ] release 构建启用 panic/allocator/overflow 策略的真实测试，不只测试 debug 行为。

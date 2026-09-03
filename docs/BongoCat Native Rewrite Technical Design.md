@@ -1,7 +1,7 @@
 # BongoCat Native Rewrite Technical Design
 
 状态：架构决策稿，Phase 0 证据补齐与 Phase 1 渐进实现并行
-最后更新：2026-09-01
+最后更新：2026-09-04
 首发平台：Windows 10 1903+、macOS 12+
 后续平台：Linux（首发后评估）
 
@@ -92,9 +92,13 @@ GPUI 用于设置窗口、模型管理、快捷键编辑、权限状态、更新
 
 GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 Live2D 纹理合成路径。因此：
 
-- 首个 spike 使用审计时 crates.io 最新稳定版并固定为 `gpui = "=0.2.2"`，提交 `Cargo.lock`，禁止 `version = "*"`。
+- 正式 Native workspace 精确固定 crates.io `gpui-kit = "=0.6.0"` 并提交 `Cargo.lock`；
+  GPUI Kit 是唯一直接 GPUI 依赖，通过其 crates.io 同步包提供元数据对应 Zed `gpui 0.2.2`
+  的整套 GPUI crate，禁止另行声明或使用 git source 覆写 `gpui`、platform、component 和 assets。
 - 不自动跟随 Zed main，不直接依赖 Zed 应用内部 UI crate。
-- 以 `gpui-component = "=0.5.1"`（基于 crates.io `gpui 0.2.2`）提供的主题和基础组件为 design system 基础；窗口使用其官方 `Root`，项目只保留领域适配、产品 token 覆盖和组件库未覆盖的薄业务控件。
+- 以 `gpui_kit::component` 提供的主题和基础组件为 design system 基础；窗口使用其官方
+  `Root`，图标使用 `gpui_kit::assets`，项目只保留领域适配、产品 token 覆盖和组件库未覆盖
+  的薄业务控件。应用统一调用 `gpui_kit::init`，平台入口只从 `gpui_kit::platform` 获取。
 - GPUI `Entity` 只保存视图状态；真实输入、动画、配置和模型状态由 runtime 管理。
 - 正式 `bongocat-ui` 只定义设置 command/snapshot 协议和 GPUI 视图；`bongocat-app`
   的有界 service worker 独占配置写入和 runtime command，UI executor 不执行阻塞 I/O。
