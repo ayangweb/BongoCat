@@ -48,13 +48,14 @@ pub fn open_settings_window(
                             && let Some(revision) = observed_window_state.update(placement)
                         {
                             let pending_window_state = observed_window_state.clone();
+                            let executor = cx.background_executor().clone();
                             cx.spawn(async move |_, _| {
-                                Timer::after(Duration::from_millis(150)).await;
+                                executor.timer(Duration::from_millis(150)).await;
                                 for _ in 0..20 {
                                     if pending_window_state.request_persist_if_current(revision) {
                                         break;
                                     }
-                                    Timer::after(Duration::from_millis(50)).await;
+                                    executor.timer(Duration::from_millis(50)).await;
                                 }
                             })
                             .detach();
@@ -105,7 +106,8 @@ pub fn open_settings_window(
                         false
                     });
                 }
-                window.focus(&view.read(cx).overlay_focus);
+                let overlay_focus = view.read(cx).overlay_focus.clone();
+                window.focus(&overlay_focus, cx);
                 if open_accessibility_error.borrow().is_none() {
                     window.activate_window();
                 }
@@ -177,7 +179,7 @@ fn gpui_display_id(display_id: Option<u32>, cx: &App) -> Option<DisplayId> {
     let display_id = display_id?;
     cx.displays()
         .into_iter()
-        .find(|display| u32::from(display.id()) == display_id)
+        .find(|display| u32::try_from(u64::from(display.id())).ok() == Some(display_id))
         .map(|display| display.id())
 }
 
@@ -190,7 +192,9 @@ fn placement_from_window(window: &Window, cx: &App) -> Option<SettingsWindowPlac
     };
     let bounds = window_bounds.get_bounds();
     let (x, y) = bongocat_platform::global_window_origin(
-        window.display(cx).map(|display| u32::from(display.id())),
+        window
+            .display(cx)
+            .and_then(|display| u32::try_from(u64::from(display.id())).ok()),
         f32::from(bounds.origin.x),
         f32::from(bounds.origin.y),
     );

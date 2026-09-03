@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
+use async_io::Timer;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_live2d::CoreLogHandle;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_overlay::{OverlaySessionOptions, OverlayWindowBounds, ProductOverlaySession};
@@ -17,7 +19,7 @@ use bongocat_ui::SettingsView;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_ui::{SettingsError, SettingsErrorCode, SettingsWindowHandle, open_settings_window};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-use gpui::{App, Application as GpuiApplication, Global, Timer};
+use gpui::{App, Application as GpuiApplication, Global};
 #[cfg(target_os = "windows")]
 use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(target_os = "windows")]
@@ -34,6 +36,13 @@ use std::{
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const DEFAULT_RUN_SECONDS: u64 = 30;
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn gpui_application() -> GpuiApplication {
+    // SettingsAccessibilityBridge owns the window's AccessKit adapter. Current GPUI also
+    // installs one by default, but two adapters cannot subclass the same native view.
+    GpuiApplication::new_inaccessible(gpui_platform::current_platform(false))
+}
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -234,23 +243,21 @@ fn record_failure(failures: &Arc<Mutex<Vec<String>>>, failure: impl Into<String>
         .push(failure.into());
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-fn flatten_update_result<E: fmt::Display>(
-    result: Result<Result<(), String>, E>,
-) -> Result<(), String> {
-    result.map_err(|error| error.to_string())?
-}
-
 #[cfg(target_os = "windows")]
 async fn update_windows_settings<R>(
     cx: &mut gpui::AsyncApp,
     window_handle: &SettingsWindowHandle,
-    mut update: impl FnMut(&mut SettingsView, &mut gpui::Window, &mut gpui::Context<SettingsView>) -> R,
+    mut update: impl FnMut(
+        &mut SettingsView,
+        &mut gpui::Window,
+        &mut gpui::Context<SettingsView>,
+    ) -> Result<R, String>,
 ) -> Result<R, String> {
     const MAX_ATTEMPTS: u32 = 200;
     for attempt in 0..MAX_ATTEMPTS {
         match window_handle.update(cx, |view, window, cx| update(view, window, cx)) {
-            Ok(result) => return Ok(result),
+            Ok(Ok(result)) => return Ok(result),
+            Ok(Err(error)) => return Err(error),
             Err(_) if attempt + 1 < MAX_ATTEMPTS => {
                 Timer::after(Duration::from_millis(5)).await;
             }
@@ -323,7 +330,7 @@ impl ProductShutdown {
                 {
                     break;
                 }
-                Timer::after(Duration::from_millis(10)).await;
+                async_io::Timer::after(Duration::from_millis(10)).await;
             }
         }
         if let Err(error) = settings_client.shutdown().await {
@@ -532,7 +539,7 @@ fn run_configuration_recovery_mode(
     let settings_service = bongocat_app::ApplicationSettingsService::start(application)?;
     let settings_client = settings_service.client();
     let window_state = settings_service.window_state();
-    let gpui_application = GpuiApplication::new().with_assets(gpui_component_assets::Assets);
+    let gpui_application = gpui_application().with_assets(gpui_component_assets::Assets);
     gpui_application.run(move |cx| {
         if let Err(error) = open_settings_window(
             settings_client.clone(),
@@ -616,7 +623,7 @@ fn run_configuration_recovery_smoke() -> Result<(), Box<dyn std::error::Error>> 
     ) {
         return Err("recovery smoke did not project the expected recovery snapshot".into());
     }
-    let gpui_application = GpuiApplication::new().with_assets(gpui_component_assets::Assets);
+    let gpui_application = gpui_application().with_assets(gpui_component_assets::Assets);
     let smoke_client = client.clone();
     gpui_application.run(move |cx| {
         let window = match open_settings_window(smoke_client, window_state, |cx| cx.quit(), cx) {
@@ -649,7 +656,7 @@ fn run_configuration_recovery_smoke() -> Result<(), Box<dyn std::error::Error>> 
             if shutdown.is_ok() && joined.is_ok() && cleanup.is_ok() {
                 let _ = write_smoke_status("recovery service stopped");
             }
-            let _ = cx.update(|cx| cx.quit());
+            cx.update(|cx| cx.quit());
         })
         .detach();
     });
@@ -684,7 +691,7 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
     let service = bongocat_app::ApplicationSettingsService::start(application)?;
     let client = service.client();
     let window_state = service.window_state();
-    let gpui_application = GpuiApplication::new().with_assets(gpui_component_assets::Assets);
+    let gpui_application = gpui_application().with_assets(gpui_component_assets::Assets);
     gpui_application.run(move |cx| {
         let window =
             match open_settings_window(client.clone(), window_state.clone(), |cx| cx.quit(), cx) {
@@ -770,7 +777,7 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
                 let _ = stderr.flush();
                 std::process::exit(1);
             }
-            let _ = cx.update(|cx| cx.quit());
+            cx.update(|cx| cx.quit());
         })
         .detach();
     });
@@ -856,7 +863,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let run_failures = Arc::clone(&failures);
     #[cfg(target_os = "windows")]
     let shutdown_requested = Arc::new(AtomicBool::new(false));
-    let gpui_application = GpuiApplication::new().with_assets(gpui_component_assets::Assets);
+    let gpui_application = gpui_application().with_assets(gpui_component_assets::Assets);
     let reopen_failures = Arc::clone(&run_failures);
     #[cfg(target_os = "macos")]
     let application_reopen_smoke = run_options.application_reopen_smoke;
@@ -985,7 +992,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             shutdown_requested: Arc::clone(&shutdown_requested),
         });
 
-        cx.on_window_closed(|cx| {
+        cx.on_window_closed(|cx, _| {
             let Some(window_handle) = cx
                 .try_global::<ProductCoordinator>()
                 .and_then(|coordinator| coordinator.settings_window.clone())
@@ -1021,14 +1028,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         cx.spawn(async move |cx| {
             loop {
                 Timer::after(Duration::from_millis(50)).await;
-                let action = match cx.update(|cx| {
+                let action = cx.update(|cx| {
                     cx.try_global::<ProductCoordinator>()
                         .and_then(|coordinator| coordinator.system_menu.as_ref())
                         .and_then(SystemMenu::try_recv)
-                }) {
-                    Ok(action) => action,
-                    Err(_) => break,
-                };
+                });
                 let Some(action) = action else {
                     continue;
                 };
@@ -1040,9 +1044,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 });
                 match handled {
-                    Ok(Ok(true)) => {}
-                    Ok(Ok(false)) | Err(_) => break,
-                    Ok(Err(error)) => record_failure(&system_menu_failures, error),
+                    Ok(true) => {}
+                    Ok(false) => break,
+                    Err(error) => record_failure(&system_menu_failures, error),
                 }
             }
         })
@@ -1160,8 +1164,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             });
                         }
                         keep_running
-                    })
-                    .unwrap_or(false);
+                    });
                 #[cfg(target_os = "windows")]
                 let tick_result = frame_active.then(|| {
                     let mut overlay = frame_overlay.borrow_mut();
@@ -1194,7 +1197,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 #[cfg(target_os = "windows")]
                 let keep_running = update_windows_settings(cx, &frame_window, |view, _, cx| {
                     if !cx.has_global::<ProductCoordinator>() {
-                        return false;
+                        return Ok(false);
                     }
                     handle_shortcut_open_settings(cx);
                     let (failure, failures) = {
@@ -1226,9 +1229,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     if frame_shutdown_requested.load(Ordering::Acquire) {
                         start_windows_product_shutdown(cx);
-                        false
+                        Ok(false)
                     } else {
-                        true
+                        Ok(true)
                     }
                 })
                 .await;
@@ -1276,19 +1279,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 })
                 .await;
                 match settings_pages {
-                    Ok(Ok(())) => {}
-                    Ok(Err(error)) => {
+                    Ok(()) => {}
+                    Err(error) => {
                         record_failure(&smoke_failures, error);
                         #[cfg(target_os = "macos")]
-                        let _ = cx.update(request_product_quit);
-                        #[cfg(target_os = "windows")]
-                        request_windows_product_quit(&smoke_shutdown_requested);
-                        return;
-                    }
-                    Err(error) => {
-                        record_failure(&smoke_failures, error.to_string());
-                        #[cfg(target_os = "macos")]
-                        let _ = cx.update(request_product_quit);
+                        cx.update(request_product_quit);
                         #[cfg(target_os = "windows")]
                         request_windows_product_quit(&smoke_shutdown_requested);
                         return;
@@ -1307,21 +1302,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     })
                     .await;
                     match models_page {
-                        Ok(Ok(())) => {
+                        Ok(()) => {
                             Timer::after(Duration::from_millis(250)).await;
                         }
-                        Ok(Err(error)) => {
+                        Err(error) => {
                             record_failure(&smoke_failures, error);
                             #[cfg(target_os = "macos")]
-                            let _ = cx.update(request_product_quit);
-                            #[cfg(target_os = "windows")]
-                            request_windows_product_quit(&smoke_shutdown_requested);
-                            return;
-                        }
-                        Err(error) => {
-                            record_failure(&smoke_failures, error.to_string());
-                            #[cfg(target_os = "macos")]
-                            let _ = cx.update(request_product_quit);
+                        cx.update(request_product_quit);
                             #[cfg(target_os = "windows")]
                             request_windows_product_quit(&smoke_shutdown_requested);
                             return;
@@ -1366,19 +1353,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 )
                 .await;
                 let (baseline_ticks, original_window) = match baseline {
-                    Ok(Ok(baseline)) => baseline,
-                    Ok(Err(error)) => {
+                    Ok(baseline) => baseline,
+                    Err(error) => {
                         record_failure(&smoke_failures, error);
                         #[cfg(target_os = "macos")]
-                        let _ = cx.update(request_product_quit);
-                        #[cfg(target_os = "windows")]
-                        request_windows_product_quit(&smoke_shutdown_requested);
-                        return;
-                    }
-                    Err(error) => {
-                        record_failure(&smoke_failures, error.to_string());
-                        #[cfg(target_os = "macos")]
-                        let _ = cx.update(request_product_quit);
+                        cx.update(request_product_quit);
                         #[cfg(target_os = "windows")]
                         request_windows_product_quit(&smoke_shutdown_requested);
                         return;
@@ -1397,23 +1376,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     })
                     .await;
                     match hidden {
-                        Ok(Ok(true)) => {
+                        Ok(true) => {
                             window_unavailable = true;
                             break;
                         }
-                        Ok(Ok(false)) => {}
-                        Ok(Err(error)) => {
+                        Ok(false) => {}
+                        Err(error) => {
                             record_failure(&smoke_failures, error);
                             #[cfg(target_os = "macos")]
-                            let _ = cx.update(request_product_quit);
-                            #[cfg(target_os = "windows")]
-                            request_windows_product_quit(&smoke_shutdown_requested);
-                            return;
-                        }
-                        Err(error) => {
-                            record_failure(&smoke_failures, error.to_string());
-                            #[cfg(target_os = "macos")]
-                            let _ = cx.update(request_product_quit);
+                        cx.update(request_product_quit);
                             #[cfg(target_os = "windows")]
                             request_windows_product_quit(&smoke_shutdown_requested);
                             return;
@@ -1423,7 +1394,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if !window_unavailable {
                     record_failure(&smoke_failures, "settings window did not close or hide");
                     #[cfg(target_os = "macos")]
-                    let _ = cx.update(request_product_quit);
+                        cx.update(request_product_quit);
                     #[cfg(target_os = "windows")]
                     request_windows_product_quit(&smoke_shutdown_requested);
                     return;
@@ -1471,19 +1442,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 )
                 .await;
                 match reopened {
-                    Ok(Ok(_)) => {}
-                    Ok(Err(error)) => {
+                    Ok(_) => {}
+                    Err(error) => {
                         record_failure(&smoke_failures, error);
                         #[cfg(target_os = "macos")]
-                        let _ = cx.update(request_product_quit);
-                        #[cfg(target_os = "windows")]
-                        request_windows_product_quit(&smoke_shutdown_requested);
-                        return;
-                    }
-                    Err(error) => {
-                        record_failure(&smoke_failures, error.to_string());
-                        #[cfg(target_os = "macos")]
-                        let _ = cx.update(request_product_quit);
+                        cx.update(request_product_quit);
                         #[cfg(target_os = "windows")]
                         request_windows_product_quit(&smoke_shutdown_requested);
                         return;
@@ -1525,24 +1488,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 )
                 .await;
                 match restored {
-                    Ok(Ok(())) => {}
-                    Ok(Err(error)) => {
+                    Ok(()) => {}
+                    Err(error) => {
                         record_failure(&smoke_failures, error);
                         #[cfg(target_os = "macos")]
-                        let _ = cx.update(request_product_quit);
-                        #[cfg(target_os = "windows")]
-                        request_windows_product_quit(&smoke_shutdown_requested);
-                    }
-                    Err(error) => {
-                        record_failure(&smoke_failures, error.to_string());
-                        #[cfg(target_os = "macos")]
-                        let _ = cx.update(request_product_quit);
+                        cx.update(request_product_quit);
                         #[cfg(target_os = "windows")]
                         request_windows_product_quit(&smoke_shutdown_requested);
                     }
                 }
                 #[cfg(target_os = "macos")]
-                let _ = cx.update(request_product_quit);
+                        cx.update(request_product_quit);
                 #[cfg(target_os = "windows")]
                 request_windows_product_quit(&smoke_shutdown_requested);
             })
@@ -1561,9 +1517,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .request_action_for_smoke(SystemMenuAction::OpenSettings)
                         .map_err(|error| error.to_string())
                 });
-                if let Err(error) = flatten_update_result(open_requested) {
+                if let Err(error) = open_requested {
                     record_failure(&smoke_failures, error.to_string());
-                    let _ = cx.update(request_product_quit);
+                        cx.update(request_product_quit);
                     return;
                 }
 
@@ -1587,9 +1543,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     Ok(())
                 });
-                if let Err(error) = flatten_update_result(open_verified) {
+                if let Err(error) = open_verified {
                     record_failure(&smoke_failures, error.to_string());
-                    let _ = cx.update(request_product_quit);
+                        cx.update(request_product_quit);
                     return;
                 }
 
@@ -1601,9 +1557,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .request_action_for_smoke(SystemMenuAction::Quit)
                         .map_err(|error| error.to_string())
                 });
-                if let Err(error) = flatten_update_result(quit_requested) {
+                if let Err(error) = quit_requested {
                     record_failure(&smoke_failures, error.to_string());
-                    let _ = cx.update(request_product_quit);
+                        cx.update(request_product_quit);
                 }
             })
             .detach();
@@ -1628,15 +1584,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Ok((original_window, frame_ticks, application_reopens))
                 });
                 let (original_window, baseline_ticks, baseline_reopens) = match baseline {
-                    Ok(Ok(baseline)) => baseline,
-                    Ok(Err(error)) => {
-                        record_failure(&smoke_failures, error);
-                        let _ = cx.update(request_product_quit);
-                        return;
-                    }
+                    Ok(baseline) => baseline,
                     Err(error) => {
-                        record_failure(&smoke_failures, error.to_string());
-                        let _ = cx.update(request_product_quit);
+                        record_failure(&smoke_failures, error);
+                        cx.update(request_product_quit);
                         return;
                     }
                 };
@@ -1644,20 +1595,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut closed = false;
                 for _ in 0..60 {
                     Timer::after(Duration::from_millis(50)).await;
-                    match cx.update(|cx| {
+                    if cx.update(|cx| {
                         cx.windows().is_empty()
                             && cx.global::<ProductCoordinator>().settings_window.is_none()
                     }) {
-                        Ok(true) => {
-                            closed = true;
-                            break;
-                        }
-                        Ok(false) => {}
-                        Err(error) => {
-                            record_failure(&smoke_failures, error.to_string());
-                            let _ = cx.update(request_product_quit);
-                            return;
-                        }
+                        closed = true;
+                        break;
                     }
                 }
                 if !closed {
@@ -1666,12 +1609,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         &smoke_failures,
                         "application-reopen smoke could not destroy the settings window",
                     );
-                    let _ = cx.update(request_product_quit);
+                        cx.update(request_product_quit);
                     return;
                 }
                 if let Err(error) = write_smoke_status("application-reopen primary ready") {
                     record_failure(&smoke_failures, error.to_string());
-                    let _ = cx.update(request_product_quit);
+                        cx.update(request_product_quit);
                     return;
                 }
 
@@ -1706,29 +1649,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Ok(true)
                     });
                     match restored {
-                        Ok(Ok(true)) => {
+                        Ok(true) => {
                             if let Err(error) = write_smoke_status(
                                 "application reopen restored the settings window",
                             ) {
                                 record_failure(&smoke_failures, error.to_string());
-                                let _ = cx.update(request_product_quit);
+                        cx.update(request_product_quit);
                                 return;
                             }
                             Timer::after(Duration::from_secs(1)).await;
-                            let _ = cx.update(request_product_quit);
+                        cx.update(request_product_quit);
                             return;
                         }
-                        Ok(Ok(false)) => {}
-                        Ok(Err(error)) => {
+                        Ok(false) => {}
+                        Err(error) => {
                             let _ = write_smoke_status("application-reopen invariant failed");
                             record_failure(&smoke_failures, error);
-                            let _ = cx.update(request_product_quit);
-                            return;
-                        }
-                        Err(error) => {
-                            let _ = write_smoke_status("application-reopen update failed");
-                            record_failure(&smoke_failures, error.to_string());
-                            let _ = cx.update(request_product_quit);
+                        cx.update(request_product_quit);
                             return;
                         }
                     }
@@ -1738,7 +1675,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "running macOS application did not receive the LaunchServices reopen",
                 );
                 let _ = write_smoke_status("application-reopen timed out");
-                let _ = cx.update(request_product_quit);
+                        cx.update(request_product_quit);
             })
             .detach();
         }
@@ -1761,8 +1698,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 )
                 .await;
                 let baseline_ticks = match baseline {
-                    Ok(Ok(frame_ticks)) => frame_ticks,
-                    Ok(Err(error)) | Err(error) => {
+                    Ok(frame_ticks) => frame_ticks,
+                    Err(error) => {
                         record_failure(&smoke_failures, error.to_string());
                         request_windows_product_quit(&smoke_shutdown_requested);
                         return;
@@ -1773,7 +1710,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 for _ in 0..60 {
                     Timer::after(Duration::from_millis(50)).await;
                     match update_windows_settings(cx, &settings_window, |view, _, _| {
-                        view.window_hidden()
+                        Ok(view.window_hidden())
                     })
                     .await
                     {
@@ -1839,7 +1776,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     )
                     .await;
                     match restored {
-                        Ok(Ok(true)) => {
+                        Ok(true) => {
                             if let Err(error) = write_smoke_status(
                                 "single-instance wake restored the settings window",
                             ) {
@@ -1848,8 +1785,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             request_windows_product_quit(&smoke_shutdown_requested);
                             return;
                         }
-                        Ok(Ok(false)) => {}
-                        Ok(Err(error)) | Err(error) => {
+                        Ok(false) => {}
+                        Err(error) => {
                             record_failure(&smoke_failures, error.to_string());
                             request_windows_product_quit(&smoke_shutdown_requested);
                             return;
@@ -1871,7 +1808,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             cx.spawn(async move |_cx| {
                 Timer::after(run_options.run_duration).await;
                 #[cfg(target_os = "macos")]
-                let _ = _cx.update(request_product_quit);
+                _cx.update(request_product_quit);
                 #[cfg(target_os = "windows")]
                 request_windows_product_quit(&quit_shutdown_requested);
             })

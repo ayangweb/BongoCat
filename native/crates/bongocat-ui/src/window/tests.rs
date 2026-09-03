@@ -10,6 +10,7 @@ fn key(key: &str, key_char: Option<&str>) -> KeyDownEvent {
             key_char: key_char.map(str::to_owned),
         },
         is_held: false,
+        prefer_character_input: false,
     }
 }
 

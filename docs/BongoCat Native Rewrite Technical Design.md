@@ -112,6 +112,11 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   GPUI 公开的 raw window handle 安装，辅助技术 action 经有界强类型通道回到 GPUI 主线程。
 - 辅助功能实现不得使用 GPUI 私有 renderer、隐藏原生控件或独立业务状态副本；可见控件、
   语义节点、焦点、loading/error 和 value 必须由同一份 UI snapshot 更新。
+- 当前固定的 GPUI 开发版已内置 element-level AccessKit adapter，但正式设置窗口仍由上述
+  项目桥接提供既有双平台语义与 action contract；应用必须以 `Application::new_inaccessible`
+  关闭 GPUI 的重复 adapter，再由项目桥接独占同一个 native view。这里仅关闭 GPUI 内置
+  adapter，不关闭项目辅助功能。迁移到 GPUI 原生 element 语义时必须一次性删除项目桥接、
+  相关直接 AccessKit 依赖和该构造兼容措施，并重跑 macOS AX/Windows UIA 门禁。
 - GPUI 不加载 Cubism、不持有主猫 GPU 资源、不驱动 Live2D 帧循环。
 - 全局快捷键使用配置边界编译出的 `CompiledShortcuts`。平台 input owner 在回调外以 HID
   identity 驱动短生命周期 matcher；只有匹配当前 active model 的 motion/expression target

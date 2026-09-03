@@ -267,9 +267,9 @@ pub(super) fn content(
                                         .track_focus(&view.model_id_focus)
                                         .tab_index(20)
                                         .w_full()
-                                        .on_click(cx.listener(|view, _, window, _| {
+                                        .on_click(cx.listener(|view, _, window, cx| {
                                             if !view.model_import.is_running() {
-                                                window.focus(&view.model_id_focus);
+                                                window.focus(&view.model_id_focus, cx);
                                             }
                                         }))
                                         .child(Input::new(&view.model_id_input))
@@ -292,7 +292,7 @@ pub(super) fn content(
                                         && !view.model_import.is_picker_open()
                                         && view.pending.is_none()
                                     {
-                                        window.focus(&view.choose_model_focus);
+                                        window.focus(&view.choose_model_focus, cx);
                                         view.choose_model_directory(cx);
                                     }
                                 }))
@@ -304,7 +304,7 @@ pub(super) fn content(
                                             && is_activation_key(event)
                                         {
                                             cx.stop_propagation();
-                                            window.focus(&view.choose_model_focus);
+                                            window.focus(&view.choose_model_focus, cx);
                                             view.choose_model_directory(cx);
                                         }
                                     },
@@ -322,7 +322,7 @@ pub(super) fn content(
                                 .id("import-model")
                                 .on_click(cx.listener(move |view, _, window, cx| {
                                     if !import_disabled {
-                                        window.focus(&view.import_model_focus);
+                                        window.focus(&view.import_model_focus, cx);
                                         if import_running {
                                             view.cancel_model_import(cx);
                                         } else {
@@ -334,7 +334,7 @@ pub(super) fn content(
                                     move |view, event, window, cx| {
                                         if !import_disabled && is_activation_key(event) {
                                             cx.stop_propagation();
-                                            window.focus(&view.import_model_focus);
+                                            window.focus(&view.import_model_focus, cx);
                                             if import_running {
                                                 view.cancel_model_import(cx);
                                             } else {

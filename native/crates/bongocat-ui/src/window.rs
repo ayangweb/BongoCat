@@ -18,16 +18,15 @@ use bongocat_platform::{
 use bongocat_platform::{DirectoryPickerError, DirectoryPickerOutcome, pick_model_directory};
 use gpui::{
     App, AppContext, Bounds, Context, DisplayId, Entity, FocusHandle, Hsla, KeyDownEvent, Render,
-    SharedString, Timer, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowHandle,
-    WindowOptions, div, point, prelude::*, px, size,
+    SharedString, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowHandle, WindowOptions,
+    div, point, prelude::*, px, size,
 };
 use gpui_component::{
     ActiveTheme, Disableable, Root, Theme,
     button::Button,
-    divider::Divider,
     group_box::{GroupBox, GroupBoxVariants},
-    input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent, StepAction},
-    switch::Switch,
+    input::{Input, InputEvent, InputState, NumberInputEvent, StepAction},
+    setting::{SettingField, SettingGroup, SettingItem, SettingPage, Settings},
     tag::Tag,
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -45,7 +44,6 @@ mod presentation;
 use presentation::*;
 mod accessibility;
 mod diagnostics;
-mod general;
 mod lifecycle;
 mod model_actions;
 mod models;
@@ -119,8 +117,6 @@ const ACCESSIBILITY_TRIGGER_DEAD_ZONE: AccessibilityNodeId = AccessibilityNodeId
 #[derive(Clone, Copy)]
 struct Tokens {
     canvas: Hsla,
-    sidebar: Hsla,
-    selected: Hsla,
     border: Hsla,
     text: Hsla,
     muted: Hsla,
@@ -133,8 +129,6 @@ impl Tokens {
         let theme = cx.theme();
         Self {
             canvas: theme.background,
-            sidebar: theme.sidebar,
-            selected: theme.sidebar_accent,
             border: theme.border,
             text: theme.foreground,
             muted: theme.muted_foreground,
@@ -664,7 +658,7 @@ fn diagnostic_group(
                         .child(value.to_string()),
                 )
         }))
-        .child(Divider::horizontal())
+        .child(div().border_b_1().border_color(tokens.border))
 }
 
 fn suggested_model_id(source_root: &Path) -> String {
@@ -863,83 +857,8 @@ fn model_import_status(draft: &ModelImportDraft) -> (SharedString, bool) {
     }
 }
 
-fn navigation_item(
-    label: &'static str,
-    selected: bool,
-    focus: &FocusHandle,
-    tab_index: isize,
-    window: &Window,
-    tokens: Tokens,
-) -> gpui::Div {
-    div()
-        .key_context("SettingsNavigation")
-        .track_focus(focus)
-        .tab_index(tab_index)
-        .when(focus.is_focused(window), |item| {
-            item.border_1().border_color(tokens.accent)
-        })
-        .child(
-            div()
-                .id(label)
-                .px_3()
-                .py_2()
-                .rounded(px(6.0))
-                .when(selected, |item| {
-                    item.bg(tokens.selected).text_color(tokens.text)
-                })
-                .when(!selected, |item| {
-                    item.text_color(tokens.muted)
-                        .hover(|style| style.bg(tokens.selected).text_color(tokens.text))
-                })
-                .child(label),
-        )
-}
-
 fn install_component_theme(window: &mut Window, cx: &mut App) {
     Theme::sync_system_appearance(Some(window), cx);
-}
-
-fn setting_row(
-    title: &'static str,
-    description: SharedString,
-    state: SettingRowState,
-    on_toggle: impl Fn(&bool, &mut Window, &mut App) + 'static,
-    tokens: Tokens,
-) -> impl IntoElement {
-    GroupBox::new().outline().child(
-        div()
-            .flex()
-            .items_center()
-            .justify_between()
-            .gap_3()
-            .text_color(if state.disabled {
-                tokens.muted
-            } else {
-                tokens.text
-            })
-            .child(
-                div()
-                    .min_w_0()
-                    .flex_1()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(div().child(title))
-                    .child(div().text_sm().text_color(tokens.muted).child(description)),
-            )
-            .child(
-                Switch::new(title)
-                    .checked(state.enabled)
-                    .disabled(state.disabled)
-                    .on_click(on_toggle),
-            ),
-    )
-}
-
-#[derive(Clone, Copy)]
-struct SettingRowState {
-    enabled: bool,
-    disabled: bool,
 }
 
 fn stepped_overlay_scale(mut settings: SettingsOverlay, delta: i16) -> SettingsOverlay {

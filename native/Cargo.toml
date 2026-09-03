@@ -25,12 +25,14 @@ publish = false
 accesskit = "=0.25.0"
 accesskit_macos = "=0.27.0"
 accesskit_windows = "=0.35.0"
+async-io = "=2.6.0"
 atomic-write-file = "=0.3.1"
 async-channel = "=2.5.0"
 dirs = "=6.0.0"
-gpui = "=0.2.2"
-gpui-component = { version = "=0.5.1", default-features = false }
-gpui-component-assets = "=0.5.1"
+gpui = { version = "=0.2.2", git = "https://github.com/zed-industries/zed" }
+gpui-platform = { package = "gpui_platform", version = "=0.1.0", git = "https://github.com/zed-industries/zed" }
+gpui-component = { version = "=0.5.2", git = "https://github.com/longbridge/gpui-component", rev = "c0946e6acdc9e2f984f317ef7f998ee2c79f1a87", default-features = false }
+gpui-component-assets = { version = "=0.5.1", git = "https://github.com/longbridge/gpui-component", rev = "c0946e6acdc9e2f984f317ef7f998ee2c79f1a87" }
 image = { version = "=0.25.10", default-features = false, features = ["png"] }
 proptest = { version = "=1.11.0", default-features = false, features = ["std"] }
 raw-window-handle = "=0.6.2"

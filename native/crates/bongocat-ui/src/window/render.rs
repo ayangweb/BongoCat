@@ -48,6 +48,7 @@ impl Render for SettingsView {
                     static_focus
                         .or(shortcut_focus)
                         .unwrap_or(&self.general_focus),
+                    cx,
                 );
             }
             self.update_accessibility(window);
@@ -57,20 +58,6 @@ impl Render for SettingsView {
         if let Some(snapshot) = snapshot.as_ref() {
             self.sync_component_inputs(snapshot, window, cx);
         }
-        let overlay_visible = snapshot
-            .as_ref()
-            .is_some_and(|snapshot| snapshot.overlay_visible);
-        let overlay_settings = snapshot
-            .as_ref()
-            .map(|snapshot| snapshot.overlay)
-            .unwrap_or_default();
-        let motion_audio_enabled = snapshot
-            .as_ref()
-            .is_some_and(|snapshot| snapshot.motion_audio_enabled);
-        let model_settings = snapshot
-            .as_ref()
-            .map(|snapshot| snapshot.model_settings)
-            .unwrap_or_default();
         let configuration_ready = snapshot.as_ref().is_some_and(|snapshot| {
             snapshot.configuration_status == SettingsConfigurationStatus::Ready
         });
@@ -85,32 +72,8 @@ impl Render for SettingsView {
         self.sync_shortcut_row_focus(&shortcuts, disabled, cx);
         let status: SharedString = match (&self.error, self.pending, &snapshot) {
             (Some(error), _, _) => error.to_string().into(),
-            (_, Some(PendingOperation::Refresh), _) => "Refreshing...".into(),
-            (
-                _,
-                Some(
-                    PendingOperation::OverlayVisibility
-                    | PendingOperation::OverlaySettings
-                    | PendingOperation::MotionAudio
-                    | PendingOperation::ModelSettings,
-                ),
-                _,
-            ) => "Saving...".into(),
-            (_, Some(PendingOperation::StartupItem), _) => "Updating login startup...".into(),
-            (_, Some(PendingOperation::ModelSelection), _) => "Activating model...".into(),
-            (_, Some(PendingOperation::ModelDeletion), _) => "Deleting model...".into(),
-            (_, Some(PendingOperation::OpenConfigBackupLocation), _) => {
-                "Opening configuration backups...".into()
-            }
-            (_, Some(PendingOperation::RestoreDefaultConfiguration), _) => {
-                "Restoring default configuration...".into()
-            }
-            (_, Some(PendingOperation::RestoreDefaultShortcuts), _) => {
-                "Restoring default shortcuts...".into()
-            }
-            (_, Some(PendingOperation::ClearShortcuts), _) => "Clearing shortcuts...".into(),
-            (_, Some(PendingOperation::SetShortcuts), _) => "Saving shortcut...".into(),
-            (_, Some(PendingOperation::ExportDiagnostics), _) => "Exporting diagnostics...".into(),
+            (_, Some(PendingOperation::Refresh), _) => "Refreshing runtime snapshot...".into(),
+            (_, Some(_), _) => "Saving changes...".into(),
             (_, None, Some(snapshot)) => {
                 let health = match snapshot.runtime_health {
                     RuntimeHealth::Starting => "Starting",
@@ -122,184 +85,452 @@ impl Render for SettingsView {
             }
             _ => "Connecting to runtime...".into(),
         };
-        let active_model: SharedString = snapshot
-            .as_ref()
-            .and_then(|snapshot| snapshot.active_model.as_ref())
-            .map(|model| model.id.clone())
-            .unwrap_or_else(|| "No active model".to_owned())
-            .into();
+        let status_is_error = self.error.is_some();
+        let view_entity = cx.entity();
 
-        let general_selected = self.page == SettingsPage::General;
-        let models_selected = self.page == SettingsPage::Models;
-        let diagnostics_selected = self.page == SettingsPage::Diagnostics;
-        let sidebar = div()
-            .w(px(164.0))
-            .h_full()
-            .flex_none()
+        let general_page = SettingPage::new("General")
+            .default_open(true)
+            .description("Configure the overlay, model interaction, input and startup behavior.")
+            .groups(vec![
+                SettingGroup::new().title("Overlay").items(vec![
+                    SettingItem::new(
+                        "Runtime status",
+                        SettingField::element({
+                            let status = status.clone();
+                            move |_: &gpui_component::setting::RenderOptions,
+                                  _: &mut Window,
+                                  _: &mut App| {
+                                if status_is_error {
+                                    Tag::danger().child(status.clone()).into_any_element()
+                                } else {
+                                    Tag::secondary().child(status.clone()).into_any_element()
+                                }
+                            }
+                        }),
+                    )
+                    .description("Current runtime connection and configuration revision."),
+                    SettingItem::new(
+                        "Show desktop cat",
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.overlay_visible)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_overlay_visible(value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description(
+                        "Keep the Live2D overlay visible. Search: overlay, cat, visibility.",
+                    ),
+                    SettingItem::new(
+                        "Always on top",
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.overlay.always_on_top)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        if let Some(snapshot) = view.snapshot.as_ref() {
+                                            let mut settings = snapshot.overlay;
+                                            settings.always_on_top = value;
+                                            view.set_overlay_settings(settings, cx);
+                                        }
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description("Keep the Live2D overlay above other windows. Search: topmost."),
+                    SettingItem::new(
+                        "Click-through overlay",
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.overlay.click_through)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        if let Some(snapshot) = view.snapshot.as_ref() {
+                                            let mut settings = snapshot.overlay;
+                                            settings.click_through = value;
+                                            view.set_overlay_settings(settings, cx);
+                                        }
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description(
+                        "Let pointer input pass through the overlay. Search: pointer, mouse.",
+                    ),
+                    SettingItem::new(
+                        "Motion audio",
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.motion_audio_enabled)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_motion_audio_enabled(value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description("Play audio attached to model motions. Search: sound, audio."),
+                    SettingItem::new(
+                        "Overlay scale",
+                        SettingField::number_input(
+                            gpui_component::setting::NumberFieldOptions {
+                                min: 25.0,
+                                max: 400.0,
+                                step: 25.0,
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .map_or(100.0, |s| f64::from(s.overlay.scale_percent))
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_overlay_scale_value(value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description(
+                        "Resize the Live2D overlay from 25% to 400%. Search: size, scale.",
+                    ),
+                    SettingItem::new(
+                        "Overlay opacity",
+                        SettingField::number_input(
+                            gpui_component::setting::NumberFieldOptions {
+                                min: 1.0,
+                                max: 100.0,
+                                step: 10.0,
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .map_or(100.0, |s| f64::from(s.overlay.opacity_percent))
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_overlay_opacity_value(value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description(
+                        "Adjust the overlay transparency from 1% to 100%. Search: transparent.",
+                    ),
+                ]),
+                SettingGroup::new().title("Model interaction").items(vec![
+                    SettingItem::new(
+                        "Mirror model",
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.model_settings.mirror)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        if let Some(s) = view.snapshot.as_ref() {
+                                            let mut settings = s.model_settings;
+                                            settings.mirror = value;
+                                            view.set_model_settings(settings, cx);
+                                        }
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description("Render the model mirrored horizontally. Search: flip."),
+                    SettingItem::new(
+                        "Mirror pointer tracking",
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.model_settings.mirror_pointer_tracking)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        if let Some(s) = view.snapshot.as_ref() {
+                                            let mut settings = s.model_settings;
+                                            settings.mirror_pointer_tracking = value;
+                                            view.set_model_settings(settings, cx);
+                                        }
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description(
+                        "Mirror horizontal pointer movement with the model. Search: mouse.",
+                    ),
+                    SettingItem::new(
+                        "Ignore pointer input",
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.model_settings.ignore_pointer)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        if let Some(s) = view.snapshot.as_ref() {
+                                            let mut settings = s.model_settings;
+                                            settings.ignore_pointer = value;
+                                            view.set_model_settings(settings, cx);
+                                        }
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description("Do not apply pointer movement to the model. Search: mouse."),
+                ]),
+                SettingGroup::new().title("Input").items(vec![
+                    SettingItem::new(
+                        "Gamepad stick dead zone",
+                        SettingField::number_input(
+                            gpui_component::setting::NumberFieldOptions {
+                                min: 0.0,
+                                max: 99.0,
+                                step: 5.0,
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app).snapshot.as_ref().map_or(15.0, |s| {
+                                        f64::from(s.gamepad_axis_settings.stick_dead_zone_percent)
+                                    })
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_gamepad_dead_zone_value(true, value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description(
+                        "Ignore small analog stick movement. Search: controller, joystick.",
+                    ),
+                    SettingItem::new(
+                        "Gamepad trigger dead zone",
+                        SettingField::number_input(
+                            gpui_component::setting::NumberFieldOptions {
+                                min: 0.0,
+                                max: 99.0,
+                                step: 5.0,
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app).snapshot.as_ref().map_or(0.0, |s| {
+                                        f64::from(s.gamepad_axis_settings.trigger_dead_zone_percent)
+                                    })
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_gamepad_dead_zone_value(false, value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description("Ignore small trigger movement. Search: controller, gamepad."),
+                ]),
+                SettingGroup::new().title("Startup").item(
+                    SettingItem::new(
+                        "Open at login",
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app).snapshot.as_ref().is_some_and(|s| {
+                                        matches!(
+                                            s.startup_item,
+                                            SettingsStartupItemStatus::State(
+                                                SettingsStartupItemState::Enabled
+                                                    | SettingsStartupItemState::RequiresApproval
+                                            )
+                                        )
+                                    })
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_startup_item_enabled(value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description("Open BongoCat when you sign in. Search: launch, startup, login."),
+                ),
+            ]);
+
+        let models_page = SettingPage::new("Models")
+            .description("Install, validate and activate Live2D model packages.")
+            .group(SettingGroup::new().title("Model catalog").item(SettingItem::new(
+                "Installed models",
+                SettingField::element({
+                    let view = view_entity.clone();
+                    move |_: &gpui_component::setting::RenderOptions,
+                          window: &mut Window,
+                          app: &mut App| {
+                        let snapshot = view.read(app).snapshot.clone();
+                        let tokens = Tokens::from_theme(app);
+                        view.update(app, move |view, cx| {
+                            view.page = SettingsPage::Models;
+                            models::content(view, window, cx, snapshot.as_ref(), tokens)
+                        })
+                        .into_any_element()
+                    }
+                }),
+            ).layout(gpui::Axis::Vertical).description("Import a model folder, validate package safety and choose the active model. Search: import, activate, Live2D.")));
+
+        let diagnostics_page = SettingPage::new("Diagnostics")
+            .description("Inspect runtime health, input reliability and shortcut bindings.")
+            .group(SettingGroup::new().title("Runtime and input").item(SettingItem::new(
+                "Runtime diagnostics",
+                SettingField::element({
+                    let view = view_entity.clone();
+                    move |_: &gpui_component::setting::RenderOptions,
+                          window: &mut Window,
+                          app: &mut App| {
+                        let snapshot = view.read(app).snapshot.clone();
+                        let tokens = Tokens::from_theme(app);
+                        view.update(app, move |view, cx| {
+                            view.page = SettingsPage::Diagnostics;
+                            diagnostics::content(view, window, cx, snapshot.as_ref(), disabled, tokens)
+                        })
+                        .into_any_element()
+                    }
+                }),
+            ).layout(gpui::Axis::Vertical).description("Review renderer status, input counters and keyboard shortcuts. Search: renderer, input, shortcut.")));
+
+        let settings = Settings::new("bongocat-settings")
+            .sidebar_width(px(220.0))
+            .with_group_variant(gpui_component::group_box::GroupBoxVariant::Outline)
+            .pages(vec![general_page, models_page, diagnostics_page]);
+        let footer = div()
             .flex()
-            .flex_col()
+            .items_center()
+            .justify_end()
             .gap_2()
             .p_4()
-            .bg(tokens.sidebar)
-            .child(div().text_xl().text_color(tokens.text).child("BongoCat"))
+            .border_t_1()
+            .border_color(tokens.border)
             .child(
-                div()
-                    .text_sm()
-                    .text_color(tokens.muted)
-                    .child("Native settings"),
-            )
-            .child(div().h(px(12.0)))
-            .child(
-                navigation_item(
-                    "General",
-                    general_selected,
-                    &self.general_focus,
-                    1,
+                command_button(
+                    "Refresh",
+                    &self.refresh_focus,
+                    30,
                     window,
                     tokens,
+                    self.pending.is_some()
+                        || self.model_import.is_running()
+                        || self.model_import.is_picker_open(),
                 )
-                .id("general-page")
+                .id("refresh-settings")
                 .on_click(cx.listener(|view, _, window, cx| {
-                    window.focus(&view.general_focus);
-                    view.page = SettingsPage::General;
-                    cx.notify();
-                }))
-                .on_key_down(cx.listener(|view, event, window, cx| {
-                    if is_activation_key(event) {
-                        cx.stop_propagation();
-                        window.focus(&view.general_focus);
-                        view.page = SettingsPage::General;
-                        cx.notify();
+                    if view.pending.is_none()
+                        && !view.model_import.is_running()
+                        && !view.model_import.is_picker_open()
+                    {
+                        window.focus(&view.refresh_focus, cx);
+                        view.refresh(cx);
                     }
                 })),
             )
             .child(
-                navigation_item(
-                    "Models",
-                    models_selected,
-                    &self.models_focus,
-                    2,
-                    window,
-                    tokens,
-                )
-                .id("models-page")
-                .on_click(cx.listener(|view, _, window, cx| {
-                    window.focus(&view.models_focus);
-                    view.page = SettingsPage::Models;
-                    cx.notify();
-                }))
-                .on_key_down(cx.listener(|view, event, window, cx| {
-                    if is_activation_key(event) {
-                        cx.stop_propagation();
-                        window.focus(&view.models_focus);
-                        view.page = SettingsPage::Models;
-                        cx.notify();
-                    }
-                })),
-            )
-            .child(div().p_3().text_color(tokens.muted).child("Shortcuts"))
-            .child(
-                navigation_item(
-                    "Diagnostics",
-                    diagnostics_selected,
-                    &self.diagnostics_focus,
-                    3,
-                    window,
-                    tokens,
-                )
-                .id("diagnostics-page")
-                .on_click(cx.listener(|view, _, window, cx| {
-                    window.focus(&view.diagnostics_focus);
-                    view.page = SettingsPage::Diagnostics;
-                    cx.notify();
-                }))
-                .on_key_down(cx.listener(|view, event, window, cx| {
-                    if is_activation_key(event) {
-                        cx.stop_propagation();
-                        window.focus(&view.diagnostics_focus);
-                        view.page = SettingsPage::Diagnostics;
-                        cx.notify();
-                    }
-                })),
-            );
-
-        let general_content = general::content(
-            self,
-            window,
-            cx,
-            snapshot.as_ref(),
-            disabled,
-            overlay_visible,
-            overlay_settings,
-            motion_audio_enabled,
-            model_settings,
-            active_model,
-            status,
-            tokens,
-        );
-        let models_content = models::content(self, window, cx, snapshot.as_ref(), tokens);
-        let diagnostics_content =
-            diagnostics::content(self, window, cx, snapshot.as_ref(), disabled, tokens);
-        let content = match self.page {
-            SettingsPage::General => general_content,
-            SettingsPage::Models => models_content,
-            SettingsPage::Diagnostics => diagnostics_content,
-        }
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .justify_end()
-                .gap_2()
-                .child(
-                    command_button(
-                        "Refresh",
-                        &self.refresh_focus,
-                        30,
-                        window,
-                        tokens,
-                        self.pending.is_some()
-                            || self.model_import.is_running()
-                            || self.model_import.is_picker_open(),
-                    )
-                    .id("refresh-settings")
+                command_button("Quit", &self.quit_focus, 31, window, tokens, false)
+                    .id("quit-application")
                     .on_click(cx.listener(|view, _, window, cx| {
-                        if view.pending.is_none()
-                            && !view.model_import.is_running()
-                            && !view.model_import.is_picker_open()
-                        {
-                            window.focus(&view.refresh_focus);
-                            view.refresh(cx);
-                        }
-                    }))
-                    .on_key_down(cx.listener(|view, event, window, cx| {
-                        if view.pending.is_none()
-                            && !view.model_import.is_running()
-                            && !view.model_import.is_picker_open()
-                            && is_activation_key(event)
-                        {
-                            cx.stop_propagation();
-                            window.focus(&view.refresh_focus);
-                            view.refresh(cx);
-                        }
+                        window.focus(&view.quit_focus, cx);
+                        (view.request_quit)(cx);
                     })),
-                )
-                .child(
-                    command_button("Quit", &self.quit_focus, 31, window, tokens, false)
-                        .id("quit-application")
-                        .on_click(cx.listener(|view, _, window, cx| {
-                            window.focus(&view.quit_focus);
-                            (view.request_quit)(cx);
-                        }))
-                        .on_key_down(cx.listener(|view, event, window, cx| {
-                            if is_activation_key(event) {
-                                cx.stop_propagation();
-                                window.focus(&view.quit_focus);
-                                (view.request_quit)(cx);
-                            }
-                        })),
-                ),
-        );
+            );
 
         div()
             .id("bongocat-settings-root")
@@ -311,7 +542,8 @@ impl Render for SettingsView {
             }))
             .size_full()
             .flex()
-            .child(sidebar)
-            .child(content)
+            .flex_col()
+            .child(div().min_h_0().w_full().flex_1().child(settings))
+            .child(footer)
     }
 }

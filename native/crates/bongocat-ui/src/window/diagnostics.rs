@@ -142,14 +142,14 @@ pub(super) fn content(
                                     .id("export-diagnostics")
                                     .on_click(cx.listener(|view, _, window, cx| {
                                         if view.pending.is_none() {
-                                            window.focus(&view.export_diagnostics_focus);
+                                            window.focus(&view.export_diagnostics_focus, cx);
                                             view.export_diagnostics(cx);
                                         }
                                     }))
                                     .on_key_down(cx.listener(|view, event, window, cx| {
                                         if view.pending.is_none() && is_activation_key(event) {
                                             cx.stop_propagation();
-                                            window.focus(&view.export_diagnostics_focus);
+                                            window.focus(&view.export_diagnostics_focus, cx);
                                             view.export_diagnostics(cx);
                                         }
                                     })),
@@ -189,7 +189,7 @@ pub(super) fn content(
                                             .id("restore-default-shortcuts")
                                             .on_click(cx.listener(|view, _, window, cx| {
                                                 if view.pending.is_none() {
-                                                    window.focus(&view.restore_shortcuts_focus);
+                                                    window.focus(&view.restore_shortcuts_focus, cx);
                                                     view.restore_default_shortcuts(cx);
                                                 }
                                             }))
@@ -198,7 +198,7 @@ pub(super) fn content(
                                                     && is_activation_key(event)
                                                 {
                                                     cx.stop_propagation();
-                                                    window.focus(&view.restore_shortcuts_focus);
+                                                    window.focus(&view.restore_shortcuts_focus, cx);
                                                     view.restore_default_shortcuts(cx);
                                                 }
                                             })),
@@ -220,7 +220,7 @@ pub(super) fn content(
                                             .id("clear-shortcuts")
                                             .on_click(cx.listener(|view, _, window, cx| {
                                                 if view.pending.is_none() {
-                                                    window.focus(&view.clear_shortcuts_focus);
+                                                    window.focus(&view.clear_shortcuts_focus, cx);
                                                     view.clear_shortcuts(cx);
                                                 }
                                             }))
@@ -229,7 +229,7 @@ pub(super) fn content(
                                                     && is_activation_key(event)
                                                 {
                                                     cx.stop_propagation();
-                                                    window.focus(&view.clear_shortcuts_focus);
+                                                    window.focus(&view.clear_shortcuts_focus, cx);
                                                     view.clear_shortcuts(cx);
                                                 }
                                             })),
@@ -488,7 +488,7 @@ pub(super) fn content(
                                             .id("open-config-backups")
                                             .on_click(cx.listener(|view, _, window, cx| {
                                                 if view.pending.is_none() {
-                                                    window.focus(&view.open_backups_focus);
+                                                    window.focus(&view.open_backups_focus, cx);
                                                     view.open_config_backup_location(cx);
                                                 }
                                             }))
@@ -497,7 +497,7 @@ pub(super) fn content(
                                                     && is_activation_key(event)
                                                 {
                                                     cx.stop_propagation();
-                                                    window.focus(&view.open_backups_focus);
+                                                    window.focus(&view.open_backups_focus, cx);
                                                     view.open_config_backup_location(cx);
                                                 }
                                             })),
@@ -515,7 +515,10 @@ pub(super) fn content(
                                                 .id("restore-default-configuration")
                                                 .on_click(cx.listener(|view, _, window, cx| {
                                                     if view.pending.is_none() {
-                                                        window.focus(&view.restore_defaults_focus);
+                                                        window.focus(
+                                                            &view.restore_defaults_focus,
+                                                            cx,
+                                                        );
                                                         view.restore_default_configuration(cx);
                                                     }
                                                 }))
@@ -527,6 +530,7 @@ pub(super) fn content(
                                                             cx.stop_propagation();
                                                             window.focus(
                                                                 &view.restore_defaults_focus,
+                                                                cx,
                                                             );
                                                             view.restore_default_configuration(cx);
                                                         }

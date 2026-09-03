@@ -124,7 +124,9 @@ impl SettingsView {
 
         cx.spawn(async move |this, cx| {
             loop {
-                Timer::after(Duration::from_millis(100)).await;
+                cx.background_executor()
+                    .timer(Duration::from_millis(100))
+                    .await;
                 let keep_polling = this
                     .update(cx, |view, cx| {
                         let keep_polling =
@@ -333,17 +335,17 @@ impl SettingsView {
         };
         match action {
             ModelRowAction::Activate if actions.can_activate => {
-                window.focus(&focus.activate);
+                window.focus(&focus.activate, cx);
                 self.select_model(model, cx);
             }
             ModelRowAction::Delete if actions.can_delete => {
-                window.focus(&focus.delete);
+                window.focus(&focus.delete, cx);
                 self.request_model_delete(model, cx);
             }
             ModelRowAction::CancelDelete
                 if self.model_delete_confirmation.as_ref() == Some(&model) =>
             {
-                window.focus(&focus.cancel_delete);
+                window.focus(&focus.cancel_delete, cx);
                 self.cancel_model_delete(&model, cx);
             }
             _ => {}
