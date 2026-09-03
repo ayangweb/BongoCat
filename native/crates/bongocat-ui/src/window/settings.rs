@@ -2,7 +2,16 @@ use super::*;
 
 impl SettingsView {
     pub(super) fn refresh(&mut self, cx: &mut Context<Self>) {
+        if self.refresh_is_disabled() {
+            return;
+        }
         self.start_request(PendingOperation::Refresh, None, cx);
+    }
+
+    pub(super) fn refresh_is_disabled(&self) -> bool {
+        matches!(self.pending, Some(PendingOperation::Refresh))
+            || self.model_import.is_running()
+            || self.model_import.is_picker_open()
     }
 
     pub(super) fn set_overlay_visible(&mut self, visible: bool, cx: &mut Context<Self>) {

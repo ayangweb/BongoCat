@@ -506,9 +506,7 @@ impl Render for SettingsView {
                     30,
                     window,
                     tokens,
-                    self.pending.is_some()
-                        || self.model_import.is_running()
-                        || self.model_import.is_picker_open(),
+                    self.refresh_is_disabled(),
                 )
                 .id("refresh-settings")
                 .on_click(cx.listener(|view, _, window, cx| {

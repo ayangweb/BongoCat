@@ -211,8 +211,8 @@ impl SettingsView {
         }
         let mut refresh_node =
             AccessibilityNode::new(ACCESSIBILITY_REFRESH, AccessibilityRole::Button, "Refresh")
-                .disabled(self.pending.is_some() || self.model_import.is_running());
-        if self.pending.is_none() && !self.model_import.is_running() {
+                .disabled(self.refresh_is_disabled());
+        if !self.refresh_is_disabled() {
             refresh_node = refresh_node.clickable().focusable();
         }
         let restore_available = snapshot.is_some_and(|snapshot| {

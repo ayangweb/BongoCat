@@ -376,9 +376,7 @@ fn run_service(
                 let result = require_operational(&application)
                     .map_err(map_application_error)
                     .and_then(|()| {
-                        let current =
-                            snapshot(&application, &mut clock, false, startup_item.state());
-                        if current.config_revision != Some(expected_config_revision) {
+                        if application.config_revision() != Some(expected_config_revision) {
                             Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
                         } else {
                             application
@@ -404,9 +402,7 @@ fn run_service(
                 let result = require_operational(&application)
                     .map_err(map_application_error)
                     .and_then(|()| {
-                        let current =
-                            snapshot(&application, &mut clock, false, startup_item.state());
-                        if current.config_revision != Some(expected_config_revision) {
+                        if application.config_revision() != Some(expected_config_revision) {
                             Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
                         } else {
                             application
@@ -426,9 +422,7 @@ fn run_service(
                 let result = require_operational(&application)
                     .map_err(map_application_error)
                     .and_then(|()| {
-                        let current =
-                            snapshot(&application, &mut clock, false, startup_item.state());
-                        if current.config_revision != Some(expected_config_revision) {
+                        if application.config_revision() != Some(expected_config_revision) {
                             Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
                         } else {
                             application
@@ -453,9 +447,7 @@ fn run_service(
                 let result = require_operational(&application)
                     .map_err(map_application_error)
                     .and_then(|()| {
-                        let current =
-                            snapshot(&application, &mut clock, false, startup_item.state());
-                        if current.config_revision != Some(expected_config_revision) {
+                        if application.config_revision() != Some(expected_config_revision) {
                             Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
                         } else {
                             application
@@ -477,9 +469,7 @@ fn run_service(
                 let result = require_operational(&application)
                     .map_err(map_application_error)
                     .and_then(|()| {
-                        let current =
-                            snapshot(&application, &mut clock, false, startup_item.state());
-                        if current.config_revision != Some(expected_config_revision) {
+                        if application.config_revision() != Some(expected_config_revision) {
                             Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
                         } else if !valid {
                             Err(SettingsError::new(
@@ -510,9 +500,7 @@ fn run_service(
                 let result = require_operational(&application)
                     .map_err(map_application_error)
                     .and_then(|()| {
-                        let current =
-                            snapshot(&application, &mut clock, false, startup_item.state());
-                        if current.config_revision != Some(expected_config_revision) {
+                        if application.config_revision() != Some(expected_config_revision) {
                             Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
                         } else {
                             application
@@ -531,9 +519,7 @@ fn run_service(
                 let result = require_operational(&application)
                     .map_err(map_application_error)
                     .and_then(|()| {
-                        let current =
-                            snapshot(&application, &mut clock, false, startup_item.state());
-                        if current.config_revision != Some(expected_config_revision) {
+                        if application.config_revision() != Some(expected_config_revision) {
                             Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
                         } else {
                             application
@@ -567,9 +553,7 @@ fn run_service(
                 let result = require_operational(&application)
                     .map_err(map_application_error)
                     .and_then(|()| {
-                        let current =
-                            snapshot(&application, &mut clock, false, startup_item.state());
-                        if current.config_revision != Some(expected_config_revision) {
+                        if application.config_revision() != Some(expected_config_revision) {
                             Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
                         } else {
                             application
@@ -799,6 +783,12 @@ impl SettingsSnapshotClock {
             self.diagnostics_export = Some(status);
         }
     }
+
+    fn coalesce_changes_since(&mut self, revision: u64) {
+        if self.revision != revision {
+            self.revision = revision.saturating_add(1);
+        }
+    }
 }
 
 fn snapshot(
@@ -807,6 +797,7 @@ fn snapshot(
     catalog_changed: bool,
     startup_item: SettingsStartupItemStatus,
 ) -> SettingsSnapshot {
+    let revision_before = clock.revision;
     let runtime = application.runtime_client().snapshot();
     let input_diagnostics = settings_input_diagnostics(&runtime.input, runtime.platform_input);
     clock.observe_runtime(runtime.revision);
@@ -816,6 +807,7 @@ fn snapshot(
     if catalog_changed {
         clock.mark_catalog_changed();
     }
+    clock.coalesce_changes_since(revision_before);
     SettingsSnapshot {
         revision: clock.revision,
         config_revision: application.config_revision(),
@@ -2043,6 +2035,27 @@ mod tests {
     }
 
     #[test]
+    fn snapshot_clock_coalesces_changes_observed_in_one_snapshot() {
+        let diagnostics = SettingsInputDiagnostics::default();
+        let startup = SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled);
+        let mut clock = SettingsSnapshotClock::new(40, Some(7));
+        clock.observe_runtime(41);
+        clock.observe_config(Some(8));
+        clock.observe_input_diagnostics(diagnostics);
+        clock.observe_startup_item(startup);
+        clock.mark_catalog_changed();
+        clock.observe_diagnostics_export(SettingsDiagnosticsExportStatus {
+            format_version: DIAGNOSTICS_EXPORT_FORMAT_VERSION,
+            bytes_written: 1,
+        });
+        clock.coalesce_changes_since(40);
+        assert_eq!(clock.revision, 41);
+
+        clock.coalesce_changes_since(41);
+        assert_eq!(clock.revision, 41);
+    }
+
+    #[test]
     fn input_start_failures_degrade_health_without_treating_stop_as_failure() {
         for status in [
             SettingsInputServiceStatus::PermissionDenied,
@@ -2192,6 +2205,28 @@ mod tests {
         let unchanged = client.read_snapshot_blocking().expect("unchanged snapshot");
         assert_eq!(unchanged, initial);
         assert_eq!(backup_location.invocations.load(Ordering::Acquire), 2);
+
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
+    }
+
+    #[test]
+    fn service_advances_settings_revision_once_for_one_control_change() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application = Application::start_with_layout(layout).expect("application start");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        let updated = client
+            .set_overlay_visible_blocking(
+                initial.config_revision.expect("config revision"),
+                !initial.overlay_visible,
+            )
+            .expect("toggle overlay visibility");
+        assert_eq!(updated.revision, initial.revision.saturating_add(1));
+        assert!(updated.config_revision > initial.config_revision);
 
         client.shutdown_blocking().expect("service shutdown");
         service.join().expect("service join");
