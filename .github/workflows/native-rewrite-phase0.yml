@@ -188,6 +188,28 @@ jobs:
           }
           $executable = Join-Path $PWD "native/target/release/bongocat-app.exe"
           Add-Type -AssemblyName UIAutomationClient
+          function Find-UiAutomationElement {
+            param(
+              [System.Windows.Automation.AutomationElement] $Owner,
+              [System.Windows.Automation.TreeScope] $Scope,
+              [System.Windows.Automation.Condition] $Condition
+            )
+            try {
+              return $Owner.FindFirst($Scope, $Condition)
+            } catch {
+              # GPUI can rebuild its UIA subtree after a settings snapshot
+              # update. PowerShell commonly wraps the resulting COMException
+              # (including E_UNEXPECTED) in MethodInvocationException.
+              $exception = $_.Exception
+              while ($null -ne $exception) {
+                if ($exception -is [System.Runtime.InteropServices.COMException]) {
+                  return $null
+                }
+                $exception = $exception.InnerException
+              }
+              throw
+            }
+          }
           1..5 | ForEach-Object {
             $stdout = Join-Path $env:RUNNER_TEMP "bongocat-product-$_.stdout.log"
             $stderr = Join-Path $env:RUNNER_TEMP "bongocat-product-$_.stderr.log"
@@ -218,10 +240,10 @@ jobs:
                 if ($process.HasExited) {
                   throw "Windows product exited before UI Automation inspection"
                 }
-                $root = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
-                  [System.Windows.Automation.TreeScope]::Children,
-                  $settingsWindowCondition
-                )
+                $root = Find-UiAutomationElement `
+                  -Owner ([System.Windows.Automation.AutomationElement]::RootElement) `
+                  -Scope [System.Windows.Automation.TreeScope]::Children `
+                  -Condition $settingsWindowCondition
               } while ($null -eq $root -and [DateTime]::UtcNow -lt $windowDeadline)
               if ($null -eq $root) {
                 throw "Windows product did not expose a settings HWND"
@@ -233,10 +255,10 @@ jobs:
               $startupDeadline = [DateTime]::UtcNow.AddSeconds(5)
               do {
                 Start-Sleep -Milliseconds 100
-                $startup = $root.FindFirst(
-                  [System.Windows.Automation.TreeScope]::Descendants,
-                  $startupCondition
-                )
+                $startup = Find-UiAutomationElement `
+                  -Owner $root `
+                  -Scope [System.Windows.Automation.TreeScope]::Descendants `
+                  -Condition $startupCondition
               } while ($null -eq $startup -and [DateTime]::UtcNow -lt $startupDeadline)
               if ($null -eq $startup) {
                 throw "Windows UIA did not expose the startup switch"
@@ -288,10 +310,10 @@ jobs:
               $actionError = "startup switch was unavailable"
               $actionDeadline = [DateTime]::UtcNow.AddSeconds(2)
               do {
-                $startup = $root.FindFirst(
-                  [System.Windows.Automation.TreeScope]::Descendants,
-                  $startupCondition
-                )
+                $startup = Find-UiAutomationElement `
+                  -Owner $root `
+                  -Scope [System.Windows.Automation.TreeScope]::Descendants `
+                  -Condition $startupCondition
                 if ($null -ne $startup) {
                   try {
                     $startup.GetCurrentPattern(
@@ -314,10 +336,10 @@ jobs:
               do {
                 Start-Sleep -Milliseconds 100
                 $startupReady = $false
-                $startup = $root.FindFirst(
-                  [System.Windows.Automation.TreeScope]::Descendants,
-                  $startupCondition
-                )
+                $startup = Find-UiAutomationElement `
+                  -Owner $root `
+                  -Scope [System.Windows.Automation.TreeScope]::Descendants `
+                  -Condition $startupCondition
                 if ($null -ne $startup) {
                   try {
                     $toggleState = $startup.GetCurrentPattern(
@@ -339,10 +361,10 @@ jobs:
               $actionError = "startup switch was unavailable"
               $actionDeadline = [DateTime]::UtcNow.AddSeconds(5)
               do {
-                $startup = $root.FindFirst(
-                  [System.Windows.Automation.TreeScope]::Descendants,
-                  $startupCondition
-                )
+                $startup = Find-UiAutomationElement `
+                  -Owner $root `
+                  -Scope [System.Windows.Automation.TreeScope]::Descendants `
+                  -Condition $startupCondition
                 if ($null -ne $startup) {
                   try {
                     if ($startup.Current.IsEnabled) {
@@ -367,10 +389,10 @@ jobs:
               $restoreDeadline = [DateTime]::UtcNow.AddSeconds(5)
               do {
                 Start-Sleep -Milliseconds 100
-                $startup = $root.FindFirst(
-                  [System.Windows.Automation.TreeScope]::Descendants,
-                  $startupCondition
-                )
+                $startup = Find-UiAutomationElement `
+                  -Owner $root `
+                  -Scope [System.Windows.Automation.TreeScope]::Descendants `
+                  -Condition $startupCondition
                 if ($null -ne $startup) {
                   try {
                     $toggleState = $startup.GetCurrentPattern(
@@ -386,10 +408,10 @@ jobs:
               }
               # The settings snapshot revision rebuilds the GPUI control tree;
               # reacquire the element before exercising focus on the new node.
-              $startup = $root.FindFirst(
-                [System.Windows.Automation.TreeScope]::Descendants,
-                $startupCondition
-              )
+              $startup = Find-UiAutomationElement `
+                -Owner $root `
+                -Scope [System.Windows.Automation.TreeScope]::Descendants `
+                -Condition $startupCondition
               if ($null -eq $startup) {
                 throw "Windows UIA startup switch disappeared after state update"
               }
