@@ -412,30 +412,36 @@ jobs:
               if ($toggleState -ne $initialToggleState) {
                 throw "Windows UIA startup switch action did not restore state: expected '$initialToggleState', found '$toggleState'"
               }
-              # The settings snapshot revision rebuilds the GPUI control tree;
-              # reacquire the element before exercising focus on the new node.
-              $focusElementDeadline = [DateTime]::UtcNow.AddSeconds(2)
+              # The settings snapshot revision rebuilds the GPUI control tree.
+              # Reacquire the current node for every transient focus attempt.
+              $focusSucceeded = $false
+              $focusError = "startup switch was unavailable"
+              $focusDeadline = [DateTime]::UtcNow.AddSeconds(5)
               do {
                 $startup = Find-UiAutomationElement `
                   -Owner $root `
                   -Scope $descendantsScope `
                   -Condition $startupCondition
-                if ($null -eq $startup) {
+                if ($null -ne $startup) {
+                  try {
+                    $startup.SetFocus()
+                    $focused = [System.Windows.Automation.AutomationElement]::FocusedElement
+                    $focusedName = if ($null -eq $focused) { "" } else { $focused.Current.Name }
+                    if ($focusedName -eq "Open at login") {
+                      $focusSucceeded = $true
+                    } else {
+                      $focusError = "focused element was '$focusedName'"
+                    }
+                  } catch {
+                    $focusError = $_.Exception.Message
+                  }
+                }
+                if (-not $focusSucceeded) {
                   Start-Sleep -Milliseconds 50
                 }
-              } while ($null -eq $startup -and [DateTime]::UtcNow -lt $focusElementDeadline)
-              if ($null -eq $startup) {
-                throw "Windows UIA startup switch disappeared after state update"
-              }
-              $startup.SetFocus()
-              $focusDeadline = [DateTime]::UtcNow.AddSeconds(2)
-              do {
-                Start-Sleep -Milliseconds 50
-                $focused = [System.Windows.Automation.AutomationElement]::FocusedElement
-                $focusedName = if ($null -eq $focused) { "" } else { $focused.Current.Name }
-              } while ($focusedName -ne "Open at login" -and [DateTime]::UtcNow -lt $focusDeadline)
-              if ($focusedName -ne "Open at login") {
-                throw "Windows UIA startup switch rejected focus action"
+              } while (-not $focusSucceeded -and [DateTime]::UtcNow -lt $focusDeadline)
+              if (-not $focusSucceeded) {
+                throw "Windows UIA startup switch focus failed after reacquiring the current node: $focusError"
               }
               Write-Host "bongocat-app: Windows UIA startup switch role/value/action verified"
             }
