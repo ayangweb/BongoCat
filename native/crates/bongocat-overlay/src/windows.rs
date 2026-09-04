@@ -32,8 +32,8 @@ use std::{
 use windows::{
     Win32::{
         Foundation::{
-            CloseHandle, ERROR_NO_MORE_FILES, HANDLE, HINSTANCE, HMODULE, HWND, LPARAM, LRESULT,
-            POINT, RECT, WPARAM,
+            CloseHandle, ERROR_CLASS_ALREADY_EXISTS, ERROR_NO_MORE_FILES, HANDLE, HINSTANCE,
+            HMODULE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM,
         },
         Graphics::{
             Direct3D::{
@@ -350,7 +350,10 @@ impl OverlayWindow {
             ..Default::default()
         };
         if unsafe { RegisterClassW(&class) } == 0 {
-            return Err(Error::from_thread());
+            let error = Error::from_thread();
+            if error.code() != ERROR_CLASS_ALREADY_EXISTS.to_hresult() {
+                return Err(error);
+            }
         }
         let mut extended = WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_NOREDIRECTIONBITMAP;
         if options.click_through {
@@ -2532,6 +2535,25 @@ mod tests {
         assert_eq!(size_of::<bongocat_render::Vertex>(), 16);
         assert_eq!(size_of::<Uniforms>(), 80);
         assert_eq!(size_of::<Uniforms>() % 16, 0);
+    }
+
+    #[test]
+    fn overlay_window_class_supports_overlapping_replacement_windows() {
+        let canvas = CanvasInfo {
+            width: 2048.0,
+            height: 2048.0,
+            origin_x: 1024.0,
+            origin_y: 1024.0,
+            pixels_per_unit: 1024.0,
+        };
+        let first = OverlayWindow::create(OverlaySessionOptions::default(), canvas, None)
+            .expect("create first overlay window");
+        let second = OverlayWindow::create(OverlaySessionOptions::default(), canvas, None)
+            .expect("reuse class for replacement overlay window");
+
+        assert_ne!(first.hwnd, second.hwnd);
+        drop(first);
+        drop(second);
     }
 
     #[test]

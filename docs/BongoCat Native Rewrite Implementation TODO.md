@@ -2155,8 +2155,10 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       present 后才显示；双平台产品 smoke、完整 Native workspace 门禁通过。
     - 状态（2026-09-04）：`RenderConsumer::take_model_commit` 已隔离 control/data 消费，双平台
       product tick 已实现隐藏候选验证和可见前再次 present。本机 macOS release 产品 smoke 已
-      完成隐藏切模、GPU generation 前进、保持不可见、重显及恢复原模型；Windows runner 与完整
-      workspace 证据待补，因此保持未勾选。
+      完成隐藏切模、GPU generation 前进、保持不可见、重显及恢复原模型。Windows runner 随后
+      发现候选 overlay 与旧窗口重叠时把专用 Win32 class 已注册误判为创建失败；Windows owner
+      现接受同进程 `ERROR_CLASS_ALREADY_EXISTS` 并以双隐藏窗口回归固定 prepare/rollback 所需的
+      重叠生命周期。更新后的 Windows runner 与完整 workspace 证据待补，因此保持未勾选。
 51. [ ] `P3-FRAME-SOURCE-SHUTDOWN`：产品退出必须确认 frame source 停止后再释放 renderer。
     - 依赖：app coordinator、双平台产品 frame source、runtime/config/audio shutdown owner。
     - 退出条件：先阻止新 tick 并停止 input producer；frame task 正常退出或被取消均发送 ack；
