@@ -1109,8 +1109,17 @@ mod tests {
         let base = tempdir().expect("temp directory");
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
         let config_path = layout.config.clone();
-        let mut application = Application::start_with_layout(layout).expect("start application");
+        let mut application =
+            Application::start_with_layout(layout.clone()).expect("start application");
         assert!(application.config().overlay.visible);
+        assert!(!application.config().overlay.click_through);
+        assert!(
+            !application
+                .runtime_client()
+                .snapshot()
+                .overlay_settings
+                .click_through
+        );
 
         let snapshot = application
             .set_overlay_visible(false)
@@ -1119,7 +1128,7 @@ mod tests {
         assert!(!application.config().overlay.visible);
 
         let overlay_settings = OverlaySettings {
-            click_through: false,
+            click_through: true,
             always_on_top: false,
             scale_percent: 150,
             opacity_percent: 75,
@@ -1132,7 +1141,7 @@ mod tests {
             application.config().overlay.scale_percent,
             overlay_settings.scale_percent
         );
-        assert!(!application.config().overlay.click_through);
+        assert!(application.config().overlay.click_through);
 
         let audio_snapshot = application
             .set_motion_audio_enabled(false)
@@ -1144,8 +1153,20 @@ mod tests {
         assert!(persisted.contains("\"visible\": false"));
         assert!(persisted.contains("\"play_motion_audio\": false"));
         assert!(persisted.contains("\"scale_percent\": 150"));
+        assert!(persisted.contains("\"click_through\": true"));
         let stopped = application.shutdown().expect("clean shutdown");
         assert_eq!(stopped.state, RuntimeState::Stopped);
+
+        let restarted = Application::start_with_layout(layout).expect("restart application");
+        assert!(restarted.config().overlay.click_through);
+        assert!(
+            restarted
+                .runtime_client()
+                .snapshot()
+                .overlay_settings
+                .click_through
+        );
+        restarted.shutdown().expect("clean restart shutdown");
     }
 
     #[test]

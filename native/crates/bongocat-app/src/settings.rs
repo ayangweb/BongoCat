@@ -2702,7 +2702,7 @@ mod tests {
             })
         );
         let overlay_settings = SettingsOverlay {
-            click_through: false,
+            click_through: true,
             always_on_top: false,
             scale_percent: 125,
             opacity_percent: 80,
@@ -2759,6 +2759,7 @@ mod tests {
         assert!(persisted.contains("\"play_motion_audio\": false"));
         assert!(persisted.contains("\"selected_model_id\": \"keyboard\""));
         assert!(persisted.contains("\"selected_model_origin\": \"preset\""));
+        assert!(persisted.contains("\"click_through\": true"));
         assert!(persisted.contains("\"opacity_percent\": 80"));
         assert!(persisted.contains("\"mirror\": true"));
         assert!(persisted.contains("\"mirror_pointer_tracking\": true"));

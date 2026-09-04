@@ -54,6 +54,9 @@ shortcuts
 | `shortcuts`   | `commands`                        | 应用 command 到快捷键绑定              |
 | `shortcuts`   | `model_behaviors`                 | 模型动作/表情绑定                      |
 
+首次启动创建当前 v1 配置时，`overlay.click_through` 默认为 `false`。用户后续通过
+typed settings command 修改该值后，仍按配置 revision 原子提交并在重启时从当前环境恢复。
+
 ## Shortcut Chords
 
 快捷键配置仍以字符串持久化，但在写入前必须通过平台无关的 chord 校验。每个 chord

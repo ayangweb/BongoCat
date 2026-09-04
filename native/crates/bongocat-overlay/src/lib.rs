@@ -45,7 +45,7 @@ impl OverlaySessionOptions {
 impl Default for OverlaySessionOptions {
     fn default() -> Self {
         Self {
-            click_through: true,
+            click_through: false,
             always_on_top: true,
             scale_percent: 100,
             opacity_percent: 100,
