@@ -136,7 +136,8 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   coordinator 持有。macOS 销毁对应 GPUI `Entity`，reopen 创建一个新窗口；GPUI 0.2.2
   的 Windows `WM_CLOSE` 销毁回调存在同步重入缺陷，因此 Windows platform adapter 拦截 close、
   使用 `ShowWindow(SW_HIDE)` 保留唯一 Entity，并在 reopen 时重显。两条路径都主动读取最新
-  revisioned snapshot。Windows 显式退出先停止 frame source 与输入生产者，再 shutdown/join
+  revisioned snapshot。Windows 显式退出先请求 frame source 停止并停止输入生产者，确认 frame
+  source 已退出后再 shutdown/join
   runtime、配置和音频 owner，最后释放 renderer/GPU 与 overlay；由于 GPUI 0.2.2 及当前上游
   `main` 都会在最终 `WM_DESTROY` 同步重入 `AsyncApp` 并触发进程 fast-fail，平台 adapter 只在
   这些产品 owner 全部有序关闭后使用进程退出跳过有缺陷的 GPUI 窗口析构。该兼容措施不得提前
@@ -286,7 +287,8 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
 - GPUI 通过 command/snapshot 边界交互，不直接持有 runtime mutex。
 - GPUI 拥有平台主事件循环；应用 coordinator 在该主线程调度 overlay `tick`，GPUI
   `Entity` 不持有 renderer、render snapshot 或 frame-loop 状态。
-- shutdown 顺序：停止输入 -> runtime drain/停止 -> 保存配置 -> 停止音频并 join -> 停止渲染 -> 销毁 overlay/GPU -> 关闭 GPUI。
+- shutdown 顺序：阻止新的 frame tick -> 停止输入 -> 确认 frame source 已退出 -> runtime
+  drain/停止 -> 保存配置 -> 停止音频并 join -> 释放 renderer/GPU -> 销毁 overlay -> 关闭 GPUI。
 
 ### 8.2 输入事件
 

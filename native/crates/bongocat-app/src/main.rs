@@ -32,7 +32,7 @@ use gpui_kit::{AsyncApp, Context, Window};
     any(target_os = "macos", target_os = "windows")
 ))]
 use gpui_kit::{px, size};
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(target_os = "windows")]
 use std::{cell::RefCell, rc::Rc};
@@ -240,6 +240,7 @@ struct ProductCoordinator {
     #[cfg(target_os = "windows")]
     single_instance_wakes: u64,
     frame_source_running: bool,
+    frame_source_shutdown: FrameSourceShutdown,
     shortcut_signals: bongocat_app::ApplicationShortcutSignals,
     frame_ticks: u64,
     expect_visible_frame: bool,
@@ -250,6 +251,57 @@ struct ProductCoordinator {
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 impl Global for ProductCoordinator {}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[derive(Clone, Debug, Default)]
+struct FrameSourceShutdown {
+    stop_requested: Arc<AtomicBool>,
+    stopped: Arc<AtomicBool>,
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+impl FrameSourceShutdown {
+    fn request_stop(&self) {
+        self.stop_requested.store(true, Ordering::Release);
+    }
+
+    fn stop_requested(&self) -> bool {
+        self.stop_requested.load(Ordering::Acquire)
+    }
+
+    fn is_stopped(&self) -> bool {
+        self.stopped.load(Ordering::Acquire)
+    }
+
+    fn run_guard(&self) -> FrameSourceRunGuard {
+        FrameSourceRunGuard {
+            stopped: Arc::clone(&self.stopped),
+        }
+    }
+
+    async fn wait_for_stop(&self) -> bool {
+        const MAX_ATTEMPTS: u32 = 200;
+        for _ in 0..MAX_ATTEMPTS {
+            if self.is_stopped() {
+                return true;
+            }
+            Timer::after(Duration::from_millis(10)).await;
+        }
+        self.is_stopped()
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+struct FrameSourceRunGuard {
+    stopped: Arc<AtomicBool>,
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+impl Drop for FrameSourceRunGuard {
+    fn drop(&mut self) {
+        self.stopped.store(true, Ordering::Release);
+    }
+}
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn record_failure(failures: &Arc<Mutex<Vec<String>>>, failure: impl Into<String>) {
@@ -332,6 +384,12 @@ struct ProductShutdown {
 impl ProductShutdown {
     async fn finish(self) -> Arc<Mutex<Vec<String>>> {
         let failures = Arc::clone(&self.coordinator.failures);
+        if !self.coordinator.frame_source_shutdown.wait_for_stop().await {
+            record_failure(
+                &failures,
+                "product frame source did not stop before runtime shutdown",
+            );
+        }
         let settings_client = self.settings_service.client();
         if let Ok(bounds) = self.overlay.window_bounds() {
             for _ in 0..20 {
@@ -370,6 +428,7 @@ impl ProductShutdown {
 fn begin_product_shutdown(cx: &mut App) -> ProductShutdown {
     let mut coordinator = cx.remove_global::<ProductCoordinator>();
     coordinator.frame_source_running = false;
+    coordinator.frame_source_shutdown.request_stop();
     #[cfg(target_os = "windows")]
     if let Some(single_instance) = coordinator.single_instance.take()
         && let Err(error) = single_instance.shutdown()
@@ -933,6 +992,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let render_consumer = application.take_render_consumer()?;
     let expect_visible_frame = application.config().overlay.visible;
     let frame_runtime_client = runtime_client.clone();
+    let frame_source_shutdown = FrameSourceShutdown::default();
     let failures = Arc::new(Mutex::new(Vec::new()));
     let run_failures = Arc::clone(&failures);
     #[cfg(target_os = "windows")]
@@ -1058,6 +1118,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(target_os = "windows")]
             single_instance_wakes: 0,
             frame_source_running: true,
+            frame_source_shutdown: frame_source_shutdown.clone(),
             shortcut_signals,
             frame_ticks: 0,
             expect_visible_frame,
@@ -1164,7 +1225,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         #[cfg(target_os = "windows")]
         let frame_shutdown_requested = Arc::clone(&shutdown_requested);
         let frame_settings_client = settings_client.clone();
+        let frame_source_guard = frame_source_shutdown.run_guard();
         cx.spawn(async move |cx| {
+            let _frame_source_guard = frame_source_guard;
             #[cfg(target_os = "windows")]
             let mut frame_active = true;
             let mut last_overlay_bounds = None;
@@ -1178,6 +1241,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 )
                 .expect("runtime stores validated frame scheduling state");
                 Timer::after(frame_interval).await;
+                if frame_source_shutdown.stop_requested() {
+                    break;
+                }
                 #[cfg(target_os = "macos")]
                 let keep_running = cx
                     .update(|cx| {
@@ -2148,6 +2214,19 @@ mod tests {
         assert!(options.hidden_model_switch_smoke);
         assert!(!options.settings_window_smoke);
         assert!(!options.models_page_smoke);
+    }
+
+    #[test]
+    fn frame_source_shutdown_acknowledges_only_after_the_run_guard_drops() {
+        let shutdown = FrameSourceShutdown::default();
+        let guard = shutdown.run_guard();
+
+        shutdown.request_stop();
+        assert!(shutdown.stop_requested());
+        assert!(!shutdown.is_stopped());
+
+        drop(guard);
+        assert!(shutdown.is_stopped());
     }
 
     #[cfg(feature = "storage-test-injection")]

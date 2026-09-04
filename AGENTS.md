@@ -136,7 +136,8 @@ Phase 0 未完成不再阻止正式 workspace、runtime、config、model contrac
 - Windows renderer 使用 D3D11；macOS renderer 使用 Metal。
 - Renderer 只消费不可变 RenderSnapshot，不读取配置，不决定动作，不访问 GPUI Entity。
 - Overlay 的窗口、GPU 和 frame source 必须具有明确 owner 和析构顺序。
-- Shutdown 顺序是：停止输入生产者 -> 停止 runtime -> flush 配置 -> 停止 frame source -> 释放 renderer/GPU -> 销毁 overlay -> 关闭 GPUI。
+- Shutdown 顺序是：阻止新的 frame tick -> 停止输入生产者 -> 确认 frame source 已退出 ->
+  停止 runtime -> flush 配置 -> 停止音频并 join -> 释放 renderer/GPU -> 销毁 overlay -> 关闭 GPUI。
 
 ### 5.4 平台模块
 

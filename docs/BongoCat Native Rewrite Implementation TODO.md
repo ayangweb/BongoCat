@@ -871,6 +871,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     `100982884758` 与 Windows job `100982884958` 通过完整 workspace 和产品 lifecycle smoke，
     Windows smoke 包含真实 D3D11 present 后 `ShowWindow` 时序。
 - [ ] shutdown 先停 frame source，再释放 GPU/window。
+  - 状态（2026-09-04）：产品 coordinator 已加入共享 stop request 与 run-guard acknowledgement；
+    shutdown 在停止 input producer 后有界等待 frame source guard 退出，未确认会记录稳定匿名错误，
+    runtime/config/audio shutdown 与 renderer/GPU/window 释放只在该等待之后执行。本机单元测试、
+    完整 workspace 门禁、macOS release settings/Models lifecycle 与隐藏切模 smoke 已通过；双平台
+    产品 lifecycle runner 证据待补，因此保持未勾选。
 - [ ] 明确 sRGB/linear、预乘 alpha 和 texture color space，避免两平台颜色或边缘混合语义漂移。
 - [ ] present 失败、窗口隐藏和 drawable unavailable 时限流，不产生 busy loop 或日志风暴。
 
@@ -2152,6 +2157,15 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       product tick 已实现隐藏候选验证和可见前再次 present。本机 macOS release 产品 smoke 已
       完成隐藏切模、GPU generation 前进、保持不可见、重显及恢复原模型；Windows runner 与完整
       workspace 证据待补，因此保持未勾选。
+51. [ ] `P3-FRAME-SOURCE-SHUTDOWN`：产品退出必须确认 frame source 停止后再释放 renderer。
+    - 依赖：app coordinator、双平台产品 frame source、runtime/config/audio shutdown owner。
+    - 退出条件：先阻止新 tick 并停止 input producer；frame task 正常退出或被取消均发送 ack；
+      未收到 ack 时产生稳定匿名失败而非静默继续；runtime/config/audio shutdown 及
+      renderer/GPU/window 释放发生在 ack 等待之后；单元测试、双平台 release lifecycle smoke
+      与完整 Native workspace 门禁通过。
+    - 状态（2026-09-04）：共享 stop/ack 与 RAII run guard 已接入产品 coordinator 和 frame task；
+      本机 format、严格 Clippy、workspace test、release check、macOS release settings/Models
+      lifecycle 与隐藏切模 smoke 已通过；双平台 runner 证据待补，因此保持未勾选。
 
 ## 13. 待决策清单
 
