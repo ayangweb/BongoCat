@@ -47,7 +47,7 @@ use std::{
 };
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-const DEFAULT_RUN_SECONDS: u64 = 30;
+const DEFAULT_RUN_SECONDS: u64 = 0;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn gpui_application() -> GpuiApplication {
@@ -191,16 +191,16 @@ impl std::error::Error for RunOptionsError {}
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn usage() -> &'static str {
     #[cfg(all(target_os = "windows", feature = "storage-test-injection"))]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit.";
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
 
     #[cfg(all(target_os = "windows", not(feature = "storage-test-injection")))]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit.";
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
 
     #[cfg(all(target_os = "macos", feature = "storage-test-injection"))]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit.";
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
 
     #[cfg(all(target_os = "macos", not(feature = "storage-test-injection")))]
-    "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit."
+    "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run."
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -2144,11 +2144,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn run_options_default_to_a_bounded_preview() {
+    fn run_options_default_to_an_unbounded_product_lifetime() {
         assert_eq!(
             RunOptions::parse(Vec::new()).expect("default options"),
             RunOptions {
-                run_duration: Duration::from_secs(30),
+                run_duration: Duration::ZERO,
                 settings_window_smoke: false,
                 models_page_smoke: false,
                 hidden_model_switch_smoke: false,
@@ -2168,10 +2168,20 @@ mod tests {
     }
 
     #[test]
-    fn zero_seconds_selects_an_unbounded_run() {
+    fn positive_seconds_select_a_bounded_diagnostic_run() {
+        assert_eq!(
+            RunOptions::parse(["--run-seconds".to_owned(), "30".to_owned()])
+                .expect("bounded options")
+                .run_duration,
+            Duration::from_secs(30)
+        );
+    }
+
+    #[test]
+    fn zero_seconds_remains_an_explicit_unbounded_run() {
         assert_eq!(
             RunOptions::parse(["--run-seconds".to_owned(), "0".to_owned()])
-                .expect("unbounded options")
+                .expect("explicit unbounded options")
                 .run_duration,
             Duration::ZERO
         );

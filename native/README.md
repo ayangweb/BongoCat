@@ -11,7 +11,7 @@ controlled entry configuration:
 
 ```text
 cd native
-cargo run -p bongocat-app --release -- --run-seconds 0
+cargo run -p bongocat-app --release
 ```
 
 This is the current formal visible product entry on macOS and Windows. It loads the selected bundled
@@ -24,8 +24,9 @@ Explicit Windows quit first stops and joins every BongoCat-owned runtime, input,
 GPU, and overlay owner. The platform adapter then terminates the process without dropping the retained
 GPUI window, because GPUI 0.2.2 synchronously re-enters its borrowed `AsyncApp` from `WM_DESTROY`.
 This final-step workaround must be removed when a fixed GPUI revision is adopted.
-`--run-seconds 0` keeps the application active until an explicit Quit command; omit the argument for
-a bounded 30-second run.
+The application stays active until an explicit Quit command by default. `--run-seconds <seconds>`
+with a positive value is reserved for bounded smoke and diagnostic runs; `0` is the explicit spelling
+of the normal unbounded lifetime used by platform startup-item registrations.
 
 The cross-platform product smoke closes or hides the settings window, reopens it, and verifies that
 the frame source continued to run and the current snapshot was restored:

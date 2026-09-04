@@ -142,6 +142,9 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   `main` 都会在最终 `WM_DESTROY` 同步重入 `AsyncApp` 并触发进程 fast-fail，平台 adapter 只在
   这些产品 owner 全部有序关闭后使用进程退出跳过有缺陷的 GPUI 窗口析构。该兼容措施不得提前
   终止业务 shutdown；升级到修复此回调的固定 GPUI 版本后必须移除，并恢复正常 GPUI 析构门禁。
+- 正式 executable 无参数启动时持续运行到显式 Quit 或系统终止；正数 `--run-seconds` 只用于
+  有界 smoke/诊断，不能成为安装包或 Finder/Explorer 启动的隐式退出条件。所有正常退出仍须
+  进入同一 shutdown coordinator。
 - Windows 的 GPUI 平台循环独占线程消息派发；宿主产品调用的 overlay `tick` 不得再次 pump
   Win32 队列，并且必须在没有持有 GPUI `App`/`Window` borrow 时执行。独立 preview 的
   `run_for` 循环才负责主动 pump。这一约束防止 D3D11 tick 同步派发设置窗口消息后重入
