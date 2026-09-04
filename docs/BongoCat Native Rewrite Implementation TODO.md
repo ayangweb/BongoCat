@@ -484,6 +484,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     Diagnostics 导出格式版本已提升到 2，并增加固定事件 code 的聚合计数；不导出原始日志、panic payload 或路径；
     release 实机崩溃收集仍待完成，因此本项保持未勾选。`bongocat-app` 63 项 app/lib 测试和
     app Clippy 已在本机通过；marker 逻辑随 commit `19afddf`（远端合并提交 `b6244cc`）进入 `next`。
+  - 状态（2026-09-04）：新增 Development-only 隔离父/子进程 smoke，以同一 executable 在正式
+    Application owner 存活时触发 panic；父进程验证固定 panic code、payload/路径脱敏、配置字节
+    不变、unclean 重启分类及正常 shutdown 清除 marker。本机 debug 行为闭环通过，双平台
+    `panic=abort` release runner 证据由 `P3-PANIC-DIAGNOSTICS-RELEASE` 跟踪。
 - [x] 定义线程、任务、channel、窗口和 GPU object owner。
   - 验收证据（2026-09-01）：Technical Design 第 8 节冻结 runtime、输入 producer、GPUI
     主线程、frame source、renderer/GPU 和 settings service 的 owner 边界及 shutdown 顺序；
@@ -2210,6 +2214,16 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       dark 主题 release 设置窗口/state 恢复 smoke 均通过。commit `ac5dc70` 的 run
       `33871601685` 全绿；Windows job `101018640203` 与 macOS job `101018640280` 均通过完整
       workspace、release settings/state smoke 和辅助功能 contract，退出条件满足。
+54. [ ] `P3-PANIC-DIAGNOSTICS-RELEASE`：以实际 release panic 验证本地诊断和恢复标记。
+    - 依赖：app-owned bounded log writer、process panic hook、环境隔离 run marker、当前
+      `panic = "abort"` release profile 与 Development-only storage injection 边界。
+    - 退出条件：Windows/macOS 同一 release executable 的子进程在 Application owner 存活时
+      panic 并非零退出；持久日志只含固定 `application/error/panicked` code，不含 payload 或路径；
+      run marker 保留且 current config 字节不变；下一次启动记录一次 `previous_run_unclean`，正常
+      shutdown 后清除 marker 并记录 `shutdown_completed`；默认产品 CLI 拒绝父/子测试参数；入口
+      定向测试、完整 Native workspace 与双平台 release smoke 通过。
+    - 状态（2026-09-04）：实现、Technical Design、CI 步骤、feature 参数边界与本机 debug
+      子进程闭环已完成；双平台 `panic=abort` runner 证据待补，因此保持未勾选。
 
 ## 13. 待决策清单
 

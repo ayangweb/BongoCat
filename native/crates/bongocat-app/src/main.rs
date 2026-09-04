@@ -67,6 +67,10 @@ struct RunOptions {
     configuration_recovery_smoke: bool,
     #[cfg(feature = "storage-test-injection")]
     settings_window_state_smoke: bool,
+    #[cfg(feature = "storage-test-injection")]
+    panic_diagnostics_smoke: bool,
+    #[cfg(feature = "storage-test-injection")]
+    panic_diagnostics_smoke_child: bool,
     system_menu_smoke: bool,
     #[cfg(target_os = "macos")]
     application_reopen_smoke: bool,
@@ -88,6 +92,10 @@ impl RunOptions {
         let mut configuration_recovery_smoke = false;
         #[cfg(feature = "storage-test-injection")]
         let mut settings_window_state_smoke = false;
+        #[cfg(feature = "storage-test-injection")]
+        let mut panic_diagnostics_smoke = false;
+        #[cfg(feature = "storage-test-injection")]
+        let mut panic_diagnostics_smoke_child = false;
         let mut system_menu_smoke = false;
         #[cfg(target_os = "macos")]
         let mut application_reopen_smoke = false;
@@ -115,6 +123,10 @@ impl RunOptions {
                 "--configuration-recovery-smoke" => configuration_recovery_smoke = true,
                 #[cfg(feature = "storage-test-injection")]
                 "--settings-window-state-smoke" => settings_window_state_smoke = true,
+                #[cfg(feature = "storage-test-injection")]
+                "--panic-diagnostics-smoke" => panic_diagnostics_smoke = true,
+                #[cfg(feature = "storage-test-injection")]
+                "--panic-diagnostics-smoke-child" => panic_diagnostics_smoke_child = true,
                 "--system-menu-smoke" => system_menu_smoke = true,
                 #[cfg(target_os = "macos")]
                 "--application-reopen-smoke" => application_reopen_smoke = true,
@@ -139,6 +151,10 @@ impl RunOptions {
             configuration_recovery_smoke,
             #[cfg(feature = "storage-test-injection")]
             settings_window_state_smoke,
+            #[cfg(feature = "storage-test-injection")]
+            panic_diagnostics_smoke,
+            #[cfg(feature = "storage-test-injection")]
+            panic_diagnostics_smoke_child,
             system_menu_smoke,
             #[cfg(target_os = "macos")]
             application_reopen_smoke,
@@ -191,13 +207,13 @@ impl std::error::Error for RunOptionsError {}
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn usage() -> &'static str {
     #[cfg(all(target_os = "windows", feature = "storage-test-injection"))]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
 
     #[cfg(all(target_os = "windows", not(feature = "storage-test-injection")))]
     return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
 
     #[cfg(all(target_os = "macos", feature = "storage-test-injection"))]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
 
     #[cfg(all(target_os = "macos", not(feature = "storage-test-injection")))]
     "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run."
@@ -939,6 +955,162 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[cfg(all(
+    feature = "storage-test-injection",
+    any(target_os = "macos", target_os = "windows")
+))]
+const PANIC_DIAGNOSTICS_SMOKE_ROOT_ENV: &str = "BONGOCAT_PANIC_DIAGNOSTICS_SMOKE_ROOT";
+
+#[cfg(all(
+    feature = "storage-test-injection",
+    any(target_os = "macos", target_os = "windows")
+))]
+const PANIC_DIAGNOSTICS_SMOKE_PAYLOAD: &str = "panic-smoke-sensitive-payload";
+
+#[cfg(all(
+    feature = "storage-test-injection",
+    any(target_os = "macos", target_os = "windows")
+))]
+fn run_panic_diagnostics_smoke_child() -> Result<(), Box<dyn std::error::Error>> {
+    use bongocat_config::{BuildEnvironment, StorageLayout};
+
+    let root = env::var_os(PANIC_DIAGNOSTICS_SMOKE_ROOT_ENV)
+        .ok_or("panic diagnostics child is missing its isolated storage root")?;
+    let root = PathBuf::from(root);
+    if !root.is_absolute() {
+        return Err("panic diagnostics child storage root must be absolute".into());
+    }
+    let layout = StorageLayout::under(&root, BuildEnvironment::Development);
+    let mut application =
+        bongocat_app::Application::start_with_layout_for_smoke(layout, development_preset_root())?;
+    application.install_process_panic_hook();
+    panic!("{PANIC_DIAGNOSTICS_SMOKE_PAYLOAD}: {}", root.display());
+}
+
+#[cfg(all(
+    feature = "storage-test-injection",
+    any(target_os = "macos", target_os = "windows")
+))]
+fn read_application_logs(directory: &Path) -> io::Result<String> {
+    let mut paths = Vec::new();
+    for entry in std::fs::read_dir(directory)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_file() {
+            continue;
+        }
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with("application-") && name.contains(".jsonl") {
+            paths.push(entry.path());
+        }
+    }
+    paths.sort();
+    let mut logs = String::new();
+    for path in paths {
+        logs.push_str(&std::fs::read_to_string(path)?);
+    }
+    Ok(logs)
+}
+
+#[cfg(all(
+    feature = "storage-test-injection",
+    any(target_os = "macos", target_os = "windows")
+))]
+fn run_panic_diagnostics_smoke() -> Result<(), Box<dyn std::error::Error>> {
+    use bongocat_config::{BuildEnvironment, StorageLayout};
+
+    const PANICKED_RECORD: &str =
+        "{\"component\":\"application\",\"level\":\"error\",\"code\":\"panicked\"}";
+    const CLEAN_SHUTDOWN_RECORD: &str =
+        "{\"component\":\"application\",\"level\":\"info\",\"code\":\"shutdown_completed\"}";
+
+    let root = env::temp_dir().join(format!(
+        "bongocat-panic-diagnostics-smoke-{}",
+        std::process::id()
+    ));
+    if root.exists() {
+        std::fs::remove_dir_all(&root)?;
+    }
+    let root = RecoverySmokeRoot(root);
+    let layout = StorageLayout::under(&root.0, BuildEnvironment::Development);
+    let mut child = std::process::Command::new(env::current_exe()?)
+        .arg("--panic-diagnostics-smoke-child")
+        .env(PANIC_DIAGNOSTICS_SMOKE_ROOT_ENV, &root.0)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()?;
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let timed_out = loop {
+        if child.try_wait()?.is_some() {
+            break false;
+        }
+        if std::time::Instant::now() >= deadline {
+            child.kill()?;
+            break true;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    let child = child.wait_with_output()?;
+    if timed_out {
+        return Err("panic diagnostics child exceeded 10 seconds".into());
+    }
+    if child.status.success() {
+        return Err("panic diagnostics child exited successfully".into());
+    }
+    let child_output = format!(
+        "{}{}",
+        String::from_utf8_lossy(&child.stdout),
+        String::from_utf8_lossy(&child.stderr)
+    );
+    if child_output.contains(PANIC_DIAGNOSTICS_SMOKE_PAYLOAD)
+        || child_output.contains(root.0.to_string_lossy().as_ref())
+    {
+        return Err("panic diagnostics child exposed its payload or storage path".into());
+    }
+
+    let run_marker = layout.logs.join("application-running.marker");
+    if !run_marker.is_file() {
+        return Err("panic diagnostics child did not preserve the unclean run marker".into());
+    }
+    let crashed_logs = read_application_logs(&layout.logs)?;
+    if !crashed_logs.lines().any(|line| line == PANICKED_RECORD) {
+        return Err("panic diagnostics child did not persist the stable panic record".into());
+    }
+    if crashed_logs.contains(PANIC_DIAGNOSTICS_SMOKE_PAYLOAD)
+        || crashed_logs.contains(root.0.to_string_lossy().as_ref())
+    {
+        return Err("persistent panic diagnostics exposed their payload or storage path".into());
+    }
+    let config_after_crash = std::fs::read(&layout.config)?;
+
+    let restarted = bongocat_app::Application::start_with_layout_for_smoke(
+        layout.clone(),
+        development_preset_root(),
+    )?;
+    let diagnostics = restarted.application_log_diagnostics();
+    if diagnostics.events.previous_run_unclean != 1 || diagnostics.events.started != 1 {
+        return Err("application restart did not classify the aborted run as unclean".into());
+    }
+    restarted.shutdown()?;
+    if run_marker.exists() {
+        return Err("clean restart shutdown did not remove the run marker".into());
+    }
+    if std::fs::read(&layout.config)? != config_after_crash {
+        return Err("panic diagnostics or restart changed the current configuration".into());
+    }
+    let completed_logs = read_application_logs(&layout.logs)?;
+    if !completed_logs
+        .lines()
+        .any(|line| line == CLEAN_SHUTDOWN_RECORD)
+    {
+        return Err("clean restart did not persist its completed shutdown record".into());
+    }
+
+    write_smoke_status("panic diagnostics recovered after crash")?;
+    root.cleanup()?;
+    Ok(())
+}
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let run_options = match RunOptions::parse(env::args().skip(1)) {
@@ -956,6 +1128,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "storage-test-injection")]
     if run_options.settings_window_state_smoke {
         return run_settings_window_state_smoke();
+    }
+    #[cfg(feature = "storage-test-injection")]
+    if run_options.panic_diagnostics_smoke_child {
+        return run_panic_diagnostics_smoke_child();
+    }
+    #[cfg(feature = "storage-test-injection")]
+    if run_options.panic_diagnostics_smoke {
+        return run_panic_diagnostics_smoke();
     }
     #[cfg(target_os = "macos")]
     if run_options.startup_item_smoke {
@@ -2178,6 +2358,10 @@ mod tests {
                 configuration_recovery_smoke: false,
                 #[cfg(feature = "storage-test-injection")]
                 settings_window_state_smoke: false,
+                #[cfg(feature = "storage-test-injection")]
+                panic_diagnostics_smoke: false,
+                #[cfg(feature = "storage-test-injection")]
+                panic_diagnostics_smoke_child: false,
                 system_menu_smoke: false,
                 #[cfg(target_os = "macos")]
                 application_reopen_smoke: false,
@@ -2282,6 +2466,22 @@ mod tests {
         assert!(!options.settings_window_smoke);
     }
 
+    #[cfg(feature = "storage-test-injection")]
+    #[test]
+    fn panic_diagnostics_smoke_and_private_child_are_opt_in() {
+        let options = RunOptions::parse(["--panic-diagnostics-smoke".to_owned()])
+            .expect("panic diagnostics smoke options");
+        assert!(options.panic_diagnostics_smoke);
+        assert!(!options.panic_diagnostics_smoke_child);
+        assert!(usage().contains("panic-diagnostics-smoke"));
+        assert!(!usage().contains("panic-diagnostics-smoke-child"));
+
+        let child = RunOptions::parse(["--panic-diagnostics-smoke-child".to_owned()])
+            .expect("panic diagnostics child options");
+        assert!(!child.panic_diagnostics_smoke);
+        assert!(child.panic_diagnostics_smoke_child);
+    }
+
     #[cfg(not(feature = "storage-test-injection"))]
     #[test]
     fn product_options_reject_storage_test_injection() {
@@ -2293,6 +2493,13 @@ mod tests {
             .expect_err("default product options must reject state storage injection");
         assert!(state_error.message.contains("unknown argument"));
         assert!(!usage().contains("settings-window-state-smoke"));
+        let panic_error = RunOptions::parse(["--panic-diagnostics-smoke".to_owned()])
+            .expect_err("default product options must reject panic storage injection");
+        assert!(panic_error.message.contains("unknown argument"));
+        assert!(!usage().contains("panic-diagnostics-smoke"));
+        let child_error = RunOptions::parse(["--panic-diagnostics-smoke-child".to_owned()])
+            .expect_err("default product options must reject panic child injection");
+        assert!(child_error.message.contains("unknown argument"));
     }
 
     #[test]

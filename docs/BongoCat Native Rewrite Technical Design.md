@@ -620,6 +620,12 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
   不接受自由文本。单文件上限为 1 MiB，应用日志总量上限为 8 MiB、最多保留 8 个文件，且只
   保留最近 7 个 UTC 日；达到文件上限时执行有界轮转，启动和日期切换时执行过期/总量清理。
   清理或写入失败只增加匿名 dropped/pruned 计数，不删除当前配置或模型数据。
+- writer 初始化后同步创建环境隔离的运行标记；只有 runtime、音频与配置相关 owner 完成正常
+  shutdown 后才删除。process panic hook 使用非阻塞写入追加固定 `application/error/panicked`
+  code，不读取 payload、源码位置、backtrace 或用户路径；abort/强制终止保留标记，下次启动追加
+  `previous_run_unclean`，随后可通过一次正常退出收敛。Development-only 隔离 smoke 必须以同一
+  release 可执行文件产生真实 `panic=abort`，验证日志脱敏、配置字节不变、重启分类和标记清理；
+  默认产品 CLI/API 不暴露该测试入口。
 - Diagnostics 导出只读取 app-owned writer 的匿名 written/dropped/rotated/pruned/bytes/
   retained_files 统计，不读取或复制应用日志正文；Cubism Core 历史轮转文件的跨域合并仍需
   独立的发布前设计和验证。

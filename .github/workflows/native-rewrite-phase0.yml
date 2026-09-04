@@ -490,6 +490,12 @@ jobs:
             exit "$status"
           fi
           grep -Fq 'bongocat-app: settings window state restored after restart' <<<"$output"
+      - name: Smoke macOS release panic diagnostics
+        if: matrix.os == 'macos-latest'
+        run: |
+          output=$(cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release --features storage-test-injection --target-dir native/target/storage-test-injection -- --panic-diagnostics-smoke 2>&1)
+          printf '%s\n' "$output"
+          grep -Fq 'bongocat-app: panic diagnostics recovered after crash' <<<"$output"
       - name: Smoke Windows configuration recovery window
         if: matrix.os == 'windows-latest'
         shell: pwsh
@@ -581,6 +587,17 @@ jobs:
           if ($stateProcess.ExitCode -ne 0) { throw "Windows settings window state smoke exited with $($stateProcess.ExitCode)" }
           if (-not $stateOutput.Contains("bongocat-app: settings window state restored after restart")) {
             throw "Windows settings window state smoke did not report restart restore"
+          }
+      - name: Smoke Windows release panic diagnostics
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $output = cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release --features storage-test-injection --target-dir native/target/storage-test-injection -- --panic-diagnostics-smoke 2>&1 | Out-String
+          $exitCode = $LASTEXITCODE
+          Write-Host $output
+          if ($exitCode -ne 0) { exit $exitCode }
+          if (-not $output.Contains("bongocat-app: panic diagnostics recovered after crash")) {
+            throw "Windows panic diagnostics smoke did not report recovery"
           }
       - name: Smoke Windows startup item lifecycle
         if: matrix.os == 'windows-latest'
