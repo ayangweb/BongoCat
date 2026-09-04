@@ -50,6 +50,7 @@ use rendering::{MotionStopStatus, RenderEvaluation, RuntimeRenderBootstrap, Runt
 pub const DEFAULT_MAXIMUM_FPS: u16 = 60;
 pub const MINIMUM_FPS: u16 = 15;
 pub const MAXIMUM_FPS: u16 = 240;
+pub const HIDDEN_OVERLAY_FRAME_INTERVAL: Duration = Duration::from_millis(100);
 
 pub const fn maximum_fps_is_valid(maximum_fps: u16) -> bool {
     maximum_fps >= MINIMUM_FPS && maximum_fps <= MAXIMUM_FPS
@@ -59,9 +60,18 @@ pub fn frame_interval_for_maximum_fps(maximum_fps: u16) -> Option<Duration> {
     maximum_fps_is_valid(maximum_fps).then(|| Duration::from_secs_f64(1.0 / f64::from(maximum_fps)))
 }
 
-fn runtime_frame_interval(maximum_fps: u16) -> Duration {
-    frame_interval_for_maximum_fps(maximum_fps)
-        .expect("runtime maximum FPS is validated before it is stored")
+pub fn frame_interval_for_runtime(maximum_fps: u16, overlay_visible: bool) -> Option<Duration> {
+    let visible_interval = frame_interval_for_maximum_fps(maximum_fps)?;
+    Some(if overlay_visible {
+        visible_interval
+    } else {
+        HIDDEN_OVERLAY_FRAME_INTERVAL
+    })
+}
+
+fn runtime_frame_interval(maximum_fps: u16, overlay_visible: bool) -> Duration {
+    frame_interval_for_runtime(maximum_fps, overlay_visible)
+        .expect("runtime frame scheduling state is validated before it is stored")
 }
 
 pub trait MonotonicClock: Send + Sync + 'static {
@@ -1411,11 +1421,11 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
             }
         } else if pending_model.is_none() {
             deferred_commands.pop_front().map_or_else(
-                || receiver.recv_timeout(runtime_frame_interval(maximum_fps)),
+                || receiver.recv_timeout(runtime_frame_interval(maximum_fps, overlay_visible)),
                 Ok,
             )
         } else {
-            receiver.recv_timeout(runtime_frame_interval(maximum_fps))
+            receiver.recv_timeout(runtime_frame_interval(maximum_fps, overlay_visible))
         };
         match received {
             Ok(envelope) => {
@@ -2541,6 +2551,15 @@ mod tests {
         assert!(frame_interval_for_maximum_fps(MAXIMUM_FPS).is_some());
         assert!(frame_interval_for_maximum_fps(MINIMUM_FPS - 1).is_none());
         assert!(frame_interval_for_maximum_fps(MAXIMUM_FPS + 1).is_none());
+        assert_eq!(
+            frame_interval_for_runtime(MINIMUM_FPS, false),
+            Some(HIDDEN_OVERLAY_FRAME_INTERVAL)
+        );
+        assert_eq!(
+            frame_interval_for_runtime(MAXIMUM_FPS, false),
+            Some(HIDDEN_OVERLAY_FRAME_INTERVAL)
+        );
+        assert!(frame_interval_for_runtime(MINIMUM_FPS - 1, false).is_none());
     }
 
     #[test]

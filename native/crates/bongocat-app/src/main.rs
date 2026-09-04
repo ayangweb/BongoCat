@@ -1130,10 +1130,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(target_os = "windows")]
             let mut update_failure_reported = false;
             loop {
-                let frame_interval = bongocat_runtime::frame_interval_for_maximum_fps(
-                    frame_runtime_client.snapshot().maximum_fps,
+                let runtime_snapshot = frame_runtime_client.snapshot();
+                let frame_interval = bongocat_runtime::frame_interval_for_runtime(
+                    runtime_snapshot.maximum_fps,
+                    runtime_snapshot.overlay_visible,
                 )
-                .expect("runtime stores a validated maximum FPS");
+                .expect("runtime stores validated frame scheduling state");
                 Timer::after(frame_interval).await;
                 #[cfg(target_os = "macos")]
                 let keep_running = cx

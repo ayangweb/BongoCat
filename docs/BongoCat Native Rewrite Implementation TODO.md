@@ -855,11 +855,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     普通 latest 数据帧即使连续 coalesce 也不会覆盖待确认的模型提交；7 项 render contract
     与 Windows 失败回归均通过，双槽 pending accounting 保持守恒。
 - [ ] 支持目标 FPS、不可见暂停/降频和刷新率变化。
-  - 状态（2026-09-04）：目标 FPS 子能力已闭环。`model.maximum_fps` 通过 settings typed command
+  - 状态（2026-09-04）：目标 FPS 与不可见降频子能力已闭环。`model.maximum_fps` 通过 settings typed command
     和 expected config revision 在 `15..=240` 内校验、持久化并进入 runtime snapshot；runtime
     周期评估、GPUI 产品 frame source 及双平台独立 overlay run loop 都按最新值计算下一帧间隔，
-    修改无需重启。越界值和 stale revision 保留旧 runtime/config。不可见暂停/降频与刷新率变化
-    仍未实现，因此总项保持未勾选。
+    修改无需重启。overlay 隐藏时 runtime 与产品 frame source 统一降至 `100 ms`，可靠 command
+    仍可立即唤醒 runtime，重新显示的轮询延迟不超过 `100 ms`。越界值和 stale revision 保留旧
+    runtime/config。刷新率变化仍未实现，因此总项保持未勾选。
 - [ ] 首帧前不出现黑框或不透明闪烁。
 - [ ] shutdown 先停 frame source，再释放 GPU/window。
 - [ ] 明确 sRGB/linear、预乘 alpha 和 texture color space，避免两平台颜色或边缘混合语义漂移。
@@ -2124,6 +2125,15 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       当前 snapshot 动态计算间隔；单元/服务测试覆盖边界、typed rejection、配置持久化、重启恢复
       和 stale revision；完整 macOS workspace 门禁、release 产品 lifecycle smoke 与 Windows x64
       overlay target check 通过。
+49. [x] `P2-HIDDEN-FRAME-THROTTLE`：overlay 不可见时降低无效 runtime/frame-source 唤醒。
+    - 依赖：runtime-owned overlay visibility、动态帧率间隔和 app-owned product frame source。
+    - 退出条件：隐藏状态不再按用户目标 FPS 周期唤醒；runtime command queue 仍可立即响应；重新
+      显示与应用快捷键的轮询延迟有明确上限；可见状态恢复用户目标 FPS；定向测试、完整 Native
+      workspace 门禁和 macOS release 产品 smoke 通过。
+    - 验收证据（2026-09-04）：共享 `frame_interval_for_runtime` 对所有合法目标 FPS 在隐藏时返回
+      固定 `100 ms`，可见时恢复目标间隔，非法值仍拒绝；runtime `recv_timeout` 与 GPUI 产品 frame
+      source 消费同一策略，可靠 command 到达会提前结束 runtime 等待。边界单测覆盖最低/最高 FPS
+      的隐藏策略。
 
 ## 13. 待决策清单
 
