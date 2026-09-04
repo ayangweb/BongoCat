@@ -1,7 +1,7 @@
 # Phase 0 Dependency License Inventory
 
 状态：Native workspace 与 spike 依赖许可证/来源策略已自动化
-日期：2026-08-31
+日期：2026-09-04
 
 ## Scope
 
@@ -18,32 +18,39 @@
 
 ## Direct dependencies
 
-| Dependency family                | Locked version                 | License                   | Role                                    |
-| -------------------------------- | ------------------------------ | ------------------------- | --------------------------------------- |
-| GPUI                             | `0.2.2`                        | Apache-2.0                | Formal settings UI and lifecycle spike  |
-| AccessKit core/macOS/Windows     | `0.25.0` / `0.27.0` / `0.35.0` | MIT OR Apache-2.0         | Formal settings AX/UIA semantic adapter |
-| raw-window-handle                | `0.6.2`                        | MIT OR Apache-2.0 OR Zlib | GPUI/Win32 native window boundary       |
-| async-channel                    | `2.5.0`                        | MIT OR Apache-2.0         | Formal typed command/reply and spike    |
-| unicode-segmentation             | `1.13.3`                       | MIT OR Apache-2.0         | Grapheme-safe text editing              |
-| futures-lite                     | `2.6.1`                        | MIT OR Apache-2.0         | Test-only executor bridge               |
-| dirs                             | `6.0.0`                        | MIT OR Apache-2.0         | Config path spike                       |
-| atomic-write-file                | `0.3.1`                        | BSD-3-Clause              | Native config atomic replacement        |
-| serde / serde_json               | `1.0.229` / `1.0.151`          | MIT OR Apache-2.0         | Config, model and tool serialization    |
-| tempfile                         | `3.27.0`                       | MIT OR Apache-2.0         | Isolated config/model fixture tests     |
-| core-graphics2 / core-foundation | `0.6.1` / `0.10.1`             | MIT OR Apache-2.0         | macOS input boundary spike              |
-| objc2-core-graphics / foundation | `0.3.2` / `0.3.2`              | Zlib OR Apache-2.0 OR MIT | formal macOS input adapter              |
-| objc2 / block2 family            | `0.6.4` / `0.3.2`              | MIT OR Apache-2.0 / Zlib  | macOS overlay/input lifecycle           |
-| objc2 (GPUI AX compatibility)    | `0.5.2`                        | MIT                       | Inspect AccessKit macOS adapter objects |
-| metal / core-graphics-types      | `0.33.0` / `0.2.0`             | MIT OR Apache-2.0         | macOS transparent present spike         |
-| windows                          | `0.62.2`                       | MIT OR Apache-2.0         | Windows Raw Input boundary spike        |
-| bindgen                          | `0.72.1`                       | BSD-3-Clause              | Offline Cubism raw binding generator    |
-| sha2                             | `0.11.0`                       | MIT OR Apache-2.0         | Header/output provenance hashes         |
+| Dependency family                | Locked version                 | License                   | Role                                     |
+| -------------------------------- | ------------------------------ | ------------------------- | ---------------------------------------- |
+| GPUI Kit                         | `0.6.0`                        | Apache-2.0                | Formal settings UI facade and components |
+| AccessKit core/macOS/Windows     | `0.25.0` / `0.27.0` / `0.35.0` | MIT OR Apache-2.0         | Formal settings AX/UIA semantic adapter  |
+| raw-window-handle                | `0.6.2`                        | MIT OR Apache-2.0 OR Zlib | GPUI/Win32 native window boundary        |
+| async-channel                    | `2.5.0`                        | MIT OR Apache-2.0         | Formal typed command/reply and spike     |
+| unicode-segmentation             | `1.13.3`                       | MIT OR Apache-2.0         | Grapheme-safe text editing               |
+| futures-lite                     | `2.6.1`                        | MIT OR Apache-2.0         | Test-only executor bridge                |
+| dirs                             | `6.0.0`                        | MIT OR Apache-2.0         | Config path spike                        |
+| atomic-write-file                | `0.3.1`                        | BSD-3-Clause              | Native config atomic replacement         |
+| serde / serde_json               | `1.0.229` / `1.0.151`          | MIT OR Apache-2.0         | Config, model and tool serialization     |
+| tempfile                         | `3.27.0`                       | MIT OR Apache-2.0         | Isolated config/model fixture tests      |
+| core-graphics2 / core-foundation | `0.6.1` / `0.10.1`             | MIT OR Apache-2.0         | macOS input boundary spike               |
+| objc2-core-graphics / foundation | `0.3.2` / `0.3.2`              | Zlib OR Apache-2.0 OR MIT | formal macOS input adapter               |
+| objc2 / block2 family            | `0.6.4` / `0.3.2`              | MIT OR Apache-2.0 / Zlib  | macOS overlay/input lifecycle            |
+| objc2 (GPUI AX compatibility)    | `0.5.2`                        | MIT                       | Inspect AccessKit macOS adapter objects  |
+| metal / core-graphics-types      | `0.33.0` / `0.2.0`             | MIT OR Apache-2.0         | macOS transparent present spike          |
+| windows                          | `0.62.2`                       | MIT OR Apache-2.0         | Windows Raw Input boundary spike         |
+| bindgen                          | `0.72.1`                       | BSD-3-Clause              | Offline Cubism raw binding generator     |
+| sha2                             | `0.11.0`                       | MIT OR Apache-2.0         | Header/output provenance hashes          |
 
 ## Policy
 
 允许的 SPDX 许可证为：`0BSD`、`Apache-2.0`、`Apache-2.0 WITH LLVM-exception`、`BSD-2-Clause`、`BSD-3-Clause`、`BSL-1.0`、`CC0-1.0`、`ISC`、`MIT`、`MIT-0`、`MPL-2.0`、`Unicode-3.0`、`Unlicense` 和 `Zlib`。这些许可证可与项目 MIT 源码并存，但发布产物仍必须保留各依赖要求的 license text 和 notice。
 
 `MPL-2.0` 是 file-level weak copyleft，当前图中来自 `option-ext`、`dwrote` 和构建期 `cbindgen`。不修改这些 crate 时不要求 BongoCat 改用 MPL；若未来 fork 或修改其 MPL 文件，必须履行对应源码提供义务。
+
+GPUI Kit 的 HTTP/TLS 传递图引入 `libbz2-rs-sys 0.2.5`（`bzip2-1.0.6`）和
+`webpki-roots 1.0.9`（`CDLA-Permissive-2.0`）。前者允许源代码和二进制再分发并要求保留
+版权、条件与免责声明；后者只携带 Mozilla CA 根证书数据，允许使用、修改和分享，并要求分享
+数据时附带许可证文本。`deny.toml` 只对这两个精确包版本建立例外，不把两种许可证加入全局
+allowlist。它们只服务于 `gpui-kit -> gpui-pre` 的私有 HTTP/compression/TLS 实现，不进入
+BongoCat 业务 API；GPUI Kit 停止携带该 HTTP client 或 UI 边界被替换时即可一并移除。
 
 `cargo-deny list` 会为包含多选许可的 crate 展示所有标识。例如 `self_cell` 的表达式包含 `Apache-2.0 OR GPL-2.0`，`r-efi` 包含 `MIT OR Apache-2.0 OR LGPL-2.1-or-later`；策略通过允许的 Apache/MIT 分支满足表达式，没有全局允许 GPL/LGPL。
 

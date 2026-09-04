@@ -1067,14 +1067,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         cx.spawn(async move |cx| {
             loop {
                 Timer::after(Duration::from_millis(25)).await;
-                let action = match cx.update(|cx| {
+                let action = cx.update(|cx| {
                     cx.try_global::<ProductCoordinator>()
                         .and_then(|coordinator| coordinator.single_instance.as_ref())
                         .and_then(SingleInstance::try_recv)
-                }) {
-                    Ok(action) => action,
-                    Err(_) => break,
-                };
+                });
                 let Some(action) = action else {
                     continue;
                 };
@@ -1088,9 +1085,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 });
                 match handled {
-                    Ok(Ok(())) => {}
-                    Ok(Err(error)) => record_failure(&single_instance_failures, error),
-                    Err(_) => break,
+                    Ok(()) => {}
+                    Err(error) => record_failure(&single_instance_failures, error),
                 }
             }
         })

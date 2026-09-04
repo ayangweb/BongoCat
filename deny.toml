@@ -24,6 +24,10 @@ allow = [
     "Unlicense",
     "Zlib",
 ]
+exceptions = [
+    { allow = ["bzip2-1.0.6"], crate = "libbz2-rs-sys@0.2.5" },
+    { allow = ["CDLA-Permissive-2.0"], crate = "webpki-roots@1.0.9" },
+]
 confidence-threshold = 0.8
 
 [licenses.private]
