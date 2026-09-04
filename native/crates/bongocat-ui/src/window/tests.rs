@@ -89,9 +89,9 @@ fn shortcut_capture_targets_have_independent_tab_stops() {
     assert_eq!(targets.into_iter().collect::<BTreeSet<_>>().len(), 3);
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
-        let rows = shortcut_accessibility_rows(&shortcuts);
+        let rows = shortcut_accessibility_rows(&shortcuts, SettingsLanguage::EnglishUnitedStates);
         assert_eq!(rows.len(), 3);
-        assert!(rows[0].1.contains("toggle_overlay"));
+        assert_eq!(rows[0].1, "Capture shortcut for Show or hide desktop cat");
         assert_eq!(rows[2].2, "Control+M");
         assert_eq!(
             shortcut_target_for_accessibility_node(&shortcuts, shortcut_accessibility_node_id(2)),
@@ -165,7 +165,7 @@ fn diagnostics_page_projects_only_named_aggregate_counters() {
         transport_recovered_after_overflow: 24,
         transport_runtime_stopped: 25,
     };
-    let metrics = input_diagnostic_metrics(diagnostics);
+    let metrics = input_diagnostic_metrics(SettingsLanguage::EnglishUnitedStates, diagnostics);
     assert_eq!(metrics.len(), 25);
     assert_eq!(metrics.first(), Some(&("Pressed keys", 1)));
     assert_eq!(metrics.last(), Some(&("Rejected after shutdown", 25)));
@@ -176,7 +176,7 @@ fn diagnostics_page_projects_only_named_aggregate_counters() {
     assert!(metrics.iter().all(|(label, _)| {
         !label.contains("HID") && !label.contains("path") && !label.contains("timestamp value")
     }));
-    let service = input_service_presentation(diagnostics);
+    let service = input_service_presentation(diagnostics, SettingsLanguage::EnglishUnitedStates);
     assert_eq!(service.title, "Running");
     assert_eq!(service.detail, "Start attempts: 1");
     assert!(service.running);
@@ -185,27 +185,99 @@ fn diagnostics_page_projects_only_named_aggregate_counters() {
 
 #[test]
 fn runtime_diagnostics_presentation_keeps_codes_anonymous_and_actionable() {
-    let presentation = runtime_diagnostics_presentation(SettingsRuntimeDiagnostics {
-        render_error: Some(SettingsRuntimeErrorCode::GpuPreparationFailed),
-        last_command_failure: Some(crate::SettingsRuntimeCommandFailure {
-            sequence: 17,
-            code: SettingsRuntimeErrorCode::GpuPreparationFailed,
-        }),
-        command_transport: Default::default(),
-    });
+    let presentation = runtime_diagnostics_presentation(
+        SettingsRuntimeDiagnostics {
+            render_error: Some(SettingsRuntimeErrorCode::GpuPreparationFailed),
+            last_command_failure: Some(crate::SettingsRuntimeCommandFailure {
+                sequence: 17,
+                code: SettingsRuntimeErrorCode::GpuPreparationFailed,
+            }),
+            command_transport: Default::default(),
+        },
+        SettingsLanguage::EnglishUnitedStates,
+    );
     assert_eq!(presentation.title, "GPU preparation failed");
     assert!(presentation.attention);
-    assert_eq!(presentation.detail, "gpu_preparation_failed · command #17");
+    assert_eq!(presentation.detail, "GPU preparation failed · command #17");
     assert!(!presentation.detail.contains('/'));
 }
 
 #[test]
-fn input_service_status_keeps_permission_failure_actionable_and_anonymous() {
-    let service = input_service_presentation(SettingsInputDiagnostics {
+fn diagnostics_presentations_follow_the_resolved_language() {
+    let diagnostics = SettingsInputDiagnostics {
+        pressed_key_count: 2,
         service_status: SettingsInputServiceStatus::PermissionDenied,
-        service_start_attempts: 1,
+        service_start_attempts: 3,
         ..SettingsInputDiagnostics::default()
-    });
+    };
+    let metrics = input_diagnostic_metrics(SettingsLanguage::ChineseSimplified, diagnostics);
+    assert_eq!(metrics.first(), Some(&("按下的按键", 2)));
+
+    let service = input_service_presentation(diagnostics, SettingsLanguage::ChineseSimplified);
+    assert_eq!(service.title, "需要权限");
+    assert_eq!(service.detail, "启动尝试：3");
+
+    let runtime = runtime_diagnostics_presentation(
+        SettingsRuntimeDiagnostics {
+            render_error: Some(SettingsRuntimeErrorCode::ModelLoadFailed),
+            last_command_failure: Some(crate::SettingsRuntimeCommandFailure {
+                sequence: 4,
+                code: SettingsRuntimeErrorCode::TransportClosed,
+            }),
+            command_transport: Default::default(),
+        },
+        SettingsLanguage::ChineseSimplified,
+    );
+    assert_eq!(runtime.title, "模型加载失败");
+    assert_eq!(runtime.detail, "运行时传输已关闭 · 命令 #4");
+
+    let recovery = config_recovery_presentation(
+        SettingsConfigurationStatus::RecoveryRequired { checked_backups: 2 },
+        None,
+        SettingsLanguage::ChineseSimplified,
+    );
+    assert_eq!(recovery.title, "配置不可用");
+    assert_eq!(recovery.detail, "已检查 2 个备份候选");
+
+    assert_eq!(
+        diagnostics_export_status(SettingsLanguage::ChineseSimplified, Some(128)),
+        "已导出 128 字节"
+    );
+    let command = ShortcutCaptureTarget::Command("toggle_overlay".to_owned());
+    assert_eq!(
+        shortcut_target_name(SettingsLanguage::ChineseSimplified, &command),
+        "显示或隐藏桌面猫"
+    );
+    assert_eq!(
+        shortcut_accessibility_label(SettingsLanguage::ChineseSimplified, &command),
+        "为显示或隐藏桌面猫录入快捷键"
+    );
+    assert_eq!(
+        shortcut_capture_error(
+            SettingsLanguage::ChineseSimplified,
+            ShortcutCaptureError::UnsupportedKey,
+        ),
+        "不支持的按键"
+    );
+    assert_eq!(
+        shortcut_capture_error(
+            SettingsLanguage::ChineseSimplified,
+            ShortcutCaptureError::AlreadyAssigned,
+        ),
+        "该快捷键已被占用"
+    );
+}
+
+#[test]
+fn input_service_status_keeps_permission_failure_actionable_and_anonymous() {
+    let service = input_service_presentation(
+        SettingsInputDiagnostics {
+            service_status: SettingsInputServiceStatus::PermissionDenied,
+            service_start_attempts: 1,
+            ..SettingsInputDiagnostics::default()
+        },
+        SettingsLanguage::EnglishUnitedStates,
+    );
     assert_eq!(service.title, "Permission required");
     assert_eq!(service.detail, "Start attempts: 1");
     assert!(service.attention);
@@ -214,7 +286,11 @@ fn input_service_status_keeps_permission_failure_actionable_and_anonymous() {
 
 #[test]
 fn configuration_recovery_presentation_is_anonymous_and_complete() {
-    let normal = config_recovery_presentation(SettingsConfigurationStatus::Ready, None);
+    let normal = config_recovery_presentation(
+        SettingsConfigurationStatus::Ready,
+        None,
+        SettingsLanguage::EnglishUnitedStates,
+    );
     assert_eq!(normal.title, "Loaded normally");
     assert_eq!(normal.detail, "No recovery");
     assert!(!normal.recovered);
@@ -226,6 +302,7 @@ fn configuration_recovery_presentation_is_anonymous_and_complete() {
             source_schema_version: 1,
             skipped_newer_backups: 3,
         }),
+        SettingsLanguage::EnglishUnitedStates,
     );
     assert_eq!(recovered.title, "Recovered from backup");
     assert_eq!(recovered.detail, "Schema v1 · 3 newer backups skipped");
@@ -238,12 +315,14 @@ fn configuration_recovery_presentation_is_anonymous_and_complete() {
             source_schema_version: 1,
             skipped_newer_backups: 1,
         }),
+        SettingsLanguage::EnglishUnitedStates,
     );
     assert_eq!(one_skipped.detail, "Schema v1 · 1 newer backup skipped");
 
     let required = config_recovery_presentation(
         SettingsConfigurationStatus::RecoveryRequired { checked_backups: 2 },
         None,
+        SettingsLanguage::EnglishUnitedStates,
     );
     assert_eq!(required.title, "Configuration unavailable");
     assert_eq!(required.detail, "2 backup candidates checked");
@@ -253,6 +332,7 @@ fn configuration_recovery_presentation_is_anonymous_and_complete() {
     let restored = config_recovery_presentation(
         SettingsConfigurationStatus::DefaultsRestoredRestartRequired,
         None,
+        SettingsLanguage::EnglishUnitedStates,
     );
     assert_eq!(restored.title, "Defaults restored");
     assert_eq!(restored.detail, "Restart BongoCat to continue");

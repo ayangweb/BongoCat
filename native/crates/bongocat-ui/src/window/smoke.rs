@@ -514,13 +514,33 @@ impl SettingsView {
             .snapshot
             .as_ref()
             .ok_or_else(|| "diagnostics page has not received a settings snapshot".to_owned())?;
-        if input_diagnostic_metrics(snapshot.input_diagnostics).len() != 25 {
+        let language = snapshot.resolved_language;
+        let metrics = input_diagnostic_metrics(language, snapshot.input_diagnostics);
+        if metrics.len() != 25 {
             return Err("diagnostics page did not project every input counter".to_owned());
         }
-        let recovery =
-            config_recovery_presentation(snapshot.configuration_status, snapshot.config_recovery);
+        let recovery = config_recovery_presentation(
+            snapshot.configuration_status,
+            snapshot.config_recovery,
+            language,
+        );
         if recovery.title.is_empty() || recovery.detail.is_empty() {
             return Err("diagnostics page did not project configuration recovery".to_owned());
+        }
+        if language == SettingsLanguage::ChineseSimplified
+            && (ui_text(language, UiText::DiagnosticsDescription)
+                == ui_text(
+                    SettingsLanguage::EnglishUnitedStates,
+                    UiText::DiagnosticsDescription,
+                )
+                || metrics[0].0
+                    == input_diagnostic_metrics(
+                        SettingsLanguage::EnglishUnitedStates,
+                        snapshot.input_diagnostics,
+                    )[0]
+                    .0)
+        {
+            return Err("diagnostics visible text was not localized".to_owned());
         }
         let open_backups = self
             .accessibility_tree()
@@ -529,7 +549,12 @@ impl SettingsView {
             .find(|node| node.id == ACCESSIBILITY_OPEN_BACKUPS)
             .ok_or_else(|| "diagnostics omitted the accessible backup location".to_owned())?;
         if open_backups.role != AccessibilityRole::Button
-            || open_backups.label != "Open configuration backups folder"
+            || open_backups.label != ui_text(language, UiText::OpenConfigurationBackupsFolder)
+            || open_backups.value.as_deref()
+                != Some(ui_text(
+                    language,
+                    UiText::OpenConfigurationBackupsFolderDescription,
+                ))
             || open_backups.disabled
             || !open_backups.supports_click
             || !open_backups.supports_focus
@@ -543,7 +568,9 @@ impl SettingsView {
             .find(|node| node.id == ACCESSIBILITY_EXPORT_DIAGNOSTICS)
             .ok_or_else(|| "diagnostics omitted the accessible export action".to_owned())?;
         if export.role != AccessibilityRole::Button
-            || export.label != "Export diagnostics"
+            || export.label != ui_text(language, UiText::ExportDiagnostics)
+            || export.value.as_deref()
+                != Some(ui_text(language, UiText::ExportDiagnosticsDescription))
             || export.disabled
             || !export.supports_click
             || !export.supports_focus
@@ -559,7 +586,9 @@ impl SettingsView {
         let shortcuts_present = !snapshot.shortcuts.commands.is_empty()
             || !snapshot.shortcuts.model_behaviors.is_empty();
         if clear_shortcuts.role != AccessibilityRole::Button
-            || clear_shortcuts.label != "Clear all shortcuts"
+            || clear_shortcuts.label != ui_text(language, UiText::ClearAllShortcuts)
+            || clear_shortcuts.value.as_deref()
+                != Some(ui_text(language, UiText::ClearAllShortcutsDescription))
             || clear_shortcuts.disabled != !shortcuts_present
             || clear_shortcuts.supports_click != shortcuts_present
             || clear_shortcuts.supports_focus != shortcuts_present
@@ -574,13 +603,19 @@ impl SettingsView {
             .collect::<Vec<_>>();
         let shortcut_count =
             snapshot.shortcuts.commands.len() + snapshot.shortcuts.model_behaviors.len();
+        let expected_capture_rows = shortcut_accessibility_rows(&snapshot.shortcuts, language);
         if capture_nodes.len() != shortcut_count
-            || capture_nodes.iter().any(|node| {
-                node.role != AccessibilityRole::Button
-                    || node.disabled
-                    || !node.supports_click
-                    || !node.supports_focus
-            })
+            || capture_nodes
+                .iter()
+                .zip(expected_capture_rows)
+                .any(|(node, (_, label, value))| {
+                    node.role != AccessibilityRole::Button
+                        || node.label != label
+                        || node.value.as_deref() != Some(value.as_str())
+                        || node.disabled
+                        || !node.supports_click
+                        || !node.supports_focus
+                })
         {
             return Err("shortcut capture accessibility semantics are invalid".to_owned());
         }
@@ -600,7 +635,12 @@ impl SettingsView {
                     "recovery diagnostics omitted the accessible restore action".to_owned()
                 })?;
             if restore.role != AccessibilityRole::Button
-                || restore.label != "Restore default configuration"
+                || restore.label != ui_text(language, UiText::RestoreDefaultConfiguration)
+                || restore.value.as_deref()
+                    != Some(ui_text(
+                        language,
+                        UiText::RestoreDefaultConfigurationDescription,
+                    ))
                 || restore.disabled
                 || !restore.supports_click
                 || !restore.supports_focus

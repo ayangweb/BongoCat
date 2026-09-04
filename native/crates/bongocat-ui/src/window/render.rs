@@ -635,24 +635,37 @@ impl Render for SettingsView {
             );
 
         let diagnostics_page = SettingPage::new(ui_text(language, UiText::Diagnostics))
-            .description("Inspect runtime health, input reliability and shortcut bindings.")
-            .group(SettingGroup::new().title("Runtime and input").item(SettingItem::new(
-                "Runtime diagnostics",
-                SettingField::element({
-                    let view = view_entity.clone();
-                    move |_: &RenderOptions,
-                          window: &mut Window,
-                          app: &mut App| {
-                        let snapshot = view.read(app).snapshot.clone();
-                        let tokens = Tokens::from_theme(app);
-                        view.update(app, move |view, cx| {
-                            view.page = SettingsPage::Diagnostics;
-                            diagnostics::content(view, window, cx, snapshot.as_ref(), disabled, tokens)
-                        })
-                        .into_any_element()
-                    }
-                }),
-            ).layout(Axis::Vertical).description("Review renderer status, input counters and keyboard shortcuts. Search: renderer, input, shortcut.")));
+            .description(ui_text(language, UiText::DiagnosticsDescription))
+            .group(
+                SettingGroup::new()
+                    .title(ui_text(language, UiText::RuntimeAndInput))
+                    .item(
+                        SettingItem::new(
+                            ui_text(language, UiText::RuntimeDiagnostics),
+                            SettingField::element({
+                                let view = view_entity.clone();
+                                move |_: &RenderOptions, window: &mut Window, app: &mut App| {
+                                    let snapshot = view.read(app).snapshot.clone();
+                                    let tokens = Tokens::from_theme(app);
+                                    view.update(app, move |view, cx| {
+                                        view.page = SettingsPage::Diagnostics;
+                                        diagnostics::content(
+                                            view,
+                                            window,
+                                            cx,
+                                            snapshot.as_ref(),
+                                            disabled,
+                                            tokens,
+                                        )
+                                    })
+                                    .into_any_element()
+                                }
+                            }),
+                        )
+                        .layout(Axis::Vertical)
+                        .description(ui_text(language, UiText::RuntimeDiagnosticsDescription)),
+                    ),
+            );
 
         let settings = Settings::new("bongocat-settings")
             .sidebar_width(px(220.0))

@@ -338,9 +338,12 @@ impl SettingsView {
         let mut restore_node = AccessibilityNode::new(
             ACCESSIBILITY_RESTORE_DEFAULTS,
             AccessibilityRole::Button,
-            "Restore default configuration",
+            ui_text(language, UiText::RestoreDefaultConfiguration),
         )
-        .with_value("Archive the invalid configuration and create verified defaults")
+        .with_value(ui_text(
+            language,
+            UiText::RestoreDefaultConfigurationDescription,
+        ))
         .disabled(!restore_available);
         if restore_available {
             restore_node = restore_node.clickable().focusable();
@@ -349,9 +352,12 @@ impl SettingsView {
         let mut open_backups_node = AccessibilityNode::new(
             ACCESSIBILITY_OPEN_BACKUPS,
             AccessibilityRole::Button,
-            "Open configuration backups folder",
+            ui_text(language, UiText::OpenConfigurationBackupsFolder),
         )
-        .with_value("Open the current environment's backup folder")
+        .with_value(ui_text(
+            language,
+            UiText::OpenConfigurationBackupsFolderDescription,
+        ))
         .disabled(!open_backups_available);
         if open_backups_available {
             open_backups_node = open_backups_node.clickable().focusable();
@@ -360,9 +366,9 @@ impl SettingsView {
         let mut diagnostics_export_node = AccessibilityNode::new(
             ACCESSIBILITY_EXPORT_DIAGNOSTICS,
             AccessibilityRole::Button,
-            "Export diagnostics",
+            ui_text(language, UiText::ExportDiagnostics),
         )
-        .with_value("Write an anonymous diagnostics report to the current environment logs")
+        .with_value(ui_text(language, UiText::ExportDiagnosticsDescription))
         .disabled(!export_available);
         if export_available {
             diagnostics_export_node = diagnostics_export_node.clickable().focusable();
@@ -370,9 +376,12 @@ impl SettingsView {
         let mut restore_shortcuts_node = AccessibilityNode::new(
             ACCESSIBILITY_RESTORE_SHORTCUTS,
             AccessibilityRole::Button,
-            "Restore default shortcuts",
+            ui_text(language, UiText::RestoreDefaultShortcuts),
         )
-        .with_value("Replace custom shortcut bindings with the verified defaults")
+        .with_value(ui_text(
+            language,
+            UiText::RestoreDefaultShortcutsDescription,
+        ))
         .disabled(disabled);
         if !disabled {
             restore_shortcuts_node = restore_shortcuts_node.clickable().focusable();
@@ -380,9 +389,9 @@ impl SettingsView {
         let mut clear_shortcuts_node = AccessibilityNode::new(
             ACCESSIBILITY_CLEAR_SHORTCUTS,
             AccessibilityRole::Button,
-            "Clear all shortcuts",
+            ui_text(language, UiText::ClearAllShortcuts),
         )
-        .with_value("Remove all custom shortcut bindings")
+        .with_value(ui_text(language, UiText::ClearAllShortcutsDescription))
         .disabled(
             disabled
                 || snapshot.is_none_or(|snapshot| {
@@ -399,7 +408,7 @@ impl SettingsView {
             clear_shortcuts_node = clear_shortcuts_node.clickable().focusable();
         }
         let shortcut_rows = snapshot
-            .map(|snapshot| shortcut_accessibility_rows(&snapshot.shortcuts))
+            .map(|snapshot| shortcut_accessibility_rows(&snapshot.shortcuts, language))
             .unwrap_or_default();
         let shortcut_node_ids = (0..shortcut_rows.len())
             .map(shortcut_accessibility_node_id)
@@ -415,7 +424,7 @@ impl SettingsView {
                     label,
                 )
                 .with_value(if capturing {
-                    "Waiting for a key combination".to_owned()
+                    ui_text(language, UiText::WaitingForKeyCombination).to_owned()
                 } else {
                     value
                 })

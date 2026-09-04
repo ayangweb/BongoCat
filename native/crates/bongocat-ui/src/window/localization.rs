@@ -1,4 +1,7 @@
-use super::{SettingsError, SettingsErrorCode, SettingsLanguage, SettingsModelOrigin};
+use super::{
+    SettingsError, SettingsErrorCode, SettingsInputDiagnostics, SettingsLanguage,
+    SettingsModelOrigin, ShortcutCaptureError, ShortcutCaptureTarget,
+};
 
 #[derive(Clone, Copy)]
 pub(super) enum UiText {
@@ -54,6 +57,66 @@ pub(super) enum UiText {
     Import,
     AvailableModels,
     Diagnostics,
+    DiagnosticsDescription,
+    RuntimeAndInput,
+    RuntimeDiagnostics,
+    RuntimeDiagnosticsDescription,
+    DiagnosticsUnavailable,
+    LoadingDiagnostics,
+    InputReliabilityCounters,
+    RuntimeRenderer,
+    DiagnosticsExport,
+    NoReportExported,
+    Export,
+    Shortcuts,
+    RestoreDefaults,
+    ClearAll,
+    PressCommandShortcut,
+    PressBehaviorShortcut,
+    PressKey,
+    Capture,
+    InputService,
+    Configuration,
+    Backups,
+    CurrentState,
+    InputProcessing,
+    SequenceRecovery,
+    Transport,
+    RestoreDefaultConfiguration,
+    RestoreDefaultConfigurationDescription,
+    OpenConfigurationBackupsFolder,
+    OpenConfigurationBackupsFolderDescription,
+    ExportDiagnostics,
+    ExportDiagnosticsDescription,
+    RestoreDefaultShortcuts,
+    RestoreDefaultShortcutsDescription,
+    ClearAllShortcuts,
+    ClearAllShortcutsDescription,
+    WaitingForKeyCombination,
+    UnsupportedKey,
+    ShortcutAlreadyAssigned,
+    NotStarted,
+    Running,
+    PermissionRequired,
+    BackendUnavailable,
+    StartupFailed,
+    GpuPreparationFailed,
+    ModelLoadFailed,
+    ModelEvaluationFailed,
+    MotionLoadFailed,
+    ExpressionLoadFailed,
+    PlatformUnsupported,
+    RuntimeTransportClosed,
+    OverlaySettingsInvalid,
+    MaximumFpsInvalid,
+    NoRendererError,
+    NoCommandFailures,
+    ConfigurationUnavailable,
+    DefaultsRestored,
+    RestartToContinue,
+    RecoveredFromBackup,
+    LoadedNormally,
+    NoRecovery,
     Appearance,
     Overlay,
     Theme,
@@ -199,6 +262,95 @@ pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
         UiText::Import => ["Import", "导入"],
         UiText::AvailableModels => ["Available models", "可用模型"],
         UiText::Diagnostics => ["Diagnostics", "诊断"],
+        UiText::DiagnosticsDescription => [
+            "Inspect runtime health, input reliability and shortcut bindings.",
+            "检查运行状态、输入可靠性和快捷键绑定。",
+        ],
+        UiText::RuntimeAndInput => ["Runtime and input", "运行与输入"],
+        UiText::RuntimeDiagnostics => ["Runtime diagnostics", "运行诊断"],
+        UiText::RuntimeDiagnosticsDescription => [
+            "Review renderer status, input counters and keyboard shortcuts. Search: renderer, input, shortcut.",
+            "查看渲染状态、输入计数和键盘快捷键。搜索：渲染、输入、快捷键。",
+        ],
+        UiText::DiagnosticsUnavailable => ["Diagnostics unavailable", "诊断信息不可用"],
+        UiText::LoadingDiagnostics => ["Loading diagnostics...", "正在加载诊断信息..."],
+        UiText::InputReliabilityCounters => ["Input reliability counters", "输入可靠性计数"],
+        UiText::RuntimeRenderer => ["Runtime renderer", "运行时渲染器"],
+        UiText::DiagnosticsExport => ["Diagnostics export", "诊断导出"],
+        UiText::NoReportExported => ["No report exported", "尚未导出报告"],
+        UiText::Export => ["Export", "导出"],
+        UiText::Shortcuts => ["Shortcuts", "快捷键"],
+        UiText::RestoreDefaults => ["Restore defaults", "恢复默认值"],
+        UiText::ClearAll => ["Clear all", "全部清除"],
+        UiText::PressCommandShortcut => [
+            "Press a key combination for this command",
+            "请为此命令按下组合键",
+        ],
+        UiText::PressBehaviorShortcut => [
+            "Press a key combination for this behavior",
+            "请为此行为按下组合键",
+        ],
+        UiText::PressKey => ["Press key", "请按键"],
+        UiText::Capture => ["Capture", "录入"],
+        UiText::InputService => ["Input service", "输入服务"],
+        UiText::Configuration => ["Configuration", "配置"],
+        UiText::Backups => ["Backups", "备份"],
+        UiText::CurrentState => ["Current state", "当前状态"],
+        UiText::InputProcessing => ["Input processing", "输入处理"],
+        UiText::SequenceRecovery => ["Sequence recovery", "序列恢复"],
+        UiText::Transport => ["Transport", "传输"],
+        UiText::RestoreDefaultConfiguration => ["Restore default configuration", "恢复默认配置"],
+        UiText::RestoreDefaultConfigurationDescription => [
+            "Archive the invalid configuration and create verified defaults",
+            "归档无效配置并创建已验证的默认配置",
+        ],
+        UiText::OpenConfigurationBackupsFolder => {
+            ["Open configuration backups folder", "打开配置备份文件夹"]
+        }
+        UiText::OpenConfigurationBackupsFolderDescription => [
+            "Open the current environment's backup folder",
+            "打开当前环境的备份文件夹",
+        ],
+        UiText::ExportDiagnostics => ["Export diagnostics", "导出诊断信息"],
+        UiText::ExportDiagnosticsDescription => [
+            "Write an anonymous diagnostics report to the current environment logs",
+            "将匿名诊断报告写入当前环境的日志目录",
+        ],
+        UiText::RestoreDefaultShortcuts => ["Restore default shortcuts", "恢复默认快捷键"],
+        UiText::RestoreDefaultShortcutsDescription => [
+            "Replace custom shortcut bindings with the verified defaults",
+            "使用已验证的默认值替换自定义快捷键绑定",
+        ],
+        UiText::ClearAllShortcuts => ["Clear all shortcuts", "清除全部快捷键"],
+        UiText::ClearAllShortcutsDescription => [
+            "Remove all custom shortcut bindings",
+            "移除全部自定义快捷键绑定",
+        ],
+        UiText::WaitingForKeyCombination => ["Waiting for a key combination", "正在等待组合键"],
+        UiText::UnsupportedKey => ["Unsupported key", "不支持的按键"],
+        UiText::ShortcutAlreadyAssigned => ["Shortcut is already assigned", "该快捷键已被占用"],
+        UiText::NotStarted => ["Not started", "尚未启动"],
+        UiText::Running => ["Running", "运行中"],
+        UiText::PermissionRequired => ["Permission required", "需要权限"],
+        UiText::BackendUnavailable => ["Backend unavailable", "后端不可用"],
+        UiText::StartupFailed => ["Startup failed", "启动失败"],
+        UiText::GpuPreparationFailed => ["GPU preparation failed", "GPU 准备失败"],
+        UiText::ModelLoadFailed => ["Model load failed", "模型加载失败"],
+        UiText::ModelEvaluationFailed => ["Model evaluation failed", "模型计算失败"],
+        UiText::MotionLoadFailed => ["Motion load failed", "动作加载失败"],
+        UiText::ExpressionLoadFailed => ["Expression load failed", "表情加载失败"],
+        UiText::PlatformUnsupported => ["Platform unsupported", "平台不受支持"],
+        UiText::RuntimeTransportClosed => ["Runtime transport closed", "运行时传输已关闭"],
+        UiText::OverlaySettingsInvalid => ["Overlay settings invalid", "桌面猫设置无效"],
+        UiText::MaximumFpsInvalid => ["Maximum FPS invalid", "最大帧率无效"],
+        UiText::NoRendererError => ["No renderer error", "没有渲染器错误"],
+        UiText::NoCommandFailures => ["No command failures", "没有命令失败"],
+        UiText::ConfigurationUnavailable => ["Configuration unavailable", "配置不可用"],
+        UiText::DefaultsRestored => ["Defaults restored", "已恢复默认值"],
+        UiText::RestartToContinue => ["Restart BongoCat to continue", "请重启 BongoCat 以继续"],
+        UiText::RecoveredFromBackup => ["Recovered from backup", "已从备份恢复"],
+        UiText::LoadedNormally => ["Loaded normally", "正常加载"],
+        UiText::NoRecovery => ["No recovery", "未执行恢复"],
         UiText::Appearance => ["Appearance", "外观"],
         UiText::Overlay => ["Overlay", "桌面猫"],
         UiText::Theme => ["Theme", "主题"],
@@ -378,6 +530,228 @@ pub(super) fn model_availability_summary(
             active.map_or(String::new(), |active| format!(" · {active}"))
         ),
     }
+}
+
+pub(super) fn diagnostics_unavailable(language: SettingsLanguage, error: SettingsError) -> String {
+    format!(
+        "{} · {}",
+        text(language, UiText::DiagnosticsUnavailable),
+        settings_error(language, error)
+    )
+}
+
+pub(super) fn diagnostics_export_status(
+    language: SettingsLanguage,
+    bytes_written: Option<u64>,
+) -> String {
+    match (language, bytes_written) {
+        (SettingsLanguage::ChineseSimplified, Some(bytes)) => {
+            format!("已导出 {bytes} 字节")
+        }
+        (SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates, Some(bytes)) => {
+            format!("Exported {bytes} bytes")
+        }
+        (_, None) => text(language, UiText::NoReportExported).to_owned(),
+    }
+}
+
+pub(super) fn input_service_attempts(language: SettingsLanguage, attempts: u64) -> String {
+    match language {
+        SettingsLanguage::ChineseSimplified => format!("启动尝试：{attempts}"),
+        SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates => {
+            format!("Start attempts: {attempts}")
+        }
+    }
+}
+
+pub(super) fn runtime_command_failure(
+    language: SettingsLanguage,
+    error: &str,
+    sequence: u64,
+) -> String {
+    match language {
+        SettingsLanguage::ChineseSimplified => format!("{error} · 命令 #{sequence}"),
+        SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates => {
+            format!("{error} · command #{sequence}")
+        }
+    }
+}
+
+pub(super) fn backup_candidates_checked(
+    language: SettingsLanguage,
+    checked_backups: u32,
+) -> String {
+    match language {
+        SettingsLanguage::ChineseSimplified => {
+            format!("已检查 {checked_backups} 个备份候选")
+        }
+        SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates => format!(
+            "{} backup candidate{} checked",
+            checked_backups,
+            if checked_backups == 1 { "" } else { "s" }
+        ),
+    }
+}
+
+pub(super) fn recovered_backup_detail(
+    language: SettingsLanguage,
+    schema_version: u32,
+    skipped_newer_backups: u32,
+) -> String {
+    match language {
+        SettingsLanguage::ChineseSimplified => {
+            format!("Schema v{schema_version} · 已跳过 {skipped_newer_backups} 个较新的备份")
+        }
+        SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates => format!(
+            "Schema v{} · {} newer backup{} skipped",
+            schema_version,
+            skipped_newer_backups,
+            if skipped_newer_backups == 1 { "" } else { "s" }
+        ),
+    }
+}
+
+pub(super) fn shortcut_accessibility_label(
+    language: SettingsLanguage,
+    target: &ShortcutCaptureTarget,
+) -> String {
+    let name = shortcut_target_name(language, target);
+    match language {
+        SettingsLanguage::ChineseSimplified => format!("为{name}录入快捷键"),
+        SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates => {
+            format!("Capture shortcut for {name}")
+        }
+    }
+}
+
+pub(super) fn shortcut_capture_error(
+    language: SettingsLanguage,
+    error: ShortcutCaptureError,
+) -> &'static str {
+    text(
+        language,
+        match error {
+            ShortcutCaptureError::UnsupportedKey => UiText::UnsupportedKey,
+            ShortcutCaptureError::AlreadyAssigned => UiText::ShortcutAlreadyAssigned,
+        },
+    )
+}
+
+pub(super) fn shortcut_target_name(
+    language: SettingsLanguage,
+    target: &ShortcutCaptureTarget,
+) -> String {
+    match target {
+        ShortcutCaptureTarget::Command(command) => {
+            let values = match command.as_str() {
+                "toggle_overlay" => ["Show or hide desktop cat", "显示或隐藏桌面猫"],
+                "open_settings" => ["Open settings", "打开设置"],
+                "toggle_mirror" => ["Toggle model mirror", "切换模型镜像"],
+                "toggle_click_through" => ["Toggle click-through", "切换鼠标穿透"],
+                "toggle_always_on_top" => ["Toggle always on top", "切换始终置顶"],
+                _ => return command.clone(),
+            };
+            values[match language {
+                SettingsLanguage::ChineseSimplified => 1,
+                SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates => 0,
+            }]
+            .to_owned()
+        }
+        ShortcutCaptureTarget::ModelBehavior {
+            model_id,
+            behavior_id,
+        } => format!("{model_id} ({behavior_id})"),
+    }
+}
+
+pub(super) fn input_diagnostic_metrics(
+    language: SettingsLanguage,
+    diagnostics: SettingsInputDiagnostics,
+) -> [(&'static str, u64); 25] {
+    let labels = match language {
+        SettingsLanguage::ChineseSimplified => [
+            "按下的按键",
+            "按下的鼠标按键",
+            "按下的手柄按键",
+            "已连接的手柄",
+            "捕获的按下事件",
+            "捕获的释放事件",
+            "校正释放",
+            "重置释放",
+            "重复按下",
+            "未匹配的释放",
+            "无效来源",
+            "重置次数",
+            "序列缺口",
+            "缺失事件",
+            "重复事件",
+            "乱序事件",
+            "非单调时间戳",
+            "手柄连接",
+            "手柄断开",
+            "过期手柄事件",
+            "断开时释放",
+            "入队事件",
+            "队列溢出",
+            "溢出恢复",
+            "关闭后拒绝",
+        ],
+        SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates => [
+            "Pressed keys",
+            "Pressed mouse buttons",
+            "Pressed gamepad buttons",
+            "Connected gamepads",
+            "Captured presses",
+            "Captured releases",
+            "Reconciled releases",
+            "Released by reset",
+            "Duplicate presses",
+            "Unmatched releases",
+            "Invalid sources",
+            "Resets",
+            "Sequence gaps",
+            "Missing events",
+            "Duplicate events",
+            "Out-of-order events",
+            "Non-monotonic timestamps",
+            "Gamepad connections",
+            "Gamepad disconnections",
+            "Stale gamepad events",
+            "Released on disconnect",
+            "Events enqueued",
+            "Queue overflows",
+            "Overflow recoveries",
+            "Rejected after shutdown",
+        ],
+    };
+    let values = [
+        diagnostics.pressed_key_count as u64,
+        diagnostics.pressed_mouse_button_count as u64,
+        diagnostics.pressed_gamepad_button_count as u64,
+        diagnostics.connected_gamepad_count as u64,
+        diagnostics.captured_down,
+        diagnostics.captured_up,
+        diagnostics.reconciled_release,
+        diagnostics.released_by_reset,
+        diagnostics.duplicate_down,
+        diagnostics.unmatched_release,
+        diagnostics.invalid_source,
+        diagnostics.reset_count,
+        diagnostics.sequence_gap_count,
+        diagnostics.missing_sequence_count,
+        diagnostics.duplicate_sequence_count,
+        diagnostics.out_of_order_sequence_count,
+        diagnostics.non_monotonic_time_count,
+        diagnostics.gamepad_connections,
+        diagnostics.gamepad_disconnections,
+        diagnostics.stale_gamepad_events,
+        diagnostics.released_by_disconnect,
+        diagnostics.transport_enqueued,
+        diagnostics.transport_queue_full,
+        diagnostics.transport_recovered_after_overflow,
+        diagnostics.transport_runtime_stopped,
+    ];
+    std::array::from_fn(|index| (labels[index], values[index]))
 }
 
 pub(super) fn settings_error(language: SettingsLanguage, error: SettingsError) -> &'static str {
@@ -600,6 +974,66 @@ mod tests {
             UiText::Import,
             UiText::AvailableModels,
             UiText::Diagnostics,
+            UiText::DiagnosticsDescription,
+            UiText::RuntimeAndInput,
+            UiText::RuntimeDiagnostics,
+            UiText::RuntimeDiagnosticsDescription,
+            UiText::DiagnosticsUnavailable,
+            UiText::LoadingDiagnostics,
+            UiText::InputReliabilityCounters,
+            UiText::RuntimeRenderer,
+            UiText::DiagnosticsExport,
+            UiText::NoReportExported,
+            UiText::Export,
+            UiText::Shortcuts,
+            UiText::RestoreDefaults,
+            UiText::ClearAll,
+            UiText::PressCommandShortcut,
+            UiText::PressBehaviorShortcut,
+            UiText::PressKey,
+            UiText::Capture,
+            UiText::InputService,
+            UiText::Configuration,
+            UiText::Backups,
+            UiText::CurrentState,
+            UiText::InputProcessing,
+            UiText::SequenceRecovery,
+            UiText::Transport,
+            UiText::RestoreDefaultConfiguration,
+            UiText::RestoreDefaultConfigurationDescription,
+            UiText::OpenConfigurationBackupsFolder,
+            UiText::OpenConfigurationBackupsFolderDescription,
+            UiText::ExportDiagnostics,
+            UiText::ExportDiagnosticsDescription,
+            UiText::RestoreDefaultShortcuts,
+            UiText::RestoreDefaultShortcutsDescription,
+            UiText::ClearAllShortcuts,
+            UiText::ClearAllShortcutsDescription,
+            UiText::WaitingForKeyCombination,
+            UiText::UnsupportedKey,
+            UiText::ShortcutAlreadyAssigned,
+            UiText::NotStarted,
+            UiText::Running,
+            UiText::PermissionRequired,
+            UiText::BackendUnavailable,
+            UiText::StartupFailed,
+            UiText::GpuPreparationFailed,
+            UiText::ModelLoadFailed,
+            UiText::ModelEvaluationFailed,
+            UiText::MotionLoadFailed,
+            UiText::ExpressionLoadFailed,
+            UiText::PlatformUnsupported,
+            UiText::RuntimeTransportClosed,
+            UiText::OverlaySettingsInvalid,
+            UiText::MaximumFpsInvalid,
+            UiText::NoRendererError,
+            UiText::NoCommandFailures,
+            UiText::ConfigurationUnavailable,
+            UiText::DefaultsRestored,
+            UiText::RestartToContinue,
+            UiText::RecoveredFromBackup,
+            UiText::LoadedNormally,
+            UiText::NoRecovery,
             UiText::Language,
             UiText::RuntimeStatus,
             UiText::RuntimeStatusDescription,

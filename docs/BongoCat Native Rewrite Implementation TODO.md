@@ -2306,6 +2306,16 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       `101130018327`/`101130018508`/`101130018510` 全绿；macOS/Windows 日志均实际输出
       `Chinese Models localization verified`，并继续通过 800x600 窗口重启恢复、shutdown 和剩余
       平台 smoke。
+60. [ ] `P5-DIAGNOSTICS-LOCALIZATION`：完成当前 Diagnostics 页面及辅助功能语义的中英本地化。
+    - 依赖：`P5-APPLICATION-LANGUAGE`、`P5-GENERAL-LOCALIZATION`、`P5-MODELS-LOCALIZATION`、
+      GPUI Kit Diagnostics 页面和现有 input/runtime/config/shortcut typed contract。
+    - 退出条件：页面、分组、25 个输入指标、input service、renderer/command failure、配置恢复、
+      导出状态、快捷键动作/捕获/错误及备份操作均从同一闭合文案源读取；可见动作与 AX/UIA
+      label/value 不漂移；中文 800x600 隔离 smoke 覆盖 Diagnostics 页面、窗口状态恢复和有序
+      shutdown；UI 定向测试、严格 Clippy、完整 Native workspace 与双平台 CI 通过。
+    - 状态（2026-09-05）：中英文静态/动态文案、稳定快捷键捕获错误、用户可读 command 名称、
+      AccessKit 语义、中文隔离 smoke 标记和双平台 CI 断言已实现；本机完整门禁与 CI 证据完成后
+      再勾选总项。
 
 ## 13. 待决策清单
 

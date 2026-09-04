@@ -55,29 +55,23 @@ pub(super) fn shortcut_targets(shortcuts: &SettingsShortcuts) -> Vec<ShortcutCap
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub(super) fn shortcut_accessibility_rows(
     shortcuts: &SettingsShortcuts,
+    language: SettingsLanguage,
 ) -> Vec<(ShortcutCaptureTarget, String, String)> {
     shortcuts
         .commands
         .iter()
         .map(|binding| {
-            (
-                ShortcutCaptureTarget::Command(binding.command.clone()),
-                format!("Capture shortcut for {}", binding.command),
-                binding.shortcut.clone(),
-            )
+            let target = ShortcutCaptureTarget::Command(binding.command.clone());
+            let label = shortcut_accessibility_label(language, &target);
+            (target, label, binding.shortcut.clone())
         })
         .chain(shortcuts.model_behaviors.iter().map(|binding| {
-            (
-                ShortcutCaptureTarget::ModelBehavior {
-                    model_id: binding.model_id.clone(),
-                    behavior_id: binding.behavior_id.clone(),
-                },
-                format!(
-                    "Capture shortcut for {} {}",
-                    binding.model_id, binding.behavior_id
-                ),
-                binding.shortcut.clone(),
-            )
+            let target = ShortcutCaptureTarget::ModelBehavior {
+                model_id: binding.model_id.clone(),
+                behavior_id: binding.behavior_id.clone(),
+            };
+            let label = shortcut_accessibility_label(language, &target);
+            (target, label, binding.shortcut.clone())
         }))
         .collect()
 }
@@ -199,59 +193,6 @@ pub(super) fn shortcut_conflicts(shortcuts: &SettingsShortcuts) -> bool {
         .any(|chord| !seen.insert(chord.canonical()))
 }
 
-pub(super) fn input_diagnostic_metrics(
-    diagnostics: SettingsInputDiagnostics,
-) -> [(&'static str, u64); 25] {
-    [
-        ("Pressed keys", diagnostics.pressed_key_count as u64),
-        (
-            "Pressed mouse buttons",
-            diagnostics.pressed_mouse_button_count as u64,
-        ),
-        (
-            "Pressed gamepad buttons",
-            diagnostics.pressed_gamepad_button_count as u64,
-        ),
-        (
-            "Connected gamepads",
-            diagnostics.connected_gamepad_count as u64,
-        ),
-        ("Captured presses", diagnostics.captured_down),
-        ("Captured releases", diagnostics.captured_up),
-        ("Reconciled releases", diagnostics.reconciled_release),
-        ("Released by reset", diagnostics.released_by_reset),
-        ("Duplicate presses", diagnostics.duplicate_down),
-        ("Unmatched releases", diagnostics.unmatched_release),
-        ("Invalid sources", diagnostics.invalid_source),
-        ("Resets", diagnostics.reset_count),
-        ("Sequence gaps", diagnostics.sequence_gap_count),
-        ("Missing events", diagnostics.missing_sequence_count),
-        ("Duplicate events", diagnostics.duplicate_sequence_count),
-        (
-            "Out-of-order events",
-            diagnostics.out_of_order_sequence_count,
-        ),
-        (
-            "Non-monotonic timestamps",
-            diagnostics.non_monotonic_time_count,
-        ),
-        ("Gamepad connections", diagnostics.gamepad_connections),
-        ("Gamepad disconnections", diagnostics.gamepad_disconnections),
-        ("Stale gamepad events", diagnostics.stale_gamepad_events),
-        ("Released on disconnect", diagnostics.released_by_disconnect),
-        ("Events enqueued", diagnostics.transport_enqueued),
-        ("Queue overflows", diagnostics.transport_queue_full),
-        (
-            "Overflow recoveries",
-            diagnostics.transport_recovered_after_overflow,
-        ),
-        (
-            "Rejected after shutdown",
-            diagnostics.transport_runtime_stopped,
-        ),
-    ]
-}
-
 pub(super) struct InputServicePresentation {
     pub(super) title: &'static str,
     pub(super) detail: String,
@@ -261,18 +202,19 @@ pub(super) struct InputServicePresentation {
 
 pub(super) fn input_service_presentation(
     diagnostics: SettingsInputDiagnostics,
+    language: SettingsLanguage,
 ) -> InputServicePresentation {
-    let (title, running, attention) = match diagnostics.service_status {
-        SettingsInputServiceStatus::NotStarted => ("Not started", false, false),
-        SettingsInputServiceStatus::Running => ("Running", true, false),
-        SettingsInputServiceStatus::PermissionDenied => ("Permission required", false, true),
-        SettingsInputServiceStatus::BackendUnavailable => ("Backend unavailable", false, true),
-        SettingsInputServiceStatus::Failed => ("Startup failed", false, true),
-        SettingsInputServiceStatus::Stopped => ("Stopped", false, false),
+    let (key, running, attention) = match diagnostics.service_status {
+        SettingsInputServiceStatus::NotStarted => (UiText::NotStarted, false, false),
+        SettingsInputServiceStatus::Running => (UiText::Running, true, false),
+        SettingsInputServiceStatus::PermissionDenied => (UiText::PermissionRequired, false, true),
+        SettingsInputServiceStatus::BackendUnavailable => (UiText::BackendUnavailable, false, true),
+        SettingsInputServiceStatus::Failed => (UiText::StartupFailed, false, true),
+        SettingsInputServiceStatus::Stopped => (UiText::Stopped, false, false),
     };
     InputServicePresentation {
-        title,
-        detail: format!("Start attempts: {}", diagnostics.service_start_attempts),
+        title: ui_text(language, key),
+        detail: input_service_attempts(language, diagnostics.service_start_attempts),
         running,
         attention,
     }
@@ -284,26 +226,39 @@ pub(super) struct RuntimeDiagnosticsPresentation {
     pub(super) attention: bool,
 }
 
+fn runtime_error_title(
+    language: SettingsLanguage,
+    error: SettingsRuntimeErrorCode,
+) -> &'static str {
+    let key = match error {
+        SettingsRuntimeErrorCode::GpuPreparationFailed => UiText::GpuPreparationFailed,
+        SettingsRuntimeErrorCode::ModelLoadFailed => UiText::ModelLoadFailed,
+        SettingsRuntimeErrorCode::ModelEvaluationFailed => UiText::ModelEvaluationFailed,
+        SettingsRuntimeErrorCode::MotionLoadFailed => UiText::MotionLoadFailed,
+        SettingsRuntimeErrorCode::ExpressionLoadFailed => UiText::ExpressionLoadFailed,
+        SettingsRuntimeErrorCode::PlatformUnsupported => UiText::PlatformUnsupported,
+        SettingsRuntimeErrorCode::TransportClosed => UiText::RuntimeTransportClosed,
+        SettingsRuntimeErrorCode::OverlaySettingsInvalid => UiText::OverlaySettingsInvalid,
+        SettingsRuntimeErrorCode::MaximumFpsInvalid => UiText::MaximumFpsInvalid,
+    };
+    ui_text(language, key)
+}
+
 pub(super) fn runtime_diagnostics_presentation(
     diagnostics: SettingsRuntimeDiagnostics,
+    language: SettingsLanguage,
 ) -> RuntimeDiagnosticsPresentation {
     let (title, attention) = match diagnostics.render_error {
-        Some(SettingsRuntimeErrorCode::GpuPreparationFailed) => ("GPU preparation failed", true),
-        Some(SettingsRuntimeErrorCode::ModelLoadFailed) => ("Model load failed", true),
-        Some(SettingsRuntimeErrorCode::ModelEvaluationFailed) => ("Model evaluation failed", true),
-        Some(SettingsRuntimeErrorCode::MotionLoadFailed) => ("Motion load failed", true),
-        Some(SettingsRuntimeErrorCode::ExpressionLoadFailed) => ("Expression load failed", true),
-        Some(SettingsRuntimeErrorCode::PlatformUnsupported) => ("Platform unsupported", true),
-        Some(SettingsRuntimeErrorCode::TransportClosed) => ("Runtime transport closed", true),
-        Some(SettingsRuntimeErrorCode::OverlaySettingsInvalid) => {
-            ("Overlay settings invalid", true)
-        }
-        Some(SettingsRuntimeErrorCode::MaximumFpsInvalid) => ("Maximum FPS invalid", true),
-        None => ("No renderer error", false),
+        Some(error) => (runtime_error_title(language, error), true),
+        None => (ui_text(language, UiText::NoRendererError), false),
     };
     let detail = match diagnostics.last_command_failure {
-        Some(failure) => format!("{} · command #{}", failure.code, failure.sequence),
-        None => "No command failures".to_owned(),
+        Some(failure) => runtime_command_failure(
+            language,
+            runtime_error_title(language, failure.code),
+            failure.sequence,
+        ),
+        None => ui_text(language, UiText::NoCommandFailures).to_owned(),
     };
     RuntimeDiagnosticsPresentation {
         title: title.to_owned(),
@@ -323,16 +278,13 @@ pub(super) struct ConfigRecoveryPresentation {
 pub(super) fn config_recovery_presentation(
     status: SettingsConfigurationStatus,
     recovery: Option<SettingsConfigRecovery>,
+    language: SettingsLanguage,
 ) -> ConfigRecoveryPresentation {
     match status {
         SettingsConfigurationStatus::RecoveryRequired { checked_backups } => {
             ConfigRecoveryPresentation {
-                title: "Configuration unavailable",
-                detail: format!(
-                    "{} backup candidate{} checked",
-                    checked_backups,
-                    if checked_backups == 1 { "" } else { "s" }
-                ),
+                title: ui_text(language, UiText::ConfigurationUnavailable),
+                detail: backup_candidates_checked(language, checked_backups),
                 recovered: false,
                 attention: true,
                 can_restore: true,
@@ -340,8 +292,8 @@ pub(super) fn config_recovery_presentation(
         }
         SettingsConfigurationStatus::DefaultsRestoredRestartRequired => {
             ConfigRecoveryPresentation {
-                title: "Defaults restored",
-                detail: "Restart BongoCat to continue".to_owned(),
+                title: ui_text(language, UiText::DefaultsRestored),
+                detail: ui_text(language, UiText::RestartToContinue).to_owned(),
                 recovered: true,
                 attention: false,
                 can_restore: false,
@@ -350,16 +302,11 @@ pub(super) fn config_recovery_presentation(
         SettingsConfigurationStatus::Ready if recovery.is_some() => {
             let recovery = recovery.expect("ready recovered configuration is present");
             ConfigRecoveryPresentation {
-                title: "Recovered from backup",
-                detail: format!(
-                    "Schema v{} · {} newer backup{} skipped",
+                title: ui_text(language, UiText::RecoveredFromBackup),
+                detail: recovered_backup_detail(
+                    language,
                     recovery.source_schema_version,
                     recovery.skipped_newer_backups,
-                    if recovery.skipped_newer_backups == 1 {
-                        ""
-                    } else {
-                        "s"
-                    }
                 ),
                 recovered: true,
                 attention: false,
@@ -367,8 +314,8 @@ pub(super) fn config_recovery_presentation(
             }
         }
         SettingsConfigurationStatus::Ready => ConfigRecoveryPresentation {
-            title: "Loaded normally",
-            detail: "No recovery".to_owned(),
+            title: ui_text(language, UiText::LoadedNormally),
+            detail: ui_text(language, UiText::NoRecovery).to_owned(),
             recovered: false,
             attention: false,
             can_restore: false,

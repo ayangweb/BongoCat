@@ -61,8 +61,11 @@ mod smoke;
 mod view_state;
 pub use lifecycle::open_settings_window;
 use localization::{
-    UiText, model_availability_summary, model_delete_confirmation, model_import_progress,
-    model_invalid_summary, runtime_status, settings_error, text as ui_text,
+    UiText, backup_candidates_checked, diagnostics_export_status, diagnostics_unavailable,
+    input_diagnostic_metrics, input_service_attempts, model_availability_summary,
+    model_delete_confirmation, model_import_progress, model_invalid_summary,
+    recovered_backup_detail, runtime_command_failure, runtime_status, settings_error,
+    shortcut_accessibility_label, shortcut_capture_error, shortcut_target_name, text as ui_text,
 };
 #[cfg(test)]
 mod tests;
@@ -201,6 +204,12 @@ enum ShortcutCaptureTarget {
     },
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ShortcutCaptureError {
+    UnsupportedKey,
+    AlreadyAssigned,
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 enum SettingsPage {
     #[default]
@@ -333,7 +342,7 @@ pub struct SettingsView {
     model_delete_confirmation: Option<SettingsModelKey>,
     model_row_focus: BTreeMap<ModelRowKey, ModelRowFocus>,
     shortcut_capture: Option<ShortcutCaptureTarget>,
-    shortcut_capture_error: Option<String>,
+    shortcut_capture_error: Option<ShortcutCaptureError>,
     shortcut_row_focus: BTreeMap<ShortcutCaptureTarget, FocusHandle>,
     window_hidden: bool,
     applied_theme: Option<SettingsTheme>,

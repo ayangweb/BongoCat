@@ -61,7 +61,7 @@ impl SettingsView {
             return;
         }
         let Some(shortcut) = shortcut_from_key_event(event) else {
-            self.shortcut_capture_error = Some("Unsupported key".to_owned());
+            self.shortcut_capture_error = Some(ShortcutCaptureError::UnsupportedKey);
             cx.notify();
             return;
         };
@@ -76,7 +76,7 @@ impl SettingsView {
             return;
         }
         if shortcut_conflicts(&shortcuts) {
-            self.shortcut_capture_error = Some("Shortcut is already assigned".to_owned());
+            self.shortcut_capture_error = Some(ShortcutCaptureError::AlreadyAssigned);
             cx.notify();
             return;
         }

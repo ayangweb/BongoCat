@@ -8,6 +8,9 @@ pub(super) fn content(
     disabled: bool,
     tokens: Tokens,
 ) -> Stateful<Div> {
+    let language = snapshot.map_or(SettingsLanguage::EnglishUnitedStates, |snapshot| {
+        snapshot.resolved_language
+    });
     div()
         .min_w_0()
         .flex_1()
@@ -19,7 +22,11 @@ pub(super) fn content(
         .bg(tokens.canvas)
         .text_color(tokens.text)
         .id("diagnostics-content")
-        .child(div().text_2xl().child("Diagnostics"))
+        .child(
+            div()
+                .text_2xl()
+                .child(ui_text(language, UiText::Diagnostics)),
+        )
         .child(
             div()
                 .text_sm()
@@ -28,10 +35,12 @@ pub(super) fn content(
                 } else {
                     tokens.muted
                 })
-                .child(match &view.error {
-                    Some(error) => format!("Diagnostics unavailable · {error}"),
-                    None if snapshot.is_none() => "Loading diagnostics...".to_owned(),
-                    None => "Input reliability counters".to_owned(),
+                .child(match view.error {
+                    Some(error) => diagnostics_unavailable(language, error),
+                    None if snapshot.is_none() => {
+                        ui_text(language, UiText::LoadingDiagnostics).to_owned()
+                    }
+                    None => ui_text(language, UiText::InputReliabilityCounters).to_owned(),
                 }),
         )
         .child(
@@ -41,13 +50,15 @@ pub(super) fn content(
                 .flex_1()
                 .overflow_y_scroll()
                 .when_some(snapshot.as_ref(), |content, snapshot| {
-                    let metrics = input_diagnostic_metrics(snapshot.input_diagnostics);
-                    let input_service = input_service_presentation(snapshot.input_diagnostics);
+                    let metrics = input_diagnostic_metrics(language, snapshot.input_diagnostics);
+                    let input_service =
+                        input_service_presentation(snapshot.input_diagnostics, language);
                     let runtime_diagnostics =
-                        runtime_diagnostics_presentation(snapshot.runtime_diagnostics);
+                        runtime_diagnostics_presentation(snapshot.runtime_diagnostics, language);
                     let recovery = config_recovery_presentation(
                         snapshot.configuration_status,
                         snapshot.config_recovery,
+                        language,
                     );
                     let config_action_disabled = view.pending.is_some();
                     let shortcut_action_disabled = disabled;
@@ -74,7 +85,7 @@ pub(super) fn content(
                                             div()
                                                 .text_sm()
                                                 .text_color(tokens.muted)
-                                                .child("Runtime renderer"),
+                                                .child(ui_text(language, UiText::RuntimeRenderer)),
                                         )
                                         .child(div().text_sm().child(runtime_diagnostics.title)),
                                 )
@@ -109,30 +120,22 @@ pub(super) fn content(
                                         .flex_col()
                                         .gap_1()
                                         .child(
-                                            div()
-                                                .text_sm()
-                                                .text_color(tokens.muted)
-                                                .child("Diagnostics export"),
+                                            div().text_sm().text_color(tokens.muted).child(
+                                                ui_text(language, UiText::DiagnosticsExport),
+                                            ),
                                         )
                                         .child(
-                                            div().text_sm().child(
+                                            div().text_sm().child(diagnostics_export_status(
+                                                language,
                                                 snapshot
                                                     .diagnostics_export
-                                                    .map(|status| {
-                                                        format!(
-                                                            "Exported {} bytes",
-                                                            status.bytes_written
-                                                        )
-                                                    })
-                                                    .unwrap_or_else(|| {
-                                                        "No report exported".to_owned()
-                                                    }),
-                                            ),
+                                                    .map(|status| status.bytes_written),
+                                            )),
                                         ),
                                 )
                                 .child(
                                     command_button(
-                                        "Export",
+                                        ui_text(language, UiText::Export),
                                         &view.export_diagnostics_focus,
                                         32,
                                         window,
@@ -175,11 +178,11 @@ pub(super) fn content(
                                             div()
                                                 .text_sm()
                                                 .text_color(tokens.muted)
-                                                .child("Shortcuts"),
+                                                .child(ui_text(language, UiText::Shortcuts)),
                                         )
                                         .child(
                                             command_button(
-                                                "Restore defaults",
+                                                ui_text(language, UiText::RestoreDefaults),
                                                 &view.restore_shortcuts_focus,
                                                 33,
                                                 window,
@@ -205,7 +208,7 @@ pub(super) fn content(
                                         )
                                         .child(
                                             command_button(
-                                                "Clear all",
+                                                ui_text(language, UiText::ClearAll),
                                                 &view.clear_shortcuts_focus,
                                                 34,
                                                 window,
@@ -235,19 +238,22 @@ pub(super) fn content(
                                             })),
                                         ),
                                 )
-                                .when_some(view.shortcut_capture_error.clone(), |content, error| {
+                                .when_some(view.shortcut_capture_error, |content, error| {
                                     content.child(
-                                        div().text_sm().text_color(tokens.danger).child(error),
+                                        div()
+                                            .text_sm()
+                                            .text_color(tokens.danger)
+                                            .child(shortcut_capture_error(language, error)),
                                     )
                                 })
                                 .when_some(view.shortcut_capture.clone(), |content, target| {
                                     content.child(div().text_sm().text_color(tokens.accent).child(
                                         match target {
                                             ShortcutCaptureTarget::Command(_) => {
-                                                "Press a key combination for this command"
+                                                ui_text(language, UiText::PressCommandShortcut)
                                             }
                                             ShortcutCaptureTarget::ModelBehavior { .. } => {
-                                                "Press a key combination for this behavior"
+                                                ui_text(language, UiText::PressBehaviorShortcut)
                                             }
                                         },
                                     ))
@@ -256,6 +262,7 @@ pub(super) fn content(
                                     |(index, binding)| {
                                         let target =
                                             ShortcutCaptureTarget::Command(binding.command.clone());
+                                        let target_name = shortcut_target_name(language, &target);
                                         let capturing =
                                             view.shortcut_capture.as_ref() == Some(&target);
                                         let disabled = shortcut_action_disabled;
@@ -272,12 +279,7 @@ pub(super) fn content(
                                             .justify_between()
                                             .gap_3()
                                             .text_sm()
-                                            .child(
-                                                div()
-                                                    .min_w_0()
-                                                    .flex_1()
-                                                    .child(binding.command.clone()),
-                                            )
+                                            .child(div().min_w_0().flex_1().child(target_name))
                                             .child(
                                                 div()
                                                     .text_color(tokens.muted)
@@ -285,7 +287,14 @@ pub(super) fn content(
                                             )
                                             .child(
                                                 command_button(
-                                                    if capturing { "Press key" } else { "Capture" },
+                                                    ui_text(
+                                                        language,
+                                                        if capturing {
+                                                            UiText::PressKey
+                                                        } else {
+                                                            UiText::Capture
+                                                        },
+                                                    ),
                                                     &focus,
                                                     tab_index,
                                                     window,
@@ -326,6 +335,8 @@ pub(super) fn content(
                                                 model_id: binding.model_id.clone(),
                                                 behavior_id: binding.behavior_id.clone(),
                                             };
+                                            let target_name =
+                                                shortcut_target_name(language, &target);
                                             let capturing =
                                                 view.shortcut_capture.as_ref() == Some(&target);
                                             let disabled = shortcut_action_disabled;
@@ -344,10 +355,7 @@ pub(super) fn content(
                                                 .justify_between()
                                                 .gap_3()
                                                 .text_sm()
-                                                .child(div().min_w_0().flex_1().child(format!(
-                                                    "{} ({})",
-                                                    binding.model_id, binding.behavior_id
-                                                )))
+                                                .child(div().min_w_0().flex_1().child(target_name))
                                                 .child(
                                                     div()
                                                         .text_color(tokens.muted)
@@ -355,11 +363,14 @@ pub(super) fn content(
                                                 )
                                                 .child(
                                                     command_button(
-                                                        if capturing {
-                                                            "Press key"
-                                                        } else {
-                                                            "Capture"
-                                                        },
+                                                        ui_text(
+                                                            language,
+                                                            if capturing {
+                                                                UiText::PressKey
+                                                            } else {
+                                                                UiText::Capture
+                                                            },
+                                                        ),
                                                         &focus,
                                                         tab_index,
                                                         window,
@@ -417,7 +428,7 @@ pub(super) fn content(
                                             div()
                                                 .text_sm()
                                                 .text_color(tokens.muted)
-                                                .child("Input service"),
+                                                .child(ui_text(language, UiText::InputService)),
                                         )
                                         .child(div().text_sm().child(input_service.title)),
                                 )
@@ -457,7 +468,7 @@ pub(super) fn content(
                                             div()
                                                 .text_sm()
                                                 .text_color(tokens.muted)
-                                                .child("Configuration"),
+                                                .child(ui_text(language, UiText::Configuration)),
                                         )
                                         .child(div().text_sm().child(recovery.title)),
                                 )
@@ -478,7 +489,7 @@ pub(super) fn content(
                                         .child(recovery.detail)
                                         .child(
                                             command_button(
-                                                "Backups",
+                                                ui_text(language, UiText::Backups),
                                                 &view.open_backups_focus,
                                                 28,
                                                 window,
@@ -505,7 +516,7 @@ pub(super) fn content(
                                         .when(recovery.can_restore, |content| {
                                             content.child(
                                                 command_button(
-                                                    "Restore defaults",
+                                                    ui_text(language, UiText::RestoreDefaults),
                                                     &view.restore_defaults_focus,
                                                     29,
                                                     window,
@@ -550,12 +561,12 @@ pub(super) fn content(
                                         .min_w_0()
                                         .flex_1()
                                         .child(diagnostic_group(
-                                            "Current state",
+                                            ui_text(language, UiText::CurrentState),
                                             &metrics[..2],
                                             tokens,
                                         ))
                                         .child(diagnostic_group(
-                                            "Input processing",
+                                            ui_text(language, UiText::InputProcessing),
                                             &metrics[2..10],
                                             tokens,
                                         )),
@@ -565,12 +576,12 @@ pub(super) fn content(
                                         .min_w_0()
                                         .flex_1()
                                         .child(diagnostic_group(
-                                            "Sequence recovery",
+                                            ui_text(language, UiText::SequenceRecovery),
                                             &metrics[10..15],
                                             tokens,
                                         ))
                                         .child(diagnostic_group(
-                                            "Transport",
+                                            ui_text(language, UiText::Transport),
                                             &metrics[15..],
                                             tokens,
                                         )),
