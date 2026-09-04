@@ -244,6 +244,7 @@ jobs:
                 Start-Sleep -Milliseconds 100
                 $process.Refresh()
                 if ($process.HasExited) {
+                  Get-Content $stdout, $stderr -ErrorAction SilentlyContinue
                   throw "Windows product exited before UI Automation inspection"
                 }
                 $root = Find-UiAutomationElement `
