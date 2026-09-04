@@ -861,14 +861,15 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     修改无需重启。overlay 隐藏时 runtime 与产品 frame source 统一降至 `100 ms`，可靠 command
     仍可立即唤醒 runtime，重新显示的轮询延迟不超过 `100 ms`。越界值和 stale revision 保留旧
     runtime/config。刷新率变化仍未实现，因此总项保持未勾选。
-- [ ] 首帧前不出现黑框或不透明闪烁。
-  - 状态（2026-09-04）：双平台正式 `NativeOverlay` 以共享 presentation state 强制
+- [x] 首帧前不出现黑框或不透明闪烁。
+  - 验收证据（2026-09-04）：双平台正式 `NativeOverlay` 以共享 presentation state 强制
     “成功 draw/present 后才可见”；产品启动、隐藏后重显、overlay 设置重建、模型重建和独立
     renderer preview 均改为先提交并验证非空帧，再调用 `orderFrontRegardless`/`ShowWindow`。
     未提交帧的显示请求由 contract 拒绝，首帧失败保持窗口隐藏并拒绝候选 model commit。
-    本机 macOS release 产品 lifecycle smoke 已完成隐藏 `NSPanel` 的首帧 Metal present 后显示，
-    Windows x64 overlay target check 通过；Windows 真实合成器显示时序仍待 runner 复验，因此
-    总项暂不勾选。
+    本机 macOS release 产品 lifecycle smoke 已完成隐藏 `NSPanel` 的首帧 Metal present 后显示；
+    commits `0ea8997`、`5f5c9aa` 和 `2f8999e` 的 GitHub Actions run `33860274701` 已在 macOS job
+    `100982884758` 与 Windows job `100982884958` 通过完整 workspace 和产品 lifecycle smoke，
+    Windows smoke 包含真实 D3D11 present 后 `ShowWindow` 时序。
 - [ ] shutdown 先停 frame source，再释放 GPU/window。
 - [ ] 明确 sRGB/linear、预乘 alpha 和 texture color space，避免两平台颜色或边缘混合语义漂移。
 - [ ] present 失败、窗口隐藏和 drawable unavailable 时限流，不产生 busy loop 或日志风暴。
@@ -2141,6 +2142,16 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       固定 `100 ms`，可见时恢复目标间隔，非法值仍拒绝；runtime `recv_timeout` 与 GPUI 产品 frame
       source 消费同一策略，可靠 command 到达会提前结束 runtime 等待。边界单测覆盖最低/最高 FPS
       的隐藏策略。
+50. [ ] `P2-HIDDEN-MODEL-COMMIT`：overlay 隐藏时模型切换仍须完成 GPU prepare/commit。
+    - 依赖：可靠 model commit frame 槽、隐藏 `100 ms` 调度和首帧 presentation contract。
+    - 退出条件：隐藏 tick 只消费可靠模型提交，保留同 generation 的 ordinary latest frame 并
+      淘汰已被候选 supersede 的旧 generation data frame；候选完成一次隐藏
+      draw/present 验证后提交且窗口保持隐藏；失败保留旧 GPU owner；重显先同步 latest frame 并
+      present 后才显示；双平台产品 smoke、完整 Native workspace 门禁通过。
+    - 状态（2026-09-04）：`RenderConsumer::take_model_commit` 已隔离 control/data 消费，双平台
+      product tick 已实现隐藏候选验证和可见前再次 present。本机 macOS release 产品 smoke 已
+      完成隐藏切模、GPU generation 前进、保持不可见、重显及恢复原模型；Windows runner 与完整
+      workspace 证据待补，因此保持未勾选。
 
 ## 13. 待决策清单
 

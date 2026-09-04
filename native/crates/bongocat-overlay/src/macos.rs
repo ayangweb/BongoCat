@@ -348,12 +348,17 @@ impl ProductOverlaySession {
             self.options = next_options;
         }
         self.options.maximum_fps = runtime_snapshot.maximum_fps;
-        if !runtime_snapshot.overlay_visible {
+        let overlay_visible = runtime_snapshot.overlay_visible;
+        if !overlay_visible {
             self.overlay.set_visible(false)?;
-            return Ok(OverlayTickOutcome::Hidden);
         }
 
-        if let Some(frame) = self.render_consumer.take_latest() {
+        let next_frame = if overlay_visible {
+            self.render_consumer.take_latest()
+        } else {
+            self.render_consumer.take_model_commit()
+        };
+        if let Some(frame) = next_frame {
             let model_changed = frame.model_generation != self.overlay.model_generation;
             if model_changed {
                 let bounds = self.window_bounds()?;
@@ -376,26 +381,36 @@ impl ProductOverlaySession {
                         self.model_commit_rejections =
                             self.model_commit_rejections.saturating_add(1);
                         let _ = error;
-                        self.overlay.draw(self.frames_presented == 0)?;
-                        self.frames_presented = self.frames_presented.saturating_add(1);
-                        self.overlay.set_visible(true)?;
-                        return Ok(OverlayTickOutcome::Presented);
+                        if overlay_visible {
+                            self.overlay.draw(self.frames_presented == 0)?;
+                            self.frames_presented = self.frames_presented.saturating_add(1);
+                            self.overlay.set_visible(true)?;
+                            return Ok(OverlayTickOutcome::Presented);
+                        }
+                        return Ok(OverlayTickOutcome::Hidden);
                     }
                     Err(error) => return Err(error),
                 };
-                if let Err(error) = replacement
-                    .draw(true)
-                    .and_then(|()| replacement.set_visible(true))
-                {
+                let candidate = replacement.draw(true).and_then(|()| {
+                    if overlay_visible {
+                        replacement.set_visible(true)
+                    } else {
+                        Ok(())
+                    }
+                });
+                if let Err(error) = candidate {
                     if let Some(token) = frame.model_commit {
                         reject_model_commit(&self.runtime_client, &self.render_consumer, token)?;
                         self.model_commit_rejections =
                             self.model_commit_rejections.saturating_add(1);
                         let _ = error;
-                        self.overlay.draw(self.frames_presented == 0)?;
-                        self.frames_presented = self.frames_presented.saturating_add(1);
-                        self.overlay.set_visible(true)?;
-                        return Ok(OverlayTickOutcome::Presented);
+                        if overlay_visible {
+                            self.overlay.draw(self.frames_presented == 0)?;
+                            self.frames_presented = self.frames_presented.saturating_add(1);
+                            self.overlay.set_visible(true)?;
+                            return Ok(OverlayTickOutcome::Presented);
+                        }
+                        return Ok(OverlayTickOutcome::Hidden);
                     }
                     return Err(error);
                 }
@@ -414,7 +429,11 @@ impl ProductOverlaySession {
                 self.previous_snapshot = frame.snapshot;
                 self.overlay = replacement;
                 self.frames_presented = self.frames_presented.saturating_add(1);
-                return Ok(OverlayTickOutcome::Presented);
+                return Ok(if overlay_visible {
+                    OverlayTickOutcome::Presented
+                } else {
+                    OverlayTickOutcome::Hidden
+                });
             }
             match self.overlay.sync_frame(&frame) {
                 Ok(switched) => {
@@ -445,6 +464,9 @@ impl ProductOverlaySession {
                 Err(error) => return Err(error),
             }
         }
+        if !overlay_visible {
+            return Ok(OverlayTickOutcome::Hidden);
+        }
         self.overlay.draw(self.frames_presented == 0)?;
         self.frames_presented = self.frames_presented.saturating_add(1);
         self.overlay.set_visible(true)?;
@@ -460,6 +482,14 @@ impl ProductOverlaySession {
             rounded_u32(frame.size.height)?,
         )
         .validate()
+    }
+
+    pub(super) fn is_visible(&self) -> bool {
+        self.overlay.panel.isVisible()
+    }
+
+    pub(super) fn model_generation(&self) -> u64 {
+        self.overlay.model_generation
     }
 
     pub(super) fn stop_input(&mut self) -> Result<(), OverlayError> {

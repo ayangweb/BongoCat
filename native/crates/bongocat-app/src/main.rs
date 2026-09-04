@@ -17,7 +17,10 @@ use bongocat_platform::{SystemMenu, SystemMenuAction};
 #[cfg(target_os = "windows")]
 use bongocat_ui::SettingsView;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-use bongocat_ui::{SettingsError, SettingsErrorCode, SettingsWindowHandle, open_settings_window};
+use bongocat_ui::{
+    SettingsError, SettingsErrorCode, SettingsModelAvailability, SettingsModelKey,
+    SettingsModelOrigin, SettingsWindowHandle, open_settings_window,
+};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use gpui_kit::{
     App, Application as GpuiApplication, Global, assets::Assets, platform::current_platform,
@@ -59,6 +62,7 @@ struct RunOptions {
     run_duration: Duration,
     settings_window_smoke: bool,
     models_page_smoke: bool,
+    hidden_model_switch_smoke: bool,
     #[cfg(feature = "storage-test-injection")]
     configuration_recovery_smoke: bool,
     #[cfg(feature = "storage-test-injection")]
@@ -79,6 +83,7 @@ impl RunOptions {
         let mut run_seconds = DEFAULT_RUN_SECONDS;
         let mut settings_window_smoke = false;
         let mut models_page_smoke = false;
+        let mut hidden_model_switch_smoke = false;
         #[cfg(feature = "storage-test-injection")]
         let mut configuration_recovery_smoke = false;
         #[cfg(feature = "storage-test-injection")]
@@ -105,6 +110,7 @@ impl RunOptions {
                     models_page_smoke = true;
                     settings_window_smoke = true;
                 }
+                "--hidden-model-switch-smoke" => hidden_model_switch_smoke = true,
                 #[cfg(feature = "storage-test-injection")]
                 "--configuration-recovery-smoke" => configuration_recovery_smoke = true,
                 #[cfg(feature = "storage-test-injection")]
@@ -128,6 +134,7 @@ impl RunOptions {
             run_duration: Duration::from_secs(run_seconds),
             settings_window_smoke,
             models_page_smoke,
+            hidden_model_switch_smoke,
             #[cfg(feature = "storage-test-injection")]
             configuration_recovery_smoke,
             #[cfg(feature = "storage-test-injection")]
@@ -184,16 +191,16 @@ impl std::error::Error for RunOptionsError {}
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn usage() -> &'static str {
     #[cfg(all(target_os = "windows", feature = "storage-test-injection"))]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit.";
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit.";
 
     #[cfg(all(target_os = "windows", not(feature = "storage-test-injection")))]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit.";
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit.";
 
     #[cfg(all(target_os = "macos", feature = "storage-test-injection"))]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit.";
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit.";
 
     #[cfg(all(target_os = "macos", not(feature = "storage-test-injection")))]
-    "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit."
+    "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nA value of 0 keeps the application running until it is explicitly quit."
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -437,6 +444,25 @@ fn ensure_settings_window(cx: &mut App) -> Result<SettingsWindowHandle, String> 
         open_settings_window(settings_client, window_state, request_product_quit, cx)?;
     cx.global_mut::<ProductCoordinator>().settings_window = Some(window_handle.clone());
     Ok(window_handle)
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn product_overlay_state(cx: &mut App) -> Result<(u64, bool), String> {
+    let coordinator = cx
+        .try_global::<ProductCoordinator>()
+        .ok_or_else(|| "product coordinator is unavailable".to_owned())?;
+    #[cfg(target_os = "macos")]
+    let overlay = coordinator
+        .overlay
+        .as_ref()
+        .ok_or_else(|| "product overlay is unavailable".to_owned())?;
+    #[cfg(target_os = "windows")]
+    let overlay = coordinator.overlay.borrow();
+    #[cfg(target_os = "windows")]
+    let overlay = overlay
+        .as_ref()
+        .ok_or_else(|| "product overlay is unavailable".to_owned())?;
+    Ok((overlay.model_generation(), overlay.is_visible()))
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -1137,6 +1163,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let frame_failures = Arc::clone(&run_failures);
         #[cfg(target_os = "windows")]
         let frame_shutdown_requested = Arc::clone(&shutdown_requested);
+        let frame_settings_client = settings_client.clone();
         cx.spawn(async move |cx| {
             #[cfg(target_os = "windows")]
             let mut frame_active = true;
@@ -1176,7 +1203,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .expect("product overlay owner is present")
                                         .window_bounds()
                                         && last_overlay_bounds != Some(bounds)
-                                        && settings_client
+                                        && frame_settings_client
                                             .update_overlay_window_placement(
                                                 bounds.x,
                                                 bounds.y,
@@ -1225,7 +1252,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if result.is_ok()
                         && let Ok(bounds) = overlay.window_bounds()
                         && last_overlay_bounds != Some(bounds)
-                        && settings_client
+                        && frame_settings_client
                             .update_overlay_window_placement(
                                 bounds.x,
                                 bounds.y,
@@ -1305,6 +1332,129 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         })
         .detach();
+
+        if run_options.hidden_model_switch_smoke {
+            let smoke_client = settings_client.clone();
+            let smoke_failures = Arc::clone(&run_failures);
+            #[cfg(target_os = "windows")]
+            let smoke_shutdown_requested = Arc::clone(&shutdown_requested);
+            cx.spawn(async move |cx| {
+                Timer::after(Duration::from_millis(500)).await;
+                let result = async {
+                    let initial = smoke_client
+                        .read_snapshot()
+                        .await
+                        .map_err(|error| format!("read initial settings snapshot: {error}"))?;
+                    let initial_revision = initial
+                        .config_revision
+                        .ok_or_else(|| "initial configuration revision is unavailable".to_owned())?;
+                    let initial_model = initial
+                        .active_model
+                        .clone()
+                        .ok_or_else(|| "initial active model is unavailable".to_owned())?;
+                    let replacement_model = initial
+                        .model_catalog
+                        .entries
+                        .iter()
+                        .find(|entry| {
+                            entry.origin == SettingsModelOrigin::Preset
+                                && (entry.id != initial_model.id
+                                    || entry.origin != initial_model.origin)
+                                && matches!(
+                                    entry.availability,
+                                    SettingsModelAvailability::Ready { .. }
+                                )
+                        })
+                        .map(|entry| SettingsModelKey {
+                            id: entry.id.clone(),
+                            origin: entry.origin,
+                        })
+                        .ok_or_else(|| "no alternate ready preset model is available".to_owned())?;
+                    let (initial_generation, _) = cx.update(product_overlay_state)?;
+
+                    let hidden = smoke_client
+                        .set_overlay_visible(initial_revision, false)
+                        .await
+                        .map_err(|error| format!("hide overlay: {error}"))?;
+                    if hidden.overlay_visible {
+                        return Err("runtime did not hide the overlay".to_owned());
+                    }
+                    let hidden_revision = hidden
+                        .config_revision
+                        .ok_or_else(|| "hidden configuration revision is unavailable".to_owned())?;
+
+                    let switched = smoke_client
+                        .select_model(hidden_revision, replacement_model.clone())
+                        .await
+                        .map_err(|error| format!("switch hidden overlay model: {error}"))?;
+                    if switched.overlay_visible
+                        || switched.active_model.as_ref() != Some(&replacement_model)
+                    {
+                        return Err(
+                            "hidden model switch did not project the committed model".to_owned()
+                        );
+                    }
+                    let (switched_generation, visible) = cx.update(product_overlay_state)?;
+                    if visible {
+                        return Err("overlay became visible during hidden model switch".to_owned());
+                    }
+                    if switched_generation <= initial_generation {
+                        return Err("hidden model switch did not advance GPU generation".to_owned());
+                    }
+
+                    let switched_revision = switched.config_revision.ok_or_else(|| {
+                        "switched configuration revision is unavailable".to_owned()
+                    })?;
+                    let shown = smoke_client
+                        .set_overlay_visible(switched_revision, true)
+                        .await
+                        .map_err(|error| format!("show switched overlay: {error}"))?;
+                    let mut revealed = false;
+                    for _ in 0..200 {
+                        Timer::after(Duration::from_millis(10)).await;
+                        let (generation, visible) = cx.update(product_overlay_state)?;
+                        if visible && generation == switched_generation {
+                            revealed = true;
+                            break;
+                        }
+                    }
+                    if !revealed {
+                        return Err(
+                            "switched overlay was not presented before becoming visible".to_owned()
+                        );
+                    }
+
+                    let shown_revision = shown
+                        .config_revision
+                        .ok_or_else(|| "shown configuration revision is unavailable".to_owned())?;
+                    let restored = smoke_client
+                        .select_model(shown_revision, initial_model)
+                        .await
+                        .map_err(|error| format!("restore initial model: {error}"))?;
+                    if !initial.overlay_visible {
+                        let restored_revision = restored.config_revision.ok_or_else(|| {
+                            "restored configuration revision is unavailable".to_owned()
+                        })?;
+                        smoke_client
+                            .set_overlay_visible(restored_revision, false)
+                            .await
+                            .map_err(|error| format!("restore hidden overlay state: {error}"))?;
+                    }
+                    write_smoke_status("hidden model switch committed before reveal")
+                        .map_err(|error| error.to_string())?;
+                    Ok::<(), String>(())
+                }
+                .await;
+                if let Err(error) = result {
+                    record_failure(&smoke_failures, error);
+                }
+                #[cfg(target_os = "macos")]
+                cx.update(request_product_quit);
+                #[cfg(target_os = "windows")]
+                request_windows_product_quit(&smoke_shutdown_requested);
+            })
+            .detach();
+        }
 
         if run_options.settings_window_smoke {
             let smoke_failures = Arc::clone(&run_failures);
@@ -1935,6 +2085,7 @@ mod tests {
                 run_duration: Duration::from_secs(30),
                 settings_window_smoke: false,
                 models_page_smoke: false,
+                hidden_model_switch_smoke: false,
                 #[cfg(feature = "storage-test-injection")]
                 configuration_recovery_smoke: false,
                 #[cfg(feature = "storage-test-injection")]
@@ -1970,6 +2121,7 @@ mod tests {
         .expect("settings window smoke options");
         assert!(options.settings_window_smoke);
         assert!(!options.models_page_smoke);
+        assert!(!options.hidden_model_switch_smoke);
         assert_eq!(options.run_duration, Duration::from_secs(4));
     }
 
@@ -1979,6 +2131,7 @@ mod tests {
             .expect("models page smoke options");
         assert!(options.models_page_smoke);
         assert!(options.settings_window_smoke);
+        assert!(!options.hidden_model_switch_smoke);
         assert!(!options.system_menu_smoke);
         #[cfg(target_os = "macos")]
         assert!(!options.application_reopen_smoke);
@@ -1986,6 +2139,15 @@ mod tests {
         assert!(!options.startup_item_smoke);
         #[cfg(target_os = "windows")]
         assert!(!options.single_instance_smoke);
+    }
+
+    #[test]
+    fn hidden_model_switch_smoke_is_opt_in() {
+        let options = RunOptions::parse(["--hidden-model-switch-smoke".to_owned()])
+            .expect("hidden model switch smoke options");
+        assert!(options.hidden_model_switch_smoke);
+        assert!(!options.settings_window_smoke);
+        assert!(!options.models_page_smoke);
     }
 
     #[cfg(feature = "storage-test-injection")]

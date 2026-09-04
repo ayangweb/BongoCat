@@ -419,6 +419,29 @@ pub struct RenderConsumer {
 }
 
 impl RenderConsumer {
+    /// Consume only a reliable model commit frame, leaving current-generation
+    /// coalesced data available for the next visible render pass.
+    pub fn take_model_commit(&self) -> Option<RenderFrame> {
+        let mut state = self
+            .slot
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let frame = state.pending_model_commit.take();
+        if let Some(frame) = frame.as_ref() {
+            if state
+                .pending
+                .as_ref()
+                .is_some_and(|pending| pending.model_generation < frame.model_generation)
+            {
+                state.pending = None;
+                state.diagnostics.coalesced = state.diagnostics.coalesced.saturating_add(1);
+            }
+            state.diagnostics.consumed = state.diagnostics.consumed.saturating_add(1);
+        }
+        frame
+    }
+
     pub fn take_latest(&self) -> Option<RenderFrame> {
         let mut state = self
             .slot
@@ -616,6 +639,70 @@ mod tests {
                 published: 9_999,
                 coalesced: 9_997,
                 consumed: 2,
+                ..RenderTransportDiagnostics::default()
+            }
+        );
+    }
+
+    #[test]
+    fn model_commit_only_consumer_preserves_the_latest_data_frame() {
+        let (producer, consumer) = latest_render_channel();
+        producer.publish(frame(1)).expect("publish data frame");
+        assert!(consumer.take_model_commit().is_none());
+
+        let token = ModelCommitToken {
+            command_sequence: 7,
+            model_generation: 3,
+        };
+        let mut commit = frame(2);
+        commit.model_commit = Some(token);
+        producer.publish(commit).expect("publish model commit");
+
+        let commit = consumer.take_model_commit().expect("reliable commit frame");
+        assert_eq!(commit.model_commit, Some(token));
+        assert_eq!(commit.frame_number, 2);
+        assert_eq!(
+            consumer.take_latest().map(|frame| frame.frame_number),
+            Some(1)
+        );
+        assert_eq!(
+            consumer.diagnostics(),
+            RenderTransportDiagnostics {
+                published: 2,
+                consumed: 2,
+                ..RenderTransportDiagnostics::default()
+            }
+        );
+    }
+
+    #[test]
+    fn model_commit_only_consumer_discards_superseded_model_data() {
+        let (producer, consumer) = latest_render_channel();
+        let mut stale = frame(1);
+        stale.model_generation = 2;
+        producer.publish(stale).expect("publish stale data frame");
+
+        let token = ModelCommitToken {
+            command_sequence: 7,
+            model_generation: 3,
+        };
+        let mut commit = frame(2);
+        commit.model_commit = Some(token);
+        producer.publish(commit).expect("publish model commit");
+
+        assert_eq!(
+            consumer
+                .take_model_commit()
+                .and_then(|frame| frame.model_commit),
+            Some(token)
+        );
+        assert!(consumer.take_latest().is_none());
+        assert_eq!(
+            consumer.diagnostics(),
+            RenderTransportDiagnostics {
+                published: 2,
+                coalesced: 1,
+                consumed: 1,
                 ..RenderTransportDiagnostics::default()
             }
         );

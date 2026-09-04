@@ -324,6 +324,16 @@ impl ProductOverlaySession {
         }
     }
 
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    pub fn is_visible(&self) -> bool {
+        self.inner.is_visible()
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    pub fn model_generation(&self) -> u64 {
+        self.inner.model_generation()
+    }
+
     pub fn stop_input(&mut self) -> Result<(), OverlayError> {
         #[cfg(target_os = "macos")]
         {

@@ -452,6 +452,12 @@ renderer 负责遮罩、混合、裁剪、纹理上传、dirty flag、present �
 都遵守同一顺序。首帧提交或验证失败时窗口保持隐藏，模型准备失败仍保留当前可用窗口与模型，
 不得暴露未初始化 swapchain/drawable 造成黑框或不透明闪烁。
 
+overlay 隐藏时不连续消费或 present 普通动画帧，latest data frame 继续在 transport 中合并；
+可靠 model commit 被消费时淘汰早于候选 generation 的旧 data frame，避免重显回退 GPU owner。
+带 model commit token 的可靠控制帧仍由 `100 ms` 上限的隐藏 tick 单独消费：候选 GPU owner
+完成一次隐藏 draw/present 验证后回报 prepared 并替换旧 owner，失败则回报 rejected 并保留旧
+owner。后续重显必须先同步当前 latest frame、再次成功 present，再显示已提交的候选窗口。
+
 renderer 的模型资源准备结果通过稳定项目 error code 回到 runtime，不返回 GPU handle、
 平台对象或任意字符串协议。候选准备失败只结束对应模型 command，不得终止 frame loop、
 清空当前 GPU model 或让 runtime 提前宣布候选模型 active。

@@ -459,6 +459,10 @@ jobs:
         if: matrix.os == 'macos-latest'
         timeout-minutes: 10
         run: cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release -- --run-seconds 8 --settings-window-smoke --models-page-smoke
+      - name: Smoke hidden overlay model switching
+        if: matrix.os != 'ubuntu-latest'
+        timeout-minutes: 5
+        run: cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release -- --run-seconds 20 --hidden-model-switch-smoke
       - name: Smoke macOS configuration recovery window
         if: matrix.os == 'macos-latest'
         run: |
