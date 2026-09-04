@@ -681,6 +681,9 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
         ApplicationState, BuildEnvironment, StateStore, StorageLayout, WindowPlacement,
     };
 
+    const RESIZED_WIDTH: u32 = 700;
+    const RESIZED_HEIGHT: u32 = 520;
+
     let root = env::temp_dir().join(format!(
         "bongocat-settings-window-state-smoke-{}",
         std::process::id()
@@ -741,16 +744,22 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
                 })?;
                 window
                     .update(cx, |_, window, _| {
-                        window.resize(size(px(920.0), px(680.0)));
+                        window.resize(size(
+                            px(RESIZED_WIDTH as f32),
+                            px(RESIZED_HEIGHT as f32),
+                        ));
                     })
                     .map_err(|error| {
                         io::Error::other(format!("resize settings window: {error}"))
                     })?;
                 let mut expected = None;
+                let mut last_resized = window_state.placement();
                 for _ in 0..200 {
                     let current = window_state.placement();
-                    if current
-                        .is_some_and(|placement| (placement.width, placement.height) == (920, 680))
+                    last_resized = current;
+                    if current.is_some_and(|placement| {
+                        (placement.width, placement.height) == (RESIZED_WIDTH, RESIZED_HEIGHT)
+                    })
                     {
                         expected = current;
                         break;
@@ -758,7 +767,12 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
                     Timer::after(Duration::from_millis(10)).await;
                 }
                 let expected = expected.ok_or_else(|| {
-                    io::Error::other("settings window bounds observer did not publish resize")
+                    let observed = last_resized
+                        .map(|placement| format!("{}x{}", placement.width, placement.height))
+                        .unwrap_or_else(|| "unavailable".to_owned());
+                    io::Error::other(format!(
+                        "settings window bounds observer reported {observed}, expected {RESIZED_WIDTH}x{RESIZED_HEIGHT}"
+                    ))
                 })?;
                 if (expected.x, expected.y, expected.maximized)
                     != (initial.x, initial.y, initial.maximized)
