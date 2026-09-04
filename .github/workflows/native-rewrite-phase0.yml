@@ -187,6 +187,7 @@ jobs:
             exit $LASTEXITCODE
           }
           $executable = Join-Path $PWD "native/target/release/bongocat-app.exe"
+          Add-Type -AssemblyName UIAutomationTypes
           Add-Type -AssemblyName UIAutomationClient
           function Find-UiAutomationElement {
             param(
@@ -489,6 +490,7 @@ jobs:
             -PassThru `
             -RedirectStandardOutput $stdout `
             -RedirectStandardError $stderr
+          Add-Type -AssemblyName UIAutomationTypes
           Add-Type -AssemblyName UIAutomationClient
           $deadline = [DateTime]::UtcNow.AddSeconds(10)
           $processCondition = [System.Windows.Automation.PropertyCondition]::new(
@@ -1339,6 +1341,7 @@ jobs:
             -PassThru `
             -RedirectStandardOutput $stdout `
             -RedirectStandardError $stderr
+          Add-Type -AssemblyName UIAutomationTypes
           Add-Type -AssemblyName UIAutomationClient
           $windowDeadline = [DateTime]::UtcNow.AddSeconds(15)
           $processCondition = [System.Windows.Automation.PropertyCondition]::new(
