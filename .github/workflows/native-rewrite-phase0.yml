@@ -471,8 +471,14 @@ jobs:
       - name: Smoke macOS settings window state restore
         if: matrix.os == 'macos-latest'
         run: |
+          set +e
           output=$(cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release --features storage-test-injection --target-dir native/target/storage-test-injection -- --settings-window-state-smoke 2>&1)
+          status=$?
+          set -e
           printf '%s\n' "$output"
+          if ((status != 0)); then
+            exit "$status"
+          fi
           grep -Fq 'bongocat-app: settings window state restored after restart' <<<"$output"
       - name: Smoke Windows configuration recovery window
         if: matrix.os == 'windows-latest'
