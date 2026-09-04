@@ -244,7 +244,7 @@ impl Default for NativeConfig {
             },
             appearance: AppearanceConfig {
                 theme: Theme::System,
-                language: "en-US".into(),
+                language: "system".into(),
             },
             overlay: OverlayConfig {
                 visible: true,
@@ -749,7 +749,7 @@ mod tests {
         development.commit(&dev_config).unwrap();
         assert_eq!(
             production.load_or_default().unwrap().appearance.language,
-            "en-US"
+            "system"
         );
         assert_eq!(
             development.load_or_default().unwrap().appearance.language,
