@@ -2227,7 +2227,7 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       job `101026266252` 均以同一 release executable 通过 `panic=abort` 子进程、固定匿名日志、
       config 字节不变、unclean 重启分类、marker 清理和正常 shutdown 验证。默认产品 CLI 继续拒绝
       两个私有测试参数，完整 Native workspace 门禁同时通过。
-55. [ ] `P5-STATUS-ICON-VISIBILITY`：让当前 v1 的菜单栏/托盘状态图标可即时隐藏和恢复。
+55. [x] `P5-STATUS-ICON-VISIBILITY`：让当前 v1 的菜单栏/托盘状态图标可即时隐藏和恢复。
     - 依赖：`P7-SYSTEM-MENU-LIFECYCLE`、当前 v1 `application.show_status_icon`、settings revision/CAS
       和 GPUI Kit switch。
     - 退出条件：配置值通过强类型 snapshot/command 往返；平台主线程先应用显隐，Application owner
@@ -2235,9 +2235,14 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       remove/recreate `NSStatusItem` 都保留唯一菜单事件 owner；启动恢复已保存值；General 控件具备
       keyboard/AccessKit switch 语义；定向测试、完整 Native workspace 与双平台 release system-menu
       smoke 通过。
-    - 状态（2026-09-04）：代码、Technical Design、transaction failure 回归和既有 system-menu smoke
-      扩展已完成；本机 app/platform/UI 定向测试、macOS release 产品 smoke 及 Windows x64/ARM64
-      platform source check 通过。双平台 CI release smoke 证据待补，因此保持未勾选。
+    - 验收证据（2026-09-04）：commit `8632ae5` 完成强类型 command/snapshot、主线程平台桥、
+      config commit/rollback、双平台 status-item owner、启动恢复、GPUI Kit switch 与 AccessKit 语义；
+      本机 app/platform/UI 定向测试、macOS release 产品 smoke、Windows x64/ARM64 platform source
+      check 和完整 Native 门禁通过。CI run `33877770376` 最终全绿；首次完整 macOS job
+      `101038752799` 与 Windows job `101038752918` 都通过增强后的 release
+      `Smoke native system menu lifecycle`。独立 macOS GPUI spike 首次因 tooltip 延迟、第二次因无显示
+      runner 的 Metal drawable-pool 测量抖动失败，第三次 job `101044187976` 全部通过；两次重跑均未
+      掩盖产品 job，且最终 run 保留完整成功证据。
 
 ## 13. 待决策清单
 
