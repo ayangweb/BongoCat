@@ -2279,16 +2279,19 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       Native jobs `101091871906`/`101091871884`/`101091871820` 均通过语言解析、持久化、重启、
       stale revision、UI contract、完整 workspace test、严格 Clippy 与 release check，Windows/macOS
       release settings smoke 同时通过。其它三种历史语言和剩余页面文案仍由 UI 质量总项跟踪。
-58. [ ] `P5-GENERAL-LOCALIZATION`：完成当前 General 页面及辅助功能语义的中英本地化。
+58. [x] `P5-GENERAL-LOCALIZATION`：完成当前 General 页面及辅助功能语义的中英本地化。
     - 依赖：`P5-APPLICATION-LANGUAGE`、GPUI Kit Settings 页面和项目 AccessKit tree。
     - 退出条件：Overlay、Model interaction、Input、Application 分组的当前可见标题、描述、动态
       启动项状态和 stepper action 均从同一闭合文案表读取；可见控件与 AX/UIA label/value 不漂移；
       中文 800x600 隔离 smoke 覆盖 General 页面、窗口状态恢复和有序 shutdown；删除未接入模块树的
       旧 General renderer；UI 定向测试、严格 Clippy、完整 Native workspace 与双平台 CI 通过。
-    - 状态（2026-09-05）：主渲染、启动项状态和项目 AccessKit tree 已改用同一中英文案表；
-      未被模块树引用的旧 `window/general.rs` 已删除。UI 48 项测试、严格 Clippy、完整 Native
-      workspace test 和 release check 本机通过；macOS 隔离 release smoke 已验证中文 General 页、
-      800x600 状态恢复与 shutdown，Windows smoke 和双平台 CI 待验证。
+    - 验收证据（2026-09-05）：实现提交 `f319556` 将主渲染、动态启动项状态和项目 AccessKit
+      tree 收敛到同一中英文案表，删除未接入模块树的旧 `window/general.rs`；本机 UI 48 项测试、
+      严格 Clippy、完整 Native workspace test、release check 与 macOS 隔离 release smoke 通过。
+      CI run `33900420623` 的 macOS/Windows/Ubuntu Native jobs
+      `101112924277`/`101112924307`/`101112924317` 全绿；Windows 与 macOS 日志均实际输出
+      `Chinese General localization verified` 和 `settings window state restored after restart`，并继续
+      通过配置恢复、shutdown 及各自剩余平台 smoke。
 
 ## 13. 待决策清单
 
