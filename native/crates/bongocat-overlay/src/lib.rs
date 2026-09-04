@@ -11,13 +11,24 @@ mod windows;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_platform::PlatformInputServiceStatus;
 use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError, ShortcutDispatcher};
-use bongocat_render::{RenderConsumer, RenderTransportDiagnostics};
+use bongocat_render::{CanvasInfo, RenderConsumer, RenderTransportDiagnostics};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_runtime::PlatformInputDiagnosticsProducer;
 use bongocat_runtime::{
     CursorProducer, GamepadAxisProducer, InputProducer, OverlaySettings, RuntimeClient,
 };
 use std::{fmt, path::Path, time::Duration};
+
+pub const DEFAULT_OVERLAY_WINDOW_WIDTH: u32 = 350;
+const MIN_OVERLAY_WINDOW_DIMENSION: f32 = 64.0;
+
+fn default_overlay_window_dimensions(canvas: CanvasInfo) -> (f32, f32) {
+    let canvas_width = canvas.width.max(MIN_OVERLAY_WINDOW_DIMENSION);
+    let canvas_height = canvas.height.max(MIN_OVERLAY_WINDOW_DIMENSION);
+    let width = DEFAULT_OVERLAY_WINDOW_WIDTH as f32;
+    let height = (width * canvas_height / canvas_width).max(MIN_OVERLAY_WINDOW_DIMENSION);
+    (width, height)
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct OverlaySessionOptions {
@@ -496,6 +507,27 @@ mod tests {
                 .validate()
                 .is_err()
         );
+    }
+
+    #[test]
+    fn default_overlay_height_follows_the_model_aspect_ratio() {
+        let landscape = CanvasInfo {
+            width: 700.0,
+            height: 400.0,
+            origin_x: 350.0,
+            origin_y: 200.0,
+            pixels_per_unit: 400.0,
+        };
+        let portrait = CanvasInfo {
+            width: 350.0,
+            height: 700.0,
+            origin_x: 175.0,
+            origin_y: 350.0,
+            pixels_per_unit: 350.0,
+        };
+
+        assert_eq!(default_overlay_window_dimensions(landscape), (350.0, 200.0));
+        assert_eq!(default_overlay_window_dimensions(portrait), (350.0, 700.0));
     }
 
     #[test]

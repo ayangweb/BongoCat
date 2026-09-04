@@ -1,13 +1,13 @@
 use crate::{
     OverlayError, OverlaySessionOptions, OverlayTickOutcome, OverlayWindowBounds, PreviewReport,
-    ProductOverlayReport, validate_model_generation_advance,
+    ProductOverlayReport, default_overlay_window_dimensions, validate_model_generation_advance,
 };
 use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
 use bongocat_platform::{
     MacInputService, PlatformInputDiagnostics, PlatformInputError, ShortcutDispatcher,
 };
 use bongocat_render::{
-    BlendMode, CanvasInfo, DrawableId, KeyAssetId, KeyOverlay, ModelBounds, ModelCommitErrorCode,
+    BlendMode, DrawableId, KeyAssetId, KeyOverlay, ModelBounds, ModelCommitErrorCode,
     ModelCommitFeedback, ModelCommitOutcome, ModelCommitToken, RenderConsumer, RenderFrame,
     RenderResources, RenderSnapshot, TextureAsset, TextureId,
 };
@@ -46,7 +46,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-const MIN_WINDOW_DIMENSION: f64 = 64.0;
 const FRAME_INTERVAL: Duration = Duration::from_micros(16_667);
 const RUNTIME_TIMEOUT: Duration = Duration::from_millis(250);
 const METAL_COMPLETION_TIMEOUT: Duration = Duration::from_secs(2);
@@ -947,10 +946,11 @@ impl NativeOverlay {
     ) -> Result<Self, OverlayError> {
         let bounds = bounds.filter(|bounds| overlay_bounds_visible(mtm, *bounds));
         let window_scale = f64::from(options.scale_percent) / 100.0;
-        let (base_width, base_height) = content_dimensions(frame.snapshot.canvas);
-        let window_width =
-            bounds.map_or(base_width * window_scale, |bounds| f64::from(bounds.width));
-        let window_height = bounds.map_or(base_height * window_scale, |bounds| {
+        let (base_width, base_height) = default_overlay_window_dimensions(frame.snapshot.canvas);
+        let window_width = bounds.map_or(f64::from(base_width) * window_scale, |bounds| {
+            f64::from(bounds.width)
+        });
+        let window_height = bounds.map_or(f64::from(base_height) * window_scale, |bounds| {
             f64::from(bounds.height)
         });
         let origin = bounds.map_or_else(
@@ -1547,13 +1547,6 @@ impl GpuModel {
     }
 }
 
-fn content_dimensions(canvas: CanvasInfo) -> (f64, f64) {
-    (
-        f64::from(canvas.width.max(MIN_WINDOW_DIMENSION as f32)),
-        f64::from(canvas.height.max(MIN_WINDOW_DIMENSION as f32)),
-    )
-}
-
 impl Drop for NativeOverlay {
     fn drop(&mut self) {
         self.panel.setContentView(None);
@@ -1953,6 +1946,7 @@ fn verify_non_empty_frame(texture: &metal::TextureRef) -> Result<(), OverlayErro
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bongocat_render::CanvasInfo;
 
     #[test]
     fn model_transform_preserves_aspect_ratio() {
@@ -1975,18 +1969,6 @@ mod tests {
             model_transform(ModelBounds::from_canvas(canvas), 800.0, 800.0, true),
             [-1.0, 1.0, 0.0, -0.0]
         );
-    }
-
-    #[test]
-    fn window_dimensions_follow_canvas_pixels() {
-        let canvas = CanvasInfo {
-            width: 612.0,
-            height: 354.0,
-            origin_x: 306.0,
-            origin_y: 177.0,
-            pixels_per_unit: 354.0,
-        };
-        assert_eq!(content_dimensions(canvas), (612.0, 354.0));
     }
 
     #[test]

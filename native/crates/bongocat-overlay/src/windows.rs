@@ -1,6 +1,6 @@
 use crate::{
     OverlayError, OverlaySessionOptions, OverlayTickOutcome, OverlayWindowBounds, PreviewReport,
-    ProductOverlayReport, validate_model_generation_advance,
+    ProductOverlayReport, default_overlay_window_dimensions, validate_model_generation_advance,
 };
 use bongocat_model::{CommittedModel, ModelId, ModelPackageLimits, PresetModelCatalog};
 use bongocat_platform::{
@@ -355,7 +355,7 @@ impl OverlayWindow {
             extended |= WS_EX_TRANSPARENT;
         }
         let scale = options.scale_percent;
-        let (base_width, base_height) = content_dimensions(canvas);
+        let (base_width, base_height) = default_overlay_window_dimensions(canvas);
         let logical_width = (base_width * f32::from(scale) / 100.0).round() as u32;
         let logical_height = (base_height * f32::from(scale) / 100.0).round() as u32;
         let cursor = current_cursor_position();
@@ -2376,10 +2376,6 @@ fn model_transform(
     [scale_x, scale_y, offset_x, -center_y * scale_y]
 }
 
-fn content_dimensions(canvas: CanvasInfo) -> (f32, f32) {
-    (canvas.width.max(64.0), canvas.height.max(64.0))
-}
-
 fn logical_to_physical(logical: u32, dpi: u32) -> WindowsResult<u32> {
     let physical = (u64::from(logical) * u64::from(dpi) + 48) / 96;
     if physical == 0 || physical > i32::MAX as u64 {
@@ -2454,18 +2450,6 @@ mod tests {
             model_transform(ModelBounds::from_canvas(canvas), 800.0, 800.0, true),
             [-1.0, 1.0, 0.0, -0.0]
         );
-    }
-
-    #[test]
-    fn window_dimensions_follow_canvas_pixels() {
-        let canvas = CanvasInfo {
-            width: 612.0,
-            height: 354.0,
-            origin_x: 306.0,
-            origin_y: 177.0,
-            pixels_per_unit: 354.0,
-        };
-        assert_eq!(content_dimensions(canvas), (612.0, 354.0));
     }
 
     #[test]

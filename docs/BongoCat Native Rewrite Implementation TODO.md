@@ -1981,7 +1981,9 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
         Windows input/config job `99500010128` 全部通过；Windows 原生状态 smoke 输出与 macOS
         release smoke 一致。2026-09-02 增补运行中落盘、配置/模型更新不覆盖状态和 overlay 完整
         bounds 恢复；2026-09-04 将当前完整 state 结构重置为 v1。更新后的 Windows/macOS 实机
-        显示器/DPI 热切换仍属于后续平台矩阵。
+        显示器/DPI 热切换仍属于后续平台矩阵。2026-09-04 又将无已保存 bounds 时的
+        `100%` 默认宽度统一为 `350px`，高度按当前模型 Canvas 宽高比自适应；完整 bounds 恢复、变化持久化和
+        缩放时按比例更新的契约不变。
 45. [ ] `P2-GAMEPAD-RUNTIME`：将双平台 GameController/XInput producer 接入正式 runtime。
     - 依赖：`InputControl::Gamepad` 按钮语义、Gamepad axis keyed latest-value contract、现有
       Windows/macOS 平台 producer spike。
