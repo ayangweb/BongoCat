@@ -2292,17 +2292,20 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       `101112924277`/`101112924307`/`101112924317` 全绿；Windows 与 macOS 日志均实际输出
       `Chinese General localization verified` 和 `settings window state restored after restart`，并继续
       通过配置恢复、shutdown 及各自剩余平台 smoke。
-59. [ ] `P5-MODELS-LOCALIZATION`：完成当前 Models 页面及模型管理状态的中英本地化。
+59. [x] `P5-MODELS-LOCALIZATION`：完成当前 Models 页面及模型管理状态的中英本地化。
     - 依赖：`P5-APPLICATION-LANGUAGE`、`P5-GENERAL-LOCALIZATION`、GPUI Kit Models 页面和
       模型 catalog/import typed contract。
     - 退出条件：页面、分组、导入控件、模型来源与资源计数、有效性诊断、空/错误/进度状态、
       激活与删除确认均从同一闭合文案表读取；Model ID placeholder 随语言更新；中文隔离 smoke
       覆盖预置模型 catalog、导入初态、800x600 窗口恢复和有序 shutdown；UI 定向测试、严格
       Clippy、完整 Native workspace 与双平台 CI 通过。
-    - 状态（2026-09-05）：Models 页面、模型/导入动态状态、全部稳定 settings error、Model ID
-      placeholder 与 shell footer 已接入同一中英文案源；UI 50 项测试、严格 Clippy、完整 Native
-      workspace test 和 release check 本机通过。macOS 隔离 release smoke 已实际输出中文 General、
-      Models 和窗口重启恢复 marker；Windows smoke 与双平台 CI 待验证。
+    - 验收证据（2026-09-05）：实现提交 `8714740` 将 Models 页面、模型/导入动态状态、全部稳定
+      settings error、Model ID placeholder 与 shell footer 接入同一中英文案源；UI 50 项测试、
+      严格 Clippy、完整 Native workspace test、release check 和 macOS 隔离 release smoke 本机通过。
+      CI run `33905710597` 的 Ubuntu/macOS/Windows Native jobs
+      `101130018327`/`101130018508`/`101130018510` 全绿；macOS/Windows 日志均实际输出
+      `Chinese Models localization verified`，并继续通过 800x600 窗口重启恢复、shutdown 和剩余
+      平台 smoke。
 
 ## 13. 待决策清单
 
