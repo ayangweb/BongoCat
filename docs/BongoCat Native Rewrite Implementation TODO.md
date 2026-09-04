@@ -1991,6 +1991,9 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       release、显式 Production 和隐式环境拒绝门禁；macOS job 还在 Cargo 前覆盖缺失、空与未知
       packaging 值，双平台 GPUI、Windows input/config、dependency policy 与 config-store jobs
       同时通过，退出条件满足。
+    - 补充证据（2026-09-05）：修复 macOS 打包脚本中 host target 的 `awk` 引号错误；
+      `sh -n`、Production `.app` 打包、Bundle ID/最低系统版本、release provenance 字段和
+      `codesign --verify --deep --strict` 均在本机 Apple Silicon 通过。
 42. [x] `P6-STORAGE-LAYOUT-BOUNDARY`：隔离正式平台路径解析与临时测试存储注入。
     - 依赖：`P6-BUILD-ENV-METADATA`、ADR-0008、正式 `Application::start` 与 recovery window smoke。
     - 退出条件：默认产品 API/CLI 不接受 `StorageLayout`、根目录或 recovery storage override；

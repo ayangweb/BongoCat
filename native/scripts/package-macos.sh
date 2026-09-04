@@ -34,7 +34,7 @@ cp -R "$NATIVE_DIR/resources/models" "$RESOURCES_PATH/models"
 python3 "$NATIVE_DIR/../tools/record-native-provenance.py" \
     --workspace "$NATIVE_DIR" \
     --output "$RESOURCES_PATH/build-provenance.json" \
-    --target "$(rustc -vV | awk -F': ' '$1 == \"host\" { print $2; exit }')" \
+    --target "$(rustc -vV | awk -F': ' '$1 == "host" { print $2; exit }')" \
     --profile release \
     --features default \
     --environment "$BONGOCAT_BUILD_ENV"
