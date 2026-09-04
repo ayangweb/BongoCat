@@ -296,7 +296,7 @@ impl Application {
                 Err(error) => return Err(error.into()),
             };
         let operational = config_status == ApplicationConfigStatus::Ready;
-        let shortcut_table = ShortcutTable::new(config.shortcuts.compile()?);
+        let shortcut_table = ShortcutTable::new(active_shortcuts(&config)?);
         let (motion_audio, motion_audio_client) =
             match MotionAudioService::start(AUDIO_COMMAND_CAPACITY) {
                 Ok(service) => {
@@ -439,10 +439,7 @@ impl Application {
     /// Compile the currently committed shortcut bindings for a platform
     /// adapter. This is read-only and never performs registration or capture.
     pub fn compiled_shortcuts(&self) -> Result<CompiledShortcuts, ApplicationError> {
-        self.config
-            .shortcuts
-            .compile()
-            .map_err(ApplicationError::Config)
+        active_shortcuts(&self.config).map_err(ApplicationError::Config)
     }
 
     pub fn shortcut_table(&self) -> ShortcutTable {
@@ -787,13 +784,31 @@ impl Application {
         };
         next_config.shortcuts = next_config.shortcuts.canonicalized()?;
         next_config.validate()?;
+        let compiled = active_shortcuts(&next_config)?;
         let next_revision = self
             .config_store
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;
         let snapshot = self.runtime.client().snapshot();
         self.config = next_config;
-        self.shortcut_table
-            .replace(self.config.shortcuts.compile()?);
+        self.shortcut_table.replace(compiled);
+        self.config_revision = Some(next_revision);
+        Ok(snapshot)
+    }
+
+    pub fn set_behavior_shortcuts_enabled(
+        &mut self,
+        enabled: bool,
+    ) -> Result<RuntimeSnapshot, ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.model.enable_behavior_shortcuts = enabled;
+        next_config.validate()?;
+        let compiled = active_shortcuts(&next_config)?;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        let snapshot = self.runtime.client().snapshot();
+        self.config = next_config;
+        self.shortcut_table.replace(compiled);
         self.config_revision = Some(next_revision);
         Ok(snapshot)
     }
@@ -802,13 +817,13 @@ impl Application {
         let mut next_config = self.config.clone();
         next_config.shortcuts = ShortcutConfig::default();
         next_config.validate()?;
+        let compiled = active_shortcuts(&next_config)?;
         let next_revision = self
             .config_store
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;
         let snapshot = self.runtime.client().snapshot();
         self.config = next_config;
-        self.shortcut_table
-            .replace(self.config.shortcuts.compile()?);
+        self.shortcut_table.replace(compiled);
         self.config_revision = Some(next_revision);
         Ok(snapshot)
     }
@@ -1092,6 +1107,14 @@ const fn model_settings_from_config(config: &NativeConfig) -> ModelSettings {
     }
 }
 
+fn active_shortcuts(config: &NativeConfig) -> Result<CompiledShortcuts, ConfigError> {
+    let mut shortcuts = config.shortcuts.clone();
+    if !config.model.enable_behavior_shortcuts {
+        shortcuts.model_behaviors.clear();
+    }
+    shortcuts.compile()
+}
+
 fn gamepad_axis_settings_from_config(
     config: &NativeConfig,
 ) -> Result<GamepadAxisSettings, ConfigError> {
@@ -1197,27 +1220,58 @@ mod tests {
     fn application_compiles_committed_shortcuts_for_platform_adapters() {
         let base = tempdir().expect("temp directory");
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
-        let mut application = Application::start_with_layout(layout).expect("start application");
+        let mut application =
+            Application::start_with_layout(layout.clone()).expect("start application");
         let shortcuts = bongocat_ui::SettingsShortcuts {
             commands: vec![bongocat_ui::SettingsShortcutBinding {
                 command: "toggle_overlay".to_owned(),
                 shortcut: "ctrl+shift+b".to_owned(),
             }],
-            model_behaviors: Vec::new(),
+            model_behaviors: vec![bongocat_ui::SettingsModelBehaviorBinding {
+                model_id: "standard".to_owned(),
+                behavior_id: "expression:happy".to_owned(),
+                shortcut: "alt+m".to_owned(),
+            }],
         };
         application
             .set_shortcuts(shortcuts)
             .expect("persist shortcuts");
-        let compiled = application
-            .compiled_shortcuts()
-            .expect("compile committed shortcuts");
+        let compiled = application.shortcut_table().load();
         let modifiers = bongocat_config::ShortcutModifiers::from_bits(
             bongocat_config::ShortcutModifiers::CONTROL | bongocat_config::ShortcutModifiers::SHIFT,
         )
         .expect("valid modifiers");
         assert!(compiled.resolve(modifiers, "B").is_some());
         assert!(compiled.resolve(modifiers, "C").is_none());
+        let alt =
+            bongocat_config::ShortcutModifiers::from_bits(bongocat_config::ShortcutModifiers::ALT)
+                .expect("valid modifiers");
+        assert!(compiled.resolve(alt, "M").is_some());
+
+        application
+            .set_behavior_shortcuts_enabled(false)
+            .expect("disable behavior shortcuts");
+        let disabled = application.shortcut_table().load();
+        assert!(disabled.resolve(modifiers, "B").is_some());
+        assert!(disabled.resolve(alt, "M").is_none());
+        assert!(!application.config().model.enable_behavior_shortcuts);
         application.shutdown().expect("clean shutdown");
+
+        let mut restarted = Application::start_with_layout(layout).expect("restart application");
+        assert!(
+            restarted
+                .shortcut_table()
+                .load()
+                .resolve(alt, "M")
+                .is_none()
+        );
+        restarted
+            .set_behavior_shortcuts_enabled(true)
+            .expect("re-enable behavior shortcuts");
+        let reenabled = restarted.shortcut_table().load();
+        assert!(reenabled.resolve(modifiers, "B").is_some());
+        assert!(reenabled.resolve(alt, "M").is_some());
+        restarted.shutdown().expect("clean restarted shutdown");
     }
 
     #[test]

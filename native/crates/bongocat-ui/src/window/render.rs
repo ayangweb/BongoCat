@@ -34,6 +34,7 @@ impl Render for SettingsView {
                     ACCESSIBILITY_MAXIMUM_FPS_DECREASE => Some(&self.maximum_fps_decrease_focus),
                     ACCESSIBILITY_MAXIMUM_FPS_INCREASE => Some(&self.maximum_fps_increase_focus),
                     ACCESSIBILITY_AUDIO => Some(&self.audio_focus),
+                    ACCESSIBILITY_BEHAVIOR_SHORTCUTS => Some(&self.behavior_shortcuts_focus),
                     ACCESSIBILITY_MIRROR => Some(&self.mirror_focus),
                     ACCESSIBILITY_MIRROR_POINTER => Some(&self.mirror_pointer_focus),
                     ACCESSIBILITY_IGNORE_POINTER => Some(&self.ignore_pointer_focus),
@@ -377,6 +378,29 @@ impl Render for SettingsView {
                 SettingGroup::new()
                     .title(ui_text(language, UiText::ModelInteraction))
                     .items(vec![
+                        SettingItem::new(
+                            ui_text(language, UiText::BehaviorShortcuts),
+                            SettingField::switch(
+                                {
+                                    let view = view_entity.clone();
+                                    move |app| {
+                                        view.read(app)
+                                            .snapshot
+                                            .as_ref()
+                                            .is_some_and(|s| s.behavior_shortcuts_enabled)
+                                    }
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |value, app| {
+                                        view.update(app, |view, cx| {
+                                            view.set_behavior_shortcuts_enabled(value, cx)
+                                        });
+                                    }
+                                },
+                            ),
+                        )
+                        .description(ui_text(language, UiText::BehaviorShortcutsDescription)),
                         SettingItem::new(
                             ui_text(language, UiText::MirrorModel),
                             SettingField::switch(

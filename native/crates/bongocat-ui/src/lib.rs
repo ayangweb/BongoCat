@@ -312,6 +312,7 @@ pub struct SettingsSnapshot {
     pub overlay_visible: bool,
     pub overlay: SettingsOverlay,
     pub motion_audio_enabled: bool,
+    pub behavior_shortcuts_enabled: bool,
     pub maximum_fps: u16,
     pub model_settings: SettingsModelSettings,
     pub gamepad_axis_settings: SettingsGamepadAxisSettings,
@@ -929,6 +930,11 @@ pub enum SettingsCommand {
         enabled: bool,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    SetBehaviorShortcutsEnabled {
+        expected_config_revision: u64,
+        enabled: bool,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     SetMaximumFps {
         expected_config_revision: u64,
         maximum_fps: u16,
@@ -1137,6 +1143,19 @@ impl SettingsClient {
         enabled: bool,
     ) -> Result<SettingsSnapshot, SettingsError> {
         self.request(|reply| SettingsCommand::SetMotionAudioEnabled {
+            expected_config_revision,
+            enabled,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn set_behavior_shortcuts_enabled(
+        &self,
+        expected_config_revision: u64,
+        enabled: bool,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetBehaviorShortcutsEnabled {
             expected_config_revision,
             enabled,
             reply,
@@ -1366,6 +1385,18 @@ impl SettingsClient {
         enabled: bool,
     ) -> Result<SettingsSnapshot, SettingsError> {
         self.request_blocking(|reply| SettingsCommand::SetMotionAudioEnabled {
+            expected_config_revision,
+            enabled,
+            reply,
+        })
+    }
+
+    pub fn set_behavior_shortcuts_enabled_blocking(
+        &self,
+        expected_config_revision: u64,
+        enabled: bool,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::SetBehaviorShortcutsEnabled {
             expected_config_revision,
             enabled,
             reply,
@@ -2223,6 +2254,34 @@ mod tests {
     }
 
     #[test]
+    fn behavior_shortcuts_command_preserves_typed_state() {
+        let (client, endpoint) = SettingsClient::bounded(1);
+        let worker = thread::spawn(move || {
+            let SettingsCommand::SetBehaviorShortcutsEnabled {
+                expected_config_revision,
+                enabled,
+                reply,
+            } = endpoint
+                .recv_blocking()
+                .expect("behavior shortcuts command")
+            else {
+                panic!("unexpected command");
+            };
+            assert_eq!(expected_config_revision, 7);
+            assert!(!enabled);
+            let mut result = snapshot(8, true, true);
+            result.behavior_shortcuts_enabled = false;
+            reply.respond(Ok(result)).expect("behavior shortcuts reply");
+        });
+
+        let result = client
+            .set_behavior_shortcuts_enabled_blocking(7, false)
+            .expect("behavior shortcuts snapshot");
+        assert!(!result.behavior_shortcuts_enabled);
+        worker.join().expect("worker join");
+    }
+
+    #[test]
     fn settings_window_state_is_validated_and_shared_across_clones() {
         assert!(SettingsWindowPlacement::new(0, 0, 639, 600, false).is_none());
         assert!(SettingsWindowPlacement::new(1_000_001, 0, 800, 600, false).is_none());
@@ -2255,6 +2314,7 @@ mod tests {
             overlay_visible,
             overlay: SettingsOverlay::default(),
             motion_audio_enabled,
+            behavior_shortcuts_enabled: true,
             maximum_fps: 60,
             model_settings: SettingsModelSettings::default(),
             gamepad_axis_settings: SettingsGamepadAxisSettings::default(),

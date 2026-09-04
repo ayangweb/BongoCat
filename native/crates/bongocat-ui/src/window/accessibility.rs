@@ -106,6 +106,21 @@ impl SettingsView {
         if !disabled {
             audio_node = audio_node.clickable().focusable();
         }
+        let mut behavior_shortcuts_node = AccessibilityNode::new(
+            ACCESSIBILITY_BEHAVIOR_SHORTCUTS,
+            AccessibilityRole::Switch,
+            ui_text(language, UiText::BehaviorShortcuts),
+        )
+        .with_value(ui_text(language, UiText::BehaviorShortcutsDescription))
+        .with_toggle(if snapshot.is_some_and(|s| s.behavior_shortcuts_enabled) {
+            AccessibilityToggle::On
+        } else {
+            AccessibilityToggle::Off
+        })
+        .disabled(disabled);
+        if !disabled {
+            behavior_shortcuts_node = behavior_shortcuts_node.clickable().focusable();
+        }
         let model_settings = snapshot
             .map(|snapshot| snapshot.model_settings)
             .unwrap_or_default();
@@ -453,6 +468,7 @@ impl SettingsView {
             ACCESSIBILITY_MAXIMUM_FPS_DECREASE,
             ACCESSIBILITY_MAXIMUM_FPS_INCREASE,
             ACCESSIBILITY_AUDIO,
+            ACCESSIBILITY_BEHAVIOR_SHORTCUTS,
             ACCESSIBILITY_MIRROR,
             ACCESSIBILITY_MIRROR_POINTER,
             ACCESSIBILITY_IGNORE_POINTER,
@@ -512,6 +528,7 @@ impl SettingsView {
             maximum_fps_decrease_node,
             maximum_fps_increase_node,
             audio_node,
+            behavior_shortcuts_node,
             mirror_node,
             mirror_pointer_node,
             ignore_pointer_node,
@@ -615,6 +632,11 @@ impl SettingsView {
             ACCESSIBILITY_AUDIO => {
                 if let Some(snapshot) = self.snapshot.as_ref() {
                     self.set_motion_audio_enabled(!snapshot.motion_audio_enabled, cx);
+                }
+            }
+            ACCESSIBILITY_BEHAVIOR_SHORTCUTS => {
+                if let Some(snapshot) = self.snapshot.as_ref() {
+                    self.set_behavior_shortcuts_enabled(!snapshot.behavior_shortcuts_enabled, cx);
                 }
             }
             ACCESSIBILITY_MIRROR | ACCESSIBILITY_MIRROR_POINTER | ACCESSIBILITY_IGNORE_POINTER => {
@@ -741,6 +763,10 @@ impl SettingsView {
                 &self.maximum_fps_increase_focus,
             ),
             (ACCESSIBILITY_AUDIO, &self.audio_focus),
+            (
+                ACCESSIBILITY_BEHAVIOR_SHORTCUTS,
+                &self.behavior_shortcuts_focus,
+            ),
             (ACCESSIBILITY_STATUS_ICON, &self.status_icon_focus),
             #[cfg(target_os = "windows")]
             (ACCESSIBILITY_TASKBAR_ICON, &self.taskbar_icon_focus),

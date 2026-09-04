@@ -142,6 +142,10 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   按当前配置 revision 持久化，`open_settings` 交给 GPUI coordinator，避免平台线程直接触碰
   UI 生命周期。`open_settings` 通过线程安全的一次性请求位交给 GPUI frame source，后者在
   owner 线程复用现有窗口重开路径；forwarder 必须支持有界停止与 join。
+- `model.enable_behavior_shortcuts` 只控制 motion/expression 模型行为绑定是否进入活动的
+  `CompiledShortcuts`，不得清空或改写配置中的绑定，也不得禁用 `open_settings`、overlay 显隐、
+  镜像、穿透或置顶等应用级快捷键。开关变更必须经 revision-checked settings command 原子
+  持久化并替换共享 shortcut table；重新启用时从当前 v1 配置恢复全部已校验的模型行为绑定。
 - `application.show_status_icon` 通过独立的 revision-checked settings command 修改。settings worker
   以有界 request/reply bridge 请求平台主线程隐藏或重建状态图标，平台成功后才由 Application owner
   原子提交配置；配置提交失败时必须把图标恢复为旧状态。Windows 隐藏只执行 `NIM_DELETE`，macOS

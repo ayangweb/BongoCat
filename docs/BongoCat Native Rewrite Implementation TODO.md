@@ -2309,6 +2309,7 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       `101130018327`/`101130018508`/`101130018510` 全绿；macOS/Windows 日志均实际输出
       `Chinese Models localization verified`，并继续通过 800x600 窗口重启恢复、shutdown 和剩余
       平台 smoke。
+
 60. [x] `P5-DIAGNOSTICS-LOCALIZATION`：完成当前 Diagnostics 页面及辅助功能语义的中英本地化。
     - 依赖：`P5-APPLICATION-LANGUAGE`、`P5-GENERAL-LOCALIZATION`、`P5-MODELS-LOCALIZATION`、
       GPUI Kit Diagnostics 页面和现有 input/runtime/config/shortcut typed contract。
@@ -2323,6 +2324,22 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       `cargo check --workspace --release --locked` 全部通过；UI 定向测试 51 项、Diagnostics
       presentation/localization 回归均通过。macOS Input Monitoring/Accessibility 相关 4 项
       集成测试按设计保持 ignored，真实权限矩阵仍属于平台实机门禁，不影响本项文案闭环。
+
+61. [x] `P5-BEHAVIOR-SHORTCUT-TOGGLE`：让当前 v1 的模型行为快捷键开关作用于正式输入链路。
+    - 依赖：`P5-SHORTCUT-CONTRACT`、当前 v1 `model.enable_behavior_shortcuts`、settings
+      revision/CAS、共享 `ShortcutTable` 和 GPUI Kit switch。
+    - 退出条件：配置值通过强类型 snapshot/command 往返并在重启后恢复；禁用时仅从活动表移除
+      motion/expression 绑定，保留配置中的绑定和所有应用级快捷键；重新启用无需重录即可恢复；
+      stale revision 不改变配置或活动表；General 控件具备中英文本、keyboard/AccessKit switch
+      语义；定向测试、完整 Native workspace 门禁和 macOS release settings smoke 通过。
+    - 验收证据（2026-09-05）：Application 活动表过滤、settings typed command/snapshot、原子
+      持久化、GPUI Kit switch、中英文案和项目 AccessKit 语义已实现；测试覆盖应用级绑定保留、
+      模型行为绑定禁用、重启恢复、无需重录的重新启用、stale revision 和配置字节持久化。本机
+      format、严格 workspace Clippy、完整 workspace unit/integration/doc tests、release check、
+      共享 schema/fixture/input runner 与隔离 macOS release settings/state smoke 全部通过；4 项
+      macOS Input Monitoring/Accessibility 实机测试按既有权限门禁保持 ignored。最终补强断言另以
+      release test 实际执行通过；重复的 app-only debug Clippy 在无 CPU 的 rustc metadata 阶段被
+      中断，生产代码与原测试此前已通过的严格 workspace Clippy 结果不受影响。
 
 ## 13. 待决策清单
 

@@ -391,6 +391,15 @@ impl SettingsView {
             }
             for (id, label, value, toggled) in [
                 (
+                    ACCESSIBILITY_BEHAVIOR_SHORTCUTS,
+                    ui_text(snapshot.resolved_language, UiText::BehaviorShortcuts),
+                    ui_text(
+                        snapshot.resolved_language,
+                        UiText::BehaviorShortcutsDescription,
+                    ),
+                    snapshot.behavior_shortcuts_enabled,
+                ),
+                (
                     ACCESSIBILITY_MIRROR,
                     ui_text(snapshot.resolved_language, UiText::MirrorModel),
                     ui_text(snapshot.resolved_language, UiText::MirrorModelDescription),

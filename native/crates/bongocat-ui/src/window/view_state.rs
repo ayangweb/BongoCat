@@ -273,6 +273,7 @@ impl SettingsView {
             maximum_fps_decrease_focus: cx.focus_handle().tab_index(24).tab_stop(true),
             maximum_fps_increase_focus: cx.focus_handle().tab_index(25).tab_stop(true),
             audio_focus: cx.focus_handle().tab_index(11).tab_stop(true),
+            behavior_shortcuts_focus: cx.focus_handle().tab_index(19).tab_stop(true),
             mirror_focus: cx.focus_handle().tab_index(6).tab_stop(true),
             mirror_pointer_focus: cx.focus_handle().tab_index(7).tab_stop(true),
             ignore_pointer_focus: cx.focus_handle().tab_index(8).tab_stop(true),

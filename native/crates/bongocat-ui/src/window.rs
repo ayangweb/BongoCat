@@ -143,6 +143,8 @@ const ACCESSIBILITY_STATUS_ICON: AccessibilityNodeId = AccessibilityNodeId::new(
 const ACCESSIBILITY_TASKBAR_ICON: AccessibilityNodeId = AccessibilityNodeId::new(39);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_LANGUAGE: AccessibilityNodeId = AccessibilityNodeId::new(40);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_BEHAVIOR_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeId::new(41);
 
 type LanguageSelectState = SelectState<SearchableVec<&'static str>>;
 
@@ -181,6 +183,7 @@ enum PendingOperation {
     OverlayVisibility,
     OverlaySettings,
     MotionAudio,
+    BehaviorShortcuts,
     MaximumFps,
     ModelSettings,
     GamepadAxisSettings,
@@ -367,6 +370,7 @@ pub struct SettingsView {
     maximum_fps_decrease_focus: FocusHandle,
     maximum_fps_increase_focus: FocusHandle,
     audio_focus: FocusHandle,
+    behavior_shortcuts_focus: FocusHandle,
     mirror_focus: FocusHandle,
     mirror_pointer_focus: FocusHandle,
     ignore_pointer_focus: FocusHandle,
@@ -505,6 +509,14 @@ impl SettingsView {
                         .set_motion_audio_enabled(expected_config_revision, enabled)
                         .await
                 }
+                Some(SettingValue::BehaviorShortcutsEnabled {
+                    expected_config_revision,
+                    enabled,
+                }) => {
+                    client
+                        .set_behavior_shortcuts_enabled(expected_config_revision, enabled)
+                        .await
+                }
                 Some(SettingValue::MaximumFps {
                     expected_config_revision,
                     maximum_fps,
@@ -631,6 +643,10 @@ enum SettingValue {
         settings: SettingsOverlay,
     },
     MotionAudioEnabled {
+        expected_config_revision: u64,
+        enabled: bool,
+    },
+    BehaviorShortcutsEnabled {
         expected_config_revision: u64,
         enabled: bool,
     },

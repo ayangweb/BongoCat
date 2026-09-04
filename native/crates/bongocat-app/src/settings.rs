@@ -638,6 +638,26 @@ fn run_service(
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
+            SettingsCommand::SetBehaviorShortcutsEnabled {
+                expected_config_revision,
+                enabled,
+                reply,
+            } => {
+                let result = require_operational(&application)
+                    .map_err(map_application_error)
+                    .and_then(|()| {
+                        if application.config_revision() != Some(expected_config_revision) {
+                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
+                        } else {
+                            application
+                                .set_behavior_shortcuts_enabled(enabled)
+                                .map(|_| ())
+                                .map_err(map_application_error)
+                        }
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
             SettingsCommand::SetMaximumFps {
                 expected_config_revision,
                 maximum_fps,
@@ -1063,6 +1083,7 @@ fn snapshot(
             opacity_percent: runtime.overlay_settings.opacity_percent,
         },
         motion_audio_enabled: runtime.motion_audio_enabled,
+        behavior_shortcuts_enabled: application.config().model.enable_behavior_shortcuts,
         maximum_fps: runtime.maximum_fps,
         model_settings: SettingsModelSettings {
             mirror: runtime.model_settings.mirror,
@@ -2189,6 +2210,7 @@ mod tests {
             overlay_visible: true,
             overlay: SettingsOverlay::default(),
             motion_audio_enabled: true,
+            behavior_shortcuts_enabled: true,
             maximum_fps: 60,
             model_settings: bongocat_ui::SettingsModelSettings::default(),
             gamepad_axis_settings: bongocat_ui::SettingsGamepadAxisSettings::default(),
@@ -3113,6 +3135,57 @@ mod tests {
         assert!(persisted.contains("expression:happy"));
         client.shutdown_blocking().expect("service shutdown");
         service.join().expect("service join");
+    }
+
+    #[test]
+    fn service_persists_behavior_shortcut_state_and_rejects_stale_updates() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application =
+            Application::start_with_layout(layout.clone()).expect("application start");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        assert!(initial.behavior_shortcuts_enabled);
+        let initial_revision = initial.config_revision.expect("config revision");
+
+        let disabled = client
+            .set_behavior_shortcuts_enabled_blocking(initial_revision, false)
+            .expect("disable behavior shortcuts");
+        assert!(!disabled.behavior_shortcuts_enabled);
+        assert!(
+            std::fs::read_to_string(&layout.config)
+                .expect("persisted config")
+                .contains("\"enable_behavior_shortcuts\": false")
+        );
+
+        let error = client
+            .set_behavior_shortcuts_enabled_blocking(initial_revision, true)
+            .expect_err("stale behavior shortcut update");
+        assert_eq!(error.code(), SettingsErrorCode::SnapshotOutdated);
+        assert!(
+            !client
+                .read_snapshot_blocking()
+                .expect("unchanged snapshot")
+                .behavior_shortcuts_enabled
+        );
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
+
+        let restarted = Application::start_with_layout(layout).expect("application restart");
+        let restarted_service =
+            ApplicationSettingsService::start(restarted).expect("restarted service");
+        let restarted_client = restarted_service.client();
+        assert!(
+            !restarted_client
+                .read_snapshot_blocking()
+                .expect("restarted snapshot")
+                .behavior_shortcuts_enabled
+        );
+        restarted_client
+            .shutdown_blocking()
+            .expect("restarted service shutdown");
+        restarted_service.join().expect("restarted service join");
     }
 
     #[test]
