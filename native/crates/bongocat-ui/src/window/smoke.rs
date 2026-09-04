@@ -156,6 +156,30 @@ impl SettingsView {
                     "startup accessibility semantics diverged from the visible control".to_owned(),
                 );
             }
+            let status_icon = tree
+                .nodes
+                .iter()
+                .find(|node| node.id == ACCESSIBILITY_STATUS_ICON)
+                .ok_or_else(|| "accessibility tree omitted the status icon setting".to_owned())?;
+            if status_icon.role != AccessibilityRole::Switch
+                || status_icon.label != "Show status icon"
+                || status_icon.value.as_deref()
+                    != Some("Show BongoCat in the system tray or menu bar")
+                || status_icon.toggled
+                    != Some(if snapshot.status_icon_visible {
+                        AccessibilityToggle::On
+                    } else {
+                        AccessibilityToggle::Off
+                    })
+                || status_icon.disabled != controls_disabled
+                || status_icon.supports_click != !controls_disabled
+                || status_icon.supports_focus != !controls_disabled
+            {
+                return Err(
+                    "status icon accessibility semantics diverged from the visible control"
+                        .to_owned(),
+                );
+            }
             for (id, label, value, toggled) in [
                 (
                     ACCESSIBILITY_OVERLAY_TOPMOST,

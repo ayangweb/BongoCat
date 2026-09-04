@@ -127,6 +127,8 @@ const ACCESSIBILITY_THEME_SYSTEM: AccessibilityNodeId = AccessibilityNodeId::new
 const ACCESSIBILITY_THEME_LIGHT: AccessibilityNodeId = AccessibilityNodeId::new(36);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_THEME_DARK: AccessibilityNodeId = AccessibilityNodeId::new(37);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_STATUS_ICON: AccessibilityNodeId = AccessibilityNodeId::new(38);
 
 #[derive(Clone, Copy)]
 struct Tokens {
@@ -156,6 +158,7 @@ impl Tokens {
 enum PendingOperation {
     Refresh,
     AppearanceTheme,
+    StatusIconVisibility,
     OverlayVisibility,
     OverlaySettings,
     MotionAudio,
@@ -325,6 +328,7 @@ pub struct SettingsView {
     theme_system_focus: FocusHandle,
     theme_light_focus: FocusHandle,
     theme_dark_focus: FocusHandle,
+    status_icon_focus: FocusHandle,
     overlay_focus: FocusHandle,
     overlay_topmost_focus: FocusHandle,
     overlay_click_through_focus: FocusHandle,
@@ -422,6 +426,14 @@ impl SettingsView {
                 }) => {
                     client
                         .set_appearance_theme(expected_config_revision, theme)
+                        .await
+                }
+                Some(SettingValue::StatusIconVisible {
+                    expected_config_revision,
+                    visible,
+                }) => {
+                    client
+                        .set_status_icon_visible(expected_config_revision, visible)
                         .await
                 }
                 Some(SettingValue::OverlayVisible {
@@ -551,6 +563,10 @@ enum SettingValue {
     AppearanceTheme {
         expected_config_revision: u64,
         theme: SettingsTheme,
+    },
+    StatusIconVisible {
+        expected_config_revision: u64,
+        visible: bool,
     },
     OverlayVisible {
         expected_config_revision: u64,

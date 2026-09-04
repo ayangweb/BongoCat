@@ -47,6 +47,31 @@ use std::{
 };
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
+struct StatusIconRequest {
+    visible: bool,
+    reply: std::sync::mpsc::SyncSender<Result<(), SettingsError>>,
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[derive(Clone)]
+struct ProductStatusIcon {
+    sender: std::sync::mpsc::SyncSender<StatusIconRequest>,
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+impl bongocat_app::StatusIconCapability for ProductStatusIcon {
+    fn set_visible(&self, visible: bool) -> Result<(), SettingsError> {
+        let (reply, receiver) = std::sync::mpsc::sync_channel(1);
+        self.sender
+            .try_send(StatusIconRequest { visible, reply })
+            .map_err(|_| SettingsError::new(SettingsErrorCode::StatusIconUpdateFailed))?;
+        receiver
+            .recv_timeout(Duration::from_secs(2))
+            .map_err(|_| SettingsError::new(SettingsErrorCode::StatusIconUpdateFailed))?
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 const DEFAULT_RUN_SECONDS: u64 = 0;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -1182,6 +1207,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     application.prepare_model(model_origin, model_id)?;
     let runtime_client = application.runtime_client();
     let (shortcut_sender, shortcut_receiver) = std::sync::mpsc::sync_channel(64);
+    let (status_icon_sender, status_icon_receiver) = std::sync::mpsc::sync_channel(4);
+    let status_icon = Arc::new(ProductStatusIcon {
+        sender: status_icon_sender,
+    });
+    let initial_status_icon_visible = application.config().application.show_status_icon;
     let shortcut_signals = bongocat_app::ApplicationShortcutSignals::default();
     let shortcut_dispatcher = Some(ShortcutDispatcher::with_application_sink(
         application.shortcut_table(),
@@ -1244,19 +1274,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 return;
             }
         };
-        let settings_service = match bongocat_app::ApplicationSettingsService::start_with_shortcut_receiver_and_signals(application, shortcut_receiver, shortcut_signals.clone()) {
-            Ok(service) => service,
-            Err(error) => {
-                record_failure(&run_failures, error.to_string());
-                let mut overlay = overlay;
-                if let Err(error) = overlay.stop_input() {
+        let settings_service =
+            match bongocat_app::ApplicationSettingsService::start_with_product_capabilities(
+                application,
+                shortcut_receiver,
+                shortcut_signals.clone(),
+                status_icon,
+            ) {
+                Ok(service) => service,
+                Err(error) => {
                     record_failure(&run_failures, error.to_string());
+                    let mut overlay = overlay;
+                    if let Err(error) = overlay.stop_input() {
+                        record_failure(&run_failures, error.to_string());
+                    }
+                    cx.quit();
+                    return;
                 }
-                cx.quit();
-                return;
-            }
-        };
-        let system_menu = match SystemMenu::start() {
+            };
+        let system_menu = match SystemMenu::start_with_visibility(initial_status_icon_visible) {
             Ok(system_menu) => system_menu,
             Err(error) => {
                 record_failure(&run_failures, error.to_string());
@@ -1278,27 +1314,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         let settings_client = settings_service.client();
         let window_state = settings_service.window_state();
-        let settings_window =
-            match open_settings_window(settings_client.clone(), window_state, request_product_quit, cx) {
-                Ok(window) => window,
-                Err(error) => {
-                    record_failure(&run_failures, error);
-                    let mut overlay = overlay;
-                    if let Err(error) = overlay.stop_input() {
-                        record_failure(&run_failures, error.to_string());
-                    }
-                    let client = settings_service.client();
-                    let _ = client.shutdown_blocking();
-                    if let Err(error) = settings_service.join() {
-                        record_failure(&run_failures, error.to_string());
-                    }
-                    if let Err(error) = overlay.finish_after_runtime_shutdown() {
-                        record_failure(&run_failures, error.to_string());
-                    }
-                    cx.quit();
-                    return;
+        let settings_window = match open_settings_window(
+            settings_client.clone(),
+            window_state,
+            request_product_quit,
+            cx,
+        ) {
+            Ok(window) => window,
+            Err(error) => {
+                record_failure(&run_failures, error);
+                let mut overlay = overlay;
+                if let Err(error) = overlay.stop_input() {
+                    record_failure(&run_failures, error.to_string());
                 }
-            };
+                let client = settings_service.client();
+                let _ = client.shutdown_blocking();
+                if let Err(error) = settings_service.join() {
+                    record_failure(&run_failures, error.to_string());
+                }
+                if let Err(error) = overlay.finish_after_runtime_shutdown() {
+                    record_failure(&run_failures, error.to_string());
+                }
+                cx.quit();
+                return;
+            }
+        };
 
         #[cfg(target_os = "windows")]
         let overlay = Rc::new(RefCell::new(Some(overlay)));
@@ -1365,6 +1405,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         cx.spawn(async move |cx| {
             loop {
                 Timer::after(Duration::from_millis(50)).await;
+                while let Ok(request) = status_icon_receiver.try_recv() {
+                    let result = cx.update(|cx| {
+                        if !cx.has_global::<ProductCoordinator>() {
+                            return Err(SettingsError::new(
+                                SettingsErrorCode::StatusIconUpdateFailed,
+                            ));
+                        }
+                        cx.global_mut::<ProductCoordinator>()
+                            .system_menu
+                            .as_mut()
+                            .ok_or_else(|| {
+                                SettingsError::new(SettingsErrorCode::StatusIconUpdateFailed)
+                            })?
+                            .set_visible(request.visible)
+                            .map_err(|_| {
+                                SettingsError::new(SettingsErrorCode::StatusIconUpdateFailed)
+                            })
+                    });
+                    let _ = request.reply.send(result);
+                }
                 let action = cx.update(|cx| {
                     cx.try_global::<ProductCoordinator>()
                         .and_then(|coordinator| coordinator.system_menu.as_ref())
@@ -1447,69 +1507,67 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     break;
                 }
                 #[cfg(target_os = "macos")]
-                let keep_running = cx
-                    .update(|cx| {
-                        if !cx.has_global::<ProductCoordinator>() {
+                let keep_running = cx.update(|cx| {
+                    if !cx.has_global::<ProductCoordinator>() {
+                        return false;
+                    }
+                    handle_shortcut_open_settings(cx);
+                    let (keep_running, failure, settings_window, failures) = {
+                        let coordinator = cx.global_mut::<ProductCoordinator>();
+                        if !coordinator.frame_source_running {
                             return false;
                         }
-                        handle_shortcut_open_settings(cx);
-                        let (keep_running, failure, settings_window, failures) = {
-                            let coordinator = cx.global_mut::<ProductCoordinator>();
-                            if !coordinator.frame_source_running {
-                                return false;
-                            }
-                            let result = coordinator
-                                .overlay
-                                .as_mut()
-                                .expect("product overlay owner is present")
-                                .tick();
-                            match result {
-                                Ok(_) => {
-                                    if let Ok(bounds) = coordinator
-                                        .overlay
-                                        .as_ref()
-                                        .expect("product overlay owner is present")
-                                        .window_bounds()
-                                        && last_overlay_bounds != Some(bounds)
-                                        && frame_settings_client
-                                            .update_overlay_window_placement(
-                                                bounds.x,
-                                                bounds.y,
-                                                bounds.width,
-                                                bounds.height,
-                                            )
-                                            .is_ok()
-                                    {
-                                        last_overlay_bounds = Some(bounds);
-                                    }
-                                    coordinator.frame_ticks =
-                                        coordinator.frame_ticks.saturating_add(1);
-                                    (true, None, None, None)
+                        let result = coordinator
+                            .overlay
+                            .as_mut()
+                            .expect("product overlay owner is present")
+                            .tick();
+                        match result {
+                            Ok(_) => {
+                                if let Ok(bounds) = coordinator
+                                    .overlay
+                                    .as_ref()
+                                    .expect("product overlay owner is present")
+                                    .window_bounds()
+                                    && last_overlay_bounds != Some(bounds)
+                                    && frame_settings_client
+                                        .update_overlay_window_placement(
+                                            bounds.x,
+                                            bounds.y,
+                                            bounds.width,
+                                            bounds.height,
+                                        )
+                                        .is_ok()
+                                {
+                                    last_overlay_bounds = Some(bounds);
                                 }
-                                Err(error) => {
-                                    coordinator.frame_source_running = false;
-                                    (
-                                        false,
-                                        Some(error.to_string()),
-                                        coordinator.settings_window.clone(),
-                                        Some(Arc::clone(&coordinator.failures)),
-                                    )
-                                }
+                                coordinator.frame_ticks = coordinator.frame_ticks.saturating_add(1);
+                                (true, None, None, None)
                             }
-                        };
-                        if let (Some(failure), Some(settings_window), Some(failures)) =
-                            (failure, settings_window, failures)
-                        {
-                            record_failure(&failures, failure);
-                            let _ = settings_window.update(cx, |view, _, cx| {
-                                view.report_service_error(
-                                    SettingsError::new(SettingsErrorCode::RuntimeUnavailable),
-                                    cx,
-                                );
-                            });
+                            Err(error) => {
+                                coordinator.frame_source_running = false;
+                                (
+                                    false,
+                                    Some(error.to_string()),
+                                    coordinator.settings_window.clone(),
+                                    Some(Arc::clone(&coordinator.failures)),
+                                )
+                            }
                         }
-                        keep_running
-                    });
+                    };
+                    if let (Some(failure), Some(settings_window), Some(failures)) =
+                        (failure, settings_window, failures)
+                    {
+                        record_failure(&failures, failure);
+                        let _ = settings_window.update(cx, |view, _, cx| {
+                            view.report_service_error(
+                                SettingsError::new(SettingsErrorCode::RuntimeUnavailable),
+                                cx,
+                            );
+                        });
+                    }
+                    keep_running
+                });
                 #[cfg(target_os = "windows")]
                 let tick_result = frame_active.then(|| {
                     let mut overlay = frame_overlay.borrow_mut();
@@ -1613,9 +1671,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .read_snapshot()
                         .await
                         .map_err(|error| format!("read initial settings snapshot: {error}"))?;
-                    let initial_revision = initial
-                        .config_revision
-                        .ok_or_else(|| "initial configuration revision is unavailable".to_owned())?;
+                    let initial_revision = initial.config_revision.ok_or_else(|| {
+                        "initial configuration revision is unavailable".to_owned()
+                    })?;
                     let initial_model = initial
                         .active_model
                         .clone()
@@ -1776,7 +1834,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Err(error) => {
                             record_failure(&smoke_failures, error);
                             #[cfg(target_os = "macos")]
-                        cx.update(request_product_quit);
+                            cx.update(request_product_quit);
                             #[cfg(target_os = "windows")]
                             request_windows_product_quit(&smoke_shutdown_requested);
                             return;
@@ -1852,7 +1910,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Err(error) => {
                             record_failure(&smoke_failures, error);
                             #[cfg(target_os = "macos")]
-                        cx.update(request_product_quit);
+                            cx.update(request_product_quit);
                             #[cfg(target_os = "windows")]
                             request_windows_product_quit(&smoke_shutdown_requested);
                             return;
@@ -1862,7 +1920,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if !window_unavailable {
                     record_failure(&smoke_failures, "settings window did not close or hide");
                     #[cfg(target_os = "macos")]
-                        cx.update(request_product_quit);
+                    cx.update(request_product_quit);
                     #[cfg(target_os = "windows")]
                     request_windows_product_quit(&smoke_shutdown_requested);
                     return;
@@ -1924,11 +1982,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Timer::after(Duration::from_millis(500)).await;
                 #[cfg(target_os = "macos")]
                 let restored = cx.update(|cx| -> Result<(), String> {
-                    let window_handle = cx
-                        .global::<ProductCoordinator>()
-                        .settings_window
-                        .clone()
-                        .ok_or_else(|| "settings window was not recreated".to_owned())?;
+                    let window_handle =
+                        cx.global::<ProductCoordinator>()
+                            .settings_window
+                            .clone()
+                            .ok_or_else(|| "settings window was not recreated".to_owned())?;
                     let revision = window_handle
                         .update(cx, |view, _, _| view.snapshot_revision())
                         .map_err(|error| error.to_string())?;
@@ -1966,7 +2024,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
                 #[cfg(target_os = "macos")]
-                        cx.update(request_product_quit);
+                cx.update(request_product_quit);
                 #[cfg(target_os = "windows")]
                 request_windows_product_quit(&smoke_shutdown_requested);
             })
@@ -1975,8 +2033,103 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if run_options.system_menu_smoke {
             let smoke_failures = Arc::clone(&run_failures);
+            let smoke_client = settings_client.clone();
             cx.spawn(async move |cx| {
                 Timer::after(Duration::from_millis(500)).await;
+                let visibility_result = async {
+                    let initial = smoke_client
+                        .read_snapshot()
+                        .await
+                        .map_err(|error| format!("read status icon snapshot: {error}"))?;
+                    let initial_visibility = initial.status_icon_visible;
+                    let mut current = initial;
+                    if !current.status_icon_visible {
+                        current = smoke_client
+                            .set_status_icon_visible(
+                                current.config_revision.ok_or_else(|| {
+                                    "status icon config revision is unavailable".to_owned()
+                                })?,
+                                true,
+                            )
+                            .await
+                            .map_err(|error| format!("show status icon for smoke: {error}"))?;
+                    }
+                    for _ in 0..100 {
+                        let visible = cx.update(|cx| {
+                            cx.global::<ProductCoordinator>()
+                                .system_menu
+                                .as_ref()
+                                .is_some_and(SystemMenu::is_visible)
+                        });
+                        if visible {
+                            break;
+                        }
+                        Timer::after(Duration::from_millis(10)).await;
+                    }
+                    if !cx.update(|cx| {
+                        cx.global::<ProductCoordinator>()
+                            .system_menu
+                            .as_ref()
+                            .is_some_and(SystemMenu::is_visible)
+                    }) {
+                        return Err("status icon did not become visible".to_owned());
+                    }
+
+                    let hidden = smoke_client
+                        .set_status_icon_visible(
+                            current.config_revision.ok_or_else(|| {
+                                "visible status icon revision is unavailable".to_owned()
+                            })?,
+                            false,
+                        )
+                        .await
+                        .map_err(|error| format!("hide status icon: {error}"))?;
+                    if hidden.status_icon_visible
+                        || cx.update(|cx| {
+                            cx.global::<ProductCoordinator>()
+                                .system_menu
+                                .as_ref()
+                                .is_some_and(SystemMenu::is_visible)
+                        })
+                    {
+                        return Err("status icon hide did not commit atomically".to_owned());
+                    }
+
+                    let shown = smoke_client
+                        .set_status_icon_visible(
+                            hidden.config_revision.ok_or_else(|| {
+                                "hidden status icon revision is unavailable".to_owned()
+                            })?,
+                            true,
+                        )
+                        .await
+                        .map_err(|error| format!("restore visible status icon: {error}"))?;
+                    if !shown.status_icon_visible
+                        || !cx.update(|cx| {
+                            cx.global::<ProductCoordinator>()
+                                .system_menu
+                                .as_ref()
+                                .is_some_and(SystemMenu::is_visible)
+                        })
+                    {
+                        return Err("status icon show did not commit atomically".to_owned());
+                    }
+                    Ok::<_, String>((initial_visibility, shown))
+                }
+                .await;
+                let (initial_visibility, shown) = match visibility_result {
+                    Ok(result) => result,
+                    Err(error) => {
+                        record_failure(&smoke_failures, error);
+                        cx.update(request_product_quit);
+                        return;
+                    }
+                };
+                if let Err(error) = write_smoke_status("status icon hidden and restored") {
+                    record_failure(&smoke_failures, error.to_string());
+                    cx.update(request_product_quit);
+                    return;
+                }
                 let open_requested = cx.update(|cx| {
                     cx.global::<ProductCoordinator>()
                         .system_menu
@@ -1987,7 +2140,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 });
                 if let Err(error) = open_requested {
                     record_failure(&smoke_failures, error.to_string());
-                        cx.update(request_product_quit);
+                    cx.update(request_product_quit);
                     return;
                 }
 
@@ -2013,8 +2166,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 });
                 if let Err(error) = open_verified {
                     record_failure(&smoke_failures, error.to_string());
-                        cx.update(request_product_quit);
+                    cx.update(request_product_quit);
                     return;
+                }
+
+                if !initial_visibility {
+                    let restored = smoke_client
+                        .set_status_icon_visible(
+                            shown
+                                .config_revision
+                                .expect("shown status icon has a config revision"),
+                            false,
+                        )
+                        .await;
+                    if let Err(error) = restored {
+                        record_failure(
+                            &smoke_failures,
+                            format!("restore initial status icon visibility: {error}"),
+                        );
+                        cx.update(request_product_quit);
+                        return;
+                    }
                 }
 
                 let quit_requested = cx.update(|cx| {
@@ -2027,7 +2199,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 });
                 if let Err(error) = quit_requested {
                     record_failure(&smoke_failures, error.to_string());
-                        cx.update(request_product_quit);
+                    cx.update(request_product_quit);
                 }
             })
             .detach();
@@ -2077,12 +2249,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         &smoke_failures,
                         "application-reopen smoke could not destroy the settings window",
                     );
-                        cx.update(request_product_quit);
+                    cx.update(request_product_quit);
                     return;
                 }
                 if let Err(error) = write_smoke_status("application-reopen primary ready") {
                     record_failure(&smoke_failures, error.to_string());
-                        cx.update(request_product_quit);
+                    cx.update(request_product_quit);
                     return;
                 }
 
@@ -2122,18 +2294,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 "application reopen restored the settings window",
                             ) {
                                 record_failure(&smoke_failures, error.to_string());
-                        cx.update(request_product_quit);
+                                cx.update(request_product_quit);
                                 return;
                             }
                             Timer::after(Duration::from_secs(1)).await;
-                        cx.update(request_product_quit);
+                            cx.update(request_product_quit);
                             return;
                         }
                         Ok(false) => {}
                         Err(error) => {
                             let _ = write_smoke_status("application-reopen invariant failed");
                             record_failure(&smoke_failures, error);
-                        cx.update(request_product_quit);
+                            cx.update(request_product_quit);
                             return;
                         }
                     }
@@ -2143,7 +2315,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "running macOS application did not receive the LaunchServices reopen",
                 );
                 let _ = write_smoke_status("application-reopen timed out");
-                        cx.update(request_product_quit);
+                cx.update(request_product_quit);
             })
             .detach();
         }

@@ -495,7 +495,32 @@ impl Render for SettingsView {
                     )
                     .description("Ignore small trigger movement. Search: controller, gamepad."),
                 ]),
-                SettingGroup::new().title("Startup").item(
+                SettingGroup::new().title("Application").items(vec![
+                    SettingItem::new(
+                        "Show status icon",
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.status_icon_visible)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_status_icon_visible(value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description(
+                        "Show BongoCat in the system tray or menu bar. Search: status, tray, menu bar.",
+                    ),
                     SettingItem::new(
                         "Open at login",
                         SettingField::switch(
@@ -524,7 +549,7 @@ impl Render for SettingsView {
                         ),
                     )
                     .description("Open BongoCat when you sign in. Search: launch, startup, login."),
-                ),
+                ]),
             ]);
 
         let models_page = SettingPage::new("Models")

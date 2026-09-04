@@ -66,6 +66,7 @@ impl ApplicationSettingsService {
         Self::start_with_startup_item_and_shortcuts(
             application,
             Arc::new(SystemStartupItem),
+            Arc::new(UnavailableStatusIcon),
             None,
             None,
         )
@@ -78,6 +79,7 @@ impl ApplicationSettingsService {
         Self::start_with_startup_item_and_shortcuts(
             application,
             Arc::new(SystemStartupItem),
+            Arc::new(UnavailableStatusIcon),
             Some(receiver),
             None,
         )
@@ -91,6 +93,22 @@ impl ApplicationSettingsService {
         Self::start_with_startup_item_and_shortcuts(
             application,
             Arc::new(SystemStartupItem),
+            Arc::new(UnavailableStatusIcon),
+            Some(receiver),
+            Some(signals),
+        )
+    }
+
+    pub fn start_with_product_capabilities(
+        application: Application,
+        receiver: ShortcutReceiver<bongocat_config::ShortcutCommand>,
+        signals: ApplicationShortcutSignals,
+        status_icon: Arc<dyn StatusIconCapability>,
+    ) -> Result<Self, SettingsServiceJoinError> {
+        Self::start_with_startup_item_and_shortcuts(
+            application,
+            Arc::new(SystemStartupItem),
+            status_icon,
             Some(receiver),
             Some(signals),
         )
@@ -101,12 +119,33 @@ impl ApplicationSettingsService {
         application: Application,
         startup_item: Arc<dyn StartupItemCapability>,
     ) -> Result<Self, SettingsServiceJoinError> {
-        Self::start_with_startup_item_and_shortcuts(application, startup_item, None, None)
+        Self::start_with_startup_item_and_shortcuts(
+            application,
+            startup_item,
+            Arc::new(UnavailableStatusIcon),
+            None,
+            None,
+        )
+    }
+
+    #[cfg(test)]
+    fn start_with_status_icon(
+        application: Application,
+        status_icon: Arc<dyn StatusIconCapability>,
+    ) -> Result<Self, SettingsServiceJoinError> {
+        Self::start_with_startup_item_and_shortcuts(
+            application,
+            Arc::new(SystemStartupItem),
+            status_icon,
+            None,
+            None,
+        )
     }
 
     fn start_with_startup_item_and_shortcuts(
         application: Application,
         startup_item: Arc<dyn StartupItemCapability>,
+        status_icon: Arc<dyn StatusIconCapability>,
         shortcut_receiver: Option<ShortcutReceiver<bongocat_config::ShortcutCommand>>,
         shortcut_signals: Option<ApplicationShortcutSignals>,
     ) -> Result<Self, SettingsServiceJoinError> {
@@ -119,6 +158,7 @@ impl ApplicationSettingsService {
         Self::start_with_capabilities_and_shortcuts(
             application,
             startup_item,
+            status_icon,
             backup_location,
             diagnostics_export,
             shortcut_receiver,
@@ -136,6 +176,7 @@ impl ApplicationSettingsService {
         Self::start_with_capabilities_and_shortcuts(
             application,
             startup_item,
+            Arc::new(UnavailableStatusIcon),
             backup_location,
             diagnostics_export,
             None,
@@ -146,6 +187,7 @@ impl ApplicationSettingsService {
     fn start_with_capabilities_and_shortcuts(
         application: Application,
         startup_item: Arc<dyn StartupItemCapability>,
+        status_icon: Arc<dyn StatusIconCapability>,
         backup_location: Arc<dyn BackupLocationCapability>,
         diagnostics_export: Arc<dyn DiagnosticsExportCapability>,
         shortcut_receiver: Option<ShortcutReceiver<bongocat_config::ShortcutCommand>>,
@@ -165,6 +207,7 @@ impl ApplicationSettingsService {
                     application,
                     endpoint,
                     startup_item,
+                    status_icon,
                     backup_location,
                     diagnostics_export,
                     worker_window_state,
@@ -243,6 +286,10 @@ trait StartupItemCapability: Send + Sync + 'static {
     fn set_enabled(&self, enabled: bool) -> Result<SettingsStartupItemState, SettingsError>;
 }
 
+pub trait StatusIconCapability: Send + Sync + 'static {
+    fn set_visible(&self, visible: bool) -> Result<(), SettingsError>;
+}
+
 trait BackupLocationCapability: Send + Sync + 'static {
     fn open(&self) -> Result<(), SettingsError>;
 }
@@ -256,6 +303,8 @@ trait DiagnosticsExportCapability: Send + Sync + 'static {
 }
 
 struct SystemStartupItem;
+
+struct UnavailableStatusIcon;
 
 struct SystemBackupLocation {
     path: PathBuf,
@@ -272,6 +321,14 @@ impl StartupItemCapability for SystemStartupItem {
 
     fn set_enabled(&self, enabled: bool) -> Result<SettingsStartupItemState, SettingsError> {
         system_set_startup_item_enabled(enabled)
+    }
+}
+
+impl StatusIconCapability for UnavailableStatusIcon {
+    fn set_visible(&self, _visible: bool) -> Result<(), SettingsError> {
+        Err(SettingsError::new(
+            SettingsErrorCode::StatusIconUpdateFailed,
+        ))
     }
 }
 
@@ -322,6 +379,7 @@ fn run_service(
     mut application: Application,
     endpoint: SettingsServiceEndpoint,
     startup_item: Arc<dyn StartupItemCapability>,
+    status_icon: Arc<dyn StatusIconCapability>,
     backup_location: Arc<dyn BackupLocationCapability>,
     diagnostics_export: Arc<dyn DiagnosticsExportCapability>,
     window_state: SettingsWindowState,
@@ -403,6 +461,35 @@ fn run_service(
                                 .set_appearance_theme(config_theme(theme))
                                 .map_err(map_application_error)
                         }
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::SetStatusIconVisible {
+                expected_config_revision,
+                visible,
+                reply,
+            } => {
+                let result = require_operational(&application)
+                    .map_err(map_application_error)
+                    .and_then(|()| {
+                        if application.config_revision() != Some(expected_config_revision) {
+                            return Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated));
+                        }
+                        let previous = application.config().application.show_status_icon;
+                        if previous == visible {
+                            return Ok(());
+                        }
+                        status_icon.set_visible(visible)?;
+                        if let Err(error) = application.set_status_icon_visible(visible) {
+                            if status_icon.set_visible(previous).is_err() {
+                                return Err(SettingsError::new(
+                                    SettingsErrorCode::StatusIconUpdateFailed,
+                                ));
+                            }
+                            return Err(map_application_error(error));
+                        }
+                        Ok(())
                     })
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
@@ -866,6 +953,7 @@ fn snapshot(
         },
         runtime_diagnostics: settings_runtime_diagnostics(&runtime),
         appearance_theme: settings_theme(application.config().appearance.theme),
+        status_icon_visible: application.config().application.show_status_icon,
         overlay_visible: runtime.overlay_visible,
         overlay: SettingsOverlay {
             click_through: runtime.overlay_settings.click_through,
@@ -1814,6 +1902,55 @@ mod tests {
         fail: AtomicBool,
     }
 
+    struct TestStatusIcon {
+        visible: Mutex<bool>,
+        updates: Mutex<Vec<bool>>,
+        fail_updates: AtomicBool,
+    }
+
+    impl TestStatusIcon {
+        fn new(visible: bool) -> Self {
+            Self {
+                visible: Mutex::new(visible),
+                updates: Mutex::new(Vec::new()),
+                fail_updates: AtomicBool::new(false),
+            }
+        }
+
+        fn visible(&self) -> bool {
+            *self
+                .visible
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+        }
+
+        fn updates(&self) -> Vec<bool> {
+            self.updates
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone()
+        }
+    }
+
+    impl StatusIconCapability for TestStatusIcon {
+        fn set_visible(&self, visible: bool) -> Result<(), SettingsError> {
+            self.updates
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(visible);
+            if self.fail_updates.load(Ordering::Acquire) {
+                return Err(SettingsError::new(
+                    SettingsErrorCode::StatusIconUpdateFailed,
+                ));
+            }
+            *self
+                .visible
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = visible;
+            Ok(())
+        }
+    }
+
     impl TestBackupLocation {
         fn new() -> Self {
             Self {
@@ -1879,6 +2016,7 @@ mod tests {
                 },
             },
             appearance_theme: SettingsTheme::System,
+            status_icon_visible: true,
             overlay_visible: true,
             overlay: SettingsOverlay::default(),
             motion_audio_enabled: true,
@@ -2322,6 +2460,81 @@ mod tests {
             restarted.config().appearance.theme,
             bongocat_config::Theme::Dark
         );
+        restarted.shutdown().expect("restart shutdown");
+    }
+
+    #[test]
+    fn service_applies_and_persists_status_icon_visibility_transactionally() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application =
+            Application::start_with_layout(layout.clone()).expect("application start");
+        let status_icon = Arc::new(TestStatusIcon::new(true));
+        let service =
+            ApplicationSettingsService::start_with_status_icon(application, status_icon.clone())
+                .expect("service start");
+        let client = service.client();
+
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        assert!(initial.status_icon_visible);
+        let hidden = client
+            .set_status_icon_visible_blocking(
+                initial.config_revision.expect("config revision"),
+                false,
+            )
+            .expect("hide status icon");
+        assert!(!hidden.status_icon_visible);
+        assert!(!status_icon.visible());
+        assert_eq!(status_icon.updates(), vec![false]);
+
+        let stale = client
+            .set_status_icon_visible_blocking(
+                initial.config_revision.expect("config revision"),
+                true,
+            )
+            .expect_err("stale status icon update");
+        assert_eq!(stale.code(), SettingsErrorCode::SnapshotOutdated);
+        assert_eq!(status_icon.updates(), vec![false]);
+
+        status_icon.fail_updates.store(true, Ordering::Release);
+        let failed = client
+            .set_status_icon_visible_blocking(
+                hidden.config_revision.expect("hidden config revision"),
+                true,
+            )
+            .expect_err("platform update failure");
+        assert_eq!(failed.code(), SettingsErrorCode::StatusIconUpdateFailed);
+        let unchanged = client.read_snapshot_blocking().expect("unchanged snapshot");
+        assert_eq!(unchanged, hidden);
+        assert!(!status_icon.visible());
+
+        status_icon.fail_updates.store(false, Ordering::Release);
+        let occupied = layout.config.with_extension("json.tmp");
+        std::fs::create_dir(&occupied).expect("occupied temp target");
+        let persist_failed = client
+            .set_status_icon_visible_blocking(
+                hidden.config_revision.expect("hidden config revision"),
+                true,
+            )
+            .expect_err("config persist failure");
+        assert_eq!(
+            persist_failed.code(),
+            SettingsErrorCode::ConfigTargetOccupied
+        );
+        assert!(!status_icon.visible());
+        assert_eq!(status_icon.updates(), vec![false, true, true, false]);
+        assert_eq!(
+            client
+                .read_snapshot_blocking()
+                .expect("rolled back snapshot"),
+            hidden
+        );
+        std::fs::remove_dir(occupied).expect("remove occupied temp target");
+
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
+        let restarted = Application::start_with_layout(layout).expect("restart application");
+        assert!(!restarted.config().application.show_status_icon);
         restarted.shutdown().expect("restart shutdown");
     }
 

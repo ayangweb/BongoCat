@@ -58,6 +58,31 @@ impl SettingsView {
         );
     }
 
+    pub(super) fn set_status_icon_visible(&mut self, visible: bool, cx: &mut Context<Self>) {
+        let Some(expected_config_revision) = self
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.config_revision)
+        else {
+            return;
+        };
+        if self
+            .snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.status_icon_visible == visible)
+        {
+            return;
+        }
+        self.start_request(
+            PendingOperation::StatusIconVisibility,
+            Some(SettingValue::StatusIconVisible {
+                expected_config_revision,
+                visible,
+            }),
+            cx,
+        );
+    }
+
     pub(super) fn set_overlay_settings(
         &mut self,
         settings: SettingsOverlay,

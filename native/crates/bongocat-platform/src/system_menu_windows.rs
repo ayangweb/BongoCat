@@ -50,13 +50,17 @@ pub struct SystemMenu {
 
 impl SystemMenu {
     pub fn start() -> Result<Self, SystemMenuError> {
+        Self::start_with_visibility(true)
+    }
+
+    pub fn start_with_visibility(visible: bool) -> Result<Self, SystemMenuError> {
         // SAFETY: creation and all later cleanup occur on the GPUI owner
         // thread. The boxed callback state outlives the hidden HWND, whose
         // WM_NCDESTROY clears GWLP_USERDATA before the Box is dropped.
-        unsafe { Self::start_inner() }
+        unsafe { Self::start_inner(visible) }
     }
 
-    unsafe fn start_inner() -> Result<Self, SystemMenuError> {
+    unsafe fn start_inner(visible: bool) -> Result<Self, SystemMenuError> {
         let module = unsafe { GetModuleHandleW(None) }
             .map_err(|_| SystemMenuError::WindowClassRegistrationFailed)?;
         let instance = HINSTANCE(module.0);
@@ -116,49 +120,45 @@ impl SystemMenu {
             }
         };
 
-        let icon = match unsafe { LoadIconW(None, IDI_APPLICATION) } {
-            Ok(icon) => icon,
-            Err(_) => {
-                let _ = unsafe { DestroyWindow(window) };
-                let _ = unsafe { DestroyMenu(menu) };
-                let _ = unsafe { UnregisterClassW(WINDOW_CLASS, Some(instance)) };
-                return Err(SystemMenuError::StatusItemCreateFailed);
-            }
-        };
-        let mut data = NOTIFYICONDATAW {
-            cbSize: size_of::<NOTIFYICONDATAW>() as u32,
-            hWnd: window,
-            uID: TRAY_ID,
-            uFlags: NIF_ICON | NIF_MESSAGE | NIF_TIP,
-            uCallbackMessage: CALLBACK_MESSAGE,
-            hIcon: icon,
-            ..Default::default()
-        };
-        copy_wide(&mut data.szTip, "BongoCat");
-        if !unsafe { Shell_NotifyIconW(NIM_ADD, &data) }.as_bool() {
-            let _ = unsafe { DestroyWindow(window) };
-            let _ = unsafe { DestroyMenu(menu) };
-            let _ = unsafe { UnregisterClassW(WINDOW_CLASS, Some(instance)) };
-            return Err(SystemMenuError::StatusItemCreateFailed);
-        }
-        data.Anonymous = NOTIFYICONDATAW_0 {
-            uVersion: NOTIFYICON_VERSION_4,
-        };
-        let _ = unsafe { Shell_NotifyIconW(NIM_SETVERSION, &data) };
-
-        Ok(Self {
+        let mut system_menu = Self {
             instance,
             window: Some(window),
             menu: Some(menu),
             state: Some(state),
             receiver,
-            icon_added: true,
+            icon_added: false,
             class_registered: true,
-        })
+        };
+        if visible && unsafe { system_menu.add_icon() }.is_err() {
+            let _ = system_menu.cleanup();
+            return Err(SystemMenuError::StatusItemCreateFailed);
+        }
+        Ok(system_menu)
     }
 
     pub fn try_recv(&self) -> Option<SystemMenuAction> {
         self.receiver.try_recv().ok()
+    }
+
+    pub const fn is_visible(&self) -> bool {
+        self.icon_added
+    }
+
+    pub fn set_visible(&mut self, visible: bool) -> Result<(), SystemMenuError> {
+        if visible == self.icon_added {
+            return Ok(());
+        }
+        // SAFETY: status icon mutation occurs on the GPUI owner thread while
+        // the hidden HWND remains live and owned by self.
+        unsafe {
+            if visible {
+                self.add_icon()
+                    .map_err(|_| SystemMenuError::StatusItemUpdateFailed)
+            } else {
+                self.remove_icon()
+                    .map_err(|_| SystemMenuError::StatusItemUpdateFailed)
+            }
+        }
     }
 
     #[doc(hidden)]
@@ -183,19 +183,7 @@ impl SystemMenu {
 
     fn cleanup(&mut self) -> Result<(), SystemMenuError> {
         let mut failed = false;
-        if self.icon_added {
-            if let Some(window) = self.window {
-                let data = NOTIFYICONDATAW {
-                    cbSize: size_of::<NOTIFYICONDATAW>() as u32,
-                    hWnd: window,
-                    uID: TRAY_ID,
-                    ..Default::default()
-                };
-                // SAFETY: the icon identity matches the successful NIM_ADD.
-                failed |= !unsafe { Shell_NotifyIconW(NIM_DELETE, &data) }.as_bool();
-            }
-            self.icon_added = false;
-        }
+        failed |= unsafe { self.remove_icon() }.is_err();
         if let Some(window) = self.window.take() {
             // SAFETY: the hidden HWND is owned by self and destroyed once.
             failed |= unsafe { DestroyWindow(window) }.is_err();
@@ -216,6 +204,51 @@ impl SystemMenu {
         } else {
             Ok(())
         }
+    }
+
+    unsafe fn add_icon(&mut self) -> Result<(), ()> {
+        if self.icon_added {
+            return Ok(());
+        }
+        let window = self.window.ok_or(())?;
+        let icon = unsafe { LoadIconW(None, IDI_APPLICATION) }.map_err(|_| ())?;
+        let mut data = NOTIFYICONDATAW {
+            cbSize: size_of::<NOTIFYICONDATAW>() as u32,
+            hWnd: window,
+            uID: TRAY_ID,
+            uFlags: NIF_ICON | NIF_MESSAGE | NIF_TIP,
+            uCallbackMessage: CALLBACK_MESSAGE,
+            hIcon: icon,
+            ..Default::default()
+        };
+        copy_wide(&mut data.szTip, "BongoCat");
+        if !unsafe { Shell_NotifyIconW(NIM_ADD, &data) }.as_bool() {
+            return Err(());
+        }
+        data.Anonymous = NOTIFYICONDATAW_0 {
+            uVersion: NOTIFYICON_VERSION_4,
+        };
+        let _ = unsafe { Shell_NotifyIconW(NIM_SETVERSION, &data) };
+        self.icon_added = true;
+        Ok(())
+    }
+
+    unsafe fn remove_icon(&mut self) -> Result<(), ()> {
+        if !self.icon_added {
+            return Ok(());
+        }
+        let window = self.window.ok_or(())?;
+        let data = NOTIFYICONDATAW {
+            cbSize: size_of::<NOTIFYICONDATAW>() as u32,
+            hWnd: window,
+            uID: TRAY_ID,
+            ..Default::default()
+        };
+        if !unsafe { Shell_NotifyIconW(NIM_DELETE, &data) }.as_bool() {
+            return Err(());
+        }
+        self.icon_added = false;
+        Ok(())
     }
 }
 

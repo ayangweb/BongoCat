@@ -57,6 +57,11 @@ shortcuts
 首次启动创建当前 v1 配置时，`overlay.click_through` 默认为 `false`。用户后续通过
 typed settings command 修改该值后，仍按配置 revision 原子提交并在重启时从当前环境恢复。
 
+`application.show_status_icon` 控制 Windows 托盘或 macOS 菜单栏状态图标，不销毁系统菜单的
+唯一事件 owner。修改时先通过有界主线程 bridge 应用平台显隐，成功后才按 expected revision
+原子提交配置；平台失败不提交，配置失败则恢复旧的平台可见性。启动直接应用当前 v1 值，隐藏后
+仍可通过设置窗口、Windows 单实例唤醒或 macOS application reopen 恢复入口。
+
 ## Shortcut Chords
 
 快捷键配置仍以字符串持久化，但在写入前必须通过平台无关的 chord 校验。每个 chord

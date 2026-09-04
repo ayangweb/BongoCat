@@ -47,24 +47,21 @@ impl SystemMenuTarget {
 pub struct SystemMenu {
     status_bar: Retained<NSStatusBar>,
     status_item: Option<Retained<NSStatusItem>>,
-    _menu: Retained<NSMenu>,
+    menu: Retained<NSMenu>,
     target: Retained<SystemMenuTarget>,
     receiver: Receiver<SystemMenuAction>,
 }
 
 impl SystemMenu {
     pub fn start() -> Result<Self, SystemMenuError> {
+        Self::start_with_visibility(true)
+    }
+
+    pub fn start_with_visibility(visible: bool) -> Result<Self, SystemMenuError> {
         let mtm = MainThreadMarker::new().ok_or(SystemMenuError::WrongThread)?;
         let (sender, receiver) = mpsc::channel();
         let target = SystemMenuTarget::new(mtm, sender);
         let status_bar = NSStatusBar::systemStatusBar();
-        let status_item = status_bar.statusItemWithLength(NSVariableStatusItemLength);
-        let button = status_item
-            .button(mtm)
-            .ok_or(SystemMenuError::StatusItemCreateFailed)?;
-        button.setTitle(&NSString::from_str("BC"));
-        button.setToolTip(Some(&NSString::from_str("BongoCat")));
-
         let menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), &NSString::from_str("BongoCat"));
         let empty = NSString::from_str("");
         // SAFETY: openSettings: is implemented by SystemMenuTarget with the
@@ -97,19 +94,37 @@ impl SystemMenu {
         // remains retained by SystemMenu longer than the weak target property.
         unsafe { quit.setTarget(Some(&target)) };
         menu.addItem(&quit);
-        status_item.setMenu(Some(&menu));
-
-        Ok(Self {
+        let mut system_menu = Self {
             status_bar,
-            status_item: Some(status_item),
-            _menu: menu,
+            status_item: None,
+            menu,
             target,
             receiver,
-        })
+        };
+        if visible {
+            system_menu.install_status_item()?;
+        }
+        Ok(system_menu)
     }
 
     pub fn try_recv(&self) -> Option<SystemMenuAction> {
         self.receiver.try_recv().ok()
+    }
+
+    pub fn is_visible(&self) -> bool {
+        self.status_item.is_some()
+    }
+
+    pub fn set_visible(&mut self, visible: bool) -> Result<(), SystemMenuError> {
+        if visible == self.is_visible() {
+            return Ok(());
+        }
+        if visible {
+            self.install_status_item()
+        } else {
+            self.remove_status_item();
+            Ok(())
+        }
     }
 
     #[doc(hidden)]
@@ -143,6 +158,22 @@ impl SystemMenu {
             status_item.setMenu(None);
             self.status_bar.removeStatusItem(&status_item);
         }
+    }
+
+    fn install_status_item(&mut self) -> Result<(), SystemMenuError> {
+        let mtm = MainThreadMarker::new().ok_or(SystemMenuError::WrongThread)?;
+        let status_item = self
+            .status_bar
+            .statusItemWithLength(NSVariableStatusItemLength);
+        let Some(button) = status_item.button(mtm) else {
+            self.status_bar.removeStatusItem(&status_item);
+            return Err(SystemMenuError::StatusItemCreateFailed);
+        };
+        button.setTitle(&NSString::from_str("BC"));
+        button.setToolTip(Some(&NSString::from_str("BongoCat")));
+        status_item.setMenu(Some(&self.menu));
+        self.status_item = Some(status_item);
+        Ok(())
     }
 }
 

@@ -14,6 +14,7 @@ pub enum SystemMenuError {
     MenuCreateFailed,
     MenuItemCreateFailed,
     StatusItemCreateFailed,
+    StatusItemUpdateFailed,
     EventQueueClosed,
     ShutdownFailed,
 }
@@ -29,6 +30,9 @@ impl fmt::Display for SystemMenuError {
             Self::MenuCreateFailed => "the system menu could not be created",
             Self::MenuItemCreateFailed => "a required system menu item could not be created",
             Self::StatusItemCreateFailed => "the platform status item could not be created",
+            Self::StatusItemUpdateFailed => {
+                "the platform status item visibility could not be changed"
+            }
             Self::EventQueueClosed => "the system menu event consumer is no longer available",
             Self::ShutdownFailed => "the system menu did not shut down cleanly",
         })

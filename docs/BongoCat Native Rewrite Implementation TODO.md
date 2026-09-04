@@ -1181,8 +1181,8 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
   - 状态（2026-09-04）：主题 snapshot、typed command、即时应用和辅助功能语义已实现；语言、
     更新状态和完整错误边界仍待完成，因此保持未勾选。
 - [ ] 通用：启动项、任务栏/菜单栏、语言、主题和日志。
-  - 状态（2026-09-04）：启动项和主题已有正式 UI/持久化闭环；任务栏/菜单栏可配置项、语言与
-    日志设置仍待完成，因此保持未勾选。
+  - 状态（2026-09-04）：启动项、主题和菜单栏/托盘状态图标已有正式 UI/持久化闭环；任务栏
+    可见性、语言与日志设置仍待完成，因此保持未勾选。
 - [ ] 窗口：显示器、位置、缩放、透明度、置顶、穿透和显隐。
 - [ ] 模型：预置/用户模型、导入、删除、切换和兼容诊断。
 - [ ] 输入：键鼠、手柄、忽略鼠标、单键模式和校正状态。
@@ -2227,6 +2227,17 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       job `101026266252` 均以同一 release executable 通过 `panic=abort` 子进程、固定匿名日志、
       config 字节不变、unclean 重启分类、marker 清理和正常 shutdown 验证。默认产品 CLI 继续拒绝
       两个私有测试参数，完整 Native workspace 门禁同时通过。
+55. [ ] `P5-STATUS-ICON-VISIBILITY`：让当前 v1 的菜单栏/托盘状态图标可即时隐藏和恢复。
+    - 依赖：`P7-SYSTEM-MENU-LIFECYCLE`、当前 v1 `application.show_status_icon`、settings revision/CAS
+      和 GPUI Kit switch。
+    - 退出条件：配置值通过强类型 snapshot/command 往返；平台主线程先应用显隐，Application owner
+      再原子提交，平台失败不改配置，配置失败回滚平台状态；Windows `NIM_DELETE`/`NIM_ADD` 与 macOS
+      remove/recreate `NSStatusItem` 都保留唯一菜单事件 owner；启动恢复已保存值；General 控件具备
+      keyboard/AccessKit switch 语义；定向测试、完整 Native workspace 与双平台 release system-menu
+      smoke 通过。
+    - 状态（2026-09-04）：代码、Technical Design、transaction failure 回归和既有 system-menu smoke
+      扩展已完成；本机 app/platform/UI 定向测试、macOS release 产品 smoke 及 Windows x64/ARM64
+      platform source check 通过。双平台 CI release smoke 证据待补，因此保持未勾选。
 
 ## 13. 待决策清单
 
