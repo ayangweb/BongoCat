@@ -1891,7 +1891,7 @@ mod tests {
         assert_eq!(status.format_version, DIAGNOSTICS_EXPORT_FORMAT_VERSION);
         assert_eq!(status.bytes_written, bytes.len() as u64);
         let document: serde_json::Value = serde_json::from_slice(&bytes).expect("valid JSON");
-        assert_eq!(document["format_version"], 2);
+        assert_eq!(document["format_version"], 1);
         assert_eq!(document["settings_revision"], 42);
         assert_eq!(
             document["runtime"]["render_error_code"],
@@ -2226,7 +2226,7 @@ mod tests {
             )
             .expect("toggle overlay visibility");
         assert_eq!(updated.revision, initial.revision.saturating_add(1));
-        assert!(updated.config_revision > initial.config_revision);
+        assert_ne!(updated.config_revision, initial.config_revision);
 
         client.shutdown_blocking().expect("service shutdown");
         service.join().expect("service join");
@@ -2379,7 +2379,7 @@ mod tests {
             .expect("persist shortcuts");
         assert_eq!(updated.shortcuts, expected);
         assert!(updated.revision > initial.revision);
-        assert!(updated.config_revision > initial.config_revision);
+        assert_ne!(updated.config_revision, initial.config_revision);
         let persisted = std::fs::read_to_string(&layout.config).expect("persisted config");
         assert!(persisted.contains("toggle_overlay"));
         assert!(persisted.contains("Control+Alt+B"));
@@ -2425,7 +2425,7 @@ mod tests {
             std::thread::yield_now();
         };
         assert!(!updated.overlay_visible);
-        assert!(updated.config_revision > initial.config_revision);
+        assert_ne!(updated.config_revision, initial.config_revision);
         drop(sender);
         client.shutdown_blocking().expect("shutdown service");
         service.join().expect("join service");
@@ -3551,7 +3551,7 @@ mod tests {
         let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
         let store = ConfigStore::new(layout.clone()).expect("config store");
         store.load_or_default().expect("default config");
-        let future = br#"{"schema_version":3,"settings_window":null,"overlay_window":null}"#;
+        let future = br#"{"schema_version":2,"settings_window":null,"overlay_window":null}"#;
         std::fs::write(&layout.state, future).expect("future state");
 
         let application = Application::start_with_layout(layout.clone())

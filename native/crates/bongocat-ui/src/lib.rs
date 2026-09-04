@@ -239,7 +239,7 @@ pub struct SettingsDiagnosticsExportStatus {
 }
 
 /// Version of the anonymous diagnostics export JSON contract.
-pub const DIAGNOSTICS_EXPORT_FORMAT_VERSION: u32 = 2;
+pub const DIAGNOSTICS_EXPORT_FORMAT_VERSION: u32 = 1;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SettingsConfigurationStatus {

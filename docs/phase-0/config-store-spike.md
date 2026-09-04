@@ -9,9 +9,9 @@
 
 - Bundle ID 为 `com.ayangweb.bongo-cat`；相同 base 下使用 `development/` 与 `production/` 两个互斥根目录；
 - 两个环境具有完全一致的相对结构：`config.json`、`state.json`、`models/`、`backups/`、`logs/`、`locks/`；
-- `NativeConfig` 是强类型结构，当前与共享默认 fixture 对齐为 `schema_version = 2`，模型选择
+- `NativeConfig` 是强类型结构，当前与共享默认 fixture 对齐为 `schema_version = 1`，模型选择
   使用成对的 `selected_model_origin`/`selected_model_id`，JSON key 使用当前产品语义的
-  `snake_case`；v1 -> v2 迁移、原 bytes 备份和幂等写回只由正式 `bongocat-config` 实现；
+  `snake_case`；`next` 不读取或迁移开发中间结构；
 - typed parser 与 JSON schema 都拒绝未知字段，避免拼写错误或旧配置字段被静默接受；
 - commit 流程为 validate -> serialize -> 同目录临时文件 -> `sync_all` -> 备份当前有效配置 -> rename -> 提交后重新打开验证；校验失败不会覆盖旧配置，成功提交会保留 `backups/config.previous.json`；
 - 损坏 JSON 会返回诊断错误并保留原始文件，不静默写回默认配置；
@@ -96,8 +96,7 @@ run `33386401135` 全绿；Windows/macOS Native jobs `99469897044`/`99469896758`
 recovery-only 窗口，Windows input/config job `99469896784` 同时通过真实平台路径测试，
 `P6-STORAGE-LAYOUT-BOUNDARY` 退出条件满足。
 
-状态（2026-08-31）：正式配置的 load/parse/typed validation/v1 -> v2 upgrade/atomic commit/final
-verify 已形成单一 writer-lock 事务。测试可在原子替换后破坏 current，证明最终验证失败会逐字节
-恢复旧 v1、清理固定 temp，且无故障重启可再次完成迁移。commit `fd0f1d2` 的 run
-`33388021697` 全绿；三平台 Native workspace、Windows input/config job `99474952566` 和独立
-config-store job `99474952502` 均通过，`P6-CONFIG-TRANSACTION-PIPELINE` 退出条件满足。
+状态（2026-09-04）：正式配置的 load/schema v1 check/typed validation/atomic commit/final verify
+已形成单一 writer-lock 事务。测试可在原子替换后破坏 current，证明最终验证失败会逐字节
+恢复原 v1 并清理固定 temp；当前实现不包含 schema upgrade。底层事务与故障注入最初由 commit
+`fd0f1d2` 建立；本次 v1 重置通过完整本地 Native workspace 和独立 config-store 门禁。

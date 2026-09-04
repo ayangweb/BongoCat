@@ -223,23 +223,23 @@ fn configuration_recovery_presentation_is_anonymous_and_complete() {
     let recovered = config_recovery_presentation(
         SettingsConfigurationStatus::Ready,
         Some(SettingsConfigRecovery {
-            source_schema_version: 2,
+            source_schema_version: 1,
             skipped_newer_backups: 3,
         }),
     );
     assert_eq!(recovered.title, "Recovered from backup");
-    assert_eq!(recovered.detail, "Schema v2 · 3 newer backups skipped");
+    assert_eq!(recovered.detail, "Schema v1 · 3 newer backups skipped");
     assert!(recovered.recovered);
     assert!(!recovered.detail.contains('/') && !recovered.detail.contains('\\'));
 
     let one_skipped = config_recovery_presentation(
         SettingsConfigurationStatus::Ready,
         Some(SettingsConfigRecovery {
-            source_schema_version: 2,
+            source_schema_version: 1,
             skipped_newer_backups: 1,
         }),
     );
-    assert_eq!(one_skipped.detail, "Schema v2 · 1 newer backup skipped");
+    assert_eq!(one_skipped.detail, "Schema v1 · 1 newer backup skipped");
 
     let required = config_recovery_presentation(
         SettingsConfigurationStatus::RecoveryRequired { checked_backups: 2 },

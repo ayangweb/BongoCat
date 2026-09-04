@@ -17,7 +17,7 @@ pub use store::{
     ModelStoreError, ModelStoreRecovery,
 };
 
-pub const INDEX_SCHEMA_VERSION: u32 = 2;
+pub const INDEX_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ModelPackageLimits {

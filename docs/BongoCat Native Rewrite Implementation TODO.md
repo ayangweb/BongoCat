@@ -10,6 +10,10 @@
 
 > 应用与存储基线：Bundle ID 固定为 `com.ayangweb.bongo-cat`；Development/Production 使用相同 schema 和不同数据根；新配置使用 `snake_case` 自有命名，不读取或导入旧 Tauri/Pinia 配置。
 
+> 初始版本基线：`next` 只开发全新的首版，当前完整配置、state 和内部持久格式统一从 v1 开始。
+> 首次正式发布前不实现版本迁移、schema 兼容、旧数据转换或历史版本判断；新增字段直接修改当前
+> v1。保留版本字段和严格的当前版本解析入口，首次发布后的后续版本再以实际发布基线设计迁移。
+
 ## 0. 执行规则
 
 ### 0.1 架构红线
@@ -25,6 +29,7 @@
 - [ ] Linux 不阻塞首发，但共享 crate 不得暴露 Win32/AppKit 类型。
 - [ ] Development 不得读取、写入、锁住或 fallback 到 Production 数据。
 - [ ] 不实现旧配置字段 alias、自动导入或旧目录探测。
+- [ ] `next` 的配置、state 和内部持久格式保持 v1，不包含开发中间版本的迁移或兼容分支。
 
 ### 0.2 任务完成定义
 
@@ -731,7 +736,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     runtime stop -> tap cleanup -> second service start smoke 覆盖恢复与析构顺序。
 - [ ] 明确辅助功能与 Input Monitoring 各自真正需要的能力，避免请求不必要的 TCC 权限。
 
-### 3.5 配置 v1/v2/v3
+### 3.5 配置 v1
 
 - 状态（2026-08-29）：`spikes/config-store/` 已建立 typed NativeConfig、Bundle ID、Development/Production 隔离目录、snake_case 序列化、schema 校验、原子 commit probe、expected revision、OS writer lock contract、中断提交恢复 contract 和双平台真实 path resolver。Windows jobs 先后暴露只读 handle flush、强杀后锁释放延迟，以及首次启动 recovery 后立即重锁提交默认值的竞态；启动恢复以 10 ms 间隔有界重试最多 1 秒，`load_or_default` 又把 recover/read/create-default 合并到单个 guard，普通 commit 仍立即报告竞争。备份策略和 GPUI command 边界仍待产品 crate 阶段完成，详见 `docs/phase-0/config-store-spike.md`。
 
@@ -951,7 +956,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     typed runtime。主动 stop 现在按 FadeOutTime 正弦衰减，snapshot 保留首次 stop sequence，
     重复 stop 不重启计时；真实 Core 测试覆盖停止瞬间、半程和结束帧。PartOpacity target
     已按官方 Framework 的 parameter sink 语义进入真实 Core 求值且不错误套用 parameter
-    fade。model3 Groups 已进入 v2 产品索引并校验非空 target/name/parameter ID；Model target
+    fade。model3 Groups 已进入 v1 产品索引并校验非空 target/name/parameter ID；Model target
     按 R5 顺序实现 EyeBlink 参数乘法、LipSync 参数加法、未覆盖 group 参数的 motion fade
     和独立 Opacity render contract。真实 Core 测试覆盖左右眼、嘴部参数和 opacity snapshot，
     D3D11/Metal 均只在最终颜色 pass 应用 model opacity。UserData 现按单调 elapsed 的
@@ -1187,21 +1192,19 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     Rust 配置类型逐层使用 `deny_unknown_fields`；共享 `invalid-unknown-field.json` 在嵌套
     application 域注入 `legacy_alias` 并由固定 Draft 2020-12 validator 拒绝，正式 crate 另有
     unknown/legacy 字段拒绝测试。
-- [ ] 只为 Native Rewrite schema 建立 sequential `schema_version` 演进。
-  - 状态（2026-09-01）：正式 config 已实现 v1 -> v2 -> v3 顺序迁移；非空
-    `selected_model_id` 按 v1 产品语义补为 preset origin，空选择保持成对为空，v3 再补入默认
-    gamepad dead-zone。迁移在 writer lock 内备份原 bytes 并原子写回，重复加载幂等；正式 store
-    已能从验证通过的 v1/v2/v3 备份恢复并规范化写回 v3。未来版本链仍待实现，因此总项保持
-    未勾选。独立 config-store contract spike 已对齐 v3 typed config、范围校验和共享默认 fixture；
-    持久化浮点字段使用 `f64`，避免默认 `0.15` 经 `f32` 序列化后偏离共享 JSON contract。
+- [x] `next` 的当前完整 Native Rewrite schema 固定为 `schema_version: 1`，不包含迁移链。
+  - 状态（2026-09-04）：正式 config、独立 config-store contract、JSON Schema 和全部 fixture
+    已统一为完整 v1；模型来源、input dead-zone 与现有字段都直接属于首版结构。store 只接受 v1，
+    非 v1 明确拒绝且不改写；迁移函数与迁移专用测试已删除。首次正式发布后的后续版本再以实际
+    发布的 v1 为基线新增迁移，不在 `next` 预置兼容逻辑。
 - [x] 不包含旧 Pinia store key、旧字段 alias 或自动导入逻辑。
   - 验收证据（2026-08-31）：Native schema/Rust 类型没有 serde alias 或 legacy 字段，严格未知
     字段 fixture 与单元测试拒绝 `legacy_alias`/`old_pinia_field`；产品 `ConfigStore` 只解析当前
-    环境的 Native `config.json` 并仅执行 v1 -> v2 顺序迁移。
-- [ ] 独立 `state.json` schema 只保存可恢复窗口布局，不进入用户配置事务。
-  - 状态（2026-09-02）：正式 `StateStore` v2 保存 settings 与 overlay 的有限坐标/尺寸，顺序读取 v1，
-    settings 的 maximized、独立 writer lock、原子提交后验证/回滚、损坏/未来 schema 非阻塞回退和
-    未来文件防降级已实现；settings worker 接收合并后的 GPUI bounds 更新和 overlay 几何变化并及时
+    环境的完整 v1 `config.json`，不执行迁移或兼容转换。
+- [ ] 独立 `state.json` v1 schema 只保存可恢复窗口布局，不进入用户配置事务。
+  - 状态（2026-09-04）：正式 `StateStore` v1 保存 settings 与 overlay 的有限坐标/尺寸，
+    settings 的 maximized、独立 writer lock、原子提交后验证/回滚、损坏/非 v1 schema 非阻塞回退和
+    未知文件防覆盖已实现；settings worker 接收合并后的 GPUI bounds 更新和 overlay 几何变化并及时
     落盘，shutdown 仍强制 flush。更新后的双平台实机多显示器恢复证据尚未完成，因此保持未勾选，
     由 `P6-STATE-WINDOW-LAYOUT` 跟踪。
 
@@ -1221,16 +1224,15 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     不包含该入口，Production 组合在编译期拒绝。commit `696319e` 的 pull request run
     `33386401135` 全绿，三平台完整门禁、Windows 真实路径测试和双平台 recovery window smoke
     均通过，详见 `P6-STORAGE-LAYOUT-BOUNDARY`。
-- [x] 实现 load -> parse -> validate -> upgrade native schema -> atomic commit -> verify。
-  - 验收证据（2026-08-31）：正式 store 在单一 writer lock 内严格 parse/typed validate，v1 顺序迁移
-    先备份原 bytes，再经固定 temp、flush、原子替换和重读 typed config/revision 验证。commit
-    `fd0f1d2` 增加替换后破坏注入，验证失败逐字节恢复 v1、清理 temp，重启后可重新完成迁移；
-    pull request run `33388021697` 的三平台完整门禁及 config 定向 jobs 全部通过，详见
-    `P6-CONFIG-TRANSACTION-PIPELINE`。
+- [x] 实现 load -> parse -> validate current v1 -> atomic commit -> verify。
+  - 验收证据（2026-09-04）：正式 store 在单一 writer lock 内严格检查 schema version 并执行
+    typed validate，再经固定 temp、flush、原子替换和重读 typed config/revision 验证。底层事务与
+    替换后破坏注入最初由 commit `fd0f1d2` 建立；当前 v1 实现会在验证失败时逐字节恢复原文件并
+    清理 temp，不包含迁移步骤。本次重置已通过完整本地 Native workspace 与 config 定向测试。
 - [x] backup 包含 Native schema 版本和时间，并限制数量与总大小。
   - 验收证据（2026-08-31）：正式 `bongocat-config` 在替换前生成 v1 envelope，保存真实墙上
-    时间、源 schema/revision 和未迁移配置；每环境仅管理固定命名空间，按不受时钟回退影响的
-    排序键保留最新 8 份且总计不超过 8 MiB。单元测试覆盖 v1 -> v2 原文备份、12 次提交收敛、
+    时间、源 schema/revision 和原始配置；每环境仅管理固定命名空间，按不受时钟回退影响的
+    排序键保留最新 8 份且总计不超过 8 MiB。单元测试覆盖 v1 原文备份、12 次提交收敛、
     未知文件保留和时钟回退顺序；完整 Native workspace 门禁随当前队列提交验证。
 - [x] spike 中途提交中断后可安全恢复或重试；失败不覆盖当前可用配置。
   - 状态（2026-08-29）：`ConfigStore::recover_interrupted_commit` 覆盖主配置有效/缺失/损坏与临时文件有效/无效组合，恢复在 OS writer lock 内执行并保留诊断副本；父进程强制终止已写入并 flush 临时配置的持锁子进程后，macOS 本机与 Windows runner 均验证 lock 自动释放、当前配置保留和 interrupted archive。
@@ -1286,9 +1288,7 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     `config.json`；没有有效备份时不创建 quarantine 或静默回落默认值。
 - [ ] 覆盖无权限、磁盘满、目标占用和中途退出。
 - [ ] 覆盖非 ASCII/超长路径、缺失和重复模型。
-- [x] Native schema upgrade 重复执行 10 次结果一致。
-  - 验收证据（2026-08-31）：v1 selection 首次迁移到 v2 后连续加载 10 次，typed config 与
-    revision 始终一致且备份数量保持 1，证明迁移不会重复写回或重复备份。
+- [x] 当前 v1 连续读取 10 次结果一致且不会产生额外写入或备份。
 - [ ] 失败注入不丢当前环境的配置或用户模型。
 - [ ] 发布依赖和运行日志中没有旧 Tauri/Pinia 配置探测。
 - [ ] Bundle ID 精确验证为 `com.ayangweb.bongo-cat`。
@@ -1377,7 +1377,7 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     保留及成功模型切换清理；expression 也使用同一 clock 覆盖淡入、替换、错误保留和
     模型事务边界。expression 产品协议采用 latest-set-wins，不另设 priority；motion 主动
     stop fade-out 和完整 fixture 对接仍未完成，因此总项保持未勾选。
-- [ ] 配置 schema、Native 版本演进、环境隔离和原子写入测试。
+- [ ] 配置 v1 schema、环境隔离和原子写入测试。
 - [ ] 模型路径安全和损坏资源测试。
 - [ ] Cubism safe wrapper 生命周期测试。
 - [ ] 输入 fixture 和丢 release 恢复测试。
@@ -1480,7 +1480,7 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 - [ ] 关闭 GPUI 设置窗口不影响输入、动画、音效和 overlay。
 - [ ] issue #47 和输入生命周期回归矩阵通过。
 - [ ] 三个预置模型和支持范围内自定义模型通过兼容矩阵。
-- [ ] Native 配置写入/schema 演进可恢复，模型显式导入无已知数据丢失路径。
+- [ ] Native 配置写入与损坏恢复可靠，模型显式导入无已知数据丢失路径。
 - [ ] 性能、稳定性、安全和许可证门槛有可追溯证据。
 
 ## 11. Linux 后续 Backlog（不阻塞首发）
@@ -1532,7 +1532,7 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 
 - [x] 完成平台无关 Rust model3/package parser、所有结构化 sidecar 静态 preflight、三个预置规范化索引与异常资源安全 contract；后续任务已完成产品 Core safe wrapper、预置 motion/expression 求值及 D3D11/Metal 绘制，真实 physics/pose 行为样本仍缺失。
 - [x] 完成 6 个预置 motion3 与 15 个 exp3 的强类型结构、segment/Meta 计数、fade/parameter/blend 校验；这不代表 motion/expression 行为求值完成。
-- [x] 完成 3 个预置 cdi3 的强类型 parameter/group/part 与 group 拓扑校验，并将规范化索引升级到 schema v2；跨资源 ID 以未来 Core 表为准。
+- [x] 完成 3 个预置 cdi3 的强类型 parameter/group/part 与 group 拓扑校验；这些字段直接属于规范化索引 schema v1，跨资源 ID 以未来 Core 表为准。
 - [x] 完成 physics3 v3 静态 preflight、匿名摘要 CLI 和合成错误 contract；13 个历史文件只作为本地结构覆盖，不作为可分发 fixture 或行为求值证据。
 - [x] 完成 pose3 静态 preflight、匿名摘要 CLI 和合成错误 contract；没有授权真实样本或 fade/link 求值证据。
 - [x] 完成 userdata3 v3 静态 preflight、匿名摘要 CLI 和合成错误 contract；三个预置模型没有真实 userdata3。
@@ -1602,12 +1602,13 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       jobs `99316966532`/`99316966517`/`99316966591` 全部通过。
 19. [x] `P4-MODEL-SELECTION`：以 `(origin, model_id)` 从设置服务事务切换并持久化模型。
     - 依赖：`P4-MODEL-CATALOG`、runtime/renderer model commit、config expected revision。
-    - 退出条件：typed command 不靠字符串推断来源；preset/installed 同 ID 可分别选择；v1
-      配置顺序迁移到成对的 v2 origin/id；CPU/GPU/配置失败保留当前模型，GPU 拒绝恢复旧配置；
+    - 退出条件：typed command 不靠字符串推断来源；preset/installed 同 ID 可分别选择；当前 v1
+      配置直接保存成对的 origin/id；CPU/GPU/配置失败保留当前模型，GPU 拒绝恢复旧配置；
       重启重新加载所选来源；schema fixture、定向测试与完整 Native workspace 门禁通过。
-    - 验收证据（2026-08-31）：config v2 迁移、复合身份选择、重启、CPU/GPU/config rollback
-      与 Windows/macOS renderer rejection 测试均进入 `next`；push run `33333789799` 的三平台
-      workspace jobs 全部通过，Windows job 又通过 transactional D3D11 model switching smoke。
+    - 验收证据（2026-08-31）：复合身份选择、重启、CPU/GPU/config rollback 与 Windows/macOS
+      renderer rejection 测试均进入 `next`；push run `33333789799` 的三平台 workspace jobs
+      全部通过，Windows job 又通过 transactional D3D11 model switching smoke。2026-09-04 将当前
+      完整结构重置为 v1 后，本地 workspace 回归继续覆盖同一行为。
 20. [x] `P4-MODEL-IMPORT-COMMAND`：从设置服务显式导入用户确认的外部模型目录。
     - 依赖：环境 `ModelStore`、来源感知 catalog、typed settings command。
     - 退出条件：UI command 强类型携带 model ID/source root，文件 I/O 不在 UI executor；导入
@@ -1821,23 +1822,23 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       stable status/单次尝试计数进入 settings 独立 revision；真实 Development permission-denied
       bundle 的 800px 宽可视与 AppKit accessibility tree 检查通过，未显示平台错误文本。
 33. [x] `P6-CONFIG-BACKUP-RETENTION`：为正式配置提交建立有界、可审计的备份集合。
-    - 依赖：正式 `ConfigStore`、v1 -> v2 顺序迁移和环境 writer lock。
+    - 依赖：正式 `ConfigStore`、当前 v1 schema 和环境 writer lock。
     - 退出条件：每份备份携带格式版本、墙上时间、源 schema/revision 和原始配置；按环境限制
       数量与总大小；系统时钟回退不误删新备份；不删除非自有文件；备份失败不替换当前配置；
       config 定向测试、Clippy 和完整 Native workspace 门禁通过。
-    - 验收证据（2026-08-31）：v1 迁移 envelope、12 次提交后的 8 份/8 MiB 收敛、未知文件保留、
+    - 验收证据（2026-08-31）：backup envelope、12 次提交后的 8 份/8 MiB 收敛、未知文件保留、
       排序键时钟回退和 expected-revision 提交均有正式 crate 单元测试；commit `25d5030` 的
       pull request run `33364970646` 全绿，Windows/macOS/Ubuntu Native jobs
       `99403612087`/`99403611991`/`99403612068` 通过完整 format、Clippy、workspace test、
       release/Production 和平台 smoke，dependency policy、shared schema 与 config-store jobs
-      同时通过。
-34. [x] `P6-CONFIG-INVALID-LOAD`：固定无效配置保留和 schema migration 幂等契约。
-    - 依赖：正式 `ConfigStore`、严格 Native schema 和 v1 -> v2 migration。
+      同时通过。2026-09-04 重置为当前 v1 后，本地 config 与 workspace 测试继续覆盖这些契约。
+34. [x] `P6-CONFIG-INVALID-LOAD`：固定无效配置保留和当前 v1 重复读取契约。
+    - 依赖：正式 `ConfigStore` 和严格 Native v1 schema。
     - 退出条件：损坏、截断、错误类型、越界值和未知字段均返回错误且不覆盖/备份当前文件；
-      首次迁移后连续加载 10 次结果和 revision 不变且不重复备份；config 定向测试、Clippy 与
+      有效 v1 连续加载 10 次结果和 revision 不变且不产生重复备份；config 定向测试、Clippy 与
       完整 Native workspace 门禁通过。
-    - 状态（2026-08-31）：正式 crate 已加入五类无效输入逐字节保留测试和 10 次 migration
-      reload 门禁；本机定向测试与 Clippy 通过，完整 workspace/CI 证据随本项提交记录。
+    - 状态（2026-09-04）：正式 crate 已加入五类无效输入逐字节保留测试和 10 次 v1 reload
+      门禁；本机定向测试、Clippy 与完整 workspace 门禁通过。
 35. [x] `P6-CONFIG-BACKUP-RECOVERY`：从验证通过的 Native 备份恢复损坏的正式配置。
     - 依赖：`P6-CONFIG-BACKUP-RETENTION`、`P6-CONFIG-INVALID-LOAD` 和正式 app 启动装配。
     - 退出条件：按新到旧验证格式/schema/revision/typed config，只提交首个有效候选；损坏 current
@@ -1864,16 +1865,16 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
 37. [x] `P6-CONFIG-INTERRUPTED-COMMIT`：把强杀中断后的确定性配置恢复提升到正式产品 store。
     - 依赖：正式 `ConfigStore`、`P6-CONFIG-BACKUP-RECOVERY` 和环境 writer lock。
     - 退出条件：正式提交以固定同目录 `config.json.tmp` 执行 flush、备份、跨平台原子替换和提交后
-      验证；有效/缺失/损坏 current 与有效/无效 temp 组合均保守恢复；未来 schema temp 原样保留；
+      验证；有效/缺失/损坏 current 与有效/无效 temp 组合均保守恢复；非 v1 schema temp 原样保留；
       stale/invalid archive 每环境合计最多 4 份/8 MiB，未知文件与另一环境不受影响；强杀持锁
       子进程后 OS lock 释放且启动在 1 秒内有界重试；app 只公开匿名 action；config/app 定向测试、
       完整 Native workspace、三平台 CI 和 Windows input/config job 通过。
-    - 验收证据（2026-08-31）：正式 store、状态机、有界归档、未来 schema 保留、强杀子进程
-      回归和匿名 app action 已实现；本机完整 Native workspace 与仓库策略门禁通过。commit
-      `0b7b118` 的 pull request run `33371888571` 全绿；Windows/macOS/Ubuntu Native jobs
+    - 验收证据（2026-08-31）：正式 store、状态机、有界归档、未知 schema 保留、强杀子进程
+      回归和匿名 app action 已实现。commit `0b7b118` 的 pull request run `33371888571` 全绿；Windows/macOS/Ubuntu Native jobs
       `99424654786`/`99424654816`/`99424654950` 通过完整 format、Clippy、workspace test、
       release/Production 与平台 smoke，Windows input/config job `99424654701` 实际通过 Windows
-      原子替换、强杀 lock 释放、启动恢复和真实存储路径测试。
+      原子替换、强杀 lock 释放、启动恢复和真实存储路径测试。2026-09-04 的 v1 重置将同一路径
+      收紧为拒绝全部非 v1 schema，并通过本地完整 Native workspace 与仓库策略门禁。
     - 补充证据（2026-08-31）：workspace 并行测试在 `File` 析构后紧接重入时观察到瞬时
       `LockUnavailable`，commit `a760ce0` 为 writer lock RAII guard 增加显式 `unlock()`；本机
       32 测试线程重复运行与完整
@@ -1883,8 +1884,8 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
     - 依赖：`P6-CONFIG-BACKUP-RECOVERY`、`P6-CONFIG-RECOVERY-DIAGNOSTIC` 和 typed settings command。
     - 退出条件：无有效候选时不覆盖 current、不启动 overlay/GPU，Application 进入 recovery-only
       settings；snapshot 公开匿名状态与候选计数，所有业务写入/模型/启动项操作被拒；显式恢复默认
-      在 writer lock 内二次确认、quarantine 原字节、原子写入并验证 v2 默认配置，恢复后要求重启；
-      未来 schema、归档/验证失败保留原文件并返回稳定错误；config/app/ui 定向测试、完整 Native
+      在 writer lock 内二次确认、quarantine 原字节、原子写入并验证 v1 默认配置，恢复后要求重启；
+      非 v1 schema、归档/验证失败保留原文件并返回稳定错误；config/app/ui 定向测试、完整 Native
       workspace、三平台 CI 和 recovery window smoke 通过。
     - 状态（2026-08-31）：config/app/ui 定向测试已通过（config 23、app 29、ui 21）。commit
       `e2ced51` 的 pull request run `33374202985` 全绿；Windows/macOS/Ubuntu Native jobs
@@ -1950,24 +1951,21 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       test、release/Production 与平台 smoke，Windows/macOS jobs 均实际通过 recovery window；
       Windows input/config job `99469896784`、config-store job `99469896999`、双平台 GPUI 和依赖
       策略 jobs 同时通过，退出条件满足。
-43. [x] `P6-CONFIG-TRANSACTION-PIPELINE`：验收正式配置加载、迁移、提交与最终验证闭环。
-    - 依赖：正式 `ConfigStore`、v1 -> v2 migration、`P6-CONFIG-BACKUP-RETENTION` 和
+43. [x] `P6-CONFIG-TRANSACTION-PIPELINE`：验收正式配置加载、提交与最终验证闭环。
+    - 依赖：正式 `ConfigStore`、当前 v1 schema、`P6-CONFIG-BACKUP-RETENTION` 和
       `P6-CONFIG-INTERRUPTED-COMMIT`。
-    - 退出条件：current 在 writer lock 内按 load -> parse -> typed validate -> sequential Native upgrade
-      执行；迁移先保存原 bytes，再经固定同目录 temp、flush 和原子替换提交，最终重读比较 typed
-      config/revision；替换后验证破坏可受控注入，失败逐字节恢复旧 v1、清理 temp 且无故障重启可
-      再次迁移；有效 v2 不重写，无效/未来 schema 不被覆盖；config 定向测试、严格 Clippy、完整
+    - 退出条件：current 在 writer lock 内按 load -> schema v1 check -> typed validate 执行；提交经固定
+      同目录 temp、flush 和原子替换，最终重读比较 typed config/revision；替换后验证破坏可受控注入，
+      失败逐字节恢复原 v1 并清理 temp；有效 v1 不重写，无效/非 v1 schema 不被覆盖；config 定向测试、严格 Clippy、完整
       Native workspace、三平台 CI、Windows input/config 和独立 config-store job 通过。
-    - 验收证据（2026-08-31）：正式成功路径、有效 v2 幂等、无效/未来 schema 保留，以及替换后
-      验证破坏注入、旧 bytes 回滚、temp 清理和重启重试均有正式 crate 回归。commit `fd0f1d2` 的
-      pull request run `33388021697` 全绿；Windows/macOS/Ubuntu Native jobs
-      `99474952561`/`99474952603`/`99474952709` 通过完整 format、Clippy、workspace test、
-      release/Production 和平台 smoke，Windows input/config job `99474952566`、config-store job
-      `99474952502` 与 dependency policy job `99474952595` 同时通过，退出条件满足。
-44. [x] `P6-STATE-WINDOW-LAYOUT`：以环境内 `state.json` 恢复所有产品窗口布局。- 依赖：`P6-STORAGE-LAYOUT-BOUNDARY`、正式 settings lifecycle、GPUI 公共 bounds API。- 退出条件：state 使用独立 v2 schema、顺序读取 v1、`state.writer.lock` 和原子提交后验证，不进入 config
+    - 验收证据（2026-09-04）：正式成功路径、有效 v1 重复读取、无效/非 v1 schema 保留，以及替换后
+      验证破坏注入、原 bytes 回滚、temp 清理和重启重试均有正式 crate 回归。底层事务与故障注入
+      最初由 commit `fd0f1d2` 建立；本次无迁移的 v1 实现已通过本地 format、Clippy、workspace test、
+      release check、config-store contract 和 schema/fixture 门禁。
+44. [x] `P6-STATE-WINDOW-LAYOUT`：以环境内 `state.json` 恢复所有产品窗口布局。- 依赖：`P6-STORAGE-LAYOUT-BOUNDARY`、正式 settings lifecycle、GPUI 公共 bounds API。- 退出条件：state 使用独立 v1 schema、`state.writer.lock` 和原子提交后验证，不进入 config
         revision/backup/recovery；settings 与 overlay 坐标/尺寸有界且支持负坐标，settings 另保存
-        maximized；完全离屏或无已存状态时回到鼠标当前所在显示器居中；缺失、损坏、I/O 和未来 schema
-        不阻塞 config/runtime，旧版本不覆盖未来 state；GPUI observer 合并变化后及时写入，overlay
+        maximized；完全离屏或无已存状态时回到鼠标当前所在显示器居中；缺失、损坏、I/O 和非 v1 schema
+        不阻塞 config/runtime，当前版本不覆盖未知 state；GPUI observer 合并变化后及时写入，overlay
         只在几何变化时写入，settings worker shutdown 强制 flush，配置更新、模型切换、macOS Entity
         重建与 Windows 隐藏/重显均保留最新几何，进程重启读回；config/ui/app 定向测试、严格
         Clippy、完整 Native workspace、三平台 CI 和双平台隔离 storage smoke 通过。- 验收证据（2026-08-31）：typed store、UI tracker、Application/settings worker 接线、损坏隔离、
@@ -1981,8 +1979,9 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
         `settings window state restored after restart`。workflow `33395834870` 的 Native workspace
         jobs `99500010100`（Ubuntu）、`99500010122`（macOS）和 `99500010167`（Windows）以及
         Windows input/config job `99500010128` 全部通过；Windows 原生状态 smoke 输出与 macOS
-        release smoke 一致。2026-09-02 增补 v2、运行中落盘、配置/模型更新不覆盖状态和 overlay
-        完整 bounds 恢复；更新后的 Windows/macOS 实机显示器/DPI 热切换仍属于后续平台矩阵。
+        release smoke 一致。2026-09-02 增补运行中落盘、配置/模型更新不覆盖状态和 overlay 完整
+        bounds 恢复；2026-09-04 将当前完整 state 结构重置为 v1。更新后的 Windows/macOS 实机
+        显示器/DPI 热切换仍属于后续平台矩阵。
 45. [ ] `P2-GAMEPAD-RUNTIME`：将双平台 GameController/XInput producer 接入正式 runtime。
     - 依赖：`InputControl::Gamepad` 按钮语义、Gamepad axis keyed latest-value contract、现有
       Windows/macOS 平台 producer spike。
@@ -1997,16 +1996,16 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       - 状态（2026-08-31）：`GamepadAxisSettings` 拒绝无效 dead-zone，stick 使用对称重映射、
         trigger 使用单侧重映射；`StickLeft/Right X/Y` 已进入 renderer 参数，Reset 会清空轴值。
     - [x] 将 stick/trigger dead-zone 纳入正式配置并接入 Application runtime 生命周期。
-      - 状态（2026-08-31）：Native config v3 新增 `[0, 1)` 的
-        `input.gamepad_stick_dead_zone`/`gamepad_trigger_dead_zone`，v1/v2 通过带原始备份的顺序迁移
-        补入 `0.15`/`0.0` 默认值。Application 启动会在 runtime Ready 后发送强类型 settings，
+      - 状态（2026-09-04）：Native config v1 直接包含 `[0, 1)` 的
+        `input.gamepad_stick_dead_zone`/`gamepad_trigger_dead_zone`，默认值为 `0.15`/`0.0`。
+        Application 启动会在 runtime Ready 后发送强类型 settings，
         运行中更新先做 revision-checked 原子配置提交再重投影现有 axis；启动、更新、重启和 schema
         accept/reject 回归已覆盖。
       - 验收证据（2026-09-01）：正式 config 与独立 config-store spike 使用 `f64` 保存 JSON 数值，
         Application 在 runtime 边界受检转换为 `f32`，运行时更新按最短十进制表示写回；共享默认
-        fixture 的 value-level 序列化回归覆盖 `0.15`，修复 schema v3 后独立 CI contract 漂移。
+        fixture 的 value-level 序列化回归覆盖 `0.15`，并校验当前 schema v1 contract。
         commit `c388cf2` 的 run `33414582196` 全绿，config-store job `99562067963` 与 Windows
-        input/config job `99562067572` 均通过更新后的 v3 contract。
+        input/config job `99562067572` 均通过当时的 contract；当前已统一为 v1。
     - [x] 将同一 `GamepadAxisProducer` 从 Application 传递到独立 overlay/input service owner。
       - 状态（2026-08-31）：Windows/macOS 正式服务启动与所有 opt-in smoke 调用均持有 runtime
         producer；双平台服务现分别消费 XInput/GameController，无手柄启动行为不变。
@@ -2049,7 +2048,7 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       并有回归测试锁定该边界。
 
 46. [ ] `P5-SHORTCUT-CONTRACT`：冻结快捷键 chord 的规范化与冲突校验前置契约。
-    - 依赖：Native config v3、`InputEvent`/`PhysicalKey` 语义和后续 GPUI 快捷键编辑页。
+    - 依赖：Native config v1、`InputEvent`/`PhysicalKey` 语义和后续 GPUI 快捷键编辑页。
     - 退出条件：字符串绑定在配置提交前解析为平台无关的单 key chord；别名/顺序规范化稳定，
       非法或重复绑定返回可重试错误；不把平台 keycode、窗口句柄或原始按键流带入 config；
       后续平台捕获、清除、恢复默认和动作触发必须复用该 canonical contract。

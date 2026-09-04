@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 1,
   "application": {
     "launch_at_login": false,
     "show_taskbar_icon": true,

@@ -1,6 +1,6 @@
 # Native Configuration Contract
 
-状态：Native schema v3；JSON schema、Rust 类型与 fixtures 同步维护
+状态：Native schema v1；JSON schema、Rust 类型与 fixtures 同步维护
 
 ## Naming
 
@@ -96,11 +96,10 @@ modifier、抑制重复 key down；binding replace 保留 pressed set 以避免 
 
 窗口坐标、pressed state、权限结果、模型解析缓存和 renderer 状态不属于 `config.json`。可恢复窗口布局写入 `state.json`；其余瞬时/派生状态不持久化。
 
-## Application State v2
+## Application State v1
 
-- `state.json` 使用独立的 `schema_version: 2`，只保存可恢复的 settings 与 overlay 窗口布局；
-  v1 状态顺序迁移为 `overlay_window: null` 的 v2。它不是用户配置，
-  不参与 `config.json` 的 revision、backup、migration 或 recovery-only 状态机。
+- `state.json` 使用独立的 `schema_version: 1`，只保存可恢复的 settings 与 overlay 窗口布局。
+  它不是用户配置，不参与 `config.json` 的 revision、backup 或 recovery-only 状态机。
 - `settings_window` 为空时，窗口在鼠标当前所在显示器居中以 `800x600` 打开。非空值保存 GPUI
   逻辑坐标 `x`/`y`、逻辑尺寸 `width`/`height` 和 `maximized`；坐标允许负值，限制在
   `-1000000..=1000000`，尺寸限制为宽 `640..=16384`、高 `480..=16384`。
@@ -110,8 +109,8 @@ modifier、抑制重复 key down；binding replace 保留 pressed set 以避免 
 - 恢复前再次检查窗口与当前显示器是否相交；显示器移除或完全离屏时回到居中默认布局，
   并以实际可见 bounds 更新内存 state。fullscreen 不作为可恢复设置窗口状态。
 - 缺失、损坏、未知字段、越界值或读取失败只忽略 state 并使用默认布局，不阻塞
-  `config.json`、runtime 或 recovery-only 窗口。未来 state schema 同样回退默认布局，但
-  当前版本拒绝覆盖未来文件，避免降级破坏。
+  `config.json`、runtime 或 recovery-only 窗口。非 v1 state 同样回退默认布局，且当前版本
+  拒绝覆盖该文件。
 - state 使用环境内独立的 `locks/state.writer.lock` 和原子替换；提交后重新读取并比较 typed
   state，验证失败恢复替换前 bytes。它不创建 config backup/quarantine，也不读取另一环境。
 - GPUI bounds observer 只更新共享 typed 内存 tracker，不执行文件 I/O，并在连续变化停止 150 ms
@@ -119,17 +118,20 @@ modifier、抑制重复 key down；binding replace 保留 pressed set 以避免 
   worker 及时原子提交，正常 shutdown 前仍强制 flush。macOS Entity 重建、Windows 隐藏/重显、
   配置更新和模型切换都读取最新状态；失败形成稳定匿名错误但仍继续停止 runtime/audio 等 owner。
 
-## Schema Evolution
+## Initial Version Boundary
 
-- v1 只有 `selected_model_id`，产品启动时将非空值解释为预置模型。
-- v2 增加 `selected_model_origin`；v1 的非空 ID 顺序迁移为 `preset`，空 ID 迁移为
-  空 origin。迁移在当前环境 writer lock 内先生成配置备份，再原子写回。
-- v2 要求 ID 与 origin 同时有值或同时为空；不探测旧 Tauri/Pinia 字段，不接受 alias。
+- `next` 是全新的初始版本。当前完整配置直接定义为 `schema_version: 1`，包括
+  `selected_model_origin`、`input` 和本文件列出的全部现有字段。
+- `next` 开发期间新增字段直接修改 v1 的 Rust 类型、JSON Schema、默认值和 fixture；不保留开发
+  中间结构，不实现 migration、字段 alias、旧数据转换或历史版本判断。
+- 解析入口只接受完整 v1，并明确拒绝其他版本且不改写原文件。该入口为首次正式发布后的迁移机制
+  保留边界；发布前不包含任何迁移实现，发布后再以实际发布的 v1 为唯一迁移基线。
+- `selected_model_id` 与 `selected_model_origin` 必须同时有值或同时为空。
 
 ## Backup Retention
 
 - 每份备份是内部 JSON envelope，包含 `backup_format_version`、`created_at_unix_ms`、
-  `source_schema_version`、16 位小写十六进制 `source_revision` 和未迁移的原始 `config` 值。
+  `source_schema_version`、16 位小写十六进制 `source_revision` 和原始 `config` 值。
 - 文件名使用 `config-<20-digit-order>-<5-digit-sequence>.json` 自有命名空间。排序键不会因
   系统时钟回退而倒退；envelope 时间仍记录真实持久化墙上时间。
 - 每个环境最多保留最新 8 份、总计最多 8 MiB，最旧优先清理。其他文件不参与计数或删除。
@@ -149,12 +151,12 @@ modifier、抑制重复 key down；binding replace 保留 pressed set 以避免 
 
 ## Corruption Recovery
 
-- 当前 `config.json` 无法 parse、迁移或 validate 时，在当前环境 writer lock 内按文件名从新到旧
-  检查自有备份；未知文件、目录和符号链接不作为候选，也不得读取另一环境。高于当前版本的
-  schema 直接报告不支持并逐字节保留，禁止把较新配置自动降级为旧备份。
+- 当前 `config.json` 无法 parse 或 validate 时，在当前环境 writer lock 内按文件名从新到旧
+  检查自有备份；未知文件、目录和符号链接不作为候选，也不得读取另一环境。非 v1 schema
+  直接报告不支持并逐字节保留，不尝试转换或恢复为其他结构。
 - 候选必须同时通过 envelope 格式版本、非零创建时间、源 schema 与内嵌 config 一致性、
-  16 位规范化 source revision 以及完整 Native typed validation。未来格式、未来 schema、revision
-  不匹配和损坏候选会被跳过；只恢复第一个完全有效的候选，并原子写回当前 v2 规范化 JSON。
+  16 位规范化 source revision 以及完整 Native typed validation。未知格式、非 v1 schema、revision
+  不匹配和损坏候选会被跳过；只恢复第一个完全有效的 v1 候选，并原子写回规范化 JSON。
 - 替换前把损坏的当前文件逐字节保存为
   `config-corrupt-<20-digit-order>-<5-digit-sequence>.bin`。该自有 quarantine 每环境最多保留
   最新 4 份、总计最多 8 MiB；其他文件不参与计数或删除。
@@ -170,8 +172,8 @@ modifier、抑制重复 key down；binding replace 保留 pressed set 以避免 
   `RecoveryRequired { checked_backups }`，启动 recovery-only settings 窗口，不创建 overlay/GPU、
   不激活模型；所有业务写入、模型、启动项和 overlay command 在此状态被拒绝。
 - 用户必须显式发送 typed `RestoreDefaultConfiguration`。store 在同一 writer lock 内重新检查
-  current，拒绝未来 schema、有效 current 或已恢复状态；确认仍损坏后把原字节写入现有有界
-  `config-corrupt-*` quarantine，再原子写入、flush、读取并验证 v2 默认配置。成功后返回
+  current，拒绝非 v1 schema、有效 current 或已恢复状态；确认仍损坏后把原字节写入现有有界
+  `config-corrupt-*` quarantine，再原子写入、flush、读取并验证 v1 默认配置。成功后返回
   `DefaultsRestoredRestartRequired`，保留 recovery-only runtime，必须重启才恢复正常业务状态。
 - 恢复 command 失败不得覆盖 current；quarantine、默认写入或验证失败均返回稳定错误。Diagnostics
   只显示状态和候选计数，不显示路径、原始 bytes、时间戳或底层 I/O 文本。
@@ -188,10 +190,10 @@ modifier、抑制重复 key down；binding replace 保留 pressed set 以避免 
   时，已经 flush 的 temp 可保留到下一次启动。
 - 启动恢复与后续 load/default creation 共用一个 writer lock guard。只有该路径以 10 ms 间隔、
   最多 1 秒等待异常退出后的 OS lock 释放；普通 commit 冲突立即返回 `LockUnavailable`。
-- temp 有效且 current 有效或使用未来 schema 时，current 优先，temp 归档为 stale；current 缺失时
-  提升 temp；current 损坏时先逐字节 quarantine current，再提升 temp。temp 无法 parse、迁移或
-  validate 时归档为 invalid，不覆盖 current；若 current 也缺失，归档后按正常首次启动创建默认值。
-  temp 使用未来 schema 时逐字节原样保留并返回 `UnsupportedSchema`，不得归档或降级。
+- temp 有效且 current 有效或使用非 v1 schema 时，current 优先，temp 归档为 stale；current 缺失时
+  提升 temp；current 损坏时先逐字节 quarantine current，再提升 temp。temp 无法 parse 或 validate
+  时归档为 invalid，不覆盖 current；若 current 也缺失，归档后按正常首次启动创建默认值。
+  temp 使用非 v1 schema 时逐字节原样保留并返回 `UnsupportedSchema`，不得归档或转换。
 - interrupted archive 使用
   `config-interrupted-{stale|invalid}-<20-digit-order>-<5-digit-sequence>.bin` 自有命名空间；两类
   合计每环境最多保留最新 4 份、总计最多 8 MiB，未知文件不计数、不读取且不删除。恢复重启必须

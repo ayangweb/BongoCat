@@ -74,7 +74,7 @@ motion3/exp3 强类型验证提交 `3f8f5bc` 的 push run `33269920418` 与 PR r
 
 本批进一步强类型读取 6 个预置 motion 文件和 15 个 expression 文件：motion 共 12 条 curve、45 个 segment、123 个 point、0 条 user data；expression 共 15 个 parameter，其中 Add 9 个、Multiply 6 个。测试拒绝截断/未知 segment、越过 segment end 的 Bezier control time、Meta 计数漂移、非有限时间或参数、空 Id、错误 expression Type 和未知 blend，并分别返回 `model_motion_invalid` 或 `model_expression_invalid`。这些结果只证明发布资源的结构与引用可读取，不证明 Cubism motion/expression 求值、参数混合、优先级或绘制语义正确。
 
-索引 schema v2 又把三个 cdi3 的 parameter/group/part 数量固定为 standard `37/2/10`、keyboard `34/2/11`、gamepad `42/2/15`，其中 parameter 与 part 数量和 legacy Core baseline 完全一致。解析器使用 `model_display_info_invalid` 区分 display info 损坏，并在模型提交前拒绝重复 ID、悬空或成环 group。cdi3 是可选显示元数据，不作为 motion/expression 的权威 ID 白名单；真正的跨资源 ID 校验必须在取得 Core 参数/part 表后完成，以免误拒合法但不完整的 display info。
+索引 schema v1 直接把三个 cdi3 的 parameter/group/part 数量固定为 standard `37/2/10`、keyboard `34/2/11`、gamepad `42/2/15`，其中 parameter 与 part 数量和 legacy Core baseline 完全一致。解析器使用 `model_display_info_invalid` 区分 display info 损坏，并在模型提交前拒绝重复 ID、悬空或成环 group。cdi3 是可选显示元数据，不作为 motion/expression 的权威 ID 白名单；真正的跨资源 ID 校验必须在取得 Core 参数/part 表后完成，以免误拒合法但不完整的 display info。
 
 本机历史数据中的 13 个 physics3 仅以只读方式进入本地结构验收：全部为 v3/60 FPS，共 86 个 setting、139 个 input、206 个 output 和 267 个 vertex，文件声明计数与实际数组完全一致。`--physics` 逐个验证成功，输出只包含版本和聚合计数，不包含路径、模型名、dictionary name 或参数 ID；文件未复制到仓库，也不作为可分发 fixture。合成最小 physics3 测试固定 `model_physics_invalid`，覆盖 Meta 计数漂移、dictionary/setting 不一致、权重越界、normalization 逆序和 output vertex 越界。
 

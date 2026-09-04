@@ -73,7 +73,7 @@ Rust 2024 edition application
 | 输入最终一致   | 按键边沿、系统状态校正和生命周期复位共同维护 pressed state |
 | UI 与渲染分离  | GPUI 负责设置，独立 overlay renderer 负责 Live2D           |
 | 平台能力显式   | 系统 API 封装在平台模块，业务 crate 不接触平台 handle      |
-| 配置可恢复     | schema、环境隔离、验证、备份、版本演进和原子提交均可测试   |
+| 配置可恢复     | v1 schema、环境隔离、验证、备份和原子提交均可测试          |
 | 行为可重复     | fixture、规范化状态快照和平台 smoke test 共同验收          |
 
 ## 5. GPUI 决策
@@ -182,7 +182,7 @@ Platform input ---> Runtime thread ---> Model/Animation state
 - `live2d`：Cubism Core 生命周期、motion/expression/physics/pose 求值。
 - `audio`：motion 音效的有序 command、FLAC 解码、唯一 voice、输出设备和 shutdown。
 - `render`：不可变 render snapshot 和 renderer contract。
-- `config`：环境隔离、版本化 schema、验证、备份和原子提交。
+- `config`：环境隔离、当前 v1 schema、验证、备份和原子提交。
 
 ### 6.2 依赖方向
 
@@ -485,11 +485,12 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
 
 - Native Rewrite 配置从全新 schema 开始，不读取、不探测、不导入旧 Tauri/Pinia store。
 - JSON key 使用 `snake_case`，字段按当前领域语义命名，不提供旧字段 alias。
-- 配置包含显式 `schema_version`，只对 Native Rewrite 自身后续 schema 执行顺序、幂等升级。
-- 当前 v3 在保留成对 `selected_model_origin`/`selected_model_id` 的同时，以
-  `input.gamepad_stick_dead_zone` 和 `input.gamepad_trigger_dead_zone` 持久化 runtime 输入语义；
-  两者必须是 `[0, 1)` 的有限数。v1 非空模型 ID 按当时产品语义迁移为 preset，v2 增加默认
-  input 设置，升级严格按 v1 -> v2 -> v3 顺序执行，并在当前环境 writer lock 内备份原文后原子写回。
+- `next` 是全新的初始版本，当前完整配置统一使用 `schema_version: 1`。v1 直接包含成对的
+  `selected_model_origin`/`selected_model_id`，以及 `input.gamepad_stick_dead_zone` 和
+  `input.gamepad_trigger_dead_zone`；两个 dead-zone 都必须是 `[0, 1)` 的有限数。
+- `next` 开发期间不读取或转换任何早期中间结构，不实现 schema migration、字段 alias 或版本兼容
+  分支。新增字段直接更新当前 v1 的 Rust 类型、JSON Schema、默认值和 fixture。解析入口保留显式
+  版本检查并拒绝非 v1 数据；首次正式发布后的后续版本再以该发布版为基线单独设计迁移链。
 - 写入使用同目录临时文件、flush、原子替换和提交后验证；替换前把当前配置封装为带格式版本、
   墙上时间、源 schema 和 revision 的环境内备份。每个环境只管理 `config-*.json` 自有命名空间，
   按持久排序键保留最新 8 份且总计不超过 8 MiB；系统时钟回退不得让新备份被误删，未知文件
@@ -497,23 +498,23 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
   或值比较失败时逐字节恢复替换前配置，固定 temp 不得残留，后续启动必须可以重新尝试提交。
 - 正式配置提交先以只创建方式写入并 flush 固定的同目录 `config.json.tmp`，再使用平台原子替换
   提交 `config.json`。启动在同一 writer lock 内先处理残留 temp：有效 current 优先并把有效 temp
-  归档为 stale；current 缺失或损坏时才提升有效 temp；无效 temp 单独归档且不覆盖 current；未来
+  归档为 stale；current 缺失或损坏时才提升有效 temp；无效 temp 单独归档且不覆盖 current；非 v1
   schema temp 原样保留并明确报错。stale/invalid 归档共用每环境最多 4 份、总计 8 MiB 的自有
   命名空间，未知文件不参与清理。仅启动恢复以 10 ms 间隔重试 writer lock 最多 1 秒，普通提交
   仍立即报告竞争；app 只保留不含路径、原始字节或 I/O 文本的匿名恢复动作。
-- 当前配置 parse/validate 失败且不是未来 schema 时，只在同一 writer lock 内从新到旧检查
+- 当前配置属于 v1 但 parse/validate 失败时，只在同一 writer lock 内从新到旧检查
   自有备份，并同时验证 envelope 格式、源 schema、源 revision 和完整 typed config。恢复前将损坏原文写入独立的
   `config-corrupt-*.bin` 自有 quarantine，最多 4 份且总计不超过 8 MiB；恢复后重新读取验证，
   app 只公开源 schema 与跳过候选数等匿名诊断；settings service 将该诊断投影到 Diagnostics，
   不公开备份/配置路径、原始 JSON、时间戳或底层 I/O 文本。没有有效候选、quarantine 失败或恢复验证失败时
   不回落默认值，也不读取另一环境；当前损坏原文继续保留在 `config.json` 或 quarantine 中。
-  高于当前版本的 schema 直接报告不支持并保持原文件，禁止降级覆盖较新配置。
+  非 v1 schema 直接报告不支持并保持原文件，禁止覆盖未知格式。
 - 若 current 损坏且没有任何完整有效的 Native backup，Application 不得静默覆盖或继续使用默认值；
   它以 `RecoveryRequired` 受限状态启动，仅创建无 overlay/GPU 的 recovery-only settings 窗口。
   Diagnostics 显示匿名候选计数，并提供强类型 `RestoreDefaultConfiguration` command；该 command
   在 writer lock 内再次确认 current 仍不可恢复，将原字节放入 quarantine 后写入并验证当前 schema 默认配置，
   返回 `DefaultsRestoredRestartRequired`。恢复前所有业务写入、模型、启动项和 overlay 操作都被拒绝，
-  恢复后必须重启才重新进入正常 runtime；未来 schema 或 I/O/归档错误仍直接报告，不进入该安全模式。
+  恢复后必须重启才重新进入正常 runtime；非 v1 schema 或 I/O/归档错误仍直接报告，不进入该安全模式。
 - 配置写入将权限/只读文件系统、存储空间/配额不足和 temp 目标占用分类为稳定的匿名失败原因；
   settings 只显示可操作的项目文案，不泄漏路径或操作系统原始错误。写入只清理由当前调用成功创建的
   temp；若固定 temp 已被文件、目录、符号链接或并发创建占用，则保留该条目和 current 并明确失败。
@@ -524,12 +525,11 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
   Finder/Explorer，不经 shell 或字符串拼接；成功只返回当前 snapshot 且不推进 revision，失败只返回
   `BackupLocationOpenFailed`。该 command 在 `RecoveryRequired` 受限状态仍可使用。
 - `config.json` 只包含用户设置；窗口布局写入 `state.json`，pressed state、权限结果和模型解析缓存不持久化。
-- `state.json` 使用独立 v2 schema，保存设置窗口的逻辑坐标、尺寸与 maximized 状态，以及 overlay
-  的坐标与尺寸；v1 按顺序迁移为 overlay 尚无布局的 v2。坐标支持多显示器负值并设有有限范围，
+- `state.json` 使用独立 v1 schema，保存设置窗口的逻辑坐标、尺寸与 maximized 状态，以及 overlay
+  的坐标与尺寸；不读取或转换 `next` 开发期间出现过的其他结构。坐标支持多显示器负值并设有有限范围，
   设置窗口尺寸限制为 `640x480..16384x16384`，overlay 尺寸限制为
   `64x64..16384x16384`。缺失、损坏、越界、未知字段或读取失败只回退到鼠标当前所在显示器
-  居中的默认尺寸，不得阻塞 config、runtime 或 recovery-only 启动；未来 state schema 也回退显示
-  但禁止被旧版本覆盖。
+  居中的默认尺寸，不得阻塞 config、runtime 或 recovery-only 启动；非 v1 state 回退显示且不被覆盖。
 - state 通过环境内独立的 `state.writer.lock` 和原子替换提交，提交后重读 typed state，失败恢复
   替换前 bytes；它不进入 config revision、backup 或 quarantine。GPUI bounds observer 对连续变化
   合并 150 ms 后通知 settings worker，overlay frame source 仅在几何真正变化时通知同一 worker；
@@ -724,7 +724,7 @@ Windows 当前用户 Run value 按 Development/Production 分名；macOS 13+ 只
 
 ### Phase 4：GPUI 设置和配置存储
 
-完成 design system、设置页、模型管理、快捷键、权限、诊断、环境隔离与 Native schema 演进。
+完成 design system、设置页、模型管理、快捷键、权限、诊断、环境隔离与当前 v1 schema。
 
 ### Phase 5：系统集成
 

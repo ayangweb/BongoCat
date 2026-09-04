@@ -49,7 +49,12 @@ CLI/API，并且 Production 构建与该 feature 的组合在编译期失败。
 
 锁、单实例命名、诊断和更新 channel 也必须包含环境身份。任何环境都不得探测、读取或回退到另一个环境的目录。
 
-Native Rewrite 不读取或导入旧 Tauri/Pinia 配置。配置 JSON 键统一使用 `snake_case`，名称从当前产品领域语义定义，不保留旧字段 alias。`schema_version` 只用于 Native Rewrite 自身未来版本的顺序演进。
+Native Rewrite 不读取或导入旧 Tauri/Pinia 配置。配置 JSON 键统一使用 `snake_case`，名称从当前产品领域语义定义，不保留旧字段 alias。
+
+`next` 是全新的初始版本，当前完整 `config.json` 与 `state.json` 都从 `schema_version: 1`
+开始。在 `next` 首次正式发布前，新增字段直接修改当前 v1，不保留开发中间结构，也不实现迁移、
+旧数据转换或历史版本兼容判断。解析边界保留版本字段并拒绝非 v1 数据，避免静默改写未知格式。
+首次正式发布后，后续版本才以实际发布的 v1 为基线单独设计顺序、幂等迁移。
 
 ## Consequences
 
@@ -59,6 +64,7 @@ Native Rewrite 不读取或导入旧 Tauri/Pinia 配置。配置 JSON 键统一�
 - 用户模型仍可通过受验证的显式导入流程加入；不会根据旧配置路径自动发现或搬运。
 - 构建和打包任务必须拒绝缺失或未知的环境值。
 - Production 构建不能携带存储根注入能力；恢复窗口等进程级测试使用独立 Development 测试产物。
+- `next` 开发过程中产生的旧 schema 或中间数据需要删除并重新生成，不属于产品兼容输入。
 
 ## Verification
 
@@ -68,3 +74,4 @@ Native Rewrite 不读取或导入旧 Tauri/Pinia 配置。配置 JSON 键统一�
 - 验证锁、日志、备份、模型目录和更新 channel 均无跨环境访问。
 - 发布产物验证 Bundle ID 精确等于 `com.ayangweb.bongo-cat`。
 - 扫描发布依赖和运行日志，确认没有旧 Tauri/Pinia 配置探测。
+- 扫描 `next` 产品代码，确认不存在 schema migration、字段 alias 或旧结构转换路径。

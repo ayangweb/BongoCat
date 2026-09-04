@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ayangweb.com/bongocat/native-state-v2.schema.json",
-  "title": "BongoCat Native Application State v2",
+  "$id": "https://ayangweb.com/bongocat/native-state-v1.schema.json",
+  "title": "BongoCat Native Application State v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "settings_window", "overlay_window"],
   "properties": {
     "schema_version": {
-      "const": 2
+      "const": 1
     },
     "settings_window": {
       "oneOf": [

@@ -8,7 +8,7 @@ use std::{
     io::{self, ErrorKind},
 };
 
-pub const STATE_SCHEMA_VERSION: u32 = 2;
+pub const STATE_SCHEMA_VERSION: u32 = 1;
 const MIN_WINDOW_WIDTH: u32 = 640;
 const MIN_WINDOW_HEIGHT: u32 = 480;
 const MIN_OVERLAY_DIMENSION: u32 = 64;
@@ -322,22 +322,6 @@ fn parse_state(bytes: &[u8]) -> Result<ApplicationState, StateError> {
         .get("schema_version")
         .and_then(serde_json::Value::as_u64)
         .ok_or(StateError::InvalidValue("schema_version"))?;
-    if schema_version == 1 {
-        #[derive(Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct ApplicationStateV1 {
-            #[allow(dead_code)]
-            schema_version: u32,
-            settings_window: Option<WindowPlacement>,
-        }
-        let state: ApplicationStateV1 = serde_json::from_value(value)?;
-        if let Some(placement) = state.settings_window {
-            placement.validate()?;
-        }
-        return Ok(ApplicationState::with_settings_window(
-            state.settings_window,
-        ));
-    }
     if schema_version != u64::from(STATE_SCHEMA_VERSION) {
         return Err(StateError::UnsupportedSchema(schema_version));
     }
@@ -414,16 +398,16 @@ mod tests {
 
         fs::write(
             &store.layout.state,
-            br#"{"schema_version":3,"settings_window":null,"overlay_window":null}"#,
+            br#"{"schema_version":2,"settings_window":null,"overlay_window":null}"#,
         )
         .expect("future state");
         assert_eq!(
             store.load_or_default().status,
-            StateLoadStatus::IgnoredUnsupportedSchema(3)
+            StateLoadStatus::IgnoredUnsupportedSchema(2)
         );
         assert!(matches!(
             store.commit(&ApplicationState::default()),
-            Err(StateError::UnsupportedSchema(3))
+            Err(StateError::UnsupportedSchema(2))
         ));
 
         let oversized_future = br#"{"schema_version":4294967296,"settings_window":null}"#;
@@ -460,17 +444,6 @@ mod tests {
             OverlayWindowPlacement::new(0, 0, MIN_OVERLAY_DIMENSION - 1, 600),
             Err(StateError::InvalidValue("overlay_window.width"))
         ));
-    }
-
-    #[test]
-    fn v1_state_is_upgraded_in_memory_without_losing_settings_layout() {
-        let state = parse_state(
-            br#"{"schema_version":1,"settings_window":{"x":-120,"y":48,"width":800,"height":600,"maximized":false}}"#,
-        )
-        .expect("v1 state");
-        assert_eq!(state.schema_version, STATE_SCHEMA_VERSION);
-        assert_eq!(state.settings_window, Some(placement(-120, 48)));
-        assert_eq!(state.overlay_window, None);
     }
 
     #[test]

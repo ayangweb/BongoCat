@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://bongocat.dev/schemas/native-config-v3.json",
+  "$id": "https://bongocat.dev/schemas/native-config-v1.json",
   "title": "BongoCat Native Rewrite configuration",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "application", "appearance", "overlay", "input", "model", "shortcuts"],
   "properties": {
-    "schema_version": { "const": 3 },
+    "schema_version": { "const": 1 },
     "application": {
       "$ref": "#/$defs/application"
     },

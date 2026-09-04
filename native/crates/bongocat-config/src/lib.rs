@@ -19,9 +19,7 @@ pub use state::{
 };
 
 pub const BUNDLE_ID: &str = "com.ayangweb.bongo-cat";
-pub const SCHEMA_VERSION: u32 = 3;
-const V1_SCHEMA_VERSION: u32 = 1;
-const V2_SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 1;
 const BACKUP_FORMAT_VERSION: u32 = 1;
 const MAX_CONFIG_BACKUPS: usize = 8;
 const MAX_CONFIG_BACKUP_BYTES: u64 = 8 * 1024 * 1024;
@@ -1164,19 +1162,12 @@ impl ConfigStore {
         let interrupted_recovery = self.recover_interrupted_commit_unlocked()?;
         let mut outcome = match fs::read(&self.layout.config) {
             Ok(bytes) => match parse_config(&bytes) {
-                Ok((config, revision, migrated)) => {
-                    let revision = if migrated {
-                        self.commit_unlocked(&config)?
-                    } else {
-                        revision
-                    };
-                    Ok(ConfigLoadOutcome {
-                        config,
-                        revision,
-                        recovery: None,
-                        interrupted_recovery: None,
-                    })
-                }
+                Ok((config, revision)) => Ok(ConfigLoadOutcome {
+                    config,
+                    revision,
+                    recovery: None,
+                    interrupted_recovery: None,
+                }),
                 Err(error @ ConfigError::UnsupportedSchema(_)) => Err(error),
                 Err(_) => self.recover_from_backup_unlocked(&bytes),
             },
@@ -1220,7 +1211,7 @@ impl ConfigStore {
         let bytes = serde_json::to_vec_pretty(&config)?;
         self.write_config_atomic(&self.layout.config, &bytes)?;
         let verified = fs::read(&self.layout.config)?;
-        let Ok((verified_config, revision, false)) = parse_config(&verified) else {
+        let Ok((verified_config, revision)) = parse_config(&verified) else {
             restore_config_bytes(&self.layout.config, Some(&invalid_current))?;
             return Err(ConfigError::RecoveryVerificationFailed);
         };
@@ -1288,7 +1279,7 @@ impl ConfigStore {
 
     fn read_revision(&self) -> Result<ConfigRevision, ConfigError> {
         let bytes = fs::read(&self.layout.config)?;
-        let (_, revision, _) = parse_config(&bytes)?;
+        let (_, revision) = parse_config(&bytes)?;
         Ok(revision)
     }
 
@@ -1307,7 +1298,7 @@ impl ConfigStore {
         let verification = fs::read(&self.layout.config)
             .map_err(ConfigError::from)
             .and_then(|verified| parse_config(&verified));
-        let Ok((verified_config, revision, false)) = verification else {
+        let Ok((verified_config, revision)) = verification else {
             restore_config_bytes(&self.layout.config, previous.as_deref())?;
             return Err(ConfigError::RecoveryVerificationFailed);
         };
@@ -1402,13 +1393,13 @@ impl ConfigStore {
         replaced_current: Option<&[u8]>,
     ) -> Result<(), ConfigError> {
         let candidate = fs::read(temp_path)?;
-        let (candidate_config, candidate_revision, _) = parse_config(&candidate)?;
+        let (candidate_config, candidate_revision) = parse_config(&candidate)?;
         write_atomic(&self.layout.config, &candidate)?;
 
         let verification = fs::read(&self.layout.config)
             .map_err(ConfigError::from)
             .and_then(|verified| parse_config(&verified));
-        if verification.as_ref().is_ok_and(|(config, revision, _)| {
+        if verification.as_ref().is_ok_and(|(config, revision)| {
             *config == candidate_config && *revision == candidate_revision
         }) {
             match fs::remove_file(temp_path) {
@@ -1448,7 +1439,7 @@ impl ConfigStore {
             .and_then(serde_json::Value::as_u64)
             .and_then(|version| u32::try_from(version).ok())
             .ok_or(ConfigError::InvalidValue("schema_version"))?;
-        let (_, source_revision, _) = parse_config(current)?;
+        let (_, source_revision) = parse_config(current)?;
         let created_at_unix_ms = unix_time_millis()?;
         let backup = ConfigBackup {
             backup_format_version: BACKUP_FORMAT_VERSION,
@@ -1486,7 +1477,7 @@ impl ConfigStore {
             self.archive_invalid_config_unlocked(invalid_current)?;
             self.write_config_atomic(&self.layout.config, &restored)?;
             let verified = fs::read(&self.layout.config)?;
-            let Ok((verified_config, verified_revision, false)) = parse_config(&verified) else {
+            let Ok((verified_config, verified_revision)) = parse_config(&verified) else {
                 write_config_atomic(&self.layout.config, invalid_current)?;
                 return Err(ConfigError::RecoveryVerificationFailed);
             };
@@ -1550,7 +1541,7 @@ fn validate_config_backup(
         return Err(ConfigError::InvalidValue("backup.source_schema_version"));
     }
     let config_bytes = serde_json::to_vec(&backup.config)?;
-    let (config, revision, _) = parse_config(&config_bytes)?;
+    let (config, revision) = parse_config(&config_bytes)?;
     if backup.source_revision != format!("{:016x}", revision.value()) {
         return Err(ConfigError::InvalidValue("backup.source_revision"));
     }
@@ -1952,70 +1943,21 @@ fn set_private_path(path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn parse_config(bytes: &[u8]) -> Result<(NativeConfig, ConfigRevision, bool), ConfigError> {
-    let mut value: serde_json::Value = serde_json::from_slice(bytes)?;
+fn parse_config(bytes: &[u8]) -> Result<(NativeConfig, ConfigRevision), ConfigError> {
+    let value: serde_json::Value = serde_json::from_slice(bytes)?;
     let schema_version = value
         .get("schema_version")
         .and_then(serde_json::Value::as_u64)
         .and_then(|version| u32::try_from(version).ok())
         .ok_or(ConfigError::InvalidValue("schema_version"))?;
-    let migrated = schema_version != SCHEMA_VERSION;
-    match schema_version {
-        V1_SCHEMA_VERSION => {
-            migrate_v1_to_v2(&mut value)?;
-            migrate_v2_to_v3(&mut value)?;
-        }
-        V2_SCHEMA_VERSION => migrate_v2_to_v3(&mut value)?,
-        SCHEMA_VERSION => {}
-        _ => return Err(ConfigError::UnsupportedSchema(schema_version)),
+    if schema_version != SCHEMA_VERSION {
+        return Err(ConfigError::UnsupportedSchema(schema_version));
     }
     let config: NativeConfig = serde_json::from_value(value)?;
     config.validate()?;
     let normalized = serde_json::to_vec_pretty(&config)?;
     let revision = revision_for_bytes(&normalized);
-    Ok((config, revision, migrated))
-}
-
-fn migrate_v1_to_v2(value: &mut serde_json::Value) -> Result<(), ConfigError> {
-    let model = value
-        .get_mut("model")
-        .and_then(serde_json::Value::as_object_mut)
-        .ok_or(ConfigError::InvalidValue("model"))?;
-    if model.contains_key("selected_model_origin") {
-        return Err(ConfigError::InvalidValue("model.selected_model_origin"));
-    }
-    let origin = if model
-        .get("selected_model_id")
-        .is_some_and(|id| !id.is_null())
-    {
-        serde_json::Value::String("preset".to_owned())
-    } else {
-        serde_json::Value::Null
-    };
-    model.insert("selected_model_origin".to_owned(), origin);
-    value["schema_version"] = serde_json::Value::from(V2_SCHEMA_VERSION);
-    Ok(())
-}
-
-fn migrate_v2_to_v3(value: &mut serde_json::Value) -> Result<(), ConfigError> {
-    let root = value
-        .as_object_mut()
-        .ok_or(ConfigError::InvalidValue("configuration"))?;
-    if root.contains_key("input") {
-        return Err(ConfigError::InvalidValue("input"));
-    }
-    root.insert(
-        "input".to_owned(),
-        serde_json::json!({
-            "gamepad_stick_dead_zone": 0.15,
-            "gamepad_trigger_dead_zone": 0.0,
-        }),
-    );
-    root.insert(
-        "schema_version".to_owned(),
-        serde_json::Value::from(SCHEMA_VERSION),
-    );
-    Ok(())
+    Ok((config, revision))
 }
 
 fn revision_for_bytes(bytes: &[u8]) -> ConfigRevision {
@@ -2035,26 +1977,6 @@ mod tests {
 
     const CRASH_PROBE_BASE: &str = "BONGOCAT_CONFIG_CRASH_PROBE_BASE";
     const CRASH_PROBE_READY: &str = "BONGOCAT_CONFIG_CRASH_PROBE_READY";
-
-    fn native_v2_config_value() -> serde_json::Value {
-        let mut value = serde_json::to_value(NativeConfig::default()).expect("serialize config");
-        value["schema_version"] = serde_json::Value::from(V2_SCHEMA_VERSION);
-        value
-            .as_object_mut()
-            .expect("configuration object")
-            .remove("input");
-        value
-    }
-
-    fn native_v1_config_value() -> serde_json::Value {
-        let mut value = native_v2_config_value();
-        value["schema_version"] = serde_json::Value::from(V1_SCHEMA_VERSION);
-        value["model"]
-            .as_object_mut()
-            .expect("model object")
-            .remove("selected_model_origin");
-        value
-    }
 
     #[test]
     fn environments_have_identical_shape_and_disjoint_roots() {
@@ -2141,6 +2063,31 @@ mod tests {
             );
             assert!(!config_temp_path(&store.layout().config).exists());
         }
+    }
+
+    #[test]
+    fn post_replace_verification_failure_restores_current_v1_bytes() {
+        let base = tempdir().expect("temp directory");
+        let mut store = ConfigStore::new(StorageLayout::under(
+            base.path(),
+            BuildEnvironment::Development,
+        ))
+        .expect("config store");
+        let loaded = store.load_or_default().expect("default config");
+        let original = fs::read(&store.layout().config).expect("original config");
+        let mut next = loaded.config;
+        next.overlay.visible = false;
+        store.inject_write_failure(InjectedConfigWriteFailure::VerificationCorruption);
+
+        assert!(matches!(
+            store.commit_if_revision(&next, loaded.revision),
+            Err(ConfigError::RecoveryVerificationFailed)
+        ));
+        assert_eq!(
+            fs::read(&store.layout().config).expect("restored config"),
+            original
+        );
+        assert!(!config_temp_path(&store.layout().config).exists());
     }
 
     #[test]
@@ -2791,109 +2738,6 @@ mod tests {
             config.validate(),
             Err(ConfigError::InvalidValue("model.selected_model_selection"))
         ));
-    }
-
-    #[test]
-    fn native_v1_selection_migrates_once_and_preserves_original_backup() {
-        let base = tempdir().expect("temp directory");
-        let store = ConfigStore::new(StorageLayout::under(
-            base.path(),
-            BuildEnvironment::Development,
-        ))
-        .expect("config store");
-        let mut v1 = native_v1_config_value();
-        v1["model"]["selected_model_id"] = serde_json::Value::String("standard".to_owned());
-        let original = serde_json::to_vec_pretty(&v1).expect("v1 bytes");
-        fs::write(&store.layout().config, &original).expect("write v1 config");
-
-        let loaded = store.load_or_default().expect("migrate v1 config");
-        let migrated = loaded.config;
-        let revision = loaded.revision;
-        assert_eq!(loaded.recovery, None);
-        assert_eq!(migrated.schema_version, SCHEMA_VERSION);
-        assert_eq!(
-            migrated.model.selected_model_origin,
-            Some(SelectedModelOrigin::Preset)
-        );
-        let backup_paths = config_backup_paths(store.layout());
-        assert_eq!(backup_paths.len(), 1);
-        let backup: ConfigBackup =
-            serde_json::from_slice(&fs::read(&backup_paths[0]).expect("migration backup"))
-                .expect("backup envelope");
-        assert_eq!(backup.backup_format_version, BACKUP_FORMAT_VERSION);
-        assert_eq!(backup.source_schema_version, V1_SCHEMA_VERSION);
-        assert_eq!(backup.config, v1);
-        assert!(backup.created_at_unix_ms > 0);
-        assert_eq!(backup.source_revision.len(), 16);
-        for _ in 0..10 {
-            let reloaded = store.load_or_default().expect("reload v3 config");
-            assert_eq!(reloaded.config, migrated);
-            assert_eq!(reloaded.revision, revision);
-            assert_eq!(reloaded.recovery, None);
-        }
-        assert_eq!(config_backup_paths(store.layout()).len(), 1);
-    }
-
-    #[test]
-    fn native_v2_adds_default_input_settings_once_and_preserves_original_backup() {
-        let base = tempdir().expect("temp directory");
-        let store = ConfigStore::new(StorageLayout::under(
-            base.path(),
-            BuildEnvironment::Development,
-        ))
-        .expect("config store");
-        let v2 = native_v2_config_value();
-        let original = serde_json::to_vec_pretty(&v2).expect("v2 bytes");
-        fs::write(&store.layout().config, &original).expect("write v2 config");
-
-        let loaded = store.load_or_default().expect("migrate v2 config");
-        assert_eq!(loaded.config, NativeConfig::default());
-        assert_eq!(loaded.recovery, None);
-        let backup_paths = config_backup_paths(store.layout());
-        assert_eq!(backup_paths.len(), 1);
-        let backup: ConfigBackup =
-            serde_json::from_slice(&fs::read(&backup_paths[0]).expect("migration backup"))
-                .expect("backup envelope");
-        assert_eq!(backup.source_schema_version, V2_SCHEMA_VERSION);
-        assert_eq!(backup.config, v2);
-
-        let reloaded = store.load_or_default().expect("reload v3 config");
-        assert_eq!(reloaded.config, NativeConfig::default());
-        assert_eq!(reloaded.revision, loaded.revision);
-        assert_eq!(config_backup_paths(store.layout()).len(), 1);
-    }
-
-    #[test]
-    fn post_replace_verification_failure_restores_v1_bytes_and_allows_retry() {
-        let base = tempdir().expect("temp directory");
-        let layout = StorageLayout::under(base.path(), BuildEnvironment::Development);
-        let v1 = native_v1_config_value();
-        let original = serde_json::to_vec_pretty(&v1).expect("v1 bytes");
-
-        let mut faulting_store = ConfigStore::new(layout.clone()).expect("config store");
-        fs::write(&faulting_store.layout().config, &original).expect("write v1 config");
-        faulting_store.inject_write_failure(InjectedConfigWriteFailure::VerificationCorruption);
-
-        assert!(matches!(
-            faulting_store.load_or_default(),
-            Err(ConfigError::RecoveryVerificationFailed)
-        ));
-        assert_eq!(
-            fs::read(&faulting_store.layout().config).expect("restored v1 config"),
-            original
-        );
-        assert!(!config_temp_path(&faulting_store.layout().config).exists());
-        drop(faulting_store);
-
-        let retry_store = ConfigStore::new(layout).expect("retry config store");
-        let retried = retry_store.load_or_default().expect("retry v1 migration");
-        assert_eq!(retried.config.schema_version, SCHEMA_VERSION);
-        assert_eq!(retried.config.model.selected_model_id, None);
-        assert_eq!(retried.config.model.selected_model_origin, None);
-        assert_eq!(
-            retry_store.read_revision().expect("verified revision"),
-            retried.revision
-        );
     }
 
     #[test]

@@ -10,7 +10,7 @@ use std::{
 };
 
 pub const BUNDLE_ID: &str = "com.ayangweb.bongo-cat";
-pub const SCHEMA_VERSION: u32 = 3;
+pub const SCHEMA_VERSION: u32 = 1;
 const RECOVERY_LOCK_TIMEOUT: Duration = Duration::from_secs(1);
 const RECOVERY_LOCK_RETRY_INTERVAL: Duration = Duration::from_millis(10);
 

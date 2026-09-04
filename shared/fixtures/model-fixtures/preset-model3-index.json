@@ -1,6 +1,6 @@
 {
   "standard": {
-    "schema_version": 2,
+    "schema_version": 1,
     "model_version": 3,
     "entry": "cat.model3.json",
     "moc": "demomodel.moc3",
@@ -560,7 +560,7 @@
     ]
   },
   "keyboard": {
-    "schema_version": 2,
+    "schema_version": 1,
     "model_version": 3,
     "entry": "cat.model3.json",
     "moc": "demomodel2.moc3",
@@ -1153,7 +1153,7 @@
     ]
   },
   "gamepad": {
-    "schema_version": 2,
+    "schema_version": 1,
     "model_version": 3,
     "entry": "cat.model3.json",
     "moc": "demomodel3.moc3",
