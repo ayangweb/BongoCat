@@ -169,7 +169,7 @@ pub struct ApplicationConfig {
 #[serde(deny_unknown_fields)]
 pub struct AppearanceConfig {
     pub theme: Theme,
-    pub language: String,
+    pub language: Language,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -178,6 +178,58 @@ pub enum Theme {
     System,
     Light,
     Dark,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum Language {
+    #[default]
+    System,
+    #[serde(rename = "zh-CN")]
+    ChineseSimplified,
+    #[serde(rename = "en-US")]
+    EnglishUnitedStates,
+}
+
+impl Language {
+    pub const ALL: [Self; 3] = [
+        Self::System,
+        Self::ChineseSimplified,
+        Self::EnglishUnitedStates,
+    ];
+
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::ChineseSimplified => "zh-CN",
+            Self::EnglishUnitedStates => "en-US",
+        }
+    }
+
+    pub fn from_system_locale(locale: &str) -> Self {
+        let locale = locale.replace('_', "-").to_ascii_lowercase();
+        let subtags = locale.split('-').collect::<Vec<_>>();
+        if subtags.first() == Some(&"zh")
+            && !subtags
+                .iter()
+                .any(|subtag| matches!(*subtag, "hant" | "tw" | "hk" | "mo"))
+        {
+            Self::ChineseSimplified
+        } else {
+            Self::EnglishUnitedStates
+        }
+    }
+
+    pub const fn resolve(self, system_language: Self) -> Self {
+        match self {
+            Self::System => match system_language {
+                Self::ChineseSimplified => Self::ChineseSimplified,
+                Self::System | Self::EnglishUnitedStates => Self::EnglishUnitedStates,
+            },
+            Self::ChineseSimplified => Self::ChineseSimplified,
+            Self::EnglishUnitedStates => Self::EnglishUnitedStates,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -822,7 +874,7 @@ impl Default for NativeConfig {
             },
             appearance: AppearanceConfig {
                 theme: Theme::System,
-                language: "en-US".into(),
+                language: Language::default(),
             },
             overlay: OverlayConfig {
                 visible: true,
@@ -886,9 +938,6 @@ impl NativeConfig {
             return Err(ConfigError::InvalidValue(
                 "model.release_fallback_timeout_ms",
             ));
-        }
-        if self.appearance.language.trim().is_empty() {
-            return Err(ConfigError::InvalidValue("appearance.language"));
         }
         if self
             .model
@@ -1975,6 +2024,59 @@ mod tests {
     use std::process::{Command, Stdio};
     use tempfile::tempdir;
 
+    #[test]
+    fn system_locale_resolves_to_simplified_chinese_or_english() {
+        assert_eq!(
+            Language::from_system_locale("zh-Hans-CN"),
+            Language::ChineseSimplified
+        );
+        assert_eq!(
+            Language::from_system_locale("zh_Hant_HK"),
+            Language::EnglishUnitedStates
+        );
+        assert_eq!(
+            Language::from_system_locale("en-GB"),
+            Language::EnglishUnitedStates
+        );
+        assert_eq!(
+            Language::from_system_locale("de-DE"),
+            Language::EnglishUnitedStates
+        );
+        assert_eq!(
+            Language::System.resolve(Language::ChineseSimplified),
+            Language::ChineseSimplified
+        );
+        assert_eq!(
+            Language::System.resolve(Language::System),
+            Language::EnglishUnitedStates
+        );
+        assert_eq!(
+            Language::EnglishUnitedStates.resolve(Language::ChineseSimplified),
+            Language::EnglishUnitedStates
+        );
+        assert_eq!(
+            Language::ChineseSimplified.resolve(Language::EnglishUnitedStates),
+            Language::ChineseSimplified
+        );
+    }
+
+    #[test]
+    fn language_codes_round_trip_and_unsupported_values_are_rejected() {
+        for language in Language::ALL {
+            let json = serde_json::to_string(&language).expect("serialize language");
+            assert_eq!(json, format!("\"{}\"", language.code()));
+            assert_eq!(
+                serde_json::from_str::<Language>(&json).expect("deserialize language"),
+                language
+            );
+        }
+        assert!(serde_json::from_str::<Language>("\"de-DE\"").is_err());
+
+        let fixture =
+            include_str!("../../../../shared/config/fixtures/invalid-unsupported-language.json");
+        assert!(parse_config(fixture.as_bytes()).is_err());
+    }
+
     const CRASH_PROBE_BASE: &str = "BONGOCAT_CONFIG_CRASH_PROBE_BASE";
     const CRASH_PROBE_READY: &str = "BONGOCAT_CONFIG_CRASH_PROBE_READY";
 
@@ -2143,7 +2245,7 @@ mod tests {
         .expect("config store");
         let current = store.load_or_default().expect("default config").config;
         let mut candidate = current.clone();
-        candidate.appearance.language = "zh-CN".to_owned();
+        candidate.appearance.language = Language::ChineseSimplified;
         let candidate_bytes = write_interrupted_temp(&store, &candidate);
 
         let recovered = store.load_or_default().expect("recover stale temp");

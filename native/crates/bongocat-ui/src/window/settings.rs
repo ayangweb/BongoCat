@@ -14,6 +14,31 @@ impl SettingsView {
             || self.model_import.is_picker_open()
     }
 
+    pub(super) fn set_language(&mut self, language: SettingsLanguage, cx: &mut Context<Self>) {
+        let Some(expected_config_revision) = self
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.config_revision)
+        else {
+            return;
+        };
+        if self
+            .snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.language == language)
+        {
+            return;
+        }
+        self.start_request(
+            PendingOperation::Language,
+            Some(SettingValue::Language {
+                expected_config_revision,
+                language,
+            }),
+            cx,
+        );
+    }
+
     pub(super) fn set_appearance_theme(&mut self, theme: SettingsTheme, cx: &mut Context<Self>) {
         let Some(expected_config_revision) = self
             .snapshot

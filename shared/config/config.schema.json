@@ -44,7 +44,7 @@
       "required": ["theme", "language"],
       "properties": {
         "theme": { "enum": ["system", "light", "dark"] },
-        "language": { "type": "string", "minLength": 1, "pattern": ".*\\S.*" }
+        "language": { "enum": ["system", "zh-CN", "en-US"] }
       }
     },
     "overlay": {

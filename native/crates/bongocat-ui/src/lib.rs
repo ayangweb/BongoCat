@@ -259,6 +259,45 @@ pub enum SettingsTheme {
     Dark,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum SettingsLanguage {
+    #[default]
+    System,
+    ChineseSimplified,
+    EnglishUnitedStates,
+}
+
+impl SettingsLanguage {
+    pub const ALL: [Self; 3] = [
+        Self::System,
+        Self::ChineseSimplified,
+        Self::EnglishUnitedStates,
+    ];
+
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::ChineseSimplified => "zh-CN",
+            Self::EnglishUnitedStates => "en-US",
+        }
+    }
+
+    pub const fn display_name(self, display_language: Self) -> &'static str {
+        match (self, display_language) {
+            (Self::System, Self::ChineseSimplified) => "跟随系统",
+            (Self::System, Self::System | Self::EnglishUnitedStates) => "Follow system",
+            (Self::ChineseSimplified, _) => "简体中文",
+            (Self::EnglishUnitedStates, _) => "English",
+        }
+    }
+
+    pub fn from_display_name(name: &str, display_language: Self) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|language| language.display_name(display_language) == name)
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SettingsSnapshot {
     pub revision: u64,
@@ -266,6 +305,8 @@ pub struct SettingsSnapshot {
     pub runtime_health: RuntimeHealth,
     pub runtime_diagnostics: SettingsRuntimeDiagnostics,
     pub appearance_theme: SettingsTheme,
+    pub language: SettingsLanguage,
+    pub resolved_language: SettingsLanguage,
     pub status_icon_visible: bool,
     pub taskbar_icon_visible: bool,
     pub overlay_visible: bool,
@@ -863,6 +904,11 @@ pub enum SettingsCommand {
         theme: SettingsTheme,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    SetLanguage {
+        expected_config_revision: u64,
+        language: SettingsLanguage,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     SetStatusIconVisible {
         expected_config_revision: u64,
         visible: bool,
@@ -1041,6 +1087,19 @@ impl SettingsClient {
         self.request(|reply| SettingsCommand::SetAppearanceTheme {
             expected_config_revision,
             theme,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn set_language(
+        &self,
+        expected_config_revision: u64,
+        language: SettingsLanguage,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetLanguage {
+            expected_config_revision,
+            language,
             reply,
         })
         .await
@@ -1261,6 +1320,18 @@ impl SettingsClient {
         self.request_blocking(|reply| SettingsCommand::SetAppearanceTheme {
             expected_config_revision,
             theme,
+            reply,
+        })
+    }
+
+    pub fn set_language_blocking(
+        &self,
+        expected_config_revision: u64,
+        language: SettingsLanguage,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::SetLanguage {
+            expected_config_revision,
+            language,
             reply,
         })
     }
@@ -1638,6 +1709,62 @@ mod tests {
             .expect("appearance theme snapshot");
         assert_eq!(result.appearance_theme, SettingsTheme::Dark);
         worker.join().expect("worker join");
+    }
+
+    #[test]
+    fn language_command_preserves_typed_selection() {
+        let (client, endpoint) = SettingsClient::bounded(1);
+        let worker = thread::spawn(move || {
+            let SettingsCommand::SetLanguage {
+                expected_config_revision,
+                language,
+                reply,
+            } = endpoint.recv_blocking().expect("language command")
+            else {
+                panic!("unexpected command");
+            };
+            assert_eq!(expected_config_revision, 7);
+            assert_eq!(language, SettingsLanguage::ChineseSimplified);
+            let mut result = snapshot(8, true, true);
+            result.language = language;
+            reply.respond(Ok(result)).expect("language reply");
+        });
+        let result = client
+            .set_language_blocking(7, SettingsLanguage::ChineseSimplified)
+            .expect("language snapshot");
+        assert_eq!(result.language, SettingsLanguage::ChineseSimplified);
+        worker.join().expect("worker join");
+    }
+
+    #[test]
+    fn language_preferences_have_stable_codes_and_localized_names() {
+        let expected = [
+            ("system", "Follow system"),
+            ("zh-CN", "简体中文"),
+            ("en-US", "English"),
+        ];
+        for (language, (code, display_name)) in SettingsLanguage::ALL.into_iter().zip(expected) {
+            assert_eq!(language.code(), code);
+            assert_eq!(
+                language.display_name(SettingsLanguage::EnglishUnitedStates),
+                display_name
+            );
+            assert_eq!(
+                SettingsLanguage::from_display_name(
+                    display_name,
+                    SettingsLanguage::EnglishUnitedStates
+                ),
+                Some(language)
+            );
+        }
+        assert_eq!(
+            SettingsLanguage::System.display_name(SettingsLanguage::ChineseSimplified),
+            "跟随系统"
+        );
+        assert_eq!(
+            SettingsLanguage::from_display_name("Deutsch", SettingsLanguage::EnglishUnitedStates),
+            None
+        );
     }
 
     #[test]
@@ -2121,6 +2248,8 @@ mod tests {
             runtime_health: RuntimeHealth::Ready,
             runtime_diagnostics: SettingsRuntimeDiagnostics::default(),
             appearance_theme: SettingsTheme::System,
+            language: SettingsLanguage::System,
+            resolved_language: SettingsLanguage::EnglishUnitedStates,
             status_icon_visible: true,
             taskbar_icon_visible: true,
             overlay_visible,

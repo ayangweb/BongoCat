@@ -5,6 +5,10 @@ impl Render for SettingsView {
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
             if let Some(target) = self.accessibility_focus.take() {
+                if target == ACCESSIBILITY_LANGUAGE {
+                    let focus = self.language_select.read(cx).focus_handle(cx);
+                    focus.focus(window, cx);
+                }
                 let static_focus = match target {
                     ACCESSIBILITY_GENERAL => Some(&self.general_focus),
                     ACCESSIBILITY_MODELS => Some(&self.models_focus),
@@ -49,14 +53,16 @@ impl Render for SettingsView {
                     shortcut_target_for_accessibility_node(&snapshot.shortcuts, target)
                         .and_then(|target| self.shortcut_row_focus.get(&target))
                 });
-                window.focus(
-                    static_focus
-                        .or(shortcut_focus)
-                        .unwrap_or(&self.general_focus),
-                    cx,
-                );
+                if target != ACCESSIBILITY_LANGUAGE {
+                    window.focus(
+                        static_focus
+                            .or(shortcut_focus)
+                            .unwrap_or(&self.general_focus),
+                        cx,
+                    );
+                }
             }
-            self.update_accessibility(window);
+            self.update_accessibility(window, cx);
         }
         let snapshot = self.snapshot.clone();
         if let Some(snapshot) = snapshot.as_ref() {
@@ -77,32 +83,37 @@ impl Render for SettingsView {
             .as_ref()
             .map(|snapshot| snapshot.shortcuts.clone())
             .unwrap_or_default();
+        let language = snapshot
+            .as_ref()
+            .map_or(SettingsLanguage::EnglishUnitedStates, |snapshot| {
+                snapshot.resolved_language
+            });
         self.sync_shortcut_row_focus(&shortcuts, disabled, cx);
         let status: SharedString = match (&self.error, self.pending, &snapshot) {
             (Some(error), _, _) => error.to_string().into(),
-            (_, Some(PendingOperation::Refresh), _) => "Refreshing runtime snapshot...".into(),
-            (_, Some(_), _) => "Saving changes...".into(),
+            (_, Some(PendingOperation::Refresh), _) => ui_text(language, UiText::Refreshing).into(),
+            (_, Some(_), _) => ui_text(language, UiText::Saving).into(),
             (_, None, Some(snapshot)) => {
                 let health = match snapshot.runtime_health {
-                    RuntimeHealth::Starting => "Starting",
-                    RuntimeHealth::Ready => "Ready",
-                    RuntimeHealth::Degraded => "Degraded",
-                    RuntimeHealth::Stopped => "Stopped",
+                    RuntimeHealth::Starting => ui_text(language, UiText::Starting),
+                    RuntimeHealth::Ready => ui_text(language, UiText::Ready),
+                    RuntimeHealth::Degraded => ui_text(language, UiText::Degraded),
+                    RuntimeHealth::Stopped => ui_text(language, UiText::Stopped),
                 };
-                format!("Runtime {health} · revision {}", snapshot.revision).into()
+                runtime_status(language, health, snapshot.revision).into()
             }
-            _ => "Connecting to runtime...".into(),
+            _ => ui_text(language, UiText::Connecting).into(),
         };
         let status_is_error = self.error.is_some();
         let view_entity = cx.entity();
 
-        let general_page = SettingPage::new("General")
+        let general_page = SettingPage::new(ui_text(language, UiText::General))
             .default_open(true)
-            .description("Configure the overlay, model interaction, input and startup behavior.")
+            .description(ui_text(language, UiText::GeneralDescription))
             .groups(vec![
-                SettingGroup::new().title("Appearance").item(
+                SettingGroup::new().title(ui_text(language, UiText::Appearance)).items(vec![
                     SettingItem::new(
-                        "Theme",
+                        ui_text(language, UiText::Theme),
                         SettingField::element({
                             let view = view_entity.clone();
                             move |_: &RenderOptions, _: &mut Window, app: &mut App| {
@@ -115,13 +126,13 @@ impl Render for SettingsView {
                                 RadioGroup::horizontal("appearance-theme")
                                     .children([
                                         Radio::new("appearance-theme-system")
-                                            .label("System")
+                                            .label(ui_text(language, UiText::System))
                                             .tab_index(4),
                                         Radio::new("appearance-theme-light")
-                                            .label("Light")
+                                            .label(ui_text(language, UiText::Light))
                                             .tab_index(5),
                                         Radio::new("appearance-theme-dark")
-                                            .label("Dark")
+                                            .label(ui_text(language, UiText::Dark))
                                             .tab_index(6),
                                     ])
                                     .selected_index(selected)
@@ -138,13 +149,25 @@ impl Render for SettingsView {
                             }
                         }),
                     )
-                    .description(
-                        "Follow the system appearance or use a fixed light or dark theme.",
-                    ),
-                ),
-                SettingGroup::new().title("Overlay").items(vec![
+                    .description(ui_text(language, UiText::ThemeDescription)),
                     SettingItem::new(
-                        "Runtime status",
+                        ui_text(language, UiText::Language),
+                        SettingField::element({
+                            let view = view_entity.clone();
+                            move |_: &RenderOptions, _: &mut Window, app: &mut App| {
+                                let state = view.read(app).language_select.clone();
+                                Select::new(&state)
+                                    .accessibility_label(ui_text(language, UiText::Language))
+                                    .disabled(disabled)
+                                    .into_any_element()
+                            }
+                        }),
+                    )
+                    .description(ui_text(language, UiText::LanguageDescription)),
+                ]),
+                SettingGroup::new().title(ui_text(language, UiText::Overlay)).items(vec![
+                    SettingItem::new(
+                        ui_text(language, UiText::RuntimeStatus),
                         SettingField::element({
                             let status = status.clone();
                             move |_: &RenderOptions, _: &mut Window, _: &mut App| {
@@ -581,7 +604,7 @@ impl Render for SettingsView {
                 }),
             ]);
 
-        let models_page = SettingPage::new("Models")
+        let models_page = SettingPage::new(ui_text(language, UiText::Models))
             .description("Install, validate and activate Live2D model packages.")
             .group(SettingGroup::new().title("Model catalog").item(SettingItem::new(
                 "Installed models",
@@ -601,7 +624,7 @@ impl Render for SettingsView {
                 }),
             ).layout(Axis::Vertical).description("Import a model folder, validate package safety and choose the active model. Search: import, activate, Live2D.")));
 
-        let diagnostics_page = SettingPage::new("Diagnostics")
+        let diagnostics_page = SettingPage::new(ui_text(language, UiText::Diagnostics))
             .description("Inspect runtime health, input reliability and shortcut bindings.")
             .group(SettingGroup::new().title("Runtime and input").item(SettingItem::new(
                 "Runtime diagnostics",

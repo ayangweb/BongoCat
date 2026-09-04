@@ -62,7 +62,7 @@ mod macos;
 pub use macos::{
     MacInputService, current_display_bounds, display_bounds_for_window, global_window_origin,
     input_monitoring_permission, local_window_origin, request_input_monitoring_permission,
-    window_content_top_inset,
+    system_language, window_content_top_inset,
 };
 #[cfg(target_os = "windows")]
 mod windows;
@@ -72,7 +72,7 @@ pub use windows::WindowsInputService;
 pub use windows::{
     NativeWindowError, current_display_bounds, display_bounds_for_window, global_window_origin,
     hide_native_window, local_window_origin, request_native_window_close, set_taskbar_icon_visible,
-    show_native_window, taskbar_icon_is_visible, terminate_after_product_shutdown,
+    show_native_window, system_language, taskbar_icon_is_visible, terminate_after_product_shutdown,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -111,6 +111,11 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   `Theme::change` 即时更新内容；`light`/`dark` 同时请求匹配的原生窗口外观，`system` 清除覆盖并
   仅在该模式下响应系统外观通知。Entity 只缓存已经应用的显示模式以避免重复刷新，不成为配置
   事实来源。
+- `appearance.language` 只接受 `system`、`zh-CN` 和 `en-US` 三个当前 v1 值，默认 `system`。
+  平台 adapter 在启动时读取系统首选 locale；仅简体中文解析为 `zh-CN`，英语及其它 locale 都
+  回退 `en-US`，不把解析结果写回配置。UI 通过独立 `SettingsLanguage`、revision-checked typed
+  command 和 GPUI Kit `Select` 修改并立即刷新窗口标题、导航、当前已迁移文案和辅助功能语义。
+  未知持久化值直接拒绝，不增加 alias、开发中间版本兼容或旧配置导入。
 - 启动项等系统能力通过 UI 自有的 typed platform snapshot 显示，由 settings service worker
   读取和显式变更；外部状态变化递增 settings revision。读取失败只形成可重试状态，写入失败
   不改变 config/runtime，Development macOS 的 unsupported 状态不允许发出变更 command。

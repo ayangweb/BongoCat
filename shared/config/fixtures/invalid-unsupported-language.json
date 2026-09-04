@@ -6,7 +6,7 @@
     "show_status_icon": true,
     "check_for_updates_automatically": true
   },
-  "appearance": { "theme": "system", "language": "system" },
+  "appearance": { "theme": "system", "language": "de-DE" },
   "overlay": {
     "visible": true,
     "click_through": false,

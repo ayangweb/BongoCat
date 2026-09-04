@@ -36,6 +36,7 @@ pub enum AccessibilityRole {
     Window,
     Group,
     Button,
+    ComboBox,
     RadioButton,
     Switch,
     Label,
@@ -464,6 +465,7 @@ fn tree_update(tree: &AccessibilityTree) -> TreeUpdate {
                 AccessibilityRole::Window => Role::Window,
                 AccessibilityRole::Group => Role::Group,
                 AccessibilityRole::Button => Role::Button,
+                AccessibilityRole::ComboBox => Role::ComboBox,
                 AccessibilityRole::RadioButton => Role::RadioButton,
                 AccessibilityRole::Switch => Role::Switch,
                 AccessibilityRole::Label => Role::Label,
@@ -593,5 +595,21 @@ mod tests {
             .expect("radio control");
         assert_eq!(control.role(), Role::RadioButton);
         assert_eq!(control.toggled(), Some(Toggled::True));
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn accesskit_tree_retains_combo_box_semantics() {
+        let mut tree = valid_tree();
+        tree.nodes[1].role = AccessibilityRole::ComboBox;
+        let update = tree_update(&tree);
+        let (_, control) = update
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == NodeId(2))
+            .expect("language control");
+        assert_eq!(control.role(), Role::ComboBox);
+        assert!(control.supports_action(Action::Click));
+        assert!(control.supports_action(Action::Focus));
     }
 }

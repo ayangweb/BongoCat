@@ -1,13 +1,14 @@
 use crate::{
     RuntimeHealth, SettingsClient, SettingsConfigRecovery, SettingsConfigurationStatus,
     SettingsError, SettingsErrorCode, SettingsGamepadAxisSettings, SettingsInputDiagnostics,
-    SettingsInputServiceStatus, SettingsModelAvailability, SettingsModelDiagnostic,
-    SettingsModelEntry, SettingsModelImportMonitor, SettingsModelImportOperation,
-    SettingsModelImportRequest, SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin,
-    SettingsModelSettings, SettingsOperationId, SettingsOverlay, SettingsRuntimeDiagnostics,
-    SettingsRuntimeErrorCode, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
-    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
-    SettingsWindowPlacement, SettingsWindowState,
+    SettingsInputServiceStatus, SettingsLanguage, SettingsModelAvailability,
+    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportMonitor,
+    SettingsModelImportOperation, SettingsModelImportRequest, SettingsModelImportStage,
+    SettingsModelKey, SettingsModelOrigin, SettingsModelSettings, SettingsOperationId,
+    SettingsOverlay, SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode, SettingsShortcuts,
+    SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
+    SettingsStartupItemUnsupportedReason, SettingsTheme, SettingsWindowPlacement,
+    SettingsWindowState,
 };
 use bongocat_config::ShortcutChord;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -17,11 +18,12 @@ use bongocat_platform::{
 };
 use bongocat_platform::{DirectoryPickerError, DirectoryPickerOutcome, pick_model_directory};
 use gpui_kit::component::{
-    ActiveTheme, Disableable, Root, Theme, ThemeMode,
+    ActiveTheme, Disableable, IndexPath, Root, Theme, ThemeMode,
     button::Button,
     group_box::{GroupBox, GroupBoxVariant, GroupBoxVariants},
     input::{Input, InputEvent, InputState, NumberInputEvent, StepAction},
     radio::{Radio, RadioGroup},
+    select::{SearchableVec, Select, SelectEvent, SelectState},
     setting::{
         NumberFieldOptions, RenderOptions, SettingField, SettingGroup, SettingItem, SettingPage,
         Settings,
@@ -29,7 +31,7 @@ use gpui_kit::component::{
     tag::Tag,
 };
 use gpui_kit::{
-    App, AppContext, Axis, Bounds, Context, DisplayId, Div, Entity, FocusHandle, Hsla,
+    App, AppContext, Axis, Bounds, Context, DisplayId, Div, Entity, FocusHandle, Focusable, Hsla,
     KeyDownEvent, Pixels, Render, SharedString, Stateful, TitlebarOptions, WeakEntity, Window,
     WindowAppearance, WindowBounds, WindowHandle, WindowOptions, div, point, prelude::*, px, size,
 };
@@ -49,6 +51,7 @@ use presentation::*;
 mod accessibility;
 mod diagnostics;
 mod lifecycle;
+mod localization;
 mod model_actions;
 mod models;
 mod render;
@@ -57,6 +60,7 @@ mod shortcuts;
 mod smoke;
 mod view_state;
 pub use lifecycle::open_settings_window;
+use localization::{UiText, runtime_status, text as ui_text};
 #[cfg(test)]
 mod tests;
 
@@ -131,6 +135,10 @@ const ACCESSIBILITY_THEME_DARK: AccessibilityNodeId = AccessibilityNodeId::new(3
 const ACCESSIBILITY_STATUS_ICON: AccessibilityNodeId = AccessibilityNodeId::new(38);
 #[cfg(target_os = "windows")]
 const ACCESSIBILITY_TASKBAR_ICON: AccessibilityNodeId = AccessibilityNodeId::new(39);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_LANGUAGE: AccessibilityNodeId = AccessibilityNodeId::new(40);
+
+type LanguageSelectState = SelectState<SearchableVec<&'static str>>;
 
 #[derive(Clone, Copy)]
 struct Tokens {
@@ -160,6 +168,7 @@ impl Tokens {
 enum PendingOperation {
     Refresh,
     AppearanceTheme,
+    Language,
     StatusIconVisibility,
     #[cfg(target_os = "windows")]
     TaskbarIconVisibility,
@@ -325,6 +334,7 @@ pub struct SettingsView {
     shortcut_row_focus: BTreeMap<ShortcutCaptureTarget, FocusHandle>,
     window_hidden: bool,
     applied_theme: Option<SettingsTheme>,
+    language_select: Entity<LanguageSelectState>,
     request_quit: Rc<dyn Fn(&mut App)>,
     general_focus: FocusHandle,
     models_focus: FocusHandle,
@@ -432,6 +442,14 @@ impl SettingsView {
                 }) => {
                     client
                         .set_appearance_theme(expected_config_revision, theme)
+                        .await
+                }
+                Some(SettingValue::Language {
+                    expected_config_revision,
+                    language,
+                }) => {
+                    client
+                        .set_language(expected_config_revision, language)
                         .await
                 }
                 Some(SettingValue::StatusIconVisible {
@@ -578,6 +596,10 @@ enum SettingValue {
     AppearanceTheme {
         expected_config_revision: u64,
         theme: SettingsTheme,
+    },
+    Language {
+        expected_config_revision: u64,
+        language: SettingsLanguage,
     },
     StatusIconVisible {
         expected_config_revision: u64,

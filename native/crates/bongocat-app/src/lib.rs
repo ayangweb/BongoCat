@@ -9,10 +9,10 @@ compile_error!("storage-test-injection cannot be enabled for Production builds")
 use bongocat_audio::{MotionAudioService, MotionAudioShutdownError};
 use bongocat_config::{
     ApplicationState, BuildEnvironment, CompiledShortcuts, ConfigError, ConfigRecovery,
-    ConfigRevision, ConfigStore, InterruptedConfigRecovery, ModelBehaviorBinding, NativeConfig,
-    OverlayWindowPlacement, PlatformStorageError, SelectedModelOrigin, ShortcutBinding,
-    ShortcutConfig, ShortcutTable, StateError, StateStore, StorageLayout, Theme as ConfigTheme,
-    WindowPlacement, platform_layout,
+    ConfigRevision, ConfigStore, InterruptedConfigRecovery, Language, ModelBehaviorBinding,
+    NativeConfig, OverlayWindowPlacement, PlatformStorageError, SelectedModelOrigin,
+    ShortcutBinding, ShortcutConfig, ShortcutTable, StateError, StateStore, StorageLayout,
+    Theme as ConfigTheme, WindowPlacement, platform_layout,
 };
 use bongocat_model::{
     CommittedModel, InstalledModel, ModelCatalogEntry, ModelError, ModelId, ModelImportProgress,
@@ -214,6 +214,7 @@ pub struct Application {
     config: NativeConfig,
     config_revision: Option<ConfigRevision>,
     config_status: ApplicationConfigStatus,
+    system_language: Language,
     config_recovery: Option<ConfigRecovery>,
     interrupted_config_recovery: Option<InterruptedConfigRecovery>,
     preset_models: PresetModelCatalog,
@@ -234,6 +235,7 @@ impl Application {
             platform_layout(BUILD_ENVIRONMENT)?,
             preset_root.as_ref(),
             true,
+            system_language(),
         )
     }
 
@@ -243,18 +245,24 @@ impl Application {
         layout: StorageLayout,
         preset_root: impl AsRef<Path>,
     ) -> Result<Self, ApplicationError> {
-        Self::start_with_layout_internal(layout, preset_root.as_ref(), true)
+        Self::start_with_layout_internal(layout, preset_root.as_ref(), true, system_language())
     }
 
     #[cfg(test)]
     fn start_with_layout(layout: StorageLayout) -> Result<Self, ApplicationError> {
-        Self::start_with_layout_internal(layout, repository_preset_root().as_path(), false)
+        Self::start_with_layout_internal(
+            layout,
+            repository_preset_root().as_path(),
+            false,
+            Language::EnglishUnitedStates,
+        )
     }
 
     fn start_with_layout_internal(
         layout: StorageLayout,
         preset_root: &Path,
         enable_rendering: bool,
+        system_language: Language,
     ) -> Result<Self, ApplicationError> {
         let preset_models = PresetModelCatalog::open(preset_root, ModelPackageLimits::default())?;
         let model_store = ModelStore::new(
@@ -366,6 +374,7 @@ impl Application {
             config,
             config_revision,
             config_status,
+            system_language,
             config_recovery,
             interrupted_config_recovery,
             preset_models,
@@ -418,6 +427,13 @@ impl Application {
 
     pub fn config(&self) -> &NativeConfig {
         &self.config
+    }
+
+    pub fn effective_language(&self) -> Language {
+        self.config
+            .appearance
+            .language
+            .resolve(self.system_language)
     }
 
     /// Compile the currently committed shortcut bindings for a platform
@@ -554,6 +570,17 @@ impl Application {
     pub fn set_taskbar_icon_visible(&mut self, visible: bool) -> Result<(), ApplicationError> {
         let mut next_config = self.config.clone();
         next_config.application.show_taskbar_icon = visible;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(())
+    }
+
+    pub fn set_language(&mut self, language: Language) -> Result<(), ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.appearance.language = language;
         let next_revision = self
             .config_store
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;
@@ -1016,6 +1043,17 @@ impl Application {
     }
 }
 
+fn system_language() -> Language {
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    {
+        bongocat_platform::system_language()
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        Language::EnglishUnitedStates
+    }
+}
+
 fn model_origin_order(origin: ModelOrigin) -> u8 {
     match origin {
         ModelOrigin::Preset => 0,
@@ -1264,6 +1302,39 @@ mod tests {
     }
 
     #[test]
+    fn system_language_is_resolved_at_start_without_overwriting_the_preference() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let application = Application::start_with_layout_internal(
+            layout.clone(),
+            repository_preset_root().as_path(),
+            false,
+            Language::ChineseSimplified,
+        )
+        .expect("start with simplified Chinese system language");
+        assert_eq!(application.config().appearance.language, Language::System);
+        assert_eq!(
+            application.effective_language(),
+            Language::ChineseSimplified
+        );
+        application.shutdown().expect("first shutdown");
+
+        let restarted = Application::start_with_layout_internal(
+            layout,
+            repository_preset_root().as_path(),
+            false,
+            Language::EnglishUnitedStates,
+        )
+        .expect("restart with English system language");
+        assert_eq!(restarted.config().appearance.language, Language::System);
+        assert_eq!(
+            restarted.effective_language(),
+            Language::EnglishUnitedStates
+        );
+        restarted.shutdown().expect("restart shutdown");
+    }
+
+    #[test]
     fn application_projects_model_interaction_settings_at_startup() {
         let base = tempdir().expect("temp directory");
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
@@ -1408,6 +1479,7 @@ mod tests {
             layout.clone(),
             repository_preset_root().as_path(),
             true,
+            Language::EnglishUnitedStates,
         )
         .expect("restricted recovery application");
         assert_eq!(
@@ -1755,6 +1827,7 @@ mod tests {
             layout,
             repository_preset_root().as_path(),
             true,
+            Language::EnglishUnitedStates,
         )
         .expect("start rendering application");
         let initial_token = application
@@ -1860,6 +1933,7 @@ mod tests {
             layout,
             repository_preset_root().as_path(),
             true,
+            Language::EnglishUnitedStates,
         )
         .expect("start rendering application");
         let token = application

@@ -1142,8 +1142,8 @@ git source 及 `gpui`、platform、component、assets 的直接 manifest 依赖�
 `Switch`、`Button`、`Input` 和 `NumberInput`。输入实体通过 `InputEvent` 与
 `NumberInputEvent` 接入现有 typed command/draft，并从 snapshot 同步。`0.6.0` 没有普通 Card
 primitive，设置内容容器使用官方 `GroupBox::outline()`，导航继续保留无状态薄封装；快捷键捕获、确认删除和平台辅助功能焦点
-继续保留领域适配层。当前页面没有选择器、标签页或浮层需求，后续出现对应交互时直接使用
-`Select`、`TabBar`、`Dialog`/`Menu`，不预建无业务用途的组件。双平台辅助功能与缩放实机证据
+继续保留领域适配层。语言设置使用官方 `Select`；当前没有标签页或浮层需求，后续出现对应交互时
+直接使用 `TabBar`、`Dialog`/`Menu`，不预建无业务用途的组件。双平台辅助功能与缩放实机证据
 仍待补齐，详见 ADR-0020。偏好设置整体使用 `gpui_kit::component::setting`
 官方 `Settings`、`SettingPage`、`SettingGroup`、`SettingItem` 和 `SettingField` 结构；General
 按 Overlay、Model interaction、Input、Startup 分组，Models 与 Diagnostics 使用独立页面和
@@ -1178,11 +1178,12 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 ### 6.4 页面
 
 - [ ] 应用框架：导航、标题、主题、语言、更新状态和错误边界。
-  - 状态（2026-09-04）：主题 snapshot、typed command、即时应用和辅助功能语义已实现；语言、
-    更新状态和完整错误边界仍待完成，因此保持未勾选。
+  - 状态（2026-09-04）：主题和语言已有 typed snapshot/command、即时应用和辅助功能语义；
+    中英 shell/Appearance/runtime status 已接入，Models、Diagnostics、其余 General 文案、更新状态
+    和完整错误边界仍待完成，因此保持未勾选。
 - [ ] 通用：启动项、任务栏/菜单栏、语言、主题和日志。
-  - 状态（2026-09-04）：启动项、主题和菜单栏/托盘状态图标已有正式 UI/持久化闭环；任务栏
-    可见性、语言与日志设置仍待完成，因此保持未勾选。
+  - 状态（2026-09-04）：启动项、任务栏/菜单栏可见性、主题和语言已有正式 UI/持久化闭环；
+    日志设置和其余 General 文案本地化仍待完成，因此保持未勾选。
 - [ ] 窗口：显示器、位置、缩放、透明度、置顶、穿透和显隐。
 - [ ] 模型：预置/用户模型、导入、删除、切换和兼容诊断。
 - [ ] 输入：键鼠、手柄、忽略鼠标、单键模式和校正状态。
@@ -1205,6 +1206,11 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 ### 6.5 UI 质量
 
 - [ ] 迁移五种本地化并建立缺失 key 检查。
+  - 状态（2026-09-04）：当前 v1 先支持 `system`、`zh-CN`、`en-US` 三种 typed 偏好；跟随系统
+    只解析简体中文或英文，其它 locale 回退英文。GPUI Kit Select、窗口标题/导航/Appearance/
+    runtime status 的中英文案及对应辅助功能语义已接入；Rust 单元测试防止当前 key 空值和中文
+    整组英文 fallback。繁中、越南语、葡萄牙语以及 Models、Diagnostics、其余 General 动态/错误
+    文案和统一的全量 key 漂移门禁后续迁移，因此保持未勾选。
 - [ ] 表单全键盘可操作，焦点可见且顺序正确。
 - [ ] tooltip/dialog/menu 不被窗口边界错误裁剪。
 - [ ] 800x600 和常见缩放无文本重叠或溢出。
@@ -2257,6 +2263,15 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       CI run `33882985949` 全绿；Windows Native job `101055885362` 通过完整 workspace、release 产品
       smoke 并输出 `taskbar icon toggled and restored`，macOS job `101055885548` 同时证明该 Windows
       控件未泄漏且原有 system-menu 生命周期无回归，退出条件满足。
+57. [ ] `P5-APPLICATION-LANGUAGE`：建立当前 v1 应用语言设置和首批中英 Native 本地化闭环。
+    - 依赖：当前 v1 `appearance.language`、settings revision/CAS、平台 locale API、GPUI Kit
+      Select 和项目辅助功能桥。
+    - 退出条件：`system`、`zh-CN`、`en-US` 使用闭合 enum 并拒绝未知持久化值；跟随系统仅解析
+      简体中文或英文，其它 locale 回退英文且不覆写偏好；typed command 原子持久化且 stale revision
+      不改配置；Select 从 snapshot 无回声同步；窗口标题、导航、Appearance、runtime status 和对应
+      AX/UIA 语义即时切换；定向测试、共享 schema/fixture、完整 Native workspace 与双平台 release
+      settings smoke 通过。其它三种历史语言和完整 Models/Diagnostics/General 文案仍由 UI 质量
+      总项继续跟踪。
 
 ## 13. 待决策清单
 

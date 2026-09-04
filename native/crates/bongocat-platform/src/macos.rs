@@ -3,6 +3,7 @@ use crate::{
     PlatformInputServiceStatus, ShortcutDispatcher,
 };
 use block2::RcBlock;
+use bongocat_config::Language;
 use bongocat_runtime::{
     CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorViewport, GamepadAxis,
     GamepadAxisKey, GamepadAxisProducer, GamepadAxisPublishError, GamepadAxisSample, GamepadButton,
@@ -25,6 +26,7 @@ use objc2_core_graphics::{
     CGEventTapPlacement, CGEventTapProxy, CGEventType, CGGetActiveDisplayList,
     CGGetDisplaysWithPoint, CGMouseButton,
 };
+use objc2_foundation::NSLocale;
 use objc2_game_controller::{GCController, GCControllerElement, GCExtendedGamepad};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -44,6 +46,14 @@ const WORKSPACE_WILL_SLEEP: u8 = 1 << 0;
 const WORKSPACE_DID_WAKE: u8 = 1 << 1;
 const WORKSPACE_SESSION_RESIGNED: u8 = 1 << 2;
 const WORKSPACE_SESSION_ACTIVE: u8 = 1 << 3;
+
+pub fn system_language() -> Language {
+    NSLocale::preferredLanguages()
+        .firstObject()
+        .map_or_else(Language::default, |locale| {
+            Language::from_system_locale(&locale.to_string())
+        })
+}
 
 #[derive(Default)]
 struct WorkspaceLifecycleSignals(AtomicU16);

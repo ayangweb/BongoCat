@@ -27,15 +27,16 @@ use bongocat_ui::{
     DIAGNOSTICS_EXPORT_FORMAT_VERSION, RuntimeHealth, SettingsApplicationShortcut, SettingsClient,
     SettingsCommand, SettingsConfigRecovery, SettingsConfigurationStatus,
     SettingsDiagnosticsExportStatus, SettingsError, SettingsErrorCode, SettingsGamepadAxisSettings,
-    SettingsInputDiagnostics, SettingsInputServiceStatus, SettingsModelAvailability,
-    SettingsModelBehaviorBinding, SettingsModelCatalog, SettingsModelCatalogError,
-    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportProgress,
-    SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsModelSettings,
-    SettingsOverlay, SettingsRuntimeCommandFailure, SettingsRuntimeCommandTransportDiagnostics,
-    SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode, SettingsServiceEndpoint,
-    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
-    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
-    SettingsWindowPlacement, SettingsWindowState,
+    SettingsInputDiagnostics, SettingsInputServiceStatus, SettingsLanguage,
+    SettingsModelAvailability, SettingsModelBehaviorBinding, SettingsModelCatalog,
+    SettingsModelCatalogError, SettingsModelDiagnostic, SettingsModelEntry,
+    SettingsModelImportProgress, SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin,
+    SettingsModelSettings, SettingsOverlay, SettingsRuntimeCommandFailure,
+    SettingsRuntimeCommandTransportDiagnostics, SettingsRuntimeDiagnostics,
+    SettingsRuntimeErrorCode, SettingsServiceEndpoint, SettingsShortcutBinding, SettingsShortcuts,
+    SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
+    SettingsStartupItemUnsupportedReason, SettingsTheme, SettingsWindowPlacement,
+    SettingsWindowState,
 };
 use serde::Serialize;
 use std::fs;
@@ -511,6 +512,24 @@ fn run_service(
                                 .set_appearance_theme(config_theme(theme))
                                 .map_err(map_application_error)
                         }
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::SetLanguage {
+                expected_config_revision,
+                language,
+                reply,
+            } => {
+                let result = require_operational(&application)
+                    .map_err(map_application_error)
+                    .and_then(|()| {
+                        if application.config_revision() != Some(expected_config_revision) {
+                            return Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated));
+                        }
+                        application
+                            .set_language(config_language(language))
+                            .map_err(map_application_error)
                     })
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
@@ -1032,6 +1051,8 @@ fn snapshot(
         },
         runtime_diagnostics: settings_runtime_diagnostics(&runtime),
         appearance_theme: settings_theme(application.config().appearance.theme),
+        language: settings_language(application.config().appearance.language),
+        resolved_language: settings_language(application.effective_language()),
         status_icon_visible: application.config().application.show_status_icon,
         taskbar_icon_visible: application.config().application.show_taskbar_icon,
         overlay_visible: runtime.overlay_visible,
@@ -1105,6 +1126,22 @@ const fn config_theme(theme: SettingsTheme) -> bongocat_config::Theme {
         SettingsTheme::System => bongocat_config::Theme::System,
         SettingsTheme::Light => bongocat_config::Theme::Light,
         SettingsTheme::Dark => bongocat_config::Theme::Dark,
+    }
+}
+
+const fn settings_language(language: bongocat_config::Language) -> SettingsLanguage {
+    match language {
+        bongocat_config::Language::System => SettingsLanguage::System,
+        bongocat_config::Language::ChineseSimplified => SettingsLanguage::ChineseSimplified,
+        bongocat_config::Language::EnglishUnitedStates => SettingsLanguage::EnglishUnitedStates,
+    }
+}
+
+const fn config_language(language: SettingsLanguage) -> bongocat_config::Language {
+    match language {
+        SettingsLanguage::System => bongocat_config::Language::System,
+        SettingsLanguage::ChineseSimplified => bongocat_config::Language::ChineseSimplified,
+        SettingsLanguage::EnglishUnitedStates => bongocat_config::Language::EnglishUnitedStates,
     }
 }
 
@@ -2145,6 +2182,8 @@ mod tests {
                 },
             },
             appearance_theme: SettingsTheme::System,
+            language: SettingsLanguage::System,
+            resolved_language: SettingsLanguage::EnglishUnitedStates,
             status_icon_visible: true,
             taskbar_icon_visible: true,
             overlay_visible: true,
@@ -2589,6 +2628,53 @@ mod tests {
         assert_eq!(
             restarted.config().appearance.theme,
             bongocat_config::Theme::Dark
+        );
+        restarted.shutdown().expect("restart shutdown");
+    }
+
+    #[test]
+    fn service_persists_and_projects_the_selected_language() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application =
+            Application::start_with_layout(layout.clone()).expect("application start");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        assert_eq!(initial.language, SettingsLanguage::System);
+        assert_eq!(
+            initial.resolved_language,
+            SettingsLanguage::EnglishUnitedStates
+        );
+        let updated = client
+            .set_language_blocking(
+                initial.config_revision.expect("config revision"),
+                SettingsLanguage::ChineseSimplified,
+            )
+            .expect("select simplified Chinese");
+        assert_eq!(updated.language, SettingsLanguage::ChineseSimplified);
+        assert_eq!(
+            updated.resolved_language,
+            SettingsLanguage::ChineseSimplified
+        );
+        assert_eq!(updated.revision, initial.revision.saturating_add(1));
+        assert_ne!(updated.config_revision, initial.config_revision);
+
+        let stale = client
+            .set_language_blocking(
+                initial.config_revision.expect("config revision"),
+                SettingsLanguage::EnglishUnitedStates,
+            )
+            .expect_err("reject stale language update");
+        assert_eq!(stale.code(), SettingsErrorCode::SnapshotOutdated);
+
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
+        let restarted = Application::start_with_layout(layout).expect("restart application");
+        assert_eq!(
+            restarted.config().appearance.language,
+            bongocat_config::Language::ChineseSimplified
         );
         restarted.shutdown().expect("restart shutdown");
     }

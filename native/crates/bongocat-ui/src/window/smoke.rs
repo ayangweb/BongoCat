@@ -105,9 +105,21 @@ impl SettingsView {
             let tree = self.accessibility_tree();
             tree.validate().map_err(|error| error.to_string())?;
             for (id, theme, label) in [
-                (ACCESSIBILITY_THEME_SYSTEM, SettingsTheme::System, "System"),
-                (ACCESSIBILITY_THEME_LIGHT, SettingsTheme::Light, "Light"),
-                (ACCESSIBILITY_THEME_DARK, SettingsTheme::Dark, "Dark"),
+                (
+                    ACCESSIBILITY_THEME_SYSTEM,
+                    SettingsTheme::System,
+                    ui_text(snapshot.resolved_language, UiText::System),
+                ),
+                (
+                    ACCESSIBILITY_THEME_LIGHT,
+                    SettingsTheme::Light,
+                    ui_text(snapshot.resolved_language, UiText::Light),
+                ),
+                (
+                    ACCESSIBILITY_THEME_DARK,
+                    SettingsTheme::Dark,
+                    ui_text(snapshot.resolved_language, UiText::Dark),
+                ),
             ] {
                 let node = tree
                     .nodes
@@ -118,6 +130,11 @@ impl SettingsView {
                     })?;
                 if node.role != AccessibilityRole::RadioButton
                     || node.label != label
+                    || node.description.as_deref()
+                        != Some(ui_text(
+                            snapshot.resolved_language,
+                            UiText::ThemeDescription,
+                        ))
                     || node.disabled != controls_disabled
                     || node.supports_click != !controls_disabled
                     || node.supports_focus != !controls_disabled
@@ -133,6 +150,28 @@ impl SettingsView {
                             .to_owned(),
                     );
                 }
+            }
+            let language = tree
+                .nodes
+                .iter()
+                .find(|node| node.id == ACCESSIBILITY_LANGUAGE)
+                .ok_or_else(|| "accessibility tree omitted the language setting".to_owned())?;
+            if language.role != AccessibilityRole::ComboBox
+                || language.label != ui_text(snapshot.resolved_language, UiText::Language)
+                || language.description.as_deref()
+                    != Some(ui_text(
+                        snapshot.resolved_language,
+                        UiText::LanguageDescription,
+                    ))
+                || language.value.as_deref()
+                    != Some(snapshot.language.display_name(snapshot.resolved_language))
+                || language.disabled != controls_disabled
+                || language.supports_click != !controls_disabled
+                || language.supports_focus != !controls_disabled
+            {
+                return Err(
+                    "language accessibility semantics diverged from the visible control".to_owned(),
+                );
             }
             let startup = tree
                 .nodes

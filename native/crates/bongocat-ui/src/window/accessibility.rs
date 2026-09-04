@@ -24,16 +24,31 @@ impl SettingsView {
             || self.model_import.is_running()
             || !configuration_ready;
         let startup = startup_item_presentation(snapshot.map(|s| s.startup_item), disabled);
+        let language = snapshot.map_or(SettingsLanguage::EnglishUnitedStates, |snapshot| {
+            snapshot.resolved_language
+        });
         let selected_theme =
             snapshot.map_or(SettingsTheme::System, |snapshot| snapshot.appearance_theme);
         let theme_nodes = [
-            (ACCESSIBILITY_THEME_SYSTEM, SettingsTheme::System, "System"),
-            (ACCESSIBILITY_THEME_LIGHT, SettingsTheme::Light, "Light"),
-            (ACCESSIBILITY_THEME_DARK, SettingsTheme::Dark, "Dark"),
+            (
+                ACCESSIBILITY_THEME_SYSTEM,
+                SettingsTheme::System,
+                ui_text(language, UiText::System),
+            ),
+            (
+                ACCESSIBILITY_THEME_LIGHT,
+                SettingsTheme::Light,
+                ui_text(language, UiText::Light),
+            ),
+            (
+                ACCESSIBILITY_THEME_DARK,
+                SettingsTheme::Dark,
+                ui_text(language, UiText::Dark),
+            ),
         ]
         .map(|(id, theme, label)| {
             let mut node = AccessibilityNode::new(id, AccessibilityRole::RadioButton, label)
-                .with_description("BongoCat settings appearance")
+                .with_description(ui_text(language, UiText::ThemeDescription))
                 .with_toggle(if selected_theme == theme {
                     AccessibilityToggle::On
                 } else {
@@ -45,6 +60,21 @@ impl SettingsView {
             }
             node
         });
+        let mut language_node = AccessibilityNode::new(
+            ACCESSIBILITY_LANGUAGE,
+            AccessibilityRole::ComboBox,
+            ui_text(language, UiText::Language),
+        )
+        .with_description(ui_text(language, UiText::LanguageDescription))
+        .with_value(
+            snapshot
+                .map_or(SettingsLanguage::System, |snapshot| snapshot.language)
+                .display_name(language),
+        )
+        .disabled(disabled);
+        if !disabled {
+            language_node = language_node.clickable().focusable();
+        }
         let mut overlay_node = AccessibilityNode::new(
             ACCESSIBILITY_OVERLAY,
             AccessibilityRole::Switch,
@@ -399,6 +429,7 @@ impl SettingsView {
             ACCESSIBILITY_THEME_SYSTEM,
             ACCESSIBILITY_THEME_LIGHT,
             ACCESSIBILITY_THEME_DARK,
+            ACCESSIBILITY_LANGUAGE,
             ACCESSIBILITY_OVERLAY,
             ACCESSIBILITY_OVERLAY_TOPMOST,
             ACCESSIBILITY_OVERLAY_CLICK_THROUGH,
@@ -430,25 +461,34 @@ impl SettingsView {
             AccessibilityNode::new(
                 ACCESSIBILITY_ROOT,
                 AccessibilityRole::Window,
-                "BongoCat Settings",
+                ui_text(language, UiText::Settings),
             )
             .with_children(root_children),
-            AccessibilityNode::new(ACCESSIBILITY_GENERAL, AccessibilityRole::Button, "General")
-                .clickable()
-                .focusable(),
-            AccessibilityNode::new(ACCESSIBILITY_MODELS, AccessibilityRole::Button, "Models")
-                .clickable()
-                .focusable(),
+            AccessibilityNode::new(
+                ACCESSIBILITY_GENERAL,
+                AccessibilityRole::Button,
+                ui_text(language, UiText::General),
+            )
+            .clickable()
+            .focusable(),
+            AccessibilityNode::new(
+                ACCESSIBILITY_MODELS,
+                AccessibilityRole::Button,
+                ui_text(language, UiText::Models),
+            )
+            .clickable()
+            .focusable(),
             AccessibilityNode::new(
                 ACCESSIBILITY_DIAGNOSTICS,
                 AccessibilityRole::Button,
-                "Diagnostics",
+                ui_text(language, UiText::Diagnostics),
             )
             .clickable()
             .focusable(),
             theme_nodes[0].clone(),
             theme_nodes[1].clone(),
             theme_nodes[2].clone(),
+            language_node,
             overlay_node,
             topmost_node,
             click_through_node,
@@ -509,6 +549,16 @@ impl SettingsView {
             ACCESSIBILITY_THEME_SYSTEM => self.set_appearance_theme(SettingsTheme::System, cx),
             ACCESSIBILITY_THEME_LIGHT => self.set_appearance_theme(SettingsTheme::Light, cx),
             ACCESSIBILITY_THEME_DARK => self.set_appearance_theme(SettingsTheme::Dark, cx),
+            ACCESSIBILITY_LANGUAGE => {
+                if let Some(current) = self.snapshot.as_ref().map(|snapshot| snapshot.language) {
+                    let index = SettingsLanguage::ALL
+                        .iter()
+                        .position(|language| *language == current)
+                        .unwrap_or_default();
+                    let next = SettingsLanguage::ALL[(index + 1) % SettingsLanguage::ALL.len()];
+                    self.set_language(next, cx);
+                }
+            }
             ACCESSIBILITY_STATUS_ICON => {
                 if let Some(snapshot) = self.snapshot.as_ref() {
                     self.set_status_icon_visible(!snapshot.status_icon_visible, cx);
@@ -628,7 +678,12 @@ impl SettingsView {
     }
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
-    pub(super) fn update_accessibility(&mut self, window: &Window) {
+    pub(super) fn update_accessibility(&mut self, window: &Window, cx: &App) {
+        let language_is_focused = self
+            .language_select
+            .read(cx)
+            .focus_handle(cx)
+            .is_focused(window);
         let focus = [
             (ACCESSIBILITY_GENERAL, &self.general_focus),
             (ACCESSIBILITY_MODELS, &self.models_focus),
@@ -692,6 +747,7 @@ impl SettingsView {
         ]
         .into_iter()
         .find_map(|(id, handle)| handle.is_focused(window).then_some(id))
+        .or_else(|| language_is_focused.then_some(ACCESSIBILITY_LANGUAGE))
         .or_else(|| {
             self.snapshot.as_ref().and_then(|snapshot| {
                 shortcut_targets(&snapshot.shortcuts)

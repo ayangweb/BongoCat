@@ -2,6 +2,7 @@ use crate::{
     DisplayBounds, PlatformInputDiagnostics, PlatformInputError, PlatformInputServiceStatus,
     ShortcutDispatcher,
 };
+use bongocat_config::Language;
 use bongocat_runtime::{
     CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorViewport, GamepadAxis,
     GamepadAxisKey, GamepadAxisProducer, GamepadAxisPublishError, GamepadAxisSample, GamepadButton,
@@ -27,6 +28,7 @@ use std::{
 use windows::{
     Win32::{
         Foundation::{FreeLibrary, HINSTANCE, HMODULE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM},
+        Globalization::{GetUserPreferredUILanguages, MUI_LANGUAGE_NAME},
         Graphics::Gdi::{
             EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITOR_DEFAULTTONEAREST,
             MONITORINFO, MonitorFromPoint,
@@ -65,7 +67,7 @@ use windows::{
             },
         },
     },
-    core::{BOOL, PCSTR, w},
+    core::{BOOL, PCSTR, PWSTR, w},
 };
 
 const WINDOW_CLASS: windows::core::PCWSTR = w!("BongoCatProductRawInputWindow");
@@ -81,6 +83,51 @@ const FINAL_RESET_RETRY: Duration = Duration::from_millis(5);
 
 const XINPUT_ERROR_SUCCESS: u32 = 0;
 const XINPUT_ERROR_DEVICE_NOT_CONNECTED: u32 = 1167;
+
+pub fn system_language() -> Language {
+    let mut language_count = 0_u32;
+    let mut buffer_length = 0_u32;
+    // SAFETY: null output requests the required buffer length; both count pointers are valid.
+    if unsafe {
+        GetUserPreferredUILanguages(
+            MUI_LANGUAGE_NAME,
+            &mut language_count,
+            None,
+            &mut buffer_length,
+        )
+    }
+    .is_err()
+        || language_count == 0
+        || buffer_length == 0
+    {
+        return Language::default();
+    }
+    let Ok(buffer_length) = usize::try_from(buffer_length) else {
+        return Language::default();
+    };
+    let mut languages = vec![0_u16; buffer_length];
+    let mut written_length = u32::try_from(languages.len()).unwrap_or_default();
+    // SAFETY: the initialized UTF-16 buffer is writable for `written_length` elements.
+    if unsafe {
+        GetUserPreferredUILanguages(
+            MUI_LANGUAGE_NAME,
+            &mut language_count,
+            Some(PWSTR(languages.as_mut_ptr())),
+            &mut written_length,
+        )
+    }
+    .is_err()
+    {
+        return Language::default();
+    }
+    let Some(first_end) = languages.iter().position(|code_unit| *code_unit == 0) else {
+        return Language::default();
+    };
+    String::from_utf16(&languages[..first_end]).map_or_else(
+        |_| Language::default(),
+        |locale| Language::from_system_locale(&locale),
+    )
+}
 const XINPUT_GAMEPAD_DPAD_UP: u16 = 0x0001;
 const XINPUT_GAMEPAD_DPAD_DOWN: u16 = 0x0002;
 const XINPUT_GAMEPAD_DPAD_LEFT: u16 = 0x0004;

@@ -20,6 +20,7 @@ impl SettingsView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        window.set_window_title(ui_text(snapshot.resolved_language, UiText::Settings));
         self.syncing_component_inputs = true;
         let scale = f64::from(snapshot.overlay.scale_percent);
         let opacity = f64::from(snapshot.overlay.opacity_percent);
@@ -40,6 +41,23 @@ impl SettingsView {
         self.model_id_input.update(cx, |input, cx| {
             input.set_value(&self.model_import.id, window, cx)
         });
+        self.language_select.update(cx, |select, cx| {
+            select.set_items(
+                SearchableVec::new(
+                    SettingsLanguage::ALL
+                        .into_iter()
+                        .map(|language| language.display_name(snapshot.resolved_language))
+                        .collect::<Vec<_>>(),
+                ),
+                window,
+                cx,
+            );
+            select.set_selected_value(
+                &snapshot.language.display_name(snapshot.resolved_language),
+                window,
+                cx,
+            )
+        });
         self.syncing_component_inputs = false;
     }
 
@@ -54,6 +72,21 @@ impl SettingsView {
         let stick_dead_zone_input = cx.new(|cx| InputState::new(window, cx).placeholder("15"));
         let trigger_dead_zone_input = cx.new(|cx| InputState::new(window, cx).placeholder("0"));
         let model_id_input = cx.new(|cx| InputState::new(window, cx).placeholder("Model ID"));
+        let language_select = cx.new(|cx| {
+            SelectState::new(
+                SearchableVec::new(
+                    SettingsLanguage::ALL
+                        .into_iter()
+                        .map(|language| {
+                            language.display_name(SettingsLanguage::EnglishUnitedStates)
+                        })
+                        .collect::<Vec<_>>(),
+                ),
+                Some(IndexPath::new(0)),
+                window,
+                cx,
+            )
+        });
         cx.subscribe(
             &overlay_scale_input,
             |view, input, event: &NumberInputEvent, cx| {
@@ -174,6 +207,27 @@ impl SettingsView {
             }
         })
         .detach();
+        cx.subscribe(
+            &language_select,
+            |view, _, event: &SelectEvent<SearchableVec<&'static str>>, cx| {
+                if view.syncing_component_inputs {
+                    return;
+                }
+                let display_language = view
+                    .snapshot
+                    .as_ref()
+                    .map_or(SettingsLanguage::EnglishUnitedStates, |snapshot| {
+                        snapshot.resolved_language
+                    });
+                if let SelectEvent::Confirm(Some(name)) = event
+                    && let Some(language) =
+                        SettingsLanguage::from_display_name(name, display_language)
+                {
+                    view.set_language(language, cx);
+                }
+            },
+        )
+        .detach();
         Self {
             client,
             snapshot: None,
@@ -188,6 +242,7 @@ impl SettingsView {
             shortcut_row_focus: BTreeMap::new(),
             window_hidden: false,
             applied_theme: None,
+            language_select,
             request_quit,
             general_focus: cx.focus_handle().tab_index(1).tab_stop(true),
             models_focus: cx.focus_handle().tab_index(2).tab_stop(true),
