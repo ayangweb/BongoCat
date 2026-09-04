@@ -680,6 +680,30 @@ fn run_service(
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
+            SettingsCommand::SetReleaseFallbackTimeout {
+                expected_config_revision,
+                timeout_ms,
+                reply,
+            } => {
+                let result = require_operational(&application)
+                    .map_err(map_application_error)
+                    .and_then(|()| {
+                        if application.config_revision() != Some(expected_config_revision) {
+                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
+                        } else if !bongocat_runtime::release_fallback_timeout_is_valid(timeout_ms) {
+                            Err(SettingsError::new(
+                                SettingsErrorCode::InvalidReleaseFallbackTimeout,
+                            ))
+                        } else {
+                            application
+                                .set_release_fallback_timeout(timeout_ms)
+                                .map(|_| ())
+                                .map_err(map_application_error)
+                        }
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
             SettingsCommand::SetModelSettings {
                 expected_config_revision,
                 settings,
@@ -1085,6 +1109,7 @@ fn snapshot(
         motion_audio_enabled: runtime.motion_audio_enabled,
         behavior_shortcuts_enabled: application.config().model.enable_behavior_shortcuts,
         maximum_fps: runtime.maximum_fps,
+        release_fallback_timeout_ms: runtime.release_fallback_timeout_ms,
         model_settings: SettingsModelSettings {
             mirror: runtime.model_settings.mirror,
             mirror_pointer_tracking: runtime.model_settings.mirror_pointer_tracking,
@@ -1255,6 +1280,9 @@ const fn settings_runtime_error_code(code: RuntimeRenderErrorCode) -> SettingsRu
             SettingsRuntimeErrorCode::OverlaySettingsInvalid
         }
         RuntimeRenderErrorCode::MaximumFpsInvalid => SettingsRuntimeErrorCode::MaximumFpsInvalid,
+        RuntimeRenderErrorCode::ReleaseFallbackTimeoutInvalid => {
+            SettingsRuntimeErrorCode::ReleaseFallbackTimeoutInvalid
+        }
     }
 }
 
@@ -1306,6 +1334,7 @@ const fn settings_input_diagnostics(
         captured_down: input.diagnostics.captured_down,
         captured_up: input.diagnostics.captured_up,
         reconciled_release: input.diagnostics.reconciled_release,
+        fallback_release: input.diagnostics.fallback_release,
         released_by_reset: input.diagnostics.released_by_reset,
         duplicate_down: input.diagnostics.duplicate_down,
         unmatched_release: input.diagnostics.unmatched_release,
@@ -1517,6 +1546,7 @@ struct DiagnosticsInput {
     captured_down: u64,
     captured_up: u64,
     reconciled_release: u64,
+    fallback_release: u64,
     released_by_reset: u64,
     duplicate_down: u64,
     unmatched_release: u64,
@@ -1779,6 +1809,7 @@ const fn diagnostics_input(input: SettingsInputDiagnostics) -> DiagnosticsInput 
         captured_down: input.captured_down,
         captured_up: input.captured_up,
         reconciled_release: input.reconciled_release,
+        fallback_release: input.fallback_release,
         released_by_reset: input.released_by_reset,
         duplicate_down: input.duplicate_down,
         unmatched_release: input.unmatched_release,
@@ -2212,6 +2243,7 @@ mod tests {
             motion_audio_enabled: true,
             behavior_shortcuts_enabled: true,
             maximum_fps: 60,
+            release_fallback_timeout_ms: 500,
             model_settings: bongocat_ui::SettingsModelSettings::default(),
             gamepad_axis_settings: bongocat_ui::SettingsGamepadAxisSettings::default(),
             shortcuts: SettingsShortcuts::default(),
@@ -2350,6 +2382,7 @@ mod tests {
                 captured_down: 3,
                 captured_up: 4,
                 reconciled_release: 5,
+                fallback_release: 26,
                 released_by_reset: 6,
                 duplicate_down: 7,
                 unmatched_release: 8,
@@ -2393,6 +2426,7 @@ mod tests {
         assert_eq!(projected.captured_down, 3);
         assert_eq!(projected.captured_up, 4);
         assert_eq!(projected.reconciled_release, 5);
+        assert_eq!(projected.fallback_release, 26);
         assert_eq!(projected.released_by_reset, 6);
         assert_eq!(projected.duplicate_down, 7);
         assert_eq!(projected.unmatched_release, 8);
@@ -2558,7 +2592,8 @@ mod tests {
     fn service_opens_anonymous_backup_location_without_advancing_revision() {
         let base = tempdir().expect("temporary storage");
         let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
-        let application = Application::start_with_layout(layout).expect("application start");
+        let application =
+            Application::start_with_layout(layout.clone()).expect("application start");
         let startup_item = Arc::new(TestStartupItem::new(SettingsStartupItemStatus::State(
             SettingsStartupItemState::Disabled,
         )));
@@ -3342,7 +3377,8 @@ mod tests {
         let base = tempdir().expect("temporary storage");
         let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
         let config_path = layout.config.clone();
-        let application = Application::start_with_layout(layout).expect("application start");
+        let application =
+            Application::start_with_layout(layout.clone()).expect("application start");
         let service = ApplicationSettingsService::start(application).expect("service start");
         let client = service.client();
 
@@ -3415,13 +3451,22 @@ mod tests {
             )
             .expect("update maximum FPS");
         assert_eq!(configured_frame_rate.maximum_fps, 120);
+        let configured_fallback = client
+            .set_release_fallback_timeout_blocking(
+                configured_frame_rate
+                    .config_revision
+                    .expect("config revision"),
+                1_500,
+            )
+            .expect("update release fallback timeout");
+        assert_eq!(configured_fallback.release_fallback_timeout_ms, 1_500);
         let gamepad_settings = bongocat_ui::SettingsGamepadAxisSettings {
             stick_dead_zone_percent: 20,
             trigger_dead_zone_percent: 10,
         };
         let configured_gamepad = client
             .set_gamepad_axis_settings_blocking(
-                configured_frame_rate
+                configured_fallback
                     .config_revision
                     .expect("config revision"),
                 gamepad_settings,
@@ -3446,10 +3491,23 @@ mod tests {
         assert!(persisted.contains("\"gamepad_stick_dead_zone\": 0.2"));
         assert!(persisted.contains("\"gamepad_trigger_dead_zone\": 0.1"));
         assert!(persisted.contains("\"maximum_fps\": 120"));
+        assert!(persisted.contains("\"release_fallback_timeout_ms\": 1500"));
 
         let stopped = client.shutdown_blocking().expect("service shutdown");
         assert_eq!(stopped.runtime_health, RuntimeHealth::Stopped);
         service.join().expect("service join");
+
+        let restarted = Application::start_with_layout(layout).expect("application restart");
+        assert_eq!(
+            restarted
+                .runtime_client()
+                .snapshot()
+                .release_fallback_timeout_ms,
+            1_500
+        );
+        restarted
+            .shutdown()
+            .expect("restarted application shutdown");
     }
 
     #[test]
@@ -3531,6 +3589,25 @@ mod tests {
             std::fs::read(&config_path).expect("preserved initial config"),
             initial_config
         );
+        let invalid_fallback_error = client
+            .set_release_fallback_timeout_blocking(initial_config_revision, 60_001)
+            .expect_err("invalid release fallback timeout update");
+        assert_eq!(
+            invalid_fallback_error.code(),
+            SettingsErrorCode::InvalidReleaseFallbackTimeout
+        );
+        let after_invalid_fallback = client
+            .read_snapshot_blocking()
+            .expect("snapshot after invalid release fallback timeout");
+        assert_eq!(after_invalid_fallback.revision, initial.revision);
+        assert_eq!(
+            after_invalid_fallback.release_fallback_timeout_ms,
+            initial.release_fallback_timeout_ms
+        );
+        assert_eq!(
+            std::fs::read(&config_path).expect("preserved initial config"),
+            initial_config
+        );
         let hidden = client
             .set_overlay_visible_blocking(initial_config_revision, false)
             .expect("hide overlay");
@@ -3590,6 +3667,13 @@ mod tests {
             .expect_err("stale maximum FPS update");
         assert_eq!(
             stale_frame_rate_error.code(),
+            SettingsErrorCode::SnapshotOutdated
+        );
+        let stale_fallback_error = client
+            .set_release_fallback_timeout_blocking(initial_config_revision, 1_500)
+            .expect_err("stale release fallback timeout update");
+        assert_eq!(
+            stale_fallback_error.code(),
             SettingsErrorCode::SnapshotOutdated
         );
 

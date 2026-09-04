@@ -50,6 +50,8 @@ use rendering::{MotionStopStatus, RenderEvaluation, RuntimeRenderBootstrap, Runt
 pub const DEFAULT_MAXIMUM_FPS: u16 = 60;
 pub const MINIMUM_FPS: u16 = 15;
 pub const MAXIMUM_FPS: u16 = 240;
+pub const DEFAULT_RELEASE_FALLBACK_TIMEOUT_MS: u32 = 500;
+pub const MAX_RELEASE_FALLBACK_TIMEOUT_MS: u32 = 60_000;
 pub const HIDDEN_OVERLAY_FRAME_INTERVAL: Duration = Duration::from_millis(100);
 
 pub const fn maximum_fps_is_valid(maximum_fps: u16) -> bool {
@@ -67,6 +69,10 @@ pub fn frame_interval_for_runtime(maximum_fps: u16, overlay_visible: bool) -> Op
     } else {
         HIDDEN_OVERLAY_FRAME_INTERVAL
     })
+}
+
+pub const fn release_fallback_timeout_is_valid(timeout_ms: u32) -> bool {
+    timeout_ms <= MAX_RELEASE_FALLBACK_TIMEOUT_MS
 }
 
 fn runtime_frame_interval(maximum_fps: u16, overlay_visible: bool) -> Duration {
@@ -116,10 +122,11 @@ pub enum RuntimeRenderErrorCode {
     TransportClosed,
     OverlaySettingsInvalid,
     MaximumFpsInvalid,
+    ReleaseFallbackTimeoutInvalid,
 }
 
 impl RuntimeRenderErrorCode {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::ModelLoadFailed,
         Self::ModelEvaluationFailed,
         Self::MotionLoadFailed,
@@ -129,6 +136,7 @@ impl RuntimeRenderErrorCode {
         Self::TransportClosed,
         Self::OverlaySettingsInvalid,
         Self::MaximumFpsInvalid,
+        Self::ReleaseFallbackTimeoutInvalid,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -142,6 +150,7 @@ impl RuntimeRenderErrorCode {
             Self::TransportClosed => "transport_closed",
             Self::OverlaySettingsInvalid => "overlay_settings_invalid",
             Self::MaximumFpsInvalid => "maximum_fps_invalid",
+            Self::ReleaseFallbackTimeoutInvalid => "release_fallback_timeout_invalid",
         }
     }
 }
@@ -334,6 +343,7 @@ pub enum RuntimeCommand {
     SetOverlayVisible(bool),
     SetOverlaySettings(OverlaySettings),
     SetMaximumFps(u16),
+    SetReleaseFallbackTimeout(u32),
     SetModelSettings(ModelSettings),
     SetMotionAudioEnabled(bool),
     SetInputBindings(Arc<InputBindings>),
@@ -372,6 +382,7 @@ pub struct RuntimeSnapshot {
     pub overlay_visible: bool,
     pub overlay_settings: OverlaySettings,
     pub maximum_fps: u16,
+    pub release_fallback_timeout_ms: u32,
     pub model_settings: ModelSettings,
     pub gamepad_axis_settings: GamepadAxisSettings,
     pub motion_audio_enabled: bool,
@@ -404,6 +415,7 @@ impl RuntimeSnapshot {
             overlay_visible,
             overlay_settings: OverlaySettings::default(),
             maximum_fps: DEFAULT_MAXIMUM_FPS,
+            release_fallback_timeout_ms: DEFAULT_RELEASE_FALLBACK_TIMEOUT_MS,
             model_settings: ModelSettings::default(),
             gamepad_axis_settings: GamepadAxisSettings::default(),
             motion_audio_enabled,
@@ -1375,6 +1387,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
     let mut gamepad_axis_settings = GamepadAxisSettings::default();
     let mut overlay_visible = initial_overlay_visible;
     let mut maximum_fps = DEFAULT_MAXIMUM_FPS;
+    let mut release_fallback_timeout_ms = DEFAULT_RELEASE_FALLBACK_TIMEOUT_MS;
     let mut motion_audio_enabled = initial_motion_audio_enabled;
     let mut pending_model = None;
     let mut deferred_commands = VecDeque::new();
@@ -1527,6 +1540,24 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                             });
                         }
                     }
+                    WorkerCommand::Product(RuntimeCommand::SetReleaseFallbackTimeout(value)) => {
+                        if !release_fallback_timeout_is_valid(value) {
+                            publish(&snapshot, |current| {
+                                current.last_command_failure = Some(RuntimeCommandFailure {
+                                    sequence,
+                                    code: RuntimeRenderErrorCode::ReleaseFallbackTimeoutInvalid,
+                                });
+                                current.last_command_sequence = Some(sequence);
+                            });
+                        } else {
+                            release_fallback_timeout_ms = value;
+                            publish(&snapshot, |current| {
+                                current.release_fallback_timeout_ms = value;
+                                current.last_command_failure = None;
+                                current.last_command_sequence = Some(sequence);
+                            });
+                        }
+                    }
                     WorkerCommand::Product(RuntimeCommand::SetModelSettings(settings)) => {
                         if let Some(renderer) = &mut renderer {
                             renderer.set_model_settings(settings);
@@ -1610,7 +1641,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                             InputEvent::GamepadDisconnected { connection, .. } => Some(*connection),
                             _ => None,
                         };
-                        let disposition = input_state.apply(envelope);
+                        let disposition = input_state.apply_observed(envelope, clock.now());
                         if input_reset {
                             gamepad_axis_values.clear();
                         } else if let Some(connection) = disconnected {
@@ -1835,6 +1866,16 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                         return;
                     }
                 }
+                expire_keyboard_fallback(
+                    &mut input_state,
+                    release_fallback_timeout_ms,
+                    &input_bindings,
+                    normalized_cursor,
+                    &gamepad_axis_values,
+                    gamepad_axis_settings,
+                    &snapshot,
+                    clock.now(),
+                );
                 if evaluate_after_command && overlay_visible && pending_model.is_none() {
                     evaluate_renderer(
                         renderer.as_mut(),
@@ -1847,6 +1888,16 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                 }
             }
             Err(RecvTimeoutError::Timeout) => {
+                expire_keyboard_fallback(
+                    &mut input_state,
+                    release_fallback_timeout_ms,
+                    &input_bindings,
+                    normalized_cursor,
+                    &gamepad_axis_values,
+                    gamepad_axis_settings,
+                    &snapshot,
+                    clock.now(),
+                );
                 consume_cursor(
                     &cursor_slot,
                     &snapshot,
@@ -1910,6 +1961,32 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
     }
     stop_motion_audio(&motion_audio, u64::MAX, MotionAudioStopReason::Shutdown);
     publish(&snapshot, |current| current.state = RuntimeState::Stopped);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn expire_keyboard_fallback(
+    input_state: &mut InputState,
+    timeout_ms: u32,
+    input_bindings: &InputBindings,
+    normalized_cursor: NormalizedCursorPosition,
+    gamepad_axis_values: &GamepadAxisValues,
+    gamepad_axis_settings: GamepadAxisSettings,
+    snapshot: &SnapshotCell,
+    now: Duration,
+) {
+    if input_state.expire_keyboard_fallback(now, timeout_ms) == 0 {
+        return;
+    }
+    publish(snapshot, |current| {
+        current.input = input_state.snapshot();
+        current.model_input = compose_model_input(
+            input_state,
+            input_bindings,
+            normalized_cursor,
+            gamepad_axis_values,
+            gamepad_axis_settings,
+        );
+    });
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2742,6 +2819,91 @@ mod tests {
             .expect("released snapshot");
         assert_eq!(released.input.pressed_key_count, 0);
         assert_eq!(released.input.diagnostics.reconciled_release, 1);
+        owner.shutdown(TIMEOUT).expect("clean shutdown");
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn runtime_tick_publishes_keyboard_fallback_release_from_runtime_clock() {
+        let clock = Arc::new(ManualClock::default());
+        let (owner, _consumer) =
+            RuntimeOwner::start_with_rendering_and_clock(false, 8, clock.clone());
+        let client = owner.client();
+        client
+            .wait_for_revision(1, TIMEOUT)
+            .expect("ready snapshot");
+        let configured = client
+            .send(RuntimeCommand::SetReleaseFallbackTimeout(1_000))
+            .expect("fallback setting accepted");
+        let configured = client
+            .wait_for_command(configured, TIMEOUT)
+            .expect("fallback setting published");
+        assert_eq!(configured.release_fallback_timeout_ms, 1_000);
+
+        let down = client
+            .send(RuntimeCommand::ApplyInput(Arc::new(SequencedInputEvent {
+                sequence: 0,
+                event: InputEvent::Edge {
+                    control: InputControl::Key(PhysicalKey::KEY_A),
+                    edge: InputEdge::Down,
+                    source: InputSource::Capture,
+                    at: MonotonicMillis::new(50_000),
+                },
+            })))
+            .expect("key down accepted");
+        let pressed = client
+            .wait_for_command(down, TIMEOUT)
+            .expect("key down published");
+        assert_eq!(pressed.input.pressed_key_count, 1);
+
+        clock.set(Duration::from_millis(999));
+        let before_deadline = client.send(RuntimeCommand::Tick).expect("tick accepted");
+        let before_deadline = client
+            .wait_for_command(before_deadline, TIMEOUT)
+            .expect("tick published");
+        assert_eq!(before_deadline.input.pressed_key_count, 1);
+
+        clock.set(Duration::from_millis(1_000));
+        client.send(RuntimeCommand::Tick).expect("tick accepted");
+        let deadline = Instant::now() + TIMEOUT;
+        let released = loop {
+            let current = client.snapshot();
+            if current.input.diagnostics.fallback_release == 1 {
+                break current;
+            }
+            assert!(Instant::now() < deadline, "fallback release timed out");
+            thread::sleep(Duration::from_millis(2));
+        };
+        assert_eq!(released.input.pressed_key_count, 0);
+        assert_eq!(released.input.diagnostics.reconciled_release, 0);
+        assert_eq!(released.input.diagnostics.released_by_reset, 0);
+        owner.shutdown(TIMEOUT).expect("clean shutdown");
+    }
+
+    #[test]
+    fn release_fallback_timeout_command_rejects_values_above_v1_limit() {
+        let owner = RuntimeOwner::start(false, 4);
+        let client = owner.client();
+        client
+            .wait_for_revision(1, TIMEOUT)
+            .expect("ready snapshot");
+        let sequence = client
+            .send(RuntimeCommand::SetReleaseFallbackTimeout(60_001))
+            .expect("invalid command accepted for typed failure");
+        let rejected = client
+            .wait_for_command(sequence, TIMEOUT)
+            .expect("invalid command result published");
+        assert_eq!(
+            rejected.release_fallback_timeout_ms,
+            DEFAULT_RELEASE_FALLBACK_TIMEOUT_MS
+        );
+        assert_eq!(
+            rejected.last_command_failure,
+            Some(RuntimeCommandFailure {
+                sequence,
+                code: RuntimeRenderErrorCode::ReleaseFallbackTimeoutInvalid,
+            })
+        );
         owner.shutdown(TIMEOUT).expect("clean shutdown");
     }
 

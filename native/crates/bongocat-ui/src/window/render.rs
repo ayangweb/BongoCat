@@ -33,6 +33,12 @@ impl Render for SettingsView {
                     }
                     ACCESSIBILITY_MAXIMUM_FPS_DECREASE => Some(&self.maximum_fps_decrease_focus),
                     ACCESSIBILITY_MAXIMUM_FPS_INCREASE => Some(&self.maximum_fps_increase_focus),
+                    ACCESSIBILITY_RELEASE_FALLBACK_DECREASE => {
+                        Some(&self.release_fallback_decrease_focus)
+                    }
+                    ACCESSIBILITY_RELEASE_FALLBACK_INCREASE => {
+                        Some(&self.release_fallback_increase_focus)
+                    }
                     ACCESSIBILITY_AUDIO => Some(&self.audio_focus),
                     ACCESSIBILITY_BEHAVIOR_SHORTCUTS => Some(&self.behavior_shortcuts_focus),
                     ACCESSIBILITY_MIRROR => Some(&self.mirror_focus),
@@ -485,6 +491,33 @@ impl Render for SettingsView {
                 SettingGroup::new()
                     .title(ui_text(language, UiText::Input))
                     .items(vec![
+                        SettingItem::new(
+                            ui_text(language, UiText::ReleaseFallbackTimeout),
+                            SettingField::number_input(
+                                NumberFieldOptions {
+                                    min: 0.0,
+                                    max: 60_000.0,
+                                    step: 250.0,
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |app| {
+                                        view.read(app).snapshot.as_ref().map_or(500.0, |s| {
+                                            f64::from(s.release_fallback_timeout_ms)
+                                        })
+                                    }
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |value, app| {
+                                        view.update(app, |view, cx| {
+                                            view.set_release_fallback_timeout_value(value, cx)
+                                        });
+                                    }
+                                },
+                            ),
+                        )
+                        .description(ui_text(language, UiText::ReleaseFallbackTimeoutDescription)),
                         SettingItem::new(
                             ui_text(language, UiText::GamepadStickDeadZone),
                             SettingField::number_input(

@@ -109,6 +109,7 @@ pub(super) enum UiText {
     RuntimeTransportClosed,
     OverlaySettingsInvalid,
     MaximumFpsInvalid,
+    ReleaseFallbackTimeoutInvalid,
     NoRendererError,
     NoCommandFailures,
     ConfigurationUnavailable,
@@ -142,6 +143,8 @@ pub(super) enum UiText {
     OverlayOpacityDescription,
     MaximumFps,
     MaximumFpsDescription,
+    ReleaseFallbackTimeout,
+    ReleaseFallbackTimeoutDescription,
     ModelInteraction,
     BehaviorShortcuts,
     BehaviorShortcutsDescription,
@@ -170,6 +173,8 @@ pub(super) enum UiText {
     IncreaseOverlayOpacity,
     DecreaseMaximumFps,
     IncreaseMaximumFps,
+    DecreaseReleaseFallbackTimeout,
+    IncreaseReleaseFallbackTimeout,
     CheckingLoginStartup,
     LoginStartupStatusUnavailable,
     LoginStartupDisabled,
@@ -345,6 +350,9 @@ pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
         UiText::RuntimeTransportClosed => ["Runtime transport closed", "运行时传输已关闭"],
         UiText::OverlaySettingsInvalid => ["Overlay settings invalid", "桌面猫设置无效"],
         UiText::MaximumFpsInvalid => ["Maximum FPS invalid", "最大帧率无效"],
+        UiText::ReleaseFallbackTimeoutInvalid => {
+            ["Release fallback timeout invalid", "释放兜底超时无效"]
+        }
         UiText::NoRendererError => ["No renderer error", "没有渲染器错误"],
         UiText::NoCommandFailures => ["No command failures", "没有命令失败"],
         UiText::ConfigurationUnavailable => ["Configuration unavailable", "配置不可用"],
@@ -408,6 +416,11 @@ pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
             "Limit animation and overlay updates from 15 to 240 FPS.",
             "将动画和桌面猫更新限制在每秒 15 到 240 帧。",
         ],
+        UiText::ReleaseFallbackTimeout => ["Key release fallback (ms)", "按键释放兜底（毫秒）"],
+        UiText::ReleaseFallbackTimeoutDescription => [
+            "Release a captured keyboard key only if normal release and reconciliation both fail. Set to 0 to disable.",
+            "仅当正常释放和状态校正均失败时释放捕获的键盘按键；设为 0 可禁用。",
+        ],
         UiText::ModelInteraction => ["Model interaction", "模型交互"],
         UiText::BehaviorShortcuts => ["Model behavior shortcuts", "模型行为快捷键"],
         UiText::BehaviorShortcutsDescription => [
@@ -459,6 +472,14 @@ pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
         UiText::IncreaseOverlayOpacity => ["Increase overlay opacity", "提高桌面猫不透明度"],
         UiText::DecreaseMaximumFps => ["Decrease maximum FPS", "降低最大帧率"],
         UiText::IncreaseMaximumFps => ["Increase maximum FPS", "提高最大帧率"],
+        UiText::DecreaseReleaseFallbackTimeout => [
+            "Decrease key release fallback timeout",
+            "缩短按键释放兜底超时",
+        ],
+        UiText::IncreaseReleaseFallbackTimeout => [
+            "Increase key release fallback timeout",
+            "延长按键释放兜底超时",
+        ],
         UiText::CheckingLoginStartup => ["Checking login startup...", "正在检查登录启动状态..."],
         UiText::LoginStartupStatusUnavailable => [
             "Status unavailable; activate to retry",
@@ -674,7 +695,7 @@ pub(super) fn shortcut_target_name(
 pub(super) fn input_diagnostic_metrics(
     language: SettingsLanguage,
     diagnostics: SettingsInputDiagnostics,
-) -> [(&'static str, u64); 25] {
+) -> [(&'static str, u64); 26] {
     let labels = match language {
         SettingsLanguage::ChineseSimplified => [
             "按下的按键",
@@ -684,6 +705,7 @@ pub(super) fn input_diagnostic_metrics(
             "捕获的按下事件",
             "捕获的释放事件",
             "校正释放",
+            "兜底释放",
             "重置释放",
             "重复按下",
             "未匹配的释放",
@@ -711,6 +733,7 @@ pub(super) fn input_diagnostic_metrics(
             "Captured presses",
             "Captured releases",
             "Reconciled releases",
+            "Fallback releases",
             "Released by reset",
             "Duplicate presses",
             "Unmatched releases",
@@ -739,6 +762,7 @@ pub(super) fn input_diagnostic_metrics(
         diagnostics.captured_down,
         diagnostics.captured_up,
         diagnostics.reconciled_release,
+        diagnostics.fallback_release,
         diagnostics.released_by_reset,
         diagnostics.duplicate_down,
         diagnostics.unmatched_release,
@@ -776,6 +800,10 @@ pub(super) fn settings_error(language: SettingsLanguage, error: SettingsError) -
         SettingsErrorCode::InvalidMaximumFps => [
             "maximum FPS must be between 15 and 240",
             "最大帧率必须在 15 到 240 之间",
+        ],
+        SettingsErrorCode::InvalidReleaseFallbackTimeout => [
+            "key release fallback timeout must be between 0 and 60000 milliseconds",
+            "按键释放兜底超时必须在 0 到 60000 毫秒之间",
         ],
         SettingsErrorCode::InvalidGamepadAxisSettings => [
             "gamepad dead-zone settings are out of range",
@@ -1033,6 +1061,7 @@ mod tests {
             UiText::RuntimeTransportClosed,
             UiText::OverlaySettingsInvalid,
             UiText::MaximumFpsInvalid,
+            UiText::ReleaseFallbackTimeoutInvalid,
             UiText::NoRendererError,
             UiText::NoCommandFailures,
             UiText::ConfigurationUnavailable,
@@ -1058,6 +1087,8 @@ mod tests {
             UiText::OverlayOpacityDescription,
             UiText::MaximumFps,
             UiText::MaximumFpsDescription,
+            UiText::ReleaseFallbackTimeout,
+            UiText::ReleaseFallbackTimeoutDescription,
             UiText::ModelInteraction,
             UiText::BehaviorShortcuts,
             UiText::BehaviorShortcutsDescription,
@@ -1086,6 +1117,8 @@ mod tests {
             UiText::IncreaseOverlayOpacity,
             UiText::DecreaseMaximumFps,
             UiText::IncreaseMaximumFps,
+            UiText::DecreaseReleaseFallbackTimeout,
+            UiText::IncreaseReleaseFallbackTimeout,
             UiText::CheckingLoginStartup,
             UiText::LoginStartupStatusUnavailable,
             UiText::LoginStartupDisabled,

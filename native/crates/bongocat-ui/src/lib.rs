@@ -127,10 +127,11 @@ pub enum SettingsRuntimeErrorCode {
     TransportClosed,
     OverlaySettingsInvalid,
     MaximumFpsInvalid,
+    ReleaseFallbackTimeoutInvalid,
 }
 
 impl SettingsRuntimeErrorCode {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::ModelLoadFailed,
         Self::ModelEvaluationFailed,
         Self::MotionLoadFailed,
@@ -140,6 +141,7 @@ impl SettingsRuntimeErrorCode {
         Self::TransportClosed,
         Self::OverlaySettingsInvalid,
         Self::MaximumFpsInvalid,
+        Self::ReleaseFallbackTimeoutInvalid,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -153,6 +155,7 @@ impl SettingsRuntimeErrorCode {
             Self::TransportClosed => "transport_closed",
             Self::OverlaySettingsInvalid => "overlay_settings_invalid",
             Self::MaximumFpsInvalid => "maximum_fps_invalid",
+            Self::ReleaseFallbackTimeoutInvalid => "release_fallback_timeout_invalid",
         }
     }
 }
@@ -198,6 +201,7 @@ pub struct SettingsInputDiagnostics {
     pub captured_down: u64,
     pub captured_up: u64,
     pub reconciled_release: u64,
+    pub fallback_release: u64,
     pub released_by_reset: u64,
     pub duplicate_down: u64,
     pub unmatched_release: u64,
@@ -314,6 +318,7 @@ pub struct SettingsSnapshot {
     pub motion_audio_enabled: bool,
     pub behavior_shortcuts_enabled: bool,
     pub maximum_fps: u16,
+    pub release_fallback_timeout_ms: u32,
     pub model_settings: SettingsModelSettings,
     pub gamepad_axis_settings: SettingsGamepadAxisSettings,
     pub shortcuts: SettingsShortcuts,
@@ -676,6 +681,7 @@ pub enum SettingsErrorCode {
     SnapshotOutdated,
     RuntimeUnavailable,
     InvalidMaximumFps,
+    InvalidReleaseFallbackTimeout,
     InvalidGamepadAxisSettings,
     InvalidShortcutBindings,
     ConfigPersistFailed,
@@ -710,11 +716,12 @@ pub enum SettingsErrorCode {
 }
 
 impl SettingsErrorCode {
-    pub const ALL: [Self; 35] = [
+    pub const ALL: [Self; 36] = [
         Self::ServiceUnavailable,
         Self::SnapshotOutdated,
         Self::RuntimeUnavailable,
         Self::InvalidMaximumFps,
+        Self::InvalidReleaseFallbackTimeout,
         Self::InvalidGamepadAxisSettings,
         Self::InvalidShortcutBindings,
         Self::ConfigPersistFailed,
@@ -754,6 +761,7 @@ impl SettingsErrorCode {
             Self::SnapshotOutdated => "snapshot_outdated",
             Self::RuntimeUnavailable => "runtime_unavailable",
             Self::InvalidMaximumFps => "invalid_maximum_fps",
+            Self::InvalidReleaseFallbackTimeout => "invalid_release_fallback_timeout",
             Self::InvalidGamepadAxisSettings => "invalid_gamepad_axis_settings",
             Self::InvalidShortcutBindings => "invalid_shortcut_bindings",
             Self::ConfigPersistFailed => "config_persist_failed",
@@ -813,6 +821,9 @@ impl fmt::Display for SettingsError {
             }
             SettingsErrorCode::RuntimeUnavailable => "runtime did not apply the setting",
             SettingsErrorCode::InvalidMaximumFps => "maximum FPS must be between 15 and 240",
+            SettingsErrorCode::InvalidReleaseFallbackTimeout => {
+                "key release fallback timeout must be between 0 and 60000 milliseconds"
+            }
             SettingsErrorCode::InvalidGamepadAxisSettings => {
                 "gamepad dead-zone settings are out of range"
             }
@@ -938,6 +949,11 @@ pub enum SettingsCommand {
     SetMaximumFps {
         expected_config_revision: u64,
         maximum_fps: u16,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    SetReleaseFallbackTimeout {
+        expected_config_revision: u64,
+        timeout_ms: u32,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     SetModelSettings {
@@ -1171,6 +1187,19 @@ impl SettingsClient {
         self.request(|reply| SettingsCommand::SetMaximumFps {
             expected_config_revision,
             maximum_fps,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn set_release_fallback_timeout(
+        &self,
+        expected_config_revision: u64,
+        timeout_ms: u32,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetReleaseFallbackTimeout {
+            expected_config_revision,
+            timeout_ms,
             reply,
         })
         .await
@@ -1411,6 +1440,18 @@ impl SettingsClient {
         self.request_blocking(|reply| SettingsCommand::SetMaximumFps {
             expected_config_revision,
             maximum_fps,
+            reply,
+        })
+    }
+
+    pub fn set_release_fallback_timeout_blocking(
+        &self,
+        expected_config_revision: u64,
+        timeout_ms: u32,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::SetReleaseFallbackTimeout {
+            expected_config_revision,
+            timeout_ms,
             reply,
         })
     }
@@ -1874,6 +1915,35 @@ mod tests {
     }
 
     #[test]
+    fn release_fallback_timeout_command_preserves_typed_value() {
+        let (client, endpoint) = SettingsClient::bounded(1);
+        let worker = thread::spawn(move || {
+            let SettingsCommand::SetReleaseFallbackTimeout {
+                expected_config_revision,
+                timeout_ms,
+                reply,
+            } = endpoint
+                .recv_blocking()
+                .expect("release fallback timeout command")
+            else {
+                panic!("unexpected command");
+            };
+            assert_eq!(expected_config_revision, 7);
+            assert_eq!(timeout_ms, 1_500);
+            let mut result = snapshot(8, true, true);
+            result.release_fallback_timeout_ms = timeout_ms;
+            reply
+                .respond(Ok(result))
+                .expect("release fallback timeout reply");
+        });
+        let result = client
+            .set_release_fallback_timeout_blocking(7, 1_500)
+            .expect("release fallback timeout snapshot");
+        assert_eq!(result.release_fallback_timeout_ms, 1_500);
+        worker.join().expect("worker join");
+    }
+
+    #[test]
     fn shortcut_command_preserves_typed_bindings() {
         let (client, endpoint) = SettingsClient::bounded(1);
         let shortcuts = SettingsShortcuts {
@@ -2316,6 +2386,7 @@ mod tests {
             motion_audio_enabled,
             behavior_shortcuts_enabled: true,
             maximum_fps: 60,
+            release_fallback_timeout_ms: 500,
             model_settings: SettingsModelSettings::default(),
             gamepad_axis_settings: SettingsGamepadAxisSettings::default(),
             shortcuts: SettingsShortcuts::default(),

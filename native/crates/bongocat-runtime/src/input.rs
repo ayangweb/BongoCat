@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::atomic::{AtomicU64, Ordering},
+    time::Duration,
 };
 
 use crate::NormalizedCursorPosition;
@@ -278,6 +279,7 @@ pub struct InputDiagnostics {
     pub captured_down: u64,
     pub captured_up: u64,
     pub reconciled_release: u64,
+    pub fallback_release: u64,
     pub released_by_reset: u64,
     pub duplicate_down: u64,
     pub unmatched_release: u64,
@@ -384,6 +386,7 @@ struct PressedRecord {
     source: InputSource,
     pressed_at: MonotonicMillis,
     last_reconciled_at: Option<MonotonicMillis>,
+    runtime_observed_at: Duration,
 }
 
 #[derive(Debug, Default)]
@@ -403,7 +406,17 @@ impl InputState {
         self.active_gamepads.contains(&connection)
     }
 
+    #[cfg(test)]
     pub(crate) fn apply(&mut self, envelope: SequencedInputEvent) -> InputDisposition {
+        let observed_at = Duration::from_millis(envelope.event.at().value());
+        self.apply_observed(envelope, observed_at)
+    }
+
+    pub(crate) fn apply_observed(
+        &mut self,
+        envelope: SequencedInputEvent,
+        observed_at: Duration,
+    ) -> InputDisposition {
         let gap = if let Some(last_sequence) = self.last_sequence {
             let distance = envelope.sequence.wrapping_sub(last_sequence);
             match distance {
@@ -447,15 +460,42 @@ impl InputState {
 
         if gap > 0 {
             if matches!(envelope.event, InputEvent::Reset { .. }) {
-                self.apply_event(envelope.event);
+                self.apply_event(envelope.event, observed_at);
             } else {
                 self.reset(InputResetReason::SequenceGap);
-                self.apply_event(envelope.event);
+                self.apply_event(envelope.event, observed_at);
             }
             return InputDisposition::AppliedAfterSequenceGap { missing: gap };
         }
-        self.apply_event(envelope.event);
+        self.apply_event(envelope.event, observed_at);
         InputDisposition::Applied
+    }
+
+    pub(crate) fn expire_keyboard_fallback(&mut self, now: Duration, timeout_ms: u32) -> usize {
+        if timeout_ms == 0 {
+            return 0;
+        }
+        let timeout = Duration::from_millis(u64::from(timeout_ms));
+        let expired = self
+            .pressed
+            .iter()
+            .filter_map(|(control, record)| {
+                matches!(control, InputControl::Key(_))
+                    .then_some(())
+                    .and_then(|()| now.checked_sub(record.runtime_observed_at))
+                    .is_some_and(|elapsed| elapsed >= timeout)
+                    .then_some(*control)
+            })
+            .collect::<Vec<_>>();
+        for control in &expired {
+            self.pressed.remove(control);
+            self.missing_confirmations.remove(control);
+        }
+        self.diagnostics.fallback_release = self
+            .diagnostics
+            .fallback_release
+            .saturating_add(expired.len() as u64);
+        expired.len()
     }
 
     pub(crate) fn force_reset(&mut self, reason: InputResetReason) {
@@ -559,7 +599,7 @@ impl InputState {
         self.pressed.get(&control).copied()
     }
 
-    fn apply_event(&mut self, event: InputEvent) {
+    fn apply_event(&mut self, event: InputEvent, observed_at: Duration) {
         match event {
             InputEvent::GamepadConnected { connection, .. } => {
                 if self.active_gamepads.iter().any(|active| {
@@ -620,11 +660,16 @@ impl InputState {
                                     source,
                                     pressed_at: at,
                                     last_reconciled_at: None,
+                                    runtime_observed_at: observed_at,
                                 });
                                 self.diagnostics.captured_down =
                                     self.diagnostics.captured_down.saturating_add(1);
                             }
-                            std::collections::btree_map::Entry::Occupied(_) => {
+                            std::collections::btree_map::Entry::Occupied(mut entry) => {
+                                if matches!(control, InputControl::Key(_)) {
+                                    entry.get_mut().runtime_observed_at =
+                                        entry.get().runtime_observed_at.max(observed_at);
+                                }
                                 self.diagnostics.duplicate_down =
                                     self.diagnostics.duplicate_down.saturating_add(1);
                             }
@@ -841,8 +886,87 @@ mod tests {
                 source: InputSource::Capture,
                 pressed_at: MonotonicMillis::new(10),
                 last_reconciled_at: Some(MonotonicMillis::new(250)),
+                runtime_observed_at: Duration::from_millis(10),
             })
         );
+    }
+
+    #[test]
+    fn keyboard_fallback_expires_at_deadline_and_repeat_refreshes_it() {
+        let mut state = InputState::default();
+        state.apply_observed(edge(0, 900, A, InputEdge::Down), Duration::from_millis(10));
+        assert_eq!(
+            state.expire_keyboard_fallback(Duration::from_millis(509), 500),
+            0
+        );
+        state.apply_observed(edge(1, 901, A, InputEdge::Down), Duration::from_millis(400));
+        assert_eq!(
+            state.expire_keyboard_fallback(Duration::from_millis(899), 500),
+            0
+        );
+        assert_eq!(
+            state.expire_keyboard_fallback(Duration::from_millis(900), 500),
+            1
+        );
+        let snapshot = state.snapshot();
+        assert_eq!(snapshot.pressed_key_count, 0);
+        assert_eq!(snapshot.diagnostics.fallback_release, 1);
+        assert_eq!(snapshot.diagnostics.duplicate_down, 1);
+    }
+
+    #[test]
+    fn keyboard_fallback_zero_and_non_monotonic_clock_do_not_release() {
+        let mut state = InputState::default();
+        state.apply_observed(edge(0, 1, A, InputEdge::Down), Duration::from_secs(5));
+        assert_eq!(
+            state.expire_keyboard_fallback(Duration::from_secs(60), 0),
+            0
+        );
+        assert_eq!(
+            state.expire_keyboard_fallback(Duration::from_secs(4), 500),
+            0
+        );
+        assert_eq!(state.snapshot().pressed_key_count, 1);
+    }
+
+    #[test]
+    fn keyboard_fallback_never_expires_mouse_or_gamepad_controls() {
+        let connection = GamepadConnection {
+            device_id: 0,
+            generation: 1,
+        };
+        let gamepad = InputControl::Gamepad(GamepadButtonKey {
+            connection,
+            button: GamepadButton::South,
+        });
+        let mut state = InputState::default();
+        state.apply_observed(
+            SequencedInputEvent {
+                sequence: 0,
+                event: InputEvent::GamepadConnected {
+                    connection,
+                    at: MonotonicMillis::new(0),
+                },
+            },
+            Duration::ZERO,
+        );
+        state.apply_observed(
+            edge(
+                1,
+                1,
+                InputControl::Mouse(MouseButton::Left),
+                InputEdge::Down,
+            ),
+            Duration::ZERO,
+        );
+        state.apply_observed(edge(2, 2, gamepad, InputEdge::Down), Duration::ZERO);
+        assert_eq!(
+            state.expire_keyboard_fallback(Duration::from_secs(60), 1),
+            0
+        );
+        let snapshot = state.snapshot();
+        assert_eq!(snapshot.pressed_mouse_button_count, 1);
+        assert_eq!(snapshot.pressed_gamepad_button_count, 1);
     }
 
     #[test]

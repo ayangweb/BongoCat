@@ -284,6 +284,34 @@ impl SettingsView {
                 maximum_fps_increase_node = maximum_fps_increase_node.clickable().focusable();
             }
         }
+        let release_fallback_timeout_ms =
+            snapshot.map_or(500, |snapshot| snapshot.release_fallback_timeout_ms);
+        let mut release_fallback_decrease_node = AccessibilityNode::new(
+            ACCESSIBILITY_RELEASE_FALLBACK_DECREASE,
+            AccessibilityRole::Button,
+            ui_text(language, UiText::DecreaseReleaseFallbackTimeout),
+        )
+        .with_description(ui_text(language, UiText::ReleaseFallbackTimeoutDescription))
+        .with_value(release_fallback_timeout_ms.to_string())
+        .disabled(disabled || release_fallback_timeout_ms == 0);
+        let mut release_fallback_increase_node = AccessibilityNode::new(
+            ACCESSIBILITY_RELEASE_FALLBACK_INCREASE,
+            AccessibilityRole::Button,
+            ui_text(language, UiText::IncreaseReleaseFallbackTimeout),
+        )
+        .with_description(ui_text(language, UiText::ReleaseFallbackTimeoutDescription))
+        .with_value(release_fallback_timeout_ms.to_string())
+        .disabled(disabled || release_fallback_timeout_ms >= 60_000);
+        if !disabled {
+            if release_fallback_timeout_ms > 0 {
+                release_fallback_decrease_node =
+                    release_fallback_decrease_node.clickable().focusable();
+            }
+            if release_fallback_timeout_ms < 60_000 {
+                release_fallback_increase_node =
+                    release_fallback_increase_node.clickable().focusable();
+            }
+        }
         let mut startup_node = AccessibilityNode::new(
             ACCESSIBILITY_STARTUP,
             AccessibilityRole::Switch,
@@ -467,6 +495,8 @@ impl SettingsView {
             ACCESSIBILITY_OVERLAY_OPACITY_INCREASE,
             ACCESSIBILITY_MAXIMUM_FPS_DECREASE,
             ACCESSIBILITY_MAXIMUM_FPS_INCREASE,
+            ACCESSIBILITY_RELEASE_FALLBACK_DECREASE,
+            ACCESSIBILITY_RELEASE_FALLBACK_INCREASE,
             ACCESSIBILITY_AUDIO,
             ACCESSIBILITY_BEHAVIOR_SHORTCUTS,
             ACCESSIBILITY_MIRROR,
@@ -527,6 +557,8 @@ impl SettingsView {
             opacity_increase_node,
             maximum_fps_decrease_node,
             maximum_fps_increase_node,
+            release_fallback_decrease_node,
+            release_fallback_increase_node,
             audio_node,
             behavior_shortcuts_node,
             mirror_node,
@@ -629,6 +661,12 @@ impl SettingsView {
             ACCESSIBILITY_OVERLAY_OPACITY_INCREASE => self.adjust_overlay_opacity(10, cx),
             ACCESSIBILITY_MAXIMUM_FPS_DECREASE => self.adjust_maximum_fps(-15, cx),
             ACCESSIBILITY_MAXIMUM_FPS_INCREASE => self.adjust_maximum_fps(15, cx),
+            ACCESSIBILITY_RELEASE_FALLBACK_DECREASE => {
+                self.adjust_release_fallback_timeout(-250, cx)
+            }
+            ACCESSIBILITY_RELEASE_FALLBACK_INCREASE => {
+                self.adjust_release_fallback_timeout(250, cx)
+            }
             ACCESSIBILITY_AUDIO => {
                 if let Some(snapshot) = self.snapshot.as_ref() {
                     self.set_motion_audio_enabled(!snapshot.motion_audio_enabled, cx);
@@ -761,6 +799,14 @@ impl SettingsView {
             (
                 ACCESSIBILITY_MAXIMUM_FPS_INCREASE,
                 &self.maximum_fps_increase_focus,
+            ),
+            (
+                ACCESSIBILITY_RELEASE_FALLBACK_DECREASE,
+                &self.release_fallback_decrease_focus,
+            ),
+            (
+                ACCESSIBILITY_RELEASE_FALLBACK_INCREASE,
+                &self.release_fallback_increase_focus,
             ),
             (ACCESSIBILITY_AUDIO, &self.audio_focus),
             (

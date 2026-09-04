@@ -240,6 +240,9 @@ fn runtime_error_title(
         SettingsRuntimeErrorCode::TransportClosed => UiText::RuntimeTransportClosed,
         SettingsRuntimeErrorCode::OverlaySettingsInvalid => UiText::OverlaySettingsInvalid,
         SettingsRuntimeErrorCode::MaximumFpsInvalid => UiText::MaximumFpsInvalid,
+        SettingsRuntimeErrorCode::ReleaseFallbackTimeoutInvalid => {
+            UiText::ReleaseFallbackTimeoutInvalid
+        }
     };
     ui_text(language, key)
 }

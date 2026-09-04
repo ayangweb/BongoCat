@@ -346,6 +346,48 @@ impl SettingsView {
             {
                 return Err("macOS exposed the Windows taskbar icon setting".to_owned());
             }
+            for (id, label) in [
+                (
+                    ACCESSIBILITY_RELEASE_FALLBACK_DECREASE,
+                    ui_text(
+                        snapshot.resolved_language,
+                        UiText::DecreaseReleaseFallbackTimeout,
+                    ),
+                ),
+                (
+                    ACCESSIBILITY_RELEASE_FALLBACK_INCREASE,
+                    ui_text(
+                        snapshot.resolved_language,
+                        UiText::IncreaseReleaseFallbackTimeout,
+                    ),
+                ),
+            ] {
+                let node = tree
+                    .nodes
+                    .iter()
+                    .find(|node| node.id == id)
+                    .ok_or_else(|| {
+                        "accessibility tree omitted the release fallback setting".to_owned()
+                    })?;
+                if node.role != AccessibilityRole::Button
+                    || node.label != label
+                    || node.description.as_deref()
+                        != Some(ui_text(
+                            snapshot.resolved_language,
+                            UiText::ReleaseFallbackTimeoutDescription,
+                        ))
+                    || node.value.as_deref()
+                        != Some(snapshot.release_fallback_timeout_ms.to_string().as_str())
+                    || node.disabled != controls_disabled
+                    || node.supports_click != !controls_disabled
+                    || node.supports_focus != !controls_disabled
+                {
+                    return Err(
+                        "release fallback accessibility semantics diverged from the visible control"
+                            .to_owned(),
+                    );
+                }
+            }
             for (id, label, value, toggled) in [
                 (
                     ACCESSIBILITY_OVERLAY_TOPMOST,
@@ -525,7 +567,7 @@ impl SettingsView {
             .ok_or_else(|| "diagnostics page has not received a settings snapshot".to_owned())?;
         let language = snapshot.resolved_language;
         let metrics = input_diagnostic_metrics(language, snapshot.input_diagnostics);
-        if metrics.len() != 25 {
+        if metrics.len() != 26 {
             return Err("diagnostics page did not project every input counter".to_owned());
         }
         let recovery = config_recovery_presentation(

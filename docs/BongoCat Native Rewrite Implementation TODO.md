@@ -659,10 +659,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     与 Stick 参数投影已完成；Settings service/client 与 General 页面现可 revision-checked
     持久化 stick/trigger dead-zone。平台采集、连接/断开生命周期和实机验证仍待完成。
 - [x] 每个 pressed key 记录来源、按下时间和最后校正时间。
-  - 验收证据（2026-08-30）：runtime owner 的私有 `PressedRecord` 保存 `InputSource`、
-    `MonotonicMillis pressed_at` 与最近一次仍按下校正时间；单元测试固定三字段，并确保
+  - 验收证据（2026-09-05）：runtime owner 的私有 `PressedRecord` 保存 `InputSource`、
+    `MonotonicMillis pressed_at`、最近一次仍按下校正时间与 runtime 单调时钟观察时间；单元测试固定
+    四字段，并确保
     具体键值不进入公开诊断 snapshot。
-- [ ] 每个 pressed key 最终经 KeyUp、reconcile 或 Reset 释放。
+- [ ] 每个 pressed key 最终经 KeyUp、reconcile、Reset 或最终 fallback 释放。
   - 状态（2026-08-30）：产品状态机已覆盖 captured/reconciled Up、连续两次缺失确认、
     lifecycle Reset、sequence gap 和非单调时间恢复；issue #47 合成回归不会残留按键。
     正式平台 producer 与周期 scheduler 接线及 Windows 实机场景仍待完成。
@@ -2313,7 +2314,7 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
 60. [x] `P5-DIAGNOSTICS-LOCALIZATION`：完成当前 Diagnostics 页面及辅助功能语义的中英本地化。
     - 依赖：`P5-APPLICATION-LANGUAGE`、`P5-GENERAL-LOCALIZATION`、`P5-MODELS-LOCALIZATION`、
       GPUI Kit Diagnostics 页面和现有 input/runtime/config/shortcut typed contract。
-    - 退出条件：页面、分组、25 个输入指标、input service、renderer/command failure、配置恢复、
+    - 退出条件：页面、分组、26 个输入指标、input service、renderer/command failure、配置恢复、
       导出状态、快捷键动作/捕获/错误及备份操作均从同一闭合文案源读取；可见动作与 AX/UIA
       label/value 不漂移；中文 800x600 隔离 smoke 覆盖 Diagnostics 页面、窗口状态恢复和有序
       shutdown；UI 定向测试、严格 Clippy、完整 Native workspace 与双平台 CI 通过。
@@ -2340,6 +2341,21 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       macOS Input Monitoring/Accessibility 实机测试按既有权限门禁保持 ignored。最终补强断言另以
       release test 实际执行通过；重复的 app-only debug Clippy 在无 CPU 的 rustc metadata 阶段被
       中断，生产代码与原测试此前已通过的严格 workspace Clippy 结果不受影响。
+
+62. [ ] `P2-KEY-RELEASE-FALLBACK`：让当前 v1 的按键释放兜底超时作用于正式 runtime。
+    - 依赖：ADR-0004、可注入 runtime 单调时钟、可靠 input queue、平台 reconcile/reset、当前 v1
+      `model.release_fallback_timeout_ms` 和 settings revision/CAS。
+    - 退出条件：仅 captured keyboard control 在 normal release、reconcile 与 Reset 均未清理时按
+      runtime 观察时间到期；repeat down 刷新期限，`0` 禁用，鼠标/手柄不超时，平台事件时间戳不
+      跨时钟原点比较；fallback release 有独立匿名诊断；typed command/snapshot、原子持久化、重启
+      恢复、stale/越界拒绝、GPUI Kit 数字控件、中英文案与 AX/UIA stepper 语义完成；定向测试、
+      完整 Native workspace 门禁和双平台 CI 通过。
+    - 状态（2026-09-05）：runtime、Application/settings、GPUI Kit 数字控件、中英文案、AccessKit
+      stepper 和匿名 diagnostics 已接通；定向 release 测试、format、严格 release workspace
+      Clippy、release check、共享 schema/fixture/input runner 与隔离 macOS release settings/state
+      smoke 均通过。无 debuginfo 的完整 workspace unit/integration tests 全部通过；Rust 1.97.1
+      本机 `rustdoc bongocat_app` 复现既有零 CPU 停滞并中断。总项等待本次 Windows/macOS CI 的完整
+      workspace 与 UIA/AX smoke 证据后勾选。
 
 ## 13. 待决策清单
 

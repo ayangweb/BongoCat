@@ -145,6 +145,10 @@ const ACCESSIBILITY_TASKBAR_ICON: AccessibilityNodeId = AccessibilityNodeId::new
 const ACCESSIBILITY_LANGUAGE: AccessibilityNodeId = AccessibilityNodeId::new(40);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_BEHAVIOR_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeId::new(41);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_RELEASE_FALLBACK_DECREASE: AccessibilityNodeId = AccessibilityNodeId::new(42);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_RELEASE_FALLBACK_INCREASE: AccessibilityNodeId = AccessibilityNodeId::new(43);
 
 type LanguageSelectState = SelectState<SearchableVec<&'static str>>;
 
@@ -185,6 +189,7 @@ enum PendingOperation {
     MotionAudio,
     BehaviorShortcuts,
     MaximumFps,
+    ReleaseFallbackTimeout,
     ModelSettings,
     GamepadAxisSettings,
     StartupItem,
@@ -369,6 +374,8 @@ pub struct SettingsView {
     overlay_opacity_increase_focus: FocusHandle,
     maximum_fps_decrease_focus: FocusHandle,
     maximum_fps_increase_focus: FocusHandle,
+    release_fallback_decrease_focus: FocusHandle,
+    release_fallback_increase_focus: FocusHandle,
     audio_focus: FocusHandle,
     behavior_shortcuts_focus: FocusHandle,
     mirror_focus: FocusHandle,
@@ -525,6 +532,14 @@ impl SettingsView {
                         .set_maximum_fps(expected_config_revision, maximum_fps)
                         .await
                 }
+                Some(SettingValue::ReleaseFallbackTimeout {
+                    expected_config_revision,
+                    timeout_ms,
+                }) => {
+                    client
+                        .set_release_fallback_timeout(expected_config_revision, timeout_ms)
+                        .await
+                }
                 Some(SettingValue::ModelSettings {
                     expected_config_revision,
                     settings,
@@ -653,6 +668,10 @@ enum SettingValue {
     MaximumFps {
         expected_config_revision: u64,
         maximum_fps: u16,
+    },
+    ReleaseFallbackTimeout {
+        expected_config_revision: u64,
+        timeout_ms: u32,
     },
     ModelSettings {
         expected_config_revision: u64,

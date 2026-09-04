@@ -272,6 +272,8 @@ impl SettingsView {
             overlay_opacity_increase_focus: cx.focus_handle().tab_index(18).tab_stop(true),
             maximum_fps_decrease_focus: cx.focus_handle().tab_index(24).tab_stop(true),
             maximum_fps_increase_focus: cx.focus_handle().tab_index(25).tab_stop(true),
+            release_fallback_decrease_focus: cx.focus_handle().tab_index(39).tab_stop(true),
+            release_fallback_increase_focus: cx.focus_handle().tab_index(40).tab_stop(true),
             audio_focus: cx.focus_handle().tab_index(11).tab_stop(true),
             behavior_shortcuts_focus: cx.focus_handle().tab_index(19).tab_stop(true),
             mirror_focus: cx.focus_handle().tab_index(6).tab_stop(true),

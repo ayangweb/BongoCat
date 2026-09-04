@@ -73,6 +73,12 @@ locale：简体中文 locale 映射为 `zh-CN`，英语和所有其它 locale �
 `zh-Hant` 与 `TW`/`HK`/`MO` 不属于当前支持的简体中文，按统一规则回退英文。系统解析结果只决定
 实际显示语言，不覆写持久化偏好；显式选择 `zh-CN` 或 `en-US` 时不受系统 locale 影响。
 
+`model.release_fallback_timeout_ms` 接受 `0..=60000`，默认 `500`；`0` 明确禁用。该值只控制
+runtime 对 captured keyboard control 的最终保险，不替代可靠 KeyUp、平台 pressed-set 校正或
+生命周期 Reset，也不作用于鼠标和手柄。runtime 以自己的可注入单调时钟记录 down/repeat 的观察
+时刻，repeat 刷新期限；不得把 Windows/macOS input producer 的事件时间戳跨时钟原点比较。
+设置通过携带 `expected_config_revision` 的 typed command 原子持久化并即时更新 runtime。
+
 ## Shortcut Chords
 
 快捷键配置仍以字符串持久化，但在写入前必须通过平台无关的 chord 校验。每个 chord

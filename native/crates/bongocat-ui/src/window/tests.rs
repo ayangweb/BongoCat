@@ -146,32 +146,33 @@ fn diagnostics_page_projects_only_named_aggregate_counters() {
         captured_down: 5,
         captured_up: 6,
         reconciled_release: 7,
-        released_by_reset: 8,
-        duplicate_down: 9,
-        unmatched_release: 10,
-        invalid_source: 11,
-        reset_count: 12,
-        sequence_gap_count: 13,
-        missing_sequence_count: 14,
-        duplicate_sequence_count: 15,
-        out_of_order_sequence_count: 16,
-        non_monotonic_time_count: 17,
-        gamepad_connections: 18,
-        gamepad_disconnections: 19,
-        stale_gamepad_events: 20,
-        released_by_disconnect: 21,
-        transport_enqueued: 22,
-        transport_queue_full: 23,
-        transport_recovered_after_overflow: 24,
-        transport_runtime_stopped: 25,
+        fallback_release: 8,
+        released_by_reset: 9,
+        duplicate_down: 10,
+        unmatched_release: 11,
+        invalid_source: 12,
+        reset_count: 13,
+        sequence_gap_count: 14,
+        missing_sequence_count: 15,
+        duplicate_sequence_count: 16,
+        out_of_order_sequence_count: 17,
+        non_monotonic_time_count: 18,
+        gamepad_connections: 19,
+        gamepad_disconnections: 20,
+        stale_gamepad_events: 21,
+        released_by_disconnect: 22,
+        transport_enqueued: 23,
+        transport_queue_full: 24,
+        transport_recovered_after_overflow: 25,
+        transport_runtime_stopped: 26,
     };
     let metrics = input_diagnostic_metrics(SettingsLanguage::EnglishUnitedStates, diagnostics);
-    assert_eq!(metrics.len(), 25);
+    assert_eq!(metrics.len(), 26);
     assert_eq!(metrics.first(), Some(&("Pressed keys", 1)));
-    assert_eq!(metrics.last(), Some(&("Rejected after shutdown", 25)));
+    assert_eq!(metrics.last(), Some(&("Rejected after shutdown", 26)));
     assert_eq!(
         metrics.iter().map(|(_, value)| *value).collect::<Vec<_>>(),
-        (1..=25).collect::<Vec<_>>()
+        (1..=26).collect::<Vec<_>>()
     );
     assert!(metrics.iter().all(|(label, _)| {
         !label.contains("HID") && !label.contains("path") && !label.contains("timestamp value")
