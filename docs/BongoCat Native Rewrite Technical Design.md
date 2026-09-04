@@ -354,6 +354,9 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 - Overlay：通过 `objc2` 创建透明 nonactivating `NSPanel`；无已保存 bounds 时以
   `350px` 作为 `100%` 的默认逻辑宽度，高度按 Cubism Core 返回的当前模型
   Canvas 宽高比自适应，两者再应用缩放设置；已保存 bounds 优先，允许通过窗口背景拖动。
+  `always_on_top` 开启时使用高于程序坞的 AppKit main-menu window level，关闭时恢复 normal
+  window level。配置的 runtime snapshot 变化和任何 overlay 重建都必须立即重放当前层级，
+  不能由其他路径覆盖。
 - Renderer：Metal + `CAMetalLayer`，drawable size 跟随 backing scale。
 - Spaces：按配置设置 collection behavior 和 full-screen auxiliary。
 - 输入：CGEventTap、状态校正、GameController，必要时 IOHIDManager。

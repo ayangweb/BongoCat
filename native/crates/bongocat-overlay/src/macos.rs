@@ -32,8 +32,8 @@ use objc2::{
 };
 use objc2_app_kit::{
     NSApplication, NSApplicationActivationPolicy, NSBackingStoreType, NSColor, NSEvent,
-    NSEventMask, NSFloatingWindowLevel, NSNormalWindowLevel, NSPanel, NSScreen, NSView,
-    NSWindowAnimationBehavior, NSWindowCollectionBehavior, NSWindowStyleMask,
+    NSEventMask, NSMainMenuWindowLevel, NSNormalWindowLevel, NSPanel, NSScreen, NSView,
+    NSWindowAnimationBehavior, NSWindowCollectionBehavior, NSWindowLevel, NSWindowStyleMask,
 };
 use objc2_foundation::{NSDate, NSDefaultRunLoopMode, NSPoint, NSRect, NSSize};
 use objc2_quartz_core::CAMetalLayer as ObjcMetalLayer;
@@ -548,6 +548,14 @@ fn validate_product_options(options: OverlaySessionOptions) -> Result<(), Overla
     Ok(())
 }
 
+fn main_window_level(always_on_top: bool) -> NSWindowLevel {
+    if always_on_top {
+        NSMainMenuWindowLevel
+    } else {
+        NSNormalWindowLevel
+    }
+}
+
 #[cfg(test)]
 mod product_options_tests {
     use super::*;
@@ -598,6 +606,12 @@ mod product_options_tests {
         ] {
             assert!(validate_product_options(options).is_err());
         }
+    }
+
+    #[test]
+    fn main_window_level_tracks_always_on_top() {
+        assert_eq!(main_window_level(true), NSMainMenuWindowLevel);
+        assert_eq!(main_window_level(false), NSNormalWindowLevel);
     }
 }
 
@@ -971,11 +985,7 @@ impl NativeOverlay {
         panel.setAnimationBehavior(NSWindowAnimationBehavior::None);
         panel.setBackgroundColor(Some(&NSColor::clearColor()));
         panel.setAlphaValue(f64::from(options.opacity_percent) / 100.0);
-        panel.setLevel(if options.always_on_top {
-            NSFloatingWindowLevel
-        } else {
-            NSNormalWindowLevel
-        });
+        panel.setLevel(main_window_level(options.always_on_top));
         panel.setCollectionBehavior(
             NSWindowCollectionBehavior::CanJoinAllSpaces
                 | NSWindowCollectionBehavior::FullScreenAuxiliary,

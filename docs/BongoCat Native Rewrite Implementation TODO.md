@@ -819,6 +819,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 - [ ] 在 GPUI/AppKit 主线程创建 nonactivating NSPanel。
 - [ ] 配置透明、无标题、阴影、鼠标穿透和层级。
+  - 状态（2026-09-04）：正式 macOS overlay 将 `always_on_top` 映射为高于 Dock 的
+    `NSMainMenuWindowLevel`，关闭时恢复 `NSNormalWindowLevel`；设置与快捷键提交后由 runtime
+    snapshot 在下一次主线程 frame tick 重建并重放当前层级，模型切换重建复用同一映射。单元回归
+    覆盖 true/false，真实 Spaces、全屏辅助与设置窗口激活矩阵仍待实机完成，因此保持未勾选。
 - [ ] 配置 Spaces 和 full-screen auxiliary 行为。
 - [ ] 使用 CAMetalLayer，按 backingScaleFactor 更新 drawable size。
   - 状态（2026-08-29）：Phase 0 wrapper 已在每帧从 content view backing 坐标同步 `drawableSize`，并通过受控陈旧尺寸恢复与 programmatic resize；产品 platform/renderer 尚未建立，因此保持未勾选。
