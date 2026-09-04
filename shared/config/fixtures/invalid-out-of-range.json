@@ -1,7 +1,6 @@
 {
   "schema_version": 1,
   "application": {
-    "launch_at_login": false,
     "show_taskbar_icon": true,
     "show_status_icon": true,
     "check_for_updates_automatically": true

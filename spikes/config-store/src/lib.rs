@@ -147,7 +147,6 @@ pub struct NativeConfig {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct ApplicationConfig {
-    pub launch_at_login: bool,
     pub show_taskbar_icon: bool,
     pub show_status_icon: bool,
     pub check_for_updates_automatically: bool,
@@ -237,7 +236,6 @@ impl Default for NativeConfig {
         Self {
             schema_version: SCHEMA_VERSION,
             application: ApplicationConfig {
-                launch_at_login: false,
                 show_taskbar_icon: true,
                 show_status_icon: true,
                 check_for_updates_automatically: true,
@@ -960,7 +958,7 @@ mod tests {
     fn serialized_keys_follow_native_snake_case_contract() {
         let value = serde_json::to_value(NativeConfig::default()).unwrap();
         assert!(value.get("schema_version").is_some());
-        assert!(value["application"].get("launch_at_login").is_some());
+        assert!(value["application"].get("launch_at_login").is_none());
         assert!(
             value["appearance"]
                 .get("check_for_updates_automatically")

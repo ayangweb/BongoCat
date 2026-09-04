@@ -159,7 +159,6 @@ pub struct NativeConfig {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct ApplicationConfig {
-    pub launch_at_login: bool,
     pub show_taskbar_icon: bool,
     pub show_status_icon: bool,
     pub check_for_updates_automatically: bool,
@@ -867,7 +866,6 @@ impl Default for NativeConfig {
         Self {
             schema_version: SCHEMA_VERSION,
             application: ApplicationConfig {
-                launch_at_login: false,
                 show_taskbar_icon: true,
                 show_status_icon: true,
                 check_for_updates_automatically: true,
@@ -2495,6 +2493,12 @@ mod tests {
         value["general"] = serde_json::json!({ "old_pinia_field": true });
         let error = serde_json::from_value::<NativeConfig>(value).expect_err("unknown field");
         assert!(error.to_string().contains("unknown field"));
+
+        let mut value = serde_json::to_value(NativeConfig::default()).expect("serialize default");
+        value["application"]["launch_at_login"] = serde_json::Value::Bool(true);
+        let error = serde_json::from_value::<NativeConfig>(value)
+            .expect_err("platform startup state must not enter config");
+        assert!(error.to_string().contains("unknown field"));
     }
 
     #[test]
@@ -2849,7 +2853,7 @@ mod tests {
         let mut out_of_range = serde_json::to_value(NativeConfig::default()).expect("config value");
         out_of_range["overlay"]["opacity_percent"] = serde_json::Value::from(0);
         let mut unknown = serde_json::to_value(NativeConfig::default()).expect("config value");
-        unknown["application"]["legacy_alias"] = serde_json::Value::Bool(true);
+        unknown["application"]["launch_at_login"] = serde_json::Value::Bool(true);
         let cases = [
             b"not-json".to_vec(),
             br#"{"schema_version":2,"application":{"#.to_vec(),

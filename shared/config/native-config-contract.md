@@ -27,7 +27,6 @@ shortcuts
 
 | Section       | Field                             | Meaning                                |
 | ------------- | --------------------------------- | -------------------------------------- |
-| `application` | `launch_at_login`                 | 登录后启动                             |
 | `application` | `show_taskbar_icon`               | Windows 任务栏可见性                   |
 | `application` | `show_status_icon`                | 托盘/菜单栏入口可见性                  |
 | `application` | `check_for_updates_automatically` | 自动检查更新                           |
@@ -66,6 +65,9 @@ typed settings command 修改该值后，仍按配置 revision 原子提交并�
 影响 overlay；macOS 不把该字段解释为 Dock 图标。修改时先在 GPUI owner 线程切换并回读 HWND
 扩展样式，成功后才按 expected revision 原子提交配置；平台失败不提交，配置失败恢复旧样式。
 启动和设置窗口重建都在窗口显示前应用当前 v1 值。
+
+登录启动不属于配置字段。它是可被系统设置或其它进程改变的平台能力，settings service 只读取
+typed platform snapshot，并仅在显式用户 command 时调用平台 adapter；不得持久化第二份布尔值。
 
 `appearance.language` 是严格的三值枚举：`system`、`zh-CN` 和 `en-US`，默认 `system`；未知值
 由当前 v1 解析入口直接拒绝，不提供 alias、迁移或 fallback。`system` 在每次启动时读取平台首选

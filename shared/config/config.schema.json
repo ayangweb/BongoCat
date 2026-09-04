@@ -30,9 +30,8 @@
     "application": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["launch_at_login", "show_taskbar_icon", "show_status_icon", "check_for_updates_automatically"],
+      "required": ["show_taskbar_icon", "show_status_icon", "check_for_updates_automatically"],
       "properties": {
-        "launch_at_login": { "type": "boolean" },
         "show_taskbar_icon": { "type": "boolean" },
         "show_status_icon": { "type": "boolean" },
         "check_for_updates_automatically": { "type": "boolean" }
