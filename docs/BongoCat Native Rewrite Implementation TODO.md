@@ -1161,12 +1161,13 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 - [ ] 实现 Select、Menu、Tabs、Tooltip、Dialog、Toast。
 - [ ] 实现 List、EmptyState、ErrorState、Progress 和 Skeleton。
 - [ ] 控件具有 hover、active、focus、disabled、loading 和 error 状态。
-- [ ] 支持浅色、深色和系统主题。
+- [x] 支持浅色、深色和系统主题。
   - 状态（2026-09-04）：正式 settings snapshot/command、Application 原子持久化和 GPUI Kit
     `RadioGroup` 已形成三态主题闭环；`Theme::change` 即时更新内容，显式模式同步原生窗口外观，
     system 模式恢复并跟随系统通知。项目辅助功能桥已增加 radio button role、选中值和 action；
-    本机定向测试通过，完整 workspace 与双平台 release settings smoke 由
-    `P5-APPEARANCE-THEME` 跟踪。
+    本机定向测试与完整 workspace 通过；commit `ac5dc70` 的 run `33871601685` 全绿，Windows
+    job `101018640203` 与 macOS job `101018640280` 均通过 release settings/state smoke，完成
+    证据由 `P5-APPEARANCE-THEME` 记录。
 - [ ] 图标统一使用 Lucide 资源并提供 tooltip/accessibility label。
 - [ ] 不直接复制 Zed 产品内部组件源码，除非许可证和维护边界明确。
 
@@ -2198,16 +2199,17 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       contract test 和 macOS release lifecycle smoke 通过。commit `7f799f7` 的 run
       `33867921771` 全绿；Windows job `101006895636` 与 macOS job `101006895731` 均通过完整
       workspace 和 release 产品 lifecycle，退出条件满足。
-53. [ ] `P5-APPEARANCE-THEME`：首版 `appearance.theme` 必须可修改、持久化并即时应用。
+53. [x] `P5-APPEARANCE-THEME`：首版 `appearance.theme` 必须可修改、持久化并即时应用。
     - 依赖：当前 v1 config、settings revision/CAS、GPUI Kit Theme/RadioGroup 和项目辅助功能桥。
     - 退出条件：`system`、`light`、`dark` 通过强类型 snapshot/command 往返；Application owner
       原子提交且重启恢复，stale revision 不改配置；显式模式即时更新组件与原生窗口外观，system
       清除覆盖并继续响应系统变化；三种选项具有 radio button role、选中值、键盘和 action 语义；
       定向测试、完整 Native workspace 与双平台 release settings smoke 通过。
-    - 状态（2026-09-04）：代码、Technical Design 和 smoke contract 已实现；本机 format、严格
+    - 完成（2026-09-04）：代码、Technical Design 和 smoke contract 已实现；本机 format、严格
       Clippy、workspace test、release check、默认 system 主题 release 产品 smoke，以及临时环境
-      dark 主题 release 设置窗口/state 恢复 smoke 均通过。双平台 runner 证据待补，因此保持
-      未勾选。
+      dark 主题 release 设置窗口/state 恢复 smoke 均通过。commit `ac5dc70` 的 run
+      `33871601685` 全绿；Windows job `101018640203` 与 macOS job `101018640280` 均通过完整
+      workspace、release settings/state smoke 和辅助功能 contract，退出条件满足。
 
 ## 13. 待决策清单
 
