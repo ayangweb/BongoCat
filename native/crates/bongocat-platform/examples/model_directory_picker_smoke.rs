@@ -1,5 +1,15 @@
 use bongocat_platform::{DirectoryPickerOutcome, pick_model_directory};
-use std::{env, error::Error, io, path::PathBuf, sync::mpsc};
+use std::{
+    env,
+    error::Error,
+    io,
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
+};
 
 #[cfg(target_os = "windows")]
 use std::{thread, time::Duration};
@@ -90,7 +100,7 @@ enum DialogAction {
 #[cfg(target_os = "windows")]
 struct WindowSearch {
     process_id: u32,
-    window: Option<HWND>,
+    windows: Vec<HWND>,
 }
 
 #[cfg(target_os = "windows")]
@@ -103,17 +113,16 @@ unsafe extern "system" fn find_process_window(hwnd: HWND, lparam: LPARAM) -> BOO
     unsafe { GetWindowThreadProcessId(hwnd, Some(&mut process_id)) };
     // SAFETY: hwnd comes from EnumWindows and remains valid for the duration of this callback.
     if process_id == search.process_id && unsafe { IsWindowVisible(hwnd) }.as_bool() {
-        search.window = Some(hwnd);
-        return BOOL(0);
+        search.windows.push(hwnd);
     }
     BOOL(1)
 }
 
 #[cfg(target_os = "windows")]
-fn current_process_window() -> Result<Option<HWND>, io::Error> {
+fn current_process_windows() -> Result<Vec<HWND>, io::Error> {
     let mut search = WindowSearch {
         process_id: std::process::id(),
-        window: None,
+        windows: Vec::new(),
     };
     // SAFETY: the callback and LPARAM point to stack storage that remains alive for the synchronous
     // enumeration; the callback never retains the pointer.
@@ -123,16 +132,18 @@ fn current_process_window() -> Result<Option<HWND>, io::Error> {
             LPARAM((&mut search as *mut WindowSearch) as isize),
         )
     };
-    if search.window.is_none() {
-        enumeration.map_err(|error| io::Error::other(error.to_string()))?;
-    }
-    Ok(search.window)
+    enumeration.map_err(|error| io::Error::other(error.to_string()))?;
+    Ok(search.windows)
 }
 
 #[cfg(target_os = "windows")]
-fn automate_dialog(action: DialogAction) -> Result<(), io::Error> {
+fn automate_dialog(action: DialogAction, completed: Arc<AtomicBool>) -> Result<(), io::Error> {
+    let mut posted_messages = 0u32;
     for _ in 0..200 {
-        if let Some(window) = current_process_window()? {
+        if completed.load(Ordering::Acquire) {
+            return Ok(());
+        }
+        for window in current_process_windows()? {
             let result = match action {
                 // SAFETY: the discovered visible window belongs to this smoke process; WM_COMMAND
                 // with IDOK exercises the dialog's standard confirmation path without retaining HWND.
@@ -145,19 +156,22 @@ fn automate_dialog(action: DialogAction) -> Result<(), io::Error> {
                     PostMessageW(Some(window), WM_CLOSE, WPARAM(0), LPARAM(0))
                 },
             };
-            return result.map_err(|error| io::Error::other(error.to_string()));
+            if result.is_ok() {
+                posted_messages = posted_messages.saturating_add(1);
+            }
         }
         thread::sleep(Duration::from_millis(50));
     }
-    Err(io::Error::other(
-        "timed out waiting for the Windows directory picker",
-    ))
+    Err(io::Error::other(format!(
+        "timed out waiting for the Windows directory picker after {posted_messages} message posts"
+    )))
 }
 
 #[cfg(target_os = "windows")]
 fn start_automation(
     expected: &ExpectedOutcome,
     automated: bool,
+    completed: Arc<AtomicBool>,
 ) -> Result<Option<thread::JoinHandle<Result<(), io::Error>>>, io::Error> {
     if !automated {
         return Ok(None);
@@ -168,7 +182,7 @@ fn start_automation(
     };
     thread::Builder::new()
         .name("bongocat-picker-smoke-controller".to_owned())
-        .spawn(move || automate_dialog(action))
+        .spawn(move || automate_dialog(action, completed))
         .map(Some)
 }
 
@@ -176,6 +190,7 @@ fn start_automation(
 fn start_automation(
     _expected: &ExpectedOutcome,
     automated: bool,
+    _completed: Arc<AtomicBool>,
 ) -> Result<Option<std::thread::JoinHandle<Result<(), io::Error>>>, io::Error> {
     if automated {
         return Err(io::Error::other(
@@ -189,7 +204,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     let options = smoke_options()?;
     prepare_native_application();
     let (sender, receiver) = mpsc::sync_channel(1);
+    let completed = Arc::new(AtomicBool::new(false));
+    let callback_completed = Arc::clone(&completed);
     pick_model_directory(move |result| {
+        callback_completed.store(true, Ordering::Release);
         let _ = sender.send(result);
         #[cfg(target_os = "macos")]
         {
@@ -201,7 +219,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
     })?;
-    let automation = start_automation(&options.expected, options.automated)?;
+    let automation = start_automation(&options.expected, options.automated, completed)?;
     run_native_application();
     #[cfg(target_os = "windows")]
     let actual = receiver
