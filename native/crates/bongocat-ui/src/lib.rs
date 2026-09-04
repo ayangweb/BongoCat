@@ -251,12 +251,21 @@ pub enum SettingsConfigurationStatus {
     DefaultsRestoredRestartRequired,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum SettingsTheme {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SettingsSnapshot {
     pub revision: u64,
     pub config_revision: Option<u64>,
     pub runtime_health: RuntimeHealth,
     pub runtime_diagnostics: SettingsRuntimeDiagnostics,
+    pub appearance_theme: SettingsTheme,
     pub overlay_visible: bool,
     pub overlay: SettingsOverlay,
     pub motion_audio_enabled: bool,
@@ -835,6 +844,11 @@ pub enum SettingsCommand {
         visible: bool,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    SetAppearanceTheme {
+        expected_config_revision: u64,
+        theme: SettingsTheme,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     SetOverlaySettings {
         expected_config_revision: u64,
         settings: SettingsOverlay,
@@ -990,6 +1004,19 @@ impl SettingsClient {
         self.request(|reply| SettingsCommand::SetOverlayVisible {
             expected_config_revision,
             visible,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn set_appearance_theme(
+        &self,
+        expected_config_revision: u64,
+        theme: SettingsTheme,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetAppearanceTheme {
+            expected_config_revision,
+            theme,
             reply,
         })
         .await
@@ -1172,6 +1199,18 @@ impl SettingsClient {
         self.request_blocking(|reply| SettingsCommand::SetOverlayVisible {
             expected_config_revision,
             visible,
+            reply,
+        })
+    }
+
+    pub fn set_appearance_theme_blocking(
+        &self,
+        expected_config_revision: u64,
+        theme: SettingsTheme,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::SetAppearanceTheme {
+            expected_config_revision,
+            theme,
             reply,
         })
     }
@@ -1499,6 +1538,31 @@ mod tests {
             )
             .expect("gamepad snapshot");
         assert_eq!(result.gamepad_axis_settings.stick_dead_zone_percent, 25);
+        worker.join().expect("worker join");
+    }
+
+    #[test]
+    fn appearance_theme_command_preserves_typed_selection() {
+        let (client, endpoint) = SettingsClient::bounded(1);
+        let worker = thread::spawn(move || {
+            let SettingsCommand::SetAppearanceTheme {
+                expected_config_revision,
+                theme,
+                reply,
+            } = endpoint.recv_blocking().expect("appearance theme command")
+            else {
+                panic!("unexpected command");
+            };
+            assert_eq!(expected_config_revision, 7);
+            assert_eq!(theme, SettingsTheme::Dark);
+            let mut result = snapshot(8, true, true);
+            result.appearance_theme = theme;
+            reply.respond(Ok(result)).expect("appearance theme reply");
+        });
+        let result = client
+            .set_appearance_theme_blocking(7, SettingsTheme::Dark)
+            .expect("appearance theme snapshot");
+        assert_eq!(result.appearance_theme, SettingsTheme::Dark);
         worker.join().expect("worker join");
     }
 
@@ -1932,6 +1996,7 @@ mod tests {
             config_revision: Some(revision),
             runtime_health: RuntimeHealth::Ready,
             runtime_diagnostics: SettingsRuntimeDiagnostics::default(),
+            appearance_theme: SettingsTheme::System,
             overlay_visible,
             overlay: SettingsOverlay::default(),
             motion_audio_enabled,

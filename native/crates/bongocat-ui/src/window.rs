@@ -6,8 +6,8 @@ use crate::{
     SettingsModelImportRequest, SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin,
     SettingsModelSettings, SettingsOperationId, SettingsOverlay, SettingsRuntimeDiagnostics,
     SettingsRuntimeErrorCode, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
-    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsWindowPlacement,
-    SettingsWindowState,
+    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
+    SettingsWindowPlacement, SettingsWindowState,
 };
 use bongocat_config::ShortcutChord;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -17,10 +17,11 @@ use bongocat_platform::{
 };
 use bongocat_platform::{DirectoryPickerError, DirectoryPickerOutcome, pick_model_directory};
 use gpui_kit::component::{
-    ActiveTheme, Disableable, Root, Theme,
+    ActiveTheme, Disableable, Root, Theme, ThemeMode,
     button::Button,
     group_box::{GroupBox, GroupBoxVariant, GroupBoxVariants},
     input::{Input, InputEvent, InputState, NumberInputEvent, StepAction},
+    radio::{Radio, RadioGroup},
     setting::{
         NumberFieldOptions, RenderOptions, SettingField, SettingGroup, SettingItem, SettingPage,
         Settings,
@@ -30,7 +31,7 @@ use gpui_kit::component::{
 use gpui_kit::{
     App, AppContext, Axis, Bounds, Context, DisplayId, Div, Entity, FocusHandle, Hsla,
     KeyDownEvent, Pixels, Render, SharedString, Stateful, TitlebarOptions, WeakEntity, Window,
-    WindowBounds, WindowHandle, WindowOptions, div, point, prelude::*, px, size,
+    WindowAppearance, WindowBounds, WindowHandle, WindowOptions, div, point, prelude::*, px, size,
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use raw_window_handle::HasWindowHandle;
@@ -120,6 +121,12 @@ const ACCESSIBILITY_IGNORE_POINTER: AccessibilityNodeId = AccessibilityNodeId::n
 const ACCESSIBILITY_STICK_DEAD_ZONE: AccessibilityNodeId = AccessibilityNodeId::new(22);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_TRIGGER_DEAD_ZONE: AccessibilityNodeId = AccessibilityNodeId::new(23);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_THEME_SYSTEM: AccessibilityNodeId = AccessibilityNodeId::new(35);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_THEME_LIGHT: AccessibilityNodeId = AccessibilityNodeId::new(36);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_THEME_DARK: AccessibilityNodeId = AccessibilityNodeId::new(37);
 
 #[derive(Clone, Copy)]
 struct Tokens {
@@ -148,6 +155,7 @@ impl Tokens {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PendingOperation {
     Refresh,
+    AppearanceTheme,
     OverlayVisibility,
     OverlaySettings,
     MotionAudio,
@@ -309,10 +317,14 @@ pub struct SettingsView {
     shortcut_capture_error: Option<String>,
     shortcut_row_focus: BTreeMap<ShortcutCaptureTarget, FocusHandle>,
     window_hidden: bool,
+    applied_theme: Option<SettingsTheme>,
     request_quit: Rc<dyn Fn(&mut App)>,
     general_focus: FocusHandle,
     models_focus: FocusHandle,
     diagnostics_focus: FocusHandle,
+    theme_system_focus: FocusHandle,
+    theme_light_focus: FocusHandle,
+    theme_dark_focus: FocusHandle,
     overlay_focus: FocusHandle,
     overlay_topmost_focus: FocusHandle,
     overlay_click_through_focus: FocusHandle,
@@ -404,6 +416,14 @@ impl SettingsView {
         cx.spawn(async move |this, cx| {
             let result = match value {
                 None => client.read_snapshot().await,
+                Some(SettingValue::AppearanceTheme {
+                    expected_config_revision,
+                    theme,
+                }) => {
+                    client
+                        .set_appearance_theme(expected_config_revision, theme)
+                        .await
+                }
                 Some(SettingValue::OverlayVisible {
                     expected_config_revision,
                     visible,
@@ -528,6 +548,10 @@ fn sanitize_model_id_input(value: &str) -> String {
 
 #[derive(Clone)]
 enum SettingValue {
+    AppearanceTheme {
+        expected_config_revision: u64,
+        theme: SettingsTheme,
+    },
     OverlayVisible {
         expected_config_revision: u64,
         visible: bool,
@@ -879,8 +903,53 @@ fn model_import_status(draft: &ModelImportDraft) -> (SharedString, bool) {
     }
 }
 
-fn install_component_theme(window: &mut Window, cx: &mut App) {
+fn sync_system_component_theme(window: &mut Window, cx: &mut App) {
     Theme::sync_system_appearance(Some(window), cx);
+}
+
+fn apply_component_theme(theme: SettingsTheme, window: &mut Window, cx: &mut App) {
+    let mode = match theme {
+        SettingsTheme::System => {
+            cx.set_window_appearance(None);
+            component_theme_mode(theme, window.appearance())
+        }
+        SettingsTheme::Light => {
+            cx.set_window_appearance(Some(WindowAppearance::Light));
+            ThemeMode::Light
+        }
+        SettingsTheme::Dark => {
+            cx.set_window_appearance(Some(WindowAppearance::Dark));
+            ThemeMode::Dark
+        }
+    };
+    if cx.theme().mode != mode {
+        Theme::change(mode, Some(window), cx);
+    }
+}
+
+fn component_theme_mode(theme: SettingsTheme, system_appearance: WindowAppearance) -> ThemeMode {
+    match theme {
+        SettingsTheme::System => system_appearance.into(),
+        SettingsTheme::Light => ThemeMode::Light,
+        SettingsTheme::Dark => ThemeMode::Dark,
+    }
+}
+
+const fn theme_index(theme: SettingsTheme) -> usize {
+    match theme {
+        SettingsTheme::System => 0,
+        SettingsTheme::Light => 1,
+        SettingsTheme::Dark => 2,
+    }
+}
+
+const fn theme_from_index(index: usize) -> Option<SettingsTheme> {
+    match index {
+        0 => Some(SettingsTheme::System),
+        1 => Some(SettingsTheme::Light),
+        2 => Some(SettingsTheme::Dark),
+        _ => None,
+    }
 }
 
 fn stepped_overlay_scale(mut settings: SettingsOverlay, delta: i16) -> SettingsOverlay {

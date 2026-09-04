@@ -1,6 +1,19 @@
 use super::*;
 
 impl SettingsView {
+    pub(super) fn sync_component_theme(
+        &mut self,
+        theme: SettingsTheme,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.applied_theme == Some(theme) {
+            return;
+        }
+        apply_component_theme(theme, window, cx);
+        self.applied_theme = Some(theme);
+    }
+
     pub(super) fn sync_component_inputs(
         &mut self,
         snapshot: &SettingsSnapshot,
@@ -174,10 +187,14 @@ impl SettingsView {
             shortcut_capture_error: None,
             shortcut_row_focus: BTreeMap::new(),
             window_hidden: false,
+            applied_theme: None,
             request_quit,
             general_focus: cx.focus_handle().tab_index(1).tab_stop(true),
             models_focus: cx.focus_handle().tab_index(2).tab_stop(true),
             diagnostics_focus: cx.focus_handle().tab_index(3).tab_stop(true),
+            theme_system_focus: cx.focus_handle().tab_index(4).tab_stop(true),
+            theme_light_focus: cx.focus_handle().tab_index(5).tab_stop(true),
+            theme_dark_focus: cx.focus_handle().tab_index(6).tab_stop(true),
             overlay_focus: cx.focus_handle().tab_index(10).tab_stop(true),
             overlay_topmost_focus: cx.focus_handle().tab_index(13).tab_stop(true),
             overlay_click_through_focus: cx.focus_handle().tab_index(14).tab_stop(true),

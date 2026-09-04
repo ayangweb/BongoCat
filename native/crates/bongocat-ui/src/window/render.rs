@@ -9,6 +9,9 @@ impl Render for SettingsView {
                     ACCESSIBILITY_GENERAL => Some(&self.general_focus),
                     ACCESSIBILITY_MODELS => Some(&self.models_focus),
                     ACCESSIBILITY_DIAGNOSTICS => Some(&self.diagnostics_focus),
+                    ACCESSIBILITY_THEME_SYSTEM => Some(&self.theme_system_focus),
+                    ACCESSIBILITY_THEME_LIGHT => Some(&self.theme_light_focus),
+                    ACCESSIBILITY_THEME_DARK => Some(&self.theme_dark_focus),
                     ACCESSIBILITY_OVERLAY => Some(&self.overlay_focus),
                     ACCESSIBILITY_OVERLAY_TOPMOST => Some(&self.overlay_topmost_focus),
                     ACCESSIBILITY_OVERLAY_CLICK_THROUGH => Some(&self.overlay_click_through_focus),
@@ -55,8 +58,11 @@ impl Render for SettingsView {
             }
             self.update_accessibility(window);
         }
-        let tokens = Tokens::from_theme(cx);
         let snapshot = self.snapshot.clone();
+        if let Some(snapshot) = snapshot.as_ref() {
+            self.sync_component_theme(snapshot.appearance_theme, window, cx);
+        }
+        let tokens = Tokens::from_theme(cx);
         if let Some(snapshot) = snapshot.as_ref() {
             self.sync_component_inputs(snapshot, window, cx);
         }
@@ -94,6 +100,48 @@ impl Render for SettingsView {
             .default_open(true)
             .description("Configure the overlay, model interaction, input and startup behavior.")
             .groups(vec![
+                SettingGroup::new().title("Appearance").item(
+                    SettingItem::new(
+                        "Theme",
+                        SettingField::element({
+                            let view = view_entity.clone();
+                            move |_: &RenderOptions, _: &mut Window, app: &mut App| {
+                                let selected = view
+                                    .read(app)
+                                    .snapshot
+                                    .as_ref()
+                                    .map(|snapshot| theme_index(snapshot.appearance_theme));
+                                let view_for_change = view.clone();
+                                RadioGroup::horizontal("appearance-theme")
+                                    .children([
+                                        Radio::new("appearance-theme-system")
+                                            .label("System")
+                                            .tab_index(4),
+                                        Radio::new("appearance-theme-light")
+                                            .label("Light")
+                                            .tab_index(5),
+                                        Radio::new("appearance-theme-dark")
+                                            .label("Dark")
+                                            .tab_index(6),
+                                    ])
+                                    .selected_index(selected)
+                                    .disabled(disabled)
+                                    .on_click(move |index, _, app| {
+                                        let Some(theme) = theme_from_index(*index) else {
+                                            return;
+                                        };
+                                        view_for_change.update(app, |view, cx| {
+                                            view.set_appearance_theme(theme, cx)
+                                        });
+                                    })
+                                    .into_any_element()
+                            }
+                        }),
+                    )
+                    .description(
+                        "Follow the system appearance or use a fixed light or dark theme.",
+                    ),
+                ),
                 SettingGroup::new().title("Overlay").items(vec![
                     SettingItem::new(
                         "Runtime status",

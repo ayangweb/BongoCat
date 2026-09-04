@@ -298,6 +298,33 @@ fn commands_accept_enter_and_space_without_command_modifiers() {
 }
 
 #[test]
+fn appearance_theme_selection_has_stable_indices_and_system_projection() {
+    assert_eq!(theme_index(SettingsTheme::System), 0);
+    assert_eq!(theme_index(SettingsTheme::Light), 1);
+    assert_eq!(theme_index(SettingsTheme::Dark), 2);
+    assert_eq!(theme_from_index(0), Some(SettingsTheme::System));
+    assert_eq!(theme_from_index(1), Some(SettingsTheme::Light));
+    assert_eq!(theme_from_index(2), Some(SettingsTheme::Dark));
+    assert_eq!(theme_from_index(3), None);
+    assert_eq!(
+        component_theme_mode(SettingsTheme::System, WindowAppearance::Light),
+        ThemeMode::Light
+    );
+    assert_eq!(
+        component_theme_mode(SettingsTheme::System, WindowAppearance::Dark),
+        ThemeMode::Dark
+    );
+    assert_eq!(
+        component_theme_mode(SettingsTheme::Light, WindowAppearance::Dark),
+        ThemeMode::Light
+    );
+    assert_eq!(
+        component_theme_mode(SettingsTheme::Dark, WindowAppearance::Light),
+        ThemeMode::Dark
+    );
+}
+
+#[test]
 fn overlay_stepper_values_are_bounded_and_preserve_other_settings() {
     let settings = SettingsOverlay {
         click_through: false,

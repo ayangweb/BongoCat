@@ -75,6 +75,13 @@ impl SettingsView {
         let controls_disabled = self.pending.is_some()
             || self.model_import.is_running()
             || snapshot.configuration_status != SettingsConfigurationStatus::Ready;
+        let expected_theme_mode =
+            component_theme_mode(snapshot.appearance_theme, cx.window_appearance());
+        if self.applied_theme != Some(snapshot.appearance_theme)
+            || cx.theme().mode != expected_theme_mode
+        {
+            return Err("general page did not apply the configured appearance theme".to_owned());
+        }
         let presentation = startup_item_presentation(Some(snapshot.startup_item), false);
         match snapshot.startup_item {
             SettingsStartupItemStatus::State(SettingsStartupItemState::Unsupported(_)) => {
@@ -97,6 +104,36 @@ impl SettingsView {
         {
             let tree = self.accessibility_tree();
             tree.validate().map_err(|error| error.to_string())?;
+            for (id, theme, label) in [
+                (ACCESSIBILITY_THEME_SYSTEM, SettingsTheme::System, "System"),
+                (ACCESSIBILITY_THEME_LIGHT, SettingsTheme::Light, "Light"),
+                (ACCESSIBILITY_THEME_DARK, SettingsTheme::Dark, "Dark"),
+            ] {
+                let node = tree
+                    .nodes
+                    .iter()
+                    .find(|node| node.id == id)
+                    .ok_or_else(|| {
+                        "general accessibility tree omitted an appearance theme".to_owned()
+                    })?;
+                if node.role != AccessibilityRole::RadioButton
+                    || node.label != label
+                    || node.disabled != controls_disabled
+                    || node.supports_click != !controls_disabled
+                    || node.supports_focus != !controls_disabled
+                    || node.toggled
+                        != Some(if snapshot.appearance_theme == theme {
+                            AccessibilityToggle::On
+                        } else {
+                            AccessibilityToggle::Off
+                        })
+                {
+                    return Err(
+                        "theme accessibility semantics diverged from the visible control"
+                            .to_owned(),
+                    );
+                }
+            }
             let startup = tree
                 .nodes
                 .iter()

@@ -11,8 +11,8 @@ use bongocat_config::{
     ApplicationState, BuildEnvironment, CompiledShortcuts, ConfigError, ConfigRecovery,
     ConfigRevision, ConfigStore, InterruptedConfigRecovery, ModelBehaviorBinding, NativeConfig,
     OverlayWindowPlacement, PlatformStorageError, SelectedModelOrigin, ShortcutBinding,
-    ShortcutConfig, ShortcutTable, StateError, StateStore, StorageLayout, WindowPlacement,
-    platform_layout,
+    ShortcutConfig, ShortcutTable, StateError, StateStore, StorageLayout, Theme as ConfigTheme,
+    WindowPlacement, platform_layout,
 };
 use bongocat_model::{
     CommittedModel, InstalledModel, ModelCatalogEntry, ModelError, ModelId, ModelImportProgress,
@@ -524,6 +524,17 @@ impl Application {
         }
         self.config_revision
             .ok_or(ApplicationError::ConfigurationRecoveryRequired)
+    }
+
+    pub fn set_appearance_theme(&mut self, theme: ConfigTheme) -> Result<(), ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.appearance.theme = theme;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(())
     }
 
     pub fn set_overlay_visible(
@@ -1154,6 +1165,7 @@ mod tests {
         let mut application =
             Application::start_with_layout(layout.clone()).expect("start application");
         assert!(application.config().overlay.visible);
+        assert_eq!(application.config().appearance.theme, ConfigTheme::System);
         assert!(!application.config().overlay.click_through);
         assert!(
             !application
@@ -1185,6 +1197,11 @@ mod tests {
         );
         assert!(application.config().overlay.click_through);
 
+        application
+            .set_appearance_theme(ConfigTheme::Dark)
+            .expect("update appearance theme");
+        assert_eq!(application.config().appearance.theme, ConfigTheme::Dark);
+
         let audio_snapshot = application
             .set_motion_audio_enabled(false)
             .expect("disable motion audio");
@@ -1203,6 +1220,7 @@ mod tests {
         assert!(persisted.contains("\"scale_percent\": 150"));
         assert!(persisted.contains("\"click_through\": true"));
         assert!(persisted.contains("\"maximum_fps\": 120"));
+        assert!(persisted.contains("\"theme\": \"dark\""));
         let stopped = application.shutdown().expect("clean shutdown");
         assert_eq!(stopped.state, RuntimeState::Stopped);
 
@@ -1216,6 +1234,7 @@ mod tests {
                 .click_through
         );
         assert_eq!(restarted.runtime_client().snapshot().maximum_fps, 120);
+        assert_eq!(restarted.config().appearance.theme, ConfigTheme::Dark);
         restarted.shutdown().expect("clean restart shutdown");
     }
 

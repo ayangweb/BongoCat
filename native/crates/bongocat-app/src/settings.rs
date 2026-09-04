@@ -34,8 +34,8 @@ use bongocat_ui::{
     SettingsOverlay, SettingsRuntimeCommandFailure, SettingsRuntimeCommandTransportDiagnostics,
     SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode, SettingsServiceEndpoint,
     SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
-    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsWindowPlacement,
-    SettingsWindowState,
+    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
+    SettingsWindowPlacement, SettingsWindowState,
 };
 use serde::Serialize;
 use std::fs;
@@ -382,6 +382,25 @@ fn run_service(
                             application
                                 .set_overlay_visible(visible)
                                 .map(|_| ())
+                                .map_err(map_application_error)
+                        }
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::SetAppearanceTheme {
+                expected_config_revision,
+                theme,
+                reply,
+            } => {
+                let result = require_operational(&application)
+                    .map_err(map_application_error)
+                    .and_then(|()| {
+                        if application.config_revision() != Some(expected_config_revision) {
+                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
+                        } else {
+                            application
+                                .set_appearance_theme(config_theme(theme))
                                 .map_err(map_application_error)
                         }
                     })
@@ -846,6 +865,7 @@ fn snapshot(
             RuntimeHealth::Degraded
         },
         runtime_diagnostics: settings_runtime_diagnostics(&runtime),
+        appearance_theme: settings_theme(application.config().appearance.theme),
         overlay_visible: runtime.overlay_visible,
         overlay: SettingsOverlay {
             click_through: runtime.overlay_settings.click_through,
@@ -901,6 +921,22 @@ fn snapshot(
             })
             .or_else(|| configured_model_key(application)),
         model_catalog: settings_model_catalog(application),
+    }
+}
+
+const fn settings_theme(theme: bongocat_config::Theme) -> SettingsTheme {
+    match theme {
+        bongocat_config::Theme::System => SettingsTheme::System,
+        bongocat_config::Theme::Light => SettingsTheme::Light,
+        bongocat_config::Theme::Dark => SettingsTheme::Dark,
+    }
+}
+
+const fn config_theme(theme: SettingsTheme) -> bongocat_config::Theme {
+    match theme {
+        SettingsTheme::System => bongocat_config::Theme::System,
+        SettingsTheme::Light => bongocat_config::Theme::Light,
+        SettingsTheme::Dark => bongocat_config::Theme::Dark,
     }
 }
 
@@ -1842,6 +1878,7 @@ mod tests {
                     out_of_order_sequence_count: 6,
                 },
             },
+            appearance_theme: SettingsTheme::System,
             overlay_visible: true,
             overlay: SettingsOverlay::default(),
             motion_audio_enabled: true,
@@ -2255,6 +2292,37 @@ mod tests {
 
         client.shutdown_blocking().expect("service shutdown");
         service.join().expect("service join");
+    }
+
+    #[test]
+    fn service_persists_and_projects_the_selected_appearance_theme() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application =
+            Application::start_with_layout(layout.clone()).expect("application start");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        assert_eq!(initial.appearance_theme, SettingsTheme::System);
+        let updated = client
+            .set_appearance_theme_blocking(
+                initial.config_revision.expect("config revision"),
+                SettingsTheme::Dark,
+            )
+            .expect("select dark theme");
+        assert_eq!(updated.appearance_theme, SettingsTheme::Dark);
+        assert_eq!(updated.revision, initial.revision.saturating_add(1));
+        assert_ne!(updated.config_revision, initial.config_revision);
+
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
+        let restarted = Application::start_with_layout(layout).expect("restart application");
+        assert_eq!(
+            restarted.config().appearance.theme,
+            bongocat_config::Theme::Dark
+        );
+        restarted.shutdown().expect("restart shutdown");
     }
 
     #[test]
@@ -2890,6 +2958,14 @@ mod tests {
             .set_overlay_visible_blocking(initial_config_revision, false)
             .expect("hide overlay");
         let hidden_config = std::fs::read(&config_path).expect("hidden config");
+
+        let stale_theme_error = client
+            .set_appearance_theme_blocking(initial_config_revision, SettingsTheme::Dark)
+            .expect_err("stale appearance theme update");
+        assert_eq!(
+            stale_theme_error.code(),
+            SettingsErrorCode::SnapshotOutdated
+        );
 
         let stale_model_error = client
             .set_model_settings_blocking(

@@ -763,7 +763,8 @@ fn run_configuration_recovery_smoke() -> Result<(), Box<dyn std::error::Error>> 
 ))]
 fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
     use bongocat_config::{
-        ApplicationState, BuildEnvironment, StateStore, StorageLayout, WindowPlacement,
+        ApplicationState, BuildEnvironment, ConfigStore, StateStore, StorageLayout, Theme,
+        WindowPlacement,
     };
 
     const RESIZED_WIDTH: u32 = 700;
@@ -778,6 +779,11 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
     }
     let root = RecoverySmokeRoot(root);
     let layout = StorageLayout::under(&root.0, BuildEnvironment::Development);
+    let config_store = ConfigStore::new(layout.clone())?;
+    let mut config = config_store.load_or_default()?.config;
+    config.appearance.theme = Theme::Dark;
+    config_store.commit(&config)?;
+    drop(config_store);
     StateStore::new(layout.clone()).commit(&ApplicationState::with_settings_window(Some(
         WindowPlacement::new(999_000, 999_000, 800, 600, false)?,
     )))?;
@@ -804,6 +810,22 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
             };
         cx.spawn(async move |cx| {
             let result = async {
+                let mut theme_verified = false;
+                for _ in 0..200 {
+                    let general =
+                        window.update(cx, |view, _, cx| view.show_general_page_for_smoke(cx));
+                    if matches!(general, Ok(Ok(()))) {
+                        theme_verified = true;
+                        break;
+                    }
+                    Timer::after(Duration::from_millis(10)).await;
+                }
+                if !theme_verified {
+                    return Err(io::Error::other(
+                        "settings window did not apply the configured dark theme",
+                    )
+                    .into());
+                }
                 let mut initial = None;
                 let mut last_initial = window_state.placement();
                 for _ in 0..200 {

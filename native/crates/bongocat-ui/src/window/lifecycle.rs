@@ -31,12 +31,7 @@ pub fn open_settings_window(
                 if !cx.has_global::<Theme>() {
                     gpui_kit::init(cx);
                 }
-                install_component_theme(window, cx);
-                window
-                    .observe_window_appearance(|window, cx| {
-                        install_component_theme(window, cx);
-                    })
-                    .detach();
+                sync_system_component_theme(window, cx);
                 let request_quit = Rc::new(request_quit);
                 let view = cx.new(|cx| {
                     let observed_window_state = window_state.clone();
@@ -64,6 +59,19 @@ pub fn open_settings_window(
                     view
                 });
                 opened_settings_view.borrow_mut().replace(view.clone());
+                let appearance_view = view.downgrade();
+                window
+                    .observe_window_appearance(move |window, cx| {
+                        let follows_system = appearance_view.upgrade().is_none_or(|view| {
+                            view.read(cx).snapshot.as_ref().is_none_or(|snapshot| {
+                                snapshot.appearance_theme == SettingsTheme::System
+                            })
+                        });
+                        if follows_system {
+                            sync_system_component_theme(window, cx);
+                        }
+                    })
+                    .detach();
                 #[cfg(any(target_os = "macos", target_os = "windows"))]
                 {
                     let result = HasWindowHandle::window_handle(window)

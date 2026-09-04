@@ -24,6 +24,27 @@ impl SettingsView {
             || self.model_import.is_running()
             || !configuration_ready;
         let startup = startup_item_presentation(snapshot.map(|s| s.startup_item), disabled);
+        let selected_theme =
+            snapshot.map_or(SettingsTheme::System, |snapshot| snapshot.appearance_theme);
+        let theme_nodes = [
+            (ACCESSIBILITY_THEME_SYSTEM, SettingsTheme::System, "System"),
+            (ACCESSIBILITY_THEME_LIGHT, SettingsTheme::Light, "Light"),
+            (ACCESSIBILITY_THEME_DARK, SettingsTheme::Dark, "Dark"),
+        ]
+        .map(|(id, theme, label)| {
+            let mut node = AccessibilityNode::new(id, AccessibilityRole::RadioButton, label)
+                .with_description("BongoCat settings appearance")
+                .with_toggle(if selected_theme == theme {
+                    AccessibilityToggle::On
+                } else {
+                    AccessibilityToggle::Off
+                })
+                .disabled(disabled);
+            if !disabled {
+                node = node.clickable().focusable();
+            }
+            node
+        });
         let mut overlay_node = AccessibilityNode::new(
             ACCESSIBILITY_OVERLAY,
             AccessibilityRole::Switch,
@@ -339,6 +360,9 @@ impl SettingsView {
             ACCESSIBILITY_GENERAL,
             ACCESSIBILITY_MODELS,
             ACCESSIBILITY_DIAGNOSTICS,
+            ACCESSIBILITY_THEME_SYSTEM,
+            ACCESSIBILITY_THEME_LIGHT,
+            ACCESSIBILITY_THEME_DARK,
             ACCESSIBILITY_OVERLAY,
             ACCESSIBILITY_OVERLAY_TOPMOST,
             ACCESSIBILITY_OVERLAY_CLICK_THROUGH,
@@ -383,6 +407,9 @@ impl SettingsView {
             )
             .clickable()
             .focusable(),
+            theme_nodes[0].clone(),
+            theme_nodes[1].clone(),
+            theme_nodes[2].clone(),
             overlay_node,
             topmost_node,
             click_through_node,
@@ -437,6 +464,9 @@ impl SettingsView {
             ACCESSIBILITY_GENERAL => self.page = SettingsPage::General,
             ACCESSIBILITY_MODELS => self.page = SettingsPage::Models,
             ACCESSIBILITY_DIAGNOSTICS => self.page = SettingsPage::Diagnostics,
+            ACCESSIBILITY_THEME_SYSTEM => self.set_appearance_theme(SettingsTheme::System, cx),
+            ACCESSIBILITY_THEME_LIGHT => self.set_appearance_theme(SettingsTheme::Light, cx),
+            ACCESSIBILITY_THEME_DARK => self.set_appearance_theme(SettingsTheme::Dark, cx),
             ACCESSIBILITY_OVERLAY => {
                 if let Some(snapshot) = self.snapshot.as_ref() {
                     self.set_overlay_visible(!snapshot.overlay_visible, cx);
