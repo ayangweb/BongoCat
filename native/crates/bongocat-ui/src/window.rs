@@ -91,6 +91,10 @@ const ACCESSIBILITY_OVERLAY_OPACITY_DECREASE: AccessibilityNodeId = Accessibilit
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_OVERLAY_OPACITY_INCREASE: AccessibilityNodeId = AccessibilityNodeId::new(18);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_MAXIMUM_FPS_DECREASE: AccessibilityNodeId = AccessibilityNodeId::new(24);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_MAXIMUM_FPS_INCREASE: AccessibilityNodeId = AccessibilityNodeId::new(25);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_OPEN_BACKUPS: AccessibilityNodeId = AccessibilityNodeId::new(28);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_RESTORE_DEFAULTS: AccessibilityNodeId = AccessibilityNodeId::new(29);
@@ -147,6 +151,7 @@ enum PendingOperation {
     OverlayVisibility,
     OverlaySettings,
     MotionAudio,
+    MaximumFps,
     ModelSettings,
     GamepadAxisSettings,
     StartupItem,
@@ -315,6 +320,8 @@ pub struct SettingsView {
     overlay_scale_increase_focus: FocusHandle,
     overlay_opacity_decrease_focus: FocusHandle,
     overlay_opacity_increase_focus: FocusHandle,
+    maximum_fps_decrease_focus: FocusHandle,
+    maximum_fps_increase_focus: FocusHandle,
     audio_focus: FocusHandle,
     mirror_focus: FocusHandle,
     mirror_pointer_focus: FocusHandle,
@@ -421,6 +428,14 @@ impl SettingsView {
                         .set_motion_audio_enabled(expected_config_revision, enabled)
                         .await
                 }
+                Some(SettingValue::MaximumFps {
+                    expected_config_revision,
+                    maximum_fps,
+                }) => {
+                    client
+                        .set_maximum_fps(expected_config_revision, maximum_fps)
+                        .await
+                }
                 Some(SettingValue::ModelSettings {
                     expected_config_revision,
                     settings,
@@ -524,6 +539,10 @@ enum SettingValue {
     MotionAudioEnabled {
         expected_config_revision: u64,
         enabled: bool,
+    },
+    MaximumFps {
+        expected_config_revision: u64,
+        maximum_fps: u16,
     },
     ModelSettings {
         expected_config_revision: u64,

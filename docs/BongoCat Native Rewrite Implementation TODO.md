@@ -855,6 +855,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     普通 latest 数据帧即使连续 coalesce 也不会覆盖待确认的模型提交；7 项 render contract
     与 Windows 失败回归均通过，双槽 pending accounting 保持守恒。
 - [ ] 支持目标 FPS、不可见暂停/降频和刷新率变化。
+  - 状态（2026-09-04）：目标 FPS 子能力已闭环。`model.maximum_fps` 通过 settings typed command
+    和 expected config revision 在 `15..=240` 内校验、持久化并进入 runtime snapshot；runtime
+    周期评估、GPUI 产品 frame source 及双平台独立 overlay run loop 都按最新值计算下一帧间隔，
+    修改无需重启。越界值和 stale revision 保留旧 runtime/config。不可见暂停/降频与刷新率变化
+    仍未实现，因此总项保持未勾选。
 - [ ] 首帧前不出现黑框或不透明闪烁。
 - [ ] shutdown 先停 frame source，再释放 GPU/window。
 - [ ] 明确 sRGB/linear、预乘 alpha 和 texture color space，避免两平台颜色或边缘混合语义漂移。
@@ -2107,6 +2112,18 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
     - 验收证据（2026-09-04）：`CursorSmoother` 使用注入单调时间换算指数衰减，runtime worker
       在 command、timeout 和 shutdown 边界统一消费/推进；单元测试覆盖帧率独立、首样本与
       viewport 切换，集成测试使用 `ManualClock` 验证连续 tick 的 `0.25 -> 0.4375` 参数轨迹。
+48. [x] `P2-DYNAMIC-MAXIMUM-FPS`：让当前 v1 的目标帧率设置无需重启即可作用于完整产品链路。
+    - 依赖：runtime typed command/snapshot、settings revision transaction 和 app-owned frame source。
+    - 退出条件：`15..=240` 有统一 runtime contract；设置 UI 可读写并保留 keyboard/AccessKit
+      语义；runtime evaluation、GPUI 产品 frame source 与独立 overlay loop 都使用最新值；有效值
+      持久化并在重启后恢复，越界或 stale 请求不改变当前 runtime/config；完整 Native workspace
+      门禁与 macOS release 产品 smoke 通过。
+    - 验收证据（2026-09-04）：`SetMaximumFps`、`RuntimeSnapshot::maximum_fps` 和
+      `SettingsCommand::SetMaximumFps` 形成强类型链路；GPUI Kit number field 提供 `15..=240`、步长
+      `15` 的设置，并由项目 AccessKit tree 暴露增减动作。runtime worker 与两种 frame source 均按
+      当前 snapshot 动态计算间隔；单元/服务测试覆盖边界、typed rejection、配置持久化、重启恢复
+      和 stale revision；完整 macOS workspace 门禁、release 产品 lifecycle smoke 与 Windows x64
+      overlay target check 通过。
 
 ## 13. 待决策清单
 

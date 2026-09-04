@@ -434,6 +434,28 @@ fn run_service(
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
+            SettingsCommand::SetMaximumFps {
+                expected_config_revision,
+                maximum_fps,
+                reply,
+            } => {
+                let result = require_operational(&application)
+                    .map_err(map_application_error)
+                    .and_then(|()| {
+                        if application.config_revision() != Some(expected_config_revision) {
+                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
+                        } else if !bongocat_runtime::maximum_fps_is_valid(maximum_fps) {
+                            Err(SettingsError::new(SettingsErrorCode::InvalidMaximumFps))
+                        } else {
+                            application
+                                .set_maximum_fps(maximum_fps)
+                                .map(|_| ())
+                                .map_err(map_application_error)
+                        }
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
             SettingsCommand::SetModelSettings {
                 expected_config_revision,
                 settings,
@@ -832,6 +854,7 @@ fn snapshot(
             opacity_percent: runtime.overlay_settings.opacity_percent,
         },
         motion_audio_enabled: runtime.motion_audio_enabled,
+        maximum_fps: runtime.maximum_fps,
         model_settings: SettingsModelSettings {
             mirror: runtime.model_settings.mirror,
             mirror_pointer_tracking: runtime.model_settings.mirror_pointer_tracking,
@@ -969,6 +992,7 @@ const fn settings_runtime_error_code(code: RuntimeRenderErrorCode) -> SettingsRu
         RuntimeRenderErrorCode::OverlaySettingsInvalid => {
             SettingsRuntimeErrorCode::OverlaySettingsInvalid
         }
+        RuntimeRenderErrorCode::MaximumFpsInvalid => SettingsRuntimeErrorCode::MaximumFpsInvalid,
     }
 }
 
@@ -1821,6 +1845,7 @@ mod tests {
             overlay_visible: true,
             overlay: SettingsOverlay::default(),
             motion_audio_enabled: true,
+            maximum_fps: 60,
             model_settings: bongocat_ui::SettingsModelSettings::default(),
             gamepad_axis_settings: bongocat_ui::SettingsGamepadAxisSettings::default(),
             shortcuts: SettingsShortcuts::default(),
@@ -2738,13 +2763,22 @@ mod tests {
             )
             .expect("update model settings");
         assert_eq!(configured_model.model_settings, model_settings);
+        let configured_frame_rate = client
+            .set_maximum_fps_blocking(
+                configured_model.config_revision.expect("config revision"),
+                120,
+            )
+            .expect("update maximum FPS");
+        assert_eq!(configured_frame_rate.maximum_fps, 120);
         let gamepad_settings = bongocat_ui::SettingsGamepadAxisSettings {
             stick_dead_zone_percent: 20,
             trigger_dead_zone_percent: 10,
         };
         let configured_gamepad = client
             .set_gamepad_axis_settings_blocking(
-                configured_model.config_revision.expect("config revision"),
+                configured_frame_rate
+                    .config_revision
+                    .expect("config revision"),
                 gamepad_settings,
             )
             .expect("update gamepad settings");
@@ -2766,6 +2800,7 @@ mod tests {
         assert!(persisted.contains("\"ignore_pointer\": true"));
         assert!(persisted.contains("\"gamepad_stick_dead_zone\": 0.2"));
         assert!(persisted.contains("\"gamepad_trigger_dead_zone\": 0.1"));
+        assert!(persisted.contains("\"maximum_fps\": 120"));
 
         let stopped = client.shutdown_blocking().expect("service shutdown");
         assert_eq!(stopped.runtime_health, RuntimeHealth::Stopped);
@@ -2834,6 +2869,23 @@ mod tests {
         let initial = client.read_snapshot_blocking().expect("initial snapshot");
         let initial_config_revision = initial.config_revision.expect("config revision");
         let initial_active_model = initial.active_model.clone();
+        let initial_config = std::fs::read(&config_path).expect("initial config");
+        let invalid_frame_rate_error = client
+            .set_maximum_fps_blocking(initial_config_revision, 241)
+            .expect_err("invalid maximum FPS update");
+        assert_eq!(
+            invalid_frame_rate_error.code(),
+            SettingsErrorCode::InvalidMaximumFps
+        );
+        let after_invalid_frame_rate = client
+            .read_snapshot_blocking()
+            .expect("snapshot after invalid maximum FPS");
+        assert_eq!(after_invalid_frame_rate.revision, initial.revision);
+        assert_eq!(after_invalid_frame_rate.maximum_fps, initial.maximum_fps);
+        assert_eq!(
+            std::fs::read(&config_path).expect("preserved initial config"),
+            initial_config
+        );
         let hidden = client
             .set_overlay_visible_blocking(initial_config_revision, false)
             .expect("hide overlay");
@@ -2877,6 +2929,14 @@ mod tests {
             .expect_err("stale gamepad settings update");
         assert_eq!(
             stale_gamepad_error.code(),
+            SettingsErrorCode::SnapshotOutdated
+        );
+
+        let stale_frame_rate_error = client
+            .set_maximum_fps_blocking(initial_config_revision, 120)
+            .expect_err("stale maximum FPS update");
+        assert_eq!(
+            stale_frame_rate_error.code(),
             SettingsErrorCode::SnapshotOutdated
         );
 

@@ -24,6 +24,8 @@ impl Render for SettingsView {
                     ACCESSIBILITY_OVERLAY_OPACITY_INCREASE => {
                         Some(&self.overlay_opacity_increase_focus)
                     }
+                    ACCESSIBILITY_MAXIMUM_FPS_DECREASE => Some(&self.maximum_fps_decrease_focus),
+                    ACCESSIBILITY_MAXIMUM_FPS_INCREASE => Some(&self.maximum_fps_increase_focus),
                     ACCESSIBILITY_AUDIO => Some(&self.audio_focus),
                     ACCESSIBILITY_MIRROR => Some(&self.mirror_focus),
                     ACCESSIBILITY_MIRROR_POINTER => Some(&self.mirror_pointer_focus),
@@ -270,6 +272,36 @@ impl Render for SettingsView {
                     )
                     .description(
                         "Adjust the overlay transparency from 1% to 100%. Search: transparent.",
+                    ),
+                    SettingItem::new(
+                        "Maximum FPS",
+                        SettingField::number_input(
+                            NumberFieldOptions {
+                                min: 15.0,
+                                max: 240.0,
+                                step: 15.0,
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .map_or(60.0, |s| f64::from(s.maximum_fps))
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_maximum_fps_value(value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description(
+                        "Limit animation and overlay updates from 15 to 240 FPS. Search: frame rate, performance.",
                     ),
                 ]),
                 SettingGroup::new().title("Model interaction").items(vec![

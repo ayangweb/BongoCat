@@ -47,7 +47,22 @@ pub use platform_input::{
 };
 use rendering::{MotionStopStatus, RenderEvaluation, RuntimeRenderBootstrap, RuntimeRenderer};
 
-const CURSOR_SAMPLE_INTERVAL: Duration = Duration::from_millis(16);
+pub const DEFAULT_MAXIMUM_FPS: u16 = 60;
+pub const MINIMUM_FPS: u16 = 15;
+pub const MAXIMUM_FPS: u16 = 240;
+
+pub const fn maximum_fps_is_valid(maximum_fps: u16) -> bool {
+    maximum_fps >= MINIMUM_FPS && maximum_fps <= MAXIMUM_FPS
+}
+
+pub fn frame_interval_for_maximum_fps(maximum_fps: u16) -> Option<Duration> {
+    maximum_fps_is_valid(maximum_fps).then(|| Duration::from_secs_f64(1.0 / f64::from(maximum_fps)))
+}
+
+fn runtime_frame_interval(maximum_fps: u16) -> Duration {
+    frame_interval_for_maximum_fps(maximum_fps)
+        .expect("runtime maximum FPS is validated before it is stored")
+}
 
 pub trait MonotonicClock: Send + Sync + 'static {
     fn now(&self) -> Duration;
@@ -90,10 +105,11 @@ pub enum RuntimeRenderErrorCode {
     PlatformUnsupported,
     TransportClosed,
     OverlaySettingsInvalid,
+    MaximumFpsInvalid,
 }
 
 impl RuntimeRenderErrorCode {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::ModelLoadFailed,
         Self::ModelEvaluationFailed,
         Self::MotionLoadFailed,
@@ -102,6 +118,7 @@ impl RuntimeRenderErrorCode {
         Self::PlatformUnsupported,
         Self::TransportClosed,
         Self::OverlaySettingsInvalid,
+        Self::MaximumFpsInvalid,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -114,6 +131,7 @@ impl RuntimeRenderErrorCode {
             Self::PlatformUnsupported => "platform_unsupported",
             Self::TransportClosed => "transport_closed",
             Self::OverlaySettingsInvalid => "overlay_settings_invalid",
+            Self::MaximumFpsInvalid => "maximum_fps_invalid",
         }
     }
 }
@@ -305,6 +323,7 @@ pub enum RuntimeCommand {
     Tick,
     SetOverlayVisible(bool),
     SetOverlaySettings(OverlaySettings),
+    SetMaximumFps(u16),
     SetModelSettings(ModelSettings),
     SetMotionAudioEnabled(bool),
     SetInputBindings(Arc<InputBindings>),
@@ -342,6 +361,7 @@ pub struct RuntimeSnapshot {
     pub state: RuntimeState,
     pub overlay_visible: bool,
     pub overlay_settings: OverlaySettings,
+    pub maximum_fps: u16,
     pub model_settings: ModelSettings,
     pub gamepad_axis_settings: GamepadAxisSettings,
     pub motion_audio_enabled: bool,
@@ -373,6 +393,7 @@ impl RuntimeSnapshot {
             state: RuntimeState::Starting,
             overlay_visible,
             overlay_settings: OverlaySettings::default(),
+            maximum_fps: DEFAULT_MAXIMUM_FPS,
             model_settings: ModelSettings::default(),
             gamepad_axis_settings: GamepadAxisSettings::default(),
             motion_audio_enabled,
@@ -1343,6 +1364,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
     let mut gamepad_axis_values = GamepadAxisValues::default();
     let mut gamepad_axis_settings = GamepadAxisSettings::default();
     let mut overlay_visible = initial_overlay_visible;
+    let mut maximum_fps = DEFAULT_MAXIMUM_FPS;
     let mut motion_audio_enabled = initial_motion_audio_enabled;
     let mut pending_model = None;
     let mut deferred_commands = VecDeque::new();
@@ -1388,11 +1410,12 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                 }
             }
         } else if pending_model.is_none() {
-            deferred_commands
-                .pop_front()
-                .map_or_else(|| receiver.recv_timeout(CURSOR_SAMPLE_INTERVAL), Ok)
+            deferred_commands.pop_front().map_or_else(
+                || receiver.recv_timeout(runtime_frame_interval(maximum_fps)),
+                Ok,
+            )
         } else {
-            receiver.recv_timeout(CURSOR_SAMPLE_INTERVAL)
+            receiver.recv_timeout(runtime_frame_interval(maximum_fps))
         };
         match received {
             Ok(envelope) => {
@@ -1471,6 +1494,24 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                         } else {
                             publish(&snapshot, |current| {
                                 current.overlay_settings = settings;
+                                current.last_command_failure = None;
+                                current.last_command_sequence = Some(sequence);
+                            });
+                        }
+                    }
+                    WorkerCommand::Product(RuntimeCommand::SetMaximumFps(value)) => {
+                        if !maximum_fps_is_valid(value) {
+                            publish(&snapshot, |current| {
+                                current.last_command_failure = Some(RuntimeCommandFailure {
+                                    sequence,
+                                    code: RuntimeRenderErrorCode::MaximumFpsInvalid,
+                                });
+                                current.last_command_sequence = Some(sequence);
+                            });
+                        } else {
+                            maximum_fps = value;
+                            publish(&snapshot, |current| {
+                                current.maximum_fps = value;
                                 current.last_command_failure = None;
                                 current.last_command_sequence = Some(sequence);
                             });
@@ -2415,6 +2456,7 @@ mod tests {
             .wait_for_revision(1, TIMEOUT)
             .expect("ready snapshot");
         assert_eq!(ready.state, RuntimeState::Ready);
+        assert_eq!(ready.maximum_fps, DEFAULT_MAXIMUM_FPS);
 
         let sequence = client
             .send(RuntimeCommand::SetOverlayVisible(false))
@@ -2442,6 +2484,30 @@ mod tests {
         assert_eq!(updated.overlay_settings, settings);
         assert_eq!(updated.last_command_failure, None);
 
+        let sequence = client
+            .send(RuntimeCommand::SetMaximumFps(120))
+            .expect("maximum FPS command accepted");
+        let updated = client
+            .wait_for_command(sequence, TIMEOUT)
+            .expect("maximum FPS snapshot");
+        assert_eq!(updated.maximum_fps, 120);
+        assert_eq!(updated.last_command_failure, None);
+
+        let sequence = client
+            .send(RuntimeCommand::SetMaximumFps(14))
+            .expect("invalid maximum FPS command accepted for typed rejection");
+        let rejected = client
+            .wait_for_command(sequence, TIMEOUT)
+            .expect("invalid maximum FPS rejection");
+        assert_eq!(rejected.maximum_fps, 120);
+        assert_eq!(
+            rejected.last_command_failure,
+            Some(RuntimeCommandFailure {
+                sequence,
+                code: RuntimeRenderErrorCode::MaximumFpsInvalid,
+            })
+        );
+
         let invalid = OverlaySettings {
             scale_percent: 0,
             ..settings
@@ -2463,6 +2529,18 @@ mod tests {
 
         let stopped = owner.shutdown(TIMEOUT).expect("clean shutdown");
         assert_eq!(stopped.state, RuntimeState::Stopped);
+    }
+
+    #[test]
+    fn maximum_fps_interval_enforces_runtime_bounds() {
+        assert_eq!(
+            frame_interval_for_maximum_fps(60),
+            Some(Duration::from_secs_f64(1.0 / 60.0))
+        );
+        assert!(frame_interval_for_maximum_fps(MINIMUM_FPS).is_some());
+        assert!(frame_interval_for_maximum_fps(MAXIMUM_FPS).is_some());
+        assert!(frame_interval_for_maximum_fps(MINIMUM_FPS - 1).is_none());
+        assert!(frame_interval_for_maximum_fps(MAXIMUM_FPS + 1).is_none());
     }
 
     #[test]

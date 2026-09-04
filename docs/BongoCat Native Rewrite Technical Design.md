@@ -269,6 +269,10 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
 - Runtime 可接收 typed `Tick` command，在使用注入单调时钟的 contract/fixture 或受控
   coordinator 场景显式驱动一次评估；生产环境仍由 runtime worker 的定时等待负责周期 tick，
   UI 和平台 adapter 不直接调用 renderer。
+- `maximum_fps` 是 `15..=240` 的 runtime-owned 强类型设置，通过 revision-checked settings
+  command 持久化并进入 `RuntimeSnapshot`。它同时决定 runtime 周期评估、GPUI owner 调度的产品
+  overlay frame source 和独立 overlay run loop 的下一帧间隔；变更无需重启。renderer 仍只消费
+  不可变 `RenderSnapshot`，不读取 config 或 GPUI 状态。
 - `motion_stop` 只作用于匹配的当前动作。非零 `FadeOutTime` 在 runtime snapshot 中保留
   active identity 和首次 stop command sequence，renderer 以正弦权重淡出并在结束帧后
   清理；重复 stop 不重启计时，零时长立即清理，旧动作的 stop 不影响后启动动作。

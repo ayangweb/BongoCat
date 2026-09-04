@@ -126,10 +126,11 @@ pub enum SettingsRuntimeErrorCode {
     PlatformUnsupported,
     TransportClosed,
     OverlaySettingsInvalid,
+    MaximumFpsInvalid,
 }
 
 impl SettingsRuntimeErrorCode {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::ModelLoadFailed,
         Self::ModelEvaluationFailed,
         Self::MotionLoadFailed,
@@ -138,6 +139,7 @@ impl SettingsRuntimeErrorCode {
         Self::PlatformUnsupported,
         Self::TransportClosed,
         Self::OverlaySettingsInvalid,
+        Self::MaximumFpsInvalid,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -150,6 +152,7 @@ impl SettingsRuntimeErrorCode {
             Self::PlatformUnsupported => "platform_unsupported",
             Self::TransportClosed => "transport_closed",
             Self::OverlaySettingsInvalid => "overlay_settings_invalid",
+            Self::MaximumFpsInvalid => "maximum_fps_invalid",
         }
     }
 }
@@ -257,6 +260,7 @@ pub struct SettingsSnapshot {
     pub overlay_visible: bool,
     pub overlay: SettingsOverlay,
     pub motion_audio_enabled: bool,
+    pub maximum_fps: u16,
     pub model_settings: SettingsModelSettings,
     pub gamepad_axis_settings: SettingsGamepadAxisSettings,
     pub shortcuts: SettingsShortcuts,
@@ -618,6 +622,7 @@ pub enum SettingsErrorCode {
     ServiceUnavailable,
     SnapshotOutdated,
     RuntimeUnavailable,
+    InvalidMaximumFps,
     InvalidGamepadAxisSettings,
     InvalidShortcutBindings,
     ConfigPersistFailed,
@@ -650,10 +655,11 @@ pub enum SettingsErrorCode {
 }
 
 impl SettingsErrorCode {
-    pub const ALL: [Self; 32] = [
+    pub const ALL: [Self; 33] = [
         Self::ServiceUnavailable,
         Self::SnapshotOutdated,
         Self::RuntimeUnavailable,
+        Self::InvalidMaximumFps,
         Self::InvalidGamepadAxisSettings,
         Self::InvalidShortcutBindings,
         Self::ConfigPersistFailed,
@@ -690,6 +696,7 @@ impl SettingsErrorCode {
             Self::ServiceUnavailable => "service_unavailable",
             Self::SnapshotOutdated => "snapshot_outdated",
             Self::RuntimeUnavailable => "runtime_unavailable",
+            Self::InvalidMaximumFps => "invalid_maximum_fps",
             Self::InvalidGamepadAxisSettings => "invalid_gamepad_axis_settings",
             Self::InvalidShortcutBindings => "invalid_shortcut_bindings",
             Self::ConfigPersistFailed => "config_persist_failed",
@@ -746,6 +753,7 @@ impl fmt::Display for SettingsError {
                 "settings changed in the background; review the latest values and retry"
             }
             SettingsErrorCode::RuntimeUnavailable => "runtime did not apply the setting",
+            SettingsErrorCode::InvalidMaximumFps => "maximum FPS must be between 15 and 240",
             SettingsErrorCode::InvalidGamepadAxisSettings => {
                 "gamepad dead-zone settings are out of range"
             }
@@ -835,6 +843,11 @@ pub enum SettingsCommand {
     SetMotionAudioEnabled {
         expected_config_revision: u64,
         enabled: bool,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    SetMaximumFps {
+        expected_config_revision: u64,
+        maximum_fps: u16,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     SetModelSettings {
@@ -990,6 +1003,19 @@ impl SettingsClient {
         self.request(|reply| SettingsCommand::SetMotionAudioEnabled {
             expected_config_revision,
             enabled,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn set_maximum_fps(
+        &self,
+        expected_config_revision: u64,
+        maximum_fps: u16,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetMaximumFps {
+            expected_config_revision,
+            maximum_fps,
             reply,
         })
         .await
@@ -1158,6 +1184,18 @@ impl SettingsClient {
         self.request_blocking(|reply| SettingsCommand::SetMotionAudioEnabled {
             expected_config_revision,
             enabled,
+            reply,
+        })
+    }
+
+    pub fn set_maximum_fps_blocking(
+        &self,
+        expected_config_revision: u64,
+        maximum_fps: u16,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::SetMaximumFps {
+            expected_config_revision,
+            maximum_fps,
             reply,
         })
     }
@@ -1461,6 +1499,31 @@ mod tests {
             )
             .expect("gamepad snapshot");
         assert_eq!(result.gamepad_axis_settings.stick_dead_zone_percent, 25);
+        worker.join().expect("worker join");
+    }
+
+    #[test]
+    fn maximum_fps_command_preserves_typed_value() {
+        let (client, endpoint) = SettingsClient::bounded(1);
+        let worker = thread::spawn(move || {
+            let SettingsCommand::SetMaximumFps {
+                expected_config_revision,
+                maximum_fps,
+                reply,
+            } = endpoint.recv_blocking().expect("maximum FPS command")
+            else {
+                panic!("unexpected command");
+            };
+            assert_eq!(expected_config_revision, 7);
+            assert_eq!(maximum_fps, 120);
+            let mut result = snapshot(8, true, true);
+            result.maximum_fps = maximum_fps;
+            reply.respond(Ok(result)).expect("maximum FPS reply");
+        });
+        let result = client
+            .set_maximum_fps_blocking(7, 120)
+            .expect("maximum FPS snapshot");
+        assert_eq!(result.maximum_fps, 120);
         worker.join().expect("worker join");
     }
 
@@ -1872,6 +1935,7 @@ mod tests {
             overlay_visible,
             overlay: SettingsOverlay::default(),
             motion_audio_enabled,
+            maximum_fps: 60,
             model_settings: SettingsModelSettings::default(),
             gamepad_axis_settings: SettingsGamepadAxisSettings::default(),
             shortcuts: SettingsShortcuts::default(),

@@ -892,7 +892,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let gamepad_axis_producer = application.gamepad_axis_producer();
     let render_consumer = application.take_render_consumer()?;
     let expect_visible_frame = application.config().overlay.visible;
-    let frame_interval = Duration::from_secs_f64(1.0 / f64::from(overlay_options.maximum_fps));
+    let frame_runtime_client = runtime_client.clone();
     let failures = Arc::new(Mutex::new(Vec::new()));
     let run_failures = Arc::clone(&failures);
     #[cfg(target_os = "windows")]
@@ -1130,6 +1130,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(target_os = "windows")]
             let mut update_failure_reported = false;
             loop {
+                let frame_interval = bongocat_runtime::frame_interval_for_maximum_fps(
+                    frame_runtime_client.snapshot().maximum_fps,
+                )
+                .expect("runtime stores a validated maximum FPS");
                 Timer::after(frame_interval).await;
                 #[cfg(target_os = "macos")]
                 let keep_running = cx

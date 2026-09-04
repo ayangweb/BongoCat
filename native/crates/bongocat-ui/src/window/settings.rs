@@ -140,6 +140,50 @@ impl SettingsView {
         );
     }
 
+    pub(super) fn set_maximum_fps(&mut self, maximum_fps: u16, cx: &mut Context<Self>) {
+        let Some(expected_config_revision) = self
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.config_revision)
+        else {
+            return;
+        };
+        self.start_request(
+            PendingOperation::MaximumFps,
+            Some(SettingValue::MaximumFps {
+                expected_config_revision,
+                maximum_fps,
+            }),
+            cx,
+        );
+    }
+
+    pub(super) fn set_maximum_fps_value(&mut self, raw: f64, cx: &mut Context<Self>) {
+        if self.pending.is_some() || self.model_import.is_running() {
+            return;
+        }
+        let value = raw.round().clamp(15.0, 240.0) as u16;
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        if snapshot.configuration_status != SettingsConfigurationStatus::Ready
+            || snapshot.maximum_fps == value
+        {
+            return;
+        }
+        self.set_maximum_fps(value, cx);
+    }
+
+    pub(super) fn adjust_maximum_fps(&mut self, delta: i16, cx: &mut Context<Self>) {
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        self.set_maximum_fps_value(
+            f64::from((i32::from(snapshot.maximum_fps) + i32::from(delta)).clamp(15, 240)),
+            cx,
+        );
+    }
+
     pub(super) fn set_model_settings(
         &mut self,
         settings: SettingsModelSettings,

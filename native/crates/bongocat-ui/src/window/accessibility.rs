@@ -194,6 +194,29 @@ impl SettingsView {
                 opacity_increase_node = opacity_increase_node.clickable().focusable();
             }
         }
+        let maximum_fps = snapshot.map_or(60, |snapshot| snapshot.maximum_fps);
+        let mut maximum_fps_decrease_node = AccessibilityNode::new(
+            ACCESSIBILITY_MAXIMUM_FPS_DECREASE,
+            AccessibilityRole::Button,
+            "Decrease maximum FPS",
+        )
+        .with_value(maximum_fps.to_string())
+        .disabled(disabled || maximum_fps <= 15);
+        let mut maximum_fps_increase_node = AccessibilityNode::new(
+            ACCESSIBILITY_MAXIMUM_FPS_INCREASE,
+            AccessibilityRole::Button,
+            "Increase maximum FPS",
+        )
+        .with_value(maximum_fps.to_string())
+        .disabled(disabled || maximum_fps >= 240);
+        if !disabled {
+            if maximum_fps > 15 {
+                maximum_fps_decrease_node = maximum_fps_decrease_node.clickable().focusable();
+            }
+            if maximum_fps < 240 {
+                maximum_fps_increase_node = maximum_fps_increase_node.clickable().focusable();
+            }
+        }
         let mut startup_node = AccessibilityNode::new(
             ACCESSIBILITY_STARTUP,
             AccessibilityRole::Switch,
@@ -323,6 +346,8 @@ impl SettingsView {
             ACCESSIBILITY_OVERLAY_SCALE_INCREASE,
             ACCESSIBILITY_OVERLAY_OPACITY_DECREASE,
             ACCESSIBILITY_OVERLAY_OPACITY_INCREASE,
+            ACCESSIBILITY_MAXIMUM_FPS_DECREASE,
+            ACCESSIBILITY_MAXIMUM_FPS_INCREASE,
             ACCESSIBILITY_AUDIO,
             ACCESSIBILITY_MIRROR,
             ACCESSIBILITY_MIRROR_POINTER,
@@ -365,6 +390,8 @@ impl SettingsView {
             scale_increase_node,
             opacity_decrease_node,
             opacity_increase_node,
+            maximum_fps_decrease_node,
+            maximum_fps_increase_node,
             audio_node,
             mirror_node,
             mirror_pointer_node,
@@ -433,6 +460,8 @@ impl SettingsView {
             ACCESSIBILITY_OVERLAY_SCALE_INCREASE => self.adjust_overlay_scale(25, cx),
             ACCESSIBILITY_OVERLAY_OPACITY_DECREASE => self.adjust_overlay_opacity(-10, cx),
             ACCESSIBILITY_OVERLAY_OPACITY_INCREASE => self.adjust_overlay_opacity(10, cx),
+            ACCESSIBILITY_MAXIMUM_FPS_DECREASE => self.adjust_maximum_fps(-15, cx),
+            ACCESSIBILITY_MAXIMUM_FPS_INCREASE => self.adjust_maximum_fps(15, cx),
             ACCESSIBILITY_AUDIO => {
                 if let Some(snapshot) = self.snapshot.as_ref() {
                     self.set_motion_audio_enabled(!snapshot.motion_audio_enabled, cx);
@@ -542,6 +571,14 @@ impl SettingsView {
             (
                 ACCESSIBILITY_OVERLAY_OPACITY_INCREASE,
                 &self.overlay_opacity_increase_focus,
+            ),
+            (
+                ACCESSIBILITY_MAXIMUM_FPS_DECREASE,
+                &self.maximum_fps_decrease_focus,
+            ),
+            (
+                ACCESSIBILITY_MAXIMUM_FPS_INCREASE,
+                &self.maximum_fps_increase_focus,
             ),
             (ACCESSIBILITY_AUDIO, &self.audio_focus),
             (ACCESSIBILITY_MIRROR, &self.mirror_focus),

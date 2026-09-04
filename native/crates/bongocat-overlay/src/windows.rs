@@ -15,6 +15,7 @@ use bongocat_runtime::{
     CursorProducer, GamepadAxisProducer, GamepadButton, HandSide, InputBindings, InputControl,
     InputEdge, InputEvent, InputProducer, InputSource, MonotonicMillis, PhysicalKey, RuntimeClient,
     RuntimeCommand, RuntimeOwner, RuntimeRenderErrorCode, RuntimeState,
+    frame_interval_for_maximum_fps, maximum_fps_is_valid,
 };
 use image::ImageReader;
 use std::{
@@ -952,7 +953,6 @@ pub(super) struct ProductOverlaySession {
     input_start_error: Option<PlatformInputError>,
     input_diagnostics: Option<PlatformInputDiagnostics>,
     input_stopped: bool,
-    frame_interval: Duration,
     frames_presented: u64,
     dynamic_snapshots: u64,
     model_commit_rejections: u64,
@@ -1015,7 +1015,6 @@ impl ProductOverlaySession {
             input_start_error,
             input_diagnostics: None,
             input_stopped: false,
-            frame_interval: Duration::from_secs_f64(1.0 / f64::from(options.maximum_fps)),
             frames_presented: 0,
             dynamic_snapshots: 0,
             model_commit_rejections: 0,
@@ -1033,7 +1032,8 @@ impl ProductOverlaySession {
             if self.tick()? == OverlayTickOutcome::Hidden {
                 break;
             }
-            next_frame += self.frame_interval;
+            next_frame += frame_interval_for_maximum_fps(self.options.maximum_fps)
+                .expect("product overlay stores a validated maximum FPS");
             if let Some(delay) = next_frame.checked_duration_since(Instant::now()) {
                 thread::sleep(delay);
             } else {
@@ -1071,6 +1071,7 @@ impl ProductOverlaySession {
             self.overlay = replacement;
             self.options = next_options;
         }
+        self.options.maximum_fps = runtime_snapshot.maximum_fps;
         if !runtime_snapshot.overlay_visible {
             self.overlay.set_visible(false)?;
             return Ok(OverlayTickOutcome::Hidden);
@@ -1791,8 +1792,8 @@ fn validate_options(options: OverlaySessionOptions) -> Result<(), OverlayError> 
             "overlay opacity must be between 1 and 100 percent",
         ));
     }
-    if !(1..=240).contains(&options.maximum_fps) {
-        return Err(OverlayError::new("maximum FPS must be between 1 and 240"));
+    if !maximum_fps_is_valid(options.maximum_fps) {
+        return Err(OverlayError::new("maximum FPS must be between 15 and 240"));
     }
     Ok(())
 }
@@ -2468,6 +2469,10 @@ mod tests {
             },
             OverlaySessionOptions {
                 opacity_percent: 0,
+                ..OverlaySessionOptions::default()
+            },
+            OverlaySessionOptions {
+                maximum_fps: 14,
                 ..OverlaySessionOptions::default()
             },
             OverlaySessionOptions {

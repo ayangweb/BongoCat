@@ -24,7 +24,7 @@ use bongocat_runtime::{
     GamepadButton, HandSide, InputBindings, InputProducer, ModelSettings, MotionId, MotionIdError,
     MotionPriority, OverlaySettings, PhysicalKey, RuntimeClient, RuntimeCommand,
     RuntimeCommandFailure, RuntimeOwner, RuntimeRenderErrorCode, RuntimeSnapshot, SendError,
-    ShutdownError,
+    ShutdownError, maximum_fps_is_valid,
 };
 use std::{
     collections::BTreeMap,
@@ -330,6 +330,12 @@ impl Application {
                 .wait_for_command(sequence, RUNTIME_TIMEOUT)
                 .ok_or(ApplicationError::RuntimeDidNotPublish)?;
             let sequence = client
+                .send(RuntimeCommand::SetMaximumFps(config.model.maximum_fps))
+                .map_err(ApplicationError::RuntimeCommand)?;
+            client
+                .wait_for_command(sequence, RUNTIME_TIMEOUT)
+                .ok_or(ApplicationError::RuntimeDidNotPublish)?;
+            let sequence = client
                 .send(RuntimeCommand::SetOverlaySettings(
                     overlay_settings_from_config(&config),
                 ))
@@ -597,6 +603,42 @@ impl Application {
         let snapshot = client
             .wait_for_command(sequence, RUNTIME_TIMEOUT)
             .ok_or(ApplicationError::RuntimeDidNotPublish)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(snapshot)
+    }
+
+    pub fn set_maximum_fps(
+        &mut self,
+        maximum_fps: u16,
+    ) -> Result<RuntimeSnapshot, ApplicationError> {
+        if !maximum_fps_is_valid(maximum_fps) {
+            return Err(ApplicationError::RuntimeCommandFailed(
+                RuntimeCommandFailure {
+                    sequence: 0,
+                    code: RuntimeRenderErrorCode::MaximumFpsInvalid,
+                },
+            ));
+        }
+        let mut next_config = self.config.clone();
+        next_config.model.maximum_fps = maximum_fps;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+
+        let client = self.runtime.client();
+        let sequence = client
+            .send(RuntimeCommand::SetMaximumFps(maximum_fps))
+            .map_err(ApplicationError::RuntimeCommand)?;
+        let snapshot = client
+            .wait_for_command(sequence, RUNTIME_TIMEOUT)
+            .ok_or(ApplicationError::RuntimeDidNotPublish)?;
+        if let Some(failure) = snapshot
+            .last_command_failure
+            .filter(|failure| failure.sequence == sequence)
+        {
+            return Err(ApplicationError::RuntimeCommandFailed(failure));
+        }
         self.config = next_config;
         self.config_revision = Some(next_revision);
         Ok(snapshot)
@@ -1149,11 +1191,18 @@ mod tests {
         assert!(!audio_snapshot.motion_audio_enabled);
         assert!(!application.config().model.play_motion_audio);
 
+        let frame_rate_snapshot = application
+            .set_maximum_fps(120)
+            .expect("update maximum FPS");
+        assert_eq!(frame_rate_snapshot.maximum_fps, 120);
+        assert_eq!(application.config().model.maximum_fps, 120);
+
         let persisted = std::fs::read_to_string(config_path).expect("persisted config");
         assert!(persisted.contains("\"visible\": false"));
         assert!(persisted.contains("\"play_motion_audio\": false"));
         assert!(persisted.contains("\"scale_percent\": 150"));
         assert!(persisted.contains("\"click_through\": true"));
+        assert!(persisted.contains("\"maximum_fps\": 120"));
         let stopped = application.shutdown().expect("clean shutdown");
         assert_eq!(stopped.state, RuntimeState::Stopped);
 
@@ -1166,6 +1215,7 @@ mod tests {
                 .overlay_settings
                 .click_through
         );
+        assert_eq!(restarted.runtime_client().snapshot().maximum_fps, 120);
         restarted.shutdown().expect("clean restart shutdown");
     }
 

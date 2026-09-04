@@ -298,6 +298,7 @@ pub(super) fn runtime_diagnostics_presentation(
         Some(SettingsRuntimeErrorCode::OverlaySettingsInvalid) => {
             ("Overlay settings invalid", true)
         }
+        Some(SettingsRuntimeErrorCode::MaximumFpsInvalid) => ("Maximum FPS invalid", true),
         None => ("No renderer error", false),
     };
     let detail = match diagnostics.last_command_failure {
