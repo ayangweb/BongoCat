@@ -254,6 +254,9 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
 - Key/button down/up、设备连接和 command 必须可靠、有序；溢出是可观测错误，不能静默丢弃。
 - 可靠队列溢出时必须清空无法证明顺序的缓存，并在队首注入 `Reset`；原始失败 item 返回 producer，溢出、恢复和被清理 item 数量进入诊断 snapshot。
 - 鼠标移动和摇杆轴可以合并为最新值，不能阻塞边沿事件。
+- runtime 在独立 latest-value 通道之后按可注入单调时钟平滑光标位置；以 60 FPS 为基准每帧
+  保留 `0.75` 的剩余距离，并在逻辑坐标距离小于 `0.5` 时收敛到目标。首个样本和显示器
+  viewport 变化直接对齐目标，避免跨显示器插值使用错误坐标系；renderer 只消费平滑后的参数。
 - 手柄 axis latest-value 以 `{device_id, connection_generation, axis}` 为 key 并限制总 key 数；共享 runtime transport 为每个 device id 的每次连接分配单调 generation，平台将同一 connection 通过可靠 `GamepadConnected`/`GamepadDisconnected` 事件和 axis key 传递。断开只清理该 connection 的 pressed/axis，不重置其他输入；键鼠状态校正不扫描 gamepad pressed state。旧 generation 的迟到边沿和 axis 样本必须计数并拒绝。
 - Runtime 在 latest-value 消费后统一应用 `GamepadAxisSettings` 的 stick/trigger dead-zone；平台
   adapter 只负责原始范围归一化和无效值诊断，不把设备默认 dead-zone 写入共享协议。轴值随后以

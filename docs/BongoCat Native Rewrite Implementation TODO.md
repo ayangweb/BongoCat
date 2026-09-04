@@ -1,7 +1,7 @@
 # BongoCat Native Rewrite Implementation TODO
 
 状态：Phase 0 证据补齐与 Phase 1 渐进实现并行
-最后更新：2026-09-01
+最后更新：2026-09-04
 当前分支：`next`
 首发平台：Windows 10 1903+、macOS 12+
 后续评估：Linux
@@ -992,6 +992,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     跳过指针覆盖。启动配置投影、runtime/renderer 回归和 macOS 参数/变换测试已通过；Settings
     service/client 已支持 revision-checked 原子持久化，General 页面已提供三个可键盘/无障碍操作的
     toggle。平滑坐标策略、多显示器实机和完整 mirror fixture 仍未完成，checkbox 保持未勾选。
+  - 状态（2026-09-04）：光标 latest-value 进入 runtime 后按可注入单调时钟执行帧率无关的
+    指数平滑，保持旧版 60 FPS 下每帧 `0.75` 衰减并在逻辑距离 `< 0.5` 时收敛；首个样本和
+    viewport 变化直接对齐，周期 tick 在没有新 sample 时继续推进。纯 Rust 与 runtime 集成回归
+    覆盖单帧/半帧等价、跨显示器保护和连续模型参数投影；多显示器物理光标与完整 mirror
+    实机证据仍待完成，因此总项保持未勾选。
 - [ ] 随机行为支持测试 seed。
 - [ ] 逐项记录与旧版的可接受差异。
 
@@ -2093,6 +2098,15 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
         节点公开当前 chord 与 waiting 状态，配置恢复或模型导入期间会同时撤销 click/focus/action。
         纯 Rust 回归覆盖逐行 tab order、快照重排后精确更新、缺失目标拒绝和 accessibility target
         映射；双平台真实快捷键触发与屏幕阅读器操作仍待实机完成，因此总项保持未勾选。
+47. [x] `P2-CURSOR-SMOOTHING`：在平台 latest-value 与模型参数之间恢复帧率无关的光标平滑。
+    - 依赖：正式 cursor transport、可注入 `MonotonicClock` 和 display-relative normalization。
+    - 退出条件：60 FPS 单帧保持 `0.75` 剩余距离，不同 tick 切分产生相同结果，逻辑距离
+      `< 0.5` 后精确收敛；首样本与 viewport 变化不产生跨屏漂移；无新 sample 时周期 tick
+      继续推进，raw cursor diagnostics 与可靠 edge 队列语义不变；runtime 定向测试与完整
+      Native workspace 门禁通过。
+    - 验收证据（2026-09-04）：`CursorSmoother` 使用注入单调时间换算指数衰减，runtime worker
+      在 command、timeout 和 shutdown 边界统一消费/推进；单元测试覆盖帧率独立、首样本与
+      viewport 切换，集成测试使用 `ManualClock` 验证连续 tick 的 `0.25 -> 0.4375` 参数轨迹。
 
 ## 13. 待决策清单
 

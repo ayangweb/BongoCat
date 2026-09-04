@@ -24,11 +24,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use cursor::CursorSlot;
 pub use cursor::{
     CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorSampleError,
     CursorSnapshot, CursorTransportDiagnostics, CursorViewport, NormalizedCursorPosition,
 };
+use cursor::{CursorSlot, CursorSmoother};
 use gamepad::{DEFAULT_GAMEPAD_AXIS_CAPACITY, GamepadAxisSlot};
 pub use gamepad::{
     GamepadAxisProducer, GamepadAxisPublishError, GamepadAxisSample, GamepadAxisSettings,
@@ -1338,6 +1338,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
     let mut active_expression = None;
     let mut input_state = InputState::default();
     let mut input_bindings = InputBindings::default();
+    let mut cursor_smoother = CursorSmoother::default();
     let mut normalized_cursor = NormalizedCursorPosition::default();
     let mut gamepad_axis_values = GamepadAxisValues::default();
     let mut gamepad_axis_settings = GamepadAxisSettings::default();
@@ -1400,7 +1401,9 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                     &snapshot,
                     &input_state,
                     &input_bindings,
+                    &mut cursor_smoother,
                     &mut normalized_cursor,
+                    clock.now(),
                 );
                 consume_gamepad_axes(
                     &gamepad_axis_slot,
@@ -1798,7 +1801,9 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                     &snapshot,
                     &input_state,
                     &input_bindings,
+                    &mut cursor_smoother,
                     &mut normalized_cursor,
+                    clock.now(),
                 );
                 consume_gamepad_axes(
                     &gamepad_axis_slot,
@@ -1843,7 +1848,9 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
         &snapshot,
         &input_state,
         &input_bindings,
+        &mut cursor_smoother,
         &mut normalized_cursor,
+        clock.now(),
     );
     gamepad_axis_values.clear();
     gamepad_axis_slot.stop();
@@ -2123,14 +2130,23 @@ fn consume_cursor(
     snapshot: &SnapshotCell,
     input_state: &InputState,
     input_bindings: &InputBindings,
+    smoother: &mut CursorSmoother,
     normalized_cursor: &mut NormalizedCursorPosition,
+    now: Duration,
 ) {
-    let Some(sample) = cursor_slot.take() else {
+    let sample = cursor_slot.take();
+    if let Some(sample) = sample {
+        smoother.set_target(sample, now);
+    }
+    let advanced = smoother.advance(now);
+    if sample.is_none() && !advanced {
         return;
-    };
-    *normalized_cursor = sample.normalized();
+    }
+    *normalized_cursor = smoother.normalized();
     publish(snapshot, |current| {
-        current.cursor.sample = Some(sample);
+        if let Some(sample) = sample {
+            current.cursor.sample = Some(sample);
+        }
         current.model_input = input_state.model_snapshot(input_bindings, *normalized_cursor);
     });
 }
@@ -2830,6 +2846,52 @@ mod tests {
         assert_eq!(snapshot.model_input.pointer_x, 0.5);
         assert!((snapshot.model_input.pointer_y - 0.2).abs() < f32::EPSILON);
         assert!((snapshot.model_input.pointer_z + 0.1).abs() < f32::EPSILON);
+        owner.shutdown(TIMEOUT).expect("clean shutdown");
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn runtime_smooths_cursor_with_the_injected_monotonic_clock() {
+        let clock = Arc::new(ManualClock::default());
+        let (owner, _render_consumer) =
+            RuntimeOwner::start_with_rendering_and_clock(true, 4, clock.clone());
+        let client = owner.client();
+        client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+        let cursor = owner.cursor_producer();
+
+        cursor
+            .publish(cursor_sample(50.0, 50.0, 0))
+            .expect("initial cursor accepted");
+        client
+            .wait_for_cursor_samples(1, TIMEOUT)
+            .expect("initial cursor consumed");
+        cursor
+            .publish(cursor_sample(0.0, 50.0, 1))
+            .expect("target cursor accepted");
+        let targeted = client
+            .wait_for_cursor_samples(2, TIMEOUT)
+            .expect("target cursor consumed");
+        assert_eq!(targeted.model_input.pointer_x, 0.0);
+
+        let frame = Duration::from_secs_f64(1.0 / 60.0);
+        clock.set(frame);
+        let first_tick = client
+            .send(RuntimeCommand::Tick)
+            .expect("first tick accepted");
+        let first = client
+            .wait_for_command(first_tick, TIMEOUT)
+            .expect("first tick applied");
+        assert!((first.model_input.pointer_x - 0.25).abs() < 1e-6);
+
+        clock.set(frame * 2);
+        let second_tick = client
+            .send(RuntimeCommand::Tick)
+            .expect("second tick accepted");
+        let second = client
+            .wait_for_command(second_tick, TIMEOUT)
+            .expect("second tick applied");
+        assert!((second.model_input.pointer_x - 0.4375).abs() < 1e-6);
+
         owner.shutdown(TIMEOUT).expect("clean shutdown");
     }
 

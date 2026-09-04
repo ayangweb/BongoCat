@@ -39,6 +39,19 @@ pointer_z = clamp(-pointer_x * pointer_y, -1, 1)
 
 该方向与现有模型语义一致：显示器左上角为 `(1, 1)`，右下角为 `(-1, -1)`。viewport 必须有限且宽高为正；无效几何和单调时间回退必须拒绝并计数，不得向模型传播 `NaN` 或无穷值。
 
+Runtime 以可注入单调时钟在逻辑坐标中平滑最新目标。平滑沿用旧版在 60 FPS 下每帧保留
+`0.75` 剩余距离的语义，并按实际时间步长换算：
+
+```text
+alpha = 1 - 0.75 ^ (elapsed_seconds * 60)
+current = current + (target - current) * alpha
+```
+
+插值后与目标的逻辑距离小于 `0.5` 时直接收敛。首个有效样本不从屏幕中心插值；viewport
+变化时直接对齐新目标，避免把旧显示器坐标系带入新显示器。没有新 cursor sample 时 runtime
+仍在周期 tick 推进现有目标，renderer 和模型参数只消费平滑位置；原始最新 sample 继续用于
+transport accounting 和诊断。
+
 单槽 cursor transport 的每个 accepted sample 最终必须满足以下守恒关系：
 
 ```text
