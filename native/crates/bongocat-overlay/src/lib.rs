@@ -11,7 +11,9 @@ mod windows;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_platform::PlatformInputServiceStatus;
 use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError, ShortcutDispatcher};
-use bongocat_render::{CanvasInfo, RenderConsumer, RenderTransportDiagnostics};
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use bongocat_render::CanvasInfo;
+use bongocat_render::{RenderConsumer, RenderTransportDiagnostics};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_runtime::PlatformInputDiagnosticsProducer;
 use bongocat_runtime::{
@@ -20,8 +22,10 @@ use bongocat_runtime::{
 use std::{fmt, path::Path, time::Duration};
 
 pub const DEFAULT_OVERLAY_WINDOW_WIDTH: u32 = 350;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 const MIN_OVERLAY_WINDOW_DIMENSION: f32 = 64.0;
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn default_overlay_window_dimensions(canvas: CanvasInfo) -> (f32, f32) {
     let canvas_width = canvas.width.max(MIN_OVERLAY_WINDOW_DIMENSION);
     let canvas_height = canvas.height.max(MIN_OVERLAY_WINDOW_DIMENSION);
