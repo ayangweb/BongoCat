@@ -134,11 +134,16 @@ fn initial_window_bounds(
     window_state: &SettingsWindowState,
     cx: &App,
 ) -> (WindowBounds, Option<DisplayId>) {
+    let content_top_inset = bongocat_platform::window_content_top_inset();
     let centered = || {
         let window_size = size(px(WINDOW_WIDTH), px(WINDOW_HEIGHT));
         let Some(display) = bongocat_platform::current_display_bounds() else {
+            let bounds = Bounds::centered(None, window_size, cx);
             return (
-                WindowBounds::Windowed(Bounds::centered(None, window_size, cx)),
+                WindowBounds::Windowed(Bounds::new(
+                    point(bounds.origin.x, bounds.origin.y - px(content_top_inset)),
+                    bounds.size,
+                )),
                 None,
             );
         };
@@ -146,7 +151,10 @@ fn initial_window_bounds(
         let global_y = display.y + (display.height - WINDOW_HEIGHT) / 2.0;
         let (x, y) = bongocat_platform::local_window_origin(display, global_x, global_y);
         (
-            WindowBounds::Windowed(Bounds::new(point(px(x), px(y)), window_size)),
+            WindowBounds::Windowed(Bounds::new(
+                point(px(x), px(y - content_top_inset)),
+                window_size,
+            )),
             gpui_display_id(display.display_id, cx),
         )
     };
@@ -164,7 +172,7 @@ fn initial_window_bounds(
     let (x, y) =
         bongocat_platform::local_window_origin(display, placement.x as f32, placement.y as f32);
     let bounds = Bounds::new(
-        point(px(x), px(y)),
+        point(px(x), px(y - content_top_inset)),
         size(px(placement.width as f32), px(placement.height as f32)),
     );
     let bounds = if placement.maximized {
@@ -191,18 +199,20 @@ fn placement_from_window(window: &Window, cx: &App) -> Option<SettingsWindowPlac
         WindowBounds::Fullscreen(_) => return None,
     };
     let bounds = window_bounds.get_bounds();
+    let content_top_inset = bongocat_platform::window_content_top_inset();
     let (x, y) = bongocat_platform::global_window_origin(
         window
             .display(cx)
             .and_then(|display| u32::try_from(u64::from(display.id())).ok()),
         f32::from(bounds.origin.x),
-        f32::from(bounds.origin.y),
+        f32::from(bounds.origin.y) + content_top_inset,
     );
+    let height = f32::from(bounds.size.height) - content_top_inset;
     SettingsWindowPlacement::new(
         rounded_f32_i32(x)?,
         rounded_f32_i32(y)?,
         rounded_u32(bounds.size.width)?,
-        rounded_u32(bounds.size.height)?,
+        rounded_u32(Pixels::from(height))?,
         maximized,
     )
 }

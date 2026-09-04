@@ -78,6 +78,11 @@ const SERVICE_TIMEOUT: Duration = Duration::from_secs(2);
 const FINAL_RESET_ATTEMPTS: usize = 20;
 const FINAL_RESET_RETRY: Duration = Duration::from_millis(5);
 
+/// Windows reports GPUI window bounds in client coordinates, so no chrome conversion is needed.
+pub fn window_content_top_inset() -> f32 {
+    0.0
+}
+
 const XINPUT_ERROR_SUCCESS: u32 = 0;
 const XINPUT_ERROR_DEVICE_NOT_CONNECTED: u32 = 1167;
 const XINPUT_GAMEPAD_DPAD_UP: u16 = 0x0001;

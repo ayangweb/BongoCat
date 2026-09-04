@@ -10,9 +10,14 @@ use bongocat_runtime::{
     InputEvent, InputProducer, InputPublishError, InputResetReason, InputSource, MonotonicMillis,
     MouseButton, PhysicalKey, PlatformInputDiagnosticsProducer,
 };
-use objc2::rc::{Retained, autoreleasepool};
+use objc2::{
+    MainThreadMarker,
+    rc::{Retained, autoreleasepool},
+};
+use objc2_app_kit::{NSWindow, NSWindowStyleMask};
 use objc2_core_foundation::{
-    CFMachPort, CFRetained, CFRunLoop, CFRunLoopSource, CGPoint, kCFRunLoopDefaultMode,
+    CFMachPort, CFRetained, CFRunLoop, CFRunLoopSource, CGPoint, CGRect, CGSize,
+    kCFRunLoopDefaultMode,
 };
 use objc2_core_graphics::{
     CGDirectDisplayID, CGDisplayBounds, CGError, CGEvent, CGEventField, CGEventFlags, CGEventMask,
@@ -163,6 +168,32 @@ impl Drop for WorkspaceLifecycleObserver {
 const CAPTURE_QUEUE_CAPACITY: usize = 256;
 const RUN_LOOP_SLICE: Duration = Duration::from_millis(10);
 const RECONCILIATION_INTERVAL: Duration = Duration::from_millis(250);
+
+/// Returns the vertical chrome AppKit adds above a standard titled content rectangle.
+pub fn window_content_top_inset() -> f32 {
+    let Some(marker) = MainThreadMarker::new() else {
+        return 0.0;
+    };
+    let content = CGRect {
+        origin: CGPoint { x: 0.0, y: 0.0 },
+        size: CGSize {
+            width: 0.0,
+            height: 0.0,
+        },
+    };
+    let style = NSWindowStyleMask::Titled
+        | NSWindowStyleMask::Closable
+        | NSWindowStyleMask::Resizable
+        | NSWindowStyleMask::Miniaturizable;
+    let frame = NSWindow::frameRectForContentRect_styleMask(content, style, marker);
+    let inset = (frame.size.height - content.size.height) as f32;
+    if inset.is_finite() {
+        inset.max(0.0)
+    } else {
+        0.0
+    }
+}
+
 const REQUIRED_MISSING_CONFIRMATIONS: u8 = 2;
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
 const SERVICE_TIMEOUT: Duration = Duration::from_secs(2);
