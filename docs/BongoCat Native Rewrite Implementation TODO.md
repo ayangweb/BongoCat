@@ -2263,7 +2263,7 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       CI run `33882985949` 全绿；Windows Native job `101055885362` 通过完整 workspace、release 产品
       smoke 并输出 `taskbar icon toggled and restored`，macOS job `101055885548` 同时证明该 Windows
       控件未泄漏且原有 system-menu 生命周期无回归，退出条件满足。
-57. [ ] `P5-APPLICATION-LANGUAGE`：建立当前 v1 应用语言设置和首批中英 Native 本地化闭环。
+57. [x] `P5-APPLICATION-LANGUAGE`：建立当前 v1 应用语言设置和首批中英 Native 本地化闭环。
     - 依赖：当前 v1 `appearance.language`、settings revision/CAS、平台 locale API、GPUI Kit
       Select 和项目辅助功能桥。
     - 退出条件：`system`、`zh-CN`、`en-US` 使用闭合 enum 并拒绝未知持久化值；跟随系统仅解析
@@ -2272,6 +2272,13 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       AX/UIA 语义即时切换；定向测试、共享 schema/fixture、完整 Native workspace 与双平台 release
       settings smoke 通过。其它三种历史语言和完整 Models/Diagnostics/General 文案仍由 UI 质量
       总项继续跟踪。
+    - 验收证据（2026-09-05）：commit `74a9460` 完成当前 v1 闭合语言枚举、严格 schema/fixture、
+      双平台系统首选 locale adapter、revision-checked typed command、原子持久化、GPUI Kit Select、
+      窗口标题/导航/Appearance/runtime status 中英文切换和项目 AccessKit 语义；commit `9505fb2`
+      同步修正隔离 config-store contract 的默认值。CI run `33893896502` 全绿；Windows/macOS/Ubuntu
+      Native jobs `101091871906`/`101091871884`/`101091871820` 均通过语言解析、持久化、重启、
+      stale revision、UI contract、完整 workspace test、严格 Clippy 与 release check，Windows/macOS
+      release settings smoke 同时通过。其它三种历史语言和剩余页面文案仍由 UI 质量总项跟踪。
 
 ## 13. 待决策清单
 
