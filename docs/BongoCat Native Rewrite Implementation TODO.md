@@ -2342,7 +2342,7 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       release test 实际执行通过；重复的 app-only debug Clippy 在无 CPU 的 rustc metadata 阶段被
       中断，生产代码与原测试此前已通过的严格 workspace Clippy 结果不受影响。
 
-62. [ ] `P2-KEY-RELEASE-FALLBACK`：让当前 v1 的按键释放兜底超时作用于正式 runtime。
+62. [x] `P2-KEY-RELEASE-FALLBACK`：让当前 v1 的按键释放兜底超时作用于正式 runtime。
     - 依赖：ADR-0004、可注入 runtime 单调时钟、可靠 input queue、平台 reconcile/reset、当前 v1
       `model.release_fallback_timeout_ms` 和 settings revision/CAS。
     - 退出条件：仅 captured keyboard control 在 normal release、reconcile 与 Reset 均未清理时按
@@ -2350,12 +2350,16 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       跨时钟原点比较；fallback release 有独立匿名诊断；typed command/snapshot、原子持久化、重启
       恢复、stale/越界拒绝、GPUI Kit 数字控件、中英文案与 AX/UIA stepper 语义完成；定向测试、
       完整 Native workspace 门禁和双平台 CI 通过。
-    - 状态（2026-09-05）：runtime、Application/settings、GPUI Kit 数字控件、中英文案、AccessKit
-      stepper 和匿名 diagnostics 已接通；定向 release 测试、format、严格 release workspace
-      Clippy、release check、共享 schema/fixture/input runner 与隔离 macOS release settings/state
-      smoke 均通过。无 debuginfo 的完整 workspace unit/integration tests 全部通过；Rust 1.97.1
-      本机 `rustdoc bongocat_app` 复现既有零 CPU 停滞并中断。总项等待本次 Windows/macOS CI 的完整
-      workspace 与 UIA/AX smoke 证据后勾选。
+    - 验收证据（2026-09-05）：runtime、Application/settings、GPUI Kit 数字控件、中英文案、
+      AccessKit stepper 和匿名 diagnostics 已接通；定向 release 测试、format、严格 release
+      workspace Clippy、release check、共享 schema/fixture/input runner 与隔离 macOS release
+      settings/state smoke 均通过。无 debuginfo 的完整 workspace unit/integration tests 全部通过；
+      Rust 1.97.1 本机 `rustdoc bongocat_app` 复现既有零 CPU 停滞并中断。首次 Windows CI 发现专测
+      reconcile 的 smoke 与默认 `500 ms` fallback 在第二次 `250 ms` 校正点竞争；commit `6107b6f`
+      在该 smoke 显式禁用 fallback，避免用兜底释放冒充 reconcile。run `33928914217` 全部 23 个
+      job 通过；Windows workspace job `101203309507` 与 macOS job `101203309682` 均通过完整
+      workspace、release 产品 lifecycle 和设置窗口 AX/UIA smoke，Windows formal missing-release
+      recovery 也以独立 reconcile 路径通过。
 
 ## 13. 待决策清单
 
