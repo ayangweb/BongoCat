@@ -219,9 +219,14 @@ jobs:
           1..5 | ForEach-Object {
             $stdout = Join-Path $env:RUNNER_TEMP "bongocat-product-$_.stdout.log"
             $stderr = Join-Path $env:RUNNER_TEMP "bongocat-product-$_.stderr.log"
+            $arguments = if ($_ -eq 1) {
+              @("--run-seconds", "30")
+            } else {
+              @("--run-seconds", "30", "--settings-window-smoke", "--models-page-smoke")
+            }
             $process = Start-Process `
               -FilePath $executable `
-              -ArgumentList @("--run-seconds", "30", "--settings-window-smoke", "--models-page-smoke") `
+              -ArgumentList $arguments `
               -NoNewWindow `
               -PassThru `
               -RedirectStandardOutput $stdout `
