@@ -7,6 +7,8 @@ pub fn open_settings_window(
     cx: &mut App,
 ) -> Result<SettingsWindowHandle, String> {
     let (window_bounds, display_id) = initial_window_bounds(&window_state, cx);
+    let initial_content_size = window_bounds.get_bounds().size;
+    let normalize_initial_content_size = matches!(window_bounds, WindowBounds::Windowed(_));
     let accessibility_error = Rc::new(RefCell::new(None));
     let open_accessibility_error = Rc::clone(&accessibility_error);
     let settings_view = Rc::new(RefCell::new(None));
@@ -35,11 +37,6 @@ pub fn open_settings_window(
                         install_component_theme(window, cx);
                     })
                     .detach();
-                if let Some(placement) = placement_from_window(window, cx)
-                    && let Some(revision) = window_state.update(placement)
-                {
-                    let _ = window_state.request_persist_if_current(revision);
-                }
                 let request_quit = Rc::new(request_quit);
                 let view = cx.new(|cx| {
                     let observed_window_state = window_state.clone();
@@ -108,6 +105,14 @@ pub fn open_settings_window(
                 }
                 let overlay_focus = view.read(cx).overlay_focus.clone();
                 window.focus(&overlay_focus, cx);
+                if normalize_initial_content_size && window.viewport_size() != initial_content_size
+                {
+                    window.resize(initial_content_size);
+                } else if let Some(placement) = placement_from_window(window, cx)
+                    && let Some(revision) = window_state.update(placement)
+                {
+                    let _ = window_state.request_persist_if_current(revision);
+                }
                 if open_accessibility_error.borrow().is_none() {
                     window.activate_window();
                 }
@@ -134,7 +139,7 @@ fn initial_window_bounds(
     window_state: &SettingsWindowState,
     cx: &App,
 ) -> (WindowBounds, Option<DisplayId>) {
-    let content_top_inset = bongocat_platform::window_content_top_inset();
+    let content_top_inset = settings_window_content_top_inset();
     let centered = || {
         let window_size = size(px(WINDOW_WIDTH), px(WINDOW_HEIGHT));
         let Some(display) = bongocat_platform::current_display_bounds() else {
@@ -199,7 +204,8 @@ fn placement_from_window(window: &Window, cx: &App) -> Option<SettingsWindowPlac
         WindowBounds::Fullscreen(_) => return None,
     };
     let bounds = window_bounds.get_bounds();
-    let content_top_inset = bongocat_platform::window_content_top_inset();
+    let content_size = window.viewport_size();
+    let content_top_inset = settings_window_content_top_inset();
     let (x, y) = bongocat_platform::global_window_origin(
         window
             .display(cx)
@@ -207,14 +213,24 @@ fn placement_from_window(window: &Window, cx: &App) -> Option<SettingsWindowPlac
         f32::from(bounds.origin.x),
         f32::from(bounds.origin.y) + content_top_inset,
     );
-    let height = f32::from(bounds.size.height) - content_top_inset;
     SettingsWindowPlacement::new(
         rounded_f32_i32(x)?,
         rounded_f32_i32(y)?,
-        rounded_u32(bounds.size.width)?,
-        rounded_u32(Pixels::from(height))?,
+        rounded_u32(content_size.width)?,
+        rounded_u32(content_size.height)?,
         maximized,
     )
+}
+
+fn settings_window_content_top_inset() -> f32 {
+    #[cfg(target_os = "macos")]
+    {
+        bongocat_platform::window_content_top_inset()
+    }
+    #[cfg(target_os = "windows")]
+    {
+        0.0
+    }
 }
 
 fn rounded_f32_i32(value: f32) -> Option<i32> {

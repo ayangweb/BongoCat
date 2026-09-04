@@ -716,14 +716,29 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
             };
         cx.spawn(async move |cx| {
             let result = async {
-                let initial = window_state.placement();
-                if initial.is_none_or(|placement| placement.x == 999_000 && placement.y == 999_000)
-                {
-                    return Err(io::Error::other(
-                        "offscreen settings window state did not fall back to a visible display",
-                    )
-                    .into());
+                let mut initial = None;
+                let mut last_initial = window_state.placement();
+                for _ in 0..200 {
+                    let current = window_state.placement();
+                    last_initial = current;
+                    if current.is_some_and(|placement| {
+                        placement.x != 999_000
+                            && placement.y != 999_000
+                            && (placement.width, placement.height) == (800, 600)
+                    }) {
+                        initial = current;
+                        break;
+                    }
+                    Timer::after(Duration::from_millis(10)).await;
                 }
+                let initial = initial.ok_or_else(|| {
+                    let size = last_initial
+                        .map(|placement| format!("{}x{}", placement.width, placement.height))
+                        .unwrap_or_else(|| "unavailable".to_owned());
+                    io::Error::other(format!(
+                        "default settings window content size was {size}, expected 800x600"
+                    ))
+                })?;
                 window
                     .update(cx, |_, window, _| {
                         window.resize(size(px(920.0), px(680.0)));
@@ -734,7 +749,9 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
                 let mut expected = None;
                 for _ in 0..200 {
                     let current = window_state.placement();
-                    if current.is_some() && current != initial {
+                    if current
+                        .is_some_and(|placement| (placement.width, placement.height) == (920, 680))
+                    {
                         expected = current;
                         break;
                     }
@@ -743,6 +760,14 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
                 let expected = expected.ok_or_else(|| {
                     io::Error::other("settings window bounds observer did not publish resize")
                 })?;
+                if (expected.x, expected.y, expected.maximized)
+                    != (initial.x, initial.y, initial.maximized)
+                {
+                    return Err(io::Error::other(
+                        "resizing settings window changed its position or maximized state",
+                    )
+                    .into());
+                }
                 client
                     .shutdown()
                     .await

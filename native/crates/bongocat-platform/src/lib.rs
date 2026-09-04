@@ -72,7 +72,7 @@ pub use windows::WindowsInputService;
 pub use windows::{
     NativeWindowError, current_display_bounds, display_bounds_for_window, global_window_origin,
     hide_native_window, local_window_origin, request_native_window_close, show_native_window,
-    terminate_after_product_shutdown, window_content_top_inset,
+    terminate_after_product_shutdown,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
