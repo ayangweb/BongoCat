@@ -870,12 +870,13 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     commits `0ea8997`、`5f5c9aa` 和 `2f8999e` 的 GitHub Actions run `33860274701` 已在 macOS job
     `100982884758` 与 Windows job `100982884958` 通过完整 workspace 和产品 lifecycle smoke，
     Windows smoke 包含真实 D3D11 present 后 `ShowWindow` 时序。
-- [ ] shutdown 先停 frame source，再释放 GPU/window。
-  - 状态（2026-09-04）：产品 coordinator 已加入共享 stop request 与 run-guard acknowledgement；
+- [x] shutdown 先停 frame source，再释放 GPU/window。
+  - 验收证据（2026-09-04）：产品 coordinator 使用共享 stop request 与 run-guard acknowledgement；
     shutdown 在停止 input producer 后有界等待 frame source guard 退出，未确认会记录稳定匿名错误，
-    runtime/config/audio shutdown 与 renderer/GPU/window 释放只在该等待之后执行。本机单元测试、
-    完整 workspace 门禁、macOS release settings/Models lifecycle 与隐藏切模 smoke 已通过；双平台
-    产品 lifecycle runner 证据待补，因此保持未勾选。
+    runtime/config/audio shutdown 与 renderer/GPU/window 释放只在该等待之后执行。commit `99f0977`
+    的本机单元测试、完整 workspace 门禁、macOS release settings/Models lifecycle 与隐藏切模 smoke
+    通过；包含后续 Windows overlay 修复的 run `33865854261` 又在 macOS job `101000445151` 与
+    Windows job `101000445117` 通过完整 release lifecycle 和有序 shutdown。
 - [ ] 明确 sRGB/linear、预乘 alpha 和 texture color space，避免两平台颜色或边缘混合语义漂移。
 - [ ] present 失败、窗口隐藏和 drawable unavailable 时限流，不产生 busy loop 或日志风暴。
 
@@ -2147,27 +2148,31 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       固定 `100 ms`，可见时恢复目标间隔，非法值仍拒绝；runtime `recv_timeout` 与 GPUI 产品 frame
       source 消费同一策略，可靠 command 到达会提前结束 runtime 等待。边界单测覆盖最低/最高 FPS
       的隐藏策略。
-50. [ ] `P2-HIDDEN-MODEL-COMMIT`：overlay 隐藏时模型切换仍须完成 GPU prepare/commit。
+50. [x] `P2-HIDDEN-MODEL-COMMIT`：overlay 隐藏时模型切换仍须完成 GPU prepare/commit。
     - 依赖：可靠 model commit frame 槽、隐藏 `100 ms` 调度和首帧 presentation contract。
     - 退出条件：隐藏 tick 只消费可靠模型提交，保留同 generation 的 ordinary latest frame 并
       淘汰已被候选 supersede 的旧 generation data frame；候选完成一次隐藏
       draw/present 验证后提交且窗口保持隐藏；失败保留旧 GPU owner；重显先同步 latest frame 并
       present 后才显示；双平台产品 smoke、完整 Native workspace 门禁通过。
-    - 状态（2026-09-04）：`RenderConsumer::take_model_commit` 已隔离 control/data 消费，双平台
+    - 验收证据（2026-09-04）：`RenderConsumer::take_model_commit` 已隔离 control/data 消费，双平台
       product tick 已实现隐藏候选验证和可见前再次 present。本机 macOS release 产品 smoke 已
       完成隐藏切模、GPU generation 前进、保持不可见、重显及恢复原模型。Windows runner 随后
       发现候选 overlay 与旧窗口重叠时把专用 Win32 class 已注册误判为创建失败；Windows owner
       现接受同进程 `ERROR_CLASS_ALREADY_EXISTS` 并以双隐藏窗口回归固定 prepare/rollback 所需的
-      重叠生命周期。更新后的 Windows runner 与完整 workspace 证据待补，因此保持未勾选。
-51. [ ] `P3-FRAME-SOURCE-SHUTDOWN`：产品退出必须确认 frame source 停止后再释放 renderer。
+      重叠生命周期。commit `7082ff3` 的修复由 run `33865854261` 的 Windows job `101000445117`
+      通过隐藏切模、transactional D3D11 切模、release 产品 lifecycle 与完整 workspace 门禁；同一
+      run 的 macOS job `101000445151` 通过对等隐藏切模和 Metal lifecycle。
+51. [x] `P3-FRAME-SOURCE-SHUTDOWN`：产品退出必须确认 frame source 停止后再释放 renderer。
     - 依赖：app coordinator、双平台产品 frame source、runtime/config/audio shutdown owner。
     - 退出条件：先阻止新 tick 并停止 input producer；frame task 正常退出或被取消均发送 ack；
       未收到 ack 时产生稳定匿名失败而非静默继续；runtime/config/audio shutdown 及
       renderer/GPU/window 释放发生在 ack 等待之后；单元测试、双平台 release lifecycle smoke
       与完整 Native workspace 门禁通过。
-    - 状态（2026-09-04）：共享 stop/ack 与 RAII run guard 已接入产品 coordinator 和 frame task；
+    - 验收证据（2026-09-04）：共享 stop/ack 与 RAII run guard 已接入产品 coordinator 和 frame task；
       本机 format、严格 Clippy、workspace test、release check、macOS release settings/Models
-      lifecycle 与隐藏切模 smoke 已通过；双平台 runner 证据待补，因此保持未勾选。
+      lifecycle 与隐藏切模 smoke 已通过。commit `99f0977` 随 commit `7082ff3` 和 CI race 修复进入
+      run `33865854261`；macOS job `101000445151` 与 Windows job `101000445117` 均通过完整
+      workspace、release 产品 lifecycle、隐藏模型提交和 shutdown smoke，退出条件满足。
 
 ## 13. 待决策清单
 
