@@ -886,6 +886,7 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
         ApplicationState, BuildEnvironment, ConfigStore, Language, StateStore, StorageLayout,
         Theme, WindowPlacement,
     };
+    use bongocat_ui::SettingsLanguage;
 
     const RESIZED_WIDTH: u32 = 700;
     const RESIZED_HEIGHT: u32 = 520;
@@ -941,7 +942,18 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
                 let mut last_general_error = None;
                 for _ in 0..200 {
                     let general =
-                        window.update(cx, |view, _, cx| view.show_general_page_for_smoke(cx));
+                        window.update(cx, |view, _, cx| {
+                            view.show_general_page_for_smoke(cx)?;
+                            if view.resolved_language_for_smoke()
+                                != Some(SettingsLanguage::ChineseSimplified)
+                            {
+                                return Err(
+                                    "settings snapshot did not resolve Simplified Chinese"
+                                        .to_owned(),
+                                );
+                            }
+                            Ok(())
+                        });
                     match general {
                         Ok(Ok(())) => {
                             general_verified = true;
@@ -961,6 +973,32 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
                     .into());
                 }
                 write_smoke_status("Chinese General localization verified")?;
+                let mut models_verified = false;
+                let mut last_models_error = None;
+                for _ in 0..200 {
+                    let models =
+                        window.update(cx, |view, _, cx| {
+                            view.show_models_localization_for_smoke(cx)
+                        });
+                    match models {
+                        Ok(Ok(())) => {
+                            models_verified = true;
+                            break;
+                        }
+                        Ok(Err(error)) => last_models_error = Some(error),
+                        Err(error) => last_models_error = Some(error.to_string()),
+                    }
+                    Timer::after(Duration::from_millis(10)).await;
+                }
+                if !models_verified {
+                    let detail = last_models_error
+                        .unwrap_or_else(|| "settings view was unavailable".to_owned());
+                    return Err(io::Error::other(format!(
+                        "settings window did not apply Models localization: {detail}"
+                    ))
+                    .into());
+                }
+                write_smoke_status("Chinese Models localization verified")?;
                 let mut initial = None;
                 let mut last_initial = window_state.placement();
                 for _ in 0..200 {

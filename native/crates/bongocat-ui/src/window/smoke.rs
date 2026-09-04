@@ -12,6 +12,12 @@ impl SettingsView {
         self.snapshot.as_ref().map(|snapshot| snapshot.revision)
     }
 
+    pub fn resolved_language_for_smoke(&self) -> Option<SettingsLanguage> {
+        self.snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.resolved_language)
+    }
+
     pub fn window_hidden(&self) -> bool {
         self.window_hidden
     }
@@ -43,6 +49,7 @@ impl SettingsView {
         if !active_actions.active || active_actions.can_activate || active_actions.can_delete {
             return Err("models page did not protect the active model row".to_owned());
         }
+        self.verify_models_localization_for_smoke(snapshot, active_entry, true)?;
 
         let mut has_activation_target = false;
         for entry in &snapshot.model_catalog.entries {
@@ -61,6 +68,78 @@ impl SettingsView {
         }
         if !has_activation_target {
             return Err("models page has no ready inactive activation target".to_owned());
+        }
+        Ok(())
+    }
+
+    pub fn show_models_localization_for_smoke(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        self.page = SettingsPage::Models;
+        cx.notify();
+        let snapshot = self
+            .snapshot
+            .as_ref()
+            .ok_or_else(|| "models page has not received a settings snapshot".to_owned())?;
+        if snapshot.model_catalog.error.is_some() {
+            return Err("models page received a catalog error".to_owned());
+        }
+        let entry = snapshot
+            .model_catalog
+            .entries
+            .first()
+            .ok_or_else(|| "models page catalog is empty".to_owned())?;
+        let active = snapshot
+            .active_model
+            .as_ref()
+            .is_some_and(|active| active.origin == entry.origin && active.id == entry.id);
+        self.verify_models_localization_for_smoke(snapshot, entry, active)
+    }
+
+    fn verify_models_localization_for_smoke(
+        &self,
+        snapshot: &SettingsSnapshot,
+        entry: &SettingsModelEntry,
+        active: bool,
+    ) -> Result<(), String> {
+        let language = snapshot.resolved_language;
+        let status = model_availability_status(entry, active, language);
+        let expected_origin = ui_text(
+            language,
+            match entry.origin {
+                SettingsModelOrigin::Preset => UiText::Preset,
+                SettingsModelOrigin::Installed => UiText::Installed,
+            },
+        );
+        if !status.contains(expected_origin)
+            || (active && !status.contains(ui_text(language, UiText::Active)))
+        {
+            return Err("models page did not localize the model status".to_owned());
+        }
+        let (import_status, import_failed) = model_import_status(&self.model_import, language);
+        if import_failed || import_status != ui_text(language, UiText::NoFolderSelected) {
+            return Err("models page did not localize the initial import status".to_owned());
+        }
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            let tree = self.accessibility_tree();
+            for (id, label) in [
+                (ACCESSIBILITY_MODELS, ui_text(language, UiText::Models)),
+                (ACCESSIBILITY_REFRESH, ui_text(language, UiText::Refresh)),
+                (ACCESSIBILITY_QUIT, ui_text(language, UiText::Quit)),
+            ] {
+                let node = tree
+                    .nodes
+                    .iter()
+                    .find(|node| node.id == id)
+                    .ok_or_else(|| "models page omitted a shell accessibility node".to_owned())?;
+                if node.label != label {
+                    return Err(
+                        "models page and shell accessibility labels were not localized".to_owned(),
+                    );
+                }
+            }
         }
         Ok(())
     }

@@ -320,9 +320,12 @@ impl SettingsView {
         if !disabled {
             taskbar_icon_node = taskbar_icon_node.clickable().focusable();
         }
-        let mut refresh_node =
-            AccessibilityNode::new(ACCESSIBILITY_REFRESH, AccessibilityRole::Button, "Refresh")
-                .disabled(self.refresh_is_disabled());
+        let mut refresh_node = AccessibilityNode::new(
+            ACCESSIBILITY_REFRESH,
+            AccessibilityRole::Button,
+            ui_text(language, UiText::Refresh),
+        )
+        .disabled(self.refresh_is_disabled());
         if !self.refresh_is_disabled() {
             refresh_node = refresh_node.clickable().focusable();
         }
@@ -515,9 +518,13 @@ impl SettingsView {
             restore_shortcuts_node,
             clear_shortcuts_node,
             refresh_node,
-            AccessibilityNode::new(ACCESSIBILITY_QUIT, AccessibilityRole::Button, "Quit")
-                .clickable()
-                .focusable(),
+            AccessibilityNode::new(
+                ACCESSIBILITY_QUIT,
+                AccessibilityRole::Button,
+                ui_text(language, UiText::Quit),
+            )
+            .clickable()
+            .focusable(),
         ];
         nodes.extend(shortcut_nodes);
         if !nodes.iter().any(|node| node.id == focus) {

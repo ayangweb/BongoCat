@@ -90,7 +90,7 @@ impl Render for SettingsView {
             });
         self.sync_shortcut_row_focus(&shortcuts, disabled, cx);
         let status: SharedString = match (&self.error, self.pending, &snapshot) {
-            (Some(error), _, _) => error.to_string().into(),
+            (Some(error), _, _) => settings_error(language, *error).into(),
             (_, Some(PendingOperation::Refresh), _) => ui_text(language, UiText::Refreshing).into(),
             (_, Some(_), _) => ui_text(language, UiText::Saving).into(),
             (_, None, Some(snapshot)) => {
@@ -609,24 +609,30 @@ impl Render for SettingsView {
             ]);
 
         let models_page = SettingPage::new(ui_text(language, UiText::Models))
-            .description("Install, validate and activate Live2D model packages.")
-            .group(SettingGroup::new().title("Model catalog").item(SettingItem::new(
-                "Installed models",
-                SettingField::element({
-                    let view = view_entity.clone();
-                    move |_: &RenderOptions,
-                          window: &mut Window,
-                          app: &mut App| {
-                        let snapshot = view.read(app).snapshot.clone();
-                        let tokens = Tokens::from_theme(app);
-                        view.update(app, move |view, cx| {
-                            view.page = SettingsPage::Models;
-                            models::content(view, window, cx, snapshot.as_ref(), tokens)
-                        })
-                        .into_any_element()
-                    }
-                }),
-            ).layout(Axis::Vertical).description("Import a model folder, validate package safety and choose the active model. Search: import, activate, Live2D.")));
+            .description(ui_text(language, UiText::ModelsDescription))
+            .group(
+                SettingGroup::new()
+                    .title(ui_text(language, UiText::ModelCatalog))
+                    .item(
+                        SettingItem::new(
+                            ui_text(language, UiText::InstalledModels),
+                            SettingField::element({
+                                let view = view_entity.clone();
+                                move |_: &RenderOptions, window: &mut Window, app: &mut App| {
+                                    let snapshot = view.read(app).snapshot.clone();
+                                    let tokens = Tokens::from_theme(app);
+                                    view.update(app, move |view, cx| {
+                                        view.page = SettingsPage::Models;
+                                        models::content(view, window, cx, snapshot.as_ref(), tokens)
+                                    })
+                                    .into_any_element()
+                                }
+                            }),
+                        )
+                        .layout(Axis::Vertical)
+                        .description(ui_text(language, UiText::InstalledModelsDescription)),
+                    ),
+            );
 
         let diagnostics_page = SettingPage::new(ui_text(language, UiText::Diagnostics))
             .description("Inspect runtime health, input reliability and shortcut bindings.")
@@ -662,7 +668,7 @@ impl Render for SettingsView {
             .border_color(tokens.border)
             .child(
                 command_button(
-                    "Refresh",
+                    ui_text(language, UiText::Refresh),
                     &self.refresh_focus,
                     30,
                     window,
@@ -681,12 +687,19 @@ impl Render for SettingsView {
                 })),
             )
             .child(
-                command_button("Quit", &self.quit_focus, 31, window, tokens, false)
-                    .id("quit-application")
-                    .on_click(cx.listener(|view, _, window, cx| {
-                        window.focus(&view.quit_focus, cx);
-                        (view.request_quit)(cx);
-                    })),
+                command_button(
+                    ui_text(language, UiText::Quit),
+                    &self.quit_focus,
+                    31,
+                    window,
+                    tokens,
+                    false,
+                )
+                .id("quit-application")
+                .on_click(cx.listener(|view, _, window, cx| {
+                    window.focus(&view.quit_focus, cx);
+                    (view.request_quit)(cx);
+                })),
             );
 
         div()

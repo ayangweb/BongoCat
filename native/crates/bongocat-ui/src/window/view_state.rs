@@ -39,6 +39,11 @@ impl SettingsView {
             input.set_value(trigger.to_string(), window, cx)
         });
         self.model_id_input.update(cx, |input, cx| {
+            input.set_placeholder(
+                ui_text(snapshot.resolved_language, UiText::ModelId),
+                window,
+                cx,
+            );
             input.set_value(&self.model_import.id, window, cx)
         });
         self.language_select.update(cx, |select, cx| {
@@ -71,7 +76,12 @@ impl SettingsView {
         let overlay_opacity_input = cx.new(|cx| InputState::new(window, cx).placeholder("100"));
         let stick_dead_zone_input = cx.new(|cx| InputState::new(window, cx).placeholder("15"));
         let trigger_dead_zone_input = cx.new(|cx| InputState::new(window, cx).placeholder("0"));
-        let model_id_input = cx.new(|cx| InputState::new(window, cx).placeholder("Model ID"));
+        let model_id_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(ui_text(
+                SettingsLanguage::EnglishUnitedStates,
+                UiText::ModelId,
+            ))
+        });
         let language_select = cx.new(|cx| {
             SelectState::new(
                 SearchableVec::new(

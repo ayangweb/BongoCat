@@ -60,7 +60,10 @@ mod shortcuts;
 mod smoke;
 mod view_state;
 pub use lifecycle::open_settings_window;
-use localization::{UiText, runtime_status, text as ui_text};
+use localization::{
+    UiText, model_availability_summary, model_delete_confirmation, model_import_progress,
+    model_invalid_summary, runtime_status, settings_error, text as ui_text,
+};
 #[cfg(test)]
 mod tests;
 
@@ -859,19 +862,23 @@ fn model_delete_confirmation_is_valid(
             .any(|entry| entry.origin == model.origin && entry.id == model.id)
 }
 
-fn model_availability_status(entry: &SettingsModelEntry, active: bool) -> SharedString {
-    let origin = match entry.origin {
-        SettingsModelOrigin::Preset => "Preset",
-        SettingsModelOrigin::Installed => "Installed",
-    };
-    let active = if active { " · Active" } else { "" };
+fn model_availability_status(
+    entry: &SettingsModelEntry,
+    active: bool,
+    language: SettingsLanguage,
+) -> SharedString {
     match entry.availability {
         SettingsModelAvailability::Ready {
             texture_count,
             expression_count,
             motion_count,
-        } => format!(
-            "{origin}{active} · {texture_count} textures · {expression_count} expressions · {motion_count} motions"
+        } => model_availability_summary(
+            language,
+            entry.origin,
+            active,
+            texture_count,
+            expression_count,
+            motion_count,
         )
         .into(),
         SettingsModelAvailability::Invalid { diagnostic } => {
@@ -883,7 +890,7 @@ fn model_availability_status(entry: &SettingsModelEntry, active: bool) -> Shared
                 | SettingsModelDiagnostic::ModelReferenceInvalid
                 | SettingsModelDiagnostic::ModelReferenceSymlinkEscape
                 | SettingsModelDiagnostic::ModelSymlinkDirectoryUnsupported => {
-                    "Package layout is invalid"
+                    UiText::PackageLayoutInvalid
                 }
                 SettingsModelDiagnostic::ModelFileCountExceeded
                 | SettingsModelDiagnostic::ModelFileTooLarge
@@ -891,74 +898,81 @@ fn model_availability_status(entry: &SettingsModelEntry, active: bool) -> Shared
                 | SettingsModelDiagnostic::ModelPackageDepthExceeded
                 | SettingsModelDiagnostic::ModelPackageSizeExceeded
                 | SettingsModelDiagnostic::ModelTextureDimensionExceeded => {
-                    "Package exceeds safety limits"
+                    UiText::PackageSafetyLimitsExceeded
                 }
                 SettingsModelDiagnostic::ModelJsonInvalid
                 | SettingsModelDiagnostic::ModelUnsupportedVersion => {
-                    "Model definition is unsupported"
+                    UiText::ModelDefinitionUnsupported
                 }
                 SettingsModelDiagnostic::ModelTextureInvalidPng
-                | SettingsModelDiagnostic::ModelTextureMissing => "Texture is invalid",
-                SettingsModelDiagnostic::ModelIoError => "Model files are unavailable",
+                | SettingsModelDiagnostic::ModelTextureMissing => UiText::TextureInvalid,
+                SettingsModelDiagnostic::ModelIoError => UiText::ModelFilesUnavailable,
                 SettingsModelDiagnostic::ModelMocMissing
                 | SettingsModelDiagnostic::ModelResourceInvalid
                 | SettingsModelDiagnostic::ModelResourceMissing
-                | SettingsModelDiagnostic::ModelResourceNotFile => "Model resource is invalid",
+                | SettingsModelDiagnostic::ModelResourceNotFile => UiText::ModelResourceInvalid,
             };
-            format!("{origin} · {diagnostic}").into()
+            model_invalid_summary(language, entry.origin, ui_text(language, diagnostic)).into()
         }
     }
 }
 
-fn model_import_status(draft: &ModelImportDraft) -> (SharedString, bool) {
+fn model_import_status(
+    draft: &ModelImportDraft,
+    language: SettingsLanguage,
+) -> (SharedString, bool) {
     match &draft.state {
-        ModelImportState::Empty => ("No folder selected".into(), false),
-        ModelImportState::Ready => ("Folder selected".into(), false),
-        ModelImportState::Picking => ("Choosing folder...".into(), false),
+        ModelImportState::Empty => (ui_text(language, UiText::NoFolderSelected).into(), false),
+        ModelImportState::Ready => (ui_text(language, UiText::FolderSelected).into(), false),
+        ModelImportState::Picking => (ui_text(language, UiText::ChoosingFolder).into(), false),
         ModelImportState::PickerCancelled if draft.source_root.is_some() => (
-            "Selection cancelled; previous folder retained".into(),
+            ui_text(language, UiText::SelectionCancelledPreviousRetained).into(),
             false,
         ),
-        ModelImportState::PickerCancelled => ("Selection cancelled".into(), false),
+        ModelImportState::PickerCancelled => {
+            (ui_text(language, UiText::SelectionCancelled).into(), false)
+        }
         ModelImportState::PickerFailed(error) => {
             let message = match error {
-                DirectoryPickerError::WrongThread => "Folder picker requires the UI thread",
-                DirectoryPickerError::SelectionInvalid => "Selected folder is unavailable",
+                DirectoryPickerError::WrongThread => UiText::FolderPickerRequiresUiThread,
+                DirectoryPickerError::SelectionInvalid => UiText::SelectedFolderUnavailable,
                 DirectoryPickerError::UnsupportedPlatform
                 | DirectoryPickerError::BackendUnavailable
-                | DirectoryPickerError::SelectionUnavailable => "Folder picker is unavailable",
+                | DirectoryPickerError::SelectionUnavailable => UiText::FolderPickerUnavailable,
             };
-            (message.into(), true)
+            (ui_text(language, message).into(), true)
         }
         ModelImportState::Starting {
             cancel_requested: true,
-        } => ("Cancelling import...".into(), false),
+        } => (ui_text(language, UiText::CancellingImport).into(), false),
         ModelImportState::Starting {
             cancel_requested: false,
-        } => ("Starting import...".into(), false),
+        } => (ui_text(language, UiText::StartingImport).into(), false),
         ModelImportState::Running(monitor) if monitor.is_cancelled() => {
-            ("Cancelling import...".into(), false)
+            (ui_text(language, UiText::CancellingImport).into(), false)
         }
         ModelImportState::Running(monitor) => {
             let progress = monitor.progress();
             let stage = match progress.stage {
-                SettingsModelImportStage::Preparing => "Preparing",
-                SettingsModelImportStage::Copying => "Copying",
-                SettingsModelImportStage::Validating => "Validating",
-                SettingsModelImportStage::Committing => "Committing",
+                SettingsModelImportStage::Preparing => UiText::Preparing,
+                SettingsModelImportStage::Copying => UiText::Copying,
+                SettingsModelImportStage::Validating => UiText::Validating,
+                SettingsModelImportStage::Committing => UiText::Committing,
             };
             (
-                format!(
-                    "{stage} · {} files · {} bytes",
-                    progress.files_copied, progress.bytes_copied
+                model_import_progress(
+                    language,
+                    ui_text(language, stage),
+                    progress.files_copied,
+                    progress.bytes_copied,
                 )
                 .into(),
                 false,
             )
         }
-        ModelImportState::Succeeded => ("Import complete".into(), false),
-        ModelImportState::Failed(error) => (error.to_string().into(), true),
-        ModelImportState::Cancelled => ("Import cancelled".into(), false),
+        ModelImportState::Succeeded => (ui_text(language, UiText::ImportComplete).into(), false),
+        ModelImportState::Failed(error) => (settings_error(language, *error).into(), true),
+        ModelImportState::Cancelled => (ui_text(language, UiText::ImportCancelled).into(), false),
     }
 }
 

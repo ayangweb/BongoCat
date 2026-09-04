@@ -7,7 +7,10 @@ pub(super) fn content(
     snapshot: Option<&SettingsSnapshot>,
     tokens: Tokens,
 ) -> Stateful<Div> {
-    let (import_status, import_failed) = model_import_status(&view.model_import);
+    let language = snapshot.map_or(SettingsLanguage::EnglishUnitedStates, |snapshot| {
+        snapshot.resolved_language
+    });
+    let (import_status, import_failed) = model_import_status(&view.model_import, language);
     let import_running = view.model_import.is_running();
     let picker_open = view.model_import.is_picker_open();
     let model_id_disabled = import_running || picker_open;
@@ -42,23 +45,23 @@ pub(super) fn content(
             );
             let action_tabs = model_row_action_tab_indices(tab_index, confirming_delete);
             let availability = if confirming_delete {
-                format!(
-                    "{} · Confirm deletion",
-                    model_availability_status(&entry, actions.active)
+                model_delete_confirmation(
+                    language,
+                    &model_availability_status(&entry, actions.active, language),
                 )
                 .into()
             } else {
-                model_availability_status(&entry, actions.active)
+                model_availability_status(&entry, actions.active, language)
             };
             let activate_label = if actions.active {
-                "Active"
+                ui_text(language, UiText::Active)
             } else if matches!(
                 entry.availability,
                 SettingsModelAvailability::Invalid { .. }
             ) {
-                "Unavailable"
+                ui_text(language, UiText::Unavailable)
             } else {
-                "Activate"
+                ui_text(language, UiText::Activate)
             };
             let activate_model = model.clone();
             let activate_key_model = model.clone();
@@ -99,7 +102,7 @@ pub(super) fn content(
                     let cancel_key_model = model.clone();
                     actions_row = actions_row.child(
                         command_button(
-                            "Cancel",
+                            ui_text(language, UiText::Cancel),
                             &focus.cancel_delete,
                             action_tabs.cancel_delete,
                             window,
@@ -135,9 +138,9 @@ pub(super) fn content(
                 actions_row = actions_row.child(
                     command_button(
                         if confirming_delete {
-                            "Confirm"
+                            ui_text(language, UiText::Confirm)
                         } else {
-                            "Delete"
+                            ui_text(language, UiText::Delete)
                         },
                         &focus.delete,
                         action_tabs.delete,
@@ -198,11 +201,11 @@ pub(super) fn content(
         .is_some_and(|snapshot| snapshot.model_catalog.error.is_some());
     if model_rows.is_empty() {
         let empty_status = if snapshot.is_none() {
-            "Loading models..."
+            ui_text(language, UiText::LoadingModels)
         } else if catalog_error {
-            "Model catalog is unavailable"
+            ui_text(language, UiText::ModelCatalogUnavailable)
         } else {
-            "No models available"
+            ui_text(language, UiText::NoModelsAvailable)
         };
         model_rows.push(
             GroupBox::new().outline().child(
@@ -220,20 +223,30 @@ pub(super) fn content(
     }
     let (management_status, management_failed): (SharedString, bool) =
         match (&view.error, view.pending, catalog_error) {
-            (Some(error), _, _) => (error.to_string().into(), true),
-            (_, Some(PendingOperation::ModelSelection), _) => ("Activating model...".into(), false),
-            (_, Some(PendingOperation::ModelDeletion), _) => ("Deleting model...".into(), false),
-            (_, Some(PendingOperation::Refresh), _) => ("Refreshing models...".into(), false),
-            (_, _, true) => ("Catalog unavailable".into(), true),
+            (Some(error), _, _) => (settings_error(language, *error).into(), true),
+            (_, Some(PendingOperation::ModelSelection), _) => {
+                (ui_text(language, UiText::ActivatingModel).into(), false)
+            }
+            (_, Some(PendingOperation::ModelDeletion), _) => {
+                (ui_text(language, UiText::DeletingModel).into(), false)
+            }
+            (_, Some(PendingOperation::Refresh), _) => {
+                (ui_text(language, UiText::RefreshingModels).into(), false)
+            }
+            (_, _, true) => (ui_text(language, UiText::CatalogUnavailable).into(), true),
             _ => ("".into(), false),
         };
     let picker_disabled = import_running || picker_open || view.pending.is_some();
     let picker_button_label = if picker_open {
-        "Choosing..."
+        ui_text(language, UiText::Choosing)
     } else {
-        "Choose folder"
+        ui_text(language, UiText::ChooseFolder)
     };
-    let import_button_label = if import_running { "Cancel" } else { "Import" };
+    let import_button_label = if import_running {
+        ui_text(language, UiText::Cancel)
+    } else {
+        ui_text(language, UiText::Import)
+    };
     let import_disabled =
         !import_running && (!view.model_import.can_import() || view.pending.is_some());
     div()
@@ -247,7 +260,7 @@ pub(super) fn content(
         .bg(tokens.canvas)
         .text_color(tokens.text)
         .id("models-content")
-        .child(div().text_2xl().child("Models"))
+        .child(div().text_2xl().child(ui_text(language, UiText::Models)))
         .child(
             GroupBox::new().outline().child(
                 div()
@@ -360,7 +373,11 @@ pub(super) fn content(
                 .justify_between()
                 .gap_3()
                 .text_sm()
-                .child(div().text_color(tokens.muted).child("Available models"))
+                .child(
+                    div()
+                        .text_color(tokens.muted)
+                        .child(ui_text(language, UiText::AvailableModels)),
+                )
                 .child(
                     div()
                         .min_w_0()

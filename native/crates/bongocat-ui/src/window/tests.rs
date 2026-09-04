@@ -361,7 +361,7 @@ fn cancellation_requested_while_starting_reaches_the_created_operation() {
     assert!(!operation.is_cancelled());
     draft.apply_starting_cancellation(&operation);
     assert!(operation.is_cancelled());
-    let (status, failed) = model_import_status(&draft);
+    let (status, failed) = model_import_status(&draft, SettingsLanguage::EnglishUnitedStates);
     assert!(!failed);
     assert_eq!(status, "Cancelling import...");
 }
@@ -373,13 +373,13 @@ fn picker_status_never_contains_the_selected_path() {
         source_root: Some(PathBuf::from("/private/secret/model")),
         state: ModelImportState::PickerCancelled,
     };
-    let (status, failed) = model_import_status(&draft);
+    let (status, failed) = model_import_status(&draft, SettingsLanguage::EnglishUnitedStates);
     assert!(!failed);
     assert_eq!(status, "Selection cancelled; previous folder retained");
     assert!(!status.contains("private"));
 
     draft.state = ModelImportState::PickerFailed(DirectoryPickerError::SelectionInvalid);
-    let (status, failed) = model_import_status(&draft);
+    let (status, failed) = model_import_status(&draft, SettingsLanguage::EnglishUnitedStates);
     assert!(failed);
     assert_eq!(status, "Selected folder is unavailable");
     assert!(!status.contains("secret"));
@@ -395,7 +395,7 @@ fn picker_open_state_blocks_conflicting_import_actions() {
 
     assert!(draft.is_picker_open());
     assert!(!draft.can_import());
-    let (status, failed) = model_import_status(&draft);
+    let (status, failed) = model_import_status(&draft, SettingsLanguage::EnglishUnitedStates);
     assert!(!failed);
     assert_eq!(status, "Choosing folder...");
 }
@@ -485,10 +485,62 @@ fn invalid_model_status_is_stable_and_path_free() {
             diagnostic: SettingsModelDiagnostic::ModelReferenceSymlinkEscape,
         },
     };
-    let status = model_availability_status(&entry, false);
+    let status = model_availability_status(&entry, false, SettingsLanguage::EnglishUnitedStates);
     assert_eq!(status, "Installed · Package layout is invalid");
     assert!(!status.contains("private-model"));
     assert!(!status.contains('/'));
+}
+
+#[test]
+fn model_presentations_follow_the_resolved_language() {
+    let ready = SettingsModelEntry {
+        id: "preset-model".to_owned(),
+        origin: SettingsModelOrigin::Preset,
+        availability: SettingsModelAvailability::Ready {
+            texture_count: 2,
+            expression_count: 3,
+            motion_count: 4,
+        },
+    };
+    assert_eq!(
+        model_availability_status(&ready, true, SettingsLanguage::ChineseSimplified),
+        "预置 · 当前使用 · 2 个纹理 · 3 个表情 · 4 个动作"
+    );
+
+    let invalid = SettingsModelEntry {
+        id: "installed-model".to_owned(),
+        origin: SettingsModelOrigin::Installed,
+        availability: SettingsModelAvailability::Invalid {
+            diagnostic: SettingsModelDiagnostic::ModelTextureMissing,
+        },
+    };
+    let invalid_status =
+        model_availability_status(&invalid, false, SettingsLanguage::ChineseSimplified);
+    assert_eq!(invalid_status, "已安装 · 纹理无效");
+    assert_eq!(
+        model_delete_confirmation(SettingsLanguage::ChineseSimplified, &invalid_status),
+        "已安装 · 纹理无效 · 确认删除"
+    );
+
+    let (import_status, failed) = model_import_status(
+        &ModelImportDraft::default(),
+        SettingsLanguage::ChineseSimplified,
+    );
+    assert!(!failed);
+    assert_eq!(import_status, "尚未选择文件夹");
+    assert_eq!(
+        model_import_progress(SettingsLanguage::ChineseSimplified, "正在复制", 5, 1024),
+        "正在复制 · 5 个文件 · 1024 字节"
+    );
+
+    let failed_import = ModelImportDraft {
+        state: ModelImportState::Failed(SettingsError::new(SettingsErrorCode::ModelImportFailed)),
+        ..ModelImportDraft::default()
+    };
+    let (failed_status, failed) =
+        model_import_status(&failed_import, SettingsLanguage::ChineseSimplified);
+    assert!(failed);
+    assert_eq!(failed_status, "无法导入模型");
 }
 
 #[test]
