@@ -2080,6 +2080,12 @@ mod tests {
         client
             .wait_for_command(sequence, TIMEOUT)
             .expect("bindings applied");
+        let sequence = client
+            .send(RuntimeCommand::SetReleaseFallbackTimeout(0))
+            .expect("disable fallback for reconciliation smoke");
+        client
+            .wait_for_command(sequence, TIMEOUT)
+            .expect("fallback disabled");
         let service = WindowsInputService::start_with_diagnostics_and_options(
             runtime.input_producer(),
             runtime.cursor_producer(),
