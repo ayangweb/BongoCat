@@ -1,6 +1,7 @@
 use crate::{
-    OverlayError, OverlaySessionOptions, OverlayTickOutcome, OverlayWindowBounds, PreviewReport,
-    ProductOverlayReport, default_overlay_window_dimensions, validate_model_generation_advance,
+    OverlayError, OverlayPresentationState, OverlaySessionOptions, OverlayTickOutcome,
+    OverlayWindowBounds, PreviewReport, ProductOverlayReport, default_overlay_window_dimensions,
+    validate_model_generation_advance,
 };
 use bongocat_model::{CommittedModel, ModelId, ModelPackageLimits, PresetModelCatalog};
 use bongocat_platform::{
@@ -434,12 +435,6 @@ impl OverlayWindow {
             return Err(OverlayError::new("Win32 overlay did not become visible"));
         }
         Ok(())
-    }
-
-    fn visible(&self) -> bool {
-        self.assert_owner_thread();
-        // SAFETY: this is a read-only query on the live thread-confined HWND.
-        unsafe { IsWindowVisible(self.hwnd) }.as_bool()
     }
 
     fn assert_owner_thread(&self) {
@@ -919,6 +914,7 @@ impl Drop for Renderer {
 struct NativeOverlay {
     renderer: Renderer,
     window: OverlayWindow,
+    presentation: OverlayPresentationState,
 }
 
 impl NativeOverlay {
@@ -930,17 +926,28 @@ impl NativeOverlay {
         validate_options(options)?;
         let window = OverlayWindow::create(options, frame.snapshot.canvas, bounds)?;
         let renderer = Renderer::create(&window, frame, options.opacity_percent)?;
-        Ok(Self { renderer, window })
+        Ok(Self {
+            renderer,
+            window,
+            presentation: OverlayPresentationState::default(),
+        })
     }
 
     fn set_visible(&self, visible: bool) -> Result<(), OverlayError> {
         if visible {
+            self.presentation.require_presented_frame()?;
             self.window.show()
         } else {
             // SAFETY: the HWND is live and accessed only from its owner thread.
             let _ = unsafe { ShowWindow(self.window.hwnd, SW_HIDE) };
             Ok(())
         }
+    }
+
+    fn draw(&mut self, verify: bool) -> Result<(), OverlayError> {
+        self.renderer.draw(verify)?;
+        self.presentation.record_presented_frame();
+        Ok(())
     }
 }
 
@@ -979,22 +986,28 @@ impl ProductOverlaySession {
             .model_commit
             .ok_or_else(|| OverlayError::new("initial render frame has no model commit token"))?;
         let com_apartment = ComApartment::initialize()?;
-        let overlay = match NativeOverlay::create(&initial_frame, options, options.window_bounds) {
-            Ok(overlay) => overlay,
-            Err(error) => {
+        let mut overlay =
+            match NativeOverlay::create(&initial_frame, options, options.window_bounds) {
+                Ok(overlay) => overlay,
+                Err(error) => {
+                    reject_model_commit(&runtime_client, &render_consumer, token)?;
+                    return Err(error);
+                }
+            };
+        let mut frames_presented = 0;
+        if runtime_client.snapshot().overlay_visible {
+            if let Err(error) = overlay.draw(true).and_then(|()| overlay.set_visible(true)) {
                 reject_model_commit(&runtime_client, &render_consumer, token)?;
                 return Err(error);
             }
-        };
+            frames_presented = 1;
+        }
         report_model_commit(
             &runtime_client,
             &render_consumer,
             token,
             ModelCommitOutcome::Prepared,
         )?;
-        if runtime_client.snapshot().overlay_visible {
-            overlay.window.show()?;
-        }
         let diagnostics_producer = runtime_client.platform_input_diagnostics_producer();
         let (input_service, input_start_error) =
             super::start_platform_input(&diagnostics_producer, || {
@@ -1015,7 +1028,7 @@ impl ProductOverlaySession {
             input_start_error,
             input_diagnostics: None,
             input_stopped: false,
-            frames_presented: 0,
+            frames_presented,
             dynamic_snapshots: 0,
             model_commit_rejections: 0,
             previous_snapshot: Arc::clone(&initial_frame.snapshot),
@@ -1064,9 +1077,12 @@ impl ProductOverlaySession {
             } else {
                 bounds
             };
-            let replacement = NativeOverlay::create(&self.last_frame, next_options, Some(bounds))?;
+            let mut replacement =
+                NativeOverlay::create(&self.last_frame, next_options, Some(bounds))?;
             if runtime_snapshot.overlay_visible {
+                replacement.draw(self.frames_presented == 0)?;
                 replacement.set_visible(true)?;
+                self.frames_presented = self.frames_presented.saturating_add(1);
             }
             self.overlay = replacement;
             self.options = next_options;
@@ -1076,41 +1092,63 @@ impl ProductOverlaySession {
             self.overlay.set_visible(false)?;
             return Ok(OverlayTickOutcome::Hidden);
         }
-        if !self.overlay.window.visible() {
-            self.overlay.set_visible(true)?;
-        }
-
-        let mut model_switched = false;
         if let Some(frame) = self.render_consumer.take_latest() {
-            self.last_frame = frame.clone();
             let model_changed = frame.model_generation != self.overlay.renderer.model_generation;
             if model_changed {
                 let bounds = self.overlay.window.bounds()?;
-                let replacement = match NativeOverlay::create(&frame, self.options, Some(bounds)) {
-                    Ok(replacement) => replacement,
-                    Err(error) if frame.model_commit.is_some() => {
-                        reject_model_commit(
-                            &self.runtime_client,
-                            &self.render_consumer,
-                            frame.model_commit.expect("checked model commit token"),
-                        )?;
+                let mut replacement =
+                    match NativeOverlay::create(&frame, self.options, Some(bounds)) {
+                        Ok(replacement) => replacement,
+                        Err(error) if frame.model_commit.is_some() => {
+                            reject_model_commit(
+                                &self.runtime_client,
+                                &self.render_consumer,
+                                frame.model_commit.expect("checked model commit token"),
+                            )?;
+                            self.model_commit_rejections =
+                                self.model_commit_rejections.saturating_add(1);
+                            let _ = error;
+                            self.overlay.draw(self.frames_presented == 0)?;
+                            self.frames_presented = self.frames_presented.saturating_add(1);
+                            self.overlay.set_visible(true)?;
+                            return Ok(OverlayTickOutcome::Presented);
+                        }
+                        Err(error) => return Err(error),
+                    };
+                if let Err(error) = replacement
+                    .draw(true)
+                    .and_then(|()| replacement.set_visible(true))
+                {
+                    if let Some(token) = frame.model_commit {
+                        reject_model_commit(&self.runtime_client, &self.render_consumer, token)?;
                         self.model_commit_rejections =
                             self.model_commit_rejections.saturating_add(1);
                         let _ = error;
-                        self.overlay.renderer.draw(self.frames_presented == 0)?;
+                        self.overlay.draw(self.frames_presented == 0)?;
                         self.frames_presented = self.frames_presented.saturating_add(1);
+                        self.overlay.set_visible(true)?;
                         return Ok(OverlayTickOutcome::Presented);
                     }
-                    Err(error) => return Err(error),
-                };
-                replacement.set_visible(runtime_snapshot.overlay_visible)?;
+                    return Err(error);
+                }
+                if let Some(token) = frame.model_commit {
+                    report_model_commit(
+                        &self.runtime_client,
+                        &self.render_consumer,
+                        token,
+                        ModelCommitOutcome::Prepared,
+                    )?;
+                }
+                if frame.snapshot.as_ref() != self.previous_snapshot.as_ref() {
+                    self.dynamic_snapshots = self.dynamic_snapshots.saturating_add(1);
+                }
+                self.last_frame = frame.clone();
+                self.previous_snapshot = frame.snapshot;
                 self.overlay = replacement;
+                self.frames_presented = self.frames_presented.saturating_add(1);
+                return Ok(OverlayTickOutcome::Presented);
             }
-            match if model_changed {
-                Ok(true)
-            } else {
-                self.overlay.renderer.sync_frame(&frame)
-            } {
+            match self.overlay.renderer.sync_frame(&frame) {
                 Ok(switched) => {
                     if let Some(token) = frame.model_commit {
                         report_model_commit(
@@ -1123,7 +1161,8 @@ impl ProductOverlaySession {
                     if frame.snapshot.as_ref() != self.previous_snapshot.as_ref() {
                         self.dynamic_snapshots = self.dynamic_snapshots.saturating_add(1);
                     }
-                    model_switched = switched;
+                    debug_assert!(!switched);
+                    self.last_frame = frame.clone();
                     self.previous_snapshot = frame.snapshot;
                 }
                 Err(error) if frame.model_commit.is_some() => {
@@ -1138,10 +1177,9 @@ impl ProductOverlaySession {
                 Err(error) => return Err(error),
             }
         }
-        self.overlay
-            .renderer
-            .draw(self.frames_presented == 0 || model_switched)?;
+        self.overlay.draw(self.frames_presented == 0)?;
         self.frames_presented = self.frames_presented.saturating_add(1);
+        self.overlay.set_visible(true)?;
         Ok(OverlayTickOutcome::Presented)
     }
 
@@ -1247,8 +1285,8 @@ pub(crate) fn run_model_switch_preview(
                 return Err(error);
             }
         };
-    overlay.window.show()?;
-    overlay.renderer.draw(true)?;
+    overlay.draw(true)?;
+    overlay.set_visible(true)?;
     report_model_commit(
         &runtime_client,
         &render_consumer,
@@ -1317,7 +1355,7 @@ pub(crate) fn run_model_switch_preview(
             "GPU rejection did not preserve the active CPU model and input bindings",
         ));
     }
-    overlay.renderer.draw(true)?;
+    overlay.draw(true)?;
     frames_presented = frames_presented.saturating_add(1);
 
     let released_sequence = publish_preview_key_edge(&input_producer, InputEdge::Up, 2)?;
@@ -1367,7 +1405,7 @@ pub(crate) fn run_model_switch_preview(
                 "D3D11 renderer committed a non-monotonic model generation",
             ));
         }
-        overlay.renderer.draw(true)?;
+        overlay.draw(true)?;
         report_model_commit(
             &runtime_client,
             &render_consumer,

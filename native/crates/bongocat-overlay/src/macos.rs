@@ -1,6 +1,7 @@
 use crate::{
-    OverlayError, OverlaySessionOptions, OverlayTickOutcome, OverlayWindowBounds, PreviewReport,
-    ProductOverlayReport, default_overlay_window_dimensions, validate_model_generation_advance,
+    OverlayError, OverlayPresentationState, OverlaySessionOptions, OverlayTickOutcome,
+    OverlayWindowBounds, PreviewReport, ProductOverlayReport, default_overlay_window_dimensions,
+    validate_model_generation_advance,
 };
 use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
 use bongocat_platform::{
@@ -178,6 +179,7 @@ struct NativeOverlay {
     model_generation: u64,
     resources: Arc<RenderResources>,
     model: GpuModel,
+    presentation: OverlayPresentationState,
 }
 
 struct GpuModel {
@@ -238,7 +240,7 @@ impl ProductOverlaySession {
         let application = NSApplication::sharedApplication(mtm);
         application.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
         application.finishLaunching();
-        let overlay =
+        let mut overlay =
             match NativeOverlay::create(mtm, &initial_frame, options, options.window_bounds) {
                 Ok(overlay) => overlay,
                 Err(error) => {
@@ -246,15 +248,20 @@ impl ProductOverlaySession {
                     return Err(error);
                 }
             };
+        let mut frames_presented = 0;
+        if runtime_client.snapshot().overlay_visible {
+            if let Err(error) = overlay.draw(true).and_then(|()| overlay.set_visible(true)) {
+                reject_model_commit(&runtime_client, &render_consumer, token)?;
+                return Err(error);
+            }
+            frames_presented = 1;
+        }
         report_model_commit(
             &runtime_client,
             &render_consumer,
             token,
             ModelCommitOutcome::Prepared,
         )?;
-        if runtime_client.snapshot().overlay_visible {
-            overlay.panel.orderFrontRegardless();
-        }
         let diagnostics_producer = runtime_client.platform_input_diagnostics_producer();
         let (input_service, input_start_error) =
             super::start_platform_input(&diagnostics_producer, || {
@@ -275,7 +282,7 @@ impl ProductOverlaySession {
             input_start_error,
             input_diagnostics: None,
             input_stopped: false,
-            frames_presented: 0,
+            frames_presented,
             dynamic_snapshots: 0,
             model_commit_rejections: 0,
             previous_snapshot: Arc::clone(&initial_frame.snapshot),
@@ -324,7 +331,7 @@ impl ProductOverlaySession {
             } else {
                 bounds
             };
-            let replacement = NativeOverlay::create(
+            let mut replacement = NativeOverlay::create(
                 MainThreadMarker::new().ok_or_else(|| {
                     OverlayError::new("macOS overlay settings update lost the main thread")
                 })?,
@@ -333,25 +340,20 @@ impl ProductOverlaySession {
                 Some(bounds),
             )?;
             if runtime_snapshot.overlay_visible {
-                replacement.panel.orderFrontRegardless();
+                replacement.draw(self.frames_presented == 0)?;
+                replacement.set_visible(true)?;
+                self.frames_presented = self.frames_presented.saturating_add(1);
             }
             self.overlay = replacement;
             self.options = next_options;
         }
         self.options.maximum_fps = runtime_snapshot.maximum_fps;
         if !runtime_snapshot.overlay_visible {
-            if self.overlay.panel.isVisible() {
-                self.overlay.panel.orderOut(None);
-            }
+            self.overlay.set_visible(false)?;
             return Ok(OverlayTickOutcome::Hidden);
         }
-        if !self.overlay.panel.isVisible() {
-            self.overlay.panel.orderFrontRegardless();
-        }
 
-        let mut gpu_model_switched = false;
         if let Some(frame) = self.render_consumer.take_latest() {
-            self.last_frame = frame.clone();
             let model_changed = frame.model_generation != self.overlay.model_generation;
             if model_changed {
                 let bounds = self.window_bounds()?;
@@ -363,7 +365,7 @@ impl ProductOverlaySession {
                     self.options,
                     Some(bounds),
                 );
-                let replacement = match replacement {
+                let mut replacement = match replacement {
                     Ok(replacement) => replacement,
                     Err(error) if frame.model_commit.is_some() => {
                         reject_model_commit(
@@ -376,20 +378,45 @@ impl ProductOverlaySession {
                         let _ = error;
                         self.overlay.draw(self.frames_presented == 0)?;
                         self.frames_presented = self.frames_presented.saturating_add(1);
+                        self.overlay.set_visible(true)?;
                         return Ok(OverlayTickOutcome::Presented);
                     }
                     Err(error) => return Err(error),
                 };
-                if runtime_snapshot.overlay_visible {
-                    replacement.panel.orderFrontRegardless();
+                if let Err(error) = replacement
+                    .draw(true)
+                    .and_then(|()| replacement.set_visible(true))
+                {
+                    if let Some(token) = frame.model_commit {
+                        reject_model_commit(&self.runtime_client, &self.render_consumer, token)?;
+                        self.model_commit_rejections =
+                            self.model_commit_rejections.saturating_add(1);
+                        let _ = error;
+                        self.overlay.draw(self.frames_presented == 0)?;
+                        self.frames_presented = self.frames_presented.saturating_add(1);
+                        self.overlay.set_visible(true)?;
+                        return Ok(OverlayTickOutcome::Presented);
+                    }
+                    return Err(error);
                 }
+                if let Some(token) = frame.model_commit {
+                    report_model_commit(
+                        &self.runtime_client,
+                        &self.render_consumer,
+                        token,
+                        ModelCommitOutcome::Prepared,
+                    )?;
+                }
+                if frame.snapshot.as_ref() != self.previous_snapshot.as_ref() {
+                    self.dynamic_snapshots = self.dynamic_snapshots.saturating_add(1);
+                }
+                self.last_frame = frame.clone();
+                self.previous_snapshot = frame.snapshot;
                 self.overlay = replacement;
+                self.frames_presented = self.frames_presented.saturating_add(1);
+                return Ok(OverlayTickOutcome::Presented);
             }
-            match if model_changed {
-                Ok(true)
-            } else {
-                self.overlay.sync_frame(&frame)
-            } {
+            match self.overlay.sync_frame(&frame) {
                 Ok(switched) => {
                     if let Some(token) = frame.model_commit {
                         report_model_commit(
@@ -402,7 +429,8 @@ impl ProductOverlaySession {
                     if frame.snapshot.as_ref() != self.previous_snapshot.as_ref() {
                         self.dynamic_snapshots = self.dynamic_snapshots.saturating_add(1);
                     }
-                    gpu_model_switched = switched;
+                    debug_assert!(!switched);
+                    self.last_frame = frame.clone();
                     self.previous_snapshot = frame.snapshot;
                 }
                 Err(error) if frame.model_commit.is_some() => {
@@ -417,9 +445,9 @@ impl ProductOverlaySession {
                 Err(error) => return Err(error),
             }
         }
-        self.overlay
-            .draw(self.frames_presented == 0 || gpu_model_switched)?;
+        self.overlay.draw(self.frames_presented == 0)?;
         self.frames_presented = self.frames_presented.saturating_add(1);
+        self.overlay.set_visible(true)?;
         Ok(OverlayTickOutcome::Presented)
     }
 
@@ -765,7 +793,8 @@ pub(crate) fn run_model_preview(
     } else {
         false
     };
-    overlay.panel.orderFrontRegardless();
+    overlay.draw(true)?;
+    overlay.set_visible(true)?;
 
     let input_producer = runtime.input_producer();
     let cursor_producer = runtime.cursor_producer();
@@ -784,7 +813,7 @@ pub(crate) fn run_model_preview(
 
     let started = Instant::now();
     let mut next_frame = started;
-    let mut frames_presented = 0_u64;
+    let mut frames_presented = 1_u64;
     let mut dynamic_snapshots = 0_u64;
     let target_model_switches =
         switch_cycles.map(|cycles| u64::from(cycles).saturating_mul(PRESET_MODEL_IDS.len() as u64));
@@ -882,7 +911,7 @@ pub(crate) fn run_model_preview(
             }
             previous_snapshot = frame.snapshot;
         }
-        overlay.draw(frames_presented == 0 || gpu_model_switched)?;
+        overlay.draw(gpu_model_switched)?;
         frames_presented += 1;
         if target_model_switches.is_some_and(|target| model_switches == target) {
             settle_frames = settle_frames.saturating_add(1);
@@ -1047,6 +1076,7 @@ impl NativeOverlay {
             model_generation: frame.model_generation,
             resources: Arc::clone(&frame.resources),
             model,
+            presentation: OverlayPresentationState::default(),
         })
     }
 
@@ -1076,8 +1106,23 @@ impl NativeOverlay {
         Ok(false)
     }
 
-    fn draw(&self, verify_frame: bool) -> Result<(), OverlayError> {
-        autoreleasepool(|_| self.draw_in_autorelease_pool(verify_frame))
+    fn draw(&mut self, verify_frame: bool) -> Result<(), OverlayError> {
+        autoreleasepool(|_| self.draw_in_autorelease_pool(verify_frame))?;
+        self.presentation.record_presented_frame();
+        Ok(())
+    }
+
+    fn set_visible(&self, visible: bool) -> Result<(), OverlayError> {
+        if visible {
+            self.presentation.require_presented_frame()?;
+            self.panel.orderFrontRegardless();
+            if !self.panel.isVisible() {
+                return Err(OverlayError::new("macOS overlay did not become visible"));
+            }
+        } else if self.panel.isVisible() {
+            self.panel.orderOut(None);
+        }
+        Ok(())
     }
 
     fn draw_in_autorelease_pool(&self, verify_frame: bool) -> Result<(), OverlayError> {

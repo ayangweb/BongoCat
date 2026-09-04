@@ -447,6 +447,11 @@ RenderSnapshot
 
 renderer 负责遮罩、混合、裁剪、纹理上传、dirty flag、present 和 GPU 生命周期；不读取配置、不决定动作、不访问 GPUI entity。
 
+原生 overlay 窗口创建后默认保持隐藏。平台 owner 只有在对应 renderer 已成功完成至少一次
+非空帧 draw/present 后才允许首次显示；启动、隐藏后重显、设置导致的窗口重建和模型切换重建
+都遵守同一顺序。首帧提交或验证失败时窗口保持隐藏，模型准备失败仍保留当前可用窗口与模型，
+不得暴露未初始化 swapchain/drawable 造成黑框或不透明闪烁。
+
 renderer 的模型资源准备结果通过稳定项目 error code 回到 runtime，不返回 GPU handle、
 平台对象或任意字符串协议。候选准备失败只结束对应模型 command，不得终止 frame loop、
 清空当前 GPU model 或让 runtime 提前宣布候选模型 active。

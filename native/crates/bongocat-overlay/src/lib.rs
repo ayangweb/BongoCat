@@ -131,6 +131,28 @@ pub enum OverlayTickOutcome {
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
+#[derive(Default)]
+pub(crate) struct OverlayPresentationState {
+    has_presented_frame: bool,
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+impl OverlayPresentationState {
+    pub(crate) fn record_presented_frame(&mut self) {
+        self.has_presented_frame = true;
+    }
+
+    pub(crate) fn require_presented_frame(&self) -> Result<(), OverlayError> {
+        if !self.has_presented_frame {
+            return Err(OverlayError::new(
+                "overlay cannot become visible before its first presented frame",
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn input_start_failure_diagnostics(error: PlatformInputError) -> PlatformInputDiagnostics {
     PlatformInputDiagnostics {
         service_status: match error {
@@ -467,6 +489,17 @@ mod tests {
         validate_model_generation_advance(4, 7).expect("rejected generations may be skipped");
         assert!(validate_model_generation_advance(4, 4).is_err());
         assert!(validate_model_generation_advance(4, 3).is_err());
+    }
+
+    #[test]
+    fn overlay_visibility_requires_a_successfully_presented_frame() {
+        let mut presentation = OverlayPresentationState::default();
+        assert!(presentation.require_presented_frame().is_err());
+
+        presentation.record_presented_frame();
+        presentation
+            .require_presented_frame()
+            .expect("presented overlay may become visible");
     }
 
     #[test]

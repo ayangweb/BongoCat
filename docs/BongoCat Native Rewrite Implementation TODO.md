@@ -862,6 +862,13 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     仍可立即唤醒 runtime，重新显示的轮询延迟不超过 `100 ms`。越界值和 stale revision 保留旧
     runtime/config。刷新率变化仍未实现，因此总项保持未勾选。
 - [ ] 首帧前不出现黑框或不透明闪烁。
+  - 状态（2026-09-04）：双平台正式 `NativeOverlay` 以共享 presentation state 强制
+    “成功 draw/present 后才可见”；产品启动、隐藏后重显、overlay 设置重建、模型重建和独立
+    renderer preview 均改为先提交并验证非空帧，再调用 `orderFrontRegardless`/`ShowWindow`。
+    未提交帧的显示请求由 contract 拒绝，首帧失败保持窗口隐藏并拒绝候选 model commit。
+    本机 macOS release 产品 lifecycle smoke 已完成隐藏 `NSPanel` 的首帧 Metal present 后显示，
+    Windows x64 overlay target check 通过；Windows 真实合成器显示时序仍待 runner 复验，因此
+    总项暂不勾选。
 - [ ] shutdown 先停 frame source，再释放 GPU/window。
 - [ ] 明确 sRGB/linear、预乘 alpha 和 texture color space，避免两平台颜色或边缘混合语义漂移。
 - [ ] present 失败、窗口隐藏和 drawable unavailable 时限流，不产生 busy loop 或日志风暴。
