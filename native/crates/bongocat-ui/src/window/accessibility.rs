@@ -270,6 +270,25 @@ impl SettingsView {
         if !disabled {
             status_icon_node = status_icon_node.clickable().focusable();
         }
+        #[cfg(target_os = "windows")]
+        let mut taskbar_icon_node = AccessibilityNode::new(
+            ACCESSIBILITY_TASKBAR_ICON,
+            AccessibilityRole::Switch,
+            "Show taskbar icon",
+        )
+        .with_value("Show the settings window in the Windows taskbar")
+        .with_toggle(
+            if snapshot.is_some_and(|snapshot| snapshot.taskbar_icon_visible) {
+                AccessibilityToggle::On
+            } else {
+                AccessibilityToggle::Off
+            },
+        )
+        .disabled(disabled);
+        #[cfg(target_os = "windows")]
+        if !disabled {
+            taskbar_icon_node = taskbar_icon_node.clickable().focusable();
+        }
         let mut refresh_node =
             AccessibilityNode::new(ACCESSIBILITY_REFRESH, AccessibilityRole::Button, "Refresh")
                 .disabled(self.refresh_is_disabled());
@@ -396,6 +415,8 @@ impl SettingsView {
             ACCESSIBILITY_STICK_DEAD_ZONE,
             ACCESSIBILITY_TRIGGER_DEAD_ZONE,
             ACCESSIBILITY_STATUS_ICON,
+            #[cfg(target_os = "windows")]
+            ACCESSIBILITY_TASKBAR_ICON,
             ACCESSIBILITY_STARTUP,
             ACCESSIBILITY_OPEN_BACKUPS,
             ACCESSIBILITY_RESTORE_DEFAULTS,
@@ -444,6 +465,8 @@ impl SettingsView {
             stick_node,
             trigger_node,
             status_icon_node,
+            #[cfg(target_os = "windows")]
+            taskbar_icon_node,
             startup_node,
             open_backups_node,
             restore_node,
@@ -489,6 +512,12 @@ impl SettingsView {
             ACCESSIBILITY_STATUS_ICON => {
                 if let Some(snapshot) = self.snapshot.as_ref() {
                     self.set_status_icon_visible(!snapshot.status_icon_visible, cx);
+                }
+            }
+            #[cfg(target_os = "windows")]
+            ACCESSIBILITY_TASKBAR_ICON => {
+                if let Some(snapshot) = self.snapshot.as_ref() {
+                    self.set_taskbar_icon_visible(!snapshot.taskbar_icon_visible, cx);
                 }
             }
             ACCESSIBILITY_OVERLAY => {
@@ -636,6 +665,8 @@ impl SettingsView {
             ),
             (ACCESSIBILITY_AUDIO, &self.audio_focus),
             (ACCESSIBILITY_STATUS_ICON, &self.status_icon_focus),
+            #[cfg(target_os = "windows")]
+            (ACCESSIBILITY_TASKBAR_ICON, &self.taskbar_icon_focus),
             (ACCESSIBILITY_MIRROR, &self.mirror_focus),
             (ACCESSIBILITY_MIRROR_POINTER, &self.mirror_pointer_focus),
             (ACCESSIBILITY_IGNORE_POINTER, &self.ignore_pointer_focus),

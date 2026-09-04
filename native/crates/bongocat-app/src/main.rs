@@ -71,6 +71,31 @@ impl bongocat_app::StatusIconCapability for ProductStatusIcon {
     }
 }
 
+#[cfg(target_os = "windows")]
+struct TaskbarIconRequest {
+    visible: bool,
+    reply: std::sync::mpsc::SyncSender<Result<(), SettingsError>>,
+}
+
+#[cfg(target_os = "windows")]
+#[derive(Clone)]
+struct ProductTaskbarIcon {
+    sender: std::sync::mpsc::SyncSender<TaskbarIconRequest>,
+}
+
+#[cfg(target_os = "windows")]
+impl bongocat_app::TaskbarIconCapability for ProductTaskbarIcon {
+    fn set_visible(&self, visible: bool) -> Result<(), SettingsError> {
+        let (reply, receiver) = std::sync::mpsc::sync_channel(1);
+        self.sender
+            .try_send(TaskbarIconRequest { visible, reply })
+            .map_err(|_| SettingsError::new(SettingsErrorCode::TaskbarIconUpdateFailed))?;
+        receiver
+            .recv_timeout(Duration::from_secs(2))
+            .map_err(|_| SettingsError::new(SettingsErrorCode::TaskbarIconUpdateFailed))?
+    }
+}
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const DEFAULT_RUN_SECONDS: u64 = 0;
 
@@ -274,6 +299,8 @@ struct ProductCoordinator {
     settings_service: Option<bongocat_app::ApplicationSettingsService>,
     settings_window: Option<SettingsWindowHandle>,
     system_menu: Option<SystemMenu>,
+    #[cfg(target_os = "windows")]
+    taskbar_icon_visible: bool,
     #[cfg(target_os = "macos")]
     application_reopens: u64,
     #[cfg(target_os = "windows")]
@@ -521,11 +548,25 @@ fn windows_product_exit_code(failures: &Arc<Mutex<Vec<String>>>) -> i32 {
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn ensure_settings_window(cx: &mut App) -> Result<SettingsWindowHandle, String> {
-    let existing = cx
+    let (existing, taskbar_icon_visible) = cx
         .try_global::<ProductCoordinator>()
-        .and_then(|coordinator| coordinator.settings_window.clone());
+        .map(|coordinator| {
+            (
+                coordinator.settings_window.clone(),
+                #[cfg(target_os = "windows")]
+                coordinator.taskbar_icon_visible,
+                #[cfg(not(target_os = "windows"))]
+                true,
+            )
+        })
+        .unwrap_or((None, true));
     if let Some(window_handle) = existing {
-        match window_handle.update(cx, |view, window, cx| view.reopen(window, cx)) {
+        match window_handle.update(cx, |view, window, cx| {
+            #[cfg(target_os = "windows")]
+            bongocat_platform::set_taskbar_icon_visible(window, taskbar_icon_visible)
+                .map_err(|error| error.to_string())?;
+            view.reopen(window, cx)
+        }) {
             Ok(Ok(())) => {
                 cx.activate(true);
                 return Ok(window_handle);
@@ -540,10 +581,46 @@ fn ensure_settings_window(cx: &mut App) -> Result<SettingsWindowHandle, String> 
         .and_then(|coordinator| coordinator.settings_service.as_ref())
         .map(|service| (service.client(), service.window_state()))
         .ok_or_else(|| "settings service owner is unavailable".to_owned())?;
-    let window_handle =
-        open_settings_window(settings_client, window_state, request_product_quit, cx)?;
+    let window_handle = open_settings_window(
+        settings_client,
+        window_state,
+        taskbar_icon_visible,
+        request_product_quit,
+        cx,
+    )?;
     cx.global_mut::<ProductCoordinator>().settings_window = Some(window_handle.clone());
     Ok(window_handle)
+}
+
+#[cfg(target_os = "windows")]
+fn apply_taskbar_icon_visibility(cx: &mut App, visible: bool) -> Result<(), SettingsError> {
+    let window_handle = cx
+        .try_global::<ProductCoordinator>()
+        .and_then(|coordinator| coordinator.settings_window.clone())
+        .ok_or_else(|| SettingsError::new(SettingsErrorCode::TaskbarIconUpdateFailed))?;
+    window_handle
+        .update(cx, |_, window, _| {
+            bongocat_platform::set_taskbar_icon_visible(window, visible)
+        })
+        .map_err(|_| SettingsError::new(SettingsErrorCode::TaskbarIconUpdateFailed))?
+        .map_err(|_| SettingsError::new(SettingsErrorCode::TaskbarIconUpdateFailed))?;
+    cx.global_mut::<ProductCoordinator>().taskbar_icon_visible = visible;
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn product_taskbar_icon_state(cx: &mut App) -> Result<(bool, bool), String> {
+    let window_handle = cx
+        .try_global::<ProductCoordinator>()
+        .and_then(|coordinator| coordinator.settings_window.clone())
+        .ok_or_else(|| "settings window is unavailable".to_owned())?;
+    window_handle
+        .update(cx, |view, window, _| {
+            bongocat_platform::taskbar_icon_is_visible(window)
+                .map(|visible| (visible, view.window_hidden()))
+                .map_err(|error| error.to_string())
+        })
+        .map_err(|error| error.to_string())?
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -679,6 +756,7 @@ fn run_configuration_recovery_mode(
         if let Err(error) = open_settings_window(
             settings_client.clone(),
             window_state.clone(),
+            true,
             |cx| cx.quit(),
             cx,
         ) {
@@ -761,14 +839,15 @@ fn run_configuration_recovery_smoke() -> Result<(), Box<dyn std::error::Error>> 
     let gpui_application = gpui_application().with_assets(Assets);
     let smoke_client = client.clone();
     gpui_application.run(move |cx| {
-        let window = match open_settings_window(smoke_client, window_state, |cx| cx.quit(), cx) {
-            Ok(window) => window,
-            Err(error) => {
-                let _ = write_smoke_status(&format!("recovery window failed: {error}"));
-                cx.quit();
-                return;
-            }
-        };
+        let window =
+            match open_settings_window(smoke_client, window_state, true, |cx| cx.quit(), cx) {
+                Ok(window) => window,
+                Err(error) => {
+                    let _ = write_smoke_status(&format!("recovery window failed: {error}"));
+                    cx.quit();
+                    return;
+                }
+            };
         let _ = write_smoke_status("recovery window opened");
         cx.spawn(async move |cx| {
             let mut diagnostics_verified = false;
@@ -838,7 +917,13 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
     let gpui_application = gpui_application().with_assets(Assets);
     gpui_application.run(move |cx| {
         let window =
-            match open_settings_window(client.clone(), window_state.clone(), |cx| cx.quit(), cx) {
+            match open_settings_window(
+                client.clone(),
+                window_state.clone(),
+                true,
+                |cx| cx.quit(),
+                cx,
+            ) {
                 Ok(window) => window,
                 Err(error) => {
                     let _ = writeln!(
@@ -1212,6 +1297,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sender: status_icon_sender,
     });
     let initial_status_icon_visible = application.config().application.show_status_icon;
+    #[cfg(target_os = "windows")]
+    let (taskbar_icon_sender, taskbar_icon_receiver) = std::sync::mpsc::sync_channel(4);
+    #[cfg(target_os = "windows")]
+    let taskbar_icon = Arc::new(ProductTaskbarIcon {
+        sender: taskbar_icon_sender,
+    });
+    let initial_taskbar_icon_visible = application.config().application.show_taskbar_icon;
     let shortcut_signals = bongocat_app::ApplicationShortcutSignals::default();
     let shortcut_dispatcher = Some(ShortcutDispatcher::with_application_sink(
         application.shortcut_table(),
@@ -1280,6 +1372,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 shortcut_receiver,
                 shortcut_signals.clone(),
                 status_icon,
+                #[cfg(target_os = "windows")]
+                taskbar_icon,
             ) {
                 Ok(service) => service,
                 Err(error) => {
@@ -1317,6 +1411,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let settings_window = match open_settings_window(
             settings_client.clone(),
             window_state,
+            initial_taskbar_icon_visible,
             request_product_quit,
             cx,
         ) {
@@ -1353,6 +1448,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             settings_service: Some(settings_service),
             settings_window: Some(settings_window.clone()),
             system_menu: Some(system_menu),
+            #[cfg(target_os = "windows")]
+            taskbar_icon_visible: initial_taskbar_icon_visible,
             #[cfg(target_os = "macos")]
             application_reopens: 0,
             #[cfg(target_os = "windows")]
@@ -1423,6 +1520,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 SettingsError::new(SettingsErrorCode::StatusIconUpdateFailed)
                             })
                     });
+                    let _ = request.reply.send(result);
+                }
+                #[cfg(target_os = "windows")]
+                while let Ok(request) = taskbar_icon_receiver.try_recv() {
+                    let result = cx.update(|cx| apply_taskbar_icon_visibility(cx, request.visible));
                     let _ = request.reply.send(result);
                 }
                 let action = cx.update(|cx| {
@@ -2184,6 +2286,76 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             &smoke_failures,
                             format!("restore initial status icon visibility: {error}"),
                         );
+                        cx.update(request_product_quit);
+                        return;
+                    }
+                }
+
+                #[cfg(target_os = "windows")]
+                {
+                    let taskbar_result = async {
+                        let initial = smoke_client
+                            .read_snapshot()
+                            .await
+                            .map_err(|error| format!("read taskbar icon snapshot: {error}"))?;
+                        let initial_visibility = initial.taskbar_icon_visible;
+                        let (native_initial_visibility, initially_hidden) =
+                            cx.update(product_taskbar_icon_state)?;
+                        if native_initial_visibility != initial_visibility || initially_hidden {
+                            return Err(
+                                "startup taskbar visibility diverged from the current snapshot"
+                                    .to_owned(),
+                            );
+                        }
+                        let changed = smoke_client
+                            .set_taskbar_icon_visible(
+                                initial.config_revision.ok_or_else(|| {
+                                    "taskbar icon config revision is unavailable".to_owned()
+                                })?,
+                                !initial_visibility,
+                            )
+                            .await
+                            .map_err(|error| format!("toggle taskbar icon: {error}"))?;
+                        let (native_changed_visibility, window_hidden) =
+                            cx.update(product_taskbar_icon_state)?;
+                        if changed.taskbar_icon_visible == initial_visibility
+                            || native_changed_visibility != changed.taskbar_icon_visible
+                            || window_hidden
+                        {
+                            return Err(
+                                "taskbar icon toggle did not preserve the visible settings window"
+                                    .to_owned(),
+                            );
+                        }
+                        let restored = smoke_client
+                            .set_taskbar_icon_visible(
+                                changed.config_revision.ok_or_else(|| {
+                                    "changed taskbar icon revision is unavailable".to_owned()
+                                })?,
+                                initial_visibility,
+                            )
+                            .await
+                            .map_err(|error| format!("restore taskbar icon: {error}"))?;
+                        let (native_restored_visibility, window_hidden) =
+                            cx.update(product_taskbar_icon_state)?;
+                        if restored.taskbar_icon_visible != initial_visibility
+                            || native_restored_visibility != initial_visibility
+                            || window_hidden
+                        {
+                            return Err(
+                                "taskbar icon visibility was not restored atomically".to_owned()
+                            );
+                        }
+                        Ok::<(), String>(())
+                    }
+                    .await;
+                    if let Err(error) = taskbar_result {
+                        record_failure(&smoke_failures, error);
+                        cx.update(request_product_quit);
+                        return;
+                    }
+                    if let Err(error) = write_smoke_status("taskbar icon toggled and restored") {
+                        record_failure(&smoke_failures, error.to_string());
                         cx.update(request_product_quit);
                         return;
                     }

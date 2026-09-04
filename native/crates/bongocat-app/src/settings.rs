@@ -67,6 +67,7 @@ impl ApplicationSettingsService {
             application,
             Arc::new(SystemStartupItem),
             Arc::new(UnavailableStatusIcon),
+            Arc::new(UnavailableTaskbarIcon),
             None,
             None,
         )
@@ -80,6 +81,7 @@ impl ApplicationSettingsService {
             application,
             Arc::new(SystemStartupItem),
             Arc::new(UnavailableStatusIcon),
+            Arc::new(UnavailableTaskbarIcon),
             Some(receiver),
             None,
         )
@@ -94,6 +96,7 @@ impl ApplicationSettingsService {
             application,
             Arc::new(SystemStartupItem),
             Arc::new(UnavailableStatusIcon),
+            Arc::new(UnavailableTaskbarIcon),
             Some(receiver),
             Some(signals),
         )
@@ -104,11 +107,15 @@ impl ApplicationSettingsService {
         receiver: ShortcutReceiver<bongocat_config::ShortcutCommand>,
         signals: ApplicationShortcutSignals,
         status_icon: Arc<dyn StatusIconCapability>,
+        #[cfg(target_os = "windows")] taskbar_icon: Arc<dyn TaskbarIconCapability>,
     ) -> Result<Self, SettingsServiceJoinError> {
+        #[cfg(not(target_os = "windows"))]
+        let taskbar_icon = Arc::new(UnavailableTaskbarIcon);
         Self::start_with_startup_item_and_shortcuts(
             application,
             Arc::new(SystemStartupItem),
             status_icon,
+            taskbar_icon,
             Some(receiver),
             Some(signals),
         )
@@ -123,6 +130,7 @@ impl ApplicationSettingsService {
             application,
             startup_item,
             Arc::new(UnavailableStatusIcon),
+            Arc::new(UnavailableTaskbarIcon),
             None,
             None,
         )
@@ -137,6 +145,22 @@ impl ApplicationSettingsService {
             application,
             Arc::new(SystemStartupItem),
             status_icon,
+            Arc::new(UnavailableTaskbarIcon),
+            None,
+            None,
+        )
+    }
+
+    #[cfg(test)]
+    fn start_with_taskbar_icon(
+        application: Application,
+        taskbar_icon: Arc<dyn TaskbarIconCapability>,
+    ) -> Result<Self, SettingsServiceJoinError> {
+        Self::start_with_startup_item_and_shortcuts(
+            application,
+            Arc::new(SystemStartupItem),
+            Arc::new(UnavailableStatusIcon),
+            taskbar_icon,
             None,
             None,
         )
@@ -146,6 +170,7 @@ impl ApplicationSettingsService {
         application: Application,
         startup_item: Arc<dyn StartupItemCapability>,
         status_icon: Arc<dyn StatusIconCapability>,
+        taskbar_icon: Arc<dyn TaskbarIconCapability>,
         shortcut_receiver: Option<ShortcutReceiver<bongocat_config::ShortcutCommand>>,
         shortcut_signals: Option<ApplicationShortcutSignals>,
     ) -> Result<Self, SettingsServiceJoinError> {
@@ -158,7 +183,10 @@ impl ApplicationSettingsService {
         Self::start_with_capabilities_and_shortcuts(
             application,
             startup_item,
-            status_icon,
+            VisibilityCapabilities {
+                status_icon,
+                taskbar_icon,
+            },
             backup_location,
             diagnostics_export,
             shortcut_receiver,
@@ -176,7 +204,10 @@ impl ApplicationSettingsService {
         Self::start_with_capabilities_and_shortcuts(
             application,
             startup_item,
-            Arc::new(UnavailableStatusIcon),
+            VisibilityCapabilities {
+                status_icon: Arc::new(UnavailableStatusIcon),
+                taskbar_icon: Arc::new(UnavailableTaskbarIcon),
+            },
             backup_location,
             diagnostics_export,
             None,
@@ -187,7 +218,7 @@ impl ApplicationSettingsService {
     fn start_with_capabilities_and_shortcuts(
         application: Application,
         startup_item: Arc<dyn StartupItemCapability>,
-        status_icon: Arc<dyn StatusIconCapability>,
+        visibility: VisibilityCapabilities,
         backup_location: Arc<dyn BackupLocationCapability>,
         diagnostics_export: Arc<dyn DiagnosticsExportCapability>,
         shortcut_receiver: Option<ShortcutReceiver<bongocat_config::ShortcutCommand>>,
@@ -207,7 +238,7 @@ impl ApplicationSettingsService {
                     application,
                     endpoint,
                     startup_item,
-                    status_icon,
+                    visibility,
                     backup_location,
                     diagnostics_export,
                     worker_window_state,
@@ -290,6 +321,15 @@ pub trait StatusIconCapability: Send + Sync + 'static {
     fn set_visible(&self, visible: bool) -> Result<(), SettingsError>;
 }
 
+pub trait TaskbarIconCapability: Send + Sync + 'static {
+    fn set_visible(&self, visible: bool) -> Result<(), SettingsError>;
+}
+
+struct VisibilityCapabilities {
+    status_icon: Arc<dyn StatusIconCapability>,
+    taskbar_icon: Arc<dyn TaskbarIconCapability>,
+}
+
 trait BackupLocationCapability: Send + Sync + 'static {
     fn open(&self) -> Result<(), SettingsError>;
 }
@@ -305,6 +345,8 @@ trait DiagnosticsExportCapability: Send + Sync + 'static {
 struct SystemStartupItem;
 
 struct UnavailableStatusIcon;
+
+struct UnavailableTaskbarIcon;
 
 struct SystemBackupLocation {
     path: PathBuf,
@@ -328,6 +370,14 @@ impl StatusIconCapability for UnavailableStatusIcon {
     fn set_visible(&self, _visible: bool) -> Result<(), SettingsError> {
         Err(SettingsError::new(
             SettingsErrorCode::StatusIconUpdateFailed,
+        ))
+    }
+}
+
+impl TaskbarIconCapability for UnavailableTaskbarIcon {
+    fn set_visible(&self, _visible: bool) -> Result<(), SettingsError> {
+        Err(SettingsError::new(
+            SettingsErrorCode::TaskbarIconUpdateFailed,
         ))
     }
 }
@@ -379,7 +429,7 @@ fn run_service(
     mut application: Application,
     endpoint: SettingsServiceEndpoint,
     startup_item: Arc<dyn StartupItemCapability>,
-    status_icon: Arc<dyn StatusIconCapability>,
+    visibility: VisibilityCapabilities,
     backup_location: Arc<dyn BackupLocationCapability>,
     diagnostics_export: Arc<dyn DiagnosticsExportCapability>,
     window_state: SettingsWindowState,
@@ -480,11 +530,40 @@ fn run_service(
                         if previous == visible {
                             return Ok(());
                         }
-                        status_icon.set_visible(visible)?;
+                        visibility.status_icon.set_visible(visible)?;
                         if let Err(error) = application.set_status_icon_visible(visible) {
-                            if status_icon.set_visible(previous).is_err() {
+                            if visibility.status_icon.set_visible(previous).is_err() {
                                 return Err(SettingsError::new(
                                     SettingsErrorCode::StatusIconUpdateFailed,
+                                ));
+                            }
+                            return Err(map_application_error(error));
+                        }
+                        Ok(())
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::SetTaskbarIconVisible {
+                expected_config_revision,
+                visible,
+                reply,
+            } => {
+                let result = require_operational(&application)
+                    .map_err(map_application_error)
+                    .and_then(|()| {
+                        if application.config_revision() != Some(expected_config_revision) {
+                            return Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated));
+                        }
+                        let previous = application.config().application.show_taskbar_icon;
+                        if previous == visible {
+                            return Ok(());
+                        }
+                        visibility.taskbar_icon.set_visible(visible)?;
+                        if let Err(error) = application.set_taskbar_icon_visible(visible) {
+                            if visibility.taskbar_icon.set_visible(previous).is_err() {
+                                return Err(SettingsError::new(
+                                    SettingsErrorCode::TaskbarIconUpdateFailed,
                                 ));
                             }
                             return Err(map_application_error(error));
@@ -954,6 +1033,7 @@ fn snapshot(
         runtime_diagnostics: settings_runtime_diagnostics(&runtime),
         appearance_theme: settings_theme(application.config().appearance.theme),
         status_icon_visible: application.config().application.show_status_icon,
+        taskbar_icon_visible: application.config().application.show_taskbar_icon,
         overlay_visible: runtime.overlay_visible,
         overlay: SettingsOverlay {
             click_through: runtime.overlay_settings.click_through,
@@ -1908,7 +1988,37 @@ mod tests {
         fail_updates: AtomicBool,
     }
 
+    struct TestTaskbarIcon {
+        visible: Mutex<bool>,
+        updates: Mutex<Vec<bool>>,
+        fail_updates: AtomicBool,
+    }
+
     impl TestStatusIcon {
+        fn new(visible: bool) -> Self {
+            Self {
+                visible: Mutex::new(visible),
+                updates: Mutex::new(Vec::new()),
+                fail_updates: AtomicBool::new(false),
+            }
+        }
+
+        fn visible(&self) -> bool {
+            *self
+                .visible
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+        }
+
+        fn updates(&self) -> Vec<bool> {
+            self.updates
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone()
+        }
+    }
+
+    impl TestTaskbarIcon {
         fn new(visible: bool) -> Self {
             Self {
                 visible: Mutex::new(visible),
@@ -1941,6 +2051,25 @@ mod tests {
             if self.fail_updates.load(Ordering::Acquire) {
                 return Err(SettingsError::new(
                     SettingsErrorCode::StatusIconUpdateFailed,
+                ));
+            }
+            *self
+                .visible
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = visible;
+            Ok(())
+        }
+    }
+
+    impl TaskbarIconCapability for TestTaskbarIcon {
+        fn set_visible(&self, visible: bool) -> Result<(), SettingsError> {
+            self.updates
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(visible);
+            if self.fail_updates.load(Ordering::Acquire) {
+                return Err(SettingsError::new(
+                    SettingsErrorCode::TaskbarIconUpdateFailed,
                 ));
             }
             *self
@@ -2017,6 +2146,7 @@ mod tests {
             },
             appearance_theme: SettingsTheme::System,
             status_icon_visible: true,
+            taskbar_icon_visible: true,
             overlay_visible: true,
             overlay: SettingsOverlay::default(),
             motion_audio_enabled: true,
@@ -2535,6 +2665,81 @@ mod tests {
         service.join().expect("service join");
         let restarted = Application::start_with_layout(layout).expect("restart application");
         assert!(!restarted.config().application.show_status_icon);
+        restarted.shutdown().expect("restart shutdown");
+    }
+
+    #[test]
+    fn service_applies_and_persists_taskbar_icon_visibility_transactionally() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application =
+            Application::start_with_layout(layout.clone()).expect("application start");
+        let taskbar_icon = Arc::new(TestTaskbarIcon::new(true));
+        let service =
+            ApplicationSettingsService::start_with_taskbar_icon(application, taskbar_icon.clone())
+                .expect("service start");
+        let client = service.client();
+
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        assert!(initial.taskbar_icon_visible);
+        let hidden = client
+            .set_taskbar_icon_visible_blocking(
+                initial.config_revision.expect("config revision"),
+                false,
+            )
+            .expect("hide taskbar icon");
+        assert!(!hidden.taskbar_icon_visible);
+        assert!(!taskbar_icon.visible());
+        assert_eq!(taskbar_icon.updates(), vec![false]);
+
+        let stale = client
+            .set_taskbar_icon_visible_blocking(
+                initial.config_revision.expect("config revision"),
+                true,
+            )
+            .expect_err("stale taskbar icon update");
+        assert_eq!(stale.code(), SettingsErrorCode::SnapshotOutdated);
+        assert_eq!(taskbar_icon.updates(), vec![false]);
+
+        taskbar_icon.fail_updates.store(true, Ordering::Release);
+        let failed = client
+            .set_taskbar_icon_visible_blocking(
+                hidden.config_revision.expect("hidden config revision"),
+                true,
+            )
+            .expect_err("platform update failure");
+        assert_eq!(failed.code(), SettingsErrorCode::TaskbarIconUpdateFailed);
+        let unchanged = client.read_snapshot_blocking().expect("unchanged snapshot");
+        assert_eq!(unchanged, hidden);
+        assert!(!taskbar_icon.visible());
+
+        taskbar_icon.fail_updates.store(false, Ordering::Release);
+        let occupied = layout.config.with_extension("json.tmp");
+        std::fs::create_dir(&occupied).expect("occupied temp target");
+        let persist_failed = client
+            .set_taskbar_icon_visible_blocking(
+                hidden.config_revision.expect("hidden config revision"),
+                true,
+            )
+            .expect_err("config persist failure");
+        assert_eq!(
+            persist_failed.code(),
+            SettingsErrorCode::ConfigTargetOccupied
+        );
+        assert!(!taskbar_icon.visible());
+        assert_eq!(taskbar_icon.updates(), vec![false, true, true, false]);
+        assert_eq!(
+            client
+                .read_snapshot_blocking()
+                .expect("rolled back snapshot"),
+            hidden
+        );
+        std::fs::remove_dir(occupied).expect("remove occupied temp target");
+
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
+        let restarted = Application::start_with_layout(layout).expect("restart application");
+        assert!(!restarted.config().application.show_taskbar_icon);
         restarted.shutdown().expect("restart shutdown");
     }
 

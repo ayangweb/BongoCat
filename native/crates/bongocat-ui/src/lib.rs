@@ -267,6 +267,7 @@ pub struct SettingsSnapshot {
     pub runtime_diagnostics: SettingsRuntimeDiagnostics,
     pub appearance_theme: SettingsTheme,
     pub status_icon_visible: bool,
+    pub taskbar_icon_visible: bool,
     pub overlay_visible: bool,
     pub overlay: SettingsOverlay,
     pub motion_audio_enabled: bool,
@@ -660,13 +661,14 @@ pub enum SettingsErrorCode {
     DiagnosticsExportFailed,
     StartupItemUpdateFailed,
     StatusIconUpdateFailed,
+    TaskbarIconUpdateFailed,
     WindowUnavailable,
     StatePersistFailed,
     ShutdownFailed,
 }
 
 impl SettingsErrorCode {
-    pub const ALL: [Self; 34] = [
+    pub const ALL: [Self; 35] = [
         Self::ServiceUnavailable,
         Self::SnapshotOutdated,
         Self::RuntimeUnavailable,
@@ -698,6 +700,7 @@ impl SettingsErrorCode {
         Self::DiagnosticsExportFailed,
         Self::StartupItemUpdateFailed,
         Self::StatusIconUpdateFailed,
+        Self::TaskbarIconUpdateFailed,
         Self::WindowUnavailable,
         Self::StatePersistFailed,
         Self::ShutdownFailed,
@@ -736,6 +739,7 @@ impl SettingsErrorCode {
             Self::DiagnosticsExportFailed => "diagnostics_export_failed",
             Self::StartupItemUpdateFailed => "startup_item_update_failed",
             Self::StatusIconUpdateFailed => "status_icon_update_failed",
+            Self::TaskbarIconUpdateFailed => "taskbar_icon_update_failed",
             Self::WindowUnavailable => "window_unavailable",
             Self::StatePersistFailed => "state_persist_failed",
             Self::ShutdownFailed => "shutdown_failed",
@@ -816,6 +820,9 @@ impl fmt::Display for SettingsError {
             SettingsErrorCode::StatusIconUpdateFailed => {
                 "status icon visibility could not be updated"
             }
+            SettingsErrorCode::TaskbarIconUpdateFailed => {
+                "taskbar icon visibility could not be updated"
+            }
             SettingsErrorCode::WindowUnavailable => "settings window could not be hidden",
             SettingsErrorCode::StatePersistFailed => "window layout could not be saved",
             SettingsErrorCode::ShutdownFailed => "application shutdown did not complete",
@@ -857,6 +864,11 @@ pub enum SettingsCommand {
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     SetStatusIconVisible {
+        expected_config_revision: u64,
+        visible: bool,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    SetTaskbarIconVisible {
         expected_config_revision: u64,
         visible: bool,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
@@ -1040,6 +1052,19 @@ impl SettingsClient {
         visible: bool,
     ) -> Result<SettingsSnapshot, SettingsError> {
         self.request(|reply| SettingsCommand::SetStatusIconVisible {
+            expected_config_revision,
+            visible,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn set_taskbar_icon_visible(
+        &self,
+        expected_config_revision: u64,
+        visible: bool,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetTaskbarIconVisible {
             expected_config_revision,
             visible,
             reply,
@@ -1246,6 +1271,18 @@ impl SettingsClient {
         visible: bool,
     ) -> Result<SettingsSnapshot, SettingsError> {
         self.request_blocking(|reply| SettingsCommand::SetStatusIconVisible {
+            expected_config_revision,
+            visible,
+            reply,
+        })
+    }
+
+    pub fn set_taskbar_icon_visible_blocking(
+        &self,
+        expected_config_revision: u64,
+        visible: bool,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::SetTaskbarIconVisible {
             expected_config_revision,
             visible,
             reply,
@@ -1625,6 +1662,31 @@ mod tests {
             .set_status_icon_visible_blocking(7, false)
             .expect("status icon snapshot");
         assert!(!result.status_icon_visible);
+        worker.join().expect("worker join");
+    }
+
+    #[test]
+    fn taskbar_icon_command_preserves_typed_visibility() {
+        let (client, endpoint) = SettingsClient::bounded(1);
+        let worker = thread::spawn(move || {
+            let SettingsCommand::SetTaskbarIconVisible {
+                expected_config_revision,
+                visible,
+                reply,
+            } = endpoint.recv_blocking().expect("taskbar icon command")
+            else {
+                panic!("unexpected command");
+            };
+            assert_eq!(expected_config_revision, 7);
+            assert!(!visible);
+            let mut result = snapshot(8, true, true);
+            result.taskbar_icon_visible = visible;
+            reply.respond(Ok(result)).expect("taskbar icon reply");
+        });
+        let result = client
+            .set_taskbar_icon_visible_blocking(7, false)
+            .expect("taskbar icon snapshot");
+        assert!(!result.taskbar_icon_visible);
         worker.join().expect("worker join");
     }
 
@@ -2060,6 +2122,7 @@ mod tests {
             runtime_diagnostics: SettingsRuntimeDiagnostics::default(),
             appearance_theme: SettingsTheme::System,
             status_icon_visible: true,
+            taskbar_icon_visible: true,
             overlay_visible,
             overlay: SettingsOverlay::default(),
             motion_audio_enabled,

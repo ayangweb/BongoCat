@@ -3,6 +3,7 @@ use super::*;
 pub fn open_settings_window(
     client: SettingsClient,
     window_state: SettingsWindowState,
+    _taskbar_icon_visible: bool,
     request_quit: impl Fn(&mut App) + 'static,
     cx: &mut App,
 ) -> Result<SettingsWindowHandle, String> {
@@ -11,6 +12,10 @@ pub fn open_settings_window(
     let normalize_initial_content_size = matches!(window_bounds, WindowBounds::Windowed(_));
     let accessibility_error = Rc::new(RefCell::new(None));
     let open_accessibility_error = Rc::clone(&accessibility_error);
+    #[cfg(target_os = "windows")]
+    let taskbar_error = Rc::new(RefCell::new(None));
+    #[cfg(target_os = "windows")]
+    let open_taskbar_error = Rc::clone(&taskbar_error);
     let settings_view = Rc::new(RefCell::new(None));
     let opened_settings_view = Rc::clone(&settings_view);
     let handle = cx
@@ -95,6 +100,11 @@ pub fn open_settings_window(
                 }
                 #[cfg(target_os = "windows")]
                 {
+                    if let Err(error) =
+                        bongocat_platform::set_taskbar_icon_visible(window, _taskbar_icon_visible)
+                    {
+                        *open_taskbar_error.borrow_mut() = Some(error.to_string());
+                    }
                     let weak_view = view.downgrade();
                     window.on_window_should_close(cx, move |window, cx| {
                         let result = bongocat_platform::hide_native_window(window);
@@ -121,7 +131,10 @@ pub fn open_settings_window(
                 {
                     let _ = window_state.request_persist_if_current(revision);
                 }
-                if open_accessibility_error.borrow().is_none() {
+                let can_activate = open_accessibility_error.borrow().is_none();
+                #[cfg(target_os = "windows")]
+                let can_activate = can_activate && open_taskbar_error.borrow().is_none();
+                if can_activate {
                     window.activate_window();
                 }
                 cx.new(|cx| Root::new(view, window, cx))
@@ -131,6 +144,11 @@ pub fn open_settings_window(
     if let Some(error) = accessibility_error.borrow_mut().take() {
         let _ = handle.update(cx, |_, window, _| window.remove_window());
         return Err(format!("attach settings accessibility bridge: {error}"));
+    }
+    #[cfg(target_os = "windows")]
+    if let Some(error) = taskbar_error.borrow_mut().take() {
+        let _ = handle.update(cx, |_, window, _| window.remove_window());
+        return Err(format!("apply settings taskbar visibility: {error}"));
     }
     cx.activate(true);
     let view = settings_view

@@ -129,6 +129,8 @@ const ACCESSIBILITY_THEME_LIGHT: AccessibilityNodeId = AccessibilityNodeId::new(
 const ACCESSIBILITY_THEME_DARK: AccessibilityNodeId = AccessibilityNodeId::new(37);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_STATUS_ICON: AccessibilityNodeId = AccessibilityNodeId::new(38);
+#[cfg(target_os = "windows")]
+const ACCESSIBILITY_TASKBAR_ICON: AccessibilityNodeId = AccessibilityNodeId::new(39);
 
 #[derive(Clone, Copy)]
 struct Tokens {
@@ -159,6 +161,8 @@ enum PendingOperation {
     Refresh,
     AppearanceTheme,
     StatusIconVisibility,
+    #[cfg(target_os = "windows")]
+    TaskbarIconVisibility,
     OverlayVisibility,
     OverlaySettings,
     MotionAudio,
@@ -329,6 +333,8 @@ pub struct SettingsView {
     theme_light_focus: FocusHandle,
     theme_dark_focus: FocusHandle,
     status_icon_focus: FocusHandle,
+    #[cfg(target_os = "windows")]
+    taskbar_icon_focus: FocusHandle,
     overlay_focus: FocusHandle,
     overlay_topmost_focus: FocusHandle,
     overlay_click_through_focus: FocusHandle,
@@ -434,6 +440,15 @@ impl SettingsView {
                 }) => {
                     client
                         .set_status_icon_visible(expected_config_revision, visible)
+                        .await
+                }
+                #[cfg(target_os = "windows")]
+                Some(SettingValue::TaskbarIconVisible {
+                    expected_config_revision,
+                    visible,
+                }) => {
+                    client
+                        .set_taskbar_icon_visible(expected_config_revision, visible)
                         .await
                 }
                 Some(SettingValue::OverlayVisible {
@@ -565,6 +580,11 @@ enum SettingValue {
         theme: SettingsTheme,
     },
     StatusIconVisible {
+        expected_config_revision: u64,
+        visible: bool,
+    },
+    #[cfg(target_os = "windows")]
+    TaskbarIconVisible {
         expected_config_revision: u64,
         visible: bool,
     },

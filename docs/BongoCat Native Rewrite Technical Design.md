@@ -143,6 +143,11 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   隐藏只从 `NSStatusBar` 移除 `NSStatusItem`，两平台都保留菜单 target、事件 receiver 和唯一 owner，
   因此重新显示不创建第二套业务状态。启动时先按当前 v1 配置创建可见或隐藏状态，设置窗口、单实例
   唤醒和 application reopen 仍提供恢复入口；平台失败只返回稳定匿名 settings error。
+- `application.show_taskbar_icon` 只控制 Windows GPUI 设置窗口的任务栏按钮，不改变窗口可见性，
+  也不映射为 macOS Dock 图标。settings worker 通过独立的有界 request/reply bridge 请求 GPUI 主线程
+  切换 HWND 的 `WS_EX_APPWINDOW`/`WS_EX_TOOLWINDOW` 并回读结果，平台成功后才由 Application
+  owner 按 expected revision 原子提交；配置提交失败时恢复旧样式。启动和窗口重建必须先应用当前
+  v1 值再显示窗口，平台失败只返回稳定匿名 settings error。
 - 关闭设置窗口不影响 runtime、输入、音频、frame source 和 overlay，它们继续由 app
   coordinator 持有。macOS 销毁对应 GPUI `Entity`，reopen 创建一个新窗口；GPUI 0.2.2
   的 Windows `WM_CLOSE` 销毁回调存在同步重入缺陷，因此 Windows platform adapter 拦截 close、

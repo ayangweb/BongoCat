@@ -47,7 +47,10 @@ pub use app_log::{
     ApplicationLogEvent, ApplicationLogEventCounts, ApplicationLogHandle, ApplicationLogLevel,
     ApplicationPanicHook,
 };
-pub use settings::{ApplicationSettingsService, SettingsServiceJoinError, StatusIconCapability};
+pub use settings::{
+    ApplicationSettingsService, SettingsServiceJoinError, StatusIconCapability,
+    TaskbarIconCapability,
+};
 
 #[derive(Clone, Default)]
 pub struct ApplicationShortcutSignals {
@@ -540,6 +543,17 @@ impl Application {
     pub fn set_status_icon_visible(&mut self, visible: bool) -> Result<(), ApplicationError> {
         let mut next_config = self.config.clone();
         next_config.application.show_status_icon = visible;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(())
+    }
+
+    pub fn set_taskbar_icon_visible(&mut self, visible: bool) -> Result<(), ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.application.show_taskbar_icon = visible;
         let next_revision = self
             .config_store
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;

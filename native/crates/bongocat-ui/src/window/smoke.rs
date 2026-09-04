@@ -180,6 +180,43 @@ impl SettingsView {
                         .to_owned(),
                 );
             }
+            #[cfg(target_os = "windows")]
+            {
+                let taskbar_icon = tree
+                    .nodes
+                    .iter()
+                    .find(|node| node.id == ACCESSIBILITY_TASKBAR_ICON)
+                    .ok_or_else(|| {
+                        "accessibility tree omitted the taskbar icon setting".to_owned()
+                    })?;
+                if taskbar_icon.role != AccessibilityRole::Switch
+                    || taskbar_icon.label != "Show taskbar icon"
+                    || taskbar_icon.value.as_deref()
+                        != Some("Show the settings window in the Windows taskbar")
+                    || taskbar_icon.toggled
+                        != Some(if snapshot.taskbar_icon_visible {
+                            AccessibilityToggle::On
+                        } else {
+                            AccessibilityToggle::Off
+                        })
+                    || taskbar_icon.disabled != controls_disabled
+                    || taskbar_icon.supports_click != !controls_disabled
+                    || taskbar_icon.supports_focus != !controls_disabled
+                {
+                    return Err(
+                        "taskbar icon accessibility semantics diverged from the visible control"
+                            .to_owned(),
+                    );
+                }
+            }
+            #[cfg(target_os = "macos")]
+            if tree
+                .nodes
+                .iter()
+                .any(|node| node.label == "Show taskbar icon")
+            {
+                return Err("macOS exposed the Windows taskbar icon setting".to_owned());
+            }
             for (id, label, value, toggled) in [
                 (
                     ACCESSIBILITY_OVERLAY_TOPMOST,

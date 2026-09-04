@@ -62,6 +62,11 @@ typed settings command 修改该值后，仍按配置 revision 原子提交并�
 原子提交配置；平台失败不提交，配置失败则恢复旧的平台可见性。启动直接应用当前 v1 值，隐藏后
 仍可通过设置窗口、Windows 单实例唤醒或 macOS application reopen 恢复入口。
 
+`application.show_taskbar_icon` 只控制 Windows 设置窗口的任务栏按钮，不隐藏或销毁窗口，也不
+影响 overlay；macOS 不把该字段解释为 Dock 图标。修改时先在 GPUI owner 线程切换并回读 HWND
+扩展样式，成功后才按 expected revision 原子提交配置；平台失败不提交，配置失败恢复旧样式。
+启动和设置窗口重建都在窗口显示前应用当前 v1 值。
+
 ## Shortcut Chords
 
 快捷键配置仍以字符串持久化，但在写入前必须通过平台无关的 chord 校验。每个 chord
