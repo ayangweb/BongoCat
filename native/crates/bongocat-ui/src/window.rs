@@ -664,49 +664,50 @@ struct StartupItemPresentation {
 fn startup_item_presentation(
     status: Option<SettingsStartupItemStatus>,
     blocked: bool,
+    language: SettingsLanguage,
 ) -> StartupItemPresentation {
     let mut presentation = match status {
         None => StartupItemPresentation {
-            description: "Checking login startup...",
+            description: ui_text(language, UiText::CheckingLoginStartup),
             enabled: false,
             action: StartupItemAction::None,
         },
         Some(SettingsStartupItemStatus::ReadError(_)) => StartupItemPresentation {
-            description: "Status unavailable; activate to retry",
+            description: ui_text(language, UiText::LoginStartupStatusUnavailable),
             enabled: false,
             action: StartupItemAction::Retry,
         },
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled)) => {
             StartupItemPresentation {
-                description: "Open BongoCat when you sign in",
+                description: ui_text(language, UiText::LoginStartupDisabled),
                 enabled: false,
                 action: StartupItemAction::SetEnabled(true),
             }
         }
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::Enabled)) => {
             StartupItemPresentation {
-                description: "BongoCat opens when you sign in",
+                description: ui_text(language, UiText::LoginStartupEnabled),
                 enabled: true,
                 action: StartupItemAction::SetEnabled(false),
             }
         }
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::Stale)) => {
             StartupItemPresentation {
-                description: "Saved app location changed; enable to repair",
+                description: ui_text(language, UiText::LoginStartupStale),
                 enabled: false,
                 action: StartupItemAction::SetEnabled(true),
             }
         }
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::RequiresApproval)) => {
             StartupItemPresentation {
-                description: "Approval required in System Settings",
+                description: ui_text(language, UiText::LoginStartupRequiresApproval),
                 enabled: true,
                 action: StartupItemAction::SetEnabled(false),
             }
         }
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::NotFound)) => {
             StartupItemPresentation {
-                description: "App login item is missing; enable to repair",
+                description: ui_text(language, UiText::LoginStartupNotFound),
                 enabled: false,
                 action: StartupItemAction::SetEnabled(true),
             }
@@ -715,13 +716,13 @@ fn startup_item_presentation(
             StartupItemPresentation {
                 description: match reason {
                     SettingsStartupItemUnsupportedReason::Platform => {
-                        "Login startup is unavailable on this platform"
+                        ui_text(language, UiText::LoginStartupUnsupportedPlatform)
                     }
                     SettingsStartupItemUnsupportedReason::OperatingSystem => {
-                        "Login startup requires macOS 13 or later"
+                        ui_text(language, UiText::LoginStartupUnsupportedOperatingSystem)
                     }
                     SettingsStartupItemUnsupportedReason::BuildEnvironment => {
-                        "Login startup is unavailable in development builds"
+                        ui_text(language, UiText::LoginStartupUnsupportedBuild)
                     }
                 },
                 enabled: false,

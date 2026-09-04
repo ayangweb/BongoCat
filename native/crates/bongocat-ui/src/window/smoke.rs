@@ -82,7 +82,11 @@ impl SettingsView {
         {
             return Err("general page did not apply the configured appearance theme".to_owned());
         }
-        let presentation = startup_item_presentation(Some(snapshot.startup_item), false);
+        let presentation = startup_item_presentation(
+            Some(snapshot.startup_item),
+            false,
+            snapshot.resolved_language,
+        );
         match snapshot.startup_item {
             SettingsStartupItemStatus::State(SettingsStartupItemState::Unsupported(_)) => {
                 if presentation.action != StartupItemAction::None {
@@ -179,7 +183,7 @@ impl SettingsView {
                 .find(|node| node.id == ACCESSIBILITY_STARTUP)
                 .ok_or_else(|| "accessibility tree omitted the startup item".to_owned())?;
             if startup.role != AccessibilityRole::Switch
-                || startup.label != "Open at login"
+                || startup.label != ui_text(snapshot.resolved_language, UiText::OpenAtLogin)
                 || startup.value.as_deref() != Some(presentation.description)
                 || startup.toggled
                     != Some(if presentation.enabled {
@@ -201,9 +205,12 @@ impl SettingsView {
                 .find(|node| node.id == ACCESSIBILITY_STATUS_ICON)
                 .ok_or_else(|| "accessibility tree omitted the status icon setting".to_owned())?;
             if status_icon.role != AccessibilityRole::Switch
-                || status_icon.label != "Show status icon"
+                || status_icon.label != ui_text(snapshot.resolved_language, UiText::ShowStatusIcon)
                 || status_icon.value.as_deref()
-                    != Some("Show BongoCat in the system tray or menu bar")
+                    != Some(ui_text(
+                        snapshot.resolved_language,
+                        UiText::ShowStatusIconDescription,
+                    ))
                 || status_icon.toggled
                     != Some(if snapshot.status_icon_visible {
                         AccessibilityToggle::On
@@ -229,9 +236,13 @@ impl SettingsView {
                         "accessibility tree omitted the taskbar icon setting".to_owned()
                     })?;
                 if taskbar_icon.role != AccessibilityRole::Switch
-                    || taskbar_icon.label != "Show taskbar icon"
+                    || taskbar_icon.label
+                        != ui_text(snapshot.resolved_language, UiText::ShowTaskbarIcon)
                     || taskbar_icon.value.as_deref()
-                        != Some("Show the settings window in the Windows taskbar")
+                        != Some(ui_text(
+                            snapshot.resolved_language,
+                            UiText::ShowTaskbarIconDescription,
+                        ))
                     || taskbar_icon.toggled
                         != Some(if snapshot.taskbar_icon_visible {
                             AccessibilityToggle::On
@@ -252,21 +263,24 @@ impl SettingsView {
             if tree
                 .nodes
                 .iter()
-                .any(|node| node.label == "Show taskbar icon")
+                .any(|node| matches!(node.label.as_str(), "Show taskbar icon" | "显示任务栏图标"))
             {
                 return Err("macOS exposed the Windows taskbar icon setting".to_owned());
             }
             for (id, label, value, toggled) in [
                 (
                     ACCESSIBILITY_OVERLAY_TOPMOST,
-                    "Always on top",
-                    "Keep the Live2D overlay above other windows",
+                    ui_text(snapshot.resolved_language, UiText::AlwaysOnTop),
+                    ui_text(snapshot.resolved_language, UiText::AlwaysOnTopDescription),
                     snapshot.overlay.always_on_top,
                 ),
                 (
                     ACCESSIBILITY_OVERLAY_CLICK_THROUGH,
-                    "Click-through overlay",
-                    "Let pointer input pass through the Live2D overlay",
+                    ui_text(snapshot.resolved_language, UiText::ClickThroughOverlay),
+                    ui_text(
+                        snapshot.resolved_language,
+                        UiText::ClickThroughOverlayDescription,
+                    ),
                     snapshot.overlay.click_through,
                 ),
             ] {
@@ -299,20 +313,26 @@ impl SettingsView {
             for (id, label, value, toggled) in [
                 (
                     ACCESSIBILITY_MIRROR,
-                    "Mirror model",
-                    "Render the model mirrored horizontally",
+                    ui_text(snapshot.resolved_language, UiText::MirrorModel),
+                    ui_text(snapshot.resolved_language, UiText::MirrorModelDescription),
                     snapshot.model_settings.mirror,
                 ),
                 (
                     ACCESSIBILITY_MIRROR_POINTER,
-                    "Mirror pointer tracking",
-                    "Mirror horizontal pointer tracking with the model",
+                    ui_text(snapshot.resolved_language, UiText::MirrorPointerTracking),
+                    ui_text(
+                        snapshot.resolved_language,
+                        UiText::MirrorPointerTrackingDescription,
+                    ),
                     snapshot.model_settings.mirror_pointer_tracking,
                 ),
                 (
                     ACCESSIBILITY_IGNORE_POINTER,
-                    "Ignore pointer input",
-                    "Do not apply pointer movement to the model",
+                    ui_text(snapshot.resolved_language, UiText::IgnorePointerInput),
+                    ui_text(
+                        snapshot.resolved_language,
+                        UiText::IgnorePointerInputDescription,
+                    ),
                     snapshot.model_settings.ignore_pointer,
                 ),
             ] {
@@ -345,22 +365,22 @@ impl SettingsView {
             for (id, label, unavailable) in [
                 (
                     ACCESSIBILITY_OVERLAY_SCALE_DECREASE,
-                    "Decrease overlay scale",
+                    ui_text(snapshot.resolved_language, UiText::DecreaseOverlayScale),
                     snapshot.overlay.scale_percent <= 25,
                 ),
                 (
                     ACCESSIBILITY_OVERLAY_SCALE_INCREASE,
-                    "Increase overlay scale",
+                    ui_text(snapshot.resolved_language, UiText::IncreaseOverlayScale),
                     snapshot.overlay.scale_percent >= 400,
                 ),
                 (
                     ACCESSIBILITY_OVERLAY_OPACITY_DECREASE,
-                    "Decrease overlay opacity",
+                    ui_text(snapshot.resolved_language, UiText::DecreaseOverlayOpacity),
                     snapshot.overlay.opacity_percent <= 1,
                 ),
                 (
                     ACCESSIBILITY_OVERLAY_OPACITY_INCREASE,
-                    "Increase overlay opacity",
+                    ui_text(snapshot.resolved_language, UiText::IncreaseOverlayOpacity),
                     snapshot.overlay.opacity_percent >= 100,
                 ),
             ] {
@@ -392,6 +412,7 @@ impl SettingsView {
                 .as_ref()
                 .ok_or_else(|| "settings accessibility bridge is unavailable".to_owned())?
                 .verify_startup_control(
+                    ui_text(snapshot.resolved_language, UiText::OpenAtLogin),
                     if presentation.enabled {
                         AccessibilityToggle::On
                     } else {

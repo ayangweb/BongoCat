@@ -23,10 +23,11 @@ impl SettingsView {
             || snapshot.is_none()
             || self.model_import.is_running()
             || !configuration_ready;
-        let startup = startup_item_presentation(snapshot.map(|s| s.startup_item), disabled);
         let language = snapshot.map_or(SettingsLanguage::EnglishUnitedStates, |snapshot| {
             snapshot.resolved_language
         });
+        let startup =
+            startup_item_presentation(snapshot.map(|s| s.startup_item), disabled, language);
         let selected_theme =
             snapshot.map_or(SettingsTheme::System, |snapshot| snapshot.appearance_theme);
         let theme_nodes = [
@@ -78,9 +79,9 @@ impl SettingsView {
         let mut overlay_node = AccessibilityNode::new(
             ACCESSIBILITY_OVERLAY,
             AccessibilityRole::Switch,
-            "Show desktop cat",
+            ui_text(language, UiText::ShowDesktopCat),
         )
-        .with_value("Keep the Live2D overlay visible")
+        .with_value(ui_text(language, UiText::ShowDesktopCatDescription))
         .with_toggle(if snapshot.is_some_and(|s| s.overlay_visible) {
             AccessibilityToggle::On
         } else {
@@ -93,9 +94,9 @@ impl SettingsView {
         let mut audio_node = AccessibilityNode::new(
             ACCESSIBILITY_AUDIO,
             AccessibilityRole::Switch,
-            "Motion audio",
+            ui_text(language, UiText::MotionAudio),
         )
-        .with_value("Play audio attached to model motions")
+        .with_value(ui_text(language, UiText::MotionAudioDescription))
         .with_toggle(if snapshot.is_some_and(|s| s.motion_audio_enabled) {
             AccessibilityToggle::On
         } else {
@@ -111,9 +112,9 @@ impl SettingsView {
         let mut mirror_node = AccessibilityNode::new(
             ACCESSIBILITY_MIRROR,
             AccessibilityRole::Switch,
-            "Mirror model",
+            ui_text(language, UiText::MirrorModel),
         )
-        .with_value("Render the model mirrored horizontally")
+        .with_value(ui_text(language, UiText::MirrorModelDescription))
         .with_toggle(if model_settings.mirror {
             AccessibilityToggle::On
         } else {
@@ -123,9 +124,9 @@ impl SettingsView {
         let mut mirror_pointer_node = AccessibilityNode::new(
             ACCESSIBILITY_MIRROR_POINTER,
             AccessibilityRole::Switch,
-            "Mirror pointer tracking",
+            ui_text(language, UiText::MirrorPointerTracking),
         )
-        .with_value("Mirror horizontal pointer tracking with the model")
+        .with_value(ui_text(language, UiText::MirrorPointerTrackingDescription))
         .with_toggle(if model_settings.mirror_pointer_tracking {
             AccessibilityToggle::On
         } else {
@@ -135,9 +136,9 @@ impl SettingsView {
         let mut ignore_pointer_node = AccessibilityNode::new(
             ACCESSIBILITY_IGNORE_POINTER,
             AccessibilityRole::Switch,
-            "Ignore pointer input",
+            ui_text(language, UiText::IgnorePointerInput),
         )
-        .with_value("Do not apply pointer movement to the model")
+        .with_value(ui_text(language, UiText::IgnorePointerInputDescription))
         .with_toggle(if model_settings.ignore_pointer {
             AccessibilityToggle::On
         } else {
@@ -155,14 +156,14 @@ impl SettingsView {
         let mut stick_node = AccessibilityNode::new(
             ACCESSIBILITY_STICK_DEAD_ZONE,
             AccessibilityRole::Button,
-            "Gamepad stick dead zone",
+            ui_text(language, UiText::GamepadStickDeadZone),
         )
         .with_value(format!("{}%", axis_settings.stick_dead_zone_percent))
         .disabled(disabled);
         let mut trigger_node = AccessibilityNode::new(
             ACCESSIBILITY_TRIGGER_DEAD_ZONE,
             AccessibilityRole::Button,
-            "Gamepad trigger dead zone",
+            ui_text(language, UiText::GamepadTriggerDeadZone),
         )
         .with_value(format!("{}%", axis_settings.trigger_dead_zone_percent))
         .disabled(disabled);
@@ -176,9 +177,9 @@ impl SettingsView {
         let mut topmost_node = AccessibilityNode::new(
             ACCESSIBILITY_OVERLAY_TOPMOST,
             AccessibilityRole::Switch,
-            "Always on top",
+            ui_text(language, UiText::AlwaysOnTop),
         )
-        .with_value("Keep the Live2D overlay above other windows")
+        .with_value(ui_text(language, UiText::AlwaysOnTopDescription))
         .with_toggle(if overlay_settings.always_on_top {
             AccessibilityToggle::On
         } else {
@@ -188,9 +189,9 @@ impl SettingsView {
         let mut click_through_node = AccessibilityNode::new(
             ACCESSIBILITY_OVERLAY_CLICK_THROUGH,
             AccessibilityRole::Switch,
-            "Click-through overlay",
+            ui_text(language, UiText::ClickThroughOverlay),
         )
-        .with_value("Let pointer input pass through the Live2D overlay")
+        .with_value(ui_text(language, UiText::ClickThroughOverlayDescription))
         .with_toggle(if overlay_settings.click_through {
             AccessibilityToggle::On
         } else {
@@ -206,28 +207,28 @@ impl SettingsView {
         let mut scale_decrease_node = AccessibilityNode::new(
             ACCESSIBILITY_OVERLAY_SCALE_DECREASE,
             AccessibilityRole::Button,
-            "Decrease overlay scale",
+            ui_text(language, UiText::DecreaseOverlayScale),
         )
         .with_value(format!("{scale}%"))
         .disabled(disabled || scale <= 25);
         let mut scale_increase_node = AccessibilityNode::new(
             ACCESSIBILITY_OVERLAY_SCALE_INCREASE,
             AccessibilityRole::Button,
-            "Increase overlay scale",
+            ui_text(language, UiText::IncreaseOverlayScale),
         )
         .with_value(format!("{scale}%"))
         .disabled(disabled || scale >= 400);
         let mut opacity_decrease_node = AccessibilityNode::new(
             ACCESSIBILITY_OVERLAY_OPACITY_DECREASE,
             AccessibilityRole::Button,
-            "Decrease overlay opacity",
+            ui_text(language, UiText::DecreaseOverlayOpacity),
         )
         .with_value(format!("{opacity}%"))
         .disabled(disabled || opacity <= 1);
         let mut opacity_increase_node = AccessibilityNode::new(
             ACCESSIBILITY_OVERLAY_OPACITY_INCREASE,
             AccessibilityRole::Button,
-            "Increase overlay opacity",
+            ui_text(language, UiText::IncreaseOverlayOpacity),
         )
         .with_value(format!("{opacity}%"))
         .disabled(disabled || opacity >= 100);
@@ -249,14 +250,14 @@ impl SettingsView {
         let mut maximum_fps_decrease_node = AccessibilityNode::new(
             ACCESSIBILITY_MAXIMUM_FPS_DECREASE,
             AccessibilityRole::Button,
-            "Decrease maximum FPS",
+            ui_text(language, UiText::DecreaseMaximumFps),
         )
         .with_value(maximum_fps.to_string())
         .disabled(disabled || maximum_fps <= 15);
         let mut maximum_fps_increase_node = AccessibilityNode::new(
             ACCESSIBILITY_MAXIMUM_FPS_INCREASE,
             AccessibilityRole::Button,
-            "Increase maximum FPS",
+            ui_text(language, UiText::IncreaseMaximumFps),
         )
         .with_value(maximum_fps.to_string())
         .disabled(disabled || maximum_fps >= 240);
@@ -271,7 +272,7 @@ impl SettingsView {
         let mut startup_node = AccessibilityNode::new(
             ACCESSIBILITY_STARTUP,
             AccessibilityRole::Switch,
-            "Open at login",
+            ui_text(language, UiText::OpenAtLogin),
         )
         .with_value(startup.description)
         .with_toggle(if startup.enabled {
@@ -286,9 +287,9 @@ impl SettingsView {
         let mut status_icon_node = AccessibilityNode::new(
             ACCESSIBILITY_STATUS_ICON,
             AccessibilityRole::Switch,
-            "Show status icon",
+            ui_text(language, UiText::ShowStatusIcon),
         )
-        .with_value("Show BongoCat in the system tray or menu bar")
+        .with_value(ui_text(language, UiText::ShowStatusIconDescription))
         .with_toggle(
             if snapshot.is_some_and(|snapshot| snapshot.status_icon_visible) {
                 AccessibilityToggle::On
@@ -304,9 +305,9 @@ impl SettingsView {
         let mut taskbar_icon_node = AccessibilityNode::new(
             ACCESSIBILITY_TASKBAR_ICON,
             AccessibilityRole::Switch,
-            "Show taskbar icon",
+            ui_text(language, UiText::ShowTaskbarIcon),
         )
-        .with_value("Show the settings window in the Windows taskbar")
+        .with_value(ui_text(language, UiText::ShowTaskbarIconDescription))
         .with_toggle(
             if snapshot.is_some_and(|snapshot| snapshot.taskbar_icon_visible) {
                 AccessibilityToggle::On
@@ -621,6 +622,11 @@ impl SettingsView {
             ACCESSIBILITY_STARTUP => match startup_item_presentation(
                 self.snapshot.as_ref().map(|s| s.startup_item),
                 self.pending.is_some() || self.snapshot.is_none(),
+                self.snapshot
+                    .as_ref()
+                    .map_or(SettingsLanguage::EnglishUnitedStates, |snapshot| {
+                        snapshot.resolved_language
+                    }),
             )
             .action
             {

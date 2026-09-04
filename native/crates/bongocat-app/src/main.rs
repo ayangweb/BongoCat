@@ -883,8 +883,8 @@ fn run_configuration_recovery_smoke() -> Result<(), Box<dyn std::error::Error>> 
 ))]
 fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
     use bongocat_config::{
-        ApplicationState, BuildEnvironment, ConfigStore, StateStore, StorageLayout, Theme,
-        WindowPlacement,
+        ApplicationState, BuildEnvironment, ConfigStore, Language, StateStore, StorageLayout,
+        Theme, WindowPlacement,
     };
 
     const RESIZED_WIDTH: u32 = 700;
@@ -902,6 +902,7 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
     let config_store = ConfigStore::new(layout.clone())?;
     let mut config = config_store.load_or_default()?.config;
     config.appearance.theme = Theme::Dark;
+    config.appearance.language = Language::ChineseSimplified;
     config_store.commit(&config)?;
     drop(config_store);
     StateStore::new(layout.clone()).commit(&ApplicationState::with_settings_window(Some(
@@ -936,22 +937,30 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
             };
         cx.spawn(async move |cx| {
             let result = async {
-                let mut theme_verified = false;
+                let mut general_verified = false;
+                let mut last_general_error = None;
                 for _ in 0..200 {
                     let general =
                         window.update(cx, |view, _, cx| view.show_general_page_for_smoke(cx));
-                    if matches!(general, Ok(Ok(()))) {
-                        theme_verified = true;
-                        break;
+                    match general {
+                        Ok(Ok(())) => {
+                            general_verified = true;
+                            break;
+                        }
+                        Ok(Err(error)) => last_general_error = Some(error),
+                        Err(error) => last_general_error = Some(error.to_string()),
                     }
                     Timer::after(Duration::from_millis(10)).await;
                 }
-                if !theme_verified {
-                    return Err(io::Error::other(
-                        "settings window did not apply the configured dark theme",
-                    )
+                if !general_verified {
+                    let detail = last_general_error
+                        .unwrap_or_else(|| "settings view was unavailable".to_owned());
+                    return Err(io::Error::other(format!(
+                        "settings window did not apply the configured theme and localization: {detail}"
+                    ))
                     .into());
                 }
+                write_smoke_status("Chinese General localization verified")?;
                 let mut initial = None;
                 let mut last_initial = window_state.placement();
                 for _ in 0..200 {

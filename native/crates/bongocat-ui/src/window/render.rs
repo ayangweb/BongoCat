@@ -106,448 +106,91 @@ impl Render for SettingsView {
         };
         let status_is_error = self.error.is_some();
         let view_entity = cx.entity();
+        let startup_item = startup_item_presentation(
+            snapshot.as_ref().map(|snapshot| snapshot.startup_item),
+            disabled,
+            language,
+        );
 
         let general_page = SettingPage::new(ui_text(language, UiText::General))
             .default_open(true)
             .description(ui_text(language, UiText::GeneralDescription))
             .groups(vec![
-                SettingGroup::new().title(ui_text(language, UiText::Appearance)).items(vec![
-                    SettingItem::new(
-                        ui_text(language, UiText::Theme),
-                        SettingField::element({
-                            let view = view_entity.clone();
-                            move |_: &RenderOptions, _: &mut Window, app: &mut App| {
-                                let selected = view
-                                    .read(app)
-                                    .snapshot
-                                    .as_ref()
-                                    .map(|snapshot| theme_index(snapshot.appearance_theme));
-                                let view_for_change = view.clone();
-                                RadioGroup::horizontal("appearance-theme")
-                                    .children([
-                                        Radio::new("appearance-theme-system")
-                                            .label(ui_text(language, UiText::System))
-                                            .tab_index(4),
-                                        Radio::new("appearance-theme-light")
-                                            .label(ui_text(language, UiText::Light))
-                                            .tab_index(5),
-                                        Radio::new("appearance-theme-dark")
-                                            .label(ui_text(language, UiText::Dark))
-                                            .tab_index(6),
-                                    ])
-                                    .selected_index(selected)
-                                    .disabled(disabled)
-                                    .on_click(move |index, _, app| {
-                                        let Some(theme) = theme_from_index(*index) else {
-                                            return;
-                                        };
-                                        view_for_change.update(app, |view, cx| {
-                                            view.set_appearance_theme(theme, cx)
-                                        });
-                                    })
-                                    .into_any_element()
-                            }
-                        }),
-                    )
-                    .description(ui_text(language, UiText::ThemeDescription)),
-                    SettingItem::new(
-                        ui_text(language, UiText::Language),
-                        SettingField::element({
-                            let view = view_entity.clone();
-                            move |_: &RenderOptions, _: &mut Window, app: &mut App| {
-                                let state = view.read(app).language_select.clone();
-                                Select::new(&state)
-                                    .accessibility_label(ui_text(language, UiText::Language))
-                                    .disabled(disabled)
-                                    .into_any_element()
-                            }
-                        }),
-                    )
-                    .description(ui_text(language, UiText::LanguageDescription)),
-                ]),
-                SettingGroup::new().title(ui_text(language, UiText::Overlay)).items(vec![
-                    SettingItem::new(
-                        ui_text(language, UiText::RuntimeStatus),
-                        SettingField::element({
-                            let status = status.clone();
-                            move |_: &RenderOptions, _: &mut Window, _: &mut App| {
-                                if status_is_error {
-                                    Tag::danger().child(status.clone()).into_any_element()
-                                } else {
-                                    Tag::secondary().child(status.clone()).into_any_element()
-                                }
-                            }
-                        }),
-                    )
-                    .description("Current runtime connection and configuration revision."),
-                    SettingItem::new(
-                        "Show desktop cat",
-                        SettingField::switch(
-                            {
-                                let view = view_entity.clone();
-                                move |app| {
-                                    view.read(app)
-                                        .snapshot
-                                        .as_ref()
-                                        .is_some_and(|s| s.overlay_visible)
-                                }
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |value, app| {
-                                    view.update(app, |view, cx| {
-                                        view.set_overlay_visible(value, cx)
-                                    });
-                                }
-                            },
-                        ),
-                    )
-                    .description(
-                        "Keep the Live2D overlay visible. Search: overlay, cat, visibility.",
-                    ),
-                    SettingItem::new(
-                        "Always on top",
-                        SettingField::switch(
-                            {
-                                let view = view_entity.clone();
-                                move |app| {
-                                    view.read(app)
-                                        .snapshot
-                                        .as_ref()
-                                        .is_some_and(|s| s.overlay.always_on_top)
-                                }
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |value, app| {
-                                    view.update(app, |view, cx| {
-                                        if let Some(snapshot) = view.snapshot.as_ref() {
-                                            let mut settings = snapshot.overlay;
-                                            settings.always_on_top = value;
-                                            view.set_overlay_settings(settings, cx);
-                                        }
-                                    });
-                                }
-                            },
-                        ),
-                    )
-                    .description("Keep the Live2D overlay above other windows. Search: topmost."),
-                    SettingItem::new(
-                        "Click-through overlay",
-                        SettingField::switch(
-                            {
-                                let view = view_entity.clone();
-                                move |app| {
-                                    view.read(app)
-                                        .snapshot
-                                        .as_ref()
-                                        .is_some_and(|s| s.overlay.click_through)
-                                }
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |value, app| {
-                                    view.update(app, |view, cx| {
-                                        if let Some(snapshot) = view.snapshot.as_ref() {
-                                            let mut settings = snapshot.overlay;
-                                            settings.click_through = value;
-                                            view.set_overlay_settings(settings, cx);
-                                        }
-                                    });
-                                }
-                            },
-                        ),
-                    )
-                    .description(
-                        "Let pointer input pass through the overlay. Search: pointer, mouse.",
-                    ),
-                    SettingItem::new(
-                        "Motion audio",
-                        SettingField::switch(
-                            {
-                                let view = view_entity.clone();
-                                move |app| {
-                                    view.read(app)
-                                        .snapshot
-                                        .as_ref()
-                                        .is_some_and(|s| s.motion_audio_enabled)
-                                }
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |value, app| {
-                                    view.update(app, |view, cx| {
-                                        view.set_motion_audio_enabled(value, cx)
-                                    });
-                                }
-                            },
-                        ),
-                    )
-                    .description("Play audio attached to model motions. Search: sound, audio."),
-                    SettingItem::new(
-                        "Overlay scale",
-                        SettingField::number_input(
-                            NumberFieldOptions {
-                                min: 25.0,
-                                max: 400.0,
-                                step: 25.0,
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |app| {
-                                    view.read(app)
-                                        .snapshot
-                                        .as_ref()
-                                        .map_or(100.0, |s| f64::from(s.overlay.scale_percent))
-                                }
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |value, app| {
-                                    view.update(app, |view, cx| {
-                                        view.set_overlay_scale_value(value, cx)
-                                    });
-                                }
-                            },
-                        ),
-                    )
-                    .description(
-                        "Resize the Live2D overlay from 25% to 400%. Search: size, scale.",
-                    ),
-                    SettingItem::new(
-                        "Overlay opacity",
-                        SettingField::number_input(
-                            NumberFieldOptions {
-                                min: 1.0,
-                                max: 100.0,
-                                step: 10.0,
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |app| {
-                                    view.read(app)
-                                        .snapshot
-                                        .as_ref()
-                                        .map_or(100.0, |s| f64::from(s.overlay.opacity_percent))
-                                }
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |value, app| {
-                                    view.update(app, |view, cx| {
-                                        view.set_overlay_opacity_value(value, cx)
-                                    });
-                                }
-                            },
-                        ),
-                    )
-                    .description(
-                        "Adjust the overlay transparency from 1% to 100%. Search: transparent.",
-                    ),
-                    SettingItem::new(
-                        "Maximum FPS",
-                        SettingField::number_input(
-                            NumberFieldOptions {
-                                min: 15.0,
-                                max: 240.0,
-                                step: 15.0,
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |app| {
-                                    view.read(app)
-                                        .snapshot
-                                        .as_ref()
-                                        .map_or(60.0, |s| f64::from(s.maximum_fps))
-                                }
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |value, app| {
-                                    view.update(app, |view, cx| {
-                                        view.set_maximum_fps_value(value, cx)
-                                    });
-                                }
-                            },
-                        ),
-                    )
-                    .description(
-                        "Limit animation and overlay updates from 15 to 240 FPS. Search: frame rate, performance.",
-                    ),
-                ]),
-                SettingGroup::new().title("Model interaction").items(vec![
-                    SettingItem::new(
-                        "Mirror model",
-                        SettingField::switch(
-                            {
-                                let view = view_entity.clone();
-                                move |app| {
-                                    view.read(app)
-                                        .snapshot
-                                        .as_ref()
-                                        .is_some_and(|s| s.model_settings.mirror)
-                                }
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |value, app| {
-                                    view.update(app, |view, cx| {
-                                        if let Some(s) = view.snapshot.as_ref() {
-                                            let mut settings = s.model_settings;
-                                            settings.mirror = value;
-                                            view.set_model_settings(settings, cx);
-                                        }
-                                    });
-                                }
-                            },
-                        ),
-                    )
-                    .description("Render the model mirrored horizontally. Search: flip."),
-                    SettingItem::new(
-                        "Mirror pointer tracking",
-                        SettingField::switch(
-                            {
-                                let view = view_entity.clone();
-                                move |app| {
-                                    view.read(app)
-                                        .snapshot
-                                        .as_ref()
-                                        .is_some_and(|s| s.model_settings.mirror_pointer_tracking)
-                                }
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |value, app| {
-                                    view.update(app, |view, cx| {
-                                        if let Some(s) = view.snapshot.as_ref() {
-                                            let mut settings = s.model_settings;
-                                            settings.mirror_pointer_tracking = value;
-                                            view.set_model_settings(settings, cx);
-                                        }
-                                    });
-                                }
-                            },
-                        ),
-                    )
-                    .description(
-                        "Mirror horizontal pointer movement with the model. Search: mouse.",
-                    ),
-                    SettingItem::new(
-                        "Ignore pointer input",
-                        SettingField::switch(
-                            {
-                                let view = view_entity.clone();
-                                move |app| {
-                                    view.read(app)
-                                        .snapshot
-                                        .as_ref()
-                                        .is_some_and(|s| s.model_settings.ignore_pointer)
-                                }
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |value, app| {
-                                    view.update(app, |view, cx| {
-                                        if let Some(s) = view.snapshot.as_ref() {
-                                            let mut settings = s.model_settings;
-                                            settings.ignore_pointer = value;
-                                            view.set_model_settings(settings, cx);
-                                        }
-                                    });
-                                }
-                            },
-                        ),
-                    )
-                    .description("Do not apply pointer movement to the model. Search: mouse."),
-                ]),
-                SettingGroup::new().title("Input").items(vec![
-                    SettingItem::new(
-                        "Gamepad stick dead zone",
-                        SettingField::number_input(
-                            NumberFieldOptions {
-                                min: 0.0,
-                                max: 99.0,
-                                step: 5.0,
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |app| {
-                                    view.read(app).snapshot.as_ref().map_or(15.0, |s| {
-                                        f64::from(s.gamepad_axis_settings.stick_dead_zone_percent)
-                                    })
-                                }
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |value, app| {
-                                    view.update(app, |view, cx| {
-                                        view.set_gamepad_dead_zone_value(true, value, cx)
-                                    });
-                                }
-                            },
-                        ),
-                    )
-                    .description(
-                        "Ignore small analog stick movement. Search: controller, joystick.",
-                    ),
-                    SettingItem::new(
-                        "Gamepad trigger dead zone",
-                        SettingField::number_input(
-                            NumberFieldOptions {
-                                min: 0.0,
-                                max: 99.0,
-                                step: 5.0,
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |app| {
-                                    view.read(app).snapshot.as_ref().map_or(0.0, |s| {
-                                        f64::from(s.gamepad_axis_settings.trigger_dead_zone_percent)
-                                    })
-                                }
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |value, app| {
-                                    view.update(app, |view, cx| {
-                                        view.set_gamepad_dead_zone_value(false, value, cx)
-                                    });
-                                }
-                            },
-                        ),
-                    )
-                    .description("Ignore small trigger movement. Search: controller, gamepad."),
-                ]),
-                SettingGroup::new().title("Application").items({
-                    let mut items = vec![SettingItem::new(
-                        "Show status icon",
-                        SettingField::switch(
-                            {
-                                let view = view_entity.clone();
-                                move |app| {
-                                    view.read(app)
-                                        .snapshot
-                                        .as_ref()
-                                        .is_some_and(|s| s.status_icon_visible)
-                                }
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |value, app| {
-                                    view.update(app, |view, cx| {
-                                        view.set_status_icon_visible(value, cx)
-                                    });
-                                }
-                            },
-                        ),
-                    )
-                    .description(
-                        "Show BongoCat in the system tray or menu bar. Search: status, tray, menu bar.",
-                    )];
-                    #[cfg(target_os = "windows")]
-                    items.push(
+                SettingGroup::new()
+                    .title(ui_text(language, UiText::Appearance))
+                    .items(vec![
                         SettingItem::new(
-                            "Show taskbar icon",
+                            ui_text(language, UiText::Theme),
+                            SettingField::element({
+                                let view = view_entity.clone();
+                                move |_: &RenderOptions, _: &mut Window, app: &mut App| {
+                                    let selected = view
+                                        .read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .map(|snapshot| theme_index(snapshot.appearance_theme));
+                                    let view_for_change = view.clone();
+                                    RadioGroup::horizontal("appearance-theme")
+                                        .children([
+                                            Radio::new("appearance-theme-system")
+                                                .label(ui_text(language, UiText::System))
+                                                .tab_index(4),
+                                            Radio::new("appearance-theme-light")
+                                                .label(ui_text(language, UiText::Light))
+                                                .tab_index(5),
+                                            Radio::new("appearance-theme-dark")
+                                                .label(ui_text(language, UiText::Dark))
+                                                .tab_index(6),
+                                        ])
+                                        .selected_index(selected)
+                                        .disabled(disabled)
+                                        .on_click(move |index, _, app| {
+                                            let Some(theme) = theme_from_index(*index) else {
+                                                return;
+                                            };
+                                            view_for_change.update(app, |view, cx| {
+                                                view.set_appearance_theme(theme, cx)
+                                            });
+                                        })
+                                        .into_any_element()
+                                }
+                            }),
+                        )
+                        .description(ui_text(language, UiText::ThemeDescription)),
+                        SettingItem::new(
+                            ui_text(language, UiText::Language),
+                            SettingField::element({
+                                let view = view_entity.clone();
+                                move |_: &RenderOptions, _: &mut Window, app: &mut App| {
+                                    let state = view.read(app).language_select.clone();
+                                    Select::new(&state)
+                                        .accessibility_label(ui_text(language, UiText::Language))
+                                        .disabled(disabled)
+                                        .into_any_element()
+                                }
+                            }),
+                        )
+                        .description(ui_text(language, UiText::LanguageDescription)),
+                    ]),
+                SettingGroup::new()
+                    .title(ui_text(language, UiText::Overlay))
+                    .items(vec![
+                        SettingItem::new(
+                            ui_text(language, UiText::RuntimeStatus),
+                            SettingField::element({
+                                let status = status.clone();
+                                move |_: &RenderOptions, _: &mut Window, _: &mut App| {
+                                    if status_is_error {
+                                        Tag::danger().child(status.clone()).into_any_element()
+                                    } else {
+                                        Tag::secondary().child(status.clone()).into_any_element()
+                                    }
+                                }
+                            }),
+                        )
+                        .description(ui_text(language, UiText::RuntimeStatusDescription)),
+                        SettingItem::new(
+                            ui_text(language, UiText::ShowDesktopCat),
                             SettingField::switch(
                                 {
                                     let view = view_entity.clone();
@@ -555,53 +198,414 @@ impl Render for SettingsView {
                                         view.read(app)
                                             .snapshot
                                             .as_ref()
-                                            .is_some_and(|s| s.taskbar_icon_visible)
+                                            .is_some_and(|s| s.overlay_visible)
                                     }
                                 },
                                 {
                                     let view = view_entity.clone();
                                     move |value, app| {
                                         view.update(app, |view, cx| {
-                                            view.set_taskbar_icon_visible(value, cx)
+                                            view.set_overlay_visible(value, cx)
                                         });
                                     }
                                 },
                             ),
                         )
-                        .description(
-                            "Show the settings window in the Windows taskbar. Search: taskbar, window.",
-                        ),
-                    );
-                    items.push(SettingItem::new(
-                        "Open at login",
-                        SettingField::switch(
-                            {
-                                let view = view_entity.clone();
-                                move |app| {
-                                    view.read(app).snapshot.as_ref().is_some_and(|s| {
-                                        matches!(
+                        .description(ui_text(language, UiText::ShowDesktopCatDescription)),
+                        SettingItem::new(
+                            ui_text(language, UiText::AlwaysOnTop),
+                            SettingField::switch(
+                                {
+                                    let view = view_entity.clone();
+                                    move |app| {
+                                        view.read(app)
+                                            .snapshot
+                                            .as_ref()
+                                            .is_some_and(|s| s.overlay.always_on_top)
+                                    }
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |value, app| {
+                                        view.update(app, |view, cx| {
+                                            if let Some(snapshot) = view.snapshot.as_ref() {
+                                                let mut settings = snapshot.overlay;
+                                                settings.always_on_top = value;
+                                                view.set_overlay_settings(settings, cx);
+                                            }
+                                        });
+                                    }
+                                },
+                            ),
+                        )
+                        .description(ui_text(language, UiText::AlwaysOnTopDescription)),
+                        SettingItem::new(
+                            ui_text(language, UiText::ClickThroughOverlay),
+                            SettingField::switch(
+                                {
+                                    let view = view_entity.clone();
+                                    move |app| {
+                                        view.read(app)
+                                            .snapshot
+                                            .as_ref()
+                                            .is_some_and(|s| s.overlay.click_through)
+                                    }
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |value, app| {
+                                        view.update(app, |view, cx| {
+                                            if let Some(snapshot) = view.snapshot.as_ref() {
+                                                let mut settings = snapshot.overlay;
+                                                settings.click_through = value;
+                                                view.set_overlay_settings(settings, cx);
+                                            }
+                                        });
+                                    }
+                                },
+                            ),
+                        )
+                        .description(ui_text(language, UiText::ClickThroughOverlayDescription)),
+                        SettingItem::new(
+                            ui_text(language, UiText::MotionAudio),
+                            SettingField::switch(
+                                {
+                                    let view = view_entity.clone();
+                                    move |app| {
+                                        view.read(app)
+                                            .snapshot
+                                            .as_ref()
+                                            .is_some_and(|s| s.motion_audio_enabled)
+                                    }
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |value, app| {
+                                        view.update(app, |view, cx| {
+                                            view.set_motion_audio_enabled(value, cx)
+                                        });
+                                    }
+                                },
+                            ),
+                        )
+                        .description(ui_text(language, UiText::MotionAudioDescription)),
+                        SettingItem::new(
+                            ui_text(language, UiText::OverlayScale),
+                            SettingField::number_input(
+                                NumberFieldOptions {
+                                    min: 25.0,
+                                    max: 400.0,
+                                    step: 25.0,
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |app| {
+                                        view.read(app)
+                                            .snapshot
+                                            .as_ref()
+                                            .map_or(100.0, |s| f64::from(s.overlay.scale_percent))
+                                    }
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |value, app| {
+                                        view.update(app, |view, cx| {
+                                            view.set_overlay_scale_value(value, cx)
+                                        });
+                                    }
+                                },
+                            ),
+                        )
+                        .description(ui_text(language, UiText::OverlayScaleDescription)),
+                        SettingItem::new(
+                            ui_text(language, UiText::OverlayOpacity),
+                            SettingField::number_input(
+                                NumberFieldOptions {
+                                    min: 1.0,
+                                    max: 100.0,
+                                    step: 10.0,
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |app| {
+                                        view.read(app)
+                                            .snapshot
+                                            .as_ref()
+                                            .map_or(100.0, |s| f64::from(s.overlay.opacity_percent))
+                                    }
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |value, app| {
+                                        view.update(app, |view, cx| {
+                                            view.set_overlay_opacity_value(value, cx)
+                                        });
+                                    }
+                                },
+                            ),
+                        )
+                        .description(ui_text(language, UiText::OverlayOpacityDescription)),
+                        SettingItem::new(
+                            ui_text(language, UiText::MaximumFps),
+                            SettingField::number_input(
+                                NumberFieldOptions {
+                                    min: 15.0,
+                                    max: 240.0,
+                                    step: 15.0,
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |app| {
+                                        view.read(app)
+                                            .snapshot
+                                            .as_ref()
+                                            .map_or(60.0, |s| f64::from(s.maximum_fps))
+                                    }
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |value, app| {
+                                        view.update(app, |view, cx| {
+                                            view.set_maximum_fps_value(value, cx)
+                                        });
+                                    }
+                                },
+                            ),
+                        )
+                        .description(ui_text(language, UiText::MaximumFpsDescription)),
+                    ]),
+                SettingGroup::new()
+                    .title(ui_text(language, UiText::ModelInteraction))
+                    .items(vec![
+                        SettingItem::new(
+                            ui_text(language, UiText::MirrorModel),
+                            SettingField::switch(
+                                {
+                                    let view = view_entity.clone();
+                                    move |app| {
+                                        view.read(app)
+                                            .snapshot
+                                            .as_ref()
+                                            .is_some_and(|s| s.model_settings.mirror)
+                                    }
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |value, app| {
+                                        view.update(app, |view, cx| {
+                                            if let Some(s) = view.snapshot.as_ref() {
+                                                let mut settings = s.model_settings;
+                                                settings.mirror = value;
+                                                view.set_model_settings(settings, cx);
+                                            }
+                                        });
+                                    }
+                                },
+                            ),
+                        )
+                        .description(ui_text(language, UiText::MirrorModelDescription)),
+                        SettingItem::new(
+                            ui_text(language, UiText::MirrorPointerTracking),
+                            SettingField::switch(
+                                {
+                                    let view = view_entity.clone();
+                                    move |app| {
+                                        view.read(app).snapshot.as_ref().is_some_and(|s| {
+                                            s.model_settings.mirror_pointer_tracking
+                                        })
+                                    }
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |value, app| {
+                                        view.update(app, |view, cx| {
+                                            if let Some(s) = view.snapshot.as_ref() {
+                                                let mut settings = s.model_settings;
+                                                settings.mirror_pointer_tracking = value;
+                                                view.set_model_settings(settings, cx);
+                                            }
+                                        });
+                                    }
+                                },
+                            ),
+                        )
+                        .description(ui_text(language, UiText::MirrorPointerTrackingDescription)),
+                        SettingItem::new(
+                            ui_text(language, UiText::IgnorePointerInput),
+                            SettingField::switch(
+                                {
+                                    let view = view_entity.clone();
+                                    move |app| {
+                                        view.read(app)
+                                            .snapshot
+                                            .as_ref()
+                                            .is_some_and(|s| s.model_settings.ignore_pointer)
+                                    }
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |value, app| {
+                                        view.update(app, |view, cx| {
+                                            if let Some(s) = view.snapshot.as_ref() {
+                                                let mut settings = s.model_settings;
+                                                settings.ignore_pointer = value;
+                                                view.set_model_settings(settings, cx);
+                                            }
+                                        });
+                                    }
+                                },
+                            ),
+                        )
+                        .description(ui_text(language, UiText::IgnorePointerInputDescription)),
+                    ]),
+                SettingGroup::new()
+                    .title(ui_text(language, UiText::Input))
+                    .items(vec![
+                        SettingItem::new(
+                            ui_text(language, UiText::GamepadStickDeadZone),
+                            SettingField::number_input(
+                                NumberFieldOptions {
+                                    min: 0.0,
+                                    max: 99.0,
+                                    step: 5.0,
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |app| {
+                                        view.read(app).snapshot.as_ref().map_or(15.0, |s| {
+                                            f64::from(
+                                                s.gamepad_axis_settings.stick_dead_zone_percent,
+                                            )
+                                        })
+                                    }
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |value, app| {
+                                        view.update(app, |view, cx| {
+                                            view.set_gamepad_dead_zone_value(true, value, cx)
+                                        });
+                                    }
+                                },
+                            ),
+                        )
+                        .description(ui_text(language, UiText::GamepadStickDeadZoneDescription)),
+                        SettingItem::new(
+                            ui_text(language, UiText::GamepadTriggerDeadZone),
+                            SettingField::number_input(
+                                NumberFieldOptions {
+                                    min: 0.0,
+                                    max: 99.0,
+                                    step: 5.0,
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |app| {
+                                        view.read(app).snapshot.as_ref().map_or(0.0, |s| {
+                                            f64::from(
+                                                s.gamepad_axis_settings.trigger_dead_zone_percent,
+                                            )
+                                        })
+                                    }
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |value, app| {
+                                        view.update(app, |view, cx| {
+                                            view.set_gamepad_dead_zone_value(false, value, cx)
+                                        });
+                                    }
+                                },
+                            ),
+                        )
+                        .description(ui_text(language, UiText::GamepadTriggerDeadZoneDescription)),
+                    ]),
+                SettingGroup::new()
+                    .title(ui_text(language, UiText::Application))
+                    .items({
+                        let mut items = vec![
+                            SettingItem::new(
+                                ui_text(language, UiText::ShowStatusIcon),
+                                SettingField::switch(
+                                    {
+                                        let view = view_entity.clone();
+                                        move |app| {
+                                            view.read(app)
+                                                .snapshot
+                                                .as_ref()
+                                                .is_some_and(|s| s.status_icon_visible)
+                                        }
+                                    },
+                                    {
+                                        let view = view_entity.clone();
+                                        move |value, app| {
+                                            view.update(app, |view, cx| {
+                                                view.set_status_icon_visible(value, cx)
+                                            });
+                                        }
+                                    },
+                                ),
+                            )
+                            .description(ui_text(language, UiText::ShowStatusIconDescription)),
+                        ];
+                        #[cfg(target_os = "windows")]
+                        items.push(
+                            SettingItem::new(
+                                ui_text(language, UiText::ShowTaskbarIcon),
+                                SettingField::switch(
+                                    {
+                                        let view = view_entity.clone();
+                                        move |app| {
+                                            view.read(app)
+                                                .snapshot
+                                                .as_ref()
+                                                .is_some_and(|s| s.taskbar_icon_visible)
+                                        }
+                                    },
+                                    {
+                                        let view = view_entity.clone();
+                                        move |value, app| {
+                                            view.update(app, |view, cx| {
+                                                view.set_taskbar_icon_visible(value, cx)
+                                            });
+                                        }
+                                    },
+                                ),
+                            )
+                            .description(ui_text(language, UiText::ShowTaskbarIconDescription)),
+                        );
+                        items.push(
+                            SettingItem::new(
+                                ui_text(language, UiText::OpenAtLogin),
+                                SettingField::switch(
+                                    {
+                                        let view = view_entity.clone();
+                                        move |app| {
+                                            view.read(app).snapshot.as_ref().is_some_and(|s| {
+                                                matches!(
                                             s.startup_item,
                                             SettingsStartupItemStatus::State(
                                                 SettingsStartupItemState::Enabled
                                                     | SettingsStartupItemState::RequiresApproval
                                             )
                                         )
-                                    })
-                                }
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |value, app| {
-                                    view.update(app, |view, cx| {
-                                        view.set_startup_item_enabled(value, cx)
-                                    });
-                                }
-                            },
-                        ),
-                    )
-                    .description("Open BongoCat when you sign in. Search: launch, startup, login."));
-                    items
-                }),
+                                            })
+                                        }
+                                    },
+                                    {
+                                        let view = view_entity.clone();
+                                        move |value, app| {
+                                            view.update(app, |view, cx| {
+                                                view.set_startup_item_enabled(value, cx)
+                                            });
+                                        }
+                                    },
+                                ),
+                            )
+                            .description(startup_item.description),
+                        );
+                        items
+                    }),
             ]);
 
         let models_page = SettingPage::new(ui_text(language, UiText::Models))

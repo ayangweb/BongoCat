@@ -554,17 +554,30 @@ fn startup_item_presentations_cover_every_platform_state_and_retry() {
     ];
 
     for (status, enabled, action) in cases {
-        let presentation = startup_item_presentation(Some(status), false);
+        let presentation =
+            startup_item_presentation(Some(status), false, SettingsLanguage::EnglishUnitedStates);
         assert_eq!(presentation.enabled, enabled);
         assert_eq!(presentation.action, action);
         assert!(!presentation.description.is_empty());
         assert_eq!(
-            startup_item_presentation(Some(status), true).action,
+            startup_item_presentation(Some(status), true, SettingsLanguage::EnglishUnitedStates,)
+                .action,
             StartupItemAction::None
         );
     }
     assert_eq!(
-        startup_item_presentation(None, false).action,
+        startup_item_presentation(None, false, SettingsLanguage::EnglishUnitedStates).action,
         StartupItemAction::None
+    );
+    assert_eq!(
+        startup_item_presentation(
+            Some(SettingsStartupItemStatus::State(
+                SettingsStartupItemState::Enabled
+            )),
+            false,
+            SettingsLanguage::ChineseSimplified,
+        )
+        .description,
+        "BongoCat 将在登录系统时启动"
     );
 }

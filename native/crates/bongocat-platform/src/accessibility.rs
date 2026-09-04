@@ -370,6 +370,7 @@ impl SettingsAccessibilityBridge {
     #[cfg(target_os = "macos")]
     pub fn verify_startup_control(
         &self,
+        label: &str,
         toggled: AccessibilityToggle,
         enabled: bool,
     ) -> Result<(), AccessibilityError> {
@@ -426,7 +427,7 @@ impl SettingsAccessibilityBridge {
             let mut startup = None;
             for index in 0..control_count {
                 let control: *mut AnyObject = msg_send![controls, objectAtIndex: index];
-                if property_string(control, "title").as_deref() == Some("Open at login") {
+                if property_string(control, "title").as_deref() == Some(label) {
                     startup = Some(control);
                     break;
                 }
