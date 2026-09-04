@@ -2243,13 +2243,20 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       `Smoke native system menu lifecycle`。独立 macOS GPUI spike 首次因 tooltip 延迟、第二次因无显示
       runner 的 Metal drawable-pool 测量抖动失败，第三次 job `101044187976` 全部通过；两次重跑均未
       掩盖产品 job，且最终 run 保留完整成功证据。
-56. [ ] `P5-TASKBAR-ICON-VISIBILITY`：让当前 v1 的 Windows 设置窗口任务栏按钮可即时隐藏和恢复。
+56. [x] `P5-TASKBAR-ICON-VISIBILITY`：让当前 v1 的 Windows 设置窗口任务栏按钮可即时隐藏和恢复。
     - 依赖：当前 v1 `application.show_taskbar_icon`、GPUI 设置窗口 HWND、settings revision/CAS、
       platform main-thread adapter 和 GPUI Kit switch；macOS 不把该字段映射为 Dock 图标。
     - 退出条件：Windows-only 配置值通过强类型 snapshot/command 往返；平台主线程先修改窗口扩展
       样式，Application owner 再原子提交，平台失败不改配置，配置失败回滚 HWND；启动和窗口重建
       恢复已保存值，隐藏任务栏按钮不隐藏/销毁设置窗口；General 控件具备 keyboard/UIA switch
       语义；定向测试、完整 Native workspace 与 Windows release settings smoke 通过。
+    - 验收证据（2026-09-04）：commit `8ad5c49` 完成 Windows-only typed command/snapshot、GPUI
+      owner request/reply bridge、HWND 扩展样式切换与回读、config commit/rollback、启动/重建恢复、
+      GPUI Kit switch 和 UIA 语义；本机定向测试、完整 format/Clippy/workspace test/release check、
+      x64/ARM64 platform source check、共享 fixture/schema 门禁和 macOS release system-menu smoke 通过。
+      CI run `33882985949` 全绿；Windows Native job `101055885362` 通过完整 workspace、release 产品
+      smoke 并输出 `taskbar icon toggled and restored`，macOS job `101055885548` 同时证明该 Windows
+      控件未泄漏且原有 system-menu 生命周期无回归，退出条件满足。
 
 ## 13. 待决策清单
 
