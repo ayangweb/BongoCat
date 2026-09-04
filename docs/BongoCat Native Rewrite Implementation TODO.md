@@ -1327,10 +1327,12 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 ### 8.1 应用生命周期
 
 - [ ] 单实例唤醒已有进程并打开设置或显示 overlay。
-- [ ] GPUI 设置窗口按需创建，关闭不退出后台应用。
-  - 状态（2026-09-04）：双平台设置窗口关闭/重开和后台 frame/input/runtime 生命周期已由产品
-    smoke 覆盖；正式入口现把无参数启动改为持续运行到显式 Quit，正数 `--run-seconds` 仅用于
-    有界 smoke/诊断。完整双平台 runner 证据由执行队列 `P7-PRODUCT-LIFETIME-DEFAULT` 跟踪。
+- [x] GPUI 设置窗口按需创建，关闭不退出后台应用。
+  - 验收证据（2026-09-04）：双平台设置窗口关闭/重开和后台 frame/input/runtime 生命周期已由
+    产品 smoke 覆盖；正式入口无参数启动持续运行到显式 Quit，正数 `--run-seconds` 仅用于有界
+    smoke/诊断。commit `7f799f7` 的 run `33867921771` 全绿；Windows job `101006895636` 与
+    macOS job `101006895731` 均通过完整 workspace、release 产品 lifecycle、系统菜单 Quit 和
+    shutdown smoke。
 - [ ] 托盘/菜单栏 command 统一进入 runtime。
 - [ ] 系统关机、注销和普通退出进入 shutdown coordinator。
 - [ ] panic/crash 生成本地诊断并避免配置半写入。
@@ -2176,14 +2178,17 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       lifecycle 与隐藏切模 smoke 已通过。commit `99f0977` 随 commit `7082ff3` 和 CI race 修复进入
       run `33865854261`；macOS job `101000445151` 与 Windows job `101000445117` 均通过完整
       workspace、release 产品 lifecycle、隐藏模型提交和 shutdown smoke，退出条件满足。
-52. [ ] `P7-PRODUCT-LIFETIME-DEFAULT`：正式应用无参数启动不得按预览时长自动退出。
+52. [x] `P7-PRODUCT-LIFETIME-DEFAULT`：正式应用无参数启动不得按预览时长自动退出。
     - 依赖：双平台产品 lifecycle、系统菜单 Quit、shutdown coordinator 和有界 smoke CLI。
     - 退出条件：无参数解析为持续运行到显式 Quit；正数 `--run-seconds` 仍提供有界诊断且 `0`
       保持显式无界拼写；安装包/Finder/Explorer 启动不依赖额外参数；所有退出仍进入既有
       shutdown coordinator；入口 contract test、完整 Native workspace 与双平台 release lifecycle
       smoke 通过。
-    - 状态（2026-09-04）：入口默认值、usage、contract test、Native README 与 Technical Design
-      已同步；本地门禁和双平台 runner 证据待补，因此保持未勾选。
+    - 验收证据（2026-09-04）：入口默认值、usage、contract test、Native README 与 Technical
+      Design 已同步；本机 format、严格 Clippy、workspace test、release check、app 入口 13 个
+      contract test 和 macOS release lifecycle smoke 通过。commit `7f799f7` 的 run
+      `33867921771` 全绿；Windows job `101006895636` 与 macOS job `101006895731` 均通过完整
+      workspace 和 release 产品 lifecycle，退出条件满足。
 
 ## 13. 待决策清单
 
