@@ -695,8 +695,10 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
 - Windows 首发安装包使用固定版本、hash 的 NSIS per-user installer：它只安装目标架构的已签名
   product artifact 到当前用户的 local application directory，不请求管理员权限，也不读取、迁移或删除
   Development/Production 的 config、state、models、backups、logs 或 updates 数据。installer 与未来的
-  Rust update helper 不联网；helper 只在应用完成协调 shutdown 后接收已验证 artifact，原子替换失败时
-  恢复上一已知可运行版本。卸载默认只移除 product files，用户数据必须由明确的独立操作删除。
+  Rust update helper 不联网；helper 只在应用完成协调 shutdown 后接收同环境、target/arch、length/hash 和
+  OS package signature 重新验证的 staging artifact。它以 private same-volume candidate/rollback sibling
+  执行 prepare -> validate -> atomic rename -> launch/health acknowledgement，任一失败只恢复已知 product
+  root 且不删除用户数据。卸载默认只移除 product files，用户数据必须由明确的独立操作删除。
 - 更新下载只可在当前环境 `StorageLayout::update_staging` 下创建暂存文件；该目录与
   `updates/update-sequence.json`/lock 及 `InstallationLayout` 的 product files root 分离。下载、
   清理、替换和 rollback 仍须在各自的后续 contract 中定义，不得由此路径模型隐式授权。

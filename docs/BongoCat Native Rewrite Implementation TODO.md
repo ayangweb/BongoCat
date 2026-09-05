@@ -1571,7 +1571,12 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
   - 状态（2026-09-05）：共享 Draft 2020-12 manifest v1 已定义 `schema_version`、环境 channel、
     release/minimum SemVer、`published_at_unix_seconds`、单调 `release_sequence` 和 target artifacts；
     Rust 对同一 accept fixture 验签解析，真实发布生成器与签名 envelope 尚未实现。
-- [ ] 更新 helper/installer 的权限边界、替换原子性和失败恢复经过单独威胁建模。
+- [x] 更新 helper/installer 的权限边界、替换原子性和失败恢复经过单独威胁建模。
+  - 验收证据（2026-09-05）：ADR-0026 固定 helper 只接受同环境已验证 staging artifact、固定
+    installation root 与 app shutdown acknowledgement；拒绝裸 URL/manifest/path、link/path traversal、
+    cross-environment/target 和并发 helper。替换必须 prepare -> validate -> atomic same-volume rename ->
+    launch/health acknowledgement，失败恢复已知 root 而不删除用户数据；OS package signature、helper、fault
+    injection 和双平台实机 smoke 仍需独立实现，未因此标记更新安装完成。
 
 ### 8.5 Phase 7 退出门槛
 
