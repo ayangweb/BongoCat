@@ -1347,7 +1347,10 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 - [x] 当前 v1 连续读取 10 次结果一致且不会产生额外写入或备份。
 - [ ] 失败注入不丢当前环境的配置或用户模型。
 - [ ] 发布依赖和运行日志中没有旧 Tauri/Pinia 配置探测。
-- [ ] Bundle ID 精确验证为 `com.ayangweb.bongo-cat`。
+- [x] Bundle ID 精确验证为 `com.ayangweb.bongo-cat`。
+  - 验收证据（2026-09-05）：配置与存储根使用固定 `BUNDLE_ID` 常量；macOS 打包脚本在签名前
+    读取 `CFBundleIdentifier` 并拒绝任何非预期值，release LaunchServices smoke 再次断言该值且
+    通过 strict codesign。Windows 单实例 namespace 同样使用该固定应用身份。
 
 ## 8. Phase 7：原生系统集成
 
