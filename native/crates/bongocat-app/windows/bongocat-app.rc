@@ -1,0 +1,3 @@
+#define BONGOCAT_PRODUCT_ICON 101
+
+BONGOCAT_PRODUCT_ICON ICON "../../resources/icons/BongoCat.ico"

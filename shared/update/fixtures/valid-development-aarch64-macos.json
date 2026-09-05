@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "channel": "development",
+  "release_version": "0.2.0",
+  "minimum_upgradable_version": "0.1.0",
+  "release_sequence": 2,
+  "published_at_unix_seconds": 1788566400,
+  "release_notes_url": "https://updates.example.invalid/releases/0.2.0",
+  "artifacts": [
+    {
+      "target": "aarch64-apple-darwin",
+      "architecture": "aarch64",
+      "url": "https://updates.example.invalid/0.2.0/BongoCat.app.tar.zst",
+      "byte_length": 4096,
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ]
+}

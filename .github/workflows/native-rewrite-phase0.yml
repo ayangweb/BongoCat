@@ -1,0 +1,1837 @@
+name: Native Rewrite Phase 0
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  BONGOCAT_BUILD_ENV: development
+
+jobs:
+  native-toolchain:
+    name: Verify Native Rust toolchains
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check current stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build Native workspace with current stable
+        run: cargo check --manifest-path native/Cargo.toml --locked --workspace
+      - name: Check declared minimum toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.1
+          components: clippy, rustfmt
+      - name: Build Native workspace with declared minimum
+        run: cargo check --manifest-path native/Cargo.toml --locked --workspace
+
+  fixtures:
+    name: Validate shared fixtures
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install pinned schema validator
+        run: python3 -m pip install --disable-pip-version-check --requirement tools/requirements-phase0.txt
+      - name: Validate fixture structure and model cases
+        run: python3 tools/validate-fixtures.py
+      - name: Validate Draft 2020-12 schemas
+        run: python3 tools/validate-json-schema.py
+      - name: Validate locale keys and placeholders
+        run: python3 tools/validate-locales.py
+      - name: Run deterministic input fixtures
+        run: python3 tools/run-input-fixtures.py
+      - name: Test Cubism SDK offline inspector
+        run: python3 -m unittest discover -s tools/tests -p 'test_*.py'
+      - name: Check legacy Cubism model baseline
+        run: node tools/inspect-legacy-cubism-models.mjs --check
+      - name: Check whitespace
+        run: git diff --check
+
+  dependency-policy:
+    name: Check Native dependency policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cache Cargo artifacts
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/bin/cargo-deny
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-deny-0.20.2-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'deny.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-deny-0.20.2-
+      - name: Install pinned cargo-deny
+        shell: bash
+        run: |
+          if ! cargo deny --version 2>/dev/null | grep -Fxq 'cargo-deny 0.20.2'; then
+            cargo install cargo-deny --version 0.20.2 --locked
+          fi
+      - name: Check licenses and dependency sources
+        run: ./tools/check-native-dependencies.sh
+
+  native-workspace:
+    name: Test Native workspace (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.1
+          components: clippy, rustfmt
+      - name: Cache Cargo artifacts
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            native/target/
+          key: ${{ runner.os }}-native-workspace-${{ hashFiles('native/Cargo.lock', 'native/Cargo.toml', 'native/rust-toolchain.toml', 'native/crates/**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-native-workspace-
+      - name: Check formatting
+        run: cargo fmt --manifest-path native/Cargo.toml --all -- --check
+      - name: Run Clippy
+        run: cargo clippy --manifest-path native/Cargo.toml --locked --workspace --all-targets --all-features -- -D warnings
+      - name: Run tests
+        run: cargo test --manifest-path native/Cargo.toml --locked --workspace
+      - name: Reject implicit app build environment
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          if env -u BONGOCAT_BUILD_ENV cargo check --manifest-path native/Cargo.toml --locked -p bongocat-app; then
+            echo 'app build accepted a missing build environment' >&2
+            exit 1
+          fi
+          if BONGOCAT_BUILD_ENV= cargo check --manifest-path native/Cargo.toml --locked -p bongocat-app; then
+            echo 'app build accepted an empty build environment' >&2
+            exit 1
+          fi
+          if BONGOCAT_BUILD_ENV=unknown cargo check --manifest-path native/Cargo.toml --locked -p bongocat-app; then
+            echo 'app build accepted an unknown build environment' >&2
+            exit 1
+          fi
+          if BONGOCAT_BUILD_ENV=production cargo check --manifest-path native/Cargo.toml --locked -p bongocat-app --release --features storage-test-injection; then
+            echo 'Production app build accepted storage test injection' >&2
+            exit 1
+          fi
+      - name: Check release build
+        run: cargo check --manifest-path native/Cargo.toml --locked --workspace --release
+      - name: Check production environment build
+        shell: bash
+        env:
+          BONGOCAT_BUILD_ENV: production
+        run: cargo check --manifest-path native/Cargo.toml --locked -p bongocat-app --release
+      - name: Record Native build provenance
+        shell: bash
+        run: |
+          python3 tools/record-native-provenance.py \
+            --workspace native \
+            --output "native/target/provenance/${RUNNER_OS}.json" \
+            --profile release \
+            --features default \
+            --environment "$BONGOCAT_BUILD_ENV"
+      - name: Upload Native build provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-provenance-${{ matrix.os }}
+          path: native/target/provenance/${{ runner.os }}.json
+          if-no-files-found: error
+      - name: Smoke Windows model directory picker
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        timeout-minutes: 6
+        env:
+          RUST_BACKTRACE: full
+        run: |
+          cargo run --manifest-path native/Cargo.toml --locked --release -p bongocat-platform --example model_directory_picker_smoke -- --expect-cancel --auto
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+          cargo run --manifest-path native/Cargo.toml --locked --release -p bongocat-platform --example model_directory_picker_smoke -- --expect-selected-any --auto
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+      - name: Check Windows ARM64 platform and overlay source
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          rustup target add aarch64-pc-windows-msvc
+          cargo clippy \
+            --manifest-path native/Cargo.toml \
+            --locked \
+            -p bongocat-platform \
+            -p bongocat-overlay \
+            --target aarch64-pc-windows-msvc \
+            --all-targets \
+            --all-features \
+            -- \
+            -D warnings
+      - name: Smoke Windows D3D11 product overlay
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        timeout-minutes: 12
+        env:
+          RUST_BACKTRACE: full
+        run: |
+          cargo build --manifest-path native/Cargo.toml --locked -p bongocat-app --release
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+          $executable = Join-Path $PWD "native/target/release/bongocat-app.exe"
+          Add-Type -AssemblyName UIAutomationTypes
+          Add-Type -AssemblyName UIAutomationClient
+          function Find-UiAutomationElement {
+            param(
+              [System.Windows.Automation.AutomationElement] $Owner,
+              [System.Windows.Automation.TreeScope] $Scope,
+              [System.Windows.Automation.Condition] $Condition
+            )
+            try {
+              return $Owner.FindFirst($Scope, $Condition)
+            } catch {
+              # GPUI can rebuild its UIA subtree after a settings snapshot
+              # update. PowerShell commonly wraps the resulting COMException
+              # (including E_UNEXPECTED) in MethodInvocationException.
+              $exception = $_.Exception
+              while ($null -ne $exception) {
+                if ($exception -is [System.Runtime.InteropServices.COMException]) {
+                  if ($exception.HResult -eq -2147418113) {
+                    return $null
+                  }
+                  throw
+                }
+                $exception = $exception.InnerException
+              }
+              throw
+            }
+          }
+          $childrenScope = [System.Windows.Automation.TreeScope]::Children
+          $descendantsScope = [System.Windows.Automation.TreeScope]::Descendants
+          1..5 | ForEach-Object {
+            $stdout = Join-Path $env:RUNNER_TEMP "bongocat-product-$_.stdout.log"
+            $stderr = Join-Path $env:RUNNER_TEMP "bongocat-product-$_.stderr.log"
+            $arguments = if ($_ -eq 1) {
+              @("--run-seconds", "30")
+            } else {
+              @("--run-seconds", "30", "--settings-window-smoke", "--models-page-smoke")
+            }
+            $process = Start-Process `
+              -FilePath $executable `
+              -ArgumentList $arguments `
+              -NoNewWindow `
+              -PassThru `
+              -RedirectStandardOutput $stdout `
+              -RedirectStandardError $stderr
+            if ($_ -eq 1) {
+              $windowDeadline = [DateTime]::UtcNow.AddSeconds(10)
+              $processCondition = [System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::ProcessIdProperty,
+                $process.Id
+              )
+              $windowNameCondition = [System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::NameProperty,
+                "BongoCat Settings"
+              )
+              $settingsWindowCondition = [System.Windows.Automation.AndCondition]::new(
+                $processCondition,
+                $windowNameCondition
+              )
+              do {
+                Start-Sleep -Milliseconds 100
+                $process.Refresh()
+                if ($process.HasExited) {
+                  Get-Content $stdout, $stderr -ErrorAction SilentlyContinue
+                  throw "Windows product exited before UI Automation inspection"
+                }
+                $root = Find-UiAutomationElement `
+                  -Owner ([System.Windows.Automation.AutomationElement]::RootElement) `
+                  -Scope $childrenScope `
+                  -Condition $settingsWindowCondition
+              } while ($null -eq $root -and [DateTime]::UtcNow -lt $windowDeadline)
+              if ($null -eq $root) {
+                throw "Windows product did not expose a settings HWND"
+              }
+              $startupCondition = [System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::NameProperty,
+                "Open at login"
+              )
+              $startupDeadline = [DateTime]::UtcNow.AddSeconds(5)
+              do {
+                Start-Sleep -Milliseconds 100
+                $startup = Find-UiAutomationElement `
+                  -Owner $root `
+                  -Scope $descendantsScope `
+                  -Condition $startupCondition
+              } while ($null -eq $startup -and [DateTime]::UtcNow -lt $startupDeadline)
+              if ($null -eq $startup) {
+                throw "Windows UIA did not expose the startup switch"
+              }
+              if ($startup.Current.ControlType -ne [System.Windows.Automation.ControlType]::Button) {
+                throw "Windows UIA startup switch did not use the button control type"
+              }
+              # Some GitHub-hosted runner UIAutomationClient builds do not
+              # expose the optional ARIA role property at all. Resolve the
+              # stable UIA property id directly when the client supports it.
+              $ariaRoleProperty = $null
+              try {
+                $ariaRoleProperty = [System.Windows.Automation.AutomationProperty]::LookupById(30101)
+              } catch {
+                $ariaRoleProperty = $null
+              }
+              if ($null -eq $ariaRoleProperty) {
+                Write-Warning "Windows UIA client does not expose optional UIA_AriaRoleProperty (30101); relying on ControlType and TogglePattern checks"
+              } else {
+                $ariaRole = [string]$startup.GetCurrentPropertyValue($ariaRoleProperty)
+                if ($ariaRole -ne "switch") {
+                  throw "Windows UIA startup control did not expose aria role switch: '$ariaRole'"
+                }
+              }
+              if (-not $startup.Current.IsEnabled -or -not $startup.Current.IsKeyboardFocusable) {
+                throw "Windows UIA startup switch was not enabled and focusable"
+              }
+              $toggle = $startup.GetCurrentPattern(
+                [System.Windows.Automation.TogglePattern]::Pattern
+              )
+              $toggleState = $toggle.Current.ToggleState
+              if ($toggleState -notin @(
+                [System.Windows.Automation.ToggleState]::On,
+                [System.Windows.Automation.ToggleState]::Off
+              )) {
+                throw "Windows UIA startup switch exposed an indeterminate value"
+              }
+              $initialToggleState = $toggleState
+              # Exercise the real UIA action and wait for the revisioned settings
+              # snapshot to project the new state. The runner uses an ephemeral
+              # HKCU profile, so toggling twice restores the initial disabled/
+              # enabled state without changing a user's login item.
+              if ($toggleState -eq [System.Windows.Automation.ToggleState]::Off) {
+                $expectedToggleState = [System.Windows.Automation.ToggleState]::On
+              } else {
+                $expectedToggleState = [System.Windows.Automation.ToggleState]::Off
+              }
+              $actionSucceeded = $false
+              $actionError = "startup switch was unavailable"
+              $actionDeadline = [DateTime]::UtcNow.AddSeconds(2)
+              do {
+                $startup = Find-UiAutomationElement `
+                  -Owner $root `
+                  -Scope $descendantsScope `
+                  -Condition $startupCondition
+                if ($null -ne $startup) {
+                  try {
+                    $startup.GetCurrentPattern(
+                      [System.Windows.Automation.TogglePattern]::Pattern
+                    ).Toggle()
+                    $actionSucceeded = $true
+                  } catch {
+                    $actionError = $_.Exception.Message
+                  }
+                }
+                if (-not $actionSucceeded) {
+                  Start-Sleep -Milliseconds 50
+                }
+              } while (-not $actionSucceeded -and [DateTime]::UtcNow -lt $actionDeadline)
+              if (-not $actionSucceeded) {
+                throw "Windows UIA startup switch action failed after reacquiring the current node: $actionError"
+              }
+              $toggleDeadline = [DateTime]::UtcNow.AddSeconds(5)
+              $startupReady = $false
+              do {
+                Start-Sleep -Milliseconds 100
+                $startupReady = $false
+                $startup = Find-UiAutomationElement `
+                  -Owner $root `
+                  -Scope $descendantsScope `
+                  -Condition $startupCondition
+                if ($null -ne $startup) {
+                  try {
+                    $toggleState = $startup.GetCurrentPattern(
+                      [System.Windows.Automation.TogglePattern]::Pattern
+                    ).Current.ToggleState
+                    $startupReady = $startup.Current.IsEnabled
+                  } catch {
+                    $toggleState = $null
+                  }
+                }
+              } while (($toggleState -ne $expectedToggleState -or -not $startupReady) -and [DateTime]::UtcNow -lt $toggleDeadline)
+              if ($toggleState -ne $expectedToggleState) {
+                throw "Windows UIA startup switch action did not update state: expected '$expectedToggleState', found '$toggleState'"
+              }
+              if (-not $startupReady) {
+                throw "Windows UIA startup switch did not become enabled after updating state"
+              }
+              $actionSucceeded = $false
+              $actionError = "startup switch was unavailable"
+              $actionDeadline = [DateTime]::UtcNow.AddSeconds(5)
+              do {
+                $startup = Find-UiAutomationElement `
+                  -Owner $root `
+                  -Scope $descendantsScope `
+                  -Condition $startupCondition
+                if ($null -ne $startup) {
+                  try {
+                    if ($startup.Current.IsEnabled) {
+                      $startup.GetCurrentPattern(
+                        [System.Windows.Automation.TogglePattern]::Pattern
+                      ).Toggle()
+                      $actionSucceeded = $true
+                    } else {
+                      $actionError = "startup switch was disabled"
+                    }
+                  } catch {
+                    $actionError = $_.Exception.Message
+                  }
+                }
+                if (-not $actionSucceeded) {
+                  Start-Sleep -Milliseconds 50
+                }
+              } while (-not $actionSucceeded -and [DateTime]::UtcNow -lt $actionDeadline)
+              if (-not $actionSucceeded) {
+                throw "Windows UIA startup switch restore action failed after reacquiring the current node: $actionError"
+              }
+              $restoreDeadline = [DateTime]::UtcNow.AddSeconds(5)
+              do {
+                Start-Sleep -Milliseconds 100
+                $startup = Find-UiAutomationElement `
+                  -Owner $root `
+                  -Scope $descendantsScope `
+                  -Condition $startupCondition
+                if ($null -ne $startup) {
+                  try {
+                    $toggleState = $startup.GetCurrentPattern(
+                      [System.Windows.Automation.TogglePattern]::Pattern
+                    ).Current.ToggleState
+                  } catch {
+                    $toggleState = $null
+                  }
+                }
+              } while ($toggleState -ne $initialToggleState -and [DateTime]::UtcNow -lt $restoreDeadline)
+              if ($toggleState -ne $initialToggleState) {
+                throw "Windows UIA startup switch action did not restore state: expected '$initialToggleState', found '$toggleState'"
+              }
+              # The settings snapshot revision rebuilds the GPUI control tree.
+              # Reacquire the current node for every transient focus attempt.
+              $focusSucceeded = $false
+              $focusError = "startup switch was unavailable"
+              $focusDeadline = [DateTime]::UtcNow.AddSeconds(5)
+              do {
+                $startup = Find-UiAutomationElement `
+                  -Owner $root `
+                  -Scope $descendantsScope `
+                  -Condition $startupCondition
+                if ($null -ne $startup) {
+                  try {
+                    $startup.SetFocus()
+                    $focused = [System.Windows.Automation.AutomationElement]::FocusedElement
+                    $focusedName = if ($null -eq $focused) { "" } else { $focused.Current.Name }
+                    if ($focusedName -eq "Open at login") {
+                      $focusSucceeded = $true
+                    } else {
+                      $focusError = "focused element was '$focusedName'"
+                    }
+                  } catch {
+                    $focusError = $_.Exception.Message
+                  }
+                }
+                if (-not $focusSucceeded) {
+                  Start-Sleep -Milliseconds 50
+                }
+              } while (-not $focusSucceeded -and [DateTime]::UtcNow -lt $focusDeadline)
+              if (-not $focusSucceeded) {
+                throw "Windows UIA startup switch focus failed after reacquiring the current node: $focusError"
+              }
+              Write-Host "bongocat-app: Windows UIA startup switch role/value/action verified"
+            }
+            if (!$process.WaitForExit(60000)) {
+              Stop-Process -Id $process.Id -Force
+              Get-Content $stdout, $stderr -ErrorAction SilentlyContinue
+              throw "Windows product lifecycle smoke $_ exceeded 60 seconds"
+            }
+            Get-Content $stdout, $stderr -ErrorAction SilentlyContinue
+            if ($process.ExitCode -ne 0) {
+              exit $process.ExitCode
+            }
+          }
+      - name: Smoke macOS settings window lifecycle
+        if: matrix.os == 'macos-latest'
+        timeout-minutes: 10
+        run: cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release -- --run-seconds 8 --settings-window-smoke --models-page-smoke
+      - name: Smoke hidden overlay model switching
+        if: matrix.os != 'ubuntu-latest'
+        timeout-minutes: 5
+        run: cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release -- --run-seconds 20 --hidden-model-switch-smoke
+      - name: Build isolated storage smoke executable
+        if: matrix.os != 'ubuntu-latest'
+        timeout-minutes: 30
+        run: cargo build --manifest-path native/Cargo.toml --locked -p bongocat-app --release --features storage-test-injection --target-dir native/target/storage-test-injection
+      - name: Smoke macOS configuration recovery window
+        if: matrix.os == 'macos-latest'
+        timeout-minutes: 2
+        run: |
+          output=$(native/target/storage-test-injection/release/bongocat-app --configuration-recovery-smoke 2>&1)
+          printf '%s\n' "$output"
+          grep -Fq 'bongocat-app: configuration recovery required' <<<"$output"
+          grep -Fq 'bongocat-app: recovery window opened' <<<"$output"
+          grep -Fq 'bongocat-app: recovery diagnostics verified' <<<"$output"
+          grep -Fq 'bongocat-app: recovery service stopped' <<<"$output"
+      - name: Smoke macOS settings window state restore
+        if: matrix.os == 'macos-latest'
+        timeout-minutes: 2
+        run: |
+          set +e
+          output=$(native/target/storage-test-injection/release/bongocat-app --settings-window-state-smoke 2>&1)
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          if ((status != 0)); then
+            exit "$status"
+          fi
+          grep -Fq 'bongocat-app: Chinese General localization verified' <<<"$output"
+          grep -Fq 'bongocat-app: Chinese Models localization verified' <<<"$output"
+          grep -Fq 'bongocat-app: Chinese Diagnostics localization verified' <<<"$output"
+          grep -Fq 'bongocat-app: settings window state restored after restart' <<<"$output"
+      - name: Smoke macOS release panic diagnostics
+        if: matrix.os == 'macos-latest'
+        timeout-minutes: 2
+        run: |
+          output=$(native/target/storage-test-injection/release/bongocat-app --panic-diagnostics-smoke 2>&1)
+          printf '%s\n' "$output"
+          grep -Fq 'bongocat-app: panic diagnostics recovered after crash' <<<"$output"
+      - name: Smoke Windows configuration recovery window
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          $smokeTarget = Join-Path $PWD "native/target/storage-test-injection"
+          $executable = Join-Path $smokeTarget "release/bongocat-app.exe"
+          if (-not (Test-Path $executable)) {
+            throw "storage injection smoke executable was not built"
+          }
+          $stdout = Join-Path $env:RUNNER_TEMP "bongocat-recovery-window.stdout.log"
+          $stderr = Join-Path $env:RUNNER_TEMP "bongocat-recovery-window.stderr.log"
+          Remove-Item $stdout, $stderr -Force -ErrorAction SilentlyContinue
+          $process = Start-Process `
+            -FilePath $executable `
+            -ArgumentList @("--configuration-recovery-smoke") `
+            -NoNewWindow `
+            -PassThru `
+            -RedirectStandardOutput $stdout `
+            -RedirectStandardError $stderr
+          Add-Type -AssemblyName UIAutomationTypes
+          Add-Type -AssemblyName UIAutomationClient
+          $deadline = [DateTime]::UtcNow.AddSeconds(10)
+          $processCondition = [System.Windows.Automation.PropertyCondition]::new(
+            [System.Windows.Automation.AutomationElement]::ProcessIdProperty,
+            $process.Id
+          )
+          $windowNameCondition = [System.Windows.Automation.PropertyCondition]::new(
+            [System.Windows.Automation.AutomationElement]::NameProperty,
+            "BongoCat Settings"
+          )
+          $condition = [System.Windows.Automation.AndCondition]::new(
+            $processCondition,
+            $windowNameCondition
+          )
+          $root = $null
+          do {
+            Start-Sleep -Milliseconds 100
+            $process.Refresh()
+            if ($process.HasExited) { break }
+            $root = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
+              [System.Windows.Automation.TreeScope]::Children,
+              $condition
+            )
+          } while ($null -eq $root -and [DateTime]::UtcNow -lt $deadline)
+          if ($null -eq $root) {
+            Get-Content $stdout, $stderr -ErrorAction SilentlyContinue
+            throw "Windows recovery settings window did not open"
+          }
+          if (-not $process.WaitForExit(15000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw "Windows recovery settings smoke exceeded 15 seconds"
+          }
+          $output = @(
+            Get-Content $stdout -Raw -ErrorAction SilentlyContinue
+            Get-Content $stderr -Raw -ErrorAction SilentlyContinue
+          ) -join "`n"
+          Write-Host $output
+          if ($process.ExitCode -ne 0) { throw "Windows recovery settings smoke exited with $($process.ExitCode)" }
+          foreach ($expected in @(
+            "bongocat-app: configuration recovery required",
+            "bongocat-app: recovery window opened",
+            "bongocat-app: recovery diagnostics verified",
+            "bongocat-app: recovery service stopped"
+          )) {
+            if (-not $output.Contains($expected)) { throw "Windows recovery smoke did not report: $expected" }
+          }
+          $stateStdout = Join-Path $env:RUNNER_TEMP "bongocat-settings-window-state.stdout.log"
+          $stateStderr = Join-Path $env:RUNNER_TEMP "bongocat-settings-window-state.stderr.log"
+          Remove-Item $stateStdout, $stateStderr -Force -ErrorAction SilentlyContinue
+          $stateProcess = Start-Process `
+            -FilePath $executable `
+            -ArgumentList @("--settings-window-state-smoke") `
+            -NoNewWindow `
+            -PassThru `
+            -RedirectStandardOutput $stateStdout `
+            -RedirectStandardError $stateStderr
+          if (-not $stateProcess.WaitForExit(20000)) {
+            Stop-Process -Id $stateProcess.Id -Force -ErrorAction SilentlyContinue
+            throw "Windows settings window state smoke exceeded 20 seconds"
+          }
+          $stateOutput = @(
+            Get-Content $stateStdout -Raw -ErrorAction SilentlyContinue
+            Get-Content $stateStderr -Raw -ErrorAction SilentlyContinue
+          ) -join "`n"
+          Write-Host $stateOutput
+          if ($stateProcess.ExitCode -ne 0) { throw "Windows settings window state smoke exited with $($stateProcess.ExitCode)" }
+          if (-not $stateOutput.Contains("bongocat-app: settings window state restored after restart")) {
+            throw "Windows settings window state smoke did not report restart restore"
+          }
+          if (-not $stateOutput.Contains("bongocat-app: Chinese General localization verified")) {
+            throw "Windows settings window state smoke did not verify Chinese General localization"
+          }
+          if (-not $stateOutput.Contains("bongocat-app: Chinese Models localization verified")) {
+            throw "Windows settings window state smoke did not verify Chinese Models localization"
+          }
+          if (-not $stateOutput.Contains("bongocat-app: Chinese Diagnostics localization verified")) {
+            throw "Windows settings window state smoke did not verify Chinese Diagnostics localization"
+          }
+      - name: Smoke Windows release panic diagnostics
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          $output = & native/target/storage-test-injection/release/bongocat-app.exe --panic-diagnostics-smoke 2>&1 | Out-String
+          $exitCode = $LASTEXITCODE
+          Write-Host $output
+          if ($exitCode -ne 0) { exit $exitCode }
+          if (-not $output.Contains("bongocat-app: panic diagnostics recovered after crash")) {
+            throw "Windows panic diagnostics smoke did not report recovery"
+          }
+      - name: Smoke Windows startup item lifecycle
+        if: matrix.os == 'windows-latest'
+        run: cargo test --manifest-path native/Cargo.toml --locked --release -p bongocat-platform windows_startup_item_registry_smoke_restores_original_value -- --ignored
+      - name: Reject implicit macOS package environment
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          if env -u BONGOCAT_BUILD_ENV ./native/scripts/package-macos.sh; then
+            echo 'package script accepted a missing build environment' >&2
+            exit 1
+          fi
+          if BONGOCAT_BUILD_ENV= ./native/scripts/package-macos.sh; then
+            echo 'package script accepted an empty build environment' >&2
+            exit 1
+          fi
+          if BONGOCAT_BUILD_ENV=unknown ./native/scripts/package-macos.sh; then
+            echo 'package script accepted an unknown build environment' >&2
+            exit 1
+          fi
+      - name: Smoke macOS startup item lifecycle
+        if: matrix.os == 'macos-latest'
+        run: |
+          app_path=$(BONGOCAT_BUILD_ENV=production ./native/scripts/package-macos.sh)
+          install_root=$(mktemp -d '/Applications/bongocat-startup-item-smoke.XXXXXX')
+          installed_app="$install_root/BongoCat.app"
+          stdout_path="$RUNNER_TEMP/macos-startup-item.stdout.log"
+          stderr_path="$RUNNER_TEMP/macos-startup-item.stderr.log"
+          cleanup() {
+            /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
+              -u "$installed_app" >/dev/null 2>&1 || true
+            rm -rf "$install_root"
+          }
+          trap cleanup EXIT
+          ditto "$app_path" "$installed_app"
+          codesign --verify --deep --strict "$installed_app"
+          rm -f "$stdout_path" "$stderr_path"
+          open \
+            -n \
+            -o "$stdout_path" \
+            --stderr "$stderr_path" \
+            "$installed_app" \
+            --args \
+            --startup-item-smoke
+          restored=false
+          for _ in {1..120}; do
+            if grep -Fq 'bongocat-app: startup-item restored state' "$stdout_path"; then
+              restored=true
+              break
+            fi
+            if grep -Fq 'Error:' "$stderr_path"; then
+              break
+            fi
+            sleep 0.5
+          done
+          cat "$stdout_path" "$stderr_path" 2>/dev/null || true
+          grep -Fq 'bongocat-app: startup-item original state' "$stdout_path"
+          test "$restored" = true
+      - name: Smoke macOS application reopen lifecycle
+        if: matrix.os == 'macos-latest'
+        timeout-minutes: 5
+        run: |
+          app_path=$(./native/scripts/package-macos.sh)
+          stdout_path="$RUNNER_TEMP/macos-application-reopen.stdout.log"
+          stderr_path="$RUNNER_TEMP/macos-application-reopen.stderr.log"
+          rm -f "$stdout_path" "$stderr_path"
+          open \
+            -n \
+            -W \
+            -o "$stdout_path" \
+            --stderr "$stderr_path" \
+            "$app_path" \
+            --args \
+            --run-seconds 10 \
+            --application-reopen-smoke &
+          open_waiter=$!
+
+          ready=0
+          for _ in $(seq 1 150); do
+            if grep -Fq 'bongocat-app: application-reopen primary ready' "$stdout_path" 2>/dev/null; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$open_waiter" 2>/dev/null; then
+              break
+            fi
+            sleep 0.1
+          done
+          if [ "$ready" -ne 1 ]; then
+            cat "$stdout_path" "$stderr_path" 2>/dev/null || true
+            pkill -f -- "$app_path/Contents/MacOS/bongocat-app" || true
+            wait "$open_waiter" || true
+            printf '%s\n' 'macOS product did not reach the application-reopen gate' >&2
+            exit 1
+          fi
+
+          open "$app_path"
+          sleep 0.5
+          pid_path="$RUNNER_TEMP/macos-application-reopen.pids"
+          pgrep -f "$app_path/Contents/MacOS/bongocat-app" > "$pid_path" || true
+          process_count=$(wc -l < "$pid_path" | tr -d ' ')
+          if [ "$process_count" -ne 1 ]; then
+            pkill -f -- "$app_path/Contents/MacOS/bongocat-app" || true
+            wait "$open_waiter" || true
+            printf 'LaunchServices observed %s BongoCat processes after reopen\n' "$process_count" >&2
+            exit 1
+          fi
+
+          wait "$open_waiter"
+          cat "$stdout_path" "$stderr_path" 2>/dev/null || true
+          grep -Fq \
+            'bongocat-app: application reopen restored the settings window' \
+            "$stdout_path"
+          test "$(plutil -extract CFBundleIdentifier raw -o - "$app_path/Contents/Info.plist")" = \
+            'com.ayangweb.bongo-cat'
+          test "$(plutil -extract CFBundleIconFile raw -o - "$app_path/Contents/Info.plist")" = \
+            'BongoCat.icns'
+          cmp \
+            native/resources/icons/BongoCat.icns \
+            "$app_path/Contents/Resources/BongoCat.icns"
+          codesign --verify --deep --strict "$app_path"
+      - name: Smoke native system menu lifecycle
+        if: matrix.os == 'windows-latest' || matrix.os == 'macos-latest'
+        timeout-minutes: 2
+        run: cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release -- --run-seconds 10 --system-menu-smoke
+      - name: Verify Windows executable product icon
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $executable = Join-Path $PWD "native/target/release/bongocat-app.exe"
+          Add-Type -TypeDefinition @'
+          using System;
+          using System.Runtime.InteropServices;
+
+          public static class BongoCatIconProbe
+          {
+              [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+              public static extern uint ExtractIconEx(
+                  string fileName,
+                  int iconIndex,
+                  IntPtr[] largeIcons,
+                  IntPtr[] smallIcons,
+                  uint iconCount);
+          }
+          '@
+          $iconCount = [BongoCatIconProbe]::ExtractIconEx(
+            $executable,
+            -1,
+            $null,
+            $null,
+            0)
+          if ($iconCount -lt 1) {
+            throw "Windows executable does not contain a product icon"
+          }
+      - name: Smoke Windows single-instance wake
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          $executable = Join-Path $PWD "native/target/release/bongocat-app.exe"
+          $primaryStdout = Join-Path $env:RUNNER_TEMP "single-instance-primary.stdout.log"
+          $primaryStderr = Join-Path $env:RUNNER_TEMP "single-instance-primary.stderr.log"
+          $secondaryStdout = Join-Path $env:RUNNER_TEMP "single-instance-secondary.stdout.log"
+          $secondaryStderr = Join-Path $env:RUNNER_TEMP "single-instance-secondary.stderr.log"
+          Remove-Item `
+            $primaryStdout, $primaryStderr, $secondaryStdout, $secondaryStderr `
+            -Force `
+            -ErrorAction SilentlyContinue
+
+          $primary = Start-Process `
+            -FilePath $executable `
+            -ArgumentList @("--run-seconds", "10", "--single-instance-smoke") `
+            -NoNewWindow `
+            -PassThru `
+            -RedirectStandardOutput $primaryStdout `
+            -RedirectStandardError $primaryStderr
+          $readyDeadline = [DateTime]::UtcNow.AddSeconds(15)
+          do {
+            Start-Sleep -Milliseconds 100
+            $primaryOutput = @(
+              Get-Content $primaryStdout -Raw -ErrorAction SilentlyContinue
+              Get-Content $primaryStderr -Raw -ErrorAction SilentlyContinue
+            ) -join "`n"
+            $primary.Refresh()
+          } while (
+            -not $primaryOutput.Contains("bongocat-app: single-instance primary ready") -and
+            -not $primary.HasExited -and
+            [DateTime]::UtcNow -lt $readyDeadline
+          )
+          if (-not $primaryOutput.Contains("bongocat-app: single-instance primary ready")) {
+            Stop-Process -Id $primary.Id -Force -ErrorAction SilentlyContinue
+            $primary.WaitForExit()
+            Write-Host $primaryOutput
+            throw "primary instance did not reach the hidden-window wake gate"
+          }
+
+          $secondary = Start-Process `
+            -FilePath $executable `
+            -ArgumentList @("--run-seconds", "1", "--single-instance-smoke") `
+            -NoNewWindow `
+            -PassThru `
+            -RedirectStandardOutput $secondaryStdout `
+            -RedirectStandardError $secondaryStderr
+          if (-not $secondary.WaitForExit(10000)) {
+            Stop-Process -Id $secondary.Id -Force -ErrorAction SilentlyContinue
+            Stop-Process -Id $primary.Id -Force -ErrorAction SilentlyContinue
+            throw "secondary instance did not exit after notifying the primary"
+          }
+          $secondaryOutput = @(
+            Get-Content $secondaryStdout -Raw -ErrorAction SilentlyContinue
+            Get-Content $secondaryStderr -Raw -ErrorAction SilentlyContinue
+          ) -join "`n"
+          Write-Host $secondaryOutput
+          if ($secondary.ExitCode -ne 0) {
+            Stop-Process -Id $primary.Id -Force -ErrorAction SilentlyContinue
+            throw "secondary instance exited with $($secondary.ExitCode)"
+          }
+          if (-not $secondaryOutput.Contains("bongocat-app: secondary instance notified primary")) {
+            Stop-Process -Id $primary.Id -Force -ErrorAction SilentlyContinue
+            throw "secondary instance did not report a successful primary notification"
+          }
+
+          if (-not $primary.WaitForExit(30000)) {
+            Stop-Process -Id $primary.Id -Force -ErrorAction SilentlyContinue
+            $primary.WaitForExit()
+            throw "primary instance did not finish ordered shutdown after the wake"
+          }
+          $primaryOutput = @(
+            Get-Content $primaryStdout -Raw -ErrorAction SilentlyContinue
+            Get-Content $primaryStderr -Raw -ErrorAction SilentlyContinue
+          ) -join "`n"
+          Write-Host $primaryOutput
+          if ($primary.ExitCode -ne 0) {
+            throw "primary instance exited with $($primary.ExitCode)"
+          }
+          if (-not $primaryOutput.Contains("bongocat-app: single-instance wake restored the settings window")) {
+            throw "primary instance did not restore the existing settings window after the wake"
+          }
+      - name: Smoke formal Windows missing-release recovery
+        if: matrix.os == 'windows-latest'
+        run: cargo test --manifest-path native/Cargo.toml --locked -p bongocat-platform --lib --release windows::tests::synthetic_missing_release_is_reconciled_in_formal_runtime -- --ignored --exact
+      - name: Smoke transactional Windows D3D11 model switching
+        if: matrix.os == 'windows-latest'
+        run: cargo run --manifest-path native/Cargo.toml --locked -p bongocat-overlay --release -- standard 0 --switch-cycles 3
+
+  cubism-binding-contract:
+    name: Check Cubism binding generation contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Hash Rust toolchain
+        id: rust-toolchain
+        shell: python
+        run: |
+          import hashlib
+          import os
+          import subprocess
+
+          version = subprocess.check_output(["rustc", "-Vv"])
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"hash={hashlib.sha256(version).hexdigest()}\n")
+      - name: Cache Cargo artifacts
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            tools/cubism-bindgen/target/
+          key: ${{ runner.os }}-cubism-bindgen-${{ steps.rust-toolchain.outputs.hash }}-${{ hashFiles('tools/cubism-bindgen/Cargo.lock', 'tools/cubism-bindgen/Cargo.toml', 'tools/cubism-core-probe/Cargo.lock', 'tools/cubism-core-probe/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cubism-bindgen-${{ steps.rust-toolchain.outputs.hash }}-
+            ${{ runner.os }}-cubism-bindgen-
+      - name: Check formatting
+        run: cargo fmt --manifest-path tools/cubism-bindgen/Cargo.toml -- --check
+      - name: Run Clippy
+        run: cargo clippy --manifest-path tools/cubism-bindgen/Cargo.toml --locked --all-targets --all-features -- -D warnings
+      - name: Run tests
+        run: cargo test --manifest-path tools/cubism-bindgen/Cargo.toml --locked
+      - name: Check deterministic synthetic bindings
+        run: cargo run --manifest-path tools/cubism-bindgen/Cargo.toml --locked -- check-fixtures
+      - name: Compile Core probe against synthetic bindings
+        env:
+          BONGOCAT_CUBISM_BINDINGS: ${{ github.workspace }}/tools/cubism-bindgen/fixtures/expected/x86_64-pc-windows-msvc.rs
+        run: |
+          cargo fmt --manifest-path tools/cubism-core-probe/Cargo.toml -- --check
+          cargo clippy --manifest-path tools/cubism-core-probe/Cargo.toml --locked --all-targets --target-dir tools/cubism-bindgen/target/core-probe -- -D warnings
+          cargo check --manifest-path tools/cubism-core-probe/Cargo.toml --locked --release --target-dir tools/cubism-bindgen/target/core-probe
+      - name: Compile synthetic bindings for every Core target
+        shell: bash
+        run: |
+          rustup target add \
+            x86_64-pc-windows-msvc \
+            aarch64-apple-darwin \
+            x86_64-apple-darwin
+          output_directory=$(mktemp -d)
+          for target in \
+            x86_64-pc-windows-msvc \
+            aarch64-apple-darwin \
+            x86_64-apple-darwin; do
+            mkdir -p "$output_directory/$target"
+            rustc \
+              --crate-name cubism_core_synthetic \
+              --crate-type lib \
+              --edition 2024 \
+              --target "$target" \
+              --emit metadata \
+              -D warnings \
+              -A non_camel_case_types \
+              -A non_snake_case \
+              -A non_upper_case_globals \
+              "tools/cubism-bindgen/fixtures/expected/$target.rs" \
+              --out-dir "$output_directory/$target"
+          done
+      - name: Check release build
+        run: cargo check --manifest-path tools/cubism-bindgen/Cargo.toml --locked --release
+
+  contract-spikes:
+    name: Test ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: input-state
+            manifest: spikes/input-state/Cargo.toml
+            workspace: spikes/input-state
+          - name: fixture-runner
+            manifest: spikes/fixture-runner/Cargo.toml
+            workspace: spikes/fixture-runner
+          - name: input-queue
+            manifest: spikes/input-queue/Cargo.toml
+            workspace: spikes/input-queue
+          - name: input-windows
+            manifest: spikes/input-windows/Cargo.toml
+            workspace: spikes/input-windows
+          - name: overlay-lifecycle
+            manifest: spikes/overlay-lifecycle/Cargo.toml
+            workspace: spikes/overlay-lifecycle
+          - name: overlay-windows
+            manifest: spikes/overlay-windows/Cargo.toml
+            workspace: spikes/overlay-windows
+          - name: config-store
+            manifest: spikes/config-store/Cargo.toml
+            workspace: spikes/config-store
+          - name: runtime-contract
+            manifest: spikes/runtime-contract/Cargo.toml
+            workspace: spikes/runtime-contract
+          - name: input-macos
+            manifest: spikes/input-macos/Cargo.toml
+            workspace: spikes/input-macos
+          - name: model-package
+            manifest: spikes/model-package/Cargo.toml
+            workspace: spikes/model-package
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Hash Rust toolchain
+        id: rust-toolchain
+        shell: python
+        run: |
+          import hashlib
+          import os
+          import subprocess
+
+          version = subprocess.check_output(["rustc", "-Vv"])
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"hash={hashlib.sha256(version).hexdigest()}\n")
+      - name: Cache Cargo artifacts
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ${{ matrix.workspace }}/target/
+          key: ${{ runner.os }}-${{ matrix.name }}-${{ steps.rust-toolchain.outputs.hash }}-${{ hashFiles(matrix.manifest) }}-${{ hashFiles(format('{0}/Cargo.lock', matrix.workspace)) }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.name }}-${{ steps.rust-toolchain.outputs.hash }}-
+            ${{ runner.os }}-${{ matrix.name }}-
+      - name: Check formatting
+        run: cargo fmt --manifest-path ${{ matrix.manifest }} -- --check
+      - name: Run Clippy
+        run: cargo clippy --manifest-path ${{ matrix.manifest }} --locked --all-targets -- -D warnings
+      - name: Run tests
+        run: cargo test --manifest-path ${{ matrix.manifest }} --locked
+
+  model-package-platforms:
+    name: Test model package on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Hash Rust toolchain
+        id: rust-toolchain
+        shell: python
+        run: |
+          import hashlib
+          import os
+          import subprocess
+
+          version = subprocess.check_output(["rustc", "-Vv"])
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"hash={hashlib.sha256(version).hexdigest()}\n")
+      - name: Cache Cargo artifacts
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            spikes/model-package/target/
+          key: ${{ runner.os }}-model-package-${{ steps.rust-toolchain.outputs.hash }}-${{ hashFiles('spikes/model-package/Cargo.lock', 'spikes/model-package/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-model-package-${{ steps.rust-toolchain.outputs.hash }}-
+            ${{ runner.os }}-model-package-
+      - name: Check formatting
+        run: cargo fmt --manifest-path spikes/model-package/Cargo.toml -- --check
+      - name: Run Clippy
+        run: cargo clippy --manifest-path spikes/model-package/Cargo.toml --locked --all-targets --all-features -- -D warnings
+      - name: Run tests
+        run: cargo test --manifest-path spikes/model-package/Cargo.toml --locked
+      - name: Check release build
+        run: cargo check --manifest-path spikes/model-package/Cargo.toml --locked --release
+
+  macos-spikes:
+    name: Build macOS GPUI spikes
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Hash Rust toolchain
+        id: rust-toolchain
+        shell: python
+        run: |
+          import hashlib
+          import os
+          import subprocess
+
+          version = subprocess.check_output(["rustc", "-Vv"])
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"hash={hashlib.sha256(version).hexdigest()}\n")
+      - name: Cache Cargo artifacts
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            spikes/gpui-settings/target/
+            spikes/gpui-overlay-macos/target/
+            spikes/input-macos/target/
+          key: ${{ runner.os }}-macos-spikes-${{ steps.rust-toolchain.outputs.hash }}-${{ hashFiles('spikes/gpui-settings/Cargo.lock', 'spikes/gpui-settings/Cargo.toml', 'spikes/gpui-overlay-macos/Cargo.lock', 'spikes/gpui-overlay-macos/Cargo.toml', 'spikes/input-macos/Cargo.lock', 'spikes/input-macos/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-macos-spikes-${{ steps.rust-toolchain.outputs.hash }}-
+            ${{ runner.os }}-macos-spikes-
+      - name: Check settings spike
+        run: cargo check --manifest-path spikes/gpui-settings/Cargo.toml --locked
+      - name: Check overlay spike
+        run: cargo check --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked
+      - name: Check macOS input spike
+        run: cargo check --manifest-path spikes/input-macos/Cargo.toml --locked
+      - name: Check GPUI spike formatting
+        run: |
+          cargo fmt --manifest-path spikes/gpui-settings/Cargo.toml -- --check
+          cargo fmt --manifest-path spikes/gpui-overlay-macos/Cargo.toml -- --check
+      - name: Check macOS input spike formatting
+        run: cargo fmt --manifest-path spikes/input-macos/Cargo.toml -- --check
+      - name: Run GPUI spike Clippy
+        run: |
+          cargo clippy --manifest-path spikes/gpui-settings/Cargo.toml --locked --all-targets -- -D warnings
+          cargo clippy --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked --all-targets -- -D warnings
+      - name: Run macOS input spike Clippy
+        run: cargo clippy --manifest-path spikes/input-macos/Cargo.toml --locked --all-targets -- -D warnings
+      - name: Run GPUI spike tests
+        run: |
+          cargo test --manifest-path spikes/gpui-settings/Cargo.toml --locked
+          cargo test --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked
+      - name: Run macOS input spike tests
+        run: cargo test --manifest-path spikes/input-macos/Cargo.toml --locked
+      - name: Check GPUI spike release builds
+        run: |
+          cargo check --manifest-path spikes/gpui-settings/Cargo.toml --locked --release
+          cargo check --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked --release
+      - name: Check macOS input spike release build
+        run: cargo check --manifest-path spikes/input-macos/Cargo.toml --locked --release
+      - name: Build macOS settings smoke executable
+        timeout-minutes: 10
+        run: cargo build --manifest-path spikes/gpui-settings/Cargo.toml --locked
+      - name: Smoke macOS GPUI settings accessibility
+        timeout-minutes: 2
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import subprocess
+
+          executable = pathlib.Path("spikes/gpui-settings/target/debug/bongocat-gpui-settings-spike")
+          completed = subprocess.run(
+              [
+                  str(executable),
+                  "--auto-quit-ms",
+                  "6000",
+                  "--menu-probe",
+                  "--tooltip-probe",
+              ],
+              capture_output=True,
+              check=False,
+              text=True,
+              timeout=30,
+          )
+          output = completed.stdout + "\n" + completed.stderr
+          print(output)
+          if completed.returncode != 0:
+              raise RuntimeError(
+                  f"macOS GPUI settings smoke exited with {completed.returncode}"
+              )
+          for expected in (
+              "accessibility tree root_role=AXGroup nodes=9 controls=7",
+              "window opened",
+              "first frame elapsed_ms=",
+              "scale_factor=",
+              "runtime snapshot revision=1",
+              "accessibility action applied",
+              "native menu edit actions verified",
+              "native tooltip hover entered",
+              "tooltip built after hover delay",
+              "tooltip hover delay and exit verified",
+              "runtime stopped",
+              "stopped",
+          ):
+              if expected not in output:
+                  raise RuntimeError(
+                      f"macOS GPUI settings smoke did not report: {expected}"
+                  )
+          if output.index("gpui-settings-spike: runtime stopped") >= output.index(
+              "gpui-settings-spike: stopped"
+          ):
+              raise RuntimeError("runtime did not stop before macOS application shutdown")
+          PY
+      - name: Build macOS overlay smoke executable
+        timeout-minutes: 10
+        run: cargo build --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked
+      - name: Smoke independent AppKit and Metal overlay
+        timeout-minutes: 3
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import re
+          import subprocess
+
+          executable = pathlib.Path("spikes/gpui-overlay-macos/target/debug/bongocat-gpui-overlay-macos-spike")
+
+          def run_smoke(name, arguments):
+              # The 100-cycle path waits for AppKit/Metal teardown on every cycle;
+              # keep a bounded subprocess timeout without racing the workflow step.
+              timeout_seconds = 90 if "--macos-overlay-cycles" in arguments else 30
+              try:
+                  completed = subprocess.run(
+                      [str(executable), *arguments],
+                      capture_output=True,
+                      check=False,
+                      text=True,
+                      timeout=timeout_seconds,
+                  )
+              except subprocess.TimeoutExpired as error:
+                  output = (error.stdout or "") + "\n" + (error.stderr or "")
+                  print(output)
+                  raise RuntimeError(
+                      f"{name} overlay smoke exceeded {timeout_seconds} seconds"
+                  ) from error
+              output = completed.stdout + "\n" + completed.stderr
+              print(output)
+              if completed.returncode != 0:
+                  raise RuntimeError(
+                      f"{name} overlay smoke exited with {completed.returncode}"
+                  )
+              return output
+
+          normal = run_smoke("normal", ["--auto-quit-ms", "1200"])
+          for expected in (
+              "macOS native overlay created",
+              "macOS interaction mode=drag",
+              "macOS overlay drag contract verified delta=24x18",
+              "macOS interaction mode=click-through",
+              "non-empty premultiplied-alpha draw/present submitted",
+              "frame source started target_hz=60",
+              "macOS overlay resized width=400 height=300",
+              "overlay hidden",
+              "GPUI settings window opened",
+              "auto quit requested",
+              "frame source stopped frames=",
+              "resize_completed=true",
+              "overlay window/GPU owner released",
+          ):
+              if expected not in normal:
+                  raise RuntimeError(f"normal overlay smoke did not report: {expected}")
+          frame_stop = normal.index("frame source stopped frames=")
+          owner_release = normal.index("overlay window/GPU owner released")
+          if owner_release <= frame_stop:
+              raise RuntimeError("overlay owner released before frame source stopped")
+
+          backing_reconcile = run_smoke(
+              "backing-reconcile",
+              ["--simulate-macos-stale-drawable-size", "--auto-quit-ms", "900"],
+          )
+          for expected in (
+              "simulated stale macOS drawable size",
+              "macOS drawable size reconciled from=1x1 to=",
+              "non-empty premultiplied-alpha draw/present submitted",
+          ):
+              if expected not in backing_reconcile:
+                  raise RuntimeError(
+                      f"backing-reconcile overlay smoke did not report: {expected}"
+                  )
+
+          degraded = run_smoke(
+              "drawable-unavailable",
+              ["--simulate-macos-drawable-unavailable", "--auto-quit-ms", "900"],
+          )
+          for expected in (
+              "overlay degraded error=simulated CAMetalLayer drawable unavailable",
+              "GPUI settings window opened",
+              "auto quit requested",
+              "overlay window/GPU owner released",
+          ):
+              if expected not in degraded:
+                  raise RuntimeError(
+                      f"drawable-unavailable overlay smoke did not report: {expected}"
+                  )
+
+          recovered = run_smoke(
+              "renderer-recovery",
+              [
+                  "--simulate-renderer-loss-at-frame",
+                  "12",
+                  "--auto-quit-ms",
+                  "1600",
+              ],
+          )
+          for expected in (
+              "frame degraded kind=device_lost error=simulated renderer device loss",
+              "frame renderer recovered attempt=1",
+              "settings overlay status=GPUI settings + native overlay (recovered)",
+              "failures=1 recoveries=1",
+          ):
+              if expected not in recovered:
+                  raise RuntimeError(
+                      f"renderer-recovery overlay smoke did not report: {expected}"
+                  )
+          degraded_at = recovered.index("frame degraded kind=device_lost")
+          released_at = recovered.index("overlay window/GPU owner released", degraded_at)
+          recovered_at = recovered.index("frame renderer recovered attempt=1")
+          if not degraded_at < released_at < recovered_at:
+              raise RuntimeError("macOS renderer was recreated before the failed owner released")
+
+          cycles = run_smoke("cycles", ["--macos-overlay-cycles", "100"])
+          for expected in (
+              "macOS cycles=100",
+              "non_empty_frames=",
+              "threads_before=",
+              "threads_after=",
+              "threads_baseline_high_water=",
+              "measurement_batches=",
+              "metal_bytes_before=",
+              "metal_bytes_after=",
+              "clean_shutdown=true",
+          ):
+              if expected not in cycles:
+                  raise RuntimeError(f"overlay cycle smoke did not report: {expected}")
+          cycle_metrics = re.search(
+              r"macOS cycles=100 non_empty_frames=(\d+).*measurement_batches=(\d+)",
+              cycles,
+          )
+          if cycle_metrics is None:
+              raise RuntimeError("overlay cycle smoke metrics were not parseable")
+          non_empty_frames, measurement_batches = map(int, cycle_metrics.groups())
+          if not 3 <= measurement_batches <= 6:
+              raise RuntimeError("overlay cycle smoke used an invalid measurement batch count")
+          if non_empty_frames != 100 * measurement_batches:
+              raise RuntimeError("overlay cycle smoke frame accounting did not balance")
+          PY
+
+  windows-input-spike:
+    name: Smoke Windows input and config services
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Hash Rust toolchain
+        id: rust-toolchain
+        shell: python
+        run: |
+          import hashlib
+          import os
+          import subprocess
+
+          version = subprocess.check_output(["rustc", "-Vv"])
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"hash={hashlib.sha256(version).hexdigest()}\n")
+      - name: Cache Cargo artifacts
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            spikes/input-windows/target/
+            spikes/config-store/target/
+          key: ${{ runner.os }}-input-config-windows-${{ steps.rust-toolchain.outputs.hash }}-${{ hashFiles('spikes/input-windows/Cargo.lock', 'spikes/input-windows/Cargo.toml', 'spikes/input-queue/Cargo.lock', 'spikes/input-queue/Cargo.toml', 'spikes/config-store/Cargo.lock', 'spikes/config-store/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-input-config-windows-${{ steps.rust-toolchain.outputs.hash }}-
+            ${{ runner.os }}-input-config-windows-
+      - name: Check Windows build
+        run: cargo check --manifest-path spikes/input-windows/Cargo.toml --locked
+      - name: Run Windows Clippy
+        run: cargo clippy --manifest-path spikes/input-windows/Cargo.toml --locked --all-targets -- -D warnings
+      - name: Run Windows tests
+        run: cargo test --manifest-path spikes/input-windows/Cargo.toml --locked
+      - name: Smoke Windows XInput polling and shutdown
+        run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --xinput-ms 250
+      - name: Smoke Raw Input registration and shutdown
+        run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --register-smoke-ms 100
+      - name: Smoke Windows key-state reconciliation query
+        run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --key-state-smoke
+      - name: Smoke Windows mouse-button reconciliation query
+        run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --mouse-button-state-smoke
+      - name: Smoke Windows reconciliation scheduler
+        run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --reconcile-smoke-ms 600
+      - name: Smoke synthetic Raw Input release recovery
+        run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --synthetic-release-recovery-ms 800
+      - name: Smoke Windows capture queue overflow recovery
+        run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --queue-overflow-smoke-ms 100
+      - name: Pressure synthetic Raw Input edges
+        run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked --release -- --synthetic-edge-pressure-cycles 128
+      - name: Pressure keyboard edges under pointer flood
+        run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked --release -- --synthetic-pointer-flood-cycles 128
+      - name: Smoke Windows session and power resets
+        run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --lifecycle-smoke-ms 100
+      - name: Test Windows config storage layout
+        run: cargo test --manifest-path spikes/config-store/Cargo.toml --locked
+
+  windows-gpui-spikes:
+    name: Build Windows GPUI ${{ matrix.name }} spike
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: settings
+            manifest: spikes/gpui-settings/Cargo.toml
+            workspace: spikes/gpui-settings
+          - name: overlay
+            manifest: spikes/gpui-overlay-macos/Cargo.toml
+            workspace: spikes/gpui-overlay-macos
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Hash Rust toolchain
+        id: rust-toolchain
+        shell: python
+        run: |
+          import hashlib
+          import os
+          import subprocess
+
+          version = subprocess.check_output(["rustc", "-Vv"])
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"hash={hashlib.sha256(version).hexdigest()}\n")
+      - name: Cache Cargo artifacts
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ${{ matrix.workspace }}/target/
+          key: ${{ runner.os }}-gpui-${{ matrix.name }}-${{ steps.rust-toolchain.outputs.hash }}-${{ hashFiles(matrix.manifest) }}-${{ hashFiles(format('{0}/Cargo.lock', matrix.workspace)) }}
+          restore-keys: |
+            ${{ runner.os }}-gpui-${{ matrix.name }}-${{ steps.rust-toolchain.outputs.hash }}-
+            ${{ runner.os }}-gpui-${{ matrix.name }}-
+      - name: Check formatting
+        run: cargo fmt --manifest-path ${{ matrix.manifest }} -- --check
+      - name: Check Windows build
+        run: cargo check --manifest-path ${{ matrix.manifest }} --locked
+      - name: Run Clippy
+        run: cargo clippy --manifest-path ${{ matrix.manifest }} --locked --all-targets -- -D warnings
+      - name: Run tests
+        run: cargo test --manifest-path ${{ matrix.manifest }} --locked
+      - name: Check release build
+        run: cargo check --manifest-path ${{ matrix.manifest }} --locked --release
+      - name: Build Windows settings smoke executable
+        if: matrix.manifest == 'spikes/gpui-settings/Cargo.toml'
+        timeout-minutes: 5
+        run: cargo build --manifest-path ${{ matrix.manifest }} --locked
+      - name: Smoke Windows GPUI settings lifecycle
+        if: matrix.manifest == 'spikes/gpui-settings/Cargo.toml'
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          $executable = Join-Path $PWD "spikes/gpui-settings/target/debug/bongocat-gpui-settings-spike.exe"
+          $stdout = Join-Path $env:RUNNER_TEMP "gpui-settings.stdout.log"
+          $stderr = Join-Path $env:RUNNER_TEMP "gpui-settings.stderr.log"
+          Remove-Item $stdout, $stderr -Force -ErrorAction SilentlyContinue
+          $process = Start-Process `
+            -FilePath $executable `
+            -ArgumentList @("--auto-quit-ms", "20000", "--runtime-error-probe", "--tooltip-probe") `
+            -NoNewWindow `
+            -PassThru `
+            -RedirectStandardOutput $stdout `
+            -RedirectStandardError $stderr
+          Add-Type -AssemblyName UIAutomationTypes
+          Add-Type -AssemblyName UIAutomationClient
+          $windowDeadline = [DateTime]::UtcNow.AddSeconds(15)
+          $processCondition = [System.Windows.Automation.PropertyCondition]::new(
+            [System.Windows.Automation.AutomationElement]::ProcessIdProperty,
+            $process.Id
+          )
+          $windowNameCondition = [System.Windows.Automation.PropertyCondition]::new(
+            [System.Windows.Automation.AutomationElement]::NameProperty,
+            "BongoCat Settings"
+          )
+          $settingsWindowCondition = [System.Windows.Automation.AndCondition]::new(
+            $processCondition,
+            $windowNameCondition
+          )
+          $root = $null
+          do {
+            Start-Sleep -Milliseconds 100
+            $process.Refresh()
+            if ($process.HasExited) {
+              throw "Windows GPUI settings exited before UI Automation inspection"
+            }
+            $root = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
+              [System.Windows.Automation.TreeScope]::Children,
+              $settingsWindowCondition
+            )
+          } while ($null -eq $root -and [DateTime]::UtcNow -lt $windowDeadline)
+          if ($null -eq $root) {
+            throw "Windows GPUI settings did not expose a settings UIA window"
+          }
+          $elements = $root.FindAll(
+            [System.Windows.Automation.TreeScope]::Descendants,
+            [System.Windows.Automation.Condition]::TrueCondition
+          )
+          $observed = @{}
+          $observedElements = @{}
+          for ($index = 0; $index -lt $elements.Count; $index++) {
+            $element = $elements.Item($index)
+            $name = $element.Current.Name
+            if ($name) {
+              $observed[$name] = $element.Current.ControlType.ProgrammaticName
+              $observedElements[$name] = $element
+            }
+          }
+          $expectedControls = @{
+            "Appearance" = "ControlType.Group"
+            "System" = "ControlType.RadioButton"
+            "Light" = "ControlType.RadioButton"
+            "Dark" = "ControlType.RadioButton"
+            "Model display name" = "ControlType.Edit"
+            "Runtime status" = "ControlType.StatusBar"
+            "Reset settings..." = "ControlType.Button"
+            "Refresh" = "ControlType.Button"
+          }
+          foreach ($entry in $expectedControls.GetEnumerator()) {
+            if ($observed[$entry.Key] -ne $entry.Value) {
+              throw "Windows UIA control '$($entry.Key)' expected $($entry.Value), found $($observed[$entry.Key])"
+            }
+          }
+          $selectionPattern = $observedElements["Dark"].GetCurrentPattern(
+            [System.Windows.Automation.SelectionItemPattern]::Pattern
+          )
+          $selectionPattern.Select()
+          $selectionDeadline = [DateTime]::UtcNow.AddSeconds(5)
+          do {
+            Start-Sleep -Milliseconds 100
+            $selected = $selectionPattern.Current.IsSelected
+          } while (-not $selected -and [DateTime]::UtcNow -lt $selectionDeadline)
+          if (-not $selected) {
+            throw "Windows UIA Dark radio action did not update selected state"
+          }
+
+          $status = $observedElements["Runtime status"]
+          $statusCondition = [System.Windows.Automation.PropertyCondition]::new(
+            [System.Windows.Automation.AutomationElement]::NameProperty,
+            "Runtime status"
+          )
+          $statusValue = $status.GetCurrentPattern(
+            [System.Windows.Automation.ValuePattern]::Pattern
+          )
+          $ariaPropertiesProperty = [System.Windows.Automation.AutomationElement]::AriaPropertiesProperty
+          $readyDeadline = [DateTime]::UtcNow.AddSeconds(5)
+          do {
+            Start-Sleep -Milliseconds 100
+            $readyValue = $statusValue.Current.Value
+          } while ($readyValue -ne "Runtime Ready · revision 1" -and [DateTime]::UtcNow -lt $readyDeadline)
+          if ($readyValue -ne "Runtime Ready · revision 1") {
+            throw "Windows UIA runtime status did not reach the first ready snapshot"
+          }
+          $observedElements["Refresh"].GetCurrentPattern(
+            [System.Windows.Automation.InvokePattern]::Pattern
+          ).Invoke()
+          $busyValueSeen = $false
+          $busyPropertySeen = $false
+          $busyDeadline = [DateTime]::UtcNow.AddSeconds(4)
+          do {
+            Start-Sleep -Milliseconds 50
+            $busyValue = $statusValue.Current.Value
+            $currentStatus = $root.FindFirst(
+              [System.Windows.Automation.TreeScope]::Descendants,
+              $statusCondition
+            )
+            $busyProperties = if ($null -eq $currentStatus -or $null -eq $ariaPropertiesProperty) {
+              ""
+            } else {
+              [string]$currentStatus.GetCurrentPropertyValue(
+                $ariaPropertiesProperty
+              )
+            }
+            $busyValueSeen = $busyValueSeen -or $busyValue -eq "Refreshing..."
+            $busyPropertySeen = $busyPropertySeen -or $busyProperties -match "busy=true"
+          } while (
+            (-not $busyValueSeen -or ($null -ne $ariaPropertiesProperty -and -not $busyPropertySeen)) -and
+            [DateTime]::UtcNow -lt $busyDeadline
+          )
+          if (-not $busyValueSeen) {
+            throw "Windows UIA runtime status did not expose the loading value: final_value='$busyValue'"
+          }
+          if ($null -eq $ariaPropertiesProperty) {
+            Write-Warning "Windows managed UIA client does not expose AriaPropertiesProperty"
+          } elseif (-not $busyPropertySeen) {
+            Write-Warning "Windows UIA did not project AccessKit busy=true through AriaProperties"
+          }
+          $errorDeadline = [DateTime]::UtcNow.AddSeconds(5)
+          do {
+            Start-Sleep -Milliseconds 100
+            $errorValue = $statusValue.Current.Value
+          } while ($errorValue -ne "runtime probe failed" -and [DateTime]::UtcNow -lt $errorDeadline)
+          if ($errorValue -ne "runtime probe failed") {
+            throw "Windows UIA runtime status did not expose the injected error"
+          }
+          $observedElements["Refresh"].GetCurrentPattern(
+            [System.Windows.Automation.InvokePattern]::Pattern
+          ).Invoke()
+          $recoveryDeadline = [DateTime]::UtcNow.AddSeconds(5)
+          do {
+            Start-Sleep -Milliseconds 100
+            $recoveredValue = $statusValue.Current.Value
+          } while ($recoveredValue -ne "Runtime Ready · revision 2" -and [DateTime]::UtcNow -lt $recoveryDeadline)
+          if ($recoveredValue -ne "Runtime Ready · revision 2") {
+            throw "Windows UIA runtime status did not recover after retry"
+          }
+
+          $resetPattern = $observedElements["Reset settings..."].GetCurrentPattern(
+            [System.Windows.Automation.InvokePattern]::Pattern
+          )
+          $resetPattern.Invoke()
+          $dialogCondition = [System.Windows.Automation.PropertyCondition]::new(
+            [System.Windows.Automation.AutomationElement]::NameProperty,
+            "Reset settings?"
+          )
+          $dialogDeadline = [DateTime]::UtcNow.AddSeconds(5)
+          do {
+            Start-Sleep -Milliseconds 100
+            $dialog = $root.FindFirst(
+              [System.Windows.Automation.TreeScope]::Descendants,
+              $dialogCondition
+            )
+          } while ($null -eq $dialog -and [DateTime]::UtcNow -lt $dialogDeadline)
+          if ($null -eq $dialog) {
+            throw "Windows UIA reset action did not expose a confirmation dialog"
+          }
+          if ($dialog.Current.ControlType.ProgrammaticName -ne "ControlType.Window") {
+            throw "Windows UIA reset confirmation was not exposed as a dialog window"
+          }
+          $cancelCondition = [System.Windows.Automation.PropertyCondition]::new(
+            [System.Windows.Automation.AutomationElement]::NameProperty,
+            "Cancel"
+          )
+          $cancel = $dialog.FindFirst(
+            [System.Windows.Automation.TreeScope]::Descendants,
+            $cancelCondition
+          )
+          if ($null -eq $cancel) {
+            throw "Windows UIA reset dialog did not expose Cancel"
+          }
+          $focusDeadline = [DateTime]::UtcNow.AddSeconds(5)
+          do {
+            Start-Sleep -Milliseconds 100
+            $focused = [System.Windows.Automation.AutomationElement]::FocusedElement
+            $focusedName = if ($null -eq $focused) { "" } else { $focused.Current.Name }
+          } while ($focusedName -ne "Cancel" -and [DateTime]::UtcNow -lt $focusDeadline)
+          if ($focusedName -ne "Cancel") {
+            throw "Windows UIA reset dialog did not move focus to Cancel"
+          }
+          $cancel.GetCurrentPattern(
+            [System.Windows.Automation.InvokePattern]::Pattern
+          ).Invoke()
+          $closeDeadline = [DateTime]::UtcNow.AddSeconds(5)
+          do {
+            Start-Sleep -Milliseconds 100
+            $dialog = $root.FindFirst(
+              [System.Windows.Automation.TreeScope]::Descendants,
+              $dialogCondition
+            )
+          } while ($null -ne $dialog -and [DateTime]::UtcNow -lt $closeDeadline)
+          if ($null -ne $dialog) {
+            throw "Windows UIA cancel action did not dismiss the reset dialog"
+          }
+          Write-Host "gpui-settings-spike: Windows UIA tree controls=$($expectedControls.Count)"
+          if (-not $process.WaitForExit(30000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            $process.WaitForExit()
+            throw "Windows GPUI settings smoke exceeded 30 seconds"
+          }
+          $output = @(
+            Get-Content $stdout -Raw -ErrorAction SilentlyContinue
+            Get-Content $stderr -Raw -ErrorAction SilentlyContinue
+          ) -join "`n"
+          Write-Host $output
+          if ($process.ExitCode -ne 0) {
+            throw "Windows GPUI settings smoke exited with $($process.ExitCode)"
+          }
+          @(
+            "gpui-settings-spike: window opened",
+            "gpui-settings-spike: first frame elapsed_ms=",
+            "scale_factor=",
+            "gpui-settings-spike: runtime snapshot revision=1",
+            "gpui-settings-spike: accessibility action applied",
+            "gpui-settings-spike: native tooltip hover entered",
+            "gpui-settings-spike: tooltip built after hover delay",
+            "gpui-settings-spike: tooltip hover delay and exit verified",
+            "gpui-settings-spike: runtime stopped",
+            "gpui-settings-spike: stopped"
+          ) | ForEach-Object {
+            if (-not $output.Contains($_)) {
+              throw "Windows GPUI settings smoke did not report: $_"
+            }
+          }
+          $runtimeStopped = $output.IndexOf("gpui-settings-spike: runtime stopped")
+          $stopped = $output.IndexOf("gpui-settings-spike: stopped")
+          if ($runtimeStopped -lt 0 -or $stopped -le $runtimeStopped) {
+            throw "Windows GPUI settings runtime did not stop before application shutdown"
+          }
+      - name: Build Windows overlay smoke executable
+        if: matrix.manifest == 'spikes/gpui-overlay-macos/Cargo.toml'
+        timeout-minutes: 5
+        run: cargo build --manifest-path ${{ matrix.manifest }} --locked
+      - name: Check Windows ARM64 overlay source
+        if: matrix.manifest == 'spikes/gpui-overlay-macos/Cargo.toml'
+        shell: bash
+        run: |
+          rustup target add aarch64-pc-windows-msvc
+          cargo check \
+            --manifest-path spikes/overlay-windows/Cargo.toml \
+            --locked \
+            --target aarch64-pc-windows-msvc
+      - name: Smoke independent Win32 and D3D11 overlay
+        if: matrix.manifest == 'spikes/gpui-overlay-macos/Cargo.toml'
+        shell: pwsh
+        timeout-minutes: 3
+        run: |
+          $executable = Join-Path $PWD "spikes/gpui-overlay-macos/target/debug/bongocat-gpui-overlay-macos-spike.exe"
+          function Invoke-OverlaySmoke {
+            param(
+              [string] $Name,
+              [string[]] $Arguments
+            )
+            $stdout = Join-Path $env:RUNNER_TEMP "$Name.stdout.log"
+            $stderr = Join-Path $env:RUNNER_TEMP "$Name.stderr.log"
+            Remove-Item $stdout, $stderr -Force -ErrorAction SilentlyContinue
+            $process = Start-Process `
+              -FilePath $executable `
+              -ArgumentList $Arguments `
+              -NoNewWindow `
+              -PassThru `
+              -RedirectStandardOutput $stdout `
+              -RedirectStandardError $stderr
+            if (-not $process.WaitForExit(30000)) {
+              Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+              $process.WaitForExit()
+              $output = @(
+                Get-Content $stdout -Raw -ErrorAction SilentlyContinue
+                Get-Content $stderr -Raw -ErrorAction SilentlyContinue
+              ) -join "`n"
+              Write-Host $output
+              throw "$Name overlay smoke exceeded 30 seconds"
+            }
+            $output = @(
+              Get-Content $stdout -Raw -ErrorAction SilentlyContinue
+              Get-Content $stderr -Raw -ErrorAction SilentlyContinue
+            ) -join "`n"
+            Write-Host $output
+            if ($process.ExitCode -ne 0) {
+              throw "$Name overlay smoke exited with $($process.ExitCode)"
+            }
+            return $output
+          }
+
+          $normal = Invoke-OverlaySmoke `
+            -Name "normal" `
+            -Arguments @("--auto-quit-ms", "1800")
+          @(
+            "Windows native overlay created",
+            "Windows interaction mode=drag",
+            "Windows overlay drag contract verified delta=24x18",
+            "Windows interaction mode=click-through",
+            "Windows non-empty premultiplied-alpha draw/present submitted",
+            "frame source started target_hz=60",
+            "Windows logical resize width=400 height=300",
+            "Windows overlay hidden",
+            "GPUI settings window opened",
+            "auto quit requested",
+            "frame source stopped frames=",
+            "resize_completed=true",
+            "Windows overlay GPU released",
+            "Windows overlay window destroyed"
+          ) | ForEach-Object {
+            if (-not $normal.Contains($_)) {
+              throw "normal overlay smoke did not report: $_"
+            }
+          }
+          $gpuRelease = $normal.IndexOf("Windows overlay GPU released")
+          $windowDestroy = $normal.IndexOf("Windows overlay window destroyed")
+          $frameStop = $normal.IndexOf("frame source stopped frames=")
+          if ($frameStop -lt 0 -or $gpuRelease -le $frameStop -or $windowDestroy -le $gpuRelease) {
+            throw "overlay did not stop frame source before releasing GPU and destroying HWND"
+          }
+
+          $degraded = Invoke-OverlaySmoke `
+            -Name "degraded" `
+            -Arguments @("--simulate-overlay-init-failure", "--auto-quit-ms", "900")
+          @(
+            "overlay degraded error=simulated overlay initialization failure",
+            "GPUI settings window opened",
+            "auto quit requested"
+          ) | ForEach-Object {
+            if (-not $degraded.Contains($_)) {
+              throw "degraded overlay smoke did not report: $_"
+            }
+          }
+
+          $recovered = Invoke-OverlaySmoke `
+            -Name "renderer-recovery" `
+            -Arguments @("--simulate-renderer-loss-at-frame", "12", "--auto-quit-ms", "1800")
+          @(
+            "frame degraded kind=device_lost error=simulated renderer device loss",
+            "frame renderer recovered attempt=1",
+            "settings overlay status=GPUI settings + native overlay (recovered)",
+            "failures=1 recoveries=1"
+          ) | ForEach-Object {
+            if (-not $recovered.Contains($_)) {
+              throw "renderer-recovery overlay smoke did not report: $_"
+            }
+          }
+          $degradedAt = $recovered.IndexOf("frame degraded kind=device_lost")
+          $gpuReleasedAt = $recovered.IndexOf("Windows overlay GPU released", $degradedAt)
+          $windowDestroyedAt = $recovered.IndexOf("Windows overlay window destroyed", $gpuReleasedAt)
+          $recoveredAt = $recovered.IndexOf("frame renderer recovered attempt=1")
+          if (
+            $degradedAt -lt 0 -or
+            $gpuReleasedAt -le $degradedAt -or
+            $windowDestroyedAt -le $gpuReleasedAt -or
+            $recoveredAt -le $windowDestroyedAt
+          ) {
+            throw "Windows renderer was recreated before the failed GPU/window owner released"
+          }
+
+          $surfaceRecovered = Invoke-OverlaySmoke `
+            -Name "surface-recovery" `
+            -Arguments @("--simulate-surface-unavailable-at-frame", "12", "--auto-quit-ms", "1800")
+          @(
+            "frame degraded kind=surface_unavailable error=simulated renderer surface unavailable",
+            "frame renderer recovered attempt=1",
+            "settings overlay status=GPUI settings + native overlay (recovered)",
+            "failures=1 recoveries=1"
+          ) | ForEach-Object {
+            if (-not $surfaceRecovered.Contains($_)) {
+              throw "surface-recovery overlay smoke did not report: $_"
+            }
+          }
+          $surfaceDegradedAt = $surfaceRecovered.IndexOf("frame degraded kind=surface_unavailable")
+          $surfaceGpuReleasedAt = $surfaceRecovered.IndexOf("Windows overlay GPU released", $surfaceDegradedAt)
+          $surfaceWindowDestroyedAt = $surfaceRecovered.IndexOf("Windows overlay window destroyed", $surfaceGpuReleasedAt)
+          $surfaceRecoveredAt = $surfaceRecovered.IndexOf("frame renderer recovered attempt=1")
+          if (
+            $surfaceDegradedAt -lt 0 -or
+            $surfaceGpuReleasedAt -le $surfaceDegradedAt -or
+            $surfaceWindowDestroyedAt -le $surfaceGpuReleasedAt -or
+            $surfaceRecoveredAt -le $surfaceWindowDestroyedAt
+          ) {
+            throw "Windows surface recovery recreated the renderer before releasing GPU/HWND"
+          }
+
+          $cycles = Invoke-OverlaySmoke `
+            -Name "cycles" `
+            -Arguments @("--windows-overlay-cycles", "100")
+          @(
+            "Windows cycles=100",
+            "non_empty_frames=400",
+            "threads_before=",
+            "threads_after=",
+            "threads_baseline_high_water=",
+            "measurement_batches=",
+            "gpu_bytes_before=",
+            "gpu_bytes_after=",
+            "clean_shutdown=true"
+          ) | ForEach-Object {
+            if (-not $cycles.Contains($_)) {
+              throw "overlay cycle smoke did not report: $_"
+            }
+          }

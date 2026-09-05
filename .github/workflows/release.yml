@@ -1,9 +1,8 @@
-name: BongoCat Release
+# Historical Tauri release workflow retained for archaeology and rollback only.
+# Native Rewrite tags must not publish these legacy artifacts.
+name: Legacy BongoCat Release (manual only)
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
 
 jobs:

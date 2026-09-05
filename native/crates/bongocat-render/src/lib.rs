@@ -1,0 +1,854 @@
+#![forbid(unsafe_code)]
+
+use std::{
+    fmt,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct DrawableId(usize);
+
+impl DrawableId {
+    pub const fn new(index: usize) -> Self {
+        Self(index)
+    }
+
+    pub const fn index(self) -> usize {
+        self.0
+    }
+}
+
+impl fmt::Display for DrawableId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct TextureId(usize);
+
+impl TextureId {
+    pub const fn new(index: usize) -> Self {
+        Self(index)
+    }
+
+    pub const fn index(self) -> usize {
+        self.0
+    }
+}
+
+impl fmt::Display for TextureId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CanvasInfo {
+    pub width: f32,
+    pub height: f32,
+    pub origin_x: f32,
+    pub origin_y: f32,
+    pub pixels_per_unit: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ModelBounds {
+    pub min_x: f32,
+    pub max_x: f32,
+    pub min_y: f32,
+    pub max_y: f32,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum KeySide {
+    #[default]
+    Left,
+    Right,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct KeyPress {
+    pub hid_usage: u16,
+    pub side: KeySide,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct KeyPressSet {
+    entries: [KeyPress; 64],
+    len: u8,
+}
+
+impl Default for KeyPressSet {
+    fn default() -> Self {
+        Self {
+            entries: [KeyPress::default(); 64],
+            len: 0,
+        }
+    }
+}
+
+impl KeyPressSet {
+    pub fn push(&mut self, press: KeyPress) {
+        if self.entries[..usize::from(self.len)].contains(&press) {
+            return;
+        }
+        if usize::from(self.len) < self.entries.len() {
+            self.entries[usize::from(self.len)] = press;
+            self.len += 1;
+        }
+    }
+
+    pub fn iter(self) -> impl Iterator<Item = KeyPress> {
+        self.entries.into_iter().take(usize::from(self.len))
+    }
+}
+
+impl ModelBounds {
+    pub const fn from_canvas(canvas: CanvasInfo) -> Self {
+        let half_width = canvas.width / canvas.pixels_per_unit * 0.5;
+        let half_height = canvas.height / canvas.pixels_per_unit * 0.5;
+        let center_x = (canvas.width * 0.5 - canvas.origin_x) / canvas.pixels_per_unit;
+        let center_y = (canvas.origin_y - canvas.height * 0.5) / canvas.pixels_per_unit;
+        Self {
+            min_x: center_x - half_width,
+            max_x: center_x + half_width,
+            min_y: center_y - half_height,
+            max_y: center_y + half_height,
+        }
+    }
+
+    pub fn width(self) -> f32 {
+        (self.max_x - self.min_x).max(f32::EPSILON)
+    }
+
+    pub fn height(self) -> f32 {
+        (self.max_y - self.min_y).max(f32::EPSILON)
+    }
+
+    pub fn center(self) -> [f32; 2] {
+        [
+            (self.min_x + self.max_x) * 0.5,
+            (self.min_y + self.max_y) * 0.5,
+        ]
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BlendMode {
+    Normal,
+    Additive,
+    Multiplicative,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[repr(C)]
+pub struct Vertex {
+    pub position: [f32; 2],
+    pub uv: [f32; 2],
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct DrawableSnapshot {
+    pub id: DrawableId,
+    pub dynamic_flags: DrawableDynamicFlags,
+    pub render_order: i32,
+    pub visible: bool,
+    pub texture_id: TextureId,
+    pub opacity: f32,
+    pub blend_mode: BlendMode,
+    pub double_sided: bool,
+    pub inverted_mask: bool,
+    pub multiply_color: [f32; 4],
+    pub screen_color: [f32; 4],
+    pub masks: Vec<DrawableId>,
+    pub vertices: Vec<Vertex>,
+    pub indices: Vec<u16>,
+}
+
+/// Per-frame changes reported by Cubism for one drawable.
+///
+/// Renderers use these flags to avoid rewriting GPU buffers whose source data
+/// did not change during the current Core update.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct DrawableDynamicFlags {
+    pub visibility_changed: bool,
+    pub opacity_changed: bool,
+    pub draw_order_changed: bool,
+    pub render_order_changed: bool,
+    pub vertex_positions_changed: bool,
+    pub blend_color_changed: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct RenderSnapshot {
+    pub canvas: CanvasInfo,
+    pub bounds: ModelBounds,
+    pub active_keys: Vec<KeyOverlay>,
+    pub model_opacity: f32,
+    pub mirror_horizontal: bool,
+    pub drawables: Vec<DrawableSnapshot>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TextureAsset {
+    pub id: TextureId,
+    pub path: PathBuf,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct KeyAssetId(usize);
+
+impl KeyAssetId {
+    pub const fn new(index: usize) -> Self {
+        Self(index)
+    }
+
+    pub const fn index(self) -> usize {
+        self.0
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct KeyAsset {
+    pub id: KeyAssetId,
+    pub side: KeySide,
+    pub name: String,
+    pub path: PathBuf,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct KeyOverlay {
+    pub asset_id: KeyAssetId,
+    pub side: KeySide,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BackgroundAsset {
+    pub path: PathBuf,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RenderResources {
+    pub textures: Vec<TextureAsset>,
+    pub key_assets: Vec<KeyAsset>,
+    pub background: Option<BackgroundAsset>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct ModelCommitToken {
+    pub command_sequence: u64,
+    pub model_generation: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ModelCommitErrorCode {
+    ResourcePreparationFailed,
+}
+
+impl ModelCommitErrorCode {
+    pub const ALL: [Self; 1] = [Self::ResourcePreparationFailed];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ResourcePreparationFailed => "model_commit_resource_preparation_failed",
+        }
+    }
+}
+
+impl fmt::Display for ModelCommitErrorCode {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ModelCommitOutcome {
+    Prepared,
+    Rejected(ModelCommitErrorCode),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ModelCommitFeedback {
+    pub token: ModelCommitToken,
+    pub outcome: ModelCommitOutcome,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct RenderFrame {
+    pub transport_sequence: u64,
+    pub model_generation: u64,
+    pub frame_number: u64,
+    pub model_commit: Option<ModelCommitToken>,
+    pub resources: Arc<RenderResources>,
+    pub snapshot: Arc<RenderSnapshot>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct RenderTransportDiagnostics {
+    pub published: u64,
+    pub coalesced: u64,
+    pub consumed: u64,
+    pub non_monotonic: u64,
+    pub rejected_after_close: u64,
+    pub pending: u64,
+    pub feedback_reported: u64,
+    pub feedback_consumed: u64,
+    pub feedback_occupied: u64,
+    pub feedback_rejected_after_close: u64,
+    pub feedback_stale: u64,
+    pub feedback_pending: u64,
+}
+
+#[derive(Debug)]
+pub enum RenderPublishError {
+    NonMonotonic(RenderFrame),
+    Closed(RenderFrame),
+}
+
+impl RenderPublishError {
+    pub fn into_frame(self) -> RenderFrame {
+        match self {
+            Self::NonMonotonic(frame) | Self::Closed(frame) => frame,
+        }
+    }
+}
+
+impl fmt::Display for RenderPublishError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::NonMonotonic(_) => "render frame sequence moved backwards",
+            Self::Closed(_) => "render transport is closed",
+        })
+    }
+}
+
+impl std::error::Error for RenderPublishError {}
+
+#[derive(Debug)]
+pub enum ModelCommitFeedbackError {
+    Occupied(ModelCommitFeedback),
+    Closed(ModelCommitFeedback),
+}
+
+impl ModelCommitFeedbackError {
+    pub fn into_feedback(self) -> ModelCommitFeedback {
+        match self {
+            Self::Occupied(feedback) | Self::Closed(feedback) => feedback,
+        }
+    }
+}
+
+impl fmt::Display for ModelCommitFeedbackError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Occupied(_) => "a model commit result is already pending",
+            Self::Closed(_) => "render transport is closed",
+        })
+    }
+}
+
+impl std::error::Error for ModelCommitFeedbackError {}
+
+#[derive(Default)]
+struct LatestFrameState {
+    pending: Option<RenderFrame>,
+    // Model commit frames are control-plane messages. Keep them reliable even
+    // when the data-plane latest frame is replaced by a faster producer.
+    pending_model_commit: Option<RenderFrame>,
+    last_transport_sequence: Option<u64>,
+    feedback: Option<ModelCommitFeedback>,
+    closed: bool,
+    diagnostics: RenderTransportDiagnostics,
+}
+
+#[derive(Default)]
+struct LatestFrameSlot {
+    state: Mutex<LatestFrameState>,
+}
+
+pub struct RenderProducer {
+    slot: Arc<LatestFrameSlot>,
+}
+
+impl RenderProducer {
+    pub fn publish(&self, frame: RenderFrame) -> Result<(), RenderPublishError> {
+        let mut state = self
+            .slot
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.closed {
+            state.diagnostics.rejected_after_close =
+                state.diagnostics.rejected_after_close.saturating_add(1);
+            return Err(RenderPublishError::Closed(frame));
+        }
+        if state
+            .last_transport_sequence
+            .is_some_and(|previous| frame.transport_sequence <= previous)
+        {
+            state.diagnostics.non_monotonic = state.diagnostics.non_monotonic.saturating_add(1);
+            return Err(RenderPublishError::NonMonotonic(frame));
+        }
+        state.last_transport_sequence = Some(frame.transport_sequence);
+        state.diagnostics.published = state.diagnostics.published.saturating_add(1);
+        if frame.model_commit.is_some() {
+            if state.pending_model_commit.replace(frame).is_some() {
+                state.diagnostics.coalesced = state.diagnostics.coalesced.saturating_add(1);
+            }
+        } else if state.pending.replace(frame).is_some() {
+            state.diagnostics.coalesced = state.diagnostics.coalesced.saturating_add(1);
+        }
+        Ok(())
+    }
+
+    pub fn close(&self) {
+        self.slot
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .closed = true;
+    }
+
+    pub fn diagnostics(&self) -> RenderTransportDiagnostics {
+        self.slot.diagnostics()
+    }
+
+    pub fn take_model_commit_feedback(&self) -> Option<ModelCommitFeedback> {
+        let mut state = self
+            .slot
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let feedback = state.feedback.take();
+        if feedback.is_some() {
+            state.diagnostics.feedback_consumed =
+                state.diagnostics.feedback_consumed.saturating_add(1);
+        }
+        feedback
+    }
+
+    pub fn record_stale_model_commit_feedback(&self) {
+        let mut state = self
+            .slot
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.diagnostics.feedback_stale = state.diagnostics.feedback_stale.saturating_add(1);
+    }
+}
+
+pub struct RenderConsumer {
+    slot: Arc<LatestFrameSlot>,
+}
+
+impl RenderConsumer {
+    /// Consume only a reliable model commit frame, leaving current-generation
+    /// coalesced data available for the next visible render pass.
+    pub fn take_model_commit(&self) -> Option<RenderFrame> {
+        let mut state = self
+            .slot
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let frame = state.pending_model_commit.take();
+        if let Some(frame) = frame.as_ref() {
+            if state
+                .pending
+                .as_ref()
+                .is_some_and(|pending| pending.model_generation < frame.model_generation)
+            {
+                state.pending = None;
+                state.diagnostics.coalesced = state.diagnostics.coalesced.saturating_add(1);
+            }
+            state.diagnostics.consumed = state.diagnostics.consumed.saturating_add(1);
+        }
+        frame
+    }
+
+    pub fn take_latest(&self) -> Option<RenderFrame> {
+        let mut state = self
+            .slot
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let frame = state
+            .pending_model_commit
+            .take()
+            .or_else(|| state.pending.take());
+        if frame.is_some() {
+            state.diagnostics.consumed = state.diagnostics.consumed.saturating_add(1);
+        }
+        frame
+    }
+
+    pub fn diagnostics(&self) -> RenderTransportDiagnostics {
+        self.slot.diagnostics()
+    }
+
+    pub fn report_model_commit(
+        &self,
+        feedback: ModelCommitFeedback,
+    ) -> Result<(), ModelCommitFeedbackError> {
+        let mut state = self
+            .slot
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.closed {
+            state.diagnostics.feedback_rejected_after_close = state
+                .diagnostics
+                .feedback_rejected_after_close
+                .saturating_add(1);
+            return Err(ModelCommitFeedbackError::Closed(feedback));
+        }
+        if state.feedback.is_some() {
+            state.diagnostics.feedback_occupied =
+                state.diagnostics.feedback_occupied.saturating_add(1);
+            return Err(ModelCommitFeedbackError::Occupied(feedback));
+        }
+        state.feedback = Some(feedback);
+        state.diagnostics.feedback_reported = state.diagnostics.feedback_reported.saturating_add(1);
+        Ok(())
+    }
+}
+
+impl LatestFrameSlot {
+    fn diagnostics(&self) -> RenderTransportDiagnostics {
+        let state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        RenderTransportDiagnostics {
+            pending: u64::from(state.pending.is_some())
+                .saturating_add(u64::from(state.pending_model_commit.is_some())),
+            feedback_pending: u64::from(state.feedback.is_some()),
+            ..state.diagnostics
+        }
+    }
+}
+
+pub fn latest_render_channel() -> (RenderProducer, RenderConsumer) {
+    let slot = Arc::new(LatestFrameSlot::default());
+    (
+        RenderProducer {
+            slot: Arc::clone(&slot),
+        },
+        RenderConsumer { slot },
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn frame(number: u64) -> RenderFrame {
+        RenderFrame {
+            transport_sequence: number,
+            model_generation: 3,
+            frame_number: number,
+            model_commit: None,
+            resources: Arc::new(RenderResources {
+                textures: vec![],
+                key_assets: vec![],
+                background: None,
+            }),
+            snapshot: Arc::new(RenderSnapshot {
+                canvas: CanvasInfo {
+                    width: 1.0,
+                    height: 1.0,
+                    origin_x: 0.0,
+                    origin_y: 0.0,
+                    pixels_per_unit: 1.0,
+                },
+                bounds: ModelBounds {
+                    min_x: -0.5,
+                    max_x: 0.5,
+                    min_y: -0.5,
+                    max_y: 0.5,
+                },
+                active_keys: Vec::new(),
+                model_opacity: 1.0,
+                mirror_horizontal: false,
+                drawables: vec![],
+            }),
+        }
+    }
+
+    #[test]
+    fn strong_resource_ids_preserve_source_identity() {
+        assert_eq!(DrawableId::new(7).index(), 7);
+        assert_eq!(TextureId::new(2).index(), 2);
+        assert_eq!(DrawableId::new(7).to_string(), "7");
+        assert_eq!(TextureId::new(2).to_string(), "2");
+    }
+
+    #[test]
+    fn canvas_bounds_keep_core_origin_orientation() {
+        let bounds = ModelBounds::from_canvas(CanvasInfo {
+            width: 100.0,
+            height: 80.0,
+            origin_x: 20.0,
+            origin_y: 30.0,
+            pixels_per_unit: 10.0,
+        });
+        assert_eq!(bounds.center(), [3.0, -1.0]);
+        assert_eq!(bounds.width(), 10.0);
+        assert_eq!(bounds.height(), 8.0);
+    }
+
+    #[test]
+    fn key_press_set_deduplicates_and_has_bounded_capacity() {
+        let mut presses = KeyPressSet::default();
+        let press = KeyPress {
+            hid_usage: 0x04,
+            side: KeySide::Left,
+        };
+        presses.push(press);
+        presses.push(press);
+        for usage in 0x05..=0x50 {
+            presses.push(KeyPress {
+                hid_usage: usage,
+                side: KeySide::Left,
+            });
+        }
+        assert_eq!(presses.iter().count(), 64);
+        assert_eq!(presses.iter().filter(|entry| *entry == press).count(), 1);
+    }
+
+    #[test]
+    fn latest_frame_transport_coalesces_without_blocking_the_producer() {
+        let (producer, consumer) = latest_render_channel();
+        for number in 0..10_000 {
+            producer.publish(frame(number)).expect("publish frame");
+        }
+        assert_eq!(
+            consumer.take_latest().map(|frame| frame.frame_number),
+            Some(9_999)
+        );
+        assert_eq!(
+            consumer.diagnostics(),
+            RenderTransportDiagnostics {
+                published: 10_000,
+                coalesced: 9_999,
+                consumed: 1,
+                ..RenderTransportDiagnostics::default()
+            }
+        );
+    }
+
+    #[test]
+    fn model_commit_frame_survives_latest_frame_coalescing() {
+        let (producer, consumer) = latest_render_channel();
+        let token = ModelCommitToken {
+            command_sequence: 7,
+            model_generation: 3,
+        };
+        let mut commit = frame(1);
+        commit.model_commit = Some(token);
+        producer.publish(commit).expect("publish model commit");
+        for number in 2..10_000 {
+            producer.publish(frame(number)).expect("publish frame");
+        }
+
+        let commit = consumer.take_latest().expect("reliable commit frame");
+        assert_eq!(commit.model_commit, Some(token));
+        assert_eq!(commit.frame_number, 1);
+        let latest = consumer.take_latest().expect("latest data frame");
+        assert_eq!(latest.model_commit, None);
+        assert_eq!(latest.frame_number, 9_999);
+        assert_eq!(
+            consumer.diagnostics(),
+            RenderTransportDiagnostics {
+                published: 9_999,
+                coalesced: 9_997,
+                consumed: 2,
+                ..RenderTransportDiagnostics::default()
+            }
+        );
+    }
+
+    #[test]
+    fn model_commit_only_consumer_preserves_the_latest_data_frame() {
+        let (producer, consumer) = latest_render_channel();
+        producer.publish(frame(1)).expect("publish data frame");
+        assert!(consumer.take_model_commit().is_none());
+
+        let token = ModelCommitToken {
+            command_sequence: 7,
+            model_generation: 3,
+        };
+        let mut commit = frame(2);
+        commit.model_commit = Some(token);
+        producer.publish(commit).expect("publish model commit");
+
+        let commit = consumer.take_model_commit().expect("reliable commit frame");
+        assert_eq!(commit.model_commit, Some(token));
+        assert_eq!(commit.frame_number, 2);
+        assert_eq!(
+            consumer.take_latest().map(|frame| frame.frame_number),
+            Some(1)
+        );
+        assert_eq!(
+            consumer.diagnostics(),
+            RenderTransportDiagnostics {
+                published: 2,
+                consumed: 2,
+                ..RenderTransportDiagnostics::default()
+            }
+        );
+    }
+
+    #[test]
+    fn model_commit_only_consumer_discards_superseded_model_data() {
+        let (producer, consumer) = latest_render_channel();
+        let mut stale = frame(1);
+        stale.model_generation = 2;
+        producer.publish(stale).expect("publish stale data frame");
+
+        let token = ModelCommitToken {
+            command_sequence: 7,
+            model_generation: 3,
+        };
+        let mut commit = frame(2);
+        commit.model_commit = Some(token);
+        producer.publish(commit).expect("publish model commit");
+
+        assert_eq!(
+            consumer
+                .take_model_commit()
+                .and_then(|frame| frame.model_commit),
+            Some(token)
+        );
+        assert!(consumer.take_latest().is_none());
+        assert_eq!(
+            consumer.diagnostics(),
+            RenderTransportDiagnostics {
+                published: 2,
+                coalesced: 1,
+                consumed: 1,
+                ..RenderTransportDiagnostics::default()
+            }
+        );
+    }
+
+    #[test]
+    fn close_rejects_new_frames_but_allows_pending_drain() {
+        let (producer, consumer) = latest_render_channel();
+        producer.publish(frame(1)).expect("publish frame");
+        producer.close();
+        let rejected = producer.publish(frame(2)).expect_err("closed channel");
+        assert_eq!(rejected.into_frame().frame_number, 2);
+        assert_eq!(
+            consumer.take_latest().map(|frame| frame.frame_number),
+            Some(1)
+        );
+        assert_eq!(
+            producer.diagnostics(),
+            RenderTransportDiagnostics {
+                published: 1,
+                consumed: 1,
+                rejected_after_close: 1,
+                ..RenderTransportDiagnostics::default()
+            }
+        );
+    }
+
+    #[test]
+    fn frame_sequence_must_increase_within_and_across_model_generations() {
+        let (producer, consumer) = latest_render_channel();
+        producer.publish(frame(2)).expect("first frame");
+        let rejected = producer.publish(frame(1)).expect_err("older frame");
+        assert!(matches!(rejected, RenderPublishError::NonMonotonic(_)));
+        let mut replacement = frame(3);
+        replacement.model_generation = 4;
+        replacement.frame_number = 0;
+        producer
+            .publish(replacement)
+            .expect("new model generation may reset frame number");
+        assert_eq!(
+            consumer.take_latest().map(|frame| frame.model_generation),
+            Some(4)
+        );
+        assert_eq!(consumer.diagnostics().non_monotonic, 1);
+    }
+
+    #[test]
+    fn model_commit_feedback_is_reliable_and_never_overwrites() {
+        let (producer, consumer) = latest_render_channel();
+        let first = ModelCommitFeedback {
+            token: ModelCommitToken {
+                command_sequence: 7,
+                model_generation: 3,
+            },
+            outcome: ModelCommitOutcome::Prepared,
+        };
+        let second = ModelCommitFeedback {
+            token: ModelCommitToken {
+                command_sequence: 8,
+                model_generation: 4,
+            },
+            outcome: ModelCommitOutcome::Rejected(ModelCommitErrorCode::ResourcePreparationFailed),
+        };
+        consumer.report_model_commit(first).expect("first feedback");
+        let occupied = consumer
+            .report_model_commit(second)
+            .expect_err("feedback cannot overwrite");
+        assert_eq!(occupied.into_feedback(), second);
+        assert_eq!(producer.take_model_commit_feedback(), Some(first));
+        consumer
+            .report_model_commit(second)
+            .expect("second feedback after drain");
+        assert_eq!(producer.take_model_commit_feedback(), Some(second));
+        assert_eq!(
+            producer.diagnostics(),
+            RenderTransportDiagnostics {
+                feedback_reported: 2,
+                feedback_consumed: 2,
+                feedback_occupied: 1,
+                ..RenderTransportDiagnostics::default()
+            }
+        );
+    }
+
+    #[test]
+    fn model_commit_feedback_is_rejected_after_close() {
+        let (producer, consumer) = latest_render_channel();
+        producer.close();
+        let feedback = ModelCommitFeedback {
+            token: ModelCommitToken {
+                command_sequence: 1,
+                model_generation: 0,
+            },
+            outcome: ModelCommitOutcome::Prepared,
+        };
+        let rejected = consumer
+            .report_model_commit(feedback)
+            .expect_err("closed feedback");
+        assert_eq!(rejected.into_feedback(), feedback);
+        assert_eq!(consumer.diagnostics().feedback_rejected_after_close, 1);
+    }
+
+    #[test]
+    fn model_commit_error_codes_are_stable_and_unique() {
+        let mut codes = ModelCommitErrorCode::ALL
+            .iter()
+            .map(|code| code.as_str())
+            .collect::<Vec<_>>();
+        assert!(codes.iter().all(|code| code.starts_with("model_commit_")));
+        codes.sort_unstable();
+        codes.dedup();
+        assert_eq!(codes.len(), ModelCommitErrorCode::ALL.len());
+        assert_eq!(
+            ModelCommitErrorCode::ResourcePreparationFailed.to_string(),
+            "model_commit_resource_preparation_failed"
+        );
+    }
+}

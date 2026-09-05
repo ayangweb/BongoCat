@@ -1,0 +1,49 @@
+[package]
+name = "bongocat-overlay"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+bongocat-live2d.workspace = true
+bongocat-model.workspace = true
+bongocat-platform.workspace = true
+bongocat-render.workspace = true
+bongocat-runtime.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-graphics-types = "=0.2.0"
+image.workspace = true
+metal = "=0.33.0"
+objc2 = "=0.6.4"
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["NSApplication", "NSColor", "NSEvent", "NSGraphics", "NSPanel", "NSResponder", "NSRunningApplication", "NSScreen", "NSView", "NSWindow", "objc2-core-foundation", "objc2-quartz-core"] }
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["NSDate", "NSGeometry", "NSObjCRuntime", "NSObject", "NSRunLoop", "NSString", "objc2-core-foundation"] }
+objc2-quartz-core = { version = "=0.3.2", default-features = false, features = ["CALayer", "CAMetalLayer", "objc2-core-foundation", "objc2-metal"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+image.workspace = true
+windows = { version = "=0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D_Fxc",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_DirectComposition",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Com",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
+    "Win32_UI_HiDpi",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[lints.clippy]
+dbg_macro = "deny"
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"

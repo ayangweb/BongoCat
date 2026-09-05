@@ -1,0 +1,83 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/bongocat-app",
+    "crates/bongocat-audio",
+    "crates/bongocat-config",
+    "crates/bongocat-live2d",
+    "crates/bongocat-model",
+    "crates/bongocat-overlay",
+    "crates/bongocat-platform",
+    "crates/bongocat-render",
+    "crates/bongocat-runtime",
+    "crates/bongocat-ui",
+    "crates/bongocat-update",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+license = "MIT"
+repository = "https://github.com/ayangweb/BongoCat"
+publish = false
+
+[workspace.dependencies]
+accesskit = "=0.25.0"
+accesskit_macos = "=0.27.0"
+accesskit_windows = "=0.35.0"
+async-io = "=2.6.0"
+atomic-write-file = "=0.3.1"
+async-channel = "=2.5.0"
+dirs = "=6.0.0"
+ed25519-dalek = { version = "=3.0.0", default-features = false, features = ["fast"] }
+embed-resource = "=3.0.11"
+gpui-kit = "=0.6.0"
+image = { version = "=0.25.10", default-features = false, features = ["png"] }
+proptest = { version = "=1.11.0", default-features = false, features = ["std"] }
+raw-window-handle = "=0.6.2"
+rodio = { version = "=0.22.2", default-features = false, features = ["playback", "flac"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+semver = "=1.0.28"
+sha2 = "=0.11.0"
+tempfile = "=3.27.0"
+url = "=2.5.8"
+ureq = { version = "=3.4.0", default-features = false, features = ["rustls"] }
+
+bongocat-config = { path = "crates/bongocat-config" }
+bongocat-audio = { path = "crates/bongocat-audio" }
+bongocat-live2d = { path = "crates/bongocat-live2d" }
+bongocat-model = { path = "crates/bongocat-model" }
+bongocat-overlay = { path = "crates/bongocat-overlay" }
+bongocat-platform = { path = "crates/bongocat-platform" }
+bongocat-render = { path = "crates/bongocat-render" }
+bongocat-runtime = { path = "crates/bongocat-runtime" }
+bongocat-ui = { path = "crates/bongocat-ui" }
+bongocat-update = { path = "crates/bongocat-update" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+print_stderr = "deny"
+print_stdout = "deny"
+
+[profile.dev]
+debug = true
+incremental = true
+panic = "unwind"
+
+[profile.release]
+strip = "symbols"
+opt-level = 3
+codegen-units = 1
+panic = "abort"
+lto = "thin"
+
+[profile.profiling]
+inherits = "release"
+strip = "none"
+debug = "full"
+lto = false

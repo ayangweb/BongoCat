@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bongocat.dev/schemas/fixtures/expected-state-v1.json",
+  "title": "BongoCat expected runtime state fixture",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "sequenceId", "provenance", "checkpoints"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "sequenceId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "provenance": { "enum": ["legacy_observation", "product_decision", "bug_fix"] },
+    "checkpoints": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/checkpoint" }
+    }
+  },
+  "$defs": {
+    "checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["atMs", "input", "model"],
+      "properties": {
+        "atMs": { "type": "integer", "minimum": 0 },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pressedKeys", "pressedMouseButtons", "connectedDevices", "lastResetReason"],
+          "properties": {
+            "pressedKeys": {
+              "type": "array",
+              "items": { "type": "string" },
+              "uniqueItems": true
+            },
+            "pressedMouseButtons": {
+              "type": "array",
+              "items": { "type": "string" },
+              "uniqueItems": true
+            },
+            "connectedDevices": {
+              "type": "array",
+              "items": { "type": "string" },
+              "uniqueItems": true
+            },
+            "lastResetReason": {
+              "type": ["string", "null"]
+            },
+            "cursorPosition": {
+              "type": ["object", "null"],
+              "additionalProperties": false,
+              "required": ["x", "y"],
+              "properties": {
+                "x": { "type": "number" },
+                "y": { "type": "number" }
+              }
+            }
+          }
+        },
+        "model": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["leftHandDown", "rightHandDown", "parameters", "activeMotion", "activeExpression"],
+          "properties": {
+            "selectedModelId": { "type": ["string", "null"] },
+            "leftHandDown": { "type": "boolean" },
+            "rightHandDown": { "type": "boolean" },
+            "parameters": {
+              "type": "object",
+              "description": "Complete normalized parameter projection for every keyboard side, gamepad button, and mouse button mapped or touched by the input sequence.",
+              "additionalProperties": { "type": "number" }
+            },
+            "activeMotion": { "type": ["string", "null"] },
+            "activeExpression": { "type": ["string", "null"] }
+          }
+        }
+      }
+    }
+  }
+}

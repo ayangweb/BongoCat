@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ayangweb.github.io/bongocat/schemas/legacy-core-baseline.schema.json",
+  "title": "BongoCat Legacy Cubism Core Baseline",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "provenance",
+    "source",
+    "models",
+    "capturedCoreLogLines"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "provenance": {
+      "const": "legacy_observation"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "corePath",
+        "coreSha256",
+        "coreVersion",
+        "latestMocVersion"
+      ],
+      "properties": {
+        "corePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "coreSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "coreVersion": {
+          "$ref": "#/$defs/coreVersion"
+        },
+        "latestMocVersion": {
+          "$ref": "#/$defs/mocVersion"
+        }
+      }
+    },
+    "models": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/model"
+      }
+    },
+    "capturedCoreLogLines": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "coreVersion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw",
+        "hex",
+        "display"
+      ],
+      "properties": {
+        "raw": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "hex": {
+          "type": "string",
+          "pattern": "^0x[0-9a-f]{8}$"
+        },
+        "display": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        }
+      }
+    },
+    "mocVersion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw",
+        "name"
+      ],
+      "properties": {
+        "raw": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "name": {
+          "enum": [
+            "MocVersion_Unknown",
+            "MocVersion_30",
+            "MocVersion_33",
+            "MocVersion_40",
+            "MocVersion_42",
+            "MocVersion_50"
+          ]
+        }
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "mocPath",
+        "mocSha256",
+        "byteLength",
+        "consistent",
+        "mocVersion",
+        "parameterCount",
+        "partCount",
+        "drawableCount",
+        "canvas"
+      ],
+      "properties": {
+        "id": {
+          "enum": [
+            "standard",
+            "keyboard",
+            "gamepad"
+          ]
+        },
+        "mocPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mocSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "byteLength": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "consistent": {
+          "type": "boolean"
+        },
+        "mocVersion": {
+          "$ref": "#/$defs/mocVersion"
+        },
+        "parameterCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "partCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "drawableCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "canvas": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "width",
+            "height",
+            "originX",
+            "originY",
+            "pixelsPerUnit"
+          ],
+          "properties": {
+            "width": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "height": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "originX": {
+              "type": "number"
+            },
+            "originY": {
+              "type": "number"
+            },
+            "pixelsPerUnit": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          }
+        }
+      }
+    }
+  }
+}

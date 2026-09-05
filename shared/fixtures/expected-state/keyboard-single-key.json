@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "sequenceId": "keyboard-single-key",
+  "provenance": "product_decision",
+  "checkpoints": [
+    {
+      "atMs": 0,
+      "input": {
+        "pressedKeys": ["KeyA"],
+        "pressedMouseButtons": [],
+        "connectedDevices": [],
+        "lastResetReason": null
+      },
+      "model": {
+        "leftHandDown": true,
+        "rightHandDown": false,
+        "parameters": { "CatParamLeftHandDown": 1.0 },
+        "activeMotion": null,
+        "activeExpression": null
+      }
+    },
+    {
+      "atMs": 120,
+      "input": {
+        "pressedKeys": [],
+        "pressedMouseButtons": [],
+        "connectedDevices": [],
+        "lastResetReason": null
+      },
+      "model": {
+        "leftHandDown": false,
+        "rightHandDown": false,
+        "parameters": { "CatParamLeftHandDown": 0.0 },
+        "activeMotion": null,
+        "activeExpression": null
+      }
+    }
+  ]
+}

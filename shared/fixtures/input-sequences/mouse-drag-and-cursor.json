@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "mouse-drag-and-cursor",
+  "description": "Mouse movement may be coalesced during a drag while mouse button edges remain ordered and reliable.",
+  "context": {
+    "modelMode": "standard",
+    "keySides": {}
+  },
+  "events": [
+    { "atMs": 0, "type": "mouse_down", "button": "left", "source": "capture" },
+    { "atMs": 1, "type": "cursor_moved", "position": { "x": 10.0, "y": 20.0 } },
+    { "atMs": 2, "type": "cursor_moved", "position": { "x": 80.0, "y": 60.0 } },
+    { "atMs": 20, "type": "cursor_moved", "position": { "x": 120.0, "y": 80.0 } },
+    { "atMs": 30, "type": "mouse_up", "button": "left", "source": "capture" }
+  ]
+}

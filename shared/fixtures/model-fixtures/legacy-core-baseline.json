@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "provenance": "legacy_observation",
+  "source": {
+    "corePath": "public/js/live2dcubismcore.min.js",
+    "coreSha256": "25ae938cb4fe282ce189b357bcc97e603d1e1f7ec78bf04150d401c23cdc792f",
+    "coreVersion": {
+      "raw": 83951616,
+      "hex": "0x05010000",
+      "display": "5.1.0"
+    },
+    "latestMocVersion": {
+      "raw": 5,
+      "name": "MocVersion_50"
+    }
+  },
+  "models": [
+    {
+      "id": "standard",
+      "mocPath": "src-tauri/assets/models/standard/demomodel.moc3",
+      "mocSha256": "7bbcdb3df4fe085b0cbd9dc3a1cf32d351bd56787d0ddd1c238e50a5dcb6729a",
+      "byteLength": 41216,
+      "consistent": true,
+      "mocVersion": {
+        "raw": 3,
+        "name": "MocVersion_40"
+      },
+      "parameterCount": 37,
+      "partCount": 10,
+      "drawableCount": 21,
+      "canvas": {
+        "width": 612,
+        "height": 354,
+        "originX": 306,
+        "originY": 177,
+        "pixelsPerUnit": 354
+      }
+    },
+    {
+      "id": "keyboard",
+      "mocPath": "src-tauri/assets/models/keyboard/demomodel2.moc3",
+      "mocSha256": "03ed67f3ee2ea612aba4da0d42874f8879853d69043c9aae98af440d1f66965e",
+      "byteLength": 32128,
+      "consistent": true,
+      "mocVersion": {
+        "raw": 3,
+        "name": "MocVersion_40"
+      },
+      "parameterCount": 34,
+      "partCount": 10,
+      "drawableCount": 19,
+      "canvas": {
+        "width": 612,
+        "height": 354,
+        "originX": 306,
+        "originY": 177,
+        "pixelsPerUnit": 354
+      }
+    },
+    {
+      "id": "gamepad",
+      "mocPath": "src-tauri/assets/models/gamepad/demomodel3.moc3",
+      "mocSha256": "e7f11d627011bb2c65d8b0882ce4545115d2256672dca256b674a713e3e5f3d6",
+      "byteLength": 58368,
+      "consistent": true,
+      "mocVersion": {
+        "raw": 3,
+        "name": "MocVersion_40"
+      },
+      "parameterCount": 42,
+      "partCount": 14,
+      "drawableCount": 25,
+      "canvas": {
+        "width": 612,
+        "height": 354,
+        "originX": 306,
+        "originY": 177,
+        "pixelsPerUnit": 354
+      }
+    }
+  ],
+  "capturedCoreLogLines": 3
+}

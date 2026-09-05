@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "baselineCommit": "44f44bc",
+  "models": [
+    {
+      "mode": "standard",
+      "root": "src-tauri/assets/models/standard",
+      "fileCount": 71,
+      "totalBytes": 1524540,
+      "leftKeyCount": 55,
+      "rightKeyCount": 0,
+      "contentManifestSha256": "02b99308faaa94f676e9cef2b3796a672891d99e8b6fd6ceb4c080d4fbebef3f"
+    },
+    {
+      "mode": "keyboard",
+      "root": "src-tauri/assets/models/keyboard",
+      "fileCount": 75,
+      "totalBytes": 1490448,
+      "leftKeyCount": 55,
+      "rightKeyCount": 4,
+      "contentManifestSha256": "13c23a84f55e736d097536ab60d7fdbb370f9429d8f5d4f9b2154fdf7a42d456"
+    },
+    {
+      "mode": "gamepad",
+      "root": "src-tauri/assets/models/gamepad",
+      "fileCount": 28,
+      "totalBytes": 1206645,
+      "leftKeyCount": 6,
+      "rightKeyCount": 6,
+      "contentManifestSha256": "05a9a1b3f4a2fc62893296416dfa17fd168d03d18abb7c2fdcb29efd1506bf61"
+    }
+  ]
+}

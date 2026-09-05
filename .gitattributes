@@ -1,0 +1,7 @@
+# Keep tracked model/package snapshots byte-identical on Windows and macOS.
+src-tauri/assets/models/**/*.json text eol=lf
+shared/fixtures/model-fixtures/*.json text eol=lf
+shared/fixtures/model-fixtures/cases/**/*.json text eol=lf
+shared/fixtures/model-fixtures/cases/**/*.json.invalid text eol=lf
+tools/cubism-bindgen/fixtures/*.h text eol=lf
+tools/cubism-bindgen/fixtures/expected/*.rs text eol=lf

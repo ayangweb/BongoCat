@@ -1,0 +1,23 @@
+{
+  "migrated": true,
+  "model": {
+    "mirror": false,
+    "mouseMirror": false,
+    "motionSound": true,
+    "behavior": true,
+    "autoReleaseDelay": 3,
+    "maxFPS": 60,
+    "ignoreMouse": false
+  },
+  "window": {
+    "visible": true,
+    "passThrough": false,
+    "alwaysOnTop": false,
+    "scale": 100,
+    "opacity": 100,
+    "radius": 0,
+    "hideOnHover": false,
+    "hideOnHoverDelay": 0,
+    "keepInScreen": true
+  }
+}

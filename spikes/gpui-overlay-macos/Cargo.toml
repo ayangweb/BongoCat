@@ -1,0 +1,22 @@
+[package]
+name = "bongocat-gpui-overlay-macos-spike"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+gpui = "=0.2.2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "=0.2.189"
+objc2 = "=0.6.4"
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["NSApplication", "NSPanel", "NSWindow", "NSView", "NSGraphics", "NSResponder", "NSColor"] }
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["NSGeometry", "NSObject", "NSString", "objc2-core-foundation"] }
+objc2-quartz-core = { version = "=0.3.2", default-features = false, features = ["CALayer", "CAMetalLayer", "objc2-core-foundation", "objc2-metal"] }
+metal = "=0.33.0"
+core-graphics-types = "=0.2.0"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+bongocat-overlay-windows-spike = { path = "../overlay-windows" }

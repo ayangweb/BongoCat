@@ -27,6 +27,8 @@
       {
         "label": "preference",
         "url": "index.html/#/preference",
+        "width": 800,
+        "height": 600,
         "visible": false,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,

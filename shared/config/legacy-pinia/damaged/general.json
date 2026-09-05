@@ -1,0 +1,16 @@
+{
+  "migrated": true,
+  "app": {
+    "autostart": false,
+    "taskbarVisible": false,
+    "trayVisible": true
+  },
+  "appearance": {
+    "theme": "auto",
+    "isDark": false,
+    "language": "en-US"
+  },
+  "update": {
+    "autoCheck": false
+  }
+}

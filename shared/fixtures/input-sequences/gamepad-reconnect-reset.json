@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "gamepad-reconnect-reset",
+  "description": "A gamepad reconnect and device reset clears pressed state before a new connection is accepted.",
+  "context": {
+    "modelMode": "gamepad",
+    "keySides": {
+      "GamepadSouth": "left",
+      "GamepadEast": "right"
+    }
+  },
+  "events": [
+    { "atMs": 0, "type": "device_connected", "deviceId": "fixture-pad-1", "deviceKind": "gamepad" },
+    { "atMs": 10, "type": "gamepad_button", "deviceId": "fixture-pad-1", "button": "south", "value": 1.0 },
+    { "atMs": 20, "type": "gamepad_axis", "deviceId": "fixture-pad-1", "axis": "left_stick_x", "value": 0.5 },
+    { "atMs": 25, "type": "gamepad_axis", "deviceId": "fixture-pad-1", "axis": "right_trigger", "value": 0.03 },
+    { "atMs": 27, "type": "gamepad_axis", "deviceId": "fixture-pad-1", "axis": "right_trigger", "value": 0.75 },
+    { "atMs": 30, "type": "gamepad_button", "deviceId": "fixture-pad-1", "button": "south", "value": 0.0 },
+    { "atMs": 40, "type": "device_disconnected", "deviceId": "fixture-pad-1", "deviceKind": "gamepad" },
+    { "atMs": 50, "type": "device_connected", "deviceId": "fixture-pad-2", "deviceKind": "gamepad" },
+    { "atMs": 60, "type": "gamepad_button", "deviceId": "fixture-pad-2", "button": "east", "value": 1.0 },
+    { "atMs": 70, "type": "device_disconnected", "deviceId": "fixture-pad-2", "deviceKind": "gamepad" },
+    { "atMs": 70, "type": "reset", "reason": "device_removed" }
+  ]
+}

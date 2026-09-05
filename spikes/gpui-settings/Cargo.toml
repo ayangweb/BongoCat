@@ -1,0 +1,34 @@
+[package]
+name = "bongocat-gpui-settings-spike"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Keep this probe independent from the legacy root Tauri workspace.
+[workspace]
+
+[dependencies]
+# Keep the default precompiled-shader path aligned with release packaging.
+gpui = "=0.2.2"
+accesskit = "=0.25.0"
+async-channel = "=2.5.0"
+raw-window-handle = "=0.6.2"
+unicode-segmentation = "=1.13.3"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+accesskit_macos = "=0.27.0"
+# Match accesskit_macos' Objective-C ABI types; its public adapter objects use
+# objc2 0.5 and cannot be safely inspected through objc2 0.6 Rust types. The
+# matching objc2-foundation generation is 0.2, not the current 0.3 generation.
+objc2 = "=0.5.2"
+objc2-foundation = "=0.2.2"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+accesskit_windows = "=0.35.0"
+
+[dev-dependencies]
+futures-lite = "=2.6.1"
+
+[profile.release]
+opt-level = 2
+lto = "thin"

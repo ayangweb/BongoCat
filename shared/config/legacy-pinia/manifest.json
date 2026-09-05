@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "default",
+      "directory": "default",
+      "expected": "inspectable",
+      "preserveSource": true
+    },
+    {
+      "id": "upgraded-with-custom-model",
+      "directory": "upgraded-with-custom-model",
+      "expected": "inspectable-with-stale-fields",
+      "preserveSource": true
+    },
+    {
+      "id": "damaged-cat",
+      "directory": "damaged",
+      "expected": "invalid",
+      "preserveSource": true
+    }
+  ]
+}

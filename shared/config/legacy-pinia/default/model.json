@@ -1,0 +1,34 @@
+{
+  "modelReady": true,
+  "models": [
+    {
+      "id": "preset-standard",
+      "path": "$BUNDLED_MODELS/standard",
+      "mode": "standard",
+      "isPreset": true
+    },
+    {
+      "id": "preset-keyboard",
+      "path": "$BUNDLED_MODELS/keyboard",
+      "mode": "keyboard",
+      "isPreset": true
+    },
+    {
+      "id": "preset-gamepad",
+      "path": "$BUNDLED_MODELS/gamepad",
+      "mode": "gamepad",
+      "isPreset": true
+    }
+  ],
+  "currentModel": {
+    "id": "preset-standard",
+    "path": "$BUNDLED_MODELS/standard",
+    "mode": "standard",
+    "isPreset": true
+  },
+  "supportKeys": {},
+  "pressedKeys": {},
+  "currentMotions": [],
+  "currentExpressions": [],
+  "shortcuts": {}
+}

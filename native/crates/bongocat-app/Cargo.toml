@@ -1,0 +1,39 @@
+[package]
+name = "bongocat-app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+build = "build.rs"
+
+[features]
+storage-test-injection = []
+
+[dependencies]
+async-io.workspace = true
+atomic-write-file.workspace = true
+bongocat-audio.workspace = true
+bongocat-config.workspace = true
+bongocat-live2d.workspace = true
+bongocat-model.workspace = true
+bongocat-overlay.workspace = true
+bongocat-render.workspace = true
+bongocat-runtime.workspace = true
+bongocat-ui.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+bongocat-platform.workspace = true
+gpui-kit.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[build-dependencies]
+embed-resource.workspace = true
+
+[lints]
+workspace = true

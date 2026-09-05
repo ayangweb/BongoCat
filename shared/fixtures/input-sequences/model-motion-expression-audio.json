@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "model-motion-expression-audio",
+  "description": "Motion priority, expression selection, audio cues, and model switching follow explicit command semantics.",
+  "context": {
+    "modelMode": "standard",
+    "keySides": {}
+  },
+  "events": [
+    { "atMs": 0, "type": "model_switch", "modelId": "fixture-model-a" },
+    { "atMs": 10, "type": "motion_start", "motionId": "idle", "priority": "idle" },
+    { "atMs": 20, "type": "motion_start", "motionId": "walk", "priority": "normal" },
+    { "atMs": 30, "type": "motion_start", "motionId": "blink", "priority": "idle" },
+    { "atMs": 40, "type": "expression_set", "expressionId": "smile" },
+    { "atMs": 50, "type": "audio_trigger", "cueId": "motion-walk" },
+    { "atMs": 60, "type": "motion_stop", "motionId": "walk" },
+    { "atMs": 70, "type": "model_switch", "modelId": "fixture-model-b" }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "autoCheckUpdate": true,
+  "autostart": true,
+  "taskbarVisibility": true,
+  "theme": "dark",
+  "isDark": true,
+  "migrated": true,
+  "app": {
+    "autostart": false,
+    "taskbarVisible": false,
+    "trayVisible": true
+  },
+  "appearance": {
+    "theme": "light",
+    "isDark": false,
+    "language": "zh-CN"
+  },
+  "update": {
+    "autoCheck": false
+  }
+}
