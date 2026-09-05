@@ -19,6 +19,7 @@ const MAX_UPDATE_SEQUENCE_STATE_BYTES: u64 = 1024;
 pub enum UpdateSequenceStoreErrorCode {
     DirectoryCreateFailed,
     DirectoryInvalid,
+    DirectoryPermissionFailed,
     SequenceInvalid,
     SequenceRollbackDetected,
     StateChannelMismatch,
@@ -37,6 +38,7 @@ impl UpdateSequenceStoreErrorCode {
         match self {
             Self::DirectoryCreateFailed => "update_sequence_directory_create_failed",
             Self::DirectoryInvalid => "update_sequence_directory_invalid",
+            Self::DirectoryPermissionFailed => "update_sequence_directory_permission_failed",
             Self::SequenceInvalid => "update_sequence_invalid",
             Self::SequenceRollbackDetected => "update_sequence_rollback_detected",
             Self::StateChannelMismatch => "update_sequence_channel_mismatch",
@@ -236,16 +238,31 @@ fn ensure_directory(directory: &Path) -> Result<(), UpdateSequenceStoreError> {
         Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => Err(
             UpdateSequenceStoreError::new(UpdateSequenceStoreErrorCode::DirectoryInvalid),
         ),
-        Ok(_) => Ok(()),
+        Ok(_) => set_private_directory(directory),
         Err(error) if error.kind() == ErrorKind::NotFound => {
             fs::create_dir_all(directory).map_err(|_| {
                 UpdateSequenceStoreError::new(UpdateSequenceStoreErrorCode::DirectoryCreateFailed)
-            })
+            })?;
+            set_private_directory(directory)
         }
         Err(_) => Err(UpdateSequenceStoreError::new(
             UpdateSequenceStoreErrorCode::DirectoryInvalid,
         )),
     }
+}
+
+fn set_private_directory(directory: &Path) -> Result<(), UpdateSequenceStoreError> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        fs::set_permissions(directory, fs::Permissions::from_mode(0o700)).map_err(|_| {
+            UpdateSequenceStoreError::new(UpdateSequenceStoreErrorCode::DirectoryPermissionFailed)
+        })?;
+    }
+    #[cfg(not(unix))]
+    let _ = directory;
+    Ok(())
 }
 
 fn write_state_atomic(path: &Path, bytes: &[u8]) -> Result<(), UpdateSequenceStoreError> {
@@ -413,6 +430,42 @@ mod tests {
                 .expect_err("symlink state")
                 .code(),
             UpdateSequenceStoreErrorCode::StateInvalid
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn store_creates_and_repairs_owner_only_update_directories() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempdir().expect("temporary directory");
+        let layout = StorageLayout::under(directory.path(), BuildEnvironment::Development);
+        UpdateSequenceStore::open_for_layout(&layout).expect("update store");
+        assert_eq!(
+            fs::metadata(&layout.updates)
+                .expect("update directory metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+
+        fs::set_permissions(&layout.updates, fs::Permissions::from_mode(0o755))
+            .expect("loosen permissions");
+        let reopened = UpdateSequenceStore::open_for_layout(&layout).expect("reopen update store");
+        assert_eq!(
+            reopened
+                .highest_verified_sequence()
+                .expect("initial sequence"),
+            0
+        );
+        assert_eq!(
+            fs::metadata(&layout.updates)
+                .expect("repaired directory metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
         );
     }
 }

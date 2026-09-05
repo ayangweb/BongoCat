@@ -663,7 +663,8 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
   配置或 `state.json`；channel、schema、常规文件身份和单调 sequence 全部严格校验，同目录锁与原子替换后
   回读保证并发或中断不会把已知最高值回退。`UpdateVerificationSession` 在验签和严格解析成功后才记录
   sequence，`Available` 与 `UpToDate` 都会推进同一 session 的 rollback 下限；损坏、跨环境或未知
-  schema 失败关闭，不自动重置。
+  schema 失败关闭，不自动重置。`updates/` 在 Unix 创建或重开时强制 owner-only `0700`，Windows
+  使用用户 profile ACL。
 - 自动检查偏好启用时在应用启动后立即请求一次检查，随后以可注入的单调时间从每次实际派发起
   间隔 24 小时；从关闭切换为启用时同样立即请求一次，关闭则取消待触发检查。重复 poll 不得重复
   派发，单调时间回退必须产生稳定诊断并从新时间原点重建间隔，不能形成重试风暴。

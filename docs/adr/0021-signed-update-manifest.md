@@ -30,7 +30,8 @@ manifest 绕过。
   `StorageLayout` 单独保存为 `updates/update-sequence.json` v1，不进入用户 config 或窗口 state 事务。
   状态固定包含 channel
   和最高 sequence；同目录锁串行化 writer，写入经同目录原子替换并回读验证。未知字段、非 v1、
-  跨环境、符号链接、损坏或较低 sequence 一律失败关闭，绝不重置或覆盖已有状态。
+  跨环境、符号链接、损坏或较低 sequence 一律失败关闭，绝不重置或覆盖已有状态。Unix 在创建或
+  重开 `updates/` 时强制 `0700`；Windows 继续以用户 profile ACL 作为同等私有边界。
 - 验证成功只返回项目自有的不可变 `VerifiedUpdate`/`VerifiedArtifact`。第三方 URL、SemVer、签名或
   digest 类型不进入公共 API。下载层必须把流交回 `VerifiedArtifact` 同时验证精确长度和 SHA-256，
   通过前不得进入安装阶段。
