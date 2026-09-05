@@ -57,6 +57,7 @@ impl BuildEnvironment {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StorageLayout {
+    pub environment: BuildEnvironment,
     pub root: PathBuf,
     pub config: PathBuf,
     pub state: PathBuf,
@@ -74,6 +75,7 @@ impl StorageLayout {
     ) -> Self {
         let root = application_root.as_ref().join(environment.directory_name());
         Self {
+            environment,
             config: root.join("config.json"),
             state: root.join("state.json"),
             models: root.join("models"),

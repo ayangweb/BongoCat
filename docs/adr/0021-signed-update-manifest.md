@@ -26,8 +26,9 @@ manifest 绕过。
   的 key 均拒绝。私钥不进入源码、构建产物或运行时配置。
 - manifest sequence 低于已安装值，或新版本没有更高 sequence，视为降级攻击。当前版本低于
   manifest 的最低可升级版本时不尝试就地更新；相同或更旧版本只返回 up-to-date，不产生安装候选。
-- 每个环境的最高已验证 sequence 由 `bongocat-update::UpdateSequenceStore` 单独保存为
-  `updates/update-sequence.json` v1，不进入用户 config 或窗口 state 事务。状态固定包含 channel
+- 每个环境的最高已验证 sequence 由 `bongocat-update::UpdateSequenceStore` 从不可变
+  `StorageLayout` 单独保存为 `updates/update-sequence.json` v1，不进入用户 config 或窗口 state 事务。
+  状态固定包含 channel
   和最高 sequence；同目录锁串行化 writer，写入经同目录原子替换并回读验证。未知字段、非 v1、
   跨环境、符号链接、损坏或较低 sequence 一律失败关闭，绝不重置或覆盖已有状态。
 - 验证成功只返回项目自有的不可变 `VerifiedUpdate`/`VerifiedArtifact`。第三方 URL、SemVer、签名或
@@ -42,6 +43,9 @@ manifest 绕过。
   只启用 verifier 所需 fast 表。维护仓库为 dalek-cryptography，Rust 1.85+。
 - `sha2 = 0.11.0`、`semver = 1.0.28` 和 `url = 2.5.8` 均为当前稳定版，许可证为
   MIT OR Apache-2.0，支持项目 Rust 1.97。它们分别只位于 digest、版本和 HTTPS 解析边界。
+- `bongocat-config` 是同一 workspace 的平台无关依赖，只提供不可变的 `StorageLayout` 与
+  `BuildEnvironment`，用于把更新 sequence 固定在当前环境的 `updates/` 根；它不向 update
+  verifier 暴露配置内容、平台 handle 或 UI 类型。
 - 这些依赖均由 `bongocat-update` 封装；若停止维护，可替换实现而不改变 app/runtime/UI 公共协议。
   manifest 算法或字段变化仍需新 schema/ADR，不能在 v1 中静默替换。
 

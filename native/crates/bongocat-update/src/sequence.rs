@@ -1,5 +1,6 @@
 use crate::UpdateChannel;
 use atomic_write_file::AtomicWriteFile;
+use bongocat_config::{BuildEnvironment, StorageLayout};
 use serde::{Deserialize, Serialize};
 use std::{
     fmt,
@@ -96,9 +97,13 @@ struct UpdateSequenceState {
 }
 
 impl UpdateSequenceStore {
-    /// Open an environment-specific store. The caller supplies a directory
-    /// derived from immutable build environment storage, never a user URL.
-    pub fn open(
+    /// Open the update store for the immutable environment represented by the
+    /// product storage layout.
+    pub fn open_for_layout(layout: &StorageLayout) -> Result<Self, UpdateSequenceStoreError> {
+        Self::open(&layout.updates, update_channel(layout.environment))
+    }
+
+    fn open(
         directory: impl AsRef<Path>,
         channel: UpdateChannel,
     ) -> Result<Self, UpdateSequenceStoreError> {
@@ -226,6 +231,13 @@ impl UpdateSequenceStore {
     }
 }
 
+const fn update_channel(environment: BuildEnvironment) -> UpdateChannel {
+    match environment {
+        BuildEnvironment::Development => UpdateChannel::Development,
+        BuildEnvironment::Production => UpdateChannel::Production,
+    }
+}
+
 fn ensure_directory(directory: &Path) -> Result<(), UpdateSequenceStoreError> {
     match fs::symlink_metadata(directory) {
         Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => Err(
@@ -262,8 +274,10 @@ mod tests {
     #[test]
     fn persisted_sequence_survives_reopen_and_is_environment_bound() {
         let directory = tempdir().expect("temporary directory");
-        let store = UpdateSequenceStore::open(directory.path(), UpdateChannel::Development)
-            .expect("development store");
+        let development = StorageLayout::under(directory.path(), BuildEnvironment::Development);
+        let production_layout =
+            StorageLayout::under(directory.path(), BuildEnvironment::Production);
+        let store = UpdateSequenceStore::open_for_layout(&development).expect("development store");
         assert_eq!(
             store.highest_verified_sequence().expect("initial sequence"),
             0
@@ -273,18 +287,28 @@ mod tests {
             7
         );
 
-        let reopened = UpdateSequenceStore::open(directory.path(), UpdateChannel::Development)
-            .expect("reopen development store");
+        let reopened =
+            UpdateSequenceStore::open_for_layout(&development).expect("reopen development store");
         assert_eq!(
             reopened
                 .highest_verified_sequence()
                 .expect("persisted sequence"),
             7
         );
-        let production = UpdateSequenceStore::open(directory.path(), UpdateChannel::Production)
-            .expect("production store");
+        let production =
+            UpdateSequenceStore::open_for_layout(&production_layout).expect("production store");
         assert_eq!(
             production
+                .highest_verified_sequence()
+                .expect("independent production state"),
+            0
+        );
+        assert_ne!(development.updates, production_layout.updates);
+
+        let mismatched = UpdateSequenceStore::open(&development.updates, UpdateChannel::Production)
+            .expect("test-only mismatched store");
+        assert_eq!(
+            mismatched
                 .highest_verified_sequence()
                 .expect_err("cross-environment state")
                 .code(),

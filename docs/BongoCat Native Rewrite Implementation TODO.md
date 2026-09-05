@@ -2466,8 +2466,9 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       定向 Clippy 已通过。实现 commit `a9371f6` 的 CI run `33936771710` 全绿；Windows/macOS/Ubuntu
       workspace jobs `101226118609`/`101226118560`/`101226118583` 均通过完整 workspace 门禁和对应
       产品 smoke。
-    - 状态（2026-09-05）：环境根的 `StorageLayout` 现显式拥有私有 `updates/` 目录；Development/
-      Production 目录形状测试逐项包含该目录。`UpdateSequenceStore` 只在此目录写入
+    - 状态（2026-09-05）：环境根的 `StorageLayout` 现显式携带 immutable `BuildEnvironment` 并拥有私有
+      `updates/` 目录；`UpdateSequenceStore::open_for_layout` 从该布局派生唯一 channel，调用方不能将
+      Development sequence 写入 Production 根。目录形状测试逐项包含该目录；store 只在此目录写入
       `update-sequence.json` 和锁文件，不与 config/state 事务混用。
 
 68. [x] `P7-AUTOMATIC-UPDATE-PREFERENCE`：让当前 v1 自动检查更新偏好进入正式设置链路。

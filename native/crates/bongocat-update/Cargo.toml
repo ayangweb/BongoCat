@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 atomic-write-file.workspace = true
+bongocat-config.workspace = true
 ed25519-dalek.workspace = true
 semver.workspace = true
 serde.workspace = true
