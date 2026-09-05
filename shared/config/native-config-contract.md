@@ -37,8 +37,6 @@ shortcuts
 | `overlay`     | `always_on_top`                   | 是否置顶                               |
 | `overlay`     | `scale_percent`                   | 模型/窗口缩放百分比                    |
 | `overlay`     | `opacity_percent`                 | 窗口不透明度百分比                     |
-| `overlay`     | `hide_on_pointer_hover`           | 指针移入时隐藏                         |
-| `overlay`     | `hide_on_pointer_hover_delay_ms`  | 移入隐藏延迟                           |
 | `overlay`     | `keep_inside_work_area`           | 保持在可见工作区                       |
 | `model`       | `selected_model_id`               | 当前模型稳定 ID，与 origin 成对为空    |
 | `model`       | `selected_model_origin`           | `preset` / `installed`，与 ID 成对为空 |
@@ -68,8 +66,9 @@ typed settings command 修改该值后，仍按配置 revision 原子提交并�
 登录启动不属于配置字段。它是可被系统设置或其它进程改变的平台能力，settings service 只读取
 typed platform snapshot，并仅在显式用户 command 时调用平台 adapter；不得持久化第二份布尔值。
 
-窗口圆角属于已冻结的 P1 首发后范围，不进入 `next` 初始版本的 v1 配置；首发后实现该功能时再按
-当时已发布的 schema 基线设计顺序且幂等的迁移，当前不得预留未被产品消费的配置字段。
+窗口圆角和指针悬停延迟隐藏属于已冻结的 P1 首发后范围，不进入 `next` 初始版本的 v1 配置；首发后
+实现这些功能时再按当时已发布的 schema 基线设计顺序且幂等的迁移，当前不得预留未被产品消费的
+配置字段。
 
 `appearance.language` 是严格的三值枚举：`system`、`zh-CN` 和 `en-US`，默认 `system`；未知值
 由当前 v1 解析入口直接拒绝，不提供 alias、迁移或 fallback。`system` 在每次启动时读取平台首选

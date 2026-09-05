@@ -239,8 +239,6 @@ pub struct OverlayConfig {
     pub always_on_top: bool,
     pub scale_percent: u16,
     pub opacity_percent: u8,
-    pub hide_on_pointer_hover: bool,
-    pub hide_on_pointer_hover_delay_ms: u32,
     pub keep_inside_work_area: bool,
 }
 
@@ -879,8 +877,6 @@ impl Default for NativeConfig {
                 always_on_top: true,
                 scale_percent: 100,
                 opacity_percent: 100,
-                hide_on_pointer_hover: false,
-                hide_on_pointer_hover_delay_ms: 250,
                 keep_inside_work_area: true,
             },
             input: InputConfig {
@@ -2500,6 +2496,21 @@ mod tests {
         let error = serde_json::from_value::<NativeConfig>(value)
             .expect_err("post-launch corner radius must not enter the initial v1 config");
         assert!(error.to_string().contains("unknown field"));
+
+        for (field, value) in [
+            ("hide_on_pointer_hover", serde_json::Value::Bool(true)),
+            (
+                "hide_on_pointer_hover_delay_ms",
+                serde_json::Value::from(250),
+            ),
+        ] {
+            let mut config =
+                serde_json::to_value(NativeConfig::default()).expect("serialize default");
+            config["overlay"][field] = value;
+            let error = serde_json::from_value::<NativeConfig>(config)
+                .expect_err("post-launch hover behavior must not enter the initial v1 config");
+            assert!(error.to_string().contains("unknown field"));
+        }
     }
 
     #[test]

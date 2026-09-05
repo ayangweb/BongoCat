@@ -13,8 +13,6 @@
     "scale_percent": 100,
     "opacity_percent": 100,
     "corner_radius_percent": 25,
-    "hide_on_pointer_hover": false,
-    "hide_on_pointer_hover_delay_ms": 250,
     "keep_inside_work_area": true
   },
   "input": {

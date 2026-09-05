@@ -3,16 +3,16 @@
   "application": {
     "show_taskbar_icon": true,
     "show_status_icon": true,
-    "check_for_updates_automatically": true,
-    "launch_at_login": true
+    "check_for_updates_automatically": true
   },
-  "appearance": { "theme": "system", "language": "en-US" },
+  "appearance": { "theme": "system", "language": "system" },
   "overlay": {
     "visible": true,
     "click_through": false,
     "always_on_top": true,
     "scale_percent": 100,
     "opacity_percent": 100,
+    "hide_on_pointer_hover": true,
     "keep_inside_work_area": true
   },
   "input": {

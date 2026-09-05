@@ -12,8 +12,6 @@
     "always_on_top": true,
     "scale_percent": 100,
     "opacity_percent": 100,
-    "hide_on_pointer_hover": false,
-    "hide_on_pointer_hover_delay_ms": 250,
     "keep_inside_work_area": true
   },
   "input": {

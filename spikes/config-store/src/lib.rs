@@ -175,8 +175,6 @@ pub struct OverlayConfig {
     pub always_on_top: bool,
     pub scale_percent: u16,
     pub opacity_percent: u8,
-    pub hide_on_pointer_hover: bool,
-    pub hide_on_pointer_hover_delay_ms: u32,
     pub keep_inside_work_area: bool,
 }
 
@@ -249,8 +247,6 @@ impl Default for NativeConfig {
                 always_on_top: true,
                 scale_percent: 100,
                 opacity_percent: 100,
-                hide_on_pointer_hover: false,
-                hide_on_pointer_hover_delay_ms: 250,
                 keep_inside_work_area: true,
             },
             input: InputConfig {
@@ -960,10 +956,11 @@ mod tests {
                 .get("check_for_updates_automatically")
                 .is_none()
         );
+        assert!(value["overlay"].get("hide_on_pointer_hover").is_none());
         assert!(
             value["overlay"]
                 .get("hide_on_pointer_hover_delay_ms")
-                .is_some()
+                .is_none()
         );
         assert!(value["input"].get("gamepad_stick_dead_zone").is_some());
         assert!(value["input"].get("gamepad_trigger_dead_zone").is_some());
@@ -1005,6 +1002,16 @@ mod tests {
         value["overlay"]["corner_radius_percent"] = serde_json::json!(25);
         let error = serde_json::from_value::<NativeConfig>(value).unwrap_err();
         assert!(error.to_string().contains("unknown field"));
+
+        for (field, value) in [
+            ("hide_on_pointer_hover", serde_json::json!(true)),
+            ("hide_on_pointer_hover_delay_ms", serde_json::json!(250)),
+        ] {
+            let mut config = serde_json::to_value(NativeConfig::default()).unwrap();
+            config["overlay"][field] = value;
+            let error = serde_json::from_value::<NativeConfig>(config).unwrap_err();
+            assert!(error.to_string().contains("unknown field"));
+        }
     }
 
     #[test]

@@ -4,6 +4,8 @@
     { "id": "default", "file": "default.json", "expected": "accept" },
     { "id": "unknown-field", "file": "invalid-unknown-field.json", "expected": "reject" },
     { "id": "deferred-corner-radius", "file": "invalid-deferred-corner-radius.json", "expected": "reject" },
+    { "id": "deferred-hover-toggle", "file": "invalid-deferred-hover-toggle.json", "expected": "reject" },
+    { "id": "deferred-hover-delay", "file": "invalid-deferred-hover-delay.json", "expected": "reject" },
     { "id": "unpaired-model-selection", "file": "invalid-unpaired-model-selection.json", "expected": "reject" },
     { "id": "out-of-range", "file": "invalid-out-of-range.json", "expected": "reject" },
     { "id": "gamepad-dead-zone", "file": "invalid-gamepad-dead-zone.json", "expected": "reject" },
