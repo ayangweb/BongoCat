@@ -19,6 +19,9 @@ impl Render for SettingsView {
                     ACCESSIBILITY_OVERLAY => Some(&self.overlay_focus),
                     ACCESSIBILITY_OVERLAY_TOPMOST => Some(&self.overlay_topmost_focus),
                     ACCESSIBILITY_OVERLAY_CLICK_THROUGH => Some(&self.overlay_click_through_focus),
+                    ACCESSIBILITY_OVERLAY_KEEP_INSIDE_WORK_AREA => {
+                        Some(&self.overlay_keep_inside_work_area_focus)
+                    }
                     ACCESSIBILITY_OVERLAY_SCALE_DECREASE => {
                         Some(&self.overlay_scale_decrease_focus)
                     }
@@ -273,6 +276,33 @@ impl Render for SettingsView {
                             ),
                         )
                         .description(ui_text(language, UiText::ClickThroughOverlayDescription)),
+                        SettingItem::new(
+                            ui_text(language, UiText::KeepInsideWorkArea),
+                            SettingField::switch(
+                                {
+                                    let view = view_entity.clone();
+                                    move |app| {
+                                        view.read(app)
+                                            .snapshot
+                                            .as_ref()
+                                            .is_some_and(|s| s.overlay.keep_inside_work_area)
+                                    }
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |value, app| {
+                                        view.update(app, |view, cx| {
+                                            if let Some(snapshot) = view.snapshot.as_ref() {
+                                                let mut settings = snapshot.overlay;
+                                                settings.keep_inside_work_area = value;
+                                                view.set_overlay_settings(settings, cx);
+                                            }
+                                        });
+                                    }
+                                },
+                            ),
+                        )
+                        .description(ui_text(language, UiText::KeepInsideWorkAreaDescription)),
                         SettingItem::new(
                             ui_text(language, UiText::MotionAudio),
                             SettingField::switch(

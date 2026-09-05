@@ -1,7 +1,7 @@
 use crate::{
     OverlayError, OverlayPresentationState, OverlaySessionOptions, OverlayTickOutcome,
-    OverlayWindowBounds, PreviewReport, ProductOverlayReport, default_overlay_window_dimensions,
-    validate_model_generation_advance,
+    OverlayWindowBounds, OverlayWorkArea, PreviewReport, ProductOverlayReport,
+    default_overlay_window_dimensions, validate_model_generation_advance,
 };
 use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
 use bongocat_platform::{
@@ -347,6 +347,12 @@ impl ProductOverlaySession {
             self.overlay = replacement;
             self.options = next_options;
         }
+        if self.options.keep_inside_work_area {
+            let mtm = MainThreadMarker::new().ok_or_else(|| {
+                OverlayError::new("macOS overlay work-area correction lost the main thread")
+            })?;
+            self.overlay.ensure_inside_work_area(mtm)?;
+        }
         self.options.maximum_fps = runtime_snapshot.maximum_fps;
         let overlay_visible = runtime_snapshot.overlay_visible;
         if !overlay_visible {
@@ -521,8 +527,15 @@ impl ProductOverlaySession {
             ));
         }
         while self.render_consumer.take_latest().is_some() {}
+        let mtm = MainThreadMarker::new()
+            .ok_or_else(|| OverlayError::new("macOS overlay shutdown lost the main thread"))?;
+        let bounds = self.window_bounds()?;
+        let work_area_constraint_satisfied = !self.options.keep_inside_work_area
+            || work_area_for_bounds(mtm, bounds)?
+                .is_some_and(|work_area| bounds.clamp_to(work_area) == bounds);
         Ok(ProductOverlayReport {
             frames_presented: self.frames_presented,
+            work_area_constraint_satisfied,
             dynamic_snapshots: self.dynamic_snapshots,
             model_commit_rejections: self.model_commit_rejections,
             input_start_error: self.input_start_error,
@@ -1028,9 +1041,30 @@ impl NativeOverlay {
             f64::from(bounds.height)
         });
         let origin = bounds.map_or_else(
-            || centered_origin(mtm, window_width, window_height),
+            || {
+                centered_origin(
+                    mtm,
+                    window_width,
+                    window_height,
+                    options.keep_inside_work_area,
+                )
+            },
             |bounds| NSPoint::new(f64::from(bounds.x), f64::from(bounds.y)),
         );
+        let candidate_bounds = OverlayWindowBounds::new(
+            rounded_i32(origin.x)?,
+            rounded_i32(origin.y)?,
+            rounded_u32(window_width)?,
+            rounded_u32(window_height)?,
+        );
+        let origin = if options.keep_inside_work_area {
+            work_area_for_bounds(mtm, candidate_bounds)?.map_or(origin, |area| {
+                let clamped = candidate_bounds.clamp_to(area);
+                NSPoint::new(f64::from(clamped.x), f64::from(clamped.y))
+            })
+        } else {
+            origin
+        };
         let window_frame = NSRect::new(origin, NSSize::new(window_width, window_height));
         let style = NSWindowStyleMask::Borderless | NSWindowStyleMask::NonactivatingPanel;
         let panel = NSPanel::initWithContentRect_styleMask_backing_defer(
@@ -1108,6 +1142,26 @@ impl NativeOverlay {
             model,
             presentation: OverlayPresentationState::default(),
         })
+    }
+
+    fn ensure_inside_work_area(&self, mtm: MainThreadMarker) -> Result<(), OverlayError> {
+        let frame = self.panel.frame();
+        let bounds = OverlayWindowBounds::new(
+            rounded_i32(frame.origin.x)?,
+            rounded_i32(frame.origin.y)?,
+            rounded_u32(frame.size.width)?,
+            rounded_u32(frame.size.height)?,
+        )
+        .validate()?;
+        let Some(work_area) = work_area_for_bounds(mtm, bounds)? else {
+            return Ok(());
+        };
+        let clamped = bounds.clamp_to(work_area);
+        if clamped.x != bounds.x || clamped.y != bounds.y {
+            self.panel
+                .setFrameOrigin(NSPoint::new(f64::from(clamped.x), f64::from(clamped.y)));
+        }
+        Ok(())
     }
 
     fn sync_frame(&mut self, frame: &RenderFrame) -> Result<bool, OverlayError> {
@@ -1378,7 +1432,12 @@ impl NativeOverlay {
     }
 }
 
-fn centered_origin(mtm: MainThreadMarker, width: f64, height: f64) -> NSPoint {
+fn centered_origin(
+    mtm: MainThreadMarker,
+    width: f64,
+    height: f64,
+    keep_inside_work_area: bool,
+) -> NSPoint {
     let mouse = NSEvent::mouseLocation();
     let screens = NSScreen::screens(mtm);
     let screen = screens
@@ -1390,14 +1449,70 @@ fn centered_origin(mtm: MainThreadMarker, width: f64, height: f64) -> NSPoint {
                 && mouse.y >= frame.origin.y
                 && mouse.y < frame.origin.y + frame.size.height
         })
-        .map(|screen| screen.frame())
-        .or_else(|| NSScreen::mainScreen(mtm).map(|screen| screen.frame()));
+        .map(|screen| {
+            if keep_inside_work_area {
+                screen.visibleFrame()
+            } else {
+                screen.frame()
+            }
+        })
+        .or_else(|| {
+            NSScreen::mainScreen(mtm).map(|screen| {
+                if keep_inside_work_area {
+                    screen.visibleFrame()
+                } else {
+                    screen.frame()
+                }
+            })
+        });
     screen.map_or(NSPoint::new(80.0, 80.0), |screen| {
         NSPoint::new(
             screen.origin.x + (screen.size.width - width) / 2.0,
             screen.origin.y + (screen.size.height - height) / 2.0,
         )
     })
+}
+
+fn work_area_for_bounds(
+    mtm: MainThreadMarker,
+    bounds: OverlayWindowBounds,
+) -> Result<Option<OverlayWorkArea>, OverlayError> {
+    let left = f64::from(bounds.x);
+    let bottom = f64::from(bounds.y);
+    let right = left + f64::from(bounds.width);
+    let top = bottom + f64::from(bounds.height);
+    let mut selected = None;
+    let mut selected_intersection = 0.0;
+    let mut selected_distance = f64::INFINITY;
+    let center_x = (left + right) / 2.0;
+    let center_y = (bottom + top) / 2.0;
+    for screen in NSScreen::screens(mtm) {
+        let frame = screen.frame();
+        let intersection_width =
+            (right.min(frame.origin.x + frame.size.width) - left.max(frame.origin.x)).max(0.0);
+        let intersection_height =
+            (top.min(frame.origin.y + frame.size.height) - bottom.max(frame.origin.y)).max(0.0);
+        let intersection = intersection_width * intersection_height;
+        let screen_center_x = frame.origin.x + frame.size.width / 2.0;
+        let screen_center_y = frame.origin.y + frame.size.height / 2.0;
+        let distance = (center_x - screen_center_x).powi(2) + (center_y - screen_center_y).powi(2);
+        if intersection > selected_intersection
+            || (selected_intersection == 0.0 && intersection == 0.0 && distance < selected_distance)
+        {
+            selected = Some(screen.visibleFrame());
+            selected_intersection = intersection;
+            selected_distance = distance;
+        }
+    }
+    let Some(frame) = selected else {
+        return Ok(None);
+    };
+    Ok(Some(OverlayWorkArea {
+        x: rounded_i32(frame.origin.x)?,
+        y: rounded_i32(frame.origin.y)?,
+        width: rounded_u32(frame.size.width)?,
+        height: rounded_u32(frame.size.height)?,
+    }))
 }
 
 fn overlay_bounds_visible(mtm: MainThreadMarker, bounds: OverlayWindowBounds) -> bool {

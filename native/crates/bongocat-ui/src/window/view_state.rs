@@ -266,6 +266,7 @@ impl SettingsView {
             overlay_focus: cx.focus_handle().tab_index(10).tab_stop(true),
             overlay_topmost_focus: cx.focus_handle().tab_index(13).tab_stop(true),
             overlay_click_through_focus: cx.focus_handle().tab_index(14).tab_stop(true),
+            overlay_keep_inside_work_area_focus: cx.focus_handle().tab_index(44).tab_stop(true),
             overlay_scale_decrease_focus: cx.focus_handle().tab_index(15).tab_stop(true),
             overlay_scale_increase_focus: cx.focus_handle().tab_index(16).tab_stop(true),
             overlay_opacity_decrease_focus: cx.focus_handle().tab_index(17).tab_stop(true),

@@ -135,6 +135,8 @@ pub(super) enum UiText {
     AlwaysOnTopDescription,
     ClickThroughOverlay,
     ClickThroughOverlayDescription,
+    KeepInsideWorkArea,
+    KeepInsideWorkAreaDescription,
     MotionAudio,
     MotionAudioDescription,
     OverlayScale,
@@ -395,6 +397,11 @@ pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
         UiText::ClickThroughOverlayDescription => [
             "Let pointer input pass through the Live2D overlay.",
             "允许指针事件穿过 Live2D 桌面猫。",
+        ],
+        UiText::KeepInsideWorkArea => ["Keep inside work area", "保持在工作区内"],
+        UiText::KeepInsideWorkAreaDescription => [
+            "Keep the overlay clear of taskbars, menu bars and screen edges.",
+            "使桌面猫避开任务栏、菜单栏和屏幕边缘。",
         ],
         UiText::MotionAudio => ["Motion audio", "动作音效"],
         UiText::MotionAudioDescription => [
@@ -1079,6 +1086,8 @@ mod tests {
             UiText::AlwaysOnTopDescription,
             UiText::ClickThroughOverlay,
             UiText::ClickThroughOverlayDescription,
+            UiText::KeepInsideWorkArea,
+            UiText::KeepInsideWorkAreaDescription,
             UiText::MotionAudio,
             UiText::MotionAudioDescription,
             UiText::OverlayScale,

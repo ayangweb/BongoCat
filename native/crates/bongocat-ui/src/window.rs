@@ -94,6 +94,9 @@ const ACCESSIBILITY_OVERLAY_TOPMOST: AccessibilityNodeId = AccessibilityNodeId::
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_OVERLAY_CLICK_THROUGH: AccessibilityNodeId = AccessibilityNodeId::new(14);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_OVERLAY_KEEP_INSIDE_WORK_AREA: AccessibilityNodeId =
+    AccessibilityNodeId::new(44);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_OVERLAY_SCALE_DECREASE: AccessibilityNodeId = AccessibilityNodeId::new(15);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_OVERLAY_SCALE_INCREASE: AccessibilityNodeId = AccessibilityNodeId::new(16);
@@ -368,6 +371,7 @@ pub struct SettingsView {
     overlay_focus: FocusHandle,
     overlay_topmost_focus: FocusHandle,
     overlay_click_through_focus: FocusHandle,
+    overlay_keep_inside_work_area_focus: FocusHandle,
     overlay_scale_decrease_focus: FocusHandle,
     overlay_scale_increase_focus: FocusHandle,
     overlay_opacity_decrease_focus: FocusHandle,

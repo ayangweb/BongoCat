@@ -404,6 +404,15 @@ impl SettingsView {
                     ),
                     snapshot.overlay.click_through,
                 ),
+                (
+                    ACCESSIBILITY_OVERLAY_KEEP_INSIDE_WORK_AREA,
+                    ui_text(snapshot.resolved_language, UiText::KeepInsideWorkArea),
+                    ui_text(
+                        snapshot.resolved_language,
+                        UiText::KeepInsideWorkAreaDescription,
+                    ),
+                    snapshot.overlay.keep_inside_work_area,
+                ),
             ] {
                 let node = tree
                     .nodes

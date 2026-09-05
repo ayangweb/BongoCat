@@ -161,7 +161,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
-      - name: Check Windows ARM64 platform source
+      - name: Check Windows ARM64 platform and overlay source
         if: matrix.os == 'windows-latest'
         shell: bash
         run: |
@@ -170,6 +170,7 @@ jobs:
             --manifest-path native/Cargo.toml \
             --locked \
             -p bongocat-platform \
+            -p bongocat-overlay \
             --target aarch64-pc-windows-msvc \
             --all-targets \
             --all-features \

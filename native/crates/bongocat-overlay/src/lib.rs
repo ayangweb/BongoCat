@@ -40,6 +40,7 @@ pub struct OverlaySessionOptions {
     pub always_on_top: bool,
     pub scale_percent: u16,
     pub opacity_percent: u8,
+    pub keep_inside_work_area: bool,
     pub maximum_fps: u16,
     pub window_bounds: Option<OverlayWindowBounds>,
 }
@@ -51,6 +52,7 @@ impl OverlaySessionOptions {
             always_on_top: settings.always_on_top,
             scale_percent: settings.scale_percent,
             opacity_percent: settings.opacity_percent,
+            keep_inside_work_area: settings.keep_inside_work_area,
             maximum_fps: self.maximum_fps,
             window_bounds: self.window_bounds,
         }
@@ -64,6 +66,7 @@ impl Default for OverlaySessionOptions {
             always_on_top: true,
             scale_percent: 100,
             opacity_percent: 100,
+            keep_inside_work_area: true,
             maximum_fps: 60,
             window_bounds: None,
         }
@@ -112,11 +115,42 @@ impl OverlayWindowBounds {
             ..self
         }
     }
+
+    pub(crate) fn clamp_to(self, work_area: OverlayWorkArea) -> Self {
+        let maximum_x = if self.width <= work_area.width {
+            work_area
+                .x
+                .saturating_add_unsigned(work_area.width - self.width)
+        } else {
+            work_area.x
+        };
+        let maximum_y = if self.height <= work_area.height {
+            work_area
+                .y
+                .saturating_add_unsigned(work_area.height - self.height)
+        } else {
+            work_area.y
+        };
+        Self {
+            x: self.x.clamp(work_area.x, maximum_x),
+            y: self.y.clamp(work_area.y, maximum_y),
+            ..self
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct OverlayWorkArea {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProductOverlayReport {
     pub frames_presented: u64,
+    pub work_area_constraint_satisfied: bool,
     pub dynamic_snapshots: u64,
     pub model_commit_rejections: u64,
     pub input_start_error: Option<PlatformInputError>,
@@ -553,6 +587,24 @@ mod tests {
             OverlayWindowBounds::new(1_000_001, 0, 400, 600)
                 .validate()
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn overlay_bounds_clamp_to_work_area_without_changing_size() {
+        let work_area = OverlayWorkArea {
+            x: -1_920,
+            y: 40,
+            width: 1_920,
+            height: 1_040,
+        };
+        assert_eq!(
+            OverlayWindowBounds::new(-2_100, 900, 400, 300).clamp_to(work_area),
+            OverlayWindowBounds::new(-1_920, 780, 400, 300)
+        );
+        assert_eq!(
+            OverlayWindowBounds::new(-1_500, 100, 2_400, 1_200).clamp_to(work_area),
+            OverlayWindowBounds::new(-1_920, 40, 2_400, 1_200)
         );
     }
 

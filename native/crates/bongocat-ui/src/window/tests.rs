@@ -412,6 +412,7 @@ fn overlay_stepper_values_are_bounded_and_preserve_other_settings() {
         always_on_top: false,
         scale_percent: 100,
         opacity_percent: 50,
+        keep_inside_work_area: false,
     };
     assert_eq!(stepped_overlay_scale(settings, -25).scale_percent, 75);
     assert_eq!(stepped_overlay_scale(settings, 25).scale_percent, 125);
@@ -425,6 +426,7 @@ fn overlay_stepper_values_are_bounded_and_preserve_other_settings() {
     assert!(!changed.click_through);
     assert!(!changed.always_on_top);
     assert_eq!(changed.opacity_percent, 50);
+    assert!(!changed.keep_inside_work_area);
 }
 
 #[test]

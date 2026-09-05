@@ -1,7 +1,7 @@
 use crate::{
     OverlayError, OverlayPresentationState, OverlaySessionOptions, OverlayTickOutcome,
-    OverlayWindowBounds, PreviewReport, ProductOverlayReport, default_overlay_window_dimensions,
-    validate_model_generation_advance,
+    OverlayWindowBounds, OverlayWorkArea, PreviewReport, ProductOverlayReport,
+    default_overlay_window_dimensions, validate_model_generation_advance,
 };
 use bongocat_model::{CommittedModel, ModelId, ModelPackageLimits, PresetModelCatalog};
 use bongocat_platform::{
@@ -93,10 +93,10 @@ use windows::{
                 CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GWL_EXSTYLE,
                 GetCursorPos, GetWindowLongPtrW, GetWindowRect, HTCAPTION, HTTRANSPARENT,
                 HWND_NOTOPMOST, HWND_TOPMOST, IsWindowVisible, MSG, PM_REMOVE, PeekMessageW,
-                RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SetWindowPos,
-                ShowWindow, TranslateMessage, UnregisterClassW, WM_CLOSE, WM_NCHITTEST, WNDCLASSW,
-                WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
-                WS_POPUP,
+                RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOSIZE,
+                SWP_NOZORDER, SetWindowPos, ShowWindow, TranslateMessage, UnregisterClassW,
+                WM_CLOSE, WM_NCHITTEST, WNDCLASSW, WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP,
+                WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_POPUP,
             },
         },
     },
@@ -121,7 +121,12 @@ fn current_cursor_position() -> POINT {
     point
 }
 
-fn centered_position(cursor: POINT, width: u32, height: u32) -> (i32, i32) {
+fn centered_position(
+    cursor: POINT,
+    width: u32,
+    height: u32,
+    keep_inside_work_area: bool,
+) -> (i32, i32) {
     // SAFETY: the monitor handle is used only for the immediate bounds query,
     // whose output points to initialized stack storage.
     unsafe {
@@ -135,10 +140,46 @@ fn centered_position(cursor: POINT, width: u32, height: u32) -> (i32, i32) {
         if monitor.is_invalid() || !GetMonitorInfoW(monitor, &mut info).as_bool() {
             return (80, 80);
         }
+        let area = if keep_inside_work_area {
+            info.rcWork
+        } else {
+            info.rcMonitor
+        };
         (
-            info.rcMonitor.left + (info.rcMonitor.right - info.rcMonitor.left - width as i32) / 2,
-            info.rcMonitor.top + (info.rcMonitor.bottom - info.rcMonitor.top - height as i32) / 2,
+            area.left + (area.right - area.left - width as i32) / 2,
+            area.top + (area.bottom - area.top - height as i32) / 2,
         )
+    }
+}
+
+fn work_area_for_bounds(bounds: OverlayWindowBounds) -> Option<OverlayWorkArea> {
+    let rect = RECT {
+        left: bounds.x,
+        top: bounds.y,
+        right: bounds.x.saturating_add_unsigned(bounds.width),
+        bottom: bounds.y.saturating_add_unsigned(bounds.height),
+    };
+    // SAFETY: the monitor handle is used only for this immediate bounds query,
+    // whose output points to initialized stack storage.
+    unsafe {
+        let monitor = MonitorFromRect(&rect, MONITOR_DEFAULTTONEAREST);
+        let mut info = MONITORINFO {
+            cbSize: size_of::<MONITORINFO>() as u32,
+            rcMonitor: RECT::default(),
+            rcWork: RECT::default(),
+            dwFlags: 0,
+        };
+        if monitor.is_invalid() || !GetMonitorInfoW(monitor, &mut info).as_bool() {
+            return None;
+        }
+        let width = u32::try_from(info.rcWork.right - info.rcWork.left).ok()?;
+        let height = u32::try_from(info.rcWork.bottom - info.rcWork.top).ok()?;
+        (width > 0 && height > 0).then_some(OverlayWorkArea {
+            x: info.rcWork.left,
+            y: info.rcWork.top,
+            width,
+            height,
+        })
     }
 }
 
@@ -401,9 +442,15 @@ impl OverlayWindow {
             value.height
         });
         let (x, y) = bounds.map_or_else(
-            || centered_position(cursor, width, height),
+            || centered_position(cursor, width, height, options.keep_inside_work_area),
             |value| (value.x, value.y),
         );
+        let bounds = OverlayWindowBounds::new(x, y, width, height);
+        let bounds = if options.keep_inside_work_area {
+            work_area_for_bounds(bounds).map_or(bounds, |area| bounds.clamp_to(area))
+        } else {
+            bounds
+        };
         unsafe {
             SetWindowPos(
                 hwnd,
@@ -412,8 +459,8 @@ impl OverlayWindow {
                 } else {
                     Some(HWND_NOTOPMOST)
                 },
-                x,
-                y,
+                bounds.x,
+                bounds.y,
                 width as i32,
                 height as i32,
                 SWP_NOACTIVATE,
@@ -463,6 +510,32 @@ impl OverlayWindow {
             (rect.bottom - rect.top) as u32,
         )
         .validate()
+    }
+
+    fn ensure_inside_work_area(&self) -> Result<(), OverlayError> {
+        let bounds = self.bounds()?;
+        let Some(work_area) = work_area_for_bounds(bounds) else {
+            return Ok(());
+        };
+        let clamped = bounds.clamp_to(work_area);
+        if clamped.x == bounds.x && clamped.y == bounds.y {
+            return Ok(());
+        }
+        // SAFETY: the HWND is live and confined to its owner thread. This only
+        // corrects its origin while preserving size, z-order, and activation.
+        unsafe {
+            SetWindowPos(
+                self.hwnd,
+                None,
+                clamped.x,
+                clamped.y,
+                0,
+                0,
+                SWP_NOACTIVATE | SWP_NOSIZE | SWP_NOZORDER,
+            )
+            .map_err(windows_error("keep overlay inside work area"))?;
+        }
+        Ok(())
     }
 }
 
@@ -1096,6 +1169,9 @@ impl ProductOverlaySession {
             self.overlay = replacement;
             self.options = next_options;
         }
+        if self.options.keep_inside_work_area {
+            self.overlay.window.ensure_inside_work_area()?;
+        }
         self.options.maximum_fps = runtime_snapshot.maximum_fps;
         let overlay_visible = runtime_snapshot.overlay_visible;
         if !overlay_visible {
@@ -1255,8 +1331,13 @@ impl ProductOverlaySession {
             ));
         }
         while self.render_consumer.take_latest().is_some() {}
+        let bounds = self.overlay.window.bounds()?;
+        let work_area_constraint_satisfied = !self.options.keep_inside_work_area
+            || work_area_for_bounds(bounds)
+                .is_some_and(|work_area| bounds.clamp_to(work_area) == bounds);
         Ok(ProductOverlayReport {
             frames_presented: self.frames_presented,
+            work_area_constraint_satisfied,
             dynamic_snapshots: self.dynamic_snapshots,
             model_commit_rejections: self.model_commit_rejections,
             input_start_error: self.input_start_error,
@@ -2554,6 +2635,45 @@ mod tests {
         assert_ne!(first.hwnd, second.hwnd);
         drop(first);
         drop(second);
+    }
+
+    #[test]
+    fn current_monitor_exposes_a_non_empty_work_area() {
+        let cursor = current_cursor_position();
+        let bounds = OverlayWindowBounds::new(cursor.x, cursor.y, 64, 64);
+        let work_area = work_area_for_bounds(bounds).expect("current monitor work area");
+        assert!(work_area.width >= 64);
+        assert!(work_area.height >= 64);
+        let clamped = bounds.clamp_to(work_area);
+        assert!(clamped.x >= work_area.x);
+        assert!(clamped.y >= work_area.y);
+    }
+
+    #[test]
+    fn overlay_window_creation_clamps_partially_offscreen_bounds() {
+        let cursor = current_cursor_position();
+        let work_area = work_area_for_bounds(OverlayWindowBounds::new(cursor.x, cursor.y, 64, 64))
+            .expect("current monitor work area");
+        let canvas = CanvasInfo {
+            width: 2_048.0,
+            height: 2_048.0,
+            origin_x: 1_024.0,
+            origin_y: 1_024.0,
+            pixels_per_unit: 1_024.0,
+        };
+        let candidate = OverlayWindowBounds::new(
+            work_area.x.saturating_add_unsigned(work_area.width - 32),
+            work_area.y.saturating_add_unsigned(work_area.height - 32),
+            350,
+            350,
+        );
+        let window =
+            OverlayWindow::create(OverlaySessionOptions::default(), canvas, Some(candidate))
+                .expect("create constrained overlay window");
+        assert_eq!(
+            window.bounds().expect("constrained bounds"),
+            candidate.clamp_to(work_area)
+        );
     }
 
     #[test]

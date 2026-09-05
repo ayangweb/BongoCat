@@ -378,6 +378,7 @@ pub struct SettingsOverlay {
     pub always_on_top: bool,
     pub scale_percent: u16,
     pub opacity_percent: u8,
+    pub keep_inside_work_area: bool,
 }
 
 impl Default for SettingsOverlay {
@@ -387,6 +388,7 @@ impl Default for SettingsOverlay {
             always_on_top: true,
             scale_percent: 100,
             opacity_percent: 100,
+            keep_inside_work_area: true,
         }
     }
 }

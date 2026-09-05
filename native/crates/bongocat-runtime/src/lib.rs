@@ -167,6 +167,7 @@ pub struct OverlaySettings {
     pub always_on_top: bool,
     pub scale_percent: u16,
     pub opacity_percent: u8,
+    pub keep_inside_work_area: bool,
 }
 
 impl Default for OverlaySettings {
@@ -176,6 +177,7 @@ impl Default for OverlaySettings {
             always_on_top: true,
             scale_percent: 100,
             opacity_percent: 100,
+            keep_inside_work_area: true,
         }
     }
 }
@@ -2561,6 +2563,7 @@ mod tests {
             always_on_top: false,
             scale_percent: 125,
             opacity_percent: 80,
+            keep_inside_work_area: false,
         };
         let sequence = client
             .send(RuntimeCommand::SetOverlaySettings(settings))

@@ -2403,6 +2403,22 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       `33933263642` 全部 23 个 job 通过；macOS/Windows/Ubuntu workspace jobs
       `101216083086`/`101216083118`/`101216083187` 均通过完整 workspace 门禁和对应产品 smoke。
 
+66. [ ] `P6-KEEP-OVERLAY-IN-WORK-AREA`：让当前 v1 的可见工作区约束作用于正式 overlay。
+    - 依赖：当前 v1 `overlay.keep_inside_work_area`、runtime overlay settings、持久化窗口 bounds、
+      Win32 monitor API、AppKit screen API 和 GPUI Kit switch。
+    - 退出条件：配置值通过强类型 snapshot/command 往返并在重启后恢复，stale revision 不改变
+      config/runtime；开启时 Windows 使用最近 monitor 的 `rcWork`、macOS 使用最大交叠或最近
+      screen 的 `visibleFrame`，在启动、缩放/设置重建、模型重建和拖动后的 frame tick 收敛窗口
+      原点；保留多显示器负坐标，窗口大于工作区时不改变用户尺寸；关闭时允许部分越界，完全离开
+      显示器的 state 仍执行既有回退；General 开关具备中英文本、键盘和 AX/UIA switch 语义；纯几何、
+      runtime/app/UI 定向测试、完整 Native workspace 门禁和双平台 release 产品 smoke 通过。
+    - 状态（2026-09-05）：强类型 config/Application/runtime/settings/overlay options、GPUI Kit 开关、
+      中英文案和项目 AccessKit 语义已接通；双平台创建/重建/tick 工作区收敛、纯几何测试、产品
+      shutdown smoke 断言与 Windows 实际 HWND 收敛测试已实现。format、严格 workspace Clippy、
+      release all-target tests、release check、共享 fixture/schema/locales、Windows x64/ARM64 overlay
+      严格 Clippy、隔离 macOS release 设置窗口/state smoke 和 119 帧 Metal Live2D preview 均通过，
+      等待双平台 CI。
+
 ## 13. 待决策清单
 
 | 决策                                                          | 最迟完成              | 阻塞内容                           |

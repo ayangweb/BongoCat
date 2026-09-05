@@ -213,9 +213,22 @@ impl SettingsView {
             AccessibilityToggle::Off
         })
         .disabled(disabled);
+        let mut keep_inside_work_area_node = AccessibilityNode::new(
+            ACCESSIBILITY_OVERLAY_KEEP_INSIDE_WORK_AREA,
+            AccessibilityRole::Switch,
+            ui_text(language, UiText::KeepInsideWorkArea),
+        )
+        .with_value(ui_text(language, UiText::KeepInsideWorkAreaDescription))
+        .with_toggle(if overlay_settings.keep_inside_work_area {
+            AccessibilityToggle::On
+        } else {
+            AccessibilityToggle::Off
+        })
+        .disabled(disabled);
         if !disabled {
             topmost_node = topmost_node.clickable().focusable();
             click_through_node = click_through_node.clickable().focusable();
+            keep_inside_work_area_node = keep_inside_work_area_node.clickable().focusable();
         }
         let scale = overlay_settings.scale_percent;
         let opacity = overlay_settings.opacity_percent;
@@ -489,6 +502,7 @@ impl SettingsView {
             ACCESSIBILITY_OVERLAY,
             ACCESSIBILITY_OVERLAY_TOPMOST,
             ACCESSIBILITY_OVERLAY_CLICK_THROUGH,
+            ACCESSIBILITY_OVERLAY_KEEP_INSIDE_WORK_AREA,
             ACCESSIBILITY_OVERLAY_SCALE_DECREASE,
             ACCESSIBILITY_OVERLAY_SCALE_INCREASE,
             ACCESSIBILITY_OVERLAY_OPACITY_DECREASE,
@@ -551,6 +565,7 @@ impl SettingsView {
             overlay_node,
             topmost_node,
             click_through_node,
+            keep_inside_work_area_node,
             scale_decrease_node,
             scale_increase_node,
             opacity_decrease_node,
@@ -652,6 +667,13 @@ impl SettingsView {
                 if let Some(snapshot) = self.snapshot.as_ref() {
                     let mut settings = snapshot.overlay;
                     settings.click_through = !settings.click_through;
+                    self.set_overlay_settings(settings, cx);
+                }
+            }
+            ACCESSIBILITY_OVERLAY_KEEP_INSIDE_WORK_AREA => {
+                if let Some(snapshot) = self.snapshot.as_ref() {
+                    let mut settings = snapshot.overlay;
+                    settings.keep_inside_work_area = !settings.keep_inside_work_area;
                     self.set_overlay_settings(settings, cx);
                 }
             }
@@ -775,6 +797,10 @@ impl SettingsView {
             (
                 ACCESSIBILITY_OVERLAY_CLICK_THROUGH,
                 &self.overlay_click_through_focus,
+            ),
+            (
+                ACCESSIBILITY_OVERLAY_KEEP_INSIDE_WORK_AREA,
+                &self.overlay_keep_inside_work_area_focus,
             ),
             (
                 ACCESSIBILITY_OVERLAY_SCALE_DECREASE,

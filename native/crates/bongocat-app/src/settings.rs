@@ -602,6 +602,7 @@ fn run_service(
                     always_on_top: settings.always_on_top,
                     scale_percent: settings.scale_percent,
                     opacity_percent: settings.opacity_percent,
+                    keep_inside_work_area: settings.keep_inside_work_area,
                 };
                 let result = require_operational(&application)
                     .map_err(map_application_error)
@@ -1105,6 +1106,7 @@ fn snapshot(
             always_on_top: runtime.overlay_settings.always_on_top,
             scale_percent: runtime.overlay_settings.scale_percent,
             opacity_percent: runtime.overlay_settings.opacity_percent,
+            keep_inside_work_area: runtime.overlay_settings.keep_inside_work_area,
         },
         motion_audio_enabled: runtime.motion_audio_enabled,
         behavior_shortcuts_enabled: application.config().model.enable_behavior_shortcuts,
@@ -3412,6 +3414,7 @@ mod tests {
             always_on_top: false,
             scale_percent: 125,
             opacity_percent: 80,
+            keep_inside_work_area: false,
         };
         let configured = client
             .set_overlay_settings_blocking(selected_config_revision, overlay_settings)
@@ -3485,6 +3488,7 @@ mod tests {
         assert!(persisted.contains("\"selected_model_origin\": \"preset\""));
         assert!(persisted.contains("\"click_through\": true"));
         assert!(persisted.contains("\"opacity_percent\": 80"));
+        assert!(persisted.contains("\"keep_inside_work_area\": false"));
         assert!(persisted.contains("\"mirror\": true"));
         assert!(persisted.contains("\"mirror_pointer_tracking\": true"));
         assert!(persisted.contains("\"ignore_pointer\": true"));
@@ -3504,6 +3508,13 @@ mod tests {
                 .snapshot()
                 .release_fallback_timeout_ms,
             1_500
+        );
+        assert!(
+            !restarted
+                .runtime_client()
+                .snapshot()
+                .overlay_settings
+                .keep_inside_work_area
         );
         restarted
             .shutdown()
@@ -3526,6 +3537,7 @@ mod tests {
             always_on_top: false,
             scale_percent: 125,
             opacity_percent: 80,
+            keep_inside_work_area: false,
         };
         let committed = client
             .set_overlay_settings_blocking(initial_config_revision, original_settings)
@@ -3537,6 +3549,7 @@ mod tests {
             always_on_top: true,
             scale_percent: 400,
             opacity_percent: 10,
+            keep_inside_work_area: true,
         };
         let error = client
             .set_overlay_settings_blocking(initial_config_revision, stale_settings)

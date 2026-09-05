@@ -485,6 +485,12 @@ impl ProductShutdown {
             Ok(report) if self.coordinator.expect_visible_frame && report.frames_presented == 0 => {
                 record_failure(&failures, "product overlay presented no frames");
             }
+            Ok(report) if !report.work_area_constraint_satisfied => {
+                record_failure(
+                    &failures,
+                    "product overlay escaped the configured work area",
+                );
+            }
             Ok(_) => {}
             Err(error) => record_failure(&failures, error.to_string()),
         }
@@ -1356,6 +1362,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         always_on_top: application.config().overlay.always_on_top,
         scale_percent: application.config().overlay.scale_percent,
         opacity_percent: application.config().overlay.opacity_percent,
+        keep_inside_work_area: application.config().overlay.keep_inside_work_area,
         maximum_fps: application.config().model.maximum_fps,
         window_bounds: application.overlay_window_placement().map(|placement| {
             OverlayWindowBounds::new(placement.x, placement.y, placement.width, placement.height)
