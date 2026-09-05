@@ -1,7 +1,8 @@
 use crate::{
-    BlendFactor, OverlayError, OverlayPresentationState, OverlaySessionOptions, OverlayTickOutcome,
-    OverlayWindowBounds, OverlayWorkArea, PreviewReport, ProductOverlayReport, blend_factors,
-    default_overlay_window_dimensions, validate_model_generation_advance,
+    BlendFactor, FRAME_SMOKE_GRID_DIMENSION, OverlayError, OverlayPresentationState,
+    OverlaySessionOptions, OverlayTickOutcome, OverlayWindowBounds, OverlayWorkArea, PreviewReport,
+    ProductOverlayReport, blend_factors, default_overlay_window_dimensions, validate_frame_smoke,
+    validate_model_generation_advance,
 };
 use bongocat_model::{CommittedModel, ModelId, ModelPackageLimits, PresetModelCatalog};
 use bongocat_platform::{
@@ -923,7 +924,7 @@ impl Renderer {
             unsafe {
                 self.context
                     .CopyResource(&self.staging_texture, &self.back_buffer);
-                verify_non_empty_frame(
+                verify_frame_smoke(
                     &self.context,
                     &self.staging_texture,
                     self.width,
@@ -2423,7 +2424,7 @@ unsafe fn create_staging_texture(
     required(staging, "staging texture")
 }
 
-unsafe fn verify_non_empty_frame(
+unsafe fn verify_frame_smoke(
     context: &ID3D11DeviceContext,
     texture: &ID3D11Texture2D,
     width: u32,
@@ -2434,22 +2435,25 @@ unsafe fn verify_non_empty_frame(
     let result = if mapped.pData.is_null() || mapped.RowPitch < width.saturating_mul(4) {
         Err(invariant_error("D3D11 readback mapping is invalid"))
     } else {
-        let mut found = false;
-        for y in 1..16_usize {
-            for x in 1..16_usize {
-                let offset = (height as usize * y / 16) * mapped.RowPitch as usize
-                    + (width as usize * x / 16) * 4;
+        let mut pixels =
+            Vec::with_capacity((FRAME_SMOKE_GRID_DIMENSION * FRAME_SMOKE_GRID_DIMENSION) as usize);
+        for y in 0..FRAME_SMOKE_GRID_DIMENSION as usize {
+            for x in 0..FRAME_SMOKE_GRID_DIMENSION as usize {
+                let offset = (height.saturating_sub(1) as usize * y
+                    / (FRAME_SMOKE_GRID_DIMENSION as usize - 1))
+                    * mapped.RowPitch as usize
+                    + (width.saturating_sub(1) as usize * x
+                        / (FRAME_SMOKE_GRID_DIMENSION as usize - 1))
+                        * 4;
                 // SAFETY: grid coordinates are inside width/height and RowPitch
                 // was checked to contain every four-byte BGRA pixel in a row.
-                let alpha = unsafe { *mapped.pData.cast::<u8>().add(offset + 3) };
-                found |= alpha != 0;
+                let pointer = unsafe { mapped.pData.cast::<u8>().add(offset) };
+                let pixel =
+                    unsafe { [*pointer, *pointer.add(1), *pointer.add(2), *pointer.add(3)] };
+                pixels.push(pixel);
             }
         }
-        if found {
-            Ok(())
-        } else {
-            Err(invariant_error("D3D11 readback found no model pixels"))
-        }
+        validate_frame_smoke(pixels).map_err(invariant_error)
     };
     unsafe { context.Unmap(texture, 0) };
     result

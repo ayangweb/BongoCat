@@ -1102,6 +1102,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 只在 dirty 时更新必要 GPU 资源。
 - [ ] D3D11/Metal 对相同 snapshot 行为一致。
 - [ ] 建立非空帧、alpha、mask 和 blend 截图 smoke test。
+  - 状态（2026-09-06）：`bongocat-overlay` 现以共享的 `17 x 17` completed-drawable readback
+    contract 替代两端仅检查单个非透明像素的实现。它拒绝没有透明 overlay 背景、没有可见模型、
+    没有半透明 coverage 或没有足够可见颜色变化的帧；Metal release `standard` preview 已通过，
+    输出 57 帧、21 个 drawable、5 个 masked drawable 和 3 张 texture。D3D11 已接入相同
+    byte-level contract，但 Windows hardware readback、针对 mask/blend 的独立 golden 和跨 backend
+    像素比较仍缺，因此本项保持未完成。
 
 ### 5.5 音效
 

@@ -1,7 +1,8 @@
 use crate::{
-    BlendFactor, FrameRetryBackoff, OverlayError, OverlayPresentationState, OverlaySessionOptions,
-    OverlayTickOutcome, OverlayWindowBounds, OverlayWorkArea, PreviewReport, ProductOverlayReport,
-    blend_factors, default_overlay_window_dimensions, validate_model_generation_advance,
+    BlendFactor, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff, OverlayError,
+    OverlayPresentationState, OverlaySessionOptions, OverlayTickOutcome, OverlayWindowBounds,
+    OverlayWorkArea, PreviewReport, ProductOverlayReport, blend_factors,
+    default_overlay_window_dimensions, validate_frame_smoke, validate_model_generation_advance,
 };
 use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
 use bongocat_platform::{
@@ -1527,7 +1528,7 @@ impl NativeOverlay {
             )));
         }
         if verify_frame {
-            verify_non_empty_frame(drawable.texture())?;
+            verify_frame_smoke(drawable.texture())?;
         }
         Ok(())
     }
@@ -2226,19 +2227,21 @@ fn model_transform(
     [scale_x, scale_y, offset_x, -center_y * scale_y]
 }
 
-fn verify_non_empty_frame(texture: &metal::TextureRef) -> Result<(), OverlayError> {
+fn verify_frame_smoke(texture: &metal::TextureRef) -> Result<(), OverlayError> {
     let width = texture.width();
     let height = texture.height();
-    let mut pixel = [0_u8; 4];
-    for y in 1..16 {
-        for x in 1..16 {
+    let mut pixels =
+        Vec::with_capacity((FRAME_SMOKE_GRID_DIMENSION * FRAME_SMOKE_GRID_DIMENSION) as usize);
+    for y in 0..FRAME_SMOKE_GRID_DIMENSION {
+        for x in 0..FRAME_SMOKE_GRID_DIMENSION {
+            let mut pixel = [0_u8; 4];
             texture.get_bytes(
                 pixel.as_mut_ptr().cast(),
                 4,
                 MTLRegion {
                     origin: MTLOrigin {
-                        x: width * x / 16,
-                        y: height * y / 16,
+                        x: width.saturating_sub(1) * x / (FRAME_SMOKE_GRID_DIMENSION - 1),
+                        y: height.saturating_sub(1) * y / (FRAME_SMOKE_GRID_DIMENSION - 1),
                         z: 0,
                     },
                     size: MTLSize {
@@ -2249,14 +2252,11 @@ fn verify_non_empty_frame(texture: &metal::TextureRef) -> Result<(), OverlayErro
                 },
                 0,
             );
-            if pixel[3] != 0 {
-                return Ok(());
-            }
+            pixels.push(pixel);
         }
     }
-    Err(OverlayError::new(
-        "Metal readback found no non-transparent model pixels",
-    ))
+    validate_frame_smoke(pixels).map_err(|error| OverlayError::new(format!("Metal {error}")))?;
+    Ok(())
 }
 
 #[cfg(test)]

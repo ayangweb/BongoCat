@@ -19,9 +19,10 @@ use bongocat_runtime::PlatformInputDiagnosticsProducer;
 use bongocat_runtime::{
     CursorProducer, GamepadAxisProducer, InputProducer, OverlaySettings, RuntimeClient,
 };
-use std::{fmt, path::Path, time::Duration};
+use std::{collections::BTreeSet, fmt, path::Path, time::Duration};
 
 pub const DEFAULT_OVERLAY_WINDOW_WIDTH: u32 = 350;
+pub(crate) const FRAME_SMOKE_GRID_DIMENSION: u64 = 17;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const MIN_OVERLAY_WINDOW_DIMENSION: f32 = 64.0;
 
@@ -178,6 +179,61 @@ impl OverlayTickOutcome {
             Self::Presented | Self::Hidden => None,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct FramePixelStatistics {
+    pub sampled_pixels: usize,
+    pub transparent_pixels: usize,
+    pub translucent_pixels: usize,
+    pub opaque_pixels: usize,
+    pub distinct_visible_colors: usize,
+}
+
+/// Validate the portable portion of a renderer readback smoke test.
+///
+/// Backends sample a fixed grid from a completed BGRA/RGBA drawable and pass
+/// the bytes here. Alpha is channel four in both layouts, while the first
+/// three channels are treated only as an unordered color tuple. The checks
+/// establish that a transparent overlay retained background and anti-aliased
+/// model coverage; they do not claim cross-backend pixels are identical.
+pub(crate) fn validate_frame_smoke(
+    pixels: impl IntoIterator<Item = [u8; 4]>,
+) -> Result<FramePixelStatistics, &'static str> {
+    let mut statistics = FramePixelStatistics::default();
+    let mut visible_colors = BTreeSet::new();
+    for pixel in pixels {
+        statistics.sampled_pixels = statistics.sampled_pixels.saturating_add(1);
+        match pixel[3] {
+            0 => statistics.transparent_pixels = statistics.transparent_pixels.saturating_add(1),
+            u8::MAX => {
+                statistics.opaque_pixels = statistics.opaque_pixels.saturating_add(1);
+                visible_colors.insert([pixel[0], pixel[1], pixel[2]]);
+            }
+            _ => {
+                statistics.translucent_pixels = statistics.translucent_pixels.saturating_add(1);
+                visible_colors.insert([pixel[0], pixel[1], pixel[2]]);
+            }
+        }
+    }
+    statistics.distinct_visible_colors = visible_colors.len();
+
+    if statistics.sampled_pixels == 0 {
+        return Err("renderer readback contained no samples");
+    }
+    if statistics.transparent_pixels == 0 {
+        return Err("renderer readback found no transparent overlay pixels");
+    }
+    if statistics.opaque_pixels + statistics.translucent_pixels == 0 {
+        return Err("renderer readback found no model pixels");
+    }
+    if statistics.translucent_pixels == 0 {
+        return Err("renderer readback found no translucent alpha coverage");
+    }
+    if statistics.distinct_visible_colors < 2 {
+        return Err("renderer readback found insufficient visible color variation");
+    }
+    Ok(statistics)
 }
 
 #[cfg(target_os = "macos")]
@@ -676,6 +732,33 @@ mod tests {
                 source_alpha: BlendFactor::Zero,
                 destination_alpha: BlendFactor::One,
             }
+        );
+    }
+
+    #[test]
+    fn frame_smoke_requires_transparent_and_antialiased_model_coverage() {
+        let statistics =
+            validate_frame_smoke([[0, 0, 0, 0], [32, 64, 96, 127], [200, 160, 120, 255]])
+                .expect("transparent, translucent, and colorful model samples should pass");
+        assert_eq!(statistics.transparent_pixels, 1);
+        assert_eq!(statistics.translucent_pixels, 1);
+        assert_eq!(statistics.opaque_pixels, 1);
+        assert_eq!(statistics.distinct_visible_colors, 2);
+    }
+
+    #[test]
+    fn frame_smoke_rejects_missing_alpha_coverage_and_color_variation() {
+        assert_eq!(
+            validate_frame_smoke([[10, 20, 30, 255]]),
+            Err("renderer readback found no transparent overlay pixels")
+        );
+        assert_eq!(
+            validate_frame_smoke([[0, 0, 0, 0], [10, 20, 30, 255]]),
+            Err("renderer readback found no translucent alpha coverage")
+        );
+        assert_eq!(
+            validate_frame_smoke([[0, 0, 0, 0], [10, 20, 30, 127]]),
+            Err("renderer readback found insufficient visible color variation")
         );
     }
 
