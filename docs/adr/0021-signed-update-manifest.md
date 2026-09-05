@@ -34,6 +34,9 @@ manifest 绕过。
 - 验证成功只返回项目自有的不可变 `VerifiedUpdate`/`VerifiedArtifact`。第三方 URL、SemVer、签名或
   digest 类型不进入公共 API。下载层必须把流交回 `VerifiedArtifact` 同时验证精确长度和 SHA-256，
   通过前不得进入安装阶段。
+- `UpdateVerificationSession` 将 verifier 与当前环境的 sequence store 成对创建：打开时读取最高
+  sequence，验签和严格 manifest 验证成功后才记录新 sequence，并立即更新 session 的 rollback
+  下限。验证失败不得创建或推进 state；该 session 不联网、不下载或启动 installer。
 - 公共 schema 与 accept/reject fixtures 位于 `shared/update/`。签名传输 envelope、endpoint、下载
   恢复、OS 包签名、installer 权限与回滚属于后续独立 contract。
 

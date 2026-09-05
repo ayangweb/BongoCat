@@ -1,6 +1,6 @@
-use crate::UpdateChannel;
+use crate::{UpdateChannel, update_channel};
 use atomic_write_file::AtomicWriteFile;
-use bongocat_config::{BuildEnvironment, StorageLayout};
+use bongocat_config::StorageLayout;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt,
@@ -231,13 +231,6 @@ impl UpdateSequenceStore {
     }
 }
 
-const fn update_channel(environment: BuildEnvironment) -> UpdateChannel {
-    match environment {
-        BuildEnvironment::Development => UpdateChannel::Development,
-        BuildEnvironment::Production => UpdateChannel::Production,
-    }
-}
-
 fn ensure_directory(directory: &Path) -> Result<(), UpdateSequenceStoreError> {
     match fs::symlink_metadata(directory) {
         Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => Err(
@@ -269,6 +262,7 @@ fn write_state_atomic(path: &Path, bytes: &[u8]) -> Result<(), UpdateSequenceSto
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bongocat_config::BuildEnvironment;
     use tempfile::tempdir;
 
     #[test]

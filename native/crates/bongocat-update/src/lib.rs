@@ -11,6 +11,7 @@ pub use sequence::{
     UpdateSequenceStoreErrorCode,
 };
 
+use bongocat_config::{BuildEnvironment, StorageLayout};
 use ed25519_dalek::{Signature, VerifyingKey};
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -24,6 +25,13 @@ pub const MAX_UPDATE_ARTIFACT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const MAX_UPDATE_ARTIFACTS: usize = 8;
 const MAX_UPDATE_URL_BYTES: usize = 2_048;
 const MAX_VERSION_BYTES: usize = 64;
+
+const fn update_channel(environment: BuildEnvironment) -> UpdateChannel {
+    match environment {
+        BuildEnvironment::Development => UpdateChannel::Development,
+        BuildEnvironment::Production => UpdateChannel::Production,
+    }
+}
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -374,6 +382,76 @@ impl UpdateVerifier {
     }
 }
 
+/// Couples manifest verification to the immutable environment-local sequence
+/// store. It has no network or installer capability.
+pub struct UpdateVerificationSession {
+    verifier: UpdateVerifier,
+    sequence_store: UpdateSequenceStore,
+}
+
+#[derive(Debug)]
+pub enum UpdateVerificationSessionError {
+    SequenceStore(UpdateSequenceStoreError),
+    Verification(UpdateError),
+}
+
+impl fmt::Display for UpdateVerificationSessionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::SequenceStore(error) => error.fmt(formatter),
+            Self::Verification(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl std::error::Error for UpdateVerificationSessionError {}
+
+impl UpdateVerificationSession {
+    pub fn open(
+        layout: &StorageLayout,
+        target: TargetTriple,
+        current_version: &str,
+        trusted_keys: Vec<TrustedPublicKey>,
+    ) -> Result<Self, UpdateVerificationSessionError> {
+        let sequence_store = UpdateSequenceStore::open_for_layout(layout)
+            .map_err(UpdateVerificationSessionError::SequenceStore)?;
+        let installed_sequence = sequence_store
+            .highest_verified_sequence()
+            .map_err(UpdateVerificationSessionError::SequenceStore)?;
+        let verifier = UpdateVerifier::new(
+            update_channel(layout.environment),
+            target,
+            current_version,
+            installed_sequence,
+            trusted_keys,
+        )
+        .map_err(UpdateVerificationSessionError::Verification)?;
+        Ok(Self {
+            verifier,
+            sequence_store,
+        })
+    }
+
+    pub fn verify_manifest(
+        &mut self,
+        manifest_bytes: &[u8],
+        key_id: &str,
+        signature_bytes: &[u8],
+    ) -> Result<UpdateDecision, UpdateVerificationSessionError> {
+        let decision = self
+            .verifier
+            .verify_manifest(manifest_bytes, key_id, signature_bytes)
+            .map_err(UpdateVerificationSessionError::Verification)?;
+        let sequence = decision.release_sequence();
+        let recorded = self
+            .sequence_store
+            .record_verified_sequence(sequence)
+            .map_err(UpdateVerificationSessionError::SequenceStore)?;
+        self.verifier.installed_sequence = recorded;
+        Ok(decision)
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UpdateDecision {
     UpToDate {
@@ -381,6 +459,17 @@ pub enum UpdateDecision {
         release_sequence: u64,
     },
     Available(VerifiedUpdate),
+}
+
+impl UpdateDecision {
+    const fn release_sequence(&self) -> u64 {
+        match self {
+            Self::UpToDate {
+                release_sequence, ..
+            } => *release_sequence,
+            Self::Available(update) => update.release_sequence,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -520,9 +609,11 @@ fn decode_lower_hex_digit(byte: u8) -> Result<u8, UpdateError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bongocat_config::{BuildEnvironment, StorageLayout};
     use ed25519_dalek::{Signer, SigningKey};
     use serde_json::{Value, json};
     use std::io;
+    use tempfile::tempdir;
 
     const SIGNING_SECRET: [u8; 32] = [7; 32];
     const KEY_ID: &str = "release-2026";
@@ -617,6 +708,58 @@ mod tests {
             .artifact
             .verify_reader(artifact.as_slice())
             .expect("artifact hash and length");
+    }
+
+    #[test]
+    fn verification_session_persists_only_successful_manifest_sequences() {
+        let directory = tempdir().expect("temporary directory");
+        let layout = StorageLayout::under(directory.path(), BuildEnvironment::Development);
+        let key = signing_key();
+        let trusted_key = TrustedPublicKey::new(
+            KEY_ID,
+            UpdateChannel::Development,
+            key.verifying_key().to_bytes(),
+            1,
+            None,
+        )
+        .expect("trusted key");
+        let mut session = UpdateVerificationSession::open(
+            &layout,
+            TargetTriple::Aarch64AppleDarwin,
+            "0.1.0",
+            vec![trusted_key],
+        )
+        .expect("verification session");
+        let manifest =
+            serde_json::to_vec(&manifest(b"signed update artifact")).expect("serialize manifest");
+        let signature = key.sign(&manifest);
+
+        assert!(matches!(
+            session.verify_manifest(&manifest, KEY_ID, b"invalid signature"),
+            Err(UpdateVerificationSessionError::Verification(error))
+                if error.code == UpdateErrorCode::ManifestSignatureLengthInvalid
+        ));
+        let store = UpdateSequenceStore::open_for_layout(&layout).expect("sequence store");
+        assert_eq!(
+            store.highest_verified_sequence().expect("initial sequence"),
+            0
+        );
+
+        assert!(matches!(
+            session
+                .verify_manifest(&manifest, KEY_ID, &signature.to_bytes())
+                .expect("verified manifest"),
+            UpdateDecision::Available(_)
+        ));
+        assert_eq!(
+            store.highest_verified_sequence().expect("stored sequence"),
+            2
+        );
+        assert!(matches!(
+            session.verify_manifest(&manifest, KEY_ID, &signature.to_bytes()),
+            Err(UpdateVerificationSessionError::Verification(error))
+                if error.code == UpdateErrorCode::RollbackDetected
+        ));
     }
 
     #[test]
