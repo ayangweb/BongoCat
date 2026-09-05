@@ -469,8 +469,32 @@ impl PreparedModel {
                 .iter()
                 .map(|group| group.motions.len())
                 .sum(),
+            behaviors: self
+                .index
+                .motion_groups
+                .iter()
+                .flat_map(|group| {
+                    (0..group.motions.len()).map(|index| ModelBehaviorSnapshot::Motion {
+                        group: group.name.clone(),
+                        index,
+                    })
+                })
+                .chain(self.index.expressions.iter().map(|expression| {
+                    ModelBehaviorSnapshot::Expression {
+                        name: expression.name.clone(),
+                    }
+                }))
+                .collect(),
         }
     }
+}
+
+/// A model-declared behavior that is safe to expose to settings and shortcut
+/// configuration. It contains an identifier only, never a package path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub enum ModelBehaviorSnapshot {
+    Motion { group: String, index: usize },
+    Expression { name: String },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -480,6 +504,7 @@ pub struct ModelSnapshot {
     pub texture_count: usize,
     pub expression_count: usize,
     pub motion_count: usize,
+    pub behaviors: Vec<ModelBehaviorSnapshot>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1734,6 +1759,40 @@ mod tests {
             assert_eq!(model.root().parent(), Some(catalog.root()));
             assert!(!model.index().textures.is_empty());
         }
+    }
+
+    #[test]
+    fn model_snapshot_exposes_only_declared_behavior_identities() {
+        let catalog = PresetModelCatalog::open(
+            repository_root().join("native/resources/models"),
+            ModelPackageLimits::default(),
+        )
+        .expect("preset catalog");
+        let snapshot = catalog
+            .load(&ModelId::parse("standard").expect("model id"))
+            .expect("committed preset")
+            .snapshot();
+
+        assert_eq!(snapshot.motion_count, 6);
+        assert_eq!(snapshot.expression_count, 3);
+        assert_eq!(snapshot.behaviors.len(), 9);
+        assert!(snapshot.behaviors.contains(&ModelBehaviorSnapshot::Motion {
+            group: "CAT_motion".to_owned(),
+            index: 0,
+        }));
+        assert!(
+            snapshot
+                .behaviors
+                .contains(&ModelBehaviorSnapshot::Expression {
+                    name: "live2d_expression2.exp3.json".to_owned(),
+                })
+        );
+        assert!(snapshot.behaviors.iter().all(|behavior| match behavior {
+            ModelBehaviorSnapshot::Motion { group, .. } =>
+                !group.contains('/') && !group.contains('\\'),
+            ModelBehaviorSnapshot::Expression { name } =>
+                !name.contains('/') && !name.contains('\\'),
+        }));
     }
 
     #[test]

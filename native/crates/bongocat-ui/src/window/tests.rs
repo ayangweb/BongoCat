@@ -528,11 +528,12 @@ fn model_row_actions_preserve_origin_availability_and_active_identity() {
         texture_count: 1,
         expression_count: 0,
         motion_count: 0,
+        behaviors: Vec::new(),
     };
     let preset = SettingsModelEntry {
         id: "duplicate".to_owned(),
         origin: SettingsModelOrigin::Preset,
-        availability: ready,
+        availability: ready.clone(),
     };
     let installed = SettingsModelEntry {
         id: "duplicate".to_owned(),
@@ -622,6 +623,7 @@ fn model_presentations_follow_the_resolved_language() {
             texture_count: 2,
             expression_count: 3,
             motion_count: 4,
+            behaviors: Vec::new(),
         },
     };
     assert_eq!(

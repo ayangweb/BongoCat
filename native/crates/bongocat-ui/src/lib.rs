@@ -637,16 +637,25 @@ pub enum SettingsModelOrigin {
     Installed,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SettingsModelAvailability {
     Ready {
         texture_count: usize,
         expression_count: usize,
         motion_count: usize,
+        behaviors: Vec<SettingsModelBehavior>,
     },
     Invalid {
         diagnostic: SettingsModelDiagnostic,
     },
+}
+
+/// A behavior declared by a validated model package. Settings uses this
+/// strongly typed identity for preview and shortcut operations.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SettingsModelBehavior {
+    Motion { group: String, index: usize },
+    Expression { name: String },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

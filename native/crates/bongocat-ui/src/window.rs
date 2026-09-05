@@ -881,7 +881,7 @@ fn model_row_actions(
         origin: entry.origin,
     };
     let active = active_model == Some(&model);
-    let ready = matches!(entry.availability, SettingsModelAvailability::Ready { .. });
+    let ready = matches!(&entry.availability, SettingsModelAvailability::Ready { .. });
     ModelRowActions {
         active,
         can_activate: ready && !active && !commands_blocked,
@@ -926,18 +926,19 @@ fn model_availability_status(
     active: bool,
     language: SettingsLanguage,
 ) -> SharedString {
-    match entry.availability {
+    match &entry.availability {
         SettingsModelAvailability::Ready {
             texture_count,
             expression_count,
             motion_count,
+            ..
         } => model_availability_summary(
             language,
             entry.origin,
             active,
-            texture_count,
-            expression_count,
-            motion_count,
+            *texture_count,
+            *expression_count,
+            *motion_count,
         )
         .into(),
         SettingsModelAvailability::Invalid { diagnostic } => {

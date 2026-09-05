@@ -56,7 +56,7 @@ pub(super) fn content(
             let activate_label = if actions.active {
                 ui_text(language, UiText::Active)
             } else if matches!(
-                entry.availability,
+                &entry.availability,
                 SettingsModelAvailability::Invalid { .. }
             ) {
                 ui_text(language, UiText::Unavailable)

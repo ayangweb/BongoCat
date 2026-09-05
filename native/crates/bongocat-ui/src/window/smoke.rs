@@ -58,7 +58,7 @@ impl SettingsView {
                 return Err("models page exposed deletion for a preset model".to_owned());
             }
             if matches!(
-                entry.availability,
+                &entry.availability,
                 SettingsModelAvailability::Invalid { .. }
             ) && actions.can_activate
             {

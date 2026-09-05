@@ -9,8 +9,8 @@ use bongocat_config::{
     ShortcutCommand, StateError, WindowPlacement,
 };
 use bongocat_model::{
-    ModelCatalogEntry, ModelDiagnostic, ModelImportProgress, ModelImportStage, ModelOrigin,
-    ModelStoreDiagnostic,
+    ModelBehaviorSnapshot, ModelCatalogEntry, ModelDiagnostic, ModelImportProgress,
+    ModelImportStage, ModelOrigin, ModelStoreDiagnostic,
 };
 #[cfg(target_os = "macos")]
 use bongocat_platform::{InputPermission, input_monitoring_permission};
@@ -31,8 +31,8 @@ use bongocat_ui::{
     SettingsConfigRecovery, SettingsConfigurationStatus, SettingsDiagnosticsExportStatus,
     SettingsError, SettingsErrorCode, SettingsGamepadAxisSettings, SettingsInputDiagnostics,
     SettingsInputMonitoringPermission, SettingsInputServiceStatus, SettingsLanguage,
-    SettingsModelAvailability, SettingsModelBehaviorBinding, SettingsModelCatalog,
-    SettingsModelCatalogError, SettingsModelDiagnostic, SettingsModelEntry,
+    SettingsModelAvailability, SettingsModelBehavior, SettingsModelBehaviorBinding,
+    SettingsModelCatalog, SettingsModelCatalogError, SettingsModelDiagnostic, SettingsModelEntry,
     SettingsModelImportProgress, SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin,
     SettingsModelSettings, SettingsOverlay, SettingsRuntimeCommandFailure,
     SettingsRuntimeCommandTransportDiagnostics, SettingsRuntimeDiagnostics,
@@ -1545,6 +1545,11 @@ fn settings_model_entry(entry: ModelCatalogEntry) -> SettingsModelEntry {
             texture_count: snapshot.texture_count,
             expression_count: snapshot.expression_count,
             motion_count: snapshot.motion_count,
+            behaviors: snapshot
+                .behaviors
+                .into_iter()
+                .map(settings_model_behavior)
+                .collect(),
         },
         ModelCatalogEntry::Invalid { code, .. } => SettingsModelAvailability::Invalid {
             diagnostic: settings_model_diagnostic(code),
@@ -1554,6 +1559,15 @@ fn settings_model_entry(entry: ModelCatalogEntry) -> SettingsModelEntry {
         id,
         origin,
         availability,
+    }
+}
+
+fn settings_model_behavior(behavior: ModelBehaviorSnapshot) -> SettingsModelBehavior {
+    match behavior {
+        ModelBehaviorSnapshot::Motion { group, index } => {
+            SettingsModelBehavior::Motion { group, index }
+        }
+        ModelBehaviorSnapshot::Expression { name } => SettingsModelBehavior::Expression { name },
     }
 }
 
@@ -1737,7 +1751,7 @@ fn diagnostics_document(
     let mut invalid_installed = 0_u64;
     for entry in &snapshot.model_catalog.entries {
         let is_preset = entry.origin == SettingsModelOrigin::Preset;
-        match entry.availability {
+        match &entry.availability {
             SettingsModelAvailability::Ready { .. } => {
                 if is_preset {
                     ready_preset = ready_preset.saturating_add(1);
@@ -2323,6 +2337,7 @@ mod tests {
                             texture_count: 1,
                             expression_count: 0,
                             motion_count: 0,
+                            behaviors: Vec::new(),
                         },
                     },
                     SettingsModelEntry {
@@ -3486,7 +3501,23 @@ mod tests {
         assert!(initial.model_catalog.error.is_none());
         assert!(initial.model_catalog.entries.iter().all(|entry| {
             entry.origin == SettingsModelOrigin::Preset
-                && matches!(entry.availability, SettingsModelAvailability::Ready { .. })
+                && matches!(&entry.availability, SettingsModelAvailability::Ready { .. })
+        }));
+        let standard = initial
+            .model_catalog
+            .entries
+            .iter()
+            .find(|entry| entry.id == "standard" && entry.origin == SettingsModelOrigin::Preset)
+            .expect("standard model entry");
+        let SettingsModelAvailability::Ready { behaviors, .. } = &standard.availability else {
+            panic!("standard model is ready");
+        };
+        assert!(behaviors.contains(&SettingsModelBehavior::Motion {
+            group: "CAT_motion".to_owned(),
+            index: 0,
+        }));
+        assert!(behaviors.contains(&SettingsModelBehavior::Expression {
+            name: "live2d_expression0.exp3.json".to_owned(),
         }));
         let selected = client
             .select_model_blocking(
@@ -4001,7 +4032,7 @@ mod tests {
         assert!(imported.model_catalog.entries.iter().any(|entry| {
             entry.id == "custom-model"
                 && entry.origin == SettingsModelOrigin::Installed
-                && matches!(entry.availability, SettingsModelAvailability::Ready { .. })
+                && matches!(&entry.availability, SettingsModelAvailability::Ready { .. })
         }));
         assert!(models_root.join("custom-model/猫.model3.json").is_file());
 

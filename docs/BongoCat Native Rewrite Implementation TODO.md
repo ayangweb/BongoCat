@@ -1210,6 +1210,9 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     线程安全 signal 交给 GPUI frame source 重开设置窗口，服务关闭和队列满均有边界处理。注册/捕获 UI、
     GPUI 清除/恢复默认入口和 Windows/macOS 实机快捷键证据仍未完成。
 - [ ] 动作/表情：绑定、预览 command 和错误状态。
+  - 状态（2026-09-05）：已验证模型目录现将实际声明的 `(motion group, index)` 与 expression name
+    作为只读强类型 behavior 投影到 settings snapshot；标识只来自通过包验证的模型索引，不包含包路径。
+    预览 command、操作控件和失败状态仍待接入。
 - [ ] 权限：macOS 状态/跳转和 Windows 权限差异。
 - [ ] 更新：检查、下载、验证、安装和回滚提示。
 - [ ] 诊断：版本、renderer、GPU、输入、权限、模型错误和日志导出。

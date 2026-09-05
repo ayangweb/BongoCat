@@ -1902,7 +1902,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 && (entry.id != initial_model.id
                                     || entry.origin != initial_model.origin)
                                 && matches!(
-                                    entry.availability,
+                                    &entry.availability,
                                     SettingsModelAvailability::Ready { .. }
                                 )
                         })
