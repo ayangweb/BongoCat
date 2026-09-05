@@ -905,6 +905,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     采样解码后的 linear RGB 执行 multiply/screen、mask 和预乘，format contract 单元测试覆盖
     两个实现。嵌入 ICC/wide-gamut profile 的转换尚未实现，v1 明确不依赖平台默认色彩管理。
 - [ ] present 失败、窗口隐藏和 drawable unavailable 时限流，不产生 busy loop 或日志风暴。
+  - 状态（2026-09-06）：macOS 的 `CAMetalLayer::next_drawable == None` 已分类为临时
+    presentation unavailable；产品 frame source 收到非错误的 deferred tick，以 `100 ms` 起、
+    `1 s` 封顶的指数退避调度，成功 present 后重置。初始模型和候选模型的 commit token 会保留到
+    实际 draw/present 成功，临时不可用不会停止 frame source、写入 failure 记录或误拒绝候选。
+    hidden overlay 仍只消费可靠 model commit 并由既有 `100 ms` 调度唤醒。D3D11 Present/device-loss
+    的 HRESULT 分类、Windows 实机恢复与跨平台 present 故障验证尚未完成，因此本项保持未勾选。
 
 ### 4.5 Phase 3 退出门槛
 

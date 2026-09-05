@@ -168,6 +168,48 @@ pub struct ProductOverlayReport {
 pub enum OverlayTickOutcome {
     Presented,
     Hidden,
+    Deferred(Duration),
+}
+
+impl OverlayTickOutcome {
+    pub const fn retry_after(self) -> Option<Duration> {
+        match self {
+            Self::Deferred(delay) => Some(delay),
+            Self::Presented | Self::Hidden => None,
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+const FRAME_RETRY_INITIAL_DELAY: Duration = Duration::from_millis(100);
+#[cfg(target_os = "macos")]
+const FRAME_RETRY_MAXIMUM_DELAY: Duration = Duration::from_secs(1);
+
+/// Bounded retry cadence for temporary presentation failures.
+///
+/// The frame source owns the actual timer. This state only converts repeated
+/// temporary failures into a deterministic delay, so a hidden compositor never
+/// turns into a busy loop or a stream of renderer errors.
+#[cfg(target_os = "macos")]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(crate) struct FrameRetryBackoff {
+    consecutive_failures: u8,
+}
+
+#[cfg(target_os = "macos")]
+impl FrameRetryBackoff {
+    pub(crate) fn register_temporary_failure(&mut self) -> Duration {
+        let exponent = self.consecutive_failures.min(4);
+        self.consecutive_failures = self.consecutive_failures.saturating_add(1);
+        FRAME_RETRY_INITIAL_DELAY
+            .checked_mul(1_u32 << exponent)
+            .unwrap_or(FRAME_RETRY_MAXIMUM_DELAY)
+            .min(FRAME_RETRY_MAXIMUM_DELAY)
+    }
+
+    pub(crate) fn record_success(&mut self) {
+        self.consecutive_failures = 0;
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -475,18 +517,46 @@ pub struct PreviewReport {
     pub texture_count: usize,
 }
 
+#[cfg(target_os = "macos")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum OverlayErrorKind {
+    Fatal,
+    TemporaryDrawableUnavailable,
+}
+
 #[derive(Debug)]
-pub struct OverlayError(String);
+pub struct OverlayError {
+    #[cfg(target_os = "macos")]
+    kind: OverlayErrorKind,
+    detail: String,
+}
 
 impl OverlayError {
     pub(crate) fn new(detail: impl Into<String>) -> Self {
-        Self(detail.into())
+        Self {
+            #[cfg(target_os = "macos")]
+            kind: OverlayErrorKind::Fatal,
+            detail: detail.into(),
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    pub(crate) fn temporary_drawable_unavailable(detail: impl Into<String>) -> Self {
+        Self {
+            kind: OverlayErrorKind::TemporaryDrawableUnavailable,
+            detail: detail.into(),
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    pub(crate) const fn is_temporary_drawable_unavailable(&self) -> bool {
+        matches!(self.kind, OverlayErrorKind::TemporaryDrawableUnavailable)
     }
 }
 
 impl fmt::Display for OverlayError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.0)
+        formatter.write_str(&self.detail)
     }
 }
 
@@ -625,6 +695,36 @@ mod tests {
         presentation
             .require_presented_frame()
             .expect("presented overlay may become visible");
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn temporary_drawable_failures_back_off_without_accumulating_error_reports() {
+        let mut backoff = FrameRetryBackoff::default();
+        let delays = (0..6)
+            .map(|_| backoff.register_temporary_failure())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            delays,
+            vec![
+                Duration::from_millis(100),
+                Duration::from_millis(200),
+                Duration::from_millis(400),
+                Duration::from_millis(800),
+                Duration::from_secs(1),
+                Duration::from_secs(1),
+            ]
+        );
+        assert_eq!(
+            OverlayTickOutcome::Deferred(delays[0]).retry_after(),
+            Some(Duration::from_millis(100))
+        );
+
+        backoff.record_success();
+        assert_eq!(
+            backoff.register_temporary_failure(),
+            Duration::from_millis(100)
+        );
     }
 
     #[test]

@@ -526,6 +526,12 @@ renderer 的模型资源准备结果通过稳定项目 error code 回到 runtime
 平台对象或任意字符串协议。候选准备失败只结束对应模型 command，不得终止 frame loop、
 清空当前 GPU model 或让 runtime 提前宣布候选模型 active。
 
+临时 presentation unavailable（例如 macOS `CAMetalLayer` 未交付 drawable）不是模型或设备
+准备失败：frame source 必须以单调、有限的退避延迟重试，成功 present 后重置；不得把重复临时
+不可用写成 failure 日志或停止 frame source。候选模型的可靠 commit token 必须保留至实际首帧
+成功，不能因临时 drawable 缺失被拒绝。未知 D3D11 present/device-loss 仍按明确 HRESULT 恢复策略
+处理，不能笼统归类为临时成功。
+
 Linux 阶段再决定增加 Vulkan/OpenGL backend，或基于数据迁移到 wgpu。首发优先保证 Windows/macOS 透明窗口的确定性。
 
 ### 11.3 Motion 音效

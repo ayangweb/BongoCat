@@ -1,7 +1,7 @@
 use crate::{
-    BlendFactor, OverlayError, OverlayPresentationState, OverlaySessionOptions, OverlayTickOutcome,
-    OverlayWindowBounds, OverlayWorkArea, PreviewReport, ProductOverlayReport, blend_factors,
-    default_overlay_window_dimensions, validate_model_generation_advance,
+    BlendFactor, FrameRetryBackoff, OverlayError, OverlayPresentationState, OverlaySessionOptions,
+    OverlayTickOutcome, OverlayWindowBounds, OverlayWorkArea, PreviewReport, ProductOverlayReport,
+    blend_factors, default_overlay_window_dimensions, validate_model_generation_advance,
 };
 use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
 use bongocat_platform::{
@@ -218,6 +218,9 @@ pub(super) struct ProductOverlaySession {
     previous_snapshot: Arc<RenderSnapshot>,
     options: OverlaySessionOptions,
     last_frame: RenderFrame,
+    pending_initial_model_commit: Option<ModelCommitToken>,
+    pending_model_frame: Option<RenderFrame>,
+    retry_backoff: FrameRetryBackoff,
 }
 
 impl ProductOverlaySession {
@@ -255,19 +258,36 @@ impl ProductOverlaySession {
                 }
             };
         let mut frames_presented = 0;
+        let mut retry_backoff = FrameRetryBackoff::default();
+        let mut pending_initial_model_commit = None;
         if runtime_client.snapshot().overlay_visible {
-            if let Err(error) = overlay.draw(true).and_then(|()| overlay.set_visible(true)) {
-                reject_model_commit(&runtime_client, &render_consumer, token)?;
-                return Err(error);
+            match overlay.draw(true) {
+                Ok(()) => {
+                    retry_backoff.record_success();
+                    if let Err(error) = overlay.set_visible(true) {
+                        reject_model_commit(&runtime_client, &render_consumer, token)?;
+                        return Err(error);
+                    }
+                    frames_presented = 1;
+                }
+                Err(error) if error.is_temporary_drawable_unavailable() => {
+                    pending_initial_model_commit = Some(token);
+                    let _ = retry_backoff.register_temporary_failure();
+                }
+                Err(error) => {
+                    reject_model_commit(&runtime_client, &render_consumer, token)?;
+                    return Err(error);
+                }
             }
-            frames_presented = 1;
         }
-        report_model_commit(
-            &runtime_client,
-            &render_consumer,
-            token,
-            ModelCommitOutcome::Prepared,
-        )?;
+        if pending_initial_model_commit.is_none() {
+            report_model_commit(
+                &runtime_client,
+                &render_consumer,
+                token,
+                ModelCommitOutcome::Prepared,
+            )?;
+        }
         let diagnostics_producer = runtime_client.platform_input_diagnostics_producer();
         let (input_service, input_start_error) =
             super::start_platform_input(&diagnostics_producer, || {
@@ -294,6 +314,9 @@ impl ProductOverlaySession {
             previous_snapshot: Arc::clone(&initial_frame.snapshot),
             options,
             last_frame: initial_frame,
+            pending_initial_model_commit,
+            pending_model_frame: None,
+            retry_backoff,
         })
     }
 
@@ -302,11 +325,18 @@ impl ProductOverlaySession {
         let mut next_frame = started;
         while duration.is_zero() || started.elapsed() < duration {
             pump_application_events(&self.application);
-            if self.tick()? == OverlayTickOutcome::Hidden {
+            let outcome = self.tick()?;
+            if outcome == OverlayTickOutcome::Hidden {
                 break;
             }
-            next_frame += frame_interval_for_maximum_fps(self.options.maximum_fps)
-                .expect("product overlay stores a validated maximum FPS");
+            let interval = outcome.retry_after().unwrap_or_else(|| {
+                frame_interval_for_maximum_fps(self.options.maximum_fps)
+                    .expect("product overlay stores a validated maximum FPS")
+            });
+            if outcome.retry_after().is_some() {
+                next_frame = Instant::now();
+            }
+            next_frame += interval;
             if let Some(delay) = next_frame.checked_duration_since(Instant::now()) {
                 thread::sleep(delay);
             } else {
@@ -346,7 +376,13 @@ impl ProductOverlaySession {
                 Some(bounds),
             )?;
             if runtime_snapshot.overlay_visible {
-                replacement.draw(self.frames_presented == 0)?;
+                match replacement.draw(self.frames_presented == 0) {
+                    Ok(()) => self.retry_backoff.record_success(),
+                    Err(error) if error.is_temporary_drawable_unavailable() => {
+                        return Ok(self.defer_drawable_unavailable());
+                    }
+                    Err(error) => return Err(error),
+                }
                 replacement.set_visible(true)?;
                 self.frames_presented = self.frames_presented.saturating_add(1);
             }
@@ -365,11 +401,44 @@ impl ProductOverlaySession {
             self.overlay.set_visible(false)?;
         }
 
-        let next_frame = if overlay_visible {
-            self.render_consumer.take_latest()
-        } else {
-            self.render_consumer.take_model_commit()
-        };
+        if let Some(token) = self.pending_initial_model_commit {
+            match self.overlay.draw(true) {
+                Ok(()) => {
+                    self.retry_backoff.record_success();
+                    if overlay_visible {
+                        self.overlay.set_visible(true)?;
+                    }
+                    report_model_commit(
+                        &self.runtime_client,
+                        &self.render_consumer,
+                        token,
+                        ModelCommitOutcome::Prepared,
+                    )?;
+                    self.pending_initial_model_commit = None;
+                    self.frames_presented = self.frames_presented.saturating_add(1);
+                    return Ok(if overlay_visible {
+                        OverlayTickOutcome::Presented
+                    } else {
+                        OverlayTickOutcome::Hidden
+                    });
+                }
+                Err(error) if error.is_temporary_drawable_unavailable() => {
+                    return Ok(self.defer_drawable_unavailable());
+                }
+                Err(error) => {
+                    reject_model_commit(&self.runtime_client, &self.render_consumer, token)?;
+                    return Err(error);
+                }
+            }
+        }
+
+        let next_frame = self.pending_model_frame.take().or_else(|| {
+            if overlay_visible {
+                self.render_consumer.take_latest()
+            } else {
+                self.render_consumer.take_model_commit()
+            }
+        });
         if let Some(frame) = next_frame {
             let model_changed = frame.model_generation != self.overlay.model_generation;
             if model_changed {
@@ -394,7 +463,13 @@ impl ProductOverlaySession {
                             self.model_commit_rejections.saturating_add(1);
                         let _ = error;
                         if overlay_visible {
-                            self.overlay.draw(self.frames_presented == 0)?;
+                            match self.overlay.draw(self.frames_presented == 0) {
+                                Ok(()) => self.retry_backoff.record_success(),
+                                Err(error) if error.is_temporary_drawable_unavailable() => {
+                                    return Ok(self.defer_drawable_unavailable());
+                                }
+                                Err(error) => return Err(error),
+                            }
                             self.frames_presented = self.frames_presented.saturating_add(1);
                             self.overlay.set_visible(true)?;
                             return Ok(OverlayTickOutcome::Presented);
@@ -403,13 +478,21 @@ impl ProductOverlaySession {
                     }
                     Err(error) => return Err(error),
                 };
-                let candidate = replacement.draw(true).and_then(|()| {
-                    if overlay_visible {
-                        replacement.set_visible(true)
-                    } else {
-                        Ok(())
+                let candidate = match replacement.draw(true) {
+                    Ok(()) => {
+                        self.retry_backoff.record_success();
+                        if overlay_visible {
+                            replacement.set_visible(true)
+                        } else {
+                            Ok(())
+                        }
                     }
-                });
+                    Err(error) if error.is_temporary_drawable_unavailable() => {
+                        self.pending_model_frame = Some(frame);
+                        return Ok(self.defer_drawable_unavailable());
+                    }
+                    Err(error) => Err(error),
+                };
                 if let Err(error) = candidate {
                     if let Some(token) = frame.model_commit {
                         reject_model_commit(&self.runtime_client, &self.render_consumer, token)?;
@@ -417,7 +500,13 @@ impl ProductOverlaySession {
                             self.model_commit_rejections.saturating_add(1);
                         let _ = error;
                         if overlay_visible {
-                            self.overlay.draw(self.frames_presented == 0)?;
+                            match self.overlay.draw(self.frames_presented == 0) {
+                                Ok(()) => self.retry_backoff.record_success(),
+                                Err(error) if error.is_temporary_drawable_unavailable() => {
+                                    return Ok(self.defer_drawable_unavailable());
+                                }
+                                Err(error) => return Err(error),
+                            }
                             self.frames_presented = self.frames_presented.saturating_add(1);
                             self.overlay.set_visible(true)?;
                             return Ok(OverlayTickOutcome::Presented);
@@ -479,10 +568,20 @@ impl ProductOverlaySession {
         if !overlay_visible {
             return Ok(OverlayTickOutcome::Hidden);
         }
-        self.overlay.draw(self.frames_presented == 0)?;
+        match self.overlay.draw(self.frames_presented == 0) {
+            Ok(()) => self.retry_backoff.record_success(),
+            Err(error) if error.is_temporary_drawable_unavailable() => {
+                return Ok(self.defer_drawable_unavailable());
+            }
+            Err(error) => return Err(error),
+        }
         self.frames_presented = self.frames_presented.saturating_add(1);
         self.overlay.set_visible(true)?;
         Ok(OverlayTickOutcome::Presented)
+    }
+
+    fn defer_drawable_unavailable(&mut self) -> OverlayTickOutcome {
+        OverlayTickOutcome::Deferred(self.retry_backoff.register_temporary_failure())
     }
 
     pub(super) fn window_bounds(&self) -> Result<OverlayWindowBounds, OverlayError> {
@@ -1216,10 +1315,9 @@ impl NativeOverlay {
     }
 
     fn draw_in_autorelease_pool(&self, verify_frame: bool) -> Result<(), OverlayError> {
-        let drawable = self
-            .layer
-            .next_drawable()
-            .ok_or_else(|| OverlayError::new("CAMetalLayer returned no drawable"))?;
+        let drawable = self.layer.next_drawable().ok_or_else(|| {
+            OverlayError::temporary_drawable_unavailable("CAMetalLayer returned no drawable")
+        })?;
         let pass = RenderPassDescriptor::new();
         let attachment = pass
             .color_attachments()

@@ -1712,6 +1712,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(target_os = "windows")]
             let mut frame_active = true;
             let mut last_overlay_bounds = None;
+            let mut retry_delay = None;
             #[cfg(target_os = "windows")]
             let mut update_failure_reported = false;
             loop {
@@ -1721,20 +1722,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     runtime_snapshot.overlay_visible,
                 )
                 .expect("runtime stores validated frame scheduling state");
-                Timer::after(frame_interval).await;
+                Timer::after(retry_delay.take().unwrap_or(frame_interval)).await;
                 if frame_source_shutdown.stop_requested() {
                     break;
                 }
                 #[cfg(target_os = "macos")]
-                let keep_running = cx.update(|cx| {
+                let (keep_running, next_retry_delay) = cx.update(|cx| {
                     if !cx.has_global::<ProductCoordinator>() {
-                        return false;
+                        return (false, None);
                     }
                     handle_shortcut_open_settings(cx);
-                    let (keep_running, failure, settings_window, failures) = {
+                    let (keep_running, failure, settings_window, failures, next_retry_delay) = {
                         let coordinator = cx.global_mut::<ProductCoordinator>();
                         if !coordinator.frame_source_running {
-                            return false;
+                            return (false, None);
                         }
                         let result = coordinator
                             .overlay
@@ -1742,7 +1743,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .expect("product overlay owner is present")
                             .tick();
                         match result {
-                            Ok(_) => {
+                            Ok(outcome) => {
                                 if let Ok(bounds) = coordinator
                                     .overlay
                                     .as_ref()
@@ -1761,7 +1762,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     last_overlay_bounds = Some(bounds);
                                 }
                                 coordinator.frame_ticks = coordinator.frame_ticks.saturating_add(1);
-                                (true, None, None, None)
+                                (true, None, None, None, outcome.retry_after())
                             }
                             Err(error) => {
                                 coordinator.frame_source_running = false;
@@ -1770,6 +1771,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     Some(error.to_string()),
                                     coordinator.settings_window.clone(),
                                     Some(Arc::clone(&coordinator.failures)),
+                                    None,
                                 )
                             }
                         }
@@ -1785,8 +1787,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             );
                         });
                     }
-                    keep_running
+                    (keep_running, next_retry_delay)
                 });
+                #[cfg(target_os = "macos")]
+                {
+                    retry_delay = next_retry_delay;
+                }
                 #[cfg(target_os = "windows")]
                 let (tick_result, system_termination_requested) = if frame_active {
                     let mut overlay = frame_overlay.borrow_mut();
@@ -1816,6 +1822,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if tick_result.as_ref().is_some_and(Result::is_err) {
                     frame_active = false;
                 }
+                #[cfg(target_os = "windows")]
+                let next_retry_delay = tick_result
+                    .as_ref()
+                    .and_then(|result| result.as_ref().ok())
+                    .and_then(|outcome| outcome.retry_after());
                 #[cfg(target_os = "windows")]
                 let mut tick_result = Some(tick_result);
                 #[cfg(target_os = "windows")]
@@ -1875,6 +1886,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         true
                     }
                 };
+                #[cfg(target_os = "windows")]
+                {
+                    retry_delay = next_retry_delay;
+                }
                 if !keep_running {
                     break;
                 }
