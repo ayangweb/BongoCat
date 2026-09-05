@@ -1374,7 +1374,9 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
   - 状态（2026-08-31）：模型目录 picker 已有共享稳定结果/错误和双平台最小 adapter；Windows
     使用 STA `IFileOpenDialog`、filesystem/folder/path-exists/no-recent flags 与 COM/TaskMem RAII，
     macOS 使用主线程单目录 `NSOpenPanel`。结果在 Rust 侧重新验证并 canonicalize，GPUI Models
-    页面及双平台真实选择/取消 smoke 已通过；外部 URL、clipboard 仍待完成，因此总项不勾选。
+    页面及双平台真实选择/取消 smoke 已通过。外部 URL 现由共享 wrapper 严格限制为无 credentials 的
+    HTTPS，macOS `/usr/bin/open` 与 Windows `explorer.exe` 均只收到一个参数且不经 shell；clipboard
+    仍待完成，因此总项不勾选。
 - [ ] 选择并记录 MSIX、WiX 或 NSIS 打包 ADR。
 - [ ] 对安装目录、用户数据目录和更新临时目录分别建模。
 
@@ -1385,7 +1387,8 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 - [ ] SMAppService 启动项启用、禁用和状态检测。
 - [ ] NSOpenPanel、NSWorkspace 和 pasteboard 最小权限 wrapper。
   - 状态（2026-08-31）：`NSOpenPanel` 模型目录 adapter 已实现并通过主线程边界、稳定错误
-    contract 和 macOS 26.5.2 arm64 真实选择/取消交互 smoke；`NSWorkspace`、pasteboard 仍待完成。
+    contract 和 macOS 26.5.2 arm64 真实选择/取消交互 smoke。外部 HTTPS URL 以 `/usr/bin/open` 单参数
+    wrapper 完成，拒绝 credentials、非 HTTPS 与超长值；`NSWorkspace` 的其余能力和 pasteboard 仍待完成。
 - [ ] .app bundle、entitlements、Hardened Runtime 和 notarization 流程。
 - [ ] TCC 权限状态变化可在 UI 实时刷新。
 

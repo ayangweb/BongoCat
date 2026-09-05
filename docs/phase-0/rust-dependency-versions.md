@@ -58,6 +58,7 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 | `sha2`                                |       `0.11.0` | 新增时即为最新                     |
 | `tempfile`                            |       `3.27.0` | 已是最新                           |
 | `unicode-segmentation`                |       `1.13.3` | 已是最新                           |
+| `url`                                 |        `2.5.8` | 外部 HTTPS URL wrapper 新增时最新  |
 | `windows`                             |       `0.62.2` | 从 `0.61.3` 升级                   |
 
 `windows 0.62.2` 删除了 `Error::from_win32()`；Win32 wrapper 已改为在失败调用后立即使用语义等价的 `Error::from_thread()`，避免清理 API 覆盖 thread last-error。
@@ -122,6 +123,10 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
 - `raw-window-handle 0.6.2`（MIT OR Apache-2.0 OR Zlib）除 spike 外也由正式 Windows
   platform adapter 直接使用，只把 GPUI 的公开 handle 转为短期借用的 HWND 以隐藏/重显设置
   窗口；裸 handle 不离开 adapter，GPUI 修复原生 close 生命周期后可移除这段正式依赖；
+- `url 2.5.8`（MIT OR Apache-2.0，Rust 1.63+，Servo `rust-url` 维护）只在
+  `bongocat-platform` 私有 external URL parser 中规范化并限制 HTTPS URL；公共 API 只接收字符串、
+  返回项目自有错误，不泄漏 `Url`。macOS/Windows launcher 均以单一参数启动系统 opener，绝不经 shell；
+  替换边界是同等严格的 WHATWG URL parser，不影响 config/runtime/UI 协议；
 - `atomic-write-file 0.3.1`（BSD-3-Clause）只在正式配置 crate 的 `ConfigStore` 与 update crate 的环境内 sequence store 提供同目录跨平台原子替换；两者都只暴露项目自有的配置或更新状态类型，不泄漏库类型。替换边界分别是各自私有 commit helper；`dirs 6.0.0`、`serde 1.0.229` 与 `serde_json 1.0.151` 继续提供路径解析和严格序列化；
 - `rodio 0.22.2`（MIT OR Apache-2.0）只在 `bongocat-audio` 私有 backend 打开系统输出并
   解码现有 FLAC；固定容量的项目 command/diagnostics API 隔离第三方类型，Linux contract

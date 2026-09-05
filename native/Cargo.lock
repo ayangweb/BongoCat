@@ -917,6 +917,7 @@ dependencies = [
  "objc2-service-management",
  "raw-window-handle",
  "tempfile",
+ "url",
  "windows 0.62.2",
 ]
 

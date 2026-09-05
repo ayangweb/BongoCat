@@ -26,6 +26,9 @@ pub use directory_picker::{DirectoryPickerError, DirectoryPickerOutcome};
 mod directory_opener;
 pub use directory_opener::{DirectoryOpenError, open_directory};
 
+mod url_opener;
+pub use url_opener::{ExternalUrlOpenError, open_external_url};
+
 mod single_instance;
 pub use single_instance::{SingleInstanceAction, SingleInstanceEnvironment, SingleInstanceError};
 

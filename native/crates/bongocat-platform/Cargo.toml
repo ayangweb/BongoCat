@@ -11,6 +11,7 @@ publish.workspace = true
 async-channel.workspace = true
 bongocat-config.workspace = true
 bongocat-runtime.workspace = true
+url.workspace = true
 
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 accesskit.workspace = true
