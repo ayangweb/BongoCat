@@ -555,7 +555,7 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
 | Windows | `%APPDATA%\BongoCat\development\`                                   | `%APPDATA%\BongoCat\production\`                                   |
 | macOS   | `~/Library/Application Support/com.ayangweb.bongo-cat/development/` | `~/Library/Application Support/com.ayangweb.bongo-cat/production/` |
 
-每个根目录包含 `config.json`、`state.json`、`models/`、`backups/`、`logs/`、`updates/` 和 `locks/`。锁、单实例命名、更新 channel 和诊断同样按环境隔离；任何环境不得读取、写入或 fallback 到另一个环境。
+每个根目录包含 `config.json`、`state.json`、`models/`、`backups/`、`logs/`、`updates/`（含仅供更新下载暂存的 `staging/`）和 `locks/`。锁、单实例命名、更新 channel、更新暂存和诊断同样按环境隔离；任何环境不得读取、写入或 fallback 到另一个环境。`StorageLayout` 只描述这些用户数据路径；安装器和 update helper 使用平台 `InstallationLayout` 描述 product files root，不能从用户数据根推导或操作安装目录。
 
 要求：
 
@@ -683,6 +683,9 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
   Development/Production 的 config、state、models、backups、logs 或 updates 数据。installer 与未来的
   Rust update helper 不联网；helper 只在应用完成协调 shutdown 后接收已验证 artifact，原子替换失败时
   恢复上一已知可运行版本。卸载默认只移除 product files，用户数据必须由明确的独立操作删除。
+- 更新下载只可在当前环境 `StorageLayout::update_staging` 下创建暂存文件；该目录与
+  `updates/update-sequence.json`/lock 及 `InstallationLayout` 的 product files root 分离。下载、
+  清理、替换和 rollback 仍须在各自的后续 contract 中定义，不得由此路径模型隐式授权。
 - 自动检查偏好启用时在应用启动后立即请求一次检查，随后以可注入的单调时间从每次实际派发起
   间隔 24 小时；从关闭切换为启用时同样立即请求一次，关闭则取消待触发检查。重复 poll 不得重复
   派发，单调时间回退必须产生稳定诊断并从新时间原点重建间隔，不能形成重试风暴。

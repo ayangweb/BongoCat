@@ -1420,7 +1420,12 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     activation/update 模型与既有 HKCU Run/startup 和独立 signed update helper 冲突；WiX 的机器级 MSI
     重点需要额外管理员权限与服务策略，均不作为首发路径。实际 NSIS script、签名、卸载、helper 和
     rollback smoke 继续由后续任务验证。
-- [ ] 对安装目录、用户数据目录和更新临时目录分别建模。
+- [x] 对安装目录、用户数据目录和更新临时目录分别建模。
+  - 验收证据（2026-09-05）：`StorageLayout` 继续独占按环境隔离的用户数据根，并显式包含私有
+    `updates/staging/`；目录创建、Development/Production 同构与 Unix owner-only 权限测试逐项覆盖。
+    `bongocat-platform::InstallationLayout` 仅表示 installer/update helper 的 product files root，
+    不携带环境或用户数据路径。该模型未实现下载、清理、替换、installer 或 rollback，相关操作仍受
+    后续更新/发布任务的独立边界约束。
 
 ### 8.3 macOS
 

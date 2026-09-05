@@ -7,6 +7,9 @@ use std::fmt;
 
 pub use bongocat_runtime::{PlatformInputDiagnostics, PlatformInputServiceStatus};
 
+mod installation;
+pub use installation::InstallationLayout;
+
 mod accessibility;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub use accessibility::SettingsAccessibilityBridge;
