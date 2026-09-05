@@ -2635,8 +2635,9 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       `v*` tag 都不再自动构建或发布旧 Tauri、Linux 或 i686 artifact；不得据此声称 Native App
       已可发布，新的双平台签名、安装和更新流水线仍由 Phase 9 跟踪。
     - 验收证据（2026-09-05）：`.github/workflows/release.yml` 已移除 `push.tags`，名称明确标注为
-      `Legacy BongoCat Release (manual only)`，历史 job/matrix 未删除；YAML 语法与 staged whitespace
-      检查通过。Native release workflow 尚未建立，因此 Phase 9 发布准备保持未完成。
+      `Legacy BongoCat Release (manual only)`；`.github/workflows/upgradelink.yml` 也已移除 release
+      event，只允许显式手动上传旧 Tauri update metadata。历史 job/matrix 未删除；YAML 语法与 staged
+      whitespace 检查通过。Native release workflow 尚未建立，因此 Phase 9 发布准备保持未完成。
 
 71. [x] `P9-NATIVE-PRODUCT-ICON`：让双平台 Native 应用与 Windows 托盘使用正式产品图标。
     - 依赖：正式 `bongocat-app` build script、macOS `.app` 打包入口与 Windows system-menu owner。

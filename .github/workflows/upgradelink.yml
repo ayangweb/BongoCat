@@ -1,8 +1,6 @@
-name: Upload Release to UpgradeLink
+name: Legacy UpgradeLink Upload (manual only)
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
 
 jobs:
