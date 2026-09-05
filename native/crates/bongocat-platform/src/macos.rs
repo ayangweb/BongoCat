@@ -1336,6 +1336,7 @@ fn run_input_worker(
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => break,
             };
+            let reset_requires_gamepad_reseed = matches!(&event, CapturedEvent::Reset);
             if let Err(error) = publish_captured(
                 &producer,
                 event,
@@ -1357,6 +1358,8 @@ fn run_input_worker(
                         break 'service Err(PlatformInputError::RuntimeStopped);
                     }
                 }
+            } else if reset_requires_gamepad_reseed && let Err(error) = gamepad_owner.reseed() {
+                break 'service Err(error);
             }
         }
 

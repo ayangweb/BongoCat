@@ -1028,6 +1028,8 @@ impl WindowState {
                 if let Some(dispatcher) = self.shortcut_dispatcher.as_mut() {
                     dispatcher.reset();
                 }
+                self.gamepad_poller
+                    .reseed(&self.producer, self.monotonic())?;
                 self.diagnostics.recovery_resets =
                     self.diagnostics.recovery_resets.saturating_add(1);
             }
@@ -1045,6 +1047,8 @@ impl WindowState {
                         if let Some(dispatcher) = self.shortcut_dispatcher.as_mut() {
                             dispatcher.reset();
                         }
+                        self.gamepad_poller
+                            .reseed(&self.producer, self.monotonic())?;
                         self.diagnostics.recovery_resets =
                             self.diagnostics.recovery_resets.saturating_add(1);
                         return Ok(());
@@ -2089,6 +2093,46 @@ mod tests {
         let axis = axis_producer.diagnostics();
         assert_eq!(axis.connections, 1);
         assert_eq!(axis.disconnections, 0);
+        runtime.shutdown(TIMEOUT).expect("runtime stop");
+    }
+
+    #[test]
+    fn windows_lifecycle_reset_reseeds_existing_gamepad_slots() {
+        const TIMEOUT: Duration = Duration::from_secs(2);
+        let runtime = RuntimeOwner::start(true, 64);
+        let client = runtime.client();
+        client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+        let producer = runtime.input_producer();
+        let axis_producer = runtime.gamepad_axis_producer();
+        let connection = axis_producer.connect(0).expect("gamepad connection");
+        producer
+            .publish(InputEvent::GamepadConnected {
+                connection,
+                at: MonotonicMillis::new(1),
+            })
+            .expect("initial gamepad connection");
+        wait_for_input_sequence(&client, 0, TIMEOUT);
+        let mut state = WindowState::new(
+            producer,
+            runtime.cursor_producer(),
+            axis_producer.clone(),
+            PlatformInputDiagnosticsProducer::default(),
+            Arc::new(AtomicBool::new(false)),
+            WorkerOptions::default(),
+            None,
+        );
+        state.gamepad_poller.slots[0] = Some(XInputSlot {
+            connection,
+            buttons: 0,
+        });
+
+        state
+            .publish(CapturedEvent::Reset(InputResetReason::SessionLock))
+            .expect("lifecycle reset");
+        wait_for_input_sequence(&client, 2, TIMEOUT);
+
+        assert_eq!(client.snapshot().input.connected_gamepad_count, 1);
+        assert_eq!(axis_producer.diagnostics().connections, 1);
         runtime.shutdown(TIMEOUT).expect("runtime stop");
     }
 
