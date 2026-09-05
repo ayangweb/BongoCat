@@ -724,6 +724,164 @@ struct RawPosePart {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPhysicsResource {
+    #[serde(rename = "Version")]
+    version: u32,
+    #[serde(rename = "Meta")]
+    meta: RawPhysicsMeta,
+    #[serde(rename = "PhysicsSettings")]
+    settings: Vec<RawPhysicsSetting>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPhysicsMeta {
+    #[serde(rename = "PhysicsSettingCount")]
+    setting_count: usize,
+    #[serde(rename = "TotalInputCount")]
+    input_count: usize,
+    #[serde(rename = "TotalOutputCount")]
+    output_count: usize,
+    #[serde(rename = "VertexCount")]
+    vertex_count: usize,
+    #[serde(rename = "Fps")]
+    fps: f64,
+    #[serde(rename = "EffectiveForces")]
+    effective_forces: RawPhysicsForces,
+    #[serde(rename = "PhysicsDictionary")]
+    dictionary: Vec<RawPhysicsDictionaryEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPhysicsForces {
+    #[serde(rename = "Gravity")]
+    gravity: RawPhysicsVector,
+    #[serde(rename = "Wind")]
+    wind: RawPhysicsVector,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPhysicsVector {
+    #[serde(rename = "X")]
+    x: f64,
+    #[serde(rename = "Y")]
+    y: f64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPhysicsDictionaryEntry {
+    #[serde(rename = "Id")]
+    id: String,
+    #[serde(rename = "Name")]
+    _name: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPhysicsSetting {
+    #[serde(rename = "Id")]
+    id: String,
+    #[serde(rename = "Input")]
+    inputs: Vec<RawPhysicsInput>,
+    #[serde(rename = "Output")]
+    outputs: Vec<RawPhysicsOutput>,
+    #[serde(rename = "Vertices")]
+    vertices: Vec<RawPhysicsVertex>,
+    #[serde(rename = "Normalization")]
+    normalization: RawPhysicsNormalization,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPhysicsInput {
+    #[serde(rename = "Source")]
+    source: RawPhysicsTarget,
+    #[serde(rename = "Weight")]
+    weight: f64,
+    #[serde(rename = "Type")]
+    _kind: RawPhysicsChannel,
+    #[serde(rename = "Reflect")]
+    _reflect: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPhysicsOutput {
+    #[serde(rename = "Destination")]
+    destination: RawPhysicsTarget,
+    #[serde(rename = "VertexIndex")]
+    vertex_index: usize,
+    #[serde(rename = "Scale")]
+    scale: f64,
+    #[serde(rename = "Weight")]
+    weight: f64,
+    #[serde(rename = "Type")]
+    _kind: RawPhysicsChannel,
+    #[serde(rename = "Reflect")]
+    _reflect: bool,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+enum RawPhysicsChannel {
+    X,
+    Y,
+    Angle,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPhysicsTarget {
+    #[serde(rename = "Target")]
+    _target: RawPhysicsTargetKind,
+    #[serde(rename = "Id")]
+    id: String,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+enum RawPhysicsTargetKind {
+    Parameter,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPhysicsNormalization {
+    #[serde(rename = "Position")]
+    position: RawPhysicsRange,
+    #[serde(rename = "Angle")]
+    angle: RawPhysicsRange,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPhysicsRange {
+    #[serde(rename = "Minimum")]
+    minimum: f64,
+    #[serde(rename = "Default")]
+    default: f64,
+    #[serde(rename = "Maximum")]
+    maximum: f64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPhysicsVertex {
+    #[serde(rename = "Position")]
+    position: RawPhysicsVector,
+    #[serde(rename = "Mobility")]
+    mobility: f64,
+    #[serde(rename = "Delay")]
+    delay: f64,
+    #[serde(rename = "Acceleration")]
+    acceleration: f64,
+    #[serde(rename = "Radius")]
+    radius: f64,
+}
+
+#[derive(Debug, Deserialize)]
 enum RawMotionResourceTarget {
     Model,
     Parameter,
@@ -853,6 +1011,18 @@ impl PackageReader {
         let (normalized, path) =
             self.resolve_file(reference, ModelDiagnostic::ModelResourceMissing)?;
         validate_pose_resource(
+            &path,
+            &normalized,
+            self.limits.maximum_json_bytes,
+            self.limits.maximum_json_depth,
+        )?;
+        Ok(normalized)
+    }
+
+    fn resolve_physics(&mut self, reference: &str) -> Result<String, ModelError> {
+        let (normalized, path) =
+            self.resolve_file(reference, ModelDiagnostic::ModelResourceMissing)?;
+        validate_physics_resource(
             &path,
             &normalized,
             self.limits.maximum_json_bytes,
@@ -1049,7 +1219,7 @@ fn inspect_model_package(
         .files
         .physics
         .as_deref()
-        .map(|reference| reader.resolve_json(reference))
+        .map(|reference| reader.resolve_physics(reference))
         .transpose()?;
     let pose = model
         .files
@@ -1457,6 +1627,177 @@ fn validate_pose_resource(
         }
     }
     Ok(())
+}
+
+fn validate_physics_resource(
+    path: &Path,
+    reference: &str,
+    maximum_bytes: u64,
+    maximum_depth: usize,
+) -> Result<(), ModelError> {
+    let physics: RawPhysicsResource = read_json(
+        path,
+        reference,
+        maximum_bytes,
+        maximum_depth,
+        ModelDiagnostic::ModelResourceInvalid,
+    )?;
+    if physics.version != 3 {
+        return invalid_resource(reference, "physics3 Version must be 3");
+    }
+    if !physics.meta.fps.is_finite() || physics.meta.fps <= 0.0 {
+        return invalid_resource(reference, "physics3 Meta.Fps must be finite and positive");
+    }
+    validate_physics_vector(
+        physics.meta.effective_forces.gravity,
+        reference,
+        "Meta.EffectiveForces.Gravity",
+    )?;
+    validate_physics_vector(
+        physics.meta.effective_forces.wind,
+        reference,
+        "Meta.EffectiveForces.Wind",
+    )?;
+
+    let mut setting_ids = BTreeSet::new();
+    let mut input_count = 0_usize;
+    let mut output_count = 0_usize;
+    let mut vertex_count = 0_usize;
+    for setting in &physics.settings {
+        if setting.id.trim().is_empty() || !setting_ids.insert(setting.id.clone()) {
+            return invalid_resource(
+                reference,
+                "physics3 setting Id must be non-empty and unique",
+            );
+        }
+        if setting.inputs.is_empty() || setting.outputs.is_empty() || setting.vertices.len() < 2 {
+            return invalid_resource(
+                reference,
+                "physics3 settings require input, output, and at least two vertices",
+            );
+        }
+        validate_physics_range(setting.normalization.position, reference, "Position")?;
+        validate_physics_range(setting.normalization.angle, reference, "Angle")?;
+
+        for input in &setting.inputs {
+            if input.source.id.trim().is_empty() {
+                return invalid_resource(reference, "physics3 input Source.Id must be non-empty");
+            }
+            validate_physics_weight(input.weight, reference, "input Weight")?;
+        }
+        for output in &setting.outputs {
+            if output.destination.id.trim().is_empty() {
+                return invalid_resource(
+                    reference,
+                    "physics3 output Destination.Id must be non-empty",
+                );
+            }
+            validate_physics_weight(output.weight, reference, "output Weight")?;
+            if !output.scale.is_finite() {
+                return invalid_resource(reference, "physics3 output Scale must be finite");
+            }
+            if output.vertex_index >= setting.vertices.len() {
+                return invalid_resource(
+                    reference,
+                    "physics3 output VertexIndex must reference a setting vertex",
+                );
+            }
+        }
+        for vertex in &setting.vertices {
+            validate_physics_vector(vertex.position, reference, "vertex Position")?;
+            if [
+                vertex.mobility,
+                vertex.delay,
+                vertex.acceleration,
+                vertex.radius,
+            ]
+            .iter()
+            .any(|value| !value.is_finite())
+            {
+                return invalid_resource(reference, "physics3 vertex coefficients must be finite");
+            }
+        }
+
+        input_count = input_count
+            .checked_add(setting.inputs.len())
+            .ok_or_else(|| physics_count_overflow(reference))?;
+        output_count = output_count
+            .checked_add(setting.outputs.len())
+            .ok_or_else(|| physics_count_overflow(reference))?;
+        vertex_count = vertex_count
+            .checked_add(setting.vertices.len())
+            .ok_or_else(|| physics_count_overflow(reference))?;
+    }
+
+    let mut dictionary_ids = BTreeSet::new();
+    for entry in &physics.meta.dictionary {
+        if entry.id.trim().is_empty() || !dictionary_ids.insert(entry.id.clone()) {
+            return invalid_resource(
+                reference,
+                "physics3 dictionary Id must be non-empty and unique",
+            );
+        }
+    }
+    if dictionary_ids != setting_ids {
+        return invalid_resource(reference, "physics3 dictionary Ids must match setting Ids");
+    }
+    if physics.meta.setting_count != physics.settings.len()
+        || physics.meta.input_count != input_count
+        || physics.meta.output_count != output_count
+        || physics.meta.vertex_count != vertex_count
+    {
+        return invalid_resource(
+            reference,
+            "physics3 Meta counts do not match declared arrays",
+        );
+    }
+    Ok(())
+}
+
+fn validate_physics_vector(
+    vector: RawPhysicsVector,
+    reference: &str,
+    label: &'static str,
+) -> Result<(), ModelError> {
+    if !vector.x.is_finite() || !vector.y.is_finite() {
+        return invalid_resource(reference, label);
+    }
+    Ok(())
+}
+
+fn validate_physics_range(
+    range: RawPhysicsRange,
+    reference: &str,
+    label: &'static str,
+) -> Result<(), ModelError> {
+    if !range.minimum.is_finite()
+        || !range.default.is_finite()
+        || !range.maximum.is_finite()
+        || range.minimum > range.default
+        || range.default > range.maximum
+    {
+        return invalid_resource(reference, label);
+    }
+    Ok(())
+}
+
+fn validate_physics_weight(
+    weight: f64,
+    reference: &str,
+    label: &'static str,
+) -> Result<(), ModelError> {
+    if !weight.is_finite() || !(0.0..=100.0).contains(&weight) {
+        return invalid_resource(reference, label);
+    }
+    Ok(())
+}
+
+fn physics_count_overflow(reference: &str) -> ModelError {
+    ModelError::new(
+        ModelDiagnostic::ModelResourceInvalid,
+        Some(reference),
+        "physics3 count overflowed",
+    )
 }
 
 fn invalid_resource(reference: &str, detail: &'static str) -> Result<(), ModelError> {
@@ -2430,6 +2771,88 @@ mod tests {
         .expect_err("self-referential pose link must be rejected");
         assert_eq!(error.code, ModelDiagnostic::ModelResourceInvalid);
         assert!(error.detail.contains("not self-referential"));
+    }
+
+    #[test]
+    fn physics_contract_validates_counts_weights_and_vertex_references() {
+        let package = tempdir().expect("package");
+        let limits = ModelPackageLimits::default();
+        let physics = package.path().join("model.physics3.json");
+        const VALID_PHYSICS: &str = r#"{
+          "Version":3,
+          "Meta":{
+            "PhysicsSettingCount":1,"TotalInputCount":1,"TotalOutputCount":1,"VertexCount":2,"Fps":60,
+            "EffectiveForces":{"Gravity":{"X":0,"Y":-1},"Wind":{"X":0,"Y":0}},
+            "PhysicsDictionary":[{"Id":"Physics1","Name":""}]
+          },
+          "PhysicsSettings":[{
+            "Id":"Physics1",
+            "Input":[{"Source":{"Target":"Parameter","Id":"ParamInput"},"Weight":100,"Type":"X","Reflect":false}],
+            "Output":[{"Destination":{"Target":"Parameter","Id":"ParamOutput"},"VertexIndex":1,"Scale":1,"Weight":100,"Type":"Angle","Reflect":false}],
+            "Vertices":[
+              {"Position":{"X":0,"Y":0},"Mobility":0.8,"Delay":0.8,"Acceleration":1,"Radius":0},
+              {"Position":{"X":0,"Y":10},"Mobility":0.8,"Delay":0.8,"Acceleration":1,"Radius":10}
+            ],
+            "Normalization":{"Position":{"Minimum":-10,"Default":0,"Maximum":10},"Angle":{"Minimum":-10,"Default":0,"Maximum":10}}
+          }]
+        }"#;
+        fs::write(&physics, VALID_PHYSICS).expect("valid physics resource");
+        validate_physics_resource(
+            &physics,
+            "model.physics3.json",
+            limits.maximum_json_bytes,
+            limits.maximum_json_depth,
+        )
+        .expect("valid physics resource must be accepted");
+
+        for (invalid, detail) in [
+            (
+                VALID_PHYSICS.replace("\"TotalOutputCount\":1", "\"TotalOutputCount\":2"),
+                "Meta counts",
+            ),
+            (
+                VALID_PHYSICS.replace(
+                    "\"Weight\":100,\"Type\":\"X\"",
+                    "\"Weight\":101,\"Type\":\"X\"",
+                ),
+                "input Weight",
+            ),
+            (
+                VALID_PHYSICS.replace("\"VertexIndex\":1", "\"VertexIndex\":2"),
+                "VertexIndex",
+            ),
+        ] {
+            fs::write(&physics, invalid).expect("invalid physics resource");
+            let error = validate_physics_resource(
+                &physics,
+                "model.physics3.json",
+                limits.maximum_json_bytes,
+                limits.maximum_json_depth,
+            )
+            .expect_err("invalid physics resource must be rejected");
+            assert_eq!(error.code, ModelDiagnostic::ModelResourceInvalid);
+            assert!(error.detail.contains(detail), "{}", error.detail);
+        }
+
+        fs::write(package.path().join("model.moc3"), b"moc").expect("moc resource");
+        fs::write(
+            package.path().join("cat.model3.json"),
+            r#"{"Version":3,"FileReferences":{"Moc":"model.moc3","Textures":[],"Physics":"model.physics3.json"}}"#,
+        )
+        .expect("model3 resource");
+        fs::write(
+            &physics,
+            VALID_PHYSICS.replace("\"VertexIndex\":1", "\"VertexIndex\":2"),
+        )
+        .expect("invalid model physics resource");
+        let error = PreparedModel::prepare(
+            ModelId::parse("physics").expect("model id"),
+            package.path(),
+            limits,
+        )
+        .expect_err("model prepare must validate declared physics");
+        assert_eq!(error.code, ModelDiagnostic::ModelResourceInvalid);
+        assert!(error.detail.contains("VertexIndex"));
     }
 
     #[test]

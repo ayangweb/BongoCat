@@ -933,6 +933,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     non-negative FadeInTime、非空 group、跨 group 唯一 part Id，以及不为空、不重复、非 self
     的 Link。该项只是资源静态 preflight；缺少可分发真实 pose3 fixture 和 fade/link 求值证据，
     因此不影响 physics/pose 行为任务和本总项的未完成状态。
+  - 状态（2026-09-06）：产品 parser 现也在 prepare 前严格验证声明的 `physics3` v3
+    version、Meta FPS/force、setting/dictionary 标识和计数、normalization range、input/output
+    权重与 target、vertex 索引及有限系数。该项只是资源静态 preflight；未实现 physics 求值，
+    且缺少可分发真实 physics3 fixture 和行为证据，因此不影响本总项的未完成状态。
   - 状态（2026-09-06）：motion `Sound` 现只接受当前产品音频后端支持的 FLAC，并在 prepare
     阶段验证 signature、首个 34-byte STREAMINFO block、sample rate/channel/bit-depth 边界及非空
     frame 数据；错误格式或损坏 header 在导入前以 `model_resource_invalid` 拒绝。完整解码和输出设备
