@@ -1411,7 +1411,11 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 
 - [x] NSStatusItem + NSMenu 菜单栏。
 - [x] NSApplication activation/reopen/single-instance 行为。
-- [ ] SMAppService 启动项启用、禁用和状态检测。
+- [x] SMAppService 启动项启用、禁用和状态检测。
+  - 验收证据（2026-08-31）：`P7-STARTUP-ITEM-PLATFORM` 已以 Production-only macOS 13+
+    `SMAppService.mainAppService` 完成稳定状态映射与可恢复启用/禁用；macOS 12 和 Development
+    明确为 unsupported 且不触及生产登录项。本机 `/Applications` 安装态 smoke 已通过
+    NotFound -> register -> unregister -> Disabled，完整退出条件及 CI job 证据见该任务。
 - [ ] NSOpenPanel、NSWorkspace 和 pasteboard 最小权限 wrapper。
   - 状态（2026-08-31）：`NSOpenPanel` 模型目录 adapter 已实现并通过主线程边界、稳定错误
     contract 和 macOS 26.5.2 arm64 真实选择/取消交互 smoke。外部 HTTPS URL 以 `/usr/bin/open` 单参数
