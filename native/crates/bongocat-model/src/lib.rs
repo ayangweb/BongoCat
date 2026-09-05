@@ -704,6 +704,26 @@ struct RawMotionResourceCurve {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPoseResource {
+    #[serde(rename = "Type")]
+    kind: String,
+    #[serde(rename = "FadeInTime", default)]
+    fade_in_seconds: Option<f32>,
+    #[serde(rename = "Groups")]
+    groups: Vec<Vec<RawPosePart>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPosePart {
+    #[serde(rename = "Id")]
+    id: String,
+    #[serde(rename = "Link", default)]
+    links: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
 enum RawMotionResourceTarget {
     Model,
     Parameter,
@@ -821,6 +841,18 @@ impl PackageReader {
         let (normalized, path) =
             self.resolve_file(reference, ModelDiagnostic::ModelResourceMissing)?;
         validate_motion_resource(
+            &path,
+            &normalized,
+            self.limits.maximum_json_bytes,
+            self.limits.maximum_json_depth,
+        )?;
+        Ok(normalized)
+    }
+
+    fn resolve_pose(&mut self, reference: &str) -> Result<String, ModelError> {
+        let (normalized, path) =
+            self.resolve_file(reference, ModelDiagnostic::ModelResourceMissing)?;
+        validate_pose_resource(
             &path,
             &normalized,
             self.limits.maximum_json_bytes,
@@ -1023,7 +1055,7 @@ fn inspect_model_package(
         .files
         .pose
         .as_deref()
-        .map(|reference| reader.resolve_json(reference))
+        .map(|reference| reader.resolve_pose(reference))
         .transpose()?;
     let user_data = model
         .files
@@ -1370,6 +1402,58 @@ fn validate_motion_resource(
                 .any(|seconds| !seconds.is_finite() || seconds < 0.0)
         {
             return invalid_resource(reference, "motion3 curve contains invalid values");
+        }
+    }
+    Ok(())
+}
+
+fn validate_pose_resource(
+    path: &Path,
+    reference: &str,
+    maximum_bytes: u64,
+    maximum_depth: usize,
+) -> Result<(), ModelError> {
+    let pose: RawPoseResource = read_json(
+        path,
+        reference,
+        maximum_bytes,
+        maximum_depth,
+        ModelDiagnostic::ModelResourceInvalid,
+    )?;
+    if pose.kind != "Live2D Pose" {
+        return invalid_resource(reference, "pose3 Type must be Live2D Pose");
+    }
+    if pose
+        .fade_in_seconds
+        .is_some_and(|seconds| !seconds.is_finite() || seconds < 0.0)
+    {
+        return invalid_resource(
+            reference,
+            "pose3 FadeInTime must be finite and non-negative",
+        );
+    }
+    if pose.groups.is_empty() {
+        return invalid_resource(reference, "pose3 Groups must contain at least one group");
+    }
+
+    let mut part_ids = BTreeSet::new();
+    for group in pose.groups {
+        if group.is_empty() {
+            return invalid_resource(reference, "pose3 groups must not be empty");
+        }
+        for part in group {
+            if part.id.trim().is_empty() || !part_ids.insert(part.id.clone()) {
+                return invalid_resource(reference, "pose3 part Id must be non-empty and unique");
+            }
+            let mut links = BTreeSet::new();
+            for link in part.links {
+                if link.trim().is_empty() || link == part.id || !links.insert(link) {
+                    return invalid_resource(
+                        reference,
+                        "pose3 Link must be non-empty, unique, and not self-referential",
+                    );
+                }
+            }
         }
     }
     Ok(())
@@ -2300,6 +2384,52 @@ mod tests {
         )
         .expect_err("out-of-range motion user data must be rejected");
         assert_eq!(error.code, ModelDiagnostic::ModelResourceInvalid);
+    }
+
+    #[test]
+    fn pose_contract_rejects_invalid_groups_parts_and_links() {
+        let package = tempdir().expect("package");
+        let limits = ModelPackageLimits::default();
+        let pose = package.path().join("model.pose3.json");
+        fs::write(
+            &pose,
+            r#"{
+              "Type":"Live2D Pose",
+              "FadeInTime":0.5,
+              "Groups":[[
+                {"Id":"PartArmA","Link":["PartArmB"]},
+                {"Id":"PartArmB"}
+              ]]
+            }"#,
+        )
+        .expect("valid pose resource");
+        validate_pose_resource(
+            &pose,
+            "model.pose3.json",
+            limits.maximum_json_bytes,
+            limits.maximum_json_depth,
+        )
+        .expect("valid pose resource must be accepted");
+
+        fs::write(
+            &pose,
+            r#"{
+              "Type":"Live2D Pose",
+              "Groups":[[
+                {"Id":"PartArmA","Link":["PartArmA"]}
+              ]]
+            }"#,
+        )
+        .expect("invalid pose resource");
+        let error = validate_pose_resource(
+            &pose,
+            "model.pose3.json",
+            limits.maximum_json_bytes,
+            limits.maximum_json_depth,
+        )
+        .expect_err("self-referential pose link must be rejected");
+        assert_eq!(error.code, ModelDiagnostic::ModelResourceInvalid);
+        assert!(error.detail.contains("not self-referential"));
     }
 
     #[test]
