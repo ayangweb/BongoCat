@@ -15,9 +15,11 @@ pub enum UpdateScheduleErrorCode {
 }
 
 impl UpdateScheduleErrorCode {
+    pub const ALL: [Self; 1] = [Self::MonotonicTimeRegressed];
+
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::MonotonicTimeRegressed => "monotonic_time_regressed",
+            Self::MonotonicTimeRegressed => "update_schedule_monotonic_time_regressed",
         }
     }
 }
@@ -114,6 +116,22 @@ const fn next_after(now: Duration) -> Option<NextAutomaticCheck> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn error_codes_are_stable_and_unique() {
+        let mut codes = UpdateScheduleErrorCode::ALL
+            .iter()
+            .map(|code| code.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            codes
+                .iter()
+                .all(|code| code.starts_with("update_schedule_"))
+        );
+        codes.sort_unstable();
+        codes.dedup();
+        assert_eq!(codes.len(), UpdateScheduleErrorCode::ALL.len());
+    }
 
     #[test]
     fn enabled_schedule_checks_at_startup_then_every_twenty_four_hours() {

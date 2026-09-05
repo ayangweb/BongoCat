@@ -34,6 +34,23 @@ pub enum UpdateSequenceStoreErrorCode {
 }
 
 impl UpdateSequenceStoreErrorCode {
+    pub const ALL: [Self; 14] = [
+        Self::DirectoryCreateFailed,
+        Self::DirectoryInvalid,
+        Self::DirectoryPermissionFailed,
+        Self::SequenceInvalid,
+        Self::SequenceRollbackDetected,
+        Self::StateChannelMismatch,
+        Self::StateInvalid,
+        Self::StateLockFailed,
+        Self::StateLockUnavailable,
+        Self::StateReadFailed,
+        Self::StateSchemaUnsupported,
+        Self::StateTooLarge,
+        Self::StateVerificationFailed,
+        Self::StateWriteFailed,
+    ];
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::DirectoryCreateFailed => "update_sequence_directory_create_failed",
@@ -281,6 +298,22 @@ mod tests {
     use super::*;
     use bongocat_config::BuildEnvironment;
     use tempfile::tempdir;
+
+    #[test]
+    fn error_codes_are_stable_and_unique() {
+        let mut codes = UpdateSequenceStoreErrorCode::ALL
+            .iter()
+            .map(|code| code.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            codes
+                .iter()
+                .all(|code| code.starts_with("update_sequence_"))
+        );
+        codes.sort_unstable();
+        codes.dedup();
+        assert_eq!(codes.len(), UpdateSequenceStoreErrorCode::ALL.len());
+    }
 
     #[test]
     fn persisted_sequence_survives_reopen_and_is_environment_bound() {

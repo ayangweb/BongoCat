@@ -14,6 +14,14 @@ pub enum UpdateDownloadErrorCode {
 }
 
 impl UpdateDownloadErrorCode {
+    pub const ALL: [Self; 5] = [
+        Self::Cancelled,
+        Self::HttpStatus,
+        Self::Integrity,
+        Self::Staging,
+        Self::Transport,
+    ];
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Cancelled => "update_download_cancelled",
@@ -178,6 +186,22 @@ mod tests {
             byte_length: bytes.len() as u64,
             sha256: Sha256::digest(bytes).into(),
         }
+    }
+
+    #[test]
+    fn error_codes_are_stable_and_unique() {
+        let mut codes = UpdateDownloadErrorCode::ALL
+            .iter()
+            .map(|code| code.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            codes
+                .iter()
+                .all(|code| code.starts_with("update_download_"))
+        );
+        codes.sort_unstable();
+        codes.dedup();
+        assert_eq!(codes.len(), UpdateDownloadErrorCode::ALL.len());
     }
 
     #[test]

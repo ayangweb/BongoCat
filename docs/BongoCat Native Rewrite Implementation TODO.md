@@ -1523,8 +1523,9 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     `platform_input_*` code；overlay 继续只将其归类投影为 input service status，避免在
     Settings snapshot 或日志中包含 OS 原始文本。
     `UpdateErrorCode` 现注册全部 32 个 manifest/verifier/artifact 失败 code，并以唯一性回归
-    固定命名；网络 source、下载协调器与 sequence/staging 的其他 update code 仍待统一投影到
-    diagnostics export。
+    固定命名；download、schedule 和 sequence store 的公开 code 也各自提供完整 `ALL` catalog 和
+    namespace/唯一性回归，调度回退固定为 `update_schedule_monotonic_time_regressed`。网络 source、
+    staging composite error 与这些 code 的产品 diagnostics export 投影仍待完成。
 - [ ] 日志导出生成可预览的脱敏包。
   - 状态（2026-09-01）：settings service 已新增有界 `ExportDiagnostics` command，使用当前环境
     `logs/diagnostics.json` 的同目录原子写入生成 format v1 JSON。导出只包含稳定 runtime/input/
