@@ -2471,7 +2471,7 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       Development sequence 写入 Production 根。目录形状测试逐项包含该目录；store 只在此目录写入
       `update-sequence.json` 和锁文件，不与 config/state 事务混用。`UpdateVerificationSession` 已将
       该 store 与 verifier 组合，拒绝签名不推进 state，成功验证会持久化 sequence 并立即收紧同一
-      session 的 rollback 下限；不包含 endpoint、下载或安装器。
+      session 的 rollback 下限；`Available` 与 `UpToDate` 都有回归测试。不包含 endpoint、下载或安装器。
 
 68. [x] `P7-AUTOMATIC-UPDATE-PREFERENCE`：让当前 v1 自动检查更新偏好进入正式设置链路。
     - 依赖：当前 v1 `application.check_for_updates_automatically`、settings typed command/snapshot、

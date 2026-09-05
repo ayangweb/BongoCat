@@ -763,6 +763,48 @@ mod tests {
     }
 
     #[test]
+    fn verification_session_records_a_verified_up_to_date_manifest() {
+        let directory = tempdir().expect("temporary directory");
+        let layout = StorageLayout::under(directory.path(), BuildEnvironment::Development);
+        let key = signing_key();
+        let trusted_key = TrustedPublicKey::new(
+            KEY_ID,
+            UpdateChannel::Development,
+            key.verifying_key().to_bytes(),
+            1,
+            None,
+        )
+        .expect("trusted key");
+        let mut session = UpdateVerificationSession::open(
+            &layout,
+            TargetTriple::Aarch64AppleDarwin,
+            "0.2.0",
+            vec![trusted_key],
+        )
+        .expect("verification session");
+        let manifest =
+            serde_json::to_vec(&manifest(b"signed update artifact")).expect("serialize manifest");
+        let signature = key.sign(&manifest);
+
+        assert!(matches!(
+            session
+                .verify_manifest(&manifest, KEY_ID, &signature.to_bytes())
+                .expect("verified up-to-date manifest"),
+            UpdateDecision::UpToDate {
+                release_sequence: 2,
+                ..
+            }
+        ));
+        assert_eq!(
+            UpdateSequenceStore::open_for_layout(&layout)
+                .expect("sequence store")
+                .highest_verified_sequence()
+                .expect("stored sequence"),
+            2
+        );
+    }
+
+    #[test]
     fn signature_is_checked_before_manifest_parsing() {
         let bytes = br#"{"schema_version":1}"#;
         let signature = signing_key().sign(b"different bytes");
