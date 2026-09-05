@@ -295,8 +295,16 @@ pub(super) fn content(
                                             .get(&target)
                                             .expect("shortcut row focus is synchronized")
                                             .clone();
+                                        let clear_focus = view
+                                            .shortcut_clear_focus
+                                            .get(&target)
+                                            .expect("shortcut clear focus is synchronized")
+                                            .clone();
+                                        let clear_key_focus = clear_focus.clone();
                                         let tab_index = shortcut_capture_tab_index(index);
                                         let keyboard_target = target.clone();
+                                        let clear_target = target.clone();
+                                        let clear_key_target = target.clone();
                                         div()
                                             .flex()
                                             .items_center()
@@ -344,6 +352,38 @@ pub(super) fn content(
                                                             view.begin_shortcut_capture(
                                                                 keyboard_target.clone(),
                                                                 window,
+                                                                cx,
+                                                            );
+                                                        }
+                                                    },
+                                                )),
+                                            )
+                                            .child(
+                                                command_button(
+                                                    ui_text(language, UiText::Clear),
+                                                    &clear_focus,
+                                                    shortcut_clear_tab_index(index),
+                                                    window,
+                                                    tokens,
+                                                    disabled,
+                                                )
+                                                .id(("clear-command", index))
+                                                .on_click(cx.listener(
+                                                    move |view, _, window, cx| {
+                                                        window.focus(&clear_focus, cx);
+                                                        view.clear_shortcut(
+                                                            clear_target.clone(),
+                                                            cx,
+                                                        );
+                                                    },
+                                                ))
+                                                .on_key_down(cx.listener(
+                                                    move |view, event, window, cx| {
+                                                        if is_activation_key(event) {
+                                                            cx.stop_propagation();
+                                                            window.focus(&clear_key_focus, cx);
+                                                            view.clear_shortcut(
+                                                                clear_key_target.clone(),
                                                                 cx,
                                                             );
                                                         }

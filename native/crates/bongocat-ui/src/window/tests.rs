@@ -161,13 +161,13 @@ fn shortcut_capture_targets_have_independent_tab_stops() {
             &entries,
             SettingsLanguage::EnglishUnitedStates,
         );
-        assert_eq!(clear_rows.len(), 1);
+        assert_eq!(clear_rows.len(), 3);
         assert_eq!(
             shortcut_clear_target_for_accessibility_node(
                 &shortcuts,
                 Some(&active_model),
                 &entries,
-                shortcut_clear_accessibility_node_id(0),
+                shortcut_clear_accessibility_node_id(2),
             ),
             Some(ShortcutCaptureTarget::ModelBehavior {
                 model_id: "standard".to_owned(),
@@ -226,6 +226,29 @@ fn behavior_shortcut_capture_creates_and_clear_removes_a_binding() {
     assert!(clear_shortcut(&mut shortcuts, &target));
     assert!(shortcuts.model_behaviors.is_empty());
     assert!(!clear_shortcut(&mut shortcuts, &target));
+}
+
+#[test]
+fn command_shortcut_clear_removes_only_the_selected_binding() {
+    let mut shortcuts = SettingsShortcuts {
+        commands: vec![
+            SettingsShortcutBinding {
+                command: "toggle_overlay".to_owned(),
+                shortcut: "Control+B".to_owned(),
+            },
+            SettingsShortcutBinding {
+                command: "open_settings".to_owned(),
+                shortcut: "Control+S".to_owned(),
+            },
+        ],
+        model_behaviors: Vec::new(),
+    };
+    assert!(clear_shortcut(
+        &mut shortcuts,
+        &ShortcutCaptureTarget::Command("toggle_overlay".to_owned()),
+    ));
+    assert_eq!(shortcuts.commands.len(), 1);
+    assert_eq!(shortcuts.commands[0].command, "open_settings");
 }
 
 #[test]

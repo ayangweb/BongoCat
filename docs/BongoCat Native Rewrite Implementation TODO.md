@@ -2283,7 +2283,7 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       - 状态（2026-09-01）：Diagnostics 页面现展示当前 command/model shortcut 的匿名绑定文本，并
         提供带 expected config revision 的“Restore default shortcuts”和“Clear all” typed 操作；按钮
         复用 settings worker、稳定错误映射、可见焦点和 AccessKit tree，配置冲突或服务关闭时保持原
-        快照。设置页现为每条 command 与 model behavior 提供 Capture 控件：捕获结果仅进入平台无关的
+        快照。设置页现为每条 command 与 model behavior 提供 Capture 控件，并可单项 Clear：捕获结果仅进入平台无关的
         canonical chord，提交前执行跨域冲突预览并复用 revision-checked `SetShortcuts`；非法键与冲突
         保持原快照并显示可重试诊断。新增 3 项 UI contract 测试覆盖 modifier/key 规范化、非法键和
         冲突检测。双平台实机触发证据仍待完成。

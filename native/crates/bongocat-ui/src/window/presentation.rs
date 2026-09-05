@@ -160,7 +160,6 @@ pub(super) fn shortcut_clear_accessibility_rows(
                 (row.target, label)
             })
         })
-        .filter(|(target, _)| matches!(target, ShortcutCaptureTarget::ModelBehavior { .. }))
         .collect()
 }
 
@@ -262,18 +261,25 @@ pub(super) fn clear_shortcut(
     shortcuts: &mut SettingsShortcuts,
     target: &ShortcutCaptureTarget,
 ) -> bool {
-    let ShortcutCaptureTarget::ModelBehavior {
-        model_id,
-        behavior_id,
-    } = target
-    else {
-        return false;
-    };
-    let original_len = shortcuts.model_behaviors.len();
-    shortcuts
-        .model_behaviors
-        .retain(|binding| binding.model_id != *model_id || binding.behavior_id != *behavior_id);
-    shortcuts.model_behaviors.len() != original_len
+    match target {
+        ShortcutCaptureTarget::Command(command) => {
+            let original_len = shortcuts.commands.len();
+            shortcuts
+                .commands
+                .retain(|binding| binding.command != *command);
+            shortcuts.commands.len() != original_len
+        }
+        ShortcutCaptureTarget::ModelBehavior {
+            model_id,
+            behavior_id,
+        } => {
+            let original_len = shortcuts.model_behaviors.len();
+            shortcuts.model_behaviors.retain(|binding| {
+                binding.model_id != *model_id || binding.behavior_id != *behavior_id
+            });
+            shortcuts.model_behaviors.len() != original_len
+        }
+    }
 }
 
 pub(super) fn canonical_capture_key(key: &str) -> Option<String> {
