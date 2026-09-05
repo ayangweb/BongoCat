@@ -3,8 +3,8 @@ use crate::{
     ParameterUpdate, ProductParameter, sys,
 };
 use bongocat_render::{
-    BlendMode, CanvasInfo, DrawableId, DrawableSnapshot, ModelBounds, RenderSnapshot, TextureId,
-    Vertex,
+    BlendMode, CanvasInfo, DrawableDynamicFlags, DrawableId, DrawableSnapshot, ModelBounds,
+    RenderSnapshot, TextureId, Vertex,
 };
 use std::{
     alloc::{Layout, alloc_zeroed, dealloc},
@@ -483,6 +483,7 @@ impl CoreModel {
             let opacity = opacity.clamp(0.0, 1.0);
             drawables.push(DrawableSnapshot {
                 id: DrawableId::new(source_index),
+                dynamic_flags: decode_dynamic_flags(dynamic_flags[source_index]),
                 render_order: render_orders[source_index],
                 visible,
                 texture_id: TextureId::new(texture_index),
@@ -524,6 +525,17 @@ impl CoreModel {
             unsafe { sys::csmGetParameterCount(self.model.as_ptr()) },
             "parameter count",
         )
+    }
+}
+
+fn decode_dynamic_flags(flags: u8) -> DrawableDynamicFlags {
+    DrawableDynamicFlags {
+        visibility_changed: flags & sys::csmVisibilityDidChange as u8 != 0,
+        opacity_changed: flags & sys::csmOpacityDidChange as u8 != 0,
+        draw_order_changed: flags & sys::csmDrawOrderDidChange as u8 != 0,
+        render_order_changed: flags & sys::csmRenderOrderDidChange as u8 != 0,
+        vertex_positions_changed: flags & sys::csmVertexPositionsDidChange as u8 != 0,
+        blend_color_changed: flags & sys::csmBlendColorDidChange as u8 != 0,
     }
 }
 
@@ -765,7 +777,7 @@ mod tests {
         for id in ["standard", "keyboard", "gamepad"] {
             let committed = preset_model(id);
             let mut model = crate::Live2dModel::load(&committed).expect("load Cubism model");
-            let first = model.update_and_snapshot().expect("first snapshot");
+            let mut first = model.update_and_snapshot().expect("first snapshot");
             assert!(!first.drawables.is_empty());
             assert_eq!(first.bounds, ModelBounds::from_canvas(first.canvas));
             assert!(first.drawables.iter().all(|drawable| {
@@ -773,8 +785,14 @@ mod tests {
                     && !drawable.vertices.is_empty()
                     && !drawable.indices.is_empty()
             }));
+            clear_dynamic_flags(&mut first);
             for _ in 0..10 {
-                assert_eq!(model.update_and_snapshot().expect("repeat snapshot"), first);
+                let mut repeated = model.update_and_snapshot().expect("repeat snapshot");
+                // Core may report transient change bits while the exported
+                // drawable values remain unchanged. They are frame metadata,
+                // not part of the stable visual snapshot contract.
+                clear_dynamic_flags(&mut repeated);
+                assert_eq!(repeated, first);
             }
         }
     }
@@ -854,8 +872,50 @@ mod tests {
                 Some(range.maximum)
             );
             let pressed = model.update_and_snapshot().expect("pressed snapshot");
-            assert_ne!(pressed, baseline, "{id} left hand must affect drawables");
+            assert!(
+                pressed
+                    .drawables
+                    .iter()
+                    .any(|drawable| drawable.dynamic_flags.vertex_positions_changed),
+                "{id} left hand must mark changed drawable vertices"
+            );
+            let mut pressed_visual = pressed;
+            let mut baseline_visual = baseline;
+            clear_dynamic_flags(&mut pressed_visual);
+            clear_dynamic_flags(&mut baseline_visual);
+            assert_ne!(
+                pressed_visual, baseline_visual,
+                "{id} left hand must affect drawable values"
+            );
         }
+    }
+
+    fn clear_dynamic_flags(snapshot: &mut RenderSnapshot) {
+        for drawable in &mut snapshot.drawables {
+            drawable.dynamic_flags = DrawableDynamicFlags::default();
+        }
+    }
+
+    #[test]
+    fn dynamic_flags_preserve_each_cubism_change_bit() {
+        assert_eq!(
+            decode_dynamic_flags(
+                sys::csmVisibilityDidChange as u8
+                    | sys::csmOpacityDidChange as u8
+                    | sys::csmDrawOrderDidChange as u8
+                    | sys::csmRenderOrderDidChange as u8
+                    | sys::csmVertexPositionsDidChange as u8
+                    | sys::csmBlendColorDidChange as u8,
+            ),
+            DrawableDynamicFlags {
+                visibility_changed: true,
+                opacity_changed: true,
+                draw_order_changed: true,
+                render_order_changed: true,
+                vertex_positions_changed: true,
+                blend_color_changed: true,
+            }
+        );
     }
 
     #[test]

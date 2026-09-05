@@ -146,6 +146,7 @@ struct Mesh {
     render_order: i32,
     vertex_buffer: Buffer,
     index_buffer: Buffer,
+    indices: Vec<u16>,
     index_count: u64,
     texture_id: TextureId,
     opacity: f32,
@@ -1762,6 +1763,7 @@ impl GpuModel {
                     render_order: drawable.render_order,
                     vertex_buffer,
                     index_buffer,
+                    indices: drawable.indices.clone(),
                     index_count: drawable.indices.len() as u64,
                     texture_id: drawable.texture_id,
                     opacity: drawable.opacity,
@@ -1830,10 +1832,24 @@ impl GpuModel {
                     drawable.id
                 )));
             }
-            upload_slice(&mesh.vertex_buffer, &drawable.vertices, "vertices")?;
-            upload_slice(&mesh.index_buffer, &drawable.indices, "indices")?;
+            if mesh.indices != drawable.indices {
+                return Err(OverlayError::new(format!(
+                    "drawable {} changed immutable triangle indices",
+                    drawable.id
+                )));
+            }
+            if mesh.vertex_buffer.length()
+                != std::mem::size_of_val(drawable.vertices.as_slice()) as u64
+            {
+                return Err(OverlayError::new(format!(
+                    "drawable {} changed vertex buffer size",
+                    drawable.id
+                )));
+            }
+            if drawable.dynamic_flags.vertex_positions_changed {
+                upload_slice(&mesh.vertex_buffer, &drawable.vertices, "vertices")?;
+            }
             mesh.render_order = drawable.render_order;
-            mesh.index_count = drawable.indices.len() as u64;
             mesh.texture_id = drawable.texture_id;
             mesh.opacity = drawable.opacity;
             mesh.blend_mode = drawable.blend_mode;

@@ -1084,6 +1084,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-30）：macOS Metal renderer 已消费每帧 Core snapshot，并按 stable
     `source_index` 更新固定 GPU buffer、重新应用 render order/visibility/opacity/color/
     mask 状态；基于 Core dynamic flags 的 dirty-only upload 与 Windows 对等实现尚未完成。
+  - 状态（2026-09-06）：`DrawableSnapshot` 现携带 Cubism visibility/opacity/draw-order/
+    render-order/vertex-position/blend-color 六个 dynamic bits；Metal 与 D3D11 共同只在
+    `vertex_positions_changed` 时上传 vertex buffer，并拒绝同一 model generation 内的 index
+    topology 变化。三个预置模型真实 Core regression 覆盖 flags 译码、稳定 visual snapshot 与按键
+    参数驱动的顶点变化；macOS release preview 和 Windows x64 cross-check 通过。Windows 实机
+    present、其他 GPU 资源的 dirty 策略及跨 backend 像素比较仍待完成，因此保持未勾选。
 - [ ] 实现 normal/additive/multiplicative blend。
   - 状态（2026-09-06）：`bongocat-overlay` 现以共享的纯 Rust pre-multiplied blend-factor
     contract 定义 Normal/Additive/Multiplicative 的 RGB/alpha source/destination factor，Metal 与

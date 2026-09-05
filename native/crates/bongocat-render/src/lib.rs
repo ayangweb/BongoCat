@@ -152,6 +152,7 @@ pub struct Vertex {
 #[derive(Clone, Debug, PartialEq)]
 pub struct DrawableSnapshot {
     pub id: DrawableId,
+    pub dynamic_flags: DrawableDynamicFlags,
     pub render_order: i32,
     pub visible: bool,
     pub texture_id: TextureId,
@@ -164,6 +165,20 @@ pub struct DrawableSnapshot {
     pub masks: Vec<DrawableId>,
     pub vertices: Vec<Vertex>,
     pub indices: Vec<u16>,
+}
+
+/// Per-frame changes reported by Cubism for one drawable.
+///
+/// Renderers use these flags to avoid rewriting GPU buffers whose source data
+/// did not change during the current Core update.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct DrawableDynamicFlags {
+    pub visibility_changed: bool,
+    pub opacity_changed: bool,
+    pub draw_order_changed: bool,
+    pub render_order_changed: bool,
+    pub vertex_positions_changed: bool,
+    pub blend_color_changed: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]

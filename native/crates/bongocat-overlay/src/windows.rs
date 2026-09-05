@@ -272,6 +272,7 @@ struct Mesh {
     vertex_bytes: usize,
     index_buffer: ID3D11Buffer,
     index_bytes: usize,
+    indices: Vec<u16>,
     index_count: u32,
     texture_id: TextureId,
     opacity: f32,
@@ -1834,6 +1835,7 @@ impl GpuModel {
                 vertex_bytes: size_of_val(drawable.vertices.as_slice()),
                 index_buffer,
                 index_bytes: size_of_val(drawable.indices.as_slice()),
+                indices: drawable.indices.clone(),
                 index_count: drawable.indices.len() as u32,
                 texture_id: drawable.texture_id,
                 opacity: drawable.opacity,
@@ -1902,34 +1904,32 @@ impl GpuModel {
                 .iter_mut()
                 .find(|mesh| mesh.id == drawable.id)
                 .ok_or_else(|| invariant_error("drawable source is unavailable"))?;
-            if mesh.vertex_bytes != size_of_val(drawable.vertices.as_slice())
-                || mesh.index_bytes != size_of_val(drawable.indices.as_slice())
+            if mesh.vertex_bytes != size_of_val(drawable.vertices.as_slice()) {
+                return Err(invariant_error("drawable vertex buffer size changed"));
+            }
+            if mesh.index_bytes != size_of_val(drawable.indices.as_slice())
+                || mesh.indices != drawable.indices
             {
-                return Err(invariant_error("drawable buffer size changed"));
+                return Err(invariant_error("drawable triangle indices changed"));
             }
             if mesh.mask_target.is_some() != !drawable.masks.is_empty() {
                 return Err(invariant_error("drawable clipping topology changed"));
             }
-            unsafe {
-                context.UpdateSubresource(
-                    &mesh.vertex_buffer,
-                    0,
-                    None,
-                    drawable.vertices.as_ptr().cast(),
-                    0,
-                    0,
-                );
-                context.UpdateSubresource(
-                    &mesh.index_buffer,
-                    0,
-                    None,
-                    drawable.indices.as_ptr().cast(),
-                    0,
-                    0,
-                );
+            if drawable.dynamic_flags.vertex_positions_changed {
+                // SAFETY: the vertex buffer is validated to match the immutable
+                // snapshot geometry, and Core marked its positions as changed.
+                unsafe {
+                    context.UpdateSubresource(
+                        &mesh.vertex_buffer,
+                        0,
+                        None,
+                        drawable.vertices.as_ptr().cast(),
+                        0,
+                        0,
+                    );
+                }
             }
             mesh.render_order = drawable.render_order;
-            mesh.index_count = drawable.indices.len() as u32;
             mesh.texture_id = drawable.texture_id;
             mesh.opacity = drawable.opacity;
             mesh.blend_mode = drawable.blend_mode;

@@ -503,6 +503,12 @@ RenderSnapshot
 
 renderer 负责遮罩、混合、裁剪、纹理上传、dirty flag、present 和 GPU 生命周期；不读取配置、不决定动作、不访问 GPUI entity。
 
+Cubism Core 在每次 `UpdateModel` 后的 drawable dynamic flags 必须随 `RenderSnapshot` 一起复制，
+并在 `ResetDrawableDynamicFlags` 前完成读取。v1 中 drawable index topology 在同一 model generation
+内不可变，backend 检测到变化即拒绝该 snapshot；Windows 与 macOS 只在
+`vertex_positions_changed` 时重写对应 vertex buffer，render order、visibility、opacity 与颜色仍以
+同一帧 snapshot 更新 CPU-side draw state。
+
 所有 v1 PNG RGBA 贴图（Cubism texture、背景与按键 overlay）按 sRGB 编码解释；Windows 使用
 `R8G8B8A8_UNORM_SRGB`、macOS 使用 `RGBA8Unorm_sRGB`，使 shader sampling 和颜色计算在
 linear 空间进行。最终预乘 alpha 颜色写入 sRGB composition/drawable surface（Windows
