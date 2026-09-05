@@ -5,17 +5,18 @@ impl Render for SettingsView {
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
             if let Some(target) = self.accessibility_focus.take() {
-                if target == ACCESSIBILITY_LANGUAGE {
-                    let focus = self.language_select.read(cx).focus_handle(cx);
+                if target == ACCESSIBILITY_LANGUAGE || target == ACCESSIBILITY_THEME {
+                    let focus = if target == ACCESSIBILITY_LANGUAGE {
+                        self.language_select.read(cx).focus_handle(cx)
+                    } else {
+                        self.theme_select.read(cx).focus_handle(cx)
+                    };
                     focus.focus(window, cx);
                 }
                 let static_focus = match target {
                     ACCESSIBILITY_GENERAL => Some(&self.general_focus),
                     ACCESSIBILITY_MODELS => Some(&self.models_focus),
                     ACCESSIBILITY_DIAGNOSTICS => Some(&self.diagnostics_focus),
-                    ACCESSIBILITY_THEME_SYSTEM => Some(&self.theme_system_focus),
-                    ACCESSIBILITY_THEME_LIGHT => Some(&self.theme_light_focus),
-                    ACCESSIBILITY_THEME_DARK => Some(&self.theme_dark_focus),
                     ACCESSIBILITY_OVERLAY => Some(&self.overlay_focus),
                     ACCESSIBILITY_OVERLAY_TOPMOST => Some(&self.overlay_topmost_focus),
                     ACCESSIBILITY_OVERLAY_CLICK_THROUGH => Some(&self.overlay_click_through_focus),
@@ -66,7 +67,7 @@ impl Render for SettingsView {
                     shortcut_target_for_accessibility_node(&snapshot.shortcuts, target)
                         .and_then(|target| self.shortcut_row_focus.get(&target))
                 });
-                if target != ACCESSIBILITY_LANGUAGE {
+                if target != ACCESSIBILITY_LANGUAGE && target != ACCESSIBILITY_THEME {
                     window.focus(
                         static_focus
                             .or(shortcut_focus)
@@ -137,34 +138,10 @@ impl Render for SettingsView {
                             SettingField::element({
                                 let view = view_entity.clone();
                                 move |_: &RenderOptions, _: &mut Window, app: &mut App| {
-                                    let selected = view
-                                        .read(app)
-                                        .snapshot
-                                        .as_ref()
-                                        .map(|snapshot| theme_index(snapshot.appearance_theme));
-                                    let view_for_change = view.clone();
-                                    RadioGroup::horizontal("appearance-theme")
-                                        .children([
-                                            Radio::new("appearance-theme-system")
-                                                .label(ui_text(language, UiText::System))
-                                                .tab_index(4),
-                                            Radio::new("appearance-theme-light")
-                                                .label(ui_text(language, UiText::Light))
-                                                .tab_index(5),
-                                            Radio::new("appearance-theme-dark")
-                                                .label(ui_text(language, UiText::Dark))
-                                                .tab_index(6),
-                                        ])
-                                        .selected_index(selected)
+                                    let state = view.read(app).theme_select.clone();
+                                    Select::new(&state)
+                                        .accessibility_label(ui_text(language, UiText::Theme))
                                         .disabled(disabled)
-                                        .on_click(move |index, _, app| {
-                                            let Some(theme) = theme_from_index(*index) else {
-                                                return;
-                                            };
-                                            view_for_change.update(app, |view, cx| {
-                                                view.set_appearance_theme(theme, cx)
-                                            });
-                                        })
                                         .into_any_element()
                                 }
                             }),

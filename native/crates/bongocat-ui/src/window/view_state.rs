@@ -63,6 +63,18 @@ impl SettingsView {
                 cx,
             )
         });
+        self.theme_select.update(cx, |select, cx| {
+            select.set_items(
+                SearchableVec::new(theme_options(snapshot.resolved_language)),
+                window,
+                cx,
+            );
+            select.set_selected_value(
+                &theme_display_name(snapshot.appearance_theme, snapshot.resolved_language),
+                window,
+                cx,
+            )
+        });
         self.syncing_component_inputs = false;
     }
 
@@ -92,6 +104,14 @@ impl SettingsView {
                         })
                         .collect::<Vec<_>>(),
                 ),
+                Some(IndexPath::new(0)),
+                window,
+                cx,
+            )
+        });
+        let theme_select = cx.new(|cx| {
+            SelectState::new(
+                SearchableVec::new(theme_options(SettingsLanguage::EnglishUnitedStates)),
                 Some(IndexPath::new(0)),
                 window,
                 cx,
@@ -238,6 +258,26 @@ impl SettingsView {
             },
         )
         .detach();
+        cx.subscribe(
+            &theme_select,
+            |view, _, event: &SelectEvent<SearchableVec<&'static str>>, cx| {
+                if view.syncing_component_inputs {
+                    return;
+                }
+                let display_language = view
+                    .snapshot
+                    .as_ref()
+                    .map_or(SettingsLanguage::EnglishUnitedStates, |snapshot| {
+                        snapshot.resolved_language
+                    });
+                if let SelectEvent::Confirm(Some(name)) = event
+                    && let Some(theme) = theme_from_display_name(name, display_language)
+                {
+                    view.set_appearance_theme(theme, cx);
+                }
+            },
+        )
+        .detach();
         Self {
             client,
             snapshot: None,
@@ -253,13 +293,11 @@ impl SettingsView {
             window_hidden: false,
             applied_theme: None,
             language_select,
+            theme_select,
             request_quit,
             general_focus: cx.focus_handle().tab_index(1).tab_stop(true),
             models_focus: cx.focus_handle().tab_index(2).tab_stop(true),
             diagnostics_focus: cx.focus_handle().tab_index(3).tab_stop(true),
-            theme_system_focus: cx.focus_handle().tab_index(4).tab_stop(true),
-            theme_light_focus: cx.focus_handle().tab_index(5).tab_stop(true),
-            theme_dark_focus: cx.focus_handle().tab_index(6).tab_stop(true),
             status_icon_focus: cx.focus_handle().tab_index(9).tab_stop(true),
             #[cfg(target_os = "windows")]
             taskbar_icon_focus: cx.focus_handle().tab_index(38).tab_stop(true),

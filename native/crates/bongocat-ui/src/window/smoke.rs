@@ -187,52 +187,30 @@ impl SettingsView {
         {
             let tree = self.accessibility_tree();
             tree.validate().map_err(|error| error.to_string())?;
-            for (id, theme, label) in [
-                (
-                    ACCESSIBILITY_THEME_SYSTEM,
-                    SettingsTheme::System,
-                    ui_text(snapshot.resolved_language, UiText::System),
-                ),
-                (
-                    ACCESSIBILITY_THEME_LIGHT,
-                    SettingsTheme::Light,
-                    ui_text(snapshot.resolved_language, UiText::Light),
-                ),
-                (
-                    ACCESSIBILITY_THEME_DARK,
-                    SettingsTheme::Dark,
-                    ui_text(snapshot.resolved_language, UiText::Dark),
-                ),
-            ] {
-                let node = tree
-                    .nodes
-                    .iter()
-                    .find(|node| node.id == id)
-                    .ok_or_else(|| {
-                        "general accessibility tree omitted an appearance theme".to_owned()
-                    })?;
-                if node.role != AccessibilityRole::RadioButton
-                    || node.label != label
-                    || node.description.as_deref()
-                        != Some(ui_text(
-                            snapshot.resolved_language,
-                            UiText::ThemeDescription,
-                        ))
-                    || node.disabled != controls_disabled
-                    || node.supports_click != !controls_disabled
-                    || node.supports_focus != !controls_disabled
-                    || node.toggled
-                        != Some(if snapshot.appearance_theme == theme {
-                            AccessibilityToggle::On
-                        } else {
-                            AccessibilityToggle::Off
-                        })
-                {
-                    return Err(
-                        "theme accessibility semantics diverged from the visible control"
-                            .to_owned(),
-                    );
-                }
+            let theme = tree
+                .nodes
+                .iter()
+                .find(|node| node.id == ACCESSIBILITY_THEME)
+                .ok_or_else(|| "general accessibility tree omitted the theme setting".to_owned())?;
+            if theme.role != AccessibilityRole::ComboBox
+                || theme.label != ui_text(snapshot.resolved_language, UiText::Theme)
+                || theme.description.as_deref()
+                    != Some(ui_text(
+                        snapshot.resolved_language,
+                        UiText::ThemeDescription,
+                    ))
+                || theme.value.as_deref()
+                    != Some(theme_display_name(
+                        snapshot.appearance_theme,
+                        snapshot.resolved_language,
+                    ))
+                || theme.disabled != controls_disabled
+                || theme.supports_click != !controls_disabled
+                || theme.supports_focus != !controls_disabled
+            {
+                return Err(
+                    "theme accessibility semantics diverged from the visible control".to_owned(),
+                );
             }
             let language = tree
                 .nodes

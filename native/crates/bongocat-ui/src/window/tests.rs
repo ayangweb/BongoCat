@@ -380,6 +380,22 @@ fn commands_accept_enter_and_space_without_command_modifiers() {
 
 #[test]
 fn appearance_theme_selection_has_stable_indices_and_system_projection() {
+    assert_eq!(
+        theme_options(SettingsLanguage::EnglishUnitedStates),
+        ["System", "Light", "Dark"]
+    );
+    assert_eq!(
+        theme_options(SettingsLanguage::ChineseSimplified),
+        ["跟随系统", "浅色", "深色"]
+    );
+    assert_eq!(
+        theme_from_display_name("深色", SettingsLanguage::ChineseSimplified),
+        Some(SettingsTheme::Dark)
+    );
+    assert_eq!(
+        theme_from_display_name("Unknown", SettingsLanguage::EnglishUnitedStates),
+        None
+    );
     assert_eq!(theme_index(SettingsTheme::System), 0);
     assert_eq!(theme_index(SettingsTheme::Light), 1);
     assert_eq!(theme_index(SettingsTheme::Dark), 2);

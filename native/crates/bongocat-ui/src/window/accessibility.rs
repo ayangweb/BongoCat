@@ -30,37 +30,17 @@ impl SettingsView {
             startup_item_presentation(snapshot.map(|s| s.startup_item), disabled, language);
         let selected_theme =
             snapshot.map_or(SettingsTheme::System, |snapshot| snapshot.appearance_theme);
-        let theme_nodes = [
-            (
-                ACCESSIBILITY_THEME_SYSTEM,
-                SettingsTheme::System,
-                ui_text(language, UiText::System),
-            ),
-            (
-                ACCESSIBILITY_THEME_LIGHT,
-                SettingsTheme::Light,
-                ui_text(language, UiText::Light),
-            ),
-            (
-                ACCESSIBILITY_THEME_DARK,
-                SettingsTheme::Dark,
-                ui_text(language, UiText::Dark),
-            ),
-        ]
-        .map(|(id, theme, label)| {
-            let mut node = AccessibilityNode::new(id, AccessibilityRole::RadioButton, label)
-                .with_description(ui_text(language, UiText::ThemeDescription))
-                .with_toggle(if selected_theme == theme {
-                    AccessibilityToggle::On
-                } else {
-                    AccessibilityToggle::Off
-                })
-                .disabled(disabled);
-            if !disabled {
-                node = node.clickable().focusable();
-            }
-            node
-        });
+        let mut theme_node = AccessibilityNode::new(
+            ACCESSIBILITY_THEME,
+            AccessibilityRole::ComboBox,
+            ui_text(language, UiText::Theme),
+        )
+        .with_description(ui_text(language, UiText::ThemeDescription))
+        .with_value(theme_display_name(selected_theme, language))
+        .disabled(disabled);
+        if !disabled {
+            theme_node = theme_node.clickable().focusable();
+        }
         let mut language_node = AccessibilityNode::new(
             ACCESSIBILITY_LANGUAGE,
             AccessibilityRole::ComboBox,
@@ -515,9 +495,7 @@ impl SettingsView {
             ACCESSIBILITY_GENERAL,
             ACCESSIBILITY_MODELS,
             ACCESSIBILITY_DIAGNOSTICS,
-            ACCESSIBILITY_THEME_SYSTEM,
-            ACCESSIBILITY_THEME_LIGHT,
-            ACCESSIBILITY_THEME_DARK,
+            ACCESSIBILITY_THEME,
             ACCESSIBILITY_LANGUAGE,
             ACCESSIBILITY_OVERLAY,
             ACCESSIBILITY_OVERLAY_TOPMOST,
@@ -579,9 +557,7 @@ impl SettingsView {
             )
             .clickable()
             .focusable(),
-            theme_nodes[0].clone(),
-            theme_nodes[1].clone(),
-            theme_nodes[2].clone(),
+            theme_node,
             language_node,
             overlay_node,
             topmost_node,
@@ -649,9 +625,17 @@ impl SettingsView {
             ACCESSIBILITY_GENERAL => self.page = SettingsPage::General,
             ACCESSIBILITY_MODELS => self.page = SettingsPage::Models,
             ACCESSIBILITY_DIAGNOSTICS => self.page = SettingsPage::Diagnostics,
-            ACCESSIBILITY_THEME_SYSTEM => self.set_appearance_theme(SettingsTheme::System, cx),
-            ACCESSIBILITY_THEME_LIGHT => self.set_appearance_theme(SettingsTheme::Light, cx),
-            ACCESSIBILITY_THEME_DARK => self.set_appearance_theme(SettingsTheme::Dark, cx),
+            ACCESSIBILITY_THEME => {
+                if let Some(current) = self
+                    .snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.appearance_theme)
+                {
+                    let next = theme_from_index((theme_index(current) + 1) % 3)
+                        .expect("theme index is bounded by the theme options");
+                    self.set_appearance_theme(next, cx);
+                }
+            }
             ACCESSIBILITY_LANGUAGE => {
                 if let Some(current) = self.snapshot.as_ref().map(|snapshot| snapshot.language) {
                     let index = SettingsLanguage::ALL

@@ -22,7 +22,6 @@ use gpui_kit::component::{
     button::Button,
     group_box::{GroupBox, GroupBoxVariant, GroupBoxVariants},
     input::{Input, InputEvent, InputState, NumberInputEvent, StepAction},
-    radio::{Radio, RadioGroup},
     select::{SearchableVec, Select, SelectEvent, SelectState},
     setting::{
         NumberFieldOptions, RenderOptions, SettingField, SettingGroup, SettingItem, SettingPage,
@@ -135,11 +134,7 @@ const ACCESSIBILITY_STICK_DEAD_ZONE: AccessibilityNodeId = AccessibilityNodeId::
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_TRIGGER_DEAD_ZONE: AccessibilityNodeId = AccessibilityNodeId::new(23);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_THEME_SYSTEM: AccessibilityNodeId = AccessibilityNodeId::new(35);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_THEME_LIGHT: AccessibilityNodeId = AccessibilityNodeId::new(36);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_THEME_DARK: AccessibilityNodeId = AccessibilityNodeId::new(37);
+const ACCESSIBILITY_THEME: AccessibilityNodeId = AccessibilityNodeId::new(35);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_STATUS_ICON: AccessibilityNodeId = AccessibilityNodeId::new(38);
 #[cfg(target_os = "windows")]
@@ -156,6 +151,7 @@ const ACCESSIBILITY_RELEASE_FALLBACK_INCREASE: AccessibilityNodeId = Accessibili
 const ACCESSIBILITY_AUTOMATIC_UPDATE_CHECK: AccessibilityNodeId = AccessibilityNodeId::new(45);
 
 type LanguageSelectState = SelectState<SearchableVec<&'static str>>;
+type ThemeSelectState = SelectState<SearchableVec<&'static str>>;
 
 #[derive(Clone, Copy)]
 struct Tokens {
@@ -361,13 +357,11 @@ pub struct SettingsView {
     window_hidden: bool,
     applied_theme: Option<SettingsTheme>,
     language_select: Entity<LanguageSelectState>,
+    theme_select: Entity<ThemeSelectState>,
     request_quit: Rc<dyn Fn(&mut App)>,
     general_focus: FocusHandle,
     models_focus: FocusHandle,
     diagnostics_focus: FocusHandle,
-    theme_system_focus: FocusHandle,
-    theme_light_focus: FocusHandle,
-    theme_dark_focus: FocusHandle,
     status_icon_focus: FocusHandle,
     #[cfg(target_os = "windows")]
     taskbar_icon_focus: FocusHandle,
@@ -1078,6 +1072,25 @@ const fn theme_index(theme: SettingsTheme) -> usize {
         SettingsTheme::Light => 1,
         SettingsTheme::Dark => 2,
     }
+}
+
+fn theme_options(language: SettingsLanguage) -> [&'static str; 3] {
+    [
+        ui_text(language, UiText::System),
+        ui_text(language, UiText::Light),
+        ui_text(language, UiText::Dark),
+    ]
+}
+
+fn theme_display_name(theme: SettingsTheme, language: SettingsLanguage) -> &'static str {
+    theme_options(language)[theme_index(theme)]
+}
+
+fn theme_from_display_name(name: &str, language: SettingsLanguage) -> Option<SettingsTheme> {
+    theme_options(language)
+        .into_iter()
+        .position(|option| option == name)
+        .and_then(theme_from_index)
 }
 
 const fn theme_from_index(index: usize) -> Option<SettingsTheme> {
