@@ -2414,7 +2414,7 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       `33933263642` 全部 23 个 job 通过；macOS/Windows/Ubuntu workspace jobs
       `101216083086`/`101216083118`/`101216083187` 均通过完整 workspace 门禁和对应产品 smoke。
 
-66. [ ] `P6-KEEP-OVERLAY-IN-WORK-AREA`：让当前 v1 的可见工作区约束作用于正式 overlay。
+66. [x] `P6-KEEP-OVERLAY-IN-WORK-AREA`：让当前 v1 的可见工作区约束作用于正式 overlay。
     - 依赖：当前 v1 `overlay.keep_inside_work_area`、runtime overlay settings、持久化窗口 bounds、
       Win32 monitor API、AppKit screen API 和 GPUI Kit switch。
     - 退出条件：配置值通过强类型 snapshot/command 往返并在重启后恢复，stale revision 不改变
@@ -2423,23 +2423,26 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       原点；保留多显示器负坐标，窗口大于工作区时不改变用户尺寸；关闭时允许部分越界，完全离开
       显示器的 state 仍执行既有回退；General 开关具备中英文本、键盘和 AX/UIA switch 语义；纯几何、
       runtime/app/UI 定向测试、完整 Native workspace 门禁和双平台 release 产品 smoke 通过。
-    - 状态（2026-09-05）：强类型 config/Application/runtime/settings/overlay options、GPUI Kit 开关、
+    - 验收证据（2026-09-05）：强类型 config/Application/runtime/settings/overlay options、GPUI Kit 开关、
       中英文案和项目 AccessKit 语义已接通；双平台创建/重建/tick 工作区收敛、纯几何测试、产品
       shutdown smoke 断言与 Windows 实际 HWND 收敛测试已实现。format、严格 workspace Clippy、
       release all-target tests、release check、共享 fixture/schema/locales、Windows x64/ARM64 overlay
       严格 Clippy、隔离 macOS release 设置窗口/state smoke 和 119 帧 Metal Live2D preview 均通过，
-      等待双平台 CI。
+      已通过。实现 commit `22cd56e` 的 CI run `33935203737` 全绿；Windows/macOS/Ubuntu workspace
+      jobs `101221672187`/`101221672371`/`101221672243` 均通过完整 workspace 门禁和对应产品 smoke。
 
-67. [ ] `P7-SIGNED-UPDATE-MANIFEST`：建立首发更新的离线信任判断核心。
+67. [x] `P7-SIGNED-UPDATE-MANIFEST`：建立首发更新的离线信任判断核心。
     - 依赖：ADR-0021、不可变 Development/Production 环境、四个首发 target、发布版本与公钥流程。
     - 退出条件：平台无关且禁止 unsafe 的 verifier 先验签再严格解析 v1 manifest；拒绝 HTTP、跨环境、
       未知字段、错误 target/arch、无效 SemVer、过大 manifest/artifact、未知或过期 key、sequence 降级；
       只返回项目自有 verified 类型，并对下载流校验精确长度和 SHA-256；共享 Draft 2020-12 schema、
       accept/reject fixture、依赖许可证/来源检查、完整 Native workspace 门禁和三平台 CI 通过。
-    - 状态（2026-09-05）：`bongocat-update`、ADR-0021、共享 schema/fixture 和稳定错误码已实现；使用
+    - 验收证据（2026-09-05）：`bongocat-update`、ADR-0021、共享 schema/fixture 和稳定错误码已实现；使用
       固定测试 key 的 12 项 release 测试、共享 schema/fixture/locales、严格 workspace Clippy、完整
       release all-target tests、release check、依赖许可证/来源和 Linux/macOS Intel/Windows x64/ARM64
-      定向 Clippy 已通过，等待三平台 CI。
+      定向 Clippy 已通过。实现 commit `a9371f6` 的 CI run `33936771710` 全绿；Windows/macOS/Ubuntu
+      workspace jobs `101226118609`/`101226118560`/`101226118583` 均通过完整 workspace 门禁和对应
+      产品 smoke。
 
 68. [ ] `P7-AUTOMATIC-UPDATE-PREFERENCE`：让当前 v1 自动检查更新偏好进入正式设置链路。
     - 依赖：当前 v1 `application.check_for_updates_automatically`、settings typed command/snapshot、
@@ -2452,6 +2455,18 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       中英文案和项目 AccessKit 语义已接通；typed command、stale revision 与重启恢复测试已完成。
       format、严格 release workspace Clippy、完整 release all-target tests 和 release check 已通过，
       等待提交后的双平台 CI。
+
+69. [ ] `P7-AUTOMATIC-UPDATE-SCHEDULE`：冻结自动检查的单调 24 小时调度契约。
+    - 依赖：`P7-AUTOMATIC-UPDATE-PREFERENCE`、runtime 单调时钟原则与旧版首发行为清单。
+    - 退出条件：启用时 startup 和重新启用各立即派发一次，之后从实际派发时间间隔 24 小时；
+      关闭立即抑制待触发检查，重复 poll 不重复派发；时钟回退产生稳定匿名诊断并安全重建期限，
+      期限溢出时停止后续自动调度且不 panic；平台无关定向测试、完整 Native workspace 门禁和三平台
+      CI 通过。
+      endpoint、网络 worker、手动检查和下载/安装仍由后续任务接入。
+    - 状态（2026-09-05）：`bongocat-update` 已新增无 I/O 的可注入单调 scheduler 与强类型触发原因；
+      startup/interval/reenable、disable、重复 poll、时钟回退和期限溢出回归已实现。update release 测试
+      16 项、format、严格 release workspace Clippy、完整 release all-target tests 和 release check 已通过，
+      等待提交后的三平台 CI。
 
 ## 13. 待决策清单
 

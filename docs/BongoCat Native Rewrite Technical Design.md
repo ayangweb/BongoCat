@@ -654,6 +654,9 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
   扩散到 app/runtime/UI。下载层必须在安装前通过同一 verified artifact 校验精确长度和 SHA-256。
 - 更新 endpoint、24 小时自动检查调度、有界下载/取消、环境内 sequence 持久化、操作系统包签名、
   installer 权限、原子替换和失败回滚分别实现；所有 endpoint 与 artifact URL 只允许 HTTPS。
+- 自动检查偏好启用时在应用启动后立即请求一次检查，随后以可注入的单调时间从每次实际派发起
+  间隔 24 小时；从关闭切换为启用时同样立即请求一次，关闭则取消待触发检查。重复 poll 不得重复
+  派发，单调时间回退必须产生稳定诊断并从新时间原点重建间隔，不能形成重试风暴。
 - 日志不记录真实按键序列、剪贴板内容或用户文件内容。
 - Diagnostics 导出由 settings service 的强类型 command 触发，在当前环境 logs 目录以同目录
   原子替换写出固定格式的 JSON。导出只包含稳定错误码、匿名聚合计数、模型来源计数和 revision；

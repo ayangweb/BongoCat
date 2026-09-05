@@ -1,5 +1,11 @@
 #![forbid(unsafe_code)]
 
+mod schedule;
+pub use schedule::{
+    AUTOMATIC_UPDATE_CHECK_INTERVAL, AutomaticUpdateCheckReason, AutomaticUpdateCheckScheduler,
+    UpdateScheduleError, UpdateScheduleErrorCode,
+};
+
 use ed25519_dalek::{Signature, VerifyingKey};
 use semver::Version;
 use serde::{Deserialize, Serialize};
