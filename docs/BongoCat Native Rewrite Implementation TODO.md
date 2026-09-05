@@ -2444,29 +2444,41 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       workspace jobs `101226118609`/`101226118560`/`101226118583` 均通过完整 workspace 门禁和对应
       产品 smoke。
 
-68. [ ] `P7-AUTOMATIC-UPDATE-PREFERENCE`：让当前 v1 自动检查更新偏好进入正式设置链路。
+68. [x] `P7-AUTOMATIC-UPDATE-PREFERENCE`：让当前 v1 自动检查更新偏好进入正式设置链路。
     - 依赖：当前 v1 `application.check_for_updates_automatically`、settings typed command/snapshot、
       GPUI Kit switch 与 signed update manifest boundary。
     - 退出条件：配置值通过强类型 snapshot/command 往返并在重启后恢复，stale revision 不改变
       config 或 snapshot；General 开关具备中英文本、键盘焦点和 AX/UIA switch 语义；UI/Application
       定向测试、完整 Native workspace 门禁和双平台 CI 通过。该任务不包含 endpoint、24 小时调度、
       下载、安装或回滚，这些仍由后续更新任务完成。
-    - 状态（2026-09-05）：Application 持久化、settings snapshot/command/client、GPUI Kit 开关、
+    - 验收证据（2026-09-05）：Application 持久化、settings snapshot/command/client、GPUI Kit 开关、
       中英文案和项目 AccessKit 语义已接通；typed command、stale revision 与重启恢复测试已完成。
-      format、严格 release workspace Clippy、完整 release all-target tests 和 release check 已通过，
-      等待提交后的双平台 CI。
+      format、严格 release workspace Clippy、完整 release all-target tests 和 release check 已通过。
+      实现 commit `cdc2ec3` 已由后续 commit `1106807` 的 CI run `33938263954` 全量覆盖；Windows/
+      macOS/Ubuntu workspace jobs `101230369276`/`101230369290`/`101230369343` 均通过完整 workspace
+      门禁和对应产品 smoke。
 
-69. [ ] `P7-AUTOMATIC-UPDATE-SCHEDULE`：冻结自动检查的单调 24 小时调度契约。
+69. [x] `P7-AUTOMATIC-UPDATE-SCHEDULE`：冻结自动检查的单调 24 小时调度契约。
     - 依赖：`P7-AUTOMATIC-UPDATE-PREFERENCE`、runtime 单调时钟原则与旧版首发行为清单。
     - 退出条件：启用时 startup 和重新启用各立即派发一次，之后从实际派发时间间隔 24 小时；
       关闭立即抑制待触发检查，重复 poll 不重复派发；时钟回退产生稳定匿名诊断并安全重建期限，
       期限溢出时停止后续自动调度且不 panic；平台无关定向测试、完整 Native workspace 门禁和三平台
       CI 通过。
       endpoint、网络 worker、手动检查和下载/安装仍由后续任务接入。
-    - 状态（2026-09-05）：`bongocat-update` 已新增无 I/O 的可注入单调 scheduler 与强类型触发原因；
+    - 验收证据（2026-09-05）：`bongocat-update` 已新增无 I/O 的可注入单调 scheduler 与强类型触发原因；
       startup/interval/reenable、disable、重复 poll、时钟回退和期限溢出回归已实现。update release 测试
-      16 项、format、严格 release workspace Clippy、完整 release all-target tests 和 release check 已通过，
-      等待提交后的三平台 CI。
+      16 项、format、严格 release workspace Clippy、完整 release all-target tests 和 release check 已通过。
+      实现 commit `1106807` 的 CI run `33938263954` 全绿；Windows/macOS/Ubuntu workspace jobs
+      `101230369276`/`101230369290`/`101230369343` 均通过完整 workspace 门禁和对应产品 smoke。
+
+70. [x] `P9-BLOCK-LEGACY-AUTO-RELEASE`：阻止 Native Rewrite 开发期间由 tag 自动发布历史 App。
+    - 依赖：Phase 0 发布门禁、历史源码保留规则与尚未完成的 Native 签名/安装流水线。
+    - 退出条件：历史 Tauri release workflow 保留用于考古和回滚，但只允许显式手动触发；任何
+      `v*` tag 都不再自动构建或发布旧 Tauri、Linux 或 i686 artifact；不得据此声称 Native App
+      已可发布，新的双平台签名、安装和更新流水线仍由 Phase 9 跟踪。
+    - 验收证据（2026-09-05）：`.github/workflows/release.yml` 已移除 `push.tags`，名称明确标注为
+      `Legacy BongoCat Release (manual only)`，历史 job/matrix 未删除；YAML 语法与 staged whitespace
+      检查通过。Native release workflow 尚未建立，因此 Phase 9 发布准备保持未完成。
 
 ## 13. 待决策清单
 
