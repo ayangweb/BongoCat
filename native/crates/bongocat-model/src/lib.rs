@@ -819,6 +819,13 @@ impl PackageReader {
         Ok(normalized)
     }
 
+    fn resolve_audio(&mut self, reference: &str) -> Result<String, ModelError> {
+        let (normalized, path) =
+            self.resolve_file(reference, ModelDiagnostic::ModelResourceMissing)?;
+        validate_flac_resource(&path, &normalized)?;
+        Ok(normalized)
+    }
+
     fn resolve_image(&mut self, reference: &str) -> Result<ImageResource, ModelError> {
         let (normalized, path) =
             self.resolve_file(reference, ModelDiagnostic::ModelTextureMissing)?;
@@ -955,11 +962,7 @@ fn inspect_model_package(
                     let sound = motion
                         .sound
                         .as_deref()
-                        .map(|reference| {
-                            reader
-                                .resolve_file(reference, ModelDiagnostic::ModelResourceMissing)
-                                .map(|(normalized, _)| normalized)
-                        })
+                        .map(|reference| reader.resolve_audio(reference))
                         .transpose()?;
                     for (label, value) in [
                         ("FadeInTime", motion.fade_in_seconds),
@@ -1353,6 +1356,128 @@ fn invalid_resource(reference: &str, detail: &'static str) -> Result<(), ModelEr
         Some(reference),
         detail,
     ))
+}
+
+fn validate_flac_resource(path: &Path, reference: &str) -> Result<(), ModelError> {
+    if !reference
+        .rsplit_once('.')
+        .is_some_and(|(_, extension)| extension.eq_ignore_ascii_case("flac"))
+    {
+        return invalid_resource(reference, "motion audio must use the supported FLAC format");
+    }
+
+    let mut file = File::open(path).map_err(|error| {
+        ModelError::new(
+            ModelDiagnostic::ModelIoError,
+            Some(reference),
+            format!("audio resource cannot be opened: {error}"),
+        )
+    })?;
+    let mut signature = [0_u8; 4];
+    file.read_exact(&mut signature).map_err(|_| {
+        ModelError::new(
+            ModelDiagnostic::ModelResourceInvalid,
+            Some(reference),
+            "FLAC resource is missing its signature",
+        )
+    })?;
+    if signature != *b"fLaC" {
+        return invalid_resource(reference, "motion audio does not have a FLAC signature");
+    }
+
+    let mut block_header = [0_u8; 4];
+    file.read_exact(&mut block_header).map_err(|_| {
+        ModelError::new(
+            ModelDiagnostic::ModelResourceInvalid,
+            Some(reference),
+            "FLAC resource is missing a STREAMINFO block",
+        )
+    })?;
+    let mut block_is_last = block_header[0] & 0x80 != 0;
+    let block_kind = block_header[0] & 0x7f;
+    let block_length = u32::from_be_bytes([0, block_header[1], block_header[2], block_header[3]]);
+    if block_kind != 0 || block_length != 34 {
+        return invalid_resource(
+            reference,
+            "FLAC resource must begin with a 34-byte STREAMINFO block",
+        );
+    }
+
+    let mut stream_info = [0_u8; 34];
+    file.read_exact(&mut stream_info).map_err(|_| {
+        ModelError::new(
+            ModelDiagnostic::ModelResourceInvalid,
+            Some(reference),
+            "FLAC STREAMINFO block is truncated",
+        )
+    })?;
+    let audio_properties = u64::from_be_bytes([
+        stream_info[10],
+        stream_info[11],
+        stream_info[12],
+        stream_info[13],
+        stream_info[14],
+        stream_info[15],
+        stream_info[16],
+        stream_info[17],
+    ]);
+    let sample_rate = audio_properties >> 44;
+    let channels = ((audio_properties >> 41) & 0x7) + 1;
+    let bits_per_sample = ((audio_properties >> 36) & 0x1f) + 1;
+    if sample_rate == 0 || channels > 8 || bits_per_sample > 32 {
+        return invalid_resource(
+            reference,
+            "FLAC STREAMINFO contains invalid audio properties",
+        );
+    }
+    while !block_is_last {
+        file.read_exact(&mut block_header).map_err(|_| {
+            ModelError::new(
+                ModelDiagnostic::ModelResourceInvalid,
+                Some(reference),
+                "FLAC metadata block is truncated",
+            )
+        })?;
+        block_is_last = block_header[0] & 0x80 != 0;
+        let block_length =
+            u32::from_be_bytes([0, block_header[1], block_header[2], block_header[3]]);
+        consume_flac_metadata_block(&mut file, block_length, reference)?;
+    }
+    if file.read(&mut [0_u8; 1]).map_err(|error| {
+        ModelError::new(
+            ModelDiagnostic::ModelIoError,
+            Some(reference),
+            format!("FLAC resource cannot be read: {error}"),
+        )
+    })? == 0
+    {
+        return invalid_resource(reference, "FLAC resource has no audio frames");
+    }
+    Ok(())
+}
+
+fn consume_flac_metadata_block(
+    file: &mut File,
+    length: u32,
+    reference: &str,
+) -> Result<(), ModelError> {
+    let mut remaining = length as usize;
+    let mut buffer = [0_u8; 8 * 1024];
+    while remaining > 0 {
+        let read_length = remaining.min(buffer.len());
+        let read = file.read(&mut buffer[..read_length]).map_err(|error| {
+            ModelError::new(
+                ModelDiagnostic::ModelIoError,
+                Some(reference),
+                format!("FLAC metadata cannot be read: {error}"),
+            )
+        })?;
+        if read == 0 {
+            return invalid_resource(reference, "FLAC metadata block is truncated");
+        }
+        remaining -= read;
+    }
+    Ok(())
 }
 
 fn validate_json_depth(
@@ -2130,6 +2255,22 @@ mod tests {
             limits.maximum_json_depth,
         )
         .expect_err("mismatched motion count must be rejected");
+        assert_eq!(error.code, ModelDiagnostic::ModelResourceInvalid);
+    }
+
+    #[test]
+    fn audio_contract_rejects_unsupported_or_malformed_flac_resources() {
+        let package = tempdir().expect("package");
+        let unsupported = package.path().join("sound.wav");
+        fs::write(&unsupported, b"RIFF").expect("unsupported audio resource");
+        let error = validate_flac_resource(&unsupported, "sound.wav")
+            .expect_err("unsupported audio format must be rejected");
+        assert_eq!(error.code, ModelDiagnostic::ModelResourceInvalid);
+
+        let malformed = package.path().join("sound.flac");
+        fs::write(&malformed, b"not-a-flac").expect("malformed audio resource");
+        let error = validate_flac_resource(&malformed, "sound.flac")
+            .expect_err("malformed FLAC must be rejected");
         assert_eq!(error.code, ModelDiagnostic::ModelResourceInvalid);
     }
 

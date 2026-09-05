@@ -923,6 +923,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     expression fade/value/blend 以及 motion duration/FPS/metadata count/curve 数值边界。
     三套预置模型与无效 sidecar 回归都通过；motion segment 求值继续由 `bongocat-live2d`
     严格处理，physics/pose 缺少可授权真实 fixture，故本总项保持未完成。
+  - 状态（2026-09-06）：motion `Sound` 现只接受当前产品音频后端支持的 FLAC，并在 prepare
+    阶段验证 signature、首个 34-byte STREAMINFO block、sample rate/channel/bit-depth 边界及非空
+    frame 数据；错误格式或损坏 header 在导入前以 `model_resource_invalid` 拒绝。完整解码和输出设备
+    错误仍由独立 audio worker 处理，physics/pose 的真实 fixture 阻塞不变。
 - [x] 拒绝路径穿越、符号链接逃逸、绝对路径和覆盖安装资源。
   - 验收证据（2026-08-30）：prepare 拒绝遍历、绝对/平台前缀和跨根 symlink；import
     进一步拒绝所有 symlink 与特殊文件，使用 `create_new` staging 文件和非覆盖目录
