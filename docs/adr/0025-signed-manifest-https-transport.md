@@ -46,5 +46,5 @@ compression 会改变 detached Ed25519 signature 必须覆盖的原始 bytes。
 
 ## 后续
 
-本 ADR 不选择 Production endpoint 或公钥，不实现 UI command、自动/手动 dispatch、artifact HTTP source、
-installer 或 rollback。它们仍需要各自的发布基础设施与安全验收。
+本 ADR 不选择 Production endpoint 或公钥，不实现 UI command、自动/手动 dispatch、installer 或 rollback。
+它们仍需要各自的发布基础设施与安全验收。
