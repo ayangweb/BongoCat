@@ -724,6 +724,48 @@ fn model_behavior_preview_keys_are_scoped_to_model_and_behavior_identity() {
 }
 
 #[test]
+fn active_model_behavior_preview_targets_exclude_inactive_and_invalid_models() {
+    let active = SettingsModelKey {
+        id: "standard".to_owned(),
+        origin: SettingsModelOrigin::Preset,
+    };
+    let behavior = SettingsModelBehavior::Motion {
+        group: "CAT_motion".to_owned(),
+        index: 0,
+    };
+    let entries = vec![
+        SettingsModelEntry {
+            id: "standard".to_owned(),
+            origin: SettingsModelOrigin::Preset,
+            availability: SettingsModelAvailability::Ready {
+                texture_count: 1,
+                expression_count: 0,
+                motion_count: 1,
+                behaviors: vec![behavior.clone()],
+            },
+        },
+        SettingsModelEntry {
+            id: "keyboard".to_owned(),
+            origin: SettingsModelOrigin::Preset,
+            availability: SettingsModelAvailability::Ready {
+                texture_count: 1,
+                expression_count: 1,
+                motion_count: 0,
+                behaviors: vec![SettingsModelBehavior::Expression {
+                    name: "inactive".to_owned(),
+                }],
+            },
+        },
+    ];
+
+    assert_eq!(
+        super::model_actions::active_model_behavior_targets(&entries, Some(&active)),
+        vec![(active, behavior)]
+    );
+    assert!(super::model_actions::active_model_behavior_targets(&entries, None).is_empty());
+}
+
+#[test]
 fn invalid_model_status_is_stable_and_path_free() {
     let entry = SettingsModelEntry {
         id: "private-model".to_owned(),

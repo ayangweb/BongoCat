@@ -1217,8 +1217,9 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     页面仅为当前模型列出已声明行为，预览操作支持键盘焦点和 pending/error 状态。Diagnostics
     快捷键编辑现从当前激活且 Ready 模型的已验证行为目录生成 action/expression 行；未绑定行为可
     Capture 后通过既有 CAS/冲突校验创建 binding，已有 binding 可单项 Clear，非激活或未声明行为
-    不会生成编辑入口。键盘焦点和 AccessKit capture/clear actions 使用相同目录投影；完整 platform
-    accessibility 实机验证仍待接入。
+    不会生成编辑入口。键盘焦点和 AccessKit capture/clear actions 使用相同目录投影；Models 页的
+    动态 Preview controls 现也由同一 active Ready behavior 目录投影 AccessKit node/action，完整
+    platform accessibility 实机验证仍待接入。
 - [ ] 权限：macOS 状态/跳转和 Windows 权限差异。
 - [ ] 更新：检查、下载、验证、安装和回滚提示。
 - [ ] 诊断：版本、renderer、GPU、输入、权限、模型错误和日志导出。

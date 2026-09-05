@@ -128,6 +128,8 @@ const ACCESSIBILITY_SHORTCUT_CAPTURE_BASE: u64 = 1_000;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_SHORTCUT_CLEAR_BASE: u64 = 2_000;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_MODEL_BEHAVIOR_PREVIEW_BASE: u64 = 3_000;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_MIRROR: AccessibilityNodeId = AccessibilityNodeId::new(19);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_MIRROR_POINTER: AccessibilityNodeId = AccessibilityNodeId::new(20);

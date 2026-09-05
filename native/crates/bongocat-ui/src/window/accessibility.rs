@@ -1,5 +1,48 @@
 use super::*;
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn model_behavior_preview_accessibility_node_id(index: usize) -> AccessibilityNodeId {
+    AccessibilityNodeId::new(
+        ACCESSIBILITY_MODEL_BEHAVIOR_PREVIEW_BASE
+            .saturating_add(u64::try_from(index).unwrap_or(u64::MAX)),
+    )
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn model_behavior_preview_target_for_accessibility_node(
+    entries: &[SettingsModelEntry],
+    active_model: Option<&SettingsModelKey>,
+    node_id: AccessibilityNodeId,
+) -> Option<(SettingsModelKey, SettingsModelBehavior)> {
+    let index = node_id
+        .get()
+        .checked_sub(ACCESSIBILITY_MODEL_BEHAVIOR_PREVIEW_BASE)
+        .and_then(|index| usize::try_from(index).ok())?;
+    super::model_actions::active_model_behavior_targets(entries, active_model)
+        .get(index)
+        .cloned()
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn model_behavior_accessibility_label(
+    language: SettingsLanguage,
+    _model: &SettingsModelKey,
+    behavior: &SettingsModelBehavior,
+) -> String {
+    match behavior {
+        SettingsModelBehavior::Motion { group, index } => {
+            format!(
+                "{} {group} #{}",
+                ui_text(language, UiText::Motion),
+                index + 1
+            )
+        }
+        SettingsModelBehavior::Expression { name } => {
+            format!("{} {name}", ui_text(language, UiText::Expression))
+        }
+    }
+}
+
 impl SettingsView {
     pub(super) fn accessibility_tree(&self) -> AccessibilityTree {
         let focus = match self.page {
@@ -527,6 +570,38 @@ impl SettingsView {
                 node
             })
             .collect::<Vec<_>>();
+        let model_behavior_preview_targets = snapshot
+            .map(|snapshot| {
+                super::model_actions::active_model_behavior_targets(
+                    &snapshot.model_catalog.entries,
+                    snapshot.active_model.as_ref(),
+                )
+            })
+            .unwrap_or_default();
+        let model_behavior_preview_node_ids = (0..model_behavior_preview_targets.len())
+            .map(model_behavior_preview_accessibility_node_id)
+            .collect::<Vec<_>>();
+        let model_behavior_preview_nodes = model_behavior_preview_targets
+            .iter()
+            .enumerate()
+            .map(|(index, (model, behavior))| {
+                let label = format!(
+                    "{}: {}",
+                    ui_text(language, UiText::Preview),
+                    model_behavior_accessibility_label(language, model, behavior),
+                );
+                let mut node = AccessibilityNode::new(
+                    model_behavior_preview_accessibility_node_id(index),
+                    AccessibilityRole::Button,
+                    label,
+                )
+                .disabled(disabled);
+                if !disabled {
+                    node = node.clickable().focusable();
+                }
+                node
+            })
+            .collect::<Vec<_>>();
         let mut root_children = vec![
             ACCESSIBILITY_GENERAL,
             ACCESSIBILITY_MODELS,
@@ -565,6 +640,7 @@ impl SettingsView {
         ];
         root_children.extend(shortcut_node_ids);
         root_children.extend(shortcut_clear_node_ids);
+        root_children.extend(model_behavior_preview_node_ids);
         root_children.extend([ACCESSIBILITY_REFRESH, ACCESSIBILITY_QUIT]);
         let mut nodes = vec![
             AccessibilityNode::new(
@@ -636,6 +712,7 @@ impl SettingsView {
         ];
         nodes.extend(shortcut_nodes);
         nodes.extend(shortcut_clear_nodes);
+        nodes.extend(model_behavior_preview_nodes);
         if !nodes.iter().any(|node| node.id == focus) {
             nodes.push(AccessibilityNode::new(focus, AccessibilityRole::Status, ""));
         }
@@ -665,6 +742,13 @@ impl SettingsView {
                 &snapshot.shortcuts,
                 snapshot.active_model.as_ref(),
                 &snapshot.model_catalog.entries,
+                request.target,
+            )
+        });
+        let model_behavior_preview_target = self.snapshot.as_ref().and_then(|snapshot| {
+            model_behavior_preview_target_for_accessibility_node(
+                &snapshot.model_catalog.entries,
+                snapshot.active_model.as_ref(),
                 request.target,
             )
         });
@@ -816,7 +900,9 @@ impl SettingsView {
             ACCESSIBILITY_REFRESH => self.refresh(cx),
             ACCESSIBILITY_QUIT => (self.request_quit)(cx),
             _ => {
-                if let Some(target) = shortcut_clear_target {
+                if let Some((model, behavior)) = model_behavior_preview_target {
+                    self.preview_model_behavior(model, behavior, cx);
+                } else if let Some(target) = shortcut_clear_target {
                     self.clear_shortcut(target, cx);
                 } else if let Some(target) = shortcut_target
                     && self.pending.is_none()
@@ -953,6 +1039,22 @@ impl SettingsView {
                         .get(&target)
                         .is_some_and(|focus| focus.is_focused(window))
                         .then_some(shortcut_accessibility_node_id(index))
+                })
+            })
+        })
+        .or_else(|| {
+            self.snapshot.as_ref().and_then(|snapshot| {
+                super::model_actions::active_model_behavior_targets(
+                    &snapshot.model_catalog.entries,
+                    snapshot.active_model.as_ref(),
+                )
+                .into_iter()
+                .enumerate()
+                .find_map(|(index, (model, behavior))| {
+                    self.model_behavior_preview_focus
+                        .get(&ModelBehaviorKey::new(&model, &behavior))
+                        .is_some_and(|focus| focus.is_focused(window))
+                        .then_some(model_behavior_preview_accessibility_node_id(index))
                 })
             })
         })

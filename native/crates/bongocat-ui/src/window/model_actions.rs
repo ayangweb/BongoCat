@@ -224,23 +224,9 @@ impl SettingsView {
         commands_blocked: bool,
         cx: &mut Context<Self>,
     ) {
-        let behaviors = active_model
-            .and_then(|model| {
-                entries
-                    .iter()
-                    .find(|entry| entry.id == model.id && entry.origin == model.origin)
-                    .and_then(|entry| match &entry.availability {
-                        SettingsModelAvailability::Ready { behaviors, .. } => Some(behaviors),
-                        SettingsModelAvailability::Invalid { .. } => None,
-                    })
-                    .map(|behaviors| (model, behaviors))
-            })
+        let behaviors = active_model_behavior_targets(entries, active_model)
             .into_iter()
-            .flat_map(|(model, behaviors)| {
-                behaviors
-                    .iter()
-                    .map(move |behavior| ModelBehaviorKey::new(model, behavior))
-            })
+            .map(|(model, behavior)| ModelBehaviorKey::new(&model, &behavior))
             .collect::<BTreeSet<_>>();
         self.model_behavior_preview_focus
             .retain(|key, _| behaviors.contains(key));
@@ -433,4 +419,28 @@ impl SettingsView {
             _ => {}
         }
     }
+}
+
+pub(super) fn active_model_behavior_targets(
+    entries: &[SettingsModelEntry],
+    active_model: Option<&SettingsModelKey>,
+) -> Vec<(SettingsModelKey, SettingsModelBehavior)> {
+    active_model
+        .and_then(|model| {
+            entries
+                .iter()
+                .find(|entry| entry.id == model.id && entry.origin == model.origin)
+                .and_then(|entry| match &entry.availability {
+                    SettingsModelAvailability::Ready { behaviors, .. } => Some(behaviors),
+                    SettingsModelAvailability::Invalid { .. } => None,
+                })
+                .map(|behaviors| {
+                    behaviors
+                        .iter()
+                        .cloned()
+                        .map(|behavior| (model.clone(), behavior))
+                        .collect()
+                })
+        })
+        .unwrap_or_default()
 }
