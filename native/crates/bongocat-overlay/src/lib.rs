@@ -116,6 +116,7 @@ impl OverlayWindowBounds {
         }
     }
 
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub(crate) fn clamp_to(self, work_area: OverlayWorkArea) -> Self {
         let maximum_x = if self.width <= work_area.width {
             work_area
@@ -139,6 +140,7 @@ impl OverlayWindowBounds {
     }
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct OverlayWorkArea {
     pub x: i32,
