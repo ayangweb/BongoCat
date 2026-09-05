@@ -287,6 +287,7 @@ impl SettingsView {
             model_import: ModelImportDraft::default(),
             model_delete_confirmation: None,
             model_row_focus: BTreeMap::new(),
+            model_behavior_preview_focus: BTreeMap::new(),
             shortcut_capture: None,
             shortcut_capture_error: None,
             shortcut_row_focus: BTreeMap::new(),

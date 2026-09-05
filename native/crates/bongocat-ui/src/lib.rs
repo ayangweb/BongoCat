@@ -652,7 +652,7 @@ pub enum SettingsModelAvailability {
 
 /// A behavior declared by a validated model package. Settings uses this
 /// strongly typed identity for preview and shortcut operations.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum SettingsModelBehavior {
     Motion { group: String, index: usize },
     Expression { name: String },

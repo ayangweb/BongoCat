@@ -217,6 +217,46 @@ impl SettingsView {
         }
     }
 
+    pub(super) fn sync_model_behavior_preview_focus(
+        &mut self,
+        entries: &[SettingsModelEntry],
+        active_model: Option<&SettingsModelKey>,
+        commands_blocked: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let behaviors = active_model
+            .and_then(|model| {
+                entries
+                    .iter()
+                    .find(|entry| entry.id == model.id && entry.origin == model.origin)
+                    .and_then(|entry| match &entry.availability {
+                        SettingsModelAvailability::Ready { behaviors, .. } => Some(behaviors),
+                        SettingsModelAvailability::Invalid { .. } => None,
+                    })
+                    .map(|behaviors| (model, behaviors))
+            })
+            .into_iter()
+            .flat_map(|(model, behaviors)| {
+                behaviors
+                    .iter()
+                    .map(move |behavior| ModelBehaviorKey::new(model, behavior))
+            })
+            .collect::<BTreeSet<_>>();
+        self.model_behavior_preview_focus
+            .retain(|key, _| behaviors.contains(key));
+        for (index, key) in behaviors.into_iter().enumerate() {
+            let tab_index = 60_isize.saturating_add(isize::try_from(index).unwrap_or(isize::MAX));
+            let focus = self
+                .model_behavior_preview_focus
+                .entry(key)
+                .or_insert_with(|| cx.focus_handle());
+            *focus = focus
+                .clone()
+                .tab_index(tab_index)
+                .tab_stop(!commands_blocked);
+        }
+    }
+
     pub(super) fn select_model(&mut self, model: SettingsModelKey, cx: &mut Context<Self>) {
         if self.pending.is_some() || self.model_import.is_running() {
             return;
@@ -295,6 +335,48 @@ impl SettingsView {
                         view.model_delete_confirmation = None;
                     }
                     Ok(_) => view.model_delete_confirmation = None,
+                    Err(error) => view.error = Some(error),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    pub(super) fn preview_model_behavior(
+        &mut self,
+        model: SettingsModelKey,
+        behavior: SettingsModelBehavior,
+        cx: &mut Context<Self>,
+    ) {
+        if self.pending.is_some()
+            || self.model_import.is_running()
+            || self
+                .snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.active_model.as_ref())
+                != Some(&model)
+        {
+            return;
+        }
+        self.pending = Some(PendingOperation::ModelBehaviorPreview);
+        self.error = None;
+        cx.notify();
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = client.preview_model_behavior(model, behavior).await;
+            let _ = this.update(cx, |view, cx| {
+                view.pending = None;
+                match result {
+                    Ok(snapshot)
+                        if view
+                            .snapshot
+                            .as_ref()
+                            .is_none_or(|current| snapshot.revision >= current.revision) =>
+                    {
+                        view.snapshot = Some(snapshot);
+                    }
+                    Ok(_) => {}
                     Err(error) => view.error = Some(error),
                 }
                 cx.notify();

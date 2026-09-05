@@ -600,6 +600,36 @@ fn model_row_actions_preserve_origin_availability_and_active_identity() {
 }
 
 #[test]
+fn model_behavior_preview_keys_are_scoped_to_model_and_behavior_identity() {
+    let model = SettingsModelKey {
+        id: "standard".to_owned(),
+        origin: SettingsModelOrigin::Preset,
+    };
+    let motion = SettingsModelBehavior::Motion {
+        group: "CAT_motion".to_owned(),
+        index: 0,
+    };
+    let expression = SettingsModelBehavior::Expression {
+        name: "live2d_expression0.exp3.json".to_owned(),
+    };
+
+    assert_ne!(
+        ModelBehaviorKey::new(&model, &motion),
+        ModelBehaviorKey::new(&model, &expression)
+    );
+    assert_ne!(
+        ModelBehaviorKey::new(&model, &motion),
+        ModelBehaviorKey::new(
+            &SettingsModelKey {
+                id: "keyboard".to_owned(),
+                origin: SettingsModelOrigin::Preset,
+            },
+            &motion,
+        )
+    );
+}
+
+#[test]
 fn invalid_model_status_is_stable_and_path_free() {
     let entry = SettingsModelEntry {
         id: "private-model".to_owned(),

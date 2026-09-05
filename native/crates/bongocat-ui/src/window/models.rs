@@ -23,6 +23,12 @@ pub(super) fn content(
         .as_ref()
         .and_then(|snapshot| snapshot.active_model.as_ref());
     view.sync_model_row_focus(&model_entries, active_model, model_commands_blocked, cx);
+    view.sync_model_behavior_preview_focus(
+        &model_entries,
+        active_model,
+        model_commands_blocked,
+        cx,
+    );
     let mut model_rows = model_entries
         .into_iter()
         .enumerate()
@@ -172,6 +178,93 @@ pub(super) fn content(
                     )),
                 );
             }
+            let behavior_rows = if actions.active {
+                match &entry.availability {
+                    SettingsModelAvailability::Ready { behaviors, .. } if behaviors.is_empty() => {
+                        vec![
+                            div()
+                                .text_sm()
+                                .text_color(tokens.muted)
+                                .child(ui_text(language, UiText::NoModelBehaviors)),
+                        ]
+                    }
+                    SettingsModelAvailability::Ready { behaviors, .. } => behaviors
+                        .iter()
+                        .enumerate()
+                        .map(|(behavior_index, behavior)| {
+                            let behavior_key = ModelBehaviorKey::new(&model, behavior);
+                            let focus = view
+                                .model_behavior_preview_focus
+                                .get(&behavior_key)
+                                .expect("model behavior preview focus is synchronized")
+                                .clone();
+                            let tab_index = 60_isize.saturating_add(
+                                isize::try_from(behavior_index).unwrap_or(isize::MAX),
+                            );
+                            let label = match behavior {
+                                SettingsModelBehavior::Motion { group, index } => {
+                                    format!(
+                                        "{} {group} #{}",
+                                        ui_text(language, UiText::Motion),
+                                        index + 1
+                                    )
+                                }
+                                SettingsModelBehavior::Expression { name } => {
+                                    format!("{} {name}", ui_text(language, UiText::Expression))
+                                }
+                            };
+                            let click_model = model.clone();
+                            let click_behavior = behavior.clone();
+                            let key_model = model.clone();
+                            let key_behavior = behavior.clone();
+                            let click_focus = focus.clone();
+                            let key_focus = focus.clone();
+                            div()
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .gap_3()
+                                .text_sm()
+                                .child(div().min_w_0().flex_1().child(label))
+                                .child(
+                                    command_button(
+                                        ui_text(language, UiText::Preview),
+                                        &focus,
+                                        tab_index,
+                                        window,
+                                        tokens,
+                                        model_commands_blocked,
+                                    )
+                                    .id(("preview-model-behavior", behavior_index))
+                                    .on_click(cx.listener(move |view, _, window, cx| {
+                                        if !model_commands_blocked {
+                                            window.focus(&click_focus, cx);
+                                            view.preview_model_behavior(
+                                                click_model.clone(),
+                                                click_behavior.clone(),
+                                                cx,
+                                            );
+                                        }
+                                    }))
+                                    .on_key_down(cx.listener(move |view, event, window, cx| {
+                                        if !model_commands_blocked && is_activation_key(event) {
+                                            cx.stop_propagation();
+                                            window.focus(&key_focus, cx);
+                                            view.preview_model_behavior(
+                                                key_model.clone(),
+                                                key_behavior.clone(),
+                                                cx,
+                                            );
+                                        }
+                                    })),
+                                )
+                        })
+                        .collect(),
+                    SettingsModelAvailability::Invalid { .. } => Vec::new(),
+                }
+            } else {
+                Vec::new()
+            };
             GroupBox::new().outline().child(
                 div()
                     .flex()
@@ -192,7 +285,18 @@ pub(super) fn content(
                             )
                             .child(actions_row),
                     )
-                    .child(div().text_sm().text_color(tokens.muted).child(availability)),
+                    .child(div().text_sm().text_color(tokens.muted).child(availability))
+                    .when(actions.active, |content| {
+                        content
+                            .child(
+                                div()
+                                    .pt_1()
+                                    .text_sm()
+                                    .text_color(tokens.muted)
+                                    .child(ui_text(language, UiText::ModelBehaviors)),
+                            )
+                            .children(behavior_rows)
+                    }),
             )
         })
         .collect::<Vec<_>>();
@@ -229,6 +333,9 @@ pub(super) fn content(
             }
             (_, Some(PendingOperation::ModelDeletion), _) => {
                 (ui_text(language, UiText::DeletingModel).into(), false)
+            }
+            (_, Some(PendingOperation::ModelBehaviorPreview), _) => {
+                (ui_text(language, UiText::PreviewingBehavior).into(), false)
             }
             (_, Some(PendingOperation::Refresh), _) => {
                 (ui_text(language, UiText::RefreshingModels).into(), false)

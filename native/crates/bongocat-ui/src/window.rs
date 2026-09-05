@@ -2,13 +2,13 @@ use crate::{
     RuntimeHealth, SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient,
     SettingsConfigRecovery, SettingsConfigurationStatus, SettingsError, SettingsErrorCode,
     SettingsGamepadAxisSettings, SettingsInputDiagnostics, SettingsInputServiceStatus,
-    SettingsLanguage, SettingsModelAvailability, SettingsModelDiagnostic, SettingsModelEntry,
-    SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
-    SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsModelSettings,
-    SettingsOperationId, SettingsOverlay, SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode,
-    SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
-    SettingsStartupItemUnsupportedReason, SettingsTheme, SettingsWindowPlacement,
-    SettingsWindowState,
+    SettingsLanguage, SettingsModelAvailability, SettingsModelBehavior, SettingsModelDiagnostic,
+    SettingsModelEntry, SettingsModelImportMonitor, SettingsModelImportOperation,
+    SettingsModelImportRequest, SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin,
+    SettingsModelSettings, SettingsOperationId, SettingsOverlay, SettingsRuntimeDiagnostics,
+    SettingsRuntimeErrorCode, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
+    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
+    SettingsWindowPlacement, SettingsWindowState,
 };
 use bongocat_config::ShortcutChord;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -198,6 +198,7 @@ enum PendingOperation {
     StartupItem,
     ModelSelection,
     ModelDeletion,
+    ModelBehaviorPreview,
     OpenConfigBackupLocation,
     RestoreDefaultConfiguration,
     RestoreDefaultShortcuts,
@@ -271,6 +272,21 @@ struct ModelRowFocus {
     activate: FocusHandle,
     delete: FocusHandle,
     cancel_delete: FocusHandle,
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct ModelBehaviorKey {
+    model: ModelRowKey,
+    behavior: SettingsModelBehavior,
+}
+
+impl ModelBehaviorKey {
+    fn new(model: &SettingsModelKey, behavior: &SettingsModelBehavior) -> Self {
+        Self {
+            model: ModelRowKey::new(model.origin, &model.id),
+            behavior: behavior.clone(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -352,6 +368,7 @@ pub struct SettingsView {
     model_import: ModelImportDraft,
     model_delete_confirmation: Option<SettingsModelKey>,
     model_row_focus: BTreeMap<ModelRowKey, ModelRowFocus>,
+    model_behavior_preview_focus: BTreeMap<ModelBehaviorKey, FocusHandle>,
     shortcut_capture: Option<ShortcutCaptureTarget>,
     shortcut_capture_error: Option<ShortcutCaptureError>,
     shortcut_row_focus: BTreeMap<ShortcutCaptureTarget, FocusHandle>,
