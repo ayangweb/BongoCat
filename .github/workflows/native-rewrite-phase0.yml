@@ -470,10 +470,15 @@ jobs:
         if: matrix.os != 'ubuntu-latest'
         timeout-minutes: 5
         run: cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release -- --run-seconds 20 --hidden-model-switch-smoke
+      - name: Build isolated storage smoke executable
+        if: matrix.os != 'ubuntu-latest'
+        timeout-minutes: 30
+        run: cargo build --manifest-path native/Cargo.toml --locked -p bongocat-app --release --features storage-test-injection --target-dir native/target/storage-test-injection
       - name: Smoke macOS configuration recovery window
         if: matrix.os == 'macos-latest'
+        timeout-minutes: 2
         run: |
-          output=$(cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release --features storage-test-injection --target-dir native/target/storage-test-injection -- --configuration-recovery-smoke 2>&1)
+          output=$(native/target/storage-test-injection/release/bongocat-app --configuration-recovery-smoke 2>&1)
           printf '%s\n' "$output"
           grep -Fq 'bongocat-app: configuration recovery required' <<<"$output"
           grep -Fq 'bongocat-app: recovery window opened' <<<"$output"
@@ -481,9 +486,10 @@ jobs:
           grep -Fq 'bongocat-app: recovery service stopped' <<<"$output"
       - name: Smoke macOS settings window state restore
         if: matrix.os == 'macos-latest'
+        timeout-minutes: 2
         run: |
           set +e
-          output=$(cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release --features storage-test-injection --target-dir native/target/storage-test-injection -- --settings-window-state-smoke 2>&1)
+          output=$(native/target/storage-test-injection/release/bongocat-app --settings-window-state-smoke 2>&1)
           status=$?
           set -e
           printf '%s\n' "$output"
@@ -496,18 +502,17 @@ jobs:
           grep -Fq 'bongocat-app: settings window state restored after restart' <<<"$output"
       - name: Smoke macOS release panic diagnostics
         if: matrix.os == 'macos-latest'
+        timeout-minutes: 2
         run: |
-          output=$(cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release --features storage-test-injection --target-dir native/target/storage-test-injection -- --panic-diagnostics-smoke 2>&1)
+          output=$(native/target/storage-test-injection/release/bongocat-app --panic-diagnostics-smoke 2>&1)
           printf '%s\n' "$output"
           grep -Fq 'bongocat-app: panic diagnostics recovered after crash' <<<"$output"
       - name: Smoke Windows configuration recovery window
         if: matrix.os == 'windows-latest'
         shell: pwsh
-        timeout-minutes: 10
+        timeout-minutes: 2
         run: |
           $smokeTarget = Join-Path $PWD "native/target/storage-test-injection"
-          cargo build --manifest-path native/Cargo.toml --locked -p bongocat-app --release --features storage-test-injection --target-dir $smokeTarget
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $executable = Join-Path $smokeTarget "release/bongocat-app.exe"
           if (-not (Test-Path $executable)) {
             throw "storage injection smoke executable was not built"
@@ -604,8 +609,9 @@ jobs:
       - name: Smoke Windows release panic diagnostics
         if: matrix.os == 'windows-latest'
         shell: pwsh
+        timeout-minutes: 2
         run: |
-          $output = cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release --features storage-test-injection --target-dir native/target/storage-test-injection -- --panic-diagnostics-smoke 2>&1 | Out-String
+          $output = & native/target/storage-test-injection/release/bongocat-app.exe --panic-diagnostics-smoke 2>&1 | Out-String
           $exitCode = $LASTEXITCODE
           Write-Host $output
           if ($exitCode -ne 0) { exit $exitCode }

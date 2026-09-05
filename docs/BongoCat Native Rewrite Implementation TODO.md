@@ -1,7 +1,7 @@
 # BongoCat Native Rewrite Implementation TODO
 
 状态：Phase 0 证据补齐与 Phase 1 渐进实现并行
-最后更新：2026-09-04
+最后更新：2026-09-05
 当前分支：`next`
 首发平台：Windows 10 1903+、macOS 12+
 后续评估：Linux
@@ -526,6 +526,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] Windows：format、Clippy、unit test、release check；GPUI settings/overlay spike 已由 GitHub `windows-latest` 执行。
   - 验收证据：commit `221f5483976b64b7cbf6c5818ee5714ad47de479`，push run `33182146480` 与 pull request run `33182148815` 均成功；不代表 Windows 字体、IME、DPI、辅助功能或图形实机验收完成。
 - [x] macOS：format、Clippy、unit test、release check；GPUI settings/overlay spike 均纳入 `macos-spikes` job。
+- 状态（2026-09-05）：run `33940224182` 的 Windows Native job `101236050267` 在隔离
+  storage smoke 产物冷编译阶段耗尽原步骤 10 分钟时限，尚未启动恢复窗口。CI 现将两平台
+  Development-only release 测试产物的构建拆为独立 30 分钟步骤，恢复、state 与 panic smoke
+  直接执行该产物并各限制为 2 分钟；Windows 内部 10 秒窗口发现、15 秒退出和 20 秒 state
+  恢复期限不变。YAML 语法与 whitespace 检查本机通过；Windows 冷构建和图标资源退出条件
+  仍等待更新后的原生 CI，不以扩大编译预算代替产品运行验收。
 - [x] 缓存 key 包含所有 `Cargo.lock`/`Cargo.toml` 和 Rust toolchain hash；Linux contract 与 macOS GPUI jobs 均使用该 key。
 - [x] CI 不下载 Cubism 二进制；正式 workspace 的三平台 job 不需要 SDK 即可验证非 Cubism 模块。
 - [ ] GPU、权限、签名测试分离为实机/nightly job。
@@ -2322,20 +2328,17 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       `Chinese Models localization verified`，并继续通过 800x600 窗口重启恢复、shutdown 和剩余
       平台 smoke。
 
-60. [x] `P5-DIAGNOSTICS-LOCALIZATION`：完成当前 Diagnostics 页面及辅助功能语义的中英本地化。
-    - 依赖：`P5-APPLICATION-LANGUAGE`、`P5-GENERAL-LOCALIZATION`、`P5-MODELS-LOCALIZATION`、
-      GPUI Kit Diagnostics 页面和现有 input/runtime/config/shortcut typed contract。
-    - 退出条件：页面、分组、26 个输入指标、input service、renderer/command failure、配置恢复、
-      导出状态、快捷键动作/捕获/错误及备份操作均从同一闭合文案源读取；可见动作与 AX/UIA
-      label/value 不漂移；中文 800x600 隔离 smoke 覆盖 Diagnostics 页面、窗口状态恢复和有序
-      shutdown；UI 定向测试、严格 Clippy、完整 Native workspace 与双平台 CI 通过。
-    - 验收证据（2026-09-05）：中英文静态/动态文案、稳定快捷键捕获错误、用户可读 command 名称、
-      AccessKit 语义、中文隔离 smoke 标记和双平台 CI 断言均已实现。`BONGOCAT_BUILD_ENV=development`
-      下 Native workspace `cargo fmt --all -- --check`、`cargo clippy --workspace --all-targets
-      --all-features --locked -- -D warnings`、`cargo test --workspace --locked` 和
-      `cargo check --workspace --release --locked` 全部通过；UI 定向测试 51 项、Diagnostics
-      presentation/localization 回归均通过。macOS Input Monitoring/Accessibility 相关 4 项
-      集成测试按设计保持 ignored，真实权限矩阵仍属于平台实机门禁，不影响本项文案闭环。
+60. [x] `P5-DIAGNOSTICS-LOCALIZATION`：完成当前 Diagnostics 页面及辅助功能语义的中英本地化。- 依赖：`P5-APPLICATION-LANGUAGE`、`P5-GENERAL-LOCALIZATION`、`P5-MODELS-LOCALIZATION`、
+        GPUI Kit Diagnostics 页面和现有 input/runtime/config/shortcut typed contract。- 退出条件：页面、分组、26 个输入指标、input service、renderer/command failure、配置恢复、
+        导出状态、快捷键动作/捕获/错误及备份操作均从同一闭合文案源读取；可见动作与 AX/UIA
+        label/value 不漂移；中文 800x600 隔离 smoke 覆盖 Diagnostics 页面、窗口状态恢复和有序
+        shutdown；UI 定向测试、严格 Clippy、完整 Native workspace 与双平台 CI 通过。- 验收证据（2026-09-05）：中英文静态/动态文案、稳定快捷键捕获错误、用户可读 command 名称、
+        AccessKit 语义、中文隔离 smoke 标记和双平台 CI 断言均已实现。`BONGOCAT_BUILD_ENV=development`
+        下 Native workspace `cargo fmt --all -- --check`、`cargo clippy --workspace --all-targets
+--all-features --locked -- -D warnings`、`cargo test --workspace --locked` 和
+        `cargo check --workspace --release --locked` 全部通过；UI 定向测试 51 项、Diagnostics
+        presentation/localization 回归均通过。macOS Input Monitoring/Accessibility 相关 4 项
+        集成测试按设计保持 ignored，真实权限矩阵仍属于平台实机门禁，不影响本项文案闭环。
 
 61. [x] `P5-BEHAVIOR-SHORTCUT-TOGGLE`：让当前 v1 的模型行为快捷键开关作用于正式输入链路。
     - 依赖：`P5-SHORTCUT-CONTRACT`、当前 v1 `model.enable_behavior_shortcuts`、settings
