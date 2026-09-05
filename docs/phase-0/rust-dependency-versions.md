@@ -127,6 +127,11 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
   `bongocat-platform` 私有 external URL parser 中规范化并限制 HTTPS URL；公共 API 只接收字符串、
   返回项目自有错误，不泄漏 `Url`。macOS/Windows launcher 均以单一参数启动系统 opener，绝不经 shell；
   替换边界是同等严格的 WHATWG URL parser，不影响 config/runtime/UI 协议；
+- 剪贴板 adapter 不新增 crate，只扩展已固定的 `objc2-app-kit 0.3.2` 的 `NSPasteboard` feature，
+  以及 `windows 0.62.2` 的 `Win32_System_DataExchange`、`Memory` 和 `Ole` features。它们分别是
+  持续维护的 objc2 基础 binding（Zlib OR Apache-2.0 OR MIT）和微软生成 binding（MIT）；AppKit/Win32
+  类型、裸 handle 与文本均留在私有 adapter，Windows 内存所有权由 RAII wrapper 管理。替换边界是
+  `bongocat-platform` 的 clipboard module，不影响 config/runtime/UI 公共协议；
 - `atomic-write-file 0.3.1`（BSD-3-Clause）只在正式配置 crate 的 `ConfigStore` 与 update crate 的环境内 sequence store 提供同目录跨平台原子替换；两者都只暴露项目自有的配置或更新状态类型，不泄漏库类型。替换边界分别是各自私有 commit helper；`dirs 6.0.0`、`serde 1.0.229` 与 `serde_json 1.0.151` 继续提供路径解析和严格序列化；
 - `rodio 0.22.2`（MIT OR Apache-2.0）只在 `bongocat-audio` 私有 backend 打开系统输出并
   解码现有 FLAC；固定容量的项目 command/diagnostics API 隔离第三方类型，Linux contract

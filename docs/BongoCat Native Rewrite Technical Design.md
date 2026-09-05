@@ -641,6 +641,11 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
   并禁止写入 recent。adapter 只向上返回 `Selected(PathBuf)`/`Cancelled` 和稳定无路径错误码；
   Rust 侧重新检查绝对、存在、目录并 canonicalize，真正的包解析/复制仍只由 settings worker
   执行。对话框取消不是错误，错误不得携带系统文本或用户路径。
+- 剪贴板 adapter 只读写最多 1 MiB、无内嵌 NUL 的纯文本；无文本返回空选项，过大、无效、
+  拒绝或系统故障只返回稳定匿名错误，绝不记录文本。macOS 调用必须在 AppKit 主线程和
+  autorelease pool 内，Windows 每次操作由 RAII 守卫在同一线程关闭 clipboard，并且仅在
+  `SetClipboardData` 成功后把可移动 UTF-16 内存所有权移交系统。平台类型、原始 handle 和
+  剪贴板内容都不离开 adapter。
 - Models 页面只在 GPUI Entity 中保存用户可编辑的 model ID、临时选择目录和 operation monitor。
   目录只显示匿名 selected/cancelled/error 状态，不进入 snapshot、状态文案或日志；ASCII 建议 ID
   只是表单草稿，最终仍由正式 `ModelId` contract 校验。页面提交 typed import 后以 100 ms UI

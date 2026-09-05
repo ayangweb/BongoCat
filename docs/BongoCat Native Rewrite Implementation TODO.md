@@ -1375,8 +1375,10 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     使用 STA `IFileOpenDialog`、filesystem/folder/path-exists/no-recent flags 与 COM/TaskMem RAII，
     macOS 使用主线程单目录 `NSOpenPanel`。结果在 Rust 侧重新验证并 canonicalize，GPUI Models
     页面及双平台真实选择/取消 smoke 已通过。外部 URL 现由共享 wrapper 严格限制为无 credentials 的
-    HTTPS，macOS `/usr/bin/open` 与 Windows `explorer.exe` 均只收到一个参数且不经 shell；clipboard
-    仍待完成，因此总项不勾选。
+    HTTPS，macOS `/usr/bin/open` 与 Windows `explorer.exe` 均只收到一个参数且不经 shell。clipboard
+    现只读写最多 1 MiB 的无 NUL 纯文本、无文本返回空选项，错误不包含内容；Windows 的
+    `CF_UNICODETEXT` handle/clipboard RAII 已通过 x64 target check，但尚无 Windows 实机 clipboard
+    read/write smoke，因此总项保持未勾选。
 - [ ] 选择并记录 MSIX、WiX 或 NSIS 打包 ADR。
 - [ ] 对安装目录、用户数据目录和更新临时目录分别建模。
 
@@ -1388,7 +1390,9 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 - [ ] NSOpenPanel、NSWorkspace 和 pasteboard 最小权限 wrapper。
   - 状态（2026-08-31）：`NSOpenPanel` 模型目录 adapter 已实现并通过主线程边界、稳定错误
     contract 和 macOS 26.5.2 arm64 真实选择/取消交互 smoke。外部 HTTPS URL 以 `/usr/bin/open` 单参数
-    wrapper 完成，拒绝 credentials、非 HTTPS 与超长值；`NSWorkspace` 的其余能力和 pasteboard 仍待完成。
+    wrapper 完成，拒绝 credentials、非 HTTPS 与超长值；pasteboard 现以主线程/auto-release-pool
+    boundary 读写最多 1 MiB 无 NUL 纯文本、匿名返回无文本和错误。自动化只验证后台线程拒绝，避免
+    改写用户 clipboard；隔离 pasteboard 的实机 read/write smoke 及 `NSWorkspace` 其余能力仍待完成。
 - [ ] .app bundle、entitlements、Hardened Runtime 和 notarization 流程。
 - [ ] TCC 权限状态变化可在 UI 实时刷新。
 
