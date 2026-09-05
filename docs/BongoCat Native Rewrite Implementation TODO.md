@@ -2483,17 +2483,19 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       `Legacy BongoCat Release (manual only)`，历史 job/matrix 未删除；YAML 语法与 staged whitespace
       检查通过。Native release workflow 尚未建立，因此 Phase 9 发布准备保持未完成。
 
-71. [ ] `P9-NATIVE-PRODUCT-ICON`：让双平台 Native 应用与 Windows 托盘使用正式产品图标。
+71. [x] `P9-NATIVE-PRODUCT-ICON`：让双平台 Native 应用与 Windows 托盘使用正式产品图标。
     - 依赖：正式 `bongocat-app` build script、macOS `.app` 打包入口与 Windows system-menu owner。
     - 退出条件：Native workspace 自有并校验 `.icns/.ico` 容器；macOS bundle 声明、复制并签名封装
       `BongoCat.icns`；Windows executable 编译至少一个 icon group，托盘从当前 module 加载同一固定
       资源且不回退通用图标；完整 Native workspace、依赖策略、macOS Production package 与三平台
       CI 通过。
-    - 状态（2026-09-05）：实现、文档和 CI 产物断言已接入；本地 icon container 测试、format、
+    - 验收证据（2026-09-05）：实现、文档和 CI 产物断言已接入；本地 icon container 测试、format、
       严格 release workspace Clippy、完整 release all-target tests、release check、dependency policy、
       Windows x64/ARM64 platform Clippy 与 macOS Production `.app` 打包/资源逐字节比较/strict
-      codesign 均通过。Windows executable 的真实 resource compile、icon group 提取和托盘加载等待
-      push CI 证据，因此保持未勾选。
+      codesign 均通过。commit `300f470` 的 CI run `33945105437` 全部 23 个 job 通过；Windows job
+      `101249657297` 从真实 `bongocat-app.exe` 提取到 product icon group，macOS job
+      `101249657241` 验证 Production `.app` 中的图标字节、bundle metadata 与 strict codesign，
+      Windows system-menu smoke 同时使用当前 module 的固定 icon resource 创建托盘图标。
 
 ## 13. 待决策清单
 
