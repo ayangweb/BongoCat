@@ -86,6 +86,13 @@ pub struct CoreLogHandle {
     path: PathBuf,
 }
 
+/// Read-only access to the anonymous retention counters maintained by the
+/// process-wide Core log callback.
+#[derive(Clone, Debug)]
+pub struct CoreLogReporter {
+    sink: Arc<CoreLogSink>,
+}
+
 impl CoreLogHandle {
     pub fn install(path: impl AsRef<Path>) -> Result<Self, CoreLogError> {
         let path = path.as_ref().to_owned();
@@ -134,6 +141,22 @@ impl CoreLogHandle {
         &self.path
     }
 
+    pub fn stats(&self) -> CoreLogStats {
+        self.sink
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .stats
+    }
+
+    pub fn reporter(&self) -> CoreLogReporter {
+        CoreLogReporter {
+            sink: Arc::clone(&self.sink),
+        }
+    }
+}
+
+impl CoreLogReporter {
     pub fn stats(&self) -> CoreLogStats {
         self.sink
             .state

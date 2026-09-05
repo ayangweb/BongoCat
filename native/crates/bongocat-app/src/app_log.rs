@@ -172,6 +172,18 @@ pub struct ApplicationLogDiagnostics {
     pub events: ApplicationLogEventCounts,
 }
 
+/// Anonymous retention counters supplied by the Cubism Core log owner.
+/// The application deliberately receives no Core log path or message data.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct CoreLogDiagnostics {
+    pub written: u64,
+    pub dropped: u64,
+    pub rotated: u64,
+    pub pruned: u64,
+    pub bytes: u64,
+    pub retained_files: u64,
+}
+
 #[derive(Debug)]
 pub enum ApplicationLogError {
     CreateDirectory(io::Error),

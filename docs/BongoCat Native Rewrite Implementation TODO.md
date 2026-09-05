@@ -1542,6 +1542,14 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     retention policy；Core rotation files 现也在初始化和成功轮转后按 7 日上限清理，且 CoreLogStats
     已暴露匿名 written/dropped/rotated/pruned/active-bytes/retained-files 指标并有 rotation 回归；两类
     历史日志尚未按同一 policy 聚合统计或导出，因此本项保持未勾选。
+  - [x] `P7-CORE-LOG-DIAGNOSTICS`：将 Cubism Core retention 指标接入匿名 diagnostics export。
+    - 依赖：`CoreLogStats`、应用 diagnostics export 和 ADR-0016 的隐私边界。
+    - 退出条件：产品启动将只读 Core 指标 provider 注册到 `Application`；每次导出实时采样
+      written/dropped/rotated/pruned/bytes/retained_files，并与 application logs 分栏序列化；不导出
+      日志正文、路径或 Core message；provider、导出字段和隐私回归通过。
+    - 状态（2026-09-06）：Core callback owner 通过 `CoreLogReporter` 提供只读匿名统计，正式产品入口
+      注册 provider；settings worker 将当前采样写入 `core_logs`，无需读取或复制 `cubism-core.jsonl`。
+      应用 provider 与原子 export 定向测试覆盖缺失/存在 Core owner 和字段值。
 - [ ] 记录 renderer/input/model/config/update 的稳定 error code。
   - 状态（2026-09-01）：runtime renderer 已为 model load/evaluation、motion/expression load、GPU
     prepare、platform、transport 和 overlay validation 定义 10 个固定 snake_case code，并以唯一性
@@ -1568,8 +1576,8 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     路径、按键值、原始 JSON、时间戳或动态 I/O 文本。Diagnostics 页面提供键盘和 AccessKit 可访问
     的 Export 控件，并显示本次导出的字节数；app/ui 定向测试覆盖原子写入、聚合排序、隐私边界和
     typed command。应用级 writer 的匿名 written/dropped/rotated/pruned/bytes/retained_files
-    统计现已并入导出，但导出仍不读取或合并 Core/应用原始日志正文，预览器和跨域历史日志打包
-    仍待完成，因此本项保持未勾选。
+    统计与 Core retention 指标现已并入导出，但导出仍不读取或合并 Core/应用原始日志正文，预览器和
+    跨域历史日志打包仍待完成，因此本项保持未勾选。
 - [ ] 更新 manifest 定义 `schema_version`、channel、最低可升级版本、发布时间和防回滚字段。
   - 状态（2026-09-05）：共享 Draft 2020-12 manifest v1 已定义 `schema_version`、环境 channel、
     release/minimum SemVer、`published_at_unix_seconds`、单调 `release_sequence` 和 target artifacts；

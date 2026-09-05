@@ -1336,6 +1336,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut application = bongocat_app::Application::start(preset_root())?;
     application.install_process_panic_hook();
     let core_log = CoreLogHandle::install(application.logs_directory().join("cubism-core.jsonl"))?;
+    let core_log_reporter = core_log.reporter();
+    application.set_core_log_diagnostics_provider(move || {
+        let stats = core_log_reporter.stats();
+        bongocat_app::CoreLogDiagnostics {
+            written: stats.written,
+            dropped: stats.dropped,
+            rotated: stats.rotated,
+            pruned: stats.pruned,
+            bytes: stats.bytes,
+            retained_files: stats.retained_files,
+        }
+    });
     if !application.is_operational() {
         return run_configuration_recovery_mode(application);
     }

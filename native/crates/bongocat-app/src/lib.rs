@@ -47,7 +47,7 @@ use app_log::ApplicationRunMarker;
 pub use app_log::{
     ApplicationLogCode, ApplicationLogComponent, ApplicationLogDiagnostics, ApplicationLogError,
     ApplicationLogEvent, ApplicationLogEventCounts, ApplicationLogHandle, ApplicationLogLevel,
-    ApplicationPanicHook,
+    ApplicationPanicHook, CoreLogDiagnostics,
 };
 pub use settings::{
     ApplicationSettingsService, SettingsServiceJoinError, StatusIconCapability,
@@ -227,6 +227,7 @@ pub struct Application {
     motion_audio: Option<MotionAudioService>,
     render_consumer: Option<RenderConsumer>,
     application_log: ApplicationLogHandle,
+    core_log_diagnostics: Option<Arc<dyn Fn() -> CoreLogDiagnostics + Send + Sync>>,
     run_marker: ApplicationRunMarker,
     panic_hook: Option<ApplicationPanicHook>,
     shortcut_table: ShortcutTable,
@@ -395,6 +396,7 @@ impl Application {
             motion_audio,
             render_consumer,
             application_log,
+            core_log_diagnostics: None,
             run_marker,
             panic_hook: None,
             shortcut_table,
@@ -463,6 +465,19 @@ impl Application {
 
     pub fn application_log_diagnostics(&self) -> ApplicationLogDiagnostics {
         self.application_log.diagnostics()
+    }
+
+    pub fn set_core_log_diagnostics_provider(
+        &mut self,
+        provider: impl Fn() -> CoreLogDiagnostics + Send + Sync + 'static,
+    ) {
+        self.core_log_diagnostics = Some(Arc::new(provider));
+    }
+
+    pub fn core_log_diagnostics(&self) -> Option<CoreLogDiagnostics> {
+        self.core_log_diagnostics
+            .as_ref()
+            .map(|provider| provider())
     }
 
     pub fn record_log(&self, event: ApplicationLogEvent) {
@@ -2110,5 +2125,35 @@ mod tests {
 
         let stopped = application.shutdown().expect("clean shutdown");
         assert_eq!(stopped.state, RuntimeState::Stopped);
+    }
+
+    #[test]
+    fn application_reads_only_anonymous_core_log_diagnostics() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let mut application = Application::start_with_layout(layout).expect("start application");
+        assert_eq!(application.core_log_diagnostics(), None);
+
+        application.set_core_log_diagnostics_provider(|| CoreLogDiagnostics {
+            written: 3,
+            dropped: 1,
+            rotated: 2,
+            pruned: 4,
+            bytes: 128,
+            retained_files: 2,
+        });
+
+        assert_eq!(
+            application.core_log_diagnostics(),
+            Some(CoreLogDiagnostics {
+                written: 3,
+                dropped: 1,
+                rotated: 2,
+                pruned: 4,
+                bytes: 128,
+                retained_files: 2,
+            })
+        );
+        application.shutdown().expect("clean shutdown");
     }
 }

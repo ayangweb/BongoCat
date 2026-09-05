@@ -1,7 +1,7 @@
 use crate::{
     Application, ApplicationConfigStatus, ApplicationError, ApplicationLogCode,
     ApplicationLogComponent, ApplicationLogDiagnostics, ApplicationLogEvent, ApplicationLogLevel,
-    ApplicationShortcutSignals, BUILD_ENVIRONMENT, PRODUCT_VERSION,
+    ApplicationShortcutSignals, BUILD_ENVIRONMENT, CoreLogDiagnostics, PRODUCT_VERSION,
 };
 use atomic_write_file::AtomicWriteFile;
 use bongocat_config::{
@@ -343,6 +343,7 @@ trait DiagnosticsExportCapability: Send + Sync + 'static {
         &self,
         snapshot: &SettingsSnapshot,
         application_logs: ApplicationLogDiagnostics,
+        core_logs: Option<CoreLogDiagnostics>,
     ) -> Result<SettingsDiagnosticsExportStatus, SettingsError>;
 }
 
@@ -397,8 +398,9 @@ impl DiagnosticsExportCapability for SystemDiagnosticsExport {
         &self,
         snapshot: &SettingsSnapshot,
         application_logs: ApplicationLogDiagnostics,
+        core_logs: Option<CoreLogDiagnostics>,
     ) -> Result<SettingsDiagnosticsExportStatus, SettingsError> {
-        export_diagnostics_file(&self.path, snapshot, application_logs)
+        export_diagnostics_file(&self.path, snapshot, application_logs, core_logs)
     }
 }
 
@@ -918,7 +920,11 @@ fn run_service(
                 let result = {
                     let current = snapshot(&application, &mut clock, false, startup_item.state());
                     diagnostics_export
-                        .export(&current, application.application_log_diagnostics())
+                        .export(
+                            &current,
+                            application.application_log_diagnostics(),
+                            application.core_log_diagnostics(),
+                        )
                         .map(|status| {
                             clock.observe_diagnostics_export(status);
                             snapshot(&application, &mut clock, false, startup_item.state())
@@ -1618,6 +1624,7 @@ struct DiagnosticsExportDocument {
     configuration: DiagnosticsConfiguration,
     models: DiagnosticsModels,
     application_logs: DiagnosticsApplicationLogs,
+    core_logs: Option<DiagnosticsCoreLogs>,
 }
 
 #[derive(Serialize)]
@@ -1714,12 +1721,23 @@ struct DiagnosticsApplicationLogEvents {
     diagnostics_export_failed: u64,
 }
 
+#[derive(Serialize)]
+struct DiagnosticsCoreLogs {
+    written: u64,
+    dropped: u64,
+    rotated: u64,
+    pruned: u64,
+    bytes: u64,
+    retained_files: u64,
+}
+
 fn export_diagnostics_file(
     path: &std::path::Path,
     snapshot: &SettingsSnapshot,
     application_logs: ApplicationLogDiagnostics,
+    core_logs: Option<CoreLogDiagnostics>,
 ) -> Result<SettingsDiagnosticsExportStatus, SettingsError> {
-    let document = diagnostics_document(snapshot, application_logs);
+    let document = diagnostics_document(snapshot, application_logs, core_logs);
     let bytes = serde_json::to_vec_pretty(&document)
         .map_err(|_| SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))?;
     let parent = path.parent().unwrap_or_else(|| std::path::Path::new("."));
@@ -1777,6 +1795,7 @@ fn set_private_path(path: &std::path::Path) -> std::io::Result<()> {
 fn diagnostics_document(
     snapshot: &SettingsSnapshot,
     application_logs: ApplicationLogDiagnostics,
+    core_logs: Option<CoreLogDiagnostics>,
 ) -> DiagnosticsExportDocument {
     let input = snapshot.input_diagnostics;
     let runtime = snapshot.runtime_diagnostics;
@@ -1874,6 +1893,14 @@ fn diagnostics_document(
                 diagnostics_export_failed: application_logs.events.diagnostics_export_failed,
             },
         },
+        core_logs: core_logs.map(|core_logs| DiagnosticsCoreLogs {
+            written: core_logs.written,
+            dropped: core_logs.dropped,
+            rotated: core_logs.rotated,
+            pruned: core_logs.pruned,
+            bytes: core_logs.bytes,
+            retained_files: core_logs.retained_files,
+        }),
     }
 }
 
@@ -2310,6 +2337,7 @@ mod tests {
             &self,
             _snapshot: &SettingsSnapshot,
             _application_logs: ApplicationLogDiagnostics,
+            _core_logs: Option<CoreLogDiagnostics>,
         ) -> Result<SettingsDiagnosticsExportStatus, SettingsError> {
             Ok(SettingsDiagnosticsExportStatus {
                 format_version: DIAGNOSTICS_EXPORT_FORMAT_VERSION,
@@ -2417,6 +2445,14 @@ mod tests {
                     ..ApplicationLogEventCounts::default()
                 },
             },
+            Some(CoreLogDiagnostics {
+                written: 5,
+                dropped: 6,
+                rotated: 7,
+                pruned: 8,
+                bytes: 256,
+                retained_files: 3,
+            }),
         )
         .expect("export diagnostics");
         let bytes = std::fs::read(&path).expect("read exported diagnostics");
@@ -2448,6 +2484,9 @@ mod tests {
         assert_eq!(document["application_logs"]["dropped"], 1);
         assert_eq!(document["application_logs"]["events"]["started"], 1);
         assert_eq!(document["application_logs"]["events"]["panicked"], 2);
+        assert_eq!(document["core_logs"]["written"], 5);
+        assert_eq!(document["core_logs"]["dropped"], 6);
+        assert_eq!(document["core_logs"]["retained_files"], 3);
         assert_eq!(document["models"]["invalid_installed"], 1);
         assert_eq!(
             document["models"]["invalid_diagnostic_codes"][0]["code"],

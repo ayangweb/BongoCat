@@ -20,10 +20,11 @@ Diagnostics 页面已经聚合 runtime、输入、配置和模型目录状态，
   `diagnostics_export_failed`，不暴露操作系统文本。
 - Diagnostics 页面提供键盘和 AccessKit 可访问的导出操作；“无报告”与成功字节数属于显示状态，
   不影响配置 revision。
-- 导出额外包含 app-owned 日志 writer 的匿名聚合统计（written、dropped、rotated、pruned、bytes
-  和 retained_files），但不读取或复制任何日志正文。
-- format version 1 是当前完整的匿名结构；消费者必须拒绝非 v1，不能猜测或忽略不兼容的导出格式。
-  后续字段或行为变化必须先建立新的版本、schema、测试与 ADR，不能把兼容分支预置到当前格式。
+- 导出额外包含 app-owned 和 Cubism Core 两个日志 owner 各自的匿名聚合统计（written、dropped、
+  rotated、pruned、bytes 和 retained_files），但不读取或复制任何日志正文、路径或 Core 消息。
+- format version 1 是 `next` 分支当前完整的匿名结构；消费者必须拒绝非 v1，不能猜测或忽略不兼容的
+  导出格式。在首版发布前字段直接修改当前 v1，并同步此 ADR、测试与文档，不保留中间格式的兼容分支。
+  首版发布后才为不兼容演进建立新的版本、schema、测试与 ADR。
 
 ## 后续边界
 
