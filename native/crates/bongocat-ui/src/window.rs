@@ -19,7 +19,7 @@ use bongocat_platform::{
 };
 use bongocat_platform::{DirectoryPickerError, DirectoryPickerOutcome, pick_model_directory};
 use gpui_kit::component::{
-    ActiveTheme, Disableable, IndexPath, Root, Theme, ThemeMode,
+    ActiveTheme, Disableable, IconName, IndexPath, Root, Theme, ThemeMode,
     button::Button,
     group_box::{GroupBox, GroupBoxVariant, GroupBoxVariants},
     input::{Input, InputEvent, InputState, NumberInputEvent, StepAction},
@@ -1157,4 +1157,25 @@ fn command_button(
         .track_focus(focus)
         .tab_index(tab_index)
         .child(Button::new(label).label(label).disabled(disabled))
+}
+
+fn icon_command_button(
+    id: &'static str,
+    label: &'static str,
+    icon: IconName,
+    focus: &FocusHandle,
+    tab_index: isize,
+    disabled: bool,
+) -> Div {
+    div()
+        .key_context("SettingsControl")
+        .track_focus(focus)
+        .tab_index(tab_index)
+        .child(
+            Button::new(id)
+                .icon(icon)
+                .tooltip(label)
+                .accessibility_label(label)
+                .disabled(disabled),
+        )
 }

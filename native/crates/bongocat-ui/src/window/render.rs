@@ -827,12 +827,12 @@ impl Render for SettingsView {
             .border_t_1()
             .border_color(tokens.border)
             .child(
-                command_button(
+                icon_command_button(
+                    "refresh-settings-control",
                     ui_text(language, UiText::Refresh),
+                    IconName::RotateCw,
                     &self.refresh_focus,
                     30,
-                    window,
-                    tokens,
                     self.refresh_is_disabled(),
                 )
                 .id("refresh-settings")
@@ -847,12 +847,12 @@ impl Render for SettingsView {
                 })),
             )
             .child(
-                command_button(
+                icon_command_button(
+                    "quit-application-control",
                     ui_text(language, UiText::Quit),
+                    IconName::Close,
                     &self.quit_focus,
                     31,
-                    window,
-                    tokens,
                     false,
                 )
                 .id("quit-application")
