@@ -927,6 +927,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     阶段验证 signature、首个 34-byte STREAMINFO block、sample rate/channel/bit-depth 边界及非空
     frame 数据；错误格式或损坏 header 在导入前以 `model_resource_invalid` 拒绝。完整解码和输出设备
     错误仍由独立 audio worker 处理，physics/pose 的真实 fixture 阻塞不变。
+  - 状态（2026-09-06）：motion `UserData` 的 metadata count、字节大小和相对时间范围也在 package
+    prepare 阶段校验，避免无效事件在导入提交后才由 runtime 发现。segment 语义、physics/pose 的完整
+    结构与求值仍各自保留在 Live2D 边界及真实 fixture 门禁内。
 - [x] 拒绝路径穿越、符号链接逃逸、绝对路径和覆盖安装资源。
   - 验收证据（2026-08-30）：prepare 拒绝遍历、绝对/平台前缀和跨根 symlink；import
     进一步拒绝所有 symlink 与特殊文件，使用 `create_new` staging 文件和非覆盖目录

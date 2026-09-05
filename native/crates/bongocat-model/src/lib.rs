@@ -18,6 +18,7 @@ pub use store::{
 };
 
 pub const INDEX_SCHEMA_VERSION: u32 = 1;
+const MOTION_TIME_TOLERANCE: f32 = 0.000_001;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ModelPackageLimits {
@@ -652,7 +653,7 @@ struct RawMotionResourceFile {
     #[serde(rename = "Curves")]
     curves: Vec<RawMotionResourceCurve>,
     #[serde(rename = "UserData", default)]
-    user_data: Vec<serde_json::Value>,
+    user_data: Vec<RawMotionResourceUserData>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -675,7 +676,16 @@ struct RawMotionResourceMeta {
     #[serde(rename = "UserDataCount")]
     user_data_count: usize,
     #[serde(rename = "TotalUserDataSize")]
-    _total_user_data_size: usize,
+    total_user_data_size: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawMotionResourceUserData {
+    #[serde(rename = "Time")]
+    time: f32,
+    #[serde(rename = "Value")]
+    value: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1332,6 +1342,21 @@ fn validate_motion_resource(
         return invalid_resource(
             reference,
             "motion3 Meta counts do not match declared arrays",
+        );
+    }
+    let user_data_size = motion.user_data.iter().try_fold(0_usize, |total, entry| {
+        if !entry.time.is_finite()
+            || entry.time < 0.0
+            || entry.time > motion.meta.duration + MOTION_TIME_TOLERANCE
+        {
+            return Err(());
+        }
+        total.checked_add(entry.value.len()).ok_or(())
+    });
+    if user_data_size.ok() != Some(motion.meta.total_user_data_size) {
+        return invalid_resource(
+            reference,
+            "motion3 UserData metadata contains an invalid time or size",
         );
     }
     for curve in motion.curves {
@@ -2255,6 +2280,25 @@ mod tests {
             limits.maximum_json_depth,
         )
         .expect_err("mismatched motion count must be rejected");
+        assert_eq!(error.code, ModelDiagnostic::ModelResourceInvalid);
+
+        fs::write(
+            &motion,
+            r#"{
+              "Version":3,
+              "Meta":{"Duration":1,"Fps":30,"Loop":false,"AreBeziersRestricted":true,"CurveCount":0,"TotalSegmentCount":0,"TotalPointCount":0,"UserDataCount":1,"TotalUserDataSize":1},
+              "Curves":[],
+              "UserData":[{"Time":2,"Value":"x"}]
+            }"#,
+        )
+        .expect("invalid user data resource");
+        let error = validate_motion_resource(
+            &motion,
+            "motion.motion3.json",
+            limits.maximum_json_bytes,
+            limits.maximum_json_depth,
+        )
+        .expect_err("out-of-range motion user data must be rejected");
         assert_eq!(error.code, ModelDiagnostic::ModelResourceInvalid);
     }
 
