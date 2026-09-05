@@ -64,9 +64,9 @@ use windows::{
             },
             Dxgi::{
                 Common::{
-                    DXGI_ALPHA_MODE_PREMULTIPLIED, DXGI_FORMAT_B8G8R8A8_UNORM,
-                    DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R16_UINT, DXGI_FORMAT_R32G32_FLOAT,
-                    DXGI_SAMPLE_DESC,
+                    DXGI_ALPHA_MODE_PREMULTIPLIED, DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM,
+                    DXGI_FORMAT_B8G8R8A8_UNORM_SRGB, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
+                    DXGI_FORMAT_R16_UINT, DXGI_FORMAT_R32G32_FLOAT, DXGI_SAMPLE_DESC,
                 },
                 DXGI_MEMORY_SEGMENT_GROUP_LOCAL, DXGI_PRESENT, DXGI_QUERY_VIDEO_MEMORY_INFO,
                 DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
@@ -113,6 +113,12 @@ const SWITCH_WARMUP_CYCLES: u64 = 100;
 const THREAD_SETTLE_INTERVAL: Duration = Duration::from_millis(10);
 const THREAD_SETTLE_SAMPLES: u32 = 25;
 const THREAD_SETTLE_TIMEOUT: Duration = Duration::from_secs(2);
+// PNG RGBA payloads are encoded sRGB. Sampling and color blending therefore
+// happen in linear space, while the composition surface encodes its
+// premultiplied result back to sRGB. Masks carry alpha only.
+const COMPOSITION_FORMAT: DXGI_FORMAT = DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+const MODEL_TEXTURE_FORMAT: DXGI_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+const MASK_TEXTURE_FORMAT: DXGI_FORMAT = DXGI_FORMAT_B8G8R8A8_UNORM;
 
 fn current_cursor_position() -> POINT {
     let mut point = POINT { x: 80, y: 80 };
@@ -599,7 +605,7 @@ impl Renderer {
         let descriptor = DXGI_SWAP_CHAIN_DESC1 {
             Width: window.width,
             Height: window.height,
-            Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+            Format: COMPOSITION_FORMAT,
             Stereo: false.into(),
             SampleDesc: DXGI_SAMPLE_DESC {
                 Count: 1,
@@ -2333,7 +2339,7 @@ unsafe fn load_texture(
             device,
             asset.width,
             asset.height,
-            DXGI_FORMAT_R8G8B8A8_UNORM,
+            MODEL_TEXTURE_FORMAT,
             image.as_ptr(),
             asset.width.saturating_mul(4),
         )
@@ -2342,14 +2348,14 @@ unsafe fn load_texture(
 
 unsafe fn create_empty_mask(device: &ID3D11Device) -> WindowsResult<TextureResource> {
     let pixel = [0_u8; 4];
-    unsafe { create_texture_resource(device, 1, 1, DXGI_FORMAT_R8G8B8A8_UNORM, pixel.as_ptr(), 4) }
+    unsafe { create_texture_resource(device, 1, 1, MASK_TEXTURE_FORMAT, pixel.as_ptr(), 4) }
 }
 
 unsafe fn create_texture_resource(
     device: &ID3D11Device,
     width: u32,
     height: u32,
-    format: windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT,
+    format: DXGI_FORMAT,
     bytes: *const u8,
     row_pitch: u32,
 ) -> WindowsResult<TextureResource> {
@@ -2393,7 +2399,7 @@ unsafe fn create_mask_target(
         Height: height,
         MipLevels: 1,
         ArraySize: 1,
-        Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+        Format: MASK_TEXTURE_FORMAT,
         SampleDesc: DXGI_SAMPLE_DESC {
             Count: 1,
             Quality: 0,
@@ -2622,6 +2628,13 @@ mod tests {
         assert_eq!(size_of::<bongocat_render::Vertex>(), 16);
         assert_eq!(size_of::<Uniforms>(), 80);
         assert_eq!(size_of::<Uniforms>() % 16, 0);
+    }
+
+    #[test]
+    fn color_formats_decode_assets_and_encode_the_composited_frame_as_srgb() {
+        assert_eq!(MODEL_TEXTURE_FORMAT, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB);
+        assert_eq!(COMPOSITION_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM_SRGB);
+        assert_eq!(MASK_TEXTURE_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM);
     }
 
     #[test]

@@ -897,7 +897,13 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     的本机单元测试、完整 workspace 门禁、macOS release settings/Models lifecycle 与隐藏切模 smoke
     通过；包含后续 Windows overlay 修复的 run `33865854261` 又在 macOS job `101000445151` 与
     Windows job `101000445117` 通过完整 release lifecycle 和有序 shutdown。
-- [ ] 明确 sRGB/linear、预乘 alpha 和 texture color space，避免两平台颜色或边缘混合语义漂移。
+- [x] 明确 sRGB/linear、预乘 alpha 和 texture color space，避免两平台颜色或边缘混合语义漂移。
+  - 验收证据（2026-09-06）：`bongocat-overlay` 将模型、背景和按键 PNG 固定为 sRGB texture
+    view（D3D11 `R8G8B8A8_UNORM_SRGB` / Metal `RGBA8Unorm_sRGB`），将最终预乘 alpha
+    composition/drawable attachment 固定为 sRGB（D3D11 `B8G8R8A8_UNORM_SRGB` / Metal
+    `BGRA8Unorm_sRGB`），并保留 alpha-only mask 的 linear UNORM format。两端 shader 都在
+    采样解码后的 linear RGB 执行 multiply/screen、mask 和预乘，format contract 单元测试覆盖
+    两个实现。嵌入 ICC/wide-gamut profile 的转换尚未实现，v1 明确不依赖平台默认色彩管理。
 - [ ] present 失败、窗口隐藏和 drawable unavailable 时限流，不产生 busy loop 或日志风暴。
 
 ### 4.5 Phase 3 退出门槛

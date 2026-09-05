@@ -503,6 +503,14 @@ RenderSnapshot
 
 renderer 负责遮罩、混合、裁剪、纹理上传、dirty flag、present 和 GPU 生命周期；不读取配置、不决定动作、不访问 GPUI entity。
 
+所有 v1 PNG RGBA 贴图（Cubism texture、背景与按键 overlay）按 sRGB 编码解释；Windows 使用
+`R8G8B8A8_UNORM_SRGB`、macOS 使用 `RGBA8Unorm_sRGB`，使 shader sampling 和颜色计算在
+linear 空间进行。最终预乘 alpha 颜色写入 sRGB composition/drawable surface（Windows
+`B8G8R8A8_UNORM_SRGB`、macOS `BGRA8Unorm_sRGB`）；normal、additive 与 multiplicative
+blend 使用相同 linear premultiplied 输入。clipping mask 只携带 alpha，保持 linear UNORM，避免
+对 coverage 作 gamma 转换。v1 不解释或转换嵌入 ICC/wide-gamut profile；模型导入将此类颜色
+管理作为明确的后续能力，而不是让平台默认行为决定结果。
+
 原生 overlay 窗口创建后默认保持隐藏。平台 owner 只有在对应 renderer 已成功完成至少一次
 非空帧 draw/present 后才允许首次显示；启动、隐藏后重显、设置导致的窗口重建和模型切换重建
 都遵守同一顺序。首帧提交或验证失败时窗口保持隐藏，模型准备失败仍保留当前可用窗口与模型，

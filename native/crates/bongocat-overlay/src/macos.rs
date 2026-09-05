@@ -54,6 +54,12 @@ const METAL_COMPLETION_TIMEOUT: Duration = Duration::from_secs(2);
 const SWITCH_WARMUP_FRAMES: u64 = 30;
 const SWITCH_SETTLE_FRAMES: u64 = 30;
 const PRESET_MODEL_IDS: [&str; 3] = ["standard", "keyboard", "gamepad"];
+// PNG RGBA payloads are encoded sRGB. Sampling and color blending therefore
+// happen in linear space, while the drawable encodes its premultiplied result
+// back to sRGB for the window compositor. Masks carry alpha only.
+const COLOR_ATTACHMENT_FORMAT: MTLPixelFormat = MTLPixelFormat::BGRA8Unorm_sRGB;
+const MODEL_TEXTURE_FORMAT: MTLPixelFormat = MTLPixelFormat::RGBA8Unorm_sRGB;
+const MASK_TEXTURE_FORMAT: MTLPixelFormat = MTLPixelFormat::BGRA8Unorm;
 const RIGHT_ARROW: PhysicalKey = PhysicalKey::from_hid_usage(0x4f);
 const SHADER_SOURCE: &str = r#"
     #include <metal_stdlib>
@@ -1093,7 +1099,7 @@ impl NativeOverlay {
             .ok_or_else(|| OverlayError::new("Metal device is unavailable"))?;
         let layer = MetalLayer::new();
         layer.set_device(&device);
-        layer.set_pixel_format(MTLPixelFormat::BGRA8Unorm);
+        layer.set_pixel_format(COLOR_ATTACHMENT_FORMAT);
         layer.set_opaque(false);
         layer.set_presents_with_transaction(false);
         layer.set_framebuffer_only(false);
@@ -1961,7 +1967,7 @@ fn create_pipeline(
         .color_attachments()
         .object_at(0)
         .ok_or_else(|| OverlayError::new("Metal pipeline color attachment is unavailable"))?;
-    attachment.set_pixel_format(MTLPixelFormat::BGRA8Unorm);
+    attachment.set_pixel_format(COLOR_ATTACHMENT_FORMAT);
     attachment.set_blending_enabled(true);
     match mode {
         BlendMode::Normal => {
@@ -2000,7 +2006,7 @@ fn create_mask_pipeline(
         .color_attachments()
         .object_at(0)
         .ok_or_else(|| OverlayError::new("Metal mask pipeline attachment is unavailable"))?;
-    attachment.set_pixel_format(MTLPixelFormat::BGRA8Unorm);
+    attachment.set_pixel_format(MASK_TEXTURE_FORMAT);
     attachment.set_blending_enabled(true);
     attachment.set_source_rgb_blend_factor(MTLBlendFactor::One);
     attachment.set_destination_rgb_blend_factor(MTLBlendFactor::OneMinusSourceAlpha);
@@ -2014,7 +2020,7 @@ fn create_mask_pipeline(
 fn create_mask_texture(device: &Device, width: u64, height: u64) -> Texture {
     let descriptor = TextureDescriptor::new();
     descriptor.set_texture_type(MTLTextureType::D2);
-    descriptor.set_pixel_format(MTLPixelFormat::BGRA8Unorm);
+    descriptor.set_pixel_format(MASK_TEXTURE_FORMAT);
     descriptor.set_width(width);
     descriptor.set_height(height);
     descriptor.set_storage_mode(MTLStorageMode::Private);
@@ -2025,7 +2031,7 @@ fn create_mask_texture(device: &Device, width: u64, height: u64) -> Texture {
 fn create_solid_mask_texture(device: &Device) -> Texture {
     let descriptor = TextureDescriptor::new();
     descriptor.set_texture_type(MTLTextureType::D2);
-    descriptor.set_pixel_format(MTLPixelFormat::BGRA8Unorm);
+    descriptor.set_pixel_format(MASK_TEXTURE_FORMAT);
     descriptor.set_width(1);
     descriptor.set_height(1);
     descriptor.set_storage_mode(MTLStorageMode::Shared);
@@ -2062,7 +2068,7 @@ fn load_texture(device: &Device, asset: &TextureAsset) -> Result<Texture, Overla
     }
     let descriptor = TextureDescriptor::new();
     descriptor.set_texture_type(MTLTextureType::D2);
-    descriptor.set_pixel_format(MTLPixelFormat::RGBA8Unorm);
+    descriptor.set_pixel_format(MODEL_TEXTURE_FORMAT);
     descriptor.set_width(u64::from(asset.width));
     descriptor.set_height(u64::from(asset.height));
     descriptor.set_storage_mode(MTLStorageMode::Shared);
@@ -2176,5 +2182,12 @@ mod tests {
     fn gpu_structs_match_metal_layout() {
         assert_eq!(size_of::<bongocat_render::Vertex>(), 16);
         assert_eq!(size_of::<Uniforms>(), 80);
+    }
+
+    #[test]
+    fn color_formats_decode_assets_and_encode_the_composited_frame_as_srgb() {
+        assert_eq!(MODEL_TEXTURE_FORMAT, MTLPixelFormat::RGBA8Unorm_sRGB);
+        assert_eq!(COLOR_ATTACHMENT_FORMAT, MTLPixelFormat::BGRA8Unorm_sRGB);
+        assert_eq!(MASK_TEXTURE_FORMAT, MTLPixelFormat::BGRA8Unorm);
     }
 }
