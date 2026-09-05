@@ -293,6 +293,51 @@ mod tests {
     }
 
     #[test]
+    fn integrity_and_staging_failures_do_not_retry_or_leave_partial_artifacts() {
+        let temporary = tempdir().expect("temporary directory");
+        let layout = StorageLayout::under(temporary.path(), BuildEnvironment::Development);
+        let mut waits = 0;
+
+        let integrity = UpdateDownloadCoordinator::default()
+            .stage_with_retry(
+                &artifact(b"expected"),
+                &layout,
+                || Ok(Cursor::new(b"wrong---".to_vec())),
+                |_, _| {
+                    waits += 1;
+                    true
+                },
+                || false,
+            )
+            .expect_err("integrity failure");
+        assert_eq!(integrity.code(), UpdateDownloadErrorCode::Integrity);
+        assert_eq!(integrity.attempts(), 1);
+        assert_eq!(waits, 0);
+        assert_eq!(
+            std::fs::read_dir(&layout.update_staging)
+                .expect("staging directory")
+                .count(),
+            0
+        );
+
+        let staging = UpdateDownloadCoordinator::default()
+            .stage_with_retry::<Cursor<Vec<u8>>, _, _, _>(
+                &artifact(b"expected"),
+                &layout,
+                || Err(UpdateDownloadAttemptFailure::Staging),
+                |_, _| {
+                    waits += 1;
+                    true
+                },
+                || false,
+            )
+            .expect_err("staging failure");
+        assert_eq!(staging.code(), UpdateDownloadErrorCode::Staging);
+        assert_eq!(staging.attempts(), 1);
+        assert_eq!(waits, 0);
+    }
+
+    #[test]
     fn cancellation_stops_before_opening_or_during_retry_wait() {
         let temporary = tempdir().expect("temporary directory");
         let layout = StorageLayout::under(temporary.path(), BuildEnvironment::Development);

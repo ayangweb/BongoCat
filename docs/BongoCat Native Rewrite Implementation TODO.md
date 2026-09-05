@@ -1487,7 +1487,8 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     完整性、暂存和其他 HTTP 状态立即终止，且不支持 Range/partial resume。注入式
     `UpdateDownloadCoordinator` 已按此策略创建全新 reader/staging file、记录 attempt count，并让
     adapter 在等待期间响应取消；传输读中断会清理 partial 并作为新的完整流重试。实际 HTTPS source、
-    固定发布 endpoint 和产品下载 UI 尚未实现，因此本项保持未勾选。
+    固定发布 endpoint 和产品下载 UI 尚未实现，因此本项保持未勾选。协调器回归另覆盖 hash
+    不匹配与本地 staging failure 立即停止、不进入等待，并确认前者没有遗留 partial artifact。
 - [ ] 安装前协调 runtime/renderer shutdown，失败可回滚。
 - [ ] 测试断网、代理、中断、签名错误和降级攻击。
 - [ ] 日志 rotation、总大小和保留天数有上限。
