@@ -8,7 +8,7 @@
 `spikes/config-store/` 只实现 Native Rewrite 配置契约，不读取或转换旧 Tauri/Pinia 数据：
 
 - Bundle ID 为 `com.ayangweb.bongo-cat`；相同 base 下使用 `development/` 与 `production/` 两个互斥根目录；
-- 两个环境具有完全一致的相对结构：`config.json`、`state.json`、`models/`、`backups/`、`logs/`、`locks/`；
+- 两个环境具有完全一致的相对结构：`config.json`、`state.json`、`models/`、`backups/`、`logs/`、`updates/`、`locks/`；
 - `NativeConfig` 是强类型结构，当前与共享默认 fixture 对齐为 `schema_version = 1`，模型选择
   使用成对的 `selected_model_origin`/`selected_model_id`，JSON key 使用当前产品语义的
   `snake_case`；`next` 不读取或迁移开发中间结构；

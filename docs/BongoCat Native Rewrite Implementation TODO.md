@@ -766,7 +766,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] Windows 使用 `%APPDATA%\BongoCat\<environment>\` 数据根。
 - [x] macOS 使用 `Application Support/com.ayangweb.bongo-cat/<environment>/` 数据根。
   - 双平台 target-specific resolver test 已通过。
-- [x] 两个环境的 `config.json`、`state.json`、`models/`、`backups/`、`logs/` 和 `locks/` 相对结构一致；spike 测试逐项比较相对路径。
+- [x] 两个环境的 `config.json`、`state.json`、`models/`、`backups/`、`logs/`、`updates/` 和 `locks/` 相对结构一致；spike 测试逐项比较相对路径。
 - [x] 环境不能由 CLI、进程环境变量或设置项在运行时切换，也不能 fallback 到另一环境。
   - 验收证据（2026-09-01）：`bongocat-app/build.rs` 只在编译期读取并严格校验
     `BONGOCAT_BUILD_ENV`，将不可变 cfg 注入应用；运行时 API 只使用该 cfg 对应的
@@ -783,7 +783,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 强制终止持锁进程后由内核释放 writer lock，下一进程可恢复已 flush 的临时配置且不覆盖当前配置。
   - 验收证据（2026-08-29）：macOS 本机与 Windows push run `33251278193`、job `99097261951` 均通过；平台文件权限仍待产品 crate。
 - [x] 新配置文件和备份使用最小用户权限，不继承过宽 ACL/文件 mode。
-  - 验收证据（2026-09-01）：`bongocat-config` 的 `StorageLayout` 创建 root、models、backups、logs 和
+  - 验收证据（2026-09-01）：`bongocat-config` 的 `StorageLayout` 创建 root、models、backups、logs、updates 和
     locks 目录时在 Unix 强制 `0700`；config/state、备份、锁和原子替换结果统一为 `0600`，覆盖
     首次创建、恢复和 verification rollback。Windows 依赖 `%APPDATA%` 用户目录 ACL，不修改系统
     ACL；Unix 权限回归测试验证目录/文件 mode，config crate 46 项测试和 Native workspace tests 通过。
@@ -2463,6 +2463,9 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       定向 Clippy 已通过。实现 commit `a9371f6` 的 CI run `33936771710` 全绿；Windows/macOS/Ubuntu
       workspace jobs `101226118609`/`101226118560`/`101226118583` 均通过完整 workspace 门禁和对应
       产品 smoke。
+    - 状态（2026-09-05）：环境根的 `StorageLayout` 现显式拥有私有 `updates/` 目录；Development/
+      Production 目录形状测试逐项包含该目录。`UpdateSequenceStore` 只在此目录写入
+      `update-sequence.json` 和锁文件，不与 config/state 事务混用。
 
 68. [x] `P7-AUTOMATIC-UPDATE-PREFERENCE`：让当前 v1 自动检查更新偏好进入正式设置链路。
     - 依赖：当前 v1 `application.check_for_updates_automatically`、settings typed command/snapshot、

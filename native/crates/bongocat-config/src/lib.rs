@@ -63,6 +63,7 @@ pub struct StorageLayout {
     pub models: PathBuf,
     pub backups: PathBuf,
     pub logs: PathBuf,
+    pub updates: PathBuf,
     pub locks: PathBuf,
 }
 
@@ -78,6 +79,7 @@ impl StorageLayout {
             models: root.join("models"),
             backups: root.join("backups"),
             logs: root.join("logs"),
+            updates: root.join("updates"),
             locks: root.join("locks"),
             root,
         }
@@ -90,7 +92,13 @@ impl StorageLayout {
     fn create_directories(&self) -> io::Result<()> {
         fs::create_dir_all(&self.root)?;
         set_private_directory(&self.root)?;
-        for directory in [&self.models, &self.backups, &self.logs, &self.locks] {
+        for directory in [
+            &self.models,
+            &self.backups,
+            &self.logs,
+            &self.updates,
+            &self.locks,
+        ] {
             fs::create_dir_all(directory)?;
             set_private_directory(directory)?;
         }
@@ -2082,6 +2090,7 @@ mod tests {
                 &layout.models,
                 &layout.backups,
                 &layout.logs,
+                &layout.updates,
                 &layout.locks,
             ]
             .into_iter()
@@ -3248,6 +3257,7 @@ mod tests {
             &store.layout.models,
             &store.layout.backups,
             &store.layout.logs,
+            &store.layout.updates,
             &store.layout.locks,
         ] {
             assert_eq!(

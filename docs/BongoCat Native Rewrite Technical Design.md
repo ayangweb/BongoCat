@@ -552,7 +552,7 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
 | Windows | `%APPDATA%\BongoCat\development\`                                   | `%APPDATA%\BongoCat\production\`                                   |
 | macOS   | `~/Library/Application Support/com.ayangweb.bongo-cat/development/` | `~/Library/Application Support/com.ayangweb.bongo-cat/production/` |
 
-每个根目录包含 `config.json`、`state.json`、`models/`、`backups/` 和 `logs/`。锁、单实例命名、更新 channel 和诊断同样按环境隔离；任何环境不得读取、写入或 fallback 到另一个环境。
+每个根目录包含 `config.json`、`state.json`、`models/`、`backups/`、`logs/`、`updates/` 和 `locks/`。锁、单实例命名、更新 channel 和诊断同样按环境隔离；任何环境不得读取、写入或 fallback 到另一个环境。
 
 要求：
 

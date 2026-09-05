@@ -45,6 +45,8 @@ CLI/API，并且 Production 构建与该 feature 的组合在编译期失败。
   models/
   backups/
   logs/
+  updates/
+  locks/
 ```
 
 锁、单实例命名、诊断和更新 channel 也必须包含环境身份。任何环境都不得探测、读取或回退到另一个环境的目录。
