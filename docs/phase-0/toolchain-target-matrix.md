@@ -1,7 +1,7 @@
 # Toolchain and Target Matrix
 
 状态：Provisional；Windows 仅 x64/ARM64，ARM64 被 R5 Core 阻塞，macOS Intel 尚未冻结
-记录日期：2026-08-30
+记录日期：2026-09-05
 
 ## 1. Decision Rule
 
@@ -37,14 +37,17 @@ Linux target 不属于首发 tier。共享 crate 的 Linux `cargo check` 仅用�
 | OS                       | macOS 26.5.2 (25F84)                                            |
 | Xcode                    | 26.6 (17F113)                                                   |
 | macOS SDK                | 26.5                                                            |
-| Optional Metal Toolchain | build 17F109, `installed`                                       |
-| Rust                     | 1.97.1, host `aarch64-apple-darwin`                             |
-| Cargo                    | 1.97.1                                                          |
+| Optional Metal Toolchain | v17.6.109.0, `installed`                                        |
+| Rust                     | 1.97.1 (`8bab26f4`, LLVM 22.1.6), host `aarch64-apple-darwin`   |
+| Cargo                    | 1.97.1 (`c980f486`)                                             |
 | GPUI                     | crates.io `0.2.2`, exact version and lockfile in isolated spike |
 
-本机已安装 Rust targets：`aarch64-apple-darwin`、`x86_64-apple-darwin`、`x86_64-pc-windows-msvc`。target 已安装只代表标准库可用，不代表能在 macOS 链接 Windows MSVC 产物，也不代表目标运行测试通过。
+本机已安装 Rust targets：`aarch64-apple-darwin`、`aarch64-pc-windows-msvc`、`i686-pc-windows-msvc`、
+`x86_64-apple-darwin`、`x86_64-pc-windows-msvc` 和 `x86_64-unknown-linux-gnu`。这些是开发机工具链
+状态，而不是项目 target 矩阵；Native Rewrite 不得构建、测试、打包或发布 i686。target 已安装只代表
+标准库可用，不代表能在 macOS 链接 Windows MSVC 产物，也不代表目标运行测试通过。
 
-当前 GPUI spike 已移除公开 `runtime_shaders` feature，并使用 Metal Toolchain 17F109 通过默认预编译 shader 的 debug/release 构建和 `.app` smoke。最低 Xcode/SDK/Rust 组合仍未验证，不能由这台较新开发机反推 macOS 12 构建兼容性。
+当前 GPUI spike 已移除公开 `runtime_shaders` feature，并使用 Metal Toolchain v17.6.109.0 通过默认预编译 shader 的 debug/release 构建和 `.app` smoke。最低 Xcode/SDK/Rust 组合仍未验证，不能由这台较新开发机反推 macOS 12 构建兼容性。
 
 ## 4. Required Windows Toolchain Evidence
 

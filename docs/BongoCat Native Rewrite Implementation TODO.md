@@ -1580,6 +1580,9 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 3. [x] `P0-GPUI-LIFECYCLE-MAC`：macOS 隔离 spike 精确锁定 GPUI 0.2.2，窗口打开并通过 GPUI `quit()` 正常退出。
 4. [ ] `P0-DOC-CONSISTENCY`：维护 ADR-006/007/008，记录旧版 tag/安装包 hash、target triple 和工具链矩阵。
    - 状态（2026-08-28）：ADR 与仓库/发布基线已完成；target/toolchain 文档为 provisional，仍待 Windows 实机、GPUI 发布构建和 Cubism 架构证据后冻结。
+   - 状态（2026-09-05）：已重新采集当前 macOS 26.5.2/Xcode 26.6/SDK 26.5/Rust 1.97.1/Metal
+     Toolchain v17.6.109.0 证据，并明确开发机额外安装的 i686 target 不进入 Native Rewrite
+     矩阵。Windows 实机、发布产物保留与最终 target freeze 仍是本项未完成门禁。
 5. [x] `P0-ARCHAEOLOGY`：补齐完整功能优先级和模型异常 fixture。
    - 状态（2026-08-28）：旧配置兼容已从产品范围移除；47 项功能优先级、预置模型资源清单、自定义模型匿名统计和六类模型异常目录 fixture 已完成。实机行为确认继续由输入、overlay 与 Cubism spike 承担。
 6. [x] `P0-CONFIG-CONTRACT`：固定 Bundle ID、自有字段命名和 Development/Production 隔离存储契约。
