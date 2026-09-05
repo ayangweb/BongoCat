@@ -13,7 +13,8 @@ use std::{
 };
 
 const MAX_LOG_BYTES: u64 = 1024 * 1024;
-const MAX_LOG_FILES: u32 = 4;
+const MAX_TOTAL_LOG_FILES: u32 = 8;
+const MAX_ROTATED_LOG_FILES: u32 = MAX_TOTAL_LOG_FILES - 1;
 const MAX_MESSAGE_BYTES: usize = 512;
 
 #[derive(Debug)]
@@ -213,7 +214,7 @@ fn rotate_logs(state: &mut CoreLogState) -> bool {
     };
     drop(file);
 
-    for generation in (1..MAX_LOG_FILES).rev() {
+    for generation in (1..MAX_ROTATED_LOG_FILES).rev() {
         let source = rotated_log_path(&state.path, generation);
         let destination = rotated_log_path(&state.path, generation + 1);
         let _ = fs::remove_file(&destination);
@@ -356,7 +357,7 @@ mod tests {
         let directory = tempdir().expect("temporary directory");
         let path = directory.path().join("core.jsonl");
         fs::write(&path, vec![b'x'; MAX_LOG_BYTES as usize]).expect("seed active log");
-        for generation in 1..=MAX_LOG_FILES {
+        for generation in 1..=MAX_ROTATED_LOG_FILES {
             fs::write(rotated_log_path(&path, generation), b"old").expect("seed rotated log");
         }
         let file = OpenOptions::new()
@@ -376,8 +377,19 @@ mod tests {
             }),
         };
         sink.record(b"rotation");
-        assert!(rotated_log_path(&path, MAX_LOG_FILES).is_file());
-        assert!(!rotated_log_path(&path, MAX_LOG_FILES + 1).exists());
+        assert!(rotated_log_path(&path, MAX_ROTATED_LOG_FILES).is_file());
+        assert!(!rotated_log_path(&path, MAX_ROTATED_LOG_FILES + 1).exists());
+        let retained_bytes = (0..=MAX_ROTATED_LOG_FILES)
+            .map(|generation| {
+                let retained = if generation == 0 {
+                    path.clone()
+                } else {
+                    rotated_log_path(&path, generation)
+                };
+                fs::metadata(retained).expect("retained log metadata").len()
+            })
+            .sum::<u64>();
+        assert!(retained_bytes <= MAX_TOTAL_LOG_FILES as u64 * MAX_LOG_BYTES);
         assert!(fs::read(&path).expect("active contents").contains(&b'\n'));
     }
 

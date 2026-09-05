@@ -1459,8 +1459,8 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 - [ ] 安装前协调 runtime/renderer shutdown，失败可回滚。
 - [ ] 测试断网、代理、中断、签名错误和降级攻击。
 - [ ] 日志 rotation、总大小和保留天数有上限。
-  - 状态（2026-09-01）：Cubism Core 日志 sink 已在单文件达到 1 MiB 时执行有界路径轮转，最多保留
-    4 个轮转文件，活动文件和轮转失败均有有界 dropped 计数；测试覆盖触发轮转、保留上限和
+  - 状态（2026-09-05）：Cubism Core 日志 sink 已在单文件达到 1 MiB 时执行有界路径轮转，最多保留
+    1 个活动文件加 7 个轮转文件，总量不超过 8 MiB；活动文件和轮转失败均有有界 dropped 计数；测试覆盖触发轮转、保留上限和
     活动文件恢复写入。应用级 writer 现按 UTC 日分文件，单文件 1 MiB、总量 8 MiB、最多 8 个文件、
     保留最近 7 日，并覆盖日期切换、轮转、过期/总量清理和失败计数；Core 历史日志仍未纳入同一
     retention policy，因此本项保持未勾选。
