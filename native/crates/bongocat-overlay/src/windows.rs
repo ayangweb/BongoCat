@@ -1,6 +1,6 @@
 use crate::{
-    OverlayError, OverlayPresentationState, OverlaySessionOptions, OverlayTickOutcome,
-    OverlayWindowBounds, OverlayWorkArea, PreviewReport, ProductOverlayReport,
+    BlendFactor, OverlayError, OverlayPresentationState, OverlaySessionOptions, OverlayTickOutcome,
+    OverlayWindowBounds, OverlayWorkArea, PreviewReport, ProductOverlayReport, blend_factors,
     default_overlay_window_dimensions, validate_model_generation_advance,
 };
 use bongocat_model::{CommittedModel, ModelId, ModelPackageLimits, PresetModelCatalog};
@@ -2232,59 +2232,26 @@ unsafe fn create_pipelines(device: &ID3D11Device) -> WindowsResult<Pipelines> {
         constant_buffer: required(constant_buffer, "constant buffer")?,
         sampler: required(sampler, "sampler")?,
         rasterizer: required(rasterizer, "rasterizer")?,
-        normal_blend: unsafe {
-            create_blend_state(
-                device,
-                D3D11_BLEND_ONE,
-                D3D11_BLEND_INV_SRC_ALPHA,
-                D3D11_BLEND_ONE,
-                D3D11_BLEND_INV_SRC_ALPHA,
-            )?
-        },
-        additive_blend: unsafe {
-            create_blend_state(
-                device,
-                D3D11_BLEND_ONE,
-                D3D11_BLEND_ONE,
-                D3D11_BLEND_ZERO,
-                D3D11_BLEND_ONE,
-            )?
-        },
+        normal_blend: unsafe { create_blend_state(device, blend_factors(BlendMode::Normal))? },
+        additive_blend: unsafe { create_blend_state(device, blend_factors(BlendMode::Additive))? },
         multiplicative_blend: unsafe {
-            create_blend_state(
-                device,
-                D3D11_BLEND_DEST_COLOR,
-                D3D11_BLEND_INV_SRC_ALPHA,
-                D3D11_BLEND_ZERO,
-                D3D11_BLEND_ONE,
-            )?
+            create_blend_state(device, blend_factors(BlendMode::Multiplicative))?
         },
-        mask_blend: unsafe {
-            create_blend_state(
-                device,
-                D3D11_BLEND_ONE,
-                D3D11_BLEND_INV_SRC_ALPHA,
-                D3D11_BLEND_ONE,
-                D3D11_BLEND_INV_SRC_ALPHA,
-            )?
-        },
+        mask_blend: unsafe { create_blend_state(device, blend_factors(BlendMode::Normal))? },
     })
 }
 
 unsafe fn create_blend_state(
     device: &ID3D11Device,
-    source_rgb: windows::Win32::Graphics::Direct3D11::D3D11_BLEND,
-    destination_rgb: windows::Win32::Graphics::Direct3D11::D3D11_BLEND,
-    source_alpha: windows::Win32::Graphics::Direct3D11::D3D11_BLEND,
-    destination_alpha: windows::Win32::Graphics::Direct3D11::D3D11_BLEND,
+    factors: crate::BlendFactors,
 ) -> WindowsResult<ID3D11BlendState> {
     let target = D3D11_RENDER_TARGET_BLEND_DESC {
         BlendEnable: true.into(),
-        SrcBlend: source_rgb,
-        DestBlend: destination_rgb,
+        SrcBlend: d3d_blend_factor(factors.source_rgb),
+        DestBlend: d3d_blend_factor(factors.destination_rgb),
         BlendOp: D3D11_BLEND_OP_ADD,
-        SrcBlendAlpha: source_alpha,
-        DestBlendAlpha: destination_alpha,
+        SrcBlendAlpha: d3d_blend_factor(factors.source_alpha),
+        DestBlendAlpha: d3d_blend_factor(factors.destination_alpha),
         BlendOpAlpha: D3D11_BLEND_OP_ADD,
         RenderTargetWriteMask: D3D11_COLOR_WRITE_ENABLE_ALL.0 as u8,
     };
@@ -2293,6 +2260,17 @@ unsafe fn create_blend_state(
     let mut state = None;
     unsafe { device.CreateBlendState(&descriptor, Some(&mut state))? };
     required(state, "blend state")
+}
+
+const fn d3d_blend_factor(
+    factor: BlendFactor,
+) -> windows::Win32::Graphics::Direct3D11::D3D11_BLEND {
+    match factor {
+        BlendFactor::Zero => D3D11_BLEND_ZERO,
+        BlendFactor::One => D3D11_BLEND_ONE,
+        BlendFactor::OneMinusSourceAlpha => D3D11_BLEND_INV_SRC_ALPHA,
+        BlendFactor::DestinationColor => D3D11_BLEND_DEST_COLOR,
+    }
 }
 
 unsafe fn create_buffer<T>(

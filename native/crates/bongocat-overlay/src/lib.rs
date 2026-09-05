@@ -13,7 +13,7 @@ use bongocat_platform::PlatformInputServiceStatus;
 use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError, ShortcutDispatcher};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_render::CanvasInfo;
-use bongocat_render::{RenderConsumer, RenderTransportDiagnostics};
+use bongocat_render::{BlendMode, RenderConsumer, RenderTransportDiagnostics};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_runtime::PlatformInputDiagnosticsProducer;
 use bongocat_runtime::{
@@ -168,6 +168,45 @@ pub struct ProductOverlayReport {
 pub enum OverlayTickOutcome {
     Presented,
     Hidden,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum BlendFactor {
+    Zero,
+    One,
+    OneMinusSourceAlpha,
+    DestinationColor,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct BlendFactors {
+    pub source_rgb: BlendFactor,
+    pub destination_rgb: BlendFactor,
+    pub source_alpha: BlendFactor,
+    pub destination_alpha: BlendFactor,
+}
+
+pub(crate) const fn blend_factors(mode: BlendMode) -> BlendFactors {
+    match mode {
+        BlendMode::Normal => BlendFactors {
+            source_rgb: BlendFactor::One,
+            destination_rgb: BlendFactor::OneMinusSourceAlpha,
+            source_alpha: BlendFactor::One,
+            destination_alpha: BlendFactor::OneMinusSourceAlpha,
+        },
+        BlendMode::Additive => BlendFactors {
+            source_rgb: BlendFactor::One,
+            destination_rgb: BlendFactor::One,
+            source_alpha: BlendFactor::Zero,
+            destination_alpha: BlendFactor::One,
+        },
+        BlendMode::Multiplicative => BlendFactors {
+            source_rgb: BlendFactor::DestinationColor,
+            destination_rgb: BlendFactor::OneMinusSourceAlpha,
+            source_alpha: BlendFactor::Zero,
+            destination_alpha: BlendFactor::One,
+        },
+    }
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -538,6 +577,37 @@ pub(crate) fn validate_model_generation_advance(
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn premultiplied_blend_contract_covers_all_cubism_modes() {
+        assert_eq!(
+            blend_factors(BlendMode::Normal),
+            BlendFactors {
+                source_rgb: BlendFactor::One,
+                destination_rgb: BlendFactor::OneMinusSourceAlpha,
+                source_alpha: BlendFactor::One,
+                destination_alpha: BlendFactor::OneMinusSourceAlpha,
+            }
+        );
+        assert_eq!(
+            blend_factors(BlendMode::Additive),
+            BlendFactors {
+                source_rgb: BlendFactor::One,
+                destination_rgb: BlendFactor::One,
+                source_alpha: BlendFactor::Zero,
+                destination_alpha: BlendFactor::One,
+            }
+        );
+        assert_eq!(
+            blend_factors(BlendMode::Multiplicative),
+            BlendFactors {
+                source_rgb: BlendFactor::DestinationColor,
+                destination_rgb: BlendFactor::OneMinusSourceAlpha,
+                source_alpha: BlendFactor::Zero,
+                destination_alpha: BlendFactor::One,
+            }
+        );
+    }
 
     #[test]
     fn model_generation_may_skip_rejected_candidates_but_never_regress() {

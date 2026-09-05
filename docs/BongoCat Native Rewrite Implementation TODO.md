@@ -1079,6 +1079,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     `source_index` 更新固定 GPU buffer、重新应用 render order/visibility/opacity/color/
     mask 状态；基于 Core dynamic flags 的 dirty-only upload 与 Windows 对等实现尚未完成。
 - [ ] 实现 normal/additive/multiplicative blend。
+  - 状态（2026-09-06）：`bongocat-overlay` 现以共享的纯 Rust pre-multiplied blend-factor
+    contract 定义 Normal/Additive/Multiplicative 的 RGB/alpha source/destination factor，Metal 与
+    D3D11 pipeline 分别只负责映射该 contract，避免两端独立常量漂移。三种模式均有 platform-
+    independent unit test；本机 macOS release preview 成功呈现 57 帧（21 drawable、5 mask、3
+    texture，GPU allocation 稳定）。Windows D3D11 物理 present 与跨 backend 像素对比尚未完成，
+    因此本项保持未勾选。
 - [ ] 实现 clipping mask、inverted mask 和 mask texture 生命周期。
 - [ ] 实现 texture upload、sampler、过滤和颜色空间策略。
 - [ ] 只在 dirty 时更新必要 GPU 资源。

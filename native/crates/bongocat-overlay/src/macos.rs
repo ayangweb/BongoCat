@@ -1,6 +1,6 @@
 use crate::{
-    OverlayError, OverlayPresentationState, OverlaySessionOptions, OverlayTickOutcome,
-    OverlayWindowBounds, OverlayWorkArea, PreviewReport, ProductOverlayReport,
+    BlendFactor, OverlayError, OverlayPresentationState, OverlaySessionOptions, OverlayTickOutcome,
+    OverlayWindowBounds, OverlayWorkArea, PreviewReport, ProductOverlayReport, blend_factors,
     default_overlay_window_dimensions, validate_model_generation_advance,
 };
 use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
@@ -1969,26 +1969,11 @@ fn create_pipeline(
         .ok_or_else(|| OverlayError::new("Metal pipeline color attachment is unavailable"))?;
     attachment.set_pixel_format(COLOR_ATTACHMENT_FORMAT);
     attachment.set_blending_enabled(true);
-    match mode {
-        BlendMode::Normal => {
-            attachment.set_source_rgb_blend_factor(MTLBlendFactor::One);
-            attachment.set_destination_rgb_blend_factor(MTLBlendFactor::OneMinusSourceAlpha);
-            attachment.set_source_alpha_blend_factor(MTLBlendFactor::One);
-            attachment.set_destination_alpha_blend_factor(MTLBlendFactor::OneMinusSourceAlpha);
-        }
-        BlendMode::Additive => {
-            attachment.set_source_rgb_blend_factor(MTLBlendFactor::One);
-            attachment.set_destination_rgb_blend_factor(MTLBlendFactor::One);
-            attachment.set_source_alpha_blend_factor(MTLBlendFactor::Zero);
-            attachment.set_destination_alpha_blend_factor(MTLBlendFactor::One);
-        }
-        BlendMode::Multiplicative => {
-            attachment.set_source_rgb_blend_factor(MTLBlendFactor::DestinationColor);
-            attachment.set_destination_rgb_blend_factor(MTLBlendFactor::OneMinusSourceAlpha);
-            attachment.set_source_alpha_blend_factor(MTLBlendFactor::Zero);
-            attachment.set_destination_alpha_blend_factor(MTLBlendFactor::One);
-        }
-    }
+    let factors = blend_factors(mode);
+    attachment.set_source_rgb_blend_factor(metal_blend_factor(factors.source_rgb));
+    attachment.set_destination_rgb_blend_factor(metal_blend_factor(factors.destination_rgb));
+    attachment.set_source_alpha_blend_factor(metal_blend_factor(factors.source_alpha));
+    attachment.set_destination_alpha_blend_factor(metal_blend_factor(factors.destination_alpha));
     device
         .new_render_pipeline_state(&descriptor)
         .map_err(|error| OverlayError::new(format!("create Metal pipeline: {error}")))
@@ -2008,13 +1993,23 @@ fn create_mask_pipeline(
         .ok_or_else(|| OverlayError::new("Metal mask pipeline attachment is unavailable"))?;
     attachment.set_pixel_format(MASK_TEXTURE_FORMAT);
     attachment.set_blending_enabled(true);
-    attachment.set_source_rgb_blend_factor(MTLBlendFactor::One);
-    attachment.set_destination_rgb_blend_factor(MTLBlendFactor::OneMinusSourceAlpha);
-    attachment.set_source_alpha_blend_factor(MTLBlendFactor::One);
-    attachment.set_destination_alpha_blend_factor(MTLBlendFactor::OneMinusSourceAlpha);
+    let factors = blend_factors(BlendMode::Normal);
+    attachment.set_source_rgb_blend_factor(metal_blend_factor(factors.source_rgb));
+    attachment.set_destination_rgb_blend_factor(metal_blend_factor(factors.destination_rgb));
+    attachment.set_source_alpha_blend_factor(metal_blend_factor(factors.source_alpha));
+    attachment.set_destination_alpha_blend_factor(metal_blend_factor(factors.destination_alpha));
     device
         .new_render_pipeline_state(&descriptor)
         .map_err(|error| OverlayError::new(format!("create Metal mask pipeline: {error}")))
+}
+
+const fn metal_blend_factor(factor: BlendFactor) -> MTLBlendFactor {
+    match factor {
+        BlendFactor::Zero => MTLBlendFactor::Zero,
+        BlendFactor::One => MTLBlendFactor::One,
+        BlendFactor::OneMinusSourceAlpha => MTLBlendFactor::OneMinusSourceAlpha,
+        BlendFactor::DestinationColor => MTLBlendFactor::DestinationColor,
+    }
 }
 
 fn create_mask_texture(device: &Device, width: u64, height: u64) -> Texture {
