@@ -43,8 +43,10 @@ impl std::error::Error for CoreLogError {}
 pub struct CoreLogStats {
     pub written: u64,
     pub dropped: u64,
+    pub rotated: u64,
     pub pruned: u64,
     pub bytes: u64,
+    pub retained_files: u64,
 }
 
 #[derive(Debug)]
@@ -107,6 +109,7 @@ impl CoreLogHandle {
                 stats: CoreLogStats {
                     pruned,
                     bytes,
+                    retained_files: retained_log_files(&path),
                     ..CoreLogStats::default()
                 },
             }),
@@ -240,10 +243,12 @@ fn rotate_logs(state: &mut CoreLogState) -> bool {
     if reopen_active_log(state) {
         state.bytes = 0;
         state.stats.bytes = 0;
+        state.stats.rotated = state.stats.rotated.saturating_add(1);
         state.stats.pruned = state
             .stats
             .pruned
             .saturating_add(prune_expired_rotated_logs(&state.path, SystemTime::now()));
+        state.stats.retained_files = retained_log_files(&state.path);
         true
     } else {
         let _ = fs::rename(&first, &state.path);
@@ -267,6 +272,7 @@ fn reopen_active_log(state: &mut CoreLogState) -> bool {
     state.file = Some(file);
     state.bytes = bytes;
     state.stats.bytes = bytes;
+    state.stats.retained_files = retained_log_files(&state.path);
     true
 }
 
@@ -307,6 +313,13 @@ fn prune_expired_rotated_logs(path: &Path, now: SystemTime) -> u64 {
         })
         .filter(|removed| *removed)
         .count() as u64
+}
+
+fn retained_log_files(path: &Path) -> u64 {
+    u64::from(path.is_file())
+        + (1..=MAX_ROTATED_LOG_FILES)
+            .filter(|generation| rotated_log_path(path, *generation).is_file())
+            .count() as u64
 }
 
 fn is_expired(modified: SystemTime, now: SystemTime) -> bool {
@@ -385,6 +398,8 @@ mod tests {
         let stats = sink.state.lock().expect("state lock").stats;
         assert_eq!(stats.written, 1);
         assert_eq!(stats.dropped, 0);
+        assert_eq!(stats.rotated, 1);
+        assert_eq!(stats.retained_files, 2);
         assert!(stats.bytes < MAX_LOG_BYTES);
         assert!(rotated_log_path(&path, 1).is_file());
         assert!(fs::metadata(&path).expect("active log").len() > 0);
@@ -415,6 +430,9 @@ mod tests {
             }),
         };
         sink.record(b"rotation");
+        let stats = sink.state.lock().expect("state lock").stats;
+        assert_eq!(stats.rotated, 1);
+        assert_eq!(stats.retained_files, u64::from(MAX_TOTAL_LOG_FILES));
         assert!(rotated_log_path(&path, MAX_ROTATED_LOG_FILES).is_file());
         assert!(!rotated_log_path(&path, MAX_ROTATED_LOG_FILES + 1).exists());
         let retained_bytes = (0..=MAX_ROTATED_LOG_FILES)
@@ -452,6 +470,7 @@ mod tests {
         assert!(reopen_active_log(&mut state));
         assert!(state.file.is_some());
         assert_eq!(state.bytes, b"active".len() as u64);
+        assert_eq!(state.stats.retained_files, 1);
     }
 
     #[test]
@@ -467,6 +486,7 @@ mod tests {
         // synchronous callback invocation.
         unsafe { core_log_callback(message.as_ptr()) };
         assert_eq!(handle.stats().written, 1);
+        assert_eq!(handle.stats().retained_files, 1);
         let contents = fs::read_to_string(&path).expect("read log");
         assert!(contents.contains("cubism_core"));
         assert!(!contents.contains("/private/model.moc3"));
