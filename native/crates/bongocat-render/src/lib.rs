@@ -238,6 +238,22 @@ pub enum ModelCommitErrorCode {
     ResourcePreparationFailed,
 }
 
+impl ModelCommitErrorCode {
+    pub const ALL: [Self; 1] = [Self::ResourcePreparationFailed];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ResourcePreparationFailed => "model_commit_resource_preparation_failed",
+        }
+    }
+}
+
+impl fmt::Display for ModelCommitErrorCode {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ModelCommitOutcome {
     Prepared,
@@ -803,5 +819,21 @@ mod tests {
             .expect_err("closed feedback");
         assert_eq!(rejected.into_feedback(), feedback);
         assert_eq!(consumer.diagnostics().feedback_rejected_after_close, 1);
+    }
+
+    #[test]
+    fn model_commit_error_codes_are_stable_and_unique() {
+        let mut codes = ModelCommitErrorCode::ALL
+            .iter()
+            .map(|code| code.as_str())
+            .collect::<Vec<_>>();
+        assert!(codes.iter().all(|code| code.starts_with("model_commit_")));
+        codes.sort_unstable();
+        codes.dedup();
+        assert_eq!(codes.len(), ModelCommitErrorCode::ALL.len());
+        assert_eq!(
+            ModelCommitErrorCode::ResourcePreparationFailed.to_string(),
+            "model_commit_resource_preparation_failed"
+        );
     }
 }
