@@ -1353,7 +1353,12 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 
 ### 8.1 应用生命周期
 
-- [ ] 单实例唤醒已有进程并打开设置或显示 overlay。
+- [x] 单实例唤醒已有进程并打开设置或显示 overlay。
+  - 验收证据（2026-08-31）：Windows `P7-WINDOWS-SINGLE-INSTANCE` 以按环境隔离的 local
+    named mutex、registered wake message 和隐藏 owner window 完成真实双进程 release smoke；secondary
+    只通知 primary 后退出，primary 重开既有设置窗口并保持 frame source。macOS
+    `P7-MACOS-APPLICATION-REOPEN` 以正式 `.app` 的 LaunchServices reopen 唤醒同一后台进程，
+    重建一个设置 Entity 并恢复当前 snapshot，两个实现均进入既有 shutdown coordinator。
 - [x] GPUI 设置窗口按需创建，关闭不退出后台应用。
   - 验收证据（2026-09-04）：双平台设置窗口关闭/重开和后台 frame/input/runtime 生命周期已由
     产品 smoke 覆盖；正式入口无参数启动持续运行到显式 Quit，正数 `--run-seconds` 仅用于有界
@@ -1362,7 +1367,11 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     shutdown smoke。
 - [ ] 托盘/菜单栏 command 统一进入 runtime。
 - [ ] 系统关机、注销和普通退出进入 shutdown coordinator。
-- [ ] panic/crash 生成本地诊断并避免配置半写入。
+- [x] panic/crash 生成本地诊断并避免配置半写入。
+  - 验收证据（2026-09-04）：`P3-PANIC-DIAGNOSTICS-RELEASE` 以同一 Windows/macOS release
+    executable 的 `panic=abort` 子进程验证固定匿名 panic code、当前 config 字节不变、环境内
+    run marker 保留及下一次启动的 unclean 分类；正常 shutdown 会收敛 marker。默认产品 CLI
+    不暴露该测试入口。
 - [ ] 定义正常退出、强制退出、崩溃和系统终止的恢复标记；下次启动可区分并避免无限恢复循环。
 
 ### 8.2 Windows
