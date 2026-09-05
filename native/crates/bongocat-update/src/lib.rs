@@ -2,6 +2,7 @@
 
 mod schedule;
 mod sequence;
+mod staging;
 pub use schedule::{
     AUTOMATIC_UPDATE_CHECK_INTERVAL, AutomaticUpdateCheckReason, AutomaticUpdateCheckScheduler,
     UpdateScheduleError, UpdateScheduleErrorCode,
@@ -10,6 +11,7 @@ pub use sequence::{
     UPDATE_SEQUENCE_STATE_SCHEMA_VERSION, UpdateSequenceStore, UpdateSequenceStoreError,
     UpdateSequenceStoreErrorCode,
 };
+pub use staging::{StagedUpdateArtifact, UpdateStagingError, UpdateStagingErrorCode};
 
 use bongocat_config::{BuildEnvironment, StorageLayout};
 use ed25519_dalek::{Signature, VerifyingKey};

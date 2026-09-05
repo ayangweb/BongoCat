@@ -1478,6 +1478,12 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
   - 状态（2026-09-05）：离线 verifier 已校验 SemVer、最低可升级版本、四个 target/arch 组合、精确
     artifact 长度、SHA-256 与 detached Ed25519 签名；操作系统包签名和真实发布产物仍待验证。
 - [ ] 下载支持取消、断点/重试策略和失败清理。
+  - 状态（2026-09-05）：`VerifiedArtifact::stage_reader` 已在当前环境私有
+    `updates/staging/` 目录以 `create_new` 写入唯一文件，按 64 KiB 分块校验精确长度与
+    SHA-256、在完成后 `sync_all`，并在取消、读取/写入或完整性失败时清理 partial file；目录
+    重开会拒绝 symlink/non-directory 并在 Unix 恢复 `0700`，artifact 在 Unix 创建为 `0600`。
+    取消、长度/hash、reader failure、成功多文件与权限修复均有回归测试。HTTP 下载、断点续传、
+    retry/backoff 和下载 coordinator 尚未实现，因此本项保持未勾选。
 - [ ] 安装前协调 runtime/renderer shutdown，失败可回滚。
 - [ ] 测试断网、代理、中断、签名错误和降级攻击。
 - [ ] 日志 rotation、总大小和保留天数有上限。

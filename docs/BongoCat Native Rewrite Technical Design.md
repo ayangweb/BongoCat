@@ -691,6 +691,11 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
 - 更新下载只可在当前环境 `StorageLayout::update_staging` 下创建暂存文件；该目录与
   `updates/update-sequence.json`/lock 及 `InstallationLayout` 的 product files root 分离。下载、
   清理、替换和 rollback 仍须在各自的后续 contract 中定义，不得由此路径模型隐式授权。
+- 下载 adapter 必须把 artifact stream 交给 `VerifiedArtifact::stage_reader`，由该边界在私有 staging
+  目录中以唯一、不可覆盖的文件流式写入；每个 chunk 与最终同步前都可取消，并在取消、读取、写入、
+  长度或 SHA-256 校验失败后删除 partial file。只有完成精确长度、digest 和 `sync_all` 的
+  `StagedUpdateArtifact` 才能传给后续安装协调；文件名或扩展名不构成信任判断。该边界不提供
+  HTTP、断点续传、重试、替换或 rollback 策略。
 - 自动检查偏好启用时在应用启动后立即请求一次检查，随后以可注入的单调时间从每次实际派发起
   间隔 24 小时；从关闭切换为启用时同样立即请求一次，关闭则取消待触发检查。重复 poll 不得重复
   派发，单调时间回退必须产生稳定诊断并从新时间原点重建间隔，不能形成重试风暴。
