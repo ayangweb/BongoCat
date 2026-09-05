@@ -658,7 +658,10 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
   私钥不得进入源码、产物或配置。验证结果只返回项目自有不可变类型，网络、SemVer、签名库类型不
   扩散到 app/runtime/UI。下载层必须在安装前通过同一 verified artifact 校验精确长度和 SHA-256。
 - 更新 endpoint、24 小时自动检查调度、有界下载/取消、环境内 sequence 持久化、操作系统包签名、
-  installer 权限、原子替换和失败回滚分别实现；所有 endpoint 与 artifact URL 只允许 HTTPS。
+  installer 权限、原子替换和失败回滚分别实现；所有 endpoint 与 artifact URL 只允许 HTTPS。最高
+  已验证 sequence 使用环境根下独立的 `updates/update-sequence.json` v1 保存，不进入用户配置或
+  `state.json`；channel、schema、常规文件身份和单调 sequence 全部严格校验，同目录锁与原子替换后
+  回读保证并发或中断不会把已知最高值回退。损坏、跨环境或未知 schema 失败关闭，不自动重置。
 - 自动检查偏好启用时在应用启动后立即请求一次检查，随后以可注入的单调时间从每次实际派发起
   间隔 24 小时；从关闭切换为启用时同样立即请求一次，关闭则取消待触发检查。重复 poll 不得重复
   派发，单调时间回退必须产生稳定诊断并从新时间原点重建间隔，不能形成重试风暴。

@@ -26,11 +26,15 @@ manifest 绕过。
   的 key 均拒绝。私钥不进入源码、构建产物或运行时配置。
 - manifest sequence 低于已安装值，或新版本没有更高 sequence，视为降级攻击。当前版本低于
   manifest 的最低可升级版本时不尝试就地更新；相同或更旧版本只返回 up-to-date，不产生安装候选。
+- 每个环境的最高已验证 sequence 由 `bongocat-update::UpdateSequenceStore` 单独保存为
+  `updates/update-sequence.json` v1，不进入用户 config 或窗口 state 事务。状态固定包含 channel
+  和最高 sequence；同目录锁串行化 writer，写入经同目录原子替换并回读验证。未知字段、非 v1、
+  跨环境、符号链接、损坏或较低 sequence 一律失败关闭，绝不重置或覆盖已有状态。
 - 验证成功只返回项目自有的不可变 `VerifiedUpdate`/`VerifiedArtifact`。第三方 URL、SemVer、签名或
   digest 类型不进入公共 API。下载层必须把流交回 `VerifiedArtifact` 同时验证精确长度和 SHA-256，
   通过前不得进入安装阶段。
 - 公共 schema 与 accept/reject fixtures 位于 `shared/update/`。签名传输 envelope、endpoint、下载
-  恢复、sequence 的环境内持久化、OS 包签名、installer 权限与回滚属于后续独立 contract。
+  恢复、OS 包签名、installer 权限与回滚属于后续独立 contract。
 
 ## 依赖与替换边界
 

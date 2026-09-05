@@ -23,42 +23,42 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 
 ## Direct Dependencies
 
-| Crate                                 | Pinned version | Result                    |
-| ------------------------------------- | -------------: | ------------------------- |
-| `accesskit`                           |       `0.25.0` | 新增时即为最新            |
-| `accesskit_macos`                     |       `0.27.0` | 新增时即为最新            |
-| `accesskit_windows`                   |       `0.35.0` | 新增时即为最新            |
-| `async-channel`                       |        `2.5.0` | 从 `1.9.0` 升级           |
-| `atomic-write-file`                   |        `0.3.1` | 正式配置存储新增时最新    |
-| `bindgen`                             |       `0.72.1` | 新增时即为最新            |
-| `block2`                              |        `0.6.2` | 已是最新                  |
-| `core-foundation`                     |       `0.10.1` | 已是最新                  |
-| `core-graphics-types`                 |        `0.2.0` | 从 `0.1.3` 升级           |
-| `core-graphics2`                      |        `0.6.1` | 从 `0.4.1` 升级           |
-| `dirs`                                |        `6.0.0` | 从 `5.0.1` 升级           |
-| `embed-resource`                      |       `3.0.11` | Windows 产品图标新增时最新 |
-| `futures-lite`                        |        `2.6.1` | 已是最新                  |
-| `gpui`                                |        `0.2.2` | 已是最新                  |
-| `libc`                                |      `0.2.189` | 新增时即为最新稳定版      |
-| `metal`                               |       `0.33.0` | 从 `0.29.0` 升级          |
-| `objc2`                               |        `0.6.4` | 已是最新                  |
-| `objc2`（GPUI AX）                    |        `0.5.2` | 上游 ABI 类型兼容例外     |
-| `objc2-app-kit`                       |        `0.3.2` | 已是最新                  |
-| `objc2-core-foundation`               |        `0.3.2` | 正式输入边界新增时最新    |
-| `objc2-core-graphics`                 |        `0.3.2` | 正式输入边界新增时最新    |
-| `objc2-foundation`                    |        `0.3.2` | 已是最新                  |
-| `objc2-foundation`（GPUI 原生 probe） |        `0.2.2` | 上游 ABI 类型兼容例外     |
-| `objc2-game-controller`               |        `0.3.2` | 新增时即为最新            |
-| `objc2-quartz-core`                   |        `0.3.2` | 已是最新                  |
-| `objc2-service-management`            |        `0.3.2` | 启动项 adapter 新增时最新 |
-| `serde`                               |      `1.0.229` | 从 `1.0.228` 升级         |
-| `serde_json`                          |      `1.0.151` | 从 `1.0.149` 升级         |
-| `raw-window-handle`                   |        `0.6.2` | 新增时即为最新            |
-| `rodio`                               |       `0.22.2` | motion 音效新增时最新     |
-| `sha2`                                |       `0.11.0` | 新增时即为最新            |
-| `tempfile`                            |       `3.27.0` | 已是最新                  |
-| `unicode-segmentation`                |       `1.13.3` | 已是最新                  |
-| `windows`                             |       `0.62.2` | 从 `0.61.3` 升级          |
+| Crate                                 | Pinned version | Result                             |
+| ------------------------------------- | -------------: | ---------------------------------- |
+| `accesskit`                           |       `0.25.0` | 新增时即为最新                     |
+| `accesskit_macos`                     |       `0.27.0` | 新增时即为最新                     |
+| `accesskit_windows`                   |       `0.35.0` | 新增时即为最新                     |
+| `async-channel`                       |        `2.5.0` | 从 `1.9.0` 升级                    |
+| `atomic-write-file`                   |        `0.3.1` | 配置与更新 sequence 存储新增时最新 |
+| `bindgen`                             |       `0.72.1` | 新增时即为最新                     |
+| `block2`                              |        `0.6.2` | 已是最新                           |
+| `core-foundation`                     |       `0.10.1` | 已是最新                           |
+| `core-graphics-types`                 |        `0.2.0` | 从 `0.1.3` 升级                    |
+| `core-graphics2`                      |        `0.6.1` | 从 `0.4.1` 升级                    |
+| `dirs`                                |        `6.0.0` | 从 `5.0.1` 升级                    |
+| `embed-resource`                      |       `3.0.11` | Windows 产品图标新增时最新         |
+| `futures-lite`                        |        `2.6.1` | 已是最新                           |
+| `gpui`                                |        `0.2.2` | 已是最新                           |
+| `libc`                                |      `0.2.189` | 新增时即为最新稳定版               |
+| `metal`                               |       `0.33.0` | 从 `0.29.0` 升级                   |
+| `objc2`                               |        `0.6.4` | 已是最新                           |
+| `objc2`（GPUI AX）                    |        `0.5.2` | 上游 ABI 类型兼容例外              |
+| `objc2-app-kit`                       |        `0.3.2` | 已是最新                           |
+| `objc2-core-foundation`               |        `0.3.2` | 正式输入边界新增时最新             |
+| `objc2-core-graphics`                 |        `0.3.2` | 正式输入边界新增时最新             |
+| `objc2-foundation`                    |        `0.3.2` | 已是最新                           |
+| `objc2-foundation`（GPUI 原生 probe） |        `0.2.2` | 上游 ABI 类型兼容例外              |
+| `objc2-game-controller`               |        `0.3.2` | 新增时即为最新                     |
+| `objc2-quartz-core`                   |        `0.3.2` | 已是最新                           |
+| `objc2-service-management`            |        `0.3.2` | 启动项 adapter 新增时最新          |
+| `serde`                               |      `1.0.229` | 从 `1.0.228` 升级                  |
+| `serde_json`                          |      `1.0.151` | 从 `1.0.149` 升级                  |
+| `raw-window-handle`                   |        `0.6.2` | 新增时即为最新                     |
+| `rodio`                               |       `0.22.2` | motion 音效新增时最新              |
+| `sha2`                                |       `0.11.0` | 新增时即为最新                     |
+| `tempfile`                            |       `3.27.0` | 已是最新                           |
+| `unicode-segmentation`                |       `1.13.3` | 已是最新                           |
+| `windows`                             |       `0.62.2` | 从 `0.61.3` 升级                   |
 
 `windows 0.62.2` 删除了 `Error::from_win32()`；Win32 wrapper 已改为在失败调用后立即使用语义等价的 `Error::from_thread()`，避免清理 API 覆盖 thread last-error。
 
@@ -68,11 +68,11 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 
 最新 `gpui 0.2.2` 的依赖图仍固定旧一代 `metal 0.29.0` 和 `core-graphics2 0.4.1`；overlay spike 自己使用的直接版本已分别升级到 `0.33.0`，输入 spike 自己使用 `core-graphics2 0.6.1`，因此 lockfile 中会同时存在两个 API generation。`cargo update --dry-run --verbose` 还报告以下 3 个有更新但被上游约束阻止的兼容版本：
 
-| Locked dependency      | Available | Owner path                |
-| ---------------------- | --------- | ------------------------- |
-| `cocoa 0.26.0`         | `0.26.1`  | `gpui 0.2.2`              |
+| Locked dependency      | Available | Owner path                 |
+| ---------------------- | --------- | -------------------------- |
+| `cocoa 0.26.0`         | `0.26.1`  | `gpui 0.2.2`               |
 | `generic-array 0.14.7` | `0.14.9`  | `gpui_http_client -> sha2` |
-| `smallvec 1.15.2`      | `1.16.0`  | GPUI Kit/image/URL graphs |
+| `smallvec 1.15.2`      | `1.16.0`  | GPUI Kit/image/URL graphs  |
 
 这些版本不能通过手改 lockfile、`cargo update --precise` 或本地 patch 安全升级。解除方式是 GPUI 发布兼容的新版本后升级 GPUI 并重跑双平台 UI/overlay smoke；不为追求表面版本一致而 fork 上游。
 
@@ -122,7 +122,7 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
 - `raw-window-handle 0.6.2`（MIT OR Apache-2.0 OR Zlib）除 spike 外也由正式 Windows
   platform adapter 直接使用，只把 GPUI 的公开 handle 转为短期借用的 HWND 以隐藏/重显设置
   窗口；裸 handle 不离开 adapter，GPUI 修复原生 close 生命周期后可移除这段正式依赖；
-- `atomic-write-file 0.3.1`（BSD-3-Clause）只在正式配置 crate 内提供同目录跨平台原子替换；替换边界是 `ConfigStore` 的私有 commit helper，不进入公共配置类型；`dirs 6.0.0`、`serde 1.0.229` 与 `serde_json 1.0.151` 继续提供路径解析和严格序列化；
+- `atomic-write-file 0.3.1`（BSD-3-Clause）只在正式配置 crate 的 `ConfigStore` 与 update crate 的环境内 sequence store 提供同目录跨平台原子替换；两者都只暴露项目自有的配置或更新状态类型，不泄漏库类型。替换边界分别是各自私有 commit helper；`dirs 6.0.0`、`serde 1.0.229` 与 `serde_json 1.0.151` 继续提供路径解析和严格序列化；
 - `rodio 0.22.2`（MIT OR Apache-2.0）只在 `bongocat-audio` 私有 backend 打开系统输出并
   解码现有 FLAC；固定容量的项目 command/diagnostics API 隔离第三方类型，Linux contract
   build 不链接 ALSA。真实预置 FLAC header/首样本、资源/解码失败、抢占、overflow 恢复和

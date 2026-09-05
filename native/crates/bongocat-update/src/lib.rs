@@ -1,9 +1,14 @@
 #![forbid(unsafe_code)]
 
 mod schedule;
+mod sequence;
 pub use schedule::{
     AUTOMATIC_UPDATE_CHECK_INTERVAL, AutomaticUpdateCheckReason, AutomaticUpdateCheckScheduler,
     UpdateScheduleError, UpdateScheduleErrorCode,
+};
+pub use sequence::{
+    UPDATE_SEQUENCE_STATE_SCHEMA_VERSION, UpdateSequenceStore, UpdateSequenceStoreError,
+    UpdateSequenceStoreErrorCode,
 };
 
 use ed25519_dalek::{Signature, VerifyingKey};

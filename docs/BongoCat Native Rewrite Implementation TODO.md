@@ -1392,9 +1392,15 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 ### 8.4 更新与诊断
 
 - [ ] 设计纯 Rust 更新 client、manifest 和签名验证。
+  - [x] 以环境独立 v1 状态保存最高已验证 manifest sequence。
+    - 验收证据（2026-09-05）：`bongocat-update::UpdateSequenceStore` 以固定 channel、同目录 lock、
+      原子替换和回读验证持久化单调 sequence；缺失 state 从 `0` 起始，低 sequence、损坏/未来 schema、
+      cross-channel、symlink 和并发 writer 都稳定拒绝且不覆盖已有字节。该 state 不进入 config/state
+      事务，尚待后续 update client 从 immutable environment layout 注入并在成功验签后调用。
   - 状态（2026-09-05）：ADR-0021 与 `bongocat-update` 已建立平台无关的 signed manifest trust
-    boundary；Ed25519 先验签后解析，严格 v1 manifest、稳定错误码和 artifact 流式完整性验证已有
-    自动化。网络 client、endpoint 和检查调度仍未实现，因此总项保持未勾选。
+    boundary；Ed25519 先验签后解析，严格 v1 manifest、稳定错误码、artifact 流式完整性验证、环境内
+    anti-rollback sequence store 和 24 小时调度 contract 均有自动化。网络 client、endpoint、手动
+    dispatch 与下载/安装仍未实现，因此总项保持未勾选。
 - [ ] 只允许 HTTPS，固定公钥来源和轮换流程。
   - 状态（2026-09-05）：manifest/release notes/artifact URL 已强制 HTTPS 且拒绝 credentials/fragment；
     信任公钥绑定 key ID、构建环境 channel 和 release sequence 有效窗。Production 公钥注入、签名

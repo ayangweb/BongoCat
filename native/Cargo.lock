@@ -951,11 +951,13 @@ dependencies = [
 name = "bongocat-update"
 version = "0.1.0"
 dependencies = [
+ "atomic-write-file",
  "ed25519-dalek",
  "semver",
  "serde",
  "serde_json",
  "sha2 0.11.0",
+ "tempfile",
  "url",
 ]
 
