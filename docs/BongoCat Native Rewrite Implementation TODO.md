@@ -917,9 +917,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 5.1 模型包
 
-- [ ] 解析 model3 并规范化相对路径。
-  - 状态（2026-08-30）：该能力已进入正式 `bongocat-model` 并覆盖三个预置包及
-    非 ASCII/反斜杠/遍历拒绝；待完整 sidecar contract 和导入链完成后统一勾选。
+- [x] 解析 model3 并规范化相对路径。
+  - 验收证据（2026-09-06）：正式 `PreparedModel` 对所有声明的 model3 资源使用 canonical
+    root、portable relative path 和 typed sidecar preflight；三个预置包、非 ASCII/反斜杠/遍历
+    拒绝与用户导入均由产品 crate 回归覆盖。`bongocat-model` 的 sidecar contract 测试证明所有
+    允许的引用均在 prepare 前验证，失败不会产生可提交模型。
 - [ ] 验证 moc、texture、motion、expression、physics、pose、cdi 和音频。
   - 状态（2026-08-30）：正式 crate 已验证所有引用存在于 canonical package root，
     moc/普通文件大小、PNG header/尺寸及关联 JSON object 可读性；motion、expression、
@@ -959,11 +961,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-30）：稳定 `ModelDiagnostic`/`ModelError` 已接入 app；集成测试证明
     缺失 moc 的新模型准备失败后，当前模型及 runtime revision 均不变。完整 sidecar
     诊断映射与 GPUI error/retry 状态仍待完成。
-- [ ] 建立预置只读索引和用户模型可写索引。
-  - 状态（2026-08-30）：用户侧已完成。`ModelStore` 以当前环境 `models/` 为持久事实
-    来源，确定性列举 ready/invalid 条目，并提供已安装模型加载、活动模型删除保护、
-    rename 后删除、环境 writer lock 及严格命名的崩溃 staging 回收。预置只读根与
-    预置/用户合并视图仍待实现，因此总项保持未勾选。
+- [x] 建立预置只读索引和用户模型可写索引。
+  - 验收证据（2026-09-06）：`PresetModelCatalog` 只接受真实 bundle root/direct child，
+    将预置模型作为不可删除的 `Preset` origin 签发；`ModelStore` 以当前环境 `models/` 为
+    唯一可写事实来源。`Application::model_catalog` 和 settings snapshot 合并两者并保留 origin，
+    因此同名预置与用户模型不会混淆。产品测试覆盖预置 catalog 的 committed-only 路径、同名
+    source identity、导入/删除和 selected-model 保护。
 
 ### 5.2 Cubism safe layer
 
