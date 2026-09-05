@@ -192,6 +192,7 @@ pub struct SettingsRuntimeDiagnostics {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct SettingsInputDiagnostics {
+    pub input_monitoring_permission: SettingsInputMonitoringPermission,
     pub service_status: SettingsInputServiceStatus,
     pub service_start_attempts: u64,
     pub pressed_key_count: usize,
@@ -220,6 +221,14 @@ pub struct SettingsInputDiagnostics {
     pub transport_queue_full: u64,
     pub transport_recovered_after_overflow: u64,
     pub transport_runtime_stopped: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum SettingsInputMonitoringPermission {
+    #[default]
+    Unsupported,
+    Denied,
+    Granted,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

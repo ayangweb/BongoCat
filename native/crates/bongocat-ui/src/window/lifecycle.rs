@@ -63,6 +63,7 @@ pub fn open_settings_window(
                     view.refresh(cx);
                     view
                 });
+                view.update(cx, |view, cx| view.start_snapshot_polling(cx));
                 opened_settings_view.borrow_mut().replace(view.clone());
                 let appearance_view = view.downgrade();
                 window

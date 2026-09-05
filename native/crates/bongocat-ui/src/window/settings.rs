@@ -1,6 +1,26 @@
 use super::*;
 
 impl SettingsView {
+    pub(super) fn start_snapshot_polling(&self, cx: &mut Context<Self>) {
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            loop {
+                executor.timer(Duration::from_secs(1)).await;
+                if this
+                    .update(cx, |view, cx| {
+                        if view.pending.is_none() && !view.model_import.is_running() {
+                            view.refresh(cx);
+                        }
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .detach();
+    }
+
     pub(super) fn refresh(&mut self, cx: &mut Context<Self>) {
         if self.refresh_is_disabled() {
             return;

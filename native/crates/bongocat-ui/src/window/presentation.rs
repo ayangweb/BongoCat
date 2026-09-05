@@ -1,4 +1,5 @@
 use super::*;
+use crate::SettingsInputMonitoringPermission;
 
 pub(super) fn is_activation_key(event: &KeyDownEvent) -> bool {
     !event.keystroke.modifiers.control
@@ -212,9 +213,19 @@ pub(super) fn input_service_presentation(
         SettingsInputServiceStatus::Failed => (UiText::StartupFailed, false, true),
         SettingsInputServiceStatus::Stopped => (UiText::Stopped, false, false),
     };
+    let permission = match diagnostics.input_monitoring_permission {
+        SettingsInputMonitoringPermission::Unsupported => UiText::Unsupported,
+        SettingsInputMonitoringPermission::Denied => UiText::PermissionRequired,
+        SettingsInputMonitoringPermission::Granted => UiText::Granted,
+    };
     InputServicePresentation {
         title: ui_text(language, key),
-        detail: input_service_attempts(language, diagnostics.service_start_attempts),
+        detail: format!(
+            "{}: {}\n{}",
+            ui_text(language, UiText::InputMonitoring),
+            ui_text(language, permission),
+            input_service_attempts(language, diagnostics.service_start_attempts),
+        ),
         running,
         attention,
     }

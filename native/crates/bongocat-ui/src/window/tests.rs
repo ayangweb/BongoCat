@@ -137,6 +137,7 @@ fn captured_shortcut_updates_stable_identity_after_reordering() {
 #[test]
 fn diagnostics_page_projects_only_named_aggregate_counters() {
     let diagnostics = SettingsInputDiagnostics {
+        input_monitoring_permission: crate::SettingsInputMonitoringPermission::Granted,
         service_status: SettingsInputServiceStatus::Running,
         service_start_attempts: 1,
         pressed_key_count: 1,
@@ -179,7 +180,10 @@ fn diagnostics_page_projects_only_named_aggregate_counters() {
     }));
     let service = input_service_presentation(diagnostics, SettingsLanguage::EnglishUnitedStates);
     assert_eq!(service.title, "Running");
-    assert_eq!(service.detail, "Start attempts: 1");
+    assert_eq!(
+        service.detail,
+        "Input Monitoring: Granted\nStart attempts: 1"
+    );
     assert!(service.running);
     assert!(!service.attention);
 }
@@ -216,7 +220,7 @@ fn diagnostics_presentations_follow_the_resolved_language() {
 
     let service = input_service_presentation(diagnostics, SettingsLanguage::ChineseSimplified);
     assert_eq!(service.title, "需要权限");
-    assert_eq!(service.detail, "启动尝试：3");
+    assert_eq!(service.detail, "输入监控：不支持\n启动尝试：3");
 
     let runtime = runtime_diagnostics_presentation(
         SettingsRuntimeDiagnostics {
@@ -273,6 +277,7 @@ fn diagnostics_presentations_follow_the_resolved_language() {
 fn input_service_status_keeps_permission_failure_actionable_and_anonymous() {
     let service = input_service_presentation(
         SettingsInputDiagnostics {
+            input_monitoring_permission: crate::SettingsInputMonitoringPermission::Denied,
             service_status: SettingsInputServiceStatus::PermissionDenied,
             service_start_attempts: 1,
             ..SettingsInputDiagnostics::default()
@@ -280,7 +285,10 @@ fn input_service_status_keeps_permission_failure_actionable_and_anonymous() {
         SettingsLanguage::EnglishUnitedStates,
     );
     assert_eq!(service.title, "Permission required");
-    assert_eq!(service.detail, "Start attempts: 1");
+    assert_eq!(
+        service.detail,
+        "Input Monitoring: Permission required\nStart attempts: 1"
+    );
     assert!(service.attention);
     assert!(!service.detail.contains("path"));
 }

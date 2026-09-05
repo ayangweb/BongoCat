@@ -12,6 +12,8 @@ use bongocat_model::{
     ModelCatalogEntry, ModelDiagnostic, ModelImportProgress, ModelImportStage, ModelOrigin,
     ModelStoreDiagnostic,
 };
+#[cfg(target_os = "macos")]
+use bongocat_platform::{InputPermission, input_monitoring_permission};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_platform::{
     StartupItemEnvironment, StartupItemError, StartupItemState, StartupItemUnsupportedReason,
@@ -27,9 +29,9 @@ use bongocat_ui::{
     DIAGNOSTICS_EXPORT_FORMAT_VERSION, RuntimeHealth, SettingsApplicationShortcut, SettingsClient,
     SettingsCommand, SettingsConfigRecovery, SettingsConfigurationStatus,
     SettingsDiagnosticsExportStatus, SettingsError, SettingsErrorCode, SettingsGamepadAxisSettings,
-    SettingsInputDiagnostics, SettingsInputServiceStatus, SettingsLanguage,
-    SettingsModelAvailability, SettingsModelBehaviorBinding, SettingsModelCatalog,
-    SettingsModelCatalogError, SettingsModelDiagnostic, SettingsModelEntry,
+    SettingsInputDiagnostics, SettingsInputMonitoringPermission, SettingsInputServiceStatus,
+    SettingsLanguage, SettingsModelAvailability, SettingsModelBehaviorBinding,
+    SettingsModelCatalog, SettingsModelCatalogError, SettingsModelDiagnostic, SettingsModelEntry,
     SettingsModelImportProgress, SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin,
     SettingsModelSettings, SettingsOverlay, SettingsRuntimeCommandFailure,
     SettingsRuntimeCommandTransportDiagnostics, SettingsRuntimeDiagnostics,
@@ -1334,11 +1336,12 @@ fn settings_runtime_diagnostics(
     }
 }
 
-const fn settings_input_diagnostics(
+fn settings_input_diagnostics(
     input: &InputSnapshot,
     platform: PlatformInputDiagnostics,
 ) -> SettingsInputDiagnostics {
     SettingsInputDiagnostics {
+        input_monitoring_permission: system_input_monitoring_permission(),
         service_status: match platform.service_status {
             PlatformInputServiceStatus::NotStarted => SettingsInputServiceStatus::NotStarted,
             PlatformInputServiceStatus::Running => SettingsInputServiceStatus::Running,
@@ -1379,6 +1382,19 @@ const fn settings_input_diagnostics(
         transport_recovered_after_overflow: input.transport.recovered_after_overflow,
         transport_runtime_stopped: input.transport.runtime_stopped,
     }
+}
+
+#[cfg(target_os = "macos")]
+fn system_input_monitoring_permission() -> SettingsInputMonitoringPermission {
+    match input_monitoring_permission() {
+        InputPermission::Denied => SettingsInputMonitoringPermission::Denied,
+        InputPermission::Granted => SettingsInputMonitoringPermission::Granted,
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+const fn system_input_monitoring_permission() -> SettingsInputMonitoringPermission {
+    SettingsInputMonitoringPermission::Unsupported
 }
 
 const fn input_service_is_degraded(status: SettingsInputServiceStatus) -> bool {

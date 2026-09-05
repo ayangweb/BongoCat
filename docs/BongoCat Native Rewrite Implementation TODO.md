@@ -1448,7 +1448,12 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     boundary 读写最多 1 MiB 无 NUL 纯文本、匿名返回无文本和错误。自动化只验证后台线程拒绝，避免
     改写用户 clipboard；隔离 pasteboard 的实机 read/write smoke 及 `NSWorkspace` 其余能力仍待完成。
 - [ ] .app bundle、entitlements、Hardened Runtime 和 notarization 流程。
-- [ ] TCC 权限状态变化可在 UI 实时刷新。
+- [x] TCC 权限状态变化可在 UI 实时刷新。
+  - 验收证据（2026-09-05）：Settings snapshot 新增独立的 Input Monitoring
+    `unsupported`/`denied`/`granted` 投影，不再把授权状态和 event-tap `service_status` 混同；可见
+    settings 窗口以每秒一次的只读 preflight 刷新，变化会推进 snapshot revision 并更新中英 Diagnostics
+    文案。轮询不会请求权限、创建新 input service 或重启 tap，窗口释放即停止。UI presentation 定向测试、
+    app/UI 严格 Clippy 和 release check 通过；真实 TCC 授权/撤销矩阵仍由 Phase 8 macOS 实机门禁覆盖。
 
 ### 8.4 更新与诊断
 

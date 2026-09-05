@@ -373,6 +373,8 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 - 全局输入监听只请求 Input Monitoring：`CGPreflightListenEventAccess` 只读查询，权限请求只由用户
   发起的明确设置操作触发。设置窗口通过 AccessKit 公开自身语义不需要、也不得请求 Accessibility
   trust；Input Monitoring 状态与输入服务运行状态分别投影，授权变化不等于 tap 已重启（ADR-0024）。
+  可见 settings 窗口最多每秒一次读取只读 preflight 并通过 revisioned snapshot 刷新该状态；轮询不发起
+  TCC request、不重试或重启 event tap，窗口释放后停止。
 - `PlatformInputDiagnostics` 以稳定 `service_status` 和单调 `service_start_attempts` 公开输入服务
   的 not-started/running/permission-denied/backend-unavailable/failed/stopped 状态，不携带平台错误文本。
   平台 owner 每次产品启动只尝试一次；权限拒绝或 backend 启动失败不阻止 overlay/runtime，settings
