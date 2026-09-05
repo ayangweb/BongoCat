@@ -11,9 +11,15 @@ Windows 首发仍需要固定安装格式，以便明确 installer 权限、卸�
 
 - Windows 首发采用 NSIS per-user installer。每个受支持 target/arch 生成独立安装 artifact；x86 不构建或
   发布，ARM64 在 Cubism desktop Core 的 ABI 与模型发布门禁通过前不生成可发布 artifact。
-- installer 使用固定、可审计版本的 NSIS toolchain 和 hash，在当前用户 local application directory
-  安装已 Authenticode 签名的 product files。脚本以 user execution level 运行，不请求管理员权限，不安装
-  service、driver 或机器级注册项。
+- installer 使用无 plugin 的 NSIS v3.11 toolchain（官方 nsis-3.11-setup.exe，MD5
+  700dc40097d4cd226b13212dda1d33ac，SourceForge release；source 为 zlib/libpng license，压缩
+  components 例外），在当前用户 local application directory 安装已 Authenticode 签名的 product files。
+  packaging wrapper 同时核验该 acquisition artifact 的 MD5 和本地 makensis /VERSION。脚本以 user
+  execution level 运行，不请求管理员权限，不安装 service、driver 或机器级注册项。
+- Windows packaging 仅接受已经构建和签名的 x86_64-pc-windows-msvc release payload；wrapper 读取
+  path-free build provenance，核验 target、环境、三个预置模型、所有 PE 签名和无 reparse point，拒绝既有
+  output file。它不执行 Cargo、签名、下载或网络访问。installer 升级只在固定 product root 内移除旧 product
+  files，避免遗留 binary；payload 不得携带 uninstaller。
 - 安装、升级和卸载不能读取、导入、迁移或删除 Development/Production 的 config、state、models、backups、
   logs 或 updates 数据。默认卸载只删除 product files；删除用户数据必须是独立且明确的用户操作。
 - installer 不联网、不解析 update manifest，也不自行选择 artifact。未来 Rust update helper 只接收
@@ -31,5 +37,6 @@ Windows 首发仍需要固定安装格式，以便明确 installer 权限、卸�
 ## 验证
 
 后续 installer job 必须在干净 Windows 10 1903+ 与 Windows 11 用户 profile 验证安装、升级、卸载、签名、
-环境数据保留、x64/ARM64 artifact 选择和失败 rollback。NSIS toolchain 的 license/source/hash 进入 release
-provenance 与 SBOM；未完成这些证据前不得宣称 Windows package 可发布。
+环境数据保留、x64 artifact 选择和失败 rollback。ARM64 在 Cubism desktop Core 门禁解除后另行验证，不能由
+x64 installer 推断。NSIS toolchain 的 license/source/hash 进入 release provenance 与 SBOM；未完成这些
+证据前不得宣称 Windows package 可发布。

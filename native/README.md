@@ -53,6 +53,22 @@ Native build provenance is written as path-free JSON with the source commit, `Ca
 Rust toolchain, target, profile, feature set, and build environment. The macOS package includes
 `Contents/Resources/build-provenance.json`; CI stores one provenance artifact per native runner.
 
+Windows x64 packaging is a separate, current-user NSIS step. It accepts a prebuilt release payload
+that has already been Authenticode-signed; it does not build, sign, download, or select an update.
+The release workstation must retain the official nsis-3.11-setup.exe acquisition artifact and use
+the matching installed makensis.exe, so the script can pin its MD5 and v3.11 compiler version:
+
+```powershell
+$env:BONGOCAT_BUILD_ENV = 'production'
+& .\scripts\package-windows.ps1 -InputDirectory C:\release\bongocat-x64 -OutputFile C:\release\BongoCat-0.1.0-x64-setup.exe -ProductVersion 0.1.0 -NsisSetupPath C:\toolchains\nsis-3.11-setup.exe -MakeNsisPath 'C:\Program Files (x86)\NSIS\makensis.exe'
+```
+
+The payload must contain bongocat-app.exe, valid signatures for every .exe and .dll, all three
+preset model directories, and resources/build-provenance.json for the matching x64 release and
+build environment. The installer writes only $LOCALAPPDATA\Programs\BongoCat and HKCU uninstall
+metadata; it neither reads nor deletes environment-scoped user data. Windows install, upgrade,
+uninstall, and rollback smoke remain release gates.
+
 Preset models are product resources, not user data. macOS loads them from
 `BongoCat.app/Contents/Resources/models`; Windows packages must place them under
 `resources/models` beside `bongocat-app.exe`. An unpackaged development binary falls back to the

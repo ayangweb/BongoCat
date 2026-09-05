@@ -1451,8 +1451,12 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
   - 验收证据（2026-09-05）：ADR-0023 选择 NSIS per-user installer，以当前用户 local application
     directory、无管理员权限、逐 target/arch 已签名 artifact 和不触及环境数据为首发约束。MSIX 的包
     activation/update 模型与既有 HKCU Run/startup 和独立 signed update helper 冲突；WiX 的机器级 MSI
-    重点需要额外管理员权限与服务策略，均不作为首发路径。实际 NSIS script、签名、卸载、helper 和
-    rollback smoke 继续由后续任务验证。
+    重点需要额外管理员权限与服务策略，均不作为首发路径。native/windows/installer/BongoCat.nsi 与
+    native/scripts/package-windows.ps1 现固定 user-level、HKCU-only NSIS v3.11 packaging boundary：
+    wrapper 拒绝非 x64 release provenance、缺少三预置模型、reparse point、未签名 PE 或既有 output，且不
+    build/sign/network；script 只升级固定 product root，卸载拒绝其他路径。PowerShell/NSIS 不在当前 macOS
+    host，installer 编译、签名、安装、升级、卸载、环境数据保留、helper 和 rollback smoke 继续由后续
+    Windows 实机任务验证。
 - [x] 对安装目录、用户数据目录和更新临时目录分别建模。
   - 验收证据（2026-09-05）：`StorageLayout` 继续独占按环境隔离的用户数据根，并显式包含私有
     `updates/staging/`；目录创建、Development/Production 同构与 Unix owner-only 权限测试逐项覆盖。
