@@ -1510,6 +1510,9 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     renderer 的 `ModelCommitErrorCode` 现同样公开唯一的稳定
     `model_commit_resource_preparation_failed` code，runtime 仍将该拒绝投影为
     `gpu_preparation_failed`，不改变既有两阶段模型切换失败语义。
+    `PlatformInputError` 的 13 个 service lifecycle/permission/backend 结果也已固定为
+    `platform_input_*` code；overlay 继续只将其归类投影为 input service status，避免在
+    Settings snapshot 或日志中包含 OS 原始文本。
 - [ ] 日志导出生成可预览的脱敏包。
   - 状态（2026-09-01）：settings service 已新增有界 `ExportDiagnostics` command，使用当前环境
     `logs/diagnostics.json` 的同目录原子写入生成 format v1 JSON。导出只包含稳定 runtime/input/

@@ -203,24 +203,69 @@ pub enum PlatformInputError {
     WorkerPanicked,
 }
 
+impl PlatformInputError {
+    pub const ALL: [Self; 13] = [
+        Self::BackendUnavailable,
+        Self::PermissionDenied,
+        Self::TapCreateFailed,
+        Self::RunLoopSourceFailed,
+        Self::WindowClassRegistrationFailed,
+        Self::WindowCreateFailed,
+        Self::SessionNotificationFailed,
+        Self::RawInputRegistrationFailed,
+        Self::TimerCreateFailed,
+        Self::RuntimeStopped,
+        Self::StartupTimedOut,
+        Self::ShutdownTimedOut,
+        Self::WorkerPanicked,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::BackendUnavailable => "platform_input_backend_unavailable",
+            Self::PermissionDenied => "platform_input_permission_denied",
+            Self::TapCreateFailed => "platform_input_tap_create_failed",
+            Self::RunLoopSourceFailed => "platform_input_run_loop_source_failed",
+            Self::WindowClassRegistrationFailed => {
+                "platform_input_window_class_registration_failed"
+            }
+            Self::WindowCreateFailed => "platform_input_window_create_failed",
+            Self::SessionNotificationFailed => "platform_input_session_notification_failed",
+            Self::RawInputRegistrationFailed => "platform_input_raw_input_registration_failed",
+            Self::TimerCreateFailed => "platform_input_timer_create_failed",
+            Self::RuntimeStopped => "platform_input_runtime_stopped",
+            Self::StartupTimedOut => "platform_input_startup_timed_out",
+            Self::ShutdownTimedOut => "platform_input_shutdown_timed_out",
+            Self::WorkerPanicked => "platform_input_worker_panicked",
+        }
+    }
+}
+
 impl fmt::Display for PlatformInputError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::BackendUnavailable => "the platform input backend is not available",
-            Self::PermissionDenied => "input monitoring permission is denied",
-            Self::TapCreateFailed => "CGEventTap could not be created",
-            Self::RunLoopSourceFailed => "CGEventTap run-loop source could not be created",
-            Self::WindowClassRegistrationFailed => "Raw Input window class registration failed",
-            Self::WindowCreateFailed => "Raw Input owner window creation failed",
-            Self::SessionNotificationFailed => "Windows session notification registration failed",
-            Self::RawInputRegistrationFailed => "Raw Input device registration failed",
-            Self::TimerCreateFailed => "Windows input service timer creation failed",
-            Self::RuntimeStopped => "runtime stopped while the input service was active",
-            Self::StartupTimedOut => "input service startup timed out",
-            Self::ShutdownTimedOut => "input service shutdown timed out",
-            Self::WorkerPanicked => "input service worker panicked",
-        })
+        formatter.write_str(self.as_str())
     }
 }
 
 impl std::error::Error for PlatformInputError {}
+
+#[cfg(test)]
+mod platform_input_error_tests {
+    use super::PlatformInputError;
+
+    #[test]
+    fn platform_input_error_codes_are_stable_and_unique() {
+        let mut codes = PlatformInputError::ALL
+            .iter()
+            .map(|code| code.as_str())
+            .collect::<Vec<_>>();
+        assert!(codes.iter().all(|code| code.starts_with("platform_input_")));
+        codes.sort_unstable();
+        codes.dedup();
+        assert_eq!(codes.len(), PlatformInputError::ALL.len());
+        assert_eq!(
+            PlatformInputError::PermissionDenied.to_string(),
+            "platform_input_permission_denied"
+        );
+    }
+}
