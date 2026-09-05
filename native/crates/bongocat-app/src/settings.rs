@@ -1,12 +1,12 @@
 use crate::{
     Application, ApplicationConfigStatus, ApplicationError, ApplicationLogCode,
     ApplicationLogComponent, ApplicationLogDiagnostics, ApplicationLogEvent, ApplicationLogLevel,
-    ApplicationShortcutSignals,
+    ApplicationShortcutSignals, BUILD_ENVIRONMENT, PRODUCT_VERSION,
 };
 use atomic_write_file::AtomicWriteFile;
 use bongocat_config::{
-    ConfigError, ConfigWriteFailureReason, NativeConfig, OverlayWindowPlacement, ShortcutCommand,
-    StateError, WindowPlacement,
+    BuildEnvironment, ConfigError, ConfigWriteFailureReason, NativeConfig, OverlayWindowPlacement,
+    ShortcutCommand, StateError, WindowPlacement,
 };
 use bongocat_model::{
     ModelCatalogEntry, ModelDiagnostic, ModelImportProgress, ModelImportStage, ModelOrigin,
@@ -26,12 +26,13 @@ use bongocat_runtime::{
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_ui::SettingsStartupItemError;
 use bongocat_ui::{
-    DIAGNOSTICS_EXPORT_FORMAT_VERSION, RuntimeHealth, SettingsApplicationShortcut, SettingsClient,
-    SettingsCommand, SettingsConfigRecovery, SettingsConfigurationStatus,
-    SettingsDiagnosticsExportStatus, SettingsError, SettingsErrorCode, SettingsGamepadAxisSettings,
-    SettingsInputDiagnostics, SettingsInputMonitoringPermission, SettingsInputServiceStatus,
-    SettingsLanguage, SettingsModelAvailability, SettingsModelBehaviorBinding,
-    SettingsModelCatalog, SettingsModelCatalogError, SettingsModelDiagnostic, SettingsModelEntry,
+    DIAGNOSTICS_EXPORT_FORMAT_VERSION, RuntimeHealth, SettingsApplicationShortcut,
+    SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient, SettingsCommand,
+    SettingsConfigRecovery, SettingsConfigurationStatus, SettingsDiagnosticsExportStatus,
+    SettingsError, SettingsErrorCode, SettingsGamepadAxisSettings, SettingsInputDiagnostics,
+    SettingsInputMonitoringPermission, SettingsInputServiceStatus, SettingsLanguage,
+    SettingsModelAvailability, SettingsModelBehaviorBinding, SettingsModelCatalog,
+    SettingsModelCatalogError, SettingsModelDiagnostic, SettingsModelEntry,
     SettingsModelImportProgress, SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin,
     SettingsModelSettings, SettingsOverlay, SettingsRuntimeCommandFailure,
     SettingsRuntimeCommandTransportDiagnostics, SettingsRuntimeDiagnostics,
@@ -1103,6 +1104,13 @@ fn snapshot(
     SettingsSnapshot {
         revision: clock.revision,
         config_revision: application.config_revision(),
+        build_info: SettingsBuildInfo {
+            product_version: PRODUCT_VERSION.to_owned(),
+            environment: match BUILD_ENVIRONMENT {
+                BuildEnvironment::Development => SettingsBuildEnvironment::Development,
+                BuildEnvironment::Production => SettingsBuildEnvironment::Production,
+            },
+        },
         runtime_health: if input_service_is_degraded(input_diagnostics.service_status) {
             RuntimeHealth::Degraded
         } else if application.is_operational() {
@@ -2257,6 +2265,10 @@ mod tests {
         let snapshot = SettingsSnapshot {
             revision: 42,
             config_revision: Some(7),
+            build_info: SettingsBuildInfo {
+                product_version: "0.1.0".to_owned(),
+                environment: SettingsBuildEnvironment::Development,
+            },
             runtime_health: RuntimeHealth::Degraded,
             runtime_diagnostics: SettingsRuntimeDiagnostics {
                 render_error: Some(SettingsRuntimeErrorCode::GpuPreparationFailed),

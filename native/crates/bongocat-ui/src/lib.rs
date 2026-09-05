@@ -254,6 +254,27 @@ pub struct SettingsDiagnosticsExportStatus {
     pub bytes_written: u64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SettingsBuildEnvironment {
+    Development,
+    Production,
+}
+
+impl SettingsBuildEnvironment {
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::Development => "development",
+            Self::Production => "production",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SettingsBuildInfo {
+    pub product_version: String,
+    pub environment: SettingsBuildEnvironment,
+}
+
 /// Version of the anonymous diagnostics export JSON contract.
 pub const DIAGNOSTICS_EXPORT_FORMAT_VERSION: u32 = 1;
 
@@ -315,6 +336,7 @@ impl SettingsLanguage {
 pub struct SettingsSnapshot {
     pub revision: u64,
     pub config_revision: Option<u64>,
+    pub build_info: SettingsBuildInfo,
     pub runtime_health: RuntimeHealth,
     pub runtime_diagnostics: SettingsRuntimeDiagnostics,
     pub appearance_theme: SettingsTheme,
@@ -2441,6 +2463,10 @@ mod tests {
         SettingsSnapshot {
             revision,
             config_revision: Some(revision),
+            build_info: SettingsBuildInfo {
+                product_version: "0.1.0".to_owned(),
+                environment: SettingsBuildEnvironment::Development,
+            },
             runtime_health: RuntimeHealth::Ready,
             runtime_diagnostics: SettingsRuntimeDiagnostics::default(),
             appearance_theme: SettingsTheme::System,

@@ -189,6 +189,21 @@ fn diagnostics_page_projects_only_named_aggregate_counters() {
 }
 
 #[test]
+fn build_information_is_localized_and_contains_only_compiled_identity() {
+    let build_info = crate::SettingsBuildInfo {
+        product_version: "0.1.0".to_owned(),
+        environment: crate::SettingsBuildEnvironment::Development,
+    };
+    let detail = build_info_detail(SettingsLanguage::EnglishUnitedStates, &build_info);
+    assert_eq!(detail, "Version 0.1.0 · Development");
+    assert!(!detail.contains('/'));
+    assert!(!detail.contains("path"));
+
+    let chinese = build_info_detail(SettingsLanguage::ChineseSimplified, &build_info);
+    assert_eq!(chinese, "版本 0.1.0 · 开发环境");
+}
+
+#[test]
 fn runtime_diagnostics_presentation_keeps_codes_anonymous_and_actionable() {
     let presentation = runtime_diagnostics_presentation(
         SettingsRuntimeDiagnostics {

@@ -1,6 +1,7 @@
 use super::{
-    SettingsError, SettingsErrorCode, SettingsInputDiagnostics, SettingsLanguage,
-    SettingsModelOrigin, ShortcutCaptureError, ShortcutCaptureTarget,
+    SettingsBuildEnvironment, SettingsBuildInfo, SettingsError, SettingsErrorCode,
+    SettingsInputDiagnostics, SettingsLanguage, SettingsModelOrigin, ShortcutCaptureError,
+    ShortcutCaptureTarget,
 };
 
 #[derive(Clone, Copy)]
@@ -65,6 +66,10 @@ pub(super) enum UiText {
     LoadingDiagnostics,
     InputReliabilityCounters,
     RuntimeRenderer,
+    BuildInformation,
+    Version,
+    Development,
+    Production,
     DiagnosticsExport,
     NoReportExported,
     Export,
@@ -290,6 +295,10 @@ pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
         UiText::LoadingDiagnostics => ["Loading diagnostics...", "正在加载诊断信息..."],
         UiText::InputReliabilityCounters => ["Input reliability counters", "输入可靠性计数"],
         UiText::RuntimeRenderer => ["Runtime renderer", "运行时渲染器"],
+        UiText::BuildInformation => ["Build information", "构建信息"],
+        UiText::Version => ["Version", "版本"],
+        UiText::Development => ["Development", "开发环境"],
+        UiText::Production => ["Production", "生产环境"],
         UiText::DiagnosticsExport => ["Diagnostics export", "诊断导出"],
         UiText::NoReportExported => ["No report exported", "尚未导出报告"],
         UiText::Export => ["Export", "导出"],
@@ -601,6 +610,22 @@ pub(super) fn diagnostics_export_status(
         }
         (_, None) => text(language, UiText::NoReportExported).to_owned(),
     }
+}
+
+pub(super) fn build_info_detail(
+    language: SettingsLanguage,
+    build_info: &SettingsBuildInfo,
+) -> String {
+    let environment = match build_info.environment {
+        SettingsBuildEnvironment::Development => UiText::Development,
+        SettingsBuildEnvironment::Production => UiText::Production,
+    };
+    format!(
+        "{} {} · {}",
+        text(language, UiText::Version),
+        build_info.product_version,
+        text(language, environment)
+    )
 }
 
 pub(super) fn input_service_attempts(language: SettingsLanguage, attempts: u64) -> String {
@@ -1037,6 +1062,10 @@ mod tests {
             UiText::LoadingDiagnostics,
             UiText::InputReliabilityCounters,
             UiText::RuntimeRenderer,
+            UiText::BuildInformation,
+            UiText::Version,
+            UiText::Development,
+            UiText::Production,
             UiText::DiagnosticsExport,
             UiText::NoReportExported,
             UiText::Export,

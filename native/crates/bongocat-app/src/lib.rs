@@ -72,6 +72,7 @@ impl ApplicationShortcutSignals {
 const COMMAND_CAPACITY: usize = 64;
 const AUDIO_COMMAND_CAPACITY: usize = 16;
 const RUNTIME_TIMEOUT: Duration = Duration::from_secs(2);
+pub const PRODUCT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg(bongocat_build_environment = "development")]
 pub const BUILD_ENVIRONMENT: BuildEnvironment = BuildEnvironment::Development;

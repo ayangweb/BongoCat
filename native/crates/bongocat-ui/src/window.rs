@@ -1,12 +1,12 @@
 use crate::{
-    RuntimeHealth, SettingsClient, SettingsConfigRecovery, SettingsConfigurationStatus,
-    SettingsError, SettingsErrorCode, SettingsGamepadAxisSettings, SettingsInputDiagnostics,
-    SettingsInputServiceStatus, SettingsLanguage, SettingsModelAvailability,
-    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportMonitor,
-    SettingsModelImportOperation, SettingsModelImportRequest, SettingsModelImportStage,
-    SettingsModelKey, SettingsModelOrigin, SettingsModelSettings, SettingsOperationId,
-    SettingsOverlay, SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode, SettingsShortcuts,
-    SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
+    RuntimeHealth, SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient,
+    SettingsConfigRecovery, SettingsConfigurationStatus, SettingsError, SettingsErrorCode,
+    SettingsGamepadAxisSettings, SettingsInputDiagnostics, SettingsInputServiceStatus,
+    SettingsLanguage, SettingsModelAvailability, SettingsModelDiagnostic, SettingsModelEntry,
+    SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
+    SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsModelSettings,
+    SettingsOperationId, SettingsOverlay, SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode,
+    SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
     SettingsStartupItemUnsupportedReason, SettingsTheme, SettingsWindowPlacement,
     SettingsWindowState,
 };
@@ -60,11 +60,12 @@ mod smoke;
 mod view_state;
 pub use lifecycle::open_settings_window;
 use localization::{
-    UiText, backup_candidates_checked, diagnostics_export_status, diagnostics_unavailable,
-    input_diagnostic_metrics, input_service_attempts, model_availability_summary,
-    model_delete_confirmation, model_import_progress, model_invalid_summary,
-    recovered_backup_detail, runtime_command_failure, runtime_status, settings_error,
-    shortcut_accessibility_label, shortcut_capture_error, shortcut_target_name, text as ui_text,
+    UiText, backup_candidates_checked, build_info_detail, diagnostics_export_status,
+    diagnostics_unavailable, input_diagnostic_metrics, input_service_attempts,
+    model_availability_summary, model_delete_confirmation, model_import_progress,
+    model_invalid_summary, recovered_backup_detail, runtime_command_failure, runtime_status,
+    settings_error, shortcut_accessibility_label, shortcut_capture_error, shortcut_target_name,
+    text as ui_text,
 };
 #[cfg(test)]
 mod tests;

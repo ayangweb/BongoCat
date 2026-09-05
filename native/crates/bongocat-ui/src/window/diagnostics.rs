@@ -65,6 +65,30 @@ pub(super) fn content(
                     content
                         .child(
                             div()
+                                .id("build-information")
+                                .pb_3()
+                                .mb_3()
+                                .border_b_1()
+                                .border_color(tokens.border)
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .gap_4()
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(tokens.muted)
+                                        .child(ui_text(language, UiText::BuildInformation)),
+                                )
+                                .child(
+                                    div()
+                                        .flex_none()
+                                        .text_sm()
+                                        .child(build_info_detail(language, &snapshot.build_info)),
+                                ),
+                        )
+                        .child(
+                            div()
                                 .id("runtime-diagnostics")
                                 .pb_3()
                                 .mb_3()

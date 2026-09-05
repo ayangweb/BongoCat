@@ -1213,6 +1213,10 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 - [ ] 权限：macOS 状态/跳转和 Windows 权限差异。
 - [ ] 更新：检查、下载、验证、安装和回滚提示。
 - [ ] 诊断：版本、renderer、GPU、输入、权限、模型错误和日志导出。
+  - 状态（2026-09-05）：settings snapshot 现投影编译期 product version 与不可变构建环境；Diagnostics
+    页面以本地化、只读文本显示该 build identity，不读取路径、设备信息或网络来源。renderer/runtime
+    stable code、输入可靠性计数、macOS Input Monitoring 权限、模型目录诊断与匿名日志导出仍已各自接入；GPU
+    细节、update 诊断、完整产品错误边界及双平台实机证据尚待完成，因此总项保持未勾选。
 - [ ] About：许可证、Cubism attribution、第三方依赖和隐私说明。
 
 ### 6.5 UI 质量
