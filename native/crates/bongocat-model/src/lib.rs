@@ -567,6 +567,139 @@ struct RawModelGroup {
     ids: Vec<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawDisplayInfo {
+    #[serde(rename = "Version")]
+    version: u32,
+    #[serde(rename = "Parameters", default)]
+    parameters: Vec<RawDisplayInfoParameter>,
+    #[serde(rename = "ParameterGroups", default)]
+    parameter_groups: Vec<RawDisplayInfoParameterGroup>,
+    #[serde(rename = "Parts", default)]
+    parts: Vec<RawDisplayInfoPart>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawDisplayInfoParameter {
+    #[serde(rename = "Id")]
+    id: String,
+    #[serde(rename = "GroupId")]
+    group_id: String,
+    #[serde(rename = "Name")]
+    _name: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawDisplayInfoParameterGroup {
+    #[serde(rename = "Id")]
+    id: String,
+    #[serde(rename = "GroupId")]
+    _group_id: String,
+    #[serde(rename = "Name")]
+    _name: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawDisplayInfoPart {
+    #[serde(rename = "Id")]
+    id: String,
+    #[serde(rename = "Name")]
+    _name: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawExpressionResource {
+    #[serde(rename = "Type")]
+    kind: String,
+    #[serde(rename = "FadeInTime", default)]
+    fade_in_seconds: Option<f32>,
+    #[serde(rename = "FadeOutTime", default)]
+    fade_out_seconds: Option<f32>,
+    #[serde(rename = "Parameters")]
+    parameters: Vec<RawExpressionParameter>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawExpressionParameter {
+    #[serde(rename = "Id")]
+    id: String,
+    #[serde(rename = "Value")]
+    value: f32,
+    #[serde(rename = "Blend", default)]
+    blend: Option<RawExpressionBlend>,
+}
+
+#[derive(Debug, Deserialize)]
+enum RawExpressionBlend {
+    Add,
+    Multiply,
+    Overwrite,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawMotionResourceFile {
+    #[serde(rename = "Version")]
+    version: u32,
+    #[serde(rename = "Meta")]
+    meta: RawMotionResourceMeta,
+    #[serde(rename = "Curves")]
+    curves: Vec<RawMotionResourceCurve>,
+    #[serde(rename = "UserData", default)]
+    user_data: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawMotionResourceMeta {
+    #[serde(rename = "Duration")]
+    duration: f32,
+    #[serde(rename = "Fps")]
+    fps: f32,
+    #[serde(rename = "Loop")]
+    _looping: bool,
+    #[serde(rename = "AreBeziersRestricted")]
+    _are_beziers_restricted: bool,
+    #[serde(rename = "CurveCount")]
+    curve_count: usize,
+    #[serde(rename = "TotalSegmentCount")]
+    _total_segment_count: usize,
+    #[serde(rename = "TotalPointCount")]
+    _total_point_count: usize,
+    #[serde(rename = "UserDataCount")]
+    user_data_count: usize,
+    #[serde(rename = "TotalUserDataSize")]
+    _total_user_data_size: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawMotionResourceCurve {
+    #[serde(rename = "Target")]
+    target: RawMotionResourceTarget,
+    #[serde(rename = "Id")]
+    id: String,
+    #[serde(rename = "Segments")]
+    segments: Vec<f32>,
+    #[serde(rename = "FadeInTime", default)]
+    fade_in_seconds: Option<f32>,
+    #[serde(rename = "FadeOutTime", default)]
+    fade_out_seconds: Option<f32>,
+}
+
+#[derive(Debug, Deserialize)]
+enum RawMotionResourceTarget {
+    Model,
+    Parameter,
+    PartOpacity,
+}
+
 struct PackageReader {
     canonical_root: PathBuf,
     limits: ModelPackageLimits,
@@ -642,6 +775,42 @@ impl PackageReader {
         let (normalized, path) =
             self.resolve_file(reference, ModelDiagnostic::ModelResourceMissing)?;
         validate_json_resource(
+            &path,
+            &normalized,
+            self.limits.maximum_json_bytes,
+            self.limits.maximum_json_depth,
+        )?;
+        Ok(normalized)
+    }
+
+    fn resolve_display_info(&mut self, reference: &str) -> Result<String, ModelError> {
+        let (normalized, path) =
+            self.resolve_file(reference, ModelDiagnostic::ModelResourceMissing)?;
+        validate_display_info_resource(
+            &path,
+            &normalized,
+            self.limits.maximum_json_bytes,
+            self.limits.maximum_json_depth,
+        )?;
+        Ok(normalized)
+    }
+
+    fn resolve_expression(&mut self, reference: &str) -> Result<String, ModelError> {
+        let (normalized, path) =
+            self.resolve_file(reference, ModelDiagnostic::ModelResourceMissing)?;
+        validate_expression_resource(
+            &path,
+            &normalized,
+            self.limits.maximum_json_bytes,
+            self.limits.maximum_json_depth,
+        )?;
+        Ok(normalized)
+    }
+
+    fn resolve_motion(&mut self, reference: &str) -> Result<String, ModelError> {
+        let (normalized, path) =
+            self.resolve_file(reference, ModelDiagnostic::ModelResourceMissing)?;
+        validate_motion_resource(
             &path,
             &normalized,
             self.limits.maximum_json_bytes,
@@ -758,7 +927,7 @@ fn inspect_model_package(
         .files
         .display_info
         .as_deref()
-        .map(|reference| reader.resolve_json(reference))
+        .map(|reference| reader.resolve_display_info(reference))
         .transpose()?;
     let expressions = model
         .files
@@ -766,7 +935,7 @@ fn inspect_model_package(
         .into_iter()
         .map(|resource| {
             require_identifier(&resource.name, "expression name", &entry_name)?;
-            let file = reader.resolve_json(&resource.file)?;
+            let file = reader.resolve_expression(&resource.file)?;
             Ok(NamedResource {
                 name: resource.name,
                 file,
@@ -782,7 +951,7 @@ fn inspect_model_package(
             let motions = motions
                 .into_iter()
                 .map(|motion| {
-                    let file = reader.resolve_json(&motion.file)?;
+                    let file = reader.resolve_motion(&motion.file)?;
                     let sound = motion
                         .sound
                         .as_deref()
@@ -1017,6 +1186,173 @@ fn validate_json_resource(
         ));
     }
     Ok(())
+}
+
+fn validate_display_info_resource(
+    path: &Path,
+    reference: &str,
+    maximum_bytes: u64,
+    maximum_depth: usize,
+) -> Result<(), ModelError> {
+    let display: RawDisplayInfo = read_json(
+        path,
+        reference,
+        maximum_bytes,
+        maximum_depth,
+        ModelDiagnostic::ModelResourceInvalid,
+    )?;
+    if display.version != 3 {
+        return invalid_resource(reference, "cdi3 Version must be 3");
+    }
+
+    let parameter_groups = display
+        .parameter_groups
+        .iter()
+        .map(|group| group.id.as_str())
+        .collect::<BTreeSet<_>>();
+    if parameter_groups.len() != display.parameter_groups.len()
+        || display
+            .parameter_groups
+            .iter()
+            .any(|group| group.id.trim().is_empty())
+    {
+        return invalid_resource(
+            reference,
+            "cdi3 ParameterGroups contain blank or duplicate Id",
+        );
+    }
+    let parameters = display
+        .parameters
+        .iter()
+        .map(|parameter| parameter.id.as_str())
+        .collect::<BTreeSet<_>>();
+    if parameters.len() != display.parameters.len()
+        || display
+            .parameters
+            .iter()
+            .any(|parameter| parameter.id.trim().is_empty())
+    {
+        return invalid_resource(reference, "cdi3 Parameters contain blank or duplicate Id");
+    }
+    if display.parameters.iter().any(|parameter| {
+        !parameter.group_id.is_empty() && !parameter_groups.contains(parameter.group_id.as_str())
+    }) {
+        return invalid_resource(reference, "cdi3 Parameter GroupId is not declared");
+    }
+    let parts = display
+        .parts
+        .iter()
+        .map(|part| part.id.as_str())
+        .collect::<BTreeSet<_>>();
+    if parts.len() != display.parts.len()
+        || display.parts.iter().any(|part| part.id.trim().is_empty())
+    {
+        return invalid_resource(reference, "cdi3 Parts contain blank or duplicate Id");
+    }
+    Ok(())
+}
+
+fn validate_expression_resource(
+    path: &Path,
+    reference: &str,
+    maximum_bytes: u64,
+    maximum_depth: usize,
+) -> Result<(), ModelError> {
+    let expression: RawExpressionResource = read_json(
+        path,
+        reference,
+        maximum_bytes,
+        maximum_depth,
+        ModelDiagnostic::ModelResourceInvalid,
+    )?;
+    if expression.kind != "Live2D Expression" {
+        return invalid_resource(reference, "exp3 Type must be Live2D Expression");
+    }
+    if [expression.fade_in_seconds, expression.fade_out_seconds]
+        .into_iter()
+        .flatten()
+        .any(|seconds| !seconds.is_finite() || seconds < 0.0)
+    {
+        return invalid_resource(
+            reference,
+            "exp3 fade duration must be finite and non-negative",
+        );
+    }
+    let parameter_ids = expression
+        .parameters
+        .iter()
+        .map(|parameter| parameter.id.as_str())
+        .collect::<BTreeSet<_>>();
+    if parameter_ids.len() != expression.parameters.len()
+        || expression
+            .parameters
+            .iter()
+            .any(|parameter| parameter.id.trim().is_empty() || !parameter.value.is_finite())
+    {
+        return invalid_resource(reference, "exp3 Parameters contain an invalid Id or Value");
+    }
+    for parameter in expression.parameters {
+        let _ = parameter.blend;
+    }
+    Ok(())
+}
+
+fn validate_motion_resource(
+    path: &Path,
+    reference: &str,
+    maximum_bytes: u64,
+    maximum_depth: usize,
+) -> Result<(), ModelError> {
+    let motion: RawMotionResourceFile = read_json(
+        path,
+        reference,
+        maximum_bytes,
+        maximum_depth,
+        ModelDiagnostic::ModelResourceInvalid,
+    )?;
+    if motion.version != 3 {
+        return invalid_resource(reference, "motion3 Version must be 3");
+    }
+    if !motion.meta.duration.is_finite()
+        || motion.meta.duration < 0.0
+        || !motion.meta.fps.is_finite()
+        || motion.meta.fps <= 0.0
+    {
+        return invalid_resource(
+            reference,
+            "motion3 Meta Duration/Fps must be finite and positive",
+        );
+    }
+    if motion.meta.curve_count != motion.curves.len()
+        || motion.meta.user_data_count != motion.user_data.len()
+    {
+        return invalid_resource(
+            reference,
+            "motion3 Meta counts do not match declared arrays",
+        );
+    }
+    for curve in motion.curves {
+        let _ = curve.target;
+        if curve.id.trim().is_empty()
+            || curve.segments.len() < 2
+            || curve.segments.iter().any(|value| !value.is_finite())
+            || [curve.fade_in_seconds, curve.fade_out_seconds]
+                .into_iter()
+                .flatten()
+                .any(|seconds| !seconds.is_finite() || seconds < 0.0)
+        {
+            return invalid_resource(reference, "motion3 curve contains invalid values");
+        }
+    }
+    Ok(())
+}
+
+fn invalid_resource(reference: &str, detail: &'static str) -> Result<(), ModelError> {
+    Err(ModelError::new(
+        ModelDiagnostic::ModelResourceInvalid,
+        Some(reference),
+        detail,
+    ))
 }
 
 fn validate_json_depth(
@@ -1741,6 +2077,81 @@ mod tests {
         .expect_err("blank group parameter id");
         assert_eq!(error.code, ModelDiagnostic::ModelJsonInvalid);
         assert!(error.detail.contains("group parameter id"));
+    }
+
+    #[test]
+    fn sidecar_contracts_reject_invalid_display_expression_and_motion_resources() {
+        let package = tempdir().expect("package");
+        let limits = ModelPackageLimits::default();
+        let display = package.path().join("display.cdi3.json");
+        fs::write(
+            &display,
+            r#"{"Version":3,"Parameters":[{"Id":"ParamA","GroupId":"missing","Name":"A"}]}"#,
+        )
+        .expect("display resource");
+        let error = validate_display_info_resource(
+            &display,
+            "display.cdi3.json",
+            limits.maximum_json_bytes,
+            limits.maximum_json_depth,
+        )
+        .expect_err("undeclared display group must be rejected");
+        assert_eq!(error.code, ModelDiagnostic::ModelResourceInvalid);
+
+        let expression = package.path().join("expression.exp3.json");
+        fs::write(
+            &expression,
+            r#"{"Type":"Live2D Expression","Parameters":[{"Id":"ParamA","Value":1},{"Id":"ParamA","Value":2}]}"#,
+        )
+        .expect("expression resource");
+        let error = validate_expression_resource(
+            &expression,
+            "expression.exp3.json",
+            limits.maximum_json_bytes,
+            limits.maximum_json_depth,
+        )
+        .expect_err("duplicate expression parameter must be rejected");
+        assert_eq!(error.code, ModelDiagnostic::ModelResourceInvalid);
+
+        let motion = package.path().join("motion.motion3.json");
+        fs::write(
+            &motion,
+            r#"{
+              "Version":3,
+              "Meta":{"Duration":1,"Fps":30,"Loop":false,"AreBeziersRestricted":true,"CurveCount":1,"TotalSegmentCount":0,"TotalPointCount":0,"UserDataCount":0,"TotalUserDataSize":0},
+              "Curves":[]
+            }"#,
+        )
+        .expect("motion resource");
+        let error = validate_motion_resource(
+            &motion,
+            "motion.motion3.json",
+            limits.maximum_json_bytes,
+            limits.maximum_json_depth,
+        )
+        .expect_err("mismatched motion count must be rejected");
+        assert_eq!(error.code, ModelDiagnostic::ModelResourceInvalid);
+    }
+
+    #[test]
+    fn preset_sidecars_pass_product_contract_validation() {
+        for mode in ["standard", "keyboard", "gamepad"] {
+            let model = PreparedModel::prepare(
+                ModelId::parse(mode).expect("model id"),
+                repository_root().join("native/resources/models").join(mode),
+                ModelPackageLimits::default(),
+            )
+            .expect("preset sidecars must be valid");
+            assert!(model.index().display_info.is_some());
+            assert!(!model.index().expressions.is_empty());
+            assert!(
+                model
+                    .index()
+                    .motion_groups
+                    .iter()
+                    .all(|group| !group.motions.is_empty())
+            );
+        }
     }
 
     #[test]

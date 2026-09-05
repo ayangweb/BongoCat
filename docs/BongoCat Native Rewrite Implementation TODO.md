@@ -918,6 +918,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-30）：正式 crate 已验证所有引用存在于 canonical package root，
     moc/普通文件大小、PNG header/尺寸及关联 JSON object 可读性；motion、expression、
     physics、pose、cdi 的完整结构语义仍由 spike 覆盖，尚未全部提升到产品 crate。
+  - 状态（2026-09-06）：产品 parser 现会在模型 prepare 前严格验证预置与用户包的
+    `cdi3`、`exp3` 和 `motion3` 核心契约：v3 版本、非空/去重标识、display-info 分组引用、
+    expression fade/value/blend 以及 motion duration/FPS/metadata count/curve 数值边界。
+    三套预置模型与无效 sidecar 回归都通过；motion segment 求值继续由 `bongocat-live2d`
+    严格处理，physics/pose 缺少可授权真实 fixture，故本总项保持未完成。
 - [x] 拒绝路径穿越、符号链接逃逸、绝对路径和覆盖安装资源。
   - 验收证据（2026-08-30）：prepare 拒绝遍历、绝对/平台前缀和跨根 symlink；import
     进一步拒绝所有 symlink 与特殊文件，使用 `create_new` staging 文件和非覆盖目录
