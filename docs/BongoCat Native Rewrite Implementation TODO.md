@@ -1378,7 +1378,12 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 
 - [x] Shell_NotifyIcon + HMENU 托盘。
 - [ ] named mutex + registered message/IPC 唤醒单实例。
-- [ ] 当前用户启动项启用、禁用和状态检测。
+- [x] 当前用户启动项启用、禁用和状态检测。
+  - 验收证据（2026-08-31）：`P7-STARTUP-ITEM-PLATFORM` 已以环境隔离的稳定状态/错误
+    contract 完成 Windows HKCU Run 与 macOS 13+ Production `SMAppService` lifecycle；Windows
+    真实 HKCU disabled -> enabled -> stale -> disabled 和 macOS `/Applications` 安装态
+    NotFound -> register -> unregister -> Disabled smoke 均通过。macOS 12 与 Development
+    明确报告 unsupported 且不触及生产登录项；完整退出条件及 CI job 证据见该任务。
 - [ ] 文件选择、外部 URL 和剪贴板使用最小权限 wrapper。
   - 状态（2026-08-31）：模型目录 picker 已有共享稳定结果/错误和双平台最小 adapter；Windows
     使用 STA `IFileOpenDialog`、filesystem/folder/path-exists/no-recent flags 与 COM/TaskMem RAII，
