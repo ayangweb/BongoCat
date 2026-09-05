@@ -21,10 +21,12 @@ Native Rewrite 需要可诊断的应用生命周期记录，但不能把按键�
 - Cubism Core 日志仍由其 FFI callback 专用 sink 管理；两类日志不共享 callback 或裸 handle，
   也不在本 ADR 中宣称 Core 历史文件已经统一清理。
 - Application startup creates `application-running.marker` inside the environment's log directory.
-  The marker contains only a schema version, is flushed before services start, and is removed only
-  after runtime/audio shutdown and the `shutdown_completed` event. A leftover marker causes the next
-  startup to record `previous_run_unclean`; panic, forced termination, and failed shutdown therefore
-  remain diagnosable without recording payloads or paths.
+  The v1 marker contains only a schema version and one fixed phase: `running`, `shutting_down`, or
+  `panicked`; it is flushed before services start and is removed only after runtime/audio shutdown
+  and the `shutdown_completed` event. The next startup classifies a leftover marker anonymously as
+  forced/unknown, shutdown interrupted, or panic, then immediately overwrites it with a new
+  `running` marker. This preserves diagnosis without recording payloads or paths and prevents a
+  stale marker from causing a repeated recovery loop.
 - Diagnostics export may include aggregate counts for the fixed application event codes. This
   additive shape is format version 2; consumers must reject unknown versions rather than guessing.
   The export never embeds JSONL records, panic payloads, paths, key values, or user file content.
@@ -32,7 +34,7 @@ Native Rewrite 需要可诊断的应用生命周期记录，但不能把按键�
 ## 验证
 
 `bongocat-app` 单元测试覆盖固定字段、日期切换和过期清理、1 MiB 轮转、文件数量上限、无效
-目录失败路径以及运行标记的异常保留/正常清理；settings 测试验证导出包含匿名应用日志统计
+目录失败路径以及运行标记的 forced/unknown、panic、shutdown interrupted 分类和正常清理；settings 测试验证导出包含匿名应用日志统计
 和固定事件计数且不泄漏路径或模型身份。
 
 ## 后续边界
