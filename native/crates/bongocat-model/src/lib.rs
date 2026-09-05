@@ -882,6 +882,42 @@ struct RawPhysicsVertex {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawModelUserDataResource {
+    #[serde(rename = "Version")]
+    version: u32,
+    #[serde(rename = "Meta")]
+    meta: RawModelUserDataMeta,
+    #[serde(rename = "UserData")]
+    entries: Vec<RawModelUserDataEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawModelUserDataMeta {
+    #[serde(rename = "UserDataCount")]
+    entry_count: usize,
+    #[serde(rename = "TotalUserDataSize")]
+    total_value_bytes: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawModelUserDataEntry {
+    #[serde(rename = "Target")]
+    target: RawModelUserDataTarget,
+    #[serde(rename = "Id")]
+    id: String,
+    #[serde(rename = "Value")]
+    value: String,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+enum RawModelUserDataTarget {
+    ArtMesh,
+}
+
+#[derive(Debug, Deserialize)]
 enum RawMotionResourceTarget {
     Model,
     Parameter,
@@ -959,18 +995,6 @@ impl PackageReader {
         Ok((normalized, canonical))
     }
 
-    fn resolve_json(&mut self, reference: &str) -> Result<String, ModelError> {
-        let (normalized, path) =
-            self.resolve_file(reference, ModelDiagnostic::ModelResourceMissing)?;
-        validate_json_resource(
-            &path,
-            &normalized,
-            self.limits.maximum_json_bytes,
-            self.limits.maximum_json_depth,
-        )?;
-        Ok(normalized)
-    }
-
     fn resolve_display_info(&mut self, reference: &str) -> Result<String, ModelError> {
         let (normalized, path) =
             self.resolve_file(reference, ModelDiagnostic::ModelResourceMissing)?;
@@ -1023,6 +1047,18 @@ impl PackageReader {
         let (normalized, path) =
             self.resolve_file(reference, ModelDiagnostic::ModelResourceMissing)?;
         validate_physics_resource(
+            &path,
+            &normalized,
+            self.limits.maximum_json_bytes,
+            self.limits.maximum_json_depth,
+        )?;
+        Ok(normalized)
+    }
+
+    fn resolve_user_data(&mut self, reference: &str) -> Result<String, ModelError> {
+        let (normalized, path) =
+            self.resolve_file(reference, ModelDiagnostic::ModelResourceMissing)?;
+        validate_model_user_data_resource(
             &path,
             &normalized,
             self.limits.maximum_json_bytes,
@@ -1231,7 +1267,7 @@ fn inspect_model_package(
         .files
         .user_data
         .as_deref()
-        .map(|reference| reader.resolve_json(reference))
+        .map(|reference| reader.resolve_user_data(reference))
         .transpose()?;
     let inventory = reader.inventory()?;
 
@@ -1378,29 +1414,6 @@ fn parse_json_bytes<T: DeserializeOwned>(
             format!("invalid JSON structure: {error}"),
         )
     })
-}
-
-fn validate_json_resource(
-    path: &Path,
-    reference: &str,
-    maximum_bytes: u64,
-    maximum_depth: usize,
-) -> Result<(), ModelError> {
-    let value: serde_json::Value = read_json(
-        path,
-        reference,
-        maximum_bytes,
-        maximum_depth,
-        ModelDiagnostic::ModelResourceInvalid,
-    )?;
-    if !value.is_object() {
-        return Err(ModelError::new(
-            ModelDiagnostic::ModelResourceInvalid,
-            Some(reference),
-            "resource JSON root must be an object",
-        ));
-    }
-    Ok(())
 }
 
 fn validate_display_info_resource(
@@ -1798,6 +1811,45 @@ fn physics_count_overflow(reference: &str) -> ModelError {
         Some(reference),
         "physics3 count overflowed",
     )
+}
+
+fn validate_model_user_data_resource(
+    path: &Path,
+    reference: &str,
+    maximum_bytes: u64,
+    maximum_depth: usize,
+) -> Result<(), ModelError> {
+    let user_data: RawModelUserDataResource = read_json(
+        path,
+        reference,
+        maximum_bytes,
+        maximum_depth,
+        ModelDiagnostic::ModelResourceInvalid,
+    )?;
+    if user_data.version != 3 {
+        return invalid_resource(reference, "userdata3 Version must be 3");
+    }
+    if user_data.meta.entry_count != user_data.entries.len() {
+        return invalid_resource(
+            reference,
+            "userdata3 Meta.UserDataCount does not match entries",
+        );
+    }
+
+    let mut entry_ids = BTreeSet::new();
+    let total_value_bytes = user_data.entries.iter().try_fold(0_usize, |total, entry| {
+        if entry.id.trim().is_empty() || !entry_ids.insert((entry.target, entry.id.as_str())) {
+            return Err(());
+        }
+        total.checked_add(entry.value.len()).ok_or(())
+    });
+    if total_value_bytes.ok() != Some(user_data.meta.total_value_bytes) {
+        return invalid_resource(
+            reference,
+            "userdata3 entries must have unique non-empty Target/Id pairs and matching byte size",
+        );
+    }
+    Ok(())
 }
 
 fn invalid_resource(reference: &str, detail: &'static str) -> Result<(), ModelError> {
@@ -2853,6 +2905,75 @@ mod tests {
         .expect_err("model prepare must validate declared physics");
         assert_eq!(error.code, ModelDiagnostic::ModelResourceInvalid);
         assert!(error.detail.contains("VertexIndex"));
+    }
+
+    #[test]
+    fn model_user_data_contract_validates_metadata_and_unique_targets() {
+        let package = tempdir().expect("package");
+        let limits = ModelPackageLimits::default();
+        let user_data = package.path().join("model.userdata3.json");
+        const VALID_USER_DATA: &str = r#"{
+          "Version":3,
+          "Meta":{"UserDataCount":1,"TotalUserDataSize":3},
+          "UserData":[{"Target":"ArtMesh","Id":"Drawable1","Value":"tag"}]
+        }"#;
+        fs::write(&user_data, VALID_USER_DATA).expect("valid user data resource");
+        validate_model_user_data_resource(
+            &user_data,
+            "model.userdata3.json",
+            limits.maximum_json_bytes,
+            limits.maximum_json_depth,
+        )
+        .expect("valid user data resource must be accepted");
+
+        for (invalid, detail) in [
+            (
+                VALID_USER_DATA.replace("\"UserDataCount\":1", "\"UserDataCount\":2"),
+                "UserDataCount",
+            ),
+            (
+                VALID_USER_DATA.replace("\"TotalUserDataSize\":3", "\"TotalUserDataSize\":4"),
+                "byte size",
+            ),
+        ] {
+            fs::write(&user_data, invalid).expect("invalid user data resource");
+            let error = validate_model_user_data_resource(
+                &user_data,
+                "model.userdata3.json",
+                limits.maximum_json_bytes,
+                limits.maximum_json_depth,
+            )
+            .expect_err("invalid user data resource must be rejected");
+            assert_eq!(error.code, ModelDiagnostic::ModelResourceInvalid);
+            assert!(error.detail.contains(detail), "{}", error.detail);
+        }
+
+        fs::write(package.path().join("model.moc3"), b"moc").expect("moc resource");
+        fs::write(
+            package.path().join("cat.model3.json"),
+            r#"{"Version":3,"FileReferences":{"Moc":"model.moc3","Textures":[],"UserData":"model.userdata3.json"}}"#,
+        )
+        .expect("model3 resource");
+        fs::write(
+            &user_data,
+            r#"{
+              "Version":3,
+              "Meta":{"UserDataCount":2,"TotalUserDataSize":6},
+              "UserData":[
+                {"Target":"ArtMesh","Id":"Drawable1","Value":"tag"},
+                {"Target":"ArtMesh","Id":"Drawable1","Value":"tag"}
+              ]
+            }"#,
+        )
+        .expect("duplicate model user data resource");
+        let error = PreparedModel::prepare(
+            ModelId::parse("model-user-data").expect("model id"),
+            package.path(),
+            limits,
+        )
+        .expect_err("model prepare must validate declared user data");
+        assert_eq!(error.code, ModelDiagnostic::ModelResourceInvalid);
+        assert!(error.detail.contains("unique non-empty"));
     }
 
     #[test]
