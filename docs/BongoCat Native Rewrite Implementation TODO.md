@@ -2375,17 +2375,19 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       Windows/macOS/Ubuntu workspace jobs `101208547975`/`101208547928`/`101208547908` 均通过完整
       workspace 门禁，双平台 startup-item lifecycle 继续从 platform snapshot 验证且无配置回归。
 
-64. [ ] `P6-REMOVE-DEFERRED-CORNER-RADIUS-FIELD`：从当前 v1 配置移除首发后才实现的窗口圆角字段。
+64. [x] `P6-REMOVE-DEFERRED-CORNER-RADIUS-FIELD`：从当前 v1 配置移除首发后才实现的窗口圆角字段。
     - 依赖：Phase 0 行为清单的 `P1 首发后` 决策、`next` 首版 schema 边界。
     - 退出条件：Rust config、JSON Schema、默认 fixture 与 config-store spike 不再序列化或接受
       `overlay.corner_radius_percent`；该 P1 功能仍留在行为清单且不误报为首发实现；不增加 migration、
       alias 或旧数据 fallback；共享 schema/fixture、config 定向测试、完整 Native workspace 门禁和
       双平台 CI 通过。
-    - 状态（2026-09-05）：正式 Rust config、共享 JSON Schema/default fixture 与隔离 config-store
+    - 验收证据（2026-09-05）：正式 Rust config、共享 JSON Schema/default fixture 与隔离 config-store
       已移除该字段；serde 和独立 Draft 2020-12 reject fixture 均明确拒绝旧键。config release 测试
       46 项（1 项 crash-probe child 按设计 ignored）、config-store 22 项、8 个共享 config fixture、
       format、严格 release workspace Clippy、完整 release all-target tests、release check 和共享
-      fixture validator 均通过；等待本次 Windows/macOS CI 后勾选。
+      fixture validator 均通过。实现 commit `d8991bb` 的 CI run `33932042669` 全部 23 个 job 通过；
+      Windows/macOS/Ubuntu workspace jobs `101212465140`/`101212465166`/`101212465133` 均通过完整
+      workspace 与对应产品 smoke，P1 行为清单保持不变。
 
 ## 13. 待决策清单
 
