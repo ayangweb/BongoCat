@@ -1377,7 +1377,11 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 ### 8.2 Windows
 
 - [x] Shell_NotifyIcon + HMENU 托盘。
-- [ ] named mutex + registered message/IPC 唤醒单实例。
+- [x] named mutex + registered message/IPC 唤醒单实例。
+  - 验收证据（2026-08-31）：`P7-WINDOWS-SINGLE-INSTANCE` 已使用按环境隔离的 local named
+    mutex、隐藏 owner window 与 registered wake message；secondary 只通知 primary 后退出，
+    primary 将消息转为 `OpenSettings` 并保持既有窗口/运行时。真实双进程 release smoke 与
+    Windows x64/ARM64 source check 已通过，owner 在产品 shutdown 中显式释放。
 - [x] 当前用户启动项启用、禁用和状态检测。
   - 验收证据（2026-08-31）：`P7-STARTUP-ITEM-PLATFORM` 已以环境隔离的稳定状态/错误
     contract 完成 Windows HKCU Run 与 macOS 13+ Production `SMAppService` lifecycle；Windows
