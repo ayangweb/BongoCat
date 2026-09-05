@@ -464,7 +464,14 @@ impl SettingsView {
             clear_shortcuts_node = clear_shortcuts_node.clickable().focusable();
         }
         let shortcut_rows = snapshot
-            .map(|snapshot| shortcut_accessibility_rows(&snapshot.shortcuts, language))
+            .map(|snapshot| {
+                shortcut_accessibility_rows(
+                    &snapshot.shortcuts,
+                    snapshot.active_model.as_ref(),
+                    &snapshot.model_catalog.entries,
+                    language,
+                )
+            })
             .unwrap_or_default();
         let shortcut_node_ids = (0..shortcut_rows.len())
             .map(shortcut_accessibility_node_id)
@@ -484,6 +491,35 @@ impl SettingsView {
                 } else {
                     value
                 })
+                .disabled(disabled);
+                if !disabled {
+                    node = node.clickable().focusable();
+                }
+                node
+            })
+            .collect::<Vec<_>>();
+        let shortcut_clear_rows = snapshot
+            .map(|snapshot| {
+                shortcut_clear_accessibility_rows(
+                    &snapshot.shortcuts,
+                    snapshot.active_model.as_ref(),
+                    &snapshot.model_catalog.entries,
+                    language,
+                )
+            })
+            .unwrap_or_default();
+        let shortcut_clear_node_ids = (0..shortcut_clear_rows.len())
+            .map(shortcut_clear_accessibility_node_id)
+            .collect::<Vec<_>>();
+        let shortcut_clear_nodes = shortcut_clear_rows
+            .into_iter()
+            .enumerate()
+            .map(|(index, (_, label))| {
+                let mut node = AccessibilityNode::new(
+                    shortcut_clear_accessibility_node_id(index),
+                    AccessibilityRole::Button,
+                    label,
+                )
                 .disabled(disabled);
                 if !disabled {
                     node = node.clickable().focusable();
@@ -528,6 +564,7 @@ impl SettingsView {
             ACCESSIBILITY_CLEAR_SHORTCUTS,
         ];
         root_children.extend(shortcut_node_ids);
+        root_children.extend(shortcut_clear_node_ids);
         root_children.extend([ACCESSIBILITY_REFRESH, ACCESSIBILITY_QUIT]);
         let mut nodes = vec![
             AccessibilityNode::new(
@@ -598,6 +635,7 @@ impl SettingsView {
             .focusable(),
         ];
         nodes.extend(shortcut_nodes);
+        nodes.extend(shortcut_clear_nodes);
         if !nodes.iter().any(|node| node.id == focus) {
             nodes.push(AccessibilityNode::new(focus, AccessibilityRole::Status, ""));
         }
@@ -615,7 +653,20 @@ impl SettingsView {
         cx: &mut Context<Self>,
     ) {
         let shortcut_target = self.snapshot.as_ref().and_then(|snapshot| {
-            shortcut_target_for_accessibility_node(&snapshot.shortcuts, request.target)
+            shortcut_target_for_accessibility_node(
+                &snapshot.shortcuts,
+                snapshot.active_model.as_ref(),
+                &snapshot.model_catalog.entries,
+                request.target,
+            )
+        });
+        let shortcut_clear_target = self.snapshot.as_ref().and_then(|snapshot| {
+            shortcut_clear_target_for_accessibility_node(
+                &snapshot.shortcuts,
+                snapshot.active_model.as_ref(),
+                &snapshot.model_catalog.entries,
+                request.target,
+            )
         });
         self.accessibility_focus = Some(request.target);
         if request.action != AccessibilityAction::Click {
@@ -765,7 +816,9 @@ impl SettingsView {
             ACCESSIBILITY_REFRESH => self.refresh(cx),
             ACCESSIBILITY_QUIT => (self.request_quit)(cx),
             _ => {
-                if let Some(target) = shortcut_target
+                if let Some(target) = shortcut_clear_target {
+                    self.clear_shortcut(target, cx);
+                } else if let Some(target) = shortcut_target
                     && self.pending.is_none()
                     && self.snapshot.as_ref().is_some_and(|snapshot| {
                         snapshot.configuration_status == SettingsConfigurationStatus::Ready
@@ -888,15 +941,37 @@ impl SettingsView {
         .or_else(|| language_is_focused.then_some(ACCESSIBILITY_LANGUAGE))
         .or_else(|| {
             self.snapshot.as_ref().and_then(|snapshot| {
-                shortcut_targets(&snapshot.shortcuts)
-                    .into_iter()
-                    .enumerate()
-                    .find_map(|(index, target)| {
-                        self.shortcut_row_focus
-                            .get(&target)
-                            .is_some_and(|focus| focus.is_focused(window))
-                            .then_some(shortcut_accessibility_node_id(index))
-                    })
+                shortcut_targets(
+                    &snapshot.shortcuts,
+                    snapshot.active_model.as_ref(),
+                    &snapshot.model_catalog.entries,
+                )
+                .into_iter()
+                .enumerate()
+                .find_map(|(index, target)| {
+                    self.shortcut_row_focus
+                        .get(&target)
+                        .is_some_and(|focus| focus.is_focused(window))
+                        .then_some(shortcut_accessibility_node_id(index))
+                })
+            })
+        })
+        .or_else(|| {
+            self.snapshot.as_ref().and_then(|snapshot| {
+                shortcut_clear_accessibility_rows(
+                    &snapshot.shortcuts,
+                    snapshot.active_model.as_ref(),
+                    &snapshot.model_catalog.entries,
+                    snapshot.resolved_language,
+                )
+                .into_iter()
+                .enumerate()
+                .find_map(|(index, (target, _))| {
+                    self.shortcut_clear_focus
+                        .get(&target)
+                        .is_some_and(|focus| focus.is_focused(window))
+                        .then_some(shortcut_clear_accessibility_node_id(index))
+                })
             })
         })
         .unwrap_or(match self.page {

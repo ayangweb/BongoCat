@@ -670,11 +670,18 @@ impl SettingsView {
             .accessibility_tree()
             .nodes
             .into_iter()
-            .filter(|node| node.id.get() >= ACCESSIBILITY_SHORTCUT_CAPTURE_BASE)
+            .filter(|node| {
+                node.id.get() >= ACCESSIBILITY_SHORTCUT_CAPTURE_BASE
+                    && node.id.get() < ACCESSIBILITY_SHORTCUT_CLEAR_BASE
+            })
             .collect::<Vec<_>>();
-        let shortcut_count =
-            snapshot.shortcuts.commands.len() + snapshot.shortcuts.model_behaviors.len();
-        let expected_capture_rows = shortcut_accessibility_rows(&snapshot.shortcuts, language);
+        let expected_capture_rows = shortcut_accessibility_rows(
+            &snapshot.shortcuts,
+            snapshot.active_model.as_ref(),
+            &snapshot.model_catalog.entries,
+            language,
+        );
+        let shortcut_count = expected_capture_rows.len();
         if capture_nodes.len() != shortcut_count
             || capture_nodes
                 .iter()
@@ -689,6 +696,32 @@ impl SettingsView {
                 })
         {
             return Err("shortcut capture accessibility semantics are invalid".to_owned());
+        }
+        let expected_clear_rows = shortcut_clear_accessibility_rows(
+            &snapshot.shortcuts,
+            snapshot.active_model.as_ref(),
+            &snapshot.model_catalog.entries,
+            language,
+        );
+        let clear_nodes = self
+            .accessibility_tree()
+            .nodes
+            .into_iter()
+            .filter(|node| node.id.get() >= ACCESSIBILITY_SHORTCUT_CLEAR_BASE)
+            .collect::<Vec<_>>();
+        if clear_nodes.len() != expected_clear_rows.len()
+            || clear_nodes
+                .iter()
+                .zip(expected_clear_rows)
+                .any(|(node, (_, label))| {
+                    node.role != AccessibilityRole::Button
+                        || node.label != label
+                        || node.disabled
+                        || !node.supports_click
+                        || !node.supports_focus
+                })
+        {
+            return Err("shortcut binding clear accessibility semantics are invalid".to_owned());
         }
         if matches!(
             snapshot.configuration_status,

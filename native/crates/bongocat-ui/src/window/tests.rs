@@ -64,6 +64,10 @@ fn shortcut_capture_conflict_preview_is_order_independent() {
 
 #[test]
 fn shortcut_capture_targets_have_independent_tab_stops() {
+    let active_model = SettingsModelKey {
+        id: "standard".to_owned(),
+        origin: SettingsModelOrigin::Preset,
+    };
     let shortcuts = SettingsShortcuts {
         commands: vec![
             SettingsShortcutBinding {
@@ -75,26 +79,96 @@ fn shortcut_capture_targets_have_independent_tab_stops() {
                 shortcut: "Control+S".to_owned(),
             },
         ],
-        model_behaviors: vec![SettingsModelBehaviorBinding {
-            model_id: "standard".to_owned(),
-            behavior_id: "motion:tap:0".to_owned(),
-            shortcut: "Control+M".to_owned(),
-        }],
+        model_behaviors: vec![
+            SettingsModelBehaviorBinding {
+                model_id: "standard".to_owned(),
+                behavior_id: "motion:tap:0".to_owned(),
+                shortcut: "Control+M".to_owned(),
+            },
+            SettingsModelBehaviorBinding {
+                model_id: "keyboard".to_owned(),
+                behavior_id: "expression:ignored".to_owned(),
+                shortcut: "Control+I".to_owned(),
+            },
+        ],
     };
-    let targets = shortcut_targets(&shortcuts);
-    assert_eq!(targets.len(), 3);
-    assert_eq!(shortcut_capture_tab_index(0), 35);
-    assert_eq!(shortcut_capture_tab_index(1), 36);
-    assert_eq!(shortcut_capture_tab_index(2), 37);
-    assert_eq!(targets.into_iter().collect::<BTreeSet<_>>().len(), 3);
+    let entries = vec![
+        SettingsModelEntry {
+            id: "standard".to_owned(),
+            origin: SettingsModelOrigin::Preset,
+            availability: SettingsModelAvailability::Ready {
+                texture_count: 1,
+                expression_count: 1,
+                motion_count: 1,
+                behaviors: vec![
+                    SettingsModelBehavior::Motion {
+                        group: "tap".to_owned(),
+                        index: 0,
+                    },
+                    SettingsModelBehavior::Expression {
+                        name: "happy".to_owned(),
+                    },
+                ],
+            },
+        },
+        SettingsModelEntry {
+            id: "keyboard".to_owned(),
+            origin: SettingsModelOrigin::Preset,
+            availability: SettingsModelAvailability::Ready {
+                texture_count: 1,
+                expression_count: 1,
+                motion_count: 0,
+                behaviors: vec![SettingsModelBehavior::Expression {
+                    name: "ignored".to_owned(),
+                }],
+            },
+        },
+    ];
+    let targets = shortcut_targets(&shortcuts, Some(&active_model), &entries);
+    assert_eq!(targets.len(), 4);
+    assert_eq!(shortcut_capture_tab_index(0), 100);
+    assert_eq!(shortcut_capture_tab_index(1), 102);
+    assert_eq!(shortcut_capture_tab_index(2), 104);
+    assert_eq!(shortcut_clear_tab_index(2), 105);
+    assert_eq!(targets.into_iter().collect::<BTreeSet<_>>().len(), 4);
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
-        let rows = shortcut_accessibility_rows(&shortcuts, SettingsLanguage::EnglishUnitedStates);
-        assert_eq!(rows.len(), 3);
+        let rows = shortcut_accessibility_rows(
+            &shortcuts,
+            Some(&active_model),
+            &entries,
+            SettingsLanguage::EnglishUnitedStates,
+        );
+        assert_eq!(rows.len(), 4);
         assert_eq!(rows[0].1, "Capture shortcut for Show or hide desktop cat");
         assert_eq!(rows[2].2, "Control+M");
+        assert_eq!(rows[3].2, "Not set");
         assert_eq!(
-            shortcut_target_for_accessibility_node(&shortcuts, shortcut_accessibility_node_id(2)),
+            shortcut_target_for_accessibility_node(
+                &shortcuts,
+                Some(&active_model),
+                &entries,
+                shortcut_accessibility_node_id(2),
+            ),
+            Some(ShortcutCaptureTarget::ModelBehavior {
+                model_id: "standard".to_owned(),
+                behavior_id: "motion:tap:0".to_owned(),
+            })
+        );
+        let clear_rows = shortcut_clear_accessibility_rows(
+            &shortcuts,
+            Some(&active_model),
+            &entries,
+            SettingsLanguage::EnglishUnitedStates,
+        );
+        assert_eq!(clear_rows.len(), 1);
+        assert_eq!(
+            shortcut_clear_target_for_accessibility_node(
+                &shortcuts,
+                Some(&active_model),
+                &entries,
+                shortcut_clear_accessibility_node_id(0),
+            ),
             Some(ShortcutCaptureTarget::ModelBehavior {
                 model_id: "standard".to_owned(),
                 behavior_id: "motion:tap:0".to_owned(),
@@ -132,6 +206,26 @@ fn captured_shortcut_updates_stable_identity_after_reordering() {
         &ShortcutCaptureTarget::Command("missing".to_owned()),
         "Control+X".to_owned()
     ));
+}
+
+#[test]
+fn behavior_shortcut_capture_creates_and_clear_removes_a_binding() {
+    let target = ShortcutCaptureTarget::ModelBehavior {
+        model_id: "standard".to_owned(),
+        behavior_id: "expression:happy".to_owned(),
+    };
+    let mut shortcuts = SettingsShortcuts::default();
+
+    assert!(replace_shortcut(
+        &mut shortcuts,
+        &target,
+        "Control+Alt+H".to_owned(),
+    ));
+    assert_eq!(shortcuts.model_behaviors.len(), 1);
+    assert_eq!(shortcuts.model_behaviors[0].shortcut, "Control+Alt+H");
+    assert!(clear_shortcut(&mut shortcuts, &target));
+    assert!(shortcuts.model_behaviors.is_empty());
+    assert!(!clear_shortcut(&mut shortcuts, &target));
 }
 
 #[test]

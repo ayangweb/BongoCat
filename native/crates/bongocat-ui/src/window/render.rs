@@ -64,8 +64,22 @@ impl Render for SettingsView {
                     _ => None,
                 };
                 let shortcut_focus = self.snapshot.as_ref().and_then(|snapshot| {
-                    shortcut_target_for_accessibility_node(&snapshot.shortcuts, target)
-                        .and_then(|target| self.shortcut_row_focus.get(&target))
+                    shortcut_target_for_accessibility_node(
+                        &snapshot.shortcuts,
+                        snapshot.active_model.as_ref(),
+                        &snapshot.model_catalog.entries,
+                        target,
+                    )
+                    .and_then(|target| self.shortcut_row_focus.get(&target))
+                    .or_else(|| {
+                        shortcut_clear_target_for_accessibility_node(
+                            &snapshot.shortcuts,
+                            snapshot.active_model.as_ref(),
+                            &snapshot.model_catalog.entries,
+                            target,
+                        )
+                        .and_then(|target| self.shortcut_clear_focus.get(&target))
+                    })
                 });
                 if target != ACCESSIBILITY_LANGUAGE && target != ACCESSIBILITY_THEME {
                     window.focus(
@@ -97,12 +111,19 @@ impl Render for SettingsView {
             .as_ref()
             .map(|snapshot| snapshot.shortcuts.clone())
             .unwrap_or_default();
+        let active_model = snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.active_model.as_ref());
+        let model_entries = snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.model_catalog.entries.as_slice())
+            .unwrap_or_default();
         let language = snapshot
             .as_ref()
             .map_or(SettingsLanguage::EnglishUnitedStates, |snapshot| {
                 snapshot.resolved_language
             });
-        self.sync_shortcut_row_focus(&shortcuts, disabled, cx);
+        self.sync_shortcut_row_focus(&shortcuts, active_model, model_entries, disabled, cx);
         let status: SharedString = match (&self.error, self.pending, &snapshot) {
             (Some(error), _, _) => settings_error(language, *error).into(),
             (_, Some(PendingOperation::Refresh), _) => ui_text(language, UiText::Refreshing).into(),

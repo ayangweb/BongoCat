@@ -1773,9 +1773,9 @@ mod tests {
             .expect("committed preset")
             .snapshot();
 
-        assert_eq!(snapshot.motion_count, 6);
+        assert_eq!(snapshot.motion_count, 4);
         assert_eq!(snapshot.expression_count, 3);
-        assert_eq!(snapshot.behaviors.len(), 9);
+        assert_eq!(snapshot.behaviors.len(), 7);
         assert!(snapshot.behaviors.contains(&ModelBehaviorSnapshot::Motion {
             group: "CAT_motion".to_owned(),
             index: 0,

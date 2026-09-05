@@ -353,81 +353,128 @@ pub(super) fn content(
                                     },
                                 ))
                                 .children(
-                                    snapshot.shortcuts.model_behaviors.iter().enumerate().map(
-                                        |(index, binding)| {
-                                            let target = ShortcutCaptureTarget::ModelBehavior {
-                                                model_id: binding.model_id.clone(),
-                                                behavior_id: binding.behavior_id.clone(),
-                                            };
-                                            let target_name =
-                                                shortcut_target_name(language, &target);
-                                            let capturing =
-                                                view.shortcut_capture.as_ref() == Some(&target);
-                                            let disabled = shortcut_action_disabled;
-                                            let focus = view
-                                                .shortcut_row_focus
-                                                .get(&target)
-                                                .expect("shortcut row focus is synchronized")
-                                                .clone();
-                                            let tab_index = shortcut_capture_tab_index(
-                                                snapshot.shortcuts.commands.len() + index,
-                                            );
-                                            let keyboard_target = target.clone();
-                                            div()
-                                                .flex()
-                                                .items_center()
-                                                .justify_between()
-                                                .gap_3()
-                                                .text_sm()
-                                                .child(div().min_w_0().flex_1().child(target_name))
-                                                .child(
-                                                    div()
-                                                        .text_color(tokens.muted)
-                                                        .child(binding.shortcut.clone()),
+                                    shortcut_behavior_rows(
+                                        &snapshot.shortcuts,
+                                        snapshot.active_model.as_ref(),
+                                        &snapshot.model_catalog.entries,
+                                    )
+                                    .into_iter()
+                                    .enumerate()
+                                    .map(|(index, row)| {
+                                        let target = row.target;
+                                        let target_name = shortcut_target_name(language, &target);
+                                        let capturing =
+                                            view.shortcut_capture.as_ref() == Some(&target);
+                                        let disabled = shortcut_action_disabled;
+                                        let focus = view
+                                            .shortcut_row_focus
+                                            .get(&target)
+                                            .expect("shortcut row focus is synchronized")
+                                            .clone();
+                                        let clear_focus = view
+                                            .shortcut_clear_focus
+                                            .get(&target)
+                                            .expect("shortcut clear focus is synchronized")
+                                            .clone();
+                                        let clear_key_focus = clear_focus.clone();
+                                        let tab_index = shortcut_capture_tab_index(
+                                            snapshot.shortcuts.commands.len() + index,
+                                        );
+                                        let keyboard_target = target.clone();
+                                        let clear_target = target.clone();
+                                        let clear_key_target = target.clone();
+                                        let has_binding = row.shortcut.is_some();
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .justify_between()
+                                            .gap_3()
+                                            .text_sm()
+                                            .child(div().min_w_0().flex_1().child(target_name))
+                                            .child(div().text_color(tokens.muted).child(
+                                                row.shortcut.unwrap_or_else(|| {
+                                                    ui_text(language, UiText::NotSet).to_owned()
+                                                }),
+                                            ))
+                                            .child(
+                                                command_button(
+                                                    ui_text(
+                                                        language,
+                                                        if capturing {
+                                                            UiText::PressKey
+                                                        } else {
+                                                            UiText::Capture
+                                                        },
+                                                    ),
+                                                    &focus,
+                                                    tab_index,
+                                                    window,
+                                                    tokens,
+                                                    disabled,
                                                 )
-                                                .child(
+                                                .id(("capture-behavior", index))
+                                                .on_click(cx.listener(
+                                                    move |view, _, window, cx| {
+                                                        view.begin_shortcut_capture(
+                                                            target.clone(),
+                                                            window,
+                                                            cx,
+                                                        );
+                                                    },
+                                                ))
+                                                .on_key_down(cx.listener(
+                                                    move |view, event, window, cx| {
+                                                        if view.shortcut_capture.is_none()
+                                                            && is_activation_key(event)
+                                                        {
+                                                            cx.stop_propagation();
+                                                            view.begin_shortcut_capture(
+                                                                keyboard_target.clone(),
+                                                                window,
+                                                                cx,
+                                                            );
+                                                        }
+                                                    },
+                                                )),
+                                            )
+                                            .when(has_binding, |actions| {
+                                                actions.child(
                                                     command_button(
-                                                        ui_text(
-                                                            language,
-                                                            if capturing {
-                                                                UiText::PressKey
-                                                            } else {
-                                                                UiText::Capture
-                                                            },
+                                                        ui_text(language, UiText::Clear),
+                                                        &clear_focus,
+                                                        shortcut_clear_tab_index(
+                                                            snapshot.shortcuts.commands.len()
+                                                                + index,
                                                         ),
-                                                        &focus,
-                                                        tab_index,
                                                         window,
                                                         tokens,
                                                         disabled,
                                                     )
-                                                    .id(("capture-behavior", index))
+                                                    .id(("clear-behavior", index))
                                                     .on_click(cx.listener(
                                                         move |view, _, window, cx| {
-                                                            view.begin_shortcut_capture(
-                                                                target.clone(),
-                                                                window,
+                                                            window.focus(&clear_focus, cx);
+                                                            view.clear_shortcut(
+                                                                clear_target.clone(),
                                                                 cx,
                                                             );
                                                         },
                                                     ))
                                                     .on_key_down(cx.listener(
                                                         move |view, event, window, cx| {
-                                                            if view.shortcut_capture.is_none()
-                                                                && is_activation_key(event)
-                                                            {
+                                                            if is_activation_key(event) {
                                                                 cx.stop_propagation();
-                                                                view.begin_shortcut_capture(
-                                                                    keyboard_target.clone(),
-                                                                    window,
+                                                                window.focus(&clear_key_focus, cx);
+                                                                view.clear_shortcut(
+                                                                    clear_key_target.clone(),
                                                                     cx,
                                                                 );
                                                             }
                                                         },
                                                     )),
                                                 )
-                                        },
-                                    ),
+                                            })
+                                    }),
                                 ),
                         )
                         .child(

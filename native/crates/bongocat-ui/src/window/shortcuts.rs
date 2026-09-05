@@ -4,12 +4,20 @@ impl SettingsView {
     pub(super) fn sync_shortcut_row_focus(
         &mut self,
         shortcuts: &SettingsShortcuts,
+        active_model: Option<&SettingsModelKey>,
+        entries: &[SettingsModelEntry],
         commands_blocked: bool,
         cx: &mut Context<Self>,
     ) {
-        let targets = shortcut_targets(shortcuts);
+        let rows = shortcut_rows(shortcuts, active_model, entries);
+        let targets = rows
+            .iter()
+            .map(|row| row.target.clone())
+            .collect::<Vec<_>>();
         let target_set = targets.iter().cloned().collect::<BTreeSet<_>>();
         self.shortcut_row_focus
+            .retain(|target, _| target_set.contains(target));
+        self.shortcut_clear_focus
             .retain(|target, _| target_set.contains(target));
         if self
             .shortcut_capture
@@ -19,16 +27,25 @@ impl SettingsView {
             self.shortcut_capture = None;
             self.shortcut_capture_error = None;
         }
-        for (index, target) in targets.into_iter().enumerate() {
+        for (index, row) in rows.into_iter().enumerate() {
+            let target = row.target;
             let tab_index = shortcut_capture_tab_index(index);
             let focus = self
                 .shortcut_row_focus
-                .entry(target)
+                .entry(target.clone())
                 .or_insert_with(|| cx.focus_handle());
             *focus = focus
                 .clone()
                 .tab_index(tab_index)
                 .tab_stop(!commands_blocked);
+            let clear_focus = self
+                .shortcut_clear_focus
+                .entry(target)
+                .or_insert_with(|| cx.focus_handle());
+            *clear_focus = clear_focus
+                .clone()
+                .tab_index(shortcut_clear_tab_index(index))
+                .tab_stop(!commands_blocked && row.shortcut.is_some());
         }
     }
 
@@ -78,6 +95,32 @@ impl SettingsView {
         if shortcut_conflicts(&shortcuts) {
             self.shortcut_capture_error = Some(ShortcutCaptureError::AlreadyAssigned);
             cx.notify();
+            return;
+        }
+        let Some(expected_config_revision) = snapshot.config_revision else {
+            return;
+        };
+        self.shortcut_capture = None;
+        self.shortcut_capture_error = None;
+        self.start_request(
+            PendingOperation::SetShortcuts,
+            Some(SettingValue::Shortcuts {
+                expected_config_revision,
+                shortcuts,
+            }),
+            cx,
+        );
+    }
+
+    pub(super) fn clear_shortcut(&mut self, target: ShortcutCaptureTarget, cx: &mut Context<Self>) {
+        if !self.shortcut_commands_available() {
+            return;
+        }
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        let mut shortcuts = snapshot.shortcuts.clone();
+        if !clear_shortcut(&mut shortcuts, &target) {
             return;
         }
         let Some(expected_config_revision) = snapshot.config_revision else {

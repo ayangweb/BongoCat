@@ -2,13 +2,14 @@ use crate::{
     RuntimeHealth, SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient,
     SettingsConfigRecovery, SettingsConfigurationStatus, SettingsError, SettingsErrorCode,
     SettingsGamepadAxisSettings, SettingsInputDiagnostics, SettingsInputServiceStatus,
-    SettingsLanguage, SettingsModelAvailability, SettingsModelBehavior, SettingsModelDiagnostic,
-    SettingsModelEntry, SettingsModelImportMonitor, SettingsModelImportOperation,
-    SettingsModelImportRequest, SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin,
-    SettingsModelSettings, SettingsOperationId, SettingsOverlay, SettingsRuntimeDiagnostics,
-    SettingsRuntimeErrorCode, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
-    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
-    SettingsWindowPlacement, SettingsWindowState,
+    SettingsLanguage, SettingsModelAvailability, SettingsModelBehavior,
+    SettingsModelBehaviorBinding, SettingsModelDiagnostic, SettingsModelEntry,
+    SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
+    SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsModelSettings,
+    SettingsOperationId, SettingsOverlay, SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode,
+    SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
+    SettingsStartupItemUnsupportedReason, SettingsTheme, SettingsWindowPlacement,
+    SettingsWindowState,
 };
 use bongocat_config::ShortcutChord;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -124,6 +125,8 @@ const ACCESSIBILITY_RESTORE_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeId
 const ACCESSIBILITY_CLEAR_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeId::new(34);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_SHORTCUT_CAPTURE_BASE: u64 = 1_000;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_SHORTCUT_CLEAR_BASE: u64 = 2_000;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_MIRROR: AccessibilityNodeId = AccessibilityNodeId::new(19);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -372,6 +375,7 @@ pub struct SettingsView {
     shortcut_capture: Option<ShortcutCaptureTarget>,
     shortcut_capture_error: Option<ShortcutCaptureError>,
     shortcut_row_focus: BTreeMap<ShortcutCaptureTarget, FocusHandle>,
+    shortcut_clear_focus: BTreeMap<ShortcutCaptureTarget, FocusHandle>,
     window_hidden: bool,
     applied_theme: Option<SettingsTheme>,
     language_select: Entity<LanguageSelectState>,
