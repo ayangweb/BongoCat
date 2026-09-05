@@ -1386,8 +1386,16 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 ### 8.4 更新与诊断
 
 - [ ] 设计纯 Rust 更新 client、manifest 和签名验证。
+  - 状态（2026-09-05）：ADR-0021 与 `bongocat-update` 已建立平台无关的 signed manifest trust
+    boundary；Ed25519 先验签后解析，严格 v1 manifest、稳定错误码和 artifact 流式完整性验证已有
+    自动化。网络 client、endpoint 和检查调度仍未实现，因此总项保持未勾选。
 - [ ] 只允许 HTTPS，固定公钥来源和轮换流程。
+  - 状态（2026-09-05）：manifest/release notes/artifact URL 已强制 HTTPS 且拒绝 credentials/fragment；
+    信任公钥绑定 key ID、构建环境 channel 和 release sequence 有效窗。Production 公钥注入、签名
+    envelope 与实际 endpoint 尚待发布基础设施确定，因此保持未勾选。
 - [ ] 校验版本、target、arch、hash 和签名。
+  - 状态（2026-09-05）：离线 verifier 已校验 SemVer、最低可升级版本、四个 target/arch 组合、精确
+    artifact 长度、SHA-256 与 detached Ed25519 签名；操作系统包签名和真实发布产物仍待验证。
 - [ ] 下载支持取消、断点/重试策略和失败清理。
 - [ ] 安装前协调 runtime/renderer shutdown，失败可回滚。
 - [ ] 测试断网、代理、中断、签名错误和降级攻击。
@@ -1412,7 +1420,10 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     typed command。应用级 writer 的匿名 written/dropped/rotated/pruned/bytes/retained_files
     统计现已并入导出，但导出仍不读取或合并 Core/应用原始日志正文，预览器和跨域历史日志打包
     仍待完成，因此本项保持未勾选。
-- [ ] 更新 manifest 定义 schemaVersion、channel、最低可升级版本、发布时间和防回滚字段。
+- [ ] 更新 manifest 定义 `schema_version`、channel、最低可升级版本、发布时间和防回滚字段。
+  - 状态（2026-09-05）：共享 Draft 2020-12 manifest v1 已定义 `schema_version`、环境 channel、
+    release/minimum SemVer、`published_at_unix_seconds`、单调 `release_sequence` 和 target artifacts；
+    Rust 对同一 accept fixture 验签解析，真实发布生成器与签名 envelope 尚未实现。
 - [ ] 更新 helper/installer 的权限边界、替换原子性和失败恢复经过单独威胁建模。
 
 ### 8.5 Phase 7 退出门槛
@@ -2418,6 +2429,17 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       release all-target tests、release check、共享 fixture/schema/locales、Windows x64/ARM64 overlay
       严格 Clippy、隔离 macOS release 设置窗口/state smoke 和 119 帧 Metal Live2D preview 均通过，
       等待双平台 CI。
+
+67. [ ] `P7-SIGNED-UPDATE-MANIFEST`：建立首发更新的离线信任判断核心。
+    - 依赖：ADR-0021、不可变 Development/Production 环境、四个首发 target、发布版本与公钥流程。
+    - 退出条件：平台无关且禁止 unsafe 的 verifier 先验签再严格解析 v1 manifest；拒绝 HTTP、跨环境、
+      未知字段、错误 target/arch、无效 SemVer、过大 manifest/artifact、未知或过期 key、sequence 降级；
+      只返回项目自有 verified 类型，并对下载流校验精确长度和 SHA-256；共享 Draft 2020-12 schema、
+      accept/reject fixture、依赖许可证/来源检查、完整 Native workspace 门禁和三平台 CI 通过。
+    - 状态（2026-09-05）：`bongocat-update`、ADR-0021、共享 schema/fixture 和稳定错误码已实现；使用
+      固定测试 key 的 12 项 release 测试、共享 schema/fixture/locales、严格 workspace Clippy、完整
+      release all-target tests、release check、依赖许可证/来源和 Linux/macOS Intel/Windows x64/ARM64
+      定向 Clippy 已通过，等待三平台 CI。
 
 ## 13. 待决策清单
 

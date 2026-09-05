@@ -247,6 +247,7 @@ BongoCat/
       bongocat-audio/         motion 音效队列、解码与设备 owner
       bongocat-render/        render snapshot/contract
       bongocat-ui/            GPUI 设置界面和 design system
+      bongocat-update/        签名更新 manifest、版本/target 和 artifact 完整性验证
       bongocat-platform/      Windows/macOS 平台服务
   shared/
     config/                   Native JSON schema、命名与存储契约
@@ -643,7 +644,16 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
 - 模型删除 command 同样携带 `(origin, model_id)`；preset 永不可删。installed 模型只有在既
   不是当前 runtime active、也不是配置所选来源时才能以 rename 后删除事务退休；同 ID preset
   不得阻止删除 installed 副本。成功只刷新 catalog，不隐式切模或改写配置。
-- 更新只允许 HTTPS，安装包和更新包必须签名并支持失败回滚。
+- 更新信任判断由平台无关的 `bongocat-update` 独占：最多 1 MiB 的 v1 manifest 使用 detached
+  Ed25519 签名，客户端先验签原始 bytes 再执行严格反序列化。manifest 包含不可变构建环境 channel、
+  SemVer release、最低可升级版本、单调 `release_sequence`、Unix 发布时间，以及既定四个
+  Windows/macOS target/arch 的 HTTPS URL、精确字节数和小写 SHA-256。当前版本、target、arch、
+  环境或 sequence 不匹配时不得产生安装候选。
+- 信任公钥以稳定 key ID、Development/Production channel 和 release sequence 有效窗编译进构建；
+  私钥不得进入源码、产物或配置。验证结果只返回项目自有不可变类型，网络、SemVer、签名库类型不
+  扩散到 app/runtime/UI。下载层必须在安装前通过同一 verified artifact 校验精确长度和 SHA-256。
+- 更新 endpoint、24 小时自动检查调度、有界下载/取消、环境内 sequence 持久化、操作系统包签名、
+  installer 权限、原子替换和失败回滚分别实现；所有 endpoint 与 artifact URL 只允许 HTTPS。
 - 日志不记录真实按键序列、剪贴板内容或用户文件内容。
 - Diagnostics 导出由 settings service 的强类型 command 触发，在当前环境 logs 目录以同目录
   原子替换写出固定格式的 JSON。导出只包含稳定错误码、匿名聚合计数、模型来源计数和 revision；
@@ -776,6 +786,11 @@ runtime 非阻塞发布强类型音效命令，独立 Rust worker 使用最小 r
 
 Windows 当前用户 Run value 按 Development/Production 分名；macOS 13+ 只允许 Production
 `.app` 使用 `SMAppService.mainAppService`，macOS 12 与 Development 明确报告不支持且不回退。
+
+### ADR-021：签名更新 Manifest 信任边界
+
+平台无关 verifier 先对原始 manifest bytes 执行 detached Ed25519 严格验签，再校验环境、版本、
+sequence、target/arch、HTTPS、长度与 SHA-256；下载、installer 和回滚保持后续独立边界。
 
 ## 17. 实施阶段
 
