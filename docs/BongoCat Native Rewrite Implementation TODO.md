@@ -745,7 +745,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     panic 被匿名计数、关闭 capture 并请求可靠恢复，不会穿越 FFI。callback context 使用稳定 Box，
     shutdown 先关闭 accepting gate、禁用 tap 并移除 source，再释放 context；unit contract 和既有
     runtime stop -> tap cleanup -> second service start smoke 覆盖恢复与析构顺序。
-- [ ] 明确辅助功能与 Input Monitoring 各自真正需要的能力，避免请求不必要的 TCC 权限。
+- [x] 明确辅助功能与 Input Monitoring 各自真正需要的能力，避免请求不必要的 TCC 权限。
+  - 验收证据（2026-09-05）：ADR-0024 固定 BongoCat 全局输入只使用 Input Monitoring 的
+    `CGPreflightListenEventAccess`/用户显式 `CGRequestListenEventAccess` 边界；现有 AccessKit/AppKit
+    bridge 只公开本应用 settings 语义，不读取或控制其它应用，因此不请求 Accessibility trust。权限
+    snapshot 与 event-tap service status 必须保持独立，真实 TCC 状态变化 UI 刷新和授权/撤销实机矩阵
+    仍由相邻未完成任务验证。
 
 ### 3.5 配置 v1
 
