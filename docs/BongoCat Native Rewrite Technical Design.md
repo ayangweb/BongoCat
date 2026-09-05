@@ -665,6 +665,11 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
 - 信任公钥以稳定 key ID、Development/Production channel 和 release sequence 有效窗编译进构建；
   私钥不得进入源码、产物或配置。验证结果只返回项目自有不可变类型，网络、SemVer、签名库类型不
   扩散到 app/runtime/UI。下载层必须在安装前通过同一 verified artifact 校验精确长度和 SHA-256。
+- 更新 manifest 的网络响应固定为单次 HTTPS GET 的 `200`，不跟随 redirect；响应 body 是待验签的
+  原始 manifest bytes，`bongocat-update-key-id` header 提供稳定 key ID，
+  `bongocat-update-signature-ed25519` header 提供 128 个小写十六进制字符的 detached Ed25519
+  signature。HTTP adapter 在有界读取 body、验证 header 语法后只能构造项目自有
+  `UpdateManifestEnvelope`，再交给 verifier；传输不得预解析、重排或重新编码 body。
 - 更新 endpoint、24 小时自动检查调度、有界下载/取消、环境内 sequence 持久化、操作系统包签名、
   installer 权限、原子替换和失败回滚分别实现；所有 endpoint 与 artifact URL 只允许 HTTPS。最高
   已验证 sequence 从当前不可变 `StorageLayout` 的独立 `updates/update-sequence.json` v1 保存，不进入用户

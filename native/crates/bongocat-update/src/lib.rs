@@ -22,9 +22,13 @@ use url::Url;
 pub const UPDATE_MANIFEST_SCHEMA_VERSION: u32 = 1;
 pub const MAX_UPDATE_MANIFEST_BYTES: usize = 1024 * 1024;
 pub const MAX_UPDATE_ARTIFACT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+pub const UPDATE_MANIFEST_KEY_ID_HEADER: &str = "bongocat-update-key-id";
+pub const UPDATE_MANIFEST_SIGNATURE_HEADER: &str = "bongocat-update-signature-ed25519";
 const MAX_UPDATE_ARTIFACTS: usize = 8;
 const MAX_UPDATE_URL_BYTES: usize = 2_048;
 const MAX_VERSION_BYTES: usize = 64;
+const ED25519_SIGNATURE_BYTES: usize = 64;
+const ED25519_SIGNATURE_HEX_BYTES: usize = ED25519_SIGNATURE_BYTES * 2;
 
 const fn update_channel(environment: BuildEnvironment) -> UpdateChannel {
     match environment {
@@ -99,12 +103,14 @@ pub enum UpdateErrorCode {
     ManifestArtifactCountInvalid,
     ManifestChannelMismatch,
     ManifestJsonInvalid,
+    ManifestKeyIdInvalid,
     ManifestMinimumVersionInvalid,
     ManifestPublishedAtInvalid,
     ManifestReleaseNotesUrlInvalid,
     ManifestReleaseSequenceInvalid,
     ManifestSchemaUnsupported,
     ManifestSignatureInvalid,
+    ManifestSignatureEncodingInvalid,
     ManifestSignatureLengthInvalid,
     ManifestTooLarge,
     ManifestVersionInvalid,
@@ -134,12 +140,14 @@ impl UpdateErrorCode {
             Self::ManifestArtifactCountInvalid => "manifest_artifact_count_invalid",
             Self::ManifestChannelMismatch => "manifest_channel_mismatch",
             Self::ManifestJsonInvalid => "manifest_json_invalid",
+            Self::ManifestKeyIdInvalid => "manifest_key_id_invalid",
             Self::ManifestMinimumVersionInvalid => "manifest_minimum_version_invalid",
             Self::ManifestPublishedAtInvalid => "manifest_published_at_invalid",
             Self::ManifestReleaseNotesUrlInvalid => "manifest_release_notes_url_invalid",
             Self::ManifestReleaseSequenceInvalid => "manifest_release_sequence_invalid",
             Self::ManifestSchemaUnsupported => "manifest_schema_unsupported",
             Self::ManifestSignatureInvalid => "manifest_signature_invalid",
+            Self::ManifestSignatureEncodingInvalid => "manifest_signature_encoding_invalid",
             Self::ManifestSignatureLengthInvalid => "manifest_signature_length_invalid",
             Self::ManifestTooLarge => "manifest_too_large",
             Self::ManifestVersionInvalid => "manifest_version_invalid",
@@ -172,6 +180,52 @@ impl fmt::Display for UpdateError {
 }
 
 impl std::error::Error for UpdateError {}
+
+/// A bounded, transport-neutral signed manifest response.
+///
+/// The caller supplies the exact response body and the two protocol headers.
+/// This type retains no HTTP client state and performs no parsing before the
+/// verifier authenticates `manifest_bytes`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UpdateManifestEnvelope {
+    key_id: String,
+    signature: [u8; ED25519_SIGNATURE_BYTES],
+    manifest_bytes: Vec<u8>,
+}
+
+impl UpdateManifestEnvelope {
+    pub fn from_headers(
+        manifest_bytes: Vec<u8>,
+        key_id: impl Into<String>,
+        signature_hex: &str,
+    ) -> Result<Self, UpdateError> {
+        if manifest_bytes.is_empty() || manifest_bytes.len() > MAX_UPDATE_MANIFEST_BYTES {
+            return Err(UpdateError::new(UpdateErrorCode::ManifestTooLarge));
+        }
+        let key_id = key_id.into();
+        if !is_valid_key_id(&key_id) {
+            return Err(UpdateError::new(UpdateErrorCode::ManifestKeyIdInvalid));
+        }
+        let signature = decode_signature(signature_hex)?;
+        Ok(Self {
+            key_id,
+            signature,
+            manifest_bytes,
+        })
+    }
+
+    pub fn key_id(&self) -> &str {
+        &self.key_id
+    }
+
+    pub fn manifest_bytes(&self) -> &[u8] {
+        &self.manifest_bytes
+    }
+
+    pub fn signature(&self) -> &[u8; ED25519_SIGNATURE_BYTES] {
+        &self.signature
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct TrustedPublicKey {
@@ -289,6 +343,17 @@ impl UpdateVerifier {
         let manifest: UpdateManifest = serde_json::from_slice(manifest_bytes)
             .map_err(|_| UpdateError::new(UpdateErrorCode::ManifestJsonInvalid))?;
         self.validate_manifest(manifest, key)
+    }
+
+    pub fn verify_envelope(
+        &self,
+        envelope: &UpdateManifestEnvelope,
+    ) -> Result<UpdateDecision, UpdateError> {
+        self.verify_manifest(
+            envelope.manifest_bytes(),
+            envelope.key_id(),
+            envelope.signature(),
+        )
     }
 
     fn validate_manifest(
@@ -450,6 +515,17 @@ impl UpdateVerificationSession {
         self.verifier.installed_sequence = recorded;
         Ok(decision)
     }
+
+    pub fn verify_envelope(
+        &mut self,
+        envelope: &UpdateManifestEnvelope,
+    ) -> Result<UpdateDecision, UpdateVerificationSessionError> {
+        self.verify_manifest(
+            envelope.manifest_bytes(),
+            envelope.key_id(),
+            envelope.signature(),
+        )
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -593,6 +669,23 @@ fn decode_sha256(value: &str) -> Result<[u8; 32], UpdateError> {
     for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
         let high = decode_lower_hex_digit(pair[0])?;
         let low = decode_lower_hex_digit(pair[1])?;
+        decoded[index] = (high << 4) | low;
+    }
+    Ok(decoded)
+}
+
+fn decode_signature(value: &str) -> Result<[u8; ED25519_SIGNATURE_BYTES], UpdateError> {
+    if value.len() != ED25519_SIGNATURE_HEX_BYTES {
+        return Err(UpdateError::new(
+            UpdateErrorCode::ManifestSignatureEncodingInvalid,
+        ));
+    }
+    let mut decoded = [0_u8; ED25519_SIGNATURE_BYTES];
+    for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
+        let high = decode_lower_hex_digit(pair[0])
+            .map_err(|_| UpdateError::new(UpdateErrorCode::ManifestSignatureEncodingInvalid))?;
+        let low = decode_lower_hex_digit(pair[1])
+            .map_err(|_| UpdateError::new(UpdateErrorCode::ManifestSignatureEncodingInvalid))?;
         decoded[index] = (high << 4) | low;
     }
     Ok(decoded)
@@ -745,9 +838,15 @@ mod tests {
             0
         );
 
+        let envelope = UpdateManifestEnvelope::from_headers(
+            manifest.clone(),
+            KEY_ID,
+            &lower_hex(&signature.to_bytes()),
+        )
+        .expect("signed envelope");
         assert!(matches!(
             session
-                .verify_manifest(&manifest, KEY_ID, &signature.to_bytes())
+                .verify_envelope(&envelope)
                 .expect("verified manifest"),
             UpdateDecision::Available(_)
         ));
@@ -813,6 +912,51 @@ mod tests {
                 .verify_manifest(bytes, KEY_ID, &signature.to_bytes())
                 .expect_err("tampered manifest"),
             UpdateError::new(UpdateErrorCode::ManifestSignatureInvalid)
+        );
+    }
+
+    #[test]
+    fn envelope_bounds_headers_and_preserves_the_exact_signed_bytes() {
+        let manifest = serde_json::to_vec(&manifest(b"artifact")).expect("serialize manifest");
+        let signature = signing_key().sign(&manifest);
+        let envelope = UpdateManifestEnvelope::from_headers(
+            manifest.clone(),
+            KEY_ID,
+            &lower_hex(&signature.to_bytes()),
+        )
+        .expect("valid envelope");
+        assert_eq!(envelope.key_id(), KEY_ID);
+        assert_eq!(envelope.manifest_bytes(), manifest);
+        assert_eq!(envelope.signature().as_slice(), signature.to_bytes());
+        assert!(matches!(
+            verifier(UpdateChannel::Development, "0.1.0", 1, 1, None).verify_envelope(&envelope),
+            Ok(UpdateDecision::Available(_))
+        ));
+
+        assert_eq!(
+            UpdateManifestEnvelope::from_headers(vec![b'x'], "invalid key id", "00"),
+            Err(UpdateError::new(UpdateErrorCode::ManifestKeyIdInvalid))
+        );
+        assert_eq!(
+            UpdateManifestEnvelope::from_headers(vec![b'x'], KEY_ID, "00"),
+            Err(UpdateError::new(
+                UpdateErrorCode::ManifestSignatureEncodingInvalid
+            ))
+        );
+        let uppercase_signature = format!("A{}", "0".repeat(ED25519_SIGNATURE_HEX_BYTES - 1));
+        assert_eq!(
+            UpdateManifestEnvelope::from_headers(vec![b'x'], KEY_ID, &uppercase_signature),
+            Err(UpdateError::new(
+                UpdateErrorCode::ManifestSignatureEncodingInvalid
+            ))
+        );
+        assert_eq!(
+            UpdateManifestEnvelope::from_headers(
+                vec![b'x'; MAX_UPDATE_MANIFEST_BYTES + 1],
+                KEY_ID,
+                &lower_hex(&signature.to_bytes()),
+            ),
+            Err(UpdateError::new(UpdateErrorCode::ManifestTooLarge))
         );
     }
 
