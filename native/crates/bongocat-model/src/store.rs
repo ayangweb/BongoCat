@@ -50,6 +50,38 @@ pub enum ModelStoreDiagnostic {
     StoreEntryUnsupported,
 }
 
+impl ModelStoreDiagnostic {
+    pub const ALL: [Self; 11] = [
+        Self::AlreadyExists,
+        Self::Cancelled,
+        Self::InvalidPackage,
+        Self::IoError,
+        Self::NotFound,
+        Self::SourceContainsStore,
+        Self::SourceChanged,
+        Self::SourceSymlinkUnsupported,
+        Self::SourceEntryUnsupported,
+        Self::StoreBusy,
+        Self::StoreEntryUnsupported,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::AlreadyExists => "model_store_already_exists",
+            Self::Cancelled => "model_store_cancelled",
+            Self::InvalidPackage => "model_store_invalid_package",
+            Self::IoError => "model_store_io_error",
+            Self::NotFound => "model_store_not_found",
+            Self::SourceContainsStore => "model_store_source_contains_store",
+            Self::SourceChanged => "model_store_source_changed",
+            Self::SourceSymlinkUnsupported => "model_store_source_symlink_unsupported",
+            Self::SourceEntryUnsupported => "model_store_source_entry_unsupported",
+            Self::StoreBusy => "model_store_busy",
+            Self::StoreEntryUnsupported => "model_store_entry_unsupported",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ModelImportStage {
     Preparing,
@@ -1366,5 +1398,21 @@ mod tests {
 
         let error = store.list().expect_err("contended store must fail");
         assert_eq!(error.code, ModelStoreDiagnostic::StoreBusy);
+    }
+
+    #[test]
+    fn model_store_diagnostic_codes_are_stable_and_unique() {
+        let mut codes = ModelStoreDiagnostic::ALL
+            .iter()
+            .map(|code| code.as_str())
+            .collect::<Vec<_>>();
+        assert!(codes.iter().all(|code| code.starts_with("model_store_")));
+        codes.sort_unstable();
+        codes.dedup();
+        assert_eq!(codes.len(), ModelStoreDiagnostic::ALL.len());
+        assert_eq!(
+            ModelStoreDiagnostic::SourceChanged.as_str(),
+            "model_store_source_changed"
+        );
     }
 }
