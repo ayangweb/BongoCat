@@ -129,6 +129,16 @@ impl ShortcutDispatcher {
     pub fn reset(&mut self) {
         self.matcher.reset();
     }
+
+    /// Replaces transient key state with the platform's authoritative
+    /// reconciliation snapshot. This never dispatches an action.
+    pub fn reconcile(&mut self, pressed: impl IntoIterator<Item = PhysicalKey>) {
+        let latest = self.table.load();
+        if latest != self.matcher.shortcuts {
+            self.matcher.replace(latest);
+        }
+        self.matcher.reconcile(pressed);
+    }
 }
 
 impl ShortcutMatcher {
@@ -366,5 +376,49 @@ mod tests {
         assert_eq!(matcher.apply(m, InputEdge::Down), None);
         matcher.apply(m, InputEdge::Up);
         assert_eq!(matcher.apply(m, InputEdge::Down), None);
+    }
+
+    #[test]
+    fn dispatcher_reconciliation_releases_a_missing_shortcut_key() {
+        let runtime = bongocat_runtime::RuntimeOwner::start(true, 16);
+        let client = runtime.client();
+        client
+            .wait_for_revision(1, std::time::Duration::from_secs(1))
+            .expect("runtime ready");
+        let mut dispatcher = ShortcutDispatcher::new(
+            ShortcutConfig {
+                commands: vec![ShortcutBinding {
+                    command: "toggle_overlay".to_owned(),
+                    shortcut: "Control+B".to_owned(),
+                }],
+                model_behaviors: Vec::new(),
+            }
+            .compile()
+            .expect("compiled shortcuts"),
+            client.clone(),
+        );
+        let control = PhysicalKey::from_hid_usage(0xe0);
+        let b = PhysicalKey::from_hid_usage(0x05);
+
+        assert_eq!(
+            dispatcher.apply(control, InputEdge::Down),
+            Ok(ShortcutDispatch::NoMatch)
+        );
+        assert_eq!(
+            dispatcher.apply(b, InputEdge::Down),
+            Ok(ShortcutDispatch::IgnoredApplicationCommand)
+        );
+        dispatcher.reconcile([]);
+        assert_eq!(
+            dispatcher.apply(control, InputEdge::Down),
+            Ok(ShortcutDispatch::NoMatch)
+        );
+        assert_eq!(
+            dispatcher.apply(b, InputEdge::Down),
+            Ok(ShortcutDispatch::IgnoredApplicationCommand)
+        );
+        runtime
+            .shutdown(std::time::Duration::from_secs(1))
+            .expect("runtime stop");
     }
 }

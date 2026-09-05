@@ -1372,6 +1372,12 @@ fn run_input_worker(
                 Ok(_) => {
                     diagnostics.reconciliation_runs =
                         diagnostics.reconciliation_runs.saturating_add(1);
+                    if let Some(dispatcher) = shortcut_dispatcher.as_mut() {
+                        dispatcher.reconcile(pressed.iter().filter_map(|control| match control {
+                            InputControl::Key(key) => Some(*key),
+                            InputControl::Mouse(_) | InputControl::Gamepad(_) => None,
+                        }));
+                    }
                     let controls = candidates.keys().copied().collect::<Vec<_>>();
                     for control in controls {
                         if pressed.contains(&control) {

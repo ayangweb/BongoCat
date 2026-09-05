@@ -2164,6 +2164,10 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
         节点公开当前 chord 与 waiting 状态，配置恢复或模型导入期间会同时撤销 click/focus/action。
         纯 Rust 回归覆盖逐行 tab order、快照重排后精确更新、缺失目标拒绝和 accessibility target
         映射；双平台真实快捷键触发与屏幕阅读器操作仍待实机完成，因此总项保持未勾选。
+      - 状态（2026-09-05）：Windows/macOS 系统状态校正成功后现在将同一 authoritative pressed-key
+        snapshot 交给 `ShortcutDispatcher`，并在 Windows 查询失败导致的 Reset 清空 matcher；因此丢失
+        release 经第二次状态校正后不会让后续同一 chord 被错误视为 repeat。平台 crate 33 项定向测试
+        与严格 Clippy 在 macOS 通过；Windows 真实输入路径继续由 push CI 和实机矩阵验收。
 47. [x] `P2-CURSOR-SMOOTHING`：在平台 latest-value 与模型参数之间恢复帧率无关的光标平滑。
     - 依赖：正式 cursor transport、可注入 `MonotonicClock` 和 display-relative normalization。
     - 退出条件：60 FPS 单帧保持 `0.75` 剩余距离，不同 tick 切分产生相同结果，逻辑距离

@@ -1000,6 +1000,9 @@ impl WindowState {
                             .recover(InputResetReason::ServiceRestart, self.monotonic())?;
                         self.candidates.clear();
                         self.missing_confirmations.clear();
+                        if let Some(dispatcher) = self.shortcut_dispatcher.as_mut() {
+                            dispatcher.reset();
+                        }
                         self.diagnostics.recovery_resets =
                             self.diagnostics.recovery_resets.saturating_add(1);
                         return Ok(());
@@ -1011,6 +1014,12 @@ impl WindowState {
                 })?;
                 self.diagnostics.reconciliation_runs =
                     self.diagnostics.reconciliation_runs.saturating_add(1);
+                if let Some(dispatcher) = self.shortcut_dispatcher.as_mut() {
+                    dispatcher.reconcile(pressed.iter().filter_map(|control| match control {
+                        InputControl::Key(key) => Some(*key),
+                        InputControl::Mouse(_) | InputControl::Gamepad(_) => None,
+                    }));
+                }
                 let controls = self.candidates.keys().copied().collect::<Vec<_>>();
                 for control in controls {
                     if pressed.contains(&control) {
