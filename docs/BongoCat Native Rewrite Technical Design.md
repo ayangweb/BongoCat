@@ -677,7 +677,8 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
   `UpdateManifestEnvelope`，再交给 verifier；传输不得预解析、重排、解压或重新编码 body。当前
   adapter 使用禁用 compression、仅 Rustls TLS 的 `ureq`，固定 15 秒全局 deadline，并将 endpoint、
   非 `200`、body read 与网络失败压缩为稳定匿名 code；它只能由专用 update worker 调用，不能运行在
-  GPUI executor。
+  GPUI executor。`UpdateCheckCoordinator` 固定 fetch -> verify -> environment-local sequence commit 的
+  顺序；fetch 或验签失败绝不推进 rollback 下限，实际 HTTP client 仍通过项目自有 source trait 注入。
 - 更新 endpoint、24 小时自动检查调度、有界下载/取消、环境内 sequence 持久化、操作系统包签名、
   installer 权限、原子替换和失败回滚分别实现；所有 endpoint 与 artifact URL 只允许 HTTPS。最高
   已验证 sequence 从当前不可变 `StorageLayout` 的独立 `updates/update-sequence.json` v1 保存，不进入用户

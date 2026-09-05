@@ -103,6 +103,17 @@ impl fmt::Display for UpdateManifestFetchError {
 
 impl std::error::Error for UpdateManifestFetchError {}
 
+/// Fetches one raw signed manifest envelope from a fixed endpoint.
+///
+/// This trait exists so the verification coordinator can be tested without
+/// networking and so an app-owned worker does not need to know the HTTP client.
+pub trait UpdateManifestSource {
+    fn fetch(
+        &self,
+        endpoint: &UpdateManifestEndpoint,
+    ) -> Result<UpdateManifestEnvelope, UpdateManifestFetchError>;
+}
+
 /// A blocking HTTPS transport for the signed manifest envelope.
 ///
 /// Callers must execute `fetch` on a dedicated update worker; this type never
@@ -165,6 +176,15 @@ impl UreqUpdateManifestSource {
     #[cfg(test)]
     fn config(&self) -> &ureq::config::Config {
         self.agent.config()
+    }
+}
+
+impl UpdateManifestSource for UreqUpdateManifestSource {
+    fn fetch(
+        &self,
+        endpoint: &UpdateManifestEndpoint,
+    ) -> Result<UpdateManifestEnvelope, UpdateManifestFetchError> {
+        Self::fetch(self, endpoint)
     }
 }
 

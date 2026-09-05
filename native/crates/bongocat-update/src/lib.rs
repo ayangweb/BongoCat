@@ -1,11 +1,13 @@
 #![forbid(unsafe_code)]
 
+mod check;
 mod download;
 mod retry;
 mod schedule;
 mod sequence;
 mod staging;
 mod transport;
+pub use check::{UpdateCheckCoordinator, UpdateCheckError};
 pub use download::{
     CompletedUpdateDownload, UpdateDownloadCoordinator, UpdateDownloadError,
     UpdateDownloadErrorCode,
@@ -23,8 +25,8 @@ pub use sequence::{
 };
 pub use staging::{StagedUpdateArtifact, UpdateStagingError, UpdateStagingErrorCode};
 pub use transport::{
-    UpdateManifestEndpoint, UpdateManifestFetchError, UpdateManifestTransportErrorCode,
-    UreqUpdateManifestSource,
+    UpdateManifestEndpoint, UpdateManifestFetchError, UpdateManifestSource,
+    UpdateManifestTransportErrorCode, UreqUpdateManifestSource,
 };
 
 use bongocat_config::{BuildEnvironment, StorageLayout};
@@ -521,6 +523,15 @@ impl fmt::Display for UpdateVerificationSessionError {
 }
 
 impl std::error::Error for UpdateVerificationSessionError {}
+
+impl UpdateVerificationSessionError {
+    pub const fn code(&self) -> &'static str {
+        match self {
+            Self::SequenceStore(error) => error.code().as_str(),
+            Self::Verification(error) => error.code.as_str(),
+        }
+    }
+}
 
 impl UpdateVerificationSession {
     pub fn open(

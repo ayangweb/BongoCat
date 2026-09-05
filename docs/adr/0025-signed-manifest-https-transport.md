@@ -22,6 +22,9 @@ compression 会改变 detached Ed25519 signature 必须覆盖的原始 bytes。
   transport 和 body-read 错误只公开固定匿名 transport code；底层 URL、HTTP status text、TLS 或 client
   类型不离开 update crate。调用方必须在专用 update worker 运行 blocking fetch，禁止在 GPUI executor
   执行。
+- `UpdateCheckCoordinator` 只能以 `UpdateManifestSource` 取得 envelope，再调用既有
+  `UpdateVerificationSession`。其顺序固定为 fetch -> signature/schema/target verification -> sequence
+  store commit；任何 fetch 或 verification failure 都不能改变当前环境的 anti-rollback state。
 
 ## 依赖与替换边界
 
@@ -33,6 +36,7 @@ compression 会改变 detached Ed25519 signature 必须覆盖的原始 bytes。
 
 - 单元测试锁定 HTTPS/credential/fragment/长度 endpoint 边界、HTTPS-only、no-redirect agent config 和
   transport code 唯一性。
+- 注入式 source 回归验证通过时仅写入验证后的 release sequence，而 source failure 后 sequence 保持不变。
 - Native workspace 的 format、strict Clippy、test、release check 与 dependency policy 覆盖新 crate graph。
 - 后续 app-owned worker 必须在真实 HTTPS endpoint 验证断网、代理、redirect、non-200、截断、超限、
   签名错误和降级攻击，且不影响本地 overlay。

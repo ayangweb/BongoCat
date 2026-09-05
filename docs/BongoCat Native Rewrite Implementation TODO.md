@@ -1496,8 +1496,9 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     boundary；Ed25519 先验签后解析，严格 v1 manifest、稳定错误码、artifact 流式完整性验证、环境内
     anti-rollback sequence store、verification session 和 24 小时调度 contract 均有自动化。`ureq`
     HTTPS source 现在固定单次 GET、无 redirect、15 秒 deadline、无 compression 和 1 MiB raw-body
-    上限，只构造 `UpdateManifestEnvelope`，且不泄漏 URL/status/client text；endpoint、公钥注入、手动
-    dispatch 与下载/安装仍未实现，因此总项保持未勾选。
+    上限，只构造 `UpdateManifestEnvelope`，且不泄漏 URL/status/client text。`UpdateCheckCoordinator`
+    已固定 fetch -> session verify -> environment sequence commit，source failure 不推进 rollback 下限；
+    endpoint、公钥注入、手动 dispatch 与下载/安装仍未实现，因此总项保持未勾选。
 - [ ] 只允许 HTTPS，固定公钥来源和轮换流程。
   - 状态（2026-09-05）：manifest/release notes/artifact URL 已强制 HTTPS 且拒绝 credentials/fragment；
     信任公钥绑定 key ID、构建环境 channel 和 release sequence 有效窗。Production 公钥注入、签名
