@@ -43,6 +43,7 @@ semver = "=1.0.28"
 sha2 = "=0.11.0"
 tempfile = "=3.27.0"
 url = "=2.5.8"
+ureq = { version = "=3.4.0", default-features = false, features = ["rustls"] }
 
 bongocat-config = { path = "crates/bongocat-config" }
 bongocat-audio = { path = "crates/bongocat-audio" }

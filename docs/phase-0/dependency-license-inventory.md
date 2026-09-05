@@ -39,6 +39,7 @@
 | bindgen                          | `0.72.1`                       | BSD-3-Clause              | Offline Cubism raw binding generator     |
 | embed-resource                   | `3.0.11`                       | MIT                       | Windows executable product icon compiler |
 | sha2                             | `0.11.0`                       | MIT OR Apache-2.0         | Header/output provenance hashes          |
+| ureq                             | `3.4.0`                        | MIT OR Apache-2.0         | Signed update manifest HTTPS transport   |
 
 ## Policy
 
@@ -76,6 +77,12 @@ cargo install cargo-deny --version 0.20.2 --locked
 - 发布阶段的 SBOM 与 notice bundle 生成。
 
 Cubism 版本、来源、hash、再分发条款和 attribution 必须在 `P0-CUBISM` 单独形成书面结论；完成前不得制作可公开分发的 Native Rewrite 安装包。
+
+`ureq 3.4.0` 是维护中的纯 Rust blocking HTTP client（Rust 1.85+、MIT OR Apache-2.0）。
+`bongocat-update` 仅启用其 `rustls` feature，显式关闭默认 features，因此不带 gzip/charset/cookie/
+proxy feature，也不会在 detached signature 验证前转换 manifest bytes。它只存在于私有 update
+transport，入口只接受 immutable HTTPS endpoint，输出为项目自有 envelope/error code；替换边界是
+`UreqUpdateManifestSource`，不影响 verifier、runtime、UI 或平台 API。
 
 AccessKit 由同一上游仓库维护，core 与双平台 adapter 已进入正式 `bongocat-platform`，公开边界仅接收 UI 自有语义树、action 和 GPUI 原生窗口 handle；其节点、事件和错误类型不进入 BongoCat runtime 公共 API。action 通过容量 32 的强类型 channel 回到 GPUI 主线程，队列拒绝计数进入平台诊断。若 GPUI 后续提供稳定的 element-level accessibility API，则删除该 adapter。`objc2 0.5.2` 是 `accesskit_macos 0.27.0` 的 ABI 类型世代兼容例外，仅用于 adapter 所需的 macOS 类型；AccessKit 切换到 `objc2 0.6` 或边界移除后不再保留旧版本。
 

@@ -59,6 +59,7 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 | `tempfile`                            |       `3.27.0` | 已是最新                           |
 | `unicode-segmentation`                |       `1.13.3` | 已是最新                           |
 | `url`                                 |        `2.5.8` | 外部 HTTPS URL wrapper 新增时最新  |
+| `ureq`                                |        `3.4.0` | 更新 HTTPS transport 新增时最新    |
 | `windows`                             |       `0.62.2` | 从 `0.61.3` 升级                   |
 
 `windows 0.62.2` 删除了 `Error::from_win32()`；Win32 wrapper 已改为在失败调用后立即使用语义等价的 `Error::from_thread()`，避免清理 API 覆盖 thread last-error。
@@ -127,6 +128,12 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
   `bongocat-platform` 私有 external URL parser 中规范化并限制 HTTPS URL；公共 API 只接收字符串、
   返回项目自有错误，不泄漏 `Url`。macOS/Windows launcher 均以单一参数启动系统 opener，绝不经 shell；
   替换边界是同等严格的 WHATWG URL parser，不影响 config/runtime/UI 协议；
+- `ureq 3.4.0`（MIT OR Apache-2.0，Rust 1.85+，`algesten/ureq` 维护）只在
+  `bongocat-update` 的私有 signed-manifest source 使用。它精确锁定为当前最新稳定版，仅启用
+  Rustls feature 并关闭默认 compression/cookie feature；因此 detached signature 始终覆盖响应的
+  原始受限 bytes。source 固定 HTTPS、无 redirect、15 秒 deadline 和匿名错误码，第三方 response/
+  URL/TLS 类型不离开 crate。替换边界是 `UreqUpdateManifestSource`，不会改变 verifier 或 app/UI
+  command contract；
 - 剪贴板 adapter 不新增 crate，只扩展已固定的 `objc2-app-kit 0.3.2` 的 `NSPasteboard` feature，
   以及 `windows 0.62.2` 的 `Win32_System_DataExchange`、`Memory` 和 `Ole` features。它们分别是
   持续维护的 objc2 基础 binding（Zlib OR Apache-2.0 OR MIT）和微软生成 binding（MIT）；AppKit/Win32

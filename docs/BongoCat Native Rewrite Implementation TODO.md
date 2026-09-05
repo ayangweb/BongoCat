@@ -1494,14 +1494,17 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
       Unix 强制 `0700`。后续 update client 仍待提供 endpoint、网络与安装器边界。
   - 状态（2026-09-05）：ADR-0021 与 `bongocat-update` 已建立平台无关的 signed manifest trust
     boundary；Ed25519 先验签后解析，严格 v1 manifest、稳定错误码、artifact 流式完整性验证、环境内
-    anti-rollback sequence store、verification session 和 24 小时调度 contract 均有自动化。网络 client、endpoint、手动
+    anti-rollback sequence store、verification session 和 24 小时调度 contract 均有自动化。`ureq`
+    HTTPS source 现在固定单次 GET、无 redirect、15 秒 deadline、无 compression 和 1 MiB raw-body
+    上限，只构造 `UpdateManifestEnvelope`，且不泄漏 URL/status/client text；endpoint、公钥注入、手动
     dispatch 与下载/安装仍未实现，因此总项保持未勾选。
 - [ ] 只允许 HTTPS，固定公钥来源和轮换流程。
   - 状态（2026-09-05）：manifest/release notes/artifact URL 已强制 HTTPS 且拒绝 credentials/fragment；
     信任公钥绑定 key ID、构建环境 channel 和 release sequence 有效窗。Production 公钥注入、签名
     envelope 现固定为无 redirect 的 HTTPS `200` 原始 manifest body 加 key ID/小写 hex signature
-    headers，并由有界 `UpdateManifestEnvelope` 交给 verifier；Production 公钥注入、实际 endpoint 与
-    HTTP worker 尚待发布基础设施确定，因此保持未勾选。
+    headers，并由有界 `UpdateManifestEnvelope` 交给 verifier；`ureq` source 已实际执行该窄协议，拒绝
+    credentials/fragment endpoint、非 `200` 和响应大于 1 MiB。Production 公钥注入、实际 endpoint 与
+    app-owned update worker/dispatch 尚待发布基础设施确定，因此保持未勾选。
 - [ ] 校验版本、target、arch、hash 和签名。
   - 状态（2026-09-05）：离线 verifier 已校验 SemVer、最低可升级版本、四个 target/arch 组合、精确
     artifact 长度、SHA-256 与 detached Ed25519 签名；操作系统包签名和真实发布产物仍待验证。

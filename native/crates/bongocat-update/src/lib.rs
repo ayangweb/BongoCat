@@ -5,6 +5,7 @@ mod retry;
 mod schedule;
 mod sequence;
 mod staging;
+mod transport;
 pub use download::{
     CompletedUpdateDownload, UpdateDownloadCoordinator, UpdateDownloadError,
     UpdateDownloadErrorCode,
@@ -21,6 +22,10 @@ pub use sequence::{
     UpdateSequenceStoreErrorCode,
 };
 pub use staging::{StagedUpdateArtifact, UpdateStagingError, UpdateStagingErrorCode};
+pub use transport::{
+    UpdateManifestEndpoint, UpdateManifestFetchError, UpdateManifestTransportErrorCode,
+    UreqUpdateManifestSource,
+};
 
 use bongocat_config::{BuildEnvironment, StorageLayout};
 use ed25519_dalek::{Signature, VerifyingKey};
