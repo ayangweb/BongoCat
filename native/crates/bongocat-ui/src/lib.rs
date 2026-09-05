@@ -736,6 +736,8 @@ pub enum SettingsErrorCode {
     ConfigurationRecoveryFailed,
     ModelUnavailable,
     ModelSwitchFailed,
+    ModelBehaviorPreviewUnavailable,
+    ModelBehaviorPreviewFailed,
     InvalidModelId,
     ModelAlreadyInstalled,
     ModelImportInvalidPackage,
@@ -759,7 +761,7 @@ pub enum SettingsErrorCode {
 }
 
 impl SettingsErrorCode {
-    pub const ALL: [Self; 36] = [
+    pub const ALL: [Self; 38] = [
         Self::ServiceUnavailable,
         Self::SnapshotOutdated,
         Self::RuntimeUnavailable,
@@ -776,6 +778,8 @@ impl SettingsErrorCode {
         Self::ConfigurationRecoveryFailed,
         Self::ModelUnavailable,
         Self::ModelSwitchFailed,
+        Self::ModelBehaviorPreviewUnavailable,
+        Self::ModelBehaviorPreviewFailed,
         Self::InvalidModelId,
         Self::ModelAlreadyInstalled,
         Self::ModelImportInvalidPackage,
@@ -816,6 +820,8 @@ impl SettingsErrorCode {
             Self::ConfigurationRecoveryFailed => "configuration_recovery_failed",
             Self::ModelUnavailable => "model_unavailable",
             Self::ModelSwitchFailed => "model_switch_failed",
+            Self::ModelBehaviorPreviewUnavailable => "model_behavior_preview_unavailable",
+            Self::ModelBehaviorPreviewFailed => "model_behavior_preview_failed",
             Self::InvalidModelId => "invalid_model_id",
             Self::ModelAlreadyInstalled => "model_already_installed",
             Self::ModelImportInvalidPackage => "model_import_invalid_package",
@@ -894,6 +900,12 @@ impl fmt::Display for SettingsError {
             }
             SettingsErrorCode::ModelUnavailable => "selected model is unavailable",
             SettingsErrorCode::ModelSwitchFailed => "selected model could not be activated",
+            SettingsErrorCode::ModelBehaviorPreviewUnavailable => {
+                "the selected behavior is not available for the active model"
+            }
+            SettingsErrorCode::ModelBehaviorPreviewFailed => {
+                "the selected behavior could not be previewed"
+            }
             SettingsErrorCode::InvalidModelId => "model id is invalid",
             SettingsErrorCode::ModelAlreadyInstalled => "model id is already installed",
             SettingsErrorCode::ModelImportInvalidPackage => "model package is invalid",
@@ -1033,6 +1045,11 @@ pub enum SettingsCommand {
     SelectModel {
         expected_config_revision: u64,
         model: SettingsModelKey,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    PreviewModelBehavior {
+        model: SettingsModelKey,
+        behavior: SettingsModelBehavior,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     ImportModel {
@@ -1350,6 +1367,19 @@ impl SettingsClient {
         .await
     }
 
+    pub async fn preview_model_behavior(
+        &self,
+        model: SettingsModelKey,
+        behavior: SettingsModelBehavior,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::PreviewModelBehavior {
+            model,
+            behavior,
+            reply,
+        })
+        .await
+    }
+
     pub async fn import_model(
         &self,
         request: SettingsModelImportRequest,
@@ -1611,6 +1641,18 @@ impl SettingsClient {
         self.request_blocking(|reply| SettingsCommand::SelectModel {
             expected_config_revision,
             model,
+            reply,
+        })
+    }
+
+    pub fn preview_model_behavior_blocking(
+        &self,
+        model: SettingsModelKey,
+        behavior: SettingsModelBehavior,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::PreviewModelBehavior {
+            model,
+            behavior,
             reply,
         })
     }

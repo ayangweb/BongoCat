@@ -20,7 +20,7 @@ use bongocat_platform::{
     open_directory, set_startup_item_enabled, startup_item_state,
 };
 use bongocat_runtime::{
-    InputSnapshot, ModelSettings, OverlaySettings, PlatformInputDiagnostics,
+    InputSnapshot, ModelSettings, MotionPriority, OverlaySettings, PlatformInputDiagnostics,
     PlatformInputServiceStatus, RuntimeRenderErrorCode, RuntimeState,
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -858,6 +858,17 @@ fn run_service(
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
+            SettingsCommand::PreviewModelBehavior {
+                model,
+                behavior,
+                reply,
+            } => {
+                let result = require_operational(&application)
+                    .map_err(map_application_error)
+                    .and_then(|()| preview_model_behavior(&application, &model, behavior))
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
             SettingsCommand::ImportModel {
                 request,
                 operation,
@@ -1571,6 +1582,31 @@ fn settings_model_behavior(behavior: ModelBehaviorSnapshot) -> SettingsModelBeha
     }
 }
 
+fn preview_model_behavior(
+    application: &Application,
+    model: &SettingsModelKey,
+    behavior: SettingsModelBehavior,
+) -> Result<(), SettingsError> {
+    let runtime = application.runtime_client().snapshot();
+    let active_matches = runtime.active_model.is_some_and(|active| {
+        active.id.as_str() == model.id
+            && application.active_model_origin() == Some(model_origin(model.origin))
+    });
+    if !active_matches {
+        return Err(SettingsError::new(
+            SettingsErrorCode::ModelBehaviorPreviewUnavailable,
+        ));
+    }
+
+    let result = match behavior {
+        SettingsModelBehavior::Motion { group, index } => {
+            application.start_motion(group, index, MotionPriority::Force)
+        }
+        SettingsModelBehavior::Expression { name } => application.set_expression(name),
+    };
+    result.map(|_| ()).map_err(map_preview_error)
+}
+
 #[derive(Serialize)]
 struct DiagnosticsExportDocument {
     format_version: u32,
@@ -1980,6 +2016,19 @@ fn map_application_error(error: ApplicationError) -> SettingsError {
         _ => SettingsErrorCode::RuntimeUnavailable,
     };
     SettingsError::new(code)
+}
+
+fn map_preview_error(error: ApplicationError) -> SettingsError {
+    match error {
+        ApplicationError::MotionId(_)
+        | ApplicationError::ExpressionId(_)
+        | ApplicationError::RuntimeCommand(_)
+        | ApplicationError::RuntimeCommandFailed(_)
+        | ApplicationError::RuntimeDidNotPublish => {
+            SettingsError::new(SettingsErrorCode::ModelBehaviorPreviewFailed)
+        }
+        other => map_application_error(other),
+    }
 }
 
 fn map_configuration_recovery_error(error: ApplicationError) -> SettingsError {
@@ -3519,6 +3568,30 @@ mod tests {
         assert!(behaviors.contains(&SettingsModelBehavior::Expression {
             name: "live2d_expression0.exp3.json".to_owned(),
         }));
+        let preview_error = client
+            .preview_model_behavior_blocking(
+                SettingsModelKey {
+                    id: "keyboard".to_owned(),
+                    origin: SettingsModelOrigin::Preset,
+                },
+                SettingsModelBehavior::Motion {
+                    group: "CAT_motion".to_owned(),
+                    index: 0,
+                },
+            )
+            .expect_err("inactive model behavior preview must be rejected");
+        assert_eq!(
+            preview_error.code(),
+            SettingsErrorCode::ModelBehaviorPreviewUnavailable
+        );
+        assert_eq!(
+            client
+                .read_snapshot_blocking()
+                .expect("snapshot after rejected preview")
+                .config_revision,
+            initial.config_revision,
+            "preview must never persist configuration"
+        );
         let selected = client
             .select_model_blocking(
                 initial_config_revision,

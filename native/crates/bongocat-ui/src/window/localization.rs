@@ -887,6 +887,14 @@ pub(super) fn settings_error(language: SettingsLanguage, error: SettingsError) -
         SettingsErrorCode::ModelSwitchFailed => {
             ["selected model could not be activated", "无法启用所选模型"]
         }
+        SettingsErrorCode::ModelBehaviorPreviewUnavailable => [
+            "the selected behavior is not available for the active model",
+            "所选行为不适用于当前模型",
+        ],
+        SettingsErrorCode::ModelBehaviorPreviewFailed => [
+            "the selected behavior could not be previewed",
+            "无法预览所选行为",
+        ],
         SettingsErrorCode::InvalidModelId => ["model id is invalid", "模型 ID 无效"],
         SettingsErrorCode::ModelAlreadyInstalled => {
             ["model id is already installed", "该模型 ID 已安装"]

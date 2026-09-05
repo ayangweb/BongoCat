@@ -1212,7 +1212,9 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 - [ ] 动作/表情：绑定、预览 command 和错误状态。
   - 状态（2026-09-05）：已验证模型目录现将实际声明的 `(motion group, index)` 与 expression name
     作为只读强类型 behavior 投影到 settings snapshot；标识只来自通过包验证的模型索引，不包含包路径。
-    预览 command、操作控件和失败状态仍待接入。
+    settings service 的无持久化 preview command 已仅允许当前 runtime model，并以 Force priority
+    转发 motion 或 expression；无效/过期模型和 runtime 失败均有稳定、已本地化的错误 code。模型页
+    操作控件和快捷键行为目录编辑仍待接入。
 - [ ] 权限：macOS 状态/跳转和 Windows 权限差异。
 - [ ] 更新：检查、下载、验证、安装和回滚提示。
 - [ ] 诊断：版本、renderer、GPU、输入、权限、模型错误和日志导出。
