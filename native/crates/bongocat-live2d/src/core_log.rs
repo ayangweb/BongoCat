@@ -10,12 +10,15 @@ use std::{
     panic::{AssertUnwindSafe, catch_unwind},
     path::{Path, PathBuf},
     sync::{Arc, Mutex, OnceLock},
+    time::SystemTime,
 };
 
 const MAX_LOG_BYTES: u64 = 1024 * 1024;
 const MAX_TOTAL_LOG_FILES: u32 = 8;
 const MAX_ROTATED_LOG_FILES: u32 = MAX_TOTAL_LOG_FILES - 1;
 const MAX_MESSAGE_BYTES: usize = 512;
+const RETENTION_DAYS: u64 = 7;
+const SECONDS_PER_DAY: u64 = 86_400;
 
 #[derive(Debug)]
 pub enum CoreLogError {
@@ -40,6 +43,7 @@ impl std::error::Error for CoreLogError {}
 pub struct CoreLogStats {
     pub written: u64,
     pub dropped: u64,
+    pub pruned: u64,
     pub bytes: u64,
 }
 
@@ -87,6 +91,7 @@ impl CoreLogHandle {
             fs::create_dir_all(parent).map_err(CoreLogError::CreateDirectory)?;
             set_private_directory(parent).map_err(CoreLogError::CreateDirectory)?;
         }
+        let pruned = prune_expired_rotated_logs(&path, SystemTime::now());
         let file = OpenOptions::new()
             .create(true)
             .append(true)
@@ -100,6 +105,7 @@ impl CoreLogHandle {
                 path: path.clone(),
                 bytes,
                 stats: CoreLogStats {
+                    pruned,
                     bytes,
                     ..CoreLogStats::default()
                 },
@@ -234,6 +240,10 @@ fn rotate_logs(state: &mut CoreLogState) -> bool {
     if reopen_active_log(state) {
         state.bytes = 0;
         state.stats.bytes = 0;
+        state.stats.pruned = state
+            .stats
+            .pruned
+            .saturating_add(prune_expired_rotated_logs(&state.path, SystemTime::now()));
         true
     } else {
         let _ = fs::rename(&first, &state.path);
@@ -288,6 +298,22 @@ fn rotated_log_path(path: &Path, generation: u32) -> PathBuf {
     PathBuf::from(rotated)
 }
 
+fn prune_expired_rotated_logs(path: &Path, now: SystemTime) -> u64 {
+    (1..=MAX_ROTATED_LOG_FILES)
+        .filter_map(|generation| {
+            let rotated = rotated_log_path(path, generation);
+            let modified = fs::metadata(&rotated).ok()?.modified().ok()?;
+            is_expired(modified, now).then(|| fs::remove_file(rotated).is_ok())
+        })
+        .filter(|removed| *removed)
+        .count() as u64
+}
+
+fn is_expired(modified: SystemTime, now: SystemTime) -> bool {
+    now.duration_since(modified)
+        .is_ok_and(|age| age.as_secs() >= RETENTION_DAYS.saturating_mul(SECONDS_PER_DAY))
+}
+
 fn sanitize_message(bytes: &[u8]) -> String {
     let text = String::from_utf8_lossy(&bytes[..bytes.len().min(MAX_MESSAGE_BYTES)]);
     text.split_whitespace()
@@ -320,6 +346,18 @@ mod tests {
             sanitize_message(b"model /Users/example/private\nC:\\Users\\name\\model.moc3 stable");
         assert_eq!(message, "model <redacted-path> <redacted-path> stable");
         assert!(sanitize_message(&vec![b'x'; MAX_MESSAGE_BYTES + 20]).len() <= MAX_MESSAGE_BYTES);
+    }
+
+    #[test]
+    fn expiration_keeps_recent_and_clock_regressed_rotated_logs() {
+        let now = std::time::UNIX_EPOCH
+            + std::time::Duration::from_secs(RETENTION_DAYS * SECONDS_PER_DAY);
+        assert!(is_expired(std::time::UNIX_EPOCH, now));
+        assert!(!is_expired(
+            std::time::UNIX_EPOCH + std::time::Duration::from_secs(1),
+            now
+        ));
+        assert!(!is_expired(now, std::time::UNIX_EPOCH));
     }
 
     #[test]
