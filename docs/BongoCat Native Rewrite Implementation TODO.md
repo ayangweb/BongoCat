@@ -2361,17 +2361,19 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       workspace、release 产品 lifecycle 和设置窗口 AX/UIA smoke，Windows formal missing-release
       recovery 也以独立 reconcile 路径通过。
 
-63. [ ] `P6-REMOVE-STARTUP-CONFIG-FIELD`：从当前 v1 配置移除未被产品消费的登录启动布尔值。
+63. [x] `P6-REMOVE-STARTUP-CONFIG-FIELD`：从当前 v1 配置移除未被产品消费的登录启动布尔值。
     - 依赖：ADR-0013、正式 startup-item platform snapshot/command、`next` 首版 schema 边界。
     - 退出条件：Rust config、JSON Schema、默认 fixture 与 config-store spike 不再序列化或接受
       `application.launch_at_login`；启动项仍只由平台 snapshot 读取并仅由显式 typed command
       修改，外部系统变更可观察；不增加 migration、alias 或旧数据 fallback；共享 schema/fixture、
       config 定向测试、完整 Native workspace 门禁和双平台 CI 通过。
-    - 状态（2026-09-05）：正式 Rust config、共享 JSON Schema/default/reject fixture 与离线
+    - 验收证据（2026-09-05）：正式 Rust config、共享 JSON Schema/default/reject fixture 与离线
       config-store spike 已移除该字段；serde 与 Draft 2020-12 两条入口均把旧键当作 unknown field
       拒绝。config release 测试 46 项（1 项 crash-probe child 按设计 ignored）、config-store spike
       22 项、format、严格 release workspace Clippy、完整 release all-target tests、release check 和
-      共享 schema/fixture validator 均通过；等待本次 Windows/macOS CI 后勾选。
+      共享 schema/fixture validator 均通过。实现 commit `8945509` 的 CI run `33930711175` 全绿；
+      Windows/macOS/Ubuntu workspace jobs `101208547975`/`101208547928`/`101208547908` 均通过完整
+      workspace 门禁，双平台 startup-item lifecycle 继续从 platform snapshot 验证且无配置回归。
 
 ## 13. 待决策清单
 
