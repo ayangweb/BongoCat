@@ -1370,6 +1370,10 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     shutdown smoke。
 - [ ] 托盘/菜单栏 command 统一进入 runtime。
 - [ ] 系统关机、注销和普通退出进入 shutdown coordinator。
+  - 状态（2026-09-05）：Windows Raw Input owner 现将 `WM_QUERYENDSESSION` 与已确认的
+    `WM_ENDSESSION` 转为无阻塞终止信号；GPUI frame owner 在下一帧复用已有 shutdown coordinator，
+    不在 Win32 callback 析构 runtime/GPU。正常 Quit 已有双平台 release smoke；真实 Windows
+    注销/关机与 macOS 系统终止的实机矩阵仍待完成，因此本项保持未勾选。
 - [x] panic/crash 生成本地诊断并避免配置半写入。
   - 验收证据（2026-09-04）：`P3-PANIC-DIAGNOSTICS-RELEASE` 以同一 Windows/macOS release
     executable 的 `panic=abort` 子进程验证固定匿名 panic code、当前 config 字节不变、环境内

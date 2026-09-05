@@ -370,6 +370,11 @@ impl ProductOverlaySession {
         self.inner.model_generation()
     }
 
+    #[cfg(target_os = "windows")]
+    pub fn system_termination_requested(&self) -> bool {
+        self.inner.system_termination_requested()
+    }
+
     pub fn stop_input(&mut self) -> Result<(), OverlayError> {
         #[cfg(target_os = "macos")]
         {

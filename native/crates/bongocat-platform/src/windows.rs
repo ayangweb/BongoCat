@@ -59,10 +59,10 @@ use windows::{
                 PBT_APMRESUMECRITICAL, PBT_APMRESUMESTANDBY, PBT_APMRESUMESUSPEND, PBT_APMSTANDBY,
                 PBT_APMSUSPEND, PostMessageW, PostQuitMessage, RegisterClassW, SW_HIDE, SW_SHOW,
                 SetTimer, SetWindowLongPtrW, ShowWindow, TranslateMessage, UnregisterClassW,
-                WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_DESTROY, WM_INPUT,
-                WM_INPUT_DEVICE_CHANGE, WM_NCCREATE, WM_NCDESTROY, WM_POWERBROADCAST, WM_TIMER,
-                WM_WTSSESSION_CHANGE, WNDCLASSW, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
-                WTS_CONSOLE_CONNECT, WTS_CONSOLE_DISCONNECT, WTS_REMOTE_CONNECT,
+                WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_DESTROY, WM_ENDSESSION, WM_INPUT,
+                WM_INPUT_DEVICE_CHANGE, WM_NCCREATE, WM_NCDESTROY, WM_POWERBROADCAST,
+                WM_QUERYENDSESSION, WM_TIMER, WM_WTSSESSION_CHANGE, WNDCLASSW, WS_EX_APPWINDOW,
+                WS_EX_TOOLWINDOW, WTS_CONSOLE_CONNECT, WTS_CONSOLE_DISCONNECT, WTS_REMOTE_CONNECT,
                 WTS_REMOTE_DISCONNECT, WTS_SESSION_LOCK, WTS_SESSION_UNLOCK,
             },
         },
@@ -711,6 +711,7 @@ struct WindowState {
     _gamepad_axis_producer: GamepadAxisProducer,
     gamepad_poller: XInputPoller,
     stop: Arc<AtomicBool>,
+    system_termination_requested: Arc<AtomicBool>,
     started: Instant,
     queue: VecDeque<CapturedEvent>,
     candidates: BTreeMap<InputControl, SystemControl>,
@@ -729,12 +730,14 @@ struct WindowState {
 }
 
 impl WindowState {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         producer: InputProducer,
         cursor_producer: CursorProducer,
         gamepad_axis_producer: GamepadAxisProducer,
         diagnostics_producer: PlatformInputDiagnosticsProducer,
         stop: Arc<AtomicBool>,
+        system_termination_requested: Arc<AtomicBool>,
         options: WorkerOptions,
         shortcut_dispatcher: Option<ShortcutDispatcher>,
     ) -> Self {
@@ -744,6 +747,7 @@ impl WindowState {
             _gamepad_axis_producer: gamepad_axis_producer,
             gamepad_poller: XInputPoller::default(),
             stop,
+            system_termination_requested,
             started: Instant::now(),
             queue: VecDeque::with_capacity(CAPTURE_QUEUE_CAPACITY),
             candidates: BTreeMap::new(),
@@ -765,6 +769,16 @@ impl WindowState {
             diagnostics_producer,
             shortcut_dispatcher,
         }
+    }
+
+    fn request_system_termination(&self) {
+        self.system_termination_requested
+            .store(true, Ordering::Release);
+    }
+
+    #[cfg(test)]
+    fn system_termination_requested(&self) -> bool {
+        self.system_termination_requested.load(Ordering::Acquire)
     }
 
     fn enqueue(&mut self, event: CapturedEvent) {
@@ -1148,6 +1162,7 @@ impl WindowState {
 
 pub struct WindowsInputService {
     stop: Arc<AtomicBool>,
+    system_termination_requested: Arc<AtomicBool>,
     completion: Receiver<Result<PlatformInputDiagnostics, PlatformInputError>>,
     worker: Option<JoinHandle<()>>,
 }
@@ -1208,6 +1223,8 @@ impl WindowsInputService {
     ) -> Result<Self, PlatformInputError> {
         let stop = Arc::new(AtomicBool::new(false));
         let worker_stop = Arc::clone(&stop);
+        let system_termination_requested = Arc::new(AtomicBool::new(false));
+        let worker_system_termination_requested = Arc::clone(&system_termination_requested);
         let (startup_sender, startup_receiver) = mpsc::sync_channel(1);
         let (completion_sender, completion_receiver) = mpsc::sync_channel(1);
         let worker = thread::Builder::new()
@@ -1221,6 +1238,7 @@ impl WindowsInputService {
                         diagnostics_producer,
                         shortcut_dispatcher,
                         worker_stop,
+                        worker_system_termination_requested,
                         options,
                         startup_sender,
                     )
@@ -1232,6 +1250,7 @@ impl WindowsInputService {
         match startup_receiver.recv_timeout(SERVICE_TIMEOUT) {
             Ok(Ok(())) => Ok(Self {
                 stop,
+                system_termination_requested,
                 completion: completion_receiver,
                 worker: Some(worker),
             }),
@@ -1250,6 +1269,10 @@ impl WindowsInputService {
 
     pub fn stop(mut self) -> Result<PlatformInputDiagnostics, PlatformInputError> {
         self.finish(SERVICE_TIMEOUT)
+    }
+
+    pub fn system_termination_requested(&self) -> bool {
+        self.system_termination_requested.load(Ordering::Acquire)
     }
 
     fn finish(
@@ -1286,6 +1309,7 @@ fn run_input_worker(
     diagnostics_producer: PlatformInputDiagnosticsProducer,
     shortcut_dispatcher: Option<ShortcutDispatcher>,
     stop: Arc<AtomicBool>,
+    system_termination_requested: Arc<AtomicBool>,
     options: WorkerOptions,
     startup: SyncSender<Result<(), PlatformInputError>>,
 ) -> Result<PlatformInputDiagnostics, PlatformInputError> {
@@ -1300,6 +1324,7 @@ fn run_input_worker(
             diagnostics_producer,
             shortcut_dispatcher,
             stop,
+            system_termination_requested,
             options,
             startup,
         )
@@ -1314,6 +1339,7 @@ unsafe fn run_input_worker_inner(
     diagnostics_producer: PlatformInputDiagnosticsProducer,
     shortcut_dispatcher: Option<ShortcutDispatcher>,
     stop: Arc<AtomicBool>,
+    system_termination_requested: Arc<AtomicBool>,
     options: WorkerOptions,
     startup: SyncSender<Result<(), PlatformInputError>>,
 ) -> Result<PlatformInputDiagnostics, PlatformInputError> {
@@ -1342,6 +1368,7 @@ unsafe fn run_input_worker_inner(
         gamepad_axis_producer,
         diagnostics_producer,
         stop,
+        system_termination_requested,
         options,
         shortcut_dispatcher,
     ));
@@ -1549,6 +1576,20 @@ unsafe extern "system" fn window_proc(
         {
             unsafe { &mut *state }.enqueue(CapturedEvent::Reset(InputResetReason::Sleep));
             Some(LRESULT(1))
+        }
+        WM_QUERYENDSESSION if !state.is_null() => {
+            // The system session deadline cannot run app shutdown work on this
+            // callback thread. Record the request for the GPUI owner and allow
+            // Windows to continue its normal end-session protocol immediately.
+            unsafe { &*state }.request_system_termination();
+            Some(LRESULT(1))
+        }
+        WM_ENDSESSION if !state.is_null() && wparam.0 != 0 => {
+            // This can arrive after WM_QUERYENDSESSION when Windows has already
+            // committed to ending the session; the owner still gets the same
+            // idempotent request if its event loop remains runnable.
+            unsafe { &*state }.request_system_termination();
+            Some(LRESULT(0))
         }
         WM_TIMER if !state.is_null() && wparam.0 == RECONCILIATION_TIMER => {
             unsafe { &mut *state }.enqueue(CapturedEvent::Reconcile);
@@ -1884,9 +1925,13 @@ mod tests {
             runtime.gamepad_axis_producer(),
             diagnostics_producer,
             Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicBool::new(false)),
             WorkerOptions::default(),
             None,
         );
+        assert!(!state.system_termination_requested());
+        state.request_system_termination();
+        assert!(state.system_termination_requested());
         state.diagnostics.runtime_queue_overflows = 2;
         state.diagnostics.gamepad_connections = 3;
         state.diagnostics.gamepad_disconnections = 1;
@@ -2117,6 +2162,7 @@ mod tests {
             runtime.cursor_producer(),
             axis_producer.clone(),
             PlatformInputDiagnosticsProducer::default(),
+            Arc::new(AtomicBool::new(false)),
             Arc::new(AtomicBool::new(false)),
             WorkerOptions::default(),
             None,

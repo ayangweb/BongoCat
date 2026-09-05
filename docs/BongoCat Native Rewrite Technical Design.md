@@ -355,6 +355,9 @@ PixPin、Win+L 或其他系统级快捷键可能让应用收到按下边沿，�
 8. `RegisterHotKey` 只处理应用快捷键；冲突必须反馈 UI 并保留旧绑定。
 9. XInput 固定轮询 0–3 号 slot；连接/断开和按钮使用可靠序列，摇杆/trigger 使用带 connection generation 的 latest-values。平台 adapter 仅从 System32 动态解析系统 `xinput1_4.dll`，不要求构建或部署环境提供 SDK import library；backend/export 缺失必须进入诊断且不能影响键鼠服务。平台层只归一化原始范围，产品 dead-zone 由 runtime 配置统一决定。
 
+Windows 的 `WM_QUERYENDSESSION` 与已确认的 `WM_ENDSESSION` 只记录系统终止请求并立即返回；
+GPUI owner 在下一帧进入既有 shutdown coordinator，Win32 callback 不阻塞或析构 runtime/GPU 资源。
+
 该方案不承诺安全桌面交付每个释放事件，而是保证丢事件不会产生永久卡键。
 `model.release_fallback_timeout_ms` 只对 captured keyboard control 生效：runtime 以自身可注入的
 单调时钟记录 down/repeat 的观察时刻，repeat 刷新期限，不比较平台 input service 的事件时间戳；

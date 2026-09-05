@@ -1302,6 +1302,12 @@ impl ProductOverlaySession {
         self.overlay.renderer.model_generation
     }
 
+    pub(super) fn system_termination_requested(&self) -> bool {
+        self.input_service
+            .as_ref()
+            .is_some_and(WindowsInputService::system_termination_requested)
+    }
+
     pub(super) fn stop_input(&mut self) -> Result<(), OverlayError> {
         if self.input_stopped {
             return Ok(());

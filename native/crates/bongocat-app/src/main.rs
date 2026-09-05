@@ -1750,7 +1750,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     keep_running
                 });
                 #[cfg(target_os = "windows")]
-                let tick_result = frame_active.then(|| {
+                let (tick_result, system_termination_requested) = if frame_active {
                     let mut overlay = frame_overlay.borrow_mut();
                     let overlay = overlay
                         .as_mut()
@@ -1770,8 +1770,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     {
                         last_overlay_bounds = Some(bounds);
                     }
-                    result
-                });
+                    (Some(result), overlay.system_termination_requested())
+                } else {
+                    (None, false)
+                };
                 #[cfg(target_os = "windows")]
                 if tick_result.as_ref().is_some_and(Result::is_err) {
                     frame_active = false;
@@ -1811,7 +1813,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             cx,
                         );
                     }
-                    if frame_shutdown_requested.load(Ordering::Acquire) {
+                    if frame_shutdown_requested.load(Ordering::Acquire)
+                        || system_termination_requested
+                    {
                         start_windows_product_shutdown(cx);
                         Ok(false)
                     } else {
