@@ -313,6 +313,7 @@ pub struct SettingsSnapshot {
     pub resolved_language: SettingsLanguage,
     pub status_icon_visible: bool,
     pub taskbar_icon_visible: bool,
+    pub check_for_updates_automatically: bool,
     pub overlay_visible: bool,
     pub overlay: SettingsOverlay,
     pub motion_audio_enabled: bool,
@@ -933,6 +934,11 @@ pub enum SettingsCommand {
         visible: bool,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    SetCheckForUpdatesAutomatically {
+        expected_config_revision: u64,
+        enabled: bool,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     SetOverlaySettings {
         expected_config_revision: u64,
         settings: SettingsOverlay,
@@ -1150,6 +1156,19 @@ impl SettingsClient {
         self.request(|reply| SettingsCommand::SetTaskbarIconVisible {
             expected_config_revision,
             visible,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn set_check_for_updates_automatically(
+        &self,
+        expected_config_revision: u64,
+        enabled: bool,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetCheckForUpdatesAutomatically {
+            expected_config_revision,
+            enabled,
             reply,
         })
         .await
@@ -1406,6 +1425,18 @@ impl SettingsClient {
         self.request_blocking(|reply| SettingsCommand::SetTaskbarIconVisible {
             expected_config_revision,
             visible,
+            reply,
+        })
+    }
+
+    pub fn set_check_for_updates_automatically_blocking(
+        &self,
+        expected_config_revision: u64,
+        enabled: bool,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::SetCheckForUpdatesAutomatically {
+            expected_config_revision,
+            enabled,
             reply,
         })
     }
@@ -1888,6 +1919,31 @@ mod tests {
             .set_taskbar_icon_visible_blocking(7, false)
             .expect("taskbar icon snapshot");
         assert!(!result.taskbar_icon_visible);
+        worker.join().expect("worker join");
+    }
+
+    #[test]
+    fn automatic_update_check_command_preserves_typed_preference() {
+        let (client, endpoint) = SettingsClient::bounded(1);
+        let worker = thread::spawn(move || {
+            let SettingsCommand::SetCheckForUpdatesAutomatically {
+                expected_config_revision,
+                enabled,
+                reply,
+            } = endpoint.recv_blocking().expect("automatic update command")
+            else {
+                panic!("unexpected command");
+            };
+            assert_eq!(expected_config_revision, 7);
+            assert!(!enabled);
+            let mut result = snapshot(8, true, true);
+            result.check_for_updates_automatically = enabled;
+            reply.respond(Ok(result)).expect("automatic update reply");
+        });
+        let result = client
+            .set_check_for_updates_automatically_blocking(7, false)
+            .expect("automatic update snapshot");
+        assert!(!result.check_for_updates_automatically);
         worker.join().expect("worker join");
     }
 
@@ -2383,6 +2439,7 @@ mod tests {
             resolved_language: SettingsLanguage::EnglishUnitedStates,
             status_icon_visible: true,
             taskbar_icon_visible: true,
+            check_for_updates_automatically: true,
             overlay_visible,
             overlay: SettingsOverlay::default(),
             motion_audio_enabled,

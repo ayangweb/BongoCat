@@ -305,6 +305,39 @@ impl SettingsView {
                         .to_owned(),
                 );
             }
+            let automatic_update_check = tree
+                .nodes
+                .iter()
+                .find(|node| node.id == ACCESSIBILITY_AUTOMATIC_UPDATE_CHECK)
+                .ok_or_else(|| {
+                    "accessibility tree omitted the automatic update setting".to_owned()
+                })?;
+            if automatic_update_check.role != AccessibilityRole::Switch
+                || automatic_update_check.label
+                    != ui_text(
+                        snapshot.resolved_language,
+                        UiText::CheckForUpdatesAutomatically,
+                    )
+                || automatic_update_check.value.as_deref()
+                    != Some(ui_text(
+                        snapshot.resolved_language,
+                        UiText::CheckForUpdatesAutomaticallyDescription,
+                    ))
+                || automatic_update_check.toggled
+                    != Some(if snapshot.check_for_updates_automatically {
+                        AccessibilityToggle::On
+                    } else {
+                        AccessibilityToggle::Off
+                    })
+                || automatic_update_check.disabled != controls_disabled
+                || automatic_update_check.supports_click != !controls_disabled
+                || automatic_update_check.supports_focus != !controls_disabled
+            {
+                return Err(
+                    "automatic update accessibility semantics diverged from the visible control"
+                        .to_owned(),
+                );
+            }
             #[cfg(target_os = "windows")]
             {
                 let taskbar_icon = tree

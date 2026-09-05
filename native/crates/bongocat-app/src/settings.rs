@@ -592,6 +592,25 @@ fn run_service(
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
+            SettingsCommand::SetCheckForUpdatesAutomatically {
+                expected_config_revision,
+                enabled,
+                reply,
+            } => {
+                let result = require_operational(&application)
+                    .map_err(map_application_error)
+                    .and_then(|()| {
+                        if application.config_revision() != Some(expected_config_revision) {
+                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
+                        } else {
+                            application
+                                .set_check_for_updates_automatically(enabled)
+                                .map_err(map_application_error)
+                        }
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
             SettingsCommand::SetOverlaySettings {
                 expected_config_revision,
                 settings,
@@ -1100,6 +1119,10 @@ fn snapshot(
         resolved_language: settings_language(application.effective_language()),
         status_icon_visible: application.config().application.show_status_icon,
         taskbar_icon_visible: application.config().application.show_taskbar_icon,
+        check_for_updates_automatically: application
+            .config()
+            .application
+            .check_for_updates_automatically,
         overlay_visible: runtime.overlay_visible,
         overlay: SettingsOverlay {
             click_through: runtime.overlay_settings.click_through,
@@ -2240,6 +2263,7 @@ mod tests {
             resolved_language: SettingsLanguage::EnglishUnitedStates,
             status_icon_visible: true,
             taskbar_icon_visible: true,
+            check_for_updates_automatically: true,
             overlay_visible: true,
             overlay: SettingsOverlay::default(),
             motion_audio_enabled: true,
@@ -2885,6 +2909,50 @@ mod tests {
         service.join().expect("service join");
         let restarted = Application::start_with_layout(layout).expect("restart application");
         assert!(!restarted.config().application.show_taskbar_icon);
+        restarted.shutdown().expect("restart shutdown");
+    }
+
+    #[test]
+    fn service_persists_automatic_update_check_preference_and_rejects_stale_revision() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application =
+            Application::start_with_layout(layout.clone()).expect("application start");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        assert!(initial.check_for_updates_automatically);
+        let disabled = client
+            .set_check_for_updates_automatically_blocking(
+                initial.config_revision.expect("config revision"),
+                false,
+            )
+            .expect("disable automatic update checks");
+        assert!(!disabled.check_for_updates_automatically);
+        assert_ne!(disabled.config_revision, initial.config_revision);
+
+        let stale = client
+            .set_check_for_updates_automatically_blocking(
+                initial.config_revision.expect("config revision"),
+                true,
+            )
+            .expect_err("reject stale automatic update preference");
+        assert_eq!(stale.code(), SettingsErrorCode::SnapshotOutdated);
+        assert_eq!(
+            client.read_snapshot_blocking().expect("unchanged snapshot"),
+            disabled
+        );
+
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
+        let restarted = Application::start_with_layout(layout).expect("restart application");
+        assert!(
+            !restarted
+                .config()
+                .application
+                .check_for_updates_automatically
+        );
         restarted.shutdown().expect("restart shutdown");
     }
 

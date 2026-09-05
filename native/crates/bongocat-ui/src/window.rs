@@ -152,6 +152,8 @@ const ACCESSIBILITY_BEHAVIOR_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeI
 const ACCESSIBILITY_RELEASE_FALLBACK_DECREASE: AccessibilityNodeId = AccessibilityNodeId::new(42);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_RELEASE_FALLBACK_INCREASE: AccessibilityNodeId = AccessibilityNodeId::new(43);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_AUTOMATIC_UPDATE_CHECK: AccessibilityNodeId = AccessibilityNodeId::new(45);
 
 type LanguageSelectState = SelectState<SearchableVec<&'static str>>;
 
@@ -187,6 +189,7 @@ enum PendingOperation {
     StatusIconVisibility,
     #[cfg(target_os = "windows")]
     TaskbarIconVisibility,
+    AutomaticUpdateCheck,
     OverlayVisibility,
     OverlaySettings,
     MotionAudio,
@@ -368,6 +371,7 @@ pub struct SettingsView {
     status_icon_focus: FocusHandle,
     #[cfg(target_os = "windows")]
     taskbar_icon_focus: FocusHandle,
+    automatic_update_check_focus: FocusHandle,
     overlay_focus: FocusHandle,
     overlay_topmost_focus: FocusHandle,
     overlay_click_through_focus: FocusHandle,
@@ -494,6 +498,14 @@ impl SettingsView {
                 }) => {
                     client
                         .set_taskbar_icon_visible(expected_config_revision, visible)
+                        .await
+                }
+                Some(SettingValue::CheckForUpdatesAutomatically {
+                    expected_config_revision,
+                    enabled,
+                }) => {
+                    client
+                        .set_check_for_updates_automatically(expected_config_revision, enabled)
                         .await
                 }
                 Some(SettingValue::OverlayVisible {
@@ -652,6 +664,10 @@ enum SettingValue {
     TaskbarIconVisible {
         expected_config_revision: u64,
         visible: bool,
+    },
+    CheckForUpdatesAutomatically {
+        expected_config_revision: u64,
+        enabled: bool,
     },
     OverlayVisible {
         expected_config_revision: u64,

@@ -2441,6 +2441,18 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       release all-target tests、release check、依赖许可证/来源和 Linux/macOS Intel/Windows x64/ARM64
       定向 Clippy 已通过，等待三平台 CI。
 
+68. [ ] `P7-AUTOMATIC-UPDATE-PREFERENCE`：让当前 v1 自动检查更新偏好进入正式设置链路。
+    - 依赖：当前 v1 `application.check_for_updates_automatically`、settings typed command/snapshot、
+      GPUI Kit switch 与 signed update manifest boundary。
+    - 退出条件：配置值通过强类型 snapshot/command 往返并在重启后恢复，stale revision 不改变
+      config 或 snapshot；General 开关具备中英文本、键盘焦点和 AX/UIA switch 语义；UI/Application
+      定向测试、完整 Native workspace 门禁和双平台 CI 通过。该任务不包含 endpoint、24 小时调度、
+      下载、安装或回滚，这些仍由后续更新任务完成。
+    - 状态（2026-09-05）：Application 持久化、settings snapshot/command/client、GPUI Kit 开关、
+      中英文案和项目 AccessKit 语义已接通；typed command、stale revision 与重启恢复测试已完成。
+      format、严格 release workspace Clippy、完整 release all-target tests 和 release check 已通过，
+      等待提交后的双平台 CI。
+
 ## 13. 待决策清单
 
 | 决策                                                          | 最迟完成              | 阻塞内容                           |

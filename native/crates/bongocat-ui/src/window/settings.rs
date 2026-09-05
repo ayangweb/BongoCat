@@ -134,6 +134,35 @@ impl SettingsView {
         );
     }
 
+    pub(super) fn set_check_for_updates_automatically(
+        &mut self,
+        enabled: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(expected_config_revision) = self
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.config_revision)
+        else {
+            return;
+        };
+        if self
+            .snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.check_for_updates_automatically == enabled)
+        {
+            return;
+        }
+        self.start_request(
+            PendingOperation::AutomaticUpdateCheck,
+            Some(SettingValue::CheckForUpdatesAutomatically {
+                expected_config_revision,
+                enabled,
+            }),
+            cx,
+        );
+    }
+
     pub(super) fn set_overlay_settings(
         &mut self,
         settings: SettingsOverlay,

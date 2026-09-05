@@ -22,6 +22,9 @@ impl Render for SettingsView {
                     ACCESSIBILITY_OVERLAY_KEEP_INSIDE_WORK_AREA => {
                         Some(&self.overlay_keep_inside_work_area_focus)
                     }
+                    ACCESSIBILITY_AUTOMATIC_UPDATE_CHECK => {
+                        Some(&self.automatic_update_check_focus)
+                    }
                     ACCESSIBILITY_OVERLAY_SCALE_DECREASE => {
                         Some(&self.overlay_scale_decrease_focus)
                     }
@@ -660,6 +663,34 @@ impl Render for SettingsView {
                                 ),
                             )
                             .description(ui_text(language, UiText::ShowTaskbarIconDescription)),
+                        );
+                        items.push(
+                            SettingItem::new(
+                                ui_text(language, UiText::CheckForUpdatesAutomatically),
+                                SettingField::switch(
+                                    {
+                                        let view = view_entity.clone();
+                                        move |app| {
+                                            view.read(app)
+                                                .snapshot
+                                                .as_ref()
+                                                .is_some_and(|s| s.check_for_updates_automatically)
+                                        }
+                                    },
+                                    {
+                                        let view = view_entity.clone();
+                                        move |value, app| {
+                                            view.update(app, |view, cx| {
+                                                view.set_check_for_updates_automatically(value, cx)
+                                            });
+                                        }
+                                    },
+                                ),
+                            )
+                            .description(ui_text(
+                                language,
+                                UiText::CheckForUpdatesAutomaticallyDescription,
+                            )),
                         );
                         items.push(
                             SettingItem::new(

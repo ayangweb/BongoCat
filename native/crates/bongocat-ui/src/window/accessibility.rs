@@ -357,6 +357,26 @@ impl SettingsView {
         if !disabled {
             status_icon_node = status_icon_node.clickable().focusable();
         }
+        let mut automatic_update_check_node = AccessibilityNode::new(
+            ACCESSIBILITY_AUTOMATIC_UPDATE_CHECK,
+            AccessibilityRole::Switch,
+            ui_text(language, UiText::CheckForUpdatesAutomatically),
+        )
+        .with_value(ui_text(
+            language,
+            UiText::CheckForUpdatesAutomaticallyDescription,
+        ))
+        .with_toggle(
+            if snapshot.is_some_and(|snapshot| snapshot.check_for_updates_automatically) {
+                AccessibilityToggle::On
+            } else {
+                AccessibilityToggle::Off
+            },
+        )
+        .disabled(disabled);
+        if !disabled {
+            automatic_update_check_node = automatic_update_check_node.clickable().focusable();
+        }
         #[cfg(target_os = "windows")]
         let mut taskbar_icon_node = AccessibilityNode::new(
             ACCESSIBILITY_TASKBAR_ICON,
@@ -521,6 +541,7 @@ impl SettingsView {
             ACCESSIBILITY_STATUS_ICON,
             #[cfg(target_os = "windows")]
             ACCESSIBILITY_TASKBAR_ICON,
+            ACCESSIBILITY_AUTOMATIC_UPDATE_CHECK,
             ACCESSIBILITY_STARTUP,
             ACCESSIBILITY_OPEN_BACKUPS,
             ACCESSIBILITY_RESTORE_DEFAULTS,
@@ -584,6 +605,7 @@ impl SettingsView {
             status_icon_node,
             #[cfg(target_os = "windows")]
             taskbar_icon_node,
+            automatic_update_check_node,
             startup_node,
             open_backups_node,
             restore_node,
@@ -649,6 +671,14 @@ impl SettingsView {
             ACCESSIBILITY_TASKBAR_ICON => {
                 if let Some(snapshot) = self.snapshot.as_ref() {
                     self.set_taskbar_icon_visible(!snapshot.taskbar_icon_visible, cx);
+                }
+            }
+            ACCESSIBILITY_AUTOMATIC_UPDATE_CHECK => {
+                if let Some(snapshot) = self.snapshot.as_ref() {
+                    self.set_check_for_updates_automatically(
+                        !snapshot.check_for_updates_automatically,
+                        cx,
+                    );
                 }
             }
             ACCESSIBILITY_OVERLAY => {
@@ -842,6 +872,10 @@ impl SettingsView {
             (ACCESSIBILITY_STATUS_ICON, &self.status_icon_focus),
             #[cfg(target_os = "windows")]
             (ACCESSIBILITY_TASKBAR_ICON, &self.taskbar_icon_focus),
+            (
+                ACCESSIBILITY_AUTOMATIC_UPDATE_CHECK,
+                &self.automatic_update_check_focus,
+            ),
             (ACCESSIBILITY_MIRROR, &self.mirror_focus),
             (ACCESSIBILITY_MIRROR_POINTER, &self.mirror_pointer_focus),
             (ACCESSIBILITY_IGNORE_POINTER, &self.ignore_pointer_focus),

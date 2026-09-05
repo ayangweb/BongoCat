@@ -168,6 +168,8 @@ pub(super) enum UiText {
     ShowTaskbarIcon,
     #[cfg(target_os = "windows")]
     ShowTaskbarIconDescription,
+    CheckForUpdatesAutomatically,
+    CheckForUpdatesAutomaticallyDescription,
     OpenAtLogin,
     DecreaseOverlayScale,
     IncreaseOverlayScale,
@@ -471,6 +473,11 @@ pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
         UiText::ShowTaskbarIconDescription => [
             "Show the settings window in the Windows taskbar.",
             "在 Windows 任务栏中显示设置窗口。",
+        ],
+        UiText::CheckForUpdatesAutomatically => ["Check for updates automatically", "自动检查更新"],
+        UiText::CheckForUpdatesAutomaticallyDescription => [
+            "Check for a new signed release when BongoCat starts and every 24 hours.",
+            "BongoCat 启动时检查签名的新版本，此后每 24 小时检查一次。",
         ],
         UiText::OpenAtLogin => ["Open at login", "登录时启动"],
         UiText::DecreaseOverlayScale => ["Decrease overlay scale", "缩小桌面猫"],
@@ -1119,6 +1126,8 @@ mod tests {
             UiText::ShowTaskbarIcon,
             #[cfg(target_os = "windows")]
             UiText::ShowTaskbarIconDescription,
+            UiText::CheckForUpdatesAutomatically,
+            UiText::CheckForUpdatesAutomaticallyDescription,
             UiText::OpenAtLogin,
             UiText::DecreaseOverlayScale,
             UiText::IncreaseOverlayScale,
