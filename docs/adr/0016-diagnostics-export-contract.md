@@ -10,7 +10,7 @@ Diagnostics 页面已经聚合 runtime、输入、配置和模型目录状态，
 
 ## 决策
 
-- 通过 settings service 的 `ExportDiagnostics` 强类型 command 生成 format version 2 JSON。
+- 通过 settings service 的 `ExportDiagnostics` 强类型 command 生成 format version 1 JSON。
 - 导出目标固定为当前不可变构建环境的 `logs/diagnostics.json`，使用同目录原子写入；UI executor
   不执行文件 I/O。
 - 文档只包含 runtime/input/configuration 的稳定 code、匿名计数、模型来源计数和
@@ -22,8 +22,8 @@ Diagnostics 页面已经聚合 runtime、输入、配置和模型目录状态，
   不影响配置 revision。
 - 导出额外包含 app-owned 日志 writer 的匿名聚合统计（written、dropped、rotated、pruned、bytes
   和 retained_files），但不读取或复制任何日志正文。
-- format version 2 仅以追加字段扩展版本 1 的匿名结构；消费者必须拒绝未知版本，不能猜测或
-  忽略不兼容的导出格式。
+- format version 1 是当前完整的匿名结构；消费者必须拒绝非 v1，不能猜测或忽略不兼容的导出格式。
+  后续字段或行为变化必须先建立新的版本、schema、测试与 ADR，不能把兼容分支预置到当前格式。
 
 ## 后续边界
 

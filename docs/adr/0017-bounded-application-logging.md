@@ -27,9 +27,9 @@ Native Rewrite 需要可诊断的应用生命周期记录，但不能把按键�
   forced/unknown, shutdown interrupted, or panic, then immediately overwrites it with a new
   `running` marker. This preserves diagnosis without recording payloads or paths and prevents a
   stale marker from causing a repeated recovery loop.
-- Diagnostics export may include aggregate counts for the fixed application event codes. This
-  additive shape is format version 2; consumers must reject unknown versions rather than guessing.
-  The export never embeds JSONL records, panic payloads, paths, key values, or user file content.
+- Diagnostics export includes aggregate counts for the fixed application event codes as part of its
+  current format version 1. Consumers must reject non-v1 data rather than guessing. The export never
+  embeds JSONL records, panic payloads, paths, key values, or user file content.
 
 ## 验证
 
