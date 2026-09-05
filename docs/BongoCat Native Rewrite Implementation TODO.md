@@ -1250,7 +1250,12 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 ### 7.1 Schema 与命名
 
 - [x] 发布 `shared/config/config.schema.json`，并用有效/拒绝样本验证 schema 边界。
-- [ ] 实现 `shared/config/native-config-contract.md` 中的首版字段，调整时同步 contract 和测试。
+- [x] 实现 `shared/config/native-config-contract.md` 中的首版字段，调整时同步 contract 和测试。
+  - 验收证据（2026-09-05）：完整 v1 的 application、appearance、overlay、input、model 与 shortcuts
+    字段均由 `NativeConfig` 的 strict Rust 类型、`config.schema.json`、default/invalid shared fixtures
+    和产品 settings snapshot/typed command 共同覆盖；contract 表已补全两项 input gamepad dead-zone
+    字段及 `[0, 1)` 边界。`bongocat-config` contract 测试验证默认 fixture 与 Rust 默认值一致、schema
+    拒绝未知或越界字段。后续新增首版字段仍必须同时更新本 contract、schema、fixture 与实现。
 - [x] 每个字段记录默认值、范围、单位和跨字段约束；schema、typed validation 与边界 fixture 已对齐，后续新增字段必须同步三者。
 - [x] 未知字段采用明确的拒绝、忽略或诊断策略。
   - 验收证据（2026-08-31）：JSON Schema 的所有对象使用 `additionalProperties: false`，正式

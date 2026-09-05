@@ -38,6 +38,8 @@ shortcuts
 | `overlay`     | `scale_percent`                   | 模型/窗口缩放百分比                    |
 | `overlay`     | `opacity_percent`                 | 窗口不透明度百分比                     |
 | `overlay`     | `keep_inside_work_area`           | 保持在可见工作区                       |
+| `input`       | `gamepad_stick_dead_zone`         | 左/右摇杆死区，`[0, 1)`                |
+| `input`       | `gamepad_trigger_dead_zone`       | 扳机死区，`[0, 1)`                     |
 | `model`       | `selected_model_id`               | 当前模型稳定 ID，与 origin 成对为空    |
 | `model`       | `selected_model_origin`           | `preset` / `installed`，与 ID 成对为空 |
 | `model`       | `mirror`                          | 水平镜像模型                           |
