@@ -1386,6 +1386,10 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     run marker 保留及下一次启动的 unclean 分类；正常 shutdown 会收敛 marker。默认产品 CLI
     不暴露该测试入口。
 - [ ] 定义正常退出、强制退出、崩溃和系统终止的恢复标记；下次启动可区分并避免无限恢复循环。
+  - 状态（2026-09-05）：环境隔离 marker v1 现固定为 `running`、`shutting_down` 或 `panicked`；
+    下一次启动仅投影匿名 `forced_or_unknown`、`shutdown_interrupted` 或 `panic`，随即写入新的
+    `running` marker。正常 shutdown 才删除 marker，panic hook 不读取 payload 且使用非阻塞写入。
+    app-log contract 已覆盖三个残留分类及收敛；系统终止 source 到 marker phase 的双平台实机矩阵仍待完成。
 
 ### 8.2 Windows
 

@@ -14,7 +14,9 @@ use std::{
 const LOG_FILE_PREFIX: &str = "application-";
 const LOG_FILE_SUFFIX: &str = ".jsonl";
 const RUN_MARKER_NAME: &str = "application-running.marker";
-const RUN_MARKER_CONTENTS: &[u8] = b"{\"schema_version\":1}\n";
+const RUN_MARKER_RUNNING: &[u8] = b"{\"schema_version\":1,\"phase\":\"running\"}\n";
+const RUN_MARKER_SHUTTING_DOWN: &[u8] = b"{\"schema_version\":1,\"phase\":\"shutting_down\"}\n";
+const RUN_MARKER_PANICKED: &[u8] = b"{\"schema_version\":1,\"phase\":\"panicked\"}\n";
 const MAX_LOG_BYTES: u64 = 1024 * 1024;
 const MAX_LOG_FILES: usize = 8;
 const MAX_TOTAL_LOG_BYTES: u64 = 8 * 1024 * 1024;
@@ -226,6 +228,13 @@ pub(crate) struct ApplicationRunMarker {
     path: PathBuf,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum PreviousRunState {
+    ForcedOrUnknown,
+    Panic,
+    ShutdownInterrupted,
+}
+
 type PanicHook = dyn Fn(&PanicHookInfo<'_>) + Send + Sync + 'static;
 
 pub struct ApplicationPanicHook {
@@ -288,15 +297,25 @@ impl ApplicationLogHandle {
     pub fn install_panic_hook(&self) -> ApplicationPanicHook {
         let previous = panic::take_hook();
         let sink = Arc::clone(&self.sink);
+        let directory = self
+            .sink
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .directory
+            .clone();
         panic::set_hook(Box::new(move |_| {
             sink.try_record(current_day(), ApplicationLogEvent::panicked());
+            let _ = write_run_marker(&directory.join(RUN_MARKER_NAME), RUN_MARKER_PANICKED);
         }));
         ApplicationPanicHook {
             previous: Some(previous),
         }
     }
 
-    pub(crate) fn begin_run(&self) -> Result<(ApplicationRunMarker, bool), ApplicationLogError> {
+    pub(crate) fn begin_run(
+        &self,
+    ) -> Result<(ApplicationRunMarker, Option<PreviousRunState>), ApplicationLogError> {
         let directory = self
             .sink
             .state
@@ -305,26 +324,40 @@ impl ApplicationLogHandle {
             .directory
             .clone();
         let path = directory.join(RUN_MARKER_NAME);
-        let previous_run_unclean = path.exists();
-        let mut marker = OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .write(true)
-            .open(&path)
-            .map_err(ApplicationLogError::WriteRunMarker)?;
-        set_private_file(&marker).map_err(ApplicationLogError::WriteRunMarker)?;
-        marker
-            .write_all(RUN_MARKER_CONTENTS)
-            .and_then(|()| marker.sync_all())
-            .map_err(ApplicationLogError::WriteRunMarker)?;
-        Ok((ApplicationRunMarker { path }, previous_run_unclean))
+        let previous_run = fs::read(&path)
+            .ok()
+            .map(|contents| match contents.as_slice() {
+                RUN_MARKER_PANICKED => PreviousRunState::Panic,
+                RUN_MARKER_SHUTTING_DOWN => PreviousRunState::ShutdownInterrupted,
+                _ => PreviousRunState::ForcedOrUnknown,
+            });
+        write_run_marker(&path, RUN_MARKER_RUNNING)?;
+        Ok((ApplicationRunMarker { path }, previous_run))
     }
 }
 
 impl ApplicationRunMarker {
+    pub(crate) fn mark_shutdown_started(&self) -> Result<(), ApplicationLogError> {
+        write_run_marker(&self.path, RUN_MARKER_SHUTTING_DOWN)
+    }
+
     pub(crate) fn complete(self) -> Result<(), ApplicationLogError> {
         fs::remove_file(&self.path).map_err(ApplicationLogError::RemoveRunMarker)
     }
+}
+
+fn write_run_marker(path: &Path, contents: &[u8]) -> Result<(), ApplicationLogError> {
+    let mut marker = OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(path)
+        .map_err(ApplicationLogError::WriteRunMarker)?;
+    set_private_file(&marker).map_err(ApplicationLogError::WriteRunMarker)?;
+    marker
+        .write_all(contents)
+        .and_then(|()| marker.sync_all())
+        .map_err(ApplicationLogError::WriteRunMarker)
 }
 
 impl ApplicationLogSink {
@@ -737,18 +770,39 @@ mod tests {
         let directory = tempdir().expect("temporary directory");
         let handle = ApplicationLogHandle::install(directory.path()).expect("application log");
         let (marker, previous) = handle.begin_run().expect("begin first run");
-        assert!(!previous);
+        assert_eq!(previous, None);
         let marker_path = directory.path().join(RUN_MARKER_NAME);
         assert_eq!(
             fs::read(&marker_path).expect("marker bytes"),
-            RUN_MARKER_CONTENTS
+            RUN_MARKER_RUNNING
         );
         drop(marker);
 
         let (marker, previous) = handle.begin_run().expect("begin recovered run");
-        assert!(previous);
+        assert_eq!(previous, Some(PreviousRunState::ForcedOrUnknown));
         marker.complete().expect("complete run");
         assert!(!marker_path.exists());
+    }
+
+    #[test]
+    fn run_marker_classifies_panic_and_interrupted_shutdown_without_retaining_them() {
+        let directory = tempdir().expect("temporary directory");
+        let handle = ApplicationLogHandle::install(directory.path()).expect("application log");
+        let marker_path = directory.path().join(RUN_MARKER_NAME);
+
+        fs::write(&marker_path, RUN_MARKER_PANICKED).expect("panic marker");
+        let (marker, previous) = handle.begin_run().expect("recover panic");
+        assert_eq!(previous, Some(PreviousRunState::Panic));
+        assert_eq!(
+            fs::read(&marker_path).expect("new running marker"),
+            RUN_MARKER_RUNNING
+        );
+        marker.mark_shutdown_started().expect("mark shutdown start");
+        drop(marker);
+
+        let (marker, previous) = handle.begin_run().expect("recover interrupted shutdown");
+        assert_eq!(previous, Some(PreviousRunState::ShutdownInterrupted));
+        marker.complete().expect("complete recovered run");
     }
 
     #[cfg(unix)]

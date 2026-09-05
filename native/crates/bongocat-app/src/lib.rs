@@ -274,7 +274,7 @@ impl Application {
         )?;
         let config_store = ConfigStore::new(layout.clone())?;
         let application_log = ApplicationLogHandle::install(&layout.logs)?;
-        let (run_marker, previous_run_unclean) = application_log.begin_run()?;
+        let (run_marker, previous_run) = application_log.begin_run()?;
         let state_store = StateStore::new(layout);
         let state = state_store.load_or_default().state;
         let (config, config_revision, config_recovery, interrupted_config_recovery, config_status) =
@@ -398,7 +398,7 @@ impl Application {
             panic_hook: None,
             shortcut_table,
         };
-        if previous_run_unclean {
+        if previous_run.is_some() {
             application
                 .application_log
                 .record(ApplicationLogEvent::previous_run_unclean());
@@ -1094,6 +1094,7 @@ impl Application {
     pub fn shutdown(self) -> Result<RuntimeSnapshot, ApplicationError> {
         self.application_log
             .record(ApplicationLogEvent::shutdown_started());
+        self.run_marker.mark_shutdown_started()?;
         let runtime_result = self.runtime.shutdown(RUNTIME_TIMEOUT);
         let audio_result = self
             .motion_audio
