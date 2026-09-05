@@ -678,6 +678,11 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
   sequence，`Available` 与 `UpToDate` 都会推进同一 session 的 rollback 下限；损坏、跨环境或未知
   schema 失败关闭，不自动重置。`updates/` 在 Unix 创建或重开时强制 owner-only `0700`，Windows
   使用用户 profile ACL。
+- Windows 首发安装包使用固定版本、hash 的 NSIS per-user installer：它只安装目标架构的已签名
+  product artifact 到当前用户的 local application directory，不请求管理员权限，也不读取、迁移或删除
+  Development/Production 的 config、state、models、backups、logs 或 updates 数据。installer 与未来的
+  Rust update helper 不联网；helper 只在应用完成协调 shutdown 后接收已验证 artifact，原子替换失败时
+  恢复上一已知可运行版本。卸载默认只移除 product files，用户数据必须由明确的独立操作删除。
 - 自动检查偏好启用时在应用启动后立即请求一次检查，随后以可注入的单调时间从每次实际派发起
   间隔 24 小时；从关闭切换为启用时同样立即请求一次，关闭则取消待触发检查。重复 poll 不得重复
   派发，单调时间回退必须产生稳定诊断并从新时间原点重建间隔，不能形成重试风暴。
@@ -819,6 +824,16 @@ Windows 当前用户 Run value 按 Development/Production 分名；macOS 13+ 只
 
 平台无关 verifier 先对原始 manifest bytes 执行 detached Ed25519 严格验签，再校验环境、版本、
 sequence、target/arch、HTTPS、长度与 SHA-256；下载、installer 和回滚保持后续独立边界。
+
+### ADR-022：更新 Manifest 传输 Envelope
+
+无 redirect HTTPS `200` 响应以固定 key ID 与小写 hex signature headers 携带受限原始 manifest
+bytes；transport 只能构造项目自有 envelope，不能预解析或改变待验签 bytes。
+
+### ADR-023：Windows Per-User Installer
+
+Windows 首发采用固定、可审计 NSIS per-user installer，不请求管理员权限或触及环境数据；未来 Rust
+update helper 只接收已验证 artifact，installer 权限、原子替换与 rollback 保持独立发布门禁。
 
 ## 17. 实施阶段
 

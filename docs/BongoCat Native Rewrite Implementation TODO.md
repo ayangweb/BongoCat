@@ -1414,7 +1414,12 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     现只读写最多 1 MiB 的无 NUL 纯文本、无文本返回空选项，错误不包含内容；Windows 的
     `CF_UNICODETEXT` handle/clipboard RAII 已通过 x64 target check，但尚无 Windows 实机 clipboard
     read/write smoke，因此总项保持未勾选。
-- [ ] 选择并记录 MSIX、WiX 或 NSIS 打包 ADR。
+- [x] 选择并记录 MSIX、WiX 或 NSIS 打包 ADR。
+  - 验收证据（2026-09-05）：ADR-0023 选择 NSIS per-user installer，以当前用户 local application
+    directory、无管理员权限、逐 target/arch 已签名 artifact 和不触及环境数据为首发约束。MSIX 的包
+    activation/update 模型与既有 HKCU Run/startup 和独立 signed update helper 冲突；WiX 的机器级 MSI
+    重点需要额外管理员权限与服务策略，均不作为首发路径。实际 NSIS script、签名、卸载、helper 和
+    rollback smoke 继续由后续任务验证。
 - [ ] 对安装目录、用户数据目录和更新临时目录分别建模。
 
 ### 8.3 macOS
