@@ -239,7 +239,6 @@ pub struct OverlayConfig {
     pub always_on_top: bool,
     pub scale_percent: u16,
     pub opacity_percent: u8,
-    pub corner_radius_percent: u8,
     pub hide_on_pointer_hover: bool,
     pub hide_on_pointer_hover_delay_ms: u32,
     pub keep_inside_work_area: bool,
@@ -880,7 +879,6 @@ impl Default for NativeConfig {
                 always_on_top: true,
                 scale_percent: 100,
                 opacity_percent: 100,
-                corner_radius_percent: 0,
                 hide_on_pointer_hover: false,
                 hide_on_pointer_hover_delay_ms: 250,
                 keep_inside_work_area: true,
@@ -915,9 +913,6 @@ impl NativeConfig {
         }
         if !(1..=100).contains(&self.overlay.opacity_percent) {
             return Err(ConfigError::InvalidValue("overlay.opacity_percent"));
-        }
-        if self.overlay.corner_radius_percent > 100 {
-            return Err(ConfigError::InvalidValue("overlay.corner_radius_percent"));
         }
         if !(0.0..1.0).contains(&self.input.gamepad_stick_dead_zone)
             || !self.input.gamepad_stick_dead_zone.is_finite()
@@ -2498,6 +2493,12 @@ mod tests {
         value["application"]["launch_at_login"] = serde_json::Value::Bool(true);
         let error = serde_json::from_value::<NativeConfig>(value)
             .expect_err("platform startup state must not enter config");
+        assert!(error.to_string().contains("unknown field"));
+
+        let mut value = serde_json::to_value(NativeConfig::default()).expect("serialize default");
+        value["overlay"]["corner_radius_percent"] = serde_json::Value::from(25);
+        let error = serde_json::from_value::<NativeConfig>(value)
+            .expect_err("post-launch corner radius must not enter the initial v1 config");
         assert!(error.to_string().contains("unknown field"));
     }
 
