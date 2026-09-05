@@ -289,7 +289,7 @@ impl SettingsLanguage {
     pub const fn display_name(self, display_language: Self) -> &'static str {
         match (self, display_language) {
             (Self::System, Self::ChineseSimplified) => "跟随系统",
-            (Self::System, Self::System | Self::EnglishUnitedStates) => "Follow system",
+            (Self::System, Self::System | Self::EnglishUnitedStates) => "System",
             (Self::ChineseSimplified, _) => "简体中文",
             (Self::EnglishUnitedStates, _) => "English",
         }
@@ -1844,7 +1844,7 @@ mod tests {
     #[test]
     fn language_preferences_have_stable_codes_and_localized_names() {
         let expected = [
-            ("system", "Follow system"),
+            ("system", "System"),
             ("zh-CN", "简体中文"),
             ("en-US", "English"),
         ];
