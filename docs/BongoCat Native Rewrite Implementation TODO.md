@@ -2123,6 +2123,12 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       物理 controller、多手柄/profile 和热插拔 smoke 仍未完成，未声称手柄功能完成。runtime
       现仅接受 active connection 的 axis sample，连接前缓存和陈旧 generation 不会在后续连接时回放，
       并有回归测试锁定该边界。
+    - 状态（2026-09-05）：可靠输入 overflow 的 Reset 会清空 runtime 的 active gamepad set；Windows
+      XInput poller 现在在成功 Reset 后重播仍连接 slot 的 `GamepadConnected`，macOS GameController
+      owner 同样先重播 attached connection 再重新采样，避免后续 button/axis 被当作 stale。Windows
+      首次连接的 `GamepadConnected` 入队失败会立即释放尚未提交的 axis generation。macOS platform
+      33 项定向测试和 Windows x64 platform tests 交叉编译通过；新增 Windows synthetic reset/reseed
+      回归待 push CI 执行，物理 controller 矩阵仍是总项的剩余门禁。
 
 46. [ ] `P5-SHORTCUT-CONTRACT`：冻结快捷键 chord 的规范化与冲突校验前置契约。
     - 依赖：Native config v1、`InputEvent`/`PhysicalKey` 语义和后续 GPUI 快捷键编辑页。

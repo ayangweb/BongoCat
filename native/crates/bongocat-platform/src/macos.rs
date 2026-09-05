@@ -608,8 +608,15 @@ impl MacGamepadOwner {
         Ok(())
     }
 
-    fn reseed(&self) {
+    fn reseed(&self) -> Result<(), PlatformInputError> {
         for handler in self.attached.values() {
+            if let Err(error) = self.producer.publish(InputEvent::GamepadConnected {
+                connection: handler.connection,
+                at: monotonic(self.started),
+            }) {
+                self.handle_input_error(error)?;
+                return Ok(());
+            }
             handler.pressed.store(0, Ordering::Release);
             // SAFETY: the owner retains each attached profile through this
             // synchronous state read.
@@ -625,6 +632,7 @@ impl MacGamepadOwner {
                 &self.counters,
             );
         }
+        Ok(())
     }
 
     fn forward_axes(&self) -> Result<(), PlatformInputError> {
@@ -1287,7 +1295,9 @@ fn run_input_worker(
                         tap_restart_pending = false;
                     }
                     accepting.store(true, Ordering::Release);
-                    gamepad_owner.reseed();
+                    if let Err(error) = gamepad_owner.reseed() {
+                        break 'service Err(error);
+                    }
                 }
                 Err(InputPublishError::QueueFull(_)) => {
                     diagnostics.runtime_queue_overflows =
