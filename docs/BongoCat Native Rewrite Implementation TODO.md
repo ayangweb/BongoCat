@@ -1458,7 +1458,9 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     `updates/staging/`；目录创建、Development/Production 同构与 Unix owner-only 权限测试逐项覆盖。
     `bongocat-platform::InstallationLayout` 仅表示 installer/update helper 的 product files root，
     不携带环境或用户数据路径。该模型未实现下载、清理、替换、installer 或 rollback，相关操作仍受
-    后续更新/发布任务的独立边界约束。
+    后续更新/发布任务的独立边界约束。`bongocat-app` 现在在 macOS bundle 与 Windows executable
+    相对的 product resource root 解析预置模型；未打包开发二进制才回退仓库资源，因此未来 installer
+    payload 不依赖源码树。
 
 ### 8.3 macOS
 

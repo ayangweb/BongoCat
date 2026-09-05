@@ -53,6 +53,11 @@ Native build provenance is written as path-free JSON with the source commit, `Ca
 Rust toolchain, target, profile, feature set, and build environment. The macOS package includes
 `Contents/Resources/build-provenance.json`; CI stores one provenance artifact per native runner.
 
+Preset models are product resources, not user data. macOS loads them from
+`BongoCat.app/Contents/Resources/models`; Windows packages must place them under
+`resources/models` beside `bongocat-app.exe`. An unpackaged development binary falls back to the
+repository resource tree only when that product-relative location is absent.
+
 The application does not expose a runtime environment switch. Both environments use the same
 schema and relative layout under separate `development/` and `production/` roots.
 The formal startup API always resolves that root from the compiled environment. Process-level tests

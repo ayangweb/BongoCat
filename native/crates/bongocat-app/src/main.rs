@@ -827,7 +827,7 @@ fn run_configuration_recovery_smoke() -> Result<(), Box<dyn std::error::Error>> 
     let _store = ConfigStore::new(layout.clone())?;
     std::fs::write(&layout.config, b"corrupt-current-without-backups")?;
     let application =
-        bongocat_app::Application::start_with_layout_for_smoke(layout, development_preset_root())?;
+        bongocat_app::Application::start_with_layout_for_smoke(layout, preset_root())?;
     if application.is_operational() {
         return Err("recovery smoke unexpectedly started an operational application".into());
     }
@@ -915,10 +915,8 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
     StateStore::new(layout.clone()).commit(&ApplicationState::with_settings_window(Some(
         WindowPlacement::new(999_000, 999_000, 800, 600, false)?,
     )))?;
-    let application = bongocat_app::Application::start_with_layout_for_smoke(
-        layout.clone(),
-        development_preset_root(),
-    )?;
+    let application =
+        bongocat_app::Application::start_with_layout_for_smoke(layout.clone(), preset_root())?;
     let service = bongocat_app::ApplicationSettingsService::start(application)?;
     let client = service.client();
     let window_state = service.window_state();
@@ -1116,7 +1114,7 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 let restarted = bongocat_app::Application::start_with_layout_for_smoke(
                     layout,
-                    development_preset_root(),
+                    preset_root(),
                 )?;
                 if restarted.settings_window_placement() != Some(expected) {
                     return Err(io::Error::other(
@@ -1170,7 +1168,7 @@ fn run_panic_diagnostics_smoke_child() -> Result<(), Box<dyn std::error::Error>>
     }
     let layout = StorageLayout::under(&root, BuildEnvironment::Development);
     let mut application =
-        bongocat_app::Application::start_with_layout_for_smoke(layout, development_preset_root())?;
+        bongocat_app::Application::start_with_layout_for_smoke(layout, preset_root())?;
     application.install_process_panic_hook();
     panic!("{PANIC_DIAGNOSTICS_SMOKE_PAYLOAD}: {}", root.display());
 }
@@ -1271,10 +1269,8 @@ fn run_panic_diagnostics_smoke() -> Result<(), Box<dyn std::error::Error>> {
     }
     let config_after_crash = std::fs::read(&layout.config)?;
 
-    let restarted = bongocat_app::Application::start_with_layout_for_smoke(
-        layout.clone(),
-        development_preset_root(),
-    )?;
+    let restarted =
+        bongocat_app::Application::start_with_layout_for_smoke(layout.clone(), preset_root())?;
     let diagnostics = restarted.application_log_diagnostics();
     if diagnostics.events.previous_run_unclean != 1 || diagnostics.events.started != 1 {
         return Err("application restart did not classify the aborted run as unclean".into());
@@ -1337,7 +1333,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
     };
-    let mut application = bongocat_app::Application::start(development_preset_root())?;
+    let mut application = bongocat_app::Application::start(preset_root())?;
     application.install_process_panic_hook();
     let core_log = CoreLogHandle::install(application.logs_directory().join("cubism-core.jsonl"))?;
     if !application.is_operational() {
@@ -2823,8 +2819,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-fn development_preset_root() -> PathBuf {
-    #[cfg(target_os = "macos")]
+fn preset_root() -> PathBuf {
     if let Ok(executable) = env::current_exe()
         && let Some(root) = bundled_preset_root(&executable)
         && root.is_dir()
@@ -2851,8 +2846,18 @@ fn bundled_preset_root(executable: &Path) -> Option<PathBuf> {
     Some(contents.join("Resources/models"))
 }
 
+#[cfg(target_os = "windows")]
+fn bundled_preset_root(executable: &Path) -> Option<PathBuf> {
+    executable_relative_preset_root(executable)
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn executable_relative_preset_root(executable: &Path) -> Option<PathBuf> {
+    Some(executable.parent()?.join("resources/models"))
+}
+
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn development_preset_root() -> std::path::PathBuf {
+fn preset_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .nth(3)
@@ -2862,7 +2867,7 @@ fn development_preset_root() -> std::path::PathBuf {
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut application = bongocat_app::Application::start(development_preset_root())?;
+    let mut application = bongocat_app::Application::start(preset_root())?;
     application.install_process_panic_hook();
     application.shutdown()?;
     Ok(())
@@ -3070,6 +3075,14 @@ mod tests {
         assert_eq!(
             bundled_preset_root(Path::new("/tmp/native/target/release/bongocat-app")),
             None
+        );
+    }
+
+    #[test]
+    fn executable_relative_preset_models_resolve_next_to_a_product_executable() {
+        assert_eq!(
+            executable_relative_preset_root(Path::new("/Applications/BongoCat/bongocat-app.exe")),
+            Some(PathBuf::from("/Applications/BongoCat/resources/models"))
         );
     }
 

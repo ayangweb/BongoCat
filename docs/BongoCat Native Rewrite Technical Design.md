@@ -562,6 +562,10 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
 
 每个根目录包含 `config.json`、`state.json`、`models/`、`backups/`、`logs/`、`updates/`（含仅供更新下载暂存的 `staging/`）和 `locks/`。锁、单实例命名、更新 channel、更新暂存和诊断同样按环境隔离；任何环境不得读取、写入或 fallback 到另一个环境。`StorageLayout` 只描述这些用户数据路径；安装器和 update helper 使用平台 `InstallationLayout` 描述 product files root，不能从用户数据根推导或操作安装目录。
 
+预置模型属于 product files：macOS 从 `BongoCat.app/Contents/Resources/models` 解析，Windows 从
+`bongocat-app.exe` 同级 `resources/models` 解析。仅未打包的开发二进制可在该相对路径缺失时回退到
+仓库 `native/resources/models`；安装产物不得依赖源码树、当前工作目录或用户数据目录。
+
 要求：
 
 - Native Rewrite 配置从全新 schema 开始，不读取、不探测、不导入旧 Tauri/Pinia store。
