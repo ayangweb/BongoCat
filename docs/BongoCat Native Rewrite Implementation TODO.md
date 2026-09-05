@@ -1186,8 +1186,8 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     证据由 `P5-APPEARANCE-THEME` 记录。
 - [ ] 图标统一使用 Lucide 资源并提供 tooltip/accessibility label。
   - 状态（2026-09-05）：已使用 `gpui-kit = 0.6.0` 内置的 Lucide 资源迁移 Settings 底栏的
-    Refresh 与 Quit 工具操作；两个 icon-only control 均保留键盘焦点、悬停 tooltip 和显式
-    accessibility label。其余命令仍待按操作语义逐项迁移，故保持未勾选。
+    Refresh 与 Quit，以及 Diagnostics 的 Open backups 工具操作；所有 icon-only control 均保留
+    键盘焦点、悬停 tooltip 和显式 accessibility label。其余命令仍待按操作语义逐项迁移，故保持未勾选。
 - [ ] 不直接复制 Zed 产品内部组件源码，除非许可证和维护边界明确。
 
 ### 6.4 页面

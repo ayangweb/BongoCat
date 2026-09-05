@@ -599,12 +599,12 @@ pub(super) fn content(
                                         })
                                         .child(recovery.detail)
                                         .child(
-                                            command_button(
+                                            icon_command_button(
+                                                "open-config-backups-control",
                                                 ui_text(language, UiText::Backups),
+                                                IconName::FolderOpen,
                                                 &view.open_backups_focus,
                                                 28,
-                                                window,
-                                                tokens,
                                                 config_action_disabled,
                                             )
                                             .id("open-config-backups")
