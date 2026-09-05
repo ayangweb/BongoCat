@@ -238,6 +238,7 @@ BongoCat/
     Cargo.toml
     Cargo.lock
     rust-toolchain.toml
+    resources/                随产品打包的模型与 Native 产品图标
     crates/
       bongocat-app/           入口、装配和 shutdown
       bongocat-runtime/       状态、输入语义、动画和命令
@@ -392,6 +393,8 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 - Renderer：D3D11 + DXGI + DirectComposition/DWM，预乘 alpha。
 - DPI：Per-Monitor-V2，处理 `WM_DPICHANGED`、显示器热插拔和负坐标。
 - 输入：Raw Input、状态校正、可选低级 hook、XInput 手柄。
+- 产品图标：`bongocat-app` 在构建期把 Native 自有 `.ico` 编译进 Windows executable；
+  `Shell_NotifyIcon` 从当前 module 的固定资源 ID 加载同一图标，不使用系统通用应用图标。
 - 托盘：`Shell_NotifyIcon` + `HMENU`。
 - 启动项：当前用户 HKCU Run，Development/Production 使用不同 value name，命令固定为当前
   executable 加 `--run-seconds 0`，默认不要求管理员权限。
@@ -399,6 +402,8 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 ### 10.2 macOS
 
 - 应用：GPUI/AppKit 主事件循环，平台 UI 操作固定在 main thread。
+- 产品图标：`.app` 的 `Info.plist` 以 `CFBundleIconFile` 指向随 bundle 签名封装的 Native 自有
+  `.icns`；打包入口在签名前验证元数据与资源存在。
 - Overlay：通过 `objc2` 创建透明 nonactivating `NSPanel`；无已保存 bounds 时以
   `350px` 作为 `100%` 的默认逻辑宽度，高度按 Cubism Core 返回的当前模型
   Canvas 宽高比自适应，两者再应用缩放设置；已保存 bounds 优先，允许通过窗口背景拖动。

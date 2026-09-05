@@ -1,7 +1,7 @@
 # Native Rewrite Rust Dependency Version Audit
 
 状态：所有直接依赖已使用 crates.io 最新稳定版；lockfile 已更新到上游约束允许的最新解析结果
-日期：2026-08-31
+日期：2026-09-05
 Rust：`cargo 1.97.1`、`rustc 1.97.1`
 
 ## Scope
@@ -36,6 +36,7 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 | `core-graphics-types`                 |        `0.2.0` | 从 `0.1.3` 升级           |
 | `core-graphics2`                      |        `0.6.1` | 从 `0.4.1` 升级           |
 | `dirs`                                |        `6.0.0` | 从 `5.0.1` 升级           |
+| `embed-resource`                      |       `3.0.11` | Windows 产品图标新增时最新 |
 | `futures-lite`                        |        `2.6.1` | 已是最新                  |
 | `gpui`                                |        `0.2.2` | 已是最新                  |
 | `libc`                                |      `0.2.189` | 新增时即为最新稳定版      |
@@ -65,15 +66,13 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 
 每个 workspace 都已执行完整 `cargo update`。这会升级所有满足现有依赖约束的传递包，但不能合法越过上游 crate 的 semver 或精确约束。
 
-最新 `gpui 0.2.2` 的依赖图仍固定旧一代 `metal 0.29.0` 和 `core-graphics2 0.4.1`；overlay spike 自己使用的直接版本已分别升级到 `0.33.0`，输入 spike 自己使用 `core-graphics2 0.6.1`，因此 lockfile 中会同时存在两个 API generation。`cargo update --dry-run --verbose` 还报告以下 5 个有更新但被 GPUI 上游约束阻止的兼容版本：
+最新 `gpui 0.2.2` 的依赖图仍固定旧一代 `metal 0.29.0` 和 `core-graphics2 0.4.1`；overlay spike 自己使用的直接版本已分别升级到 `0.33.0`，输入 spike 自己使用 `core-graphics2 0.6.1`，因此 lockfile 中会同时存在两个 API generation。`cargo update --dry-run --verbose` 还报告以下 3 个有更新但被上游约束阻止的兼容版本：
 
-| Locked through GPUI      | Available | Owner path                    |
-| ------------------------ | --------- | ----------------------------- |
-| `cocoa 0.26.0`           | `0.26.1`  | `gpui 0.2.2`                  |
-| `cocoa-foundation 0.2.0` | `0.2.1`   | `gpui 0.2.2` / `cocoa`        |
-| `core-foundation 0.10.0` | `0.10.1`  | `gpui` macOS dependency graph |
-| `generic-array 0.14.7`   | `0.14.9`  | `gpui_http_client -> sha2`    |
-| `taffy 0.9.0`            | `0.9.2`   | `gpui 0.2.2`                  |
+| Locked dependency      | Available | Owner path                |
+| ---------------------- | --------- | ------------------------- |
+| `cocoa 0.26.0`         | `0.26.1`  | `gpui 0.2.2`              |
+| `generic-array 0.14.7` | `0.14.9`  | `gpui_http_client -> sha2` |
+| `smallvec 1.15.2`      | `1.16.0`  | GPUI Kit/image/URL graphs |
 
 这些版本不能通过手改 lockfile、`cargo update --precise` 或本地 patch 安全升级。解除方式是 GPUI 发布兼容的新版本后升级 GPUI 并重跑双平台 UI/overlay smoke；不为追求表面版本一致而 fork 上游。
 
@@ -112,6 +111,10 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
 - `async-channel 2.5.0`（MIT OR Apache-2.0）已进入正式 `bongocat-ui`，只封装容量 16 的
   typed command/reply；第三方 sender/receiver 不进入 runtime/config API。正式 app service
   已验证 FIFO、receiver close、revisioned snapshot、配置持久化与 shutdown acknowledgement；
+- `embed-resource 3.0.11`（MIT，Rust 1.76+）只在 `bongocat-app` build script 中调用系统
+  resource compiler，把固定 `.ico` 编译进 Windows executable；它不进入运行时或公共 API，
+  替换边界是未来安装器构建系统直接生成等价 `.res`。上游仓库默认分支持续维护 3.x，且该版本
+  已作为 `gpui-pre` 的传递 build dependency 存在于 lockfile；本次将其精确固定为产品直接依赖。
 - `gpui 0.2.2`（Apache-2.0）只在 Windows/macOS 正式 UI/app target 编译，Linux 共享协议
   不依赖 GPUI；替换边界位于 `bongocat-ui::window` 与 app 主循环，runtime/config/model 不导入
   GPUI 类型。macOS 正式窗口 + Cubism overlay release smoke 已通过，Windows 由 hardware CI 验证；

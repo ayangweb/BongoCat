@@ -40,6 +40,8 @@ use std::{
 mod app_log;
 #[cfg(test)]
 mod build_environment_contract;
+#[cfg(test)]
+mod product_icon_contract;
 mod settings;
 use app_log::ApplicationRunMarker;
 pub use app_log::{

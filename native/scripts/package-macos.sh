@@ -21,6 +21,7 @@ CONTENTS_PATH="$APP_PATH/Contents"
 MACOS_PATH="$CONTENTS_PATH/MacOS"
 RESOURCES_PATH="$CONTENTS_PATH/Resources"
 EXECUTABLE_NAME="bongocat-app"
+ICON_FILE_NAME="BongoCat.icns"
 EXPECTED_BUNDLE_ID="com.ayangweb.bongo-cat"
 EXPECTED_MINIMUM_SYSTEM_VERSION="12.0"
 
@@ -30,6 +31,7 @@ rm -rf "$APP_PATH"
 mkdir -p "$MACOS_PATH" "$RESOURCES_PATH"
 cp "$NATIVE_DIR/macos/Info.plist" "$CONTENTS_PATH/Info.plist"
 cp "$NATIVE_DIR/target/release/$EXECUTABLE_NAME" "$MACOS_PATH/$EXECUTABLE_NAME"
+cp "$NATIVE_DIR/resources/icons/$ICON_FILE_NAME" "$RESOURCES_PATH/$ICON_FILE_NAME"
 cp -R "$NATIVE_DIR/resources/models" "$RESOURCES_PATH/models"
 python3 "$NATIVE_DIR/../tools/record-native-provenance.py" \
     --workspace "$NATIVE_DIR" \
@@ -42,6 +44,14 @@ python3 "$NATIVE_DIR/../tools/record-native-provenance.py" \
 ACTUAL_BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw -o - "$CONTENTS_PATH/Info.plist")
 if [ "$ACTUAL_BUNDLE_ID" != "$EXPECTED_BUNDLE_ID" ]; then
     printf 'unexpected bundle id: %s\n' "$ACTUAL_BUNDLE_ID" >&2
+    exit 1
+fi
+if [ "$(plutil -extract CFBundleIconFile raw -o - "$CONTENTS_PATH/Info.plist")" != "$ICON_FILE_NAME" ]; then
+    printf 'CFBundleIconFile must be %s\n' "$ICON_FILE_NAME" >&2
+    exit 1
+fi
+if [ ! -s "$RESOURCES_PATH/$ICON_FILE_NAME" ]; then
+    printf 'bundled product icon is missing: %s\n' "$ICON_FILE_NAME" >&2
     exit 1
 fi
 if [ "$(plutil -extract LSMinimumSystemVersion raw -o - "$CONTENTS_PATH/Info.plist")" != "$EXPECTED_MINIMUM_SYSTEM_VERSION" ]; then

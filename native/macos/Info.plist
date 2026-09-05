@@ -10,6 +10,8 @@
     <string>bongocat-app</string>
     <key>CFBundleIdentifier</key>
     <string>com.ayangweb.bongo-cat</string>
+    <key>CFBundleIconFile</key>
+    <string>BongoCat.icns</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>

@@ -37,6 +37,7 @@
 | metal / core-graphics-types      | `0.33.0` / `0.2.0`             | MIT OR Apache-2.0         | macOS transparent present spike          |
 | windows                          | `0.62.2`                       | MIT OR Apache-2.0         | Windows Raw Input boundary spike         |
 | bindgen                          | `0.72.1`                       | BSD-3-Clause              | Offline Cubism raw binding generator     |
+| embed-resource                   | `3.0.11`                       | MIT                       | Windows executable product icon compiler |
 | sha2                             | `0.11.0`                       | MIT OR Apache-2.0         | Header/output provenance hashes          |
 
 ## Policy

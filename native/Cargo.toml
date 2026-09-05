@@ -31,6 +31,7 @@ atomic-write-file = "=0.3.1"
 async-channel = "=2.5.0"
 dirs = "=6.0.0"
 ed25519-dalek = { version = "=3.0.0", default-features = false, features = ["fast"] }
+embed-resource = "=3.0.11"
 gpui-kit = "=0.6.0"
 image = { version = "=0.25.10", default-features = false, features = ["png"] }
 proptest = { version = "=1.11.0", default-features = false, features = ["std"] }

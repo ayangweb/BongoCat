@@ -726,11 +726,45 @@ jobs:
             "$stdout_path"
           test "$(plutil -extract CFBundleIdentifier raw -o - "$app_path/Contents/Info.plist")" = \
             'com.ayangweb.bongo-cat'
+          test "$(plutil -extract CFBundleIconFile raw -o - "$app_path/Contents/Info.plist")" = \
+            'BongoCat.icns'
+          cmp \
+            native/resources/icons/BongoCat.icns \
+            "$app_path/Contents/Resources/BongoCat.icns"
           codesign --verify --deep --strict "$app_path"
       - name: Smoke native system menu lifecycle
         if: matrix.os == 'windows-latest' || matrix.os == 'macos-latest'
         timeout-minutes: 2
         run: cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release -- --run-seconds 10 --system-menu-smoke
+      - name: Verify Windows executable product icon
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $executable = Join-Path $PWD "native/target/release/bongocat-app.exe"
+          Add-Type -TypeDefinition @'
+          using System;
+          using System.Runtime.InteropServices;
+
+          public static class BongoCatIconProbe
+          {
+              [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+              public static extern uint ExtractIconEx(
+                  string fileName,
+                  int iconIndex,
+                  IntPtr[] largeIcons,
+                  IntPtr[] smallIcons,
+                  uint iconCount);
+          }
+          '@
+          $iconCount = [BongoCatIconProbe]::ExtractIconEx(
+            $executable,
+            -1,
+            $null,
+            $null,
+            0)
+          if ($iconCount -lt 1) {
+            throw "Windows executable does not contain a product icon"
+          }
       - name: Smoke Windows single-instance wake
         if: matrix.os == 'windows-latest'
         shell: pwsh
