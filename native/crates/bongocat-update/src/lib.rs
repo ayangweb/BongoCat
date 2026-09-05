@@ -1,9 +1,14 @@
 #![forbid(unsafe_code)]
 
+mod download;
 mod retry;
 mod schedule;
 mod sequence;
 mod staging;
+pub use download::{
+    CompletedUpdateDownload, UpdateDownloadCoordinator, UpdateDownloadError,
+    UpdateDownloadErrorCode,
+};
 pub use retry::{
     UPDATE_DOWNLOAD_MAX_ATTEMPTS, UpdateDownloadAttemptFailure, UpdateDownloadRetryPolicy,
 };
