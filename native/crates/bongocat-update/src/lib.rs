@@ -612,24 +612,66 @@ impl UpdateDecision {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifiedUpdate {
-    pub channel: UpdateChannel,
-    pub release_version: String,
-    pub minimum_upgradable_version: String,
-    pub release_sequence: u64,
-    pub published_at_unix_seconds: u64,
-    pub release_notes_url: Option<String>,
-    pub artifact: VerifiedArtifact,
+    channel: UpdateChannel,
+    release_version: String,
+    minimum_upgradable_version: String,
+    release_sequence: u64,
+    published_at_unix_seconds: u64,
+    release_notes_url: Option<String>,
+    artifact: VerifiedArtifact,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifiedArtifact {
-    pub target: UpdateTarget,
-    pub url: String,
-    pub byte_length: u64,
+    target: UpdateTarget,
+    url: String,
+    byte_length: u64,
     sha256: [u8; 32],
 }
 
+impl VerifiedUpdate {
+    pub const fn channel(&self) -> UpdateChannel {
+        self.channel
+    }
+
+    pub fn release_version(&self) -> &str {
+        &self.release_version
+    }
+
+    pub fn minimum_upgradable_version(&self) -> &str {
+        &self.minimum_upgradable_version
+    }
+
+    pub const fn release_sequence(&self) -> u64 {
+        self.release_sequence
+    }
+
+    pub const fn published_at_unix_seconds(&self) -> u64 {
+        self.published_at_unix_seconds
+    }
+
+    pub fn release_notes_url(&self) -> Option<&str> {
+        self.release_notes_url.as_deref()
+    }
+
+    pub const fn artifact(&self) -> &VerifiedArtifact {
+        &self.artifact
+    }
+}
+
 impl VerifiedArtifact {
+    pub const fn target(&self) -> UpdateTarget {
+        self.target
+    }
+
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+
+    pub const fn byte_length(&self) -> u64 {
+        self.byte_length
+    }
+
     pub fn verify_reader(&self, mut reader: impl Read) -> Result<(), UpdateError> {
         let mut hasher = Sha256::new();
         let mut byte_length = 0_u64;
@@ -656,6 +698,20 @@ impl VerifiedArtifact {
             return Err(UpdateError::new(UpdateErrorCode::ArtifactHashMismatch));
         }
         Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_test_bytes(
+        target: UpdateTarget,
+        url: impl Into<String>,
+        bytes: &[u8],
+    ) -> Self {
+        Self {
+            target,
+            url: url.into(),
+            byte_length: bytes.len() as u64,
+            sha256: Sha256::digest(bytes).into(),
+        }
     }
 }
 
@@ -853,14 +909,22 @@ mod tests {
         let UpdateDecision::Available(update) = decision else {
             panic!("expected available update");
         };
-        assert_eq!(update.release_version, "0.2.0");
-        assert_eq!(update.release_sequence, 2);
+        assert_eq!(update.channel(), UpdateChannel::Development);
+        assert_eq!(update.release_version(), "0.2.0");
+        assert_eq!(update.minimum_upgradable_version(), "0.1.0");
+        assert_eq!(update.release_sequence(), 2);
+        assert!(update.published_at_unix_seconds() > 0);
+        assert!(
+            update
+                .release_notes_url()
+                .is_some_and(|url| url.starts_with("https://"))
+        );
         assert_eq!(
-            update.artifact.target,
+            update.artifact().target(),
             UpdateTarget::new(TargetTriple::Aarch64AppleDarwin)
         );
         update
-            .artifact
+            .artifact()
             .verify_reader(artifact.as_slice())
             .expect("artifact hash and length");
     }

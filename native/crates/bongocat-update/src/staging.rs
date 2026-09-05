@@ -198,7 +198,7 @@ fn stage_into_file(
             .ok_or(UpdateStagingError {
                 code: UpdateStagingErrorCode::Integrity(UpdateErrorCode::ArtifactLengthMismatch),
             })?;
-        if byte_length > artifact.byte_length {
+        if byte_length > artifact.byte_length() {
             return Err(UpdateStagingError {
                 code: UpdateStagingErrorCode::Integrity(UpdateErrorCode::ArtifactLengthMismatch),
             });
@@ -214,7 +214,7 @@ fn stage_into_file(
             code: UpdateStagingErrorCode::Cancelled,
         });
     }
-    if byte_length != artifact.byte_length {
+    if byte_length != artifact.byte_length() {
         return Err(UpdateStagingError {
             code: UpdateStagingErrorCode::Integrity(UpdateErrorCode::ArtifactLengthMismatch),
         });
@@ -234,17 +234,15 @@ fn stage_into_file(
 mod tests {
     use super::*;
     use bongocat_config::BuildEnvironment;
-    use sha2::Digest;
     use std::io::{self, Cursor};
     use tempfile::tempdir;
 
     fn artifact(bytes: &[u8]) -> VerifiedArtifact {
-        VerifiedArtifact {
-            target: crate::UpdateTarget::new(crate::TargetTriple::Aarch64AppleDarwin),
-            url: "https://updates.example.invalid/bongocat.pkg".to_owned(),
-            byte_length: bytes.len() as u64,
-            sha256: Sha256::digest(bytes).into(),
-        }
+        VerifiedArtifact::from_test_bytes(
+            crate::UpdateTarget::new(crate::TargetTriple::Aarch64AppleDarwin),
+            "https://updates.example.invalid/bongocat.pkg",
+            bytes,
+        )
     }
 
     fn staging_files(directory: &Path) -> Vec<PathBuf> {

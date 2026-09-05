@@ -204,7 +204,7 @@ impl UreqUpdateArtifactSource {
     ) -> Result<ureq::BodyReader<'static>, UpdateDownloadAttemptFailure> {
         let response = self
             .agent
-            .get(&artifact.url)
+            .get(artifact.url())
             .call()
             .map_err(|_| UpdateDownloadAttemptFailure::Transport)?;
         let status = response.status().as_u16();

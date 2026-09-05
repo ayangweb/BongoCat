@@ -668,8 +668,9 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
   Windows/macOS target/arch 的 HTTPS URL、精确字节数和小写 SHA-256。当前版本、target、arch、
   环境或 sequence 不匹配时不得产生安装候选。
 - 信任公钥以稳定 key ID、Development/Production channel 和 release sequence 有效窗编译进构建；
-  私钥不得进入源码、产物或配置。验证结果只返回项目自有不可变类型，网络、SemVer、签名库类型不
-  扩散到 app/runtime/UI。下载层必须在安装前通过同一 verified artifact 校验精确长度和 SHA-256。
+  私钥不得进入源码、产物或配置。验证结果只返回字段私有、仅经只读 accessor 消费的项目自有不可变
+  类型，网络、SemVer、签名库类型不扩散到 app/runtime/UI。下载层必须在安装前通过同一 verified
+  artifact 校验精确长度和 SHA-256。
 - 更新 manifest 的网络响应固定为单次 HTTPS GET 的 `200`，不跟随 redirect；响应 body 是待验签的
   原始 manifest bytes，`bongocat-update-key-id` header 提供稳定 key ID，
   `bongocat-update-signature-ed25519` header 提供 128 个小写十六进制字符的 detached Ed25519

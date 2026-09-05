@@ -172,7 +172,6 @@ const fn error_code(failure: UpdateDownloadAttemptFailure) -> UpdateDownloadErro
 mod tests {
     use super::*;
     use bongocat_config::BuildEnvironment;
-    use sha2::{Digest, Sha256};
     use std::{
         collections::VecDeque,
         io::{self, Cursor},
@@ -180,12 +179,11 @@ mod tests {
     use tempfile::tempdir;
 
     fn artifact(bytes: &[u8]) -> VerifiedArtifact {
-        VerifiedArtifact {
-            target: crate::UpdateTarget::new(crate::TargetTriple::Aarch64AppleDarwin),
-            url: "https://updates.example.invalid/bongocat.pkg".to_owned(),
-            byte_length: bytes.len() as u64,
-            sha256: Sha256::digest(bytes).into(),
-        }
+        VerifiedArtifact::from_test_bytes(
+            crate::UpdateTarget::new(crate::TargetTriple::Aarch64AppleDarwin),
+            "https://updates.example.invalid/bongocat.pkg",
+            bytes,
+        )
     }
 
     #[test]
