@@ -48,6 +48,7 @@ use std::{
 
 mod presentation;
 use presentation::*;
+mod about;
 mod accessibility;
 mod diagnostics;
 mod lifecycle;
@@ -61,12 +62,12 @@ mod smoke;
 mod view_state;
 pub use lifecycle::open_settings_window;
 use localization::{
-    UiText, backup_candidates_checked, build_info_detail, diagnostics_export_status,
-    diagnostics_unavailable, input_diagnostic_metrics, input_service_attempts,
-    model_availability_summary, model_delete_confirmation, model_import_progress,
-    model_invalid_summary, recovered_backup_detail, runtime_command_failure, runtime_status,
-    settings_error, shortcut_accessibility_label, shortcut_capture_error, shortcut_target_name,
-    text as ui_text,
+    ABOUT_SECTIONS, UiText, backup_candidates_checked, build_info_detail,
+    diagnostics_export_status, diagnostics_unavailable, input_diagnostic_metrics,
+    input_service_attempts, model_availability_summary, model_delete_confirmation,
+    model_import_progress, model_invalid_summary, recovered_backup_detail, runtime_command_failure,
+    runtime_status, settings_error, shortcut_accessibility_label, shortcut_capture_error,
+    shortcut_target_name, text as ui_text,
 };
 #[cfg(test)]
 mod tests;
@@ -84,6 +85,8 @@ const ACCESSIBILITY_GENERAL: AccessibilityNodeId = AccessibilityNodeId::new(2);
 const ACCESSIBILITY_MODELS: AccessibilityNodeId = AccessibilityNodeId::new(3);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_DIAGNOSTICS: AccessibilityNodeId = AccessibilityNodeId::new(4);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_ABOUT: AccessibilityNodeId = AccessibilityNodeId::new(5);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_OVERLAY: AccessibilityNodeId = AccessibilityNodeId::new(10);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -233,6 +236,7 @@ enum SettingsPage {
     General,
     Models,
     Diagnostics,
+    About,
 }
 
 enum ModelImportState {
@@ -386,6 +390,7 @@ pub struct SettingsView {
     general_focus: FocusHandle,
     models_focus: FocusHandle,
     diagnostics_focus: FocusHandle,
+    about_focus: FocusHandle,
     status_icon_focus: FocusHandle,
     #[cfg(target_os = "windows")]
     taskbar_icon_focus: FocusHandle,

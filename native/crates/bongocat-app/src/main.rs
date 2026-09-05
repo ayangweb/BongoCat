@@ -2009,14 +2009,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     smoke_window
                         .update(cx, |view, _, cx| {
                             view.show_general_page_for_smoke(cx)?;
-                            view.show_diagnostics_page_for_smoke(cx)
+                            view.show_diagnostics_page_for_smoke(cx)?;
+                            view.show_about_page_for_smoke(cx)
                         })
                         .map_err(|error| error.to_string())?
                 });
                 #[cfg(target_os = "windows")]
                 let settings_pages = update_windows_settings(cx, &smoke_window, |view, _, cx| {
                     view.show_general_page_for_smoke(cx)?;
-                    view.show_diagnostics_page_for_smoke(cx)
+                    view.show_diagnostics_page_for_smoke(cx)?;
+                    view.show_about_page_for_smoke(cx)
                 })
                 .await;
                 match settings_pages {

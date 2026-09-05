@@ -300,6 +300,7 @@ impl SettingsView {
             general_focus: cx.focus_handle().tab_index(1).tab_stop(true),
             models_focus: cx.focus_handle().tab_index(2).tab_stop(true),
             diagnostics_focus: cx.focus_handle().tab_index(3).tab_stop(true),
+            about_focus: cx.focus_handle().tab_index(4).tab_stop(true),
             status_icon_focus: cx.focus_handle().tab_index(9).tab_stop(true),
             #[cfg(target_os = "windows")]
             taskbar_icon_focus: cx.focus_handle().tab_index(38).tab_stop(true),

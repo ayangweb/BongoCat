@@ -11,6 +11,19 @@ pub(super) enum UiText {
     GeneralDescription,
     Models,
     ModelsDescription,
+    About,
+    AboutDescription,
+    AboutBongoCat,
+    ProductInformation,
+    ProductInformationDescription,
+    ApplicationLicense,
+    ApplicationLicenseDescription,
+    ThirdPartyLicenses,
+    ThirdPartyLicensesDescription,
+    CubismAttribution,
+    CubismAttributionDescription,
+    Privacy,
+    PrivacyDescription,
     ModelCatalog,
     InstalledModels,
     InstalledModelsDescription,
@@ -216,6 +229,31 @@ pub(super) enum UiText {
     Quit,
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct AboutSection {
+    pub(super) title: UiText,
+    pub(super) description: UiText,
+}
+
+pub(super) const ABOUT_SECTIONS: [AboutSection; 4] = [
+    AboutSection {
+        title: UiText::ApplicationLicense,
+        description: UiText::ApplicationLicenseDescription,
+    },
+    AboutSection {
+        title: UiText::ThirdPartyLicenses,
+        description: UiText::ThirdPartyLicensesDescription,
+    },
+    AboutSection {
+        title: UiText::CubismAttribution,
+        description: UiText::CubismAttributionDescription,
+    },
+    AboutSection {
+        title: UiText::Privacy,
+        description: UiText::PrivacyDescription,
+    },
+];
+
 pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
     let values = match key {
         UiText::Settings => ["BongoCat Settings", "BongoCat 设置"],
@@ -228,6 +266,37 @@ pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
         UiText::ModelsDescription => [
             "Install, validate and activate Live2D model packages.",
             "安装、验证并启用 Live2D 模型包。",
+        ],
+        UiText::About => ["About", "关于"],
+        UiText::AboutDescription => [
+            "View product, license, third-party notice and privacy information.",
+            "查看产品、许可证、第三方声明和隐私信息。",
+        ],
+        UiText::AboutBongoCat => ["About BongoCat", "关于 BongoCat"],
+        UiText::ProductInformation => ["Product information", "产品信息"],
+        UiText::ProductInformationDescription => [
+            "Review the current version and environment.",
+            "查看当前版本和运行环境。",
+        ],
+        UiText::ApplicationLicense => ["Application license", "应用许可证"],
+        UiText::ApplicationLicenseDescription => [
+            "BongoCat application source code is licensed under the MIT License.",
+            "BongoCat 应用源码采用 MIT 许可证。",
+        ],
+        UiText::ThirdPartyLicenses => ["Third-party licenses", "第三方许可证"],
+        UiText::ThirdPartyLicensesDescription => [
+            "Third-party Rust dependencies are governed by their own license notices and are checked against the project's approved license policy.",
+            "第三方 Rust 依赖受各自许可证声明约束，并会根据项目批准的许可证策略进行检查。",
+        ],
+        UiText::CubismAttribution => ["Live2D Cubism", "Live2D Cubism"],
+        UiText::CubismAttributionDescription => [
+            "Uses Live2D Cubism SDK for Native 5-r.5 (Core 06.00.0001). Cubism Core is licensed under the Live2D Proprietary Software License. Copyright Live2D. Public redistribution and final attribution remain subject to Live2D approval and release review.",
+            "使用 Live2D Cubism SDK for Native 5-r.5（Core 06.00.0001）。Cubism Core 采用 Live2D 专有软件许可证。Copyright Live2D。公开再分发和最终署名仍须经 Live2D 批准及发布审核。",
+        ],
+        UiText::Privacy => ["Privacy", "隐私"],
+        UiText::PrivacyDescription => [
+            "Input is processed locally. Diagnostics and logs exclude keystroke sequences, clipboard contents, user file contents and secrets.",
+            "输入会在本地处理。诊断信息和日志不会包含按键序列、剪贴板内容、用户文件内容或密钥。",
         ],
         UiText::ModelCatalog => ["Model catalog", "模型列表"],
         UiText::InstalledModels => ["Installed models", "已安装模型"],
@@ -1031,6 +1100,19 @@ mod tests {
             UiText::General,
             UiText::Models,
             UiText::ModelsDescription,
+            UiText::About,
+            UiText::AboutDescription,
+            UiText::AboutBongoCat,
+            UiText::ProductInformation,
+            UiText::ProductInformationDescription,
+            UiText::ApplicationLicense,
+            UiText::ApplicationLicenseDescription,
+            UiText::ThirdPartyLicenses,
+            UiText::ThirdPartyLicensesDescription,
+            UiText::CubismAttribution,
+            UiText::CubismAttributionDescription,
+            UiText::Privacy,
+            UiText::PrivacyDescription,
             UiText::ModelCatalog,
             UiText::InstalledModels,
             UiText::InstalledModelsDescription,
@@ -1233,6 +1315,38 @@ mod tests {
         assert!(keys.into_iter().all(|key| {
             text(SettingsLanguage::System, key) == text(SettingsLanguage::EnglishUnitedStates, key)
         }));
+    }
+
+    #[test]
+    fn about_sections_cover_license_cubism_dependencies_and_privacy() {
+        assert_eq!(ABOUT_SECTIONS.len(), 4);
+        for language in [
+            SettingsLanguage::EnglishUnitedStates,
+            SettingsLanguage::ChineseSimplified,
+        ] {
+            for section in ABOUT_SECTIONS {
+                assert!(!text(language, section.title).is_empty());
+                assert!(!text(language, section.description).is_empty());
+            }
+        }
+        let cubism = text(
+            SettingsLanguage::EnglishUnitedStates,
+            UiText::CubismAttributionDescription,
+        );
+        assert!(cubism.contains("5-r.5"));
+        assert!(cubism.contains("06.00.0001"));
+        assert!(cubism.contains("Copyright Live2D"));
+        assert!(cubism.contains("subject to Live2D approval"));
+        assert_ne!(
+            text(
+                SettingsLanguage::ChineseSimplified,
+                UiText::PrivacyDescription,
+            ),
+            text(
+                SettingsLanguage::EnglishUnitedStates,
+                UiText::PrivacyDescription,
+            )
+        );
     }
 
     #[test]

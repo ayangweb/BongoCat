@@ -755,6 +755,53 @@ impl SettingsView {
         Ok(())
     }
 
+    pub fn show_about_page_for_smoke(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
+        self.page = SettingsPage::About;
+        cx.notify();
+        let snapshot = self
+            .snapshot
+            .as_ref()
+            .ok_or_else(|| "about page has not received a settings snapshot".to_owned())?;
+        let language = snapshot.resolved_language;
+        if ABOUT_SECTIONS.iter().any(|section| {
+            ui_text(language, section.title).is_empty()
+                || ui_text(language, section.description).is_empty()
+        }) {
+            return Err("about page has incomplete localized content".to_owned());
+        }
+        if language == SettingsLanguage::ChineseSimplified
+            && ui_text(language, UiText::PrivacyDescription)
+                == ui_text(
+                    SettingsLanguage::EnglishUnitedStates,
+                    UiText::PrivacyDescription,
+                )
+        {
+            return Err("about page privacy text was not localized".to_owned());
+        }
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            let tree = self.accessibility_tree();
+            tree.validate().map_err(|error| error.to_string())?;
+            if tree.focus != ACCESSIBILITY_ABOUT {
+                return Err("about page did not expose the active accessibility focus".to_owned());
+            }
+            let node = tree
+                .nodes
+                .iter()
+                .find(|node| node.id == ACCESSIBILITY_ABOUT)
+                .ok_or_else(|| "about page omitted its navigation accessibility node".to_owned())?;
+            if node.role != AccessibilityRole::Button
+                || node.label != ui_text(language, UiText::About)
+                || node.value.as_deref() != Some(ui_text(language, UiText::AboutDescription))
+                || !node.supports_click
+                || !node.supports_focus
+            {
+                return Err("about page navigation accessibility semantics are invalid".to_owned());
+            }
+        }
+        Ok(())
+    }
+
     pub fn reopen(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Result<(), String> {
         #[cfg(target_os = "windows")]
         bongocat_platform::show_native_window(window).map_err(|error| error.to_string())?;

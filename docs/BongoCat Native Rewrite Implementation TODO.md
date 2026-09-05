@@ -1227,7 +1227,13 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     页面以本地化、只读文本显示该 build identity，不读取路径、设备信息或网络来源。renderer/runtime
     stable code、输入可靠性计数、macOS Input Monitoring 权限、模型目录诊断与匿名日志导出仍已各自接入；GPU
     细节、update 诊断、完整产品错误边界及双平台实机证据尚待完成，因此总项保持未勾选。
-- [ ] About：许可证、Cubism attribution、第三方依赖和隐私说明。
+- [x] About：许可证、Cubism attribution、第三方依赖和隐私说明。
+  - 验收证据（2026-09-05）：GPUI Settings 新增只读 About 页面，以现有编译期 build identity
+    显示产品版本/环境，并提供中英文 MIT 应用许可证、第三方 Rust 依赖许可证策略、Cubism Native
+    `5-r.5`/Core `06.00.0001` 与 `Copyright Live2D` attribution，以及本地输入/匿名日志隐私边界。
+    该页明确声明公开再分发和最终 Cubism attribution 仍须 Live2D 批准及发布审核，不把
+    `P0-CUBISM` 或 stable 发布门禁标记完成。UI 本地化回归、AccessKit navigation/focus contract、
+    `bongocat-ui` 全量测试、`bongocat-app` 测试和本机 macOS settings-window smoke 均通过。
 
 ### 6.5 UI 质量
 

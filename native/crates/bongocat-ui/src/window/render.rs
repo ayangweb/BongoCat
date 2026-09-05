@@ -17,6 +17,7 @@ impl Render for SettingsView {
                     ACCESSIBILITY_GENERAL => Some(&self.general_focus),
                     ACCESSIBILITY_MODELS => Some(&self.models_focus),
                     ACCESSIBILITY_DIAGNOSTICS => Some(&self.diagnostics_focus),
+                    ACCESSIBILITY_ABOUT => Some(&self.about_focus),
                     ACCESSIBILITY_OVERLAY => Some(&self.overlay_focus),
                     ACCESSIBILITY_OVERLAY_TOPMOST => Some(&self.overlay_topmost_focus),
                     ACCESSIBILITY_OVERLAY_CLICK_THROUGH => Some(&self.overlay_click_through_focus),
@@ -783,10 +784,40 @@ impl Render for SettingsView {
                     ),
             );
 
+        let about_page = SettingPage::new(ui_text(language, UiText::About))
+            .description(ui_text(language, UiText::AboutDescription))
+            .group(
+                SettingGroup::new()
+                    .title(ui_text(language, UiText::AboutBongoCat))
+                    .item(
+                        SettingItem::new(
+                            ui_text(language, UiText::ProductInformation),
+                            SettingField::element({
+                                let view = view_entity.clone();
+                                move |_: &RenderOptions, _window: &mut Window, app: &mut App| {
+                                    let snapshot = view.read(app).snapshot.clone();
+                                    view.update(app, move |view, _cx| {
+                                        view.page = SettingsPage::About;
+                                        about::content(snapshot.as_ref())
+                                    })
+                                    .into_any_element()
+                                }
+                            }),
+                        )
+                        .layout(Axis::Vertical)
+                        .description(ui_text(language, UiText::ProductInformationDescription)),
+                    ),
+            );
+
         let settings = Settings::new("bongocat-settings")
             .sidebar_width(px(220.0))
             .with_group_variant(GroupBoxVariant::Outline)
-            .pages(vec![general_page, models_page, diagnostics_page]);
+            .pages(vec![
+                general_page,
+                models_page,
+                diagnostics_page,
+                about_page,
+            ]);
         let footer = div()
             .flex()
             .items_center()

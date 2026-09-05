@@ -49,6 +49,7 @@ impl SettingsView {
             SettingsPage::General => ACCESSIBILITY_GENERAL,
             SettingsPage::Models => ACCESSIBILITY_MODELS,
             SettingsPage::Diagnostics => ACCESSIBILITY_DIAGNOSTICS,
+            SettingsPage::About => ACCESSIBILITY_ABOUT,
         };
         self.accessibility_tree_with_focus(focus)
     }
@@ -606,6 +607,7 @@ impl SettingsView {
             ACCESSIBILITY_GENERAL,
             ACCESSIBILITY_MODELS,
             ACCESSIBILITY_DIAGNOSTICS,
+            ACCESSIBILITY_ABOUT,
             ACCESSIBILITY_THEME,
             ACCESSIBILITY_LANGUAGE,
             ACCESSIBILITY_OVERLAY,
@@ -668,6 +670,14 @@ impl SettingsView {
                 AccessibilityRole::Button,
                 ui_text(language, UiText::Diagnostics),
             )
+            .clickable()
+            .focusable(),
+            AccessibilityNode::new(
+                ACCESSIBILITY_ABOUT,
+                AccessibilityRole::Button,
+                ui_text(language, UiText::About),
+            )
+            .with_value(ui_text(language, UiText::AboutDescription))
             .clickable()
             .focusable(),
             theme_node,
@@ -760,6 +770,7 @@ impl SettingsView {
             ACCESSIBILITY_GENERAL => self.page = SettingsPage::General,
             ACCESSIBILITY_MODELS => self.page = SettingsPage::Models,
             ACCESSIBILITY_DIAGNOSTICS => self.page = SettingsPage::Diagnostics,
+            ACCESSIBILITY_ABOUT => self.page = SettingsPage::About,
             ACCESSIBILITY_THEME => {
                 if let Some(current) = self
                     .snapshot
@@ -945,6 +956,7 @@ impl SettingsView {
             (ACCESSIBILITY_GENERAL, &self.general_focus),
             (ACCESSIBILITY_MODELS, &self.models_focus),
             (ACCESSIBILITY_DIAGNOSTICS, &self.diagnostics_focus),
+            (ACCESSIBILITY_ABOUT, &self.about_focus),
             (ACCESSIBILITY_OVERLAY, &self.overlay_focus),
             (ACCESSIBILITY_OVERLAY_TOPMOST, &self.overlay_topmost_focus),
             (
@@ -1080,6 +1092,7 @@ impl SettingsView {
             SettingsPage::General => ACCESSIBILITY_GENERAL,
             SettingsPage::Models => ACCESSIBILITY_MODELS,
             SettingsPage::Diagnostics => ACCESSIBILITY_DIAGNOSTICS,
+            SettingsPage::About => ACCESSIBILITY_ABOUT,
         });
         let tree = self.accessibility_tree_with_focus(focus);
         if let Some(bridge) = self.accessibility.as_mut() {
