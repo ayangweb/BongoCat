@@ -1518,8 +1518,10 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     已固定总计三次的完整重试和 1 秒/2 秒退避；仅 transport、`408`/`429`/`5xx` 进入 retry，取消、
     完整性、暂存和其他 HTTP 状态立即终止，且不支持 Range/partial resume。注入式
     `UpdateDownloadCoordinator` 已按此策略创建全新 reader/staging file、记录 attempt count，并让
-    adapter 在等待期间响应取消；传输读中断会清理 partial 并作为新的完整流重试。实际 HTTPS source、
-    固定发布 endpoint 和产品下载 UI 尚未实现，因此本项保持未勾选。协调器回归另覆盖 hash
+    adapter 在等待期间响应取消；传输读中断会清理 partial 并作为新的完整流重试。`ureq` artifact
+    source 现仅为 verifier 选择的 URL 打开无 redirect HTTPS `200` raw reader，并将非 `200` 映射为
+    既有 retry 分类，不处理 retry 或 staging。固定发布 endpoint、app-owned download worker 和产品
+    下载 UI 尚未实现，因此本项保持未勾选。协调器回归另覆盖 hash
     不匹配与本地 staging failure 立即停止、不进入等待，并确认前者没有遗留 partial artifact。
 - [ ] 安装前协调 runtime/renderer shutdown，失败可回滚。
 - [ ] 测试断网、代理、中断、签名错误和降级攻击。

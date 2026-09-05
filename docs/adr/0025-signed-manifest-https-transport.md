@@ -25,6 +25,9 @@ compression 会改变 detached Ed25519 signature 必须覆盖的原始 bytes。
 - `UpdateCheckCoordinator` 只能以 `UpdateManifestSource` 取得 envelope，再调用既有
   `UpdateVerificationSession`。其顺序固定为 fetch -> signature/schema/target verification -> sequence
   store commit；任何 fetch 或 verification failure 都不能改变当前环境的 anti-rollback state。
+- 同一受限 agent 还提供 artifact source，但它只可打开 `VerifiedArtifact` 已验证的 URL，固定 HTTPS、
+  无 redirect、`200`，并只返回 raw reader 或既有 `HttpStatus`/`Transport` retry 分类。下载 coordinator
+  继续独占重试、取消与 staging，artifact verifier 继续独占长度和 hash 校验。
 
 ## 依赖与替换边界
 

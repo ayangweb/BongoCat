@@ -26,7 +26,7 @@ pub use sequence::{
 pub use staging::{StagedUpdateArtifact, UpdateStagingError, UpdateStagingErrorCode};
 pub use transport::{
     UpdateManifestEndpoint, UpdateManifestFetchError, UpdateManifestSource,
-    UpdateManifestTransportErrorCode, UreqUpdateManifestSource,
+    UpdateManifestTransportErrorCode, UreqUpdateArtifactSource, UreqUpdateManifestSource,
 };
 
 use bongocat_config::{BuildEnvironment, StorageLayout};

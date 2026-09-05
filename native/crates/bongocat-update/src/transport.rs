@@ -1,6 +1,7 @@
 use crate::{
     MAX_UPDATE_MANIFEST_BYTES, UPDATE_MANIFEST_KEY_ID_HEADER, UPDATE_MANIFEST_SIGNATURE_HEADER,
-    UpdateError, UpdateErrorCode, UpdateManifestEnvelope,
+    UpdateDownloadAttemptFailure, UpdateError, UpdateErrorCode, UpdateManifestEnvelope,
+    VerifiedArtifact,
 };
 use std::{fmt, io::Read, time::Duration};
 use ureq::{Agent, config::Config};
@@ -132,14 +133,9 @@ impl Default for UreqUpdateManifestSource {
 
 impl UreqUpdateManifestSource {
     pub fn new() -> Self {
-        let agent = Config::builder()
-            .https_only(true)
-            .http_status_as_error(false)
-            .max_redirects(0)
-            .timeout_global(Some(UPDATE_MANIFEST_REQUEST_TIMEOUT))
-            .build()
-            .into();
-        Self { agent }
+        Self {
+            agent: update_agent(),
+        }
     }
 
     pub fn fetch(
@@ -177,6 +173,61 @@ impl UreqUpdateManifestSource {
     fn config(&self) -> &ureq::config::Config {
         self.agent.config()
     }
+}
+
+/// Opens the raw HTTPS stream for an artifact already chosen by the verifier.
+///
+/// This source does not inspect artifact bytes, retry, or stage files. Those
+/// responsibilities remain with `UpdateDownloadCoordinator` and
+/// `VerifiedArtifact::stage_reader`.
+#[derive(Clone)]
+pub struct UreqUpdateArtifactSource {
+    agent: Agent,
+}
+
+impl Default for UreqUpdateArtifactSource {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl UreqUpdateArtifactSource {
+    pub fn new() -> Self {
+        Self {
+            agent: update_agent(),
+        }
+    }
+
+    pub fn open(
+        &self,
+        artifact: &VerifiedArtifact,
+    ) -> Result<ureq::BodyReader<'static>, UpdateDownloadAttemptFailure> {
+        let response = self
+            .agent
+            .get(&artifact.url)
+            .call()
+            .map_err(|_| UpdateDownloadAttemptFailure::Transport)?;
+        let status = response.status().as_u16();
+        if status != 200 {
+            return Err(UpdateDownloadAttemptFailure::HttpStatus(status));
+        }
+        Ok(response.into_body().into_reader())
+    }
+
+    #[cfg(test)]
+    fn config(&self) -> &ureq::config::Config {
+        self.agent.config()
+    }
+}
+
+fn update_agent() -> Agent {
+    Config::builder()
+        .https_only(true)
+        .http_status_as_error(false)
+        .max_redirects(0)
+        .timeout_global(Some(UPDATE_MANIFEST_REQUEST_TIMEOUT))
+        .build()
+        .into()
 }
 
 impl UpdateManifestSource for UreqUpdateManifestSource {
@@ -264,6 +315,14 @@ mod tests {
     #[test]
     fn source_forces_https_raw_responses_and_no_redirects() {
         let source = UreqUpdateManifestSource::new();
+        assert!(source.config().https_only());
+        assert!(!source.config().http_status_as_error());
+        assert_eq!(source.config().max_redirects(), 0);
+    }
+
+    #[test]
+    fn artifact_source_has_the_same_https_and_redirect_boundary() {
+        let source = super::UreqUpdateArtifactSource::new();
         assert!(source.config().https_only());
         assert!(!source.config().http_status_as_error());
         assert_eq!(source.config().max_redirects(), 0);

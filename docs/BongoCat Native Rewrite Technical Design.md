@@ -705,8 +705,9 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
   I/O 和其他 HTTP 状态立即终止。重试不使用 Range 或保留 partial bytes，每次都从新的 HTTPS
   response 写入新的 staging file 并重新完成完整性校验。`UpdateDownloadCoordinator` 接收创建新
   reader 与可取消等待的 adapter，执行该策略并只返回项目自有的 completed artifact、attempt count 或
-  稳定错误码；HTTP client 类型、status text 和 path 不得进入其公共结果。实际 HTTPS source 仍由
-  后续平台无关 transport adapter 提供。
+  稳定错误码；HTTP client 类型、status text 和 path 不得进入其公共结果。当前 `ureq` artifact source
+  只打开 verifier 已选择 URL 的无 redirect HTTPS `200` raw reader，并将失败归类为 transport 或
+  status；它不处理 retry、取消、暂存、hash 或安装。
 - 自动检查偏好启用时在应用启动后立即请求一次检查，随后以可注入的单调时间从每次实际派发起
   间隔 24 小时；从关闭切换为启用时同样立即请求一次，关闭则取消待触发检查。重复 poll 不得重复
   派发，单调时间回退必须产生稳定诊断并从新时间原点重建间隔，不能形成重试风暴。
