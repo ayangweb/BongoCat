@@ -1368,7 +1368,13 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     smoke/诊断。commit `7f799f7` 的 run `33867921771` 全绿；Windows job `101006895636` 与
     macOS job `101006895731` 均通过完整 workspace、release 产品 lifecycle、系统菜单 Quit 和
     shutdown smoke。
-- [ ] 托盘/菜单栏 command 统一进入 runtime。
+- [x] 托盘/菜单栏 command 统一进入 runtime。
+  - 验收证据（2026-09-05）：Windows `HMENU` 与 macOS `NSStatusItem` 现都提供
+    `Show/Hide BongoCat` action；平台 callback 只投递 `SystemMenuAction`，GPUI frame owner
+    读取当前 revisioned snapshot 后经 typed `SetOverlayVisible` 进入 settings service/runtime，
+    不直接修改 overlay 或 config。macOS release system-menu smoke 已通过 native target/action
+    路径切换与恢复 overlay visibility，并确认产生新的 config revision；Windows 使用同一
+    action/command contract，待 push CI 的原生 smoke 复验。
 - [ ] 系统关机、注销和普通退出进入 shutdown coordinator。
   - 状态（2026-09-05）：Windows Raw Input owner 现将 `WM_QUERYENDSESSION` 与已确认的
     `WM_ENDSESSION` 转为无阻塞终止信号；GPUI frame owner 在下一帧复用已有 shutdown coordinator，

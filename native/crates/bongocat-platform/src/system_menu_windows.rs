@@ -32,7 +32,8 @@ const CALLBACK_MESSAGE: u32 = WM_APP + 47;
 const TRAY_ID: u32 = 1;
 const PRODUCT_ICON_RESOURCE_ID: u16 = 101;
 const OPEN_SETTINGS_ID: usize = 1;
-const QUIT_ID: usize = 2;
+const TOGGLE_OVERLAY_VISIBILITY_ID: usize = 2;
+const QUIT_ID: usize = 3;
 
 struct WindowState {
     sender: Sender<SystemMenuAction>,
@@ -83,6 +84,15 @@ impl SystemMenu {
             }
         };
         if unsafe { AppendMenuW(menu, MF_STRING, OPEN_SETTINGS_ID, w!("Open Settings")) }.is_err()
+            || unsafe {
+                AppendMenuW(
+                    menu,
+                    MF_STRING,
+                    TOGGLE_OVERLAY_VISIBILITY_ID,
+                    w!("Show/Hide BongoCat"),
+                )
+            }
+            .is_err()
             || unsafe { AppendMenuW(menu, MF_SEPARATOR, 0, None) }.is_err()
             || unsafe { AppendMenuW(menu, MF_STRING, QUIT_ID, w!("Quit BongoCat")) }.is_err()
         {
@@ -170,6 +180,7 @@ impl SystemMenu {
         let window = self.window.ok_or(SystemMenuError::EventQueueClosed)?;
         let command = match action {
             SystemMenuAction::OpenSettings => OPEN_SETTINGS_ID,
+            SystemMenuAction::ToggleOverlayVisibility => TOGGLE_OVERLAY_VISIBILITY_ID,
             SystemMenuAction::Quit => QUIT_ID,
         };
         // SAFETY: the hidden HWND remains owned by self. Posting WM_COMMAND
@@ -296,6 +307,9 @@ unsafe extern "system" fn system_menu_window_proc(
             match wparam.0 & 0xffff {
                 OPEN_SETTINGS_ID => {
                     let _ = state.sender.send(SystemMenuAction::OpenSettings);
+                }
+                TOGGLE_OVERLAY_VISIBILITY_ID => {
+                    let _ = state.sender.send(SystemMenuAction::ToggleOverlayVisibility);
                 }
                 QUIT_ID => {
                     let _ = state.sender.send(SystemMenuAction::Quit);

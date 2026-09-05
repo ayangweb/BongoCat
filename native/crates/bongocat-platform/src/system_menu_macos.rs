@@ -28,6 +28,14 @@ define_class!(
             let _ = self.ivars().sender.send(SystemMenuAction::OpenSettings);
         }
 
+        #[unsafe(method(toggleOverlayVisibility:))]
+        fn toggle_overlay_visibility(&self, _sender: Option<&AnyObject>) {
+            let _ = self
+                .ivars()
+                .sender
+                .send(SystemMenuAction::ToggleOverlayVisibility);
+        }
+
         #[unsafe(method(quit:))]
         fn quit(&self, _sender: Option<&AnyObject>) {
             let _ = self.ivars().sender.send(SystemMenuAction::Quit);
@@ -78,6 +86,21 @@ impl SystemMenu {
         // remains retained by SystemMenu longer than the weak target property.
         unsafe { open_settings.setTarget(Some(&target)) };
         menu.addItem(&open_settings);
+
+        // SAFETY: toggleOverlayVisibility: is implemented by SystemMenuTarget
+        // with the exact target/action ABI and the empty key equivalent is valid.
+        let toggle_overlay = unsafe {
+            NSMenuItem::initWithTitle_action_keyEquivalent(
+                NSMenuItem::alloc(mtm),
+                &NSString::from_str("Show/Hide BongoCat"),
+                Some(sel!(toggleOverlayVisibility:)),
+                &empty,
+            )
+        };
+        // SAFETY: `target` implements the exact selector assigned above and
+        // remains retained by SystemMenu longer than the weak target property.
+        unsafe { toggle_overlay.setTarget(Some(&target)) };
+        menu.addItem(&toggle_overlay);
         menu.addItem(&NSMenuItem::separatorItem(mtm));
 
         // SAFETY: quit: is implemented by SystemMenuTarget with the exact
@@ -139,6 +162,10 @@ impl SystemMenu {
             match action {
                 SystemMenuAction::OpenSettings => {
                     let _: () = msg_send![&*self.target, openSettings: None::<&AnyObject>];
+                }
+                SystemMenuAction::ToggleOverlayVisibility => {
+                    let _: () =
+                        msg_send![&*self.target, toggleOverlayVisibility: None::<&AnyObject>];
                 }
                 SystemMenuAction::Quit => {
                     let _: () = msg_send![&*self.target, quit: None::<&AnyObject>];

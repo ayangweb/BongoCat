@@ -1614,13 +1614,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let Some(action) = action else {
                     continue;
                 };
-                let handled = cx.update(|cx| match action {
-                    SystemMenuAction::OpenSettings => ensure_settings_window(cx).map(|_| true),
-                    SystemMenuAction::Quit => {
+                let handled = match action {
+                    SystemMenuAction::OpenSettings => {
+                        cx.update(|cx| ensure_settings_window(cx).map(|_| true))
+                    }
+                    SystemMenuAction::ToggleOverlayVisibility => {
+                        let client = cx.update(|cx| {
+                            cx.try_global::<ProductCoordinator>()
+                                .and_then(|coordinator| coordinator.settings_service.as_ref())
+                                .map(bongocat_app::ApplicationSettingsService::client)
+                                .ok_or_else(|| {
+                                    "settings service is unavailable for the system menu".to_owned()
+                                })
+                        });
+                        match client {
+                            Ok(client) => async {
+                                let snapshot = client
+                                    .read_snapshot()
+                                    .await
+                                    .map_err(|error| error.to_string())?;
+                                let revision = snapshot.config_revision.ok_or_else(|| {
+                                    "system menu cannot update configuration during recovery".to_owned()
+                                })?;
+                                client
+                                    .set_overlay_visible(revision, !snapshot.overlay_visible)
+                                    .await
+                                    .map(|_| true)
+                                    .map_err(|error| error.to_string())
+                            }
+                            .await,
+                            Err(error) => Err(error),
+                        }
+                    }
+                    SystemMenuAction::Quit => cx.update(|cx| {
                         request_product_quit(cx);
                         Ok(false)
-                    }
-                });
+                    }),
+                };
                 match handled {
                     Ok(true) => {}
                     Ok(false) => break,
@@ -2350,6 +2380,74 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Ok(())
                 });
                 if let Err(error) = open_verified {
+                    record_failure(&smoke_failures, error.to_string());
+                    cx.update(request_product_quit);
+                    return;
+                }
+
+                let overlay_result = async {
+                    let initial = smoke_client
+                        .read_snapshot()
+                        .await
+                        .map_err(|error| format!("read overlay visibility snapshot: {error}"))?;
+                    let initial_visibility = initial.overlay_visible;
+                    cx.update(|cx| {
+                        cx.global::<ProductCoordinator>()
+                            .system_menu
+                            .as_ref()
+                            .ok_or_else(|| "system menu owner is unavailable".to_owned())?
+                            .request_action_for_smoke(SystemMenuAction::ToggleOverlayVisibility)
+                            .map_err(|error| error.to_string())
+                    })?;
+
+                    let mut changed = None;
+                    for _ in 0..100 {
+                        let snapshot = smoke_client
+                            .read_snapshot()
+                            .await
+                            .map_err(|error| format!("read toggled overlay snapshot: {error}"))?;
+                        if snapshot.overlay_visible != initial_visibility {
+                            changed = Some(snapshot);
+                            break;
+                        }
+                        Timer::after(Duration::from_millis(10)).await;
+                    }
+                    let changed = changed.ok_or_else(|| {
+                        "system menu overlay action did not reach the runtime".to_owned()
+                    })?;
+                    if changed.config_revision == initial.config_revision {
+                        return Err(
+                            "system menu overlay action did not persist a new configuration revision"
+                                .to_owned(),
+                        );
+                    }
+
+                    cx.update(|cx| {
+                        cx.global::<ProductCoordinator>()
+                            .system_menu
+                            .as_ref()
+                            .ok_or_else(|| "system menu owner is unavailable".to_owned())?
+                            .request_action_for_smoke(SystemMenuAction::ToggleOverlayVisibility)
+                            .map_err(|error| error.to_string())
+                    })?;
+                    for _ in 0..100 {
+                        let snapshot = smoke_client.read_snapshot().await.map_err(|error| {
+                            format!("read restored overlay visibility snapshot: {error}")
+                        })?;
+                        if snapshot.overlay_visible == initial_visibility {
+                            return Ok::<(), String>(());
+                        }
+                        Timer::after(Duration::from_millis(10)).await;
+                    }
+                    Err("system menu overlay action did not restore the runtime state".to_owned())
+                }
+                .await;
+                if let Err(error) = overlay_result {
+                    record_failure(&smoke_failures, error);
+                    cx.update(request_product_quit);
+                    return;
+                }
+                if let Err(error) = write_smoke_status("overlay visibility toggled and restored") {
                     record_failure(&smoke_failures, error.to_string());
                     cx.update(request_product_quit);
                     return;

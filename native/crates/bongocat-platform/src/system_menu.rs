@@ -3,6 +3,7 @@ use std::fmt;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SystemMenuAction {
     OpenSettings,
+    ToggleOverlayVisibility,
     Quit,
 }
 
