@@ -696,6 +696,11 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
   长度或 SHA-256 校验失败后删除 partial file。只有完成精确长度、digest 和 `sync_all` 的
   `StagedUpdateArtifact` 才能传给后续安装协调；文件名或扩展名不构成信任判断。该边界不提供
   HTTP、断点续传、重试、替换或 rollback 策略。
+- `UpdateDownloadRetryPolicy` 固定每次 update download 最多尝试三次，retry 间隔依次为 1 秒和
+  2 秒。只有匿名 transport 失败以及 HTTP `408`、`429` 和 `5xx` 可重试；取消、完整性、暂存
+  I/O 和其他 HTTP 状态立即终止。重试不使用 Range 或保留 partial bytes，每次都从新的 HTTPS
+  response 写入新的 staging file 并重新完成完整性校验。未来 download coordinator 负责可取消等待和
+  调用此策略，不能把 HTTP client 类型、status text 或 path 带入其公共结果。
 - 自动检查偏好启用时在应用启动后立即请求一次检查，随后以可注入的单调时间从每次实际派发起
   间隔 24 小时；从关闭切换为启用时同样立即请求一次，关闭则取消待触发检查。重复 poll 不得重复
   派发，单调时间回退必须产生稳定诊断并从新时间原点重建间隔，不能形成重试风暴。

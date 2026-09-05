@@ -1,8 +1,12 @@
 #![forbid(unsafe_code)]
 
+mod retry;
 mod schedule;
 mod sequence;
 mod staging;
+pub use retry::{
+    UPDATE_DOWNLOAD_MAX_ATTEMPTS, UpdateDownloadAttemptFailure, UpdateDownloadRetryPolicy,
+};
 pub use schedule::{
     AUTOMATIC_UPDATE_CHECK_INTERVAL, AutomaticUpdateCheckReason, AutomaticUpdateCheckScheduler,
     UpdateScheduleError, UpdateScheduleErrorCode,
