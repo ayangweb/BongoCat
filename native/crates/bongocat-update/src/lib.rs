@@ -135,6 +135,41 @@ pub enum UpdateErrorCode {
 }
 
 impl UpdateErrorCode {
+    pub const ALL: [Self; 32] = [
+        Self::ArtifactHashInvalid,
+        Self::ArtifactHashMismatch,
+        Self::ArtifactLengthInvalid,
+        Self::ArtifactLengthMismatch,
+        Self::ArtifactReadFailed,
+        Self::ArtifactTargetDuplicate,
+        Self::ArtifactTargetInvalid,
+        Self::ArtifactTargetMissing,
+        Self::ArtifactUrlInvalid,
+        Self::CurrentVersionInvalid,
+        Self::CurrentVersionTooOld,
+        Self::ManifestArtifactCountInvalid,
+        Self::ManifestChannelMismatch,
+        Self::ManifestJsonInvalid,
+        Self::ManifestKeyIdInvalid,
+        Self::ManifestMinimumVersionInvalid,
+        Self::ManifestPublishedAtInvalid,
+        Self::ManifestReleaseNotesUrlInvalid,
+        Self::ManifestReleaseSequenceInvalid,
+        Self::ManifestSchemaUnsupported,
+        Self::ManifestSignatureInvalid,
+        Self::ManifestSignatureEncodingInvalid,
+        Self::ManifestSignatureLengthInvalid,
+        Self::ManifestTooLarge,
+        Self::ManifestVersionInvalid,
+        Self::RollbackDetected,
+        Self::TrustedKeyDuplicate,
+        Self::TrustedKeyIdInvalid,
+        Self::TrustedKeyInvalid,
+        Self::TrustedKeyMissing,
+        Self::TrustedKeySequenceInvalid,
+        Self::TrustedKeyUnknown,
+    ];
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::ArtifactHashInvalid => "artifact_hash_invalid",
@@ -1217,6 +1252,26 @@ mod tests {
         verifier(UpdateChannel::Development, "0.1.0", 1, 1, None)
             .verify_manifest(bytes, KEY_ID, &signature.to_bytes())
             .expect("shared update fixture");
+    }
+
+    #[test]
+    fn verifier_error_codes_are_stable_and_unique() {
+        let mut codes = UpdateErrorCode::ALL
+            .iter()
+            .map(|code| code.as_str())
+            .collect::<Vec<_>>();
+        assert!(codes.iter().all(|code| !code.is_empty()));
+        assert!(codes.iter().all(|code| {
+            code.chars()
+                .all(|character| character.is_ascii_lowercase() || character == '_')
+        }));
+        codes.sort_unstable();
+        codes.dedup();
+        assert_eq!(codes.len(), UpdateErrorCode::ALL.len());
+        assert_eq!(
+            UpdateErrorCode::ManifestSignatureInvalid.as_str(),
+            "manifest_signature_invalid"
+        );
     }
 
     struct FailingReader;
