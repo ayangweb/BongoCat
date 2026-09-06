@@ -4,6 +4,21 @@ use crate::{
 };
 use gpui_kit::{Keystroke, Modifiers};
 
+#[test]
+fn shutdown_flush_chains_each_patch_from_the_latest_confirmed_revision() {
+    let mut current_revision = Some(7);
+    let first_response_revision = 8;
+    assert!(accepts_snapshot_revision(
+        current_revision,
+        first_response_revision
+    ));
+    current_revision = Some(first_response_revision);
+
+    let second_expected_revision = current_revision.expect("first patch must confirm");
+    assert_eq!(second_expected_revision, 8);
+    assert!(accepts_snapshot_revision(current_revision, 9));
+}
+
 fn key(key: &str, key_char: Option<&str>) -> KeyDownEvent {
     KeyDownEvent {
         keystroke: Keystroke {

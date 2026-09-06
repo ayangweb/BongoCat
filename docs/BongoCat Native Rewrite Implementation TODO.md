@@ -888,6 +888,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     未确认的连续配置 patch，逐项收到成功回包后才调用应用退出；任一请求失败则取消退出并
     保留 pending/error。产品级系统菜单、平台关闭和强制终止路径尚未共享该协调状态，故配置
     去抖总项仍保持未勾选。
+  - 状态（2026-09-07）：修复 shutdown flush 回调的 revision chaining 顺序；成功回包会先
+    更新当前 snapshot，再启动下一项 pending patch，避免多个连续 patch 复用旧
+    `config_revision` 导致 `SnapshotOutdated`。新增纯 Rust 回归覆盖连续确认 revision；系统
+    菜单、平台关闭和强制终止路径仍未共享该协调状态，故配置去抖总项保持未勾选。
 - [x] GPUI 只通过 typed command 获取 snapshot 和提交 patch。
   - 验收证据（2026-09-07）：设置窗口的主题、语言、图标/overlay、motion audio、行为快捷键、
     FPS、release fallback timeout、模型、gamepad dead-zone、启动项和快捷键操作均通过

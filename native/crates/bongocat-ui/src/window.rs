@@ -77,6 +77,10 @@ const WINDOW_HEIGHT: f32 = 600.0;
 const WINDOW_MIN_WIDTH: f32 = crate::MIN_SETTINGS_WINDOW_WIDTH as f32;
 const WINDOW_MIN_HEIGHT: f32 = crate::MIN_SETTINGS_WINDOW_HEIGHT as f32;
 
+fn accepts_snapshot_revision(current: Option<u64>, incoming: u64) -> bool {
+    current.is_none_or(|current| incoming >= current)
+}
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_ROOT: AccessibilityNodeId = AccessibilityNodeId::new(1);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -981,34 +985,36 @@ impl SettingsView {
                         view.schedule_release_fallback_timeout_flush(cx);
                     }
                 }
+                if let Some(snapshot) = refreshed
+                    && accepts_snapshot_revision(
+                        view.snapshot.as_ref().map(|current| current.revision),
+                        snapshot.revision,
+                    )
+                {
+                    view.snapshot = Some(snapshot);
+                }
+                match result {
+                    Ok(ref snapshot)
+                        if accepts_snapshot_revision(
+                            view.snapshot.as_ref().map(|current| current.revision),
+                            snapshot.revision,
+                        ) =>
+                    {
+                        if snapshot.configuration_status != SettingsConfigurationStatus::Ready {
+                            view.page = SettingsPage::Diagnostics;
+                        }
+                        view.snapshot = Some(snapshot.clone());
+                    }
+                    Ok(_) => {}
+                    Err(error) => view.error = Some(error),
+                }
+                // The next shutdown patch must use the revision returned by this request.
                 if view.quit_after_flush {
                     if result.is_ok() {
                         view.flush_pending_setting_patches(cx);
                     } else {
                         view.quit_after_flush = false;
                     }
-                }
-                if let Some(snapshot) = refreshed.filter(|snapshot| {
-                    view.snapshot
-                        .as_ref()
-                        .is_none_or(|current| snapshot.revision >= current.revision)
-                }) {
-                    view.snapshot = Some(snapshot);
-                }
-                match result {
-                    Ok(snapshot)
-                        if view
-                            .snapshot
-                            .as_ref()
-                            .is_none_or(|current| snapshot.revision >= current.revision) =>
-                    {
-                        if snapshot.configuration_status != SettingsConfigurationStatus::Ready {
-                            view.page = SettingsPage::Diagnostics;
-                        }
-                        view.snapshot = Some(snapshot);
-                    }
-                    Ok(_) => {}
-                    Err(error) => view.error = Some(error),
                 }
                 cx.notify();
             });
