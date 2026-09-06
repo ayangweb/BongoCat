@@ -1393,7 +1393,9 @@ fn settings_input_diagnostics(
             PlatformInputServiceStatus::Failed => SettingsInputServiceStatus::Failed,
             PlatformInputServiceStatus::Stopped => SettingsInputServiceStatus::Stopped,
         },
-        service_error_code: platform.service_error_code,
+        service_error_code: platform
+            .service_error_code
+            .filter(|code| bongocat_runtime::is_stable_platform_input_error_code(code)),
         service_start_attempts: platform.service_start_attempts,
         pressed_key_count: input.pressed_key_count,
         pressed_mouse_button_count: input.pressed_mouse_button_count,
@@ -2909,6 +2911,23 @@ mod tests {
             diagnostics.service_error_code,
             Some("platform_input_tap_create_failed")
         );
+    }
+
+    #[test]
+    fn input_service_error_code_drops_unregistered_provider_details() {
+        let diagnostics = settings_input_diagnostics(
+            &InputSnapshot::default(),
+            PlatformInputDiagnostics {
+                service_status: PlatformInputServiceStatus::Failed,
+                service_error_code: Some("platform_input_private_detail"),
+                ..PlatformInputDiagnostics::default()
+            },
+        );
+        assert_eq!(
+            diagnostics.service_status,
+            SettingsInputServiceStatus::Failed
+        );
+        assert_eq!(diagnostics.service_error_code, None);
     }
 
     #[test]

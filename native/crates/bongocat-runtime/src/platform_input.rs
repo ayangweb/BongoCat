@@ -11,6 +11,28 @@ pub enum PlatformInputServiceStatus {
     Stopped,
 }
 
+/// Returns whether a platform input failure code belongs to the stable,
+/// anonymous diagnostics catalog. Platform adapters must use these exact
+/// values instead of forwarding operating-system text.
+pub fn is_stable_platform_input_error_code(code: &str) -> bool {
+    matches!(
+        code,
+        "platform_input_backend_unavailable"
+            | "platform_input_permission_denied"
+            | "platform_input_tap_create_failed"
+            | "platform_input_run_loop_source_failed"
+            | "platform_input_window_class_registration_failed"
+            | "platform_input_window_create_failed"
+            | "platform_input_session_notification_failed"
+            | "platform_input_raw_input_registration_failed"
+            | "platform_input_timer_create_failed"
+            | "platform_input_runtime_stopped"
+            | "platform_input_startup_timed_out"
+            | "platform_input_shutdown_timed_out"
+            | "platform_input_worker_panicked"
+    )
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct PlatformInputDiagnostics {
     pub service_status: PlatformInputServiceStatus,
@@ -106,5 +128,26 @@ impl PlatformInputDiagnosticsProducer {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .stopped = true;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_stable_platform_input_error_code;
+
+    #[test]
+    fn platform_input_diagnostics_catalog_accepts_only_stable_codes() {
+        assert!(is_stable_platform_input_error_code(
+            "platform_input_permission_denied"
+        ));
+        assert!(is_stable_platform_input_error_code(
+            "platform_input_worker_panicked"
+        ));
+        assert!(!is_stable_platform_input_error_code(
+            "platform_input_private_detail"
+        ));
+        assert!(!is_stable_platform_input_error_code(
+            "/Users/example/input.log"
+        ));
     }
 }

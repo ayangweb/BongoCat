@@ -44,6 +44,7 @@ use input::{InputState, InputTransportCounters};
 pub use platform_input::{
     PlatformInputDiagnostics, PlatformInputDiagnosticsProducer,
     PlatformInputDiagnosticsPublishError, PlatformInputServiceStatus,
+    is_stable_platform_input_error_code,
 };
 use rendering::{MotionStopStatus, RenderEvaluation, RuntimeRenderBootstrap, RuntimeRenderer};
 

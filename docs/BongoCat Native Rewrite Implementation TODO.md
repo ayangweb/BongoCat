@@ -1921,6 +1921,9 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     `platform_input_*` code 与 service status 一起发布，settings/Diagnostics export 保留该 code；
     例如 `TapCreateFailed` 保持为 `platform_input_tap_create_failed`，不将其降级为无信息的
     `Failed` 或导出 OS 文本。
+  - 状态（2026-09-07）：runtime 新增闭合的 `platform_input_*` 稳定码 catalog，Application
+    projection 现在在进入 SettingsSnapshot 和匿名 diagnostics export 前过滤未注册 provider code；
+    已知 tap/permission code 保留，私有 detail 或路径字符串丢弃，避免公开字符串绕过稳定错误协议。
   - 状态（2026-09-07）：runtime shutdown timeout/worker panic 计数已加入 settings/UI
     diagnostics presentation，页面以中英文匿名文案显示累计失败数并将其标记为 actionable；
     UI localization/presentation contract 与严格 Clippy 通过。update worker、真实安装回滚和
