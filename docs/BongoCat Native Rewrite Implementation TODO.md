@@ -1115,7 +1115,14 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     预置 `standard` preview 已实际报告 5 个 masked drawable；本次 `cargo test -p bongocat-render
 --locked` 通过 12 项 transport/resource contract test。Windows hardware pixel comparison 仍由
     `D3D11/Metal 对相同 snapshot 行为一致` 与 release matrix 单独验收。
-- [ ] 实现 texture upload、sampler、过滤和颜色空间策略。
+- [x] 实现 texture upload、sampler、过滤和颜色空间策略。
+  - 验收证据（2026-09-06）：Metal 与 D3D11 均在 GPU upload 前重新 decode PNG RGBA 并核对已经
+    preflight 的尺寸；模型、背景和按键纹理固定以 sRGB view 采样，最终 pre-multiplied composition
+    attachment 固定为 sRGB，alpha-only clipping mask 保持 linear UNORM。两端均使用 linear
+    min/mag filter 与 clamp-to-edge addressing，shader 在 decoded linear RGB 执行颜色和 blend
+    运算。`color_formats_decode_assets_and_encode_the_composited_frame_as_srgb` 的双 backend unit
+    contract 固定这组格式；Technical Design 已将嵌入 ICC/wide-gamut profile 的转换明确排除在 v1
+    范围外，因此不依赖平台默认颜色管理。
 - [ ] 只在 dirty 时更新必要 GPU 资源。
 - [ ] D3D11/Metal 对相同 snapshot 行为一致。
 - [ ] 建立非空帧、alpha、mask 和 blend 截图 smoke test。
