@@ -1519,7 +1519,11 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
   - 状态（2026-08-31）：state 进一步使用独立环境根和 `locks/state.writer.lock`，Development/
     Production 写入不同窗口布局并重启读回；日志 writer 缺失仍阻止总项勾选。
 - [ ] 开发构建即使收到指向 Production 的 CLI 参数或进程环境变量也拒绝越界。
-- [ ] Production 不自动复制 Development 数据；需要测试数据时使用显式导入。
+- [x] Production 不自动复制 Development 数据；需要测试数据时使用显式导入。
+  - 验收证据（2026-09-06）：`bongocat-config::production_first_load_never_copies_development_configuration`
+    先提交非默认 Development 配置，再首次创建 Production store；Production 仍只生成当前 v1
+    默认值，Development 的原始字节保持不变，两个 `config.json` 字节不同。生产代码只从当前
+    `StorageLayout` 打开 store；测试数据仍须经显式模型导入边界进入目标环境。
 - [ ] 更新 channel 与环境绑定，Development 不能安装 Production 更新或反向覆盖。
 
 ### 7.4 测试与门槛

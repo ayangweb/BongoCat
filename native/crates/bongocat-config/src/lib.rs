@@ -2113,6 +2113,42 @@ mod tests {
     }
 
     #[test]
+    fn production_first_load_never_copies_development_configuration() {
+        let base = tempdir().expect("temp directory");
+        let development = ConfigStore::new(StorageLayout::under(
+            base.path(),
+            BuildEnvironment::Development,
+        ))
+        .expect("development config store");
+        let production = ConfigStore::new(StorageLayout::under(
+            base.path(),
+            BuildEnvironment::Production,
+        ))
+        .expect("production config store");
+
+        let mut development_config = development
+            .load_or_default()
+            .expect("development default")
+            .config;
+        development_config.overlay.visible = false;
+        development
+            .commit(&development_config)
+            .expect("development commit");
+        let development_bytes = fs::read(&development.layout().config).expect("development bytes");
+
+        let loaded_production = production.load_or_default().expect("production default");
+        assert_eq!(loaded_production.config, NativeConfig::default());
+        assert_eq!(
+            fs::read(&development.layout().config).expect("development remains unchanged"),
+            development_bytes
+        );
+        assert_ne!(
+            fs::read(&production.layout().config).expect("production bytes"),
+            development_bytes
+        );
+    }
+
+    #[test]
     fn load_creates_valid_default_and_commit_is_revision_checked() {
         let base = tempdir().expect("temp directory");
         let store = ConfigStore::new(StorageLayout::under(
