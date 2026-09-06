@@ -492,7 +492,9 @@ impl Application {
     }
 
     pub fn update_diagnostics(&self) -> Option<UpdateDiagnostics> {
-        self.update_diagnostics.as_ref().map(|provider| provider())
+        self.update_diagnostics
+            .as_ref()
+            .map(|provider| provider().sanitized())
     }
 
     pub fn record_log(&self, event: ApplicationLogEvent) {

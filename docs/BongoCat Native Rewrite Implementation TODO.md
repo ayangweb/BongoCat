@@ -1900,6 +1900,10 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     阶段计数，未注册 worker 时保持 `null`，不暴露 endpoint、artifact、版本或签名材料。app/update
     定向测试、严格 Clippy 与 release check 通过；真实 update worker、安装回滚和平台错误源仍待
     后续发布链路接入。
+  - 状态（2026-09-07）：更新 diagnostics provider 的 `last_error_code` 现在经过
+    `bongocat-update` 统一稳定码目录校验，覆盖 manifest、transport、download、staging、sequence、
+    schedule 和 install 边界；未知字符串在进入 Application/diagnostics export 前被丢弃，保留计数。
+    目录覆盖与隐私回归通过，未改变真实 update worker、安装回滚或平台错误源仍待接入的状态。
 - [ ] 日志导出生成可预览的脱敏包。
   - 状态（2026-09-06）：ADR-0027 已冻结 preview bundle 为当前环境私有的 v1 ZIP，固定只包含
     `manifest.json`、匿名 `diagnostics.json` 和严格重新序列化的 application code event records；

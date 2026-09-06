@@ -22,7 +22,8 @@ Diagnostics 页面已经聚合 runtime、输入、配置和模型目录状态，
   不影响配置 revision。
 - 更新诊断以可选的 `update` 分栏加入导出，仅允许匿名稳定错误码和阶段计数
   （check/download/install 的 started/succeeded/failed）；未接入更新 worker 时该分栏为 `null`。
-  不导出 endpoint、URL、HTTP 状态正文、artifact 路径、版本或签名材料。
+  provider 的错误码必须来自 `bongocat-update` 统一 catalog；未知值在 Application 边界被丢弃，
+  计数仍保留。不导出 endpoint、URL、HTTP 状态正文、artifact 路径、版本或签名材料。
 - 导出额外包含 app-owned 和 Cubism Core 两个日志 owner 各自的匿名聚合统计（written、dropped、
   rotated、pruned、bytes 和 retained_files），但不读取或复制任何日志正文、路径或 Core 消息。
 - format version 1 是 `next` 分支当前完整的匿名结构；消费者必须拒绝非 v1，不能猜测或忽略不兼容的

@@ -82,6 +82,45 @@ pub struct UpdateDiagnostics {
     pub installs_failed: u64,
 }
 
+impl UpdateDiagnostics {
+    /// Remove an unrecognized provider error without exposing arbitrary text
+    /// through the diagnostics export contract.
+    pub fn sanitized(self) -> Self {
+        Self {
+            last_error_code: self
+                .last_error_code
+                .filter(|code| is_stable_error_code(code)),
+            ..self
+        }
+    }
+}
+
+/// Returns whether `code` belongs to one of the update subsystem's stable,
+/// path-free error-code catalogs.
+pub fn is_stable_error_code(code: &str) -> bool {
+    UpdateErrorCode::ALL
+        .iter()
+        .any(|candidate| candidate.as_str() == code)
+        || UpdateManifestTransportErrorCode::ALL
+            .iter()
+            .any(|candidate| candidate.as_str() == code)
+        || UpdateDownloadErrorCode::ALL
+            .iter()
+            .any(|candidate| candidate.as_str() == code)
+        || UpdateInstallErrorCode::ALL
+            .iter()
+            .any(|candidate| candidate.as_str() == code)
+        || UpdateScheduleErrorCode::ALL
+            .iter()
+            .any(|candidate| candidate.as_str() == code)
+        || UpdateSequenceStoreErrorCode::ALL
+            .iter()
+            .any(|candidate| candidate.as_str() == code)
+        || UpdateStagingErrorCode::ALL
+            .iter()
+            .any(|candidate| candidate.as_str() == code)
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Architecture {
@@ -1382,6 +1421,67 @@ mod tests {
         assert_eq!(
             UpdateErrorCode::ManifestSignatureInvalid.as_str(),
             "manifest_signature_invalid"
+        );
+    }
+
+    #[test]
+    fn stable_error_code_catalog_covers_every_update_boundary() {
+        let catalogs = [
+            UpdateErrorCode::ALL
+                .iter()
+                .map(|code| code.as_str())
+                .collect::<Vec<_>>(),
+            UpdateManifestTransportErrorCode::ALL
+                .iter()
+                .map(|code| code.as_str())
+                .collect::<Vec<_>>(),
+            UpdateDownloadErrorCode::ALL
+                .iter()
+                .map(|code| code.as_str())
+                .collect::<Vec<_>>(),
+            UpdateInstallErrorCode::ALL
+                .iter()
+                .map(|code| code.as_str())
+                .collect::<Vec<_>>(),
+            UpdateScheduleErrorCode::ALL
+                .iter()
+                .map(|code| code.as_str())
+                .collect::<Vec<_>>(),
+            UpdateSequenceStoreErrorCode::ALL
+                .iter()
+                .map(|code| code.as_str())
+                .collect::<Vec<_>>(),
+            UpdateStagingErrorCode::ALL
+                .iter()
+                .map(|code| code.as_str())
+                .collect::<Vec<_>>(),
+        ];
+        for catalog in catalogs {
+            assert!(catalog.iter().copied().all(is_stable_error_code));
+        }
+        assert!(!is_stable_error_code("update_private_detail"));
+        assert!(!is_stable_error_code("/Users/example/model3.json"));
+    }
+
+    #[test]
+    fn diagnostics_sanitization_drops_unknown_provider_codes() {
+        let diagnostics = UpdateDiagnostics {
+            last_error_code: Some("update_private_detail"),
+            checks_started: 3,
+            ..UpdateDiagnostics::default()
+        }
+        .sanitized();
+        assert_eq!(diagnostics.last_error_code, None);
+        assert_eq!(diagnostics.checks_started, 3);
+
+        let diagnostics = UpdateDiagnostics {
+            last_error_code: Some("update_download_transport_failed"),
+            ..UpdateDiagnostics::default()
+        }
+        .sanitized();
+        assert_eq!(
+            diagnostics.last_error_code,
+            Some("update_download_transport_failed")
         );
     }
 
