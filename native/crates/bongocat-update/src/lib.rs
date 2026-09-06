@@ -1289,6 +1289,43 @@ mod tests {
     }
 
     #[test]
+    fn shared_manifest_fixtures_match_parser_and_semantic_rejections() {
+        let valid =
+            include_str!("../../../../shared/update/fixtures/valid-development-aarch64-macos.json");
+        let parsed = serde_json::from_str::<UpdateManifest>(valid).expect("valid fixture");
+        assert_eq!(parsed.schema_version, UPDATE_MANIFEST_SCHEMA_VERSION);
+        assert_eq!(parsed.channel, UpdateChannel::Development);
+
+        let development = verifier(UpdateChannel::Development, "0.1.0", 1, 1, None);
+        let insecure =
+            include_str!("../../../../shared/update/fixtures/invalid-http-artifact-url.json");
+        let insecure = serde_json::from_str::<UpdateManifest>(insecure).expect("HTTP fixture JSON");
+        assert_eq!(
+            development
+                .validate_manifest(insecure, &development.trusted_keys[0])
+                .expect_err("insecure artifact URL")
+                .code,
+            UpdateErrorCode::ArtifactUrlInvalid
+        );
+
+        let production = verifier(UpdateChannel::Production, "1.0.0", 1, 1, None);
+        let mismatched_target =
+            include_str!("../../../../shared/update/fixtures/invalid-target-architecture.json");
+        let mismatched_target =
+            serde_json::from_str::<UpdateManifest>(mismatched_target).expect("target fixture JSON");
+        assert_eq!(
+            production
+                .validate_manifest(mismatched_target, &production.trusted_keys[0])
+                .expect_err("target architecture mismatch")
+                .code,
+            UpdateErrorCode::ArtifactTargetInvalid
+        );
+
+        let unknown = include_str!("../../../../shared/update/fixtures/invalid-unknown-field.json");
+        assert!(serde_json::from_str::<UpdateManifest>(unknown).is_err());
+    }
+
+    #[test]
     fn trusted_keys_are_environment_bound_and_unknown_keys_are_rejected() {
         let bytes = serde_json::to_vec(&manifest(b"artifact")).expect("serialize manifest");
         let signature = signing_key().sign(&bytes);

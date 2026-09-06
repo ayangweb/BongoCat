@@ -1943,6 +1943,9 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
   - 状态（2026-09-05）：共享 Draft 2020-12 manifest v1 已定义 `schema_version`、环境 channel、
     release/minimum SemVer、`published_at_unix_seconds`、单调 `release_sequence` 和 target artifacts；
     Rust 对同一 accept fixture 验签解析，真实发布生成器与签名 envelope 尚未实现。
+  - 状态（2026-09-07）：`bongocat-update` 逐项加载共享 valid/invalid manifest fixtures；valid fixture
+    必须通过 v1 parser，HTTP URL、target/architecture mismatch 和未知字段分别映射到稳定拒绝结果。
+    该回归锁定 shared schema 与 Rust semantic boundary，仍不包含真实发布生成器或签名产物。
 - [x] 更新 helper/installer 的权限边界、替换原子性和失败恢复经过单独威胁建模。
   - 验收证据（2026-09-05）：ADR-0026 固定 helper 只接受同环境已验证 staging artifact、固定
     installation root 与 app shutdown acknowledgement；拒绝裸 URL/manifest/path、link/path traversal、
