@@ -108,6 +108,9 @@ pub fn open_settings_window(
                     }
                     let weak_view = view.downgrade();
                     window.on_window_should_close(cx, move |window, cx| {
+                        let _ = weak_view.update(cx, |view, cx| {
+                            view.flush_pending_settings(cx);
+                        });
                         let result = bongocat_platform::hide_native_window(window);
                         let _ = weak_view.update(cx, |view, cx| match result {
                             Ok(()) => {

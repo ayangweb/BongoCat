@@ -295,6 +295,7 @@ impl SettingsView {
             maximum_fps_timer_generation: 0,
             release_fallback_timeout_debouncer: crate::SettingsPatchDebouncer::default(),
             release_fallback_timeout_timer_generation: 0,
+            flush_pending_requested: false,
             quit_after_flush: false,
             model_delete_confirmation: None,
             model_row_focus: BTreeMap::new(),

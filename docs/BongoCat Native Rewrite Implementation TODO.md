@@ -924,6 +924,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     `SettingsWindowHandle::request_quit_after_flush` 和 Windows flush-complete 状态，避免
     直接销毁 runtime 丢失 pending patch。当前仅完成 contract、macOS 本机构建/测试；真实
     Windows close/termination 与物理输入路径仍需对应平台 smoke，因此总项保持未勾选。
+  - 状态（2026-09-07）：Windows 设置窗口的平台 close/hide 回调现在也启动同一 pending patch
+    flush 链；flush 状态与“flush 后退出”状态分离，窗口隐藏后仍保留实体并继续等待每个成功
+    revision 回包，避免关闭设置窗口丢失最后一次连续编辑。定向 UI/app 构建通过；macOS
+    破坏性窗口 close 的异步延迟关闭仍需 AppKit 实机验证，因此总项保持未勾选。
 - [x] GPUI 只通过 typed command 获取 snapshot 和提交 patch。
   - 验收证据（2026-09-07）：设置窗口的主题、语言、图标/overlay、motion audio、行为快捷键、
     FPS、release fallback timeout、模型、gamepad dead-zone、启动项和快捷键操作均通过

@@ -391,6 +391,7 @@ pub struct SettingsView {
     maximum_fps_timer_generation: u64,
     release_fallback_timeout_debouncer: crate::SettingsPatchDebouncer<u32>,
     release_fallback_timeout_timer_generation: u64,
+    flush_pending_requested: bool,
     quit_after_flush: bool,
     model_delete_confirmation: Option<SettingsModelKey>,
     model_row_focus: BTreeMap<ModelRowKey, ModelRowFocus>,
@@ -486,6 +487,12 @@ impl SettingsWindowHandle {
     pub fn request_quit_after_flush(&self, cx: &mut App) -> gpui_kit::Result<()> {
         self.update(cx, |view, _, cx| {
             view.request_quit_after_flush(cx);
+        })
+    }
+
+    pub fn flush_pending_settings(&self, cx: &mut App) -> gpui_kit::Result<()> {
+        self.update(cx, |view, _, cx| {
+            view.flush_pending_settings(cx);
         })
     }
 }
@@ -684,13 +691,21 @@ impl SettingsView {
         }
         let now = Instant::now();
         let Some(snapshot) = self.snapshot.clone() else {
+            self.flush_pending_requested = false;
+            let should_quit = self.quit_after_flush;
             self.quit_after_flush = false;
-            (self.request_quit)(cx);
+            if should_quit {
+                (self.request_quit)(cx);
+            }
             return;
         };
         let Some(expected_config_revision) = snapshot.config_revision else {
+            self.flush_pending_requested = false;
+            let should_quit = self.quit_after_flush;
             self.quit_after_flush = false;
-            (self.request_quit)(cx);
+            if should_quit {
+                (self.request_quit)(cx);
+            }
             return;
         };
         if let Some(scale_percent) = self.overlay_scale_debouncer.flush(now) {
@@ -745,12 +760,22 @@ impl SettingsView {
                 cx,
             );
         } else {
+            self.flush_pending_requested = false;
+            let should_quit = self.quit_after_flush;
             self.quit_after_flush = false;
-            (self.request_quit)(cx);
+            if should_quit {
+                (self.request_quit)(cx);
+            }
         }
     }
 
+    pub(super) fn flush_pending_settings(&mut self, cx: &mut Context<Self>) {
+        self.flush_pending_requested = true;
+        self.flush_pending_setting_patches(cx);
+    }
+
     pub(super) fn request_quit_after_flush(&mut self, cx: &mut Context<Self>) {
+        self.flush_pending_requested = true;
         self.quit_after_flush = true;
         self.flush_pending_setting_patches(cx);
     }
@@ -1017,10 +1042,11 @@ impl SettingsView {
                     Err(error) => view.error = Some(error),
                 }
                 // The next shutdown patch must use the revision returned by this request.
-                if view.quit_after_flush {
+                if view.flush_pending_requested {
                     if result.is_ok() {
                         view.flush_pending_setting_patches(cx);
                     } else {
+                        view.flush_pending_requested = false;
                         view.quit_after_flush = false;
                     }
                 }
