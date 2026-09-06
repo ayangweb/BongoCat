@@ -40,6 +40,7 @@ use std::{
 mod app_log;
 #[cfg(test)]
 mod build_environment_contract;
+mod diagnostics_bundle;
 #[cfg(test)]
 mod product_icon_contract;
 mod settings;

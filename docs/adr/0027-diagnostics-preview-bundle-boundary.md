@@ -47,3 +47,7 @@ runtime、输入、配置和日志 owner 的聚合状态，但不能让维护者
 本 ADR 不实现 ZIP writer、UI preview、更新 diagnostics、Core history export、remote upload 或 support
 endpoint。具体 crate dependency、license/maintenance audit 和 archive writer lifetime 必须在实现提交中
 记录；在验证完成前，Phase 7 日志导出门禁保持未勾选。
+
+首个 writer 使用 `zip = 8.6.0`（MIT，`zip-rs/zip2`，Rust 1.88+），精确 pin 且关闭默认 feature，
+只写标准 `Stored` entries；它不提供 encryption、compression 或 archive extraction。替换边界是同样
+能在双平台写出并验证此固定 v1 ZIP entry 集合的维护中 Rust crate，不能改变此 ADR 的隐私/原子性约束。

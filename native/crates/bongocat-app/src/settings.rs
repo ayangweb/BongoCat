@@ -1,3 +1,4 @@
+use crate::diagnostics_bundle::write_preview_bundle;
 use crate::{
     Application, ApplicationConfigStatus, ApplicationError, ApplicationLogCode,
     ApplicationLogComponent, ApplicationLogDiagnostics, ApplicationLogEvent, ApplicationLogLevel,
@@ -1764,6 +1765,8 @@ fn export_diagnostics_file(
         .map_err(|_| SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))?;
     set_private_path(path)
         .map_err(|_| SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))?;
+    write_preview_bundle(parent, &bytes)
+        .map_err(|_| SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))?;
     Ok(SettingsDiagnosticsExportStatus {
         format_version: DIAGNOSTICS_EXPORT_FORMAT_VERSION,
         bytes_written: u64::try_from(bytes.len()).unwrap_or(u64::MAX),
@@ -2456,6 +2459,10 @@ mod tests {
         )
         .expect("export diagnostics");
         let bytes = std::fs::read(&path).expect("read exported diagnostics");
+        let preview_path = directory
+            .path()
+            .join("logs")
+            .join("diagnostics-preview.zip");
         #[cfg(unix)]
         assert_eq!(
             fs::metadata(&path)
@@ -2467,6 +2474,7 @@ mod tests {
         );
         assert_eq!(status.format_version, DIAGNOSTICS_EXPORT_FORMAT_VERSION);
         assert_eq!(status.bytes_written, bytes.len() as u64);
+        assert!(preview_path.is_file());
         let document: serde_json::Value = serde_json::from_slice(&bytes).expect("valid JSON");
         assert_eq!(document["format_version"], 1);
         assert_eq!(document["settings_revision"], 42);
