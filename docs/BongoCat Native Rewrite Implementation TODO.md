@@ -660,10 +660,15 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     自动效果的周期性和确定性。runtime 的状态、输入与动画代码不使用 `SystemTime` 或其他墙钟
     API；`Instant` 仅用于调用方 bounded wait/shutdown deadline，不参与产品状态求值。Live2D
     Core 日志的文件保留时间独立使用 `SystemTime`，不参与 runtime 或模型动画求值。
-- [ ] 实现可注入 clock 和确定性 tick。
-  - 状态（2026-09-01）：正式 runtime 已使用 `MonotonicClock` 驱动动作、表情和自动效果，
-    并新增 typed `RuntimeCommand::Tick` 允许 coordinator/fixture 在注入时钟下显式驱动
-    单次评估；定时 loop 仍保留用于生产运行，完整动画/长按迁移和 fixture 对接仍待完成。
+- [x] 实现可注入 clock 和确定性 tick。
+  - 验收证据（2026-09-06）：正式 runtime 启动边界接收 `Arc<dyn MonotonicClock>`，生产
+    owner 使用 `SystemMonotonicClock`，测试和 fixture 以 `ManualClock`/`FixtureClock` 精确推进
+    `Duration`。`RuntimeCommand::Tick` 在可靠 command queue 中触发单次 input fallback、cursor
+    smoothing、motion/expression/automatic-effect 求值与 immutable render snapshot 发布；生产
+    worker 仍使用 maximum-FPS/hidden-overlay 间隔自行调度。共享输入 fixture 与
+    `model-motion-expression-audio` fixture 均经同一 typed Tick 路径运行，shutdown 会先关闭
+    producer/transport 并在 worker stopped 前完成 drain。`大`量时间相关单元回归覆盖 clock 推进、
+    motion/expression fade、cursor smoothing 与 fallback deadline。
 - [x] 实现 starting、ready、degraded、stopping、stopped 状态。
   - 验收证据（2026-09-06）：`RuntimeSnapshot` 从 `Starting` 发布到 `Ready`；renderer
     failure 进入 `Degraded`，首个成功 evaluation 恢复 `Ready`，重复相同 failure 不重复推进
