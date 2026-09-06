@@ -509,6 +509,13 @@ jobs:
           output=$(native/target/storage-test-injection/release/bongocat-app --panic-diagnostics-smoke 2>&1)
           printf '%s\n' "$output"
           grep -Fq 'bongocat-app: panic diagnostics recovered after crash' <<<"$output"
+      - name: Smoke macOS diagnostics preview export
+        if: matrix.os == 'macos-latest'
+        timeout-minutes: 2
+        run: |
+          output=$(native/target/storage-test-injection/release/bongocat-app --diagnostics-export-smoke 2>&1)
+          printf '%s\n' "$output"
+          grep -Fq 'bongocat-app: diagnostics export completed with a private preview bundle' <<<"$output"
       - name: Smoke Windows configuration recovery window
         if: matrix.os == 'windows-latest'
         shell: pwsh
@@ -619,6 +626,18 @@ jobs:
           if ($exitCode -ne 0) { exit $exitCode }
           if (-not $output.Contains("bongocat-app: panic diagnostics recovered after crash")) {
             throw "Windows panic diagnostics smoke did not report recovery"
+          }
+      - name: Smoke Windows diagnostics preview export
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          $output = & native/target/storage-test-injection/release/bongocat-app.exe --diagnostics-export-smoke 2>&1 | Out-String
+          $exitCode = $LASTEXITCODE
+          Write-Host $output
+          if ($exitCode -ne 0) { exit $exitCode }
+          if (-not $output.Contains("bongocat-app: diagnostics export completed with a private preview bundle")) {
+            throw "Windows diagnostics export smoke did not report a private preview bundle"
           }
       - name: Smoke Windows startup item lifecycle
         if: matrix.os == 'windows-latest'

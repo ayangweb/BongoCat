@@ -21,6 +21,16 @@ class NativeFailureEvidenceWorkflowTests(unittest.TestCase):
             collector_steps,
         )
 
+    def test_storage_smoke_exports_preview_on_both_native_platforms(self):
+        source = WORKFLOW.read_text(encoding="utf-8")
+        self.assertEqual(source.count("--diagnostics-export-smoke"), 2)
+        self.assertIn("Smoke macOS diagnostics preview export", source)
+        self.assertIn("Smoke Windows diagnostics preview export", source)
+        self.assertEqual(
+            source.count("diagnostics export completed with a private preview bundle"),
+            2,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -2025,6 +2025,10 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     Development product smoke 已通过隔离 owner-only
     storage 运行 typed command，并验证 private JSON/ZIP、固定 ZIP entries 与干净 shutdown。Windows
     release smoke 和 OS-level sync/replace failure injection 仍待实现，本项保持未勾选。
+  - 状态（2026-09-07）：Native Phase 0 workflow 的 macOS/Windows 隔离 storage job 均执行
+    `--diagnostics-export-smoke`，断言稳定成功消息、私有 diagnostics JSON/preview ZIP 和固定
+    archive entries；Windows 平台不再只有单元测试覆盖。OS-level sync/replace failure injection
+    仍待实现，本项保持未勾选。
   - 状态（2026-09-01）：settings service 已新增有界 `ExportDiagnostics` command，使用当前环境
     `logs/diagnostics.json` 的同目录原子写入生成 format v1 JSON。导出只包含稳定 runtime/input/
     configuration code、匿名聚合计数、模型来源计数和 settings/config revision；不包含模型 ID、
