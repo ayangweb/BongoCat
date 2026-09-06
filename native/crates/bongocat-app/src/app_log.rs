@@ -182,6 +182,7 @@ pub struct CoreLogDiagnostics {
     pub pruned: u64,
     pub bytes: u64,
     pub retained_files: u64,
+    pub retained_bytes: u64,
 }
 
 #[derive(Debug)]

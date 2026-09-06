@@ -1719,11 +1719,10 @@ mod tests {
                 .filter_map(Result::ok)
                 .map(|entry| entry.path())
                 .find(|path| {
-                    path.file_name()
-                        .is_some_and(|name| {
-                            let name = name.to_string_lossy();
-                            name.starts_with("application-") && name.ends_with(".jsonl")
-                        })
+                    path.file_name().is_some_and(|name| {
+                        let name = name.to_string_lossy();
+                        name.starts_with("application-") && name.ends_with(".jsonl")
+                    })
                 })
                 .expect("development application log"),
         )
@@ -1734,11 +1733,10 @@ mod tests {
                 .filter_map(Result::ok)
                 .map(|entry| entry.path())
                 .find(|path| {
-                    path.file_name()
-                        .is_some_and(|name| {
-                            let name = name.to_string_lossy();
-                            name.starts_with("application-") && name.ends_with(".jsonl")
-                        })
+                    path.file_name().is_some_and(|name| {
+                        let name = name.to_string_lossy();
+                        name.starts_with("application-") && name.ends_with(".jsonl")
+                    })
                 })
                 .expect("production application log"),
         )
@@ -2181,6 +2179,7 @@ mod tests {
             pruned: 4,
             bytes: 128,
             retained_files: 2,
+            retained_bytes: 192,
         });
 
         assert_eq!(
@@ -2192,6 +2191,7 @@ mod tests {
                 pruned: 4,
                 bytes: 128,
                 retained_files: 2,
+                retained_bytes: 192,
             })
         );
         application.shutdown().expect("clean shutdown");

@@ -1432,6 +1432,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             pruned: stats.pruned,
             bytes: stats.bytes,
             retained_files: stats.retained_files,
+            retained_bytes: stats.retained_bytes,
         }
     });
     if !application.is_operational() {

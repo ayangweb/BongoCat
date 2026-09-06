@@ -55,6 +55,7 @@ pub struct CoreLogStats {
     pub pruned: u64,
     pub bytes: u64,
     pub retained_files: u64,
+    pub retained_bytes: u64,
 }
 
 #[derive(Debug)]
@@ -138,6 +139,7 @@ impl CoreLogHandle {
                     pruned,
                     bytes,
                     retained_files: retained_log_files(&path),
+                    retained_bytes: retained_log_bytes(&path),
                     ..CoreLogStats::default()
                 },
             }),
@@ -352,6 +354,7 @@ fn record_message(state: &mut CoreLogState, bytes: &[u8]) {
     state.bytes = state.bytes.saturating_add(line_len);
     state.stats.written = state.stats.written.saturating_add(1);
     state.stats.bytes = state.bytes;
+    state.stats.retained_bytes = state.stats.retained_bytes.saturating_add(line_len);
 }
 
 fn rotate_logs(state: &mut CoreLogState) -> bool {
@@ -386,6 +389,7 @@ fn rotate_logs(state: &mut CoreLogState) -> bool {
             .pruned
             .saturating_add(prune_expired_rotated_logs(&state.path, SystemTime::now()));
         state.stats.retained_files = retained_log_files(&state.path);
+        state.stats.retained_bytes = retained_log_bytes(&state.path);
         true
     } else {
         let _ = fs::rename(&first, &state.path);
@@ -410,6 +414,7 @@ fn reopen_active_log(state: &mut CoreLogState) -> bool {
     state.bytes = bytes;
     state.stats.bytes = bytes;
     state.stats.retained_files = retained_log_files(&state.path);
+    state.stats.retained_bytes = retained_log_bytes(&state.path);
     true
 }
 
@@ -457,6 +462,18 @@ fn retained_log_files(path: &Path) -> u64 {
         + (1..=MAX_ROTATED_LOG_FILES)
             .filter(|generation| rotated_log_path(path, *generation).is_file())
             .count() as u64
+}
+
+fn retained_log_bytes(path: &Path) -> u64 {
+    fs::metadata(path)
+        .map(|metadata| metadata.len())
+        .unwrap_or(0)
+        .saturating_add(
+            (1..=MAX_ROTATED_LOG_FILES)
+                .filter_map(|generation| fs::metadata(rotated_log_path(path, generation)).ok())
+                .map(|metadata| metadata.len())
+                .sum(),
+        )
 }
 
 fn is_expired(modified: SystemTime, now: SystemTime) -> bool {
@@ -536,6 +553,7 @@ mod tests {
         assert_eq!(stats.rotated, 1);
         assert_eq!(stats.retained_files, 2);
         assert!(stats.bytes < MAX_LOG_BYTES);
+        assert_eq!(stats.retained_bytes, retained_log_bytes(&path));
         assert!(rotated_log_path(&path, 1).is_file());
         assert!(fs::metadata(&path).expect("active log").len() > 0);
     }
@@ -579,6 +597,7 @@ mod tests {
             })
             .sum::<u64>();
         assert!(retained_bytes <= MAX_TOTAL_LOG_FILES as u64 * MAX_LOG_BYTES);
+        assert_eq!(stats.retained_bytes, retained_bytes);
         assert!(fs::read(&path).expect("active contents").contains(&b'\n'));
     }
 
@@ -600,6 +619,7 @@ mod tests {
         assert!(state.file.is_some());
         assert_eq!(state.bytes, b"active".len() as u64);
         assert_eq!(state.stats.retained_files, 1);
+        assert_eq!(state.stats.retained_bytes, b"active".len() as u64);
     }
 
     #[test]

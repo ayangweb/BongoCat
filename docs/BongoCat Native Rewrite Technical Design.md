@@ -759,7 +759,8 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
   release 可执行文件产生真实 `panic=abort`，验证日志脱敏、配置字节不变、重启分类和标记清理；
   默认产品 CLI/API 不暴露该测试入口。
 - Diagnostics 导出的摘要只读取 app-owned writer 和 Cubism Core 的匿名
-  written/dropped/rotated/pruned/bytes/retained_files 统计，不读取或复制 Core message。可预览的
+  written/dropped/rotated/pruned/active-bytes/retained-files/retained-bytes 统计，并另输出二者
+  retained-bytes/files 的饱和聚合，不读取或复制 Core message。可预览的
   application lifecycle 历史仅能按 ADR-0027 严格重新解析为固定 code record，再与该摘要组成当前
   环境的私有 preview bundle；Core 历史内容不属于该 bundle。
 

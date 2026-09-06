@@ -1746,7 +1746,8 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     保留最近 7 日，并覆盖日期切换、轮转、过期/总量清理和失败计数；Core 历史日志仍未纳入同一
     retention policy；Core rotation files 现也在初始化和成功轮转后按 7 日上限清理，且 CoreLogStats
     已暴露匿名 written/dropped/rotated/pruned/active-bytes/retained-files 指标并有 rotation 回归；两类
-    历史日志尚未按同一 policy 聚合统计或导出，因此本项保持未勾选。
+    历史日志现以 retained-bytes/files 的饱和总数聚合导出，但 retention enforcement 仍由两个
+    隔离 writer 独立执行，尚未形成统一的目录级 budget，因此本项保持未勾选。
   - [x] `P7-CORE-LOG-DIAGNOSTICS`：将 Cubism Core retention 指标接入匿名 diagnostics export。
     - 依赖：`CoreLogStats`、应用 diagnostics export 和 ADR-0016 的隐私边界。
     - 退出条件：产品启动将只读 Core 指标 provider 注册到 `Application`；每次导出实时采样

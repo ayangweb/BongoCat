@@ -1627,6 +1627,7 @@ struct DiagnosticsExportDocument {
     models: DiagnosticsModels,
     application_logs: DiagnosticsApplicationLogs,
     core_logs: Option<DiagnosticsCoreLogs>,
+    log_retention: DiagnosticsLogRetention,
 }
 
 #[derive(Serialize)]
@@ -1733,6 +1734,13 @@ struct DiagnosticsCoreLogs {
     pruned: u64,
     bytes: u64,
     retained_files: u64,
+    retained_bytes: u64,
+}
+
+#[derive(Serialize)]
+struct DiagnosticsLogRetention {
+    retained_files: u64,
+    retained_bytes: u64,
 }
 
 fn export_diagnostics_file(
@@ -1845,6 +1853,8 @@ fn diagnostics_document(
         }
     }
     invalid_diagnostic_codes.sort_unstable_by(|left, right| left.code.cmp(right.code));
+    let core_retained_files = core_logs.map_or(0, |logs| logs.retained_files);
+    let core_retained_bytes = core_logs.map_or(0, |logs| logs.retained_bytes);
     DiagnosticsExportDocument {
         format_version: DIAGNOSTICS_EXPORT_FORMAT_VERSION,
         settings_revision: snapshot.revision,
@@ -1910,7 +1920,14 @@ fn diagnostics_document(
             pruned: core_logs.pruned,
             bytes: core_logs.bytes,
             retained_files: core_logs.retained_files,
+            retained_bytes: core_logs.retained_bytes,
         }),
+        log_retention: DiagnosticsLogRetention {
+            retained_files: application_logs
+                .retained_files
+                .saturating_add(core_retained_files),
+            retained_bytes: application_logs.bytes.saturating_add(core_retained_bytes),
+        },
     }
 }
 
@@ -2477,6 +2494,7 @@ mod tests {
                 pruned: 8,
                 bytes: 256,
                 retained_files: 3,
+                retained_bytes: 384,
             }),
         )
         .expect("export diagnostics");
@@ -2537,6 +2555,9 @@ mod tests {
         assert_eq!(document["core_logs"]["written"], 5);
         assert_eq!(document["core_logs"]["dropped"], 6);
         assert_eq!(document["core_logs"]["retained_files"], 3);
+        assert_eq!(document["core_logs"]["retained_bytes"], 384);
+        assert_eq!(document["log_retention"]["retained_files"], 5);
+        assert_eq!(document["log_retention"]["retained_bytes"], 512);
         assert_eq!(document["models"]["invalid_installed"], 1);
         assert_eq!(
             document["models"]["invalid_diagnostic_codes"][0]["code"],
