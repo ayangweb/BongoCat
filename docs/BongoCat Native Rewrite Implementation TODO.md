@@ -576,6 +576,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     contract 固定收集器与上传步骤一一对应。
   - 状态（2026-09-07）：收集器进一步拒绝未命名 JSON，并按匿名状态前缀保留文本行；未知行统一
     替换为 `<redacted-line>`，回归覆盖任意 JSON 和潜在用户模型文本，避免仅依赖字段名匹配隐私。
+  - 验证（2026-09-07）：本机 `BONGOCAT_BUILD_ENV=development cargo run --manifest-path
+native/Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
+--target-dir native/target/storage-test-injection -- --diagnostics-export-smoke` 通过，输出
+    `bongocat-app: diagnostics export completed with a private preview bundle`。
 - [ ] 构建产物记录 source commit、Cargo.lock hash、toolchain、target 和 feature set。
   - [x] `tools/record-native-provenance.py` 生成无绝对路径的 JSON；Native 三平台 CI 上传 runner
         provenance，macOS `.app` 将其放入 `Contents/Resources/build-provenance.json`。工具测试验证
