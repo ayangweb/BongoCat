@@ -1308,10 +1308,10 @@ impl RuntimeOwner {
         }
         self.request_shutdown();
         let Some(stopped) = self.client.wait_for_state(RuntimeState::Stopped, timeout) else {
-            // An explicit timeout is a bounded API contract. Dropping the join handle
-            // lets the worker finish its already-admitted drain asynchronously instead
-            // of making `Drop` block without a deadline after returning the error.
-            self.worker.take();
+            // An explicit timeout is a bounded API contract. Move the join into a
+            // small watcher so the worker can finish its admitted drain without
+            // making the caller wait, while still aggregating a late panic.
+            self.detach_worker_join();
             self.shutdown_diagnostics
                 .timed_out
                 .fetch_add(1, Ordering::Relaxed);
@@ -1319,6 +1319,20 @@ impl RuntimeOwner {
         };
         self.join_worker()?;
         Ok(stopped)
+    }
+
+    fn detach_worker_join(&mut self) {
+        let Some(worker) = self.worker.take() else {
+            return;
+        };
+        let diagnostics = Arc::clone(&self.shutdown_diagnostics);
+        let _ = thread::Builder::new()
+            .name("bongocat-runtime-shutdown-join".into())
+            .spawn(move || {
+                if worker.join().is_err() {
+                    diagnostics.worker_panicked.fetch_add(1, Ordering::Relaxed);
+                }
+            });
     }
 
     fn join_worker(&mut self) -> Result<(), ShutdownError> {
@@ -2951,6 +2965,29 @@ mod tests {
 
         assert_eq!(owner.shutdown(TIMEOUT), Err(ShutdownError::WorkerPanicked));
         assert_eq!(client.snapshot().shutdown.worker_panicked, 1);
+    }
+
+    #[test]
+    fn shutdown_timeout_aggregates_late_worker_panic() {
+        let owner = RuntimeOwner::start_with_worker_panic(true, 1);
+        let client = owner.client();
+        client
+            .wait_for_state(RuntimeState::Ready, TIMEOUT)
+            .expect("runtime ready");
+
+        assert_eq!(owner.shutdown(Duration::ZERO), Err(ShutdownError::TimedOut));
+        client
+            .wait_for_state(RuntimeState::Stopped, TIMEOUT)
+            .expect("detached worker eventually stops");
+
+        let deadline = Instant::now() + TIMEOUT;
+        while Instant::now() < deadline {
+            if client.snapshot().shutdown.worker_panicked == 1 {
+                return;
+            }
+            thread::yield_now();
+        }
+        panic!("late worker panic was not aggregated");
     }
 
     #[test]

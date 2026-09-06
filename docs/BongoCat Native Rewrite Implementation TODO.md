@@ -694,6 +694,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-09-07）：新增仅测试可用的 worker panic-after-stopped 注入，验证 runtime
     已发布 `Stopped` 后的 join panic 会返回 `WorkerPanicked` 并累计匿名计数；该回归与
     timeout/drain 测试通过。真实阻塞工作预算和平台线程故障注入仍待完成。
+  - 状态（2026-09-07）：shutdown 超时现在将 worker join 转交给独立 watcher；调用方仍在
+    deadline 内返回 `TimedOut`，但 worker 随后发生 panic 时会继续累计匿名
+    `worker_panicked` 诊断，不再因丢弃 join handle 而静默丢失错误。新增超时后 late-panic
+    聚合回归通过。真实阻塞工作预算和平台线程故障注入仍待完成。
 - [x] command 定义幂等性和重复提交语义；有副作用的长操作使用 operation id 去重。
   - 验收证据（2026-09-06）：runtime command envelope 以单调 sequence 拒绝重复和乱序投递；
     `Set*` 与相同 active motion/priority 的重试保持状态，并且 duplicate motion 不重新启动
