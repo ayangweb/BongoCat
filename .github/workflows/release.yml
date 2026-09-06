@@ -43,8 +43,6 @@ jobs:
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
           - platform: windows-latest
-            target: i686-pc-windows-msvc
-          - platform: windows-latest
             target: aarch64-pc-windows-msvc
 
           - platform: ubuntu-22.04
