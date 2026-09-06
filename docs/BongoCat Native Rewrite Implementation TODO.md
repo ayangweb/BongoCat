@@ -917,6 +917,13 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     更新当前 snapshot，再启动下一项 pending patch，避免多个连续 patch 复用旧
     `config_revision` 导致 `SnapshotOutdated`。新增纯 Rust 回归覆盖连续确认 revision；系统
     菜单、平台关闭和强制终止路径仍未共享该协调状态，故配置去抖总项保持未勾选。
+  - 状态（2026-09-07）：产品退出协调现在复用 settings window 的 typed flush 入口。macOS
+    系统菜单、运行时退出请求和各诊断 smoke 的应用退出先提交未确认 patch，再进入
+    `on_app_quit`；Windows 系统菜单、overlay 平台终止和强制退出请求由 frame source 在
+    shutdown 前等待 flush 完成，窗口句柄不可用时显式降级为继续 shutdown。新增
+    `SettingsWindowHandle::request_quit_after_flush` 和 Windows flush-complete 状态，避免
+    直接销毁 runtime 丢失 pending patch。当前仅完成 contract、macOS 本机构建/测试；真实
+    Windows close/termination 与物理输入路径仍需对应平台 smoke，因此总项保持未勾选。
 - [x] GPUI 只通过 typed command 获取 snapshot 和提交 patch。
   - 验收证据（2026-09-07）：设置窗口的主题、语言、图标/overlay、motion audio、行为快捷键、
     FPS、release fallback timeout、模型、gamepad dead-zone、启动项和快捷键操作均通过

@@ -480,6 +480,14 @@ impl SettingsWindowHandle {
             self.view.update(cx, |view, cx| update(view, window, cx))
         })?
     }
+
+    /// Requests application shutdown after all unacknowledged debounced patches
+    /// have been submitted successfully.
+    pub fn request_quit_after_flush(&self, cx: &mut App) -> gpui_kit::Result<()> {
+        self.update(cx, |view, _, cx| {
+            view.request_quit_after_flush(cx);
+        })
+    }
 }
 
 impl PartialEq for SettingsWindowHandle {

@@ -372,6 +372,8 @@ struct ProductCoordinator {
     failures: Arc<Mutex<Vec<String>>>,
     #[cfg(target_os = "windows")]
     shutdown_requested: Arc<AtomicBool>,
+    #[cfg(target_os = "windows")]
+    shutdown_flush_complete: Arc<AtomicBool>,
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -470,7 +472,7 @@ fn request_windows_product_quit(shutdown_requested: &AtomicBool) {
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-fn request_product_quit(cx: &mut App) {
+fn finish_product_quit(cx: &mut App) {
     #[cfg(target_os = "macos")]
     cx.quit();
 
@@ -480,8 +482,24 @@ fn request_product_quit(cx: &mut App) {
             coordinator
                 .shutdown_requested
                 .store(true, Ordering::Release);
+            coordinator
+                .shutdown_flush_complete
+                .store(true, Ordering::Release);
         }
     }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn request_product_quit(cx: &mut App) {
+    let window = cx
+        .try_global::<ProductCoordinator>()
+        .and_then(|coordinator| coordinator.settings_window.clone());
+    if let Some(window) = window
+        && window.request_quit_after_flush(cx).is_ok()
+    {
+        return;
+    }
+    finish_product_quit(cx);
 }
 
 #[cfg(target_os = "windows")]
@@ -648,7 +666,7 @@ fn ensure_settings_window(cx: &mut App) -> Result<SettingsWindowHandle, String> 
         settings_client,
         window_state,
         taskbar_icon_visible,
-        request_product_quit,
+        finish_product_quit,
         cx,
     )?;
     cx.global_mut::<ProductCoordinator>().settings_window = Some(window_handle.clone());
@@ -1630,7 +1648,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             settings_client.clone(),
             window_state,
             initial_taskbar_icon_visible,
-            request_product_quit,
+            finish_product_quit,
             cx,
         ) {
             Ok(window) => window,
@@ -1682,6 +1700,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             failures: Arc::clone(&run_failures),
             #[cfg(target_os = "windows")]
             shutdown_requested: Arc::clone(&shutdown_requested),
+            #[cfg(target_os = "windows")]
+            shutdown_flush_complete: Arc::new(AtomicBool::new(false)),
         });
 
         cx.on_window_closed(|cx, _| {
@@ -1842,6 +1862,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let _frame_source_guard = frame_source_guard;
             #[cfg(target_os = "windows")]
             let mut frame_active = true;
+            #[cfg(target_os = "windows")]
+            let mut shutdown_flush_started = false;
             let mut last_overlay_bounds = None;
             let mut overlay_placement_debouncer = OverlayPlacementDebouncer::default();
             let mut retry_delay = None;
@@ -2010,14 +2032,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             cx,
                         );
                     }
-                    if frame_shutdown_requested.load(Ordering::Acquire)
-                        || system_termination_requested
-                    {
-                        start_windows_product_shutdown(cx);
-                        Ok(false)
-                    } else {
-                        Ok(true)
+                    if system_termination_requested {
+                        frame_shutdown_requested.store(true, Ordering::Release);
                     }
+                    if frame_shutdown_requested.load(Ordering::Acquire) {
+                        let flush_complete = cx
+                            .global::<ProductCoordinator>()
+                            .shutdown_flush_complete
+                            .load(Ordering::Acquire);
+                        if flush_complete {
+                            start_windows_product_shutdown(cx);
+                            return Ok(false);
+                        }
+                        if !shutdown_flush_started {
+                            shutdown_flush_started = true;
+                            if view.request_quit_after_flush(cx).is_err() {
+                                cx.global::<ProductCoordinator>()
+                                    .shutdown_flush_complete
+                                    .store(true, Ordering::Release);
+                            }
+                        }
+                    }
+                    Ok(true)
                 })
                 .await;
                 #[cfg(target_os = "windows")]
