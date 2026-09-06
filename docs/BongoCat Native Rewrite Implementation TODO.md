@@ -649,6 +649,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     返回原始 `CapacityExceeded` sample、增加匿名拒绝计数，并保持
     `published = coalesced + consumed + discarded + pending` accounting 不变量；消费 pending
     后仍可完整对账。平台实机手柄和跨平台产品证据仍待完成，因此总项保持未勾选。
+  - 状态（2026-09-07）：runtime shutdown 现在与 cursor 使用相同的顺序，在停止 gamepad axis
+    slot 前消费最后的 pending latest value；stopped snapshot 的 `pending` 归零、`consumed`
+    计数完整且 active connection 的轴值仍投影到 model input。新增 shutdown flush 回归通过；
+    平台实机手柄和跨平台产品证据仍待完成，因此总项保持未勾选。
 - [ ] 队列溢出必须计数、记录并触发安全恢复。
   - 状态（2026-08-28）：`spikes/input-queue/` 的 `push_with_overflow_reset` 已固定溢出返回原事件、清空不可信缓存、注入 `Reset` 并记录恢复/丢弃计数；`spikes/runtime-contract/` 已将同一策略应用到 typed command queue 并通过 worker snapshot 暴露诊断；runtime producer、实际容量和输入/command sequence 仍待产品实现。
   - 状态（2026-08-30）：产品 `InputProducer` 已聚合 enqueued、queue full、overflow 后

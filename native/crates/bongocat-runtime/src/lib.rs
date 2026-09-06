@@ -2041,6 +2041,15 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
         &mut normalized_cursor,
         clock.now(),
     );
+    consume_gamepad_axes(
+        &gamepad_axis_slot,
+        &snapshot,
+        &mut gamepad_axis_values,
+        &input_state,
+        &input_bindings,
+        normalized_cursor,
+        gamepad_axis_settings,
+    );
     gamepad_axis_values.clear();
     gamepad_axis_slot.stop();
     if let Some(renderer) = &renderer {
@@ -3295,6 +3304,41 @@ mod tests {
             .expect("active edge consumed");
         assert!(active.model_input.stick_left_x > 0.8);
         owner.shutdown(TIMEOUT).expect("clean shutdown");
+    }
+
+    #[test]
+    fn shutdown_flushes_a_pending_gamepad_axis_before_stopped_state() {
+        let owner = RuntimeOwner::start(false, 8);
+        let client = owner.client();
+        client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+        let axis = owner.gamepad_axis_producer();
+        let connection = axis.connect(0).expect("gamepad connection allocated");
+        let input = owner.input_producer();
+        let connected = input
+            .publish(InputEvent::GamepadConnected {
+                connection,
+                at: MonotonicMillis::new(0),
+            })
+            .expect("connection accepted");
+        client
+            .wait_for_input_sequence(connected, TIMEOUT)
+            .expect("connection consumed");
+
+        axis.publish(GamepadAxisSample {
+            key: GamepadAxisKey {
+                connection,
+                axis: GamepadAxis::LeftStickX,
+            },
+            value: 0.75,
+            at: MonotonicMillis::new(1),
+        })
+        .expect("pending axis accepted");
+
+        let stopped = owner.shutdown(TIMEOUT).expect("clean shutdown");
+        assert_eq!(stopped.state, RuntimeState::Stopped);
+        assert_eq!(stopped.gamepad_axis_transport.pending, 0);
+        assert_eq!(stopped.gamepad_axis_transport.consumed, 1);
+        assert!(stopped.model_input.stick_left_x > 0.7);
     }
 
     #[test]
