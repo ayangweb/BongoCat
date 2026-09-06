@@ -844,13 +844,13 @@ unsafe fn validate_drawable_ids(model: *const sys::csmModel) -> Result<(), Live2
 }
 
 fn decode_blend_mode(mode: i32) -> Result<BlendMode, Live2dError> {
-    match mode & 0xff {
+    match mode {
         0 => Ok(BlendMode::Normal),
         1 => Ok(BlendMode::Additive),
         2 => Ok(BlendMode::Multiplicative),
         value => Err(Live2dError::new(
             Live2dErrorCode::UnsupportedBlendMode,
-            format!("Core color blend mode {value} is not implemented yet"),
+            format!("Core returned unsupported drawable blend flags {value}"),
         )),
     }
 }
@@ -1112,6 +1112,28 @@ mod tests {
                 vertex_positions_changed: true,
                 blend_color_changed: true,
             }
+        );
+    }
+
+    #[test]
+    fn drawable_blend_flags_accept_only_documented_core_modes() {
+        assert_eq!(decode_blend_mode(0).expect("normal"), BlendMode::Normal);
+        assert_eq!(decode_blend_mode(1).expect("additive"), BlendMode::Additive);
+        assert_eq!(
+            decode_blend_mode(2).expect("multiplicative"),
+            BlendMode::Multiplicative
+        );
+        assert_eq!(
+            decode_blend_mode(3)
+                .expect_err("combined flags are unsupported")
+                .code,
+            Live2dErrorCode::UnsupportedBlendMode
+        );
+        assert_eq!(
+            decode_blend_mode(0x100)
+                .expect_err("unknown high bits are unsupported")
+                .code,
+            Live2dErrorCode::UnsupportedBlendMode
         );
     }
 
