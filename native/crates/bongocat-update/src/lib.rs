@@ -468,7 +468,7 @@ impl UpdateVerifier {
             if !seen_targets.insert(target) {
                 return Err(UpdateError::new(UpdateErrorCode::ArtifactTargetDuplicate));
             }
-            let verified = validate_artifact(artifact)?;
+            let verified = validate_artifact(artifact, manifest.channel)?;
             if target == self.target {
                 selected_artifact = Some(verified);
             }
@@ -623,6 +623,7 @@ pub struct VerifiedUpdate {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifiedArtifact {
+    channel: UpdateChannel,
     target: UpdateTarget,
     url: String,
     byte_length: u64,
@@ -660,6 +661,10 @@ impl VerifiedUpdate {
 }
 
 impl VerifiedArtifact {
+    pub const fn channel(&self) -> UpdateChannel {
+        self.channel
+    }
+
     pub const fn target(&self) -> UpdateTarget {
         self.target
     }
@@ -702,11 +707,13 @@ impl VerifiedArtifact {
 
     #[cfg(test)]
     pub(crate) fn from_test_bytes(
+        channel: UpdateChannel,
         target: UpdateTarget,
         url: impl Into<String>,
         bytes: &[u8],
     ) -> Self {
         Self {
+            channel,
             target,
             url: url.into(),
             byte_length: bytes.len() as u64,
@@ -738,7 +745,10 @@ struct UpdateArtifact {
     sha256: String,
 }
 
-fn validate_artifact(artifact: UpdateArtifact) -> Result<VerifiedArtifact, UpdateError> {
+fn validate_artifact(
+    artifact: UpdateArtifact,
+    channel: UpdateChannel,
+) -> Result<VerifiedArtifact, UpdateError> {
     if artifact.byte_length == 0 || artifact.byte_length > MAX_UPDATE_ARTIFACT_BYTES {
         return Err(UpdateError::new(UpdateErrorCode::ArtifactLengthInvalid));
     }
@@ -746,6 +756,7 @@ fn validate_artifact(artifact: UpdateArtifact) -> Result<VerifiedArtifact, Updat
         .map_err(|_| UpdateError::new(UpdateErrorCode::ArtifactUrlInvalid))?;
     let sha256 = decode_sha256(&artifact.sha256)?;
     Ok(VerifiedArtifact {
+        channel,
         target: UpdateTarget {
             target: artifact.target,
             architecture: artifact.architecture,

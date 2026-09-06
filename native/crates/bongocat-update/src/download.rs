@@ -144,6 +144,7 @@ impl UpdateDownloadCoordinator {
 fn classify_staging_failure(error: UpdateStagingError) -> UpdateDownloadAttemptFailure {
     match error.code {
         UpdateStagingErrorCode::Cancelled => UpdateDownloadAttemptFailure::Cancelled,
+        UpdateStagingErrorCode::ChannelMismatch => UpdateDownloadAttemptFailure::Staging,
         UpdateStagingErrorCode::Integrity(UpdateErrorCode::ArtifactReadFailed) => {
             UpdateDownloadAttemptFailure::Transport
         }
@@ -180,6 +181,7 @@ mod tests {
 
     fn artifact(bytes: &[u8]) -> VerifiedArtifact {
         VerifiedArtifact::from_test_bytes(
+            crate::UpdateChannel::Development,
             crate::UpdateTarget::new(crate::TargetTriple::Aarch64AppleDarwin),
             "https://updates.example.invalid/bongocat.pkg",
             bytes,

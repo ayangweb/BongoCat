@@ -1,4 +1,4 @@
-use crate::{StorageLayout, UpdateErrorCode, VerifiedArtifact};
+use crate::{StorageLayout, UpdateErrorCode, VerifiedArtifact, update_channel};
 use sha2::{Digest, Sha256};
 use std::{
     fmt,
@@ -15,6 +15,7 @@ static NEXT_STAGING_FILE: AtomicU64 = AtomicU64::new(0);
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UpdateStagingErrorCode {
     Cancelled,
+    ChannelMismatch,
     DirectoryCreateFailed,
     DirectoryInvalid,
     DirectoryPermissionFailed,
@@ -29,6 +30,7 @@ impl UpdateStagingErrorCode {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Cancelled => "update_staging_cancelled",
+            Self::ChannelMismatch => "update_staging_channel_mismatch",
             Self::DirectoryCreateFailed => "update_staging_directory_create_failed",
             Self::DirectoryInvalid => "update_staging_directory_invalid",
             Self::DirectoryPermissionFailed => "update_staging_directory_permission_failed",
@@ -77,6 +79,11 @@ impl VerifiedArtifact {
         mut reader: impl Read,
         mut cancelled: impl FnMut() -> bool,
     ) -> Result<StagedUpdateArtifact, UpdateStagingError> {
+        if self.channel() != update_channel(layout.environment) {
+            return Err(UpdateStagingError {
+                code: UpdateStagingErrorCode::ChannelMismatch,
+            });
+        }
         ensure_staging_directory(&layout.update_staging)?;
         let (path, file) = create_staging_file(&layout.update_staging)?;
         let result = stage_into_file(self, file, &mut reader, &mut cancelled);
@@ -239,6 +246,7 @@ mod tests {
 
     fn artifact(bytes: &[u8]) -> VerifiedArtifact {
         VerifiedArtifact::from_test_bytes(
+            crate::UpdateChannel::Development,
             crate::UpdateTarget::new(crate::TargetTriple::Aarch64AppleDarwin),
             "https://updates.example.invalid/bongocat.pkg",
             bytes,
@@ -274,6 +282,26 @@ mod tests {
         assert_ne!(first.path(), second.path());
         assert_eq!(first.path().parent(), Some(layout.update_staging.as_path()));
         assert_eq!(staging_files(&layout.update_staging).len(), 2);
+    }
+
+    #[test]
+    fn rejects_artifacts_from_another_environment_before_creating_staging_files() {
+        let temporary = tempdir().expect("temporary directory");
+        let layout = StorageLayout::under(temporary.path(), BuildEnvironment::Production);
+        let bytes = b"development update artifact";
+        let artifact = VerifiedArtifact::from_test_bytes(
+            crate::UpdateChannel::Development,
+            crate::UpdateTarget::new(crate::TargetTriple::Aarch64AppleDarwin),
+            "https://updates.example.invalid/bongocat.pkg",
+            bytes,
+        );
+
+        let error = artifact
+            .stage_reader(&layout, Cursor::new(bytes), || false)
+            .expect_err("cross-environment staging must fail");
+
+        assert_eq!(error.code, UpdateStagingErrorCode::ChannelMismatch);
+        assert!(!layout.update_staging.exists());
     }
 
     #[test]
