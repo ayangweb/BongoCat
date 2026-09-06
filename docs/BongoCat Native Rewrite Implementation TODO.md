@@ -1771,6 +1771,11 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     或平台 installer；真实 update helper、原子替换、进程间 shutdown acknowledgement 和失败回滚仍待
     Windows/macOS 安装链实现，因此总项保持未勾选。
 - [ ] 测试断网、代理、中断、签名错误和降级攻击。
+  - 状态（2026-09-06）：`bongocat-update` coordinator 回归覆盖 transport/断网失败、签名失败和
+    重新签名的低 sequence 降级攻击；失败均返回稳定 code，不推进环境 anti-rollback sequence。
+    下载 coordinator 另覆盖取消、中断重试、hash/长度错误和 staging 清理，transport 固定
+    HTTPS、无 redirect 且保留代理配置边界。真实代理链、断网系统 smoke 和发布 endpoint 仍待
+    app-owned update worker/基础设施，因此本项保持未勾选。
 - [ ] 日志 rotation、总大小和保留天数有上限。
   - 状态（2026-09-05）：Cubism Core 日志 sink 已在单文件达到 1 MiB 时执行有界路径轮转，最多保留
     1 个活动文件加 7 个轮转文件，总量不超过 8 MiB；活动文件和轮转失败均有有界 dropped 计数；测试覆盖触发轮转、保留上限和

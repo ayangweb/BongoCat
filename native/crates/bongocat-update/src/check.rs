@@ -193,4 +193,81 @@ mod tests {
             0
         );
     }
+
+    #[test]
+    fn transport_signature_and_rollback_failures_are_atomic() {
+        let temporary = tempdir().expect("temporary directory");
+        let layout = StorageLayout::under(temporary.path(), BuildEnvironment::Development);
+        let (trusted_key, envelope) = signed_envelope();
+        let mut session = crate::UpdateVerificationSession::open(
+            &layout,
+            TargetTriple::Aarch64AppleDarwin,
+            "0.1.0",
+            vec![trusted_key],
+        )
+        .expect("session");
+        let endpoint = UpdateManifestEndpoint::new("https://updates.example.invalid/manifest.json")
+            .expect("endpoint");
+
+        let transport = UpdateCheckCoordinator::new(StubSource {
+            result: Err(UpdateManifestFetchError::Transport(
+                crate::UpdateManifestTransportErrorCode::TransportFailed,
+            )),
+        });
+        assert_eq!(
+            transport
+                .check(&mut session, &endpoint)
+                .expect_err("offline transport failure")
+                .code(),
+            "update_manifest_transport_failed"
+        );
+
+        let invalid_signature = UpdateCheckCoordinator::new(StubSource {
+            result: Err(UpdateManifestFetchError::Manifest(crate::UpdateError {
+                code: crate::UpdateErrorCode::ManifestSignatureInvalid,
+            })),
+        });
+        assert_eq!(
+            invalid_signature
+                .check(&mut session, &endpoint)
+                .expect_err("signature failure")
+                .code(),
+            "manifest_signature_invalid"
+        );
+
+        let valid = UpdateCheckCoordinator::new(StubSource {
+            result: Ok(envelope.clone()),
+        });
+        valid.check(&mut session, &endpoint).expect("initial update");
+
+        let signing_key = SigningKey::from_bytes(&[7; 32]);
+        let mut rollback_manifest: serde_json::Value =
+            serde_json::from_slice(envelope.manifest_bytes()).expect("manifest json");
+        rollback_manifest["release_sequence"] = serde_json::json!(1);
+        let rollback_bytes = serde_json::to_vec(&rollback_manifest).expect("rollback bytes");
+        let rollback_signature = signing_key.sign(&rollback_bytes);
+        let rollback_envelope = UpdateManifestEnvelope::from_headers(
+            rollback_bytes,
+            envelope.key_id(),
+            &lower_hex(&rollback_signature.to_bytes()),
+        )
+        .expect("signed rollback envelope");
+        let rollback = UpdateCheckCoordinator::new(StubSource {
+            result: Ok(rollback_envelope),
+        });
+        assert_eq!(
+            rollback
+                .check(&mut session, &endpoint)
+                .expect_err("rollback failure")
+                .code(),
+            "rollback_detected"
+        );
+        assert_eq!(
+            UpdateSequenceStore::open_for_layout(&layout)
+                .expect("sequence store")
+                .highest_verified_sequence()
+                .expect("sequence"),
+            2
+        );
+    }
 }
