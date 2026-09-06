@@ -8,7 +8,8 @@ use bongocat_render::{
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_live2d::{
-    ExpressionClip, ExpressionLayer, Live2dModel, MotionClip, ParameterUpdate, ProductParameter,
+    ExpressionClip, ExpressionLayer, Live2dError, Live2dErrorCode, Live2dModel, MotionClip,
+    ParameterUpdate, ProductParameter,
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_render::RenderFrame;
@@ -129,13 +130,14 @@ impl RuntimeRenderer {
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
             debug_assert!(self.pending.is_none());
-            let mut model = Live2dModel::load(committed)
-                .map_err(|_| RuntimeRenderErrorCode::ModelLoadFailed)?;
+            let mut model = Live2dModel::load(committed).map_err(|error| {
+                map_live2d_error(error, RuntimeRenderErrorCode::ModelLoadFailed)
+            })?;
             let resources = model.render_resources();
             apply_model_input(&mut model, input, self.model_settings)?;
-            let mut snapshot = model
-                .update_and_snapshot()
-                .map_err(|_| RuntimeRenderErrorCode::ModelEvaluationFailed)?;
+            let mut snapshot = model.update_and_snapshot().map_err(|error| {
+                map_live2d_error(error, RuntimeRenderErrorCode::ModelEvaluationFailed)
+            })?;
             snapshot.active_keys = resolve_key_overlays(&resources, input.key_presses);
             snapshot.mirror_horizontal = self.model_settings.mirror;
             let model_generation = self.next_model_generation;
@@ -325,10 +327,9 @@ impl RuntimeRenderer {
             let Some(active) = &mut self.active else {
                 return Ok(RenderEvaluation::default());
             };
-            active
-                .model
-                .restore_parameter_defaults()
-                .map_err(|_| RuntimeRenderErrorCode::ModelEvaluationFailed)?;
+            active.model.restore_parameter_defaults().map_err(|error| {
+                map_live2d_error(error, RuntimeRenderErrorCode::ModelEvaluationFailed)
+            })?;
             let mut motion_user_data = Vec::new();
             let mut skipped_motion_user_data = 0;
             let motion_finished = if let Some(playback) = &mut active.motion {
@@ -365,7 +366,9 @@ impl RuntimeRenderer {
                         fade_out_elapsed
                             .map_or(1.0, |elapsed| playback.clip.fade_out_weight(elapsed)),
                     )
-                    .map_err(|_| RuntimeRenderErrorCode::ModelEvaluationFailed)?;
+                    .map_err(|error| {
+                        map_live2d_error(error, RuntimeRenderErrorCode::ModelEvaluationFailed)
+                    })?;
                 status.finished || explicit_fade_finished
             } else {
                 false
@@ -399,13 +402,14 @@ impl RuntimeRenderer {
             active
                 .model
                 .apply_expression_layers(&expression_layers)
-                .map_err(|_| RuntimeRenderErrorCode::ModelEvaluationFailed)?;
+                .map_err(|error| {
+                    map_live2d_error(error, RuntimeRenderErrorCode::ModelEvaluationFailed)
+                })?;
             apply_automatic_effects(&mut active.model, now)?;
             apply_model_input(&mut active.model, input, self.model_settings)?;
-            let mut snapshot = active
-                .model
-                .update_and_snapshot()
-                .map_err(|_| RuntimeRenderErrorCode::ModelEvaluationFailed)?;
+            let mut snapshot = active.model.update_and_snapshot().map_err(|error| {
+                map_live2d_error(error, RuntimeRenderErrorCode::ModelEvaluationFailed)
+            })?;
             snapshot.active_keys = resolve_key_overlays(&active.resources, input.key_presses);
             snapshot.mirror_horizontal = self.model_settings.mirror;
             self.producer
@@ -448,7 +452,7 @@ fn apply_automatic_effects(
     let (breath, blink) = automatic_effect_values(now);
     model
         .apply_automatic_effects(breath, blink)
-        .map_err(|_| RuntimeRenderErrorCode::ModelEvaluationFailed)?;
+        .map_err(|error| map_live2d_error(error, RuntimeRenderErrorCode::ModelEvaluationFailed))?;
     Ok(())
 }
 
@@ -525,10 +529,26 @@ fn apply_model_input(
     ] {
         match model.set_normalized_parameter(parameter, value) {
             Ok(ParameterUpdate::Applied { .. } | ParameterUpdate::Unsupported) => {}
-            Err(_) => return Err(RuntimeRenderErrorCode::ModelEvaluationFailed),
+            Err(error) => {
+                return Err(map_live2d_error(
+                    error,
+                    RuntimeRenderErrorCode::ModelEvaluationFailed,
+                ));
+            }
         }
     }
     Ok(())
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn map_live2d_error(
+    error: Live2dError,
+    fallback: RuntimeRenderErrorCode,
+) -> RuntimeRenderErrorCode {
+    match error.code {
+        Live2dErrorCode::PlatformUnsupported => RuntimeRenderErrorCode::PlatformUnsupported,
+        _ => fallback,
+    }
 }
 
 #[cfg(all(test, any(target_os = "macos", target_os = "windows")))]
@@ -549,6 +569,26 @@ mod tests {
         .expect("preset catalog")
         .load(&ModelId::parse(id).expect("model id"))
         .expect("preset model")
+    }
+
+    #[test]
+    fn live2d_errors_map_to_stable_runtime_categories() {
+        for code in Live2dErrorCode::ALL {
+            let error = Live2dError {
+                code,
+                detail: String::new(),
+            };
+            let mapped = map_live2d_error(error, RuntimeRenderErrorCode::ModelEvaluationFailed);
+            assert_eq!(
+                mapped,
+                if code == Live2dErrorCode::PlatformUnsupported {
+                    RuntimeRenderErrorCode::PlatformUnsupported
+                } else {
+                    RuntimeRenderErrorCode::ModelEvaluationFailed
+                },
+                "unexpected mapping for {code}"
+            );
+        }
     }
 
     #[test]

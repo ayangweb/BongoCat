@@ -1044,6 +1044,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     Core、模型、motion 和 expression 错误共用 17 个唯一 code；`Live2dError` 的 detail 仍可包含
     诊断信息，但 code 本身不含路径或其他动态内容。纯 Rust 唯一性和格式测试已通过；跨 crate
     UI/诊断投影及完整错误矩阵仍待完成。
+  - 状态（2026-09-06）：`bongocat-runtime` 新增集中式 Live2D error boundary；模型加载、参数/
+    motion/expression 求值和 Core snapshot 错误统一映射到阶段级稳定 `RuntimeRenderErrorCode`，
+    并保留 `platform_unsupported`，不向 UI 泄漏 FFI detail、路径或裸类型。17 个当前 Core
+    code 的映射回归已通过；精确 Core code 的 UI 诊断投影和跨平台完整错误矩阵仍待完成，
+    因此本项保持未勾选。
 
 ### 5.3 动作与状态
 
