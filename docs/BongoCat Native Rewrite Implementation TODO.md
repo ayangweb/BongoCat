@@ -888,10 +888,13 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     未确认的连续配置 patch，逐项收到成功回包后才调用应用退出；任一请求失败则取消退出并
     保留 pending/error。产品级系统菜单、平台关闭和强制终止路径尚未共享该协调状态，故配置
     去抖总项仍保持未勾选。
-- [ ] GPUI 只通过 typed command 获取 snapshot 和提交 patch。
-  - 状态（2026-09-01）：正式 UI 对显隐、motion audio、模型交互和 gamepad dead-zone 使用有界
-    typed command/reply，成功结果携带新 runtime revision，文件写入在 app service worker 完成；
-    其余配置域尚未接入，故总项保持未勾选。
+- [x] GPUI 只通过 typed command 获取 snapshot 和提交 patch。
+  - 验收证据（2026-09-07）：设置窗口的主题、语言、图标/overlay、motion audio、行为快捷键、
+    FPS、release fallback timeout、模型、gamepad dead-zone、启动项和快捷键操作均通过
+    `SettingsCommand` 有界 typed request/reply；UI 不直接读取或写入配置。配置变更携带
+    `expected_config_revision`，成功回包携带新的 runtime/config revision，文件写入只在 app
+    service worker 执行。bongocat-ui 65 项命令/UI contract、严格 Clippy 和 app typed-command
+    定向测试通过。
 - [x] 在 spike 中以包含环境目录的持久 `locks/config.writer.lock` 拒绝并发 writer，并通过 OS advisory lock 在 guard drop 后允许重试。
 - [x] 强制终止持锁进程后由内核释放 writer lock，下一进程可恢复已 flush 的临时配置且不覆盖当前配置。
   - 验收证据（2026-08-29）：macOS 本机与 Windows push run `33251278193`、job `99097261951` 均通过；平台文件权限仍待产品 crate。
