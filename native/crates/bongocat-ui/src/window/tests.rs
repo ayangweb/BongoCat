@@ -258,6 +258,7 @@ fn diagnostics_page_projects_only_named_aggregate_counters() {
     let diagnostics = SettingsInputDiagnostics {
         input_monitoring_permission: crate::SettingsInputMonitoringPermission::Granted,
         service_status: SettingsInputServiceStatus::Running,
+        service_error_code: None,
         service_start_attempts: 1,
         pressed_key_count: 1,
         pressed_mouse_button_count: 2,
