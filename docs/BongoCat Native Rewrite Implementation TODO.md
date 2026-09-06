@@ -1123,7 +1123,14 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     运算。`color_formats_decode_assets_and_encode_the_composited_frame_as_srgb` 的双 backend unit
     contract 固定这组格式；Technical Design 已将嵌入 ICC/wide-gamut profile 的转换明确排除在 v1
     范围外，因此不依赖平台默认颜色管理。
-- [ ] 只在 dirty 时更新必要 GPU 资源。
+- [x] 只在 dirty 时更新必要 GPU 资源。
+  - 验收证据（2026-09-06）：`CoreModel::update_and_snapshot` 在 reset Core dynamic flags 前复制六个
+    drawable change bits；immutable `DrawableSnapshot` 将这些 flags 交给两端 GPU owner。Metal 与
+    D3D11 只在 `vertex_positions_changed` 时重写 vertex buffer，同时更新小型 CPU draw state；index
+    topology、vertex buffer size 与 clipping topology 在同一 generation 内视为不可变，变化即拒绝
+    snapshot 而非悄然重建或写错资源。三预置模型的 Core regression 证明手部输入标记并改变实际
+    drawable vertices，单元测试还冻结所有 Core flag 的译码。实现提交 `bd29508` 已完成两端实现与
+    运行时 Core 回归；其余跨 backend pixel equivalence 保留在独立任务。
 - [ ] D3D11/Metal 对相同 snapshot 行为一致。
 - [ ] 建立非空帧、alpha、mask 和 blend 截图 smoke test。
   - 状态（2026-09-06）：`bongocat-overlay` 现以共享的 `17 x 17` completed-drawable readback
