@@ -39,6 +39,14 @@ class NativeFailureEvidenceWorkflowTests(unittest.TestCase):
             macos_job.rfind("Smoke independent AppKit and Metal overlay"),
         )
 
+    def test_windows_gpui_evidence_collection_runs_after_overlay_smokes(self):
+        source = WORKFLOW.read_text(encoding="utf-8")
+        windows_job = source[source.index("  windows-gpui-spikes:") :]
+        self.assertGreater(
+            windows_job.rfind("Collect redacted Native failure evidence"),
+            windows_job.rfind("Smoke independent Win32 and D3D11 overlay"),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

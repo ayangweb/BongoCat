@@ -1760,18 +1760,6 @@ jobs:
           if ($runtimeStopped -lt 0 -or $stopped -le $runtimeStopped) {
             throw "Windows GPUI settings runtime did not stop before application shutdown"
           }
-      - name: Collect redacted Native failure evidence
-        if: ${{ failure() }}
-        shell: bash
-        run: python3 tools/collect-native-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
-      - name: Upload redacted Native failure evidence
-        if: ${{ failure() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: native-failure-evidence-windows-gpui-${{ matrix.name }}
-          path: ${{ runner.temp }}/bongocat-failure-evidence
-          if-no-files-found: error
-          retention-days: 7
       - name: Build Windows overlay smoke executable
         if: matrix.manifest == 'spikes/gpui-overlay-macos/Cargo.toml'
         timeout-minutes: 5
@@ -1940,3 +1928,15 @@ jobs:
               throw "overlay cycle smoke did not report: $_"
             }
           }
+      - name: Collect redacted Native failure evidence
+        if: ${{ failure() }}
+        shell: bash
+        run: python3 tools/collect-native-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
+      - name: Upload redacted Native failure evidence
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-failure-evidence-windows-gpui-${{ matrix.name }}
+          path: ${{ runner.temp }}/bongocat-failure-evidence
+          if-no-files-found: error
+          retention-days: 7
