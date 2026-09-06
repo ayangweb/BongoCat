@@ -1677,6 +1677,7 @@ struct DiagnosticsInput {
 #[derive(Serialize)]
 struct DiagnosticsConfiguration {
     status: &'static str,
+    recovery_error_code: Option<&'static str>,
     checked_backups: Option<u32>,
     recovery_source_schema_version: Option<u32>,
     recovery_skipped_newer_backups: Option<u32>,
@@ -1965,17 +1966,20 @@ const fn diagnostics_input(input: SettingsInputDiagnostics) -> DiagnosticsInput 
 }
 
 fn diagnostics_configuration(snapshot: &SettingsSnapshot) -> DiagnosticsConfiguration {
-    let (status, checked_backups) = match snapshot.configuration_status {
-        SettingsConfigurationStatus::Ready => ("ready", None),
-        SettingsConfigurationStatus::RecoveryRequired { checked_backups } => {
-            ("recovery_required", Some(checked_backups))
-        }
+    let (status, recovery_error_code, checked_backups) = match snapshot.configuration_status {
+        SettingsConfigurationStatus::Ready => ("ready", None, None),
+        SettingsConfigurationStatus::RecoveryRequired { checked_backups } => (
+            "recovery_required",
+            Some(SettingsErrorCode::ConfigurationRecoveryRequired.as_str()),
+            Some(checked_backups),
+        ),
         SettingsConfigurationStatus::DefaultsRestoredRestartRequired => {
-            ("defaults_restored_restart_required", None)
+            ("defaults_restored_restart_required", None, None)
         }
     };
     DiagnosticsConfiguration {
         status,
+        recovery_error_code,
         checked_backups,
         recovery_source_schema_version: snapshot
             .config_recovery
@@ -2364,7 +2368,7 @@ mod tests {
 
         let directory = tempdir().expect("diagnostics directory");
         let path = directory.path().join("logs").join("diagnostics.json");
-        let snapshot = SettingsSnapshot {
+        let mut snapshot = SettingsSnapshot {
             revision: 42,
             config_revision: Some(7),
             build_info: SettingsBuildInfo {
@@ -2493,6 +2497,8 @@ mod tests {
         let document: serde_json::Value = serde_json::from_slice(&bytes).expect("valid JSON");
         assert_eq!(document["format_version"], 1);
         assert_eq!(document["settings_revision"], 42);
+        assert_eq!(document["configuration"]["status"], "ready");
+        assert!(document["configuration"]["recovery_error_code"].is_null());
         assert_eq!(
             document["runtime"]["render_error_code"],
             "gpu_preparation_failed"
@@ -2518,6 +2524,25 @@ mod tests {
         let text = String::from_utf8(bytes).expect("UTF-8 export");
         assert!(!text.contains("private-model-name"));
         assert!(!text.contains(directory.path().to_string_lossy().as_ref()));
+
+        snapshot.configuration_status =
+            SettingsConfigurationStatus::RecoveryRequired { checked_backups: 2 };
+        let recovery = diagnostics_configuration(&snapshot);
+        assert_eq!(recovery.status, "recovery_required");
+        assert_eq!(
+            recovery.recovery_error_code,
+            Some("configuration_recovery_required")
+        );
+        assert_eq!(recovery.checked_backups, Some(2));
+
+        snapshot.configuration_status =
+            SettingsConfigurationStatus::DefaultsRestoredRestartRequired;
+        let defaults_restored = diagnostics_configuration(&snapshot);
+        assert_eq!(
+            defaults_restored.status,
+            "defaults_restored_restart_required"
+        );
+        assert_eq!(defaults_restored.recovery_error_code, None);
     }
 
     #[test]

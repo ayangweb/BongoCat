@@ -1762,6 +1762,10 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     固定命名；download、schedule、sequence store 和 staging 的公开离散 code 也各自提供完整 `ALL`
     catalog 和 namespace/唯一性回归，staging 的完整性 composite 明确保留 verifier code，调度回退固定为
     `update_schedule_monotonic_time_regressed`。这些 code 的产品 diagnostics export 投影仍待完成。
+  - 状态（2026-09-06）：当前 configuration recovery diagnostics 现导出既有
+    `configuration_recovery_required` stable code，同时保留 checked-backup 聚合；正常配置和用户已
+    恢复默认值但需要重启的状态不伪装为错误。其它 config write failure 与 update code 尚无持久的
+    产品观测源，因此总项保持未勾选。
 - [ ] 日志导出生成可预览的脱敏包。
   - 状态（2026-09-06）：ADR-0027 已冻结 preview bundle 为当前环境私有的 v1 ZIP，固定只包含
     `manifest.json`、匿名 `diagnostics.json` 和严格重新序列化的 application code event records；
