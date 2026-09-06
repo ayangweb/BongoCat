@@ -1856,6 +1856,10 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     `platform_input_*` code 与 service status 一起发布，settings/Diagnostics export 保留该 code；
     例如 `TapCreateFailed` 保持为 `platform_input_tap_create_failed`，不将其降级为无信息的
     `Failed` 或导出 OS 文本。
+  - 状态（2026-09-07）：runtime shutdown timeout/worker panic 计数已加入 settings/UI
+    diagnostics presentation，页面以中英文匿名文案显示累计失败数并将其标记为 actionable；
+    UI localization/presentation contract 与严格 Clippy 通过。update worker、真实安装回滚和
+    平台错误源仍待后续发布链路接入。
 - [ ] 日志导出生成可预览的脱敏包。
   - 状态（2026-09-06）：ADR-0027 已冻结 preview bundle 为当前环境私有的 v1 ZIP，固定只包含
     `manifest.json`、匿名 `diagnostics.json` 和严格重新序列化的 application code event records；

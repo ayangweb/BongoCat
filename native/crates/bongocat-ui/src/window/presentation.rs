@@ -429,10 +429,22 @@ pub(super) fn runtime_diagnostics_presentation(
         ),
         None => ui_text(language, UiText::NoCommandFailures).to_owned(),
     };
+    let shutdown_failures = diagnostics
+        .shutdown_timed_out
+        .saturating_add(diagnostics.shutdown_worker_panicked);
+    let detail = if shutdown_failures > 0 {
+        format!(
+            "{} · {}",
+            detail,
+            runtime_shutdown_failures(language, shutdown_failures)
+        )
+    } else {
+        detail
+    };
     RuntimeDiagnosticsPresentation {
         title: title.to_owned(),
         detail,
-        attention,
+        attention: attention || shutdown_failures > 0,
     }
 }
 

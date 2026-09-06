@@ -66,8 +66,8 @@ use localization::{
     diagnostics_export_status, diagnostics_unavailable, input_diagnostic_metrics,
     input_service_attempts, model_availability_summary, model_delete_confirmation,
     model_import_progress, model_invalid_summary, recovered_backup_detail, runtime_command_failure,
-    runtime_status, settings_error, shortcut_accessibility_label, shortcut_capture_error,
-    shortcut_target_name, text as ui_text,
+    runtime_shutdown_failures, runtime_status, settings_error, shortcut_accessibility_label,
+    shortcut_capture_error, shortcut_target_name, text as ui_text,
 };
 #[cfg(test)]
 mod tests;

@@ -435,6 +435,21 @@ fn diagnostics_presentations_follow_the_resolved_language() {
 }
 
 #[test]
+fn runtime_shutdown_failures_are_localized_and_actionable() {
+    let presentation = runtime_diagnostics_presentation(
+        SettingsRuntimeDiagnostics {
+            shutdown_timed_out: 2,
+            shutdown_worker_panicked: 1,
+            ..SettingsRuntimeDiagnostics::default()
+        },
+        SettingsLanguage::ChineseSimplified,
+    );
+    assert!(presentation.attention);
+    assert_eq!(presentation.title, "没有渲染器错误");
+    assert_eq!(presentation.detail, "没有命令失败 · 退出失败：3");
+}
+
+#[test]
 fn input_service_status_keeps_permission_failure_actionable_and_anonymous() {
     let service = input_service_presentation(
         SettingsInputDiagnostics {

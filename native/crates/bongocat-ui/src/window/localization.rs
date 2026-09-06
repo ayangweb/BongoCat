@@ -142,6 +142,7 @@ pub(super) enum UiText {
     ReleaseFallbackTimeoutInvalid,
     NoRendererError,
     NoCommandFailures,
+    RuntimeShutdownFailures,
     ConfigurationUnavailable,
     DefaultsRestored,
     RestartToContinue,
@@ -460,6 +461,7 @@ pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
         }
         UiText::NoRendererError => ["No renderer error", "没有渲染器错误"],
         UiText::NoCommandFailures => ["No command failures", "没有命令失败"],
+        UiText::RuntimeShutdownFailures => ["Shutdown failures: {count}", "退出失败：{count}"],
         UiText::ConfigurationUnavailable => ["Configuration unavailable", "配置不可用"],
         UiText::DefaultsRestored => ["Defaults restored", "已恢复默认值"],
         UiText::RestartToContinue => ["Restart BongoCat to continue", "请重启 BongoCat 以继续"],
@@ -748,6 +750,11 @@ pub(super) fn runtime_command_failure(
             format!("{error} · command #{sequence}")
         }
     }
+}
+
+pub(super) fn runtime_shutdown_failures(language: SettingsLanguage, count: u64) -> String {
+    let template = text(language, UiText::RuntimeShutdownFailures);
+    template.replace("{count}", &count.to_string())
 }
 
 pub(super) fn backup_candidates_checked(
