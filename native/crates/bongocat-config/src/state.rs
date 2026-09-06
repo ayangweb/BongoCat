@@ -344,8 +344,8 @@ fn restore_state_bytes(path: &std::path::Path, previous: Option<&[u8]>) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs::File;
     use std::path::Path;
+    use std::{collections::BTreeSet, fs::File};
     use tempfile::TempDir;
 
     fn state_store(root: &TempDir, environment: BuildEnvironment) -> StateStore {
@@ -366,16 +366,37 @@ mod tests {
 
     #[test]
     fn rust_state_contract_matches_shared_accept_and_reject_fixtures() {
-        for fixture in ["default.json", "negative-coordinate.json"] {
-            parse_state(&state_fixture(fixture)).expect("accepted state fixture");
+        #[derive(Deserialize)]
+        struct FixtureManifest {
+            #[serde(rename = "schemaVersion")]
+            schema_version: u32,
+            cases: Vec<FixtureCase>,
         }
-        for fixture in [
-            "invalid-future-schema.json",
-            "invalid-out-of-range.json",
-            "invalid-unknown-field.json",
-            "invalid-config-field.json",
-        ] {
-            assert!(parse_state(&state_fixture(fixture)).is_err());
+
+        #[derive(Deserialize)]
+        struct FixtureCase {
+            file: String,
+            expected: String,
+        }
+
+        let manifest: FixtureManifest = serde_json::from_str(include_str!(
+            "../../../../shared/config/state-fixtures/manifest.json"
+        ))
+        .expect("state fixture manifest");
+        assert_eq!(manifest.schema_version, 1);
+        let mut declared_files = BTreeSet::new();
+        for case in manifest.cases {
+            assert!(
+                declared_files.insert(case.file.clone()),
+                "duplicate fixture {}",
+                case.file
+            );
+            let result = parse_state(&state_fixture(&case.file));
+            match case.expected.as_str() {
+                "accept" => assert!(result.is_ok(), "fixture {} must be accepted", case.file),
+                "reject" => assert!(result.is_err(), "fixture {} must be rejected", case.file),
+                expected => panic!("fixture {} has unknown expectation {expected}", case.file),
+            }
         }
     }
 

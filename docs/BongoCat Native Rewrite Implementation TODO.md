@@ -1555,6 +1555,8 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
   - 状态（2026-09-06）：新增 shared reject fixture 在合法窗口布局旁注入 `overlay.visible` 配置
     字段；`state.schema.json` 与 `StateStore` parser 均拒绝它，固定 state 不得承载用户配置。该
     fixture 不影响 config.json 事务，双平台多显示器恢复证据仍是本项剩余门槛。
+  - 状态（2026-09-07）：state contract 测试改为读取共享 `state-fixtures/manifest.json`，逐项执行
+    accept/reject 断言并拒绝 manifest 内重复文件；新增 state fixture 未同步 manifest 时会明确失败。
 
 ### 7.2 环境与持久化事务
 
