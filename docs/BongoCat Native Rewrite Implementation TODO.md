@@ -1924,6 +1924,8 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
   - 状态（2026-09-07）：runtime 新增闭合的 `platform_input_*` 稳定码 catalog，Application
     projection 现在在进入 SettingsSnapshot 和匿名 diagnostics export 前过滤未注册 provider code；
     已知 tap/permission code 保留，私有 detail 或路径字符串丢弃，避免公开字符串绕过稳定错误协议。
+  - 状态（2026-09-07）：平台 `PlatformInputError::ALL` 现在由 platform unit test 逐项核对 runtime
+    catalog，新增平台生命周期错误若未同步 diagnostics 过滤边界会直接失败。
   - 状态（2026-09-07）：runtime shutdown timeout/worker panic 计数已加入 settings/UI
     diagnostics presentation，页面以中英文匿名文案显示累计失败数并将其标记为 actionable；
     UI localization/presentation contract 与严格 Clippy 通过。update worker、真实安装回滚和

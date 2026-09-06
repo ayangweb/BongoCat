@@ -267,5 +267,10 @@ mod platform_input_error_tests {
             PlatformInputError::PermissionDenied.to_string(),
             "platform_input_permission_denied"
         );
+        assert!(
+            PlatformInputError::ALL
+                .iter()
+                .all(|code| bongocat_runtime::is_stable_platform_input_error_code(code.as_str()))
+        );
     }
 }
