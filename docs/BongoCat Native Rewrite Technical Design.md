@@ -465,8 +465,8 @@ model evaluation + render snapshot
 - 每帧从 Core 默认 parameter 开始，依次应用 motion、expression、自动 EyeBlink/Breath、
   physics/pose（实现后）、类型化产品输入，最后调用 Core update。motion 的自然结束与显式停止均使用 model3/
   curve fade，显式停止的外层正弦权重与 curve 权重相乘。`PartOpacity` motion curve
-  遵循 R5 Framework 语义，按 curve ID 写入 Core parameter sink 且不继承普通 parameter
-  curve 的 fade weight。model3 `Groups` 由模型索引保留并校验；motion `Model` target 中
+  遵循 R5 Framework 语义，按 curve ID 写入 Core part-opacity sink，和普通 parameter
+  curve 使用独立的目标表与权重路径。model3 `Groups` 由模型索引保留并校验；motion `Model` target 中
   `EyeBlink` 对匹配的 Parameter curve 做乘法、`LipSync` 做加法，对未被 Parameter curve
   覆盖的首个同名 Parameter group（最多 64 个 ID）使用 motion fade 插值。`Opacity` 作为
   独立 model opacity 进入 `RenderSnapshot`，只在 renderer 最终颜色 pass 与 drawable/
