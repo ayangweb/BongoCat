@@ -2117,9 +2117,9 @@ fn map_application_error(error: ApplicationError) -> SettingsError {
         ApplicationError::Model(_) | ApplicationError::ModelStore(_) => {
             SettingsErrorCode::ModelUnavailable
         }
-        ApplicationError::Shutdown(_) | ApplicationError::MotionAudioShutdown(_) => {
-            SettingsErrorCode::ShutdownFailed
-        }
+        ApplicationError::Shutdown(_)
+        | ApplicationError::MotionAudioShutdown(_)
+        | ApplicationError::ShutdownAggregate(_) => SettingsErrorCode::ShutdownFailed,
         ApplicationError::RuntimeCommand(_)
         | ApplicationError::RuntimeCommandFailed(_)
         | ApplicationError::RuntimeDidNotPublish

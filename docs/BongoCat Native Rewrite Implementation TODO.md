@@ -719,6 +719,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     `RuntimeSnapshot` 投影 runtime/input diagnostics，而不是复用停止前 snapshot；因此最终
     状态和匿名 shutdown/输入计数不会被丢弃。service shutdown 与 projection 回归通过；音频
     shutdown 的复合错误聚合和真实阻塞工作仍待完成。
+  - 状态（2026-09-07）：`Application::shutdown` 现在无论 runtime shutdown 成功或失败都会先
+    尝试 audio shutdown，再按单一失败保留既有稳定错误；两者同时失败时返回包含 runtime 与
+    motion-audio 原因的 `ApplicationShutdownError`。纯 Rust contract 覆盖单错、双错和稳定
+    文案，app 全量测试 92+17 项与严格 Clippy 通过；真实阻塞工作预算与线程 panic 注入仍待完成。
 
 ### 3.2 输入语义
 

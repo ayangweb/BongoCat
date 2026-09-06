@@ -99,6 +99,7 @@ pub enum ApplicationError {
     RenderConsumerUnavailable,
     Shutdown(ShutdownError),
     MotionAudioShutdown(MotionAudioShutdownError),
+    ShutdownAggregate(ApplicationShutdownError),
     ApplicationLog(ApplicationLogError),
     ConfigRollback(ConfigError),
     State(StateError),
@@ -143,6 +144,7 @@ impl fmt::Display for ApplicationError {
             Self::MotionAudioShutdown(error) => {
                 write!(formatter, "motion audio shutdown failed: {error}")
             }
+            Self::ShutdownAggregate(error) => write!(formatter, "shutdown failed: {error}"),
             Self::ApplicationLog(error) => write!(formatter, "application logging failed: {error}"),
             Self::ConfigRollback(error) => {
                 write!(formatter, "model selection config rollback failed: {error}")
@@ -156,6 +158,41 @@ impl fmt::Display for ApplicationError {
 }
 
 impl std::error::Error for ApplicationError {}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct ApplicationShutdownError {
+    pub runtime: ShutdownError,
+    pub motion_audio: MotionAudioShutdownError,
+}
+
+impl fmt::Display for ApplicationShutdownError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "runtime: {}; motion audio: {}",
+            self.runtime, self.motion_audio
+        )
+    }
+}
+
+impl std::error::Error for ApplicationShutdownError {}
+
+fn combine_shutdown_results<T>(
+    runtime_result: Result<T, ShutdownError>,
+    audio_result: Result<(), MotionAudioShutdownError>,
+) -> Result<T, ApplicationError> {
+    match (runtime_result, audio_result) {
+        (Ok(stopped), Ok(_)) => Ok(stopped),
+        (Err(runtime), Ok(_)) => Err(ApplicationError::Shutdown(runtime)),
+        (Ok(_), Err(motion_audio)) => Err(ApplicationError::MotionAudioShutdown(motion_audio)),
+        (Err(runtime), Err(motion_audio)) => Err(ApplicationError::ShutdownAggregate(
+            ApplicationShutdownError {
+                runtime,
+                motion_audio,
+            },
+        )),
+    }
+}
 
 impl From<PlatformStorageError> for ApplicationError {
     fn from(error: PlatformStorageError) -> Self {
@@ -1137,24 +1174,21 @@ impl Application {
         let audio_result = self
             .motion_audio
             .map(|service| service.shutdown(RUNTIME_TIMEOUT))
-            .transpose();
-        let stopped = match runtime_result {
-            Ok(stopped) => stopped,
+            .transpose()
+            .map(|_| ());
+        match combine_shutdown_results(runtime_result, audio_result) {
+            Ok(stopped) => {
+                self.run_marker.complete()?;
+                self.application_log
+                    .record(ApplicationLogEvent::shutdown_completed());
+                Ok(stopped)
+            }
             Err(error) => {
                 self.application_log
                     .record(ApplicationLogEvent::shutdown_failed());
-                return Err(ApplicationError::Shutdown(error));
+                Err(error)
             }
-        };
-        if let Err(error) = audio_result {
-            self.application_log
-                .record(ApplicationLogEvent::shutdown_failed());
-            return Err(ApplicationError::MotionAudioShutdown(error));
         }
-        self.run_marker.complete()?;
-        self.application_log
-            .record(ApplicationLogEvent::shutdown_completed());
-        Ok(stopped)
     }
 }
 
@@ -1300,6 +1334,37 @@ mod tests {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     use std::time::Instant;
     use tempfile::tempdir;
+
+    #[test]
+    fn shutdown_results_preserve_single_failures_and_aggregate_dual_failures() {
+        let runtime = combine_shutdown_results::<()>(Err(ShutdownError::TimedOut), Ok(()))
+            .expect_err("runtime failure must be returned");
+        assert!(matches!(
+            runtime,
+            ApplicationError::Shutdown(ShutdownError::TimedOut)
+        ));
+
+        let audio = combine_shutdown_results(Ok(()), Err(MotionAudioShutdownError::TimedOut))
+            .expect_err("audio failure must be returned");
+        assert!(matches!(audio, ApplicationError::MotionAudioShutdown(_)));
+
+        let dual = combine_shutdown_results::<()>(
+            Err(ShutdownError::WorkerPanicked),
+            Err(MotionAudioShutdownError::TimedOut),
+        )
+        .expect_err("both service failures must be retained");
+        match dual {
+            ApplicationError::ShutdownAggregate(error) => {
+                assert_eq!(error.runtime, ShutdownError::WorkerPanicked);
+                assert_eq!(error.motion_audio, MotionAudioShutdownError::TimedOut);
+                assert_eq!(
+                    error.to_string(),
+                    "runtime: runtime worker panicked; motion audio: motion audio shutdown timed out"
+                );
+            }
+            other => panic!("unexpected shutdown error: {other}"),
+        }
+    }
 
     fn repository_root() -> std::path::PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
