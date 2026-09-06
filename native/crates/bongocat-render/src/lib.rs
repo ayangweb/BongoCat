@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use std::{
+    collections::BTreeSet,
     fmt,
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -240,6 +241,122 @@ pub struct RenderResources {
     pub textures: Vec<TextureAsset>,
     pub key_assets: Vec<KeyAsset>,
     pub background: Option<BackgroundAsset>,
+}
+
+/// Platform-neutral validation required before a renderer allocates GPU resources.
+///
+/// Both native backends consume the same immutable snapshot. Keeping its basic
+/// resource and geometry invariants here prevents a malformed model generation
+/// from being accepted by one backend and rejected by the other.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RenderSnapshotValidationError {
+    InvalidModelOpacity,
+    DuplicateTextureId,
+    DuplicateDrawableId,
+    MissingDrawableTexture,
+    MissingMaskSource,
+    EmptyDrawableGeometry,
+    DrawableIndexOutOfRange,
+    NonFiniteVertex,
+    InvalidDrawableOpacity,
+    NonFiniteBlendColor,
+}
+
+impl RenderSnapshotValidationError {
+    pub const fn message(self) -> &'static str {
+        match self {
+            Self::InvalidModelOpacity => "model opacity is outside [0, 1]",
+            Self::DuplicateTextureId => "texture resource ids are not unique",
+            Self::DuplicateDrawableId => "drawable resource ids are not unique",
+            Self::MissingDrawableTexture => "drawable references a missing texture",
+            Self::MissingMaskSource => "drawable references a missing mask source",
+            Self::EmptyDrawableGeometry => "drawable geometry is empty",
+            Self::DrawableIndexOutOfRange => "drawable triangle index is out of range",
+            Self::NonFiniteVertex => "drawable vertex contains a non-finite value",
+            Self::InvalidDrawableOpacity => "drawable opacity is outside [0, 1]",
+            Self::NonFiniteBlendColor => "drawable blend color contains a non-finite value",
+        }
+    }
+}
+
+impl fmt::Display for RenderSnapshotValidationError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.message())
+    }
+}
+
+impl std::error::Error for RenderSnapshotValidationError {}
+
+pub fn validate_render_snapshot(
+    resources: &RenderResources,
+    snapshot: &RenderSnapshot,
+) -> Result<(), RenderSnapshotValidationError> {
+    if !snapshot.model_opacity.is_finite() || !(0.0..=1.0).contains(&snapshot.model_opacity) {
+        return Err(RenderSnapshotValidationError::InvalidModelOpacity);
+    }
+
+    let texture_ids = resources
+        .textures
+        .iter()
+        .map(|texture| texture.id)
+        .collect::<BTreeSet<_>>();
+    if texture_ids.len() != resources.textures.len() {
+        return Err(RenderSnapshotValidationError::DuplicateTextureId);
+    }
+
+    let drawable_ids = snapshot
+        .drawables
+        .iter()
+        .map(|drawable| drawable.id)
+        .collect::<BTreeSet<_>>();
+    if drawable_ids.len() != snapshot.drawables.len() {
+        return Err(RenderSnapshotValidationError::DuplicateDrawableId);
+    }
+
+    for drawable in &snapshot.drawables {
+        if !texture_ids.contains(&drawable.texture_id) {
+            return Err(RenderSnapshotValidationError::MissingDrawableTexture);
+        }
+        if drawable
+            .masks
+            .iter()
+            .any(|mask| !drawable_ids.contains(mask))
+        {
+            return Err(RenderSnapshotValidationError::MissingMaskSource);
+        }
+        if drawable.vertices.is_empty() || drawable.indices.is_empty() {
+            return Err(RenderSnapshotValidationError::EmptyDrawableGeometry);
+        }
+        if drawable
+            .indices
+            .iter()
+            .any(|index| usize::from(*index) >= drawable.vertices.len())
+        {
+            return Err(RenderSnapshotValidationError::DrawableIndexOutOfRange);
+        }
+        if drawable.vertices.iter().any(|vertex| {
+            vertex
+                .position
+                .into_iter()
+                .chain(vertex.uv)
+                .any(|value| !value.is_finite())
+        }) {
+            return Err(RenderSnapshotValidationError::NonFiniteVertex);
+        }
+        if !drawable.opacity.is_finite() || !(0.0..=1.0).contains(&drawable.opacity) {
+            return Err(RenderSnapshotValidationError::InvalidDrawableOpacity);
+        }
+        if drawable
+            .multiply_color
+            .into_iter()
+            .chain(drawable.screen_color)
+            .any(|value| !value.is_finite())
+        {
+            return Err(RenderSnapshotValidationError::NonFiniteBlendColor);
+        }
+    }
+
+    Ok(())
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -588,6 +705,157 @@ mod tests {
         assert_eq!(TextureId::new(2).index(), 2);
         assert_eq!(DrawableId::new(7).to_string(), "7");
         assert_eq!(TextureId::new(2).to_string(), "2");
+    }
+
+    fn validated_resources() -> RenderResources {
+        RenderResources {
+            textures: vec![TextureAsset {
+                id: TextureId::new(0),
+                path: PathBuf::from("texture.png"),
+                width: 1,
+                height: 1,
+            }],
+            key_assets: Vec::new(),
+            background: None,
+        }
+    }
+
+    fn validated_snapshot() -> RenderSnapshot {
+        RenderSnapshot {
+            canvas: CanvasInfo {
+                width: 1.0,
+                height: 1.0,
+                origin_x: 0.0,
+                origin_y: 0.0,
+                pixels_per_unit: 1.0,
+            },
+            bounds: ModelBounds {
+                min_x: -0.5,
+                max_x: 0.5,
+                min_y: -0.5,
+                max_y: 0.5,
+            },
+            active_keys: Vec::new(),
+            model_opacity: 1.0,
+            mirror_horizontal: false,
+            drawables: vec![DrawableSnapshot {
+                id: DrawableId::new(0),
+                dynamic_flags: DrawableDynamicFlags::default(),
+                render_order: 0,
+                visible: true,
+                texture_id: TextureId::new(0),
+                opacity: 1.0,
+                blend_mode: BlendMode::Normal,
+                double_sided: false,
+                inverted_mask: false,
+                multiply_color: [1.0; 4],
+                screen_color: [0.0; 4],
+                masks: Vec::new(),
+                vertices: vec![
+                    Vertex {
+                        position: [-0.5, -0.5],
+                        uv: [0.0, 0.0],
+                    },
+                    Vertex {
+                        position: [0.5, -0.5],
+                        uv: [1.0, 0.0],
+                    },
+                    Vertex {
+                        position: [0.0, 0.5],
+                        uv: [0.5, 1.0],
+                    },
+                ],
+                indices: vec![0, 1, 2],
+            }],
+        }
+    }
+
+    #[test]
+    fn render_snapshot_validation_accepts_complete_drawable_resources() {
+        assert_eq!(
+            validate_render_snapshot(&validated_resources(), &validated_snapshot()),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn render_snapshot_validation_rejects_each_shared_gpu_preflight_violation() {
+        let resources = validated_resources();
+        let snapshot = validated_snapshot();
+
+        let mut invalid_opacity = snapshot.clone();
+        invalid_opacity.model_opacity = 1.5;
+        assert_eq!(
+            validate_render_snapshot(&resources, &invalid_opacity),
+            Err(RenderSnapshotValidationError::InvalidModelOpacity)
+        );
+
+        let mut duplicate_texture = resources.clone();
+        duplicate_texture
+            .textures
+            .push(duplicate_texture.textures[0].clone());
+        assert_eq!(
+            validate_render_snapshot(&duplicate_texture, &snapshot),
+            Err(RenderSnapshotValidationError::DuplicateTextureId)
+        );
+
+        let mut duplicate_drawable = snapshot.clone();
+        duplicate_drawable
+            .drawables
+            .push(duplicate_drawable.drawables[0].clone());
+        assert_eq!(
+            validate_render_snapshot(&resources, &duplicate_drawable),
+            Err(RenderSnapshotValidationError::DuplicateDrawableId)
+        );
+
+        let mut missing_texture = snapshot.clone();
+        missing_texture.drawables[0].texture_id = TextureId::new(1);
+        assert_eq!(
+            validate_render_snapshot(&resources, &missing_texture),
+            Err(RenderSnapshotValidationError::MissingDrawableTexture)
+        );
+
+        let mut missing_mask = snapshot.clone();
+        missing_mask.drawables[0].masks.push(DrawableId::new(1));
+        assert_eq!(
+            validate_render_snapshot(&resources, &missing_mask),
+            Err(RenderSnapshotValidationError::MissingMaskSource)
+        );
+
+        let mut empty_geometry = snapshot.clone();
+        empty_geometry.drawables[0].vertices.clear();
+        assert_eq!(
+            validate_render_snapshot(&resources, &empty_geometry),
+            Err(RenderSnapshotValidationError::EmptyDrawableGeometry)
+        );
+
+        let mut out_of_range_index = snapshot.clone();
+        out_of_range_index.drawables[0].indices = vec![3];
+        assert_eq!(
+            validate_render_snapshot(&resources, &out_of_range_index),
+            Err(RenderSnapshotValidationError::DrawableIndexOutOfRange)
+        );
+
+        let mut non_finite_vertex = snapshot.clone();
+        non_finite_vertex.drawables[0].vertices[0].uv[0] = f32::NAN;
+        assert_eq!(
+            validate_render_snapshot(&resources, &non_finite_vertex),
+            Err(RenderSnapshotValidationError::NonFiniteVertex)
+        );
+
+        let mut invalid_drawable_opacity = snapshot.clone();
+        invalid_drawable_opacity.drawables[0].opacity = -0.1;
+        assert_eq!(
+            validate_render_snapshot(&resources, &invalid_drawable_opacity),
+            Err(RenderSnapshotValidationError::InvalidDrawableOpacity)
+        );
+
+        let mut non_finite_color = snapshot;
+        non_finite_color.drawables[0].screen_color[3] = f32::INFINITY;
+        assert_eq!(
+            validate_render_snapshot(&resources, &non_finite_color),
+            Err(RenderSnapshotValidationError::NonFiniteBlendColor)
+        );
     }
 
     #[test]

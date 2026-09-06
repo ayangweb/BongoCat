@@ -11,7 +11,7 @@ use bongocat_platform::{
 use bongocat_render::{
     BlendMode, CanvasInfo, DrawableId, KeyAssetId, KeyOverlay, ModelBounds, ModelCommitErrorCode,
     ModelCommitFeedback, ModelCommitOutcome, ModelCommitToken, RenderConsumer, RenderFrame,
-    RenderResources, RenderSnapshot, TextureAsset, TextureId,
+    RenderResources, RenderSnapshot, TextureAsset, TextureId, validate_render_snapshot,
 };
 use bongocat_runtime::{
     CursorProducer, GamepadAxisProducer, GamepadButton, HandSide, InputBindings, InputControl,
@@ -1741,9 +1741,8 @@ impl GpuModel {
         width: u32,
         height: u32,
     ) -> WindowsResult<Self> {
-        if !snapshot.model_opacity.is_finite() || !(0.0..=1.0).contains(&snapshot.model_opacity) {
-            return Err(invariant_error("model opacity is outside [0, 1]"));
-        }
+        validate_render_snapshot(resources, snapshot)
+            .map_err(|error| invariant_error(error.message()))?;
         let textures = resources
             .textures
             .iter()
@@ -1797,28 +1796,8 @@ impl GpuModel {
             },
         ];
         let background_indices = [0_u16, 1, 2, 0, 2, 3];
-        if textures.len() != resources.textures.len() {
-            return Err(invariant_error("texture resource ids are not unique"));
-        }
-        let ids = snapshot
-            .drawables
-            .iter()
-            .map(|drawable| drawable.id)
-            .collect::<BTreeSet<_>>();
-        if ids.len() != snapshot.drawables.len() {
-            return Err(invariant_error("drawable resource ids are not unique"));
-        }
         let mut meshes = Vec::with_capacity(snapshot.drawables.len());
         for drawable in &snapshot.drawables {
-            if !textures.contains_key(&drawable.texture_id) {
-                return Err(invariant_error("drawable references a missing texture"));
-            }
-            if drawable.masks.iter().any(|mask| !ids.contains(mask)) {
-                return Err(invariant_error("drawable references a missing mask source"));
-            }
-            if drawable.vertices.is_empty() || drawable.indices.is_empty() {
-                return Err(invariant_error("drawable geometry is empty"));
-            }
             let vertex_buffer = unsafe {
                 create_buffer(
                     device,

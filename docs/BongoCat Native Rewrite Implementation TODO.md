@@ -1132,6 +1132,14 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     drawable vertices，单元测试还冻结所有 Core flag 的译码。实现提交 `bd29508` 已完成两端实现与
     运行时 Core 回归；其余跨 backend pixel equivalence 保留在独立任务。
 - [ ] D3D11/Metal 对相同 snapshot 行为一致。
+  - 状态（2026-09-06）：`bongocat-render::validate_render_snapshot` 现作为两个 GPU prepare 路径在
+    任何纹理解码或 GPU 分配前的唯一平台无关 preflight。它以相同稳定错误拒绝无效 model opacity、
+    重复 texture/drawable ID、缺失 texture/mask source、空 geometry、越界 index、非有限 vertex/
+    blend color 与非法 drawable opacity；Metal 不再遗漏 D3D11 已拒绝的空 geometry。两项纯 Rust
+    contract test 覆盖 accept 与全部 reject boundary，`cargo check -p bongocat-overlay --locked` 和
+    `cargo clippy -p bongocat-render -p bongocat-overlay --all-targets --all-features --locked -- -D warnings`
+    本机通过。Windows hardware readback、mask/blend golden 和跨 backend pixel tolerance 仍是本项
+    的剩余退出证据。
 - [ ] 建立非空帧、alpha、mask 和 blend 截图 smoke test。
   - 状态（2026-09-06）：`bongocat-overlay` 现以共享的 `17 x 17` completed-drawable readback
     contract 替代两端仅检查单个非透明像素的实现。它拒绝没有透明 overlay 背景、没有可见模型、

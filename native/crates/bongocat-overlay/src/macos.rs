@@ -11,7 +11,7 @@ use bongocat_platform::{
 use bongocat_render::{
     BlendMode, DrawableId, KeyAssetId, KeyOverlay, ModelBounds, ModelCommitErrorCode,
     ModelCommitFeedback, ModelCommitOutcome, ModelCommitToken, RenderConsumer, RenderFrame,
-    RenderResources, RenderSnapshot, TextureAsset, TextureId,
+    RenderResources, RenderSnapshot, TextureAsset, TextureId, validate_render_snapshot,
 };
 use bongocat_runtime::{
     CursorPosition, CursorProducer, CursorSample, CursorViewport, GamepadAxisProducer,
@@ -1657,9 +1657,8 @@ impl GpuModel {
         drawable_width: u64,
         drawable_height: u64,
     ) -> Result<Self, OverlayError> {
-        if !snapshot.model_opacity.is_finite() || !(0.0..=1.0).contains(&snapshot.model_opacity) {
-            return Err(OverlayError::new("model opacity is outside [0, 1]"));
-        }
+        validate_render_snapshot(resources, snapshot)
+            .map_err(|error| OverlayError::new(error.to_string()))?;
         let textures = resources
             .textures
             .iter()
@@ -1716,35 +1715,6 @@ impl GpuModel {
             },
         ];
         let background_indices = [0_u16, 1, 2, 0, 2, 3];
-        if textures.len() != resources.textures.len() {
-            return Err(OverlayError::new("texture resource ids are not unique"));
-        }
-        let drawable_ids = snapshot
-            .drawables
-            .iter()
-            .map(|drawable| drawable.id)
-            .collect::<BTreeSet<_>>();
-        if drawable_ids.len() != snapshot.drawables.len() {
-            return Err(OverlayError::new("drawable resource ids are not unique"));
-        }
-        for drawable in &snapshot.drawables {
-            if !textures.contains_key(&drawable.texture_id) {
-                return Err(OverlayError::new(format!(
-                    "drawable {} references missing texture {}",
-                    drawable.id, drawable.texture_id
-                )));
-            }
-            if let Some(mask) = drawable
-                .masks
-                .iter()
-                .find(|mask| !drawable_ids.contains(mask))
-            {
-                return Err(OverlayError::new(format!(
-                    "drawable {} references missing mask source {mask}",
-                    drawable.id
-                )));
-            }
-        }
         let mut meshes = snapshot
             .drawables
             .iter()
