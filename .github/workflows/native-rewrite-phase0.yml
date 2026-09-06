@@ -863,6 +863,18 @@ jobs:
       - name: Smoke transactional Windows D3D11 model switching
         if: matrix.os == 'windows-latest'
         run: cargo run --manifest-path native/Cargo.toml --locked -p bongocat-overlay --release -- standard 0 --switch-cycles 3
+      - name: Collect redacted Native failure evidence
+        if: ${{ failure() }}
+        shell: bash
+        run: python3 tools/collect-native-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
+      - name: Upload redacted Native failure evidence
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-failure-evidence-${{ matrix.os }}
+          path: ${{ runner.temp }}/bongocat-failure-evidence
+          if-no-files-found: error
+          retention-days: 7
 
   cubism-binding-contract:
     name: Check Cubism binding generation contract
@@ -935,6 +947,18 @@ jobs:
           done
       - name: Check release build
         run: cargo check --manifest-path tools/cubism-bindgen/Cargo.toml --locked --release
+      - name: Collect redacted Native failure evidence
+        if: ${{ failure() }}
+        shell: bash
+        run: python3 tools/collect-native-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
+      - name: Upload redacted Native failure evidence
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-failure-evidence-cubism-binding
+          path: ${{ runner.temp }}/bongocat-failure-evidence
+          if-no-files-found: error
+          retention-days: 7
 
   contract-spikes:
     name: Test ${{ matrix.name }}
@@ -1005,6 +1029,18 @@ jobs:
         run: cargo clippy --manifest-path ${{ matrix.manifest }} --locked --all-targets -- -D warnings
       - name: Run tests
         run: cargo test --manifest-path ${{ matrix.manifest }} --locked
+      - name: Collect redacted Native failure evidence
+        if: ${{ failure() }}
+        shell: bash
+        run: python3 tools/collect-native-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
+      - name: Upload redacted Native failure evidence
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-failure-evidence-contract-${{ matrix.name }}
+          path: ${{ runner.temp }}/bongocat-failure-evidence
+          if-no-files-found: error
+          retention-days: 7
 
   model-package-platforms:
     name: Test model package on ${{ matrix.os }}
@@ -1049,6 +1085,18 @@ jobs:
         run: cargo test --manifest-path spikes/model-package/Cargo.toml --locked
       - name: Check release build
         run: cargo check --manifest-path spikes/model-package/Cargo.toml --locked --release
+      - name: Collect redacted Native failure evidence
+        if: ${{ failure() }}
+        shell: bash
+        run: python3 tools/collect-native-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
+      - name: Upload redacted Native failure evidence
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-failure-evidence-model-package-${{ matrix.os }}
+          path: ${{ runner.temp }}/bongocat-failure-evidence
+          if-no-files-found: error
+          retention-days: 7
 
   macos-spikes:
     name: Build macOS GPUI spikes
@@ -1111,6 +1159,18 @@ jobs:
           cargo check --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked --release
       - name: Check macOS input spike release build
         run: cargo check --manifest-path spikes/input-macos/Cargo.toml --locked --release
+      - name: Collect redacted Native failure evidence
+        if: ${{ failure() }}
+        shell: bash
+        run: python3 tools/collect-native-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
+      - name: Upload redacted Native failure evidence
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-failure-evidence-macos-spikes
+          path: ${{ runner.temp }}/bongocat-failure-evidence
+          if-no-files-found: error
+          retention-days: 7
       - name: Build macOS settings smoke executable
         timeout-minutes: 10
         run: cargo build --manifest-path spikes/gpui-settings/Cargo.toml --locked
@@ -1365,6 +1425,18 @@ jobs:
         run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --lifecycle-smoke-ms 100
       - name: Test Windows config storage layout
         run: cargo test --manifest-path spikes/config-store/Cargo.toml --locked
+      - name: Collect redacted Native failure evidence
+        if: ${{ failure() }}
+        shell: bash
+        run: python3 tools/collect-native-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
+      - name: Upload redacted Native failure evidence
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-failure-evidence-windows-input
+          path: ${{ runner.temp }}/bongocat-failure-evidence
+          if-no-files-found: error
+          retention-days: 7
 
   windows-gpui-spikes:
     name: Build Windows GPUI ${{ matrix.name }} spike
@@ -1669,6 +1741,18 @@ jobs:
           if ($runtimeStopped -lt 0 -or $stopped -le $runtimeStopped) {
             throw "Windows GPUI settings runtime did not stop before application shutdown"
           }
+      - name: Collect redacted Native failure evidence
+        if: ${{ failure() }}
+        shell: bash
+        run: python3 tools/collect-native-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
+      - name: Upload redacted Native failure evidence
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-failure-evidence-windows-gpui-${{ matrix.name }}
+          path: ${{ runner.temp }}/bongocat-failure-evidence
+          if-no-files-found: error
+          retention-days: 7
       - name: Build Windows overlay smoke executable
         if: matrix.manifest == 'spikes/gpui-overlay-macos/Cargo.toml'
         timeout-minutes: 5

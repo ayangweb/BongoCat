@@ -556,6 +556,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - [x] Cubism raw binding 工具已用自有合成 header 对三个当前可绑定 target 执行 deterministic golden 漂移检查；真实 R5 bindings 因许可门禁不进入 CI。
   - [ ] 生成文件漂移校验仍待 Native 资源生成链建立后补齐。
 - [ ] 保存失败测试日志、截图和 renderer validation 输出，同时执行路径/按键隐私清理。
+  - 状态（2026-09-07）：新增 `tools/collect-native-failure-evidence.py`，原生 workspace、Cubism
+    binding、contract、model package、macOS、Windows input 和 Windows GPUI jobs 的失败路径均
+    收集 runner 临时目录中的有限日志与明确命名的 renderer/validation 截图；拒绝符号链接，限制
+    单文件 256 KiB、总量 2 MiB、最多 100 个文件，并对绝对路径、按键/scan code、剪贴板和 pressed
+    字段脱敏。artifact 保留 7 日且只上传脱敏目录；测试覆盖路径/按键清理、非白名单图片和 symlink。
+    尚未覆盖未产生临时日志的纯 contract job，也未将真实平台截图接入 smoke，故保持未勾选。
 - [ ] 构建产物记录 source commit、Cargo.lock hash、toolchain、target 和 feature set。
   - [x] `tools/record-native-provenance.py` 生成无绝对路径的 JSON；Native 三平台 CI 上传 runner
         provenance，macOS `.app` 将其放入 `Contents/Resources/build-provenance.json`。工具测试验证
