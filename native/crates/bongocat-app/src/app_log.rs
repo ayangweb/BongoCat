@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+use bongocat_log::{
+    MAX_TOTAL_LOG_BYTES as SHARED_MAX_TOTAL_LOG_BYTES, enforce_directory_retention,
+};
 use serde::Serialize;
 use std::{
     collections::BTreeMap,
@@ -19,7 +22,7 @@ const RUN_MARKER_SHUTTING_DOWN: &[u8] = b"{\"schema_version\":1,\"phase\":\"shut
 const RUN_MARKER_PANICKED: &[u8] = b"{\"schema_version\":1,\"phase\":\"panicked\"}\n";
 const MAX_LOG_BYTES: u64 = 1024 * 1024;
 const MAX_LOG_FILES: usize = 8;
-const MAX_TOTAL_LOG_BYTES: u64 = 8 * 1024 * 1024;
+const MAX_TOTAL_LOG_BYTES: u64 = SHARED_MAX_TOTAL_LOG_BYTES;
 const RETENTION_DAYS: u64 = 7;
 const SECONDS_PER_DAY: u64 = 86_400;
 
@@ -627,6 +630,7 @@ fn prune_logs(state: &mut ApplicationLogState, current_day: u64) {
             state.diagnostics.pruned = state.diagnostics.pruned.saturating_add(1);
         }
     }
+    let _ = enforce_directory_retention(&state.directory, Some(&state.path), SystemTime::now());
     refresh_totals(state);
 }
 

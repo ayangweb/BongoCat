@@ -1,6 +1,7 @@
 #![allow(unsafe_code)]
 
 use crate::sys;
+use bongocat_log::enforce_directory_retention;
 use serde::Serialize;
 use std::{
     fs::{self, File, OpenOptions},
@@ -120,6 +121,7 @@ impl CoreLogHandle {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(CoreLogError::CreateDirectory)?;
             set_private_directory(parent).map_err(CoreLogError::CreateDirectory)?;
+            let _ = enforce_directory_retention(parent, Some(&path), SystemTime::now());
         }
         let pruned = prune_expired_rotated_logs(&path, SystemTime::now());
         let file = OpenOptions::new()
@@ -355,6 +357,9 @@ fn record_message(state: &mut CoreLogState, bytes: &[u8]) {
     state.stats.written = state.stats.written.saturating_add(1);
     state.stats.bytes = state.bytes;
     state.stats.retained_bytes = state.stats.retained_bytes.saturating_add(line_len);
+    if let Some(directory) = state.path.parent() {
+        let _ = enforce_directory_retention(directory, Some(&state.path), SystemTime::now());
+    }
 }
 
 fn rotate_logs(state: &mut CoreLogState) -> bool {

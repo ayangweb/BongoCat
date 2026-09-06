@@ -831,6 +831,7 @@ dependencies = [
  "bongocat-audio",
  "bongocat-config",
  "bongocat-live2d",
+ "bongocat-log",
  "bongocat-model",
  "bongocat-overlay",
  "bongocat-platform",
@@ -868,11 +869,19 @@ dependencies = [
 name = "bongocat-live2d"
 version = "0.1.0"
 dependencies = [
+ "bongocat-log",
  "bongocat-model",
  "bongocat-render",
  "image",
  "serde",
  "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "bongocat-log"
+version = "0.1.0"
+dependencies = [
  "tempfile",
 ]
 
@@ -4282,9 +4291,9 @@ dependencies = [
 
 [[package]]
 name = "lyon_tessellation"
-version = "1.0.21"
+version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dabea159dc6eea9171a541b458134b70ca95e3162d068132b2b3b9bc01aad06e"
+checksum = "43b8dcf906637ecef61b3c0740c7a4e7f27caeb31257cfac0cc579ce15be6005"
 dependencies = [
  "float_next_after",
  "lyon_path",
@@ -7925,9 +7934,9 @@ dependencies = [
 
 [[package]]
 name = "ureq-proto"
-version = "0.6.1"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da5f78b09e6941e1a0f2e30e695e4b120377b54d5e0aec11b594bb57b3971613"
+checksum = "fabc3e92916c89c95b20eef7b06b00b066bc217ef9ea3a4ac9bf1a7e35261e10"
 dependencies = [
  "base64 0.23.1",
  "http",

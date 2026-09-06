@@ -5,6 +5,7 @@ members = [
     "crates/bongocat-audio",
     "crates/bongocat-config",
     "crates/bongocat-live2d",
+    "crates/bongocat-log",
     "crates/bongocat-model",
     "crates/bongocat-overlay",
     "crates/bongocat-platform",
@@ -49,6 +50,7 @@ zip = { version = "=8.6.0", default-features = false }
 bongocat-config = { path = "crates/bongocat-config" }
 bongocat-audio = { path = "crates/bongocat-audio" }
 bongocat-live2d = { path = "crates/bongocat-live2d" }
+bongocat-log = { path = "crates/bongocat-log" }
 bongocat-model = { path = "crates/bongocat-model" }
 bongocat-overlay = { path = "crates/bongocat-overlay" }
 bongocat-platform = { path = "crates/bongocat-platform" }

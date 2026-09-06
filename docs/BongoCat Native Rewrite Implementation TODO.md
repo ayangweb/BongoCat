@@ -1870,7 +1870,7 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     下载 coordinator 另覆盖取消、中断重试、hash/长度错误和 staging 清理，transport 固定
     HTTPS、无 redirect 且保留代理配置边界。真实代理链、断网系统 smoke 和发布 endpoint 仍待
     app-owned update worker/基础设施，因此本项保持未勾选。
-- [ ] 日志 rotation、总大小和保留天数有上限。
+- [x] 日志 rotation、总大小和保留天数有上限。
   - 状态（2026-09-05）：Cubism Core 日志 sink 已在单文件达到 1 MiB 时执行有界路径轮转，最多保留
     1 个活动文件加 7 个轮转文件，总量不超过 8 MiB；活动文件和轮转失败均有有界 dropped 计数；测试覆盖触发轮转、保留上限和
     活动文件恢复写入。应用级 writer 现按 UTC 日分文件，单文件 1 MiB、总量 8 MiB、最多 8 个文件、
@@ -1878,7 +1878,12 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     retention policy；Core rotation files 现也在初始化和成功轮转后按 7 日上限清理，且 CoreLogStats
     已暴露匿名 written/dropped/rotated/pruned/active-bytes/retained-files 指标并有 rotation 回归；两类
     历史日志现以 retained-bytes/files 的饱和总数聚合导出，但 retention enforcement 仍由两个
-    隔离 writer 独立执行，尚未形成统一的目录级 budget，因此本项保持未勾选。
+    隔离 writer 仍分别维护自身 rotation 计数，但已通过共享 helper 形成统一目录级 budget。
+  - 验收证据（2026-09-07）：新增无平台依赖的 `bongocat-log` retention helper，统一扫描已知
+    application/Core JSONL 文件，按 7 日 metadata 保留和 8 MiB 目录级 budget 清理最旧轮转文件；
+    活动文件始终保留，symlink/未知文件不会被触碰。application 与 Core writer 均在初始化/写入后
+    调用同一策略，跨 writer aggregate、过期轮转和活动文件保护回归通过；`cargo fmt`、定向
+    workspace test、严格 Clippy 与 locked release check 通过。
   - [x] `P7-CORE-LOG-DIAGNOSTICS`：将 Cubism Core retention 指标接入匿名 diagnostics export。
     - 依赖：`CoreLogStats`、应用 diagnostics export 和 ADR-0016 的隐私边界。
     - 退出条件：产品启动将只读 Core 指标 provider 注册到 `Application`；每次导出实时采样
