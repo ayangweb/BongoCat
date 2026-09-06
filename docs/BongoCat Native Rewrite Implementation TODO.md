@@ -1771,8 +1771,10 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     每个来源和匿名 diagnostics entry 均最多 1 MiB、最多 8 个 application 来源，ZIP 总量最多 10 MiB；未知字段/损坏来源
     跳过且不复制原 bytes。typed settings result 已投影 ZIP format、固定 entry 数、bundle bytes 和匿名
     skipped-source count；Diagnostics 页面以中英文显示这些稳定结果，不显示路径、archive entry 或日志正文。
-    测试 writer 已拒绝 symlink/non-regular target，并在 temporary file 打开后及 commit 前注入失败，
-    固定旧 preview 保留且 staging 清理；macOS Development product smoke 已通过隔离 owner-only
+    测试 writer 已拒绝 symlink/non-regular target，并在 temporary file 打开后、commit 前及受控
+    target-replace failure 注入失败；失败清理只匹配 `atomic-write-file` 规定的固定前缀和六位 ASCII
+    staging 名，避免误删同前缀普通文件。已有 preview 在可保留的失败路径不变且 staging 清理；macOS
+    Development product smoke 已通过隔离 owner-only
     storage 运行 typed command，并验证 private JSON/ZIP、固定 ZIP entries 与干净 shutdown。Windows
     release smoke 和 OS-level sync/replace failure injection 仍待实现，本项保持未勾选。
   - 状态（2026-09-01）：settings service 已新增有界 `ExportDiagnostics` command，使用当前环境

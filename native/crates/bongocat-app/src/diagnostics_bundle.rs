@@ -34,6 +34,7 @@ const MAX_EVENT_LINE_BYTES: usize = 1024;
 enum WriteFailurePoint {
     AfterOpen,
     BeforeCommit,
+    ReplaceTargetWithDirectory,
 }
 
 #[cfg(test)]
@@ -52,10 +53,18 @@ impl Drop for WriteFailureGuard {
 }
 
 #[cfg(test)]
-fn inject_write_failure(point: WriteFailurePoint) -> Result<(), PreviewBundleError> {
+fn inject_write_failure(point: WriteFailurePoint, path: &Path) -> Result<(), PreviewBundleError> {
     WRITE_FAILURE_POINT.with(|configured| {
         if configured.get() == Some(point) {
-            Err(PreviewBundleError)
+            match point {
+                WriteFailurePoint::ReplaceTargetWithDirectory => {
+                    fs::remove_file(path).map_err(|_| PreviewBundleError)?;
+                    fs::create_dir(path).map_err(|_| PreviewBundleError)
+                }
+                WriteFailurePoint::AfterOpen | WriteFailurePoint::BeforeCommit => {
+                    Err(PreviewBundleError)
+                }
+            }
         } else {
             Ok(())
         }
@@ -347,30 +356,65 @@ fn verified_event_count(bytes: &[u8]) -> Result<u64, PreviewBundleError> {
 
 fn write_private_atomic(path: &Path, bytes: &[u8]) -> Result<(), PreviewBundleError> {
     ensure_regular_or_missing_target(path)?;
-    #[cfg(unix)]
-    let options = {
-        use atomic_write_file::unix::OpenOptionsExt;
-        use std::os::unix::fs::OpenOptionsExt as _;
-        let mut options = AtomicWriteFile::options();
-        options.preserve_mode(false).mode(0o600);
-        options
-    };
-    #[cfg(not(unix))]
-    let options = AtomicWriteFile::options();
-    let mut file = options.open(path).map_err(|_| PreviewBundleError)?;
-    #[cfg(test)]
-    inject_write_failure(WriteFailurePoint::AfterOpen)?;
-    file.write_all(bytes).map_err(|_| PreviewBundleError)?;
-    #[cfg(test)]
-    inject_write_failure(WriteFailurePoint::BeforeCommit)?;
-    file.commit().map_err(|_| PreviewBundleError)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o600))
-            .map_err(|_| PreviewBundleError)?;
+    let result = (|| {
+        #[cfg(unix)]
+        let options = {
+            use atomic_write_file::unix::OpenOptionsExt;
+            use std::os::unix::fs::OpenOptionsExt as _;
+            let mut options = AtomicWriteFile::options();
+            options.preserve_mode(false).mode(0o600);
+            options
+        };
+        #[cfg(not(unix))]
+        let options = AtomicWriteFile::options();
+        let mut file = options.open(path).map_err(|_| PreviewBundleError)?;
+        #[cfg(test)]
+        inject_write_failure(WriteFailurePoint::AfterOpen, path)?;
+        file.write_all(bytes).map_err(|_| PreviewBundleError)?;
+        #[cfg(test)]
+        inject_write_failure(WriteFailurePoint::BeforeCommit, path)?;
+        #[cfg(test)]
+        inject_write_failure(WriteFailurePoint::ReplaceTargetWithDirectory, path)?;
+        file.commit().map_err(|_| PreviewBundleError)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+                .map_err(|_| PreviewBundleError)?;
+        }
+        Ok(())
+    })();
+    if result.is_err() {
+        cleanup_preview_staging(path.parent().ok_or(PreviewBundleError)?)?;
+    }
+    result
+}
+
+fn cleanup_preview_staging(directory: &Path) -> Result<(), PreviewBundleError> {
+    for entry in fs::read_dir(directory).map_err(|_| PreviewBundleError)? {
+        let entry = entry.map_err(|_| PreviewBundleError)?;
+        let name = entry.file_name();
+        if !is_preview_staging_name(&name) {
+            continue;
+        }
+        let path = entry.path();
+        let metadata = fs::symlink_metadata(&path).map_err(|_| PreviewBundleError)?;
+        if metadata.is_file() && !metadata.file_type().is_symlink() {
+            fs::remove_file(path).map_err(|_| PreviewBundleError)?;
+        }
     }
     Ok(())
+}
+
+fn is_preview_staging_name(name: &std::ffi::OsStr) -> bool {
+    let Some(name) = name.to_str() else {
+        return false;
+    };
+    let prefix = format!(".{PREVIEW_BUNDLE_NAME}.");
+    let Some(suffix) = name.strip_prefix(&prefix) else {
+        return false;
+    };
+    suffix.len() == 6 && suffix.bytes().all(|byte| byte.is_ascii_alphanumeric())
 }
 
 fn ensure_regular_or_missing_target(path: &Path) -> Result<(), PreviewBundleError> {
@@ -461,6 +505,54 @@ mod tests {
                 "temporary preview files remain: {staging:?}"
             );
         }
+    }
+
+    #[test]
+    fn replace_failure_cleans_atomic_write_staging() {
+        let directory = tempdir().expect("temporary directory");
+        write_preview_bundle(directory.path(), b"{\"format_version\":1}")
+            .expect("initial preview bundle");
+        let path = directory.path().join(PREVIEW_BUNDLE_NAME);
+        let guard = fail_atomic_write_at(WriteFailurePoint::ReplaceTargetWithDirectory);
+
+        assert!(write_preview_bundle(directory.path(), b"{\"format_version\":2}").is_err());
+        drop(guard);
+
+        assert!(
+            path.is_dir(),
+            "test hook must force the atomic replace to fail"
+        );
+        let staging = fs::read_dir(directory.path())
+            .expect("bundle directory")
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name())
+            .filter_map(|name| name.into_string().ok())
+            .filter(|name| name.starts_with(".diagnostics-preview.zip."))
+            .collect::<Vec<_>>();
+        assert!(
+            staging.is_empty(),
+            "temporary preview files remain after a failed replace: {staging:?}"
+        );
+    }
+
+    #[test]
+    fn staging_cleanup_preserves_non_staging_files_with_the_bundle_prefix() {
+        let directory = tempdir().expect("temporary directory");
+        let unrelated = directory.path().join(".diagnostics-preview.zip.user-notes");
+        fs::write(&unrelated, b"must remain").expect("unrelated file");
+        let staging = directory.path().join(".diagnostics-preview.zip.A1b2C3");
+        fs::write(&staging, b"staging").expect("staging file");
+
+        cleanup_preview_staging(directory.path()).expect("staging cleanup");
+
+        assert_eq!(
+            fs::read(&unrelated).expect("unrelated file remains"),
+            b"must remain"
+        );
+        assert!(
+            !staging.exists(),
+            "atomic-write staging file must be removed"
+        );
     }
 
     #[test]
