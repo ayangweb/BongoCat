@@ -702,6 +702,12 @@ unsafe fn resolve_parameters(model: *mut sys::csmModel) -> Result<ResolvedParame
                     format!("Core returned a non-UTF-8 parameter id at index {index}"),
                 )
             })?;
+        if id.is_empty() {
+            return Err(Live2dError::new(
+                Live2dErrorCode::InvalidCoreValue,
+                format!("Core returned an empty parameter id at index {index}"),
+            ));
+        }
         let range = ParameterRange {
             minimum: minimums[index],
             maximum: maximums[index],

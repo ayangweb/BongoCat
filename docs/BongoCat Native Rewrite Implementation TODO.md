@@ -1008,6 +1008,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     source index，未改变 `RenderSnapshot` 的强类型资源 ID 契约。三个预置 Moc 的 100-cycle
     正式 Core load/update/drop 回归覆盖该 preflight。完整 custom parameter 与 part/offscreen
     诊断投影仍待完成，因此本项保持未勾选。
+  - 状态（2026-09-06）：参数表 preflight 也拒绝 Core 返回的空 parameter ID，和已有的
+    null、非 UTF-8、重复 ID 及非法 range 检查保持一致；三个预置 Moc 的正式 Core load 回归
+    继续通过。完整 custom parameter 诊断投影与 part/offscreen RenderSnapshot 诊断仍待完成，
+    因此本项保持未勾选。
 - [ ] 模型切换使用 prepare/commit/rollback。
   - 状态（2026-08-30）：正式 runtime/Metal/D3D11 产品链已实现 CPU/GPU 两阶段提交。runtime
     在候选 generation 的 texture/mesh/mask 全部由 renderer prepare 并回报匹配 token 前保留
