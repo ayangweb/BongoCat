@@ -1,6 +1,7 @@
 use crate::{
-    StagedUpdateArtifact, StorageLayout, UpdateDownloadAttemptFailure, UpdateDownloadRetryPolicy,
-    UpdateErrorCode, UpdateStagingError, UpdateStagingErrorCode, VerifiedArtifact, update_channel,
+    StagedUpdateArtifact, StorageLayout, UpdateDiagnosticsTracker, UpdateDownloadAttemptFailure,
+    UpdateDownloadRetryPolicy, UpdateErrorCode, UpdateStagingError, UpdateStagingErrorCode,
+    VerifiedArtifact, update_channel,
 };
 use std::{fmt, io::Read, time::Duration};
 
@@ -150,6 +151,30 @@ impl UpdateDownloadCoordinator {
             }
         }
         unreachable!("the retry policy always stops at its maximum attempt count")
+    }
+
+    pub fn stage_with_retry_and_diagnostics<R, OpenReader, WaitRetry, Cancel>(
+        &self,
+        artifact: &VerifiedArtifact,
+        layout: &StorageLayout,
+        tracker: &UpdateDiagnosticsTracker,
+        open_reader: OpenReader,
+        wait_retry: WaitRetry,
+        cancelled: Cancel,
+    ) -> Result<CompletedUpdateDownload, UpdateDownloadError>
+    where
+        R: Read,
+        OpenReader: FnMut() -> Result<R, UpdateDownloadAttemptFailure>,
+        WaitRetry: FnMut(Duration, &mut Cancel) -> bool,
+        Cancel: FnMut() -> bool,
+    {
+        tracker.record_download_started();
+        let result = self.stage_with_retry(artifact, layout, open_reader, wait_retry, cancelled);
+        match &result {
+            Ok(_) => tracker.record_download_succeeded(),
+            Err(error) => tracker.record_download_failed(error.code().as_str()),
+        }
+        result
     }
 }
 
@@ -301,6 +326,31 @@ mod tests {
         assert_eq!(
             std::fs::read(completed.artifact().path()).expect("staged bytes"),
             bytes
+        );
+    }
+
+    #[test]
+    fn diagnostics_wrapper_records_download_failure() {
+        let temporary = tempdir().expect("temporary directory");
+        let layout = StorageLayout::under(temporary.path(), BuildEnvironment::Development);
+        let tracker = crate::UpdateDiagnosticsTracker::default();
+        let error = UpdateDownloadCoordinator::default()
+            .stage_with_retry_and_diagnostics::<Cursor<Vec<u8>>, _, _, _>(
+                &artifact(b"payload"),
+                &layout,
+                &tracker,
+                || Err(UpdateDownloadAttemptFailure::Transport),
+                |_, _| true,
+                || false,
+            )
+            .expect_err("transport failure");
+
+        assert_eq!(error.code(), UpdateDownloadErrorCode::Transport);
+        assert_eq!(tracker.snapshot().downloads_started, 1);
+        assert_eq!(tracker.snapshot().downloads_failed, 1);
+        assert_eq!(
+            tracker.snapshot().last_error_code,
+            Some("update_download_transport_failed")
         );
     }
 

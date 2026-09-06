@@ -1,4 +1,4 @@
-use crate::StagedUpdateArtifact;
+use crate::{StagedUpdateArtifact, UpdateDiagnosticsTracker};
 use std::{fmt, path::Path};
 
 /// Stable, path-free outcomes for the pre-install coordination boundary.
@@ -95,6 +95,30 @@ impl UpdateInstallCoordinator {
                 UpdateInstallErrorCode::RollbackFailed,
             ))
         }
+    }
+
+    pub fn install_with_diagnostics<Cancel, Shutdown, Install, Rollback>(
+        &self,
+        artifact: &StagedUpdateArtifact,
+        tracker: &UpdateDiagnosticsTracker,
+        cancelled: Cancel,
+        shutdown: Shutdown,
+        install: Install,
+        rollback: Rollback,
+    ) -> Result<(), UpdateInstallError>
+    where
+        Cancel: FnMut() -> bool,
+        Shutdown: FnMut() -> bool,
+        Install: FnMut(&Path) -> bool,
+        Rollback: FnMut() -> bool,
+    {
+        tracker.record_install_started();
+        let result = self.install(artifact, cancelled, shutdown, install, rollback);
+        match &result {
+            Ok(()) => tracker.record_install_succeeded(),
+            Err(error) => tracker.record_install_failed(error.code().as_str()),
+        }
+        result
     }
 }
 
@@ -195,5 +219,18 @@ mod tests {
             .install(&artifact, || false, || true, |_| false, || false)
             .expect_err("rollback failure");
         assert_eq!(error.code(), UpdateInstallErrorCode::RollbackFailed);
+    }
+
+    #[test]
+    fn diagnostics_wrapper_records_install_success() {
+        let (_directory, artifact) = staged_artifact();
+        let tracker = crate::UpdateDiagnosticsTracker::default();
+        UpdateInstallCoordinator
+            .install_with_diagnostics(&artifact, &tracker, || false, || true, |_| true, || true)
+            .expect("successful install");
+
+        assert_eq!(tracker.snapshot().installs_started, 1);
+        assert_eq!(tracker.snapshot().installs_succeeded, 1);
+        assert_eq!(tracker.snapshot().installs_failed, 0);
     }
 }

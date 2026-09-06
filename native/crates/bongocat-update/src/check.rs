@@ -1,6 +1,6 @@
 use crate::{
-    UpdateDecision, UpdateManifestEndpoint, UpdateManifestFetchError, UpdateManifestSource,
-    UpdateVerificationSession, UpdateVerificationSessionError,
+    UpdateDecision, UpdateDiagnosticsTracker, UpdateManifestEndpoint, UpdateManifestFetchError,
+    UpdateManifestSource, UpdateVerificationSession, UpdateVerificationSessionError,
 };
 use std::fmt;
 
@@ -56,6 +56,21 @@ impl<S: UpdateManifestSource> UpdateCheckCoordinator<S> {
         session
             .verify_envelope(&envelope)
             .map_err(UpdateCheckError::Verification)
+    }
+
+    pub fn check_with_diagnostics(
+        &self,
+        session: &mut UpdateVerificationSession,
+        endpoint: &UpdateManifestEndpoint,
+        tracker: &UpdateDiagnosticsTracker,
+    ) -> Result<UpdateDecision, UpdateCheckError> {
+        tracker.record_check_started();
+        let result = self.check(session, endpoint);
+        match &result {
+            Ok(_) => tracker.record_check_succeeded(),
+            Err(error) => tracker.record_check_failed(error.code()),
+        }
+        result
     }
 }
 
@@ -156,6 +171,34 @@ mod tests {
                 .expect("sequence"),
             2
         );
+    }
+
+    #[test]
+    fn diagnostics_wrapper_records_check_result() {
+        let temporary = tempdir().expect("temporary directory");
+        let layout = StorageLayout::under(temporary.path(), BuildEnvironment::Development);
+        let (trusted_key, envelope) = signed_envelope();
+        let mut session = crate::UpdateVerificationSession::open(
+            &layout,
+            TargetTriple::Aarch64AppleDarwin,
+            "0.1.0",
+            vec![trusted_key],
+        )
+        .expect("session");
+        let coordinator = UpdateCheckCoordinator::new(StubSource {
+            result: Ok(envelope),
+        });
+        let endpoint = UpdateManifestEndpoint::new("https://updates.example.invalid/manifest.json")
+            .expect("endpoint");
+        let tracker = crate::UpdateDiagnosticsTracker::default();
+
+        coordinator
+            .check_with_diagnostics(&mut session, &endpoint, &tracker)
+            .expect("verified check");
+
+        assert_eq!(tracker.snapshot().checks_started, 1);
+        assert_eq!(tracker.snapshot().checks_succeeded, 1);
+        assert_eq!(tracker.snapshot().checks_failed, 0);
     }
 
     #[test]
