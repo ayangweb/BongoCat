@@ -1645,6 +1645,7 @@ struct DiagnosticsRuntime {
 #[derive(Serialize)]
 struct DiagnosticsInput {
     service_status: &'static str,
+    service_error_code: Option<&'static str>,
     service_start_attempts: u64,
     pressed_key_count: usize,
     pressed_mouse_button_count: usize,
@@ -1932,9 +1933,23 @@ const fn input_service_status_code(status: SettingsInputServiceStatus) -> &'stat
     }
 }
 
+const fn input_service_error_code(status: SettingsInputServiceStatus) -> Option<&'static str> {
+    match status {
+        SettingsInputServiceStatus::PermissionDenied => Some("platform_input_permission_denied"),
+        SettingsInputServiceStatus::BackendUnavailable => {
+            Some("platform_input_backend_unavailable")
+        }
+        SettingsInputServiceStatus::NotStarted
+        | SettingsInputServiceStatus::Running
+        | SettingsInputServiceStatus::Failed
+        | SettingsInputServiceStatus::Stopped => None,
+    }
+}
+
 const fn diagnostics_input(input: SettingsInputDiagnostics) -> DiagnosticsInput {
     DiagnosticsInput {
         service_status: input_service_status_code(input.service_status),
+        service_error_code: input_service_error_code(input.service_status),
         service_start_attempts: input.service_start_attempts,
         pressed_key_count: input.pressed_key_count,
         pressed_mouse_button_count: input.pressed_mouse_button_count,
@@ -2412,6 +2427,7 @@ mod tests {
             config_recovery: None,
             diagnostics_export: None,
             input_diagnostics: SettingsInputDiagnostics {
+                service_status: SettingsInputServiceStatus::PermissionDenied,
                 captured_down: 3,
                 captured_up: 4,
                 reconciled_release: 5,
@@ -2513,6 +2529,11 @@ mod tests {
         assert_eq!(document["runtime"]["command_sequence_gap_count"], 3);
         assert_eq!(document["runtime"]["command_missing_sequence_count"], 5);
         assert_eq!(document["input"]["captured_down"], 3);
+        assert_eq!(document["input"]["service_status"], "permission_denied");
+        assert_eq!(
+            document["input"]["service_error_code"],
+            "platform_input_permission_denied"
+        );
         assert_eq!(document["input"]["captured_up"], 4);
         assert_eq!(document["input"]["reconciled_release"], 5);
         assert_eq!(document["input"]["released_by_reset"], 6);
@@ -2715,6 +2736,26 @@ mod tests {
             SettingsInputServiceStatus::Stopped,
         ] {
             assert!(!input_service_is_degraded(status));
+        }
+    }
+
+    #[test]
+    fn input_service_error_code_only_exports_unambiguous_platform_failures() {
+        assert_eq!(
+            input_service_error_code(SettingsInputServiceStatus::PermissionDenied),
+            Some("platform_input_permission_denied")
+        );
+        assert_eq!(
+            input_service_error_code(SettingsInputServiceStatus::BackendUnavailable),
+            Some("platform_input_backend_unavailable")
+        );
+        for status in [
+            SettingsInputServiceStatus::NotStarted,
+            SettingsInputServiceStatus::Running,
+            SettingsInputServiceStatus::Failed,
+            SettingsInputServiceStatus::Stopped,
+        ] {
+            assert_eq!(input_service_error_code(status), None);
         }
     }
 
