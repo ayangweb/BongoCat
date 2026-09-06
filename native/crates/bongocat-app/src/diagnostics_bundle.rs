@@ -2,6 +2,8 @@
 
 use atomic_write_file::AtomicWriteFile;
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
+use std::cell::Cell;
 use std::{
     fs,
     io::{Cursor, Write},
@@ -20,6 +22,45 @@ pub(crate) const PREVIEW_BUNDLE_ENTRY_COUNT: u32 = 3;
 const MAX_APPLICATION_LOG_FILES: usize = 8;
 const MAX_APPLICATION_LOG_BYTES: u64 = 1024 * 1024;
 const MAX_EVENT_LINE_BYTES: usize = 1024;
+
+#[cfg(test)]
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum WriteFailurePoint {
+    AfterOpen,
+    BeforeCommit,
+}
+
+#[cfg(test)]
+thread_local! {
+    static WRITE_FAILURE_POINT: Cell<Option<WriteFailurePoint>> = const { Cell::new(None) };
+}
+
+#[cfg(test)]
+struct WriteFailureGuard;
+
+#[cfg(test)]
+impl Drop for WriteFailureGuard {
+    fn drop(&mut self) {
+        WRITE_FAILURE_POINT.with(|point| point.set(None));
+    }
+}
+
+#[cfg(test)]
+fn inject_write_failure(point: WriteFailurePoint) -> Result<(), PreviewBundleError> {
+    WRITE_FAILURE_POINT.with(|configured| {
+        if configured.get() == Some(point) {
+            Err(PreviewBundleError)
+        } else {
+            Ok(())
+        }
+    })
+}
+
+#[cfg(test)]
+fn fail_atomic_write_at(point: WriteFailurePoint) -> WriteFailureGuard {
+    WRITE_FAILURE_POINT.with(|configured| configured.set(Some(point)));
+    WriteFailureGuard
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct PreviewBundleStatus {
@@ -221,7 +262,11 @@ fn write_private_atomic(path: &Path, bytes: &[u8]) -> Result<(), PreviewBundleEr
     #[cfg(not(unix))]
     let options = AtomicWriteFile::options();
     let mut file = options.open(path).map_err(|_| PreviewBundleError)?;
+    #[cfg(test)]
+    inject_write_failure(WriteFailurePoint::AfterOpen)?;
     file.write_all(bytes).map_err(|_| PreviewBundleError)?;
+    #[cfg(test)]
+    inject_write_failure(WriteFailurePoint::BeforeCommit)?;
     file.commit().map_err(|_| PreviewBundleError)?;
     #[cfg(unix)]
     {
@@ -280,5 +325,36 @@ mod tests {
         assert_eq!(status.skipped_source_files, 1);
         let bytes = fs::read(directory.path().join(PREVIEW_BUNDLE_NAME)).expect("bundle bytes");
         assert!(!String::from_utf8_lossy(&bytes).contains("model-name"));
+    }
+
+    #[test]
+    fn failed_atomic_write_preserves_the_previous_bundle_and_cleans_staging() {
+        let directory = tempdir().expect("temporary directory");
+        write_preview_bundle(directory.path(), b"{\"format_version\":1}")
+            .expect("initial preview bundle");
+        let path = directory.path().join(PREVIEW_BUNDLE_NAME);
+        let previous = fs::read(&path).expect("previous preview bundle");
+
+        for point in [
+            WriteFailurePoint::AfterOpen,
+            WriteFailurePoint::BeforeCommit,
+        ] {
+            let guard = fail_atomic_write_at(point);
+            assert!(write_preview_bundle(directory.path(), b"{\"format_version\":2}").is_err());
+            drop(guard);
+
+            assert_eq!(fs::read(&path).expect("preserved preview bundle"), previous);
+            let staging = fs::read_dir(directory.path())
+                .expect("bundle directory")
+                .filter_map(Result::ok)
+                .map(|entry| entry.file_name())
+                .filter_map(|name| name.into_string().ok())
+                .filter(|name| name.starts_with(".diagnostics-preview.zip."))
+                .collect::<Vec<_>>();
+            assert!(
+                staging.is_empty(),
+                "temporary preview files remain: {staging:?}"
+            );
+        }
     }
 }
