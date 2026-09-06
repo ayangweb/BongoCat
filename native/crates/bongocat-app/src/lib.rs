@@ -26,7 +26,7 @@ use bongocat_runtime::{
     RuntimeCommandFailure, RuntimeOwner, RuntimeRenderErrorCode, RuntimeSnapshot, SendError,
     ShutdownError, maximum_fps_is_valid, release_fallback_timeout_is_valid,
 };
-use bongocat_update::UpdateDiagnostics;
+use bongocat_update::{UpdateDiagnostics, UpdateDiagnosticsTracker};
 use std::{
     collections::BTreeMap,
     fmt,
@@ -489,6 +489,11 @@ impl Application {
         provider: impl Fn() -> UpdateDiagnostics + Send + Sync + 'static,
     ) {
         self.update_diagnostics = Some(Arc::new(provider));
+    }
+
+    /// Register an app-owned tracker that update workers can share safely.
+    pub fn set_update_diagnostics_tracker(&mut self, tracker: UpdateDiagnosticsTracker) {
+        self.set_update_diagnostics_provider(move || tracker.snapshot());
     }
 
     pub fn update_diagnostics(&self) -> Option<UpdateDiagnostics> {
@@ -2266,6 +2271,36 @@ mod tests {
                 installs_started: 1,
                 installs_succeeded: 0,
                 installs_failed: 1,
+            })
+        );
+        application.shutdown().expect("clean shutdown");
+    }
+
+    #[test]
+    fn application_registers_shared_update_diagnostics_tracker() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let mut application = Application::start_with_layout(layout).expect("start application");
+        let tracker = bongocat_update::UpdateDiagnosticsTracker::default();
+        application.set_update_diagnostics_tracker(tracker.clone());
+
+        tracker.record_check_started();
+        tracker.record_check_succeeded();
+        tracker.record_download_failed("update_download_transport_failed");
+
+        assert_eq!(
+            application.update_diagnostics(),
+            Some(bongocat_update::UpdateDiagnostics {
+                last_error_code: Some("update_download_transport_failed"),
+                checks_started: 1,
+                checks_succeeded: 1,
+                checks_failed: 0,
+                downloads_started: 0,
+                downloads_succeeded: 0,
+                downloads_failed: 1,
+                installs_started: 0,
+                installs_succeeded: 0,
+                installs_failed: 0,
             })
         );
         application.shutdown().expect("clean shutdown");

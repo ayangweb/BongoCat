@@ -36,7 +36,15 @@ use ed25519_dalek::{Signature, VerifyingKey};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::{collections::BTreeSet, fmt, io::Read};
+use std::{
+    collections::BTreeSet,
+    fmt,
+    io::Read,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
+};
 use url::Url;
 
 pub const UPDATE_MANIFEST_SCHEMA_VERSION: u32 = 1;
@@ -93,6 +101,105 @@ impl UpdateDiagnostics {
             ..self
         }
     }
+}
+
+#[derive(Default)]
+struct UpdateDiagnosticsTrackerState {
+    last_error_code: Mutex<Option<&'static str>>,
+    checks_started: AtomicU64,
+    checks_succeeded: AtomicU64,
+    checks_failed: AtomicU64,
+    downloads_started: AtomicU64,
+    downloads_succeeded: AtomicU64,
+    downloads_failed: AtomicU64,
+    installs_started: AtomicU64,
+    installs_succeeded: AtomicU64,
+    installs_failed: AtomicU64,
+}
+
+/// App-owned, thread-safe source for anonymous update diagnostics.
+///
+/// A worker can share clones of this tracker across its transport and staging
+/// tasks. Counters are monotonic and saturating; failure codes are retained
+/// only when they belong to the stable update catalog.
+#[derive(Clone, Default)]
+pub struct UpdateDiagnosticsTracker {
+    state: Arc<UpdateDiagnosticsTrackerState>,
+}
+
+impl UpdateDiagnosticsTracker {
+    pub fn snapshot(&self) -> UpdateDiagnostics {
+        let last_error_code = self.state.last_error_code.lock().map_or(None, |code| *code);
+        UpdateDiagnostics {
+            last_error_code,
+            checks_started: self.state.checks_started.load(Ordering::Relaxed),
+            checks_succeeded: self.state.checks_succeeded.load(Ordering::Relaxed),
+            checks_failed: self.state.checks_failed.load(Ordering::Relaxed),
+            downloads_started: self.state.downloads_started.load(Ordering::Relaxed),
+            downloads_succeeded: self.state.downloads_succeeded.load(Ordering::Relaxed),
+            downloads_failed: self.state.downloads_failed.load(Ordering::Relaxed),
+            installs_started: self.state.installs_started.load(Ordering::Relaxed),
+            installs_succeeded: self.state.installs_succeeded.load(Ordering::Relaxed),
+            installs_failed: self.state.installs_failed.load(Ordering::Relaxed),
+        }
+        .sanitized()
+    }
+
+    pub fn record_check_started(&self) {
+        increment(&self.state.checks_started);
+    }
+
+    pub fn record_check_succeeded(&self) {
+        increment(&self.state.checks_succeeded);
+    }
+
+    pub fn record_check_failed(&self, code: &'static str) {
+        increment(&self.state.checks_failed);
+        self.record_error(code);
+    }
+
+    pub fn record_download_started(&self) {
+        increment(&self.state.downloads_started);
+    }
+
+    pub fn record_download_succeeded(&self) {
+        increment(&self.state.downloads_succeeded);
+    }
+
+    pub fn record_download_failed(&self, code: &'static str) {
+        increment(&self.state.downloads_failed);
+        self.record_error(code);
+    }
+
+    pub fn record_install_started(&self) {
+        increment(&self.state.installs_started);
+    }
+
+    pub fn record_install_succeeded(&self) {
+        increment(&self.state.installs_succeeded);
+    }
+
+    pub fn record_install_failed(&self, code: &'static str) {
+        increment(&self.state.installs_failed);
+        self.record_error(code);
+    }
+
+    fn record_error(&self, code: &'static str) {
+        if !is_stable_error_code(code) {
+            return;
+        }
+        if let Ok(mut current) = self.state.last_error_code.lock() {
+            *current = Some(code);
+        }
+    }
+}
+
+fn increment(counter: &AtomicU64) {
+    counter
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+            Some(value.saturating_add(1))
+        })
+        .expect("update diagnostic counter update always succeeds");
 }
 
 /// Returns whether `code` belongs to one of the update subsystem's stable,
@@ -1483,6 +1590,43 @@ mod tests {
             diagnostics.last_error_code,
             Some("update_download_transport_failed")
         );
+    }
+
+    #[test]
+    fn diagnostics_tracker_aggregates_shared_worker_events() {
+        let tracker = UpdateDiagnosticsTracker::default();
+        let worker_clone = tracker.clone();
+        tracker.record_check_started();
+        worker_clone.record_check_failed("update_manifest_endpoint_invalid");
+        worker_clone.record_download_started();
+        tracker.record_download_succeeded();
+        tracker.record_install_started();
+        tracker.record_install_failed("update_install_rollback_failed");
+
+        assert_eq!(
+            tracker.snapshot(),
+            UpdateDiagnostics {
+                last_error_code: Some("update_install_rollback_failed"),
+                checks_started: 1,
+                checks_succeeded: 0,
+                checks_failed: 1,
+                downloads_started: 1,
+                downloads_succeeded: 1,
+                downloads_failed: 0,
+                installs_started: 1,
+                installs_succeeded: 0,
+                installs_failed: 1,
+            }
+        );
+    }
+
+    #[test]
+    fn diagnostics_tracker_keeps_counts_but_drops_unknown_failure_code() {
+        let tracker = UpdateDiagnosticsTracker::default();
+        tracker.record_download_failed("/private/path/update.zip");
+
+        assert_eq!(tracker.snapshot().downloads_failed, 1);
+        assert_eq!(tracker.snapshot().last_error_code, None);
     }
 
     struct FailingReader;

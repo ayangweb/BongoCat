@@ -1906,6 +1906,10 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     schedule 和 install 边界；未知字符串在进入 Application/diagnostics export 前被丢弃，保留计数。
     目录覆盖、Application/导出边界和隐私回归通过，未改变真实 update worker、安装回滚或平台
     错误源仍待接入的状态。
+  - 状态（2026-09-07）：`UpdateDiagnosticsTracker` 提供 app-owned、可跨 worker clone 的原子阶段计数
+    与稳定错误码记录；`Application::set_update_diagnostics_tracker` 将其接入现有匿名导出边界，
+    未注册 tracker 时仍保持 `update: null`。共享事件、未知错误码脱敏和 Application 投影回归通过；
+    真实 update worker、endpoint、下载/安装调度仍待发布链路接入。
 - [ ] 日志导出生成可预览的脱敏包。
   - 状态（2026-09-06）：ADR-0027 已冻结 preview bundle 为当前环境私有的 v1 ZIP，固定只包含
     `manifest.json`、匿名 `diagnostics.json` 和严格重新序列化的 application code event records；
