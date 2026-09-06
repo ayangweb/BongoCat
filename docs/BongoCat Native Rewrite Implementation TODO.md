@@ -1509,7 +1509,12 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     Windows 保留名边界。`cargo test -p bongocat-model --locked` 通过，平台文件选择实机证据
     仍由 `P7-MODEL-DIRECTORY-PICKER` 跟踪。
 - [x] 当前 v1 连续读取 10 次结果一致且不会产生额外写入或备份。
-- [ ] 失败注入不丢当前环境的配置或用户模型。
+- [x] 失败注入不丢当前环境的配置或用户模型。
+  - 验收证据（2026-09-06）：配置层的权限/磁盘满与替换后校验失败注入均逐字节恢复当前
+    `config.json` 并清理 temp；模型层的取消/无效包导入不创建 destination 或 staging，重复
+    ID 不覆盖已安装内容；Application 的 `rejected_gpu_model_switch_restores_the_previous_config_selection`
+    回归验证 GPU 拒绝后旧配置选择与 active model 保持不变。配置与模型定向测试均通过，应用
+    回滚测试已纳入既有 app test suite；失败路径不会跨环境读写。
 - [ ] 发布依赖和运行日志中没有旧 Tauri/Pinia 配置探测。
 - [x] Bundle ID 精确验证为 `com.ayangweb.bongo-cat`。
   - 验收证据（2026-09-05）：配置与存储根使用固定 `BUNDLE_ID` 常量；macOS 打包脚本在签名前
