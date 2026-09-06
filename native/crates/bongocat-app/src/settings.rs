@@ -1960,17 +1960,20 @@ fn diagnostics_document(
             retained_files: core_logs.retained_files,
             retained_bytes: core_logs.retained_bytes,
         }),
-        update: update.map(|update| DiagnosticsUpdate {
-            last_error_code: update.last_error_code,
-            checks_started: update.checks_started,
-            checks_succeeded: update.checks_succeeded,
-            checks_failed: update.checks_failed,
-            downloads_started: update.downloads_started,
-            downloads_succeeded: update.downloads_succeeded,
-            downloads_failed: update.downloads_failed,
-            installs_started: update.installs_started,
-            installs_succeeded: update.installs_succeeded,
-            installs_failed: update.installs_failed,
+        update: update.map(|update| {
+            let update = update.sanitized();
+            DiagnosticsUpdate {
+                last_error_code: update.last_error_code,
+                checks_started: update.checks_started,
+                checks_succeeded: update.checks_succeeded,
+                checks_failed: update.checks_failed,
+                downloads_started: update.downloads_started,
+                downloads_succeeded: update.downloads_succeeded,
+                downloads_failed: update.downloads_failed,
+                installs_started: update.installs_started,
+                installs_succeeded: update.installs_succeeded,
+                installs_failed: update.installs_failed,
+            }
         }),
         log_retention: DiagnosticsLogRetention {
             retained_files: application_logs
@@ -2644,6 +2647,26 @@ mod tests {
         let text = String::from_utf8(bytes).expect("UTF-8 export");
         assert!(!text.contains("private-model-name"));
         assert!(!text.contains(directory.path().to_string_lossy().as_ref()));
+
+        let filtered_path = directory.path().join("logs").join("filtered.json");
+        export_diagnostics_file(
+            &filtered_path,
+            &snapshot,
+            ApplicationLogDiagnostics::default(),
+            None,
+            Some(UpdateDiagnostics {
+                last_error_code: Some("private_update_detail"),
+                checks_started: 4,
+                ..UpdateDiagnostics::default()
+            }),
+        )
+        .expect("export filtered diagnostics");
+        let filtered: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(&filtered_path).expect("read filtered diagnostics"),
+        )
+        .expect("valid filtered JSON");
+        assert!(filtered["update"]["last_error_code"].is_null());
+        assert_eq!(filtered["update"]["checks_started"], 4);
 
         snapshot.configuration_status =
             SettingsConfigurationStatus::RecoveryRequired { checked_backups: 2 };
