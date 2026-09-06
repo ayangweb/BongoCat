@@ -755,6 +755,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     priority/stop、expression selection 以及音频触发不进入 render snapshot 的契约。音频不可用时
     motion side effect 仍被 runtime 诊断为 rejected，未阻塞动作或渲染。fixture 的物理模型轨迹、
     可用音频设备和 GPU/实机证据仍待完成，因此总项保持未勾选。
+  - 状态（2026-09-07）：runtime 集成测试现在自动枚举纯输入 fixture，并校验
+    `input-sequences` 与 `expected-state` 的 stem 集合一致；新增 fixture 若未配套 expected snapshot
+    或未进入测试集合会立即失败，模型/音频 fixture 仍由现有平台条件测试单独执行。
 
 ### 3.3 Windows 输入
 

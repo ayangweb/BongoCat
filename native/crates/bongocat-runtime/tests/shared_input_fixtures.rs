@@ -1,4 +1,9 @@
-use std::{collections::BTreeMap, fs, path::PathBuf, time::Duration};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::PathBuf,
+    time::Duration,
+};
 
 use bongocat_runtime::{
     CursorPosition, CursorSample, CursorViewport, GamepadAxis, GamepadAxisKey, GamepadAxisSample,
@@ -32,6 +37,20 @@ fn repository_root() -> PathBuf {
 
 fn load(path: PathBuf) -> Value {
     serde_json::from_slice(&fs::read(path).expect("fixture bytes")).expect("fixture JSON")
+}
+
+fn fixture_stems(directory: &PathBuf) -> BTreeSet<String> {
+    fs::read_dir(directory)
+        .expect("fixture directory")
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let path = entry.path();
+            (path.extension().and_then(|extension| extension.to_str()) == Some("json"))
+                .then(|| path.file_stem()?.to_str().map(str::to_owned))
+                .flatten()
+        })
+        .filter(|stem| stem != "schema" && stem != "model-motion-expression-audio")
+        .collect()
 }
 
 fn key(name: &str) -> PhysicalKey {
@@ -589,16 +608,13 @@ fn shared_input_fixtures_match_product_runtime_projection() {
     let root = repository_root().join("shared/fixtures");
     let input_dir = root.join("input-sequences");
     let expected_dir = root.join("expected-state");
-    for name in [
-        "cursor-does-not-block-release",
-        "gamepad-reconnect-reset",
-        "input-recovery-lifecycle",
-        "keyboard-modifiers-and-repeat",
-        "keyboard-reconciled-release",
-        "keyboard-single-key",
-        "lifecycle-reset",
-        "mouse-drag-and-cursor",
-    ] {
+    let input_stems = fixture_stems(&input_dir);
+    let expected_stems = fixture_stems(&expected_dir);
+    assert_eq!(
+        input_stems, expected_stems,
+        "input and expected fixture sets"
+    );
+    for name in input_stems {
         let sequence = load(input_dir.join(format!("{name}.json")));
         let expected = load(expected_dir.join(format!("{name}.json")));
         let mut key_bindings = BTreeMap::new();
