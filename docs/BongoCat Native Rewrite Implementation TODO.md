@@ -1986,6 +1986,11 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 - [x] 完成权限/tap 生命周期 contract、只读 preflight、真实 callback 和受控 disable 恢复；TCC 权限矩阵与系统自然 timeout 仍未完成。
 - [x] 完成候选 pressed set 到 `CGEventSourceKeyState` 校正快照的边界和周期调度；真实 callback release 受控丢弃后的 20-cycle 闭环已通过，正式 `MacInputService` 又完成 left Shift down/up 到 runtime `ModelInputSnapshot` 的同进程集成测试。物理输入、系统自然丢事件和生命周期实测仍未完成。
 - [x] 完成 GameController extended-profile producer、可靠按钮边沿、keyed axis、连接 generation、background delivery 和 handler shutdown contract；framework 无设备 smoke 已通过，物理 controller/profile/热插拔矩阵仍待完成。
+- 状态（2026-09-06）：macOS 26.5.2 arm64 本机以当前 Development release artifact 运行
+  `bongocat-overlay standard 4 --interactive`，`MacInputService::start` 成功创建 listen-only
+  event tap，并在 4 秒后正常 stop/join（exit 0）；报告 238 帧、1 个 platform cursor sample、0 条
+  platform input edge。这只证明当前已授权会话的 tap 创建与有序停止，不替代真实键鼠边沿、TCC
+  拒绝/撤销、系统 timeout、锁屏/睡眠或物理 GameController 矩阵。
 
 13. [ ] `P0-CUBISM`：确认 SDK/许可证/binding 生成，三个预置模型完成 Core、资源和 renderer spike。
 
