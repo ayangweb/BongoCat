@@ -940,6 +940,23 @@ mod tests {
     }
 
     #[test]
+    fn preset_core_models_survive_repeated_load_update_and_drop_cycles() {
+        for id in ["standard", "keyboard", "gamepad"] {
+            let committed = preset_model(id);
+            let moc_path = committed.root().join(&committed.index().moc);
+            for _ in 0..100 {
+                let mut model = CoreModel::load(&moc_path).expect("load Core model");
+                let snapshot = model.update_and_snapshot().expect("update Core model");
+                assert!(
+                    !snapshot.drawables.is_empty(),
+                    "{id} must produce a drawable snapshot before drop"
+                );
+                drop(model);
+            }
+        }
+    }
+
+    #[test]
     fn preset_product_parameters_resolve_and_drive_drawables() {
         for id in ["standard", "keyboard", "gamepad"] {
             let committed = preset_model(id);

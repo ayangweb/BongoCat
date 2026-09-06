@@ -984,7 +984,13 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     handle drop 先卸载 callback 再释放 sink；纯 Rust 测试覆盖过滤、容量、写入和卸载。
     Core logging 已完成，但该行仍等待 FFI 错误映射、完整 Moc/Model 资源矩阵和双平台
     实机证据后再勾选。
-- [ ] 用 Rust owner 保证 Moc、Model 和 buffer 析构顺序。
+- [x] 用 Rust owner 保证 Moc、Model 和 buffer 析构顺序。
+  - 验收证据（2026-09-06）：正式 `CoreModel` 以独占对齐 allocation 持有 revived Moc 与
+    Model buffer，raw Core pointer 不离开 safe wrapper；`Drop` 固定按 Model buffer -> Moc
+    buffer 释放，避免 Model 观察已释放的 Moc tables。三个预置 Moc 各 100 次正式
+    `load -> update -> drop` 回归覆盖此顺序；Phase 0 real-Core probe 另已记录三个 Moc 各
+    100 次同生命周期和 `leaks --atExit` 0-byte 结果。该内存测量仅为 macOS arm64 证据，
+    不替代 Windows/macOS 长时 GPU/应用级 leak 门禁。
 - [ ] 校验 parameter/part/drawable id、index 和范围。
   - 状态（2026-08-30）：正式 wrapper 已在 Model 创建时一次性验证 product parameter
     ID/range/default，按模型解析 stable index，并验证 drawable array、index、texture、
