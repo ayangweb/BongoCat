@@ -1266,7 +1266,12 @@ overlay owner；设置更新失败时保留旧 snapshot。scale/opacity 的可�
     `SnapshotOutdated`；冲突后 UI 自动读取最新 snapshot 并保留可操作错误。正式 app 回归
     验证显隐、overlay、motion audio、模型交互和 gamepad dead-zone 的过期提交不改变 runtime 状态、配置字节或 revision，成功提交、错误文案和 shutdown
     路径均通过 `bongocat-app`/`bongocat-ui` 定向测试。
-- [ ] 禁止通用 set_value(path, any) API。
+- [x] 禁止通用 set_value(path, any) API。
+  - 验收证据（2026-09-06）：`SettingsCommand` 是封闭枚举；每个设置变更都使用显式
+    variant、领域类型和 revision-checked reply，`SettingsClient` 只公开对应的强类型方法。
+    对 UI、app、runtime 与 config Rust 源码的静态检查未发现 path/any 或 JSON-value 业务
+    mutation API。GPUI `InputState::set_value` 仅在视图层同步控件文本，不穿过 settings
+    service，也不修改配置或 runtime。
 - [ ] 不向 UI 发送逐帧数据、原始按键流或 GPU/model pointer。
 - [ ] command/snapshot 有纯 Rust contract test。
   - 状态（2026-09-01）：正式 contract 已覆盖 FIFO command、typed reply、receiver close、
