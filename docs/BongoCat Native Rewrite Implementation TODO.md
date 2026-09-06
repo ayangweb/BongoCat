@@ -2045,8 +2045,13 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     release smoke 和 OS-level sync/replace failure injection 仍待实现，本项保持未勾选。
   - 状态（2026-09-07）：Native Phase 0 workflow 的 macOS/Windows 隔离 storage job 均执行
     `--diagnostics-export-smoke`，断言稳定成功消息、私有 diagnostics JSON/preview ZIP 和固定
-    archive entries；Windows 平台不再只有单元测试覆盖。OS-level sync/replace failure injection
-    仍待实现，本项保持未勾选。
+    archive entries；Windows 平台不再只有单元测试覆盖。OS-level failure injection 仍待产品
+    smoke 覆盖，本项保持未勾选。
+  - 状态（2026-09-07）：新增 `--diagnostics-export-failure-smoke` 产品级失败路径。macOS/Windows
+    均以真实目录目标触发 diagnostics 原子 open/replace 失败，macOS 另以不可写 `logs/` 目录
+    触发同步/写入失败；两平台均验证稳定 `diagnostics_export_failed`、既有 preview 保留和
+    staging 清理，并已接入 Phase 0 隔离 storage workflow。该 smoke 不替代真实磁盘满、ACL/UAC
+    和系统级电源故障注入，故总项仍保持未勾选。
   - 状态（2026-09-01）：settings service 已新增有界 `ExportDiagnostics` command，使用当前环境
     `logs/diagnostics.json` 的同目录原子写入生成 format v1 JSON。导出只包含稳定 runtime/input/
     configuration code、匿名聚合计数、模型来源计数和 settings/config revision；不包含模型 ID、

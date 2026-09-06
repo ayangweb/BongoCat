@@ -172,6 +172,8 @@ struct RunOptions {
     panic_diagnostics_smoke_child: bool,
     #[cfg(feature = "storage-test-injection")]
     diagnostics_export_smoke: bool,
+    #[cfg(feature = "storage-test-injection")]
+    diagnostics_export_failure_smoke: bool,
     system_menu_smoke: bool,
     #[cfg(target_os = "macos")]
     application_reopen_smoke: bool,
@@ -199,6 +201,8 @@ impl RunOptions {
         let mut panic_diagnostics_smoke_child = false;
         #[cfg(feature = "storage-test-injection")]
         let mut diagnostics_export_smoke = false;
+        #[cfg(feature = "storage-test-injection")]
+        let mut diagnostics_export_failure_smoke = false;
         let mut system_menu_smoke = false;
         #[cfg(target_os = "macos")]
         let mut application_reopen_smoke = false;
@@ -232,6 +236,8 @@ impl RunOptions {
                 "--panic-diagnostics-smoke-child" => panic_diagnostics_smoke_child = true,
                 #[cfg(feature = "storage-test-injection")]
                 "--diagnostics-export-smoke" => diagnostics_export_smoke = true,
+                #[cfg(feature = "storage-test-injection")]
+                "--diagnostics-export-failure-smoke" => diagnostics_export_failure_smoke = true,
                 "--system-menu-smoke" => system_menu_smoke = true,
                 #[cfg(target_os = "macos")]
                 "--application-reopen-smoke" => application_reopen_smoke = true,
@@ -262,6 +268,8 @@ impl RunOptions {
             panic_diagnostics_smoke_child,
             #[cfg(feature = "storage-test-injection")]
             diagnostics_export_smoke,
+            #[cfg(feature = "storage-test-injection")]
+            diagnostics_export_failure_smoke,
             system_menu_smoke,
             #[cfg(target_os = "macos")]
             application_reopen_smoke,
@@ -314,13 +322,13 @@ impl std::error::Error for RunOptionsError {}
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn usage() -> &'static str {
     #[cfg(all(target_os = "windows", feature = "storage-test-injection"))]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--diagnostics-export-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--diagnostics-export-smoke] [--diagnostics-export-failure-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
 
     #[cfg(all(target_os = "windows", not(feature = "storage-test-injection")))]
     return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
 
     #[cfg(all(target_os = "macos", feature = "storage-test-injection"))]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--diagnostics-export-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--diagnostics-export-smoke] [--diagnostics-export-failure-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
 
     #[cfg(all(target_os = "macos", not(feature = "storage-test-injection")))]
     "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run."
@@ -1346,6 +1354,91 @@ fn run_diagnostics_export_smoke() -> Result<(), Box<dyn std::error::Error>> {
     feature = "storage-test-injection",
     any(target_os = "macos", target_os = "windows")
 ))]
+fn run_diagnostics_export_failure_smoke() -> Result<(), Box<dyn std::error::Error>> {
+    use bongocat_config::{BuildEnvironment, StorageLayout};
+
+    let root = env::temp_dir().join(format!(
+        "bongocat-diagnostics-export-failure-smoke-{}",
+        std::process::id()
+    ));
+    if root.exists() {
+        std::fs::remove_dir_all(&root)?;
+    }
+    let root = RecoverySmokeRoot(root);
+    let layout = StorageLayout::under(&root.0, BuildEnvironment::Development);
+    let application =
+        bongocat_app::Application::start_with_layout_for_smoke(layout.clone(), preset_root())?;
+    let service = bongocat_app::ApplicationSettingsService::start(application)?;
+    let client = service.client();
+    let first = client.export_diagnostics_blocking()?;
+    let first_status = first
+        .diagnostics_export
+        .ok_or("initial diagnostics export did not return a typed result")?;
+    let diagnostics = layout.logs.join("diagnostics.json");
+    let preview = layout.logs.join("diagnostics-preview.zip");
+    let previous_diagnostics = std::fs::read(&diagnostics)?;
+    let previous_preview = std::fs::read(&preview)?;
+
+    // A directory at the destination is an OS-level replace/open failure. The writer must
+    // reject it before touching the existing diagnostics or preview bytes.
+    std::fs::remove_file(&diagnostics)?;
+    std::fs::create_dir(&diagnostics)?;
+    let error = client
+        .export_diagnostics_blocking()
+        .expect_err("diagnostics export must reject a directory destination");
+    if error.code() != bongocat_ui::SettingsErrorCode::DiagnosticsExportFailed {
+        return Err("diagnostics export returned an unstable filesystem failure code".into());
+    }
+    if std::fs::read(&preview)? != previous_preview {
+        return Err("failed diagnostics export changed the previous preview bundle".into());
+    }
+    std::fs::remove_dir(&diagnostics)?;
+    std::fs::write(&diagnostics, &previous_diagnostics)?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let original_mode = std::fs::metadata(&layout.logs)?.permissions().mode();
+        std::fs::set_permissions(&layout.logs, std::fs::Permissions::from_mode(0o500))?;
+        let error = client
+            .export_diagnostics_blocking()
+            .expect_err("diagnostics export must reject a non-writable logs directory");
+        std::fs::set_permissions(
+            &layout.logs,
+            std::fs::Permissions::from_mode(original_mode & 0o7777),
+        )?;
+        if error.code() != bongocat_ui::SettingsErrorCode::DiagnosticsExportFailed {
+            return Err("non-writable diagnostics directory returned an unstable error code".into());
+        }
+        if std::fs::read(&preview)? != previous_preview {
+            return Err("sync/write failure changed the previous preview bundle".into());
+        }
+    }
+
+    let staging = std::fs::read_dir(&layout.logs)?
+        .filter_map(Result::ok)
+        .map(|entry| entry.file_name())
+        .filter_map(|name| name.into_string().ok())
+        .filter(|name| name.starts_with(".diagnostics-preview.zip."))
+        .collect::<Vec<_>>();
+    if !staging.is_empty() {
+        return Err(format!("failed export left staging files: {staging:?}").into());
+    }
+    if first_status.preview_bundle_entry_count != 3 {
+        return Err("initial diagnostics export returned an invalid preview status".into());
+    }
+
+    client.shutdown_blocking()?;
+    service.join()?;
+    root.cleanup()?;
+    write_smoke_status("diagnostics export filesystem failures preserved the previous bundle")?;
+    Ok(())
+}
+
+#[cfg(all(
+    feature = "storage-test-injection",
+    any(target_os = "macos", target_os = "windows")
+))]
 fn run_panic_diagnostics_smoke() -> Result<(), Box<dyn std::error::Error>> {
     use bongocat_config::{BuildEnvironment, StorageLayout};
 
@@ -1468,6 +1561,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "storage-test-injection")]
     if run_options.diagnostics_export_smoke {
         return run_diagnostics_export_smoke();
+    }
+    #[cfg(feature = "storage-test-injection")]
+    if run_options.diagnostics_export_failure_smoke {
+        return run_diagnostics_export_failure_smoke();
     }
     #[cfg(target_os = "macos")]
     if run_options.startup_item_smoke {
@@ -3195,6 +3292,8 @@ mod tests {
                 panic_diagnostics_smoke_child: false,
                 #[cfg(feature = "storage-test-injection")]
                 diagnostics_export_smoke: false,
+                #[cfg(feature = "storage-test-injection")]
+                diagnostics_export_failure_smoke: false,
                 system_menu_smoke: false,
                 #[cfg(target_os = "macos")]
                 application_reopen_smoke: false,
@@ -3324,6 +3423,16 @@ mod tests {
         assert!(!options.settings_window_smoke);
         assert!(!options.panic_diagnostics_smoke);
         assert!(usage().contains("diagnostics-export-smoke"));
+    }
+
+    #[cfg(feature = "storage-test-injection")]
+    #[test]
+    fn diagnostics_export_failure_smoke_is_opt_in() {
+        let options = RunOptions::parse(["--diagnostics-export-failure-smoke".to_owned()])
+            .expect("diagnostics export failure smoke options");
+        assert!(options.diagnostics_export_failure_smoke);
+        assert!(!options.diagnostics_export_smoke);
+        assert!(usage().contains("diagnostics-export-failure-smoke"));
     }
 
     #[cfg(not(feature = "storage-test-injection"))]
