@@ -1272,7 +1272,12 @@ overlay owner；设置更新失败时保留旧 snapshot。scale/opacity 的可�
     对 UI、app、runtime 与 config Rust 源码的静态检查未发现 path/any 或 JSON-value 业务
     mutation API。GPUI `InputState::set_value` 仅在视图层同步控件文本，不穿过 settings
     service，也不修改配置或 runtime。
-- [ ] 不向 UI 发送逐帧数据、原始按键流或 GPU/model pointer。
+- [x] 不向 UI 发送逐帧数据、原始按键流或 GPU/model pointer。
+  - 验收证据（2026-09-06）：`bongocat-ui` 不依赖 runtime、render 或 Live2D crate；其
+    `SettingsSnapshot` 只包含配置投影、匿名聚合输入/transport 诊断和模型目录元数据。
+    settings service 从 runtime snapshot 只投影这些值，未向 UI command/reply 传递
+    `RenderSnapshot`、`InputEvent`、`ModelInputSnapshot`、GPU handle 或 Cubism model/原始指针。
+    UI 内的 GPUI `InputEvent` 仅表示本地文本控件编辑，且不等同于平台原始按键流。
 - [ ] command/snapshot 有纯 Rust contract test。
   - 状态（2026-09-01）：正式 contract 已覆盖 FIFO command、typed reply、receiver close、
     revision 单调更新、配置原子持久化和 shutdown acknowledgement；shortcut settings command
