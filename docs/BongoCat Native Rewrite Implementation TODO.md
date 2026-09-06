@@ -1918,6 +1918,8 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     和无重试语义不变，回归通过。
   - 状态（2026-09-07）：`UpdateDiagnosticsTracker` 增加多 worker 并发事件和 `u64::MAX` 饱和计数
     回归，确认跨线程共享计数不丢失且不会溢出；稳定错误码仍保持匿名、可枚举边界。
+  - 状态（2026-09-07）：install diagnostics 包装新增安装失败/回滚失败分类与取消优先级回归，确认
+    失败始终计入阶段计数，取消不会触发 shutdown 或 install；三阶段 coordinator 的稳定观测边界完整。
 - [ ] 日志导出生成可预览的脱敏包。
   - 状态（2026-09-06）：ADR-0027 已冻结 preview bundle 为当前环境私有的 v1 ZIP，固定只包含
     `manifest.json`、匿名 `diagnostics.json` 和严格重新序列化的 application code event records；

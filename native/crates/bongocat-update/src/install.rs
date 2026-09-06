@@ -233,4 +233,38 @@ mod tests {
         assert_eq!(tracker.snapshot().installs_succeeded, 1);
         assert_eq!(tracker.snapshot().installs_failed, 0);
     }
+
+    #[test]
+    fn diagnostics_wrapper_records_install_failure_and_cancellation() {
+        let (_directory, artifact) = staged_artifact();
+        let tracker = crate::UpdateDiagnosticsTracker::default();
+        UpdateInstallCoordinator
+            .install_with_diagnostics(&artifact, &tracker, || false, || true, |_| false, || false)
+            .expect_err("rollback failure");
+
+        let shutdown_called = Cell::new(false);
+        UpdateInstallCoordinator
+            .install_with_diagnostics(
+                &artifact,
+                &tracker,
+                || true,
+                || {
+                    shutdown_called.set(true);
+                    true
+                },
+                |_| true,
+                || true,
+            )
+            .expect_err("cancelled install");
+
+        let diagnostics = tracker.snapshot();
+        assert_eq!(diagnostics.installs_started, 2);
+        assert_eq!(diagnostics.installs_succeeded, 0);
+        assert_eq!(diagnostics.installs_failed, 2);
+        assert_eq!(
+            diagnostics.last_error_code,
+            Some("update_install_cancelled")
+        );
+        assert!(!shutdown_called.get());
+    }
 }
