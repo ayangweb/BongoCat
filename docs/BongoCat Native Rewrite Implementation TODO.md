@@ -2789,6 +2789,10 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       `GamepadConnected` 入队失败会立即释放尚未提交的 axis generation。macOS platform 33 项定向测试
       和 Windows x64 platform tests 交叉编译通过；新增 Windows synthetic reset/reseed 回归待 push CI
       执行，物理 controller 矩阵仍是总项的剩余门禁。
+    - 状态（2026-09-07）：共享 `InputState` 新增跨平台回归，锁定 Reset 后旧 generation 的
+      gamepad edge 被拒绝，只有新的连接代次才能重新建立 pressed state；runtime 定向测试通过。
+      Windows synthetic reset/reseed 仍需 push CI 复验，物理 controller/profile/热插拔矩阵继续作为
+      总项剩余门禁。
 
 46. [x] `P5-SHORTCUT-CONTRACT`：冻结快捷键 chord 的规范化与冲突校验前置契约。
     - 依赖：Native config v1、`InputEvent`/`PhysicalKey` 语义和后续 GPUI 快捷键编辑页。

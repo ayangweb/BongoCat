@@ -1089,6 +1089,57 @@ mod tests {
     }
 
     #[test]
+    fn reset_rejects_stale_gamepad_edges_until_a_new_generation_connects() {
+        let first = GamepadConnection {
+            device_id: 1,
+            generation: 4,
+        };
+        let second = GamepadConnection {
+            device_id: 1,
+            generation: 5,
+        };
+        let button = |connection| {
+            InputControl::Gamepad(GamepadButtonKey {
+                connection,
+                button: GamepadButton::South,
+            })
+        };
+        let mut state = InputState::default();
+
+        state.apply(SequencedInputEvent {
+            sequence: 0,
+            event: InputEvent::GamepadConnected {
+                connection: first,
+                at: MonotonicMillis::new(0),
+            },
+        });
+        state.apply(edge(1, 1, button(first), InputEdge::Down));
+        assert_eq!(state.snapshot().pressed_gamepad_button_count, 1);
+
+        state.apply(SequencedInputEvent {
+            sequence: 2,
+            event: InputEvent::Reset {
+                reason: InputResetReason::QueueOverflow,
+                at: MonotonicMillis::new(2),
+            },
+        });
+        state.apply(edge(3, 3, button(first), InputEdge::Down));
+        assert_eq!(state.snapshot().pressed_gamepad_button_count, 0);
+        assert_eq!(state.snapshot().diagnostics.stale_gamepad_events, 1);
+
+        state.apply(SequencedInputEvent {
+            sequence: 4,
+            event: InputEvent::GamepadConnected {
+                connection: second,
+                at: MonotonicMillis::new(4),
+            },
+        });
+        state.apply(edge(5, 5, button(second), InputEdge::Down));
+        assert_eq!(state.snapshot().connected_gamepad_count, 1);
+        assert_eq!(state.snapshot().pressed_gamepad_button_count, 1);
+    }
+
+    #[test]
     fn configured_gamepad_buttons_project_to_the_bound_hand() {
         let connection = GamepadConnection {
             device_id: 4,
