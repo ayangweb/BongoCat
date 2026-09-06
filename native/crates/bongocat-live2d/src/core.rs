@@ -8,7 +8,7 @@ use bongocat_render::{
 };
 use std::{
     alloc::{Layout, alloc_zeroed, dealloc},
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     ffi::CStr,
     fs,
     mem::ManuallyDrop,
@@ -156,6 +156,7 @@ impl CoreModel {
             })?;
             let parameters = resolve_parameters(model.as_ptr())?;
             let parts_by_id = resolve_parts(model.as_ptr())?;
+            validate_drawable_ids(model.as_ptr())?;
             Ok(Self {
                 model,
                 parameters: parameters.product,
@@ -803,6 +804,37 @@ unsafe fn resolve_parts(model: *mut sys::csmModel) -> Result<BTreeMap<String, us
         }
     }
     Ok(by_id)
+}
+
+unsafe fn validate_drawable_ids(model: *const sys::csmModel) -> Result<(), Live2dError> {
+    // SAFETY: model is freshly initialized and remains owned by CoreModel.
+    let count = nonnegative(unsafe { sys::csmGetDrawableCount(model) }, "drawable count")?;
+    // SAFETY: the pointer/count pair comes from the same live Model.
+    let ids = unsafe { checked_slice(sys::csmGetDrawableIds(model), count, "drawable ids")? };
+    let mut unique_ids = BTreeSet::new();
+    for (index, &pointer) in ids.iter().enumerate() {
+        if pointer.is_null() {
+            return Err(Live2dError::new(
+                Live2dErrorCode::InvalidCoreArray,
+                format!("Core returned a null drawable id at index {index}"),
+            ));
+        }
+        // SAFETY: Core documents drawable IDs as NUL-terminated strings that
+        // remain valid while the Model is alive.
+        let id = unsafe { CStr::from_ptr(pointer) }.to_str().map_err(|_| {
+            Live2dError::new(
+                Live2dErrorCode::InvalidCoreValue,
+                format!("Core returned a non-UTF-8 drawable id at index {index}"),
+            )
+        })?;
+        if id.is_empty() || !unique_ids.insert(id) {
+            return Err(Live2dError::new(
+                Live2dErrorCode::InvalidCoreValue,
+                format!("Core returned an invalid or duplicate drawable id at index {index}"),
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn decode_blend_mode(mode: i32) -> Result<BlendMode, Live2dError> {

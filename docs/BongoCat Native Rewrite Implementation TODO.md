@@ -1003,6 +1003,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     `csmGetPartOffscreenIndices` 的 null、根节点 `-1` 和范围，拒绝越界关系后才建立 part 表；
     三个预置模型的 Core load 回归通过。parent/offscreen 关系尚未进入 RenderSnapshot 诊断，
     因此本项保持未勾选。
+  - 状态（2026-09-06）：模型创建阶段现在也在 renderer 接触 snapshot 前读取
+    `csmGetDrawableIds`，拒绝 null、空、重复或非 UTF-8 ID；渲染侧继续使用经过数组边界校验的
+    source index，未改变 `RenderSnapshot` 的强类型资源 ID 契约。三个预置 Moc 的 100-cycle
+    正式 Core load/update/drop 回归覆盖该 preflight。完整 custom parameter 与 part/offscreen
+    诊断投影仍待完成，因此本项保持未勾选。
 - [ ] 模型切换使用 prepare/commit/rollback。
   - 状态（2026-08-30）：正式 runtime/Metal/D3D11 产品链已实现 CPU/GPU 两阶段提交。runtime
     在候选 generation 的 texture/mesh/mask 全部由 renderer prepare 并回报匹配 token 前保留
