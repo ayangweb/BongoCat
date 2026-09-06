@@ -1941,6 +1941,10 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     回归，确认跨线程共享计数不丢失且不会溢出；稳定错误码仍保持匿名、可枚举边界。
   - 状态（2026-09-07）：install diagnostics 包装新增安装失败/回滚失败分类与取消优先级回归，确认
     失败始终计入阶段计数，取消不会触发 shutdown 或 install；三阶段 coordinator 的稳定观测边界完整。
+  - 状态（2026-09-07）：稳定 update error-code contract 进一步校验 verifier、manifest transport、
+    download、install、schedule、sequence 和 staging 七个 catalog 的全局唯一性；69 个公开 code
+    无跨边界重名，未知 provider code 仍被丢弃。该检查只强化匿名 diagnostics 协议，不代表真实
+    update worker、endpoint 或安装回滚链已接入。
 - [ ] 日志导出生成可预览的脱敏包。
   - 状态（2026-09-06）：ADR-0027 已冻结 preview bundle 为当前环境私有的 v1 ZIP，固定只包含
     `manifest.json`、匿名 `diagnostics.json` 和严格重新序列化的 application code event records；

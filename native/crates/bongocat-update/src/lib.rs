@@ -1645,9 +1645,17 @@ mod tests {
                 .map(|code| code.as_str())
                 .collect::<Vec<_>>(),
         ];
+        let mut all_codes = BTreeSet::new();
         for catalog in catalogs {
             assert!(catalog.iter().copied().all(is_stable_error_code));
+            for code in catalog {
+                assert!(
+                    all_codes.insert(code),
+                    "duplicate update error code: {code}"
+                );
+            }
         }
+        assert_eq!(all_codes.len(), 69);
         assert!(!is_stable_error_code("update_private_detail"));
         assert!(!is_stable_error_code("/Users/example/model3.json"));
     }
