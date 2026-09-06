@@ -1,3 +1,4 @@
+use crate::UpdateDiagnosticsTracker;
 use std::{fmt, time::Duration};
 
 pub const AUTOMATIC_UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
@@ -103,6 +104,18 @@ impl AutomaticUpdateCheckScheduler {
             self.next = next_after(now);
         }
         Ok(reason)
+    }
+
+    pub fn take_due_with_diagnostics(
+        &mut self,
+        now: Duration,
+        tracker: &UpdateDiagnosticsTracker,
+    ) -> Result<Option<AutomaticUpdateCheckReason>, UpdateScheduleError> {
+        let result = self.take_due(now);
+        if let Err(error) = &result {
+            tracker.record_check_failed(error.code.as_str());
+        }
+        result
     }
 }
 
@@ -212,6 +225,30 @@ mod tests {
                 .take_due(Duration::from_secs(99) + AUTOMATIC_UPDATE_CHECK_INTERVAL)
                 .expect("rebased interval"),
             Some(AutomaticUpdateCheckReason::Interval)
+        );
+    }
+
+    #[test]
+    fn diagnostics_wrapper_records_monotonic_regression() {
+        let mut scheduler = AutomaticUpdateCheckScheduler::new(true);
+        let tracker = UpdateDiagnosticsTracker::default();
+        assert_eq!(
+            scheduler
+                .take_due_with_diagnostics(Duration::from_secs(10), &tracker)
+                .expect("startup poll"),
+            Some(AutomaticUpdateCheckReason::Startup)
+        );
+        assert_eq!(
+            scheduler
+                .take_due_with_diagnostics(Duration::from_secs(9), &tracker)
+                .expect_err("clock regression")
+                .code,
+            UpdateScheduleErrorCode::MonotonicTimeRegressed
+        );
+        assert_eq!(tracker.snapshot().checks_failed, 1);
+        assert_eq!(
+            tracker.snapshot().last_error_code,
+            Some("update_schedule_monotonic_time_regressed")
         );
     }
 
