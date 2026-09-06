@@ -1882,7 +1882,8 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     `UpdateErrorCode` 现注册全部 32 个 manifest/verifier/artifact 失败 code，并以唯一性回归
     固定命名；download、schedule、sequence store 和 staging 的公开离散 code 也各自提供完整 `ALL`
     catalog 和 namespace/唯一性回归，staging 的完整性 composite 明确保留 verifier code，调度回退固定为
-    `update_schedule_monotonic_time_regressed`。这些 code 的产品 diagnostics export 投影仍待完成。
+    `update_schedule_monotonic_time_regressed`。更新 diagnostics 的匿名导出投影已接入；真实 worker
+    错误源和安装回滚观测仍待发布链路。
   - 状态（2026-09-06）：当前 configuration recovery diagnostics 现导出既有
     `configuration_recovery_required` stable code，同时保留 checked-backup 聚合；正常配置和用户已
     恢复默认值但需要重启的状态不伪装为错误。其它 config write failure 与 update code 尚无持久的
