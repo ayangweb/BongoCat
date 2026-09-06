@@ -4,6 +4,7 @@
 
 ```text
 fixtures/
+  manifest.json
   input-sequences/
     schema.json
     *.json
@@ -31,6 +32,8 @@ Native 配置 schema 的有效/拒绝样本位于 `shared/config/fixtures/`，�
 - `model.parameters` 是序列完整的规范化参数投影：包含 `context.keySides` 声明的 keyboard side/gamepad button，以及序列触达的 mouse button；即使当前值为 `0.0` 也不得省略。runner 不能根据 expected 中已有 key 反向选择要计算的参数。
 - Expected snapshot 必须声明 `provenance`：`legacy_observation`、`product_decision` 或 `bug_fix`；golden 更新不得没有来源。
 - Fixture 不包含绝对路径、用户模型 id、真实快捷键或个人数据。
+- `manifest.json` 是输入与期望 fixture 的显式登记表；`schemaVersion` 为 1，`id`、文件名必须唯一，
+  且每个输入 fixture 必须有同名的期望 fixture。新增或删除 fixture 时必须同步更新清单。
 
 ## Runner 责任
 

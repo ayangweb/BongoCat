@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::Duration,
 };
 
@@ -39,18 +39,54 @@ fn load(path: PathBuf) -> Value {
     serde_json::from_slice(&fs::read(path).expect("fixture bytes")).expect("fixture JSON")
 }
 
-fn fixture_stems(directory: &PathBuf) -> BTreeSet<String> {
+fn fixture_files(directory: &Path) -> BTreeSet<String> {
     fs::read_dir(directory)
         .expect("fixture directory")
         .filter_map(Result::ok)
         .filter_map(|entry| {
             let path = entry.path();
             (path.extension().and_then(|extension| extension.to_str()) == Some("json"))
-                .then(|| path.file_stem()?.to_str().map(str::to_owned))
+                .then(|| path.file_name()?.to_str().map(str::to_owned))
                 .flatten()
         })
-        .filter(|stem| stem != "schema" && stem != "model-motion-expression-audio")
+        .filter(|file| file != "schema.json")
         .collect()
+}
+
+fn fixture_manifest(root: &Path) -> (BTreeSet<String>, BTreeSet<String>) {
+    let manifest = load(root.join("manifest.json"));
+    assert_eq!(manifest["schemaVersion"].as_u64(), Some(1));
+    let cases = manifest["cases"]
+        .as_array()
+        .expect("fixture manifest cases");
+    assert!(!cases.is_empty());
+
+    let mut ids = BTreeSet::new();
+    let mut input_files = BTreeSet::new();
+    let mut expected_files = BTreeSet::new();
+    for case in cases {
+        let id = case["id"].as_str().expect("fixture id");
+        let input = case["input"].as_str().expect("input fixture file");
+        let expected = case["expected"].as_str().expect("expected fixture file");
+        assert!(ids.insert(id.to_owned()), "duplicate fixture id {id}");
+        for (kind, file, declared) in [
+            ("input", input, &mut input_files),
+            ("expected", expected, &mut expected_files),
+        ] {
+            assert!(
+                Path::new(file)
+                    .file_name()
+                    .is_some_and(|name| name.to_string_lossy() == file),
+                "{kind} fixture {} must be a single file name",
+                id
+            );
+            assert!(
+                declared.insert(file.to_owned()),
+                "duplicate {kind} fixture {file}"
+            );
+        }
+    }
+    (input_files, expected_files)
 }
 
 fn key(name: &str) -> PhysicalKey {
@@ -608,14 +644,29 @@ fn shared_input_fixtures_match_product_runtime_projection() {
     let root = repository_root().join("shared/fixtures");
     let input_dir = root.join("input-sequences");
     let expected_dir = root.join("expected-state");
-    let input_stems = fixture_stems(&input_dir);
-    let expected_stems = fixture_stems(&expected_dir);
+    let (declared_inputs, declared_expected) = fixture_manifest(&root);
     assert_eq!(
-        input_stems, expected_stems,
+        fixture_files(&input_dir),
+        declared_inputs,
+        "every input fixture must be registered"
+    );
+    assert_eq!(
+        fixture_files(&expected_dir),
+        declared_expected,
+        "every expected fixture must be registered"
+    );
+    assert_eq!(
+        declared_inputs, declared_expected,
         "input and expected fixture sets"
     );
-    for name in input_stems {
-        let sequence = load(input_dir.join(format!("{name}.json")));
+    for input_file in declared_inputs {
+        if input_file == "model-motion-expression-audio.json" {
+            continue;
+        }
+        let name = input_file
+            .strip_suffix(".json")
+            .expect("fixture JSON suffix");
+        let sequence = load(input_dir.join(&input_file));
         let expected = load(expected_dir.join(format!("{name}.json")));
         let mut key_bindings = BTreeMap::new();
         let mut gamepad_bindings = BTreeMap::new();
