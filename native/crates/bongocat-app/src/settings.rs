@@ -948,11 +948,16 @@ fn run_service(
                 let result = match (state_result, shutdown_result) {
                     (Ok(()), Ok(stopped)) => {
                         clock.observe_runtime(stopped.revision);
-                        Ok(SettingsSnapshot {
+                        let mut stopped_snapshot = SettingsSnapshot {
                             revision: clock.revision,
                             runtime_health: RuntimeHealth::Stopped,
                             ..before_shutdown
-                        })
+                        };
+                        stopped_snapshot.runtime_diagnostics =
+                            settings_runtime_diagnostics(&stopped);
+                        stopped_snapshot.input_diagnostics =
+                            settings_input_diagnostics(&stopped.input, stopped.platform_input);
+                        Ok(stopped_snapshot)
                     }
                     (Err(_), Ok(_)) => {
                         Err(SettingsError::new(SettingsErrorCode::StatePersistFailed))

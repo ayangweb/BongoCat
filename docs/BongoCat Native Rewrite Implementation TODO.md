@@ -715,6 +715,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     timeout 或 worker join panic 时累计稳定计数，并沿 app/UI snapshot 与 `diagnostics.json`
     投影；timeout 计数、app projection 和 JSON 字段回归均通过。模型解析、磁盘、音频初始化和
     GPU 上传仍未拆分到独立有界 worker，shutdown 的真实阻塞工作与 panic 注入仍待完成。
+  - 状态（2026-09-07）：settings service 的成功 shutdown reply 现改用 runtime 返回的最终
+    `RuntimeSnapshot` 投影 runtime/input diagnostics，而不是复用停止前 snapshot；因此最终
+    状态和匿名 shutdown/输入计数不会被丢弃。service shutdown 与 projection 回归通过；音频
+    shutdown 的复合错误聚合和真实阻塞工作仍待完成。
 
 ### 3.2 输入语义
 
