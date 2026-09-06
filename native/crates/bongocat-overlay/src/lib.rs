@@ -572,6 +572,83 @@ pub struct PreviewReport {
     pub drawable_count: usize,
     pub masked_drawable_count: usize,
     pub texture_count: usize,
+    /// Timing from the diagnostic preview's renderer call only. Product frame
+    /// sources do not collect this data, and previews without a paced loop
+    /// leave it absent rather than reporting zeroes as measurements.
+    pub frame_timing: Option<FrameTimingSummary>,
+}
+
+/// Bounded diagnostic timing data for a paced preview loop.
+///
+/// `draw_*_us` measures the interval around `NativeOverlay::draw`, including
+/// the backend's submit/present work but excluding input, runtime handoff, and
+/// the preview loop's sleep. `missed_deadlines` counts paced-loop iterations
+/// whose complete main-thread work reached the next 60 FPS deadline before the
+/// loop could sleep.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FrameTimingSummary {
+    pub sample_count: u32,
+    pub samples_dropped: u64,
+    pub draw_p50_us: u64,
+    pub draw_p95_us: u64,
+    pub draw_p99_us: u64,
+    pub missed_deadlines: u64,
+}
+
+const MAX_FRAME_TIMING_SAMPLES: usize = 4_096;
+
+/// Collect a fixed maximum number of exact microsecond samples so diagnostic
+/// previews cannot grow memory use during long-running benchmark sessions.
+#[derive(Debug)]
+pub(crate) struct FrameTimingCollector {
+    draw_samples_us: Vec<u64>,
+    samples_dropped: u64,
+    missed_deadlines: u64,
+}
+
+impl FrameTimingCollector {
+    pub(crate) fn new() -> Self {
+        Self {
+            draw_samples_us: Vec::with_capacity(MAX_FRAME_TIMING_SAMPLES),
+            samples_dropped: 0,
+            missed_deadlines: 0,
+        }
+    }
+
+    pub(crate) fn record_draw(&mut self, elapsed: Duration) {
+        let elapsed_us = u64::try_from(elapsed.as_micros()).unwrap_or(u64::MAX);
+        if self.draw_samples_us.len() < MAX_FRAME_TIMING_SAMPLES {
+            self.draw_samples_us.push(elapsed_us);
+        } else {
+            self.samples_dropped = self.samples_dropped.saturating_add(1);
+        }
+    }
+
+    pub(crate) fn record_missed_deadline(&mut self) {
+        self.missed_deadlines = self.missed_deadlines.saturating_add(1);
+    }
+
+    pub(crate) fn summary(mut self) -> FrameTimingSummary {
+        self.draw_samples_us.sort_unstable();
+        let sample_count = u32::try_from(self.draw_samples_us.len())
+            .expect("frame timing collector capacity fits in u32");
+        FrameTimingSummary {
+            sample_count,
+            samples_dropped: self.samples_dropped,
+            draw_p50_us: percentile_nearest_rank(&self.draw_samples_us, 50),
+            draw_p95_us: percentile_nearest_rank(&self.draw_samples_us, 95),
+            draw_p99_us: percentile_nearest_rank(&self.draw_samples_us, 99),
+            missed_deadlines: self.missed_deadlines,
+        }
+    }
+}
+
+fn percentile_nearest_rank(sorted_samples: &[u64], percentile: u8) -> u64 {
+    if sorted_samples.is_empty() {
+        return 0;
+    }
+    let rank = (sorted_samples.len() * usize::from(percentile)).div_ceil(100);
+    sorted_samples[rank.saturating_sub(1)]
 }
 
 #[cfg(target_os = "macos")]
@@ -761,6 +838,58 @@ mod tests {
             validate_frame_smoke([[0, 0, 0, 0], [10, 20, 30, 127]]),
             Err("renderer readback found insufficient visible color variation")
         );
+    }
+
+    #[test]
+    fn frame_timing_uses_nearest_rank_percentiles_and_counts_misses() {
+        let mut timing = FrameTimingCollector::new();
+        for sample_us in [10, 90, 20, 80, 30, 70, 40, 60, 50, 100] {
+            timing.record_draw(Duration::from_micros(sample_us));
+        }
+        timing.record_missed_deadline();
+        timing.record_missed_deadline();
+
+        assert_eq!(
+            timing.summary(),
+            FrameTimingSummary {
+                sample_count: 10,
+                samples_dropped: 0,
+                draw_p50_us: 50,
+                draw_p95_us: 100,
+                draw_p99_us: 100,
+                missed_deadlines: 2,
+            }
+        );
+    }
+
+    #[test]
+    fn frame_timing_empty_collector_reports_zero_quantiles() {
+        assert_eq!(
+            FrameTimingCollector::new().summary(),
+            FrameTimingSummary {
+                sample_count: 0,
+                samples_dropped: 0,
+                draw_p50_us: 0,
+                draw_p95_us: 0,
+                draw_p99_us: 0,
+                missed_deadlines: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn frame_timing_drops_samples_after_its_fixed_capacity() {
+        let mut timing = FrameTimingCollector::new();
+        for _ in 0..=MAX_FRAME_TIMING_SAMPLES {
+            timing.record_draw(Duration::from_micros(7));
+        }
+
+        let summary = timing.summary();
+        assert_eq!(summary.sample_count as usize, MAX_FRAME_TIMING_SAMPLES);
+        assert_eq!(summary.samples_dropped, 1);
+        assert_eq!(summary.draw_p50_us, 7);
+        assert_eq!(summary.draw_p95_us, 7);
+        assert_eq!(summary.draw_p99_us, 7);
     }
 
     #[test]

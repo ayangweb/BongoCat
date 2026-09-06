@@ -102,6 +102,15 @@ cargo run -p bongocat-overlay --release -- keyboard 30
 cargo run -p bongocat-overlay --release -- gamepad 30
 ```
 
+On macOS, the completion line includes `frame_timing=Some(...)`. Its `draw_*_us`
+values are nearest-rank percentiles over the interval surrounding each Metal
+`draw` call, including the initial draw. `missed_deadlines` is the number of
+full preview-loop iterations that reached the next 60 FPS deadline before the
+loop could sleep. The collector retains at most 4,096 samples and reports
+additional samples as `samples_dropped`; it intentionally excludes input,
+runtime handoff, and sleep. Windows' switch-only preview reports
+`frame_timing=None` until it has an equivalent paced diagnostic path.
+
 On Windows or macOS, exercise transactional GPU model replacement with all three presets by running
 100 measured standard -> keyboard -> gamepad -> standard cycles (300 reported generations):
 

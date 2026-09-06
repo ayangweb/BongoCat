@@ -1647,6 +1647,7 @@ pub(crate) fn run_model_switch_preview(
         drawable_count,
         masked_drawable_count,
         texture_count,
+        frame_timing: None,
     })
 }
 

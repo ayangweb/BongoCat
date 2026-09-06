@@ -1,5 +1,5 @@
 use crate::{
-    BlendFactor, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff, OverlayError,
+    BlendFactor, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff, FrameTimingCollector, OverlayError,
     OverlayPresentationState, OverlaySessionOptions, OverlayTickOutcome, OverlayWindowBounds,
     OverlayWorkArea, PreviewReport, ProductOverlayReport, blend_factors,
     default_overlay_window_dimensions, validate_frame_smoke, validate_model_generation_advance,
@@ -943,7 +943,10 @@ pub(crate) fn run_model_preview(
     } else {
         false
     };
+    let mut frame_timing = FrameTimingCollector::new();
+    let draw_started = Instant::now();
     overlay.draw(true)?;
+    frame_timing.record_draw(draw_started.elapsed());
     overlay.set_visible(true)?;
 
     let input_producer = runtime.input_producer();
@@ -1061,7 +1064,9 @@ pub(crate) fn run_model_preview(
             }
             previous_snapshot = frame.snapshot;
         }
+        let draw_started = Instant::now();
         overlay.draw(gpu_model_switched)?;
+        frame_timing.record_draw(draw_started.elapsed());
         frames_presented += 1;
         if target_model_switches.is_some_and(|target| model_switches == target) {
             settle_frames = settle_frames.saturating_add(1);
@@ -1070,6 +1075,7 @@ pub(crate) fn run_model_preview(
         if let Some(delay) = next_frame.checked_duration_since(Instant::now()) {
             thread::sleep(delay);
         } else {
+            frame_timing.record_missed_deadline();
             next_frame = Instant::now();
         }
     }
@@ -1128,6 +1134,7 @@ pub(crate) fn run_model_preview(
         drawable_count: overlay.model.meshes.len(),
         masked_drawable_count: overlay.model.masked_drawable_count,
         texture_count: overlay.model.textures.len(),
+        frame_timing: Some(frame_timing.summary()),
     })
 }
 

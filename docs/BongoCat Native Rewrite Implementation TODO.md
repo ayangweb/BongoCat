@@ -1874,6 +1874,10 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 - [ ] 测量冷/热启动、设置首次打开和首个 Live2D 帧。
 - [ ] 测量空闲/活跃 CPU、RSS、GPU、显存和功耗。
 - [ ] 测量 frame time p50/p95/p99 和 missed frame。
+  - 状态（2026-09-06）：macOS `bongocat-overlay` paced preview 已输出有界 `draw` 调用
+    p50/p95/p99（nearest-rank，微秒）、完整主线程循环 missed-deadline 数、样本数和溢出数；
+    初始 draw 也进入样本。该工具不测输入/runtime/sleep，尚未保存固定设备基线或 Instruments/
+    Metal System Trace 原始证据，因此本项保持未勾选。
 - [ ] 测量 input capture-to-runtime p50/p95/p99。
 - [ ] 测量 runtime-to-present 和模型切换耗时。
 - [ ] Windows 保存 ETW/WPA、PresentMon/GPUView 证据。

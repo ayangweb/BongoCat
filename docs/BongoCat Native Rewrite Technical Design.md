@@ -788,6 +788,10 @@ resources/background.png  resources/cover.png
 - 平台集成：窗口、输入、权限、显示器、托盘、启动项和单实例。
 - renderer smoke/golden：非空帧、alpha、遮罩、blend 和资源语义。
 - 性能/soak：启动、首帧、frame time、输入延迟、CPU/RSS/GPU 和 8 小时运行。
+  macOS 定时 diagnostic preview 对每次 `NativeOverlay::draw` 调用记录有界的微秒样本，输出
+  nearest-rank p50/p95/p99 与主线程完整循环错过下一 60 FPS deadline 的次数；采样不包括输入、
+  runtime handoff 或 sleep，最多保留 4,096 个样本并显式报告溢出数。它是可复现的 renderer
+  baseline 输入，不替代 Instruments、Metal System Trace 或跨设备发布验收。
 
 ### 13.2 输入不变量
 
