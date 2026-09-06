@@ -25,6 +25,11 @@
       "id": "unknown-field",
       "file": "invalid-unknown-field.json",
       "expected": "reject"
+    },
+    {
+      "id": "config-field",
+      "file": "invalid-config-field.json",
+      "expected": "reject"
     }
   ]
 }

@@ -373,6 +373,7 @@ mod tests {
             "invalid-future-schema.json",
             "invalid-out-of-range.json",
             "invalid-unknown-field.json",
+            "invalid-config-field.json",
         ] {
             assert!(parse_state(&state_fixture(fixture)).is_err());
         }

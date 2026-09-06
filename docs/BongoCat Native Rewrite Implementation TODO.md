@@ -1450,6 +1450,9 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     未知文件防覆盖已实现；settings worker 接收合并后的 GPUI bounds 更新和 overlay 几何变化并及时
     落盘，shutdown 仍强制 flush。更新后的双平台实机多显示器恢复证据尚未完成，因此保持未勾选，
     由 `P6-STATE-WINDOW-LAYOUT` 跟踪。
+  - 状态（2026-09-06）：新增 shared reject fixture 在合法窗口布局旁注入 `overlay.visible` 配置
+    字段；`state.schema.json` 与 `StateStore` parser 均拒绝它，固定 state 不得承载用户配置。该
+    fixture 不影响 config.json 事务，双平台多显示器恢复证据仍是本项剩余门槛。
 
 ### 7.2 环境与持久化事务
 
