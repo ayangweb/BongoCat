@@ -989,6 +989,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-30）：正式 wrapper 已在 Model 创建时一次性验证 product parameter
     ID/range/default，按模型解析 stable index，并验证 drawable array、index、texture、
     mask、vertex、opacity/color；part 表和完整 custom parameter 诊断尚未完成。
+  - 状态（2026-09-06）：Core safe wrapper 现解析并拒绝空、重复或非 UTF-8 part id，缓存稳定
+    part index，并通过 `csmGetPartOpacities` 提供有限值读取/写入。`PartOpacity` motion 不再
+    误写 parameter sink；预置 `standard` Core 回归确认 `Part` opacity 曲线更新且 `ParamAngleX`
+    保持不变。完整 part parent/offscreen 诊断仍待完成，因此本项保持未勾选。
 - [ ] 模型切换使用 prepare/commit/rollback。
   - 状态（2026-08-30）：正式 runtime/Metal/D3D11 产品链已实现 CPU/GPU 两阶段提交。runtime
     在候选 generation 的 texture/mesh/mask 全部由 renderer prepare 并回报匹配 token 前保留

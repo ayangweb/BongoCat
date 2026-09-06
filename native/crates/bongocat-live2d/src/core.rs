@@ -73,6 +73,7 @@ pub(crate) struct CoreModel {
     model: NonNull<sys::csmModel>,
     parameters: [Option<ResolvedParameter>; ProductParameter::COUNT],
     parameters_by_id: BTreeMap<String, ResolvedParameter>,
+    parts_by_id: BTreeMap<String, usize>,
     model_memory: ManuallyDrop<AlignedMemory>,
     moc_memory: ManuallyDrop<AlignedMemory>,
 }
@@ -154,10 +155,12 @@ impl CoreModel {
                 )
             })?;
             let parameters = resolve_parameters(model.as_ptr())?;
+            let parts_by_id = resolve_parts(model.as_ptr())?;
             Ok(Self {
                 model,
                 parameters: parameters.product,
                 parameters_by_id: parameters.by_id,
+                parts_by_id,
                 model_memory: ManuallyDrop::new(model_memory),
                 moc_memory: ManuallyDrop::new(moc_memory),
             })
@@ -316,6 +319,70 @@ impl CoreModel {
             ));
         }
         Ok(Some(value))
+    }
+
+    pub(crate) fn part_opacity_by_id(&self, id: &str) -> Result<Option<f32>, Live2dError> {
+        let Some(&index) = self.parts_by_id.get(id) else {
+            return Ok(None);
+        };
+        // SAFETY: the resolved index was validated against this live Model's
+        // part arrays while building parts_by_id.
+        let value = unsafe {
+            let count = self.part_count()?;
+            checked_slice(
+                sys::csmGetPartOpacities(self.model.as_ptr()),
+                count,
+                "part opacities",
+            )?[index]
+        };
+        if !value.is_finite() {
+            return Err(Live2dError::new(
+                Live2dErrorCode::InvalidCoreValue,
+                format!("{id} has a non-finite part opacity"),
+            ));
+        }
+        Ok(Some(value))
+    }
+
+    pub(crate) fn set_part_opacity_by_id(
+        &mut self,
+        id: &str,
+        requested: f32,
+        weight: f32,
+    ) -> Result<ParameterUpdate, Live2dError> {
+        if !requested.is_finite() || !weight.is_finite() || !(0.0..=1.0).contains(&weight) {
+            return Err(Live2dError::new(
+                Live2dErrorCode::ParameterValueInvalid,
+                format!("{id} received an invalid part opacity or weight"),
+            ));
+        }
+        let Some(&index) = self.parts_by_id.get(id) else {
+            return Ok(ParameterUpdate::Unsupported);
+        };
+        // SAFETY: self uniquely owns the live Model and the resolved index
+        // was validated against its mutable part opacity array.
+        let value = unsafe {
+            let count = self.part_count()?;
+            let opacities = checked_slice_mut(
+                sys::csmGetPartOpacities(self.model.as_ptr()),
+                count,
+                "part opacities",
+            )?;
+            let current = opacities[index];
+            if !current.is_finite() {
+                return Err(Live2dError::new(
+                    Live2dErrorCode::InvalidCoreValue,
+                    format!("{id} has a non-finite part opacity"),
+                ));
+            }
+            let value = (current + (requested - current) * weight).clamp(0.0, 1.0);
+            opacities[index] = value;
+            value
+        };
+        Ok(ParameterUpdate::Applied {
+            value,
+            clamped: value != requested,
+        })
     }
 
     pub(crate) fn restore_parameter_defaults(&mut self) -> Result<(), Live2dError> {
@@ -526,6 +593,14 @@ impl CoreModel {
             "parameter count",
         )
     }
+
+    unsafe fn part_count(&self) -> Result<usize, Live2dError> {
+        // SAFETY: self.model points into the live model allocation.
+        nonnegative(
+            unsafe { sys::csmGetPartCount(self.model.as_ptr()) },
+            "part count",
+        )
+    }
 }
 
 fn decode_dynamic_flags(flags: u8) -> DrawableDynamicFlags {
@@ -661,6 +736,37 @@ unsafe fn resolve_parameters(model: *mut sys::csmModel) -> Result<ResolvedParame
         product: resolved,
         by_id,
     })
+}
+
+unsafe fn resolve_parts(model: *mut sys::csmModel) -> Result<BTreeMap<String, usize>, Live2dError> {
+    // SAFETY: model is freshly initialized and remains owned by CoreModel.
+    let count = nonnegative(unsafe { sys::csmGetPartCount(model) }, "part count")?;
+    // SAFETY: the pointer/count pair comes from the same live Model.
+    let ids = unsafe { checked_slice(sys::csmGetPartIds(model), count, "part ids")? };
+    let mut by_id = BTreeMap::new();
+    for (index, &pointer) in ids.iter().enumerate() {
+        if pointer.is_null() {
+            return Err(Live2dError::new(
+                Live2dErrorCode::InvalidCoreArray,
+                format!("Core returned a null part id at index {index}"),
+            ));
+        }
+        // SAFETY: Core documents part IDs as NUL-terminated strings that live
+        // for the Model lifetime.
+        let id = unsafe { CStr::from_ptr(pointer) }.to_str().map_err(|_| {
+            Live2dError::new(
+                Live2dErrorCode::InvalidCoreValue,
+                format!("Core returned a non-UTF-8 part id at index {index}"),
+            )
+        })?;
+        if id.is_empty() || by_id.insert(id.to_owned(), index).is_some() {
+            return Err(Live2dError::new(
+                Live2dErrorCode::InvalidCoreValue,
+                format!("Core returned an invalid or duplicate part id at index {index}"),
+            ));
+        }
+    }
+    Ok(by_id)
 }
 
 fn decode_blend_mode(mode: i32) -> Result<BlendMode, Live2dError> {

@@ -322,6 +322,11 @@ impl Live2dModel {
         Arc::clone(&self.resources)
     }
 
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    pub fn part_opacity_by_id(&self, id: &str) -> Result<Option<f32>, Live2dError> {
+        self.core.part_opacity_by_id(id)
+    }
+
     pub fn motion_clip(&self, group: &str, index: usize) -> Option<&MotionClip> {
         self.motions
             .get(group)
@@ -591,7 +596,7 @@ impl Live2dModel {
             for sample in &evaluation.part_opacities {
                 if matches!(
                     self.core
-                        .set_parameter_by_id(&sample.id, sample.value, 1.0)?,
+                        .set_part_opacity_by_id(&sample.id, sample.value, weight)?,
                     ParameterUpdate::Applied { .. }
                 ) {
                     count += 1;
@@ -1097,7 +1102,7 @@ mod tests {
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
-    fn part_opacity_motion_curves_use_the_framework_parameter_sink() {
+    fn part_opacity_motion_curves_use_the_core_part_sink() {
         use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
         use std::path::Path;
 
@@ -1120,7 +1125,7 @@ mod tests {
                 "CurveCount":2,"TotalSegmentCount":2,"TotalPointCount":4,
                 "UserDataCount":0,"TotalUserDataSize":0},
               "Curves":[
-                {"Target":"PartOpacity","Id":"ParamAngleX","Segments":[0,0,0,1,20]},
+                {"Target":"PartOpacity","Id":"Part","Segments":[0,0,0,1,0.25]},
                 {"Target":"PartOpacity","Id":"MissingPartSink","Segments":[0,0,0,1,1]}
               ]
             }"#,
@@ -1129,19 +1134,23 @@ mod tests {
         )
         .expect("part opacity motion");
 
-        model
-            .restore_parameter_defaults()
-            .expect("restore parameter defaults");
+        let parameter_before = model
+            .parameter_value(ProductParameter::AngleX)
+            .expect("angle parameter");
         let status = model
-            .apply_motion_with_weight(&clip, std::time::Duration::from_millis(500), 0.0)
+            .apply_motion_with_weight(&clip, std::time::Duration::from_millis(500), 1.0)
             .expect("apply part opacity motion");
         assert_eq!(status.applied_parameter_count, 0);
         assert_eq!(status.applied_part_opacity_count, 1);
         assert_eq!(
+            model.part_opacity_by_id("Part").expect("part opacity"),
+            Some(0.125)
+        );
+        assert_eq!(
             model
                 .parameter_value(ProductParameter::AngleX)
                 .expect("angle parameter"),
-            Some(10.0)
+            parameter_before
         );
     }
 
