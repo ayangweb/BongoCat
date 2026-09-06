@@ -909,7 +909,7 @@ impl SettingsView {
             ACCESSIBILITY_RESTORE_SHORTCUTS => self.restore_default_shortcuts(cx),
             ACCESSIBILITY_CLEAR_SHORTCUTS => self.clear_shortcuts(cx),
             ACCESSIBILITY_REFRESH => self.refresh(cx),
-            ACCESSIBILITY_QUIT => (self.request_quit)(cx),
+            ACCESSIBILITY_QUIT => self.request_quit_after_flush(cx),
             _ => {
                 if let Some((model, behavior)) = model_behavior_preview_target {
                     self.preview_model_behavior(model, behavior, cx);

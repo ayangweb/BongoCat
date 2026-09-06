@@ -858,7 +858,7 @@ impl Render for SettingsView {
                 .id("quit-application")
                 .on_click(cx.listener(|view, _, window, cx| {
                     window.focus(&view.quit_focus, cx);
-                    (view.request_quit)(cx);
+                    view.request_quit_after_flush(cx);
                 })),
             );
 

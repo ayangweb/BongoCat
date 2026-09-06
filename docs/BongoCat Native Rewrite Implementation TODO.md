@@ -884,6 +884,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     编辑在 `150 ms` 稳定窗口内合并为最新值；异步请求成功确认后清除 pending，服务忙或失败时
     保留值并由 timer/请求完成路径继续发送。UI 定向测试和严格 Clippy 通过；shutdown flush UI
     接入仍待完成。
+  - 状态（2026-09-07）：设置窗口按钮和辅助功能退出入口现在会先按固定顺序强制 flush 所有
+    未确认的连续配置 patch，逐项收到成功回包后才调用应用退出；任一请求失败则取消退出并
+    保留 pending/error。产品级系统菜单、平台关闭和强制终止路径尚未共享该协调状态，故配置
+    去抖总项仍保持未勾选。
 - [ ] GPUI 只通过 typed command 获取 snapshot 和提交 patch。
   - 状态（2026-09-01）：正式 UI 对显隐、motion audio、模型交互和 gamepad dead-zone 使用有界
     typed command/reply，成功结果携带新 runtime revision，文件写入在 app service worker 完成；

@@ -387,6 +387,7 @@ pub struct SettingsView {
     maximum_fps_timer_generation: u64,
     release_fallback_timeout_debouncer: crate::SettingsPatchDebouncer<u32>,
     release_fallback_timeout_timer_generation: u64,
+    quit_after_flush: bool,
     model_delete_confirmation: Option<SettingsModelKey>,
     model_row_focus: BTreeMap<ModelRowKey, ModelRowFocus>,
     model_behavior_preview_focus: BTreeMap<ModelBehaviorKey, FocusHandle>,
@@ -665,6 +666,83 @@ impl SettingsView {
         .detach();
     }
 
+    fn flush_pending_setting_patches(&mut self, cx: &mut Context<Self>) {
+        if self.pending.is_some() {
+            return;
+        }
+        let now = Instant::now();
+        let Some(snapshot) = self.snapshot.clone() else {
+            self.quit_after_flush = false;
+            (self.request_quit)(cx);
+            return;
+        };
+        let Some(expected_config_revision) = snapshot.config_revision else {
+            self.quit_after_flush = false;
+            (self.request_quit)(cx);
+            return;
+        };
+        if let Some(scale_percent) = self.overlay_scale_debouncer.flush(now) {
+            let mut settings = snapshot.overlay;
+            settings.scale_percent = scale_percent;
+            self.start_request(
+                PendingOperation::OverlayScale,
+                Some(SettingValue::OverlayScale {
+                    expected_config_revision,
+                    scale_percent,
+                    settings,
+                }),
+                cx,
+            );
+        } else if let Some(opacity_percent) = self.overlay_opacity_debouncer.flush(now) {
+            let mut settings = snapshot.overlay;
+            settings.opacity_percent = opacity_percent;
+            self.start_request(
+                PendingOperation::OverlayOpacity,
+                Some(SettingValue::OverlayOpacity {
+                    expected_config_revision,
+                    opacity_percent,
+                    settings,
+                }),
+                cx,
+            );
+        } else if let Some(settings) = self.gamepad_dead_zone_debouncer.flush(now) {
+            self.start_request(
+                PendingOperation::GamepadAxisSettings,
+                Some(SettingValue::GamepadAxisSettings {
+                    expected_config_revision,
+                    settings,
+                }),
+                cx,
+            );
+        } else if let Some(maximum_fps) = self.maximum_fps_debouncer.flush(now) {
+            self.start_request(
+                PendingOperation::MaximumFps,
+                Some(SettingValue::MaximumFps {
+                    expected_config_revision,
+                    maximum_fps,
+                }),
+                cx,
+            );
+        } else if let Some(timeout_ms) = self.release_fallback_timeout_debouncer.flush(now) {
+            self.start_request(
+                PendingOperation::ReleaseFallbackTimeout,
+                Some(SettingValue::ReleaseFallbackTimeout {
+                    expected_config_revision,
+                    timeout_ms,
+                }),
+                cx,
+            );
+        } else {
+            self.quit_after_flush = false;
+            (self.request_quit)(cx);
+        }
+    }
+
+    pub(super) fn request_quit_after_flush(&mut self, cx: &mut Context<Self>) {
+        self.quit_after_flush = true;
+        self.flush_pending_setting_patches(cx);
+    }
+
     fn start_request(
         &mut self,
         operation: PendingOperation,
@@ -901,6 +979,13 @@ impl SettingsView {
                         .mark_sent(&timeout_ms);
                     if view.release_fallback_timeout_debouncer.is_pending() {
                         view.schedule_release_fallback_timeout_flush(cx);
+                    }
+                }
+                if view.quit_after_flush {
+                    if result.is_ok() {
+                        view.flush_pending_setting_patches(cx);
+                    } else {
+                        view.quit_after_flush = false;
                     }
                 }
                 if let Some(snapshot) = refreshed.filter(|snapshot| {
