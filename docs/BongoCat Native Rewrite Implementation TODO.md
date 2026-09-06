@@ -707,6 +707,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     匿名 `diagnostics.json` 的 runtime 分栏；app 导出与 UI runtime diagnostics contract 验证
     字段值往返，未导出路径或工作 payload。真实模型解析、磁盘、音频初始化和 GPU 上传仍未拆分
     到独立有界 worker，因此本项保持未勾选。
+  - 状态（2026-09-07）：新增 app 纯 Rust projection contract，使用真实 `RuntimeOwner` snapshot
+    覆盖 work diagnostics 后断言 `budget_exceeded` 与 `last_over_budget_ms` 原样投影到
+    `SettingsRuntimeDiagnostics`；定向 app test、严格 Clippy 和格式检查通过。真实阻塞工作拆分
+    仍未完成。
 
 ### 3.2 输入语义
 

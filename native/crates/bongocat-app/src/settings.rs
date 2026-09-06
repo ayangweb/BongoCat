@@ -2186,7 +2186,9 @@ mod tests {
     use super::*;
     use crate::ApplicationLogEventCounts;
     use bongocat_config::{ConfigStore, OverlayWindowPlacement, StateStore, StorageLayout};
-    use bongocat_runtime::{InputDiagnostics, InputTransportDiagnostics};
+    use bongocat_runtime::{
+        InputDiagnostics, InputTransportDiagnostics, RuntimeOwner, RuntimeWorkDiagnostics,
+    };
     use bongocat_ui::{SettingsModelImportRequest, SettingsStartupItemError};
     use std::{
         io,
@@ -2719,6 +2721,24 @@ mod tests {
         assert_eq!(clock.revision, 41);
         clock.observe_input_diagnostics(changed);
         assert_eq!(clock.revision, 41);
+    }
+
+    #[test]
+    fn runtime_work_diagnostics_projection_preserves_snapshot_values() {
+        let owner = RuntimeOwner::start(false, 4);
+        let mut runtime = owner.client().snapshot();
+        runtime.work = RuntimeWorkDiagnostics {
+            budget_exceeded: 7,
+            last_over_budget_ms: 19,
+        };
+
+        let projected = settings_runtime_diagnostics(&runtime);
+        assert_eq!(projected.work_budget_exceeded, 7);
+        assert_eq!(projected.last_over_budget_ms, 19);
+
+        owner
+            .shutdown(Duration::from_secs(1))
+            .expect("runtime shutdown");
     }
 
     #[test]
