@@ -652,7 +652,14 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     成功 publish 在 runtime 触发 gap Reset，显式 recovery Reset 保留 `QueueOverflow`
     原因且只计一次。macOS 正式 callback 已改用该 producer；Windows 正式 callback 尚未
     接入，故保持未勾选。
-- [ ] 动画、长按和延迟统一使用 Instant。
+- [x] 动画、长按和延迟统一使用可注入的单调时钟。
+  - 验收证据（2026-09-06）：`bongocat-runtime` 以 `MonotonicClock` 作为唯一业务时间源，
+    生产默认实现基于 `Instant`，所有动画求值、motion/expression fade、breath/blink、cursor
+    平滑、key release fallback 和 frame 间隔均传递单调 `Duration`。`ManualClock` 定向回归
+    固定 runtime tick 仅在注入时间到达 fallback deadline 后释放按键；rendering 单元测试固定
+    自动效果的周期性和确定性。runtime 的状态、输入与动画代码不使用 `SystemTime` 或其他墙钟
+    API；`Instant` 仅用于调用方 bounded wait/shutdown deadline，不参与产品状态求值。Live2D
+    Core 日志的文件保留时间独立使用 `SystemTime`，不参与 runtime 或模型动画求值。
 - [ ] 实现可注入 clock 和确定性 tick。
   - 状态（2026-09-01）：正式 runtime 已使用 `MonotonicClock` 驱动动作、表情和自动效果，
     并新增 typed `RuntimeCommand::Tick` 允许 coordinator/fixture 在注入时钟下显式驱动
