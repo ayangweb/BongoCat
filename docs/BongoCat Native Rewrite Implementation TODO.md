@@ -1868,8 +1868,8 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
   - 状态（2026-09-01）：runtime renderer 已为 model load/evaluation、motion/expression load、GPU
     prepare、platform、transport 和 overlay validation 定义 10 个固定 snake_case code，并以唯一性
     contract 防止诊断协议依赖 Rust `Debug` 名称；该 code 已投影到 SettingsSnapshot 和 Diagnostics
-    页面。input/config/model 已有各自 typed code，但统一诊断导出和 update code 尚未完成，因此保持
-    未勾选。
+    页面。input/config/model 已有各自 typed code，update diagnostics 现通过统一 catalog 过滤后
+    进入匿名导出；真实 update worker 错误源和跨平台完整错误矩阵仍待完成，因此保持未勾选。
   - 状态（2026-09-05）：`ModelStoreDiagnostic` 现为 11 个来源无关、固定
     `model_store_*` code；枚举包含完整 `ALL` 集合与唯一性回归。settings service 继续按 import/
     delete 操作映射为既有可操作 `SettingsErrorCode`，不公开 model store 的资源名或 I/O detail。
