@@ -993,6 +993,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     part index，并通过 `csmGetPartOpacities` 提供有限值读取/写入。`PartOpacity` motion 不再
     误写 parameter sink；预置 `standard` Core 回归确认 `Part` opacity 曲线更新且 `ParamAngleX`
     保持不变。完整 part parent/offscreen 诊断仍待完成，因此本项保持未勾选。
+  - 状态（2026-09-06）：模型创建阶段现在同时校验 `csmGetPartParentPartIndices` 与
+    `csmGetPartOffscreenIndices` 的 null、根节点 `-1` 和范围，拒绝越界关系后才建立 part 表；
+    三个预置模型的 Core load 回归通过。parent/offscreen 关系尚未进入 RenderSnapshot 诊断，
+    因此本项保持未勾选。
 - [ ] 模型切换使用 prepare/commit/rollback。
   - 状态（2026-08-30）：正式 runtime/Metal/D3D11 产品链已实现 CPU/GPU 两阶段提交。runtime
     在候选 generation 的 texture/mesh/mask 全部由 renderer prepare 并回报匹配 token 前保留

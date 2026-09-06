@@ -743,6 +743,42 @@ unsafe fn resolve_parts(model: *mut sys::csmModel) -> Result<BTreeMap<String, us
     let count = nonnegative(unsafe { sys::csmGetPartCount(model) }, "part count")?;
     // SAFETY: the pointer/count pair comes from the same live Model.
     let ids = unsafe { checked_slice(sys::csmGetPartIds(model), count, "part ids")? };
+    let parent_indices = unsafe {
+        checked_slice(
+            sys::csmGetPartParentPartIndices(model),
+            count,
+            "part parent indices",
+        )?
+    };
+    let offscreen_count = nonnegative(
+        unsafe { sys::csmGetOffscreenCount(model) },
+        "offscreen count",
+    )?;
+    let offscreen_indices = unsafe {
+        checked_slice(
+            sys::csmGetPartOffscreenIndices(model),
+            count,
+            "part offscreen indices",
+        )?
+    };
+    for index in 0..count {
+        let parent = parent_indices[index];
+        if parent < -1 || usize::try_from(parent).is_ok_and(|parent| parent >= count) {
+            return Err(Live2dError::new(
+                Live2dErrorCode::InvalidCoreValue,
+                format!("part {index} has an out-of-range parent index {parent}"),
+            ));
+        }
+        let offscreen = offscreen_indices[index];
+        if offscreen < -1
+            || usize::try_from(offscreen).is_ok_and(|offscreen| offscreen >= offscreen_count)
+        {
+            return Err(Live2dError::new(
+                Live2dErrorCode::InvalidCoreValue,
+                format!("part {index} has an out-of-range offscreen index {offscreen}"),
+            ));
+        }
+    }
     let mut by_id = BTreeMap::new();
     for (index, &pointer) in ids.iter().enumerate() {
         if pointer.is_null() {
