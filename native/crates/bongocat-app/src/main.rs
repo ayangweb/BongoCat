@@ -43,7 +43,7 @@ use std::{
     path::Path,
     path::PathBuf,
     sync::{Arc, Mutex},
-    time::Duration,
+    time::{Duration, Instant},
 };
 #[cfg(all(
     feature = "storage-test-injection",
@@ -55,6 +55,50 @@ use zip::ZipArchive;
 struct StatusIconRequest {
     visible: bool,
     reply: std::sync::mpsc::SyncSender<Result<(), SettingsError>>,
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const OVERLAY_PLACEMENT_DEBOUNCE: Duration = Duration::from_millis(150);
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[derive(Default)]
+struct OverlayPlacementDebouncer {
+    last_sent_at: Option<Instant>,
+    pending: Option<OverlayWindowBounds>,
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+impl OverlayPlacementDebouncer {
+    fn observe(
+        &mut self,
+        bounds: OverlayWindowBounds,
+        now: Instant,
+    ) -> Option<OverlayWindowBounds> {
+        self.pending = Some(bounds);
+        if self
+            .last_sent_at
+            .is_none_or(|last| now.saturating_duration_since(last) >= OVERLAY_PLACEMENT_DEBOUNCE)
+        {
+            self.last_sent_at = Some(now);
+            self.pending
+        } else {
+            None
+        }
+    }
+
+    fn mark_sent(&mut self, bounds: OverlayWindowBounds) {
+        if self.pending == Some(bounds) {
+            self.pending = None;
+        }
+    }
+
+    fn flush(&mut self, now: Instant) -> Option<OverlayWindowBounds> {
+        let pending = self.pending.take();
+        if pending.is_some() {
+            self.last_sent_at = Some(now);
+        }
+        pending
+    }
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -1799,6 +1843,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(target_os = "windows")]
             let mut frame_active = true;
             let mut last_overlay_bounds = None;
+            let mut overlay_placement_debouncer = OverlayPlacementDebouncer::default();
             let mut retry_delay = None;
             #[cfg(target_os = "windows")]
             let mut update_failure_reported = false;
@@ -1837,14 +1882,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     .expect("product overlay owner is present")
                                     .window_bounds()
                                     && last_overlay_bounds != Some(bounds)
-                                    && frame_settings_client
-                                        .update_overlay_window_placement(
-                                            bounds.x,
-                                            bounds.y,
-                                            bounds.width,
-                                            bounds.height,
-                                        )
-                                        .is_ok()
+                                    && let Some(bounds) = overlay_placement_debouncer
+                                        .observe(bounds, Instant::now())
+                                    && {
+                                        let sent = frame_settings_client
+                                            .update_overlay_window_placement(
+                                                bounds.x,
+                                                bounds.y,
+                                                bounds.width,
+                                                bounds.height,
+                                            )
+                                            .is_ok();
+                                        if sent {
+                                            overlay_placement_debouncer.mark_sent(bounds);
+                                        }
+                                        sent
+                                    }
                                 {
                                     last_overlay_bounds = Some(bounds);
                                 }
@@ -1890,14 +1943,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if result.is_ok()
                         && let Ok(bounds) = overlay.window_bounds()
                         && last_overlay_bounds != Some(bounds)
-                        && frame_settings_client
-                            .update_overlay_window_placement(
-                                bounds.x,
-                                bounds.y,
-                                bounds.width,
-                                bounds.height,
-                            )
-                            .is_ok()
+                        && let Some(bounds) =
+                            overlay_placement_debouncer.observe(bounds, Instant::now())
+                        && {
+                            let sent = frame_settings_client
+                                .update_overlay_window_placement(
+                                    bounds.x,
+                                    bounds.y,
+                                    bounds.width,
+                                    bounds.height,
+                                )
+                                .is_ok();
+                            if sent {
+                                overlay_placement_debouncer.mark_sent(bounds);
+                            }
+                            sent
+                        }
                     {
                         last_overlay_bounds = Some(bounds);
                     }
@@ -1980,6 +2041,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if !keep_running {
                     break;
                 }
+            }
+            if let Some(bounds) = overlay_placement_debouncer.flush(Instant::now()) {
+                let _ = frame_settings_client.update_overlay_window_placement(
+                    bounds.x,
+                    bounds.y,
+                    bounds.width,
+                    bounds.height,
+                );
             }
         })
         .detach();
@@ -2990,6 +3059,75 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(all(test, any(target_os = "macos", target_os = "windows")))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn overlay_placement_debouncer_coalesces_drag_updates_and_flushes_latest() {
+        let origin = Instant::now();
+        let first = OverlayWindowBounds::new(0, 0, 420, 560);
+        let middle = OverlayWindowBounds::new(12, 8, 420, 560);
+        let latest = OverlayWindowBounds::new(24, 16, 420, 560);
+        let mut debouncer = OverlayPlacementDebouncer::default();
+
+        assert_eq!(debouncer.observe(first, origin), Some(first));
+        debouncer.mark_sent(first);
+        assert_eq!(
+            debouncer.observe(middle, origin + Duration::from_millis(50)),
+            None
+        );
+        assert_eq!(
+            debouncer.observe(latest, origin + Duration::from_millis(100)),
+            None
+        );
+        assert_eq!(
+            debouncer.observe(latest, origin + Duration::from_millis(150)),
+            Some(latest)
+        );
+        debouncer.mark_sent(latest);
+        assert_eq!(
+            debouncer.flush(origin + Duration::from_millis(200)),
+            None,
+            "the stable update was already submitted"
+        );
+    }
+
+    #[test]
+    fn overlay_placement_debouncer_flushes_pending_update_on_shutdown() {
+        let origin = Instant::now();
+        let first = OverlayWindowBounds::new(0, 0, 420, 560);
+        let latest = OverlayWindowBounds::new(24, 16, 420, 560);
+        let mut debouncer = OverlayPlacementDebouncer::default();
+
+        assert_eq!(debouncer.observe(first, origin), Some(first));
+        debouncer.mark_sent(first);
+        assert_eq!(
+            debouncer.observe(latest, origin + Duration::from_millis(25)),
+            None
+        );
+        assert_eq!(
+            debouncer.flush(origin + Duration::from_millis(30)),
+            Some(latest)
+        );
+        assert_eq!(debouncer.flush(origin + Duration::from_millis(31)), None);
+    }
+
+    #[test]
+    fn overlay_placement_debouncer_keeps_unsent_value_for_retry() {
+        let origin = Instant::now();
+        let first = OverlayWindowBounds::new(0, 0, 420, 560);
+        let latest = OverlayWindowBounds::new(24, 16, 420, 560);
+        let mut debouncer = OverlayPlacementDebouncer::default();
+
+        assert_eq!(debouncer.observe(first, origin), Some(first));
+        // Simulate a full settings queue: the producer did not acknowledge either send.
+        assert_eq!(
+            debouncer.observe(latest, origin + Duration::from_millis(25)),
+            None
+        );
+        assert_eq!(
+            debouncer.flush(origin + Duration::from_millis(30)),
+            Some(latest)
+        );
+    }
 
     #[test]
     fn run_options_default_to_an_unbounded_product_lifetime() {
