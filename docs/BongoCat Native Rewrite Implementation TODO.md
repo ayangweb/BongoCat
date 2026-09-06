@@ -1763,6 +1763,10 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     catalog 和 namespace/唯一性回归，staging 的完整性 composite 明确保留 verifier code，调度回退固定为
     `update_schedule_monotonic_time_regressed`。这些 code 的产品 diagnostics export 投影仍待完成。
 - [ ] 日志导出生成可预览的脱敏包。
+  - 状态（2026-09-06）：ADR-0027 已冻结 preview bundle 为当前环境私有的 v1 ZIP，固定只包含
+    `manifest.json`、匿名 `diagnostics.json` 和严格重新序列化的 application code event records；
+    Cubism Core message/原始 `.jsonl` 明确排除，只保留现有匿名聚合统计。writer、atomic staging、
+    UI preview 和双平台 smoke 仍待实现，本项保持未勾选。
   - 状态（2026-09-01）：settings service 已新增有界 `ExportDiagnostics` command，使用当前环境
     `logs/diagnostics.json` 的同目录原子写入生成 format v1 JSON。导出只包含稳定 runtime/input/
     configuration code、匿名聚合计数、模型来源计数和 settings/config revision；不包含模型 ID、

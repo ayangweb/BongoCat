@@ -753,9 +753,10 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
   code，不读取 payload、源码位置、backtrace 或用户路径；Development-only 隔离 smoke 必须以同一
   release 可执行文件产生真实 `panic=abort`，验证日志脱敏、配置字节不变、重启分类和标记清理；
   默认产品 CLI/API 不暴露该测试入口。
-- Diagnostics 导出只读取 app-owned writer 的匿名 written/dropped/rotated/pruned/bytes/
-  retained_files 统计，不读取或复制应用日志正文；Cubism Core 历史轮转文件的跨域合并仍需
-  独立的发布前设计和验证。
+- Diagnostics 导出的摘要只读取 app-owned writer 和 Cubism Core 的匿名
+  written/dropped/rotated/pruned/bytes/retained_files 统计，不读取或复制 Core message。可预览的
+  application lifecycle 历史仅能按 ADR-0027 严格重新解析为固定 code record，再与该摘要组成当前
+  环境的私有 preview bundle；Core 历史内容不属于该 bundle。
 
 初始字段命名和数据分类见 `shared/config/native-config-contract.md`，环境和 Bundle ID 决策见 ADR-0008。
 
