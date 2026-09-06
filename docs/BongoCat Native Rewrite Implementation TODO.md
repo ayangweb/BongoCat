@@ -648,7 +648,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-09-01）：正式 runtime 已使用 `MonotonicClock` 驱动动作、表情和自动效果，
     并新增 typed `RuntimeCommand::Tick` 允许 coordinator/fixture 在注入时钟下显式驱动
     单次评估；定时 loop 仍保留用于生产运行，完整动画/长按迁移和 fixture 对接仍待完成。
-- [ ] 实现 starting、ready、degraded、stopping、stopped 状态。
+- [x] 实现 starting、ready、degraded、stopping、stopped 状态。
+  - 验收证据（2026-09-06）：`RuntimeSnapshot` 从 `Starting` 发布到 `Ready`；renderer
+    failure 进入 `Degraded`，首个成功 evaluation 恢复 `Ready`，重复相同 failure 不重复推进
+    revision；shutdown 先发布 `Stopping`，释放 render transport 后发布 `Stopped`。runtime
+    单元测试覆盖正常启动/停止及 failure/recovery 状态转换。
 - [ ] 实现 shutdown drain、超时和错误聚合。
   - 状态（2026-09-01）：runtime shutdown 现在先关闭 command producer gate，避免关闭开始后新
     command 进入队列；worker 以非阻塞方式排空已接收 command 后处理 shutdown，即使命令队列已满

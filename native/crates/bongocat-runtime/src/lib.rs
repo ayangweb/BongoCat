@@ -2204,33 +2204,33 @@ fn evaluate_renderer(
                 *active_motion = None;
                 publish(snapshot, |current| current.active_motion = None);
             }
-            let should_recover = snapshot
-                .value
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .render_error
-                .is_some();
-            if should_recover {
-                publish(snapshot, |current| {
-                    current.state = RuntimeState::Ready;
-                    current.render_error = None;
-                });
-            }
+            update_renderer_health(snapshot, Ok(()));
         }
-        Err(code) => {
-            let should_publish = snapshot
-                .value
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .render_error
-                != Some(code);
-            if should_publish {
-                publish(snapshot, |current| {
-                    current.state = RuntimeState::Degraded;
-                    current.render_error = Some(code);
-                });
-            }
-        }
+        Err(code) => update_renderer_health(snapshot, Err(code)),
+    }
+}
+
+/// Publish a renderer failure once, then restore the ready state after its
+/// first successful evaluation. Repeated identical failures must not create a
+/// revision storm while a renderer is recovering.
+fn update_renderer_health(snapshot: &SnapshotCell, evaluation: Result<(), RuntimeRenderErrorCode>) {
+    let previous_error = snapshot
+        .value
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .render_error;
+
+    match evaluation {
+        Ok(()) if previous_error.is_some() => publish(snapshot, |current| {
+            current.state = RuntimeState::Ready;
+            current.render_error = None;
+        }),
+        Ok(()) => {}
+        Err(code) if previous_error == Some(code) => {}
+        Err(code) => publish(snapshot, |current| {
+            current.state = RuntimeState::Degraded;
+            current.render_error = Some(code);
+        }),
     }
 }
 
@@ -2358,6 +2358,63 @@ mod tests {
             RuntimeRenderErrorCode::GpuPreparationFailed.to_string(),
             "gpu_preparation_failed"
         );
+    }
+
+    #[test]
+    fn renderer_health_transitions_degrade_once_and_recover() {
+        let snapshot = SnapshotCell {
+            value: Mutex::new(RuntimeSnapshot::starting(
+                true,
+                true,
+                MotionAudioClient::unavailable().diagnostics(),
+            )),
+            changed: Condvar::new(),
+        };
+        publish(&snapshot, |current| current.state = RuntimeState::Ready);
+        let ready_revision = snapshot
+            .value
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .revision;
+
+        update_renderer_health(
+            &snapshot,
+            Err(RuntimeRenderErrorCode::ModelEvaluationFailed),
+        );
+        let degraded = snapshot
+            .value
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        assert_eq!(degraded.state, RuntimeState::Degraded);
+        assert_eq!(
+            degraded.render_error,
+            Some(RuntimeRenderErrorCode::ModelEvaluationFailed)
+        );
+        assert_eq!(degraded.revision, ready_revision + 1);
+
+        update_renderer_health(
+            &snapshot,
+            Err(RuntimeRenderErrorCode::ModelEvaluationFailed),
+        );
+        assert_eq!(
+            snapshot
+                .value
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .revision,
+            degraded.revision
+        );
+
+        update_renderer_health(&snapshot, Ok(()));
+        let recovered = snapshot
+            .value
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        assert_eq!(recovered.state, RuntimeState::Ready);
+        assert_eq!(recovered.render_error, None);
+        assert_eq!(recovered.revision, degraded.revision + 1);
     }
 
     #[test]
