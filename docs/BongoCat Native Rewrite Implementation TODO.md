@@ -798,6 +798,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] issue #47 固定为发布回归项。
 - [ ] 明确 Raw Input scan code 到可查询 virtual-key 的映射，无法可靠校正的键必须有 Reset/保险策略和诊断。
 - [ ] 处理输入设备提供伪造、重复或异常长度 Raw Input 数据的边界，不信任设备名称和 handle 生命周期。
+  - 状态（2026-09-07）：Windows Raw Input decoder 现在以纯字节 contract 回归覆盖伪造
+    `dwSize`（小于 header 或大于实际 buffer）、过短 header 和未知输入类型；异常包只返回
+    decode error，未知类型安全忽略，不生成业务边沿。真实设备伪造/重复消息和 handle 生命周期
+    仍需 Windows 实机矩阵验证。
 
 ### 3.4 macOS 输入
 

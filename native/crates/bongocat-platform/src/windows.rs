@@ -2003,6 +2003,34 @@ mod tests {
     }
 
     #[test]
+    fn raw_input_decoder_rejects_forged_sizes_and_unknown_types() {
+        let header_size = size_of::<RAWINPUTHEADER>();
+
+        let mut undersized = vec![0_u8; header_size];
+        undersized[0..4].copy_from_slice(&1_u32.to_le_bytes());
+        undersized[4..8].copy_from_slice(&((header_size - 1) as u32).to_le_bytes());
+        assert!(decode_raw_input_bytes(&undersized, header_size).is_err());
+
+        let mut oversized = vec![0_u8; header_size + 8];
+        oversized[0..4].copy_from_slice(&1_u32.to_le_bytes());
+        oversized[4..8].copy_from_slice(&((oversized.len() + 1) as u32).to_le_bytes());
+        assert!(decode_raw_input_bytes(&oversized, header_size).is_err());
+
+        let mut short_header = vec![0_u8; 7];
+        short_header[4..7].copy_from_slice(&[7, 0, 0]);
+        assert!(decode_raw_input_bytes(&short_header, header_size).is_err());
+
+        let mut unknown = vec![0_u8; header_size];
+        unknown[0..4].copy_from_slice(&99_u32.to_le_bytes());
+        unknown[4..8].copy_from_slice(&(header_size as u32).to_le_bytes());
+        assert!(
+            decode_raw_input_bytes(&unknown, header_size)
+                .expect("unknown input type is safely ignored")
+                .is_none()
+        );
+    }
+
+    #[test]
     fn xinput_loader_resolves_the_system_api_without_an_import_library() {
         assert!(XInputApi::load().is_some());
     }
