@@ -1494,7 +1494,12 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
   - 验收证据（2026-08-31）：正式 `ConfigStore::load_or_default` 产品测试逐项写入非 JSON、
     截断 JSON、错误布尔类型、越界 opacity 和嵌套未知字段，全部返回错误且逐字节保留当前
     `config.json`；没有有效备份时不创建 quarantine 或静默回落默认值。
-- [ ] 覆盖无权限、磁盘满、目标占用和中途退出。
+- [x] 覆盖无权限、磁盘满、目标占用和中途退出。
+  - 验收证据（2026-09-06）：`bongocat-config` 的 `injected_permission_and_storage_failures_preserve_current_and_clean_temp`
+    覆盖权限拒绝与磁盘满注入，`occupied_temp_file_or_directory_is_retained_and_never_replaces_current`
+    覆盖文件/目录占用，`forced_process_exit_releases_writer_lock_and_recovers_synced_temp` 覆盖持锁
+    子进程中途退出后的恢复。完整 `cargo test -p bongocat-config --locked` 通过（46 passed，1 个
+    仅供父测试调用的 ignored child probe）；当前配置字节、临时文件和恢复结果均有断言。
 - [ ] 覆盖非 ASCII/超长路径、缺失和重复模型。
 - [x] 当前 v1 连续读取 10 次结果一致且不会产生额外写入或备份。
 - [ ] 失败注入不丢当前环境的配置或用户模型。
