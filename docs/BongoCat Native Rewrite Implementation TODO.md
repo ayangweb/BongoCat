@@ -1957,6 +1957,9 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
   - 状态（2026-09-07）：`bongocat-update` 逐项加载共享 valid/invalid manifest fixtures；valid fixture
     必须通过 v1 parser，HTTP URL、target/architecture mismatch 和未知字段分别映射到稳定拒绝结果。
     该回归锁定 shared schema 与 Rust semantic boundary，仍不包含真实发布生成器或签名产物。
+  - 状态（2026-09-07）：更新 manifest contract 测试现读取共享 `update/fixtures/manifest.json`，对每个
+    case 使用固定测试签名执行严格解析与语义验签，并拒绝重复或未登记 fixture 文件；新增 fixture
+    未同步 manifest 时会明确失败。真实发布生成器或签名产物仍未实现。
 - [x] 更新 helper/installer 的权限边界、替换原子性和失败恢复经过单独威胁建模。
   - 验收证据（2026-09-05）：ADR-0026 固定 helper 只接受同环境已验证 staging artifact、固定
     installation root 与 app shutdown acknowledgement；拒绝裸 URL/manifest/path、link/path traversal、

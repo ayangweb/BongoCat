@@ -999,8 +999,9 @@ mod tests {
     use super::*;
     use bongocat_config::{BuildEnvironment, StorageLayout};
     use ed25519_dalek::{Signer, SigningKey};
+    use serde::Deserialize;
     use serde_json::{Value, json};
-    use std::io;
+    use std::{collections::BTreeSet, fs, io, path::Path};
     use tempfile::tempdir;
 
     const SIGNING_SECRET: [u8; 32] = [7; 32];
@@ -1290,39 +1291,83 @@ mod tests {
 
     #[test]
     fn shared_manifest_fixtures_match_parser_and_semantic_rejections() {
-        let valid =
-            include_str!("../../../../shared/update/fixtures/valid-development-aarch64-macos.json");
-        let parsed = serde_json::from_str::<UpdateManifest>(valid).expect("valid fixture");
-        assert_eq!(parsed.schema_version, UPDATE_MANIFEST_SCHEMA_VERSION);
-        assert_eq!(parsed.channel, UpdateChannel::Development);
+        #[derive(Deserialize)]
+        struct FixtureManifest {
+            #[serde(rename = "schemaVersion")]
+            schema_version: u32,
+            cases: Vec<FixtureCase>,
+        }
 
-        let development = verifier(UpdateChannel::Development, "0.1.0", 1, 1, None);
-        let insecure =
-            include_str!("../../../../shared/update/fixtures/invalid-http-artifact-url.json");
-        let insecure = serde_json::from_str::<UpdateManifest>(insecure).expect("HTTP fixture JSON");
+        #[derive(Deserialize)]
+        struct FixtureCase {
+            id: String,
+            file: String,
+            expected: String,
+        }
+
+        let fixture_dir =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../shared/update/fixtures");
+        let manifest_path = fixture_dir.join("manifest.json");
+        let manifest: FixtureManifest = serde_json::from_slice(
+            &fs::read(&manifest_path).expect("read update fixture manifest"),
+        )
+        .expect("update fixture manifest");
+        assert_eq!(manifest.schema_version, 1);
+        assert!(!manifest.cases.is_empty());
+
+        let mut declared_ids = BTreeSet::new();
+        let mut declared_files = BTreeSet::new();
+        for case in manifest.cases {
+            assert!(
+                declared_ids.insert(case.id.clone()),
+                "duplicate fixture id {}",
+                case.id
+            );
+            assert!(
+                Path::new(&case.file)
+                    .file_name()
+                    .is_some_and(|name| name.to_string_lossy() == case.file),
+                "fixture {} must be a single file name",
+                case.id
+            );
+            assert!(
+                declared_files.insert(case.file.clone()),
+                "duplicate fixture file {}",
+                case.file
+            );
+            assert!(matches!(case.expected.as_str(), "accept" | "reject"));
+
+            let bytes = fs::read(fixture_dir.join(&case.file)).expect("read update fixture");
+            let signature = signing_key().sign(&bytes);
+            let parsed = serde_json::from_slice::<UpdateManifest>(&bytes);
+            let accepted = parsed.as_ref().is_ok_and(|manifest| {
+                verifier(manifest.channel, "0.1.0", 1, 1, None)
+                    .verify_manifest(&bytes, KEY_ID, &signature.to_bytes())
+                    .is_ok()
+            });
+            assert_eq!(
+                accepted,
+                case.expected == "accept",
+                "fixture {} expected {}, got {}",
+                case.id,
+                case.expected,
+                if accepted { "accept" } else { "reject" }
+            );
+        }
+
+        let actual_files = fs::read_dir(&fixture_dir)
+            .expect("list update fixtures")
+            .filter_map(Result::ok)
+            .filter_map(|entry| {
+                (entry.file_type().ok()?.is_file())
+                    .then(|| entry.file_name().to_string_lossy().into_owned())
+            })
+            .filter(|file| file != "manifest.json")
+            .collect::<BTreeSet<_>>();
         assert_eq!(
-            development
-                .validate_manifest(insecure, &development.trusted_keys[0])
-                .expect_err("insecure artifact URL")
-                .code,
-            UpdateErrorCode::ArtifactUrlInvalid
+            actual_files, declared_files,
+            "update fixture manifest coverage"
         );
-
-        let production = verifier(UpdateChannel::Production, "1.0.0", 1, 1, None);
-        let mismatched_target =
-            include_str!("../../../../shared/update/fixtures/invalid-target-architecture.json");
-        let mismatched_target =
-            serde_json::from_str::<UpdateManifest>(mismatched_target).expect("target fixture JSON");
-        assert_eq!(
-            production
-                .validate_manifest(mismatched_target, &production.trusted_keys[0])
-                .expect_err("target architecture mismatch")
-                .code,
-            UpdateErrorCode::ArtifactTargetInvalid
-        );
-
-        let unknown = include_str!("../../../../shared/update/fixtures/invalid-unknown-field.json");
-        assert!(serde_json::from_str::<UpdateManifest>(unknown).is_err());
     }
 
     #[test]
