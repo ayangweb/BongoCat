@@ -1765,6 +1765,11 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     零 attempts 返回 `update_download_staging_failed`；若调用方已取消，则保留零 attempts 的
     `update_download_cancelled` 优先语义，同样不会打开 reader 或创建 staging 路径。
 - [ ] 安装前协调 runtime/renderer shutdown，失败可回滚。
+  - 状态（2026-09-06）：`bongocat-update::UpdateInstallCoordinator` 已建立平台无关的顺序契约：取消
+    优先于 shutdown，shutdown 成功后才允许安装；安装失败必定尝试一次回滚，并以
+    `update_install_*` 稳定 code 区分取消、shutdown、安装和回滚失败。该模块不持有 runtime、renderer
+    或平台 installer；真实 update helper、原子替换、进程间 shutdown acknowledgement 和失败回滚仍待
+    Windows/macOS 安装链实现，因此总项保持未勾选。
 - [ ] 测试断网、代理、中断、签名错误和降级攻击。
 - [ ] 日志 rotation、总大小和保留天数有上限。
   - 状态（2026-09-05）：Cubism Core 日志 sink 已在单文件达到 1 MiB 时执行有界路径轮转，最多保留

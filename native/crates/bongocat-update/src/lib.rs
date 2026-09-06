@@ -2,6 +2,7 @@
 
 mod check;
 mod download;
+mod install;
 mod retry;
 mod schedule;
 mod sequence;
@@ -12,6 +13,7 @@ pub use download::{
     CompletedUpdateDownload, UpdateDownloadCoordinator, UpdateDownloadError,
     UpdateDownloadErrorCode,
 };
+pub use install::{UpdateInstallCoordinator, UpdateInstallError, UpdateInstallErrorCode};
 pub use retry::{
     UPDATE_DOWNLOAD_MAX_ATTEMPTS, UpdateDownloadAttemptFailure, UpdateDownloadRetryPolicy,
 };
