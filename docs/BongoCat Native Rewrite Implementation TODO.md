@@ -794,6 +794,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 独立消息窗口接收 Raw Input，不占用 renderer 热路径。
 - [ ] 注册 keyboard/mouse 并处理设备热插拔。
 - [ ] 完整处理 scan code、E0/E1、左右修饰和特殊键。
+  - 状态（2026-09-07）：正式 adapter 的纯 Rust 回归新增 E0 导航/小键盘/GUI 键及 E1 Pause
+    make/break 矩阵，确认 `RI_KEY_BREAK` 不改变物理 HID identity；已有左右修饰、PrintScreen
+    和未知 scan code 断言继续通过。Windows 实际 WM_INPUT、物理键盘和特殊键设备矩阵仍待
+    Windows 实机/CI 验收，因此总项保持未勾选。
 - [ ] 去重 Raw Input、可选 hook 和合成事件。
 - [ ] 对 pressed set 执行 GetAsyncKeyState 校正。
 - [ ] 处理 power、session lock/unlock 和 input desktop 变化。

@@ -1987,6 +1987,44 @@ mod tests {
     }
 
     #[test]
+    fn scan_code_special_key_matrix_preserves_e0_e1_and_break_identity() {
+        for (make_code, expected_usage) in [
+            (0x1c, 0x58), // keypad Enter
+            (0x35, 0x54), // keypad divide
+            (0x47, 0x4a), // Home
+            (0x48, 0x52), // ArrowUp
+            (0x4b, 0x50), // ArrowLeft
+            (0x4d, 0x4f), // ArrowRight
+            (0x50, 0x51), // ArrowDown
+            (0x53, 0x4c), // Delete
+            (0x5b, 0xe3), // Left GUI
+            (0x5c, 0xe7), // Right GUI
+        ] {
+            assert_eq!(
+                map_scan_code(make_code, RI_KEY_E0).map(PhysicalKey::hid_usage),
+                Some(expected_usage),
+                "E0 scan code {make_code:#04x}"
+            );
+            assert_eq!(
+                map_scan_code(make_code, RI_KEY_E0 | RI_KEY_BREAK).map(PhysicalKey::hid_usage),
+                Some(expected_usage),
+                "E0 break scan code {make_code:#04x}"
+            );
+        }
+
+        assert_eq!(
+            map_scan_code(0x1d, RI_KEY_E1).map(PhysicalKey::hid_usage),
+            Some(0x48),
+            "E1 Pause make"
+        );
+        assert_eq!(
+            map_scan_code(0x1d, RI_KEY_E1 | RI_KEY_BREAK).map(PhysicalKey::hid_usage),
+            Some(0x48),
+            "E1 Pause break"
+        );
+    }
+
+    #[test]
     fn raw_keyboard_decoder_rejects_truncation_and_reads_release() {
         let header_size = size_of::<RAWINPUTHEADER>();
         let mut bytes = vec![0_u8; header_size + 16];
