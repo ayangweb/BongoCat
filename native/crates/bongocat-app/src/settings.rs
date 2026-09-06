@@ -42,6 +42,7 @@ use bongocat_ui::{
     SettingsStartupItemUnsupportedReason, SettingsTheme, SettingsWindowPlacement,
     SettingsWindowState,
 };
+use bongocat_update::UpdateDiagnostics;
 use serde::Serialize;
 use std::fs;
 use std::{
@@ -345,6 +346,7 @@ trait DiagnosticsExportCapability: Send + Sync + 'static {
         snapshot: &SettingsSnapshot,
         application_logs: ApplicationLogDiagnostics,
         core_logs: Option<CoreLogDiagnostics>,
+        update: Option<UpdateDiagnostics>,
     ) -> Result<SettingsDiagnosticsExportStatus, SettingsError>;
 }
 
@@ -400,8 +402,9 @@ impl DiagnosticsExportCapability for SystemDiagnosticsExport {
         snapshot: &SettingsSnapshot,
         application_logs: ApplicationLogDiagnostics,
         core_logs: Option<CoreLogDiagnostics>,
+        update: Option<UpdateDiagnostics>,
     ) -> Result<SettingsDiagnosticsExportStatus, SettingsError> {
-        export_diagnostics_file(&self.path, snapshot, application_logs, core_logs)
+        export_diagnostics_file(&self.path, snapshot, application_logs, core_logs, update)
     }
 }
 
@@ -925,6 +928,7 @@ fn run_service(
                             &current,
                             application.application_log_diagnostics(),
                             application.core_log_diagnostics(),
+                            application.update_diagnostics(),
                         )
                         .map(|status| {
                             clock.observe_diagnostics_export(status);
@@ -1636,6 +1640,7 @@ struct DiagnosticsExportDocument {
     models: DiagnosticsModels,
     application_logs: DiagnosticsApplicationLogs,
     core_logs: Option<DiagnosticsCoreLogs>,
+    update: Option<DiagnosticsUpdate>,
     log_retention: DiagnosticsLogRetention,
 }
 
@@ -1751,6 +1756,20 @@ struct DiagnosticsCoreLogs {
 }
 
 #[derive(Serialize)]
+struct DiagnosticsUpdate {
+    last_error_code: Option<&'static str>,
+    checks_started: u64,
+    checks_succeeded: u64,
+    checks_failed: u64,
+    downloads_started: u64,
+    downloads_succeeded: u64,
+    downloads_failed: u64,
+    installs_started: u64,
+    installs_succeeded: u64,
+    installs_failed: u64,
+}
+
+#[derive(Serialize)]
 struct DiagnosticsLogRetention {
     retained_files: u64,
     retained_bytes: u64,
@@ -1761,8 +1780,9 @@ fn export_diagnostics_file(
     snapshot: &SettingsSnapshot,
     application_logs: ApplicationLogDiagnostics,
     core_logs: Option<CoreLogDiagnostics>,
+    update: Option<UpdateDiagnostics>,
 ) -> Result<SettingsDiagnosticsExportStatus, SettingsError> {
-    let document = diagnostics_document(snapshot, application_logs, core_logs);
+    let document = diagnostics_document(snapshot, application_logs, core_logs, update);
     let bytes = serde_json::to_vec_pretty(&document)
         .map_err(|_| SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))?;
     let parent = path.parent().unwrap_or_else(|| std::path::Path::new("."));
@@ -1827,6 +1847,7 @@ fn diagnostics_document(
     snapshot: &SettingsSnapshot,
     application_logs: ApplicationLogDiagnostics,
     core_logs: Option<CoreLogDiagnostics>,
+    update: Option<UpdateDiagnostics>,
 ) -> DiagnosticsExportDocument {
     let input = snapshot.input_diagnostics;
     let runtime = snapshot.runtime_diagnostics;
@@ -1938,6 +1959,18 @@ fn diagnostics_document(
             bytes: core_logs.bytes,
             retained_files: core_logs.retained_files,
             retained_bytes: core_logs.retained_bytes,
+        }),
+        update: update.map(|update| DiagnosticsUpdate {
+            last_error_code: update.last_error_code,
+            checks_started: update.checks_started,
+            checks_succeeded: update.checks_succeeded,
+            checks_failed: update.checks_failed,
+            downloads_started: update.downloads_started,
+            downloads_succeeded: update.downloads_succeeded,
+            downloads_failed: update.downloads_failed,
+            installs_started: update.installs_started,
+            installs_succeeded: update.installs_succeeded,
+            installs_failed: update.installs_failed,
         }),
         log_retention: DiagnosticsLogRetention {
             retained_files: application_logs
@@ -2388,6 +2421,7 @@ mod tests {
             _snapshot: &SettingsSnapshot,
             _application_logs: ApplicationLogDiagnostics,
             _core_logs: Option<CoreLogDiagnostics>,
+            _update: Option<UpdateDiagnostics>,
         ) -> Result<SettingsDiagnosticsExportStatus, SettingsError> {
             Ok(SettingsDiagnosticsExportStatus {
                 format_version: DIAGNOSTICS_EXPORT_FORMAT_VERSION,
@@ -2519,6 +2553,18 @@ mod tests {
                 retained_files: 3,
                 retained_bytes: 384,
             }),
+            Some(UpdateDiagnostics {
+                last_error_code: Some("update_download_transport_failed"),
+                checks_started: 3,
+                checks_succeeded: 2,
+                checks_failed: 1,
+                downloads_started: 2,
+                downloads_succeeded: 1,
+                downloads_failed: 1,
+                installs_started: 1,
+                installs_succeeded: 0,
+                installs_failed: 1,
+            }),
         )
         .expect("export diagnostics");
         let bytes = std::fs::read(&path).expect("read exported diagnostics");
@@ -2557,6 +2603,11 @@ mod tests {
         assert_eq!(document["runtime"]["command_enqueued"], 11);
         assert_eq!(document["runtime"]["command_queue_full"], 2);
         assert_eq!(document["runtime"]["command_sequence_gap_count"], 3);
+        assert_eq!(
+            document["update"]["last_error_code"],
+            "update_download_transport_failed"
+        );
+        assert_eq!(document["update"]["downloads_failed"], 1);
         assert_eq!(document["runtime"]["work_budget_exceeded"], 12);
         assert_eq!(document["runtime"]["last_over_budget_ms"], 34);
         assert_eq!(document["runtime"]["shutdown_timed_out"], 2);

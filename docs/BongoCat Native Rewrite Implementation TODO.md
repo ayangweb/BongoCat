@@ -1895,6 +1895,11 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     diagnostics presentation，页面以中英文匿名文案显示累计失败数并将其标记为 actionable；
     UI localization/presentation contract 与严格 Clippy 通过。update worker、真实安装回滚和
     平台错误源仍待后续发布链路接入。
+  - 状态（2026-09-07）：`bongocat-update::UpdateDiagnostics` 已作为可选 app-owned provider
+    接入匿名 `diagnostics.json`；导出只包含稳定 update error code 与 check/download/install
+    阶段计数，未注册 worker 时保持 `null`，不暴露 endpoint、artifact、版本或签名材料。app/update
+    定向测试、严格 Clippy 与 release check 通过；真实 update worker、安装回滚和平台错误源仍待
+    后续发布链路接入。
 - [ ] 日志导出生成可预览的脱敏包。
   - 状态（2026-09-06）：ADR-0027 已冻结 preview bundle 为当前环境私有的 v1 ZIP，固定只包含
     `manifest.json`、匿名 `diagnostics.json` 和严格重新序列化的 application code event records；

@@ -26,6 +26,7 @@ use bongocat_runtime::{
     RuntimeCommandFailure, RuntimeOwner, RuntimeRenderErrorCode, RuntimeSnapshot, SendError,
     ShutdownError, maximum_fps_is_valid, release_fallback_timeout_is_valid,
 };
+use bongocat_update::UpdateDiagnostics;
 use std::{
     collections::BTreeMap,
     fmt,
@@ -229,6 +230,7 @@ pub struct Application {
     render_consumer: Option<RenderConsumer>,
     application_log: ApplicationLogHandle,
     core_log_diagnostics: Option<Arc<dyn Fn() -> CoreLogDiagnostics + Send + Sync>>,
+    update_diagnostics: Option<Arc<dyn Fn() -> UpdateDiagnostics + Send + Sync>>,
     run_marker: ApplicationRunMarker,
     panic_hook: Option<ApplicationPanicHook>,
     shortcut_table: ShortcutTable,
@@ -398,6 +400,7 @@ impl Application {
             render_consumer,
             application_log,
             core_log_diagnostics: None,
+            update_diagnostics: None,
             run_marker,
             panic_hook: None,
             shortcut_table,
@@ -479,6 +482,17 @@ impl Application {
         self.core_log_diagnostics
             .as_ref()
             .map(|provider| provider())
+    }
+
+    pub fn set_update_diagnostics_provider(
+        &mut self,
+        provider: impl Fn() -> UpdateDiagnostics + Send + Sync + 'static,
+    ) {
+        self.update_diagnostics = Some(Arc::new(provider));
+    }
+
+    pub fn update_diagnostics(&self) -> Option<UpdateDiagnostics> {
+        self.update_diagnostics.as_ref().map(|provider| provider())
     }
 
     pub fn record_log(&self, event: ApplicationLogEvent) {
@@ -2192,6 +2206,44 @@ mod tests {
                 bytes: 128,
                 retained_files: 2,
                 retained_bytes: 192,
+            })
+        );
+        application.shutdown().expect("clean shutdown");
+    }
+
+    #[test]
+    fn application_reads_only_anonymous_update_diagnostics() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let mut application = Application::start_with_layout(layout).expect("start application");
+        assert_eq!(application.update_diagnostics(), None);
+
+        application.set_update_diagnostics_provider(|| bongocat_update::UpdateDiagnostics {
+            last_error_code: Some("update_download_transport_failed"),
+            checks_started: 3,
+            checks_succeeded: 2,
+            checks_failed: 1,
+            downloads_started: 2,
+            downloads_succeeded: 1,
+            downloads_failed: 1,
+            installs_started: 1,
+            installs_succeeded: 0,
+            installs_failed: 1,
+        });
+
+        assert_eq!(
+            application.update_diagnostics(),
+            Some(bongocat_update::UpdateDiagnostics {
+                last_error_code: Some("update_download_transport_failed"),
+                checks_started: 3,
+                checks_succeeded: 2,
+                checks_failed: 1,
+                downloads_started: 2,
+                downloads_succeeded: 1,
+                downloads_failed: 1,
+                installs_started: 1,
+                installs_succeeded: 0,
+                installs_failed: 1,
             })
         );
         application.shutdown().expect("clean shutdown");

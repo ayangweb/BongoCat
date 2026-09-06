@@ -64,6 +64,24 @@ pub enum UpdateChannel {
     Production,
 }
 
+/// Anonymous counters exposed to the application diagnostics boundary.
+///
+/// The update worker owns the source of these values; this crate only defines
+/// the stable, path-free shape that can be sampled by the application.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct UpdateDiagnostics {
+    pub last_error_code: Option<&'static str>,
+    pub checks_started: u64,
+    pub checks_succeeded: u64,
+    pub checks_failed: u64,
+    pub downloads_started: u64,
+    pub downloads_succeeded: u64,
+    pub downloads_failed: u64,
+    pub installs_started: u64,
+    pub installs_succeeded: u64,
+    pub installs_failed: u64,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Architecture {

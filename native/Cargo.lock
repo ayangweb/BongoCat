@@ -837,6 +837,7 @@ dependencies = [
  "bongocat-render",
  "bongocat-runtime",
  "bongocat-ui",
+ "bongocat-update",
  "embed-resource",
  "gpui-kit",
  "serde",

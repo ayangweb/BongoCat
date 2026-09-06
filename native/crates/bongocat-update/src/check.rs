@@ -238,7 +238,9 @@ mod tests {
         let valid = UpdateCheckCoordinator::new(StubSource {
             result: Ok(envelope.clone()),
         });
-        valid.check(&mut session, &endpoint).expect("initial update");
+        valid
+            .check(&mut session, &endpoint)
+            .expect("initial update");
 
         let signing_key = SigningKey::from_bytes(&[7; 32]);
         let mut rollback_manifest: serde_json::Value =
