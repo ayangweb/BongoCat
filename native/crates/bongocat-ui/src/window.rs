@@ -381,6 +381,8 @@ pub struct SettingsView {
     overlay_scale_timer_generation: u64,
     overlay_opacity_debouncer: crate::SettingsPatchDebouncer<u8>,
     overlay_opacity_timer_generation: u64,
+    gamepad_dead_zone_debouncer: crate::SettingsPatchDebouncer<SettingsGamepadAxisSettings>,
+    gamepad_dead_zone_timer_generation: u64,
     model_delete_confirmation: Option<SettingsModelKey>,
     model_row_focus: BTreeMap<ModelRowKey, ModelRowFocus>,
     model_behavior_preview_focus: BTreeMap<ModelBehaviorKey, FocusHandle>,
@@ -552,6 +554,40 @@ impl SettingsView {
         .detach();
     }
 
+    fn schedule_gamepad_dead_zone_flush(&mut self, cx: &mut Context<Self>) {
+        self.gamepad_dead_zone_timer_generation =
+            self.gamepad_dead_zone_timer_generation.saturating_add(1);
+        let generation = self.gamepad_dead_zone_timer_generation;
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            executor.timer(crate::SETTINGS_PATCH_DEBOUNCE).await;
+            let _ = this.update(cx, |view, cx| {
+                if view.gamepad_dead_zone_timer_generation != generation || view.pending.is_some() {
+                    return;
+                }
+                let Some(settings) = view.gamepad_dead_zone_debouncer.ready(Instant::now()) else {
+                    return;
+                };
+                let Some(expected_config_revision) = view
+                    .snapshot
+                    .as_ref()
+                    .and_then(|snapshot| snapshot.config_revision)
+                else {
+                    return;
+                };
+                view.start_request(
+                    PendingOperation::GamepadAxisSettings,
+                    Some(SettingValue::GamepadAxisSettings {
+                        expected_config_revision,
+                        settings,
+                    }),
+                    cx,
+                );
+            });
+        })
+        .detach();
+    }
+
     fn start_request(
         &mut self,
         operation: PendingOperation,
@@ -573,6 +609,10 @@ impl SettingsView {
             Some(SettingValue::OverlayOpacity {
                 opacity_percent, ..
             }) => Some(*opacity_percent),
+            _ => None,
+        };
+        let sent_gamepad_dead_zone = match value.as_ref() {
+            Some(SettingValue::GamepadAxisSettings { settings, .. }) => Some(*settings),
             _ => None,
         };
         cx.spawn(async move |this, cx| {
@@ -751,6 +791,14 @@ impl SettingsView {
                     view.overlay_opacity_debouncer.mark_sent(&opacity_percent);
                     if view.overlay_opacity_debouncer.is_pending() {
                         view.schedule_overlay_opacity_flush(cx);
+                    }
+                }
+                if result.is_ok()
+                    && let Some(settings) = sent_gamepad_dead_zone
+                {
+                    view.gamepad_dead_zone_debouncer.mark_sent(&settings);
+                    if view.gamepad_dead_zone_debouncer.is_pending() {
+                        view.schedule_gamepad_dead_zone_flush(cx);
                     }
                 }
                 if let Some(snapshot) = refreshed.filter(|snapshot| {

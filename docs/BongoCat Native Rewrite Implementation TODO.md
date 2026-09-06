@@ -872,6 +872,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     timer generation，连续编辑只提交稳定后的最新透明度；请求失败保留未确认值，成功确认后
     才清除。scale/opacity 的去抖回归、UI Clippy 和格式检查通过；gamepad dead-zone、FPS 和
     release timeout 等连续字段仍待接入，故本项保持未勾选。
+  - 状态（2026-09-07）：gamepad stick/trigger dead-zone 输入已使用单一 typed
+    `SettingsGamepadAxisSettings` debouncer 合并，连续编辑只提交最新成对值；请求确认后清除，
+    服务忙时保留 pending 并由 timer/请求完成路径继续发送。现有 gamepad command contract、
+    UI 定向测试和严格 Clippy 通过；FPS、release timeout 及 shutdown flush UI 接入仍待完成。
 - [ ] GPUI 只通过 typed command 获取 snapshot 和提交 patch。
   - 状态（2026-09-01）：正式 UI 对显隐、motion audio、模型交互和 gamepad dead-zone 使用有界
     typed command/reply，成功结果携带新 runtime revision，文件写入在 app service worker 完成；

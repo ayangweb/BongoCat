@@ -479,7 +479,7 @@ impl SettingsView {
         delta: i16,
         cx: &mut Context<Self>,
     ) {
-        if self.pending.is_some() || self.model_import.is_running() {
+        if self.model_import.is_running() {
             return;
         }
         let Some(snapshot) = self.snapshot.as_ref() else {
@@ -495,7 +495,12 @@ impl SettingsView {
             &mut settings.trigger_dead_zone_percent
         };
         *value = (i16::from(*value) + delta).clamp(0, 99) as u8;
-        self.set_gamepad_axis_settings(settings, cx);
+        let value = if stick {
+            settings.stick_dead_zone_percent
+        } else {
+            settings.trigger_dead_zone_percent
+        };
+        self.set_gamepad_dead_zone_value(stick, f64::from(value), cx);
     }
 
     pub(super) fn set_gamepad_dead_zone_value(
@@ -504,7 +509,7 @@ impl SettingsView {
         raw: f64,
         cx: &mut Context<Self>,
     ) {
-        if self.pending.is_some() || self.model_import.is_running() {
+        if self.model_import.is_running() {
             return;
         }
         let value = raw.round().clamp(0.0, 99.0) as u8;
@@ -524,29 +529,27 @@ impl SettingsView {
             return;
         }
         *current = value;
-        self.set_gamepad_axis_settings(settings, cx);
-    }
-
-    pub(super) fn set_gamepad_axis_settings(
-        &mut self,
-        settings: SettingsGamepadAxisSettings,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(expected_config_revision) = self
-            .snapshot
-            .as_ref()
-            .and_then(|snapshot| snapshot.config_revision)
-        else {
-            return;
-        };
-        self.start_request(
-            PendingOperation::GamepadAxisSettings,
-            Some(SettingValue::GamepadAxisSettings {
-                expected_config_revision,
-                settings,
-            }),
-            cx,
-        );
+        let expected_config_revision = snapshot.config_revision;
+        let should_send = self
+            .gamepad_dead_zone_debouncer
+            .observe(settings, Instant::now())
+            .filter(|_| self.pending.is_none())
+            .and_then(|settings| {
+                expected_config_revision.map(|expected_config_revision| {
+                    self.start_request(
+                        PendingOperation::GamepadAxisSettings,
+                        Some(SettingValue::GamepadAxisSettings {
+                            expected_config_revision,
+                            settings,
+                        }),
+                        cx,
+                    );
+                })
+            })
+            .is_some();
+        if !should_send {
+            self.schedule_gamepad_dead_zone_flush(cx);
+        }
     }
 
     pub(super) fn set_startup_item_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
