@@ -726,6 +726,10 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
     deadline 内返回 `TimedOut`，但 worker 随后发生 panic 时会继续累计匿名
     `worker_panicked` 诊断，不再因丢弃 join handle 而静默丢失错误。新增超时后 late-panic
     聚合回归通过。真实阻塞工作预算和平台线程故障注入仍待完成。
+  - 状态（2026-09-07）：新增仅测试可用的 shutdown 阶段阻塞注入，固定调用方在短 deadline
+    内返回 `TimedOut`，已接收 command 仍被 drain，worker 延迟后进入 `Stopped`，且 watcher
+    不产生误报 panic。该 contract 证明 runtime 的有界退出边界，但不代表真实模型解析、磁盘、
+    音频或 GPU 阻塞已拆分到独立 worker；平台线程故障注入仍待完成。
 - [x] command 定义幂等性和重复提交语义；有副作用的长操作使用 operation id 去重。
   - 验收证据（2026-09-06）：runtime command envelope 以单调 sequence 拒绝重复和乱序投递；
     `Set*` 与相同 active motion/priority 的重试保持状态，并且 duplicate motion 不重新启动

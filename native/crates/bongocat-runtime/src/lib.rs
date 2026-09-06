@@ -1093,6 +1093,7 @@ impl RuntimeOwner {
             MotionAudioClient::unavailable(),
             Arc::new(SystemMonotonicClock::start()),
             false,
+            Duration::ZERO,
         )
     }
 
@@ -1110,6 +1111,7 @@ impl RuntimeOwner {
             motion_audio,
             Arc::new(SystemMonotonicClock::start()),
             false,
+            Duration::ZERO,
         )
     }
 
@@ -1127,6 +1129,7 @@ impl RuntimeOwner {
                 MotionAudioClient::unavailable(),
                 Arc::new(SystemMonotonicClock::start()),
                 false,
+                Duration::ZERO,
             ),
             consumer,
         )
@@ -1148,6 +1151,7 @@ impl RuntimeOwner {
                 motion_audio,
                 Arc::new(SystemMonotonicClock::start()),
                 false,
+                Duration::ZERO,
             ),
             consumer,
         )
@@ -1184,6 +1188,7 @@ impl RuntimeOwner {
                 motion_audio,
                 clock,
                 false,
+                Duration::ZERO,
             ),
             consumer,
         )
@@ -1199,9 +1204,29 @@ impl RuntimeOwner {
             MotionAudioClient::unavailable(),
             Arc::new(SystemMonotonicClock::start()),
             true,
+            Duration::ZERO,
         )
     }
 
+    #[cfg(test)]
+    fn start_with_shutdown_delay(
+        initial_overlay_visible: bool,
+        command_capacity: usize,
+        shutdown_delay: Duration,
+    ) -> Self {
+        Self::start_internal(
+            initial_overlay_visible,
+            false,
+            command_capacity,
+            None,
+            MotionAudioClient::unavailable(),
+            Arc::new(SystemMonotonicClock::start()),
+            false,
+            shutdown_delay,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn start_internal(
         initial_overlay_visible: bool,
         initial_motion_audio_enabled: bool,
@@ -1210,6 +1235,7 @@ impl RuntimeOwner {
         motion_audio: MotionAudioClient,
         clock: Arc<dyn MonotonicClock>,
         panic_after_stopped: bool,
+        shutdown_delay: Duration,
     ) -> Self {
         assert!(
             command_capacity > 0,
@@ -1268,6 +1294,7 @@ impl RuntimeOwner {
                         command_transport,
                         shutdown: worker_shutdown,
                         panic_after_stopped,
+                        shutdown_delay,
                     },
                 )
             })
@@ -1461,6 +1488,7 @@ struct RuntimeWorkerBootstrap {
     command_transport: Arc<CommandTransportCounters>,
     shutdown: Arc<ShutdownSignal>,
     panic_after_stopped: bool,
+    shutdown_delay: Duration,
 }
 
 fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBootstrap) {
@@ -1476,6 +1504,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
         command_transport,
         shutdown,
         panic_after_stopped,
+        shutdown_delay,
     } = bootstrap;
     let mut renderer = renderer.map(RuntimeRenderer::start);
     let mut active_model = None;
@@ -1961,6 +1990,9 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                         }
                     }
                     WorkerCommand::Shutdown => {
+                        if !shutdown_delay.is_zero() {
+                            thread::sleep(shutdown_delay);
+                        }
                         stop_motion_audio(&motion_audio, sequence, MotionAudioStopReason::Shutdown);
                         publish(&snapshot, |current| {
                             current.state = RuntimeState::Stopping;
@@ -2953,6 +2985,39 @@ mod tests {
             .wait_for_state(RuntimeState::Stopped, TIMEOUT)
             .expect("detached worker eventually drains and stops");
         assert_eq!(stopped.state, RuntimeState::Stopped);
+    }
+
+    #[test]
+    fn shutdown_timeout_bounds_a_blocking_worker_and_eventually_drains() {
+        let owner = RuntimeOwner::start_with_shutdown_delay(true, 1, Duration::from_millis(100));
+        let client = owner.client();
+        client
+            .wait_for_state(RuntimeState::Ready, TIMEOUT)
+            .expect("runtime ready");
+        client
+            .send(RuntimeCommand::SetOverlayVisible(false))
+            .expect("queued command before shutdown");
+
+        let started = Instant::now();
+        assert_eq!(
+            owner.shutdown(Duration::from_millis(5)),
+            Err(ShutdownError::TimedOut)
+        );
+        assert!(
+            started.elapsed() < Duration::from_millis(75),
+            "shutdown caller must not wait for the blocking worker"
+        );
+        assert_eq!(client.snapshot().shutdown.timed_out, 1);
+
+        let stopped = client
+            .wait_for_state(RuntimeState::Stopped, TIMEOUT)
+            .expect("blocking worker eventually drains and stops");
+        assert_eq!(stopped.state, RuntimeState::Stopped);
+        assert!(
+            !stopped.overlay_visible,
+            "shutdown must drain the queued command"
+        );
+        assert_eq!(client.snapshot().shutdown.worker_panicked, 0);
     }
 
     #[test]
