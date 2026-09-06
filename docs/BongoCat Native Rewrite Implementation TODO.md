@@ -1526,7 +1526,13 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     尚未实现，因此保持未勾选。
   - 状态（2026-08-31）：state 进一步使用独立环境根和 `locks/state.writer.lock`，Development/
     Production 写入不同窗口布局并重启读回；日志 writer 缺失仍阻止总项勾选。
-- [ ] 开发构建即使收到指向 Production 的 CLI 参数或进程环境变量也拒绝越界。
+- [x] 开发构建即使收到指向 Production 的 CLI 参数或进程环境变量也拒绝越界。
+  - 验收证据（2026-09-06）：`bongocat-app` 仅在构建脚本读取
+    `BONGOCAT_BUILD_ENV` 并将其编译为不可变的 `BUILD_ENVIRONMENT`；运行期从不读取该变量，
+    `Application::start` 只以该常量派生 `platform_layout`。默认产品 CLI 的
+    `run_options_reject_missing_invalid_and_unknown_values` 明确拒绝 `--environment production`、
+    `--BONGOCAT_BUILD_ENV=production` 和 `--storage-root /production`，测试存储注入又在 Production
+    组合下编译期失败，因此运行时输入无法把 Development 定向到 Production 根。
 - [x] Production 不自动复制 Development 数据；需要测试数据时使用显式导入。
   - 验收证据（2026-09-06）：`bongocat-config::production_first_load_never_copies_development_configuration`
     先提交非默认 Development 配置，再首次创建 Production store；Production 仍只生成当前 v1
