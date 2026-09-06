@@ -1767,10 +1767,12 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     `manifest.json`、匿名 `diagnostics.json` 和严格重新序列化的 application code event records；
     Cubism Core message/原始 `.jsonl` 明确排除，只保留现有匿名聚合统计。2026-09-06 已接入 app-owned
     writer：它只枚举严格命名的 regular application logs、逐条以 closed schema 重新序列化为固定 code
-    record，输出后用 ZIP reader 复核唯一固定 entries、manifest、匿名 diagnostics JSON 和 event count；每个来源最多 1 MiB、最多 8 个，未知字段/损坏来源
+    record，输出后用 ZIP reader 复核唯一固定 entries、manifest、匿名 diagnostics JSON 和 event count；
+    每个来源最多 1 MiB、最多 8 个，未知字段/损坏来源
     跳过且不复制原 bytes。typed settings result 已投影 ZIP format、固定 entry 数、bundle bytes 和匿名
     skipped-source count；Diagnostics 页面以中英文显示这些稳定结果，不显示路径、archive entry 或日志正文。
-    测试 writer 已在 temporary file 打开后及 commit 前注入失败，固定旧 preview 保留且 staging 清理；
+    测试 writer 已拒绝 symlink/non-regular target，并在 temporary file 打开后及 commit 前注入失败，
+    固定旧 preview 保留且 staging 清理；
     OS-level sync/replace failure injection 和双平台 smoke 仍待实现，本项保持未勾选。
   - 状态（2026-09-01）：settings service 已新增有界 `ExportDiagnostics` command，使用当前环境
     `logs/diagnostics.json` 的同目录原子写入生成 format v1 JSON。导出只包含稳定 runtime/input/

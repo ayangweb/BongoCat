@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::cell::Cell;
 use std::{
     fs,
-    io::{Cursor, Read, Write},
+    io::{Cursor, ErrorKind, Read, Write},
     path::Path,
 };
 use zip::{CompressionMethod, ZipArchive, ZipWriter, write::SimpleFileOptions};
@@ -331,6 +331,7 @@ fn verified_event_count(bytes: &[u8]) -> Result<u64, PreviewBundleError> {
 }
 
 fn write_private_atomic(path: &Path, bytes: &[u8]) -> Result<(), PreviewBundleError> {
+    ensure_regular_or_missing_target(path)?;
     #[cfg(unix)]
     let options = {
         use atomic_write_file::unix::OpenOptionsExt;
@@ -355,6 +356,15 @@ fn write_private_atomic(path: &Path, bytes: &[u8]) -> Result<(), PreviewBundleEr
             .map_err(|_| PreviewBundleError)?;
     }
     Ok(())
+}
+
+fn ensure_regular_or_missing_target(path: &Path) -> Result<(), PreviewBundleError> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => Ok(()),
+        Ok(_) => Err(PreviewBundleError),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+        Err(_) => Err(PreviewBundleError),
+    }
 }
 
 #[cfg(test)]
@@ -442,5 +452,29 @@ mod tests {
     fn archive_verification_rejects_an_invalid_manifest() {
         let archive = write_archive(b"{}", b"{}", b"").expect("archive bytes");
         assert!(verify_archive(&archive).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bundle_rejects_a_symlink_target_without_touching_its_destination() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempdir().expect("temporary directory");
+        let destination = directory.path().join("outside-preview.zip");
+        fs::write(&destination, b"outside bytes").expect("outside preview");
+        let preview = directory.path().join(PREVIEW_BUNDLE_NAME);
+        symlink(&destination, &preview).expect("preview symlink");
+
+        assert!(write_preview_bundle(directory.path(), b"{\"format_version\":1}").is_err());
+        assert_eq!(
+            fs::read(&destination).expect("outside bytes"),
+            b"outside bytes"
+        );
+        assert!(
+            fs::symlink_metadata(&preview)
+                .expect("preview metadata")
+                .file_type()
+                .is_symlink()
+        );
     }
 }
