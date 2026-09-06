@@ -3128,6 +3128,9 @@ mod tests {
             vec!["--run-seconds".to_owned()],
             vec!["--run-seconds".to_owned(), "-1".to_owned()],
             vec!["--model".to_owned(), "standard".to_owned()],
+            vec!["--environment".to_owned(), "production".to_owned()],
+            vec!["--BONGOCAT_BUILD_ENV=production".to_owned()],
+            vec!["--storage-root".to_owned(), "/production".to_owned()],
         ] {
             assert!(RunOptions::parse(arguments).is_err());
         }
