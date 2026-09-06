@@ -244,11 +244,14 @@ unsafe extern "C" fn core_log_callback(message: *const c_char) {
 
 impl CoreLogSink {
     fn stats(&self) -> CoreLogStats {
-        let mut stats = self
+        let state = self
             .state
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .stats;
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut stats = state.stats;
+        let path = state.path.clone();
+        stats.retained_files = retained_log_files(&path);
+        stats.retained_bytes = retained_log_bytes(&path);
         let local_drops = self.callback_dropped.load(Ordering::Relaxed);
         let global_drops = CORE_LOG_CALLBACK_DROPS
             .load(Ordering::Relaxed)
@@ -716,6 +719,24 @@ mod tests {
         unsafe { core_log_callback(message.as_ptr()) };
         assert_eq!(handle.stats().written, 0);
         assert_eq!(handle.stats().dropped, 1);
+    }
+
+    #[test]
+    fn stats_refresh_after_another_writer_prunes_a_rotated_file() {
+        let _install_guard = CORE_LOG_INSTALL_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let directory = tempdir().expect("temporary directory");
+        let path = directory.path().join("core.jsonl");
+        let handle = CoreLogHandle::install(&path).expect("install Core logger");
+        fs::write(rotated_log_path(&path, 1), b"rotated").expect("seed rotated log");
+        assert_eq!(handle.stats().retained_files, 2);
+        fs::remove_file(rotated_log_path(&path, 1)).expect("prune rotated log");
+        assert_eq!(handle.stats().retained_files, 1);
+        assert_eq!(
+            handle.stats().retained_bytes,
+            fs::metadata(&path).unwrap().len()
+        );
     }
 
     fn wait_for_written(handle: &CoreLogHandle, expected: u64) {

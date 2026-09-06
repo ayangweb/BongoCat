@@ -1897,7 +1897,10 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
       stop 后迟到记录均只递增匿名 dropped，关闭先注销 callback 再排空并 join worker。`bongocat-live2d`
       39 项定向测试覆盖 contention、saturation、late callback 和 shutdown drain；macOS Development release
       诊断导出 smoke 与 `bongocat-app --run-seconds 4` 正常启动/退出均通过。跨域历史日志的统一
-      retention/aggregate policy 仍未完成，故总项保持未勾选。
+      retention/aggregate policy 已由 `bongocat-log` 共享 helper 接入。
+    - 状态（2026-09-07）：`CoreLogReporter::stats()` 每次采样都会从当前文件集合刷新
+      `retained_files`/`retained_bytes`，因此 application writer 清理 Core 轮转文件后，下一次
+      diagnostics export 不会继续显示过期容量；跨 writer 统计刷新回归通过。
 - [ ] 记录 renderer/input/model/config/update 的稳定 error code。
   - 状态（2026-09-01）：runtime renderer 已为 model load/evaluation、motion/expression load、GPU
     prepare、platform、transport 和 overlay validation 定义 10 个固定 snake_case code，并以唯一性
