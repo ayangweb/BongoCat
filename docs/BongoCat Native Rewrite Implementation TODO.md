@@ -2047,6 +2047,9 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     `--diagnostics-export-smoke`，断言稳定成功消息、私有 diagnostics JSON/preview ZIP 和固定
     archive entries；Windows 平台不再只有单元测试覆盖。OS-level failure injection 仍待产品
     smoke 覆盖，本项保持未勾选。
+  - 状态（2026-09-07）：settings service 新增失败重试 contract，确认一次成功导出后，后续
+    provider/文件系统失败返回稳定 `diagnostics_export_failed`，且 snapshot 保留上次成功的
+    format/bytes/entry 结果，UI 可安全显示并重试而不会丢失最近一次成功状态。
   - 状态（2026-09-07）：新增 `--diagnostics-export-failure-smoke` 产品级失败路径。macOS/Windows
     均以真实目录目标触发 diagnostics 原子 open/replace 失败，macOS 另以不可写 `logs/` 目录
     触发同步/写入失败；两平台均验证稳定 `diagnostics_export_failed`、既有 preview 保留和

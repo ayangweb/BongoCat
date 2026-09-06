@@ -2439,6 +2439,33 @@ mod tests {
         }
     }
 
+    struct FailingDiagnosticsExport {
+        calls: AtomicUsize,
+    }
+
+    impl DiagnosticsExportCapability for FailingDiagnosticsExport {
+        fn export(
+            &self,
+            _snapshot: &SettingsSnapshot,
+            _application_logs: ApplicationLogDiagnostics,
+            _core_logs: Option<CoreLogDiagnostics>,
+            _update: Option<UpdateDiagnostics>,
+        ) -> Result<SettingsDiagnosticsExportStatus, SettingsError> {
+            if self.calls.fetch_add(1, Ordering::AcqRel) == 0 {
+                Ok(SettingsDiagnosticsExportStatus {
+                    format_version: DIAGNOSTICS_EXPORT_FORMAT_VERSION,
+                    bytes_written: 11,
+                    preview_bundle_format_version: 1,
+                    preview_bundle_bytes_written: 22,
+                    preview_bundle_entry_count: 3,
+                    preview_bundle_skipped_source_files: 0,
+                })
+            } else {
+                Err(SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))
+            }
+        }
+    }
+
     #[test]
     fn diagnostics_export_is_atomic_aggregated_and_path_free() {
         #[cfg(unix)]
@@ -3398,6 +3425,41 @@ mod tests {
         );
         let refreshed = client.read_snapshot_blocking().expect("refreshed snapshot");
         assert_eq!(refreshed, exported);
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
+    }
+
+    #[test]
+    fn failed_diagnostics_retry_preserves_the_last_successful_snapshot_result() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application = Application::start_with_layout(layout).expect("application start");
+        let service = ApplicationSettingsService::start_with_capabilities(
+            application,
+            Arc::new(TestStartupItem::new(SettingsStartupItemStatus::State(
+                SettingsStartupItemState::Disabled,
+            ))),
+            Arc::new(TestBackupLocation::new()),
+            Arc::new(FailingDiagnosticsExport {
+                calls: AtomicUsize::new(0),
+            }),
+        )
+        .expect("service start");
+        let client = service.client();
+
+        let exported = client
+            .export_diagnostics_blocking()
+            .expect("initial diagnostics export");
+        let retry_error = client
+            .export_diagnostics_blocking()
+            .expect_err("diagnostics retry must expose the provider failure");
+        assert_eq!(
+            retry_error.code(),
+            SettingsErrorCode::DiagnosticsExportFailed
+        );
+        let refreshed = client.read_snapshot_blocking().expect("refreshed snapshot");
+        assert_eq!(refreshed, exported);
+
         client.shutdown_blocking().expect("service shutdown");
         service.join().expect("service join");
     }
