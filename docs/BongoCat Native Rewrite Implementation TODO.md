@@ -1105,7 +1105,16 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     independent unit test；本机 macOS release preview 成功呈现 57 帧（21 drawable、5 mask、3
     texture，GPU allocation 稳定）。Windows D3D11 物理 present 与跨 backend 像素对比尚未完成，
     因此本项保持未勾选。
-- [ ] 实现 clipping mask、inverted mask 和 mask texture 生命周期。
+- [x] 实现 clipping mask、inverted mask 和 mask texture 生命周期。
+  - 验收证据（2026-09-06）：Core safe wrapper 将每个 drawable 的 validated mask source IDs 和
+    `csmIsInvertedMask` flag 投影到 immutable `RenderSnapshot`，拒绝 null、negative 或越界 mask
+    index。Metal 与 D3D11 分别为每个 clipped drawable 创建同尺寸线性 alpha target，先以 source
+    drawable 累积 mask pass，再由主 pass 采样；inverted flag 在同一 shared shader contract 中将
+    coverage 反转。无 mask 的 drawable 不进入 mask pass，model replacement 时 target 由旧 GPU
+    model owner 一起释放；同 generation 的 clipping topology 改变被明确拒绝，避免复用错误资源。
+    预置 `standard` preview 已实际报告 5 个 masked drawable；本次 `cargo test -p bongocat-render
+--locked` 通过 12 项 transport/resource contract test。Windows hardware pixel comparison 仍由
+    `D3D11/Metal 对相同 snapshot 行为一致` 与 release matrix 单独验收。
 - [ ] 实现 texture upload、sampler、过滤和颜色空间策略。
 - [ ] 只在 dirty 时更新必要 GPU 资源。
 - [ ] D3D11/Metal 对相同 snapshot 行为一致。
