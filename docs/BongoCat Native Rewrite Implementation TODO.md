@@ -1550,7 +1550,12 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     ID 不覆盖已安装内容；Application 的 `rejected_gpu_model_switch_restores_the_previous_config_selection`
     回归验证 GPU 拒绝后旧配置选择与 active model 保持不变。配置与模型定向测试均通过，应用
     回滚测试已纳入既有 app test suite；失败路径不会跨环境读写。
-- [ ] 发布依赖和运行日志中没有旧 Tauri/Pinia 配置探测。
+- [x] 发布依赖和运行日志中没有旧 Tauri/Pinia 配置探测。
+  - 验收证据（2026-09-06）：Native runtime、config、日志、打包脚本和 manifest 没有
+    Tauri/Pinia 配置路径、字段 alias 或导入逻辑；`cargo tree --target all` 仅显示
+    `tauri-winrt-notification` 作为 GPUI Linux notification 的传递平台依赖，不提供
+    Tauri 应用或配置 API。源码中出现的 `old_pinia_field` 仅用于 strict config 拒绝测试，
+    `src-tauri/assets/models` 仅用于预置模型 parser 测试，均不进入发布运行时或日志路径。
 - [x] Bundle ID 精确验证为 `com.ayangweb.bongo-cat`。
   - 验收证据（2026-09-05）：配置与存储根使用固定 `BUNDLE_ID` 常量；macOS 打包脚本在签名前
     读取 `CFBundleIdentifier` 并拒绝任何非预期值，release LaunchServices smoke 再次断言该值且
