@@ -45,11 +45,14 @@ def is_candidate(path: Path) -> bool:
 
 def collect(input_root: Path, output_root: Path, platform: str) -> dict[str, object]:
     input_root = input_root.resolve()
+    output_root = output_root.resolve()
     output_root.mkdir(parents=True, exist_ok=True)
     entries: list[dict[str, object]] = []
     total_bytes = 0
 
     for source in sorted(input_root.rglob("*")):
+        if source == output_root or output_root in source.parents:
+            continue
         if len(entries) >= MAX_FILES or total_bytes >= MAX_TOTAL_BYTES:
             break
         if not is_candidate(source):

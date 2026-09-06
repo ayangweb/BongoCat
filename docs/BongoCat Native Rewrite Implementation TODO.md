@@ -564,6 +564,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     尚未覆盖未产生临时日志的纯 contract job，也未将真实平台截图接入 smoke，故保持未勾选。
   - 状态（2026-09-07）：新增 `test_native_failure_evidence_workflow.py` 静态 contract，持续检查
     失败 artifact 必须经收集器、使用 7 日保留且禁止直接 glob 上传 runner 原始日志。
+  - 状态（2026-09-07）：修复收集器输入/输出同目录时的递归扫描边界，输出子树现在明确跳过；回归
+    覆盖 workflow 实际 `$RUNNER_TEMP/bongocat-failure-evidence` 布局，避免 manifest 或已收集文件
+    被重复上传。
 - [ ] 构建产物记录 source commit、Cargo.lock hash、toolchain、target 和 feature set。
   - [x] `tools/record-native-provenance.py` 生成无绝对路径的 JSON；Native 三平台 CI 上传 runner
         provenance，macOS `.app` 将其放入 `Contents/Resources/build-provenance.json`。工具测试验证

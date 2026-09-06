@@ -68,6 +68,29 @@ class NativeFailureEvidenceTests(unittest.TestCase):
             self.assertEqual(manifest["file_count"], 1)
             self.assertEqual(manifest["files"][0]["kind"], "image")
 
+    def test_output_directory_inside_input_is_not_collected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "runner-temp"
+            output = source / "bongocat-failure-evidence"
+            source.mkdir()
+            (source / "smoke.log").write_text("status=failed\n", encoding="utf-8")
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--input",
+                    str(source),
+                    "--output",
+                    str(output),
+                    "--platform",
+                    "Linux",
+                ],
+                check=True,
+            )
+            manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["file_count"], 1)
+            self.assertEqual(manifest["files"][0]["name"], "smoke.log")
+
 
 if __name__ == "__main__":
     unittest.main()
