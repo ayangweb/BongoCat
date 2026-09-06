@@ -1178,18 +1178,6 @@ jobs:
           cargo check --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked --release
       - name: Check macOS input spike release build
         run: cargo check --manifest-path spikes/input-macos/Cargo.toml --locked --release
-      - name: Collect redacted Native failure evidence
-        if: ${{ failure() }}
-        shell: bash
-        run: python3 tools/collect-native-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
-      - name: Upload redacted Native failure evidence
-        if: ${{ failure() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: native-failure-evidence-macos-spikes
-          path: ${{ runner.temp }}/bongocat-failure-evidence
-          if-no-files-found: error
-          retention-days: 7
       - name: Build macOS settings smoke executable
         timeout-minutes: 10
         run: cargo build --manifest-path spikes/gpui-settings/Cargo.toml --locked
@@ -1385,6 +1373,18 @@ jobs:
           if non_empty_frames != 100 * measurement_batches:
               raise RuntimeError("overlay cycle smoke frame accounting did not balance")
           PY
+      - name: Collect redacted Native failure evidence
+        if: ${{ failure() }}
+        shell: bash
+        run: python3 tools/collect-native-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
+      - name: Upload redacted Native failure evidence
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-failure-evidence-macos-spikes
+          path: ${{ runner.temp }}/bongocat-failure-evidence
+          if-no-files-found: error
+          retention-days: 7
 
   windows-input-spike:
     name: Smoke Windows input and config services

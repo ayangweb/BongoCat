@@ -567,6 +567,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-09-07）：修复收集器输入/输出同目录时的递归扫描边界，输出子树现在明确跳过；回归
     覆盖 workflow 实际 `$RUNNER_TEMP/bongocat-failure-evidence` 布局，避免 manifest 或已收集文件
     被重复上传。
+  - 状态（2026-09-07）：失败收集步骤已移至 macOS spike 全部构建与 smoke 之后，并由 workflow
+    contract 测试锁定顺序，确保后置的 GPUI/Metal smoke 失败同样产生脱敏证据。
 - [ ] 构建产物记录 source commit、Cargo.lock hash、toolchain、target 和 feature set。
   - [x] `tools/record-native-provenance.py` 生成无绝对路径的 JSON；Native 三平台 CI 上传 runner
         provenance，macOS `.app` 将其放入 `Contents/Resources/build-provenance.json`。工具测试验证

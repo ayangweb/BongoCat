@@ -31,6 +31,14 @@ class NativeFailureEvidenceWorkflowTests(unittest.TestCase):
             2,
         )
 
+    def test_macos_spike_evidence_collection_runs_after_all_smokes(self):
+        source = WORKFLOW.read_text(encoding="utf-8")
+        macos_job = source[source.index("  macos-spikes:") : source.index("  windows-input-spike:")]
+        self.assertGreater(
+            macos_job.rfind("Collect redacted Native failure evidence"),
+            macos_job.rfind("Smoke independent AppKit and Metal overlay"),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
