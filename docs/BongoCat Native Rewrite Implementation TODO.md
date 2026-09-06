@@ -748,6 +748,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-09-07）：正式 runtime 的共享 fixture contract 新增 `shared/fixtures/manifest.json`，
     显式登记 9 组 input/expected 文件并校验 schema 版本、唯一 id、单组件文件名和目录覆盖；新增
     fixture 未同步清单或缺少配对文件时会明确失败。该项仍不替代双平台实机输入证据。
+  - 状态（2026-09-07）：`tools/validate-fixtures.py` 现与 Rust contract 共用该清单，校验 id、文件名、
+    输入/期望配对和目录覆盖后再运行既有 schema/语义 oracle，避免独立 runner 漂移；9 组输入、9 组期望
+    fixture 校验通过。
   - 状态（2026-09-01）：正式 `bongocat-runtime` 新增 `shared_input_fixtures` 集成测试，真实驱动
     typed `InputEvent`、cursor/axis latest producer 和 `RuntimeCommand::Tick`，对 8 组纯输入 fixture
     的 17 个 checkpoint 比较匿名计数、左右手/鼠标投影、Reset 原因和 cursor 样本；Native workspace

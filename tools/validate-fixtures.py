@@ -15,6 +15,7 @@ from pathlib import Path, PurePosixPath
 ROOT = Path(__file__).resolve().parents[1]
 INPUT_DIR = ROOT / "shared" / "fixtures" / "input-sequences"
 EXPECTED_DIR = ROOT / "shared" / "fixtures" / "expected-state"
+BEHAVIOR_MANIFEST = ROOT / "shared" / "fixtures" / "manifest.json"
 LEGACY_CONFIG_DIR = ROOT / "shared" / "config" / "legacy-pinia"
 LEGACY_STORE_NAMES = ("app", "general", "cat", "model", "shortcut")
 MODEL_FIXTURE_DIR = ROOT / "shared" / "fixtures" / "model-fixtures"
@@ -450,13 +451,64 @@ def validate_model_fixtures() -> int:
     return len(case_ids)
 
 
+def validate_behavior_manifest() -> tuple[set[str], set[str]]:
+    manifest = load(BEHAVIOR_MANIFEST)
+    cases = manifest.get("cases")
+    if manifest.get("schemaVersion") != 1 or not isinstance(cases, list) or not cases:
+        fail(BEHAVIOR_MANIFEST, "schemaVersion must be 1 and cases must be a non-empty array")
+
+    ids: set[str] = set()
+    input_files: set[str] = set()
+    expected_files: set[str] = set()
+    for index, case in enumerate(cases):
+        if not isinstance(case, dict):
+            fail(BEHAVIOR_MANIFEST, f"cases[{index}] must be an object")
+        case_id = case.get("id")
+        input_file = case.get("input")
+        expected_file = case.get("expected")
+        if not isinstance(case_id, str) or case_id in ids:
+            fail(BEHAVIOR_MANIFEST, f"cases[{index}].id must be a unique string")
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", case_id):
+            fail(BEHAVIOR_MANIFEST, f"cases[{index}].id must use lowercase kebab-case")
+        for name, value, registered in (
+            ("input", input_file, input_files),
+            ("expected", expected_file, expected_files),
+        ):
+            if not isinstance(value, str) or Path(value).name != value or not value.endswith(".json"):
+                fail(BEHAVIOR_MANIFEST, f"cases[{index}].{name} must be one JSON file name")
+            if value == "schema.json" or value in registered:
+                fail(BEHAVIOR_MANIFEST, f"cases[{index}].{name} is duplicated or reserved")
+            registered.add(value)
+        ids.add(case_id)
+
+        input_path = INPUT_DIR / input_file
+        expected_path = EXPECTED_DIR / expected_file
+        if not input_path.is_file() or not expected_path.is_file():
+            fail(BEHAVIOR_MANIFEST, f"cases[{index}] references missing fixture files")
+        if input_file.removesuffix(".json") != case_id:
+            fail(BEHAVIOR_MANIFEST, f"cases[{index}].input must match id")
+        if expected_file != input_file:
+            fail(BEHAVIOR_MANIFEST, f"cases[{index}] input and expected files must match")
+
+    actual_inputs = {path.name for path in INPUT_DIR.glob("*.json") if path.name != "schema.json"}
+    actual_expected = {
+        path.name for path in EXPECTED_DIR.glob("*.json") if path.name != "schema.json"
+    }
+    if actual_inputs != input_files:
+        fail(BEHAVIOR_MANIFEST, f"input fixture manifest coverage mismatch: {sorted(actual_inputs ^ input_files)}")
+    if actual_expected != expected_files:
+        fail(
+            BEHAVIOR_MANIFEST,
+            f"expected fixture manifest coverage mismatch: {sorted(actual_expected ^ expected_files)}",
+        )
+    return input_files, expected_files
+
+
 def main() -> int:
     legacy_case_count = validate_legacy_config_fixtures()
     model_case_count = validate_model_fixtures()
-    input_files = sorted(INPUT_DIR.glob("*.json"))
-    if not input_files:
-        print("no input fixtures found", file=sys.stderr)
-        return 1
+    manifest_inputs, manifest_expected = validate_behavior_manifest()
+    input_files = sorted(INPUT_DIR / name for name in manifest_inputs)
     input_ids: set[str] = set()
     for input_path in input_files:
         if input_path.name == "schema.json":
@@ -472,9 +524,7 @@ def main() -> int:
             fail(input_path, f"missing expected fixture {expected_path.name}")
         validate_expected(expected_path, load(expected_path), fixture_id, events)
         print(f"ok {fixture_id}")
-    expected_ids = {
-        path.stem for path in EXPECTED_DIR.glob("*.json") if path.name != "schema.json"
-    }
+    expected_ids = {Path(name).stem for name in manifest_expected}
     if orphaned := expected_ids - input_ids:
         fail(EXPECTED_DIR, f"expected fixtures without input sequences: {sorted(orphaned)}")
     print(
