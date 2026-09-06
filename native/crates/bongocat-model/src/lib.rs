@@ -3137,6 +3137,12 @@ mod tests {
     #[test]
     fn model_ids_are_portable_store_keys() {
         assert!(ModelId::parse("keyboard-v2_1").is_ok());
+        assert_eq!(
+            ModelId::parse("a".repeat(65))
+                .expect_err("overlong model id")
+                .code,
+            ModelDiagnostic::InvalidModelId
+        );
         for invalid in [
             "",
             "..",

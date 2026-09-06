@@ -1500,7 +1500,12 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     覆盖文件/目录占用，`forced_process_exit_releases_writer_lock_and_recovers_synced_temp` 覆盖持锁
     子进程中途退出后的恢复。完整 `cargo test -p bongocat-config --locked` 通过（46 passed，1 个
     仅供父测试调用的 ignored child probe）；当前配置字节、临时文件和恢复结果均有断言。
-- [ ] 覆盖非 ASCII/超长路径、缺失和重复模型。
+- [x] 覆盖非 ASCII/超长路径、缺失和重复模型。
+  - 验收证据（2026-09-06）：`bongocat-model` 覆盖非 ASCII 源目录与资源名的导入/解析，
+    65 字符超长 model ID 在文件系统访问前拒绝，缺失 `.moc3`/model3 入口和重复 installed
+    ID 均保持稳定诊断且不覆盖既有内容；portable ID property test 另覆盖任意字符串长度与
+    Windows 保留名边界。`cargo test -p bongocat-model --locked` 通过，平台文件选择实机证据
+    仍由 `P7-MODEL-DIRECTORY-PICKER` 跟踪。
 - [x] 当前 v1 连续读取 10 次结果一致且不会产生额外写入或备份。
 - [ ] 失败注入不丢当前环境的配置或用户模型。
 - [ ] 发布依赖和运行日志中没有旧 Tauri/Pinia 配置探测。
