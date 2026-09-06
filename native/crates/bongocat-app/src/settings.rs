@@ -2413,7 +2413,12 @@ mod tests {
             diagnostics_export: None,
             input_diagnostics: SettingsInputDiagnostics {
                 captured_down: 3,
-                transport_queue_full: 2,
+                captured_up: 4,
+                reconciled_release: 5,
+                released_by_reset: 6,
+                duplicate_down: 7,
+                transport_queue_full: 8,
+                transport_recovered_after_overflow: 9,
                 ..SettingsInputDiagnostics::default()
             },
             active_model: Some(SettingsModelKey {
@@ -2507,7 +2512,13 @@ mod tests {
         assert_eq!(document["runtime"]["command_queue_full"], 2);
         assert_eq!(document["runtime"]["command_sequence_gap_count"], 3);
         assert_eq!(document["runtime"]["command_missing_sequence_count"], 5);
-        assert_eq!(document["input"]["transport_queue_full"], 2);
+        assert_eq!(document["input"]["captured_down"], 3);
+        assert_eq!(document["input"]["captured_up"], 4);
+        assert_eq!(document["input"]["reconciled_release"], 5);
+        assert_eq!(document["input"]["released_by_reset"], 6);
+        assert_eq!(document["input"]["duplicate_down"], 7);
+        assert_eq!(document["input"]["transport_queue_full"], 8);
+        assert_eq!(document["input"]["transport_recovered_after_overflow"], 9);
         assert_eq!(document["models"]["ready_installed"], 1);
         assert_eq!(document["application_logs"]["written"], 3);
         assert_eq!(document["application_logs"]["dropped"], 1);
