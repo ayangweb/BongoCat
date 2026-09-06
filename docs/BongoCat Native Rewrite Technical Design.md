@@ -1,7 +1,7 @@
 # BongoCat Native Rewrite Technical Design
 
 状态：架构决策稿，Phase 0 证据补齐与 Phase 1 渐进实现并行
-最后更新：2026-09-05
+最后更新：2026-09-06
 首发平台：Windows 10 1903+、macOS 12+
 后续平台：Linux（首发后评估）
 
@@ -460,6 +460,11 @@ model evaluation + render snapshot
   Core、官方 header 和由该 header 生成的 target binding。公开发布前另行核对
   attribution 与再分发清单；该发布工作不阻塞本地功能实现和 `next` 开发提交。
 - 原始指针不离开 safe wrapper；Moc 必须比 Model 活得更久。
+- Core 全局日志 callback 只在 callback 生命周期内有界复制至多 512 bytes，并以容量 128 的
+  非阻塞队列交给专用 Rust worker；callback 不获取 writer mutex、不序列化、不执行文件 I/O。
+  全局 callback-slot 竞争、队列满、停止后的迟到 callback 都只增加匿名 dropped 计数。关闭时先
+  注销 Core callback，拒绝新记录，再排空已接收记录并 join worker；Core message 与日志路径不进入
+  runtime、UI 或 diagnostics export。
 - 不把未经验证的新纯 Rust Cubism 兼容 crate 作为生产基础。
 - `.model3.json`、motion、expression、physics 和 pose 兼容性由 fixture 验证。
 - 每帧从 Core 默认 parameter 开始，依次应用 motion、expression、自动 EyeBlink/Breath、

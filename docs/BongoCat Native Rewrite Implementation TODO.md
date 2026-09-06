@@ -1755,6 +1755,12 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     - 状态（2026-09-06）：Core callback owner 通过 `CoreLogReporter` 提供只读匿名统计，正式产品入口
       注册 provider；settings worker 将当前采样写入 `core_logs`，无需读取或复制 `cubism-core.jsonl`。
       应用 provider 与原子 export 定向测试覆盖缺失/存在 Core owner 和字段值。
+    - 状态（2026-09-06）：Core FFI callback 已改为只做 512-byte 有界复制与容量 128 的非阻塞入队；
+      JSON、轮转和文件 I/O 只在专用 Rust worker 执行。global callback-slot contention、queue full 和
+      stop 后迟到记录均只递增匿名 dropped，关闭先注销 callback 再排空并 join worker。`bongocat-live2d`
+      39 项定向测试覆盖 contention、saturation、late callback 和 shutdown drain；macOS Development release
+      诊断导出 smoke 与 `bongocat-app --run-seconds 4` 正常启动/退出均通过。跨域历史日志的统一
+      retention/aggregate policy 仍未完成，故总项保持未勾选。
 - [ ] 记录 renderer/input/model/config/update 的稳定 error code。
   - 状态（2026-09-01）：runtime renderer 已为 model load/evaluation、motion/expression load、GPU
     prepare、platform、transport 和 overlay validation 定义 10 个固定 snake_case code，并以唯一性

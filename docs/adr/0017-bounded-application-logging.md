@@ -19,7 +19,10 @@ Native Rewrite 需要可诊断的应用生命周期记录，但不能把按键�
 - 写入、轮转或清理失败不得传播动态 I/O 文本；writer 只增加 `dropped`/`pruned` 等匿名统计。
   诊断导出只读取这些统计，不复制原始日志。
 - Cubism Core 日志仍由其 FFI callback 专用 sink 管理；两类日志不共享 callback 或裸 handle，
-  也不在本 ADR 中宣称 Core 历史文件已经统一清理。
+  也不在本 ADR 中宣称 Core 历史文件已经统一清理。Core callback 只复制至多 512 bytes 到容量
+  128 的 non-blocking queue；专用 Rust worker 才执行 UTF-8 清理、JSON serialization、rotation
+  和文件 I/O。callback-slot contention、queue full 和 stop 后迟到记录只增加匿名 dropped 计数。
+  shutdown 先注销 Core callback，再拒绝新记录、排空队列并 join worker。
 - Application startup creates `application-running.marker` inside the environment's log directory.
   The v1 marker contains only a schema version and one fixed phase: `running`, `shutting_down`, or
   `panicked`; it is flushed before services start and is removed only after runtime/audio shutdown
@@ -35,7 +38,9 @@ Native Rewrite 需要可诊断的应用生命周期记录，但不能把按键�
 
 `bongocat-app` 单元测试覆盖固定字段、日期切换和过期清理、1 MiB 轮转、文件数量上限、无效
 目录失败路径以及运行标记的 forced/unknown、panic、shutdown interrupted 分类和正常清理；settings 测试验证导出包含匿名应用日志统计
-和固定事件计数且不泄漏路径或模型身份。
+和固定事件计数且不泄漏路径或模型身份。`bongocat-live2d` 覆盖 Core callback 的 global-slot
+contention、queue saturation、accepted-record shutdown drain、rotation 和私有文件权限；macOS
+Development release diagnostics-export smoke 覆盖产品安装、匿名指标导出和正常退出。
 
 ## 后续边界
 

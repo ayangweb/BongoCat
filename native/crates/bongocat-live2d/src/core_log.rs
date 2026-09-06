@@ -3,20 +3,26 @@
 use crate::sys;
 use serde::Serialize;
 use std::{
-    ffi::CStr,
     fs::{self, File, OpenOptions},
     io::{self, Write},
     os::raw::c_char,
     panic::{AssertUnwindSafe, catch_unwind},
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, OnceLock},
-    time::SystemTime,
+    sync::{
+        Arc, Mutex, OnceLock,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        mpsc::{Receiver, SyncSender, TryRecvError, TrySendError, sync_channel},
+    },
+    thread::{self, JoinHandle},
+    time::{Duration, SystemTime},
 };
 
 const MAX_LOG_BYTES: u64 = 1024 * 1024;
 const MAX_TOTAL_LOG_FILES: u32 = 8;
 const MAX_ROTATED_LOG_FILES: u32 = MAX_TOTAL_LOG_FILES - 1;
 const MAX_MESSAGE_BYTES: usize = 512;
+const CALLBACK_QUEUE_CAPACITY: usize = 128;
+const WORKER_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const RETENTION_DAYS: u64 = 7;
 const SECONDS_PER_DAY: u64 = 86_400;
 
@@ -24,6 +30,7 @@ const SECONDS_PER_DAY: u64 = 86_400;
 pub enum CoreLogError {
     CreateDirectory(io::Error),
     OpenFile(io::Error),
+    StartWorker(io::Error),
 }
 
 impl std::fmt::Display for CoreLogError {
@@ -33,6 +40,7 @@ impl std::fmt::Display for CoreLogError {
                 write!(formatter, "cannot create Core log directory: {error}")
             }
             Self::OpenFile(error) => write!(formatter, "cannot open Core log file: {error}"),
+            Self::StartWorker(error) => write!(formatter, "cannot start Core log worker: {error}"),
         }
     }
 }
@@ -57,9 +65,19 @@ struct CoreLogState {
     stats: CoreLogStats,
 }
 
+#[derive(Clone, Copy)]
+struct CoreLogMessage {
+    bytes: [u8; MAX_MESSAGE_BYTES],
+    length: usize,
+}
+
 #[derive(Debug)]
 struct CoreLogSink {
     state: Mutex<CoreLogState>,
+    sender: SyncSender<CoreLogMessage>,
+    accepting: AtomicBool,
+    callback_dropped: AtomicU64,
+    global_drop_baseline: u64,
 }
 
 #[derive(Serialize)]
@@ -70,6 +88,7 @@ struct CoreLogRecord<'a> {
 }
 
 static CORE_LOG_SINK: OnceLock<Mutex<Option<Arc<CoreLogSink>>>> = OnceLock::new();
+static CORE_LOG_CALLBACK_DROPS: AtomicU64 = AtomicU64::new(0);
 
 fn sink_slot() -> &'static Mutex<Option<Arc<CoreLogSink>>> {
     CORE_LOG_SINK.get_or_init(|| Mutex::new(None))
@@ -84,6 +103,7 @@ fn sink_slot() -> &'static Mutex<Option<Arc<CoreLogSink>>> {
 pub struct CoreLogHandle {
     sink: Arc<CoreLogSink>,
     path: PathBuf,
+    worker: Option<JoinHandle<()>>,
 }
 
 /// Read-only access to the anonymous retention counters maintained by the
@@ -108,6 +128,7 @@ impl CoreLogHandle {
             .map_err(CoreLogError::OpenFile)?;
         set_private_file(&file).map_err(CoreLogError::OpenFile)?;
         let bytes = file.metadata().map(|metadata| metadata.len()).unwrap_or(0);
+        let (sender, receiver) = sync_channel(CALLBACK_QUEUE_CAPACITY);
         let sink = Arc::new(CoreLogSink {
             state: Mutex::new(CoreLogState {
                 file: Some(file),
@@ -120,7 +141,16 @@ impl CoreLogHandle {
                     ..CoreLogStats::default()
                 },
             }),
+            sender,
+            accepting: AtomicBool::new(true),
+            callback_dropped: AtomicU64::new(0),
+            global_drop_baseline: CORE_LOG_CALLBACK_DROPS.load(Ordering::Relaxed),
         });
+        let worker_sink = Arc::clone(&sink);
+        let worker = thread::Builder::new()
+            .name("bongocat-core-log".to_owned())
+            .spawn(move || worker_sink.run_worker(receiver))
+            .map_err(CoreLogError::StartWorker)?;
         let mut slot = sink_slot()
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -134,7 +164,11 @@ impl CoreLogHandle {
         // Cubism Core header and never lets a panic cross the FFI boundary.
         unsafe { sys::csmSetLogFunction(Some(core_log_callback)) };
         drop(slot);
-        Ok(Self { sink, path })
+        Ok(Self {
+            sink,
+            path,
+            worker: Some(worker),
+        })
     }
 
     pub fn path(&self) -> &Path {
@@ -142,11 +176,7 @@ impl CoreLogHandle {
     }
 
     pub fn stats(&self) -> CoreLogStats {
-        self.sink
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .stats
+        self.sink.stats()
     }
 
     pub fn reporter(&self) -> CoreLogReporter {
@@ -158,11 +188,7 @@ impl CoreLogHandle {
 
 impl CoreLogReporter {
     pub fn stats(&self) -> CoreLogStats {
-        self.sink
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .stats
+        self.sink.stats()
     }
 }
 
@@ -180,6 +206,11 @@ impl Drop for CoreLogHandle {
             unsafe { sys::csmSetLogFunction(None) };
             *slot = None;
         }
+        drop(slot);
+        self.sink.accepting.store(false, Ordering::Release);
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
     }
 }
 
@@ -188,56 +219,139 @@ unsafe extern "C" fn core_log_callback(message: *const c_char) {
         if message.is_null() {
             return;
         }
-        // SAFETY: Cubism documents a valid null-terminated message for the
-        // duration of the callback; it is copied before returning to Core.
-        let bytes = unsafe { CStr::from_ptr(message).to_bytes() };
-        let Some(sink) = sink_slot()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .as_ref()
-            .cloned()
-        else {
+        let sink = match sink_slot().try_lock() {
+            Ok(slot) => slot.as_ref().cloned(),
+            Err(std::sync::TryLockError::Poisoned(error)) => error.into_inner().as_ref().cloned(),
+            Err(std::sync::TryLockError::WouldBlock) => {
+                CORE_LOG_CALLBACK_DROPS.fetch_add(1, Ordering::Relaxed);
+                return;
+            }
+        };
+        let Some(sink) = sink else {
             return;
         };
-        sink.record(bytes);
+        // SAFETY: Cubism documents a valid null-terminated message for the
+        // callback duration. This copies at most MAX_MESSAGE_BYTES without
+        // allocating or reading past that fixed bound.
+        let message = unsafe { CoreLogMessage::copy_from_callback(message) };
+        sink.enqueue(message);
     }));
 }
 
 impl CoreLogSink {
-    fn record(&self, bytes: &[u8]) {
-        let message = sanitize_message(bytes);
-        let record = CoreLogRecord {
-            component: "cubism_core",
-            level: "info",
-            message: &message,
-        };
-        let Ok(mut line) = serde_json::to_vec(&record) else {
+    fn stats(&self) -> CoreLogStats {
+        let mut stats = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .stats;
+        let local_drops = self.callback_dropped.load(Ordering::Relaxed);
+        let global_drops = CORE_LOG_CALLBACK_DROPS
+            .load(Ordering::Relaxed)
+            .saturating_sub(self.global_drop_baseline);
+        stats.dropped = stats
+            .dropped
+            .saturating_add(local_drops)
+            .saturating_add(global_drops);
+        stats
+    }
+
+    fn enqueue(&self, message: CoreLogMessage) {
+        if !self.accepting.load(Ordering::Acquire) {
+            self.callback_dropped.fetch_add(1, Ordering::Relaxed);
             return;
-        };
-        line.push(b'\n');
-        let Ok(line_len) = u64::try_from(line.len()) else {
-            return;
-        };
+        }
+        match self.sender.try_send(message) {
+            Ok(()) => {}
+            Err(TrySendError::Full(_) | TrySendError::Disconnected(_)) => {
+                self.callback_dropped.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+    }
+
+    fn run_worker(&self, receiver: Receiver<CoreLogMessage>) {
+        loop {
+            match receiver.recv_timeout(WORKER_POLL_INTERVAL) {
+                Ok(message) => self.record(message),
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    if !self.accepting.load(Ordering::Acquire) {
+                        self.drain_worker_queue(&receiver);
+                        return;
+                    }
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
+            }
+        }
+    }
+
+    fn drain_worker_queue(&self, receiver: &Receiver<CoreLogMessage>) {
+        loop {
+            match receiver.try_recv() {
+                Ok(message) => self.record(message),
+                Err(TryRecvError::Empty | TryRecvError::Disconnected) => return,
+            }
+        }
+    }
+
+    fn record(&self, message: CoreLogMessage) {
         let mut state = self
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if state.bytes.saturating_add(line_len) > MAX_LOG_BYTES && !rotate_logs(&mut state) {
-            state.stats.dropped = state.stats.dropped.saturating_add(1);
-            return;
-        }
-        let Some(file) = state.file.as_mut() else {
-            state.stats.dropped = state.stats.dropped.saturating_add(1);
-            return;
-        };
-        if file.write_all(&line).is_err() || file.flush().is_err() {
-            state.stats.dropped = state.stats.dropped.saturating_add(1);
-            return;
-        }
-        state.bytes = state.bytes.saturating_add(line_len);
-        state.stats.written = state.stats.written.saturating_add(1);
-        state.stats.bytes = state.bytes;
+        record_message(&mut state, &message.bytes[..message.length]);
     }
+}
+
+impl CoreLogMessage {
+    unsafe fn copy_from_callback(message: *const c_char) -> Self {
+        let mut copied = Self {
+            bytes: [0; MAX_MESSAGE_BYTES],
+            length: 0,
+        };
+        for index in 0..MAX_MESSAGE_BYTES {
+            // SAFETY: the Core callback contract supplies a readable
+            // null-terminated string for this invocation. The bounded loop
+            // reads no more than MAX_MESSAGE_BYTES bytes before returning.
+            let byte = unsafe { *message.add(index) } as u8;
+            if byte == 0 {
+                break;
+            }
+            copied.bytes[index] = byte;
+            copied.length = index + 1;
+        }
+        copied
+    }
+}
+
+fn record_message(state: &mut CoreLogState, bytes: &[u8]) {
+    let message = sanitize_message(bytes);
+    let record = CoreLogRecord {
+        component: "cubism_core",
+        level: "info",
+        message: &message,
+    };
+    let Ok(mut line) = serde_json::to_vec(&record) else {
+        return;
+    };
+    line.push(b'\n');
+    let Ok(line_len) = u64::try_from(line.len()) else {
+        return;
+    };
+    if state.bytes.saturating_add(line_len) > MAX_LOG_BYTES && !rotate_logs(state) {
+        state.stats.dropped = state.stats.dropped.saturating_add(1);
+        return;
+    }
+    let Some(file) = state.file.as_mut() else {
+        state.stats.dropped = state.stats.dropped.saturating_add(1);
+        return;
+    };
+    if file.write_all(&line).is_err() || file.flush().is_err() {
+        state.stats.dropped = state.stats.dropped.saturating_add(1);
+        return;
+    }
+    state.bytes = state.bytes.saturating_add(line_len);
+    state.stats.written = state.stats.written.saturating_add(1);
+    state.stats.bytes = state.bytes;
 }
 
 fn rotate_logs(state: &mut CoreLogState) -> bool {
@@ -406,19 +520,17 @@ mod tests {
             .append(true)
             .open(&path)
             .expect("log file");
-        let sink = CoreLogSink {
-            state: Mutex::new(CoreLogState {
-                file: Some(file),
-                path: path.clone(),
+        let mut state = CoreLogState {
+            file: Some(file),
+            path: path.clone(),
+            bytes: MAX_LOG_BYTES - 1,
+            stats: CoreLogStats {
                 bytes: MAX_LOG_BYTES - 1,
-                stats: CoreLogStats {
-                    bytes: MAX_LOG_BYTES - 1,
-                    ..CoreLogStats::default()
-                },
-            }),
+                ..CoreLogStats::default()
+            },
         };
-        sink.record(b"one");
-        let stats = sink.state.lock().expect("state lock").stats;
+        record_message(&mut state, b"one");
+        let stats = state.stats;
         assert_eq!(stats.written, 1);
         assert_eq!(stats.dropped, 0);
         assert_eq!(stats.rotated, 1);
@@ -441,19 +553,17 @@ mod tests {
             .append(true)
             .open(&path)
             .expect("log file");
-        let sink = CoreLogSink {
-            state: Mutex::new(CoreLogState {
-                file: Some(file),
-                path: path.clone(),
+        let mut state = CoreLogState {
+            file: Some(file),
+            path: path.clone(),
+            bytes: MAX_LOG_BYTES,
+            stats: CoreLogStats {
                 bytes: MAX_LOG_BYTES,
-                stats: CoreLogStats {
-                    bytes: MAX_LOG_BYTES,
-                    ..CoreLogStats::default()
-                },
-            }),
+                ..CoreLogStats::default()
+            },
         };
-        sink.record(b"rotation");
-        let stats = sink.state.lock().expect("state lock").stats;
+        record_message(&mut state, b"rotation");
+        let stats = state.stats;
         assert_eq!(stats.rotated, 1);
         assert_eq!(stats.retained_files, u64::from(MAX_TOTAL_LOG_FILES));
         assert!(rotated_log_path(&path, MAX_ROTATED_LOG_FILES).is_file());
@@ -477,19 +587,15 @@ mod tests {
         let directory = tempdir().expect("temporary directory");
         let path = directory.path().join("core.jsonl");
         fs::write(&path, b"active").expect("seed active log");
-        let sink = CoreLogSink {
-            state: Mutex::new(CoreLogState {
-                file: None,
-                path: path.clone(),
+        let mut state = CoreLogState {
+            file: None,
+            path: path.clone(),
+            bytes: 0,
+            stats: CoreLogStats {
                 bytes: 0,
-                stats: CoreLogStats {
-                    bytes: 0,
-                    ..CoreLogStats::default()
-                },
-            }),
+                ..CoreLogStats::default()
+            },
         };
-
-        let mut state = sink.state.lock().expect("state lock");
         assert!(reopen_active_log(&mut state));
         assert!(state.file.is_some());
         assert_eq!(state.bytes, b"active".len() as u64);
@@ -508,7 +614,7 @@ mod tests {
         // SAFETY: the CString is null-terminated and remains alive for the
         // synchronous callback invocation.
         unsafe { core_log_callback(message.as_ptr()) };
-        assert_eq!(handle.stats().written, 1);
+        wait_for_written(&handle, 1);
         assert_eq!(handle.stats().retained_files, 1);
         let contents = fs::read_to_string(&path).expect("read log");
         assert!(contents.contains("cubism_core"));
@@ -520,6 +626,81 @@ mod tests {
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .is_none()
         );
+    }
+
+    #[test]
+    fn callback_drops_when_the_global_slot_is_busy_without_blocking() {
+        let _install_guard = CORE_LOG_INSTALL_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let directory = tempdir().expect("temporary directory");
+        let handle = CoreLogHandle::install(directory.path().join("core.jsonl"))
+            .expect("install Core logger");
+        let message = CString::new("callback slot contention").expect("message");
+        let slot = sink_slot()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // SAFETY: the CString is null-terminated and remains alive for the
+        // synchronous callback invocation.
+        unsafe { core_log_callback(message.as_ptr()) };
+        drop(slot);
+        assert_eq!(handle.stats().written, 0);
+        assert_eq!(handle.stats().dropped, 1);
+    }
+
+    #[test]
+    fn callback_queue_saturation_is_counted_and_shutdown_drains_accepted_records() {
+        let _install_guard = CORE_LOG_INSTALL_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let directory = tempdir().expect("temporary directory");
+        let path = directory.path().join("core.jsonl");
+        let handle = CoreLogHandle::install(&path).expect("install Core logger");
+        let message = CString::new("queue saturation").expect("message");
+        let state = handle
+            .sink
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // The worker may already be holding one dequeued message while it
+        // waits for `state`, so exceed both that in-flight slot and the queue.
+        for _ in 0..=(CALLBACK_QUEUE_CAPACITY + 1) {
+            // SAFETY: the CString is null-terminated and remains alive for
+            // each synchronous callback invocation.
+            unsafe { core_log_callback(message.as_ptr()) };
+        }
+        drop(state);
+        assert!(handle.stats().dropped >= 1);
+        drop(handle);
+        let contents = fs::read_to_string(path).expect("drained log");
+        assert!(contents.contains("queue saturation"));
+    }
+
+    #[test]
+    fn callback_after_stop_is_counted_without_writing() {
+        let _install_guard = CORE_LOG_INSTALL_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let directory = tempdir().expect("temporary directory");
+        let handle = CoreLogHandle::install(directory.path().join("core.jsonl"))
+            .expect("install Core logger");
+        handle.sink.accepting.store(false, Ordering::Release);
+        let message = CString::new("late callback").expect("message");
+        // SAFETY: the CString is null-terminated and remains alive for the
+        // synchronous callback invocation.
+        unsafe { core_log_callback(message.as_ptr()) };
+        assert_eq!(handle.stats().written, 0);
+        assert_eq!(handle.stats().dropped, 1);
+    }
+
+    fn wait_for_written(handle: &CoreLogHandle, expected: u64) {
+        for _ in 0..100 {
+            if handle.stats().written >= expected {
+                return;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        panic!("Core log worker did not write {expected} records");
     }
 
     #[cfg(unix)]
