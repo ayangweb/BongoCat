@@ -784,6 +784,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 在 spike 中实现同目录临时文件、flush、原子替换、提交后验证和上一份有效配置备份；双平台 OS file lock 与强制进程终止恢复已通过。
 - [x] 在 spike 中拒绝损坏配置并保留原始文件；中断提交恢复会保守提升有效临时文件并归档无效/陈旧副本，隔离备份保留策略、默认恢复和 GPUI 用户诊断仍未完成。
 - [ ] 配置写入去抖，退出前强制 flush。
+  - 状态（2026-09-06）：设置窗口 bounds observer 已使用 `150 ms` 稳定窗口和 revision
+    检查合并连续变化；旧 timer 不会入队，只有最新 revision 触发一次
+    `SettingsWindowPlacementChanged`，shutdown 仍强制落盘。`bongocat-ui` contract test
+    `settings_window_state_coalesces_stale_persist_requests` 固定该行为。普通配置字段仍按
+    typed command 即时提交，尚未完成统一配置 patch 的时间去抖，因此本项保持未勾选。
 - [ ] GPUI 只通过 typed command 获取 snapshot 和提交 patch。
   - 状态（2026-09-01）：正式 UI 对显隐、motion audio、模型交互和 gamepad dead-zone 使用有界
     typed command/reply，成功结果携带新 runtime revision，文件写入在 app service worker 完成；
