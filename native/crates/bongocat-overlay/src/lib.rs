@@ -339,6 +339,7 @@ fn input_start_failure_diagnostics(error: PlatformInputError) -> PlatformInputDi
             }
             _ => PlatformInputServiceStatus::Failed,
         },
+        service_error_code: Some(error.as_str()),
         service_start_attempts: 1,
         ..PlatformInputDiagnostics::default()
     }
@@ -828,6 +829,7 @@ mod tests {
         ] {
             let diagnostics = input_start_failure_diagnostics(error);
             assert_eq!(diagnostics.service_status, expected);
+            assert_eq!(diagnostics.service_error_code, Some(error.as_str()));
             assert_eq!(diagnostics.service_start_attempts, 1);
             assert_eq!(diagnostics.captured_edges, 0);
         }
@@ -905,6 +907,7 @@ mod tests {
             producer.diagnostics(),
             PlatformInputDiagnostics {
                 service_status: PlatformInputServiceStatus::PermissionDenied,
+                service_error_code: Some("platform_input_permission_denied"),
                 service_start_attempts: 1,
                 ..PlatformInputDiagnostics::default()
             }

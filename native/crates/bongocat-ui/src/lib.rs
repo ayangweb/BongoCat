@@ -194,6 +194,7 @@ pub struct SettingsRuntimeDiagnostics {
 pub struct SettingsInputDiagnostics {
     pub input_monitoring_permission: SettingsInputMonitoringPermission,
     pub service_status: SettingsInputServiceStatus,
+    pub service_error_code: Option<&'static str>,
     pub service_start_attempts: u64,
     pub pressed_key_count: usize,
     pub pressed_mouse_button_count: usize,

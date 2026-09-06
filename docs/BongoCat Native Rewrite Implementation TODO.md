@@ -1771,10 +1771,10 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     `configuration_recovery_required` stable code，同时保留 checked-backup 聚合；正常配置和用户已
     恢复默认值但需要重启的状态不伪装为错误。其它 config write failure 与 update code 尚无持久的
     产品观测源，因此总项保持未勾选。
-  - 状态（2026-09-06）：Diagnostics export 现将 input service 的无歧义
-    `PermissionDenied`/`BackendUnavailable` 状态分别投影为既有
-    `platform_input_permission_denied`/`platform_input_backend_unavailable`；通用 `Failed` 只保留
-    status，不猜测底层失败原因或导出 OS 文本。
+  - 状态（2026-09-06）：平台 input diagnostics 将启动失败的既有匿名
+    `platform_input_*` code 与 service status 一起发布，settings/Diagnostics export 保留该 code；
+    例如 `TapCreateFailed` 保持为 `platform_input_tap_create_failed`，不将其降级为无信息的
+    `Failed` 或导出 OS 文本。
 - [ ] 日志导出生成可预览的脱敏包。
   - 状态（2026-09-06）：ADR-0027 已冻结 preview bundle 为当前环境私有的 v1 ZIP，固定只包含
     `manifest.json`、匿名 `diagnostics.json` 和严格重新序列化的 application code event records；

@@ -1380,6 +1380,7 @@ fn settings_input_diagnostics(
             PlatformInputServiceStatus::Failed => SettingsInputServiceStatus::Failed,
             PlatformInputServiceStatus::Stopped => SettingsInputServiceStatus::Stopped,
         },
+        service_error_code: platform.service_error_code,
         service_start_attempts: platform.service_start_attempts,
         pressed_key_count: input.pressed_key_count,
         pressed_mouse_button_count: input.pressed_mouse_button_count,
@@ -1933,23 +1934,10 @@ const fn input_service_status_code(status: SettingsInputServiceStatus) -> &'stat
     }
 }
 
-const fn input_service_error_code(status: SettingsInputServiceStatus) -> Option<&'static str> {
-    match status {
-        SettingsInputServiceStatus::PermissionDenied => Some("platform_input_permission_denied"),
-        SettingsInputServiceStatus::BackendUnavailable => {
-            Some("platform_input_backend_unavailable")
-        }
-        SettingsInputServiceStatus::NotStarted
-        | SettingsInputServiceStatus::Running
-        | SettingsInputServiceStatus::Failed
-        | SettingsInputServiceStatus::Stopped => None,
-    }
-}
-
 const fn diagnostics_input(input: SettingsInputDiagnostics) -> DiagnosticsInput {
     DiagnosticsInput {
         service_status: input_service_status_code(input.service_status),
-        service_error_code: input_service_error_code(input.service_status),
+        service_error_code: input.service_error_code,
         service_start_attempts: input.service_start_attempts,
         pressed_key_count: input.pressed_key_count,
         pressed_mouse_button_count: input.pressed_mouse_button_count,
@@ -2428,6 +2416,7 @@ mod tests {
             diagnostics_export: None,
             input_diagnostics: SettingsInputDiagnostics {
                 service_status: SettingsInputServiceStatus::PermissionDenied,
+                service_error_code: Some("platform_input_permission_denied"),
                 captured_down: 3,
                 captured_up: 4,
                 reconciled_release: 5,
@@ -2647,6 +2636,7 @@ mod tests {
             &input,
             PlatformInputDiagnostics {
                 service_status: PlatformInputServiceStatus::PermissionDenied,
+                service_error_code: Some("platform_input_permission_denied"),
                 service_start_attempts: 1,
                 ..PlatformInputDiagnostics::default()
             },
@@ -2656,6 +2646,10 @@ mod tests {
             SettingsInputServiceStatus::PermissionDenied
         );
         assert_eq!(projected.service_start_attempts, 1);
+        assert_eq!(
+            projected.service_error_code,
+            Some("platform_input_permission_denied")
+        );
         assert_eq!(projected.pressed_key_count, 1);
         assert_eq!(projected.pressed_mouse_button_count, 2);
         assert_eq!(projected.pressed_gamepad_button_count, 20);
@@ -2740,23 +2734,23 @@ mod tests {
     }
 
     #[test]
-    fn input_service_error_code_only_exports_unambiguous_platform_failures() {
-        assert_eq!(
-            input_service_error_code(SettingsInputServiceStatus::PermissionDenied),
-            Some("platform_input_permission_denied")
+    fn input_service_error_code_is_preserved_without_guessing_from_status() {
+        let diagnostics = settings_input_diagnostics(
+            &InputSnapshot::default(),
+            PlatformInputDiagnostics {
+                service_status: PlatformInputServiceStatus::Failed,
+                service_error_code: Some("platform_input_tap_create_failed"),
+                ..PlatformInputDiagnostics::default()
+            },
         );
         assert_eq!(
-            input_service_error_code(SettingsInputServiceStatus::BackendUnavailable),
-            Some("platform_input_backend_unavailable")
+            diagnostics.service_status,
+            SettingsInputServiceStatus::Failed
         );
-        for status in [
-            SettingsInputServiceStatus::NotStarted,
-            SettingsInputServiceStatus::Running,
-            SettingsInputServiceStatus::Failed,
-            SettingsInputServiceStatus::Stopped,
-        ] {
-            assert_eq!(input_service_error_code(status), None);
-        }
+        assert_eq!(
+            diagnostics.service_error_code,
+            Some("platform_input_tap_create_failed")
+        );
     }
 
     #[test]

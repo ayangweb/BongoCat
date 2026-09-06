@@ -14,6 +14,8 @@ pub enum PlatformInputServiceStatus {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct PlatformInputDiagnostics {
     pub service_status: PlatformInputServiceStatus,
+    /// A stable, anonymous platform error code for a terminal service failure.
+    pub service_error_code: Option<&'static str>,
     pub service_start_attempts: u64,
     pub captured_edges: u64,
     pub queued_edges: u64,
