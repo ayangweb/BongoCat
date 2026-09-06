@@ -737,7 +737,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-09-07）：`MotionAudioService::shutdown` 的显式 timeout 现在会放弃 worker join
     handle 并立即返回，避免 `Drop` 在超时错误后再次无界等待；已用阻塞 backend 验证零时限
     调用有界返回，释放 backend 后 worker 仍能完成 drain/stop 并进入 `Stopped`。audio 定向
-    测试与严格 Clippy 通过；真实输出设备阻塞和 panic 注入仍待完成。
+    测试与严格 Clippy 通过；新增仅测试可用的 worker panic-after-stopped 注入，验证已发布
+    `Stopped` 诊断后 join panic 返回 `WorkerPanicked`。真实输出设备阻塞和平台线程故障注入仍待完成。
 
 ### 3.2 输入语义
 

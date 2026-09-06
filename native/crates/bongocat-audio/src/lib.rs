@@ -315,6 +315,22 @@ impl MotionAudioService {
         command_capacity: usize,
         backend: Box<dyn AudioBackend>,
     ) -> Result<Self, MotionAudioStartError> {
+        Self::start_with_backend_internal(command_capacity, backend, false)
+    }
+
+    #[cfg(test)]
+    fn start_with_worker_panic(
+        command_capacity: usize,
+        backend: Box<dyn AudioBackend>,
+    ) -> Result<Self, MotionAudioStartError> {
+        Self::start_with_backend_internal(command_capacity, backend, true)
+    }
+
+    fn start_with_backend_internal(
+        command_capacity: usize,
+        backend: Box<dyn AudioBackend>,
+        panic_after_stopped: bool,
+    ) -> Result<Self, MotionAudioStartError> {
         assert!(
             command_capacity > 0,
             "audio command capacity must be non-zero"
@@ -332,7 +348,7 @@ impl MotionAudioService {
         };
         let worker = thread::Builder::new()
             .name("bongocat-motion-audio".into())
-            .spawn(move || run_worker(receiver, shared, backend))
+            .spawn(move || run_worker(receiver, shared, backend, panic_after_stopped))
             .map_err(MotionAudioStartError)?;
         Ok(Self {
             client,
@@ -444,6 +460,7 @@ fn run_worker(
     receiver: Receiver<MotionAudioCommand>,
     shared: Arc<SharedState>,
     mut backend: Box<dyn AudioBackend>,
+    panic_after_stopped: bool,
 ) {
     shared.publish(|diagnostics| diagnostics.state = MotionAudioState::Ready);
     loop {
@@ -476,6 +493,9 @@ fn run_worker(
         diagnostics.current_voice_sequence = None;
         diagnostics.state = MotionAudioState::Stopped;
     });
+    if panic_after_stopped {
+        panic!("motion audio worker panic injection");
+    }
 }
 
 fn recover_after_overflow(
@@ -965,6 +985,23 @@ mod tests {
             assert!(Instant::now() < deadline, "timed-out worker did not stop");
             thread::yield_now();
         }
+    }
+
+    #[test]
+    fn shutdown_reports_worker_panic_after_stopped_diagnostics() {
+        let service = MotionAudioService::start_with_worker_panic(
+            1,
+            Box::new(RecordingBackend {
+                events: Arc::new(Mutex::new(Vec::new())),
+                failures: VecDeque::new(),
+                playing: false,
+            }),
+        )
+        .expect("audio service");
+        let client = service.client();
+        let result = service.shutdown(TIMEOUT);
+        assert_eq!(result, Err(MotionAudioShutdownError::WorkerPanicked));
+        assert_eq!(client.diagnostics().state, MotionAudioState::Stopped);
     }
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
