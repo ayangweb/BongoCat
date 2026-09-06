@@ -8,6 +8,7 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
+    time::{Duration, Instant},
 };
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -19,6 +20,54 @@ const MIN_SETTINGS_WINDOW_WIDTH: u32 = 640;
 const MIN_SETTINGS_WINDOW_HEIGHT: u32 = 480;
 const MAX_SETTINGS_WINDOW_DIMENSION: u32 = 16_384;
 const MAX_SETTINGS_WINDOW_COORDINATE: i32 = 1_000_000;
+pub const SETTINGS_PATCH_DEBOUNCE: Duration = Duration::from_millis(150);
+
+/// Coalesces rapid typed setting updates while retaining values that were not
+/// acknowledged by the settings service.
+#[derive(Clone, Debug)]
+pub struct SettingsPatchDebouncer<T> {
+    last_sent_at: Option<Instant>,
+    pending: Option<T>,
+    debounce: Duration,
+}
+
+impl<T> Default for SettingsPatchDebouncer<T> {
+    fn default() -> Self {
+        Self {
+            last_sent_at: None,
+            pending: None,
+            debounce: SETTINGS_PATCH_DEBOUNCE,
+        }
+    }
+}
+
+impl<T: Clone + PartialEq> SettingsPatchDebouncer<T> {
+    pub fn observe(&mut self, value: T, now: Instant) -> Option<T> {
+        self.pending = Some(value);
+        if self
+            .last_sent_at
+            .is_none_or(|last| now.saturating_duration_since(last) >= self.debounce)
+        {
+            self.last_sent_at = Some(now);
+            self.pending.clone()
+        } else {
+            None
+        }
+    }
+
+    pub fn mark_sent(&mut self, value: &T) {
+        if self.pending.as_ref() == Some(value) {
+            self.pending = None;
+        }
+    }
+
+    pub fn flush(&mut self, now: Instant) -> Option<T> {
+        if self.pending.is_some() {
+            self.last_sent_at = Some(now);
+        }
+        self.pending.clone()
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SettingsWindowPlacement {
@@ -1787,6 +1836,51 @@ impl SettingsServiceEndpoint {
 mod tests {
     use super::*;
     use std::thread;
+
+    #[test]
+    fn settings_patch_debouncer_coalesces_and_confirms_latest_value() {
+        let origin = Instant::now();
+        let mut debouncer = SettingsPatchDebouncer::default();
+
+        assert_eq!(debouncer.observe(10_u16, origin), Some(10));
+        debouncer.mark_sent(&10);
+        assert_eq!(
+            debouncer.observe(20, origin + Duration::from_millis(50)),
+            None
+        );
+        assert_eq!(
+            debouncer.observe(30, origin + Duration::from_millis(100)),
+            None
+        );
+        assert_eq!(
+            debouncer.observe(30, origin + Duration::from_millis(150)),
+            Some(30)
+        );
+        debouncer.mark_sent(&30);
+        assert_eq!(debouncer.flush(origin + Duration::from_millis(200)), None);
+    }
+
+    #[test]
+    fn settings_patch_debouncer_retains_unconfirmed_value_for_retry_and_flush() {
+        let origin = Instant::now();
+        let mut debouncer = SettingsPatchDebouncer::default();
+
+        assert_eq!(debouncer.observe("first", origin), Some("first"));
+        assert_eq!(
+            debouncer.observe("latest", origin + Duration::from_millis(25)),
+            None
+        );
+        assert_eq!(
+            debouncer.flush(origin + Duration::from_millis(30)),
+            Some("latest")
+        );
+        assert_eq!(
+            debouncer.flush(origin + Duration::from_millis(31)),
+            Some("latest")
+        );
+        debouncer.mark_sent(&"latest");
+        assert_eq!(debouncer.flush(origin + Duration::from_millis(32)), None);
+    }
 
     #[test]
     fn settings_error_codes_are_stable_and_unique() {

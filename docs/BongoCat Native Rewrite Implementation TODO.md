@@ -852,6 +852,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     值并在下一次窗口或 shutdown flush 重试；shutdown flush 也只有在发送成功后才清除
     pending，队列已满时可继续重试。纯 Rust 回归覆盖首次提交、连续更新合并、队列未确认时
     保留最新值和退出 flush 失败后的再次重试。普通配置字段仍即时提交，统一 patch 去抖尚未完成。
+  - 状态（2026-09-07）：`bongocat-ui::SettingsPatchDebouncer<T>` 已固定普通 typed
+    setting patch 可复用的 `150 ms` 稳定窗口、最新值合并、发送确认后清除、失败保留以及
+    shutdown flush contract；两个纯 Rust 回归覆盖连续更新只保留最新值、未确认值重复 flush
+    和确认后清除。该 contract 尚未接入各设置控件和 service command，因此本项保持未勾选。
 - [ ] GPUI 只通过 typed command 获取 snapshot 和提交 patch。
   - 状态（2026-09-01）：正式 UI 对显隐、motion audio、模型交互和 gamepad dead-zone 使用有界
     typed command/reply，成功结果携带新 runtime revision，文件写入在 app service worker 完成；
