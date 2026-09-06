@@ -1516,16 +1516,17 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     并确认根目录互不包含；两个环境共用同一严格 v1 `NativeConfig`/`ApplicationState` 类型与
     `config.schema.json`/`state.schema.json`。`python3 tools/validate-json-schema.py` 已通过
     10 个 config、5 个 state 和 4 个 update fixture，环境同构测试也通过。
-- [ ] 配置、state、模型、备份、日志、锁和单实例 namespace 均包含环境边界。
-  - 状态（2026-08-31）：config、state、模型、备份、对应 writer lock 和 Windows 单实例均已按
-    环境隔离；state 双环境 sentinel/restart/lock 测试已进入当前批次。日志 writer 与更新 channel
-    仍未实现，因此总项保持未勾选。
-- [ ] 两个环境可同时运行，不争用 writer lock、模型目录或日志文件。
-  - 状态（2026-08-30）：config store 已通过双环境进程测试；正式 app 又以相同模型 ID
-    同时写入两套环境，验证 `models/` 和 `locks/models.writer.lock` 分离。日志 writer
-    尚未实现，因此保持未勾选。
-  - 状态（2026-08-31）：state 进一步使用独立环境根和 `locks/state.writer.lock`，Development/
-    Production 写入不同窗口布局并重启读回；日志 writer 缺失仍阻止总项勾选。
+- [x] 配置、state、模型、备份、日志、锁和单实例 namespace 均包含环境边界。
+  - 验收证据（2026-09-06）：`StorageLayout` 为 Development/Production 分别派生 config、state、
+    models、backups、logs、updates 和 locks 根；config/state/model/update 的环境边界已有定向
+    contract。`Application::start` 的双环境回归进一步断言两套 application writer 将独立事件写入
+    各自 logs，内容不会交叉。Windows `SingleInstanceEnvironment` 使用按环境分开的 mutex、window
+    class、window title 与 wake message；产品入口只由不可变 build environment 选择其 namespace。
+- [x] 两个环境可同时运行，不争用 writer lock、模型目录或日志文件。
+  - 验收证据（2026-09-06）：`development_and_production_applications_never_share_roots` 在同一
+    进程中同时启动两套正式 Application，以同一 model ID 分别导入，确认 models 根彼此独立；两者
+    又在并存期间各自写入不同 application log event 并断言日志目录和内容不交叉。config/state
+    的跨环境 writer lock/restart contract 与 update channel 的独立 sequence store 已由各自定向测试覆盖。
 - [x] 开发构建即使收到指向 Production 的 CLI 参数或进程环境变量也拒绝越界。
   - 验收证据（2026-09-06）：`bongocat-app` 仅在构建脚本读取
     `BONGOCAT_BUILD_ENV` 并将其编译为不可变的 `BUILD_ENVIRONMENT`；运行期从不读取该变量，

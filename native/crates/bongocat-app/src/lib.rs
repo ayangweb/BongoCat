@@ -1681,6 +1681,8 @@ mod tests {
         let production = StorageLayout::under(base.path(), BuildEnvironment::Production);
         let development_root = development.root.clone();
         let production_root = production.root.clone();
+        let development_logs = development.logs.clone();
+        let production_logs = production.logs.clone();
 
         let mut development_app =
             Application::start_with_layout(development).expect("development application");
@@ -1708,6 +1710,43 @@ mod tests {
         );
         assert!(development_root.join("models/same-id").is_dir());
         assert!(production_root.join("models/same-id").is_dir());
+        development_app.record_log(ApplicationLogEvent::shutdown_failed());
+        production_app.record_log(ApplicationLogEvent::panicked());
+        assert_ne!(development_logs, production_logs);
+        let development_log = std::fs::read_to_string(
+            std::fs::read_dir(&development_logs)
+                .expect("development logs")
+                .filter_map(Result::ok)
+                .map(|entry| entry.path())
+                .find(|path| {
+                    path.file_name()
+                        .is_some_and(|name| {
+                            let name = name.to_string_lossy();
+                            name.starts_with("application-") && name.ends_with(".jsonl")
+                        })
+                })
+                .expect("development application log"),
+        )
+        .expect("development log contents");
+        let production_log = std::fs::read_to_string(
+            std::fs::read_dir(&production_logs)
+                .expect("production logs")
+                .filter_map(Result::ok)
+                .map(|entry| entry.path())
+                .find(|path| {
+                    path.file_name()
+                        .is_some_and(|name| {
+                            let name = name.to_string_lossy();
+                            name.starts_with("application-") && name.ends_with(".jsonl")
+                        })
+                })
+                .expect("production application log"),
+        )
+        .expect("production log contents");
+        assert!(development_log.contains("shutdown_failed"));
+        assert!(!development_log.contains("panicked"));
+        assert!(production_log.contains("panicked"));
+        assert!(!production_log.contains("shutdown_failed"));
         development_app.shutdown().expect("development shutdown");
         production_app.shutdown().expect("production shutdown");
     }
