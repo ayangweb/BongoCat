@@ -1018,6 +1018,25 @@ impl SettingsView {
                         view.schedule_release_fallback_timeout_flush(cx);
                     }
                 }
+                if result.is_err() {
+                    // Keep failed debounced patches alive and retry after the stable window.
+                    // The debouncer only clears a value after a successful acknowledgement.
+                    if sent_overlay_scale.is_some() {
+                        view.schedule_overlay_scale_flush(cx);
+                    }
+                    if sent_overlay_opacity.is_some() {
+                        view.schedule_overlay_opacity_flush(cx);
+                    }
+                    if sent_gamepad_dead_zone.is_some() {
+                        view.schedule_gamepad_dead_zone_flush(cx);
+                    }
+                    if sent_maximum_fps.is_some() {
+                        view.schedule_maximum_fps_flush(cx);
+                    }
+                    if sent_release_fallback_timeout.is_some() {
+                        view.schedule_release_fallback_timeout_flush(cx);
+                    }
+                }
                 if let Some(snapshot) = refreshed
                     && accepts_snapshot_revision(
                         view.snapshot.as_ref().map(|current| current.revision),

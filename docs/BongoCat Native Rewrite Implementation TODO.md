@@ -981,6 +981,10 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
     flush 链；flush 状态与“flush 后退出”状态分离，窗口隐藏后仍保留实体并继续等待每个成功
     revision 回包，避免关闭设置窗口丢失最后一次连续编辑。定向 UI/app 构建通过；macOS
     破坏性窗口 close 的异步延迟关闭仍需 AppKit 实机验证，因此总项保持未勾选。
+  - 状态（2026-09-07）：连续配置 patch 的异步请求失败后会重新安排稳定窗口 timer；pending
+    值仍由 debouncer 保留，后续 timer 会自动重试，成功回包才清除。该路径覆盖普通编辑和
+    shutdown flush 失败后的可恢复重试，UI/app 定向测试与 Clippy 通过；系统菜单、平台关闭
+    和强制终止的真实双平台行为仍需实机验证，因此总项保持未勾选。
 - [x] GPUI 只通过 typed command 获取 snapshot 和提交 patch。
   - 验收证据（2026-09-07）：设置窗口的主题、语言、图标/overlay、motion audio、行为快捷键、
     FPS、release fallback timeout、模型、gamepad dead-zone、启动项和快捷键操作均通过
