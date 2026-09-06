@@ -77,6 +77,18 @@ fn runtime_tick_work_budget(maximum_fps: u16) -> Duration {
         .unwrap_or_else(|| Duration::from_millis(8))
 }
 
+fn record_work_budget(
+    diagnostics: &mut RuntimeWorkDiagnostics,
+    elapsed: Duration,
+    budget: Duration,
+) {
+    if elapsed <= budget {
+        return;
+    }
+    diagnostics.budget_exceeded = diagnostics.budget_exceeded.saturating_add(1);
+    diagnostics.last_over_budget_ms = elapsed.as_millis().min(u64::MAX as u128) as u64;
+}
+
 pub const fn release_fallback_timeout_is_valid(timeout_ms: u32) -> bool {
     timeout_ms <= MAX_RELEASE_FALLBACK_TIMEOUT_MS
 }
@@ -1971,11 +1983,15 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
         }
         let elapsed = work_started.elapsed();
         let budget = runtime_tick_work_budget(maximum_fps);
-        if elapsed > budget {
-            let elapsed_ms = elapsed.as_millis().min(u64::MAX as u128) as u64;
+        let mut work_diagnostics = RuntimeWorkDiagnostics::default();
+        record_work_budget(&mut work_diagnostics, elapsed, budget);
+        if work_diagnostics.budget_exceeded > 0 {
             publish(&snapshot, |current| {
-                current.work.budget_exceeded = current.work.budget_exceeded.saturating_add(1);
-                current.work.last_over_budget_ms = elapsed_ms;
+                current.work.budget_exceeded = current
+                    .work
+                    .budget_exceeded
+                    .saturating_add(work_diagnostics.budget_exceeded);
+                current.work.last_over_budget_ms = work_diagnostics.last_over_budget_ms;
             });
         }
     }
@@ -2752,6 +2768,46 @@ mod tests {
             Some(HIDDEN_OVERLAY_FRAME_INTERVAL)
         );
         assert!(frame_interval_for_runtime(MINIMUM_FPS - 1, false).is_none());
+    }
+
+    #[test]
+    fn work_budget_diagnostics_only_record_actual_overruns() {
+        let mut diagnostics = RuntimeWorkDiagnostics::default();
+        record_work_budget(
+            &mut diagnostics,
+            Duration::from_millis(10),
+            Duration::from_millis(10),
+        );
+        assert_eq!(diagnostics, RuntimeWorkDiagnostics::default());
+
+        record_work_budget(
+            &mut diagnostics,
+            Duration::from_millis(27),
+            Duration::from_millis(10),
+        );
+        assert_eq!(
+            diagnostics,
+            RuntimeWorkDiagnostics {
+                budget_exceeded: 1,
+                last_over_budget_ms: 27,
+            }
+        );
+
+        record_work_budget(
+            &mut diagnostics,
+            Duration::from_millis(9),
+            Duration::from_millis(10),
+        );
+        assert_eq!(diagnostics.last_over_budget_ms, 27);
+
+        diagnostics.budget_exceeded = u64::MAX;
+        record_work_budget(
+            &mut diagnostics,
+            Duration::from_millis(30),
+            Duration::from_millis(10),
+        );
+        assert_eq!(diagnostics.budget_exceeded, u64::MAX);
+        assert_eq!(diagnostics.last_over_budget_ms, 30);
     }
 
     #[test]

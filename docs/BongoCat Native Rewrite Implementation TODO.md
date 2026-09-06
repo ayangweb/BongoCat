@@ -699,6 +699,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     `budget_exceeded` 与 `last_over_budget_ms`；阻塞等待不计入预算，且计时不参与产品状态求值。
     63 项 runtime 单元测试、共享 fixture、Clippy 和 release check 通过。模型解析、磁盘、音频
     初始化和 GPU 上传仍未拆分到独立有界 worker，因此本项保持未勾选。
+  - 状态（2026-09-07）：新增纯 Rust `record_work_budget` contract，固定等于预算不计数、
+    超预算记录毫秒、非超预算样本不覆盖最近值以及计数饱和语义；定向 runtime test 与严格
+    Clippy 通过。全局 format 检查仍仅受既有 `bongocat-update/src/check.rs` 差异影响，本次未
+    修改该无关文件；真实阻塞工作拆分仍未完成。
 
 ### 3.2 输入语义
 
