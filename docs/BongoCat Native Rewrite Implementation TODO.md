@@ -837,8 +837,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     typed command 即时提交，尚未完成统一配置 patch 的时间去抖，因此本项保持未勾选。
   - 状态（2026-09-07）：产品 frame source 的 overlay placement 现在使用共享 `150 ms`
     debouncer；macOS/Windows 连续拖动只提交稳定后的最新 bounds，发送失败会保留 pending
-    值并在下一次窗口或 shutdown flush 重试。纯 Rust 回归覆盖首次提交、连续更新合并、队列
-    未确认时保留最新值和退出 flush。普通配置字段仍即时提交，统一 patch 去抖尚未完成。
+    值并在下一次窗口或 shutdown flush 重试；shutdown flush 也只有在发送成功后才清除
+    pending，队列已满时可继续重试。纯 Rust 回归覆盖首次提交、连续更新合并、队列未确认时
+    保留最新值和退出 flush 失败后的再次重试。普通配置字段仍即时提交，统一 patch 去抖尚未完成。
 - [ ] GPUI 只通过 typed command 获取 snapshot 和提交 patch。
   - 状态（2026-09-01）：正式 UI 对显隐、motion audio、模型交互和 gamepad dead-zone 使用有界
     typed command/reply，成功结果携带新 runtime revision，文件写入在 app service worker 完成；

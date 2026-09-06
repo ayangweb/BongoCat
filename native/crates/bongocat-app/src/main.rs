@@ -93,7 +93,7 @@ impl OverlayPlacementDebouncer {
     }
 
     fn flush(&mut self, now: Instant) -> Option<OverlayWindowBounds> {
-        let pending = self.pending.take();
+        let pending = self.pending;
         if pending.is_some() {
             self.last_sent_at = Some(now);
         }
@@ -2043,12 +2043,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             if let Some(bounds) = overlay_placement_debouncer.flush(Instant::now()) {
-                let _ = frame_settings_client.update_overlay_window_placement(
+                let sent = frame_settings_client.update_overlay_window_placement(
                     bounds.x,
                     bounds.y,
                     bounds.width,
                     bounds.height,
-                );
+                ).is_ok();
+                if sent {
+                    overlay_placement_debouncer.mark_sent(bounds);
+                }
             }
         })
         .detach();
@@ -3107,6 +3110,7 @@ mod tests {
             debouncer.flush(origin + Duration::from_millis(30)),
             Some(latest)
         );
+        debouncer.mark_sent(latest);
         assert_eq!(debouncer.flush(origin + Duration::from_millis(31)), None);
     }
 
@@ -3127,6 +3131,13 @@ mod tests {
             debouncer.flush(origin + Duration::from_millis(30)),
             Some(latest)
         );
+        // A failed shutdown send must leave the latest bounds available for a retry.
+        assert_eq!(
+            debouncer.flush(origin + Duration::from_millis(31)),
+            Some(latest)
+        );
+        debouncer.mark_sent(latest);
+        assert_eq!(debouncer.flush(origin + Duration::from_millis(32)), None);
     }
 
     #[test]
