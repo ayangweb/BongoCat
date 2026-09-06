@@ -46,6 +46,8 @@ jobs:
         run: python3 -m unittest discover -s tools/tests -p 'test_*.py'
       - name: Check legacy Cubism model baseline
         run: node tools/inspect-legacy-cubism-models.mjs --check
+      - name: Check Native release target matrix
+        run: python3 -m unittest tools.tests.test_native_release_target_matrix
       - name: Check whitespace
         run: git diff --check
 
