@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::cell::Cell;
 use std::{
     fs,
-    io::{Cursor, Write},
+    io::{Cursor, Read, Write},
     path::Path,
 };
 use zip::{CompressionMethod, ZipArchive, ZipWriter, write::SimpleFileOptions};
@@ -16,11 +16,15 @@ const APPLICATION_LOG_SUFFIX: &str = ".jsonl";
 const APPLICATION_EVENTS_ENTRY: &str = "application-events.jsonl";
 const DIAGNOSTICS_ENTRY: &str = "diagnostics.json";
 const MANIFEST_ENTRY: &str = "manifest.json";
+const PREVIEW_BUNDLE_ENTRIES: [&str; 3] =
+    [MANIFEST_ENTRY, DIAGNOSTICS_ENTRY, APPLICATION_EVENTS_ENTRY];
 const PREVIEW_BUNDLE_NAME: &str = "diagnostics-preview.zip";
 pub(crate) const PREVIEW_BUNDLE_FORMAT_VERSION: u32 = 1;
-pub(crate) const PREVIEW_BUNDLE_ENTRY_COUNT: u32 = 3;
+pub(crate) const PREVIEW_BUNDLE_ENTRY_COUNT: u32 = PREVIEW_BUNDLE_ENTRIES.len() as u32;
 const MAX_APPLICATION_LOG_FILES: usize = 8;
 const MAX_APPLICATION_LOG_BYTES: u64 = 1024 * 1024;
+const MAX_APPLICATION_EVENTS_BYTES: u64 =
+    MAX_APPLICATION_LOG_FILES as u64 * MAX_APPLICATION_LOG_BYTES;
 const MAX_EVENT_LINE_BYTES: usize = 1024;
 
 #[cfg(test)]
@@ -89,6 +93,17 @@ struct PreviewManifest {
     application_events_entry: &'static str,
     application_event_count: u64,
     skipped_source_files: u64,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VerifiedPreviewManifest {
+    schema_version: u32,
+    diagnostics_entry: String,
+    application_events_entry: String,
+    application_event_count: u64,
+    #[serde(rename = "skipped_source_files")]
+    _skipped_source_files: u64,
 }
 
 pub(crate) fn write_preview_bundle(
@@ -241,13 +256,78 @@ fn verify_archive(bytes: &[u8]) -> Result<(), PreviewBundleError> {
     if archive.len() != PREVIEW_BUNDLE_ENTRY_COUNT as usize {
         return Err(PreviewBundleError);
     }
-    for name in [MANIFEST_ENTRY, DIAGNOSTICS_ENTRY, APPLICATION_EVENTS_ENTRY] {
-        let file = archive.by_name(name).map_err(|_| PreviewBundleError)?;
+
+    let mut names = Vec::with_capacity(archive.len());
+    for index in 0..archive.len() {
+        let file = archive.by_index(index).map_err(|_| PreviewBundleError)?;
         if file.is_dir() || file.compression() != CompressionMethod::Stored {
             return Err(PreviewBundleError);
         }
+        names.push(file.name().to_owned());
+    }
+    names.sort_unstable();
+    let mut expected = PREVIEW_BUNDLE_ENTRIES.map(str::to_owned);
+    expected.sort_unstable();
+    if names != expected {
+        return Err(PreviewBundleError);
+    }
+
+    let mut manifest_bytes = Vec::new();
+    archive
+        .by_name(MANIFEST_ENTRY)
+        .map_err(|_| PreviewBundleError)?
+        .read_to_end(&mut manifest_bytes)
+        .map_err(|_| PreviewBundleError)?;
+    let manifest = serde_json::from_slice::<VerifiedPreviewManifest>(&manifest_bytes)
+        .map_err(|_| PreviewBundleError)?;
+    if manifest.schema_version != PREVIEW_BUNDLE_FORMAT_VERSION
+        || manifest.diagnostics_entry != DIAGNOSTICS_ENTRY
+        || manifest.application_events_entry != APPLICATION_EVENTS_ENTRY
+    {
+        return Err(PreviewBundleError);
+    }
+
+    let mut diagnostics = Vec::new();
+    archive
+        .by_name(DIAGNOSTICS_ENTRY)
+        .map_err(|_| PreviewBundleError)?
+        .read_to_end(&mut diagnostics)
+        .map_err(|_| PreviewBundleError)?;
+    if !serde_json::from_slice::<serde_json::Value>(&diagnostics)
+        .map_err(|_| PreviewBundleError)?
+        .is_object()
+    {
+        return Err(PreviewBundleError);
+    }
+
+    let mut event_bytes = Vec::new();
+    archive
+        .by_name(APPLICATION_EVENTS_ENTRY)
+        .map_err(|_| PreviewBundleError)?
+        .read_to_end(&mut event_bytes)
+        .map_err(|_| PreviewBundleError)?;
+    if event_bytes.len() as u64 > MAX_APPLICATION_EVENTS_BYTES
+        || verified_event_count(&event_bytes)? != manifest.application_event_count
+    {
+        return Err(PreviewBundleError);
     }
     Ok(())
+}
+
+fn verified_event_count(bytes: &[u8]) -> Result<u64, PreviewBundleError> {
+    let text = std::str::from_utf8(bytes).map_err(|_| PreviewBundleError)?;
+    let mut count = 0_u64;
+    for line in text.lines() {
+        if line.is_empty() || line.len() > MAX_EVENT_LINE_BYTES {
+            return Err(PreviewBundleError);
+        }
+        let event = serde_json::from_str::<SourceEvent>(line).map_err(|_| PreviewBundleError)?;
+        if !is_valid_event(&event) {
+            return Err(PreviewBundleError);
+        }
+        count = count.saturating_add(1);
+    }
+    Ok(count)
 }
 
 fn write_private_atomic(path: &Path, bytes: &[u8]) -> Result<(), PreviewBundleError> {
@@ -356,5 +436,11 @@ mod tests {
                 "temporary preview files remain: {staging:?}"
             );
         }
+    }
+
+    #[test]
+    fn archive_verification_rejects_an_invalid_manifest() {
+        let archive = write_archive(b"{}", b"{}", b"").expect("archive bytes");
+        assert!(verify_archive(&archive).is_err());
     }
 }
