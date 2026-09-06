@@ -272,7 +272,7 @@ impl ProductOverlaySession {
                     }
                     frames_presented = 1;
                 }
-                Err(error) if error.is_temporary_drawable_unavailable() => {
+                Err(error) if error.is_temporary_presentation_unavailable() => {
                     pending_initial_model_commit = Some(token);
                     let _ = retry_backoff.register_temporary_failure();
                 }
@@ -380,7 +380,7 @@ impl ProductOverlaySession {
             if runtime_snapshot.overlay_visible {
                 match replacement.draw(self.frames_presented == 0) {
                     Ok(()) => self.retry_backoff.record_success(),
-                    Err(error) if error.is_temporary_drawable_unavailable() => {
+                    Err(error) if error.is_temporary_presentation_unavailable() => {
                         return Ok(self.defer_drawable_unavailable());
                     }
                     Err(error) => return Err(error),
@@ -424,7 +424,7 @@ impl ProductOverlaySession {
                         OverlayTickOutcome::Hidden
                     });
                 }
-                Err(error) if error.is_temporary_drawable_unavailable() => {
+                Err(error) if error.is_temporary_presentation_unavailable() => {
                     return Ok(self.defer_drawable_unavailable());
                 }
                 Err(error) => {
@@ -467,7 +467,7 @@ impl ProductOverlaySession {
                         if overlay_visible {
                             match self.overlay.draw(self.frames_presented == 0) {
                                 Ok(()) => self.retry_backoff.record_success(),
-                                Err(error) if error.is_temporary_drawable_unavailable() => {
+                                Err(error) if error.is_temporary_presentation_unavailable() => {
                                     return Ok(self.defer_drawable_unavailable());
                                 }
                                 Err(error) => return Err(error),
@@ -489,7 +489,7 @@ impl ProductOverlaySession {
                             Ok(())
                         }
                     }
-                    Err(error) if error.is_temporary_drawable_unavailable() => {
+                    Err(error) if error.is_temporary_presentation_unavailable() => {
                         self.pending_model_frame = Some(frame);
                         return Ok(self.defer_drawable_unavailable());
                     }
@@ -504,7 +504,7 @@ impl ProductOverlaySession {
                         if overlay_visible {
                             match self.overlay.draw(self.frames_presented == 0) {
                                 Ok(()) => self.retry_backoff.record_success(),
-                                Err(error) if error.is_temporary_drawable_unavailable() => {
+                                Err(error) if error.is_temporary_presentation_unavailable() => {
                                     return Ok(self.defer_drawable_unavailable());
                                 }
                                 Err(error) => return Err(error),
@@ -572,7 +572,7 @@ impl ProductOverlaySession {
         }
         match self.overlay.draw(self.frames_presented == 0) {
             Ok(()) => self.retry_backoff.record_success(),
-            Err(error) if error.is_temporary_drawable_unavailable() => {
+            Err(error) if error.is_temporary_presentation_unavailable() => {
                 return Ok(self.defer_drawable_unavailable());
             }
             Err(error) => return Err(error),
@@ -1325,7 +1325,7 @@ impl NativeOverlay {
 
     fn draw_in_autorelease_pool(&self, verify_frame: bool) -> Result<(), OverlayError> {
         let drawable = self.layer.next_drawable().ok_or_else(|| {
-            OverlayError::temporary_drawable_unavailable("CAMetalLayer returned no drawable")
+            OverlayError::temporary_presentation_unavailable("CAMetalLayer returned no drawable")
         })?;
         let pass = RenderPassDescriptor::new();
         let attachment = pass

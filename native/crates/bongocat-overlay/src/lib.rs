@@ -236,9 +236,7 @@ pub(crate) fn validate_frame_smoke(
     Ok(statistics)
 }
 
-#[cfg(target_os = "macos")]
 const FRAME_RETRY_INITIAL_DELAY: Duration = Duration::from_millis(100);
-#[cfg(target_os = "macos")]
 const FRAME_RETRY_MAXIMUM_DELAY: Duration = Duration::from_secs(1);
 
 /// Bounded retry cadence for temporary presentation failures.
@@ -246,13 +244,11 @@ const FRAME_RETRY_MAXIMUM_DELAY: Duration = Duration::from_secs(1);
 /// The frame source owns the actual timer. This state only converts repeated
 /// temporary failures into a deterministic delay, so a hidden compositor never
 /// turns into a busy loop or a stream of renderer errors.
-#[cfg(target_os = "macos")]
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(crate) struct FrameRetryBackoff {
     consecutive_failures: u8,
 }
 
-#[cfg(target_os = "macos")]
 impl FrameRetryBackoff {
     pub(crate) fn register_temporary_failure(&mut self) -> Duration {
         let exponent = self.consecutive_failures.min(4);
@@ -651,16 +647,15 @@ fn percentile_nearest_rank(sorted_samples: &[u64], percentile: u8) -> u64 {
     sorted_samples[rank.saturating_sub(1)]
 }
 
-#[cfg(target_os = "macos")]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum OverlayErrorKind {
     Fatal,
-    TemporaryDrawableUnavailable,
+    TemporaryPresentationUnavailable,
 }
 
 #[derive(Debug)]
 pub struct OverlayError {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     kind: OverlayErrorKind,
     detail: String,
 }
@@ -668,23 +663,26 @@ pub struct OverlayError {
 impl OverlayError {
     pub(crate) fn new(detail: impl Into<String>) -> Self {
         Self {
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             kind: OverlayErrorKind::Fatal,
             detail: detail.into(),
         }
     }
 
-    #[cfg(target_os = "macos")]
-    pub(crate) fn temporary_drawable_unavailable(detail: impl Into<String>) -> Self {
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    pub(crate) fn temporary_presentation_unavailable(detail: impl Into<String>) -> Self {
         Self {
-            kind: OverlayErrorKind::TemporaryDrawableUnavailable,
+            kind: OverlayErrorKind::TemporaryPresentationUnavailable,
             detail: detail.into(),
         }
     }
 
-    #[cfg(target_os = "macos")]
-    pub(crate) const fn is_temporary_drawable_unavailable(&self) -> bool {
-        matches!(self.kind, OverlayErrorKind::TemporaryDrawableUnavailable)
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    pub(crate) const fn is_temporary_presentation_unavailable(&self) -> bool {
+        matches!(
+            self.kind,
+            OverlayErrorKind::TemporaryPresentationUnavailable
+        )
     }
 }
 

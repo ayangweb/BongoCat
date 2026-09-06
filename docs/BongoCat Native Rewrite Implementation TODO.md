@@ -957,6 +957,13 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     实际 draw/present 成功，临时不可用不会停止 frame source、写入 failure 记录或误拒绝候选。
     hidden overlay 仍只消费可靠 model commit 并由既有 `100 ms` 调度唤醒。D3D11 Present/device-loss
     的 HRESULT 分类、Windows 实机恢复与跨平台 present 故障验证尚未完成，因此本项保持未勾选。
+  - 状态（2026-09-06）：Windows `IDXGISwapChain::Present` 的
+    `DXGI_STATUS_OCCLUDED` 已在 D3D11 FFI 边界从成功 HRESULT 显式分类为临时 presentation
+    unavailable，避免将不可见帧计为已 present；产品 frame source 复用与 macOS 相同的
+    `100 ms -> 1 s` 指数退避，并在下一次成功 draw 后重置。`DXGI_ERROR_DEVICE_REMOVED`、
+    `DXGI_ERROR_DEVICE_RESET` 及其他失败仍保持致命路径，不能被 occlusion 延迟掩盖。Windows
+    x64 cross-check、overlay unit test 与 Clippy 通过；真实 occlusion/device-loss 注入和 runner
+    GPU 验证仍缺失，因此本项继续保持未勾选。
 
 ### 4.5 Phase 3 退出门槛
 

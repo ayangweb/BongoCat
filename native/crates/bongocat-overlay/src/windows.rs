@@ -1,8 +1,8 @@
 use crate::{
-    BlendFactor, FRAME_SMOKE_GRID_DIMENSION, OverlayError, OverlayPresentationState,
-    OverlaySessionOptions, OverlayTickOutcome, OverlayWindowBounds, OverlayWorkArea, PreviewReport,
-    ProductOverlayReport, blend_factors, default_overlay_window_dimensions, validate_frame_smoke,
-    validate_model_generation_advance,
+    BlendFactor, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff, OverlayError,
+    OverlayPresentationState, OverlaySessionOptions, OverlayTickOutcome, OverlayWindowBounds,
+    OverlayWorkArea, PreviewReport, ProductOverlayReport, blend_factors,
+    default_overlay_window_dimensions, validate_frame_smoke, validate_model_generation_advance,
 };
 use bongocat_model::{CommittedModel, ModelId, ModelPackageLimits, PresetModelCatalog};
 use bongocat_platform::{
@@ -21,7 +21,7 @@ use bongocat_runtime::{
 };
 use image::ImageReader;
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     mem::{size_of, size_of_val},
     path::Path,
     rc::Rc,
@@ -33,8 +33,8 @@ use std::{
 use windows::{
     Win32::{
         Foundation::{
-            CloseHandle, ERROR_CLASS_ALREADY_EXISTS, ERROR_NO_MORE_FILES, HANDLE, HINSTANCE,
-            HMODULE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM,
+            CloseHandle, DXGI_STATUS_OCCLUDED, ERROR_CLASS_ALREADY_EXISTS, ERROR_NO_MORE_FILES,
+            HANDLE, HINSTANCE, HMODULE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM,
         },
         Graphics::{
             Direct3D::{
@@ -717,7 +717,13 @@ impl Renderer {
         self.assert_owner_thread();
         // SAFETY: every interface belongs to this renderer and current thread;
         // all bound buffers/textures outlive the synchronous immediate context.
-        unsafe { self.draw_inner(verify) }.map_err(windows_error("draw D3D11 model"))
+        unsafe { self.draw_inner(verify) }.map_err(|error| {
+            if error.code() == DXGI_STATUS_OCCLUDED {
+                OverlayError::temporary_presentation_unavailable("DXGI swap chain is occluded")
+            } else {
+                windows_error("draw D3D11 model")(error)
+            }
+        })
     }
 
     unsafe fn draw_inner(&self, verify: bool) -> WindowsResult<()> {
@@ -933,7 +939,14 @@ impl Renderer {
             }
         }
         unsafe {
-            self.swap_chain.Present(1, DXGI_PRESENT(0)).ok()?;
+            let present = self.swap_chain.Present(1, DXGI_PRESENT(0));
+            if present == DXGI_STATUS_OCCLUDED {
+                return Err(Error::new(
+                    DXGI_STATUS_OCCLUDED,
+                    "DXGI swap chain is occluded",
+                ));
+            }
+            present.ok()?;
             self.device.GetDeviceRemovedReason()?;
         }
         Ok(())
@@ -1056,6 +1069,7 @@ pub(super) struct ProductOverlaySession {
     previous_snapshot: Arc<RenderSnapshot>,
     options: OverlaySessionOptions,
     last_frame: RenderFrame,
+    retry_backoff: FrameRetryBackoff,
 }
 
 impl ProductOverlaySession {
@@ -1124,6 +1138,7 @@ impl ProductOverlaySession {
             previous_snapshot: Arc::clone(&initial_frame.snapshot),
             options,
             last_frame: initial_frame,
+            retry_backoff: FrameRetryBackoff::default(),
         })
     }
 
@@ -1292,7 +1307,15 @@ impl ProductOverlaySession {
         if !overlay_visible {
             return Ok(OverlayTickOutcome::Hidden);
         }
-        self.overlay.draw(self.frames_presented == 0)?;
+        match self.overlay.draw(self.frames_presented == 0) {
+            Ok(()) => self.retry_backoff.record_success(),
+            Err(error) if error.is_temporary_presentation_unavailable() => {
+                return Ok(OverlayTickOutcome::Deferred(
+                    self.retry_backoff.register_temporary_failure(),
+                ));
+            }
+            Err(error) => return Err(error),
+        }
         self.frames_presented = self.frames_presented.saturating_add(1);
         self.overlay.set_visible(true)?;
         Ok(OverlayTickOutcome::Presented)
@@ -2436,7 +2459,7 @@ unsafe fn verify_frame_smoke(
         validate_frame_smoke(pixels).map_err(invariant_error)
     };
     unsafe { context.Unmap(texture, 0) };
-    result
+    result.map(|_| ())
 }
 
 unsafe fn compile_shader(entry: PCSTR, target: PCSTR) -> WindowsResult<ID3DBlob> {
