@@ -801,6 +801,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] RegisterHotKey 冲突返回错误并保持旧绑定。
 - [ ] issue #47 固定为发布回归项。
 - [ ] 明确 Raw Input scan code 到可查询 virtual-key 的映射，无法可靠校正的键必须有 Reset/保险策略和诊断。
+  - 状态（2026-09-07）：正式 Windows adapter 对无法映射的 scan code 继续累计匿名
+    `unmapped_keys` 诊断，并立即排入 `ServiceRestart` Reset；该路径不发布边沿，避免
+    无法通过 `GetAsyncKeyState` 校正的未知键永久残留在 pressed state。新增 contract 回归
+    固定诊断、Reset 和零边沿；当前 macOS 主机仅能验证共享代码，Windows WM_INPUT、真实
+    scan code/virtual-key 及设备矩阵仍待 Windows 实机/CI 验收，因此总项保持未勾选。
 - [ ] 处理输入设备提供伪造、重复或异常长度 Raw Input 数据的边界，不信任设备名称和 handle 生命周期。
   - 状态（2026-09-07）：Windows Raw Input decoder 现在以纯字节 contract 回归覆盖伪造
     `dwSize`（小于 header 或大于实际 buffer）、过短 header 和未知输入类型；异常包只返回

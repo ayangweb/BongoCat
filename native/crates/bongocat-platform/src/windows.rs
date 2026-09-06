@@ -810,6 +810,11 @@ impl WindowState {
                 let Some(key) = map_scan_code(packet.make_code, packet.flags) else {
                     self.diagnostics.unmapped_keys =
                         self.diagnostics.unmapped_keys.saturating_add(1);
+                    // An unknown scan code cannot be reconciled through a
+                    // reliable virtual-key query. Reset the captured state
+                    // before accepting later edges so it cannot leave a
+                    // pressed control latched indefinitely.
+                    self.enqueue(CapturedEvent::Reset(InputResetReason::ServiceRestart));
                     return;
                 };
                 let edge = if packet.flags & RI_KEY_BREAK == 0 {
@@ -2028,6 +2033,38 @@ mod tests {
                 .expect("unknown input type is safely ignored")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn unmapped_scan_code_requests_a_state_reset_without_publishing_an_edge() {
+        const TIMEOUT: Duration = Duration::from_secs(2);
+        let runtime = RuntimeOwner::start(true, 64);
+        let client = runtime.client();
+        client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+        let mut state = WindowState::new(
+            runtime.input_producer(),
+            runtime.cursor_producer(),
+            runtime.gamepad_axis_producer(),
+            runtime.platform_input_diagnostics_producer(),
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicBool::new(false)),
+            WorkerOptions::default(),
+            None,
+        );
+
+        state.capture_raw_input(RawInputPacket::Keyboard(RawKeyboardPacket {
+            make_code: 0x7f,
+            flags: 0,
+            virtual_key: 0,
+        }));
+        assert_eq!(state.diagnostics.unmapped_keys, 1);
+        assert!(matches!(
+            state.queue.pop_front(),
+            Some(CapturedEvent::Reset(InputResetReason::ServiceRestart))
+        ));
+        assert!(state.queue.is_empty());
+
+        runtime.shutdown(TIMEOUT).expect("runtime stop");
     }
 
     #[test]
