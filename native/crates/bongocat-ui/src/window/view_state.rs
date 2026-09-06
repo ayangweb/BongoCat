@@ -293,6 +293,8 @@ impl SettingsView {
             gamepad_dead_zone_timer_generation: 0,
             maximum_fps_debouncer: crate::SettingsPatchDebouncer::default(),
             maximum_fps_timer_generation: 0,
+            release_fallback_timeout_debouncer: crate::SettingsPatchDebouncer::default(),
+            release_fallback_timeout_timer_generation: 0,
             model_delete_confirmation: None,
             model_row_focus: BTreeMap::new(),
             model_behavior_preview_focus: BTreeMap::new(),

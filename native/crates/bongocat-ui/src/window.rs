@@ -385,6 +385,8 @@ pub struct SettingsView {
     gamepad_dead_zone_timer_generation: u64,
     maximum_fps_debouncer: crate::SettingsPatchDebouncer<u16>,
     maximum_fps_timer_generation: u64,
+    release_fallback_timeout_debouncer: crate::SettingsPatchDebouncer<u32>,
+    release_fallback_timeout_timer_generation: u64,
     model_delete_confirmation: Option<SettingsModelKey>,
     model_row_focus: BTreeMap<ModelRowKey, ModelRowFocus>,
     model_behavior_preview_focus: BTreeMap<ModelBehaviorKey, FocusHandle>,
@@ -623,6 +625,46 @@ impl SettingsView {
         .detach();
     }
 
+    fn schedule_release_fallback_timeout_flush(&mut self, cx: &mut Context<Self>) {
+        self.release_fallback_timeout_timer_generation = self
+            .release_fallback_timeout_timer_generation
+            .saturating_add(1);
+        let generation = self.release_fallback_timeout_timer_generation;
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            executor.timer(crate::SETTINGS_PATCH_DEBOUNCE).await;
+            let _ = this.update(cx, |view, cx| {
+                if view.release_fallback_timeout_timer_generation != generation
+                    || view.pending.is_some()
+                {
+                    return;
+                }
+                let Some(timeout_ms) = view
+                    .release_fallback_timeout_debouncer
+                    .ready(Instant::now())
+                else {
+                    return;
+                };
+                let Some(expected_config_revision) = view
+                    .snapshot
+                    .as_ref()
+                    .and_then(|snapshot| snapshot.config_revision)
+                else {
+                    return;
+                };
+                view.start_request(
+                    PendingOperation::ReleaseFallbackTimeout,
+                    Some(SettingValue::ReleaseFallbackTimeout {
+                        expected_config_revision,
+                        timeout_ms,
+                    }),
+                    cx,
+                );
+            });
+        })
+        .detach();
+    }
+
     fn start_request(
         &mut self,
         operation: PendingOperation,
@@ -652,6 +694,10 @@ impl SettingsView {
         };
         let sent_maximum_fps = match value.as_ref() {
             Some(SettingValue::MaximumFps { maximum_fps, .. }) => Some(*maximum_fps),
+            _ => None,
+        };
+        let sent_release_fallback_timeout = match value.as_ref() {
+            Some(SettingValue::ReleaseFallbackTimeout { timeout_ms, .. }) => Some(*timeout_ms),
             _ => None,
         };
         cx.spawn(async move |this, cx| {
@@ -846,6 +892,15 @@ impl SettingsView {
                     view.maximum_fps_debouncer.mark_sent(&maximum_fps);
                     if view.maximum_fps_debouncer.is_pending() {
                         view.schedule_maximum_fps_flush(cx);
+                    }
+                }
+                if result.is_ok()
+                    && let Some(timeout_ms) = sent_release_fallback_timeout
+                {
+                    view.release_fallback_timeout_debouncer
+                        .mark_sent(&timeout_ms);
+                    if view.release_fallback_timeout_debouncer.is_pending() {
+                        view.schedule_release_fallback_timeout_flush(cx);
                     }
                 }
                 if let Some(snapshot) = refreshed.filter(|snapshot| {
