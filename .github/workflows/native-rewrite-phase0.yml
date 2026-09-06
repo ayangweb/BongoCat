@@ -26,6 +26,18 @@ jobs:
           components: clippy, rustfmt
       - name: Build Native workspace with declared minimum
         run: cargo check --manifest-path native/Cargo.toml --locked --workspace
+      - name: Collect redacted Native failure evidence
+        if: ${{ failure() }}
+        shell: bash
+        run: python3 tools/collect-native-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
+      - name: Upload redacted Native failure evidence
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-failure-evidence-toolchain
+          path: ${{ runner.temp }}/bongocat-failure-evidence
+          if-no-files-found: error
+          retention-days: 7
 
   fixtures:
     name: Validate shared fixtures
@@ -50,6 +62,18 @@ jobs:
         run: python3 -m unittest tools.tests.test_native_release_target_matrix
       - name: Check whitespace
         run: git diff --check
+      - name: Collect redacted Native failure evidence
+        if: ${{ failure() }}
+        shell: bash
+        run: python3 tools/collect-native-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
+      - name: Upload redacted Native failure evidence
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-failure-evidence-fixtures
+          path: ${{ runner.temp }}/bongocat-failure-evidence
+          if-no-files-found: error
+          retention-days: 7
 
   dependency-policy:
     name: Check Native dependency policy
@@ -76,6 +100,18 @@ jobs:
           fi
       - name: Check licenses and dependency sources
         run: ./tools/check-native-dependencies.sh
+      - name: Collect redacted Native failure evidence
+        if: ${{ failure() }}
+        shell: bash
+        run: python3 tools/collect-native-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
+      - name: Upload redacted Native failure evidence
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-failure-evidence-dependency-policy
+          path: ${{ runner.temp }}/bongocat-failure-evidence
+          if-no-files-found: error
+          retention-days: 7
 
   native-workspace:
     name: Test Native workspace (${{ matrix.os }})

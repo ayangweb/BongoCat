@@ -571,6 +571,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     contract 测试锁定顺序，确保后置的 GPUI/Metal smoke 失败同样产生脱敏证据。
   - 状态（2026-09-07）：Windows GPUI matrix job 的收集步骤也已移至 settings、Win32/D3D11
     overlay 和 100-cycle smoke 之后；workflow contract 同时锁定 macOS/Windows spike 的后置顺序。
+  - 状态（2026-09-07）：`native-toolchain`、`fixtures` 和 `dependency-policy` 基础 job 也接入
+    同一失败证据收集/上传步骤，当前 Phase 0 workflow 共 10 个 job 仅上传受限脱敏目录；静态
+    contract 固定收集器与上传步骤一一对应。
 - [ ] 构建产物记录 source commit、Cargo.lock hash、toolchain、target 和 feature set。
   - [x] `tools/record-native-provenance.py` 生成无绝对路径的 JSON；Native 三平台 CI 上传 runner
         provenance，macOS `.app` 将其放入 `Contents/Resources/build-provenance.json`。工具测试验证

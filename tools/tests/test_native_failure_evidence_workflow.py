@@ -11,7 +11,7 @@ class NativeFailureEvidenceWorkflowTests(unittest.TestCase):
         source = WORKFLOW.read_text(encoding="utf-8")
         collector_steps = source.count("Collect redacted Native failure evidence")
         upload_steps = source.count("Upload redacted Native failure evidence")
-        self.assertGreaterEqual(collector_steps, 7)
+        self.assertEqual(collector_steps, 10)
         self.assertEqual(collector_steps, upload_steps)
         self.assertEqual(source.count("retention-days: 7"), upload_steps)
         self.assertNotIn("path: ${{ runner.temp }}/*.log", source)
