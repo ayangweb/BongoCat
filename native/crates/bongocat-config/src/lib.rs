@@ -2576,6 +2576,43 @@ mod tests {
     }
 
     #[test]
+    fn shared_configuration_fixture_manifest_matches_parser_contract() {
+        #[derive(Deserialize)]
+        struct FixtureManifest {
+            #[serde(rename = "schemaVersion")]
+            schema_version: u32,
+            cases: Vec<FixtureCase>,
+        }
+
+        #[derive(Deserialize)]
+        struct FixtureCase {
+            file: String,
+            expected: String,
+        }
+
+        let manifest: FixtureManifest = serde_json::from_str(include_str!(
+            "../../../../shared/config/fixtures/manifest.json"
+        ))
+        .expect("configuration fixture manifest");
+        assert_eq!(manifest.schema_version, 1);
+
+        for case in manifest.cases {
+            let fixture = std::fs::read(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../../shared/config/fixtures")
+                    .join(&case.file),
+            )
+            .unwrap_or_else(|error| panic!("read fixture {}: {error}", case.file));
+            let result = parse_config(&fixture);
+            match case.expected.as_str() {
+                "accept" => assert!(result.is_ok(), "fixture {} must be accepted", case.file),
+                "reject" => assert!(result.is_err(), "fixture {} must be rejected", case.file),
+                expected => panic!("fixture {} has unknown expectation {expected}", case.file),
+            }
+        }
+    }
+
+    #[test]
     fn invalid_values_never_replace_last_valid_config() {
         let base = tempdir().expect("temp directory");
         let store = ConfigStore::new(StorageLayout::under(
