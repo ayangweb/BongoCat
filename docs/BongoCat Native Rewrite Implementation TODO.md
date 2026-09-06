@@ -2359,7 +2359,7 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       和 Windows x64 platform tests 交叉编译通过；新增 Windows synthetic reset/reseed 回归待 push CI
       执行，物理 controller 矩阵仍是总项的剩余门禁。
 
-46. [ ] `P5-SHORTCUT-CONTRACT`：冻结快捷键 chord 的规范化与冲突校验前置契约。
+46. [x] `P5-SHORTCUT-CONTRACT`：冻结快捷键 chord 的规范化与冲突校验前置契约。
     - 依赖：Native config v1、`InputEvent`/`PhysicalKey` 语义和后续 GPUI 快捷键编辑页。
     - 退出条件：字符串绑定在配置提交前解析为平台无关的单 key chord；别名/顺序规范化稳定，
       非法或重复绑定返回可重试错误；不把平台 keycode、窗口句柄或原始按键流带入 config；
@@ -2403,6 +2403,15 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
         snapshot 交给 `ShortcutDispatcher`，并在 Windows 查询失败导致的 Reset 清空 matcher；因此丢失
         release 经第二次状态校正后不会让后续同一 chord 被错误视为 repeat。平台 crate 33 项定向测试
         与严格 Clippy 在 macOS 通过；Windows 真实输入路径继续由 push CI 和实机矩阵验收。
+    - 验收证据（2026-09-06）：核对正式实现已覆盖本项全部退出条件。GPUI Diagnostics 页面为
+      application command 与 current active ready model behavior 提供 Capture/Clear，并提供 Clear all
+      与 Restore defaults；Capture 将 key event 归一化为同一 `ShortcutChord` canonical form，
+      modifier-only/unsupported key、Escape cancel 和跨域冲突均在持久化前处理。成功提交经
+      revision-checked typed `SetShortcuts` 原子写入并替换活动 `ShortcutTable`。每一 target 使用稳定
+      identity、keyboard tab stop 和 AccessKit capture/clear action。`bongocat-config` 的 canonicalization/
+      conflict/HID mapping tests、`bongocat-platform` matcher tests、`bongocat-ui` capture tests 与
+      `bongocat-app` persistence/stale-revision/restore tests 共同覆盖该 platform-neutral contract；
+      Windows/macOS 真实 global input 是各平台发布矩阵的独立证据，不阻塞本项。
 47. [x] `P2-CURSOR-SMOOTHING`：在平台 latest-value 与模型参数之间恢复帧率无关的光标平滑。
     - 依赖：正式 cursor transport、可注入 `MonotonicClock` 和 display-relative normalization。
     - 退出条件：60 FPS 单帧保持 `0.75` 剩余距离，不同 tick 切分产生相同结果，逻辑距离
