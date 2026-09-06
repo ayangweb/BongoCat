@@ -1084,6 +1084,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     `(previous,current]` 产生 occurrence，循环边界不重复、回退不重放、单 tick 上限 256
     并计数跳过；accepted motion 的相对 FLAC 音效也已进入独立 owner。UI 选择入口仍未完成，
     因此保持未勾选。
+  - 状态（2026-09-06）：runtime fade 回归测试已区分实际渲染内容与 Cubism 每帧
+    `dynamic_flags`；停止命令同一时刻发布的首帧允许变更标记清零，但 opacity、顶点、
+    绘制顺序和其他 RenderSnapshot 内容必须保持一致。此前因全快照比较造成的脆弱失败已
+    修正，runtime 61 项测试和共享 fixture 2 项均通过。
 - [x] 实现 expression 混合和互斥/叠加语义。
   - 验收证据（2026-08-30）：正式 `bongocat-live2d` 严格解析 Type、fade、parameter、
     duplicate ID 与 Add/Multiply/Overwrite；三个 model3 声明的 9 个 exp3 全部在模型 prepare

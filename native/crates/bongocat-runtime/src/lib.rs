@@ -2331,6 +2331,7 @@ mod tests {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     use bongocat_render::{
         ModelCommitErrorCode, ModelCommitFeedback, ModelCommitOutcome, RenderConsumer, RenderFrame,
+        RenderSnapshot,
     };
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     use std::collections::BTreeMap;
@@ -2495,6 +2496,19 @@ mod tests {
             assert!(Instant::now() < deadline, "render frame timed out");
             thread::sleep(Duration::from_millis(2));
         }
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn assert_same_render_content(before: &RenderSnapshot, after: &RenderSnapshot) {
+        let mut before = before.clone();
+        let mut after = after.clone();
+        for drawable in &mut before.drawables {
+            drawable.dynamic_flags = Default::default();
+        }
+        for drawable in &mut after.drawables {
+            drawable.dynamic_flags = Default::default();
+        }
+        assert_eq!(before, after);
     }
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -3553,7 +3567,7 @@ mod tests {
         let first_fade_frame = wait_for_render_frame(&consumer, |frame| {
             frame.transport_sequence > before_stop.transport_sequence
         });
-        assert_eq!(first_fade_frame.snapshot, before_stop.snapshot);
+        assert_same_render_content(&before_stop.snapshot, &first_fade_frame.snapshot);
 
         clock.set(Duration::from_millis(700));
         let duplicate_sequence = client
