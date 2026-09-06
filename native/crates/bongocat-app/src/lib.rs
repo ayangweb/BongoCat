@@ -2221,6 +2221,26 @@ mod tests {
         assert_eq!(application.update_diagnostics(), None);
 
         application.set_update_diagnostics_provider(|| bongocat_update::UpdateDiagnostics {
+            last_error_code: Some("private_update_detail"),
+            checks_started: 1,
+            ..bongocat_update::UpdateDiagnostics::default()
+        });
+        assert_eq!(
+            application
+                .update_diagnostics()
+                .expect("sanitized update diagnostics")
+                .last_error_code,
+            None
+        );
+        assert_eq!(
+            application
+                .update_diagnostics()
+                .expect("sanitized update diagnostics")
+                .checks_started,
+            1
+        );
+
+        application.set_update_diagnostics_provider(|| bongocat_update::UpdateDiagnostics {
             last_error_code: Some("update_download_transport_failed"),
             checks_started: 3,
             checks_succeeded: 2,
