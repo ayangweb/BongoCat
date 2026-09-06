@@ -16,12 +16,13 @@ cd "$REPOSITORY_ROOT"
 
 check_release_dependency_tree() {
     target=$1
-    forbidden=$(cargo tree \
+    tree=$(cargo tree \
         --manifest-path native/Cargo.toml \
         --locked \
         --target "$target" \
         --edges normal,build \
-        --prefix none \
+        --prefix none) || exit 1
+    forbidden=$(printf '%s\n' "$tree" \
         | awk '{print $1}' \
         | sed 's/\(.*\) v[0-9].*/\1/' \
         | awk '
