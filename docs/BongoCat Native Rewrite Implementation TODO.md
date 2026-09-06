@@ -1722,7 +1722,8 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     endpoint、app-owned download worker 和产品下载 UI 尚未实现，因此本项保持未勾选。协调器回归另覆盖 hash
     不匹配与本地 staging failure 立即停止、不进入等待，并确认前者没有遗留 partial artifact。2026-09-06
     的补强回归进一步验证 Development artifact 对 Production layout 在创建 staging 目录或文件前返回
-    `update_staging_channel_mismatch`。
+    `update_staging_channel_mismatch`；协调器也会在打开远端 reader、进入 retry 或创建 staging 路径前以
+    零 attempts 返回 `update_download_staging_failed`。
 - [ ] 安装前协调 runtime/renderer shutdown，失败可回滚。
 - [ ] 测试断网、代理、中断、签名错误和降级攻击。
 - [ ] 日志 rotation、总大小和保留天数有上限。

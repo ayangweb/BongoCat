@@ -1,6 +1,6 @@
 use crate::{
     StagedUpdateArtifact, StorageLayout, UpdateDownloadAttemptFailure, UpdateDownloadRetryPolicy,
-    UpdateErrorCode, UpdateStagingError, UpdateStagingErrorCode, VerifiedArtifact,
+    UpdateErrorCode, UpdateStagingError, UpdateStagingErrorCode, VerifiedArtifact, update_channel,
 };
 use std::{fmt, io::Read, time::Duration};
 
@@ -107,6 +107,12 @@ impl UpdateDownloadCoordinator {
         WaitRetry: FnMut(Duration, &mut Cancel) -> bool,
         Cancel: FnMut() -> bool,
     {
+        if artifact.channel() != update_channel(layout.environment) {
+            return Err(UpdateDownloadError::new(
+                UpdateDownloadErrorCode::Staging,
+                0,
+            ));
+        }
         for attempts in 1..=self.retry_policy.max_attempts() {
             if cancelled() {
                 return Err(UpdateDownloadError::new(
@@ -202,6 +208,36 @@ mod tests {
         codes.sort_unstable();
         codes.dedup();
         assert_eq!(codes.len(), UpdateDownloadErrorCode::ALL.len());
+    }
+
+    #[test]
+    fn cross_environment_artifacts_are_rejected_before_opening_a_reader() {
+        let temporary = tempdir().expect("temporary directory");
+        let layout = StorageLayout::under(temporary.path(), BuildEnvironment::Production);
+        let mut opened = false;
+        let mut waited = false;
+
+        let error = UpdateDownloadCoordinator::default()
+            .stage_with_retry::<Cursor<Vec<u8>>, _, _, _>(
+                &artifact(b"development artifact"),
+                &layout,
+                || {
+                    opened = true;
+                    Ok(Cursor::new(b"development artifact".to_vec()))
+                },
+                |_, _| {
+                    waited = true;
+                    true
+                },
+                || false,
+            )
+            .expect_err("cross-environment download must fail");
+
+        assert_eq!(error.code(), UpdateDownloadErrorCode::Staging);
+        assert_eq!(error.attempts(), 0);
+        assert!(!opened);
+        assert!(!waited);
+        assert!(!layout.update_staging.exists());
     }
 
     #[test]
