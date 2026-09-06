@@ -27,6 +27,20 @@ pub enum UpdateStagingErrorCode {
 }
 
 impl UpdateStagingErrorCode {
+    /// Discrete staging failures. `Integrity` preserves the stable code from
+    /// `UpdateErrorCode` and is covered separately by the verifier catalog.
+    pub const ALL: [Self; 9] = [
+        Self::Cancelled,
+        Self::ChannelMismatch,
+        Self::DirectoryCreateFailed,
+        Self::DirectoryInvalid,
+        Self::DirectoryPermissionFailed,
+        Self::FileCreateFailed,
+        Self::FileSyncFailed,
+        Self::FileWriteFailed,
+        Self::RemoveFailed,
+    ];
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Cancelled => "update_staging_cancelled",
@@ -241,7 +255,10 @@ fn stage_into_file(
 mod tests {
     use super::*;
     use bongocat_config::BuildEnvironment;
-    use std::io::{self, Cursor};
+    use std::{
+        collections::BTreeSet,
+        io::{self, Cursor},
+    };
     use tempfile::tempdir;
 
     fn artifact(bytes: &[u8]) -> VerifiedArtifact {
@@ -251,6 +268,36 @@ mod tests {
             "https://updates.example.invalid/bongocat.pkg",
             bytes,
         )
+    }
+
+    #[test]
+    fn error_codes_are_stable_and_unique() {
+        let staging_codes = UpdateStagingErrorCode::ALL
+            .into_iter()
+            .map(UpdateStagingErrorCode::as_str)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(staging_codes.len(), UpdateStagingErrorCode::ALL.len());
+        assert!(
+            staging_codes
+                .iter()
+                .all(|code| code.starts_with("update_staging_"))
+        );
+
+        let verifier_codes = UpdateErrorCode::ALL
+            .into_iter()
+            .map(|code| UpdateStagingErrorCode::Integrity(code).as_str())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(verifier_codes.len(), UpdateErrorCode::ALL.len());
+
+        let codes = staging_codes
+            .union(&verifier_codes)
+            .copied()
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(
+            codes.len(),
+            UpdateStagingErrorCode::ALL.len() + UpdateErrorCode::ALL.len()
+        );
     }
 
     fn staging_files(directory: &Path) -> Vec<PathBuf> {
