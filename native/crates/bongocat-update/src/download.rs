@@ -107,6 +107,12 @@ impl UpdateDownloadCoordinator {
         WaitRetry: FnMut(Duration, &mut Cancel) -> bool,
         Cancel: FnMut() -> bool,
     {
+        if cancelled() {
+            return Err(UpdateDownloadError::new(
+                UpdateDownloadErrorCode::Cancelled,
+                0,
+            ));
+        }
         if artifact.channel() != update_channel(layout.environment) {
             return Err(UpdateDownloadError::new(
                 UpdateDownloadErrorCode::Staging,
@@ -237,6 +243,31 @@ mod tests {
         assert_eq!(error.attempts(), 0);
         assert!(!opened);
         assert!(!waited);
+        assert!(!layout.update_staging.exists());
+    }
+
+    #[test]
+    fn cancellation_precedes_cross_environment_rejection() {
+        let temporary = tempdir().expect("temporary directory");
+        let layout = StorageLayout::under(temporary.path(), BuildEnvironment::Production);
+        let mut opened = false;
+
+        let error = UpdateDownloadCoordinator::default()
+            .stage_with_retry::<Cursor<Vec<u8>>, _, _, _>(
+                &artifact(b"development artifact"),
+                &layout,
+                || {
+                    opened = true;
+                    Ok(Cursor::new(b"development artifact".to_vec()))
+                },
+                |_, _| true,
+                || true,
+            )
+            .expect_err("cancelled download must not start");
+
+        assert_eq!(error.code(), UpdateDownloadErrorCode::Cancelled);
+        assert_eq!(error.attempts(), 0);
+        assert!(!opened);
         assert!(!layout.update_staging.exists());
     }
 
