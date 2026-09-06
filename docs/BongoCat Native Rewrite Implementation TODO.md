@@ -703,6 +703,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     超预算记录毫秒、非超预算样本不覆盖最近值以及计数饱和语义；定向 runtime test 与严格
     Clippy 通过。全局 format 检查仍仅受既有 `bongocat-update/src/check.rs` 差异影响，本次未
     修改该无关文件；真实阻塞工作拆分仍未完成。
+  - 状态（2026-09-07）：`RuntimeWorkDiagnostics` 已投影到 `SettingsRuntimeDiagnostics`，并纳入
+    匿名 `diagnostics.json` 的 runtime 分栏；app 导出与 UI runtime diagnostics contract 验证
+    字段值往返，未导出路径或工作 payload。真实模型解析、磁盘、音频初始化和 GPU 上传仍未拆分
+    到独立有界 worker，因此本项保持未勾选。
 
 ### 3.2 输入语义
 

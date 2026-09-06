@@ -1359,6 +1359,8 @@ fn settings_runtime_diagnostics(
             duplicate_sequence_count: runtime.command_transport.duplicate_sequence_count,
             out_of_order_sequence_count: runtime.command_transport.out_of_order_sequence_count,
         },
+        work_budget_exceeded: runtime.work.budget_exceeded,
+        last_over_budget_ms: runtime.work.last_over_budget_ms,
     }
 }
 
@@ -1642,6 +1644,8 @@ struct DiagnosticsRuntime {
     command_missing_sequence_count: u64,
     command_duplicate_sequence_count: u64,
     command_out_of_order_sequence_count: u64,
+    work_budget_exceeded: u64,
+    last_over_budget_ms: u64,
 }
 
 #[derive(Serialize)]
@@ -1877,6 +1881,8 @@ fn diagnostics_document(
             command_out_of_order_sequence_count: runtime
                 .command_transport
                 .out_of_order_sequence_count,
+            work_budget_exceeded: runtime.work_budget_exceeded,
+            last_over_budget_ms: runtime.last_over_budget_ms,
         },
         input: diagnostics_input(input),
         configuration: diagnostics_configuration(snapshot),
@@ -2411,6 +2417,8 @@ mod tests {
                     duplicate_sequence_count: 4,
                     out_of_order_sequence_count: 6,
                 },
+                work_budget_exceeded: 12,
+                last_over_budget_ms: 34,
             },
             appearance_theme: SettingsTheme::System,
             language: SettingsLanguage::System,
@@ -2534,6 +2542,8 @@ mod tests {
         assert_eq!(document["runtime"]["command_enqueued"], 11);
         assert_eq!(document["runtime"]["command_queue_full"], 2);
         assert_eq!(document["runtime"]["command_sequence_gap_count"], 3);
+        assert_eq!(document["runtime"]["work_budget_exceeded"], 12);
+        assert_eq!(document["runtime"]["last_over_budget_ms"], 34);
         assert_eq!(document["runtime"]["command_missing_sequence_count"], 5);
         assert_eq!(document["input"]["captured_down"], 3);
         assert_eq!(document["input"]["service_status"], "permission_denied");

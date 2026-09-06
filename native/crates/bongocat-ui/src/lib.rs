@@ -188,6 +188,8 @@ pub struct SettingsRuntimeDiagnostics {
     pub render_error: Option<SettingsRuntimeErrorCode>,
     pub last_command_failure: Option<SettingsRuntimeCommandFailure>,
     pub command_transport: SettingsRuntimeCommandTransportDiagnostics,
+    pub work_budget_exceeded: u64,
+    pub last_over_budget_ms: u64,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

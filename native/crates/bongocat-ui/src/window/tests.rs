@@ -333,6 +333,7 @@ fn runtime_diagnostics_presentation_keeps_codes_anonymous_and_actionable() {
                 code: SettingsRuntimeErrorCode::GpuPreparationFailed,
             }),
             command_transport: Default::default(),
+            ..SettingsRuntimeDiagnostics::default()
         },
         SettingsLanguage::EnglishUnitedStates,
     );
@@ -365,6 +366,7 @@ fn diagnostics_presentations_follow_the_resolved_language() {
                 code: SettingsRuntimeErrorCode::TransportClosed,
             }),
             command_transport: Default::default(),
+            ..SettingsRuntimeDiagnostics::default()
         },
         SettingsLanguage::ChineseSimplified,
     );
