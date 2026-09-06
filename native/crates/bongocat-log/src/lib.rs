@@ -158,4 +158,39 @@ mod tests {
         assert!(active.exists());
         assert!(!rotated.exists());
     }
+
+    #[test]
+    fn unknown_files_are_outside_the_budget_and_symlinks_are_ignored() {
+        let directory = tempdir().expect("log directory");
+        let active = directory.path().join("cubism-core.jsonl");
+        let unknown = directory.path().join("user-data.bin");
+        fs::write(&active, b"active").expect("active log");
+        fs::write(&unknown, vec![b'u'; (MAX_TOTAL_LOG_BYTES * 2) as usize]).expect("unknown file");
+        let report =
+            enforce_directory_retention(directory.path(), Some(&active), SystemTime::now());
+        assert!(unknown.exists());
+        assert_eq!(
+            report.retained_bytes,
+            active.metadata().expect("active metadata").len()
+        );
+
+        #[cfg(unix)]
+        {
+            let symlink = directory.path().join("cubism-core.jsonl.1");
+            std::os::unix::fs::symlink(&unknown, &symlink).expect("symlink");
+            let report =
+                enforce_directory_retention(directory.path(), Some(&active), SystemTime::now());
+            assert!(
+                symlink
+                    .symlink_metadata()
+                    .expect("symlink metadata")
+                    .file_type()
+                    .is_symlink()
+            );
+            assert_eq!(
+                report.retained_bytes,
+                active.metadata().expect("active metadata").len()
+            );
+        }
+    }
 }

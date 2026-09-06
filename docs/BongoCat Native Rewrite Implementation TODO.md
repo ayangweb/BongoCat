@@ -1884,6 +1884,8 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     活动文件始终保留，symlink/未知文件不会被触碰。application 与 Core writer 均在初始化/写入后
     调用同一策略，跨 writer aggregate、过期轮转和活动文件保护回归通过；`cargo fmt`、定向
     workspace test、严格 Clippy 与 locked release check 通过。
+    - 状态（2026-09-07）：补充未知文件与 Unix symlink 隔离回归；目录级清理仅处理已知 JSONL
+      命名，非日志数据和链接均保留。
   - [x] `P7-CORE-LOG-DIAGNOSTICS`：将 Cubism Core retention 指标接入匿名 diagnostics export。
     - 依赖：`CoreLogStats`、应用 diagnostics export 和 ADR-0016 的隐私边界。
     - 退出条件：产品启动将只读 Core 指标 provider 注册到 `Application`；每次导出实时采样
