@@ -561,6 +561,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] CI 在干净环境复现构建。
 - [ ] 应用可正常退出，所有 worker 有明确 join 结果。
 - [ ] Windows/macOS release dependency tree 与批准清单一致，无意外 Tauri/WebView/JavaScript runtime。
+  - 状态（2026-09-06）：`tools/check-native-dependencies.sh` 现对
+    `x86_64/aarch64-pc-windows-msvc` 与 `x86_64/aarch64-apple-darwin` 分别执行
+    `cargo tree --edges normal,build`，拒绝 Tauri、Wry/WebView、Node、Deno、QuickJS 和
+    JavaScriptCore 包名。四个 target 当前均通过；`tauri-winrt-notification` 仅存在于
+    Linux `gpui-pre-linux` 传递依赖，不进入首发树。批准清单逐包比对和最终发布 artifact
+    审计仍待完成，因此本项保持未勾选。
 
 ## 3. Phase 2：Runtime、输入和配置
 
