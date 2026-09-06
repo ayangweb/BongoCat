@@ -491,6 +491,37 @@ mod tests {
     }
 
     #[test]
+    fn capacity_rejection_preserves_latest_value_accounting() {
+        let slot = Arc::new(GamepadAxisSlot::with_capacity(1));
+        let producer = GamepadAxisProducer::new(Arc::clone(&slot));
+        producer
+            .publish(sample(GamepadAxis::LeftStickX, 0.25, 1))
+            .expect("first axis key accepted");
+
+        let second_key = GamepadAxisSample {
+            key: GamepadAxisKey {
+                connection: CONNECTION,
+                axis: GamepadAxis::RightStickX,
+            },
+            value: -0.5,
+            at: MonotonicMillis::new(2),
+        };
+        assert!(matches!(
+            producer.publish(second_key),
+            Err(GamepadAxisPublishError::CapacityExceeded(sample)) if sample == second_key
+        ));
+
+        let diagnostics = producer.diagnostics();
+        assert_eq!(diagnostics.published, 1);
+        assert_eq!(diagnostics.capacity_rejections, 1);
+        assert_eq!(diagnostics.pending, 1);
+        assert!(producer.is_fully_accounted());
+
+        assert_eq!(slot.take().len(), 1);
+        assert!(producer.is_fully_accounted());
+    }
+
+    #[test]
     fn dead_zone_is_applied_only_by_runtime_settings() {
         let settings = GamepadAxisSettings::new(0.2, 0.1).expect("valid settings");
         assert_eq!(settings.apply(GamepadAxis::LeftStickX, 0.2), 0.0);
