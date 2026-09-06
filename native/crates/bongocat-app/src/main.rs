@@ -45,6 +45,11 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
+#[cfg(all(
+    feature = "storage-test-injection",
+    any(target_os = "macos", target_os = "windows")
+))]
+use zip::ZipArchive;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 struct StatusIconRequest {
@@ -121,6 +126,8 @@ struct RunOptions {
     panic_diagnostics_smoke: bool,
     #[cfg(feature = "storage-test-injection")]
     panic_diagnostics_smoke_child: bool,
+    #[cfg(feature = "storage-test-injection")]
+    diagnostics_export_smoke: bool,
     system_menu_smoke: bool,
     #[cfg(target_os = "macos")]
     application_reopen_smoke: bool,
@@ -146,6 +153,8 @@ impl RunOptions {
         let mut panic_diagnostics_smoke = false;
         #[cfg(feature = "storage-test-injection")]
         let mut panic_diagnostics_smoke_child = false;
+        #[cfg(feature = "storage-test-injection")]
+        let mut diagnostics_export_smoke = false;
         let mut system_menu_smoke = false;
         #[cfg(target_os = "macos")]
         let mut application_reopen_smoke = false;
@@ -177,6 +186,8 @@ impl RunOptions {
                 "--panic-diagnostics-smoke" => panic_diagnostics_smoke = true,
                 #[cfg(feature = "storage-test-injection")]
                 "--panic-diagnostics-smoke-child" => panic_diagnostics_smoke_child = true,
+                #[cfg(feature = "storage-test-injection")]
+                "--diagnostics-export-smoke" => diagnostics_export_smoke = true,
                 "--system-menu-smoke" => system_menu_smoke = true,
                 #[cfg(target_os = "macos")]
                 "--application-reopen-smoke" => application_reopen_smoke = true,
@@ -205,6 +216,8 @@ impl RunOptions {
             panic_diagnostics_smoke,
             #[cfg(feature = "storage-test-injection")]
             panic_diagnostics_smoke_child,
+            #[cfg(feature = "storage-test-injection")]
+            diagnostics_export_smoke,
             system_menu_smoke,
             #[cfg(target_os = "macos")]
             application_reopen_smoke,
@@ -257,13 +270,13 @@ impl std::error::Error for RunOptionsError {}
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn usage() -> &'static str {
     #[cfg(all(target_os = "windows", feature = "storage-test-injection"))]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--diagnostics-export-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
 
     #[cfg(all(target_os = "windows", not(feature = "storage-test-injection")))]
     return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
 
     #[cfg(all(target_os = "macos", feature = "storage-test-injection"))]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--diagnostics-export-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
 
     #[cfg(all(target_os = "macos", not(feature = "storage-test-injection")))]
     "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run."
@@ -1202,6 +1215,75 @@ fn read_application_logs(directory: &Path) -> io::Result<String> {
     feature = "storage-test-injection",
     any(target_os = "macos", target_os = "windows")
 ))]
+fn run_diagnostics_export_smoke() -> Result<(), Box<dyn std::error::Error>> {
+    use bongocat_config::{BuildEnvironment, StorageLayout};
+
+    let root = env::temp_dir().join(format!(
+        "bongocat-diagnostics-export-smoke-{}",
+        std::process::id()
+    ));
+    if root.exists() {
+        std::fs::remove_dir_all(&root)?;
+    }
+    let root = RecoverySmokeRoot(root);
+    let layout = StorageLayout::under(&root.0, BuildEnvironment::Development);
+    let application =
+        bongocat_app::Application::start_with_layout_for_smoke(layout.clone(), preset_root())?;
+    let service = bongocat_app::ApplicationSettingsService::start(application)?;
+    let client = service.client();
+    let exported = client.export_diagnostics_blocking()?;
+    let status = exported
+        .diagnostics_export
+        .ok_or("diagnostics export did not return a typed result")?;
+    if status.format_version != 1
+        || status.preview_bundle_format_version != 1
+        || status.preview_bundle_entry_count != 3
+        || status.bytes_written == 0
+        || status.preview_bundle_bytes_written == 0
+    {
+        return Err("diagnostics export returned an invalid typed result".into());
+    }
+
+    let diagnostics = layout.logs.join("diagnostics.json");
+    let preview = layout.logs.join("diagnostics-preview.zip");
+    if !diagnostics.is_file() || !preview.is_file() {
+        return Err("diagnostics export did not create both private files".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if std::fs::metadata(&diagnostics)?.permissions().mode() & 0o777 != 0o600
+            || std::fs::metadata(&preview)?.permissions().mode() & 0o777 != 0o600
+        {
+            return Err("diagnostics export did not preserve private file permissions".into());
+        }
+    }
+    let mut archive = ZipArchive::new(std::fs::File::open(&preview)?)?;
+    let mut entries = (0..archive.len())
+        .map(|index| archive.by_index(index).map(|entry| entry.name().to_owned()))
+        .collect::<Result<Vec<_>, _>>()?;
+    entries.sort_unstable();
+    if entries
+        != [
+            "application-events.jsonl",
+            "diagnostics.json",
+            "manifest.json",
+        ]
+    {
+        return Err("diagnostics preview archive entries diverged from the v1 contract".into());
+    }
+
+    client.shutdown_blocking()?;
+    service.join()?;
+    root.cleanup()?;
+    write_smoke_status("diagnostics export completed with a private preview bundle")?;
+    Ok(())
+}
+
+#[cfg(all(
+    feature = "storage-test-injection",
+    any(target_os = "macos", target_os = "windows")
+))]
 fn run_panic_diagnostics_smoke() -> Result<(), Box<dyn std::error::Error>> {
     use bongocat_config::{BuildEnvironment, StorageLayout};
 
@@ -1320,6 +1402,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "storage-test-injection")]
     if run_options.panic_diagnostics_smoke {
         return run_panic_diagnostics_smoke();
+    }
+    #[cfg(feature = "storage-test-injection")]
+    if run_options.diagnostics_export_smoke {
+        return run_diagnostics_export_smoke();
     }
     #[cfg(target_os = "macos")]
     if run_options.startup_item_smoke {
@@ -2921,6 +3007,8 @@ mod tests {
                 panic_diagnostics_smoke: false,
                 #[cfg(feature = "storage-test-injection")]
                 panic_diagnostics_smoke_child: false,
+                #[cfg(feature = "storage-test-injection")]
+                diagnostics_export_smoke: false,
                 system_menu_smoke: false,
                 #[cfg(target_os = "macos")]
                 application_reopen_smoke: false,
@@ -3041,6 +3129,17 @@ mod tests {
         assert!(child.panic_diagnostics_smoke_child);
     }
 
+    #[cfg(feature = "storage-test-injection")]
+    #[test]
+    fn diagnostics_export_smoke_is_opt_in() {
+        let options = RunOptions::parse(["--diagnostics-export-smoke".to_owned()])
+            .expect("diagnostics export smoke options");
+        assert!(options.diagnostics_export_smoke);
+        assert!(!options.settings_window_smoke);
+        assert!(!options.panic_diagnostics_smoke);
+        assert!(usage().contains("diagnostics-export-smoke"));
+    }
+
     #[cfg(not(feature = "storage-test-injection"))]
     #[test]
     fn product_options_reject_storage_test_injection() {
@@ -3056,6 +3155,10 @@ mod tests {
             .expect_err("default product options must reject panic storage injection");
         assert!(panic_error.message.contains("unknown argument"));
         assert!(!usage().contains("panic-diagnostics-smoke"));
+        let diagnostics_error = RunOptions::parse(["--diagnostics-export-smoke".to_owned()])
+            .expect_err("default product options must reject diagnostics storage injection");
+        assert!(diagnostics_error.message.contains("unknown argument"));
+        assert!(!usage().contains("diagnostics-export-smoke"));
         let child_error = RunOptions::parse(["--panic-diagnostics-smoke-child".to_owned()])
             .expect_err("default product options must reject panic child injection");
         assert!(child_error.message.contains("unknown argument"));

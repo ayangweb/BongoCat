@@ -1772,8 +1772,9 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     跳过且不复制原 bytes。typed settings result 已投影 ZIP format、固定 entry 数、bundle bytes 和匿名
     skipped-source count；Diagnostics 页面以中英文显示这些稳定结果，不显示路径、archive entry 或日志正文。
     测试 writer 已拒绝 symlink/non-regular target，并在 temporary file 打开后及 commit 前注入失败，
-    固定旧 preview 保留且 staging 清理；
-    OS-level sync/replace failure injection 和双平台 smoke 仍待实现，本项保持未勾选。
+    固定旧 preview 保留且 staging 清理；macOS Development product smoke 已通过隔离 owner-only
+    storage 运行 typed command，并验证 private JSON/ZIP、固定 ZIP entries 与干净 shutdown。Windows
+    release smoke 和 OS-level sync/replace failure injection 仍待实现，本项保持未勾选。
   - 状态（2026-09-01）：settings service 已新增有界 `ExportDiagnostics` command，使用当前环境
     `logs/diagnostics.json` 的同目录原子写入生成 format v1 JSON。导出只包含稳定 runtime/input/
     configuration code、匿名聚合计数、模型来源计数和 settings/config revision；不包含模型 ID、
