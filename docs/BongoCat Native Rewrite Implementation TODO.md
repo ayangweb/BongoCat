@@ -687,10 +687,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     `MonotonicMillis pressed_at`、最近一次仍按下校正时间与 runtime 单调时钟观察时间；单元测试固定
     四字段，并确保
     具体键值不进入公开诊断 snapshot。
-- [ ] 每个 pressed key 最终经 KeyUp、reconcile、Reset 或最终 fallback 释放。
-  - 状态（2026-08-30）：产品状态机已覆盖 captured/reconciled Up、连续两次缺失确认、
-    lifecycle Reset、sequence gap 和非单调时间恢复；issue #47 合成回归不会残留按键。
-    正式平台 producer 与周期 scheduler 接线及 Windows 实机场景仍待完成。
+- [x] 每个 pressed key 最终经 KeyUp、reconcile、Reset 或最终 fallback 释放。
+  - 验收证据（2026-09-06）：runtime 在可靠 captured `KeyUp` 时立即清除 pressed record；
+    reconcile 连续两次缺失后释放、任意 Reset 清除全部 candidate，且由单调 clock 驱动的
+    keyboard fallback 会在配置期限后作为最后恢复路径释放。定向回归覆盖 issue #47 丢失
+    release、Reset、重复 down 刷新 fallback deadline 和 runtime tick；fallback 明确不释放
+    鼠标或手柄。PixPin、Win+L、UAC 和物理设备实测仍由独立 P0 发布回归跟踪。
 - [ ] 实现 fixture runner 和规范化 snapshot 比较。
   - 状态（2026-08-29）：`spikes/fixture-runner/` 已用 Rust 强类型解析并执行全部 9 组共享 fixture，在 24 个 checkpoint 比较完整规范化 snapshot，且已接入 Phase 0 Linux contract matrix。
   - 状态（2026-09-01）：正式 `bongocat-runtime` 新增 `shared_input_fixtures` 集成测试，真实驱动
