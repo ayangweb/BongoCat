@@ -198,6 +198,7 @@ enum PendingOperation {
     OverlayVisibility,
     OverlaySettings,
     OverlayScale,
+    OverlayOpacity,
     MotionAudio,
     BehaviorShortcuts,
     MaximumFps,
@@ -378,6 +379,8 @@ pub struct SettingsView {
     model_import: ModelImportDraft,
     overlay_scale_debouncer: crate::SettingsPatchDebouncer<u16>,
     overlay_scale_timer_generation: u64,
+    overlay_opacity_debouncer: crate::SettingsPatchDebouncer<u8>,
+    overlay_opacity_timer_generation: u64,
     model_delete_confirmation: Option<SettingsModelKey>,
     model_row_focus: BTreeMap<ModelRowKey, ModelRowFocus>,
     model_behavior_preview_focus: BTreeMap<ModelBehaviorKey, FocusHandle>,
@@ -512,6 +515,43 @@ impl SettingsView {
         .detach();
     }
 
+    fn schedule_overlay_opacity_flush(&mut self, cx: &mut Context<Self>) {
+        self.overlay_opacity_timer_generation =
+            self.overlay_opacity_timer_generation.saturating_add(1);
+        let generation = self.overlay_opacity_timer_generation;
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            executor.timer(crate::SETTINGS_PATCH_DEBOUNCE).await;
+            let _ = this.update(cx, |view, cx| {
+                if view.overlay_opacity_timer_generation != generation || view.pending.is_some() {
+                    return;
+                }
+                let Some(opacity_percent) = view.overlay_opacity_debouncer.ready(Instant::now())
+                else {
+                    return;
+                };
+                let Some(snapshot) = view.snapshot.as_ref() else {
+                    return;
+                };
+                let Some(expected_config_revision) = snapshot.config_revision else {
+                    return;
+                };
+                let mut settings = snapshot.overlay;
+                settings.opacity_percent = opacity_percent;
+                view.start_request(
+                    PendingOperation::OverlayOpacity,
+                    Some(SettingValue::OverlayOpacity {
+                        expected_config_revision,
+                        opacity_percent,
+                        settings,
+                    }),
+                    cx,
+                );
+            });
+        })
+        .detach();
+    }
+
     fn start_request(
         &mut self,
         operation: PendingOperation,
@@ -527,6 +567,12 @@ impl SettingsView {
         let client = self.client.clone();
         let sent_overlay_scale = match value.as_ref() {
             Some(SettingValue::OverlayScale { scale_percent, .. }) => Some(*scale_percent),
+            _ => None,
+        };
+        let sent_overlay_opacity = match value.as_ref() {
+            Some(SettingValue::OverlayOpacity {
+                opacity_percent, ..
+            }) => Some(*opacity_percent),
             _ => None,
         };
         cx.spawn(async move |this, cx| {
@@ -590,6 +636,15 @@ impl SettingsView {
                         .await
                 }
                 Some(SettingValue::OverlayScale {
+                    expected_config_revision,
+                    settings,
+                    ..
+                }) => {
+                    client
+                        .set_overlay_settings(expected_config_revision, settings)
+                        .await
+                }
+                Some(SettingValue::OverlayOpacity {
                     expected_config_revision,
                     settings,
                     ..
@@ -690,6 +745,14 @@ impl SettingsView {
                         view.schedule_overlay_scale_flush(cx);
                     }
                 }
+                if result.is_ok()
+                    && let Some(opacity_percent) = sent_overlay_opacity
+                {
+                    view.overlay_opacity_debouncer.mark_sent(&opacity_percent);
+                    if view.overlay_opacity_debouncer.is_pending() {
+                        view.schedule_overlay_opacity_flush(cx);
+                    }
+                }
                 if let Some(snapshot) = refreshed.filter(|snapshot| {
                     view.snapshot
                         .as_ref()
@@ -762,6 +825,11 @@ enum SettingValue {
     OverlayScale {
         expected_config_revision: u64,
         scale_percent: u16,
+        settings: SettingsOverlay,
+    },
+    OverlayOpacity {
+        expected_config_revision: u64,
+        opacity_percent: u8,
         settings: SettingsOverlay,
     },
     MotionAudioEnabled {

@@ -287,6 +287,8 @@ impl SettingsView {
             model_import: ModelImportDraft::default(),
             overlay_scale_debouncer: crate::SettingsPatchDebouncer::default(),
             overlay_scale_timer_generation: 0,
+            overlay_opacity_debouncer: crate::SettingsPatchDebouncer::default(),
+            overlay_opacity_timer_generation: 0,
             model_delete_confirmation: None,
             model_row_focus: BTreeMap::new(),
             model_behavior_preview_focus: BTreeMap::new(),

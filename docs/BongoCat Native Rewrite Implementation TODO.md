@@ -868,6 +868,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     `150 ms` 稳定窗口内合并为最新值；异步请求确认后才清除 pending，服务忙或失败时保留值并
     在后续 timer/请求完成后重试。提交仍携带当前 config revision，避免复用过期编辑；opacity、
     gamepad dead-zone、FPS 和 release timeout 等连续字段仍待接入，故本项保持未勾选。
+  - 状态（2026-09-07）：overlay opacity 输入也已接入同一 debouncer，使用独立 pending 与
+    timer generation，连续编辑只提交稳定后的最新透明度；请求失败保留未确认值，成功确认后
+    才清除。scale/opacity 的去抖回归、UI Clippy 和格式检查通过；gamepad dead-zone、FPS 和
+    release timeout 等连续字段仍待接入，故本项保持未勾选。
 - [ ] GPUI 只通过 typed command 获取 snapshot 和提交 patch。
   - 状态（2026-09-01）：正式 UI 对显隐、motion audio、模型交互和 gamepad dead-zone 使用有界
     typed command/reply，成功结果携带新 runtime revision，文件写入在 app service worker 完成；

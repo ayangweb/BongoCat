@@ -278,7 +278,7 @@ impl SettingsView {
     }
 
     pub(super) fn set_overlay_opacity_value(&mut self, raw: f64, cx: &mut Context<Self>) {
-        if self.pending.is_some() || self.model_import.is_running() {
+        if self.model_import.is_running() {
             return;
         }
         let value = raw.round().clamp(1.0, 100.0) as u8;
@@ -290,9 +290,31 @@ impl SettingsView {
         {
             return;
         }
-        let mut settings = snapshot.overlay;
-        settings.opacity_percent = value;
-        self.set_overlay_settings(settings, cx);
+        let expected_config_revision = snapshot.config_revision;
+        let current_overlay = snapshot.overlay;
+        let should_send = self
+            .overlay_opacity_debouncer
+            .observe(value, Instant::now())
+            .filter(|_| self.pending.is_none())
+            .and_then(|opacity_percent| {
+                expected_config_revision.map(|expected_config_revision| {
+                    let mut settings = current_overlay;
+                    settings.opacity_percent = opacity_percent;
+                    self.start_request(
+                        PendingOperation::OverlayOpacity,
+                        Some(SettingValue::OverlayOpacity {
+                            expected_config_revision,
+                            opacity_percent,
+                            settings,
+                        }),
+                        cx,
+                    );
+                })
+            })
+            .is_some();
+        if !should_send {
+            self.schedule_overlay_opacity_flush(cx);
+        }
     }
 
     pub(super) fn set_motion_audio_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
