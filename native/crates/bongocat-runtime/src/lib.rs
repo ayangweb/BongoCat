@@ -3168,6 +3168,91 @@ mod tests {
     }
 
     #[test]
+    fn runtime_rejects_late_gamepad_generation_after_reconnect() {
+        let owner = RuntimeOwner::start(true, 8);
+        let client = owner.client();
+        client
+            .wait_for_revision(1, TIMEOUT)
+            .expect("ready snapshot");
+        let input = owner.input_producer();
+        let axes = owner.gamepad_axis_producer();
+        let first = axes.connect(0).expect("first connection");
+        let second = axes.connect(0).expect("reconnected generation");
+
+        let connect_first = input
+            .publish(InputEvent::GamepadConnected {
+                connection: first,
+                at: MonotonicMillis::new(0),
+            })
+            .expect("first connection accepted");
+        client
+            .wait_for_input_sequence(connect_first, TIMEOUT)
+            .expect("first connection consumed");
+        let disconnect = input
+            .publish(InputEvent::GamepadDisconnected {
+                connection: first,
+                at: MonotonicMillis::new(1),
+            })
+            .expect("disconnect accepted");
+        client
+            .wait_for_input_sequence(disconnect, TIMEOUT)
+            .expect("disconnect consumed");
+        let connect_second = input
+            .publish(InputEvent::GamepadConnected {
+                connection: second,
+                at: MonotonicMillis::new(2),
+            })
+            .expect("reconnection accepted");
+        client
+            .wait_for_input_sequence(connect_second, TIMEOUT)
+            .expect("reconnection consumed");
+
+        axes.publish(GamepadAxisSample {
+            key: GamepadAxisKey {
+                connection: second,
+                axis: GamepadAxis::LeftStickX,
+            },
+            value: 0.8,
+            at: MonotonicMillis::new(3),
+        })
+        .expect("current generation axis accepted");
+        let stale_axis = axes
+            .publish(GamepadAxisSample {
+                key: GamepadAxisKey {
+                    connection: first,
+                    axis: GamepadAxis::LeftStickX,
+                },
+                value: 1.0,
+                at: MonotonicMillis::new(4),
+            })
+            .expect_err("stale axis generation rejected");
+        assert!(matches!(
+            stale_axis,
+            GamepadAxisPublishError::StaleGeneration(_)
+        ));
+
+        let stale_edge = input
+            .publish(InputEvent::Edge {
+                control: InputControl::Gamepad(GamepadButtonKey {
+                    connection: first,
+                    button: GamepadButton::South,
+                }),
+                edge: InputEdge::Down,
+                source: InputSource::Capture,
+                at: MonotonicMillis::new(4),
+            })
+            .expect("late edge accepted for runtime classification");
+        let snapshot = client
+            .wait_for_input_sequence(stale_edge, TIMEOUT)
+            .expect("late edge consumed");
+        assert_eq!(snapshot.input.pressed_gamepad_button_count, 0);
+        assert!((snapshot.model_input.stick_left_x - 0.76470584).abs() < 0.0001);
+        assert!(snapshot.model_input.stick_left_x < 1.0);
+        assert_eq!(snapshot.input.diagnostics.stale_gamepad_events, 1);
+        owner.shutdown(TIMEOUT).expect("clean shutdown");
+    }
+
+    #[test]
     fn runtime_projects_display_relative_cursor_into_model_snapshot() {
         let owner = RuntimeOwner::start(true, 4);
         let client = owner.client();

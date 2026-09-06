@@ -2548,6 +2548,9 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
         的 run `33408664176`、macOS Native job `99542490494` 与 dependency job `99542490215`
         已通过完整 workspace/许可证门禁。物理 controller、profile 差异和热插拔矩阵仍待实机。
     - [x] 将 producer overflow、断开/重连和 shutdown 诊断统一映射到 runtime snapshot。
+      - 状态（2026-09-06）：新增 `runtime_rejects_late_gamepad_generation_after_reconnect` 集成回归，
+        覆盖断开后重连、旧代次按钮边沿拒绝、旧代次 axis sample 拒绝、当前代次 axis 保留及
+        pressed/model 状态不被迟到事件污染；`bongocat-runtime` 定向测试与严格 Clippy 通过。
       - 状态（2026-08-31）：共享 axis transport 现为每个 device id 分配跨 service restart
         单调 generation，并在 snapshot 统计连接、断开、discard 和各类拒绝；可靠 input reducer
         新增 typed connect/disconnect、active connection、stale event、scoped release 诊断，设置
