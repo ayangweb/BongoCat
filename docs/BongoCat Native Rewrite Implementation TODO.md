@@ -683,7 +683,15 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     handle；worker 继续异步完成已接收队列的 drain/shutdown，避免 `RuntimeOwner::Drop` 在错误
     返回后再次无界等待。新增零时限回归确认调用方有界返回且 worker 最终进入 `Stopped`；
     超时错误聚合和真实阻塞工作预算仍待完成。
-- [ ] command 定义幂等性和重复提交语义；有副作用的长操作使用 operation id 去重。
+- [x] command 定义幂等性和重复提交语义；有副作用的长操作使用 operation id 去重。
+  - 验收证据（2026-09-06）：runtime command envelope 以单调 sequence 拒绝重复和乱序投递；
+    `Set*` 与相同 active motion/priority 的重试保持状态，并且 duplicate motion 不重新启动
+    renderer 或 motion audio，`StopMotion` 对非当前或已停止 motion 无副作用。`Tick`、
+    `ApplyInput`、`ResetInput` 与 model prepare/commit 保持事件语义，不能由值相等合并；input
+    本身另以 sequence 防重。模型导入使用 `SettingsOperationId`、共享 cancel token、单调
+    progress 和同 ID final result，UI 仅接受当前 operation 的结果。runtime 单元回归验证
+    duplicate motion 不增加 audio side effect，UI/app contract 覆盖 operation id、cancel、
+    progress 与 final-result 关联。
 - [ ] runtime tick 设置工作预算，模型解析、磁盘、音频初始化和 GPU 上传不得阻塞实时队列。
   - 状态（2026-08-28）：`spikes/runtime-contract/` 已通过 14 项测试，覆盖状态机、单调 tick、operation 去重、typed bounded worker、递增 snapshot revision、sequence gap/duplicate、overflow Reset、shutdown drain/timeout、command error 和 panic/join 诊断；产品 runtime 的输入、模型、配置服务、工作预算和真实线程 owner 仍待 Phase 1/2。
 

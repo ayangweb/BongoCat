@@ -1571,8 +1571,9 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                         });
                     }
                     WorkerCommand::Product(RuntimeCommand::SetMotionAudioEnabled(enabled)) => {
+                        let disabling_audio = motion_audio_enabled && !enabled;
                         motion_audio_enabled = enabled;
-                        if !enabled {
+                        if disabling_audio {
                             stop_motion_audio(
                                 &motion_audio,
                                 sequence,
@@ -1715,13 +1716,18 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                         );
                     }
                     WorkerCommand::Product(RuntimeCommand::StartMotion { motion, priority }) => {
+                        let duplicate = active_motion.as_ref().is_some_and(|active| {
+                            active.motion == motion
+                                && active.priority == priority
+                                && active.stop_command_sequence.is_none()
+                        });
                         let can_replace =
                             active_motion
                                 .as_ref()
                                 .is_none_or(|active: &ActiveMotionSnapshot| {
                                     priority >= active.priority
                                 });
-                        if !can_replace {
+                        if duplicate || !can_replace {
                             publish(&snapshot, |current| {
                                 current.last_command_failure = None;
                                 current.last_command_sequence = Some(sequence);
@@ -3398,6 +3404,22 @@ mod tests {
         assert_eq!(
             started.motion_audio.rejected_after_shutdown,
             audio_rejections_before_motion + 1
+        );
+
+        let duplicate_sequence = client
+            .send(RuntimeCommand::StartMotion {
+                motion: first.clone(),
+                priority: MotionPriority::Normal,
+            })
+            .expect("duplicate motion request");
+        let duplicate = client
+            .wait_for_command(duplicate_sequence, TIMEOUT)
+            .expect("duplicate motion result");
+        assert_eq!(duplicate.active_motion, started.active_motion);
+        assert_eq!(
+            duplicate.motion_audio.rejected_after_shutdown,
+            audio_rejections_before_motion + 1,
+            "an idempotent retry must not restart motion audio"
         );
 
         clock.set(Duration::from_millis(500));
