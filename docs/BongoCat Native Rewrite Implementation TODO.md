@@ -580,6 +580,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 native/Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 --target-dir native/target/storage-test-injection -- --diagnostics-export-smoke` 通过，输出
     `bongocat-app: diagnostics export completed with a private preview bundle`。
+  - 状态（2026-09-07）：文本脱敏字段扩展至相对 `path/file` 及 `message/detail/error` 值，新增
+    相对用户模型路径回归，避免错误详情或相对路径绕过绝对路径清理。
 - [ ] 构建产物记录 source commit、Cargo.lock hash、toolchain、target 和 feature set。
   - [x] `tools/record-native-provenance.py` 生成无绝对路径的 JSON；Native 三平台 CI 上传 runner
         provenance，macOS `.app` 将其放入 `Contents/Resources/build-provenance.json`。工具测试验证

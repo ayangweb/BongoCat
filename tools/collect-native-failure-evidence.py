@@ -20,7 +20,7 @@ SAFE_LINE = re.compile(
 )
 ABSOLUTE_PATH = re.compile(r"(?:[A-Za-z]:[\\/]|/Users/|/home/|/Users/)[^\s\"']+")
 SENSITIVE_FIELD = re.compile(
-    r"(?im)(\b(?:key(?:[_ -]?sequence)?|scan[_ -]?code|clipboard|input[_ -]?sequence|pressed[_ -]?keys?)\b\s*[:=]\s*)[^\r\n,}]+"
+    r"(?im)(\b(?:key(?:[_ -]?sequence)?|scan[_ -]?code|clipboard|input[_ -]?sequence|pressed[_ -]?keys?|path|file|message|detail|error)\b\s*[:=]\s*)[^\r\n,}]+"
 )
 
 MAX_FILE_BYTES = 256 * 1024

@@ -18,7 +18,7 @@ class NativeFailureEvidenceTests(unittest.TestCase):
             source.mkdir()
             (source / "smoke.stdout.log").write_text(
                 "renderer validation passed path=/Users/alice/private\n"
-                "key_sequence=Ctrl+Alt+A clipboard=secret\n",
+                "key_sequence=Ctrl+Alt+A clipboard=secret error=relative/user/model\n",
                 encoding="utf-8",
             )
             (source / "arbitrary.json").write_text('{"private":"content"}', encoding="utf-8")
@@ -42,6 +42,7 @@ class NativeFailureEvidenceTests(unittest.TestCase):
             self.assertNotIn("/Users/alice", evidence)
             self.assertNotIn("Ctrl+Alt+A", evidence)
             self.assertNotIn("secret", evidence)
+            self.assertNotIn("relative/user/model", evidence)
             self.assertIn("<redacted>", evidence)
             self.assertNotIn(str(source), json.dumps(manifest))
 
