@@ -562,6 +562,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     单文件 256 KiB、总量 2 MiB、最多 100 个文件，并对绝对路径、按键/scan code、剪贴板和 pressed
     字段脱敏。artifact 保留 7 日且只上传脱敏目录；测试覆盖路径/按键清理、非白名单图片和 symlink。
     尚未覆盖未产生临时日志的纯 contract job，也未将真实平台截图接入 smoke，故保持未勾选。
+  - 状态（2026-09-07）：新增 `test_native_failure_evidence_workflow.py` 静态 contract，持续检查
+    失败 artifact 必须经收集器、使用 7 日保留且禁止直接 glob 上传 runner 原始日志。
 - [ ] 构建产物记录 source commit、Cargo.lock hash、toolchain、target 和 feature set。
   - [x] `tools/record-native-provenance.py` 生成无绝对路径的 JSON；Native 三平台 CI 上传 runner
         provenance，macOS `.app` 将其放入 `Contents/Resources/build-provenance.json`。工具测试验证
