@@ -1,5 +1,7 @@
 use super::*;
-use crate::{SettingsModelBehaviorBinding, SettingsShortcutBinding};
+use crate::{
+    SettingsDiagnosticsExportStatus, SettingsModelBehaviorBinding, SettingsShortcutBinding,
+};
 use gpui_kit::{Keystroke, Modifiers};
 
 fn key(key: &str, key_char: Option<&str>) -> KeyDownEvent {
@@ -377,8 +379,32 @@ fn diagnostics_presentations_follow_the_resolved_language() {
     assert_eq!(recovery.detail, "已检查 2 个备份候选");
 
     assert_eq!(
-        diagnostics_export_status(SettingsLanguage::ChineseSimplified, Some(128)),
-        "已导出 128 字节"
+        diagnostics_export_status(
+            SettingsLanguage::ChineseSimplified,
+            Some(SettingsDiagnosticsExportStatus {
+                format_version: 1,
+                bytes_written: 128,
+                preview_bundle_format_version: 1,
+                preview_bundle_bytes_written: 256,
+                preview_bundle_entry_count: 3,
+                preview_bundle_skipped_source_files: 2,
+            }),
+        ),
+        "报告 v1：128 字节 · 预览包 v1：3 个条目，256 字节 · 跳过 2 个来源日志"
+    );
+    assert_eq!(
+        diagnostics_export_status(
+            SettingsLanguage::EnglishUnitedStates,
+            Some(SettingsDiagnosticsExportStatus {
+                format_version: 1,
+                bytes_written: 128,
+                preview_bundle_format_version: 1,
+                preview_bundle_bytes_written: 256,
+                preview_bundle_entry_count: 3,
+                preview_bundle_skipped_source_files: 2,
+            }),
+        ),
+        "Report v1: 128 bytes · Preview bundle v1: 3 entries, 256 bytes · Skipped 2 source logs"
     );
     let command = ShortcutCaptureTarget::Command("toggle_overlay".to_owned());
     assert_eq!(

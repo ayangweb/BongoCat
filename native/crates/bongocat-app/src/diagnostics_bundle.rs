@@ -15,14 +15,17 @@ const APPLICATION_EVENTS_ENTRY: &str = "application-events.jsonl";
 const DIAGNOSTICS_ENTRY: &str = "diagnostics.json";
 const MANIFEST_ENTRY: &str = "manifest.json";
 const PREVIEW_BUNDLE_NAME: &str = "diagnostics-preview.zip";
-const PREVIEW_BUNDLE_SCHEMA_VERSION: u32 = 1;
+pub(crate) const PREVIEW_BUNDLE_FORMAT_VERSION: u32 = 1;
+pub(crate) const PREVIEW_BUNDLE_ENTRY_COUNT: u32 = 3;
 const MAX_APPLICATION_LOG_FILES: usize = 8;
 const MAX_APPLICATION_LOG_BYTES: u64 = 1024 * 1024;
 const MAX_EVENT_LINE_BYTES: usize = 1024;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct PreviewBundleStatus {
+    pub format_version: u32,
     pub bytes_written: u64,
+    pub entry_count: u32,
     pub application_event_count: u64,
     pub skipped_source_files: u64,
 }
@@ -53,7 +56,7 @@ pub(crate) fn write_preview_bundle(
 ) -> Result<PreviewBundleStatus, PreviewBundleError> {
     let (events, skipped_source_files) = collect_application_events(directory);
     let manifest = serde_json::to_vec(&PreviewManifest {
-        schema_version: PREVIEW_BUNDLE_SCHEMA_VERSION,
+        schema_version: PREVIEW_BUNDLE_FORMAT_VERSION,
         diagnostics_entry: DIAGNOSTICS_ENTRY,
         application_events_entry: APPLICATION_EVENTS_ENTRY,
         application_event_count: events.len() as u64,
@@ -67,7 +70,9 @@ pub(crate) fn write_preview_bundle(
     let path = directory.join(PREVIEW_BUNDLE_NAME);
     write_private_atomic(&path, &archive_bytes)?;
     Ok(PreviewBundleStatus {
+        format_version: PREVIEW_BUNDLE_FORMAT_VERSION,
         bytes_written: archive_bytes.len() as u64,
+        entry_count: PREVIEW_BUNDLE_ENTRY_COUNT,
         application_event_count: events.len() as u64,
         skipped_source_files,
     })
@@ -192,7 +197,7 @@ fn write_archive(
 
 fn verify_archive(bytes: &[u8]) -> Result<(), PreviewBundleError> {
     let mut archive = ZipArchive::new(Cursor::new(bytes)).map_err(|_| PreviewBundleError)?;
-    if archive.len() != 3 {
+    if archive.len() != PREVIEW_BUNDLE_ENTRY_COUNT as usize {
         return Err(PreviewBundleError);
     }
     for name in [MANIFEST_ENTRY, DIAGNOSTICS_ENTRY, APPLICATION_EVENTS_ENTRY] {

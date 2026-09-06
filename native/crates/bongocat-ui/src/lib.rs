@@ -252,6 +252,10 @@ pub struct SettingsConfigRecovery {
 pub struct SettingsDiagnosticsExportStatus {
     pub format_version: u32,
     pub bytes_written: u64,
+    pub preview_bundle_format_version: u32,
+    pub preview_bundle_bytes_written: u64,
+    pub preview_bundle_entry_count: u32,
+    pub preview_bundle_skipped_source_files: u64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2451,6 +2455,10 @@ mod tests {
             exported.diagnostics_export = Some(SettingsDiagnosticsExportStatus {
                 format_version: DIAGNOSTICS_EXPORT_FORMAT_VERSION,
                 bytes_written: 512,
+                preview_bundle_format_version: 1,
+                preview_bundle_bytes_written: 768,
+                preview_bundle_entry_count: 3,
+                preview_bundle_skipped_source_files: 2,
             });
             reply.respond(Ok(exported)).expect("export reply");
         });
@@ -2463,6 +2471,10 @@ mod tests {
             Some(SettingsDiagnosticsExportStatus {
                 format_version: DIAGNOSTICS_EXPORT_FORMAT_VERSION,
                 bytes_written: 512,
+                preview_bundle_format_version: 1,
+                preview_bundle_bytes_written: 768,
+                preview_bundle_entry_count: 3,
+                preview_bundle_skipped_source_files: 2,
             })
         );
         worker.join().expect("worker join");

@@ -3,6 +3,7 @@ use super::{
     SettingsInputDiagnostics, SettingsLanguage, SettingsModelOrigin, ShortcutCaptureError,
     ShortcutCaptureTarget,
 };
+use crate::SettingsDiagnosticsExportStatus;
 
 #[derive(Clone, Copy)]
 pub(super) enum UiText {
@@ -684,14 +685,28 @@ pub(super) fn diagnostics_unavailable(language: SettingsLanguage, error: Setting
 
 pub(super) fn diagnostics_export_status(
     language: SettingsLanguage,
-    bytes_written: Option<u64>,
+    status: Option<SettingsDiagnosticsExportStatus>,
 ) -> String {
-    match (language, bytes_written) {
-        (SettingsLanguage::ChineseSimplified, Some(bytes)) => {
-            format!("已导出 {bytes} 字节")
-        }
-        (SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates, Some(bytes)) => {
-            format!("Exported {bytes} bytes")
+    match (language, status) {
+        (SettingsLanguage::ChineseSimplified, Some(status)) => format!(
+            "报告 v{}：{} 字节 · 预览包 v{}：{} 个条目，{} 字节 · 跳过 {} 个来源日志",
+            status.format_version,
+            status.bytes_written,
+            status.preview_bundle_format_version,
+            status.preview_bundle_entry_count,
+            status.preview_bundle_bytes_written,
+            status.preview_bundle_skipped_source_files,
+        ),
+        (SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates, Some(status)) => {
+            format!(
+                "Report v{}: {} bytes · Preview bundle v{}: {} entries, {} bytes · Skipped {} source logs",
+                status.format_version,
+                status.bytes_written,
+                status.preview_bundle_format_version,
+                status.preview_bundle_entry_count,
+                status.preview_bundle_bytes_written,
+                status.preview_bundle_skipped_source_files,
+            )
         }
         (_, None) => text(language, UiText::NoReportExported).to_owned(),
     }

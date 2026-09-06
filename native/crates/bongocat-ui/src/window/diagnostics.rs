@@ -148,14 +148,10 @@ pub(super) fn content(
                                                 ui_text(language, UiText::DiagnosticsExport),
                                             ),
                                         )
-                                        .child(
-                                            div().text_sm().child(diagnostics_export_status(
-                                                language,
-                                                snapshot
-                                                    .diagnostics_export
-                                                    .map(|status| status.bytes_written),
-                                            )),
-                                        ),
+                                        .child(div().text_sm().child(diagnostics_export_status(
+                                            language,
+                                            snapshot.diagnostics_export,
+                                        ))),
                                 )
                                 .child(
                                     command_button(

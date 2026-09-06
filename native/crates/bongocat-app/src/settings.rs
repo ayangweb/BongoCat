@@ -1765,11 +1765,15 @@ fn export_diagnostics_file(
         .map_err(|_| SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))?;
     set_private_path(path)
         .map_err(|_| SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))?;
-    write_preview_bundle(parent, &bytes)
+    let preview_bundle = write_preview_bundle(parent, &bytes)
         .map_err(|_| SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))?;
     Ok(SettingsDiagnosticsExportStatus {
         format_version: DIAGNOSTICS_EXPORT_FORMAT_VERSION,
         bytes_written: u64::try_from(bytes.len()).unwrap_or(u64::MAX),
+        preview_bundle_format_version: preview_bundle.format_version,
+        preview_bundle_bytes_written: preview_bundle.bytes_written,
+        preview_bundle_entry_count: preview_bundle.entry_count,
+        preview_bundle_skipped_source_files: preview_bundle.skipped_source_files,
     })
 }
 
@@ -2345,6 +2349,10 @@ mod tests {
             Ok(SettingsDiagnosticsExportStatus {
                 format_version: DIAGNOSTICS_EXPORT_FORMAT_VERSION,
                 bytes_written: 1,
+                preview_bundle_format_version: 1,
+                preview_bundle_bytes_written: 2,
+                preview_bundle_entry_count: 3,
+                preview_bundle_skipped_source_files: 0,
             })
         }
     }
@@ -2475,6 +2483,13 @@ mod tests {
         assert_eq!(status.format_version, DIAGNOSTICS_EXPORT_FORMAT_VERSION);
         assert_eq!(status.bytes_written, bytes.len() as u64);
         assert!(preview_path.is_file());
+        assert_eq!(status.preview_bundle_format_version, 1);
+        assert_eq!(
+            status.preview_bundle_bytes_written,
+            fs::metadata(&preview_path).expect("preview metadata").len()
+        );
+        assert_eq!(status.preview_bundle_entry_count, 3);
+        assert_eq!(status.preview_bundle_skipped_source_files, 0);
         let document: serde_json::Value = serde_json::from_slice(&bytes).expect("valid JSON");
         assert_eq!(document["format_version"], 1);
         assert_eq!(document["settings_revision"], 42);
@@ -2637,6 +2652,10 @@ mod tests {
         clock.observe_diagnostics_export(SettingsDiagnosticsExportStatus {
             format_version: DIAGNOSTICS_EXPORT_FORMAT_VERSION,
             bytes_written: 1,
+            preview_bundle_format_version: 1,
+            preview_bundle_bytes_written: 2,
+            preview_bundle_entry_count: 3,
+            preview_bundle_skipped_source_files: 0,
         });
         clock.coalesce_changes_since(40);
         assert_eq!(clock.revision, 41);
@@ -3123,6 +3142,10 @@ mod tests {
             Some(SettingsDiagnosticsExportStatus {
                 format_version: DIAGNOSTICS_EXPORT_FORMAT_VERSION,
                 bytes_written: 1,
+                preview_bundle_format_version: 1,
+                preview_bundle_bytes_written: 2,
+                preview_bundle_entry_count: 3,
+                preview_bundle_skipped_source_files: 0,
             })
         );
         let refreshed = client.read_snapshot_blocking().expect("refreshed snapshot");
