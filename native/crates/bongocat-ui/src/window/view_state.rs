@@ -291,6 +291,8 @@ impl SettingsView {
             overlay_opacity_timer_generation: 0,
             gamepad_dead_zone_debouncer: crate::SettingsPatchDebouncer::default(),
             gamepad_dead_zone_timer_generation: 0,
+            maximum_fps_debouncer: crate::SettingsPatchDebouncer::default(),
+            maximum_fps_timer_generation: 0,
             model_delete_confirmation: None,
             model_row_focus: BTreeMap::new(),
             model_behavior_preview_focus: BTreeMap::new(),

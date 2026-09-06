@@ -383,6 +383,8 @@ pub struct SettingsView {
     overlay_opacity_timer_generation: u64,
     gamepad_dead_zone_debouncer: crate::SettingsPatchDebouncer<SettingsGamepadAxisSettings>,
     gamepad_dead_zone_timer_generation: u64,
+    maximum_fps_debouncer: crate::SettingsPatchDebouncer<u16>,
+    maximum_fps_timer_generation: u64,
     model_delete_confirmation: Option<SettingsModelKey>,
     model_row_focus: BTreeMap<ModelRowKey, ModelRowFocus>,
     model_behavior_preview_focus: BTreeMap<ModelBehaviorKey, FocusHandle>,
@@ -588,6 +590,39 @@ impl SettingsView {
         .detach();
     }
 
+    fn schedule_maximum_fps_flush(&mut self, cx: &mut Context<Self>) {
+        self.maximum_fps_timer_generation = self.maximum_fps_timer_generation.saturating_add(1);
+        let generation = self.maximum_fps_timer_generation;
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            executor.timer(crate::SETTINGS_PATCH_DEBOUNCE).await;
+            let _ = this.update(cx, |view, cx| {
+                if view.maximum_fps_timer_generation != generation || view.pending.is_some() {
+                    return;
+                }
+                let Some(maximum_fps) = view.maximum_fps_debouncer.ready(Instant::now()) else {
+                    return;
+                };
+                let Some(expected_config_revision) = view
+                    .snapshot
+                    .as_ref()
+                    .and_then(|snapshot| snapshot.config_revision)
+                else {
+                    return;
+                };
+                view.start_request(
+                    PendingOperation::MaximumFps,
+                    Some(SettingValue::MaximumFps {
+                        expected_config_revision,
+                        maximum_fps,
+                    }),
+                    cx,
+                );
+            });
+        })
+        .detach();
+    }
+
     fn start_request(
         &mut self,
         operation: PendingOperation,
@@ -613,6 +648,10 @@ impl SettingsView {
         };
         let sent_gamepad_dead_zone = match value.as_ref() {
             Some(SettingValue::GamepadAxisSettings { settings, .. }) => Some(*settings),
+            _ => None,
+        };
+        let sent_maximum_fps = match value.as_ref() {
+            Some(SettingValue::MaximumFps { maximum_fps, .. }) => Some(*maximum_fps),
             _ => None,
         };
         cx.spawn(async move |this, cx| {
@@ -799,6 +838,14 @@ impl SettingsView {
                     view.gamepad_dead_zone_debouncer.mark_sent(&settings);
                     if view.gamepad_dead_zone_debouncer.is_pending() {
                         view.schedule_gamepad_dead_zone_flush(cx);
+                    }
+                }
+                if result.is_ok()
+                    && let Some(maximum_fps) = sent_maximum_fps
+                {
+                    view.maximum_fps_debouncer.mark_sent(&maximum_fps);
+                    if view.maximum_fps_debouncer.is_pending() {
+                        view.schedule_maximum_fps_flush(cx);
                     }
                 }
                 if let Some(snapshot) = refreshed.filter(|snapshot| {

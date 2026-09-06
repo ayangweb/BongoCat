@@ -360,26 +360,8 @@ impl SettingsView {
         );
     }
 
-    pub(super) fn set_maximum_fps(&mut self, maximum_fps: u16, cx: &mut Context<Self>) {
-        let Some(expected_config_revision) = self
-            .snapshot
-            .as_ref()
-            .and_then(|snapshot| snapshot.config_revision)
-        else {
-            return;
-        };
-        self.start_request(
-            PendingOperation::MaximumFps,
-            Some(SettingValue::MaximumFps {
-                expected_config_revision,
-                maximum_fps,
-            }),
-            cx,
-        );
-    }
-
     pub(super) fn set_maximum_fps_value(&mut self, raw: f64, cx: &mut Context<Self>) {
-        if self.pending.is_some() || self.model_import.is_running() {
+        if self.model_import.is_running() {
             return;
         }
         let value = raw.round().clamp(15.0, 240.0) as u16;
@@ -391,7 +373,27 @@ impl SettingsView {
         {
             return;
         }
-        self.set_maximum_fps(value, cx);
+        let expected_config_revision = snapshot.config_revision;
+        let should_send = self
+            .maximum_fps_debouncer
+            .observe(value, Instant::now())
+            .filter(|_| self.pending.is_none())
+            .and_then(|maximum_fps| {
+                expected_config_revision.map(|expected_config_revision| {
+                    self.start_request(
+                        PendingOperation::MaximumFps,
+                        Some(SettingValue::MaximumFps {
+                            expected_config_revision,
+                            maximum_fps,
+                        }),
+                        cx,
+                    );
+                })
+            })
+            .is_some();
+        if !should_send {
+            self.schedule_maximum_fps_flush(cx);
+        }
     }
 
     pub(super) fn adjust_maximum_fps(&mut self, delta: i16, cx: &mut Context<Self>) {

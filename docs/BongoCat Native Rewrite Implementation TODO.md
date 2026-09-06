@@ -876,6 +876,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     `SettingsGamepadAxisSettings` debouncer 合并，连续编辑只提交最新成对值；请求确认后清除，
     服务忙时保留 pending 并由 timer/请求完成路径继续发送。现有 gamepad command contract、
     UI 定向测试和严格 Clippy 通过；FPS、release timeout 及 shutdown flush UI 接入仍待完成。
+  - 状态（2026-09-07）：maximum FPS 输入已接入独立 typed `u16` debouncer，连续编辑在
+    `150 ms` 稳定窗口内合并为最新值；异步请求成功确认后清除 pending，服务忙或失败时保留值并
+    由 timer/请求完成路径继续发送。UI 定向测试和严格 Clippy 通过；release timeout 与
+    shutdown flush UI 接入仍待完成。
 - [ ] GPUI 只通过 typed command 获取 snapshot 和提交 patch。
   - 状态（2026-09-01）：正式 UI 对显隐、motion audio、模型交互和 gamepad dead-zone 使用有界
     typed command/reply，成功结果携带新 runtime revision，文件写入在 app service worker 完成；
