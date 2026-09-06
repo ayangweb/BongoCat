@@ -2001,6 +2001,10 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 - [x] 完成 pose3 静态 preflight、匿名摘要 CLI 和合成错误 contract；没有授权真实样本或 fade/link 求值证据。
 - [x] 完成 userdata3 v3 静态 preflight、匿名摘要 CLI 和合成错误 contract；三个预置模型没有真实 userdata3。
 - [x] 完成 macOS arm64 真实 r.5 sys binding/Core probe；三个预置 Moc 各 100 次生命周期、drawable 与 r.5 offscreen 数组边界、legacy count 对照和 `leaks` 0-byte 门禁通过。产品 safe wrapper、Windows x64 Core/D3D11 与 macOS arm64 Core/Metal 已进入正式链路；macOS x64 原生 ABI、非零 offscreen fixture 及真实 physics/pose Framework 求值仍未完成。
+- 状态（2026-09-06）：Apple Silicon host 通过 Rosetta 实际运行 x86_64 Mach-O 的
+  `bongocat-live2d` release tests，并链接固定 macOS x64 static Core；三个预置模型的 100-cycle
+  lifecycle 与稳定 drawable snapshot 均通过，Core 返回 `6.0.1`。该 cross-ABI smoke 不替代 Intel
+  原生主机/GPU/签名验证，故 P0-CUBISM 总项与 macOS Intel 发布门槛保持未完成。
 - [ ] 取得可分发授权的 physics3/pose3 fixture 后完成强类型结构和 Framework 求值；三个预置模型不含这两类资源，不得以合成样本冒充兼容证据。
 
 14. [ ] `P0-GO-NO-GO`：汇总证据、阻塞和条件，形成完整功能与 stable 发布决议。

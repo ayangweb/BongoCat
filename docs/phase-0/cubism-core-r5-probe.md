@@ -1,7 +1,7 @@
 # Cubism Core R5 Probe
 
-状态：macOS arm64 Core ABI 与三个预置 Moc 生命周期已通过；其他 target 与 renderer 仍待验证
-记录日期：2026-08-30
+状态：macOS arm64 Core ABI 已通过；macOS x64 已完成 Rosetta cross-ABI smoke，Intel 原生与其他 target/renderer 仍待验证
+记录日期：2026-09-06
 
 ## 1. Scope
 
@@ -76,3 +76,27 @@ count 与 `shared/fixtures/model-fixtures/legacy-core-baseline.json` 一致。�
 - 取得带 r.5 offscreen/enhanced rendering 的合法 fixture 并验证非零数组；
 - 实现并评审产品 `bongocat-live2d` safe owner，随后接入 D3D11/Metal renderer；
 - 完成 Framework 行为、发布授权、notice、签名和分发清单。
+
+## 6. macOS x64 Rosetta Cross-ABI Smoke
+
+2026-09-06，在 macOS 26.5.2 Apple Silicon host 上为固定 Rust 1.97.1 安装
+`x86_64-apple-darwin` standard library target。`file` 确认生成的
+`bongocat_live2d-*` test executable 为 x86_64 Mach-O，并以
+`CARGO_TARGET_X86_64_APPLE_DARWIN_RUNNER='arch -x86_64'` 实际运行。产品
+`bongocat-live2d` build script 针对该 target 链接仓库固定的
+`Core/lib/macos/x86_64/libLive2DCubismCore.a`。
+
+以下 release tests 均通过并由 Core 返回 `6.0.1`：
+
+```text
+cargo test --locked --target x86_64-apple-darwin -p bongocat-live2d --release \
+  core::tests::preset_core_models_survive_repeated_load_update_and_drop_cycles --lib
+cargo test --locked --target x86_64-apple-darwin -p bongocat-live2d --release \
+  core::tests::all_preset_models_produce_stable_drawable_snapshots --lib
+```
+
+第一项对 standard、keyboard、gamepad 三个预置模型各执行 100 次
+load/update/drop；第二项验证三者稳定复制 drawable snapshot。Rosetta 证明 x86_64
+code generation、static link 和 Core/model ABI 的交叉执行路径，但不能证明 Intel 硬件、
+Intel GPU renderer、实际签名/notarization 或 Intel 环境的资源行为。因此第 5 节的 Intel
+原生门槛保持不变。
