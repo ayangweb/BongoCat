@@ -21,6 +21,7 @@ class NativeFailureEvidenceTests(unittest.TestCase):
                 "key_sequence=Ctrl+Alt+A clipboard=secret\n",
                 encoding="utf-8",
             )
+            (source / "arbitrary.json").write_text('{"private":"content"}', encoding="utf-8")
             (source / "ignored.bin").write_bytes(b"private")
             subprocess.run(
                 [
@@ -41,6 +42,7 @@ class NativeFailureEvidenceTests(unittest.TestCase):
             self.assertNotIn("/Users/alice", evidence)
             self.assertNotIn("Ctrl+Alt+A", evidence)
             self.assertNotIn("secret", evidence)
+            self.assertIn("<redacted>", evidence)
             self.assertNotIn(str(source), json.dumps(manifest))
 
     def test_skips_symlinks_and_non_validation_images(self):
@@ -67,6 +69,32 @@ class NativeFailureEvidenceTests(unittest.TestCase):
             manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["file_count"], 1)
             self.assertEqual(manifest["files"][0]["kind"], "image")
+
+    def test_unknown_log_lines_are_replaced_with_a_placeholder(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "runner-temp"
+            output = Path(directory) / "evidence"
+            source.mkdir()
+            (source / "smoke.log").write_text(
+                "user model contents: private text\nstatus=failed\n", encoding="utf-8"
+            )
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--input",
+                    str(source),
+                    "--output",
+                    str(output),
+                    "--platform",
+                    "Linux",
+                ],
+                check=True,
+            )
+            evidence = (output / "smoke.log").read_text(encoding="utf-8")
+            self.assertNotIn("private text", evidence)
+            self.assertIn("<redacted-line>", evidence)
+            self.assertIn("status=failed", evidence)
 
     def test_output_directory_inside_input_is_not_collected(self):
         with tempfile.TemporaryDirectory() as directory:

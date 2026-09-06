@@ -15,6 +15,9 @@ TEXT_SUFFIXES = {".log", ".txt", ".json"}
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg"}
 IMAGE_NAME = re.compile(r"(?:screenshot|renderer|validation|overlay|gpui)", re.I)
 SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
+SAFE_LINE = re.compile(
+    r"(?i)^(?:\s*(?:bongocat|frame|renderer|overlay|gpui|runtime|error|status|test|tests|clean_shutdown|failures|recoveries|scale_factor|revision|resize|draw|present|shutdown|stopped|started|warning|failed|passed|key_sequence|clipboard|scan_code|pressed_keys?)\b)"
+)
 ABSOLUTE_PATH = re.compile(r"(?:[A-Za-z]:[\\/]|/Users/|/home/|/Users/)[^\s\"']+")
 SENSITIVE_FIELD = re.compile(
     r"(?im)(\b(?:key(?:[_ -]?sequence)?|scan[_ -]?code|clipboard|input[_ -]?sequence|pressed[_ -]?keys?)\b\s*[:=]\s*)[^\r\n,}]+"
@@ -31,15 +34,24 @@ def safe_name(name: str) -> str:
 
 
 def redact(value: str) -> str:
-    value = ABSOLUTE_PATH.sub("<path>", value)
-    return SENSITIVE_FIELD.sub(r"\1<redacted>", value)
+    redacted_lines = []
+    for line in value.splitlines(keepends=True):
+        if not SAFE_LINE.search(line):
+            newline = "\n" if line.endswith("\n") else ""
+            redacted_lines.append("<redacted-line>" + newline)
+            continue
+        line = ABSOLUTE_PATH.sub("<path>", line)
+        redacted_lines.append(SENSITIVE_FIELD.sub(r"\1<redacted>", line))
+    return "".join(redacted_lines)
 
 
 def is_candidate(path: Path) -> bool:
     if not path.is_file() or path.is_symlink():
         return False
-    if path.suffix.lower() in TEXT_SUFFIXES:
+    if path.suffix.lower() in {".log", ".txt"}:
         return True
+    if path.suffix.lower() == ".json":
+        return bool(IMAGE_NAME.search(path.name))
     return path.suffix.lower() in IMAGE_SUFFIXES and bool(IMAGE_NAME.search(path.name))
 
 

@@ -574,6 +574,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-09-07）：`native-toolchain`、`fixtures` 和 `dependency-policy` 基础 job 也接入
     同一失败证据收集/上传步骤，当前 Phase 0 workflow 共 10 个 job 仅上传受限脱敏目录；静态
     contract 固定收集器与上传步骤一一对应。
+  - 状态（2026-09-07）：收集器进一步拒绝未命名 JSON，并按匿名状态前缀保留文本行；未知行统一
+    替换为 `<redacted-line>`，回归覆盖任意 JSON 和潜在用户模型文本，避免仅依赖字段名匹配隐私。
 - [ ] 构建产物记录 source commit、Cargo.lock hash、toolchain、target 和 feature set。
   - [x] `tools/record-native-provenance.py` 生成无绝对路径的 JSON；Native 三平台 CI 上传 runner
         provenance，macOS `.app` 将其放入 `Contents/Resources/build-provenance.json`。工具测试验证
