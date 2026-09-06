@@ -71,6 +71,12 @@ pub fn frame_interval_for_runtime(maximum_fps: u16, overlay_visible: bool) -> Op
     })
 }
 
+fn runtime_tick_work_budget(maximum_fps: u16) -> Duration {
+    frame_interval_for_maximum_fps(maximum_fps)
+        .map(|interval| interval / 2)
+        .unwrap_or_else(|| Duration::from_millis(8))
+}
+
 pub const fn release_fallback_timeout_is_valid(timeout_ms: u32) -> bool {
     timeout_ms <= MAX_RELEASE_FALLBACK_TIMEOUT_MS
 }
@@ -332,6 +338,12 @@ pub struct RuntimeCommandTransportDiagnostics {
     pub out_of_order_sequence_count: u64,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct RuntimeWorkDiagnostics {
+    pub budget_exceeded: u64,
+    pub last_over_budget_ms: u64,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct PendingModelSnapshot {
     pub token: ModelCommitToken,
@@ -399,6 +411,7 @@ pub struct RuntimeSnapshot {
     pub gamepad_axis_transport: GamepadAxisTransportDiagnostics,
     pub platform_input: PlatformInputDiagnostics,
     pub command_transport: RuntimeCommandTransportDiagnostics,
+    pub work: RuntimeWorkDiagnostics,
     pub model_input: ModelInputSnapshot,
     pub render_error: Option<RuntimeRenderErrorCode>,
     pub last_command_failure: Option<RuntimeCommandFailure>,
@@ -432,6 +445,7 @@ impl RuntimeSnapshot {
             gamepad_axis_transport: GamepadAxisTransportDiagnostics::default(),
             platform_input: PlatformInputDiagnostics::default(),
             command_transport: RuntimeCommandTransportDiagnostics::default(),
+            work: RuntimeWorkDiagnostics::default(),
             model_input: ModelInputSnapshot::default(),
             render_error: None,
             last_command_failure: None,
@@ -1442,6 +1456,9 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
         } else {
             receiver.recv_timeout(runtime_frame_interval(maximum_fps, overlay_visible))
         };
+        // Wall-clock measurement is diagnostics only; product state continues to use
+        // the injected monotonic clock above and inside the command handlers.
+        let work_started = Instant::now();
         match received {
             Ok(envelope) => {
                 consume_cursor(
@@ -1951,6 +1968,15 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                 }
             }
             Err(RecvTimeoutError::Disconnected) => break,
+        }
+        let elapsed = work_started.elapsed();
+        let budget = runtime_tick_work_budget(maximum_fps);
+        if elapsed > budget {
+            let elapsed_ms = elapsed.as_millis().min(u64::MAX as u128) as u64;
+            publish(&snapshot, |current| {
+                current.work.budget_exceeded = current.work.budget_exceeded.saturating_add(1);
+                current.work.last_over_budget_ms = elapsed_ms;
+            });
         }
     }
     consume_cursor(
@@ -2708,6 +2734,15 @@ mod tests {
         assert!(frame_interval_for_maximum_fps(MAXIMUM_FPS).is_some());
         assert!(frame_interval_for_maximum_fps(MINIMUM_FPS - 1).is_none());
         assert!(frame_interval_for_maximum_fps(MAXIMUM_FPS + 1).is_none());
+        assert_eq!(
+            runtime_tick_work_budget(60),
+            Duration::from_secs_f64(1.0 / 120.0)
+        );
+        let budget_120 = runtime_tick_work_budget(120);
+        assert!(
+            budget_120.abs_diff(Duration::from_secs_f64(1.0 / 240.0)) <= Duration::from_nanos(1)
+        );
+        assert_eq!(runtime_tick_work_budget(0), Duration::from_millis(8));
         assert_eq!(
             frame_interval_for_runtime(MINIMUM_FPS, false),
             Some(HIDDEN_OVERLAY_FRAME_INTERVAL)

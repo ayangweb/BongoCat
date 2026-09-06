@@ -694,6 +694,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     progress 与 final-result 关联。
 - [ ] runtime tick 设置工作预算，模型解析、磁盘、音频初始化和 GPU 上传不得阻塞实时队列。
   - 状态（2026-08-28）：`spikes/runtime-contract/` 已通过 14 项测试，覆盖状态机、单调 tick、operation 去重、typed bounded worker、递增 snapshot revision、sequence gap/duplicate、overflow Reset、shutdown drain/timeout、command error 和 panic/join 诊断；产品 runtime 的输入、模型、配置服务、工作预算和真实线程 owner 仍待 Phase 1/2。
+  - 状态（2026-09-07）：正式 runtime 新增 `RuntimeWorkDiagnostics`，按已验证的最大 FPS
+    帧间隔一半计算匿名处理预算，并在 worker 实际处理段超预算时累计
+    `budget_exceeded` 与 `last_over_budget_ms`；阻塞等待不计入预算，且计时不参与产品状态求值。
+    63 项 runtime 单元测试、共享 fixture、Clippy 和 release check 通过。模型解析、磁盘、音频
+    初始化和 GPU 上传仍未拆分到独立有界 worker，因此本项保持未勾选。
 
 ### 3.2 输入语义
 
