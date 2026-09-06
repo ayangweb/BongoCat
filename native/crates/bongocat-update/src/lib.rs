@@ -1666,6 +1666,68 @@ mod tests {
         assert_eq!(tracker.snapshot().last_error_code, None);
     }
 
+    #[test]
+    fn diagnostics_tracker_counts_concurrent_worker_events_without_loss() {
+        const WORKERS: usize = 8;
+        const EVENTS_PER_WORKER: usize = 1_000;
+        let tracker = UpdateDiagnosticsTracker::default();
+        let workers = (0..WORKERS)
+            .map(|_| {
+                let tracker = tracker.clone();
+                std::thread::spawn(move || {
+                    for _ in 0..EVENTS_PER_WORKER {
+                        tracker.record_check_started();
+                        tracker.record_check_failed("update_manifest_endpoint_invalid");
+                        tracker.record_download_started();
+                        tracker.record_download_succeeded();
+                        tracker.record_install_started();
+                        tracker.record_install_failed("update_install_rollback_failed");
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+        for worker in workers {
+            worker.join().expect("diagnostics worker");
+        }
+
+        let expected = (WORKERS * EVENTS_PER_WORKER) as u64;
+        let diagnostics = tracker.snapshot();
+        assert_eq!(diagnostics.checks_started, expected);
+        assert_eq!(diagnostics.checks_failed, expected);
+        assert_eq!(diagnostics.downloads_started, expected);
+        assert_eq!(diagnostics.downloads_succeeded, expected);
+        assert_eq!(diagnostics.installs_started, expected);
+        assert_eq!(diagnostics.installs_failed, expected);
+        assert_eq!(
+            diagnostics.last_error_code,
+            Some("update_install_rollback_failed")
+        );
+    }
+
+    #[test]
+    fn diagnostics_tracker_counters_saturate_at_u64_max() {
+        let tracker = UpdateDiagnosticsTracker::default();
+        tracker
+            .state
+            .checks_started
+            .store(u64::MAX, Ordering::Relaxed);
+        tracker
+            .state
+            .downloads_failed
+            .store(u64::MAX, Ordering::Relaxed);
+
+        tracker.record_check_started();
+        tracker.record_download_failed("update_download_transport_failed");
+
+        let diagnostics = tracker.snapshot();
+        assert_eq!(diagnostics.checks_started, u64::MAX);
+        assert_eq!(diagnostics.downloads_failed, u64::MAX);
+        assert_eq!(
+            diagnostics.last_error_code,
+            Some("update_download_transport_failed")
+        );
+    }
+
     struct FailingReader;
 
     impl Read for FailingReader {

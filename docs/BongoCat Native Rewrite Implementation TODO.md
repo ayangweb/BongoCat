@@ -1916,6 +1916,8 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
   - 状态（2026-09-07）：automatic update scheduler 增加 diagnostics 包装入口，在单调时钟回退时将
     `update_schedule_monotonic_time_regressed` 作为匿名 check failure 记录；调度器原有的 rebasing
     和无重试语义不变，回归通过。
+  - 状态（2026-09-07）：`UpdateDiagnosticsTracker` 增加多 worker 并发事件和 `u64::MAX` 饱和计数
+    回归，确认跨线程共享计数不丢失且不会溢出；稳定错误码仍保持匿名、可枚举边界。
 - [ ] 日志导出生成可预览的脱敏包。
   - 状态（2026-09-06）：ADR-0027 已冻结 preview bundle 为当前环境私有的 v1 ZIP，固定只包含
     `manifest.json`、匿名 `diagnostics.json` 和严格重新序列化的 application code event records；
