@@ -1524,7 +1524,11 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     先提交非默认 Development 配置，再首次创建 Production store；Production 仍只生成当前 v1
     默认值，Development 的原始字节保持不变，两个 `config.json` 字节不同。生产代码只从当前
     `StorageLayout` 打开 store；测试数据仍须经显式模型导入边界进入目标环境。
-- [ ] 更新 channel 与环境绑定，Development 不能安装 Production 更新或反向覆盖。
+- [x] 更新 channel 与环境绑定，Development 不能安装 Production 更新或反向覆盖。
+  - 验收证据（2026-09-06）：`bongocat-update::persisted_sequence_survives_reopen_and_is_environment_bound`
+    验证 Development 的已验证 sequence 只持久化在自身 `updates/`，Production 首次读取仍为 `0`；
+    用 Production channel 读取 Development state 明确返回 `StateChannelMismatch`。verifier 另要求
+    manifest channel 与构建环境映射的 channel 相同，跨环境 artifact 无法进入 staging/installation。
 
 ### 7.4 测试与门槛
 
