@@ -25,6 +25,8 @@ const MAX_APPLICATION_LOG_FILES: usize = 8;
 const MAX_APPLICATION_LOG_BYTES: u64 = 1024 * 1024;
 const MAX_APPLICATION_EVENTS_BYTES: u64 =
     MAX_APPLICATION_LOG_FILES as u64 * MAX_APPLICATION_LOG_BYTES;
+const MAX_DIAGNOSTICS_JSON_BYTES: u64 = 1024 * 1024;
+const MAX_PREVIEW_BUNDLE_BYTES: u64 = 10 * 1024 * 1024;
 const MAX_EVENT_LINE_BYTES: usize = 1024;
 
 #[cfg(test)]
@@ -110,6 +112,9 @@ pub(crate) fn write_preview_bundle(
     directory: &Path,
     diagnostics_json: &[u8],
 ) -> Result<PreviewBundleStatus, PreviewBundleError> {
+    if diagnostics_json.len() as u64 > MAX_DIAGNOSTICS_JSON_BYTES {
+        return Err(PreviewBundleError);
+    }
     let (events, skipped_source_files) = collect_application_events(directory);
     let manifest = serde_json::to_vec(&PreviewManifest {
         schema_version: PREVIEW_BUNDLE_FORMAT_VERSION,
@@ -121,6 +126,9 @@ pub(crate) fn write_preview_bundle(
     .map_err(|_| PreviewBundleError)?;
     let event_bytes = serialize_events(&events)?;
     let archive_bytes = write_archive(&manifest, diagnostics_json, &event_bytes)?;
+    if archive_bytes.len() as u64 > MAX_PREVIEW_BUNDLE_BYTES {
+        return Err(PreviewBundleError);
+    }
     verify_archive(&archive_bytes)?;
 
     let path = directory.join(PREVIEW_BUNDLE_NAME);
@@ -223,6 +231,9 @@ fn serialize_events(events: &[SourceEvent]) -> Result<Vec<u8>, PreviewBundleErro
     for event in events {
         serde_json::to_writer(&mut bytes, event).map_err(|_| PreviewBundleError)?;
         bytes.push(b'\n');
+        if bytes.len() as u64 > MAX_APPLICATION_EVENTS_BYTES {
+            return Err(PreviewBundleError);
+        }
     }
     Ok(bytes)
 }
@@ -252,6 +263,9 @@ fn write_archive(
 }
 
 fn verify_archive(bytes: &[u8]) -> Result<(), PreviewBundleError> {
+    if bytes.len() as u64 > MAX_PREVIEW_BUNDLE_BYTES {
+        return Err(PreviewBundleError);
+    }
     let mut archive = ZipArchive::new(Cursor::new(bytes)).map_err(|_| PreviewBundleError)?;
     if archive.len() != PREVIEW_BUNDLE_ENTRY_COUNT as usize {
         return Err(PreviewBundleError);
@@ -293,9 +307,10 @@ fn verify_archive(bytes: &[u8]) -> Result<(), PreviewBundleError> {
         .map_err(|_| PreviewBundleError)?
         .read_to_end(&mut diagnostics)
         .map_err(|_| PreviewBundleError)?;
-    if !serde_json::from_slice::<serde_json::Value>(&diagnostics)
-        .map_err(|_| PreviewBundleError)?
-        .is_object()
+    if diagnostics.len() as u64 > MAX_DIAGNOSTICS_JSON_BYTES
+        || !serde_json::from_slice::<serde_json::Value>(&diagnostics)
+            .map_err(|_| PreviewBundleError)?
+            .is_object()
     {
         return Err(PreviewBundleError);
     }
@@ -452,6 +467,15 @@ mod tests {
     fn archive_verification_rejects_an_invalid_manifest() {
         let archive = write_archive(b"{}", b"{}", b"").expect("archive bytes");
         assert!(verify_archive(&archive).is_err());
+    }
+
+    #[test]
+    fn bundle_rejects_an_oversized_diagnostics_document_before_writing() {
+        let directory = tempdir().expect("temporary directory");
+        let diagnostics = vec![b'0'; MAX_DIAGNOSTICS_JSON_BYTES as usize + 1];
+
+        assert!(write_preview_bundle(directory.path(), &diagnostics).is_err());
+        assert!(!directory.path().join(PREVIEW_BUNDLE_NAME).exists());
     }
 
     #[cfg(unix)]
