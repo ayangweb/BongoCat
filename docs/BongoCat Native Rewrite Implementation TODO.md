@@ -860,6 +860,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     setting patch 可复用的 `150 ms` 稳定窗口、最新值合并、发送确认后清除、失败保留以及
     shutdown flush contract；两个纯 Rust 回归覆盖连续更新只保留最新值、未确认值重复 flush
     和确认后清除。该 contract 尚未接入各设置控件和 service command，因此本项保持未勾选。
+  - 状态（2026-09-07）：overlay scale 输入已接入该 debouncer。首次变更立即提交，连续编辑在
+    `150 ms` 稳定窗口内合并为最新值；异步请求确认后才清除 pending，服务忙或失败时保留值并
+    在后续 timer/请求完成后重试。提交仍携带当前 config revision，避免复用过期编辑；opacity、
+    gamepad dead-zone、FPS 和 release timeout 等连续字段仍待接入，故本项保持未勾选。
 - [ ] GPUI 只通过 typed command 获取 snapshot 和提交 patch。
   - 状态（2026-09-01）：正式 UI 对显隐、motion audio、模型交互和 gamepad dead-zone 使用有界
     typed command/reply，成功结果携带新 runtime revision，文件写入在 app service worker 完成；

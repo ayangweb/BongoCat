@@ -43,7 +43,7 @@ use std::{
     path::Path,
     path::PathBuf,
     rc::Rc,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 mod presentation;
@@ -197,6 +197,7 @@ enum PendingOperation {
     AutomaticUpdateCheck,
     OverlayVisibility,
     OverlaySettings,
+    OverlayScale,
     MotionAudio,
     BehaviorShortcuts,
     MaximumFps,
@@ -375,6 +376,8 @@ pub struct SettingsView {
     error: Option<SettingsError>,
     page: SettingsPage,
     model_import: ModelImportDraft,
+    overlay_scale_debouncer: crate::SettingsPatchDebouncer<u16>,
+    overlay_scale_timer_generation: u64,
     model_delete_confirmation: Option<SettingsModelKey>,
     model_row_focus: BTreeMap<ModelRowKey, ModelRowFocus>,
     model_behavior_preview_focus: BTreeMap<ModelBehaviorKey, FocusHandle>,
@@ -474,6 +477,41 @@ impl PartialEq for SettingsWindowHandle {
 impl Eq for SettingsWindowHandle {}
 
 impl SettingsView {
+    fn schedule_overlay_scale_flush(&mut self, cx: &mut Context<Self>) {
+        self.overlay_scale_timer_generation = self.overlay_scale_timer_generation.saturating_add(1);
+        let generation = self.overlay_scale_timer_generation;
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            executor.timer(crate::SETTINGS_PATCH_DEBOUNCE).await;
+            let _ = this.update(cx, |view, cx| {
+                if view.overlay_scale_timer_generation != generation || view.pending.is_some() {
+                    return;
+                }
+                let Some(scale_percent) = view.overlay_scale_debouncer.ready(Instant::now()) else {
+                    return;
+                };
+                let Some(snapshot) = view.snapshot.as_ref() else {
+                    return;
+                };
+                let Some(expected_config_revision) = snapshot.config_revision else {
+                    return;
+                };
+                let mut settings = snapshot.overlay;
+                settings.scale_percent = scale_percent;
+                view.start_request(
+                    PendingOperation::OverlayScale,
+                    Some(SettingValue::OverlayScale {
+                        expected_config_revision,
+                        scale_percent,
+                        settings,
+                    }),
+                    cx,
+                );
+            });
+        })
+        .detach();
+    }
+
     fn start_request(
         &mut self,
         operation: PendingOperation,
@@ -487,6 +525,10 @@ impl SettingsView {
         self.error = None;
         cx.notify();
         let client = self.client.clone();
+        let sent_overlay_scale = match value.as_ref() {
+            Some(SettingValue::OverlayScale { scale_percent, .. }) => Some(*scale_percent),
+            _ => None,
+        };
         cx.spawn(async move |this, cx| {
             let result = match value {
                 None => client.read_snapshot().await,
@@ -542,6 +584,15 @@ impl SettingsView {
                 Some(SettingValue::OverlaySettings {
                     expected_config_revision,
                     settings,
+                }) => {
+                    client
+                        .set_overlay_settings(expected_config_revision, settings)
+                        .await
+                }
+                Some(SettingValue::OverlayScale {
+                    expected_config_revision,
+                    settings,
+                    ..
                 }) => {
                     client
                         .set_overlay_settings(expected_config_revision, settings)
@@ -631,6 +682,14 @@ impl SettingsView {
             };
             let _ = this.update(cx, |view, cx| {
                 view.pending = None;
+                if result.is_ok()
+                    && let Some(scale_percent) = sent_overlay_scale
+                {
+                    view.overlay_scale_debouncer.mark_sent(&scale_percent);
+                    if view.overlay_scale_debouncer.is_pending() {
+                        view.schedule_overlay_scale_flush(cx);
+                    }
+                }
                 if let Some(snapshot) = refreshed.filter(|snapshot| {
                     view.snapshot
                         .as_ref()
@@ -698,6 +757,11 @@ enum SettingValue {
     },
     OverlaySettings {
         expected_config_revision: u64,
+        settings: SettingsOverlay,
+    },
+    OverlayScale {
+        expected_config_revision: u64,
+        scale_percent: u16,
         settings: SettingsOverlay,
     },
     MotionAudioEnabled {

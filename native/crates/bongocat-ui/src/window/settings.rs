@@ -222,7 +222,7 @@ impl SettingsView {
     }
 
     pub(super) fn set_overlay_scale_value(&mut self, raw: f64, cx: &mut Context<Self>) {
-        if self.pending.is_some() || self.model_import.is_running() {
+        if self.model_import.is_running() {
             return;
         }
         let value = raw.round().clamp(25.0, 400.0) as u16;
@@ -234,9 +234,31 @@ impl SettingsView {
         {
             return;
         }
-        let mut settings = snapshot.overlay;
-        settings.scale_percent = value;
-        self.set_overlay_settings(settings, cx);
+        let expected_config_revision = snapshot.config_revision;
+        let current_overlay = snapshot.overlay;
+        let should_send = self
+            .overlay_scale_debouncer
+            .observe(value, Instant::now())
+            .filter(|_| self.pending.is_none())
+            .and_then(|scale_percent| {
+                expected_config_revision.map(|expected_config_revision| {
+                    let mut settings = current_overlay;
+                    settings.scale_percent = scale_percent;
+                    self.start_request(
+                        PendingOperation::OverlayScale,
+                        Some(SettingValue::OverlayScale {
+                            expected_config_revision,
+                            scale_percent,
+                            settings,
+                        }),
+                        cx,
+                    );
+                })
+            })
+            .is_some();
+        if !should_send {
+            self.schedule_overlay_scale_flush(cx);
+        }
     }
 
     pub(super) fn adjust_overlay_opacity(&mut self, delta: i16, cx: &mut Context<Self>) {

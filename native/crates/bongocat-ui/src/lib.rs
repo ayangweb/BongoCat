@@ -61,6 +61,18 @@ impl<T: Clone + PartialEq> SettingsPatchDebouncer<T> {
         }
     }
 
+    pub fn is_pending(&self) -> bool {
+        self.pending.is_some()
+    }
+
+    pub fn ready(&self, now: Instant) -> Option<T> {
+        self.pending.as_ref().and_then(|pending| {
+            self.last_sent_at
+                .is_none_or(|last| now.saturating_duration_since(last) >= self.debounce)
+                .then(|| pending.clone())
+        })
+    }
+
     pub fn flush(&mut self, now: Instant) -> Option<T> {
         if self.pending.is_some() {
             self.last_sent_at = Some(now);
@@ -1882,6 +1894,23 @@ mod tests {
         );
         debouncer.mark_sent(&"latest");
         assert_eq!(debouncer.flush(origin + Duration::from_millis(32)), None);
+    }
+
+    #[test]
+    fn settings_patch_debouncer_waits_for_the_stable_window_before_retry() {
+        let origin = Instant::now();
+        let mut debouncer = SettingsPatchDebouncer::default();
+        assert_eq!(debouncer.observe(10_u16, origin), Some(10));
+        assert_eq!(
+            debouncer.observe(20, origin + Duration::from_millis(50)),
+            None
+        );
+        assert_eq!(debouncer.ready(origin + Duration::from_millis(149)), None);
+        assert_eq!(
+            debouncer.ready(origin + Duration::from_millis(150)),
+            Some(20)
+        );
+        assert!(debouncer.is_pending());
     }
 
     #[test]
