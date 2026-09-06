@@ -1092,6 +1092,7 @@ impl RuntimeOwner {
             None,
             MotionAudioClient::unavailable(),
             Arc::new(SystemMonotonicClock::start()),
+            false,
         )
     }
 
@@ -1108,6 +1109,7 @@ impl RuntimeOwner {
             None,
             motion_audio,
             Arc::new(SystemMonotonicClock::start()),
+            false,
         )
     }
 
@@ -1124,6 +1126,7 @@ impl RuntimeOwner {
                 Some(renderer),
                 MotionAudioClient::unavailable(),
                 Arc::new(SystemMonotonicClock::start()),
+                false,
             ),
             consumer,
         )
@@ -1144,6 +1147,7 @@ impl RuntimeOwner {
                 Some(renderer),
                 motion_audio,
                 Arc::new(SystemMonotonicClock::start()),
+                false,
             ),
             consumer,
         )
@@ -1179,8 +1183,22 @@ impl RuntimeOwner {
                 Some(renderer),
                 motion_audio,
                 clock,
+                false,
             ),
             consumer,
+        )
+    }
+
+    #[cfg(test)]
+    fn start_with_worker_panic(initial_overlay_visible: bool, command_capacity: usize) -> Self {
+        Self::start_internal(
+            initial_overlay_visible,
+            false,
+            command_capacity,
+            None,
+            MotionAudioClient::unavailable(),
+            Arc::new(SystemMonotonicClock::start()),
+            true,
         )
     }
 
@@ -1191,6 +1209,7 @@ impl RuntimeOwner {
         renderer: Option<RuntimeRenderBootstrap>,
         motion_audio: MotionAudioClient,
         clock: Arc<dyn MonotonicClock>,
+        panic_after_stopped: bool,
     ) -> Self {
         assert!(
             command_capacity > 0,
@@ -1248,6 +1267,7 @@ impl RuntimeOwner {
                         clock,
                         command_transport,
                         shutdown: worker_shutdown,
+                        panic_after_stopped,
                     },
                 )
             })
@@ -1426,6 +1446,7 @@ struct RuntimeWorkerBootstrap {
     clock: Arc<dyn MonotonicClock>,
     command_transport: Arc<CommandTransportCounters>,
     shutdown: Arc<ShutdownSignal>,
+    panic_after_stopped: bool,
 }
 
 fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBootstrap) {
@@ -1440,6 +1461,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
         clock,
         command_transport,
         shutdown,
+        panic_after_stopped,
     } = bootstrap;
     let mut renderer = renderer.map(RuntimeRenderer::start);
     let mut active_model = None;
@@ -1937,6 +1959,9 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                             renderer.close();
                         }
                         publish(&snapshot, |current| current.state = RuntimeState::Stopped);
+                        if panic_after_stopped {
+                            panic!("runtime worker panic injection");
+                        }
                         drop(active_model);
                         return;
                     }
@@ -2058,6 +2083,9 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
     }
     stop_motion_audio(&motion_audio, u64::MAX, MotionAudioStopReason::Shutdown);
     publish(&snapshot, |current| current.state = RuntimeState::Stopped);
+    if panic_after_stopped {
+        panic!("runtime worker panic injection");
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2911,6 +2939,18 @@ mod tests {
             .wait_for_state(RuntimeState::Stopped, TIMEOUT)
             .expect("detached worker eventually drains and stops");
         assert_eq!(stopped.state, RuntimeState::Stopped);
+    }
+
+    #[test]
+    fn shutdown_reports_worker_panic_after_stopped_snapshot() {
+        let owner = RuntimeOwner::start_with_worker_panic(true, 1);
+        let client = owner.client();
+        client
+            .wait_for_state(RuntimeState::Ready, TIMEOUT)
+            .expect("runtime ready");
+
+        assert_eq!(owner.shutdown(TIMEOUT), Err(ShutdownError::WorkerPanicked));
+        assert_eq!(client.snapshot().shutdown.worker_panicked, 1);
     }
 
     #[test]

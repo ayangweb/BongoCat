@@ -691,6 +691,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     handle；worker 继续异步完成已接收队列的 drain/shutdown，避免 `RuntimeOwner::Drop` 在错误
     返回后再次无界等待。新增零时限回归确认调用方有界返回且 worker 最终进入 `Stopped`；
     超时错误聚合和真实阻塞工作预算仍待完成。
+  - 状态（2026-09-07）：新增仅测试可用的 worker panic-after-stopped 注入，验证 runtime
+    已发布 `Stopped` 后的 join panic 会返回 `WorkerPanicked` 并累计匿名计数；该回归与
+    timeout/drain 测试通过。真实阻塞工作预算和平台线程故障注入仍待完成。
 - [x] command 定义幂等性和重复提交语义；有副作用的长操作使用 operation id 去重。
   - 验收证据（2026-09-06）：runtime command envelope 以单调 sequence 拒绝重复和乱序投递；
     `Set*` 与相同 active motion/priority 的重试保持状态，并且 duplicate motion 不重新启动
