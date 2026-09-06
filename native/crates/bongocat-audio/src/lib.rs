@@ -349,7 +349,18 @@ impl MotionAudioService {
         timeout: Duration,
     ) -> Result<MotionAudioDiagnostics, MotionAudioShutdownError> {
         self.request_shutdown();
-        let stopped = self.wait_until_stopped(timeout)?;
+        let stopped = match self.wait_until_stopped(timeout) {
+            Ok(stopped) => stopped,
+            Err(error @ MotionAudioShutdownError::TimedOut) => {
+                // A bounded shutdown must not fall through to `Drop`, whose
+                // fallback join is intentionally only used for normal owner
+                // destruction. The worker has received the stop request and
+                // will finish its drain asynchronously.
+                self.worker.take();
+                return Err(error);
+            }
+            Err(error) => return Err(error),
+        };
         self.join_worker()?;
         Ok(stopped)
     }
@@ -904,6 +915,56 @@ mod tests {
                 .last(),
             Some(&BackendEvent::Stop)
         );
+    }
+
+    #[test]
+    fn shutdown_timeout_returns_without_waiting_for_a_blocked_backend() {
+        let state = Arc::new((Mutex::new(BlockingState::default()), Condvar::new()));
+        let service = MotionAudioService::start_with_backend(
+            1,
+            Box::new(BlockingBackend {
+                state: Arc::clone(&state),
+            }),
+        )
+        .expect("audio service");
+        let client = service.client();
+        client
+            .try_publish(play(1, "blocked.flac"))
+            .expect("play queued");
+        {
+            let (lock, changed) = &*state;
+            let entered = lock
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let (entered, result) = changed
+                .wait_timeout_while(entered, TIMEOUT, |state| !state.entered)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            assert!(!result.timed_out(), "backend did not start processing");
+            drop(entered);
+        }
+
+        let started = Instant::now();
+        let result = service.shutdown(Duration::ZERO);
+        assert_eq!(result, Err(MotionAudioShutdownError::TimedOut));
+        assert!(started.elapsed() < Duration::from_millis(100));
+
+        let (lock, changed) = &*state;
+        let mut state = lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.released = true;
+        changed.notify_all();
+        drop(state);
+
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            let diagnostics = client.diagnostics();
+            if diagnostics.state == MotionAudioState::Stopped {
+                break;
+            }
+            assert!(Instant::now() < deadline, "timed-out worker did not stop");
+            thread::yield_now();
+        }
     }
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]

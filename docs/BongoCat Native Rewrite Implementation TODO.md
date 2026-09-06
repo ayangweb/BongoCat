@@ -723,6 +723,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     尝试 audio shutdown，再按单一失败保留既有稳定错误；两者同时失败时返回包含 runtime 与
     motion-audio 原因的 `ApplicationShutdownError`。纯 Rust contract 覆盖单错、双错和稳定
     文案，app 全量测试 92+17 项与严格 Clippy 通过；真实阻塞工作预算与线程 panic 注入仍待完成。
+  - 状态（2026-09-07）：`MotionAudioService::shutdown` 的显式 timeout 现在会放弃 worker join
+    handle 并立即返回，避免 `Drop` 在超时错误后再次无界等待；已用阻塞 backend 验证零时限
+    调用有界返回，释放 backend 后 worker 仍能完成 drain/stop 并进入 `Stopped`。audio 定向
+    测试与严格 Clippy 通过；真实输出设备阻塞和 panic 注入仍待完成。
 
 ### 3.2 输入语义
 
