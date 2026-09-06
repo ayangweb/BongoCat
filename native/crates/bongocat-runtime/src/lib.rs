@@ -356,6 +356,12 @@ pub struct RuntimeWorkDiagnostics {
     pub last_over_budget_ms: u64,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct RuntimeShutdownDiagnostics {
+    pub timed_out: u64,
+    pub worker_panicked: u64,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct PendingModelSnapshot {
     pub token: ModelCommitToken,
@@ -424,6 +430,7 @@ pub struct RuntimeSnapshot {
     pub platform_input: PlatformInputDiagnostics,
     pub command_transport: RuntimeCommandTransportDiagnostics,
     pub work: RuntimeWorkDiagnostics,
+    pub shutdown: RuntimeShutdownDiagnostics,
     pub model_input: ModelInputSnapshot,
     pub render_error: Option<RuntimeRenderErrorCode>,
     pub last_command_failure: Option<RuntimeCommandFailure>,
@@ -458,6 +465,7 @@ impl RuntimeSnapshot {
             platform_input: PlatformInputDiagnostics::default(),
             command_transport: RuntimeCommandTransportDiagnostics::default(),
             work: RuntimeWorkDiagnostics::default(),
+            shutdown: RuntimeShutdownDiagnostics::default(),
             model_input: ModelInputSnapshot::default(),
             render_error: None,
             last_command_failure: None,
@@ -533,6 +541,21 @@ struct CommandTransportCounters {
     missing_sequence_count: AtomicU64,
     duplicate_sequence_count: AtomicU64,
     out_of_order_sequence_count: AtomicU64,
+}
+
+#[derive(Default)]
+struct ShutdownDiagnosticsCounters {
+    timed_out: AtomicU64,
+    worker_panicked: AtomicU64,
+}
+
+impl ShutdownDiagnosticsCounters {
+    fn snapshot(&self) -> RuntimeShutdownDiagnostics {
+        RuntimeShutdownDiagnostics {
+            timed_out: self.timed_out.load(Ordering::Acquire),
+            worker_panicked: self.worker_panicked.load(Ordering::Acquire),
+        }
+    }
 }
 
 impl CommandTransportCounters {
@@ -722,6 +745,7 @@ pub struct RuntimeClient {
     gamepad_axis_slot: Arc<GamepadAxisSlot>,
     platform_input_diagnostics: PlatformInputDiagnosticsProducer,
     motion_audio: MotionAudioClient,
+    shutdown_diagnostics: Arc<ShutdownDiagnosticsCounters>,
 }
 
 impl RuntimeClient {
@@ -1025,6 +1049,7 @@ impl RuntimeClient {
         snapshot.gamepad_axis_transport = self.gamepad_axis_slot.diagnostics();
         snapshot.platform_input = self.platform_input_diagnostics.diagnostics();
         snapshot.motion_audio = self.motion_audio.diagnostics();
+        snapshot.shutdown = self.shutdown_diagnostics.snapshot();
         snapshot
     }
 }
@@ -1033,6 +1058,7 @@ pub struct RuntimeOwner {
     client: RuntimeClient,
     worker: Option<JoinHandle<()>>,
     shutdown: Arc<ShutdownSignal>,
+    shutdown_diagnostics: Arc<ShutdownDiagnosticsCounters>,
 }
 
 #[derive(Default)]
@@ -1185,6 +1211,7 @@ impl RuntimeOwner {
         ));
         let platform_input_diagnostics = PlatformInputDiagnosticsProducer::default();
         let command_transport = Arc::new(CommandTransportCounters::default());
+        let shutdown_diagnostics = Arc::new(ShutdownDiagnosticsCounters::default());
         let accepting = Arc::new(AtomicBool::new(true));
         let shutdown = Arc::new(ShutdownSignal::default());
         let worker_shutdown = Arc::clone(&shutdown);
@@ -1202,6 +1229,7 @@ impl RuntimeOwner {
             gamepad_axis_slot: Arc::clone(&gamepad_axis_slot),
             platform_input_diagnostics,
             motion_audio: motion_audio.clone(),
+            shutdown_diagnostics: Arc::clone(&shutdown_diagnostics),
         };
         let worker = thread::Builder::new()
             .name("bongocat-runtime".into())
@@ -1227,6 +1255,7 @@ impl RuntimeOwner {
             client,
             worker: Some(worker),
             shutdown,
+            shutdown_diagnostics,
         }
     }
 
@@ -1262,6 +1291,9 @@ impl RuntimeOwner {
             // lets the worker finish its already-admitted drain asynchronously instead
             // of making `Drop` block without a deadline after returning the error.
             self.worker.take();
+            self.shutdown_diagnostics
+                .timed_out
+                .fetch_add(1, Ordering::Relaxed);
             return Err(ShutdownError::TimedOut);
         };
         self.join_worker()?;
@@ -1270,7 +1302,12 @@ impl RuntimeOwner {
 
     fn join_worker(&mut self) -> Result<(), ShutdownError> {
         if let Some(worker) = self.worker.take() {
-            worker.join().map_err(|_| ShutdownError::WorkerPanicked)?;
+            worker.join().map_err(|_| {
+                self.shutdown_diagnostics
+                    .worker_panicked
+                    .fetch_add(1, Ordering::Relaxed);
+                ShutdownError::WorkerPanicked
+            })?;
         }
         Ok(())
     }
@@ -2853,6 +2890,8 @@ mod tests {
         let started = Instant::now();
         let result = owner.shutdown(Duration::ZERO);
         assert_eq!(result, Err(ShutdownError::TimedOut));
+        assert_eq!(client.snapshot().shutdown.timed_out, 1);
+        assert_eq!(client.snapshot().shutdown.worker_panicked, 0);
         assert!(
             started.elapsed() < Duration::from_millis(500),
             "explicit shutdown timeout must bound the caller wait"
@@ -4246,6 +4285,7 @@ mod tests {
             )),
             platform_input_diagnostics: PlatformInputDiagnosticsProducer::default(),
             motion_audio,
+            shutdown_diagnostics: Arc::new(ShutdownDiagnosticsCounters::default()),
         };
         client
             .send(RuntimeCommand::SetOverlayVisible(false))
@@ -4325,6 +4365,7 @@ mod tests {
             )),
             platform_input_diagnostics: PlatformInputDiagnosticsProducer::default(),
             motion_audio,
+            shutdown_diagnostics: Arc::new(ShutdownDiagnosticsCounters::default()),
         };
         let producer = InputProducer::new(client.clone());
         let sibling_producer = InputProducer::new(client.clone());

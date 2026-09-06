@@ -239,6 +239,8 @@ pub struct SettingsRuntimeDiagnostics {
     pub command_transport: SettingsRuntimeCommandTransportDiagnostics,
     pub work_budget_exceeded: u64,
     pub last_over_budget_ms: u64,
+    pub shutdown_timed_out: u64,
+    pub shutdown_worker_panicked: u64,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

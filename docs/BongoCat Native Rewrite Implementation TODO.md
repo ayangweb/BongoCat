@@ -711,6 +711,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     覆盖 work diagnostics 后断言 `budget_exceeded` 与 `last_over_budget_ms` 原样投影到
     `SettingsRuntimeDiagnostics`；定向 app test、严格 Clippy 和格式检查通过。真实阻塞工作拆分
     仍未完成。
+  - 状态（2026-09-07）：runtime 新增匿名 `RuntimeShutdownDiagnostics`，在显式 shutdown
+    timeout 或 worker join panic 时累计稳定计数，并沿 app/UI snapshot 与 `diagnostics.json`
+    投影；timeout 计数、app projection 和 JSON 字段回归均通过。模型解析、磁盘、音频初始化和
+    GPU 上传仍未拆分到独立有界 worker，shutdown 的真实阻塞工作与 panic 注入仍待完成。
 
 ### 3.2 输入语义
 

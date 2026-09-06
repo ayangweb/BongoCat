@@ -1361,6 +1361,8 @@ fn settings_runtime_diagnostics(
         },
         work_budget_exceeded: runtime.work.budget_exceeded,
         last_over_budget_ms: runtime.work.last_over_budget_ms,
+        shutdown_timed_out: runtime.shutdown.timed_out,
+        shutdown_worker_panicked: runtime.shutdown.worker_panicked,
     }
 }
 
@@ -1646,6 +1648,8 @@ struct DiagnosticsRuntime {
     command_out_of_order_sequence_count: u64,
     work_budget_exceeded: u64,
     last_over_budget_ms: u64,
+    shutdown_timed_out: u64,
+    shutdown_worker_panicked: u64,
 }
 
 #[derive(Serialize)]
@@ -1883,6 +1887,8 @@ fn diagnostics_document(
                 .out_of_order_sequence_count,
             work_budget_exceeded: runtime.work_budget_exceeded,
             last_over_budget_ms: runtime.last_over_budget_ms,
+            shutdown_timed_out: runtime.shutdown_timed_out,
+            shutdown_worker_panicked: runtime.shutdown_worker_panicked,
         },
         input: diagnostics_input(input),
         configuration: diagnostics_configuration(snapshot),
@@ -2421,6 +2427,8 @@ mod tests {
                 },
                 work_budget_exceeded: 12,
                 last_over_budget_ms: 34,
+                shutdown_timed_out: 2,
+                shutdown_worker_panicked: 1,
             },
             appearance_theme: SettingsTheme::System,
             language: SettingsLanguage::System,
@@ -2546,6 +2554,8 @@ mod tests {
         assert_eq!(document["runtime"]["command_sequence_gap_count"], 3);
         assert_eq!(document["runtime"]["work_budget_exceeded"], 12);
         assert_eq!(document["runtime"]["last_over_budget_ms"], 34);
+        assert_eq!(document["runtime"]["shutdown_timed_out"], 2);
+        assert_eq!(document["runtime"]["shutdown_worker_panicked"], 1);
         assert_eq!(document["runtime"]["command_missing_sequence_count"], 5);
         assert_eq!(document["input"]["captured_down"], 3);
         assert_eq!(document["input"]["service_status"], "permission_denied");
@@ -2735,6 +2745,24 @@ mod tests {
         let projected = settings_runtime_diagnostics(&runtime);
         assert_eq!(projected.work_budget_exceeded, 7);
         assert_eq!(projected.last_over_budget_ms, 19);
+
+        owner
+            .shutdown(Duration::from_secs(1))
+            .expect("runtime shutdown");
+    }
+
+    #[test]
+    fn runtime_shutdown_diagnostics_projection_preserves_snapshot_values() {
+        let owner = RuntimeOwner::start(false, 4);
+        let mut runtime = owner.client().snapshot();
+        runtime.shutdown = bongocat_runtime::RuntimeShutdownDiagnostics {
+            timed_out: 3,
+            worker_panicked: 2,
+        };
+
+        let projected = settings_runtime_diagnostics(&runtime);
+        assert_eq!(projected.shutdown_timed_out, 3);
+        assert_eq!(projected.shutdown_worker_panicked, 2);
 
         owner
             .shutdown(Duration::from_secs(1))
