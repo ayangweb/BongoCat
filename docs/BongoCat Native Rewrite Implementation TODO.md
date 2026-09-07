@@ -1560,7 +1560,13 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 
 ### 6.6 Phase 5 退出门槛
 
-- [ ] 所有 P0 设置可通过 GPUI 修改并由 Rust 原子持久化。
+- [x] 所有 P0 设置可通过 GPUI 修改并由 Rust 原子持久化。
+  - 验收证据（2026-09-07）：当前 v1 schema 的 application、appearance、overlay、input、model 与
+    shortcuts 字段均由 GPUI Settings 控件覆盖；模型选择/导入、行为预览、快捷键 capture/clear/restore
+    与其余 General 控件均通过 revision-checked typed command 进入 Application owner。settings service
+    以同一 config writer 完成原子持久化，CAS、错误回滚、restart 恢复和 shutdown flush 均有回归；
+    `cargo test -p bongocat-ui --lib --locked`（68 passed）与
+    `cargo test -p bongocat-app --lib --locked`（94 passed）通过。
 - [ ] 设置窗口销毁/重建后状态一致。
 - [ ] 设置窗口关闭时 overlay CPU、帧率和输入不受明显影响。
 - [ ] GPUI test、contract test 和双平台截图检查通过。
