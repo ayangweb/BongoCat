@@ -36,12 +36,12 @@ fn main() {
     );
     let resources_dir = manifest_dir.join("../../resources/icons");
     validate_icon(
-        &resources_dir.join("BongoCat.icns"),
+        &resources_dir.join("logo-macos.icns"),
         "macOS product icon",
         validate_icns,
     );
     validate_icon(
-        &resources_dir.join("BongoCat.ico"),
+        &resources_dir.join("logo-windows.ico"),
         "Windows product icon",
         validate_ico,
     );

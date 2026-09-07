@@ -55,8 +55,8 @@ pub(crate) fn validate_ico(bytes: &[u8]) -> Result<(), &'static str> {
 mod tests {
     use super::{validate_icns, validate_ico};
 
-    const PRODUCT_ICNS: &[u8] = include_bytes!("../../../resources/icons/BongoCat.icns");
-    const PRODUCT_ICO: &[u8] = include_bytes!("../../../resources/icons/BongoCat.ico");
+    const PRODUCT_ICNS: &[u8] = include_bytes!("../../../resources/icons/logo-macos.icns");
+    const PRODUCT_ICO: &[u8] = include_bytes!("../../../resources/icons/logo-windows.ico");
     const STATUS_ICO: &[u8] = include_bytes!("../../../resources/icons/tray-windows.ico");
 
     #[test]
