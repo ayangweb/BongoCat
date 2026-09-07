@@ -1987,6 +1987,10 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     download、install、schedule、sequence 和 staging 七个 catalog 的全局唯一性；69 个公开 code
     无跨边界重名，未知 provider code 仍被丢弃。该检查只强化匿名 diagnostics 协议，不代表真实
     update worker、endpoint 或安装回滚链已接入。
+  - 状态（2026-09-07）：目录打开与外部 HTTPS URL wrapper 的公开错误现在也统一为
+    `directory_open_*`/`external_url_open_*` stable code；枚举 `ALL` 与逐项回归固定全部 code，
+    不再把自然语言或底层启动失败文本传播到 app 层。真实 update worker、安装回滚和平台错误源仍待
+    后续发布链路接入。
 - [ ] 日志导出生成可预览的脱敏包。
   - 状态（2026-09-06）：ADR-0027 已冻结 preview bundle 为当前环境私有的 v1 ZIP，固定只包含
     `manifest.json`、匿名 `diagnostics.json` 和严格重新序列化的 application code event records；

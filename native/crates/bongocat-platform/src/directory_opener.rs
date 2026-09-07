@@ -14,14 +14,27 @@ pub enum DirectoryOpenError {
     LaunchFailed,
 }
 
+impl DirectoryOpenError {
+    pub const ALL: [Self; 4] = [
+        Self::UnsupportedPlatform,
+        Self::InvalidPath,
+        Self::DirectoryUnavailable,
+        Self::LaunchFailed,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::UnsupportedPlatform => "directory_open_unsupported_platform",
+            Self::InvalidPath => "directory_open_invalid_path",
+            Self::DirectoryUnavailable => "directory_open_unavailable",
+            Self::LaunchFailed => "directory_open_launch_failed",
+        }
+    }
+}
+
 impl fmt::Display for DirectoryOpenError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::UnsupportedPlatform => "directory opening is unsupported on this platform",
-            Self::InvalidPath => "directory path is invalid",
-            Self::DirectoryUnavailable => "directory is unavailable",
-            Self::LaunchFailed => "directory opener could not be launched",
-        })
+        formatter.write_str(self.as_str())
     }
 }
 
@@ -94,15 +107,28 @@ mod tests {
             Err(DirectoryOpenError::DirectoryUnavailable)
         );
 
-        for error in [
-            DirectoryOpenError::UnsupportedPlatform,
-            DirectoryOpenError::InvalidPath,
-            DirectoryOpenError::DirectoryUnavailable,
-            DirectoryOpenError::LaunchFailed,
+        for (error, expected) in [
+            (
+                DirectoryOpenError::UnsupportedPlatform,
+                "directory_open_unsupported_platform",
+            ),
+            (
+                DirectoryOpenError::InvalidPath,
+                "directory_open_invalid_path",
+            ),
+            (
+                DirectoryOpenError::DirectoryUnavailable,
+                "directory_open_unavailable",
+            ),
+            (
+                DirectoryOpenError::LaunchFailed,
+                "directory_open_launch_failed",
+            ),
         ] {
-            let message = error.to_string();
-            assert!(!message.contains('/') && !message.contains('\\'));
+            assert_eq!(error.as_str(), expected);
+            assert_eq!(error.to_string(), expected);
         }
+        assert_eq!(DirectoryOpenError::ALL.len(), 4);
     }
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]

@@ -17,13 +17,25 @@ pub enum ExternalUrlOpenError {
     LaunchFailed,
 }
 
+impl ExternalUrlOpenError {
+    pub const ALL: [Self; 3] = [
+        Self::UnsupportedPlatform,
+        Self::InvalidUrl,
+        Self::LaunchFailed,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::UnsupportedPlatform => "external_url_open_unsupported_platform",
+            Self::InvalidUrl => "external_url_open_invalid_url",
+            Self::LaunchFailed => "external_url_open_launch_failed",
+        }
+    }
+}
+
 impl fmt::Display for ExternalUrlOpenError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::UnsupportedPlatform => "external URL opening is unsupported on this platform",
-            Self::InvalidUrl => "external URL is invalid",
-            Self::LaunchFailed => "external URL opener could not be launched",
-        })
+        formatter.write_str(self.as_str())
     }
 }
 
@@ -122,6 +134,28 @@ mod tests {
                 .to_string()
                 .contains("example.invalid")
         );
+    }
+
+    #[test]
+    fn external_url_errors_have_stable_anonymous_codes() {
+        for (error, expected) in [
+            (
+                ExternalUrlOpenError::UnsupportedPlatform,
+                "external_url_open_unsupported_platform",
+            ),
+            (
+                ExternalUrlOpenError::InvalidUrl,
+                "external_url_open_invalid_url",
+            ),
+            (
+                ExternalUrlOpenError::LaunchFailed,
+                "external_url_open_launch_failed",
+            ),
+        ] {
+            assert_eq!(error.as_str(), expected);
+            assert_eq!(error.to_string(), expected);
+        }
+        assert_eq!(ExternalUrlOpenError::ALL.len(), 3);
     }
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
