@@ -75,6 +75,7 @@ impl SettingsView {
         {
             return;
         }
+        apply_optimistic_component_theme(theme, cx);
         self.start_request(
             PendingOperation::AppearanceTheme,
             Some(SettingValue::AppearanceTheme {

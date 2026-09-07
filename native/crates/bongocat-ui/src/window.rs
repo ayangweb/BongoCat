@@ -1019,6 +1019,9 @@ impl SettingsView {
                     }
                 }
                 if result.is_err() {
+                    if operation == PendingOperation::AppearanceTheme {
+                        view.applied_theme = None;
+                    }
                     // Keep failed debounced patches alive and retry after the stable window.
                     // The debouncer only clears a value after a successful acknowledgement.
                     if sent_overlay_scale.is_some() {
@@ -1492,6 +1495,17 @@ fn model_import_status(
 
 fn sync_system_component_theme(window: &mut Window, cx: &mut App) {
     Theme::sync_system_appearance(Some(window), cx);
+}
+
+fn apply_optimistic_component_theme(theme: SettingsTheme, cx: &mut App) {
+    if let Some(mode) = match theme {
+        SettingsTheme::System => None,
+        SettingsTheme::Light => Some(ThemeMode::Light),
+        SettingsTheme::Dark => Some(ThemeMode::Dark),
+    } && cx.theme().mode != mode
+    {
+        Theme::change(mode, None, cx);
+    }
 }
 
 fn apply_component_theme(theme: SettingsTheme, window: &mut Window, cx: &mut App) {
