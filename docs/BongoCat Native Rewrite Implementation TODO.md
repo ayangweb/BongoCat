@@ -1554,6 +1554,7 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 - [ ] 复杂列表和动态文本不会导致布局跳动。
 - [ ] UI 中不出现开发说明、架构术语或操作教学段落。
 - [ ] screen reader 可识别 label、value、role、错误和进度；颜色不是状态的唯一表达方式。
+  - 状态（2026-09-07）：模型导入的选择目录、导入/取消按钮与状态已投影为项目 AccessKit tree；目录加载、空、不可用和导入进度/错误通过 `Status` role 及可本地化 value 暴露，运行中保留 Cancel action。纯 Rust contract 覆盖按钮可用性、取消进度和目录状态；真实 VoiceOver/Narrator 操作和朗读仍是 Phase 0 实机门禁，因此保持未勾选。
 - [ ] 中文、英文、德文等长文本和系统字体 fallback 下仍满足布局约束。
 - [ ] 降低动态效果/高对比度等系统辅助设置有明确支持或书面限制。
 

@@ -162,6 +162,14 @@ const ACCESSIBILITY_RELEASE_FALLBACK_DECREASE: AccessibilityNodeId = Accessibili
 const ACCESSIBILITY_RELEASE_FALLBACK_INCREASE: AccessibilityNodeId = AccessibilityNodeId::new(43);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_AUTOMATIC_UPDATE_CHECK: AccessibilityNodeId = AccessibilityNodeId::new(45);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_MODEL_CHOOSE_FOLDER: AccessibilityNodeId = AccessibilityNodeId::new(46);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_MODEL_IMPORT: AccessibilityNodeId = AccessibilityNodeId::new(47);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_MODEL_IMPORT_STATUS: AccessibilityNodeId = AccessibilityNodeId::new(48);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_MODEL_CATALOG_STATUS: AccessibilityNodeId = AccessibilityNodeId::new(49);
 
 type LanguageSelectState = SelectState<SearchableVec<&'static str>>;
 type ThemeSelectState = SelectState<SearchableVec<&'static str>>;

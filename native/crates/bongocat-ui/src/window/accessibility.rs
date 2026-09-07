@@ -1,4 +1,5 @@
 use super::*;
+use crate::SettingsModelCatalog;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn model_behavior_preview_accessibility_node_id(index: usize) -> AccessibilityNodeId {
@@ -41,6 +42,76 @@ fn model_behavior_accessibility_label(
             format!("{} {name}", ui_text(language, UiText::Expression))
         }
     }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub(super) fn model_import_accessibility_nodes(
+    draft: &ModelImportDraft,
+    commands_pending: bool,
+    configuration_ready: bool,
+    language: SettingsLanguage,
+) -> [AccessibilityNode; 3] {
+    let import_running = draft.is_running();
+    let picker_open = draft.is_picker_open();
+    let choose_folder_disabled =
+        commands_pending || import_running || picker_open || !configuration_ready;
+    let mut choose_folder_node = AccessibilityNode::new(
+        ACCESSIBILITY_MODEL_CHOOSE_FOLDER,
+        AccessibilityRole::Button,
+        ui_text(language, UiText::ChooseFolder),
+    )
+    .disabled(choose_folder_disabled);
+    if !choose_folder_disabled {
+        choose_folder_node = choose_folder_node.clickable().focusable();
+    }
+
+    let (import_status, _) = super::model_import_status(draft, language);
+    let import_disabled =
+        !import_running && (commands_pending || !configuration_ready || !draft.can_import());
+    let mut import_node = AccessibilityNode::new(
+        ACCESSIBILITY_MODEL_IMPORT,
+        AccessibilityRole::Button,
+        if import_running {
+            ui_text(language, UiText::Cancel)
+        } else {
+            ui_text(language, UiText::Import)
+        },
+    )
+    .with_value(import_status.to_string())
+    .disabled(import_disabled);
+    if !import_disabled {
+        import_node = import_node.clickable().focusable();
+    }
+
+    let import_status_node = AccessibilityNode::new(
+        ACCESSIBILITY_MODEL_IMPORT_STATUS,
+        AccessibilityRole::Status,
+        ui_text(language, UiText::Import),
+    )
+    .with_value(import_status.to_string());
+    [choose_folder_node, import_node, import_status_node]
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub(super) fn model_catalog_accessibility_status_node(
+    catalog: Option<&SettingsModelCatalog>,
+    language: SettingsLanguage,
+) -> Option<AccessibilityNode> {
+    let status = match catalog {
+        None => Some(ui_text(language, UiText::LoadingModels).to_owned()),
+        Some(catalog) if catalog.error.is_some() || catalog.entries.is_empty() => {
+            Some(super::models::empty_model_catalog_status(Some(catalog), language).to_owned())
+        }
+        Some(_) => None,
+    }?;
+    Some(
+        AccessibilityNode::new(
+            ACCESSIBILITY_MODEL_CATALOG_STATUS,
+            AccessibilityRole::Status,
+            ui_text(language, UiText::AvailableModels),
+        )
+        .with_value(status),
+    )
 }
 
 impl SettingsView {
@@ -507,6 +578,20 @@ impl SettingsView {
         {
             clear_shortcuts_node = clear_shortcuts_node.clickable().focusable();
         }
+        let model_configuration_ready = snapshot.is_some_and(|snapshot| {
+            snapshot.configuration_status == SettingsConfigurationStatus::Ready
+        });
+        let [choose_folder_node, import_node, import_status_node] =
+            model_import_accessibility_nodes(
+                &self.model_import,
+                self.pending.is_some(),
+                model_configuration_ready,
+                language,
+            );
+        let catalog_status_node = model_catalog_accessibility_status_node(
+            snapshot.map(|snapshot| &snapshot.model_catalog),
+            language,
+        );
         let shortcut_rows = snapshot
             .map(|snapshot| {
                 shortcut_accessibility_rows(
@@ -639,7 +724,13 @@ impl SettingsView {
             ACCESSIBILITY_EXPORT_DIAGNOSTICS,
             ACCESSIBILITY_RESTORE_SHORTCUTS,
             ACCESSIBILITY_CLEAR_SHORTCUTS,
+            ACCESSIBILITY_MODEL_CHOOSE_FOLDER,
+            ACCESSIBILITY_MODEL_IMPORT,
+            ACCESSIBILITY_MODEL_IMPORT_STATUS,
         ];
+        if catalog_status_node.is_some() {
+            root_children.push(ACCESSIBILITY_MODEL_CATALOG_STATUS);
+        }
         root_children.extend(shortcut_node_ids);
         root_children.extend(shortcut_clear_node_ids);
         root_children.extend(model_behavior_preview_node_ids);
@@ -711,6 +802,9 @@ impl SettingsView {
             diagnostics_export_node,
             restore_shortcuts_node,
             clear_shortcuts_node,
+            choose_folder_node,
+            import_node,
+            import_status_node,
             refresh_node,
             AccessibilityNode::new(
                 ACCESSIBILITY_QUIT,
@@ -723,6 +817,9 @@ impl SettingsView {
         nodes.extend(shortcut_nodes);
         nodes.extend(shortcut_clear_nodes);
         nodes.extend(model_behavior_preview_nodes);
+        if let Some(catalog_status_node) = catalog_status_node {
+            nodes.push(catalog_status_node);
+        }
         if !nodes.iter().any(|node| node.id == focus) {
             nodes.push(AccessibilityNode::new(focus, AccessibilityRole::Status, ""));
         }
@@ -908,6 +1005,21 @@ impl SettingsView {
             ACCESSIBILITY_EXPORT_DIAGNOSTICS => self.export_diagnostics(cx),
             ACCESSIBILITY_RESTORE_SHORTCUTS => self.restore_default_shortcuts(cx),
             ACCESSIBILITY_CLEAR_SHORTCUTS => self.clear_shortcuts(cx),
+            ACCESSIBILITY_MODEL_CHOOSE_FOLDER => {
+                if self.pending.is_none()
+                    && !self.model_import.is_running()
+                    && !self.model_import.is_picker_open()
+                {
+                    self.choose_model_directory(cx);
+                }
+            }
+            ACCESSIBILITY_MODEL_IMPORT => {
+                if self.model_import.is_running() {
+                    self.cancel_model_import(cx);
+                } else {
+                    self.start_model_import(cx);
+                }
+            }
             ACCESSIBILITY_REFRESH => self.refresh(cx),
             ACCESSIBILITY_QUIT => self.request_quit_after_flush(cx),
             _ => {
@@ -1033,6 +1145,8 @@ impl SettingsView {
             ),
             (ACCESSIBILITY_REFRESH, &self.refresh_focus),
             (ACCESSIBILITY_QUIT, &self.quit_focus),
+            (ACCESSIBILITY_MODEL_CHOOSE_FOLDER, &self.choose_model_focus),
+            (ACCESSIBILITY_MODEL_IMPORT, &self.import_model_focus),
         ]
         .into_iter()
         .find_map(|(id, handle)| handle.is_focused(window).then_some(id))

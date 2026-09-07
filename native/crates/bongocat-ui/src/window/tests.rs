@@ -701,6 +701,87 @@ fn model_catalog_and_import_statuses_cover_loading_empty_error_and_cancellation(
     assert_eq!(status, "已取消导入");
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[test]
+fn model_import_accessibility_nodes_project_actions_progress_and_catalog_states() {
+    let ready = ModelImportDraft {
+        id: "custom-model".to_owned(),
+        source_root: Some(PathBuf::from("/private/source")),
+        state: ModelImportState::Ready,
+    };
+    let [choose_folder, import, status] = super::accessibility::model_import_accessibility_nodes(
+        &ready,
+        false,
+        true,
+        SettingsLanguage::EnglishUnitedStates,
+    );
+    assert_eq!(choose_folder.role, AccessibilityRole::Button);
+    assert_eq!(choose_folder.label, "Choose folder");
+    assert!(choose_folder.supports_click);
+    assert_eq!(import.label, "Import");
+    assert!(!import.disabled);
+    assert!(import.supports_click);
+    assert_eq!(import.value.as_deref(), Some("Folder selected"));
+    assert_eq!(status.role, AccessibilityRole::Status);
+    assert_eq!(status.value.as_deref(), Some("Folder selected"));
+
+    let cancelling = ModelImportDraft {
+        state: ModelImportState::Starting {
+            cancel_requested: true,
+        },
+        ..ready
+    };
+    let [choose_folder, import, status] = super::accessibility::model_import_accessibility_nodes(
+        &cancelling,
+        false,
+        true,
+        SettingsLanguage::EnglishUnitedStates,
+    );
+    assert!(choose_folder.disabled);
+    assert_eq!(import.label, "Cancel");
+    assert!(!import.disabled);
+    assert!(import.supports_click);
+    assert_eq!(status.value.as_deref(), Some("Cancelling import..."));
+
+    let loading = super::accessibility::model_catalog_accessibility_status_node(
+        None,
+        SettingsLanguage::EnglishUnitedStates,
+    )
+    .expect("loading catalog must be announced");
+    assert_eq!(loading.role, AccessibilityRole::Status);
+    assert_eq!(loading.value.as_deref(), Some("Loading models..."));
+
+    let mut unavailable = SettingsModelCatalog::default();
+    unavailable.error = Some(SettingsModelCatalogError::Unavailable);
+    let unavailable = super::accessibility::model_catalog_accessibility_status_node(
+        Some(&unavailable),
+        SettingsLanguage::ChineseSimplified,
+    )
+    .expect("catalog error must be announced");
+    assert_eq!(unavailable.value.as_deref(), Some("模型列表不可用"));
+
+    let available = SettingsModelCatalog {
+        entries: vec![SettingsModelEntry {
+            id: "preset".to_owned(),
+            origin: SettingsModelOrigin::Preset,
+            availability: SettingsModelAvailability::Ready {
+                texture_count: 1,
+                expression_count: 0,
+                motion_count: 0,
+                behaviors: Vec::new(),
+            },
+        }],
+        ..SettingsModelCatalog::default()
+    };
+    assert!(
+        super::accessibility::model_catalog_accessibility_status_node(
+            Some(&available),
+            SettingsLanguage::EnglishUnitedStates,
+        )
+        .is_none()
+    );
+}
+
 #[test]
 fn picker_status_never_contains_the_selected_path() {
     let mut draft = ModelImportDraft {
