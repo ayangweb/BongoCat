@@ -304,13 +304,8 @@ pub(super) fn content(
         .as_ref()
         .is_some_and(|snapshot| snapshot.model_catalog.error.is_some());
     if model_rows.is_empty() {
-        let empty_status = if snapshot.is_none() {
-            ui_text(language, UiText::LoadingModels)
-        } else if catalog_error {
-            ui_text(language, UiText::ModelCatalogUnavailable)
-        } else {
-            ui_text(language, UiText::NoModelsAvailable)
-        };
+        let empty_status =
+            empty_model_catalog_status(snapshot.map(|snapshot| &snapshot.model_catalog), language);
         model_rows.push(
             GroupBox::new().outline().child(
                 div()
@@ -504,4 +499,17 @@ pub(super) fn content(
                 .overflow_y_scroll()
                 .children(model_rows),
         )
+}
+
+pub(super) fn empty_model_catalog_status(
+    catalog: Option<&crate::SettingsModelCatalog>,
+    language: SettingsLanguage,
+) -> &'static str {
+    match catalog {
+        None => ui_text(language, UiText::LoadingModels),
+        Some(catalog) if catalog.error.is_some() => {
+            ui_text(language, UiText::ModelCatalogUnavailable)
+        }
+        Some(_) => ui_text(language, UiText::NoModelsAvailable),
+    }
 }

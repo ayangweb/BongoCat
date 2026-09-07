@@ -1545,7 +1545,12 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 - [ ] tooltip/dialog/menu 不被窗口边界错误裁剪。
 - [ ] 800x600 和常见缩放无文本重叠或溢出。
 - [ ] Windows 125/150/200% 和 macOS Retina 截图检查。
-- [ ] 模型扫描/导入具有 loading、empty、error、cancel 状态。
+- [x] 模型扫描/导入具有 loading、empty、error、cancel 状态。
+  - 验收证据（2026-09-07）：Models 页面在 snapshot 缺席、catalog 不可用和空 catalog 时分别显示
+    `LoadingModels`、`ModelCatalogUnavailable` 和 `NoModelsAvailable`；导入状态机覆盖 picker/source
+    错误、start/running progress、取消请求和最终 cancelled/succeeded/failed，运行中 Import 控件切换为
+    Cancel。纯 Rust 回归直接锁定三种目录状态及中文取消状态，既有 operation/service 回归覆盖取消不
+    提交模型或刷新目录；`bongocat-ui` 全量测试与严格 Clippy 通过。
 - [ ] 复杂列表和动态文本不会导致布局跳动。
 - [ ] UI 中不出现开发说明、架构术语或操作教学段落。
 - [ ] screen reader 可识别 label、value、role、错误和进度；颜色不是状态的唯一表达方式。

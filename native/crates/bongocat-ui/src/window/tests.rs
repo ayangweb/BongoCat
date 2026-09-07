@@ -1,6 +1,7 @@
 use super::*;
 use crate::{
-    SettingsDiagnosticsExportStatus, SettingsModelBehaviorBinding, SettingsShortcutBinding,
+    SettingsDiagnosticsExportStatus, SettingsModelBehaviorBinding, SettingsModelCatalog,
+    SettingsModelCatalogError, SettingsShortcutBinding,
 };
 use gpui_kit::{Keystroke, Modifiers};
 
@@ -662,6 +663,42 @@ fn cancellation_requested_while_starting_reaches_the_created_operation() {
     let (status, failed) = model_import_status(&draft, SettingsLanguage::EnglishUnitedStates);
     assert!(!failed);
     assert_eq!(status, "Cancelling import...");
+}
+
+#[test]
+fn model_catalog_and_import_statuses_cover_loading_empty_error_and_cancellation() {
+    assert_eq!(
+        super::models::empty_model_catalog_status(None, SettingsLanguage::EnglishUnitedStates),
+        "Loading models..."
+    );
+
+    let empty = SettingsModelCatalog::default();
+    assert_eq!(
+        super::models::empty_model_catalog_status(
+            Some(&empty),
+            SettingsLanguage::ChineseSimplified,
+        ),
+        "没有可用模型"
+    );
+
+    let mut unavailable = empty;
+    unavailable.error = Some(SettingsModelCatalogError::Unavailable);
+    assert_eq!(
+        super::models::empty_model_catalog_status(
+            Some(&unavailable),
+            SettingsLanguage::ChineseSimplified,
+        ),
+        "模型列表不可用"
+    );
+
+    let cancelled = ModelImportDraft {
+        id: "custom-model".to_owned(),
+        source_root: None,
+        state: ModelImportState::Cancelled,
+    };
+    let (status, failed) = model_import_status(&cancelled, SettingsLanguage::ChineseSimplified);
+    assert!(!failed);
+    assert_eq!(status, "已取消导入");
 }
 
 #[test]

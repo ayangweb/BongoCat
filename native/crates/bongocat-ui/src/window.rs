@@ -1051,11 +1051,10 @@ impl SettingsView {
                         view.snapshot.as_ref().map(|current| current.revision),
                         snapshot.revision,
                     )
+                    && view.snapshot.as_ref() != Some(&snapshot)
                 {
-                    if view.snapshot.as_ref() != Some(&snapshot) {
-                        view.snapshot = Some(snapshot);
-                        snapshot_changed = true;
-                    }
+                    view.snapshot = Some(snapshot);
+                    snapshot_changed = true;
                 }
                 match result {
                     Ok(ref snapshot)
@@ -1064,11 +1063,11 @@ impl SettingsView {
                             snapshot.revision,
                         ) =>
                     {
-                        if snapshot.configuration_status != SettingsConfigurationStatus::Ready {
-                            if view.page != SettingsPage::Diagnostics {
-                                view.page = SettingsPage::Diagnostics;
-                                snapshot_changed = true;
-                            }
+                        if snapshot.configuration_status != SettingsConfigurationStatus::Ready
+                            && view.page != SettingsPage::Diagnostics
+                        {
+                            view.page = SettingsPage::Diagnostics;
+                            snapshot_changed = true;
                         }
                         if view.snapshot.as_ref() != Some(snapshot) {
                             view.snapshot = Some(snapshot.clone());
