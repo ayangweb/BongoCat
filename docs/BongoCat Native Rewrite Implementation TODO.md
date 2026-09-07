@@ -2205,6 +2205,10 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
    - 状态（2026-09-05）：已重新采集当前 macOS 26.5.2/Xcode 26.6/SDK 26.5/Rust 1.97.1/Metal
      Toolchain v17.6.109.0 证据，并明确开发机额外安装的 i686 target 不进入 Native Rewrite
      矩阵。Windows 实机、发布产物保留与最终 target freeze 仍是本项未完成门禁。
+   - 状态（2026-09-07）：新增 `docs/migration/legacy-release-assets-v1.1.0.md`，记录公开
+     `v1.1.0` tag、发布时间、Windows/macOS 历史资产大小与 GitHub SHA-256，并明确旧 x86/ARM64
+     资产不能改变 Native 目标与 Cubism 发布门禁。Windows 实机、Native 发布产物保留、签名和
+     最终 target/toolchain freeze 仍待完成。
 5. [x] `P0-ARCHAEOLOGY`：补齐完整功能优先级和模型异常 fixture。
    - 状态（2026-08-28）：旧配置兼容已从产品范围移除；47 项功能优先级、预置模型资源清单、自定义模型匿名统计和六类模型异常目录 fixture 已完成。实机行为确认继续由输入、overlay 与 Cubism spike 承担。
 6. [x] `P0-CONFIG-CONTRACT`：固定 Bundle ID、自有字段命名和 Development/Production 隔离存储契约。
