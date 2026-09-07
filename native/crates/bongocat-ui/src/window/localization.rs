@@ -464,7 +464,10 @@ pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
         UiText::RuntimeShutdownFailures => ["Shutdown failures: {count}", "退出失败：{count}"],
         UiText::ConfigurationUnavailable => ["Configuration unavailable", "配置不可用"],
         UiText::DefaultsRestored => ["Defaults restored", "已恢复默认值"],
-        UiText::RestartToContinue => ["Restart BongoCat to continue", "请重启 BongoCat 以继续"],
+        UiText::RestartToContinue => [
+            "Restart the application to continue",
+            "请重启应用后继续",
+        ],
         UiText::RecoveredFromBackup => ["Recovered from backup", "已从备份恢复"],
         UiText::LoadedNormally => ["Loaded normally", "正常加载"],
         UiText::NoRecovery => ["No recovery", "未执行恢复"],
@@ -480,8 +483,8 @@ pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
         ],
         UiText::Language => ["Language", "语言"],
         UiText::LanguageDescription => [
-            "Choose the language used by BongoCat.",
-            "选择 BongoCat 使用的语言。",
+            "Choose the language used by the application.",
+            "选择应用使用的语言。",
         ],
         UiText::RuntimeStatus => ["Runtime status", "运行状态"],
         UiText::RuntimeStatusDescription => [
@@ -567,8 +570,8 @@ pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
         UiText::Application => ["Application", "应用"],
         UiText::ShowStatusIcon => ["Show status icon", "显示状态图标"],
         UiText::ShowStatusIconDescription => [
-            "Show BongoCat in the system tray or menu bar.",
-            "在系统托盘或菜单栏中显示 BongoCat。",
+            "Show the application in the system tray or menu bar.",
+            "在系统托盘或菜单栏中显示应用。",
         ],
         #[cfg(target_os = "windows")]
         UiText::ShowTaskbarIcon => ["Show taskbar icon", "显示任务栏图标"],
@@ -579,8 +582,8 @@ pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
         ],
         UiText::CheckForUpdatesAutomatically => ["Check for updates automatically", "自动检查更新"],
         UiText::CheckForUpdatesAutomaticallyDescription => [
-            "Check for a new signed release when BongoCat starts and every 24 hours.",
-            "BongoCat 启动时检查签名的新版本，此后每 24 小时检查一次。",
+            "Check for a new signed release when the application starts and every 24 hours.",
+            "应用启动时检查签名的新版本，此后每 24 小时检查一次。",
         ],
         UiText::OpenAtLogin => ["Open at login", "登录时启动"],
         UiText::DecreaseOverlayScale => ["Decrease window scale", "缩小模型窗口"],
@@ -603,11 +606,11 @@ pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
             "状态不可用；激活控件以重试",
         ],
         UiText::LoginStartupDisabled => {
-            ["Open BongoCat when you sign in", "登录系统时启动 BongoCat"]
+            ["Open the application when you sign in", "登录系统时启动应用"]
         }
         UiText::LoginStartupEnabled => [
-            "BongoCat opens when you sign in",
-            "BongoCat 将在登录系统时启动",
+            "The application opens when you sign in",
+            "应用将在登录系统时启动",
         ],
         UiText::LoginStartupStale => [
             "Saved app location changed; enable to repair",

@@ -535,7 +535,7 @@ fn configuration_recovery_presentation_is_anonymous_and_complete() {
         SettingsLanguage::EnglishUnitedStates,
     );
     assert_eq!(restored.title, "Defaults restored");
-    assert_eq!(restored.detail, "Restart BongoCat to continue");
+    assert_eq!(restored.detail, "Restart the application to continue");
     assert!(!restored.can_restore);
 }
 
@@ -1002,6 +1002,6 @@ fn startup_item_presentations_cover_every_platform_state_and_retry() {
             SettingsLanguage::ChineseSimplified,
         )
         .description,
-        "BongoCat 将在登录系统时启动"
+        "应用将在登录系统时启动"
     );
 }
