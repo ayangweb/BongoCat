@@ -46,8 +46,13 @@ Production must be selected at build time. Packaging scripts reject a missing, e
 selection before invoking Cargo:
 
 ```text
-BONGOCAT_BUILD_ENV=production cargo build -p bongocat-app --release
+just build
 ```
+
+From the repository root, `just build` selects the immutable Production environment, builds the
+Native product, and packages the host-platform installer. On macOS it creates
+`native/target/package/BongoCat.dmg` and prints its absolute path. On Windows it creates the x64
+NSIS installer after the signed-payload and pinned NSIS 3.11 checks pass.
 
 Native build provenance is written as path-free JSON with the source commit, `Cargo.lock` SHA-256,
 Rust toolchain, target, profile, feature set, and build environment. The macOS package includes
@@ -55,11 +60,18 @@ Rust toolchain, target, profile, feature set, and build environment. The macOS p
 
 Windows x64 packaging is a separate, current-user NSIS step. It accepts a prebuilt release payload
 that has already been Authenticode-signed; it does not build, sign, download, or select an update.
-The release workstation must retain the official nsis-3.11-setup.exe acquisition artifact and use
-the matching installed makensis.exe, so the script can pin its MD5 and v3.11 compiler version:
+`just build` performs this step after compiling the x64 release payload. The release workstation
+must retain the official nsis-3.11-setup.exe acquisition artifact and use the matching installed
+makensis.exe; set `BONGOCAT_NSIS_SETUP_PATH` and `BONGOCAT_MAKENSIS_PATH` before running the command
+so the script can pin its MD5 and v3.11 compiler version:
 
 ```powershell
 $env:BONGOCAT_BUILD_ENV = 'production'
+$env:BONGOCAT_NSIS_SETUP_PATH = 'C:\toolchains\nsis-3.11-setup.exe'
+$env:BONGOCAT_MAKENSIS_PATH = 'C:\Program Files (x86)\NSIS\makensis.exe'
+just build
+
+# The lower-level wrapper remains available for release pipelines:
 & .\scripts\package-windows.ps1 -InputDirectory C:\release\bongocat-x64 -OutputFile C:\release\BongoCat-0.1.0-x64-setup.exe -ProductVersion 0.1.0 -NsisSetupPath C:\toolchains\nsis-3.11-setup.exe -MakeNsisPath 'C:\Program Files (x86)\NSIS\makensis.exe'
 ```
 

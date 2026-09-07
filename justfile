@@ -27,7 +27,7 @@ check:
     cargo test --locked --workspace
     cargo check --locked --workspace --release
 
-# Build the product with the immutable Production environment.
+# Build the product and package the platform installer with the immutable Production environment.
 [env("BONGOCAT_BUILD_ENV", "production")]
-build-production:
-    cargo build --locked -p bongocat-app --release
+build:
+    @{{ if os() == "windows" { "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1" } else { "./scripts/build-macos.sh" } }}
