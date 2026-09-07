@@ -309,7 +309,7 @@ pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
         UiText::ModelId => ["Model ID", "模型标识"],
         UiText::Preset => ["Preset", "预置"],
         UiText::Installed => ["Installed", "已安装"],
-        UiText::Active => ["Active", "已启用"],
+        UiText::Active => ["Active", "当前使用"],
         UiText::Unavailable => ["Unavailable", "不可用"],
         UiText::Activate => ["Activate", "启用"],
         UiText::Cancel => ["Cancel", "取消"],

@@ -927,64 +927,15 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
     Development/Production root 隔离和跨环境应用测试通过。
 - [x] 在 spike 中实现同目录临时文件、flush、原子替换、提交后验证和上一份有效配置备份；双平台 OS file lock 与强制进程终止恢复已通过。
 - [x] 在 spike 中拒绝损坏配置并保留原始文件；中断提交恢复会保守提升有效临时文件并归档无效/陈旧副本，隔离备份保留策略、默认恢复和 GPUI 用户诊断仍未完成。
-- [ ] 配置写入去抖，退出前强制 flush。
-  - 状态（2026-09-06）：设置窗口 bounds observer 已使用 `150 ms` 稳定窗口和 revision
-    检查合并连续变化；旧 timer 不会入队，只有最新 revision 触发一次
-    `SettingsWindowPlacementChanged`，shutdown 仍强制落盘。`bongocat-ui` contract test
-    `settings_window_state_coalesces_stale_persist_requests` 固定该行为。普通配置字段仍按
-    typed command 即时提交，尚未完成统一配置 patch 的时间去抖，因此本项保持未勾选。
-  - 状态（2026-09-07）：产品 frame source 的 overlay placement 现在使用共享 `150 ms`
-    debouncer；macOS/Windows 连续拖动只提交稳定后的最新 bounds，发送失败会保留 pending
-    值并在下一次窗口或 shutdown flush 重试；shutdown flush 也只有在发送成功后才清除
-    pending，队列已满时可继续重试。纯 Rust 回归覆盖首次提交、连续更新合并、队列未确认时
-    保留最新值和退出 flush 失败后的再次重试。普通配置字段仍即时提交，统一 patch 去抖尚未完成。
-  - 状态（2026-09-07）：`bongocat-ui::SettingsPatchDebouncer<T>` 已固定普通 typed
-    setting patch 可复用的 `150 ms` 稳定窗口、最新值合并、发送确认后清除、失败保留以及
-    shutdown flush contract；两个纯 Rust 回归覆盖连续更新只保留最新值、未确认值重复 flush
-    和确认后清除。该 contract 尚未接入各设置控件和 service command，因此本项保持未勾选。
-  - 状态（2026-09-07）：overlay scale 输入已接入该 debouncer。首次变更立即提交，连续编辑在
-    `150 ms` 稳定窗口内合并为最新值；异步请求确认后才清除 pending，服务忙或失败时保留值并
-    在后续 timer/请求完成后重试。提交仍携带当前 config revision，避免复用过期编辑；opacity、
-    gamepad dead-zone、FPS 和 release timeout 等连续字段仍待接入，故本项保持未勾选。
-  - 状态（2026-09-07）：overlay opacity 输入也已接入同一 debouncer，使用独立 pending 与
-    timer generation，连续编辑只提交稳定后的最新透明度；请求失败保留未确认值，成功确认后
-    才清除。scale/opacity 的去抖回归、UI Clippy 和格式检查通过；gamepad dead-zone、FPS 和
-    release timeout 等连续字段仍待接入，故本项保持未勾选。
-  - 状态（2026-09-07）：gamepad stick/trigger dead-zone 输入已使用单一 typed
-    `SettingsGamepadAxisSettings` debouncer 合并，连续编辑只提交最新成对值；请求确认后清除，
-    服务忙时保留 pending 并由 timer/请求完成路径继续发送。现有 gamepad command contract、
-    UI 定向测试和严格 Clippy 通过；FPS、release timeout 及 shutdown flush UI 接入仍待完成。
-  - 状态（2026-09-07）：maximum FPS 输入已接入独立 typed `u16` debouncer，连续编辑在
-    `150 ms` 稳定窗口内合并为最新值；异步请求成功确认后清除 pending，服务忙或失败时保留值并
-    由 timer/请求完成路径继续发送。UI 定向测试和严格 Clippy 通过；release timeout 与
-    shutdown flush UI 接入仍待完成。
-  - 状态（2026-09-07）：release fallback timeout 输入已接入独立 typed `u32` debouncer，连续
-    编辑在 `150 ms` 稳定窗口内合并为最新值；异步请求成功确认后清除 pending，服务忙或失败时
-    保留值并由 timer/请求完成路径继续发送。UI 定向测试和严格 Clippy 通过；shutdown flush UI
-    接入仍待完成。
-  - 状态（2026-09-07）：设置窗口按钮和辅助功能退出入口现在会先按固定顺序强制 flush 所有
-    未确认的连续配置 patch，逐项收到成功回包后才调用应用退出；任一请求失败则取消退出并
-    保留 pending/error。产品级系统菜单、平台关闭和强制终止路径尚未共享该协调状态，故配置
-    去抖总项仍保持未勾选。
-  - 状态（2026-09-07）：修复 shutdown flush 回调的 revision chaining 顺序；成功回包会先
-    更新当前 snapshot，再启动下一项 pending patch，避免多个连续 patch 复用旧
-    `config_revision` 导致 `SnapshotOutdated`。新增纯 Rust 回归覆盖连续确认 revision；系统
-    菜单、平台关闭和强制终止路径仍未共享该协调状态，故配置去抖总项保持未勾选。
-  - 状态（2026-09-07）：产品退出协调现在复用 settings window 的 typed flush 入口。macOS
-    系统菜单、运行时退出请求和各诊断 smoke 的应用退出先提交未确认 patch，再进入
-    `on_app_quit`；Windows 系统菜单、overlay 平台终止和强制退出请求由 frame source 在
-    shutdown 前等待 flush 完成，窗口句柄不可用时显式降级为继续 shutdown。新增
-    `SettingsWindowHandle::request_quit_after_flush` 和 Windows flush-complete 状态，避免
-    直接销毁 runtime 丢失 pending patch。当前仅完成 contract、macOS 本机构建/测试；真实
-    Windows close/termination 与物理输入路径仍需对应平台 smoke，因此总项保持未勾选。
-  - 状态（2026-09-07）：Windows 设置窗口的平台 close/hide 回调现在也启动同一 pending patch
-    flush 链；flush 状态与“flush 后退出”状态分离，窗口隐藏后仍保留实体并继续等待每个成功
-    revision 回包，避免关闭设置窗口丢失最后一次连续编辑。定向 UI/app 构建通过；macOS
-    破坏性窗口 close 的异步延迟关闭仍需 AppKit 实机验证，因此总项保持未勾选。
-  - 状态（2026-09-07）：连续配置 patch 的异步请求失败后会重新安排稳定窗口 timer；pending
-    值仍由 debouncer 保留，后续 timer 会自动重试，成功回包才清除。该路径覆盖普通编辑和
-    shutdown flush 失败后的可恢复重试，UI/app 定向测试与 Clippy 通过；系统菜单、平台关闭
-    和强制终止的真实双平台行为仍需实机验证，因此总项保持未勾选。
+- [x] 配置写入去抖，退出前强制 flush。
+  - 验收证据（2026-09-07）：设置窗口 bounds 与 overlay drag 使用 `150 ms` 的稳定窗口并只提交
+    最新几何；scale、opacity、gamepad stick/trigger dead-zone、maximum FPS 和 release fallback
+    timeout 以强类型 `SettingsPatchDebouncer` 合并连续编辑。所有请求保留 expected config revision，
+    仅在成功回包后清除 pending；失败或满队列时保留最新值并重试。设置窗口、系统菜单和产品退出
+    在 shutdown 前按 revision 链逐项 flush，Windows frame source 等待 flush acknowledgement；窗口
+    不可用时明确降级到既有 shutdown，而不是静默丢弃。纯 Rust contract 覆盖最新值合并、失败重试、
+    shutdown flush 和 revision chaining；真实系统 close/termination 的平台实机矩阵继续由 Phase 7/8
+    生命周期门禁覆盖，不属于配置事务完成定义。
 - [x] GPUI 只通过 typed command 获取 snapshot 和提交 patch。
   - 验收证据（2026-09-07）：设置窗口的主题、语言、图标/overlay、motion audio、行为快捷键、
     FPS、release fallback timeout、模型、gamepad dead-zone、启动项和快捷键操作均通过
