@@ -991,6 +991,14 @@ impl Application {
         })
     }
 
+    pub fn preview_motion(
+        &self,
+        group: impl Into<String>,
+        index: usize,
+    ) -> Result<RuntimeSnapshot, ApplicationError> {
+        self.wait_for_model_command(RuntimeCommand::PreviewMotion(MotionId::new(group, index)?))
+    }
+
     pub fn stop_motion(
         &self,
         group: impl Into<String>,

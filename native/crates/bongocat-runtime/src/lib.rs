@@ -392,6 +392,7 @@ pub enum RuntimeCommand {
         motion: MotionId,
         priority: MotionPriority,
     },
+    PreviewMotion(MotionId),
     StopMotion(MotionId),
     SetExpression(ExpressionId),
 }
@@ -1847,7 +1848,19 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                             &snapshot,
                         );
                     }
-                    WorkerCommand::Product(RuntimeCommand::StartMotion { motion, priority }) => {
+                    WorkerCommand::Product(
+                        command @ (RuntimeCommand::StartMotion { .. }
+                        | RuntimeCommand::PreviewMotion(_)),
+                    ) => {
+                        let (motion, priority, looping) = match command {
+                            RuntimeCommand::StartMotion { motion, priority } => {
+                                (motion, priority, true)
+                            }
+                            RuntimeCommand::PreviewMotion(motion) => {
+                                (motion, MotionPriority::Force, false)
+                            }
+                            _ => unreachable!("matched only motion start commands"),
+                        };
                         let duplicate = active_motion.as_ref().is_some_and(|active| {
                             active.motion == motion
                                 && active.priority == priority
@@ -1859,13 +1872,13 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                                 .is_none_or(|active: &ActiveMotionSnapshot| {
                                     priority >= active.priority
                                 });
-                        if duplicate || !can_replace {
+                        if (looping && duplicate) || !can_replace {
                             publish(&snapshot, |current| {
                                 current.last_command_failure = None;
                                 current.last_command_sequence = Some(sequence);
                             });
                         } else if let Some(renderer) = &mut renderer {
-                            match renderer.start_motion(&motion, clock.now()) {
+                            match renderer.start_motion(&motion, clock.now(), looping) {
                                 Ok(()) => {
                                     if motion_audio_enabled {
                                         if let Some(path) =
@@ -3989,6 +4002,50 @@ mod tests {
             .wait_for_command(stop_sequence, TIMEOUT)
             .expect("shortcut stop result");
         assert!(stopped.active_motion.is_none());
+        owner.shutdown(TIMEOUT).expect("runtime shutdown");
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn preview_motion_stops_after_one_cycle_even_when_the_clip_loops() {
+        let clock = Arc::new(ManualClock::default());
+        let (owner, consumer) = RuntimeOwner::start_with_rendering_and_clock(
+            true,
+            8,
+            Arc::clone(&clock) as Arc<dyn MonotonicClock>,
+        );
+        let client = owner.client();
+        client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+        let activation_sequence = client
+            .send(RuntimeCommand::ActivateModel(Arc::new(preset_model(
+                "standard",
+            ))))
+            .expect("activation command");
+        let candidate = wait_for_prepared_model(&client, &consumer, activation_sequence);
+        report_model_prepared(&client, &consumer, &candidate);
+
+        let motion = MotionId::new("CAT_motion", 0).expect("motion id");
+        let preview_sequence = client
+            .send(RuntimeCommand::PreviewMotion(motion.clone()))
+            .expect("preview motion");
+        let started = client
+            .wait_for_command(preview_sequence, TIMEOUT)
+            .expect("preview started");
+        assert_eq!(
+            started.active_motion.as_ref().map(|active| &active.motion),
+            Some(&motion)
+        );
+
+        clock.set(Duration::from_secs(10));
+        let tick_sequence = client.send(RuntimeCommand::Tick).expect("preview tick");
+        let ticked = client
+            .wait_for_command(tick_sequence, TIMEOUT)
+            .expect("preview tick accepted");
+        let completed = client
+            .wait_for_revision(ticked.revision.saturating_add(1), TIMEOUT)
+            .expect("preview completed");
+        assert!(completed.active_motion.is_none());
+
         owner.shutdown(TIMEOUT).expect("runtime shutdown");
     }
 

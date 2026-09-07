@@ -500,13 +500,36 @@ impl Live2dModel {
         elapsed: std::time::Duration,
         weight: f32,
     ) -> Result<MotionApplyStatus, Live2dError> {
+        self.apply_motion_with_weight_and_looping(motion, elapsed, weight, motion.is_looping())
+    }
+
+    pub fn apply_motion_once_with_weight(
+        &mut self,
+        motion: &MotionClip,
+        elapsed: std::time::Duration,
+        weight: f32,
+    ) -> Result<MotionApplyStatus, Live2dError> {
+        self.apply_motion_with_weight_and_looping(motion, elapsed, weight, false)
+    }
+
+    fn apply_motion_with_weight_and_looping(
+        &mut self,
+        motion: &MotionClip,
+        elapsed: std::time::Duration,
+        weight: f32,
+        looping: bool,
+    ) -> Result<MotionApplyStatus, Live2dError> {
         if !weight.is_finite() || !(0.0..=1.0).contains(&weight) {
             return Err(Live2dError::new(
                 Live2dErrorCode::ParameterValueInvalid,
                 "motion received an invalid playback weight",
             ));
         }
-        let evaluation = motion.evaluate(elapsed);
+        let evaluation = if looping {
+            motion.evaluate(elapsed)
+        } else {
+            motion.evaluate_once(elapsed)
+        };
 
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         let model_opacity_applied = if let Some(opacity) = evaluation.model.opacity {

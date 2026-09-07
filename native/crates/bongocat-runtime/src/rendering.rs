@@ -70,6 +70,7 @@ struct ActiveRenderModel {
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 struct MotionPlayback {
     clip: MotionClip,
+    looping: bool,
     started_at: Duration,
     fade_out_started_at: Option<Duration>,
     last_event_elapsed: Option<Duration>,
@@ -231,6 +232,7 @@ impl RuntimeRenderer {
         &mut self,
         motion: &MotionId,
         now: Duration,
+        looping: bool,
     ) -> Result<(), RuntimeRenderErrorCode> {
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
@@ -245,6 +247,7 @@ impl RuntimeRenderer {
                 .ok_or(RuntimeRenderErrorCode::MotionLoadFailed)?;
             active.motion = Some(MotionPlayback {
                 clip,
+                looping,
                 started_at: now,
                 fade_out_started_at: None,
                 last_event_elapsed: None,
@@ -358,17 +361,20 @@ impl RuntimeRenderer {
                     })
                     .collect();
                 skipped_motion_user_data = user_data.skipped_occurrences;
-                let status = active
-                    .model
-                    .apply_motion_with_weight(
-                        &playback.clip,
-                        elapsed,
-                        fade_out_elapsed
-                            .map_or(1.0, |elapsed| playback.clip.fade_out_weight(elapsed)),
-                    )
-                    .map_err(|error| {
-                        map_live2d_error(error, RuntimeRenderErrorCode::ModelEvaluationFailed)
-                    })?;
+                let weight =
+                    fade_out_elapsed.map_or(1.0, |elapsed| playback.clip.fade_out_weight(elapsed));
+                let status = if playback.looping {
+                    active
+                        .model
+                        .apply_motion_with_weight(&playback.clip, elapsed, weight)
+                } else {
+                    active
+                        .model
+                        .apply_motion_once_with_weight(&playback.clip, elapsed, weight)
+                }
+                .map_err(|error| {
+                    map_live2d_error(error, RuntimeRenderErrorCode::ModelEvaluationFailed)
+                })?;
                 status.finished || explicit_fade_finished
             } else {
                 false
@@ -654,6 +660,7 @@ mod tests {
         let active = renderer.active.as_mut().expect("active model");
         active.motion = Some(MotionPlayback {
             clip: motion,
+            looping: true,
             started_at: Duration::ZERO,
             fade_out_started_at: None,
             last_event_elapsed: None,

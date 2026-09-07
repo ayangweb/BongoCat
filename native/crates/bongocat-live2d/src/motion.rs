@@ -431,9 +431,17 @@ impl MotionClip {
     }
 
     pub fn evaluate(&self, elapsed: Duration) -> MotionEvaluation {
+        self.evaluate_with_looping(elapsed, self.looping)
+    }
+
+    pub fn evaluate_once(&self, elapsed: Duration) -> MotionEvaluation {
+        self.evaluate_with_looping(elapsed, false)
+    }
+
+    fn evaluate_with_looping(&self, elapsed: Duration, looping: bool) -> MotionEvaluation {
         let elapsed_seconds = elapsed.as_secs_f32();
-        let finished = !self.looping && elapsed_seconds >= self.duration_seconds;
-        let local_seconds = if self.looping && self.duration_seconds > 0.0 {
+        let finished = !looping && elapsed_seconds >= self.duration_seconds;
+        let local_seconds = if looping && self.duration_seconds > 0.0 {
             elapsed_seconds.rem_euclid(self.duration_seconds)
         } else {
             elapsed_seconds.min(self.duration_seconds)
@@ -442,7 +450,7 @@ impl MotionClip {
             effect_weight: motion_weight(
                 elapsed_seconds,
                 self.duration_seconds,
-                self.looping,
+                looping,
                 self.fade_in_seconds,
                 self.fade_out_seconds,
             ),
@@ -471,7 +479,7 @@ impl MotionClip {
                 weight: curve.weight(
                     elapsed_seconds,
                     self.duration_seconds,
-                    self.looping,
+                    looping,
                     self.fade_in_seconds,
                     self.fade_out_seconds,
                 ),
