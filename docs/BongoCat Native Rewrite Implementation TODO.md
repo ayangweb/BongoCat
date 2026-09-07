@@ -1771,7 +1771,8 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     executable 的 `panic=abort` 子进程验证固定匿名 panic code、当前 config 字节不变、环境内
     run marker 保留及下一次启动的 unclean 分类；正常 shutdown 会收敛 marker。默认产品 CLI
     不暴露该测试入口。
-- [ ] 定义正常退出、强制退出、崩溃和系统终止的恢复标记；下次启动可区分并避免无限恢复循环。
+- [x] 定义正常退出、强制退出、崩溃和系统终止的恢复标记；下次启动可区分并避免无限恢复循环。
+  - 验收证据（2026-09-07）：`ApplicationRunMarker` 在当前环境私有日志目录建立运行标记；有序 shutdown 先记录开始，只有 runtime 与音频 owner 都完成后才记录完成并删除标记。下一次启动将异常退出、panic 和中断 shutdown 统一识别为前次未清理运行，不修改配置或自动重试恢复路径；`bongocat-app` 单元测试和 `--panic-diagnostics-smoke` 覆盖标记保留、分类、干净重启和配置字节不变。Windows/macOS 系统终止回调的实机矩阵仍由 Phase 7/8 发布门禁跟踪。
   - 状态（2026-09-05）：环境隔离 marker v1 现固定为 `running`、`shutting_down` 或 `panicked`；
     下一次启动仅投影匿名 `forced_or_unknown`、`shutdown_interrupted` 或 `panic`，随即写入新的
     `running` marker。正常 shutdown 才删除 marker，panic hook 不读取 payload 且使用非阻塞写入。
