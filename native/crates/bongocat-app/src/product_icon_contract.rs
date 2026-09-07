@@ -57,11 +57,13 @@ mod tests {
 
     const PRODUCT_ICNS: &[u8] = include_bytes!("../../../resources/icons/BongoCat.icns");
     const PRODUCT_ICO: &[u8] = include_bytes!("../../../resources/icons/BongoCat.ico");
+    const STATUS_ICO: &[u8] = include_bytes!("../../../resources/icons/tray-windows.ico");
 
     #[test]
     fn native_product_icons_have_valid_containers() {
         validate_icns(PRODUCT_ICNS).expect("valid Native macOS icon");
         validate_ico(PRODUCT_ICO).expect("valid Native Windows icon");
+        validate_ico(STATUS_ICO).expect("valid Native Windows status icon");
     }
 
     #[test]

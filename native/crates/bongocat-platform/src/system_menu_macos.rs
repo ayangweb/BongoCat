@@ -1,10 +1,12 @@
 use crate::{SystemMenuAction, SystemMenuError};
 use objc2::{
-    DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, rc::Retained,
-    runtime::AnyObject, sel,
+    define_class, msg_send, rc::Retained, runtime::AnyObject, sel, AnyThread, DefinedClass,
+    MainThreadMarker, MainThreadOnly,
 };
-use objc2_app_kit::{NSMenu, NSMenuItem, NSStatusBar, NSStatusItem, NSVariableStatusItemLength};
-use objc2_foundation::{NSObject, NSObjectProtocol, NSString};
+use objc2_app_kit::{
+    NSImage, NSMenu, NSMenuItem, NSStatusBar, NSStatusItem, NSVariableStatusItemLength,
+};
+use objc2_foundation::{NSData, NSObject, NSObjectProtocol, NSSize, NSString};
 use std::sync::mpsc::{self, Receiver, Sender};
 
 struct SystemMenuTargetIvars {
@@ -55,6 +57,7 @@ impl SystemMenuTarget {
 pub struct SystemMenu {
     status_bar: Retained<NSStatusBar>,
     status_item: Option<Retained<NSStatusItem>>,
+    status_image: Retained<NSImage>,
     menu: Retained<NSMenu>,
     target: Retained<SystemMenuTarget>,
     receiver: Receiver<SystemMenuAction>,
@@ -70,6 +73,7 @@ impl SystemMenu {
         let (sender, receiver) = mpsc::channel();
         let target = SystemMenuTarget::new(mtm, sender);
         let status_bar = NSStatusBar::systemStatusBar();
+        let status_image = status_image()?;
         let menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), &NSString::from_str("BongoCat"));
         let empty = NSString::from_str("");
         // SAFETY: openSettings: is implemented by SystemMenuTarget with the
@@ -120,6 +124,7 @@ impl SystemMenu {
         let mut system_menu = Self {
             status_bar,
             status_item: None,
+            status_image,
             menu,
             target,
             receiver,
@@ -196,12 +201,21 @@ impl SystemMenu {
             self.status_bar.removeStatusItem(&status_item);
             return Err(SystemMenuError::StatusItemCreateFailed);
         };
-        button.setTitle(&NSString::from_str("BC"));
+        button.setImage(Some(&self.status_image));
         button.setToolTip(Some(&NSString::from_str("BongoCat")));
         status_item.setMenu(Some(&self.menu));
         self.status_item = Some(status_item);
         Ok(())
     }
+}
+
+fn status_image() -> Result<Retained<NSImage>, SystemMenuError> {
+    let data = NSData::with_bytes(include_bytes!("../../../resources/icons/tray-macos.png"));
+    let image = NSImage::initWithData(NSImage::alloc(), &data)
+        .ok_or(SystemMenuError::StatusIconImageLoadFailed)?;
+    image.setTemplate(true);
+    image.setSize(NSSize::new(18.0, 18.0));
+    Ok(image)
 }
 
 impl Drop for SystemMenu {

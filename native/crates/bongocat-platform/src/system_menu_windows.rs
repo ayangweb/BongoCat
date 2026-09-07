@@ -30,7 +30,7 @@ const WINDOW_CLASS: windows::core::PCWSTR = w!("BongoCatProductSystemMenuWindow"
 const WINDOW_TITLE: windows::core::PCWSTR = w!("BongoCat System Menu");
 const CALLBACK_MESSAGE: u32 = WM_APP + 47;
 const TRAY_ID: u32 = 1;
-const PRODUCT_ICON_RESOURCE_ID: u16 = 101;
+const STATUS_ICON_RESOURCE_ID: u16 = 102;
 const OPEN_SETTINGS_ID: usize = 1;
 const TOGGLE_OVERLAY_VISIBILITY_ID: usize = 2;
 const QUIT_ID: usize = 3;
@@ -223,7 +223,7 @@ impl SystemMenu {
             return Ok(());
         }
         let window = self.window.ok_or(())?;
-        let resource_name = PCWSTR(PRODUCT_ICON_RESOURCE_ID as usize as *const u16);
+        let resource_name = PCWSTR(STATUS_ICON_RESOURCE_ID as usize as *const u16);
         let icon = unsafe { LoadIconW(Some(self.instance), resource_name) }.map_err(|_| ())?;
         let mut data = NOTIFYICONDATAW {
             cbSize: size_of::<NOTIFYICONDATAW>() as u32,

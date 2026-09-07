@@ -45,6 +45,11 @@ fn main() {
         "Windows product icon",
         validate_ico,
     );
+    validate_icon(
+        &resources_dir.join("tray-windows.ico"),
+        "Windows status icon",
+        validate_ico,
+    );
 
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
         println!("cargo::rerun-if-changed={WINDOWS_RESOURCE_FILE}");
