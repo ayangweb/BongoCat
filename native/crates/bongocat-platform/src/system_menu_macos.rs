@@ -1,7 +1,7 @@
 use crate::{SystemMenuAction, SystemMenuError};
 use objc2::{
-    define_class, msg_send, rc::Retained, runtime::AnyObject, sel, AnyThread, DefinedClass,
-    MainThreadMarker, MainThreadOnly,
+    AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send,
+    rc::Retained, runtime::AnyObject, sel,
 };
 use objc2_app_kit::{
     NSImage, NSMenu, NSMenuItem, NSStatusBar, NSStatusItem, NSVariableStatusItemLength,

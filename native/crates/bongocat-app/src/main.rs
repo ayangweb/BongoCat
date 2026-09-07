@@ -1408,7 +1408,9 @@ fn run_diagnostics_export_failure_smoke() -> Result<(), Box<dyn std::error::Erro
             std::fs::Permissions::from_mode(original_mode & 0o7777),
         )?;
         if error.code() != bongocat_ui::SettingsErrorCode::DiagnosticsExportFailed {
-            return Err("non-writable diagnostics directory returned an unstable error code".into());
+            return Err(
+                "non-writable diagnostics directory returned an unstable error code".into(),
+            );
         }
         if std::fs::read(&preview)? != previous_preview {
             return Err("sync/write failure changed the previous preview bundle".into());

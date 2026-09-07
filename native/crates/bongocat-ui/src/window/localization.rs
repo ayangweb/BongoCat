@@ -464,10 +464,7 @@ pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
         UiText::RuntimeShutdownFailures => ["Shutdown failures: {count}", "退出失败：{count}"],
         UiText::ConfigurationUnavailable => ["Configuration unavailable", "配置不可用"],
         UiText::DefaultsRestored => ["Defaults restored", "已恢复默认值"],
-        UiText::RestartToContinue => [
-            "Restart the application to continue",
-            "请重启应用后继续",
-        ],
+        UiText::RestartToContinue => ["Restart the application to continue", "请重启应用后继续"],
         UiText::RecoveredFromBackup => ["Recovered from backup", "已从备份恢复"],
         UiText::LoadedNormally => ["Loaded normally", "正常加载"],
         UiText::NoRecovery => ["No recovery", "未执行恢复"],
@@ -492,10 +489,9 @@ pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
             "查看当前运行时连接状态和配置修订版本。",
         ],
         UiText::ShowDesktopCat => ["Show model window", "显示模型窗口"],
-        UiText::ShowDesktopCatDescription => [
-            "Keep the model window visible.",
-            "显示或隐藏模型窗口。",
-        ],
+        UiText::ShowDesktopCatDescription => {
+            ["Keep the model window visible.", "显示或隐藏模型窗口。"]
+        }
         UiText::AlwaysOnTop => ["Always on top", "始终置顶"],
         UiText::AlwaysOnTopDescription => [
             "Keep the model window above other windows.",
@@ -605,9 +601,10 @@ pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
             "Status unavailable; activate to retry",
             "状态不可用；激活控件以重试",
         ],
-        UiText::LoginStartupDisabled => {
-            ["Open the application when you sign in", "登录系统时启动应用"]
-        }
+        UiText::LoginStartupDisabled => [
+            "Open the application when you sign in",
+            "登录系统时启动应用",
+        ],
         UiText::LoginStartupEnabled => [
             "The application opens when you sign in",
             "应用将在登录系统时启动",

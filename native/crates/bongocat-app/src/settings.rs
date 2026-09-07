@@ -2,7 +2,7 @@ use crate::diagnostics_bundle::write_preview_bundle;
 use crate::{
     Application, ApplicationConfigStatus, ApplicationError, ApplicationLogCode,
     ApplicationLogComponent, ApplicationLogDiagnostics, ApplicationLogEvent, ApplicationLogLevel,
-    ApplicationShortcutSignals, CoreLogDiagnostics, BUILD_ENVIRONMENT, PRODUCT_VERSION,
+    ApplicationShortcutSignals, BUILD_ENVIRONMENT, CoreLogDiagnostics, PRODUCT_VERSION,
 };
 use atomic_write_file::AtomicWriteFile;
 use bongocat_config::{
@@ -14,11 +14,11 @@ use bongocat_model::{
     ModelImportStage, ModelOrigin, ModelStoreDiagnostic,
 };
 #[cfg(target_os = "macos")]
-use bongocat_platform::{input_monitoring_permission, InputPermission};
+use bongocat_platform::{InputPermission, input_monitoring_permission};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_platform::{
-    open_directory, set_startup_item_enabled, startup_item_state, StartupItemEnvironment,
-    StartupItemError, StartupItemState, StartupItemUnsupportedReason,
+    StartupItemEnvironment, StartupItemError, StartupItemState, StartupItemUnsupportedReason,
+    open_directory, set_startup_item_enabled, startup_item_state,
 };
 use bongocat_runtime::{
     InputSnapshot, ModelSettings, OverlaySettings, PlatformInputDiagnostics,
@@ -27,19 +27,20 @@ use bongocat_runtime::{
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_ui::SettingsStartupItemError;
 use bongocat_ui::{
-    RuntimeHealth, SettingsApplicationShortcut, SettingsBuildEnvironment, SettingsBuildInfo,
-    SettingsClient, SettingsCommand, SettingsConfigRecovery, SettingsConfigurationStatus,
-    SettingsDiagnosticsExportStatus, SettingsError, SettingsErrorCode, SettingsGamepadAxisSettings,
-    SettingsInputDiagnostics, SettingsInputMonitoringPermission, SettingsInputServiceStatus,
-    SettingsLanguage, SettingsModelAvailability, SettingsModelBehavior,
-    SettingsModelBehaviorBinding, SettingsModelCatalog, SettingsModelCatalogError,
-    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportProgress,
-    SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsModelSettings,
-    SettingsOverlay, SettingsRuntimeCommandFailure, SettingsRuntimeCommandTransportDiagnostics,
-    SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode, SettingsServiceEndpoint,
-    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
-    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
-    SettingsWindowPlacement, SettingsWindowState, DIAGNOSTICS_EXPORT_FORMAT_VERSION,
+    DIAGNOSTICS_EXPORT_FORMAT_VERSION, RuntimeHealth, SettingsApplicationShortcut,
+    SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient, SettingsCommand,
+    SettingsConfigRecovery, SettingsConfigurationStatus, SettingsDiagnosticsExportStatus,
+    SettingsError, SettingsErrorCode, SettingsGamepadAxisSettings, SettingsInputDiagnostics,
+    SettingsInputMonitoringPermission, SettingsInputServiceStatus, SettingsLanguage,
+    SettingsModelAvailability, SettingsModelBehavior, SettingsModelBehaviorBinding,
+    SettingsModelCatalog, SettingsModelCatalogError, SettingsModelDiagnostic, SettingsModelEntry,
+    SettingsModelImportProgress, SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin,
+    SettingsModelSettings, SettingsOverlay, SettingsRuntimeCommandFailure,
+    SettingsRuntimeCommandTransportDiagnostics, SettingsRuntimeDiagnostics,
+    SettingsRuntimeErrorCode, SettingsServiceEndpoint, SettingsShortcutBinding, SettingsShortcuts,
+    SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
+    SettingsStartupItemUnsupportedReason, SettingsTheme, SettingsWindowPlacement,
+    SettingsWindowState,
 };
 use bongocat_update::UpdateDiagnostics;
 use serde::Serialize;
@@ -48,9 +49,9 @@ use std::{
     fmt,
     path::PathBuf,
     sync::{
+        Arc,
         atomic::{AtomicBool, Ordering},
         mpsc::{Receiver as ShortcutReceiver, RecvTimeoutError},
-        Arc,
     },
     thread,
     time::Duration,
@@ -2230,8 +2231,8 @@ mod tests {
     use std::{
         io,
         sync::{
-            atomic::{AtomicBool, AtomicUsize, Ordering},
             Mutex,
+            atomic::{AtomicBool, AtomicUsize, Ordering},
         },
     };
     use tempfile::tempdir;
@@ -3025,13 +3026,15 @@ mod tests {
 
         let restarted = store.load_or_default().expect("restart config");
         assert_eq!(restarted.config, bongocat_config::NativeConfig::default());
-        assert!(std::fs::read_dir(&layout.backups)
-            .expect("backup directory")
-            .any(|entry| entry
-                .expect("backup entry")
-                .file_name()
-                .to_string_lossy()
-                .starts_with("config-corrupt-")));
+        assert!(
+            std::fs::read_dir(&layout.backups)
+                .expect("backup directory")
+                .any(|entry| entry
+                    .expect("backup entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("config-corrupt-"))
+        );
     }
 
     #[test]
@@ -3069,9 +3072,11 @@ mod tests {
             error.to_string(),
             "configuration backup folder could not be opened"
         );
-        assert!(!error
-            .to_string()
-            .contains(base.path().to_string_lossy().as_ref()));
+        assert!(
+            !error
+                .to_string()
+                .contains(base.path().to_string_lossy().as_ref())
+        );
         let unchanged = client.read_snapshot_blocking().expect("unchanged snapshot");
         assert_eq!(unchanged, initial);
         assert_eq!(backup_location.invocations.load(Ordering::Acquire), 2);
@@ -3715,9 +3720,11 @@ mod tests {
             .set_behavior_shortcuts_enabled_blocking(initial_revision, false)
             .expect("disable behavior shortcuts");
         assert!(!disabled.behavior_shortcuts_enabled);
-        assert!(std::fs::read_to_string(&layout.config)
-            .expect("persisted config")
-            .contains("\"enable_behavior_shortcuts\": false"));
+        assert!(
+            std::fs::read_to_string(&layout.config)
+                .expect("persisted config")
+                .contains("\"enable_behavior_shortcuts\": false")
+        );
 
         let error = client
             .set_behavior_shortcuts_enabled_blocking(initial_revision, true)
@@ -4788,9 +4795,11 @@ mod tests {
             invalid_package.code(),
             SettingsErrorCode::ModelImportInvalidPackage
         );
-        assert!(!invalid_package
-            .to_string()
-            .contains(&invalid_package_source.path().display().to_string()));
+        assert!(
+            !invalid_package
+                .to_string()
+                .contains(&invalid_package_source.path().display().to_string())
+        );
 
         client.shutdown_blocking().expect("service shutdown");
         service.join().expect("service join");
