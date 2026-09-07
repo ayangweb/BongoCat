@@ -157,7 +157,7 @@ fn shortcut_capture_targets_have_independent_tab_stops() {
             SettingsLanguage::EnglishUnitedStates,
         );
         assert_eq!(rows.len(), 4);
-        assert_eq!(rows[0].1, "Capture shortcut for Show or hide desktop cat");
+        assert_eq!(rows[0].1, "Capture shortcut for Show or hide model window");
         assert_eq!(rows[2].2, "Control+M");
         assert_eq!(rows[3].2, "Not set");
         assert_eq!(
@@ -427,11 +427,11 @@ fn diagnostics_presentations_follow_the_resolved_language() {
     let command = ShortcutCaptureTarget::Command("toggle_overlay".to_owned());
     assert_eq!(
         shortcut_target_name(SettingsLanguage::ChineseSimplified, &command),
-        "显示或隐藏桌面猫"
+        "显示或隐藏模型窗口"
     );
     assert_eq!(
         shortcut_accessibility_label(SettingsLanguage::ChineseSimplified, &command),
-        "为显示或隐藏桌面猫录入快捷键"
+        "为显示或隐藏模型窗口录入快捷键"
     );
     assert_eq!(
         shortcut_capture_error(

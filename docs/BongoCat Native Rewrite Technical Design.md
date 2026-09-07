@@ -23,8 +23,8 @@ Rust 2024 edition application
 
 - BongoCat 自有应用代码统一使用 Rust。
 - Windows 只发布 x64 与 ARM64，不构建或发布 x86；ARM64 在官方 desktop Cubism Core 可用并通过 ABI/模型验证前保持发布阻塞。
-- GPUI 只负责常规设置 UI，不承担主猫 Live2D 渲染。
-- 主猫窗口由 Rust 平台模块直接创建和管理，与 GPUI 设置窗口共享同一应用生命周期。
+- GPUI 只负责常规设置 UI，不承担模型渲染。
+- 模型窗口由 Rust 平台模块直接创建和管理，与 GPUI 设置窗口共享同一应用生命周期。
 - Windows 使用 D3D11，macOS 使用 Metal；首发不为了未来 Linux 强行统一 GPU backend。
 - Windows 键鼠输入自行实现 Raw Input + 系统状态校正，从架构上避免 issue #47 的永久卡键。
 - macOS 输入自行封装 CGEventTap、TCC 权限、tap 恢复和按键状态校正。
@@ -51,7 +51,7 @@ Rust 2024 edition application
 - 保持现有模型、动作、表情和用户资源格式尽可能兼容；配置使用全新的 Native Rewrite schema 和命名。
 - 修复输入事件丢失导致的永久卡键，包括 issue #47 的截图快捷键场景。
 - 设置界面具备一致、清晰、可主题化的桌面体验。
-- 主猫窗口具备低延迟、透明、置顶、穿透、多显示器和高 DPI/Retina 支持。
+- 模型窗口具备低延迟、透明、置顶、穿透、多显示器和高 DPI/Retina 支持。
 - 所有后台服务具有明确的 start、stop、restart 和 shutdown 生命周期。
 - 使用 fixture 验证跨平台行为，而不是只依靠人工观察。
 
@@ -131,7 +131,7 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   关闭 GPUI 的重复 adapter，再由项目桥接独占同一个 native view。这里仅关闭 GPUI 内置
   adapter，不关闭项目辅助功能。迁移到 GPUI 原生 element 语义时必须一次性删除项目桥接、
   相关直接 AccessKit 依赖和该构造兼容措施，并重跑 macOS AX/Windows UIA 门禁。
-- GPUI 不加载 Cubism、不持有主猫 GPU 资源、不驱动 Live2D 帧循环。
+- GPUI 不加载 Cubism、不持有模型 GPU 资源、不驱动模型帧循环。
 - 全局快捷键使用配置边界编译出的 `CompiledShortcuts`。平台 input owner 在回调外以 HID
   identity 驱动短生命周期 matcher；只有匹配当前 active model 的 motion/expression target
   才能转成 typed runtime command。应用级 target 必须经 coordinator 的配置 revision-aware
@@ -848,7 +848,7 @@ GPUI 提供设置体验，但不成为 Live2D renderer 或实时状态所有者�
 
 ### ADR-003：平台原生 Overlay Renderer
 
-Windows 使用 D3D11，macOS 使用 Metal。主猫窗口不嵌入 GPUI renderer。
+Windows 使用 D3D11，macOS 使用 Metal。模型窗口不嵌入 GPUI renderer。
 
 ### ADR-004：输入状态可校正
 

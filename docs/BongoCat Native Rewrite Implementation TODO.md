@@ -6,7 +6,7 @@
 首发平台：Windows 10 1903+、macOS 12+
 后续评估：Linux
 
-> 执行基线：应用代码使用 Rust 2024 edition；GPUI 负责设置 UI；主猫窗口由 Rust 平台模块直接创建，不嵌入 GPUI renderer；Windows 使用 Raw Input + D3D11，macOS 使用 CGEventTap + Metal；官方 Cubism Core 是唯一厂商二进制/FFI 例外。生产产物不包含 Tauri、WebView、Vue、React 或 JavaScript runtime。
+> 执行基线：应用代码使用 Rust 2024 edition；GPUI 负责设置 UI；模型窗口由 Rust 平台模块直接创建，不嵌入 GPUI renderer；Windows 使用 Raw Input + D3D11，macOS 使用 CGEventTap + Metal；官方 Cubism Core 是唯一厂商二进制/FFI 例外。生产产物不包含 Tauri、WebView、Vue、React 或 JavaScript runtime。
 
 > 应用与存储基线：Bundle ID 固定为 `com.ayangweb.bongo-cat`；Development/Production 使用相同 schema 和不同数据根；新配置使用 `snake_case` 自有命名，不读取或导入旧 Tauri/Pinia 配置。
 
@@ -20,7 +20,7 @@
 
 - [ ] GPUI 只负责设置、模型管理、快捷键、权限、更新和诊断 UI。
 - [ ] Rust runtime 是配置、输入、动画和当前模型状态的唯一事实来源。
-- [ ] 主猫窗口必须是独立原生 overlay，不直接接入 GPUI renderer 私有接口。
+- [ ] 模型窗口必须是独立原生 overlay，不直接接入 GPUI renderer 私有接口。
 - [ ] 输入 callback、runtime tick 和 renderer 不得经过 GPUI 响应式状态链。
 - [ ] 不引入 Tauri、WebView、Node.js、JavaScript 或第二套 UI framework。
 - [ ] 不使用 rdev 或 monio 事件流作为 pressed state 的唯一依据。
@@ -89,7 +89,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 评审并确认 Technical Design 与本 TODO。
 - [x] 新增 ADR-001：采用单一 Rust 应用。
 - [x] 新增 ADR-002：GPUI 只用于设置 UI。
-- [x] 新增 ADR-003：主猫使用独立 D3D11/Metal overlay。
+- [x] 新增 ADR-003：模型窗口使用独立 D3D11/Metal overlay。
 - [x] 新增 ADR-004：输入采用事件 + 状态校正。
 - [x] 新增 ADR-005：Cubism Core 是唯一厂商 FFI 边界。
 - [x] 新增 ADR-006：首发不支持 Linux，但共享模块不封死后续 backend。
@@ -211,7 +211,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - 状态（2026-08-29）：macOS `spikes/gpui-overlay-macos/` 已在 Apple Silicon 实机验证 GPUI 设置窗口与独立 `NSPanel` + `CAMetalLayer` 共存、显示/隐藏/重显示、跨 Space 配置、鼠标穿透和正常退出；`.app` Bundle ID `com.ayangweb.bongo-cat` 与 ad-hoc strict codesign 通过。renderer 已从透明 clear 推进到 Rust 创建 Metal pipeline/vertex buffer、提交非空预乘 alpha draw，并在 release 100-cycle 的每轮等待 GPU 完成、回读非透明中心像素及验证 `rgb <= alpha`；本机结果为 `non_empty_frames=100`、AppKit windows `0 -> 0`、Rust owner `0 -> 0`、`clean_shutdown=true`。显式禁用无用途的 `NSPanel` 动画后，100-cycle `leaks --atExit` 不再出现 `_NSWindowTransformAnimation`、overlay 或 Metal retain stack，physical footprint 从 `38.4M` 降到 `16.3M`；剩余 18,816 bytes 均来自系统 XPC 常驻 stack。该合成几何尚不代表 Cubism texture/order/mask 完成；受控 drawable unavailable 也已验证设置窗口 degraded 与 quit 前 owner 释放。
 - 状态（2026-08-29）：`spikes/overlay-windows/` 已实现线程限定的 Win32 popup 与独立 D3D11/DXGI/DirectComposition premultiplied-alpha renderer，并由同一 GPUI coexistence executable 驱动。renderer 已包含 Rust 顶点、运行时 HLSL 编译、shader/input layout/vertex buffer/blend/rasterizer state、非空 draw、staging readback 和 DPI-aware `ResizeBuffers`；`CULL_NONE` 修复后的 hardware D3D11 连续帧、readback、resize 与 100-cycle 已在 push/PR runner 通过。本批新增 DXGI device-lost/surface-unavailable 分类，以及运行中故障后的 owner 释放、有限退避和完整重建；真实驱动 device loss 仍待实机。合成几何尚不代表 Live2D texture/order/mask 或 GPU/线程专项泄漏完成。
 
-- [x] 在 GPUI 应用生命周期内创建独立主猫原生窗口。
+- [x] 在 GPUI 应用生命周期内创建独立模型窗口。
 - [x] Windows 从 Rust 获得 HWND，完成透明 D3D11 clear/present。
   - 状态（2026-08-29）：两次 `windows-latest` 运行均使用 hardware D3D11 完成两次透明 composition swapchain clear/present，并验证正常退出。
 - [x] macOS 从 Rust/objc2 创建 NSPanel + CAMetalLayer，完成透明 Metal clear/present。
@@ -2308,7 +2308,7 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
         有序停止并 join 全部 BongoCat owner，再由 Windows adapter 跳过最终 GPUI 窗口析构；
         Windows 原生 lifecycle CI 和完整门禁通过前保持未勾选。- 状态（2026-08-31）：run `33330226417`、Windows job `99307365560` 的编译、Clippy、
         测试和 release check 均通过，但 lifecycle script 的 `Process.MainWindowHandle` 选中了
-        独立 overlay，导致错误地关闭猫窗口并报告 overlay/设置窗口双失败；macOS job
+        独立 overlay，导致错误地关闭模型窗口并报告 overlay/设置窗口双失败；macOS job
         `99307365568` 已通过。runner 现改为按标题和 PID 定位 GPUI 设置窗口并发送真实
         `WM_CLOSE`。- 状态（2026-08-31）：替代 run `33331197902`、Windows job `99309931267` 的 workspace
         门禁再次通过，唯一失败仍为 product lifecycle smoke；精确标题查找没有在内部 3 秒隐藏

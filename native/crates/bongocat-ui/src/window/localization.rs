@@ -262,12 +262,12 @@ pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
         UiText::General => ["General", "通用"],
         UiText::GeneralDescription => [
             "Configure the overlay, model interaction, input and startup behavior.",
-            "配置桌面猫、模型交互、输入和启动行为。",
+            "配置模型窗口、模型交互、输入和启动行为。",
         ],
         UiText::Models => ["Models", "模型"],
         UiText::ModelsDescription => [
-            "Install, validate and activate Live2D model packages.",
-            "安装、验证并启用 Live2D 模型包。",
+            "Install, validate and activate model packages.",
+            "安装、验证并启用模型包。",
         ],
         UiText::About => ["About", "关于"],
         UiText::AboutDescription => [
@@ -454,7 +454,7 @@ pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
         UiText::ExpressionLoadFailed => ["Expression load failed", "表情加载失败"],
         UiText::PlatformUnsupported => ["Platform unsupported", "平台不受支持"],
         UiText::RuntimeTransportClosed => ["Runtime transport closed", "运行时传输已关闭"],
-        UiText::OverlaySettingsInvalid => ["Overlay settings invalid", "桌面猫设置无效"],
+        UiText::OverlaySettingsInvalid => ["Overlay settings invalid", "模型窗口设置无效"],
         UiText::MaximumFpsInvalid => ["Maximum FPS invalid", "最大帧率无效"],
         UiText::ReleaseFallbackTimeoutInvalid => {
             ["Release fallback timeout invalid", "释放兜底超时无效"]
@@ -469,7 +469,7 @@ pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
         UiText::LoadedNormally => ["Loaded normally", "正常加载"],
         UiText::NoRecovery => ["No recovery", "未执行恢复"],
         UiText::Appearance => ["Appearance", "外观"],
-        UiText::Overlay => ["Overlay", "桌面猫"],
+        UiText::Overlay => ["Overlay", "模型窗口"],
         UiText::Theme => ["Theme", "主题"],
         UiText::System => ["System", "跟随系统"],
         UiText::Light => ["Light", "浅色"],
@@ -488,45 +488,45 @@ pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
             "Current runtime connection and configuration revision.",
             "当前运行时连接状态和配置修订版本。",
         ],
-        UiText::ShowDesktopCat => ["Show desktop cat", "显示桌面猫"],
+        UiText::ShowDesktopCat => ["Show model window", "显示模型窗口"],
         UiText::ShowDesktopCatDescription => [
-            "Keep the Live2D overlay visible.",
-            "保持 Live2D 桌面猫可见。",
+            "Keep the model window visible.",
+            "保持模型窗口可见。",
         ],
         UiText::AlwaysOnTop => ["Always on top", "始终置顶"],
         UiText::AlwaysOnTopDescription => [
-            "Keep the Live2D overlay above other windows.",
-            "使 Live2D 桌面猫保持在其他窗口上方。",
+            "Keep the model window above other windows.",
+            "使模型窗口保持在其他窗口上方。",
         ],
         UiText::ClickThroughOverlay => ["Click-through overlay", "鼠标穿透"],
         UiText::ClickThroughOverlayDescription => [
-            "Let pointer input pass through the Live2D overlay.",
-            "允许指针事件穿过 Live2D 桌面猫。",
+            "Let pointer input pass through the model window.",
+            "允许指针事件穿过模型窗口。",
         ],
         UiText::KeepInsideWorkArea => ["Keep inside work area", "保持在工作区内"],
         UiText::KeepInsideWorkAreaDescription => [
             "Keep the overlay clear of taskbars, menu bars and screen edges.",
-            "使桌面猫避开任务栏、菜单栏和屏幕边缘。",
+            "使模型窗口避开任务栏、菜单栏和屏幕边缘。",
         ],
         UiText::MotionAudio => ["Motion audio", "动作音效"],
         UiText::MotionAudioDescription => [
             "Play audio attached to model motions.",
             "播放模型动作附带的音效。",
         ],
-        UiText::OverlayScale => ["Overlay scale", "桌面猫缩放"],
+        UiText::OverlayScale => ["Window scale", "窗口缩放"],
         UiText::OverlayScaleDescription => [
-            "Resize the Live2D overlay from 25% to 400%.",
-            "在 25% 到 400% 之间调整桌面猫大小。",
+            "Resize the model window from 25% to 400%.",
+            "在 25% 到 400% 之间调整模型窗口大小。",
         ],
-        UiText::OverlayOpacity => ["Overlay opacity", "桌面猫不透明度"],
+        UiText::OverlayOpacity => ["Window opacity", "窗口不透明度"],
         UiText::OverlayOpacityDescription => [
-            "Adjust the overlay opacity from 1% to 100%.",
-            "在 1% 到 100% 之间调整桌面猫不透明度。",
+            "Adjust the model window opacity from 1% to 100%.",
+            "在 1% 到 100% 之间调整模型窗口不透明度。",
         ],
         UiText::MaximumFps => ["Maximum FPS", "最大帧率"],
         UiText::MaximumFpsDescription => [
             "Limit animation and overlay updates from 15 to 240 FPS.",
-            "将动画和桌面猫更新限制在每秒 15 到 240 帧。",
+            "将动画和模型窗口更新限制在每秒 15 到 240 帧。",
         ],
         UiText::ReleaseFallbackTimeout => ["Key release fallback (ms)", "按键释放兜底（毫秒）"],
         UiText::ReleaseFallbackTimeoutDescription => [
@@ -583,10 +583,10 @@ pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
             "BongoCat 启动时检查签名的新版本，此后每 24 小时检查一次。",
         ],
         UiText::OpenAtLogin => ["Open at login", "登录时启动"],
-        UiText::DecreaseOverlayScale => ["Decrease overlay scale", "缩小桌面猫"],
-        UiText::IncreaseOverlayScale => ["Increase overlay scale", "放大桌面猫"],
-        UiText::DecreaseOverlayOpacity => ["Decrease overlay opacity", "降低桌面猫不透明度"],
-        UiText::IncreaseOverlayOpacity => ["Increase overlay opacity", "提高桌面猫不透明度"],
+        UiText::DecreaseOverlayScale => ["Decrease window scale", "缩小模型窗口"],
+        UiText::IncreaseOverlayScale => ["Increase window scale", "放大模型窗口"],
+        UiText::DecreaseOverlayOpacity => ["Decrease window opacity", "降低窗口不透明度"],
+        UiText::IncreaseOverlayOpacity => ["Increase window opacity", "提高窗口不透明度"],
         UiText::DecreaseMaximumFps => ["Decrease maximum FPS", "降低最大帧率"],
         UiText::IncreaseMaximumFps => ["Increase maximum FPS", "提高最大帧率"],
         UiText::DecreaseReleaseFallbackTimeout => [
@@ -824,7 +824,7 @@ pub(super) fn shortcut_target_name(
     match target {
         ShortcutCaptureTarget::Command(command) => {
             let values = match command.as_str() {
-                "toggle_overlay" => ["Show or hide desktop cat", "显示或隐藏桌面猫"],
+                "toggle_overlay" => ["Show or hide model window", "显示或隐藏模型窗口"],
                 "open_settings" => ["Open settings", "打开设置"],
                 "toggle_mirror" => ["Toggle model mirror", "切换模型镜像"],
                 "toggle_click_through" => ["Toggle click-through", "切换鼠标穿透"],

@@ -5,11 +5,11 @@
 
 ## Context
 
-主猫窗口需要透明、置顶、穿透、低延迟、高 DPI/Retina 和可控 GPU 生命周期。GPUI 没有为双平台 Live2D 外部纹理提供稳定的公共合成接口。
+模型窗口需要透明、置顶、穿透、低延迟、高 DPI/Retina 和可控 GPU 生命周期。GPUI 没有为双平台 Live2D 外部纹理提供稳定的公共合成接口。
 
 ## Decision
 
-主猫使用独立原生 overlay：
+模型窗口使用独立原生 overlay：
 
 - Windows：Win32 + D3D11 + DXGI + DirectComposition/DWM。
 - macOS：AppKit `NSPanel` + Metal + `CAMetalLayer`。
