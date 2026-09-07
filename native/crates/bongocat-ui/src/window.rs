@@ -789,9 +789,12 @@ impl SettingsView {
         if self.pending.is_some() {
             return;
         }
-        self.pending = Some(operation);
-        self.error = None;
-        cx.notify();
+        let is_refresh = operation == PendingOperation::Refresh;
+        if !is_refresh {
+            self.pending = Some(operation);
+            self.error = None;
+            cx.notify();
+        }
         let client = self.client.clone();
         let sent_overlay_scale = match value.as_ref() {
             Some(SettingValue::OverlayScale { scale_percent, .. }) => Some(*scale_percent),
@@ -976,7 +979,10 @@ impl SettingsView {
                 None
             };
             let _ = this.update(cx, |view, cx| {
-                view.pending = None;
+                let mut snapshot_changed = false;
+                if !is_refresh {
+                    view.pending = None;
+                }
                 if result.is_ok()
                     && let Some(scale_percent) = sent_overlay_scale
                 {
@@ -1046,7 +1052,10 @@ impl SettingsView {
                         snapshot.revision,
                     )
                 {
-                    view.snapshot = Some(snapshot);
+                    if view.snapshot.as_ref() != Some(&snapshot) {
+                        view.snapshot = Some(snapshot);
+                        snapshot_changed = true;
+                    }
                 }
                 match result {
                     Ok(ref snapshot)
@@ -1056,12 +1065,23 @@ impl SettingsView {
                         ) =>
                     {
                         if snapshot.configuration_status != SettingsConfigurationStatus::Ready {
-                            view.page = SettingsPage::Diagnostics;
+                            if view.page != SettingsPage::Diagnostics {
+                                view.page = SettingsPage::Diagnostics;
+                                snapshot_changed = true;
+                            }
                         }
-                        view.snapshot = Some(snapshot.clone());
+                        if view.snapshot.as_ref() != Some(snapshot) {
+                            view.snapshot = Some(snapshot.clone());
+                            snapshot_changed = true;
+                        }
                     }
                     Ok(_) => {}
-                    Err(error) => view.error = Some(error),
+                    Err(error) => {
+                        if view.error.as_ref() != Some(&error) {
+                            snapshot_changed = true;
+                        }
+                        view.error = Some(error);
+                    }
                 }
                 // The next shutdown patch must use the revision returned by this request.
                 if view.flush_pending_requested {
@@ -1072,7 +1092,9 @@ impl SettingsView {
                         view.quit_after_flush = false;
                     }
                 }
-                cx.notify();
+                if !is_refresh || snapshot_changed {
+                    cx.notify();
+                }
             });
         })
         .detach();

@@ -444,10 +444,7 @@ fn run_service(
     diagnostics_export: Arc<dyn DiagnosticsExportCapability>,
     window_state: SettingsWindowState,
 ) {
-    let mut clock = SettingsSnapshotClock::new(
-        application.runtime_client().snapshot().revision,
-        application.config_revision(),
-    );
+    let mut clock = SettingsSnapshotClock::new(application.config_revision());
     loop {
         let Ok(command) = endpoint.recv_blocking() else {
             let _ = persist_window_state(&mut application, &window_state);
@@ -951,7 +948,7 @@ fn run_service(
                 let shutdown_result = application.shutdown();
                 let result = match (state_result, shutdown_result) {
                     (Ok(()), Ok(stopped)) => {
-                        clock.observe_runtime(stopped.revision);
+                        clock.mark_changed();
                         let mut stopped_snapshot = SettingsSnapshot {
                             revision: clock.revision,
                             runtime_health: RuntimeHealth::Stopped,
@@ -1042,7 +1039,6 @@ const fn settings_import_progress(progress: ModelImportProgress) -> SettingsMode
 
 struct SettingsSnapshotClock {
     revision: u64,
-    observed_runtime_revision: u64,
     observed_config_revision: Option<u64>,
     observed_input_diagnostics: Option<SettingsInputDiagnostics>,
     observed_startup_item: Option<SettingsStartupItemStatus>,
@@ -1050,10 +1046,9 @@ struct SettingsSnapshotClock {
 }
 
 impl SettingsSnapshotClock {
-    const fn new(runtime_revision: u64, config_revision: Option<u64>) -> Self {
+    const fn new(config_revision: Option<u64>) -> Self {
         Self {
-            revision: runtime_revision,
-            observed_runtime_revision: runtime_revision,
+            revision: 0,
             observed_config_revision: config_revision,
             observed_input_diagnostics: None,
             observed_startup_item: None,
@@ -1061,28 +1056,25 @@ impl SettingsSnapshotClock {
         }
     }
 
-    fn observe_runtime(&mut self, runtime_revision: u64) {
-        if runtime_revision != self.observed_runtime_revision {
-            self.revision = self.revision.saturating_add(1);
-            self.observed_runtime_revision = runtime_revision;
-        }
-    }
-
     fn observe_config(&mut self, config_revision: Option<u64>) {
         if config_revision != self.observed_config_revision {
-            self.revision = self.revision.saturating_add(1);
+            self.mark_changed();
             self.observed_config_revision = config_revision;
         }
     }
 
-    fn mark_catalog_changed(&mut self) {
+    fn mark_changed(&mut self) {
         self.revision = self.revision.saturating_add(1);
+    }
+
+    fn mark_catalog_changed(&mut self) {
+        self.mark_changed();
     }
 
     fn observe_input_diagnostics(&mut self, diagnostics: SettingsInputDiagnostics) {
         match self.observed_input_diagnostics.replace(diagnostics) {
             Some(previous) if previous != diagnostics => {
-                self.revision = self.revision.saturating_add(1);
+                self.mark_changed();
             }
             Some(_) | None => {}
         }
@@ -1091,7 +1083,7 @@ impl SettingsSnapshotClock {
     fn observe_startup_item(&mut self, status: SettingsStartupItemStatus) {
         match self.observed_startup_item.replace(status) {
             Some(previous) if previous != status => {
-                self.revision = self.revision.saturating_add(1);
+                self.mark_changed();
             }
             Some(_) | None => {}
         }
@@ -1099,7 +1091,7 @@ impl SettingsSnapshotClock {
 
     fn observe_diagnostics_export(&mut self, status: SettingsDiagnosticsExportStatus) {
         if self.diagnostics_export != Some(status) {
-            self.revision = self.revision.saturating_add(1);
+            self.mark_changed();
             self.diagnostics_export = Some(status);
         }
     }
@@ -1120,7 +1112,6 @@ fn snapshot(
     let revision_before = clock.revision;
     let runtime = application.runtime_client().snapshot();
     let input_diagnostics = settings_input_diagnostics(&runtime.input, runtime.platform_input);
-    clock.observe_runtime(runtime.revision);
     clock.observe_config(application.config_revision());
     clock.observe_input_diagnostics(input_diagnostics);
     clock.observe_startup_item(startup_item);
@@ -2461,7 +2452,9 @@ mod tests {
                     preview_bundle_skipped_source_files: 0,
                 })
             } else {
-                Err(SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))
+                Err(SettingsError::new(
+                    SettingsErrorCode::DiagnosticsExportFailed,
+                ))
             }
         }
     }
@@ -2828,17 +2821,17 @@ mod tests {
         assert_eq!(projected.transport_recovered_after_overflow, 18);
         assert_eq!(projected.transport_runtime_stopped, 19);
 
-        let mut clock = SettingsSnapshotClock::new(40, Some(7));
+        let mut clock = SettingsSnapshotClock::new(Some(7));
         clock.observe_input_diagnostics(projected);
-        assert_eq!(clock.revision, 40);
+        assert_eq!(clock.revision, 0);
         let changed = SettingsInputDiagnostics {
             transport_queue_full: 20,
             ..projected
         };
         clock.observe_input_diagnostics(changed);
-        assert_eq!(clock.revision, 41);
+        assert_eq!(clock.revision, 1);
         clock.observe_input_diagnostics(changed);
-        assert_eq!(clock.revision, 41);
+        assert_eq!(clock.revision, 1);
     }
 
     #[test]
@@ -2881,8 +2874,7 @@ mod tests {
     fn snapshot_clock_coalesces_changes_observed_in_one_snapshot() {
         let diagnostics = SettingsInputDiagnostics::default();
         let startup = SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled);
-        let mut clock = SettingsSnapshotClock::new(40, Some(7));
-        clock.observe_runtime(41);
+        let mut clock = SettingsSnapshotClock::new(Some(7));
         clock.observe_config(Some(8));
         clock.observe_input_diagnostics(diagnostics);
         clock.observe_startup_item(startup);
@@ -2895,11 +2887,11 @@ mod tests {
             preview_bundle_entry_count: 3,
             preview_bundle_skipped_source_files: 0,
         });
-        clock.coalesce_changes_since(40);
-        assert_eq!(clock.revision, 41);
+        clock.coalesce_changes_since(0);
+        assert_eq!(clock.revision, 1);
 
-        clock.coalesce_changes_since(41);
-        assert_eq!(clock.revision, 41);
+        clock.coalesce_changes_since(1);
+        assert_eq!(clock.revision, 1);
     }
 
     #[test]
