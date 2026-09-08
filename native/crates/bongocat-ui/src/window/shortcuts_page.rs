@@ -229,6 +229,7 @@ fn shortcut_row(
                     tokens.border
                 })
                 .rounded_md()
+                .when(capturing, |this| this.focus_ring_style(window, cx))
                 .cursor_pointer()
                 .text_color(if capturing || row.shortcut.is_some() {
                     tokens.text

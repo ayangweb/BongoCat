@@ -19,7 +19,7 @@ use bongocat_platform::{
 };
 use bongocat_platform::{DirectoryPickerError, DirectoryPickerOutcome, pick_model_directory};
 use gpui_kit::component::{
-    ActiveTheme, Disableable, IconName, IndexPath, Root, Theme, ThemeMode,
+    ActiveTheme, Disableable, IconName, IndexPath, Root, Theme, ThemeMode, ThemeStyled,
     button::Button,
     group_box::{GroupBox, GroupBoxVariant, GroupBoxVariants},
     input::{Input, InputEvent, InputState, NumberInputEvent, StepAction},
