@@ -7,9 +7,9 @@ use crate::{
     SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
     SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsModelSettings,
     SettingsOperationId, SettingsOverlay, SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode,
-    SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
-    SettingsStartupItemUnsupportedReason, SettingsTheme, SettingsWindowPlacement,
-    SettingsWindowState,
+    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
+    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
+    SettingsWindowPlacement, SettingsWindowState,
 };
 use bongocat_config::ShortcutChord;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -28,6 +28,7 @@ use gpui_kit::component::{
         NumberFieldOptions, RenderOptions, SettingField, SettingGroup, SettingItem, SettingPage,
         Settings,
     },
+    tab::{Tab, TabBar},
     tag::Tag,
 };
 use gpui_kit::{
@@ -58,6 +59,7 @@ mod models;
 mod render;
 mod settings;
 mod shortcuts;
+mod shortcuts_page;
 mod smoke;
 mod view_state;
 pub use lifecycle::open_settings_window;
@@ -88,9 +90,11 @@ const ACCESSIBILITY_GENERAL: AccessibilityNodeId = AccessibilityNodeId::new(2);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_MODELS: AccessibilityNodeId = AccessibilityNodeId::new(3);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_DIAGNOSTICS: AccessibilityNodeId = AccessibilityNodeId::new(4);
+const ACCESSIBILITY_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeId::new(4);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_ABOUT: AccessibilityNodeId = AccessibilityNodeId::new(5);
+const ACCESSIBILITY_DIAGNOSTICS: AccessibilityNodeId = AccessibilityNodeId::new(5);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_ABOUT: AccessibilityNodeId = AccessibilityNodeId::new(6);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_OVERLAY: AccessibilityNodeId = AccessibilityNodeId::new(10);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -249,8 +253,16 @@ enum SettingsPage {
     #[default]
     General,
     Models,
+    Shortcuts,
     Diagnostics,
     About,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum ShortcutSettingsTab {
+    #[default]
+    Window,
+    Model,
 }
 
 enum ModelImportState {
@@ -388,6 +400,7 @@ pub struct SettingsView {
     pending: Option<PendingOperation>,
     error: Option<SettingsError>,
     page: SettingsPage,
+    shortcut_tab: ShortcutSettingsTab,
     model_import: ModelImportDraft,
     overlay_scale_debouncer: crate::SettingsPatchDebouncer<u16>,
     overlay_scale_timer_generation: u64,
@@ -415,6 +428,7 @@ pub struct SettingsView {
     request_quit: Rc<dyn Fn(&mut App)>,
     general_focus: FocusHandle,
     models_focus: FocusHandle,
+    shortcuts_focus: FocusHandle,
     diagnostics_focus: FocusHandle,
     about_focus: FocusHandle,
     status_icon_focus: FocusHandle,

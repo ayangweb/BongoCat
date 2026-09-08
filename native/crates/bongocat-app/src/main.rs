@@ -1060,6 +1060,31 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
                     .into());
                 }
                 write_smoke_status("Chinese General localization verified")?;
+                let mut shortcuts_verified = false;
+                let mut last_shortcuts_error = None;
+                for _ in 0..200 {
+                    let shortcuts = window.update(cx, |view, _, cx| {
+                        view.show_shortcuts_page_for_smoke(cx)
+                    });
+                    match shortcuts {
+                        Ok(Ok(())) => {
+                            shortcuts_verified = true;
+                            break;
+                        }
+                        Ok(Err(error)) => last_shortcuts_error = Some(error),
+                        Err(error) => last_shortcuts_error = Some(error.to_string()),
+                    }
+                    Timer::after(Duration::from_millis(10)).await;
+                }
+                if !shortcuts_verified {
+                    let detail = last_shortcuts_error
+                        .unwrap_or_else(|| "settings view was unavailable".to_owned());
+                    return Err(io::Error::other(format!(
+                        "settings window did not apply Shortcuts localization: {detail}"
+                    ))
+                    .into());
+                }
+                write_smoke_status("Chinese Shortcuts localization verified")?;
                 let mut models_verified = false;
                 let mut last_models_error = None;
                 for _ in 0..200 {
@@ -2326,6 +2351,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     smoke_window
                         .update(cx, |view, _, cx| {
                             view.show_general_page_for_smoke(cx)?;
+                            view.show_shortcuts_page_for_smoke(cx)?;
                             view.show_diagnostics_page_for_smoke(cx)?;
                             view.show_about_page_for_smoke(cx)
                         })
@@ -2334,6 +2360,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 #[cfg(target_os = "windows")]
                 let settings_pages = update_windows_settings(cx, &smoke_window, |view, _, cx| {
                     view.show_general_page_for_smoke(cx)?;
+                    view.show_shortcuts_page_for_smoke(cx)?;
                     view.show_diagnostics_page_for_smoke(cx)?;
                     view.show_about_page_for_smoke(cx)
                 })

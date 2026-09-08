@@ -16,6 +16,7 @@ impl Render for SettingsView {
                 let static_focus = match target {
                     ACCESSIBILITY_GENERAL => Some(&self.general_focus),
                     ACCESSIBILITY_MODELS => Some(&self.models_focus),
+                    ACCESSIBILITY_SHORTCUTS => Some(&self.shortcuts_focus),
                     ACCESSIBILITY_DIAGNOSTICS => Some(&self.diagnostics_focus),
                     ACCESSIBILITY_ABOUT => Some(&self.about_focus),
                     ACCESSIBILITY_OVERLAY => Some(&self.overlay_focus),
@@ -751,6 +752,39 @@ impl Render for SettingsView {
                     ),
             );
 
+        let shortcuts_page = SettingPage::new(ui_text(language, UiText::Shortcuts))
+            .description(ui_text(language, UiText::ShortcutsDescription))
+            .group(
+                SettingGroup::new()
+                    .title(ui_text(language, UiText::Shortcuts))
+                    .item(
+                        SettingItem::new(
+                            ui_text(language, UiText::Shortcuts),
+                            SettingField::element({
+                                let view = view_entity.clone();
+                                move |_: &RenderOptions, window: &mut Window, app: &mut App| {
+                                    let snapshot = view.read(app).snapshot.clone();
+                                    let tokens = Tokens::from_theme(app);
+                                    view.update(app, move |view, cx| {
+                                        view.page = SettingsPage::Shortcuts;
+                                        shortcuts_page::content(
+                                            view,
+                                            window,
+                                            cx,
+                                            snapshot.as_ref(),
+                                            disabled,
+                                            tokens,
+                                        )
+                                    })
+                                    .into_any_element()
+                                }
+                            }),
+                        )
+                        .layout(Axis::Vertical)
+                        .description(ui_text(language, UiText::ShortcutsDescription)),
+                    ),
+            );
+
         let diagnostics_page = SettingPage::new(ui_text(language, UiText::Diagnostics))
             .description(ui_text(language, UiText::DiagnosticsDescription))
             .group(
@@ -815,6 +849,7 @@ impl Render for SettingsView {
             .pages(vec![
                 general_page,
                 models_page,
+                shortcuts_page,
                 diagnostics_page,
                 about_page,
             ]);

@@ -94,6 +94,9 @@ pub(super) enum UiText {
     NoReportExported,
     Export,
     Shortcuts,
+    ShortcutsDescription,
+    WindowShortcuts,
+    ModelShortcuts,
     RestoreDefaults,
     ClearAll,
     PressCommandShortcut,
@@ -388,6 +391,12 @@ pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
         UiText::NoReportExported => ["No report exported", "尚未导出报告"],
         UiText::Export => ["Export", "导出"],
         UiText::Shortcuts => ["Shortcuts", "快捷键"],
+        UiText::ShortcutsDescription => [
+            "Configure global window controls and shortcuts for the active model.",
+            "设置窗口控制和当前模型动作、表情的快捷键。",
+        ],
+        UiText::WindowShortcuts => ["Window", "窗口快捷键"],
+        UiText::ModelShortcuts => ["Model", "模型快捷键"],
         UiText::RestoreDefaults => ["Restore defaults", "恢复默认值"],
         UiText::ClearAll => ["Clear all", "全部清除"],
         UiText::PressCommandShortcut => [
@@ -825,7 +834,7 @@ pub(super) fn shortcut_target_name(
         ShortcutCaptureTarget::Command(command) => {
             let values = match command.as_str() {
                 "toggle_overlay" => ["Show or hide model window", "显示或隐藏模型窗口"],
-                "open_settings" => ["Open settings", "打开设置"],
+                "open_settings" => ["Show or hide settings window", "显示或隐藏设置窗口"],
                 "toggle_mirror" => ["Toggle model mirror", "切换模型镜像"],
                 "toggle_click_through" => ["Toggle click-through", "切换鼠标穿透"],
                 "toggle_always_on_top" => ["Toggle always on top", "切换始终置顶"],
@@ -1204,6 +1213,9 @@ mod tests {
             UiText::NoReportExported,
             UiText::Export,
             UiText::Shortcuts,
+            UiText::ShortcutsDescription,
+            UiText::WindowShortcuts,
+            UiText::ModelShortcuts,
             UiText::RestoreDefaults,
             UiText::ClearAll,
             UiText::PressCommandShortcut,

@@ -755,6 +755,61 @@ impl SettingsView {
         Ok(())
     }
 
+    pub fn show_shortcuts_page_for_smoke(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
+        self.page = SettingsPage::Shortcuts;
+        self.shortcut_tab = ShortcutSettingsTab::Window;
+        cx.notify();
+        let snapshot = self
+            .snapshot
+            .as_ref()
+            .ok_or_else(|| "shortcuts page has not received a settings snapshot".to_owned())?;
+        let window_rows = window_shortcut_rows(&snapshot.shortcuts);
+        if window_rows.len() != 5
+            || window_rows[0].target != ShortcutCaptureTarget::Command("toggle_overlay".to_owned())
+            || window_rows[1].target != ShortcutCaptureTarget::Command("open_settings".to_owned())
+        {
+            return Err("shortcuts page omitted fixed window shortcut targets".to_owned());
+        }
+        self.shortcut_tab = ShortcutSettingsTab::Model;
+        let model_rows = shortcut_behavior_rows(
+            &snapshot.shortcuts,
+            snapshot.active_model.as_ref(),
+            &snapshot.model_catalog.entries,
+        );
+        if model_rows
+            .iter()
+            .any(|row| !matches!(row.target, ShortcutCaptureTarget::ModelBehavior { .. }))
+        {
+            return Err("shortcuts page mixed window targets into model shortcuts".to_owned());
+        }
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            let tree = self.accessibility_tree();
+            let node = tree
+                .nodes
+                .iter()
+                .find(|node| node.id == ACCESSIBILITY_SHORTCUTS)
+                .ok_or_else(|| {
+                    "shortcuts page omitted its navigation accessibility node".to_owned()
+                })?;
+            if node.role != AccessibilityRole::Button
+                || node.label != ui_text(snapshot.resolved_language, UiText::Shortcuts)
+                || node.value.as_deref()
+                    != Some(ui_text(
+                        snapshot.resolved_language,
+                        UiText::ShortcutsDescription,
+                    ))
+                || !node.supports_click
+                || !node.supports_focus
+            {
+                return Err(
+                    "shortcuts page navigation accessibility semantics are invalid".to_owned(),
+                );
+            }
+        }
+        Ok(())
+    }
+
     pub fn show_about_page_for_smoke(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
         self.page = SettingsPage::About;
         cx.notify();

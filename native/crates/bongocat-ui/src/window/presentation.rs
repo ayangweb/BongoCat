@@ -44,19 +44,34 @@ pub(super) struct ShortcutRow {
     pub(super) shortcut: Option<String>,
 }
 
+const WINDOW_SHORTCUT_COMMANDS: [&str; 5] = [
+    "toggle_overlay",
+    "open_settings",
+    "toggle_mirror",
+    "toggle_click_through",
+    "toggle_always_on_top",
+];
+
+pub(super) fn window_shortcut_rows(shortcuts: &SettingsShortcuts) -> Vec<ShortcutRow> {
+    WINDOW_SHORTCUT_COMMANDS
+        .iter()
+        .map(|command| ShortcutRow {
+            target: ShortcutCaptureTarget::Command((*command).to_owned()),
+            shortcut: shortcuts
+                .commands
+                .iter()
+                .find(|binding| binding.command == *command)
+                .map(|binding| binding.shortcut.clone()),
+        })
+        .collect()
+}
+
 pub(super) fn shortcut_rows(
     shortcuts: &SettingsShortcuts,
     active_model: Option<&SettingsModelKey>,
     entries: &[SettingsModelEntry],
 ) -> Vec<ShortcutRow> {
-    let mut rows = shortcuts
-        .commands
-        .iter()
-        .map(|binding| ShortcutRow {
-            target: ShortcutCaptureTarget::Command(binding.command.clone()),
-            shortcut: Some(binding.shortcut.clone()),
-        })
-        .collect::<Vec<_>>();
+    let mut rows = window_shortcut_rows(shortcuts);
     let Some((model, behaviors)) = active_model.and_then(|model| {
         entries
             .iter()
@@ -226,14 +241,21 @@ pub(super) fn replace_shortcut(
 ) -> bool {
     match target {
         ShortcutCaptureTarget::Command(command) => {
-            let Some(binding) = shortcuts
+            if !WINDOW_SHORTCUT_COMMANDS.contains(&command.as_str()) {
+                return false;
+            }
+            if let Some(binding) = shortcuts
                 .commands
                 .iter_mut()
                 .find(|binding| binding.command == *command)
-            else {
-                return false;
-            };
-            binding.shortcut = shortcut;
+            {
+                binding.shortcut = shortcut;
+            } else {
+                shortcuts.commands.push(SettingsShortcutBinding {
+                    command: command.clone(),
+                    shortcut,
+                });
+            }
         }
         ShortcutCaptureTarget::ModelBehavior {
             model_id,

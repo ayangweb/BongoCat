@@ -143,12 +143,12 @@ fn shortcut_capture_targets_have_independent_tab_stops() {
         },
     ];
     let targets = shortcut_targets(&shortcuts, Some(&active_model), &entries);
-    assert_eq!(targets.len(), 4);
+    assert_eq!(targets.len(), 7);
     assert_eq!(shortcut_capture_tab_index(0), 100);
     assert_eq!(shortcut_capture_tab_index(1), 102);
     assert_eq!(shortcut_capture_tab_index(2), 104);
     assert_eq!(shortcut_clear_tab_index(2), 105);
-    assert_eq!(targets.into_iter().collect::<BTreeSet<_>>().len(), 4);
+    assert_eq!(targets.into_iter().collect::<BTreeSet<_>>().len(), 7);
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
         let rows = shortcut_accessibility_rows(
@@ -157,16 +157,20 @@ fn shortcut_capture_targets_have_independent_tab_stops() {
             &entries,
             SettingsLanguage::EnglishUnitedStates,
         );
-        assert_eq!(rows.len(), 4);
+        assert_eq!(rows.len(), 7);
         assert_eq!(rows[0].1, "Capture shortcut for Show or hide model window");
-        assert_eq!(rows[2].2, "Control+M");
-        assert_eq!(rows[3].2, "Not set");
+        assert_eq!(
+            rows[1].1,
+            "Capture shortcut for Show or hide settings window"
+        );
+        assert_eq!(rows[5].2, "Control+M");
+        assert_eq!(rows[6].2, "Not set");
         assert_eq!(
             shortcut_target_for_accessibility_node(
                 &shortcuts,
                 Some(&active_model),
                 &entries,
-                shortcut_accessibility_node_id(2),
+                shortcut_accessibility_node_id(5),
             ),
             Some(ShortcutCaptureTarget::ModelBehavior {
                 model_id: "standard".to_owned(),
@@ -193,6 +197,27 @@ fn shortcut_capture_targets_have_independent_tab_stops() {
             })
         );
     }
+}
+
+#[test]
+fn window_shortcuts_are_visible_and_recordable_without_saved_bindings() {
+    let mut shortcuts = SettingsShortcuts::default();
+    let rows = window_shortcut_rows(&shortcuts);
+    assert_eq!(rows.len(), 5);
+    assert!(rows.iter().all(|row| row.shortcut.is_none()));
+
+    let target = ShortcutCaptureTarget::Command("open_settings".to_owned());
+    assert!(replace_shortcut(
+        &mut shortcuts,
+        &target,
+        "Control+Shift+S".to_owned(),
+    ));
+    assert_eq!(shortcuts.commands.len(), 1);
+    assert_eq!(shortcuts.commands[0].command, "open_settings");
+    assert_eq!(
+        window_shortcut_rows(&shortcuts)[1].shortcut.as_deref(),
+        Some("Control+Shift+S")
+    );
 }
 
 #[test]

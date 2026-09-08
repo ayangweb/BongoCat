@@ -119,6 +119,7 @@ impl SettingsView {
         let focus = match self.page {
             SettingsPage::General => ACCESSIBILITY_GENERAL,
             SettingsPage::Models => ACCESSIBILITY_MODELS,
+            SettingsPage::Shortcuts => ACCESSIBILITY_SHORTCUTS,
             SettingsPage::Diagnostics => ACCESSIBILITY_DIAGNOSTICS,
             SettingsPage::About => ACCESSIBILITY_ABOUT,
         };
@@ -691,6 +692,7 @@ impl SettingsView {
         let mut root_children = vec![
             ACCESSIBILITY_GENERAL,
             ACCESSIBILITY_MODELS,
+            ACCESSIBILITY_SHORTCUTS,
             ACCESSIBILITY_DIAGNOSTICS,
             ACCESSIBILITY_ABOUT,
             ACCESSIBILITY_THEME,
@@ -754,6 +756,14 @@ impl SettingsView {
                 AccessibilityRole::Button,
                 ui_text(language, UiText::Models),
             )
+            .clickable()
+            .focusable(),
+            AccessibilityNode::new(
+                ACCESSIBILITY_SHORTCUTS,
+                AccessibilityRole::Button,
+                ui_text(language, UiText::Shortcuts),
+            )
+            .with_value(ui_text(language, UiText::ShortcutsDescription))
             .clickable()
             .focusable(),
             AccessibilityNode::new(
@@ -866,6 +876,7 @@ impl SettingsView {
         match request.target {
             ACCESSIBILITY_GENERAL => self.page = SettingsPage::General,
             ACCESSIBILITY_MODELS => self.page = SettingsPage::Models,
+            ACCESSIBILITY_SHORTCUTS => self.page = SettingsPage::Shortcuts,
             ACCESSIBILITY_DIAGNOSTICS => self.page = SettingsPage::Diagnostics,
             ACCESSIBILITY_ABOUT => self.page = SettingsPage::About,
             ACCESSIBILITY_THEME => {
@@ -1067,6 +1078,7 @@ impl SettingsView {
         let focus = [
             (ACCESSIBILITY_GENERAL, &self.general_focus),
             (ACCESSIBILITY_MODELS, &self.models_focus),
+            (ACCESSIBILITY_SHORTCUTS, &self.shortcuts_focus),
             (ACCESSIBILITY_DIAGNOSTICS, &self.diagnostics_focus),
             (ACCESSIBILITY_ABOUT, &self.about_focus),
             (ACCESSIBILITY_OVERLAY, &self.overlay_focus),
@@ -1205,6 +1217,7 @@ impl SettingsView {
         .unwrap_or(match self.page {
             SettingsPage::General => ACCESSIBILITY_GENERAL,
             SettingsPage::Models => ACCESSIBILITY_MODELS,
+            SettingsPage::Shortcuts => ACCESSIBILITY_SHORTCUTS,
             SettingsPage::Diagnostics => ACCESSIBILITY_DIAGNOSTICS,
             SettingsPage::About => ACCESSIBILITY_ABOUT,
         });
