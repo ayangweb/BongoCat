@@ -2833,6 +2833,10 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
         snapshot 交给 `ShortcutDispatcher`，并在 Windows 查询失败导致的 Reset 清空 matcher；因此丢失
         release 经第二次状态校正后不会让后续同一 chord 被错误视为 repeat。平台 crate 33 项定向测试
         与严格 Clippy 在 macOS 通过；Windows 真实输入路径继续由 push CI 和实机矩阵验收。
+      - 状态（2026-09-08）：修复 `open_settings` 请求位只重开窗口而未切换可见性的行为；已有设置
+        窗口时现在隐藏，Windows 保留 hidden entity，macOS 关闭当前窗口并由下一次请求重建。新增
+        `Meta+O` HID 匹配到 application handoff 的平台回归，`cargo run -p bongocat-app -- --settings-window-smoke`
+        在本机 macOS 通过一次隐藏和一次重显。Windows 原生窗口 smoke 与真实快捷键实机证据仍待完成。
     - 验收证据（2026-09-06）：核对正式实现已覆盖本项全部退出条件。GPUI Diagnostics 页面为
       application command 与 current active ready model behavior 提供 Capture/Clear，并提供 Clear all
       与 Restore defaults；Capture 将 key event 归一化为同一 `ShortcutChord` canonical form，

@@ -308,6 +308,49 @@ mod tests {
     }
 
     #[test]
+    fn dispatcher_queues_open_settings_for_the_application_owner() {
+        let runtime = bongocat_runtime::RuntimeOwner::start(true, 16);
+        let client = runtime.client();
+        client
+            .wait_for_revision(1, std::time::Duration::from_secs(1))
+            .expect("runtime ready");
+        let shortcuts = ShortcutConfig {
+            commands: vec![ShortcutBinding {
+                command: "open_settings".to_owned(),
+                shortcut: "Meta+O".to_owned(),
+            }],
+            model_behaviors: Vec::new(),
+        }
+        .compile()
+        .expect("compiled shortcuts");
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+        let mut dispatcher = ShortcutDispatcher::with_application_sink(
+            ShortcutTable::new(shortcuts),
+            client.clone(),
+            sender,
+        );
+
+        assert_eq!(
+            dispatcher.apply(PhysicalKey::from_hid_usage(0xe3), InputEdge::Down),
+            Ok(ShortcutDispatch::NoMatch)
+        );
+        assert_eq!(
+            dispatcher.apply(PhysicalKey::from_hid_usage(0x12), InputEdge::Down),
+            Ok(ShortcutDispatch::ApplicationQueued)
+        );
+        assert_eq!(
+            receiver
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .expect("open settings command"),
+            ShortcutCommand::OpenSettings
+        );
+
+        runtime
+            .shutdown(std::time::Duration::from_secs(1))
+            .expect("runtime stop");
+    }
+
+    #[test]
     fn matches_hid_edges_once_and_aggregates_left_and_right_modifiers() {
         let mut matcher = matcher();
         let left_control = PhysicalKey::from_hid_usage(0xe0);

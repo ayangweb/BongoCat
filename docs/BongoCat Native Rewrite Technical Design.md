@@ -141,7 +141,8 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   typed handoff 进入 settings service；显隐、镜像、穿透和置顶由唯一 Application owner
   按当前配置 revision 持久化，`open_settings` 交给 GPUI coordinator，避免平台线程直接触碰
   UI 生命周期。`open_settings` 通过线程安全的一次性请求位交给 GPUI frame source，后者在
-  owner 线程复用现有窗口重开路径；forwarder 必须支持有界停止与 join。
+  owner 线程切换设置窗口可见性：窗口已显示时隐藏，Windows 复用隐藏的现有窗口，macOS
+  关闭当前窗口并在下次触发时创建新的窗口；窗口不存在时创建并显示。forwarder 必须支持有界停止与 join。
 - `model.enable_behavior_shortcuts` 只控制 motion/expression 模型行为绑定是否进入活动的
   `CompiledShortcuts`，不得清空或改写配置中的绑定，也不得禁用 `open_settings`、overlay 显隐、
   镜像、穿透或置顶等应用级快捷键。开关变更必须经 revision-checked settings command 原子

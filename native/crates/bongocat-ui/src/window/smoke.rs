@@ -865,4 +865,21 @@ impl SettingsView {
         window.activate_window();
         Ok(())
     }
+
+    pub fn hide(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Result<(), String> {
+        self.cancel_shortcut_capture(cx);
+        self.flush_pending_settings(cx);
+
+        #[cfg(target_os = "windows")]
+        {
+            bongocat_platform::hide_native_window(window).map_err(|error| error.to_string())?;
+            self.window_hidden = true;
+            cx.notify();
+        }
+
+        #[cfg(target_os = "macos")]
+        window.remove_window();
+
+        Ok(())
+    }
 }

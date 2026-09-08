@@ -732,14 +732,48 @@ fn product_overlay_state(cx: &mut App) -> Result<(u64, bool), String> {
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-fn handle_shortcut_open_settings(cx: &mut App) {
+fn toggle_settings_window(cx: &mut App) -> Result<(), String> {
+    let existing = cx
+        .try_global::<ProductCoordinator>()
+        .and_then(|coordinator| coordinator.settings_window.clone());
+    let Some(window_handle) = existing else {
+        ensure_settings_window(cx)?;
+        return Ok(());
+    };
+
+    let hidden = match window_handle.update(cx, |view, window, cx| {
+        if view.window_hidden() {
+            view.reopen(window, cx)?;
+            Ok::<bool, String>(false)
+        } else {
+            view.hide(window, cx)?;
+            Ok::<bool, String>(true)
+        }
+    }) {
+        Ok(result) => result?,
+        Err(_) => {
+            ensure_settings_window(cx)?;
+            return Ok(());
+        }
+    };
+
+    #[cfg(target_os = "macos")]
+    if hidden {
+        cx.global_mut::<ProductCoordinator>().settings_window = None;
+    }
+
+    Ok(())
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn handle_shortcut_toggle_settings(cx: &mut App) {
     let requested = cx
         .try_global::<ProductCoordinator>()
         .is_some_and(|coordinator| coordinator.shortcut_signals.take_open_settings_request());
     if !requested {
         return;
     }
-    if let Err(error) = ensure_settings_window(cx)
+    if let Err(error) = toggle_settings_window(cx)
         && let Some(failures) = cx
             .try_global::<ProductCoordinator>()
             .map(|coordinator| Arc::clone(&coordinator.failures))
@@ -2009,7 +2043,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if !cx.has_global::<ProductCoordinator>() {
                         return (false, None);
                     }
-                    handle_shortcut_open_settings(cx);
+                    handle_shortcut_toggle_settings(cx);
                     let (keep_running, failure, settings_window, failures, next_retry_delay) = {
                         let coordinator = cx.global_mut::<ProductCoordinator>();
                         if !coordinator.frame_source_running {
@@ -2128,7 +2162,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if !cx.has_global::<ProductCoordinator>() {
                         return Ok(false);
                     }
-                    handle_shortcut_open_settings(cx);
+                    handle_shortcut_toggle_settings(cx);
                     let (failure, failures) = {
                         let coordinator = cx.global_mut::<ProductCoordinator>();
                         match tick_result
@@ -2402,7 +2436,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                 }
-                #[cfg(target_os = "macos")]
                 let baseline = cx.update(|cx| -> Result<_, String> {
                     let (window_handle, frame_ticks) = {
                         let coordinator = cx.global::<ProductCoordinator>();
@@ -2414,31 +2447,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             coordinator.frame_ticks,
                         )
                     };
-                    #[cfg(target_os = "macos")]
-                    window_handle
-                        .update(cx, |_, window, _| window.remove_window())
-                        .map_err(|error| error.to_string())?;
-                    #[cfg(target_os = "windows")]
-                    window_handle
-                        .update(cx, |_, window, _| {
-                            bongocat_platform::request_native_window_close(window)
-                        })
-                        .map_err(|error| error.to_string())?
-                        .map_err(|error| error.to_string())?;
+                    cx.global::<ProductCoordinator>()
+                        .shortcut_signals
+                        .request_open_settings();
+                    handle_shortcut_toggle_settings(cx);
                     Ok((frame_ticks, window_handle))
                 });
-                #[cfg(target_os = "windows")]
-                let baseline = update_windows_settings(
-                    cx,
-                    &smoke_window,
-                    |_, window, cx| -> Result<_, String> {
-                        let frame_ticks = cx.global::<ProductCoordinator>().frame_ticks;
-                        bongocat_platform::request_native_window_close(window)
-                            .map_err(|error| error.to_string())?;
-                        Ok((frame_ticks, smoke_window.clone()))
-                    },
-                )
-                .await;
                 let (baseline_ticks, original_window) = match baseline {
                     Ok(baseline) => baseline,
                     Err(error) => {
@@ -2488,14 +2502,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 Timer::after(Duration::from_millis(500)).await;
-                #[cfg(target_os = "macos")]
                 let reopened = cx.update(|cx| -> Result<SettingsWindowHandle, String> {
                     if cx.global::<ProductCoordinator>().frame_ticks <= baseline_ticks {
                         return Err(
                             "frame source stopped while the settings window was closed".to_owned()
                         );
                     }
-                    let reopened = ensure_settings_window(cx)?;
+                    cx.global::<ProductCoordinator>()
+                        .shortcut_signals
+                        .request_open_settings();
+                    handle_shortcut_toggle_settings(cx);
+                    let reopened = cx
+                        .global::<ProductCoordinator>()
+                        .settings_window
+                        .clone()
+                        .ok_or_else(|| "settings shortcut did not restore the window".to_owned())?;
                     if cx.windows().len() != 1 {
                         return Err("settings reopen created more than one window".to_owned());
                     }
@@ -2509,25 +2530,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     Ok(reopened)
                 });
-                #[cfg(target_os = "windows")]
-                let reopened = update_windows_settings(
-                    cx,
-                    &original_window,
-                    |view, window, cx| -> Result<SettingsWindowHandle, String> {
-                        if cx.global::<ProductCoordinator>().frame_ticks <= baseline_ticks {
-                            return Err(
-                                "frame source stopped while the settings window was closed"
-                                    .to_owned(),
-                            );
-                        }
-                        view.reopen(window, cx)?;
-                        if cx.windows().len() != 1 {
-                            return Err("settings reopen created more than one window".to_owned());
-                        }
-                        Ok(original_window.clone())
-                    },
-                )
-                .await;
                 match reopened {
                     Ok(_) => {}
                     Err(error) => {
@@ -2541,7 +2543,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 Timer::after(Duration::from_millis(500)).await;
-                #[cfg(target_os = "macos")]
                 let restored = cx.update(|cx| -> Result<(), String> {
                     let window_handle =
                         cx.global::<ProductCoordinator>()
@@ -2559,21 +2560,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     Ok(())
                 });
-                #[cfg(target_os = "windows")]
-                let restored = update_windows_settings(
-                    cx,
-                    &original_window,
-                    |view, _, _| -> Result<(), String> {
-                        if view.snapshot_revision().is_none() {
-                            return Err(
-                                "recreated settings window did not restore a runtime snapshot"
-                                    .to_owned(),
-                            );
-                        }
-                        Ok(())
-                    },
-                )
-                .await;
                 match restored {
                     Ok(()) => {}
                     Err(error) => {
