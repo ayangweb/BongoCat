@@ -140,21 +140,6 @@ pub(super) fn content(
                             .child(shortcut_capture_error(language, error)),
                     )
                 })
-                .when_some(view.shortcut_capture.clone(), |content, target| {
-                    content.child(
-                        div()
-                            .text_sm()
-                            .text_color(tokens.accent)
-                            .child(match target {
-                                ShortcutCaptureTarget::Command(_) => {
-                                    ui_text(language, UiText::PressCommandShortcut)
-                                }
-                                ShortcutCaptureTarget::ModelBehavior { .. } => {
-                                    ui_text(language, UiText::PressBehaviorShortcut)
-                                }
-                            }),
-                    )
-                })
                 .when(rows.is_empty(), |content| {
                     content.child(
                         div()
@@ -226,38 +211,47 @@ fn shortcut_row(
         .text_sm()
         .child(div().min_w_0().flex_1().child(target_name))
         .child(
-            div().text_color(tokens.muted).child(
-                row.shortcut
-                    .clone()
-                    .unwrap_or_else(|| ui_text(language, UiText::NotSet).to_owned()),
-            ),
-        )
-        .child(
-            command_button(
-                ui_text(
-                    language,
-                    if capturing {
-                        UiText::PressKey
-                    } else {
-                        UiText::Capture
-                    },
-                ),
-                &focus,
-                shortcut_capture_tab_index(row_index),
-                window,
-                tokens,
-                disabled,
-            )
-            .id(capture_id)
-            .on_click(cx.listener(move |view, _, window, cx| {
-                view.begin_shortcut_capture(target.clone(), window, cx);
-            }))
-            .on_key_down(cx.listener(move |view, event, window, cx| {
-                if view.shortcut_capture.is_none() && is_activation_key(event) {
-                    cx.stop_propagation();
-                    view.begin_shortcut_capture(keyboard_target.clone(), window, cx);
-                }
-            })),
+            div()
+                .key_context("SettingsControl")
+                .track_focus(&focus)
+                .tab_index(shortcut_capture_tab_index(row_index))
+                .id(capture_id)
+                .h(px(32.))
+                .min_w(px(180.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .px_3()
+                .border_1()
+                .border_color(if capturing {
+                    tokens.accent
+                } else {
+                    tokens.border
+                })
+                .rounded_md()
+                .cursor_pointer()
+                .text_color(if capturing || row.shortcut.is_some() {
+                    tokens.text
+                } else {
+                    tokens.muted
+                })
+                .when(disabled, |this| this.opacity(0.5).cursor_default())
+                .child(if capturing {
+                    ui_text(language, UiText::PressRecordShortcut).to_owned()
+                } else if let Some(shortcut) = row.shortcut.clone() {
+                    shortcut
+                } else {
+                    ui_text(language, UiText::ClickRecordShortcut).to_owned()
+                })
+                .on_click(cx.listener(move |view, _, window, cx| {
+                    view.begin_shortcut_capture(target.clone(), window, cx);
+                }))
+                .on_key_down(cx.listener(move |view, event, window, cx| {
+                    if view.shortcut_capture.is_none() && is_activation_key(event) {
+                        cx.stop_propagation();
+                        view.begin_shortcut_capture(keyboard_target.clone(), window, cx);
+                    }
+                })),
         )
         .when(row.shortcut.is_some(), |actions| {
             actions.child(
