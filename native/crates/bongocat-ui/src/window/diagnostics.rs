@@ -354,6 +354,14 @@ pub(super) fn content(
                                                             );
                                                         },
                                                     ))
+                                                    .when(capturing, |this| {
+                                                        this.on_mouse_down_out(cx.listener(
+                                                            |view, _, window, cx| {
+                                                                view.cancel_shortcut_capture(cx);
+                                                                window.blur(cx);
+                                                            },
+                                                        ))
+                                                    })
                                                     .on_key_down(cx.listener(
                                                         move |view, event, window, cx| {
                                                             if view.shortcut_capture.is_none()
@@ -488,6 +496,16 @@ pub(super) fn content(
                                                                 );
                                                             },
                                                         ))
+                                                        .when(capturing, |this| {
+                                                            this.on_mouse_down_out(cx.listener(
+                                                                |view, _, window, cx| {
+                                                                    view.cancel_shortcut_capture(
+                                                                        cx,
+                                                                    );
+                                                                    window.blur(cx);
+                                                                },
+                                                            ))
+                                                        })
                                                         .on_key_down(cx.listener(
                                                             move |view, event, window, cx| {
                                                                 if view.shortcut_capture.is_none()

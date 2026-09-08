@@ -246,6 +246,12 @@ fn shortcut_row(
                 .on_click(cx.listener(move |view, _, window, cx| {
                     view.begin_shortcut_capture(target.clone(), window, cx);
                 }))
+                .when(capturing, |this| {
+                    this.on_mouse_down_out(cx.listener(|view, _, window, cx| {
+                        view.cancel_shortcut_capture(cx);
+                        window.blur(cx);
+                    }))
+                })
                 .on_key_down(cx.listener(move |view, event, window, cx| {
                     if view.shortcut_capture.is_none() && is_activation_key(event) {
                         cx.stop_propagation();
