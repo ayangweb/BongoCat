@@ -550,7 +550,11 @@ Linux 阶段再决定增加 Vulkan/OpenGL backend，或基于数据迁移到 wgp
 - `bongocat-audio` 使用精确锁定的 `rodio 0.22.2`，只启用 output playback 与 FLAC；
   rodio/CPAL 类型不进入 runtime、model、UI 或 renderer 公共接口。
 - runtime 只在 motion priority 与资源解析均成功后，通过固定容量有序队列非阻塞发布
-  强类型 `Play`/`Stop`。解码、文件 I/O 和设备创建全部由独立 worker 执行。
+  强类型 `Prepare`/`ActivatePrepared`/`Play`/`Stop`。解码、文件 I/O 和设备创建全部由独立 worker 执行。
+- renderer 与 audio 对候选模型并行 prepare；audio worker 将去重 sound 解码为 immutable PCM，二者完成
+  或 audio 已稳定降级后才 commit 模型。`ActivatePrepared` 只保留活动模型 cache；output stream 的惰性打开由
+  audio owner 执行且不能阻塞 model 或 motion。已活动模型的 motion 在同一 runtime command 中发布缓存 `Play`
+  并启动 motion；不得等待 mixer position、设备回调或轮询音频诊断。audio owner 优先使用 512-frame buffer，设备拒绝时回退默认 sink。
 - 同时最多一个 motion voice。新动作（包括没有 sound 的动作）、显式停止、禁用音效、
   成功模型 commit 和 shutdown 都停止旧 voice；被 priority 拒绝或加载失败的动作不改变
   当前 voice。

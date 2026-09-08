@@ -20,6 +20,13 @@
 - motion request 只有在 runtime priority 与 Live2D resource 校验均接受后才触发音效。
   新 motion 替换当前 voice；无声音的新 motion 也停止旧 voice。显式 motion stop、关闭
   配置、成功 model commit 和 shutdown 立即停止 voice，不等待 motion fade 结束。
+- 模型 activation 在 renderer prepare 成功后，把该模型的去重 sound paths 作为 `Prepare` 发送给
+  audio worker。worker 在这里解码 FLAC 为 immutable PCM cache；renderer prepare 与 PCM prepare 都完成后
+  才提交该模型。预热失败只形成稳定 audio 诊断，仍允许模型提交；随后 play 会按既有降级语义失败，不能阻塞
+  动作或渲染。成功 commit 后 `ActivatePrepared` 只保留新活动模型的 cache。
+- 已活动模型的 motion 在同一 runtime command 中先向有序队列发布缓存 `Play`，再以同一单调 tick
+  启动 motion。动作路径不执行文件 I/O、解码、设备创建、`get_pos()` 等待或 1 ms 轮询。audio owner
+  优先以 512-frame buffer 打开默认设备，设备拒绝时回退 rodio 默认 sink。
 - 音量使用经过校验的 `[0, 1]` 强类型值，当前产品触发值为 `1.0`。同一时刻最多一个
   motion voice，不混音、不排队延后播放。
 - 队列满载不阻塞 runtime：返回原 command、增加匿名 overflow 计数、丢弃无法证明
@@ -42,7 +49,8 @@ rodio/CPAL 类型不离开 `bongocat-audio` 私有 backend。替换其它音频�
 
 ## Consequences
 
-音频设备按首次有效 play 延迟打开，应用启动与 motion/rendering 不依赖设备存在。
-当前实现支持现有预置模型实际使用的 FLAC；新增格式必须先形成模型兼容需求，再单独
-启用 decoder feature 和测试。默认设备热切换、运行中 stream error callback、100 次
-model/audio 资源测量与 8 小时 soak 仍属于后续稳定性验收，不由本 ADR 的单元测试替代。
+音频解码成本转移到模型 activation；设备打开继续由 audio owner 惰性执行，但 runtime 不等待它。
+`rodio::Player::get_pos()` 只反映 mixer 位置，不能作为扬声器起播确认，因此不再用作动画时钟。当前实现支持现有预置模型实际使用的 FLAC；
+新增格式必须先形成模型兼容需求，再单独启用 decoder feature 和测试。默认设备热切换、运行中 stream
+error callback、端到端音频/画面时序测量、100 次 model/audio 资源测量与 8 小时 soak 仍属于后续
+稳定性验收，不由本 ADR 的单元测试替代。

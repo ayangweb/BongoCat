@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use std::{
+    collections::HashMap,
     fmt, io,
     path::{Path, PathBuf},
     sync::{
@@ -13,6 +14,8 @@ use std::{
 };
 
 const WORKER_POLL_INTERVAL: Duration = Duration::from_millis(10);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const PREFERRED_OUTPUT_BUFFER_FRAMES: u32 = 512;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MotionAudioState {
@@ -61,6 +64,12 @@ impl MotionAudioVolume {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum MotionAudioCommand {
+    /// Prepares every distinct sound referenced by the model that is about to
+    /// become active. This is the only path that may decode a FLAC file; the
+    /// output device remains lazy and is opened by the first `Play`.
+    Prepare { sequence: u64, paths: Vec<PathBuf> },
+    /// Discards clips that do not belong to the committed active model.
+    ActivatePrepared { sequence: u64, paths: Vec<PathBuf> },
     Play {
         sequence: u64,
         path: PathBuf,
@@ -75,7 +84,10 @@ pub enum MotionAudioCommand {
 impl MotionAudioCommand {
     pub const fn sequence(&self) -> u64 {
         match self {
-            Self::Play { sequence, .. } | Self::Stop { sequence, .. } => *sequence,
+            Self::Prepare { sequence, .. }
+            | Self::ActivatePrepared { sequence, .. }
+            | Self::Play { sequence, .. }
+            | Self::Stop { sequence, .. } => *sequence,
         }
     }
 }
@@ -86,6 +98,8 @@ pub struct MotionAudioDiagnostics {
     pub enqueued_commands: u64,
     pub processed_commands: u64,
     pub discarded_commands: u64,
+    pub prepare_requests: u64,
+    pub prepared_resources: u64,
     pub play_requests: u64,
     pub playback_starts: u64,
     pub stop_requests: u64,
@@ -107,6 +121,8 @@ impl MotionAudioDiagnostics {
             enqueued_commands: 0,
             processed_commands: 0,
             discarded_commands: 0,
+            prepare_requests: 0,
+            prepared_resources: 0,
             play_requests: 0,
             playback_starts: 0,
             stop_requests: 0,
@@ -451,6 +467,14 @@ enum BackendError {
 }
 
 trait AudioBackend: Send {
+    fn prepare(&mut self, _paths: &[PathBuf]) -> Result<usize, BackendError> {
+        Ok(0)
+    }
+
+    fn activate_prepared(&mut self, _paths: &[PathBuf]) -> Result<(), BackendError> {
+        Ok(())
+    }
+
     fn play(&mut self, path: &Path, volume: MotionAudioVolume) -> Result<(), BackendError>;
     fn stop(&mut self) -> bool;
     fn is_playing(&self) -> bool;
@@ -530,6 +554,38 @@ fn process_command(
 ) {
     let sequence = command.sequence();
     match command {
+        MotionAudioCommand::Prepare { paths, .. } => {
+            let result = backend.prepare(&paths);
+            shared.publish(|diagnostics| {
+                diagnostics.processed_commands = diagnostics.processed_commands.saturating_add(1);
+                diagnostics.prepare_requests = diagnostics.prepare_requests.saturating_add(1);
+                diagnostics.last_processed_sequence = Some(sequence);
+                match result {
+                    Ok(prepared) => {
+                        diagnostics.prepared_resources = diagnostics
+                            .prepared_resources
+                            .saturating_add(prepared as u64);
+                        diagnostics.last_error = None;
+                        diagnostics.state = MotionAudioState::Ready;
+                    }
+                    Err(error) => record_backend_error(diagnostics, error),
+                }
+            });
+        }
+        MotionAudioCommand::ActivatePrepared { paths, .. } => {
+            let result = backend.activate_prepared(&paths);
+            shared.publish(|diagnostics| {
+                diagnostics.processed_commands = diagnostics.processed_commands.saturating_add(1);
+                diagnostics.last_processed_sequence = Some(sequence);
+                match result {
+                    Ok(()) => {
+                        diagnostics.last_error = None;
+                        diagnostics.state = MotionAudioState::Ready;
+                    }
+                    Err(error) => record_backend_error(diagnostics, error),
+                }
+            });
+        }
         MotionAudioCommand::Play { path, volume, .. } => {
             let stopped = backend.stop();
             let result = backend.play(&path, volume);
@@ -547,30 +603,7 @@ fn process_command(
                         diagnostics.last_error = None;
                         diagnostics.state = MotionAudioState::Ready;
                     }
-                    Err(error) => {
-                        let code = match error {
-                            #[cfg(any(target_os = "macos", target_os = "windows", test))]
-                            BackendError::ResourceIo => {
-                                diagnostics.resource_failures =
-                                    diagnostics.resource_failures.saturating_add(1);
-                                MotionAudioErrorCode::ResourceIo
-                            }
-                            #[cfg(any(target_os = "macos", target_os = "windows", test))]
-                            BackendError::DecodeFailed => {
-                                diagnostics.decode_failures =
-                                    diagnostics.decode_failures.saturating_add(1);
-                                MotionAudioErrorCode::DecodeFailed
-                            }
-                            BackendError::OutputUnavailable => {
-                                diagnostics.output_failures =
-                                    diagnostics.output_failures.saturating_add(1);
-                                MotionAudioErrorCode::OutputUnavailable
-                            }
-                        };
-                        diagnostics.current_voice_sequence = None;
-                        diagnostics.last_error = Some(code);
-                        diagnostics.state = MotionAudioState::Degraded;
-                    }
+                    Err(error) => record_backend_error(diagnostics, error),
                 }
             });
         }
@@ -589,28 +622,89 @@ fn process_command(
     }
 }
 
+fn record_backend_error(diagnostics: &mut MotionAudioDiagnostics, error: BackendError) {
+    let code = match error {
+        #[cfg(any(target_os = "macos", target_os = "windows", test))]
+        BackendError::ResourceIo => {
+            diagnostics.resource_failures = diagnostics.resource_failures.saturating_add(1);
+            MotionAudioErrorCode::ResourceIo
+        }
+        #[cfg(any(target_os = "macos", target_os = "windows", test))]
+        BackendError::DecodeFailed => {
+            diagnostics.decode_failures = diagnostics.decode_failures.saturating_add(1);
+            MotionAudioErrorCode::DecodeFailed
+        }
+        BackendError::OutputUnavailable => {
+            diagnostics.output_failures = diagnostics.output_failures.saturating_add(1);
+            MotionAudioErrorCode::OutputUnavailable
+        }
+    };
+    diagnostics.current_voice_sequence = None;
+    diagnostics.last_error = Some(code);
+    diagnostics.state = MotionAudioState::Degraded;
+}
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Default)]
 struct SystemAudioBackend {
     output: Option<rodio::MixerDeviceSink>,
     player: Option<rodio::Player>,
+    prepared: HashMap<PathBuf, rodio::buffer::SamplesBuffer>,
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 impl AudioBackend for SystemAudioBackend {
+    fn prepare(&mut self, paths: &[PathBuf]) -> Result<usize, BackendError> {
+        use rodio::Source;
+
+        let mut prepared = HashMap::with_capacity(paths.len());
+        for path in paths {
+            let file = std::fs::File::open(path).map_err(|_| BackendError::ResourceIo)?;
+            let decoder = rodio::Decoder::try_from(file).map_err(|_| BackendError::DecodeFailed)?;
+            let buffer = rodio::buffer::SamplesBuffer::new(
+                decoder.channels(),
+                decoder.sample_rate(),
+                decoder.collect::<Vec<_>>(),
+            );
+            prepared.insert(path.clone(), buffer);
+        }
+        let prepared_resources = prepared.len();
+        self.prepared.extend(prepared);
+        Ok(prepared_resources)
+    }
+
+    fn activate_prepared(&mut self, paths: &[PathBuf]) -> Result<(), BackendError> {
+        self.prepared.retain(|path, _| paths.contains(path));
+        Ok(())
+    }
+
     fn play(&mut self, path: &Path, volume: MotionAudioVolume) -> Result<(), BackendError> {
-        let file = std::fs::File::open(path).map_err(|_| BackendError::ResourceIo)?;
-        let decoder = rodio::Decoder::try_from(file).map_err(|_| BackendError::DecodeFailed)?;
+        let source = self
+            .prepared
+            .get(path)
+            .cloned()
+            .ok_or(BackendError::ResourceIo)?;
         if self.output.is_none() {
-            let mut output = rodio::DeviceSinkBuilder::open_default_sink()
+            let mut output = rodio::DeviceSinkBuilder::from_default_device()
+                .and_then(|builder| {
+                    builder
+                        .with_buffer_size(rodio::cpal::BufferSize::Fixed(
+                            PREFERRED_OUTPUT_BUFFER_FRAMES,
+                        ))
+                        .open_stream()
+                })
+                .or_else(|_| rodio::DeviceSinkBuilder::open_default_sink())
                 .map_err(|_| BackendError::OutputUnavailable)?;
             output.log_on_drop(false);
             self.output = Some(output);
         }
-        let output = self.output.as_ref().expect("audio output was initialized");
+        let output = self
+            .output
+            .as_ref()
+            .ok_or(BackendError::OutputUnavailable)?;
         let player = rodio::Player::connect_new(output.mixer());
         player.set_volume(volume.get());
-        player.append(decoder);
+        player.append(source);
         self.player = Some(player);
         Ok(())
     }
@@ -652,6 +746,7 @@ mod tests {
 
     #[derive(Clone, Debug, Eq, PartialEq)]
     enum BackendEvent {
+        Prepare(Vec<PathBuf>),
         Play(PathBuf),
         Stop,
     }
@@ -711,6 +806,14 @@ mod tests {
     }
 
     impl AudioBackend for RecordingBackend {
+        fn prepare(&mut self, paths: &[PathBuf]) -> Result<usize, BackendError> {
+            self.events
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(BackendEvent::Prepare(paths.to_vec()));
+            Ok(paths.len())
+        }
+
         fn play(&mut self, path: &Path, _volume: MotionAudioVolume) -> Result<(), BackendError> {
             if let Some(error) = self.failures.pop_front() {
                 return Err(error);
@@ -745,6 +848,13 @@ mod tests {
             sequence,
             path: PathBuf::from(name),
             volume: MotionAudioVolume::FULL,
+        }
+    }
+
+    fn prepare(sequence: u64, names: &[&str]) -> MotionAudioCommand {
+        MotionAudioCommand::Prepare {
+            sequence,
+            paths: names.iter().map(PathBuf::from).collect(),
         }
     }
 
@@ -801,6 +911,53 @@ mod tests {
         );
         let stopped = service.shutdown(TIMEOUT).expect("clean shutdown");
         assert_eq!(stopped.state, MotionAudioState::Stopped);
+    }
+
+    #[test]
+    fn prepared_resources_are_available_before_the_first_play() {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let service = MotionAudioService::start_with_backend(
+            4,
+            Box::new(RecordingBackend {
+                events: Arc::clone(&events),
+                failures: VecDeque::new(),
+                playing: false,
+            }),
+        )
+        .expect("audio service");
+        let client = service.client();
+        client
+            .try_publish(prepare(1, &["first.flac"]))
+            .expect("prepare queued");
+        client
+            .wait_for_sequence(1, TIMEOUT)
+            .expect("prepare processed");
+        client
+            .try_publish(MotionAudioCommand::ActivatePrepared {
+                sequence: 1,
+                paths: vec![PathBuf::from("first.flac")],
+            })
+            .expect("activation queued");
+        client
+            .try_publish(play(2, "first.flac"))
+            .expect("play queued");
+        let diagnostics = client
+            .wait_for_sequence(2, TIMEOUT)
+            .expect("play processed");
+
+        assert_eq!(diagnostics.prepare_requests, 1);
+        assert_eq!(diagnostics.prepared_resources, 1);
+        assert_eq!(diagnostics.playback_starts, 1);
+        assert_eq!(
+            *events
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            vec![
+                BackendEvent::Prepare(vec![PathBuf::from("first.flac")]),
+                BackendEvent::Play(PathBuf::from("first.flac")),
+            ]
+        );
+        service.shutdown(TIMEOUT).expect("clean shutdown");
     }
 
     #[test]
@@ -1010,7 +1167,7 @@ mod tests {
         let service = MotionAudioService::start(2).expect("product audio service");
         let client = service.client();
         client
-            .try_publish(play(1, "does-not-exist.flac"))
+            .try_publish(prepare(1, &["does-not-exist.flac"]))
             .expect("missing resource request");
         let missing = client
             .wait_for_sequence(1, TIMEOUT)
@@ -1020,10 +1177,9 @@ mod tests {
 
         let invalid = Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
         client
-            .try_publish(MotionAudioCommand::Play {
+            .try_publish(MotionAudioCommand::Prepare {
                 sequence: 2,
-                path: invalid,
-                volume: MotionAudioVolume::FULL,
+                paths: vec![invalid],
             })
             .expect("invalid resource request");
         let invalid = client

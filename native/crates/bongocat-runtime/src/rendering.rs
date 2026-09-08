@@ -262,6 +262,25 @@ impl RuntimeRenderer {
         }
     }
 
+    /// Confirms that the active model has the already-prepared clip before an
+    /// audio worker is allowed to make the motion externally observable.
+    pub(crate) fn validate_motion(&self, motion: &MotionId) -> Result<(), RuntimeRenderErrorCode> {
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            self.active
+                .as_ref()
+                .and_then(|active| active.model.motion_clip(motion.group(), motion.index()))
+                .map(|_| ())
+                .ok_or(RuntimeRenderErrorCode::MotionLoadFailed)
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            let _ = motion;
+            Err(RuntimeRenderErrorCode::PlatformUnsupported)
+        }
+    }
+
     pub(crate) fn stop_motion(&mut self, _now: Duration) -> MotionStopStatus {
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         if let Some(active) = &mut self.active

@@ -1417,6 +1417,8 @@ struct PendingModelActivation {
     token: ModelCommitToken,
     model: Arc<CommittedModel>,
     input_bindings: Option<Arc<InputBindings>>,
+    renderer_prepared: bool,
+    audio_prepare_sequence: Option<u64>,
 }
 
 #[derive(Default)]
@@ -1824,6 +1826,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                             &mut active_expression,
                             &mut pending_model,
                             &motion_audio,
+                            motion_audio_enabled,
                             &snapshot,
                         );
                     }
@@ -1845,6 +1848,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                             &mut active_expression,
                             &mut pending_model,
                             &motion_audio,
+                            motion_audio_enabled,
                             &snapshot,
                         );
                     }
@@ -1866,66 +1870,76 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                                 && active.priority == priority
                                 && active.stop_command_sequence.is_none()
                         });
+                        let current_priority = active_motion.as_ref().map(|active| active.priority);
                         let can_replace =
-                            active_motion
-                                .as_ref()
-                                .is_none_or(|active: &ActiveMotionSnapshot| {
-                                    priority >= active.priority
-                                });
+                            current_priority.is_none_or(|current| priority >= current);
                         if (looping && duplicate) || !can_replace {
                             publish(&snapshot, |current| {
                                 current.last_command_failure = None;
                                 current.last_command_sequence = Some(sequence);
                             });
-                        } else if let Some(renderer) = &mut renderer {
-                            match renderer.start_motion(&motion, clock.now(), looping) {
-                                Ok(()) => {
-                                    if motion_audio_enabled {
-                                        if let Some(path) =
-                                            motion_audio_path(active_model.as_deref(), &motion)
-                                        {
-                                            let _ = motion_audio.try_publish(
-                                                MotionAudioCommand::Play {
-                                                    sequence,
-                                                    path,
-                                                    volume: MotionAudioVolume::FULL,
-                                                },
-                                            );
-                                        } else {
-                                            stop_motion_audio(
-                                                &motion_audio,
-                                                sequence,
-                                                MotionAudioStopReason::MotionReplaced,
-                                            );
-                                        }
-                                    }
-                                    let started = ActiveMotionSnapshot {
-                                        motion,
-                                        priority,
-                                        command_sequence: sequence,
-                                        stop_command_sequence: None,
-                                    };
-                                    active_motion = Some(started.clone());
-                                    publish(&snapshot, |current| {
-                                        current.active_motion = Some(started);
-                                        current.last_command_failure = None;
-                                        current.last_command_sequence = Some(sequence);
-                                    });
-                                }
+                        } else {
+                            let motion_is_valid = renderer.as_ref().map_or(
+                                Err(RuntimeRenderErrorCode::MotionLoadFailed),
+                                |renderer| renderer.validate_motion(&motion),
+                            );
+                            match motion_is_valid {
                                 Err(code) => publish(&snapshot, |current| {
                                     current.last_command_failure =
                                         Some(RuntimeCommandFailure { sequence, code });
                                     current.last_command_sequence = Some(sequence);
                                 }),
+                                Ok(()) if motion_audio_enabled => {
+                                    if let Some(path) =
+                                        motion_audio_path(active_model.as_deref(), &motion)
+                                    {
+                                        let _ =
+                                            motion_audio.try_publish(MotionAudioCommand::Play {
+                                                sequence,
+                                                path,
+                                                volume: MotionAudioVolume::FULL,
+                                            });
+                                        start_motion(
+                                            &mut renderer,
+                                            motion,
+                                            priority,
+                                            looping,
+                                            sequence,
+                                            &mut active_motion,
+                                            &snapshot,
+                                            clock.now(),
+                                        );
+                                    } else {
+                                        stop_motion_audio(
+                                            &motion_audio,
+                                            sequence,
+                                            MotionAudioStopReason::MotionReplaced,
+                                        );
+                                        start_motion(
+                                            &mut renderer,
+                                            motion,
+                                            priority,
+                                            looping,
+                                            sequence,
+                                            &mut active_motion,
+                                            &snapshot,
+                                            clock.now(),
+                                        );
+                                    }
+                                }
+                                Ok(()) => {
+                                    start_motion(
+                                        &mut renderer,
+                                        motion,
+                                        priority,
+                                        looping,
+                                        sequence,
+                                        &mut active_motion,
+                                        &snapshot,
+                                        clock.now(),
+                                    );
+                                }
                             }
-                        } else {
-                            publish(&snapshot, |current| {
-                                current.last_command_failure = Some(RuntimeCommandFailure {
-                                    sequence,
-                                    code: RuntimeRenderErrorCode::MotionLoadFailed,
-                                });
-                                current.last_command_sequence = Some(sequence);
-                            });
                         }
                     }
                     WorkerCommand::Product(RuntimeCommand::StopMotion(motion)) => {
@@ -2187,6 +2201,7 @@ fn begin_model_activation(
     active_expression: &mut Option<ActiveExpressionSnapshot>,
     pending_model: &mut Option<PendingModelActivation>,
     motion_audio: &MotionAudioClient,
+    motion_audio_enabled: bool,
     snapshot: &SnapshotCell,
 ) {
     let activation_bindings = proposed_bindings.as_deref().unwrap_or(input_bindings);
@@ -2216,10 +2231,15 @@ fn begin_model_activation(
     match renderer.prepare(sequence, &committed, model_input) {
         Ok(token) => {
             let model_snapshot = committed.snapshot();
+            let audio_prepare_sequence = motion_audio_enabled
+                .then(|| prepare_model_audio(motion_audio, sequence, &committed))
+                .flatten();
             *pending_model = Some(PendingModelActivation {
                 token,
                 model: committed,
                 input_bindings: proposed_bindings,
+                renderer_prepared: false,
+                audio_prepare_sequence,
             });
             publish(snapshot, |current| {
                 current.pending_model = Some(PendingModelSnapshot {
@@ -2255,85 +2275,133 @@ fn process_model_commit_feedback(
     let Some(renderer) = renderer else {
         return;
     };
-    let Some(feedback) = renderer.take_model_commit_feedback() else {
+    let Some(pending) = pending_model.as_mut() else {
+        if renderer.take_model_commit_feedback().is_some() {
+            renderer.record_stale_model_commit_feedback();
+        }
         return;
     };
-    let Some(pending) = pending_model.as_ref() else {
-        renderer.record_stale_model_commit_feedback();
-        return;
-    };
-    if pending.token != feedback.token {
-        renderer.record_stale_model_commit_feedback();
+    if !pending.renderer_prepared {
+        let Some(feedback) = renderer.take_model_commit_feedback() else {
+            return;
+        };
+        if pending.token != feedback.token {
+            renderer.record_stale_model_commit_feedback();
+            return;
+        }
+        match feedback.outcome {
+            ModelCommitOutcome::Prepared => pending.renderer_prepared = true,
+            ModelCommitOutcome::Rejected(ModelCommitErrorCode::ResourcePreparationFailed)
+                if renderer.reject(feedback.token) =>
+            {
+                let pending = pending_model.take().expect("checked pending model");
+                let model_input = input_state.model_snapshot(input_bindings, normalized_cursor);
+                publish(snapshot, |current| {
+                    current.pending_model = None;
+                    current.model_input = model_input;
+                    current.last_command_failure = Some(RuntimeCommandFailure {
+                        sequence: feedback.token.command_sequence,
+                        code: RuntimeRenderErrorCode::GpuPreparationFailed,
+                    });
+                    current.last_command_sequence = Some(feedback.token.command_sequence);
+                });
+                drop(pending);
+                if overlay_visible {
+                    evaluate_renderer(
+                        Some(renderer),
+                        model_input,
+                        snapshot,
+                        now,
+                        active_motion,
+                        next_motion_event_sequence,
+                    );
+                }
+                return;
+            }
+            _ => {
+                renderer.record_stale_model_commit_feedback();
+                return;
+            }
+        }
+    }
+    if pending.audio_prepare_sequence.is_some_and(|sequence| {
+        !motion_audio
+            .diagnostics()
+            .last_processed_sequence
+            .is_some_and(|processed| sequence_reached(processed, sequence))
+    }) {
         return;
     }
     let pending = pending_model.take().expect("checked pending model");
-    match feedback.outcome {
-        ModelCommitOutcome::Prepared if renderer.commit(feedback.token) => {
-            if let Some(bindings) = pending.input_bindings {
-                *input_bindings = Arc::unwrap_or_clone(bindings);
-            }
-            let model_input = input_state.model_snapshot(input_bindings, normalized_cursor);
-            let model_snapshot = pending.model.snapshot();
-            *active_model = Some(pending.model);
-            *active_motion = None;
-            *active_expression = None;
-            stop_motion_audio(
-                motion_audio,
-                feedback.token.command_sequence,
-                MotionAudioStopReason::ModelSwitched,
+    if renderer.commit(pending.token) {
+        let command_sequence = pending.token.command_sequence;
+        let audio_paths = model_audio_paths(&pending.model);
+        if let Some(bindings) = pending.input_bindings {
+            *input_bindings = Arc::unwrap_or_clone(bindings);
+        }
+        let model_input = input_state.model_snapshot(input_bindings, normalized_cursor);
+        let model_snapshot = pending.model.snapshot();
+        activate_model_audio(motion_audio, command_sequence, audio_paths);
+        *active_model = Some(pending.model);
+        *active_motion = None;
+        *active_expression = None;
+        stop_motion_audio(
+            motion_audio,
+            command_sequence,
+            MotionAudioStopReason::ModelSwitched,
+        );
+        publish(snapshot, |current| {
+            current.state = RuntimeState::Ready;
+            current.active_model = Some(model_snapshot);
+            current.pending_model = None;
+            current.active_motion = None;
+            current.active_expression = None;
+            current.motion_events.last_event = None;
+            current.model_input = model_input;
+            current.render_error = None;
+            current.last_command_failure = None;
+            current.last_command_sequence = Some(command_sequence);
+        });
+        if overlay_visible {
+            evaluate_renderer(
+                Some(renderer),
+                model_input,
+                snapshot,
+                now,
+                active_motion,
+                next_motion_event_sequence,
             );
-            publish(snapshot, |current| {
-                current.state = RuntimeState::Ready;
-                current.active_model = Some(model_snapshot);
-                current.pending_model = None;
-                current.active_motion = None;
-                current.active_expression = None;
-                current.motion_events.last_event = None;
-                current.model_input = model_input;
-                current.render_error = None;
-                current.last_command_failure = None;
-                current.last_command_sequence = Some(feedback.token.command_sequence);
-            });
-            if overlay_visible {
-                evaluate_renderer(
-                    Some(renderer),
-                    model_input,
-                    snapshot,
-                    now,
-                    active_motion,
-                    next_motion_event_sequence,
-                );
-            }
-        }
-        ModelCommitOutcome::Rejected(ModelCommitErrorCode::ResourcePreparationFailed)
-            if renderer.reject(feedback.token) =>
-        {
-            let model_input = input_state.model_snapshot(input_bindings, normalized_cursor);
-            publish(snapshot, |current| {
-                current.pending_model = None;
-                current.model_input = model_input;
-                current.last_command_failure = Some(RuntimeCommandFailure {
-                    sequence: feedback.token.command_sequence,
-                    code: RuntimeRenderErrorCode::GpuPreparationFailed,
-                });
-                current.last_command_sequence = Some(feedback.token.command_sequence);
-            });
-            if overlay_visible {
-                evaluate_renderer(
-                    Some(renderer),
-                    model_input,
-                    snapshot,
-                    now,
-                    active_motion,
-                    next_motion_event_sequence,
-                );
-            }
-        }
-        _ => {
-            *pending_model = Some(pending);
-            renderer.record_stale_model_commit_feedback();
         }
     }
+}
+
+fn prepare_model_audio(
+    client: &MotionAudioClient,
+    sequence: u64,
+    model: &CommittedModel,
+) -> Option<u64> {
+    let paths = model_audio_paths(model);
+    (!paths.is_empty())
+        .then(|| client.try_publish(MotionAudioCommand::Prepare { sequence, paths }))
+        .and_then(Result::ok)
+        .map(|()| sequence)
+}
+
+fn activate_model_audio(client: &MotionAudioClient, sequence: u64, paths: Vec<std::path::PathBuf>) {
+    let _ = client.try_publish(MotionAudioCommand::ActivatePrepared { sequence, paths });
+}
+
+fn model_audio_paths(model: &CommittedModel) -> Vec<std::path::PathBuf> {
+    model
+        .index()
+        .motion_groups
+        .iter()
+        .flat_map(|group| group.motions.iter())
+        .filter_map(|motion| motion.sound.as_deref())
+        .map(|sound| model.root().join(sound))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 fn evaluate_renderer(
@@ -2412,6 +2480,44 @@ fn update_renderer_health(snapshot: &SnapshotCell, evaluation: Result<(), Runtim
         Err(code) => publish(snapshot, |current| {
             current.state = RuntimeState::Degraded;
             current.render_error = Some(code);
+        }),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn start_motion(
+    renderer: &mut Option<RuntimeRenderer>,
+    motion: MotionId,
+    priority: MotionPriority,
+    looping: bool,
+    sequence: u64,
+    active_motion: &mut Option<ActiveMotionSnapshot>,
+    snapshot: &SnapshotCell,
+    now: Duration,
+) {
+    let result = renderer
+        .as_mut()
+        .map_or(Err(RuntimeRenderErrorCode::MotionLoadFailed), |renderer| {
+            renderer.start_motion(&motion, now, looping)
+        });
+    match result {
+        Ok(()) => {
+            let started = ActiveMotionSnapshot {
+                motion,
+                priority,
+                command_sequence: sequence,
+                stop_command_sequence: None,
+            };
+            *active_motion = Some(started.clone());
+            publish(snapshot, |current| {
+                current.active_motion = Some(started);
+                current.last_command_failure = None;
+                current.last_command_sequence = Some(sequence);
+            });
+        }
+        Err(code) => publish(snapshot, |current| {
+            current.last_command_failure = Some(RuntimeCommandFailure { sequence, code });
+            current.last_command_sequence = Some(sequence);
         }),
     }
 }

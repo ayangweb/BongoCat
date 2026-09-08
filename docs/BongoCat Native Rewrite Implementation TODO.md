@@ -1351,6 +1351,13 @@ voice。7 项 audio test 覆盖真实 48 kHz stereo FLAC、资源/解码失败�
 持久化与 worker join 完成。默认设备热切换、100 次模型/音频资源测量和 8 小时 soak 仍由
 Phase 6/8 门禁跟踪，不反向取消本节的功能 contract 完成。
 
+状态（2026-09-08）：撤回将 audio 首样本消费放入动作关键路径的试验。renderer prepare 成功后，
+audio worker 预解码候选模型的去重 FLAC；PCM 预热完成或稳定失败后才提交模型。output stream 继续由 audio owner 惰性打开，
+但 runtime 不等待它。
+已活动模型的 motion 只发布缓存 `Play` 并在同一 runtime command 启动，不再执行文件/解码/设备工作、
+`get_pos()` 等待或 1 ms 轮询。`bongocat-audio` contract 覆盖 prepare -> activate -> play 顺序；真实
+设备端到端延迟测量仍属于 Phase 8 性能门禁。
+
 ### 5.6 Phase 4 退出门槛
 
 - [ ] 三个预置模型通过兼容矩阵。
