@@ -22,7 +22,7 @@ impl SettingsView {
         if self
             .shortcut_capture
             .as_ref()
-            .is_some_and(|target| !target_set.contains(target))
+            .is_some_and(|capture| !target_set.contains(&capture.target))
         {
             self.shortcut_capture = None;
         }
@@ -60,7 +60,7 @@ impl SettingsView {
         let Some(focus) = self.shortcut_row_focus.get(&target).cloned() else {
             return;
         };
-        self.shortcut_capture = Some(target);
+        self.shortcut_capture = Some(ShortcutCapture::new(target));
         window.focus(&focus, cx);
         cx.notify();
     }
@@ -71,34 +71,67 @@ impl SettingsView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(target) = self.shortcut_capture.clone() else {
+        {
+            let Some(capture) = self.shortcut_capture.as_mut() else {
+                return;
+            };
+            capture.modifiers = event.keystroke.modifiers;
+            if let Some(key) = capture_key(event.keystroke.key.as_str()) {
+                capture.keys.insert(key);
+            }
+        }
+        self.finish_shortcut_capture_if_valid(window, cx);
+    }
+
+    pub(super) fn update_shortcut_capture_on_key_up(
+        &mut self,
+        event: &KeyUpEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        {
+            let Some(capture) = self.shortcut_capture.as_mut() else {
+                return;
+            };
+            capture.modifiers = event.keystroke.modifiers;
+            if let Some(key) = capture_key(event.keystroke.key.as_str()) {
+                capture.keys.remove(&key);
+            }
+        }
+        self.finish_shortcut_capture_if_valid(window, cx);
+    }
+
+    pub(super) fn update_shortcut_capture_modifiers(
+        &mut self,
+        modifiers: Modifiers,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(capture) = self.shortcut_capture.as_mut() else {
             return;
         };
-        if is_capture_cancel(event) {
-            self.shortcut_capture = None;
-            cx.notify();
-            return;
-        }
-        let Some(shortcut) = shortcut_from_key_event(event) else {
-            self.show_shortcut_capture_error(ShortcutCaptureError::UnsupportedKey, window, cx);
+        capture.modifiers = modifiers;
+        self.finish_shortcut_capture_if_valid(window, cx);
+    }
+
+    fn finish_shortcut_capture_if_valid(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some((target, shortcut)) = self.shortcut_capture.as_ref().and_then(|capture| {
+            shortcut_from_capture(&capture.modifiers, &capture.keys)
+                .map(|shortcut| (capture.target.clone(), shortcut))
+        }) else {
             cx.notify();
             return;
         };
         let Some(snapshot) = self.snapshot.as_ref() else {
+            cx.notify();
             return;
         };
         let mut shortcuts = snapshot.shortcuts.clone();
         if !replace_shortcut(&mut shortcuts, &target, shortcut.clone()) {
-            self.shortcut_capture = None;
             cx.notify();
             return;
         }
         if shortcut_conflicts(&shortcuts) {
-            self.show_shortcut_capture_error(
-                ShortcutCaptureError::AlreadyAssigned(shortcut),
-                window,
-                cx,
-            );
             cx.notify();
             return;
         }
@@ -106,6 +139,7 @@ impl SettingsView {
             return;
         };
         self.shortcut_capture = None;
+        window.blur(cx);
         self.start_request(
             PendingOperation::SetShortcuts,
             Some(SettingValue::Shortcuts {
@@ -137,27 +171,6 @@ impl SettingsView {
                 expected_config_revision,
                 shortcuts,
             }),
-            cx,
-        );
-    }
-
-    fn show_shortcut_capture_error(
-        &self,
-        error: ShortcutCaptureError,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let language = self
-            .snapshot
-            .as_ref()
-            .map_or(SettingsLanguage::EnglishUnitedStates, |snapshot| {
-                snapshot.resolved_language
-            });
-        window.push_notification(
-            Notification::new()
-                .id::<ShortcutCaptureNotification>()
-                .message(shortcut_capture_error(language, &error))
-                .with_type(NotificationType::Error),
             cx,
         );
     }

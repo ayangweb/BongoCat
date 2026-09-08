@@ -2836,7 +2836,7 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
     - 验收证据（2026-09-06）：核对正式实现已覆盖本项全部退出条件。GPUI Diagnostics 页面为
       application command 与 current active ready model behavior 提供 Capture/Clear，并提供 Clear all
       与 Restore defaults；Capture 将 key event 归一化为同一 `ShortcutChord` canonical form，
-      modifier-only/unsupported key、Escape cancel 和跨域冲突均在持久化前处理。成功提交经
+      捕获框持续显示当前按住的任意按键组合；modifier-only、无修饰单键（F1--F12 除外）、unsupported key 与跨域冲突均保持录入状态且不弹出错误。合法组合才提交并自动失焦，成功提交经
       revision-checked typed `SetShortcuts` 原子写入并替换活动 `ShortcutTable`。每一 target 使用稳定
       identity、keyboard tab stop 和 AccessKit capture/clear action。`bongocat-config` 的 canonicalization/
       conflict/HID mapping tests、`bongocat-platform` matcher tests、`bongocat-ui` capture tests 与

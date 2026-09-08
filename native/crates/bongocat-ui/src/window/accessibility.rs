@@ -610,14 +610,19 @@ impl SettingsView {
             .into_iter()
             .enumerate()
             .map(|(index, (target, label, value))| {
-                let capturing = self.shortcut_capture.as_ref() == Some(&target);
+                let capture = self
+                    .shortcut_capture
+                    .as_ref()
+                    .filter(|capture| capture.target == target);
                 let mut node = AccessibilityNode::new(
                     shortcut_accessibility_node_id(index),
                     AccessibilityRole::Button,
                     label,
                 )
-                .with_value(if capturing {
-                    ui_text(language, UiText::WaitingForKeyCombination).to_owned()
+                .with_value(if let Some(capture) = capture {
+                    shortcut_capture_preview(&capture.modifiers, &capture.keys).unwrap_or_else(
+                        || ui_text(language, UiText::WaitingForKeyCombination).to_owned(),
+                    )
                 } else {
                     value
                 })
@@ -1044,7 +1049,7 @@ impl SettingsView {
                         snapshot.configuration_status == SettingsConfigurationStatus::Ready
                     })
                 {
-                    self.shortcut_capture = Some(target);
+                    self.shortcut_capture = Some(ShortcutCapture::new(target));
                 }
             }
         }

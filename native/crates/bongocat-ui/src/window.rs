@@ -34,9 +34,9 @@ use gpui_kit::component::{
 };
 use gpui_kit::{
     Anchor, App, AppContext, Axis, Bounds, Context, DisplayId, Div, Entity, FocusHandle, Focusable,
-    Hsla, KeyDownEvent, Pixels, Render, SharedString, Stateful, TitlebarOptions, WeakEntity,
-    Window, WindowAppearance, WindowBounds, WindowHandle, WindowOptions, div, point, prelude::*,
-    px, size,
+    Hsla, KeyDownEvent, KeyUpEvent, Modifiers, Pixels, Render, SharedString, Stateful,
+    TitlebarOptions, WeakEntity, Window, WindowAppearance, WindowBounds, WindowHandle,
+    WindowOptions, div, point, prelude::*, px, size,
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use raw_window_handle::HasWindowHandle;
@@ -68,10 +68,10 @@ pub use lifecycle::open_settings_window;
 use localization::{
     ABOUT_SECTIONS, UiText, backup_candidates_checked, build_info_detail,
     diagnostics_export_status, input_diagnostic_metrics, input_service_attempts,
-    model_availability_summary, model_delete_confirmation,
-    model_import_progress, model_invalid_summary, recovered_backup_detail, runtime_command_failure,
+    model_availability_summary, model_delete_confirmation, model_import_progress,
+    model_invalid_summary, recovered_backup_detail, runtime_command_failure,
     runtime_shutdown_failures, runtime_status, settings_error, shortcut_accessibility_label,
-    shortcut_capture_error, shortcut_target_name, text as ui_text,
+    shortcut_target_name, text as ui_text,
 };
 #[cfg(test)]
 mod tests;
@@ -247,12 +247,21 @@ enum ShortcutCaptureTarget {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-enum ShortcutCaptureError {
-    UnsupportedKey,
-    AlreadyAssigned(String),
+struct ShortcutCapture {
+    target: ShortcutCaptureTarget,
+    modifiers: Modifiers,
+    keys: BTreeSet<String>,
 }
 
-struct ShortcutCaptureNotification;
+impl ShortcutCapture {
+    fn new(target: ShortcutCaptureTarget) -> Self {
+        Self {
+            target,
+            modifiers: Modifiers::default(),
+            keys: BTreeSet::new(),
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 enum SettingsPage {
@@ -423,7 +432,7 @@ pub struct SettingsView {
     model_delete_confirmation: Option<SettingsModelKey>,
     model_row_focus: BTreeMap<ModelRowKey, ModelRowFocus>,
     model_behavior_preview_focus: BTreeMap<ModelBehaviorKey, FocusHandle>,
-    shortcut_capture: Option<ShortcutCaptureTarget>,
+    shortcut_capture: Option<ShortcutCapture>,
     shortcut_row_focus: BTreeMap<ShortcutCaptureTarget, FocusHandle>,
     shortcut_clear_focus: BTreeMap<ShortcutCaptureTarget, FocusHandle>,
     window_hidden: bool,

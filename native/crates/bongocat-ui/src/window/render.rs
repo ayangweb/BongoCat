@@ -911,6 +911,14 @@ impl Render for SettingsView {
                     view.capture_shortcut(event, window, cx);
                 }
             }))
+            .on_key_up(cx.listener(|view, event, window, cx| {
+                view.update_shortcut_capture_on_key_up(event, window, cx);
+            }))
+            .on_modifiers_changed(cx.listener(
+                |view, event: &gpui_kit::ModifiersChangedEvent, window, cx| {
+                    view.update_shortcut_capture_modifiers(event.modifiers, window, cx);
+                },
+            ))
             .size_full()
             .flex()
             .flex_col()

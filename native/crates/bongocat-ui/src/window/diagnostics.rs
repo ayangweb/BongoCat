@@ -266,24 +266,29 @@ pub(super) fn content(
                                                 )),
                                             ),
                                     )
-                                    .when_some(view.shortcut_capture.clone(), |content, target| {
-                                        content.child(
-                                            div().text_sm().text_color(tokens.accent).child(
-                                                match target {
-                                                    ShortcutCaptureTarget::Command(_) => ui_text(
-                                                        language,
-                                                        UiText::PressCommandShortcut,
-                                                    ),
-                                                    ShortcutCaptureTarget::ModelBehavior {
-                                                        ..
-                                                    } => ui_text(
-                                                        language,
-                                                        UiText::PressBehaviorShortcut,
-                                                    ),
-                                                },
-                                            ),
-                                        )
-                                    })
+                                    .when_some(
+                                        view.shortcut_capture.as_ref(),
+                                        |content, capture| {
+                                            content.child(
+                                                div().text_sm().text_color(tokens.accent).child(
+                                                    match &capture.target {
+                                                        ShortcutCaptureTarget::Command(_) => {
+                                                            ui_text(
+                                                                language,
+                                                                UiText::PressCommandShortcut,
+                                                            )
+                                                        }
+                                                        ShortcutCaptureTarget::ModelBehavior {
+                                                            ..
+                                                        } => ui_text(
+                                                            language,
+                                                            UiText::PressBehaviorShortcut,
+                                                        ),
+                                                    },
+                                                ),
+                                            )
+                                        },
+                                    )
                                     .children(snapshot.shortcuts.commands.iter().enumerate().map(
                                         |(index, binding)| {
                                             let target = ShortcutCaptureTarget::Command(
@@ -291,8 +296,10 @@ pub(super) fn content(
                                             );
                                             let target_name =
                                                 shortcut_target_name(language, &target);
-                                            let capturing =
-                                                view.shortcut_capture.as_ref() == Some(&target);
+                                            let capturing = view
+                                                .shortcut_capture
+                                                .as_ref()
+                                                .is_some_and(|capture| capture.target == target);
                                             let disabled = shortcut_action_disabled;
                                             let focus = view
                                                 .shortcut_row_focus
@@ -410,7 +417,9 @@ pub(super) fn content(
                                                 let target_name =
                                                     shortcut_target_name(language, &target);
                                                 let capturing =
-                                                    view.shortcut_capture.as_ref() == Some(&target);
+                                                    view.shortcut_capture.as_ref().is_some_and(
+                                                        |capture| capture.target == target,
+                                                    );
                                                 let disabled = shortcut_action_disabled;
                                                 let focus = view
                                                     .shortcut_row_focus

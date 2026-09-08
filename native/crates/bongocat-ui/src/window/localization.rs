@@ -1,7 +1,6 @@
 use super::{
     SettingsBuildEnvironment, SettingsBuildInfo, SettingsError, SettingsErrorCode,
-    SettingsInputDiagnostics, SettingsLanguage, SettingsModelOrigin, ShortcutCaptureError,
-    ShortcutCaptureTarget,
+    SettingsInputDiagnostics, SettingsLanguage, SettingsModelOrigin, ShortcutCaptureTarget,
 };
 use crate::SettingsDiagnosticsExportStatus;
 
@@ -125,7 +124,6 @@ pub(super) enum UiText {
     ClearAllShortcuts,
     ClearAllShortcutsDescription,
     WaitingForKeyCombination,
-    UnsupportedKey,
     NotStarted,
     Running,
     PermissionRequired,
@@ -448,7 +446,6 @@ pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
             "移除所有自定义快捷键绑定。",
         ],
         UiText::WaitingForKeyCombination => ["Waiting for a key combination", "正在等待组合键"],
-        UiText::UnsupportedKey => ["Unsupported key", "不支持的按键"],
         UiText::NotStarted => ["Not started", "尚未启动"],
         UiText::Running => ["Running", "运行中"],
         UiText::PermissionRequired => ["Permission required", "需要权限"],
@@ -802,21 +799,6 @@ pub(super) fn shortcut_accessibility_label(
         SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates => {
             format!("Capture shortcut for {name}")
         }
-    }
-}
-
-pub(super) fn shortcut_capture_error(
-    language: SettingsLanguage,
-    error: &ShortcutCaptureError,
-) -> String {
-    match error {
-        ShortcutCaptureError::UnsupportedKey => text(language, UiText::UnsupportedKey).to_owned(),
-        ShortcutCaptureError::AlreadyAssigned(shortcut) => match language {
-            SettingsLanguage::ChineseSimplified => format!("快捷键 {shortcut} 已被占用"),
-            SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates => {
-                format!("Shortcut {shortcut} is already assigned")
-            }
-        },
     }
 }
 
@@ -1238,7 +1220,6 @@ mod tests {
             UiText::ClearAllShortcuts,
             UiText::ClearAllShortcutsDescription,
             UiText::WaitingForKeyCombination,
-            UiText::UnsupportedKey,
             UiText::NotStarted,
             UiText::Running,
             UiText::PermissionRequired,

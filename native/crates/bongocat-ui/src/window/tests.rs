@@ -32,34 +32,68 @@ fn key(key: &str, key_char: Option<&str>) -> KeyDownEvent {
     }
 }
 
+fn captured_shortcut(key: &str, modifiers: Modifiers) -> Option<String> {
+    let keys = capture_key(key).into_iter().collect();
+    shortcut_from_capture(&modifiers, &keys)
+}
+
 #[test]
 fn shortcut_capture_canonicalizes_modifiers_and_named_keys() {
-    let mut event = key("arrowleft", None);
-    event.keystroke.modifiers.control = true;
-    event.keystroke.modifiers.shift = true;
+    let mut modifiers = Modifiers::default();
+    modifiers.control = true;
+    modifiers.shift = true;
     assert_eq!(
-        shortcut_from_key_event(&event).as_deref(),
+        captured_shortcut("arrowleft", modifiers).as_deref(),
         Some("Control+Shift+ArrowLeft")
     );
 
-    let event = key("return", None);
-    assert_eq!(shortcut_from_key_event(&event).as_deref(), Some("Enter"));
+    modifiers = Modifiers::default();
+    modifiers.control = true;
+    assert_eq!(
+        captured_shortcut("return", modifiers).as_deref(),
+        Some("Control+Enter")
+    );
+
+    assert_eq!(
+        captured_shortcut("f12", Modifiers::default()).as_deref(),
+        Some("F12")
+    );
 }
 
 #[test]
-fn shortcut_capture_rejects_modifier_only_and_unsupported_keys() {
-    assert!(shortcut_from_key_event(&key("shift", None)).is_none());
-    assert!(shortcut_from_key_event(&key("media-play", None)).is_none());
+fn shortcut_capture_rejects_unmodified_non_function_and_unsupported_keys() {
+    for key_name in ["a", "1", "return", "arrowleft", "space", "delete"] {
+        assert!(
+            captured_shortcut(key_name, Modifiers::default()).is_none(),
+            "{key_name} must not be captured without a modifier"
+        );
+    }
+    assert!(captured_shortcut("shift", Modifiers::default()).is_none());
+    assert!(captured_shortcut("media-play", Modifiers::default()).is_none());
 }
 
 #[test]
-fn escape_is_reserved_for_cancelling_capture() {
-    let event = key("escape", None);
-    assert!(is_capture_cancel(&event));
+fn shortcut_capture_previews_incomplete_and_unsupported_combinations() {
+    let keys = BTreeSet::from(["A".to_owned()]);
+    let mut modifiers = Modifiers::default();
+    assert_eq!(
+        shortcut_capture_preview(&modifiers, &keys).as_deref(),
+        Some("A")
+    );
+    assert!(shortcut_from_capture(&modifiers, &keys).is_none());
 
-    let mut modified = key("escape", None);
-    modified.keystroke.modifiers.control = true;
-    assert!(!is_capture_cancel(&modified));
+    modifiers.control = true;
+    assert_eq!(
+        shortcut_from_capture(&modifiers, &keys).as_deref(),
+        Some("Control+A")
+    );
+
+    let keys = BTreeSet::new();
+    assert_eq!(
+        shortcut_capture_preview(&modifiers, &keys).as_deref(),
+        Some("Control")
+    );
+    assert!(shortcut_from_capture(&modifiers, &keys).is_none());
 }
 
 #[test]
@@ -458,20 +492,6 @@ fn diagnostics_presentations_follow_the_resolved_language() {
     assert_eq!(
         shortcut_accessibility_label(SettingsLanguage::ChineseSimplified, &command),
         "为显示或隐藏模型窗口录入快捷键"
-    );
-    assert_eq!(
-        shortcut_capture_error(
-            SettingsLanguage::ChineseSimplified,
-            &ShortcutCaptureError::UnsupportedKey,
-        ),
-        "不支持的按键"
-    );
-    assert_eq!(
-        shortcut_capture_error(
-            SettingsLanguage::ChineseSimplified,
-            &ShortcutCaptureError::AlreadyAssigned("Meta+O".to_owned()),
-        ),
-        "快捷键 Meta+O 已被占用"
     );
 }
 

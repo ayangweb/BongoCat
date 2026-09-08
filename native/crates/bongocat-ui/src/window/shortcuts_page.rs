@@ -171,7 +171,11 @@ fn shortcut_row(
 ) -> Div {
     let target = row.target;
     let target_name = shortcut_target_name(language, &target);
-    let capturing = view.shortcut_capture.as_ref() == Some(&target);
+    let capture = view
+        .shortcut_capture
+        .as_ref()
+        .filter(|capture| capture.target == target);
+    let capturing = capture.is_some();
     let focus = view
         .shortcut_row_focus
         .get(&target)
@@ -228,8 +232,10 @@ fn shortcut_row(
                     tokens.muted
                 })
                 .when(disabled, |this| this.opacity(0.5).cursor_default())
-                .child(if capturing {
-                    ui_text(language, UiText::PressRecordShortcut).to_owned()
+                .child(if let Some(capture) = capture {
+                    shortcut_capture_preview(&capture.modifiers, &capture.keys).unwrap_or_else(
+                        || ui_text(language, UiText::PressRecordShortcut).to_owned(),
+                    )
                 } else if let Some(shortcut) = row.shortcut.clone() {
                     shortcut
                 } else {

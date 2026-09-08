@@ -8,9 +8,20 @@ pub(super) fn is_activation_key(event: &KeyDownEvent) -> bool {
         && (matches!(event.keystroke.key.as_str(), "enter" | "space")
             || event.keystroke.key_char.as_deref() == Some(" "))
 }
-pub(super) fn shortcut_from_key_event(event: &KeyDownEvent) -> Option<String> {
-    let key = canonical_capture_key(event.keystroke.key.as_str())?;
-    let modifiers = &event.keystroke.modifiers;
+pub(super) fn capture_key(key: &str) -> Option<String> {
+    if is_capture_modifier(key) {
+        return None;
+    }
+    canonical_capture_key(key).or_else(|| {
+        let key = key.trim();
+        (!key.is_empty()).then(|| key.to_owned())
+    })
+}
+
+pub(super) fn shortcut_capture_preview(
+    modifiers: &Modifiers,
+    keys: &BTreeSet<String>,
+) -> Option<String> {
     let mut parts: Vec<String> = Vec::with_capacity(5);
     if modifiers.control {
         parts.push("Control".to_owned());
@@ -24,19 +35,49 @@ pub(super) fn shortcut_from_key_event(event: &KeyDownEvent) -> Option<String> {
     if modifiers.platform {
         parts.push("Meta".to_owned());
     }
-    parts.push(key);
-    let candidate = parts.join("+");
+    parts.extend(keys.iter().cloned());
+    (!parts.is_empty()).then(|| parts.join("+"))
+}
+
+pub(super) fn shortcut_from_capture(
+    modifiers: &Modifiers,
+    keys: &BTreeSet<String>,
+) -> Option<String> {
+    let key = keys.first()?;
+    if keys.len() != 1 {
+        return None;
+    }
+    let has_modifier = modifiers.control || modifiers.alt || modifiers.shift || modifiers.platform;
+    if !has_modifier && !is_function_key(key) {
+        return None;
+    }
+    let candidate = shortcut_capture_preview(modifiers, keys)?;
     ShortcutChord::parse(&candidate)
         .ok()
         .map(|chord| chord.canonical())
 }
 
-pub(super) fn is_capture_cancel(event: &KeyDownEvent) -> bool {
-    event.keystroke.key.eq_ignore_ascii_case("escape")
-        && !event.keystroke.modifiers.control
-        && !event.keystroke.modifiers.platform
-        && !event.keystroke.modifiers.alt
-        && !event.keystroke.modifiers.shift
+fn is_function_key(key: &str) -> bool {
+    key.strip_prefix('F')
+        .and_then(|number| number.parse::<u8>().ok())
+        .is_some_and(|number| (1..=12).contains(&number))
+}
+
+fn is_capture_modifier(key: &str) -> bool {
+    matches!(
+        key.to_ascii_lowercase().as_str(),
+        "control"
+            | "ctrl"
+            | "alt"
+            | "option"
+            | "shift"
+            | "meta"
+            | "command"
+            | "cmd"
+            | "win"
+            | "windows"
+            | "platform"
+    )
 }
 
 pub(super) struct ShortcutRow {
