@@ -110,6 +110,7 @@ pub fn open_settings_window(
                     let weak_view = view.downgrade();
                     window.on_window_should_close(cx, move |window, cx| {
                         let _ = weak_view.update(cx, |view, cx| {
+                            view.cancel_shortcut_capture(cx);
                             view.flush_pending_settings(cx);
                         });
                         let result = bongocat_platform::hide_native_window(window);
@@ -124,6 +125,17 @@ pub fn open_settings_window(
                             ),
                         });
                         false
+                    });
+                }
+                #[cfg(target_os = "macos")]
+                {
+                    let weak_view = view.downgrade();
+                    window.on_window_should_close(cx, move |_, cx| {
+                        let _ = weak_view.update(cx, |view, cx| {
+                            view.cancel_shortcut_capture(cx);
+                            view.flush_pending_settings(cx);
+                        });
+                        true
                     });
                 }
                 let overlay_focus = view.read(cx).overlay_focus.clone();

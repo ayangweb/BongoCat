@@ -271,6 +271,7 @@ pub struct Application {
     run_marker: ApplicationRunMarker,
     panic_hook: Option<ApplicationPanicHook>,
     shortcut_table: ShortcutTable,
+    shortcut_capture_suspended: bool,
 }
 
 impl Application {
@@ -441,6 +442,7 @@ impl Application {
             run_marker,
             panic_hook: None,
             shortcut_table,
+            shortcut_capture_suspended: false,
         };
         if previous_run.is_some() {
             application
@@ -899,25 +901,7 @@ impl Application {
         shortcuts: bongocat_ui::SettingsShortcuts,
     ) -> Result<RuntimeSnapshot, ApplicationError> {
         let mut next_config = self.config.clone();
-        next_config.shortcuts = ShortcutConfig {
-            commands: shortcuts
-                .commands
-                .into_iter()
-                .map(|binding| ShortcutBinding {
-                    command: binding.command,
-                    shortcut: binding.shortcut,
-                })
-                .collect(),
-            model_behaviors: shortcuts
-                .model_behaviors
-                .into_iter()
-                .map(|binding| ModelBehaviorBinding {
-                    model_id: binding.model_id,
-                    behavior_id: binding.behavior_id,
-                    shortcut: binding.shortcut,
-                })
-                .collect(),
-        };
+        next_config.shortcuts = shortcut_config_from_settings(shortcuts);
         next_config.shortcuts = next_config.shortcuts.canonicalized()?;
         next_config.validate()?;
         let compiled = active_shortcuts(&next_config)?;
@@ -926,9 +910,35 @@ impl Application {
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;
         let snapshot = self.runtime.client().snapshot();
         self.config = next_config;
+        self.shortcut_capture_suspended = false;
         self.shortcut_table.replace(compiled);
         self.config_revision = Some(next_revision);
         Ok(snapshot)
+    }
+
+    /// Temporarily removes the binding being recorded from the platform-facing
+    /// table without changing the persisted configuration.
+    pub fn suspend_shortcut_capture(
+        &mut self,
+        shortcuts_without_capture_target: bongocat_ui::SettingsShortcuts,
+    ) -> Result<(), ApplicationError> {
+        let mut temporary = self.config.clone();
+        temporary.shortcuts = shortcut_config_from_settings(shortcuts_without_capture_target);
+        temporary.shortcuts = temporary.shortcuts.canonicalized()?;
+        temporary.validate()?;
+        self.shortcut_table.replace(active_shortcuts(&temporary)?);
+        self.shortcut_capture_suspended = true;
+        Ok(())
+    }
+
+    /// Restores the platform-facing table from the current committed config
+    /// after shortcut recording is abandoned.
+    pub fn resume_shortcut_capture(&mut self) -> Result<(), ApplicationError> {
+        if self.shortcut_capture_suspended {
+            self.shortcut_table.replace(active_shortcuts(&self.config)?);
+            self.shortcut_capture_suspended = false;
+        }
+        Ok(())
     }
 
     pub fn set_behavior_shortcuts_enabled(
@@ -1258,6 +1268,28 @@ fn active_shortcuts(config: &NativeConfig) -> Result<CompiledShortcuts, ConfigEr
     shortcuts.compile()
 }
 
+fn shortcut_config_from_settings(shortcuts: bongocat_ui::SettingsShortcuts) -> ShortcutConfig {
+    ShortcutConfig {
+        commands: shortcuts
+            .commands
+            .into_iter()
+            .map(|binding| ShortcutBinding {
+                command: binding.command,
+                shortcut: binding.shortcut,
+            })
+            .collect(),
+        model_behaviors: shortcuts
+            .model_behaviors
+            .into_iter()
+            .map(|binding| ModelBehaviorBinding {
+                model_id: binding.model_id,
+                behavior_id: binding.behavior_id,
+                shortcut: binding.shortcut,
+            })
+            .collect(),
+    }
+}
+
 fn gamepad_axis_settings_from_config(
     config: &NativeConfig,
 ) -> Result<GamepadAxisSettings, ConfigError> {
@@ -1446,6 +1478,63 @@ mod tests {
         assert!(reenabled.resolve(modifiers, "B").is_some());
         assert!(reenabled.resolve(alt, "M").is_some());
         restarted.shutdown().expect("clean restarted shutdown");
+    }
+
+    #[test]
+    fn shortcut_capture_suspends_a_binding_without_persisting_and_restores_it_on_cancel() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let mut application =
+            Application::start_with_layout(layout.clone()).expect("start application");
+        let shortcuts = bongocat_ui::SettingsShortcuts {
+            commands: vec![bongocat_ui::SettingsShortcutBinding {
+                command: "toggle_overlay".to_owned(),
+                shortcut: "Meta+L".to_owned(),
+            }],
+            model_behaviors: Vec::new(),
+        };
+        application
+            .set_shortcuts(shortcuts.clone())
+            .expect("persist shortcut");
+        let persisted_before_capture =
+            std::fs::read(&layout.config).expect("read persisted config");
+        let meta =
+            bongocat_config::ShortcutModifiers::from_bits(bongocat_config::ShortcutModifiers::META)
+                .expect("valid modifier");
+        assert!(
+            application
+                .shortcut_table()
+                .load()
+                .resolve(meta, "L")
+                .is_some()
+        );
+
+        application
+            .suspend_shortcut_capture(bongocat_ui::SettingsShortcuts::default())
+            .expect("suspend shortcut");
+        assert!(
+            application
+                .shortcut_table()
+                .load()
+                .resolve(meta, "L")
+                .is_none()
+        );
+        assert_eq!(
+            std::fs::read(&layout.config).expect("config remains unchanged"),
+            persisted_before_capture
+        );
+
+        application
+            .resume_shortcut_capture()
+            .expect("restore shortcut");
+        assert!(
+            application
+                .shortcut_table()
+                .load()
+                .resolve(meta, "L")
+                .is_some()
+        );
+        application.shutdown().expect("clean shutdown");
     }
 
     #[test]

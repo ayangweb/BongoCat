@@ -875,6 +875,13 @@ impl SettingsView {
             )
         });
         self.accessibility_focus = Some(request.target);
+        let capture_target_changed = self
+            .shortcut_capture
+            .as_ref()
+            .is_some_and(|capture| shortcut_target.as_ref() != Some(&capture.target));
+        if capture_target_changed || self.pending == Some(PendingOperation::BeginShortcutCapture) {
+            self.cancel_shortcut_capture(cx);
+        }
         if request.action != AccessibilityAction::Click {
             return;
         }
@@ -1049,7 +1056,7 @@ impl SettingsView {
                         snapshot.configuration_status == SettingsConfigurationStatus::Ready
                     })
                 {
-                    self.shortcut_capture = Some(ShortcutCapture::new(target));
+                    self.begin_shortcut_capture_from_accessibility(target, cx);
                 }
             }
         }

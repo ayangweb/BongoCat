@@ -35,8 +35,8 @@ use gpui_kit::component::{
 use gpui_kit::{
     Anchor, App, AppContext, Axis, Bounds, Context, DisplayId, Div, Entity, FocusHandle, Focusable,
     Hsla, KeyDownEvent, KeyUpEvent, Modifiers, Pixels, Render, SharedString, Stateful,
-    TitlebarOptions, WeakEntity, Window, WindowAppearance, WindowBounds, WindowHandle,
-    WindowOptions, div, point, prelude::*, px, size,
+    TitlebarOptions, VisualContext, WeakEntity, Window, WindowAppearance, WindowBounds,
+    WindowHandle, WindowOptions, div, point, prelude::*, px, size,
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use raw_window_handle::HasWindowHandle;
@@ -71,7 +71,7 @@ use localization::{
     model_availability_summary, model_delete_confirmation, model_import_progress,
     model_invalid_summary, recovered_backup_detail, runtime_command_failure,
     runtime_shutdown_failures, runtime_status, settings_error, shortcut_accessibility_label,
-    shortcut_target_name, text as ui_text,
+    shortcut_conflict_message, shortcut_target_name, text as ui_text,
 };
 #[cfg(test)]
 mod tests;
@@ -82,6 +82,8 @@ const WINDOW_MIN_WIDTH: f32 = crate::MIN_SETTINGS_WINDOW_WIDTH as f32;
 const WINDOW_MIN_HEIGHT: f32 = crate::MIN_SETTINGS_WINDOW_HEIGHT as f32;
 
 struct SettingsServiceErrorNotification;
+
+struct ShortcutConflictNotification;
 
 fn accepts_snapshot_revision(current: Option<u64>, incoming: u64) -> bool {
     current.is_none_or(|current| incoming >= current)
@@ -234,6 +236,8 @@ enum PendingOperation {
     RestoreDefaultShortcuts,
     ClearShortcuts,
     SetShortcuts,
+    BeginShortcutCapture,
+    CancelShortcutCapture,
     ExportDiagnostics,
 }
 
@@ -260,6 +264,11 @@ impl ShortcutCapture {
             modifiers: Modifiers::default(),
             keys: BTreeSet::new(),
         }
+    }
+
+    fn clear_temporary_input(&mut self) {
+        self.modifiers = Modifiers::default();
+        self.keys.clear();
     }
 }
 
@@ -433,6 +442,7 @@ pub struct SettingsView {
     model_row_focus: BTreeMap<ModelRowKey, ModelRowFocus>,
     model_behavior_preview_focus: BTreeMap<ModelBehaviorKey, FocusHandle>,
     shortcut_capture: Option<ShortcutCapture>,
+    shortcut_capture_blur_subscription: Option<gpui_kit::Subscription>,
     shortcut_row_focus: BTreeMap<ShortcutCaptureTarget, FocusHandle>,
     shortcut_clear_focus: BTreeMap<ShortcutCaptureTarget, FocusHandle>,
     window_hidden: bool,

@@ -47,8 +47,8 @@ pub(super) fn content(
                         ShortcutSettingsTab::Model
                     };
                     view_entity.update(app, |view, cx| {
+                        view.cancel_shortcut_capture(cx);
                         view.shortcut_tab = tab;
-                        view.shortcut_capture = None;
                         cx.notify();
                     });
                 }),

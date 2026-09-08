@@ -1050,6 +1050,15 @@ pub(super) fn settings_error(language: SettingsLanguage, error: SettingsError) -
     }]
 }
 
+pub(super) fn shortcut_conflict_message(language: SettingsLanguage, shortcut: &str) -> String {
+    match language {
+        SettingsLanguage::ChineseSimplified => format!("{shortcut} 已被其他快捷键占用"),
+        SettingsLanguage::EnglishUnitedStates | SettingsLanguage::System => {
+            format!("{shortcut} is already assigned to another shortcut")
+        }
+    }
+}
+
 pub(super) fn model_invalid_summary(
     language: SettingsLanguage,
     origin: SettingsModelOrigin,

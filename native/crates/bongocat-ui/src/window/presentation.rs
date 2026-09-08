@@ -391,9 +391,9 @@ pub(super) fn canonical_capture_key(key: &str) -> Option<String> {
     )
 }
 
-pub(super) fn shortcut_conflicts(shortcuts: &SettingsShortcuts) -> bool {
+pub(super) fn conflicting_shortcut(shortcuts: &SettingsShortcuts) -> Option<String> {
     let mut seen = BTreeSet::new();
-    shortcuts
+    for chord in shortcuts
         .commands
         .iter()
         .map(|binding| binding.shortcut.as_str())
@@ -404,7 +404,13 @@ pub(super) fn shortcut_conflicts(shortcuts: &SettingsShortcuts) -> bool {
                 .map(|binding| binding.shortcut.as_str()),
         )
         .filter_map(|value| ShortcutChord::parse(value).ok())
-        .any(|chord| !seen.insert(chord.canonical()))
+    {
+        let canonical = chord.canonical();
+        if !seen.insert(canonical.clone()) {
+            return Some(canonical);
+        }
+    }
+    None
 }
 
 pub(super) struct InputServicePresentation {

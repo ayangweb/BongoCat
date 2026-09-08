@@ -302,6 +302,7 @@ impl SettingsView {
             model_row_focus: BTreeMap::new(),
             model_behavior_preview_focus: BTreeMap::new(),
             shortcut_capture: None,
+            shortcut_capture_blur_subscription: None,
             shortcut_row_focus: BTreeMap::new(),
             shortcut_clear_focus: BTreeMap::new(),
             window_hidden: false,

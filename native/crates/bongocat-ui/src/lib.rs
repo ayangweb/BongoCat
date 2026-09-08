@@ -1101,6 +1101,14 @@ pub enum SettingsCommand {
         shortcuts: SettingsShortcuts,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    SuspendShortcutCapture {
+        expected_config_revision: u64,
+        shortcuts_without_capture_target: SettingsShortcuts,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    ResumeShortcutCapture {
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     RestoreDefaultShortcuts {
         expected_config_revision: u64,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
@@ -1392,6 +1400,24 @@ impl SettingsClient {
         .await
     }
 
+    pub async fn suspend_shortcut_capture(
+        &self,
+        expected_config_revision: u64,
+        shortcuts_without_capture_target: SettingsShortcuts,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SuspendShortcutCapture {
+            expected_config_revision,
+            shortcuts_without_capture_target,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn resume_shortcut_capture(&self) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::ResumeShortcutCapture { reply })
+            .await
+    }
+
     pub async fn restore_default_shortcuts(
         &self,
         expected_config_revision: u64,
@@ -1663,6 +1689,22 @@ impl SettingsClient {
             shortcuts,
             reply,
         })
+    }
+
+    pub fn suspend_shortcut_capture_blocking(
+        &self,
+        expected_config_revision: u64,
+        shortcuts_without_capture_target: SettingsShortcuts,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::SuspendShortcutCapture {
+            expected_config_revision,
+            shortcuts_without_capture_target,
+            reply,
+        })
+    }
+
+    pub fn resume_shortcut_capture_blocking(&self) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::ResumeShortcutCapture { reply })
     }
 
     pub fn restore_default_shortcuts_blocking(

@@ -73,6 +73,19 @@ fn shortcut_capture_rejects_unmodified_non_function_and_unsupported_keys() {
 }
 
 #[test]
+fn shortcut_capture_clears_temporary_input_after_a_conflict() {
+    let mut capture =
+        ShortcutCapture::new(ShortcutCaptureTarget::Command("toggle_overlay".to_owned()));
+    capture.modifiers.platform = true;
+    capture.keys.insert("L".to_owned());
+
+    capture.clear_temporary_input();
+
+    assert_eq!(capture.modifiers, Modifiers::default());
+    assert!(capture.keys.is_empty());
+}
+
+#[test]
 fn shortcut_capture_previews_incomplete_and_unsupported_combinations() {
     let keys = BTreeSet::from(["A".to_owned()]);
     let mut modifiers = Modifiers::default();
@@ -111,7 +124,10 @@ fn shortcut_capture_conflict_preview_is_order_independent() {
         ],
         model_behaviors: Vec::new(),
     };
-    assert!(shortcut_conflicts(&shortcuts));
+    assert_eq!(
+        conflicting_shortcut(&shortcuts).as_deref(),
+        Some("Control+B")
+    );
 }
 
 #[test]

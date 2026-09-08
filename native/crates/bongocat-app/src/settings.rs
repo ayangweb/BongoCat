@@ -804,8 +804,38 @@ fn run_service(
                                 .map(|_| ())
                                 .map_err(map_application_error)
                         }
+                    });
+                if result.is_err() {
+                    let _ = application.resume_shortcut_capture();
+                }
+                let result =
+                    result.map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::SuspendShortcutCapture {
+                expected_config_revision,
+                shortcuts_without_capture_target,
+                reply,
+            } => {
+                let result = require_operational(&application)
+                    .map_err(map_application_error)
+                    .and_then(|()| {
+                        if application.config_revision() != Some(expected_config_revision) {
+                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
+                        } else {
+                            application
+                                .suspend_shortcut_capture(shortcuts_without_capture_target)
+                                .map_err(map_application_error)
+                        }
                     })
-                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                    .map(|()| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::ResumeShortcutCapture { reply } => {
+                let result = application
+                    .resume_shortcut_capture()
+                    .map_err(map_application_error)
+                    .map(|()| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
             SettingsCommand::RestoreDefaultShortcuts {
@@ -3586,6 +3616,43 @@ mod tests {
             .shutdown_blocking()
             .expect("restarted service shutdown");
         restarted_service.join().expect("restarted service join");
+    }
+
+    #[test]
+    fn service_suspends_and_restores_shortcuts_without_persisting_capture_state() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application =
+            Application::start_with_layout(layout.clone()).expect("application start");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        let configured = client
+            .set_shortcuts_blocking(
+                initial.config_revision.expect("config revision"),
+                shortcut_fixture(),
+            )
+            .expect("configure shortcut");
+        let persisted_before_capture = std::fs::read(&layout.config).expect("persisted config");
+
+        let suspended = client
+            .suspend_shortcut_capture_blocking(
+                configured.config_revision.expect("configured revision"),
+                SettingsShortcuts::default(),
+            )
+            .expect("suspend shortcut capture");
+        assert_eq!(suspended.shortcuts, configured.shortcuts);
+        assert_eq!(
+            std::fs::read(&layout.config).expect("capture must not persist"),
+            persisted_before_capture
+        );
+
+        let resumed = client
+            .resume_shortcut_capture_blocking()
+            .expect("resume shortcut capture");
+        assert_eq!(resumed.shortcuts, configured.shortcuts);
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
     }
 
     #[test]
