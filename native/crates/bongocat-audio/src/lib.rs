@@ -13,7 +13,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-const WORKER_POLL_INTERVAL: Duration = Duration::from_millis(10);
+// Playback completion is diagnostic state only. A short health check keeps
+// that state reasonably fresh without waking an idle worker at 100 Hz.
+const WORKER_POLL_INTERVAL: Duration = Duration::from_millis(100);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const PREFERRED_OUTPUT_BUFFER_FRAMES: u32 = 512;
 
@@ -495,7 +497,14 @@ fn run_worker(
         match receiver.recv_timeout(WORKER_POLL_INTERVAL) {
             Ok(command) => process_command(command, &shared, backend.as_mut()),
             Err(RecvTimeoutError::Timeout) => {
-                if !backend.is_playing() {
+                if !backend.is_playing()
+                    && shared
+                        .diagnostics
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .current_voice_sequence
+                        .is_some()
+                {
                     shared.publish(|diagnostics| diagnostics.current_voice_sequence = None);
                 }
             }

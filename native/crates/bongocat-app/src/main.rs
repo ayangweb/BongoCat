@@ -1898,6 +1898,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         cx.spawn(async move |cx| {
             loop {
                 Timer::after(Duration::from_millis(50)).await;
+                if !cx.update(|cx| cx.has_global::<ProductCoordinator>()) {
+                    break;
+                }
                 while let Ok(request) = status_icon_receiver.try_recv() {
                     let result = cx.update(|cx| {
                         if !cx.has_global::<ProductCoordinator>() {
@@ -1983,6 +1986,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         cx.spawn(async move |cx| {
             loop {
                 Timer::after(Duration::from_millis(25)).await;
+                if !cx.update(|cx| cx.has_global::<ProductCoordinator>()) {
+                    break;
+                }
                 let action = cx.update(|cx| {
                     cx.try_global::<ProductCoordinator>()
                         .and_then(|coordinator| coordinator.single_instance.as_ref())
