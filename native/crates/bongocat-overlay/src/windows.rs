@@ -94,7 +94,7 @@ use windows::{
                 CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GWL_EXSTYLE,
                 GetCursorPos, GetWindowLongPtrW, GetWindowRect, HTCAPTION, HTTRANSPARENT,
                 HWND_NOTOPMOST, HWND_TOPMOST, IsWindowVisible, MSG, PM_REMOVE, PeekMessageW,
-                RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOSIZE,
+                RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
                 SWP_NOZORDER, SetWindowPos, ShowWindow, TranslateMessage, UnregisterClassW,
                 WM_CLOSE, WM_NCHITTEST, WNDCLASSW, WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP,
                 WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_POPUP,
@@ -486,6 +486,9 @@ impl OverlayWindow {
 
     fn show(&self) -> Result<(), OverlayError> {
         self.assert_owner_thread();
+        if unsafe { IsWindowVisible(self.hwnd) }.as_bool() {
+            return Ok(());
+        }
         // SAFETY: the HWND is live, owned, and accessed only on its creation
         // thread; showing without activation does not transfer ownership.
         let _ = unsafe { ShowWindow(self.hwnd, SW_SHOWNOACTIVATE) };
@@ -542,6 +545,29 @@ impl OverlayWindow {
                 SWP_NOACTIVATE | SWP_NOSIZE | SWP_NOZORDER,
             )
             .map_err(windows_error("keep overlay inside work area"))?;
+        }
+        Ok(())
+    }
+
+    fn set_always_on_top(&self, always_on_top: bool) -> Result<(), OverlayError> {
+        self.assert_owner_thread();
+        // SAFETY: the HWND is live and confined to its owner thread. This is
+        // the only in-place z-order transition for the overlay.
+        unsafe {
+            SetWindowPos(
+                self.hwnd,
+                if always_on_top {
+                    Some(HWND_TOPMOST)
+                } else {
+                    Some(HWND_NOTOPMOST)
+                },
+                0,
+                0,
+                0,
+                0,
+                SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE,
+            )
+            .map_err(windows_error("update overlay z-order"))?;
         }
         Ok(())
     }
@@ -1039,12 +1065,16 @@ impl NativeOverlay {
     fn set_visible(&self, visible: bool) -> Result<(), OverlayError> {
         if visible {
             self.presentation.require_presented_frame()?;
-            self.window.show()
-        } else {
+            self.window.show()?;
+        } else if self.window.is_visible() {
             // SAFETY: the HWND is live and accessed only from its owner thread.
             let _ = unsafe { ShowWindow(self.window.hwnd, SW_HIDE) };
-            Ok(())
         }
+        Ok(())
+    }
+
+    fn set_always_on_top(&self, always_on_top: bool) -> Result<(), OverlayError> {
+        self.window.set_always_on_top(always_on_top)
     }
 
     fn draw(&mut self, verify: bool) -> Result<(), OverlayError> {
@@ -1168,28 +1198,28 @@ impl ProductOverlaySession {
                 "runtime stopped while the product overlay was active",
             ));
         }
-        if self
+        let next_options = self
             .options
-            .with_runtime_settings(runtime_snapshot.overlay_settings)
-            != self.options
-        {
-            let next_options = self
-                .options
-                .with_runtime_settings(runtime_snapshot.overlay_settings);
-            let bounds = self.overlay.window.bounds()?;
-            let bounds = if next_options.scale_percent != self.options.scale_percent {
-                bounds.rescale(self.options.scale_percent, next_options.scale_percent)
-            } else {
-                bounds
-            };
-            let mut replacement =
-                NativeOverlay::create(&self.last_frame, next_options, Some(bounds))?;
-            if runtime_snapshot.overlay_visible {
-                replacement.draw(self.frames_presented == 0)?;
-                replacement.set_visible(true)?;
-                self.frames_presented = self.frames_presented.saturating_add(1);
+            .with_runtime_settings(runtime_snapshot.overlay_settings);
+        if next_options != self.options {
+            if self.options.requires_window_recreation(next_options) {
+                let bounds = self.overlay.window.bounds()?;
+                let bounds = if next_options.scale_percent != self.options.scale_percent {
+                    bounds.rescale(self.options.scale_percent, next_options.scale_percent)
+                } else {
+                    bounds
+                };
+                let mut replacement =
+                    NativeOverlay::create(&self.last_frame, next_options, Some(bounds))?;
+                if runtime_snapshot.overlay_visible {
+                    replacement.draw(self.frames_presented == 0)?;
+                    replacement.set_visible(true)?;
+                    self.frames_presented = self.frames_presented.saturating_add(1);
+                }
+                self.overlay = replacement;
+            } else if next_options.always_on_top != self.options.always_on_top {
+                self.overlay.set_always_on_top(next_options.always_on_top)?;
             }
-            self.overlay = replacement;
             self.options = next_options;
         }
         if self.options.keep_inside_work_area {

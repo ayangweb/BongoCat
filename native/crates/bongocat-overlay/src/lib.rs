@@ -58,6 +58,15 @@ impl OverlaySessionOptions {
             window_bounds: self.window_bounds,
         }
     }
+
+    /// Z-order changes are applied directly to the native window. Other
+    /// settings still require replacing the native window resources.
+    pub(crate) const fn requires_window_recreation(self, next: Self) -> bool {
+        self.click_through != next.click_through
+            || self.scale_percent != next.scale_percent
+            || self.opacity_percent != next.opacity_percent
+            || self.keep_inside_work_area != next.keep_inside_work_area
+    }
 }
 
 impl Default for OverlaySessionOptions {
@@ -995,6 +1004,17 @@ mod tests {
             OverlayWindowBounds::new(-1_500, 100, 2_400, 1_200).clamp_to(work_area),
             OverlayWindowBounds::new(-1_920, 40, 2_400, 1_200)
         );
+    }
+
+    #[test]
+    fn always_on_top_only_changes_use_an_in_place_window_transition() {
+        let current = OverlaySessionOptions::default();
+        let mut next = current;
+        next.always_on_top = false;
+        assert!(!current.requires_window_recreation(next));
+
+        next.opacity_percent = 80;
+        assert!(current.requires_window_recreation(next));
     }
 
     #[test]

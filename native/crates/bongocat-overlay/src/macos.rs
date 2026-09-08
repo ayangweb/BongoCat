@@ -355,40 +355,40 @@ impl ProductOverlaySession {
                 "runtime stopped while the product overlay was active",
             ));
         }
-        if self
+        let next_options = self
             .options
-            .with_runtime_settings(runtime_snapshot.overlay_settings)
-            != self.options
-        {
-            let next_options = self
-                .options
-                .with_runtime_settings(runtime_snapshot.overlay_settings);
-            let bounds = self.window_bounds()?;
-            let bounds = if next_options.scale_percent != self.options.scale_percent {
-                bounds.rescale(self.options.scale_percent, next_options.scale_percent)
-            } else {
-                bounds
-            };
-            let mut replacement = NativeOverlay::create(
-                MainThreadMarker::new().ok_or_else(|| {
-                    OverlayError::new("macOS overlay settings update lost the main thread")
-                })?,
-                &self.last_frame,
-                next_options,
-                Some(bounds),
-            )?;
-            if runtime_snapshot.overlay_visible {
-                match replacement.draw(self.frames_presented == 0) {
-                    Ok(()) => self.retry_backoff.record_success(),
-                    Err(error) if error.is_temporary_presentation_unavailable() => {
-                        return Ok(self.defer_drawable_unavailable());
+            .with_runtime_settings(runtime_snapshot.overlay_settings);
+        if next_options != self.options {
+            if self.options.requires_window_recreation(next_options) {
+                let bounds = self.window_bounds()?;
+                let bounds = if next_options.scale_percent != self.options.scale_percent {
+                    bounds.rescale(self.options.scale_percent, next_options.scale_percent)
+                } else {
+                    bounds
+                };
+                let mut replacement = NativeOverlay::create(
+                    MainThreadMarker::new().ok_or_else(|| {
+                        OverlayError::new("macOS overlay settings update lost the main thread")
+                    })?,
+                    &self.last_frame,
+                    next_options,
+                    Some(bounds),
+                )?;
+                if runtime_snapshot.overlay_visible {
+                    match replacement.draw(self.frames_presented == 0) {
+                        Ok(()) => self.retry_backoff.record_success(),
+                        Err(error) if error.is_temporary_presentation_unavailable() => {
+                            return Ok(self.defer_drawable_unavailable());
+                        }
+                        Err(error) => return Err(error),
                     }
-                    Err(error) => return Err(error),
+                    replacement.set_visible(true)?;
+                    self.frames_presented = self.frames_presented.saturating_add(1);
                 }
-                replacement.set_visible(true)?;
-                self.frames_presented = self.frames_presented.saturating_add(1);
+                self.overlay = replacement;
+            } else if next_options.always_on_top != self.options.always_on_top {
+                self.overlay.set_always_on_top(next_options.always_on_top);
             }
-            self.overlay = replacement;
             self.options = next_options;
         }
         if self.options.keep_inside_work_area {
@@ -1313,7 +1313,12 @@ impl NativeOverlay {
     fn set_visible(&self, visible: bool) -> Result<(), OverlayError> {
         if visible {
             self.presentation.require_presented_frame()?;
-            self.panel.orderFrontRegardless();
+            // The frame loop calls this method after every successful draw.
+            // Ordering an already visible panel frontmost would continually
+            // raise it above other windows, even when always-on-top is off.
+            if !self.panel.isVisible() {
+                self.panel.orderFrontRegardless();
+            }
             if !self.panel.isVisible() {
                 return Err(OverlayError::new("macOS overlay did not become visible"));
             }
@@ -1321,6 +1326,10 @@ impl NativeOverlay {
             self.panel.orderOut(None);
         }
         Ok(())
+    }
+
+    fn set_always_on_top(&self, always_on_top: bool) {
+        self.panel.setLevel(main_window_level(always_on_top));
     }
 
     fn draw_in_autorelease_pool(&self, verify_frame: bool) -> Result<(), OverlayError> {
