@@ -233,11 +233,13 @@ fn shortcut_row(
                 })
                 .when(disabled, |this| this.opacity(0.5).cursor_default())
                 .child(if let Some(capture) = capture {
-                    shortcut_capture_preview(&capture.modifiers, &capture.keys).unwrap_or_else(
-                        || ui_text(language, UiText::PressRecordShortcut).to_owned(),
-                    )
+                    shortcut_capture_preview(&capture.modifiers, &capture.keys)
+                        .map(|shortcut| shortcut_display(&shortcut))
+                        .unwrap_or_else(|| {
+                            ui_text(language, UiText::PressRecordShortcut).to_owned()
+                        })
                 } else if let Some(shortcut) = row.shortcut.clone() {
-                    shortcut
+                    shortcut_display(&shortcut)
                 } else {
                     ui_text(language, UiText::ClickRecordShortcut).to_owned()
                 })

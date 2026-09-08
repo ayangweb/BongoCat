@@ -620,9 +620,11 @@ impl SettingsView {
                     label,
                 )
                 .with_value(if let Some(capture) = capture {
-                    shortcut_capture_preview(&capture.modifiers, &capture.keys).unwrap_or_else(
-                        || ui_text(language, UiText::WaitingForKeyCombination).to_owned(),
-                    )
+                    shortcut_capture_preview(&capture.modifiers, &capture.keys)
+                        .map(|shortcut| shortcut_display(&shortcut))
+                        .unwrap_or_else(|| {
+                            ui_text(language, UiText::WaitingForKeyCombination).to_owned()
+                        })
                 } else {
                     value
                 })

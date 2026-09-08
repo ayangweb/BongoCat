@@ -264,7 +264,7 @@ impl SettingsView {
                     .id::<ShortcutConflictNotification>()
                     .message(shortcut_conflict_message(
                         snapshot.resolved_language,
-                        &conflict,
+                        &shortcut_display(&conflict),
                     ))
                     .with_type(NotificationType::Error),
                 cx,

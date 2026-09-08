@@ -326,7 +326,7 @@ pub(super) fn content(
                                                 .child(
                                                     div()
                                                         .text_color(tokens.muted)
-                                                        .child(binding.shortcut.clone()),
+                                                        .child(shortcut_display(&binding.shortcut)),
                                                 )
                                                 .child(
                                                     command_button(
@@ -448,12 +448,20 @@ pub(super) fn content(
                                                     .child(
                                                         div().min_w_0().flex_1().child(target_name),
                                                     )
-                                                    .child(div().text_color(tokens.muted).child(
-                                                        row.shortcut.unwrap_or_else(|| {
-                                                            ui_text(language, UiText::NotSet)
-                                                                .to_owned()
-                                                        }),
-                                                    ))
+                                                    .child(
+                                                        div().text_color(tokens.muted).child(
+                                                            row.shortcut
+                                                                .as_deref()
+                                                                .map(shortcut_display)
+                                                                .unwrap_or_else(|| {
+                                                                    ui_text(
+                                                                        language,
+                                                                        UiText::NotSet,
+                                                                    )
+                                                                    .to_owned()
+                                                                }),
+                                                        ),
+                                                    )
                                                     .child(
                                                         command_button(
                                                             ui_text(

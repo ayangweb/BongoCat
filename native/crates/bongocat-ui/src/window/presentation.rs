@@ -39,6 +39,55 @@ pub(super) fn shortcut_capture_preview(
     (!parts.is_empty()).then(|| parts.join("+"))
 }
 
+/// Format a canonical shortcut for the platform's familiar keyboard labels.
+/// The persisted/configuration form remains unchanged so platform adapters can
+/// continue to match the typed modifier and HID key identities.
+pub(super) fn shortcut_display(shortcut: &str) -> String {
+    format_shortcut_display(shortcut, cfg!(target_os = "macos"))
+}
+
+pub(super) fn format_shortcut_display(shortcut: &str, macos: bool) -> String {
+    if !macos {
+        return shortcut.to_owned();
+    }
+
+    shortcut
+        .split('+')
+        .map(macos_shortcut_token)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn macos_shortcut_token(token: &str) -> &str {
+    match token.trim().to_ascii_lowercase().as_str() {
+        "control" | "ctrl" => "⌃",
+        "alt" | "option" => "⌥",
+        "shift" => "⇧",
+        "meta" | "command" | "cmd" | "win" | "windows" => "⌘",
+        "escape" | "esc" => "⎋",
+        "backspace" => "⌫",
+        "tab" => "⇥",
+        "enter" | "return" => "↩︎",
+        "space" => "␣",
+        "arrowup" => "↑",
+        "arrowdown" => "↓",
+        "arrowleft" => "←",
+        "arrowright" => "→",
+        "backquote" => "`",
+        "minus" => "-",
+        "equal" => "=",
+        "bracketleft" => "[",
+        "bracketright" => "]",
+        "backslash" => "\\",
+        "semicolon" => ";",
+        "quote" => "'",
+        "comma" => ",",
+        "period" => ".",
+        "slash" => "/",
+        _ => token.trim(),
+    }
+}
+
 pub(super) fn shortcut_from_capture(
     modifiers: &Modifiers,
     keys: &BTreeSet<String>,
@@ -183,6 +232,7 @@ pub(super) fn shortcut_accessibility_rows(
             let label = shortcut_accessibility_label(language, &row.target);
             let value = row
                 .shortcut
+                .map(|shortcut| shortcut_display(&shortcut))
                 .unwrap_or_else(|| ui_text(language, UiText::NotSet).to_owned());
             (row.target, label, value)
         })

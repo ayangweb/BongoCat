@@ -110,6 +110,42 @@ fn shortcut_capture_previews_incomplete_and_unsupported_combinations() {
 }
 
 #[test]
+fn macos_shortcut_display_uses_legacy_symbols() {
+    for (shortcut, expected) in [
+        ("Control+Alt+Shift+Meta+P", "⌃ ⌥ ⇧ ⌘ P"),
+        ("Escape", "⎋"),
+        ("Backspace", "⌫"),
+        ("Tab", "⇥"),
+        ("Enter", "↩︎"),
+        ("Space", "␣"),
+        ("Control+ArrowLeft", "⌃ ←"),
+        ("Meta+BracketLeft", "⌘ ["),
+    ] {
+        assert_eq!(
+            format_shortcut_display(shortcut, true),
+            expected,
+            "{shortcut}"
+        );
+    }
+}
+
+#[test]
+fn non_macos_shortcut_display_preserves_canonical_names() {
+    let shortcut = "Control+Alt+ArrowLeft";
+    assert_eq!(format_shortcut_display(shortcut, false), shortcut);
+}
+
+#[test]
+fn shortcut_display_uses_the_compiled_platform() {
+    let expected = if cfg!(target_os = "macos") {
+        "⌘ P"
+    } else {
+        "Meta+P"
+    };
+    assert_eq!(shortcut_display("Meta+P"), expected);
+}
+
+#[test]
 fn shortcut_capture_conflict_preview_is_order_independent() {
     let shortcuts = SettingsShortcuts {
         commands: vec![
@@ -213,7 +249,7 @@ fn shortcut_capture_targets_have_independent_tab_stops() {
             rows[1].1,
             "Capture shortcut for Show or hide settings window"
         );
-        assert_eq!(rows[5].2, "Control+M");
+        assert_eq!(rows[5].2, shortcut_display("Control+M"));
         assert_eq!(rows[6].2, "Not set");
         assert_eq!(
             shortcut_target_for_accessibility_node(
