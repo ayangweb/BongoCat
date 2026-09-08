@@ -242,6 +242,10 @@ git source 覆写 GPUI。GPUI Kit 当前通过 crates.io 的 `gpui-pre` 同步�
 - 每个 GPUI 应用在创建组件前调用 `gpui_kit::init(cx)`，并以
   `gpui_kit::component::Root` 作为窗口根视图；系统外观变化通过
   `Theme::sync_system_appearance(Some(window), cx)` 同步。
+- 应用内短暂反馈统一使用 `gpui_kit::component::notification::Notification`，根视图必须
+  渲染 `Root::render_notification_layer(window, cx)`；通过
+  `Theme::global_mut(cx).notification.placement = Anchor::BottomRight` 固定在右下角。通知内容必须
+  包含可操作的上下文，例如快捷键冲突须写明被占用的实际 chord；不得以页面内临时错误文本替代。
 - 组件语义色通过 `ActiveTheme::theme()` 读取。不在业务代码重复硬编码默认颜色、字号、间距、
   圆角或控件高度；除非有明确产品需求，让组件默认值和 `Theme` 生效。
 - 常用组件及核心 API：`Button::new(id).label(label)`、`Switch::new(id).checked(bool)`、

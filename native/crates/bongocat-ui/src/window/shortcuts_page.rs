@@ -49,7 +49,6 @@ pub(super) fn content(
                     view_entity.update(app, |view, cx| {
                         view.shortcut_tab = tab;
                         view.shortcut_capture = None;
-                        view.shortcut_capture_error = None;
                         cx.notify();
                     });
                 }),
@@ -132,14 +131,6 @@ pub(super) fn content(
                                 ),
                         ),
                 )
-                .when_some(view.shortcut_capture_error, |content, error| {
-                    content.child(
-                        div()
-                            .text_sm()
-                            .text_color(tokens.danger)
-                            .child(shortcut_capture_error(language, error)),
-                    )
-                })
                 .when(rows.is_empty(), |content| {
                     content.child(
                         div()

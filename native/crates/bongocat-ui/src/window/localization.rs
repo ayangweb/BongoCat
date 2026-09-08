@@ -127,7 +127,6 @@ pub(super) enum UiText {
     ClearAllShortcutsDescription,
     WaitingForKeyCombination,
     UnsupportedKey,
-    ShortcutAlreadyAssigned,
     NotStarted,
     Running,
     PermissionRequired,
@@ -452,7 +451,6 @@ pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
         ],
         UiText::WaitingForKeyCombination => ["Waiting for a key combination", "正在等待组合键"],
         UiText::UnsupportedKey => ["Unsupported key", "不支持的按键"],
-        UiText::ShortcutAlreadyAssigned => ["Shortcut is already assigned", "该快捷键已被占用"],
         UiText::NotStarted => ["Not started", "尚未启动"],
         UiText::Running => ["Running", "运行中"],
         UiText::PermissionRequired => ["Permission required", "需要权限"],
@@ -819,15 +817,17 @@ pub(super) fn shortcut_accessibility_label(
 
 pub(super) fn shortcut_capture_error(
     language: SettingsLanguage,
-    error: ShortcutCaptureError,
-) -> &'static str {
-    text(
-        language,
-        match error {
-            ShortcutCaptureError::UnsupportedKey => UiText::UnsupportedKey,
-            ShortcutCaptureError::AlreadyAssigned => UiText::ShortcutAlreadyAssigned,
+    error: &ShortcutCaptureError,
+) -> String {
+    match error {
+        ShortcutCaptureError::UnsupportedKey => text(language, UiText::UnsupportedKey).to_owned(),
+        ShortcutCaptureError::AlreadyAssigned(shortcut) => match language {
+            SettingsLanguage::ChineseSimplified => format!("快捷键 {shortcut} 已被占用"),
+            SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates => {
+                format!("Shortcut {shortcut} is already assigned")
+            }
         },
-    )
+    }
 }
 
 pub(super) fn shortcut_target_name(
@@ -1250,7 +1250,6 @@ mod tests {
             UiText::ClearAllShortcutsDescription,
             UiText::WaitingForKeyCombination,
             UiText::UnsupportedKey,
-            UiText::ShortcutAlreadyAssigned,
             UiText::NotStarted,
             UiText::Running,
             UiText::PermissionRequired,

@@ -36,6 +36,7 @@ pub fn open_settings_window(
                 if !cx.has_global::<Theme>() {
                     gpui_kit::init(cx);
                 }
+                Theme::global_mut(cx).notification.placement = Anchor::BottomRight;
                 sync_system_component_theme(window, cx);
                 let request_quit = Rc::new(request_quit);
                 let view = cx.new(|cx| {

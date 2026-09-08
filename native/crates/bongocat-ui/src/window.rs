@@ -19,10 +19,11 @@ use bongocat_platform::{
 };
 use bongocat_platform::{DirectoryPickerError, DirectoryPickerOutcome, pick_model_directory};
 use gpui_kit::component::{
-    ActiveTheme, Disableable, IconName, IndexPath, Root, Theme, ThemeMode, ThemeStyled,
+    ActiveTheme, Disableable, IconName, IndexPath, Root, Theme, ThemeMode, ThemeStyled, WindowExt,
     button::Button,
     group_box::{GroupBox, GroupBoxVariant, GroupBoxVariants},
     input::{Input, InputEvent, InputState, NumberInputEvent, StepAction},
+    notification::{Notification, NotificationType},
     select::{SearchableVec, Select, SelectEvent, SelectState},
     setting::{
         NumberFieldOptions, RenderOptions, SettingField, SettingGroup, SettingItem, SettingPage,
@@ -32,9 +33,10 @@ use gpui_kit::component::{
     tag::Tag,
 };
 use gpui_kit::{
-    App, AppContext, Axis, Bounds, Context, DisplayId, Div, Entity, FocusHandle, Focusable, Hsla,
-    KeyDownEvent, Pixels, Render, SharedString, Stateful, TitlebarOptions, WeakEntity, Window,
-    WindowAppearance, WindowBounds, WindowHandle, WindowOptions, div, point, prelude::*, px, size,
+    Anchor, App, AppContext, Axis, Bounds, Context, DisplayId, Div, Entity, FocusHandle, Focusable,
+    Hsla, KeyDownEvent, Pixels, Render, SharedString, Stateful, TitlebarOptions, WeakEntity,
+    Window, WindowAppearance, WindowBounds, WindowHandle, WindowOptions, div, point, prelude::*,
+    px, size,
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use raw_window_handle::HasWindowHandle;
@@ -242,11 +244,13 @@ enum ShortcutCaptureTarget {
     },
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum ShortcutCaptureError {
     UnsupportedKey,
-    AlreadyAssigned,
+    AlreadyAssigned(String),
 }
+
+struct ShortcutCaptureNotification;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 enum SettingsPage {
@@ -418,7 +422,6 @@ pub struct SettingsView {
     model_row_focus: BTreeMap<ModelRowKey, ModelRowFocus>,
     model_behavior_preview_focus: BTreeMap<ModelBehaviorKey, FocusHandle>,
     shortcut_capture: Option<ShortcutCaptureTarget>,
-    shortcut_capture_error: Option<ShortcutCaptureError>,
     shortcut_row_focus: BTreeMap<ShortcutCaptureTarget, FocusHandle>,
     shortcut_clear_focus: BTreeMap<ShortcutCaptureTarget, FocusHandle>,
     window_hidden: bool,

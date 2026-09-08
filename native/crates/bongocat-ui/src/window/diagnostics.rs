@@ -273,14 +273,6 @@ pub(super) fn content(
                                                 )),
                                             ),
                                     )
-                                    .when_some(view.shortcut_capture_error, |content, error| {
-                                        content.child(
-                                            div()
-                                                .text_sm()
-                                                .text_color(tokens.danger)
-                                                .child(shortcut_capture_error(language, error)),
-                                        )
-                                    })
                                     .when_some(view.shortcut_capture.clone(), |content, target| {
                                         content.child(
                                             div().text_sm().text_color(tokens.accent).child(

@@ -25,7 +25,6 @@ impl SettingsView {
             .is_some_and(|target| !target_set.contains(target))
         {
             self.shortcut_capture = None;
-            self.shortcut_capture_error = None;
         }
         for (index, row) in rows.into_iter().enumerate() {
             let target = row.target;
@@ -62,23 +61,26 @@ impl SettingsView {
             return;
         };
         self.shortcut_capture = Some(target);
-        self.shortcut_capture_error = None;
         window.focus(&focus, cx);
         cx.notify();
     }
 
-    pub(super) fn capture_shortcut(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
+    pub(super) fn capture_shortcut(
+        &mut self,
+        event: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(target) = self.shortcut_capture.clone() else {
             return;
         };
         if is_capture_cancel(event) {
             self.shortcut_capture = None;
-            self.shortcut_capture_error = None;
             cx.notify();
             return;
         }
         let Some(shortcut) = shortcut_from_key_event(event) else {
-            self.shortcut_capture_error = Some(ShortcutCaptureError::UnsupportedKey);
+            self.show_shortcut_capture_error(ShortcutCaptureError::UnsupportedKey, window, cx);
             cx.notify();
             return;
         };
@@ -86,14 +88,17 @@ impl SettingsView {
             return;
         };
         let mut shortcuts = snapshot.shortcuts.clone();
-        if !replace_shortcut(&mut shortcuts, &target, shortcut) {
+        if !replace_shortcut(&mut shortcuts, &target, shortcut.clone()) {
             self.shortcut_capture = None;
-            self.shortcut_capture_error = None;
             cx.notify();
             return;
         }
         if shortcut_conflicts(&shortcuts) {
-            self.shortcut_capture_error = Some(ShortcutCaptureError::AlreadyAssigned);
+            self.show_shortcut_capture_error(
+                ShortcutCaptureError::AlreadyAssigned(shortcut),
+                window,
+                cx,
+            );
             cx.notify();
             return;
         }
@@ -101,7 +106,6 @@ impl SettingsView {
             return;
         };
         self.shortcut_capture = None;
-        self.shortcut_capture_error = None;
         self.start_request(
             PendingOperation::SetShortcuts,
             Some(SettingValue::Shortcuts {
@@ -127,13 +131,33 @@ impl SettingsView {
             return;
         };
         self.shortcut_capture = None;
-        self.shortcut_capture_error = None;
         self.start_request(
             PendingOperation::SetShortcuts,
             Some(SettingValue::Shortcuts {
                 expected_config_revision,
                 shortcuts,
             }),
+            cx,
+        );
+    }
+
+    fn show_shortcut_capture_error(
+        &self,
+        error: ShortcutCaptureError,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let language = self
+            .snapshot
+            .as_ref()
+            .map_or(SettingsLanguage::EnglishUnitedStates, |snapshot| {
+                snapshot.resolved_language
+            });
+        window.push_notification(
+            Notification::new()
+                .id::<ShortcutCaptureNotification>()
+                .message(shortcut_capture_error(language, &error))
+                .with_type(NotificationType::Error),
             cx,
         );
     }

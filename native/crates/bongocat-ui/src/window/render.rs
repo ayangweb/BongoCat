@@ -899,10 +899,10 @@ impl Render for SettingsView {
 
         div()
             .id("bongocat-settings-root")
-            .on_key_down(cx.listener(|view, event, _, cx| {
+            .on_key_down(cx.listener(|view, event, window, cx| {
                 if view.shortcut_capture.is_some() {
                     cx.stop_propagation();
-                    view.capture_shortcut(event, cx);
+                    view.capture_shortcut(event, window, cx);
                 }
             }))
             .size_full()
@@ -910,5 +910,6 @@ impl Render for SettingsView {
             .flex_col()
             .child(div().min_h_0().w_full().flex_1().child(settings))
             .child(footer)
+            .children(Root::render_notification_layer(window, cx))
     }
 }

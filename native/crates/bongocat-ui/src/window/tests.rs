@@ -462,16 +462,16 @@ fn diagnostics_presentations_follow_the_resolved_language() {
     assert_eq!(
         shortcut_capture_error(
             SettingsLanguage::ChineseSimplified,
-            ShortcutCaptureError::UnsupportedKey,
+            &ShortcutCaptureError::UnsupportedKey,
         ),
         "不支持的按键"
     );
     assert_eq!(
         shortcut_capture_error(
             SettingsLanguage::ChineseSimplified,
-            ShortcutCaptureError::AlreadyAssigned,
+            &ShortcutCaptureError::AlreadyAssigned("Meta+O".to_owned()),
         ),
-        "该快捷键已被占用"
+        "快捷键 Meta+O 已被占用"
     );
 }
 

@@ -1045,7 +1045,6 @@ impl SettingsView {
                     })
                 {
                     self.shortcut_capture = Some(target);
-                    self.shortcut_capture_error = None;
                 }
             }
         }
