@@ -321,21 +321,20 @@ pub(super) fn content(
         )
     }
     let (management_status, management_failed): (SharedString, bool) =
-        match (&view.error, view.pending, catalog_error) {
-            (Some(error), _, _) => (settings_error(language, *error).into(), true),
-            (_, Some(PendingOperation::ModelSelection), _) => {
+        match (view.pending, catalog_error) {
+            (Some(PendingOperation::ModelSelection), _) => {
                 (ui_text(language, UiText::ActivatingModel).into(), false)
             }
-            (_, Some(PendingOperation::ModelDeletion), _) => {
+            (Some(PendingOperation::ModelDeletion), _) => {
                 (ui_text(language, UiText::DeletingModel).into(), false)
             }
-            (_, Some(PendingOperation::ModelBehaviorPreview), _) => {
+            (Some(PendingOperation::ModelBehaviorPreview), _) => {
                 (ui_text(language, UiText::PreviewingBehavior).into(), false)
             }
-            (_, Some(PendingOperation::Refresh), _) => {
+            (Some(PendingOperation::Refresh), _) => {
                 (ui_text(language, UiText::RefreshingModels).into(), false)
             }
-            (_, _, true) => (ui_text(language, UiText::CatalogUnavailable).into(), true),
+            (_, true) => (ui_text(language, UiText::CatalogUnavailable).into(), true),
             _ => ("".into(), false),
         };
     let picker_disabled = import_running || picker_open || view.pending.is_some();

@@ -282,7 +282,7 @@ impl SettingsView {
             client,
             snapshot: None,
             pending: None,
-            error: None,
+            pending_notification: None,
             page: SettingsPage::General,
             shortcut_tab: ShortcutSettingsTab::Window,
             model_import: ModelImportDraft::default(),

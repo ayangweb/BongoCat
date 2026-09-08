@@ -67,8 +67,8 @@ mod view_state;
 pub use lifecycle::open_settings_window;
 use localization::{
     ABOUT_SECTIONS, UiText, backup_candidates_checked, build_info_detail,
-    diagnostics_export_status, diagnostics_unavailable, input_diagnostic_metrics,
-    input_service_attempts, model_availability_summary, model_delete_confirmation,
+    diagnostics_export_status, input_diagnostic_metrics, input_service_attempts,
+    model_availability_summary, model_delete_confirmation,
     model_import_progress, model_invalid_summary, recovered_backup_detail, runtime_command_failure,
     runtime_shutdown_failures, runtime_status, settings_error, shortcut_accessibility_label,
     shortcut_capture_error, shortcut_target_name, text as ui_text,
@@ -80,6 +80,8 @@ const WINDOW_WIDTH: f32 = 800.0;
 const WINDOW_HEIGHT: f32 = 600.0;
 const WINDOW_MIN_WIDTH: f32 = crate::MIN_SETTINGS_WINDOW_WIDTH as f32;
 const WINDOW_MIN_HEIGHT: f32 = crate::MIN_SETTINGS_WINDOW_HEIGHT as f32;
+
+struct SettingsServiceErrorNotification;
 
 fn accepts_snapshot_revision(current: Option<u64>, incoming: u64) -> bool {
     current.is_none_or(|current| incoming >= current)
@@ -402,7 +404,7 @@ pub struct SettingsView {
     client: SettingsClient,
     snapshot: Option<SettingsSnapshot>,
     pending: Option<PendingOperation>,
-    error: Option<SettingsError>,
+    pending_notification: Option<SettingsError>,
     page: SettingsPage,
     shortcut_tab: ShortcutSettingsTab,
     model_import: ModelImportDraft,
@@ -491,7 +493,7 @@ impl SettingsWindowHandle {
         self.view
             .upgrade()
             .map(|_| ())
-            .ok_or_else(|| gpui_kit::private::anyhow::anyhow!("settings view was released"))
+            .ok_or_else(|| std::io::Error::other("settings view was released").into())
     }
 
     pub fn update<C, R>(
@@ -817,7 +819,6 @@ impl SettingsView {
         let is_refresh = operation == PendingOperation::Refresh;
         if !is_refresh {
             self.pending = Some(operation);
-            self.error = None;
             cx.notify();
         }
         let client = self.client.clone();
@@ -1101,10 +1102,10 @@ impl SettingsView {
                     }
                     Ok(_) => {}
                     Err(error) => {
-                        if view.error.as_ref() != Some(&error) {
+                        if view.pending_notification.as_ref() != Some(&error) {
                             snapshot_changed = true;
                         }
-                        view.error = Some(error);
+                        view.pending_notification = Some(error);
                     }
                 }
                 // The next shutdown patch must use the revision returned by this request.

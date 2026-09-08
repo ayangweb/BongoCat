@@ -125,12 +125,20 @@ impl Render for SettingsView {
             .map_or(SettingsLanguage::EnglishUnitedStates, |snapshot| {
                 snapshot.resolved_language
             });
+        if let Some(error) = self.pending_notification.take() {
+            window.push_notification(
+                Notification::new()
+                    .id::<SettingsServiceErrorNotification>()
+                    .message(settings_error(language, error))
+                    .with_type(NotificationType::Error),
+                cx,
+            );
+        }
         self.sync_shortcut_row_focus(&shortcuts, active_model, model_entries, disabled, cx);
-        let status: SharedString = match (&self.error, self.pending, &snapshot) {
-            (Some(error), _, _) => settings_error(language, *error).into(),
-            (_, Some(PendingOperation::Refresh), _) => ui_text(language, UiText::Refreshing).into(),
-            (_, Some(_), _) => ui_text(language, UiText::Saving).into(),
-            (_, None, Some(snapshot)) => {
+        let status: SharedString = match (self.pending, &snapshot) {
+            (Some(PendingOperation::Refresh), _) => ui_text(language, UiText::Refreshing).into(),
+            (Some(_), _) => ui_text(language, UiText::Saving).into(),
+            (None, Some(snapshot)) => {
                 let health = match snapshot.runtime_health {
                     RuntimeHealth::Starting => ui_text(language, UiText::Starting),
                     RuntimeHealth::Ready => ui_text(language, UiText::Ready),
@@ -141,7 +149,7 @@ impl Render for SettingsView {
             }
             _ => ui_text(language, UiText::Connecting).into(),
         };
-        let status_is_error = self.error.is_some();
+        let status_is_error = false;
         let view_entity = cx.entity();
         let startup_item = startup_item_presentation(
             snapshot.as_ref().map(|snapshot| snapshot.startup_item),
@@ -613,31 +621,29 @@ impl Render for SettingsView {
                 SettingGroup::new()
                     .title(ui_text(language, UiText::Application))
                     .items({
-                        let mut items = vec![
-                            SettingItem::new(
-                                ui_text(language, UiText::ShowStatusIcon),
-                                SettingField::switch(
-                                    {
-                                        let view = view_entity.clone();
-                                        move |app| {
-                                            view.read(app)
-                                                .snapshot
-                                                .as_ref()
-                                                .is_some_and(|s| s.status_icon_visible)
-                                        }
-                                    },
-                                    {
-                                        let view = view_entity.clone();
-                                        move |value, app| {
-                                            view.update(app, |view, cx| {
-                                                view.set_status_icon_visible(value, cx)
-                                            });
-                                        }
-                                    },
-                                ),
-                            )
-                            .description(ui_text(language, UiText::ShowStatusIconDescription)),
-                        ];
+                        let mut items = vec![SettingItem::new(
+                            ui_text(language, UiText::ShowStatusIcon),
+                            SettingField::switch(
+                                {
+                                    let view = view_entity.clone();
+                                    move |app| {
+                                        view.read(app)
+                                            .snapshot
+                                            .as_ref()
+                                            .is_some_and(|s| s.status_icon_visible)
+                                    }
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |value, app| {
+                                        view.update(app, |view, cx| {
+                                            view.set_status_icon_visible(value, cx)
+                                        });
+                                    }
+                                },
+                            ),
+                        )
+                        .description(ui_text(language, UiText::ShowStatusIconDescription))];
                         #[cfg(target_os = "windows")]
                         items.push(
                             SettingItem::new(

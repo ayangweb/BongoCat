@@ -255,7 +255,6 @@ impl SettingsView {
             return;
         };
         self.pending = Some(PendingOperation::ModelSelection);
-        self.error = None;
         self.model_delete_confirmation = None;
         cx.notify();
         let client = self.client.clone();
@@ -273,7 +272,7 @@ impl SettingsView {
                         view.snapshot = Some(snapshot);
                     }
                     Ok(_) => {}
-                    Err(error) => view.error = Some(error),
+                    Err(error) => view.pending_notification = Some(error),
                 }
                 cx.notify();
             });
@@ -289,7 +288,6 @@ impl SettingsView {
             self.delete_model(model, cx);
         } else {
             self.model_delete_confirmation = Some(model);
-            self.error = None;
             cx.notify();
         }
     }
@@ -303,7 +301,6 @@ impl SettingsView {
 
     pub(super) fn delete_model(&mut self, model: SettingsModelKey, cx: &mut Context<Self>) {
         self.pending = Some(PendingOperation::ModelDeletion);
-        self.error = None;
         cx.notify();
         let client = self.client.clone();
         cx.spawn(async move |this, cx| {
@@ -321,7 +318,7 @@ impl SettingsView {
                         view.model_delete_confirmation = None;
                     }
                     Ok(_) => view.model_delete_confirmation = None,
-                    Err(error) => view.error = Some(error),
+                    Err(error) => view.pending_notification = Some(error),
                 }
                 cx.notify();
             });
@@ -346,7 +343,6 @@ impl SettingsView {
             return;
         }
         self.pending = Some(PendingOperation::ModelBehaviorPreview);
-        self.error = None;
         cx.notify();
         let client = self.client.clone();
         cx.spawn(async move |this, cx| {
@@ -363,7 +359,7 @@ impl SettingsView {
                         view.snapshot = Some(snapshot);
                     }
                     Ok(_) => {}
-                    Err(error) => view.error = Some(error),
+                    Err(error) => view.pending_notification = Some(error),
                 }
                 cx.notify();
             });

@@ -30,17 +30,10 @@ pub(super) fn content(
         .child(
             div()
                 .text_sm()
-                .text_color(if view.error.is_some() {
-                    tokens.danger
-                } else {
-                    tokens.muted
-                })
-                .child(match view.error {
-                    Some(error) => diagnostics_unavailable(language, error),
-                    None if snapshot.is_none() => {
-                        ui_text(language, UiText::LoadingDiagnostics).to_owned()
-                    }
-                    None => ui_text(language, UiText::InputReliabilityCounters).to_owned(),
+                .text_color(tokens.muted)
+                .child(match snapshot {
+                    None => ui_text(language, UiText::LoadingDiagnostics).to_owned(),
+                    Some(_) => ui_text(language, UiText::InputReliabilityCounters).to_owned(),
                 }),
         )
         .child(

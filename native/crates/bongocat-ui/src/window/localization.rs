@@ -82,7 +82,6 @@ pub(super) enum UiText {
     RuntimeAndInput,
     RuntimeDiagnostics,
     RuntimeDiagnosticsDescription,
-    DiagnosticsUnavailable,
     LoadingDiagnostics,
     InputReliabilityCounters,
     RuntimeRenderer,
@@ -380,7 +379,6 @@ pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
             "Review renderer status, input counters and keyboard shortcuts. Search: renderer, input, shortcut.",
             "查看渲染状态、输入计数和键盘快捷键。可搜索：渲染、输入、快捷键。",
         ],
-        UiText::DiagnosticsUnavailable => ["Diagnostics unavailable", "诊断信息不可用"],
         UiText::LoadingDiagnostics => ["Loading diagnostics...", "正在加载诊断信息..."],
         UiText::InputReliabilityCounters => ["Input Reliability Counters", "输入可靠性计数"],
         UiText::RuntimeRenderer => ["Runtime Renderer", "运行时渲染"],
@@ -686,14 +684,6 @@ pub(super) fn model_availability_summary(
             active.map_or(String::new(), |active| format!(" · {active}"))
         ),
     }
-}
-
-pub(super) fn diagnostics_unavailable(language: SettingsLanguage, error: SettingsError) -> String {
-    format!(
-        "{} · {}",
-        text(language, UiText::DiagnosticsUnavailable),
-        settings_error(language, error)
-    )
 }
 
 pub(super) fn diagnostics_export_status(
@@ -1205,7 +1195,6 @@ mod tests {
             UiText::RuntimeAndInput,
             UiText::RuntimeDiagnostics,
             UiText::RuntimeDiagnosticsDescription,
-            UiText::DiagnosticsUnavailable,
             UiText::LoadingDiagnostics,
             UiText::InputReliabilityCounters,
             UiText::RuntimeRenderer,
