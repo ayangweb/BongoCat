@@ -33,7 +33,7 @@ CLI/API，并且 Production 构建与该 feature 的组合在编译期失败。
 
 | 平台    | Development                                                         | Production                                                         |
 | ------- | ------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Windows | `%APPDATA%\BongoCat\development\`                                   | `%APPDATA%\BongoCat\production\`                                   |
+| Windows | `%APPDATA%\com.ayangweb.bongo-cat\development\`                     | `%APPDATA%\com.ayangweb.bongo-cat\production\`                     |
 | macOS   | `~/Library/Application Support/com.ayangweb.bongo-cat/development/` | `~/Library/Application Support/com.ayangweb.bongo-cat/production/` |
 
 两个环境使用相同的目录结构和 schema：

@@ -35,7 +35,7 @@ cargo run --manifest-path spikes/config-store/Cargo.toml --locked
 - 子进程持有 writer lock，写入并 flush `config.json.tmp` 后等待；父进程确认并发写被拒绝，再强制终止子进程，验证锁自动释放、临时配置被归档且当前配置不变。该测试已在 macOS 本机和 Windows push run `33251278193`、job `99097261951` 通过。
 - Development/Production 子进程同时从相同 application base 启动，分别提交 `zh-CN`/`pt-BR` sentinel；两个进程退出后由新建 store 重载并验证各自值和 lock root。macOS 本机与 Windows runner 均已通过。
 
-macOS 实机运行输出应位于 `~/Library/Application Support/com.ayangweb.bongo-cat/development/`（debug）或 `production/`（release）；Windows test 在 push run `33250708023` 已通过 `dirs::data_dir()/BongoCat/<environment>/` 精确断言，也就是 `%APPDATA%\\BongoCat\\<environment>\\`。同一 job 随后暴露 Windows `FlushFileBuffers` 不接受只读 handle：11 个写入/恢复测试返回 `AccessDenied`；改用可写 handle 后，push run `33251112463`、job `99096826978` 已通过全部配置测试，后续 process recovery run 继续通过。`tempfile` 已限制为 dev-dependency，`dirs` 仅用于该 resolver spike；writer lock 使用 Rust 1.89 起的标准库 API，没有新增第三方依赖。
+macOS 实机运行输出应位于 `~/Library/Application Support/com.ayangweb.bongo-cat/development/`（debug）或 `production/`（release）；Windows 运行输出应位于 `%APPDATA%\\com.ayangweb.bongo-cat\\development\\` 或 `production\\`，两个平台均由同一 `BUNDLE_ID` 派生数据根。此前 Windows test 在 push run `33250708023` 仅验证了旧的 `dirs::data_dir()/BongoCat/<environment>/` 路径；路径统一后需重新执行平台 resolver 验证。`FlushFileBuffers` 的 Windows handle 修复证据仍由 push run `33251112463`、job `99096826978` 覆盖。`tempfile` 已限制为 dev-dependency，`dirs` 仅用于该 resolver spike；writer lock 使用 Rust 1.89 起的标准库 API，没有新增第三方依赖。
 
 commit `cf16291e8cee027b6983abcf919a32fb5a0278a5` 的 push run `33251410654`、
 Windows job `99097619545` 在 Windows Server 2025 / `windows-2025-vs2026` runner 上通过

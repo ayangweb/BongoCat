@@ -916,7 +916,7 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
     dead-zone、超时和语言约束，并拒绝未配对的 model id/origin、未知字段和非法快捷键；对应
     valid/invalid fixtures 与 config crate tests 通过。
 - [x] 在 spike 中实现不可变 `BuildEnvironment::{Development, Production}`；未知或缺失环境的打包构建失败仍待产品构建链验证。
-- [x] Windows 使用 `%APPDATA%\BongoCat\<environment>\` 数据根。
+- [x] Windows 使用 `%APPDATA%\com.ayangweb.bongo-cat\<environment>\` 数据根。
 - [x] macOS 使用 `Application Support/com.ayangweb.bongo-cat/<environment>/` 数据根。
   - 双平台 target-specific resolver test 已通过。
 - [x] 两个环境的 `config.json`、`state.json`、`models/`、`backups/`、`logs/`、`updates/` 和 `locks/` 相对结构一致；spike 测试逐项比较相对路径。
@@ -1055,8 +1055,9 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
 - [x] 明确 sRGB/linear、预乘 alpha 和 texture color space，避免两平台颜色或边缘混合语义漂移。
   - 验收证据（2026-09-06）：`bongocat-overlay` 将模型、背景和按键 PNG 固定为 sRGB texture
     view（D3D11 `R8G8B8A8_UNORM_SRGB` / Metal `RGBA8Unorm_sRGB`），将最终预乘 alpha
-    composition/drawable attachment 固定为 sRGB（D3D11 `B8G8R8A8_UNORM_SRGB` / Metal
-    `BGRA8Unorm_sRGB`），并保留 alpha-only mask 的 linear UNORM format。两端 shader 都在
+    composition/drawable attachment 遵循平台约束（D3D11 DirectComposition 使用
+    `B8G8R8A8_UNORM`，Metal 使用 `BGRA8Unorm_sRGB`），并保留 alpha-only mask 的 linear
+    UNORM format。两端 shader 都在
     采样解码后的 linear RGB 执行 multiply/screen、mask 和预乘，format contract 单元测试覆盖
     两个实现。嵌入 ICC/wide-gamut profile 的转换尚未实现，v1 明确不依赖平台默认色彩管理。
 - [ ] present 失败、窗口隐藏和 drawable unavailable 时限流，不产生 busy loop 或日志风暴。

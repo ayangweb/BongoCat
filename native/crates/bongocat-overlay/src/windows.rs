@@ -66,8 +66,8 @@ use windows::{
             Dxgi::{
                 Common::{
                     DXGI_ALPHA_MODE_PREMULTIPLIED, DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM,
-                    DXGI_FORMAT_B8G8R8A8_UNORM_SRGB, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
-                    DXGI_FORMAT_R16_UINT, DXGI_FORMAT_R32G32_FLOAT, DXGI_SAMPLE_DESC,
+                    DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, DXGI_FORMAT_R16_UINT,
+                    DXGI_FORMAT_R32G32_FLOAT, DXGI_SAMPLE_DESC,
                 },
                 DXGI_MEMORY_SEGMENT_GROUP_LOCAL, DXGI_PRESENT, DXGI_QUERY_VIDEO_MEMORY_INFO,
                 DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
@@ -114,10 +114,10 @@ const SWITCH_WARMUP_CYCLES: u64 = 100;
 const THREAD_SETTLE_INTERVAL: Duration = Duration::from_millis(10);
 const THREAD_SETTLE_SAMPLES: u32 = 25;
 const THREAD_SETTLE_TIMEOUT: Duration = Duration::from_secs(2);
-// PNG RGBA payloads are encoded sRGB. Sampling and color blending therefore
-// happen in linear space, while the composition surface encodes its
-// premultiplied result back to sRGB. Masks carry alpha only.
-const COMPOSITION_FORMAT: DXGI_FORMAT = DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+// DirectComposition composition swapchains reject sRGB DXGI formats. Keep the
+// required UNORM surface and sample source textures as sRGB; alpha remains
+// premultiplied for the compositor. Masks carry alpha only.
+const COMPOSITION_FORMAT: DXGI_FORMAT = DXGI_FORMAT_B8G8R8A8_UNORM;
 const MODEL_TEXTURE_FORMAT: DXGI_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 const MASK_TEXTURE_FORMAT: DXGI_FORMAT = DXGI_FORMAT_B8G8R8A8_UNORM;
 
@@ -2648,7 +2648,7 @@ mod tests {
     #[test]
     fn color_formats_decode_assets_and_encode_the_composited_frame_as_srgb() {
         assert_eq!(MODEL_TEXTURE_FORMAT, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB);
-        assert_eq!(COMPOSITION_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM_SRGB);
+        assert_eq!(COMPOSITION_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM);
         assert_eq!(MASK_TEXTURE_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM);
     }
 

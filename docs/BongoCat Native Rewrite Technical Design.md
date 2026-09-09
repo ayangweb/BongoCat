@@ -517,8 +517,9 @@ Cubism Core 在每次 `UpdateModel` 后的 drawable dynamic flags 必须随 `Ren
 
 所有 v1 PNG RGBA 贴图（Cubism texture、背景与按键 overlay）按 sRGB 编码解释；Windows 使用
 `R8G8B8A8_UNORM_SRGB`、macOS 使用 `RGBA8Unorm_sRGB`，使 shader sampling 和颜色计算在
-linear 空间进行。最终预乘 alpha 颜色写入 sRGB composition/drawable surface（Windows
-`B8G8R8A8_UNORM_SRGB`、macOS `BGRA8Unorm_sRGB`）；normal、additive 与 multiplicative
+linear 空间进行。最终预乘 alpha 颜色写入 composition/drawable surface；macOS 使用
+`BGRA8Unorm_sRGB`，Windows DirectComposition swapchain 使用 API 要求的
+`B8G8R8A8_UNORM`（该 API 不接受 sRGB swapchain format）；normal、additive 与 multiplicative
 blend 使用相同 linear premultiplied 输入。clipping mask 只携带 alpha，保持 linear UNORM，避免
 对 coverage 作 gamma 转换。v1 不解释或转换嵌入 ICC/wide-gamut profile；模型导入将此类颜色
 管理作为明确的后续能力，而不是让平台默认行为决定结果。
@@ -587,7 +588,7 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
 
 | 平台    | Development                                                         | Production                                                         |
 | ------- | ------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Windows | `%APPDATA%\BongoCat\development\`                                   | `%APPDATA%\BongoCat\production\`                                   |
+| Windows | `%APPDATA%\com.ayangweb.bongo-cat\development\`                     | `%APPDATA%\com.ayangweb.bongo-cat\production\`                     |
 | macOS   | `~/Library/Application Support/com.ayangweb.bongo-cat/development/` | `~/Library/Application Support/com.ayangweb.bongo-cat/production/` |
 
 每个根目录包含 `config.json`、`state.json`、`models/`、`backups/`、`logs/`、`updates/`（含仅供更新下载暂存的 `staging/`）和 `locks/`。锁、单实例命名、更新 channel、更新暂存和诊断同样按环境隔离；任何环境不得读取、写入或 fallback 到另一个环境。`StorageLayout` 只描述这些用户数据路径；安装器和 update helper 使用平台 `InstallationLayout` 描述 product files root，不能从用户数据根推导或操作安装目录。

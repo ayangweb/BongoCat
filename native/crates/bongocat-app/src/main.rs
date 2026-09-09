@@ -741,7 +741,7 @@ fn toggle_settings_window(cx: &mut App) -> Result<(), String> {
         return Ok(());
     };
 
-    let hidden = match window_handle.update(cx, |view, window, cx| {
+    let _hidden = match window_handle.update(cx, |view, window, cx| {
         if view.window_hidden() {
             view.reopen(window, cx)?;
             Ok::<bool, String>(false)
@@ -758,7 +758,7 @@ fn toggle_settings_window(cx: &mut App) -> Result<(), String> {
     };
 
     #[cfg(target_os = "macos")]
-    if hidden {
+    if _hidden {
         cx.global_mut::<ProductCoordinator>().settings_window = None;
     }
 
@@ -2164,6 +2164,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 #[cfg(target_os = "windows")]
                 let mut tick_result = Some(tick_result);
                 #[cfg(target_os = "windows")]
+                let mut request_shutdown_flush = false;
+                #[cfg(target_os = "windows")]
                 let keep_running = update_windows_settings(cx, &frame_window, |view, _, cx| {
                     if !cx.has_global::<ProductCoordinator>() {
                         return Ok(false);
@@ -2210,16 +2212,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         if !shutdown_flush_started {
                             shutdown_flush_started = true;
-                            if view.request_quit_after_flush(cx).is_err() {
-                                cx.global::<ProductCoordinator>()
-                                    .shutdown_flush_complete
-                                    .store(true, Ordering::Release);
-                            }
+                            request_shutdown_flush = true;
                         }
                     }
                     Ok(true)
                 })
                 .await;
+                #[cfg(target_os = "windows")]
+                if request_shutdown_flush {
+                    let flush_requested = cx
+                        .update(|cx| frame_window.request_quit_after_flush(cx))
+                        .is_ok();
+                    if !flush_requested {
+                        cx.update(|cx| {
+                            cx.global::<ProductCoordinator>()
+                                .shutdown_flush_complete
+                                .store(true, Ordering::Release);
+                        });
+                    }
+                }
                 #[cfg(target_os = "windows")]
                 let keep_running = match keep_running {
                     Ok(keep_running) => {

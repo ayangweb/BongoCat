@@ -146,7 +146,7 @@ pub fn platform_layout(
 ) -> Result<StorageLayout, PlatformStorageError> {
     let root = dirs::data_dir()
         .ok_or(PlatformStorageError::DataDirectoryUnavailable)?
-        .join("BongoCat");
+        .join(BUNDLE_ID);
     Ok(StorageLayout::under_application_root(root, environment))
 }
 
