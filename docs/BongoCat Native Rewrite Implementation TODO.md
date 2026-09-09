@@ -176,7 +176,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 1.5 GPUI spike
 
-状态（2026-08-30）：已在 `spikes/gpui-settings/` 建立隔离的 macOS 最小窗口，历史 spike 精确锁定 `gpui = 0.2.2` 并生成独立 lockfile；它只保留为 Phase 0 证据，正式 Native workspace 统一使用 `gpui-kit = "=0.6.0"`。默认预编译 shader、release `.app`、原生 Application/Edit/Window 菜单、窗口关闭/重开和 shutdown smoke 通过。当前 spike 还验证了 System/Light/Dark 主题、焦点边框、Tab/Shift-Tab、Unicode/grapheme 文本编辑、选择、剪切、复制和粘贴，以及 GPUI executor 上的 bounded typed command/revision snapshot/shutdown acknowledgement，并保存浅色/深色截图证据。marked-text 纯状态 contract 已覆盖连续中文组合、已有多字节前缀、surrogate pair 和异常 range；本机 WeType 拼音 2.2.3 进一步通过真实系统组合更新、候选提交和已有中文前缀后的再次组合。项目自有 AccessKit tree 已由 macOS AppKit AX API 读取 9 个语义节点，Dark radio 的系统 press 经强类型 channel 回到 GPUI；Reset tooltip 已通过双平台原生合成 mouse-move -> GPUI 500ms delay -> build -> hover exit 链路，modal AlertDialog 的 Cancel 初始焦点、Tab/Shift-Tab 陷阱、Escape 关闭和背景语义隐藏也已验证。Windows UIA runner 已读取基础 role/name、selected/action、dialog，并通过 loading -> error -> retry/revision 2 恢复门禁；`busy=true` 因 runner 托管 UIA client 缺少属性标识而仍未验证。Apple 拼音、Windows IME、物理键盘/pointer、tooltip 朗读、目标 DPI 和真实辅助技术操作仍未验证，详见 `docs/phase-0/gpui-settings-spike.md`。
+状态（2026-08-30）：已在 `spikes/gpui-settings/` 建立隔离的 macOS 最小窗口，历史 spike 精确锁定 `gpui = 0.2.2` 并生成独立 lockfile；它只保留为 Phase 0 证据，正式 Native workspace 统一使用 `gpui-kit = "=0.6.1"`。默认预编译 shader、release `.app`、原生 Application/Edit/Window 菜单、窗口关闭/重开和 shutdown smoke 通过。当前 spike 还验证了 System/Light/Dark 主题、焦点边框、Tab/Shift-Tab、Unicode/grapheme 文本编辑、选择、剪切、复制和粘贴，以及 GPUI executor 上的 bounded typed command/revision snapshot/shutdown acknowledgement，并保存浅色/深色截图证据。marked-text 纯状态 contract 已覆盖连续中文组合、已有多字节前缀、surrogate pair 和异常 range；本机 WeType 拼音 2.2.3 进一步通过真实系统组合更新、候选提交和已有中文前缀后的再次组合。项目自有 AccessKit tree 已由 macOS AppKit AX API 读取 9 个语义节点，Dark radio 的系统 press 经强类型 channel 回到 GPUI；Reset tooltip 已通过双平台原生合成 mouse-move -> GPUI 500ms delay -> build -> hover exit 链路，modal AlertDialog 的 Cancel 初始焦点、Tab/Shift-Tab 陷阱、Escape 关闭和背景语义隐藏也已验证。Windows UIA runner 已读取基础 role/name、selected/action、dialog，并通过 loading -> error -> retry/revision 2 恢复门禁；`busy=true` 因 runner 托管 UIA client 缺少属性标识而仍未验证。Apple 拼音、Windows IME、物理键盘/pointer、tooltip 朗读、目标 DPI 和真实辅助技术操作仍未验证，详见 `docs/phase-0/gpui-settings-spike.md`。
 
 - [x] 建立最小 Rust workspace 和 GPUI hello/settings 窗口。
 - [x] 固定 `gpui = "=0.2.2"` 并提交 Cargo.lock。
@@ -1446,16 +1446,17 @@ overlay owner；设置更新失败时保留旧 snapshot。scale/opacity 的可�
 
 ### 6.3 Design System
 
-状态（2026-09-04）：按 GPUI Kit 官方仓库、docs.rs 和 crates.io metadata 确认 `gpui-kit 0.6.0`
-是当前最新稳定版，使用 Apache-2.0 许可证并默认提供 component/assets。Native workspace
-现以精确固定的 crates.io `gpui-kit = "=0.6.0"` 作为唯一直接 GPUI 依赖，已删除 Zed 与旧组件
+状态（2026-09-09）：已阅读官方 `v0.6.1` release notes，并对照 `v0.6.0...v0.6.1` 源码与
+docs.rs/crates.io metadata 完成迁移评估。`gpui-kit 0.6.1` 使用 Apache-2.0 许可证并默认提供
+component/assets；Native workspace 现以精确固定的 crates.io `gpui-kit = "=0.6.1"` 作为唯一
+直接 GPUI 依赖，已删除 Zed 与旧组件
 git source 及 `gpui`、platform、component、assets 的直接 manifest 依赖。完整 `cargo update`
 解析到 `gpui-pre 0.3.3`；该同步包元数据对应 Zed `gpui 0.2.2` revision
 `5b055fa789a8b8d38ac951a6e0cde272f66b4495`。设置窗口调用 `gpui_kit::init`，使用
 `gpui_kit::component::Root` 并随系统外观同步 `Theme`；状态标签、开关、
 按钮、模型 ID、overlay scale/opacity 与 gamepad dead-zone 已迁移到 `Tag`、
 `Switch`、`Button`、`Input` 和 `NumberInput`。输入实体通过 `InputEvent` 与
-`NumberInputEvent` 接入现有 typed command/draft，并从 snapshot 同步。`0.6.0` 没有普通 Card
+`NumberInputEvent` 接入现有 typed command/draft，并从 snapshot 同步。`0.6.1` 没有普通 Card
 primitive，设置内容容器使用官方 `GroupBox::outline()`，导航继续保留无状态薄封装；快捷键捕获、确认删除和平台辅助功能焦点
 继续保留领域适配层。语言设置使用官方 `Select`；当前没有标签页或浮层需求，后续出现对应交互时
 直接使用 `TabBar`、`Dialog`/`Menu`，不预建无业务用途的组件。双平台辅助功能与缩放实机证据
@@ -1470,7 +1471,7 @@ primitive，设置内容容器使用官方 `GroupBox::outline()`，导航继续�
 重复的 GPUI adapter，避免两套 `accesskit_macos` 在同一个 NSView 注册固定 Objective-C 类名并
 触发 `SIGABRT`。本机 release 设置 smoke 已验证启动、项目桥接语义和有序退出；迁移到 GPUI
 原生 element 语义及删除项目桥接/兼容构造仍是后续 Design System 工作，不据此勾选总项。
-本次迁移已通过 macOS workspace format、Clippy、unit/doc tests、release check，以及 release
+本次迁移已通过源码/API 兼容审查；升级后的 format、Clippy、unit/doc tests、release check，以及 release
 设置窗口与 Models 页面 smoke。macOS 到 `x86_64-pc-windows-msvc` 的交叉 check 会在
 GPUI Kit 配套 HTTP/TLS 链编译 `aws-lc-sys`/`ring` 时因本机没有 Windows SDK headers 停止；
 Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-latest` runner 验证。
@@ -1488,7 +1489,7 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     job `101018640203` 与 macOS job `101018640280` 均通过 release settings/state smoke，完成
     证据由 `P5-APPEARANCE-THEME` 记录。
 - [ ] 图标统一使用 Lucide 资源并提供 tooltip/accessibility label。
-  - 状态（2026-09-05）：已使用 `gpui-kit = 0.6.0` 内置的 Lucide 资源迁移 Settings 底栏的
+  - 状态（2026-09-05）：已使用 `gpui-kit = 0.6.1` 内置的 Lucide 资源迁移 Settings 底栏的
     Refresh 与 Quit，以及 Diagnostics 的 Open backups 工具操作；所有 icon-only control 均保留
     键盘焦点、悬停 tooltip 和显式 accessibility label。其余命令仍待按操作语义逐项迁移，故保持未勾选。
 - [ ] 不直接复制 Zed 产品内部组件源码，除非许可证和维护边界明确。

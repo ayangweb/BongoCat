@@ -92,7 +92,7 @@ GPUI 用于设置窗口、模型管理、快捷键编辑、权限状态、更新
 
 GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 Live2D 纹理合成路径。因此：
 
-- 正式 Native workspace 精确固定 crates.io `gpui-kit = "=0.6.0"` 并提交 `Cargo.lock`；
+- 正式 Native workspace 精确固定 crates.io `gpui-kit = "=0.6.1"` 并提交 `Cargo.lock`；
   GPUI Kit 是唯一直接 GPUI 依赖，通过其 crates.io 同步包提供元数据对应 Zed `gpui 0.2.2`
   的整套 GPUI crate，禁止另行声明或使用 git source 覆写 `gpui`、platform、component 和 assets。
 - 不自动跟随 Zed main，不直接依赖 Zed 应用内部 UI crate。

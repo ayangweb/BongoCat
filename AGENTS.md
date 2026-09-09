@@ -229,7 +229,7 @@ Issue #47 的“收到按下但未收到释放”必须从架构上处理，不�
 
 ### 11.1 GPUI Kit 组件规范
 
-Native GPUI 设置界面统一使用 `gpui-kit = "=0.6.0"`，并以它作为唯一直接 GPUI 依赖。
+Native GPUI 设置界面统一使用 `gpui-kit = "=0.6.1"`，并以它作为唯一直接 GPUI 依赖。
 不得再直接声明 `gpui`、`gpui_platform`、`gpui-component` 或单独的 assets crate，也不得通过
 git source 覆写 GPUI。GPUI Kit 当前通过 crates.io 的 `gpui-pre` 同步包提供 crate 名为 `gpui`
 的实现，其元数据对应 Zed `gpui 0.2.2`。开发 UI 前必须先查阅官方仓库
