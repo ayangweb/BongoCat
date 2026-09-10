@@ -151,7 +151,8 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   以有界 request/reply bridge 请求平台主线程隐藏或重建状态图标，平台成功后才由 Application owner
   原子提交配置；配置提交失败时必须把图标恢复为旧状态。Windows 隐藏只执行 `NIM_DELETE`，macOS
   隐藏只从 `NSStatusBar` 移除 `NSStatusItem`，两平台都保留菜单 target、事件 receiver 和唯一 owner，
-  因此重新显示不创建第二套业务状态。启动时先按当前 v1 配置创建可见或隐藏状态，设置窗口、单实例
+  因此重新显示不创建第二套业务状态。启动时先按当前 v1 配置创建可见或隐藏状态；正式启动不创建或显示
+  设置窗口，设置窗口、单实例
   唤醒和 application reopen 仍提供恢复入口；平台失败只返回稳定匿名 settings error。
 - `application.show_taskbar_icon` 只控制 Windows GPUI 设置窗口的任务栏按钮，不改变窗口可见性，
   也不映射为 macOS Dock 图标。settings worker 通过独立的有界 request/reply bridge 请求 GPUI 主线程

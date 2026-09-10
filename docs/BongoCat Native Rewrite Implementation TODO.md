@@ -1763,6 +1763,9 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     smoke/诊断。commit `7f799f7` 的 run `33867921771` 全绿；Windows job `101006895636` 与
     macOS job `101006895731` 均通过完整 workspace、release 产品 lifecycle、系统菜单 Quit 和
     shutdown smoke。
+  - 状态（2026-09-10）：正式无参数启动现在保持 `settings_window = None`，不会创建或显示
+    GPUI 设置窗口；只有系统菜单、应用快捷键、单实例/应用重开或显式窗口 smoke 才触发按需创建。
+    Windows frame source 不再依赖设置窗口实体，因此 overlay 在无设置窗口时继续运行。
 - [x] 托盘/菜单栏 command 统一进入 runtime。
   - 验收证据（2026-09-05）：Windows `HMENU` 与 macOS `NSStatusItem` 现都提供
     `Show/Hide BongoCat` action；平台 callback 只投递 `SystemMenuAction`，GPUI frame owner

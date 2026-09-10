@@ -360,6 +360,19 @@ impl RunOptions {
             single_instance_smoke,
         })
     }
+
+    fn opens_settings_window_on_start(&self) -> bool {
+        self.settings_window_smoke || {
+            #[cfg(target_os = "windows")]
+            {
+                self.single_instance_smoke
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                false
+            }
+        }
+    }
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -1780,6 +1793,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let taskbar_icon = Arc::new(ProductTaskbarIcon {
         sender: taskbar_icon_sender,
     });
+    #[cfg(target_os = "windows")]
     let initial_taskbar_icon_visible = application.config().application.show_taskbar_icon;
     let shortcut_signals = bongocat_app::ApplicationShortcutSignals::default();
     let shortcut_dispatcher = Some(ShortcutDispatcher::with_application_sink(
@@ -1904,33 +1918,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         };
         let settings_client = settings_service.client();
-        let window_state = settings_service.window_state();
-        let settings_window = match open_settings_window(
-            settings_client.clone(),
-            window_state,
-            initial_taskbar_icon_visible,
-            finish_product_quit,
-            cx,
-        ) {
-            Ok(window) => window,
-            Err(error) => {
-                record_failure(&run_failures, error);
-                let mut overlay = overlay;
-                if let Err(error) = overlay.stop_input() {
-                    record_failure(&run_failures, error.to_string());
-                }
-                let client = settings_service.client();
-                let _ = client.shutdown_blocking();
-                if let Err(error) = settings_service.join() {
-                    record_failure(&run_failures, error.to_string());
-                }
-                if let Err(error) = overlay.finish_after_runtime_shutdown() {
-                    record_failure(&run_failures, error.to_string());
-                }
-                cx.quit();
-                return;
-            }
-        };
 
         #[cfg(target_os = "windows")]
         let overlay = Rc::new(RefCell::new(Some(overlay)));
@@ -1943,7 +1930,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(target_os = "windows")]
             overlay,
             settings_service: Some(settings_service),
-            settings_window: Some(settings_window.clone()),
+            settings_window: None,
             system_menu: Some(system_menu),
             #[cfg(target_os = "windows")]
             taskbar_icon_visible: initial_taskbar_icon_visible,
@@ -2139,8 +2126,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .detach();
 
-        #[cfg(target_os = "windows")]
-        let frame_window = settings_window.clone();
+        let initial_settings_window = if run_options.opens_settings_window_on_start() {
+            match ensure_settings_window(cx) {
+                Ok(window) => Some(window),
+                Err(error) => {
+                    record_failure(&run_failures, error);
+                    request_product_quit(cx);
+                    return;
+                }
+            }
+        } else {
+            None
+        };
+
         #[cfg(target_os = "windows")]
         let frame_failures = Arc::clone(&run_failures);
         #[cfg(target_os = "windows")]
@@ -2298,7 +2296,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 #[cfg(target_os = "windows")]
                 let mut request_shutdown_flush = false;
                 #[cfg(target_os = "windows")]
-                let keep_running = update_windows_settings(cx, &frame_window, |view, _, cx| {
+                let keep_running = cx.update(|cx| {
                     if !cx.has_global::<ProductCoordinator>() {
                         return Ok(false);
                     }
@@ -2314,32 +2312,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             error.to_string(),
                         );
                     }
-                    let (failure, failures) = {
+                    let (failure, failures, settings_window) = {
                         let coordinator = cx.global_mut::<ProductCoordinator>();
                         match tick_result
                             .take()
                             .expect("a successful window update invokes the frame closure once")
                         {
-                            None => (None, None),
+                            None => (None, None, None),
                             Some(Ok(_)) => {
                                 coordinator.frame_ticks = coordinator.frame_ticks.saturating_add(1);
-                                (None, None)
+                                (None, None, None)
                             }
                             Some(Err(error)) => {
                                 coordinator.frame_source_running = false;
                                 (
                                     Some(error.to_string()),
                                     Some(Arc::clone(&coordinator.failures)),
+                                    coordinator.settings_window.clone(),
                                 )
                             }
                         }
                     };
                     if let (Some(failure), Some(failures)) = (failure, failures) {
                         record_failure(&failures, failure);
-                        view.report_service_error(
-                            SettingsError::new(SettingsErrorCode::RuntimeUnavailable),
-                            cx,
-                        );
+                        if let Some(settings_window) = settings_window {
+                            let _ = settings_window.update(cx, |view, _, cx| {
+                                view.report_service_error(
+                                    SettingsError::new(SettingsErrorCode::RuntimeUnavailable),
+                                    cx,
+                                );
+                            });
+                        }
                     }
                     if system_termination_requested {
                         frame_shutdown_requested.store(true, Ordering::Release);
@@ -2363,9 +2366,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .await;
                 #[cfg(target_os = "windows")]
                 if request_shutdown_flush {
-                    let flush_requested = cx
-                        .update(|cx| frame_window.request_quit_after_flush(cx))
-                        .is_ok();
+                    let flush_requested = cx.update(|cx| {
+                        cx.try_global::<ProductCoordinator>()
+                            .and_then(|coordinator| coordinator.settings_window.clone())
+                            .is_some_and(|window| window.request_quit_after_flush(cx).is_ok())
+                    });
                     if !flush_requested {
                         cx.update(|cx| {
                             cx.global::<ProductCoordinator>()
@@ -2535,7 +2540,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if run_options.settings_window_smoke {
             let smoke_failures = Arc::clone(&run_failures);
-            let smoke_window = settings_window.clone();
+            let smoke_window = initial_settings_window
+                .clone()
+                .expect("settings window smoke requested its explicit settings window");
             #[cfg(target_os = "windows")]
             let smoke_shutdown_requested = Arc::clone(&shutdown_requested);
             cx.spawn(async move |cx| {
@@ -3169,6 +3176,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if run_options.single_instance_smoke {
             let smoke_failures = Arc::clone(&run_failures);
             let smoke_shutdown_requested = Arc::clone(&shutdown_requested);
+            let settings_window = initial_settings_window
+                .clone()
+                .expect("single-instance smoke requested its explicit settings window");
             cx.spawn(async move |cx| {
                 Timer::after(Duration::from_millis(500)).await;
                 let baseline = update_windows_settings(
@@ -3450,8 +3460,9 @@ mod tests {
 
     #[test]
     fn run_options_default_to_an_unbounded_product_lifetime() {
+        let options = RunOptions::parse(Vec::new()).expect("default options");
         assert_eq!(
-            RunOptions::parse(Vec::new()).expect("default options"),
+            options,
             RunOptions {
                 run_duration: Duration::ZERO,
                 settings_window_smoke: false,
@@ -3478,6 +3489,7 @@ mod tests {
                 single_instance_smoke: false,
             }
         );
+        assert!(!options.opens_settings_window_on_start());
     }
 
     #[test]
@@ -3512,6 +3524,7 @@ mod tests {
         assert!(!options.models_page_smoke);
         assert!(!options.hidden_model_switch_smoke);
         assert_eq!(options.run_duration, Duration::from_secs(4));
+        assert!(options.opens_settings_window_on_start());
     }
 
     #[test]
@@ -3693,6 +3706,7 @@ mod tests {
             .expect("single-instance smoke options");
         assert!(options.single_instance_smoke);
         assert!(!options.settings_window_smoke);
+        assert!(options.opens_settings_window_on_start());
     }
 
     #[test]
