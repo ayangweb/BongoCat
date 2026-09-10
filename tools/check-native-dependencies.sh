@@ -17,7 +17,7 @@ cd "$REPOSITORY_ROOT"
 check_release_dependency_tree() {
     target=$1
     tree=$(cargo tree \
-        --manifest-path native/Cargo.toml \
+        --manifest-path Cargo.toml \
         --locked \
         --target "$target" \
         --edges normal,build \
@@ -48,7 +48,7 @@ for target in \
     check_release_dependency_tree "$target"
 done
 
-for manifest in native/Cargo.toml spikes/*/Cargo.toml tools/cubism-bindgen/Cargo.toml; do
+for manifest in Cargo.toml spikes/*/Cargo.toml tools/cubism-bindgen/Cargo.toml; do
     printf 'checking dependency policy: %s\n' "$manifest"
     cargo deny \
         --manifest-path "$manifest" \

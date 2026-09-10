@@ -25,7 +25,7 @@ workspace 的前置条件，会阻止已经具备自动化契约的业务模块�
   签名、notarization、更新回滚和 soak 结果全部是 stable 发布门禁，不再阻止
   不公开分发的本地开发。
 - 维护者批准把功能开发所需的最小 Core、header、生成 bindings 和预置模型固定到
-  `native/vendor/` 与 `native/resources/`，使本地开发和目标 ABI 检查可复现。完整
+  `vendor/` 与 `resources/`，使本地开发和目标 ABI 检查可复现。完整
   SDK ZIP 与 Framework 源码不进入仓库；公开安装包仍在发布阶段核对 attribution、
   再分发范围和最终合规清单。
 - 产品构建默认不联网，也不从未固定来源下载 SDK。缺少本地 SDK 时，与 Cubism

@@ -235,22 +235,21 @@ ui protocol <------- app -------> runtime <------- platform adapters
 
 ```text
 BongoCat/
-  native/                    正式 Native Rewrite workspace；发布切换时成为根构建入口
-    Cargo.toml
-    Cargo.lock
-    rust-toolchain.toml
-    resources/                随产品打包的模型与 Native 产品图标
-    crates/
-      bongocat-app/           入口、装配和 shutdown
-      bongocat-runtime/       状态、输入语义、动画和命令
-      bongocat-config/        schema、环境隔离和原子存储
-      bongocat-model/         模型包、导入和资源索引
-      bongocat-live2d/        Cubism Core 边界与模型求值
-      bongocat-audio/         motion 音效队列、解码与设备 owner
-      bongocat-render/        render snapshot/contract
-      bongocat-ui/            GPUI 设置界面和 design system
-      bongocat-update/        签名更新 manifest、版本/target 和 artifact 完整性验证
-      bongocat-platform/      Windows/macOS 平台服务
+  Cargo.toml                  正式 Native Rewrite workspace 根
+  Cargo.lock
+  rust-toolchain.toml
+  resources/                  随产品打包的模型与 Native 产品图标
+  crates/
+    bongocat-app/             入口、装配和 shutdown
+    bongocat-runtime/         状态、输入语义、动画和命令
+    bongocat-config/          schema、环境隔离和原子存储
+    bongocat-model/           模型包、导入和资源索引
+    bongocat-live2d/          Cubism Core 边界与模型求值
+    bongocat-audio/           motion 音效队列、解码与设备 owner
+    bongocat-render/          render snapshot/contract
+    bongocat-ui/              GPUI 设置界面和 design system
+    bongocat-update/          签名更新 manifest、版本/target 和 artifact 完整性验证
+    bongocat-platform/        Windows/macOS 平台服务
   shared/
     config/                   Native JSON schema、命名与存储契约
     behavior/                 输入、动画和快捷键规范
@@ -265,7 +264,7 @@ BongoCat/
 
 crate 是编译和责任边界，不是动态库。首期不为目录美观建立空 crate；只有依赖方向或测试隔离确实需要时才拆分。
 
-正式 workspace 位于 `native/`，是仓库中唯一的产品构建入口。历史 Vue/Tauri 实现仅在
+正式 workspace 位于仓库根目录，是仓库中唯一的产品构建入口。历史 Vue/Tauri 实现仅在
 远端 `master` 和 `pre-refactor-tauri` 分支中保留，当前工作树不包含其源码、资源或构建入口；
 该路径安排不改变 crate 边界或产品架构。
 
@@ -457,7 +456,7 @@ model evaluation + render snapshot
   header/binding provenance、目标 ABI、三个预置 Moc、offscreen/enhanced rendering
   fixture 和双 renderer 门禁。
 - raw binding 只由精确锁定的离线生成工具从 hash 固定的官方 header 生成；生成配置、target ABI、libclang 版本和输出 hash 必须进入 provenance，禁止手改生成代码。
-- 维护者提供并批准用于开发的固定基线已存入 `native/vendor/cubism/5-r.5`，包括
+- 维护者提供并批准用于开发的固定基线已存入 `vendor/cubism/5-r.5`，包括
   Core、官方 header 和由该 header 生成的 target binding。公开发布前另行核对
   attribution 与再分发清单；该发布工作不阻塞本地功能实现和 `next` 开发提交。
 - 原始指针不离开 safe wrapper；Moc 必须比 Model 活得更久。
@@ -595,7 +594,7 @@ workspace 的受控 Cargo config 与 CI 显式选择 Development，Production bu
 
 预置模型属于 product files：macOS 从 `BongoCat.app/Contents/Resources/models` 解析，Windows 从
 `bongocat-app.exe` 同级 `resources/models` 解析。仅未打包的开发二进制可在该相对路径缺失时回退到
-仓库 `native/resources/models`；安装产物不得依赖源码树、当前工作目录或用户数据目录。
+仓库 `resources/models`；安装产物不得依赖源码树、当前工作目录或用户数据目录。
 
 要求：
 

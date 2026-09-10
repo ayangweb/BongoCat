@@ -48,7 +48,7 @@ cargo test --manifest-path spikes/model-package/Cargo.toml --locked
 cargo check --manifest-path spikes/model-package/Cargo.toml --locked --release
 cargo check --manifest-path spikes/model-package/Cargo.toml --locked --release --target x86_64-pc-windows-msvc
 cargo check --manifest-path spikes/model-package/Cargo.toml --locked --release --target aarch64-pc-windows-msvc
-cargo run --manifest-path spikes/model-package/Cargo.toml --locked -- native/resources/models/standard
+cargo run --manifest-path spikes/model-package/Cargo.toml --locked -- resources/models/standard
 cargo run --manifest-path spikes/model-package/Cargo.toml --locked -- --physics /path/to/model.physics3.json
 cargo run --manifest-path spikes/model-package/Cargo.toml --locked -- --pose /path/to/model.pose3.json
 cargo run --manifest-path spikes/model-package/Cargo.toml --locked -- --user-data /path/to/model.userdata3.json

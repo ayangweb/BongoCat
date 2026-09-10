@@ -1,4 +1,3 @@
-set working-directory := "native"
 set windows-shell := ["powershell.exe", "-NoProfile", "-Command"]
 
 # List the available Native Rewrite tasks.

@@ -402,7 +402,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 2.1 目标目录
 
-- [x] `native/` 是仅包含新 Rust 应用和 crate 的唯一产品 Cargo workspace；历史 Tauri workspace 已从当前工作树退役。
+- [x] 仓库根目录是仅包含新 Rust 应用和 crate 的唯一产品 Cargo workspace；历史 Tauri workspace 已从当前工作树退役。
 - [x] 创建 bongocat-app：入口、服务装配和 shutdown。
   - 验收证据（2026-08-30）：正式双平台 `bongocat-app` 入口现装配配置、单一 runtime
     owner、预置模型与输入映射、平台输入、cursor latest-value transport 和 Metal/D3D11
@@ -460,9 +460,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 ### 2.2 工程质量
 
 - [ ] 固定 stable Rust toolchain、target 和必要 components。
-  - 状态（2026-09-01）：`native/rust-toolchain.toml` 已固定 Rust `1.97.1`、`clippy` 和 `rustfmt`，`native-toolchain` job 也验证当前 stable 与该版本；Windows ARM64 desktop Core、macOS Intel 发布形式和完整 target 发布矩阵仍待外部证据，因此保持未勾选。
+  - 状态（2026-09-01）：`rust-toolchain.toml` 已固定 Rust `1.97.1`、`clippy` 和 `rustfmt`，`native-toolchain` job 也验证当前 stable 与该版本；Windows ARM64 desktop Core、macOS Intel 发布形式和完整 target 发布矩阵仍待外部证据，因此保持未勾选。
 - [x] 在 workspace manifest 声明 `rust-version`，CI 验证最低版本和当前 stable，不依赖开发机偶然安装的 nightly。
-  - 验收证据（2026-09-01）：`native/Cargo.toml` 的 workspace package 声明 `rust-version = "1.97"`，全部 Native crate 继承该字段；`native-toolchain` job 对当前 stable 和 `1.97.1` 均执行 `cargo check --locked --workspace`。
+  - 验收证据（2026-09-01）：`Cargo.toml` 的 workspace package 声明 `rust-version = "1.97"`，全部 Native crate 继承该字段；`native-toolchain` job 对当前 stable 和 `1.97.1` 均执行 `cargo check --locked --workspace`。
 - [x] 禁止应用依赖未固定 git branch，提交 Cargo.lock。
 - [x] 平台依赖使用 target-specific dependency，Windows feature 不进入 macOS，macOS framework 不进入 Windows。
   - 验收证据（2026-09-01）：`bongocat-platform`、`bongocat-overlay`、`bongocat-audio`、`bongocat-runtime`、
@@ -521,7 +521,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 验收证据（2026-09-01）：`docs/phase-0/cubism-sdk-source-and-license.md` 第 4 节提供
     维护者人工接受 Live2D 协议后下载固定 `5-r.5` ZIP、校验 archive/header/Core SHA-256、
     运行离线 inspector、生成并审阅 target bindings、执行 Core/模型 ABI smoke 的逐步流程；
-    完整 SDK 保存在仓库外，普通构建、CI 和打包不联网或下载 artifact。`native/README.md`
+    完整 SDK 保存在仓库外，普通构建、CI 和打包不联网或下载 artifact。`docs/product-runtime.md`
     同步说明固定 vendor 基线和离线构建边界。第二来源复核、Windows/macOS 全 ABI 以及最终
     再分发授权仍由 P0-CUBISM/stable 发布门禁跟踪，不扩大本项完成范围。
 - [x] 构建脚本默认不联网；外部 SDK、shader compiler 和生成器必须先由显式 bootstrap 步骤准备。
@@ -531,7 +531,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     均是离线 CLI，要求维护者先准备并校验 SDK，CI 不下载 Cubism、shader compiler 或生成器。
     Native 三平台 locked format、Clippy、test、release/Production check 及依赖策略通过。
 - [x] 定义 debug、release、profiling 三种 profile，profiling 产物不得误发布。
-  - 验收证据（2026-09-01）：`native/Cargo.toml` 显式定义 dev（debug、incremental、unwind）、
+  - 验收证据（2026-09-01）：`Cargo.toml` 显式定义 dev（debug、incremental、unwind）、
     release（symbols stripped、LTO、abort）和 profiling（继承 release、保留完整 debug、关闭
     LTO）profile；CI 与打包入口只使用 release，provenance 记录 profile，profiling 不进入发布
     workflow。三平台 Native workspace release check 通过。
@@ -577,8 +577,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-09-07）：收集器进一步拒绝未命名 JSON，并按匿名状态前缀保留文本行；未知行统一
     替换为 `<redacted-line>`，回归覆盖任意 JSON 和潜在用户模型文本，避免仅依赖字段名匹配隐私。
   - 验证（2026-09-07）：本机 `BONGOCAT_BUILD_ENV=development cargo run --manifest-path
-native/Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
---target-dir native/target/storage-test-injection -- --diagnostics-export-smoke` 通过，输出
+Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
+--target-dir target/storage-test-injection -- --diagnostics-export-smoke` 通过，输出
     `bongocat-app: diagnostics export completed with a private preview bundle`。
   - 状态（2026-09-07）：文本脱敏字段扩展至相对 `path/file` 及 `message/detail/error` 值，新增
     相对用户模型路径回归，避免错误详情或相对路径绕过绝对路径清理。
@@ -1741,7 +1741,7 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     Tauri/Pinia 配置路径、字段 alias 或导入逻辑；`cargo tree --target all` 仅显示
     `tauri-winrt-notification` 作为 GPUI Linux notification 的传递平台依赖，不提供
     Tauri 应用或配置 API。源码中出现的 `old_pinia_field` 仅用于 strict config 拒绝测试，
-    `native/resources/models` 是预置模型 parser 测试与发布运行时共用的唯一资源根。
+    `resources/models` 是预置模型 parser 测试与发布运行时共用的唯一资源根。
 - [x] Bundle ID 精确验证为 `com.ayangweb.bongo-cat`。
   - 验收证据（2026-09-05）：配置与存储根使用固定 `BUNDLE_ID` 常量；macOS 打包脚本在签名前
     读取 `CFBundleIdentifier` 并拒绝任何非预期值，release LaunchServices smoke 再次断言该值且
@@ -1814,8 +1814,8 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
   - 验收证据（2026-09-05）：ADR-0023 选择 NSIS per-user installer，以当前用户 local application
     directory、无管理员权限、逐 target/arch 已签名 artifact 和不触及环境数据为首发约束。MSIX 的包
     activation/update 模型与既有 HKCU Run/startup 和独立 signed update helper 冲突；WiX 的机器级 MSI
-    重点需要额外管理员权限与服务策略，均不作为首发路径。native/windows/installer/BongoCat.nsi 与
-    native/scripts/package-windows.ps1 现固定 user-level、HKCU-only NSIS v3.11 packaging boundary：
+    重点需要额外管理员权限与服务策略，均不作为首发路径。windows/installer/BongoCat.nsi 与
+    scripts/package-windows.ps1 现固定 user-level、HKCU-only NSIS v3.11 packaging boundary：
     wrapper 拒绝非 x64 release provenance、缺少三预置模型、reparse point、未签名 PE 或既有 output，且不
     build/sign/network；script 只升级固定 product root，卸载拒绝其他路径。PowerShell/NSIS 不在当前 macOS
     host，installer 编译、签名、安装、升级、卸载、环境数据保留、helper 和 rollback smoke 继续由后续
@@ -2184,7 +2184,7 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 
 状态（2026-09-10）：历史 Vue/Tauri workspace、Web 资源、Node manifests、旧 updater/release
 workflow、legacy config inspector 及其本地 fixture 已从当前工作树删除。Native 产品、测试与
-共享 preset fixture 统一使用 `native/resources/models`；`master` 与 `pre-refactor-tauri` 是
+共享 preset fixture 统一使用 `resources/models`；`master` 与 `pre-refactor-tauri` 是
 唯一的历史源码参考。Phase 0、稳定性和发布验收门槛仍按各自未完成项跟踪，代码退役不代表 stable 发布就绪。
 
 ### 10.4 最终完成定义
@@ -2275,7 +2275,7 @@ workflow、legacy config inspector 及其本地 fixture 已从当前工作树删
 15. [x] `P1-RUNTIME-CONFIG`：建立正式 workspace，提升 runtime 生命周期、强类型 command/snapshot 与 Development/Production 配置隔离闭环。
     - 依赖：ADR-0011、`spikes/runtime-contract/`、`spikes/config-store/`。
     - 退出条件：workspace 默认命令通过；环境由构建产物固定；两个数据根无读取、写入或锁 fallback；runtime 正常启动、更新 snapshot、拒绝队列溢出并有序 shutdown。
-    - 验收证据（2026-08-30）：`native/` 仅包含 app/runtime/config；11 项单元测试覆盖严格 schema、共享默认 fixture、原子写入、revision 冲突、双环境根、typed snapshot、队列满返回原 command 和 shutdown。Development 默认构建与 `BONGOCAT_BUILD_ENV=production` 构建使用同一代码、不同编译期常量；format、Clippy、test 和 release check 本机通过，三平台 CI 已配置。
+    - 验收证据（2026-08-30）：正式 workspace 仅包含 app/runtime/config；11 项单元测试覆盖严格 schema、共享默认 fixture、原子写入、revision 冲突、双环境根、typed snapshot、队列满返回原 command 和 shutdown。Development 默认构建与 `BONGOCAT_BUILD_ENV=production` 构建使用同一代码、不同编译期常量；format、Clippy、test 和 release check 本机通过，三平台 CI 已配置。
 16. [x] `P4-MOTION-AUDIO`：实现 motion UserData 与不阻塞 runtime 的单 voice 音效闭环。
     - 依赖：正式 model/live2d/runtime、ADR-0012、预置 model3/FLAC。
     - 退出条件：UserData 跨帧/loop 不重复且有界；accepted motion 才播放；抢占、无 sound、
@@ -2707,8 +2707,8 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
         `cargo clippy --workspace --all-targets --all-features -- -D warnings`、
         `cargo check --workspace --release` 与 `python3 tools/validate-json-schema.py` 在本机通过；
         macOS Development release smoke `BONGOCAT_BUILD_ENV=development cargo run --manifest-path
-native/Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
---target-dir native/target/storage-test-injection -- --settings-window-state-smoke` 输出
+Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
+--target-dir target/storage-test-injection -- --settings-window-state-smoke` 输出
         `settings window state restored after restart`。workflow `33395834870` 的 Native workspace
         jobs `99500010100`（Ubuntu）、`99500010122`（macOS）和 `99500010167`（Windows）以及
         Windows input/config job `99500010128` 全部通过；Windows 原生状态 smoke 输出与 macOS

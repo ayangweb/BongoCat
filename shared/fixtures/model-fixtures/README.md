@@ -45,7 +45,7 @@ Run the repository validator with:
 ```text
 python3 tools/validate-fixtures.py
 cargo test --manifest-path spikes/model-package/Cargo.toml --locked
-cargo test --manifest-path native/Cargo.toml -p bongocat-model shared_custom_model_fixtures
+cargo test --manifest-path Cargo.toml -p bongocat-model shared_custom_model_fixtures
 ```
 
 The formal `bongocat-model` test strictly deserializes this manifest, materializes

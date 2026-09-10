@@ -10,7 +10,7 @@ Cubism Core C header 转换为 raw Rust declarations，不加载 Core、不创�
 也不包含动作、物理、渲染或其他业务逻辑。
 
 真实 R5 header 和由它派生的 bindings 已由维护者批准作为开发基线固定到
-`native/vendor/cubism/5-r.5` 与 `native/crates/bongocat-live2d/src/sys`。生成仍是
+`vendor/cubism/5-r.5` 与 `crates/bongocat-live2d/src/sys`。生成仍是
 显式离线维护操作，不在普通 build 或 CI 中运行；完整 SDK ZIP 和 Framework 源码
 不进入 Git、CI cache、workflow artifact、issue 或 release。
 

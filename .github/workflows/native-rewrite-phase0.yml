@@ -18,14 +18,14 @@ jobs:
       - name: Check current stable toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Build Native workspace with current stable
-        run: cargo check --manifest-path native/Cargo.toml --locked --workspace
+        run: cargo check --manifest-path Cargo.toml --locked --workspace
       - name: Check declared minimum toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.97.1
           components: clippy, rustfmt
       - name: Build Native workspace with declared minimum
-        run: cargo check --manifest-path native/Cargo.toml --locked --workspace
+        run: cargo check --manifest-path Cargo.toml --locked --workspace
       - name: Collect redacted Native failure evidence
         if: ${{ failure() }}
         shell: bash
@@ -130,49 +130,49 @@ jobs:
           path: |
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
-            native/target/
-          key: ${{ runner.os }}-native-workspace-${{ hashFiles('native/Cargo.lock', 'native/Cargo.toml', 'native/rust-toolchain.toml', 'native/crates/**/Cargo.toml') }}
+            target/
+          key: ${{ runner.os }}-native-workspace-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml') }}
           restore-keys: |
             ${{ runner.os }}-native-workspace-
       - name: Check formatting
-        run: cargo fmt --manifest-path native/Cargo.toml --all -- --check
+        run: cargo fmt --manifest-path Cargo.toml --all -- --check
       - name: Run Clippy
-        run: cargo clippy --manifest-path native/Cargo.toml --locked --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy --manifest-path Cargo.toml --locked --workspace --all-targets --all-features -- -D warnings
       - name: Run tests
-        run: cargo test --manifest-path native/Cargo.toml --locked --workspace
+        run: cargo test --manifest-path Cargo.toml --locked --workspace
       - name: Reject implicit app build environment
         if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
-          if env -u BONGOCAT_BUILD_ENV cargo check --manifest-path native/Cargo.toml --locked -p bongocat-app; then
+          if env -u BONGOCAT_BUILD_ENV cargo check --manifest-path Cargo.toml --locked -p bongocat-app; then
             echo 'app build accepted a missing build environment' >&2
             exit 1
           fi
-          if BONGOCAT_BUILD_ENV= cargo check --manifest-path native/Cargo.toml --locked -p bongocat-app; then
+          if BONGOCAT_BUILD_ENV= cargo check --manifest-path Cargo.toml --locked -p bongocat-app; then
             echo 'app build accepted an empty build environment' >&2
             exit 1
           fi
-          if BONGOCAT_BUILD_ENV=unknown cargo check --manifest-path native/Cargo.toml --locked -p bongocat-app; then
+          if BONGOCAT_BUILD_ENV=unknown cargo check --manifest-path Cargo.toml --locked -p bongocat-app; then
             echo 'app build accepted an unknown build environment' >&2
             exit 1
           fi
-          if BONGOCAT_BUILD_ENV=production cargo check --manifest-path native/Cargo.toml --locked -p bongocat-app --release --features storage-test-injection; then
+          if BONGOCAT_BUILD_ENV=production cargo check --manifest-path Cargo.toml --locked -p bongocat-app --release --features storage-test-injection; then
             echo 'Production app build accepted storage test injection' >&2
             exit 1
           fi
       - name: Check release build
-        run: cargo check --manifest-path native/Cargo.toml --locked --workspace --release
+        run: cargo check --manifest-path Cargo.toml --locked --workspace --release
       - name: Check production environment build
         shell: bash
         env:
           BONGOCAT_BUILD_ENV: production
-        run: cargo check --manifest-path native/Cargo.toml --locked -p bongocat-app --release
+        run: cargo check --manifest-path Cargo.toml --locked -p bongocat-app --release
       - name: Record Native build provenance
         shell: bash
         run: |
           python3 tools/record-native-provenance.py \
-            --workspace native \
-            --output "native/target/provenance/${RUNNER_OS}.json" \
+            --workspace . \
+            --output "target/provenance/${RUNNER_OS}.json" \
             --profile release \
             --features default \
             --environment "$BONGOCAT_BUILD_ENV"
@@ -180,7 +180,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: native-provenance-${{ matrix.os }}
-          path: native/target/provenance/${{ runner.os }}.json
+          path: target/provenance/${{ runner.os }}.json
           if-no-files-found: error
       - name: Smoke Windows model directory picker
         if: matrix.os == 'windows-latest'
@@ -189,11 +189,11 @@ jobs:
         env:
           RUST_BACKTRACE: full
         run: |
-          cargo run --manifest-path native/Cargo.toml --locked --release -p bongocat-platform --example model_directory_picker_smoke -- --expect-cancel --auto
+          cargo run --manifest-path Cargo.toml --locked --release -p bongocat-platform --example model_directory_picker_smoke -- --expect-cancel --auto
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
-          cargo run --manifest-path native/Cargo.toml --locked --release -p bongocat-platform --example model_directory_picker_smoke -- --expect-selected-any --auto
+          cargo run --manifest-path Cargo.toml --locked --release -p bongocat-platform --example model_directory_picker_smoke -- --expect-selected-any --auto
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
@@ -203,7 +203,7 @@ jobs:
         run: |
           rustup target add aarch64-pc-windows-msvc
           cargo clippy \
-            --manifest-path native/Cargo.toml \
+            --manifest-path Cargo.toml \
             --locked \
             -p bongocat-platform \
             -p bongocat-overlay \
@@ -219,11 +219,11 @@ jobs:
         env:
           RUST_BACKTRACE: full
         run: |
-          cargo build --manifest-path native/Cargo.toml --locked -p bongocat-app --release
+          cargo build --manifest-path Cargo.toml --locked -p bongocat-app --release
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
-          $executable = Join-Path $PWD "native/target/release/bongocat-app.exe"
+          $executable = Join-Path $PWD "target/release/bongocat-app.exe"
           Add-Type -AssemblyName UIAutomationTypes
           Add-Type -AssemblyName UIAutomationClient
           function Find-UiAutomationElement {
@@ -501,20 +501,20 @@ jobs:
       - name: Smoke macOS settings window lifecycle
         if: matrix.os == 'macos-latest'
         timeout-minutes: 10
-        run: cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release -- --run-seconds 8 --settings-window-smoke --models-page-smoke
+        run: cargo run --manifest-path Cargo.toml --locked -p bongocat-app --release -- --run-seconds 8 --settings-window-smoke --models-page-smoke
       - name: Smoke hidden overlay model switching
         if: matrix.os != 'ubuntu-latest'
         timeout-minutes: 5
-        run: cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release -- --run-seconds 20 --hidden-model-switch-smoke
+        run: cargo run --manifest-path Cargo.toml --locked -p bongocat-app --release -- --run-seconds 20 --hidden-model-switch-smoke
       - name: Build isolated storage smoke executable
         if: matrix.os != 'ubuntu-latest'
         timeout-minutes: 30
-        run: cargo build --manifest-path native/Cargo.toml --locked -p bongocat-app --release --features storage-test-injection --target-dir native/target/storage-test-injection
+        run: cargo build --manifest-path Cargo.toml --locked -p bongocat-app --release --features storage-test-injection --target-dir target/storage-test-injection
       - name: Smoke macOS configuration recovery window
         if: matrix.os == 'macos-latest'
         timeout-minutes: 2
         run: |
-          output=$(native/target/storage-test-injection/release/bongocat-app --configuration-recovery-smoke 2>&1)
+          output=$(target/storage-test-injection/release/bongocat-app --configuration-recovery-smoke 2>&1)
           printf '%s\n' "$output"
           grep -Fq 'bongocat-app: configuration recovery required' <<<"$output"
           grep -Fq 'bongocat-app: recovery window opened' <<<"$output"
@@ -525,7 +525,7 @@ jobs:
         timeout-minutes: 2
         run: |
           set +e
-          output=$(native/target/storage-test-injection/release/bongocat-app --settings-window-state-smoke 2>&1)
+          output=$(target/storage-test-injection/release/bongocat-app --settings-window-state-smoke 2>&1)
           status=$?
           set -e
           printf '%s\n' "$output"
@@ -540,21 +540,21 @@ jobs:
         if: matrix.os == 'macos-latest'
         timeout-minutes: 2
         run: |
-          output=$(native/target/storage-test-injection/release/bongocat-app --panic-diagnostics-smoke 2>&1)
+          output=$(target/storage-test-injection/release/bongocat-app --panic-diagnostics-smoke 2>&1)
           printf '%s\n' "$output"
           grep -Fq 'bongocat-app: panic diagnostics recovered after crash' <<<"$output"
       - name: Smoke macOS diagnostics preview export
         if: matrix.os == 'macos-latest'
         timeout-minutes: 2
         run: |
-          output=$(native/target/storage-test-injection/release/bongocat-app --diagnostics-export-smoke 2>&1)
+          output=$(target/storage-test-injection/release/bongocat-app --diagnostics-export-smoke 2>&1)
           printf '%s\n' "$output"
           grep -Fq 'bongocat-app: diagnostics export completed with a private preview bundle' <<<"$output"
       - name: Smoke macOS diagnostics export filesystem failures
         if: matrix.os == 'macos-latest'
         timeout-minutes: 2
         run: |
-          output=$(native/target/storage-test-injection/release/bongocat-app --diagnostics-export-failure-smoke 2>&1)
+          output=$(target/storage-test-injection/release/bongocat-app --diagnostics-export-failure-smoke 2>&1)
           printf '%s\n' "$output"
           grep -Fq 'bongocat-app: diagnostics export filesystem failures preserved the previous bundle' <<<"$output"
       - name: Smoke Windows configuration recovery window
@@ -562,7 +562,7 @@ jobs:
         shell: pwsh
         timeout-minutes: 2
         run: |
-          $smokeTarget = Join-Path $PWD "native/target/storage-test-injection"
+          $smokeTarget = Join-Path $PWD "target/storage-test-injection"
           $executable = Join-Path $smokeTarget "release/bongocat-app.exe"
           if (-not (Test-Path $executable)) {
             throw "storage injection smoke executable was not built"
@@ -661,7 +661,7 @@ jobs:
         shell: pwsh
         timeout-minutes: 2
         run: |
-          $output = & native/target/storage-test-injection/release/bongocat-app.exe --panic-diagnostics-smoke 2>&1 | Out-String
+          $output = & target/storage-test-injection/release/bongocat-app.exe --panic-diagnostics-smoke 2>&1 | Out-String
           $exitCode = $LASTEXITCODE
           Write-Host $output
           if ($exitCode -ne 0) { exit $exitCode }
@@ -673,7 +673,7 @@ jobs:
         shell: pwsh
         timeout-minutes: 2
         run: |
-          $output = & native/target/storage-test-injection/release/bongocat-app.exe --diagnostics-export-smoke 2>&1 | Out-String
+          $output = & target/storage-test-injection/release/bongocat-app.exe --diagnostics-export-smoke 2>&1 | Out-String
           $exitCode = $LASTEXITCODE
           Write-Host $output
           if ($exitCode -ne 0) { exit $exitCode }
@@ -685,7 +685,7 @@ jobs:
         shell: pwsh
         timeout-minutes: 2
         run: |
-          $output = & native/target/storage-test-injection/release/bongocat-app.exe --diagnostics-export-failure-smoke 2>&1 | Out-String
+          $output = & target/storage-test-injection/release/bongocat-app.exe --diagnostics-export-failure-smoke 2>&1 | Out-String
           $exitCode = $LASTEXITCODE
           Write-Host $output
           if ($exitCode -ne 0) { exit $exitCode }
@@ -694,27 +694,27 @@ jobs:
           }
       - name: Smoke Windows startup item lifecycle
         if: matrix.os == 'windows-latest'
-        run: cargo test --manifest-path native/Cargo.toml --locked --release -p bongocat-platform windows_startup_item_registry_smoke_restores_original_value -- --ignored
+        run: cargo test --manifest-path Cargo.toml --locked --release -p bongocat-platform windows_startup_item_registry_smoke_restores_original_value -- --ignored
       - name: Reject implicit macOS package environment
         if: matrix.os == 'macos-latest'
         shell: bash
         run: |
-          if env -u BONGOCAT_BUILD_ENV ./native/scripts/package-macos.sh; then
+          if env -u BONGOCAT_BUILD_ENV ./scripts/package-macos.sh; then
             echo 'package script accepted a missing build environment' >&2
             exit 1
           fi
-          if BONGOCAT_BUILD_ENV= ./native/scripts/package-macos.sh; then
+          if BONGOCAT_BUILD_ENV= ./scripts/package-macos.sh; then
             echo 'package script accepted an empty build environment' >&2
             exit 1
           fi
-          if BONGOCAT_BUILD_ENV=unknown ./native/scripts/package-macos.sh; then
+          if BONGOCAT_BUILD_ENV=unknown ./scripts/package-macos.sh; then
             echo 'package script accepted an unknown build environment' >&2
             exit 1
           fi
       - name: Smoke macOS startup item lifecycle
         if: matrix.os == 'macos-latest'
         run: |
-          app_path=$(BONGOCAT_BUILD_ENV=production ./native/scripts/package-macos.sh)
+          app_path=$(BONGOCAT_BUILD_ENV=production ./scripts/package-macos.sh)
           install_root=$(mktemp -d '/Applications/bongocat-startup-item-smoke.XXXXXX')
           installed_app="$install_root/BongoCat.app"
           stdout_path="$RUNNER_TEMP/macos-startup-item.stdout.log"
@@ -753,7 +753,7 @@ jobs:
         if: matrix.os == 'macos-latest'
         timeout-minutes: 5
         run: |
-          app_path=$(./native/scripts/package-macos.sh)
+          app_path=$(./scripts/package-macos.sh)
           stdout_path="$RUNNER_TEMP/macos-application-reopen.stdout.log"
           stderr_path="$RUNNER_TEMP/macos-application-reopen.stderr.log"
           rm -f "$stdout_path" "$stderr_path"
@@ -807,20 +807,20 @@ jobs:
           test "$(plutil -extract CFBundleIdentifier raw -o - "$app_path/Contents/Info.plist")" = \
             'com.ayangweb.bongo-cat'
           test "$(plutil -extract CFBundleIconFile raw -o - "$app_path/Contents/Info.plist")" = \
-            'BongoCat.icns'
+            'logo-macos.icns'
           cmp \
-            native/resources/icons/BongoCat.icns \
-            "$app_path/Contents/Resources/BongoCat.icns"
+            resources/icons/logo-macos.icns \
+            "$app_path/Contents/Resources/logo-macos.icns"
           codesign --verify --deep --strict "$app_path"
       - name: Smoke native system menu lifecycle
         if: matrix.os == 'windows-latest' || matrix.os == 'macos-latest'
         timeout-minutes: 2
-        run: cargo run --manifest-path native/Cargo.toml --locked -p bongocat-app --release -- --run-seconds 10 --system-menu-smoke
+        run: cargo run --manifest-path Cargo.toml --locked -p bongocat-app --release -- --run-seconds 10 --system-menu-smoke
       - name: Verify Windows executable product icon
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          $executable = Join-Path $PWD "native/target/release/bongocat-app.exe"
+          $executable = Join-Path $PWD "target/release/bongocat-app.exe"
           Add-Type -TypeDefinition @'
           using System;
           using System.Runtime.InteropServices;
@@ -850,7 +850,7 @@ jobs:
         shell: pwsh
         timeout-minutes: 2
         run: |
-          $executable = Join-Path $PWD "native/target/release/bongocat-app.exe"
+          $executable = Join-Path $PWD "target/release/bongocat-app.exe"
           $primaryStdout = Join-Path $env:RUNNER_TEMP "single-instance-primary.stdout.log"
           $primaryStderr = Join-Path $env:RUNNER_TEMP "single-instance-primary.stderr.log"
           $secondaryStdout = Join-Path $env:RUNNER_TEMP "single-instance-secondary.stdout.log"
@@ -931,10 +931,10 @@ jobs:
           }
       - name: Smoke formal Windows missing-release recovery
         if: matrix.os == 'windows-latest'
-        run: cargo test --manifest-path native/Cargo.toml --locked -p bongocat-platform --lib --release windows::tests::synthetic_missing_release_is_reconciled_in_formal_runtime -- --ignored --exact
+        run: cargo test --manifest-path Cargo.toml --locked -p bongocat-platform --lib --release windows::tests::synthetic_missing_release_is_reconciled_in_formal_runtime -- --ignored --exact
       - name: Smoke transactional Windows D3D11 model switching
         if: matrix.os == 'windows-latest'
-        run: cargo run --manifest-path native/Cargo.toml --locked -p bongocat-overlay --release -- standard 0 --switch-cycles 3
+        run: cargo run --manifest-path Cargo.toml --locked -p bongocat-overlay --release -- standard 0 --switch-cycles 3
       - name: Collect redacted Native failure evidence
         if: ${{ failure() }}
         shell: bash

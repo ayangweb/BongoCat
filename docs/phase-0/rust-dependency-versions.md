@@ -6,7 +6,7 @@ Rust：`cargo 1.97.1`、`rustc 1.97.1`
 
 ## Scope
 
-本次审计覆盖正式 `native/` workspace，以及 `spikes/*` 和 `tools/*` 下列出的独立 workspace。
+本次审计覆盖仓库根目录的正式 workspace，以及 `spikes/*` 和 `tools/*` 下列出的独立 workspace。
 历史 Vue/Tauri workspace 已退役至远端 `pre-refactor-tauri` 分支，不属于 Native Rewrite 的依赖图。
 
 版本来源使用 crates.io stable release：
@@ -88,7 +88,7 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
 
 ## Verification
 
-当前 15 个 workspace 均纳入 locked format、Clippy、test 和 dependency policy；正式 `native/` workspace 还执行三平台 release check。无依赖的 contract workspace 同样重新生成/检查 lockfile。附加平台验证包括：
+当前 15 个 workspace 均纳入 locked format、Clippy、test 和 dependency policy；正式根 workspace 还执行三平台 release check。无依赖的 contract workspace 同样重新生成/检查 lockfile。附加平台验证包括：
 
 - `windows 0.62.2` 同时封装 Raw Input、XInput 与原生 overlay 边界；输入和 overlay crate 均在 `x86_64-pc-windows-msvc` 完成 Check/Clippy，输入与 overlay 也对 `aarch64-pc-windows-msvc` 完成 Check；XInput 仅增加同一 package 的 `Win32_UI_Input_XboxController` feature，真实 Windows 输入与 D3D11 生命周期 smoke 由 push CI 执行；
 - `core-graphics2 0.6.1` 在已授予 Input Monitoring 的 macOS 会话创建 listen-only tap，完成 lifecycle Reset 和正常 shutdown；

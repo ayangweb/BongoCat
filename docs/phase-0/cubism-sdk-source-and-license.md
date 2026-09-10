@@ -35,7 +35,7 @@
 `csmGetLatestMocVersion()` 返回 `6`。外部生成的 arm64 binding 随后完成三个预置
 Moc 各 100 次 revive/model/update/array/drop，并由 `leaks` 得到 0-byte leak；详见
 `cubism-core-r5-probe.md`。维护者之后批准把产品开发所需的最小 Core/header 子集和
-真实 target bindings 固定到 `native/vendor/cubism/5-r.5` 与 `bongocat-live2d`；
+真实 target bindings 固定到 `vendor/cubism/5-r.5` 与 `bongocat-live2d`；
 完整 ZIP、Framework 源码、临时 universal dylib 和 inspector JSON 仍不进入仓库。
 Windows 原生 ABI、macOS Intel 原生验证和第二机器复核仍保持未完成。
 

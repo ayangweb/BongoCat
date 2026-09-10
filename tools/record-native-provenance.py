@@ -40,7 +40,7 @@ def sha256(path: Path) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--workspace", type=Path, default=Path("native"))
+    parser.add_argument("--workspace", type=Path, default=Path("."))
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--target", help="target triple; defaults to rustc host")
     parser.add_argument("--profile", default="release")

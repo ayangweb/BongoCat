@@ -6,7 +6,7 @@
 
 Native Rewrite 使用 `rust-i18n = 4.2.2` 加载编译期嵌入的 JSON 语言资源。应用层资源由独立的 `bongocat-i18n` crate 管理，默认语言为 `en-US`，当前首批迁移语言为 `zh-CN`。
 
-语言文件放在 `native/crates/bongocat-i18n/locales/`，每种语言一个 JSON 文件，使用 `_version: 1`
+语言文件放在 `crates/bongocat-i18n/locales/`，每种语言一个 JSON 文件，使用 `_version: 1`
 和真正嵌套的领域结构。`rust-i18n` 在编译期将嵌套路径解析为查找 key；JSON 源文件本身不得使用
 点号分隔的扁平 key。Rust UI 在文案实际使用处直接引用稳定的领域路径，不内嵌翻译文本或维护
 enum 到 key 的集中映射。

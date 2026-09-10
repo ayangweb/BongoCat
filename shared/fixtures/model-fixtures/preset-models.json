@@ -4,7 +4,7 @@
   "models": [
     {
       "mode": "standard",
-      "root": "native/resources/models/standard",
+      "root": "resources/models/standard",
       "fileCount": 71,
       "totalBytes": 1524540,
       "leftKeyCount": 55,
@@ -13,7 +13,7 @@
     },
     {
       "mode": "keyboard",
-      "root": "native/resources/models/keyboard",
+      "root": "resources/models/keyboard",
       "fileCount": 75,
       "totalBytes": 1490448,
       "leftKeyCount": 55,
@@ -22,7 +22,7 @@
     },
     {
       "mode": "gamepad",
-      "root": "native/resources/models/gamepad",
+      "root": "resources/models/gamepad",
       "fileCount": 28,
       "totalBytes": 1206645,
       "leftKeyCount": 6,

@@ -183,7 +183,7 @@ Issue #47 的“收到按下但未收到释放”必须从架构上处理，不�
 - 未完成三个预置模型 spike 前，不得宣称 Cubism 兼容完成。
 - 不得加入长期的非 Rust 业务 bridge 来绕过 Phase 0 go/no-go。
 - 维护者已授权把固定版本的 Cubism Core、header、生成 bindings 和三个预置模型作为
-  开发基线提交到 `native/vendor/` 与 `native/resources/`。授权手续不得再阻塞本地开发、
+  开发基线提交到仓库根目录的 `vendor/` 与 `resources/`。授权手续不得再阻塞本地开发、
   功能实现或 `next` 提交；公开发布前仍须完成 attribution、再分发清单和最终合规核对。
 
 ## 8. `unsafe` 与 FFI
