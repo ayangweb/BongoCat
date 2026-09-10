@@ -39,9 +39,11 @@ fn captured_shortcut(key: &str, modifiers: Modifiers) -> Option<String> {
 
 #[test]
 fn shortcut_capture_canonicalizes_modifiers_and_named_keys() {
-    let mut modifiers = Modifiers::default();
-    modifiers.control = true;
-    modifiers.shift = true;
+    let mut modifiers = Modifiers {
+        control: true,
+        shift: true,
+        ..Modifiers::default()
+    };
     assert_eq!(
         captured_shortcut("arrowleft", modifiers).as_deref(),
         Some("Control+Shift+ArrowLeft")
@@ -848,8 +850,10 @@ fn model_import_accessibility_nodes_project_actions_progress_and_catalog_states(
     assert_eq!(loading.role, AccessibilityRole::Status);
     assert_eq!(loading.value.as_deref(), Some("Loading models..."));
 
-    let mut unavailable = SettingsModelCatalog::default();
-    unavailable.error = Some(SettingsModelCatalogError::Unavailable);
+    let unavailable = SettingsModelCatalog {
+        error: Some(SettingsModelCatalogError::Unavailable),
+        ..SettingsModelCatalog::default()
+    };
     let unavailable = super::accessibility::model_catalog_accessibility_status_node(
         Some(&unavailable),
         SettingsLanguage::ChineseSimplified,
