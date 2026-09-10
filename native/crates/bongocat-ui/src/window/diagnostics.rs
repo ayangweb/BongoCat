@@ -22,18 +22,22 @@ pub(super) fn content(
         .bg(tokens.canvas)
         .text_color(tokens.text)
         .id("diagnostics-content")
-        .child(
-            div()
-                .text_2xl()
-                .child(ui_text(language, UiText::Diagnostics)),
-        )
+        .child(div().text_2xl().child(bongocat_i18n::text(
+            language.catalog_locale(),
+            "navigation.diagnostics.title",
+        )))
         .child(
             div()
                 .text_sm()
                 .text_color(tokens.muted)
                 .child(match snapshot {
-                    None => ui_text(language, UiText::LoadingDiagnostics).to_owned(),
-                    Some(_) => ui_text(language, UiText::InputReliabilityCounters).to_owned(),
+                    None => bongocat_i18n::text(language.catalog_locale(), "diagnostics.loading")
+                        .to_owned(),
+                    Some(_) => bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "diagnostics.input.reliability_counters",
+                    )
+                    .to_owned(),
                 }),
         )
         .child(
@@ -67,12 +71,12 @@ pub(super) fn content(
                                 .items_center()
                                 .justify_between()
                                 .gap_4()
-                                .child(
-                                    div()
-                                        .text_sm()
-                                        .text_color(tokens.muted)
-                                        .child(ui_text(language, UiText::BuildInformation)),
-                                )
+                                .child(div().text_sm().text_color(tokens.muted).child(
+                                    bongocat_i18n::text(
+                                        language.catalog_locale(),
+                                        "diagnostics.build.title",
+                                    ),
+                                ))
                                 .child(
                                     div()
                                         .flex_none()
@@ -98,12 +102,12 @@ pub(super) fn content(
                                         .flex()
                                         .flex_col()
                                         .gap_1()
-                                        .child(
-                                            div()
-                                                .text_sm()
-                                                .text_color(tokens.muted)
-                                                .child(ui_text(language, UiText::RuntimeRenderer)),
-                                        )
+                                        .child(div().text_sm().text_color(tokens.muted).child(
+                                            bongocat_i18n::text(
+                                                language.catalog_locale(),
+                                                "diagnostics.renderer.title",
+                                            ),
+                                        ))
                                         .child(div().text_sm().child(runtime_diagnostics.title)),
                                 )
                                 .child(
@@ -136,11 +140,12 @@ pub(super) fn content(
                                         .flex()
                                         .flex_col()
                                         .gap_1()
-                                        .child(
-                                            div().text_sm().text_color(tokens.muted).child(
-                                                ui_text(language, UiText::DiagnosticsExport),
+                                        .child(div().text_sm().text_color(tokens.muted).child(
+                                            bongocat_i18n::text(
+                                                language.catalog_locale(),
+                                                "diagnostics.export.title",
                                             ),
-                                        )
+                                        ))
                                         .child(div().text_sm().child(diagnostics_export_status(
                                             language,
                                             snapshot.diagnostics_export,
@@ -148,7 +153,10 @@ pub(super) fn content(
                                 )
                                 .child(
                                     command_button(
-                                        ui_text(language, UiText::Export),
+                                        bongocat_i18n::text(
+                                            language.catalog_locale(),
+                                            "diagnostics.export.action",
+                                        ),
                                         &view.export_diagnostics_focus,
                                         32,
                                         window,
@@ -188,15 +196,18 @@ pub(super) fn content(
                                             .items_center()
                                             .justify_between()
                                             .gap_3()
-                                            .child(
-                                                div()
-                                                    .text_sm()
-                                                    .text_color(tokens.muted)
-                                                    .child(ui_text(language, UiText::Shortcuts)),
-                                            )
+                                            .child(div().text_sm().text_color(tokens.muted).child(
+                                                bongocat_i18n::text(
+                                                    language.catalog_locale(),
+                                                    "navigation.shortcuts.title",
+                                                ),
+                                            ))
                                             .child(
                                                 command_button(
-                                                    ui_text(language, UiText::RestoreDefaults),
+                                                    bongocat_i18n::text(
+                                                        language.catalog_locale(),
+                                                        "shortcuts.actions.restore_defaults",
+                                                    ),
                                                     &view.restore_shortcuts_focus,
                                                     33,
                                                     window,
@@ -230,7 +241,10 @@ pub(super) fn content(
                                             )
                                             .child(
                                                 command_button(
-                                                    ui_text(language, UiText::ClearAll),
+                                                    bongocat_i18n::text(
+                                                        language.catalog_locale(),
+                                                        "shortcuts.actions.clear_all",
+                                                    ),
                                                     &view.clear_shortcuts_focus,
                                                     34,
                                                     window,
@@ -273,16 +287,16 @@ pub(super) fn content(
                                                 div().text_sm().text_color(tokens.accent).child(
                                                     match &capture.target {
                                                         ShortcutCaptureTarget::Command(_) => {
-                                                            ui_text(
-                                                                language,
-                                                                UiText::PressCommandShortcut,
+                                                            bongocat_i18n::text(
+                                                                language.catalog_locale(),
+                                                                "shortcuts.capture.command_prompt",
                                                             )
                                                         }
                                                         ShortcutCaptureTarget::ModelBehavior {
                                                             ..
-                                                        } => ui_text(
-                                                            language,
-                                                            UiText::PressBehaviorShortcut,
+                                                        } => bongocat_i18n::text(
+                                                            language.catalog_locale(),
+                                                            "shortcuts.capture.behavior_prompt",
                                                         ),
                                                     },
                                                 ),
@@ -330,12 +344,12 @@ pub(super) fn content(
                                                 )
                                                 .child(
                                                     command_button(
-                                                        ui_text(
-                                                            language,
+                                                        bongocat_i18n::text(
+                                                            language.catalog_locale(),
                                                             if capturing {
-                                                                UiText::PressKey
+                                                                "shortcuts.capture.press_key"
                                                             } else {
-                                                                UiText::Capture
+                                                                "shortcuts.actions.capture"
                                                             },
                                                         ),
                                                         &focus,
@@ -379,7 +393,10 @@ pub(super) fn content(
                                                 )
                                                 .child(
                                                     command_button(
-                                                        ui_text(language, UiText::Clear),
+                                                        bongocat_i18n::text(
+                                                            language.catalog_locale(),
+                                                            "shortcuts.actions.clear",
+                                                        ),
                                                         &clear_focus,
                                                         shortcut_clear_tab_index(index),
                                                         window,
@@ -462,9 +479,9 @@ pub(super) fn content(
                                                                 .as_deref()
                                                                 .map(shortcut_display)
                                                                 .unwrap_or_else(|| {
-                                                                    ui_text(
-                                                                        language,
-                                                                        UiText::NotSet,
+                                                                    bongocat_i18n::text(
+                                                                        language.catalog_locale(),
+                                                                        "shortcuts.state.not_set",
                                                                     )
                                                                     .to_owned()
                                                                 }),
@@ -472,12 +489,12 @@ pub(super) fn content(
                                                     )
                                                     .child(
                                                         command_button(
-                                                            ui_text(
-                                                                language,
+                                                            bongocat_i18n::text(
+                                                                language.catalog_locale(),
                                                                 if capturing {
-                                                                    UiText::PressKey
+                                                                    "shortcuts.capture.press_key"
                                                                 } else {
-                                                                    UiText::Capture
+                                                                    "shortcuts.actions.capture"
                                                                 },
                                                             ),
                                                             &focus,
@@ -524,7 +541,10 @@ pub(super) fn content(
                                                     .when(has_binding, |actions| {
                                                         actions.child(
                                                             command_button(
-                                                                ui_text(language, UiText::Clear),
+                                                                bongocat_i18n::text(
+                                                                    language.catalog_locale(),
+                                                                    "shortcuts.actions.clear",
+                                                                ),
                                                                 &clear_focus,
                                                                 shortcut_clear_tab_index(
                                                                     snapshot
@@ -588,12 +608,12 @@ pub(super) fn content(
                                         .flex()
                                         .flex_col()
                                         .gap_1()
-                                        .child(
-                                            div()
-                                                .text_sm()
-                                                .text_color(tokens.muted)
-                                                .child(ui_text(language, UiText::InputService)),
-                                        )
+                                        .child(div().text_sm().text_color(tokens.muted).child(
+                                            bongocat_i18n::text(
+                                                language.catalog_locale(),
+                                                "diagnostics.input.service",
+                                            ),
+                                        ))
                                         .child(div().text_sm().child(input_service.title)),
                                 )
                                 .child(
@@ -628,12 +648,12 @@ pub(super) fn content(
                                         .flex()
                                         .flex_col()
                                         .gap_1()
-                                        .child(
-                                            div()
-                                                .text_sm()
-                                                .text_color(tokens.muted)
-                                                .child(ui_text(language, UiText::Configuration)),
-                                        )
+                                        .child(div().text_sm().text_color(tokens.muted).child(
+                                            bongocat_i18n::text(
+                                                language.catalog_locale(),
+                                                "diagnostics.configuration.title",
+                                            ),
+                                        ))
                                         .child(div().text_sm().child(recovery.title)),
                                 )
                                 .child(
@@ -654,7 +674,10 @@ pub(super) fn content(
                                         .child(
                                             icon_command_button(
                                                 "open-config-backups-control",
-                                                ui_text(language, UiText::Backups),
+                                                bongocat_i18n::text(
+                                                    language.catalog_locale(),
+                                                    "diagnostics.configuration.backups",
+                                                ),
                                                 IconName::FolderOpen,
                                                 &view.open_backups_focus,
                                                 28,
@@ -680,7 +703,10 @@ pub(super) fn content(
                                         .when(recovery.can_restore, |content| {
                                             content.child(
                                                 command_button(
-                                                    ui_text(language, UiText::RestoreDefaults),
+                                                    bongocat_i18n::text(
+                                                        language.catalog_locale(),
+                                                        "shortcuts.actions.restore_defaults",
+                                                    ),
                                                     &view.restore_defaults_focus,
                                                     29,
                                                     window,
@@ -725,12 +751,18 @@ pub(super) fn content(
                                         .min_w_0()
                                         .flex_1()
                                         .child(diagnostic_group(
-                                            ui_text(language, UiText::CurrentState),
+                                            bongocat_i18n::text(
+                                                language.catalog_locale(),
+                                                "diagnostics.configuration.current_state",
+                                            ),
                                             &metrics[..2],
                                             tokens,
                                         ))
                                         .child(diagnostic_group(
-                                            ui_text(language, UiText::InputProcessing),
+                                            bongocat_i18n::text(
+                                                language.catalog_locale(),
+                                                "diagnostics.input.processing",
+                                            ),
                                             &metrics[2..10],
                                             tokens,
                                         )),
@@ -740,12 +772,18 @@ pub(super) fn content(
                                         .min_w_0()
                                         .flex_1()
                                         .child(diagnostic_group(
-                                            ui_text(language, UiText::SequenceRecovery),
+                                            bongocat_i18n::text(
+                                                language.catalog_locale(),
+                                                "diagnostics.input.sequence_recovery",
+                                            ),
                                             &metrics[10..15],
                                             tokens,
                                         ))
                                         .child(diagnostic_group(
-                                            ui_text(language, UiText::Transport),
+                                            bongocat_i18n::text(
+                                                language.catalog_locale(),
+                                                "diagnostics.input.transport",
+                                            ),
                                             &metrics[15..],
                                             tokens,
                                         )),

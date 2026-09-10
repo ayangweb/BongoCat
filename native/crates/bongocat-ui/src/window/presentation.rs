@@ -233,7 +233,10 @@ pub(super) fn shortcut_accessibility_rows(
             let value = row
                 .shortcut
                 .map(|shortcut| shortcut_display(&shortcut))
-                .unwrap_or_else(|| ui_text(language, UiText::NotSet).to_owned());
+                .unwrap_or_else(|| {
+                    bongocat_i18n::text(language.catalog_locale(), "shortcuts.state.not_set")
+                        .to_owned()
+                });
             (row.target, label, value)
         })
         .collect()
@@ -260,7 +263,7 @@ pub(super) fn shortcut_clear_accessibility_rows(
             row.shortcut.map(|_| {
                 let label = format!(
                     "{}: {}",
-                    ui_text(language, UiText::Clear),
+                    bongocat_i18n::text(language.catalog_locale(), "shortcuts.actions.clear"),
                     shortcut_accessibility_label(language, &row.target)
                 );
                 (row.target, label)
@@ -475,29 +478,31 @@ pub(super) fn input_service_presentation(
     language: SettingsLanguage,
 ) -> InputServicePresentation {
     let (key, running, attention) = match diagnostics.service_status {
-        SettingsInputServiceStatus::NotStarted => (UiText::NotStarted, false, false),
-        SettingsInputServiceStatus::Running => (UiText::Running, true, false),
-        SettingsInputServiceStatus::PermissionDenied => (UiText::PermissionRequired, false, true),
-        SettingsInputServiceStatus::BackendUnavailable => (UiText::BackendUnavailable, false, true),
-        SettingsInputServiceStatus::Failed => (UiText::StartupFailed, false, true),
-        SettingsInputServiceStatus::Stopped => (UiText::Stopped, false, false),
+        SettingsInputServiceStatus::NotStarted => ("status.not_started", false, false),
+        SettingsInputServiceStatus::Running => ("status.running", true, false),
+        SettingsInputServiceStatus::PermissionDenied => ("status.permission_required", false, true),
+        SettingsInputServiceStatus::BackendUnavailable => {
+            ("status.backend_unavailable", false, true)
+        }
+        SettingsInputServiceStatus::Failed => ("errors.runtime.startup_failed", false, true),
+        SettingsInputServiceStatus::Stopped => ("status.stopped", false, false),
     };
     let permission = match diagnostics.input_monitoring_permission {
-        SettingsInputMonitoringPermission::Unsupported => UiText::Unsupported,
-        SettingsInputMonitoringPermission::Denied => UiText::PermissionRequired,
-        SettingsInputMonitoringPermission::Granted => UiText::Granted,
+        SettingsInputMonitoringPermission::Unsupported => "status.unsupported",
+        SettingsInputMonitoringPermission::Denied => "status.permission_required",
+        SettingsInputMonitoringPermission::Granted => "status.granted",
     };
     let separator = match language {
         SettingsLanguage::ChineseSimplified => "：",
         SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates => ": ",
     };
     InputServicePresentation {
-        title: ui_text(language, key),
+        title: bongocat_i18n::text(language.catalog_locale(), key),
         detail: format!(
             "{}{}{}\n{}",
-            ui_text(language, UiText::InputMonitoring),
+            bongocat_i18n::text(language.catalog_locale(), "diagnostics.input.monitoring"),
             separator,
-            ui_text(language, permission),
+            bongocat_i18n::text(language.catalog_locale(), permission),
             input_service_attempts(language, diagnostics.service_start_attempts),
         ),
         running,
@@ -516,20 +521,20 @@ fn runtime_error_title(
     error: SettingsRuntimeErrorCode,
 ) -> &'static str {
     let key = match error {
-        SettingsRuntimeErrorCode::GpuPreparationFailed => UiText::GpuPreparationFailed,
-        SettingsRuntimeErrorCode::ModelLoadFailed => UiText::ModelLoadFailed,
-        SettingsRuntimeErrorCode::ModelEvaluationFailed => UiText::ModelEvaluationFailed,
-        SettingsRuntimeErrorCode::MotionLoadFailed => UiText::MotionLoadFailed,
-        SettingsRuntimeErrorCode::ExpressionLoadFailed => UiText::ExpressionLoadFailed,
-        SettingsRuntimeErrorCode::PlatformUnsupported => UiText::PlatformUnsupported,
-        SettingsRuntimeErrorCode::TransportClosed => UiText::RuntimeTransportClosed,
-        SettingsRuntimeErrorCode::OverlaySettingsInvalid => UiText::OverlaySettingsInvalid,
-        SettingsRuntimeErrorCode::MaximumFpsInvalid => UiText::MaximumFpsInvalid,
+        SettingsRuntimeErrorCode::GpuPreparationFailed => "errors.runtime.gpu_preparation_failed",
+        SettingsRuntimeErrorCode::ModelLoadFailed => "errors.models.load_failed",
+        SettingsRuntimeErrorCode::ModelEvaluationFailed => "errors.models.evaluation_failed",
+        SettingsRuntimeErrorCode::MotionLoadFailed => "errors.models.motion_load_failed",
+        SettingsRuntimeErrorCode::ExpressionLoadFailed => "errors.models.expression_load_failed",
+        SettingsRuntimeErrorCode::PlatformUnsupported => "errors.runtime.platform_unsupported",
+        SettingsRuntimeErrorCode::TransportClosed => "errors.runtime.transport_closed",
+        SettingsRuntimeErrorCode::OverlaySettingsInvalid => "errors.settings.overlay_invalid",
+        SettingsRuntimeErrorCode::MaximumFpsInvalid => "errors.settings.maximum_fps_invalid",
         SettingsRuntimeErrorCode::ReleaseFallbackTimeoutInvalid => {
-            UiText::ReleaseFallbackTimeoutInvalid
+            "errors.settings.release_fallback_timeout_invalid"
         }
     };
-    ui_text(language, key)
+    bongocat_i18n::text(language.catalog_locale(), key)
 }
 
 pub(super) fn runtime_diagnostics_presentation(
@@ -538,7 +543,10 @@ pub(super) fn runtime_diagnostics_presentation(
 ) -> RuntimeDiagnosticsPresentation {
     let (title, attention) = match diagnostics.render_error {
         Some(error) => (runtime_error_title(language, error), true),
-        None => (ui_text(language, UiText::NoRendererError), false),
+        None => (
+            bongocat_i18n::text(language.catalog_locale(), "errors.runtime.no_renderer"),
+            false,
+        ),
     };
     let detail = match diagnostics.last_command_failure {
         Some(failure) => runtime_command_failure(
@@ -546,7 +554,11 @@ pub(super) fn runtime_diagnostics_presentation(
             runtime_error_title(language, failure.code),
             failure.sequence,
         ),
-        None => ui_text(language, UiText::NoCommandFailures).to_owned(),
+        None => bongocat_i18n::text(
+            language.catalog_locale(),
+            "diagnostics.runtime.no_command_failures",
+        )
+        .to_owned(),
     };
     let shutdown_failures = diagnostics
         .shutdown_timed_out
@@ -583,7 +595,10 @@ pub(super) fn config_recovery_presentation(
     match status {
         SettingsConfigurationStatus::RecoveryRequired { checked_backups } => {
             ConfigRecoveryPresentation {
-                title: ui_text(language, UiText::ConfigurationUnavailable),
+                title: bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "errors.settings.configuration_unavailable",
+                ),
                 detail: backup_candidates_checked(language, checked_backups),
                 recovered: false,
                 attention: true,
@@ -592,8 +607,15 @@ pub(super) fn config_recovery_presentation(
         }
         SettingsConfigurationStatus::DefaultsRestoredRestartRequired => {
             ConfigRecoveryPresentation {
-                title: ui_text(language, UiText::DefaultsRestored),
-                detail: ui_text(language, UiText::RestartToContinue).to_owned(),
+                title: bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "diagnostics.configuration.defaults_restored",
+                ),
+                detail: bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "diagnostics.configuration.restart_to_continue",
+                )
+                .to_owned(),
                 recovered: true,
                 attention: false,
                 can_restore: false,
@@ -602,7 +624,10 @@ pub(super) fn config_recovery_presentation(
         SettingsConfigurationStatus::Ready if recovery.is_some() => {
             let recovery = recovery.expect("ready recovered configuration is present");
             ConfigRecoveryPresentation {
-                title: ui_text(language, UiText::RecoveredFromBackup),
+                title: bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "diagnostics.configuration.recovered_from_backup",
+                ),
                 detail: recovered_backup_detail(
                     language,
                     recovery.source_schema_version,
@@ -614,8 +639,15 @@ pub(super) fn config_recovery_presentation(
             }
         }
         SettingsConfigurationStatus::Ready => ConfigRecoveryPresentation {
-            title: ui_text(language, UiText::LoadedNormally),
-            detail: ui_text(language, UiText::NoRecovery).to_owned(),
+            title: bongocat_i18n::text(
+                language.catalog_locale(),
+                "diagnostics.configuration.loaded_normally",
+            ),
+            detail: bongocat_i18n::text(
+                language.catalog_locale(),
+                "diagnostics.configuration.no_recovery",
+            )
+            .to_owned(),
             recovered: false,
             attention: false,
             can_restore: false,

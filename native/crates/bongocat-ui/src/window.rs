@@ -52,6 +52,7 @@ use std::{
 mod presentation;
 use presentation::*;
 mod about;
+use about::ABOUT_SECTIONS;
 mod accessibility;
 mod diagnostics;
 mod lifecycle;
@@ -66,12 +67,11 @@ mod smoke;
 mod view_state;
 pub use lifecycle::open_settings_window;
 use localization::{
-    ABOUT_SECTIONS, UiText, backup_candidates_checked, build_info_detail,
-    diagnostics_export_status, input_diagnostic_metrics, input_service_attempts,
-    model_availability_summary, model_delete_confirmation, model_import_progress,
-    model_invalid_summary, recovered_backup_detail, runtime_command_failure,
-    runtime_shutdown_failures, runtime_status, settings_error, shortcut_accessibility_label,
-    shortcut_conflict_message, shortcut_target_name, text as ui_text,
+    backup_candidates_checked, build_info_detail, diagnostics_export_status,
+    input_diagnostic_metrics, input_service_attempts, model_availability_summary,
+    model_delete_confirmation, model_import_progress, model_invalid_summary,
+    recovered_backup_detail, runtime_command_failure, runtime_shutdown_failures, runtime_status,
+    settings_error, shortcut_accessibility_label, shortcut_conflict_message, shortcut_target_name,
 };
 #[cfg(test)]
 mod tests;
@@ -1253,46 +1253,67 @@ fn startup_item_presentation(
 ) -> StartupItemPresentation {
     let mut presentation = match status {
         None => StartupItemPresentation {
-            description: ui_text(language, UiText::CheckingLoginStartup),
+            description: bongocat_i18n::text(
+                language.catalog_locale(),
+                "settings.application.startup.checking",
+            ),
             enabled: false,
             action: StartupItemAction::None,
         },
         Some(SettingsStartupItemStatus::ReadError(_)) => StartupItemPresentation {
-            description: ui_text(language, UiText::LoginStartupStatusUnavailable),
+            description: bongocat_i18n::text(
+                language.catalog_locale(),
+                "settings.application.startup.unavailable",
+            ),
             enabled: false,
             action: StartupItemAction::Retry,
         },
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled)) => {
             StartupItemPresentation {
-                description: ui_text(language, UiText::LoginStartupDisabled),
+                description: bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "settings.application.startup.disabled",
+                ),
                 enabled: false,
                 action: StartupItemAction::SetEnabled(true),
             }
         }
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::Enabled)) => {
             StartupItemPresentation {
-                description: ui_text(language, UiText::LoginStartupEnabled),
+                description: bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "settings.application.startup.enabled",
+                ),
                 enabled: true,
                 action: StartupItemAction::SetEnabled(false),
             }
         }
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::Stale)) => {
             StartupItemPresentation {
-                description: ui_text(language, UiText::LoginStartupStale),
+                description: bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "settings.application.startup.stale",
+                ),
                 enabled: false,
                 action: StartupItemAction::SetEnabled(true),
             }
         }
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::RequiresApproval)) => {
             StartupItemPresentation {
-                description: ui_text(language, UiText::LoginStartupRequiresApproval),
+                description: bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "settings.application.startup.requires_approval",
+                ),
                 enabled: true,
                 action: StartupItemAction::SetEnabled(false),
             }
         }
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::NotFound)) => {
             StartupItemPresentation {
-                description: ui_text(language, UiText::LoginStartupNotFound),
+                description: bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "settings.application.startup.not_found",
+                ),
                 enabled: false,
                 action: StartupItemAction::SetEnabled(true),
             }
@@ -1300,15 +1321,18 @@ fn startup_item_presentation(
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::Unsupported(reason))) => {
             StartupItemPresentation {
                 description: match reason {
-                    SettingsStartupItemUnsupportedReason::Platform => {
-                        ui_text(language, UiText::LoginStartupUnsupportedPlatform)
-                    }
-                    SettingsStartupItemUnsupportedReason::OperatingSystem => {
-                        ui_text(language, UiText::LoginStartupUnsupportedOperatingSystem)
-                    }
-                    SettingsStartupItemUnsupportedReason::BuildEnvironment => {
-                        ui_text(language, UiText::LoginStartupUnsupportedBuild)
-                    }
+                    SettingsStartupItemUnsupportedReason::Platform => bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.application.startup.unsupported_platform",
+                    ),
+                    SettingsStartupItemUnsupportedReason::OperatingSystem => bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.application.startup.unsupported_os",
+                    ),
+                    SettingsStartupItemUnsupportedReason::BuildEnvironment => bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.application.startup.unsupported_build",
+                    ),
                 },
                 enabled: false,
                 action: StartupItemAction::None,
@@ -1473,7 +1497,7 @@ fn model_availability_status(
                 | SettingsModelDiagnostic::ModelReferenceInvalid
                 | SettingsModelDiagnostic::ModelReferenceSymlinkEscape
                 | SettingsModelDiagnostic::ModelSymlinkDirectoryUnsupported => {
-                    UiText::PackageLayoutInvalid
+                    "models.validation.package_layout_invalid"
                 }
                 SettingsModelDiagnostic::ModelFileCountExceeded
                 | SettingsModelDiagnostic::ModelFileTooLarge
@@ -1481,21 +1505,30 @@ fn model_availability_status(
                 | SettingsModelDiagnostic::ModelPackageDepthExceeded
                 | SettingsModelDiagnostic::ModelPackageSizeExceeded
                 | SettingsModelDiagnostic::ModelTextureDimensionExceeded => {
-                    UiText::PackageSafetyLimitsExceeded
+                    "models.validation.package_safety_limits_exceeded"
                 }
                 SettingsModelDiagnostic::ModelJsonInvalid
                 | SettingsModelDiagnostic::ModelUnsupportedVersion => {
-                    UiText::ModelDefinitionUnsupported
+                    "models.validation.model_definition_unsupported"
                 }
                 SettingsModelDiagnostic::ModelTextureInvalidPng
-                | SettingsModelDiagnostic::ModelTextureMissing => UiText::TextureInvalid,
-                SettingsModelDiagnostic::ModelIoError => UiText::ModelFilesUnavailable,
+                | SettingsModelDiagnostic::ModelTextureMissing => {
+                    "models.validation.texture_invalid"
+                }
+                SettingsModelDiagnostic::ModelIoError => "models.validation.files_unavailable",
                 SettingsModelDiagnostic::ModelMocMissing
                 | SettingsModelDiagnostic::ModelResourceInvalid
                 | SettingsModelDiagnostic::ModelResourceMissing
-                | SettingsModelDiagnostic::ModelResourceNotFile => UiText::ModelResourceInvalid,
+                | SettingsModelDiagnostic::ModelResourceNotFile => {
+                    "models.validation.resource_invalid"
+                }
             };
-            model_invalid_summary(language, entry.origin, ui_text(language, diagnostic)).into()
+            model_invalid_summary(
+                language,
+                entry.origin,
+                bongocat_i18n::text(language.catalog_locale(), diagnostic),
+            )
+            .into()
         }
     }
 }
@@ -1505,47 +1538,90 @@ fn model_import_status(
     language: SettingsLanguage,
 ) -> (SharedString, bool) {
     match &draft.state {
-        ModelImportState::Empty => (ui_text(language, UiText::NoFolderSelected).into(), false),
-        ModelImportState::Ready => (ui_text(language, UiText::FolderSelected).into(), false),
-        ModelImportState::Picking => (ui_text(language, UiText::ChoosingFolder).into(), false),
-        ModelImportState::PickerCancelled if draft.source_root.is_some() => (
-            ui_text(language, UiText::SelectionCancelledPreviousRetained).into(),
+        ModelImportState::Empty => (
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "models.import.folder.none_selected",
+            )
+            .into(),
             false,
         ),
-        ModelImportState::PickerCancelled => {
-            (ui_text(language, UiText::SelectionCancelled).into(), false)
-        }
+        ModelImportState::Ready => (
+            bongocat_i18n::text(language.catalog_locale(), "models.import.folder.selected").into(),
+            false,
+        ),
+        ModelImportState::Picking => (
+            bongocat_i18n::text(language.catalog_locale(), "models.import.folder.choosing").into(),
+            false,
+        ),
+        ModelImportState::PickerCancelled if draft.source_root.is_some() => (
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "models.import.folder.cancelled_previous_retained",
+            )
+            .into(),
+            false,
+        ),
+        ModelImportState::PickerCancelled => (
+            bongocat_i18n::text(language.catalog_locale(), "models.import.folder.cancelled").into(),
+            false,
+        ),
         ModelImportState::PickerFailed(error) => {
             let message = match error {
-                DirectoryPickerError::WrongThread => UiText::FolderPickerRequiresUiThread,
-                DirectoryPickerError::SelectionInvalid => UiText::SelectedFolderUnavailable,
+                DirectoryPickerError::WrongThread => {
+                    "models.import.folder.picker_requires_ui_thread"
+                }
+                DirectoryPickerError::SelectionInvalid => {
+                    "models.import.folder.selected_unavailable"
+                }
                 DirectoryPickerError::UnsupportedPlatform
                 | DirectoryPickerError::BackendUnavailable
-                | DirectoryPickerError::SelectionUnavailable => UiText::FolderPickerUnavailable,
+                | DirectoryPickerError::SelectionUnavailable => {
+                    "models.import.folder.picker_unavailable"
+                }
             };
-            (ui_text(language, message).into(), true)
+            (
+                bongocat_i18n::text(language.catalog_locale(), message).into(),
+                true,
+            )
         }
         ModelImportState::Starting {
             cancel_requested: true,
-        } => (ui_text(language, UiText::CancellingImport).into(), false),
+        } => (
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "models.import.progress.cancelling",
+            )
+            .into(),
+            false,
+        ),
         ModelImportState::Starting {
             cancel_requested: false,
-        } => (ui_text(language, UiText::StartingImport).into(), false),
-        ModelImportState::Running(monitor) if monitor.is_cancelled() => {
-            (ui_text(language, UiText::CancellingImport).into(), false)
-        }
+        } => (
+            bongocat_i18n::text(language.catalog_locale(), "models.import.progress.starting")
+                .into(),
+            false,
+        ),
+        ModelImportState::Running(monitor) if monitor.is_cancelled() => (
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "models.import.progress.cancelling",
+            )
+            .into(),
+            false,
+        ),
         ModelImportState::Running(monitor) => {
             let progress = monitor.progress();
             let stage = match progress.stage {
-                SettingsModelImportStage::Preparing => UiText::Preparing,
-                SettingsModelImportStage::Copying => UiText::Copying,
-                SettingsModelImportStage::Validating => UiText::Validating,
-                SettingsModelImportStage::Committing => UiText::Committing,
+                SettingsModelImportStage::Preparing => "models.import.progress.preparing",
+                SettingsModelImportStage::Copying => "models.import.progress.copying",
+                SettingsModelImportStage::Validating => "models.import.progress.validating",
+                SettingsModelImportStage::Committing => "models.import.progress.committing",
             };
             (
                 model_import_progress(
                     language,
-                    ui_text(language, stage),
+                    bongocat_i18n::text(language.catalog_locale(), stage),
                     progress.files_copied,
                     progress.bytes_copied,
                 )
@@ -1553,9 +1629,20 @@ fn model_import_status(
                 false,
             )
         }
-        ModelImportState::Succeeded => (ui_text(language, UiText::ImportComplete).into(), false),
+        ModelImportState::Succeeded => (
+            bongocat_i18n::text(language.catalog_locale(), "models.import.progress.complete")
+                .into(),
+            false,
+        ),
         ModelImportState::Failed(error) => (settings_error(language, *error).into(), true),
-        ModelImportState::Cancelled => (ui_text(language, UiText::ImportCancelled).into(), false),
+        ModelImportState::Cancelled => (
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "models.import.progress.cancelled",
+            )
+            .into(),
+            false,
+        ),
     }
 }
 
@@ -1612,9 +1699,18 @@ const fn theme_index(theme: SettingsTheme) -> usize {
 
 fn theme_options(language: SettingsLanguage) -> [&'static str; 3] {
     [
-        ui_text(language, UiText::System),
-        ui_text(language, UiText::Light),
-        ui_text(language, UiText::Dark),
+        bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.appearance.theme.options.system",
+        ),
+        bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.appearance.theme.options.light",
+        ),
+        bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.appearance.theme.options.dark",
+        ),
     ]
 }
 

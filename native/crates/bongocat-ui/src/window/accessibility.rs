@@ -34,12 +34,15 @@ fn model_behavior_accessibility_label(
         SettingsModelBehavior::Motion { group, index } => {
             format!(
                 "{} {group} #{}",
-                ui_text(language, UiText::Motion),
+                bongocat_i18n::text(language.catalog_locale(), "models.behaviors.motion"),
                 index + 1
             )
         }
         SettingsModelBehavior::Expression { name } => {
-            format!("{} {name}", ui_text(language, UiText::Expression))
+            format!(
+                "{} {name}",
+                bongocat_i18n::text(language.catalog_locale(), "models.behaviors.expression")
+            )
         }
     }
 }
@@ -58,7 +61,10 @@ pub(super) fn model_import_accessibility_nodes(
     let mut choose_folder_node = AccessibilityNode::new(
         ACCESSIBILITY_MODEL_CHOOSE_FOLDER,
         AccessibilityRole::Button,
-        ui_text(language, UiText::ChooseFolder),
+        bongocat_i18n::text(
+            language.catalog_locale(),
+            "models.import.actions.choose_folder",
+        ),
     )
     .disabled(choose_folder_disabled);
     if !choose_folder_disabled {
@@ -72,9 +78,9 @@ pub(super) fn model_import_accessibility_nodes(
         ACCESSIBILITY_MODEL_IMPORT,
         AccessibilityRole::Button,
         if import_running {
-            ui_text(language, UiText::Cancel)
+            bongocat_i18n::text(language.catalog_locale(), "actions.cancel")
         } else {
-            ui_text(language, UiText::Import)
+            bongocat_i18n::text(language.catalog_locale(), "models.import.actions.import")
         },
     )
     .with_value(import_status.to_string())
@@ -86,7 +92,7 @@ pub(super) fn model_import_accessibility_nodes(
     let import_status_node = AccessibilityNode::new(
         ACCESSIBILITY_MODEL_IMPORT_STATUS,
         AccessibilityRole::Status,
-        ui_text(language, UiText::Import),
+        bongocat_i18n::text(language.catalog_locale(), "models.import.actions.import"),
     )
     .with_value(import_status.to_string());
     [choose_folder_node, import_node, import_status_node]
@@ -98,7 +104,9 @@ pub(super) fn model_catalog_accessibility_status_node(
     language: SettingsLanguage,
 ) -> Option<AccessibilityNode> {
     let status = match catalog {
-        None => Some(ui_text(language, UiText::LoadingModels).to_owned()),
+        None => Some(
+            bongocat_i18n::text(language.catalog_locale(), "models.catalog.loading").to_owned(),
+        ),
         Some(catalog) if catalog.error.is_some() || catalog.entries.is_empty() => {
             Some(super::models::empty_model_catalog_status(Some(catalog), language).to_owned())
         }
@@ -108,7 +116,7 @@ pub(super) fn model_catalog_accessibility_status_node(
         AccessibilityNode::new(
             ACCESSIBILITY_MODEL_CATALOG_STATUS,
             AccessibilityRole::Status,
-            ui_text(language, UiText::AvailableModels),
+            bongocat_i18n::text(language.catalog_locale(), "models.catalog.available"),
         )
         .with_value(status),
     )
@@ -149,9 +157,12 @@ impl SettingsView {
         let mut theme_node = AccessibilityNode::new(
             ACCESSIBILITY_THEME,
             AccessibilityRole::ComboBox,
-            ui_text(language, UiText::Theme),
+            bongocat_i18n::text(language.catalog_locale(), "settings.appearance.theme.label"),
         )
-        .with_description(ui_text(language, UiText::ThemeDescription))
+        .with_description(bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.appearance.theme.description",
+        ))
         .with_value(theme_display_name(selected_theme, language))
         .disabled(disabled);
         if !disabled {
@@ -160,9 +171,15 @@ impl SettingsView {
         let mut language_node = AccessibilityNode::new(
             ACCESSIBILITY_LANGUAGE,
             AccessibilityRole::ComboBox,
-            ui_text(language, UiText::Language),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "settings.appearance.language.label",
+            ),
         )
-        .with_description(ui_text(language, UiText::LanguageDescription))
+        .with_description(bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.appearance.language.description",
+        ))
         .with_value(
             snapshot
                 .map_or(SettingsLanguage::System, |snapshot| snapshot.language)
@@ -175,9 +192,15 @@ impl SettingsView {
         let mut overlay_node = AccessibilityNode::new(
             ACCESSIBILITY_OVERLAY,
             AccessibilityRole::Switch,
-            ui_text(language, UiText::ShowDesktopCat),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "settings.overlay.visibility.label",
+            ),
         )
-        .with_value(ui_text(language, UiText::ShowDesktopCatDescription))
+        .with_value(bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.overlay.visibility.description",
+        ))
         .with_toggle(if snapshot.is_some_and(|s| s.overlay_visible) {
             AccessibilityToggle::On
         } else {
@@ -190,9 +213,15 @@ impl SettingsView {
         let mut audio_node = AccessibilityNode::new(
             ACCESSIBILITY_AUDIO,
             AccessibilityRole::Switch,
-            ui_text(language, UiText::MotionAudio),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "settings.overlay.motion_audio.label",
+            ),
         )
-        .with_value(ui_text(language, UiText::MotionAudioDescription))
+        .with_value(bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.overlay.motion_audio.description",
+        ))
         .with_toggle(if snapshot.is_some_and(|s| s.motion_audio_enabled) {
             AccessibilityToggle::On
         } else {
@@ -205,9 +234,15 @@ impl SettingsView {
         let mut behavior_shortcuts_node = AccessibilityNode::new(
             ACCESSIBILITY_BEHAVIOR_SHORTCUTS,
             AccessibilityRole::Switch,
-            ui_text(language, UiText::BehaviorShortcuts),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "settings.model_interaction.behavior_shortcuts.label",
+            ),
         )
-        .with_value(ui_text(language, UiText::BehaviorShortcutsDescription))
+        .with_value(bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.model_interaction.behavior_shortcuts.description",
+        ))
         .with_toggle(if snapshot.is_some_and(|s| s.behavior_shortcuts_enabled) {
             AccessibilityToggle::On
         } else {
@@ -223,9 +258,15 @@ impl SettingsView {
         let mut mirror_node = AccessibilityNode::new(
             ACCESSIBILITY_MIRROR,
             AccessibilityRole::Switch,
-            ui_text(language, UiText::MirrorModel),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "settings.model_interaction.mirror_model.label",
+            ),
         )
-        .with_value(ui_text(language, UiText::MirrorModelDescription))
+        .with_value(bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.model_interaction.mirror_model.description",
+        ))
         .with_toggle(if model_settings.mirror {
             AccessibilityToggle::On
         } else {
@@ -235,9 +276,15 @@ impl SettingsView {
         let mut mirror_pointer_node = AccessibilityNode::new(
             ACCESSIBILITY_MIRROR_POINTER,
             AccessibilityRole::Switch,
-            ui_text(language, UiText::MirrorPointerTracking),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "settings.model_interaction.mirror_pointer_tracking.label",
+            ),
         )
-        .with_value(ui_text(language, UiText::MirrorPointerTrackingDescription))
+        .with_value(bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.model_interaction.mirror_pointer_tracking.description",
+        ))
         .with_toggle(if model_settings.mirror_pointer_tracking {
             AccessibilityToggle::On
         } else {
@@ -247,9 +294,15 @@ impl SettingsView {
         let mut ignore_pointer_node = AccessibilityNode::new(
             ACCESSIBILITY_IGNORE_POINTER,
             AccessibilityRole::Switch,
-            ui_text(language, UiText::IgnorePointerInput),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "settings.model_interaction.ignore_pointer_input.label",
+            ),
         )
-        .with_value(ui_text(language, UiText::IgnorePointerInputDescription))
+        .with_value(bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.model_interaction.ignore_pointer_input.description",
+        ))
         .with_toggle(if model_settings.ignore_pointer {
             AccessibilityToggle::On
         } else {
@@ -267,14 +320,20 @@ impl SettingsView {
         let mut stick_node = AccessibilityNode::new(
             ACCESSIBILITY_STICK_DEAD_ZONE,
             AccessibilityRole::Button,
-            ui_text(language, UiText::GamepadStickDeadZone),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "settings.input.gamepad_stick_dead_zone.label",
+            ),
         )
         .with_value(format!("{}%", axis_settings.stick_dead_zone_percent))
         .disabled(disabled);
         let mut trigger_node = AccessibilityNode::new(
             ACCESSIBILITY_TRIGGER_DEAD_ZONE,
             AccessibilityRole::Button,
-            ui_text(language, UiText::GamepadTriggerDeadZone),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "settings.input.gamepad_trigger_dead_zone.label",
+            ),
         )
         .with_value(format!("{}%", axis_settings.trigger_dead_zone_percent))
         .disabled(disabled);
@@ -288,9 +347,15 @@ impl SettingsView {
         let mut topmost_node = AccessibilityNode::new(
             ACCESSIBILITY_OVERLAY_TOPMOST,
             AccessibilityRole::Switch,
-            ui_text(language, UiText::AlwaysOnTop),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "settings.overlay.always_on_top.label",
+            ),
         )
-        .with_value(ui_text(language, UiText::AlwaysOnTopDescription))
+        .with_value(bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.overlay.always_on_top.description",
+        ))
         .with_toggle(if overlay_settings.always_on_top {
             AccessibilityToggle::On
         } else {
@@ -300,9 +365,15 @@ impl SettingsView {
         let mut click_through_node = AccessibilityNode::new(
             ACCESSIBILITY_OVERLAY_CLICK_THROUGH,
             AccessibilityRole::Switch,
-            ui_text(language, UiText::ClickThroughOverlay),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "settings.overlay.click_through.label",
+            ),
         )
-        .with_value(ui_text(language, UiText::ClickThroughOverlayDescription))
+        .with_value(bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.overlay.click_through.description",
+        ))
         .with_toggle(if overlay_settings.click_through {
             AccessibilityToggle::On
         } else {
@@ -312,9 +383,15 @@ impl SettingsView {
         let mut keep_inside_work_area_node = AccessibilityNode::new(
             ACCESSIBILITY_OVERLAY_KEEP_INSIDE_WORK_AREA,
             AccessibilityRole::Switch,
-            ui_text(language, UiText::KeepInsideWorkArea),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "settings.overlay.keep_inside_work_area.label",
+            ),
         )
-        .with_value(ui_text(language, UiText::KeepInsideWorkAreaDescription))
+        .with_value(bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.overlay.keep_inside_work_area.description",
+        ))
         .with_toggle(if overlay_settings.keep_inside_work_area {
             AccessibilityToggle::On
         } else {
@@ -331,28 +408,40 @@ impl SettingsView {
         let mut scale_decrease_node = AccessibilityNode::new(
             ACCESSIBILITY_OVERLAY_SCALE_DECREASE,
             AccessibilityRole::Button,
-            ui_text(language, UiText::DecreaseOverlayScale),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "shortcuts.actions.decrease_overlay_scale",
+            ),
         )
         .with_value(format!("{scale}%"))
         .disabled(disabled || scale <= 25);
         let mut scale_increase_node = AccessibilityNode::new(
             ACCESSIBILITY_OVERLAY_SCALE_INCREASE,
             AccessibilityRole::Button,
-            ui_text(language, UiText::IncreaseOverlayScale),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "shortcuts.actions.increase_overlay_scale",
+            ),
         )
         .with_value(format!("{scale}%"))
         .disabled(disabled || scale >= 400);
         let mut opacity_decrease_node = AccessibilityNode::new(
             ACCESSIBILITY_OVERLAY_OPACITY_DECREASE,
             AccessibilityRole::Button,
-            ui_text(language, UiText::DecreaseOverlayOpacity),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "shortcuts.actions.decrease_overlay_opacity",
+            ),
         )
         .with_value(format!("{opacity}%"))
         .disabled(disabled || opacity <= 1);
         let mut opacity_increase_node = AccessibilityNode::new(
             ACCESSIBILITY_OVERLAY_OPACITY_INCREASE,
             AccessibilityRole::Button,
-            ui_text(language, UiText::IncreaseOverlayOpacity),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "shortcuts.actions.increase_overlay_opacity",
+            ),
         )
         .with_value(format!("{opacity}%"))
         .disabled(disabled || opacity >= 100);
@@ -374,14 +463,20 @@ impl SettingsView {
         let mut maximum_fps_decrease_node = AccessibilityNode::new(
             ACCESSIBILITY_MAXIMUM_FPS_DECREASE,
             AccessibilityRole::Button,
-            ui_text(language, UiText::DecreaseMaximumFps),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "shortcuts.actions.decrease_maximum_fps",
+            ),
         )
         .with_value(maximum_fps.to_string())
         .disabled(disabled || maximum_fps <= 15);
         let mut maximum_fps_increase_node = AccessibilityNode::new(
             ACCESSIBILITY_MAXIMUM_FPS_INCREASE,
             AccessibilityRole::Button,
-            ui_text(language, UiText::IncreaseMaximumFps),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "shortcuts.actions.increase_maximum_fps",
+            ),
         )
         .with_value(maximum_fps.to_string())
         .disabled(disabled || maximum_fps >= 240);
@@ -398,17 +493,29 @@ impl SettingsView {
         let mut release_fallback_decrease_node = AccessibilityNode::new(
             ACCESSIBILITY_RELEASE_FALLBACK_DECREASE,
             AccessibilityRole::Button,
-            ui_text(language, UiText::DecreaseReleaseFallbackTimeout),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "shortcuts.actions.decrease_release_fallback_timeout",
+            ),
         )
-        .with_description(ui_text(language, UiText::ReleaseFallbackTimeoutDescription))
+        .with_description(bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.overlay.release_fallback_timeout.description",
+        ))
         .with_value(release_fallback_timeout_ms.to_string())
         .disabled(disabled || release_fallback_timeout_ms == 0);
         let mut release_fallback_increase_node = AccessibilityNode::new(
             ACCESSIBILITY_RELEASE_FALLBACK_INCREASE,
             AccessibilityRole::Button,
-            ui_text(language, UiText::IncreaseReleaseFallbackTimeout),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "shortcuts.actions.increase_release_fallback_timeout",
+            ),
         )
-        .with_description(ui_text(language, UiText::ReleaseFallbackTimeoutDescription))
+        .with_description(bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.overlay.release_fallback_timeout.description",
+        ))
         .with_value(release_fallback_timeout_ms.to_string())
         .disabled(disabled || release_fallback_timeout_ms >= 60_000);
         if !disabled {
@@ -424,7 +531,10 @@ impl SettingsView {
         let mut startup_node = AccessibilityNode::new(
             ACCESSIBILITY_STARTUP,
             AccessibilityRole::Switch,
-            ui_text(language, UiText::OpenAtLogin),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "settings.application.open_at_login.label",
+            ),
         )
         .with_value(startup.description)
         .with_toggle(if startup.enabled {
@@ -439,9 +549,15 @@ impl SettingsView {
         let mut status_icon_node = AccessibilityNode::new(
             ACCESSIBILITY_STATUS_ICON,
             AccessibilityRole::Switch,
-            ui_text(language, UiText::ShowStatusIcon),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "settings.application.status_icon.label",
+            ),
         )
-        .with_value(ui_text(language, UiText::ShowStatusIconDescription))
+        .with_value(bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.application.status_icon.description",
+        ))
         .with_toggle(
             if snapshot.is_some_and(|snapshot| snapshot.status_icon_visible) {
                 AccessibilityToggle::On
@@ -456,11 +572,14 @@ impl SettingsView {
         let mut automatic_update_check_node = AccessibilityNode::new(
             ACCESSIBILITY_AUTOMATIC_UPDATE_CHECK,
             AccessibilityRole::Switch,
-            ui_text(language, UiText::CheckForUpdatesAutomatically),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "settings.application.auto_update.label",
+            ),
         )
-        .with_value(ui_text(
-            language,
-            UiText::CheckForUpdatesAutomaticallyDescription,
+        .with_value(bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.application.auto_update.description",
         ))
         .with_toggle(
             if snapshot.is_some_and(|snapshot| snapshot.check_for_updates_automatically) {
@@ -477,9 +596,15 @@ impl SettingsView {
         let mut taskbar_icon_node = AccessibilityNode::new(
             ACCESSIBILITY_TASKBAR_ICON,
             AccessibilityRole::Switch,
-            ui_text(language, UiText::ShowTaskbarIcon),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "settings.application.taskbar_icon.label",
+            ),
         )
-        .with_value(ui_text(language, UiText::ShowTaskbarIconDescription))
+        .with_value(bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.application.taskbar_icon.description",
+        ))
         .with_toggle(
             if snapshot.is_some_and(|snapshot| snapshot.taskbar_icon_visible) {
                 AccessibilityToggle::On
@@ -495,7 +620,7 @@ impl SettingsView {
         let mut refresh_node = AccessibilityNode::new(
             ACCESSIBILITY_REFRESH,
             AccessibilityRole::Button,
-            ui_text(language, UiText::Refresh),
+            bongocat_i18n::text(language.catalog_locale(), "actions.refresh"),
         )
         .disabled(self.refresh_is_disabled());
         if !self.refresh_is_disabled() {
@@ -510,11 +635,14 @@ impl SettingsView {
         let mut restore_node = AccessibilityNode::new(
             ACCESSIBILITY_RESTORE_DEFAULTS,
             AccessibilityRole::Button,
-            ui_text(language, UiText::RestoreDefaultConfiguration),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "diagnostics.configuration.restore_defaults",
+            ),
         )
-        .with_value(ui_text(
-            language,
-            UiText::RestoreDefaultConfigurationDescription,
+        .with_value(bongocat_i18n::text(
+            language.catalog_locale(),
+            "diagnostics.configuration.restore_defaults_description",
         ))
         .disabled(!restore_available);
         if restore_available {
@@ -524,11 +652,14 @@ impl SettingsView {
         let mut open_backups_node = AccessibilityNode::new(
             ACCESSIBILITY_OPEN_BACKUPS,
             AccessibilityRole::Button,
-            ui_text(language, UiText::OpenConfigurationBackupsFolder),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "diagnostics.configuration.open_backups_folder",
+            ),
         )
-        .with_value(ui_text(
-            language,
-            UiText::OpenConfigurationBackupsFolderDescription,
+        .with_value(bongocat_i18n::text(
+            language.catalog_locale(),
+            "diagnostics.configuration.open_backups_folder_description",
         ))
         .disabled(!open_backups_available);
         if open_backups_available {
@@ -538,9 +669,12 @@ impl SettingsView {
         let mut diagnostics_export_node = AccessibilityNode::new(
             ACCESSIBILITY_EXPORT_DIAGNOSTICS,
             AccessibilityRole::Button,
-            ui_text(language, UiText::ExportDiagnostics),
+            bongocat_i18n::text(language.catalog_locale(), "diagnostics.export.action"),
         )
-        .with_value(ui_text(language, UiText::ExportDiagnosticsDescription))
+        .with_value(bongocat_i18n::text(
+            language.catalog_locale(),
+            "diagnostics.export.description",
+        ))
         .disabled(!export_available);
         if export_available {
             diagnostics_export_node = diagnostics_export_node.clickable().focusable();
@@ -548,11 +682,14 @@ impl SettingsView {
         let mut restore_shortcuts_node = AccessibilityNode::new(
             ACCESSIBILITY_RESTORE_SHORTCUTS,
             AccessibilityRole::Button,
-            ui_text(language, UiText::RestoreDefaultShortcuts),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "shortcuts.actions.restore_defaults",
+            ),
         )
-        .with_value(ui_text(
-            language,
-            UiText::RestoreDefaultShortcutsDescription,
+        .with_value(bongocat_i18n::text(
+            language.catalog_locale(),
+            "shortcuts.actions.restore_defaults_description",
         ))
         .disabled(disabled);
         if !disabled {
@@ -561,9 +698,12 @@ impl SettingsView {
         let mut clear_shortcuts_node = AccessibilityNode::new(
             ACCESSIBILITY_CLEAR_SHORTCUTS,
             AccessibilityRole::Button,
-            ui_text(language, UiText::ClearAllShortcuts),
+            bongocat_i18n::text(language.catalog_locale(), "shortcuts.actions.clear_all"),
         )
-        .with_value(ui_text(language, UiText::ClearAllShortcutsDescription))
+        .with_value(bongocat_i18n::text(
+            language.catalog_locale(),
+            "shortcuts.actions.clear_all_description",
+        ))
         .disabled(
             disabled
                 || snapshot.is_none_or(|snapshot| {
@@ -623,7 +763,11 @@ impl SettingsView {
                     shortcut_capture_preview(&capture.modifiers, &capture.keys)
                         .map(|shortcut| shortcut_display(&shortcut))
                         .unwrap_or_else(|| {
-                            ui_text(language, UiText::WaitingForKeyCombination).to_owned()
+                            bongocat_i18n::text(
+                                language.catalog_locale(),
+                                "shortcuts.capture.waiting",
+                            )
+                            .to_owned()
                         })
                 } else {
                     value
@@ -681,7 +825,7 @@ impl SettingsView {
             .map(|(index, (model, behavior))| {
                 let label = format!(
                     "{}: {}",
-                    ui_text(language, UiText::Preview),
+                    bongocat_i18n::text(language.catalog_locale(), "models.behaviors.preview"),
                     model_behavior_accessibility_label(language, model, behavior),
                 );
                 let mut node = AccessibilityNode::new(
@@ -748,44 +892,50 @@ impl SettingsView {
             AccessibilityNode::new(
                 ACCESSIBILITY_ROOT,
                 AccessibilityRole::Window,
-                ui_text(language, UiText::Settings),
+                bongocat_i18n::text(language.catalog_locale(), "navigation.settings.title"),
             )
             .with_children(root_children),
             AccessibilityNode::new(
                 ACCESSIBILITY_GENERAL,
                 AccessibilityRole::Button,
-                ui_text(language, UiText::General),
+                bongocat_i18n::text(language.catalog_locale(), "navigation.general.title"),
             )
             .clickable()
             .focusable(),
             AccessibilityNode::new(
                 ACCESSIBILITY_MODELS,
                 AccessibilityRole::Button,
-                ui_text(language, UiText::Models),
+                bongocat_i18n::text(language.catalog_locale(), "navigation.models.title"),
             )
             .clickable()
             .focusable(),
             AccessibilityNode::new(
                 ACCESSIBILITY_SHORTCUTS,
                 AccessibilityRole::Button,
-                ui_text(language, UiText::Shortcuts),
+                bongocat_i18n::text(language.catalog_locale(), "navigation.shortcuts.title"),
             )
-            .with_value(ui_text(language, UiText::ShortcutsDescription))
+            .with_value(bongocat_i18n::text(
+                language.catalog_locale(),
+                "navigation.shortcuts.description",
+            ))
             .clickable()
             .focusable(),
             AccessibilityNode::new(
                 ACCESSIBILITY_DIAGNOSTICS,
                 AccessibilityRole::Button,
-                ui_text(language, UiText::Diagnostics),
+                bongocat_i18n::text(language.catalog_locale(), "navigation.diagnostics.title"),
             )
             .clickable()
             .focusable(),
             AccessibilityNode::new(
                 ACCESSIBILITY_ABOUT,
                 AccessibilityRole::Button,
-                ui_text(language, UiText::About),
+                bongocat_i18n::text(language.catalog_locale(), "navigation.about.title"),
             )
-            .with_value(ui_text(language, UiText::AboutDescription))
+            .with_value(bongocat_i18n::text(
+                language.catalog_locale(),
+                "navigation.about.description",
+            ))
             .clickable()
             .focusable(),
             theme_node,
@@ -826,7 +976,7 @@ impl SettingsView {
             AccessibilityNode::new(
                 ACCESSIBILITY_QUIT,
                 AccessibilityRole::Button,
-                ui_text(language, UiText::Quit),
+                bongocat_i18n::text(language.catalog_locale(), "actions.quit"),
             )
             .clickable()
             .focusable(),

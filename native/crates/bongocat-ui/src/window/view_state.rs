@@ -20,7 +20,10 @@ impl SettingsView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        window.set_window_title(ui_text(snapshot.resolved_language, UiText::Settings));
+        window.set_window_title(bongocat_i18n::text(
+            snapshot.resolved_language.catalog_locale(),
+            "navigation.settings.title",
+        ));
         self.syncing_component_inputs = true;
         let scale = f64::from(snapshot.overlay.scale_percent);
         let opacity = f64::from(snapshot.overlay.opacity_percent);
@@ -40,7 +43,10 @@ impl SettingsView {
         });
         self.model_id_input.update(cx, |input, cx| {
             input.set_placeholder(
-                ui_text(snapshot.resolved_language, UiText::ModelId),
+                bongocat_i18n::text(
+                    snapshot.resolved_language.catalog_locale(),
+                    "models.identity.id",
+                ),
                 window,
                 cx,
             );
@@ -89,9 +95,9 @@ impl SettingsView {
         let stick_dead_zone_input = cx.new(|cx| InputState::new(window, cx).placeholder("15"));
         let trigger_dead_zone_input = cx.new(|cx| InputState::new(window, cx).placeholder("0"));
         let model_id_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder(ui_text(
-                SettingsLanguage::EnglishUnitedStates,
-                UiText::ModelId,
+            InputState::new(window, cx).placeholder(bongocat_i18n::text(
+                SettingsLanguage::EnglishUnitedStates.catalog_locale(),
+                "models.identity.id",
             ))
         });
         let language_select = cx.new(|cx| {

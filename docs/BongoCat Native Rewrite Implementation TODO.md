@@ -3029,9 +3029,11 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       `P5-DIAGNOSTICS-LOCALIZATION`。
     - 状态（2026-09-10）：已完成首批 Native locale 的信息架构重构：`en-US.json` 与 `zh-CN.json`
       使用 `_version: 1` 和 `navigation`、`settings`、`models`、`shortcuts`、`diagnostics`、
-      `about`、`actions`、`status`、`errors` 领域层级；`UiText` 已迁移到稳定 snake_case 路径。
-      动态摘要、错误、快捷键冲突和输入指标也统一通过 JSON 占位符资源读取，删除了
-      `localization.rs` 中的语言分支，并加入递归 key/占位符一致性测试。三种历史前端语言仍不在
+      `about`、`actions`、`status`、`errors` 领域层级；静态文案目前在实际 UI、可访问性和 smoke
+      消费点直接引用稳定 snake_case 路径，不再维护 `UiText` enum 到 key 的集中映射。动态摘要、错误、
+      快捷键冲突和输入指标也统一通过 JSON 占位符资源读取，并加入递归 key/占位符一致性测试。
+      `bongocat-i18n` 继续是唯一的 rust-i18n catalog owner，因此保留显式 locale 查询而不在 UI
+      crate 重复初始化 `t!`。三种历史前端语言仍不在
       Native v1 支持范围；完整 UI 编译、双平台 smoke 和 CI 语言资源门禁尚未完成，因此不得勾选。
 
 62. [x] `P5-BEHAVIOR-SHORTCUT-TOGGLE`：让当前 v1 的模型行为快捷键开关作用于正式输入链路。

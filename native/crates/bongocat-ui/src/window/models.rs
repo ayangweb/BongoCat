@@ -60,14 +60,17 @@ pub(super) fn content(
                 model_availability_status(&entry, actions.active, language)
             };
             let activate_label = if actions.active {
-                ui_text(language, UiText::Active)
+                bongocat_i18n::text(language.catalog_locale(), "models.identity.status.active")
             } else if matches!(
                 &entry.availability,
                 SettingsModelAvailability::Invalid { .. }
             ) {
-                ui_text(language, UiText::Unavailable)
+                bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "models.identity.status.unavailable",
+                )
             } else {
-                ui_text(language, UiText::Activate)
+                bongocat_i18n::text(language.catalog_locale(), "models.actions.activate")
             };
             let activate_model = model.clone();
             let activate_key_model = model.clone();
@@ -108,7 +111,7 @@ pub(super) fn content(
                     let cancel_key_model = model.clone();
                     actions_row = actions_row.child(
                         command_button(
-                            ui_text(language, UiText::Cancel),
+                            bongocat_i18n::text(language.catalog_locale(), "actions.cancel"),
                             &focus.cancel_delete,
                             action_tabs.cancel_delete,
                             window,
@@ -144,9 +147,9 @@ pub(super) fn content(
                 actions_row = actions_row.child(
                     command_button(
                         if confirming_delete {
-                            ui_text(language, UiText::Confirm)
+                            bongocat_i18n::text(language.catalog_locale(), "actions.confirm")
                         } else {
-                            ui_text(language, UiText::Delete)
+                            bongocat_i18n::text(language.catalog_locale(), "models.actions.delete")
                         },
                         &focus.delete,
                         action_tabs.delete,
@@ -185,7 +188,10 @@ pub(super) fn content(
                             div()
                                 .text_sm()
                                 .text_color(tokens.muted)
-                                .child(ui_text(language, UiText::NoModelBehaviors)),
+                                .child(bongocat_i18n::text(
+                                    language.catalog_locale(),
+                                    "models.behaviors.empty",
+                                )),
                         ]
                     }
                     SettingsModelAvailability::Ready { behaviors, .. } => behaviors
@@ -205,12 +211,21 @@ pub(super) fn content(
                                 SettingsModelBehavior::Motion { group, index } => {
                                     format!(
                                         "{} {group} #{}",
-                                        ui_text(language, UiText::Motion),
+                                        bongocat_i18n::text(
+                                            language.catalog_locale(),
+                                            "models.behaviors.motion"
+                                        ),
                                         index + 1
                                     )
                                 }
                                 SettingsModelBehavior::Expression { name } => {
-                                    format!("{} {name}", ui_text(language, UiText::Expression))
+                                    format!(
+                                        "{} {name}",
+                                        bongocat_i18n::text(
+                                            language.catalog_locale(),
+                                            "models.behaviors.expression"
+                                        )
+                                    )
                                 }
                             };
                             let click_model = model.clone();
@@ -228,7 +243,10 @@ pub(super) fn content(
                                 .child(div().min_w_0().flex_1().child(label))
                                 .child(
                                     command_button(
-                                        ui_text(language, UiText::Preview),
+                                        bongocat_i18n::text(
+                                            language.catalog_locale(),
+                                            "models.behaviors.preview",
+                                        ),
                                         &focus,
                                         tab_index,
                                         window,
@@ -288,13 +306,12 @@ pub(super) fn content(
                     .child(div().text_sm().text_color(tokens.muted).child(availability))
                     .when(actions.active, |content| {
                         content
-                            .child(
-                                div()
-                                    .pt_1()
-                                    .text_sm()
-                                    .text_color(tokens.muted)
-                                    .child(ui_text(language, UiText::ModelBehaviors)),
-                            )
+                            .child(div().pt_1().text_sm().text_color(tokens.muted).child(
+                                bongocat_i18n::text(
+                                    language.catalog_locale(),
+                                    "models.behaviors.title",
+                                ),
+                            ))
                             .children(behavior_rows)
                     }),
             )
@@ -322,31 +339,45 @@ pub(super) fn content(
     }
     let (management_status, management_failed): (SharedString, bool) =
         match (view.pending, catalog_error) {
-            (Some(PendingOperation::ModelSelection), _) => {
-                (ui_text(language, UiText::ActivatingModel).into(), false)
-            }
-            (Some(PendingOperation::ModelDeletion), _) => {
-                (ui_text(language, UiText::DeletingModel).into(), false)
-            }
-            (Some(PendingOperation::ModelBehaviorPreview), _) => {
-                (ui_text(language, UiText::PreviewingBehavior).into(), false)
-            }
-            (Some(PendingOperation::Refresh), _) => {
-                (ui_text(language, UiText::RefreshingModels).into(), false)
-            }
-            (_, true) => (ui_text(language, UiText::CatalogUnavailable).into(), true),
+            (Some(PendingOperation::ModelSelection), _) => (
+                bongocat_i18n::text(language.catalog_locale(), "models.catalog.activating").into(),
+                false,
+            ),
+            (Some(PendingOperation::ModelDeletion), _) => (
+                bongocat_i18n::text(language.catalog_locale(), "models.catalog.deleting").into(),
+                false,
+            ),
+            (Some(PendingOperation::ModelBehaviorPreview), _) => (
+                bongocat_i18n::text(language.catalog_locale(), "models.behaviors.previewing")
+                    .into(),
+                false,
+            ),
+            (Some(PendingOperation::Refresh), _) => (
+                bongocat_i18n::text(language.catalog_locale(), "models.catalog.refreshing").into(),
+                false,
+            ),
+            (_, true) => (
+                bongocat_i18n::text(language.catalog_locale(), "models.catalog.error").into(),
+                true,
+            ),
             _ => ("".into(), false),
         };
     let picker_disabled = import_running || picker_open || view.pending.is_some();
     let picker_button_label = if picker_open {
-        ui_text(language, UiText::Choosing)
+        bongocat_i18n::text(
+            language.catalog_locale(),
+            "models.import.folder.choosing_short",
+        )
     } else {
-        ui_text(language, UiText::ChooseFolder)
+        bongocat_i18n::text(
+            language.catalog_locale(),
+            "models.import.actions.choose_folder",
+        )
     };
     let import_button_label = if import_running {
-        ui_text(language, UiText::Cancel)
+        bongocat_i18n::text(language.catalog_locale(), "actions.cancel")
     } else {
-        ui_text(language, UiText::Import)
+        bongocat_i18n::text(language.catalog_locale(), "models.import.actions.import")
     };
     let import_disabled =
         !import_running && (!view.model_import.can_import() || view.pending.is_some());
@@ -361,7 +392,10 @@ pub(super) fn content(
         .bg(tokens.canvas)
         .text_color(tokens.text)
         .id("models-content")
-        .child(div().text_2xl().child(ui_text(language, UiText::Models)))
+        .child(div().text_2xl().child(bongocat_i18n::text(
+            language.catalog_locale(),
+            "navigation.models.title",
+        )))
         .child(
             GroupBox::new().outline().child(
                 div()
@@ -474,11 +508,10 @@ pub(super) fn content(
                 .justify_between()
                 .gap_3()
                 .text_sm()
-                .child(
-                    div()
-                        .text_color(tokens.muted)
-                        .child(ui_text(language, UiText::AvailableModels)),
-                )
+                .child(div().text_color(tokens.muted).child(bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "models.catalog.available",
+                )))
                 .child(
                     div()
                         .min_w_0()
@@ -505,10 +538,10 @@ pub(super) fn empty_model_catalog_status(
     language: SettingsLanguage,
 ) -> &'static str {
     match catalog {
-        None => ui_text(language, UiText::LoadingModels),
+        None => bongocat_i18n::text(language.catalog_locale(), "models.catalog.loading"),
         Some(catalog) if catalog.error.is_some() => {
-            ui_text(language, UiText::ModelCatalogUnavailable)
+            bongocat_i18n::text(language.catalog_locale(), "models.catalog.unavailable")
         }
-        Some(_) => ui_text(language, UiText::NoModelsAvailable),
+        Some(_) => bongocat_i18n::text(language.catalog_locale(), "models.catalog.empty"),
     }
 }

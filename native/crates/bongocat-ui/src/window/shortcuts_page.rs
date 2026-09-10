@@ -24,12 +24,18 @@ pub(super) fn content(
         .bg(tokens.canvas)
         .text_color(tokens.text)
         .id("shortcuts-content")
-        .child(div().text_2xl().child(ui_text(language, UiText::Shortcuts)))
+        .child(div().text_2xl().child(bongocat_i18n::text(
+            language.catalog_locale(),
+            "navigation.shortcuts.title",
+        )))
         .child(
             div()
                 .text_sm()
                 .text_color(tokens.muted)
-                .child(ui_text(language, UiText::ShortcutsDescription)),
+                .child(bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "navigation.shortcuts.description",
+                )),
         )
         .child(
             TabBar::new("shortcut-settings-tabs")
@@ -38,8 +44,14 @@ pub(super) fn content(
                     ShortcutSettingsTab::Window => 0,
                     ShortcutSettingsTab::Model => 1,
                 })
-                .child(Tab::new().label(ui_text(language, UiText::WindowShortcuts)))
-                .child(Tab::new().label(ui_text(language, UiText::ModelShortcuts)))
+                .child(Tab::new().label(bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "shortcuts.scopes.window",
+                )))
+                .child(Tab::new().label(bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "shortcuts.scopes.model",
+                )))
                 .on_click(move |index, _, app| {
                     let tab = if *index == 0 {
                         ShortcutSettingsTab::Window
@@ -74,10 +86,14 @@ pub(super) fn content(
                         .justify_between()
                         .gap_3()
                         .child(div().text_sm().text_color(tokens.muted).child(match tab {
-                            ShortcutSettingsTab::Window => {
-                                ui_text(language, UiText::WindowShortcuts)
-                            }
-                            ShortcutSettingsTab::Model => ui_text(language, UiText::ModelShortcuts),
+                            ShortcutSettingsTab::Window => bongocat_i18n::text(
+                                language.catalog_locale(),
+                                "shortcuts.scopes.window",
+                            ),
+                            ShortcutSettingsTab::Model => bongocat_i18n::text(
+                                language.catalog_locale(),
+                                "shortcuts.scopes.model",
+                            ),
                         }))
                         .child(
                             div()
@@ -85,7 +101,10 @@ pub(super) fn content(
                                 .gap_2()
                                 .child(
                                     command_button(
-                                        ui_text(language, UiText::RestoreDefaults),
+                                        bongocat_i18n::text(
+                                            language.catalog_locale(),
+                                            "shortcuts.actions.restore_defaults",
+                                        ),
                                         &view.restore_shortcuts_focus,
                                         33,
                                         window,
@@ -107,7 +126,10 @@ pub(super) fn content(
                                 )
                                 .child(
                                     command_button(
-                                        ui_text(language, UiText::ClearAll),
+                                        bongocat_i18n::text(
+                                            language.catalog_locale(),
+                                            "shortcuts.actions.clear_all",
+                                        ),
                                         &view.clear_shortcuts_focus,
                                         34,
                                         window,
@@ -132,12 +154,9 @@ pub(super) fn content(
                         ),
                 )
                 .when(rows.is_empty(), |content| {
-                    content.child(
-                        div()
-                            .text_sm()
-                            .text_color(tokens.muted)
-                            .child(ui_text(language, UiText::NoModelBehaviors)),
-                    )
+                    content.child(div().text_sm().text_color(tokens.muted).child(
+                        bongocat_i18n::text(language.catalog_locale(), "models.behaviors.empty"),
+                    ))
                 })
                 .children(rows.into_iter().enumerate().map(|(index, row)| {
                     shortcut_row(
@@ -236,12 +255,20 @@ fn shortcut_row(
                     shortcut_capture_preview(&capture.modifiers, &capture.keys)
                         .map(|shortcut| shortcut_display(&shortcut))
                         .unwrap_or_else(|| {
-                            ui_text(language, UiText::PressRecordShortcut).to_owned()
+                            bongocat_i18n::text(
+                                language.catalog_locale(),
+                                "shortcuts.capture.press_to_record",
+                            )
+                            .to_owned()
                         })
                 } else if let Some(shortcut) = row.shortcut.clone() {
                     shortcut_display(&shortcut)
                 } else {
-                    ui_text(language, UiText::ClickRecordShortcut).to_owned()
+                    bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "shortcuts.capture.click_to_record",
+                    )
+                    .to_owned()
                 })
                 .on_click(cx.listener(move |view, _, window, cx| {
                     view.begin_shortcut_capture(target.clone(), window, cx);
@@ -262,7 +289,7 @@ fn shortcut_row(
         .when(row.shortcut.is_some(), |actions| {
             actions.child(
                 command_button(
-                    ui_text(language, UiText::Clear),
+                    bongocat_i18n::text(language.catalog_locale(), "shortcuts.actions.clear"),
                     &clear_focus,
                     shortcut_clear_tab_index(row_index),
                     window,

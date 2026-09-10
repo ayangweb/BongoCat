@@ -105,29 +105,48 @@ impl SettingsView {
     ) -> Result<(), String> {
         let language = snapshot.resolved_language;
         let status = model_availability_status(entry, active, language);
-        let expected_origin = ui_text(
-            language,
+        let expected_origin = bongocat_i18n::text(
+            language.catalog_locale(),
             match entry.origin {
-                SettingsModelOrigin::Preset => UiText::Preset,
-                SettingsModelOrigin::Installed => UiText::Installed,
+                SettingsModelOrigin::Preset => "models.identity.source.preset",
+                SettingsModelOrigin::Installed => "models.identity.source.installed",
             },
         );
         if !status.contains(expected_origin)
-            || (active && !status.contains(ui_text(language, UiText::Active)))
+            || (active
+                && !status.contains(bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "models.identity.status.active",
+                )))
         {
             return Err("models page did not localize the model status".to_owned());
         }
         let (import_status, import_failed) = model_import_status(&self.model_import, language);
-        if import_failed || import_status != ui_text(language, UiText::NoFolderSelected) {
+        if import_failed
+            || import_status
+                != bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "models.import.folder.none_selected",
+                )
+        {
             return Err("models page did not localize the initial import status".to_owned());
         }
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
             let tree = self.accessibility_tree();
             for (id, label) in [
-                (ACCESSIBILITY_MODELS, ui_text(language, UiText::Models)),
-                (ACCESSIBILITY_REFRESH, ui_text(language, UiText::Refresh)),
-                (ACCESSIBILITY_QUIT, ui_text(language, UiText::Quit)),
+                (
+                    ACCESSIBILITY_MODELS,
+                    bongocat_i18n::text(language.catalog_locale(), "navigation.models.title"),
+                ),
+                (
+                    ACCESSIBILITY_REFRESH,
+                    bongocat_i18n::text(language.catalog_locale(), "actions.refresh"),
+                ),
+                (
+                    ACCESSIBILITY_QUIT,
+                    bongocat_i18n::text(language.catalog_locale(), "actions.quit"),
+                ),
             ] {
                 let node = tree
                     .nodes
@@ -193,11 +212,15 @@ impl SettingsView {
                 .find(|node| node.id == ACCESSIBILITY_THEME)
                 .ok_or_else(|| "general accessibility tree omitted the theme setting".to_owned())?;
             if theme.role != AccessibilityRole::ComboBox
-                || theme.label != ui_text(snapshot.resolved_language, UiText::Theme)
+                || theme.label
+                    != bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "settings.appearance.theme.label",
+                    )
                 || theme.description.as_deref()
-                    != Some(ui_text(
-                        snapshot.resolved_language,
-                        UiText::ThemeDescription,
+                    != Some(bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "settings.appearance.theme.description",
                     ))
                 || theme.value.as_deref()
                     != Some(theme_display_name(
@@ -218,11 +241,15 @@ impl SettingsView {
                 .find(|node| node.id == ACCESSIBILITY_LANGUAGE)
                 .ok_or_else(|| "accessibility tree omitted the language setting".to_owned())?;
             if language.role != AccessibilityRole::ComboBox
-                || language.label != ui_text(snapshot.resolved_language, UiText::Language)
+                || language.label
+                    != bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "settings.appearance.language.label",
+                    )
                 || language.description.as_deref()
-                    != Some(ui_text(
-                        snapshot.resolved_language,
-                        UiText::LanguageDescription,
+                    != Some(bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "settings.appearance.language.description",
                     ))
                 || language.value.as_deref()
                     != Some(snapshot.language.display_name(snapshot.resolved_language))
@@ -240,7 +267,11 @@ impl SettingsView {
                 .find(|node| node.id == ACCESSIBILITY_STARTUP)
                 .ok_or_else(|| "accessibility tree omitted the startup item".to_owned())?;
             if startup.role != AccessibilityRole::Switch
-                || startup.label != ui_text(snapshot.resolved_language, UiText::OpenAtLogin)
+                || startup.label
+                    != bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "settings.application.open_at_login.label",
+                    )
                 || startup.value.as_deref() != Some(presentation.description)
                 || startup.toggled
                     != Some(if presentation.enabled {
@@ -262,11 +293,15 @@ impl SettingsView {
                 .find(|node| node.id == ACCESSIBILITY_STATUS_ICON)
                 .ok_or_else(|| "accessibility tree omitted the status icon setting".to_owned())?;
             if status_icon.role != AccessibilityRole::Switch
-                || status_icon.label != ui_text(snapshot.resolved_language, UiText::ShowStatusIcon)
+                || status_icon.label
+                    != bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "settings.application.status_icon.label",
+                    )
                 || status_icon.value.as_deref()
-                    != Some(ui_text(
-                        snapshot.resolved_language,
-                        UiText::ShowStatusIconDescription,
+                    != Some(bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "settings.application.status_icon.description",
                     ))
                 || status_icon.toggled
                     != Some(if snapshot.status_icon_visible {
@@ -292,14 +327,14 @@ impl SettingsView {
                 })?;
             if automatic_update_check.role != AccessibilityRole::Switch
                 || automatic_update_check.label
-                    != ui_text(
-                        snapshot.resolved_language,
-                        UiText::CheckForUpdatesAutomatically,
+                    != bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "settings.application.auto_update.label",
                     )
                 || automatic_update_check.value.as_deref()
-                    != Some(ui_text(
-                        snapshot.resolved_language,
-                        UiText::CheckForUpdatesAutomaticallyDescription,
+                    != Some(bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "settings.application.auto_update.description",
                     ))
                 || automatic_update_check.toggled
                     != Some(if snapshot.check_for_updates_automatically {
@@ -327,11 +362,14 @@ impl SettingsView {
                     })?;
                 if taskbar_icon.role != AccessibilityRole::Switch
                     || taskbar_icon.label
-                        != ui_text(snapshot.resolved_language, UiText::ShowTaskbarIcon)
+                        != bongocat_i18n::text(
+                            snapshot.resolved_language.catalog_locale(),
+                            "settings.application.taskbar_icon.label",
+                        )
                     || taskbar_icon.value.as_deref()
-                        != Some(ui_text(
-                            snapshot.resolved_language,
-                            UiText::ShowTaskbarIconDescription,
+                        != Some(bongocat_i18n::text(
+                            snapshot.resolved_language.catalog_locale(),
+                            "settings.application.taskbar_icon.description",
                         ))
                     || taskbar_icon.toggled
                         != Some(if snapshot.taskbar_icon_visible {
@@ -360,16 +398,16 @@ impl SettingsView {
             for (id, label) in [
                 (
                     ACCESSIBILITY_RELEASE_FALLBACK_DECREASE,
-                    ui_text(
-                        snapshot.resolved_language,
-                        UiText::DecreaseReleaseFallbackTimeout,
+                    bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "shortcuts.actions.decrease_release_fallback_timeout",
                     ),
                 ),
                 (
                     ACCESSIBILITY_RELEASE_FALLBACK_INCREASE,
-                    ui_text(
-                        snapshot.resolved_language,
-                        UiText::IncreaseReleaseFallbackTimeout,
+                    bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "shortcuts.actions.increase_release_fallback_timeout",
                     ),
                 ),
             ] {
@@ -383,9 +421,9 @@ impl SettingsView {
                 if node.role != AccessibilityRole::Button
                     || node.label != label
                     || node.description.as_deref()
-                        != Some(ui_text(
-                            snapshot.resolved_language,
-                            UiText::ReleaseFallbackTimeoutDescription,
+                        != Some(bongocat_i18n::text(
+                            snapshot.resolved_language.catalog_locale(),
+                            "settings.overlay.release_fallback_timeout.description",
                         ))
                     || node.value.as_deref()
                         != Some(snapshot.release_fallback_timeout_ms.to_string().as_str())
@@ -402,25 +440,37 @@ impl SettingsView {
             for (id, label, value, toggled) in [
                 (
                     ACCESSIBILITY_OVERLAY_TOPMOST,
-                    ui_text(snapshot.resolved_language, UiText::AlwaysOnTop),
-                    ui_text(snapshot.resolved_language, UiText::AlwaysOnTopDescription),
+                    bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "settings.overlay.always_on_top.label",
+                    ),
+                    bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "settings.overlay.always_on_top.description",
+                    ),
                     snapshot.overlay.always_on_top,
                 ),
                 (
                     ACCESSIBILITY_OVERLAY_CLICK_THROUGH,
-                    ui_text(snapshot.resolved_language, UiText::ClickThroughOverlay),
-                    ui_text(
-                        snapshot.resolved_language,
-                        UiText::ClickThroughOverlayDescription,
+                    bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "settings.overlay.click_through.label",
+                    ),
+                    bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "settings.overlay.click_through.description",
                     ),
                     snapshot.overlay.click_through,
                 ),
                 (
                     ACCESSIBILITY_OVERLAY_KEEP_INSIDE_WORK_AREA,
-                    ui_text(snapshot.resolved_language, UiText::KeepInsideWorkArea),
-                    ui_text(
-                        snapshot.resolved_language,
-                        UiText::KeepInsideWorkAreaDescription,
+                    bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "settings.overlay.keep_inside_work_area.label",
+                    ),
+                    bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "settings.overlay.keep_inside_work_area.description",
                     ),
                     snapshot.overlay.keep_inside_work_area,
                 ),
@@ -454,34 +504,49 @@ impl SettingsView {
             for (id, label, value, toggled) in [
                 (
                     ACCESSIBILITY_BEHAVIOR_SHORTCUTS,
-                    ui_text(snapshot.resolved_language, UiText::BehaviorShortcuts),
-                    ui_text(
-                        snapshot.resolved_language,
-                        UiText::BehaviorShortcutsDescription,
+                    bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "settings.model_interaction.behavior_shortcuts.label",
+                    ),
+                    bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "settings.model_interaction.behavior_shortcuts.description",
                     ),
                     snapshot.behavior_shortcuts_enabled,
                 ),
                 (
                     ACCESSIBILITY_MIRROR,
-                    ui_text(snapshot.resolved_language, UiText::MirrorModel),
-                    ui_text(snapshot.resolved_language, UiText::MirrorModelDescription),
+                    bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "settings.model_interaction.mirror_model.label",
+                    ),
+                    bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "settings.model_interaction.mirror_model.description",
+                    ),
                     snapshot.model_settings.mirror,
                 ),
                 (
                     ACCESSIBILITY_MIRROR_POINTER,
-                    ui_text(snapshot.resolved_language, UiText::MirrorPointerTracking),
-                    ui_text(
-                        snapshot.resolved_language,
-                        UiText::MirrorPointerTrackingDescription,
+                    bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "settings.model_interaction.mirror_pointer_tracking.label",
+                    ),
+                    bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "settings.model_interaction.mirror_pointer_tracking.description",
                     ),
                     snapshot.model_settings.mirror_pointer_tracking,
                 ),
                 (
                     ACCESSIBILITY_IGNORE_POINTER,
-                    ui_text(snapshot.resolved_language, UiText::IgnorePointerInput),
-                    ui_text(
-                        snapshot.resolved_language,
-                        UiText::IgnorePointerInputDescription,
+                    bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "settings.model_interaction.ignore_pointer_input.label",
+                    ),
+                    bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "settings.model_interaction.ignore_pointer_input.description",
                     ),
                     snapshot.model_settings.ignore_pointer,
                 ),
@@ -515,22 +580,34 @@ impl SettingsView {
             for (id, label, unavailable) in [
                 (
                     ACCESSIBILITY_OVERLAY_SCALE_DECREASE,
-                    ui_text(snapshot.resolved_language, UiText::DecreaseOverlayScale),
+                    bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "shortcuts.actions.decrease_overlay_scale",
+                    ),
                     snapshot.overlay.scale_percent <= 25,
                 ),
                 (
                     ACCESSIBILITY_OVERLAY_SCALE_INCREASE,
-                    ui_text(snapshot.resolved_language, UiText::IncreaseOverlayScale),
+                    bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "shortcuts.actions.increase_overlay_scale",
+                    ),
                     snapshot.overlay.scale_percent >= 400,
                 ),
                 (
                     ACCESSIBILITY_OVERLAY_OPACITY_DECREASE,
-                    ui_text(snapshot.resolved_language, UiText::DecreaseOverlayOpacity),
+                    bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "shortcuts.actions.decrease_overlay_opacity",
+                    ),
                     snapshot.overlay.opacity_percent <= 1,
                 ),
                 (
                     ACCESSIBILITY_OVERLAY_OPACITY_INCREASE,
-                    ui_text(snapshot.resolved_language, UiText::IncreaseOverlayOpacity),
+                    bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "shortcuts.actions.increase_overlay_opacity",
+                    ),
                     snapshot.overlay.opacity_percent >= 100,
                 ),
             ] {
@@ -562,7 +639,10 @@ impl SettingsView {
                 .as_ref()
                 .ok_or_else(|| "settings accessibility bridge is unavailable".to_owned())?
                 .verify_startup_control(
-                    ui_text(snapshot.resolved_language, UiText::OpenAtLogin),
+                    bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "settings.application.open_at_login.label",
+                    ),
                     if presentation.enabled {
                         AccessibilityToggle::On
                     } else {
@@ -599,17 +679,18 @@ impl SettingsView {
             return Err("diagnostics page did not project configuration recovery".to_owned());
         }
         if language == SettingsLanguage::ChineseSimplified
-            && (ui_text(language, UiText::DiagnosticsDescription)
-                == ui_text(
+            && (bongocat_i18n::text(
+                language.catalog_locale(),
+                "navigation.diagnostics.description",
+            ) == bongocat_i18n::text(
+                SettingsLanguage::EnglishUnitedStates.catalog_locale(),
+                "navigation.diagnostics.description",
+            ) || metrics[0].0
+                == input_diagnostic_metrics(
                     SettingsLanguage::EnglishUnitedStates,
-                    UiText::DiagnosticsDescription,
-                )
-                || metrics[0].0
-                    == input_diagnostic_metrics(
-                        SettingsLanguage::EnglishUnitedStates,
-                        snapshot.input_diagnostics,
-                    )[0]
-                    .0)
+                    snapshot.input_diagnostics,
+                )[0]
+                .0)
         {
             return Err("diagnostics visible text was not localized".to_owned());
         }
@@ -620,11 +701,15 @@ impl SettingsView {
             .find(|node| node.id == ACCESSIBILITY_OPEN_BACKUPS)
             .ok_or_else(|| "diagnostics omitted the accessible backup location".to_owned())?;
         if open_backups.role != AccessibilityRole::Button
-            || open_backups.label != ui_text(language, UiText::OpenConfigurationBackupsFolder)
+            || open_backups.label
+                != bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "diagnostics.configuration.open_backups_folder",
+                )
             || open_backups.value.as_deref()
-                != Some(ui_text(
-                    language,
-                    UiText::OpenConfigurationBackupsFolderDescription,
+                != Some(bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "diagnostics.configuration.open_backups_folder_description",
                 ))
             || open_backups.disabled
             || !open_backups.supports_click
@@ -639,9 +724,13 @@ impl SettingsView {
             .find(|node| node.id == ACCESSIBILITY_EXPORT_DIAGNOSTICS)
             .ok_or_else(|| "diagnostics omitted the accessible export action".to_owned())?;
         if export.role != AccessibilityRole::Button
-            || export.label != ui_text(language, UiText::ExportDiagnostics)
+            || export.label
+                != bongocat_i18n::text(language.catalog_locale(), "diagnostics.export.action")
             || export.value.as_deref()
-                != Some(ui_text(language, UiText::ExportDiagnosticsDescription))
+                != Some(bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "diagnostics.export.description",
+                ))
             || export.disabled
             || !export.supports_click
             || !export.supports_focus
@@ -657,9 +746,13 @@ impl SettingsView {
         let shortcuts_present = !snapshot.shortcuts.commands.is_empty()
             || !snapshot.shortcuts.model_behaviors.is_empty();
         if clear_shortcuts.role != AccessibilityRole::Button
-            || clear_shortcuts.label != ui_text(language, UiText::ClearAllShortcuts)
+            || clear_shortcuts.label
+                != bongocat_i18n::text(language.catalog_locale(), "shortcuts.actions.clear_all")
             || clear_shortcuts.value.as_deref()
-                != Some(ui_text(language, UiText::ClearAllShortcutsDescription))
+                != Some(bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "shortcuts.actions.clear_all_description",
+                ))
             || clear_shortcuts.disabled != !shortcuts_present
             || clear_shortcuts.supports_click != shortcuts_present
             || clear_shortcuts.supports_focus != shortcuts_present
@@ -739,11 +832,15 @@ impl SettingsView {
                     "recovery diagnostics omitted the accessible restore action".to_owned()
                 })?;
             if restore.role != AccessibilityRole::Button
-                || restore.label != ui_text(language, UiText::RestoreDefaultConfiguration)
+                || restore.label
+                    != bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "diagnostics.configuration.restore_defaults",
+                    )
                 || restore.value.as_deref()
-                    != Some(ui_text(
-                        language,
-                        UiText::RestoreDefaultConfigurationDescription,
+                    != Some(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "diagnostics.configuration.restore_defaults_description",
                     ))
                 || restore.disabled
                 || !restore.supports_click
@@ -793,11 +890,15 @@ impl SettingsView {
                     "shortcuts page omitted its navigation accessibility node".to_owned()
                 })?;
             if node.role != AccessibilityRole::Button
-                || node.label != ui_text(snapshot.resolved_language, UiText::Shortcuts)
+                || node.label
+                    != bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "navigation.shortcuts.title",
+                    )
                 || node.value.as_deref()
-                    != Some(ui_text(
-                        snapshot.resolved_language,
-                        UiText::ShortcutsDescription,
+                    != Some(bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "navigation.shortcuts.description",
                     ))
                 || !node.supports_click
                 || !node.supports_focus
@@ -819,16 +920,16 @@ impl SettingsView {
             .ok_or_else(|| "about page has not received a settings snapshot".to_owned())?;
         let language = snapshot.resolved_language;
         if ABOUT_SECTIONS.iter().any(|section| {
-            ui_text(language, section.title).is_empty()
-                || ui_text(language, section.description).is_empty()
+            bongocat_i18n::text(language.catalog_locale(), section.title).is_empty()
+                || bongocat_i18n::text(language.catalog_locale(), section.description).is_empty()
         }) {
             return Err("about page has incomplete localized content".to_owned());
         }
         if language == SettingsLanguage::ChineseSimplified
-            && ui_text(language, UiText::PrivacyDescription)
-                == ui_text(
-                    SettingsLanguage::EnglishUnitedStates,
-                    UiText::PrivacyDescription,
+            && bongocat_i18n::text(language.catalog_locale(), "about.privacy.description")
+                == bongocat_i18n::text(
+                    SettingsLanguage::EnglishUnitedStates.catalog_locale(),
+                    "about.privacy.description",
                 )
         {
             return Err("about page privacy text was not localized".to_owned());
@@ -846,8 +947,13 @@ impl SettingsView {
                 .find(|node| node.id == ACCESSIBILITY_ABOUT)
                 .ok_or_else(|| "about page omitted its navigation accessibility node".to_owned())?;
             if node.role != AccessibilityRole::Button
-                || node.label != ui_text(language, UiText::About)
-                || node.value.as_deref() != Some(ui_text(language, UiText::AboutDescription))
+                || node.label
+                    != bongocat_i18n::text(language.catalog_locale(), "navigation.about.title")
+                || node.value.as_deref()
+                    != Some(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "navigation.about.description",
+                    ))
                 || !node.supports_click
                 || !node.supports_focus
             {

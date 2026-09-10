@@ -136,18 +136,28 @@ impl Render for SettingsView {
         }
         self.sync_shortcut_row_focus(&shortcuts, active_model, model_entries, disabled, cx);
         let status: SharedString = match (self.pending, &snapshot) {
-            (Some(PendingOperation::Refresh), _) => ui_text(language, UiText::Refreshing).into(),
-            (Some(_), _) => ui_text(language, UiText::Saving).into(),
+            (Some(PendingOperation::Refresh), _) => {
+                bongocat_i18n::text(language.catalog_locale(), "status.refreshing").into()
+            }
+            (Some(_), _) => bongocat_i18n::text(language.catalog_locale(), "status.saving").into(),
             (None, Some(snapshot)) => {
                 let health = match snapshot.runtime_health {
-                    RuntimeHealth::Starting => ui_text(language, UiText::Starting),
-                    RuntimeHealth::Ready => ui_text(language, UiText::Ready),
-                    RuntimeHealth::Degraded => ui_text(language, UiText::Degraded),
-                    RuntimeHealth::Stopped => ui_text(language, UiText::Stopped),
+                    RuntimeHealth::Starting => {
+                        bongocat_i18n::text(language.catalog_locale(), "status.starting")
+                    }
+                    RuntimeHealth::Ready => {
+                        bongocat_i18n::text(language.catalog_locale(), "status.ready")
+                    }
+                    RuntimeHealth::Degraded => {
+                        bongocat_i18n::text(language.catalog_locale(), "status.degraded")
+                    }
+                    RuntimeHealth::Stopped => {
+                        bongocat_i18n::text(language.catalog_locale(), "status.stopped")
+                    }
                 };
                 runtime_status(language, health, snapshot.revision).into()
             }
-            _ => ui_text(language, UiText::Connecting).into(),
+            _ => bongocat_i18n::text(language.catalog_locale(), "status.connecting").into(),
         };
         let status_is_error = false;
         let view_entity = cx.entity();
@@ -157,472 +167,606 @@ impl Render for SettingsView {
             language,
         );
 
-        let general_page = SettingPage::new(ui_text(language, UiText::General))
-            .default_open(true)
-            .description(ui_text(language, UiText::GeneralDescription))
-            .groups(vec![
-                SettingGroup::new()
-                    .title(ui_text(language, UiText::Appearance))
-                    .items(vec![
-                        SettingItem::new(
-                            ui_text(language, UiText::Theme),
-                            SettingField::element({
+        let general_page = SettingPage::new(bongocat_i18n::text(
+            language.catalog_locale(),
+            "navigation.general.title",
+        ))
+        .default_open(true)
+        .description(bongocat_i18n::text(
+            language.catalog_locale(),
+            "navigation.general.description",
+        ))
+        .groups(vec![
+            SettingGroup::new()
+                .title(bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "settings.appearance.title",
+                ))
+                .items(vec![
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.appearance.theme.label",
+                        ),
+                        SettingField::element({
+                            let view = view_entity.clone();
+                            move |_: &RenderOptions, _: &mut Window, app: &mut App| {
+                                let state = view.read(app).theme_select.clone();
+                                Select::new(&state)
+                                    .accessibility_label(bongocat_i18n::text(
+                                        language.catalog_locale(),
+                                        "settings.appearance.theme.label",
+                                    ))
+                                    .disabled(disabled)
+                                    .into_any_element()
+                            }
+                        }),
+                    )
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.appearance.theme.description",
+                    )),
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.appearance.language.label",
+                        ),
+                        SettingField::element({
+                            let view = view_entity.clone();
+                            move |_: &RenderOptions, _: &mut Window, app: &mut App| {
+                                let state = view.read(app).language_select.clone();
+                                Select::new(&state)
+                                    .accessibility_label(bongocat_i18n::text(
+                                        language.catalog_locale(),
+                                        "settings.appearance.language.label",
+                                    ))
+                                    .disabled(disabled)
+                                    .into_any_element()
+                            }
+                        }),
+                    )
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.appearance.language.description",
+                    )),
+                ]),
+            SettingGroup::new()
+                .title(bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "settings.overlay.title",
+                ))
+                .items(vec![
+                    SettingItem::new(
+                        bongocat_i18n::text(language.catalog_locale(), "settings.runtime.title"),
+                        SettingField::element({
+                            let status = status.clone();
+                            move |_: &RenderOptions, _: &mut Window, _: &mut App| {
+                                if status_is_error {
+                                    Tag::danger().child(status.clone()).into_any_element()
+                                } else {
+                                    Tag::secondary().child(status.clone()).into_any_element()
+                                }
+                            }
+                        }),
+                    )
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.runtime.description",
+                    )),
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.overlay.visibility.label",
+                        ),
+                        SettingField::switch(
+                            {
                                 let view = view_entity.clone();
-                                move |_: &RenderOptions, _: &mut Window, app: &mut App| {
-                                    let state = view.read(app).theme_select.clone();
-                                    Select::new(&state)
-                                        .accessibility_label(ui_text(language, UiText::Theme))
-                                        .disabled(disabled)
-                                        .into_any_element()
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.overlay_visible)
                                 }
-                            }),
-                        )
-                        .description(ui_text(language, UiText::ThemeDescription)),
-                        SettingItem::new(
-                            ui_text(language, UiText::Language),
-                            SettingField::element({
+                            },
+                            {
                                 let view = view_entity.clone();
-                                move |_: &RenderOptions, _: &mut Window, app: &mut App| {
-                                    let state = view.read(app).language_select.clone();
-                                    Select::new(&state)
-                                        .accessibility_label(ui_text(language, UiText::Language))
-                                        .disabled(disabled)
-                                        .into_any_element()
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_overlay_visible(value, cx)
+                                    });
                                 }
-                            }),
-                        )
-                        .description(ui_text(language, UiText::LanguageDescription)),
-                    ]),
-                SettingGroup::new()
-                    .title(ui_text(language, UiText::Overlay))
-                    .items(vec![
-                        SettingItem::new(
-                            ui_text(language, UiText::RuntimeStatus),
-                            SettingField::element({
-                                let status = status.clone();
-                                move |_: &RenderOptions, _: &mut Window, _: &mut App| {
-                                    if status_is_error {
-                                        Tag::danger().child(status.clone()).into_any_element()
-                                    } else {
-                                        Tag::secondary().child(status.clone()).into_any_element()
-                                    }
+                            },
+                        ),
+                    )
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.overlay.visibility.description",
+                    )),
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.overlay.always_on_top.label",
+                        ),
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.overlay.always_on_top)
                                 }
-                            }),
-                        )
-                        .description(ui_text(language, UiText::RuntimeStatusDescription)),
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        if let Some(snapshot) = view.snapshot.as_ref() {
+                                            let mut settings = snapshot.overlay;
+                                            settings.always_on_top = value;
+                                            view.set_overlay_settings(settings, cx);
+                                        }
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.overlay.always_on_top.description",
+                    )),
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.overlay.click_through.label",
+                        ),
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.overlay.click_through)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        if let Some(snapshot) = view.snapshot.as_ref() {
+                                            let mut settings = snapshot.overlay;
+                                            settings.click_through = value;
+                                            view.set_overlay_settings(settings, cx);
+                                        }
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.overlay.click_through.description",
+                    )),
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.overlay.keep_inside_work_area.label",
+                        ),
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.overlay.keep_inside_work_area)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        if let Some(snapshot) = view.snapshot.as_ref() {
+                                            let mut settings = snapshot.overlay;
+                                            settings.keep_inside_work_area = value;
+                                            view.set_overlay_settings(settings, cx);
+                                        }
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.overlay.keep_inside_work_area.description",
+                    )),
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.overlay.motion_audio.label",
+                        ),
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.motion_audio_enabled)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_motion_audio_enabled(value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.overlay.motion_audio.description",
+                    )),
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.overlay.scale.label",
+                        ),
+                        SettingField::number_input(
+                            NumberFieldOptions {
+                                min: 25.0,
+                                max: 400.0,
+                                step: 25.0,
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .map_or(100.0, |s| f64::from(s.overlay.scale_percent))
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_overlay_scale_value(value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.overlay.scale.description",
+                    )),
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.overlay.opacity.label",
+                        ),
+                        SettingField::number_input(
+                            NumberFieldOptions {
+                                min: 1.0,
+                                max: 100.0,
+                                step: 10.0,
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .map_or(100.0, |s| f64::from(s.overlay.opacity_percent))
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_overlay_opacity_value(value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.overlay.opacity.description",
+                    )),
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.overlay.maximum_fps.label",
+                        ),
+                        SettingField::number_input(
+                            NumberFieldOptions {
+                                min: 15.0,
+                                max: 240.0,
+                                step: 15.0,
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .map_or(60.0, |s| f64::from(s.maximum_fps))
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_maximum_fps_value(value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.overlay.maximum_fps.description",
+                    )),
+                ]),
+            SettingGroup::new()
+                .title(bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "settings.model_interaction.title",
+                ))
+                .items(vec![
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.model_interaction.behavior_shortcuts.label",
+                        ),
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.behavior_shortcuts_enabled)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_behavior_shortcuts_enabled(value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.model_interaction.behavior_shortcuts.description",
+                    )),
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.model_interaction.mirror_model.label",
+                        ),
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.model_settings.mirror)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        if let Some(s) = view.snapshot.as_ref() {
+                                            let mut settings = s.model_settings;
+                                            settings.mirror = value;
+                                            view.set_model_settings(settings, cx);
+                                        }
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.model_interaction.mirror_model.description",
+                    )),
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.model_interaction.mirror_pointer_tracking.label",
+                        ),
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.model_settings.mirror_pointer_tracking)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        if let Some(s) = view.snapshot.as_ref() {
+                                            let mut settings = s.model_settings;
+                                            settings.mirror_pointer_tracking = value;
+                                            view.set_model_settings(settings, cx);
+                                        }
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.model_interaction.mirror_pointer_tracking.description",
+                    )),
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.model_interaction.ignore_pointer_input.label",
+                        ),
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.model_settings.ignore_pointer)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        if let Some(s) = view.snapshot.as_ref() {
+                                            let mut settings = s.model_settings;
+                                            settings.ignore_pointer = value;
+                                            view.set_model_settings(settings, cx);
+                                        }
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.model_interaction.ignore_pointer_input.description",
+                    )),
+                ]),
+            SettingGroup::new()
+                .title(bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "settings.input.title",
+                ))
+                .items(vec![
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.overlay.release_fallback_timeout.label",
+                        ),
+                        SettingField::number_input(
+                            NumberFieldOptions {
+                                min: 0.0,
+                                max: 60_000.0,
+                                step: 250.0,
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .map_or(500.0, |s| f64::from(s.release_fallback_timeout_ms))
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_release_fallback_timeout_value(value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.overlay.release_fallback_timeout.description",
+                    )),
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.input.gamepad_stick_dead_zone.label",
+                        ),
+                        SettingField::number_input(
+                            NumberFieldOptions {
+                                min: 0.0,
+                                max: 99.0,
+                                step: 5.0,
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app).snapshot.as_ref().map_or(15.0, |s| {
+                                        f64::from(s.gamepad_axis_settings.stick_dead_zone_percent)
+                                    })
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_gamepad_dead_zone_value(true, value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.input.gamepad_stick_dead_zone.description",
+                    )),
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.input.gamepad_trigger_dead_zone.label",
+                        ),
+                        SettingField::number_input(
+                            NumberFieldOptions {
+                                min: 0.0,
+                                max: 99.0,
+                                step: 5.0,
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app).snapshot.as_ref().map_or(0.0, |s| {
+                                        f64::from(s.gamepad_axis_settings.trigger_dead_zone_percent)
+                                    })
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_gamepad_dead_zone_value(false, value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.input.gamepad_trigger_dead_zone.description",
+                    )),
+                ]),
+            SettingGroup::new()
+                .title(bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "settings.application.title",
+                ))
+                .items({
+                    let mut items = vec![
                         SettingItem::new(
-                            ui_text(language, UiText::ShowDesktopCat),
-                            SettingField::switch(
-                                {
-                                    let view = view_entity.clone();
-                                    move |app| {
-                                        view.read(app)
-                                            .snapshot
-                                            .as_ref()
-                                            .is_some_and(|s| s.overlay_visible)
-                                    }
-                                },
-                                {
-                                    let view = view_entity.clone();
-                                    move |value, app| {
-                                        view.update(app, |view, cx| {
-                                            view.set_overlay_visible(value, cx)
-                                        });
-                                    }
-                                },
+                            bongocat_i18n::text(
+                                language.catalog_locale(),
+                                "settings.application.status_icon.label",
                             ),
-                        )
-                        .description(ui_text(language, UiText::ShowDesktopCatDescription)),
-                        SettingItem::new(
-                            ui_text(language, UiText::AlwaysOnTop),
-                            SettingField::switch(
-                                {
-                                    let view = view_entity.clone();
-                                    move |app| {
-                                        view.read(app)
-                                            .snapshot
-                                            .as_ref()
-                                            .is_some_and(|s| s.overlay.always_on_top)
-                                    }
-                                },
-                                {
-                                    let view = view_entity.clone();
-                                    move |value, app| {
-                                        view.update(app, |view, cx| {
-                                            if let Some(snapshot) = view.snapshot.as_ref() {
-                                                let mut settings = snapshot.overlay;
-                                                settings.always_on_top = value;
-                                                view.set_overlay_settings(settings, cx);
-                                            }
-                                        });
-                                    }
-                                },
-                            ),
-                        )
-                        .description(ui_text(language, UiText::AlwaysOnTopDescription)),
-                        SettingItem::new(
-                            ui_text(language, UiText::ClickThroughOverlay),
-                            SettingField::switch(
-                                {
-                                    let view = view_entity.clone();
-                                    move |app| {
-                                        view.read(app)
-                                            .snapshot
-                                            .as_ref()
-                                            .is_some_and(|s| s.overlay.click_through)
-                                    }
-                                },
-                                {
-                                    let view = view_entity.clone();
-                                    move |value, app| {
-                                        view.update(app, |view, cx| {
-                                            if let Some(snapshot) = view.snapshot.as_ref() {
-                                                let mut settings = snapshot.overlay;
-                                                settings.click_through = value;
-                                                view.set_overlay_settings(settings, cx);
-                                            }
-                                        });
-                                    }
-                                },
-                            ),
-                        )
-                        .description(ui_text(language, UiText::ClickThroughOverlayDescription)),
-                        SettingItem::new(
-                            ui_text(language, UiText::KeepInsideWorkArea),
-                            SettingField::switch(
-                                {
-                                    let view = view_entity.clone();
-                                    move |app| {
-                                        view.read(app)
-                                            .snapshot
-                                            .as_ref()
-                                            .is_some_and(|s| s.overlay.keep_inside_work_area)
-                                    }
-                                },
-                                {
-                                    let view = view_entity.clone();
-                                    move |value, app| {
-                                        view.update(app, |view, cx| {
-                                            if let Some(snapshot) = view.snapshot.as_ref() {
-                                                let mut settings = snapshot.overlay;
-                                                settings.keep_inside_work_area = value;
-                                                view.set_overlay_settings(settings, cx);
-                                            }
-                                        });
-                                    }
-                                },
-                            ),
-                        )
-                        .description(ui_text(language, UiText::KeepInsideWorkAreaDescription)),
-                        SettingItem::new(
-                            ui_text(language, UiText::MotionAudio),
-                            SettingField::switch(
-                                {
-                                    let view = view_entity.clone();
-                                    move |app| {
-                                        view.read(app)
-                                            .snapshot
-                                            .as_ref()
-                                            .is_some_and(|s| s.motion_audio_enabled)
-                                    }
-                                },
-                                {
-                                    let view = view_entity.clone();
-                                    move |value, app| {
-                                        view.update(app, |view, cx| {
-                                            view.set_motion_audio_enabled(value, cx)
-                                        });
-                                    }
-                                },
-                            ),
-                        )
-                        .description(ui_text(language, UiText::MotionAudioDescription)),
-                        SettingItem::new(
-                            ui_text(language, UiText::OverlayScale),
-                            SettingField::number_input(
-                                NumberFieldOptions {
-                                    min: 25.0,
-                                    max: 400.0,
-                                    step: 25.0,
-                                },
-                                {
-                                    let view = view_entity.clone();
-                                    move |app| {
-                                        view.read(app)
-                                            .snapshot
-                                            .as_ref()
-                                            .map_or(100.0, |s| f64::from(s.overlay.scale_percent))
-                                    }
-                                },
-                                {
-                                    let view = view_entity.clone();
-                                    move |value, app| {
-                                        view.update(app, |view, cx| {
-                                            view.set_overlay_scale_value(value, cx)
-                                        });
-                                    }
-                                },
-                            ),
-                        )
-                        .description(ui_text(language, UiText::OverlayScaleDescription)),
-                        SettingItem::new(
-                            ui_text(language, UiText::OverlayOpacity),
-                            SettingField::number_input(
-                                NumberFieldOptions {
-                                    min: 1.0,
-                                    max: 100.0,
-                                    step: 10.0,
-                                },
-                                {
-                                    let view = view_entity.clone();
-                                    move |app| {
-                                        view.read(app)
-                                            .snapshot
-                                            .as_ref()
-                                            .map_or(100.0, |s| f64::from(s.overlay.opacity_percent))
-                                    }
-                                },
-                                {
-                                    let view = view_entity.clone();
-                                    move |value, app| {
-                                        view.update(app, |view, cx| {
-                                            view.set_overlay_opacity_value(value, cx)
-                                        });
-                                    }
-                                },
-                            ),
-                        )
-                        .description(ui_text(language, UiText::OverlayOpacityDescription)),
-                        SettingItem::new(
-                            ui_text(language, UiText::MaximumFps),
-                            SettingField::number_input(
-                                NumberFieldOptions {
-                                    min: 15.0,
-                                    max: 240.0,
-                                    step: 15.0,
-                                },
-                                {
-                                    let view = view_entity.clone();
-                                    move |app| {
-                                        view.read(app)
-                                            .snapshot
-                                            .as_ref()
-                                            .map_or(60.0, |s| f64::from(s.maximum_fps))
-                                    }
-                                },
-                                {
-                                    let view = view_entity.clone();
-                                    move |value, app| {
-                                        view.update(app, |view, cx| {
-                                            view.set_maximum_fps_value(value, cx)
-                                        });
-                                    }
-                                },
-                            ),
-                        )
-                        .description(ui_text(language, UiText::MaximumFpsDescription)),
-                    ]),
-                SettingGroup::new()
-                    .title(ui_text(language, UiText::ModelInteraction))
-                    .items(vec![
-                        SettingItem::new(
-                            ui_text(language, UiText::BehaviorShortcuts),
-                            SettingField::switch(
-                                {
-                                    let view = view_entity.clone();
-                                    move |app| {
-                                        view.read(app)
-                                            .snapshot
-                                            .as_ref()
-                                            .is_some_and(|s| s.behavior_shortcuts_enabled)
-                                    }
-                                },
-                                {
-                                    let view = view_entity.clone();
-                                    move |value, app| {
-                                        view.update(app, |view, cx| {
-                                            view.set_behavior_shortcuts_enabled(value, cx)
-                                        });
-                                    }
-                                },
-                            ),
-                        )
-                        .description(ui_text(language, UiText::BehaviorShortcutsDescription)),
-                        SettingItem::new(
-                            ui_text(language, UiText::MirrorModel),
-                            SettingField::switch(
-                                {
-                                    let view = view_entity.clone();
-                                    move |app| {
-                                        view.read(app)
-                                            .snapshot
-                                            .as_ref()
-                                            .is_some_and(|s| s.model_settings.mirror)
-                                    }
-                                },
-                                {
-                                    let view = view_entity.clone();
-                                    move |value, app| {
-                                        view.update(app, |view, cx| {
-                                            if let Some(s) = view.snapshot.as_ref() {
-                                                let mut settings = s.model_settings;
-                                                settings.mirror = value;
-                                                view.set_model_settings(settings, cx);
-                                            }
-                                        });
-                                    }
-                                },
-                            ),
-                        )
-                        .description(ui_text(language, UiText::MirrorModelDescription)),
-                        SettingItem::new(
-                            ui_text(language, UiText::MirrorPointerTracking),
-                            SettingField::switch(
-                                {
-                                    let view = view_entity.clone();
-                                    move |app| {
-                                        view.read(app).snapshot.as_ref().is_some_and(|s| {
-                                            s.model_settings.mirror_pointer_tracking
-                                        })
-                                    }
-                                },
-                                {
-                                    let view = view_entity.clone();
-                                    move |value, app| {
-                                        view.update(app, |view, cx| {
-                                            if let Some(s) = view.snapshot.as_ref() {
-                                                let mut settings = s.model_settings;
-                                                settings.mirror_pointer_tracking = value;
-                                                view.set_model_settings(settings, cx);
-                                            }
-                                        });
-                                    }
-                                },
-                            ),
-                        )
-                        .description(ui_text(language, UiText::MirrorPointerTrackingDescription)),
-                        SettingItem::new(
-                            ui_text(language, UiText::IgnorePointerInput),
-                            SettingField::switch(
-                                {
-                                    let view = view_entity.clone();
-                                    move |app| {
-                                        view.read(app)
-                                            .snapshot
-                                            .as_ref()
-                                            .is_some_and(|s| s.model_settings.ignore_pointer)
-                                    }
-                                },
-                                {
-                                    let view = view_entity.clone();
-                                    move |value, app| {
-                                        view.update(app, |view, cx| {
-                                            if let Some(s) = view.snapshot.as_ref() {
-                                                let mut settings = s.model_settings;
-                                                settings.ignore_pointer = value;
-                                                view.set_model_settings(settings, cx);
-                                            }
-                                        });
-                                    }
-                                },
-                            ),
-                        )
-                        .description(ui_text(language, UiText::IgnorePointerInputDescription)),
-                    ]),
-                SettingGroup::new()
-                    .title(ui_text(language, UiText::Input))
-                    .items(vec![
-                        SettingItem::new(
-                            ui_text(language, UiText::ReleaseFallbackTimeout),
-                            SettingField::number_input(
-                                NumberFieldOptions {
-                                    min: 0.0,
-                                    max: 60_000.0,
-                                    step: 250.0,
-                                },
-                                {
-                                    let view = view_entity.clone();
-                                    move |app| {
-                                        view.read(app).snapshot.as_ref().map_or(500.0, |s| {
-                                            f64::from(s.release_fallback_timeout_ms)
-                                        })
-                                    }
-                                },
-                                {
-                                    let view = view_entity.clone();
-                                    move |value, app| {
-                                        view.update(app, |view, cx| {
-                                            view.set_release_fallback_timeout_value(value, cx)
-                                        });
-                                    }
-                                },
-                            ),
-                        )
-                        .description(ui_text(language, UiText::ReleaseFallbackTimeoutDescription)),
-                        SettingItem::new(
-                            ui_text(language, UiText::GamepadStickDeadZone),
-                            SettingField::number_input(
-                                NumberFieldOptions {
-                                    min: 0.0,
-                                    max: 99.0,
-                                    step: 5.0,
-                                },
-                                {
-                                    let view = view_entity.clone();
-                                    move |app| {
-                                        view.read(app).snapshot.as_ref().map_or(15.0, |s| {
-                                            f64::from(
-                                                s.gamepad_axis_settings.stick_dead_zone_percent,
-                                            )
-                                        })
-                                    }
-                                },
-                                {
-                                    let view = view_entity.clone();
-                                    move |value, app| {
-                                        view.update(app, |view, cx| {
-                                            view.set_gamepad_dead_zone_value(true, value, cx)
-                                        });
-                                    }
-                                },
-                            ),
-                        )
-                        .description(ui_text(language, UiText::GamepadStickDeadZoneDescription)),
-                        SettingItem::new(
-                            ui_text(language, UiText::GamepadTriggerDeadZone),
-                            SettingField::number_input(
-                                NumberFieldOptions {
-                                    min: 0.0,
-                                    max: 99.0,
-                                    step: 5.0,
-                                },
-                                {
-                                    let view = view_entity.clone();
-                                    move |app| {
-                                        view.read(app).snapshot.as_ref().map_or(0.0, |s| {
-                                            f64::from(
-                                                s.gamepad_axis_settings.trigger_dead_zone_percent,
-                                            )
-                                        })
-                                    }
-                                },
-                                {
-                                    let view = view_entity.clone();
-                                    move |value, app| {
-                                        view.update(app, |view, cx| {
-                                            view.set_gamepad_dead_zone_value(false, value, cx)
-                                        });
-                                    }
-                                },
-                            ),
-                        )
-                        .description(ui_text(language, UiText::GamepadTriggerDeadZoneDescription)),
-                    ]),
-                SettingGroup::new()
-                    .title(ui_text(language, UiText::Application))
-                    .items({
-                        let mut items = vec![SettingItem::new(
-                            ui_text(language, UiText::ShowStatusIcon),
                             SettingField::switch(
                                 {
                                     let view = view_entity.clone();
@@ -643,211 +787,281 @@ impl Render for SettingsView {
                                 },
                             ),
                         )
-                        .description(ui_text(language, UiText::ShowStatusIconDescription))];
-                        #[cfg(target_os = "windows")]
-                        items.push(
-                            SettingItem::new(
-                                ui_text(language, UiText::ShowTaskbarIcon),
-                                SettingField::switch(
-                                    {
-                                        let view = view_entity.clone();
-                                        move |app| {
-                                            view.read(app)
-                                                .snapshot
-                                                .as_ref()
-                                                .is_some_and(|s| s.taskbar_icon_visible)
-                                        }
-                                    },
-                                    {
-                                        let view = view_entity.clone();
-                                        move |value, app| {
-                                            view.update(app, |view, cx| {
-                                                view.set_taskbar_icon_visible(value, cx)
-                                            });
-                                        }
-                                    },
-                                ),
-                            )
-                            .description(ui_text(language, UiText::ShowTaskbarIconDescription)),
-                        );
-                        items.push(
-                            SettingItem::new(
-                                ui_text(language, UiText::CheckForUpdatesAutomatically),
-                                SettingField::switch(
-                                    {
-                                        let view = view_entity.clone();
-                                        move |app| {
-                                            view.read(app)
-                                                .snapshot
-                                                .as_ref()
-                                                .is_some_and(|s| s.check_for_updates_automatically)
-                                        }
-                                    },
-                                    {
-                                        let view = view_entity.clone();
-                                        move |value, app| {
-                                            view.update(app, |view, cx| {
-                                                view.set_check_for_updates_automatically(value, cx)
-                                            });
-                                        }
-                                    },
-                                ),
-                            )
-                            .description(ui_text(
-                                language,
-                                UiText::CheckForUpdatesAutomaticallyDescription,
-                            )),
-                        );
-                        items.push(
-                            SettingItem::new(
-                                ui_text(language, UiText::OpenAtLogin),
-                                SettingField::switch(
-                                    {
-                                        let view = view_entity.clone();
-                                        move |app| {
-                                            view.read(app).snapshot.as_ref().is_some_and(|s| {
-                                                matches!(
+                        .description(bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.application.status_icon.description",
+                        )),
+                    ];
+                    #[cfg(target_os = "windows")]
+                    items.push(
+                        SettingItem::new(
+                            bongocat_i18n::text(
+                                language.catalog_locale(),
+                                "settings.application.taskbar_icon.label",
+                            ),
+                            SettingField::switch(
+                                {
+                                    let view = view_entity.clone();
+                                    move |app| {
+                                        view.read(app)
+                                            .snapshot
+                                            .as_ref()
+                                            .is_some_and(|s| s.taskbar_icon_visible)
+                                    }
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |value, app| {
+                                        view.update(app, |view, cx| {
+                                            view.set_taskbar_icon_visible(value, cx)
+                                        });
+                                    }
+                                },
+                            ),
+                        )
+                        .description(bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.application.taskbar_icon.description",
+                        )),
+                    );
+                    items.push(
+                        SettingItem::new(
+                            bongocat_i18n::text(
+                                language.catalog_locale(),
+                                "settings.application.auto_update.label",
+                            ),
+                            SettingField::switch(
+                                {
+                                    let view = view_entity.clone();
+                                    move |app| {
+                                        view.read(app)
+                                            .snapshot
+                                            .as_ref()
+                                            .is_some_and(|s| s.check_for_updates_automatically)
+                                    }
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |value, app| {
+                                        view.update(app, |view, cx| {
+                                            view.set_check_for_updates_automatically(value, cx)
+                                        });
+                                    }
+                                },
+                            ),
+                        )
+                        .description(bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.application.auto_update.description",
+                        )),
+                    );
+                    items.push(
+                        SettingItem::new(
+                            bongocat_i18n::text(
+                                language.catalog_locale(),
+                                "settings.application.open_at_login.label",
+                            ),
+                            SettingField::switch(
+                                {
+                                    let view = view_entity.clone();
+                                    move |app| {
+                                        view.read(app).snapshot.as_ref().is_some_and(|s| {
+                                            matches!(
                                             s.startup_item,
                                             SettingsStartupItemStatus::State(
                                                 SettingsStartupItemState::Enabled
                                                     | SettingsStartupItemState::RequiresApproval
                                             )
                                         )
-                                            })
-                                        }
-                                    },
-                                    {
-                                        let view = view_entity.clone();
-                                        move |value, app| {
-                                            view.update(app, |view, cx| {
-                                                view.set_startup_item_enabled(value, cx)
-                                            });
-                                        }
-                                    },
-                                ),
-                            )
-                            .description(startup_item.description),
-                        );
-                        items
-                    }),
-            ]);
-
-        let models_page = SettingPage::new(ui_text(language, UiText::Models))
-            .description(ui_text(language, UiText::ModelsDescription))
-            .group(
-                SettingGroup::new()
-                    .title(ui_text(language, UiText::ModelCatalog))
-                    .item(
-                        SettingItem::new(
-                            ui_text(language, UiText::InstalledModels),
-                            SettingField::element({
-                                let view = view_entity.clone();
-                                move |_: &RenderOptions, window: &mut Window, app: &mut App| {
-                                    let snapshot = view.read(app).snapshot.clone();
-                                    let tokens = Tokens::from_theme(app);
-                                    view.update(app, move |view, cx| {
-                                        view.page = SettingsPage::Models;
-                                        models::content(view, window, cx, snapshot.as_ref(), tokens)
-                                    })
-                                    .into_any_element()
-                                }
-                            }),
+                                        })
+                                    }
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |value, app| {
+                                        view.update(app, |view, cx| {
+                                            view.set_startup_item_enabled(value, cx)
+                                        });
+                                    }
+                                },
+                            ),
                         )
-                        .layout(Axis::Vertical)
-                        .description(ui_text(language, UiText::InstalledModelsDescription)),
-                    ),
-            );
+                        .description(startup_item.description),
+                    );
+                    items
+                }),
+        ]);
 
-        let shortcuts_page = SettingPage::new(ui_text(language, UiText::Shortcuts))
-            .description(ui_text(language, UiText::ShortcutsDescription))
-            .group(
-                SettingGroup::new()
-                    .title(ui_text(language, UiText::Shortcuts))
-                    .item(
-                        SettingItem::new(
-                            ui_text(language, UiText::Shortcuts),
-                            SettingField::element({
-                                let view = view_entity.clone();
-                                move |_: &RenderOptions, window: &mut Window, app: &mut App| {
-                                    let snapshot = view.read(app).snapshot.clone();
-                                    let tokens = Tokens::from_theme(app);
-                                    view.update(app, move |view, cx| {
-                                        view.page = SettingsPage::Shortcuts;
-                                        shortcuts_page::content(
-                                            view,
-                                            window,
-                                            cx,
-                                            snapshot.as_ref(),
-                                            disabled,
-                                            tokens,
-                                        )
-                                    })
-                                    .into_any_element()
-                                }
-                            }),
-                        )
-                        .layout(Axis::Vertical)
-                        .description(ui_text(language, UiText::ShortcutsDescription)),
-                    ),
-            );
+        let models_page = SettingPage::new(bongocat_i18n::text(
+            language.catalog_locale(),
+            "navigation.models.title",
+        ))
+        .description(bongocat_i18n::text(
+            language.catalog_locale(),
+            "navigation.models.description",
+        ))
+        .group(
+            SettingGroup::new()
+                .title(bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "models.catalog.title",
+                ))
+                .item(
+                    SettingItem::new(
+                        bongocat_i18n::text(language.catalog_locale(), "models.installed.title"),
+                        SettingField::element({
+                            let view = view_entity.clone();
+                            move |_: &RenderOptions, window: &mut Window, app: &mut App| {
+                                let snapshot = view.read(app).snapshot.clone();
+                                let tokens = Tokens::from_theme(app);
+                                view.update(app, move |view, cx| {
+                                    view.page = SettingsPage::Models;
+                                    models::content(view, window, cx, snapshot.as_ref(), tokens)
+                                })
+                                .into_any_element()
+                            }
+                        }),
+                    )
+                    .layout(Axis::Vertical)
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "models.installed.description",
+                    )),
+                ),
+        );
 
-        let diagnostics_page = SettingPage::new(ui_text(language, UiText::Diagnostics))
-            .description(ui_text(language, UiText::DiagnosticsDescription))
-            .group(
-                SettingGroup::new()
-                    .title(ui_text(language, UiText::RuntimeAndInput))
-                    .item(
-                        SettingItem::new(
-                            ui_text(language, UiText::RuntimeDiagnostics),
-                            SettingField::element({
-                                let view = view_entity.clone();
-                                move |_: &RenderOptions, window: &mut Window, app: &mut App| {
-                                    let snapshot = view.read(app).snapshot.clone();
-                                    let tokens = Tokens::from_theme(app);
-                                    view.update(app, move |view, cx| {
-                                        view.page = SettingsPage::Diagnostics;
-                                        diagnostics::content(
-                                            view,
-                                            window,
-                                            cx,
-                                            snapshot.as_ref(),
-                                            disabled,
-                                            tokens,
-                                        )
-                                    })
-                                    .into_any_element()
-                                }
-                            }),
-                        )
-                        .layout(Axis::Vertical)
-                        .description(ui_text(language, UiText::RuntimeDiagnosticsDescription)),
-                    ),
-            );
+        let shortcuts_page = SettingPage::new(bongocat_i18n::text(
+            language.catalog_locale(),
+            "navigation.shortcuts.title",
+        ))
+        .description(bongocat_i18n::text(
+            language.catalog_locale(),
+            "navigation.shortcuts.description",
+        ))
+        .group(
+            SettingGroup::new()
+                .title(bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "navigation.shortcuts.title",
+                ))
+                .item(
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "navigation.shortcuts.title",
+                        ),
+                        SettingField::element({
+                            let view = view_entity.clone();
+                            move |_: &RenderOptions, window: &mut Window, app: &mut App| {
+                                let snapshot = view.read(app).snapshot.clone();
+                                let tokens = Tokens::from_theme(app);
+                                view.update(app, move |view, cx| {
+                                    view.page = SettingsPage::Shortcuts;
+                                    shortcuts_page::content(
+                                        view,
+                                        window,
+                                        cx,
+                                        snapshot.as_ref(),
+                                        disabled,
+                                        tokens,
+                                    )
+                                })
+                                .into_any_element()
+                            }
+                        }),
+                    )
+                    .layout(Axis::Vertical)
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "navigation.shortcuts.description",
+                    )),
+                ),
+        );
 
-        let about_page = SettingPage::new(ui_text(language, UiText::About))
-            .description(ui_text(language, UiText::AboutDescription))
-            .group(
-                SettingGroup::new()
-                    .title(ui_text(language, UiText::AboutBongoCat))
-                    .item(
-                        SettingItem::new(
-                            ui_text(language, UiText::ProductInformation),
-                            SettingField::element({
-                                let view = view_entity.clone();
-                                move |_: &RenderOptions, _window: &mut Window, app: &mut App| {
-                                    let snapshot = view.read(app).snapshot.clone();
-                                    view.update(app, move |view, _cx| {
-                                        view.page = SettingsPage::About;
-                                        about::content(snapshot.as_ref())
-                                    })
-                                    .into_any_element()
-                                }
-                            }),
-                        )
-                        .layout(Axis::Vertical)
-                        .description(ui_text(language, UiText::ProductInformationDescription)),
-                    ),
-            );
+        let diagnostics_page = SettingPage::new(bongocat_i18n::text(
+            language.catalog_locale(),
+            "navigation.diagnostics.title",
+        ))
+        .description(bongocat_i18n::text(
+            language.catalog_locale(),
+            "navigation.diagnostics.description",
+        ))
+        .group(
+            SettingGroup::new()
+                .title(bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "diagnostics.runtime_and_input.title",
+                ))
+                .item(
+                    SettingItem::new(
+                        bongocat_i18n::text(language.catalog_locale(), "diagnostics.runtime.title"),
+                        SettingField::element({
+                            let view = view_entity.clone();
+                            move |_: &RenderOptions, window: &mut Window, app: &mut App| {
+                                let snapshot = view.read(app).snapshot.clone();
+                                let tokens = Tokens::from_theme(app);
+                                view.update(app, move |view, cx| {
+                                    view.page = SettingsPage::Diagnostics;
+                                    diagnostics::content(
+                                        view,
+                                        window,
+                                        cx,
+                                        snapshot.as_ref(),
+                                        disabled,
+                                        tokens,
+                                    )
+                                })
+                                .into_any_element()
+                            }
+                        }),
+                    )
+                    .layout(Axis::Vertical)
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "diagnostics.runtime.description",
+                    )),
+                ),
+        );
+
+        let about_page = SettingPage::new(bongocat_i18n::text(
+            language.catalog_locale(),
+            "navigation.about.title",
+        ))
+        .description(bongocat_i18n::text(
+            language.catalog_locale(),
+            "navigation.about.description",
+        ))
+        .group(
+            SettingGroup::new()
+                .title(bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "about.page_title",
+                ))
+                .item(
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "about.product_information.title",
+                        ),
+                        SettingField::element({
+                            let view = view_entity.clone();
+                            move |_: &RenderOptions, _window: &mut Window, app: &mut App| {
+                                let snapshot = view.read(app).snapshot.clone();
+                                view.update(app, move |view, _cx| {
+                                    view.page = SettingsPage::About;
+                                    about::content(snapshot.as_ref())
+                                })
+                                .into_any_element()
+                            }
+                        }),
+                    )
+                    .layout(Axis::Vertical)
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "about.product_information.description",
+                    )),
+                ),
+        );
 
         let settings = Settings::new("bongocat-settings")
             .sidebar_width(px(220.0))
@@ -870,7 +1084,7 @@ impl Render for SettingsView {
             .child(
                 icon_command_button(
                     "refresh-settings-control",
-                    ui_text(language, UiText::Refresh),
+                    bongocat_i18n::text(language.catalog_locale(), "actions.refresh"),
                     IconName::RotateCw,
                     &self.refresh_focus,
                     30,
@@ -890,7 +1104,7 @@ impl Render for SettingsView {
             .child(
                 icon_command_button(
                     "quit-application-control",
-                    ui_text(language, UiText::Quit),
+                    bongocat_i18n::text(language.catalog_locale(), "actions.quit"),
                     IconName::Close,
                     &self.quit_focus,
                     31,

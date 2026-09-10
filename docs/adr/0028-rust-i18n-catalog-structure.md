@@ -43,8 +43,10 @@ locale 文件保留根级 `_version: 1`，所有叶子 key 使用 `snake_case`�
 无上下文的 `common.name`。需要参数的消息保留 `%{name}` 占位符，所有 locale 的 key、层级和
 占位符集合必须完全一致。
 
-Rust 只保存 `UiText` 到稳定路径的映射。动态摘要、错误、快捷键冲突和诊断指标也通过
-`bongocat-i18n` 查询，不在 `localization.rs` 中按语言分支写自然语言。
+Rust 在文案实际使用处直接通过 `bongocat-i18n` 查询稳定路径，例如
+`"models.catalog.loading"`。`bongocat-i18n` 保持唯一的 `rust_i18n::i18n!` catalog owner：
+UI 不重复嵌入 JSON，也不使用会在并发窗口间共享状态的全局 locale。动态摘要、错误、快捷键冲突
+和诊断指标在负责其展示语义的函数中通过同一 facade 查询，不按语言分支写自然语言。
 
 ## 验证
 

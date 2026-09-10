@@ -386,11 +386,20 @@ impl SettingsLanguage {
         }
     }
 
-    pub fn display_name(self, display_language: Self) -> &'static str {
-        let locale = match display_language {
+    /// Returns the locale used by the embedded rust-i18n catalog.
+    ///
+    /// The platform resolves `system` before it reaches a UI snapshot. Keeping
+    /// the English fallback here also makes pure UI presentation deterministic
+    /// when a snapshot is not available yet.
+    pub(crate) const fn catalog_locale(self) -> &'static str {
+        match self {
             Self::ChineseSimplified => "zh-CN",
             Self::System | Self::EnglishUnitedStates => "en-US",
-        };
+        }
+    }
+
+    pub fn display_name(self, display_language: Self) -> &'static str {
+        let locale = display_language.catalog_locale();
         match (self, display_language) {
             (Self::System, _) => {
                 bongocat_i18n::text(locale, "settings.appearance.language.options.system")
