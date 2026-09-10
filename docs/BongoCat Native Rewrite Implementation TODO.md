@@ -3027,11 +3027,12 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
 61. [ ] `P5-JSON-LOCALIZATION-CONSOLIDATION`：将 Native UI 文案统一迁移到 `rust-i18n` JSON 资源。
     - 依赖：`P5-APPLICATION-LANGUAGE`、`P5-GENERAL-LOCALIZATION`、`P5-MODELS-LOCALIZATION`、
       `P5-DIAGNOSTICS-LOCALIZATION`。
-    - 状态（2026-09-10）：已建立 `bongocat-i18n` crate，接入 `rust-i18n 4.2.2`，迁移当前
-      `UiText` 静态中英文案到 `locales/en-US.json` 与 `locales/zh-CN.json`，并加入 key/占位符
-      一致性、fallback 和插值测试。剩余动态 helper 的自然语言仍需全部改为资源 key，旧
-      `localization.rs` 中的语言分支应删除，三种历史语言需按同一 key 契约补齐；完整 UI 编译、
-      双平台 smoke 和 CI 语言资源门禁尚未完成，因此不得勾选。
+    - 状态（2026-09-10）：已完成首批 Native locale 的信息架构重构：`en-US.json` 与 `zh-CN.json`
+      使用 `_version: 1` 和 `navigation`、`settings`、`models`、`shortcuts`、`diagnostics`、
+      `about`、`actions`、`status`、`errors` 领域层级；`UiText` 已迁移到稳定 snake_case 路径。
+      动态摘要、错误、快捷键冲突和输入指标也统一通过 JSON 占位符资源读取，删除了
+      `localization.rs` 中的语言分支，并加入递归 key/占位符一致性测试。三种历史前端语言仍不在
+      Native v1 支持范围；完整 UI 编译、双平台 smoke 和 CI 语言资源门禁尚未完成，因此不得勾选。
 
 62. [x] `P5-BEHAVIOR-SHORTCUT-TOGGLE`：让当前 v1 的模型行为快捷键开关作用于正式输入链路。
     - 依赖：`P5-SHORTCUT-CONTRACT`、当前 v1 `model.enable_behavior_shortcuts`、settings

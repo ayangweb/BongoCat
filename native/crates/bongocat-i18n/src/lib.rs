@@ -52,6 +52,18 @@ pub fn count_text(locale: &str, key: &str, count: impl std::fmt::Display) -> Str
     t!(key, locale = locale_code(locale), count = count).to_string()
 }
 
+/// Interpolate named `%{name}` values in a translated message.
+///
+/// Keeping this tiny formatter in the i18n crate lets UI code remain free of
+/// locale-specific branches while retaining rust-i18n's compile-time catalog.
+pub fn format_text(locale: &str, key: &str, values: &[(&str, String)]) -> String {
+    let mut message = text(locale, key).to_owned();
+    for (name, value) in values {
+        message = message.replace(&format!("%{{{name}}}"), value);
+    }
+    message
+}
+
 #[cfg(test)]
 mod tests {
     use super::{count_text, text};
@@ -64,18 +76,31 @@ mod tests {
             _ => panic!("unsupported test locale"),
         })
         .expect("valid locale JSON");
-        value
-            .as_object()
-            .expect("object locale file")
-            .iter()
-            .filter(|(key, _)| key.as_str() != "_version")
-            .map(|(key, value)| {
-                (
-                    key.clone(),
-                    value.as_str().expect("string translation").to_owned(),
-                )
-            })
-            .collect()
+        fn flatten(value: &serde_json::Value, prefix: &str, out: &mut BTreeMap<String, String>) {
+            let Some(object) = value.as_object() else {
+                if !prefix.is_empty() {
+                    out.insert(
+                        prefix.to_owned(),
+                        value.as_str().expect("string translation").to_owned(),
+                    );
+                }
+                return;
+            };
+            for (key, child) in object {
+                if key == "_version" {
+                    continue;
+                }
+                let path = if prefix.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{prefix}.{key}")
+                };
+                flatten(child, &path, out);
+            }
+        }
+        let mut messages = BTreeMap::new();
+        flatten(&value, "", &mut messages);
+        messages
     }
 
     fn placeholders(value: &str) -> BTreeSet<&str> {
@@ -104,16 +129,51 @@ mod tests {
     }
 
     #[test]
+    fn locale_source_uses_nested_snake_case_keys() {
+        for locale in ["en-US", "zh-CN"] {
+            let value: serde_json::Value = serde_json::from_str(match locale {
+                "en-US" => include_str!("../locales/en-US.json"),
+                "zh-CN" => include_str!("../locales/zh-CN.json"),
+                _ => unreachable!(),
+            })
+            .expect("valid locale JSON");
+            fn visit(value: &serde_json::Value, path: &str) {
+                if let Some(object) = value.as_object() {
+                    for (key, child) in object {
+                        if key != "_version" {
+                            assert!(!key.contains('.'), "flat key at {path}: {key}");
+                            assert!(
+                                key.chars().all(|c| c.is_ascii_lowercase()
+                                    || c == '_'
+                                    || c.is_ascii_digit()),
+                                "non-snake-case key at {path}: {key}"
+                            );
+                        }
+                        visit(child, &format!("{path}.{key}"));
+                    }
+                }
+            }
+            visit(&value, locale);
+        }
+    }
+
+    #[test]
     fn missing_locale_text_falls_back_to_english() {
-        assert_eq!(text("zh-CN", "ui.settings"), "BongoCat 设置");
-        assert_eq!(text("system", "ui.settings"), "BongoCat Settings");
-        assert_eq!(text("de-DE", "ui.settings"), "BongoCat Settings");
+        assert_eq!(text("zh-CN", "navigation.settings.title"), "BongoCat 设置");
+        assert_eq!(
+            text("system", "navigation.settings.title"),
+            "BongoCat Settings"
+        );
+        assert_eq!(
+            text("de-DE", "navigation.settings.title"),
+            "BongoCat Settings"
+        );
     }
 
     #[test]
     fn count_interpolation_is_available() {
         assert_eq!(
-            count_text("en-US", "ui.runtime_shutdown_failures", 3),
+            count_text("en-US", "diagnostics.runtime.shutdown_failures", 3),
             "Shutdown failures: 3"
         );
     }

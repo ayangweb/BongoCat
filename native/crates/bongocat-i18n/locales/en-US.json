@@ -1,225 +1,471 @@
 {
   "_version": 1,
-  "ui.settings": "BongoCat Settings",
-  "ui.general": "General",
-  "ui.general_description": "Configure the overlay, model interaction, input and startup behavior.",
-  "ui.models": "Models",
-  "ui.models_description": "Install, validate and activate model packages.",
-  "ui.about": "About",
-  "ui.about_description": "View product, license, third-party notice and privacy information.",
-  "ui.about_bongo_cat": "About BongoCat",
-  "ui.product_information": "Product Information",
-  "ui.product_information_description": "Review the current version and environment.",
-  "ui.application_license": "Application License",
-  "ui.application_license_description": "BongoCat application source code is licensed under the MIT License.",
-  "ui.third_party_licenses": "Third-Party Licenses",
-  "ui.third_party_licenses_description": "Third-party Rust dependencies are governed by their own license notices and are checked against the project's approved license policy.",
-  "ui.cubism_attribution": "Live2D Cubism",
-  "ui.cubism_attribution_description": "Uses Live2D Cubism SDK for Native 5-r.5 (Core 06.00.0001). Cubism Core is licensed under the Live2D Proprietary Software License. Copyright Live2D. Public redistribution and final attribution remain subject to Live2D approval and release review.",
-  "ui.privacy": "Privacy",
-  "ui.privacy_description": "Input is processed locally. Diagnostics and logs exclude keystroke sequences, clipboard contents, user file contents and secrets.",
-  "ui.model_catalog": "Model Catalog",
-  "ui.installed_models": "Installed Models",
-  "ui.installed_models_description": "Import a model folder, validate package safety and choose the active model.",
-  "ui.model_id": "Model ID",
-  "ui.preset": "Preset",
-  "ui.installed": "Installed",
-  "ui.active": "Active",
-  "ui.unavailable": "Unavailable",
-  "ui.activate": "Activate",
-  "ui.cancel": "Cancel",
-  "ui.confirm": "Confirm",
-  "ui.delete": "Delete",
-  "ui.confirm_deletion": "Confirm deletion",
-  "ui.package_layout_invalid": "Package layout is invalid",
-  "ui.texture_invalid": "Texture is invalid",
-  "ui.model_files_unavailable": "Model files are unavailable",
-  "ui.model_resource_invalid": "Model resource is invalid",
-  "ui.no_folder_selected": "No folder selected",
-  "ui.folder_selected": "Folder selected",
-  "ui.choosing_folder": "Choosing folder...",
-  "ui.selection_cancelled_previous_retained": "Selection cancelled; previous folder retained",
-  "ui.selection_cancelled": "Selection cancelled",
-  "ui.folder_picker_requires_ui_thread": "Folder picker requires the UI thread",
-  "ui.selected_folder_unavailable": "Selected folder is unavailable",
-  "ui.folder_picker_unavailable": "Folder picker is unavailable",
-  "ui.cancelling_import": "Cancelling import...",
-  "ui.starting_import": "Starting import...",
-  "ui.preparing": "Preparing",
-  "ui.copying": "Copying",
-  "ui.validating": "Validating",
-  "ui.committing": "Committing",
-  "ui.import_complete": "Import complete",
-  "ui.import_cancelled": "Import cancelled",
-  "ui.loading_models": "Loading models...",
-  "ui.model_catalog_unavailable": "Model catalog is unavailable",
-  "ui.no_models_available": "No models available",
-  "ui.activating_model": "Activating model...",
-  "ui.deleting_model": "Deleting model...",
-  "ui.refreshing_models": "Refreshing models...",
-  "ui.catalog_unavailable": "Catalog unavailable",
-  "ui.choosing": "Choosing...",
-  "ui.choose_folder": "Choose folder",
-  "ui.import": "Import",
-  "ui.available_models": "Available models",
-  "ui.model_behaviors": "Model behaviors",
-  "ui.no_model_behaviors": "No declared behaviors",
-  "ui.motion": "Motion",
-  "ui.expression": "Expression",
-  "ui.preview": "Preview",
-  "ui.previewing_behavior": "Previewing behavior...",
-  "ui.diagnostics": "Diagnostics",
-  "ui.diagnostics_description": "Inspect runtime health, input reliability and shortcut bindings.",
-  "ui.runtime_and_input": "Runtime and Input",
-  "ui.runtime_diagnostics": "Runtime Diagnostics",
-  "ui.runtime_diagnostics_description": "Review renderer status, input counters and keyboard shortcuts. Search: renderer, input, shortcut.",
-  "ui.loading_diagnostics": "Loading diagnostics...",
-  "ui.input_reliability_counters": "Input Reliability Counters",
-  "ui.runtime_renderer": "Runtime Renderer",
-  "ui.build_information": "Build Information",
-  "ui.version": "Version",
-  "ui.development": "Development",
-  "ui.production": "Production",
-  "ui.diagnostics_export": "Diagnostics export",
-  "ui.no_report_exported": "No report exported",
-  "ui.export": "Export",
-  "ui.shortcuts": "Shortcuts",
-  "ui.shortcuts_description": "Configure global window controls and shortcuts for the active model.",
-  "ui.window_shortcuts": "Window",
-  "ui.model_shortcuts": "Model",
-  "ui.restore_defaults": "Restore defaults",
-  "ui.clear_all": "Clear all",
-  "ui.press_command_shortcut": "Press a key combination for this command",
-  "ui.press_behavior_shortcut": "Press a key combination for this behavior",
-  "ui.press_record_shortcut": "Press to record shortcut",
-  "ui.click_record_shortcut": "Click to record shortcut",
-  "ui.press_key": "Press key",
-  "ui.capture": "Capture",
-  "ui.clear": "Clear",
-  "ui.not_set": "Not set",
-  "ui.input_service": "Input service",
-  "ui.input_monitoring": "Input Monitoring",
-  "ui.configuration": "Configuration",
-  "ui.backups": "Backups",
-  "ui.current_state": "Current state",
-  "ui.input_processing": "Input processing",
-  "ui.sequence_recovery": "Sequence recovery",
-  "ui.transport": "Transport",
-  "ui.restore_default_configuration": "Restore default configuration",
-  "ui.restore_default_configuration_description": "Archive the invalid configuration and create verified defaults",
-  "ui.open_configuration_backups_folder_description": "Open the current environment's backup folder",
-  "ui.export_diagnostics": "Export diagnostics",
-  "ui.export_diagnostics_description": "Write an anonymous diagnostics report to the current environment logs",
-  "ui.restore_default_shortcuts": "Restore default shortcuts",
-  "ui.restore_default_shortcuts_description": "Replace custom shortcut bindings with the verified defaults",
-  "ui.clear_all_shortcuts": "Clear all shortcuts",
-  "ui.clear_all_shortcuts_description": "Remove all custom shortcut bindings",
-  "ui.waiting_for_key_combination": "Waiting for a key combination",
-  "ui.not_started": "Not started",
-  "ui.running": "Running",
-  "ui.permission_required": "Permission required",
-  "ui.granted": "Granted",
-  "ui.unsupported": "Unsupported",
-  "ui.backend_unavailable": "Backend unavailable",
-  "ui.startup_failed": "Startup failed",
-  "ui.gpu_preparation_failed": "GPU preparation failed",
-  "ui.model_load_failed": "Model load failed",
-  "ui.model_evaluation_failed": "Model evaluation failed",
-  "ui.motion_load_failed": "Motion load failed",
-  "ui.expression_load_failed": "Expression load failed",
-  "ui.platform_unsupported": "Platform unsupported",
-  "ui.runtime_transport_closed": "Runtime transport closed",
-  "ui.overlay_settings_invalid": "Overlay settings invalid",
-  "ui.maximum_fps_invalid": "Maximum FPS invalid",
-  "ui.no_renderer_error": "No renderer error",
-  "ui.no_command_failures": "No command failures",
-  "ui.runtime_shutdown_failures": "Shutdown failures: %{count}",
-  "ui.configuration_unavailable": "Configuration unavailable",
-  "ui.defaults_restored": "Defaults restored",
-  "ui.restart_to_continue": "Restart the application to continue",
-  "ui.recovered_from_backup": "Recovered from backup",
-  "ui.loaded_normally": "Loaded normally",
-  "ui.no_recovery": "No recovery",
-  "ui.appearance": "Appearance",
-  "ui.overlay": "Overlay",
-  "ui.theme": "Theme",
-  "ui.system": "System",
-  "ui.light": "Light",
-  "ui.dark": "Dark",
-  "ui.theme_description": "Follow the system appearance or use a fixed light or dark theme.",
-  "ui.language": "Language",
-  "ui.language_description": "Choose the language used by the application.",
-  "ui.runtime_status": "Runtime status",
-  "ui.runtime_status_description": "Current runtime connection and configuration revision.",
-  "ui.show_desktop_cat": "Show model window",
-  "ui.always_on_top": "Always on top",
-  "ui.always_on_top_description": "Keep the model window above other windows.",
-  "ui.click_through_overlay": "Click-through overlay",
-  "ui.click_through_overlay_description": "Let pointer input pass through the model window.",
-  "ui.keep_inside_work_area": "Keep inside work area",
-  "ui.keep_inside_work_area_description": "Keep the overlay clear of taskbars, menu bars and screen edges.",
-  "ui.motion_audio": "Motion audio",
-  "ui.motion_audio_description": "Play audio attached to model motions.",
-  "ui.overlay_scale": "Window scale",
-  "ui.overlay_scale_description": "Resize the model window from 25% to 400%.",
-  "ui.overlay_opacity": "Window opacity",
-  "ui.overlay_opacity_description": "Adjust the model window opacity from 1% to 100%.",
-  "ui.maximum_fps": "Maximum FPS",
-  "ui.maximum_fps_description": "Limit animation and overlay updates from 15 to 240 FPS.",
-  "ui.release_fallback_timeout": "Key release fallback (ms)",
-  "ui.release_fallback_timeout_description": "Release a captured keyboard key only if normal release and reconciliation both fail. Set to 0 to disable.",
-  "ui.model_interaction": "Model interaction",
-  "ui.behavior_shortcuts": "Model behavior shortcuts",
-  "ui.behavior_shortcuts_description": "Allow global shortcuts to trigger motions and expressions.",
-  "ui.mirror_model": "Mirror model",
-  "ui.mirror_model_description": "Render the model mirrored horizontally.",
-  "ui.mirror_pointer_tracking": "Mirror pointer tracking",
-  "ui.mirror_pointer_tracking_description": "Mirror horizontal pointer movement with the model.",
-  "ui.ignore_pointer_input": "Ignore pointer input",
-  "ui.ignore_pointer_input_description": "Do not apply pointer movement to the model.",
-  "ui.input": "Input",
-  "ui.gamepad_stick_dead_zone": "Gamepad stick dead zone",
-  "ui.gamepad_stick_dead_zone_description": "Ignore small analog stick movement.",
-  "ui.gamepad_trigger_dead_zone": "Gamepad trigger dead zone",
-  "ui.application": "Application",
-  "ui.show_status_icon": "Show status icon",
-  "ui.show_status_icon_description": "Show the application in the system tray or menu bar.",
-  "ui.show_taskbar_icon": "Show taskbar icon",
-  "ui.show_taskbar_icon_description": "Show the settings window in the Windows taskbar.",
-  "ui.check_for_updates_automatically": "Check for updates automatically",
-  "ui.check_for_updates_automatically_description": "Check for a new signed release when the application starts and every 24 hours.",
-  "ui.open_at_login": "Open at login",
-  "ui.decrease_overlay_scale": "Decrease window scale",
-  "ui.increase_overlay_scale": "Increase window scale",
-  "ui.decrease_overlay_opacity": "Decrease window opacity",
-  "ui.increase_overlay_opacity": "Increase window opacity",
-  "ui.decrease_maximum_fps": "Decrease maximum FPS",
-  "ui.increase_maximum_fps": "Increase maximum FPS",
-  "ui.decrease_release_fallback_timeout": "Decrease key release fallback timeout",
-  "ui.increase_release_fallback_timeout": "Increase key release fallback timeout",
-  "ui.checking_login_startup": "Checking login startup...",
-  "ui.login_startup_status_unavailable": "Status unavailable; activate to retry",
-  "ui.login_startup_disabled": "Open the application when you sign in",
-  "ui.login_startup_enabled": "The application opens when you sign in",
-  "ui.login_startup_stale": "Saved app location changed; enable to repair",
-  "ui.login_startup_requires_approval": "Approval required in System Settings",
-  "ui.login_startup_not_found": "App login item is missing; enable to repair",
-  "ui.login_startup_unsupported_platform": "Login startup is unavailable on this platform",
-  "ui.login_startup_unsupported_operating_system": "Login startup requires macOS 13 or later",
-  "ui.login_startup_unsupported_build": "Login startup is unavailable in development builds",
-  "ui.refreshing": "Refreshing runtime snapshot...",
-  "ui.saving": "Saving changes...",
-  "ui.connecting": "Connecting to runtime...",
-  "ui.starting": "Starting",
-  "ui.ready": "Ready",
-  "ui.degraded": "Degraded",
-  "ui.stopped": "Stopped",
-  "ui.refresh": "Refresh",
-  "ui.quit": "Quit",
-  "ui.package_safety_limits_exceeded": "Package exceeds safety limits",
-  "ui.model_definition_unsupported": "Model definition is unsupported",
-  "ui.open_configuration_backups_folder": "Open configuration backups folder",
-  "ui.release_fallback_timeout_invalid": "Release fallback timeout invalid",
-  "ui.show_desktop_cat_description": "Keep the model window visible.",
-  "ui.gamepad_trigger_dead_zone_description": "Ignore small trigger movement."
+  "navigation": {
+    "settings": {
+      "title": "BongoCat Settings"
+    },
+    "general": {
+      "title": "General",
+      "description": "Configure the overlay, model interaction, input and startup behavior."
+    },
+    "models": {
+      "title": "Models",
+      "description": "Install, validate and activate model packages."
+    },
+    "about": {
+      "title": "About",
+      "description": "View product, license, third-party notice and privacy information."
+    },
+    "diagnostics": {
+      "title": "Diagnostics",
+      "description": "Inspect runtime health, input reliability and shortcut bindings."
+    },
+    "shortcuts": {
+      "title": "Shortcuts",
+      "description": "Configure global window controls and shortcuts for the active model."
+    }
+  },
+  "about": {
+    "page_title": "About BongoCat",
+    "product_information": {
+      "title": "Product Information",
+      "description": "Review the current version and environment."
+    },
+    "legal": {
+      "application_license": {
+        "title": "Application License",
+        "description": "BongoCat application source code is licensed under the MIT License."
+      },
+      "third_party_licenses": {
+        "title": "Third-Party Licenses",
+        "description": "Third-party Rust dependencies are governed by their own license notices and are checked against the project's approved license policy."
+      },
+      "cubism_attribution": {
+        "title": "Live2D Cubism",
+        "description": "Uses Live2D Cubism SDK for Native 5-r.5 (Core 06.00.0001). Cubism Core is licensed under the Live2D Proprietary Software License. Copyright Live2D. Public redistribution and final attribution remain subject to Live2D approval and release review."
+      }
+    },
+    "privacy": {
+      "title": "Privacy",
+      "description": "Input is processed locally. Diagnostics and logs exclude keystroke sequences, clipboard contents, user file contents and secrets."
+    }
+  },
+  "models": {
+    "catalog": {
+      "title": "Model Catalog",
+      "loading": "Loading models...",
+      "unavailable": "Model catalog is unavailable",
+      "empty": "No models available",
+      "activating": "Activating model...",
+      "deleting": "Deleting model...",
+      "refreshing": "Refreshing models...",
+      "error": "Catalog unavailable",
+      "available": "Available models"
+    },
+    "installed": {
+      "title": "Installed Models",
+      "description": "Import a model folder, validate package safety and choose the active model."
+    },
+    "identity": {
+      "id": "Model ID",
+      "source": {
+        "preset": "Preset",
+        "installed": "Installed"
+      },
+      "status": {
+        "active": "Active",
+        "unavailable": "Unavailable"
+      }
+    },
+    "actions": {
+      "activate": "Activate",
+      "delete": "Delete",
+      "confirm_deletion": "Confirm deletion"
+    },
+    "validation": {
+      "package_layout_invalid": "Package layout is invalid",
+      "package_safety_limits_exceeded": "Package exceeds safety limits",
+      "model_definition_unsupported": "Model definition is unsupported",
+      "texture_invalid": "Texture is invalid",
+      "files_unavailable": "Model files are unavailable",
+      "resource_invalid": "Model resource is invalid"
+    },
+    "import": {
+      "folder": {
+        "none_selected": "No folder selected",
+        "selected": "Folder selected",
+        "choosing": "Choosing folder...",
+        "cancelled_previous_retained": "Selection cancelled; previous folder retained",
+        "cancelled": "Selection cancelled",
+        "picker_requires_ui_thread": "Folder picker requires the UI thread",
+        "selected_unavailable": "Selected folder is unavailable",
+        "picker_unavailable": "Folder picker is unavailable",
+        "choosing_short": "Choosing..."
+      },
+      "progress": {
+        "cancelling": "Cancelling import...",
+        "starting": "Starting import...",
+        "preparing": "Preparing",
+        "copying": "Copying",
+        "validating": "Validating",
+        "committing": "Committing",
+        "complete": "Import complete",
+        "cancelled": "Import cancelled",
+        "detail": "%{stage} · %{files_copied} files · %{bytes_copied} bytes"
+      },
+      "actions": {
+        "choose_folder": "Choose folder",
+        "import": "Import"
+      }
+    },
+    "behaviors": {
+      "title": "Model behaviors",
+      "empty": "No declared behaviors",
+      "motion": "Motion",
+      "expression": "Expression",
+      "preview": "Preview",
+      "previewing": "Previewing behavior..."
+    },
+    "summary": {
+      "active": "%{origin} · %{active} · %{texture_count} textures · %{expression_count} expressions · %{motion_count} motions",
+      "inactive": "%{origin} · %{texture_count} textures · %{expression_count} expressions · %{motion_count} motions"
+    },
+    "invalid_summary": "%{origin} · %{diagnostic}",
+    "delete_confirmation": "%{status} · %{confirm_deletion}"
+  },
+  "actions": {
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "refresh": "Refresh",
+    "quit": "Quit"
+  },
+  "diagnostics": {
+    "runtime_and_input": {
+      "title": "Runtime and Input"
+    },
+    "runtime": {
+      "title": "Runtime Diagnostics",
+      "description": "Review renderer status, input counters and keyboard shortcuts. Search: renderer, input, shortcut.",
+      "no_command_failures": "No command failures",
+      "shutdown_failures": "Shutdown failures: %{count}",
+      "command_failure": "%{error} · command #%{sequence}"
+    },
+    "loading": "Loading diagnostics...",
+    "input": {
+      "reliability_counters": "Input Reliability Counters",
+      "service": "Input service",
+      "monitoring": "Input Monitoring",
+      "processing": "Input processing",
+      "sequence_recovery": "Sequence recovery",
+      "transport": "Transport",
+      "start_attempts": "Start attempts: %{attempts}",
+      "metrics": {
+        "pressed_keys": "Pressed keys",
+        "pressed_mouse_buttons": "Pressed mouse buttons",
+        "pressed_gamepad_buttons": "Pressed gamepad buttons",
+        "connected_gamepads": "Connected gamepads",
+        "captured_presses": "Captured presses",
+        "captured_releases": "Captured releases",
+        "reconciled_releases": "Reconciled releases",
+        "fallback_releases": "Fallback releases",
+        "reset_releases": "Released by reset",
+        "duplicate_presses": "Duplicate presses",
+        "unmatched_releases": "Unmatched releases",
+        "invalid_sources": "Invalid sources",
+        "resets": "Resets",
+        "sequence_gaps": "Sequence gaps",
+        "missing_events": "Missing events",
+        "duplicate_events": "Duplicate events",
+        "out_of_order_events": "Out-of-order events",
+        "non_monotonic_timestamps": "Non-monotonic timestamps",
+        "gamepad_connections": "Gamepad connections",
+        "gamepad_disconnections": "Gamepad disconnections",
+        "stale_gamepad_events": "Stale gamepad events",
+        "released_on_disconnect": "Released on disconnect",
+        "events_enqueued": "Events enqueued",
+        "queue_overflows": "Queue overflows",
+        "overflow_recoveries": "Overflow recoveries",
+        "rejected_after_shutdown": "Rejected after shutdown"
+      }
+    },
+    "renderer": {
+      "title": "Runtime Renderer"
+    },
+    "build": {
+      "title": "Build Information",
+      "version": "Version",
+      "environment": {
+        "development": "Development",
+        "production": "Production"
+      }
+    },
+    "export": {
+      "title": "Diagnostics export",
+      "none": "No report exported",
+      "action": "Export diagnostics",
+      "description": "Write an anonymous diagnostics report to the current environment logs",
+      "summary": "Report v%{format_version}: %{bytes_written} bytes · Preview bundle v%{preview_bundle_format_version}: %{preview_bundle_entry_count} entries, %{preview_bundle_bytes_written} bytes · Skipped %{skipped_source_files} source logs"
+    },
+    "configuration": {
+      "title": "Configuration",
+      "backups": "Backups",
+      "current_state": "Current state",
+      "restore_defaults": "Restore default configuration",
+      "restore_defaults_description": "Archive the invalid configuration and create verified defaults",
+      "open_backups_folder": "Open configuration backups folder",
+      "open_backups_folder_description": "Open the current environment's backup folder",
+      "defaults_restored": "Defaults restored",
+      "restart_to_continue": "Restart the application to continue",
+      "recovered_from_backup": "Recovered from backup",
+      "loaded_normally": "Loaded normally",
+      "no_recovery": "No recovery",
+      "backup_candidates": "%{count} backup candidate%{plural_suffix} checked",
+      "recovered_backup_detail": "Schema v%{schema_version} · %{count} newer backup%{plural_suffix} skipped"
+    }
+  },
+  "shortcuts": {
+    "scopes": {
+      "window": "Window",
+      "model": "Model"
+    },
+    "actions": {
+      "restore_defaults": "Restore default shortcuts",
+      "clear_all": "Clear all shortcuts",
+      "capture": "Capture",
+      "clear": "Clear",
+      "restore_defaults_description": "Replace custom shortcut bindings with the verified defaults",
+      "clear_all_description": "Remove all custom shortcut bindings",
+      "decrease_overlay_scale": "Decrease window scale",
+      "increase_overlay_scale": "Increase window scale",
+      "decrease_overlay_opacity": "Decrease window opacity",
+      "increase_overlay_opacity": "Increase window opacity",
+      "decrease_maximum_fps": "Decrease maximum FPS",
+      "increase_maximum_fps": "Increase maximum FPS",
+      "decrease_release_fallback_timeout": "Decrease key release fallback timeout",
+      "increase_release_fallback_timeout": "Increase key release fallback timeout"
+    },
+    "capture": {
+      "command_prompt": "Press a key combination for this command",
+      "behavior_prompt": "Press a key combination for this behavior",
+      "press_to_record": "Press to record shortcut",
+      "click_to_record": "Click to record shortcut",
+      "press_key": "Press key",
+      "waiting": "Waiting for a key combination",
+      "accessibility": "Capture shortcut for %{name}"
+    },
+    "state": {
+      "not_set": "Not set"
+    },
+    "command_names": {
+      "toggle_overlay": "Show or hide model window",
+      "open_settings": "Show or hide settings window",
+      "toggle_mirror": "Toggle model mirror",
+      "toggle_click_through": "Toggle click-through",
+      "toggle_always_on_top": "Toggle always on top"
+    },
+    "errors": {
+      "conflict": "%{shortcut} is already assigned to another shortcut"
+    }
+  },
+  "status": {
+    "not_started": "Not started",
+    "running": "Running",
+    "permission_required": "Permission required",
+    "granted": "Granted",
+    "unsupported": "Unsupported",
+    "backend_unavailable": "Backend unavailable",
+    "refreshing": "Refreshing runtime snapshot...",
+    "saving": "Saving changes...",
+    "connecting": "Connecting to runtime...",
+    "starting": "Starting",
+    "ready": "Ready",
+    "degraded": "Degraded",
+    "stopped": "Stopped"
+  },
+  "errors": {
+    "runtime": {
+      "startup_failed": "Startup failed",
+      "gpu_preparation_failed": "GPU preparation failed",
+      "platform_unsupported": "Platform unsupported",
+      "transport_closed": "Runtime transport closed",
+      "no_renderer": "No renderer error"
+    },
+    "models": {
+      "load_failed": "Model load failed",
+      "evaluation_failed": "Model evaluation failed",
+      "motion_load_failed": "Motion load failed",
+      "expression_load_failed": "Expression load failed"
+    },
+    "settings": {
+      "overlay_invalid": "Overlay settings invalid",
+      "maximum_fps_invalid": "Maximum FPS invalid",
+      "release_fallback_timeout_invalid": "Release fallback timeout invalid",
+      "configuration_unavailable": "Configuration unavailable",
+      "service_unavailable": "settings service is unavailable",
+      "snapshot_outdated": "settings changed in the background; review the latest values and retry",
+      "runtime_unavailable": "runtime did not apply the setting",
+      "invalid_maximum_fps": "maximum FPS must be between 15 and 240",
+      "invalid_release_fallback_timeout": "key release fallback timeout must be between 0 and 60000 milliseconds",
+      "invalid_gamepad_axis_settings": "gamepad dead-zone settings are out of range",
+      "invalid_shortcut_bindings": "shortcut bindings are invalid or conflict",
+      "config_persist_failed": "setting could not be saved",
+      "config_permission_denied": "configuration storage is not writable; check permissions and retry",
+      "config_storage_full": "configuration storage is full; free space and retry",
+      "config_target_occupied": "configuration storage is blocked; remove the blocking item and retry",
+      "backup_location_open_failed": "configuration backup folder could not be opened",
+      "configuration_recovery_required": "configuration must be recovered before this action",
+      "configuration_recovery_failed": "default configuration could not be restored",
+      "model_unavailable": "selected model is unavailable",
+      "model_switch_failed": "selected model could not be activated",
+      "model_behavior_preview_unavailable": "the selected behavior is not available for the active model",
+      "model_behavior_preview_failed": "the selected behavior could not be previewed",
+      "invalid_model_id": "model id is invalid",
+      "model_already_installed": "model id is already installed",
+      "model_import_invalid_package": "model package is invalid",
+      "model_import_source_invalid": "model source cannot be imported",
+      "model_import_source_changed": "model source changed during import",
+      "model_import_source_unsupported": "model source contains an unsupported entry",
+      "model_import_cancelled": "model import was cancelled",
+      "model_store_busy": "model storage is busy",
+      "model_import_failed": "model could not be imported",
+      "preset_model_cannot_be_deleted": "preset model cannot be deleted",
+      "selected_model_cannot_be_deleted": "selected model must be replaced before deletion",
+      "model_not_installed": "installed model was not found",
+      "model_delete_failed": "installed model could not be deleted",
+      "diagnostics_export_failed": "diagnostics could not be exported",
+      "startup_item_update_failed": "startup setting could not be updated",
+      "status_icon_update_failed": "status icon visibility could not be updated",
+      "taskbar_icon_update_failed": "taskbar icon visibility could not be updated",
+      "window_unavailable": "settings window could not be hidden",
+      "state_persist_failed": "window layout could not be saved",
+      "shutdown_failed": "application shutdown did not complete"
+    }
+  },
+  "settings": {
+    "appearance": {
+      "title": "Appearance",
+      "theme": {
+        "label": "Theme",
+        "options": {
+          "system": "System",
+          "light": "Light",
+          "dark": "Dark"
+        },
+        "description": "Follow the system appearance or use a fixed light or dark theme."
+      },
+      "language": {
+        "label": "Language",
+        "description": "Choose the language used by the application.",
+        "options": {
+          "system": "System",
+          "chinese_simplified": "简体中文",
+          "english_united_states": "English"
+        }
+      }
+    },
+    "overlay": {
+      "title": "Overlay",
+      "visibility": {
+        "label": "Show model window",
+        "description": "Keep the model window visible."
+      },
+      "always_on_top": {
+        "label": "Always on top",
+        "description": "Keep the model window above other windows."
+      },
+      "click_through": {
+        "label": "Click-through overlay",
+        "description": "Let pointer input pass through the model window."
+      },
+      "keep_inside_work_area": {
+        "label": "Keep inside work area",
+        "description": "Keep the overlay clear of taskbars, menu bars and screen edges."
+      },
+      "motion_audio": {
+        "label": "Motion audio",
+        "description": "Play audio attached to model motions."
+      },
+      "scale": {
+        "label": "Window scale",
+        "description": "Resize the model window from 25% to 400%."
+      },
+      "opacity": {
+        "label": "Window opacity",
+        "description": "Adjust the model window opacity from 1% to 100%."
+      },
+      "maximum_fps": {
+        "label": "Maximum FPS",
+        "description": "Limit animation and overlay updates from 15 to 240 FPS."
+      },
+      "release_fallback_timeout": {
+        "label": "Key release fallback (ms)",
+        "description": "Release a captured keyboard key only if normal release and reconciliation both fail. Set to 0 to disable."
+      }
+    },
+    "runtime": {
+      "title": "Runtime status",
+      "description": "Current runtime connection and configuration revision.",
+      "status_detail": "Runtime %{health} - revision %{revision}"
+    },
+    "model_interaction": {
+      "title": "Model interaction",
+      "behavior_shortcuts": {
+        "label": "Model behavior shortcuts",
+        "description": "Allow global shortcuts to trigger motions and expressions."
+      },
+      "mirror_model": {
+        "label": "Mirror model",
+        "description": "Render the model mirrored horizontally."
+      },
+      "mirror_pointer_tracking": {
+        "label": "Mirror pointer tracking",
+        "description": "Mirror horizontal pointer movement with the model."
+      },
+      "ignore_pointer_input": {
+        "label": "Ignore pointer input",
+        "description": "Do not apply pointer movement to the model."
+      }
+    },
+    "input": {
+      "title": "Input",
+      "gamepad_stick_dead_zone": {
+        "label": "Gamepad stick dead zone",
+        "description": "Ignore small analog stick movement."
+      },
+      "gamepad_trigger_dead_zone": {
+        "label": "Gamepad trigger dead zone",
+        "description": "Ignore small trigger movement."
+      }
+    },
+    "application": {
+      "title": "Application",
+      "status_icon": {
+        "label": "Show status icon",
+        "description": "Show the application in the system tray or menu bar."
+      },
+      "taskbar_icon": {
+        "label": "Show taskbar icon",
+        "description": "Show the settings window in the Windows taskbar."
+      },
+      "auto_update": {
+        "label": "Check for updates automatically",
+        "description": "Check for a new signed release when the application starts and every 24 hours."
+      },
+      "open_at_login": {
+        "label": "Open at login"
+      },
+      "startup": {
+        "checking": "Checking login startup...",
+        "unavailable": "Status unavailable; activate to retry",
+        "disabled": "Open the application when you sign in",
+        "enabled": "The application opens when you sign in",
+        "stale": "Saved app location changed; enable to repair",
+        "requires_approval": "Approval required in System Settings",
+        "not_found": "App login item is missing; enable to repair",
+        "unsupported_platform": "Login startup is unavailable on this platform",
+        "unsupported_os": "Login startup requires macOS 13 or later",
+        "unsupported_build": "Login startup is unavailable in development builds"
+      }
+    }
+  }
 }

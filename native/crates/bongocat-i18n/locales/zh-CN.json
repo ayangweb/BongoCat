@@ -1,225 +1,471 @@
 {
   "_version": 1,
-  "ui.settings": "BongoCat 设置",
-  "ui.general": "通用",
-  "ui.general_description": "配置模型窗口、模型交互、输入和启动行为。",
-  "ui.models": "模型",
-  "ui.models_description": "安装、验证并启用模型包。",
-  "ui.about": "关于",
-  "ui.about_description": "查看产品、许可证、第三方声明和隐私信息。",
-  "ui.about_bongo_cat": "关于 BongoCat",
-  "ui.product_information": "产品信息",
-  "ui.product_information_description": "查看当前版本和运行环境。",
-  "ui.application_license": "应用许可证",
-  "ui.application_license_description": "BongoCat 应用源码采用 MIT 许可证。",
-  "ui.third_party_licenses": "第三方许可证",
-  "ui.third_party_licenses_description": "第三方 Rust 依赖遵循各自的许可证声明，并按照项目认可的许可证策略进行核查。",
-  "ui.cubism_attribution": "Live2D Cubism",
-  "ui.cubism_attribution_description": "使用 Live2D Cubism SDK for Native 5-r.5（Core 06.00.0001）。Cubism Core 采用 Live2D 专有软件许可证。版权所有 Live2D。公开再分发和最终署名仍须经 Live2D 批准及发布审核。",
-  "ui.privacy": "隐私",
-  "ui.privacy_description": "输入在本地处理。诊断信息和日志不包含按键序列、剪贴板内容、用户文件内容或密钥。",
-  "ui.model_catalog": "模型目录",
-  "ui.installed_models": "已安装模型",
-  "ui.installed_models_description": "导入模型文件夹、验证模型包安全性并选择当前使用的模型。",
-  "ui.model_id": "模型标识",
-  "ui.preset": "预置",
-  "ui.installed": "已安装",
-  "ui.active": "当前使用",
-  "ui.unavailable": "不可用",
-  "ui.activate": "启用",
-  "ui.cancel": "取消",
-  "ui.confirm": "确认",
-  "ui.delete": "删除",
-  "ui.confirm_deletion": "确认删除",
-  "ui.package_layout_invalid": "模型包结构无效",
-  "ui.texture_invalid": "纹理无效",
-  "ui.model_files_unavailable": "模型文件不可用",
-  "ui.model_resource_invalid": "模型资源无效",
-  "ui.no_folder_selected": "尚未选择文件夹",
-  "ui.folder_selected": "已选择文件夹",
-  "ui.choosing_folder": "正在选择文件夹...",
-  "ui.selection_cancelled_previous_retained": "已取消选择；保留之前的文件夹",
-  "ui.selection_cancelled": "已取消选择",
-  "ui.folder_picker_requires_ui_thread": "文件夹选择器必须在 UI 线程运行",
-  "ui.selected_folder_unavailable": "所选文件夹不可用",
-  "ui.folder_picker_unavailable": "文件夹选择器不可用",
-  "ui.cancelling_import": "正在取消导入...",
-  "ui.starting_import": "正在开始导入...",
-  "ui.preparing": "正在准备",
-  "ui.copying": "正在复制",
-  "ui.validating": "正在验证",
-  "ui.committing": "正在提交",
-  "ui.import_complete": "导入完成",
-  "ui.import_cancelled": "已取消导入",
-  "ui.loading_models": "正在加载模型...",
-  "ui.model_catalog_unavailable": "模型列表不可用",
-  "ui.no_models_available": "没有可用模型",
-  "ui.activating_model": "正在启用模型...",
-  "ui.deleting_model": "正在删除模型...",
-  "ui.refreshing_models": "正在刷新模型...",
-  "ui.catalog_unavailable": "模型列表不可用",
-  "ui.choosing": "选择中...",
-  "ui.choose_folder": "选择文件夹",
-  "ui.import": "导入",
-  "ui.available_models": "可用模型",
-  "ui.model_behaviors": "模型行为",
-  "ui.no_model_behaviors": "没有声明的行为",
-  "ui.motion": "动作",
-  "ui.expression": "表情",
-  "ui.preview": "预览",
-  "ui.previewing_behavior": "正在预览行为...",
-  "ui.diagnostics": "诊断",
-  "ui.diagnostics_description": "查看运行状态、输入可靠性和快捷键绑定。",
-  "ui.runtime_and_input": "运行时与输入",
-  "ui.runtime_diagnostics": "运行时诊断",
-  "ui.runtime_diagnostics_description": "查看渲染状态、输入计数和键盘快捷键。可搜索：渲染、输入、快捷键。",
-  "ui.loading_diagnostics": "正在加载诊断信息...",
-  "ui.input_reliability_counters": "输入可靠性计数",
-  "ui.runtime_renderer": "运行时渲染",
-  "ui.build_information": "构建信息",
-  "ui.version": "版本",
-  "ui.development": "开发环境",
-  "ui.production": "生产环境",
-  "ui.diagnostics_export": "诊断导出",
-  "ui.no_report_exported": "尚未导出报告",
-  "ui.export": "导出",
-  "ui.shortcuts": "快捷键",
-  "ui.shortcuts_description": "设置窗口控制和当前模型动作、表情的快捷键。",
-  "ui.window_shortcuts": "窗口快捷键",
-  "ui.model_shortcuts": "模型快捷键",
-  "ui.restore_defaults": "恢复默认值",
-  "ui.clear_all": "全部清除",
-  "ui.press_command_shortcut": "请为此命令按下组合键",
-  "ui.press_behavior_shortcut": "请为此行为按下组合键",
-  "ui.press_record_shortcut": "按下录制快捷键",
-  "ui.click_record_shortcut": "点击录制快捷键",
-  "ui.press_key": "请按键",
-  "ui.capture": "录入",
-  "ui.clear": "清除",
-  "ui.not_set": "未设置",
-  "ui.input_service": "输入服务",
-  "ui.input_monitoring": "输入监控",
-  "ui.configuration": "配置",
-  "ui.backups": "备份",
-  "ui.current_state": "当前状态",
-  "ui.input_processing": "输入处理",
-  "ui.sequence_recovery": "序列恢复",
-  "ui.transport": "传输",
-  "ui.restore_default_configuration": "恢复默认配置",
-  "ui.restore_default_configuration_description": "归档无效配置并创建经验证的默认配置。",
-  "ui.open_configuration_backups_folder_description": "打开当前环境的配置备份文件夹。",
-  "ui.export_diagnostics": "导出诊断信息",
-  "ui.export_diagnostics_description": "将匿名诊断报告导出到当前环境的日志目录。",
-  "ui.restore_default_shortcuts": "恢复默认快捷键",
-  "ui.restore_default_shortcuts_description": "使用经验证的默认值替换自定义快捷键绑定。",
-  "ui.clear_all_shortcuts": "清除全部快捷键",
-  "ui.clear_all_shortcuts_description": "移除所有自定义快捷键绑定。",
-  "ui.waiting_for_key_combination": "正在等待组合键",
-  "ui.not_started": "尚未启动",
-  "ui.running": "运行中",
-  "ui.permission_required": "需要权限",
-  "ui.granted": "已授权",
-  "ui.unsupported": "不支持",
-  "ui.backend_unavailable": "后端不可用",
-  "ui.startup_failed": "启动失败",
-  "ui.gpu_preparation_failed": "GPU 准备失败",
-  "ui.model_load_failed": "模型加载失败",
-  "ui.model_evaluation_failed": "模型计算失败",
-  "ui.motion_load_failed": "动作加载失败",
-  "ui.expression_load_failed": "表情加载失败",
-  "ui.platform_unsupported": "平台不受支持",
-  "ui.runtime_transport_closed": "运行时传输已关闭",
-  "ui.overlay_settings_invalid": "模型窗口设置无效",
-  "ui.maximum_fps_invalid": "最大帧率无效",
-  "ui.no_renderer_error": "没有渲染器错误",
-  "ui.no_command_failures": "没有命令失败",
-  "ui.runtime_shutdown_failures": "退出失败：%{count}",
-  "ui.configuration_unavailable": "配置不可用",
-  "ui.defaults_restored": "已恢复默认值",
-  "ui.restart_to_continue": "请重启应用后继续",
-  "ui.recovered_from_backup": "已从备份恢复",
-  "ui.loaded_normally": "正常加载",
-  "ui.no_recovery": "未执行恢复",
-  "ui.appearance": "外观",
-  "ui.overlay": "模型窗口",
-  "ui.theme": "主题",
-  "ui.system": "跟随系统",
-  "ui.light": "浅色",
-  "ui.dark": "深色",
-  "ui.theme_description": "选择应用的显示主题。",
-  "ui.language": "语言",
-  "ui.language_description": "选择应用的显示语言。",
-  "ui.runtime_status": "运行状态",
-  "ui.runtime_status_description": "查看当前运行时连接状态和配置修订版本。",
-  "ui.show_desktop_cat": "显示模型窗口",
-  "ui.always_on_top": "始终置顶",
-  "ui.always_on_top_description": "让模型窗口始终显示在其他窗口上方。",
-  "ui.click_through_overlay": "鼠标穿透",
-  "ui.click_through_overlay_description": "让指针事件穿过模型窗口。",
-  "ui.keep_inside_work_area": "保持在工作区内",
-  "ui.keep_inside_work_area_description": "让模型窗口避开任务栏、菜单栏和屏幕边缘。",
-  "ui.motion_audio": "动作音效",
-  "ui.motion_audio_description": "播放模型动作关联的音效。",
-  "ui.overlay_scale": "窗口缩放",
-  "ui.overlay_scale_description": "将模型窗口缩放调整为 25% 至 400%。",
-  "ui.overlay_opacity": "窗口不透明度",
-  "ui.overlay_opacity_description": "将模型窗口不透明度调整为 1% 至 100%。",
-  "ui.maximum_fps": "最大帧率",
-  "ui.maximum_fps_description": "将动画和模型窗口的更新帧率限制为每秒 15 至 240 帧。",
-  "ui.release_fallback_timeout": "按键释放兜底（毫秒）",
-  "ui.release_fallback_timeout_description": "仅在常规释放和状态校正均失败时，才释放已捕获的键盘按键。设为 0 可禁用。",
-  "ui.model_interaction": "模型交互",
-  "ui.behavior_shortcuts": "模型行为快捷键",
-  "ui.behavior_shortcuts_description": "允许使用全局快捷键触发模型动作和表情。",
-  "ui.mirror_model": "水平镜像模型",
-  "ui.mirror_model_description": "以水平镜像方式渲染模型。",
-  "ui.mirror_pointer_tracking": "镜像指针跟随",
-  "ui.mirror_pointer_tracking_description": "让模型随指针进行水平方向镜像移动。",
-  "ui.ignore_pointer_input": "忽略指针输入",
-  "ui.ignore_pointer_input_description": "不将指针移动应用到模型。",
-  "ui.input": "输入",
-  "ui.gamepad_stick_dead_zone": "手柄摇杆死区",
-  "ui.gamepad_stick_dead_zone_description": "忽略轻微的摇杆移动。",
-  "ui.gamepad_trigger_dead_zone": "手柄扳机死区",
-  "ui.application": "应用",
-  "ui.show_status_icon": "显示状态图标",
-  "ui.show_status_icon_description": "在系统托盘或菜单栏显示应用状态图标。",
-  "ui.show_taskbar_icon": "显示任务栏图标",
-  "ui.show_taskbar_icon_description": "在 Windows 任务栏显示设置窗口。",
-  "ui.check_for_updates_automatically": "自动检查更新",
-  "ui.check_for_updates_automatically_description": "在应用启动时及此后每 24 小时检查新的已签名版本。",
-  "ui.open_at_login": "登录时启动",
-  "ui.decrease_overlay_scale": "缩小模型窗口",
-  "ui.increase_overlay_scale": "放大模型窗口",
-  "ui.decrease_overlay_opacity": "降低窗口不透明度",
-  "ui.increase_overlay_opacity": "提高窗口不透明度",
-  "ui.decrease_maximum_fps": "降低最大帧率",
-  "ui.increase_maximum_fps": "提高最大帧率",
-  "ui.decrease_release_fallback_timeout": "缩短按键释放兜底超时",
-  "ui.increase_release_fallback_timeout": "延长按键释放兜底超时",
-  "ui.checking_login_startup": "正在检查登录启动状态...",
-  "ui.login_startup_status_unavailable": "状态不可用；激活控件以重试",
-  "ui.login_startup_disabled": "登录系统时启动应用",
-  "ui.login_startup_enabled": "应用将在登录系统时启动",
-  "ui.login_startup_stale": "应用位置已变化；启用以修复",
-  "ui.login_startup_requires_approval": "需要在系统设置中批准",
-  "ui.login_startup_not_found": "登录项缺失；启用以修复",
-  "ui.login_startup_unsupported_platform": "此平台不支持登录时启动",
-  "ui.login_startup_unsupported_operating_system": "登录时启动需要 macOS 13 或更高版本",
-  "ui.login_startup_unsupported_build": "开发构建不支持登录时启动",
-  "ui.refreshing": "正在刷新运行状态...",
-  "ui.saving": "正在保存更改...",
-  "ui.connecting": "正在连接运行时...",
-  "ui.starting": "正在启动",
-  "ui.ready": "就绪",
-  "ui.degraded": "部分功能不可用",
-  "ui.stopped": "已停止",
-  "ui.refresh": "刷新",
-  "ui.quit": "退出",
-  "ui.package_safety_limits_exceeded": "模型包超出安全限制",
-  "ui.model_definition_unsupported": "模型定义不受支持",
-  "ui.open_configuration_backups_folder": "打开配置备份文件夹",
-  "ui.release_fallback_timeout_invalid": "释放兜底超时无效",
-  "ui.show_desktop_cat_description": "显示或隐藏模型窗口。",
-  "ui.gamepad_trigger_dead_zone_description": "忽略轻微的扳机移动。"
+  "navigation": {
+    "settings": {
+      "title": "BongoCat 设置"
+    },
+    "general": {
+      "title": "通用",
+      "description": "配置模型窗口、模型交互、输入和启动行为。"
+    },
+    "models": {
+      "title": "模型",
+      "description": "安装、验证并启用模型包。"
+    },
+    "about": {
+      "title": "关于",
+      "description": "查看产品、许可证、第三方声明和隐私信息。"
+    },
+    "diagnostics": {
+      "title": "诊断",
+      "description": "查看运行状态、输入可靠性和快捷键绑定。"
+    },
+    "shortcuts": {
+      "title": "快捷键",
+      "description": "设置窗口控制和当前模型动作、表情的快捷键。"
+    }
+  },
+  "about": {
+    "page_title": "关于 BongoCat",
+    "product_information": {
+      "title": "产品信息",
+      "description": "查看当前版本和运行环境。"
+    },
+    "legal": {
+      "application_license": {
+        "title": "应用许可证",
+        "description": "BongoCat 应用源码采用 MIT 许可证。"
+      },
+      "third_party_licenses": {
+        "title": "第三方许可证",
+        "description": "第三方 Rust 依赖遵循各自的许可证声明，并按照项目认可的许可证策略进行核查。"
+      },
+      "cubism_attribution": {
+        "title": "Live2D Cubism",
+        "description": "使用 Live2D Cubism SDK for Native 5-r.5（Core 06.00.0001）。Cubism Core 采用 Live2D 专有软件许可证。版权所有 Live2D。公开再分发和最终署名仍须经 Live2D 批准及发布审核。"
+      }
+    },
+    "privacy": {
+      "title": "隐私",
+      "description": "输入在本地处理。诊断信息和日志不包含按键序列、剪贴板内容、用户文件内容或密钥。"
+    }
+  },
+  "models": {
+    "catalog": {
+      "title": "模型目录",
+      "loading": "正在加载模型...",
+      "unavailable": "模型列表不可用",
+      "empty": "没有可用模型",
+      "activating": "正在启用模型...",
+      "deleting": "正在删除模型...",
+      "refreshing": "正在刷新模型...",
+      "error": "模型列表不可用",
+      "available": "可用模型"
+    },
+    "installed": {
+      "title": "已安装模型",
+      "description": "导入模型文件夹、验证模型包安全性并选择当前使用的模型。"
+    },
+    "identity": {
+      "id": "模型标识",
+      "source": {
+        "preset": "预置",
+        "installed": "已安装"
+      },
+      "status": {
+        "active": "当前使用",
+        "unavailable": "不可用"
+      }
+    },
+    "actions": {
+      "activate": "启用",
+      "delete": "删除",
+      "confirm_deletion": "确认删除"
+    },
+    "validation": {
+      "package_layout_invalid": "模型包结构无效",
+      "package_safety_limits_exceeded": "模型包超出安全限制",
+      "model_definition_unsupported": "模型定义不受支持",
+      "texture_invalid": "纹理无效",
+      "files_unavailable": "模型文件不可用",
+      "resource_invalid": "模型资源无效"
+    },
+    "import": {
+      "folder": {
+        "none_selected": "尚未选择文件夹",
+        "selected": "已选择文件夹",
+        "choosing": "正在选择文件夹...",
+        "cancelled_previous_retained": "已取消选择；保留之前的文件夹",
+        "cancelled": "已取消选择",
+        "picker_requires_ui_thread": "文件夹选择器必须在 UI 线程运行",
+        "selected_unavailable": "所选文件夹不可用",
+        "picker_unavailable": "文件夹选择器不可用",
+        "choosing_short": "选择中..."
+      },
+      "progress": {
+        "cancelling": "正在取消导入...",
+        "starting": "正在开始导入...",
+        "preparing": "正在准备",
+        "copying": "正在复制",
+        "validating": "正在验证",
+        "committing": "正在提交",
+        "complete": "导入完成",
+        "cancelled": "已取消导入",
+        "detail": "%{stage} · %{files_copied} 个文件 · %{bytes_copied} 字节"
+      },
+      "actions": {
+        "choose_folder": "选择文件夹",
+        "import": "导入"
+      }
+    },
+    "behaviors": {
+      "title": "模型行为",
+      "empty": "没有声明的行为",
+      "motion": "动作",
+      "expression": "表情",
+      "preview": "预览",
+      "previewing": "正在预览行为..."
+    },
+    "summary": {
+      "active": "%{origin} · %{active} · %{texture_count} 个纹理 · %{expression_count} 个表情 · %{motion_count} 个动作",
+      "inactive": "%{origin} · %{texture_count} 个纹理 · %{expression_count} 个表情 · %{motion_count} 个动作"
+    },
+    "invalid_summary": "%{origin} · %{diagnostic}",
+    "delete_confirmation": "%{status} · %{confirm_deletion}"
+  },
+  "actions": {
+    "cancel": "取消",
+    "confirm": "确认",
+    "refresh": "刷新",
+    "quit": "退出"
+  },
+  "diagnostics": {
+    "runtime_and_input": {
+      "title": "运行时与输入"
+    },
+    "runtime": {
+      "title": "运行时诊断",
+      "description": "查看渲染状态、输入计数和键盘快捷键。可搜索：渲染、输入、快捷键。",
+      "no_command_failures": "没有命令失败",
+      "shutdown_failures": "退出失败：%{count}",
+      "command_failure": "%{error} · 命令 #%{sequence}"
+    },
+    "loading": "正在加载诊断信息...",
+    "input": {
+      "reliability_counters": "输入可靠性计数",
+      "service": "输入服务",
+      "monitoring": "输入监控",
+      "processing": "输入处理",
+      "sequence_recovery": "序列恢复",
+      "transport": "传输",
+      "start_attempts": "启动尝试：%{attempts}",
+      "metrics": {
+        "pressed_keys": "按下的按键",
+        "pressed_mouse_buttons": "按下的鼠标按键",
+        "pressed_gamepad_buttons": "按下的手柄按键",
+        "connected_gamepads": "已连接的手柄",
+        "captured_presses": "捕获的按下事件",
+        "captured_releases": "捕获的释放事件",
+        "reconciled_releases": "校正释放",
+        "fallback_releases": "兜底释放",
+        "reset_releases": "重置释放",
+        "duplicate_presses": "重复按下",
+        "unmatched_releases": "未匹配的释放",
+        "invalid_sources": "无效来源",
+        "resets": "重置次数",
+        "sequence_gaps": "序列缺口",
+        "missing_events": "缺失事件",
+        "duplicate_events": "重复事件",
+        "out_of_order_events": "乱序事件",
+        "non_monotonic_timestamps": "非单调时间戳",
+        "gamepad_connections": "手柄连接",
+        "gamepad_disconnections": "手柄断开",
+        "stale_gamepad_events": "过期手柄事件",
+        "released_on_disconnect": "断开时释放",
+        "events_enqueued": "入队事件",
+        "queue_overflows": "队列溢出",
+        "overflow_recoveries": "溢出恢复",
+        "rejected_after_shutdown": "关闭后拒绝"
+      }
+    },
+    "renderer": {
+      "title": "运行时渲染"
+    },
+    "build": {
+      "title": "构建信息",
+      "version": "版本",
+      "environment": {
+        "development": "开发环境",
+        "production": "生产环境"
+      }
+    },
+    "export": {
+      "title": "诊断导出",
+      "none": "尚未导出报告",
+      "action": "导出诊断信息",
+      "description": "将匿名诊断报告导出到当前环境的日志目录。",
+      "summary": "报告 v%{format_version}：%{bytes_written} 字节 · 预览包 v%{preview_bundle_format_version}：%{preview_bundle_entry_count} 个条目，%{preview_bundle_bytes_written} 字节 · 跳过 %{skipped_source_files} 个来源日志"
+    },
+    "configuration": {
+      "title": "配置",
+      "backups": "备份",
+      "current_state": "当前状态",
+      "restore_defaults": "恢复默认配置",
+      "restore_defaults_description": "归档无效配置并创建经验证的默认配置。",
+      "open_backups_folder": "打开配置备份文件夹",
+      "open_backups_folder_description": "打开当前环境的配置备份文件夹。",
+      "defaults_restored": "已恢复默认值",
+      "restart_to_continue": "请重启应用后继续",
+      "recovered_from_backup": "已从备份恢复",
+      "loaded_normally": "正常加载",
+      "no_recovery": "未执行恢复",
+      "backup_candidates": "已检查 %{count} 个备份候选%{plural_suffix}",
+      "recovered_backup_detail": "Schema v%{schema_version} · 已跳过 %{count} 个较新的备份%{plural_suffix}"
+    }
+  },
+  "shortcuts": {
+    "scopes": {
+      "window": "窗口快捷键",
+      "model": "模型快捷键"
+    },
+    "actions": {
+      "restore_defaults": "恢复默认快捷键",
+      "clear_all": "清除全部快捷键",
+      "capture": "录入",
+      "clear": "清除",
+      "restore_defaults_description": "使用经验证的默认值替换自定义快捷键绑定。",
+      "clear_all_description": "移除所有自定义快捷键绑定。",
+      "decrease_overlay_scale": "缩小模型窗口",
+      "increase_overlay_scale": "放大模型窗口",
+      "decrease_overlay_opacity": "降低窗口不透明度",
+      "increase_overlay_opacity": "提高窗口不透明度",
+      "decrease_maximum_fps": "降低最大帧率",
+      "increase_maximum_fps": "提高最大帧率",
+      "decrease_release_fallback_timeout": "缩短按键释放兜底超时",
+      "increase_release_fallback_timeout": "延长按键释放兜底超时"
+    },
+    "capture": {
+      "command_prompt": "请为此命令按下组合键",
+      "behavior_prompt": "请为此行为按下组合键",
+      "press_to_record": "按下录制快捷键",
+      "click_to_record": "点击录制快捷键",
+      "press_key": "请按键",
+      "waiting": "正在等待组合键",
+      "accessibility": "为%{name}录入快捷键"
+    },
+    "state": {
+      "not_set": "未设置"
+    },
+    "command_names": {
+      "toggle_overlay": "显示或隐藏模型窗口",
+      "open_settings": "显示或隐藏设置窗口",
+      "toggle_mirror": "切换模型镜像",
+      "toggle_click_through": "切换鼠标穿透",
+      "toggle_always_on_top": "切换始终置顶"
+    },
+    "errors": {
+      "conflict": "%{shortcut} 已被其他快捷键占用"
+    }
+  },
+  "status": {
+    "not_started": "尚未启动",
+    "running": "运行中",
+    "permission_required": "需要权限",
+    "granted": "已授权",
+    "unsupported": "不支持",
+    "backend_unavailable": "后端不可用",
+    "refreshing": "正在刷新运行状态...",
+    "saving": "正在保存更改...",
+    "connecting": "正在连接运行时...",
+    "starting": "正在启动",
+    "ready": "就绪",
+    "degraded": "部分功能不可用",
+    "stopped": "已停止"
+  },
+  "errors": {
+    "runtime": {
+      "startup_failed": "启动失败",
+      "gpu_preparation_failed": "GPU 准备失败",
+      "platform_unsupported": "平台不受支持",
+      "transport_closed": "运行时传输已关闭",
+      "no_renderer": "没有渲染器错误"
+    },
+    "models": {
+      "load_failed": "模型加载失败",
+      "evaluation_failed": "模型计算失败",
+      "motion_load_failed": "动作加载失败",
+      "expression_load_failed": "表情加载失败"
+    },
+    "settings": {
+      "overlay_invalid": "模型窗口设置无效",
+      "maximum_fps_invalid": "最大帧率无效",
+      "release_fallback_timeout_invalid": "释放兜底超时无效",
+      "configuration_unavailable": "配置不可用",
+      "service_unavailable": "设置服务不可用",
+      "snapshot_outdated": "设置已在后台更改；请检查最新值后重试",
+      "runtime_unavailable": "运行时未应用此设置",
+      "invalid_maximum_fps": "最大帧率必须在 15 到 240 之间",
+      "invalid_release_fallback_timeout": "按键释放兜底超时必须在 0 到 60000 毫秒之间",
+      "invalid_gamepad_axis_settings": "手柄死区设置超出范围",
+      "invalid_shortcut_bindings": "快捷键绑定无效或存在冲突",
+      "config_persist_failed": "无法保存设置",
+      "config_permission_denied": "配置存储不可写；请检查权限后重试",
+      "config_storage_full": "配置存储空间已满；请释放空间后重试",
+      "config_target_occupied": "配置存储位置被占用；请移除占用项后重试",
+      "backup_location_open_failed": "无法打开配置备份文件夹",
+      "configuration_recovery_required": "执行此操作前必须恢复配置",
+      "configuration_recovery_failed": "无法恢复默认配置",
+      "model_unavailable": "所选模型不可用",
+      "model_switch_failed": "无法启用所选模型",
+      "model_behavior_preview_unavailable": "所选行为不适用于当前模型",
+      "model_behavior_preview_failed": "无法预览所选行为",
+      "invalid_model_id": "模型 ID 无效",
+      "model_already_installed": "该模型 ID 已安装",
+      "model_import_invalid_package": "模型包无效",
+      "model_import_source_invalid": "无法导入模型来源",
+      "model_import_source_changed": "模型来源在导入期间发生变化",
+      "model_import_source_unsupported": "模型来源包含不支持的项目",
+      "model_import_cancelled": "模型导入已取消",
+      "model_store_busy": "模型存储正忙",
+      "model_import_failed": "无法导入模型",
+      "preset_model_cannot_be_deleted": "无法删除预置模型",
+      "selected_model_cannot_be_deleted": "删除当前模型前必须先切换到其他模型",
+      "model_not_installed": "找不到已安装模型",
+      "model_delete_failed": "无法删除已安装模型",
+      "diagnostics_export_failed": "无法导出诊断信息",
+      "startup_item_update_failed": "无法更新登录启动设置",
+      "status_icon_update_failed": "无法更新状态图标可见性",
+      "taskbar_icon_update_failed": "无法更新任务栏图标可见性",
+      "window_unavailable": "无法隐藏设置窗口",
+      "state_persist_failed": "无法保存窗口布局",
+      "shutdown_failed": "应用未能完成关闭"
+    }
+  },
+  "settings": {
+    "appearance": {
+      "title": "外观",
+      "theme": {
+        "label": "主题",
+        "options": {
+          "system": "跟随系统",
+          "light": "浅色",
+          "dark": "深色"
+        },
+        "description": "选择应用的显示主题。"
+      },
+      "language": {
+        "label": "语言",
+        "description": "选择应用的显示语言。",
+        "options": {
+          "system": "跟随系统",
+          "chinese_simplified": "简体中文",
+          "english_united_states": "English"
+        }
+      }
+    },
+    "overlay": {
+      "title": "模型窗口",
+      "visibility": {
+        "label": "显示模型窗口",
+        "description": "显示或隐藏模型窗口。"
+      },
+      "always_on_top": {
+        "label": "始终置顶",
+        "description": "让模型窗口始终显示在其他窗口上方。"
+      },
+      "click_through": {
+        "label": "鼠标穿透",
+        "description": "让指针事件穿过模型窗口。"
+      },
+      "keep_inside_work_area": {
+        "label": "保持在工作区内",
+        "description": "让模型窗口避开任务栏、菜单栏和屏幕边缘。"
+      },
+      "motion_audio": {
+        "label": "动作音效",
+        "description": "播放模型动作关联的音效。"
+      },
+      "scale": {
+        "label": "窗口缩放",
+        "description": "将模型窗口缩放调整为 25% 至 400%。"
+      },
+      "opacity": {
+        "label": "窗口不透明度",
+        "description": "将模型窗口不透明度调整为 1% 至 100%。"
+      },
+      "maximum_fps": {
+        "label": "最大帧率",
+        "description": "将动画和模型窗口的更新帧率限制为每秒 15 至 240 帧。"
+      },
+      "release_fallback_timeout": {
+        "label": "按键释放兜底（毫秒）",
+        "description": "仅在常规释放和状态校正均失败时，才释放已捕获的键盘按键。设为 0 可禁用。"
+      }
+    },
+    "runtime": {
+      "title": "运行状态",
+      "description": "查看当前运行时连接状态和配置修订版本。",
+      "status_detail": "运行状态：%{health} - 修订 %{revision}"
+    },
+    "model_interaction": {
+      "title": "模型交互",
+      "behavior_shortcuts": {
+        "label": "模型行为快捷键",
+        "description": "允许使用全局快捷键触发模型动作和表情。"
+      },
+      "mirror_model": {
+        "label": "水平镜像模型",
+        "description": "以水平镜像方式渲染模型。"
+      },
+      "mirror_pointer_tracking": {
+        "label": "镜像指针跟随",
+        "description": "让模型随指针进行水平方向镜像移动。"
+      },
+      "ignore_pointer_input": {
+        "label": "忽略指针输入",
+        "description": "不将指针移动应用到模型。"
+      }
+    },
+    "input": {
+      "title": "输入",
+      "gamepad_stick_dead_zone": {
+        "label": "手柄摇杆死区",
+        "description": "忽略轻微的摇杆移动。"
+      },
+      "gamepad_trigger_dead_zone": {
+        "label": "手柄扳机死区",
+        "description": "忽略轻微的扳机移动。"
+      }
+    },
+    "application": {
+      "title": "应用",
+      "status_icon": {
+        "label": "显示状态图标",
+        "description": "在系统托盘或菜单栏显示应用状态图标。"
+      },
+      "taskbar_icon": {
+        "label": "显示任务栏图标",
+        "description": "在 Windows 任务栏显示设置窗口。"
+      },
+      "auto_update": {
+        "label": "自动检查更新",
+        "description": "在应用启动时及此后每 24 小时检查新的已签名版本。"
+      },
+      "open_at_login": {
+        "label": "登录时启动"
+      },
+      "startup": {
+        "checking": "正在检查登录启动状态...",
+        "unavailable": "状态不可用；激活控件以重试",
+        "disabled": "登录系统时启动应用",
+        "enabled": "应用将在登录系统时启动",
+        "stale": "应用位置已变化；启用以修复",
+        "requires_approval": "需要在系统设置中批准",
+        "not_found": "登录项缺失；启用以修复",
+        "unsupported_platform": "此平台不支持登录时启动",
+        "unsupported_os": "登录时启动需要 macOS 13 或更高版本",
+        "unsupported_build": "开发构建不支持登录时启动"
+      }
+    }
+  }
 }

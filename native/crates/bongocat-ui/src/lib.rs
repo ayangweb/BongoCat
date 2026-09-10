@@ -386,12 +386,23 @@ impl SettingsLanguage {
         }
     }
 
-    pub const fn display_name(self, display_language: Self) -> &'static str {
+    pub fn display_name(self, display_language: Self) -> &'static str {
+        let locale = match display_language {
+            Self::ChineseSimplified => "zh-CN",
+            Self::System | Self::EnglishUnitedStates => "en-US",
+        };
         match (self, display_language) {
-            (Self::System, Self::ChineseSimplified) => "跟随系统",
-            (Self::System, Self::System | Self::EnglishUnitedStates) => "System",
-            (Self::ChineseSimplified, _) => "简体中文",
-            (Self::EnglishUnitedStates, _) => "English",
+            (Self::System, _) => {
+                bongocat_i18n::text(locale, "settings.appearance.language.options.system")
+            }
+            (Self::ChineseSimplified, _) => bongocat_i18n::text(
+                locale,
+                "settings.appearance.language.options.chinese_simplified",
+            ),
+            (Self::EnglishUnitedStates, _) => bongocat_i18n::text(
+                locale,
+                "settings.appearance.language.options.english_united_states",
+            ),
         }
     }
 

@@ -258,248 +258,279 @@ pub(super) const ABOUT_SECTIONS: [AboutSection; 4] = [
 ];
 
 pub(super) fn text(language: SettingsLanguage, key: UiText) -> &'static str {
-    let locale = match language {
+    bongocat_i18n::text(locale(language), key.key())
+}
+
+fn locale(language: SettingsLanguage) -> &'static str {
+    match language {
         SettingsLanguage::ChineseSimplified => "zh-CN",
         SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates => "en-US",
-    };
-    bongocat_i18n::text(locale, key.key())
+    }
 }
 
 impl UiText {
     const fn key(self) -> &'static str {
         match self {
-            Self::Settings => "ui.settings",
-            Self::General => "ui.general",
-            Self::GeneralDescription => "ui.general_description",
-            Self::Models => "ui.models",
-            Self::ModelsDescription => "ui.models_description",
-            Self::About => "ui.about",
-            Self::AboutDescription => "ui.about_description",
-            Self::AboutBongoCat => "ui.about_bongo_cat",
-            Self::ProductInformation => "ui.product_information",
-            Self::ProductInformationDescription => "ui.product_information_description",
-            Self::ApplicationLicense => "ui.application_license",
-            Self::ApplicationLicenseDescription => "ui.application_license_description",
-            Self::ThirdPartyLicenses => "ui.third_party_licenses",
-            Self::ThirdPartyLicensesDescription => "ui.third_party_licenses_description",
-            Self::CubismAttribution => "ui.cubism_attribution",
-            Self::CubismAttributionDescription => "ui.cubism_attribution_description",
-            Self::Privacy => "ui.privacy",
-            Self::PrivacyDescription => "ui.privacy_description",
-            Self::ModelCatalog => "ui.model_catalog",
-            Self::InstalledModels => "ui.installed_models",
-            Self::InstalledModelsDescription => "ui.installed_models_description",
-            Self::ModelId => "ui.model_id",
-            Self::Preset => "ui.preset",
-            Self::Installed => "ui.installed",
-            Self::Active => "ui.active",
-            Self::Unavailable => "ui.unavailable",
-            Self::Activate => "ui.activate",
-            Self::Cancel => "ui.cancel",
-            Self::Confirm => "ui.confirm",
-            Self::Delete => "ui.delete",
-            Self::ConfirmDeletion => "ui.confirm_deletion",
-            Self::PackageLayoutInvalid => "ui.package_layout_invalid",
-            Self::PackageSafetyLimitsExceeded => "ui.package_safety_limits_exceeded",
-            Self::ModelDefinitionUnsupported => "ui.model_definition_unsupported",
-            Self::TextureInvalid => "ui.texture_invalid",
-            Self::ModelFilesUnavailable => "ui.model_files_unavailable",
-            Self::ModelResourceInvalid => "ui.model_resource_invalid",
-            Self::NoFolderSelected => "ui.no_folder_selected",
-            Self::FolderSelected => "ui.folder_selected",
-            Self::ChoosingFolder => "ui.choosing_folder",
-            Self::SelectionCancelledPreviousRetained => "ui.selection_cancelled_previous_retained",
-            Self::SelectionCancelled => "ui.selection_cancelled",
-            Self::FolderPickerRequiresUiThread => "ui.folder_picker_requires_ui_thread",
-            Self::SelectedFolderUnavailable => "ui.selected_folder_unavailable",
-            Self::FolderPickerUnavailable => "ui.folder_picker_unavailable",
-            Self::CancellingImport => "ui.cancelling_import",
-            Self::StartingImport => "ui.starting_import",
-            Self::Preparing => "ui.preparing",
-            Self::Copying => "ui.copying",
-            Self::Validating => "ui.validating",
-            Self::Committing => "ui.committing",
-            Self::ImportComplete => "ui.import_complete",
-            Self::ImportCancelled => "ui.import_cancelled",
-            Self::LoadingModels => "ui.loading_models",
-            Self::ModelCatalogUnavailable => "ui.model_catalog_unavailable",
-            Self::NoModelsAvailable => "ui.no_models_available",
-            Self::ActivatingModel => "ui.activating_model",
-            Self::DeletingModel => "ui.deleting_model",
-            Self::RefreshingModels => "ui.refreshing_models",
-            Self::CatalogUnavailable => "ui.catalog_unavailable",
-            Self::Choosing => "ui.choosing",
-            Self::ChooseFolder => "ui.choose_folder",
-            Self::Import => "ui.import",
-            Self::AvailableModels => "ui.available_models",
-            Self::ModelBehaviors => "ui.model_behaviors",
-            Self::NoModelBehaviors => "ui.no_model_behaviors",
-            Self::Motion => "ui.motion",
-            Self::Expression => "ui.expression",
-            Self::Preview => "ui.preview",
-            Self::PreviewingBehavior => "ui.previewing_behavior",
-            Self::Diagnostics => "ui.diagnostics",
-            Self::DiagnosticsDescription => "ui.diagnostics_description",
-            Self::RuntimeAndInput => "ui.runtime_and_input",
-            Self::RuntimeDiagnostics => "ui.runtime_diagnostics",
-            Self::RuntimeDiagnosticsDescription => "ui.runtime_diagnostics_description",
-            Self::LoadingDiagnostics => "ui.loading_diagnostics",
-            Self::InputReliabilityCounters => "ui.input_reliability_counters",
-            Self::RuntimeRenderer => "ui.runtime_renderer",
-            Self::BuildInformation => "ui.build_information",
-            Self::Version => "ui.version",
-            Self::Development => "ui.development",
-            Self::Production => "ui.production",
-            Self::DiagnosticsExport => "ui.diagnostics_export",
-            Self::NoReportExported => "ui.no_report_exported",
-            Self::Export => "ui.export",
-            Self::Shortcuts => "ui.shortcuts",
-            Self::ShortcutsDescription => "ui.shortcuts_description",
-            Self::WindowShortcuts => "ui.window_shortcuts",
-            Self::ModelShortcuts => "ui.model_shortcuts",
-            Self::RestoreDefaults => "ui.restore_defaults",
-            Self::ClearAll => "ui.clear_all",
-            Self::PressCommandShortcut => "ui.press_command_shortcut",
-            Self::PressBehaviorShortcut => "ui.press_behavior_shortcut",
-            Self::PressRecordShortcut => "ui.press_record_shortcut",
-            Self::ClickRecordShortcut => "ui.click_record_shortcut",
-            Self::PressKey => "ui.press_key",
-            Self::Capture => "ui.capture",
-            Self::Clear => "ui.clear",
-            Self::NotSet => "ui.not_set",
-            Self::InputService => "ui.input_service",
-            Self::InputMonitoring => "ui.input_monitoring",
-            Self::Configuration => "ui.configuration",
-            Self::Backups => "ui.backups",
-            Self::CurrentState => "ui.current_state",
-            Self::InputProcessing => "ui.input_processing",
-            Self::SequenceRecovery => "ui.sequence_recovery",
-            Self::Transport => "ui.transport",
-            Self::RestoreDefaultConfiguration => "ui.restore_default_configuration",
+            Self::Settings => "navigation.settings.title",
+            Self::General => "navigation.general.title",
+            Self::GeneralDescription => "navigation.general.description",
+            Self::Models => "navigation.models.title",
+            Self::ModelsDescription => "navigation.models.description",
+            Self::About => "navigation.about.title",
+            Self::AboutDescription => "navigation.about.description",
+            Self::AboutBongoCat => "about.page_title",
+            Self::ProductInformation => "about.product_information.title",
+            Self::ProductInformationDescription => "about.product_information.description",
+            Self::ApplicationLicense => "about.legal.application_license.title",
+            Self::ApplicationLicenseDescription => "about.legal.application_license.description",
+            Self::ThirdPartyLicenses => "about.legal.third_party_licenses.title",
+            Self::ThirdPartyLicensesDescription => "about.legal.third_party_licenses.description",
+            Self::CubismAttribution => "about.legal.cubism_attribution.title",
+            Self::CubismAttributionDescription => "about.legal.cubism_attribution.description",
+            Self::Privacy => "about.privacy.title",
+            Self::PrivacyDescription => "about.privacy.description",
+            Self::ModelCatalog => "models.catalog.title",
+            Self::InstalledModels => "models.installed.title",
+            Self::InstalledModelsDescription => "models.installed.description",
+            Self::ModelId => "models.identity.id",
+            Self::Preset => "models.identity.source.preset",
+            Self::Installed => "models.identity.source.installed",
+            Self::Active => "models.identity.status.active",
+            Self::Unavailable => "models.identity.status.unavailable",
+            Self::Activate => "models.actions.activate",
+            Self::Cancel => "actions.cancel",
+            Self::Confirm => "actions.confirm",
+            Self::Delete => "models.actions.delete",
+            Self::ConfirmDeletion => "models.actions.confirm_deletion",
+            Self::PackageLayoutInvalid => "models.validation.package_layout_invalid",
+            Self::PackageSafetyLimitsExceeded => "models.validation.package_safety_limits_exceeded",
+            Self::ModelDefinitionUnsupported => "models.validation.model_definition_unsupported",
+            Self::TextureInvalid => "models.validation.texture_invalid",
+            Self::ModelFilesUnavailable => "models.validation.files_unavailable",
+            Self::ModelResourceInvalid => "models.validation.resource_invalid",
+            Self::NoFolderSelected => "models.import.folder.none_selected",
+            Self::FolderSelected => "models.import.folder.selected",
+            Self::ChoosingFolder => "models.import.folder.choosing",
+            Self::SelectionCancelledPreviousRetained => {
+                "models.import.folder.cancelled_previous_retained"
+            }
+            Self::SelectionCancelled => "models.import.folder.cancelled",
+            Self::FolderPickerRequiresUiThread => "models.import.folder.picker_requires_ui_thread",
+            Self::SelectedFolderUnavailable => "models.import.folder.selected_unavailable",
+            Self::FolderPickerUnavailable => "models.import.folder.picker_unavailable",
+            Self::CancellingImport => "models.import.progress.cancelling",
+            Self::StartingImport => "models.import.progress.starting",
+            Self::Preparing => "models.import.progress.preparing",
+            Self::Copying => "models.import.progress.copying",
+            Self::Validating => "models.import.progress.validating",
+            Self::Committing => "models.import.progress.committing",
+            Self::ImportComplete => "models.import.progress.complete",
+            Self::ImportCancelled => "models.import.progress.cancelled",
+            Self::LoadingModels => "models.catalog.loading",
+            Self::ModelCatalogUnavailable => "models.catalog.unavailable",
+            Self::NoModelsAvailable => "models.catalog.empty",
+            Self::ActivatingModel => "models.catalog.activating",
+            Self::DeletingModel => "models.catalog.deleting",
+            Self::RefreshingModels => "models.catalog.refreshing",
+            Self::CatalogUnavailable => "models.catalog.error",
+            Self::Choosing => "models.import.folder.choosing_short",
+            Self::ChooseFolder => "models.import.actions.choose_folder",
+            Self::Import => "models.import.actions.import",
+            Self::AvailableModels => "models.catalog.available",
+            Self::ModelBehaviors => "models.behaviors.title",
+            Self::NoModelBehaviors => "models.behaviors.empty",
+            Self::Motion => "models.behaviors.motion",
+            Self::Expression => "models.behaviors.expression",
+            Self::Preview => "models.behaviors.preview",
+            Self::PreviewingBehavior => "models.behaviors.previewing",
+            Self::Diagnostics => "navigation.diagnostics.title",
+            Self::DiagnosticsDescription => "navigation.diagnostics.description",
+            Self::RuntimeAndInput => "diagnostics.runtime_and_input.title",
+            Self::RuntimeDiagnostics => "diagnostics.runtime.title",
+            Self::RuntimeDiagnosticsDescription => "diagnostics.runtime.description",
+            Self::LoadingDiagnostics => "diagnostics.loading",
+            Self::InputReliabilityCounters => "diagnostics.input.reliability_counters",
+            Self::RuntimeRenderer => "diagnostics.renderer.title",
+            Self::BuildInformation => "diagnostics.build.title",
+            Self::Version => "diagnostics.build.version",
+            Self::Development => "diagnostics.build.environment.development",
+            Self::Production => "diagnostics.build.environment.production",
+            Self::DiagnosticsExport => "diagnostics.export.title",
+            Self::NoReportExported => "diagnostics.export.none",
+            Self::Export => "diagnostics.export.action",
+            Self::Shortcuts => "navigation.shortcuts.title",
+            Self::ShortcutsDescription => "navigation.shortcuts.description",
+            Self::WindowShortcuts => "shortcuts.scopes.window",
+            Self::ModelShortcuts => "shortcuts.scopes.model",
+            Self::RestoreDefaults => "shortcuts.actions.restore_defaults",
+            Self::ClearAll => "shortcuts.actions.clear_all",
+            Self::PressCommandShortcut => "shortcuts.capture.command_prompt",
+            Self::PressBehaviorShortcut => "shortcuts.capture.behavior_prompt",
+            Self::PressRecordShortcut => "shortcuts.capture.press_to_record",
+            Self::ClickRecordShortcut => "shortcuts.capture.click_to_record",
+            Self::PressKey => "shortcuts.capture.press_key",
+            Self::Capture => "shortcuts.actions.capture",
+            Self::Clear => "shortcuts.actions.clear",
+            Self::NotSet => "shortcuts.state.not_set",
+            Self::InputService => "diagnostics.input.service",
+            Self::InputMonitoring => "diagnostics.input.monitoring",
+            Self::Configuration => "diagnostics.configuration.title",
+            Self::Backups => "diagnostics.configuration.backups",
+            Self::CurrentState => "diagnostics.configuration.current_state",
+            Self::InputProcessing => "diagnostics.input.processing",
+            Self::SequenceRecovery => "diagnostics.input.sequence_recovery",
+            Self::Transport => "diagnostics.input.transport",
+            Self::RestoreDefaultConfiguration => "diagnostics.configuration.restore_defaults",
             Self::RestoreDefaultConfigurationDescription => {
-                "ui.restore_default_configuration_description"
+                "diagnostics.configuration.restore_defaults_description"
             }
-            Self::OpenConfigurationBackupsFolder => "ui.open_configuration_backups_folder",
+            Self::OpenConfigurationBackupsFolder => "diagnostics.configuration.open_backups_folder",
             Self::OpenConfigurationBackupsFolderDescription => {
-                "ui.open_configuration_backups_folder_description"
+                "diagnostics.configuration.open_backups_folder_description"
             }
-            Self::ExportDiagnostics => "ui.export_diagnostics",
-            Self::ExportDiagnosticsDescription => "ui.export_diagnostics_description",
-            Self::RestoreDefaultShortcuts => "ui.restore_default_shortcuts",
-            Self::RestoreDefaultShortcutsDescription => "ui.restore_default_shortcuts_description",
-            Self::ClearAllShortcuts => "ui.clear_all_shortcuts",
-            Self::ClearAllShortcutsDescription => "ui.clear_all_shortcuts_description",
-            Self::WaitingForKeyCombination => "ui.waiting_for_key_combination",
-            Self::NotStarted => "ui.not_started",
-            Self::Running => "ui.running",
-            Self::PermissionRequired => "ui.permission_required",
-            Self::Granted => "ui.granted",
-            Self::Unsupported => "ui.unsupported",
-            Self::BackendUnavailable => "ui.backend_unavailable",
-            Self::StartupFailed => "ui.startup_failed",
-            Self::GpuPreparationFailed => "ui.gpu_preparation_failed",
-            Self::ModelLoadFailed => "ui.model_load_failed",
-            Self::ModelEvaluationFailed => "ui.model_evaluation_failed",
-            Self::MotionLoadFailed => "ui.motion_load_failed",
-            Self::ExpressionLoadFailed => "ui.expression_load_failed",
-            Self::PlatformUnsupported => "ui.platform_unsupported",
-            Self::RuntimeTransportClosed => "ui.runtime_transport_closed",
-            Self::OverlaySettingsInvalid => "ui.overlay_settings_invalid",
-            Self::MaximumFpsInvalid => "ui.maximum_fps_invalid",
-            Self::ReleaseFallbackTimeoutInvalid => "ui.release_fallback_timeout_invalid",
-            Self::NoRendererError => "ui.no_renderer_error",
-            Self::NoCommandFailures => "ui.no_command_failures",
-            Self::RuntimeShutdownFailures => "ui.runtime_shutdown_failures",
-            Self::ConfigurationUnavailable => "ui.configuration_unavailable",
-            Self::DefaultsRestored => "ui.defaults_restored",
-            Self::RestartToContinue => "ui.restart_to_continue",
-            Self::RecoveredFromBackup => "ui.recovered_from_backup",
-            Self::LoadedNormally => "ui.loaded_normally",
-            Self::NoRecovery => "ui.no_recovery",
-            Self::Appearance => "ui.appearance",
-            Self::Overlay => "ui.overlay",
-            Self::Theme => "ui.theme",
-            Self::System => "ui.system",
-            Self::Light => "ui.light",
-            Self::Dark => "ui.dark",
-            Self::ThemeDescription => "ui.theme_description",
-            Self::Language => "ui.language",
-            Self::LanguageDescription => "ui.language_description",
-            Self::RuntimeStatus => "ui.runtime_status",
-            Self::RuntimeStatusDescription => "ui.runtime_status_description",
-            Self::ShowDesktopCat => "ui.show_desktop_cat",
-            Self::ShowDesktopCatDescription => "ui.show_desktop_cat_description",
-            Self::AlwaysOnTop => "ui.always_on_top",
-            Self::AlwaysOnTopDescription => "ui.always_on_top_description",
-            Self::ClickThroughOverlay => "ui.click_through_overlay",
-            Self::ClickThroughOverlayDescription => "ui.click_through_overlay_description",
-            Self::KeepInsideWorkArea => "ui.keep_inside_work_area",
-            Self::KeepInsideWorkAreaDescription => "ui.keep_inside_work_area_description",
-            Self::MotionAudio => "ui.motion_audio",
-            Self::MotionAudioDescription => "ui.motion_audio_description",
-            Self::OverlayScale => "ui.overlay_scale",
-            Self::OverlayScaleDescription => "ui.overlay_scale_description",
-            Self::OverlayOpacity => "ui.overlay_opacity",
-            Self::OverlayOpacityDescription => "ui.overlay_opacity_description",
-            Self::MaximumFps => "ui.maximum_fps",
-            Self::MaximumFpsDescription => "ui.maximum_fps_description",
-            Self::ReleaseFallbackTimeout => "ui.release_fallback_timeout",
-            Self::ReleaseFallbackTimeoutDescription => "ui.release_fallback_timeout_description",
-            Self::ModelInteraction => "ui.model_interaction",
-            Self::BehaviorShortcuts => "ui.behavior_shortcuts",
-            Self::BehaviorShortcutsDescription => "ui.behavior_shortcuts_description",
-            Self::MirrorModel => "ui.mirror_model",
-            Self::MirrorModelDescription => "ui.mirror_model_description",
-            Self::MirrorPointerTracking => "ui.mirror_pointer_tracking",
-            Self::MirrorPointerTrackingDescription => "ui.mirror_pointer_tracking_description",
-            Self::IgnorePointerInput => "ui.ignore_pointer_input",
-            Self::IgnorePointerInputDescription => "ui.ignore_pointer_input_description",
-            Self::Input => "ui.input",
-            Self::GamepadStickDeadZone => "ui.gamepad_stick_dead_zone",
-            Self::GamepadStickDeadZoneDescription => "ui.gamepad_stick_dead_zone_description",
-            Self::GamepadTriggerDeadZone => "ui.gamepad_trigger_dead_zone",
-            Self::GamepadTriggerDeadZoneDescription => "ui.gamepad_trigger_dead_zone_description",
-            Self::Application => "ui.application",
-            Self::ShowStatusIcon => "ui.show_status_icon",
-            Self::ShowStatusIconDescription => "ui.show_status_icon_description",
+            Self::ExportDiagnostics => "diagnostics.export.action",
+            Self::ExportDiagnosticsDescription => "diagnostics.export.description",
+            Self::RestoreDefaultShortcuts => "shortcuts.actions.restore_defaults",
+            Self::RestoreDefaultShortcutsDescription => {
+                "shortcuts.actions.restore_defaults_description"
+            }
+            Self::ClearAllShortcuts => "shortcuts.actions.clear_all",
+            Self::ClearAllShortcutsDescription => "shortcuts.actions.clear_all_description",
+            Self::WaitingForKeyCombination => "shortcuts.capture.waiting",
+            Self::NotStarted => "status.not_started",
+            Self::Running => "status.running",
+            Self::PermissionRequired => "status.permission_required",
+            Self::Granted => "status.granted",
+            Self::Unsupported => "status.unsupported",
+            Self::BackendUnavailable => "status.backend_unavailable",
+            Self::StartupFailed => "errors.runtime.startup_failed",
+            Self::GpuPreparationFailed => "errors.runtime.gpu_preparation_failed",
+            Self::ModelLoadFailed => "errors.models.load_failed",
+            Self::ModelEvaluationFailed => "errors.models.evaluation_failed",
+            Self::MotionLoadFailed => "errors.models.motion_load_failed",
+            Self::ExpressionLoadFailed => "errors.models.expression_load_failed",
+            Self::PlatformUnsupported => "errors.runtime.platform_unsupported",
+            Self::RuntimeTransportClosed => "errors.runtime.transport_closed",
+            Self::OverlaySettingsInvalid => "errors.settings.overlay_invalid",
+            Self::MaximumFpsInvalid => "errors.settings.maximum_fps_invalid",
+            Self::ReleaseFallbackTimeoutInvalid => {
+                "errors.settings.release_fallback_timeout_invalid"
+            }
+            Self::NoRendererError => "errors.runtime.no_renderer",
+            Self::NoCommandFailures => "diagnostics.runtime.no_command_failures",
+            Self::RuntimeShutdownFailures => "diagnostics.runtime.shutdown_failures",
+            Self::ConfigurationUnavailable => "errors.settings.configuration_unavailable",
+            Self::DefaultsRestored => "diagnostics.configuration.defaults_restored",
+            Self::RestartToContinue => "diagnostics.configuration.restart_to_continue",
+            Self::RecoveredFromBackup => "diagnostics.configuration.recovered_from_backup",
+            Self::LoadedNormally => "diagnostics.configuration.loaded_normally",
+            Self::NoRecovery => "diagnostics.configuration.no_recovery",
+            Self::Appearance => "settings.appearance.title",
+            Self::Overlay => "settings.overlay.title",
+            Self::Theme => "settings.appearance.theme.label",
+            Self::System => "settings.appearance.theme.options.system",
+            Self::Light => "settings.appearance.theme.options.light",
+            Self::Dark => "settings.appearance.theme.options.dark",
+            Self::ThemeDescription => "settings.appearance.theme.description",
+            Self::Language => "settings.appearance.language.label",
+            Self::LanguageDescription => "settings.appearance.language.description",
+            Self::RuntimeStatus => "settings.runtime.title",
+            Self::RuntimeStatusDescription => "settings.runtime.description",
+            Self::ShowDesktopCat => "settings.overlay.visibility.label",
+            Self::ShowDesktopCatDescription => "settings.overlay.visibility.description",
+            Self::AlwaysOnTop => "settings.overlay.always_on_top.label",
+            Self::AlwaysOnTopDescription => "settings.overlay.always_on_top.description",
+            Self::ClickThroughOverlay => "settings.overlay.click_through.label",
+            Self::ClickThroughOverlayDescription => "settings.overlay.click_through.description",
+            Self::KeepInsideWorkArea => "settings.overlay.keep_inside_work_area.label",
+            Self::KeepInsideWorkAreaDescription => {
+                "settings.overlay.keep_inside_work_area.description"
+            }
+            Self::MotionAudio => "settings.overlay.motion_audio.label",
+            Self::MotionAudioDescription => "settings.overlay.motion_audio.description",
+            Self::OverlayScale => "settings.overlay.scale.label",
+            Self::OverlayScaleDescription => "settings.overlay.scale.description",
+            Self::OverlayOpacity => "settings.overlay.opacity.label",
+            Self::OverlayOpacityDescription => "settings.overlay.opacity.description",
+            Self::MaximumFps => "settings.overlay.maximum_fps.label",
+            Self::MaximumFpsDescription => "settings.overlay.maximum_fps.description",
+            Self::ReleaseFallbackTimeout => "settings.overlay.release_fallback_timeout.label",
+            Self::ReleaseFallbackTimeoutDescription => {
+                "settings.overlay.release_fallback_timeout.description"
+            }
+            Self::ModelInteraction => "settings.model_interaction.title",
+            Self::BehaviorShortcuts => "settings.model_interaction.behavior_shortcuts.label",
+            Self::BehaviorShortcutsDescription => {
+                "settings.model_interaction.behavior_shortcuts.description"
+            }
+            Self::MirrorModel => "settings.model_interaction.mirror_model.label",
+            Self::MirrorModelDescription => "settings.model_interaction.mirror_model.description",
+            Self::MirrorPointerTracking => {
+                "settings.model_interaction.mirror_pointer_tracking.label"
+            }
+            Self::MirrorPointerTrackingDescription => {
+                "settings.model_interaction.mirror_pointer_tracking.description"
+            }
+            Self::IgnorePointerInput => "settings.model_interaction.ignore_pointer_input.label",
+            Self::IgnorePointerInputDescription => {
+                "settings.model_interaction.ignore_pointer_input.description"
+            }
+            Self::Input => "settings.input.title",
+            Self::GamepadStickDeadZone => "settings.input.gamepad_stick_dead_zone.label",
+            Self::GamepadStickDeadZoneDescription => {
+                "settings.input.gamepad_stick_dead_zone.description"
+            }
+            Self::GamepadTriggerDeadZone => "settings.input.gamepad_trigger_dead_zone.label",
+            Self::GamepadTriggerDeadZoneDescription => {
+                "settings.input.gamepad_trigger_dead_zone.description"
+            }
+            Self::Application => "settings.application.title",
+            Self::ShowStatusIcon => "settings.application.status_icon.label",
+            Self::ShowStatusIconDescription => "settings.application.status_icon.description",
             #[cfg(target_os = "windows")]
-            Self::ShowTaskbarIcon => "ui.show_taskbar_icon",
+            Self::ShowTaskbarIcon => "settings.application.taskbar_icon.label",
             #[cfg(target_os = "windows")]
-            Self::ShowTaskbarIconDescription => "ui.show_taskbar_icon_description",
-            Self::CheckForUpdatesAutomatically => "ui.check_for_updates_automatically",
+            Self::ShowTaskbarIconDescription => "settings.application.taskbar_icon.description",
+            Self::CheckForUpdatesAutomatically => "settings.application.auto_update.label",
             Self::CheckForUpdatesAutomaticallyDescription => {
-                "ui.check_for_updates_automatically_description"
+                "settings.application.auto_update.description"
             }
-            Self::OpenAtLogin => "ui.open_at_login",
-            Self::DecreaseOverlayScale => "ui.decrease_overlay_scale",
-            Self::IncreaseOverlayScale => "ui.increase_overlay_scale",
-            Self::DecreaseOverlayOpacity => "ui.decrease_overlay_opacity",
-            Self::IncreaseOverlayOpacity => "ui.increase_overlay_opacity",
-            Self::DecreaseMaximumFps => "ui.decrease_maximum_fps",
-            Self::IncreaseMaximumFps => "ui.increase_maximum_fps",
-            Self::DecreaseReleaseFallbackTimeout => "ui.decrease_release_fallback_timeout",
-            Self::IncreaseReleaseFallbackTimeout => "ui.increase_release_fallback_timeout",
-            Self::CheckingLoginStartup => "ui.checking_login_startup",
-            Self::LoginStartupStatusUnavailable => "ui.login_startup_status_unavailable",
-            Self::LoginStartupDisabled => "ui.login_startup_disabled",
-            Self::LoginStartupEnabled => "ui.login_startup_enabled",
-            Self::LoginStartupStale => "ui.login_startup_stale",
-            Self::LoginStartupRequiresApproval => "ui.login_startup_requires_approval",
-            Self::LoginStartupNotFound => "ui.login_startup_not_found",
-            Self::LoginStartupUnsupportedPlatform => "ui.login_startup_unsupported_platform",
+            Self::OpenAtLogin => "settings.application.open_at_login.label",
+            Self::DecreaseOverlayScale => "shortcuts.actions.decrease_overlay_scale",
+            Self::IncreaseOverlayScale => "shortcuts.actions.increase_overlay_scale",
+            Self::DecreaseOverlayOpacity => "shortcuts.actions.decrease_overlay_opacity",
+            Self::IncreaseOverlayOpacity => "shortcuts.actions.increase_overlay_opacity",
+            Self::DecreaseMaximumFps => "shortcuts.actions.decrease_maximum_fps",
+            Self::IncreaseMaximumFps => "shortcuts.actions.increase_maximum_fps",
+            Self::DecreaseReleaseFallbackTimeout => {
+                "shortcuts.actions.decrease_release_fallback_timeout"
+            }
+            Self::IncreaseReleaseFallbackTimeout => {
+                "shortcuts.actions.increase_release_fallback_timeout"
+            }
+            Self::CheckingLoginStartup => "settings.application.startup.checking",
+            Self::LoginStartupStatusUnavailable => "settings.application.startup.unavailable",
+            Self::LoginStartupDisabled => "settings.application.startup.disabled",
+            Self::LoginStartupEnabled => "settings.application.startup.enabled",
+            Self::LoginStartupStale => "settings.application.startup.stale",
+            Self::LoginStartupRequiresApproval => "settings.application.startup.requires_approval",
+            Self::LoginStartupNotFound => "settings.application.startup.not_found",
+            Self::LoginStartupUnsupportedPlatform => {
+                "settings.application.startup.unsupported_platform"
+            }
             Self::LoginStartupUnsupportedOperatingSystem => {
-                "ui.login_startup_unsupported_operating_system"
+                "settings.application.startup.unsupported_os"
             }
-            Self::LoginStartupUnsupportedBuild => "ui.login_startup_unsupported_build",
-            Self::Refreshing => "ui.refreshing",
-            Self::Saving => "ui.saving",
-            Self::Connecting => "ui.connecting",
-            Self::Starting => "ui.starting",
-            Self::Ready => "ui.ready",
-            Self::Degraded => "ui.degraded",
-            Self::Stopped => "ui.stopped",
-            Self::Refresh => "ui.refresh",
-            Self::Quit => "ui.quit",
+            Self::LoginStartupUnsupportedBuild => "settings.application.startup.unsupported_build",
+            Self::Refreshing => "status.refreshing",
+            Self::Saving => "status.saving",
+            Self::Connecting => "status.connecting",
+            Self::Starting => "status.starting",
+            Self::Ready => "status.ready",
+            Self::Degraded => "status.degraded",
+            Self::Stopped => "status.stopped",
+            Self::Refresh => "actions.refresh",
+            Self::Quit => "actions.quit",
         }
     }
 }
@@ -518,46 +549,55 @@ pub(super) fn model_availability_summary(
             SettingsModelOrigin::Installed => UiText::Installed,
         },
     );
-    let active = active.then(|| text(language, UiText::Active));
-    match language {
-        SettingsLanguage::ChineseSimplified => format!(
-            "{origin}{} · {texture_count} 个纹理 · {expression_count} 个表情 · {motion_count} 个动作",
-            active.map_or(String::new(), |active| format!(" · {active}"))
-        ),
-        SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates => format!(
-            "{origin}{} · {texture_count} textures · {expression_count} expressions · {motion_count} motions",
-            active.map_or(String::new(), |active| format!(" · {active}"))
-        ),
-    }
+    let key = if active {
+        "models.summary.active"
+    } else {
+        "models.summary.inactive"
+    };
+    bongocat_i18n::format_text(
+        locale(language),
+        key,
+        &[
+            ("origin", origin.to_owned()),
+            ("texture_count", texture_count.to_string()),
+            ("expression_count", expression_count.to_string()),
+            ("motion_count", motion_count.to_string()),
+            ("active", text(language, UiText::Active).to_owned()),
+        ],
+    )
 }
 
 pub(super) fn diagnostics_export_status(
     language: SettingsLanguage,
     status: Option<SettingsDiagnosticsExportStatus>,
 ) -> String {
-    match (language, status) {
-        (SettingsLanguage::ChineseSimplified, Some(status)) => format!(
-            "报告 v{}：{} 字节 · 预览包 v{}：{} 个条目，{} 字节 · 跳过 {} 个来源日志",
-            status.format_version,
-            status.bytes_written,
-            status.preview_bundle_format_version,
-            status.preview_bundle_entry_count,
-            status.preview_bundle_bytes_written,
-            status.preview_bundle_skipped_source_files,
-        ),
-        (SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates, Some(status)) => {
-            format!(
-                "Report v{}: {} bytes · Preview bundle v{}: {} entries, {} bytes · Skipped {} source logs",
-                status.format_version,
-                status.bytes_written,
-                status.preview_bundle_format_version,
-                status.preview_bundle_entry_count,
-                status.preview_bundle_bytes_written,
-                status.preview_bundle_skipped_source_files,
-            )
-        }
-        (_, None) => text(language, UiText::NoReportExported).to_owned(),
-    }
+    let Some(status) = status else {
+        return text(language, UiText::NoReportExported).to_owned();
+    };
+    bongocat_i18n::format_text(
+        locale(language),
+        "diagnostics.export.summary",
+        &[
+            ("format_version", status.format_version.to_string()),
+            ("bytes_written", status.bytes_written.to_string()),
+            (
+                "preview_bundle_format_version",
+                status.preview_bundle_format_version.to_string(),
+            ),
+            (
+                "preview_bundle_entry_count",
+                status.preview_bundle_entry_count.to_string(),
+            ),
+            (
+                "preview_bundle_bytes_written",
+                status.preview_bundle_bytes_written.to_string(),
+            ),
+            (
+                "skipped_source_files",
+                status.preview_bundle_skipped_source_files.to_string(),
+            ),
+        ],
+    )
 }
 
 pub(super) fn build_info_detail(
@@ -577,12 +617,11 @@ pub(super) fn build_info_detail(
 }
 
 pub(super) fn input_service_attempts(language: SettingsLanguage, attempts: u64) -> String {
-    match language {
-        SettingsLanguage::ChineseSimplified => format!("启动尝试：{attempts}"),
-        SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates => {
-            format!("Start attempts: {attempts}")
-        }
-    }
+    bongocat_i18n::format_text(
+        locale(language),
+        "diagnostics.input.start_attempts",
+        &[("attempts", attempts.to_string())],
+    )
 }
 
 pub(super) fn runtime_command_failure(
@@ -590,36 +629,44 @@ pub(super) fn runtime_command_failure(
     error: &str,
     sequence: u64,
 ) -> String {
-    match language {
-        SettingsLanguage::ChineseSimplified => format!("{error} · 命令 #{sequence}"),
-        SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates => {
-            format!("{error} · command #{sequence}")
-        }
-    }
+    bongocat_i18n::format_text(
+        locale(language),
+        "diagnostics.runtime.command_failure",
+        &[
+            ("error", error.to_owned()),
+            ("sequence", sequence.to_string()),
+        ],
+    )
 }
 
 pub(super) fn runtime_shutdown_failures(language: SettingsLanguage, count: u64) -> String {
-    let locale = match language {
-        SettingsLanguage::ChineseSimplified => "zh-CN",
-        SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates => "en-US",
-    };
-    bongocat_i18n::count_text(locale, UiText::RuntimeShutdownFailures.key(), count)
+    bongocat_i18n::count_text(
+        locale(language),
+        UiText::RuntimeShutdownFailures.key(),
+        count,
+    )
 }
 
 pub(super) fn backup_candidates_checked(
     language: SettingsLanguage,
     checked_backups: u32,
 ) -> String {
-    match language {
-        SettingsLanguage::ChineseSimplified => {
-            format!("已检查 {checked_backups} 个备份候选")
-        }
-        SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates => format!(
-            "{} backup candidate{} checked",
-            checked_backups,
-            if checked_backups == 1 { "" } else { "s" }
-        ),
-    }
+    bongocat_i18n::format_text(
+        locale(language),
+        "diagnostics.configuration.backup_candidates",
+        &[
+            ("count", checked_backups.to_string()),
+            (
+                "plural_suffix",
+                if !matches!(language, SettingsLanguage::ChineseSimplified) && checked_backups != 1
+                {
+                    "s".to_owned()
+                } else {
+                    String::new()
+                },
+            ),
+        ],
+    )
 }
 
 pub(super) fn recovered_backup_detail(
@@ -627,17 +674,24 @@ pub(super) fn recovered_backup_detail(
     schema_version: u32,
     skipped_newer_backups: u32,
 ) -> String {
-    match language {
-        SettingsLanguage::ChineseSimplified => {
-            format!("Schema v{schema_version} · 已跳过 {skipped_newer_backups} 个较新的备份")
-        }
-        SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates => format!(
-            "Schema v{} · {} newer backup{} skipped",
-            schema_version,
-            skipped_newer_backups,
-            if skipped_newer_backups == 1 { "" } else { "s" }
-        ),
-    }
+    bongocat_i18n::format_text(
+        locale(language),
+        "diagnostics.configuration.recovered_backup_detail",
+        &[
+            ("schema_version", schema_version.to_string()),
+            ("count", skipped_newer_backups.to_string()),
+            (
+                "plural_suffix",
+                if !matches!(language, SettingsLanguage::ChineseSimplified)
+                    && skipped_newer_backups != 1
+                {
+                    "s".to_owned()
+                } else {
+                    String::new()
+                },
+            ),
+        ],
+    )
 }
 
 pub(super) fn shortcut_accessibility_label(
@@ -645,12 +699,11 @@ pub(super) fn shortcut_accessibility_label(
     target: &ShortcutCaptureTarget,
 ) -> String {
     let name = shortcut_target_name(language, target);
-    match language {
-        SettingsLanguage::ChineseSimplified => format!("为{name}录入快捷键"),
-        SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates => {
-            format!("Capture shortcut for {name}")
-        }
-    }
+    bongocat_i18n::format_text(
+        locale(language),
+        "shortcuts.capture.accessibility",
+        &[("name", name)],
+    )
 }
 
 pub(super) fn shortcut_target_name(
@@ -659,19 +712,15 @@ pub(super) fn shortcut_target_name(
 ) -> String {
     match target {
         ShortcutCaptureTarget::Command(command) => {
-            let values = match command.as_str() {
-                "toggle_overlay" => ["Show or hide model window", "显示或隐藏模型窗口"],
-                "open_settings" => ["Show or hide settings window", "显示或隐藏设置窗口"],
-                "toggle_mirror" => ["Toggle model mirror", "切换模型镜像"],
-                "toggle_click_through" => ["Toggle click-through", "切换鼠标穿透"],
-                "toggle_always_on_top" => ["Toggle always on top", "切换始终置顶"],
+            let key = match command.as_str() {
+                "toggle_overlay" => "shortcuts.command_names.toggle_overlay",
+                "open_settings" => "shortcuts.command_names.open_settings",
+                "toggle_mirror" => "shortcuts.command_names.toggle_mirror",
+                "toggle_click_through" => "shortcuts.command_names.toggle_click_through",
+                "toggle_always_on_top" => "shortcuts.command_names.toggle_always_on_top",
                 _ => return command.clone(),
             };
-            values[match language {
-                SettingsLanguage::ChineseSimplified => 1,
-                SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates => 0,
-            }]
-            .to_owned()
+            bongocat_i18n::text(locale(language), key).to_owned()
         }
         ShortcutCaptureTarget::ModelBehavior {
             model_id,
@@ -684,64 +733,34 @@ pub(super) fn input_diagnostic_metrics(
     language: SettingsLanguage,
     diagnostics: SettingsInputDiagnostics,
 ) -> [(&'static str, u64); 26] {
-    let labels = match language {
-        SettingsLanguage::ChineseSimplified => [
-            "按下的按键",
-            "按下的鼠标按键",
-            "按下的手柄按键",
-            "已连接的手柄",
-            "捕获的按下事件",
-            "捕获的释放事件",
-            "校正释放",
-            "兜底释放",
-            "重置释放",
-            "重复按下",
-            "未匹配的释放",
-            "无效来源",
-            "重置次数",
-            "序列缺口",
-            "缺失事件",
-            "重复事件",
-            "乱序事件",
-            "非单调时间戳",
-            "手柄连接",
-            "手柄断开",
-            "过期手柄事件",
-            "断开时释放",
-            "入队事件",
-            "队列溢出",
-            "溢出恢复",
-            "关闭后拒绝",
-        ],
-        SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates => [
-            "Pressed keys",
-            "Pressed mouse buttons",
-            "Pressed gamepad buttons",
-            "Connected gamepads",
-            "Captured presses",
-            "Captured releases",
-            "Reconciled releases",
-            "Fallback releases",
-            "Released by reset",
-            "Duplicate presses",
-            "Unmatched releases",
-            "Invalid sources",
-            "Resets",
-            "Sequence gaps",
-            "Missing events",
-            "Duplicate events",
-            "Out-of-order events",
-            "Non-monotonic timestamps",
-            "Gamepad connections",
-            "Gamepad disconnections",
-            "Stale gamepad events",
-            "Released on disconnect",
-            "Events enqueued",
-            "Queue overflows",
-            "Overflow recoveries",
-            "Rejected after shutdown",
-        ],
-    };
+    let labels = [
+        "pressed_keys",
+        "pressed_mouse_buttons",
+        "pressed_gamepad_buttons",
+        "connected_gamepads",
+        "captured_presses",
+        "captured_releases",
+        "reconciled_releases",
+        "fallback_releases",
+        "reset_releases",
+        "duplicate_presses",
+        "unmatched_releases",
+        "invalid_sources",
+        "resets",
+        "sequence_gaps",
+        "missing_events",
+        "duplicate_events",
+        "out_of_order_events",
+        "non_monotonic_timestamps",
+        "gamepad_connections",
+        "gamepad_disconnections",
+        "stale_gamepad_events",
+        "released_on_disconnect",
+        "events_enqueued",
+        "queue_overflows",
+        "overflow_recoveries",
+        "rejected_after_shutdown",
+    ];
     let values = [
         diagnostics.pressed_key_count as u64,
         diagnostics.pressed_mouse_button_count as u64,
@@ -770,144 +789,70 @@ pub(super) fn input_diagnostic_metrics(
         diagnostics.transport_recovered_after_overflow,
         diagnostics.transport_runtime_stopped,
     ];
-    std::array::from_fn(|index| (labels[index], values[index]))
+    std::array::from_fn(|index| {
+        (
+            bongocat_i18n::text(
+                locale(language),
+                &format!("diagnostics.input.metrics.{}", labels[index]),
+            ),
+            values[index],
+        )
+    })
 }
 
 pub(super) fn settings_error(language: SettingsLanguage, error: SettingsError) -> &'static str {
-    let values = match error.code() {
-        SettingsErrorCode::ServiceUnavailable => {
-            ["settings service is unavailable", "设置服务不可用"]
-        }
-        SettingsErrorCode::SnapshotOutdated => [
-            "settings changed in the background; review the latest values and retry",
-            "设置已在后台更改；请检查最新值后重试",
-        ],
-        SettingsErrorCode::RuntimeUnavailable => {
-            ["runtime did not apply the setting", "运行时未应用此设置"]
-        }
-        SettingsErrorCode::InvalidMaximumFps => [
-            "maximum FPS must be between 15 and 240",
-            "最大帧率必须在 15 到 240 之间",
-        ],
-        SettingsErrorCode::InvalidReleaseFallbackTimeout => [
-            "key release fallback timeout must be between 0 and 60000 milliseconds",
-            "按键释放兜底超时必须在 0 到 60000 毫秒之间",
-        ],
-        SettingsErrorCode::InvalidGamepadAxisSettings => [
-            "gamepad dead-zone settings are out of range",
-            "手柄死区设置超出范围",
-        ],
-        SettingsErrorCode::InvalidShortcutBindings => [
-            "shortcut bindings are invalid or conflict",
-            "快捷键绑定无效或存在冲突",
-        ],
-        SettingsErrorCode::ConfigPersistFailed => ["setting could not be saved", "无法保存设置"],
-        SettingsErrorCode::ConfigPermissionDenied => [
-            "configuration storage is not writable; check permissions and retry",
-            "配置存储不可写；请检查权限后重试",
-        ],
-        SettingsErrorCode::ConfigStorageFull => [
-            "configuration storage is full; free space and retry",
-            "配置存储空间已满；请释放空间后重试",
-        ],
-        SettingsErrorCode::ConfigTargetOccupied => [
-            "configuration storage is blocked; remove the blocking item and retry",
-            "配置存储位置被占用；请移除占用项后重试",
-        ],
-        SettingsErrorCode::BackupLocationOpenFailed => [
-            "configuration backup folder could not be opened",
-            "无法打开配置备份文件夹",
-        ],
-        SettingsErrorCode::ConfigurationRecoveryRequired => [
-            "configuration must be recovered before this action",
-            "执行此操作前必须恢复配置",
-        ],
-        SettingsErrorCode::ConfigurationRecoveryFailed => [
-            "default configuration could not be restored",
-            "无法恢复默认配置",
-        ],
-        SettingsErrorCode::ModelUnavailable => ["selected model is unavailable", "所选模型不可用"],
-        SettingsErrorCode::ModelSwitchFailed => {
-            ["selected model could not be activated", "无法启用所选模型"]
-        }
-        SettingsErrorCode::ModelBehaviorPreviewUnavailable => [
-            "the selected behavior is not available for the active model",
-            "所选行为不适用于当前模型",
-        ],
-        SettingsErrorCode::ModelBehaviorPreviewFailed => [
-            "the selected behavior could not be previewed",
-            "无法预览所选行为",
-        ],
-        SettingsErrorCode::InvalidModelId => ["model id is invalid", "模型 ID 无效"],
-        SettingsErrorCode::ModelAlreadyInstalled => {
-            ["model id is already installed", "该模型 ID 已安装"]
-        }
-        SettingsErrorCode::ModelImportInvalidPackage => ["model package is invalid", "模型包无效"],
-        SettingsErrorCode::ModelImportSourceInvalid => {
-            ["model source cannot be imported", "无法导入模型来源"]
-        }
-        SettingsErrorCode::ModelImportSourceChanged => [
-            "model source changed during import",
-            "模型来源在导入期间发生变化",
-        ],
-        SettingsErrorCode::ModelImportSourceUnsupported => [
-            "model source contains an unsupported entry",
-            "模型来源包含不支持的项目",
-        ],
-        SettingsErrorCode::ModelImportCancelled => ["model import was cancelled", "模型导入已取消"],
-        SettingsErrorCode::ModelStoreBusy => ["model storage is busy", "模型存储正忙"],
-        SettingsErrorCode::ModelImportFailed => ["model could not be imported", "无法导入模型"],
-        SettingsErrorCode::PresetModelCannotBeDeleted => {
-            ["preset model cannot be deleted", "无法删除预置模型"]
-        }
-        SettingsErrorCode::SelectedModelCannotBeDeleted => [
-            "selected model must be replaced before deletion",
-            "删除当前模型前必须先切换到其他模型",
-        ],
-        SettingsErrorCode::ModelNotInstalled => {
-            ["installed model was not found", "找不到已安装模型"]
-        }
-        SettingsErrorCode::ModelDeleteFailed => {
-            ["installed model could not be deleted", "无法删除已安装模型"]
-        }
-        SettingsErrorCode::DiagnosticsExportFailed => {
-            ["diagnostics could not be exported", "无法导出诊断信息"]
-        }
-        SettingsErrorCode::StartupItemUpdateFailed => [
-            "startup setting could not be updated",
-            "无法更新登录启动设置",
-        ],
-        SettingsErrorCode::StatusIconUpdateFailed => [
-            "status icon visibility could not be updated",
-            "无法更新状态图标可见性",
-        ],
-        SettingsErrorCode::TaskbarIconUpdateFailed => [
-            "taskbar icon visibility could not be updated",
-            "无法更新任务栏图标可见性",
-        ],
-        SettingsErrorCode::WindowUnavailable => {
-            ["settings window could not be hidden", "无法隐藏设置窗口"]
-        }
-        SettingsErrorCode::StatePersistFailed => {
-            ["window layout could not be saved", "无法保存窗口布局"]
-        }
-        SettingsErrorCode::ShutdownFailed => {
-            ["application shutdown did not complete", "应用未能完成关闭"]
-        }
+    let suffix = match error.code() {
+        SettingsErrorCode::ServiceUnavailable => "service_unavailable",
+        SettingsErrorCode::SnapshotOutdated => "snapshot_outdated",
+        SettingsErrorCode::RuntimeUnavailable => "runtime_unavailable",
+        SettingsErrorCode::InvalidMaximumFps => "invalid_maximum_fps",
+        SettingsErrorCode::InvalidReleaseFallbackTimeout => "invalid_release_fallback_timeout",
+        SettingsErrorCode::InvalidGamepadAxisSettings => "invalid_gamepad_axis_settings",
+        SettingsErrorCode::InvalidShortcutBindings => "invalid_shortcut_bindings",
+        SettingsErrorCode::ConfigPersistFailed => "config_persist_failed",
+        SettingsErrorCode::ConfigPermissionDenied => "config_permission_denied",
+        SettingsErrorCode::ConfigStorageFull => "config_storage_full",
+        SettingsErrorCode::ConfigTargetOccupied => "config_target_occupied",
+        SettingsErrorCode::BackupLocationOpenFailed => "backup_location_open_failed",
+        SettingsErrorCode::ConfigurationRecoveryRequired => "configuration_recovery_required",
+        SettingsErrorCode::ConfigurationRecoveryFailed => "configuration_recovery_failed",
+        SettingsErrorCode::ModelUnavailable => "model_unavailable",
+        SettingsErrorCode::ModelSwitchFailed => "model_switch_failed",
+        SettingsErrorCode::ModelBehaviorPreviewUnavailable => "model_behavior_preview_unavailable",
+        SettingsErrorCode::ModelBehaviorPreviewFailed => "model_behavior_preview_failed",
+        SettingsErrorCode::InvalidModelId => "invalid_model_id",
+        SettingsErrorCode::ModelAlreadyInstalled => "model_already_installed",
+        SettingsErrorCode::ModelImportInvalidPackage => "model_import_invalid_package",
+        SettingsErrorCode::ModelImportSourceInvalid => "model_import_source_invalid",
+        SettingsErrorCode::ModelImportSourceChanged => "model_import_source_changed",
+        SettingsErrorCode::ModelImportSourceUnsupported => "model_import_source_unsupported",
+        SettingsErrorCode::ModelImportCancelled => "model_import_cancelled",
+        SettingsErrorCode::ModelStoreBusy => "model_store_busy",
+        SettingsErrorCode::ModelImportFailed => "model_import_failed",
+        SettingsErrorCode::PresetModelCannotBeDeleted => "preset_model_cannot_be_deleted",
+        SettingsErrorCode::SelectedModelCannotBeDeleted => "selected_model_cannot_be_deleted",
+        SettingsErrorCode::ModelNotInstalled => "model_not_installed",
+        SettingsErrorCode::ModelDeleteFailed => "model_delete_failed",
+        SettingsErrorCode::DiagnosticsExportFailed => "diagnostics_export_failed",
+        SettingsErrorCode::StartupItemUpdateFailed => "startup_item_update_failed",
+        SettingsErrorCode::StatusIconUpdateFailed => "status_icon_update_failed",
+        SettingsErrorCode::TaskbarIconUpdateFailed => "taskbar_icon_update_failed",
+        SettingsErrorCode::WindowUnavailable => "window_unavailable",
+        SettingsErrorCode::StatePersistFailed => "state_persist_failed",
+        SettingsErrorCode::ShutdownFailed => "shutdown_failed",
     };
-    values[match language {
-        SettingsLanguage::ChineseSimplified => 1,
-        SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates => 0,
-    }]
+    let key = format!("errors.settings.{suffix}");
+    // The catalog is compile-time embedded; the returned string is leaked and
+    // cached by the i18n facade just like every other UI message.
+    bongocat_i18n::text(locale(language), &key)
 }
 
 pub(super) fn shortcut_conflict_message(language: SettingsLanguage, shortcut: &str) -> String {
-    match language {
-        SettingsLanguage::ChineseSimplified => format!("{shortcut} 已被其他快捷键占用"),
-        SettingsLanguage::EnglishUnitedStates | SettingsLanguage::System => {
-            format!("{shortcut} is already assigned to another shortcut")
-        }
-    }
+    bongocat_i18n::format_text(
+        locale(language),
+        "shortcuts.errors.conflict",
+        &[("shortcut", shortcut.to_owned())],
+    )
 }
 
 pub(super) fn model_invalid_summary(
@@ -922,11 +867,28 @@ pub(super) fn model_invalid_summary(
             SettingsModelOrigin::Installed => UiText::Installed,
         },
     );
-    format!("{origin} · {diagnostic}")
+    bongocat_i18n::format_text(
+        locale(language),
+        "models.invalid_summary",
+        &[
+            ("origin", origin.to_owned()),
+            ("diagnostic", diagnostic.to_owned()),
+        ],
+    )
 }
 
 pub(super) fn model_delete_confirmation(language: SettingsLanguage, status: &str) -> String {
-    format!("{status} · {}", text(language, UiText::ConfirmDeletion))
+    bongocat_i18n::format_text(
+        locale(language),
+        "models.delete_confirmation",
+        &[
+            ("status", status.to_owned()),
+            (
+                "confirm_deletion",
+                text(language, UiText::ConfirmDeletion).to_owned(),
+            ),
+        ],
+    )
 }
 
 pub(super) fn model_import_progress(
@@ -935,25 +897,26 @@ pub(super) fn model_import_progress(
     files_copied: u64,
     bytes_copied: u64,
 ) -> String {
-    match language {
-        SettingsLanguage::ChineseSimplified => {
-            format!("{stage} · {files_copied} 个文件 · {bytes_copied} 字节")
-        }
-        SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates => {
-            format!("{stage} · {files_copied} files · {bytes_copied} bytes")
-        }
-    }
+    bongocat_i18n::format_text(
+        locale(language),
+        "models.import.progress.detail",
+        &[
+            ("stage", stage.to_owned()),
+            ("files_copied", files_copied.to_string()),
+            ("bytes_copied", bytes_copied.to_string()),
+        ],
+    )
 }
 
 pub(super) fn runtime_status(language: SettingsLanguage, health: &str, revision: u64) -> String {
-    match language {
-        SettingsLanguage::ChineseSimplified => {
-            format!("运行状态：{health} - 修订 {revision}")
-        }
-        SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates => {
-            format!("Runtime {health} - revision {revision}")
-        }
-    }
+    bongocat_i18n::format_text(
+        locale(language),
+        "settings.runtime.status_detail",
+        &[
+            ("health", health.to_owned()),
+            ("revision", revision.to_string()),
+        ],
+    )
 }
 
 #[cfg(test)]

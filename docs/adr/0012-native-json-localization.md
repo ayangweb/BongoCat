@@ -6,11 +6,14 @@
 
 Native Rewrite 使用 `rust-i18n = 4.2.2` 加载编译期嵌入的 JSON 语言资源。应用层资源由独立的 `bongocat-i18n` crate 管理，默认语言为 `en-US`，当前首批迁移语言为 `zh-CN`。
 
-语言文件放在 `native/crates/bongocat-i18n/locales/`，每种语言一个 JSON 文件，使用 `_version: 1` 和扁平的 `module.key` key。Rust UI 只保留稳定的 key 映射，不内嵌翻译文本。
+语言文件放在 `native/crates/bongocat-i18n/locales/`，每种语言一个 JSON 文件，使用 `_version: 1`
+和真正嵌套的领域结构。`rust-i18n` 在编译期将嵌套路径解析为查找 key；JSON 源文件本身不得使用
+点号分隔的扁平 key。Rust UI 只保留稳定的领域路径映射，不内嵌翻译文本。
 
 ## 约束
 
-- 翻译 key 使用小写 `snake_case`，按 `ui.*`、`runtime.*`、`models.*` 等领域命名。
+- 翻译 key 使用小写 `snake_case`，按 `navigation`、`settings`、`models`、`shortcuts`、
+  `diagnostics`、`about`、`actions`、`status` 和 `errors` 等领域分层；字段名必须表达具体上下文。
 - 插值使用 `rust-i18n` 的 `%{name}` 语法；所有语言必须保持相同的占位符集合。
 - 找不到语言或 key 时回退到 `en-US`；`system` 在配置/平台层先解析为受支持语言。
 - GPUI 语言切换通过已有带 revision 的设置 snapshot 触发重绘；本地化查询不进入 overlay frame loop。
