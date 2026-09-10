@@ -1,9 +1,0 @@
-{
-  "git.ignoreLimitWarning": true,
-  "i18n-ally.localesPaths": [
-    "src/locales",
-    "native/crates/bongocat-i18n/locales",
-    "native/crates/bongocat-ui/locales",
-    "src/pages/preference/components/general/components/language"
-  ]
-}
