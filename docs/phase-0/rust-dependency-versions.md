@@ -6,9 +6,8 @@ Rust：`cargo 1.97.1`、`rustc 1.97.1`
 
 ## Scope
 
-本次审计覆盖正式 `native/` workspace，以及 12 个 `spikes/*`/2 个 `tools/*` 独立 workspace，
-当前共 15 个 workspace。仓库根 workspace、`src-tauri/` 和其插件属于历史行为对照，
-不是 Native Rewrite 的依赖图；Phase 0 不借依赖升级修改历史应用。
+本次审计覆盖正式 `native/` workspace，以及 `spikes/*` 和 `tools/*` 下列出的独立 workspace。
+历史 Vue/Tauri workspace 已退役至远端 `pre-refactor-tauri` 分支，不属于 Native Rewrite 的依赖图。
 
 版本来源使用 crates.io stable release：
 
@@ -157,7 +156,7 @@ stable 发布保持阻塞，详见 `future-incompatibility.md`。
 
 新增依赖时必须先核对当日最新稳定版并选用该版本。若最新版本与已确认 toolchain、target、许可证或安全边界冲突，提交必须同时记录实际选择、阻塞原因、上游解除条件和替换成本。新增或修改 manifest 后必须更新对应 lockfile，运行 license/source policy、format、Clippy、test 和目标平台 build。
 
-`.github/dependabot.yml` 每周扫描这 15 个独立 workspace，并把更新目标固定为 `next`。扫描不包含历史根 workspace 和 `src-tauri`，避免把行为对照混入 Native Rewrite 依赖 PR。自动 PR 仍必须通过双平台 CI 和人工 API/许可证评审，不能因版本号更新而自动合并。
+`.github/dependabot.yml` 每周扫描当前 Native 和独立 spike/tool workspace，并把更新目标固定为 `next`。自动 PR 仍必须通过双平台 CI 和人工 API/许可证评审，不能因版本号更新而自动合并。
 
 版本最新不替代依赖审查。维护状态、许可证、unsafe 面积、平台覆盖和公共 API 泄漏仍按 `AGENTS.md` 的依赖规则独立验收。
 

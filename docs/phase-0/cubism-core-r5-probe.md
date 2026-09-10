@@ -58,7 +58,7 @@ pointer 不离开单次 `inspect_model` 调用。
 | gamepad  |   3 |         42 |    14 |        25 |      268 |     918 |         5 |          0 |
 
 三者 canvas 均为 `612 x 354`、origin `306 x 177`、pixels-per-unit `354`；基础
-count 与 `shared/fixtures/model-fixtures/legacy-core-baseline.json` 一致。旧预置 Moc
+count 与已记录的历史 Web Core 观察一致。旧预置 Moc
 不含 r.5 offscreen，因此本次只证明零长度 offscreen API 路径正确，不能替代一个
 具有 enhanced rendering/offscreen 数据的授权 fixture。
 

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 
-# Keep this probe independent from the legacy root Tauri workspace.
+# Keep this probe independent from the Native product workspace.
 [workspace]
 
 [dependencies]

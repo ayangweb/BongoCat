@@ -66,11 +66,7 @@
 
 ## 主要源码证据
 
-- 窗口、菜单和持久状态：`src/pages/main/index.vue`、`src/composables/useWindowState.ts`、`src/composables/useAppMenu.ts`、`src-tauri/src/plugins/window/`。
-- 键鼠和手柄：`src/composables/useDevice.ts`、`src/composables/useGamepad.ts`、`src/composables/useModel.ts`、`src-tauri/src/core/device.rs`、`src-tauri/src/core/gamepad.rs`。
-- 模型和行为：`src/stores/model.ts`、`src/pages/preference/components/model/`、`src/utils/live2d.ts` 和三个预置资源目录。
-- 设置与系统集成：`src/pages/preference/`、`src/composables/useTray.ts`、`src/components/update-app/index.vue`、`src-tauri/src/lib.rs`。
-- 应用和发布配置：`src/stores/`、`src/locales/`、`src-tauri/tauri.conf.json` 及平台覆盖配置。
+- 窗口、菜单、输入、手柄、模型、设置、系统集成和发布配置：远端 [`pre-refactor-tauri`](https://github.com/ayangweb/BongoCat/tree/pre-refactor-tauri) 分支的对应实现。
 
 这些路径固定的是基线 commit 中的静态事实；历史源码后续变化不自动改变本矩阵，任何范围变化必须显式评审并更新本文件。
 

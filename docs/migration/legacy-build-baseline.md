@@ -2,7 +2,10 @@
 
 This record freezes the last independently reproducible legacy application
 build. It is behavior evidence only; the Native Rewrite does not depend on the
-legacy workspace, its configuration, or its generated artifacts.
+legacy workspace, its configuration, or its generated artifacts. The source and
+its build inputs are retained in the remote
+[`pre-refactor-tauri`](https://github.com/ayangweb/BongoCat/tree/pre-refactor-tauri) branch,
+not in this worktree.
 
 ## Environment
 
@@ -18,7 +21,7 @@ legacy workspace, its configuration, or its generated artifacts.
 
 ## Reproduction
 
-From the repository root, with the checked-in `pnpm-lock.yaml`:
+From the remote `pre-refactor-tauri` checkout, with its checked-in `pnpm-lock.yaml`:
 
 ```text
 pnpm build

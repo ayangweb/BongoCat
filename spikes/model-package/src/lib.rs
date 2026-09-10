@@ -2603,7 +2603,7 @@ mod tests {
         let actual = ["standard", "keyboard", "gamepad"]
             .into_iter()
             .map(|mode| {
-                let package = root.join("src-tauri/assets/models").join(mode);
+                let package = root.join("native/resources/models").join(mode);
                 let index = inspect_model_package(package, ModelPackageLimits::default())
                     .unwrap_or_else(|error| panic!("inspect {mode}: {error}"));
                 (mode.to_owned(), index)
@@ -2976,7 +2976,7 @@ mod tests {
 
     #[test]
     fn all_preset_motion_and_expression_files_are_strongly_parsed() {
-        let root = repository_root().join("src-tauri/assets/models");
+        let root = repository_root().join("native/resources/models");
         let mut motion_files = 0usize;
         let mut motion_summary = MotionSummary::default();
         let mut expression_files = 0usize;

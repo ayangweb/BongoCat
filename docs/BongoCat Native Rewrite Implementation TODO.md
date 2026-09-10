@@ -103,7 +103,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     记录模型装配、更新顺序、纹理/alpha、输入模式和窗口行为的查阅入口；该仓库
     只作为行为证据，不进入 Native workspace 依赖图。
 - [x] 确认旧 Vue/Tauri 应用仍可构建和运行，保存命令与产物信息。
-  - 验收证据（2026-09-06）：macOS 26.5.2 arm64 使用仓库锁定的 `pnpm-lock.yaml` 运行
+  - 验收证据（2026-09-06）：macOS 26.5.2 arm64 使用远端 `pre-refactor-tauri` 分支锁定的 `pnpm-lock.yaml` 运行
     `pnpm build` 与 `pnpm tauri build --debug --bundles app` 成功；Vite 完成 4,406 个模块的
     production bundle，`dist/` 生成 18 个资源文件，Tauri 编译并打包
     `target/debug/bundle/macos/BongoCat.app`、tar.gz 与签名文件。直接启动
@@ -148,13 +148,13 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 固定 JSON `snake_case` 命名规则和首版领域字段命名基线。
 - [x] 固定 Bundle ID `com.ayangweb.bongo-cat`。
 - [x] 定义 Development/Production 双存储根；schema 和内部相对结构保持一致。
-- [x] 保存匿名化旧配置样本和只读 inspector 作为历史参考，不接入生产配置路径。
+- [x] 将旧配置考古留在远端 `pre-refactor-tauri` 分支，不接入生产配置路径。
 - [x] 为 standard、keyboard、gamepad 预置模型生成文件清单和 hash。
 - [x] 建立缺文件、损坏 JSON、非 ASCII 路径、超大纹理等模型 fixture。
 - [x] 记录 model3、moc、texture、motion、expression、physics、pose、cdi 和音频用法。
 - [x] 记录 background、cover、left-keys、right-keys 的实际语义。
 
-状态（2026-08-28）：ADR-008 和 `shared/config/native-config-contract.md` 已冻结应用身份、环境隔离与新字段命名。旧配置兼容已移出产品范围；此前的合成 fixture 与 `tools/legacy-config-inspector/` 只保留为历史考古证据。六类合成模型包已覆盖缺失 moc、损坏 JSON、非 ASCII/空格路径、超大纹理、路径穿越和多 model3 入口，并由临时目录 validator 检查稳定诊断；Cubism 与 renderer 兼容仍待独立 spike。
+状态（2026-08-28）：ADR-008 和 `shared/config/native-config-contract.md` 已冻结应用身份、环境隔离与新字段命名。旧配置兼容已移出产品范围，历史考古仅保留在远端 `pre-refactor-tauri` 分支。六类合成模型包已覆盖缺失 moc、损坏 JSON、非 ASCII/空格路径、超大纹理、路径穿越和多 model3 入口，并由临时目录 validator 检查稳定诊断；Cubism 与 renderer 兼容仍待独立 spike。
 
 ### 1.4 行为 fixture
 
@@ -402,7 +402,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 2.1 目标目录
 
-- [x] `native/` 正式 Cargo workspace 仅包含新 Rust 应用和 crate；发布切换时再提升为根构建入口，迁移期不破坏历史 Tauri workspace。
+- [x] `native/` 是仅包含新 Rust 应用和 crate 的唯一产品 Cargo workspace；历史 Tauri workspace 已从当前工作树退役。
 - [x] 创建 bongocat-app：入口、服务装配和 shutdown。
   - 验收证据（2026-08-30）：正式双平台 `bongocat-app` 入口现装配配置、单一 runtime
     owner、预置模型与输入映射、平台输入、cursor latest-value transport 和 Metal/D3D11
@@ -1741,7 +1741,7 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     Tauri/Pinia 配置路径、字段 alias 或导入逻辑；`cargo tree --target all` 仅显示
     `tauri-winrt-notification` 作为 GPUI Linux notification 的传递平台依赖，不提供
     Tauri 应用或配置 API。源码中出现的 `old_pinia_field` 仅用于 strict config 拒绝测试，
-    `src-tauri/assets/models` 仅用于预置模型 parser 测试，均不进入发布运行时或日志路径。
+    `native/resources/models` 是预置模型 parser 测试与发布运行时共用的唯一资源根。
 - [x] Bundle ID 精确验证为 `com.ayangweb.bongo-cat`。
   - 验收证据（2026-09-05）：配置与存储根使用固定 `BUNDLE_ID` 常量；macOS 打包脚本在签名前
     读取 `CFBundleIdentifier` 并拒绝任何非预期值，release LaunchServices smoke 再次断言该值且
@@ -2173,14 +2173,19 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 
 ### 10.3 旧代码退役
 
-- [ ] 删除 Tauri、Vue、Pinia、Pixi.js 和 easy-live2d 依赖。
-- [ ] 删除 src/ Web 前端、src-tauri runtime 和旧 plugin。
-- [ ] 删除 rdev 和旧 device emit/listen 路径。
-- [ ] 删除 gilrs 高频 IPC 路径；保留与新手柄方案无关的有效 fork 修复需单独评估。
-- [ ] 删除旧不安全 updater 配置和宽泛 asset scope。
-- [ ] 删除旧模型复制代码前确认 Native 显式导入覆盖支持的模型格式。
-- [ ] 更新 README、开发环境、贡献指南和架构图。
-- [ ] 保留旧版本 tag/分支作为行为与模型资源参考，不重写历史。
+- [x] 删除 Tauri、Vue、Pinia、Pixi.js 和 easy-live2d 依赖。
+- [x] 删除 src/ Web 前端、src-tauri runtime 和旧 plugin。
+- [x] 删除 rdev 和旧 device emit/listen 路径。
+- [x] 删除 gilrs 高频 IPC 路径；保留与新手柄方案无关的有效 fork 修复需单独评估。
+- [x] 删除旧不安全 updater 配置和宽泛 asset scope。
+- [x] 删除旧模型复制代码前确认 Native 显式导入覆盖支持的模型格式。
+- [x] 更新 README、开发环境、贡献指南和架构图。
+- [x] 保留远端 `master` 和不可覆盖的 `pre-refactor-tauri` 分支作为历史行为与模型资源参考，不重写历史。
+
+状态（2026-09-10）：历史 Vue/Tauri workspace、Web 资源、Node manifests、旧 updater/release
+workflow、legacy config inspector 及其本地 fixture 已从当前工作树删除。Native 产品、测试与
+共享 preset fixture 统一使用 `native/resources/models`；`master` 与 `pre-refactor-tauri` 是
+唯一的历史源码参考。Phase 0、稳定性和发布验收门槛仍按各自未完成项跟踪，代码退役不代表 stable 发布就绪。
 
 ### 10.4 最终完成定义
 

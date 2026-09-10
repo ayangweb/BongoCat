@@ -48,7 +48,7 @@ for target in \
     check_release_dependency_tree "$target"
 done
 
-for manifest in native/Cargo.toml spikes/*/Cargo.toml tools/cubism-bindgen/Cargo.toml tools/legacy-config-inspector/Cargo.toml; do
+for manifest in native/Cargo.toml spikes/*/Cargo.toml tools/cubism-bindgen/Cargo.toml; do
     printf 'checking dependency policy: %s\n' "$manifest"
     cargo deny \
         --manifest-path "$manifest" \

@@ -2574,7 +2574,7 @@ mod tests {
     #[test]
     fn prepares_all_three_preset_packages() {
         for mode in ["standard", "keyboard", "gamepad"] {
-            let root = repository_root().join("src-tauri/assets/models").join(mode);
+            let root = repository_root().join("native/resources/models").join(mode);
             let prepared = PreparedModel::prepare(
                 ModelId::parse(mode).expect("model id"),
                 &root,

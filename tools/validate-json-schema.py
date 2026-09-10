@@ -137,14 +137,9 @@ def main() -> int:
         validate_schema(ROOT / "shared" / "update" / "manifest.schema.json"),
         "update",
     )
-    validate_file(
-        MODEL_FIXTURE_DIR / "legacy-core-baseline.json",
-        validate_schema(MODEL_FIXTURE_DIR / "legacy-core-baseline.schema.json"),
-    )
     print(
         f"validated {input_count} input, {expected_count} expected, and "
         f"{config_count} config, {state_count} state, and {update_count} update fixture(s), "
-        "plus the legacy Core baseline "
         "with Draft 2020-12"
     )
     return 0

@@ -43,11 +43,11 @@ safe wrapper、runtime 和资源 compositor 仍须按 Technical Design 以 Rust 
 
 遇到输入、模型、渲染、窗口或模式行为问题时：
 
-1. 先在当前 BongoCat legacy 源码、fixture 和该固定 Mver commit 中找到实际证据。
+1. 先在远端 `pre-refactor-tauri` 分支、fixture 和该固定 Mver commit 中找到实际证据。
 2. 区分“产品可见语义”和“旧技术实现细节”；只把前者写入当前 contract。
 3. 用当前平台 API、Rust owner 和强类型 runtime 边界独立实现。
 4. 为结论增加 fixture、snapshot、截图或实机复现，不能仅以“原版这样写”验收。
-5. 若 Mver、当前 legacy 行为和 Technical Design 冲突，Technical Design 是架构事实
+5. 若 Mver、远端 legacy 行为和 Technical Design 冲突，Technical Design 是架构事实
    来源；产品语义冲突写入 TODO/ADR 并明确选择，不静默猜测。
 
 禁止直接复制 C++ 业务实现、把 SFML/OpenGL/DirectInput 重新引入生产依赖，或用

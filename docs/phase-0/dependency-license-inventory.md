@@ -6,8 +6,7 @@
 ## Scope
 
 `deny.toml` 使用 `cargo-deny 0.20.2` 扫描正式 `native/Cargo.toml`、所有
-`spikes/*/Cargo.toml`、`tools/cubism-bindgen/Cargo.toml` 与
-`tools/legacy-config-inspector/Cargo.toml`，并以已提交的 lockfile 为输入。检查目标是：
+`spikes/*/Cargo.toml` 与 `tools/cubism-bindgen/Cargo.toml`，并以已提交的 lockfile 为输入。检查目标是：
 
 - `aarch64-apple-darwin`
 - `x86_64-apple-darwin`

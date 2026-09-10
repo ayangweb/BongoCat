@@ -74,11 +74,11 @@ Release 中的 `.sig` 是 Tauri updater 签名，用于旧更新协议的内容�
 
 ## 6. Historical Frontend Build Probe
 
-2026-09-01 在 macOS 26.5.2、仓库根目录以已安装 pnpm 依赖运行 `pnpm build` 成功。Vite
+2026-09-01 在 macOS 26.5.2、远端 `pre-refactor-tauri` checkout 以已安装 pnpm 依赖运行 `pnpm build` 成功。Vite
 production build 转换 4,406 个模块并生成 `dist/` 下 18 个资源文件；随后
 `scripts/buildIcon.ts` 成功生成 macOS、Windows、iOS 和 Android 图标变体。该 probe 只验证
-旧 Vue 前端的静态构建，不等同于 Tauri native 编译、安装或运行证据；后续需在隔离数据根中
-补充 Tauri desktop smoke，避免触碰用户生产配置。
+旧 Vue 前端的静态构建，不等同于 Tauri native 编译、安装或运行证据；历史应用的任何复核均在
+远端 `pre-refactor-tauri` checkout 的隔离数据根中进行。
 
 ## 7. Remaining Evidence
 

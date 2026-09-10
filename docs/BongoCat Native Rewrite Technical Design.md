@@ -265,9 +265,9 @@ BongoCat/
 
 crate 是编译和责任边界，不是动态库。首期不为目录美观建立空 crate；只有依赖方向或测试隔离确实需要时才拆分。
 
-迁移期将正式 workspace 放在 `native/`，使历史 Tauri workspace 和构建入口继续
-作为行为对照且不进入新依赖图。发布切换阶段再把 Native workspace 提升为仓库根
-构建入口；该路径差异不改变 crate 边界或产品架构。
+正式 workspace 位于 `native/`，是仓库中唯一的产品构建入口。历史 Vue/Tauri 实现仅在
+远端 `master` 和 `pre-refactor-tauri` 分支中保留，当前工作树不包含其源码、资源或构建入口；
+该路径安排不改变 crate 边界或产品架构。
 
 ## 8. Runtime 与并发
 

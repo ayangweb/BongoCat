@@ -17,7 +17,6 @@ updates:
       - /spikes/overlay-windows
       - /spikes/runtime-contract
       - /tools/cubism-bindgen
-      - /tools/legacy-config-inspector
     target-branch: next
     schedule:
       interval: weekly

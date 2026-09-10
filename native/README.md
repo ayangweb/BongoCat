@@ -1,7 +1,7 @@
 # BongoCat Native Workspace
 
-This is the formal Rust product workspace. The repository-root Cargo workspace remains the
-historical Tauri behavior reference until the release cutover phase.
+This is the formal Rust product workspace and the repository's only product build entry. Historical
+Vue/Tauri code is retained only in the remote `master` and `pre-refactor-tauri` branches.
 
 ## Build Environments
 

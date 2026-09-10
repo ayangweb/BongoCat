@@ -7,7 +7,7 @@
 
 ## 1. Audited Baseline
 
-旧应用在 `package.json` 声明 `easy-live2d ^0.4.4`，当前 `pnpm-lock.yaml` 固定为 `easy-live2d 0.4.4`、`pixi.js 8.18.1` 和 `@pixi/sound 6.0.1`。lockfile 中 easy-live2d tarball integrity 为：
+旧应用在远端 `pre-refactor-tauri` 分支的 `package.json` 中声明 `easy-live2d ^0.4.4`，其 `pnpm-lock.yaml` 固定为 `easy-live2d 0.4.4`、`pixi.js 8.18.1` 和 `@pixi/sound 6.0.1`。lockfile 中 easy-live2d tarball integrity 为：
 
 ```text
 sha512-3/PNWXng0vJcNm4y7pj6Rkux6KA6t/ZaSx50uVEDUpO9a50A+AGLRdG0E5vYKlFpWTOeZ/NxaL497CpXwJ20BQ==
@@ -96,11 +96,7 @@ BongoCat 显式关闭 easy-live2d 的 mouse follow，自己计算显示器归一
 
 ## 6. Source Evidence
 
-- BongoCat adapter：`src/utils/live2d.ts`。
-- 模型、鼠标与参数映射：`src/composables/useModel.ts`。
-- 手柄参数映射：`src/composables/useGamepad.ts`。
-- 模型切换、motion/expression 入口：`src/pages/main/index.vue`、`src/stores/model.ts`。
-- 依赖版本与 integrity：`package.json`、`pnpm-lock.yaml`。
-- easy-live2d installed metadata/API/source map：固定 hash 的 `node_modules/.../easy-live2d/package.json`、`dist/index.d.ts` 和 `dist/index.js.map`，仅作本地审计输入，不提交其内容。
+- 历史 BongoCat adapter、模型/手柄映射及模型切换入口：远端 [`pre-refactor-tauri`](https://github.com/ayangweb/BongoCat/tree/pre-refactor-tauri) 分支。
+- 依赖版本、integrity 和 easy-live2d package metadata/API/source map：同一远端分支的 `package.json`、`pnpm-lock.yaml` 与安装记录。
 
 完成本清单不表示 Cubism Native R5 已加载、Rust Framework 行为已授权或三个模型已渲染。它只冻结旧库迁移的产品兼容边界，后续 Core/Framework/renderer spike 仍须逐项提供真实证据。

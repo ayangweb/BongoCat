@@ -86,7 +86,7 @@ Phase 0 退出条件未满足前：
 
 - 不实现完整设置 UI。
 - 不批量迁移历史功能。
-- 不删除历史源码和行为对照。
+- 未经明确授权，不删除历史源码和行为对照；已授权退役时，将历史参考迁至受保护的远端分支并清理本地引用。
 - 不声称 Live2D、输入可靠性或双平台渲染已经完成。
 - 不为了目录美观提前创建大量空 crate。
 
@@ -201,7 +201,7 @@ Issue #47 的“收到按下但未收到释放”必须从架构上处理，不�
 - 新增或升级 crates.io 依赖前，必须使用 `cargo search <crate> --limit 1`、`cargo info <crate>` 或 crates.io API 核对当时最新的非 yanked 稳定版；默认选择该版本并精确 pin，不得为了少改 API 主动采用旧版。
 - 最新稳定版若不支持项目已确认的 Rust toolchain、target、许可证或安全边界，必须在相关 Phase 文档记录阻塞版本、原因、上游 owner 和解除条件；不能只在代码注释中静默降级。
 - 修改任一 manifest 后，对该独立 workspace 执行完整 `cargo update`，使 `Cargo.lock` 中所有满足上游约束的传递依赖同步到最新可解析版本；由上游精确/兼容约束阻止的旧传递版本必须可通过 `cargo tree --invert` 解释。
-- 依赖版本审计以 Native Rewrite workspace 和离线工具为范围，不得借机升级或修改仅作行为对照的历史 Tauri workspace。
+- 依赖版本审计以 Native Rewrite workspace 和离线工具为范围，不得引入历史 Tauri workspace 依赖。
 - 禁止 `version = "*"` 和未固定 revision 的 git dependency。
 - 不直接依赖 Zed 应用内部 crate 或私有 GPUI renderer 接口。
 - 新依赖必须检查许可证、最近维护情况、平台支持、unsafe 面积和停止维护后的替换成本。
@@ -302,13 +302,11 @@ cargo check --workspace --release
 
 ## 13. 历史源码处理
 
-当前仓库中的历史源码是行为考古和模型兼容的参考输入：
+历史源码是行为考古和模型兼容的参考输入，但在 TODO 10.3 完成后只保留于受保护的远端
+`master` 与 `pre-refactor-tauri` 分支：
 
-- 未到 TODO 的发布切换/退役阶段，不删除历史源码、资源或构建入口。
-- 不在历史实现上继续扩展 Native Rewrite 功能。
-- 可以添加最小诊断或导出工具来冻结行为，但必须与重构实现隔离。
-- 已有 legacy config inspector 只作为历史考古工具保留，不得接入产品启动、设置或发布依赖。
-- 读取历史配置和模型样本时不得原地修改。
+- 不在远端历史实现上继续扩展 Native Rewrite 功能，也不得将其重新接入当前工作树或产品依赖图。
+- 读取远端历史配置和模型样本时不得原地修改。
 - 对历史源码的结论必须以实际代码、配置文件或实机行为为证据。
 - 上游原版 [MMmmmoko/Bongo-Cat-Mver](https://github.com/MMmmmoko/Bongo-Cat-Mver)
   是输入、模型装配、Live2D 更新顺序和产品行为的固定参考。遇到相关问题时先查阅
