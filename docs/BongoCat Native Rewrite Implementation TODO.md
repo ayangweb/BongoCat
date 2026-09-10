@@ -3024,7 +3024,16 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
         presentation/localization 回归均通过。macOS Input Monitoring/Accessibility 相关 4 项
         集成测试按设计保持 ignored，真实权限矩阵仍属于平台实机门禁，不影响本项文案闭环。
 
-61. [x] `P5-BEHAVIOR-SHORTCUT-TOGGLE`：让当前 v1 的模型行为快捷键开关作用于正式输入链路。
+61. [ ] `P5-JSON-LOCALIZATION-CONSOLIDATION`：将 Native UI 文案统一迁移到 `rust-i18n` JSON 资源。
+    - 依赖：`P5-APPLICATION-LANGUAGE`、`P5-GENERAL-LOCALIZATION`、`P5-MODELS-LOCALIZATION`、
+      `P5-DIAGNOSTICS-LOCALIZATION`。
+    - 状态（2026-09-10）：已建立 `bongocat-i18n` crate，接入 `rust-i18n 4.2.2`，迁移当前
+      `UiText` 静态中英文案到 `locales/en-US.json` 与 `locales/zh-CN.json`，并加入 key/占位符
+      一致性、fallback 和插值测试。剩余动态 helper 的自然语言仍需全部改为资源 key，旧
+      `localization.rs` 中的语言分支应删除，三种历史语言需按同一 key 契约补齐；完整 UI 编译、
+      双平台 smoke 和 CI 语言资源门禁尚未完成，因此不得勾选。
+
+62. [x] `P5-BEHAVIOR-SHORTCUT-TOGGLE`：让当前 v1 的模型行为快捷键开关作用于正式输入链路。
     - 依赖：`P5-SHORTCUT-CONTRACT`、当前 v1 `model.enable_behavior_shortcuts`、settings
       revision/CAS、共享 `ShortcutTable` 和 GPUI Kit switch。
     - 退出条件：配置值通过强类型 snapshot/command 往返并在重启后恢复；禁用时仅从活动表移除
@@ -3040,7 +3049,7 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       release test 实际执行通过；重复的 app-only debug Clippy 在无 CPU 的 rustc metadata 阶段被
       中断，生产代码与原测试此前已通过的严格 workspace Clippy 结果不受影响。
 
-62. [x] `P2-KEY-RELEASE-FALLBACK`：让当前 v1 的按键释放兜底超时作用于正式 runtime。
+63. [x] `P2-KEY-RELEASE-FALLBACK`：让当前 v1 的按键释放兜底超时作用于正式 runtime。
     - 依赖：ADR-0004、可注入 runtime 单调时钟、可靠 input queue、平台 reconcile/reset、当前 v1
       `model.release_fallback_timeout_ms` 和 settings revision/CAS。
     - 退出条件：仅 captured keyboard control 在 normal release、reconcile 与 Reset 均未清理时按
@@ -3059,7 +3068,7 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       workspace、release 产品 lifecycle 和设置窗口 AX/UIA smoke，Windows formal missing-release
       recovery 也以独立 reconcile 路径通过。
 
-63. [x] `P6-REMOVE-STARTUP-CONFIG-FIELD`：从当前 v1 配置移除未被产品消费的登录启动布尔值。
+64. [x] `P6-REMOVE-STARTUP-CONFIG-FIELD`：从当前 v1 配置移除未被产品消费的登录启动布尔值。
     - 依赖：ADR-0013、正式 startup-item platform snapshot/command、`next` 首版 schema 边界。
     - 退出条件：Rust config、JSON Schema、默认 fixture 与 config-store spike 不再序列化或接受
       `application.launch_at_login`；启动项仍只由平台 snapshot 读取并仅由显式 typed command
@@ -3073,7 +3082,7 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       Windows/macOS/Ubuntu workspace jobs `101208547975`/`101208547928`/`101208547908` 均通过完整
       workspace 门禁，双平台 startup-item lifecycle 继续从 platform snapshot 验证且无配置回归。
 
-64. [x] `P6-REMOVE-DEFERRED-CORNER-RADIUS-FIELD`：从当前 v1 配置移除首发后才实现的窗口圆角字段。
+65. [x] `P6-REMOVE-DEFERRED-CORNER-RADIUS-FIELD`：从当前 v1 配置移除首发后才实现的窗口圆角字段。
     - 依赖：Phase 0 行为清单的 `P1 首发后` 决策、`next` 首版 schema 边界。
     - 退出条件：Rust config、JSON Schema、默认 fixture 与 config-store spike 不再序列化或接受
       `overlay.corner_radius_percent`；该 P1 功能仍留在行为清单且不误报为首发实现；不增加 migration、
@@ -3087,7 +3096,7 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       Windows/macOS/Ubuntu workspace jobs `101212465140`/`101212465166`/`101212465133` 均通过完整
       workspace 与对应产品 smoke，P1 行为清单保持不变。
 
-65. [x] `P6-REMOVE-DEFERRED-HOVER-FIELDS`：从当前 v1 配置移除首发后才实现的指针悬停隐藏字段。
+66. [x] `P6-REMOVE-DEFERRED-HOVER-FIELDS`：从当前 v1 配置移除首发后才实现的指针悬停隐藏字段。
     - 依赖：Phase 0 行为清单的 `P1 首发后` 决策、`next` 首版 schema 边界。
     - 退出条件：Rust config、JSON Schema、默认 fixture 与 config-store spike 不再序列化或接受
       `overlay.hide_on_pointer_hover` 和 `overlay.hide_on_pointer_hover_delay_ms`；两个旧键各有独立
@@ -3101,7 +3110,7 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       `33933263642` 全部 23 个 job 通过；macOS/Windows/Ubuntu workspace jobs
       `101216083086`/`101216083118`/`101216083187` 均通过完整 workspace 门禁和对应产品 smoke。
 
-66. [x] `P6-KEEP-OVERLAY-IN-WORK-AREA`：让当前 v1 的可见工作区约束作用于正式 overlay。
+67. [x] `P6-KEEP-OVERLAY-IN-WORK-AREA`：让当前 v1 的可见工作区约束作用于正式 overlay。
     - 依赖：当前 v1 `overlay.keep_inside_work_area`、runtime overlay settings、持久化窗口 bounds、
       Win32 monitor API、AppKit screen API 和 GPUI Kit switch。
     - 退出条件：配置值通过强类型 snapshot/command 往返并在重启后恢复，stale revision 不改变
@@ -3118,7 +3127,7 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       已通过。实现 commit `22cd56e` 的 CI run `33935203737` 全绿；Windows/macOS/Ubuntu workspace
       jobs `101221672187`/`101221672371`/`101221672243` 均通过完整 workspace 门禁和对应产品 smoke。
 
-67. [x] `P7-SIGNED-UPDATE-MANIFEST`：建立首发更新的离线信任判断核心。
+68. [x] `P7-SIGNED-UPDATE-MANIFEST`：建立首发更新的离线信任判断核心。
     - 依赖：ADR-0021、不可变 Development/Production 环境、四个首发 target、发布版本与公钥流程。
     - 退出条件：平台无关且禁止 unsafe 的 verifier 先验签再严格解析 v1 manifest；拒绝 HTTP、跨环境、
       未知字段、错误 target/arch、无效 SemVer、过大 manifest/artifact、未知或过期 key、sequence 降级；
@@ -3137,7 +3146,7 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       该 store 与 verifier 组合，拒绝签名不推进 state，成功验证会持久化 sequence 并立即收紧同一
       session 的 rollback 下限；`Available` 与 `UpToDate` 都有回归测试。不包含 endpoint、下载或安装器。
 
-68. [x] `P7-AUTOMATIC-UPDATE-PREFERENCE`：让当前 v1 自动检查更新偏好进入正式设置链路。
+69. [x] `P7-AUTOMATIC-UPDATE-PREFERENCE`：让当前 v1 自动检查更新偏好进入正式设置链路。
     - 依赖：当前 v1 `application.check_for_updates_automatically`、settings typed command/snapshot、
       GPUI Kit switch 与 signed update manifest boundary。
     - 退出条件：配置值通过强类型 snapshot/command 往返并在重启后恢复，stale revision 不改变
@@ -3151,7 +3160,7 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       macOS/Ubuntu workspace jobs `101230369276`/`101230369290`/`101230369343` 均通过完整 workspace
       门禁和对应产品 smoke。
 
-69. [x] `P7-AUTOMATIC-UPDATE-SCHEDULE`：冻结自动检查的单调 24 小时调度契约。
+70. [x] `P7-AUTOMATIC-UPDATE-SCHEDULE`：冻结自动检查的单调 24 小时调度契约。
     - 依赖：`P7-AUTOMATIC-UPDATE-PREFERENCE`、runtime 单调时钟原则与旧版首发行为清单。
     - 退出条件：启用时 startup 和重新启用各立即派发一次，之后从实际派发时间间隔 24 小时；
       关闭立即抑制待触发检查，重复 poll 不重复派发；时钟回退产生稳定匿名诊断并安全重建期限，
@@ -3164,7 +3173,7 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       实现 commit `1106807` 的 CI run `33938263954` 全绿；Windows/macOS/Ubuntu workspace jobs
       `101230369276`/`101230369290`/`101230369343` 均通过完整 workspace 门禁和对应产品 smoke。
 
-70. [x] `P9-BLOCK-LEGACY-AUTO-RELEASE`：阻止 Native Rewrite 开发期间由 tag 自动发布历史 App。
+71. [x] `P9-BLOCK-LEGACY-AUTO-RELEASE`：阻止 Native Rewrite 开发期间由 tag 自动发布历史 App。
     - 依赖：Phase 0 发布门禁、历史源码保留规则与尚未完成的 Native 签名/安装流水线。
     - 退出条件：历史 Tauri release workflow 保留用于考古和回滚，但只允许显式手动触发；任何
       `v*` tag 都不再自动构建或发布旧 Tauri、Linux 或 i686 artifact；不得据此声称 Native App
@@ -3177,7 +3186,7 @@ native/Cargo.toml --locked -p bongocat-app --release --features storage-test-inj
       `workflow_dispatch` 手动触发和无 `push`/`tags` 自动发布入口，并继续保留历史 Linux 矩阵供考古，
       不将其误判为 Native 首发产物。
 
-71. [x] `P9-NATIVE-PRODUCT-ICON`：让双平台 Native 应用与 Windows 托盘使用正式产品图标。
+72. [x] `P9-NATIVE-PRODUCT-ICON`：让双平台 Native 应用与 Windows 托盘使用正式产品图标。
     - 依赖：正式 `bongocat-app` build script、macOS `.app` 打包入口与 Windows system-menu owner。
     - 退出条件：Native workspace 自有并校验 `.icns/.ico` 容器；macOS bundle 声明、复制并签名封装
       `BongoCat.icns`；Windows executable 编译至少一个 icon group，托盘从当前 module 加载同一固定
