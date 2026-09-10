@@ -50,7 +50,7 @@ mod single_instance_windows;
 pub use single_instance_windows::{SingleInstance, SingleInstanceStart};
 
 mod system_menu;
-pub use system_menu::{SystemMenuAction, SystemMenuError};
+pub use system_menu::{SystemMenuAction, SystemMenuError, SystemMenuPresentation};
 #[cfg(target_os = "macos")]
 mod system_menu_macos;
 #[cfg(target_os = "macos")]

@@ -25,6 +25,18 @@
       "description": "Configure global window controls and shortcuts for the active model."
     }
   },
+  "system_menu": {
+    "title": "BongoCat",
+    "open_settings": "Settings",
+    "show_overlay": "Show Model Window",
+    "hide_overlay": "Hide Model Window",
+    "click_through": "Mouse Click-Through",
+    "check_for_updates": "Check for New Version",
+    "open_source": "View Project Source",
+    "restart": "Restart Application",
+    "quit": "Quit Application",
+    "version": "Version %{version}"
+  },
   "about": {
     "page_title": "About BongoCat",
     "product_information": {

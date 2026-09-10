@@ -5,7 +5,10 @@ use async_io::Timer;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_live2d::CoreLogHandle;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-use bongocat_overlay::{OverlaySessionOptions, OverlayWindowBounds, ProductOverlaySession};
+use bongocat_overlay::{
+    OverlayContextMenuRequest, OverlayInteractionSinks, OverlaySessionOptions, OverlayWindowBounds,
+    ProductOverlaySession,
+};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_platform::ShortcutDispatcher;
 #[cfg(target_os = "windows")]
@@ -13,13 +16,14 @@ use bongocat_platform::{
     SingleInstance, SingleInstanceAction, SingleInstanceEnvironment, SingleInstanceStart,
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-use bongocat_platform::{SystemMenu, SystemMenuAction};
+use bongocat_platform::{SystemMenu, SystemMenuAction, SystemMenuPresentation};
 #[cfg(target_os = "windows")]
 use bongocat_ui::SettingsView;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_ui::{
-    SettingsError, SettingsErrorCode, SettingsModelAvailability, SettingsModelKey,
-    SettingsModelOrigin, SettingsWindowHandle, open_settings_window,
+    SettingsClient, SettingsError, SettingsErrorCode, SettingsModelAvailability, SettingsModelKey,
+    SettingsModelOrigin, SettingsOverlay, SettingsSnapshot, SettingsWindowHandle,
+    open_settings_window,
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use gpui_kit::{
@@ -42,6 +46,7 @@ use std::{
     io::{self, Write},
     path::Path,
     path::PathBuf,
+    process::{Command, Stdio},
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -55,6 +60,82 @@ use zip::ZipArchive;
 struct StatusIconRequest {
     visible: bool,
     reply: std::sync::mpsc::SyncSender<Result<(), SettingsError>>,
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn system_menu_presentation(snapshot: &SettingsSnapshot) -> SystemMenuPresentation {
+    let locale = match snapshot.resolved_language.code() {
+        "zh-CN" => "zh-CN",
+        _ => "en-US",
+    };
+    let text = |key| bongocat_i18n::text(locale, key).to_owned();
+    SystemMenuPresentation {
+        title: text("system_menu.title"),
+        tooltip: text("system_menu.title"),
+        open_settings: text("system_menu.open_settings"),
+        show_overlay: text("system_menu.show_overlay"),
+        hide_overlay: text("system_menu.hide_overlay"),
+        click_through: text("system_menu.click_through"),
+        check_for_updates: text("system_menu.check_for_updates"),
+        open_source: text("system_menu.open_source"),
+        restart: text("system_menu.restart"),
+        quit: text("system_menu.quit"),
+        version: bongocat_i18n::format_text(
+            locale,
+            "system_menu.version",
+            &[("version", bongocat_app::PRODUCT_VERSION.to_owned())],
+        ),
+        overlay_visible: snapshot.overlay_visible,
+        click_through_enabled: snapshot.overlay.click_through,
+        // The signed update contracts are not yet wired to a release endpoint.
+        update_check_available: false,
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+async fn apply_system_menu_overlay_action(
+    client: SettingsClient,
+    action: SystemMenuAction,
+) -> Result<bool, String> {
+    let snapshot = client
+        .read_snapshot()
+        .await
+        .map_err(|error| error.to_string())?;
+    let revision = snapshot
+        .config_revision
+        .ok_or_else(|| "system menu cannot update configuration during recovery".to_owned())?;
+    match action {
+        SystemMenuAction::ToggleOverlayVisibility => {
+            client
+                .set_overlay_visible(revision, !snapshot.overlay_visible)
+                .await
+        }
+        SystemMenuAction::ToggleClickThrough => {
+            client
+                .set_overlay_settings(
+                    revision,
+                    SettingsOverlay {
+                        click_through: !snapshot.overlay.click_through,
+                        ..snapshot.overlay
+                    },
+                )
+                .await
+        }
+        _ => return Err("invalid system menu overlay action".to_owned()),
+    }
+    .map(|_| true)
+    .map_err(|error| error.to_string())
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn restart_product() -> Result<(), String> {
+    Command::new(env::current_exe().map_err(|error| error.to_string())?)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| error.to_string())
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -1686,6 +1767,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     application.prepare_model(model_origin, model_id)?;
     let runtime_client = application.runtime_client();
     let (shortcut_sender, shortcut_receiver) = std::sync::mpsc::sync_channel(64);
+    let (context_menu_sender, context_menu_receiver) =
+        std::sync::mpsc::sync_channel::<OverlayContextMenuRequest>(1);
     let (status_icon_sender, status_icon_receiver) = std::sync::mpsc::sync_channel(4);
     let status_icon = Arc::new(ProductStatusIcon {
         sender: status_icon_sender,
@@ -1741,14 +1824,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
     gpui_application.run(move |cx: &mut App| {
-        let overlay = match ProductOverlaySession::start_with_shortcuts(
+        let overlay = match ProductOverlaySession::start_with_interaction_sinks(
             runtime_client,
             input_producer,
             cursor_producer,
             gamepad_axis_producer,
             render_consumer,
             overlay_options,
-            shortcut_dispatcher,
+            OverlayInteractionSinks {
+                shortcut_dispatcher,
+                context_menu_sender: Some(context_menu_sender),
+            },
         ) {
             Ok(overlay) => overlay,
             Err(error) => {
@@ -1780,7 +1866,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return;
                 }
             };
-        let system_menu = match SystemMenu::start_with_visibility(initial_status_icon_visible) {
+        let initial_menu_presentation = match settings_service.client().read_snapshot_blocking() {
+            Ok(snapshot) => system_menu_presentation(&snapshot),
+            Err(error) => {
+                record_failure(&run_failures, error.to_string());
+                let mut overlay = overlay;
+                let _ = overlay.stop_input();
+                let client = settings_service.client();
+                let _ = client.shutdown_blocking();
+                let _ = settings_service.join();
+                let _ = overlay.finish_after_runtime_shutdown();
+                cx.quit();
+                return;
+            }
+        };
+        let system_menu = match SystemMenu::start_with_presentation(
+            initial_status_icon_visible,
+            initial_menu_presentation,
+        ) {
             Ok(system_menu) => system_menu,
             Err(error) => {
                 record_failure(&run_failures, error.to_string());
@@ -1895,11 +1998,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .detach();
 
         let system_menu_failures = Arc::clone(&run_failures);
+        let system_menu_client = settings_client.clone();
         cx.spawn(async move |cx| {
+            let mut last_menu_revision = None;
             loop {
                 Timer::after(Duration::from_millis(50)).await;
                 if !cx.update(|cx| cx.has_global::<ProductCoordinator>()) {
                     break;
+                }
+                if let Ok(snapshot) = system_menu_client.read_snapshot().await
+                    && last_menu_revision != Some(snapshot.revision)
+                {
+                    let presentation = system_menu_presentation(&snapshot);
+                    let result = cx.update(|cx| {
+                        if !cx.has_global::<ProductCoordinator>() {
+                            return Ok(());
+                        }
+                        cx.global_mut::<ProductCoordinator>()
+                            .system_menu
+                            .as_mut()
+                            .ok_or_else(|| "system menu owner is unavailable".to_owned())?
+                            .set_presentation(presentation)
+                            .map_err(|error| error.to_string())
+                    });
+                    match result {
+                        Ok(()) => last_menu_revision = Some(snapshot.revision),
+                        Err(error) => record_failure(&system_menu_failures, error),
+                    }
                 }
                 while let Ok(request) = status_icon_receiver.try_recv() {
                     let result = cx.update(|cx| {
@@ -1938,7 +2063,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     SystemMenuAction::OpenSettings => {
                         cx.update(|cx| ensure_settings_window(cx).map(|_| true))
                     }
-                    SystemMenuAction::ToggleOverlayVisibility => {
+                    SystemMenuAction::ToggleOverlayVisibility
+                    | SystemMenuAction::ToggleClickThrough => {
                         let client = cx.update(|cx| {
                             cx.try_global::<ProductCoordinator>()
                                 .and_then(|coordinator| coordinator.settings_service.as_ref())
@@ -1948,24 +2074,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 })
                         });
                         match client {
-                            Ok(client) => async {
-                                let snapshot = client
-                                    .read_snapshot()
-                                    .await
-                                    .map_err(|error| error.to_string())?;
-                                let revision = snapshot.config_revision.ok_or_else(|| {
-                                    "system menu cannot update configuration during recovery".to_owned()
-                                })?;
-                                client
-                                    .set_overlay_visible(revision, !snapshot.overlay_visible)
-                                    .await
-                                    .map(|_| true)
-                                    .map_err(|error| error.to_string())
-                            }
-                            .await,
+                            Ok(client) => apply_system_menu_overlay_action(client, action).await,
                             Err(error) => Err(error),
                         }
                     }
+                    SystemMenuAction::CheckForUpdates => Ok(true),
+                    SystemMenuAction::OpenSource => bongocat_platform::open_external_url(
+                        "https://github.com/ayangweb/BongoCat",
+                    )
+                    .map(|_| true)
+                    .map_err(|error| error.to_string()),
+                    SystemMenuAction::Restart => match restart_product() {
+                        Ok(()) => cx.update(|cx| {
+                            request_product_quit(cx);
+                            Ok(false)
+                        }),
+                        Err(error) => Err(error),
+                    },
                     SystemMenuAction::Quit => cx.update(|cx| {
                         request_product_quit(cx);
                         Ok(false)
@@ -2044,6 +2169,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if frame_source_shutdown.stop_requested() {
                     break;
                 }
+                let context_menu_requested = context_menu_receiver.try_recv().is_ok();
                 #[cfg(target_os = "macos")]
                 let (keep_running, next_retry_delay) = cx.update(|cx| {
                     if !cx.has_global::<ProductCoordinator>() {
@@ -2060,6 +2186,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .as_mut()
                             .expect("product overlay owner is present")
                             .tick();
+                        if context_menu_requested
+                            && let Some(menu) = coordinator.system_menu.as_ref()
+                            && let Err(error) = menu.show_context_menu()
+                        {
+                            record_failure(&coordinator.failures, error.to_string());
+                        }
                         match result {
                             Ok(outcome) => {
                                 if let Ok(bounds) = coordinator
@@ -2171,6 +2303,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         return Ok(false);
                     }
                     handle_shortcut_toggle_settings(cx);
+                    if context_menu_requested
+                        && let Some(menu) = cx
+                            .try_global::<ProductCoordinator>()
+                            .and_then(|coordinator| coordinator.system_menu.as_ref())
+                        && let Err(error) = menu.show_context_menu()
+                    {
+                        record_failure(
+                            &cx.global::<ProductCoordinator>().failures,
+                            error.to_string(),
+                        );
+                    }
                     let (failure, failures) = {
                         let coordinator = cx.global_mut::<ProductCoordinator>();
                         match tick_result

@@ -1,13 +1,13 @@
 use crate::{
-    BlendFactor, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff, FrameTimingCollector, OverlayError,
-    OverlayPresentationState, OverlaySessionOptions, OverlayTickOutcome, OverlayWindowBounds,
-    OverlayWorkArea, PreviewReport, ProductOverlayReport, blend_factors,
-    default_overlay_window_dimensions, validate_frame_smoke, validate_model_generation_advance,
+    BlendFactor, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff, FrameTimingCollector,
+    OverlayContextMenuRequest, OverlayError, OverlayInteractionSinks, OverlayPresentationState,
+    OverlaySessionOptions, OverlayTickOutcome, OverlayWindowBounds, OverlayWorkArea, PreviewReport,
+    ProductOverlayReport, blend_factors, default_overlay_window_dimensions, validate_frame_smoke,
+    validate_model_generation_advance,
 };
+use block2::RcBlock;
 use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
-use bongocat_platform::{
-    MacInputService, PlatformInputDiagnostics, PlatformInputError, ShortcutDispatcher,
-};
+use bongocat_platform::{MacInputService, PlatformInputDiagnostics, PlatformInputError};
 use bongocat_render::{
     BlendMode, DrawableId, KeyAssetId, KeyOverlay, ModelBounds, ModelCommitErrorCode,
     ModelCommitFeedback, ModelCommitOutcome, ModelCommitToken, RenderConsumer, RenderFrame,
@@ -32,6 +32,7 @@ use metal::{
 use objc2::{
     MainThreadMarker, MainThreadOnly,
     rc::{Retained, autoreleasepool},
+    runtime::AnyObject,
 };
 use objc2_app_kit::{
     NSApplication, NSApplicationActivationPolicy, NSBackingStoreType, NSColor, NSEvent,
@@ -44,7 +45,8 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     mem::{self, ManuallyDrop},
     path::Path,
-    sync::Arc,
+    ptr::NonNull,
+    sync::{Arc, mpsc::SyncSender},
     thread,
     time::{Duration, Instant},
 };
@@ -223,6 +225,8 @@ pub(super) struct ProductOverlaySession {
     pending_initial_model_commit: Option<ModelCommitToken>,
     pending_model_frame: Option<RenderFrame>,
     retry_backoff: FrameRetryBackoff,
+    context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
+    context_menu_monitor: Option<Retained<AnyObject>>,
 }
 
 impl ProductOverlaySession {
@@ -233,8 +237,12 @@ impl ProductOverlaySession {
         gamepad_axis_producer: GamepadAxisProducer,
         render_consumer: RenderConsumer,
         options: OverlaySessionOptions,
-        shortcut_dispatcher: Option<ShortcutDispatcher>,
+        interaction_sinks: OverlayInteractionSinks,
     ) -> Result<Self, OverlayError> {
+        let OverlayInteractionSinks {
+            shortcut_dispatcher,
+            context_menu_sender,
+        } = interaction_sinks;
         validate_product_options(options)?;
         let initial_frame = render_consumer
             .take_latest()
@@ -301,6 +309,11 @@ impl ProductOverlaySession {
                     shortcut_dispatcher,
                 )
             });
+        let context_menu_monitor = install_context_menu_monitor(
+            mtm,
+            overlay.panel.windowNumber(),
+            context_menu_sender.clone(),
+        );
         Ok(Self {
             application,
             overlay,
@@ -319,6 +332,8 @@ impl ProductOverlaySession {
             pending_initial_model_commit,
             pending_model_frame: None,
             retry_backoff,
+            context_menu_sender,
+            context_menu_monitor,
         })
     }
 
@@ -386,8 +401,17 @@ impl ProductOverlaySession {
                     self.frames_presented = self.frames_presented.saturating_add(1);
                 }
                 self.overlay = replacement;
-            } else if next_options.always_on_top != self.options.always_on_top {
-                self.overlay.set_always_on_top(next_options.always_on_top);
+                let mtm = MainThreadMarker::new().ok_or_else(|| {
+                    OverlayError::new("macOS overlay settings update lost the main thread")
+                })?;
+                self.refresh_context_menu_monitor(mtm);
+            } else {
+                if next_options.click_through != self.options.click_through {
+                    self.overlay.set_click_through(next_options.click_through);
+                }
+                if next_options.always_on_top != self.options.always_on_top {
+                    self.overlay.set_always_on_top(next_options.always_on_top);
+                }
             }
             self.options = next_options;
         }
@@ -531,6 +555,10 @@ impl ProductOverlaySession {
                 self.last_frame = frame.clone();
                 self.previous_snapshot = frame.snapshot;
                 self.overlay = replacement;
+                let mtm = MainThreadMarker::new().ok_or_else(|| {
+                    OverlayError::new("macOS overlay model update lost the main thread")
+                })?;
+                self.refresh_context_menu_monitor(mtm);
                 self.frames_presented = self.frames_presented.saturating_add(1);
                 return Ok(if overlay_visible {
                     OverlayTickOutcome::Presented
@@ -621,8 +649,9 @@ impl ProductOverlaySession {
     }
 
     pub(super) fn finish_after_runtime_shutdown(
-        self,
+        mut self,
     ) -> Result<ProductOverlayReport, OverlayError> {
+        self.remove_context_menu_monitor();
         if !self.input_stopped {
             return Err(OverlayError::new(
                 "platform input must stop before the runtime",
@@ -653,6 +682,31 @@ impl ProductOverlaySession {
             masked_drawable_count: self.overlay.model.masked_drawable_count,
             texture_count: self.overlay.model.textures.len(),
         })
+    }
+}
+
+impl ProductOverlaySession {
+    fn refresh_context_menu_monitor(&mut self, mtm: MainThreadMarker) {
+        self.remove_context_menu_monitor();
+        self.context_menu_monitor = install_context_menu_monitor(
+            mtm,
+            self.overlay.panel.windowNumber(),
+            self.context_menu_sender.clone(),
+        );
+    }
+
+    fn remove_context_menu_monitor(&mut self) {
+        if let Some(monitor) = self.context_menu_monitor.take() {
+            // SAFETY: this monitor was created by NSEvent for this session and is
+            // removed on the AppKit main thread before its callback state drops.
+            unsafe { NSEvent::removeMonitor(&monitor) };
+        }
+    }
+}
+
+impl Drop for ProductOverlaySession {
+    fn drop(&mut self) {
+        self.remove_context_menu_monitor();
     }
 }
 
@@ -791,6 +845,31 @@ mod product_options_tests {
     fn main_window_level_tracks_always_on_top() {
         assert_eq!(main_window_level(true), NSMainMenuWindowLevel);
         assert_eq!(main_window_level(false), NSNormalWindowLevel);
+    }
+}
+
+fn install_context_menu_monitor(
+    _: MainThreadMarker,
+    panel_window_number: isize,
+    sender: Option<SyncSender<OverlayContextMenuRequest>>,
+) -> Option<Retained<AnyObject>> {
+    let sender = sender?;
+    let handler: RcBlock<dyn Fn(NonNull<NSEvent>) -> *mut NSEvent> =
+        RcBlock::new(move |event: NonNull<NSEvent>| {
+            // SAFETY: AppKit supplies a valid NSEvent pointer for the duration of
+            // this local event-monitor callback, and returns it to continue normal dispatch.
+            let event_ref = unsafe { event.as_ref() };
+            if event_ref.r#type() == objc2_app_kit::NSEventType::RightMouseUp
+                && event_ref.windowNumber() == panel_window_number
+            {
+                let _ = sender.try_send(OverlayContextMenuRequest);
+            }
+            event.as_ptr()
+        });
+    // SAFETY: the handler returns AppKit's original valid event pointer and is
+    // retained by the returned monitor token until session shutdown.
+    unsafe {
+        NSEvent::addLocalMonitorForEventsMatchingMask_handler(NSEventMask::RightMouseUp, &handler)
     }
 }
 
@@ -1330,6 +1409,10 @@ impl NativeOverlay {
 
     fn set_always_on_top(&self, always_on_top: bool) {
         self.panel.setLevel(main_window_level(always_on_top));
+    }
+
+    fn set_click_through(&self, click_through: bool) {
+        self.panel.setIgnoresMouseEvents(click_through);
     }
 
     fn draw_in_autorelease_pool(&self, verify_frame: bool) -> Result<(), OverlayError> {

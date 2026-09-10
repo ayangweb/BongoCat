@@ -1,4 +1,4 @@
-use crate::{SystemMenuAction, SystemMenuError};
+use crate::{SystemMenuAction, SystemMenuError, SystemMenuPresentation};
 use std::{
     mem::size_of,
     sync::mpsc::{self, Receiver, Sender},
@@ -15,25 +15,29 @@ use windows::{
             WindowsAndMessaging::{
                 AppendMenuW, CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
                 DestroyMenu, DestroyWindow, GWLP_USERDATA, GetCursorPos, GetWindowLongPtrW,
-                LoadIconW, MF_SEPARATOR, MF_STRING, PostMessageW, RegisterClassW,
-                SetForegroundWindow, SetWindowLongPtrW, TPM_BOTTOMALIGN, TPM_LEFTALIGN,
-                TPM_RIGHTBUTTON, TrackPopupMenu, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE,
-                WM_APP, WM_COMMAND, WM_CONTEXTMENU, WM_LBUTTONUP, WM_NCCREATE, WM_NCDESTROY,
-                WM_NULL, WM_RBUTTONUP, WNDCLASSW,
+                LoadIconW, MF_CHECKED, MF_GRAYED, MF_SEPARATOR, MF_STRING, PostMessageW,
+                RegisterClassW, SetForegroundWindow, SetWindowLongPtrW, TPM_BOTTOMALIGN,
+                TPM_LEFTALIGN, TPM_RIGHTBUTTON, TrackPopupMenu, UnregisterClassW, WINDOW_EX_STYLE,
+                WINDOW_STYLE, WM_APP, WM_COMMAND, WM_CONTEXTMENU, WM_LBUTTONUP, WM_NCCREATE,
+                WM_NCDESTROY, WM_NULL, WM_RBUTTONUP, WNDCLASSW,
             },
         },
     },
-    core::{PCWSTR, w},
+    core::{HSTRING, PCWSTR, w},
 };
 
-const WINDOW_CLASS: windows::core::PCWSTR = w!("BongoCatProductSystemMenuWindow");
-const WINDOW_TITLE: windows::core::PCWSTR = w!("BongoCat System Menu");
+const WINDOW_CLASS: PCWSTR = w!("BongoCatProductSystemMenuWindow");
+const WINDOW_TITLE: PCWSTR = w!("BongoCat System Menu");
 const CALLBACK_MESSAGE: u32 = WM_APP + 47;
 const TRAY_ID: u32 = 1;
 const STATUS_ICON_RESOURCE_ID: u16 = 102;
 const OPEN_SETTINGS_ID: usize = 1;
 const TOGGLE_OVERLAY_VISIBILITY_ID: usize = 2;
-const QUIT_ID: usize = 3;
+const TOGGLE_CLICK_THROUGH_ID: usize = 3;
+const CHECK_FOR_UPDATES_ID: usize = 30;
+const OPEN_SOURCE_ID: usize = 31;
+const RESTART_ID: usize = 32;
+const QUIT_ID: usize = 33;
 
 struct WindowState {
     sender: Sender<SystemMenuAction>,
@@ -45,24 +49,26 @@ pub struct SystemMenu {
     window: Option<HWND>,
     menu: Option<windows::Win32::UI::WindowsAndMessaging::HMENU>,
     state: Option<Box<WindowState>>,
+    sender: Sender<SystemMenuAction>,
     receiver: Receiver<SystemMenuAction>,
     icon_added: bool,
     class_registered: bool,
+    presentation: SystemMenuPresentation,
 }
 
 impl SystemMenu {
-    pub fn start() -> Result<Self, SystemMenuError> {
-        Self::start_with_visibility(true)
+    pub fn start_with_presentation(
+        visible: bool,
+        presentation: SystemMenuPresentation,
+    ) -> Result<Self, SystemMenuError> {
+        // SAFETY: creation and cleanup occur on the GPUI owner thread; the boxed state outlives its HWND.
+        unsafe { Self::start_inner(visible, presentation) }
     }
 
-    pub fn start_with_visibility(visible: bool) -> Result<Self, SystemMenuError> {
-        // SAFETY: creation and all later cleanup occur on the GPUI owner
-        // thread. The boxed callback state outlives the hidden HWND, whose
-        // WM_NCDESTROY clears GWLP_USERDATA before the Box is dropped.
-        unsafe { Self::start_inner(visible) }
-    }
-
-    unsafe fn start_inner(visible: bool) -> Result<Self, SystemMenuError> {
+    unsafe fn start_inner(
+        visible: bool,
+        presentation: SystemMenuPresentation,
+    ) -> Result<Self, SystemMenuError> {
         let module = unsafe { GetModuleHandleW(None) }
             .map_err(|_| SystemMenuError::WindowClassRegistrationFailed)?;
         let instance = HINSTANCE(module.0);
@@ -75,37 +81,10 @@ impl SystemMenu {
         if unsafe { RegisterClassW(&class) } == 0 {
             return Err(SystemMenuError::WindowClassRegistrationFailed);
         }
-
-        let menu = match unsafe { CreatePopupMenu() } {
-            Ok(menu) => menu,
-            Err(_) => {
-                let _ = unsafe { UnregisterClassW(WINDOW_CLASS, Some(instance)) };
-                return Err(SystemMenuError::MenuCreateFailed);
-            }
-        };
-        if unsafe { AppendMenuW(menu, MF_STRING, OPEN_SETTINGS_ID, w!("Open Settings")) }.is_err()
-            || unsafe {
-                AppendMenuW(
-                    menu,
-                    MF_STRING,
-                    TOGGLE_OVERLAY_VISIBILITY_ID,
-                    w!("Show/Hide BongoCat"),
-                )
-            }
-            .is_err()
-            || unsafe { AppendMenuW(menu, MF_SEPARATOR, 0, None) }.is_err()
-            || unsafe { AppendMenuW(menu, MF_STRING, QUIT_ID, w!("Quit BongoCat")) }.is_err()
-        {
-            let _ = unsafe { DestroyMenu(menu) };
-            let _ = unsafe { UnregisterClassW(WINDOW_CLASS, Some(instance)) };
-            return Err(SystemMenuError::MenuItemCreateFailed);
-        }
-
+        let menu =
+            unsafe { create_menu(&presentation) }.map_err(|_| SystemMenuError::MenuCreateFailed)?;
         let (sender, receiver) = mpsc::channel();
-        let mut state = Box::new(WindowState {
-            sender: sender.clone(),
-            menu,
-        });
+        let mut state = Box::new(WindowState { sender, menu });
         let state_ptr = (&mut *state) as *mut WindowState;
         let window = match unsafe {
             CreateWindowExW(
@@ -130,84 +109,90 @@ impl SystemMenu {
                 return Err(SystemMenuError::WindowCreateFailed);
             }
         };
-
-        let mut system_menu = Self {
+        let sender = state.sender.clone();
+        let mut result = Self {
             instance,
             window: Some(window),
             menu: Some(menu),
             state: Some(state),
+            sender,
             receiver,
             icon_added: false,
             class_registered: true,
+            presentation,
         };
-        if visible && unsafe { system_menu.add_icon() }.is_err() {
-            let _ = system_menu.cleanup();
+        if visible && unsafe { result.add_icon() }.is_err() {
+            let _ = result.cleanup();
             return Err(SystemMenuError::StatusItemCreateFailed);
         }
-        Ok(system_menu)
+        Ok(result)
     }
 
+    pub fn set_presentation(
+        &mut self,
+        presentation: SystemMenuPresentation,
+    ) -> Result<(), SystemMenuError> {
+        // SAFETY: the old menu is detached from the still-live owner HWND before destruction.
+        unsafe {
+            let replacement =
+                create_menu(&presentation).map_err(|_| SystemMenuError::MenuCreateFailed)?;
+            if let Some(state) = self.state.as_mut() {
+                state.menu = replacement;
+            }
+            if let Some(previous) = self.menu.replace(replacement) {
+                DestroyMenu(previous).map_err(|_| SystemMenuError::MenuItemCreateFailed)?;
+            }
+            self.presentation = presentation;
+        }
+        Ok(())
+    }
     pub fn try_recv(&self) -> Option<SystemMenuAction> {
         self.receiver.try_recv().ok()
     }
 
-    pub const fn is_visible(&self) -> bool {
-        self.icon_added
+    /// Present the same action menu used by the status icon at the current pointer location.
+    pub fn show_context_menu(&self) -> Result<(), SystemMenuError> {
+        let window = self.window.ok_or(SystemMenuError::WindowCreateFailed)?;
+        let menu = self.menu.ok_or(SystemMenuError::MenuCreateFailed)?;
+        show_menu(window, menu);
+        Ok(())
     }
-
-    pub fn set_visible(&mut self, visible: bool) -> Result<(), SystemMenuError> {
-        if visible == self.icon_added {
-            return Ok(());
-        }
-        // SAFETY: status icon mutation occurs on the GPUI owner thread while
-        // the hidden HWND remains live and owned by self.
-        unsafe {
-            if visible {
-                self.add_icon()
-                    .map_err(|_| SystemMenuError::StatusItemUpdateFailed)
-            } else {
-                self.remove_icon()
-                    .map_err(|_| SystemMenuError::StatusItemUpdateFailed)
-            }
-        }
-    }
-
     #[doc(hidden)]
     pub fn request_action_for_smoke(
         &self,
         action: SystemMenuAction,
     ) -> Result<(), SystemMenuError> {
-        let window = self.window.ok_or(SystemMenuError::EventQueueClosed)?;
-        let command = match action {
-            SystemMenuAction::OpenSettings => OPEN_SETTINGS_ID,
-            SystemMenuAction::ToggleOverlayVisibility => TOGGLE_OVERLAY_VISIBILITY_ID,
-            SystemMenuAction::Quit => QUIT_ID,
-        };
-        // SAFETY: the hidden HWND remains owned by self. Posting WM_COMMAND
-        // exercises the same callback path as selecting the native menu item.
-        unsafe { PostMessageW(Some(window), WM_COMMAND, WPARAM(command), LPARAM(0)) }
+        self.sender
+            .send(action)
             .map_err(|_| SystemMenuError::EventQueueClosed)
     }
-
+    pub const fn is_visible(&self) -> bool {
+        self.icon_added
+    }
+    pub fn set_visible(&mut self, visible: bool) -> Result<(), SystemMenuError> {
+        unsafe {
+            if visible {
+                self.add_icon()
+            } else {
+                self.remove_icon()
+            }
+        }
+        .map_err(|_| SystemMenuError::StatusItemUpdateFailed)
+    }
     pub fn shutdown(mut self) -> Result<(), SystemMenuError> {
         self.cleanup()
     }
 
     fn cleanup(&mut self) -> Result<(), SystemMenuError> {
-        let mut failed = false;
-        failed |= unsafe { self.remove_icon() }.is_err();
+        let mut failed = unsafe { self.remove_icon() }.is_err();
         if let Some(window) = self.window.take() {
-            // SAFETY: the hidden HWND is owned by self and destroyed once.
             failed |= unsafe { DestroyWindow(window) }.is_err();
         }
         self.state.take();
         if let Some(menu) = self.menu.take() {
-            // SAFETY: the HMENU is owned by self and no HWND references it now.
             failed |= unsafe { DestroyMenu(menu) }.is_err();
         }
         if self.class_registered {
-            // SAFETY: the class was registered by this owner and all windows
-            // using it have already been destroyed.
             failed |= unsafe { UnregisterClassW(WINDOW_CLASS, Some(self.instance)) }.is_err();
             self.class_registered = false;
         }
@@ -217,14 +202,18 @@ impl SystemMenu {
             Ok(())
         }
     }
-
     unsafe fn add_icon(&mut self) -> Result<(), ()> {
         if self.icon_added {
             return Ok(());
         }
         let window = self.window.ok_or(())?;
-        let resource_name = PCWSTR(STATUS_ICON_RESOURCE_ID as usize as *const u16);
-        let icon = unsafe { LoadIconW(Some(self.instance), resource_name) }.map_err(|_| ())?;
+        let icon = unsafe {
+            LoadIconW(
+                Some(self.instance),
+                PCWSTR(STATUS_ICON_RESOURCE_ID as usize as *const u16),
+            )
+        }
+        .map_err(|_| ())?;
         let mut data = NOTIFYICONDATAW {
             cbSize: size_of::<NOTIFYICONDATAW>() as u32,
             hWnd: window,
@@ -234,7 +223,7 @@ impl SystemMenu {
             hIcon: icon,
             ..Default::default()
         };
-        copy_wide(&mut data.szTip, "BongoCat");
+        copy_wide(&mut data.szTip, &self.presentation.tooltip);
         if !unsafe { Shell_NotifyIconW(NIM_ADD, &data) }.as_bool() {
             return Err(());
         }
@@ -245,7 +234,6 @@ impl SystemMenu {
         self.icon_added = true;
         Ok(())
     }
-
     unsafe fn remove_icon(&mut self) -> Result<(), ()> {
         if !self.icon_added {
             return Ok(());
@@ -271,6 +259,71 @@ impl Drop for SystemMenu {
     }
 }
 
+unsafe fn create_menu(
+    presentation: &SystemMenuPresentation,
+) -> windows::core::Result<windows::Win32::UI::WindowsAndMessaging::HMENU> {
+    let menu = unsafe { CreatePopupMenu()? };
+    let result = (|| unsafe {
+        append(
+            menu,
+            MF_STRING,
+            OPEN_SETTINGS_ID,
+            &presentation.open_settings,
+        )?;
+        append(
+            menu,
+            MF_STRING,
+            TOGGLE_OVERLAY_VISIBILITY_ID,
+            if presentation.overlay_visible {
+                &presentation.hide_overlay
+            } else {
+                &presentation.show_overlay
+            },
+        )?;
+        AppendMenuW(menu, MF_SEPARATOR, 0, None)?;
+        append(
+            menu,
+            MF_STRING
+                | if presentation.click_through_enabled {
+                    MF_CHECKED
+                } else {
+                    Default::default()
+                },
+            TOGGLE_CLICK_THROUGH_ID,
+            &presentation.click_through,
+        )?;
+        AppendMenuW(menu, MF_SEPARATOR, 0, None)?;
+        append(
+            menu,
+            MF_STRING
+                | if presentation.update_check_available {
+                    Default::default()
+                } else {
+                    MF_GRAYED
+                },
+            CHECK_FOR_UPDATES_ID,
+            &presentation.check_for_updates,
+        )?;
+        append(menu, MF_STRING, OPEN_SOURCE_ID, &presentation.open_source)?;
+        AppendMenuW(menu, MF_SEPARATOR, 0, None)?;
+        append(menu, MF_STRING | MF_GRAYED, 0, &presentation.version)?;
+        append(menu, MF_STRING, RESTART_ID, &presentation.restart)?;
+        append(menu, MF_STRING, QUIT_ID, &presentation.quit)
+    })();
+    if result.is_err() {
+        let _ = unsafe { DestroyMenu(menu) };
+    }
+    result.map(|_| menu)
+}
+
+unsafe fn append(
+    menu: windows::Win32::UI::WindowsAndMessaging::HMENU,
+    flags: windows::Win32::UI::WindowsAndMessaging::MENU_ITEM_FLAGS,
+    id: usize,
+    text: &str,
+) -> windows::core::Result<()> {
+    unsafe { AppendMenuW(menu, flags, id, &HSTRING::from(text)) }
+}
 fn copy_wide(destination: &mut [u16], value: &str) {
     for (slot, code_unit) in destination
         .iter_mut()
@@ -287,8 +340,6 @@ unsafe extern "system" fn system_menu_window_proc(
     lparam: LPARAM,
 ) -> LRESULT {
     if message == WM_NCCREATE {
-        // SAFETY: CreateWindowExW passes a valid WindowState pointer that
-        // outlives this HWND. WM_NCDESTROY clears it before the owner drops it.
         let create = unsafe { &*(lparam.0 as *const CREATESTRUCTW) };
         unsafe { SetWindowLongPtrW(window, GWLP_USERDATA, create.lpCreateParams as isize) };
     }
@@ -300,27 +351,16 @@ unsafe extern "system" fn system_menu_window_proc(
     if state.is_null() {
         return unsafe { DefWindowProcW(window, message, wparam, lparam) };
     }
-    // SAFETY: the pointer was installed from the owner's live Box above.
     let state = unsafe { &*state };
     match message {
         WM_COMMAND => {
-            match wparam.0 & 0xffff {
-                OPEN_SETTINGS_ID => {
-                    let _ = state.sender.send(SystemMenuAction::OpenSettings);
-                }
-                TOGGLE_OVERLAY_VISIBILITY_ID => {
-                    let _ = state.sender.send(SystemMenuAction::ToggleOverlayVisibility);
-                }
-                QUIT_ID => {
-                    let _ = state.sender.send(SystemMenuAction::Quit);
-                }
-                _ => {}
+            if let Some(action) = action_for_command(wparam.0 & 0xffff) {
+                let _ = state.sender.send(action);
             }
             LRESULT(0)
         }
         CALLBACK_MESSAGE => {
-            let notification = lparam.0 as u32 & 0xffff;
-            match notification {
+            match lparam.0 as u32 & 0xffff {
                 WM_LBUTTONUP | NIN_SELECT => {
                     let _ = state.sender.send(SystemMenuAction::OpenSettings);
                 }
@@ -333,10 +373,20 @@ unsafe extern "system" fn system_menu_window_proc(
     }
 }
 
+fn action_for_command(id: usize) -> Option<SystemMenuAction> {
+    Some(match id {
+        OPEN_SETTINGS_ID => SystemMenuAction::OpenSettings,
+        TOGGLE_OVERLAY_VISIBILITY_ID => SystemMenuAction::ToggleOverlayVisibility,
+        TOGGLE_CLICK_THROUGH_ID => SystemMenuAction::ToggleClickThrough,
+        CHECK_FOR_UPDATES_ID => SystemMenuAction::CheckForUpdates,
+        OPEN_SOURCE_ID => SystemMenuAction::OpenSource,
+        RESTART_ID => SystemMenuAction::Restart,
+        QUIT_ID => SystemMenuAction::Quit,
+        _ => return None,
+    })
+}
 fn show_menu(window: HWND, menu: windows::Win32::UI::WindowsAndMessaging::HMENU) {
     let mut point = POINT::default();
-    // SAFETY: window and menu remain owned by the live SystemMenu; this code
-    // runs synchronously on their owner thread from the window procedure.
     unsafe {
         if GetCursorPos(&mut point).is_ok() {
             let _ = SetForegroundWindow(window);

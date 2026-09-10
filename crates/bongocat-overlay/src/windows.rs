@@ -1,13 +1,12 @@
 use crate::{
-    BlendFactor, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff, OverlayError,
-    OverlayPresentationState, OverlaySessionOptions, OverlayTickOutcome, OverlayWindowBounds,
-    OverlayWorkArea, PreviewReport, ProductOverlayReport, blend_factors,
-    default_overlay_window_dimensions, validate_frame_smoke, validate_model_generation_advance,
+    BlendFactor, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff, OverlayContextMenuRequest,
+    OverlayError, OverlayInteractionSinks, OverlayPresentationState, OverlaySessionOptions,
+    OverlayTickOutcome, OverlayWindowBounds, OverlayWorkArea, PreviewReport, ProductOverlayReport,
+    blend_factors, default_overlay_window_dimensions, validate_frame_smoke,
+    validate_model_generation_advance,
 };
 use bongocat_model::{CommittedModel, ModelId, ModelPackageLimits, PresetModelCatalog};
-use bongocat_platform::{
-    PlatformInputDiagnostics, PlatformInputError, ShortcutDispatcher, WindowsInputService,
-};
+use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError, WindowsInputService};
 use bongocat_render::{
     BlendMode, CanvasInfo, DrawableId, KeyAssetId, KeyOverlay, ModelBounds, ModelCommitErrorCode,
     ModelCommitFeedback, ModelCommitOutcome, ModelCommitToken, RenderConsumer, RenderFrame,
@@ -25,7 +24,7 @@ use std::{
     mem::{size_of, size_of_val},
     path::Path,
     rc::Rc,
-    sync::Arc,
+    sync::{Arc, mpsc::SyncSender},
     thread,
     thread::ThreadId,
     time::{Duration, Instant},
@@ -91,13 +90,15 @@ use windows::{
         UI::{
             HiDpi::GetDpiForWindow,
             WindowsAndMessaging::{
-                CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GWL_EXSTYLE,
-                GetCursorPos, GetWindowLongPtrW, GetWindowRect, HTCAPTION, HTTRANSPARENT,
-                HWND_NOTOPMOST, HWND_TOPMOST, IsWindowVisible, MSG, PM_REMOVE, PeekMessageW,
-                RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-                SWP_NOZORDER, SetWindowPos, ShowWindow, TranslateMessage, UnregisterClassW,
-                WM_CLOSE, WM_NCHITTEST, WNDCLASSW, WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP,
-                WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_POPUP,
+                CREATESTRUCTW, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
+                GWL_EXSTYLE, GWLP_USERDATA, GetCursorPos, GetWindowLongPtrW, GetWindowRect,
+                HTCAPTION, HTTRANSPARENT, HWND_NOTOPMOST, HWND_TOPMOST, IsWindowVisible, MSG,
+                PM_REMOVE, PeekMessageW, RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE,
+                SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetWindowLongPtrW,
+                SetWindowPos, ShowWindow, TranslateMessage, UnregisterClassW, WM_CLOSE,
+                WM_CONTEXTMENU, WM_NCCREATE, WM_NCDESTROY, WM_NCHITTEST, WNDCLASSW,
+                WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
+                WS_POPUP,
             },
         },
     },
@@ -369,7 +370,12 @@ struct OverlayWindow {
     owner_thread: ThreadId,
     width: u32,
     height: u32,
+    _state: Box<OverlayWindowState>,
     _not_send_or_sync: std::marker::PhantomData<Rc<()>>,
+}
+
+struct OverlayWindowState {
+    context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
 }
 
 impl OverlayWindow {
@@ -377,10 +383,11 @@ impl OverlayWindow {
         options: OverlaySessionOptions,
         canvas: CanvasInfo,
         bounds: Option<OverlayWindowBounds>,
+        context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
     ) -> Result<Self, OverlayError> {
         // SAFETY: the class and HWND are created and subsequently used only on
         // the current UI thread. No borrowed Win32 pointers escape this owner.
-        unsafe { Self::create_inner(options, canvas, bounds) }
+        unsafe { Self::create_inner(options, canvas, bounds, context_menu_sender) }
             .map_err(windows_error("create Win32 overlay"))
     }
 
@@ -388,6 +395,7 @@ impl OverlayWindow {
         options: OverlaySessionOptions,
         canvas: CanvasInfo,
         bounds: Option<OverlayWindowBounds>,
+        context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
     ) -> WindowsResult<Self> {
         let bounds = bounds.filter(|bounds| overlay_bounds_visible(*bounds));
         let module = unsafe { GetModuleHandleW(None)? };
@@ -415,6 +423,9 @@ impl OverlayWindow {
         let cursor = current_cursor_position();
         let initial_x = bounds.map_or(cursor.x, |value| value.x);
         let initial_y = bounds.map_or(cursor.y, |value| value.y);
+        let mut state = Box::new(OverlayWindowState {
+            context_menu_sender,
+        });
         let hwnd = match unsafe {
             CreateWindowExW(
                 extended,
@@ -428,7 +439,7 @@ impl OverlayWindow {
                 None,
                 None,
                 Some(instance),
-                None,
+                Some((&mut *state as *mut OverlayWindowState).cast()),
             )
         } {
             Ok(hwnd) => hwnd,
@@ -480,6 +491,7 @@ impl OverlayWindow {
             owner_thread: thread::current().id(),
             width,
             height,
+            _state: state,
             _not_send_or_sync: std::marker::PhantomData,
         })
     }
@@ -570,6 +582,21 @@ impl OverlayWindow {
             .map_err(windows_error("update overlay z-order"))?;
         }
         Ok(())
+    }
+
+    fn set_click_through(&self, click_through: bool) {
+        self.assert_owner_thread();
+        // SAFETY: the HWND is live and confined to its owner thread. Changing
+        // this extended style only changes hit testing for the existing window.
+        unsafe {
+            let mut style = GetWindowLongPtrW(self.hwnd, GWL_EXSTYLE);
+            if click_through {
+                style |= WS_EX_TRANSPARENT.0 as isize;
+            } else {
+                style &= !(WS_EX_TRANSPARENT.0 as isize);
+            }
+            SetWindowLongPtrW(self.hwnd, GWL_EXSTYLE, style);
+        }
     }
 }
 
@@ -1051,9 +1078,11 @@ impl NativeOverlay {
         frame: &RenderFrame,
         options: OverlaySessionOptions,
         bounds: Option<OverlayWindowBounds>,
+        context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
     ) -> Result<Self, OverlayError> {
         validate_options(options)?;
-        let window = OverlayWindow::create(options, frame.snapshot.canvas, bounds)?;
+        let window =
+            OverlayWindow::create(options, frame.snapshot.canvas, bounds, context_menu_sender)?;
         let renderer = Renderer::create(&window, frame, options.opacity_percent)?;
         Ok(Self {
             renderer,
@@ -1075,6 +1104,10 @@ impl NativeOverlay {
 
     fn set_always_on_top(&self, always_on_top: bool) -> Result<(), OverlayError> {
         self.window.set_always_on_top(always_on_top)
+    }
+
+    fn set_click_through(&self, click_through: bool) {
+        self.window.set_click_through(click_through);
     }
 
     fn draw(&mut self, verify: bool) -> Result<(), OverlayError> {
@@ -1100,6 +1133,7 @@ pub(super) struct ProductOverlaySession {
     options: OverlaySessionOptions,
     last_frame: RenderFrame,
     retry_backoff: FrameRetryBackoff,
+    context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
 }
 
 impl ProductOverlaySession {
@@ -1110,8 +1144,12 @@ impl ProductOverlaySession {
         gamepad_axis_producer: GamepadAxisProducer,
         render_consumer: RenderConsumer,
         options: OverlaySessionOptions,
-        shortcut_dispatcher: Option<ShortcutDispatcher>,
+        interaction_sinks: OverlayInteractionSinks,
     ) -> Result<Self, OverlayError> {
+        let OverlayInteractionSinks {
+            shortcut_dispatcher,
+            context_menu_sender,
+        } = interaction_sinks;
         validate_options(options)?;
         let initial_frame = render_consumer
             .take_latest()
@@ -1120,14 +1158,18 @@ impl ProductOverlaySession {
             .model_commit
             .ok_or_else(|| OverlayError::new("initial render frame has no model commit token"))?;
         let com_apartment = ComApartment::initialize()?;
-        let mut overlay =
-            match NativeOverlay::create(&initial_frame, options, options.window_bounds) {
-                Ok(overlay) => overlay,
-                Err(error) => {
-                    reject_model_commit(&runtime_client, &render_consumer, token)?;
-                    return Err(error);
-                }
-            };
+        let mut overlay = match NativeOverlay::create(
+            &initial_frame,
+            options,
+            options.window_bounds,
+            context_menu_sender.clone(),
+        ) {
+            Ok(overlay) => overlay,
+            Err(error) => {
+                reject_model_commit(&runtime_client, &render_consumer, token)?;
+                return Err(error);
+            }
+        };
         let mut frames_presented = 0;
         if runtime_client.snapshot().overlay_visible {
             if let Err(error) = overlay.draw(true).and_then(|()| overlay.set_visible(true)) {
@@ -1169,6 +1211,7 @@ impl ProductOverlaySession {
             options,
             last_frame: initial_frame,
             retry_backoff: FrameRetryBackoff::default(),
+            context_menu_sender,
         })
     }
 
@@ -1209,16 +1252,25 @@ impl ProductOverlaySession {
                 } else {
                     bounds
                 };
-                let mut replacement =
-                    NativeOverlay::create(&self.last_frame, next_options, Some(bounds))?;
+                let mut replacement = NativeOverlay::create(
+                    &self.last_frame,
+                    next_options,
+                    Some(bounds),
+                    self.context_menu_sender.clone(),
+                )?;
                 if runtime_snapshot.overlay_visible {
                     replacement.draw(self.frames_presented == 0)?;
                     replacement.set_visible(true)?;
                     self.frames_presented = self.frames_presented.saturating_add(1);
                 }
                 self.overlay = replacement;
-            } else if next_options.always_on_top != self.options.always_on_top {
-                self.overlay.set_always_on_top(next_options.always_on_top)?;
+            } else {
+                if next_options.click_through != self.options.click_through {
+                    self.overlay.set_click_through(next_options.click_through);
+                }
+                if next_options.always_on_top != self.options.always_on_top {
+                    self.overlay.set_always_on_top(next_options.always_on_top)?;
+                }
             }
             self.options = next_options;
         }
@@ -1239,28 +1291,32 @@ impl ProductOverlaySession {
             let model_changed = frame.model_generation != self.overlay.renderer.model_generation;
             if model_changed {
                 let bounds = self.overlay.window.bounds()?;
-                let mut replacement =
-                    match NativeOverlay::create(&frame, self.options, Some(bounds)) {
-                        Ok(replacement) => replacement,
-                        Err(error) if frame.model_commit.is_some() => {
-                            reject_model_commit(
-                                &self.runtime_client,
-                                &self.render_consumer,
-                                frame.model_commit.expect("checked model commit token"),
-                            )?;
-                            self.model_commit_rejections =
-                                self.model_commit_rejections.saturating_add(1);
-                            let _ = error;
-                            if overlay_visible {
-                                self.overlay.draw(self.frames_presented == 0)?;
-                                self.frames_presented = self.frames_presented.saturating_add(1);
-                                self.overlay.set_visible(true)?;
-                                return Ok(OverlayTickOutcome::Presented);
-                            }
-                            return Ok(OverlayTickOutcome::Hidden);
+                let mut replacement = match NativeOverlay::create(
+                    &frame,
+                    self.options,
+                    Some(bounds),
+                    self.context_menu_sender.clone(),
+                ) {
+                    Ok(replacement) => replacement,
+                    Err(error) if frame.model_commit.is_some() => {
+                        reject_model_commit(
+                            &self.runtime_client,
+                            &self.render_consumer,
+                            frame.model_commit.expect("checked model commit token"),
+                        )?;
+                        self.model_commit_rejections =
+                            self.model_commit_rejections.saturating_add(1);
+                        let _ = error;
+                        if overlay_visible {
+                            self.overlay.draw(self.frames_presented == 0)?;
+                            self.frames_presented = self.frames_presented.saturating_add(1);
+                            self.overlay.set_visible(true)?;
+                            return Ok(OverlayTickOutcome::Presented);
                         }
-                        Err(error) => return Err(error),
-                    };
+                        return Ok(OverlayTickOutcome::Hidden);
+                    }
+                    Err(error) => return Err(error),
+                };
                 let candidate = replacement.draw(true).and_then(|()| {
                     if overlay_visible {
                         replacement.set_visible(true)
@@ -1465,7 +1521,7 @@ pub(crate) fn run_model_switch_preview(
 
     let com_apartment = ComApartment::initialize()?;
     let mut overlay =
-        match NativeOverlay::create(&initial_frame, OverlaySessionOptions::default(), None) {
+        match NativeOverlay::create(&initial_frame, OverlaySessionOptions::default(), None, None) {
             Ok(overlay) => overlay,
             Err(error) => {
                 reject_model_commit(&runtime_client, &render_consumer, initial_token)?;
@@ -2588,6 +2644,20 @@ unsafe extern "system" fn window_proc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
+    if message == WM_NCCREATE {
+        // SAFETY: WM_NCCREATE carries the pointer supplied by CreateWindowExW.
+        let create = unsafe { &*(lparam.0 as *const CREATESTRUCTW) };
+        // SAFETY: the owner keeps this boxed state alive until after DestroyWindow.
+        unsafe { SetWindowLongPtrW(hwnd, GWLP_USERDATA, create.lpCreateParams as isize) };
+    }
+    // SAFETY: userdata is either null before WM_NCCREATE or the live boxed state above.
+    let state = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut OverlayWindowState };
+    if message == WM_NCDESTROY {
+        // SAFETY: clearing userdata prevents later messages from observing the stale pointer.
+        unsafe { SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0) };
+        // SAFETY: forwarding uses the exact user32 callback arguments.
+        return unsafe { DefWindowProcW(hwnd, message, wparam, lparam) };
+    }
     match message {
         WM_NCHITTEST => {
             // SAFETY: the callback receives a live HWND from user32 and only
@@ -2602,6 +2672,14 @@ unsafe extern "system" fn window_proc(
             // SAFETY: WM_CLOSE is delivered to this owned top-level window and
             // destruction stays on the same UI thread.
             let _ = unsafe { DestroyWindow(hwnd) };
+            return LRESULT(0);
+        }
+        WM_CONTEXTMENU if !state.is_null() => {
+            // SAFETY: the state belongs to this HWND and remains live while it is dispatched.
+            let state = unsafe { &*state };
+            if let Some(sender) = &state.context_menu_sender {
+                let _ = sender.try_send(OverlayContextMenuRequest);
+            }
             return LRESULT(0);
         }
         _ => {}

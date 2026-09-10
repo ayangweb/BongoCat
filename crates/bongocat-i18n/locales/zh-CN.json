@@ -25,6 +25,18 @@
       "description": "设置窗口控制和当前模型动作、表情的快捷键。"
     }
   },
+  "system_menu": {
+    "title": "BongoCat",
+    "open_settings": "设置",
+    "show_overlay": "显示模型窗口",
+    "hide_overlay": "隐藏模型窗口",
+    "click_through": "鼠标穿透",
+    "check_for_updates": "检查新版本",
+    "open_source": "查看项目源码",
+    "restart": "重启应用",
+    "quit": "退出应用",
+    "version": "版本 %{version}"
+  },
   "about": {
     "page_title": "关于 BongoCat",
     "product_information": {

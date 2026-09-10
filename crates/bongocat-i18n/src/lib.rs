@@ -10,6 +10,11 @@ extern crate rust_i18n;
 
 rust_i18n::i18n!("locales", fallback = "en-US");
 
+// This value is injected from the locale file contents by build.rs. Keeping it
+// in the crate's rustc inputs ensures catalog-only edits rebuild consumers.
+#[doc(hidden)]
+pub const CATALOG_REVISION: &str = env!("BONGOCAT_I18N_CATALOG_REVISION");
+
 /// The locale used for the application fallback and the initial UI.
 pub const DEFAULT_LOCALE: &str = "en-US";
 

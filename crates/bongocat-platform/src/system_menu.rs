@@ -1,9 +1,36 @@
 use std::fmt;
 
+/// Localized text and revisioned state used by both native menu surfaces.
+///
+/// The platform owns native menu handles only. The application supplies this
+/// value from its settings snapshot so platform code never becomes a second
+/// source of configuration or localization state.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SystemMenuPresentation {
+    pub title: String,
+    pub tooltip: String,
+    pub open_settings: String,
+    pub show_overlay: String,
+    pub hide_overlay: String,
+    pub click_through: String,
+    pub check_for_updates: String,
+    pub open_source: String,
+    pub restart: String,
+    pub quit: String,
+    pub version: String,
+    pub overlay_visible: bool,
+    pub click_through_enabled: bool,
+    pub update_check_available: bool,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SystemMenuAction {
     OpenSettings,
     ToggleOverlayVisibility,
+    ToggleClickThrough,
+    CheckForUpdates,
+    OpenSource,
+    Restart,
     Quit,
 }
 

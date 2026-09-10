@@ -19,7 +19,7 @@ use bongocat_runtime::PlatformInputDiagnosticsProducer;
 use bongocat_runtime::{
     CursorProducer, GamepadAxisProducer, InputProducer, OverlaySettings, RuntimeClient,
 };
-use std::{collections::BTreeSet, fmt, path::Path, time::Duration};
+use std::{collections::BTreeSet, fmt, path::Path, sync::mpsc::SyncSender, time::Duration};
 
 pub const DEFAULT_OVERLAY_WINDOW_WIDTH: u32 = 350;
 pub(crate) const FRAME_SMOKE_GRID_DIMENSION: u64 = 17;
@@ -59,11 +59,10 @@ impl OverlaySessionOptions {
         }
     }
 
-    /// Z-order changes are applied directly to the native window. Other
-    /// settings still require replacing the native window resources.
+    /// Z-order and mouse-routing changes are applied directly to the native
+    /// window. Other settings still require replacing native window resources.
     pub(crate) const fn requires_window_recreation(self, next: Self) -> bool {
-        self.click_through != next.click_through
-            || self.scale_percent != next.scale_percent
+        self.scale_percent != next.scale_percent
             || self.opacity_percent != next.opacity_percent
             || self.keep_inside_work_area != next.keep_inside_work_area
     }
@@ -371,6 +370,18 @@ pub struct ProductOverlaySession {
     inner: windows::ProductOverlaySession,
 }
 
+/// A right-click on the model window. The application owns menu presentation
+/// and action handling; the overlay only reports this platform input.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct OverlayContextMenuRequest;
+
+/// Optional application-owned event handoffs consumed by the native overlay.
+/// They carry no overlay state and are never used to render or mutate config.
+pub struct OverlayInteractionSinks {
+    pub shortcut_dispatcher: Option<ShortcutDispatcher>,
+    pub context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
+}
+
 impl ProductOverlaySession {
     pub fn start(
         runtime_client: RuntimeClient,
@@ -400,6 +411,29 @@ impl ProductOverlaySession {
         options: OverlaySessionOptions,
         shortcut_dispatcher: Option<ShortcutDispatcher>,
     ) -> Result<Self, OverlayError> {
+        Self::start_with_interaction_sinks(
+            runtime_client,
+            input_producer,
+            cursor_producer,
+            gamepad_axis_producer,
+            render_consumer,
+            options,
+            OverlayInteractionSinks {
+                shortcut_dispatcher,
+                context_menu_sender: None,
+            },
+        )
+    }
+
+    pub fn start_with_interaction_sinks(
+        runtime_client: RuntimeClient,
+        input_producer: InputProducer,
+        cursor_producer: CursorProducer,
+        gamepad_axis_producer: GamepadAxisProducer,
+        render_consumer: RenderConsumer,
+        options: OverlaySessionOptions,
+        interaction_sinks: OverlayInteractionSinks,
+    ) -> Result<Self, OverlayError> {
         #[cfg(target_os = "macos")]
         {
             macos::ProductOverlaySession::start(
@@ -409,7 +443,7 @@ impl ProductOverlaySession {
                 gamepad_axis_producer,
                 render_consumer,
                 options,
-                shortcut_dispatcher,
+                interaction_sinks,
             )
             .map(|inner| Self { inner })
         }
@@ -423,7 +457,7 @@ impl ProductOverlaySession {
                 gamepad_axis_producer,
                 render_consumer,
                 options,
-                shortcut_dispatcher,
+                interaction_sinks,
             )
             .map(|inner| Self { inner })
         }
@@ -437,7 +471,7 @@ impl ProductOverlaySession {
                 gamepad_axis_producer,
                 render_consumer,
                 options,
-                shortcut_dispatcher,
+                interaction_sinks,
             );
             Err(OverlayError::new(
                 "the product Live2D overlay is available on Windows and macOS",
@@ -1011,10 +1045,14 @@ mod tests {
     }
 
     #[test]
-    fn always_on_top_only_changes_use_an_in_place_window_transition() {
+    fn z_order_and_click_through_changes_use_in_place_window_transitions() {
         let current = OverlaySessionOptions::default();
         let mut next = current;
         next.always_on_top = false;
+        assert!(!current.requires_window_recreation(next));
+
+        next = current;
+        next.click_through = true;
         assert!(!current.requires_window_recreation(next));
 
         next.opacity_percent = 80;

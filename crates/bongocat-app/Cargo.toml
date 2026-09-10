@@ -16,6 +16,7 @@ async-io.workspace = true
 atomic-write-file.workspace = true
 bongocat-audio.workspace = true
 bongocat-config.workspace = true
+bongocat-i18n.workspace = true
 bongocat-live2d.workspace = true
 bongocat-log.workspace = true
 bongocat-model.workspace = true
