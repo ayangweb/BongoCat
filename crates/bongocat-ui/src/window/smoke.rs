@@ -801,7 +801,10 @@ impl SettingsView {
             .accessibility_tree()
             .nodes
             .into_iter()
-            .filter(|node| node.id.get() >= ACCESSIBILITY_SHORTCUT_CLEAR_BASE)
+            .filter(|node| {
+                node.id.get() >= ACCESSIBILITY_SHORTCUT_CLEAR_BASE
+                    && node.id.get() < ACCESSIBILITY_MODEL_BEHAVIOR_PREVIEW_BASE
+            })
             .collect::<Vec<_>>();
         if clear_nodes.len() != expected_clear_rows.len()
             || clear_nodes
