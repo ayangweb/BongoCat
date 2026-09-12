@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "cursor-does-not-block-release",
+  "description": "High-frequency cursor updates do not prevent a captured key release.",
+  "context": {
+    "modelMode": "standard",
+    "keySides": { "KeyA": "left" }
+  },
+  "events": [
+    { "atMs": 0, "type": "key_down", "key": "KeyA", "repeat": false, "source": "capture" },
+    { "atMs": 1, "type": "cursor_moved", "position": { "x": 10.0, "y": 10.0 } },
+    { "atMs": 2, "type": "cursor_moved", "position": { "x": 20.0, "y": 25.0 } },
+    { "atMs": 3, "type": "cursor_moved", "position": { "x": 30.0, "y": 40.0 } },
+    { "atMs": 4, "type": "key_up", "key": "KeyA", "source": "capture" }
+  ]
+}

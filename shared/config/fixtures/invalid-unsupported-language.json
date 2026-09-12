@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "application": {
+    "show_taskbar_icon": true,
+    "show_status_icon": true,
+    "check_for_updates_automatically": true
+  },
+  "appearance": { "theme": "system", "language": "de-DE" },
+  "overlay": {
+    "visible": true,
+    "click_through": false,
+    "always_on_top": true,
+    "scale_percent": 100,
+    "opacity_percent": 100,
+    "keep_inside_work_area": true
+  },
+  "input": {
+    "gamepad_stick_dead_zone": 0.15,
+    "gamepad_trigger_dead_zone": 0.0
+  },
+  "model": {
+    "selected_model_id": null,
+    "selected_model_origin": null,
+    "mirror": false,
+    "mirror_pointer_tracking": false,
+    "play_motion_audio": true,
+    "enable_behavior_shortcuts": true,
+    "maximum_fps": 60,
+    "ignore_pointer": false,
+    "release_fallback_timeout_ms": 500
+  },
+  "shortcuts": { "commands": [], "model_behaviors": [] }
+}

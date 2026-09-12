@@ -1,5 +1,0 @@
-"$schema" = "schemas/schema.json"
-
-[default]
-description = "Default permissions for the plugin"
-permissions = ["allow-show-window", "allow-hide-window", "allow-set-always-on-top", "allow-set-taskbar-visibility"]

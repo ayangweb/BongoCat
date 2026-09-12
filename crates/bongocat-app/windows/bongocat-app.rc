@@ -1,0 +1,5 @@
+#define BONGOCAT_PRODUCT_ICON 101
+#define BONGOCAT_STATUS_ICON 102
+
+BONGOCAT_PRODUCT_ICON ICON "../../resources/icons/logo-windows.ico"
+BONGOCAT_STATUS_ICON ICON "../../resources/icons/tray-windows.ico"

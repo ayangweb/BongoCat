@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "keyboard-modifiers-and-repeat",
+  "description": "Left modifiers remain pressed while a repeated key-down is ignored as a duplicate edge.",
+  "context": {
+    "modelMode": "keyboard",
+    "keySides": {
+      "ControlLeft": "left",
+      "ShiftLeft": "left",
+      "KeyA": "left"
+    }
+  },
+  "events": [
+    { "atMs": 0, "type": "key_down", "key": "ControlLeft", "repeat": false, "source": "capture" },
+    { "atMs": 0, "type": "key_down", "key": "ShiftLeft", "repeat": false, "source": "capture" },
+    { "atMs": 10, "type": "key_down", "key": "KeyA", "repeat": false, "source": "capture" },
+    { "atMs": 500, "type": "key_down", "key": "KeyA", "repeat": true, "source": "capture" },
+    { "atMs": 1000, "type": "key_up", "key": "KeyA", "source": "capture" },
+    { "atMs": 1010, "type": "key_up", "key": "ShiftLeft", "source": "capture" },
+    { "atMs": 1020, "type": "key_up", "key": "ControlLeft", "source": "capture" }
+  ]
+}

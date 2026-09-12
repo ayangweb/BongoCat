@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "channel": "production",
+  "release_version": "1.0.1",
+  "minimum_upgradable_version": "1.0.0",
+  "release_sequence": 2,
+  "published_at_unix_seconds": 1788566400,
+  "release_notes_url": null,
+  "artifacts": [
+    {
+      "target": "x86_64-pc-windows-msvc",
+      "architecture": "aarch64",
+      "url": "https://updates.example.invalid/1.0.1/BongoCat.msi",
+      "byte_length": 4096,
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ]
+}

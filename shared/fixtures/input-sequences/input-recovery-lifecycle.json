@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "input-recovery-lifecycle",
+  "description": "Queue overflow, device removal, and service restart never leave keyboard or gamepad input pressed.",
+  "context": {
+    "modelMode": "gamepad",
+    "keySides": {
+      "KeyA": "left",
+      "KeyB": "right",
+      "GamepadSouth": "left"
+    }
+  },
+  "events": [
+    { "atMs": 0, "type": "key_down", "key": "KeyA", "repeat": false, "source": "capture" },
+    { "atMs": 1, "type": "mouse_down", "button": "left", "source": "capture" },
+    { "atMs": 10, "type": "reset", "reason": "queue_overflow" },
+    { "atMs": 20, "type": "device_connected", "deviceId": "fixture-pad", "deviceKind": "gamepad" },
+    { "atMs": 21, "type": "gamepad_button", "deviceId": "fixture-pad", "button": "south", "value": 1.0 },
+    { "atMs": 30, "type": "device_disconnected", "deviceId": "fixture-pad", "deviceKind": "gamepad" },
+    { "atMs": 40, "type": "key_down", "key": "KeyB", "repeat": false, "source": "capture" },
+    { "atMs": 50, "type": "reset", "reason": "service_restart" }
+  ]
+}

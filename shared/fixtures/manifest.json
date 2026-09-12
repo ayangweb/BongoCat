@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "cursor-does-not-block-release",
+      "input": "cursor-does-not-block-release.json",
+      "expected": "cursor-does-not-block-release.json"
+    },
+    {
+      "id": "gamepad-reconnect-reset",
+      "input": "gamepad-reconnect-reset.json",
+      "expected": "gamepad-reconnect-reset.json"
+    },
+    {
+      "id": "input-recovery-lifecycle",
+      "input": "input-recovery-lifecycle.json",
+      "expected": "input-recovery-lifecycle.json"
+    },
+    {
+      "id": "keyboard-modifiers-and-repeat",
+      "input": "keyboard-modifiers-and-repeat.json",
+      "expected": "keyboard-modifiers-and-repeat.json"
+    },
+    {
+      "id": "keyboard-reconciled-release",
+      "input": "keyboard-reconciled-release.json",
+      "expected": "keyboard-reconciled-release.json"
+    },
+    {
+      "id": "keyboard-single-key",
+      "input": "keyboard-single-key.json",
+      "expected": "keyboard-single-key.json"
+    },
+    {
+      "id": "lifecycle-reset",
+      "input": "lifecycle-reset.json",
+      "expected": "lifecycle-reset.json"
+    },
+    {
+      "id": "model-motion-expression-audio",
+      "input": "model-motion-expression-audio.json",
+      "expected": "model-motion-expression-audio.json"
+    },
+    {
+      "id": "mouse-drag-and-cursor",
+      "input": "mouse-drag-and-cursor.json",
+      "expected": "mouse-drag-and-cursor.json"
+    }
+  ]
+}

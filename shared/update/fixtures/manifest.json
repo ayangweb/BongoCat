@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "valid-development-aarch64-macos",
+      "file": "valid-development-aarch64-macos.json",
+      "expected": "accept"
+    },
+    {
+      "id": "invalid-http-artifact-url",
+      "file": "invalid-http-artifact-url.json",
+      "expected": "reject"
+    },
+    {
+      "id": "invalid-target-architecture",
+      "file": "invalid-target-architecture.json",
+      "expected": "reject"
+    },
+    {
+      "id": "invalid-unknown-field",
+      "file": "invalid-unknown-field.json",
+      "expected": "reject"
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+set windows-shell := ["powershell.exe", "-NoProfile", "-Command"]
+
+# List the available Native Rewrite tasks.
+default:
+    @just --list
+
+# Run the Development product until explicitly quit.
+[env("BONGOCAT_BUILD_ENV", "development")]
+dev:
+    cargo run --locked -p bongocat-app --release -- --run-seconds 0
+
+# Exercise settings close, reopen, and runtime continuity.
+[env("BONGOCAT_BUILD_ENV", "development")]
+dev-smoke:
+    cargo run --locked -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke
+
+# Run a deterministic Live2D diagnostic preview.
+preview model="standard" seconds="30":
+    cargo run --locked -p bongocat-overlay --release -- "{{model}}" "{{seconds}}"
+
+# Run the Native workspace tests.
+[env("BONGOCAT_BUILD_ENV", "development")]
+test:
+    cargo test --locked --workspace
+
+# Run all default Native workspace quality gates.
+[env("BONGOCAT_BUILD_ENV", "development")]
+check:
+    cargo fmt --all -- --check
+    cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+    cargo test --locked --workspace
+    cargo check --locked --workspace --release
+
+# Build the product and package the platform installer with the immutable Production environment.
+[env("BONGOCAT_BUILD_ENV", "production")]
+build:
+    @{{ if os() == "windows" { "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1" } else { "./scripts/build-macos.sh" } }}
