@@ -362,16 +362,16 @@ impl RunOptions {
     }
 
     fn opens_settings_window_on_start(&self) -> bool {
-        self.settings_window_smoke || {
-            #[cfg(target_os = "windows")]
-            {
-                self.single_instance_smoke
-            }
-            #[cfg(not(target_os = "windows"))]
-            {
-                false
-            }
+        let mut opens_settings_window = self.settings_window_smoke;
+        #[cfg(target_os = "macos")]
+        {
+            opens_settings_window |= self.application_reopen_smoke;
         }
+        #[cfg(target_os = "windows")]
+        {
+            opens_settings_window |= self.single_instance_smoke;
+        }
+        opens_settings_window
     }
 }
 
@@ -2385,8 +2385,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                     Ok(true)
-                })
-                .await;
+                });
                 #[cfg(target_os = "windows")]
                 if request_shutdown_flush {
                     let flush_requested = cx.update(|cx| {
@@ -3685,6 +3684,7 @@ mod tests {
             .expect("application-reopen smoke options");
         assert!(options.application_reopen_smoke);
         assert!(!options.settings_window_smoke);
+        assert!(options.opens_settings_window_on_start());
     }
 
     #[cfg(target_os = "macos")]

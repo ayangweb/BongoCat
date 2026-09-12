@@ -47,7 +47,7 @@ pub fn open_external_url(value: &str) -> Result<(), ExternalUrlOpenError> {
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let _ = url;
-        return Err(ExternalUrlOpenError::UnsupportedPlatform);
+        Err(ExternalUrlOpenError::UnsupportedPlatform)
     }
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
