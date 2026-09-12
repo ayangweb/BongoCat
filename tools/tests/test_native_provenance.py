@@ -19,7 +19,7 @@ class NativeProvenanceTests(unittest.TestCase):
                     sys.executable,
                     str(SCRIPT),
                     "--workspace",
-                    str(ROOT / "native"),
+                    str(ROOT),
                     "--output",
                     str(output),
                     "--target",

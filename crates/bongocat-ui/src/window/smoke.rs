@@ -775,6 +775,7 @@ impl SettingsView {
             language,
         );
         let shortcut_count = expected_capture_rows.len();
+        let editing_disabled = snapshot.configuration_status != SettingsConfigurationStatus::Ready;
         if capture_nodes.len() != shortcut_count
             || capture_nodes
                 .iter()
@@ -783,9 +784,9 @@ impl SettingsView {
                     node.role != AccessibilityRole::Button
                         || node.label != label
                         || node.value.as_deref() != Some(value.as_str())
-                        || node.disabled
-                        || !node.supports_click
-                        || !node.supports_focus
+                        || node.disabled != editing_disabled
+                        || node.supports_click != !editing_disabled
+                        || node.supports_focus != !editing_disabled
                 })
         {
             return Err("shortcut capture accessibility semantics are invalid".to_owned());
@@ -809,9 +810,9 @@ impl SettingsView {
                 .any(|(node, (_, label))| {
                     node.role != AccessibilityRole::Button
                         || node.label != label
-                        || node.disabled
-                        || !node.supports_click
-                        || !node.supports_focus
+                        || node.disabled != editing_disabled
+                        || node.supports_click != !editing_disabled
+                        || node.supports_focus != !editing_disabled
                 })
         {
             return Err("shortcut binding clear accessibility semantics are invalid".to_owned());

@@ -2056,7 +2056,8 @@ mod tests {
 
         let mut oversized = vec![0_u8; header_size + 8];
         oversized[0..4].copy_from_slice(&1_u32.to_le_bytes());
-        oversized[4..8].copy_from_slice(&((oversized.len() + 1) as u32).to_le_bytes());
+        let oversized_declared = (oversized.len() + 1) as u32;
+        oversized[4..8].copy_from_slice(&oversized_declared.to_le_bytes());
         assert!(decode_raw_input_bytes(&oversized, header_size).is_err());
 
         let mut short_header = vec![0_u8; 7];

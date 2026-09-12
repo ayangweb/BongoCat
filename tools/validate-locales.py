@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the legacy locale inventory before Native Rewrite migration."""
+"""Validate the active Native localization catalogs."""
 
 from __future__ import annotations
 
@@ -10,9 +10,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-LOCALE_DIR = ROOT / "src" / "locales"
-EXPECTED_LOCALES = ("en-US", "pt-BR", "vi-VN", "zh-CN", "zh-TW")
-PLACEHOLDER = re.compile(r"\{([A-Za-z][A-Za-z0-9_]*)\}")
+LOCALE_DIR = ROOT / "crates" / "bongocat-i18n" / "locales"
+EXPECTED_LOCALES = ("en-US", "zh-CN")
+PLACEHOLDER = re.compile(r"%\{([A-Za-z][A-Za-z0-9_]*)\}")
 
 
 def fail(path: Path, message: str) -> None:
@@ -38,6 +38,10 @@ def flatten(value: object, path: str, source: Path) -> dict[str, str]:
         for key, child in value.items():
             if not isinstance(key, str) or not key.strip():
                 fail(source, f"{path or '<root>'} contains a blank key")
+            if key == "_version":
+                if path:
+                    fail(source, f"{child_path or '<root>'} contains a reserved catalog key")
+                continue
             child_path = f"{path}.{key}" if path else key
             for leaf, text in flatten(child, child_path, source).items():
                 if leaf in flattened:
@@ -59,7 +63,7 @@ def main() -> int:
     if actual_files != expected_files:
         missing = sorted(expected_files - actual_files)
         extra = sorted(actual_files - expected_files)
-        raise ValueError(f"src/locales: locale file mismatch; missing={missing}, extra={extra}")
+        raise ValueError(f"crates/bongocat-i18n/locales: locale file mismatch; missing={missing}, extra={extra}")
 
     flattened = {
         locale: flatten(load_locale(LOCALE_DIR / f"{locale}.json"), "", LOCALE_DIR / f"{locale}.json")

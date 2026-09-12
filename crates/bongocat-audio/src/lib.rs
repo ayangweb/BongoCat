@@ -1,7 +1,6 @@
 #![forbid(unsafe_code)]
 
 use std::{
-    collections::HashMap,
     fmt, io,
     path::{Path, PathBuf},
     sync::{
@@ -12,6 +11,9 @@ use std::{
     thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use std::collections::HashMap;
 
 // Playback completion is diagnostic state only. A short health check keeps
 // that state reasonably fresh without waking an idle worker at 100 Hz.

@@ -3,8 +3,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-INSTALLER = ROOT / "native" / "windows" / "installer" / "BongoCat.nsi"
-PACKAGER = ROOT / "native" / "scripts" / "package-windows.ps1"
+INSTALLER = ROOT / "windows" / "installer" / "BongoCat.nsi"
+PACKAGER = ROOT / "scripts" / "package-windows.ps1"
 
 
 class WindowsInstallerContractTests(unittest.TestCase):
