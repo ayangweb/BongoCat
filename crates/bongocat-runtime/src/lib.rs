@@ -4147,9 +4147,13 @@ mod tests {
         let ticked = client
             .wait_for_command(tick_sequence, TIMEOUT)
             .expect("preview tick accepted");
-        let completed = client
-            .wait_for_revision(ticked.revision.saturating_add(1), TIMEOUT)
-            .expect("preview completed");
+        let completed = if ticked.active_motion.is_none() {
+            ticked
+        } else {
+            client
+                .wait_for_revision(ticked.revision.saturating_add(1), TIMEOUT)
+                .expect("preview completed")
+        };
         assert!(completed.active_motion.is_none());
 
         owner.shutdown(TIMEOUT).expect("runtime shutdown");
@@ -4398,7 +4402,12 @@ mod tests {
                 )
                 .expect("install structurally valid model"),
         );
-        let (owner, consumer) = RuntimeOwner::start_with_rendering(true, 8);
+        let clock = Arc::new(ManualClock::default());
+        let (owner, consumer) = RuntimeOwner::start_with_rendering_and_clock(
+            true,
+            8,
+            Arc::clone(&clock) as Arc<dyn MonotonicClock>,
+        );
         let client = owner.client();
         client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
         let left_bindings = Arc::new(InputBindings::new(BTreeMap::from([(

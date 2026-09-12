@@ -12,16 +12,21 @@ mod windows;
 use bongocat_platform::PlatformInputServiceStatus;
 use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError, ShortcutDispatcher};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
+use bongocat_render::BlendMode;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_render::CanvasInfo;
-use bongocat_render::{BlendMode, RenderConsumer, RenderTransportDiagnostics};
+use bongocat_render::{RenderConsumer, RenderTransportDiagnostics};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_runtime::PlatformInputDiagnosticsProducer;
 use bongocat_runtime::{
     CursorProducer, GamepadAxisProducer, InputProducer, OverlaySettings, RuntimeClient,
 };
-use std::{collections::BTreeSet, fmt, path::Path, sync::mpsc::SyncSender, time::Duration};
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use std::collections::BTreeSet;
+use std::{fmt, path::Path, sync::mpsc::SyncSender, time::Duration};
 
 pub const DEFAULT_OVERLAY_WINDOW_WIDTH: u32 = 350;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub(crate) const FRAME_SMOKE_GRID_DIMENSION: u64 = 17;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const MIN_OVERLAY_WINDOW_DIMENSION: f32 = 64.0;
@@ -61,6 +66,7 @@ impl OverlaySessionOptions {
 
     /// Z-order and mouse-routing changes are applied directly to the native
     /// window. Other settings still require replacing native window resources.
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub(crate) const fn requires_window_recreation(self, next: Self) -> bool {
         self.scale_percent != next.scale_percent
             || self.opacity_percent != next.opacity_percent
@@ -189,6 +195,7 @@ impl OverlayTickOutcome {
     }
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct FramePixelStatistics {
     pub sampled_pixels: usize,
@@ -205,6 +212,7 @@ pub(crate) struct FramePixelStatistics {
 /// three channels are treated only as an unordered color tuple. The checks
 /// establish that a transparent overlay retained background and anti-aliased
 /// model coverage; they do not claim cross-backend pixels are identical.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub(crate) fn validate_frame_smoke(
     pixels: impl IntoIterator<Item = [u8; 4]>,
 ) -> Result<FramePixelStatistics, &'static str> {
@@ -244,7 +252,9 @@ pub(crate) fn validate_frame_smoke(
     Ok(statistics)
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 const FRAME_RETRY_INITIAL_DELAY: Duration = Duration::from_millis(100);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 const FRAME_RETRY_MAXIMUM_DELAY: Duration = Duration::from_secs(1);
 
 /// Bounded retry cadence for temporary presentation failures.
@@ -252,11 +262,13 @@ const FRAME_RETRY_MAXIMUM_DELAY: Duration = Duration::from_secs(1);
 /// The frame source owns the actual timer. This state only converts repeated
 /// temporary failures into a deterministic delay, so a hidden compositor never
 /// turns into a busy loop or a stream of renderer errors.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(crate) struct FrameRetryBackoff {
     consecutive_failures: u8,
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl FrameRetryBackoff {
     pub(crate) fn register_temporary_failure(&mut self) -> Duration {
         let exponent = self.consecutive_failures.min(4);
@@ -272,6 +284,7 @@ impl FrameRetryBackoff {
     }
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum BlendFactor {
     Zero,
@@ -280,6 +293,7 @@ pub(crate) enum BlendFactor {
     DestinationColor,
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct BlendFactors {
     pub source_rgb: BlendFactor,
@@ -288,6 +302,7 @@ pub(crate) struct BlendFactors {
     pub destination_alpha: BlendFactor,
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub(crate) const fn blend_factors(mode: BlendMode) -> BlendFactors {
     match mode {
         BlendMode::Normal => BlendFactors {
@@ -634,20 +649,20 @@ pub struct FrameTimingSummary {
     pub missed_deadlines: u64,
 }
 
-#[cfg(any(target_os = "macos", test))]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 const MAX_FRAME_TIMING_SAMPLES: usize = 4_096;
 
 /// Collect a fixed maximum number of exact microsecond samples so diagnostic
 /// previews cannot grow memory use during long-running benchmark sessions.
 #[derive(Debug)]
-#[cfg(any(target_os = "macos", test))]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub(crate) struct FrameTimingCollector {
     draw_samples_us: Vec<u64>,
     samples_dropped: u64,
     missed_deadlines: u64,
 }
 
-#[cfg(any(target_os = "macos", test))]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl FrameTimingCollector {
     pub(crate) fn new() -> Self {
         Self {
@@ -685,7 +700,7 @@ impl FrameTimingCollector {
     }
 }
 
-#[cfg(any(target_os = "macos", test))]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn percentile_nearest_rank(sorted_samples: &[u64], percentile: u8) -> u64 {
     if sorted_samples.is_empty() {
         return 0;
@@ -694,6 +709,7 @@ fn percentile_nearest_rank(sorted_samples: &[u64], percentile: u8) -> u64 {
     sorted_samples[rank.saturating_sub(1)]
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum OverlayErrorKind {
     Fatal,
@@ -956,7 +972,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(target_os = "macos")]
     fn temporary_drawable_failures_back_off_without_accumulating_error_reports() {
         let mut backoff = FrameRetryBackoff::default();
         let delays = (0..6)

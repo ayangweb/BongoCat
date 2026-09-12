@@ -2163,8 +2163,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         #[cfg(target_os = "windows")]
-        let frame_failures = Arc::clone(&run_failures);
-        #[cfg(target_os = "windows")]
         let frame_shutdown_requested = Arc::clone(&shutdown_requested);
         let frame_settings_client = settings_client.clone();
         let frame_source_guard = frame_source_shutdown.run_guard();
@@ -2177,8 +2175,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut last_overlay_bounds = None;
             let mut overlay_placement_debouncer = OverlayPlacementDebouncer::default();
             let mut retry_delay = None;
-            #[cfg(target_os = "windows")]
-            let mut update_failure_reported = false;
             loop {
                 let runtime_snapshot = frame_runtime_client.snapshot();
                 let frame_interval = bongocat_runtime::frame_interval_for_runtime(
@@ -2321,7 +2317,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 #[cfg(target_os = "windows")]
                 let keep_running = cx.update(|cx| {
                     if !cx.has_global::<ProductCoordinator>() {
-                        return Ok(false);
+                        return false;
                     }
                     handle_shortcut_toggle_settings(cx);
                     if context_menu_requested
@@ -2377,14 +2373,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .load(Ordering::Acquire);
                         if flush_complete {
                             start_windows_product_shutdown(cx);
-                            return Ok(false);
+                            return false;
                         }
                         if !shutdown_flush_started {
                             shutdown_flush_started = true;
                             request_shutdown_flush = true;
                         }
                     }
-                    Ok(true)
+                    true
                 });
                 #[cfg(target_os = "windows")]
                 if request_shutdown_flush {
@@ -2401,20 +2397,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         });
                     }
                 }
-                #[cfg(target_os = "windows")]
-                let keep_running = match keep_running {
-                    Ok(keep_running) => {
-                        update_failure_reported = false;
-                        keep_running
-                    }
-                    Err(error) => {
-                        if !update_failure_reported {
-                            record_failure(&frame_failures, error);
-                            update_failure_reported = true;
-                        }
-                        true
-                    }
-                };
                 #[cfg(target_os = "windows")]
                 {
                     retry_delay = next_retry_delay;
