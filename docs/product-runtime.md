@@ -5,12 +5,12 @@ Vue/Tauri code is retained only in the remote `master` and `pre-refactor-tauri` 
 
 ## Build Environments
 
-The workspace explicitly selects Development in `.cargo/config.toml`; the selection is compiled
-into the artifact. Run product commands from the repository root so Cargo loads that controlled
-entry configuration:
+Development must be selected explicitly when invoking Cargo directly; the selection is compiled
+into the artifact. The formal `just dev`, `just test`, and `just check` recipes select Development for
+the workspace. Run product commands from the repository root with the environment bound before Cargo:
 
 ```text
-cargo run -p bongocat-app --release
+BONGOCAT_BUILD_ENV=development cargo run -p bongocat-app --release
 ```
 
 This is the current formal visible product entry on macOS and Windows. It loads the selected bundled
@@ -31,7 +31,7 @@ The cross-platform product smoke closes or hides the settings window, reopens it
 the frame source continued to run and the current snapshot was restored:
 
 ```text
-cargo run -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke
+BONGOCAT_BUILD_ENV=development cargo run -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke
 ```
 
 On macOS, grant Input Monitoring permission to the launching terminal for global keyboard and

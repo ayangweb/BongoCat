@@ -5,10 +5,12 @@ default:
     @just --list
 
 # Run the Development product until explicitly quit.
+[env("BONGOCAT_BUILD_ENV", "development")]
 dev:
     cargo run --locked -p bongocat-app --release -- --run-seconds 0
 
 # Exercise settings close, reopen, and runtime continuity.
+[env("BONGOCAT_BUILD_ENV", "development")]
 dev-smoke:
     cargo run --locked -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke
 
@@ -17,10 +19,12 @@ preview model="standard" seconds="30":
     cargo run --locked -p bongocat-overlay --release -- "{{model}}" "{{seconds}}"
 
 # Run the Native workspace tests.
+[env("BONGOCAT_BUILD_ENV", "development")]
 test:
     cargo test --locked --workspace
 
 # Run all default Native workspace quality gates.
+[env("BONGOCAT_BUILD_ENV", "development")]
 check:
     cargo fmt --all -- --check
     cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
