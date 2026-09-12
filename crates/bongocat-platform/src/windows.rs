@@ -2254,13 +2254,6 @@ mod tests {
         let producer = runtime.input_producer();
         let axis_producer = runtime.gamepad_axis_producer();
         let connection = axis_producer.connect(0).expect("gamepad connection");
-        producer
-            .publish(InputEvent::GamepadConnected {
-                connection,
-                at: MonotonicMillis::new(1),
-            })
-            .expect("initial gamepad connection");
-        wait_for_input_sequence(&client, 0, TIMEOUT);
         let mut state = WindowState::new(
             producer,
             runtime.cursor_producer(),
@@ -2275,11 +2268,19 @@ mod tests {
             connection,
             buttons: 0,
         });
+        let initial_sequence = state
+            .producer
+            .publish(InputEvent::GamepadConnected {
+                connection,
+                at: state.monotonic(),
+            })
+            .expect("initial gamepad connection");
+        wait_for_input_sequence(&client, initial_sequence, TIMEOUT);
 
         state
             .publish(CapturedEvent::Reset(InputResetReason::SessionLock))
             .expect("lifecycle reset");
-        wait_for_input_sequence(&client, 2, TIMEOUT);
+        wait_for_input_sequence(&client, initial_sequence + 2, TIMEOUT);
 
         assert_eq!(client.snapshot().input.connected_gamepad_count, 1);
         assert_eq!(axis_producer.diagnostics().connections, 1);
