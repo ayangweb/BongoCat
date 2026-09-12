@@ -257,7 +257,7 @@ jobs:
             $stdout = Join-Path $env:RUNNER_TEMP "bongocat-product-$_.stdout.log"
             $stderr = Join-Path $env:RUNNER_TEMP "bongocat-product-$_.stderr.log"
             $arguments = if ($_ -eq 1) {
-              @("--run-seconds", "30")
+              @("--run-seconds", "30", "--settings-window-open-smoke")
             } else {
               @("--run-seconds", "30", "--settings-window-smoke", "--models-page-smoke")
             }

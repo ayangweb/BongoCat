@@ -241,6 +241,7 @@ fn gpui_application() -> GpuiApplication {
 struct RunOptions {
     run_duration: Duration,
     settings_window_smoke: bool,
+    settings_window_open_smoke: bool,
     models_page_smoke: bool,
     hidden_model_switch_smoke: bool,
     #[cfg(feature = "storage-test-injection")]
@@ -270,6 +271,7 @@ impl RunOptions {
         let mut arguments = arguments.into_iter();
         let mut run_seconds = DEFAULT_RUN_SECONDS;
         let mut settings_window_smoke = false;
+        let mut settings_window_open_smoke = false;
         let mut models_page_smoke = false;
         let mut hidden_model_switch_smoke = false;
         #[cfg(feature = "storage-test-injection")]
@@ -302,6 +304,7 @@ impl RunOptions {
                     })?;
                 }
                 "--settings-window-smoke" => settings_window_smoke = true,
+                "--settings-window-open-smoke" => settings_window_open_smoke = true,
                 "--models-page-smoke" => {
                     models_page_smoke = true;
                     settings_window_smoke = true;
@@ -337,6 +340,7 @@ impl RunOptions {
         Ok(Self {
             run_duration: Duration::from_secs(run_seconds),
             settings_window_smoke,
+            settings_window_open_smoke,
             models_page_smoke,
             hidden_model_switch_smoke,
             #[cfg(feature = "storage-test-injection")]
@@ -362,7 +366,8 @@ impl RunOptions {
     }
 
     fn opens_settings_window_on_start(&self) -> bool {
-        let mut opens_settings_window = self.settings_window_smoke;
+        let mut opens_settings_window =
+            self.settings_window_smoke || self.settings_window_open_smoke;
         #[cfg(target_os = "macos")]
         {
             opens_settings_window |= self.application_reopen_smoke;
@@ -416,16 +421,16 @@ impl std::error::Error for RunOptionsError {}
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn usage() -> &'static str {
     #[cfg(all(target_os = "windows", feature = "storage-test-injection"))]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--diagnostics-export-smoke] [--diagnostics-export-failure-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--diagnostics-export-smoke] [--diagnostics-export-failure-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
 
     #[cfg(all(target_os = "windows", not(feature = "storage-test-injection")))]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
 
     #[cfg(all(target_os = "macos", feature = "storage-test-injection"))]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--diagnostics-export-smoke] [--diagnostics-export-failure-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--diagnostics-export-smoke] [--diagnostics-export-failure-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
 
     #[cfg(all(target_os = "macos", not(feature = "storage-test-injection")))]
-    "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run."
+    "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run."
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -3470,6 +3475,7 @@ mod tests {
             RunOptions {
                 run_duration: Duration::ZERO,
                 settings_window_smoke: false,
+                settings_window_open_smoke: false,
                 models_page_smoke: false,
                 hidden_model_switch_smoke: false,
                 #[cfg(feature = "storage-test-injection")]
@@ -3528,6 +3534,17 @@ mod tests {
         assert!(!options.models_page_smoke);
         assert!(!options.hidden_model_switch_smoke);
         assert_eq!(options.run_duration, Duration::from_secs(4));
+        assert!(options.opens_settings_window_on_start());
+    }
+
+    #[test]
+    fn settings_window_open_smoke_only_opens_the_window() {
+        let options = RunOptions::parse(["--settings-window-open-smoke".to_owned()])
+            .expect("settings window open smoke options");
+        assert!(options.settings_window_open_smoke);
+        assert!(!options.settings_window_smoke);
+        assert!(!options.models_page_smoke);
+        assert!(!options.hidden_model_switch_smoke);
         assert!(options.opens_settings_window_on_start());
     }
 
