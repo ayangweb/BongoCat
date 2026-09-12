@@ -2012,7 +2012,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .detach();
 
-        let system_menu_failures = Arc::clone(&run_failures);
+        let system_menu_snapshot_failures = Arc::clone(&run_failures);
         let system_menu_client = settings_client.clone();
         cx.spawn(async move |cx| {
             let mut last_menu_revision = None;
@@ -2038,8 +2038,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     });
                     match result {
                         Ok(()) => last_menu_revision = Some(snapshot.revision),
-                        Err(error) => record_failure(&system_menu_failures, error),
+                        Err(error) => record_failure(&system_menu_snapshot_failures, error),
                     }
+                }
+            }
+        })
+        .detach();
+
+        let system_menu_failures = Arc::clone(&run_failures);
+        cx.spawn(async move |cx| {
+            loop {
+                Timer::after(Duration::from_millis(50)).await;
+                if !cx.update(|cx| cx.has_global::<ProductCoordinator>()) {
+                    break;
                 }
                 while let Ok(request) = status_icon_receiver.try_recv() {
                     let result = cx.update(|cx| {
