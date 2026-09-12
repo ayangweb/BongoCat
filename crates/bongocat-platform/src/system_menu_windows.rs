@@ -9,8 +9,9 @@ use windows::{
         System::LibraryLoader::GetModuleHandleW,
         UI::{
             Shell::{
-                NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_SETVERSION, NIN_SELECT,
-                NOTIFYICON_VERSION_4, NOTIFYICONDATAW, NOTIFYICONDATAW_0, Shell_NotifyIconW,
+                NIF_ICON, NIF_MESSAGE, NIF_STATE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY,
+                NIM_SETVERSION, NIN_SELECT, NIS_HIDDEN, NOTIFYICON_VERSION_4, NOTIFYICONDATAW,
+                NOTIFYICONDATAW_0, Shell_NotifyIconW,
             },
             WindowsAndMessaging::{
                 AppendMenuW, CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
@@ -51,7 +52,8 @@ pub struct SystemMenu {
     state: Option<Box<WindowState>>,
     sender: Sender<SystemMenuAction>,
     receiver: Receiver<SystemMenuAction>,
-    icon_added: bool,
+    icon_registered: bool,
+    icon_visible: bool,
     class_registered: bool,
     presentation: SystemMenuPresentation,
 }
@@ -117,11 +119,14 @@ impl SystemMenu {
             state: Some(state),
             sender,
             receiver,
-            icon_added: false,
+            icon_registered: false,
+            icon_visible: false,
             class_registered: true,
             presentation,
         };
-        if visible && unsafe { result.add_icon() }.is_err() {
+        if unsafe { result.register_icon() }.is_err()
+            || (!visible && unsafe { result.set_icon_visible(false) }.is_err())
+        {
             let _ = result.cleanup();
             return Err(SystemMenuError::StatusItemCreateFailed);
         }
@@ -167,24 +172,21 @@ impl SystemMenu {
             .map_err(|_| SystemMenuError::EventQueueClosed)
     }
     pub const fn is_visible(&self) -> bool {
-        self.icon_added
+        self.icon_visible
     }
     pub fn set_visible(&mut self, visible: bool) -> Result<(), SystemMenuError> {
-        unsafe {
-            if visible {
-                self.add_icon()
-            } else {
-                self.remove_icon()
-            }
+        if visible == self.icon_visible {
+            return Ok(());
         }
-        .map_err(|_| SystemMenuError::StatusItemUpdateFailed)
+        unsafe { self.set_icon_visible(visible) }
+            .map_err(|_| SystemMenuError::StatusItemUpdateFailed)
     }
     pub fn shutdown(mut self) -> Result<(), SystemMenuError> {
         self.cleanup()
     }
 
     fn cleanup(&mut self) -> Result<(), SystemMenuError> {
-        let mut failed = unsafe { self.remove_icon() }.is_err();
+        let mut failed = unsafe { self.unregister_icon() }.is_err();
         if let Some(window) = self.window.take() {
             failed |= unsafe { DestroyWindow(window) }.is_err();
         }
@@ -202,8 +204,8 @@ impl SystemMenu {
             Ok(())
         }
     }
-    unsafe fn add_icon(&mut self) -> Result<(), ()> {
-        if self.icon_added {
+    unsafe fn register_icon(&mut self) -> Result<(), ()> {
+        if self.icon_registered {
             return Ok(());
         }
         let window = self.window.ok_or(())?;
@@ -227,15 +229,42 @@ impl SystemMenu {
         if !unsafe { Shell_NotifyIconW(NIM_ADD, &data) }.as_bool() {
             return Err(());
         }
+        self.icon_registered = true;
+        self.icon_visible = true;
         data.Anonymous = NOTIFYICONDATAW_0 {
             uVersion: NOTIFYICON_VERSION_4,
         };
         let _ = unsafe { Shell_NotifyIconW(NIM_SETVERSION, &data) };
-        self.icon_added = true;
         Ok(())
     }
-    unsafe fn remove_icon(&mut self) -> Result<(), ()> {
-        if !self.icon_added {
+
+    unsafe fn set_icon_visible(&mut self, visible: bool) -> Result<(), ()> {
+        if !self.icon_registered {
+            return Err(());
+        }
+        let window = self.window.ok_or(())?;
+        let data = NOTIFYICONDATAW {
+            cbSize: size_of::<NOTIFYICONDATAW>() as u32,
+            hWnd: window,
+            uID: TRAY_ID,
+            uFlags: NIF_STATE,
+            dwState: if visible {
+                Default::default()
+            } else {
+                NIS_HIDDEN
+            },
+            dwStateMask: NIS_HIDDEN,
+            ..Default::default()
+        };
+        if !unsafe { Shell_NotifyIconW(NIM_MODIFY, &data) }.as_bool() {
+            return Err(());
+        }
+        self.icon_visible = visible;
+        Ok(())
+    }
+
+    unsafe fn unregister_icon(&mut self) -> Result<(), ()> {
+        if !self.icon_registered {
             return Ok(());
         }
         let window = self.window.ok_or(())?;
@@ -248,7 +277,8 @@ impl SystemMenu {
         if !unsafe { Shell_NotifyIconW(NIM_DELETE, &data) }.as_bool() {
             return Err(());
         }
-        self.icon_added = false;
+        self.icon_registered = false;
+        self.icon_visible = false;
         Ok(())
     }
 }

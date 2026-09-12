@@ -2950,10 +2950,10 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 依赖：`P7-SYSTEM-MENU-LIFECYCLE`、当前 v1 `application.show_status_icon`、settings revision/CAS
       和 GPUI Kit switch。
     - 退出条件：配置值通过强类型 snapshot/command 往返；平台主线程先应用显隐，Application owner
-      再原子提交，平台失败不改配置，配置失败回滚平台状态；Windows `NIM_DELETE`/`NIM_ADD` 与 macOS
-      remove/recreate `NSStatusItem` 都保留唯一菜单事件 owner；启动恢复已保存值；General 控件具备
-      keyboard/AccessKit switch 语义；定向测试、完整 Native workspace 与双平台 release system-menu
-      smoke 通过。
+      再原子提交，平台失败不改配置，配置失败回滚平台状态；Windows 在 owner 生命周期内保持托盘项注册，
+      通过 `NIS_HIDDEN` 即时显隐且仅在销毁时 `NIM_DELETE`，macOS remove/recreate `NSStatusItem`；
+      两平台都保留唯一菜单事件 owner；启动恢复已保存值；General 控件具备 keyboard/AccessKit switch
+      语义；定向测试、完整 Native workspace 与双平台 release system-menu smoke 通过。
     - 验收证据（2026-09-04）：commit `8632ae5` 完成强类型 command/snapshot、主线程平台桥、
       config commit/rollback、双平台 status-item owner、启动恢复、GPUI Kit switch 与 AccessKit 语义；
       本机 app/platform/UI 定向测试、macOS release 产品 smoke、Windows x64/ARM64 platform source

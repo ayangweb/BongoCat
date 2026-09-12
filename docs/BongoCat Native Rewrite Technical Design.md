@@ -149,7 +149,7 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   持久化并替换共享 shortcut table；重新启用时从当前 v1 配置恢复全部已校验的模型行为绑定。
 - `application.show_status_icon` 通过独立的 revision-checked settings command 修改。settings worker
   以有界 request/reply bridge 请求平台主线程隐藏或重建状态图标，平台成功后才由 Application owner
-  原子提交配置；配置提交失败时必须把图标恢复为旧状态。Windows 隐藏只执行 `NIM_DELETE`，macOS
+  原子提交配置；配置提交失败时必须把图标恢复为旧状态。Windows 在 owner 生命周期内保持托盘项注册，显隐通过 `NIM_MODIFY` 设置或清除 `NIS_HIDDEN`，仅在销毁时执行 `NIM_DELETE`；macOS
   隐藏只从 `NSStatusBar` 移除 `NSStatusItem`，两平台都保留菜单 target、事件 receiver 和唯一 owner，
   因此重新显示不创建第二套业务状态。启动时先按当前 v1 配置创建可见或隐藏状态；正式启动不创建或显示
   设置窗口，设置窗口、单实例
