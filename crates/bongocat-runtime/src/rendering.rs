@@ -257,7 +257,7 @@ impl RuntimeRenderer {
 
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
-            let _ = (motion, now);
+            let _ = (motion, now, looping);
             Err(RuntimeRenderErrorCode::PlatformUnsupported)
         }
     }

@@ -1562,25 +1562,34 @@ fn run_diagnostics_export_failure_smoke() -> Result<(), Box<dyn std::error::Erro
     std::fs::remove_dir(&diagnostics)?;
     std::fs::write(&diagnostics, &previous_diagnostics)?;
 
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
     {
-        use std::os::unix::fs::PermissionsExt;
-        let original_mode = std::fs::metadata(&layout.logs)?.permissions().mode();
-        std::fs::set_permissions(&layout.logs, std::fs::Permissions::from_mode(0o500))?;
-        let error = client
-            .export_diagnostics_blocking()
-            .expect_err("diagnostics export must reject a non-writable logs directory");
-        std::fs::set_permissions(
-            &layout.logs,
-            std::fs::Permissions::from_mode(original_mode & 0o7777),
-        )?;
+        // Marking the existing preview bundle immutable makes the atomic commit fail after the
+        // staging file has been fully written. Unlike a directory or a read-only parent, this is
+        // an OS-level failure the current process cannot bypass through `set_private_directory`,
+        // so it deterministically exercises the commit-failure recovery path.
+        let immutable = std::process::Command::new("/usr/bin/chflags")
+            .arg("uchg")
+            .arg(&preview)
+            .status()?;
+        if !immutable.success() {
+            return Err("failed to mark the previous preview bundle immutable".into());
+        }
+        let result = client.export_diagnostics_blocking();
+        let cleared = std::process::Command::new("/usr/bin/chflags")
+            .arg("nouchg")
+            .arg(&preview)
+            .status()?;
+        if !cleared.success() {
+            return Err("failed to clear the immutable preview bundle flag".into());
+        }
+        let error =
+            result.expect_err("diagnostics export must reject an immutable preview destination");
         if error.code() != bongocat_ui::SettingsErrorCode::DiagnosticsExportFailed {
-            return Err(
-                "non-writable diagnostics directory returned an unstable error code".into(),
-            );
+            return Err("immutable diagnostics preview returned an unstable error code".into());
         }
         if std::fs::read(&preview)? != previous_preview {
-            return Err("sync/write failure changed the previous preview bundle".into());
+            return Err("preview commit failure changed the previous preview bundle".into());
         }
     }
 

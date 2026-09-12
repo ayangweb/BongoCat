@@ -2739,9 +2739,9 @@ mod tests {
             origin_y: 1024.0,
             pixels_per_unit: 1024.0,
         };
-        let first = OverlayWindow::create(OverlaySessionOptions::default(), canvas, None)
+        let first = OverlayWindow::create(OverlaySessionOptions::default(), canvas, None, None)
             .expect("create first overlay window");
-        let second = OverlayWindow::create(OverlaySessionOptions::default(), canvas, None)
+        let second = OverlayWindow::create(OverlaySessionOptions::default(), canvas, None, None)
             .expect("reuse class for replacement overlay window");
 
         assert_ne!(first.hwnd, second.hwnd);
@@ -2779,9 +2779,13 @@ mod tests {
             350,
             350,
         );
-        let window =
-            OverlayWindow::create(OverlaySessionOptions::default(), canvas, Some(candidate))
-                .expect("create constrained overlay window");
+        let window = OverlayWindow::create(
+            OverlaySessionOptions::default(),
+            canvas,
+            Some(candidate),
+            None,
+        )
+        .expect("create constrained overlay window");
         assert_eq!(
             window.bounds().expect("constrained bounds"),
             candidate.clamp_to(work_area)
