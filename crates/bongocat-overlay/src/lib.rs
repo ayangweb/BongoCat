@@ -649,20 +649,20 @@ pub struct FrameTimingSummary {
     pub missed_deadlines: u64,
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "macos", all(test, target_os = "windows")))]
 const MAX_FRAME_TIMING_SAMPLES: usize = 4_096;
 
 /// Collect a fixed maximum number of exact microsecond samples so diagnostic
 /// previews cannot grow memory use during long-running benchmark sessions.
 #[derive(Debug)]
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "macos", all(test, target_os = "windows")))]
 pub(crate) struct FrameTimingCollector {
     draw_samples_us: Vec<u64>,
     samples_dropped: u64,
     missed_deadlines: u64,
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "macos", all(test, target_os = "windows")))]
 impl FrameTimingCollector {
     pub(crate) fn new() -> Self {
         Self {
@@ -700,7 +700,7 @@ impl FrameTimingCollector {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "macos", all(test, target_os = "windows")))]
 fn percentile_nearest_rank(sorted_samples: &[u64], percentile: u8) -> u64 {
     if sorted_samples.is_empty() {
         return 0;
