@@ -27,6 +27,7 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 | `accesskit`                           |       `0.25.0` | 新增时即为最新                                           |
 | `accesskit_macos`                     |       `0.27.0` | 新增时即为最新                                           |
 | `accesskit_windows`                   |       `0.35.0` | 新增时即为最新                                           |
+| `arboard`                             |        `3.6.1` | 剪贴板 adapter 新增时即为最新                            |
 | `async-channel`                       |        `2.5.0` | 从 `1.9.0` 升级                                          |
 | `atomic-write-file`                   |        `0.3.1` | 配置与更新 sequence 存储新增时最新                       |
 | `bindgen`                             |       `0.72.1` | 新增时即为最新                                           |
@@ -153,11 +154,12 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
   不再是本项目的直接依赖。`self_update` 会启用其 `gzip`/`charset`/`socks-proxy`/`json` feature，
   Cargo 的 feature 并集不可被调用方关闭；ADR-0025 曾要求禁用这些 feature 以保证 detached signature
   覆盖原始 bytes，该要求随 ADR-0025 作废，现行完整性由 `checksums` feature 独立覆盖；
-- 剪贴板 adapter 不新增 crate，只扩展已固定的 `objc2-app-kit 0.3.2` 的 `NSPasteboard` feature，
-  以及 `windows 0.62.2` 的 `Win32_System_DataExchange`、`Memory` 和 `Ole` features。它们分别是
-  持续维护的 objc2 基础 binding（Zlib OR Apache-2.0 OR MIT）和微软生成 binding（MIT）；AppKit/Win32
-  类型、裸 handle 与文本均留在私有 adapter，Windows 内存所有权由 RAII wrapper 管理。替换边界是
-  `bongocat-platform` 的 clipboard module，不影响 config/runtime/UI 公共协议；
+- `arboard 3.6.1`（MIT OR Apache-2.0，Rust 1.71+，1Password 维护）只在
+  `bongocat-platform` 的私有 clipboard adapter 中处理纯文本；关闭默认 `image-data` feature，
+  避免引入图像、Core Graphics 与 Windows GDI 能力。库类型和错误被映射为项目自有的
+  `Option<String>` 与稳定无文本错误码，不进入 config/runtime/UI 公共协议。替换边界是该
+  adapter；底层文本读取会先物化系统内容，之后才执行项目的 1 MiB 校验，这是当前 API 的
+  已知替换成本；
 - `atomic-write-file 0.3.1`（BSD-3-Clause）只在正式配置 crate 的 `ConfigStore` 提供同目录跨平台原子替换；它只暴露项目自有的配置类型，不泄漏库类型。替换边界是私有 commit helper；`dirs 6.0.0`、`serde 1.0.229` 与 `serde_json 1.0.151` 继续提供路径解析和严格序列化；
 - `rodio 0.22.2`（MIT OR Apache-2.0）只在 `bongocat-audio` 私有 backend 打开系统输出并
   解码现有 FLAC；固定容量的项目 command/diagnostics API 隔离第三方类型，Linux contract

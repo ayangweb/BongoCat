@@ -26,10 +26,6 @@ mod directory_opener;
 pub use directory_opener::{DirectoryOpenError, open_directory};
 
 mod clipboard;
-#[cfg(target_os = "macos")]
-mod clipboard_macos;
-#[cfg(target_os = "windows")]
-mod clipboard_windows;
 pub use clipboard::{ClipboardError, read_clipboard_text, write_clipboard_text};
 
 mod url_opener;

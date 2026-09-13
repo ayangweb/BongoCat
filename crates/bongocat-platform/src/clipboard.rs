@@ -1,5 +1,10 @@
 use std::fmt;
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use arboard::Clipboard;
+#[cfg(target_os = "macos")]
+use objc2::{MainThreadMarker, rc::autoreleasepool};
+
 pub(crate) const MAX_CLIPBOARD_TEXT_BYTES: usize = 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -29,10 +34,13 @@ impl std::error::Error for ClipboardError {}
 
 pub fn read_clipboard_text() -> Result<Option<String>, ClipboardError> {
     #[cfg(target_os = "macos")]
-    return crate::clipboard_macos::read_text();
+    {
+        let _marker = MainThreadMarker::new().ok_or(ClipboardError::WrongThread)?;
+        return autoreleasepool(|_| read_text());
+    }
 
     #[cfg(target_os = "windows")]
-    return crate::clipboard_windows::read_text();
+    return read_text();
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     Err(ClipboardError::UnsupportedPlatform)
@@ -42,16 +50,40 @@ pub fn write_clipboard_text(value: &str) -> Result<(), ClipboardError> {
     validate_text(value)?;
 
     #[cfg(target_os = "macos")]
-    return crate::clipboard_macos::write_text(value);
+    {
+        let _marker = MainThreadMarker::new().ok_or(ClipboardError::WrongThread)?;
+        return autoreleasepool(|_| write_text(value));
+    }
 
     #[cfg(target_os = "windows")]
-    return crate::clipboard_windows::write_text(value);
+    return write_text(value);
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let _ = value;
         Err(ClipboardError::UnsupportedPlatform)
     }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn read_text() -> Result<Option<String>, ClipboardError> {
+    let mut clipboard = Clipboard::new().map_err(|_| ClipboardError::ReadFailed)?;
+    match clipboard.get_text() {
+        Ok(text) => {
+            validate_text(&text)?;
+            Ok(Some(text))
+        }
+        Err(arboard::Error::ContentNotAvailable) => Ok(None),
+        Err(_) => Err(ClipboardError::ReadFailed),
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn write_text(value: &str) -> Result<(), ClipboardError> {
+    let mut clipboard = Clipboard::new().map_err(|_| ClipboardError::WriteFailed)?;
+    clipboard
+        .set_text(value)
+        .map_err(|_| ClipboardError::WriteFailed)
 }
 
 pub(crate) fn validate_text(value: &str) -> Result<(), ClipboardError> {
@@ -102,5 +134,21 @@ mod tests {
             ClipboardError::WriteFailed.to_string(),
             "clipboard_write_failed"
         );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn clipboard_rejects_background_threads_before_touching_appkit() {
+        let read_error = std::thread::spawn(read_clipboard_text)
+            .join()
+            .expect("clipboard reader thread")
+            .expect_err("background clipboard read");
+        assert_eq!(read_error, ClipboardError::WrongThread);
+
+        let write_error = std::thread::spawn(|| write_clipboard_text("isolated test"))
+            .join()
+            .expect("clipboard writer thread")
+            .expect_err("background clipboard write");
+        assert_eq!(write_error, ClipboardError::WrongThread);
     }
 }

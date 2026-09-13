@@ -1820,9 +1820,9 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     均已通过，Windows 真实 `rfd` 选择/取消 smoke 仍需由原生 job 复验。外部 URL 现由共享
     wrapper 严格限制为无 credentials 的
     HTTPS，macOS `/usr/bin/open` 与 Windows `explorer.exe` 均只收到一个参数且不经 shell。clipboard
-    现只读写最多 1 MiB 的无 NUL 纯文本、无文本返回空选项，错误不包含内容；Windows 的
-    `CF_UNICODETEXT` handle/clipboard RAII 已通过 x64 target check，但尚无 Windows 实机 clipboard
-    read/write smoke，因此总项保持未勾选。
+    现通过私有 `arboard 3.6.1` adapter 读写最多 1 MiB 的无 NUL 纯文本、无文本返回空选项，
+    错误不包含内容；x64/ARM64 target check 已通过，但尚无 Windows 实机 clipboard read/write
+    smoke，因此总项保持未勾选。
 - [x] 选择并记录 MSIX、WiX 或 NSIS 打包 ADR。
   - 验收证据（2026-09-05）：ADR-0023 选择 NSIS per-user installer，以当前用户 local application
     directory、无管理员权限、逐 target/arch 已签名 artifact 和不触及环境数据为首发约束。MSIX 的包
@@ -1859,9 +1859,10 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     `None` 按取消映射。macOS 26.5.2 arm64 上本次 `rfd` 版本的真实 Cancel 与仓库目录 Select smoke
     均已通过；历史 `NSOpenPanel` 证据仍见 `P7-MODEL-DIRECTORY-PICKER`。外部 HTTPS URL
     以 `/usr/bin/open` 单参数
-    wrapper 完成，拒绝 credentials、非 HTTPS 与超长值；pasteboard 现以主线程/auto-release-pool
-    boundary 读写最多 1 MiB 无 NUL 纯文本、匿名返回无文本和错误。自动化只验证后台线程拒绝，避免
-    改写用户 clipboard；隔离 pasteboard 的实机 read/write smoke 及 `NSWorkspace` 其余能力仍待完成。
+    wrapper 完成，拒绝 credentials、非 HTTPS 与超长值；pasteboard 现通过私有 `arboard 3.6.1`
+    adapter 在 AppKit 主线程/auto-release-pool boundary 读写最多 1 MiB 无 NUL 纯文本、匿名返回
+    无文本和错误。自动化只验证后台线程拒绝，避免改写用户 clipboard；隔离 pasteboard 的实机
+    read/write smoke 及 `NSWorkspace` 其余能力仍待完成。
 - [ ] .app bundle、entitlements、Hardened Runtime 和 notarization 流程。
 - [x] TCC 权限状态变化可在 UI 实时刷新。
   - 验收证据（2026-09-05）：Settings snapshot 新增独立的 Input Monitoring

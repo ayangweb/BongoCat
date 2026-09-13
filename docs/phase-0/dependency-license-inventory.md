@@ -21,6 +21,7 @@
 | -------------------------------- | ------------------------------ | ------------------------- | ---------------------------------------- |
 | GPUI Kit                         | `0.6.1`                        | Apache-2.0                | Formal settings UI facade and components |
 | AccessKit core/macOS/Windows     | `0.25.0` / `0.27.0` / `0.35.0` | MIT OR Apache-2.0         | Formal settings AX/UIA semantic adapter  |
+| arboard                          | `3.6.1`                        | MIT OR Apache-2.0         | Dual-platform private text clipboard     |
 | raw-window-handle                | `0.6.2`                        | MIT OR Apache-2.0 OR Zlib | GPUI/Win32 native window boundary        |
 | async-channel                    | `2.5.0`                        | MIT OR Apache-2.0         | Formal typed command/reply and spike     |
 | unicode-segmentation             | `1.13.3`                       | MIT OR Apache-2.0         | Grapheme-safe text editing               |
@@ -91,6 +92,8 @@ Cargo 的 feature 并集不可被调用方关闭。ADR-0025 曾要求禁用这�
 `checksums` feature 独立覆盖。
 
 AccessKit 由同一上游仓库维护，core 与双平台 adapter 已进入正式 `bongocat-platform`，公开边界仅接收 UI 自有语义树、action 和 GPUI 原生窗口 handle；其节点、事件和错误类型不进入 BongoCat runtime 公共 API。action 通过容量 32 的强类型 channel 回到 GPUI 主线程，队列拒绝计数进入平台诊断。若 GPUI 后续提供稳定的 element-level accessibility API，则删除该 adapter。`objc2 0.5.2` 是 `accesskit_macos 0.27.0` 的 ABI 类型世代兼容例外，仅用于 adapter 所需的 macOS 类型；AccessKit 切换到 `objc2 0.6` 或边界移除后不再保留旧版本。
+
+`arboard 3.6.1`（MIT OR Apache-2.0）由 1Password 维护，仅作为 `bongocat-platform` 私有文本剪贴板 adapter 的双平台实现，并关闭默认 `image-data` feature。其 `Clipboard` 与 `Error` 类型和系统错误文本不进入公共 API；项目仍只暴露自有 `Option<String>`/稳定错误码，并保留 macOS AppKit 主线程与 autorelease-pool 约束。
 
 ## Future-Incompatibility
 
