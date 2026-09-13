@@ -116,6 +116,10 @@ feature 与 `signatures` feature、install 阶段的 stash 回滚覆盖这些点
   `Test Native workspace (ubuntu-latest)` / `(macos-latest)` / `(windows-latest)`、
   `Check Native dependency policy` 与全部平台 smoke。
 
+- `bongocat-config::StorageLayout` 的 `update_staging` 字段（`<env>/updates/staging/`）已移除：
+  `staging` 模块删除后该字段无任何写入方，`create_directories`、环境形状断言与 0700 权限断言
+  已同步更新。
+
 ## 待验证项（不得当作已确认）
 
 1. 未在真实 Windows / macOS 上执行替换与重启。`.app` 整包交换、Windows 运行中 exe 改名、
@@ -130,10 +134,9 @@ feature 与 `signatures` feature、install 阶段的 stash 回滚覆盖这些点
    运行 fmt / Clippy / test / release check / production 环境构建。因此本 ADR 的门禁已在 CI 覆盖，
    但仍未在**真实发行流程**中验证：发行资产命名、签名与安装包产物未与本 ADR 的 target 匹配规则
    对齐（见待验证项 3）。
-6. `bongocat-config::StorageLayout` 仍保留 `update_staging`（`<env>/updates/staging/`）字段，
-   但 `staging` 模块已删除，**当前没有任何写入方**。该字段属于 `bongocat-config` 的公开布局契约
-   与环境目录形状测试，超出本次 `bongocat-update` 替换范围，故未一并移除。若要清理，需在
-   `bongocat-config` 内单独变更并同步目录形状断言。
+6. `StorageLayout::updates`（`<env>/updates/`）当前**无写入方**：`self_update` 把解压暂存目录建在
+   可执行文件旁边，不落在环境根下。该目录被保留为环境私有的保留命名空间，仍由环境形状断言与
+   0700 权限断言覆盖。若确认不需要，可另行移除；本次未动，以免改变已文档化的环境目录形状。
 
 ## 后续边界
 

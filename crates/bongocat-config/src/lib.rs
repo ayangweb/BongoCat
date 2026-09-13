@@ -65,7 +65,6 @@ pub struct StorageLayout {
     pub backups: PathBuf,
     pub logs: PathBuf,
     pub updates: PathBuf,
-    pub update_staging: PathBuf,
     pub locks: PathBuf,
 }
 
@@ -83,7 +82,6 @@ impl StorageLayout {
             backups: root.join("backups"),
             logs: root.join("logs"),
             updates: root.join("updates"),
-            update_staging: root.join("updates").join("staging"),
             locks: root.join("locks"),
             root,
         }
@@ -101,7 +99,6 @@ impl StorageLayout {
             &self.backups,
             &self.logs,
             &self.updates,
-            &self.update_staging,
             &self.locks,
         ] {
             fs::create_dir_all(directory)?;
@@ -2096,7 +2093,6 @@ mod tests {
                 &layout.backups,
                 &layout.logs,
                 &layout.updates,
-                &layout.update_staging,
                 &layout.locks,
             ]
             .into_iter()
@@ -3337,7 +3333,6 @@ mod tests {
             &store.layout.backups,
             &store.layout.logs,
             &store.layout.updates,
-            &store.layout.update_staging,
             &store.layout.locks,
         ] {
             assert_eq!(

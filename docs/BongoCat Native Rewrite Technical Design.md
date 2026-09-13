@@ -591,7 +591,7 @@ workspace 的正式 `just` 入口与 CI 显式选择 Development，Production bu
 | Windows | `%APPDATA%\com.ayangweb.bongo-cat\development\`                     | `%APPDATA%\com.ayangweb.bongo-cat\production\`                     |
 | macOS   | `~/Library/Application Support/com.ayangweb.bongo-cat/development/` | `~/Library/Application Support/com.ayangweb.bongo-cat/production/` |
 
-每个根目录包含 `config.json`、`state.json`、`models/`、`backups/`、`logs/`、`updates/`（含仅供更新下载暂存的 `staging/`）和 `locks/`。锁、单实例命名、更新 channel、更新暂存和诊断同样按环境隔离；任何环境不得读取、写入或 fallback 到另一个环境。`StorageLayout` 只描述这些用户数据路径；安装器和 update helper 使用平台 `InstallationLayout` 描述 product files root，不能从用户数据根推导或操作安装目录。
+每个根目录包含 `config.json`、`state.json`、`models/`、`backups/`、`logs/`、`updates/` 和 `locks/`。锁、单实例命名、更新 channel 和诊断同样按环境隔离；任何环境不得读取、写入或 fallback 到另一个环境。`updates/` 是保留给更新的环境私有命名空间：`self_update` 的暂存目录由库自行创建在可执行文件旁边，不落在该目录下，因此 `updates/` 当前无写入方，仅作为环境形状契约的一部分保留。`StorageLayout` 只描述这些用户数据路径；安装器使用平台 `InstallationLayout` 描述 product files root，不能从用户数据根推导或操作安装目录。
 
 预置模型属于 product files：macOS 从 `BongoCat.app/Contents/Resources/models` 解析，Windows 从
 `bongocat-app.exe` 同级 `resources/models` 解析。仅未打包的开发二进制可在该相对路径缺失时回退到
