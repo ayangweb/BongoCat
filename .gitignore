@@ -10,3 +10,6 @@ target
 *.njsproj
 *.sln
 *.sw?
+
+# WorkBuddy AI 本地项目数据（工作记忆、项目级 skill），不属于构建产物
+.workbuddy-ai/
