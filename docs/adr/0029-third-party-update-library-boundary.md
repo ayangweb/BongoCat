@@ -119,6 +119,12 @@ feature 与 `signatures` feature、install 阶段的 stash 回滚覆盖这些点
 - `bongocat-config::StorageLayout` 的 `update_staging` 字段（`<env>/updates/staging/`）已移除：
   `staging` 模块删除后该字段无任何写入方，`create_directories`、环境形状断言与 0700 权限断言
   已同步更新。
+- `RELEASE_BINARY_NAME` 原先声明为 `BongoCat`，与实际发布的可执行文件 `bongocat-app` 不一致。
+  由于 `self_update` 用它派生 Windows 归档内的提取路径，这个偏差会让第一次真实更新在解压阶段
+  失败。已改为 `bongocat-app`，并新增 `tools/tests/test_update_release_contract.py` 把这层
+  编译期不可见的耦合固定下来：二进制名 ↔ `bongocat-app` 包名 ↔ `build-windows.ps1` 的 exe 名、
+  bundle 名 ↔ `package-macos.sh` 的 `.app` 名、仓库 owner/name ↔ workspace manifest 的
+  `repository`、四个 target ↔ `deny.toml` 的 `[graph] targets`。
 
 ## 待验证项（不得当作已确认）
 
@@ -126,8 +132,21 @@ feature 与 `signatures` feature、install 阶段的 stash 回滚覆盖这些点
    替换失败后的启动恢复均**未实测**。
 2. 未配置真实 endpoint 与签名密钥。`RELEASE_SIGNING_KEY` 为 `None`，因此当前构建
    `update_check_available()` 恒为 `false`，更新入口在 UI 中不显示。
-3. 发行资产的命名约定尚未与 `self_update` 的 target 匹配规则对齐；打包脚本
-   （`scripts/package-macos.sh`、`windows/installer/BongoCat.nsi`）未修改。
+3. **发行流程尚未产出 `self_update` 可消费的归档。** 读 `self_update 1.3.0` 源码确认的硬性要求：
+   - **资产名匹配**：`Release::asset_for` 先用**完整 target triple** 匹配资产名，失败后退化为
+     `arch` + `os` 标记（`arch` 取 triple 首段，`os` ∈ `linux`/`darwin`/`windows`/…）。
+     **`bin_name` 不参与资产名匹配**。因此资产名必须包含 target triple，例如
+     `BongoCat-0.1.0-aarch64-apple-darwin.tar.gz`。
+   - **归档内布局**：macOS bundle 模式下库只取 `bundle_path_in_archive` 指向的目录，要求归档根为
+     `BongoCat.app/`；Windows 单文件模式下 `bin_path_in_archive` 由 `bin_name` 派生为
+     `bongocat-app.exe`，要求归档根为该文件。
+   - **现状**：`scripts/package-macos.sh` 只产出 `target/package/BongoCat.app`，**不产归档**；
+     `scripts/build-windows.ps1` 只产出 NSIS 安装器 `BongoCat-$version-x64-setup.exe`，也不是 zip。
+     两者都还需要新增归档步骤，本次未实现。
+   - **产品级限制（Windows）**：单文件模式只替换可执行文件，**不会更新 `resources/`**。
+     预置模型或 `resources/` 内容的变更无法经由此更新路径下发，需要另行设计。
+   - macOS 归档需携带已签名并公证的 `.app`；`package-macos.sh` 目前只做 ad-hoc 签名，
+     分发签名与公证仍是独立发布门禁。
 4. 断电残留的 `.` 前缀临时文件清理策略未决定。上游明确不建议启动时自动清理。
 5. CI 覆盖面：`native-rewrite-phase0.yml` 的 `dependency-policy` 作业会运行
    `./tools/check-native-dependencies.sh`，`native-workspace` 作业在 Windows/macOS/Ubuntu 三平台

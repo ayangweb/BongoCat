@@ -23,10 +23,19 @@ pub const RELEASE_SIGNING_KEY: Option<[u8; 32]> = None;
 pub const RELEASE_REPOSITORY_OWNER: &str = "ayangweb";
 pub const RELEASE_REPOSITORY_NAME: &str = "BongoCat";
 
-/// The binary name release assets are matched against.
-pub const RELEASE_BINARY_NAME: &str = "BongoCat";
+/// The executable name inside a Windows release archive.
+///
+/// `self_update` derives the single path it extracts from a Windows archive as
+/// `{RELEASE_BINARY_NAME}{EXE_SUFFIX}` — here `bongocat-app.exe` — and requires
+/// it at the archive root. It must therefore equal the executable the packaging
+/// pipeline actually ships, which is the same `bongocat-app` binary the Windows
+/// installer installs. Release *asset names* are matched on the target triple
+/// instead, so this constant governs only the path inside the archive.
+pub const RELEASE_BINARY_NAME: &str = "bongocat-app";
 
 /// The macOS bundle directory name inside a release archive.
+///
+/// Must equal the `.app` directory `scripts/package-macos.sh` produces.
 pub const RELEASE_BUNDLE_NAME: &str = "BongoCat.app";
 
 /// A stable-coded update failure.
