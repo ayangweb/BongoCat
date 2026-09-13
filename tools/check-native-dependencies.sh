@@ -50,10 +50,20 @@ done
 
 for manifest in Cargo.toml spikes/*/Cargo.toml tools/cubism-bindgen/Cargo.toml; do
     printf 'checking dependency policy: %s\n' "$manifest"
-    cargo deny \
-        --manifest-path "$manifest" \
-        --locked \
-        --config "$REPOSITORY_ROOT/deny.toml" \
-        check licenses sources \
-        --allow license-not-encountered
+    if [ "$manifest" = "Cargo.toml" ]; then
+        cargo deny \
+            --manifest-path "$manifest" \
+            --locked \
+            --config "$REPOSITORY_ROOT/deny.toml" \
+            check licenses sources \
+            --allow license-not-encountered
+    else
+        cargo deny \
+            --manifest-path "$manifest" \
+            --locked \
+            --config "$REPOSITORY_ROOT/deny.toml" \
+            check licenses sources \
+            --allow license-not-encountered \
+            --allow license-exception-not-encountered
+    fi
 done

@@ -36,14 +36,18 @@ pub fn read_clipboard_text() -> Result<Option<String>, ClipboardError> {
     #[cfg(target_os = "macos")]
     {
         let _marker = MainThreadMarker::new().ok_or(ClipboardError::WrongThread)?;
-        return autoreleasepool(|_| read_text());
+        autoreleasepool(|_| read_text())
     }
 
     #[cfg(target_os = "windows")]
-    return read_text();
+    {
+        read_text()
+    }
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    Err(ClipboardError::UnsupportedPlatform)
+    {
+        Err(ClipboardError::UnsupportedPlatform)
+    }
 }
 
 pub fn write_clipboard_text(value: &str) -> Result<(), ClipboardError> {
@@ -52,11 +56,13 @@ pub fn write_clipboard_text(value: &str) -> Result<(), ClipboardError> {
     #[cfg(target_os = "macos")]
     {
         let _marker = MainThreadMarker::new().ok_or(ClipboardError::WrongThread)?;
-        return autoreleasepool(|_| write_text(value));
+        autoreleasepool(|_| write_text(value))
     }
 
     #[cfg(target_os = "windows")]
-    return write_text(value);
+    {
+        write_text(value)
+    }
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
