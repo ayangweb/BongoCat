@@ -41,6 +41,7 @@
 | embed-resource                   | `3.0.11`                       | MIT                       | Windows executable product icon compiler |
 | sha2                             | `0.11.0`                       | MIT OR Apache-2.0         | Header/output provenance hashes          |
 | tray-icon                        | `0.25.0`                       | MIT OR Apache-2.0         | Unified macOS/Windows system tray owner  |
+| muda                             | `0.20.0`                       | Apache-2.0 OR MIT         | Native context menu and popup owner      |
 | self_update                      | `1.3.0`                        | MIT                       | Update download/verify/replace/restart   |
 | ureq                             | `3.4.0`                        | MIT OR Apache-2.0         | HTTP client used by `self_update`        |
 
@@ -97,11 +98,14 @@ AccessKit 由同一上游仓库维护，core 与双平台 adapter 已进入正�
 
 `arboard 3.6.1`（MIT OR Apache-2.0）由 1Password 维护，仅作为 `bongocat-platform` 私有文本剪贴板 adapter 的双平台实现，并关闭默认 `image-data` feature。其 `Clipboard` 与 `Error` 类型和系统错误文本不进入公共 API；项目仍只暴露自有 `Option<String>`/稳定错误码，并保留 macOS AppKit 主线程与 autorelease-pool 约束。
 
-`tray-icon 0.25.0`（MIT OR Apache-2.0，Rust 1.90+）由 Tauri 项目维护，仅在 macOS/Windows
-启用并关闭默认 features，避免 Linux GTK/libappindicator 系统依赖。它重导出其匹配的
-`muda 0.20.0`（Apache-2.0 OR MIT）菜单 API，因此不直接声明 `muda` 依赖。第三方 tray/menu
-类型、平台句柄和错误只存在于 `bongocat-platform` 私有 adapter，不进入 runtime/UI 公共 API；
+`tray-icon 0.25.0`（MIT OR Apache-2.0，Rust 1.90+）由 Tauri 项目维护，是 macOS/Windows
+状态图标的 native owner；仅在 macOS/Windows 启用并关闭默认 features，避免 Linux
+GTK/libappindicator 系统依赖。`muda 0.20.0`（Apache-2.0 OR MIT，Rust 1.90+）由同一项目维护，
+直接负责共享菜单对象、菜单事件以及 overlay 窗口的右键弹出，并关闭 `gtk3`/`libxdo` 默认 features。
+`tray-icon` 与 `muda` 必须由 Cargo 解析为同一个 `muda` package，避免菜单类型版本分裂。第三方
+tray/menu 类型、平台句柄和错误只存在于 `bongocat-platform` 私有 adapter，不进入 runtime/UI 公共 API；
 Windows 隐藏为库内 `NIS_HIDDEN`、销毁为 `NIM_DELETE`，macOS `NSStatusItem` 生命周期由库拥有。
+overlay 右键弹出使用 overlay session 的真实 HWND/`NSView`，不借用托盘隐藏窗口。
 
 ## Future-Incompatibility
 

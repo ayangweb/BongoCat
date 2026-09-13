@@ -919,6 +919,7 @@ dependencies = [
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
  "objc2-quartz-core 0.3.2",
+ "raw-window-handle",
  "windows 0.62.2",
 ]
 
@@ -937,6 +938,7 @@ dependencies = [
  "bongocat-runtime",
  "dispatch2",
  "image",
+ "muda",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
  "objc2-core-foundation",

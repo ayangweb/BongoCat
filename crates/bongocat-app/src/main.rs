@@ -2222,7 +2222,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .tick();
                         if context_menu_requested
                             && let Some(menu) = coordinator.system_menu.as_ref()
-                            && let Err(error) = menu.show_context_menu()
+                            && let Some(overlay) = coordinator.overlay.as_ref()
+                            && let Err(error) = menu.show_context_menu_for_window(overlay)
                         {
                             record_failure(&coordinator.failures, error.to_string());
                         }
@@ -2338,15 +2339,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     handle_shortcut_toggle_settings(cx);
                     if context_menu_requested
-                        && let Some(menu) = cx
-                            .try_global::<ProductCoordinator>()
-                            .and_then(|coordinator| coordinator.system_menu.as_ref())
-                        && let Err(error) = menu.show_context_menu()
+                        && let Some(coordinator) = cx.try_global::<ProductCoordinator>()
+                        && let Some(menu) = coordinator.system_menu.as_ref()
                     {
-                        record_failure(
-                            &cx.global::<ProductCoordinator>().failures,
-                            error.to_string(),
-                        );
+                        let result = coordinator
+                            .overlay
+                            .borrow()
+                            .as_ref()
+                            .ok_or(bongocat_platform::SystemMenuError::WindowHandleUnavailable)
+                            .and_then(|overlay| menu.show_context_menu_for_window(overlay));
+                        if let Err(error) = result {
+                            record_failure(&coordinator.failures, error.to_string());
+                        }
                     }
                     let (failure, failures, settings_window) = {
                         let coordinator = cx.global_mut::<ProductCoordinator>();

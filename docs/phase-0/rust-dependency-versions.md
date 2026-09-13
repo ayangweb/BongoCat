@@ -59,6 +59,7 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 | `rodio`                               |       `0.22.2` | motion 音效新增时最新                                    |
 | `sha2`                                |       `0.11.0` | 新增时即为最新                                           |
 | `tempfile`                            |       `3.27.0` | 已是最新                                                 |
+| `muda`                                |       `0.20.0` | macOS/Windows 菜单与右键弹出 owner（ADR-0031）           |
 | `tray-icon`                           |       `0.25.0` | macOS/Windows 统一托盘 owner 新增时最新（ADR-0031）      |
 | `unicode-segmentation`                |       `1.13.3` | 已是最新                                                 |
 | `url`                                 |        `2.5.8` | 外部 HTTPS URL wrapper 新增时最新                        |
@@ -156,10 +157,13 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
   复验目录/URL 打开以及未来 reveal 的定位选中行为；
 - `tray-icon 0.25.0`（MIT OR Apache-2.0，Rust 1.90+，Tauri 项目维护）是 macOS/Windows 状态图标
   的唯一 native owner；精确固定并关闭默认 features，避免 Linux 的 GTK/libappindicator 系统依赖。
-  它重导出匹配的 `muda 0.20.0`（Apache-2.0 OR MIT）菜单 API，项目不直接声明 `muda`。第三方
-  tray/menu 类型、句柄和错误只存在于 `bongocat-platform` 私有 adapter，不进入 runtime/UI 公共 API；
-  替换边界与 Windows 实机验收入口见 ADR-0031。`tray-icon` 自身依赖 `png 0.18.1` 解码图标，
-  adapter 另通过 workspace `image 0.25.10` 在进入 `Icon::from_rgba` 前完成 PNG 解码；
+  它自身依赖 `png 0.18.1` 解码图标，adapter 另通过 workspace `image 0.25.10` 在进入
+  `Icon::from_rgba` 前完成 PNG 解码；
+- `muda 0.20.0`（Apache-2.0 OR MIT，Rust 1.90+，Tauri 项目维护）是共享菜单对象、菜单事件和
+  overlay 右键弹出的直接依赖；精确固定并关闭默认 features，避免 Linux `gtk3`/`libxdo`。它必须与
+  `tray-icon` 依赖的同一个 package 版本共同解析；第三方 tray/menu 类型、句柄和错误只存在于
+  `bongocat-platform` 私有 adapter，不进入 runtime/UI 公共 API。overlay 通过 `HasWindowHandle`
+  提供真实 HWND/`NSView`，替换边界与双平台实机验收入口见 ADR-0031；
 - `self_update 1.3.0`（MIT，Rust 1.88+）承担更新的下载、解压、校验、替换与重启，由 ADR-0029 引入。
   只启用 `ureq`、`rustls`、`github`、`archive-tar`、`archive-zip`、`compression-tar-gz`、
   `compression-zip-deflate`、`checksums` 与 `signatures` features；不启用 `progress-bar`，也不启用

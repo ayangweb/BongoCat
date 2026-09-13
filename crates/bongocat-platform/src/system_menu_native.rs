@@ -1,17 +1,14 @@
 use crate::{SystemMenuAction, SystemMenuError, SystemMenuPresentation};
 use image::ImageReader;
+use muda::{CheckMenuItem, ContextMenu, Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 #[cfg(target_os = "macos")]
-use objc2::{MainThreadMarker, rc::Retained};
-#[cfg(target_os = "macos")]
-use objc2_app_kit::{NSEvent, NSMenu};
+use objc2::MainThreadMarker;
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::{
     io::Cursor,
     sync::mpsc::{self, Receiver, Sender},
 };
-use tray_icon::{
-    Icon, TrayIcon, TrayIconBuilder, TrayIconId,
-    menu::{CheckMenuItem, ContextMenu, Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem},
-};
+use tray_icon::{Icon, TrayIcon, TrayIconBuilder, TrayIconId};
 #[cfg(target_os = "windows")]
 use tray_icon::{MouseButton, MouseButtonState, TrayIconEvent};
 
@@ -204,29 +201,37 @@ impl SystemMenu {
     }
 
     /// Present the same action menu used by the tray icon at the current pointer location.
-    pub fn show_context_menu(&self) -> Result<(), SystemMenuError> {
-        #[cfg(target_os = "windows")]
-        {
-            // SAFETY: `TrayIcon` owns this hidden HWND for as long as `self`, and `muda`
-            // only uses it to foreground and track the owned popup menu synchronously.
-            let _ = unsafe {
-                self.menu
-                    .show_context_menu_for_hwnd(self.tray_icon.window_handle() as isize, None)
-            };
-            Ok(())
-        }
+    pub fn show_context_menu_for_window(
+        &self,
+        window: &impl HasWindowHandle,
+    ) -> Result<(), SystemMenuError> {
+        let window = window
+            .window_handle()
+            .map_err(|_| SystemMenuError::WindowHandleUnavailable)?;
 
-        #[cfg(target_os = "macos")]
-        {
-            let _main_thread = MainThreadMarker::new().ok_or(SystemMenuError::WrongThread)?;
-            let ns_menu = self.menu.ns_menu().cast::<NSMenu>();
-            // SAFETY: `self.menu` owns a live `NSMenu`; retaining it keeps the pointer valid
-            // for the synchronous popup even when the tray status item is hidden.
-            let menu = unsafe { Retained::retain(ns_menu) }
-                .ok_or(SystemMenuError::StatusItemUpdateFailed)?;
-            let location = NSEvent::mouseLocation();
-            let _ = menu.popUpMenuPositioningItem_atLocation_inView(None, location, None);
-            Ok(())
+        match window.as_raw() {
+            #[cfg(target_os = "windows")]
+            RawWindowHandle::Win32(handle) => {
+                // SAFETY: `window` keeps the HWND alive for the duration of this
+                // synchronous popup, and `muda` only tracks the owned menu.
+                let _ = unsafe {
+                    self.menu
+                        .show_context_menu_for_hwnd(handle.hwnd.get(), None)
+                };
+                Ok(())
+            }
+            #[cfg(target_os = "macos")]
+            RawWindowHandle::AppKit(handle) => {
+                let _main_thread = MainThreadMarker::new().ok_or(SystemMenuError::WrongThread)?;
+                // SAFETY: the overlay's `HasWindowHandle` implementation keeps its
+                // content NSView alive for the duration of this synchronous popup.
+                let _ = unsafe {
+                    self.menu
+                        .show_context_menu_for_nsview(handle.ns_view.as_ptr(), None)
+                };
+                Ok(())
+            }
+            _ => Err(SystemMenuError::UnsupportedWindowHandle),
         }
     }
 

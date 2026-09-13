@@ -15,6 +15,7 @@ url.workspace = true
 
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 image.workspace = true
+muda.workspace = true
 tray-icon.workspace = true
 
 accesskit.workspace = true

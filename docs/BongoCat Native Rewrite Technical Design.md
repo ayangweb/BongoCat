@@ -155,10 +155,11 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   持久化并替换共享 shortcut table；重新启用时从当前 v1 配置恢复全部已校验的模型行为绑定。
 - `application.show_status_icon` 通过独立的 revision-checked settings command 修改。settings worker
   以有界 request/reply bridge 请求平台主线程隐藏或显示状态图标，平台成功后才由 Application owner
-  原子提交配置；配置提交失败时必须把图标恢复为旧状态。macOS/Windows 共用 `tray-icon 0.25.0` 的
-  `SystemMenu` owner：`TrayIcon` 与同一份 `muda 0.20.0` 菜单、菜单项 receiver 和强类型事件队列
+  原子提交配置；配置提交失败时必须把图标恢复为旧状态。macOS/Windows 共用 `tray-icon 0.25.0` 托盘
+  owner 与直接依赖的 `muda 0.20.0` 菜单 owner：`TrayIcon`、菜单、菜单项 receiver 和强类型事件队列
   在整个运行期保持存活，`set_visible` 只改变平台表示（macOS 移除 `NSStatusItem`，Windows 保留注册并设置隐藏），
-  重新显示不创建第二套业务状态或菜单 owner。
+  重新显示不创建第二套业务状态或菜单 owner。overlay 右键由 `muda` 从 overlay 的真实 HWND/`NSView`
+  弹出同一菜单，不借用托盘隐藏窗口。
   正式启动不创建或显示设置窗口，设置窗口、单实例唤醒和 application reopen 仍提供恢复入口；
   平台失败只返回稳定匿名 settings error。
 - `application.show_taskbar_icon` 只控制 Windows GPUI 设置窗口的任务栏按钮，不改变窗口可见性，
@@ -411,9 +412,10 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 - 输入：Raw Input、状态校正、可选低级 hook、XInput 手柄。
 - 产品图标：`bongocat-app` 在构建期把 Native 自有 `.ico` 编译进 Windows executable，用于窗口、
   任务栏和文件身份；它不再是托盘图标来源，托盘也不会回退到系统通用应用图标。
-- 托盘：`tray-icon 0.25.0` 拥有 `TrayIcon` 和固定 GUID；菜单由 crate 重导出的 `muda 0.20.0`
-  拥有。Windows 状态图标从 Native 自有 `resources/icons/tray-windows.png` 解码，菜单与隐藏点击
-  恢复路径均由该唯一 owner 管理。
+- 托盘：`tray-icon 0.25.0` 拥有 `TrayIcon` 和固定 GUID，直接依赖的 `muda 0.20.0` 拥有菜单与
+  右键弹出。Windows 状态图标从 Native 自有 `resources/icons/tray-windows.png` 解码，菜单、托盘
+  隐藏点击恢复和 overlay 右键入口均由该唯一菜单 owner 管理；overlay 弹出使用自身 HWND，不借用
+  托盘隐藏窗口。
 - 启动项：当前用户 HKCU Run，Development/Production 使用不同 value name，命令固定为当前
   executable 加 `--run-seconds 0`，默认不要求管理员权限。
 
@@ -435,10 +437,11 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 - Renderer：Metal + `CAMetalLayer`，drawable size 跟随 backing scale。
 - Spaces：按配置设置 collection behavior 和 full-screen auxiliary。
 - 输入：CGEventTap、状态校正、GameController，必要时 IOHIDManager。
-- 菜单栏：`tray-icon 0.25.0` 在 macOS 主线程拥有 `NSStatusItem`，同一份重导出的 `muda 0.20.0`
-  菜单拥有命令项；状态图标使用 Native 自有 `resources/icons/tray-macos.png` 并作为 template image。
-  登录启动在 macOS 13+ Production `.app` 使用 `SMAppService.mainAppService`。macOS 12 和
-  Development 构建明确报告 capability unsupported，不回退到废弃 API 或自行写 LaunchAgent。
+- 菜单栏：`tray-icon 0.25.0` 在 macOS 主线程拥有 `NSStatusItem`，同一份直接依赖的
+  `muda 0.20.0` 菜单拥有命令项；状态图标使用 Native 自有 `resources/icons/tray-macos.png` 并作为
+  template image。overlay 右键通过 content `NSView` 在同一主线程调用 `muda` 弹出。登录启动在
+  macOS 13+ Production `.app` 使用 `SMAppService.mainAppService`。macOS 12 和 Development 构建
+  明确报告 capability unsupported，不回退到废弃 API 或自行写 LaunchAgent。
 - 发布：Hardened Runtime、签名、notarization 和 TCC 权限说明。
 
 平台 `unsafe` 必须集中在小型 wrapper，写明安全不变量并有 smoke test。业务和 UI crate 默认禁止 `unsafe_code`。
@@ -903,9 +906,10 @@ ADR-0025 与 ADR-0026 由本 ADR 取代。
 
 ### ADR-0031：托盘第三方库边界
 
-macOS/Windows 托盘统一使用 `tray-icon 0.25.0` 与它重导出的 `muda 0.20.0` 菜单；平台 adapter
-只负责加载 PNG、映射强类型 action 和调用 hide/show。第三方类型、句柄和错误不进入 runtime/UI
-公共 API，Windows 固定 GUID 与双平台唯一 owner 由 ADR-0031 约束。
+macOS/Windows 托盘使用 `tray-icon 0.25.0`，菜单与右键弹出使用直接依赖的 `muda 0.20.0`；平台
+adapter 负责加载 PNG、映射强类型 action、调用 hide/show，并从 overlay session 的真实
+HWND/`NSView` 弹出菜单。第三方类型、句柄和错误不进入 runtime/UI 公共 API，Windows 固定 GUID
+与双平台唯一 owner 由 ADR-0031 约束。
 
 ### ADR-023：Windows Per-User Installer
 

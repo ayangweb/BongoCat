@@ -22,6 +22,8 @@ use bongocat_runtime::{
     CursorProducer, GamepadAxisProducer, InputProducer, OverlaySettings, RuntimeClient,
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
+use raw_window_handle::{HandleError, HasWindowHandle, WindowHandle};
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::collections::BTreeSet;
 use std::{fmt, path::Path, sync::mpsc::SyncSender, time::Duration};
 
@@ -162,6 +164,13 @@ pub(crate) struct OverlayWorkArea {
     pub y: i32,
     pub width: u32,
     pub height: u32,
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+impl HasWindowHandle for ProductOverlaySession {
+    fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
+        self.inner.window_handle()
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

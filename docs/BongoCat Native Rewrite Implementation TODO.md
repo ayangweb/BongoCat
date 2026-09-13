@@ -1780,9 +1780,9 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     `SetOverlayVisible` 进入 settings service/runtime，不直接修改 overlay 或 config。macOS
     release system-menu smoke 已通过原生路径切换与恢复 overlay visibility，并确认产生新的
     config revision；Windows 使用同一 action/command contract，仍待真实 Windows desktop 复验。
-  - 状态（2026-09-13）：当前 macOS/Windows 实现已统一为 `tray-icon 0.25.0` + 重导出的
-    `muda 0.20.0`，见 ADR-0031；上述历史 smoke 证据保留，但 Windows tray behavior 不以
-    cross-compile 代替实机验证。
+  - 状态（2026-09-13）：当前 macOS/Windows 实现已统一为 `tray-icon 0.25.0` 托盘 owner + 直接
+    `muda 0.20.0` 菜单 owner，见 ADR-0031；上述历史 smoke 证据保留，但 Windows tray behavior
+    不以 cross-compile 代替实机验证。
 - [ ] 系统关机、注销和普通退出进入 shutdown coordinator。
   - 状态（2026-09-05）：Windows Raw Input owner 现将 `WM_QUERYENDSESSION` 与已确认的
     `WM_ENDSESSION` 转为无阻塞终止信号；GPUI frame owner 在下一帧复用已有 shutdown coordinator，
@@ -2469,13 +2469,19 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       input/runtime/config/frame/renderer/overlay shutdown；callback 只发送强类型有序事件；双平台
       release smoke、Windows x64/ARM64 source check 与完整 Native 门禁通过。
     - 历史状态（2026-08-31）：初期实现以 macOS 主线程 target/action 与 Windows 隐藏 HWND
-      callback 管理菜单和 status item cleanup。该实现已由 ADR-0031 的 `tray-icon` owner 替换；
-      历史 macOS smoke 及既有 settings/Models release smoke 仍作为迁移前证据保留。
+      callback 管理菜单和 status item cleanup。该实现已由 ADR-0031 的 `tray-icon` 托盘 owner
+      与直接 `muda` 菜单 owner 替换；历史 macOS smoke 及既有 settings/Models release smoke
+      仍作为迁移前证据保留。
     - 验收证据（2026-08-31）：commit `9e97704` 的 PR run `33344287629` 全绿；Windows job
       `99345364734` 与 macOS job `99345364649` 均通过原生菜单 callback -> typed action -> settings
       恢复 -> 显式 Quit 的 release smoke，Ubuntu job `99345364707` 通过完整共享 workspace 门禁。
       Windows x64/ARM64 platform Clippy、完整 Native format/Clippy/test/release check 本机通过；
       callback 只入队，菜单 owner 在 input/runtime/config/frame/renderer/overlay 之前停止。
+    - 状态（2026-09-13）：overlay 右键已改为通过 overlay session 的真实 Windows HWND / macOS
+      content `NSView` 直接调用 `muda::ContextMenu`，不再借用托盘隐藏窗口；macOS 本机 release
+      system-menu smoke 通过底层托盘显隐、状态恢复与 shutdown。实机右键弹出、cursor 定位、DPI、
+      窗口层级、点击外部关闭和 action 派发仍待 Windows 10 1903+ 与受支持 macOS 复验，ADR-0031
+      继续将上述行为列为发布门禁。
 28. [x] `P7-WINDOWS-SINGLE-INSTANCE`：按构建环境隔离 Windows 单实例并唤醒现有设置窗口。
     - 依赖：`P1-SETTINGS-WINDOW-LIFECYCLE`、ADR-0008、Windows GPUI message loop。
     - 退出条件：Development/Production 使用不同的 local named mutex、owner window class 和
@@ -2969,9 +2975,9 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       和 GPUI Kit switch。
     - 当前退出条件：配置值通过强类型 snapshot/command 往返；平台主线程先应用显隐，Application
       owner 再原子提交，平台失败不改配置，配置失败回滚平台状态；macOS/Windows 共用同一个长期存活的
-      `tray-icon 0.25.0` owner 与 `muda 0.20.0` 菜单，`set_visible` 后两平台仍保留唯一菜单事件
-      owner；启动恢复已保存值；General 控件具备 keyboard/AccessKit switch 语义；定向测试、完整
-      Native workspace 与双平台 release system-menu smoke 通过。
+      `tray-icon 0.25.0` 托盘 owner 与直接 `muda 0.20.0` 菜单，`set_visible` 后两平台仍保留唯一
+      菜单事件 owner；启动恢复已保存值；General 控件具备 keyboard/AccessKit switch 语义；定向测试、
+      完整 Native workspace 与双平台 release system-menu smoke 通过。
     - 验收证据（2026-09-04）：commit `8632ae5` 完成强类型 command/snapshot、主线程平台桥、
       config commit/rollback、双平台 status-item owner、启动恢复、GPUI Kit switch 与 AccessKit 语义；
       本机 app/platform/UI 定向测试、macOS release 产品 smoke、Windows x64/ARM64 platform source

@@ -19,9 +19,11 @@ use bongocat_runtime::{
     frame_interval_for_maximum_fps, maximum_fps_is_valid,
 };
 use image::ImageReader;
+use raw_window_handle::{HandleError, HasWindowHandle, Win32WindowHandle, WindowHandle};
 use std::{
     collections::BTreeMap,
     mem::{size_of, size_of_val},
+    num::NonZeroIsize,
     path::Path,
     rc::Rc,
     sync::{Arc, mpsc::SyncSender},
@@ -1141,6 +1143,17 @@ pub(super) struct ProductOverlaySession {
     last_frame: RenderFrame,
     retry_backoff: FrameRetryBackoff,
     context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
+}
+
+impl HasWindowHandle for ProductOverlaySession {
+    fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
+        let hwnd = NonZeroIsize::new(self.overlay.window.hwnd.0 as isize)
+            .ok_or(HandleError::Unavailable)?;
+        let handle = Win32WindowHandle::new(hwnd);
+        // SAFETY: `OverlayWindow` owns this HWND for its lifetime, and the
+        // returned handle is borrowed from this session.
+        Ok(unsafe { WindowHandle::borrow_raw(handle.into()) })
+    }
 }
 
 impl ProductOverlaySession {

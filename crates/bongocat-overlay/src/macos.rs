@@ -41,6 +41,7 @@ use objc2_app_kit::{
 };
 use objc2_foundation::{NSDate, NSDefaultRunLoopMode, NSPoint, NSRect, NSSize};
 use objc2_quartz_core::CAMetalLayer as ObjcMetalLayer;
+use raw_window_handle::{AppKitWindowHandle, HandleError, HasWindowHandle, WindowHandle};
 use std::{
     collections::{BTreeMap, BTreeSet},
     mem::{self, ManuallyDrop},
@@ -682,6 +683,20 @@ impl ProductOverlaySession {
             masked_drawable_count: self.overlay.model.masked_drawable_count,
             texture_count: self.overlay.model.textures.len(),
         })
+    }
+}
+
+impl HasWindowHandle for ProductOverlaySession {
+    fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
+        let view = self
+            .overlay
+            .panel
+            .contentView()
+            .ok_or(HandleError::Unavailable)?;
+        let handle = AppKitWindowHandle::new(NonNull::from(&*view).cast());
+        // SAFETY: the panel retains its content view while this session and the
+        // returned borrow of it remain alive.
+        Ok(unsafe { WindowHandle::borrow_raw(handle.into()) })
     }
 }
 

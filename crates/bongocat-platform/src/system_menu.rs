@@ -39,6 +39,8 @@ pub enum SystemMenuError {
     WrongThread,
     WindowClassRegistrationFailed,
     WindowCreateFailed,
+    WindowHandleUnavailable,
+    UnsupportedWindowHandle,
     MenuCreateFailed,
     MenuItemCreateFailed,
     StatusItemCreateFailed,
@@ -56,6 +58,10 @@ impl fmt::Display for SystemMenuError {
                 "the system menu window class could not be registered"
             }
             Self::WindowCreateFailed => "the system menu owner window could not be created",
+            Self::WindowHandleUnavailable => "the context menu window handle is unavailable",
+            Self::UnsupportedWindowHandle => {
+                "the context menu window handle is not supported on this platform"
+            }
             Self::MenuCreateFailed => "the system menu could not be created",
             Self::MenuItemCreateFailed => "a required system menu item could not be created",
             Self::StatusItemCreateFailed => "the platform status item could not be created",
