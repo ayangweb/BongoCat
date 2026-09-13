@@ -2,6 +2,10 @@ use super::*;
 
 impl Render for SettingsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let viewport = window.viewport_size();
+        if viewport.width <= px(0.) || viewport.height <= px(0.) {
+            return div().size_full().into_any_element();
+        }
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
             if let Some(target) = self.accessibility_focus.take() {
@@ -1139,5 +1143,6 @@ impl Render for SettingsView {
             .child(div().min_h_0().w_full().flex_1().child(settings))
             .child(footer)
             .children(Root::render_notification_layer(window, cx))
+            .into_any_element()
     }
 }
