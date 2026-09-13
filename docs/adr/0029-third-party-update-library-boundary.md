@@ -125,6 +125,9 @@ feature 与 `signatures` feature、install 阶段的 stash 回滚覆盖这些点
   编译期不可见的耦合固定下来：二进制名 ↔ `bongocat-app` 包名 ↔ `build-windows.ps1` 的 exe 名、
   bundle 名 ↔ `package-macos.sh` 的 `.app` 名、仓库 owner/name ↔ workspace manifest 的
   `repository`、四个 target ↔ `deny.toml` 的 `[graph] targets`。
+- 上述最后两项（`update_staging` 移除、`RELEASE_BINARY_NAME` 对齐与契约测试）由 run `34740872994`
+  （commit `fe5a5de`）覆盖，同为 **23/23 作业全绿**；其中 `Validate shared fixtures` 作业运行
+  `python3 -m unittest discover -s tools/tests`，即新增的契约测试已在 CI 上执行并通过。
 
 ## 待验证项（不得当作已确认）
 
@@ -147,7 +150,18 @@ feature 与 `signatures` feature、install 阶段的 stash 回滚覆盖这些点
      预置模型或 `resources/` 内容的变更无法经由此更新路径下发，需要另行设计。
    - macOS 归档需携带已签名并公证的 `.app`；`package-macos.sh` 目前只做 ad-hoc 签名，
      分发签名与公证仍是独立发布门禁。
-4. 断电残留的 `.` 前缀临时文件清理策略未决定。上游明确不建议启动时自动清理。
+4. **断电/强杀残留的清理策略仍未决定，但残留形态已查实**（读 `self_update 1.3.0`、
+   `self-replace 1.5.0` 与 `tempfile` 源码）：
+   - 下载与解压暂存使用 `tempfile::TempDir`（默认前缀 `.tmp`）：单文件模式建在**系统临时目录**，
+     macOS bundle 模式建在**安装目标的父目录**（即 `.app` 旁边）。正常返回或 panic 时 `Drop` 会删除，
+     **只有硬断电或 SIGKILL 才会留下 `.tmp*` 目录**。
+   - Windows 的单文件替换由 `self-replace` 完成：它先把当前 exe **改名挪开**，再复制自身为
+     `*.__selfdelete__.exe`、以 `FILE_FLAG_DELETE_ON_CLOSE` 打开并 spawn 该副本，等父进程退出后
+     删除被挪开的旧 exe。硬断电可能同时留下被挪开的旧 exe 与 `.__selfdelete__.exe` 副本。
+   - 本项目**不提供**启动时清理。任何清理都必须 (a) 不在更新路径内运行、(b) 绝不删除可能属于
+     进行中替换的 `.__selfdelete__.exe`、(c) 不与并发更新争用同一暂存目录。
+   - 附带约束：自有可执行文件**不得**以 `.__selfdelete__.exe` 结尾——`self-replace` 的删除胶水按该
+     后缀判定，误命名会触发非预期行为。
 5. CI 覆盖面：`native-rewrite-phase0.yml` 的 `dependency-policy` 作业会运行
    `./tools/check-native-dependencies.sh`，`native-workspace` 作业在 Windows/macOS/Ubuntu 三平台
    运行 fmt / Clippy / test / release check / production 环境构建。因此本 ADR 的门禁已在 CI 覆盖，
