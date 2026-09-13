@@ -143,11 +143,19 @@ feature 与 `signatures` feature、install 阶段的 stash 回滚覆盖这些点
   用库自身的 `Extract` 验证 macOS 归档整包解压后 `BongoCat.app/` 位于归档根并携带
   `Contents/Resources/`、Windows 归档根级的 `bongocat-app.exe` 可被取出、以及多包一层目录时
   失败且目标目录保持为空。这三项均不依赖网络或签名密钥。
+- 完整安装链路已在本机端到端演练（`crates/bongocat-update/tests/local_install_rehearsal.rs`）：
+  用 `backends::custom`（未门控，可接任意 `ReleaseSource`）配合一个只回放固定字节的 loopback
+  HTTP 服务，跑通**资产按 target triple 选择 → 下载 → 按扩展名识别归档 → 解压配置路径 → 安装**
+  全链路，且使用的就是生产常量 `RELEASE_BINARY_NAME` / `RELEASE_BUNDLE_NAME`。两项覆盖：
+  单文件替换落到配置的安装路径；bundle 模式整棵 `.app` 被替换、`Contents/Resources/` 随包到达、
+  旧包遗留文件被清除。**不含**签名校验、GitHub 后端与进程重启。
 
 ## 待验证项（不得当作已确认）
 
-1. 未在真实 Windows / macOS 上执行替换与重启。`.app` 整包交换、Windows 运行中 exe 改名、
-   替换失败后的启动恢复均**未实测**。
+1. 替换机制只在本机以「假安装目标」验证过，**未在真实发行物上验证**。已实测（见上一条）：
+   单文件替换、`.app` 整包交换与旧包清理。**未实测**：Windows 上运行中的 exe 被改名替换、
+   安装阶段失败后的回滚、替换后的进程重启、以及从真实 GitHub 发行下载。真实 `.app` 还需
+   签名与公证，当前打包脚本只做 ad-hoc 签名。
 2. 未配置真实 endpoint 与签名密钥。`RELEASE_SIGNING_KEY` 为 `None`，因此当前构建
    `update_check_available()` 恒为 `false`，更新入口在 UI 中不显示。
 3. **发行流程尚未产出 `self_update` 可消费的归档。** 读 `self_update 1.3.0` 源码确认的硬性要求：
