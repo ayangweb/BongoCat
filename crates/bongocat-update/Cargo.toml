@@ -11,5 +11,10 @@ publish.workspace = true
 bongocat-config.workspace = true
 self_update.workspace = true
 
+# Test-only: the archive-layout capability tests build the release archives that
+# the documented macOS and Windows asset layouts require.
+[dev-dependencies]
+zip.workspace = true
+
 [lints]
 workspace = true

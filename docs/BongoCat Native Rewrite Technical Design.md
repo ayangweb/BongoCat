@@ -718,9 +718,10 @@ workspace 的正式 `just` 入口与 CI 显式选择 Development，Production bu
   替换当前可执行文件。安装根为 `$LOCALAPPDATA\Programs\BongoCat`，用户可写，不需要提权。
 - 库的错误、配置与平台类型不得扩散为项目公共 API。`self_update::Error` 在 `bongocat-update` 边界内
   映射为 13 个稳定错误码，诊断导出只消费这些码与匿名聚合计数，不含任何库类型或动态平台文本。
-- 发行流程必须额外产出 `self_update` 可消费的归档：资产名含完整 target triple，macOS 归档根为
-  `BongoCat.app/`，Windows 归档根为 `bongocat-app.exe`。当前 `scripts/package-macos.sh` 只产出
-  `.app`、`scripts/build-windows.ps1` 只产出 NSIS 安装器，均未产出归档。
+- 发行流程必须产出 `self_update` 可消费的资产：资产名含完整 target triple（匹配只用 triple，不用
+  `bin_name`）；macOS 必须用归档且归档根为 `BongoCat.app/`；Windows 可用裸 `BongoCat.exe`
+  （未识别扩展名按单文件处理），也可用归档但须把该文件放在根级。当前 `scripts/package-macos.sh`
+  只产出 `.app`、`scripts/build-windows.ps1` 只产出 NSIS 安装器，均未产出可更新资产。
 - Windows 上 `github::Update::update()` 的单文件替换不会更新 `resources/`。库公开导出 `Download`、
   `Extract`、`MoveAll`，多文件更新需用它们自行编排：`MoveAll` 提供全成或全回滚的事务式替换。
   该路径本项目尚未实现。

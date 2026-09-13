@@ -963,6 +963,7 @@ version = "0.1.0"
 dependencies = [
  "bongocat-config",
  "self_update",
+ "zip",
 ]
 
 [[package]]

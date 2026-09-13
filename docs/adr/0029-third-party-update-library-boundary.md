@@ -139,6 +139,10 @@ feature 与 `signatures` feature、install 阶段的 stash 回滚覆盖这些点
 - `MoveAll` 的事务语义已在本机实测，不依赖文档：`crates/bongocat-update/tests/multi_file_install_capability.rs`
   验证「可执行文件 + 资源文件」两条移动全部生效，以及第二条源缺失时第一条已应用的移动被回滚、
   未被触及的目标保持原内容。该测试**不覆盖**本项目尚未实现的多文件编排路径，只锁定库原语语义。
+- 两种发行资产布局已在本机实测：`crates/bongocat-update/tests/archive_layout_capability.rs`
+  用库自身的 `Extract` 验证 macOS 归档整包解压后 `BongoCat.app/` 位于归档根并携带
+  `Contents/Resources/`、Windows 归档根级的 `bongocat-app.exe` 可被取出、以及多包一层目录时
+  失败且目标目录保持为空。这三项均不依赖网络或签名密钥。
 
 ## 待验证项（不得当作已确认）
 
@@ -151,12 +155,23 @@ feature 与 `signatures` feature、install 阶段的 stash 回滚覆盖这些点
      `arch` + `os` 标记（`arch` 取 triple 首段，`os` ∈ `linux`/`darwin`/`windows`/…）。
      **`bin_name` 不参与资产名匹配**。因此资产名必须包含 target triple，例如
      `BongoCat-0.1.0-aarch64-apple-darwin.tar.gz`。
-   - **归档内布局**：macOS bundle 模式下库只取 `bundle_path_in_archive` 指向的目录，要求归档根为
-     `BongoCat.app/`；Windows 单文件模式下 `bin_path_in_archive` 由 `bin_name` 派生为
-     `bongocat-app.exe`，要求归档根为该文件。
+   - **归档类型按扩展名判定**（`detect_archive`）：`.zip` / `.tar` / `.tar.gz` / `.tar.xz` / `.gz` /
+     `.xz` 走对应解压器，**其余任何扩展名（含 `.exe`）落入 `ArchiveKind::Plain(None)`，即当作裸
+     单文件直接使用**。因此 Windows 资产**不必是压缩包**，一个裸 `BongoCat.exe` 就能被消费；macOS
+     bundle 模式则必须用归档。
+   - **归档内布局**：bundle 模式走 `install_bundle`，它用 `Extract::extract_into` **解压整个归档**
+     再从解压根取 `bundle_path_in_archive`，因此归档根必须是 `BongoCat.app/` 目录
+     （注意 `Extract::extract_file` 只能取单个文件，取目录会失败——这就是 bundle 模式用
+     `extract_into` 的原因）。单文件模式下 `bin_path_in_archive` 由 `bin_name` 派生为
+     `bongocat-app.exe`，裸文件或归档内的该路径都必须是**根级**，多套一层目录会直接报错而非
+     静默取错文件。
    - **现状**：`scripts/package-macos.sh` 只产出 `target/package/BongoCat.app`，**不产归档**；
-     `scripts/build-windows.ps1` 只产出 NSIS 安装器 `BongoCat-$version-x64-setup.exe`，也不是 zip。
-     两者都还需要新增归档步骤，本次未实现。
+     `scripts/build-windows.ps1` 只产出 NSIS 安装器 `BongoCat-$version-x64-setup.exe`。
+     两者都还需要新增发行步骤，本次未实现。
+   - 上述布局要求已在本机实测（不依赖网络）：
+     `crates/bongocat-update/tests/archive_layout_capability.rs` 用库自身的 `Extract` 验证
+     macOS 归档整包解压后 `BongoCat.app/` 位于根部且携带 `Resources/`、Windows 归档根级的
+     `bongocat-app.exe` 可被取出、以及被多包一层目录时会失败且不留残留。
    - **Windows 多文件更新需要自行编排**：`github::Update::update()` 的单文件模式只替换可执行文件，
      **不会更新 `resources/`**，预置模型或 `resources/` 内容的变更无法经由此路径下发。库为此提供了
      公开原语：用 `Download` + `Extract` 取得文件，再用 `MoveAll` 完成「二进制 + 附属资源」的事务式
