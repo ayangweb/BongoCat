@@ -54,7 +54,7 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 | `serde`                               |      `1.0.229` | 从 `1.0.228` 升级                                        |
 | `serde_json`                          |      `1.0.151` | 从 `1.0.149` 升级                                        |
 | `raw-window-handle`                   |        `0.6.2` | 新增时即为最新                                           |
-| `rfd`                                 |       `0.17.2` | macOS 目录选择迁移时最新稳定版                           |
+| `rfd`                                 |       `0.17.2` | 双平台目录选择迁移时最新稳定版                           |
 | `rodio`                               |       `0.22.2` | motion 音效新增时最新                                    |
 | `sha2`                                |       `0.11.0` | 新增时即为最新                                           |
 | `tempfile`                            |       `3.27.0` | 已是最新                                                 |
@@ -126,14 +126,16 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
 - `raw-window-handle 0.6.2`（MIT OR Apache-2.0 OR Zlib）除 spike 外也由正式 Windows
   platform adapter 直接使用，只把 GPUI 的公开 handle 转为短期借用的 HWND 以隐藏/重显设置
   窗口；裸 handle 不离开 adapter，GPUI 修复原生 close 生命周期后可移除这段正式依赖；
-- `rfd 0.17.2`（MIT，macOS target-only）只在 `bongocat-platform` 的私有 macOS model
-  directory picker adapter 中替换手写 `NSOpenPanel` UI；以 `default-features = false` 关闭
-  Linux 的 XDG portal、Wayland 与 GTK feature，不改变共享 `Selected(PathBuf)`/`Cancelled` 和
-  稳定匿名错误契约，也不向 UI/runtime 泄漏 `rfd` 类型。adapter 在 AppKit 主线程、`NSApplication`
-  已运行且存在 sheet parent 时调用 `AsyncFileDialog`，以避免同步 `runModal` 重入 GPUI；在后台
-  worker 中等待 future 并继续用 Rust 复验、canonicalize 选择结果。`rfd` 的 `None` 同时表示取消
-  和后端失败，当前按取消映射；替换边界是该私有 adapter。Windows 不切换，因为其 Windows 后端
-  只设置 `FOS_PICKFOLDERS`，缺少本项目的 filesystem/path-exists/no-chdir/no-recent 硬约束；
+- `rfd 0.17.2`（MIT，macOS/Windows target-only）在 `bongocat-platform` 的私有 model
+  directory picker adapter 中替换手写 `NSOpenPanel` 和 `IFileOpenDialog` UI；以
+  `default-features = false` 关闭 Linux 的 XDG portal、Wayland 与 GTK feature，不改变共享
+  `Selected(PathBuf)`/`Cancelled` 和稳定匿名错误契约，也不向 UI/runtime 泄漏 `rfd` 类型。
+  macOS 在 AppKit 主线程、`NSApplication` 已运行且存在 sheet parent 时调用
+  `AsyncFileDialog`，以避免同步 `runModal` 重入 GPUI；Windows 在专用 worker 的 STA 中调用
+  `FileDialog`。选择结果仍在 Rust 侧复验、canonicalize。`rfd` 的 `None` 同时表示取消和后端
+  失败，当前按取消映射；替换边界是该私有 adapter。Windows 选择器不再额外设置
+  `FOS_FORCEFILESYSTEM`、`FOS_PATHMUSTEXIST`、`FOS_NOCHANGEDIR`、`FOS_DONTADDTORECENT`，
+  接受该系统对话框的默认行为；`rfd` 的 Windows 后端只设置 `FOS_PICKFOLDERS`；
 - `dispatch2 0.3.1`（Zlib OR Apache-2.0 OR MIT）是 `objc2` 官方维护的 Grand Central Dispatch
   binding，仅作为 macOS smoke example 的 dev dependency，用于从验证 worker 回到 main queue
   调用 `NSApplication::stop`；不进入产品依赖图或公共 API；

@@ -16,11 +16,11 @@ url.workspace = true
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 accesskit.workspace = true
 raw-window-handle.workspace = true
+rfd.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 accesskit_macos.workspace = true
 async-io.workspace = true
-rfd.workspace = true
 block2 = "=0.6.2"
 objc2 = "=0.6.4"
 objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["NSApplication", "NSButton", "NSCell", "NSControl", "NSEvent", "NSGraphics", "NSImage", "NSMenu", "NSMenuItem", "NSPanel", "NSPasteboard", "NSResponder", "NSRunningApplication", "NSWorkspace", "NSStatusBar", "NSStatusBarButton", "NSStatusItem", "NSView", "NSWindow", "block2", "objc2-core-foundation"] }
@@ -37,7 +37,6 @@ windows = { version = "=0.62.2", features = [
     "Win32_Globalization",
     "Win32_Security",
     "Win32_Graphics_Gdi",
-    "Win32_System_Com",
     "Win32_System_DataExchange",
     "Win32_System_LibraryLoader",
     "Win32_System_Memory",

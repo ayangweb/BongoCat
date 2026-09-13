@@ -20,10 +20,6 @@ pub use accessibility::{
 };
 
 mod directory_picker;
-#[cfg(target_os = "macos")]
-mod directory_picker_macos;
-#[cfg(target_os = "windows")]
-mod directory_picker_windows;
 pub use directory_picker::{DirectoryPickerError, DirectoryPickerOutcome};
 
 mod directory_opener;
@@ -130,11 +126,8 @@ mod display_bounds_tests {
 pub fn pick_model_directory(
     on_complete: impl FnOnce(Result<DirectoryPickerOutcome, DirectoryPickerError>) + Send + 'static,
 ) -> Result<(), DirectoryPickerError> {
-    #[cfg(target_os = "macos")]
-    return directory_picker_macos::pick_model_directory(on_complete);
-
-    #[cfg(target_os = "windows")]
-    return directory_picker_windows::pick_model_directory(on_complete);
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    return directory_picker::pick_model_directory(on_complete);
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {

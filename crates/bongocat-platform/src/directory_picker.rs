@@ -3,6 +3,11 @@ use std::{fmt, path::PathBuf};
 #[cfg(any(target_os = "macos", target_os = "windows", test))]
 use std::fs;
 
+#[cfg(target_os = "macos")]
+use objc2::{MainThreadMarker, rc::autoreleasepool};
+#[cfg(target_os = "macos")]
+use objc2_app_kit::NSApplication;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DirectoryPickerOutcome {
     Selected(PathBuf),
@@ -37,6 +42,75 @@ impl fmt::Display for DirectoryPickerError {
 }
 
 impl std::error::Error for DirectoryPickerError {}
+
+#[cfg(target_os = "macos")]
+fn asynchronous_sheet_is_available(mtm: MainThreadMarker) -> bool {
+    let application = NSApplication::sharedApplication(mtm);
+    let has_window = application.mainWindow().is_some() || !application.windows().is_empty();
+    application.isRunning() && has_window
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn spawn_picker_worker<F, P>(on_complete: F, pick: P) -> Result<(), DirectoryPickerError>
+where
+    F: FnOnce(Result<DirectoryPickerOutcome, DirectoryPickerError>) + Send + 'static,
+    P: FnOnce() -> Result<DirectoryPickerOutcome, DirectoryPickerError> + Send + 'static,
+{
+    std::thread::Builder::new()
+        .name("bongocat-directory-picker".to_owned())
+        .spawn(move || {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(pick))
+                .unwrap_or(Err(DirectoryPickerError::BackendUnavailable));
+            on_complete(result);
+        })
+        .map(|_| ())
+        .map_err(|_| DirectoryPickerError::BackendUnavailable)
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn pick_model_directory<F>(on_complete: F) -> Result<(), DirectoryPickerError>
+where
+    F: FnOnce(Result<DirectoryPickerOutcome, DirectoryPickerError>) + Send + 'static,
+{
+    let mtm = MainThreadMarker::new().ok_or(DirectoryPickerError::WrongThread)?;
+    if !asynchronous_sheet_is_available(mtm) {
+        // `rfd` falls back to a synchronous `runModal` when no sheet parent exists. That reenters
+        // GPUI's event loop and previously caused `RefCell already borrowed`, so reject the call.
+        return Err(DirectoryPickerError::BackendUnavailable);
+    }
+
+    let task = autoreleasepool(|_| {
+        rfd::AsyncFileDialog::new()
+            .set_can_create_directories(false)
+            .pick_folder()
+    });
+    spawn_picker_worker(on_complete, move || {
+        // `rfd` maps both cancellation and backend failure to `None`; cancellation is the only
+        // outcome the public API can represent without inventing information.
+        match async_io::block_on(task) {
+            Some(handle) => validate_selected_directory(handle.path().to_path_buf()),
+            None => Ok(DirectoryPickerOutcome::Cancelled),
+        }
+    })
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn pick_model_directory<F>(on_complete: F) -> Result<(), DirectoryPickerError>
+where
+    F: FnOnce(Result<DirectoryPickerOutcome, DirectoryPickerError>) + Send + 'static,
+{
+    spawn_picker_worker(on_complete, || {
+        // The Windows backend runs the common item dialog on this dedicated worker's STA. It sets
+        // the folder-only option; Rust validation below remains the authority for the returned path.
+        match rfd::FileDialog::new()
+            .set_can_create_directories(false)
+            .pick_folder()
+        {
+            Some(path) => validate_selected_directory(path),
+            None => Ok(DirectoryPickerOutcome::Cancelled),
+        }
+    })
+}
 
 #[cfg(any(target_os = "macos", target_os = "windows", test))]
 pub(crate) fn validate_selected_directory(
@@ -114,5 +188,15 @@ mod tests {
             assert_eq!(error.as_str(), expected);
             assert_eq!(error.to_string(), expected);
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn picker_rejects_background_threads_before_touching_appkit() {
+        let error = std::thread::spawn(|| pick_model_directory(|_| {}))
+            .join()
+            .expect("picker test thread")
+            .expect_err("background picker");
+        assert_eq!(error, DirectoryPickerError::WrongThread);
     }
 }

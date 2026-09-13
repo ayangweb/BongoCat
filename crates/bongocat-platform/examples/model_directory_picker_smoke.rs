@@ -90,7 +90,7 @@ fn start_native_picker(
     });
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 fn run_native_application() {}
 
 #[cfg(target_os = "macos")]
@@ -258,7 +258,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let completed = Arc::new(AtomicBool::new(false));
     #[cfg(target_os = "macos")]
     start_native_picker(sender.clone());
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
     {
         let callback_completed = Arc::clone(&completed);
         pick_model_directory(move |result| {
@@ -269,7 +269,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let automation = start_automation(&options.expected, options.automated, completed)?;
     #[cfg(target_os = "macos")]
     run_native_application(&native_application);
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
     run_native_application();
     #[cfg(target_os = "windows")]
     let actual = receiver
