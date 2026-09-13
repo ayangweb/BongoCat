@@ -157,6 +157,10 @@ impl UpdateRuntime {
         )
     }
 
+    /// The release channel this build is bound to.
+    ///
+    /// `None` on a host outside the four shipped targets, where there is no
+    /// release configuration at all.
     pub fn channel(&self) -> Option<ReleaseChannel> {
         self.configuration
             .map(|configuration| configuration.channel)
@@ -293,14 +297,35 @@ impl UpdateRuntime {
 mod tests {
     use super::{RELEASE_SIGNING_KEY, UpdateError, UpdateErrorCode, UpdateOutcome, UpdateRuntime};
     use crate::diagnostics::UpdateDiagnosticsTracker;
-    use bongocat_config::BuildEnvironment;
+    use crate::release::{ReleaseChannel, ReleaseConfiguration, UpdateTargetTriple};
 
-    fn development_runtime() -> UpdateRuntime {
-        UpdateRuntime::for_current_build(
-            BuildEnvironment::Development,
+    /// A fixed release configuration.
+    ///
+    /// The gating tests must not go through `for_current_build`: that returns
+    /// `None` on any host outside the four shipped combinations (the Linux CI
+    /// runner is one), which would turn the channel and error-code assertions
+    /// below into no-ops there instead of real checks.
+    fn configuration(channel: ReleaseChannel) -> ReleaseConfiguration {
+        ReleaseConfiguration {
+            channel,
+            repository_owner: "ayangweb",
+            repository_name: "BongoCat",
+            binary_name: "BongoCat",
+            bundle_name: Some("BongoCat.app"),
+            target: UpdateTargetTriple::Aarch64AppleDarwin,
+        }
+    }
+
+    fn runtime_for(channel: ReleaseChannel) -> UpdateRuntime {
+        UpdateRuntime::new(
+            Some(configuration(channel)),
             "0.1.0",
             UpdateDiagnosticsTracker::default(),
         )
+    }
+
+    fn development_runtime() -> UpdateRuntime {
+        runtime_for(ReleaseChannel::Development)
     }
 
     #[test]
@@ -326,15 +351,24 @@ mod tests {
     fn a_missing_signing_key_fails_closed_before_any_request() {
         assert_eq!(RELEASE_SIGNING_KEY, None);
 
-        let runtime = UpdateRuntime::for_current_build(
-            BuildEnvironment::Production,
-            "0.1.0",
-            UpdateDiagnosticsTracker::default(),
-        );
+        let runtime = runtime_for(ReleaseChannel::Production);
         let error = runtime
             .check()
             .expect_err("no signing key is provisioned in this build");
         assert_eq!(error.code(), UpdateErrorCode::SignatureKeyMissing);
+    }
+
+    #[test]
+    fn a_host_outside_the_shipped_targets_has_no_release_configuration() {
+        let runtime = UpdateRuntime::new(None, "0.1.0", UpdateDiagnosticsTracker::default());
+
+        assert_eq!(runtime.channel(), None);
+        assert!(!runtime.is_available());
+
+        let error = runtime
+            .check()
+            .expect_err("an unsupported host has no release configuration");
+        assert_eq!(error.code(), UpdateErrorCode::NotConfigured);
     }
 
     #[test]
@@ -356,13 +390,13 @@ mod tests {
 
     #[test]
     fn availability_requires_a_production_channel_and_a_signing_key() {
-        assert!(!development_runtime().is_available());
-
-        let production = UpdateRuntime::for_current_build(
-            BuildEnvironment::Production,
-            "0.1.0",
-            UpdateDiagnosticsTracker::default(),
+        assert!(
+            !development_runtime().is_available(),
+            "the development channel is disabled"
         );
-        assert!(!production.is_available(), "no signing key is provisioned");
+        assert!(
+            !runtime_for(ReleaseChannel::Production).is_available(),
+            "no signing key is provisioned"
+        );
     }
 }

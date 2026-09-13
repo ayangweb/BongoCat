@@ -104,6 +104,14 @@ feature 与 `signatures` feature、install 阶段的 stash 回滚覆盖这些点
   传递依赖未触发任何许可证或来源违规，`deny.toml` 无需为它新增例外。
 - `python3 tools/validate-json-schema.py` 通过（9 input / 9 expected / 10 config / 6 state），
   已不含 update 校验入口。
+- 三平台 CI（run `34737269808`）首次运行暴露一个本机不可见的问题：Linux runner 不属于四个首发
+  target，`ReleaseConfiguration::for_current_build` 在那里返回 `None`，导致两个直接用它构造
+  runtime 的测试断言了错误的期望值（`left: None, right: Some("development")` 与
+  `left: NotConfigured, right: SignatureKeyMissing`），`Test Native workspace (ubuntu-latest)`
+  因此失败 2 项。已把这两个测试改为从显式 `ReleaseConfiguration` 构造 runtime，使其在任意宿主上
+  都真正执行 channel 与签名密钥门禁，而不是被静默跳过；并新增
+  `a_host_outside_the_shipped_targets_has_no_release_configuration` 覆盖 `None` 配置路径。
+  本地复检 14 项测试通过、workspace 498 passed / 0 failed。
 
 ## 待验证项（不得当作已确认）
 
@@ -114,7 +122,11 @@ feature 与 `signatures` feature、install 阶段的 stash 回滚覆盖这些点
 3. 发行资产的命名约定尚未与 `self_update` 的 target 匹配规则对齐；打包脚本
    （`scripts/package-macos.sh`、`windows/installer/BongoCat.nsi`）未修改。
 4. 断电残留的 `.` 前缀临时文件清理策略未决定。上游明确不建议启动时自动清理。
-5. 未在 CI 中运行依赖门禁。本次已在本地通过，但 CI 流水线尚未加入该步骤。
+5. CI 覆盖面：`native-rewrite-phase0.yml` 的 `dependency-policy` 作业会运行
+   `./tools/check-native-dependencies.sh`，`native-workspace` 作业在 Windows/macOS/Ubuntu 三平台
+   运行 fmt / Clippy / test / release check / production 环境构建。因此本 ADR 的门禁已在 CI 覆盖，
+   但仍未在**真实发行流程**中验证：发行资产命名、签名与安装包产物未与本 ADR 的 target 匹配规则
+   对齐（见待验证项 3）。
 6. `bongocat-config::StorageLayout` 仍保留 `update_staging`（`<env>/updates/staging/`）字段，
    但 `staging` 模块已删除，**当前没有任何写入方**。该字段属于 `bongocat-config` 的公开布局契约
    与环境目录形状测试，超出本次 `bongocat-update` 替换范围，故未一并移除。若要清理，需在
