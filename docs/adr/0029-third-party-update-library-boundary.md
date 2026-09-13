@@ -112,6 +112,9 @@ feature 与 `signatures` feature、install 阶段的 stash 回滚覆盖这些点
   都真正执行 channel 与签名密钥门禁，而不是被静默跳过；并新增
   `a_host_outside_the_shipped_targets_has_no_release_configuration` 覆盖 `None` 配置路径。
   本地复检 14 项测试通过、workspace 498 passed / 0 failed。
+- 修复后三平台 CI（run `34738189816`，commit `b2b1f51`）**全绿：23/23 作业成功**，包括
+  `Test Native workspace (ubuntu-latest)` / `(macos-latest)` / `(windows-latest)`、
+  `Check Native dependency policy` 与全部平台 smoke。
 
 ## 待验证项（不得当作已确认）
 
