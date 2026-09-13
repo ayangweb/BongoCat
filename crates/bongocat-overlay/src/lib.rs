@@ -626,6 +626,13 @@ pub struct PreviewReport {
     pub drawable_count: usize,
     pub masked_drawable_count: usize,
     pub texture_count: usize,
+    /// Windows switch-probe thread observation: the warmup high-water mark the
+    /// settled count is measured against. The macOS probe does not sample
+    /// process thread counts and leaves it absent rather than reporting zero.
+    pub warmup_thread_high_water: Option<u32>,
+    /// Windows switch-probe settled thread count after the measurement interval,
+    /// reported even on success so the remaining allowance is visible.
+    pub threads_after: Option<u32>,
     /// Timing from the diagnostic preview's renderer call only. Product frame
     /// sources do not collect this data, and previews without a paced loop
     /// leave it absent rather than reporting zeroes as measurements.

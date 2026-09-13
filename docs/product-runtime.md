@@ -133,9 +133,13 @@ The switch probe first injects one invalid texture preparation and requires the 
 input bindings, and GPU generation to remain active and drawable. Rejected candidate generations
 may create a gap, but committed generations must remain strictly monotonic. Every valid generation
 performs a non-transparent frame readback. Before the requested Windows measurement interval, the
-probe runs at least 100 equivalent warmup cycles and waits for driver workers to settle. It then
-rejects persistent process thread growth above the warmup high-water mark, more than four additional
-handles, or DXGI local-memory growth. The macOS probe rejects Metal allocation growth between
+probe runs at least 100 equivalent warmup cycles and waits for driver workers to settle. The warmup
+high-water mark is a snapshot, not a hard ceiling: process-global D3D11, DXGI, and thread-pool
+workers can be created after the settle window and then persist for the life of the process, so the
+probe accepts a settled count within two threads of the mark while still rejecting the per-switch
+growth that scales with the measured switch count. It also rejects more than four additional
+handles or DXGI local-memory growth, and the preview reports the warmup mark and the settled count
+so the remaining allowance stays visible. The macOS probe rejects Metal allocation growth between
 warmed-up standard baselines.
 
 By default the preview applies deterministic, model-specific input through the product runtime so

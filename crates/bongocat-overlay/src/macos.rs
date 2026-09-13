@@ -1213,6 +1213,8 @@ pub(crate) fn run_model_preview(
         drawable_count: overlay.model.meshes.len(),
         masked_drawable_count: overlay.model.masked_drawable_count,
         texture_count: overlay.model.textures.len(),
+        warmup_thread_high_water: None,
+        threads_after: None,
         frame_timing: Some(frame_timing.summary()),
     })
 }

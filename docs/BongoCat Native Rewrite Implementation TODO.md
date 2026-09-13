@@ -2226,6 +2226,18 @@ workflow、legacy config inspector 及其本地 fixture 已从当前工作树删
 
 - [x] 先完成无平台依赖的 overlay lifecycle contract probe；平台窗口和 GPU 验证仍未完成。
 - [x] Windows Win32/D3D11/DirectComposition owner、故障降级、析构顺序与 100-cycle 已通过既有 push/PR `windows-latest`；macOS 本机与 push/PR runner 的透明 clear/present、drawable unavailable、显式 shutdown 与 100-cycle 也已通过，并通过 `leaks` 基线消除窗口动画 retain cycle。GPUI 定时 frame source、双平台 resize、有序停止、原生 drag 状态切换及受控运行中故障恢复已实现；双平台具有 process thread 与 API 可见 GPU allocation 门禁，macOS 又以逐帧 backing-size 校正修复跨显示器后 drawable 尺寸漂移。commit `5baa6ba` 证明单次 `currentAllocatedSize` 相等不能代表无显示 compositor pool 收敛；当前按实测物理尺寸和三缓冲上限计算一个 drawable pool，commit `fd9ad85` 的 push run `33255204781`、job `99107586014` 已通过新门禁。完整 `P0-OVERLAY` 还等待 Windows 真实 swapchain unavailable、双平台真实 device-lost、driver 专项采样、物理拖动及显示器/DPI 切换。
+- 状态（2026-09-13）：run `34743931898`、job `103688224078`（PR #1030、`next` @ `f7c20a2`）的
+  transactional D3D11 切模 smoke 以 `process thread count exceeded the warmup high-water mark
+  12 with 13 threads during model switching` 失败。该提交与上一个绿灯提交 `5554bd5` 的差异仅为
+  `bongocat-update` 新增集成测试与 ADR 措辞，overlay 不依赖该 crate，且前 7 次 `next` 运行同一
+  步骤均通过，故判定为线程门禁误报而非回归：进程全局 D3D11/DXGI/线程池 worker 可在预热 settle
+  窗口之后才出现并长期驻留，而原实现把测量前快照当作硬上限，零容忍比较会把一次性 `+1` 判成泄漏
+  （真实逐 switch 泄漏应为 `+309`）。产品探针现采用有界容差 `THREAD_GROWTH_LIMIT = 2`（与既有
+  `HANDLE_GROWTH_LIMIT = 4` 对称，稳定性仍由 `settle_process_threads` 保证），新增
+  `thread_growth_exceeded` 判定谓词与 Windows 单元回归，并让 `PreviewReport` 报告
+  `warmup_thread_high_water`/`threads_after`，使成功路径也能看到剩余余量。本机 macOS format、
+  完整 workspace Clippy/workspace test/release check 与 `x86_64-pc-windows-msvc` 交叉 Clippy 已通过；
+  新增 Windows 单元测试与 runner smoke 证据待本次推送后的 CI 运行，该项与发布门槛不变。
 
 11. [ ] `P0-INPUT-WINDOWS`：完成 Raw Input + pressed set + `GetAsyncKeyState` 校正并实测 issue #47 场景。
 

@@ -4,7 +4,7 @@ fn main() -> ExitCode {
     match run() {
         Ok(report) => {
             println!(
-                "BongoCat Live2D preview: frames={} dynamic_snapshots={} runtime_input_events={} platform_input_edges={} runtime_cursor_published={} runtime_cursor_coalesced={} runtime_cursor_consumed={} platform_cursor_samples={} render_frames_published={} render_frames_coalesced={} render_frames_consumed={} model_switches={} failed_gpu_prepare_preserved={} gpu_bytes_before={} gpu_bytes_after={} drawables={} masked_drawables={} textures={} frame_timing={:?}",
+                "BongoCat Live2D preview: frames={} dynamic_snapshots={} runtime_input_events={} platform_input_edges={} runtime_cursor_published={} runtime_cursor_coalesced={} runtime_cursor_consumed={} platform_cursor_samples={} render_frames_published={} render_frames_coalesced={} render_frames_consumed={} model_switches={} failed_gpu_prepare_preserved={} gpu_bytes_before={} gpu_bytes_after={} drawables={} masked_drawables={} textures={} warmup_thread_high_water={:?} threads_after={:?} frame_timing={:?}",
                 report.frames_presented,
                 report.dynamic_snapshots,
                 report.runtime_input_events,
@@ -23,6 +23,8 @@ fn main() -> ExitCode {
                 report.drawable_count,
                 report.masked_drawable_count,
                 report.texture_count,
+                report.warmup_thread_high_water,
+                report.threads_after,
                 report.frame_timing
             );
             ExitCode::SUCCESS
