@@ -1775,12 +1775,14 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     GPUI 设置窗口；只有系统菜单、应用快捷键、单实例/应用重开或显式窗口 smoke 才触发按需创建。
     Windows frame source 不再依赖设置窗口实体，因此 overlay 在无设置窗口时继续运行。
 - [x] 托盘/菜单栏 command 统一进入 runtime。
-  - 验收证据（2026-09-05）：Windows `HMENU` 与 macOS `NSStatusItem` 现都提供
-    `Show/Hide BongoCat` action；平台 callback 只投递 `SystemMenuAction`，GPUI frame owner
-    读取当前 revisioned snapshot 后经 typed `SetOverlayVisible` 进入 settings service/runtime，
-    不直接修改 overlay 或 config。macOS release system-menu smoke 已通过 native target/action
-    路径切换与恢复 overlay visibility，并确认产生新的 config revision；Windows 使用同一
-    action/command contract，待 push CI 的原生 smoke 复验。
+  - 验收证据（2026-09-05）：双平台菜单均提供 `Show/Hide BongoCat` action；平台 callback 只投递
+    `SystemMenuAction`，GPUI frame owner 读取当前 revisioned snapshot 后经 typed
+    `SetOverlayVisible` 进入 settings service/runtime，不直接修改 overlay 或 config。macOS
+    release system-menu smoke 已通过原生路径切换与恢复 overlay visibility，并确认产生新的
+    config revision；Windows 使用同一 action/command contract，仍待真实 Windows desktop 复验。
+  - 状态（2026-09-13）：当前 macOS/Windows 实现已统一为 `tray-icon 0.25.0` + 重导出的
+    `muda 0.20.0`，见 ADR-0031；上述历史 smoke 证据保留，但 Windows tray behavior 不以
+    cross-compile 代替实机验证。
 - [ ] 系统关机、注销和普通退出进入 shutdown coordinator。
   - 状态（2026-09-05）：Windows Raw Input owner 现将 `WM_QUERYENDSESSION` 与已确认的
     `WM_ENDSESSION` 转为无阻塞终止信号；GPUI frame owner 在下一帧复用已有 shutdown coordinator，
@@ -1800,7 +1802,7 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 
 ### 8.2 Windows
 
-- [x] Shell_NotifyIcon + HMENU 托盘。
+- [x] `tray-icon 0.25.0` 托盘（Windows 使用 `muda 0.20.0` 菜单与 `tray-windows.png`）。
 - [x] named mutex + registered message/IPC 唤醒单实例。
   - 验收证据（2026-08-31）：`P7-WINDOWS-SINGLE-INSTANCE` 已使用按环境隔离的 local named
     mutex、隐藏 owner window 与 registered wake message；secondary 只通知 primary 后退出，
@@ -1845,7 +1847,7 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 
 ### 8.3 macOS
 
-- [x] NSStatusItem + NSMenu 菜单栏。
+- [x] `tray-icon 0.25.0` 菜单栏（macOS 托管 `NSStatusItem` 与 `muda 0.20.0` 菜单）。
 - [x] NSApplication activation/reopen/single-instance 行为。
 - [x] SMAppService 启动项启用、禁用和状态检测。
   - 验收证据（2026-08-31）：`P7-STARTUP-ITEM-PLATFORM` 已以 Production-only macOS 13+
@@ -2462,14 +2464,13 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       Ubuntu jobs `99340456922`/`99340462194` 通过共享 UI contract 与完整 workspace 门禁。
 27. [x] `P7-SYSTEM-MENU-LIFECYCLE`：提供双平台后台产品的系统菜单恢复入口与显式退出。
     - 依赖：`P1-SETTINGS-WINDOW-LIFECYCLE`、app shutdown coordinator、平台 UI 主线程。
-    - 退出条件：Windows `Shell_NotifyIcon` + `HMENU` 与 macOS `NSStatusItem` + `NSMenu` 由明确
-      owner 管理；Open Settings 不创建重复窗口并恢复当前 revisioned snapshot；Quit 停止菜单
-      事件后进入既定 input/runtime/config/frame/renderer/overlay shutdown；callback 只发送强类型
-      有序事件；双平台 release smoke、Windows x64/ARM64 source check 与完整 Native 门禁通过。
-    - 状态（2026-08-31）：共享 `OpenSettings`/`Quit` contract、macOS 主线程 target/action、Windows
-      隐藏 HWND callback 与显式菜单/status item cleanup 已接入 app coordinator；不新增第三方 tray
-      crate，继续使用已锁定的 `objc2 0.6.4`/AppKit `0.3.2` 与 `windows 0.62.2`。macOS 本机真实
-      status item owner + Objective-C target/action smoke 及既有 settings/Models release smoke 通过。
+    - 当前退出条件：macOS/Windows 的 `tray-icon 0.25.0` 与 `muda 0.20.0` 菜单由明确 owner 管理；
+      Open Settings 不创建重复窗口并恢复当前 revisioned snapshot；Quit 停止菜单事件后进入既定
+      input/runtime/config/frame/renderer/overlay shutdown；callback 只发送强类型有序事件；双平台
+      release smoke、Windows x64/ARM64 source check 与完整 Native 门禁通过。
+    - 历史状态（2026-08-31）：初期实现以 macOS 主线程 target/action 与 Windows 隐藏 HWND
+      callback 管理菜单和 status item cleanup。该实现已由 ADR-0031 的 `tray-icon` owner 替换；
+      历史 macOS smoke 及既有 settings/Models release smoke 仍作为迁移前证据保留。
     - 验收证据（2026-08-31）：commit `9e97704` 的 PR run `33344287629` 全绿；Windows job
       `99345364734` 与 macOS job `99345364649` 均通过原生菜单 callback -> typed action -> settings
       恢复 -> 显式 Quit 的 release smoke，Ubuntu job `99345364707` 通过完整共享 workspace 门禁。
@@ -2966,11 +2967,11 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 55. [x] `P5-STATUS-ICON-VISIBILITY`：让当前 v1 的菜单栏/托盘状态图标可即时隐藏和恢复。
     - 依赖：`P7-SYSTEM-MENU-LIFECYCLE`、当前 v1 `application.show_status_icon`、settings revision/CAS
       和 GPUI Kit switch。
-    - 退出条件：配置值通过强类型 snapshot/command 往返；平台主线程先应用显隐，Application owner
-      再原子提交，平台失败不改配置，配置失败回滚平台状态；Windows 在 owner 生命周期内保持托盘项注册，
-      通过 `NIS_HIDDEN` 即时显隐且仅在销毁时 `NIM_DELETE`，macOS remove/recreate `NSStatusItem`；
-      两平台都保留唯一菜单事件 owner；启动恢复已保存值；General 控件具备 keyboard/AccessKit switch
-      语义；定向测试、完整 Native workspace 与双平台 release system-menu smoke 通过。
+    - 当前退出条件：配置值通过强类型 snapshot/command 往返；平台主线程先应用显隐，Application
+      owner 再原子提交，平台失败不改配置，配置失败回滚平台状态；macOS/Windows 共用同一个长期存活的
+      `tray-icon 0.25.0` owner 与 `muda 0.20.0` 菜单，`set_visible` 后两平台仍保留唯一菜单事件
+      owner；启动恢复已保存值；General 控件具备 keyboard/AccessKit switch 语义；定向测试、完整
+      Native workspace 与双平台 release system-menu smoke 通过。
     - 验收证据（2026-09-04）：commit `8632ae5` 完成强类型 command/snapshot、主线程平台桥、
       config commit/rollback、双平台 status-item owner、启动恢复、GPUI Kit switch 与 AccessKit 语义；
       本机 app/platform/UI 定向测试、macOS release 产品 smoke、Windows x64/ARM64 platform source
@@ -3219,13 +3220,17 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `BongoCat.icns`；Windows executable 编译至少一个 icon group，托盘从当前 module 加载同一固定
       资源且不回退通用图标；完整 Native workspace、依赖策略、macOS Production package 与三平台
       CI 通过。
-    - 验收证据（2026-09-05）：实现、文档和 CI 产物断言已接入；本地 icon container 测试、format、
-      严格 release workspace Clippy、完整 release all-target tests、release check、dependency policy、
-      Windows x64/ARM64 platform Clippy 与 macOS Production `.app` 打包/资源逐字节比较/strict
-      codesign 均通过。commit `300f470` 的 CI run `33945105437` 全部 23 个 job 通过；Windows job
-      `101249657297` 从真实 `bongocat-app.exe` 提取到 product icon group，macOS job
-      `101249657241` 验证 Production `.app` 中的图标字节、bundle metadata 与 strict codesign，
-      Windows system-menu smoke 同时使用当前 module 的固定 icon resource 创建托盘图标。
+    - 当前契约（2026-09-13）：Native product `.icns/.ico` 仍由 build script/测试验证并进入对应
+      bundle/executable；Windows tray 改用 Native 自有 `resources/icons/tray-windows.png`，其
+      容器、尺寸、RGBA 由 `product_icon_contract` 测试和 build script 固定，字节 hash 与来源记录在
+      ADR-0031，Windows RC 只保留 product icon，不再嵌入 tray ICO。macOS tray 继续使用
+      `tray-macos.png`。
+    - 历史验收证据（2026-09-05）：实现、文档和 CI 产物断言已接入；本地 icon container 测试、
+      format、严格 release workspace Clippy、完整 release all-target tests、release check、dependency
+      policy、Windows x64/ARM64 platform Clippy 与 macOS Production `.app` 打包/资源逐字节比较/
+      strict codesign 均通过。commit `300f470` 的 CI run `33945105437` 全部 23 个 job 通过；
+      Windows job `101249657297` 从真实 `bongocat-app.exe` 提取到 product icon group，macOS job
+      `101249657241` 验证 Production `.app` 中的图标字节、bundle metadata 与 strict codesign。
 
 ## 13. 待决策清单
 

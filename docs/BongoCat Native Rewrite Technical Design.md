@@ -1,7 +1,7 @@
 # BongoCat Native Rewrite Technical Design
 
 状态：架构决策稿，Phase 0 证据补齐与 Phase 1 渐进实现并行
-最后更新：2026-09-06
+最后更新：2026-09-13
 首发平台：Windows 10 1903+、macOS 12+
 后续平台：Linux（首发后评估）
 
@@ -154,12 +154,13 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   镜像、穿透或置顶等应用级快捷键。开关变更必须经 revision-checked settings command 原子
   持久化并替换共享 shortcut table；重新启用时从当前 v1 配置恢复全部已校验的模型行为绑定。
 - `application.show_status_icon` 通过独立的 revision-checked settings command 修改。settings worker
-  以有界 request/reply bridge 请求平台主线程隐藏或重建状态图标，平台成功后才由 Application owner
-  原子提交配置；配置提交失败时必须把图标恢复为旧状态。Windows 在 owner 生命周期内保持托盘项注册，显隐通过 `NIM_MODIFY` 设置或清除 `NIS_HIDDEN`，仅在销毁时执行 `NIM_DELETE`；macOS
-  隐藏只从 `NSStatusBar` 移除 `NSStatusItem`，两平台都保留菜单 target、事件 receiver 和唯一 owner，
-  因此重新显示不创建第二套业务状态。启动时先按当前 v1 配置创建可见或隐藏状态；正式启动不创建或显示
-  设置窗口，设置窗口、单实例
-  唤醒和 application reopen 仍提供恢复入口；平台失败只返回稳定匿名 settings error。
+  以有界 request/reply bridge 请求平台主线程隐藏或显示状态图标，平台成功后才由 Application owner
+  原子提交配置；配置提交失败时必须把图标恢复为旧状态。macOS/Windows 共用 `tray-icon 0.25.0` 的
+  `SystemMenu` owner：`TrayIcon` 与同一份 `muda 0.20.0` 菜单、菜单项 receiver 和强类型事件队列
+  在整个运行期保持存活，`set_visible` 只改变平台表示（macOS 移除 `NSStatusItem`，Windows 保留注册并设置隐藏），
+  重新显示不创建第二套业务状态或菜单 owner。
+  正式启动不创建或显示设置窗口，设置窗口、单实例唤醒和 application reopen 仍提供恢复入口；
+  平台失败只返回稳定匿名 settings error。
 - `application.show_taskbar_icon` 只控制 Windows GPUI 设置窗口的任务栏按钮，不改变窗口可见性，
   也不映射为 macOS Dock 图标。settings worker 通过独立的有界 request/reply bridge 请求 GPUI 主线程
   切换 HWND 的 `WS_EX_APPWINDOW`/`WS_EX_TOOLWINDOW` 并回读结果，平台成功后才由 Application
@@ -408,9 +409,11 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 - Renderer：D3D11 + DXGI + DirectComposition/DWM，预乘 alpha。
 - DPI：Per-Monitor-V2，处理 `WM_DPICHANGED`、显示器热插拔和负坐标。
 - 输入：Raw Input、状态校正、可选低级 hook、XInput 手柄。
-- 产品图标：`bongocat-app` 在构建期把 Native 自有 `.ico` 编译进 Windows executable；
-  `Shell_NotifyIcon` 从当前 module 的固定资源 ID 加载同一图标，不使用系统通用应用图标。
-- 托盘：`Shell_NotifyIcon` + `HMENU`。
+- 产品图标：`bongocat-app` 在构建期把 Native 自有 `.ico` 编译进 Windows executable，用于窗口、
+  任务栏和文件身份；它不再是托盘图标来源，托盘也不会回退到系统通用应用图标。
+- 托盘：`tray-icon 0.25.0` 拥有 `TrayIcon` 和固定 GUID；菜单由 crate 重导出的 `muda 0.20.0`
+  拥有。Windows 状态图标从 Native 自有 `resources/icons/tray-windows.png` 解码，菜单与隐藏点击
+  恢复路径均由该唯一 owner 管理。
 - 启动项：当前用户 HKCU Run，Development/Production 使用不同 value name，命令固定为当前
   executable 加 `--run-seconds 0`，默认不要求管理员权限。
 
@@ -432,9 +435,10 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 - Renderer：Metal + `CAMetalLayer`，drawable size 跟随 backing scale。
 - Spaces：按配置设置 collection behavior 和 full-screen auxiliary。
 - 输入：CGEventTap、状态校正、GameController，必要时 IOHIDManager。
-- 菜单栏：`NSStatusItem` + `NSMenu`；登录启动在 macOS 13+ Production `.app` 使用
-  `SMAppService.mainAppService`。macOS 12 和 Development 构建明确报告 capability unsupported，
-  不回退到废弃 API 或自行写 LaunchAgent。
+- 菜单栏：`tray-icon 0.25.0` 在 macOS 主线程拥有 `NSStatusItem`，同一份重导出的 `muda 0.20.0`
+  菜单拥有命令项；状态图标使用 Native 自有 `resources/icons/tray-macos.png` 并作为 template image。
+  登录启动在 macOS 13+ Production `.app` 使用 `SMAppService.mainAppService`。macOS 12 和
+  Development 构建明确报告 capability unsupported，不回退到废弃 API 或自行写 LaunchAgent。
 - 发布：Hardened Runtime、签名、notarization 和 TCC 权限说明。
 
 平台 `unsafe` 必须集中在小型 wrapper，写明安全不变量并有 smoke test。业务和 UI crate 默认禁止 `unsafe_code`。
@@ -896,6 +900,12 @@ ADR-0025 与 ADR-0026 由本 ADR 取代。
 新功能按现有代码、标准库、平台能力、已安装依赖、成熟第三方方案、最小自有实现的顺序选择。
 只有现成方案无法满足已确认的边界，或引入成本明显高于自研时才自行实现；第三方类型和生命周期
 仍受现有架构、安全与依赖规则约束。
+
+### ADR-0031：托盘第三方库边界
+
+macOS/Windows 托盘统一使用 `tray-icon 0.25.0` 与它重导出的 `muda 0.20.0` 菜单；平台 adapter
+只负责加载 PNG、映射强类型 action 和调用 hide/show。第三方类型、句柄和错误不进入 runtime/UI
+公共 API，Windows 固定 GUID 与双平台唯一 owner 由 ADR-0031 约束。
 
 ### ADR-023：Windows Per-User Installer
 

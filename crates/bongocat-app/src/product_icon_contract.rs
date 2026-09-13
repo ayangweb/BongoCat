@@ -10,6 +10,44 @@ pub(crate) fn validate_icns(bytes: &[u8]) -> Result<(), &'static str> {
     Ok(())
 }
 
+pub(crate) fn validate_png(bytes: &[u8]) -> Result<(), &'static str> {
+    const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
+    if bytes.len() < 8 || &bytes[..8] != PNG_SIGNATURE {
+        return Err("missing png header");
+    }
+
+    if bytes.len() < 33 {
+        return Err("png is missing its IHDR chunk");
+    }
+    let ihdr_length = u32::from_be_bytes(
+        bytes[8..12]
+            .try_into()
+            .map_err(|_| "missing png IHDR length")?,
+    );
+    if ihdr_length != 13 || &bytes[12..16] != b"IHDR" {
+        return Err("png is missing its IHDR chunk");
+    }
+
+    let width = u32::from_be_bytes(bytes[16..20].try_into().map_err(|_| "missing png width")?);
+    let height = u32::from_be_bytes(bytes[20..24].try_into().map_err(|_| "missing png height")?);
+    if width != 256 || height != 256 {
+        return Err("png must be 256 by 256 pixels");
+    }
+    if bytes[24] != 8 {
+        return Err("png must use 8-bit channels");
+    }
+    if bytes[25] != 6 {
+        return Err("png must use RGBA color");
+    }
+    if bytes[28] != 0 {
+        return Err("png must not be interlaced");
+    }
+    if bytes[26] != 0 || bytes[27] != 0 {
+        return Err("png must use deflate compression and filtering");
+    }
+    Ok(())
+}
+
 pub(crate) fn validate_ico(bytes: &[u8]) -> Result<(), &'static str> {
     if bytes.len() < 6 || bytes[..4] != [0, 0, 1, 0] {
         return Err("missing ico header");
@@ -53,17 +91,19 @@ pub(crate) fn validate_ico(bytes: &[u8]) -> Result<(), &'static str> {
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_icns, validate_ico};
+    use super::{validate_icns, validate_ico, validate_png};
 
     const PRODUCT_ICNS: &[u8] = include_bytes!("../../../resources/icons/logo-macos.icns");
     const PRODUCT_ICO: &[u8] = include_bytes!("../../../resources/icons/logo-windows.ico");
-    const STATUS_ICO: &[u8] = include_bytes!("../../../resources/icons/tray-windows.ico");
+    const MACOS_STATUS_PNG: &[u8] = include_bytes!("../../../resources/icons/tray-macos.png");
+    const WINDOWS_STATUS_PNG: &[u8] = include_bytes!("../../../resources/icons/tray-windows.png");
 
     #[test]
     fn native_product_icons_have_valid_containers() {
         validate_icns(PRODUCT_ICNS).expect("valid Native macOS icon");
         validate_ico(PRODUCT_ICO).expect("valid Native Windows icon");
-        validate_ico(STATUS_ICO).expect("valid Native Windows status icon");
+        validate_png(MACOS_STATUS_PNG).expect("valid Native macOS status icon");
+        validate_png(WINDOWS_STATUS_PNG).expect("valid Native Windows status icon");
     }
 
     #[test]
@@ -73,5 +113,6 @@ mod tests {
             validate_ico(&[0, 0, 1, 0, 0, 0]),
             Err("ico contains no images")
         );
+        assert_eq!(validate_png(b"png"), Err("missing png header"));
     }
 }

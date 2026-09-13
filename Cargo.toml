@@ -47,6 +47,7 @@ serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
 self_update = { version = "=1.3.0", default-features = false, features = ["ureq", "rustls", "github", "archive-tar", "archive-zip", "compression-tar-gz", "compression-zip-deflate", "checksums", "signatures"] }
 tempfile = "=3.27.0"
+tray-icon = { version = "=0.25.0", default-features = false }
 url = "=2.5.8"
 zip = { version = "=8.6.0", default-features = false }
 

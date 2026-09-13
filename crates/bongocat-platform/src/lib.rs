@@ -43,14 +43,10 @@ pub use single_instance_windows::{SingleInstance, SingleInstanceStart};
 
 mod system_menu;
 pub use system_menu::{SystemMenuAction, SystemMenuError, SystemMenuPresentation};
-#[cfg(target_os = "macos")]
-mod system_menu_macos;
-#[cfg(target_os = "macos")]
-pub use system_menu_macos::SystemMenu;
-#[cfg(target_os = "windows")]
-mod system_menu_windows;
-#[cfg(target_os = "windows")]
-pub use system_menu_windows::SystemMenu;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+mod system_menu_native;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub use system_menu_native::SystemMenu;
 
 mod startup_item;
 pub use startup_item::{

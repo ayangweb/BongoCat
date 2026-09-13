@@ -6,7 +6,7 @@ mod build_environment_contract;
 mod product_icon_contract;
 
 use build_environment_contract::select_build_environment;
-use product_icon_contract::{validate_icns, validate_ico};
+use product_icon_contract::{validate_icns, validate_ico, validate_png};
 use std::path::{Path, PathBuf};
 
 const WINDOWS_RESOURCE_FILE: &str = "windows/bongocat-app.rc";
@@ -46,9 +46,14 @@ fn main() {
         validate_ico,
     );
     validate_icon(
-        &resources_dir.join("tray-windows.ico"),
+        &resources_dir.join("tray-macos.png"),
+        "macOS status icon",
+        validate_png,
+    );
+    validate_icon(
+        &resources_dir.join("tray-windows.png"),
         "Windows status icon",
-        validate_ico,
+        validate_png,
     );
 
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
