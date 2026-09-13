@@ -4,15 +4,11 @@ use std::{
     error::Error,
     io,
     path::PathBuf,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-        mpsc,
-    },
+    sync::{Arc, atomic::AtomicBool, mpsc},
 };
 
 #[cfg(target_os = "windows")]
-use std::{thread, time::Duration};
+use std::{sync::atomic::Ordering, thread, time::Duration};
 
 #[cfg(target_os = "windows")]
 use windows::{
@@ -27,30 +23,84 @@ use windows::{
 };
 
 #[cfg(target_os = "macos")]
-fn prepare_native_application() {
-    use objc2::MainThreadMarker;
-    use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
+struct NativeApplication {
+    _window: objc2::rc::Retained<objc2_app_kit::NSWindow>,
+}
+
+#[cfg(target_os = "macos")]
+fn prepare_native_application() -> NativeApplication {
+    use objc2::{MainThreadMarker, MainThreadOnly};
+    use objc2_app_kit::{
+        NSApplication, NSApplicationActivationPolicy, NSBackingStoreType, NSWindow,
+        NSWindowStyleMask,
+    };
+    use objc2_foundation::{NSPoint, NSRect, NSSize};
 
     let mtm = MainThreadMarker::new().expect("picker smoke must run on the AppKit main thread");
     let application = NSApplication::sharedApplication(mtm);
     let _ = application.setActivationPolicy(NSApplicationActivationPolicy::Regular);
+    // SAFETY: the caller runs on the AppKit main thread, the allocated window is retained for the
+    // smoke process lifetime, and `releasedWhenClosed(false)` satisfies objc2's ownership contract.
+    let window = unsafe {
+        NSWindow::initWithContentRect_styleMask_backing_defer(
+            NSWindow::alloc(mtm),
+            NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(320.0, 200.0)),
+            NSWindowStyleMask::Titled,
+            NSBackingStoreType::Buffered,
+            false,
+        )
+    };
+    // SAFETY: this retained NSWindow instance is never closed by the smoke process.
+    unsafe { window.setReleasedWhenClosed(false) };
+    window.center();
+    window.makeKeyAndOrderFront(None);
     application.activate();
+    NativeApplication { _window: window }
 }
 
 #[cfg(target_os = "macos")]
-fn run_native_application() {
+fn start_native_picker(
+    sender: mpsc::SyncSender<
+        Result<DirectoryPickerOutcome, bongocat_platform::DirectoryPickerError>,
+    >,
+) {
+    use dispatch2::DispatchQueue;
+
+    DispatchQueue::main().exec_async(move || {
+        let callback_sender = sender;
+        let callback_sender_for_picker = callback_sender.clone();
+        let result = pick_model_directory(move |result| {
+            let _ = callback_sender_for_picker.try_send(result);
+            // Project validation runs on a worker thread, so dispatch shutdown unconditionally
+            // rather than assuming the callback is already on AppKit's main thread.
+            DispatchQueue::main().exec_async(|| {
+                let mtm = objc2::MainThreadMarker::new()
+                    .expect("NSApplication stop must run on the AppKit main thread");
+                objc2_app_kit::NSApplication::sharedApplication(mtm).stop(None);
+            });
+        });
+        if let Err(error) = result {
+            let _ = callback_sender.try_send(Err(error));
+            DispatchQueue::main().exec_async(|| {
+                let mtm = objc2::MainThreadMarker::new()
+                    .expect("NSApplication stop must run on the AppKit main thread");
+                objc2_app_kit::NSApplication::sharedApplication(mtm).stop(None);
+            });
+        }
+    });
+}
+
+#[cfg(not(target_os = "macos"))]
+fn run_native_application() {}
+
+#[cfg(target_os = "macos")]
+fn run_native_application(_application: &NativeApplication) {
     use objc2::MainThreadMarker;
     use objc2_app_kit::NSApplication;
 
     let mtm = MainThreadMarker::new().expect("picker smoke must run on the AppKit main thread");
     NSApplication::sharedApplication(mtm).run();
 }
-
-#[cfg(not(target_os = "macos"))]
-fn prepare_native_application() {}
-
-#[cfg(not(target_os = "macos"))]
-fn run_native_application() {}
 
 enum ExpectedOutcome {
     Cancelled,
@@ -202,24 +252,24 @@ fn start_automation(
 
 fn main() -> Result<(), Box<dyn Error>> {
     let options = smoke_options()?;
-    prepare_native_application();
+    #[cfg(target_os = "macos")]
+    let native_application = prepare_native_application();
     let (sender, receiver) = mpsc::sync_channel(1);
     let completed = Arc::new(AtomicBool::new(false));
-    let callback_completed = Arc::clone(&completed);
-    pick_model_directory(move |result| {
-        callback_completed.store(true, Ordering::Release);
-        let _ = sender.send(result);
-        #[cfg(target_os = "macos")]
-        {
-            use objc2::MainThreadMarker;
-            use objc2_app_kit::NSApplication;
-
-            if let Some(mtm) = MainThreadMarker::new() {
-                NSApplication::sharedApplication(mtm).stop(None);
-            }
-        }
-    })?;
+    #[cfg(target_os = "macos")]
+    start_native_picker(sender.clone());
+    #[cfg(not(target_os = "macos"))]
+    {
+        let callback_completed = Arc::clone(&completed);
+        pick_model_directory(move |result| {
+            callback_completed.store(true, Ordering::Release);
+            let _ = sender.send(result);
+        })?;
+    }
     let automation = start_automation(&options.expected, options.automated, completed)?;
+    #[cfg(target_os = "macos")]
+    run_native_application(&native_application);
+    #[cfg(not(target_os = "macos"))]
     run_native_application();
     #[cfg(target_os = "windows")]
     let actual = receiver

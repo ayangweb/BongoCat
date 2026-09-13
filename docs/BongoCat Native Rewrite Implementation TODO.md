@@ -1813,10 +1813,12 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     NotFound -> register -> unregister -> Disabled smoke 均通过。macOS 12 与 Development
     明确报告 unsupported 且不触及生产登录项；完整退出条件及 CI job 证据见该任务。
 - [ ] 文件选择、外部 URL 和剪贴板使用最小权限 wrapper。
-  - 状态（2026-08-31）：模型目录 picker 已有共享稳定结果/错误和双平台最小 adapter；Windows
+  - 状态（2026-09-13）：模型目录 picker 已有共享稳定结果/错误和双平台最小 adapter；Windows
     使用 STA `IFileOpenDialog`、filesystem/folder/path-exists/no-recent flags 与 COM/TaskMem RAII，
-    macOS 使用主线程单目录 `NSOpenPanel`。结果在 Rust 侧重新验证并 canonicalize，GPUI Models
-    页面及双平台真实选择/取消 smoke 已通过。外部 URL 现由共享 wrapper 严格限制为无 credentials 的
+    macOS 使用主线程 `rfd 0.17.2` sheet 单选目录，缺少 sheet parent 时返回 `BackendUnavailable`。
+    结果在 Rust 侧重新验证并 canonicalize；macOS 26.5.2 arm64 上 `rfd` 迁移后的真实 Cancel 与已知
+    仓库目录 Select smoke 均已通过，Windows 历史真实选择/取消 smoke 证据仍有效。外部 URL 现由共享
+    wrapper 严格限制为无 credentials 的
     HTTPS，macOS `/usr/bin/open` 与 Windows `explorer.exe` 均只收到一个参数且不经 shell。clipboard
     现只读写最多 1 MiB 的无 NUL 纯文本、无文本返回空选项，错误不包含内容；Windows 的
     `CF_UNICODETEXT` handle/clipboard RAII 已通过 x64 target check，但尚无 Windows 实机 clipboard
@@ -1851,9 +1853,12 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     `SMAppService.mainAppService` 完成稳定状态映射与可恢复启用/禁用；macOS 12 和 Development
     明确为 unsupported 且不触及生产登录项。本机 `/Applications` 安装态 smoke 已通过
     NotFound -> register -> unregister -> Disabled，完整退出条件及 CI job 证据见该任务。
-- [ ] NSOpenPanel、NSWorkspace 和 pasteboard 最小权限 wrapper。
-  - 状态（2026-08-31）：`NSOpenPanel` 模型目录 adapter 已实现并通过主线程边界、稳定错误
-    contract 和 macOS 26.5.2 arm64 真实选择/取消交互 smoke。外部 HTTPS URL 以 `/usr/bin/open` 单参数
+- [ ] 文件选择、NSWorkspace 和 pasteboard 最小权限 wrapper。
+  - 状态（2026-09-13）：模型目录 adapter 已迁移到 `rfd 0.17.2` 的 macOS
+    `AsyncFileDialog`，仅在 AppKit 主线程、应用已运行且存在 sheet parent 时启动；`rfd` 的
+    `None` 按取消映射。macOS 26.5.2 arm64 上本次 `rfd` 版本的真实 Cancel 与仓库目录 Select smoke
+    均已通过；历史 `NSOpenPanel` 证据仍见 `P7-MODEL-DIRECTORY-PICKER`。外部 HTTPS URL
+    以 `/usr/bin/open` 单参数
     wrapper 完成，拒绝 credentials、非 HTTPS 与超长值；pasteboard 现以主线程/auto-release-pool
     boundary 读写最多 1 MiB 无 NUL 纯文本、匿名返回无文本和错误。自动化只验证后台线程拒绝，避免
     改写用户 clipboard；隔离 pasteboard 的实机 read/write smoke 及 `NSWorkspace` 其余能力仍待完成。
@@ -2401,7 +2406,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       `33336497984` 全绿，push 的 Windows/macOS/Ubuntu Native workspace jobs
       `99324223865`/`99324223945`/`99324223963` 全部通过。
 25. [x] `P7-MODEL-DIRECTORY-PICKER`：以原生最小权限目录选择器接入模型导入。
-    - 依赖：`P4-MODEL-IMPORT-OPERATION`、AppKit `NSOpenPanel`、Shell `IFileOpenDialog`。
+    - 依赖：`P4-MODEL-IMPORT-OPERATION`、macOS `rfd`/AppKit sheet、Shell `IFileOpenDialog`。
     - 退出条件：共享 API 区分 selected/cancelled 和稳定无路径错误；macOS 强制 AppKit 主线程，
       Windows 使用 STA、folder/filesystem/path-exists/no-recent 且 COM/TaskMem 成对释放；Rust
       重新验证并 canonicalize；GPUI Models 页面不阻塞执行文件复制，可消费取消与选择结果；
@@ -2429,6 +2434,14 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       workspace，替换边界仅为对应 OS 原生 API binding。完整 Native format、Clippy、workspace
       test、release/Production check、license/source policy、Linux workspace Clippy 与双 Windows
       target platform Clippy 本机通过；macOS 可重复 callback smoke example 已同步更新。
+    - 状态（2026-09-13）：按依赖审计结论将 macOS 私有 adapter 从手写 `NSOpenPanel` 迁移到
+      `rfd 0.17.2`（MIT），使用 `default-features = false` 并精确锁定；Windows 继续使用自研
+      `IFileOpenDialog`，因为 `rfd` 未设置项目要求的 `FOS_FORCEFILESYSTEM`、
+      `FOS_PATHMUSTEXIST`、`FOS_NOCHANGEDIR`、`FOS_DONTADDTORECENT`。macOS adapter 仍要求
+      AppKit 主线程并强依赖已有 sheet parent，避免 `rfd` 同步 `runModal` 重入 GPUI；后台 worker
+      只负责等待 future、重新验证和 canonicalize。`rfd` 把取消与后端失败统一为 `None`，当前
+      按取消映射。macOS 26.5.2 arm64 上 Cancel 与仓库目录 Select smoke 均已通过；完整 workspace
+      门禁及 Windows x64 target Clippy 通过，Windows 实机 smoke 仍由对应原生 job 验证。
 26. [x] `P4-MODEL-MANAGEMENT-UI`：在 Models 页面完成来源感知的激活与删除闭环。
     - 依赖：`P4-MODEL-CATALOG`、`P4-MODEL-SELECTION`、`P4-MODEL-DELETE-COMMAND` 和正式
       GPUI settings snapshot。

@@ -685,11 +685,14 @@ workspace 的正式 `just` 入口与 CI 显式选择 Development，Production bu
   stage、已复制文件数和字节数，不携带用户路径，并通过共享原子取消令牌在 service worker
   阻塞于分块复制时仍可取消。cancel 在原子 rename 提交前生效并清理 staging，final result
   携带同一 operation ID；后续 Models 页面只消费该契约，不自行执行文件 I/O。
-- 模型目录选择由 `bongocat-platform` 的同步原生 adapter 执行：macOS 只在 AppKit 主线程
-  使用单选 `NSOpenPanel`，Windows 只在当前 STA 使用 `IFileOpenDialog` + `FOS_PICKFOLDERS`
-  并禁止写入 recent。adapter 只向上返回 `Selected(PathBuf)`/`Cancelled` 和稳定无路径错误码；
+- 模型目录选择由 `bongocat-platform` 的原生 adapter 执行：macOS 只在 AppKit 主线程且已有
+  窗口可作为 sheet parent 时使用 `rfd::AsyncFileDialog` 单选目录，缺少 sheet parent 时返回
+  `BackendUnavailable`，不回退同步 `runModal`；Windows 只在当前 STA 使用 `IFileOpenDialog` +
+  `FOS_PICKFOLDERS` + `FOS_FORCEFILESYSTEM` + `FOS_PATHMUSTEXIST` + `FOS_NOCHANGEDIR` +
+  `FOS_DONTADDTORECENT`。adapter 只向上返回 `Selected(PathBuf)`/`Cancelled` 和稳定无路径错误码；
   Rust 侧重新检查绝对、存在、目录并 canonicalize，真正的包解析/复制仍只由 settings worker
-  执行。对话框取消不是错误，错误不得携带系统文本或用户路径。
+  执行。`rfd` 将取消与后端失败都表示为 `None`，当前 adapter 按取消处理；对话框取消不是错误，
+  错误不得携带系统文本或用户路径。
 - 剪贴板 adapter 只读写最多 1 MiB、无内嵌 NUL 的纯文本；无文本返回空选项，过大、无效、
   拒绝或系统故障只返回稳定匿名错误，绝不记录文本。macOS 调用必须在 AppKit 主线程和
   autorelease pool 内，Windows 每次操作由 RAII 守卫在同一线程关闭 clipboard，并且仅在
