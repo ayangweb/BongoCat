@@ -21,8 +21,16 @@ detached Ed25519 清单签名、Development/Production channel 绑定、单调 `
 - `UpdateConfig` 与 `ReleaseUpdate` 均为 **sealed**，外部无法自行实现，只能通过后端 builder
   构造。接入自有发行源需实现其 `ReleaseSource` trait 并使用 `backends::custom`，或使用内置
   `github` / `gitlab` / `gitea` / `s3` / `manifest` 后端。
-- `self_update 1.3.0` **不提供**公开的本地归档解压或文件搬运工具（无 `Extract`、无 `MoveAll`）。
-  这些能力只在它自己的 `update()` 编排内部使用。
+- `self_update 1.3.0` **公开导出**本地下载、解压与文件搬运原语：`Download`、`Extract`、`Move`、
+  `MoveAll` 都在 crate 根导出（`src/lib.rs:2216` / `1390` / `1922` / `2045`）。其中 `MoveAll` 是
+  **事务式多文件安装器**：逐个把被替换的目标 stash 走再 `rename` 新文件就位，任一移动失败则逆序
+  回滚全部已应用的移动。`github::Update::update()` 自身只走「单文件」与「macOS bundle」两条安装
+  路径，但这些原语可用于自行编排多文件更新。
+  > 更正（2026-09-13）：本 ADR 初稿曾写「`self_update 1.3.0` 不提供公开的本地归档解压或文件搬运
+  > 工具（无 `Extract`、无 `MoveAll`），这些能力只在它自己的 `update()` 编排内部使用」。该结论
+  > **错误**，且是我此前一次 BSD `grep` 误用（`\|` 交替在 BSD grep 的 BRE 下不生效）造成的假阴性。
+  > 上述可见性与行为均已重新按源码确认，并由
+  > `crates/bongocat-update/tests/multi_file_install_capability.rs` 在本机实测锁定。
 - 未启用任何 HTTP client feature 时 `self_update` **无法编译**，上游使用无条件 `compile_error!`。
   因此依赖它就必然引入其网络层。
 - 依赖 `ureq` feature 时，`self_update` 声明
@@ -128,6 +136,9 @@ feature 与 `signatures` feature、install 阶段的 stash 回滚覆盖这些点
 - 上述最后两项（`update_staging` 移除、`RELEASE_BINARY_NAME` 对齐与契约测试）由 run `34740872994`
   （commit `fe5a5de`）覆盖，同为 **23/23 作业全绿**；其中 `Validate shared fixtures` 作业运行
   `python3 -m unittest discover -s tools/tests`，即新增的契约测试已在 CI 上执行并通过。
+- `MoveAll` 的事务语义已在本机实测，不依赖文档：`crates/bongocat-update/tests/multi_file_install_capability.rs`
+  验证「可执行文件 + 资源文件」两条移动全部生效，以及第二条源缺失时第一条已应用的移动被回滚、
+  未被触及的目标保持原内容。该测试**不覆盖**本项目尚未实现的多文件编排路径，只锁定库原语语义。
 
 ## 待验证项（不得当作已确认）
 
@@ -146,8 +157,13 @@ feature 与 `signatures` feature、install 阶段的 stash 回滚覆盖这些点
    - **现状**：`scripts/package-macos.sh` 只产出 `target/package/BongoCat.app`，**不产归档**；
      `scripts/build-windows.ps1` 只产出 NSIS 安装器 `BongoCat-$version-x64-setup.exe`，也不是 zip。
      两者都还需要新增归档步骤，本次未实现。
-   - **产品级限制（Windows）**：单文件模式只替换可执行文件，**不会更新 `resources/`**。
-     预置模型或 `resources/` 内容的变更无法经由此更新路径下发，需要另行设计。
+   - **Windows 多文件更新需要自行编排**：`github::Update::update()` 的单文件模式只替换可执行文件，
+     **不会更新 `resources/`**，预置模型或 `resources/` 内容的变更无法经由此路径下发。库为此提供了
+     公开原语：用 `Download` + `Extract` 取得文件，再用 `MoveAll` 完成「二进制 + 附属资源」的事务式
+     替换（全成或全回滚）。该语义已在本机实测确认，见
+     `crates/bongocat-update/tests/multi_file_install_capability.rs`。代价是这条路径**不走**
+     `update()` 编排，需自行保证暂存目录与目标同文件系统、zipsign 校验仍然执行、以及失败后的
+     启动恢复。**本项目尚未实现这条路径。**
    - macOS 归档需携带已签名并公证的 `.app`；`package-macos.sh` 目前只做 ad-hoc 签名，
      分发签名与公证仍是独立发布门禁。
 4. **断电/强杀残留的清理策略仍未决定，但残留形态已查实**（读 `self_update 1.3.0`、
