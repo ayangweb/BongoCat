@@ -29,7 +29,7 @@ use zip::{CompressionMethod, ZipWriter};
 /// `tools/tests/test_update_release_contract.py`.
 const TEST_TARGET: &str = "x86_64-unknown-linux-gnu";
 const RELEASE_VERSION: &str = "9.9.9";
-const CURRENT_VERSION: &str = "0.1.0";
+const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Serves one fixed body over plain HTTP on an ephemeral loopback port.
 ///

@@ -2751,7 +2751,7 @@ mod tests {
             revision,
             config_revision: Some(revision),
             build_info: SettingsBuildInfo {
-                product_version: "0.1.0".to_owned(),
+                product_version: env!("CARGO_PKG_VERSION").to_owned(),
                 environment: SettingsBuildEnvironment::Development,
             },
             runtime_health: RuntimeHealth::Ready,

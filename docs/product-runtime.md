@@ -48,6 +48,13 @@ selection before invoking Cargo:
 just build
 ```
 
+The product version has one source of truth: `[workspace.package].version` in the root `Cargo.toml`.
+All Native workspace crates inherit it, and the settings window, system menu, and update runtime read
+the compiled `CARGO_PKG_VERSION`. `Cargo.lock` records the resolved workspace versions as generated
+metadata; a release changes the root manifest once and lets Cargo refresh the lockfile. The Windows executable resource and NSIS installer derive their
+file, product, and display versions from that value. `package-macos.sh` injects and then verifies
+both `CFBundleShortVersionString` and `CFBundleVersion` in the packaged `Info.plist` before signing.
+
 From the repository root, `just build` selects the immutable Production environment, builds the
 Native product, and packages the host-platform installer. On macOS it creates
 `target/package/BongoCat.dmg` and prints its absolute path. On Windows it creates the x64
@@ -71,7 +78,7 @@ $env:BONGOCAT_MAKENSIS_PATH = 'C:\Program Files (x86)\NSIS\makensis.exe'
 just build
 
 # The lower-level wrapper remains available for release pipelines:
-& .\scripts\package-windows.ps1 -InputDirectory C:\release\bongocat-x64 -OutputFile C:\release\BongoCat-0.1.0-x64-setup.exe -ProductVersion 0.1.0 -NsisSetupPath C:\toolchains\nsis-3.11-setup.exe -MakeNsisPath 'C:\Program Files (x86)\NSIS\makensis.exe'
+& .\scripts\package-windows.ps1 -InputDirectory C:\release\bongocat-x64 -OutputFile C:\release\BongoCat-<version>-x64-setup.exe -NsisSetupPath C:\toolchains\nsis-3.11-setup.exe -MakeNsisPath 'C:\Program Files (x86)\NSIS\makensis.exe'
 ```
 
 The payload must contain bongocat-app.exe, valid signatures for every .exe and .dll, all three

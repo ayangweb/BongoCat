@@ -9,10 +9,6 @@ param(
     [string]$OutputFile,
 
     [Parameter(Mandatory = $true)]
-    [ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$')]
-    [string]$ProductVersion,
-
-    [Parameter(Mandatory = $true)]
     [ValidateNotNullOrEmpty()]
     [string]$NsisSetupPath,
 
@@ -28,6 +24,21 @@ $expectedNsisSetupName = 'nsis-3.11-setup.exe'
 $expectedNsisSetupMd5 = '700dc40097d4cd226b13212dda1d33ac'
 $expectedNsisVersion = 'v3.11'
 $expectedTarget = 'x86_64-pc-windows-msvc'
+$workspaceManifest = Join-Path $PSScriptRoot '..\Cargo.toml'
+$workspaceManifestContent = Get-Content -LiteralPath $workspaceManifest -Raw
+$workspacePackageMatch = [regex]::Match(
+    $workspaceManifestContent,
+    '(?ms)^\[workspace\.package\]\s*\r?\n(?<body>.*?)(?=^\[|\z)')
+$versionMatch = $null
+if ($workspacePackageMatch.Success) {
+    $versionMatch = [regex]::Match(
+        $workspacePackageMatch.Groups['body'].Value,
+        '(?m)^version\s*=\s*"([^"]+)"\s*$')
+}
+if (-not $workspacePackageMatch.Success -or -not $versionMatch.Success) {
+    throw 'Windows package validation failed: could not read [workspace.package].version from Cargo.toml'
+}
+$ProductVersion = $versionMatch.Groups[1].Value
 $expectedExecutable = 'bongocat-app.exe'
 $requiredModels = @('standard', 'keyboard', 'gamepad')
 
@@ -67,6 +78,9 @@ if ([string]::IsNullOrWhiteSpace($outputParent) -or -not (Test-Path -LiteralPath
     Fail 'OutputFile parent directory must already exist'
 }
 $outputPath = Join-Path (Resolve-Path -LiteralPath $outputParent).Path (Split-Path -Leaf $OutputFile)
+if ((Split-Path -Leaf $outputPath) -notlike "*$ProductVersion*") {
+    Fail 'OutputFile name must contain the workspace product version'
+}
 if (Test-Path -LiteralPath $outputPath) {
     Fail 'OutputFile must not already exist'
 }

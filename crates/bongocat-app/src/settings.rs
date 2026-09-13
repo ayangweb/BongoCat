@@ -2498,7 +2498,7 @@ mod tests {
             revision: 42,
             config_revision: Some(7),
             build_info: SettingsBuildInfo {
-                product_version: "0.1.0".to_owned(),
+                product_version: PRODUCT_VERSION.to_owned(),
                 environment: SettingsBuildEnvironment::Development,
             },
             runtime_health: RuntimeHealth::Degraded,

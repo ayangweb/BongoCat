@@ -328,7 +328,7 @@ mod tests {
     fn runtime_for(channel: ReleaseChannel) -> UpdateRuntime {
         UpdateRuntime::new(
             Some(configuration(channel)),
-            "0.1.0",
+            env!("CARGO_PKG_VERSION"),
             UpdateDiagnosticsTracker::default(),
         )
     }
@@ -369,7 +369,11 @@ mod tests {
 
     #[test]
     fn a_host_outside_the_shipped_targets_has_no_release_configuration() {
-        let runtime = UpdateRuntime::new(None, "0.1.0", UpdateDiagnosticsTracker::default());
+        let runtime = UpdateRuntime::new(
+            None,
+            env!("CARGO_PKG_VERSION"),
+            UpdateDiagnosticsTracker::default(),
+        );
 
         assert_eq!(runtime.channel(), None);
         assert!(!runtime.is_available());

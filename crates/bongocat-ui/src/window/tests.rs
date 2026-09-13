@@ -439,17 +439,18 @@ fn diagnostics_page_projects_only_named_aggregate_counters() {
 
 #[test]
 fn build_information_is_localized_and_contains_only_compiled_identity() {
+    let product_version = env!("CARGO_PKG_VERSION");
     let build_info = crate::SettingsBuildInfo {
-        product_version: "0.1.0".to_owned(),
+        product_version: product_version.to_owned(),
         environment: crate::SettingsBuildEnvironment::Development,
     };
     let detail = build_info_detail(SettingsLanguage::EnglishUnitedStates, &build_info);
-    assert_eq!(detail, "Version 0.1.0 · Development");
+    assert_eq!(detail, format!("Version {product_version} · Development"));
     assert!(!detail.contains('/'));
     assert!(!detail.contains("path"));
 
     let chinese = build_info_detail(SettingsLanguage::ChineseSimplified, &build_info);
-    assert_eq!(chinese, "版本 0.1.0 · 开发环境");
+    assert_eq!(chinese, format!("版本 {product_version} · 开发环境"));
 }
 
 #[test]

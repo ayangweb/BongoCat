@@ -12,10 +12,20 @@ $scriptDirectory = $PSScriptRoot
 $repositoryRoot = (Resolve-Path (Join-Path $scriptDirectory '..')).Path
 $workspaceManifest = Join-Path $repositoryRoot 'Cargo.toml'
 $target = 'x86_64-pc-windows-msvc'
-$version = ((Select-String -LiteralPath $workspaceManifest -Pattern '^version = "([^"]+)"$' | Select-Object -First 1).Matches.Groups[1].Value)
-if ([string]::IsNullOrWhiteSpace($version)) {
-    Fail 'could not read the workspace product version'
+$workspaceManifestContent = Get-Content -LiteralPath $workspaceManifest -Raw
+$workspacePackageMatch = [regex]::Match(
+    $workspaceManifestContent,
+    '(?ms)^\[workspace\.package\]\s*\r?\n(?<body>.*?)(?=^\[|\z)')
+$versionMatch = $null
+if ($workspacePackageMatch.Success) {
+    $versionMatch = [regex]::Match(
+        $workspacePackageMatch.Groups['body'].Value,
+        '(?m)^version\s*=\s*"([^"]+)"\s*$')
 }
+if (-not $workspacePackageMatch.Success -or -not $versionMatch.Success) {
+    Fail 'could not read [workspace.package].version from Cargo.toml'
+}
+$version = $versionMatch.Groups[1].Value
 
 $payloadDirectory = Join-Path $repositoryRoot 'target\package\windows-x64'
 $outputFile = Join-Path $repositoryRoot "target\package\BongoCat-$version-x64-setup.exe"
@@ -57,7 +67,6 @@ if ($LASTEXITCODE -ne 0) {
 $installer = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $scriptDirectory 'package-windows.ps1') `
     -InputDirectory $payloadDirectory `
     -OutputFile $outputFile `
-    -ProductVersion $version `
     -NsisSetupPath $nsisSetupPath `
     -MakeNsisPath $makeNsisPath
 if ($LASTEXITCODE -ne 0) {

@@ -162,7 +162,7 @@ feature 与 `signatures` feature、install 阶段的 stash 回滚覆盖这些点
    - **资产名匹配**：`Release::asset_for` 先用**完整 target triple** 匹配资产名，失败后退化为
      `arch` + `os` 标记（`arch` 取 triple 首段，`os` ∈ `linux`/`darwin`/`windows`/…）。
      **`bin_name` 不参与资产名匹配**。因此资产名必须包含 target triple，例如
-     `BongoCat-0.1.0-aarch64-apple-darwin.tar.gz`。
+     `BongoCat-<version>-aarch64-apple-darwin.tar.gz`。
    - **归档类型按扩展名判定**（`detect_archive`）：`.zip` / `.tar` / `.tar.gz` / `.tar.xz` / `.gz` /
      `.xz` 走对应解压器，**其余任何扩展名（含 `.exe`）落入 `ArchiveKind::Plain(None)`，即当作裸
      单文件直接使用**。因此 Windows 资产**不必是压缩包**，一个裸 `BongoCat.exe` 就能被消费；macOS

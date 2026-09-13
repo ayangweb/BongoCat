@@ -54,7 +54,10 @@ fn read(path: &Path) -> String {
 #[test]
 fn the_documented_macos_layout_extracts_the_whole_bundle() {
     let root = scratch("macos");
-    let archive = root.join("BongoCat-0.1.0-aarch64-apple-darwin.zip");
+    let archive = root.join(format!(
+        "BongoCat-{}-aarch64-apple-darwin.zip",
+        env!("CARGO_PKG_VERSION")
+    ));
     let into = root.join("extracted");
     fs::create_dir_all(&into).expect("extraction directory");
 
@@ -87,7 +90,10 @@ fn the_documented_macos_layout_extracts_the_whole_bundle() {
 #[test]
 fn the_documented_windows_layout_extracts_the_executable_at_the_archive_root() {
     let root = scratch("windows");
-    let archive = root.join("BongoCat-0.1.0-x86_64-pc-windows-msvc.zip");
+    let archive = root.join(format!(
+        "BongoCat-{}-x86_64-pc-windows-msvc.zip",
+        env!("CARGO_PKG_VERSION")
+    ));
     let into = root.join("extracted");
     fs::create_dir_all(&into).expect("extraction directory");
 
@@ -105,7 +111,10 @@ fn the_documented_windows_layout_extracts_the_executable_at_the_archive_root() {
 #[test]
 fn an_executable_at_the_archive_root_is_not_reachable_when_nested() {
     let root = scratch("nested");
-    let archive = root.join("BongoCat-0.1.0-x86_64-pc-windows-msvc.zip");
+    let archive = root.join(format!(
+        "BongoCat-{}-x86_64-pc-windows-msvc.zip",
+        env!("CARGO_PKG_VERSION")
+    ));
     let into = root.join("extracted");
     fs::create_dir_all(&into).expect("extraction directory");
 

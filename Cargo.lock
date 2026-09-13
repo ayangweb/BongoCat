@@ -822,7 +822,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-app"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "async-io",
  "atomic-write-file",
@@ -848,14 +848,14 @@ dependencies = [
 
 [[package]]
 name = "bongocat-audio"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "rodio",
 ]
 
 [[package]]
 name = "bongocat-config"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "atomic-write-file",
  "dirs 6.0.0",
@@ -866,7 +866,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-i18n"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "rust-i18n",
  "serde_json",
@@ -874,7 +874,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-live2d"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "bongocat-log",
  "bongocat-model",
@@ -887,14 +887,14 @@ dependencies = [
 
 [[package]]
 name = "bongocat-log"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "tempfile",
 ]
 
 [[package]]
 name = "bongocat-model"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "proptest",
  "serde",
@@ -904,7 +904,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-overlay"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "block2 0.6.2",
  "bongocat-live2d",
@@ -925,7 +925,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-platform"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "accesskit 0.25.0",
  "accesskit_macos 0.27.0",
@@ -957,11 +957,11 @@ dependencies = [
 
 [[package]]
 name = "bongocat-render"
-version = "0.1.0"
+version = "1.1.0"
 
 [[package]]
 name = "bongocat-runtime"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "bongocat-audio",
  "bongocat-live2d",
@@ -973,7 +973,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-ui"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "async-channel",
  "bongocat-config",
@@ -985,7 +985,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-update"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "bongocat-config",
  "self_update",

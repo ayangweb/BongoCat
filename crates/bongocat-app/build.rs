@@ -58,11 +58,23 @@ fn main() {
 
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
         println!("cargo::rerun-if-changed={WINDOWS_RESOURCE_FILE}");
-        embed_resource::compile(WINDOWS_RESOURCE_FILE, embed_resource::NONE)
+        let version = std::env::var("CARGO_PKG_VERSION")
+            .expect("Cargo must provide CARGO_PKG_VERSION to the build script");
+        let version_major = std::env::var("CARGO_PKG_VERSION_MAJOR")
+            .expect("Cargo must provide CARGO_PKG_VERSION_MAJOR to the build script");
+        let version_minor = std::env::var("CARGO_PKG_VERSION_MINOR")
+            .expect("Cargo must provide CARGO_PKG_VERSION_MINOR to the build script");
+        let version_patch = std::env::var("CARGO_PKG_VERSION_PATCH")
+            .expect("Cargo must provide CARGO_PKG_VERSION_PATCH to the build script");
+        let version_parameters = [
+            format!("VERSION=\"{version}\""),
+            format!("VERSION_MAJOR={version_major}"),
+            format!("VERSION_MINOR={version_minor}"),
+            format!("VERSION_PATCH={version_patch}"),
+        ];
+        embed_resource::compile(WINDOWS_RESOURCE_FILE, version_parameters)
             .manifest_required()
-            .unwrap_or_else(|error| {
-                panic!("Windows product icon resource compilation failed: {error}")
-            });
+            .unwrap_or_else(|error| panic!("Windows product resource compilation failed: {error}"));
     }
 }
 

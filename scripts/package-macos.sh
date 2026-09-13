@@ -24,12 +24,23 @@ EXECUTABLE_NAME="bongocat-app"
 ICON_FILE_NAME="logo-macos.icns"
 EXPECTED_BUNDLE_ID="com.ayangweb.bongo-cat"
 EXPECTED_MINIMUM_SYSTEM_VERSION="12.0"
+PRODUCT_VERSION=$(awk -F '"' '
+    $0 == "[workspace.package]" { in_section = 1; next }
+    in_section && /^\[/ { exit }
+    in_section && $1 ~ /^version[[:space:]]*=[[:space:]]*$/ { print $2; exit }
+' "$ROOT_DIR/Cargo.toml")
+if [ -z "$PRODUCT_VERSION" ]; then
+    printf '%s\n' 'could not read [workspace.package].version from Cargo.toml' >&2
+    exit 1
+fi
 
 cargo build --release --locked --manifest-path "$ROOT_DIR/Cargo.toml" -p bongocat-app
 
 rm -rf "$APP_PATH"
 mkdir -p "$MACOS_PATH" "$RESOURCES_PATH"
 cp "$ROOT_DIR/macos/Info.plist" "$CONTENTS_PATH/Info.plist"
+plutil -insert CFBundleShortVersionString -string "$PRODUCT_VERSION" "$CONTENTS_PATH/Info.plist"
+plutil -insert CFBundleVersion -string "$PRODUCT_VERSION" "$CONTENTS_PATH/Info.plist"
 cp "$ROOT_DIR/target/release/$EXECUTABLE_NAME" "$MACOS_PATH/$EXECUTABLE_NAME"
 cp "$ROOT_DIR/resources/icons/$ICON_FILE_NAME" "$RESOURCES_PATH/$ICON_FILE_NAME"
 cp -R "$ROOT_DIR/resources/models" "$RESOURCES_PATH/models"
@@ -60,6 +71,14 @@ if [ "$(plutil -extract LSMinimumSystemVersion raw -o - "$CONTENTS_PATH/Info.pli
 fi
 if [ "$(plutil -extract LSMultipleInstancesProhibited raw -o - "$CONTENTS_PATH/Info.plist")" != "true" ]; then
     printf '%s\n' 'LSMultipleInstancesProhibited must be true' >&2
+    exit 1
+fi
+if [ "$(plutil -extract CFBundleShortVersionString raw -o - "$CONTENTS_PATH/Info.plist")" != "$PRODUCT_VERSION" ]; then
+    printf 'CFBundleShortVersionString must match workspace version %s\n' "$PRODUCT_VERSION" >&2
+    exit 1
+fi
+if [ "$(plutil -extract CFBundleVersion raw -o - "$CONTENTS_PATH/Info.plist")" != "$PRODUCT_VERSION" ]; then
+    printf 'CFBundleVersion must match workspace version %s\n' "$PRODUCT_VERSION" >&2
     exit 1
 fi
 for model in standard keyboard gamepad; do
