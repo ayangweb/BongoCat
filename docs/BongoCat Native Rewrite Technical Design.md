@@ -26,8 +26,11 @@ Rust 2024 edition application
 - GPUI 只负责常规设置 UI，不承担模型渲染。
 - 模型窗口由 Rust 平台模块直接创建和管理，与 GPUI 设置窗口共享同一应用生命周期。
 - Windows 使用 D3D11，macOS 使用 Metal；首发不为了未来 Linux 强行统一 GPU backend。
-- Windows 键鼠输入自行实现 Raw Input + 系统状态校正，从架构上避免 issue #47 的永久卡键。
-- macOS 输入自行封装 CGEventTap、TCC 权限、tap 恢复和按键状态校正。
+- Windows 键鼠输入优先评估成熟输入库；若没有方案能同时满足事件边缘完整性、系统状态校正、
+  Raw Input 设备语义和已确认的生命周期复位不变量，则直接使用 `windows-rs` 实现最小适配层，
+  从架构上避免 issue #47 的永久卡键。
+- macOS 输入优先评估成熟输入库；若没有方案能同时满足 listen-only CGEventTap、TCC 权限状态、
+  tap 恢复和左右修饰键状态校正，则直接使用 `objc2` 封装最小适配层。
 - 官方 Cubism Core 是预编译厂商二进制，是“应用代码纯 Rust”的唯一 FFI 例外；BongoCat 业务逻辑不得进入 SDK bridge。
 - Linux 不进入首发范围，但共享业务 crate 不得依赖 Win32/AppKit 类型，不得故意封死后续 backend。
 
@@ -35,8 +38,10 @@ Rust 2024 edition application
 
 本项目中的“纯 Rust”定义为：
 
-- 应用入口、UI、状态、动画、输入、配置、模型管理、窗口、渲染和系统服务均由 Rust 源码实现。
-- UI、运行时和平台服务均由同一个 Rust workspace 构建和管理。
+- 应用入口、UI、状态、动画、输入、配置、模型管理、窗口、渲染和系统服务的产品边界均由本
+  Rust workspace 组装和拥有；实现可以使用经过评审的第三方 Rust crate。
+- UI、运行时和平台服务均由同一个 Rust workspace 构建和管理，第三方依赖不得形成第二套业务
+  runtime 或绕过既定 command/event/snapshot 边界。
 - 允许通过窄 FFI 调用官方 Cubism Core 平台二进制，因为 `.moc3` 运行依赖厂商 SDK。
 - 操作系统 API、GPU driver 和系统 framework 不属于应用语言范围。
 
@@ -73,6 +78,7 @@ Rust 2024 edition application
 | 输入最终一致   | 按键边沿、系统状态校正和生命周期复位共同维护 pressed state |
 | UI 与渲染分离  | GPUI 负责设置，独立 overlay renderer 负责 Live2D           |
 | 平台能力显式   | 系统 API 封装在平台模块，业务 crate 不接触平台 handle      |
+| 先复用后自研   | 依次评估现有代码、标准库、平台能力、已安装及成熟第三方方案，再写最小自有实现 |
 | 配置可恢复     | v1 schema、环境隔离、验证、备份和原子提交均可测试          |
 | 行为可重复     | fixture、规范化状态快照和平台 smoke test 共同验收          |
 
@@ -882,6 +888,12 @@ Windows 当前用户 Run value 按 Development/Production 分名；macOS 13+ 只
 `bongocat-update` 只保留构建期 `ReleaseConfiguration`、环境 channel 门禁、签名公钥失败关闭与
 匿名诊断契约；下载、解压、校验、替换与重启全部交给 `self_update 1.3.0`。ADR-0021、ADR-0022、
 ADR-0025 与 ADR-0026 由本 ADR 取代。
+
+### ADR-0030：先复用现有方案
+
+新功能按现有代码、标准库、平台能力、已安装依赖、成熟第三方方案、最小自有实现的顺序选择。
+只有现成方案无法满足已确认的边界，或引入成本明显高于自研时才自行实现；第三方类型和生命周期
+仍受现有架构、安全与依赖规则约束。
 
 ### ADR-023：Windows Per-User Installer
 

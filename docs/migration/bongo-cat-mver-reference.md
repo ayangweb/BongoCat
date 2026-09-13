@@ -37,7 +37,8 @@
   mode 层按产品状态另行组合。
 
 这些结论用于确定测试问题和预期行为。Native Rewrite 的 Metal/D3D11 renderer、
-safe wrapper、runtime 和资源 compositor 仍须按 Technical Design 以 Rust 独立实现。
+safe wrapper、runtime 和资源 compositor 仍须按 Technical Design 的 Rust 边界实现，并遵守
+ADR-0030 规定的现有方案复用顺序。
 
 ## 4. 使用规则
 
@@ -45,7 +46,7 @@ safe wrapper、runtime 和资源 compositor 仍须按 Technical Design 以 Rust 
 
 1. 先在远端 `pre-refactor-tauri` 分支、fixture 和该固定 Mver commit 中找到实际证据。
 2. 区分“产品可见语义”和“旧技术实现细节”；只把前者写入当前 contract。
-3. 用当前平台 API、Rust owner 和强类型 runtime 边界独立实现。
+3. 按 ADR-0030 评估现有方案，再在当前平台 API、Rust owner 和强类型 runtime 边界内实现。
 4. 为结论增加 fixture、snapshot、截图或实机复现，不能仅以“原版这样写”验收。
 5. 若 Mver、远端 legacy 行为和 Technical Design 冲突，Technical Design 是架构事实
    来源；产品语义冲突写入 TODO/ADR 并明确选择，不静默猜测。

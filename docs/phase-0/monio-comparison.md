@@ -1,6 +1,6 @@
 # monio Input Backend Comparison
 
-状态：完成源码对照，不引入生产依赖
+状态：完成固定版本源码对照；因下述可靠性缺口不采用该版本作为生产依赖，后续版本按 ADR-0030 重新评估
 日期：2026-08-29
 审阅版本：`HuakunShen/monio@d1766e0dcd20dea0435be16cd80adaa749b86e30`
 
@@ -40,5 +40,8 @@ monio 当前不能满足 BongoCat issue #47 的输入不变量：
 - 不把 monio 加入 BongoCat 产品或 spike dependency graph。
 - Windows 继续使用自有 Raw Input keyboard/mouse wrapper、`GetAsyncKeyState` 校正和 lifecycle Reset。
 - macOS 继续使用自有 listen-only CGEventTap、bounded reliable edge queue、`CGEventSourceKeyState` 校正和 disable/permission/session Reset。
-- 可借鉴 monio 的 objc2 API 用法、modifier device flag 表和资源恢复测试，但任何采用都必须按 BongoCat 类型、队列和安全不变量重新实现与验证。
-- 若未来重新评估 monio，最低条件是可靠 edge channel 不静默丢弃、双平台 pressed reconciliation、生命周期 Reset、callback panic isolation 和完整许可证文件；仅增加下载量或平台数量不改变结论。
+- 可借鉴 monio 的 objc2 API 用法、modifier device flag 表和资源恢复测试；任何直接复用仍须通过
+  BongoCat 类型、队列和安全不变量的适配与验证。
+- 若未来重新评估 monio，最低条件是可靠 edge channel 不静默丢弃、双平台 pressed reconciliation、
+  生命周期 Reset、callback panic isolation 和完整许可证文件；满足这些条件后按 ADR-0030 重新评估
+  直接采用，仅增加下载量或平台数量不改变结论。
