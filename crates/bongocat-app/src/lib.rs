@@ -82,6 +82,21 @@ pub const BUILD_ENVIRONMENT: BuildEnvironment = BuildEnvironment::Development;
 #[cfg(bongocat_build_environment = "production")]
 pub const BUILD_ENVIRONMENT: BuildEnvironment = BuildEnvironment::Production;
 
+/// Whether this build can check for and install updates.
+///
+/// Updates require a Production channel and a provisioned release signing key;
+/// a Development build never installs a release artifact. The system menu uses
+/// this to decide whether to offer the "check for updates" entry at all, rather
+/// than offering one that can only fail.
+pub fn update_check_available() -> bool {
+    bongocat_update::UpdateRuntime::for_current_build(
+        BUILD_ENVIRONMENT,
+        PRODUCT_VERSION,
+        bongocat_update::UpdateDiagnosticsTracker::default(),
+    )
+    .is_available()
+}
+
 #[derive(Debug)]
 pub enum ApplicationError {
     PlatformStorage(PlatformStorageError),

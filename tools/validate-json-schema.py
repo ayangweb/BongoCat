@@ -17,7 +17,6 @@ EXPECTED_DIR = ROOT / "shared" / "fixtures" / "expected-state"
 CONFIG_DIR = ROOT / "shared" / "config" / "fixtures"
 STATE_DIR = ROOT / "shared" / "config" / "state-fixtures"
 MODEL_FIXTURE_DIR = ROOT / "shared" / "fixtures" / "model-fixtures"
-UPDATE_FIXTURE_DIR = ROOT / "shared" / "update" / "fixtures"
 
 
 def load(path: Path) -> object:
@@ -132,14 +131,9 @@ def main() -> int:
         validate_schema(ROOT / "shared" / "config" / "state.schema.json"),
         "state",
     )
-    update_count = validate_manifest_fixtures(
-        UPDATE_FIXTURE_DIR,
-        validate_schema(ROOT / "shared" / "update" / "manifest.schema.json"),
-        "update",
-    )
     print(
         f"validated {input_count} input, {expected_count} expected, and "
-        f"{config_count} config, {state_count} state, and {update_count} update fixture(s), "
+        f"{config_count} config, {state_count} state fixture(s), "
         "with Draft 2020-12"
     )
     return 0

@@ -2,6 +2,11 @@
 
 状态：已接受（2026-09-05）
 
+> 注（2026-09-13）：本 ADR 关于 NSIS per-user installer、权限面、卸载语义与数据隔离的决策**仍然有效**。
+> 其中「未来 Rust update helper 只接收 ADR-0021 验证完成的本 target/arch artifact」一句已随 ADR-0029
+> 作废：不再有独立 Rust update helper，替换由 `self_update 1.3.0` 在进程内完成，其权限边界、原子性
+> 与失败恢复未经本项目威胁建模。ADR-0021 已标记「已被 ADR-0029 取代」。
+
 ## 背景
 
 Native Rewrite 已使用当前用户 HKCU Run 启动项、环境隔离的数据根和独立的签名更新 trust boundary。

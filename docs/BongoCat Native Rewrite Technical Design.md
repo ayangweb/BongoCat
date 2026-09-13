@@ -697,58 +697,29 @@ workspace 的正式 `just` 入口与 CI 显式选择 Development，Production bu
 - 模型删除 command 同样携带 `(origin, model_id)`；preset 永不可删。installed 模型只有在既
   不是当前 runtime active、也不是配置所选来源时才能以 rename 后删除事务退休；同 ID preset
   不得阻止删除 installed 副本。成功只刷新 catalog，不隐式切模或改写配置。
-- 更新信任判断由平台无关的 `bongocat-update` 独占：最多 1 MiB 的 v1 manifest 使用 detached
-  Ed25519 签名，客户端先验签原始 bytes 再执行严格反序列化。manifest 包含不可变构建环境 channel、
-  SemVer release、最低可升级版本、单调 `release_sequence`、Unix 发布时间，以及既定四个
-  Windows/macOS target/arch 的 HTTPS URL、精确字节数和小写 SHA-256。当前版本、target、arch、
-  环境或 sequence 不匹配时不得产生安装候选。
-- 信任公钥以稳定 key ID、Development/Production channel 和 release sequence 有效窗编译进构建；
-  私钥不得进入源码、产物或配置。验证结果只返回字段私有、仅经只读 accessor 消费的项目自有不可变
-  类型，网络、SemVer、签名库类型不扩散到 app/runtime/UI。下载层必须在安装前通过同一 verified
-  artifact 校验精确长度和 SHA-256。
-- 更新 manifest 的网络响应固定为单次 HTTPS GET 的 `200`，不跟随 redirect；响应 body 是待验签的
-  原始 manifest bytes，`bongocat-update-key-id` header 提供稳定 key ID，
-  `bongocat-update-signature-ed25519` header 提供 128 个小写十六进制字符的 detached Ed25519
-  signature。HTTP adapter 在有界读取 body、验证 header 语法后只能构造项目自有
-  `UpdateManifestEnvelope`，再交给 verifier；传输不得预解析、重排、解压或重新编码 body。当前
-  adapter 使用禁用 compression、仅 Rustls TLS 的 `ureq`，固定 15 秒全局 deadline，并将 endpoint、
-  非 `200`、body read 与网络失败压缩为稳定匿名 code；它只能由专用 update worker 调用，不能运行在
-  GPUI executor。`UpdateCheckCoordinator` 固定 fetch -> verify -> environment-local sequence commit 的
-  顺序；fetch 或验签失败绝不推进 rollback 下限，实际 HTTP client 仍通过项目自有 source trait 注入。
-- 更新 endpoint、24 小时自动检查调度、有界下载/取消、环境内 sequence 持久化、操作系统包签名、
-  installer 权限、原子替换和失败回滚分别实现；所有 endpoint 与 artifact URL 只允许 HTTPS。最高
-  已验证 sequence 从当前不可变 `StorageLayout` 的独立 `updates/update-sequence.json` v1 保存，不进入用户
-  配置或 `state.json`；channel、schema、常规文件身份和单调 sequence 全部严格校验，同目录锁与原子替换后
-  回读保证并发或中断不会把已知最高值回退。`UpdateVerificationSession` 在验签和严格解析成功后才记录
-  sequence，`Available` 与 `UpToDate` 都会推进同一 session 的 rollback 下限；损坏、跨环境或未知
-  schema 失败关闭，不自动重置。`updates/` 在 Unix 创建或重开时强制 owner-only `0700`，Windows
-  使用用户 profile ACL。
-- Windows 首发安装包使用固定版本、hash 的 NSIS per-user installer：它只安装目标架构的已签名
-  product artifact 到当前用户的 local application directory，不请求管理员权限，也不读取、迁移或删除
-  Development/Production 的 config、state、models、backups、logs 或 updates 数据。installer 与未来的
-  Rust update helper 不联网；helper 只在应用完成协调 shutdown 后接收同环境、target/arch、length/hash 和
-  OS package signature 重新验证的 staging artifact。它以 private same-volume candidate/rollback sibling
-  执行 prepare -> validate -> atomic rename -> launch/health acknowledgement，任一失败只恢复已知 product
-  root 且不删除用户数据。卸载默认只移除 product files，用户数据必须由明确的独立操作删除。
-- 更新下载只可在当前环境 `StorageLayout::update_staging` 下创建暂存文件；该目录与
-  `updates/update-sequence.json`/lock 及 `InstallationLayout` 的 product files root 分离。下载、
-  清理、替换和 rollback 仍须在各自的后续 contract 中定义，不得由此路径模型隐式授权。
-- 下载 adapter 必须把 artifact stream 交给 `VerifiedArtifact::stage_reader`，由该边界在私有 staging
-  目录中以唯一、不可覆盖的文件流式写入；每个 chunk 与最终同步前都可取消，并在取消、读取、写入、
-  长度或 SHA-256 校验失败后删除 partial file。只有完成精确长度、digest 和 `sync_all` 的
-  `StagedUpdateArtifact` 才能传给后续安装协调；文件名或扩展名不构成信任判断。该边界不提供
-  HTTP、断点续传、重试、替换或 rollback 策略。
-- `UpdateDownloadRetryPolicy` 固定每次 update download 最多尝试三次，retry 间隔依次为 1 秒和
-  2 秒。只有匿名 transport 失败以及 HTTP `408`、`429` 和 `5xx` 可重试；取消、完整性、暂存
-  I/O 和其他 HTTP 状态立即终止。重试不使用 Range 或保留 partial bytes，每次都从新的 HTTPS
-  response 写入新的 staging file 并重新完成完整性校验。`UpdateDownloadCoordinator` 接收创建新
-  reader 与可取消等待的 adapter，执行该策略并只返回项目自有的 completed artifact、attempt count 或
-  稳定错误码；HTTP client 类型、status text 和 path 不得进入其公共结果。当前 `ureq` artifact source
-  只打开 verifier 已选择 URL 的无 redirect HTTPS `200` raw reader，并将失败归类为 transport 或
-  status；它不处理 retry、取消、暂存、hash 或安装。
-- 自动检查偏好启用时在应用启动后立即请求一次检查，随后以可注入的单调时间从每次实际派发起
-  间隔 24 小时；从关闭切换为启用时同样立即请求一次，关闭则取消待触发检查。重复 poll 不得重复
-  派发，单调时间回退必须产生稳定诊断并从新时间原点重建间隔，不能形成重试风暴。
+- 更新的下载、校验、解压、替换与重启由 `self_update 1.3.0` 承担；`bongocat-update` 只保留
+  BongoCat 侧策略与诊断契约，不自行实现替换层。信任模型为 zipsign ed25519 归档签名：发行归档
+  必须由发布私钥签名，客户端以编译进构建的公钥集按 any-of 语义校验，私钥不得进入源码、产物或
+  配置。ADR-0021、ADR-0022、ADR-0025 与 ADR-0026 定义的 detached 清单签名、manifest v1 schema、
+  单调 `release_sequence` 防降级与 24 小时调度已由 ADR-0029 取代，不再有效。
+- 更新源由不可变 `ReleaseConfiguration` 描述：发行仓库、构建期 channel、target triple、二进制名与
+  macOS bundle 名全部是编译期常量，任何用户配置、CLI 或运行时输入都不能改变它们。Development
+  构建的 channel 不允许联网或安装，`check` 与 `install` 在发出任何请求前即失败关闭；Production
+  构建从公开发行渠道更新。更新 channel 按环境隔离是 `AGENTS.md` §10 的约束，独立于 ADR-0029。
+- 签名公钥缺失时失败关闭：`self_update::verify_signature` 对空公钥集直接返回成功，因此
+  `RELEASE_SIGNING_KEY` 未配置时 runtime 拒绝安装并返回 `update_signature_key_missing`，绝不静默
+  接受未签名归档。`UpdateRuntime::is_available()` 仅在 production channel 与公钥同时具备时为真，
+  系统菜单据此决定是否显示「检查更新」入口。
+- 传输由库的 `ureq` 后端承担，启用 Rustls 与 HTTPS-only；归档格式为 Windows 的 zip 与 macOS 的
+  tar.gz。完整性由 `checksums` feature 覆盖，来源真实性由 `signatures` feature 覆盖。库的 `reqwest`
+  后端不启用，以避免引入 hyper、tower-http、cookie_store 与 aws-lc-rs 整套依赖。
+- 安装位置：macOS 由库从运行中的可执行文件推导其所属 `.app` 并执行整包 rename 交换（含 stash 与
+  best-effort 回滚），隔离属性导致的 translocation 以专门错误拒绝而不是在中途失败；Windows 由库
+  替换当前可执行文件。安装根为 `$LOCALAPPDATA\Programs\BongoCat`，用户可写，不需要提权。
+- 库的错误、配置与平台类型不得扩散为项目公共 API。`self_update::Error` 在 `bongocat-update` 边界内
+  映射为 13 个稳定错误码，诊断导出只消费这些码与匿名聚合计数，不含任何库类型或动态平台文本。
+- 更新 endpoint、真实签名公钥注入、update worker、更新 UI、操作系统包签名验证与失败启动恢复仍未
+  实现；在这些证据齐备前不得声称更新功能或 stable 发布完成。
 - 日志不记录真实按键序列、剪贴板内容或用户文件内容。
 - Diagnostics 导出由 settings service 的强类型 command 触发，在当前环境 logs 目录以同目录
   原子替换写出固定格式的 JSON。导出只包含稳定错误码、匿名聚合计数、模型来源计数和 revision；
@@ -889,20 +860,27 @@ runtime 非阻塞发布强类型音效命令，独立 Rust worker 使用最小 r
 Windows 当前用户 Run value 按 Development/Production 分名；macOS 13+ 只允许 Production
 `.app` 使用 `SMAppService.mainAppService`，macOS 12 与 Development 明确报告不支持且不回退。
 
-### ADR-021：签名更新 Manifest 信任边界
+### ADR-021：签名更新 Manifest 信任边界（已被 ADR-0029 取代）
 
-平台无关 verifier 先对原始 manifest bytes 执行 detached Ed25519 严格验签，再校验环境、版本、
-sequence、target/arch、HTTPS、长度与 SHA-256；下载、installer 和回滚保持后续独立边界。
+自研 manifest 验签、构建环境绑定与单调 sequence 防降级已退役，更新信任模型改为 `self_update`
+的 zipsign ed25519 归档签名。正文保留在 ADR-0021 中作为历史记录。
 
-### ADR-022：更新 Manifest 传输 Envelope
+### ADR-022：更新 Manifest 传输 Envelope（已被 ADR-0029 取代）
 
-无 redirect HTTPS `200` 响应以固定 key ID 与小写 hex signature headers 携带受限原始 manifest
-bytes；transport 只能构造项目自有 envelope，不能预解析或改变待验签 bytes。
+携带固定 key ID 与 signature header 的 manifest envelope 随 ADR-0021 一并退役，传输改由
+`self_update` 的 `ureq` 后端承担。正文保留在 ADR-0022 中作为历史记录。
+
+### ADR-029：第三方更新库边界
+
+`bongocat-update` 只保留构建期 `ReleaseConfiguration`、环境 channel 门禁、签名公钥失败关闭与
+匿名诊断契约；下载、解压、校验、替换与重启全部交给 `self_update 1.3.0`。ADR-0021、ADR-0022、
+ADR-0025 与 ADR-0026 由本 ADR 取代。
 
 ### ADR-023：Windows Per-User Installer
 
-Windows 首发采用固定、可审计 NSIS per-user installer，不请求管理员权限或触及环境数据；未来 Rust
-update helper 只接收已验证 artifact，installer 权限、原子替换与 rollback 保持独立发布门禁。
+Windows 首发采用固定、可审计 NSIS per-user installer，不请求管理员权限或触及环境数据。原设计中的
+「独立 Rust update helper 只接收已验证 artifact」已随 ADR-0029 作废：不再有独立 helper，替换由
+`self_update` 在进程内完成，installer 权限、原子替换与 rollback 仍是独立发布门禁。
 
 ## 17. 实施阶段
 

@@ -87,8 +87,9 @@ fn system_menu_presentation(snapshot: &SettingsSnapshot) -> SystemMenuPresentati
         ),
         overlay_visible: snapshot.overlay_visible,
         click_through_enabled: snapshot.overlay.click_through,
-        // The signed update contracts are not yet wired to a release endpoint.
-        update_check_available: false,
+        // Updates stay hidden until the build carries a production channel and a
+        // release signing key; see `bongocat_app::update_check_available`.
+        update_check_available: bongocat_app::update_check_available(),
     }
 }
 

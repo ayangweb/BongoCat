@@ -59,7 +59,8 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 | `tempfile`                            |       `3.27.0` | 已是最新                                                 |
 | `unicode-segmentation`                |       `1.13.3` | 已是最新                                                 |
 | `url`                                 |        `2.5.8` | 外部 HTTPS URL wrapper 新增时最新                        |
-| `ureq`                                |        `3.4.0` | 更新 HTTPS transport 新增时最新                          |
+| `self_update`                         |        `1.3.0` | 取代自研更新栈时最新（ADR-0029）                         |
+| `ureq`                                |        `3.4.0` | 现为 `self_update` 的传递依赖                            |
 | `windows`                             |       `0.62.2` | 从 `0.61.3` 升级                                         |
 
 `windows 0.62.2` 删除了 `Error::from_win32()`；Win32 wrapper 已改为在失败调用后立即使用语义等价的 `Error::from_thread()`，避免清理 API 覆盖 thread last-error。
@@ -128,18 +129,22 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
   `bongocat-platform` 私有 external URL parser 中规范化并限制 HTTPS URL；公共 API 只接收字符串、
   返回项目自有错误，不泄漏 `Url`。macOS/Windows launcher 均以单一参数启动系统 opener，绝不经 shell；
   替换边界是同等严格的 WHATWG URL parser，不影响 config/runtime/UI 协议；
-- `ureq 3.4.0`（MIT OR Apache-2.0，Rust 1.85+，`algesten/ureq` 维护）只在
-  `bongocat-update` 的私有 signed-manifest source 使用。它精确锁定为当前最新稳定版，仅启用
-  Rustls feature 并关闭默认 compression/cookie feature；因此 detached signature 始终覆盖响应的
-  原始受限 bytes。source 固定 HTTPS、无 redirect、15 秒 deadline 和匿名错误码，第三方 response/
-  URL/TLS 类型不离开 crate。替换边界是 `UreqUpdateManifestSource`，不会改变 verifier 或 app/UI
-  command contract；
+- `self_update 1.3.0`（MIT，Rust 1.88+）承担更新的下载、解压、校验、替换与重启，由 ADR-0029 引入。
+  只启用 `ureq`、`rustls`、`github`、`archive-tar`、`archive-zip`、`compression-tar-gz`、
+  `compression-zip-deflate`、`checksums` 与 `signatures` features；不启用 `progress-bar`，也不启用
+  `reqwest` 后端，因此不引入 hyper、tower-http、cookie_store 与 aws-lc-rs。它只在 `bongocat-update`
+  私有模块内出现，库的 `Error`、`Release` 与 `semver::Version` 均被映射为项目自有稳定码，不进入
+  app/runtime/UI 协议。替换边界是 `UpdateRuntime`，不影响诊断导出契约；
+- `ureq 3.4.0`（MIT OR Apache-2.0，Rust 1.85+，`algesten/ureq` 维护）现为 `self_update` 的传递依赖，
+  不再是本项目的直接依赖。`self_update` 会启用其 `gzip`/`charset`/`socks-proxy`/`json` feature，
+  Cargo 的 feature 并集不可被调用方关闭；ADR-0025 曾要求禁用这些 feature 以保证 detached signature
+  覆盖原始 bytes，该要求随 ADR-0025 作废，现行完整性由 `checksums` feature 独立覆盖；
 - 剪贴板 adapter 不新增 crate，只扩展已固定的 `objc2-app-kit 0.3.2` 的 `NSPasteboard` feature，
   以及 `windows 0.62.2` 的 `Win32_System_DataExchange`、`Memory` 和 `Ole` features。它们分别是
   持续维护的 objc2 基础 binding（Zlib OR Apache-2.0 OR MIT）和微软生成 binding（MIT）；AppKit/Win32
   类型、裸 handle 与文本均留在私有 adapter，Windows 内存所有权由 RAII wrapper 管理。替换边界是
   `bongocat-platform` 的 clipboard module，不影响 config/runtime/UI 公共协议；
-- `atomic-write-file 0.3.1`（BSD-3-Clause）只在正式配置 crate 的 `ConfigStore` 与 update crate 的环境内 sequence store 提供同目录跨平台原子替换；两者都只暴露项目自有的配置或更新状态类型，不泄漏库类型。替换边界分别是各自私有 commit helper；`dirs 6.0.0`、`serde 1.0.229` 与 `serde_json 1.0.151` 继续提供路径解析和严格序列化；
+- `atomic-write-file 0.3.1`（BSD-3-Clause）只在正式配置 crate 的 `ConfigStore` 提供同目录跨平台原子替换；它只暴露项目自有的配置类型，不泄漏库类型。替换边界是私有 commit helper；`dirs 6.0.0`、`serde 1.0.229` 与 `serde_json 1.0.151` 继续提供路径解析和严格序列化；
 - `rodio 0.22.2`（MIT OR Apache-2.0）只在 `bongocat-audio` 私有 backend 打开系统输出并
   解码现有 FLAC；固定容量的项目 command/diagnostics API 隔离第三方类型，Linux contract
   build 不链接 ALSA。真实预置 FLAC header/首样本、资源/解码失败、抢占、overflow 恢复和

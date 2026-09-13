@@ -1,6 +1,6 @@
 # ADR-0026: Update Helper Replacement Boundary
 
-状态：已接受（2026-09-05）
+状态：已被 ADR-0029 取代（2026-09-13）
 
 ## 背景
 

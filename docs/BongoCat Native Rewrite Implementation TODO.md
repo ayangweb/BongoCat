@@ -1676,7 +1676,8 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     逐项比较两个环境的 config、state、models、backups、logs、updates 和 locks 相对路径，
     并确认根目录互不包含；两个环境共用同一严格 v1 `NativeConfig`/`ApplicationState` 类型与
     `config.schema.json`/`state.schema.json`。`python3 tools/validate-json-schema.py` 已通过
-    10 个 config、5 个 state 和 4 个 update fixture，环境同构测试也通过。
+    9 个 input、9 个 expected、10 个 config 和 6 个 state fixture；原 4 个 update fixture 已随
+    ADR-0029 删除，环境同构测试仍通过。
 - [x] 配置、state、模型、备份、日志、锁和单实例 namespace 均包含环境边界。
   - 验收证据（2026-09-06）：`StorageLayout` 为 Development/Production 分别派生 config、state、
     models、backups、logs、updates 和 locks 根；config/state/model/update 的环境边界已有定向
@@ -1701,12 +1702,17 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     默认值，Development 的原始字节保持不变，两个 `config.json` 字节不同。生产代码只从当前
     `StorageLayout` 打开 store；测试数据仍须经显式模型导入边界进入目标环境。
 - [x] 更新 channel 与环境绑定，Development 不能安装 Production 更新或反向覆盖。
-  - 验收证据（2026-09-06）：`bongocat-update::persisted_sequence_survives_reopen_and_is_environment_bound`
-    验证 Development 的已验证 sequence 只持久化在自身 `updates/`，Production 首次读取仍为 `0`；
-    用 Production channel 读取 Development state 明确返回 `StateChannelMismatch`。verifier 另要求
-    manifest channel 与构建环境映射的 channel 相同；`VerifiedArtifact` 也固定该 channel，staging
-    在创建目录或文件前拒绝与 `StorageLayout` 环境不符的 artifact，因此跨环境 artifact 无法进入
-    staging/installation。
+  - 验收证据（2026-09-13）：原 sequence store / verifier channel 断言随 ADR-0029 退役，本项改由
+    `bongocat-update::ReleaseChannel::from_environment` 与 `UpdateRuntime` 的可用性门禁承担。
+    `release::development_channel_is_disabled_and_production_is_enabled` 固定 Development 关闭、
+    Production 启用的映射；`runtime::development_builds_never_reach_the_network` 断言 Development
+    构建在发起任何请求前就返回 `EnvironmentDisabled` 且诊断记为
+    `update_environment_disabled`；`runtime::availability_requires_a_production_channel_and_a_signing_key`
+    断言更新入口只在 Production 且已注入签名密钥时可见。channel 只从不可变 `BUILD_ENVIRONMENT`
+    派生，运行期输入无法切换。新实现已无跨环境 artifact 通路（sequence store、staging 与
+    artifact channel 字段均已删除），替换目标由 `self_update` 从 `current_exe()` 推导，
+    不落在任一环境的 `StorageLayout` 根下，因此不存在把 Production artifact 写入 Development
+    根或反向覆盖的路径。
 
 ### 7.4 测试与门槛
 
@@ -1859,61 +1865,46 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 
 ### 8.4 更新与诊断
 
-- [ ] 设计纯 Rust 更新 client、manifest 和签名验证。
-  - [x] 以环境独立 v1 状态保存最高已验证 manifest sequence。
-    - 验收证据（2026-09-05）：`bongocat-update::UpdateSequenceStore` 以固定 channel、同目录 lock、
-      原子替换和回读验证持久化单调 sequence；缺失 state 从 `0` 起始，低 sequence、损坏/未来 schema、
-      cross-channel、symlink 和并发 writer 都稳定拒绝且不覆盖已有字节。该 state 不进入 config/state
-      事务；`open_for_layout` 从 immutable environment layout 派生 channel，创建或重开 `updates/` 时在
-      Unix 强制 `0700`。后续 update client 仍待提供 endpoint、网络与安装器边界。
-  - 状态（2026-09-05）：ADR-0021 与 `bongocat-update` 已建立平台无关的 signed manifest trust
-    boundary；Ed25519 先验签后解析，严格 v1 manifest、稳定错误码、artifact 流式完整性验证、环境内
-    anti-rollback sequence store、verification session 和 24 小时调度 contract 均有自动化。`ureq`
-    HTTPS source 现在固定单次 GET、无 redirect、15 秒 deadline、无 compression 和 1 MiB raw-body
-    上限，只构造 `UpdateManifestEnvelope`，且不泄漏 URL/status/client text。`UpdateCheckCoordinator`
-    已固定 fetch -> session verify -> environment sequence commit，source failure 不推进 rollback 下限；
-    endpoint、公钥注入、手动 dispatch 与下载/安装仍未实现，因此总项保持未勾选。
+- [x] 以第三方库承担更新流程，删除自研验证层。
+  - 验收证据（2026-09-13）：ADR-0029 取代 ADR-0021、ADR-0022、ADR-0025 与 ADR-0026。
+    `bongocat-update` 原有 9 个模块、4615 行实现全部删除，改为基于 `self_update 1.3.0` 的薄封装：
+    `release.rs` 的 `ReleaseConfiguration` 固定发行仓库、构建期 channel、target triple 与二进制名；
+    `runtime.rs` 的 `UpdateRuntime` 承载 check/install/restart 并把库错误映射为自有稳定码；
+    `diagnostics.rs` 保留 10 项匿名计数与 13 个稳定错误码。`cargo fmt --all --check`、严格 Clippy
+    （`-D warnings`）、`cargo test --locked --workspace` 与 locked release check 通过；新增 13 个
+    单元测试覆盖 channel 门禁、签名密钥失败关闭、错误码稳定性与诊断计数。
+  - 状态（2026-09-13）：`self_update` 的 `UpdateConfig` 与 `ReleaseUpdate` 均为 sealed，外部无法自行
+    实现，只能经后端 builder 构造；当前使用内置 `github` 后端指向 `ayangweb/BongoCat`。真实编译图
+    增量实测为 +17 个包（462 → 479），且未引入 `reqwest`、`hyper`、`tower-http`、`cookie_store`
+    或 `aws-lc-rs`。
 - [ ] 只允许 HTTPS，固定公钥来源和轮换流程。
-  - 状态（2026-09-05）：manifest/release notes/artifact URL 已强制 HTTPS 且拒绝 credentials/fragment；
-    信任公钥绑定 key ID、构建环境 channel 和 release sequence 有效窗。Production 公钥注入、签名
-    envelope 现固定为无 redirect 的 HTTPS `200` 原始 manifest body 加 key ID/小写 hex signature
-    headers，并由有界 `UpdateManifestEnvelope` 交给 verifier；`ureq` source 已实际执行该窄协议，拒绝
-    credentials/fragment endpoint、非 `200` 和响应大于 1 MiB。Production 公钥注入、实际 endpoint 与
-    app-owned update worker/dispatch 尚待发布基础设施确定，因此保持未勾选。
+  - 状态（2026-09-13）：传输由库的 `ureq` 后端承担并强制 HTTPS。签名公钥以
+    `RELEASE_SIGNING_KEY` 常量编译进构建，**当前为 `None`**，因此 runtime 在发出任何请求前失败关闭
+    并返回 `update_signature_key_missing`。公钥轮换窗随 ADR-0021 退役，key ID 与有效期概念不再存在，
+    该子项无法按原设计完成；真实公钥注入仍未实现。
 - [ ] 校验版本、target、arch、hash 和签名。
-  - 状态（2026-09-05）：离线 verifier 已校验 SemVer、最低可升级版本、四个 target/arch 组合、精确
-    artifact 长度、SHA-256 与 detached Ed25519 签名；操作系统包签名和真实发布产物仍待验证。
+  - 状态（2026-09-13）：版本比较、target 资产匹配、SHA-256（`checksums` feature）与 zipsign 归档
+    签名（`signatures` feature）均由库承担。**未配置真实签名公钥，也未在任何真实产物上验证**；
+    操作系统包签名验证仍未实现，因此保持未勾选。
 - [ ] 下载支持取消、断点/重试策略和失败清理。
-  - 状态（2026-09-05）：`VerifiedArtifact::stage_reader` 已在当前环境私有
-    `updates/staging/` 目录以 `create_new` 写入唯一文件，按 64 KiB 分块校验精确长度与
-    SHA-256、在完成后 `sync_all`，并在取消、读取/写入或完整性失败时清理 partial file；目录
-    重开会拒绝 symlink/non-directory 并在 Unix 恢复 `0700`，artifact 在 Unix 创建为 `0600`。
-    取消、长度/hash、reader failure、成功多文件与权限修复均有回归测试。`UpdateDownloadRetryPolicy`
-    已固定总计三次的完整重试和 1 秒/2 秒退避；仅 transport、`408`/`429`/`5xx` 进入 retry，取消、
-    完整性、暂存和其他 HTTP 状态立即终止，且不支持 Range/partial resume。注入式
-    `UpdateDownloadCoordinator` 已按此策略创建全新 reader/staging file、记录 attempt count，并让
-    adapter 在等待期间响应取消；传输读中断会清理 partial 并作为新的完整流重试。`ureq` artifact
-    source 现仅为 verifier 选择的 URL 打开无 redirect HTTPS `200` raw reader，并将非 `200` 映射为
-    既有 retry 分类，不处理 retry 或 staging。`VerifiedUpdate`/`VerifiedArtifact` 的字段均为私有，
-    调用方只能通过只读 accessor 使用验签结果，不能在下载前替换 URL、target、长度或 digest。固定发布
-    endpoint、app-owned download worker 和产品下载 UI 尚未实现，因此本项保持未勾选。协调器回归另覆盖 hash
-    不匹配与本地 staging failure 立即停止、不进入等待，并确认前者没有遗留 partial artifact。2026-09-06
-    的补强回归进一步验证 Development artifact 对 Production layout 在创建 staging 目录或文件前返回
-    `update_staging_channel_mismatch`；协调器也会在打开远端 reader、进入 retry 或创建 staging 路径前以
-    零 attempts 返回 `update_download_staging_failed`；若调用方已取消，则保留零 attempts 的
-    `update_download_cancelled` 优先语义，同样不会打开 reader 或创建 staging 路径。
+  - 状态（2026-09-13）：随 ADR-0021 一并退役。自研 staging 目录、三次重试与 1 秒/2 秒退避、
+    Unix `0600` 权限与 partial 文件清理不再存在；库自身的下载重试与失败清理语义**未经本项目验证**，
+    因此保持未勾选。
 - [ ] 安装前协调 runtime/renderer shutdown，失败可回滚。
-  - 状态（2026-09-06）：`bongocat-update::UpdateInstallCoordinator` 已建立平台无关的顺序契约：取消
-    优先于 shutdown，shutdown 成功后才允许安装；安装失败必定尝试一次回滚，并以
-    `update_install_*` 稳定 code 区分取消、shutdown、安装和回滚失败。该模块不持有 runtime、renderer
-    或平台 installer；真实 update helper、原子替换、进程间 shutdown acknowledgement 和失败回滚仍待
-    Windows/macOS 安装链实现，因此总项保持未勾选。
+  - 状态（2026-09-13）：随 ADR-0026 一并退役，`UpdateInstallCoordinator` 已删除。库在内部执行
+    prepare -> rename 交换 -> best-effort 回滚，但**不与本项目 runtime/renderer 的 shutdown 顺序
+    协调**，也未在真实安装链验证，因此保持未勾选。
 - [ ] 测试断网、代理、中断、签名错误和降级攻击。
-  - 状态（2026-09-06）：`bongocat-update` coordinator 回归覆盖 transport/断网失败、签名失败和
-    重新签名的低 sequence 降级攻击；失败均返回稳定 code，不推进环境 anti-rollback sequence。
-    下载 coordinator 另覆盖取消、中断重试、hash/长度错误和 staging 清理，transport 固定
-    HTTPS、无 redirect 且保留代理配置边界。真实代理链、断网系统 smoke 和发布 endpoint 仍待
-    app-owned update worker/基础设施，因此本项保持未勾选。
+  - 状态（2026-09-13）：自研 coordinator 回归随实现一并删除。**降级攻击检测随 `release_sequence`
+    退役而不再存在**——现在仅按 semver 比较，低 sequence 重放不再被拒绝。断网、代理、中断与签名
+    错误的真实链路测试均未运行，因此保持未勾选。
+- [ ] 更新 channel 按环境隔离。
+  - [x] 构建期 channel 门禁。
+    - 验收证据（2026-09-13）：`ReleaseChannel::from_environment` 从不可变 `BuildEnvironment` 派生
+      channel，运行时输入无法改变它；Development 构建的 `check()` 与 `install()` 在发出任何请求前
+      返回 `update_environment_disabled` 并记录稳定诊断码。系统菜单的「检查更新」入口由
+      `bongocat_app::update_check_available()` 决定，仅当 production channel 与签名公钥同时具备时
+      才显示。
 - [x] 日志 rotation、总大小和保留天数有上限。
   - 状态（2026-09-05）：Cubism Core 日志 sink 已在单文件达到 1 MiB 时执行有界路径轮转，最多保留
     1 个活动文件加 7 个轮转文件，总量不超过 8 MiB；活动文件和轮转失败均有有界 dropped 计数；测试覆盖触发轮转、保留上限和
@@ -2052,21 +2043,16 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     统计与 Core retention 指标现已并入导出，但导出仍不读取或合并 Core/应用原始日志正文，预览器和
     跨域历史日志打包仍待完成，因此本项保持未勾选。
 - [ ] 更新 manifest 定义 `schema_version`、channel、最低可升级版本、发布时间和防回滚字段。
-  - 状态（2026-09-05）：共享 Draft 2020-12 manifest v1 已定义 `schema_version`、环境 channel、
-    release/minimum SemVer、`published_at_unix_seconds`、单调 `release_sequence` 和 target artifacts；
-    Rust 对同一 accept fixture 验签解析，真实发布生成器与签名 envelope 尚未实现。
-  - 状态（2026-09-07）：`bongocat-update` 逐项加载共享 valid/invalid manifest fixtures；valid fixture
-    必须通过 v1 parser，HTTP URL、target/architecture mismatch 和未知字段分别映射到稳定拒绝结果。
-    该回归锁定 shared schema 与 Rust semantic boundary，仍不包含真实发布生成器或签名产物。
-  - 状态（2026-09-07）：更新 manifest contract 测试现读取共享 `update/fixtures/manifest.json`，对每个
-    case 使用固定测试签名执行严格解析与语义验签，并拒绝重复或未登记 fixture 文件；新增 fixture
-    未同步 manifest 时会明确失败。真实发布生成器或签名产物仍未实现。
-- [x] 更新 helper/installer 的权限边界、替换原子性和失败恢复经过单独威胁建模。
-  - 验收证据（2026-09-05）：ADR-0026 固定 helper 只接受同环境已验证 staging artifact、固定
-    installation root 与 app shutdown acknowledgement；拒绝裸 URL/manifest/path、link/path traversal、
-    cross-environment/target 和并发 helper。替换必须 prepare -> validate -> atomic same-volume rename ->
-    launch/health acknowledgement，失败恢复已知 root 而不删除用户数据；OS package signature、helper、fault
-    injection 和双平台实机 smoke 仍需独立实现，未因此标记更新安装完成。
+  - 状态（2026-09-13）：**本项随 ADR-0029 作废**。manifest v1 schema、单调 `release_sequence`
+    防回滚、`minimum_upgradable_version` 与 target artifact 列表不再属于本项目契约；
+    `shared/update/` 下的 Draft 2020-12 schema 与 accept/reject fixtures 已删除，
+    `tools/validate-json-schema.py` 中的 update 校验入口同步移除。发行元数据现由 `self_update`
+    的 `github` 后端从发行页读取，本项目不再解析或校验 manifest。
+- [ ] 更新 helper/installer 的权限边界、替换原子性和失败恢复经过单独威胁建模。
+  - 状态（2026-09-13）：**原验收证据随 ADR-0026 作废，本项从已完成回退为未完成**。独立 helper、
+    prepare -> validate -> atomic same-volume rename -> launch/health acknowledgement 的契约不再由
+    本项目实现；替换改由 `self_update` 内部完成，其权限边界、原子性与失败恢复**未经本项目威胁
+    建模或实机验证**。OS package signature、故障注入和双平台实机 smoke 仍未实现。
 
 ### 8.5 Phase 7 退出门槛
 
@@ -3138,24 +3124,23 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       已通过。实现 commit `22cd56e` 的 CI run `33935203737` 全绿；Windows/macOS/Ubuntu workspace
       jobs `101221672187`/`101221672371`/`101221672243` 均通过完整 workspace 门禁和对应产品 smoke。
 
-68. [x] `P7-SIGNED-UPDATE-MANIFEST`：建立首发更新的离线信任判断核心。
+68. [ ] `P7-SIGNED-UPDATE-MANIFEST`：建立首发更新的离线信任判断核心。
     - 依赖：ADR-0021、不可变 Development/Production 环境、四个首发 target、发布版本与公钥流程。
     - 退出条件：平台无关且禁止 unsafe 的 verifier 先验签再严格解析 v1 manifest；拒绝 HTTP、跨环境、
       未知字段、错误 target/arch、无效 SemVer、过大 manifest/artifact、未知或过期 key、sequence 降级；
       只返回项目自有 verified 类型，并对下载流校验精确长度和 SHA-256；共享 Draft 2020-12 schema、
       accept/reject fixture、依赖许可证/来源检查、完整 Native workspace 门禁和三平台 CI 通过。
-    - 验收证据（2026-09-05）：`bongocat-update`、ADR-0021、共享 schema/fixture 和稳定错误码已实现；使用
-      固定测试 key 的 12 项 release 测试、共享 schema/fixture/locales、严格 workspace Clippy、完整
-      release all-target tests、release check、依赖许可证/来源和 Linux/macOS Intel/Windows x64/ARM64
-      定向 Clippy 已通过。实现 commit `a9371f6` 的 CI run `33936771710` 全绿；Windows/macOS/Ubuntu
-      workspace jobs `101226118609`/`101226118560`/`101226118583` 均通过完整 workspace 门禁和对应
-      产品 smoke。
-    - 状态（2026-09-05）：环境根的 `StorageLayout` 现显式携带 immutable `BuildEnvironment` 并拥有私有
-      `updates/` 目录；`UpdateSequenceStore::open_for_layout` 从该布局派生唯一 channel，调用方不能将
-      Development sequence 写入 Production 根。目录形状测试逐项包含该目录；store 只在此目录写入
-      `update-sequence.json` 和锁文件，不与 config/state 事务混用。`UpdateVerificationSession` 已将
-      该 store 与 verifier 组合，拒绝签名不推进 state，成功验证会持久化 sequence 并立即收紧同一
-      session 的 rollback 下限；`Available` 与 `UpToDate` 都有回归测试。不包含 endpoint、下载或安装器。
+    - 验收证据（2026-09-05，**已作废**）：`bongocat-update`、ADR-0021、共享 schema/fixture 和稳定错误码
+      曾于 commit `a9371f6` 通过 12 项 release 测试与三平台门禁。该实现已于 2026-09-13 随 ADR-0029
+      整体删除（`shared/update/`、manifest v1 schema、sequence store、verifier、staging 与下载/安装
+      coordinator 均不存在），因此本项从已完成回退为未完成。
+    - 状态（2026-09-13）：**本项随 ADR-0029 作废，不再作为交付目标**。更新信任判断改由 `self_update`
+      1.3.0 的 `github` 后端承担：本项目不再解析或校验 manifest，发行元数据从发行页读取，归档完整性由
+      zipsign ed25519 归档签名校验。ADR-0021 与 ADR-0025 已标记「已被 ADR-0029 取代」。被放弃的能力
+      （单调 `release_sequence` 防降级、manifest 未知字段拒绝与 1 MiB 上限、公钥轮换窗、HTTPS-only /
+      禁 redirect / 15s deadline / 禁透明压缩、32 个稳定错误码收敛为 13 个）已逐项记入 ADR-0029 的
+      损失表，本项目当前**没有**替代实现。若后续要求恢复其中任一项，须新建 ADR 并重新立项，
+      不得把本项直接勾选。
 
 69. [x] `P7-AUTOMATIC-UPDATE-PREFERENCE`：让当前 v1 自动检查更新偏好进入正式设置链路。
     - 依赖：当前 v1 `application.check_for_updates_automatically`、settings typed command/snapshot、
@@ -3218,7 +3203,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 | Windows/macOS 首发 CPU 架构和 target triple                   | `P0-DOC-CONSISTENCY`  | CI、SDK 二进制、签名和安装包矩阵   |
 | GPUI 默认 shader 构建工具链及上游 future-incompatibility 处置 | `P0-GPUI-PACKAGE-MAC` | 产品 workspace 和发布构建          |
 | Cubism Core/Framework 版本、获取方式和再分发条款              | `P0-CUBISM`           | Live2D safe layer、CI 和公开安装包 |
-| Windows 安装格式与更新 helper 权限模型                        | Phase 7 开始前        | 签名、升级、回滚和卸载             |
+| Windows 安装格式与 installer 权限模型                          | Phase 7 开始前        | 签名、升级、回滚和卸载             |
 | macOS 最低系统、Intel 支持和 universal binary 策略            | Phase 1 开始前        | target、依赖、CI 和 notarization   |
 
 每项决策必须落入 ADR 或对应设计文档，并从本表移除；不得只在聊天记录中形成结论。

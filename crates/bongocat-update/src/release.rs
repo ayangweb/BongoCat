@@ -1,0 +1,168 @@
+//! Release channel, target identity, and the immutable build-time configuration
+//! that binds one update run to a distribution channel.
+
+use bongocat_config::BuildEnvironment;
+
+/// The distribution channel an update run is bound to.
+///
+/// The channel is derived at compile time from [`BuildEnvironment`] and cannot be
+/// switched by runtime input. `AGENTS.md` §10 requires the update channel to be
+/// isolated per environment, so a Development build never installs a release
+/// artifact even when it can reach the same endpoint.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReleaseChannel {
+    /// Development builds never fetch or install a release artifact.
+    Development,
+    /// Production builds update from the published release channel.
+    Production,
+}
+
+impl ReleaseChannel {
+    pub const fn from_environment(environment: BuildEnvironment) -> Self {
+        match environment {
+            BuildEnvironment::Development => Self::Development,
+            BuildEnvironment::Production => Self::Production,
+        }
+    }
+
+    /// Whether this channel is allowed to fetch and install releases.
+    pub const fn is_enabled(self) -> bool {
+        matches!(self, Self::Production)
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Development => "development",
+            Self::Production => "production",
+        }
+    }
+}
+
+/// The four release targets the Native Rewrite ships.
+///
+/// The list is closed on purpose: `AGENTS.md` §1 restricts the product to these
+/// combinations, so an unrecognized host must refuse to update rather than fall
+/// back to a guessed asset.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UpdateTargetTriple {
+    Aarch64AppleDarwin,
+    X86_64AppleDarwin,
+    Aarch64PcWindowsMsvc,
+    X86_64PcWindowsMsvc,
+}
+
+impl UpdateTargetTriple {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Aarch64AppleDarwin => "aarch64-apple-darwin",
+            Self::X86_64AppleDarwin => "x86_64-apple-darwin",
+            Self::Aarch64PcWindowsMsvc => "aarch64-pc-windows-msvc",
+            Self::X86_64PcWindowsMsvc => "x86_64-pc-windows-msvc",
+        }
+    }
+
+    /// Whether this target installs a macOS `.app` bundle rather than a bare executable.
+    pub const fn is_apple(self) -> bool {
+        matches!(self, Self::Aarch64AppleDarwin | Self::X86_64AppleDarwin)
+    }
+}
+
+/// The release target this binary was built for.
+///
+/// `None` on any target outside the four shipped combinations. The update runtime
+/// treats that as a hard failure instead of picking an arbitrary asset.
+pub const HOST_TARGET_TRIPLE: Option<UpdateTargetTriple> = {
+    if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        Some(UpdateTargetTriple::Aarch64AppleDarwin)
+    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
+        Some(UpdateTargetTriple::X86_64AppleDarwin)
+    } else if cfg!(all(target_os = "windows", target_arch = "aarch64")) {
+        Some(UpdateTargetTriple::Aarch64PcWindowsMsvc)
+    } else if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+        Some(UpdateTargetTriple::X86_64PcWindowsMsvc)
+    } else {
+        None
+    }
+};
+
+/// Immutable configuration for one update run.
+///
+/// Every field is compile-time constant: no user config, CLI flag or runtime
+/// input can retarget an update at a different repository, channel or target.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ReleaseConfiguration {
+    pub channel: ReleaseChannel,
+    pub repository_owner: &'static str,
+    pub repository_name: &'static str,
+    pub binary_name: &'static str,
+    /// Bundle directory name inside the release archive, on targets that install a bundle.
+    pub bundle_name: Option<&'static str>,
+    pub target: UpdateTargetTriple,
+}
+
+impl ReleaseConfiguration {
+    /// The configuration for the current build, or `None` when the host target is
+    /// outside the four shipped combinations.
+    pub const fn for_current_build(
+        environment: BuildEnvironment,
+        repository_owner: &'static str,
+        repository_name: &'static str,
+        binary_name: &'static str,
+        bundle_name: &'static str,
+    ) -> Option<Self> {
+        let Some(target) = HOST_TARGET_TRIPLE else {
+            return None;
+        };
+        Some(Self {
+            channel: ReleaseChannel::from_environment(environment),
+            repository_owner,
+            repository_name,
+            binary_name,
+            bundle_name: if target.is_apple() {
+                Some(bundle_name)
+            } else {
+                None
+            },
+            target,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{HOST_TARGET_TRIPLE, ReleaseChannel, UpdateTargetTriple};
+    use bongocat_config::BuildEnvironment;
+
+    #[test]
+    fn development_channel_is_disabled_and_production_is_enabled() {
+        assert!(!ReleaseChannel::from_environment(BuildEnvironment::Development).is_enabled());
+        assert!(ReleaseChannel::from_environment(BuildEnvironment::Production).is_enabled());
+    }
+
+    #[test]
+    fn target_triples_match_the_shipped_set() {
+        assert_eq!(
+            UpdateTargetTriple::Aarch64AppleDarwin.as_str(),
+            "aarch64-apple-darwin"
+        );
+        assert_eq!(
+            UpdateTargetTriple::X86_64PcWindowsMsvc.as_str(),
+            "x86_64-pc-windows-msvc"
+        );
+        assert!(UpdateTargetTriple::X86_64AppleDarwin.is_apple());
+        assert!(!UpdateTargetTriple::Aarch64PcWindowsMsvc.is_apple());
+    }
+
+    #[test]
+    fn host_target_is_one_of_the_shipped_combinations_or_none() {
+        if let Some(target) = HOST_TARGET_TRIPLE {
+            assert!(matches!(
+                target,
+                UpdateTargetTriple::Aarch64AppleDarwin
+                    | UpdateTargetTriple::X86_64AppleDarwin
+                    | UpdateTargetTriple::Aarch64PcWindowsMsvc
+                    | UpdateTargetTriple::X86_64PcWindowsMsvc
+            ));
+        }
+    }
+}
