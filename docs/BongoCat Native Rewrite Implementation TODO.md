@@ -2481,7 +2481,9 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       content `NSView` 直接调用 `muda::ContextMenu`，不再借用托盘隐藏窗口；macOS 本机 release
       system-menu smoke 通过底层托盘显隐、状态恢复与 shutdown。实机右键弹出、cursor 定位、DPI、
       窗口层级、点击外部关闭和 action 派发仍待 Windows 10 1903+ 与受支持 macOS 复验，ADR-0031
-      继续将上述行为列为发布门禁。
+      继续将上述行为列为发布门禁。Windows 右键失败的具体根因是 overlay 的 HTCAPTION 命中测试使
+      Windows 发送 WM_NCRBUTTONUP 而非 WM_CONTEXTMENU；现已统一转发两类消息并增加映射单测，
+      但仍需在实际 Windows overlay 上完成右键弹出复验。
 28. [x] `P7-WINDOWS-SINGLE-INSTANCE`：按构建环境隔离 Windows 单实例并唤醒现有设置窗口。
     - 依赖：`P1-SETTINGS-WINDOW-LIFECYCLE`、ADR-0008、Windows GPUI message loop。
     - 退出条件：Development/Production 使用不同的 local named mutex、owner window class 和

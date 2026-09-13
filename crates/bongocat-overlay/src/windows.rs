@@ -98,7 +98,7 @@ use windows::{
                 PM_REMOVE, PeekMessageW, RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE,
                 SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetWindowLongPtrW,
                 SetWindowPos, ShowWindow, TranslateMessage, UnregisterClassW, WM_CLOSE,
-                WM_CONTEXTMENU, WM_NCCREATE, WM_NCDESTROY, WM_NCHITTEST, WNDCLASSW,
+                WM_CONTEXTMENU, WM_NCCREATE, WM_NCDESTROY, WM_NCHITTEST, WM_NCRBUTTONUP, WNDCLASSW,
                 WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
                 WS_POPUP,
             },
@@ -2666,6 +2666,12 @@ fn windows_error(context: &'static str) -> impl FnOnce(Error) -> OverlayError {
     move |error| OverlayError::new(format!("{context}: {error}"))
 }
 
+fn requests_context_menu(message: u32) -> bool {
+    // Returning HTCAPTION for the draggable overlay makes Windows report a
+    // right-click as a non-client message instead of WM_CONTEXTMENU.
+    matches!(message, WM_CONTEXTMENU | WM_NCRBUTTONUP)
+}
+
 unsafe extern "system" fn window_proc(
     hwnd: HWND,
     message: u32,
@@ -2702,7 +2708,7 @@ unsafe extern "system" fn window_proc(
             let _ = unsafe { DestroyWindow(hwnd) };
             return LRESULT(0);
         }
-        WM_CONTEXTMENU if !state.is_null() => {
+        message if requests_context_menu(message) && !state.is_null() => {
             // SAFETY: the state belongs to this HWND and remains live while it is dispatched.
             let state = unsafe { &*state };
             if let Some(sender) = &state.context_menu_sender {
@@ -2863,5 +2869,11 @@ mod tests {
 
         // The ceiling saturates rather than wrapping when a baseline cannot grow.
         assert!(!thread_growth_exceeded(u32::MAX, u32::MAX));
+    }
+    #[test]
+    fn context_menu_messages_cover_client_and_nonclient_right_click() {
+        assert!(requests_context_menu(WM_CONTEXTMENU));
+        assert!(requests_context_menu(WM_NCRBUTTONUP));
+        assert!(!requests_context_menu(WM_CLOSE));
     }
 }
