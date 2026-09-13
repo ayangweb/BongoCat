@@ -643,8 +643,8 @@ workspace 的正式 `just` 入口与 CI 显式选择 Development，Production bu
   权限与磁盘满在 temp 创建前后都必须可受控注入，验证失败不改变当前 snapshot/revision。
 - Diagnostics 通过强类型 `OpenConfigBackupLocation` command 打开当前构建环境的 `backups/`；
   路径只由 Application 从正式 `StorageLayout` 派生并传给 platform adapter，不进入 command、
-  snapshot、错误或 GPUI Entity。platform adapter 先验证绝对目录并 canonicalize，再以独立参数调用
-  Finder/Explorer，不经 shell 或字符串拼接；成功只返回当前 snapshot 且不推进 revision，失败只返回
+  snapshot、错误或 GPUI Entity。platform adapter 先验证绝对目录并 canonicalize，再通过 `opener`
+  crate 交给系统默认程序；成功只返回当前 snapshot 且不推进 revision，失败只返回
   `BackupLocationOpenFailed`。该 command 在 `RecoveryRequired` 受限状态仍可使用。
 - `config.json` 只包含用户设置；窗口布局写入 `state.json`，pressed state、权限结果和模型解析缓存不持久化。
 - `state.json` 使用独立 v1 schema，保存设置窗口的逻辑坐标、尺寸与 maximized 状态，以及 overlay

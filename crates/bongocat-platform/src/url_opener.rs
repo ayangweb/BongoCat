@@ -1,11 +1,5 @@
 use std::fmt;
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-use std::{
-    process::{Command, Stdio},
-    thread,
-};
-
 use url::Url;
 
 const MAX_EXTERNAL_URL_BYTES: usize = 2_048;
@@ -42,30 +36,25 @@ impl fmt::Display for ExternalUrlOpenError {
 impl std::error::Error for ExternalUrlOpenError {}
 
 pub fn open_external_url(value: &str) -> Result<(), ExternalUrlOpenError> {
+    open_external_url_with(value, launch_url)
+}
+
+fn open_external_url_with(
+    value: &str,
+    launch: impl FnOnce(&str) -> Result<(), ExternalUrlOpenError>,
+) -> Result<(), ExternalUrlOpenError> {
     let url = parse_external_url(value)?;
+    launch(url.as_str())
+}
 
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        let _ = url;
-        Err(ExternalUrlOpenError::UnsupportedPlatform)
-    }
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn launch_url(url: &str) -> Result<(), ExternalUrlOpenError> {
+    opener::open(url).map_err(|_| ExternalUrlOpenError::LaunchFailed)
+}
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    {
-        let mut child = external_url_open_command(url.as_str())
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|_| ExternalUrlOpenError::LaunchFailed)?;
-        thread::Builder::new()
-            .name("bongocat-external-url-opener-reaper".to_owned())
-            .spawn(move || {
-                let _ = child.wait();
-            })
-            .map_err(|_| ExternalUrlOpenError::LaunchFailed)?;
-        Ok(())
-    }
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn launch_url(_url: &str) -> Result<(), ExternalUrlOpenError> {
+    Err(ExternalUrlOpenError::UnsupportedPlatform)
 }
 
 fn parse_external_url(value: &str) -> Result<Url, ExternalUrlOpenError> {
@@ -81,16 +70,6 @@ fn parse_external_url(value: &str) -> Result<Url, ExternalUrlOpenError> {
         return Err(ExternalUrlOpenError::InvalidUrl);
     }
     Ok(url)
-}
-
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-fn external_url_open_command(url: &str) -> Command {
-    #[cfg(target_os = "macos")]
-    let mut command = Command::new("/usr/bin/open");
-    #[cfg(target_os = "windows")]
-    let mut command = Command::new("explorer.exe");
-    command.arg(url);
-    command
 }
 
 #[cfg(test)]
@@ -158,20 +137,17 @@ mod tests {
         assert_eq!(ExternalUrlOpenError::ALL.len(), 3);
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
-    fn platform_opener_receives_the_url_as_one_argument_without_a_shell() {
-        #[cfg(target_os = "macos")]
-        let expected_program = std::ffi::OsStr::new("/usr/bin/open");
-        #[cfg(target_os = "windows")]
-        let expected_program = std::ffi::OsStr::new("explorer.exe");
-        let url = "https://docs.example.invalid/guide?value=one%20two&safe=true";
-        let command = external_url_open_command(url);
+    fn adapter_delegates_the_validated_url_to_the_system_opener() {
+        let value = "https://docs.example.invalid/guide?value=one%20two#section";
+        let mut launched = None;
 
-        assert_eq!(command.get_program(), expected_program);
-        assert_eq!(
-            command.get_args().collect::<Vec<_>>(),
-            vec![std::ffi::OsStr::new(url)]
-        );
+        let result = open_external_url_with(value, |url| {
+            launched = Some(url.to_owned());
+            Ok(())
+        });
+
+        assert_eq!(result, Ok(()));
+        assert_eq!(launched.as_deref(), Some(value));
     }
 }

@@ -142,8 +142,17 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
   调用 `NSApplication::stop`；不进入产品依赖图或公共 API；
 - `url 2.5.8`（MIT OR Apache-2.0，Rust 1.63+，Servo `rust-url` 维护）只在
   `bongocat-platform` 私有 external URL parser 中规范化并限制 HTTPS URL；公共 API 只接收字符串、
-  返回项目自有错误，不泄漏 `Url`。macOS/Windows launcher 均以单一参数启动系统 opener，绝不经 shell；
-  替换边界是同等严格的 WHATWG URL parser，不影响 config/runtime/UI 协议；
+  返回项目自有错误，不泄漏 `Url`。替换边界是同等严格的 WHATWG URL parser，不影响
+  config/runtime/UI 协议；
+- `opener 0.8.5`（MIT OR Apache-2.0，未声明 MSRV，`Seeker14491/opener` 维护）是
+  `bongocat-platform` 私有 `directory_opener`/`url_opener` adapter 的系统打开与 reveal 实现。启用
+  `reveal` feature 后，
+  `opener::open` 统一处理目录、普通文件和 URL，`opener::reveal` 使用平台文件管理器定位并选中路径；
+  两者语义保持分离。macOS 使用系统 `open`/`open -R`，Windows 使用 `ShellExecuteW`/
+  `SHOpenFolderAndSelectItems`；当前公共 API 不暴露 reveal，也没有 reveal 业务调用点。项目只保留
+  绝对目录 canonicalize、目录类型检查、HTTPS/credentials/长度校验及稳定匿名错误映射，不向
+  app/runtime/UI 泄漏 `opener::OpenError` 或平台命令类型。替换边界是这两个私有 adapter；升级时须
+  复验目录/URL 打开以及未来 reveal 的定位选中行为；
 - `self_update 1.3.0`（MIT，Rust 1.88+）承担更新的下载、解压、校验、替换与重启，由 ADR-0029 引入。
   只启用 `ureq`、`rustls`、`github`、`archive-tar`、`archive-zip`、`compression-tar-gz`、
   `compression-zip-deflate`、`checksums` 与 `signatures` features；不启用 `progress-bar`，也不启用

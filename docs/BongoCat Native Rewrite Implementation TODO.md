@@ -1818,8 +1818,7 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     parent 可用时调用 `AsyncFileDialog`，缺少 sheet parent 时返回 `BackendUnavailable`。结果在
     Rust 侧重新验证并 canonicalize；macOS 26.5.2 arm64 上真实 Cancel 与已知仓库目录 Select smoke
     均已通过，Windows 真实 `rfd` 选择/取消 smoke 仍需由原生 job 复验。外部 URL 现由共享
-    wrapper 严格限制为无 credentials 的
-    HTTPS，macOS `/usr/bin/open` 与 Windows `explorer.exe` 均只收到一个参数且不经 shell。clipboard
+    wrapper 严格限制为无 credentials 的 HTTPS，并通过 `opener 0.8.5` 交给系统默认程序。clipboard
     现通过私有 `arboard 3.6.1` adapter 读写最多 1 MiB 的无 NUL 纯文本、无文本返回空选项，
     错误不包含内容；x64/ARM64 target check 已通过，但尚无 Windows 实机 clipboard read/write
     smoke，因此总项保持未勾选。
@@ -1858,8 +1857,7 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     `AsyncFileDialog`，仅在 AppKit 主线程、应用已运行且存在 sheet parent 时启动；`rfd` 的
     `None` 按取消映射。macOS 26.5.2 arm64 上本次 `rfd` 版本的真实 Cancel 与仓库目录 Select smoke
     均已通过；历史 `NSOpenPanel` 证据仍见 `P7-MODEL-DIRECTORY-PICKER`。外部 HTTPS URL
-    以 `/usr/bin/open` 单参数
-    wrapper 完成，拒绝 credentials、非 HTTPS 与超长值；pasteboard 现通过私有 `arboard 3.6.1`
+    通过 `opener 0.8.5` 交给系统默认程序，并在项目边界拒绝 credentials、非 HTTPS 与超长值；pasteboard 现通过私有 `arboard 3.6.1`
     adapter 在 AppKit 主线程/auto-release-pool boundary 读写最多 1 MiB 无 NUL 纯文本、匿名返回
     无文本和错误。自动化只验证后台线程拒绝，避免改写用户 clipboard；隔离 pasteboard 的实机
     read/write smoke 及 `NSWorkspace` 其余能力仍待完成。
@@ -2661,8 +2659,8 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
     - 依赖：正式环境 `StorageLayout`、revisioned settings protocol、`P6-CONFIG-SAFE-RECOVERY` 和
       双平台 platform adapter。
     - 退出条件：无路径参数的 typed command 只打开 Application 派生的当前环境 `backups/`；UI、
-      snapshot 和 error 不包含路径或原始 OS 文本；platform adapter 验证/canonicalize 绝对目录并以
-      独立参数启动 Finder/Explorer，不使用 shell；成功不推进 revision，失败保留 snapshot 并返回
+      snapshot 和 error 不包含路径或原始 OS 文本；platform adapter 验证/canonicalize 绝对目录并
+      通过 `opener 0.8.5` 交给系统默认程序；成功不推进 revision，失败保留 snapshot 并返回
       稳定匿名错误，recovery-only 可用；Diagnostics 覆盖 pending、键盘和 accessibility 状态；
       platform/app/ui 定向测试、完整 Native workspace、三平台 CI 和双平台 GPUI smoke 通过。
     - 验收证据（2026-08-31）：typed protocol、Application capability、Finder/Explorer adapter、
@@ -2672,6 +2670,11 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       `99453718576`/`99453718477`/`99453718406` 通过完整门禁，Windows/macOS 分别执行 opener
       参数 contract；Windows input/config job `99453718404`、Windows/macOS GPUI jobs
       `99453718327`/`99453718079` 和 config-store job `99453718598` 同时通过，退出条件满足。
+    - 状态（2026-09-13）：目录和外部 URL 的重复平台命令构造与 reaper 已删除；
+      `directory_opener` 和 `url_opener` 两个私有 adapter 保留原模块边界，并改用
+      `opener 0.8.5` 的 `opener::open`；目录验证/canonicalize、HTTPS 校验、稳定匿名错误和
+      settings 失败语义保持不变。依赖启用
+      `reveal` feature，预留平台文件管理器的定位选中能力；当前没有 reveal 业务调用点，也未新增公共 API。
 41. [x] `P6-BUILD-ENV-METADATA`：让正式构建和打包入口显式固定 Development/Production。
     - 依赖：ADR-0008、正式 app build script、Native workspace/CI 与 macOS packaging baseline。
     - 退出条件：build script 不含隐式 fallback，只接受精确的 `development`/`production` 并把结果

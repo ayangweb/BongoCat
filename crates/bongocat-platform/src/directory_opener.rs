@@ -1,11 +1,5 @@
 use std::{fmt, fs, path::Path};
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-use std::{
-    process::{Command, Stdio},
-    thread,
-};
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DirectoryOpenError {
     UnsupportedPlatform,
@@ -41,6 +35,13 @@ impl fmt::Display for DirectoryOpenError {
 impl std::error::Error for DirectoryOpenError {}
 
 pub fn open_directory(path: &Path) -> Result<(), DirectoryOpenError> {
+    open_directory_with(path, launch_directory)
+}
+
+fn open_directory_with(
+    path: &Path,
+    launch: impl FnOnce(&Path) -> Result<(), DirectoryOpenError>,
+) -> Result<(), DirectoryOpenError> {
     if !path.is_absolute() {
         return Err(DirectoryOpenError::InvalidPath);
     }
@@ -49,37 +50,17 @@ pub fn open_directory(path: &Path) -> Result<(), DirectoryOpenError> {
         return Err(DirectoryOpenError::DirectoryUnavailable);
     }
 
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    return Err(DirectoryOpenError::UnsupportedPlatform);
-
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    {
-        let mut child = directory_open_command(&canonical)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|_| DirectoryOpenError::LaunchFailed)?;
-        let reaper = thread::Builder::new()
-            .name("bongocat-directory-opener-reaper".to_owned())
-            .spawn(move || {
-                let _ = child.wait();
-            });
-        if reaper.is_err() {
-            return Err(DirectoryOpenError::LaunchFailed);
-        }
-        Ok(())
-    }
+    launch(&canonical)
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-fn directory_open_command(path: &Path) -> Command {
-    #[cfg(target_os = "macos")]
-    let mut command = Command::new("/usr/bin/open");
-    #[cfg(target_os = "windows")]
-    let mut command = Command::new("explorer.exe");
-    command.arg(path);
-    command
+fn launch_directory(path: &Path) -> Result<(), DirectoryOpenError> {
+    opener::open(path).map_err(|_| DirectoryOpenError::LaunchFailed)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn launch_directory(_path: &Path) -> Result<(), DirectoryOpenError> {
+    Err(DirectoryOpenError::UnsupportedPlatform)
 }
 
 #[cfg(test)]
@@ -131,20 +112,18 @@ mod tests {
         assert_eq!(DirectoryOpenError::ALL.len(), 4);
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
-    fn platform_opener_receives_the_directory_as_one_argument_without_a_shell() {
-        #[cfg(target_os = "macos")]
-        let expected_program = std::ffi::OsStr::new("/usr/bin/open");
-        #[cfg(target_os = "windows")]
-        let expected_program = std::ffi::OsStr::new("explorer.exe");
-        let path = Path::new("directory with spaces and & metacharacter");
-        let command = directory_open_command(path);
+    fn adapter_delegates_the_canonical_directory_to_the_system_opener() {
+        let base = tempdir().expect("temporary directory");
+        let canonical = base.path().canonicalize().expect("canonical directory");
+        let mut launched = None;
 
-        assert_eq!(command.get_program(), expected_program);
-        assert_eq!(
-            command.get_args().collect::<Vec<_>>(),
-            vec![path.as_os_str()]
-        );
+        let result = open_directory_with(base.path(), |path| {
+            launched = Some(path.to_owned());
+            Ok(())
+        });
+
+        assert_eq!(result, Ok(()));
+        assert_eq!(launched, Some(canonical));
     }
 }

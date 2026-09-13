@@ -18,6 +18,7 @@ accesskit.workspace = true
 arboard.workspace = true
 raw-window-handle.workspace = true
 rfd.workspace = true
+opener.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 accesskit_macos.workspace = true

@@ -38,6 +38,7 @@ embed-resource = "=3.0.11"
 gpui-kit = "=0.6.1"
 rust-i18n = "=4.2.2"
 image = { version = "=0.25.10", default-features = false, features = ["png"] }
+opener = { version = "=0.8.5", features = ["reveal"] }
 proptest = { version = "=1.11.0", default-features = false, features = ["std"] }
 raw-window-handle = "=0.6.2"
 rfd = { version = "=0.17.2", default-features = false }
