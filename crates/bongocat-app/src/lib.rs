@@ -45,6 +45,8 @@ mod diagnostics_bundle;
 #[cfg(test)]
 mod product_icon_contract;
 mod settings;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+mod startup_permission;
 use app_log::ApplicationRunMarker;
 pub use app_log::{
     ApplicationLogCode, ApplicationLogComponent, ApplicationLogDiagnostics, ApplicationLogError,
@@ -55,6 +57,8 @@ pub use settings::{
     ApplicationSettingsService, SettingsServiceJoinError, StatusIconCapability,
     TaskbarIconCapability,
 };
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub use startup_permission::ensure_startup_permission;
 
 #[derive(Clone, Default)]
 pub struct ApplicationShortcutSignals {

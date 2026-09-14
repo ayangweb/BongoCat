@@ -37,6 +37,20 @@
     "quit": "Quit Application",
     "version": "Version %{version}"
   },
+  "startup_permission": {
+    "input_monitoring": {
+      "title": "Input Monitoring Permission Required",
+      "description": "BongoCat needs Input Monitoring permission to receive keyboard and mouse input. Without it the model does not react to your actions.\n\nReopen BongoCat after you grant the permission.",
+      "open_settings": "Open System Settings",
+      "later": "Not Now"
+    },
+    "administrator": {
+      "title": "Run as Administrator Recommended",
+      "description": "BongoCat is running with standard permissions. While another app's window is in the foreground, keyboard and mouse input may not reach it, so the model stops reacting.\n\nTo run as administrator:\nRight-click BongoCat → Properties → Compatibility → turn on \"Run this program as an administrator\" → Apply → OK\n\nChoosing OK opens the folder that contains BongoCat; choosing Cancel keeps running with the current permissions.",
+      "open_folder": "Open Folder",
+      "keep_running": "Keep Running"
+    }
+  },
   "about": {
     "page_title": "About BongoCat",
     "product_information": {

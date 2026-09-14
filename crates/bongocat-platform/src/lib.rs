@@ -57,6 +57,14 @@ mod startup_item_macos;
 #[cfg(target_os = "windows")]
 mod startup_item_windows;
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+mod startup_permission;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub use startup_permission::{
+    STARTUP_PERMISSION_CAPABILITY, StartupPermissionPrompt, StartupPermissionStatus,
+    check_startup_permission, startup_permission_available,
+};
+
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "macos")]

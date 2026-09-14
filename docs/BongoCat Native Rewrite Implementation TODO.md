@@ -1,7 +1,7 @@
 # BongoCat Native Rewrite Implementation TODO
 
 状态：Phase 0 证据补齐与 Phase 1 渐进实现并行
-最后更新：2026-09-13
+最后更新：2026-09-14
 当前分支：`next`
 首发平台：Windows 10 1903+、macOS 12+
 后续评估：Linux
@@ -836,6 +836,14 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 - [ ] 对 pressed set 执行 GetAsyncKeyState 校正。
 - [ ] 处理 power、session lock/unlock 和 input desktop 变化。
 - [ ] 管理员权限差异产生诊断，但默认不要求提权。
+  - 状态（2026-09-14）：ADR-0032 新增启动时的只读 `TokenElevation` 检查（`OpenProcessToken` +
+    `GetTokenInformation`）与 `rfd 0.17.2` 原生提示，未提权时给出「属性 → 兼容性 → 勾选以管理员
+    身份运行此程序」路径，并用 `opener 0.8.5` 的 reveal 定位当前 executable。产品不原地提权、不写
+    HKCU/HKLM、不注册 service，提示不写配置或 state，每次启动重新读取令牌状态。自动化覆盖文案键、
+    `rfd` 结果映射与运行选项解析；`rfd` 未启用 `common-controls-v6`（需同时声明 ComCtl32 v6
+    manifest），Windows 按钮为系统标准 OK/Cancel，提示正文按该实际按钮描述。按钮显示、reveal 动作、
+    勾选兼容性开关后不再提示、以及提权进程完全不提示仍需 Windows 10 1903+ 实机验收，因此总项保持
+    未勾选。
 - [ ] RegisterHotKey 冲突返回错误并保持旧绑定。
 - [ ] issue #47 固定为发布回归项。
 - [ ] 明确 Raw Input scan code 到可查询 virtual-key 的映射，无法可靠校正的键必须有 Reset/保险策略和诊断。
@@ -901,6 +909,31 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     bridge 只公开本应用 settings 语义，不读取或控制其它应用，因此不请求 Accessibility trust。权限
     snapshot 与 event-tap service status 必须保持独立，真实 TCC 状态变化 UI 刷新和授权/撤销实机矩阵
     仍由相邻未完成任务验证。
+- [ ] 启动时检查 Input Monitoring 并在缺失时用原生弹框引导授权，且不持久化提示状态。
+  - 状态（2026-09-14）：ADR-0032 固定提示使用 `rfd 0.17.2` 的无父窗口消息框（macOS 侧为
+    `CFUserNotificationDisplayAlert`，不进入 `NSAlert::runModal`），检查只调用只读
+    `CGPreflightListenEventAccess`；`CGRequestListenEventAccess` 仍只在用户点击引导按钮后调用，因此
+    与 ADR-0024 的「启动、轮询、服务恢复不得弹出请求」一致。引导按钮通过 `NSWorkspace` 打开
+    `x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent`。提示不新增配置项、
+    不写 state、不缓存「稍后」，每次启动重新读取平台状态。单元测试固定 `rfd` 结果到选择的映射与中英
+    文案键；`--startup-permission-smoke` 是只读可重复验收命令（本机当前输出
+    `input_monitoring is missing`）。macOS 26.5.2 arm64 实机采样确认提示在 GPUI run loop 之前真实
+    显示并阻塞等待用户选择（调用栈为
+    `main → ensure_startup_permission → check_startup_permission → rfd → CFUserNotificationDisplayAlert`）；
+    检查判定为已授权时产品可正常启动并在 6 秒后干净退出。
+  - 缺陷与修正（2026-09-14 实机验收）：首个实现用 `rfd` 的 macOS **同步**消息框，在真实打包产物上
+    用户应答提示后进程 `EXC_CRASH (SIGABRT)`。用崩溃报告帧偏移 + `atos`（同源码 `-C strip=none`
+    重新链接，`__text` 大小 `0xd901e4` 与产物一致）与重现得到同一结论：`MacPlatform::run` 的
+    `set_ivar("platform")` 作用在共享的**基类** `NSApplication` 上，
+    `objc-0.2.7` panic `Ivar platform not found on class NSApplication`，release 的
+    `panic = "abort"` 将其变成 abort。根因是 `rfd` 同步路径的 `PolicyManager`/`FocusManager`
+    会抢先创建共享 `NSApplication`，而 `gpui_macos` 要求该实例是自带 `platform` ivar 的
+    `GPUIApplication` 子类。现改用同 crate 的无父窗口**异步**实现（只建 `CFUserNotification`，
+    不触碰 AppKit）+ `async_io::block_on`；无点击验证：请求弹框但不等待答复时产品正常启动并干净退出
+    （exit 0），且采样确认对话框线程阻塞在 `CFUserNotificationReceiveResponse`。已确认
+    `NSWorkspace` 与只读 preflight 不创建共享 `NSApplication`；新增 macOS contract 测试禁止该模块
+    出现 `rfd::MessageDialog::new`（含反向自检）。两条按钮路径（打开设置 / 稍后再说）、授权后不再
+    提示，以及「稍后再说」后产品继续启动，仍需要人工实机点击，因此总项保持未勾选。
 
 ### 3.5 配置 v1
 

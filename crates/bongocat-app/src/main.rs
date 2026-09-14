@@ -241,6 +241,13 @@ fn gpui_application() -> GpuiApplication {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct RunOptions {
     run_duration: Duration,
+    /// Set for every accepted argument except `--run-seconds` and the help flag.
+    ///
+    /// Smoke and diagnostic harnesses are launched by scripts and CI on machines where nobody can
+    /// answer a native dialog, so the startup permission prompt is skipped for them. A product
+    /// start (`--run-seconds 0`, including the login item) and a plain `cargo run` always check,
+    /// exactly like a packaged Production build.
+    automated_verification: bool,
     settings_window_smoke: bool,
     settings_window_open_smoke: bool,
     models_page_smoke: bool,
@@ -258,6 +265,7 @@ struct RunOptions {
     #[cfg(feature = "storage-test-injection")]
     diagnostics_export_failure_smoke: bool,
     system_menu_smoke: bool,
+    startup_permission_smoke: bool,
     #[cfg(target_os = "macos")]
     application_reopen_smoke: bool,
     #[cfg(target_os = "macos")]
@@ -271,6 +279,7 @@ impl RunOptions {
     fn parse(arguments: impl IntoIterator<Item = String>) -> Result<Self, RunOptionsError> {
         let mut arguments = arguments.into_iter();
         let mut run_seconds = DEFAULT_RUN_SECONDS;
+        let mut automated_verification = false;
         let mut settings_window_smoke = false;
         let mut settings_window_open_smoke = false;
         let mut models_page_smoke = false;
@@ -288,6 +297,7 @@ impl RunOptions {
         #[cfg(feature = "storage-test-injection")]
         let mut diagnostics_export_failure_smoke = false;
         let mut system_menu_smoke = false;
+        let mut startup_permission_smoke = false;
         #[cfg(target_os = "macos")]
         let mut application_reopen_smoke = false;
         #[cfg(target_os = "macos")]
@@ -295,6 +305,12 @@ impl RunOptions {
         #[cfg(target_os = "windows")]
         let mut single_instance_smoke = false;
         while let Some(argument) = arguments.next() {
+            // Every accepted argument except the bounded run duration and the help flag selects a
+            // smoke or diagnostic harness; see `RunOptions::automated_verification`. An unknown
+            // argument still fails below, so the flag never turns a real start into a harness run.
+            if !matches!(argument.as_str(), "--run-seconds" | "--help" | "-h") {
+                automated_verification = true;
+            }
             match argument.as_str() {
                 "--run-seconds" => {
                     let value = arguments.next().ok_or_else(|| {
@@ -324,6 +340,7 @@ impl RunOptions {
                 #[cfg(feature = "storage-test-injection")]
                 "--diagnostics-export-failure-smoke" => diagnostics_export_failure_smoke = true,
                 "--system-menu-smoke" => system_menu_smoke = true,
+                "--startup-permission-smoke" => startup_permission_smoke = true,
                 #[cfg(target_os = "macos")]
                 "--application-reopen-smoke" => application_reopen_smoke = true,
                 #[cfg(target_os = "macos")]
@@ -340,6 +357,7 @@ impl RunOptions {
         }
         Ok(Self {
             run_duration: Duration::from_secs(run_seconds),
+            automated_verification,
             settings_window_smoke,
             settings_window_open_smoke,
             models_page_smoke,
@@ -357,6 +375,7 @@ impl RunOptions {
             #[cfg(feature = "storage-test-injection")]
             diagnostics_export_failure_smoke,
             system_menu_smoke,
+            startup_permission_smoke,
             #[cfg(target_os = "macos")]
             application_reopen_smoke,
             #[cfg(target_os = "macos")]
@@ -422,16 +441,16 @@ impl std::error::Error for RunOptionsError {}
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn usage() -> &'static str {
     #[cfg(all(target_os = "windows", feature = "storage-test-injection"))]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--diagnostics-export-smoke] [--diagnostics-export-failure-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--diagnostics-export-smoke] [--diagnostics-export-failure-smoke] [--system-menu-smoke] [--startup-permission-smoke] [--single-instance-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
 
     #[cfg(all(target_os = "windows", not(feature = "storage-test-injection")))]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--single-instance-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--startup-permission-smoke] [--single-instance-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
 
     #[cfg(all(target_os = "macos", feature = "storage-test-injection"))]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--diagnostics-export-smoke] [--diagnostics-export-failure-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--diagnostics-export-smoke] [--diagnostics-export-failure-smoke] [--system-menu-smoke] [--startup-permission-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
 
     #[cfg(all(target_os = "macos", not(feature = "storage-test-injection")))]
-    "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run."
+    "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--startup-permission-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run."
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -895,6 +914,24 @@ fn write_smoke_status(status: &str) -> io::Result<()> {
     let mut stdout = io::stdout().lock();
     writeln!(stdout, "bongocat-app: {status}")?;
     stdout.flush()
+}
+
+/// Reports the startup permission state the product would act on, without showing any prompt.
+///
+/// This is the repeatable acceptance path for both platforms: it is run once while the capability
+/// is missing and once while it is granted, and it never writes product state.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn run_startup_permission_smoke() -> Result<(), Box<dyn std::error::Error>> {
+    let state = if bongocat_platform::startup_permission_available() {
+        "available"
+    } else {
+        "missing"
+    };
+    write_smoke_status(&format!(
+        "startup permission {} is {state}",
+        bongocat_platform::STARTUP_PERMISSION_CAPABILITY
+    ))?;
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]
@@ -1754,6 +1791,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if run_options.startup_item_smoke {
         return run_startup_item_smoke();
     }
+    if run_options.startup_permission_smoke {
+        return run_startup_permission_smoke();
+    }
     #[cfg(target_os = "windows")]
     let single_instance = match SingleInstance::acquire(build_single_instance_environment())? {
         SingleInstanceStart::Primary(single_instance) => single_instance,
@@ -1780,6 +1820,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
     if !application.is_operational() {
         return run_configuration_recovery_mode(application);
+    }
+
+    if !run_options.automated_verification {
+        // Startup permission check. It reads the current platform capability, shows the native
+        // prompt when that capability is missing, and records nothing: a user who dismissed the
+        // prompt is asked again on the next start while the capability is still missing, and a user
+        // who granted it is never asked. Nothing here blocks the product from starting (ADR-0032).
+        bongocat_app::ensure_startup_permission(application.effective_language());
     }
 
     let (model_origin, model_id) = match (
@@ -3490,6 +3538,7 @@ mod tests {
             options,
             RunOptions {
                 run_duration: Duration::ZERO,
+                automated_verification: false,
                 settings_window_smoke: false,
                 settings_window_open_smoke: false,
                 models_page_smoke: false,
@@ -3507,6 +3556,7 @@ mod tests {
                 #[cfg(feature = "storage-test-injection")]
                 diagnostics_export_failure_smoke: false,
                 system_menu_smoke: false,
+                startup_permission_smoke: false,
                 #[cfg(target_os = "macos")]
                 application_reopen_smoke: false,
                 #[cfg(target_os = "macos")]
@@ -3658,6 +3708,44 @@ mod tests {
         assert!(options.diagnostics_export_failure_smoke);
         assert!(!options.diagnostics_export_smoke);
         assert!(usage().contains("diagnostics-export-failure-smoke"));
+    }
+
+    #[test]
+    fn startup_permission_smoke_is_opt_in_and_non_interactive() {
+        let options = RunOptions::parse(["--startup-permission-smoke".to_owned()])
+            .expect("startup permission smoke options");
+        assert!(options.startup_permission_smoke);
+        assert!(!options.settings_window_smoke);
+        assert!(!options.opens_settings_window_on_start());
+        assert!(options.automated_verification);
+        assert!(usage().contains("startup-permission-smoke"));
+    }
+
+    #[test]
+    fn only_the_bounded_run_duration_keeps_a_start_interactive() {
+        let product = RunOptions::parse(["--run-seconds".to_owned(), "0".to_owned()])
+            .expect("product run options");
+        assert!(!product.automated_verification);
+        assert!(!product.settings_window_smoke);
+
+        // Every other accepted argument selects a harness, so the startup permission prompt stays
+        // out of automated runs.
+        for arguments in [
+            vec!["--settings-window-smoke".to_owned()],
+            vec!["--system-menu-smoke".to_owned()],
+            vec![
+                "--run-seconds".to_owned(),
+                "4".to_owned(),
+                "--settings-window-smoke".to_owned(),
+            ],
+        ] {
+            assert!(
+                RunOptions::parse(arguments.clone())
+                    .expect("harness run options")
+                    .automated_verification,
+                "{arguments:?}"
+            );
+        }
     }
 
     #[cfg(not(feature = "storage-test-injection"))]

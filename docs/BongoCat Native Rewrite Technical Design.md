@@ -388,6 +388,13 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   的 not-started/running/permission-denied/backend-unavailable/failed/stopped 状态，不携带平台错误文本。
   平台 owner 每次产品启动只尝试一次；权限拒绝或 backend 启动失败不阻止 overlay/runtime，settings
   health 进入 degraded 并在 Diagnostics 显示匿名状态，不在后台循环请求权限或重启服务。
+- 产品启动时以只读 `CGPreflightListenEventAccess` 检查 Input Monitoring，缺失时用 `rfd` 的原生
+  系统弹框引导用户前往「系统设置 → 隐私与安全性 → 输入监控」。提示不写配置、不写 state、不缓存
+  「稍后」，每次启动重新读取平台真实状态；提示本身不调用 TCC request，`CGRequestListenEventAccess`
+  仍只在用户点击引导按钮后发生（ADR-0032）。实现必须使用 `rfd` 无父窗口的**异步**消息框：同步路径
+  会构造 `PolicyManager`/`FocusManager` 并创建共享 `NSApplication`，而 `gpui_macos` 的
+  `MacPlatform::run` 需要该实例是自带 `platform` ivar 的 `GPUIApplication` 子类，否则进程在启动时
+  abort（ADR-0032「macOS 弹框实现修正」）。
 - 监听 tap 被系统禁用、超时和 session 变化，并自动重建。
 - `FlagsChanged` 的 down/up 方向必须在 callback 中从事件自身 flags、左右修饰键 keycode 和 callback decoder 的前一边沿状态冻结；这样左右同类修饰键同时按下时仍能识别单侧 release。decoder 状态不属于 runtime pressed state，并随任何 `Reset` 清空；不得等到 consumer drain 时用较新的全局状态反推旧事件，无法识别的修饰键必须触发可观测 `Reset`。
 - 对键盘和鼠标 pressed set 分别使用 `CGEventSourceKeyState`、`CGEventSourceButtonState` 校正；保留 0–31 号 mouse button 身份，按统一的 `250 ms`/连续 `2` 次缺失策略确认释放，睡眠、锁屏、权限变化和 tap 重启时直接复位。
@@ -418,6 +425,10 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   托盘隐藏窗口。
 - 启动项：当前用户 HKCU Run，Development/Production 使用不同 value name，命令固定为当前
   executable 加 `--run-seconds 0`，默认不要求管理员权限。
+- 启动权限：产品启动时以自身进程令牌的 `TokenElevation` 判断是否已提权，未提权时用 `rfd` 的
+  原生系统弹框说明「属性 → 兼容性 → 勾选以管理员身份运行此程序」路径，并提供定位当前
+  executable 的操作。产品不原地提权、不写 HKCU/HKLM、不注册 service，提示也不持久化任何状态；
+  每次启动重新读取真实令牌状态，已提权则完全不提示（ADR-0032）。
 
 ### 10.2 macOS
 
