@@ -69,6 +69,21 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 
 `windows 0.62.2` 删除了 `Error::from_win32()`；Win32 wrapper 已改为在失败调用后立即使用语义等价的 `Error::from_thread()`，避免清理 API 覆盖 thread last-error。
 
+### 已记录的上游阻塞：`tray-icon 0.25.0` 的 Windows `set_tooltip`
+
+- 阻塞版本：`tray-icon 0.25.0`（crates.io 当日最新稳定版，无更新版本可升级）。
+- 现象：Windows 上 `TrayIcon::set_tooltip` 在图标以固定 GUID 注册后必然返回错误。`set_icon` 与
+  内部 `set_tray_visible` 都调用 `apply_guid`，只有 `set_tooltip` 未设置 `NIF_GUID`；shell 对以
+  `guidItem` 标识的图标忽略 `uID`，并要求后续每次 `Shell_NotifyIcon` 调用携带同一 GUID
+  （<https://learn.microsoft.com/windows/win32/api/shellapi/ns-shellapi-notifyicondataw#troubleshooting>）。
+- 上游 owner：`tauri-apps/tray-icon`（`src/platform_impl/windows/mod.rs` 的 `TrayIcon::set_tooltip`）。
+  已核对上游 `dev` 分支为同一实现，即尚未修复。
+- 影响与绕行：`bongocat-platform` 的 `system_menu_native` adapter 不再在 `set_presentation` 中调用
+  `set_tooltip`，把 tooltip 固定为创建期输入（ADR-0031）。产品文案 `system_menu.title` 恒为
+  `BongoCat`，运行期不变，因此不产生可见行为差异。
+- 解除条件：上游 `set_tooltip` 补上 `apply_guid` 后，可恢复运行期 tooltip 更新；升级时按 ADR-0031
+  的替换边界复验 GUID 注册下的 `set_tooltip` 行为。
+
 ## Transitive Constraints
 
 每个 workspace 都已执行完整 `cargo update`。这会升级所有满足现有依赖约束的传递包，但不能合法越过上游 crate 的 semver 或精确约束。

@@ -1,6 +1,6 @@
 # ADR-0031: Tray Icon and Menu Library Boundary
 
-状态：已接受（2026-09-13）
+状态：已接受（2026-09-13）；2026-09-14 补充 Windows `set_tooltip` 上游缺陷与 tooltip 创建期不变量
 
 ## 背景
 
@@ -87,6 +87,17 @@ Windows GUID、菜单顺序、左键打开设置和右键菜单等产品行为�
   `Shell_NotifyIconW(NIM_MODIFY)` 的失败结果，可能对已失效的 shell registration 返回 `Ok`；
   同样，初次 `NIM_ADD` 失败会等待 `TaskbarCreated` 恢复。adapter 的 `Ok` 不能替代真实托盘
   可见性验收，发布前必须在 Windows 10 1903+ 实机验证隐藏、恢复、Explorer 重启和右键菜单。
+- `tray-icon 0.25.0` 的 Windows `set_tooltip` 对以固定 GUID 注册的图标必然失败：它发出的
+  `NIM_MODIFY` 未带 `NIF_GUID`，而 shell 对以 `guidItem` 标识的图标忽略 `uID`，并要求后续每次
+  `Shell_NotifyIcon` 调用都携带同一 GUID
+  （<https://learn.microsoft.com/windows/win32/api/shellapi/ns-shellapi-notifyicondataw#troubleshooting>）。
+  库内 `set_icon` 与内部 `set_tray_visible` 都调用了 `apply_guid`，只有 `set_tooltip` 漏掉，属上游
+  缺陷；上游 `dev` 分支同样如此，`0.25.0` 已是 crates.io 最新稳定版，没有可升级的修复版本。
+  因此 `SystemMenuPresentation::tooltip` 是**创建期输入**：由 `start_with_presentation` 经
+  `with_tooltip` 一次性写入（该路径的 `NIM_ADD` 携带 `NIF_GUID`，可正常工作），
+  `set_presentation` 不得再调用 `set_tooltip`。当前产品文案 `system_menu.title` 在中英目录中
+  恒为 `BongoCat`，运行期不发生变化；若将来需要运行期更换 tooltip 文案，必须连同 GUID 一起
+  重建托盘 owner，或先确认上游已修复该调用。
 
 ## 验证
 
@@ -99,6 +110,11 @@ Windows GUID、菜单顺序、左键打开设置和右键菜单等产品行为�
 - 发布前必须在 Windows 10 1903+ 与受支持 macOS 实机验证 overlay 右键菜单的 cursor 定位、缩放/DPI、
   窗口层级、点击外部关闭、action 派发和 shutdown；Windows x64/ARM64 cross-check 只能证明编译与
   边界，不能证明 tray registration、右键菜单、左键打开设置、Explorer 重启恢复或资源管理器交互。
+- `native-workspace` 的 `Smoke Windows D3D11 product overlay` 在真实 Windows runner 上运行
+  `--settings-window-open-smoke` 与 `--settings-window-smoke --models-page-smoke`，是上述
+  `set_tooltip` 缺陷的唯一回归来源：2026-09-14 的 job 日志显示 `set_presentation` 每 50ms 重试一次，
+  在 30 秒内累计 380 条完全相同的 `StatusItemUpdateFailed`。该 job 和其中每个 smoke step 都必须
+  保持启用，不得以跳过、忽略错误或放宽断言的方式让 CI 通过。
 - 当前环境未运行 Windows 实机 smoke；Windows 托盘与右键菜单行为仍是发布门禁，不得以
   cross-compile 结果宣称完成。
 
@@ -106,7 +122,7 @@ Windows GUID、菜单顺序、左键打开设置和右键菜单等产品行为�
 
 替换点只有 `bongocat-platform` 私有 `system_menu_native` adapter 和 overlay 的
 `HasWindowHandle` 实现。升级或替换 `tray-icon`/`muda` 时必须复验：两者仍解析到同一 `muda`
-package、双平台菜单顺序与启用状态、Windows 固定 GUID、左键/右键行为、macOS template image 与
-主线程约束、overlay HWND/`NSView` 生命周期、cursor 定位、隐藏后的恢复、shutdown 清理、依赖
-target/features、Windows shell failure 语义和 PNG 资源格式。adapter 之外不得依赖第三方 tray/menu
-类型。
+package、双平台菜单顺序与启用状态、Windows 固定 GUID、GUID 注册下的 `set_tooltip` 是否已修复、
+左键/右键行为、macOS template image 与主线程约束、overlay HWND/`NSView` 生命周期、cursor 定位、
+隐藏后的恢复、shutdown 清理、依赖 target/features、Windows shell failure 语义和 PNG 资源格式。
+adapter 之外不得依赖第三方 tray/menu 类型。
