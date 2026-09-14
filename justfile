@@ -1,3 +1,11 @@
+# `just` defaults to `sh` on every platform, but Windows has no POSIX shell and
+# Git for Windows only adds `cmd` (never `usr\bin`) to PATH, so every recipe
+# failed with "could not find the shell `sh`". `cmd.exe` is always resolvable on
+# Windows and propagates native exit codes, so a failing `cargo` still fails the
+# recipe; a shell that reports success for a failed child command would let a
+# broken build pass. Unix keeps the default `sh -cu`.
+set windows-shell := ["cmd.exe", "/c"]
+
 # List the available Native Rewrite tasks.
 default:
     @just --list
