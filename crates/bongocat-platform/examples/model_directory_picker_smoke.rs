@@ -1,8 +1,13 @@
-use bongocat_platform::{DirectoryPickerOutcome, pick_model_directory};
+use bongocat_platform::pick_model_directory;
+use std::{error::Error, io};
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+use bongocat_platform::DirectoryPickerError;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use bongocat_platform::DirectoryPickerOutcome;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::{
     env,
-    error::Error,
-    io,
     path::PathBuf,
     sync::{Arc, atomic::AtomicBool, mpsc},
 };
@@ -102,17 +107,20 @@ fn run_native_application(_application: &NativeApplication) {
     NSApplication::sharedApplication(mtm).run();
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 enum ExpectedOutcome {
     Cancelled,
     Selected(PathBuf),
     SelectedAny,
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 struct SmokeOptions {
     expected: ExpectedOutcome,
     automated: bool,
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn smoke_options() -> Result<SmokeOptions, io::Error> {
     let mut arguments = env::args().skip(1);
     let expected = match arguments.next().as_deref() {
@@ -236,7 +244,7 @@ fn start_automation(
         .map(Some)
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 fn start_automation(
     _expected: &ExpectedOutcome,
     automated: bool,
@@ -250,7 +258,27 @@ fn start_automation(
     Ok(None)
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn verify_unsupported_platform() -> Result<(), Box<dyn Error>> {
+    // The platform layer exposes no native directory picker on this target. It must reject the
+    // request synchronously and must never invoke the completion callback.
+    match pick_model_directory(|_| {
+        unreachable!("the directory picker must not invoke its callback without a native backend")
+    }) {
+        Err(DirectoryPickerError::UnsupportedPlatform) => Ok(()),
+        Ok(()) => Err(io::Error::other(
+            "the directory picker reported success without a native backend",
+        )
+        .into()),
+        Err(error) => Err(io::Error::other(format!(
+            "the directory picker reported '{error}' instead of an unsupported platform"
+        ))
+        .into()),
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn run_native_picker_smoke() -> Result<(), Box<dyn Error>> {
     let options = smoke_options()?;
     #[cfg(target_os = "macos")]
     let native_application = prepare_native_application();
@@ -275,7 +303,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let actual = receiver
         .recv_timeout(Duration::from_secs(15))
         .map_err(|_| io::Error::other("timed out waiting for the directory picker callback"))??;
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     let actual = receiver
         .recv()
         .map_err(|_| io::Error::other("directory picker callback was dropped"))??;
@@ -297,5 +325,17 @@ fn main() -> Result<(), Box<dyn Error>> {
             Ok(())
         }
         _ => Err(io::Error::other("directory picker returned an unexpected outcome").into()),
+    }
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        verify_unsupported_platform()
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    {
+        run_native_picker_smoke()
     }
 }
