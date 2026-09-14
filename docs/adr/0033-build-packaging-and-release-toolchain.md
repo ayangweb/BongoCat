@@ -141,8 +141,12 @@ macOS 两种架构在同一个 runner 上构建，保证 SDK、工具链与配�
 - Windows 安装目录由 `$LOCALAPPDATA\Programs\BongoCat` 变为 `$LOCALAPPDATA\BongoCat`
   （`cargo-packager` 的 currentUser 布局），注册表仍写在 HKCU。`next` 尚未发布，
   不存在需要迁移的已安装实例。
-- 受 `cargo-packager` 命名规则约束，Windows 安装器文件名是
-  `bongocat-app_<version>_x64-setup.exe`（取自主二进制名）。
+- `cargo-packager` 硬编码 Windows 安装器文件名为
+  `{主二进制名}_{version}_{arch}-setup.exe`，且没有可配置项。发布资产名是产品决策，
+  因此 `bongocat-packaging` 在打包完成后把已产出的安装器重命名为
+  `BongoCat_<version>_x64.exe`（`<version>` 取自 `CARGO_PKG_VERSION`，架构取自
+  `ReleaseTarget::architecture`，两者都随构建参数自动解析）。重命名只作用于文件本身，
+  安装器内容、`Info.plist` 与 bundle 布局仍完全由 `cargo-packager` 拥有。
 - 不再有 NSIS 许可证页面与 DMG EULA 页面（未配置 `license-file`）。
 - **没有**产出可更新资产：`bongocat-update` 的 `self_update` 需要按 target triple 命名、
   macOS 根为 `BongoCat.app/`、Windows 根为 `bongocat-app.exe` 的归档。当前
@@ -174,7 +178,8 @@ macOS 两种架构在同一个 runner 上构建，保证 SDK、工具链与配�
   `Contents/Resources/build-provenance.json`。
 - `just build --target x86_64-apple-darwin` 产出 x86_64 的 `.app` 与 `.dmg`。
 - `tools/tests/` 下的契约测试改为断言新的打包配置：target 集合、产物集合、
-  bundle id、最低系统版本、版本号来源、与 `bongocat-update` 的 target/命名一致性。
+  Windows 安装器发布名、bundle id、最低系统版本、版本号来源、与 `bongocat-update` 的
+  target/命名一致性。
 - release workflow 用 `just version` 校验 tag。
 
 ## 后续

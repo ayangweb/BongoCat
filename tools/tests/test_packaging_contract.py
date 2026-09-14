@@ -8,6 +8,7 @@ set of decisions only this repository can make:
 
 * which targets ship and which artifacts each target publishes,
 * that the Windows installer stays per-user,
+* that the Windows installer is published under the product release name,
 * that the macOS bundle overlay and the runtime resource lookup agree,
 * that `just` stays a thin entry point and no self-built packaging script returns.
 
@@ -82,6 +83,22 @@ class PackagingTargetTests(unittest.TestCase):
         self.assertIn("NSISInstallerMode::CurrentUser", source)
         self.assertNotIn("NSISInstallerMode::PerMachine", source)
         self.assertNotIn("NSISInstallerMode::Both", source)
+
+    def test_windows_installer_is_published_under_the_product_release_name(self):
+        # cargo-packager names the NSIS installer after the main binary and
+        # appends `-setup`, and exposes no option for it. The published name is a
+        # product decision, so the packaging entry point renames the finished
+        # installer and the release workflow asserts the exact name.
+        source = read(PACKAGER)
+        self.assertIn("fn installer_file_name(self)", source)
+        self.assertIn("fn rename_windows_installer(", source)
+        self.assertIn('"{PRODUCT_NAME}_{}_{}.exe"', source)
+        self.assertIn("rename_windows_installer(target, &mut artifacts)?;", source)
+
+        workflow = read(RELEASE_WORKFLOW)
+        self.assertIn("BongoCat_${env:version}_x64.exe", workflow)
+        self.assertIn("path: target/package/BongoCat_*.exe", workflow)
+        self.assertNotIn("-setup", workflow, "the published installer drops the packaging suffix")
 
 
 class MacosBundleTests(unittest.TestCase):

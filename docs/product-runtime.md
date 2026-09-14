@@ -73,7 +73,7 @@ version. The release workflow refuses to publish a tag that disagrees with `just
 On macOS `just build` produces `target/package/BongoCat.app` and
 `target/package/BongoCat-<version>-<arch>.dmg`, and prints both absolute paths. The disk image
 contains the signed bundle plus an `/Applications` drop link. On Windows it produces the x64 NSIS
-current-user installer.
+current-user installer at `target/package/BongoCat_<version>_x64.exe`.
 
 Native build provenance is written as path-free JSON with the source commit, `Cargo.lock` SHA-256,
 Rust toolchain, target, profile, feature set, and build environment. The macOS package includes

@@ -83,6 +83,11 @@ const OUTPUT_DIRECTORY: &str = "target/package";
 /// Staging directory for generated packaging inputs, relative to the output directory.
 const STAGING_DIRECTORY: &str = "provenance";
 /// Staging directory for the disk image contents, relative to the output directory.
+///
+/// Only the macOS disk image builder reads it, so it is Unix-only: a Windows
+/// build would otherwise carry a constant no code path can reach, which the
+/// workspace's `-D warnings` gate rejects.
+#[cfg(unix)]
 const DISK_IMAGE_STAGING_DIRECTORY: &str = "dmg-stage";
 /// Ad-hoc signature used when no distribution identity is provisioned.
 ///
@@ -146,6 +151,25 @@ impl ReleaseTarget {
             Self::MacosAarch64 => "arm64",
             Self::MacosX86_64 => "x64",
             Self::WindowsX86_64 => "x64",
+        }
+    }
+
+    /// The file name the release publishes this target's installer under.
+    ///
+    /// `None` for the Apple targets: their `.app` and `.dmg` are already named by
+    /// this crate. The Windows installer is named by `cargo-packager` instead,
+    /// which hard-codes `{main binary name}_{version}_{arch}-setup.exe` with no
+    /// option to configure it, so it is renamed to this name after packaging.
+    /// Version and architecture come from the same sources as every other
+    /// artifact, so neither is hard-coded here.
+    fn installer_file_name(self) -> Option<String> {
+        match self {
+            Self::WindowsX86_64 => Some(format!(
+                "{PRODUCT_NAME}_{}_{}.exe",
+                env!("CARGO_PKG_VERSION"),
+                self.architecture()
+            )),
+            Self::MacosAarch64 | Self::MacosX86_64 => None,
         }
     }
 
@@ -338,6 +362,7 @@ fn run(arguments: Vec<String>) -> Result<Vec<PathBuf>> {
     )?;
     let packages = cargo_packager::package(&config)?;
     let mut artifacts = collect_artifacts(&packages);
+    rename_windows_installer(target, &mut artifacts)?;
 
     if requested.contains(&PackageFormat::Dmg) {
         let bundle = artifacts
@@ -584,6 +609,44 @@ fn collect_artifacts(packages: &[cargo_packager::PackageOutput]) -> Vec<PathBuf>
         .collect()
 }
 
+/// Renames the packaged Windows installer to the name the release publishes.
+///
+/// `cargo-packager` owns the NSIS installer and names it after the main binary
+/// with a `-setup` suffix; the product publishes
+/// [`ReleaseTarget::installer_file_name`] instead. Only the finished file is
+/// renamed here, so installer contents and bundle layout stay owned by
+/// `cargo-packager`.
+fn rename_windows_installer(target: ReleaseTarget, artifacts: &mut [PathBuf]) -> Result<()> {
+    let Some(name) = target.installer_file_name() else {
+        return Ok(());
+    };
+    let installer = artifacts
+        .iter()
+        .position(|artifact| {
+            artifact.is_file()
+                && artifact
+                    .extension()
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("exe"))
+        })
+        .ok_or_else(|| {
+            Box::new(Failure(format!(
+                "{} must produce an installer, but packaging produced none",
+                target.triple()
+            ))) as Box<dyn std::error::Error>
+        })?;
+
+    let renamed = artifacts[installer].with_file_name(&name);
+    if renamed == artifacts[installer] {
+        return Ok(());
+    }
+    if renamed.exists() {
+        fs::remove_file(&renamed)?;
+    }
+    fs::rename(&artifacts[installer], &renamed)?;
+    artifacts[installer] = renamed;
+    Ok(())
+}
+
 /// Runs a tool, mapping a missing executable and a non-zero exit onto a failure.
 fn run_command(program: &str, command: &mut Command) -> Result<()> {
     let status = command.status().map_err(|error| {
@@ -727,5 +790,36 @@ fn report(artifacts: &[PathBuf]) {
     println!("Artifacts:");
     for artifact in artifacts {
         println!("  {}", artifact.display());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ReleaseTarget;
+
+    /// The published name is product name, resolved version and architecture
+    /// token, with no packaging suffix. `self_update` matches release assets on
+    /// the target triple, so the installer name only has to be stable and
+    /// self-describing.
+    #[test]
+    fn windows_installer_is_published_under_the_product_release_name() {
+        let name = ReleaseTarget::WindowsX86_64
+            .installer_file_name()
+            .expect("the Windows target publishes an installer name");
+
+        assert_eq!(
+            name,
+            format!("BongoCat_{}_x64.exe", env!("CARGO_PKG_VERSION"))
+        );
+        assert!(
+            !name.contains("-setup"),
+            "the published installer must not keep the packaging suffix: {name}"
+        );
+    }
+
+    #[test]
+    fn apple_targets_keep_the_names_this_crate_already_builds() {
+        assert!(ReleaseTarget::MacosAarch64.installer_file_name().is_none());
+        assert!(ReleaseTarget::MacosX86_64.installer_file_name().is_none());
     }
 }

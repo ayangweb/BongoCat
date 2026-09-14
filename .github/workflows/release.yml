@@ -37,15 +37,18 @@ jobs:
       - name: Verify the installer artifact
         shell: pwsh
         run: |
-          $installers = @(Get-ChildItem -Path "target/package" -Filter "*-setup.exe" -File)
+          # The published name is BongoCat_<version>_<arch>.exe: the packaging
+          # entry point renames the cargo-packager installer to it.
+          $expected = "BongoCat_${env:version}_x64.exe"
+          $installers = @(Get-ChildItem -Path "target/package" -Filter "*.exe" -File)
           if ($installers.Count -ne 1) {
             throw "expected exactly one installer, found $($installers.Count)"
           }
           $installer = $installers[0]
-          if ($installer.Length -le 0) { throw "installer is empty" }
-          if ((Split-Path -Leaf $installer.FullName) -notlike "*$env:version*") {
-            throw "installer name does not contain the product version $env:version"
+          if ($installer.Name -ne $expected) {
+            throw "expected the installer to be named $expected, found $($installer.Name)"
           }
+          if ($installer.Length -le 0) { throw "installer is empty" }
           Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256 |
             Select-Object -ExpandProperty Hash |
             ForEach-Object { Write-Host "installer sha256=$_" }
@@ -63,7 +66,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: release-windows-x64
-          path: target/package/*-setup.exe
+          path: target/package/BongoCat_*.exe
           if-no-files-found: error
 
   macos:
