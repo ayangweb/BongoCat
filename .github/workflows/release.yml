@@ -1,0 +1,174 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows-x64:
+    name: Windows x64 installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: taiki-e/install-action@just
+      - name: Check the tag against the single product version source
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(just version)
+          echo "version=$version" >> "$GITHUB_ENV"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "tag $GITHUB_REF_NAME does not match the workspace product version $version" >&2
+            exit 1
+          fi
+      - name: Build the Production product and package the installer
+        run: just build
+      - name: Verify the installer artifact
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem -Path "target/package" -Filter "*-setup.exe" -File)
+          if ($installers.Count -ne 1) {
+            throw "expected exactly one installer, found $($installers.Count)"
+          }
+          $installer = $installers[0]
+          if ($installer.Length -le 0) { throw "installer is empty" }
+          if ((Split-Path -Leaf $installer.FullName) -notlike "*$env:version*") {
+            throw "installer name does not contain the product version $env:version"
+          }
+          Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256 |
+            Select-Object -ExpandProperty Hash |
+            ForEach-Object { Write-Host "installer sha256=$_" }
+      - name: Require Authenticode signatures for a stable release
+        shell: pwsh
+        run: |
+          # cargo-packager signs the product binaries and the installer only when a
+          # signing command or certificate is configured. Without one the installer
+          # is unsigned, which the project's release gates do not allow for stable.
+          $signed = Get-ChildItem -Path "target/package" -Filter "*.exe" -File |
+            Where-Object { (Get-AuthenticodeSignature -LiteralPath $_.FullName).Status -eq 'Valid' }
+          if (-not $signed) {
+            Write-Host "::warning::no valid Authenticode signature found; this installer is not a stable release artifact"
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows-x64
+          path: target/package/*-setup.exe
+          if-no-files-found: error
+
+  macos:
+    name: macOS ${{ matrix.triple }}
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        triple:
+          - aarch64-apple-darwin
+          - x86_64-apple-darwin
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.triple }}
+      - uses: taiki-e/install-action@just
+      - name: Check the tag against the single product version source
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(just version)
+          echo "version=$version" >> "$GITHUB_ENV"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "tag $GITHUB_REF_NAME does not match the workspace product version $version" >&2
+            exit 1
+          fi
+      - name: Build the Production product and package the bundle and disk image
+        run: just build --target ${{ matrix.triple }}
+      - name: Verify the packaged bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          app=target/package/BongoCat.app
+          test "$(plutil -extract CFBundleIdentifier raw -o - "$app/Contents/Info.plist")" = 'com.ayangweb.bongo-cat'
+          test "$(plutil -extract CFBundleShortVersionString raw -o - "$app/Contents/Info.plist")" = "$version"
+          test "$(plutil -extract LSMinimumSystemVersion raw -o - "$app/Contents/Info.plist")" = '12.0'
+          test "$(plutil -extract LSMultipleInstancesProhibited raw -o - "$app/Contents/Info.plist")" = 'true'
+          cmp resources/icons/logo-macos.icns "$app/Contents/Resources/logo-macos.icns"
+          for model in standard keyboard gamepad; do
+            test -d "$app/Contents/Resources/models/$model"
+          done
+          test -f "$app/Contents/Resources/build-provenance.json"
+          codesign --verify --deep --strict "$app"
+          jq -e --arg target '${{ matrix.triple }}' \
+            '.schema_version == 1 and .target == $target and .build_environment == "production" and .profile == "release"' \
+            "$app/Contents/Resources/build-provenance.json" >/dev/null
+      - name: Verify the disk image mounts with the drop link and the bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          image=$(ls target/package/*.dmg)
+          mount=$(hdiutil attach -nobrowse -readonly "$image" | awk -F '\t' '/\/Volumes\//{print $NF; exit}')
+          if [ -z "$mount" ]; then
+            echo "the disk image did not mount" >&2
+            exit 1
+          fi
+          test -L "$mount/Applications"
+          codesign --verify --deep --strict "$mount/BongoCat.app"
+          hdiutil detach "$mount" >/dev/null
+          echo "verified $image"
+      - name: Package the bundle for publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          # `.app` is a directory; publishing it needs an archive. The full target
+          # triple in the name is the convention bongocat-update matches on.
+          ditto -c -k --keepParent \
+            target/package/BongoCat.app \
+            "target/package/BongoCat-$version-${{ matrix.triple }}.app.zip"
+      - name: Collect the release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          cp target/package/*.dmg target/package/*.app.zip release-assets/
+          ls -la release-assets
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos-${{ matrix.triple }}
+          path: release-assets/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish the GitHub release
+    needs:
+      - windows-x64
+      - macos
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Create the release and attach every artifact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ls -la artifacts
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            artifacts/*

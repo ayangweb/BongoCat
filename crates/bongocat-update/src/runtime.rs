@@ -35,7 +35,8 @@ pub const RELEASE_BINARY_NAME: &str = "bongocat-app";
 
 /// The macOS bundle directory name inside a release archive.
 ///
-/// Must equal the `.app` directory `scripts/package-macos.sh` produces.
+/// Must equal the `.app` directory the packaging pipeline produces, which is
+/// `<product name>.app` from `crates/bongocat-packaging`.
 pub const RELEASE_BUNDLE_NAME: &str = "BongoCat.app";
 
 /// A stable-coded update failure.

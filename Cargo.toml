@@ -9,6 +9,7 @@ members = [
     "crates/bongocat-log",
     "crates/bongocat-model",
     "crates/bongocat-overlay",
+    "crates/bongocat-packaging",
     "crates/bongocat-platform",
     "crates/bongocat-render",
     "crates/bongocat-runtime",
@@ -32,6 +33,7 @@ arboard = { version = "=3.6.1", default-features = false }
 async-io = "=2.6.0"
 atomic-write-file = "=0.3.1"
 async-channel = "=2.5.0"
+cargo-packager = { version = "=0.11.8", default-features = false, features = ["rustls-tls"] }
 dirs = "=6.0.0"
 ed25519-dalek = { version = "=3.0.0", default-features = false, features = ["fast"] }
 embed-resource = "=3.0.11"

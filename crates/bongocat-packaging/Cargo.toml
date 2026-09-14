@@ -1,0 +1,15 @@
+[package]
+name = "bongocat-packaging"
+description = "Project-level build, bundle and installer packaging entry point."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+cargo-packager.workspace = true
+
+[lints]
+workspace = true

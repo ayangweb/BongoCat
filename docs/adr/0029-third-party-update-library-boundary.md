@@ -176,6 +176,9 @@ feature 与 `signatures` feature、install 阶段的 stash 回滚覆盖这些点
    - **现状**：`scripts/package-macos.sh` 只产出 `target/package/BongoCat.app`，**不产归档**；
      `scripts/build-windows.ps1` 只产出 NSIS 安装器 `BongoCat-$version-x64-setup.exe`。
      两者都还需要新增发行步骤，本次未实现。
+     > 注（2026-09-14）：上面两个脚本已随 ADR-0033 删除。当前打包入口只产出 `.app`、`.dmg` 与
+     > Windows NSIS 安装器，**仍然不产可更新归档**，结论与上面一致：更新资产是一项未完成的
+     > 发布门禁。ADR-0033 记录了新的打包链路与这条缺口。
    - 上述布局要求已在本机实测（不依赖网络）：
      `crates/bongocat-update/tests/archive_layout_capability.rs` 用库自身的 `Extract` 验证
      macOS 归档整包解压后 `BongoCat.app/` 位于根部且携带 `Resources/`、Windows 归档根级的

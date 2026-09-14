@@ -25,8 +25,7 @@ RELEASE = ROOT / "crates" / "bongocat-update" / "src" / "release.rs"
 APP_MANIFEST = ROOT / "crates" / "bongocat-app" / "Cargo.toml"
 WORKSPACE_MANIFEST = ROOT / "Cargo.toml"
 DENY = ROOT / "deny.toml"
-WINDOWS_BUILD = ROOT / "scripts" / "build-windows.ps1"
-MACOS_PACKAGE = ROOT / "scripts" / "package-macos.sh"
+PACKAGER = ROOT / "crates" / "bongocat-packaging" / "src" / "main.rs"
 
 
 def section(source, header):
@@ -62,23 +61,26 @@ class UpdateReleaseIdentityTests(unittest.TestCase):
             "self_update derives the Windows archive path from it",
         )
 
-        windows_build = WINDOWS_BUILD.read_text(encoding="utf-8")
+        packager = PACKAGER.read_text(encoding="utf-8")
         self.assertIn(
-            f"{binary}.exe",
-            windows_build,
-            "the Windows build must ship the executable self_update looks for",
+            f'const APPLICATION_BINARY: &str = "{binary}";',
+            packager,
+            "the packaging pipeline must build the executable self_update looks for",
         )
 
     def test_macos_bundle_name_matches_the_packaged_app(self):
         bundle = runtime_constant("RELEASE_BUNDLE_NAME")
 
-        macos_package = MACOS_PACKAGE.read_text(encoding="utf-8")
-        packaged = re.search(r"target/package/(\S+\.app)", macos_package)
-        self.assertIsNotNone(packaged, "package-macos.sh must build a .app")
+        packager = PACKAGER.read_text(encoding="utf-8")
+        product_name = re.search(
+            r'const PRODUCT_NAME: &str = "([^"]+)";', packager
+        )
+        self.assertIsNotNone(product_name, "the packaging tool must declare the product name")
         self.assertEqual(
             bundle,
-            packaged.group(1),
-            "RELEASE_BUNDLE_NAME must be the .app directory package-macos.sh builds",
+            f"{product_name.group(1)}.app",
+            "RELEASE_BUNDLE_NAME must be the .app directory the packaging pipeline builds, "
+            "because cargo-packager names the bundle after the product name",
         )
 
     def test_repository_matches_the_workspace_manifest(self):

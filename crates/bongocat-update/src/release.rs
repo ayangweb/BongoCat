@@ -38,16 +38,16 @@ impl ReleaseChannel {
     }
 }
 
-/// The four release targets the Native Rewrite ships.
+/// The three release targets the Native Rewrite ships.
 ///
 /// The list is closed on purpose: `AGENTS.md` §1 restricts the product to these
 /// combinations, so an unrecognized host must refuse to update rather than fall
-/// back to a guessed asset.
+/// back to a guessed asset. Windows ARM64 is not shipped, because Cubism Native
+/// R5 has no desktop ARM64 Core and Windows runs the x64 build under emulation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UpdateTargetTriple {
     Aarch64AppleDarwin,
     X86_64AppleDarwin,
-    Aarch64PcWindowsMsvc,
     X86_64PcWindowsMsvc,
 }
 
@@ -56,7 +56,6 @@ impl UpdateTargetTriple {
         match self {
             Self::Aarch64AppleDarwin => "aarch64-apple-darwin",
             Self::X86_64AppleDarwin => "x86_64-apple-darwin",
-            Self::Aarch64PcWindowsMsvc => "aarch64-pc-windows-msvc",
             Self::X86_64PcWindowsMsvc => "x86_64-pc-windows-msvc",
         }
     }
@@ -69,15 +68,13 @@ impl UpdateTargetTriple {
 
 /// The release target this binary was built for.
 ///
-/// `None` on any target outside the four shipped combinations. The update runtime
+/// `None` on any target outside the three shipped combinations. The update runtime
 /// treats that as a hard failure instead of picking an arbitrary asset.
 pub const HOST_TARGET_TRIPLE: Option<UpdateTargetTriple> = {
     if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
         Some(UpdateTargetTriple::Aarch64AppleDarwin)
     } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
         Some(UpdateTargetTriple::X86_64AppleDarwin)
-    } else if cfg!(all(target_os = "windows", target_arch = "aarch64")) {
-        Some(UpdateTargetTriple::Aarch64PcWindowsMsvc)
     } else if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
         Some(UpdateTargetTriple::X86_64PcWindowsMsvc)
     } else {
@@ -150,7 +147,7 @@ mod tests {
             "x86_64-pc-windows-msvc"
         );
         assert!(UpdateTargetTriple::X86_64AppleDarwin.is_apple());
-        assert!(!UpdateTargetTriple::Aarch64PcWindowsMsvc.is_apple());
+        assert!(!UpdateTargetTriple::X86_64PcWindowsMsvc.is_apple());
     }
 
     #[test]
@@ -160,7 +157,6 @@ mod tests {
                 target,
                 UpdateTargetTriple::Aarch64AppleDarwin
                     | UpdateTargetTriple::X86_64AppleDarwin
-                    | UpdateTargetTriple::Aarch64PcWindowsMsvc
                     | UpdateTargetTriple::X86_64PcWindowsMsvc
             ));
         }

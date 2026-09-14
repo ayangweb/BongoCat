@@ -197,21 +197,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
-      - name: Check Windows ARM64 platform and overlay source
-        if: matrix.os == 'windows-latest'
-        shell: bash
-        run: |
-          rustup target add aarch64-pc-windows-msvc
-          cargo clippy \
-            --manifest-path Cargo.toml \
-            --locked \
-            -p bongocat-platform \
-            -p bongocat-overlay \
-            --target aarch64-pc-windows-msvc \
-            --all-targets \
-            --all-features \
-            -- \
-            -D warnings
       - name: Smoke Windows D3D11 product overlay
         if: matrix.os == 'windows-latest'
         shell: pwsh
@@ -695,26 +680,23 @@ jobs:
       - name: Smoke Windows startup item lifecycle
         if: matrix.os == 'windows-latest'
         run: cargo test --manifest-path Cargo.toml --locked --release -p bongocat-platform windows_startup_item_registry_smoke_restores_original_value -- --ignored
-      - name: Reject implicit macOS package environment
+      - name: Reject an unknown macOS packaging environment
         if: matrix.os == 'macos-latest'
         shell: bash
         run: |
-          if env -u BONGOCAT_BUILD_ENV ./scripts/package-macos.sh; then
-            echo 'package script accepted a missing build environment' >&2
+          if just build --environment unknown --formats app; then
+            echo 'the packaging entry point accepted an unknown build environment' >&2
             exit 1
           fi
-          if BONGOCAT_BUILD_ENV= ./scripts/package-macos.sh; then
-            echo 'package script accepted an empty build environment' >&2
-            exit 1
-          fi
-          if BONGOCAT_BUILD_ENV=unknown ./scripts/package-macos.sh; then
-            echo 'package script accepted an unknown build environment' >&2
+          if just build --formats dmg2; then
+            echo 'the packaging entry point accepted an unknown artifact format' >&2
             exit 1
           fi
       - name: Smoke macOS startup item lifecycle
         if: matrix.os == 'macos-latest'
         run: |
-          app_path=$(BONGOCAT_BUILD_ENV=production ./scripts/package-macos.sh)
+          just build --formats app
+          app_path=target/package/BongoCat.app
           install_root=$(mktemp -d '/Applications/bongocat-startup-item-smoke.XXXXXX')
           installed_app="$install_root/BongoCat.app"
           stdout_path="$RUNNER_TEMP/macos-startup-item.stdout.log"
@@ -753,7 +735,8 @@ jobs:
         if: matrix.os == 'macos-latest'
         timeout-minutes: 5
         run: |
-          app_path=$(./scripts/package-macos.sh)
+          just build --environment development --formats app
+          app_path=target/package/BongoCat.app
           stdout_path="$RUNNER_TEMP/macos-application-reopen.stdout.log"
           stderr_path="$RUNNER_TEMP/macos-application-reopen.stderr.log"
           rm -f "$stdout_path" "$stderr_path"
@@ -1817,15 +1800,6 @@ jobs:
         if: matrix.manifest == 'spikes/gpui-overlay-macos/Cargo.toml'
         timeout-minutes: 5
         run: cargo build --manifest-path ${{ matrix.manifest }} --locked
-      - name: Check Windows ARM64 overlay source
-        if: matrix.manifest == 'spikes/gpui-overlay-macos/Cargo.toml'
-        shell: bash
-        run: |
-          rustup target add aarch64-pc-windows-msvc
-          cargo check \
-            --manifest-path spikes/overlay-windows/Cargo.toml \
-            --locked \
-            --target aarch64-pc-windows-msvc
       - name: Smoke independent Win32 and D3D11 overlay
         if: matrix.manifest == 'spikes/gpui-overlay-macos/Cargo.toml'
         shell: pwsh

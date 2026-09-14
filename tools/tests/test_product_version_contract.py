@@ -10,9 +10,8 @@ ROOT = Path(__file__).resolve().parents[2]
 WORKSPACE_MANIFEST = ROOT / "Cargo.toml"
 LOCKFILE = ROOT / "Cargo.lock"
 MACOS_INFO = ROOT / "macos" / "Info.plist"
-MACOS_PACKAGE = ROOT / "scripts" / "package-macos.sh"
-WINDOWS_BUILD = ROOT / "scripts" / "build-windows.ps1"
-WINDOWS_PACKAGE = ROOT / "scripts" / "package-windows.ps1"
+PACKAGER = ROOT / "crates" / "bongocat-packaging" / "src" / "main.rs"
+PACKAGER_MANIFEST = ROOT / "crates" / "bongocat-packaging" / "Cargo.toml"
 WINDOWS_RESOURCE = ROOT / "crates" / "bongocat-app" / "windows" / "bongocat-app.rc"
 APP_BUILD_SCRIPT = ROOT / "crates" / "bongocat-app" / "build.rs"
 APP_LIBRARY = ROOT / "crates" / "bongocat-app" / "src" / "lib.rs"
@@ -152,43 +151,22 @@ class ProductVersionContractTests(unittest.TestCase):
                     "product source and tests must derive the version from Cargo",
                 )
 
-    def test_macos_bundle_version_is_injected_at_package_time(self):
+    def test_macos_bundle_version_is_generated_at_package_time(self):
         with MACOS_INFO.open("rb") as source:
             info = plistlib.load(source)
 
+        # The overlay must not carry a version; cargo-packager writes
+        # CFBundleShortVersionString from the configured product version and a
+        # generated CFBundleVersion build number.
         self.assertNotIn("CFBundleShortVersionString", info)
         self.assertNotIn("CFBundleVersion", info)
 
-        package_script = read(MACOS_PACKAGE)
-        self.assertIn('$0 == "[workspace.package]"', package_script)
-        self.assertIn(
-            'plutil -insert CFBundleShortVersionString -string "$PRODUCT_VERSION"',
-            package_script,
-        )
-        self.assertIn(
-            'plutil -insert CFBundleVersion -string "$PRODUCT_VERSION"',
-            package_script,
-        )
-        self.assertIn(
-            'plutil -extract CFBundleShortVersionString raw',
-            package_script,
-        )
-        self.assertIn('plutil -extract CFBundleVersion raw', package_script)
+        packager = read(PACKAGER)
+        self.assertIn('config.version = env!("CARGO_PKG_VERSION").to_owned();', packager)
+        self.assertIn("macos.info_plist_path = Some(", packager)
+        self.assertIn("version.workspace = true", read(PACKAGER_MANIFEST))
 
     def test_windows_metadata_is_generated_from_the_workspace_version(self):
-        build_script = read(WINDOWS_BUILD)
-        package_script = read(WINDOWS_PACKAGE)
-        for script in (build_script, package_script):
-            with self.subTest(script=script):
-                self.assertIn(r"\[workspace\.package\]", script)
-                self.assertIn("$versionMatch.Groups[1].Value", script)
-        self.assertIn("$ProductVersion = $versionMatch.Groups[1].Value", package_script)
-        self.assertNotIn("-ProductVersion", build_script)
-        self.assertIn(
-            "OutputFile name must contain the workspace product version",
-            package_script,
-        )
-
         app_build_script = read(APP_BUILD_SCRIPT)
         for cargo_version_constant in (
             "CARGO_PKG_VERSION",
@@ -206,13 +184,18 @@ class ProductVersionContractTests(unittest.TestCase):
         self.assertIn('VALUE "FileVersion", VERSION "\\0"', resource)
         self.assertIn('VALUE "ProductVersion", VERSION "\\0"', resource)
 
+        # The installer product version comes from the same configured value; the
+        # packaging pipeline never restates it.
+        packager = read(PACKAGER)
+        self.assertIn('config.version = env!("CARGO_PKG_VERSION").to_owned();', packager)
+
         product_version = workspace_package_version()
-        for path in (WINDOWS_BUILD, APP_BUILD_SCRIPT, WINDOWS_RESOURCE):
+        for path in (APP_BUILD_SCRIPT, WINDOWS_RESOURCE, PACKAGER):
             with self.subTest(path=path):
                 self.assertNotIn(
                     product_version,
                     read(path),
-                    "Windows packaging metadata must be derived from Cargo",
+                    "packaging metadata must be derived from Cargo, not restated",
                 )
 
     def test_build_documentation_uses_a_version_placeholder(self):

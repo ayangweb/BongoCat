@@ -118,10 +118,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-29）：最新稳定版 `cargo-deny 0.20.2` 以四个 Windows/macOS target 扫描 13 个独立 workspace，license/source policy 通过并接入 CI；依赖升级后 package 节点数由 lockfile 动态决定，不再把旧的 535 节点快照当作当前事实。Cubism 厂商许可、未来产品依赖、SBOM 和 notice bundle 仍由各自后续门禁处理。
 - [x] 审计 Native Rewrite 所有直接 Rust 依赖并升级到 crates.io 最新稳定版。
   - 验收证据：`docs/phase-0/rust-dependency-versions.md` 记录 2026-08-29 的 21 个直接依赖家族、升级范围和命令。原 18 个家族中 8 个已升级、10 个原本已是最新；后续新增的最新稳定版 `bindgen 0.72.1`、`sha2 0.11.0` 与 `libc 0.2.189` 也已精确锁定。完整 `cargo update` 后，最新 `gpui 0.2.2` 仍约束旧 generation 的 Metal/CoreGraphics 和 5 个有兼容更新的传递版本；均已记录 owner path，未静默覆盖或 fork。Dependabot 每周仅扫描 13 个 Native workspace 并向 `next` 提交分组更新。
-- [ ] 冻结首发 target triple 和 CPU 架构矩阵，明确 Windows ARM64、macOS Intel 是否发布或仅测试。
+- [x] 冻结首发 target triple 和 CPU 架构矩阵，明确 Windows ARM64、macOS Intel 是否发布或仅测试。
   - 状态（2026-08-29）：ADR-0010 已固定 Windows 仅支持 x64/ARM64，i686 不再构建或发布。官方 Cubism Native R5 不提供 desktop Windows ARM64 Core，只有 experimental UWP ARM64 DLL，因此 ARM64 当前是发布阻塞；macOS Intel 和最终安装包形式仍待实机与发布链验证。
   - 状态（2026-09-07）：历史手动 release workflow 已移除 `i686-pc-windows-msvc` matrix entry，避免任何仓库发布入口继续构建 Native Rewrite 明确排除的 Windows x86 target；历史基线文档中的旧版 i686 产物记录仅保留为考古证据。
-  - 状态（2026-09-07）：`tools/tests/test_native_release_target_matrix.py` 已接入 Phase 0 fixtures job，持续断言 release workflow 仅保留 Windows x64/ARM64；该 contract 不替代 macOS Intel、Windows ARM64 Core、实机和签名门禁，因此本项仍保持未勾选。
+  - 状态（2026-09-07）：`tools/tests/test_native_release_target_matrix.py` 已接入 Phase 0 fixtures job，持续断言 release workflow 仅保留 Windows x64/ARM64；该 contract 不替代 macOS Intel、Windows ARM64 Core、实机和签名门禁，因此本项当时仍保持未勾选。
+  - 状态（2026-09-14，**本条取代以上判断**）：矩阵冻结为 `x86_64-pc-windows-msvc`、`x86_64-apple-darwin`、`aarch64-apple-darwin`。Windows ARM64 不再是产品目标（ADR-0010 已更新，理由见 ADR-0033）：没有官方可授权 desktop ARM64 Core 就没有真实 ABI/模型证据，而 Windows on ARM 走 Windows 自身的 x64 仿真，因此维持一个无法端到端验证的原生目标只增加成本；后续版本可按需重新开启。macOS Intel 与 Apple Silicon 都发布 `.app` + `.dmg`，首发安装包形式由 ADR-0033 固定。`deny.toml`、`bongocat-update::UpdateTargetTriple` 与 `crates/bongocat-packaging` 三处声明一致，由 `tools/tests/test_packaging_contract.py` 强制；CI 已删除 Windows ARM64 的 clippy/check 步骤。因此本项转为已勾选，剩余的是各平台实机证据而不是架构决策。
 - [ ] 记录 Windows MSVC/SDK、macOS Xcode/SDK/Metal Toolchain 和 Rust toolchain 的最低可用组合。
 - [ ] 保存旧版最后可用安装包、资源清单、签名状态和 SHA-256，不只记录源码 commit。
 
@@ -1869,6 +1870,16 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     Windows 实机任务验证。tools/tests/test_windows_installer_contract.py 已由现有 unittest discovery
     静态锁定 user execution level、固定 product root/HKCU、uninstall root guard，以及 x64 provenance、
     Authenticode、reparse-point、NSIS version/hash 与禁止 build/sign/network 的包装器边界。
+  - 状态（2026-09-14）：ADR-0023 关于 per-user 安装、权限面、卸载语义与数据隔离的决策不变，但安装器
+    生成方式已由 ADR-0033 取代：`windows/installer/BongoCat.nsi`、`scripts/package-windows.ps1` 与
+    `scripts/build-windows.ps1` 已删除，改由 `cargo-packager` 的 NSIS 模板 + `install-mode =
+    currentUser` 生成，本机不再需要 NSIS 3.11 的 MD5 固定与 `BONGOCAT_NSIS_SETUP_PATH` /
+    `BONGOCAT_MAKENSIS_PATH` 注入。`tools/tests/test_windows_installer_contract.py` 随之删除，其仍然
+    有效的部分（per-user 模式、产物集合、target 集合）由 `tools/tests/test_packaging_contract.py`
+    接替。**已接受的降级**：新路径不再要求 payload 具备有效 Authenticode 签名，签名验证降级为
+    release workflow 的显式告警门禁；同时 `cargo-packager` 会无校验下载 NSIS ApplicationID plugin。
+    Windows 安装器仍未在本机验证过（本机是 macOS），installer 编译、签名、安装、升级、卸载、环境
+    数据保留和 rollback smoke 继续由 Windows 实机任务验证。
 - [x] 对安装目录、用户数据目录和更新临时目录分别建模。
   - 验收证据（2026-09-05）：`StorageLayout` 继续独占按环境隔离的用户数据根，并显式包含私有
     `updates/staging/`；目录创建、Development/Production 同构与 Unix owner-only 权限测试逐项覆盖。

@@ -1,28 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
+<!--
+  macOS bundle property list overlay for the BongoCat .app.
+
+  cargo-packager generates the bundle property list from the configuration in
+  crates/bongocat-packaging/src/main.rs and then merges this file over it. Only
+  keys the packager does not derive belong here, so every key keeps exactly one
+  source of truth. The generated keys are:
+
+    CFBundleIdentifier            <- the configured bundle identifier
+    CFBundleShortVersionString    <- [workspace.package].version
+    CFBundleVersion               <- generated build number
+    CFBundleExecutable            <- the packaged binary name
+    CFBundleIconFile              <- the packaged .icns
+    LSMinimumSystemVersion        <- the configured minimum system version
+    NSHighResolutionCapable       <- always true
+-->
 <dict>
-    <key>CFBundleDevelopmentRegion</key>
-    <string>en</string>
-    <key>CFBundleDisplayName</key>
-    <string>BongoCat</string>
-    <key>CFBundleExecutable</key>
-    <string>bongocat-app</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.ayangweb.bongo-cat</string>
-    <key>CFBundleIconFile</key>
-    <string>logo-macos.icns</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    <key>CFBundleName</key>
-    <string>BongoCat</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>12.0</string>
     <key>LSMultipleInstancesProhibited</key>
-    <true/>
-    <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>

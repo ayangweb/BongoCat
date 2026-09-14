@@ -1,5 +1,3 @@
-set windows-shell := ["powershell.exe", "-NoProfile", "-Command"]
-
 # List the available Native Rewrite tasks.
 default:
     @just --list
@@ -18,6 +16,10 @@ dev-smoke:
 preview model="standard" seconds="30":
     cargo run --locked -p bongocat-overlay --release -- "{{model}}" "{{seconds}}"
 
+# Print the single product version source resolved by Cargo.
+version:
+    @cargo run --locked -q -p bongocat-packaging -- --print-version
+
 # Run the Native workspace tests.
 [env("BONGOCAT_BUILD_ENV", "development")]
 test:
@@ -31,7 +33,13 @@ check:
     cargo test --locked --workspace
     cargo check --locked --workspace --release
 
-# Build the product and package the platform installer with the immutable Production environment.
-[env("BONGOCAT_BUILD_ENV", "production")]
-build:
-    @{{ if os() == "windows" { "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1" } else { "./scripts/build-macos.sh" } }}
+# `--target`, `--environment` and `--formats` are forwarded to the packaging
+# entry point, which is the single source of truth for targets and artifacts:
+#
+#   just build
+#   just build --target x86_64-apple-darwin
+#   just build --environment development --formats app
+#
+# Build the Production product and package the release artifacts.
+build *args:
+    cargo run --locked -p bongocat-packaging -- {{args}}

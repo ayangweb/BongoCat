@@ -434,7 +434,8 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 
 - 应用：GPUI/AppKit 主事件循环，平台 UI 操作固定在 main thread。
 - 产品图标：`.app` 的 `Info.plist` 以 `CFBundleIconFile` 指向随 bundle 签名封装的 Native 自有
-  `.icns`；打包入口在签名前验证元数据与资源存在。
+  `.icns`；该键与 bundle 的其余生成键由打包工具写入，仓库只保留 `macos/Info.plist` overlay
+  （`LSMultipleInstancesProhibited`、`NSPrincipalClass`），打包入口在签名前验证元数据与资源存在。
 - Overlay：通过 `objc2` 创建透明 nonactivating `NSPanel`；无已保存 bounds 时以
   `350px` 作为 `100%` 的默认逻辑宽度，高度按 Cubism Core 返回的当前模型
   Canvas 宽高比自适应，两者再应用缩放设置；已保存 bounds 优先，允许通过窗口背景拖动。
@@ -746,8 +747,8 @@ workspace 的正式 `just` 入口与 CI 显式选择 Development，Production bu
   映射为 13 个稳定错误码，诊断导出只消费这些码与匿名聚合计数，不含任何库类型或动态平台文本。
 - 发行流程必须产出 `self_update` 可消费的资产：资产名含完整 target triple（匹配只用 triple，不用
   `bin_name`）；macOS 必须用归档且归档根为 `BongoCat.app/`；Windows 可用裸 `BongoCat.exe`
-  （未识别扩展名按单文件处理），也可用归档但须把该文件放在根级。当前 `scripts/package-macos.sh`
-  只产出 `.app`、`scripts/build-windows.ps1` 只产出 NSIS 安装器，均未产出可更新资产。
+  （未识别扩展名按单文件处理），也可用归档但须把该文件放在根级。当前 `crates/bongocat-packaging`
+  只产出 `.app`、`.dmg` 与 Windows NSIS 安装器，均未产出可更新资产（ADR-0033）。
 - Windows 上 `github::Update::update()` 的单文件替换不会更新 `resources/`。库公开导出 `Download`、
   `Extract`、`MoveAll`，多文件更新需用它们自行编排：`MoveAll` 提供全成或全回滚的事务式替换。
   该路径本项目尚未实现。

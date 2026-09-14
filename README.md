@@ -26,6 +26,24 @@ The current architecture and release gates are defined in
 [Technical Design](docs/BongoCat%20Native%20Rewrite%20Technical%20Design.md) and
 [Implementation TODO](docs/BongoCat%20Native%20Rewrite%20Implementation%20TODO.md).
 
+## Build and package
+
+`just build` is the single build entry point. It compiles the Production product and packages the
+release artifacts for the host platform: a `.app` and a `.dmg` on macOS, an NSIS installer on
+Windows. `cargo-packager` owns the bundle and installer layout, and the project configuration lives
+in [`crates/bongocat-packaging`](crates/bongocat-packaging/src/main.rs).
+
+```text
+just build                                          # host target, all of its release artifacts
+just build --target x86_64-apple-darwin             # explicit target
+just version                                        # the single product version source
+```
+
+Prerequisites beyond the Rust toolchain: `just` and a Python 3 interpreter. The interpreter is used
+by `tools/record-native-provenance.py`, which writes the build provenance record that every packaged
+artifact carries. `cargo-packager` fetches the NSIS toolchain on Windows, and the macOS disk-image
+tooling is part of the operating system, so no other tool needs a global install.
+
 ## Status
 
 The Native Rewrite is under active development. Phase 0 evidence, platform validation, and stable

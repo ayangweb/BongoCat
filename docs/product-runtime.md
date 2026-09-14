@@ -41,51 +41,50 @@ window, periodically reconciles locally pressed candidates with `GetAsyncKeyStat
 on device, session, power, queue, and service lifecycle changes. Physical PixPin, Win+L, UAC,
 administrator-boundary, and long-running input tests remain release evidence tasks.
 
-Production must be selected at build time. Packaging scripts reject a missing, empty, or unknown
-selection before invoking Cargo:
+Production must be selected at build time. The packaging entry point rejects an unknown selection
+before invoking Cargo:
 
 ```text
 just build
 ```
 
-The product version has one source of truth: `[workspace.package].version` in the root `Cargo.toml`.
-All Native workspace crates inherit it, and the settings window, system menu, and update runtime read
-the compiled `CARGO_PKG_VERSION`. `Cargo.lock` records the resolved workspace versions as generated
-metadata; a release changes the root manifest once and lets Cargo refresh the lockfile. The Windows executable resource and NSIS installer derive their
-file, product, and display versions from that value. `package-macos.sh` injects and then verifies
-both `CFBundleShortVersionString` and `CFBundleVersion` in the packaged `Info.plist` before signing.
+`just build` forwards its arguments to `crates/bongocat-packaging`, which is the only place that
+decides how the product is compiled and packaged. It compiles the release binary with the immutable
+`BONGOCAT_BUILD_ENV`, writes build provenance, and hands the executable to `cargo-packager`, which
+owns the macOS `.app` layout, `Info.plist` generation and the Windows NSIS installer. Both local
+developers and CI run this same entry point, so there is one code path and one configuration:
 
-From the repository root, `just build` selects the immutable Production environment, builds the
-Native product, and packages the host-platform installer. On macOS it creates
-`target/package/BongoCat.dmg` and prints its absolute path. On Windows it creates the x64
-NSIS installer after the signed-payload and pinned NSIS 3.11 checks pass.
+```text
+just build                                            # Production, host target, all artifacts
+just build --target x86_64-apple-darwin               # explicit target (macOS can cross-build both)
+just build --environment development --formats app     # Development .app only, for smoke tests
+just version                                          # the resolved product version
+```
+
+The product version has one source of truth: `[workspace.package].version` in the root `Cargo.toml`.
+All Native workspace crates inherit it, including `bongocat-packaging`, so Cargo itself resolves the
+value before the packager runs; the settings window, system menu, and update runtime read the
+compiled `CARGO_PKG_VERSION`. `Cargo.lock` records the resolved workspace versions as generated
+metadata; a release changes the root manifest once and lets Cargo refresh the lockfile. The Windows
+executable resource derives its file, product, and display versions from that value, and
+`cargo-packager` writes `CFBundleShortVersionString` into the bundle from the same configured
+version. The release workflow refuses to publish a tag that disagrees with `just version`.
+
+On macOS `just build` produces `target/package/BongoCat.app` and
+`target/package/BongoCat-<version>-<arch>.dmg`, and prints both absolute paths. The disk image
+contains the signed bundle plus an `/Applications` drop link. On Windows it produces the x64 NSIS
+current-user installer.
 
 Native build provenance is written as path-free JSON with the source commit, `Cargo.lock` SHA-256,
 Rust toolchain, target, profile, feature set, and build environment. The macOS package includes
-`Contents/Resources/build-provenance.json`; CI stores one provenance artifact per native runner.
+`Contents/Resources/build-provenance.json`; the Windows installer payload does too.
 
-Windows x64 packaging is a separate, current-user NSIS step. It accepts a prebuilt release payload
-that has already been Authenticode-signed; it does not build, sign, download, or select an update.
-`just build` performs this step after compiling the x64 release payload. The release workstation
-must retain the official nsis-3.11-setup.exe acquisition artifact and use the matching installed
-makensis.exe; set `BONGOCAT_NSIS_SETUP_PATH` and `BONGOCAT_MAKENSIS_PATH` before running the command
-so the script can pin its MD5 and v3.11 compiler version:
-
-```powershell
-$env:BONGOCAT_BUILD_ENV = 'production'
-$env:BONGOCAT_NSIS_SETUP_PATH = 'C:\toolchains\nsis-3.11-setup.exe'
-$env:BONGOCAT_MAKENSIS_PATH = 'C:\Program Files (x86)\NSIS\makensis.exe'
-just build
-
-# The lower-level wrapper remains available for release pipelines:
-& .\scripts\package-windows.ps1 -InputDirectory C:\release\bongocat-x64 -OutputFile C:\release\BongoCat-<version>-x64-setup.exe -NsisSetupPath C:\toolchains\nsis-3.11-setup.exe -MakeNsisPath 'C:\Program Files (x86)\NSIS\makensis.exe'
-```
-
-The payload must contain bongocat-app.exe, valid signatures for every .exe and .dll, all three
-preset model directories, and resources/build-provenance.json for the matching x64 release and
-build environment. The installer writes only $LOCALAPPDATA\Programs\BongoCat and HKCU uninstall
-metadata; it neither reads nor deletes environment-scoped user data. Windows install, upgrade,
-uninstall, and rollback smoke remain release gates.
+Windows x64 packaging is a current-user NSIS install. `cargo-packager` obtains its own NSIS
+toolchain, so no release workstation state is required, and the installer requests no administrator
+privileges and writes only HKCU uninstall metadata plus its own product directory. The installer is
+signed only when a signing identity or signing command is configured; without one the release
+workflow reports the unsigned installer as unsuitable for a stable release. Windows install,
+upgrade, uninstall, and rollback smoke remain release gates.
 
 Preset models are product resources, not user data. macOS loads them from
 `BongoCat.app/Contents/Resources/models`; Windows packages must place them under

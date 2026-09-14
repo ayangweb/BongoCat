@@ -18,7 +18,7 @@ Rust Application
 
 首发平台是 Windows 10 1903+ 和 macOS 12+。Linux 只属于首发后的评估范围，不得阻塞 Windows/macOS 工作；共享业务模块仍须保持平台无关。
 
-Windows Native Rewrite 只面向 `x86_64-pc-windows-msvc` 与 `aarch64-pc-windows-msvc`，不得新增 i686 构建、测试或安装包。Windows ARM64 虽是产品目标，但当前 Cubism Native R5 缺少 desktop ARM64 Core；在官方可授权 artifact 通过真实 ABI 与模型验证前必须保持发布阻塞，不得用 UWP DLL 或模拟结果冒充支持。
+Windows Native Rewrite 只面向 `x86_64-pc-windows-msvc`，不得新增 i686 或 `aarch64-pc-windows-msvc` 构建、测试或安装包。Windows on ARM 设备通过 Windows 自身的 x64 仿真运行该 x64 构建，因此不提供原生 ARM64 版本：Cubism Native R5 没有 desktop ARM64 Core，缺少官方可授权 artifact 就没有真实 ABI 与模型证据，维持一个无法端到端验证的原生目标只增加成本与发布风险。
 
 “纯 Rust”指 BongoCat 自有应用代码全部使用 Rust。官方 Cubism Core 平台二进制是唯一允许的厂商 FFI 例外。不得把 BongoCat 业务逻辑放入 SDK bridge。
 
@@ -107,9 +107,9 @@ Phase 0 退出条件未满足前：
 - 不为了目录美观提前创建大量空 crate。
 
 Phase 0 未完成不再阻止正式 workspace、runtime、config、model contract 或最小
-产品窗口的实现。Cubism 书面授权、SDK 分发、Windows ARM64 Core、实机输入、
-辅助功能、GPU、签名和 soak 证据是 stable 发布门禁；缺失时不得生成或公开分发
-包含受限 artifact 的安装包。
+产品窗口的实现。Cubism 书面授权、SDK 分发、实机输入、
+辅助功能、GPU、签名、Windows 实机安装/升级/卸载和 soak 证据是 stable 发布门禁；
+缺失时不得生成或公开分发包含受限 artifact 的安装包。
 
 ### 4.1 `next` 初始版本原则
 
@@ -301,6 +301,28 @@ cargo check --workspace --release
 ```
 
 平台功能必须在对应平台运行 smoke test。不能在 macOS 上仅凭编译推断 Windows Raw Input/D3D11 正常，也不能反向推断 macOS CGEventTap/Metal 正常。
+
+### 12.1.1 构建与打包入口
+
+`just` 是唯一构建入口，`build` recipe 只做一件事：把参数转发给
+`crates/bongocat-packaging`。该 crate 是产品构建、打包和发布的唯一事实来源，
+它编译产品、写 build provenance，并把 bundle/installer 生成交给 `cargo-packager`。
+
+```text
+just build                                              # Production，本机 target，全部产物
+just build --target x86_64-apple-darwin                 # 指定 target
+just build --environment development --formats app       # 只要 Development .app
+just version                                             # 唯一产品版本号来源
+```
+
+- 不要在 `Justfile`、CI workflow 或文档里重新实现平台判断、目录复制、`Info.plist`
+  注入、`.app` / `.dmg` / NSIS 组装或版本号解析。
+- 不要重新引入 `scripts/` 或自维护的 `.nsi`；`windows/installer/` 已删除。
+- 版本号只有 `[workspace.package].version` 一个来源；不得在任何脚本、CI 或打包配置中重复声明。
+- 平台与产物集合由 `crates/bongocat-packaging` 声明，`tools/tests/test_packaging_contract.py`
+  与 `deny.toml`、`bongocat-update::UpdateTargetTriple` 必须保持一致。
+- 决策背景、已知的 upstream 缺陷与退出条件见
+  `docs/adr/0033-build-packaging-and-release-toolchain.md`。
 
 ### 12.2 必须维护的不变量
 
