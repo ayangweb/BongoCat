@@ -148,10 +148,11 @@ macOS 两种架构在同一个 runner 上构建，保证 SDK、工具链与配�
   `ReleaseTarget::architecture`，两者都随构建参数自动解析）。重命名只作用于文件本身，
   安装器内容、`Info.plist` 与 bundle 布局仍完全由 `cargo-packager` 拥有。
 - 不再有 NSIS 许可证页面与 DMG EULA 页面（未配置 `license-file`）。
-- **没有**产出可更新资产：`bongocat-update` 的 `self_update` 需要按 target triple 命名、
-  macOS 根为 `BongoCat.app/`、Windows 根为 `bongocat-app.exe` 的归档。当前
-  `RELEASE_SIGNING_KEY` 仍为 `None`（fail-closed），更新功能本身尚未可发布，因此这不是
-  回归，而是一项**仍未完成、明确记录的发布门禁**。
+- **本 ADR 接受时没有**产出可更新资产：当时的 `self_update` 方案需要按 target triple 命名、
+  macOS 根为 `BongoCat.app/`、Windows 根为 `bongocat-app.exe` 的归档，且
+  `RELEASE_SIGNING_KEY` 仍为 `None`（fail-closed）。这是本 ADR 的历史状态，不是当前实现。
+  更新方案随后由 ADR-0034 取代为 `cargo-packager-updater` + detached minisign，并由
+  `crates/bongocat-packaging` 产出、签名更新载荷；真实发布链路仍是未完成的发布门禁。
 
 ## 已接受的残余风险
 
@@ -184,8 +185,10 @@ macOS 两种架构在同一个 runner 上构建，保证 SDK、工具链与配�
 
 ## 后续
 
-1. 为更新流程产出按 target triple 命名的归档（macOS 根 `BongoCat.app/`，
-   Windows 根 `bongocat-app.exe`），并接入 `zipsign` 签名与 `RELEASE_SIGNING_KEY`。
+1. ~~为更新流程产出按 target triple 命名的归档并接入 `zipsign`/`RELEASE_SIGNING_KEY`。~~
+   已由 ADR-0034 取代：更新载荷改为共享 manifest 指向的
+   `BongoCat-<version>-<triple>.app.tar.gz` 与 NSIS 安装器，并用 detached minisign 签名；
+   `RELEASE_SIGNING_KEY` 已内嵌公钥。真实 GitHub 发布与安装链路仍需端到端验证。
 2. `cargo-packager` 修复 DMG 后删除本项目第 4 条的偏离。
 3. 原生 Intel 机器与干净 Windows 10 1903+ / Windows 11 profile 上的安装、升级、
    卸载与回滚验证。

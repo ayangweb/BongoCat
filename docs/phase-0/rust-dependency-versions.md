@@ -63,8 +63,9 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 | `tray-icon`                           |       `0.25.0` | macOS/Windows 统一托盘 owner 新增时最新（ADR-0031）      |
 | `unicode-segmentation`                |       `1.13.3` | 已是最新                                                 |
 | `url`                                 |        `2.5.8` | 外部 HTTPS URL wrapper 新增时最新                        |
-| `self_update`                         |        `1.3.0` | 取代自研更新栈时最新（ADR-0029）                         |
-| `ureq`                                |        `3.4.0` | 现为 `self_update` 的传递依赖                            |
+| `cargo-packager-updater`              |        `0.2.3` | 更新库，取代 `self_update` 时最新（ADR-0034）            |
+| `minisign`                            |        `0.7.9` | `cargo-packager` 的传递依赖，更新载荷签名                |
+| `minisign-verify`                     |        `0.2.5` | `cargo-packager-updater` 的传递依赖，客户端验签          |
 | `windows`                             |       `0.62.2` | 从 `0.61.3` 升级                                         |
 
 `windows 0.62.2` 删除了 `Error::from_win32()`；Win32 wrapper 已改为在失败调用后立即使用语义等价的 `Error::from_thread()`，避免清理 API 覆盖 thread last-error。
@@ -179,16 +180,18 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
   `tray-icon` 依赖的同一个 package 版本共同解析；第三方 tray/menu 类型、句柄和错误只存在于
   `bongocat-platform` 私有 adapter，不进入 runtime/UI 公共 API。overlay 通过 `HasWindowHandle`
   提供真实 HWND/`NSView`，替换边界与双平台实机验收入口见 ADR-0031；
-- `self_update 1.3.0`（MIT，Rust 1.88+）承担更新的下载、解压、校验、替换与重启，由 ADR-0029 引入。
-  只启用 `ureq`、`rustls`、`github`、`archive-tar`、`archive-zip`、`compression-tar-gz`、
-  `compression-zip-deflate`、`checksums` 与 `signatures` features；不启用 `progress-bar`，也不启用
-  `reqwest` 后端，因此不引入 hyper、tower-http、cookie_store 与 aws-lc-rs。它只在 `bongocat-update`
-  私有模块内出现，库的 `Error`、`Release` 与 `semver::Version` 均被映射为项目自有稳定码，不进入
-  app/runtime/UI 协议。替换边界是 `UpdateRuntime`，不影响诊断导出契约；
-- `ureq 3.4.0`（MIT OR Apache-2.0，Rust 1.85+，`algesten/ureq` 维护）现为 `self_update` 的传递依赖，
-  不再是本项目的直接依赖。`self_update` 会启用其 `gzip`/`charset`/`socks-proxy`/`json` feature，
-  Cargo 的 feature 并集不可被调用方关闭；ADR-0025 曾要求禁用这些 feature 以保证 detached signature
-  覆盖原始 bytes，该要求随 ADR-0025 作废，现行完整性由 `checksums` feature 独立覆盖；
+- `cargo-packager-updater 0.2.3`（Apache-2.0 OR MIT，与 `cargo-packager` 同属 CrabNebula/Tauri
+  生态）承担更新的 manifest 获取、版本比较、下载、验签与安装，由 ADR-0034 引入，取代
+  `self_update 1.3.0`（ADR-0029）。只启用 `rustls-tls`（`default-features = false`），因此不引入
+  `reqwest` 之外的额外后端。它只在 `bongocat-update` 私有模块内出现，库的 `Error`、`Config`、
+  `semver::Version` 与 `Url` 均被映射为项目自有稳定码，未识别变体降级为 `update_internal_failed`，
+  不进入 app/runtime/UI 协议。替换边界是 `UpdateRuntime`，不影响诊断导出契约。
+  换库的两条硬性理由：zipsign 只能签 `.zip`/`.tar.gz`（裸 `.exe` 必然验签失败），且 `self_update`
+  的 replace-and-verify 语义不适用于 NSIS 系统安装器。能力损失见 ADR-0034 的损失表；
+- `minisign 0.7.9`（MIT，jedisct1）与 `minisign-verify 0.2.5`（MIT，零依赖）分别由 `cargo-packager`
+  与 `cargo-packager-updater` 传递引入，是更新载荷的**签名端与验签端**。两端都只在本项目的打包工具
+  与 `bongocat-update` 私有模块内出现，库类型不进入公共 API。预哈希为 BLAKE2b-512，与已退役的
+  zipsign（SHA-512 预哈希）**密码学上不互通**；
 - `arboard 3.6.1`（MIT OR Apache-2.0，Rust 1.71+，1Password 维护）只在
   `bongocat-platform` 的私有 clipboard adapter 中处理纯文本；关闭默认 `image-data` feature，
   避免引入图像、Core Graphics 与 Windows GDI 能力。库类型和错误被映射为项目自有的

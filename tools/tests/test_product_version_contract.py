@@ -19,11 +19,8 @@ APP_SETTINGS = ROOT / "crates" / "bongocat-app" / "src" / "settings.rs"
 UI_LIBRARY = ROOT / "crates" / "bongocat-ui" / "src" / "lib.rs"
 UI_WINDOW_TESTS = ROOT / "crates" / "bongocat-ui" / "src" / "window" / "tests.rs"
 UPDATE_RUNTIME = ROOT / "crates" / "bongocat-update" / "src" / "runtime.rs"
-UPDATE_ARCHIVE_TESTS = (
-    ROOT / "crates" / "bongocat-update" / "tests" / "archive_layout_capability.rs"
-)
-UPDATE_REHEARSAL = (
-    ROOT / "crates" / "bongocat-update" / "tests" / "local_install_rehearsal.rs"
+UPDATE_CAPABILITY_TESTS = (
+    ROOT / "crates" / "bongocat-update" / "tests" / "release_manifest_capability.rs"
 )
 PRODUCT_RUNTIME_DOC = ROOT / "docs" / "product-runtime.md"
 
@@ -129,10 +126,12 @@ class ProductVersionContractTests(unittest.TestCase):
 
         update_runtime = read(UPDATE_RUNTIME)
         self.assertIn('env!("CARGO_PKG_VERSION")', update_runtime)
-        self.assertIn('env!("CARGO_PKG_VERSION")', read(UPDATE_ARCHIVE_TESTS))
+
+        capability_tests = read(UPDATE_CAPABILITY_TESTS)
+        self.assertIn('env!("CARGO_PKG_VERSION")', capability_tests)
         self.assertIn(
             'const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");',
-            read(UPDATE_REHEARSAL),
+            capability_tests,
         )
 
         product_version = workspace_package_version()
@@ -141,8 +140,7 @@ class ProductVersionContractTests(unittest.TestCase):
             UI_LIBRARY,
             UI_WINDOW_TESTS,
             UPDATE_RUNTIME,
-            UPDATE_ARCHIVE_TESTS,
-            UPDATE_REHEARSAL,
+            UPDATE_CAPABILITY_TESTS,
         ):
             with self.subTest(path=path):
                 self.assertNotIn(

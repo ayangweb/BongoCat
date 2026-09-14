@@ -51,3 +51,17 @@ check:
 # Build the Production product and package the release artifacts.
 build *args:
     cargo run --locked -p bongocat-packaging -- {{args}}
+
+# Generate the Minisign key pair that signs update payloads (one-time, offline).
+keygen file:
+    cargo run --locked -p bongocat-packaging -- --generate-signing-key {{file}}
+
+# Each `just build` writes one manifest fragment per target, but the updater requests a
+# single shared manifest, so a multi-target release merges the fragments once before
+# publishing:
+#
+#   just manifest target/package target/package/macos-aarch64.json ...
+#
+# Merge the per-target manifest fragments into the shared release manifest.
+manifest directory *fragments:
+    cargo run --locked -p bongocat-packaging -- --merge-manifests {{directory}} {{fragments}}

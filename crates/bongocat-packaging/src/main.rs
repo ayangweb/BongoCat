@@ -9,7 +9,22 @@
 //! 2. write the path-free build provenance record,
 //! 3. hand the resulting executable to `cargo-packager`, which owns the bundle
 //!    and installer layout: the macOS `.app` and the Windows NSIS `.exe`,
-//! 4. wrap the finished `.app` in a `.dmg` with the macOS disk-image tooling.
+//! 4. wrap the finished `.app` in a `.dmg` with the macOS disk-image tooling,
+//! 5. when the release pipeline provisioned a signing key, build the updater payload
+//!    (the macOS bundle as a `.tar.gz`; the Windows installer as published), sign it
+//!    with Minisign, and write this target's fragment of the release manifest.
+//!
+//! `--merge-manifests` is the second entry point. The updater reads **one** shared
+//! manifest, but each target is built in its own job and can only announce the payload
+//! it produced, so the fragments have to be combined before publication. That merge
+//! lives here rather than in the pipeline for the same reason the rest of the packaging
+//! does: the manifest shape stays owned by one place, and the release workflow only
+//! calls the tool.
+//!
+//! `--generate-signing-key` is the third: a one-time, offline provisioning step that
+//! creates the Minisign key pair signing is done with. It lives here so that provisioning
+//! a key uses the same pinned toolchain as signing it, instead of asking a maintainer to
+//! `cargo install` a matching global binary.
 //!
 //! Only product-specific facts live here: which targets ship, where the runtime
 //! expects its bundled resources, and what the macOS bundle declares. Bundle
@@ -48,6 +63,7 @@
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
 use std::{
+    collections::BTreeMap,
     env, fmt, fs,
     path::{Path, PathBuf},
     process::Command,
@@ -56,7 +72,9 @@ use std::{
 use cargo_packager::{
     Config, PackageFormat,
     config::{Binary, MacOsConfig, NSISInstallerMode, NsisConfig, Resource},
+    sign::SigningConfig,
 };
+use serde::{Deserialize, Serialize};
 
 /// Product name. Determines `BongoCat.app` and the installer product name.
 const PRODUCT_NAME: &str = "BongoCat";
@@ -103,6 +121,33 @@ const ADHOC_SIGNING_IDENTITY: &str = "-";
 const MACOS_SIGNING_IDENTITY_VARIABLE: &str = "BONGOCAT_MACOS_SIGNING_IDENTITY";
 /// Selected through `--environment`; `production` is the release default.
 const BUILD_ENVIRONMENTS: [&str; 2] = ["development", "production"];
+/// Carries the Minisign private key that signs update payloads.
+///
+/// Release signing keys cannot be committed, so the release pipeline injects the
+/// key through this variable — the same credential-injection shape as
+/// [`MACOS_SIGNING_IDENTITY_VARIABLE`]. An unset or empty value means the build
+/// produces bundle and installer artifacts but no update assets, which is what a
+/// local development build wants.
+const SIGNING_PRIVATE_KEY_VARIABLE: &str = "SIGNING_PRIVATE_KEY";
+/// Password of the private key in [`SIGNING_PRIVATE_KEY_VARIABLE`].
+///
+/// An empty value is meaningful: it is the "encrypted with an empty password" case
+/// that `cargo-packager`'s signer produces when asked to skip the interactive prompt.
+const SIGNING_PRIVATE_KEY_PASSWORD_VARIABLE: &str = "SIGNING_PRIVATE_KEY_PASSWORD";
+/// Name of the shared release manifest the updater requests.
+///
+/// `bongocat-update` reads this asset from the repository's *latest* release, so it has
+/// to be one file describing every target. `tools/tests/test_update_release_contract.py`
+/// pins the name against the runtime's own constant.
+const UPDATE_MANIFEST_NAME: &str = "latest.json";
+/// Suffix of the per-target manifest fragment a build writes.
+///
+/// The fragment is named after the `<os>-<arch>` platform key, because that key is what
+/// the merge writes into the shared manifest and what the updater looks this host up
+/// under. A release job can therefore only announce the payload it produced itself.
+const UPDATE_FRAGMENT_SUFFIX: &str = ".json";
+/// The repository that publishes releases; the manifest links its assets from here.
+const RELEASE_REPOSITORY_URL: &str = "https://github.com/ayangweb/BongoCat";
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -197,6 +242,47 @@ impl ReleaseTarget {
         }
     }
 
+    /// The `<os>-<arch>` key this target is announced under in the release manifest.
+    ///
+    /// `bongocat-update` declares the same keys in
+    /// `UpdateTargetTriple::manifest_platform`; `tools/tests/test_update_release_contract.py`
+    /// fails the build if the two ever drift apart.
+    const fn manifest_platform(self) -> &'static str {
+        match self {
+            Self::MacosAarch64 => "macos-aarch64",
+            Self::MacosX86_64 => "macos-x86_64",
+            Self::WindowsX86_64 => "windows-x86_64",
+        }
+    }
+
+    /// The payload format the release manifest announces for this target.
+    ///
+    /// The updater installs an `app` payload by replacing the bundle and an `nsis`
+    /// payload by running the installer it downloaded.
+    const fn update_format(self) -> &'static str {
+        match self {
+            Self::MacosAarch64 | Self::MacosX86_64 => "app",
+            Self::WindowsX86_64 => "nsis",
+        }
+    }
+
+    /// The file name this target's update payload is published under.
+    ///
+    /// The updater takes the payload from the manifest rather than matching an asset
+    /// name, so these names only have to be stable and self-describing. Windows
+    /// reuses the installer it already publishes; macOS needs the bundle wrapped in
+    /// an archive, because the updater installs a directory.
+    fn update_payload_name(self) -> String {
+        match self.installer_file_name() {
+            Some(name) => name,
+            None => format!(
+                "{PRODUCT_NAME}-{}-{}.app.tar.gz",
+                env!("CARGO_PKG_VERSION"),
+                self.triple()
+            ),
+        }
+    }
+
     /// The target this process runs on.
     fn host() -> Result<Self> {
         match (env::consts::OS, env::consts::ARCH) {
@@ -211,14 +297,27 @@ impl ReleaseTarget {
     }
 }
 
-/// Parsed command line.
+/// One parsed invocation of the packaging tool.
+enum Invocation {
+    /// Build and package one release target.
+    Package(Options),
+    /// Merge the per-target fragments into the shared release manifest.
+    MergeManifest {
+        directory: PathBuf,
+        fragments: Vec<PathBuf>,
+    },
+    /// Generate the Minisign key pair that signs update payloads.
+    GenerateSigningKey(PathBuf),
+}
+
+/// Options for one packaging run.
 struct Options {
     target: Option<ReleaseTarget>,
     environment: String,
     formats: Option<Vec<PackageFormat>>,
 }
 
-impl Options {
+impl Invocation {
     const USAGE: &'static str = "\
 usage: cargo run -p bongocat-packaging -- [options]
 
@@ -229,35 +328,56 @@ options:
   --environment <name>     development | production (default: production)
   --formats <list>         comma separated subset of the target's release
                            artifacts (app,dmg for macOS; nsis for Windows)
+  --merge-manifests <dir>  merge the per-target fragments that follow into the
+                           shared release manifest, written to <dir>/latest.json,
+                           instead of packaging; takes no other option
+  --generate-signing-key <file>
+                           generate a new Minisign key pair for signing update
+                           payloads, written to <file> and <file>.pub, instead of
+                           packaging; takes no other option
   --print-version          print the product version and exit
-  -h, --help               print this help";
+  -h, --help               print this help
+
+environment:
+  SIGNING_PRIVATE_KEY_PASSWORD  passphrase for the generated private key,
+                           and the passphrase used to unlock it when signing";
 
     fn parse(arguments: Vec<String>) -> Result<Self> {
-        let mut options = Self {
-            target: None,
-            environment: "production".to_owned(),
-            formats: None,
-        };
+        let mut target = None;
+        let mut environment = None;
+        let mut formats = None;
+        let mut merge_directory: Option<PathBuf> = None;
+        let mut key_output: Option<PathBuf> = None;
+        let mut fragments = Vec::new();
+
         let mut arguments = arguments.into_iter();
         while let Some(argument) = arguments.next() {
             match argument.as_str() {
                 "--target" => {
                     let triple = next_value(&mut arguments, "--target")?;
-                    options.target = Some(ReleaseTarget::parse(&triple)?);
+                    target = Some(ReleaseTarget::parse(&triple)?);
                 }
                 "--environment" => {
-                    let environment = next_value(&mut arguments, "--environment")?;
-                    if !BUILD_ENVIRONMENTS.contains(&environment.as_str()) {
+                    let value = next_value(&mut arguments, "--environment")?;
+                    if !BUILD_ENVIRONMENTS.contains(&value.as_str()) {
                         return failure(format!(
-                            "unknown build environment {environment}; expected one of {}",
+                            "unknown build environment {value}; expected one of {}",
                             BUILD_ENVIRONMENTS.join(", ")
                         ));
                     }
-                    options.environment = environment;
+                    environment = Some(value);
                 }
                 "--formats" => {
-                    let formats = next_value(&mut arguments, "--formats")?;
-                    options.formats = Some(parse_formats(&formats)?);
+                    let value = next_value(&mut arguments, "--formats")?;
+                    formats = Some(parse_formats(&value)?);
+                }
+                "--merge-manifests" => {
+                    let directory = next_value(&mut arguments, "--merge-manifests")?;
+                    merge_directory = Some(PathBuf::from(directory));
+                }
+                "--generate-signing-key" => {
+                    let file = next_value(&mut arguments, "--generate-signing-key")?;
+                    key_output = Some(PathBuf::from(file));
                 }
                 "--print-version" => {
                     // Cargo resolved the single product version source before this
@@ -269,12 +389,48 @@ options:
                     println!("{}", Self::USAGE);
                     std::process::exit(0);
                 }
+                // Everything that is not an option is a fragment path, and only the
+                // merge takes fragments. Rejecting them anywhere else keeps a
+                // mistyped argument from being silently ignored.
+                other if merge_directory.is_some() && !other.starts_with('-') => {
+                    fragments.push(PathBuf::from(other));
+                }
                 other => {
                     return failure(format!("unexpected argument {other}\n\n{}", Self::USAGE));
                 }
             }
         }
-        Ok(options)
+
+        // Neither alternative mode builds anything, so an option that only affects a
+        // build is a mistake rather than a no-op, and the two alternatives are mutually
+        // exclusive.
+        let build_option = target.is_some() || environment.is_some() || formats.is_some();
+        if let Some(file) = key_output {
+            if build_option || merge_directory.is_some() {
+                return failure(
+                    "--generate-signing-key cannot be combined with --target, --environment, \
+                     --formats or --merge-manifests",
+                );
+            }
+            return Ok(Self::GenerateSigningKey(file));
+        }
+
+        let Some(directory) = merge_directory else {
+            return Ok(Self::Package(Options {
+                target,
+                environment: environment.unwrap_or_else(|| "production".to_owned()),
+                formats,
+            }));
+        };
+        if build_option {
+            return failure(
+                "--merge-manifests cannot be combined with --target, --environment or --formats",
+            );
+        }
+        Ok(Self::MergeManifest {
+            directory,
+            fragments,
+        })
     }
 }
 
@@ -304,9 +460,9 @@ fn parse_formats(value: &str) -> Result<Vec<PackageFormat>> {
 }
 
 fn main() -> std::process::ExitCode {
-    match run(env::args().skip(1).collect()) {
-        Ok(artifacts) => {
-            report(&artifacts);
+    match Invocation::parse(env::args().skip(1).collect()).and_then(execute) {
+        Ok((summary, artifacts)) => {
+            report(summary, &artifacts);
             std::process::ExitCode::SUCCESS
         }
         Err(error) => {
@@ -316,8 +472,23 @@ fn main() -> std::process::ExitCode {
     }
 }
 
-fn run(arguments: Vec<String>) -> Result<Vec<PathBuf>> {
-    let options = Options::parse(arguments)?;
+/// Runs one parsed invocation, returning its closing line and the files it produced.
+fn execute(invocation: Invocation) -> Result<(&'static str, Vec<PathBuf>)> {
+    match invocation {
+        Invocation::Package(options) => {
+            package(options).map(|artifacts| ("Build completed successfully.", artifacts))
+        }
+        Invocation::MergeManifest {
+            directory,
+            fragments,
+        } => merge_manifest(&directory, &fragments)
+            .map(|artifacts| ("Release manifest merged successfully.", artifacts)),
+        Invocation::GenerateSigningKey(path) => generate_signing_key(&path)
+            .map(|artifacts| ("Signing key generated successfully.", artifacts)),
+    }
+}
+
+fn package(options: Options) -> Result<Vec<PathBuf>> {
     let workspace = workspace_root()?;
     let target = match options.target {
         Some(target) => target,
@@ -383,6 +554,12 @@ fn run(arguments: Vec<String>) -> Result<Vec<PathBuf>> {
     }
 
     artifacts.sort();
+    if update_signing_configured() {
+        let update_assets =
+            publish_update_assets(&workspace, target, &artifacts, &signing_material())?;
+        artifacts.extend(update_assets);
+        artifacts.sort();
+    }
     verify_artifacts(target, &artifacts)?;
     Ok(artifacts)
 }
@@ -602,6 +779,349 @@ fn macos_signing_identity() -> String {
     }
 }
 
+/// Whether the release pipeline provisioned a key for signing update payloads.
+///
+/// A local build has none, so it produces bundle and installer artifacts and no
+/// update assets. Release jobs set the variable, and assert afterwards that the
+/// assets exist, so a release can never ship unsigned update material.
+fn update_signing_configured() -> bool {
+    env::var(SIGNING_PRIVATE_KEY_VARIABLE).is_ok_and(|key| !key.trim().is_empty())
+}
+
+/// The signing material for this build, read from the pipeline's environment.
+///
+/// `cargo-packager` reads *its own* variables (`TAURI_SIGNING_PRIVATE_KEY` and
+/// friends) only in its CLI; used as a library it takes the key explicitly, which
+/// keeps a stray variable in a developer's shell from signing a local build.
+fn signing_material() -> SigningConfig {
+    SigningConfig::new()
+        .private_key(env::var(SIGNING_PRIVATE_KEY_VARIABLE).unwrap_or_default())
+        .password(env::var(SIGNING_PRIVATE_KEY_PASSWORD_VARIABLE).unwrap_or_default())
+}
+
+/// The fragment file this target's release job writes.
+///
+/// Named after the platform key plus [`UPDATE_FRAGMENT_SUFFIX`], so the merge can read
+/// the `<os>-<arch>` key the updater looks this host up under straight off the file
+/// name. `tools/tests/test_update_release_contract.py` pins the key set against
+/// `bongocat-update::UpdateTargetTriple::manifest_platform`.
+fn fragment_file_name(target: ReleaseTarget) -> String {
+    format!("{}{UPDATE_FRAGMENT_SUFFIX}", target.manifest_platform())
+}
+
+/// Sign this target's update payload and write this target's manifest fragment.
+///
+/// Signing is the last step for a reason: a Minisign signature covers the exact
+/// published bytes, so anything that rewrites or renames the payload afterwards
+/// invalidates it.
+fn publish_update_assets(
+    workspace: &Path,
+    target: ReleaseTarget,
+    artifacts: &[PathBuf],
+    signing: &SigningConfig,
+) -> Result<Vec<PathBuf>> {
+    let output_directory = workspace.join(OUTPUT_DIRECTORY);
+    let payload = update_payload(target, artifacts, &output_directory)?;
+
+    let signature_path = cargo_packager::sign::sign_file(signing, &payload).map_err(|error| {
+        Box::new(Failure(format!(
+            "could not sign {}: {error}",
+            payload.display()
+        ))) as Box<dyn std::error::Error>
+    })?;
+    let signature = fs::read_to_string(&signature_path)?.trim().to_owned();
+
+    let payload_name = payload
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .ok_or_else(|| {
+            Box::new(Failure(format!("invalid payload {}", payload.display())))
+                as Box<dyn std::error::Error>
+        })?;
+    let asset_url = format!(
+        "{RELEASE_REPOSITORY_URL}/releases/download/v{version}/{payload_name}",
+        version = env!("CARGO_PKG_VERSION"),
+    );
+
+    // One fragment per target: this job can only announce the payload it produced, and
+    // the platform key comes from the file name. The release merges the fragments into
+    // the single manifest the updater requests. See `--merge-manifests`.
+    //
+    // No `pub_date`: the manifest treats it as optional, the updater decides freshness
+    // by version, and the packaging tool carries no date formatter.
+    let fragment = ManifestFragment {
+        version: env!("CARGO_PKG_VERSION").to_owned(),
+        entry: ManifestEntry {
+            url: asset_url,
+            signature,
+            format: target.update_format().to_owned(),
+        },
+    };
+
+    let fragment_path = output_directory.join(fragment_file_name(target));
+    fs::write(&fragment_path, serde_json::to_vec_pretty(&fragment)?)?;
+
+    let mut produced = vec![signature_path, fragment_path];
+    if !artifacts.contains(&payload) {
+        produced.push(payload);
+    }
+    Ok(produced)
+}
+
+/// The per-target manifest fragment a release job writes and the merge reads back.
+///
+/// The field set is the update library's per-platform entry plus the product version,
+/// which the merge checks for agreement: every fragment has to describe the same
+/// release, or the merged manifest would claim a version its entries do not belong to.
+#[derive(Deserialize, Serialize)]
+struct ManifestFragment {
+    version: String,
+    #[serde(flatten)]
+    entry: ManifestEntry,
+}
+
+/// One platform's entry inside the shared release manifest.
+#[derive(Deserialize, Serialize)]
+struct ManifestEntry {
+    url: String,
+    signature: String,
+    format: String,
+}
+
+/// The shared release manifest the updater requests.
+///
+/// The updater looks this host's entry up by the `<os>-<arch>` key it derives at
+/// runtime, so the map keys are the platform keys and the version is the release's, not
+/// a per-entry field.
+#[derive(Serialize)]
+struct ReleaseManifest {
+    version: String,
+    platforms: BTreeMap<String, ManifestEntry>,
+}
+
+/// Merge the per-target fragments into the manifest the updater requests.
+///
+/// The release builds each target in its own job, so a job can only announce the payload
+/// it produced itself; the updater, however, reads one shared manifest and picks its own
+/// entry out of it. Combining them is a packaging concern — the manifest shape and the
+/// asset name must stay owned by one place — so the pipeline calls this instead of
+/// assembling JSON itself. The output name is not an argument for the same reason.
+fn merge_manifest(directory: &Path, fragments: &[PathBuf]) -> Result<Vec<PathBuf>> {
+    let version = env!("CARGO_PKG_VERSION");
+    let mut platforms: BTreeMap<String, ManifestEntry> = BTreeMap::new();
+
+    for path in fragments {
+        let key = fragment_target(path)?.manifest_platform().to_owned();
+        let fragment: ManifestFragment =
+            serde_json::from_slice(&fs::read(path)?).map_err(|error| {
+                Box::new(Failure(format!(
+                    "{} is not a release manifest fragment: {error}",
+                    path.display()
+                ))) as Box<dyn std::error::Error>
+            })?;
+
+        // Every fragment has to describe this release. The manifest carries one version
+        // for all platforms, so a fragment from another build would make it announce a
+        // version its entries do not belong to.
+        if fragment.version != version {
+            return failure(format!(
+                "{} announces version {}, but this release is {version}",
+                path.display(),
+                fragment.version
+            ));
+        }
+
+        if platforms.insert(key.clone(), fragment.entry).is_some() {
+            return failure(format!("two fragments announce the platform {key}"));
+        }
+    }
+
+    if platforms.is_empty() {
+        return failure("--merge-manifests needs at least one fragment");
+    }
+
+    // The version is this tool's own, which Cargo resolved from the single product
+    // version source, so the manifest can never disagree with the artifacts.
+    let manifest = ReleaseManifest {
+        version: version.to_owned(),
+        platforms,
+    };
+
+    fs::create_dir_all(directory)?;
+    let output = directory.join(UPDATE_MANIFEST_NAME);
+    fs::write(&output, serde_json::to_vec_pretty(&manifest)?)?;
+    Ok(vec![output])
+}
+
+/// The release target a fragment's file name declares.
+///
+/// The name is the `<os>-<arch>` key the updater looks this host up under, so it has to
+/// be one of the keys this tool publishes. Validating it here turns a misnamed or
+/// mistyped fragment into a failed release rather than a manifest entry no host can
+/// ever match.
+fn fragment_target(path: &Path) -> Result<ReleaseTarget> {
+    let name = path
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().into_owned());
+    ReleaseTarget::ALL
+        .into_iter()
+        .find(|target| name.as_deref() == Some(target.manifest_platform()))
+        .ok_or_else(|| {
+            Box::new(Failure(format!(
+                "{} is not named after a shipped platform; expected one of {}",
+                path.display(),
+                ReleaseTarget::ALL
+                    .map(ReleaseTarget::manifest_platform)
+                    .join(", ")
+            ))) as Box<dyn std::error::Error>
+        })
+}
+
+/// Generate the Minisign key pair that signs update payloads.
+///
+/// A one-time, offline operation run by the maintainer, not by a build: the private half
+/// is a release credential that must never be committed, built into an artifact or
+/// logged. It goes through the same pinned `cargo-packager` this crate signs with, so
+/// provisioning a key needs no global `cargo install`.
+///
+/// The passphrase comes from [`SIGNING_PRIVATE_KEY_PASSWORD_VARIABLE`] — the same variable
+/// the signing path unlocks the key with — so a key and the way it is used cannot drift
+/// apart. An unset passphrase produces a key stored in the clear, which is reported
+/// rather than refused: it is a supported choice, just not the default a release wants.
+fn generate_signing_key(path: &Path) -> Result<Vec<PathBuf>> {
+    let public_path = PathBuf::from(format!("{}.pub", path.display()));
+    // `save_keypair` overwrites an existing private key only when asked, but it deletes
+    // an existing public key unconditionally, so both are checked before anything is
+    // written. Losing a release key pair means every installed copy stops being able to
+    // update, so this refuses rather than trusting the caller.
+    for existing in [path, public_path.as_path()] {
+        if existing.exists() {
+            return failure(format!(
+                "{} already exists; refusing to overwrite a signing key",
+                existing.display()
+            ));
+        }
+    }
+    if let Some(directory) = path.parent()
+        && !directory.as_os_str().is_empty()
+    {
+        fs::create_dir_all(directory)?;
+    }
+
+    let passphrase = env::var(SIGNING_PRIVATE_KEY_PASSWORD_VARIABLE).unwrap_or_default();
+    let keypair =
+        cargo_packager::sign::generate_key(Some(passphrase.clone())).map_err(|error| {
+            Box::new(Failure(format!(
+                "could not generate a signing key: {error}"
+            ))) as Box<dyn std::error::Error>
+        })?;
+    let (private, public) =
+        cargo_packager::sign::save_keypair(&keypair, path, false).map_err(|error| {
+            Box::new(Failure(format!(
+                "could not save the signing key to {}: {error}",
+                path.display()
+            ))) as Box<dyn std::error::Error>
+        })?;
+    restrict_private_key(&private)?;
+
+    println!();
+    println!("Private key: {}", private.display());
+    println!("  Keep it offline and never commit it. In CI it is the value of");
+    println!("  the {SIGNING_PRIVATE_KEY_VARIABLE} secret.");
+    println!("Public key:  {}", public.display());
+    println!("  Not a secret. Paste this single line into RELEASE_SIGNING_KEY in");
+    println!("  crates/bongocat-update/src/runtime.rs:");
+    println!();
+    println!("{}", keypair.pk);
+    if passphrase.is_empty() {
+        println!();
+        println!(
+            "warning: {SIGNING_PRIVATE_KEY_PASSWORD_VARIABLE} was not set, so the private key is \
+             stored unencrypted."
+        );
+        println!("Set it and generate a new pair if the key should be passphrase-protected.");
+    }
+
+    Ok(vec![private, public])
+}
+
+/// Restrict the private key to its owner.
+///
+/// `cargo-packager` writes the key with the process umask, which on a default macOS or
+/// Linux account leaves it world-readable. Windows has no equivalent mode, so there the
+/// file inherits the account's ACL.
+#[cfg(unix)]
+fn restrict_private_key(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn restrict_private_key(_path: &Path) -> Result<()> {
+    Ok(())
+}
+
+/// The artifact the updater installs for this target.
+///
+/// macOS installs a directory, so the finished bundle is wrapped in a `.tar.gz` whose
+/// single root entry is the bundle itself — the updater drops that root entry and
+/// installs the rest on the bundle path. Windows installs the installer it downloaded,
+/// so the published NSIS `.exe` is used unchanged.
+fn update_payload(
+    target: ReleaseTarget,
+    artifacts: &[PathBuf],
+    output_directory: &Path,
+) -> Result<PathBuf> {
+    if target.is_apple() {
+        let bundle = artifacts.iter().find(|path| path.is_dir()).ok_or_else(|| {
+            Box::new(Failure(format!(
+                "{} needs a packaged .app bundle to build its update payload",
+                target.triple()
+            ))) as Box<dyn std::error::Error>
+        })?;
+        let archive = output_directory.join(target.update_payload_name());
+        write_bundle_archive(bundle, &archive)?;
+        return Ok(archive);
+    }
+
+    artifacts
+        .iter()
+        .find(|path| {
+            path.is_file()
+                && path
+                    .extension()
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("exe"))
+        })
+        .cloned()
+        .ok_or_else(|| {
+            Box::new(Failure(format!(
+                "{} must produce an installer to publish as its update payload",
+                target.triple()
+            ))) as Box<dyn std::error::Error>
+        })
+}
+
+/// Write `bundle` into a gzipped tar archive rooted at the bundle's own name.
+///
+/// Symlinks are stored as symlinks, which is what a `.app` bundle's internal links
+/// need; dereferencing them would duplicate frameworks into the archive.
+fn write_bundle_archive(bundle: &Path, archive: &Path) -> Result<()> {
+    let root = bundle.file_name().map(PathBuf::from).ok_or_else(|| {
+        Box::new(Failure(format!("invalid bundle {}", bundle.display())))
+            as Box<dyn std::error::Error>
+    })?;
+
+    let file = fs::File::create(archive)?;
+    let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+    let mut builder = tar::Builder::new(encoder);
+    builder.follow_symlinks(false);
+    builder.append_dir_all(root, bundle)?;
+    builder.into_inner()?.finish()?;
+    Ok(())
+}
+
 fn collect_artifacts(packages: &[cargo_packager::PackageOutput]) -> Vec<PathBuf> {
     packages
         .iter()
@@ -783,9 +1303,9 @@ fn verify_app_bundle(target: ReleaseTarget, bundle: &Path) -> Result<()> {
     Ok(())
 }
 
-fn report(artifacts: &[PathBuf]) {
+fn report(summary: &str, artifacts: &[PathBuf]) {
     println!();
-    println!("Build completed successfully.");
+    println!("{summary}");
     println!();
     println!("Artifacts:");
     for artifact in artifacts {
@@ -797,10 +1317,11 @@ fn report(artifacts: &[PathBuf]) {
 mod tests {
     use super::ReleaseTarget;
 
-    /// The published name is product name, resolved version and architecture
-    /// token, with no packaging suffix. `self_update` matches release assets on
-    /// the target triple, so the installer name only has to be stable and
-    /// self-describing.
+    /// The published name is product name, resolved version and architecture token,
+    /// with no packaging suffix. The updater takes its payload from the release
+    /// manifest rather than matching an asset name, so the installer name only has to
+    /// be stable and self-describing — but it is also the update payload name on
+    /// Windows, so it is what users see in both places.
     #[test]
     fn windows_installer_is_published_under_the_product_release_name() {
         let name = ReleaseTarget::WindowsX86_64
@@ -821,5 +1342,349 @@ mod tests {
     fn apple_targets_keep_the_names_this_crate_already_builds() {
         assert!(ReleaseTarget::MacosAarch64.installer_file_name().is_none());
         assert!(ReleaseTarget::MacosX86_64.installer_file_name().is_none());
+    }
+
+    /// The updater installs the installer it downloads, so the update payload and the
+    /// published installer are the same file under the same name.
+    #[test]
+    fn the_windows_update_payload_is_the_published_installer() {
+        let target = ReleaseTarget::WindowsX86_64;
+        assert_eq!(
+            target.update_payload_name(),
+            target
+                .installer_file_name()
+                .expect("the Windows target publishes an installer")
+        );
+    }
+
+    /// macOS installs a directory, so its payload is the bundle in an archive.
+    #[test]
+    fn the_apple_update_payload_is_a_bundle_archive() {
+        for target in [ReleaseTarget::MacosAarch64, ReleaseTarget::MacosX86_64] {
+            let name = target.update_payload_name();
+            assert!(
+                name.ends_with(".app.tar.gz"),
+                "the macOS payload must be an archive, got {name}"
+            );
+            assert!(
+                name.contains(target.triple()),
+                "the payload name must stay self-describing, got {name}"
+            );
+        }
+    }
+
+    /// The manifest keys must use the updater's `<os>-<arch>` spelling, which is also
+    /// what `bongocat-update::UpdateTargetTriple::manifest_platform` returns.
+    #[test]
+    fn manifest_platforms_use_the_updater_spelling() {
+        assert_eq!(
+            ReleaseTarget::MacosAarch64.manifest_platform(),
+            "macos-aarch64"
+        );
+        assert_eq!(
+            ReleaseTarget::MacosX86_64.manifest_platform(),
+            "macos-x86_64"
+        );
+        assert_eq!(
+            ReleaseTarget::WindowsX86_64.manifest_platform(),
+            "windows-x86_64"
+        );
+        assert_eq!(ReleaseTarget::MacosAarch64.update_format(), "app");
+        assert_eq!(ReleaseTarget::WindowsX86_64.update_format(), "nsis");
+    }
+
+    /// A fragment is named after the platform key, because the merge reads the key the
+    /// updater looks this host up under straight off the file name.
+    #[test]
+    fn the_fragment_is_named_after_the_platform_key() {
+        assert_eq!(
+            super::fragment_file_name(ReleaseTarget::MacosAarch64),
+            "macos-aarch64.json"
+        );
+        assert_eq!(
+            super::fragment_file_name(ReleaseTarget::MacosX86_64),
+            "macos-x86_64.json"
+        );
+        assert_eq!(
+            super::fragment_file_name(ReleaseTarget::WindowsX86_64),
+            "windows-x86_64.json"
+        );
+    }
+
+    /// The shared manifest name has to be the asset an update run asks for.
+    ///
+    /// Restated as a literal on purpose: this is the published asset name, so changing
+    /// it must be an intentional edit here rather than a silent consequence of a
+    /// constant. `bongocat-update` pins the same literal on the requesting side.
+    #[test]
+    fn the_shared_manifest_name_is_the_requested_asset() {
+        assert_eq!(super::UPDATE_MANIFEST_NAME, "latest.json");
+    }
+
+    /// The merged manifest must be readable by the library the runtime runs.
+    ///
+    /// This is the reason `cargo-packager-updater` is a dev-dependency: the test feeds
+    /// the produced manifest to the update library's own reader type, so a shape the
+    /// runtime cannot read fails here rather than on a user's machine.
+    #[test]
+    fn merging_fragments_produces_a_manifest_the_updater_can_read() {
+        let root = std::env::temp_dir().join("bongocat-packaging-merge");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("scratch directory");
+
+        let version = env!("CARGO_PKG_VERSION");
+        let mut fragments = Vec::new();
+        for (key, format, extension) in [
+            ("macos-aarch64", "app", "app.tar.gz"),
+            ("macos-x86_64", "app", "app.tar.gz"),
+            ("windows-x86_64", "nsis", "exe"),
+        ] {
+            let path = root.join(format!("{key}.json"));
+            std::fs::write(
+                &path,
+                serde_json::to_vec_pretty(&super::ManifestFragment {
+                    version: version.to_owned(),
+                    entry: super::ManifestEntry {
+                        url: format!(
+                            "https://github.com/ayangweb/BongoCat/releases/download/v{version}/BongoCat-{key}.{extension}"
+                        ),
+                        signature: format!("signature-for-{key}"),
+                        format: format.to_owned(),
+                    },
+                })
+                .expect("serialize a fragment"),
+            )
+            .expect("write a fragment");
+            fragments.push(path);
+        }
+
+        let merged = super::merge_manifest(&root, &fragments).expect("merge the fragments");
+        assert_eq!(
+            merged,
+            vec![root.join(super::UPDATE_MANIFEST_NAME)],
+            "the merge writes the shared manifest under its published name"
+        );
+        let output = &merged[0];
+
+        let merged: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(output).expect("read the manifest"))
+                .expect("the manifest must be JSON");
+        assert_eq!(merged["version"], version);
+        let platforms = merged["platforms"]
+            .as_object()
+            .expect("the manifest must carry a platform map");
+        assert_eq!(platforms.len(), 3, "every fragment must be announced");
+
+        // The reader is what the application runs, so its view of the manifest is the
+        // contract: the version, the three keys, and a per-platform entry it can decode.
+        let release: cargo_packager_updater::RemoteReleaseData =
+            serde_json::from_value(merged).expect("the updater must be able to read it");
+        let cargo_packager_updater::RemoteReleaseData::Static { platforms } = release else {
+            panic!("a shared manifest must read as the updater's static shape");
+        };
+        assert_eq!(
+            platforms
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            std::collections::BTreeSet::from([
+                "macos-aarch64".to_owned(),
+                "macos-x86_64".to_owned(),
+                "windows-x86_64".to_owned(),
+            ])
+        );
+        assert_eq!(platforms["windows-x86_64"].format.to_string(), "nsis");
+        assert_eq!(platforms["macos-aarch64"].format.to_string(), "app");
+    }
+
+    /// Fragments from different builds would produce a manifest that lies about which
+    /// version its entries belong to, so the merge refuses them.
+    #[test]
+    fn merging_rejects_a_fragment_from_another_release() {
+        let root = std::env::temp_dir().join("bongocat-packaging-merge-version");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("scratch directory");
+
+        let mut fragments = Vec::new();
+        for (key, version) in [
+            ("macos-aarch64", env!("CARGO_PKG_VERSION")),
+            ("windows-x86_64", "0.0.1"),
+        ] {
+            let path = root.join(format!("{key}.json"));
+            std::fs::write(
+                &path,
+                serde_json::to_vec_pretty(&super::ManifestFragment {
+                    version: version.to_owned(),
+                    entry: super::ManifestEntry {
+                        url: "https://github.com/ayangweb/BongoCat/releases/download/v0.0.1/x"
+                            .to_owned(),
+                        signature: "signature".to_owned(),
+                        format: "app".to_owned(),
+                    },
+                })
+                .expect("serialize a fragment"),
+            )
+            .expect("write a fragment");
+            fragments.push(path);
+        }
+
+        let error = super::merge_manifest(&root, &fragments)
+            .expect_err("fragments from different releases must be rejected");
+        assert!(
+            error.to_string().contains(&format!(
+                "but this release is {}",
+                env!("CARGO_PKG_VERSION")
+            )),
+            "unexpected error: {error}"
+        );
+    }
+
+    /// A fragment whose name is not a shipped platform would publish a manifest entry
+    /// no host can ever match, so the merge refuses it.
+    #[test]
+    fn merging_rejects_a_fragment_that_is_not_a_shipped_platform() {
+        let root = std::env::temp_dir().join("bongocat-packaging-merge-keyless");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("scratch directory");
+        let path = root.join("plan9-cris.json");
+        std::fs::write(&path, b"{}").expect("write a fragment");
+
+        let error = super::merge_manifest(&root, &[path])
+            .expect_err("a fragment for an unshipped platform must be rejected");
+        assert!(
+            error
+                .to_string()
+                .contains("not named after a shipped platform"),
+            "unexpected error: {error}"
+        );
+    }
+
+    /// The provisioning step has to produce exactly what the release consumes.
+    ///
+    /// `--generate-signing-key` exists so a maintainer never has to hand-assemble the CI
+    /// secret or the compiled-in public key. This test runs it and then uses the files it
+    /// wrote the way a release does: the private file's contents as
+    /// `SIGNING_PRIVATE_KEY`, unlocked with the same passphrase variable the
+    /// signing path reads.
+    #[test]
+    fn generating_a_signing_key_produces_the_files_the_release_consumes() {
+        let root = std::env::temp_dir().join("bongocat-packaging-keygen");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("scratch directory");
+
+        let produced = super::generate_signing_key(&root.join("bongocat.key"))
+            .expect("generate a signing key");
+        let [private, public] = produced.as_slice() else {
+            panic!("generating a key must produce exactly two files, got {produced:?}");
+        };
+        assert_eq!(private.file_name().unwrap(), "bongocat.key");
+        assert_eq!(public.file_name().unwrap(), "bongocat.key.pub");
+
+        let private_contents = std::fs::read_to_string(private).expect("read the private key");
+        let public_contents = std::fs::read_to_string(public).expect("read the public key");
+        for (label, contents) in [("private", &private_contents), ("public", &public_contents)] {
+            assert!(
+                !contents.trim().is_empty() && !contents.trim().contains('\n'),
+                "the {label} key must be one line of text, so it can be pasted into a CI \
+                 secret or a Rust string literal without an encoding step, got {contents:?}"
+            );
+        }
+
+        // `cargo-packager` writes with the process umask, so without this the private key
+        // would be world-readable on a default account.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let mode = std::fs::metadata(private)
+                .expect("private key metadata")
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(mode, 0o600, "the private key must not be world-readable");
+        }
+
+        let payload = root.join("payload.bin");
+        std::fs::write(&payload, b"update payload").expect("write a payload");
+        let signing = cargo_packager::sign::SigningConfig::new()
+            .private_key(private_contents.trim())
+            .password(
+                std::env::var(super::SIGNING_PRIVATE_KEY_PASSWORD_VARIABLE).unwrap_or_default(),
+            );
+        let signature = cargo_packager::sign::sign_file(&signing, &payload)
+            .expect("the saved private key must sign when unlocked the way the release unlocks it");
+        assert!(
+            std::fs::metadata(&signature)
+                .expect("signature metadata")
+                .len()
+                > 0,
+            "signing must produce a signature file"
+        );
+
+        let error = super::generate_signing_key(private)
+            .expect_err("an existing key pair must never be overwritten");
+        assert!(
+            error.to_string().contains("refusing to overwrite"),
+            "unexpected error: {error}"
+        );
+    }
+
+    /// A manifest with no platform entries would be published and then read by every
+    /// installed copy, so an empty merge is a failure rather than an empty file.
+    #[test]
+    fn merging_needs_at_least_one_fragment() {
+        let root = std::env::temp_dir().join("bongocat-packaging-merge-empty");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("scratch directory");
+
+        let error = super::merge_manifest(&root, &[]).expect_err("an empty merge must be rejected");
+        assert!(
+            error.to_string().contains("needs at least one fragment"),
+            "unexpected error: {error}"
+        );
+    }
+
+    /// The updater drops the archive's root entry and installs what remains on the
+    /// bundle path, so the root has to be the bundle directory and the bundle's
+    /// contents have to sit under it.
+    #[test]
+    fn the_bundle_archive_roots_at_the_bundle_directory() {
+        let root = std::env::temp_dir().join("bongocat-packaging-bundle-archive");
+        let _ = std::fs::remove_dir_all(&root);
+        let bundle = root.join("BongoCat.app");
+        std::fs::create_dir_all(bundle.join("Contents/MacOS")).expect("bundle directory");
+        std::fs::write(bundle.join("Contents/MacOS/bongocat-app"), "binary").expect("write file");
+
+        let archive = root.join("BongoCat.app.tar.gz");
+        super::write_bundle_archive(&bundle, &archive).expect("archive the bundle");
+
+        let file = std::fs::File::open(&archive).expect("open the archive");
+        let entries = tar::Archive::new(flate2::read::GzDecoder::new(file))
+            .entries()
+            .expect("read the archive")
+            .map(|entry| {
+                entry
+                    .expect("archive entry")
+                    .path()
+                    .expect("entry path")
+                    .display()
+                    .to_string()
+            })
+            .collect::<Vec<_>>();
+
+        // Directory entries carry a trailing separator; only the root of the archive
+        // matters here, and it must be the bundle directory itself.
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.trim_end_matches('/') == "BongoCat.app"),
+            "the archive must root at the bundle directory, got {entries:?}"
+        );
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry == "BongoCat.app/Contents/MacOS/bongocat-app"),
+            "the bundle contents must sit under that root, got {entries:?}"
+        );
     }
 }

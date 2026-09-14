@@ -9,12 +9,17 @@ publish.workspace = true
 
 [dependencies]
 bongocat-config.workspace = true
-self_update.workspace = true
+cargo-packager-updater.workspace = true
 
-# Test-only: the archive-layout capability tests build the release archives that
-# the documented macOS and Windows asset layouts require.
+# Test-only: the capability tests publish a release manifest over a loopback
+# socket and sign the payload with `cargo-packager`'s own signer, so the release
+# pipeline's signer and the updater's verifier are exercised against each other
+# instead of against a second, hand-rolled signing implementation.
 [dev-dependencies]
-zip.workspace = true
+cargo-packager.workspace = true
+flate2.workspace = true
+serde_json.workspace = true
+tar.workspace = true
 
 [lints]
 workspace = true

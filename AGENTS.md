@@ -242,7 +242,10 @@ Issue #47 的“收到按下但未收到释放”必须从架构上处理，不�
 - 写入使用同目录临时文件、flush 和原子替换；失败保留原文件和备份。
 - 模型导入防止路径穿越、符号链接逃逸、绝对路径注入、压缩炸弹和静默覆盖。
 - 文件选择结果必须在 Rust 侧再次验证。
-- 更新只允许 HTTPS，校验版本、target、arch、hash 和签名，并提供失败回滚。
+- 更新只允许 HTTPS，校验版本、target、arch 和签名，并提供失败回滚。**独立 hash 校验当前无实现**：
+  该项由第三方更新库的 `checksums` feature 提供，该 feature 已随 ADR-0034 的换库退役，本项目
+  没有替代实现，`update_checksum_mismatch` 因此无产出路径。恢复它需要新建 ADR 并重新立项；
+  在恢复之前不得声称该条已满足。
 - 日志不得记录真实按键序列、剪贴板内容、用户文件内容或密钥。
 - 日志和备份必须有大小、数量和保留期限上限。
 
@@ -312,6 +315,8 @@ cargo check --workspace --release
 just build                                              # Production，本机 target，全部产物
 just build --target x86_64-apple-darwin                 # 指定 target
 just build --environment development --formats app       # 只要 Development .app
+just manifest target/package target/package/*.json      # 合并 per-target manifest fragment
+just keygen ~/.bongocat/release.key                     # 一次性生成更新签名密钥对
 just version                                             # 唯一产品版本号来源
 ```
 
@@ -321,8 +326,21 @@ just version                                             # 唯一产品版本号
 - 版本号只有 `[workspace.package].version` 一个来源；不得在任何脚本、CI 或打包配置中重复声明。
 - 平台与产物集合由 `crates/bongocat-packaging` 声明，`tools/tests/test_packaging_contract.py`
   与 `deny.toml`、`bongocat-update::UpdateTargetTriple` 必须保持一致。
+- 更新载荷的组装与签名同属该 crate。`SIGNING_PRIVATE_KEY` 与
+  `SIGNING_PRIVATE_KEY_PASSWORD` 是唯一的密钥注入点，未设置即跳过签名（本地构建）；
+  release workflow 反过来断言发布构建一定签过名。签名是打包的**最后一步**，签名后不得改名、
+  重压缩或 strip。载荷形状、平台键与 manifest 键必须与 `bongocat-update` 的运行时常量一致，
+  由 `tools/tests/test_update_release_contract.py` 强制。
+- **签名密钥的生成也走同一入口**（`just keygen <file>`）：它用同一份精确 pin 的 `cargo-packager`
+  生成密钥对，因此不需要任何全局 `cargo install`。生成是一次性、离线的运维动作，不要在 CI 里跑；
+  私钥不得进入源码、产物或日志，公钥值写入 `bongocat-update` 的 `RELEASE_SIGNING_KEY`。
+- **发行 manifest 的合并也属于该 crate**：每次 `just build` 只写自己 target 的 fragment
+  （`<os>-<arch>.json`），而运行时只请求一份共享 `latest.json`，因此多 target 发布必须先跑
+  `just manifest`。不要在 CI 或脚本里自己拼 manifest JSON——形状与资产名由该 crate 拥有，
+  工作流只负责调用工具。fragment 是构建输入，不是发行资产。
 - 决策背景、已知的 upstream 缺陷与退出条件见
-  `docs/adr/0033-build-packaging-and-release-toolchain.md`。
+  `docs/adr/0033-build-packaging-and-release-toolchain.md`；更新签名与信任模型见
+  `docs/adr/0034-detached-minisign-update-trust-model.md`。
 
 ### 12.2 必须维护的不变量
 

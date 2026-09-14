@@ -1,8 +1,8 @@
 //! The anonymous update diagnostics contract exported to the application.
 //!
-//! This module is deliberately free of any `self_update` type. The application
-//! diagnostics boundary (`ADR-0016`, `ADR-0027`) may only ever see the stable,
-//! path-free counters and error codes defined here, so the underlying update
+//! This module is deliberately free of any `cargo_packager_updater` type. The
+//! application diagnostics boundary (`ADR-0016`, `ADR-0027`) may only ever see the
+//! stable, path-free counters and error codes defined here, so the underlying update
 //! library can be replaced without changing the export shape.
 
 use std::sync::{
@@ -25,15 +25,20 @@ pub enum UpdateErrorCode {
     SignatureKeyMissing,
     /// The release listing could not be fetched or parsed.
     ReleaseFetchFailed,
-    /// No release asset matched this target.
+    /// The release manifest announces no entry for this host.
     NoMatchingAsset,
     /// The artifact transfer failed (connection, TLS, HTTP status, rate limit).
     DownloadTransportFailed,
     /// The artifact did not match its expected checksum.
+    ///
+    /// Retained because this catalog is a diagnostics export contract where a rename
+    /// or removal is not backwards compatible. The current update library
+    /// authenticates the payload with a Minisign signature and publishes no separate
+    /// checksum, so no code path produces this variant any more.
     ChecksumMismatch,
-    /// The artifact's archive signature was absent or invalid.
+    /// The artifact's signature was absent or invalid.
     SignatureInvalid,
-    /// The artifact archive could not be read or extracted.
+    /// The artifact could not be read, extracted or installed.
     ArchiveInvalid,
     /// The install location is not writable.
     InstallPathNotWritable,

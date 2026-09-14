@@ -1,6 +1,22 @@
 # ADR-0029: Third-Party Update Library Boundary
 
-状态：已接受（2026-09-13）
+状态：已被 ADR-0034 取代（2026-09-14）
+取代：ADR-0021、ADR-0022、ADR-0025、ADR-0026
+
+> **本文已失效，正文保留为历史记录。**
+>
+> 2026-09-14 的换实现表明，本文记录的 `self_update 1.3.0` + zipsign 归档内嵌签名模型有两条
+> 硬性阻塞：zipsign 只能签 `.zip` 与 `.tar.gz`，裸 `.exe` / `.dmg` 必然验签失败；且
+> `self_update` 的 replace-and-verify 语义不适用于 NSIS 这类系统安装器（上游 `lib.rs:302`）。
+> 更新库已改为 `cargo-packager-updater`，信任模型已改为 detached minisign 签名，见
+> **ADR-0034**。本文中的库选择、签名方案、依赖清单与验证证据**均不再有效**。
+>
+> 仍然有效的部分——构建期 channel 隔离、签名密钥缺失时失败关闭、稳定错误码收敛、
+> 第三方类型不外泄为项目公共 API——已在 ADR-0034 中重述。
+>
+> 文末引用的 `archive_layout_capability.rs`、`local_install_rehearsal.rs` 与
+> `multi_file_install_capability.rs` 已随该库退役删除，替代品是
+> `release_manifest_capability.rs`。
 
 ## 背景
 

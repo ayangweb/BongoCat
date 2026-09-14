@@ -34,9 +34,10 @@ async-io = "=2.6.0"
 atomic-write-file = "=0.3.1"
 async-channel = "=2.5.0"
 cargo-packager = { version = "=0.11.8", default-features = false, features = ["rustls-tls"] }
+cargo-packager-updater = { version = "=0.2.3", default-features = false, features = ["rustls-tls"] }
 dirs = "=6.0.0"
-ed25519-dalek = { version = "=3.0.0", default-features = false, features = ["fast"] }
 embed-resource = "=3.0.11"
+flate2 = "=1.1.10"
 gpui-kit = "=0.6.1"
 rust-i18n = "=4.2.2"
 image = { version = "=0.25.10", default-features = false, features = ["png"] }
@@ -48,7 +49,7 @@ rfd = { version = "=0.17.2", default-features = false }
 rodio = { version = "=0.22.2", default-features = false, features = ["playback", "flac"] }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
-self_update = { version = "=1.3.0", default-features = false, features = ["ureq", "rustls", "github", "archive-tar", "archive-zip", "compression-tar-gz", "compression-zip-deflate", "checksums", "signatures"] }
+tar = "=0.4.46"
 tempfile = "=3.27.0"
 tray-icon = { version = "=0.25.0", default-features = false }
 url = "=2.5.8"

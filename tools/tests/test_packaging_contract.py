@@ -97,7 +97,15 @@ class PackagingTargetTests(unittest.TestCase):
 
         workflow = read(RELEASE_WORKFLOW)
         self.assertIn("BongoCat_${env:version}_x64.exe", workflow)
-        self.assertIn("path: target/package/BongoCat_*.exe", workflow)
+        # The installer is the Windows update payload, so it is uploaded together with
+        # the signature and the manifest the updater reads.
+        for uploaded in (
+            "target/package/BongoCat_*.exe",
+            "target/package/BongoCat_*.exe.sig",
+            "target/package/windows-x86_64.json",
+        ):
+            with self.subTest(uploaded=uploaded):
+                self.assertIn(uploaded, workflow)
         self.assertNotIn("-setup", workflow, "the published installer drops the packaging suffix")
 
 

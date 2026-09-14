@@ -121,7 +121,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 冻结首发 target triple 和 CPU 架构矩阵，明确 Windows ARM64、macOS Intel 是否发布或仅测试。
   - 状态（2026-08-29）：ADR-0010 已固定 Windows 仅支持 x64/ARM64，i686 不再构建或发布。官方 Cubism Native R5 不提供 desktop Windows ARM64 Core，只有 experimental UWP ARM64 DLL，因此 ARM64 当前是发布阻塞；macOS Intel 和最终安装包形式仍待实机与发布链验证。
   - 状态（2026-09-07）：历史手动 release workflow 已移除 `i686-pc-windows-msvc` matrix entry，避免任何仓库发布入口继续构建 Native Rewrite 明确排除的 Windows x86 target；历史基线文档中的旧版 i686 产物记录仅保留为考古证据。
-  - 状态（2026-09-07）：`tools/tests/test_native_release_target_matrix.py` 已接入 Phase 0 fixtures job，持续断言 release workflow 仅保留 Windows x64/ARM64；该 contract 不替代 macOS Intel、Windows ARM64 Core、实机和签名门禁，因此本项当时仍保持未勾选。
+  - 状态（2026-09-07）：`tools/tests/test_native_release_target_matrix.py` 已接入 Phase 0 fixtures job，持续断言 release workflow 仅保留当时冻结的 Windows 目标；该 contract 不替代 macOS Intel、Windows ARM64 Core、实机和签名门禁，因此本项当时仍保持未勾选。
+  - 状态（2026-09-14）：该 contract 现断言的是三个已发布 target（`x86_64-pc-windows-msvc`、`x86_64-apple-darwin`、`aarch64-apple-darwin`），并新增一项断言把 `tools/check-native-dependencies.sh` 的离线审计目标列表与 `deny.toml` 的 `[graph] targets` 钉在一起——该脚本此前仍在审计已删除的 `aarch64-pc-windows-msvc`。
   - 状态（2026-09-14，**本条取代以上判断**）：矩阵冻结为 `x86_64-pc-windows-msvc`、`x86_64-apple-darwin`、`aarch64-apple-darwin`。Windows ARM64 不再是产品目标（ADR-0010 已更新，理由见 ADR-0033）：没有官方可授权 desktop ARM64 Core 就没有真实 ABI/模型证据，而 Windows on ARM 走 Windows 自身的 x64 仿真，因此维持一个无法端到端验证的原生目标只增加成本；后续版本可按需重新开启。macOS Intel 与 Apple Silicon 都发布 `.app` + `.dmg`，首发安装包形式由 ADR-0033 固定。`deny.toml`、`bongocat-update::UpdateTargetTriple` 与 `crates/bongocat-packaging` 三处声明一致，由 `tools/tests/test_packaging_contract.py` 强制；CI 已删除 Windows ARM64 的 clippy/check 步骤。因此本项转为已勾选，剩余的是各平台实机证据而不是架构决策。
 - [ ] 记录 Windows MSVC/SDK、macOS Xcode/SDK/Metal Toolchain 和 Rust toolchain 的最低可用组合。
 - [ ] 保存旧版最后可用安装包、资源清单、签名状态和 SHA-256，不只记录源码 commit。
@@ -1746,7 +1747,7 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     `update_environment_disabled`；`runtime::availability_requires_a_production_channel_and_a_signing_key`
     断言更新入口只在 Production 且已注入签名密钥时可见。channel 只从不可变 `BUILD_ENVIRONMENT`
     派生，运行期输入无法切换。新实现已无跨环境 artifact 通路（sequence store、staging 与
-    artifact channel 字段均已删除），替换目标由 `self_update` 从 `current_exe()` 推导，
+    artifact channel 字段均已删除），替换目标由更新库从 `current_exe()` 推导（ADR-0034），
     不落在任一环境的 `StorageLayout` 根下，因此不存在把 Production artifact 写入 Development
     根或反向覆盖的路径。
 
@@ -1919,37 +1920,77 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 
 - [x] 以第三方库承担更新流程，删除自研验证层。
   - 验收证据（2026-09-13）：ADR-0029 取代 ADR-0021、ADR-0022、ADR-0025 与 ADR-0026。
-    `bongocat-update` 原有 9 个模块、4615 行实现全部删除，改为基于 `self_update 1.3.0` 的薄封装：
+    `bongocat-update` 原有 9 个模块、4615 行实现全部删除，改为第三方更新库的薄封装：
     `release.rs` 的 `ReleaseConfiguration` 固定发行仓库、构建期 channel、target triple 与二进制名；
     `runtime.rs` 的 `UpdateRuntime` 承载 check/install/restart 并把库错误映射为自有稳定码；
     `diagnostics.rs` 保留 10 项匿名计数与 13 个稳定错误码。`cargo fmt --all --check`、严格 Clippy
     （`-D warnings`）、`cargo test --locked --workspace` 与 locked release check 通过；新增 13 个
     单元测试覆盖 channel 门禁、签名密钥失败关闭、错误码稳定性与诊断计数。
-  - 状态（2026-09-13）：`self_update` 的 `UpdateConfig` 与 `ReleaseUpdate` 均为 sealed，外部无法自行
-    实现，只能经后端 builder 构造；当前使用内置 `github` 后端指向 `ayangweb/BongoCat`。真实编译图
-    增量实测为 +17 个包（462 → 479），且未引入 `reqwest`、`hyper`、`tower-http`、`cookie_store`
-    或 `aws-lc-rs`。
+  - 状态（2026-09-14）：库选择与信任模型已由 ADR-0034 更新为
+    `cargo-packager-updater 0.2.3` + detached minisign 签名。换实现的两条硬性理由：zipsign 只能签
+    `.zip`/`.tar.gz`，裸 `.exe` 落入 `ArchiveKind::Plain(None)` 必然验签失败；且 `self_update` 的
+    replace-and-verify 语义不适用于 NSIS 系统安装器（上游 `src/lib.rs:302`），Windows 会缺失安装
+    步骤。新库自带该步骤（`UpdateFormat::Nsis`）。`bongocat-update` 的公开面
+    （`ReleaseConfiguration`、`ReleaseChannel`、`UpdateTargetTriple`、`UpdateRuntime`、13 个稳定
+    错误码、10 项匿名计数）未变；签名端与打包端同属 `cargo-packager`，签名器与验签器不会各自演进。
+    原三个 `self_update` 专属能力测试（`archive_layout_capability.rs`、`local_install_rehearsal.rs`、
+    `multi_file_install_capability.rs`）随该库退役删除，由 `release_manifest_capability.rs` 取代：
+    它用 loopback HTTP 把**生产签名器**（`cargo_packager::sign::sign_file`）与**客户端验签器**放在
+    一起跑，覆盖共享 manifest 及其平台键查找、篡改载荷、未知密钥、空公钥与 macOS 整包替换。
+    `tools/tests/test_update_release_contract.py` 覆盖另一半——manifest 资产名与平台键必须与
+    runtime 声明的一致。`cargo fmt --all --check`、严格 Clippy、
+    `cargo test -p bongocat-update`（17 单元 + 8 能力）与 `tools/tests` 全部通过。
+  - 状态（2026-09-14，同日修订）：manifest 形状由"每 target 一份 dynamic"改为"一份共享 static"
+    （ADR-0034 §3 修订说明）。runtime 请求
+    `https://github.com/ayangweb/BongoCat/releases/latest/download/latest.json`，其
+    `platforms` 映射按 `<os>-<arch>` 提供每个 target 的载荷。每个构建 job 仍只写自己的 fragment，
+    发布前用 `just manifest` 合并——合并由 `crates/bongocat-packaging --merge-manifests` 承担，
+    而不是在 CI 里拼 JSON，manifest 形状与资产名因此仍由一处拥有。合并产物被更新库自身的读取类型
+    反序列化验证（`cargo-packager-updater` 作为该 crate 的 dev 依赖），比正则匹配源码更强。
 - [ ] 只允许 HTTPS，固定公钥来源和轮换流程。
-  - 状态（2026-09-13）：传输由库的 `ureq` 后端承担并强制 HTTPS。签名公钥以
-    `RELEASE_SIGNING_KEY` 常量编译进构建，**当前为 `None`**，因此 runtime 在发出任何请求前失败关闭
-    并返回 `update_signature_key_missing`。公钥轮换窗随 ADR-0021 退役，key ID 与有效期概念不再存在，
-    该子项无法按原设计完成；真实公钥注入仍未实现。
+  - 状态（2026-09-13，历史）：当时 `self_update` 方案的 `RELEASE_SIGNING_KEY` 为 `None`，
+    因此 runtime 在发出任何请求前失败关闭并返回 `update_signature_key_missing`；公钥轮换窗
+    随 ADR-0021 退役，key ID 与有效期概念不再存在。该库与签名模型已于 2026-09-14 被 ADR-0034
+    取代，此行只保留当时状态。
+  - 状态（2026-09-14，当前）：公钥形态改为 base64 的 minisign 公钥盒文本，并已内嵌发布公钥
+    `DF5E2C9D255DD85E`；缺失、空串或纯空白时的失败关闭语义由 `runtime.rs` 的门禁与定向测试
+    锁定。**轮换能力比 ADR-0029 时更弱**：
+    新库的 `Config.pubkey` 是单个 `String`，没有 zipsign 那样的 any-of 多密钥语义，因此换钥匙必须
+    先发布一个"认识新钥匙"的版本，否则已安装用户的更新链直接断裂。轮换流程尚未设计，见 ADR-0034
+    待验证项 4。
 - [ ] 校验版本、target、arch、hash 和签名。
-  - 状态（2026-09-13）：版本比较、target 资产匹配、SHA-256（`checksums` feature）与 zipsign 归档
-    签名（`signatures` feature）均由库承担。**未配置真实签名公钥，也未在任何真实产物上验证**；
-    操作系统包签名验证仍未实现，因此保持未勾选。
+  - 状态（2026-09-13，历史）：当时由 `self_update` 承担版本比较、target 资产匹配、SHA-256
+    与归档签名，但未配置真实签名公钥，也未在任何真实产物上验证。该库与签名模型已于
+    2026-09-14 被 ADR-0034 取代，此行只保留当时状态。
+  - 状态（2026-09-14）：版本比较与 detached minisign 验签由新库承担，且验签发生在安装之前
+    （`Update::download()` 读完载荷即校验，`install()` 只接受已验签的字节）。**两项能力随本次换
+    实现消失**：独立 SHA-256 完整性校验（旧 `checksums` feature 用 GitHub 公布的 per-asset
+    digest）无替代，`update_checksum_mismatch` 已无产出路径；per-platform 资产匹配无替代，
+    `update_no_matching_asset` 同样无产出路径（两者均已在 `diagnostics.rs` 注明保留原因）。
+    发布公钥已注入；但尚未在真实发布产物上完成签名 → 下载 → 验签验证，操作系统包签名验证也
+    仍未实现，因此保持未勾选。
 - [ ] 下载支持取消、断点/重试策略和失败清理。
   - 状态（2026-09-13）：随 ADR-0021 一并退役。自研 staging 目录、三次重试与 1 秒/2 秒退避、
     Unix `0600` 权限与 partial 文件清理不再存在；库自身的下载重试与失败清理语义**未经本项目验证**，
     因此保持未勾选。
+  - 状态（2026-09-14）：同上，换库未恢复该能力。另需记录一条库行为：验签前把整个载荷
+    `read_to_end` 进内存，因此存在一条随产物增长而增长的常驻内存路径（ADR-0034）。
 - [ ] 安装前协调 runtime/renderer shutdown，失败可回滚。
   - 状态（2026-09-13）：随 ADR-0026 一并退役，`UpdateInstallCoordinator` 已删除。库在内部执行
     prepare -> rename 交换 -> best-effort 回滚，但**不与本项目 runtime/renderer 的 shutdown 顺序
     协调**，也未在真实安装链验证，因此保持未勾选。
+  - 状态（2026-09-14）：仍不与本项目 shutdown 顺序协调。macOS 由库整包替换 bundle；Windows 由库
+    运行下载到的安装器（`install_mode = Quiet` → NSIS `/S` `/R`）后 `process::exit(0)`，因此
+    `UpdateOutcome::Installed` 只在 macOS 可观测，Windows 成功路径以进程退出结束。**该路径在本机
+    （macOS）无法验证**，见 ADR-0034 待验证项 2。
 - [ ] 测试断网、代理、中断、签名错误和降级攻击。
   - 状态（2026-09-13）：自研 coordinator 回归随实现一并删除。**降级攻击检测随 `release_sequence`
     退役而不再存在**——现在仅按 semver 比较，低 sequence 重放不再被拒绝。断网、代理、中断与签名
     错误的真实链路测试均未运行，因此保持未勾选。
+  - 状态（2026-09-14）：签名错误路径已有 loopback 能力测试覆盖（篡改载荷、未知密钥、空公钥），
+    但仍**不是**真实链路。共享 manifest 重新带回 per-platform 门禁（漏掉本机平台键时命中
+    `update_no_matching_asset`），但 manifest 本身没有防降级保护：能替换 manifest 的攻击者仍可以
+    把客户端指向一个旧但签名有效的载荷。断网、代理与中断均未测试，因此保持未勾选。
 - [ ] 更新 channel 按环境隔离。
   - [x] 构建期 channel 门禁。
     - 验收证据（2026-09-13）：`ReleaseChannel::from_environment` 从不可变 `BuildEnvironment` 派生
@@ -2098,13 +2139,23 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
   - 状态（2026-09-13）：**本项随 ADR-0029 作废**。manifest v1 schema、单调 `release_sequence`
     防回滚、`minimum_upgradable_version` 与 target artifact 列表不再属于本项目契约；
     `shared/update/` 下的 Draft 2020-12 schema 与 accept/reject fixtures 已删除，
-    `tools/validate-json-schema.py` 中的 update 校验入口同步移除。发行元数据现由 `self_update`
-    的 `github` 后端从发行页读取，本项目不再解析或校验 manifest。
+    `tools/validate-json-schema.py` 中的 update 校验入口同步移除。发行元数据现由更新库从发行页
+    读取，本项目不再解析或校验 manifest。
+  - 状态（2026-09-14）：换库（ADR-0034）后结论不变，且发行元数据的形状由库决定：共享 manifest 是
+    库的 *static* 形状（顶层 `version` + `platforms` 映射），每个 target 的 fragment 是
+    `version` + `url`/`signature`/`format`。本项目只负责写出这两种形状并合并，
+    不引入 `schema_version`、channel 或防回滚字段。资产名由
+    `tools/tests/test_update_release_contract.py` 固定，形状由
+    `crates/bongocat-packaging` 的合并测试喂给更新库自身的读取类型验证，
+    `crates/bongocat-update/tests/release_manifest_capability.rs` 覆盖库侧的解析与验签。
 - [ ] 更新 helper/installer 的权限边界、替换原子性和失败恢复经过单独威胁建模。
   - 状态（2026-09-13）：**原验收证据随 ADR-0026 作废，本项从已完成回退为未完成**。独立 helper、
     prepare -> validate -> atomic same-volume rename -> launch/health acknowledgement 的契约不再由
-    本项目实现；替换改由 `self_update` 内部完成，其权限边界、原子性与失败恢复**未经本项目威胁
-    建模或实机验证**。OS package signature、故障注入和双平台实机 smoke 仍未实现。
+    本项目实现；替换改由更新库内部完成，其权限边界、原子性与失败恢复**未经本项目威胁建模或实机
+    验证**。OS package signature、故障注入和双平台实机 smoke 仍未实现。
+  - 状态（2026-09-14）：换库未改变结论，并新增两条待建模的事实（ADR-0034）：macOS 走整包替换
+    bundle；Windows 走"运行下载到的 NSIS 安装器 + `process::exit(0)`"，因此更新后的重启由安装器
+    的 `/R` 承担而不是本项目的 `restart()`。Windows 路径在本机（macOS）无法验证。
 
 ### 8.5 Phase 7 退出门槛
 
@@ -3218,13 +3269,16 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       曾于 commit `a9371f6` 通过 12 项 release 测试与三平台门禁。该实现已于 2026-09-13 随 ADR-0029
       整体删除（`shared/update/`、manifest v1 schema、sequence store、verifier、staging 与下载/安装
       coordinator 均不存在），因此本项从已完成回退为未完成。
-    - 状态（2026-09-13）：**本项随 ADR-0029 作废，不再作为交付目标**。更新信任判断改由 `self_update`
-      1.3.0 的 `github` 后端承担：本项目不再解析或校验 manifest，发行元数据从发行页读取，归档完整性由
-      zipsign ed25519 归档签名校验。ADR-0021 与 ADR-0025 已标记「已被 ADR-0029 取代」。被放弃的能力
+    - 状态（2026-09-13）：**本项随 ADR-0029 作废，不再作为交付目标**。更新信任判断改由第三方更新库
+      承担：本项目不再解析或校验 manifest，发行元数据从发行页读取，载荷真实性由归档签名校验。
+      ADR-0021 与 ADR-0025 已标记「已被 ADR-0029 取代」。被放弃的能力
       （单调 `release_sequence` 防降级、manifest 未知字段拒绝与 1 MiB 上限、公钥轮换窗、HTTPS-only /
       禁 redirect / 15s deadline / 禁透明压缩、32 个稳定错误码收敛为 13 个）已逐项记入 ADR-0029 的
       损失表，本项目当前**没有**替代实现。若后续要求恢复其中任一项，须新建 ADR 并重新立项，
       不得把本项直接勾选。
+    - 状态（2026-09-14）：库与签名方案已由 ADR-0034 再换一次（`cargo-packager-updater` + detached
+      minisign）。结论不变，并**新增两项损失**：独立 SHA-256 完整性校验与 per-platform 资产匹配
+      均无替代，对应错误码已无产出路径；公钥轮换能力比 ADR-0029 时更弱（单公钥，无 any-of）。
 
 69. [x] `P7-AUTOMATIC-UPDATE-PREFERENCE`：让当前 v1 自动检查更新偏好进入正式设置链路。
     - 依赖：当前 v1 `application.check_for_updates_automatically`、settings typed command/snapshot、

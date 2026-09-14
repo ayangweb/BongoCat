@@ -1,7 +1,7 @@
 # BongoCat Native Rewrite Technical Design
 
 状态：架构决策稿，Phase 0 证据补齐与 Phase 1 渐进实现并行
-最后更新：2026-09-13
+最后更新：2026-09-14
 首发平台：Windows 10 1903+、macOS 12+
 后续平台：Linux（首发后评估）
 
@@ -257,7 +257,7 @@ BongoCat/
     bongocat-audio/           motion 音效队列、解码与设备 owner
     bongocat-render/          render snapshot/contract
     bongocat-ui/              GPUI 设置界面和 design system
-    bongocat-update/          签名更新 manifest、版本/target 和 artifact 完整性验证
+    bongocat-update/          发布清单读取、版本/target 判定、载荷验签与安装策略
     bongocat-platform/        Windows/macOS 平台服务
   shared/
     config/                   Native JSON schema、命名与存储契约
@@ -724,36 +724,49 @@ workspace 的正式 `just` 入口与 CI 显式选择 Development，Production bu
 - 模型删除 command 同样携带 `(origin, model_id)`；preset 永不可删。installed 模型只有在既
   不是当前 runtime active、也不是配置所选来源时才能以 rename 后删除事务退休；同 ID preset
   不得阻止删除 installed 副本。成功只刷新 catalog，不隐式切模或改写配置。
-- 更新的下载、校验、解压、替换与重启由 `self_update 1.3.0` 承担；`bongocat-update` 只保留
-  BongoCat 侧策略与诊断契约，不自行实现替换层。信任模型为 zipsign ed25519 归档签名：发行归档
-  必须由发布私钥签名，客户端以编译进构建的公钥集按 any-of 语义校验，私钥不得进入源码、产物或
-  配置。ADR-0021、ADR-0022、ADR-0025 与 ADR-0026 定义的 detached 清单签名、manifest v1 schema、
-  单调 `release_sequence` 防降级与 24 小时调度已由 ADR-0029 取代，不再有效。
+- 更新的 manifest 获取、版本比较、下载、验签、安装与重启由 `cargo-packager-updater 0.2.3` 承担；
+  `bongocat-update` 只保留 BongoCat 侧策略与诊断契约，不自行实现传输或替换层。信任模型为
+  **detached minisign 签名**：发行载荷必须由发布私钥签名，客户端以编译进构建的公钥校验，
+  私钥不得进入源码、产物或配置。签名端与打包端是同一个 crate（`cargo_packager::sign`），
+  因此签名器与验签器不会各自演进。ADR-0021、ADR-0022、ADR-0025 与 ADR-0026 定义的 detached
+  清单签名、manifest v1 schema、单调 `release_sequence` 防降级与 24 小时调度已由 ADR-0029 取代；
+  ADR-0029 的库选择与 zipsign 归档内嵌签名模型已由 ADR-0034 取代，均不再有效。
 - 更新源由不可变 `ReleaseConfiguration` 描述：发行仓库、构建期 channel、target triple、二进制名与
   macOS bundle 名全部是编译期常量，任何用户配置、CLI 或运行时输入都不能改变它们。Development
   构建的 channel 不允许联网或安装，`check` 与 `install` 在发出任何请求前即失败关闭；Production
-  构建从公开发行渠道更新。更新 channel 按环境隔离是 `AGENTS.md` §10 的约束，独立于 ADR-0029。
-- 签名公钥缺失时失败关闭：`self_update::verify_signature` 对空公钥集直接返回成功，因此
-  `RELEASE_SIGNING_KEY` 未配置时 runtime 拒绝安装并返回 `update_signature_key_missing`，绝不静默
-  接受未签名归档。`UpdateRuntime::is_available()` 仅在 production channel 与公钥同时具备时为真，
-  系统菜单据此决定是否显示「检查更新」入口。
-- 传输由库的 `ureq` 后端承担，启用 Rustls 与 HTTPS-only；归档格式为 Windows 的 zip 与 macOS 的
-  tar.gz。完整性由 `checksums` feature 覆盖，来源真实性由 `signatures` feature 覆盖。库的 `reqwest`
-  后端不启用，以避免引入 hyper、tower-http、cookie_store 与 aws-lc-rs 整套依赖。
-- 安装位置：macOS 由库从运行中的可执行文件推导其所属 `.app` 并执行整包 rename 交换（含 stash 与
-  best-effort 回滚），隔离属性导致的 translocation 以专门错误拒绝而不是在中途失败；Windows 由库
-  替换当前可执行文件。安装根为 `$LOCALAPPDATA\Programs\BongoCat`，用户可写，不需要提权。
-- 库的错误、配置与平台类型不得扩散为项目公共 API。`self_update::Error` 在 `bongocat-update` 边界内
-  映射为 13 个稳定错误码，诊断导出只消费这些码与匿名聚合计数，不含任何库类型或动态平台文本。
-- 发行流程必须产出 `self_update` 可消费的资产：资产名含完整 target triple（匹配只用 triple，不用
-  `bin_name`）；macOS 必须用归档且归档根为 `BongoCat.app/`；Windows 可用裸 `BongoCat.exe`
-  （未识别扩展名按单文件处理），也可用归档但须把该文件放在根级。当前 `crates/bongocat-packaging`
-  只产出 `.app`、`.dmg` 与 Windows NSIS 安装器，均未产出可更新资产（ADR-0033）。
-- Windows 上 `github::Update::update()` 的单文件替换不会更新 `resources/`。库公开导出 `Download`、
-  `Extract`、`MoveAll`，多文件更新需用它们自行编排：`MoveAll` 提供全成或全回滚的事务式替换。
-  该路径本项目尚未实现。
+  构建从公开发行渠道更新。更新 channel 按环境隔离是 `AGENTS.md` §10 的约束，独立于各 ADR。
+- 签名公钥缺失时失败关闭：`RELEASE_SIGNING_KEY` 已内嵌发布公钥（key ID
+  `DF5E2C9D255DD85E`）；缺失、空串或纯空白时 runtime 在发出任何请求前即返回
+  `update_signature_key_missing`，绝不静默接受未签名载荷。`UpdateRuntime::is_available()` 仅在
+  production channel 与有效公钥同时具备时为真，系统菜单据此决定是否显示「检查更新」入口。该
+  门禁产出的是稳定、无路径的错误码，而不是库错误。
+- 发行清单是**一份共享 manifest**（`latest.json`），形状为库的 *static* 形状：顶层 `version`
+  加一个 `platforms` 映射，键为 `<os>-<arch>`，每项含 `url`、`signature`、`format`；runtime 从
+  `releases/latest/download/latest.json` 读取。平台键拼写必须与库一致（`macos` 而非 `darwin`，
+  `aarch64` 而非 `arm64`）。`crates/bongocat-packaging` 每个 target 写一份 fragment
+  （`<os>-<arch>.json`，文件名即平台键），发布前由同一个工具的 `--merge-manifests` 合并成共享
+  manifest——manifest 的形状与资产名由一处拥有，工作流只调用工具。发布漏掉某个平台键时，
+  runtime 命中 `update_no_matching_asset`。
+- 更新载荷：macOS 为已完成的 `.app` 打包成的 `BongoCat-<version>-<triple>.app.tar.gz`
+  （归档根必须是 `BongoCat.app/`，库会丢弃根条目再装到 bundle 路径）；Windows 复用已发布的
+  NSIS 安装器 `BongoCat_<version>_x64.exe`。`.dmg` 不是更新载荷——它是人工安装路径。
+  签名是打包流程的最后一步：minisign 签名覆盖发布时的确切字节，签名后不得改名、重压缩或 strip。
+- 传输与安装由库承担，启用 Rustls 与 HTTPS；库的 `reqwest` 后端不启用。安装位置：macOS 由库从
+  运行中的可执行文件推导其所属 `.app` 并整包替换；Windows 由库运行下载到的安装器
+  （`install_mode = Quiet` → NSIS `/S` 静默、`/R` 重启）后自行退出进程，因此
+  `UpdateOutcome::Installed` 只在 macOS 可观测。安装根为 `$LOCALAPPDATA\Programs\BongoCat`，
+  用户可写，不需要提权。
+- 库的错误、配置与平台类型不得扩散为项目公共 API。`cargo_packager_updater::Error` 在
+  `bongocat-update` 边界内映射为 13 个稳定错误码，未识别的变体降级为 `update_internal_failed`；
+  诊断导出只消费这些码与匿名聚合计数，不含任何库类型或动态平台文本。
+- 打包入口 `crates/bongocat-packaging` 产出并签名更新资产：每个 target 的载荷、其 `.sig` 与
+  manifest fragment；发布前再用同一个工具的 `--merge-manifests` 把 fragment 合并成共享
+  `latest.json`。签名密钥通过 `SIGNING_PRIVATE_KEY` 注入，未设置即跳过签名（本地构建）；
+  release workflow 反过来断言发布构建一定签过名，未配置密钥时直接失败，而不是发出一批无人能
+  更新的产物。
 - 更新 endpoint、真实签名公钥注入、update worker、更新 UI、操作系统包签名验证与失败启动恢复仍未
-  实现；在这些证据齐备前不得声称更新功能或 stable 发布完成。
+  实现；在这些证据齐备前不得声称更新功能或 stable 发布完成。ADR-0034 记录了换实现新引入的
+  能力损失（归档完整性校验、per-platform 资产匹配、公钥轮换窗）与待验证项。
 - 日志不记录真实按键序列、剪贴板内容或用户文件内容。
 - Diagnostics 导出由 settings service 的强类型 command 触发，在当前环境 logs 目录以同目录
   原子替换写出固定格式的 JSON。导出只包含稳定错误码、匿名聚合计数、模型来源计数和 revision；
@@ -896,19 +909,29 @@ Windows 当前用户 Run value 按 Development/Production 分名；macOS 13+ 只
 
 ### ADR-021：签名更新 Manifest 信任边界（已被 ADR-0029 取代）
 
-自研 manifest 验签、构建环境绑定与单调 sequence 防降级已退役，更新信任模型改为 `self_update`
-的 zipsign ed25519 归档签名。正文保留在 ADR-0021 中作为历史记录。
+自研 manifest 验签、构建环境绑定与单调 sequence 防降级已退役，更新信任模型改为归档签名。
+正文保留在 ADR-0021 中作为历史记录。
 
 ### ADR-022：更新 Manifest 传输 Envelope（已被 ADR-0029 取代）
 
-携带固定 key ID 与 signature header 的 manifest envelope 随 ADR-0021 一并退役，传输改由
-`self_update` 的 `ureq` 后端承担。正文保留在 ADR-0022 中作为历史记录。
+携带固定 key ID 与 signature header 的 manifest envelope 随 ADR-0021 一并退役，传输改由更新库
+承担。正文保留在 ADR-0022 中作为历史记录。
 
-### ADR-029：第三方更新库边界
+### ADR-029：第三方更新库边界（已被 ADR-0034 取代）
 
 `bongocat-update` 只保留构建期 `ReleaseConfiguration`、环境 channel 门禁、签名公钥失败关闭与
-匿名诊断契约；下载、解压、校验、替换与重启全部交给 `self_update 1.3.0`。ADR-0021、ADR-0022、
-ADR-0025 与 ADR-0026 由本 ADR 取代。
+匿名诊断契约；下载、校验、安装与重启全部交给第三方更新库。ADR-0021、ADR-0022、ADR-0025 与
+ADR-0026 由本 ADR 取代。本 ADR 的库选择（`self_update 1.3.0`）与签名方案（zipsign 归档内嵌签名）
+已由 ADR-0034 取代。正文保留在 ADR-0029 中作为历史记录。
+
+### ADR-0034：Detached Minisign 更新信任模型
+
+更新库改为 `cargo-packager-updater 0.2.3`，信任模型改为 detached minisign 签名。签名端与打包端
+是同一个 crate（`cargo_packager::sign`），签名器与验签器不会各自演进。发行清单是一份共享
+`latest.json`（库的 *static* 形状，含 `<os>-<arch>` 平台映射），由每个 target 的 fragment 合并
+而成；macOS 载荷是根为 `BongoCat.app/` 的 `.app.tar.gz`，Windows 载荷复用已发布的 NSIS 安装器；
+两者各附一个 `.sig`，签名是打包流程的最后一步。本 ADR 取代 ADR-0029 的更新库与签名部分，并记录
+换实现新引入的能力损失（归档完整性校验、per-platform 资产匹配、公钥轮换窗）与待验证项。
 
 ### ADR-0030：先复用现有方案
 
@@ -927,7 +950,8 @@ HWND/`NSView` 弹出菜单。第三方类型、句柄和错误不进入 runtime/
 
 Windows 首发采用固定、可审计 NSIS per-user installer，不请求管理员权限或触及环境数据。原设计中的
 「独立 Rust update helper 只接收已验证 artifact」已随 ADR-0029 作废：不再有独立 helper，替换由
-`self_update` 在进程内完成，installer 权限、原子替换与 rollback 仍是独立发布门禁。
+更新库在进程内完成（Windows 上由库运行下载到的安装器），installer 权限、原子替换与 rollback 仍是
+独立发布门禁。
 
 ## 17. 实施阶段
 

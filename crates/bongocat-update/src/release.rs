@@ -66,6 +66,29 @@ impl UpdateTargetTriple {
     }
 }
 
+/// Release-manifest identity.
+///
+/// This is deliberately a *second* `impl` block: `tools/tests/test_packaging_contract.py`
+/// recovers the shipped target triples by regex-matching the first
+/// `impl UpdateTargetTriple { .. }` block, and the platform keys below are a
+/// different string set that must not be confused with the triples.
+impl UpdateTargetTriple {
+    /// The `<os>-<arch>` key this target is announced under in the release manifest.
+    ///
+    /// `cargo-packager-updater` derives the key it looks up from the host at runtime
+    /// (`{get_updater_target()}-{get_updater_arch()}`), so the spelling has to match
+    /// that exactly — notably `macos`, never `darwin`, and `aarch64`, never `arm64`.
+    /// The packaging tool writes the same keys; the agreement is pinned by
+    /// `tools/tests/test_update_release_contract.py`.
+    pub const fn manifest_platform(self) -> &'static str {
+        match self {
+            Self::Aarch64AppleDarwin => "macos-aarch64",
+            Self::X86_64AppleDarwin => "macos-x86_64",
+            Self::X86_64PcWindowsMsvc => "windows-x86_64",
+        }
+    }
+}
+
 /// The release target this binary was built for.
 ///
 /// `None` on any target outside the three shipped combinations. The update runtime
@@ -86,6 +109,11 @@ pub const HOST_TARGET_TRIPLE: Option<UpdateTargetTriple> = {
 ///
 /// Every field is compile-time constant: no user config, CLI flag or runtime
 /// input can retarget an update at a different repository, channel or target.
+///
+/// `binary_name` and `bundle_name` describe the release identity rather than
+/// driving the transport: `cargo-packager-updater` takes the payload location from
+/// the release manifest and the install path from the running executable, so
+/// neither name locates a file inside an archive any more.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ReleaseConfiguration {
     pub channel: ReleaseChannel,
@@ -99,7 +127,7 @@ pub struct ReleaseConfiguration {
 
 impl ReleaseConfiguration {
     /// The configuration for the current build, or `None` when the host target is
-    /// outside the four shipped combinations.
+    /// outside the shipped combinations.
     pub const fn for_current_build(
         environment: BuildEnvironment,
         repository_owner: &'static str,
@@ -148,6 +176,35 @@ mod tests {
         );
         assert!(UpdateTargetTriple::X86_64AppleDarwin.is_apple());
         assert!(!UpdateTargetTriple::X86_64PcWindowsMsvc.is_apple());
+    }
+
+    /// The manifest keys are what `cargo-packager-updater` looks up, so they must use
+    /// the `<os>-<arch>` spelling it derives and not the Rust target triple.
+    #[test]
+    fn manifest_platforms_use_the_updater_spelling() {
+        assert_eq!(
+            UpdateTargetTriple::Aarch64AppleDarwin.manifest_platform(),
+            "macos-aarch64"
+        );
+        assert_eq!(
+            UpdateTargetTriple::X86_64AppleDarwin.manifest_platform(),
+            "macos-x86_64"
+        );
+        assert_eq!(
+            UpdateTargetTriple::X86_64PcWindowsMsvc.manifest_platform(),
+            "windows-x86_64"
+        );
+        for target in [
+            UpdateTargetTriple::Aarch64AppleDarwin,
+            UpdateTargetTriple::X86_64AppleDarwin,
+            UpdateTargetTriple::X86_64PcWindowsMsvc,
+        ] {
+            assert_ne!(
+                target.manifest_platform(),
+                target.as_str(),
+                "a manifest key is not a target triple"
+            );
+        }
     }
 
     #[test]
