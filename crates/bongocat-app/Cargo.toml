@@ -9,6 +9,7 @@ publish.workspace = true
 build = "build.rs"
 
 [features]
+production = []
 storage-test-injection = []
 
 [dependencies]

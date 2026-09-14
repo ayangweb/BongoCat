@@ -6,9 +6,6 @@ on:
 permissions:
   contents: read
 
-env:
-  BONGOCAT_BUILD_ENV: development
-
 jobs:
   native-toolchain:
     name: Verify Native Rust toolchains
@@ -137,36 +134,26 @@ jobs:
       - name: Check formatting
         run: cargo fmt --manifest-path Cargo.toml --all -- --check
       - name: Run Clippy
-        run: cargo clippy --manifest-path Cargo.toml --locked --workspace --all-targets --all-features -- -D warnings
+        run: |
+          cargo clippy --manifest-path Cargo.toml --locked --workspace --all-targets --all-features --exclude bongocat-app -- -D warnings
+          cargo clippy --manifest-path Cargo.toml --locked -p bongocat-app --all-targets --features storage-test-injection -- -D warnings
+          cargo clippy --manifest-path Cargo.toml --locked -p bongocat-app --all-targets --features production -- -D warnings
       - name: Run tests
         run: cargo test --manifest-path Cargo.toml --locked --workspace
-      - name: Reject implicit app build environment
+      - name: Verify app build environment selection
         if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
-          if env -u BONGOCAT_BUILD_ENV cargo check --manifest-path Cargo.toml --locked -p bongocat-app; then
-            echo 'app build accepted a missing build environment' >&2
-            exit 1
-          fi
-          if BONGOCAT_BUILD_ENV= cargo check --manifest-path Cargo.toml --locked -p bongocat-app; then
-            echo 'app build accepted an empty build environment' >&2
-            exit 1
-          fi
-          if BONGOCAT_BUILD_ENV=unknown cargo check --manifest-path Cargo.toml --locked -p bongocat-app; then
-            echo 'app build accepted an unknown build environment' >&2
-            exit 1
-          fi
-          if BONGOCAT_BUILD_ENV=production cargo check --manifest-path Cargo.toml --locked -p bongocat-app --release --features storage-test-injection; then
+          cargo check --manifest-path Cargo.toml --locked -p bongocat-app
+          cargo check --manifest-path Cargo.toml --locked -p bongocat-app --features production
+          if cargo check --manifest-path Cargo.toml --locked -p bongocat-app --features production,storage-test-injection; then
             echo 'Production app build accepted storage test injection' >&2
             exit 1
           fi
       - name: Check release build
         run: cargo check --manifest-path Cargo.toml --locked --workspace --release
       - name: Check production environment build
-        shell: bash
-        env:
-          BONGOCAT_BUILD_ENV: production
-        run: cargo check --manifest-path Cargo.toml --locked -p bongocat-app --release
+        run: cargo check --manifest-path Cargo.toml --locked -p bongocat-app --release --features production
       - name: Record Native build provenance
         shell: bash
         run: |
@@ -175,7 +162,7 @@ jobs:
             --output "target/provenance/${RUNNER_OS}.json" \
             --profile release \
             --features default \
-            --environment "$BONGOCAT_BUILD_ENV"
+            --environment development
       - name: Upload Native build provenance
         uses: actions/upload-artifact@v4
         with:

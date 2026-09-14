@@ -10,16 +10,18 @@ The Vue/Tauri implementation is retained for historical reference in the remote
 
 ## Development
 
-Install Rust `1.97.1` with `clippy` and `rustfmt`. The formal `just` entrypoints select the
-Development environment explicitly.
+Install Rust `1.97.1` with `clippy` and `rustfmt`. The formal `just` entrypoints build the
+Development environment by default.
 
 ```text
 just dev
 just check
 ```
 
-To work in the workspace directly, set `BONGOCAT_BUILD_ENV=development` and run
-`cargo run --locked -p bongocat-app --release` from the repository root.
+Direct Cargo commands from the repository root use the Development environment by default, so
+`cargo check --workspace` works without additional setup. Production builds enable the
+`bongocat-app/production` Cargo feature explicitly; the packaging entry point does this
+automatically.
 
 See [docs/product-runtime.md](docs/product-runtime.md) for product runtime, packaging, and verification details.
 The current architecture and release gates are defined in

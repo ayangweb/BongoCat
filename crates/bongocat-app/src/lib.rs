@@ -1,9 +1,6 @@
 #![forbid(unsafe_code)]
 
-#[cfg(all(
-    feature = "storage-test-injection",
-    bongocat_build_environment = "production"
-))]
+#[cfg(all(feature = "production", feature = "storage-test-injection"))]
 compile_error!("storage-test-injection cannot be enabled for Production builds");
 
 use bongocat_audio::{MotionAudioService, MotionAudioShutdownError};
@@ -39,8 +36,6 @@ use std::{
 };
 
 mod app_log;
-#[cfg(test)]
-mod build_environment_contract;
 mod diagnostics_bundle;
 #[cfg(test)]
 mod product_icon_contract;
@@ -80,11 +75,11 @@ const AUDIO_COMMAND_CAPACITY: usize = 16;
 const RUNTIME_TIMEOUT: Duration = Duration::from_secs(2);
 pub const PRODUCT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-#[cfg(bongocat_build_environment = "development")]
-pub const BUILD_ENVIRONMENT: BuildEnvironment = BuildEnvironment::Development;
-
-#[cfg(bongocat_build_environment = "production")]
+#[cfg(feature = "production")]
 pub const BUILD_ENVIRONMENT: BuildEnvironment = BuildEnvironment::Production;
+
+#[cfg(not(feature = "production"))]
+pub const BUILD_ENVIRONMENT: BuildEnvironment = BuildEnvironment::Development;
 
 /// Whether this build can check for and install updates.
 ///

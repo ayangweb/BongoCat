@@ -603,11 +603,11 @@ com.ayangweb.bongo-cat
 
 构建产物携带不可变的 `Development` 或 `Production` 环境。环境由构建入口显式选择，运行时参数、环境变量和设置项均不能切换。两个环境使用相同 schema 和相对目录结构，只改变数据根目录：
 
-正式 app build script 不提供隐式 fallback，只接受精确的 `development`/`production`；Native
-workspace 的正式 `just` 入口与 CI 显式选择 Development，Production build/package step 必须显式
-覆盖为 Production。packaging 在调用 Cargo 前拒绝缺失、空或未知值，构建完成后的运行时环境变量
-不参与选择。正式 `Application::start` 只以编译期环境调用当前平台 path resolver，不接受外部
-`StorageLayout`、根目录或生产路径覆盖；隔离临时根注入只存在于显式
+正式 app 使用 Cargo feature 选择环境：默认不启用 `production`，即 Development；Production
+build/package 必须显式启用 `bongocat-app/production`。packaging 继续校验 `--environment` 只接受
+`development`/`production`，并只在 Production 时给子 Cargo 命令添加该 feature。运行时不读取
+`BONGOCAT_BUILD_ENV` 或其他环境变量。正式 `Application::start` 只以编译期环境调用当前平台 path
+resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；隔离临时根注入只存在于显式
 `storage-test-injection` Development 测试产物，Production 与该 feature 的组合在编译期失败，
 默认产品 CLI 和 API 均不包含该入口。
 

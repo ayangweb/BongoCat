@@ -5,13 +5,22 @@ Vue/Tauri code is retained only in the remote `master` and `pre-refactor-tauri` 
 
 ## Build Environments
 
-Development must be selected explicitly when invoking Cargo directly; the selection is compiled
-into the artifact. The formal `just dev`, `just test`, and `just check` recipes select Development for
-the workspace. Run product commands from the repository root with the environment bound before Cargo:
+Direct Cargo commands from the repository root use the Development environment by default; the
+selection is compiled into the artifact. The formal `just dev`, `just test`, and `just check`
+recipes also use Development for the workspace. Run product commands from the repository root:
 
 ```text
-BONGOCAT_BUILD_ENV=development cargo run -p bongocat-app --release
+cargo run -p bongocat-app --release
 ```
+
+Enable the `production` feature for a standalone Production build:
+
+```text
+cargo run -p bongocat-app --release --features production
+```
+
+The environment is a mutually exclusive compile-time feature, not a runtime environment variable;
+the legacy `BONGOCAT_BUILD_ENV` name is ignored.
 
 This is the current formal visible product entry on macOS and Windows. It loads the selected bundled
 preset (`standard` by default), starts the product runtime and platform input producer, and displays
@@ -31,7 +40,7 @@ The cross-platform product smoke closes or hides the settings window, reopens it
 the frame source continued to run and the current snapshot was restored:
 
 ```text
-BONGOCAT_BUILD_ENV=development cargo run -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke
+cargo run -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke
 ```
 
 On macOS, grant Input Monitoring permission to the launching terminal for global keyboard and
@@ -41,8 +50,9 @@ window, periodically reconciles locally pressed candidates with `GetAsyncKeyStat
 on device, session, power, queue, and service lifecycle changes. Physical PixPin, Win+L, UAC,
 administrator-boundary, and long-running input tests remain release evidence tasks.
 
-Production must be selected at build time. The packaging entry point rejects an unknown selection
-before invoking Cargo:
+Production must be selected at build time. The packaging entry point rejects an unknown
+`--environment` value before invoking Cargo and translates the selection into the app's Cargo
+feature:
 
 ```text
 just build
@@ -50,9 +60,10 @@ just build
 
 `just build` forwards its arguments to `crates/bongocat-packaging`, which is the only place that
 decides how the product is compiled and packaged. It compiles the release binary with the immutable
-`BONGOCAT_BUILD_ENV`, writes build provenance, and hands the executable to `cargo-packager`, which
-owns the macOS `.app` layout, `Info.plist` generation and the Windows NSIS installer. Both local
-developers and CI run this same entry point, so there is one code path and one configuration:
+`production` feature where selected, writes build provenance, and hands the executable to
+`cargo-packager`, which owns the macOS `.app` layout, `Info.plist` generation and the Windows NSIS
+installer. Both local developers and CI run this same entry point, so there is one code path and one
+configuration:
 
 ```text
 just build                                            # Production, host target, all artifacts
@@ -101,7 +112,9 @@ feature is absent from the default CLI/API and is rejected at compile time for P
 
 ```text
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo clippy --workspace --all-targets --all-features --exclude bongocat-app -- -D warnings
+cargo clippy -p bongocat-app --all-targets --features storage-test-injection -- -D warnings
+cargo clippy -p bongocat-app --all-targets --features production -- -D warnings
 cargo test --workspace
 cargo check --workspace --release
 ```

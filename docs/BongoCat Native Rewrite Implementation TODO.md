@@ -580,7 +580,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     contract 固定收集器与上传步骤一一对应。
   - 状态（2026-09-07）：收集器进一步拒绝未命名 JSON，并按匿名状态前缀保留文本行；未知行统一
     替换为 `<redacted-line>`，回归覆盖任意 JSON 和潜在用户模型文本，避免仅依赖字段名匹配隐私。
-  - 验证（2026-09-07）：本机 `BONGOCAT_BUILD_ENV=development cargo run --manifest-path
+  - 验证（2026-09-07）：本机 `cargo run --manifest-path
 Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 --target-dir target/storage-test-injection -- --diagnostics-export-smoke` 通过，输出
     `bongocat-app: diagnostics export completed with a private preview bundle`。
@@ -953,15 +953,19 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     dead-zone、超时和语言约束，并拒绝未配对的 model id/origin、未知字段和非法快捷键；对应
     valid/invalid fixtures 与 config crate tests 通过。
 - [x] 在 spike 中实现不可变 `BuildEnvironment::{Development, Production}`；未知或缺失环境的打包构建失败仍待产品构建链验证。
+  - 状态（2026-09-14）：`bongocat-app` 使用默认 Development、显式 `production` Cargo feature
+    编译环境；直接 `cargo check --workspace` 无需手工前缀。packaging 继续校验自身
+    `--environment`，并只在 Production 时为子 Cargo 命令启用 `production` feature。环境变量不再
+    参与选择，CI 与 packaging contract 已同步固定默认、Production 和互斥组合行为。
 - [x] Windows 使用 `%APPDATA%\com.ayangweb.bongo-cat\<environment>\` 数据根。
 - [x] macOS 使用 `Application Support/com.ayangweb.bongo-cat/<environment>/` 数据根。
   - 双平台 target-specific resolver test 已通过。
 - [x] 两个环境的 `config.json`、`state.json`、`models/`、`backups/`、`logs/`、`updates/` 和 `locks/` 相对结构一致；spike 测试逐项比较相对路径。
 - [x] 环境不能由 CLI、进程环境变量或设置项在运行时切换，也不能 fallback 到另一环境。
-  - 验收证据（2026-09-01）：`bongocat-app/build.rs` 只在编译期读取并严格校验
-    `BONGOCAT_BUILD_ENV`，将不可变 cfg 注入应用；运行时 API 只使用该 cfg 对应的
-    `BuildEnvironment`，无 CLI/设置切换或另一环境 fallback。build-environment contract、
-    Development/Production root 隔离和跨环境应用测试通过。
+  - 验收证据（2026-09-14）：`bongocat-app` 只在编译期根据 `production` Cargo feature 选择
+    `BuildEnvironment`；运行时 API 不接受环境选择，也无 CLI/设置切换或另一环境 fallback。
+    Development 默认构建、Production feature 构建及 Production + storage-test-injection 失败
+    均由 contract test 固定，Development/Production root 隔离和跨环境应用测试通过。
 - [x] 在 spike 中实现同目录临时文件、flush、原子替换、提交后验证和上一份有效配置备份；双平台 OS file lock 与强制进程终止恢复已通过。
 - [x] 在 spike 中拒绝损坏配置并保留原始文件；中断提交恢复会保守提升有效临时文件并归档无效/陈旧副本，隔离备份保留策略、默认恢复和 GPUI 用户诊断仍未完成。
 - [x] 配置写入去抖，退出前强制 flush。
@@ -1660,13 +1664,14 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 ### 7.2 环境与持久化事务
 
 - [x] 构建系统显式产生 Development/Production 元数据，发布构建拒绝默认值。
-  - 验收证据（2026-08-31）：正式 app build script 已删除隐式 Development fallback；Native workspace
-    Cargo config 与 CI 显式选择 Development，Production step 显式覆盖，macOS packaging 在 Cargo
-    前拒绝缺失/空/未知值。commit `2810f4a` 的 pull request run `33383026191` 全绿；Windows/
+  - 验收证据（2026-08-31）：正式 app build script 已删除隐式 Development fallback；当时的 Native
+    workspace Cargo config 与 CI 显式选择 Development，Production step 显式覆盖，macOS packaging
+    在 Cargo 前拒绝缺失/空/未知值。commit `2810f4a` 的 pull request run `33383026191` 全绿；Windows/
     macOS/Ubuntu Native jobs `99459402028`/`99459402083`/`99459402181` 通过完整 workspace、
     Development/release、显式 Production 和拒绝隐式环境门禁，Windows/macOS GPUI jobs
     `99459402171`/`99459401995`、Windows input/config job `99459402076` 和 config-store job
-    `99459402352` 同时通过。
+    `99459402352` 同时通过。2026-09-14 起环境选择由默认 Development 与显式 `production` Cargo
+    feature 固定，packaging 继续校验 `--environment` 并转换该 feature。
 - [x] path resolver 返回当前平台与环境的数据根，不能接受任意外部生产路径。
   - 验收证据（2026-08-31）：正式 `Application::start` 只使用不可变编译环境与平台 resolver；任意
     `StorageLayout` 注入只存在于显式 Development `storage-test-injection` 测试产物，默认 CLI/API
@@ -1727,12 +1732,12 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     又在并存期间各自写入不同 application log event 并断言日志目录和内容不交叉。config/state
     的跨环境 writer lock/restart contract 与 update channel 的独立 sequence store 已由各自定向测试覆盖。
 - [x] 开发构建即使收到指向 Production 的 CLI 参数或进程环境变量也拒绝越界。
-  - 验收证据（2026-09-06）：`bongocat-app` 仅在构建脚本读取
-    `BONGOCAT_BUILD_ENV` 并将其编译为不可变的 `BUILD_ENVIRONMENT`；运行期从不读取该变量，
-    `Application::start` 只以该常量派生 `platform_layout`。默认产品 CLI 的
-    `run_options_reject_missing_invalid_and_unknown_values` 明确拒绝 `--environment production`、
-    `--BONGOCAT_BUILD_ENV=production` 和 `--storage-root /production`，测试存储注入又在 Production
-    组合下编译期失败，因此运行时输入无法把 Development 定向到 Production 根。
+  - 验收证据（2026-09-14）：`bongocat-app` 仅在编译期根据 `production` feature 选择
+    `BUILD_ENVIRONMENT`；运行期不读取环境变量，`Application::start` 只以该常量派生
+    `platform_layout`。默认产品 CLI 的 `run_options_reject_missing_invalid_and_unknown_values`
+    明确拒绝 `--environment production`、`--BONGOCAT_BUILD_ENV=production` 和
+    `--storage-root /production`，测试存储注入又在 Production 组合下编译期失败，因此运行时输入
+    无法把 Development 定向到 Production 根。
 - [x] Production 不自动复制 Development 数据；需要测试数据时使用显式导入。
   - 验收证据（2026-09-06）：`bongocat-config::production_first_load_never_copies_development_configuration`
     先提交非默认 Development 配置，再首次创建 Production store；Production 仍只生成当前 v1
@@ -2379,7 +2384,7 @@ workflow、legacy config inspector 及其本地 fixture 已从当前工作树删
 15. [x] `P1-RUNTIME-CONFIG`：建立正式 workspace，提升 runtime 生命周期、强类型 command/snapshot 与 Development/Production 配置隔离闭环。
     - 依赖：ADR-0011、`spikes/runtime-contract/`、`spikes/config-store/`。
     - 退出条件：workspace 默认命令通过；环境由构建产物固定；两个数据根无读取、写入或锁 fallback；runtime 正常启动、更新 snapshot、拒绝队列溢出并有序 shutdown。
-    - 验收证据（2026-08-30）：正式 workspace 仅包含 app/runtime/config；11 项单元测试覆盖严格 schema、共享默认 fixture、原子写入、revision 冲突、双环境根、typed snapshot、队列满返回原 command 和 shutdown。Development 默认构建与 `BONGOCAT_BUILD_ENV=production` 构建使用同一代码、不同编译期常量；format、Clippy、test 和 release check 本机通过，三平台 CI 已配置。
+    - 验收证据（2026-08-30）：正式 workspace 仅包含 app/runtime/config；11 项单元测试覆盖严格 schema、共享默认 fixture、原子写入、revision 冲突、双环境根、typed snapshot、队列满返回原 command 和 shutdown。当时的 Development 默认构建与 `BONGOCAT_BUILD_ENV=production` 构建使用同一代码、不同编译期常量；format、Clippy、test 和 release check 本机通过，三平台 CI 已配置。该环境变量入口已于 2026-09-14 改为默认 Development 与显式 `production` Cargo feature。
 16. [x] `P4-MOTION-AUDIO`：实现 motion UserData 与不阻塞 runtime 的单 voice 音效闭环。
     - 依赖：正式 model/live2d/runtime、ADR-0012、预置 model3/FLAC。
     - 退出条件：UserData 跨帧/loop 不重复且有界；accepted motion 才播放；抢占、无 sound、
@@ -2781,16 +2786,17 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       `reveal` feature，预留平台文件管理器的定位选中能力；当前没有 reveal 业务调用点，也未新增公共 API。
 41. [x] `P6-BUILD-ENV-METADATA`：让正式构建和打包入口显式固定 Development/Production。
     - 依赖：ADR-0008、正式 app build script、Native workspace/CI 与 macOS packaging baseline。
-    - 退出条件：build script 不含隐式 fallback，只接受精确的 `development`/`production` 并把结果
-      编译为 immutable cfg；Native workspace 和 CI 显式选择 Development，Production check/package
-      显式覆盖；packaging 在调用 Cargo 前拒绝缺失、空和未知值；运行时 CLI/env/settings 不能切换；
-      解析 contract、缺失/未知失败 smoke、完整 Native workspace 与三平台 CI 通过。
-    - 验收证据（2026-08-31）：严格解析器、workspace/CI 选择、packaging guard 与本机成功/拒绝
-      路径已实现；commit `2810f4a` 的 pull request run `33383026191` 全绿。Windows/macOS/Ubuntu
-      Native jobs `99459402028`/`99459402083`/`99459402181` 通过完整 workspace、Development
-      release、显式 Production 和隐式环境拒绝门禁；macOS job 还在 Cargo 前覆盖缺失、空与未知
-      packaging 值，双平台 GPUI、Windows input/config、dependency policy 与 config-store jobs
-      同时通过，退出条件满足。
+    - 退出条件：默认 Development 无额外手工配置；Production check/package 显式启用 `production`；
+      packaging 在调用 Cargo 前拒绝未知 `--environment` 值并映射 feature；运行时 CLI/env/settings
+      不能切换；feature 组合 contract、完整 Native workspace 与三平台 CI 通过。
+    - 验收证据（2026-09-14）：`bongocat-app` 以默认 Development、显式 `production` feature
+      编译环境，Production 与 `storage-test-injection` 组合在编译期失败；packaging 校验
+      `--environment` 后选择 feature，CI 覆盖默认、Production 和拒绝组合。直接
+      `cargo check --workspace`、app feature Clippy、workspace tests、release check 和 packaging
+      contract 在本机通过。
+    - 历史证据（2026-08-31）：严格环境变量解析器、workspace/CI 选择、packaging guard 与本机
+      成功/拒绝路径曾通过 commit `2810f4a` 的 pull request run `33383026191`；该变量入口已于
+      2026-09-14 由上述 Cargo feature 方案替代。
     - 补充证据（2026-09-05）：修复 macOS 打包脚本中 host target 的 `awk` 引号错误；
       `sh -n`、Production `.app` 打包、Bundle ID/最低系统版本、release provenance 字段和
       `codesign --verify --deep --strict` 均在本机 Apple Silicon 通过。
@@ -2830,7 +2836,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
         已实现。`cargo fmt --all -- --check`、`cargo test --workspace`、
         `cargo clippy --workspace --all-targets --all-features -- -D warnings`、
         `cargo check --workspace --release` 与 `python3 tools/validate-json-schema.py` 在本机通过；
-        macOS Development release smoke `BONGOCAT_BUILD_ENV=development cargo run --manifest-path
+        macOS Development release smoke `cargo run --manifest-path
 Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 --target-dir target/storage-test-injection -- --settings-window-state-smoke` 输出
         `settings window state restored after restart`。workflow `33395834870` 的 Native workspace
@@ -3146,10 +3152,11 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
         导出状态、快捷键动作/捕获/错误及备份操作均从同一闭合文案源读取；可见动作与 AX/UIA
         label/value 不漂移；中文 800x600 隔离 smoke 覆盖 Diagnostics 页面、窗口状态恢复和有序
         shutdown；UI 定向测试、严格 Clippy、完整 Native workspace 与双平台 CI 通过。- 验收证据（2026-09-05）：中英文静态/动态文案、稳定快捷键捕获错误、用户可读 command 名称、
-        AccessKit 语义、中文隔离 smoke 标记和双平台 CI 断言均已实现。`BONGOCAT_BUILD_ENV=development`
-        下 Native workspace `cargo fmt --all -- --check`、`cargo clippy --workspace --all-targets
+        AccessKit 语义、中文隔离 smoke 标记和双平台 CI 断言均已实现。当时在 `BONGOCAT_BUILD_ENV=development`
+        下运行的 Native workspace `cargo fmt --all -- --check`、`cargo clippy --workspace --all-targets
 --all-features --locked -- -D warnings`、`cargo test --workspace --locked` 和
-        `cargo check --workspace --release --locked` 全部通过；UI 定向测试 51 项、Diagnostics
+        `cargo check --workspace --release --locked` 全部通过（该变量入口已于 2026-09-14 改为默认
+        Development 与显式 `production` Cargo feature）；UI 定向测试 51 项、Diagnostics
         presentation/localization 回归均通过。macOS Input Monitoring/Accessibility 相关 4 项
         集成测试按设计保持 ignored，真实权限矩阵仍属于平台实机门禁，不影响本项文案闭环。
 

@@ -192,10 +192,19 @@ class BuildEntryPointTests(unittest.TestCase):
 
     def test_the_compiled_environment_reaches_the_child_build(self):
         source = read(PACKAGER)
-        self.assertIn('.env("BONGOCAT_BUILD_ENV", environment)', source)
+        self.assertIn('const PRODUCTION_FEATURE: &str = "production";', source)
+        self.assertIn("fn environment_features(environment: &str) -> &'static str {", source)
+        self.assertIn("command.args([\"--features\", features]);", source)
         self.assertIn('const BUILD_ENVIRONMENTS: [&str; 2] = ["development", "production"];', source)
+        self.assertIn(".arg(features)", source)
         self.assertIn('Command::new(&cargo)', source)
         self.assertIn('"-p",', source)
+
+    def test_app_uses_a_single_production_feature(self):
+        manifest = read(ROOT / "crates" / "bongocat-app" / "Cargo.toml")
+        self.assertIn("production = []", manifest)
+        self.assertIn("storage-test-injection = []", manifest)
+        self.assertNotIn("BONGOCAT_BUILD_ENV", read(PACKAGER))
 
     def test_no_self_built_packaging_script_remains(self):
         self.assertFalse((ROOT / "scripts").exists(), "scripts/ must be deleted")

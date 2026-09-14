@@ -5,7 +5,7 @@
 //! compiled and packaged:
 //!
 //! 1. compile `bongocat-app` for one release target, with the immutable
-//!    `BONGOCAT_BUILD_ENV` environment compiled in,
+//!    build-environment Cargo feature selected,
 //! 2. write the path-free build provenance record,
 //! 3. hand the resulting executable to `cargo-packager`, which owns the bundle
 //!    and installer layout: the macOS `.app` and the Windows NSIS `.exe`,
@@ -121,6 +121,8 @@ const ADHOC_SIGNING_IDENTITY: &str = "-";
 const MACOS_SIGNING_IDENTITY_VARIABLE: &str = "BONGOCAT_MACOS_SIGNING_IDENTITY";
 /// Selected through `--environment`; `production` is the release default.
 const BUILD_ENVIRONMENTS: [&str; 2] = ["development", "production"];
+/// Cargo feature that turns the default Development build into Production.
+const PRODUCTION_FEATURE: &str = "production";
 /// Carries the Minisign private key that signs update payloads.
 ///
 /// Release signing keys cannot be committed, so the release pipeline injects the
@@ -523,7 +525,12 @@ fn package(options: Options) -> Result<Vec<PathBuf>> {
     );
 
     build_application(&workspace, target, &options.environment)?;
-    let provenance = write_provenance(&workspace, target, &options.environment)?;
+    let provenance = write_provenance(
+        &workspace,
+        target,
+        &options.environment,
+        environment_features(&options.environment),
+    )?;
 
     let config = packaging_config(
         &workspace,
@@ -597,32 +604,41 @@ fn workspace_root() -> Result<PathBuf> {
     Ok(root)
 }
 
+/// Returns the feature set that represents `environment` in the child build.
+fn environment_features(environment: &str) -> &'static str {
+    if environment == "production" {
+        PRODUCTION_FEATURE
+    } else {
+        "default"
+    }
+}
+
 /// Compiles the product application for `target` with the environment compiled in.
 ///
-/// The environment is passed to the child process directly instead of through a
-/// shell hook, so Windows and macOS use identical quoting rules and an inherited
-/// value can never leak into a release build.
+/// The environment is expressed to Cargo as a feature instead of an environment
+/// variable, so Cargo owns feature parsing and build-script rerun semantics.
 fn build_application(workspace: &Path, target: ReleaseTarget, environment: &str) -> Result<()> {
     let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-    let status = Command::new(&cargo)
-        .current_dir(workspace)
-        .args([
-            "build",
-            "--locked",
-            "--release",
-            "--target",
-            target.triple(),
-            "-p",
-            APPLICATION_BINARY,
-        ])
-        .env("BONGOCAT_BUILD_ENV", environment)
-        .status()
-        .map_err(|error| {
-            Box::new(Failure(format!(
-                "could not run {}: {error}",
-                Path::new(&cargo).display()
-            ))) as Box<dyn std::error::Error>
-        })?;
+    let mut command = Command::new(&cargo);
+    command.current_dir(workspace).args([
+        "build",
+        "--locked",
+        "--release",
+        "--target",
+        target.triple(),
+        "-p",
+        APPLICATION_BINARY,
+    ]);
+    let features = environment_features(environment);
+    if features != "default" {
+        command.args(["--features", features]);
+    }
+    let status = command.status().map_err(|error| {
+        Box::new(Failure(format!(
+            "could not run {}: {error}",
+            Path::new(&cargo).display()
+        ))) as Box<dyn std::error::Error>
+    })?;
     if !status.success() {
         return failure(format!(
             "cargo build for {} failed with {status}",
@@ -633,7 +649,12 @@ fn build_application(workspace: &Path, target: ReleaseTarget, environment: &str)
 }
 
 /// Writes the path-free build provenance record into the packaging staging area.
-fn write_provenance(workspace: &Path, target: ReleaseTarget, environment: &str) -> Result<PathBuf> {
+fn write_provenance(
+    workspace: &Path,
+    target: ReleaseTarget,
+    environment: &str,
+    features: &str,
+) -> Result<PathBuf> {
     let generator = workspace.join(PROVENANCE_GENERATOR);
     if !generator.is_file() {
         return failure(format!("missing {}", generator.display()));
@@ -661,7 +682,7 @@ fn write_provenance(workspace: &Path, target: ReleaseTarget, environment: &str) 
         .arg("--profile")
         .arg("release")
         .arg("--features")
-        .arg("default")
+        .arg(features)
         .arg("--environment")
         .arg(environment);
     run_command(python, &mut command).map_err(|error| {
