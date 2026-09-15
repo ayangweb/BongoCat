@@ -1344,12 +1344,18 @@ fn repository_preset_root() -> std::path::PathBuf {
 }
 
 fn input_bindings_for_model(origin: ModelOrigin, model_id: &str) -> InputBindings {
-    if origin == ModelOrigin::Installed {
-        return InputBindings::default();
-    }
     const RIGHT_ARROW: PhysicalKey = PhysicalKey::from_hid_usage(0x4f);
+    // Installed models have no per-model binding configuration yet. They must
+    // not fall back to an empty map: `InputState::model_snapshot` drops any
+    // key press without a hand assignment, which silently disabled key
+    // overlays (and paw motion) for every imported third-party model. Default
+    // them to the same keyboard mapping as the "standard"/"keyboard" presets;
+    // `resolve_key_overlays` stays resource-strict, so models without assets
+    // for a side simply render no overlay image for that side.
+    let keyboard_model =
+        origin == ModelOrigin::Installed || matches!(model_id, "standard" | "keyboard");
     let mut key_hands = BTreeMap::new();
-    if matches!(model_id, "standard" | "keyboard") {
+    if keyboard_model {
         for usage in 0x04..=0x27 {
             key_hands.insert(PhysicalKey::from_hid_usage(usage), HandSide::Left);
         }
@@ -1362,7 +1368,7 @@ fn input_bindings_for_model(origin: ModelOrigin, model_id: &str) -> InputBinding
     } else {
         key_hands.insert(PhysicalKey::KEY_A, HandSide::Left);
     }
-    if matches!(model_id, "keyboard" | "gamepad") {
+    if origin == ModelOrigin::Installed || matches!(model_id, "keyboard" | "gamepad") {
         for usage in RIGHT_ARROW.hid_usage()..=0x52 {
             key_hands.insert(PhysicalKey::from_hid_usage(usage), HandSide::Right);
         }
@@ -1384,12 +1390,34 @@ mod tests {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     use bongocat_render::{ModelCommitErrorCode, ModelCommitFeedback, ModelCommitOutcome};
     use bongocat_runtime::{
-        GamepadAxis, GamepadAxisKey, GamepadAxisSample, GamepadButton, GamepadButtonKey,
-        InputControl, InputEdge, InputEvent, InputSource, MonotonicMillis, RuntimeState,
+        GamepadAxis, GamepadAxisKey, GamepadAxisSample, GamepadButton, GamepadButtonKey, HandSide,
+        InputControl, InputEdge, InputEvent, InputSource, MonotonicMillis, PhysicalKey,
+        RuntimeState,
     };
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     use std::time::Instant;
     use tempfile::tempdir;
+
+    #[test]
+    fn installed_models_get_default_keyboard_bindings() {
+        let bindings = input_bindings_for_model(ModelOrigin::Installed, "custom-model");
+        assert_eq!(bindings.hand_for(PhysicalKey::KEY_A), Some(HandSide::Left));
+        assert_eq!(
+            bindings.hand_for(PhysicalKey::from_hid_usage(0x52)),
+            Some(HandSide::Right)
+        );
+
+        // Preset mappings must stay exactly as before the fix.
+        let standard = input_bindings_for_model(ModelOrigin::Preset, "standard");
+        assert_eq!(standard.hand_for(PhysicalKey::KEY_A), Some(HandSide::Left));
+        assert_eq!(standard.hand_for(PhysicalKey::from_hid_usage(0x4f)), None);
+        let gamepad = input_bindings_for_model(ModelOrigin::Preset, "gamepad");
+        assert_eq!(gamepad.hand_for(PhysicalKey::KEY_A), Some(HandSide::Left));
+        assert_eq!(
+            gamepad.hand_for(PhysicalKey::from_hid_usage(0x4f)),
+            Some(HandSide::Right)
+        );
+    }
 
     #[test]
     fn shutdown_results_preserve_single_failures_and_aggregate_dual_failures() {
