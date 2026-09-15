@@ -517,8 +517,10 @@ struct ProductCoordinator {
     /// thread and keeps itself in sync afterwards.
     update_language: bongocat_ui::SettingsLanguage,
     /// When a completed install that needs a restart was first observed.
+    #[cfg(target_os = "macos")]
     update_installed_since: Option<Instant>,
     /// Whether the post-install restart has already been started.
+    #[cfg(target_os = "macos")]
     update_restart_started: bool,
     system_menu: Option<SystemMenu>,
     #[cfg(target_os = "windows")]
@@ -2316,7 +2318,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             update_service: Some(update_service),
             update_window: None,
             update_language: bongocat_ui::SettingsLanguage::EnglishUnitedStates,
+            #[cfg(target_os = "macos")]
             update_installed_since: None,
+            #[cfg(target_os = "macos")]
             update_restart_started: false,
             system_menu: Some(system_menu),
             #[cfg(target_os = "windows")]
