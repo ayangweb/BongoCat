@@ -1,3 +1,6 @@
+// Hide the console window in packaged (release) builds so the product runs as a
+// pure GUI application. Debug builds keep the console for developer logging.
+#![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
 #![forbid(unsafe_code)]
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
