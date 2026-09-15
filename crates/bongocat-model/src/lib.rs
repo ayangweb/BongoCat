@@ -13,8 +13,8 @@ use std::{
 };
 
 pub use store::{
-    ModelCatalogEntry, ModelImportProgress, ModelImportStage, ModelStore, ModelStoreDiagnostic,
-    ModelStoreError, ModelStoreRecovery,
+    InstalledModelCatalog, ModelCatalogEntry, ModelImportProgress, ModelImportStage, ModelStore,
+    ModelStoreDiagnostic, ModelStoreError, ModelStoreRecovery,
 };
 
 pub const INDEX_SCHEMA_VERSION: u32 = 1;
@@ -2540,8 +2540,8 @@ mod tests {
                     let installed = imported.expect("accepted fixture import");
                     assert_eq!(installed.id(), &id);
                     let catalog = store.list().expect("fixture catalog");
-                    assert_eq!(catalog.len(), 1);
-                    assert_eq!(catalog[0].origin(), ModelOrigin::Installed);
+                    assert_eq!(catalog.entries.len(), 1);
+                    assert_eq!(catalog.entries[0].origin(), ModelOrigin::Installed);
                 }
                 FixtureExpectation::Reject => {
                     assert_eq!(
@@ -2550,7 +2550,13 @@ mod tests {
                         "fixture {} store diagnostic",
                         case.id
                     );
-                    assert!(store.list().expect("empty fixture catalog").is_empty());
+                    assert!(
+                        store
+                            .list()
+                            .expect("empty fixture catalog")
+                            .entries
+                            .is_empty()
+                    );
                     assert!(
                         fs::read_dir(store.root())
                             .expect("fixture store entries")

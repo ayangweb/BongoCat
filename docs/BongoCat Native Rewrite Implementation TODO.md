@@ -3535,6 +3535,45 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `bongocat-ui` 112 测试、`bongocat-config` 48 测试全部通过；fmt 与三组 clippy
       `-D warnings` 通过；真机 `--run-seconds 6` 完整运行干净退出。
 
+76. [x] `P4-MODEL-CATALOG-DEGRADE`：修复单个非模型条目使整个已安装模型目录不可用的缺陷。
+    - 依赖：`P4-MODEL-CATALOG` 建立的来源感知合并目录与 `P4-MODEL-ID-UUID` 建立的 UUID 目录名。
+    - 退出条件：store 根目录出现文件管理器或系统元数据时不使整表失败；其余非自有条目被跳过
+      且不影响可见模型；跳过数量进入 settings snapshot 并由 Models 页面呈现；符号链接始终
+      不被跟随；缺失模型的元数据裁剪恢复正常。
+    - 根因（2026-09-15 用户报告）：用户在 Finder 里手动删除已导入模型 `f93ca918-…` 后，Models
+      页面整表显示「模型列表不可用」。`ModelStore::list` 对任何非目录条目（Finder 在 store
+      根目录留下的 `.DS_Store`）返回 `StoreEntryUnsupported`，`Application::model_catalog`
+      以 `?` 上抛，`settings_model_catalog` 于是清空全部条目并把整个 catalog 标为不可用。
+      同一早退还让 `prune_missing_installed_metadata` 直接返回，被删模型的 `installed_models`
+      元数据记录永远无法清理。
+    - 当前契约（2026-09-15）：`ModelStore::list` 返回 `InstalledModelCatalog { entries,
+      skipped_entries }`，只在 store 根目录不可读或 writer lock 竞争时失败；`.DS_Store`、
+      `.localized`、`Thumbs.db`、`desktop.ini` 与 AppleDouble `._*` 按文件名忽略且不计数；
+      其余非自有条目（非常规目录、符号链接、非 UTF-8 名称、非法 `model_id` 目录名）静默跳过
+      并计数；带合法 `model_id` 但包校验失败的目录继续签发 `Invalid` 条目保持可见。
+      过滤完全在 store 内部完成：`skipped_entries` 是 store 的自有扫描结果，不进入 settings
+      snapshot、不产生用户可见文案与无障碍输出，`Application::model_catalog` 仍只返回模型
+      条目集合，用户只看到可用模型；符号链接始终不被跟随。
+    - 验收证据（2026-09-15）：修复前新增回归测试复现 `ModelStoreError { code:
+      StoreEntryUnsupported, detail: "model store contains an entry not owned by the catalog" }`。
+      修复后 `bongocat-model` 45 测试（`.DS_Store` 不使整表失败、外部文件与非法 ID 目录被跳过
+      并计数 2、合法 ID 空目录仍为 `Invalid`、symlink 不跟随且 `skipped_entries == 1`）、
+      `bongocat-app` 119 测试（新增端到端用例：手动删除模型 + `.DS_Store` 时合并目录仍返回
+      `standard` 预置、过期元数据被裁剪）、`bongocat-ui` 112 测试、`bongocat-i18n` 4 测试通过；
+      `cargo fmt --check` 与 workspace 测试通过。另以用户真实 `development/models/` 目录副本
+      （含 `.DS_Store` 与存活的 `9e9f5a59-…`）只读验证，扫描结果为 1 条 installed 条目、
+      `skipped_entries == 0`。
+      真机门禁：对用户真实 Development 数据目录运行 `--run-seconds 6 --models-page-smoke`
+      （该 smoke 断言 `model_catalog.error.is_none()`、条目非空、active 模型在 catalog 中、
+      行操作权限与本地化），退出码 0 且无 `product run failed` 输出；同一次运行后
+      `config.json` 中已手动删除模型的 `installed_models` 记录被裁剪，只剩存活模型记录。
+      反向对照：以 `flock` 持有 `models.writer.lock` 后同一 smoke 以
+      `ModelStoreError { code: StoreBusy }` 退出码 1 失败，证明真正的 store 失败仍然失败关闭、
+      smoke 结果非空转。后续按用户要求把跳过条目改为纯内部过滤，移除 Models 页面状态行、无障碍
+      status 节点分支与 `models.catalog.skipped_entries` 文案（两个 locale 均已删除），
+      `SettingsModelCatalog.skipped_entries` 与 `Application::ModelCatalog` 一并撤销。
+      未运行：Windows 路径与 Windows/macOS CI 门禁。
+
 ## 13. 待决策清单
 
 | 决策                                                          | 最迟完成              | 阻塞内容                           |

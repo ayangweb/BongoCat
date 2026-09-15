@@ -694,6 +694,14 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   复验和原子提交后签发的 `InstalledModel` 才能进入 runtime 激活 command。
 - 应用装配时打开并持有只读 `PresetModelCatalog`；设置与模型管理只消费预置目录和当前
   环境 `ModelStore` 的合并目录，不在 UI executor 临时扫描或解析模型文件。
+- installed 目录扫描逐条目降级：`ModelStore::list` 只在 store 根目录本身不可读或 writer
+  lock 竞争时失败，单个条目绝不使整表不可用。文件管理器与操作系统元数据（`.DS_Store`、
+  `.localized`、`Thumbs.db`、`desktop.ini`、AppleDouble `._*`）按文件名忽略，既不计入
+  目录也不计入诊断；其余不是「自有模型目录」的条目（非常规目录、符号链接、非 UTF-8 名称、
+  非可移植 `model_id` 的目录名）静默跳过并计入 `InstalledModelCatalog::skipped_entries`。
+  带合法 `model_id` 但包校验失败的目录仍签发 `Invalid` 条目，保持可见。过滤完全在 store
+  内部完成：`skipped_entries` 不进入 settings snapshot，也不产生任何用户可见文案或无障
+  碍输出，用户只看到可用的模型集合；符号链接始终不被跟随。
 - 标准预置模型 `standard` 是始终可用的默认回退：目录身份 `(origin, model_id)` 在数据结构
   上区分预置模型与用户导入的自定义模型，所有自定义模型不可用时仍能回退到 `standard`。
 - 应用启动时执行模型恢复：优先激活配置中成对记录的 `selected_model_origin`/

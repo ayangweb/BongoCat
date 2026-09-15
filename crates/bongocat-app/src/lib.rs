@@ -994,8 +994,10 @@ impl Application {
     }
 
     pub fn model_catalog(&self) -> Result<Vec<ModelCatalogEntry>, ApplicationError> {
+        // Unrecognized store entries are filtered inside the store scan; the
+        // merged catalog only exposes real models.
         let mut entries = self.preset_models.list()?;
-        entries.extend(self.model_store.list()?);
+        entries.extend(self.model_store.list()?.entries);
         entries.sort_by(|left, right| {
             left.id().as_str().cmp(right.id().as_str()).then_with(|| {
                 model_origin_order(left.origin()).cmp(&model_origin_order(right.origin()))
@@ -1244,10 +1246,11 @@ impl Application {
     /// exists. The record list stays consistent with the store even when a
     /// model was removed by hand outside the application.
     fn prune_missing_installed_metadata(&mut self) {
-        let Ok(entries) = self.model_store.list() else {
+        let Ok(catalog) = self.model_store.list() else {
             return;
         };
-        let present = entries
+        let present = catalog
+            .entries
             .iter()
             .map(|entry| entry.id().as_str().to_owned())
             .collect::<std::collections::BTreeSet<_>>();
@@ -2368,6 +2371,35 @@ mod tests {
                 title: "目录仍在".to_owned(),
             }]
         );
+        application.shutdown().expect("clean shutdown");
+    }
+
+    /// Regression for a model deleted by hand in the file manager: browsing the
+    /// models root leaves `.DS_Store` behind, and that single foreign file used
+    /// to fail the whole catalog scan, which turned the Models page into an
+    /// unusable "catalog unavailable" state and also stopped stale metadata from
+    /// being pruned.
+    #[test]
+    fn hand_deleted_model_beside_file_manager_metadata_keeps_the_catalog_available() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let store = ConfigStore::new(layout.clone()).expect("config store");
+        let mut configured = store.load_or_default().expect("default config").config;
+        configured.model.installed_models = vec![InstalledModelMetadata {
+            id: "deleted-by-hand".to_owned(),
+            title: "被手动删除".to_owned(),
+        }];
+        store.commit(&configured).expect("seed metadata");
+        std::fs::create_dir_all(&layout.models).expect("models root");
+        std::fs::write(layout.models.join(".DS_Store"), b"finder metadata")
+            .expect("file manager metadata");
+
+        let application = Application::start_with_layout(layout).expect("start application");
+        let catalog = application.model_catalog().expect("merged catalog");
+        assert!(catalog.iter().any(|entry| {
+            entry.origin() == ModelOrigin::Preset && entry.id().as_str() == "standard"
+        }));
+        assert!(application.config().model.installed_models.is_empty());
         application.shutdown().expect("clean shutdown");
     }
 

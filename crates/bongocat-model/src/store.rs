@@ -196,6 +196,35 @@ impl ModelCatalogEntry {
     }
 }
 
+/// Outcome of scanning the installed model store.
+///
+/// The store root is application-owned, but it is still an ordinary directory
+/// on the user's disk: file managers drop metadata beside the model folders and
+/// a user can leave unrelated files behind. A single unrecognized entry must
+/// never make the whole catalog unavailable, so such entries are dropped during
+/// the scan and only counted here instead of failing it. Platform metadata is
+/// not even counted: the operating system or file manager owns it and it can
+/// never be a model.
+///
+/// The count is internal store state. Filtering is silent by design, so it is
+/// never projected into the settings snapshot, user-facing text or logging.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct InstalledModelCatalog {
+    pub entries: Vec<ModelCatalogEntry>,
+    pub skipped_entries: usize,
+}
+
+/// File-manager and operating-system metadata that legitimately appears in the
+/// store root without being owned by the catalog.
+fn is_platform_metadata_name(name: &str) -> bool {
+    // AppleDouble sidecars are written next to files on non-native volumes.
+    name.starts_with("._")
+        || matches!(
+            name,
+            ".DS_Store" | ".localized" | "Thumbs.db" | "desktop.ini"
+        )
+}
+
 impl ModelStore {
     pub fn new(
         root: impl AsRef<Path>,
@@ -284,9 +313,16 @@ impl ModelStore {
         self.recovery
     }
 
-    pub fn list(&self) -> Result<Vec<ModelCatalogEntry>, ModelStoreError> {
+    /// Scan the store root for installed models.
+    ///
+    /// Only the root directory itself is required to be readable. Entries that
+    /// the catalog does not own are dropped silently and counted, and entries
+    /// that carry a valid model id but fail package validation are reported as
+    /// [`ModelCatalogEntry::Invalid`] so they stay visible next to the valid
+    /// models. This never follows symbolic links.
+    pub fn list(&self) -> Result<InstalledModelCatalog, ModelStoreError> {
         let _lock = self.acquire_lock()?;
-        let mut entries = Vec::new();
+        let mut catalog = InstalledModelCatalog::default();
         for entry in fs::read_dir(&self.canonical_root).map_err(|error| {
             ModelStoreError::new(
                 ModelStoreDiagnostic::IoError,
@@ -301,34 +337,25 @@ impl ModelStore {
                     format!("model store entry cannot be read: {error}"),
                 )
             })?;
-            let file_type = entry.file_type().map_err(|error| {
-                ModelStoreError::new(
-                    ModelStoreDiagnostic::IoError,
-                    None,
-                    format!("model store entry type cannot be read: {error}"),
-                )
-            })?;
-            if !file_type.is_dir() || file_type.is_symlink() {
-                return Err(ModelStoreError::new(
-                    ModelStoreDiagnostic::StoreEntryUnsupported,
-                    None,
-                    "model store contains an entry not owned by the catalog",
-                ));
+            let Ok(name) = entry.file_name().into_string() else {
+                catalog.skipped_entries += 1;
+                continue;
+            };
+            if is_platform_metadata_name(&name) {
+                continue;
             }
-            let name = entry.file_name().into_string().map_err(|_| {
-                ModelStoreError::new(
-                    ModelStoreDiagnostic::StoreEntryUnsupported,
-                    None,
-                    "model store contains a non-UTF-8 entry",
-                )
-            })?;
-            let id = ModelId::parse(name).map_err(|_| {
-                ModelStoreError::new(
-                    ModelStoreDiagnostic::StoreEntryUnsupported,
-                    None,
-                    "model store contains a directory with an invalid model id",
-                )
-            })?;
+            let Ok(file_type) = entry.file_type() else {
+                catalog.skipped_entries += 1;
+                continue;
+            };
+            if !file_type.is_dir() || file_type.is_symlink() {
+                catalog.skipped_entries += 1;
+                continue;
+            }
+            let Ok(id) = ModelId::parse(name) else {
+                catalog.skipped_entries += 1;
+                continue;
+            };
             let catalog_entry = match PreparedModel::prepare(id.clone(), entry.path(), self.limits)
             {
                 Ok(prepared) => ModelCatalogEntry::Ready {
@@ -343,10 +370,12 @@ impl ModelStore {
                     detail: error.detail,
                 },
             };
-            entries.push(catalog_entry);
+            catalog.entries.push(catalog_entry);
         }
-        entries.sort_by(|left, right| left.id().as_str().cmp(right.id().as_str()));
-        Ok(entries)
+        catalog
+            .entries
+            .sort_by(|left, right| left.id().as_str().cmp(right.id().as_str()));
+        Ok(catalog)
     }
 
     pub fn load(&self, id: &ModelId) -> Result<InstalledModel, ModelStoreError> {
@@ -1203,7 +1232,7 @@ mod tests {
             .expect_err("cancelled import");
 
         assert_eq!(error.code, ModelStoreDiagnostic::Cancelled);
-        assert!(store.list().expect("empty catalog").is_empty());
+        assert!(store.list().expect("empty catalog").entries.is_empty());
         assert!(!store.root().join("cancelled").exists());
         assert!(
             fs::read_dir(store.root())
@@ -1254,7 +1283,7 @@ mod tests {
             )
             .expect_err("invalid import");
         assert_eq!(error.code, ModelStoreDiagnostic::InvalidPackage);
-        assert!(store.list().expect("empty catalog").is_empty());
+        assert!(store.list().expect("empty catalog").entries.is_empty());
     }
 
     #[cfg(unix)]
@@ -1277,7 +1306,7 @@ mod tests {
             .import(ModelId::parse("linked").expect("model id"), source.path())
             .expect_err("symlink import");
         assert_eq!(error.code, ModelStoreDiagnostic::SourceSymlinkUnsupported);
-        assert!(store.list().expect("empty catalog").is_empty());
+        assert!(store.list().expect("empty catalog").entries.is_empty());
     }
 
     #[cfg(unix)]
@@ -1292,10 +1321,9 @@ mod tests {
         symlink(outside.path(), store.root().join("linked")).expect("installed symlink");
         let id = ModelId::parse("linked").expect("model id");
 
-        assert_eq!(
-            store.list().expect_err("catalog rejects symlink").code,
-            ModelStoreDiagnostic::StoreEntryUnsupported
-        );
+        let catalog = store.list().expect("catalog");
+        assert!(catalog.entries.is_empty());
+        assert_eq!(catalog.skipped_entries, 1);
         assert_eq!(
             store.delete(&id).expect_err("delete rejects symlink").code,
             ModelStoreDiagnostic::StoreEntryUnsupported
@@ -1304,6 +1332,54 @@ mod tests {
             fs::read(outside.path().join("keep")).expect("outside marker preserved"),
             b"outside"
         );
+    }
+
+    #[test]
+    fn catalog_survives_platform_metadata_in_the_store_root() {
+        let data = tempdir().expect("data root");
+        let store = model_store(data.path());
+        let fixture = fixture("非 ASCII 模型");
+        store
+            .import(ModelId::parse("alpha").expect("model id"), &fixture)
+            .expect("import alpha");
+        // Browsing the store root in Finder (for example to delete an installed
+        // model by hand) drops `.DS_Store` next to the model directories. It is
+        // file-manager state, never a model, and must not make the catalog
+        // unavailable.
+        fs::write(store.root().join(".DS_Store"), b"finder metadata").expect("finder metadata");
+
+        let catalog = store.list().expect("catalog");
+        assert_eq!(catalog.entries.len(), 1);
+        assert_eq!(catalog.entries[0].id().as_str(), "alpha");
+        assert_eq!(catalog.skipped_entries, 0);
+    }
+
+    #[test]
+    fn catalog_skips_foreign_entries_without_hiding_the_remaining_models() {
+        let data = tempdir().expect("data root");
+        let store = model_store(data.path());
+        let fixture = fixture("非 ASCII 模型");
+        store
+            .import(ModelId::parse("alpha").expect("model id"), &fixture)
+            .expect("import alpha");
+        fs::write(store.root().join("notes.txt"), b"user note").expect("foreign file");
+        // A directory whose name is not a portable model id can never be an
+        // installed model, so it is skipped instead of entering the catalog.
+        fs::create_dir(store.root().join("not a model id")).expect("foreign directory");
+        fs::write(store.root().join("Thumbs.db"), b"windows metadata").expect("windows metadata");
+        // A directory carrying a valid model id stays visible even when it holds
+        // no usable package; only entries that cannot be models are skipped.
+        fs::create_dir(store.root().join("empty-model")).expect("empty model directory");
+
+        let catalog = store.list().expect("catalog");
+        assert_eq!(catalog.entries.len(), 2);
+        assert_eq!(catalog.entries[0].id().as_str(), "alpha");
+        assert!(matches!(
+            catalog.entries[1],
+            ModelCatalogEntry::Invalid { .. }
+        ));
+        assert_eq!(catalog.entries[1].id().as_str(), "empty-model");
+        assert_eq!(catalog.skipped_entries, 2);
     }
 
     #[test]
@@ -1320,15 +1396,21 @@ mod tests {
         fs::remove_file(alpha.root().join("模型 数据.moc3")).expect("corrupt alpha");
 
         let catalog = store.list().expect("catalog");
-        assert_eq!(catalog.len(), 2);
-        assert_eq!(catalog[0].id().as_str(), "alpha");
-        assert!(matches!(catalog[0], ModelCatalogEntry::Invalid { .. }));
-        assert_eq!(catalog[0].origin(), crate::ModelOrigin::Installed);
-        assert!(catalog[0].snapshot().is_none());
-        assert_eq!(catalog[1].id().as_str(), "zeta");
-        assert!(matches!(catalog[1], ModelCatalogEntry::Ready { .. }));
-        assert_eq!(catalog[1].origin(), crate::ModelOrigin::Installed);
-        assert!(catalog[1].snapshot().is_some());
+        assert_eq!(catalog.entries.len(), 2);
+        assert_eq!(catalog.entries[0].id().as_str(), "alpha");
+        assert!(matches!(
+            catalog.entries[0],
+            ModelCatalogEntry::Invalid { .. }
+        ));
+        assert_eq!(catalog.entries[0].origin(), crate::ModelOrigin::Installed);
+        assert!(catalog.entries[0].snapshot().is_none());
+        assert_eq!(catalog.entries[1].id().as_str(), "zeta");
+        assert!(matches!(
+            catalog.entries[1],
+            ModelCatalogEntry::Ready { .. }
+        ));
+        assert_eq!(catalog.entries[1].origin(), crate::ModelOrigin::Installed);
+        assert!(catalog.entries[1].snapshot().is_some());
         assert_eq!(
             store
                 .load(&ModelId::parse("zeta").expect("model id"))
@@ -1340,7 +1422,10 @@ mod tests {
 
         drop(store);
         let reopened = model_store(data.path());
-        assert_eq!(reopened.list().expect("persistent catalog").len(), 2);
+        assert_eq!(
+            reopened.list().expect("persistent catalog").entries.len(),
+            2
+        );
     }
 
     #[test]
@@ -1354,7 +1439,7 @@ mod tests {
         store.import(beta.clone(), &fixture).expect("import beta");
 
         store.delete(&alpha).expect("delete alpha");
-        assert_eq!(store.list().expect("catalog").len(), 1);
+        assert_eq!(store.list().expect("catalog").entries.len(), 1);
         assert_eq!(
             store.load(&alpha).expect_err("alpha removed").code,
             ModelStoreDiagnostic::NotFound
@@ -1404,7 +1489,7 @@ mod tests {
             )
             .expect_err("recursive source must fail");
         assert_eq!(error.code, ModelStoreDiagnostic::SourceContainsStore);
-        assert!(store.list().expect("empty catalog").is_empty());
+        assert!(store.list().expect("empty catalog").entries.is_empty());
     }
 
     #[test]
