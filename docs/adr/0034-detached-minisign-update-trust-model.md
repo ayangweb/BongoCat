@@ -142,6 +142,43 @@ manifest 形状的跨 crate 一致性不靠正则匹配源码，而是由 `crate
 因此形状不匹配会在这里失败而不是在用户机器上。`tools/tests/test_update_release_contract.py`
 覆盖另一半——资产名与平台键必须与 runtime 声明的一致。
 
+### 7. 更新源的 GitHub 代理回退（2026-09-15 增补）
+
+国内直连 GitHub 不稳定，一次更新运行在请求共享 manifest 时按固定顺序逐个尝试代理源
+（`<proxy>/https://github.com/.../releases/latest/download/latest.json`）：
+
+1. `https://cdn.gh-proxy.org`
+2. `https://v6.gh-proxy.org`
+3. `https://axisnow.gh-proxy.org`
+4. `https://v4.gh-proxy.org`
+5. `https://gh-proxy.org`
+6. GitHub 官方源（兜底，不加前缀）
+
+一个源**可用**的判定与库对 endpoint 的判定一致：请求返回成功状态**且** body 能被更新库
+作为本发布管线的 manifest 反序列化（§3 的 static 形状）。超时、网络错误、HTTP 错误或
+内容不可解析都跳到下一个源；全部失败时报最后一个错误，错误码目录不变。
+`NoMatchingAsset`（manifest 可读但不含本平台条目）不触发回退——所有源服务的是同一份
+release 资产，换源不会改变答案，该诊断必须原样到达用户。
+
+成功的代理贯穿本次更新：`cargo-packager-updater 0.2.3` 的 `Update.download_url` 是公开
+字段，runtime 在下载前把 manifest 里的官方 GitHub URL 统一转换为
+`<proxy>/<official-url>`；转换只作用于 scheme 为 HTTPS 且 host 为 `github.com` 的 URL，
+因此已代理的 URL（host 是代理本身）不会被二次加前缀，非 GitHub URL 不被改动。官方源
+成功的运行不做任何转换。`release_page_url`（人工查看 changelog 的页面）不属于传输路径，
+不转换。
+
+单次 manifest 请求有独立的 30 秒上界（`UPDATE_MANIFEST_REQUEST_TIMEOUT`），低于载荷
+传输的 1800 秒上界（`UPDATE_REQUEST_TIMEOUT`）：源是串行尝试的，一个黑洞连接若占用
+传输级超时会把后续每个源都堵死 30 分钟。成功的源确定后，超时在 `Update.timeout` 上恢复
+为传输级上界再下载。
+
+信任模型不受影响（§2）：代理只是 URL 前缀转发，能迟滞一次运行、返回过期或伪造的
+manifest、把下载指去别处，但无法伪造 minisign 签名，任何被篡改的内容到不了安装步骤；
+"旧但签名有效"的降级风险即 §待验证项 5 的既有风险，代理化不改变它。该回退由
+`runtime.rs` 的单元测试钉住（代理列表的顺序与字面量、代理 endpoint 的精确形态、
+逐源尝试/首个可用即停/官方兜底/全失败报最后错误、`NoMatchingAsset` 短路、下载 URL
+转换的幂等性与范围、超时上界），Windows 与 macOS 走同一段平台无关代码。
+
 ## 被取代的能力与损失
 
 ADR-0021 / ADR-0022 / ADR-0025 / ADR-0026 的退役能力沿用 ADR-0029 的记录（detached 清单

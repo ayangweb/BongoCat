@@ -7,7 +7,8 @@
 //! by swapping the whole `.app` bundle, on Windows by running the NSIS installer the
 //! manifest points at. This module owns only what is BongoCat-specific — which
 //! repository and channel an update may come from, when to refuse before touching
-//! the network, and the anonymous diagnostics contract.
+//! the network, the GitHub proxy sources the manifest is requested through before
+//! the official endpoint, and the anonymous diagnostics contract.
 
 use cargo_packager_updater::semver::Version;
 use cargo_packager_updater::url::Url;
@@ -103,14 +104,53 @@ impl UpdateStage {
     }
 }
 
-/// Upper bound on one manifest request or one payload transfer.
+/// Upper bound on one payload transfer.
 ///
 /// The transport has no timeout of its own, so without this a stalled connection
 /// would leave the update worker blocked indefinitely. The bound is deliberately
 /// generous — it covers a whole payload transfer, not one read — because the point is
 /// to escape a dead connection, not to police a slow one. The update window is not
 /// blocked by a transfer in progress and can be closed while it runs.
+///
+/// Manifest requests have their own, much shorter bound in
+/// [`UPDATE_MANIFEST_REQUEST_TIMEOUT`]; this value is restored onto the
+/// [`cargo_packager_updater::Update`] before its payload is downloaded.
 pub const UPDATE_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1800);
+
+/// Upper bound on one manifest request to one source.
+///
+/// The manifest is a small document a healthy source serves in seconds, but the
+/// sources are tried in sequence and a source that accepts the connection and never
+/// answers would otherwise stack the transfer-sized [`UPDATE_REQUEST_TIMEOUT`] in
+/// front of every later source. The bound is generous for a document this size — the
+/// point is to retire a dead source quickly, not to police a slow one — and it is
+/// deliberately shorter than [`UPDATE_REQUEST_TIMEOUT`], which keeps covering the
+/// payload transfer itself.
+pub const UPDATE_MANIFEST_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// The GitHub proxy prefixes an update run tries, in order, before the official
+/// endpoint.
+///
+/// Direct GitHub access is unreliable from mainland China, so the manifest request
+/// is prefixed with each of these in turn (`<proxy>/<github-url>`) before the
+/// official URL is tried last. A source counts as available only when its request
+/// succeeds **and** the body parses as this release pipeline's manifest, and the
+/// proxy that served the manifest is then used for that run's payload download too
+/// (see `UpdateRuntime`'s download-URL conversion).
+///
+/// This is a reachability policy, not a trust decision: a proxy relays the request
+/// and can stall a run, serve a stale or hostile manifest, or point the download
+/// elsewhere — but it cannot forge the minisign signature the payload is checked
+/// against, so nothing it tampers with can reach an install. The downgrade risk of
+/// a manifest that names an older but validly signed release is the pre-existing
+/// one recorded in ADR-0034, unchanged by proxying.
+pub const GITHUB_PROXY_PREFIXES: &[&str] = &[
+    "https://cdn.gh-proxy.org",
+    "https://v6.gh-proxy.org",
+    "https://axisnow.gh-proxy.org",
+    "https://v4.gh-proxy.org",
+    "https://gh-proxy.org",
+];
 
 /// A stable-coded update failure, tagged with the stage that produced it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -246,6 +286,25 @@ pub enum UpdateUnavailability {
     DevelopmentChannel,
     /// No release signing key is provisioned.
     SigningKeyMissing,
+}
+
+/// One manifest source: an endpoint and the proxy prefix that produced it.
+///
+/// `proxy` is `None` for the official GitHub endpoint, which is tried last and
+/// needs no download-URL conversion.
+struct ManifestSource {
+    proxy: Option<&'static str>,
+    endpoint: Url,
+}
+
+/// What one successful manifest fetch produced.
+#[derive(Debug)]
+enum ManifestFetch<T> {
+    /// The manifest is readable and announces nothing newer than this build.
+    UpToDate,
+    /// A newer release is offered, with its download URL already converted to the
+    /// proxy that served the manifest (no conversion on the official endpoint).
+    Offered(T),
 }
 
 /// A published release this build could move to.
@@ -398,9 +457,83 @@ impl UpdateRuntime {
         Url::parse(&url).map_err(|_| UpdateError::new(UpdateErrorCode::NotConfigured))
     }
 
-    /// Build the updater for this build, refusing before any request when the build is
-    /// not allowed to update or cannot authenticate what it would download.
-    fn updater(&self) -> Result<Updater, UpdateError> {
+    /// The manifest endpoint one proxy source requests: the official URL prefixed.
+    fn proxied_manifest_endpoint(prefix: &str, official: &Url) -> Result<Url, UpdateError> {
+        Url::parse(&format!("{}/{official}", prefix.trim_end_matches('/')))
+            .map_err(|_| UpdateError::new(UpdateErrorCode::NotConfigured))
+    }
+
+    /// The sources one update run tries, proxies in order and the official endpoint
+    /// last.
+    fn manifest_sources(
+        configuration: ReleaseConfiguration,
+    ) -> Result<Vec<ManifestSource>, UpdateError> {
+        let official = Self::manifest_endpoint(configuration)?;
+        let mut sources = Vec::with_capacity(GITHUB_PROXY_PREFIXES.len() + 1);
+        for prefix in GITHUB_PROXY_PREFIXES {
+            sources.push(ManifestSource {
+                proxy: Some(prefix),
+                endpoint: Self::proxied_manifest_endpoint(prefix, &official)?,
+            });
+        }
+        sources.push(ManifestSource {
+            proxy: None,
+            endpoint: official,
+        });
+        Ok(sources)
+    }
+
+    /// Try the manifest sources in order and stop at the first usable one.
+    ///
+    /// A source is usable when its request succeeds *and* the body parses as this
+    /// pipeline's manifest — the checker decides that. A source that times out,
+    /// errors or returns an unreadable body is skipped and the next one tried; the
+    /// last error is reported when every source fails. `NoMatchingAsset` is
+    /// different: it means a manifest was read but announces no asset for this host,
+    /// and every source serves the same release asset, so no later source can change
+    /// that answer — it is returned immediately.
+    fn select_manifest_source<T>(
+        sources: &[ManifestSource],
+        mut check: impl FnMut(&ManifestSource) -> Result<ManifestFetch<T>, UpdateError>,
+    ) -> Result<ManifestFetch<T>, UpdateError> {
+        let mut last_error = None;
+        for source in sources {
+            match check(source) {
+                Ok(fetch) => return Ok(fetch),
+                Err(error) if error.code() == UpdateErrorCode::NoMatchingAsset => {
+                    return Err(error);
+                }
+                Err(error) => last_error = Some(error),
+            }
+        }
+        Err(last_error.unwrap_or_else(|| UpdateError::new(UpdateErrorCode::ReleaseFetchFailed)))
+    }
+
+    /// Prefix a GitHub release URL with the proxy that served the manifest.
+    ///
+    /// The manifest announces official GitHub URLs, so when its run came through a
+    /// proxy the payload transfer goes through the same one. Only an HTTPS URL whose
+    /// host is `github.com` is rewritten; anything else — including a URL that is
+    /// already proxied, whose host is the proxy itself — is returned unchanged,
+    /// which is what keeps the conversion idempotent. If the rewritten URL somehow
+    /// fails to parse, the official URL is kept: a slower download beats a stopped
+    /// one.
+    fn proxied_download_url(proxy: Option<&str>, url: &Url) -> Url {
+        let Some(proxy) = proxy else {
+            return url.clone();
+        };
+        let is_official_github = url.scheme() == "https" && url.host_str() == Some("github.com");
+        if !is_official_github {
+            return url.clone();
+        }
+        Url::parse(&format!("{}/{url}", proxy.trim_end_matches('/')))
+            .unwrap_or_else(|_| url.clone())
+    }
+
+    /// Build the updater for one manifest endpoint, refusing before any request when
+    /// the build is not allowed to update or cannot authenticate what it would
+    /// download.
+    fn updater(&self, endpoint: Url, timeout: std::time::Duration) -> Result<Updater, UpdateError> {
         let configuration = self
             .configuration
             .ok_or_else(|| UpdateError::new(UpdateErrorCode::NotConfigured))?;
@@ -419,7 +552,7 @@ impl UpdateRuntime {
         // silent; `/R` asks the installer to relaunch the application, which the
         // Windows install path depends on because it exits the current process.
         let config = Config {
-            endpoints: vec![Self::manifest_endpoint(configuration)?],
+            endpoints: vec![endpoint],
             pubkey: key.to_owned(),
             windows: Some(WindowsConfig {
                 installer_args: None,
@@ -428,9 +561,39 @@ impl UpdateRuntime {
         };
 
         UpdaterBuilder::new(current_version, config)
-            .timeout(UPDATE_REQUEST_TIMEOUT)
+            .timeout(timeout)
             .build()
             .map_err(UpdateError::from_library)
+    }
+
+    /// Request one manifest source with the short per-source bound.
+    ///
+    /// On success the payload transfer's own bound is restored onto the update and
+    /// the announced download URL is converted to the proxy that served the
+    /// manifest, so the rest of this update run stays on that source.
+    fn check_source(
+        &self,
+        source: &ManifestSource,
+    ) -> Result<ManifestFetch<cargo_packager_updater::Update>, UpdateError> {
+        let updater = self.updater(source.endpoint.clone(), UPDATE_MANIFEST_REQUEST_TIMEOUT)?;
+        match updater.check().map_err(UpdateError::from_library)? {
+            None => Ok(ManifestFetch::UpToDate),
+            Some(mut update) => {
+                update.timeout = Some(UPDATE_REQUEST_TIMEOUT);
+                update.download_url =
+                    Self::proxied_download_url(source.proxy, &update.download_url);
+                Ok(ManifestFetch::Offered(update))
+            }
+        }
+    }
+
+    /// Fetch the release manifest, trying the proxy sources before the official one.
+    fn fetch_manifest(&self) -> Result<ManifestFetch<cargo_packager_updater::Update>, UpdateError> {
+        let configuration = self
+            .configuration
+            .ok_or_else(|| UpdateError::new(UpdateErrorCode::NotConfigured))?;
+        let sources = Self::manifest_sources(configuration)?;
+        Self::select_manifest_source(&sources, |source| self.check_source(source))
     }
 
     /// Query whether a newer release is published.
@@ -464,10 +627,9 @@ impl UpdateRuntime {
     }
 
     fn check_inner(&self) -> Result<UpdateOutcome, UpdateError> {
-        let updater = self.updater()?;
-        match updater.check().map_err(UpdateError::from_library)? {
-            None => Ok(UpdateOutcome::UpToDate),
-            Some(update) => Ok(UpdateOutcome::Available {
+        match self.fetch_manifest()? {
+            ManifestFetch::UpToDate => Ok(UpdateOutcome::UpToDate),
+            ManifestFetch::Offered(update) => Ok(UpdateOutcome::Available {
                 release: UpdateRelease {
                     version: update.version,
                     notes: update.body,
@@ -525,34 +687,35 @@ impl UpdateRuntime {
     }
 
     fn install_inner(&self, observe: impl Fn(UpdateEvent)) -> Result<UpdateOutcome, UpdateError> {
-        let updater = self.updater()?;
-        let Some(update) = updater.check().map_err(UpdateError::from_library)? else {
-            return Ok(UpdateOutcome::UpToDate);
-        };
-        let version = update.version.clone();
-        let downloaded_bytes = std::cell::Cell::new(0_u64);
-        let payload = update
-            .download_extended(
-                |chunk, total| {
-                    let downloaded = downloaded_bytes.get().saturating_add(chunk as u64);
-                    downloaded_bytes.set(downloaded);
-                    observe(UpdateEvent::Progress(UpdateProgress {
-                        downloaded_bytes: downloaded,
-                        total_bytes: total,
-                    }));
-                },
-                || observe(UpdateEvent::DownloadFinished),
-            )
-            .map_err(|error| {
-                let error = UpdateError::from_library(error);
-                UpdateError::at(UpdateError::download_stage(error.code()), error.code())
-            })?;
-        observe(UpdateEvent::Verified);
-        update.install(payload).map_err(|error| {
-            let error = UpdateError::from_library(error);
-            UpdateError::at(UpdateStage::Install, error.code())
-        })?;
-        Ok(UpdateOutcome::Installed { version })
+        match self.fetch_manifest()? {
+            ManifestFetch::UpToDate => Ok(UpdateOutcome::UpToDate),
+            ManifestFetch::Offered(update) => {
+                let version = update.version.clone();
+                let downloaded_bytes = std::cell::Cell::new(0_u64);
+                let payload = update
+                    .download_extended(
+                        |chunk, total| {
+                            let downloaded = downloaded_bytes.get().saturating_add(chunk as u64);
+                            downloaded_bytes.set(downloaded);
+                            observe(UpdateEvent::Progress(UpdateProgress {
+                                downloaded_bytes: downloaded,
+                                total_bytes: total,
+                            }));
+                        },
+                        || observe(UpdateEvent::DownloadFinished),
+                    )
+                    .map_err(|error| {
+                        let error = UpdateError::from_library(error);
+                        UpdateError::at(UpdateError::download_stage(error.code()), error.code())
+                    })?;
+                observe(UpdateEvent::Verified);
+                update.install(payload).map_err(|error| {
+                    let error = UpdateError::from_library(error);
+                    UpdateError::at(UpdateStage::Install, error.code())
+                })?;
+                Ok(UpdateOutcome::Installed { version })
+            }
+        }
     }
 
     /// Relaunch the (already updated) executable with the same arguments.
@@ -605,13 +768,15 @@ fn restart_current_process() -> Result<std::convert::Infallible, UpdateError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        RELEASE_BINARY_NAME, RELEASE_BUNDLE_NAME, RELEASE_MANIFEST_NAME, RELEASE_REPOSITORY_NAME,
-        RELEASE_REPOSITORY_OWNER, RELEASE_SIGNING_KEY, UPDATE_REQUEST_TIMEOUT, UpdateError,
-        UpdateErrorCode, UpdateOutcome, UpdateProgress, UpdateRelease, UpdateRuntime, UpdateStage,
-        UpdateUnavailability, configured_signing_key,
+        GITHUB_PROXY_PREFIXES, ManifestFetch, ManifestSource, RELEASE_BINARY_NAME,
+        RELEASE_BUNDLE_NAME, RELEASE_MANIFEST_NAME, RELEASE_REPOSITORY_NAME,
+        RELEASE_REPOSITORY_OWNER, RELEASE_SIGNING_KEY, UPDATE_MANIFEST_REQUEST_TIMEOUT,
+        UPDATE_REQUEST_TIMEOUT, UpdateError, UpdateErrorCode, UpdateOutcome, UpdateProgress,
+        UpdateRelease, UpdateRuntime, UpdateStage, UpdateUnavailability, configured_signing_key,
     };
     use crate::diagnostics::UpdateDiagnosticsTracker;
     use crate::release::{ReleaseChannel, ReleaseConfiguration, UpdateTargetTriple};
+    use cargo_packager_updater::url::Url;
 
     /// A fixed release configuration.
     ///
@@ -782,6 +947,243 @@ mod tests {
             })
         );
         assert_eq!(UpdateOutcome::UpToDate.release(), None);
+    }
+
+    /// A manifest source for the selection tests: a stable URL and the proxy that
+    /// produced it.
+    fn test_source(proxy: Option<&'static str>, tail: &str) -> ManifestSource {
+        ManifestSource {
+            proxy,
+            endpoint: Url::parse(&format!("https://source.invalid/{tail}"))
+                .expect("a test endpoint parses"),
+        }
+    }
+    /// The proxy list is the product's ordered fallback policy, so its content and
+    /// order are pinned the way the official endpoint's URL is: the literals are
+    /// restated on purpose, so a change to either is an intentional edit.
+    #[test]
+    fn the_proxy_prefixes_are_the_ordered_fallback_policy() {
+        assert_eq!(
+            GITHUB_PROXY_PREFIXES,
+            &[
+                "https://cdn.gh-proxy.org",
+                "https://v6.gh-proxy.org",
+                "https://axisnow.gh-proxy.org",
+                "https://v4.gh-proxy.org",
+                "https://gh-proxy.org",
+            ]
+        );
+        for prefix in GITHUB_PROXY_PREFIXES {
+            let url = Url::parse(prefix).expect("a proxy prefix parses as a URL");
+            assert_eq!(url.scheme(), "https", "{prefix} must be HTTPS");
+            assert!(
+                url.host_str().is_some_and(|host| !host.is_empty()),
+                "{prefix} must name a host"
+            );
+            assert!(
+                !prefix.ends_with('/'),
+                "{prefix} must not end with a slash; prefixing adds its own"
+            );
+        }
+    }
+
+    /// The official URL prefixed by the first proxy is exactly the address the
+    /// product expects a proxy check to hit.
+    #[test]
+    fn the_proxied_manifest_endpoint_prefixes_the_official_url() {
+        let official = UpdateRuntime::manifest_endpoint(configuration(ReleaseChannel::Production))
+            .expect("the release identity produces a valid URL");
+
+        let proxied = UpdateRuntime::proxied_manifest_endpoint(
+            GITHUB_PROXY_PREFIXES
+                .first()
+                .expect("the list is non-empty"),
+            &official,
+        )
+        .expect("a proxy prefix and the official URL produce a valid endpoint");
+
+        assert_eq!(
+            proxied.as_str(),
+            "https://cdn.gh-proxy.org/https://github.com/ayangweb/BongoCat/releases/latest/download/latest.json"
+        );
+    }
+
+    /// The source order is the fallback order: every proxy prefixed, official last.
+    #[test]
+    fn manifest_sources_try_proxies_in_order_then_the_official_endpoint() {
+        let sources = UpdateRuntime::manifest_sources(configuration(ReleaseChannel::Production))
+            .expect("every source endpoint parses");
+
+        assert_eq!(sources.len(), GITHUB_PROXY_PREFIXES.len() + 1);
+        for (source, prefix) in sources.iter().zip(GITHUB_PROXY_PREFIXES) {
+            assert_eq!(source.proxy, Some(*prefix));
+            assert_eq!(
+                source.endpoint.as_str(),
+                format!(
+                    "{prefix}/https://github.com/{RELEASE_REPOSITORY_OWNER}/{RELEASE_REPOSITORY_NAME}/releases/latest/download/{RELEASE_MANIFEST_NAME}"
+                )
+            );
+        }
+        let official = sources.last().expect("the official source is last");
+        assert_eq!(
+            official.proxy, None,
+            "the official endpoint needs no prefix"
+        );
+        assert_eq!(
+            official.endpoint.as_str(),
+            "https://github.com/ayangweb/BongoCat/releases/latest/download/latest.json"
+        );
+    }
+
+    /// A source is usable only when its request succeeds and the manifest parses;
+    /// anything else moves on to the next source, and the first usable one wins.
+    #[test]
+    fn the_first_usable_source_wins_and_later_sources_are_not_consulted() {
+        let sources = vec![
+            test_source(Some("https://first.invalid"), "a"),
+            test_source(Some("https://second.invalid"), "b"),
+            test_source(None, "official"),
+        ];
+
+        let mut consulted = Vec::new();
+        let fetch = UpdateRuntime::select_manifest_source(&sources, |source| {
+            consulted.push(source.endpoint.as_str().to_owned());
+            if source.proxy == Some("https://second.invalid") {
+                Ok(ManifestFetch::Offered("second"))
+            } else {
+                Err(UpdateError::new(UpdateErrorCode::ReleaseFetchFailed))
+            }
+        })
+        .expect("the second source is usable");
+
+        assert_eq!(
+            consulted,
+            vec![
+                "https://source.invalid/a".to_owned(),
+                "https://source.invalid/b".to_owned(),
+            ],
+            "the official endpoint must not be requested once a proxy succeeded"
+        );
+        let ManifestFetch::Offered(update) = fetch else {
+            panic!("expected an offered update, got {fetch:?}");
+        };
+        assert_eq!(update, "second");
+    }
+
+    /// Every proxy failing hands the run to the official endpoint.
+    #[test]
+    fn all_proxies_failing_falls_through_to_the_official_endpoint() {
+        let sources = vec![
+            test_source(Some("https://proxy.invalid"), "a"),
+            test_source(None, "official"),
+        ];
+
+        let mut consulted = Vec::new();
+        let fetch = UpdateRuntime::select_manifest_source(&sources, |source| {
+            consulted.push(source.proxy);
+            match source.proxy {
+                Some(_) => Err(UpdateError::new(UpdateErrorCode::ReleaseFetchFailed)),
+                None => Ok(ManifestFetch::Offered("official")),
+            }
+        })
+        .expect("the official endpoint is usable");
+
+        assert_eq!(consulted, vec![Some("https://proxy.invalid"), None]);
+        let ManifestFetch::Offered(update) = fetch else {
+            panic!("expected an offered update, got {fetch:?}");
+        };
+        assert_eq!(update, "official");
+    }
+
+    /// A run where every source fails reports the last source's error.
+    #[test]
+    fn all_sources_failing_reports_the_last_error() {
+        let sources = vec![
+            test_source(Some("https://first.invalid"), "a"),
+            test_source(None, "official"),
+        ];
+
+        let error = UpdateRuntime::select_manifest_source::<&str>(&sources, |source| {
+            Err(UpdateError::new(if source.proxy.is_none() {
+                UpdateErrorCode::ReleaseManifestInvalid
+            } else {
+                UpdateErrorCode::ReleaseFetchFailed
+            }))
+        })
+        .expect_err("no source is usable");
+
+        assert_eq!(error.code(), UpdateErrorCode::ReleaseManifestInvalid);
+    }
+
+    /// A manifest that parses but announces no asset for this host stops the
+    /// fallback: every source serves the same release asset, so another proxy
+    /// cannot change the answer and the diagnostic must survive.
+    #[test]
+    fn a_manifest_without_this_platform_stops_the_source_fallback() {
+        let sources = vec![
+            test_source(Some("https://first.invalid"), "a"),
+            test_source(None, "official"),
+        ];
+
+        let mut consulted = Vec::new();
+        let error = UpdateRuntime::select_manifest_source::<&str>(&sources, |source| {
+            consulted.push(source.proxy);
+            Err(UpdateError::new(UpdateErrorCode::NoMatchingAsset))
+        })
+        .expect_err("no source can offer this host an asset");
+
+        assert_eq!(error.code(), UpdateErrorCode::NoMatchingAsset);
+        assert_eq!(consulted.len(), 1, "later sources must not be consulted");
+    }
+
+    /// The download-URL conversion rewrites exactly the official GitHub URLs, once.
+    #[test]
+    fn download_urls_are_proxied_only_when_official_github() {
+        let proxy = Some("https://cdn.gh-proxy.org");
+        let github = Url::parse(
+            "https://github.com/ayangweb/BongoCat/releases/download/v1.1.0/BongoCat_x64-setup.exe",
+        )
+        .expect("the announced GitHub URL parses");
+        assert_eq!(
+            UpdateRuntime::proxied_download_url(proxy, &github).as_str(),
+            "https://cdn.gh-proxy.org/https://github.com/ayangweb/BongoCat/releases/download/v1.1.0/BongoCat_x64-setup.exe"
+        );
+
+        // The official run keeps the announced URL untouched.
+        assert_eq!(UpdateRuntime::proxied_download_url(None, &github), github);
+
+        // An already-proxied URL is not prefixed again: its host is the proxy, not
+        // github.com, so the conversion is idempotent.
+        let already_proxied = UpdateRuntime::proxied_download_url(proxy, &github);
+        assert_eq!(
+            UpdateRuntime::proxied_download_url(proxy, &already_proxied),
+            already_proxied
+        );
+
+        // Any other host is left alone.
+        let elsewhere = Url::parse("https://example.invalid/BongoCat_x64-setup.exe")
+            .expect("the foreign URL parses");
+        assert_eq!(
+            UpdateRuntime::proxied_download_url(proxy, &elsewhere),
+            elsewhere
+        );
+
+        // And so is a GitHub URL that is not HTTPS.
+        let insecure = Url::parse("http://github.com/ayangweb/BongoCat/releases/download/v1.1.0/a")
+            .expect("the insecure URL parses");
+        assert_eq!(
+            UpdateRuntime::proxied_download_url(proxy, &insecure),
+            insecure
+        );
+    }
+
+    /// The per-source manifest bound has to be real (a dead source is retired, not
+    /// waited out) and has to stay below the payload transfer bound.
+    #[test]
+    fn a_manifest_request_is_bounded_below_a_transfer() {
+        assert!(UPDATE_MANIFEST_REQUEST_TIMEOUT >= std::time::Duration::from_secs(10));
+        assert!(UPDATE_MANIFEST_REQUEST_TIMEOUT < UPDATE_REQUEST_TIMEOUT);
+        assert!(UPDATE_MANIFEST_REQUEST_TIMEOUT <= std::time::Duration::from_secs(300));
     }
 
     /// A failed update has to say which step it failed in, because the UI reports
