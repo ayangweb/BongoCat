@@ -1,16 +1,5 @@
-# Logs
 logs
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
-node_modules
-dist
-dist-ssr
-*.local
 target
 
 # Editor directories and files
@@ -21,3 +10,7 @@ target
 *.njsproj
 *.sln
 *.sw?
+
+# WorkBuddy AI 本地项目数据（工作记忆、项目级 skill），不属于构建产物
+.workbuddy-ai/
+.workbuddy/

@@ -1,0 +1,7 @@
+{
+  "Version": 3,
+  "Parameters": [
+    { "Id": "ParamAngleX", "GroupId": "", "Name": "角度 X" }
+  ],
+  "CombinedParameters": [["ParamAngleX", "ParamGhost"]]
+}

@@ -1,108 +1,287 @@
-name: BongoCat Release
+name: Release
 
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
-  create-release:
-    runs-on: ubuntu-latest
+  windows-x64:
+    name: Windows x64 installer
+    runs-on: windows-latest
+    env:
+      # The Minisign key that signs the update payload. Without it the build produces
+      # bundle and installer artifacts but no update assets, and the release would be
+      # one no installed copy can ever move to.
+      SIGNING_PRIVATE_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
+      SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          fetch-depth: 0
-      - name: Set output
-        id: vars
-        run: echo "tag=${GITHUB_REF#refs/*/}" >> $GITHUB_OUTPUT
+          targets: x86_64-pc-windows-msvc
+      - uses: taiki-e/install-action@just
+      - name: Check the tag against the single product version source
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(just version)
+          echo "version=$version" >> "$GITHUB_ENV"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "tag $GITHUB_REF_NAME does not match the workspace product version $version" >&2
+            exit 1
+          fi
+      - name: Require the update signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${SIGNING_PRIVATE_KEY:-}" ]; then
+            echo "::error::SIGNING_PRIVATE_KEY is not configured. Publishing unsigned update assets would leave every installed copy unable to update, because the runtime refuses to install a payload it cannot authenticate." >&2
+            exit 1
+          fi
+      - name: Build the Production product and package the installer
+        run: just build
+      - name: Verify the installer artifact
+        shell: pwsh
+        run: |
+          # The published name is BongoCat_<version>_<arch>.exe: the packaging
+          # entry point renames the cargo-packager installer to it.
+          $expected = "BongoCat_${env:version}_x64.exe"
+          $installers = @(Get-ChildItem -Path "target/package" -Filter "*.exe" -File)
+          if ($installers.Count -ne 1) {
+            throw "expected exactly one installer, found $($installers.Count)"
+          }
+          $installer = $installers[0]
+          if ($installer.Name -ne $expected) {
+            throw "expected the installer to be named $expected, found $($installer.Name)"
+          }
+          if ($installer.Length -le 0) { throw "installer is empty" }
+          Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256 |
+            Select-Object -ExpandProperty Hash |
+            ForEach-Object { Write-Host "installer sha256=$_" }
+      - name: Verify the signed update assets
+        shell: pwsh
+        run: |
+          # The updater installs the installer it downloads, so the update payload and
+          # the published installer are the same file; this target's manifest fragment
+          # and the detached signature are what make it installable.
+          $payload = "target/package/BongoCat_${env:version}_x64.exe"
+          if (-not (Test-Path $payload)) { throw "missing update payload $payload" }
+          $signature = "$payload.sig"
+          if (-not (Test-Path $signature)) { throw "missing signature $signature" }
+          if ((Get-Item $signature).Length -le 0) { throw "empty signature $signature" }
 
-      - name: Setup node
-        uses: actions/setup-node@v4
+          $fragment = "target/package/windows-x86_64.json"
+          if (-not (Test-Path $fragment)) { throw "missing manifest fragment $fragment" }
+          $json = Get-Content -LiteralPath $fragment -Raw | ConvertFrom-Json
+          if ($json.version -ne $env:version) { throw "fragment version $($json.version) is not $env:version" }
+          if ($json.format -ne 'nsis') { throw "fragment format $($json.format) is not nsis" }
+          if (-not $json.signature) { throw "fragment carries no signature" }
+          if ($json.url -notmatch '^https://github\.com/') { throw "fragment url is not https: $($json.url)" }
+          Write-Host "signed update assets for $payload"
+      - name: Require Authenticode signatures for a stable release
+        shell: pwsh
+        run: |
+          # Update signing and Authenticode are separate gates: cargo-packager signs the
+          # product binaries and the installer only when a signing command or certificate
+          # is configured, and the Minisign key above does not affect that.
+          $signed = Get-ChildItem -Path "target/package" -Filter "*.exe" -File |
+            Where-Object { (Get-AuthenticodeSignature -LiteralPath $_.FullName).Status -eq 'Valid' }
+          if (-not $signed) {
+            Write-Host "::warning::no valid Authenticode signature found; this installer is not a stable release artifact"
+          }
+      - uses: actions/upload-artifact@v4
         with:
-          node-version: 20
+          name: release-windows-x64
+          path: |
+            target/package/BongoCat_*.exe
+            target/package/BongoCat_*.exe.sig
+            target/package/windows-x86_64.json
+          if-no-files-found: error
 
-      - name: Generate changelog
-        id: create_release
-        run: npx changelogithub --draft --name ${{ steps.vars.outputs.tag }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-
-  build-app:
-    needs: create-release
-    permissions:
-      contents: write
+  macos:
+    name: macOS ${{ matrix.triple }}
+    runs-on: macos-latest
+    env:
+      SIGNING_PRIVATE_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
+      SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.SIGNING_PRIVATE_KEY_PASSWORD }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest
-            target: aarch64-apple-darwin
-          - platform: macos-latest
-            target: x86_64-apple-darwin
-
-          - platform: windows-latest
-            target: x86_64-pc-windows-msvc
-          - platform: windows-latest
-            target: i686-pc-windows-msvc
-          - platform: windows-latest
-            target: aarch64-pc-windows-msvc
-
-          - platform: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-          - platform: ubuntu-22.04-arm
-            target: aarch64-unknown-linux-gnu
-
-    runs-on: ${{ matrix.platform }}
+          - triple: aarch64-apple-darwin
+            platform: macos-aarch64
+          - triple: x86_64-apple-darwin
+            platform: macos-x86_64
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Setup node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          node-version: 20
-      - uses: pnpm/action-setup@v3
-        with:
-          version: latest
-
-      - name: Install rust target
-        run: rustup target add ${{ matrix.target }}
-
-      - name: Install dependencies (ubuntu only)
-        if: startsWith(matrix.platform, 'ubuntu')
+          targets: ${{ matrix.triple }}
+      - uses: taiki-e/install-action@just
+      - name: Check the tag against the single product version source
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libudev-dev patchelf xdg-utils
+          set -euo pipefail
+          version=$(just version)
+          echo "version=$version" >> "$GITHUB_ENV"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "tag $GITHUB_REF_NAME does not match the workspace product version $version" >&2
+            exit 1
+          fi
+      - name: Require the update signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${SIGNING_PRIVATE_KEY:-}" ]; then
+            echo "::error::SIGNING_PRIVATE_KEY is not configured. Publishing unsigned update assets would leave every installed copy unable to update, because the runtime refuses to install a payload it cannot authenticate." >&2
+            exit 1
+          fi
+      - name: Build the Production product and package the bundle and disk image
+        run: just build --target ${{ matrix.triple }}
+      - name: Verify the packaged bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          app=target/package/BongoCat.app
+          test "$(plutil -extract CFBundleIdentifier raw -o - "$app/Contents/Info.plist")" = 'com.ayangweb.bongo-cat'
+          test "$(plutil -extract CFBundleShortVersionString raw -o - "$app/Contents/Info.plist")" = "$version"
+          test "$(plutil -extract LSMinimumSystemVersion raw -o - "$app/Contents/Info.plist")" = '12.0'
+          test "$(plutil -extract LSMultipleInstancesProhibited raw -o - "$app/Contents/Info.plist")" = 'true'
+          cmp resources/icons/logo-macos.icns "$app/Contents/Resources/logo-macos.icns"
+          for model in standard keyboard gamepad; do
+            test -d "$app/Contents/Resources/models/$model"
+          done
+          test -f "$app/Contents/Resources/build-provenance.json"
+          codesign --verify --deep --strict "$app"
+          jq -e --arg target '${{ matrix.triple }}' \
+            '.schema_version == 1 and .target == $target and .build_environment == "production" and .profile == "release"' \
+            "$app/Contents/Resources/build-provenance.json" >/dev/null
+      - name: Verify the disk image mounts with the drop link and the bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          image=$(ls target/package/*.dmg)
+          mount=$(hdiutil attach -nobrowse -readonly "$image" | awk -F '\t' '/\/Volumes\//{print $NF; exit}')
+          if [ -z "$mount" ]; then
+            echo "the disk image did not mount" >&2
+            exit 1
+          fi
+          test -L "$mount/Applications"
+          codesign --verify --deep --strict "$mount/BongoCat.app"
+          hdiutil detach "$mount" >/dev/null
+          echo "verified $image"
+      - name: Verify the signed update assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The packaging entry point wraps the finished bundle in a `.tar.gz` and signs
+          # it; the updater drops the archive's root entry and installs the rest on the
+          # bundle path, so the archive has to root at the bundle directory.
+          payload="target/package/BongoCat-$version-${{ matrix.triple }}.app.tar.gz"
+          test -f "$payload" || { echo "::error::missing update payload $payload" >&2; exit 1; }
+          test -s "$payload.sig" || { echo "::error::missing signature $payload.sig" >&2; exit 1; }
+          test "$(tar tzf "$payload" | head -1)" = "BongoCat.app/" || {
+            echo "::error::$payload must root at BongoCat.app/" >&2; exit 1; }
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
+          # This target's fragment of the shared release manifest; the publish job merges
+          # every target's fragment into the single `latest.json` the updater requests.
+          fragment="target/package/${{ matrix.platform }}.json"
+          test -f "$fragment" || { echo "::error::missing manifest fragment $fragment" >&2; exit 1; }
+          jq -e --arg version "$version" \
+            '.version == $version and .format == "app"
+             and (.signature | length > 0)
+             and (.url | startswith("https://github.com/"))' \
+            "$fragment" >/dev/null
+          echo "signed update assets for $payload"
+      - name: Collect the release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          cp target/package/*.dmg \
+             target/package/*.app.tar.gz \
+             target/package/*.app.tar.gz.sig \
+             "target/package/${{ matrix.platform }}.json" \
+             release-assets/
+          ls -la release-assets
+      - uses: actions/upload-artifact@v4
         with:
-          workspaces: target
+          name: release-macos-${{ matrix.triple }}
+          path: release-assets/*
+          if-no-files-found: error
 
-      - name: Sync node version and setup cache
-        uses: actions/setup-node@v4
+  publish:
+    name: Publish the GitHub release
+    needs:
+      - windows-x64
+      - macos
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@just
+      - uses: actions/download-artifact@v4
         with:
-          node-version: 20
-          cache: pnpm
-
-      - name: Install front-end dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build the app
-        uses: tauri-apps/tauri-action@v0
+          path: artifacts
+          merge-multiple: true
+      - name: Generate the release notes
         env:
-          CI: false
-          PLATFORM: ${{ matrix.platform }}
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: BongoCat ${{ needs.create-release.outputs.APP_VERSION }}
-          releaseBody: ''
-          releaseDraft: true
-          prerelease: false
-          args: --target ${{ matrix.target }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # GitHub generates the changelog for a tag, and the same text is used twice:
+          # it becomes the release body and it is announced inside `latest.json`, so an
+          # installed copy can show what changed without a second request. Generating it
+          # here rather than letting `gh release create --generate-notes` do it keeps the
+          # manifest and the release page from disagreeing. The file lives outside
+          # `artifacts/` because that directory is uploaded verbatim as release assets.
+          gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+            -f tag_name="$GITHUB_REF_NAME" -q .body > release-notes.md
+          test -s release-notes.md || {
+            echo "::error::GitHub returned empty release notes for $GITHUB_REF_NAME" >&2; exit 1; }
+      - name: Merge the per-target manifest fragments
+        run: |
+          set -euo pipefail
+          # Each build job could only announce the payload it produced; the updater reads
+          # one shared manifest, so the fragments are combined here. The merge is done by
+          # the packaging tool rather than by this workflow so the manifest shape and its
+          # asset name stay owned by that crate.
+          just release-manifest artifacts release-notes.md \
+            artifacts/macos-aarch64.json \
+            artifacts/macos-x86_64.json \
+            artifacts/windows-x86_64.json
+          test -f artifacts/latest.json
+          jq -e '.version and (.notes | length > 0) and
+                 (.platforms | keys | sort == ["macos-aarch64", "macos-x86_64", "windows-x86_64"])' \
+            artifacts/latest.json >/dev/null
+          # The fragments are build inputs, not release assets; the notes are folded into
+          # the manifest and stay in the workspace for the release body.
+          rm -f artifacts/macos-aarch64.json \
+                artifacts/macos-x86_64.json \
+                artifacts/windows-x86_64.json
+      - name: Create the release and attach every artifact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # The updater requests this exact asset name from the repository's latest
+          # release, so a release without it can never be installed by an existing copy.
+          test -f artifacts/latest.json || {
+            echo "::error::missing the shared release manifest artifacts/latest.json" >&2; exit 1; }
+          ls -la artifacts
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file release-notes.md \
+            artifacts/*

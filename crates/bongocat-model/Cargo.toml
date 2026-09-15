@@ -1,0 +1,22 @@
+[package]
+name = "bongocat-model"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+# v4 random UUIDs are the source of installed model store keys; std has no RNG
+# and the store must never derive identity from user-visible names.
+uuid = { version = "=1.26.1", default-features = false, features = ["std", "v4"] }
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "sequenceId": "mouse-drag-and-cursor",
+  "provenance": "product_decision",
+  "checkpoints": [
+    {
+      "atMs": 20,
+      "input": {
+        "pressedKeys": [],
+        "pressedMouseButtons": ["left"],
+        "connectedDevices": [],
+        "lastResetReason": null,
+        "cursorPosition": { "x": 120.0, "y": 80.0 }
+      },
+      "model": {
+        "leftHandDown": false,
+        "rightHandDown": false,
+        "parameters": { "ParamMouseLeftDown": 1.0 },
+        "activeMotion": null,
+        "activeExpression": null
+      }
+    },
+    {
+      "atMs": 30,
+      "input": {
+        "pressedKeys": [],
+        "pressedMouseButtons": [],
+        "connectedDevices": [],
+        "lastResetReason": null,
+        "cursorPosition": { "x": 120.0, "y": 80.0 }
+      },
+      "model": {
+        "leftHandDown": false,
+        "rightHandDown": false,
+        "parameters": { "ParamMouseLeftDown": 0.0 },
+        "activeMotion": null,
+        "activeExpression": null
+      }
+    }
+  ]
+}
