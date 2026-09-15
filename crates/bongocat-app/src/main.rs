@@ -27,7 +27,8 @@ use bongocat_ui::{
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use gpui_kit::{
-    App, Application as GpuiApplication, Global, assets::Assets, platform::current_platform,
+    App, Application as GpuiApplication, Global, QuitMode, assets::Assets,
+    platform::current_platform,
 };
 #[cfg(target_os = "windows")]
 use gpui_kit::{AsyncApp, Context, Window};
@@ -258,7 +259,12 @@ const DEFAULT_RUN_SECONDS: u64 = 0;
 fn gpui_application() -> GpuiApplication {
     // SettingsAccessibilityBridge owns the window's AccessKit adapter. Current GPUI also
     // installs one by default, but two adapters cannot subclass the same native view.
-    GpuiApplication::new_inaccessible(current_platform(false))
+    //
+    // Quitting is owned by the product shutdown paths (tray menu, smoke recipes,
+    // update restart), not by window bookkeeping: the product stays alive behind
+    // the overlay and the status icon even when every product window is closed,
+    // so GPUI must never auto-quit on last-window-closed.
+    GpuiApplication::new_inaccessible(current_platform(false)).with_quit_mode(QuitMode::Explicit)
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -3787,10 +3793,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    let failures = Arc::try_unwrap(failures)
-        .unwrap_or_else(|_| panic!("product failure accumulator is still shared"))
-        .into_inner()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    // Quitting through GPUI's last-window-closed path (for example closing the
+    // update window when it is the last open window) returns from the run loop
+    // while detached product watchers (system menu, single instance, smoke
+    // probes) still hold their own clones of the accumulator. They observe the
+    // app teardown only on their next wake, after the run loop has already
+    // returned. Those clones are read-only at this point, so drain the
+    // recorded failures through the shared reference instead of panicking.
+    let failures = match Arc::try_unwrap(failures) {
+        Ok(accumulated) => accumulated
+            .into_inner()
+            .unwrap_or_else(std::sync::PoisonError::into_inner),
+        Err(shared) => shared
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone(),
+    };
     if failures.is_empty() {
         Ok(())
     } else {
