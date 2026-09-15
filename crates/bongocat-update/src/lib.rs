@@ -38,5 +38,6 @@ pub use diagnostics::{
 pub use release::{HOST_TARGET_TRIPLE, ReleaseChannel, ReleaseConfiguration, UpdateTargetTriple};
 pub use runtime::{
     RELEASE_BINARY_NAME, RELEASE_BUNDLE_NAME, RELEASE_MANIFEST_NAME, RELEASE_REPOSITORY_NAME,
-    RELEASE_REPOSITORY_OWNER, RELEASE_SIGNING_KEY, UpdateError, UpdateOutcome, UpdateRuntime,
+    RELEASE_REPOSITORY_OWNER, RELEASE_SIGNING_KEY, UpdateError, UpdateEvent, UpdateOutcome,
+    UpdateProgress, UpdateRelease, UpdateRuntime, UpdateStage, UpdateUnavailability,
 };

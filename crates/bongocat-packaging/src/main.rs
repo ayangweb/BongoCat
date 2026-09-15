@@ -307,6 +307,8 @@ enum Invocation {
     MergeManifest {
         directory: PathBuf,
         fragments: Vec<PathBuf>,
+        /// The release's changelog, read from a file, announced to the updater.
+        release_notes: Option<PathBuf>,
     },
     /// Generate the Minisign key pair that signs update payloads.
     GenerateSigningKey(PathBuf),
@@ -332,7 +334,11 @@ options:
                            artifacts (app,dmg for macOS; nsis for Windows)
   --merge-manifests <dir>  merge the per-target fragments that follow into the
                            shared release manifest, written to <dir>/latest.json,
-                           instead of packaging; takes no other option
+                           instead of packaging; takes no other option except
+                           --release-notes
+  --release-notes <file>   read the release changelog from <file> and announce it in
+                           the merged manifest, so the update window can show what
+                           changed; only valid with --merge-manifests
   --generate-signing-key <file>
                            generate a new Minisign key pair for signing update
                            payloads, written to <file> and <file>.pub, instead of
@@ -349,6 +355,7 @@ environment:
         let mut environment = None;
         let mut formats = None;
         let mut merge_directory: Option<PathBuf> = None;
+        let mut release_notes: Option<PathBuf> = None;
         let mut key_output: Option<PathBuf> = None;
         let mut fragments = Vec::new();
 
@@ -376,6 +383,10 @@ environment:
                 "--merge-manifests" => {
                     let directory = next_value(&mut arguments, "--merge-manifests")?;
                     merge_directory = Some(PathBuf::from(directory));
+                }
+                "--release-notes" => {
+                    let file = next_value(&mut arguments, "--release-notes")?;
+                    release_notes = Some(PathBuf::from(file));
                 }
                 "--generate-signing-key" => {
                     let file = next_value(&mut arguments, "--generate-signing-key")?;
@@ -408,13 +419,17 @@ environment:
         // exclusive.
         let build_option = target.is_some() || environment.is_some() || formats.is_some();
         if let Some(file) = key_output {
-            if build_option || merge_directory.is_some() {
+            if build_option || merge_directory.is_some() || release_notes.is_some() {
                 return failure(
                     "--generate-signing-key cannot be combined with --target, --environment, \
-                     --formats or --merge-manifests",
+                     --formats, --merge-manifests or --release-notes",
                 );
             }
             return Ok(Self::GenerateSigningKey(file));
+        }
+
+        if release_notes.is_some() && merge_directory.is_none() {
+            return failure("--release-notes is only valid with --merge-manifests");
         }
 
         let Some(directory) = merge_directory else {
@@ -432,6 +447,7 @@ environment:
         Ok(Self::MergeManifest {
             directory,
             fragments,
+            release_notes,
         })
     }
 }
@@ -483,7 +499,8 @@ fn execute(invocation: Invocation) -> Result<(&'static str, Vec<PathBuf>)> {
         Invocation::MergeManifest {
             directory,
             fragments,
-        } => merge_manifest(&directory, &fragments)
+            release_notes,
+        } => merge_manifest(&directory, &fragments, release_notes.as_deref())
             .map(|artifacts| ("Release manifest merged successfully.", artifacts)),
         Invocation::GenerateSigningKey(path) => generate_signing_key(&path)
             .map(|artifacts| ("Signing key generated successfully.", artifacts)),
@@ -913,11 +930,54 @@ struct ManifestEntry {
 ///
 /// The updater looks this host's entry up by the `<os>-<arch>` key it derives at
 /// runtime, so the map keys are the platform keys and the version is the release's, not
-/// a per-entry field.
+/// a per-entry field. `notes` is the release changelog the update window shows; it is
+/// optional because the updater treats it as optional and a release published without
+/// one is still installable.
 #[derive(Serialize)]
 struct ReleaseManifest {
     version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    notes: Option<String>,
     platforms: BTreeMap<String, ManifestEntry>,
+}
+
+/// Upper bound on the announced changelog.
+///
+/// The manifest is fetched and parsed on every check, so it must not grow with the
+/// length of a release's commit history. A longer changelog is truncated at a character
+/// boundary with a visible marker instead of failing the release: the release is still
+/// valid, only the in-app summary is shortened.
+const MAXIMUM_RELEASE_NOTES_BYTES: usize = 32 * 1024;
+const RELEASE_NOTES_TRUNCATION_MARKER: &str = "\n\n…";
+
+/// Read the announced changelog, if the release has one.
+fn read_release_notes(path: Option<&Path>) -> Result<Option<String>> {
+    let Some(path) = path else {
+        return Ok(None);
+    };
+    let notes = fs::read_to_string(path).map_err(|error| {
+        Box::new(Failure(format!(
+            "could not read the release notes from {}: {error}",
+            path.display()
+        ))) as Box<dyn std::error::Error>
+    })?;
+    let notes = notes.trim();
+    if notes.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(truncate_release_notes(notes)))
+}
+
+/// Shorten a changelog to the announced bound without splitting a character.
+fn truncate_release_notes(notes: &str) -> String {
+    if notes.len() <= MAXIMUM_RELEASE_NOTES_BYTES {
+        return notes.to_owned();
+    }
+    let mut boundary = MAXIMUM_RELEASE_NOTES_BYTES;
+    while boundary > 0 && !notes.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    format!("{}{RELEASE_NOTES_TRUNCATION_MARKER}", &notes[..boundary])
 }
 
 /// Merge the per-target fragments into the manifest the updater requests.
@@ -927,7 +987,11 @@ struct ReleaseManifest {
 /// entry out of it. Combining them is a packaging concern — the manifest shape and the
 /// asset name must stay owned by one place — so the pipeline calls this instead of
 /// assembling JSON itself. The output name is not an argument for the same reason.
-fn merge_manifest(directory: &Path, fragments: &[PathBuf]) -> Result<Vec<PathBuf>> {
+fn merge_manifest(
+    directory: &Path,
+    fragments: &[PathBuf],
+    release_notes: Option<&Path>,
+) -> Result<Vec<PathBuf>> {
     let version = env!("CARGO_PKG_VERSION");
     let mut platforms: BTreeMap<String, ManifestEntry> = BTreeMap::new();
 
@@ -965,6 +1029,7 @@ fn merge_manifest(directory: &Path, fragments: &[PathBuf]) -> Result<Vec<PathBuf
     // version source, so the manifest can never disagree with the artifacts.
     let manifest = ReleaseManifest {
         version: version.to_owned(),
+        notes: read_release_notes(release_notes)?,
         platforms,
     };
 
@@ -1479,7 +1544,7 @@ mod tests {
             fragments.push(path);
         }
 
-        let merged = super::merge_manifest(&root, &fragments).expect("merge the fragments");
+        let merged = super::merge_manifest(&root, &fragments, None).expect("merge the fragments");
         assert_eq!(
             merged,
             vec![root.join(super::UPDATE_MANIFEST_NAME)],
@@ -1498,11 +1563,19 @@ mod tests {
 
         // The reader is what the application runs, so its view of the manifest is the
         // contract: the version, the three keys, and a per-platform entry it can decode.
+        assert!(
+            merged.get("notes").is_none(),
+            "a release published without notes must not announce an empty changelog"
+        );
         let release: cargo_packager_updater::RemoteReleaseData =
-            serde_json::from_value(merged).expect("the updater must be able to read it");
+            serde_json::from_value(merged.clone()).expect("the updater must be able to read it");
         let cargo_packager_updater::RemoteReleaseData::Static { platforms } = release else {
             panic!("a shared manifest must read as the updater's static shape");
         };
+        assert!(
+            merged.get("notes").is_none(),
+            "a release published without notes must not announce an empty changelog"
+        );
         assert_eq!(
             platforms
                 .keys()
@@ -1516,6 +1589,86 @@ mod tests {
         );
         assert_eq!(platforms["windows-x86_64"].format.to_string(), "nsis");
         assert_eq!(platforms["macos-aarch64"].format.to_string(), "app");
+    }
+
+    /// The changelog the update window shows comes from this manifest, so it has to
+    /// survive the merge and stay readable by the update library.
+    #[test]
+    fn merged_manifests_carry_the_release_notes_the_updater_reads() {
+        let root = std::env::temp_dir().join("bongocat-packaging-merge-notes");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("scratch directory");
+
+        let version = env!("CARGO_PKG_VERSION");
+        let fragment = root.join("macos-aarch64.json");
+        std::fs::write(
+            &fragment,
+            serde_json::to_vec_pretty(&super::ManifestFragment {
+                version: version.to_owned(),
+                entry: super::ManifestEntry {
+                    url: format!("https://github.com/ayangweb/BongoCat/releases/download/v{version}/x.app.tar.gz"),
+                    signature: "signature".to_owned(),
+                    format: "app".to_owned(),
+                },
+            })
+            .expect("serialize a fragment"),
+        )
+        .expect("write a fragment");
+
+        let notes_path = root.join("notes.md");
+        std::fs::write(&notes_path, "## What's new\n\n- fixed the thing\n")
+            .expect("write the release notes");
+
+        let merged = super::merge_manifest(&root, &[fragment], Some(&notes_path))
+            .expect("merge with release notes");
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&merged[0]).expect("read the manifest"))
+                .expect("the manifest must be JSON");
+        assert_eq!(manifest["notes"], "## What's new\n\n- fixed the thing");
+
+        let release: cargo_packager_updater::RemoteRelease =
+            serde_json::from_value(manifest).expect("the updater must read the notes");
+        assert_eq!(
+            release.notes.as_deref(),
+            Some("## What's new\n\n- fixed the thing")
+        );
+    }
+
+    /// An empty notes file is not a changelog, and the manifest must not pretend it is.
+    #[test]
+    fn blank_release_notes_are_not_announced() {
+        let root = std::env::temp_dir().join("bongocat-packaging-merge-blank-notes");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("scratch directory");
+        let notes_path = root.join("notes.md");
+        std::fs::write(&notes_path, "   \n\t\n").expect("write the release notes");
+        assert_eq!(
+            super::read_release_notes(Some(&notes_path)).expect("read blank notes"),
+            None
+        );
+        assert_eq!(
+            super::read_release_notes(None).expect("read no notes"),
+            None
+        );
+    }
+
+    /// The manifest is fetched on every check, so the announced changelog is bounded.
+    #[test]
+    fn an_over_long_changelog_is_truncated_at_a_character_boundary() {
+        let notes = "é".repeat(super::MAXIMUM_RELEASE_NOTES_BYTES);
+        let truncated = super::truncate_release_notes(&notes);
+        assert!(
+            truncated.len()
+                <= super::MAXIMUM_RELEASE_NOTES_BYTES
+                    + super::RELEASE_NOTES_TRUNCATION_MARKER.len()
+        );
+        assert!(truncated.ends_with(super::RELEASE_NOTES_TRUNCATION_MARKER));
+        // A truncated changelog is still valid UTF-8, which is what a byte-wise cut
+        // would break.
+        assert!(std::str::from_utf8(truncated.as_bytes()).is_ok());
+
+        let short = "## What's new";
+        assert_eq!(super::truncate_release_notes(short), short);
     }
 
     /// Fragments from different builds would produce a manifest that lies about which
@@ -1549,7 +1702,7 @@ mod tests {
             fragments.push(path);
         }
 
-        let error = super::merge_manifest(&root, &fragments)
+        let error = super::merge_manifest(&root, &fragments, None)
             .expect_err("fragments from different releases must be rejected");
         assert!(
             error.to_string().contains(&format!(
@@ -1570,7 +1723,7 @@ mod tests {
         let path = root.join("plan9-cris.json");
         std::fs::write(&path, b"{}").expect("write a fragment");
 
-        let error = super::merge_manifest(&root, &[path])
+        let error = super::merge_manifest(&root, &[path], None)
             .expect_err("a fragment for an unshipped platform must be rejected");
         assert!(
             error
@@ -1658,7 +1811,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).expect("scratch directory");
 
-        let error = super::merge_manifest(&root, &[]).expect_err("an empty merge must be rejected");
+        let error =
+            super::merge_manifest(&root, &[], None).expect_err("an empty merge must be rejected");
         assert!(
             error.to_string().contains("needs at least one fragment"),
             "unexpected error: {error}"

@@ -11,11 +11,17 @@ publish.workspace = true
 async-channel.workspace = true
 bongocat-config.workspace = true
 bongocat-i18n.workspace = true
+pulldown-cmark.workspace = true
 
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 bongocat-platform.workspace = true
 gpui-kit.workspace = true
 raw-window-handle.workspace = true
+
+# Headless UI rendering for the window tests: `test-support` gives GPUI a test
+# platform, so a window can be opened, rendered and clicked without a display.
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dev-dependencies]
+gpui-kit = { workspace = true, features = ["test-support"] }
 
 [lints]
 workspace = true

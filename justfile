@@ -59,7 +59,14 @@ keygen file:
 # publishing:
 #
 #   just manifest target/package target/package/macos-aarch64.json ...
+#   just release-manifest target/package NOTES.md target/package/*.json
 #
 # Merge the per-target manifest fragments into the shared release manifest.
 manifest directory *fragments:
     cargo run --locked -p bongocat-packaging -- --merge-manifests {{directory}} {{fragments}}
+
+# Merge the fragments and announce the release changelog read from <notes>, which the
+# update window shows. The release pipeline uses this one; `manifest` is the same merge
+# without notes.
+release-manifest directory notes *fragments:
+    cargo run --locked -p bongocat-packaging -- --merge-manifests {{directory}} --release-notes {{notes}} {{fragments}}

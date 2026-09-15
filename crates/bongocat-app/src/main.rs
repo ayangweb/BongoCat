@@ -87,9 +87,16 @@ fn system_menu_presentation(snapshot: &SettingsSnapshot) -> SystemMenuPresentati
         ),
         overlay_visible: snapshot.overlay_visible,
         click_through_enabled: snapshot.overlay.click_through,
-        // Updates stay hidden until the build carries a production channel and a
-        // release signing key; see `bongocat_app::update_check_available`.
-        update_check_available: bongocat_app::update_check_available(),
+        // A Production build stays gated on its channel and release signing key
+        // (`bongocat_app::update_check_available`): without them a check can only fail.
+        // A Development build can never update either, but the update window is where
+        // that is *explained* (`Unavailable · DevelopmentBuild`), so its entry stays
+        // clickable and clicking it shows the development-build explanation.
+        update_check_available: bongocat_app::update_check_available()
+            || matches!(
+                bongocat_app::BUILD_ENVIRONMENT,
+                bongocat_config::BuildEnvironment::Development
+            ),
     }
 }
 
@@ -141,6 +148,23 @@ fn restart_product() -> Result<(), String> {
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const OVERLAY_PLACEMENT_DEBOUNCE: Duration = Duration::from_millis(150);
+
+/// How long the product is given to finish starting before the first automatic check.
+///
+/// The check is opt-in and must never compete with startup for the network or the
+/// window server.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const AUTOMATIC_UPDATE_CHECK_STARTUP_DELAY: Duration = Duration::from_secs(10);
+
+/// How often a long-running process re-checks after the first automatic check.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const AUTOMATIC_UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// How long the automatic check waits for its own result to be published.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const AUTOMATIC_UPDATE_CHECK_SETTLE_ATTEMPTS: u32 = 120;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const AUTOMATIC_UPDATE_CHECK_SETTLE_INTERVAL: Duration = Duration::from_millis(500);
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Default)]
@@ -482,6 +506,20 @@ struct ProductCoordinator {
     overlay: Rc<RefCell<Option<ProductOverlaySession>>>,
     settings_service: Option<bongocat_app::ApplicationSettingsService>,
     settings_window: Option<SettingsWindowHandle>,
+    /// The worker that owns the update pipeline.
+    update_service: Option<bongocat_app::ApplicationUpdateService>,
+    /// The open update window, if any.
+    update_window: Option<bongocat_ui::UpdateWindowHandle>,
+    /// The display language the update window opens with.
+    ///
+    /// Kept here because the system menu loop already reads the settings snapshot
+    /// every 50 ms; the update window then opens without a blocking read on the GPUI
+    /// thread and keeps itself in sync afterwards.
+    update_language: bongocat_ui::SettingsLanguage,
+    /// When a completed install that needs a restart was first observed.
+    update_installed_since: Option<Instant>,
+    /// Whether the post-install restart has already been started.
+    update_restart_started: bool,
     system_menu: Option<SystemMenu>,
     #[cfg(target_os = "windows")]
     taskbar_icon_visible: bool,
@@ -648,12 +686,20 @@ struct ProductShutdown {
     coordinator: ProductCoordinator,
     overlay: ProductOverlaySession,
     settings_service: bongocat_app::ApplicationSettingsService,
+    update_service: Option<bongocat_app::ApplicationUpdateService>,
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 impl ProductShutdown {
     async fn finish(self) -> Arc<Mutex<Vec<String>>> {
         let failures = Arc::clone(&self.coordinator.failures);
+        // The update worker is joined first: it is the only thing that touches the
+        // installation, and it must not be mid-install while the runtime tears down.
+        if let Some(update_service) = self.update_service
+            && let Err(error) = update_service.join()
+        {
+            record_failure(&failures, error.to_string());
+        }
         if !self.coordinator.frame_source_shutdown.wait_for_stop().await {
             record_failure(
                 &failures,
@@ -733,10 +779,12 @@ fn begin_product_shutdown(cx: &mut App) -> ProductShutdown {
         .settings_service
         .take()
         .expect("settings service owner is present");
+    let update_service = coordinator.update_service.take();
     ProductShutdown {
         coordinator,
         overlay,
         settings_service,
+        update_service,
     }
 }
 
@@ -794,10 +842,226 @@ fn ensure_settings_window(cx: &mut App) -> Result<SettingsWindowHandle, String> 
         window_state,
         taskbar_icon_visible,
         finish_product_quit,
+        Some(open_update_window_and_check),
         cx,
     )?;
     cx.global_mut::<ProductCoordinator>().settings_window = Some(window_handle.clone());
     Ok(window_handle)
+}
+
+/// The open update window, opening it first when there is none.
+///
+/// The window is a singleton like the settings window: the system menu, the About
+/// page and an automatic check all route through here, so a second request focuses
+/// the existing window instead of stacking another one.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn ensure_update_window(cx: &mut App) -> Result<bongocat_ui::UpdateWindowHandle, String> {
+    let (existing, update_client, settings_client, language) = {
+        let coordinator = cx
+            .try_global::<ProductCoordinator>()
+            .ok_or_else(|| "product coordinator is unavailable".to_owned())?;
+        let update_service = coordinator
+            .update_service
+            .as_ref()
+            .ok_or_else(|| "update service is unavailable".to_owned())?;
+        let settings_client = coordinator
+            .settings_service
+            .as_ref()
+            .ok_or_else(|| "settings service is unavailable".to_owned())?
+            .client();
+        (
+            coordinator.update_window.clone(),
+            update_service.client(),
+            settings_client,
+            coordinator.update_language,
+        )
+    };
+    if let Some(window_handle) = existing
+        && window_handle.activate(cx).is_ok()
+    {
+        cx.activate(true);
+        return Ok(window_handle);
+    }
+    let window_handle =
+        bongocat_ui::open_update_window(update_client, settings_client, language, cx)?;
+    cx.global_mut::<ProductCoordinator>().update_window = Some(window_handle.clone());
+    Ok(window_handle)
+}
+
+/// Open the update window and start a check in it.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn open_update_window_and_check(cx: &mut App) {
+    let result = ensure_update_window(cx).and_then(|window_handle| {
+        window_handle
+            .update(cx, |view, _, cx| view.check(cx))
+            .map_err(|error| error.to_string())
+    });
+    if let Err(error) = result {
+        record_update_window_failure(cx, error);
+    }
+}
+
+/// Show the update window without starting a check.
+///
+/// The automatic check already ran, so opening the window here only surfaces its
+/// result; asking for another check would repeat the request the user did not make.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn show_update_window(cx: &mut App) {
+    if let Err(error) = ensure_update_window(cx) {
+        record_update_window_failure(cx, error);
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn record_update_window_failure(cx: &App, error: String) {
+    if let Some(failures) = cx
+        .try_global::<ProductCoordinator>()
+        .map(|coordinator| Arc::clone(&coordinator.failures))
+    {
+        record_failure(&failures, error);
+    }
+}
+
+/// Whether the update window is currently on screen.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn update_window_is_open(cx: &mut App) -> bool {
+    cx.try_global::<ProductCoordinator>()
+        .and_then(|coordinator| coordinator.update_window.as_ref())
+        .is_some_and(bongocat_ui::UpdateWindowHandle::is_open)
+}
+
+/// The phase the update worker is currently publishing.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn published_update_phase(cx: &mut App) -> Option<bongocat_ui::UpdatePhase> {
+    cx.try_global::<ProductCoordinator>()
+        .and_then(|coordinator| coordinator.update_service.as_ref())
+        .map(|service| service.state().phase())
+}
+
+/// Ask the update worker for a check, unless this build cannot update at all.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn request_update_check(cx: &mut App) -> bool {
+    let Some(client) = cx
+        .try_global::<ProductCoordinator>()
+        .and_then(|coordinator| coordinator.update_service.as_ref())
+        .map(bongocat_app::ApplicationUpdateService::client)
+    else {
+        return false;
+    };
+    if matches!(
+        client.snapshot().phase,
+        bongocat_ui::UpdatePhase::Unavailable { .. }
+    ) {
+        return false;
+    }
+    client.request_check().is_ok()
+}
+
+/// Whether the update window asked for the process to be replaced.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn take_update_restart_request(cx: &mut App) -> bool {
+    cx.try_global::<ProductCoordinator>()
+        .and_then(|coordinator| coordinator.update_service.as_ref())
+        .is_some_and(bongocat_app::ApplicationUpdateService::take_restart_request)
+}
+
+/// How long a completed install stays visible before the process is replaced.
+///
+/// The install already succeeded at this point and the running build is executing the
+/// previous release's files, so the delay exists only to let the window show what
+/// happened before it disappears.
+#[cfg(target_os = "macos")]
+const UPDATE_RESTART_DELAY: Duration = Duration::from_millis(1200);
+
+/// Whether a completed install has been on screen long enough to restart into it.
+///
+/// Split out from the poll so the boundary is testable without a running product.
+#[cfg(target_os = "macos")]
+fn restart_delay_elapsed(observed_at: Instant, now: Instant) -> bool {
+    now.saturating_duration_since(observed_at) >= UPDATE_RESTART_DELAY
+}
+
+/// Start the post-install restart once, from either the window's request or the
+/// observed install.
+///
+/// The window asks for the restart, but it can be closed, and a closed window would
+/// leave the process running the previous release's deleted files. Watching the
+/// published phase here means the restart happens whether or not anyone is looking.
+/// Returns whether the restart was started, which ends the calling loop.
+#[cfg(target_os = "macos")]
+fn poll_update_restart(cx: &mut App) -> bool {
+    if !cx.has_global::<ProductCoordinator>() {
+        return false;
+    }
+    let requested = take_update_restart_request(cx);
+    let install_completed = matches!(
+        published_update_phase(cx),
+        Some(bongocat_ui::UpdatePhase::Installed {
+            restart_required: true,
+            ..
+        })
+    );
+    if !requested && !install_completed {
+        return false;
+    }
+    {
+        let coordinator = cx.global_mut::<ProductCoordinator>();
+        if coordinator.update_restart_started {
+            return false;
+        }
+        if !requested {
+            let now = Instant::now();
+            let observed_at = *coordinator.update_installed_since.get_or_insert(now);
+            if !restart_delay_elapsed(observed_at, now) {
+                return false;
+            }
+        }
+        coordinator.update_restart_started = true;
+    }
+    restart_after_update(cx);
+    true
+}
+
+/// Replace this process with the build that was just installed.
+///
+/// The install already deleted the previous release from disk, so the running process
+/// is executing files that no longer exist and everything that reads the installation
+/// lazily would fail. The product is therefore shut down in the documented order
+/// first, and only then is the process image replaced; the new build starts from a
+/// complete, quiesced state.
+#[cfg(target_os = "macos")]
+fn restart_after_update(cx: &mut App) {
+    if !cx.has_global::<ProductCoordinator>() {
+        return;
+    }
+    let shutdown = begin_product_shutdown(cx);
+    cx.spawn(async move |_| {
+        let failures = shutdown.finish().await;
+        {
+            let failures = failures
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            for failure in failures.iter() {
+                let mut stderr = io::stderr().lock();
+                let _ = writeln!(stderr, "bongocat: {failure}");
+            }
+        }
+        // `exec` replaces the process image and only returns on failure, so reaching
+        // the next line means the new build could not be started.
+        let _ = bongocat_update::UpdateRuntime::for_current_build(
+            bongocat_app::BUILD_ENVIRONMENT,
+            bongocat_app::PRODUCT_VERSION,
+            bongocat_update::UpdateDiagnosticsTracker::default(),
+        )
+        .restart();
+        let mut stderr = io::stderr().lock();
+        let _ = writeln!(
+            stderr,
+            "bongocat: the updated build was installed but could not be started"
+        );
+        std::process::exit(1);
+    })
+    .detach();
 }
 
 #[cfg(target_os = "windows")]
@@ -1018,6 +1282,7 @@ fn run_configuration_recovery_mode(
             window_state.clone(),
             true,
             |cx| cx.quit(),
+            None::<fn(&mut App)>,
             cx,
         ) {
             let mut stderr = io::stderr().lock();
@@ -1099,15 +1364,21 @@ fn run_configuration_recovery_smoke() -> Result<(), Box<dyn std::error::Error>> 
     let gpui_application = gpui_application().with_assets(Assets);
     let smoke_client = client.clone();
     gpui_application.run(move |cx| {
-        let window =
-            match open_settings_window(smoke_client, window_state, true, |cx| cx.quit(), cx) {
-                Ok(window) => window,
-                Err(error) => {
-                    let _ = write_smoke_status(&format!("recovery window failed: {error}"));
-                    cx.quit();
-                    return;
-                }
-            };
+        let window = match open_settings_window(
+            smoke_client,
+            window_state,
+            true,
+            |cx| cx.quit(),
+            None::<fn(&mut App)>,
+            cx,
+        ) {
+            Ok(window) => window,
+            Err(error) => {
+                let _ = write_smoke_status(&format!("recovery window failed: {error}"));
+                cx.quit();
+                return;
+            }
+        };
         let _ = write_smoke_status("recovery window opened");
         cx.spawn(async move |cx| {
             let mut diagnostics_verified = false;
@@ -1196,6 +1467,7 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
                 window_state.clone(),
                 true,
                 |cx| cx.quit(),
+                None::<fn(&mut App)>,
                 cx,
             ) {
                 Ok(window) => window,
@@ -1822,6 +2094,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return run_configuration_recovery_mode(application);
     }
 
+    // The update worker publishes anonymous check/download/install counters and the
+    // last stable error code through the same export boundary as every other
+    // subsystem. The tracker is created here because handing the application to the
+    // settings service is what moves it out of reach.
+    let update_diagnostics = bongocat_update::UpdateDiagnosticsTracker::default();
+    application.set_update_diagnostics_tracker(update_diagnostics.clone());
+
     if !run_options.automated_verification {
         // Startup permission check. It reads the current platform capability, shows the native
         // prompt when that capability is missing, and records nothing: a user who dismissed the
@@ -1996,6 +2275,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         let settings_client = settings_service.client();
 
+        // The update worker is independent of the settings worker: a check, a transfer
+        // or an install must never queue behind a settings command, and the settings
+        // service must not be blocked while an update is in flight.
+        let update_service = match bongocat_app::ApplicationUpdateService::start(
+            bongocat_app::BUILD_ENVIRONMENT,
+            bongocat_app::PRODUCT_VERSION,
+            update_diagnostics,
+        ) {
+            Ok(service) => service,
+            Err(error) => {
+                record_failure(&run_failures, error.to_string());
+                let mut overlay = overlay;
+                if let Err(error) = overlay.stop_input() {
+                    record_failure(&run_failures, error.to_string());
+                }
+                let _ = settings_client.shutdown_blocking();
+                if let Err(error) = settings_service.join() {
+                    record_failure(&run_failures, error.to_string());
+                }
+                if let Err(error) = overlay.finish_after_runtime_shutdown() {
+                    record_failure(&run_failures, error.to_string());
+                }
+                cx.quit();
+                return;
+            }
+        };
+
         #[cfg(target_os = "windows")]
         let overlay = Rc::new(RefCell::new(Some(overlay)));
         #[cfg(target_os = "windows")]
@@ -2008,6 +2314,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             overlay,
             settings_service: Some(settings_service),
             settings_window: None,
+            update_service: Some(update_service),
+            update_window: None,
+            update_language: bongocat_ui::SettingsLanguage::EnglishUnitedStates,
+            update_installed_since: None,
+            update_restart_started: false,
             system_menu: Some(system_menu),
             #[cfg(target_os = "windows")]
             taskbar_icon_visible: initial_taskbar_icon_visible,
@@ -2030,14 +2341,65 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
 
         cx.on_window_closed(|cx, _| {
-            let Some(window_handle) = cx
-                .try_global::<ProductCoordinator>()
-                .and_then(|coordinator| coordinator.settings_window.clone())
-            else {
+            if !cx.has_global::<ProductCoordinator>() {
                 return;
-            };
-            if window_handle.read(cx).is_err() {
+            }
+            let settings_window = cx
+                .global::<ProductCoordinator>()
+                .settings_window
+                .clone();
+            if let Some(window_handle) = settings_window
+                && window_handle.read(cx).is_err()
+            {
                 cx.global_mut::<ProductCoordinator>().settings_window = None;
+            }
+            // The update window can be closed at any time, including while a check or
+            // a transfer is still running: the worker owns that work, not the window.
+            let update_window = cx.global::<ProductCoordinator>().update_window.clone();
+            if let Some(window_handle) = update_window
+                && !window_handle.is_open()
+            {
+                cx.global_mut::<ProductCoordinator>().update_window = None;
+            }
+        })
+        .detach();
+
+        // The automatic check is driven from the GPUI side because the opt-in lives in
+        // the user's configuration, which only the settings service can read. The
+        // worker stays a plain command receiver; nothing about the schedule reaches it.
+        let automatic_check_client = settings_client.clone();
+        cx.spawn(async move |cx| {
+            Timer::after(AUTOMATIC_UPDATE_CHECK_STARTUP_DELAY).await;
+            loop {
+                if !cx.update(|cx| cx.has_global::<ProductCoordinator>()) {
+                    break;
+                }
+                let enabled = automatic_check_client
+                    .read_snapshot()
+                    .await
+                    .is_ok_and(|snapshot| snapshot.check_for_updates_automatically);
+                if enabled && cx.update(request_update_check) {
+                    // Wait for the check to settle before deciding what to show. The
+                    // bound keeps a worker that never reports back from parking this
+                    // loop for the rest of the interval.
+                    for _ in 0..AUTOMATIC_UPDATE_CHECK_SETTLE_ATTEMPTS {
+                        Timer::after(AUTOMATIC_UPDATE_CHECK_SETTLE_INTERVAL).await;
+                        match cx.update(published_update_phase) {
+                            Some(bongocat_ui::UpdatePhase::Checking) => continue,
+                            Some(bongocat_ui::UpdatePhase::Available { .. }) => {
+                                // Surface the result rather than leaving it for the
+                                // user to discover. The window is a singleton, so a
+                                // second automatic check cannot stack one.
+                                if !cx.update(update_window_is_open) {
+                                    cx.update(show_update_window);
+                                }
+                                break;
+                            }
+                            _ => break,
+                        }
+                    }
+                }
+                Timer::after(AUTOMATIC_UPDATE_CHECK_INTERVAL).await;
             }
         })
         .detach();
@@ -2074,11 +2436,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     && last_menu_revision != Some(snapshot.revision)
                 {
                     let presentation = system_menu_presentation(&snapshot);
+                    let language = snapshot.resolved_language;
                     let result = cx.update(|cx| {
                         if !cx.has_global::<ProductCoordinator>() {
                             return Ok(());
                         }
-                        cx.global_mut::<ProductCoordinator>()
+                        let coordinator = cx.global_mut::<ProductCoordinator>();
+                        coordinator.update_language = language;
+                        coordinator
                             .system_menu
                             .as_mut()
                             .ok_or_else(|| "system menu owner is unavailable".to_owned())?
@@ -2100,8 +2465,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Timer::after(Duration::from_millis(50)).await;
                 if !cx.update(|cx| cx.has_global::<ProductCoordinator>()) {
                     break;
-                }
-                while let Ok(request) = status_icon_receiver.try_recv() {
+                }                while let Ok(request) = status_icon_receiver.try_recv() {
                     let result = cx.update(|cx| {
                         if !cx.has_global::<ProductCoordinator>() {
                             return Err(SettingsError::new(
@@ -2126,6 +2490,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let result = cx.update(|cx| apply_taskbar_icon_visibility(cx, request.visible));
                     let _ = request.reply.send(result);
                 }
+                // Only macOS observes a completed install: the Windows install path
+                // hands the payload to the NSIS installer and exits the process before
+                // returning, so the request is consumed and nothing else happens there.
+                #[cfg(target_os = "macos")]
+                if cx.update(poll_update_restart) {
+                    break;
+                }
+                #[cfg(target_os = "windows")]
+                let _ = cx.update(take_update_restart_request);
                 let action = cx.update(|cx| {
                     cx.try_global::<ProductCoordinator>()
                         .and_then(|coordinator| coordinator.system_menu.as_ref())
@@ -2153,7 +2526,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             Err(error) => Err(error),
                         }
                     }
-                    SystemMenuAction::CheckForUpdates => Ok(true),
+                    SystemMenuAction::CheckForUpdates => cx.update(|cx| {
+                        open_update_window_and_check(cx);
+                        Ok(true)
+                    }),
                     SystemMenuAction::OpenSource => bongocat_platform::open_external_url(
                         "https://github.com/ayangweb/BongoCat",
                     )
@@ -3833,6 +4209,28 @@ mod tests {
         assert!(options.single_instance_smoke);
         assert!(!options.settings_window_smoke);
         assert!(options.opens_settings_window_on_start());
+    }
+
+    /// The restart waits long enough to be seen, then happens whether or not the
+    /// window is still open.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_post_install_restart_waits_for_the_delay_then_fires() {
+        let observed_at = Instant::now();
+        assert!(!restart_delay_elapsed(observed_at, observed_at));
+        assert!(!restart_delay_elapsed(
+            observed_at,
+            observed_at + UPDATE_RESTART_DELAY - Duration::from_millis(1)
+        ));
+        assert!(restart_delay_elapsed(
+            observed_at,
+            observed_at + UPDATE_RESTART_DELAY
+        ));
+        // A monotonic clock that appears to move backwards must not restart early.
+        assert!(!restart_delay_elapsed(
+            observed_at + UPDATE_RESTART_DELAY,
+            observed_at
+        ));
     }
 
     #[test]

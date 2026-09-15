@@ -44,6 +44,10 @@ image = { version = "=0.25.10", default-features = false, features = ["png"] }
 muda = { version = "=0.20.0", default-features = false }
 opener = { version = "=0.8.5", features = ["reveal"] }
 proptest = { version = "=1.11.0", default-features = false, features = ["std"] }
+# CommonMark parsing for the update window's release notes. `default-features = false`
+# drops the CLI argument parser and the HTML renderer: the notes are rendered as GPUI
+# elements, never as markup, so neither is used.
+pulldown-cmark = { version = "=0.13.4", default-features = false }
 raw-window-handle = "=0.6.2"
 rfd = { version = "=0.17.2", default-features = false }
 rodio = { version = "=0.22.2", default-features = false, features = ["playback", "flac"] }

@@ -16,6 +16,19 @@ mod window;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub use window::{SettingsView, SettingsWindowHandle, open_settings_window};
 
+mod update;
+pub use update::{
+    UPDATE_STATE_POLL_INTERVAL, UpdateClient, UpdateCommand, UpdateErrorCode, UpdateFailureStage,
+    UpdatePhase, UpdateProgressInfo, UpdateReleaseInfo, UpdateServiceClosed, UpdateServiceEndpoint,
+    UpdateSnapshot, UpdateStateHandle, UpdateUnavailableReason,
+};
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+mod update_markdown;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+mod update_window;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub use update_window::{UpdateView, UpdateWindowHandle, open_update_window};
+
 const MIN_SETTINGS_WINDOW_WIDTH: u32 = 640;
 const MIN_SETTINGS_WINDOW_HEIGHT: u32 = 480;
 const MAX_SETTINGS_WINDOW_DIMENSION: u32 = 16_384;

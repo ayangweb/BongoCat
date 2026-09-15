@@ -42,6 +42,7 @@ mod product_icon_contract;
 mod settings;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod startup_permission;
+mod update;
 use app_log::ApplicationRunMarker;
 pub use app_log::{
     ApplicationLogCode, ApplicationLogComponent, ApplicationLogDiagnostics, ApplicationLogError,
@@ -54,6 +55,7 @@ pub use settings::{
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub use startup_permission::ensure_startup_permission;
+pub use update::{ApplicationUpdateService, UpdateServiceError, restart_required_after_install};
 
 #[derive(Clone, Default)]
 pub struct ApplicationShortcutSignals {
@@ -81,12 +83,13 @@ pub const BUILD_ENVIRONMENT: BuildEnvironment = BuildEnvironment::Production;
 #[cfg(not(feature = "production"))]
 pub const BUILD_ENVIRONMENT: BuildEnvironment = BuildEnvironment::Development;
 
-/// Whether this build can check for and install updates.
+/// Whether this build can actually check for and install updates.
 ///
 /// Updates require a Production channel and a provisioned release signing key;
-/// a Development build never installs a release artifact. The system menu uses
-/// this to decide whether to offer the "check for updates" entry at all, rather
-/// than offering one that can only fail.
+/// a Development build never installs a release artifact. This is the
+/// availability fact only — the system menu additionally keeps the entry
+/// clickable in Development builds, because the update window is where the
+/// "development build" explanation lives.
 pub fn update_check_available() -> bool {
     bongocat_update::UpdateRuntime::for_current_build(
         BUILD_ENVIRONMENT,
@@ -95,7 +98,6 @@ pub fn update_check_available() -> bool {
     )
     .is_available()
 }
-
 #[derive(Debug)]
 pub enum ApplicationError {
     PlatformStorage(PlatformStorageError),

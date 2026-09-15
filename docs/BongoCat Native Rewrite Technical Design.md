@@ -1,7 +1,7 @@
 # BongoCat Native Rewrite Technical Design
 
 状态：架构决策稿，Phase 0 证据补齐与 Phase 1 渐进实现并行
-最后更新：2026-09-14
+最后更新：2026-09-15
 首发平台：Windows 10 1903+、macOS 12+
 后续平台：Linux（首发后评估）
 
@@ -740,13 +740,15 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   `update_signature_key_missing`，绝不静默接受未签名载荷。`UpdateRuntime::is_available()` 仅在
   production channel 与有效公钥同时具备时为真，系统菜单据此决定是否显示「检查更新」入口。该
   门禁产出的是稳定、无路径的错误码，而不是库错误。
-- 发行清单是**一份共享 manifest**（`latest.json`），形状为库的 *static* 形状：顶层 `version`
-  加一个 `platforms` 映射，键为 `<os>-<arch>`，每项含 `url`、`signature`、`format`；runtime 从
-  `releases/latest/download/latest.json` 读取。平台键拼写必须与库一致（`macos` 而非 `darwin`，
-  `aarch64` 而非 `arm64`）。`crates/bongocat-packaging` 每个 target 写一份 fragment
+- 发行清单是**一份共享 manifest**（`latest.json`），形状为库的 *static* 形状：顶层 `version`、
+  可选的 `notes` 加一个 `platforms` 映射，键为 `<os>-<arch>`，每项含 `url`、`signature`、`format`；
+  runtime 从 `releases/latest/download/latest.json` 读取。平台键拼写必须与库一致（`macos` 而非
+  `darwin`，`aarch64` 而非 `arm64`）。`crates/bongocat-packaging` 每个 target 写一份 fragment
   （`<os>-<arch>.json`，文件名即平台键），发布前由同一个工具的 `--merge-manifests` 合并成共享
   manifest——manifest 的形状与资产名由一处拥有，工作流只调用工具。发布漏掉某个平台键时，
-  runtime 命中 `update_no_matching_asset`。
+  runtime 命中 `update_no_matching_asset`。`notes` 是发布说明，由 `--release-notes <file>` 写入，
+  上限 32 KiB，超长在字符边界截断并追加可见标记；它随同一次请求到达客户端，不需要第二次网络调用。
+
 - 更新载荷：macOS 为已完成的 `.app` 打包成的 `BongoCat-<version>-<triple>.app.tar.gz`
   （归档根必须是 `BongoCat.app/`，库会丢弃根条目再装到 bundle 路径）；Windows 复用已发布的
   NSIS 安装器 `BongoCat_<version>_x64.exe`。`.dmg` 不是更新载荷——它是人工安装路径。
@@ -757,16 +759,43 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   `UpdateOutcome::Installed` 只在 macOS 可观测。安装根为 `$LOCALAPPDATA\Programs\BongoCat`，
   用户可写，不需要提权。
 - 库的错误、配置与平台类型不得扩散为项目公共 API。`cargo_packager_updater::Error` 在
-  `bongocat-update` 边界内映射为 13 个稳定错误码，未识别的变体降级为 `update_internal_failed`；
+  `bongocat-update` 边界内映射为 14 个稳定错误码，未识别的变体降级为 `update_internal_failed`；
   诊断导出只消费这些码与匿名聚合计数，不含任何库类型或动态平台文本。
 - 打包入口 `crates/bongocat-packaging` 产出并签名更新资产：每个 target 的载荷、其 `.sig` 与
   manifest fragment；发布前再用同一个工具的 `--merge-manifests` 把 fragment 合并成共享
   `latest.json`。签名密钥通过 `SIGNING_PRIVATE_KEY` 注入，未设置即跳过签名（本地构建）；
   release workflow 反过来断言发布构建一定签过名，未配置密钥时直接失败，而不是发出一批无人能
   更新的产物。
-- 更新 endpoint、真实签名公钥注入、update worker、更新 UI、操作系统包签名验证与失败启动恢复仍未
-  实现；在这些证据齐备前不得声称更新功能或 stable 发布完成。ADR-0034 记录了换实现新引入的
-  能力损失（归档完整性校验、per-platform 资产匹配、公钥轮换窗）与待验证项。
+- 更新管线由 `bongocat-app::ApplicationUpdateService` 独占：一条独立线程持有 `UpdateRuntime`，
+  是唯一触碰网络、下载与安装的组件。它**不复用设置服务循环**——设置循环是串行阻塞的，一次百 MB
+  级传输会让所有设置读写排队。命令通道有界且非阻塞；状态经 `UpdateStateHandle` 覆盖发布，窗口
+  按 250 ms 轮询，因此窗口关闭、隐藏或渲染慢都不会反压 worker。**操作属于 worker，不属于窗口**，
+  所以关闭窗口不取消任何操作。
+- 更新窗口（`bongocat-ui::update_window`）是单例，入口是系统菜单「检查更新」与设置页 About。
+  它渲染 `Unavailable` / `Idle` / `Checking` / `UpToDate` / `Available` / `Downloading` /
+  `Verifying` / `Installing` / `Installed` / `Failed` 十种状态。**`Downloading` / `Verifying` /
+  `Installing` 三段可观测靠拆分库调用实现**：runtime 用 `download_extended` + `install` 两次调用，
+  因为库的 `download_and_install` 把验签与安装合成一次调用。失败带明确的 stage，下载阶段的错误
+  再按 code 区分为传输失败与验签失败。
+- 更新内容（`notes`）来自 manifest，是不可信输入，由 `bongocat-ui::update_markdown` 用
+  `pulldown-cmark`（CommonMark + 删除线/任务列表，`default-features = false`）解析为不含 GPUI
+  类型的中间表示后渲染，不存在可注入的 markup 层；原始 HTML 按字面文本显示，图片只渲染 alt 文本、
+  不发起请求，链接仅 HTTPS 且无空白/控制字符才可点击。输入截断至 32 KiB，块嵌套超过 8 层压平但
+  不丢内容；GFM 表格不渲染（按 CommonMark 退化为段落）。
+- 更新协议由 UI 侧拥有（`bongocat_ui::update`），`bongocat-ui` 不依赖 `bongocat-update`；`bongocat-app`
+  做穷尽映射（stage 与 14 个错误码），新增一项会让映射编译失败，直到它被赋予用户可见含义。
+- 安装后是否需要重启进程是**平台事实**：macOS 由库整包替换 `.app`，运行中的进程此后执行已删除的
+  文件（预设模型目录是惰性读盘的），因此安装成功后自动重启——先按 §5.3 的顺序完成产品 shutdown，
+  再 `exec` 新构建；Windows 由安装器 `/R` 重启，`Installed` 在该平台不可观测。
+- 自动检查由 GPUI 侧调度（开关值只有设置服务读得到）：启动后等 10 秒首次检查，之后每 24 小时一次，
+  发现可用更新且窗口未打开时打开更新窗口。间隔未持久化。
+- 传输有 30 分钟上限：transport 自身无超时，不设界会让 worker 永久阻塞；取值覆盖整条载荷传输。
+  下载**不支持取消**——库没有 abort 钩子，真取消只能自研下载与验签，而自研验证层已被 ADR-0029/0034
+  删除，因此不提供取消按钮而不是提供一个假的。
+- 真实签名公钥注入、真实发布链路验证、操作系统包签名验证与失败启动恢复仍未完成；在这些证据齐备前
+  不得声称更新功能或 stable 发布完成。ADR-0034 记录了换实现新引入的能力损失（归档完整性校验、
+  per-platform 资产匹配、公钥轮换窗）与待验证项；ADR-0035 记录了 worker、窗口、发布说明与
+  "安装后协调 shutdown 而非安装前"这一处需要维护者复核的取舍。
 - 日志不记录真实按键序列、剪贴板内容或用户文件内容。
 - Diagnostics 导出由 settings service 的强类型 command 触发，在当前环境 logs 目录以同目录
   原子替换写出固定格式的 JSON。导出只包含稳定错误码、匿名聚合计数、模型来源计数和 revision；
@@ -923,6 +952,14 @@ Windows 当前用户 Run value 按 Development/Production 分名；macOS 13+ 只
 匿名诊断契约；下载、校验、安装与重启全部交给第三方更新库。ADR-0021、ADR-0022、ADR-0025 与
 ADR-0026 由本 ADR 取代。本 ADR 的库选择（`self_update 1.3.0`）与签名方案（zipsign 归档内嵌签名）
 已由 ADR-0034 取代。正文保留在 ADR-0029 中作为历史记录。
+
+### ADR-0035：更新 worker、更新窗口与发布说明
+
+更新管线由独立 worker 线程独占，窗口只消费它发布的状态；UI 拥有协议，app 做穷尽映射。三段可观测
+（下载/校验/安装）靠把库的 `download_and_install` 拆成 `download_extended` + `install` 实现。发布说明
+随共享 manifest 的 `notes` 一起发布（有界、无第二次请求）。安装后重启是平台事实：macOS 自动重启，
+Windows 由安装器 `/R` 负责。明确不做下载取消。**记录一处与 §8.4 措辞不同的取舍**：shutdown 协调放在
+安装完成之后、替换进程之前，理由见该 ADR。
 
 ### ADR-0034：Detached Minisign 更新信任模型
 

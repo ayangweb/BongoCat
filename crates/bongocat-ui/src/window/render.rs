@@ -1035,8 +1035,8 @@ impl Render for SettingsView {
             language.catalog_locale(),
             "navigation.about.description",
         ))
-        .group(
-            SettingGroup::new()
+        .group({
+            let mut about_group = SettingGroup::new()
                 .title(bongocat_i18n::text(
                     language.catalog_locale(),
                     "about.page_title",
@@ -1064,8 +1064,40 @@ impl Render for SettingsView {
                         language.catalog_locale(),
                         "about.product_information.description",
                     )),
-                ),
-        );
+                );
+            // The update entry only exists where an update owner was wired in; the
+            // recovery and smoke windows have none, and a button that cannot do
+            // anything is worse than an absent one.
+            if self.request_update.is_some() {
+                about_group = about_group.item(
+                    SettingItem::new(
+                        bongocat_i18n::text(language.catalog_locale(), "update.about.label"),
+                        SettingField::element({
+                            let view = view_entity.clone();
+                            let label_locale = language.catalog_locale();
+                            move |_: &RenderOptions, _window: &mut Window, app: &mut App| {
+                                let request_update = view.read(app).request_update.clone();
+                                div()
+                                    .id("about-check-for-updates")
+                                    .when_some(request_update, |this, request_update| {
+                                        this.on_click(move |_, _, app| (request_update)(app))
+                                    })
+                                    .child(Button::new("about-check-for-updates-button").label(
+                                        bongocat_i18n::text(label_locale, "update.about.label"),
+                                    ))
+                                    .into_any_element()
+                            }
+                        }),
+                    )
+                    .layout(Axis::Vertical)
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "update.about.description",
+                    )),
+                );
+            }
+            about_group
+        });
 
         let settings = Settings::new("bongocat-settings")
             .sidebar_width(px(220.0))

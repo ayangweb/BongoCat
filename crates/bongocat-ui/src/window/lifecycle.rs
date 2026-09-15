@@ -5,6 +5,7 @@ pub fn open_settings_window(
     window_state: SettingsWindowState,
     _taskbar_icon_visible: bool,
     request_quit: impl Fn(&mut App) + 'static,
+    request_update: Option<impl Fn(&mut App) + 'static>,
     cx: &mut App,
 ) -> Result<SettingsWindowHandle, String> {
     let (window_bounds, display_id) = initial_window_bounds(&window_state, cx);
@@ -39,6 +40,8 @@ pub fn open_settings_window(
                 Theme::global_mut(cx).notification.placement = Anchor::BottomRight;
                 sync_system_component_theme(window, cx);
                 let request_quit = Rc::new(request_quit);
+                let request_update: SettingsWindowRequest = request_update
+                    .map(|request_update| Rc::new(request_update) as Rc<dyn Fn(&mut App)>);
                 let view = cx.new(|cx| {
                     let observed_window_state = window_state.clone();
                     cx.observe_window_bounds(window, move |_, window, cx| {
@@ -60,7 +63,8 @@ pub fn open_settings_window(
                         }
                     })
                     .detach();
-                    let mut view = SettingsView::new(client, request_quit, window, cx);
+                    let mut view =
+                        SettingsView::new(client, request_quit, request_update, window, cx);
                     view.refresh(cx);
                     view
                 });

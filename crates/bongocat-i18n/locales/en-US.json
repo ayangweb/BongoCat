@@ -159,11 +159,75 @@
     "invalid_summary": "%{origin} · %{diagnostic}",
     "delete_confirmation": "%{status} · %{confirm_deletion}"
   },
+  "update": {
+    "window": {
+      "title": "BongoCat Update"
+    },
+    "heading": {
+      "title": "Software Update"
+    },
+    "current_version": "Current version %{version}",
+    "status": {
+      "idle": "Check for a newer version of BongoCat.",
+      "checking": "Checking for updates…",
+      "up_to_date": "BongoCat %{version} is the latest version.",
+      "available": "BongoCat %{version} is available.",
+      "downloading": "Downloading… %{percent}%",
+      "downloading_unknown": "Downloading…",
+      "downloading_detail": "BongoCat %{version} · %{downloaded} of %{total}",
+      "verifying": "Verifying the downloaded BongoCat %{version}…",
+      "installing": "Installing BongoCat %{version}…",
+      "installed_restarting": "BongoCat %{version} was installed. Restarting…",
+      "installed_relaunching": "BongoCat %{version} was installed. The installer restarts it now."
+    },
+    "notes": {
+      "title": "What's New"
+    },
+    "action": {
+      "check": "Check for Updates",
+      "recheck": "Check Again",
+      "install": "Download and Install",
+      "restart": "Restart Now",
+      "view_on_github": "View on GitHub"
+    },
+    "error": {
+      "stage": {
+        "check": "Could not check for a new version of BongoCat %{version}.",
+        "download": "Could not download BongoCat %{version}.",
+        "verify": "Could not verify the downloaded BongoCat %{version}.",
+        "install": "Could not install BongoCat %{version}."
+      },
+      "not_configured": "This build is not configured to receive updates.",
+      "environment_disabled": "This build is not allowed to install release updates.",
+      "signature_key_missing": "This build cannot authenticate updates, so none were installed.",
+      "release_fetch_failed": "No release information was found. Try again later.",
+      "release_manifest_invalid": "The release information could not be read. It may have been published by a different version of BongoCat.",
+      "no_matching_asset": "This release does not include a build for this system.",
+      "download_transport_failed": "The download did not finish. Check the connection and try again.",
+      "checksum_mismatch": "The downloaded update did not match its expected contents.",
+      "signature_invalid": "The update could not be verified and was not installed.",
+      "archive_invalid": "The downloaded update could not be read.",
+      "install_path_not_writable": "BongoCat cannot be updated in its current location.",
+      "install_failed": "The update could not be installed. The previous version is still available.",
+      "restart_failed": "BongoCat could not restart. Start it again to use the new version.",
+      "internal": "The update failed for an unexpected reason."
+    },
+    "unavailable": {
+      "development_build": "Development builds do not install release updates.",
+      "signing_key_missing": "This build carries no release signing key, so updates stay disabled.",
+      "unsupported_host": "Updates are not published for this system."
+    },
+    "about": {
+      "label": "Check for Updates",
+      "description": "Compare this build with the newest release and install it."
+    }
+  },
   "actions": {
     "cancel": "Cancel",
     "confirm": "Confirm",
     "refresh": "Refresh",
-    "quit": "Quit"
+    "quit": "Quit",
+    "close": "Close"
   },
   "diagnostics": {
     "runtime_and_input": {

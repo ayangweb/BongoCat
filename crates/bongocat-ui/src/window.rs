@@ -181,21 +181,28 @@ const ACCESSIBILITY_MODEL_IMPORT_STATUS: AccessibilityNodeId = AccessibilityNode
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_MODEL_CATALOG_STATUS: AccessibilityNodeId = AccessibilityNodeId::new(49);
 
+/// A request the settings window forwards to the application rather than acting
+/// on itself.
+///
+/// `None` means the window has no owner for that request, so the matching control
+/// is not offered at all.
+pub(crate) type SettingsWindowRequest = Option<Rc<dyn Fn(&mut App)>>;
+
 type LanguageSelectState = SelectState<SearchableVec<&'static str>>;
 type ThemeSelectState = SelectState<SearchableVec<&'static str>>;
 
 #[derive(Clone, Copy)]
-struct Tokens {
-    canvas: Hsla,
-    border: Hsla,
-    text: Hsla,
-    muted: Hsla,
-    accent: Hsla,
-    danger: Hsla,
+pub(crate) struct Tokens {
+    pub(crate) canvas: Hsla,
+    pub(crate) border: Hsla,
+    pub(crate) text: Hsla,
+    pub(crate) muted: Hsla,
+    pub(crate) accent: Hsla,
+    pub(crate) danger: Hsla,
 }
 
 impl Tokens {
-    fn from_theme(cx: &App) -> Self {
+    pub(crate) fn from_theme(cx: &App) -> Self {
         let theme = cx.theme();
         Self {
             canvas: theme.background,
@@ -450,6 +457,14 @@ pub struct SettingsView {
     language_select: Entity<LanguageSelectState>,
     theme_select: Entity<ThemeSelectState>,
     request_quit: Rc<dyn Fn(&mut App)>,
+    /// Opens the update window and starts a check.
+    ///
+    /// The settings window does not own the update worker, so it asks the
+    /// application to open the window rather than driving the update protocol
+    /// itself. `None` hides the entry: a window with no update owner must not offer
+    /// a control that cannot do anything, which is why the recovery and smoke
+    /// windows leave it out instead of showing a dead button.
+    request_update: SettingsWindowRequest,
     general_focus: FocusHandle,
     models_focus: FocusHandle,
     shortcuts_focus: FocusHandle,
@@ -1646,7 +1661,7 @@ fn model_import_status(
     }
 }
 
-fn sync_system_component_theme(window: &mut Window, cx: &mut App) {
+pub(crate) fn sync_system_component_theme(window: &mut Window, cx: &mut App) {
     Theme::sync_system_appearance(Some(window), cx);
 }
 
@@ -1661,7 +1676,7 @@ fn apply_optimistic_component_theme(theme: SettingsTheme, cx: &mut App) {
     }
 }
 
-fn apply_component_theme(theme: SettingsTheme, window: &mut Window, cx: &mut App) {
+pub(crate) fn apply_component_theme(theme: SettingsTheme, window: &mut Window, cx: &mut App) {
     let mode = match theme {
         SettingsTheme::System => {
             cx.set_window_appearance(None);

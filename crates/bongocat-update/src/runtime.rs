@@ -75,15 +75,65 @@ pub const RELEASE_BINARY_NAME: &str = "bongocat-app";
 /// running executable.
 pub const RELEASE_BUNDLE_NAME: &str = "BongoCat.app";
 
-/// A stable-coded update failure.
+/// The pipeline stage an update stopped in.
+///
+/// The stage is what lets the UI say *where* an update failed instead of only
+/// *that* it failed, so it is part of the failure value rather than something a
+/// caller has to infer from the error code.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UpdateStage {
+    /// Reading and parsing the release manifest.
+    Check,
+    /// Transferring the payload.
+    Download,
+    /// Authenticating the downloaded payload.
+    Verify,
+    /// Writing the payload into the installation.
+    Install,
+}
+
+impl UpdateStage {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Check => "check",
+            Self::Download => "download",
+            Self::Verify => "verify",
+            Self::Install => "install",
+        }
+    }
+}
+
+/// Upper bound on one manifest request or one payload transfer.
+///
+/// The transport has no timeout of its own, so without this a stalled connection
+/// would leave the update worker blocked indefinitely. The bound is deliberately
+/// generous — it covers a whole payload transfer, not one read — because the point is
+/// to escape a dead connection, not to police a slow one. The update window is not
+/// blocked by a transfer in progress and can be closed while it runs.
+pub const UPDATE_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1800);
+
+/// A stable-coded update failure, tagged with the stage that produced it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct UpdateError {
     code: UpdateErrorCode,
+    stage: UpdateStage,
 }
 
 impl UpdateError {
     const fn new(code: UpdateErrorCode) -> Self {
-        Self { code }
+        Self {
+            code,
+            stage: UpdateStage::Check,
+        }
+    }
+
+    /// Build a failure that stopped in a specific stage.
+    ///
+    /// Public because the stage is part of the value's meaning: a caller that
+    /// classifies a failure itself — or a test that scripts one — has to be able to
+    /// say which step it happened in.
+    pub const fn at(stage: UpdateStage, code: UpdateErrorCode) -> Self {
+        Self { code, stage }
     }
 
     pub const fn code(self) -> UpdateErrorCode {
@@ -92,6 +142,25 @@ impl UpdateError {
 
     pub const fn code_str(self) -> &'static str {
         self.code.as_str()
+    }
+
+    pub const fn stage(self) -> UpdateStage {
+        self.stage
+    }
+
+    /// The stage a library failure happened in once the transport has already been
+    /// entered.
+    ///
+    /// `cargo_packager_updater::Update::download` reads the payload and verifies its
+    /// signature in one call, so a single library error can come from either step;
+    /// the code decides which. Anything unrecognized is reported as a transfer
+    /// failure, which is the conservative choice: it does not claim the payload was
+    /// authenticated.
+    const fn download_stage(code: UpdateErrorCode) -> UpdateStage {
+        match code {
+            UpdateErrorCode::SignatureInvalid => UpdateStage::Verify,
+            _ => UpdateStage::Download,
+        }
     }
 
     /// Map a library failure onto the stable code catalog.
@@ -108,11 +177,17 @@ impl UpdateError {
             | Error::UrlParse(_)
             | Error::UnsupportedArch
             | Error::UnsupportedOs
-            | Error::Semver(_)
             | Error::Http(_) => UpdateErrorCode::NotConfigured,
 
-            // The manifest could not be fetched or did not parse.
-            Error::ReleaseNotFound | Error::Serialization(_) => UpdateErrorCode::ReleaseFetchFailed,
+            // The published release carries no manifest this build could fetch.
+            Error::ReleaseNotFound => UpdateErrorCode::ReleaseFetchFailed,
+
+            // The manifest arrived but is not one this build can read.
+            //
+            // `Semver` belongs here rather than with the configuration failures: this
+            // build's own version is parsed before any request is made, so a semver
+            // error out of the library can only be the manifest's `version` field.
+            Error::Serialization(_) | Error::Semver(_) => UpdateErrorCode::ReleaseManifestInvalid,
 
             // A well-formed manifest that says nothing about this host.
             Error::TargetNotFound(_) => UpdateErrorCode::NoMatchingAsset,
@@ -146,15 +221,83 @@ impl std::fmt::Display for UpdateError {
 
 impl std::error::Error for UpdateError {}
 
+/// A step of the install pipeline a caller can observe while it runs.
+///
+/// The library verifies the payload immediately after reading it, so the three
+/// events are the only points at which progress is knowable from outside: bytes
+/// arrive, the transfer ends, and the payload is authenticated. Everything after
+/// `Verified` is the install itself.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UpdateEvent {
+    /// Bytes arrived; `downloaded_bytes` is cumulative for this transfer.
+    Progress(UpdateProgress),
+    /// The payload has been read in full and its signature is about to be checked.
+    DownloadFinished,
+    /// The payload is authenticated and is about to be installed.
+    Verified,
+}
+
+/// Why this build cannot check for or install updates.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UpdateUnavailability {
+    /// The host is outside the shipped targets.
+    UnsupportedHost,
+    /// The build's channel is not allowed to update.
+    DevelopmentChannel,
+    /// No release signing key is provisioned.
+    SigningKeyMissing,
+}
+
+/// A published release this build could move to.
+///
+/// `notes` is the release changelog the shared manifest announces. It is optional
+/// because the manifest treats it as optional: a release published without notes
+/// still offers a valid update.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UpdateRelease {
+    pub version: String,
+    pub notes: Option<String>,
+}
+
+/// Transfer progress of an in-flight update download.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UpdateProgress {
+    pub downloaded_bytes: u64,
+    /// The payload size the server announced, when it announced one.
+    pub total_bytes: Option<u64>,
+}
+
+impl UpdateProgress {
+    /// The completed fraction of the transfer, when the total size is known.
+    pub fn fraction(self) -> Option<f32> {
+        let total = self.total_bytes.filter(|total| *total > 0)?;
+        Some((self.downloaded_bytes as f64 / total as f64).min(1.0) as f32)
+    }
+}
+
 /// The outcome of a completed update check or install.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UpdateOutcome {
     /// The running build is already the newest release.
     UpToDate,
     /// A newer release exists; nothing was installed.
-    Available { version: String },
+    Available { release: UpdateRelease },
     /// The release was installed.
     Installed { version: String },
+}
+
+impl UpdateOutcome {
+    /// The release this outcome is about, for callers that only need the metadata.
+    pub fn release(&self) -> Option<UpdateRelease> {
+        match self {
+            Self::UpToDate => None,
+            Self::Available { release } => Some(release.clone()),
+            Self::Installed { version } => Some(UpdateRelease {
+                version: version.clone(),
+                notes: None,
+            }),
+        }
+    }
 }
 
 /// Owns the update pipeline for one build.
@@ -215,9 +358,26 @@ impl UpdateRuntime {
     /// provisioned. Callers use this to decide whether to offer an update entry point
     /// at all, rather than offering one that can only fail.
     pub fn is_available(&self) -> bool {
-        self.configuration
-            .is_some_and(|configuration| configuration.channel.is_enabled())
-            && configured_signing_key(RELEASE_SIGNING_KEY).is_some()
+        self.unavailability().is_none()
+    }
+
+    /// Why this build cannot update, or `None` when it can.
+    ///
+    /// The order is the order the gates are applied in: a host that is not shipped has
+    /// no configuration at all, then the channel, then the signing key. Callers
+    /// surface the first reason so the UI can explain the absence of the entry point
+    /// instead of leaving it unexplained.
+    pub fn unavailability(&self) -> Option<UpdateUnavailability> {
+        let Some(configuration) = self.configuration else {
+            return Some(UpdateUnavailability::UnsupportedHost);
+        };
+        if !configuration.channel.is_enabled() {
+            return Some(UpdateUnavailability::DevelopmentChannel);
+        }
+        if configured_signing_key(RELEASE_SIGNING_KEY).is_none() {
+            return Some(UpdateUnavailability::SigningKeyMissing);
+        }
+        None
     }
 
     pub fn diagnostics(&self) -> &UpdateDiagnosticsTracker {
@@ -268,6 +428,7 @@ impl UpdateRuntime {
         };
 
         UpdaterBuilder::new(current_version, config)
+            .timeout(UPDATE_REQUEST_TIMEOUT)
             .build()
             .map_err(UpdateError::from_library)
     }
@@ -288,12 +449,29 @@ impl UpdateRuntime {
         }
     }
 
+    /// The page a user opens to read a release's full notes.
+    ///
+    /// Derived from the immutable release identity, so the update window can offer a
+    /// link without owning the repository layout itself.
+    pub fn release_page_url(&self, version: &str) -> Option<String> {
+        let configuration = self.configuration?;
+        Some(format!(
+            "https://github.com/{}/{}/releases/tag/v{}",
+            configuration.repository_owner,
+            configuration.repository_name,
+            version.trim_start_matches('v'),
+        ))
+    }
+
     fn check_inner(&self) -> Result<UpdateOutcome, UpdateError> {
         let updater = self.updater()?;
         match updater.check().map_err(UpdateError::from_library)? {
             None => Ok(UpdateOutcome::UpToDate),
             Some(update) => Ok(UpdateOutcome::Available {
-                version: update.version,
+                release: UpdateRelease {
+                    version: update.version,
+                    notes: update.body,
+                },
             }),
         }
     }
@@ -308,16 +486,37 @@ impl UpdateRuntime {
     /// therefore only observable on macOS; on Windows a successful run ends in process
     /// exit, and the installer's `/R` argument relaunches the application.
     pub fn install(&self) -> Result<UpdateOutcome, UpdateError> {
+        self.install_with_observer(|_| {})
+    }
+
+    /// Download, verify and install the newest release, reporting each step.
+    ///
+    /// `observe` runs on the calling thread, so the caller decides how the values
+    /// reach the UI; this crate never touches a UI type. The download and the install
+    /// are separate library calls on purpose: `download_extended` authenticates the
+    /// payload before returning, so the caller can report "verifying" and "installing"
+    /// as distinct states instead of collapsing them into one opaque call.
+    ///
+    /// There is deliberately no cancellation: the library reads and authenticates the
+    /// payload inside one call and offers no abort hook, so a cancel that returned
+    /// early would only abandon the result while the transfer kept running.
+    pub fn install_with_observer(
+        &self,
+        observe: impl Fn(UpdateEvent),
+    ) -> Result<UpdateOutcome, UpdateError> {
         self.diagnostics.record_download_started();
         self.diagnostics.record_install_started();
 
-        match self.install_inner() {
+        match self.install_inner(observe) {
             Ok(outcome) => {
                 self.diagnostics.record_download_succeeded();
                 self.diagnostics.record_install_succeeded();
                 Ok(outcome)
             }
             Err(error) => {
+                // The library downloads and installs in one call, so a failure is
+                // counted in both families; the error's own stage says which step it
+                // actually stopped in.
                 self.diagnostics.record_download_failed(error.code_str());
                 self.diagnostics.record_install_failed(error.code_str());
                 Err(error)
@@ -325,15 +524,34 @@ impl UpdateRuntime {
         }
     }
 
-    fn install_inner(&self) -> Result<UpdateOutcome, UpdateError> {
+    fn install_inner(&self, observe: impl Fn(UpdateEvent)) -> Result<UpdateOutcome, UpdateError> {
         let updater = self.updater()?;
         let Some(update) = updater.check().map_err(UpdateError::from_library)? else {
             return Ok(UpdateOutcome::UpToDate);
         };
         let version = update.version.clone();
-        update
-            .download_and_install()
-            .map_err(UpdateError::from_library)?;
+        let downloaded_bytes = std::cell::Cell::new(0_u64);
+        let payload = update
+            .download_extended(
+                |chunk, total| {
+                    let downloaded = downloaded_bytes.get().saturating_add(chunk as u64);
+                    downloaded_bytes.set(downloaded);
+                    observe(UpdateEvent::Progress(UpdateProgress {
+                        downloaded_bytes: downloaded,
+                        total_bytes: total,
+                    }));
+                },
+                || observe(UpdateEvent::DownloadFinished),
+            )
+            .map_err(|error| {
+                let error = UpdateError::from_library(error);
+                UpdateError::at(UpdateError::download_stage(error.code()), error.code())
+            })?;
+        observe(UpdateEvent::Verified);
+        update.install(payload).map_err(|error| {
+            let error = UpdateError::from_library(error);
+            UpdateError::at(UpdateStage::Install, error.code())
+        })?;
         Ok(UpdateOutcome::Installed { version })
     }
 
@@ -350,40 +568,47 @@ impl UpdateRuntime {
 fn restart_current_process() -> Result<std::convert::Infallible, UpdateError> {
     use std::os::unix::process::CommandExt;
 
-    let executable =
-        std::env::current_exe().map_err(|_| UpdateError::new(UpdateErrorCode::RestartFailed))?;
+    let executable = std::env::current_exe()
+        .map_err(|_| UpdateError::at(UpdateStage::Install, UpdateErrorCode::RestartFailed))?;
     let mut command = std::process::Command::new(executable);
     command.args(std::env::args_os().skip(1));
     // `exec` replaces the current process image and only returns on failure.
     let _ = command.exec();
-    Err(UpdateError::new(UpdateErrorCode::RestartFailed))
+    Err(UpdateError::at(
+        UpdateStage::Install,
+        UpdateErrorCode::RestartFailed,
+    ))
 }
 
 /// See the unix version above; Windows has no `exec`, so the updated executable is
 /// spawned as a new process and the current one exits.
 #[cfg(windows)]
 fn restart_current_process() -> Result<std::convert::Infallible, UpdateError> {
-    let executable =
-        std::env::current_exe().map_err(|_| UpdateError::new(UpdateErrorCode::RestartFailed))?;
+    let executable = std::env::current_exe()
+        .map_err(|_| UpdateError::at(UpdateStage::Install, UpdateErrorCode::RestartFailed))?;
     let mut command = std::process::Command::new(executable);
     command.args(std::env::args_os().skip(1));
     command
         .spawn()
-        .map_err(|_| UpdateError::new(UpdateErrorCode::RestartFailed))?;
+        .map_err(|_| UpdateError::at(UpdateStage::Install, UpdateErrorCode::RestartFailed))?;
     std::process::exit(0);
 }
 
 #[cfg(not(any(unix, windows)))]
 fn restart_current_process() -> Result<std::convert::Infallible, UpdateError> {
-    Err(UpdateError::new(UpdateErrorCode::RestartFailed))
+    Err(UpdateError::at(
+        UpdateStage::Install,
+        UpdateErrorCode::RestartFailed,
+    ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
         RELEASE_BINARY_NAME, RELEASE_BUNDLE_NAME, RELEASE_MANIFEST_NAME, RELEASE_REPOSITORY_NAME,
-        RELEASE_REPOSITORY_OWNER, RELEASE_SIGNING_KEY, UpdateError, UpdateErrorCode, UpdateOutcome,
-        UpdateRuntime, configured_signing_key,
+        RELEASE_REPOSITORY_OWNER, RELEASE_SIGNING_KEY, UPDATE_REQUEST_TIMEOUT, UpdateError,
+        UpdateErrorCode, UpdateOutcome, UpdateProgress, UpdateRelease, UpdateRuntime, UpdateStage,
+        UpdateUnavailability, configured_signing_key,
     };
     use crate::diagnostics::UpdateDiagnosticsTracker;
     use crate::release::{ReleaseChannel, ReleaseConfiguration, UpdateTargetTriple};
@@ -520,14 +745,157 @@ mod tests {
         assert_eq!(error.to_string(), "update_signature_key_missing");
     }
 
+    /// The transport has no timeout of its own, so the bound has to exist and has to
+    /// stay generous enough for a whole payload on a slow link.
+    #[test]
+    fn a_transfer_is_bounded_but_not_tight() {
+        assert!(UPDATE_REQUEST_TIMEOUT >= std::time::Duration::from_secs(600));
+        assert!(UPDATE_REQUEST_TIMEOUT <= std::time::Duration::from_secs(3600));
+    }
+
     #[test]
     fn outcome_variants_are_distinguishable() {
         assert_ne!(
             UpdateOutcome::UpToDate,
             UpdateOutcome::Available {
-                version: "1.0.0".to_owned()
+                release: UpdateRelease {
+                    version: "1.0.0".to_owned(),
+                    notes: None,
+                },
             }
         );
+    }
+
+    #[test]
+    fn an_available_release_carries_its_changelog() {
+        let outcome = UpdateOutcome::Available {
+            release: UpdateRelease {
+                version: "1.2.0".to_owned(),
+                notes: Some("- fixed the thing".to_owned()),
+            },
+        };
+        assert_eq!(
+            outcome.release(),
+            Some(UpdateRelease {
+                version: "1.2.0".to_owned(),
+                notes: Some("- fixed the thing".to_owned()),
+            })
+        );
+        assert_eq!(UpdateOutcome::UpToDate.release(), None);
+    }
+
+    /// A failed update has to say which step it failed in, because the UI reports
+    /// "could not download" and "could not install" as different problems.
+    #[test]
+    fn failures_carry_the_stage_they_happened_in() {
+        assert_eq!(
+            UpdateError::new(UpdateErrorCode::EnvironmentDisabled).stage(),
+            UpdateStage::Check
+        );
+        assert_eq!(
+            UpdateError::at(UpdateStage::Verify, UpdateErrorCode::SignatureInvalid).stage(),
+            UpdateStage::Verify
+        );
+        assert_eq!(
+            UpdateError::at(UpdateStage::Install, UpdateErrorCode::InstallFailed).stage(),
+            UpdateStage::Install
+        );
+        assert_eq!(UpdateStage::Download.as_str(), "download");
+    }
+
+    /// The library reads and verifies the payload in one call, so the error code is
+    /// what separates a transfer failure from an authentication failure.
+    #[test]
+    fn download_failures_are_split_by_their_code() {
+        assert_eq!(
+            UpdateError::download_stage(UpdateErrorCode::DownloadTransportFailed),
+            UpdateStage::Download
+        );
+        assert_eq!(
+            UpdateError::download_stage(UpdateErrorCode::SignatureInvalid),
+            UpdateStage::Verify
+        );
+        assert_eq!(
+            UpdateError::download_stage(UpdateErrorCode::Internal),
+            UpdateStage::Download,
+            "an unrecognized failure must not claim the payload was authenticated"
+        );
+    }
+
+    /// A manifest that never arrived and one that arrived unreadable are different
+    /// problems, and the diagnostics code has to say which happened.
+    #[test]
+    fn a_missing_manifest_is_not_an_unreadable_one() {
+        assert_eq!(
+            UpdateError::from_library(cargo_packager_updater::Error::ReleaseNotFound).code(),
+            UpdateErrorCode::ReleaseFetchFailed
+        );
+        let unreadable = cargo_packager_updater::Error::Serialization(
+            serde_json::from_str::<serde_json::Value>("not json").expect_err("invalid JSON"),
+        );
+        assert_eq!(
+            UpdateError::from_library(unreadable).code(),
+            UpdateErrorCode::ReleaseManifestInvalid
+        );
+        // This build's own version is parsed before any request, so a semver failure
+        // out of the library can only be the manifest's `version` field.
+        let bad_version = cargo_packager_updater::Error::Semver(
+            cargo_packager_updater::semver::Version::parse("not a version")
+                .expect_err("invalid version"),
+        );
+        assert_eq!(
+            UpdateError::from_library(bad_version).code(),
+            UpdateErrorCode::ReleaseManifestInvalid
+        );
+    }
+
+    #[test]
+    fn download_progress_reports_a_fraction_only_when_the_size_is_known() {
+        assert_eq!(
+            UpdateProgress {
+                downloaded_bytes: 512,
+                total_bytes: Some(1024),
+            }
+            .fraction(),
+            Some(0.5)
+        );
+        assert_eq!(
+            UpdateProgress {
+                downloaded_bytes: 512,
+                total_bytes: None,
+            }
+            .fraction(),
+            None
+        );
+        assert_eq!(
+            UpdateProgress {
+                downloaded_bytes: 2048,
+                total_bytes: Some(1024),
+            }
+            .fraction(),
+            Some(1.0),
+            "a server that under-reports the length must not exceed a full bar"
+        );
+    }
+
+    #[test]
+    fn the_release_page_url_follows_the_release_identity() {
+        let runtime = runtime_for(ReleaseChannel::Production);
+        assert_eq!(
+            runtime.release_page_url("1.2.3").as_deref(),
+            Some("https://github.com/ayangweb/BongoCat/releases/tag/v1.2.3")
+        );
+        assert_eq!(
+            runtime.release_page_url("v1.2.3").as_deref(),
+            Some("https://github.com/ayangweb/BongoCat/releases/tag/v1.2.3")
+        );
+
+        let unsupported = UpdateRuntime::new(
+            None,
+            env!("CARGO_PKG_VERSION"),
+            UpdateDiagnosticsTracker::default(),
+        );
+        assert_eq!(unsupported.release_page_url("1.2.3"), None);
     }
 
     #[test]
@@ -539,6 +907,30 @@ mod tests {
         assert!(
             runtime_for(ReleaseChannel::Production).is_available(),
             "the provisioned signing key makes production updates available"
+        );
+    }
+
+    /// The reason an entry point is missing has to be reportable, not just "no".
+    #[test]
+    fn unavailability_names_the_gate_that_closed() {
+        assert_eq!(
+            development_runtime().unavailability(),
+            Some(UpdateUnavailability::DevelopmentChannel)
+        );
+        assert_eq!(
+            runtime_for(ReleaseChannel::Production).unavailability(),
+            None
+        );
+
+        let unsupported = UpdateRuntime::new(
+            None,
+            env!("CARGO_PKG_VERSION"),
+            UpdateDiagnosticsTracker::default(),
+        );
+        assert_eq!(
+            unsupported.unavailability(),
+            Some(UpdateUnavailability::UnsupportedHost),
+            "a host outside the shipped targets has no configuration at all"
         );
     }
 

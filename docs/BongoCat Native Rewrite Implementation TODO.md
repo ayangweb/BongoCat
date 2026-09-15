@@ -1952,11 +1952,79 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     发布前用 `just manifest` 合并——合并由 `crates/bongocat-packaging --merge-manifests` 承担，
     而不是在 CI 里拼 JSON，manifest 形状与资产名因此仍由一处拥有。合并产物被更新库自身的读取类型
     反序列化验证（`cargo-packager-updater` 作为该 crate 的 dev 依赖），比正则匹配源码更强。
+- [x] 更新 worker 与设置 worker 分离，独占更新管线。
+  - 验收证据（2026-09-15）：`bongocat-app::ApplicationUpdateService` 起一条
+    `bongocat-update-service` 线程独占 `UpdateRuntime`，是唯一触碰网络、下载与安装的组件；命令通道
+    有界且非阻塞，状态经 `UpdateStateHandle`（`Arc<Mutex<UpdateSnapshot>>` + revision）覆盖发布，
+    窗口按 250 ms 轮询。不复用设置服务循环：设置循环是串行阻塞的，百 MB 级传输会让设置读写排队。
+    worker 只发布状态不推送事件，因此窗口关闭、隐藏或渲染慢都不会反压 worker。11 个测试在真实
+    worker 线程上用脚本化 engine 驱动状态机，覆盖 check 的三种结果、失败的 stage/code 归属、
+    安装的四步顺序、无 release 时 install 不改状态、不可用构建不进入管线、重启请求只被消费一次，
+    以及 drop 会停止并 join 线程。`cargo test --locked -p bongocat-app --lib update` 通过。
+- [x] 更新窗口覆盖检查、下载进度、校验、安装与失败重试。
+  - 验收证据（2026-09-15）：新增 `bongocat-ui::update_window`，单例窗口由系统菜单「检查更新」与
+    设置页 About 的「检查更新」入口打开。窗口渲染 `Unavailable` / `Idle` / `Checking` / `UpToDate` /
+    `Available` / `Downloading`（`Progress` 条 + 已下载/总量 + 百分比）/ `Verifying` / `Installing` /
+    `Installed` / `Failed`（阶段 + 稳定错误码的本地化文案 + 重试）十种状态，显示当前版本、可用版本与
+    「更新内容」。关闭窗口不取消任何操作（操作属于 worker），因此关闭始终可用；窗口在打开期间每秒
+    跟随设置快照的语言变化。**下载进度与阶段可观测性靠拆分库调用实现**：runtime 改用
+    `download_extended` + `install` 两次调用，因为库的 `download_and_install` 把验签与安装合成一次
+    调用，无法区分 `Verifying` 与 `Installing`。`bongocat-ui` 的 12 个 update 测试与
+    `bongocat-app` 的状态机测试通过。
+  - 补充（2026-09-15）：检查按钮文案按检查次数区分——`Idle` 为「检查更新」；`UpToDate` 与全部
+    `Failed` 阶段至少检查过一次，改为「重新检查」（en "Check Again"）。刻意不用「重试」：点击走的是
+    完整 check → available → 重新下载管线，不存在续传，措辞必须与真实动作一致。新增
+    `update.action.recheck` 双语文案与渲染测试 `the_check_action_label_follows_the_phase`；
+    `bongocat-ui` 121 个测试通过（临时模拟面板删除后为 112 个）。
+  - 补充（2026-09-15）：发布页按钮文案由「查看发布说明」改为「在 GitHub 上查看」
+    （en "View on GitHub"）。原因：窗口「更新内容」区已直接渲染同一份说明，按钮的独特价值是
+    GitHub 发布页这个载体（资产列表、评论区），原文案与窗口内容重复主张且范围不精确。
+    行为不变：`release_page_url` 拼为 `releases/tag/v<version>`，系统浏览器打开。
+- [x] 更新入口、平台差异与安装后重启。
+  - 验收证据（2026-09-15）：系统菜单 `SystemMenuAction::CheckForUpdates` 从空操作改为打开窗口并
+    发起检查（此前是 `Ok(true)`，点下去没有任何行为）；About 页新增入口，由
+    `SettingsWindowRequest` 可选回调承载——恢复模式与 smoke 窗口没有更新 owner，因此不渲染这个
+    控件，而不是渲染一个点不动的按钮。`restart_required_after_install()` 返回
+    `cfg!(target_os = "macos")`：macOS 安装成功后自动重启（先按 §5.3 顺序 shutdown，再 `exec` 新构建），
+    Windows 由安装器 `/R` 重启、`Installed` 在本平台不可观测。**自动重启由应用侧看门狗触发而不是由
+    窗口触发**——窗口可以随时关闭，挂在窗口上会让关掉窗口的用户留下一个执行着已删除文件的进程；
+    看门狗每 25 ms 观察发布阶段，看到 `Installed { restart_required: true }` 后等 1200 ms 再重启，
+    窗口的「立即重启」只缩短这个等待，两条路径共用同一标志因此只重启一次。**本机无法验证 Windows
+    路径**，见 ADR-0035 待验证项 2。`cargo fmt`、两种 feature 组合的严格 Clippy 与 workspace 测试通过。
+- [x] 自动检查更新开关真正生效。
+  - 验收证据（2026-09-15）：`check_for_updates_automatically` 此前只被写入配置、**没有任何代码读取**。
+    现在由 GPUI 侧调度（开关值只有设置服务读得到）：启动后等 10 秒开始首次检查，之后每 24 小时一次；
+    发现可用更新且窗口未打开时打开更新窗口。**间隔未持久化**，频繁重启的机器会退化为每次启动检查，
+    见 ADR-0035 残余风险 6。
+- [x] 发布说明随共享 manifest 一起发布。
+  - 验收证据（2026-09-15）：`bongocat-packaging --merge-manifests` 新增 `--release-notes <file>`，
+    把说明写进 `latest.json` 顶层 `notes`（上限 32 KiB，超长在字符边界截断并追加可见标记，空文件按
+    无说明处理）；runtime 透传为 `UpdateRelease.notes`，窗口在「更新内容」区域渲染并另给
+    `releases/tag/v<version>` 链接。说明由发布工作流用 `gh api .../releases/generate-notes` 生成，
+    同一份文本同时喂给 manifest 与 `gh release create --notes-file`，发布页与客户端不会分叉；
+    不新增第二次网络请求、不新增依赖。`bongocat-packaging` 16 个测试与 `just release-manifest`
+    端到端冒烟通过。**真实发布尚未跑过**，见 ADR-0035 待验证项 4。
+- [x] 更新内容的 Markdown 渲染。
+  - 验收证据（2026-09-15）：`notes` 是随 manifest 走网络的**不可信输入**，新增
+    `bongocat-ui::update_markdown`（依赖 `pulldown-cmark =0.13.4`，当时最新稳定版，
+    `default-features = false` 去掉用不到的 CLI 参数解析与 HTML 渲染器）。渲染分两层：`blocks()`
+    把 CommonMark（含删除线与任务列表）解析为不含 GPUI 类型的中间表示，纯函数可单测；`render()`
+    只消费该表示，不存在可被注入的 markup 层，原始 HTML 按字面文本显示。图片只渲染 alt 文本、
+    不发请求；链接仅 HTTPS 且无空白/控制字符才可点击（与更新传输的 HTTPS-only 策略一致），其余
+    渲染为普通文本。长度上限 32 KiB（字符边界截断），嵌套深度超过 8 层压平但保留内容。紧凑列表项
+    不被解析器包 `Paragraph` 的缺陷已修：inline 内容缓冲到项结束时统一成段，列表内链接保留样式。
+    覆盖 26 个解析单测与 4 个无头渲染测试；`cargo fmt`、严格 Clippy 与 `bongocat-ui` 120 个测试通过
+    （临时模拟面板删除后 `bongocat-ui` 为 112 个）。
+    不支持 GFM 表格（按 CommonMark 退化为普通段落）——release notes 实际不会包含表格，如需要再评估。
 - [ ] 只允许 HTTPS，固定公钥来源和轮换流程。
   - 状态（2026-09-13，历史）：当时 `self_update` 方案的 `RELEASE_SIGNING_KEY` 为 `None`，
     因此 runtime 在发出任何请求前失败关闭并返回 `update_signature_key_missing`；公钥轮换窗
     随 ADR-0021 退役，key ID 与有效期概念不再存在。该库与签名模型已于 2026-09-14 被 ADR-0034
     取代，此行只保留当时状态。
+  - 状态（2026-09-15）：`UpdateRuntime::unavailability()` 现在把"为什么不能更新"作为返回值
+    （`UnsupportedHost` / `DevelopmentChannel` / `SigningKeyMissing`），worker 据此在发出任何请求前
+    把 `Unavailable` 阶段发布给窗口，而不是让入口静默消失。HTTPS-only 由 `manifest_endpoint` 的
+    `https://` 字面量与定向测试锁定。
   - 状态（2026-09-14，当前）：公钥形态改为 base64 的 minisign 公钥盒文本，并已内嵌发布公钥
     `DF5E2C9D255DD85E`；缺失、空串或纯空白时的失败关闭语义由 `runtime.rs` 的门禁与定向测试
     锁定。**轮换能力比 ADR-0029 时更弱**：
@@ -1974,12 +2042,22 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     `update_no_matching_asset` 同样无产出路径（两者均已在 `diagnostics.rs` 注明保留原因）。
     发布公钥已注入；但尚未在真实发布产物上完成签名 → 下载 → 验签验证，操作系统包签名验证也
     仍未实现，因此保持未勾选。
+  - 状态（2026-09-15）：失败现在带明确的 stage（`UpdateError::stage()`）。库把下载与验签合成一条
+    错误，因此下载阶段的错误按 code 再分一次（`SignatureInvalid` → Verify，其余 → Download，
+    未识别的按 Download 处理，不宣称载荷已通过认证），窗口据此显示"下载失败"与"校验失败"两种
+    不同文案。传输增加了 30 分钟上限（transport 自身无超时，不设界会让 worker 永久阻塞）。
+    **仍未在真实产物上验证**，保持未勾选。
 - [ ] 下载支持取消、断点/重试策略和失败清理。
   - 状态（2026-09-13）：随 ADR-0021 一并退役。自研 staging 目录、三次重试与 1 秒/2 秒退避、
     Unix `0600` 权限与 partial 文件清理不再存在；库自身的下载重试与失败清理语义**未经本项目验证**，
     因此保持未勾选。
   - 状态（2026-09-14）：同上，换库未恢复该能力。另需记录一条库行为：验签前把整个载荷
     `read_to_end` 进内存，因此存在一条随产物增长而增长的常驻内存路径（ADR-0034）。
+  - 状态（2026-09-15）：**进度反馈已实现**（`UpdateEvent::Progress`，窗口显示百分比与已下载/总量），
+    但**取消是刻意不做的**：库在 `download_extended` 内部读完全部载荷并验签，没有 abort 钩子，
+    要做到真取消只能自研下载与验签——而自研验证层正是 ADR-0029/0034 删掉的东西。因此窗口不提供
+    取消按钮，并改为始终允许关闭（关闭不取消操作，因为操作属于 worker）。断点续传、库自身的重试
+    与失败清理语义仍未验证，保持未勾选。
 - [ ] 安装前协调 runtime/renderer shutdown，失败可回滚。
   - 状态（2026-09-13）：随 ADR-0026 一并退役，`UpdateInstallCoordinator` 已删除。库在内部执行
     prepare -> rename 交换 -> best-effort 回滚，但**不与本项目 runtime/renderer 的 shutdown 顺序
@@ -1988,6 +2066,13 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     运行下载到的安装器（`install_mode = Quiet` → NSIS `/S` `/R`）后 `process::exit(0)`，因此
     `UpdateOutcome::Installed` 只在 macOS 可观测，Windows 成功路径以进程退出结束。**该路径在本机
     （macOS）无法验证**，见 ADR-0034 待验证项 2。
+  - 状态（2026-09-15）：**协调已实现，但顺序与本文条目措辞不同，需要维护者确认**（详见 ADR-0035
+    的"需要维护者复核的一处偏差"）。实现顺序是 install 完成之后、替换进程之前按 §5.3 走完整
+    shutdown 再 `exec` 新构建，而不是"安装前 quiescence"。三条理由：macOS 的整包 `rename` 对运行中
+    进程是 inode 安全的；Windows 的安装路径本来就 `exit(0)`；而 `Application::shutdown(self)` 消耗
+    自身且没有 restart，先 quiescence 会让安装失败（磁盘满、权限、`remove_dir_all` 后 `rename`
+    失败）停在"overlay 已销毁、runtime 已停止"的不可恢复状态。当前顺序下安装失败时应用完好无损。
+    **回滚仍未验证**，macOS 自动重启路径也未实测，因此保持未勾选。
 - [ ] 测试断网、代理、中断、签名错误和降级攻击。
   - 状态（2026-09-13）：自研 coordinator 回归随实现一并删除。**降级攻击检测随 `release_sequence`
     退役而不再存在**——现在仅按 semver 比较，低 sequence 重放不再被拒绝。断网、代理、中断与签名
@@ -1996,6 +2081,18 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     但仍**不是**真实链路。共享 manifest 重新带回 per-platform 门禁（漏掉本机平台键时命中
     `update_no_matching_asset`），但 manifest 本身没有防降级保护：能替换 manifest 的攻击者仍可以
     把客户端指向一个旧但签名有效的载荷。断网、代理与中断均未测试，因此保持未勾选。
+  - 状态（2026-09-15）：worker 状态机现在有**离线**覆盖——脚本化 engine 注入
+    `ReleaseFetchFailed`、`SignatureInvalid` 等失败后，断言窗口收到的阶段与错误码确实归属正确的
+    stage。这覆盖的是"失败如何被呈现"，**不是**真实断网/代理/中断链路，也不是降级攻击防护，
+    因此保持未勾选。
+  - 状态（2026-09-15）：**真实端点的失败形态已在 loopback 上固定**。首次在真实安装产物上检查更新
+    报 `update_release_fetch_failed`，`curl` 定位后发现线上 `latest.json` 是旧 Tauri 产物（18 个
+    条目全部缺库必需的 `format`，平台键为 `darwin-*`），因此是 `Error::Serialization`。据此把
+    "取不到发布信息"与"取到了但读不懂"拆成两个稳定码，并新增两条能力测试：
+    `a_release_without_a_manifest_is_a_fetch_failure`（无 manifest → `ReleaseNotFound`）与
+    `a_manifest_from_another_pipeline_is_rejected_as_unreadable`（旧 Tauri 文档 →
+    `Serialization`；对照实验证明只补 `format` 就会变成 `TargetNotFound`）。**仍不是**真实断网/
+    代理/中断链路，因此保持未勾选。
 - [ ] 更新 channel 按环境隔离。
   - [x] 构建期 channel 门禁。
     - 验收证据（2026-09-13）：`ReleaseChannel::from_environment` 从不可变 `BuildEnvironment` 派生
@@ -2003,6 +2100,11 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
       返回 `update_environment_disabled` 并记录稳定诊断码。系统菜单的「检查更新」入口由
       `bongocat_app::update_check_available()` 决定，仅当 production channel 与签名公钥同时具备时
       才显示。
+  - [x] worker 与窗口层面的 channel 门禁。
+    - 验收证据（2026-09-15）：worker 在进入管线前先查 `UpdateRuntime::unavailability()`，禁用构建
+      把 `Unavailable` 阶段发布给窗口而不是发起请求；初始阶段也由它决定，因此入口缺失是有解释的
+      而不是静默的。定向测试覆盖"不可用构建收到 Check 后不进入管线、只重新发布原因"。
+      更新 channel 的独立 sequence store 仍由既有定向测试覆盖。
 - [x] 日志 rotation、总大小和保留天数有上限。
   - 状态（2026-09-05）：Cubism Core 日志 sink 已在单文件达到 1 MiB 时执行有界路径轮转，最多保留
     1 个活动文件加 7 个轮转文件，总量不超过 8 MiB；活动文件和轮转失败均有有界 dropped 计数；测试覆盖触发轮转、保留上限和
@@ -2087,6 +2189,18 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     与稳定错误码记录；`Application::set_update_diagnostics_tracker` 将其接入现有匿名导出边界，
     未注册 tracker 时仍保持 `update: null`。共享事件、未知错误码脱敏和 Application 投影回归通过；
     真实 update worker、endpoint、下载/安装调度仍待发布链路接入。
+  - 状态（2026-09-15）：**真实 update worker 已接入**。`ApplicationUpdateService` 用应用自己的
+    `UpdateDiagnosticsTracker`（在 `Application` 移交给设置服务之前注册，因此与匿名导出边界共享
+    同一实例），每次 check/download/install 都推进对应计数与最后稳定错误码。UI 侧另有独立目录
+    `bongocat_ui::UpdateErrorCode`（14 项，含本次新增的 `update_release_manifest_invalid`），由
+    `bongocat-app` 的穷尽映射与逐项字符串比对锁定；
+    新增一个 code 会让映射编译失败，直到它被赋予本地化文案。跨平台完整错误矩阵与真实发布链路
+    证据仍待完成，因此总项保持未勾选。
+  - 状态（2026-09-15）：`update_release_fetch_failed` 不再兼任两件事。真实端点的首次运行暴露了它
+    同时表示"取不到"与"读不懂"，现在拆为 `update_release_fetch_failed`（`Error::ReleaseNotFound`）
+    与 `update_release_manifest_invalid`（`Error::Serialization` / `Error::Semver`）。`Error::Semver`
+    从 `NotConfigured` 移到这里：本构建自己的版本在任何请求前就已解析，库返回的 semver 错误只可能
+    来自 manifest 的 `version` 字段。按 ADR-0034，新增码向后兼容。
   - 状态（2026-09-07）：check、download、install coordinator 增加显式 diagnostics 包装入口，统一记录
     started/succeeded/failed 及稳定失败 code，旧无诊断 API 保持兼容。三阶段成功、失败和取消路径的
     tracker 回归通过；这些入口仍是 worker 调用边界，不代表已建立真实后台更新线程或发布 endpoint。

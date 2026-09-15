@@ -412,6 +412,109 @@ fn a_manifest_without_this_platform_is_a_target_miss() {
     );
 }
 
+/// A release that carries no manifest at all is a fetch failure, not a parse failure.
+///
+/// The two need different responses from whoever reads the failure: "nothing was
+/// published" is usually transient or operational, while "something was published but
+/// it is not ours" is a pipeline problem. `runtime.rs` maps `Error::ReleaseNotFound`
+/// onto `UpdateErrorCode::ReleaseFetchFailed` and
+/// `runtime::tests::a_missing_manifest_is_not_an_unreadable_one` pins that half.
+#[test]
+fn a_release_without_a_manifest_is_a_fetch_failure() {
+    let server = LocalServer::serve(Vec::new());
+    let manifest_url = format!("{}/{MANIFEST_NAME}", server.base_url);
+
+    let error = updater_for(&manifest_url, "unused", None)
+        .check()
+        .expect_err("a release that publishes no manifest must fail");
+    assert!(
+        matches!(error, Error::ReleaseNotFound),
+        "an absent manifest asset must be a fetch failure, got {error:?}"
+    );
+}
+
+/// A manifest published by another pipeline is rejected as unreadable.
+///
+/// This is not hypothetical: `ayangweb/BongoCat`'s newest release is still the legacy
+/// Tauri build, whose `latest.json` carries per-platform entries with only `url` and
+/// `signature`, and platform keys spelled `darwin-aarch64` rather than `macos-aarch64`.
+/// The library requires `format` on every entry, so the document fails to deserialize
+/// before the platform lookup ever happens — which is why a user sees "the release
+/// information could not be read" and not "this release has no build for your system".
+/// `runtime.rs` maps that onto `UpdateErrorCode::ReleaseManifestInvalid`.
+#[test]
+fn a_manifest_from_another_pipeline_is_rejected_as_unreadable() {
+    let legacy = serde_json::json!({
+        "version": RELEASE_VERSION,
+        "notes": "a changelog from the other pipeline",
+        "pub_date": "2026-04-20T01:06:55.860Z",
+        "platforms": {
+            "darwin-aarch64": {
+                "signature": "tauri-signature",
+                "url": "https://example.invalid/BongoCat_aarch64.app.tar.gz",
+            },
+            "darwin-x86_64": {
+                "signature": "tauri-signature",
+                "url": "https://example.invalid/BongoCat_x64.app.tar.gz",
+            },
+            "windows-x86_64-nsis": {
+                "signature": "tauri-signature",
+                // The real asset name embeds the release version; the fixture does not
+                // restate it, because no product source or test may carry the product
+                // version as a literal (`tools/tests/test_product_version_contract.py`).
+                "url": "https://example.invalid/BongoCat_<version>_x64-setup.exe",
+            },
+        },
+    });
+
+    let route = format!("/{MANIFEST_NAME}");
+    let server = LocalServer::serve(vec![(
+        route.clone(),
+        serde_json::to_vec(&legacy).expect("serialize the legacy manifest"),
+    )]);
+    let manifest_url = format!("{}{route}", server.base_url);
+
+    let error = updater_for(&manifest_url, "unused", None)
+        .check()
+        .expect_err("a foreign manifest must not be read as this product's release");
+    assert!(
+        matches!(error, Error::Serialization(_)),
+        "an unreadable manifest must be a deserialization failure, got {error:?}"
+    );
+
+    // The same document must also be readable *as JSON*: the failure is the shape, not
+    // the syntax, so a reader that only checked for valid JSON would have accepted it.
+    serde_json::from_slice::<serde_json::Value>(
+        &serde_json::to_vec(&legacy).expect("serialize the legacy manifest"),
+    )
+    .expect("the legacy manifest is valid JSON");
+
+    // Pin the cause instead of trusting the coincidence: adding only the missing
+    // `format` field to every entry makes the same document parse. That is what makes
+    // this a diagnosis of the live failure rather than a test that merely fails.
+    let mut repaired = legacy.clone();
+    for (_, entry) in repaired["platforms"]
+        .as_object_mut()
+        .expect("the platforms map")
+        .iter_mut()
+    {
+        entry["format"] = serde_json::Value::String("app".to_owned());
+    }
+    let server = LocalServer::serve(vec![(
+        route.clone(),
+        serde_json::to_vec(&repaired).expect("serialize the repaired manifest"),
+    )]);
+    let repaired_url = format!("{}{route}", server.base_url);
+    let error = updater_for(&repaired_url, "unused", None)
+        .check()
+        .expect_err("the repaired manifest still names no platform this host uses");
+    assert!(
+        matches!(error, Error::TargetNotFound(_)),
+        "with `format` present the document must get past parsing and fail on the \
+         platform lookup instead, got {error:?}"
+    );
+}
+
 /// An empty public key must fail verification rather than be read as "nothing to
 /// verify against".
 ///

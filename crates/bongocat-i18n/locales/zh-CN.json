@@ -159,11 +159,75 @@
     "invalid_summary": "%{origin} · %{diagnostic}",
     "delete_confirmation": "%{status} · %{confirm_deletion}"
   },
+  "update": {
+    "window": {
+      "title": "BongoCat 更新"
+    },
+    "heading": {
+      "title": "软件更新"
+    },
+    "current_version": "当前版本 %{version}",
+    "status": {
+      "idle": "检查 BongoCat 是否有新版本。",
+      "checking": "正在检查更新…",
+      "up_to_date": "BongoCat %{version} 已是最新版本。",
+      "available": "BongoCat %{version} 可供更新。",
+      "downloading": "正在下载… %{percent}%",
+      "downloading_unknown": "正在下载…",
+      "downloading_detail": "BongoCat %{version} · %{downloaded} / %{total}",
+      "verifying": "正在校验已下载的 BongoCat %{version}…",
+      "installing": "正在安装 BongoCat %{version}…",
+      "installed_restarting": "BongoCat %{version} 已安装，正在重启…",
+      "installed_relaunching": "BongoCat %{version} 已安装，安装程序将立即重启它。"
+    },
+    "notes": {
+      "title": "更新内容"
+    },
+    "action": {
+      "check": "检查更新",
+      "recheck": "重新检查",
+      "install": "下载并安装",
+      "restart": "立即重启",
+      "view_on_github": "在 GitHub 上查看"
+    },
+    "error": {
+      "stage": {
+        "check": "无法检查 BongoCat %{version} 是否有新版本。",
+        "download": "无法下载 BongoCat %{version}。",
+        "verify": "无法校验已下载的 BongoCat %{version}。",
+        "install": "无法安装 BongoCat %{version}。"
+      },
+      "not_configured": "此构建未配置更新能力。",
+      "environment_disabled": "此构建不允许安装正式发布版本。",
+      "signature_key_missing": "此构建无法验证更新包，因此未安装任何更新。",
+      "release_fetch_failed": "找不到发布信息，请稍后重试。",
+      "release_manifest_invalid": "发布信息无法识别，它可能来自另一个版本的 BongoCat。",
+      "no_matching_asset": "该发布版本未包含适用于本机的构建。",
+      "download_transport_failed": "下载未完成，请检查网络后重试。",
+      "checksum_mismatch": "下载的更新包与预期内容不一致。",
+      "signature_invalid": "无法验证该更新包，已放弃安装。",
+      "archive_invalid": "无法读取已下载的更新包。",
+      "install_path_not_writable": "无法在当前位置更新 BongoCat。",
+      "install_failed": "无法安装该更新，上一个版本仍可用。",
+      "restart_failed": "无法重启 BongoCat，请手动启动以使用新版本。",
+      "internal": "更新因未预期原因失败。"
+    },
+    "unavailable": {
+      "development_build": "开发构建不会安装正式发布版本。",
+      "signing_key_missing": "此构建未内置发布签名公钥，因此更新保持关闭。",
+      "unsupported_host": "本机所在平台未发布更新。"
+    },
+    "about": {
+      "label": "检查更新",
+      "description": "将当前构建与最新发布版本对比并安装。"
+    }
+  },
   "actions": {
     "cancel": "取消",
     "confirm": "确认",
     "refresh": "刷新",
-    "quit": "退出"
+    "quit": "退出",
+    "close": "关闭"
   },
   "diagnostics": {
     "runtime_and_input": {

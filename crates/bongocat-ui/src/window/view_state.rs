@@ -87,6 +87,7 @@ impl SettingsView {
     pub(super) fn new(
         client: SettingsClient,
         request_quit: Rc<dyn Fn(&mut App)>,
+        request_update: SettingsWindowRequest,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -316,6 +317,7 @@ impl SettingsView {
             language_select,
             theme_select,
             request_quit,
+            request_update,
             general_focus: cx.focus_handle().tab_index(1).tab_stop(true),
             models_focus: cx.focus_handle().tab_index(2).tab_stop(true),
             shortcuts_focus: cx.focus_handle().tab_index(3).tab_stop(true),

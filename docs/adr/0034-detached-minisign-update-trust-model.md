@@ -57,7 +57,7 @@ ADR-0029 把更新栈换成 `self_update 1.3.0`，信任模型为 zipsign ed2551
 采用 `cargo-packager-updater =0.2.3`（`default-features = false`，仅 `rustls-tls`）。
 `bongocat-update` 的公开面不变：`ReleaseConfiguration`、`ReleaseChannel`、
 `UpdateTargetTriple`、`UpdateRuntime::{check, install, restart}`、`UpdateError`、
-`UpdateOutcome`、13 个稳定错误码与 10 项匿名计数。
+`UpdateOutcome`、13 个稳定错误码与 10 项匿名计数。（错误码目录于 2026-09-15 增至 14 个：`ReleaseFetchFailed` 原本兼任「取不到发布信息」与「取到了但读不懂」，ADR-0035 把这两件事拆成两个码。新增码向后兼容，见该 ADR 的「真实端点首次运行的结果」。）
 
 库的 `Error`（`#[non_exhaustive]`）、`Config`、`semver::Version` 与 `Url` 全部映射为项目
 自有类型，不出现在 `diagnostics.rs` 或 app/UI 协议中；未识别的库变体降级为
@@ -205,6 +205,11 @@ ADR-0021 / ADR-0022 / ADR-0025 / ADR-0026 的退役能力沿用 ADR-0029 的记�
 ## 待验证项（不得当作已确认）
 
 1. **真实发布链路**：从真实 GitHub Release 下载、验签并安装，未执行。
+   - 补充（2026-09-15）：**manifest 获取这一步已在真实端点上执行**。结论是端点被旧产物占用——
+     `releases/latest/download/latest.json` 返回 200，但内容是旧 Tauri 版本的 updater manifest
+     （平台键 `darwin-*`、条目缺本库必需的 `format`、签名为 Tauri 私钥），因此客户端在平台查找前
+     反序列化失败。下载、验签与安装仍未执行，线上尚无可用的新流程 release。排查细节、由此修正的
+     诊断粒度与新增的能力测试见 ADR-0035 的"真实端点首次运行的结果"。
 2. **Windows**：安装器静默安装、`/R` 重启、被占用可执行文件的替换、安装失败回滚，均未实测。
 3. **`.app` 的 codesign + notarize**：当前打包只做 ad-hoc 或注入身份的 `codesign`，
    公证仍是独立发布门禁。归档必须在公证**之后**生成，否则签名对象不是最终分发的 bundle。

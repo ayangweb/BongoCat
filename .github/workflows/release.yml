@@ -235,6 +235,21 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+      - name: Generate the release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # GitHub generates the changelog for a tag, and the same text is used twice:
+          # it becomes the release body and it is announced inside `latest.json`, so an
+          # installed copy can show what changed without a second request. Generating it
+          # here rather than letting `gh release create --generate-notes` do it keeps the
+          # manifest and the release page from disagreeing. The file lives outside
+          # `artifacts/` because that directory is uploaded verbatim as release assets.
+          gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+            -f tag_name="$GITHUB_REF_NAME" -q .body > release-notes.md
+          test -s release-notes.md || {
+            echo "::error::GitHub returned empty release notes for $GITHUB_REF_NAME" >&2; exit 1; }
       - name: Merge the per-target manifest fragments
         run: |
           set -euo pipefail
@@ -242,15 +257,16 @@ jobs:
           # one shared manifest, so the fragments are combined here. The merge is done by
           # the packaging tool rather than by this workflow so the manifest shape and its
           # asset name stay owned by that crate.
-          just manifest artifacts \
+          just release-manifest artifacts release-notes.md \
             artifacts/macos-aarch64.json \
             artifacts/macos-x86_64.json \
             artifacts/windows-x86_64.json
           test -f artifacts/latest.json
-          jq -e '.version and
+          jq -e '.version and (.notes | length > 0) and
                  (.platforms | keys | sort == ["macos-aarch64", "macos-x86_64", "windows-x86_64"])' \
             artifacts/latest.json >/dev/null
-          # The fragments are build inputs, not release assets.
+          # The fragments are build inputs, not release assets; the notes are folded into
+          # the manifest and stay in the workspace for the release body.
           rm -f artifacts/macos-aarch64.json \
                 artifacts/macos-x86_64.json \
                 artifacts/windows-x86_64.json
@@ -267,5 +283,5 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" \
-            --generate-notes \
+            --notes-file release-notes.md \
             artifacts/*

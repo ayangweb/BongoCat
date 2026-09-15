@@ -23,8 +23,20 @@ pub enum UpdateErrorCode {
     EnvironmentDisabled,
     /// No release signing key is provisioned, so nothing can be authenticated.
     SignatureKeyMissing,
-    /// The release listing could not be fetched or parsed.
+    /// No release manifest could be fetched from the published release.
+    ///
+    /// Covers "the repository has no release", "the release carries no manifest
+    /// asset", and a non-success response from the host. It deliberately does **not**
+    /// cover a manifest that arrived but could not be read — that is
+    /// [`Self::ReleaseManifestInvalid`], because the two need different responses from
+    /// whoever reads the failure.
     ReleaseFetchFailed,
+    /// A manifest was fetched but is not one this build can read.
+    ///
+    /// The usual cause is a manifest published by a different release pipeline: a
+    /// legacy Tauri `latest.json` has per-platform entries without the `format` field
+    /// this updater requires, and its platform keys use a different spelling.
+    ReleaseManifestInvalid,
     /// The release manifest announces no entry for this host.
     NoMatchingAsset,
     /// The artifact transfer failed (connection, TLS, HTTP status, rate limit).
@@ -51,11 +63,12 @@ pub enum UpdateErrorCode {
 }
 
 impl UpdateErrorCode {
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 14] = [
         Self::NotConfigured,
         Self::EnvironmentDisabled,
         Self::SignatureKeyMissing,
         Self::ReleaseFetchFailed,
+        Self::ReleaseManifestInvalid,
         Self::NoMatchingAsset,
         Self::DownloadTransportFailed,
         Self::ChecksumMismatch,
@@ -73,6 +86,7 @@ impl UpdateErrorCode {
             Self::EnvironmentDisabled => "update_environment_disabled",
             Self::SignatureKeyMissing => "update_signature_key_missing",
             Self::ReleaseFetchFailed => "update_release_fetch_failed",
+            Self::ReleaseManifestInvalid => "update_release_manifest_invalid",
             Self::NoMatchingAsset => "update_no_matching_asset",
             Self::DownloadTransportFailed => "update_download_transport_failed",
             Self::ChecksumMismatch => "update_checksum_mismatch",
@@ -232,6 +246,21 @@ mod tests {
         assert_eq!(
             UpdateErrorCode::DownloadTransportFailed.as_str(),
             "update_download_transport_failed"
+        );
+    }
+
+    /// "Could not fetch the release information" and "fetched it but cannot read it"
+    /// have to stay distinguishable: the first is usually transient, the second
+    /// usually means the published manifest is not ours.
+    #[test]
+    fn a_missing_manifest_and_an_unreadable_one_are_different_codes() {
+        assert_ne!(
+            UpdateErrorCode::ReleaseFetchFailed,
+            UpdateErrorCode::ReleaseManifestInvalid
+        );
+        assert_eq!(
+            UpdateErrorCode::ReleaseManifestInvalid.as_str(),
+            "update_release_manifest_invalid"
         );
     }
 
