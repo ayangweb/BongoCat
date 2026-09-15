@@ -2101,13 +2101,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let update_diagnostics = bongocat_update::UpdateDiagnosticsTracker::default();
     application.set_update_diagnostics_tracker(update_diagnostics.clone());
 
-    if !run_options.automated_verification {
-        // Startup permission check. It reads the current platform capability, shows the native
-        // prompt when that capability is missing, and records nothing: a user who dismissed the
-        // prompt is asked again on the next start while the capability is still missing, and a user
-        // who granted it is never asked. Nothing here blocks the product from starting (ADR-0032).
-        bongocat_app::ensure_startup_permission(application.effective_language());
-    }
+    // The startup permission check is non-blocking (ADR-0032, amended 2026-09-15): the
+    // language is resolved here, but the check itself runs on its own worker after the
+    // product windows exist, inside the GPUI run loop. The status is not persisted or
+    // logged, exactly as before.
+    let permission_language = application.effective_language();
+    let permission_check_enabled = !run_options.automated_verification;
 
     let (model_origin, model_id) = match (
         application.config().model.selected_model_origin,
@@ -2339,6 +2338,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(target_os = "windows")]
             shutdown_flush_complete: Arc::new(AtomicBool::new(false)),
         });
+
+        // Startup permission check on its own worker (ADR-0032, amended 2026-09-15). The
+        // overlay, settings service, system menu and update worker above are already
+        // running, so a pending native prompt can no longer delay any product window.
+        // The check is a read-only platform query; only a missing capability shows the
+        // prompt, and the prompt outcome is neither persisted nor logged.
+        //
+        // Lifecycle: the thread is deliberately detached. It owns only the resolved
+        // language and the prompt strings, shares no locks with the product, and always
+        // terminates - either the user answers the OS-owned dialog (a satisfied
+        // capability returns immediately without any dialog), or the process exits and
+        // the OS tears the dialog down with it. There is no cancellation channel for a
+        // native dialog, so joining on quit would block shutdown on an unanswered
+        // prompt, which is exactly the blocking behaviour this design removes.
+        if permission_check_enabled {
+            let spawn_result = std::thread::Builder::new()
+                .name("bongocat-startup-permission".to_owned())
+                .spawn(move || {
+                    let _ = bongocat_app::ensure_startup_permission(permission_language);
+                });
+            if let Err(error) = spawn_result {
+                record_failure(&run_failures, error.to_string());
+            }
+        }
 
         cx.on_window_closed(|cx, _| {
             if !cx.has_global::<ProductCoordinator>() {

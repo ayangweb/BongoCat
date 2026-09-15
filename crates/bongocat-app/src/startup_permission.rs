@@ -5,8 +5,10 @@
 //! stores nothing, so a user who dismissed the prompt is asked again while the capability is still
 //! missing (ADR-0032).
 //!
-//! Prompt copy is built here from the translation catalog and handed to the platform adapter,
-//! which owns the native dialog; the adapter never reads configuration or product copy.
+//! The check never runs on the main thread: the product starts its windows first and the caller
+//! spawns a dedicated worker for this function, so a pending prompt cannot delay any product
+//! window. Prompt copy is built here from the translation catalog and handed to the platform
+//! adapter, which owns the native dialog; the adapter never reads configuration or product copy.
 
 use bongocat_config::Language;
 
@@ -34,9 +36,10 @@ mod keys {
 
 /// Runs the startup permission check for this platform.
 ///
-/// `language` must be the resolved product language, because the prompt is shown before any
-/// settings window exists. Nothing is returned to the caller as state: the outcome only describes
-/// what this start did, and the next start re-reads the platform.
+/// `language` must be the resolved product language: the caller resolves it once and hands it to
+/// the dedicated startup-permission worker, so the prompt does not depend on any settings window.
+/// Nothing is returned to the caller as state: the outcome only describes what this start did, and
+/// the next start re-reads the platform.
 pub fn ensure_startup_permission(language: Language) -> bongocat_platform::StartupPermissionStatus {
     let locale = bongocat_i18n::locale_code(language.code());
     let text = |key| bongocat_i18n::text(locale, key).to_owned();

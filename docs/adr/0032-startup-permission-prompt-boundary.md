@@ -1,6 +1,6 @@
 # ADR-0032: Startup Permission Prompt Boundary
 
-状态：已接受（2026-09-14）；同日实机验收发现 macOS 侧必须使用不触碰 AppKit 的 `rfd` 路径，见「macOS 弹框实现修正」
+状态：已接受（2026-09-14）；同日实机验收发现 macOS 侧必须使用不触碰 AppKit 的 `rfd` 路径，见「macOS 弹框实现修正」；2026-09-15 修正检查执行方式为专用 worker 线程上的非阻塞检查，见「非阻塞执行修正」
 
 ## 背景
 
@@ -57,7 +57,7 @@ Settings 和 Diagnostics 里投影状态，用户必须自己发现问题。
 
   | 平台 | 只读查询 | 提示实现 | 「授权/去设置」动作 |
   | --- | --- | --- | --- |
-  | macOS | `CGPreflightListenEventAccess` | `rfd::AsyncMessageDialog`（无父窗口，仅 `CFUserNotification`），主线程用 `async_io::block_on` 等待 | `CGRequestListenEventAccess` + `NSWorkspace` 打开 `x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent` |
+  | macOS | `CGPreflightListenEventAccess` | `rfd::AsyncMessageDialog`（无父窗口，仅 `CFUserNotification`），调用线程用 `async_io::block_on` 等待 | `CGRequestListenEventAccess` + `NSWorkspace` 打开 `x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent` |
   | Windows | `TokenElevation` | `rfd::MessageDialog`（`MessageBoxW`，调用线程） | `opener::reveal` 定位当前可执行文件，正文给出「属性 → 兼容性 → 勾选以管理员身份运行」路径 |
 
 - macOS 必须使用上表中的异步实现，不能用同一 crate 的同步实现：原因与证据见「macOS 弹框实现修正」。
@@ -72,8 +72,11 @@ Settings 和 Diagnostics 里投影状态，用户必须自己发现问题。
 - 提示不做任何持久化：不新增配置字段、不写入 `state.json`、不新增应用日志事件、不缓存「用户选过
   稍后」。每次启动都重新读取平台当前状态；已授权则完全不提示，未授权则本次启动继续提示。判定依据
   只有平台状态。
-- 检查点在 `Application` 已可运行之后、GPUI run loop 与 overlay 之前，因此提示先于猫窗口出现，
-  并且不影响 `--configuration-recovery-mode` 这条恢复路径（该路径不提示）。
+- 检查点（2026-09-15 修正）：检查不再阻塞启动流程。产品在 GPUI run loop 内完成 overlay、设置
+  服务、系统菜单和 update worker 的启动之后，由主线程 spawn 一个专用 worker 线程执行检查与提示；
+  提示未应答、被关闭或检查失败都不影响任何产品窗口的显示与使用。`--configuration-recovery-mode`
+  恢复路径仍不提示，自动化 harness 运行仍不提示。原始决策「检查点在 GPUI run loop 之前、提示
+  先于猫窗口出现」已被本修正取代，见「非阻塞执行修正」。
 - `--startup-permission-smoke` 是只读诊断开关：只输出当前能力名与
   `available`/`missing`，用于双平台可重复验收，不弹框、不写状态。
 - 自动化 harness 运行不提示：除 `--run-seconds` 与帮助外的任何参数都表示这是一次 smoke/诊断运行
@@ -125,12 +128,43 @@ Settings 和 Diagnostics 里投影状态，用户必须自己发现问题。
   对话框线程真实阻塞在 `CFUserNotificationReceiveResponse`（即弹框确实已提交显示）；同一位置若换回
   同步实现，则必然复现上述 panic。
 
+## 非阻塞执行修正（2026-09-15）
+
+启动实机使用中发现原始检查点（GPUI run loop 之前同步执行）让权限提示成为启动的第一个交互：
+用户不应答，模型窗口、菜单栏/托盘和设置 UI 都不会创建。产品要求权限提示只作为辅助提示存在，
+于是把「检查的执行方式」从启动路径中拆出来，检查与提示逻辑本身不变。
+
+### 变更
+
+- 移除 `main` 在 `gpui_application.run` 之前的同步调用；语言在主线程解析一次，检查改由 GPUI
+  run loop 内（overlay、设置服务、系统菜单、update worker 均已启动、`ProductCoordinator`
+  已注册之后）spawn 的专用 worker 线程执行，线程名 `bongocat-startup-permission`。
+- 只读平台查询（`CGPreflightListenEventAccess` / `TokenElevation`）与提示文案构造随 worker
+  一起移入后台；`CGRequestListenEventAccess` 仍严格位于用户点击引导按钮之后，满足 ADR-0024。
+- Worker 线程刻意 detached：原生对话框由 OS 持有、没有可用的远程取消通道，若在退出时 join，
+  会把「未应答的弹框阻塞退出」这一原始问题原样搬到 shutdown 路径。该线程只拥有语言与文案
+  字符串，不与产品共享任何锁或句柄，用户应答后自行终止；进程退出时 OS 回收线程并随之关闭
+  对话框，不构成任务泄漏。
+- spawn 失败仅记入启动失败收集，应用照常启动（与「提示失败不阻止启动」同语义）。
+
+### 线程安全证据（2026-09-15 核实）
+
+- macOS 的异步 `rfd` 路径只构建 `CFUserNotification`、不触碰 `NSApplication`，在 worker 线程
+  上与 GPUI run loop 并行是安全的；同步路径会在调用线程上运行 `NSAlert` 模态机制，禁止使用，
+  原 contract 测试继续固定这一约束。
+- `objc2-app-kit 0.3.2` 绑定中 `NSWorkspace::sharedWorkspace()` 与 `openURL` 均未标记
+  main-thread-only（无 `MainThreadMarker` 参数），可在 worker 线程执行。
+- Windows 的 `MessageBoxW` 是调用线程模态，不阻塞其他线程的消息循环；`OpenProcessToken` 与
+  `opener::reveal` 均无线程亲和性要求。
+- worker 与产品无共享可变状态，不存在与窗口创建、输入服务或 shutdown 的锁竞争。
+
 ## 安全与生命周期不变量
 
-- 提示在启动阶段阻塞主线程直到用户应答（macOS 的对话框本身运行在 `rfd` 的工作线程上，主线程等待
-  其结果），此时 GPUI run loop、overlay、输入服务和 runtime 都尚未启动；用户回答之后才继续，因此
-  不存在与渲染或输入生命周期竞争的窗口，也不存在任何代码在 GPUI 平台建立前创建共享
-  `NSApplication` 的机会。
+- 提示运行在专用 worker 线程上（2026-09-15 修正，原始的「主线程阻塞等待用户应答」已被取代）：
+  主线程继续 GPUI run loop，overlay、输入服务和 runtime 的启动不等待用户应答；worker 只拥有
+  语言与文案字符串，不与渲染或输入生命周期共享任何锁。macOS 的对话框本身运行在 `rfd` 的工作
+  线程上，worker 用 `async_io::block_on` 等待其结果；`rfd` 的同步 macOS 路径在该线程上被禁止
+  （见上方修正与 contract 测试）。
 - 平台对话框的 owner 是 `rfd`，产品不持有任何 dialog handle；不注册回调，不在回调中做阻塞工作。
 - macOS 侧只使用 `CGPreflightListenEventAccess`（只读）与用户点击后的
   `CGRequestListenEventAccess`；不调用任何 Accessibility trust/prompt API，不扩大 TCC 面

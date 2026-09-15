@@ -71,18 +71,17 @@ pub fn check_startup_permission(prompt: &StartupPermissionPrompt) -> StartupPerm
     StartupPermissionStatus::PermissionFlowRequested(platform::request_permission_flow())
 }
 
-/// Presents the startup prompt and blocks until the user answers it.
+/// Presents the startup prompt and blocks the calling thread until the user answers it.
 ///
-/// The macOS implementation deliberately avoids `rfd`'s synchronous dialog. `MacPlatform::run`
-/// attaches its `platform` ivar to the process's shared `NSApplication`, and `objc-0.2.7` panics
-/// with "Ivar platform not found on class NSApplication" when that instance is not GPUI's
-/// `GPUIApplication` subclass. `rfd`'s parentless *synchronous* macOS message dialog instantiates
-/// the plain base class first, through the `PolicyManager`/`FocusManager` it creates for its
-/// `NSAlert` plumbing, so using it before the platform runs would break the very startup it is
-/// meant to precede. The parentless *asynchronous* implementation only builds a
-/// `CFUserNotification` on a worker thread and never touches `NSApplication`, so macOS waits for
-/// that future; this is the same `rfd` + `async_io` pattern the model directory picker already
-/// uses on this platform (ADR-0032).
+/// The caller is the dedicated startup-permission worker, never the main thread, so a pending
+/// dialog cannot delay any product window.
+///
+/// The macOS implementation deliberately avoids `rfd`'s synchronous dialog even though the GPUI
+/// platform already exists when the worker runs: the synchronous path would run its `NSAlert`
+/// modal machinery on the worker thread, while the parentless *asynchronous* implementation only
+/// builds a `CFUserNotification` and never touches `NSApplication`. This is the same `rfd` +
+/// `async_io` pattern the model directory picker already uses on this platform (ADR-0032); the
+/// module test below keeps this choice pinned.
 #[cfg(target_os = "macos")]
 mod platform {
     use crate::{
@@ -126,7 +125,8 @@ mod platform {
     /// Opens the Input Monitoring pane.
     ///
     /// `NSWorkspace` is not part of the shared-application machinery: it neither creates nor reads
-    /// `NSApplication`, so it stays safe before the platform runs.
+    /// `NSApplication`, and neither `sharedWorkspace` nor `openURL` is main-thread-only in the
+    /// `objc2-app-kit` bindings, so this stays safe on the startup-permission worker.
     fn open_input_monitoring_settings() -> bool {
         use objc2_app_kit::NSWorkspace;
         use objc2_foundation::{NSString, NSURL};
@@ -274,15 +274,16 @@ mod tests {
         ));
     }
 
-    /// Guards the startup crash a pre-GPUI synchronous `rfd` dialog caused.
+    /// Guards the AppKit-free dialog path on the startup-permission worker.
     ///
-    /// `MacPlatform::run` attaches its `platform` ivar to the process's shared `NSApplication`, and
-    /// `objc-0.2.7` panics with "Ivar platform not found on class NSApplication" when that instance
-    /// is the plain base class. `rfd`'s parentless *synchronous* macOS message dialog creates it
-    /// that way (through the `PolicyManager`/`FocusManager` it builds for `NSAlert`), so the
-    /// startup prompt has to keep using the asynchronous implementation. The behaviour itself
-    /// needs a human to answer a real system alert, which no automated test can do, so this
-    /// contract pins the implementation that keeps the process safe.
+    /// `rfd`'s parentless *synchronous* macOS message dialog builds its `NSAlert` plumbing
+    /// (`PolicyManager`/`FocusManager`) on the calling thread, and a historical pre-GPUI caller
+    /// even crashed the product by creating the plain shared `NSApplication` there
+    /// (`objc-0.2.7`: "Ivar platform not found on class NSApplication"). The worker must keep
+    /// using the asynchronous implementation, which only builds a `CFUserNotification` and never
+    /// touches `NSApplication`. The behaviour itself needs a human to answer a real system alert,
+    /// which no automated test can do, so this contract pins the implementation that keeps the
+    /// worker thread safe.
     #[cfg(target_os = "macos")]
     #[test]
     fn macos_prompt_keeps_the_appkit_free_dialog_path() {

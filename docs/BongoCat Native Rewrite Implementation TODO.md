@@ -923,6 +923,14 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     显示并阻塞等待用户选择（调用栈为
     `main → ensure_startup_permission → check_startup_permission → rfd → CFUserNotificationDisplayAlert`）；
     检查判定为已授权时产品可正常启动并在 6 秒后干净退出。
+  - 修正（2026-09-15）：上述「GPUI run loop 之前同步执行」的检查点会把权限提示变成启动的第一个
+    交互，阻塞模型窗口、菜单栏等正常窗口的创建。按 ADR-0032「非阻塞执行修正」改为：主线程解析
+    语言后，在 GPUI run loop 内（overlay、设置服务、系统菜单、update worker 均已启动后）spawn
+    专用 worker 线程 `bongocat-startup-permission` 执行检查与提示，线程刻意 detached（原生对话框
+    无远程取消通道，退出时 join 会把阻塞搬到 shutdown 路径；线程不共享任何产品状态，进程退出时
+    由 OS 回收）。提示内容、检查逻辑、只读查询与「用户点击后才 TCC request」的边界均不变。
+    macOS 侧 `objc2-app-kit 0.3.2` 绑定核实 `NSWorkspace::sharedWorkspace`/`openURL` 未标记
+    main-thread-only。非阻塞执行与「提示未应答不影响窗口」仍需实机人工验收。
   - 缺陷与修正（2026-09-14 实机验收）：首个实现用 `rfd` 的 macOS **同步**消息框，在真实打包产物上
     用户应答提示后进程 `EXC_CRASH (SIGABRT)`。用崩溃报告帧偏移 + `atos`（同源码 `-C strip=none`
     重新链接，`__text` 大小 `0xd901e4` 与产物一致）与重现得到同一结论：`MacPlatform::run` 的
