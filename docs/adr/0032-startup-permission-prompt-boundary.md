@@ -1,6 +1,6 @@
 # ADR-0032: Startup Permission Prompt Boundary
 
-状态：已接受（2026-09-14）；同日实机验收发现 macOS 侧必须使用不触碰 AppKit 的 `rfd` 路径，见「macOS 弹框实现修正」；2026-09-15 修正检查执行方式为专用 worker 线程上的非阻塞检查，见「非阻塞执行修正」
+状态：已接受（2026-09-14）；同日实机验收发现 macOS 侧必须使用不触碰 AppKit 的 `rfd` 路径，见「macOS 弹框实现修正」；2026-09-15 修正检查执行方式为专用 worker 线程上的非阻塞检查，见「非阻塞执行修正」；同日启用 Windows 自定义按钮文案，见「Windows 按钮文案修正」
 
 ## 背景
 
@@ -31,9 +31,11 @@ Settings 和 Diagnostics 里投影状态，用户必须自己发现问题。
   `CFUserNotification`。
 - macOS 自定义按钮文案会被保留（`OkCancelCustom` 映射为前两个按钮标题）；Windows **不会**保留，
   因为自定义标题来自 `TaskDialogIndirect`，而它只由 ComCtl32 v6 导出。`rfd` 自身文档要求同时
-  启用 `common-controls-v6` feature **并**在应用 manifest 中声明 ComCtl32 v6 依赖。本产品两者
-  都不具备（`crates/bongocat-app/windows/bongocat-app.rc` 不含该 dependency，依赖声明也没有该
-  feature），所以 Windows 只显示系统标准 OK/Cancel 两个按钮。
+  启用 `common-controls-v6` feature **并**在应用 manifest 中声明 ComCtl32 v6 依赖。原始调研
+  认为本产品两者都不具备（`crates/bongocat-app/windows/bongocat-app.rc` 不含该 dependency，
+  依赖声明也没有该 feature），所以当时 Windows 只显示系统标准 OK/Cancel 两个按钮；2026-09-15
+  复查发现 manifest 前提实际由 `gpui-pre` 静态库满足，只补了 feature，见「Windows 按钮文案
+  修正」。
 - Windows 提权状态以 `TokenElevation` 为准：`OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY)`
   + `GetTokenInformation(_, TokenElevation, ..)`。`windows 0.62.2` 的 `HANDLE` 未实现 `Drop`
   （只实现 `windows_core::Free`），必须显式 `CloseHandle`。用户按引导勾选「以管理员身份运行此
@@ -58,7 +60,7 @@ Settings 和 Diagnostics 里投影状态，用户必须自己发现问题。
   | 平台 | 只读查询 | 提示实现 | 「授权/去设置」动作 |
   | --- | --- | --- | --- |
   | macOS | `CGPreflightListenEventAccess` | `rfd::AsyncMessageDialog`（无父窗口，仅 `CFUserNotification`），调用线程用 `async_io::block_on` 等待 | `CGRequestListenEventAccess` + `NSWorkspace` 打开 `x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent` |
-  | Windows | `TokenElevation` | `rfd::MessageDialog`（`MessageBoxW`，调用线程） | `opener::reveal` 定位当前可执行文件，正文给出「属性 → 兼容性 → 勾选以管理员身份运行」路径 |
+  | Windows | `TokenElevation` | `rfd::MessageDialog`（`TaskDialogIndirect`，调用线程，见「Windows 按钮文案修正」） | `opener::reveal` 定位当前可执行文件，正文给出「属性 → 兼容性 → 勾选以管理员身份运行」路径 |
 
 - macOS 必须使用上表中的异步实现，不能用同一 crate 的同步实现：原因与证据见「macOS 弹框实现修正」。
   这是启动阶段的硬约束，不是风格选择；`bongocat-platform` 用一条 contract 测试固定它。
@@ -82,10 +84,10 @@ Settings 和 Diagnostics 里投影状态，用户必须自己发现问题。
 - 自动化 harness 运行不提示：除 `--run-seconds` 与帮助外的任何参数都表示这是一次 smoke/诊断运行
   （脚本与 CI 上无人应答原生弹框）。产品路径（`--run-seconds 0`，含登录启动项）与 Development
   `cargo run` 始终检查，与打包后的 Production 行为一致，不因构建环境而不同。
-- 与旧 Tauri 行为的已知差异：旧版在 Windows 非管理员时提示后不继续运行，本决策按产品要求改为
-  「继续运行」仍可进入应用，只有用户选择设置路径时才离开启动流程；macOS 的「请求 + 再次引导」意图
-  保留，但请求时机收紧到用户点击之后（ADR-0024）。旧版行为对照仍见
-  `docs/phase-0/behavior-inventory.md`，不在本 ADR 重复维护。
+- 与旧 Tauri 行为的已知差异：旧版在 Windows 非管理员时提示后不继续运行，本决策改为「继续运行」
+  仍可进入应用；2026-09-15 起收窄为「用户选择设置路径且流程成功时退出」，见「Windows 按钮文案
+  修正」。macOS 的「请求 + 再次引导」意图保留，但请求时机收紧到用户点击之后（ADR-0024）。旧版
+  行为对照仍见 `docs/phase-0/behavior-inventory.md`，不在本 ADR 重复维护。
 
 ## macOS 弹框实现修正（2026-09-14 实机验收）
 
@@ -123,7 +125,8 @@ Settings 和 Diagnostics 里投影状态，用户必须自己发现问题。
   `UserAlert::new(opt, None)` → 不构造 `PolicyManager`/`FocusManager` → 不触碰 AppKit），主线程用
   `async_io::block_on` 等待结果。这与 `directory_picker` 已在用的 `rfd` + `async_io` 用法一致，
   不引入新依赖、不改变提示出现时机（仍在任何产品 UI 之前）。
-- Windows 保持同步 `MessageDialog`：`MessageBoxW` 没有该约束，且在调用线程上语义最直观。
+- Windows 保持同步 `MessageDialog`：`MessageBoxW` 没有该约束，且在调用线程上语义最直观；改用
+  `TaskDialogIndirect` 后该路径也保持同步并在 worker 线程上运行，见「Windows 按钮文案修正」。
 - 该路径用无点击方式验证过：请求弹框但不等待答复时，产品正常启动并干净退出（exit 0），同时采样确认
   对话框线程真实阻塞在 `CFUserNotificationReceiveResponse`（即弹框确实已提交显示）；同一位置若换回
   同步实现，则必然复现上述 panic。
@@ -194,18 +197,60 @@ Settings 和 Diagnostics 里投影状态，用户必须自己发现问题。
   - macOS 12+：未授权启动出现原生提示；「打开系统设置」落点为「隐私与安全性 → 输入监控」且产品
     已在列表中；「稍后再说」后猫窗口正常出现且输入服务进入匿名 `PermissionDenied`；授权并重启后
     不再提示。
-  - Windows 10 1903+：普通权限启动出现原生提示且按钮为系统标准 OK/Cancel；「打开所在文件夹」
-    能定位可执行文件；勾选兼容性开关并重启后不再提示；提权启动时完全不提示。
+  - Windows 10 1903+：普通权限启动出现原生提示且按钮为「退出并前往设置」/「稍后设置」两个
+    自定义文案（Task Dialog）；「退出并前往设置」能定位可执行文件且产品随后走常规 shutdown
+    退出；勾选兼容性开关并重启后不再提示；提权启动时完全不提示。
 - Windows 实机矩阵与 macOS TCC 矩阵仍是发布门禁，cross-check 只能证明编译与边界。
+
+## Windows 按钮文案修正（2026-09-15）
+
+产品要求 Windows 提示的两个按钮显示自有文案（「退出并前往设置」/「稍后设置」），而原始决策下
+Windows 走 `MessageBoxW`、只显示系统标准 OK/Cancel。「替换边界」曾推断 manifest 前提不满足，实查
+后发现只差一半：
+
+- **manifest 前提本已满足**：`gpui-pre` 的静态库（`gpui.lib`）内嵌了一份完整应用 manifest
+  （`asInvoker`、Windows 10 `supportedOS`、PerMonitorV2 DPI、SegmentHeap、ComCtl32 v6 的
+  Common-Controls 依赖），链接期已进入 executable。原始调研只检查了产品自有
+  `bongocat-app.rc`，漏看了这条来源。
+- **feature 是唯一缺口**：为 `rfd` 启用 `common-controls-v6`（仅为 `windows-sys` 增加
+  `Win32_UI_Controls` gateway，不新增 crate）。
+
+曾尝试在 `bongocat-app.rc` 追加自有 manifest（`1 24`），与 gpui 的 manifest 资源
+（同 ID 1）冲突，链接报 `CVT1100 duplicate resource: MANIFEST, name 1`；已回退。不得再为
+manifest 另加来源。
+
+### 行为与证据
+
+- 启用后 Windows 提示走 `TaskDialogIndirect`，`OkCancelCustom` 的两个自定义文案成为真实按钮，
+  结果以 `MessageDialogResult::Custom(label)` 返回，既有映射逻辑无需修改。
+- 官方文档的 Remarks 未要求调用线程初始化 COM；`rfd` 自身的异步 Windows 实现也是在裸
+  `std::thread` 上调用 `TaskDialogIndirect`，与本项目专用 worker 线程同构，该路径经 Tauri
+  生态长期使用。
+- 失败语义保持保守：`TaskDialogIndirect` 绑定失败（激活上下文不可用）时 `rfd` 返回 `Cancel`，
+  映射逻辑把它视为「稍后设置」，绝不会被误判为同意；文案正文（已精简）不引用具体按钮名，
+  两种按钮形态下都成立。
+- 按钮顺序与默认焦点由 Task Dialog 决定：主按钮「退出并前往设置」在前且为默认按钮（与原
+  `MessageBoxW` 默认「确定」一致），Esc/关闭窗口等价于「稍后设置」。
+- Windows 的主按钮现在名副其实：权限流程成功（`reveal` 已定位可执行文件）后，worker 通过托盘
+  退出使用的同一个 `shutdown_requested` 标志请求退出，产品走常规 shutdown coordinator
+  （flush 配置、停 runtime、join 服务）后进程退出，不绕过任何清理步骤；兼容性开关需要重启
+  才生效，退出与按钮承诺一致。`reveal` 失败时保持运行（同「提示失败仅相当于选择稍后」的
+  既有语义），用户可以再次尝试。macOS 主按钮只打开系统设置，没有退出承诺，行为不变。
+- 验证：workspace 构建链接通过；链接产物 `bongocat_app.exe` 内含且仅含一份 RT_MANIFEST，
+  内容即 gpui 的 ComCtl32 v6 manifest。
 
 ## 替换边界
 
 替换点只有 `bongocat-platform` 的私有 `startup_permission` adapter 和 `bongocat-app` 的文案
 构造。升级 `rfd` 时必须复验：无父窗口消息框在两平台仍为原生实现、macOS 自定义按钮标题仍保留、
-macOS **异步**路径仍不创建共享 `NSApplication`（本约束的唯一已知可复现崩溃来源）、Windows 无
-`common-controls-v6` 时仍回退到 `MB_OKCANCEL`、以及无父窗口路径仍不需要应用已运行。
-若未来选择启用 `common-controls-v6`，必须同时提供声明 ComCtl32 v6 的应用 manifest，并同步修改
-Windows 提示正文（现在正文按标准 OK/Cancel 描述），不得只改 feature 让对话框静默失败。
+macOS **异步**路径仍不创建共享 `NSApplication`（本约束的唯一已知可复现崩溃来源）、Windows 在
+`common-controls-v6` + ComCtl32 v6 manifest 齐备时仍通过 `TaskDialogIndirect` 显示自定义按钮、
+manifest 缺失时仍回退到 `MB_OKCANCEL` 且结果被当作「稍后设置」、以及无父窗口路径仍不需要应用
+已运行。`common-controls-v6` feature 与 executable 内嵌的 ComCtl32 v6 manifest 必须同时存在，缺一会让
+Windows 对话框静默失败或按钮回退为系统标准文案。manifest 的唯一来源是 `gpui-pre` 静态库内嵌
+的 `gpui.lib` manifest：升级/更换 `gpui-pre` 时必须重新核实该 manifest 仍声明 Common-Controls
+v6（可用字节扫描 `Common-Controls` 复核），且不得在产品自有 `.rc` 里再嵌入 manifest
+（RT_MANIFEST ID 1 冲突，`CVT1100`）。
 升级 `opener` 时必须复验 `reveal` feature 与失败语义。adapter 之外不得依赖 `rfd` 类型。
 若升级 `gpui-kit`/`gpui-pre-macos`，必须复验 `GPUIApplication` 子类与 `platform` ivar 的约束是否
 仍然成立：一旦 GPUI 不再依赖该 ivar，本 ADR 的 macOS 同步/异步选择可以重新评估。

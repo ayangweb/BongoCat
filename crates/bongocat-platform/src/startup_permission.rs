@@ -215,11 +215,13 @@ mod platform {
 /// Maps an `rfd` result back to "the user asked for the platform permission flow".
 ///
 /// macOS returns the custom label, because the parentless dialog is a `CFUserNotification` whose
-/// buttons carry the requested titles. Windows returns the OS-standard pair instead: custom button
-/// titles come from `TaskDialogIndirect`, which only ComCtl32 v6 exports, and an application must
-/// both enable `rfd`'s `common-controls-v6` feature *and* declare the ComCtl32 v6 dependency in
-/// its manifest to get it. The product ships neither, so the Windows prompt body names the two
-/// standard buttons it will actually show and this mapping stays the same.
+/// buttons carry the requested titles. Windows returns the custom labels too since the workspace
+/// enables `rfd`'s `common-controls-v6` feature and the executable already carries an application
+/// manifest declaring the ComCtl32 v6 dependency (embedded by `gpui-pre`'s static library), so the
+/// prompt is a `TaskDialogIndirect` whose buttons carry the requested titles; closing the dialog
+/// reports `Cancel`. The standard-button mapping below stays as a safety net for a `MessageBoxW`
+/// fallback: if the task dialog cannot bind (activation context missing), `TaskDialogIndirect`
+/// fails and `rfd` reports `Cancel`, which must never be mistaken for consent.
 fn requested_permission_flow(result: &rfd::MessageDialogResult, primary: &str) -> bool {
     match result {
         rfd::MessageDialogResult::Custom(label) => label == primary,

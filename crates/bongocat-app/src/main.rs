@@ -1,6 +1,9 @@
 // Hide the console window in packaged (release) builds so the product runs as a
 // pure GUI application. Debug builds keep the console for developer logging.
-#![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
+#![cfg_attr(
+    all(not(debug_assertions), target_os = "windows"),
+    windows_subsystem = "windows"
+)]
 #![forbid(unsafe_code)]
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -2358,6 +2361,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // The check is a read-only platform query; only a missing capability shows the
         // prompt, and the prompt outcome is neither persisted nor logged.
         //
+        // Windows: the primary button promises "quit and go to settings". A successful
+        // permission flow (the executable's folder was revealed) raises the same shutdown
+        // flag the tray quit uses, so the product exits through the regular shutdown
+        // coordinator while the user flips the compatibility flag. A failed reveal keeps
+        // the product running, per the ADR rule that a failed flow only counts as
+        // "later". macOS has no quit promise: its primary button only opens System
+        // Settings.
+        //
         // Lifecycle: the thread is deliberately detached. It owns only the resolved
         // language and the prompt strings, shares no locks with the product, and always
         // terminates - either the user answers the OS-owned dialog (a satisfied
@@ -2366,10 +2377,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // native dialog, so joining on quit would block shutdown on an unanswered
         // prompt, which is exactly the blocking behaviour this design removes.
         if permission_check_enabled {
+            #[cfg(target_os = "windows")]
+            let permission_flow_quit_requested = Arc::clone(&shutdown_requested);
             let spawn_result = std::thread::Builder::new()
                 .name("bongocat-startup-permission".to_owned())
                 .spawn(move || {
-                    let _ = bongocat_app::ensure_startup_permission(permission_language);
+                    let status = bongocat_app::ensure_startup_permission(permission_language);
+                    if let bongocat_platform::StartupPermissionStatus::PermissionFlowRequested(
+                        true,
+                    ) = status
+                    {
+                        #[cfg(target_os = "windows")]
+                        permission_flow_quit_requested.store(true, Ordering::Release);
+                    }
                 });
             if let Err(error) = spawn_result {
                 record_failure(&run_failures, error.to_string());

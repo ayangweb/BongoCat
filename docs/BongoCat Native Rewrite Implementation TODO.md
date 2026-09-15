@@ -842,9 +842,11 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     `GetTokenInformation`）与 `rfd 0.17.2` 原生提示，未提权时给出「属性 → 兼容性 → 勾选以管理员
     身份运行此程序」路径，并用 `opener 0.8.5` 的 reveal 定位当前 executable。产品不原地提权、不写
     HKCU/HKLM、不注册 service，提示不写配置或 state，每次启动重新读取令牌状态。自动化覆盖文案键、
-    `rfd` 结果映射与运行选项解析；`rfd` 未启用 `common-controls-v6`（需同时声明 ComCtl32 v6
-    manifest），Windows 按钮为系统标准 OK/Cancel，提示正文按该实际按钮描述。按钮显示、reveal 动作、
-    勾选兼容性开关后不再提示、以及提权进程完全不提示仍需 Windows 10 1903+ 实机验收，因此总项保持
+    `rfd` 结果映射与运行选项解析；2026-09-15 起启用 `common-controls-v6`，Windows 按钮为
+    「退出并前往设置」/「稍后设置」两个自定义文案（Task Dialog；ComCtl32 v6 manifest 由
+    `gpui-pre` 静态库内嵌提供，缺失时回退 `MessageBoxW` 且结果按「稍后设置」处理）。reveal 成功后经
+    `shutdown_requested` 标志走常规 shutdown 退出，reveal 失败保持运行。按钮显示、reveal 动作、
+    点击后退出、勾选兼容性开关后不再提示、以及提权进程完全不提示仍需 Windows 10 1903+ 实机验收，因此总项保持
     未勾选。
 - [ ] RegisterHotKey 冲突返回错误并保持旧绑定。
 - [ ] issue #47 固定为发布回归项。
