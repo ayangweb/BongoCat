@@ -953,6 +953,7 @@ dependencies = [
  "opener",
  "raw-window-handle",
  "rfd",
+ "sys-locale",
  "tempfile",
  "tray-icon",
  "url",

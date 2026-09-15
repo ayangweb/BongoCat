@@ -26,7 +26,6 @@ use objc2_core_graphics::{
     CGEventTapPlacement, CGEventTapProxy, CGEventType, CGGetActiveDisplayList,
     CGGetDisplaysWithPoint, CGMouseButton,
 };
-use objc2_foundation::NSLocale;
 use objc2_game_controller::{GCController, GCControllerElement, GCExtendedGamepad};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -48,11 +47,9 @@ const WORKSPACE_SESSION_RESIGNED: u8 = 1 << 2;
 const WORKSPACE_SESSION_ACTIVE: u8 = 1 << 3;
 
 pub fn system_language() -> Language {
-    NSLocale::preferredLanguages()
-        .firstObject()
-        .map_or_else(Language::default, |locale| {
-            Language::from_system_locale(&locale.to_string())
-        })
+    sys_locale::get_locale().map_or_else(Language::default, |locale| {
+        Language::from_system_locale(&locale)
+    })
 }
 
 #[derive(Default)]
