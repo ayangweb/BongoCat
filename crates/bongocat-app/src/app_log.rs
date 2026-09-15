@@ -78,6 +78,7 @@ pub enum ApplicationLogCode {
     Panicked,
     RuntimeUnavailable,
     DiagnosticsExportFailed,
+    ModelSelectionFallback,
 }
 
 impl ApplicationLogCode {
@@ -91,6 +92,7 @@ impl ApplicationLogCode {
             Self::Panicked => "panicked",
             Self::RuntimeUnavailable => "runtime_unavailable",
             Self::DiagnosticsExportFailed => "diagnostics_export_failed",
+            Self::ModelSelectionFallback => "model_selection_fallback",
         }
     }
 }
@@ -150,6 +152,17 @@ impl ApplicationLogEvent {
             code: ApplicationLogCode::Panicked,
         }
     }
+
+    /// The configured selected model was missing or unusable at startup and
+    /// the application fell back to the standard preset model. The event is
+    /// anonymous: it never names the failed model or the underlying error.
+    pub const fn model_selection_fallback() -> Self {
+        Self {
+            component: ApplicationLogComponent::Model,
+            level: ApplicationLogLevel::Warn,
+            code: ApplicationLogCode::ModelSelectionFallback,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -162,6 +175,7 @@ pub struct ApplicationLogEventCounts {
     pub panicked: u64,
     pub runtime_unavailable: u64,
     pub diagnostics_export_failed: u64,
+    pub model_selection_fallback: u64,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -475,6 +489,9 @@ fn record_locked(state: &mut ApplicationLogState, day: u64, event: ApplicationLo
         ApplicationLogCode::RuntimeUnavailable => &mut state.diagnostics.events.runtime_unavailable,
         ApplicationLogCode::DiagnosticsExportFailed => {
             &mut state.diagnostics.events.diagnostics_export_failed
+        }
+        ApplicationLogCode::ModelSelectionFallback => {
+            &mut state.diagnostics.events.model_selection_fallback
         }
     };
     *count = count.saturating_add(1);

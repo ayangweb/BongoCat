@@ -3469,6 +3469,72 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       Windows job `101249657297` 从真实 `bongocat-app.exe` 提取到 product icon group，macOS job
       `101249657241` 验证 Production `.app` 中的图标字节、bundle metadata 与 strict codesign。
 
+73. [x] `P4-MODEL-LIBRARY-METADATA`：多模型导入去单模型限制并建立标题元数据与启动回退。
+    - 依赖：正式 `ModelStore` 多模型目录、v1 配置 store、settings service 导入/删除长操作契约。
+    - 退出条件：同一环境可连续导入多个自定义模型且互不覆盖；导入 ID 由 service 分配并与标题
+      解耦；元数据（id + title）进入 v1 配置并在删除时同步；启动恢复选中模型，缺失/损坏时回退
+      `standard` 预置并持久化修正；全部失败路径不阻塞启动。
+    - 当前契约（2026-09-15）：`ModelStore::allocate_unique_id` 以建议值 + `-2`/`-3` 后缀分配
+      唯一可移植 ID（非法建议回退 `custom-model`），`import` 底层 `AlreadyExists` 防覆盖语义保留
+      作为并发兜底；v1 配置新增 `model.installed_models`（`deny_unknown_fields`，id 唯一、title
+      非空 ≤128 字符），schema、default fixture、两个新 reject fixture 与 `native-config-contract.md`
+      已同步；导入成功以来源文件夹名为默认 title 登记、超长/缺失降级为模型 ID，元数据提交失败按
+      导入失败报告且已安装目录保留；`delete_model` 同步移除记录；`Application::restore_startup_model`
+      在启动时激活配置选择、缺失/损坏时记录匿名 `model_selection_fallback` 事件并持久化
+      `(Preset, standard)`，未配置选择默认激活 standard，operational 启动还清理指向不存在目录的
+      元数据记录；`SettingsModelEntry.title` 投影到 Models 页，无记录条目回退显示 ID。
+    - 验收证据（2026-09-15）：`bongocat-config` 48 测试（含两个新 reject fixture 的 manifest 契约）、
+      `bongocat-model` 46 测试（含 4 个 `allocate_unique_id` 测试：建议直用/占用后缀/非法回退/超长
+      截断）、`bongocat-app` 118 测试（新增导入分配唯一 ID 并登记标题、启动回退持久化 standard、
+      启动清理缺失目录元数据）与 `bongocat-ui` 112 测试全部通过；`cargo fmt --check` 与三组 clippy
+      `-D warnings` 门禁通过；`cargo check --locked --workspace --release` 通过。跨平台重启恢复的
+      实机 smoke（macOS/Windows 产品入口）仍属既有实机门禁，未在本任务运行。
+
+74. [x] `P4-CDI3-COMBINED-PARAMETERS`：修复第三方模型被误判「模型包无效」的回归，并让导入
+       建议显示所选目录名。
+    - 依赖：`P4-MODEL-LIBRARY-METADATA` 建立的 service 端唯一 ID 分配与标题元数据。
+    - 退出条件：官方 Cubism cdi3.json 字段 `CombinedParameters` 不再导致整个模型包被判无效；
+      含 `CombinedParameters` 的真实第三方模型（送葬人 · 标准模式）可完成导入；选择目录后
+      导入输入框显示实际目录名而非固定 `custom-model` 兜底。
+    - 根因（2026-09-15 用户报告）：`RawDisplayInfo` 使用 `deny_unknown_fields`，但未声明
+      Cubism 5 官方 cdi3 字段 `CombinedParameters`，第三方模型的 `DisplayInfo` sidecar 解析
+      失败并让整个包被拒（`model_resource_invalid`），与重构前（不解析 cdi3）行为形成回归。
+    - 当前契约（2026-09-15）：`RawDisplayInfo` 接受 `CombinedParameters: [[parameter id, ...], ...]`；
+      校验要求每个组合非空、id 非空白且引用已声明的 Parameter，否则按既有
+      `model_resource_invalid` 拒绝。目录选择的导入建议改为来源文件夹原名
+      （`suggested_model_title`），手输仍经 `sanitize_model_id_input` 过滤为可移植 ASCII；
+      最终存储 ID 由 service 端 `allocate_unique_id` 分配，标题元数据取来源文件夹名，显示
+      名称与存储身份彻底解耦。
+    - 验收证据（2026-09-15）：真实模型目录经产品校验器由 `model_resource_invalid
+      (demomodel.cdi3.json): unknown field CombinedParameters` 变为通过；model fixture 契约
+      新增 `combined-parameters-accepted`（accept）与 `combined-parameters-invalid`
+      （reject，`model_resource_invalid`）两用例；`bongocat-model` 46 测试、`bongocat-ui` 112
+      测试（建议显示目录名 4 断言）、`bongocat-app` 118 回归测试、fmt 与
+      model/ui clippy `-D warnings` 全部通过。
+
+75. [x] `P4-MODEL-ID-UUID`：已安装模型 ID 改为 UUID v4 生成，导入输入框改为可编辑标题。
+    - 依赖：`P4-MODEL-LIBRARY-METADATA`、`P4-CDI3-COMBINED-PARAMETERS` 建立的标题元数据与
+      service 端 ID 分配。
+    - 退出条件：导入不再从文件夹名或用户输入派生存储 ID；ID 由成熟库生成的 UUID v4 承担，
+      与 title 完全解耦；原「建议值 + 后缀」路径及其测试全部替换。
+    - 依赖评估（2026-09-15，§9）：`uuid 1.26.1`（精确 pin，`std + v4` features，v4 经
+      `getrandom 0.4.3` 取系统熵）。标准库无 RNG、手写跨平台熵读取不符合架构边界；`uuid`
+      是 Rust 生态事实标准（Apache-2.0 OR MIT、多维护者、rust-version 1.85 低于项目
+      1.97、纯 Rust 无平台 FFI），停止维护时可直接替换为 `rand` 生成 16 字节后手工格式化，
+      替换边界收敛在 `ModelStore::allocate_unique_id` 单函数内。
+    - 当前契约（2026-09-15）：`ModelStore::allocate_unique_id()` 在 store writer lock 内
+      生成 UUID v4 并检查目录占用（碰撞概率工程上为零，重试上限 16 次）；ID 仍是
+      `ModelId` 可移植 store key（36 字符连字符形式天然通过校验），并以 ID 作为安装目录名。
+      导入 command 的字段更名为 `title`：UI 输入框语义改为「模型名称」（默认来源文件夹名，
+      手输经 `sanitize_model_title_input` 过滤控制字符并截断 128 字符），service 以该值
+      作为元数据标题（空白降级为来源文件夹名再到 ID）。`FALLBACK_MODEL_ID` 常量删除；
+      `(origin, model_id)` 身份与预置/已安装同 ID 共存契约改由直接播种 store 目录的测试覆盖。
+    - 验收证据（2026-09-15）：`bongocat-model` 43 测试（allocate 测试改为 32 次 UUID 唯一性
+      与可移植性断言）、`bongocat-app` 118+21 测试（导入/删除/重启/环境隔离测试全部改为
+      从导入返回值捕获 UUID id，同 ID 共存场景用 `seed_installed_model` 直接播种）、
+      `bongocat-ui` 112 测试、`bongocat-config` 48 测试全部通过；fmt 与三组 clippy
+      `-D warnings` 通过；真机 `--run-seconds 6` 完整运行干净退出。
+
 ## 13. 待决策清单
 
 | 决策                                                          | 最迟完成              | 阻塞内容                           |

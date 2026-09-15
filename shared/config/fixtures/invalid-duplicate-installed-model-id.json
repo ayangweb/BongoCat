@@ -12,7 +12,6 @@
     "always_on_top": true,
     "scale_percent": 100,
     "opacity_percent": 100,
-    "corner_radius_percent": 25,
     "keep_inside_work_area": true
   },
   "input": {
@@ -22,7 +21,10 @@
   "model": {
     "selected_model_id": null,
     "selected_model_origin": null,
-    "installed_models": [],
+    "installed_models": [
+      { "id": "cat", "title": "第一只" },
+      { "id": "cat", "title": "重复 ID" }
+    ],
     "mirror": false,
     "mirror_pointer_tracking": false,
     "play_motion_audio": true,

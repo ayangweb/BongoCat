@@ -35,7 +35,7 @@ impl SettingsView {
     ) {
         match result {
             Ok(DirectoryPickerOutcome::Selected(source_root)) => {
-                self.model_import.id = suggested_model_id(&source_root);
+                self.model_import.title = suggested_model_title(&source_root);
                 self.model_import.source_root = Some(source_root);
                 self.model_import.state = ModelImportState::Ready;
             }
@@ -53,7 +53,7 @@ impl SettingsView {
             return;
         }
         let request = SettingsModelImportRequest {
-            id: self.model_import.id.clone(),
+            title: self.model_import.title.clone(),
             source_root: self
                 .model_import
                 .source_root

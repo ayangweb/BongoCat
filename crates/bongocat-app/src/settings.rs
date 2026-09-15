@@ -46,6 +46,7 @@ use bongocat_update::UpdateDiagnostics;
 use serde::Serialize;
 use std::fs;
 use std::{
+    collections::BTreeMap,
     fmt,
     path::PathBuf,
     sync::{
@@ -913,7 +914,7 @@ fn run_service(
                     .and_then(|()| {
                         application
                             .import_model_with_observer(
-                                request.id,
+                                request.title,
                                 request.source_root,
                                 move |update| {
                                     let _ =
@@ -1551,9 +1552,19 @@ const fn settings_startup_item_error(error: StartupItemError) -> SettingsStartup
 }
 
 fn settings_model_catalog(application: &Application) -> SettingsModelCatalog {
+    let titles = application
+        .config()
+        .model
+        .installed_models
+        .iter()
+        .map(|metadata| (metadata.id.as_str(), metadata.title.as_str()))
+        .collect::<BTreeMap<_, _>>();
     match application.model_catalog() {
         Ok(entries) => SettingsModelCatalog {
-            entries: entries.into_iter().map(settings_model_entry).collect(),
+            entries: entries
+                .into_iter()
+                .map(|entry| settings_model_entry(entry, &titles))
+                .collect(),
             error: None,
         },
         Err(_) => SettingsModelCatalog {
@@ -1589,12 +1600,21 @@ const fn model_origin(origin: SettingsModelOrigin) -> ModelOrigin {
     }
 }
 
-fn settings_model_entry(entry: ModelCatalogEntry) -> SettingsModelEntry {
+fn settings_model_entry(
+    entry: ModelCatalogEntry,
+    installed_titles: &BTreeMap<&str, &str>,
+) -> SettingsModelEntry {
     let id = entry.id().as_str().to_owned();
     let origin = match entry.origin() {
         ModelOrigin::Preset => SettingsModelOrigin::Preset,
         ModelOrigin::Installed => SettingsModelOrigin::Installed,
     };
+    // The title is user-editable metadata; entries without a record (or all
+    // preset models) display the stable id instead of inventing a name.
+    let title = installed_titles
+        .get(id.as_str())
+        .map(|title| (*title).to_owned())
+        .unwrap_or_else(|| id.clone());
     let availability = match entry {
         ModelCatalogEntry::Ready { snapshot, .. } => SettingsModelAvailability::Ready {
             texture_count: snapshot.texture_count,
@@ -1612,6 +1632,7 @@ fn settings_model_entry(entry: ModelCatalogEntry) -> SettingsModelEntry {
     };
     SettingsModelEntry {
         id,
+        title,
         origin,
         availability,
     }
@@ -1763,6 +1784,7 @@ struct DiagnosticsApplicationLogEvents {
     panicked: u64,
     runtime_unavailable: u64,
     diagnostics_export_failed: u64,
+    model_selection_fallback: u64,
 }
 
 #[derive(Serialize)]
@@ -1970,6 +1992,7 @@ fn diagnostics_document(
                 panicked: application_logs.events.panicked,
                 runtime_unavailable: application_logs.events.runtime_unavailable,
                 diagnostics_export_failed: application_logs.events.diagnostics_export_failed,
+                model_selection_fallback: application_logs.events.model_selection_fallback,
             },
         },
         core_logs: core_logs.map(|core_logs| DiagnosticsCoreLogs {
@@ -2561,6 +2584,7 @@ mod tests {
                 entries: vec![
                     SettingsModelEntry {
                         id: "private-model-name".to_owned(),
+                        title: "我的猫".to_owned(),
                         origin: SettingsModelOrigin::Installed,
                         availability: SettingsModelAvailability::Ready {
                             texture_count: 1,
@@ -2571,6 +2595,7 @@ mod tests {
                     },
                     SettingsModelEntry {
                         id: "broken-private-model".to_owned(),
+                        title: "broken-private-model".to_owned(),
                         origin: SettingsModelOrigin::Installed,
                         availability: SettingsModelAvailability::Invalid {
                             diagnostic: SettingsModelDiagnostic::ModelJsonInvalid,
@@ -3526,6 +3551,20 @@ mod tests {
             .nth(2)
             .expect("repository root")
             .join("shared/fixtures/model-fixtures/cases/非 ASCII 模型")
+    }
+
+    /// Seed the environment model store with a package stored under an exact
+    /// id. Imports always generate UUID ids, so a store entry whose id
+    /// collides with a preset id can only be produced through this direct
+    /// seeding; the merged catalog must still keep both identities.
+    fn seed_installed_model(models_root: &std::path::Path, id: &str) {
+        let destination = models_root.join(id);
+        std::fs::create_dir_all(&destination).expect("seeded model directory");
+        for entry in std::fs::read_dir(model_fixture()).expect("fixture entries") {
+            let entry = entry.expect("fixture entry");
+            std::fs::copy(entry.path(), destination.join(entry.file_name()))
+                .expect("seeded package file");
+        }
     }
 
     fn shortcut_fixture() -> SettingsShortcuts {
@@ -4530,7 +4569,7 @@ mod tests {
 
         let imported = client
             .import_model_blocking(SettingsModelImportRequest {
-                id: "custom-model".to_owned(),
+                title: "送葬人 · 标准模式".to_owned(),
                 source_root: model_fixture(),
             })
             .expect("import model");
@@ -4539,23 +4578,56 @@ mod tests {
             imported.active_model, None,
             "import must not implicitly activate the model"
         );
-        assert!(imported.model_catalog.entries.iter().any(|entry| {
-            entry.id == "custom-model"
-                && entry.origin == SettingsModelOrigin::Installed
-                && matches!(&entry.availability, SettingsModelAvailability::Ready { .. })
-        }));
-        assert!(models_root.join("custom-model/猫.model3.json").is_file());
+        let first = imported
+            .model_catalog
+            .entries
+            .iter()
+            .find(|entry| entry.origin == SettingsModelOrigin::Installed)
+            .expect("installed entry");
+        assert_eq!(first.title, "送葬人 · 标准模式");
+        assert!(matches!(
+            &first.availability,
+            SettingsModelAvailability::Ready { .. }
+        ));
+        assert!(
+            bongocat_model::ModelId::parse(&first.id).is_ok(),
+            "the store key must be a portable id"
+        );
+        assert!(models_root.join(&first.id).join("猫.model3.json").is_file());
 
-        let duplicate = client
+        // Importing the same source folder again stays independent: both ids
+        // are service-generated UUIDs, never derived from titles or names.
+        let second = client
             .import_model_blocking(SettingsModelImportRequest {
-                id: "custom-model".to_owned(),
+                title: "经典小键盘 · 标准模式".to_owned(),
                 source_root: model_fixture(),
             })
-            .expect_err("duplicate import");
-        assert_eq!(duplicate.code(), SettingsErrorCode::ModelAlreadyInstalled);
-        let unchanged = client.read_snapshot_blocking().expect("unchanged snapshot");
-        assert_eq!(unchanged.revision, imported.revision);
-        assert_eq!(unchanged.model_catalog, imported.model_catalog);
+            .expect("second import of the same source");
+        assert!(second.revision > imported.revision);
+        let installed: Vec<_> = second
+            .model_catalog
+            .entries
+            .iter()
+            .filter(|entry| entry.origin == SettingsModelOrigin::Installed)
+            .collect();
+        assert_eq!(
+            installed.len(),
+            2,
+            "both imports stay installed side by side"
+        );
+        assert_ne!(installed[0].id, installed[1].id, "ids are generated UUIDs");
+        assert!(
+            installed
+                .iter()
+                .any(|entry| entry.title == "经典小键盘 · 标准模式")
+        );
+        for entry in &installed {
+            assert!(matches!(
+                &entry.availability,
+                SettingsModelAvailability::Ready { .. }
+            ));
+            assert!(models_root.join(&entry.id).join("猫.model3.json").is_file());
+        }
 
         client.shutdown_blocking().expect("service shutdown");
         service.join().expect("service join");
@@ -4584,7 +4656,7 @@ mod tests {
 
         let operation = client
             .start_model_import_blocking(SettingsModelImportRequest {
-                id: "cancelled-model".to_owned(),
+                title: "cancelled-model".to_owned(),
                 source_root: source.path().to_owned(),
             })
             .expect("start import");
@@ -4716,19 +4788,15 @@ mod tests {
     fn service_deletes_only_unselected_installed_source_identity() {
         let base = tempdir().expect("temporary storage");
         let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        seed_installed_model(&layout.models, "standard");
         let application = Application::start_with_layout(layout).expect("application start");
         let service = ApplicationSettingsService::start(application).expect("service start");
         let client = service.client();
+        let current = client.read_snapshot_blocking().expect("initial snapshot");
 
-        let imported = client
-            .import_model_blocking(SettingsModelImportRequest {
-                id: "standard".to_owned(),
-                source_root: model_fixture(),
-            })
-            .expect("import installed duplicate");
         let selected = client
             .select_model_blocking(
-                imported.config_revision.expect("config revision"),
+                current.config_revision.expect("config revision"),
                 SettingsModelKey {
                     id: "standard".to_owned(),
                     origin: SettingsModelOrigin::Preset,
@@ -4741,7 +4809,7 @@ mod tests {
                 origin: SettingsModelOrigin::Installed,
             })
             .expect("delete installed duplicate");
-        assert!(selected.revision > imported.revision);
+        assert!(selected.revision > current.revision);
         assert!(deleted.revision > selected.revision);
         assert_eq!(
             deleted.active_model,
@@ -4788,15 +4856,23 @@ mod tests {
         let client = service.client();
         let imported = client
             .import_model_blocking(SettingsModelImportRequest {
-                id: "selected".to_owned(),
+                title: "selected".to_owned(),
                 source_root: model_fixture(),
             })
             .expect("import model");
+        let installed_id = imported
+            .model_catalog
+            .entries
+            .iter()
+            .find(|entry| entry.origin == SettingsModelOrigin::Installed)
+            .expect("installed entry")
+            .id
+            .clone();
         let selected = client
             .select_model_blocking(
                 imported.config_revision.expect("config revision"),
                 SettingsModelKey {
-                    id: "selected".to_owned(),
+                    id: installed_id.clone(),
                     origin: SettingsModelOrigin::Installed,
                 },
             )
@@ -4804,7 +4880,7 @@ mod tests {
 
         let error = client
             .delete_model_blocking(SettingsModelKey {
-                id: "selected".to_owned(),
+                id: installed_id.clone(),
                 origin: SettingsModelOrigin::Installed,
             })
             .expect_err("selected deletion");
@@ -4815,7 +4891,7 @@ mod tests {
         let unchanged = client.read_snapshot_blocking().expect("unchanged snapshot");
         assert_eq!(unchanged.revision, selected.revision);
         assert!(unchanged.model_catalog.entries.iter().any(|entry| {
-            entry.id == "selected" && entry.origin == SettingsModelOrigin::Installed
+            entry.id == installed_id && entry.origin == SettingsModelOrigin::Installed
         }));
 
         client.shutdown_blocking().expect("service shutdown");
@@ -4830,13 +4906,23 @@ mod tests {
         let service = ApplicationSettingsService::start(application).expect("service start");
         let client = service.client();
 
-        let invalid_id = client
+        // The import title is free-form display text and never becomes the
+        // store key: even a path-like title imports cleanly with a
+        // service-generated UUID id. Deletion still validates ids strictly.
+        let imported = client
             .import_model_blocking(SettingsModelImportRequest {
-                id: "../escape".to_owned(),
+                title: "../escape".to_owned(),
                 source_root: model_fixture(),
             })
-            .expect_err("invalid model id");
-        assert_eq!(invalid_id.code(), SettingsErrorCode::InvalidModelId);
+            .expect("import with a path-like title");
+        let imported_entry = imported
+            .model_catalog
+            .entries
+            .iter()
+            .find(|entry| entry.origin == SettingsModelOrigin::Installed)
+            .expect("installed entry");
+        assert_eq!(imported_entry.title, "../escape");
+        assert!(bongocat_model::ModelId::parse(&imported_entry.id).is_ok());
 
         let invalid_delete_id = client
             .delete_model_blocking(SettingsModelKey {
@@ -4854,7 +4940,7 @@ mod tests {
         .expect("invalid model marker");
         let invalid_package = client
             .import_model_blocking(SettingsModelImportRequest {
-                id: "invalid-package".to_owned(),
+                title: "invalid-package".to_owned(),
                 source_root: invalid_package_source.path().to_owned(),
             })
             .expect_err("invalid package");

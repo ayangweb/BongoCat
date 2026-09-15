@@ -299,7 +299,7 @@ pub(super) fn content(
                                     .min_w_0()
                                     .flex_1()
                                     .text_color(tokens.text)
-                                    .child(entry.id),
+                                    .child(entry.title.clone()),
                             )
                             .child(actions_row),
                     )
@@ -410,8 +410,8 @@ pub(super) fn content(
                             .child(
                                 div().min_w_0().flex_1().flex().flex_col().gap_1().child(
                                     div()
-                                        .id("model-id-input")
-                                        .key_context("SettingsModelId")
+                                        .id("model-title-input")
+                                        .key_context("SettingsModelTitle")
                                         .track_focus(&view.model_id_focus)
                                         .tab_index(20)
                                         .w_full()

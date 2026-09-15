@@ -10,6 +10,8 @@
     { "id": "out-of-range", "file": "invalid-out-of-range.json", "expected": "reject" },
     { "id": "gamepad-dead-zone", "file": "invalid-gamepad-dead-zone.json", "expected": "reject" },
     { "id": "unsupported-language", "file": "invalid-unsupported-language.json", "expected": "reject" },
-    { "id": "blank-binding", "file": "invalid-blank-binding.json", "expected": "reject" }
+    { "id": "blank-binding", "file": "invalid-blank-binding.json", "expected": "reject" },
+    { "id": "duplicate-installed-model-id", "file": "invalid-duplicate-installed-model-id.json", "expected": "reject" },
+    { "id": "blank-installed-model-title", "file": "invalid-blank-installed-model-title.json", "expected": "reject" }
   ]
 }

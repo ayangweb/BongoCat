@@ -310,7 +310,7 @@ enum ModelImportState {
 }
 
 struct ModelImportDraft {
-    id: String,
+    title: String,
     source_root: Option<PathBuf>,
     state: ModelImportState,
 }
@@ -372,7 +372,7 @@ enum ModelRowAction {
 impl Default for ModelImportDraft {
     fn default() -> Self {
         Self {
-            id: String::new(),
+            title: String::new(),
             source_root: None,
             state: ModelImportState::Empty,
         }
@@ -389,7 +389,7 @@ impl ModelImportDraft {
 
     fn can_import(&self) -> bool {
         self.source_root.is_some()
-            && !self.id.is_empty()
+            && !self.title.is_empty()
             && !self.is_running()
             && !self.is_picker_open()
     }
@@ -1160,13 +1160,13 @@ impl SettingsView {
     }
 }
 
-fn sanitize_model_id_input(value: &str) -> String {
-    value
-        .bytes()
-        .filter(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
-        .take(64)
-        .map(char::from)
-        .collect()
+/// The title is free-form display text: control characters are dropped and
+/// the value is trimmed and bounded to the metadata title limit. The store
+/// key never comes from this field.
+fn sanitize_model_title_input(value: &str) -> String {
+    let filtered: String = value.chars().filter(|c| !c.is_control()).collect();
+    let filtered = filtered.trim();
+    filtered.chars().take(128).collect()
 }
 
 #[derive(Clone)]
@@ -1390,47 +1390,18 @@ fn diagnostic_group(
         .child(div().border_b_1().border_color(tokens.border))
 }
 
-fn suggested_model_id(source_root: &Path) -> String {
-    let name = source_root
+/// The import suggestion shown to the user is the source folder's own name.
+/// The portable store id is allocated by the settings service at import time,
+/// so the displayed name never needs ASCII folding; hand-typed edits are
+/// still sanitized by `sanitize_model_title_input`.
+fn suggested_model_title(source_root: &Path) -> String {
+    source_root
         .file_name()
         .and_then(|name| name.to_str())
-        .unwrap_or_default();
-    let mut suggestion = String::with_capacity(name.len().min(64));
-    let mut separator_pending = false;
-    for byte in name.bytes() {
-        if suggestion.len() >= 64 {
-            break;
-        }
-        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.') {
-            if separator_pending && !suggestion.is_empty() && suggestion.len() < 64 {
-                suggestion.push('-');
-            }
-            separator_pending = false;
-            suggestion.push(char::from(byte.to_ascii_lowercase()));
-        } else {
-            separator_pending = true;
-        }
-    }
-    let trimmed = suggestion
-        .trim_matches(|character| matches!(character, '.' | '-' | '_'))
-        .to_owned();
-    if trimmed.is_empty() {
-        return "custom-model".to_owned();
-    }
-    let stem = trimmed.split('.').next().unwrap_or(trimmed.as_str());
-    let reserved = ["CON", "PRN", "AUX", "NUL"]
-        .iter()
-        .any(|value| stem.eq_ignore_ascii_case(value))
-        || (stem.len() == 4
-            && (stem[..3].eq_ignore_ascii_case("COM") || stem[..3].eq_ignore_ascii_case("LPT"))
-            && matches!(stem.as_bytes()[3], b'1'..=b'9'));
-    if reserved {
-        let maximum_tail = 64 - "model-".len();
-        let tail = trimmed[..trimmed.len().min(maximum_tail)].trim_end_matches('.');
-        format!("model-{tail}")
-    } else {
-        trimmed
-    }
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_owned)
+        .unwrap_or_else(|| "custom-model".to_owned())
 }
 
 fn model_row_actions(

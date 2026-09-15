@@ -42,6 +42,7 @@ shortcuts
 | `input`       | `gamepad_trigger_dead_zone`       | 扳机死区，`[0, 1)`                     |
 | `model`       | `selected_model_id`               | 当前模型稳定 ID，与 origin 成对为空    |
 | `model`       | `selected_model_origin`           | `preset` / `installed`，与 ID 成对为空 |
+| `model`       | `installed_models`                | 用户导入模型的元数据列表（id + title） |
 | `model`       | `mirror`                          | 水平镜像模型                           |
 | `model`       | `mirror_pointer_tracking`         | 镜像指针跟随方向                       |
 | `model`       | `play_motion_audio`               | 播放动作音效                           |
@@ -159,6 +160,10 @@ modifier、抑制重复 key down；binding replace 保留 pressed set 以避免 
 - 解析入口只接受完整 v1，并明确拒绝其他版本且不改写原文件。该入口为首次正式发布后的迁移机制
   保留边界；发布前不包含任何迁移实现，发布后再以实际发布的 v1 为唯一迁移基线。
 - `selected_model_id` 与 `selected_model_origin` 必须同时有值或同时为空。
+- `model.installed_models` 只记录用户导入模型的元数据：`id` 是稳定唯一、跨平台可移植的
+  存储 key（与安装目录名一致，标题修改不影响它），`title` 是可编辑的显示名称，首次导入
+  默认取来源文件夹名。列表内 `id` 不得重复；`title` 去除首尾空白后不得为空且不超过 128
+  个字符。预置模型是 product files，不出现在该列表中。
 
 ## Backup Retention
 

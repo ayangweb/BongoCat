@@ -2122,19 +2122,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let permission_language = application.effective_language();
     let permission_check_enabled = !run_options.automated_verification;
 
-    let (model_origin, model_id) = match (
-        application.config().model.selected_model_origin,
-        application.config().model.selected_model_id.clone(),
-    ) {
-        (Some(bongocat_config::SelectedModelOrigin::Preset), Some(id)) => {
-            (bongocat_model::ModelOrigin::Preset, id)
-        }
-        (Some(bongocat_config::SelectedModelOrigin::Installed), Some(id)) => {
-            (bongocat_model::ModelOrigin::Installed, id)
-        }
-        (None, None) => (bongocat_model::ModelOrigin::Preset, "standard".to_owned()),
-        _ => unreachable!("validated model selection is paired"),
-    };
     let overlay_options = OverlaySessionOptions {
         click_through: application.config().overlay.click_through,
         always_on_top: application.config().overlay.always_on_top,
@@ -2146,7 +2133,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             OverlayWindowBounds::new(placement.x, placement.y, placement.width, placement.height)
         }),
     };
-    application.prepare_model(model_origin, model_id)?;
+    // Startup model restore: activate the configured selection, or fall back
+    // to the always-available standard preset when it is missing or unusable;
+    // see `Application::restore_startup_model`.
+    application.restore_startup_model()?;
     let runtime_client = application.runtime_client();
     let (shortcut_sender, shortcut_receiver) = std::sync::mpsc::sync_channel(64);
     let (context_menu_sender, context_menu_receiver) =

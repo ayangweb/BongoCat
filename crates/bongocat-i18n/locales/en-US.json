@@ -93,7 +93,7 @@
       "description": "Import a model folder, validate package safety and choose the active model."
     },
     "identity": {
-      "id": "Model ID",
+      "title": "Model name",
       "source": {
         "preset": "Preset",
         "installed": "Installed"

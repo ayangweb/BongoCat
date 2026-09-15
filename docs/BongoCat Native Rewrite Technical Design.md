@@ -630,8 +630,11 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
 - Native Rewrite 配置从全新 schema 开始，不读取、不探测、不导入旧 Tauri/Pinia store。
 - JSON key 使用 `snake_case`，字段按当前领域语义命名，不提供旧字段 alias。
 - `next` 是全新的初始版本，当前完整配置统一使用 `schema_version: 1`。v1 直接包含成对的
-  `selected_model_origin`/`selected_model_id`，以及 `input.gamepad_stick_dead_zone` 和
-  `input.gamepad_trigger_dead_zone`；两个 dead-zone 都必须是 `[0, 1)` 的有限数。
+  `selected_model_origin`/`selected_model_id`、用户导入模型的元数据列表
+  `model.installed_models`（每条含稳定唯一 `id` 与可编辑 `title`），以及
+  `input.gamepad_stick_dead_zone` 和 `input.gamepad_trigger_dead_zone`；两个 dead-zone 都
+  必须是 `[0, 1)` 的有限数。元数据列表内 `id` 不得重复，`title` 去除首尾空白后不得为空；
+  预置模型是 product files，不出现在该列表中。
 - `next` 开发期间不读取或转换任何早期中间结构，不实现 schema migration、字段 alias 或版本兼容
   分支。新增字段直接更新当前 v1 的 Rust 类型、JSON Schema、默认值和 fixture。解析入口保留显式
   版本检查并拒绝非 v1 数据；首次正式发布后的后续版本再以该发布版为基线单独设计迁移链。
@@ -691,6 +694,21 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   复验和原子提交后签发的 `InstalledModel` 才能进入 runtime 激活 command。
 - 应用装配时打开并持有只读 `PresetModelCatalog`；设置与模型管理只消费预置目录和当前
   环境 `ModelStore` 的合并目录，不在 UI executor 临时扫描或解析模型文件。
+- 标准预置模型 `standard` 是始终可用的默认回退：目录身份 `(origin, model_id)` 在数据结构
+  上区分预置模型与用户导入的自定义模型，所有自定义模型不可用时仍能回退到 `standard`。
+- 应用启动时执行模型恢复：优先激活配置中成对记录的 `selected_model_origin`/
+  `selected_model_id`；该模型缺失或不可用时记录匿名回退事件、把 `standard` 预置持久化为
+  修正后的选择并激活它，恢复失败不阻塞启动。未配置选择时同样默认激活 `standard`。启动
+  还会在 operational 状态下清理指向已不存在模型目录的 `installed_models` 元数据记录；
+  目录存在但内容无效的记录保留，由合并目录的稳定诊断码呈现。启动期清理失败的记录留待
+  下次启动重试，不影响其他模型或应用整体。
+- 模型导入 command 携带用户可编辑的标题与文件选择目录；标题只是显示名称，不参与身份——
+  settings service worker 在导入前用随机 UUID v4（`uuid 1.26.1`，精确 pin）生成当前 store
+  内唯一的可移植存储 ID，因此重复导入同一目录不会覆盖已有模型，显示名称可以随时编辑，
+  用户也无需发明任何 ID。导入成功后把标题写入 `installed_models` 元数据：标题取导入
+  command 携带的用户输入（默认即来源文件夹名），空白输入依次降级为来源文件夹名和模型 ID，
+  超长标题截断到元数据上限；元数据提交失败按导入失败报告且已安装目录保留。删除模型在
+  store 删除成功后同步移除对应元数据记录。
 - 模型目录身份是 `(origin, model_id)`。同一 `model_id` 的 preset 与 installed 条目都保留，
   排序固定为 `model_id` 升序、同 ID 时 preset 在前；后续选择 command 必须携带 origin，
   不得以静默覆盖解决冲突。
@@ -699,8 +717,8 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   使用刚取得的 config revision 原子恢复旧选择。配置写入失败时不得发送激活 command。
 - 合并目录通过强类型 settings snapshot 投影来源、可用状态、资源计数和稳定诊断码；无效
   模型继续可见，但用户路径、底层 I/O 文本和模型内容不得进入 UI snapshot 或日志。
-- 模型导入 command 携带用户确认的 model ID 与文件选择目录，只由 settings service worker
-  执行复制和复验；成功后刷新合并目录，但不隐式激活模型或修改选择配置。失败只返回稳定、
+- 模型导入 command 只由 settings service worker 执行复制和复验；成功后刷新合并目录，但不
+  隐式激活模型或修改选择配置。失败只返回稳定、
   可操作且不含用户路径的导入错误码。settings snapshot revision 同时观察 runtime 变化并为
   catalog-only 变化递增，禁止返回内容已变但 revision 未变的快照。settings client 为每次导入
   分配跨 clone 单调递增的强类型 operation ID；operation 只公开 prepare/copy/validate/commit

@@ -357,6 +357,32 @@ impl ModelStore {
             .map_err(ModelStoreError::package)
     }
 
+    /// Generate the portable store key for a newly imported model. Identity
+    /// is a random UUID v4, deliberately independent of the user-visible
+    /// title and of the source folder name, so titles can be edited freely
+    /// and identical folder names never collide. The store is never
+    /// overwritten by this call; `import` still rejects a concurrently
+    /// occupied destination as the final guard.
+    pub fn allocate_unique_id(&self) -> Result<ModelId, ModelStoreError> {
+        let _lock = self.acquire_lock()?;
+        for _ in 0..16 {
+            let id = ModelId::parse(uuid::Uuid::new_v4().to_string())
+                .expect("hyphenated UUID v4 is a portable model id");
+            if self.is_id_vacant(&id) {
+                return Ok(id);
+            }
+        }
+        Err(ModelStoreError::new(
+            ModelStoreDiagnostic::IoError,
+            None,
+            "no unique model id was available",
+        ))
+    }
+
+    fn is_id_vacant(&self, id: &ModelId) -> bool {
+        !self.canonical_root.join(id.as_str()).exists()
+    }
+
     pub fn delete(&self, id: &ModelId) -> Result<(), ModelStoreError> {
         let _lock = self.acquire_lock()?;
         let source = self.installed_path(id)?;
@@ -1414,5 +1440,18 @@ mod tests {
             ModelStoreDiagnostic::SourceChanged.as_str(),
             "model_store_source_changed"
         );
+    }
+
+    #[test]
+    fn allocate_unique_id_generates_distinct_portable_ids() {
+        let data = tempdir().expect("data root");
+        let store = model_store(data.path());
+        let mut seen = std::collections::BTreeSet::new();
+        for _ in 0..32 {
+            let id = store.allocate_unique_id().expect("allocate");
+            assert_eq!(id.as_str().len(), 36, "hyphenated UUID v4 length");
+            assert!(ModelId::parse(id.as_str()).is_ok());
+            assert!(seen.insert(id.as_str().to_owned()), "ids must be unique");
+        }
     }
 }

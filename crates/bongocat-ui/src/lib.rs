@@ -575,7 +575,9 @@ pub struct SettingsModelKey {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SettingsModelImportRequest {
-    pub id: String,
+    /// User-chosen display name for the imported model; the store key is a
+    /// service-generated UUID and never derived from this value.
+    pub title: String,
     pub source_root: PathBuf,
 }
 
@@ -730,6 +732,9 @@ pub struct SettingsModelCatalog {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SettingsModelEntry {
     pub id: String,
+    /// User-facing display name. The app layer falls back to the stable id
+    /// when no editable title metadata exists (presets and legacy records).
+    pub title: String,
     pub origin: SettingsModelOrigin,
     pub availability: SettingsModelAvailability,
 }
@@ -2472,7 +2477,7 @@ mod tests {
     fn model_import_command_preserves_the_typed_request() {
         let (client, endpoint) = SettingsClient::bounded(1);
         let expected = SettingsModelImportRequest {
-            id: "custom-model".to_owned(),
+            title: "custom-model".to_owned(),
             source_root: PathBuf::from("selected/model"),
         };
         let worker = thread::spawn({
@@ -2556,7 +2561,7 @@ mod tests {
 
         let operation = client
             .start_model_import_blocking(SettingsModelImportRequest {
-                id: "custom-model".to_owned(),
+                title: "custom-model".to_owned(),
                 source_root: PathBuf::from("selected/model"),
             })
             .expect("start import");

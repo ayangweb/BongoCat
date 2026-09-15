@@ -6,10 +6,10 @@ compile_error!("storage-test-injection cannot be enabled for Production builds")
 use bongocat_audio::{MotionAudioService, MotionAudioShutdownError};
 use bongocat_config::{
     ApplicationState, BuildEnvironment, CompiledShortcuts, ConfigError, ConfigRecovery,
-    ConfigRevision, ConfigStore, InterruptedConfigRecovery, Language, ModelBehaviorBinding,
-    NativeConfig, OverlayWindowPlacement, PlatformStorageError, SelectedModelOrigin,
-    ShortcutBinding, ShortcutConfig, ShortcutTable, StateError, StateStore, StorageLayout,
-    Theme as ConfigTheme, WindowPlacement, platform_layout,
+    ConfigRevision, ConfigStore, InstalledModelMetadata, InterruptedConfigRecovery, Language,
+    ModelBehaviorBinding, NativeConfig, OverlayWindowPlacement, PlatformStorageError,
+    SelectedModelOrigin, ShortcutBinding, ShortcutConfig, ShortcutTable, StateError, StateStore,
+    StorageLayout, Theme as ConfigTheme, WindowPlacement, platform_layout,
 };
 use bongocat_model::{
     CommittedModel, InstalledModel, ModelCatalogEntry, ModelError, ModelId, ModelImportProgress,
@@ -436,7 +436,7 @@ impl Application {
             .model
             .selected_model_origin
             .map(model_origin_from_config);
-        let application = Self {
+        let mut application = Self {
             config_store,
             state_store,
             state,
@@ -468,6 +468,9 @@ impl Application {
         application
             .application_log
             .record(ApplicationLogEvent::started());
+        if application.is_operational() {
+            application.prune_missing_installed_metadata();
+        }
         Ok(application)
     }
 
@@ -1172,20 +1175,27 @@ impl Application {
         }
         self.model_store
             .delete(&id)
-            .map_err(ApplicationError::ModelStore)
+            .map_err(ApplicationError::ModelStore)?;
+        let mut installed_models = self.config.model.installed_models.clone();
+        let before = installed_models.len();
+        installed_models.retain(|metadata| metadata.id != id.as_str());
+        if installed_models.len() != before {
+            self.commit_installed_models(installed_models)?;
+        }
+        Ok(())
     }
 
     pub fn import_model(
         &mut self,
-        id: impl Into<String>,
+        title_hint: impl Into<String>,
         source_root: impl AsRef<Path>,
     ) -> Result<InstalledModel, ApplicationError> {
-        self.import_model_with_observer(id, source_root, |_| {}, || false)
+        self.import_model_with_observer(title_hint, source_root, |_| {}, || false)
     }
 
     pub fn import_model_with_observer<Observe, IsCancelled>(
         &mut self,
-        id: impl Into<String>,
+        title_hint: impl Into<String>,
         source_root: impl AsRef<Path>,
         observe: Observe,
         is_cancelled: IsCancelled,
@@ -1194,10 +1204,146 @@ impl Application {
         Observe: FnMut(ModelImportProgress),
         IsCancelled: FnMut() -> bool,
     {
-        let id = ModelId::parse(id)?;
-        self.model_store
+        let title_hint = title_hint.into();
+        let id = self
+            .model_store
+            .allocate_unique_id()
+            .map_err(ApplicationError::ModelStore)?;
+        let title = installed_model_title(&title_hint, source_root.as_ref(), id.as_str());
+        let installed = self
+            .model_store
             .import_with_observer(id, source_root, observe, is_cancelled)
-            .map_err(ApplicationError::ModelStore)
+            .map_err(ApplicationError::ModelStore)?;
+        let mut installed_models = self.config.model.installed_models.clone();
+        installed_models.push(InstalledModelMetadata {
+            id: installed.id().as_str().to_owned(),
+            title,
+        });
+        self.commit_installed_models(installed_models)?;
+        Ok(installed)
+    }
+
+    /// Persist the editable metadata list for user-installed models. The
+    /// typed validation in `bongocat-config` rejects duplicate ids, blank
+    /// titles, and over-long values before anything is written.
+    fn commit_installed_models(
+        &mut self,
+        installed_models: Vec<InstalledModelMetadata>,
+    ) -> Result<(), ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.model.installed_models = installed_models;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(())
+    }
+
+    /// Drop metadata records whose installed model directory no longer
+    /// exists. The record list stays consistent with the store even when a
+    /// model was removed by hand outside the application.
+    fn prune_missing_installed_metadata(&mut self) {
+        let Ok(entries) = self.model_store.list() else {
+            return;
+        };
+        let present = entries
+            .iter()
+            .map(|entry| entry.id().as_str().to_owned())
+            .collect::<std::collections::BTreeSet<_>>();
+        let kept = self
+            .config
+            .model
+            .installed_models
+            .iter()
+            .filter(|metadata| present.contains(&metadata.id))
+            .cloned()
+            .collect::<Vec<_>>();
+        if kept.len() == self.config.model.installed_models.len() {
+            return;
+        }
+        let _ = self.commit_installed_models(kept);
+    }
+
+    /// Restore the model selection at startup. The configured selection is
+    /// activated when it still loads; a selection whose resources were
+    /// deleted by hand or are otherwise unusable never blocks startup — the
+    /// application records an anonymous fallback event, persists the
+    /// always-available standard preset as the corrected selection, and
+    /// activates it. Without a configured selection the standard preset is
+    /// the default model. Metadata records for model directories that no
+    /// longer exist are pruned while configuration is operational.
+    ///
+    /// The runtime keeps at most one unresolved model activation: a pending
+    /// activation is only committed once the overlay frame source consumes
+    /// its first prepared frame. Startup therefore prepares exactly one
+    /// model and never issues a second activation while the first may still
+    /// be pending.
+    pub fn restore_startup_model(&mut self) -> Result<(), ApplicationError> {
+        if self.is_operational() {
+            self.prune_missing_installed_metadata();
+        }
+        let configured = self.config.model.selected_model_id.clone().zip(
+            self.config
+                .model
+                .selected_model_origin
+                .map(model_origin_from_config),
+        );
+        let Some((id, origin)) = configured else {
+            // No configured selection: the standard preset is the default model.
+            return self
+                .prepare_model(ModelOrigin::Preset, self.standard_preset_id().as_str())
+                .map(|_| ());
+        };
+        let configured_selection = match ModelId::parse(id) {
+            Ok(id) => (origin, id),
+            Err(_) => {
+                self.fallback_to_standard_preset();
+                return self
+                    .prepare_model(ModelOrigin::Preset, self.standard_preset_id().as_str())
+                    .map(|_| ());
+            }
+        };
+        let (origin, id) = configured_selection;
+        if self.prepare_model(origin, id.as_str()).is_ok() {
+            return Ok(());
+        }
+        self.fallback_to_standard_preset();
+        self.prepare_model(ModelOrigin::Preset, self.standard_preset_id().as_str())
+            .map(|_| ())
+    }
+
+    /// Record the anonymous fallback event and persist the standard preset
+    /// as the corrected selection. A failed commit keeps the stale selection
+    /// on disk; the next startup simply retries the fallback.
+    fn fallback_to_standard_preset(&mut self) {
+        self.application_log
+            .record(ApplicationLogEvent::model_selection_fallback());
+        self.persist_model_selection(ModelOrigin::Preset, &self.standard_preset_id());
+    }
+
+    fn standard_preset_id(&self) -> ModelId {
+        ModelId::parse(STANDARD_PRESET_MODEL_ID).expect("standard preset model id is valid")
+    }
+
+    /// Persist a corrected model selection without touching the runtime.
+    /// A failed commit keeps the stale selection on disk; the next startup
+    /// simply retries the fallback.
+    fn persist_model_selection(&mut self, origin: ModelOrigin, id: &ModelId) {
+        let mut next_config = self.config.clone();
+        next_config.model.selected_model_id = Some(id.as_str().to_owned());
+        next_config.model.selected_model_origin = Some(config_origin_from_model(origin));
+        let Ok(expected_revision) = self.ready_config_revision() else {
+            return;
+        };
+        let Ok(next_revision) = self
+            .config_store
+            .commit_if_revision(&next_config, expected_revision)
+        else {
+            return;
+        };
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
     }
 
     pub fn shutdown(self) -> Result<RuntimeSnapshot, ApplicationError> {
@@ -1256,6 +1402,49 @@ const fn model_origin_from_config(origin: SelectedModelOrigin) -> ModelOrigin {
         SelectedModelOrigin::Preset => ModelOrigin::Preset,
         SelectedModelOrigin::Installed => ModelOrigin::Installed,
     }
+}
+
+/// The preset model that is always available as the final startup fallback.
+const STANDARD_PRESET_MODEL_ID: &str = "standard";
+
+const MODEL_TITLE_MAXIMUM_CHARS: usize = 128;
+
+/// The editable display name for a newly imported model: the UI sends the
+/// chosen title (defaulting to the source folder name). A blank hint degrades
+/// to the source folder name and then to the stable model id. The id itself
+/// is a service-generated UUID and never derived from any of these names.
+fn installed_model_title(hint: &str, source_root: &Path, fallback: &str) -> String {
+    let hint = hint.trim();
+    if !hint.is_empty() {
+        let clipped = hint
+            .chars()
+            .take(MODEL_TITLE_MAXIMUM_CHARS)
+            .collect::<String>()
+            .trim_end()
+            .to_owned();
+        if !clipped.is_empty() {
+            return clipped;
+        }
+    }
+    installed_model_title_from_source(source_root, fallback)
+}
+
+/// The source-folder default title; over-long or missing folder names
+/// degrade to the model id.
+fn installed_model_title_from_source(source_root: &Path, fallback: &str) -> String {
+    source_root
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(|name| {
+            name.chars()
+                .take(MODEL_TITLE_MAXIMUM_CHARS)
+                .collect::<String>()
+        })
+        .map(|title| title.trim_end().to_owned())
+        .filter(|title| !title.is_empty())
+        .unwrap_or_else(|| fallback.to_owned())
 }
 
 fn overlay_settings_from_config(config: &NativeConfig) -> OverlaySettings {
@@ -1927,16 +2116,25 @@ mod tests {
         production_app
             .import_model("same-id", source)
             .expect("production import");
-        assert_eq!(
-            installed_catalog_ids(&development_app),
-            vec!["same-id".to_owned()]
+        let development_ids = installed_catalog_ids(&development_app);
+        let production_ids = installed_catalog_ids(&production_app);
+        assert_eq!(development_ids.len(), 1);
+        assert_eq!(production_ids.len(), 1);
+        // Store keys are UUIDs generated inside each environment, so the same
+        // import hint never produces the same identity across environments.
+        assert_ne!(development_ids, production_ids);
+        assert!(
+            development_root
+                .join("models")
+                .join(&development_ids[0])
+                .is_dir()
         );
-        assert_eq!(
-            installed_catalog_ids(&production_app),
-            vec!["same-id".to_owned()]
+        assert!(
+            production_root
+                .join("models")
+                .join(&production_ids[0])
+                .is_dir()
         );
-        assert!(development_root.join("models/same-id").is_dir());
-        assert!(production_root.join("models/same-id").is_dir());
         development_app.record_log(ApplicationLogEvent::shutdown_failed());
         production_app.record_log(ApplicationLogEvent::panicked());
         assert_ne!(development_logs, production_logs);
@@ -1984,15 +2182,21 @@ mod tests {
         let mut application = Application::start_with_layout(layout).expect("start application");
         let fixtures = repository_root().join("shared/fixtures/model-fixtures/cases");
 
-        application
+        let active_id = application
             .import_model("active", fixtures.join("非 ASCII 模型"))
-            .expect("import active model");
-        application
+            .expect("import active model")
+            .id()
+            .as_str()
+            .to_owned();
+        let broken_id = application
             .import_model("broken", fixtures.join("非 ASCII 模型"))
-            .expect("import model to corrupt");
+            .expect("import model to corrupt")
+            .id()
+            .as_str()
+            .to_owned();
 
         let active = application
-            .select_model(ModelOrigin::Installed, "active")
+            .select_model(ModelOrigin::Installed, active_id.as_str())
             .expect("activate valid model");
         let active_revision = active.revision;
         assert_eq!(
@@ -2002,14 +2206,14 @@ mod tests {
                 .expect("active model")
                 .id
                 .as_str(),
-            "active"
+            active_id
         );
 
-        std::fs::remove_file(models_root.join("broken/模型 数据.moc3"))
+        std::fs::remove_file(models_root.join(&broken_id).join("模型 数据.moc3"))
             .expect("corrupt installed model");
 
         let error = application
-            .select_model(ModelOrigin::Installed, "broken")
+            .select_model(ModelOrigin::Installed, broken_id.as_str())
             .expect_err("invalid model must be rejected");
         assert!(matches!(error, ApplicationError::ModelStore(_)));
         let preserved = application.runtime_client().snapshot();
@@ -2034,20 +2238,136 @@ mod tests {
             models_root
                 .canonicalize()
                 .expect("canonical models root")
-                .join("unicode")
+                .join(imported.id().as_str())
         );
         assert!(imported.root().join("猫.model3.json").is_file());
 
         let catalog = application.model_catalog().expect("model catalog");
         assert!(catalog.iter().any(|entry| {
-            entry.origin() == bongocat_model::ModelOrigin::Installed
-                && entry.id().as_str() == "unicode"
+            entry.origin() == bongocat_model::ModelOrigin::Installed && entry.id() == imported.id()
         }));
 
         application
-            .delete_model(ModelOrigin::Installed, "unicode")
+            .delete_model(ModelOrigin::Installed, imported.id().as_str())
             .expect("delete model");
         assert!(installed_catalog_ids(&application).is_empty());
+        application.shutdown().expect("clean shutdown");
+    }
+
+    #[test]
+    fn import_hints_become_titles_while_ids_stay_generated_uuids() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let mut application = Application::start_with_layout(layout).expect("start application");
+        let source = repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型");
+
+        let first = application
+            .import_model("我的猫", source.clone())
+            .expect("first import");
+        let second = application
+            .import_model("我的猫", source)
+            .expect("second import with the same hint");
+        assert_ne!(first.id(), second.id(), "ids are independent UUIDs");
+
+        let installed = installed_catalog_ids(&application);
+        assert_eq!(installed.len(), 2);
+        assert_eq!(
+            application.config().model.installed_models,
+            vec![
+                InstalledModelMetadata {
+                    id: first.id().as_str().to_owned(),
+                    title: "我的猫".to_owned(),
+                },
+                InstalledModelMetadata {
+                    id: second.id().as_str().to_owned(),
+                    title: "我的猫".to_owned(),
+                },
+            ]
+        );
+
+        application
+            .delete_model(ModelOrigin::Installed, first.id().as_str())
+            .expect("delete first model");
+        assert_eq!(
+            application.config().model.installed_models,
+            vec![InstalledModelMetadata {
+                id: second.id().as_str().to_owned(),
+                title: "我的猫".to_owned(),
+            }]
+        );
+        application.shutdown().expect("clean shutdown");
+    }
+
+    #[test]
+    fn missing_selected_model_falls_back_to_the_standard_preset_at_startup() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let store = ConfigStore::new(layout.clone()).expect("config store");
+        let mut configured = store.load_or_default().expect("default config").config;
+        configured.model.selected_model_id = Some("ghost".to_owned());
+        configured.model.selected_model_origin = Some(SelectedModelOrigin::Installed);
+        configured.model.installed_models = vec![InstalledModelMetadata {
+            id: "ghost".to_owned(),
+            title: "幽灵模型".to_owned(),
+        }];
+        store.commit(&configured).expect("seed selection");
+
+        let mut application =
+            Application::start_with_layout(layout.clone()).expect("start application");
+        // Without a render consumer the fallback cannot finish activation, but
+        // the corrected selection must already be persisted and logged.
+        assert!(matches!(
+            application.restore_startup_model(),
+            Err(ApplicationError::RenderConsumerUnavailable)
+        ));
+        assert_eq!(
+            application.config().model.selected_model_id,
+            Some("standard".to_owned())
+        );
+        assert_eq!(
+            application.config().model.selected_model_origin,
+            Some(SelectedModelOrigin::Preset)
+        );
+        assert_eq!(
+            application
+                .application_log_diagnostics()
+                .events
+                .model_selection_fallback,
+            1
+        );
+        let persisted = std::fs::read_to_string(&layout.config).expect("persisted config");
+        assert!(persisted.contains("\"standard\""));
+        application.shutdown().expect("clean shutdown");
+    }
+
+    #[test]
+    fn metadata_records_for_missing_model_directories_are_pruned_at_startup() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let store = ConfigStore::new(layout.clone()).expect("config store");
+        let mut configured = store.load_or_default().expect("default config").config;
+        configured.model.installed_models = vec![
+            InstalledModelMetadata {
+                id: "ghost".to_owned(),
+                title: "被手动删除".to_owned(),
+            },
+            InstalledModelMetadata {
+                id: "still-there".to_owned(),
+                title: "目录仍在".to_owned(),
+            },
+        ];
+        store.commit(&configured).expect("seed metadata");
+        std::fs::create_dir_all(layout.models.join("still-there"))
+            .expect("model directory present");
+
+        let application = Application::start_with_layout(layout).expect("start application");
+        assert_eq!(
+            application.config().model.installed_models,
+            vec![InstalledModelMetadata {
+                id: "still-there".to_owned(),
+                title: "目录仍在".to_owned(),
+            }]
+        );
         application.shutdown().expect("clean shutdown");
     }
 
@@ -2055,11 +2375,8 @@ mod tests {
     fn merged_model_catalog_retains_source_identity_for_duplicate_ids() {
         let base = tempdir().expect("temp directory");
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
-        let mut application = Application::start_with_layout(layout).expect("start application");
-        let source = repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型");
-        application
-            .import_model("standard", source)
-            .expect("install duplicate id");
+        seed_installed_model(&layout.models, "standard");
+        let application = Application::start_with_layout(layout).expect("start application");
 
         let catalog = application.model_catalog().expect("merged catalog");
         let duplicate = catalog
@@ -2092,12 +2409,9 @@ mod tests {
     fn installed_duplicate_selection_persists_its_origin_across_restart() {
         let base = tempdir().expect("temp directory");
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        seed_installed_model(&layout.models, "standard");
         let mut application =
             Application::start_with_layout(layout.clone()).expect("start application");
-        let source = repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型");
-        application
-            .import_model("standard", source)
-            .expect("install duplicate id");
         let selected = application
             .select_model(ModelOrigin::Installed, "standard")
             .expect("select installed duplicate");
@@ -2143,21 +2457,21 @@ mod tests {
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
         let mut application = Application::start_with_layout(layout).expect("start application");
         let source = repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型");
-        application
+        let active_id = application
             .import_model("active", source)
-            .expect("import model");
+            .expect("import model")
+            .id()
+            .as_str()
+            .to_owned();
         application
-            .select_model(ModelOrigin::Installed, "active")
+            .select_model(ModelOrigin::Installed, active_id.as_str())
             .expect("activate model");
 
         let error = application
-            .delete_model(ModelOrigin::Installed, "active")
+            .delete_model(ModelOrigin::Installed, active_id.as_str())
             .expect_err("selected model deletion must fail");
         assert!(matches!(error, ApplicationError::SelectedModelDeletion(_)));
-        assert_eq!(
-            installed_catalog_ids(&application),
-            vec!["active".to_owned()]
-        );
+        assert_eq!(installed_catalog_ids(&application), vec![active_id]);
         application.shutdown().expect("clean shutdown");
     }
 
@@ -2165,11 +2479,8 @@ mod tests {
     fn installed_duplicate_can_be_deleted_while_same_id_preset_is_selected() {
         let base = tempdir().expect("temp directory");
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        seed_installed_model(&layout.models, "standard");
         let mut application = Application::start_with_layout(layout).expect("start application");
-        let source = repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型");
-        application
-            .import_model("standard", source)
-            .expect("import duplicate");
         application
             .select_model(ModelOrigin::Preset, "standard")
             .expect("select preset");
@@ -2196,24 +2507,24 @@ mod tests {
         let source = repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型");
         let mut application =
             Application::start_with_layout(layout.clone()).expect("start application");
-        application
+        let selected_id = application
             .import_model("selected", source)
-            .expect("import model");
+            .expect("import model")
+            .id()
+            .as_str()
+            .to_owned();
         application
-            .select_model(ModelOrigin::Installed, "selected")
+            .select_model(ModelOrigin::Installed, selected_id.as_str())
             .expect("select installed model");
         application.shutdown().expect("clean shutdown");
 
         let mut restarted = Application::start_with_layout(layout).expect("restart application");
         assert!(restarted.runtime_client().snapshot().active_model.is_none());
         let error = restarted
-            .delete_model(ModelOrigin::Installed, "selected")
+            .delete_model(ModelOrigin::Installed, selected_id.as_str())
             .expect_err("configured model deletion must fail");
         assert!(matches!(error, ApplicationError::SelectedModelDeletion(_)));
-        assert_eq!(
-            installed_catalog_ids(&restarted),
-            vec!["selected".to_owned()]
-        );
+        assert_eq!(installed_catalog_ids(&restarted), vec![selected_id]);
         restarted.shutdown().expect("clean restart shutdown");
     }
 
@@ -2281,6 +2592,21 @@ mod tests {
         assert!(persisted.contains("\"selected_model_id\": null"));
         assert!(persisted.contains("\"selected_model_origin\": null"));
         application.shutdown().expect("clean shutdown");
+    }
+
+    /// Seed the environment model store with a package stored under an exact
+    /// id. Imports always generate UUID ids, so a store entry whose id collides
+    /// with a preset id can only be produced through direct seeding; the merged
+    /// catalog must still keep both identities.
+    fn seed_installed_model(models_root: &Path, id: &str) {
+        let destination = models_root.join(id);
+        std::fs::create_dir_all(&destination).expect("seeded model directory");
+        let fixture = repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型");
+        for entry in std::fs::read_dir(fixture).expect("fixture entries") {
+            let entry = entry.expect("fixture entry");
+            std::fs::copy(entry.path(), destination.join(entry.file_name()))
+                .expect("seeded package file");
+        }
     }
 
     fn installed_catalog_ids(application: &Application) -> Vec<String> {

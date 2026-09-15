@@ -21,6 +21,7 @@
   "model": {
     "selected_model_id": "standard",
     "selected_model_origin": null,
+    "installed_models": [],
     "mirror": false,
     "mirror_pointer_tracking": false,
     "play_motion_audio": true,

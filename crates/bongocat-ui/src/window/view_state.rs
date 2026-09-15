@@ -45,12 +45,12 @@ impl SettingsView {
             input.set_placeholder(
                 bongocat_i18n::text(
                     snapshot.resolved_language.catalog_locale(),
-                    "models.identity.id",
+                    "models.identity.title",
                 ),
                 window,
                 cx,
             );
-            input.set_value(&self.model_import.id, window, cx)
+            input.set_value(&self.model_import.title, window, cx)
         });
         self.language_select.update(cx, |select, cx| {
             select.set_items(
@@ -98,7 +98,7 @@ impl SettingsView {
         let model_id_input = cx.new(|cx| {
             InputState::new(window, cx).placeholder(bongocat_i18n::text(
                 SettingsLanguage::EnglishUnitedStates.catalog_locale(),
-                "models.identity.id",
+                "models.identity.title",
             ))
         });
         let language_select = cx.new(|cx| {
@@ -238,7 +238,7 @@ impl SettingsView {
                     return;
                 }
                 let value = input.read(cx).value();
-                view.model_import.id = sanitize_model_id_input(&value);
+                view.model_import.title = sanitize_model_title_input(&value);
                 view.model_import.reset_result_state();
                 cx.notify();
             }

@@ -18,6 +18,9 @@ pub use store::{
 };
 
 pub const INDEX_SCHEMA_VERSION: u32 = 1;
+/// Maximum byte length of a portable model id; also the directory name limit
+/// for installed models.
+pub const MODEL_ID_MAXIMUM_LENGTH: usize = 64;
 const MOTION_TIME_TOLERANCE: f32 = 0.000_001;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -53,7 +56,7 @@ impl ModelId {
     pub fn parse(value: impl Into<String>) -> Result<Self, ModelError> {
         let value = value.into();
         let valid = !value.is_empty()
-            && value.len() <= 64
+            && value.len() <= MODEL_ID_MAXIMUM_LENGTH
             && !value.starts_with('.')
             && !value.ends_with('.')
             && value
@@ -579,6 +582,10 @@ struct RawDisplayInfo {
     parameter_groups: Vec<RawDisplayInfoParameterGroup>,
     #[serde(rename = "Parts", default)]
     parts: Vec<RawDisplayInfoPart>,
+    /// Official Cubism cdi3.json field (Cubism 5 SDK): each inner array binds
+    /// parameters that are driven together, e.g. by one pointer axis.
+    #[serde(rename = "CombinedParameters", default)]
+    combined_parameters: Vec<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1476,6 +1483,17 @@ fn validate_display_info_resource(
         || display.parts.iter().any(|part| part.id.trim().is_empty())
     {
         return invalid_resource(reference, "cdi3 Parts contain blank or duplicate Id");
+    }
+    if display.combined_parameters.iter().any(|combination| {
+        combination.is_empty()
+            || combination
+                .iter()
+                .any(|id| id.trim().is_empty() || !parameters.contains(id.as_str()))
+    }) {
+        return invalid_resource(
+            reference,
+            "cdi3 CombinedParameters contain blank or undeclared parameter Ids",
+        );
     }
     Ok(())
 }

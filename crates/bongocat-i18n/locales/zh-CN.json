@@ -93,7 +93,7 @@
       "description": "导入模型文件夹、验证模型包安全性并选择当前使用的模型。"
     },
     "identity": {
-      "id": "模型标识",
+      "title": "模型名称",
       "source": {
         "preset": "预置",
         "installed": "已安装"

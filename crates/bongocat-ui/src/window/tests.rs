@@ -201,6 +201,7 @@ fn shortcut_capture_targets_have_independent_tab_stops() {
     let entries = vec![
         SettingsModelEntry {
             id: "standard".to_owned(),
+            title: "untitled".to_owned(),
             origin: SettingsModelOrigin::Preset,
             availability: SettingsModelAvailability::Ready {
                 texture_count: 1,
@@ -219,6 +220,7 @@ fn shortcut_capture_targets_have_independent_tab_stops() {
         },
         SettingsModelEntry {
             id: "keyboard".to_owned(),
+            title: "untitled".to_owned(),
             origin: SettingsModelOrigin::Preset,
             availability: SettingsModelAvailability::Ready {
                 texture_count: 1,
@@ -641,31 +643,31 @@ fn configuration_recovery_presentation_is_anonymous_and_complete() {
 }
 
 #[test]
-fn model_id_suggestions_are_portable_bounded_and_path_free() {
+fn model_import_suggestions_show_the_source_folder_name() {
     assert_eq!(
-        suggested_model_id(Path::new("/private/source/Keyboard Model 2")),
-        "keyboard-model-2"
+        suggested_model_title(Path::new("/private/source/Keyboard Model 2")),
+        "Keyboard Model 2"
     );
     assert_eq!(
-        suggested_model_id(Path::new("/private/source/模型目录")),
-        "custom-model"
+        suggested_model_title(Path::new("/private/source/送葬人 · 标准模式")),
+        "送葬人 · 标准模式"
     );
-    assert_eq!(
-        suggested_model_id(Path::new("/private/source/CON.custom")),
-        "model-con.custom"
-    );
-    let reserved = format!("CON.{}", "x".repeat(80));
-    let suggestion = suggested_model_id(Path::new(&reserved));
-    assert!(suggestion.starts_with("model-con."));
-    assert!(suggestion.len() <= 64);
-    assert!(!suggestion.ends_with('.'));
+    assert_eq!(suggested_model_title(Path::new("/")), "custom-model");
+    assert_eq!(suggested_model_title(Path::new("/src/name ")), "name");
 }
 
 #[test]
-fn model_id_input_accepts_only_the_product_ascii_shape() {
-    assert_eq!(sanitize_model_id_input("a-/b_c.d"), "a-b_c.d");
-    assert_eq!(sanitize_model_id_input("模型目录"), "");
-    assert_eq!(sanitize_model_id_input(&"x".repeat(80)).len(), 64);
+fn model_title_input_is_free_form_bounded_text() {
+    assert_eq!(
+        sanitize_model_title_input("  送葬人 · 标准模式 "),
+        "送葬人 · 标准模式"
+    );
+    assert_eq!(sanitize_model_title_input("a\tb"), "ab");
+    assert_eq!(sanitize_model_title_input("a\nb"), "ab");
+    assert_eq!(
+        sanitize_model_title_input(&"x".repeat(200)).chars().count(),
+        128
+    );
 }
 
 #[test]
@@ -750,7 +752,7 @@ fn cancellation_requested_while_starting_reaches_the_created_operation() {
     let (client, _endpoint) = SettingsClient::bounded(1);
     let (operation, _, _) = client.prepare_model_import().expect("prepared import");
     let draft = ModelImportDraft {
-        id: "custom-model".to_owned(),
+        title: "custom-model".to_owned(),
         source_root: Some(PathBuf::from("/private/source")),
         state: ModelImportState::Starting {
             cancel_requested: true,
@@ -792,7 +794,7 @@ fn model_catalog_and_import_statuses_cover_loading_empty_error_and_cancellation(
     );
 
     let cancelled = ModelImportDraft {
-        id: "custom-model".to_owned(),
+        title: "custom-model".to_owned(),
         source_root: None,
         state: ModelImportState::Cancelled,
     };
@@ -805,7 +807,7 @@ fn model_catalog_and_import_statuses_cover_loading_empty_error_and_cancellation(
 #[test]
 fn model_import_accessibility_nodes_project_actions_progress_and_catalog_states() {
     let ready = ModelImportDraft {
-        id: "custom-model".to_owned(),
+        title: "custom-model".to_owned(),
         source_root: Some(PathBuf::from("/private/source")),
         state: ModelImportState::Ready,
     };
@@ -865,6 +867,7 @@ fn model_import_accessibility_nodes_project_actions_progress_and_catalog_states(
     let available = SettingsModelCatalog {
         entries: vec![SettingsModelEntry {
             id: "preset".to_owned(),
+            title: "untitled".to_owned(),
             origin: SettingsModelOrigin::Preset,
             availability: SettingsModelAvailability::Ready {
                 texture_count: 1,
@@ -887,7 +890,7 @@ fn model_import_accessibility_nodes_project_actions_progress_and_catalog_states(
 #[test]
 fn picker_status_never_contains_the_selected_path() {
     let mut draft = ModelImportDraft {
-        id: "custom-model".to_owned(),
+        title: "custom-model".to_owned(),
         source_root: Some(PathBuf::from("/private/secret/model")),
         state: ModelImportState::PickerCancelled,
     };
@@ -906,7 +909,7 @@ fn picker_status_never_contains_the_selected_path() {
 #[test]
 fn picker_open_state_blocks_conflicting_import_actions() {
     let draft = ModelImportDraft {
-        id: "custom-model".to_owned(),
+        title: "custom-model".to_owned(),
         source_root: Some(PathBuf::from("/private/source")),
         state: ModelImportState::Picking,
     };
@@ -928,11 +931,13 @@ fn model_row_actions_preserve_origin_availability_and_active_identity() {
     };
     let preset = SettingsModelEntry {
         id: "duplicate".to_owned(),
+        title: "untitled".to_owned(),
         origin: SettingsModelOrigin::Preset,
         availability: ready.clone(),
     };
     let installed = SettingsModelEntry {
         id: "duplicate".to_owned(),
+        title: "untitled".to_owned(),
         origin: SettingsModelOrigin::Installed,
         availability: ready,
     };
@@ -1038,6 +1043,7 @@ fn active_model_behavior_preview_targets_exclude_inactive_and_invalid_models() {
     let entries = vec![
         SettingsModelEntry {
             id: "standard".to_owned(),
+            title: "untitled".to_owned(),
             origin: SettingsModelOrigin::Preset,
             availability: SettingsModelAvailability::Ready {
                 texture_count: 1,
@@ -1048,6 +1054,7 @@ fn active_model_behavior_preview_targets_exclude_inactive_and_invalid_models() {
         },
         SettingsModelEntry {
             id: "keyboard".to_owned(),
+            title: "untitled".to_owned(),
             origin: SettingsModelOrigin::Preset,
             availability: SettingsModelAvailability::Ready {
                 texture_count: 1,
@@ -1071,6 +1078,7 @@ fn active_model_behavior_preview_targets_exclude_inactive_and_invalid_models() {
 fn invalid_model_status_is_stable_and_path_free() {
     let entry = SettingsModelEntry {
         id: "private-model".to_owned(),
+        title: "untitled".to_owned(),
         origin: SettingsModelOrigin::Installed,
         availability: SettingsModelAvailability::Invalid {
             diagnostic: SettingsModelDiagnostic::ModelReferenceSymlinkEscape,
@@ -1086,6 +1094,7 @@ fn invalid_model_status_is_stable_and_path_free() {
 fn model_presentations_follow_the_resolved_language() {
     let ready = SettingsModelEntry {
         id: "preset-model".to_owned(),
+        title: "untitled".to_owned(),
         origin: SettingsModelOrigin::Preset,
         availability: SettingsModelAvailability::Ready {
             texture_count: 2,
@@ -1101,6 +1110,7 @@ fn model_presentations_follow_the_resolved_language() {
 
     let invalid = SettingsModelEntry {
         id: "installed-model".to_owned(),
+        title: "untitled".to_owned(),
         origin: SettingsModelOrigin::Installed,
         availability: SettingsModelAvailability::Invalid {
             diagnostic: SettingsModelDiagnostic::ModelTextureMissing,
