@@ -231,25 +231,31 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@just
+      - name: Compose the release notes from the changelogs
+        run: |
+          set -euo pipefail
+          # The notes are the release's own entry in the bilingual changelog, not a
+          # summary of the commits between two tags: CHANGELOG.md and CHANGELOG.zh-CN.md
+          # are the authored record of what changed, so the release page and the in-app
+          # update window both show that text. One file is fed to both, so the two
+          # cannot disagree. The lookup is keyed on the product version the build jobs
+          # already matched the tag against, which makes a tag whose changelog entry was
+          # never written fail here instead of publishing a release nobody can describe.
+          # The file lives outside `artifacts/` because that directory is uploaded
+          # verbatim as release assets.
+          #
+          # This runs before the artifacts are downloaded because it needs nothing but
+          # the checked-out changelogs: a missing entry is a mistake in the tag, and
+          # failing on it costs a few seconds instead of a full download.
+          just release-notes release-notes.md
+          test -s release-notes.md || {
+            echo "::error::the changelog produced empty release notes for $GITHUB_REF_NAME" >&2
+            exit 1
+          }
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
-      - name: Generate the release notes
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          # GitHub generates the changelog for a tag, and the same text is used twice:
-          # it becomes the release body and it is announced inside `latest.json`, so an
-          # installed copy can show what changed without a second request. Generating it
-          # here rather than letting `gh release create --generate-notes` do it keeps the
-          # manifest and the release page from disagreeing. The file lives outside
-          # `artifacts/` because that directory is uploaded verbatim as release assets.
-          gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
-            -f tag_name="$GITHUB_REF_NAME" -q .body > release-notes.md
-          test -s release-notes.md || {
-            echo "::error::GitHub returned empty release notes for $GITHUB_REF_NAME" >&2; exit 1; }
       - name: Merge the per-target manifest fragments
         run: |
           set -euo pipefail

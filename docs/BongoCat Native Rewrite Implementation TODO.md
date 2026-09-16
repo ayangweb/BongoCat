@@ -2014,6 +2014,27 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     同一份文本同时喂给 manifest 与 `gh release create --notes-file`，发布页与客户端不会分叉；
     不新增第二次网络请求、不新增依赖。`bongocat-packaging` 16 个测试与 `just release-manifest`
     端到端冒烟通过。**真实发布尚未跑过**，见 ADR-0035 待验证项 4。
+  - 补充（2026-09-16）：说明的**来源**改为双语 changelog，`gh api .../releases/generate-notes` 退役
+    ——它给的是两次 tag 之间的提交摘要，不是本项目对外发布的 changelog。`bongocat-packaging` 新增
+    第三种模式 `--extract-release-notes <file>`（`just release-notes <file>`）：按产品版本号从
+    `CHANGELOG.md` 与 `CHANGELOG.zh-CN.md` 各取出同一条目，按「英文正文 → `---` → 中文正文」合成
+    一份文件。条目按**二级 ATX 标题的首个 token** 匹配，`## <version> - <date>`、`## [<version>] - <date>`、
+    `## v<version>` 都认，`## <version>-rc.1` 与 `## <version>.1` 不认；正文里提到的版本、`###` 子标题、
+    围栏代码块里的标题都不参与匹配；CRLF 在拼接前归一；版本标题本身被丢掉（发布页已带版本，保留会
+    每种语言各印一次）。版本没有对应条目时命令**失败**，并在错误里列出该文件实际记录的版本——把
+    "版本号改一处漏一处"变成一行诊断，而不是发出一份描述别的版本的说明。
+    `release.yml` 改为在**下载产物之前**合成说明（缺条目是 tag 的错误，几秒内失败，不必先拉完整
+    产物），同一份文件继续同时喂给 `just release-manifest` 与 `gh release create --notes-file`，
+    发布页与更新窗口仍不会分叉；该步骤不再需要 `GH_TOKEN`。新增
+    `tools/tests/test_release_changelog_contract.py`（6 个用例）固定接线：说明由 changelog 合成且
+    不再走 `generate-notes`、发布正文与 manifest 读同一份文件、合成早于下载与合并、工具声明的两个
+    文件名确实存在、双语 changelog 记录相同且非空的版本列表。
+    `bongocat-packaging` 23 个测试通过（新增 7 个：条目匹配、标题写法、CRLF、缺失条目的错误信息、
+    模式互斥、双语合成格式、仓库双语文档一致性），`just release-notes` → `just release-manifest`
+    在本机端到端跑通
+    （`latest.json` 的 `notes` 为 6168 字节，含 `---` 分隔的两段语言，远低于 32 KiB 上限）。
+    真实 tag 发布仍未跑过。**待处理**：工作区版本是 `1.1.0` 而 changelog 记录的是 `2.0.0`，版本号
+    升到 `2.0.0` 之前 `just release-notes` 按设计失败（构建任务的 tag 校验同样会拦住 `v2.0.0`）。
 - [x] 更新内容的 Markdown 渲染。
   - 验收证据（2026-09-15）：`notes` 是随 manifest 走网络的**不可信输入**，新增
     `bongocat-ui::update_markdown`（依赖 `pulldown-cmark =0.13.4`，当时最新稳定版，

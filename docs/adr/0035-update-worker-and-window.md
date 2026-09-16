@@ -109,8 +109,22 @@ install(bytes)                           写入安装位置
 - **不新增依赖**：说明由发布工作流用 `gh api .../releases/generate-notes` 生成（工作流本来就用
   `--generate-notes`），只是改为先生成再同时喂给 manifest 和 `gh release create --notes-file`，
   因此发布页和客户端看到的说明不会分叉。
+  - 补充（2026-09-16）：**这一条已被取代**。`generate-notes` 给的是两次 tag 之间的提交摘要（PR 与
+    commit 列表），而本项目对外发布的是手写的双语 changelog；两者内容不同，让发布页显示提交摘要
+    就等于放弃了 `CHANGELOG.md` / `CHANGELOG.zh-CN.md` 作为事实来源。现在由
+    `bongocat-packaging --extract-release-notes <file>`（`just release-notes`）按产品版本号从两份
+    changelog 中各取同一条目，按「英文正文 → `---` → 中文正文」合成一份文件，同一份文件仍同时喂给
+    manifest 与 `gh release create --notes-file`。"一次请求拿到"与"发布页和客户端不分叉"两条结论不变，
+    变的只是说明从哪来：不再是 GitHub 的提交摘要，而是仓库里那份 changelog。该步骤因此也不再需要
+    `GH_TOKEN`，并且在下载发布产物之前执行。版本在 changelog 里没有条目时合成失败，发布中断——这是
+    有意的门禁，理由见下一条。
 - **有界**：manifest 每次检查都会被解析，说明因此上限 32 KiB，超长在字符边界截断并追加可见标记，
   而不是让发布失败。空文件按"没有说明"处理，不写空字符串。
+  - 补充（2026-09-16）：双语合成后上限仍按 32 KiB 判定，**截断发生在字符边界、不区分语言**：说明
+    长到需要截断时，被切掉的会是中文那一段。当前 changelog 的条目约 6 KiB，离上限很远，因此这是
+    一个已记录而未处理的边界，而不是一个已知会发生的行为。另需注意：更新窗口渲染的是整份说明，
+    不做语言过滤，所以中文用户会先看到英文段、再看到中文段——这与本项目发布页一贯的排版一致，
+    是刻意保留的，不是渲染缺陷。
 - `pub_date` 仍然不写：库把它当可选，新鲜度由版本决定，而打包工具没有日期格式化能力。
 
 ### 8. 传输有界
@@ -202,7 +216,10 @@ check → download → verify → install → 按 §5.3 顺序 shutdown → exec
 3. **macOS 自动重启未实测**：`exec` 新构建这条路径需要一次真实安装才能验证；`exec` 失败时进程
    以退出码 1 结束并写 stderr，用户需要手动启动。
 4. **发布说明注入未在真实发布中跑过**：`gh api .../generate-notes` 的形状、`--notes-file` 与
-   manifest `notes` 的一致性只有单元测试与工作流静态检查，没有真实 tag 发布证据。
+   manifest `notes` 的一致性只有单元测试与工作流静态检查，没有真实 tag 发布证据。说明来源已于
+   2026-09-16 改为 changelog 提取（见 §7 补充），本项仍未消除：`just release-notes` →
+   `just release-manifest` 已在本机端到端跑通，但没有真实 tag 发布证据，也没有在 GitHub 发布页上
+   验证过合成后的 Markdown 渲染。
 5. **manifest 仍无防降级保护**：说明字段不改变这一点，能替换 manifest 的攻击者仍可把客户端指向
    旧但签名有效的载荷。
 6. **自动检查的 24 小时间隔没有持久化**：进程重启会重新计时，因此"每天检查一次"在频繁重启的
@@ -266,3 +283,25 @@ check → download → verify → install → 按 §5.3 顺序 shutdown → exec
   （当时 crates.io 最新稳定版，MIT，`default-features = false` 去掉 `getopts` CLI 解析与 `html`
   渲染器——说明渲染为 GPUI 元素，不产出 markup）。纯解析器、无 I/O、无 `unsafe`，停止维护时的
   替换边界是自写一个受限于标题/列表/强调/链接/代码块的极简解析器；GitHub 风格表格刻意不支持。
+
+已完成（2026-09-16，说明来源改为 changelog 提取，本机 macOS / aarch64）：
+
+- `bongocat-packaging`：23 个测试通过（原 16 个 + 新增 7 个）。新增覆盖：
+  条目按二级标题匹配（正文提及的版本、`###` 子标题、围栏代码块里的标题都不参与）、两种标题写法
+  与"版本必须是完整 token"（`<version>-rc.1`、`<version>.1`、`11.1.0`、`##1.1.0` 都不匹配）、
+  CRLF 归一、缺失条目的错误信息含该文件实际记录的版本、`--extract-release-notes` 与构建/合并选项
+  互斥、仓库两份 changelog 记录的版本列表一致且非空。
+- 端到端：`just release-notes` → `just release-manifest` 用三份 fragment 跑通，产出的 `latest.json`
+  的 `notes` 为 6168 字节，结构为「英文条目 → `---` → 中文条目」，不含版本标题，远低于 32 KiB 上限。
+  另单独验证了门禁：版本在 changelog 里没有条目时命令以退出码 1 失败，stderr 为
+  `CHANGELOG.md has no release notes for <version>; it documents <列表>`。
+- `tools/tests/test_release_changelog_contract.py` 新增 6 个用例；`python3 -m unittest discover
+  -s tools/tests` 共 63 项。
+- **既有失败（非本次引入）**：`test_product_version_contract.py` 的
+  `test_runtime_and_ui_use_the_compiled_product_version` 在 `next` 上失败——该测试要求当前工作区版本
+  字面量不出现在指定源文件里，而 `crates/bongocat-update/src/runtime.rs` 的测试夹具 URL 里有三处
+  `v1.1.0`（1144、1149、1172 行，`HEAD` 版本即如此，本次未改动该文件）。夹具用哪个版本号不影响它
+  要固定的形状，但修与不修属于该测试自己的取舍，未在本次改动范围内。本次新增的测试数据因此一律
+  使用合成版本号（`9.9.9` 一类），避免新写死一个"当前版本"。
+- **未验证**：合成后的说明在 GitHub 发布页上的 Markdown 渲染没有实机证据；真实 tag 发布仍未跑过
+  （见残余风险 4）。

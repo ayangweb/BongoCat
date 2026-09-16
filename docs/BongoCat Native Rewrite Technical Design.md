@@ -793,6 +793,12 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   manifest——manifest 的形状与资产名由一处拥有，工作流只调用工具。发布漏掉某个平台键时，
   runtime 命中 `update_no_matching_asset`。`notes` 是发布说明，由 `--release-notes <file>` 写入，
   上限 32 KiB，超长在字符边界截断并追加可见标记；它随同一次请求到达客户端，不需要第二次网络调用。
+  说明的内容不是两次 tag 之间的提交摘要，而是该版本在双语 changelog 里的条目：发布工作流先用
+  `--extract-release-notes <file>` 从 `CHANGELOG.md` 与 `CHANGELOG.zh-CN.md` 各取出产品版本对应的
+  同一条目，按「英文正文 → `---` → 中文正文」合成一份文件，再把这一份同时喂给 manifest 与
+  `gh release create --notes-file`，所以发布页和更新窗口渲染的是同一段文本。条目按 Markdown 二级
+  标题匹配而不是按版本号搜索文本，因此正文里提到的版本、`###` 子标题和围栏代码块里的示例都不会
+  被误当条目；版本在 changelog 里没有条目时提取直接失败，而不是发出一份描述别的版本的说明。
 
 - 更新载荷：macOS 为已完成的 `.app` 打包成的 `BongoCat-<version>-<triple>.app.tar.gz`
   （归档根必须是 `BongoCat.app/`，库会丢弃根条目再装到 bundle 路径）；Windows 复用已发布的

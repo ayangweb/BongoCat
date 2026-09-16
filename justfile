@@ -70,3 +70,14 @@ manifest directory *fragments:
 # without notes.
 release-manifest directory notes *fragments:
     cargo run --locked -p bongocat-packaging -- --merge-manifests {{directory}} --release-notes {{notes}} {{fragments}}
+
+# Compose this version's release notes from CHANGELOG.md and CHANGELOG.zh-CN.md into
+# <file>. The release pipeline feeds that one file to both `release-manifest` and the
+# GitHub release body, so the release page and the update window cannot disagree:
+#
+#   just release-notes release-notes.md
+#
+# The lookup is keyed on the product version `just version` prints, so it fails when the
+# version was bumped without a matching changelog entry.
+release-notes file:
+    cargo run --locked -p bongocat-packaging -- --extract-release-notes {{file}}

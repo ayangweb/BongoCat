@@ -310,6 +310,8 @@ enum Invocation {
         /// The release's changelog, read from a file, announced to the updater.
         release_notes: Option<PathBuf>,
     },
+    /// Compose this version's release notes from the bilingual changelog.
+    ExtractReleaseNotes(PathBuf),
     /// Generate the Minisign key pair that signs update payloads.
     GenerateSigningKey(PathBuf),
 }
@@ -339,6 +341,10 @@ options:
   --release-notes <file>   read the release changelog from <file> and announce it in
                            the merged manifest, so the update window can show what
                            changed; only valid with --merge-manifests
+  --extract-release-notes <file>
+                           compose this version's release notes from CHANGELOG.md and
+                           CHANGELOG.zh-CN.md and write them to <file>, instead of
+                           packaging; takes no other option
   --generate-signing-key <file>
                            generate a new Minisign key pair for signing update
                            payloads, written to <file> and <file>.pub, instead of
@@ -356,6 +362,7 @@ environment:
         let mut formats = None;
         let mut merge_directory: Option<PathBuf> = None;
         let mut release_notes: Option<PathBuf> = None;
+        let mut extract_notes: Option<PathBuf> = None;
         let mut key_output: Option<PathBuf> = None;
         let mut fragments = Vec::new();
 
@@ -387,6 +394,10 @@ environment:
                 "--release-notes" => {
                     let file = next_value(&mut arguments, "--release-notes")?;
                     release_notes = Some(PathBuf::from(file));
+                }
+                "--extract-release-notes" => {
+                    let file = next_value(&mut arguments, "--extract-release-notes")?;
+                    extract_notes = Some(PathBuf::from(file));
                 }
                 "--generate-signing-key" => {
                     let file = next_value(&mut arguments, "--generate-signing-key")?;
@@ -426,6 +437,20 @@ environment:
                 );
             }
             return Ok(Self::GenerateSigningKey(file));
+        }
+
+        // Composing the notes writes a file and builds nothing, so every option that
+        // only affects a build or a merge would be silently ignored if it were allowed
+        // alongside. This mode produces the input `--release-notes` consumes, and the
+        // pipeline runs the two as separate steps.
+        if let Some(file) = extract_notes {
+            if build_option || merge_directory.is_some() || release_notes.is_some() {
+                return failure(
+                    "--extract-release-notes cannot be combined with --target, --environment, \
+                     --formats, --merge-manifests or --release-notes",
+                );
+            }
+            return Ok(Self::ExtractReleaseNotes(file));
         }
 
         if release_notes.is_some() && merge_directory.is_none() {
@@ -502,6 +527,8 @@ fn execute(invocation: Invocation) -> Result<(&'static str, Vec<PathBuf>)> {
             release_notes,
         } => merge_manifest(&directory, &fragments, release_notes.as_deref())
             .map(|artifacts| ("Release manifest merged successfully.", artifacts)),
+        Invocation::ExtractReleaseNotes(output) => extract_release_notes(&output)
+            .map(|artifacts| ("Release notes composed successfully.", artifacts)),
         Invocation::GenerateSigningKey(path) => generate_signing_key(&path)
             .map(|artifacts| ("Signing key generated successfully.", artifacts)),
     }
@@ -941,6 +968,25 @@ struct ReleaseManifest {
     platforms: BTreeMap<String, ManifestEntry>,
 }
 
+/// The authored changelogs this version's release notes are read from.
+///
+/// The notes are not derived from commit history: the repository keeps the bilingual
+/// changelog as the record of what changed and why, and the release page, the in-app
+/// update window and the shared manifest all show that same text. Both languages are
+/// required, so a release whose entry was written in one file only fails here instead of
+/// publishing a half-translated changelog.
+const RELEASE_CHANGELOG_NAME: &str = "CHANGELOG.md";
+const RELEASE_CHANGELOG_ZH_NAME: &str = "CHANGELOG.zh-CN.md";
+
+/// What separates the two languages inside the composed notes.
+///
+/// A Markdown thematic break: the two halves describe one release twice, and a rule is
+/// how that has always been spelled on this project's release pages. Both consumers draw
+/// it — GitHub as a horizontal rule, and `bongocat-ui::update_markdown` as its own rule
+/// block, which is why the separator is a plain `---` and not a heading neither changelog
+/// has.
+const RELEASE_NOTES_LANGUAGE_SEPARATOR: &str = "---";
+
 /// Upper bound on the announced changelog.
 ///
 /// The manifest is fetched and parsed on every check, so it must not grow with the
@@ -978,6 +1024,204 @@ fn truncate_release_notes(notes: &str) -> String {
         boundary -= 1;
     }
     format!("{}{RELEASE_NOTES_TRUNCATION_MARKER}", &notes[..boundary])
+}
+
+/// Compose this version's release notes from the bilingual changelog.
+///
+/// The release notes are the release's own changelog entry rather than a summary of the
+/// commits between two tags. `CHANGELOG.md` and `CHANGELOG.zh-CN.md` are the authored
+/// record of what changed, so they are the source, and the two languages are joined by a
+/// thematic break into the one document the release page and the update window both show.
+///
+/// The version is this tool's own — the value `--print-version` reports and the one the
+/// release pipeline has already matched the tag against — so a tag whose changelog entry
+/// was never written fails the release here instead of publishing notes that describe
+/// some other version.
+fn extract_release_notes(output: &Path) -> Result<Vec<PathBuf>> {
+    let workspace = workspace_root()?;
+    let version = env!("CARGO_PKG_VERSION");
+
+    let english = read_changelog_section(&workspace.join(RELEASE_CHANGELOG_NAME), version)?;
+    let chinese = read_changelog_section(&workspace.join(RELEASE_CHANGELOG_ZH_NAME), version)?;
+
+    fs::write(output, compose_release_notes(&english, &chinese))?;
+    Ok(vec![output.to_path_buf()])
+}
+
+/// The published release-notes document, from the two languages' entries.
+///
+/// Split out from the file handling so the published shape — which is a contract with
+/// both the release page and the update window — is testable without a workspace.
+fn compose_release_notes(english: &str, chinese: &str) -> String {
+    format!("{english}\n\n{RELEASE_NOTES_LANGUAGE_SEPARATOR}\n\n{chinese}\n")
+}
+
+/// Read one changelog's entry for `version`.
+///
+/// A missing entry stops the release: publishing notes for a version the changelog never
+/// documented would announce a changelog that does not exist. The error names the
+/// versions the file does document, because the usual cause is a version that was bumped
+/// in one place and not the other.
+fn read_changelog_section(path: &Path, version: &str) -> Result<String> {
+    let text = fs::read_to_string(path).map_err(|error| {
+        Box::new(Failure(format!(
+            "could not read the changelog {}: {error}",
+            path.display()
+        ))) as Box<dyn std::error::Error>
+    })?;
+
+    changelog_section(&text, version).ok_or_else(|| {
+        let documented = documented_versions(&text);
+        let documented = if documented.is_empty() {
+            "no versions".to_owned()
+        } else {
+            documented.join(", ")
+        };
+        Box::new(Failure(format!(
+            "{} has no release notes for {version}; it documents {documented}",
+            path.display()
+        ))) as Box<dyn std::error::Error>
+    })
+}
+
+/// The body of `version`'s entry in a changelog.
+///
+/// A changelog is Markdown, so an entry is opened by a heading and not by the version
+/// appearing as text. Walking the headings is what makes a version mentioned in prose, a
+/// `###` subheading and a heading inside a fenced example all harmless: only a
+/// second-level heading whose own first token is the version opens an entry, and only the
+/// next second-level heading closes it. The returned body keeps the entry's own headings
+/// and list markup verbatim, because the emoji section headings are part of how these
+/// notes read.
+///
+/// `None` means the version has no entry at all, which is different from an empty one.
+fn changelog_section(markdown: &str, version: &str) -> Option<String> {
+    let mut body: Vec<&str> = Vec::new();
+    let mut open = false;
+
+    for (line, opens_entry) in entry_lines(markdown) {
+        if opens_entry {
+            if open {
+                // The entry ends where the next one begins; that heading announces its
+                // own release, not this one.
+                break;
+            }
+            // The version heading itself is dropped: the release already carries its
+            // version, and keeping it would print it once per language.
+            open = level_two_heading(line)
+                .and_then(|heading| strip_version(heading, version))
+                .is_some();
+            continue;
+        }
+        if open {
+            body.push(line);
+        }
+    }
+
+    if !open {
+        return None;
+    }
+    let body = body.join("\n");
+    let body = body.trim();
+    if body.is_empty() {
+        return None;
+    }
+    Some(body.to_owned())
+}
+
+/// The versions a changelog documents, in the order it lists them.
+///
+/// Only used to explain a missing entry, but it has to read the file the same way the
+/// lookup does: a version named in prose is not a documented release.
+fn documented_versions(markdown: &str) -> Vec<&str> {
+    entry_lines(markdown)
+        .filter(|(_, opens_entry)| *opens_entry)
+        .filter_map(|(line, _)| level_two_heading(line))
+        .filter_map(|heading| heading.split_whitespace().next())
+        // Keep a Changelog spells an entry `## [<version>] - <date>`.
+        .map(|token| token.trim_matches(['[', ']']))
+        .collect()
+}
+
+/// Walk a changelog's lines, flagging the `##` headings that open an entry.
+///
+/// A heading inside a fenced code block is an example, so it neither opens nor closes an
+/// entry; both the lookup and the diagnostic need exactly that walk, and doing it twice
+/// would let the two disagree about what a documented version is.
+fn entry_lines(markdown: &str) -> impl Iterator<Item = (&str, bool)> {
+    let mut fence: Option<char> = None;
+    markdown.lines().map(move |line| {
+        // A changelog checked out on Windows is CRLF, and a stray `\r` would end up
+        // inside the published notes.
+        let line = line.trim_end_matches('\r');
+        let Some(marker) = fence_marker(line) else {
+            return (line, fence.is_none() && level_two_heading(line).is_some());
+        };
+        // Only the marker that opened the block closes it, so a `~~~` inside a ``` block
+        // is content rather than the end of it.
+        match fence {
+            Some(open) if open == marker => fence = None,
+            Some(_) => {}
+            None => fence = Some(marker),
+        }
+        (line, false)
+    })
+}
+
+/// The fence marker a line opens or closes a code block with, if it is one.
+fn fence_marker(line: &str) -> Option<char> {
+    let trimmed = line.trim_start_matches(' ');
+    // CommonMark allows at most three leading spaces; more is an indented code block, and
+    // this changelog has no use for one.
+    if line.len() - trimmed.len() > 3 {
+        return None;
+    }
+    match trimmed.as_bytes().first() {
+        Some(b'`') if trimmed.starts_with("```") => Some('`'),
+        Some(b'~') if trimmed.starts_with("~~~") => Some('~'),
+        _ => None,
+    }
+}
+
+/// The text of a second-level ATX heading, if the line is one.
+fn level_two_heading(line: &str) -> Option<&str> {
+    let trimmed = line.trim_start_matches(' ');
+    let rest = trimmed.strip_prefix("##")?;
+    // `###` opens a section inside an entry, not an entry.
+    if rest.starts_with('#') {
+        return None;
+    }
+    // `##x` is not a heading at all: ATX requires a space or the end of the line.
+    if !rest.is_empty() && !rest.starts_with([' ', '\t']) {
+        return None;
+    }
+    Some(rest.trim())
+}
+
+/// The text after `version`, if the heading names it as its own entry.
+///
+/// The version has to be a whole token, so `## <version> - <date>` and `## [<version>]`
+/// name the release while `## <version>-rc.1` and `## <version>.1` do not. A leading `v`
+/// is accepted because the release pipeline tags `v<version>`.
+fn strip_version<'a>(heading: &'a str, version: &str) -> Option<&'a str> {
+    let heading = heading.trim();
+    let rest = match heading.strip_prefix('[') {
+        Some(bracketed) => {
+            let (inside, after) = bracketed.split_once(']')?;
+            if inside.trim() != version {
+                return None;
+            }
+            after
+        }
+        None => heading
+            .strip_prefix(['v', 'V'])
+            .unwrap_or(heading)
+            .strip_prefix(version)?,
+    };
+    let continues = rest.starts_with(|character: char| {
+        character.is_alphanumeric() || character == '.' || character == '-'
+    });
+    (!continues).then_some(rest)
 }
 
 /// Merge the per-target fragments into the manifest the updater requests.
@@ -1860,6 +2104,215 @@ mod tests {
                 .iter()
                 .any(|entry| entry == "BongoCat.app/Contents/MacOS/bongocat-app"),
             "the bundle contents must sit under that root, got {entries:?}"
+        );
+    }
+
+    /// The published notes are one document made of two languages, and the shape of it is
+    /// a contract with both the release page and the update window.
+    #[test]
+    fn the_release_notes_join_both_languages_around_a_rule() {
+        let notes = super::compose_release_notes(
+            "### ✨ Features\n\n- did a thing",
+            "### ✨ 新功能\n\n- 做了件事",
+        );
+
+        assert_eq!(
+            notes,
+            "### ✨ Features\n\n- did a thing\n\n---\n\n### ✨ 新功能\n\n- 做了件事\n"
+        );
+        // The separator has to be a thematic break and nothing else, or the renderer on
+        // the other side draws a paragraph instead of a rule.
+        assert!(notes.lines().any(|line| line == "---"));
+    }
+
+    /// An entry is opened by a heading whose own first token is the version, so every
+    /// other way a version can appear in a changelog has to be ignored.
+    ///
+    /// The sample versions are deliberately synthetic: `tools/tests/test_product_version_contract.py`
+    /// fails if a shipped version is restated anywhere in this file, and a fixture that
+    /// spelled one out would trip it.
+    #[test]
+    fn a_changelog_entry_is_found_by_its_heading() {
+        let markdown = "\
+# Changelog
+
+See 9.9.8 for the previous notes.
+
+```markdown
+## 9.9.8 - 2000-01-01
+
+- a documented example, not an entry
+```
+
+## 9.9.9 - 2026-09-16
+
+### ✨ Features
+
+- the real entry
+
+### 9.9.9
+
+- a section that happens to be named after the version
+
+## 9.9.7
+
+- the previous release
+";
+
+        assert_eq!(
+            super::changelog_section(markdown, "9.9.9").as_deref(),
+            Some(
+                "### ✨ Features\n\n- the real entry\n\n### 9.9.9\n\n- a section that happens to be named after the version"
+            )
+        );
+        // The entry stops at the next version heading rather than running to the end of
+        // the file, and it never picks up the fenced example.
+        assert_eq!(
+            super::changelog_section(markdown, "9.9.8").as_deref(),
+            None,
+            "a heading inside a fenced block is an example, not an entry"
+        );
+        assert_eq!(
+            super::changelog_section(markdown, "9.9.7").as_deref(),
+            Some("- the previous release")
+        );
+        assert_eq!(super::changelog_section(markdown, "9.9.6"), None);
+        // A version that only appears in prose is not a documented release.
+        assert_eq!(
+            super::documented_versions(markdown),
+            vec!["9.9.9", "9.9.7"],
+            "the diagnostic must read the file the way the lookup does"
+        );
+    }
+
+    /// Both changelog conventions in use have to resolve, and a version has to be a whole
+    /// token so a pre-release of it is not mistaken for it.
+    #[test]
+    fn a_version_heading_may_be_bracketed_or_tagged_but_not_a_prefix() {
+        let section =
+            |heading: &str| super::changelog_section(&format!("{heading}\n\n- notes\n"), "9.9.9");
+
+        for heading in [
+            "## 9.9.9",
+            "## 9.9.9 - 2026-09-16",
+            "## [9.9.9] - 2026-09-16",
+            "## v9.9.9",
+            "## 9.9.9  ",
+        ] {
+            assert_eq!(
+                section(heading).as_deref(),
+                Some("- notes"),
+                "{heading} names the release"
+            );
+        }
+
+        for heading in [
+            "## 9.9.9-rc.1",
+            "## 9.9.9.1",
+            "## 99.9.9",
+            "# 9.9.9",
+            "##9.9.9",
+        ] {
+            assert_eq!(
+                section(heading),
+                None,
+                "{heading} does not name the release"
+            );
+        }
+    }
+
+    /// A changelog checked out with CRLF line endings is the same changelog, and the
+    /// published notes must not carry the carriage returns into the manifest.
+    #[test]
+    fn carriage_returns_never_reach_the_published_notes() {
+        let markdown = "## 9.9.9\r\n\r\n### ✨ Features\r\n\r\n- a thing\r\n";
+
+        let section = super::changelog_section(markdown, "9.9.9").expect("the entry");
+        assert_eq!(section, "### ✨ Features\n\n- a thing");
+        assert!(!section.contains('\r'));
+    }
+
+    /// A release whose entry was never written must stop the pipeline, and the error has
+    /// to say what the file does document: the usual cause is a version bumped in one
+    /// place only.
+    #[test]
+    fn a_missing_changelog_entry_names_the_documented_versions() {
+        let root = std::env::temp_dir().join("bongocat-packaging-changelog-missing");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("scratch directory");
+        let path = root.join(super::RELEASE_CHANGELOG_NAME);
+        std::fs::write(&path, "## 9.9.9 - 2026-09-16\n\n- notes\n").expect("write a changelog");
+
+        let error = super::read_changelog_section(&path, "9.9.8")
+            .expect_err("an undocumented version must not produce notes");
+        let message = error.to_string();
+        assert!(message.contains("9.9.8"), "unexpected error: {message}");
+        assert!(message.contains("9.9.9"), "unexpected error: {message}");
+
+        // An entry with a heading and no content is not a changelog either.
+        std::fs::write(&path, "## 9.9.8\n\n## 9.9.7\n\n- notes\n").expect("write a changelog");
+        assert_eq!(
+            super::changelog_section("## 9.9.8\n\n## 9.9.7\n", "9.9.8"),
+            None
+        );
+
+        let error = super::read_changelog_section(&root.join("absent.md"), "9.9.8")
+            .expect_err("an absent changelog must not produce notes");
+        assert!(
+            error.to_string().contains("could not read the changelog"),
+            "unexpected error: {error}"
+        );
+    }
+
+    /// Composing the notes writes a file and builds nothing, so pairing it with an option
+    /// that only affects a build or a merge would silently ignore that option.
+    #[test]
+    fn composing_the_notes_is_its_own_mode() {
+        let parse = |arguments: &[&str]| {
+            super::Invocation::parse(arguments.iter().map(|value| value.to_string()).collect())
+        };
+
+        assert!(matches!(
+            parse(&["--extract-release-notes", "notes.md"]),
+            Ok(super::Invocation::ExtractReleaseNotes(_))
+        ));
+        for conflicting in [
+            vec!["--environment", "development"],
+            vec!["--merge-manifests", "target/package"],
+            vec!["--release-notes", "notes.md"],
+        ] {
+            let mut arguments = vec!["--extract-release-notes", "notes.md"];
+            arguments.extend_from_slice(&conflicting);
+            assert!(
+                parse(&arguments).is_err(),
+                "{conflicting:?} must not be accepted alongside --extract-release-notes"
+            );
+        }
+    }
+
+    /// Both changelogs are read for the same release, so they have to document the same
+    /// versions: an entry written in one language only would ship a release whose notes
+    /// describe it twice, once in a language the reader may not have.
+    #[test]
+    fn the_repository_changelogs_document_the_same_versions() {
+        let root = super::workspace_root().expect("the workspace root");
+        let read = |name: &str| {
+            std::fs::read_to_string(root.join(name)).unwrap_or_else(|error| {
+                panic!("{name} must be readable, because a release reads it: {error}")
+            })
+        };
+
+        let english = read(super::RELEASE_CHANGELOG_NAME);
+        let chinese = read(super::RELEASE_CHANGELOG_ZH_NAME);
+        let english = super::documented_versions(&english);
+        assert!(
+            !english.is_empty(),
+            "the changelog must document at least one release"
+        );
+        assert_eq!(
+            english,
+            super::documented_versions(&chinese),
+            "the two changelogs must document the same versions in the same order"
         );
     }
 }
