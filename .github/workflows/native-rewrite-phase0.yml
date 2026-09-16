@@ -827,14 +827,23 @@ jobs:
           $primaryStderr = Join-Path $env:RUNNER_TEMP "single-instance-primary.stderr.log"
           $secondaryStdout = Join-Path $env:RUNNER_TEMP "single-instance-secondary.stdout.log"
           $secondaryStderr = Join-Path $env:RUNNER_TEMP "single-instance-secondary.stderr.log"
+          $readyMarker = Join-Path $env:RUNNER_TEMP "single-instance-primary.ready"
+          $primaryResultMarker = Join-Path $env:RUNNER_TEMP "single-instance-primary.result"
+          $secondaryResultMarker = Join-Path $env:RUNNER_TEMP "single-instance-secondary.result"
           Remove-Item `
-            $primaryStdout, $primaryStderr, $secondaryStdout, $secondaryStderr `
+            $primaryStdout, $primaryStderr, $secondaryStdout, $secondaryStderr, `
+            $readyMarker, $primaryResultMarker, $secondaryResultMarker `
             -Force `
             -ErrorAction SilentlyContinue
 
           $primary = Start-Process `
             -FilePath $executable `
-            -ArgumentList @("--run-seconds", "10", "--single-instance-smoke") `
+            -ArgumentList @(
+              "--run-seconds", "10",
+              "--single-instance-smoke",
+              "--single-instance-ready-file", $readyMarker,
+              "--single-instance-result-file", $primaryResultMarker
+            ) `
             -NoNewWindow `
             -PassThru `
             -RedirectStandardOutput $primaryStdout `
@@ -842,26 +851,33 @@ jobs:
           $readyDeadline = [DateTime]::UtcNow.AddSeconds(15)
           do {
             Start-Sleep -Milliseconds 100
-            $primaryOutput = @(
-              Get-Content $primaryStdout -Raw -ErrorAction SilentlyContinue
-              Get-Content $primaryStderr -Raw -ErrorAction SilentlyContinue
-            ) -join "`n"
             $primary.Refresh()
           } while (
-            -not $primaryOutput.Contains("bongocat-app: single-instance primary ready") -and
+            -not (Test-Path $readyMarker -PathType Leaf) -and
             -not $primary.HasExited -and
             [DateTime]::UtcNow -lt $readyDeadline
           )
-          if (-not $primaryOutput.Contains("bongocat-app: single-instance primary ready")) {
+          if (-not (Test-Path $readyMarker -PathType Leaf)) {
             Stop-Process -Id $primary.Id -Force -ErrorAction SilentlyContinue
             $primary.WaitForExit()
-            Write-Host $primaryOutput
+            Write-Host (Get-Content $primaryStdout -Raw -ErrorAction SilentlyContinue)
+            Write-Host (Get-Content $primaryStderr -Raw -ErrorAction SilentlyContinue)
             throw "primary instance did not reach the hidden-window wake gate"
+          }
+          $readyStatus = (Get-Content $readyMarker -Raw).Trim()
+          if ($readyStatus -ne "single-instance primary ready") {
+            Stop-Process -Id $primary.Id -Force -ErrorAction SilentlyContinue
+            $primary.WaitForExit()
+            throw "primary instance wrote an unexpected ready status: $readyStatus"
           }
 
           $secondary = Start-Process `
             -FilePath $executable `
-            -ArgumentList @("--run-seconds", "1", "--single-instance-smoke") `
+            -ArgumentList @(
+              "--run-seconds", "1",
+              "--single-instance-smoke",
+              "--single-instance-result-file", $secondaryResultMarker
+            ) `
             -NoNewWindow `
             -PassThru `
             -RedirectStandardOutput $secondaryStdout `
@@ -871,18 +887,20 @@ jobs:
             Stop-Process -Id $primary.Id -Force -ErrorAction SilentlyContinue
             throw "secondary instance did not exit after notifying the primary"
           }
-          $secondaryOutput = @(
-            Get-Content $secondaryStdout -Raw -ErrorAction SilentlyContinue
-            Get-Content $secondaryStderr -Raw -ErrorAction SilentlyContinue
-          ) -join "`n"
-          Write-Host $secondaryOutput
+          Write-Host (Get-Content $secondaryStdout -Raw -ErrorAction SilentlyContinue)
+          Write-Host (Get-Content $secondaryStderr -Raw -ErrorAction SilentlyContinue)
           if ($secondary.ExitCode -ne 0) {
             Stop-Process -Id $primary.Id -Force -ErrorAction SilentlyContinue
             throw "secondary instance exited with $($secondary.ExitCode)"
           }
-          if (-not $secondaryOutput.Contains("bongocat-app: secondary instance notified primary")) {
+          if (-not (Test-Path $secondaryResultMarker -PathType Leaf)) {
             Stop-Process -Id $primary.Id -Force -ErrorAction SilentlyContinue
             throw "secondary instance did not report a successful primary notification"
+          }
+          $secondaryStatus = (Get-Content $secondaryResultMarker -Raw).Trim()
+          if ($secondaryStatus -ne "secondary instance notified primary") {
+            Stop-Process -Id $primary.Id -Force -ErrorAction SilentlyContinue
+            throw "secondary instance wrote an unexpected result status: $secondaryStatus"
           }
 
           if (-not $primary.WaitForExit(30000)) {
@@ -890,16 +908,17 @@ jobs:
             $primary.WaitForExit()
             throw "primary instance did not finish ordered shutdown after the wake"
           }
-          $primaryOutput = @(
-            Get-Content $primaryStdout -Raw -ErrorAction SilentlyContinue
-            Get-Content $primaryStderr -Raw -ErrorAction SilentlyContinue
-          ) -join "`n"
-          Write-Host $primaryOutput
+          Write-Host (Get-Content $primaryStdout -Raw -ErrorAction SilentlyContinue)
+          Write-Host (Get-Content $primaryStderr -Raw -ErrorAction SilentlyContinue)
           if ($primary.ExitCode -ne 0) {
             throw "primary instance exited with $($primary.ExitCode)"
           }
-          if (-not $primaryOutput.Contains("bongocat-app: single-instance wake restored the settings window")) {
+          if (-not (Test-Path $primaryResultMarker -PathType Leaf)) {
             throw "primary instance did not restore the existing settings window after the wake"
+          }
+          $primaryStatus = (Get-Content $primaryResultMarker -Raw).Trim()
+          if ($primaryStatus -ne "single-instance wake restored the settings window") {
+            throw "primary instance wrote an unexpected result status: $primaryStatus"
           }
       - name: Smoke formal Windows missing-release recovery
         if: matrix.os == 'windows-latest'

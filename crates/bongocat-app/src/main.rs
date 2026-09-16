@@ -274,7 +274,7 @@ fn gpui_application() -> GpuiApplication {
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct RunOptions {
     run_duration: Duration,
     /// Set for every accepted argument except `--run-seconds` and the help flag.
@@ -308,6 +308,10 @@ struct RunOptions {
     startup_item_smoke: bool,
     #[cfg(target_os = "windows")]
     single_instance_smoke: bool,
+    #[cfg(target_os = "windows")]
+    single_instance_ready_file: Option<PathBuf>,
+    #[cfg(target_os = "windows")]
+    single_instance_result_file: Option<PathBuf>,
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -340,6 +344,10 @@ impl RunOptions {
         let mut startup_item_smoke = false;
         #[cfg(target_os = "windows")]
         let mut single_instance_smoke = false;
+        #[cfg(target_os = "windows")]
+        let mut single_instance_ready_file = None;
+        #[cfg(target_os = "windows")]
+        let mut single_instance_result_file = None;
         while let Some(argument) = arguments.next() {
             // Every accepted argument except the bounded run duration and the help flag selects a
             // smoke or diagnostic harness; see `RunOptions::automated_verification`. An unknown
@@ -383,6 +391,30 @@ impl RunOptions {
                 "--startup-item-smoke" => startup_item_smoke = true,
                 #[cfg(target_os = "windows")]
                 "--single-instance-smoke" => single_instance_smoke = true,
+                #[cfg(target_os = "windows")]
+                "--single-instance-ready-file" => {
+                    let value = arguments.next().ok_or_else(|| {
+                        RunOptionsError::new("--single-instance-ready-file requires a file path")
+                    })?;
+                    if value.is_empty() {
+                        return Err(RunOptionsError::new(
+                            "--single-instance-ready-file requires a non-empty file path",
+                        ));
+                    }
+                    single_instance_ready_file = Some(PathBuf::from(value));
+                }
+                #[cfg(target_os = "windows")]
+                "--single-instance-result-file" => {
+                    let value = arguments.next().ok_or_else(|| {
+                        RunOptionsError::new("--single-instance-result-file requires a file path")
+                    })?;
+                    if value.is_empty() {
+                        return Err(RunOptionsError::new(
+                            "--single-instance-result-file requires a non-empty file path",
+                        ));
+                    }
+                    single_instance_result_file = Some(PathBuf::from(value));
+                }
                 "--help" | "-h" => return Err(RunOptionsError::help()),
                 _ => {
                     return Err(RunOptionsError::new(format!(
@@ -390,6 +422,14 @@ impl RunOptions {
                     )));
                 }
             }
+        }
+        #[cfg(target_os = "windows")]
+        if (!single_instance_smoke)
+            && (single_instance_ready_file.is_some() || single_instance_result_file.is_some())
+        {
+            return Err(RunOptionsError::new(
+                "single-instance marker arguments require --single-instance-smoke",
+            ));
         }
         Ok(Self {
             run_duration: Duration::from_secs(run_seconds),
@@ -418,6 +458,10 @@ impl RunOptions {
             startup_item_smoke,
             #[cfg(target_os = "windows")]
             single_instance_smoke,
+            #[cfg(target_os = "windows")]
+            single_instance_ready_file,
+            #[cfg(target_os = "windows")]
+            single_instance_result_file,
         })
     }
 
@@ -477,10 +521,10 @@ impl std::error::Error for RunOptionsError {}
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn usage() -> &'static str {
     #[cfg(all(target_os = "windows", feature = "storage-test-injection"))]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--diagnostics-export-smoke] [--diagnostics-export-failure-smoke] [--system-menu-smoke] [--startup-permission-smoke] [--single-instance-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--diagnostics-export-smoke] [--diagnostics-export-failure-smoke] [--system-menu-smoke] [--startup-permission-smoke] [--single-instance-smoke] [--single-instance-ready-file <path>] [--single-instance-result-file <path>]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
 
     #[cfg(all(target_os = "windows", not(feature = "storage-test-injection")))]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--startup-permission-smoke] [--single-instance-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--startup-permission-smoke] [--single-instance-smoke] [--single-instance-ready-file <path>] [--single-instance-result-file <path>]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
 
     #[cfg(all(target_os = "macos", feature = "storage-test-injection"))]
     return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--diagnostics-export-smoke] [--diagnostics-export-failure-smoke] [--system-menu-smoke] [--startup-permission-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
@@ -1192,6 +1236,13 @@ fn write_smoke_status(status: &str) -> io::Result<()> {
     let mut stdout = io::stdout().lock();
     writeln!(stdout, "bongocat-app: {status}")?;
     stdout.flush()
+}
+
+#[cfg(target_os = "windows")]
+fn write_smoke_marker(path: &Path, status: &str) -> io::Result<()> {
+    let mut file = atomic_write_file::AtomicWriteFile::open(path)?;
+    writeln!(file, "{status}")?;
+    file.commit()
 }
 
 /// Reports the startup permission state the product would act on, without showing any prompt.
@@ -2085,6 +2136,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         SingleInstanceStart::Primary(single_instance) => single_instance,
         SingleInstanceStart::SecondaryNotified => {
             write_smoke_status("secondary instance notified primary")?;
+            #[cfg(target_os = "windows")]
+            if let Some(path) = run_options.single_instance_result_file.as_deref() {
+                write_smoke_marker(path, "secondary instance notified primary")?;
+            }
             return Ok(());
         }
     };
@@ -3669,6 +3724,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         #[cfg(target_os = "windows")]
         if run_options.single_instance_smoke {
+            let single_instance_ready_file = run_options.single_instance_ready_file.clone();
+            let single_instance_result_file = run_options.single_instance_result_file.clone();
             let smoke_failures = Arc::clone(&run_failures);
             let smoke_shutdown_requested = Arc::clone(&shutdown_requested);
             let settings_window = initial_settings_window
@@ -3729,6 +3786,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     request_windows_product_quit(&smoke_shutdown_requested);
                     return;
                 }
+                if let Some(path) = single_instance_ready_file.as_deref()
+                    && let Err(error) = write_smoke_marker(path, "single-instance primary ready")
+                {
+                    record_failure(&smoke_failures, error.to_string());
+                    request_windows_product_quit(&smoke_shutdown_requested);
+                    return;
+                }
 
                 for _ in 0..100 {
                     Timer::after(Duration::from_millis(50)).await;
@@ -3770,6 +3834,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             if let Err(error) = write_smoke_status(
                                 "single-instance wake restored the settings window",
                             ) {
+                                record_failure(&smoke_failures, error.to_string());
+                            }
+                            if let Some(path) = single_instance_result_file.as_deref()
+                                && let Err(error) = write_smoke_marker(
+                                    path,
+                                    "single-instance wake restored the settings window",
+                                )
+                            {
                                 record_failure(&smoke_failures, error.to_string());
                             }
                             request_windows_product_quit(&smoke_shutdown_requested);
@@ -3973,6 +4045,10 @@ mod tests {
             RunOptions {
                 run_duration: Duration::ZERO,
                 automated_verification: false,
+                #[cfg(target_os = "windows")]
+                single_instance_ready_file: None,
+                #[cfg(target_os = "windows")]
+                single_instance_result_file: None,
                 settings_window_smoke: false,
                 settings_window_open_smoke: false,
                 models_page_smoke: false,
@@ -4267,6 +4343,73 @@ mod tests {
         assert!(options.single_instance_smoke);
         assert!(!options.settings_window_smoke);
         assert!(options.opens_settings_window_on_start());
+        assert_eq!(options.single_instance_ready_file, None);
+        assert_eq!(options.single_instance_result_file, None);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn single_instance_marker_options_are_parsed_with_the_smoke_flag() {
+        let options = RunOptions::parse([
+            "--single-instance-smoke".to_owned(),
+            "--single-instance-ready-file".to_owned(),
+            r"C:\runner\primary.ready".to_owned(),
+            "--single-instance-result-file".to_owned(),
+            r"C:\runner\primary.result".to_owned(),
+        ])
+        .expect("single-instance marker options");
+        assert_eq!(
+            options.single_instance_ready_file,
+            Some(PathBuf::from(r"C:\runner\primary.ready"))
+        );
+        assert_eq!(
+            options.single_instance_result_file,
+            Some(PathBuf::from(r"C:\runner\primary.result"))
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn single_instance_marker_options_require_the_smoke_flag() {
+        for arguments in [
+            vec![
+                "--single-instance-ready-file".to_owned(),
+                r"C:\runner\primary.ready".to_owned(),
+            ],
+            vec![
+                "--single-instance-result-file".to_owned(),
+                r"C:\runner\primary.result".to_owned(),
+            ],
+        ] {
+            assert!(RunOptions::parse(arguments).is_err());
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn single_instance_marker_options_require_non_empty_values() {
+        for arguments in [
+            vec![
+                "--single-instance-smoke".to_owned(),
+                "--single-instance-ready-file".to_owned(),
+            ],
+            vec![
+                "--single-instance-smoke".to_owned(),
+                "--single-instance-result-file".to_owned(),
+            ],
+            vec![
+                "--single-instance-smoke".to_owned(),
+                "--single-instance-ready-file".to_owned(),
+                String::new(),
+            ],
+            vec![
+                "--single-instance-smoke".to_owned(),
+                "--single-instance-result-file".to_owned(),
+                String::new(),
+            ],
+        ] {
+            assert!(RunOptions::parse(arguments).is_err());
+        }
     }
 
     /// The restart waits long enough to be seen, then happens whether or not the
