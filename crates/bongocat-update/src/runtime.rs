@@ -1141,12 +1141,12 @@ mod tests {
     fn download_urls_are_proxied_only_when_official_github() {
         let proxy = Some("https://cdn.gh-proxy.org");
         let github = Url::parse(
-            "https://github.com/ayangweb/BongoCat/releases/download/v1.1.0/BongoCat_x64-setup.exe",
+            "https://github.com/ayangweb/BongoCat/releases/download/v0.0.0-test/BongoCat_x64-setup.exe",
         )
         .expect("the announced GitHub URL parses");
         assert_eq!(
             UpdateRuntime::proxied_download_url(proxy, &github).as_str(),
-            "https://cdn.gh-proxy.org/https://github.com/ayangweb/BongoCat/releases/download/v1.1.0/BongoCat_x64-setup.exe"
+            "https://cdn.gh-proxy.org/https://github.com/ayangweb/BongoCat/releases/download/v0.0.0-test/BongoCat_x64-setup.exe"
         );
 
         // The official run keeps the announced URL untouched.
@@ -1169,8 +1169,9 @@ mod tests {
         );
 
         // And so is a GitHub URL that is not HTTPS.
-        let insecure = Url::parse("http://github.com/ayangweb/BongoCat/releases/download/v1.1.0/a")
-            .expect("the insecure URL parses");
+        let insecure =
+            Url::parse("http://github.com/ayangweb/BongoCat/releases/download/v0.0.0-test/a")
+                .expect("the insecure URL parses");
         assert_eq!(
             UpdateRuntime::proxied_download_url(proxy, &insecure),
             insecure

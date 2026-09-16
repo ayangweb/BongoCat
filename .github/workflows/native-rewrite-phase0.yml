@@ -121,6 +121,8 @@ jobs:
         with:
           toolchain: 1.97.1
           components: clippy, rustfmt
+      - uses: taiki-e/install-action@just
+        if: matrix.os == 'macos-latest'
       - name: Cache Cargo artifacts
         uses: actions/cache@v6
         with:
@@ -176,11 +178,11 @@ jobs:
         env:
           RUST_BACKTRACE: full
         run: |
-          cargo run --manifest-path Cargo.toml --locked --release -p bongocat-platform --example model_directory_picker_smoke -- --expect-cancel --auto
+          cargo run --manifest-path Cargo.toml --locked --release -p bongocat-platform --example model_source_picker_smoke -- --expect-cancel --auto
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
-          cargo run --manifest-path Cargo.toml --locked --release -p bongocat-platform --example model_directory_picker_smoke -- --expect-selected-any --auto
+          cargo run --manifest-path Cargo.toml --locked --release -p bongocat-platform --example model_source_picker_smoke -- --expect-selected-any --auto --kind directory
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }

@@ -47,13 +47,19 @@ class NativeReleaseTargetMatrixTests(unittest.TestCase):
         changes — an audit for a target the product does not build is dead work
         that hides which targets are actually covered.
         """
+        source = DEPENDENCY_POLICY.read_text(encoding="utf-8")
+        self.assertIn(
+            "--package bongocat-app",
+            source,
+            "the release dependency audit must inspect the shipped application, not packaging tools",
+        )
         policy = sorted(
             set(
                 re.findall(
                     r"([a-z0-9_]+-[a-z0-9_-]+)",
                     re.search(
                         r"for target in(.*?); do",
-                        DEPENDENCY_POLICY.read_text(encoding="utf-8"),
+                        source,
                         re.DOTALL,
                     ).group(1),
                 )

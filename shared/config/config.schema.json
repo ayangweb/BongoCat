@@ -75,7 +75,7 @@
       "properties": {
         "selected_model_id": { "type": ["string", "null"], "minLength": 1 },
         "selected_model_origin": { "type": ["string", "null"], "enum": ["preset", "installed", null] },
-        "installed_models": { "type": "array", "items": { "$ref": "#/$defs/installed_model_metadata" } },
+        "installed_models": { "type": "array", "items": { "$ref": "#/$defs/installed_model_metadata" }, "uniqueItems": true },
         "mirror": { "type": "boolean" },
         "mirror_pointer_tracking": { "type": "boolean" },
         "play_motion_audio": { "type": "boolean" },

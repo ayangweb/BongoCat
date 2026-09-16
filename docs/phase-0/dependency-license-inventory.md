@@ -53,11 +53,13 @@
 `MPL-2.0` 是 file-level weak copyleft，当前图中来自 `option-ext`、`dwrote` 和构建期 `cbindgen`。不修改这些 crate 时不要求 BongoCat 改用 MPL；若未来 fork 或修改其 MPL 文件，必须履行对应源码提供义务。
 
 GPUI Kit 的 HTTP/TLS 传递图引入 `libbz2-rs-sys 0.2.5`（`bzip2-1.0.6`）和
-`webpki-roots 1.0.9`（`CDLA-Permissive-2.0`）。前者允许源代码和二进制再分发并要求保留
-版权、条件与免责声明；后者只携带 Mozilla CA 根证书数据，允许使用、修改和分享，并要求分享
-数据时附带许可证文本。`deny.toml` 只对这两个精确包版本建立例外，不把两种许可证加入全局
-allowlist。它们只服务于 `gpui-kit -> gpui-pre` 的私有 HTTP/compression/TLS 实现，不进入
-BongoCat 业务 API；GPUI Kit 停止携带该 HTTP client 或 UI 边界被替换时即可一并移除。
+`webpki-roots 1.0.9`（`CDLA-Permissive-2.0`）。`cargo-packager` 的 `ureq` 图还通过
+`webpki-roots 0.26.11` 兼容转发到同一 `1.0.9` 根证书包，因此两个精确版本都建立
+`CDLA-Permissive-2.0` 例外。`libbz2-rs-sys` 允许源代码和二进制再分发并要求保留版权、
+条件与免责声明；`webpki-roots` 只携带 Mozilla CA 根证书数据，允许使用、修改和分享，
+并要求分享数据时附带许可证文本。`deny.toml` 不把这两种许可证加入全局 allowlist。
+这些依赖只服务于 GPUI Kit 与打包工具的私有 HTTP/compression/TLS 实现，不进入 BongoCat
+业务 API；对应工具链停止携带这些版本后即可移除精确例外。
 
 `cargo-deny list` 会为包含多选许可的 crate 展示所有标识。例如 `self_cell` 的表达式包含 `Apache-2.0 OR GPL-2.0`，`r-efi` 包含 `MIT OR Apache-2.0 OR LGPL-2.1-or-later`；策略通过允许的 Apache/MIT 分支满足表达式，没有全局允许 GPL/LGPL。
 

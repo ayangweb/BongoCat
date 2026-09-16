@@ -190,6 +190,7 @@ pub struct InputConfig {
 pub struct ModelConfig {
     pub selected_model_id: Option<String>,
     pub selected_model_origin: Option<SelectedModelOrigin>,
+    pub installed_models: Vec<InstalledModelMetadata>,
     pub mirror: bool,
     pub mirror_pointer_tracking: bool,
     pub play_motion_audio: bool,
@@ -198,6 +199,19 @@ pub struct ModelConfig {
     pub ignore_pointer: bool,
     pub release_fallback_timeout_ms: u32,
 }
+
+/// User-facing metadata for one user-installed model. The `id` is the stable
+/// store key used as the installed directory name; `title` is an editable
+/// display name that never participates in model identity.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct InstalledModelMetadata {
+    pub id: String,
+    pub title: String,
+}
+
+pub const MODEL_METADATA_MAXIMUM_ID_BYTES: usize = 64;
+pub const MODEL_METADATA_MAXIMUM_TITLE_CHARS: usize = 128;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -256,6 +270,7 @@ impl Default for NativeConfig {
             model: ModelConfig {
                 selected_model_id: None,
                 selected_model_origin: None,
+                installed_models: Vec::new(),
                 mirror: false,
                 mirror_pointer_tracking: false,
                 play_motion_audio: true,
@@ -311,6 +326,23 @@ impl NativeConfig {
         }
         if self.model.selected_model_id.is_some() != self.model.selected_model_origin.is_some() {
             return Err(ConfigError::InvalidValue("model.selected_model_selection"));
+        }
+        let mut installed_ids = std::collections::BTreeSet::new();
+        for metadata in &self.model.installed_models {
+            let id = metadata.id.trim();
+            if id.is_empty()
+                || id.len() > MODEL_METADATA_MAXIMUM_ID_BYTES
+                || !installed_ids.insert(id)
+            {
+                return Err(ConfigError::InvalidValue("model.installed_models.id"));
+            }
+            let title = metadata.title.trim();
+            if title.is_empty()
+                || title.chars().count() > MODEL_METADATA_MAXIMUM_TITLE_CHARS
+                || metadata.title.chars().any(char::is_control)
+            {
+                return Err(ConfigError::InvalidValue("model.installed_models.title"));
+            }
         }
         if self
             .shortcuts

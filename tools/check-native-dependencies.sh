@@ -19,6 +19,7 @@ check_release_dependency_tree() {
     tree=$(cargo tree \
         --manifest-path Cargo.toml \
         --locked \
+        --package bongocat-app \
         --target "$target" \
         --edges normal,build \
         --prefix none) || exit 1

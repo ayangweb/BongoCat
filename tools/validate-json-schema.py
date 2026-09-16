@@ -61,6 +61,26 @@ def validate_file(path: Path, validator: Draft202012Validator) -> None:
     print(f"ok json-schema {path.relative_to(ROOT)}")
 
 
+def config_semantic_errors(value: object) -> list[str]:
+    """Return config invariants that standard JSON Schema cannot express."""
+    if not isinstance(value, dict):
+        return []
+    model = value.get("model")
+    if not isinstance(model, dict):
+        return []
+    installed_models = model.get("installed_models")
+    if not isinstance(installed_models, list):
+        return []
+    ids = [
+        item.get("id")
+        for item in installed_models
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    ]
+    if len(ids) != len(set(ids)):
+        return ["installed_models ids must be unique"]
+    return []
+
+
 def validate_manifest_fixtures(
     directory: Path, validator: Draft202012Validator, label: str
 ) -> int:
@@ -95,10 +115,13 @@ def validate_manifest_fixtures(
             raise RuntimeError(f"{manifest_path.relative_to(ROOT)}: missing fixture {file_name}")
         listed_ids.add(case_id)
         listed_files.add(file_name)
-        errors = list(validator.iter_errors(load(path)))
+        value = load(path)
+        errors = [error.message for error in validator.iter_errors(value)]
+        if label == "config":
+            errors.extend(config_semantic_errors(value))
         accepted = not errors
         if accepted != (expected == "accept"):
-            detail = "fixture unexpectedly accepted" if accepted else errors[0].message
+            detail = "fixture unexpectedly accepted" if accepted else errors[0]
             raise RuntimeError(f"{path.relative_to(ROOT)}: expected {expected}, got {detail}")
         print(f"ok json-schema {label} {case_id} ({expected})")
 

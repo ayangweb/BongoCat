@@ -54,6 +54,7 @@ pub enum DiagnosticCode {
     ModelReferenceEscapesRoot,
     ModelReferenceInvalid,
     ModelReferenceSymlinkEscape,
+    ModelResourceInvalid,
     ModelResourceJsonInvalid,
     ModelResourceMissing,
     ModelResourceNotFile,
@@ -86,6 +87,7 @@ impl DiagnosticCode {
             Self::ModelReferenceEscapesRoot => "model_reference_escapes_root",
             Self::ModelReferenceInvalid => "model_reference_invalid",
             Self::ModelReferenceSymlinkEscape => "model_reference_symlink_escape",
+            Self::ModelResourceInvalid => "model_resource_invalid",
             Self::ModelResourceJsonInvalid => "model_resource_json_invalid",
             Self::ModelResourceMissing => "model_resource_missing",
             Self::ModelResourceNotFile => "model_resource_not_file",
@@ -326,12 +328,16 @@ struct RawHitArea {
 struct DisplayInfoDefinition {
     #[serde(rename = "Version")]
     version: u32,
-    #[serde(rename = "Parameters")]
+    #[serde(rename = "Parameters", default)]
     parameters: Vec<DisplayInfoItem>,
-    #[serde(rename = "ParameterGroups")]
+    #[serde(rename = "ParameterGroups", default)]
     parameter_groups: Vec<DisplayInfoItem>,
-    #[serde(rename = "Parts")]
+    #[serde(rename = "Parts", default)]
     parts: Vec<DisplayInfoPart>,
+    /// Official Cubism cdi3.json field (Cubism 5 SDK): each inner array binds
+    /// parameters that are driven together, e.g. by one pointer axis.
+    #[serde(rename = "CombinedParameters", default)]
+    combined_parameters: Vec<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1339,6 +1345,18 @@ fn inspect_display_info_file(
         reference,
         "parameter",
     )?;
+    if display_info.combined_parameters.iter().any(|combination| {
+        combination.is_empty()
+            || combination
+                .iter()
+                .any(|id| id.trim().is_empty() || !parameter_ids.contains(id))
+    }) {
+        return resource_error(
+            DiagnosticCode::ModelResourceInvalid,
+            reference,
+            "cdi3 CombinedParameters contain blank or undeclared parameter Ids",
+        );
+    }
     for parameter in &display_info.parameters {
         validate_display_info_group(
             &parameter.group_id,

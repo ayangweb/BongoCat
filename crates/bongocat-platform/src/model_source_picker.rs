@@ -24,6 +24,7 @@ use objc2_app_kit::NSApplication;
 
 /// The file names the archive dialog offers. The filter is a convenience for
 /// finding an export, never a rule the import depends on.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 const ARCHIVE_EXTENSIONS: [&str; 1] = ["zip"];
 
 #[derive(Clone, Debug, Eq, PartialEq)]

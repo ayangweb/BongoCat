@@ -24,6 +24,7 @@ MODEL_DIAGNOSTICS = {
     "model_json_invalid",
     "model_moc_missing",
     "model_reference_escapes_root",
+    "model_resource_invalid",
     "model_texture_dimension_exceeded",
     "model_texture_invalid_png",
     "model_texture_missing",
@@ -267,6 +268,72 @@ def parse_model_entry(path: Path, fixture_path: Path) -> dict | None:
     return value
 
 
+def display_info_is_valid(path: Path) -> bool:
+    """Mirror the product's strict cdi3 resource contract for fixture checks."""
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
+    if not isinstance(value, dict):
+        return False
+    if set(value) - {"Version", "Parameters", "ParameterGroups", "Parts", "CombinedParameters"}:
+        return False
+    if value.get("Version") != 3:
+        return False
+
+    parameters = value.get("Parameters", [])
+    parameter_groups = value.get("ParameterGroups", [])
+    parts = value.get("Parts", [])
+    combined_parameters = value.get("CombinedParameters", [])
+    if not all(isinstance(items, list) for items in (parameters, parameter_groups, parts, combined_parameters)):
+        return False
+    if not all(
+        isinstance(item, dict)
+        and set(item) == {"Id", "GroupId", "Name"}
+        and all(isinstance(item[key], str) for key in item)
+        for item in (*parameters, *parameter_groups)
+    ):
+        return False
+    if not all(
+        isinstance(item, dict)
+        and set(item) == {"Id", "Name"}
+        and all(isinstance(item[key], str) for key in item)
+        for item in parts
+    ):
+        return False
+
+    parameter_group_ids = [item["Id"] for item in parameter_groups]
+    if len(parameter_group_ids) != len(set(parameter_group_ids)) or any(
+        not item.strip() for item in parameter_group_ids
+    ):
+        return False
+    parameter_ids = [item["Id"] for item in parameters]
+    if len(parameter_ids) != len(set(parameter_ids)) or any(
+        not item.strip() for item in parameter_ids
+    ):
+        return False
+    if any(
+        item["GroupId"] and item["GroupId"] not in parameter_group_ids
+        for item in parameters
+    ):
+        return False
+    part_ids = [item["Id"] for item in parts]
+    if len(part_ids) != len(set(part_ids)) or any(not item.strip() for item in part_ids):
+        return False
+    declared_parameters = set(parameter_ids)
+    return all(
+        isinstance(combination, list)
+        and combination
+        and all(
+            isinstance(parameter_id, str)
+            and parameter_id.strip()
+            and parameter_id in declared_parameters
+            for parameter_id in combination
+        )
+        for combination in combined_parameters
+    )
+
+
 def inspect_model_case(package_dir: Path, fixture_path: Path, maximum_dimension: int) -> list[str]:
     entries = sorted(package_dir.glob("*.model3.json"))
     if len(entries) == 0:
@@ -311,6 +378,16 @@ def inspect_model_case(package_dir: Path, fixture_path: Path, maximum_dimension:
         height = int.from_bytes(header[20:24], "big")
         if width > maximum_dimension or height > maximum_dimension:
             diagnostics.append("model_texture_dimension_exceeded")
+
+    display_info = references.get("DisplayInfo")
+    if display_info is not None:
+        if not isinstance(display_info, str):
+            fail(fixture_path, "model3 FileReferences.DisplayInfo must be a string")
+        display_parts = safe_package_reference(display_info)
+        if display_parts is None:
+            diagnostics.append("model_reference_escapes_root")
+        elif not display_info_is_valid(package_dir.joinpath(*display_parts)):
+            diagnostics.append("model_resource_invalid")
     return sorted(set(diagnostics))
 
 
