@@ -628,6 +628,7 @@ fn run_service(
                     always_on_top: settings.always_on_top,
                     scale_percent: settings.scale_percent,
                     opacity_percent: settings.opacity_percent,
+                    corner_radius_percent: settings.corner_radius_percent,
                     keep_inside_work_area: settings.keep_inside_work_area,
                 };
                 let result = require_operational(&application)
@@ -1188,6 +1189,7 @@ fn snapshot(
             always_on_top: runtime.overlay_settings.always_on_top,
             scale_percent: runtime.overlay_settings.scale_percent,
             opacity_percent: runtime.overlay_settings.opacity_percent,
+            corner_radius_percent: runtime.overlay_settings.corner_radius_percent,
             keep_inside_work_area: runtime.overlay_settings.keep_inside_work_area,
         },
         motion_audio_enabled: runtime.motion_audio_enabled,
@@ -4096,6 +4098,7 @@ mod tests {
             always_on_top: false,
             scale_percent: 125,
             opacity_percent: 80,
+            corner_radius_percent: 25,
             keep_inside_work_area: false,
         };
         let configured = client
@@ -4219,6 +4222,7 @@ mod tests {
             always_on_top: false,
             scale_percent: 125,
             opacity_percent: 80,
+            corner_radius_percent: 25,
             keep_inside_work_area: false,
         };
         let committed = client
@@ -4231,6 +4235,7 @@ mod tests {
             always_on_top: true,
             scale_percent: 400,
             opacity_percent: 10,
+            corner_radius_percent: 50,
             keep_inside_work_area: true,
         };
         let error = client

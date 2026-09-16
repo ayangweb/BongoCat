@@ -35,6 +35,10 @@ impl SettingsView {
         self.overlay_opacity_input.update(cx, |input, cx| {
             input.set_value(opacity.to_string(), window, cx)
         });
+        let corner_radius = f64::from(snapshot.overlay.corner_radius_percent);
+        self.overlay_corner_radius_input.update(cx, |input, cx| {
+            input.set_value(corner_radius.to_string(), window, cx)
+        });
         self.stick_dead_zone_input.update(cx, |input, cx| {
             input.set_value(stick.to_string(), window, cx)
         });
@@ -93,6 +97,7 @@ impl SettingsView {
     ) -> Self {
         let overlay_scale_input = cx.new(|cx| InputState::new(window, cx).placeholder("100"));
         let overlay_opacity_input = cx.new(|cx| InputState::new(window, cx).placeholder("100"));
+        let overlay_corner_radius_input = cx.new(|cx| InputState::new(window, cx).placeholder("0"));
         let stick_dead_zone_input = cx.new(|cx| InputState::new(window, cx).placeholder("15"));
         let trigger_dead_zone_input = cx.new(|cx| InputState::new(window, cx).placeholder("0"));
         let model_id_input = cx.new(|cx| {
@@ -174,6 +179,33 @@ impl SettingsView {
                     && let Ok(value) = input.read(cx).value().parse::<f64>()
                 {
                     view.set_overlay_opacity_value(value, cx);
+                }
+            },
+        )
+        .detach();
+        cx.subscribe(
+            &overlay_corner_radius_input,
+            |view, input, event: &NumberInputEvent, cx| {
+                if view.syncing_component_inputs {
+                    return;
+                }
+                let current = input.read(cx).value().parse::<f64>().unwrap_or(0.0);
+                let value = match event {
+                    NumberInputEvent::Step(StepAction::Increment) => current + 5.0,
+                    NumberInputEvent::Step(StepAction::Decrement) => current - 5.0,
+                };
+                view.set_overlay_corner_radius_value(value, cx);
+            },
+        )
+        .detach();
+        cx.subscribe(
+            &overlay_corner_radius_input,
+            |view, input, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change)
+                    && !view.syncing_component_inputs
+                    && let Ok(value) = input.read(cx).value().parse::<f64>()
+                {
+                    view.set_overlay_corner_radius_value(value, cx);
                 }
             },
         )
@@ -297,6 +329,8 @@ impl SettingsView {
             overlay_scale_timer_generation: 0,
             overlay_opacity_debouncer: crate::SettingsPatchDebouncer::default(),
             overlay_opacity_timer_generation: 0,
+            overlay_corner_radius_debouncer: crate::SettingsPatchDebouncer::default(),
+            overlay_corner_radius_timer_generation: 0,
             gamepad_dead_zone_debouncer: crate::SettingsPatchDebouncer::default(),
             gamepad_dead_zone_timer_generation: 0,
             maximum_fps_debouncer: crate::SettingsPatchDebouncer::default(),
@@ -360,6 +394,7 @@ impl SettingsView {
             quit_focus: cx.focus_handle().tab_index(31).tab_stop(true),
             overlay_scale_input,
             overlay_opacity_input,
+            overlay_corner_radius_input,
             stick_dead_zone_input,
             trigger_dead_zone_input,
             model_id_input,

@@ -1,8 +1,9 @@
 use crate::{
     BlendFactor, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff, FrameTimingCollector,
-    OverlayContextMenuRequest, OverlayError, OverlayInteractionSinks, OverlayPresentationState,
-    OverlaySessionOptions, OverlayTickOutcome, OverlayWindowBounds, OverlayWorkArea, PreviewReport,
-    ProductOverlayReport, blend_factors, default_overlay_window_dimensions, validate_frame_smoke,
+    MAXIMUM_CORNER_RADIUS_PERCENT, OverlayContextMenuRequest, OverlayError,
+    OverlayInteractionSinks, OverlayPresentationState, OverlaySessionOptions, OverlayTickOutcome,
+    OverlayWindowBounds, OverlayWorkArea, PreviewReport, ProductOverlayReport, blend_factors,
+    corner_radius_uniform, default_overlay_window_dimensions, validate_frame_smoke,
     validate_model_generation_advance,
 };
 use block2::RcBlock;
@@ -79,6 +80,7 @@ const SHADER_SOURCE: &str = r#"
         float4 multiply_color;
         float4 screen_color;
         float4 mask_settings;
+        float4 corner_radius;
         float opacity;
         float3 padding;
     };
@@ -87,6 +89,27 @@ const SHADER_SOURCE: &str = r#"
         float4 position [[position]];
         float2 uv;
     };
+
+    // Legacy window rounding. `corner_radius.x` is the configured radius as a
+    // fraction of the window box, and `corner_radius.yz` are the drawable
+    // dimensions. The corner arcs stay elliptical on a non-square window,
+    // exactly like a CSS percentage `border-radius`.
+    float corner_coverage(float2 position, float4 corner_radius) {
+        float radius = min(corner_radius.x, 0.5);
+        if (radius <= 0.0) {
+            return 1.0;
+        }
+        float2 uv = position / corner_radius.yz;
+        float2 centered = abs(uv * 2.0 - 1.0);
+        float extent = 2.0 * radius;
+        float2 delta = centered - 1.0 + extent;
+        float distance = length(max(delta, 0.0)) + min(max(delta.x, delta.y), 0.0) - extent;
+        // Convert the signed distance to device pixels using the smaller
+        // drawable dimension, so the antialiased band never narrows below one
+        // pixel on the longer axis.
+        float scale = 0.5 * min(corner_radius.y, corner_radius.z);
+        return saturate(0.5 - distance * scale);
+    }
 
     vertex RasterVertex cubism_vertex(
         const device Vertex* vertices [[buffer(0)]],
@@ -120,7 +143,8 @@ const SHADER_SOURCE: &str = r#"
                 mask = 1.0 - mask;
             }
         }
-        float alpha = texture_color.a * uniforms.opacity * mask;
+        float alpha = texture_color.a * uniforms.opacity * mask
+                    * corner_coverage(input.position.xy, uniforms.corner_radius);
         return float4(color * alpha, alpha);
     }
 
@@ -141,6 +165,7 @@ struct Uniforms {
     multiply_color: [f32; 4],
     screen_color: [f32; 4],
     mask_settings: [f32; 4],
+    corner_radius: [f32; 4],
     opacity: f32,
     padding: [f32; 3],
 }
@@ -191,6 +216,7 @@ struct NativeOverlay {
     resources: Arc<RenderResources>,
     model: GpuModel,
     presentation: OverlayPresentationState,
+    corner_radius_percent: u8,
 }
 
 struct GpuModel {
@@ -790,6 +816,11 @@ fn validate_product_options(options: OverlaySessionOptions) -> Result<(), Overla
             "overlay opacity must be between 1 and 100 percent",
         ));
     }
+    if options.corner_radius_percent > MAXIMUM_CORNER_RADIUS_PERCENT {
+        return Err(OverlayError::new(
+            "overlay corner radius must be between 0 and 50 percent",
+        ));
+    }
     if !maximum_fps_is_valid(options.maximum_fps) {
         return Err(OverlayError::new("overlay FPS must be between 15 and 240"));
     }
@@ -814,12 +845,14 @@ mod product_options_tests {
             OverlaySessionOptions {
                 scale_percent: 25,
                 opacity_percent: 1,
+                corner_radius_percent: 0,
                 maximum_fps: 15,
                 ..OverlaySessionOptions::default()
             },
             OverlaySessionOptions {
                 scale_percent: 400,
                 opacity_percent: 100,
+                corner_radius_percent: 50,
                 maximum_fps: 240,
                 ..OverlaySessionOptions::default()
             },
@@ -841,6 +874,10 @@ mod product_options_tests {
             },
             OverlaySessionOptions {
                 opacity_percent: 0,
+                ..OverlaySessionOptions::default()
+            },
+            OverlaySessionOptions {
+                corner_radius_percent: 51,
                 ..OverlaySessionOptions::default()
             },
             OverlaySessionOptions {
@@ -1351,6 +1388,7 @@ impl NativeOverlay {
             resources: Arc::clone(&frame.resources),
             model,
             presentation: OverlayPresentationState::default(),
+            corner_radius_percent: options.corner_radius_percent,
         })
     }
 
@@ -1452,6 +1490,11 @@ impl NativeOverlay {
             drawable.texture().height() as f32,
             self.model.mirror_horizontal,
         );
+        let corner_radius = corner_radius_uniform(
+            self.corner_radius_percent,
+            drawable.texture().width() as f32,
+            drawable.texture().height() as f32,
+        );
         for mesh in &self.model.meshes {
             let Some(mask_texture) = &mesh.mask_texture else {
                 continue;
@@ -1481,6 +1524,7 @@ impl NativeOverlay {
                     multiply_color: [1.0; 4],
                     screen_color: [0.0; 4],
                     mask_settings: [0.0; 4],
+                    corner_radius: [0.0; 4],
                     opacity: 1.0,
                     padding: [0.0; 3],
                 };
@@ -1513,6 +1557,7 @@ impl NativeOverlay {
                 multiply_color: [1.0; 4],
                 screen_color: [0.0; 4],
                 mask_settings: [0.0; 4],
+                corner_radius,
                 opacity: 1.0,
                 padding: [0.0; 3],
             };
@@ -1554,6 +1599,7 @@ impl NativeOverlay {
                     f32::from(mask_texture.is_some()),
                     f32::from(mesh.inverted_mask),
                 ],
+                corner_radius,
                 opacity: mesh.opacity * self.model.model_opacity,
                 padding: [0.0; 3],
             };
@@ -1597,6 +1643,7 @@ impl NativeOverlay {
                 multiply_color: [1.0; 4],
                 screen_color: [0.0; 4],
                 mask_settings: [0.0; 4],
+                corner_radius,
                 opacity: 1.0,
                 padding: [0.0; 3],
             };
@@ -2376,7 +2423,7 @@ mod tests {
     #[test]
     fn gpu_structs_match_metal_layout() {
         assert_eq!(size_of::<bongocat_render::Vertex>(), 16);
-        assert_eq!(size_of::<Uniforms>(), 80);
+        assert_eq!(size_of::<Uniforms>(), 96);
     }
 
     #[test]

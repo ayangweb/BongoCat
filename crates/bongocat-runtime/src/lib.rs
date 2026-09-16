@@ -186,6 +186,12 @@ pub struct OverlaySettings {
     pub always_on_top: bool,
     pub scale_percent: u16,
     pub opacity_percent: u8,
+    /// Corner radius of the overlay window box as a percentage of its width and
+    /// height, mirroring the legacy `border-radius: N%` window setting. `0` keeps
+    /// square corners and `50` clips the window content to the full inscribed
+    /// ellipse, which is also the legacy ceiling: the legacy implementation
+    /// scaled every larger radius back down to that same ellipse.
+    pub corner_radius_percent: u8,
     pub keep_inside_work_area: bool,
 }
 
@@ -196,6 +202,7 @@ impl Default for OverlaySettings {
             always_on_top: true,
             scale_percent: 100,
             opacity_percent: 100,
+            corner_radius_percent: 0,
             keep_inside_work_area: true,
         }
     }
@@ -207,6 +214,7 @@ impl OverlaySettings {
             && self.scale_percent <= 400
             && self.opacity_percent >= 1
             && self.opacity_percent <= 100
+            && self.corner_radius_percent <= 50
     }
 }
 
@@ -2922,6 +2930,7 @@ mod tests {
             always_on_top: false,
             scale_percent: 125,
             opacity_percent: 80,
+            corner_radius_percent: 25,
             keep_inside_work_area: false,
         };
         let sequence = client
@@ -2967,6 +2976,25 @@ mod tests {
         let rejected = client
             .wait_for_command(sequence, TIMEOUT)
             .expect("invalid settings rejection");
+        assert_eq!(rejected.overlay_settings, settings);
+        assert_eq!(
+            rejected.last_command_failure,
+            Some(RuntimeCommandFailure {
+                sequence,
+                code: RuntimeRenderErrorCode::OverlaySettingsInvalid,
+            })
+        );
+
+        let invalid = OverlaySettings {
+            corner_radius_percent: 51,
+            ..settings
+        };
+        let sequence = client
+            .send(RuntimeCommand::SetOverlaySettings(invalid))
+            .expect("out-of-range corner radius accepted for typed rejection");
+        let rejected = client
+            .wait_for_command(sequence, TIMEOUT)
+            .expect("out-of-range corner radius rejection");
         assert_eq!(rejected.overlay_settings, settings);
         assert_eq!(
             rejected.last_command_failure,

@@ -1,9 +1,9 @@
 use crate::{
-    BlendFactor, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff, OverlayContextMenuRequest,
-    OverlayError, OverlayInteractionSinks, OverlayPresentationState, OverlaySessionOptions,
-    OverlayTickOutcome, OverlayWindowBounds, OverlayWorkArea, PreviewReport, ProductOverlayReport,
-    blend_factors, default_overlay_window_dimensions, validate_frame_smoke,
-    validate_model_generation_advance,
+    BlendFactor, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff, MAXIMUM_CORNER_RADIUS_PERCENT,
+    OverlayContextMenuRequest, OverlayError, OverlayInteractionSinks, OverlayPresentationState,
+    OverlaySessionOptions, OverlayTickOutcome, OverlayWindowBounds, OverlayWorkArea, PreviewReport,
+    ProductOverlayReport, blend_factors, corner_radius_uniform, default_overlay_window_dimensions,
+    validate_frame_smoke, validate_model_generation_advance,
 };
 use bongocat_model::{CommittedModel, ModelId, ModelPackageLimits, PresetModelCatalog};
 use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError, WindowsInputService};
@@ -217,6 +217,7 @@ const SHADER_SOURCE: &str = r#"
         float4 multiply_color;
         float4 screen_color;
         float4 mask_settings;
+        float4 corner_radius;
         float opacity;
         float3 padding;
     };
@@ -230,6 +231,27 @@ const SHADER_SOURCE: &str = r#"
         float4 position : SV_POSITION;
         float2 uv : TEXCOORD;
     };
+
+    // Legacy window rounding. `corner_radius.x` is the configured radius as a
+    // fraction of the window box, and `corner_radius.yz` are the drawable
+    // dimensions. The corner arcs stay elliptical on a non-square window,
+    // exactly like a CSS percentage `border-radius`.
+    float corner_coverage(float2 position, float4 corner_radius) {
+        float radius = min(corner_radius.x, 0.5);
+        if (radius <= 0.0) {
+            return 1.0;
+        }
+        float2 uv = position / corner_radius.yz;
+        float2 centered = abs(uv * 2.0 - 1.0);
+        float extent = 2.0 * radius;
+        float2 delta = centered - 1.0 + extent;
+        float distance = length(max(delta, 0.0)) + min(max(delta.x, delta.y), 0.0) - extent;
+        // Convert the signed distance to device pixels using the smaller
+        // drawable dimension, so the antialiased band never narrows below one
+        // pixel on the longer axis.
+        float scale = 0.5 * min(corner_radius.y, corner_radius.z);
+        return saturate(0.5 - distance * scale);
+    }
 
     RasterVertex cubism_vertex(VertexInput input) {
         RasterVertex output;
@@ -255,7 +277,8 @@ const SHADER_SOURCE: &str = r#"
                 mask = 1.0 - mask;
             }
         }
-        float alpha = texture_color.a * opacity * mask;
+        float alpha = texture_color.a * opacity * mask
+                    * corner_coverage(input.position.xy, corner_radius);
         return float4(color * alpha, alpha);
     }
 
@@ -272,6 +295,7 @@ struct Uniforms {
     multiply_color: [f32; 4],
     screen_color: [f32; 4],
     mask_settings: [f32; 4],
+    corner_radius: [f32; 4],
     opacity: f32,
     padding: [f32; 3],
 }
@@ -640,6 +664,7 @@ struct Renderer {
     width: u32,
     height: u32,
     opacity: f32,
+    corner_radius: [f32; 4],
     owner_thread: ThreadId,
     _not_send_or_sync: std::marker::PhantomData<Rc<()>>,
 }
@@ -648,18 +673,18 @@ impl Renderer {
     fn create(
         window: &OverlayWindow,
         frame: &RenderFrame,
-        opacity_percent: u8,
+        options: OverlaySessionOptions,
     ) -> Result<Self, OverlayError> {
         // SAFETY: all interfaces and resources are created for one live HWND
         // and remain confined to the current ProductOverlaySession thread.
-        unsafe { Self::create_inner(window, frame, opacity_percent) }
+        unsafe { Self::create_inner(window, frame, options) }
             .map_err(windows_error("create D3D11 renderer"))
     }
 
     unsafe fn create_inner(
         window: &OverlayWindow,
         frame: &RenderFrame,
-        opacity_percent: u8,
+        options: OverlaySessionOptions,
     ) -> WindowsResult<Self> {
         let (device, context) = unsafe { create_d3d11_device()? };
         let dxgi_device: IDXGIDevice = device.cast()?;
@@ -723,7 +748,12 @@ impl Renderer {
             model,
             width: window.width,
             height: window.height,
-            opacity: f32::from(opacity_percent) / 100.0,
+            opacity: f32::from(options.opacity_percent) / 100.0,
+            corner_radius: corner_radius_uniform(
+                options.corner_radius_percent,
+                window.width as f32,
+                window.height as f32,
+            ),
             owner_thread: thread::current().id(),
             _not_send_or_sync: std::marker::PhantomData,
         })
@@ -846,6 +876,7 @@ impl Renderer {
                     multiply_color: [1.0; 4],
                     screen_color: [0.0; 4],
                     mask_settings: [0.0; 4],
+                    corner_radius: [0.0; 4],
                     opacity: 1.0,
                     padding: [0.0; 3],
                 };
@@ -870,6 +901,7 @@ impl Renderer {
                 multiply_color: [1.0; 4],
                 screen_color: [0.0; 4],
                 mask_settings: [0.0; 4],
+                corner_radius: self.corner_radius,
                 opacity: self.opacity,
                 padding: [0.0; 3],
             };
@@ -929,6 +961,7 @@ impl Renderer {
                     f32::from(mesh.mask_target.is_some()),
                     f32::from(mesh.inverted_mask),
                 ],
+                corner_radius: self.corner_radius,
                 opacity: mesh.opacity * self.model.model_opacity * self.opacity,
                 padding: [0.0; 3],
             };
@@ -949,6 +982,7 @@ impl Renderer {
                 multiply_color: [1.0; 4],
                 screen_color: [0.0; 4],
                 mask_settings: [0.0; 4],
+                corner_radius: self.corner_radius,
                 opacity: self.opacity,
                 padding: [0.0; 3],
             };
@@ -1092,7 +1126,7 @@ impl NativeOverlay {
         validate_options(options)?;
         let window =
             OverlayWindow::create(options, frame.snapshot.canvas, bounds, context_menu_sender)?;
-        let renderer = Renderer::create(&window, frame, options.opacity_percent)?;
+        let renderer = Renderer::create(&window, frame, options)?;
         Ok(Self {
             renderer,
             window,
@@ -2074,6 +2108,11 @@ fn validate_options(options: OverlaySessionOptions) -> Result<(), OverlayError> 
             "overlay opacity must be between 1 and 100 percent",
         ));
     }
+    if options.corner_radius_percent > MAXIMUM_CORNER_RADIUS_PERCENT {
+        return Err(OverlayError::new(
+            "overlay corner radius must be between 0 and 50 percent",
+        ));
+    }
     if !maximum_fps_is_valid(options.maximum_fps) {
         return Err(OverlayError::new("maximum FPS must be between 15 and 240"));
     }
@@ -2753,7 +2792,7 @@ mod tests {
     #[test]
     fn gpu_structs_match_d3d11_layout() {
         assert_eq!(size_of::<bongocat_render::Vertex>(), 16);
-        assert_eq!(size_of::<Uniforms>(), 80);
+        assert_eq!(size_of::<Uniforms>(), 96);
         assert_eq!(size_of::<Uniforms>() % 16, 0);
     }
 
@@ -2835,6 +2874,10 @@ mod tests {
             },
             OverlaySessionOptions {
                 opacity_percent: 0,
+                ..OverlaySessionOptions::default()
+            },
+            OverlaySessionOptions {
+                corner_radius_percent: 51,
                 ..OverlaySessionOptions::default()
             },
             OverlaySessionOptions {

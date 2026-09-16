@@ -3387,6 +3387,9 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       fixture validator 均通过。实现 commit `d8991bb` 的 CI run `33932042669` 全部 23 个 job 通过；
       Windows/macOS/Ubuntu workspace jobs `101212465140`/`101212465166`/`101212465133` 均通过完整
       workspace 与对应产品 smoke，P1 行为清单保持不变。
+    - 状态（2026-09-16，历史）：该决策已被第 78 项 `P0-OVERLAY-CORNER-RADIUS` 推翻。维护者要求
+      新版同步支持旧版已有的窗口圆角配置，圆角因此从 `P1 首发后` 上调为 `P0 首发`，字段以
+      `overlay.corner_radius_percent` 重新进入当前 v1。此行只保留当时状态。
 
 66. [x] `P6-REMOVE-DEFERRED-HOVER-FIELDS`：从当前 v1 配置移除首发后才实现的指针悬停隐藏字段。
     - 依赖：Phase 0 行为清单的 `P1 首发后` 决策、`next` 首版 schema 边界。
@@ -3672,6 +3675,75 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       示例而补上 `"NSGraphics"`。这是与本功能无关的既有缺陷，需要单独复核。
       **未运行**：Windows 实机（无 Windows 机器）、UI 真实点击两个按钮与真实
       `NSOpenPanel` 选 zip 的手工 smoke（需人工运行示例）。
+
+78. [x] `P0-OVERLAY-CORNER-RADIUS`：让当前 v1 支持旧版已有的窗口圆角配置，并作用于正式 overlay。
+    - 依赖：`P3-*` 建立的 macOS Metal / Windows D3D11 renderer 与 `Uniforms` alpha 路径、
+      `P2-*` 建立的 `OverlaySettings` 与强类型 command/snapshot 链路、`P5-*` 建立的 overlay
+      设置页与 debounced patch 机制、`P6-*` 建立的当前 v1 schema 边界。
+    - 退出条件：`overlay.corner_radius_percent` 作为当前 v1 字段在 Rust config、JSON Schema、
+      默认 fixture 与共享 manifest 中一致存在；取值范围 `0..=50`、默认 `0`，越界在 config
+      `validate()`、runtime `is_valid()`、JSON Schema 与两个 renderer 的 options 校验四处都失败
+      关闭；该值经强类型 command/snapshot 往返并在重启后恢复；GPUI overlay 设置页有可编辑数字
+      输入与中英文案；两个平台在同一片元着色器路径上按 drawable 像素位置裁剪；改变该值触发原生
+      窗口重建；不引入旧版兼容、migration、alias 或 fallback。
+    - 决策记录（2026-09-16）：本项由维护者要求直接决定，推翻第 65 项
+      `P6-REMOVE-DEFERRED-CORNER-RADIUS-FIELD`，并把行为清单「主窗口/圆角」由 `P1 首发后`
+      上调为 `P0 首发`。不新增 ADR：该配置不改变架构边界，只是 overlay 窗口的既有渲染属性。
+    - 旧版契约（`pre-refactor` 分支考古）：`src/stores/cat.ts` 的 `window.radius: number`
+      默认 `0`；`src/pages/preference/components/cat/index.vue` 的 `<InputNumber :min="0">`
+      只有下界、无上界；`src/pages/main/index.vue` 主窗口内容容器
+      `:style="{ borderRadius: `${catStore.window.radius}%` }"` 配合 `overflow-hidden`。
+      CSS 百分比 `border-radius` 是椭圆：`N%` 表示水平半轴为窗宽 `N%`、垂直半轴为窗高 `N%`；
+      `50%` 时四角弧线相接得到窗口内切椭圆，更大值被 CSS 缩放回同一椭圆。首版据此把范围收敛为
+      `0..=50`（对旧版"无上界"输入的收窄，属首版契约决定），`0` 保持直角。
+    - 当前契约（2026-09-16）：`OverlayConfig::corner_radius_percent: u8`
+      （`crates/bongocat-config/src/lib.rs:264`），`NativeConfig::default()` 为 `0`（:918），
+      `validate()` 以 `!(0..=50).contains(..)` 拒绝越界（:953）；共享 schema
+      `shared/config/config.schema.json` 的 `overlay.required` 与
+      `{"type":"integer","minimum":0,"maximum":50}` 同步。
+      `OverlaySettings::corner_radius_percent` 与 `is_valid()` 的 `<= 50` 约束
+      （`bongocat-runtime`）、`OverlaySessionOptions::corner_radius_percent`
+      （`crates/bongocat-overlay/src/lib.rs:83`）与 `requires_window_recreation`（:109）三处同构。
+      共享 helper `MAXIMUM_CORNER_RADIUS_PERCENT = 50`（:44）与
+      `corner_radius_uniform(percent, width, height) -> [f32; 4]`（:55）把百分比换算为
+      `(radius_fraction, drawable_width, drawable_height, 0)`。
+      两个 renderer 的 `Uniforms` 增加 `float4 corner_radius`（Rust 侧 `corner_radius: [f32; 4]`，
+      结构体 96 字节，布局由断言锁定），片元着色器新增 `corner_coverage`：在归一化 uv 上求内切
+      圆角矩形的有符号距离并转成 0..1 coverage，乘进既有
+      `texture_color.a * opacity * mask` 路径。background、mesh（Live2D）与 key 三处绘制使用真实
+      圆角，clipping mask pass 显式传 `[0.0; 4]`，避免圆角削弱 mask 覆盖。
+      macOS 侧 `crates/bongocat-overlay/src/macos.rs`（shader :93-147、uniform 计算 :1493、
+      绘制 :1527/:1560/:1602/:1646），Windows 侧 `crates/bongocat-overlay/src/windows.rs`
+      （shader :235-281、:752、:879/:904/:964/:985）；Windows 的 `Renderer::create`/`create_inner`
+      签名由 `opacity_percent: u8` 改为 `options: OverlaySessionOptions`。
+      UI：`SettingsOverlay::corner_radius_percent`（`bongocat-ui`）、
+      `SettingValue::OverlayCornerRadius` 与 `PendingOperation::OverlayCornerRadius`、
+      `set_overlay_corner_radius_value`（`crates/bongocat-ui/src/window/settings.rs:326`，
+      `raw.round().clamp(0.0, 50.0)`）、overlay 设置页数字输入
+      `NumberFieldOptions { min: 0.0, max: 50.0, step: 5.0 }`
+      （`crates/bongocat-ui/src/window/render.rs:485-518`）与
+      `settings.overlay.corner_radius.{label,description}` 中英文案
+      （`bongocat-i18n/locales/{zh-CN,en-US}.json`）。
+      共享 fixture：`accept-corner-radius.json`（值 25，accept）与 `invalid-corner-radius.json`
+      （值 51，reject）取代原 `invalid-deferred-corner-radius.json`。
+    - 验收证据（2026-09-16）：`cargo test --locked --workspace` 退出码 0，共 651 passed /
+      0 failed / 5 ignored（含 config 120、runtime 40、overlay 21+10、ui 115、app 120+21、
+      i18n 4 等）；`cargo check --locked --workspace --release` 通过（5.88s，仅有与本次无关的
+      `block v0.1.6` future-incompat 警告）；`cargo fmt --all --check`、三组 clippy
+      （按 CI 逐字命令：`--workspace --all-targets --all-features --exclude bongocat-app`、
+      `-p bongocat-app --all-targets --features storage-test-injection`、
+      `-p bongocat-app --all-targets --features production`，均 `-D warnings`）通过；`tools/validate-json-schema.py` 输出
+      `validated 9 input, 9 expected, and 13 config, 6 state fixture(s)`，其中
+      `corner-radius (accept)` 与 `corner-radius-out-of-range (reject)` 均符合预期；
+      `tools/validate-locales.py` 输出 `validated 2 locale(s), 374 key(s) each`；
+      `tools/validate-fixtures.py`（9 input fixture + 8 model package case）、
+      `tools/run-input-fixtures.py`（9 input fixture）、`tools/tests` 契约测试 63 项与
+      `tools.tests.test_native_release_target_matrix` 4 项、`git diff --check` 均通过。
+      Metal 着色器以 `xcrun -sdk macosx metal -std=metal3.0 -c` 离线编译通过（退出码 0）。
+      **未运行**：Windows HLSL 编译与 Windows 实机渲染（本机无 Windows、无 `dxc`/`fxc`，且
+      `naga` 不提供 HLSL frontend，离线校验路径不可用）；macOS 实机圆角视觉 smoke（需人工
+      运行产品观察边缘抗锯齿与多层重叠）；双平台 CI 门禁。因此 Windows 侧 `corner_coverage`
+      只经过与 Metal 逐行同构的代码审查，未经过任何编译或运行验证。
 
 ## 13. 待决策清单
 | 决策                                                          | 最迟完成              | 阻塞内容                           |

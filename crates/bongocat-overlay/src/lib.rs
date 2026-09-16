@@ -33,6 +33,34 @@ pub(crate) const FRAME_SMOKE_GRID_DIMENSION: u64 = 17;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const MIN_OVERLAY_WINDOW_DIMENSION: f32 = 64.0;
 
+/// Upper bound of the overlay corner radius, in percent of the window box.
+///
+/// The overlay radius keeps the legacy `border-radius: N%` semantics, where the
+/// four corner arcs are ellipses whose semi-axes are `N%` of the window width
+/// and height. At `50%` the arcs meet and the content is clipped to the full
+/// inscribed ellipse; the legacy implementation scaled every larger radius back
+/// down to that same ellipse, so `50` is the effective ceiling rather than an
+/// arbitrary limit.
+pub(crate) const MAXIMUM_CORNER_RADIUS_PERCENT: u8 = 50;
+
+/// Build the renderer's corner-radius uniform payload.
+///
+/// `x` is the radius as a fraction of the window box (clamped to the full
+/// ellipse), and `y`/`z` carry the drawable dimensions so the fragment shader
+/// can recover pixel coordinates and size its antialiased band in device
+/// pixels. The corner coverage is evaluated per drawable pixel and multiplied
+/// into each drawable's alpha, which is how the renderers already apply window
+/// opacity.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub(crate) fn corner_radius_uniform(
+    corner_radius_percent: u8,
+    width: f32,
+    height: f32,
+) -> [f32; 4] {
+    let percent = corner_radius_percent.min(MAXIMUM_CORNER_RADIUS_PERCENT);
+    [f32::from(percent) / 100.0, width, height, 0.0]
+}
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn default_overlay_window_dimensions(canvas: CanvasInfo) -> (f32, f32) {
     let canvas_width = canvas.width.max(MIN_OVERLAY_WINDOW_DIMENSION);
@@ -48,6 +76,11 @@ pub struct OverlaySessionOptions {
     pub always_on_top: bool,
     pub scale_percent: u16,
     pub opacity_percent: u8,
+    /// Corner radius of the overlay window box as a percentage of its width and
+    /// height. `0` keeps square corners; `50` clips the window content to the
+    /// full inscribed ellipse. Larger values are rejected by configuration and
+    /// clamped by the renderer, matching the legacy `border-radius` ceiling.
+    pub corner_radius_percent: u8,
     pub keep_inside_work_area: bool,
     pub maximum_fps: u16,
     pub window_bounds: Option<OverlayWindowBounds>,
@@ -60,6 +93,7 @@ impl OverlaySessionOptions {
             always_on_top: settings.always_on_top,
             scale_percent: settings.scale_percent,
             opacity_percent: settings.opacity_percent,
+            corner_radius_percent: settings.corner_radius_percent,
             keep_inside_work_area: settings.keep_inside_work_area,
             maximum_fps: self.maximum_fps,
             window_bounds: self.window_bounds,
@@ -72,6 +106,7 @@ impl OverlaySessionOptions {
     pub(crate) const fn requires_window_recreation(self, next: Self) -> bool {
         self.scale_percent != next.scale_percent
             || self.opacity_percent != next.opacity_percent
+            || self.corner_radius_percent != next.corner_radius_percent
             || self.keep_inside_work_area != next.keep_inside_work_area
     }
 }
@@ -83,6 +118,7 @@ impl Default for OverlaySessionOptions {
             always_on_top: true,
             scale_percent: 100,
             opacity_percent: 100,
+            corner_radius_percent: 0,
             keep_inside_work_area: true,
             maximum_fps: 60,
             window_bounds: None,
@@ -1088,6 +1124,32 @@ mod tests {
 
         next.opacity_percent = 80;
         assert!(current.requires_window_recreation(next));
+
+        next = current;
+        next.corner_radius_percent = 25;
+        assert!(current.requires_window_recreation(next));
+    }
+
+    #[test]
+    fn corner_radius_uniform_clamps_to_the_full_ellipse() {
+        assert_eq!(
+            corner_radius_uniform(0, 350.0, 200.0),
+            [0.0, 350.0, 200.0, 0.0]
+        );
+        assert_eq!(
+            corner_radius_uniform(25, 350.0, 200.0),
+            [0.25, 350.0, 200.0, 0.0]
+        );
+        // The legacy percentage ceiling: 50% already inscribes the full
+        // ellipse, so larger values must not shrink the visible window further.
+        assert_eq!(
+            corner_radius_uniform(50, 350.0, 200.0),
+            [0.5, 350.0, 200.0, 0.0]
+        );
+        assert_eq!(
+            corner_radius_uniform(100, 350.0, 200.0),
+            corner_radius_uniform(50, 350.0, 200.0)
+        );
     }
 
     #[test]

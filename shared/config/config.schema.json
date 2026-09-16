@@ -49,13 +49,14 @@
     "overlay": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["visible", "click_through", "always_on_top", "scale_percent", "opacity_percent", "keep_inside_work_area"],
+      "required": ["visible", "click_through", "always_on_top", "scale_percent", "opacity_percent", "corner_radius_percent", "keep_inside_work_area"],
       "properties": {
         "visible": { "type": "boolean" },
         "click_through": { "type": "boolean" },
         "always_on_top": { "type": "boolean" },
         "scale_percent": { "type": "integer", "minimum": 25, "maximum": 400 },
         "opacity_percent": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "corner_radius_percent": { "type": "integer", "minimum": 0, "maximum": 50 },
         "keep_inside_work_area": { "type": "boolean" }
       }
     },

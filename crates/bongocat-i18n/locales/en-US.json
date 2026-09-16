@@ -493,6 +493,10 @@
         "label": "Window opacity",
         "description": "Adjust the model window opacity from 1% to 100%."
       },
+      "corner_radius": {
+        "label": "Window corner radius",
+        "description": "Round the model window corners from 0% to 50% of its width and height. 0% keeps square corners and 50% clips the window to a full ellipse."
+      },
       "maximum_fps": {
         "label": "Maximum FPS",
         "description": "Limit animation and overlay updates from 15 to 240 FPS."

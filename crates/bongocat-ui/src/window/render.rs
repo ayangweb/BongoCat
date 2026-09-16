@@ -485,6 +485,40 @@ impl Render for SettingsView {
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
+                            "settings.overlay.corner_radius.label",
+                        ),
+                        SettingField::number_input(
+                            NumberFieldOptions {
+                                min: 0.0,
+                                max: 50.0,
+                                step: 5.0,
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .map_or(0.0, |s| f64::from(s.overlay.corner_radius_percent))
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_overlay_corner_radius_value(value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.overlay.corner_radius.description",
+                    )),
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
                             "settings.overlay.maximum_fps.label",
                         ),
                         SettingField::number_input(

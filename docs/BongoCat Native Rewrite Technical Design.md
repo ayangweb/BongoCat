@@ -552,6 +552,15 @@ blend 使用相同 linear premultiplied 输入。clipping mask 只携带 alpha�
 对 coverage 作 gamma 转换。v1 不解释或转换嵌入 ICC/wide-gamut profile；模型导入将此类颜色
 管理作为明确的后续能力，而不是让平台默认行为决定结果。
 
+窗口圆角是 overlay 窗口自身的形状属性，与模型、动作和输入无关。`overlay.corner_radius_percent`
+按窗口宽高的百分比给出四个角的椭圆半径：`N%` 表示水平半轴为窗口宽度的 `N%`、垂直半轴为窗口
+高度的 `N%`，与旧版 CSS `border-radius: N%` 相同，因此同一个数值在非正方形窗口上产生的水平
+圆角比垂直圆角更大；`0` 保持直角，`50` 时四条弧线相接、内容被裁剪为窗口的内切椭圆。renderer
+在片元着色器中按 drawable 像素位置求该椭圆的 coverage，并把它乘进每次绘制的 alpha，因此圆角
+只改变窗口边缘的合成结果，不改变 `RenderSnapshot`、模型资源、绘制顺序或 blend 模式。该值只
+作用于 overlay 窗口；GPUI 设置窗口和其他产品窗口保持各自的平台边框。改变圆角与改变缩放、
+不透明度、工作区约束一样需要重建原生窗口资源。
+
 原生 overlay 窗口创建后默认保持隐藏。平台 owner 只有在对应 renderer 已成功完成至少一次
 非空帧 draw/present 后才允许首次显示；启动、隐藏后重显、设置导致的窗口重建和模型切换重建
 都遵守同一顺序。首帧提交或验证失败时窗口保持隐藏，模型准备失败仍保留当前可用窗口与模型，

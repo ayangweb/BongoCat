@@ -232,6 +232,7 @@ enum PendingOperation {
     OverlaySettings,
     OverlayScale,
     OverlayOpacity,
+    OverlayCornerRadius,
     MotionAudio,
     BehaviorShortcuts,
     MaximumFps,
@@ -457,6 +458,8 @@ pub struct SettingsView {
     overlay_scale_timer_generation: u64,
     overlay_opacity_debouncer: crate::SettingsPatchDebouncer<u8>,
     overlay_opacity_timer_generation: u64,
+    overlay_corner_radius_debouncer: crate::SettingsPatchDebouncer<u8>,
+    overlay_corner_radius_timer_generation: u64,
     gamepad_dead_zone_debouncer: crate::SettingsPatchDebouncer<SettingsGamepadAxisSettings>,
     gamepad_dead_zone_timer_generation: u64,
     maximum_fps_debouncer: crate::SettingsPatchDebouncer<u16>,
@@ -527,6 +530,7 @@ pub struct SettingsView {
     quit_focus: FocusHandle,
     overlay_scale_input: Entity<InputState>,
     overlay_opacity_input: Entity<InputState>,
+    overlay_corner_radius_input: Entity<InputState>,
     stick_dead_zone_input: Entity<InputState>,
     trigger_dead_zone_input: Entity<InputState>,
     model_id_input: Entity<InputState>,
@@ -651,6 +655,47 @@ impl SettingsView {
                     Some(SettingValue::OverlayOpacity {
                         expected_config_revision,
                         opacity_percent,
+                        settings,
+                    }),
+                    cx,
+                );
+            });
+        })
+        .detach();
+    }
+
+    fn schedule_overlay_corner_radius_flush(&mut self, cx: &mut Context<Self>) {
+        self.overlay_corner_radius_timer_generation = self
+            .overlay_corner_radius_timer_generation
+            .saturating_add(1);
+        let generation = self.overlay_corner_radius_timer_generation;
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            executor.timer(crate::SETTINGS_PATCH_DEBOUNCE).await;
+            let _ = this.update(cx, |view, cx| {
+                if view.overlay_corner_radius_timer_generation != generation
+                    || view.pending.is_some()
+                {
+                    return;
+                }
+                let Some(corner_radius_percent) =
+                    view.overlay_corner_radius_debouncer.ready(Instant::now())
+                else {
+                    return;
+                };
+                let Some(snapshot) = view.snapshot.as_ref() else {
+                    return;
+                };
+                let Some(expected_config_revision) = snapshot.config_revision else {
+                    return;
+                };
+                let mut settings = snapshot.overlay;
+                settings.corner_radius_percent = corner_radius_percent;
+                view.start_request(
+                    PendingOperation::OverlayCornerRadius,
+                    Some(SettingValue::OverlayCornerRadius {
+                        expected_config_revision,
+                        corner_radius_percent,
                         settings,
                     }),
                     cx,
@@ -814,6 +859,19 @@ impl SettingsView {
                 }),
                 cx,
             );
+        } else if let Some(corner_radius_percent) = self.overlay_corner_radius_debouncer.flush(now)
+        {
+            let mut settings = snapshot.overlay;
+            settings.corner_radius_percent = corner_radius_percent;
+            self.start_request(
+                PendingOperation::OverlayCornerRadius,
+                Some(SettingValue::OverlayCornerRadius {
+                    expected_config_revision,
+                    corner_radius_percent,
+                    settings,
+                }),
+                cx,
+            );
         } else if let Some(settings) = self.gamepad_dead_zone_debouncer.flush(now) {
             self.start_request(
                 PendingOperation::GamepadAxisSettings,
@@ -885,6 +943,13 @@ impl SettingsView {
             Some(SettingValue::OverlayOpacity {
                 opacity_percent, ..
             }) => Some(*opacity_percent),
+            _ => None,
+        };
+        let sent_overlay_corner_radius = match value.as_ref() {
+            Some(SettingValue::OverlayCornerRadius {
+                corner_radius_percent,
+                ..
+            }) => Some(*corner_radius_percent),
             _ => None,
         };
         let sent_gamepad_dead_zone = match value.as_ref() {
@@ -969,6 +1034,15 @@ impl SettingsView {
                         .await
                 }
                 Some(SettingValue::OverlayOpacity {
+                    expected_config_revision,
+                    settings,
+                    ..
+                }) => {
+                    client
+                        .set_overlay_settings(expected_config_revision, settings)
+                        .await
+                }
+                Some(SettingValue::OverlayCornerRadius {
                     expected_config_revision,
                     settings,
                     ..
@@ -1081,6 +1155,15 @@ impl SettingsView {
                     }
                 }
                 if result.is_ok()
+                    && let Some(corner_radius_percent) = sent_overlay_corner_radius
+                {
+                    view.overlay_corner_radius_debouncer
+                        .mark_sent(&corner_radius_percent);
+                    if view.overlay_corner_radius_debouncer.is_pending() {
+                        view.schedule_overlay_corner_radius_flush(cx);
+                    }
+                }
+                if result.is_ok()
                     && let Some(settings) = sent_gamepad_dead_zone
                 {
                     view.gamepad_dead_zone_debouncer.mark_sent(&settings);
@@ -1116,6 +1199,9 @@ impl SettingsView {
                     }
                     if sent_overlay_opacity.is_some() {
                         view.schedule_overlay_opacity_flush(cx);
+                    }
+                    if sent_overlay_corner_radius.is_some() {
+                        view.schedule_overlay_corner_radius_flush(cx);
                     }
                     if sent_gamepad_dead_zone.is_some() {
                         view.schedule_gamepad_dead_zone_flush(cx);
@@ -1229,6 +1315,11 @@ enum SettingValue {
     OverlayOpacity {
         expected_config_revision: u64,
         opacity_percent: u8,
+        settings: SettingsOverlay,
+    },
+    OverlayCornerRadius {
+        expected_config_revision: u64,
+        corner_radius_percent: u8,
         settings: SettingsOverlay,
     },
     MotionAudioEnabled {

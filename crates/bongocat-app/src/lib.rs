@@ -745,6 +745,7 @@ impl Application {
         next_config.overlay.always_on_top = settings.always_on_top;
         next_config.overlay.scale_percent = settings.scale_percent;
         next_config.overlay.opacity_percent = settings.opacity_percent;
+        next_config.overlay.corner_radius_percent = settings.corner_radius_percent;
         next_config.overlay.keep_inside_work_area = settings.keep_inside_work_area;
         let next_revision = self
             .config_store
@@ -1456,6 +1457,7 @@ fn overlay_settings_from_config(config: &NativeConfig) -> OverlaySettings {
         always_on_top: config.overlay.always_on_top,
         scale_percent: config.overlay.scale_percent,
         opacity_percent: config.overlay.opacity_percent,
+        corner_radius_percent: config.overlay.corner_radius_percent,
         keep_inside_work_area: config.overlay.keep_inside_work_area,
     }
 }
@@ -1843,6 +1845,7 @@ mod tests {
             always_on_top: false,
             scale_percent: 150,
             opacity_percent: 75,
+            corner_radius_percent: 25,
             keep_inside_work_area: false,
         };
         let settings_snapshot = application

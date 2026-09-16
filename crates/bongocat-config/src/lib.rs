@@ -241,6 +241,9 @@ impl Language {
     }
 }
 
+/// Overlay window configuration. Every field is a property of the single
+/// product overlay window; the settings window and every other product window
+/// keep their own platform chrome and are not affected.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct OverlayConfig {
@@ -249,6 +252,16 @@ pub struct OverlayConfig {
     pub always_on_top: bool,
     pub scale_percent: u16,
     pub opacity_percent: u8,
+    /// Corner radius of the overlay window box, as a percentage of the window
+    /// width and height. The value keeps the legacy `border-radius: N%`
+    /// semantics: each corner arc is an ellipse with a horizontal semi-axis of
+    /// `N%` of the window width and a vertical semi-axis of `N%` of the window
+    /// height, so the same number rounds a wide window more horizontally than
+    /// vertically. `0` leaves square corners. At `50` the four arcs meet and the
+    /// window content is clipped to the full inscribed ellipse; the legacy
+    /// implementation scaled every radius above that point back down to the same
+    /// ellipse, so `50` is the effective upper bound of the legacy behavior.
+    pub corner_radius_percent: u8,
     pub keep_inside_work_area: bool,
 }
 
@@ -902,6 +915,7 @@ impl Default for NativeConfig {
                 always_on_top: true,
                 scale_percent: 100,
                 opacity_percent: 100,
+                corner_radius_percent: 0,
                 keep_inside_work_area: true,
             },
             input: InputConfig {
@@ -935,6 +949,9 @@ impl NativeConfig {
         }
         if !(1..=100).contains(&self.overlay.opacity_percent) {
             return Err(ConfigError::InvalidValue("overlay.opacity_percent"));
+        }
+        if !(0..=50).contains(&self.overlay.corner_radius_percent) {
+            return Err(ConfigError::InvalidValue("overlay.corner_radius_percent"));
         }
         if !(0.0..1.0).contains(&self.input.gamepad_stick_dead_zone)
             || !self.input.gamepad_stick_dead_zone.is_finite()
@@ -2571,12 +2588,6 @@ mod tests {
             .expect_err("platform startup state must not enter config");
         assert!(error.to_string().contains("unknown field"));
 
-        let mut value = serde_json::to_value(NativeConfig::default()).expect("serialize default");
-        value["overlay"]["corner_radius_percent"] = serde_json::Value::from(25);
-        let error = serde_json::from_value::<NativeConfig>(value)
-            .expect_err("post-launch corner radius must not enter the initial v1 config");
-        assert!(error.to_string().contains("unknown field"));
-
         for (field, value) in [
             ("hide_on_pointer_hover", serde_json::Value::Bool(true)),
             (
@@ -2590,6 +2601,26 @@ mod tests {
             let error = serde_json::from_value::<NativeConfig>(config)
                 .expect_err("post-launch hover behavior must not enter the initial v1 config");
             assert!(error.to_string().contains("unknown field"));
+        }
+    }
+
+    #[test]
+    fn overlay_corner_radius_accepts_the_legacy_percentage_range() {
+        for accepted in [0_u8, 1, 12, 25, 49, 50] {
+            let mut config = NativeConfig::default();
+            config.overlay.corner_radius_percent = accepted;
+            assert!(
+                config.validate().is_ok(),
+                "corner radius {accepted} must be accepted"
+            );
+        }
+        for rejected in [51_u8, 100, u8::MAX] {
+            let mut config = NativeConfig::default();
+            config.overlay.corner_radius_percent = rejected;
+            assert!(matches!(
+                config.validate(),
+                Err(ConfigError::InvalidValue("overlay.corner_radius_percent"))
+            ));
         }
     }
 
@@ -2652,11 +2683,22 @@ mod tests {
         let config = store.load_or_default().expect("default config").config;
         let original = fs::read(&store.layout().config).expect("original bytes");
 
-        let mut invalid = config;
+        let mut invalid = config.clone();
         invalid.overlay.opacity_percent = 0;
         assert!(matches!(
             store.commit(&invalid),
             Err(ConfigError::InvalidValue("overlay.opacity_percent"))
+        ));
+        assert_eq!(
+            fs::read(&store.layout().config).expect("config bytes"),
+            original
+        );
+
+        let mut invalid = config.clone();
+        invalid.overlay.corner_radius_percent = 51;
+        assert!(matches!(
+            store.commit(&invalid),
+            Err(ConfigError::InvalidValue("overlay.corner_radius_percent"))
         ));
         assert_eq!(
             fs::read(&store.layout().config).expect("config bytes"),

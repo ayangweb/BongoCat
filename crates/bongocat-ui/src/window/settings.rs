@@ -318,6 +318,51 @@ impl SettingsView {
         }
     }
 
+    /// Apply a corner radius typed or stepped in the overlay settings page.
+    ///
+    /// The legacy window rounding was a percentage of the window box, so the
+    /// value is clamped to the range the configuration accepts: `0` keeps square
+    /// corners and `50` is the full inscribed ellipse.
+    pub(super) fn set_overlay_corner_radius_value(&mut self, raw: f64, cx: &mut Context<Self>) {
+        if self.model_import.is_running() {
+            return;
+        }
+        let value = raw.round().clamp(0.0, 50.0) as u8;
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        if snapshot.configuration_status != SettingsConfigurationStatus::Ready
+            || snapshot.overlay.corner_radius_percent == value
+        {
+            return;
+        }
+        let expected_config_revision = snapshot.config_revision;
+        let current_overlay = snapshot.overlay;
+        let should_send = self
+            .overlay_corner_radius_debouncer
+            .observe(value, Instant::now())
+            .filter(|_| self.pending.is_none())
+            .and_then(|corner_radius_percent| {
+                expected_config_revision.map(|expected_config_revision| {
+                    let mut settings = current_overlay;
+                    settings.corner_radius_percent = corner_radius_percent;
+                    self.start_request(
+                        PendingOperation::OverlayCornerRadius,
+                        Some(SettingValue::OverlayCornerRadius {
+                            expected_config_revision,
+                            corner_radius_percent,
+                            settings,
+                        }),
+                        cx,
+                    );
+                })
+            })
+            .is_some();
+        if !should_send {
+            self.schedule_overlay_corner_radius_flush(cx);
+        }
+    }
+
     pub(super) fn set_motion_audio_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
         let Some(expected_config_revision) = self
             .snapshot

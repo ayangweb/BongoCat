@@ -518,6 +518,9 @@ pub struct SettingsOverlay {
     pub always_on_top: bool,
     pub scale_percent: u16,
     pub opacity_percent: u8,
+    /// Overlay window corner radius as a percentage of the window width and
+    /// height, matching the legacy `border-radius: N%` window setting.
+    pub corner_radius_percent: u8,
     pub keep_inside_work_area: bool,
 }
 
@@ -528,6 +531,7 @@ impl Default for SettingsOverlay {
             always_on_top: true,
             scale_percent: 100,
             opacity_percent: 100,
+            corner_radius_percent: 0,
             keep_inside_work_area: true,
         }
     }
