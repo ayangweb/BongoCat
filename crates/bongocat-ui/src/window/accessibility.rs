@@ -433,7 +433,7 @@ impl SettingsView {
             AccessibilityToggle::Off
         })
         .disabled(disabled);
-        let hover_hide_delay_ms = overlay_settings.hide_on_pointer_hover_delay_ms;
+        let hover_hide_delay_seconds = overlay_settings.hide_on_pointer_hover_delay_seconds;
         let mut hover_hide_delay_decrease_node = AccessibilityNode::new(
             ACCESSIBILITY_OVERLAY_HOVER_DELAY_DECREASE,
             AccessibilityRole::Button,
@@ -446,8 +446,8 @@ impl SettingsView {
             language.catalog_locale(),
             "settings.overlay.hide_on_pointer_hover_delay.description",
         ))
-        .with_value(hover_hide_delay_ms.to_string())
-        .disabled(disabled || hover_hide_delay_ms == 0);
+        .with_value(format!("{hover_hide_delay_seconds}s"))
+        .disabled(disabled || hover_hide_delay_seconds == 0);
         let mut hover_hide_delay_increase_node = AccessibilityNode::new(
             ACCESSIBILITY_OVERLAY_HOVER_DELAY_INCREASE,
             AccessibilityRole::Button,
@@ -460,21 +460,24 @@ impl SettingsView {
             language.catalog_locale(),
             "settings.overlay.hide_on_pointer_hover_delay.description",
         ))
-        .with_value(hover_hide_delay_ms.to_string())
+        .with_value(format!("{hover_hide_delay_seconds}s"))
         .disabled(
             disabled
-                || hover_hide_delay_ms >= bongocat_config::MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS,
+                || hover_hide_delay_seconds
+                    >= bongocat_config::MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS,
         );
         if !disabled {
             topmost_node = topmost_node.clickable().focusable();
             click_through_node = click_through_node.clickable().focusable();
             keep_inside_work_area_node = keep_inside_work_area_node.clickable().focusable();
             hide_on_pointer_hover_node = hide_on_pointer_hover_node.clickable().focusable();
-            if hover_hide_delay_ms > 0 {
+            if hover_hide_delay_seconds > 0 {
                 hover_hide_delay_decrease_node =
                     hover_hide_delay_decrease_node.clickable().focusable();
             }
-            if hover_hide_delay_ms < bongocat_config::MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS {
+            if hover_hide_delay_seconds
+                < bongocat_config::MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS
+            {
                 hover_hide_delay_increase_node =
                     hover_hide_delay_increase_node.clickable().focusable();
             }
@@ -1205,10 +1208,10 @@ impl SettingsView {
                 }
             }
             ACCESSIBILITY_OVERLAY_HOVER_DELAY_DECREASE => {
-                self.adjust_overlay_hover_hide_delay(-250, cx)
+                self.adjust_overlay_hover_hide_delay(-1, cx)
             }
             ACCESSIBILITY_OVERLAY_HOVER_DELAY_INCREASE => {
-                self.adjust_overlay_hover_hide_delay(250, cx)
+                self.adjust_overlay_hover_hide_delay(1, cx)
             }
             ACCESSIBILITY_OVERLAY_SCALE_DECREASE => self.adjust_overlay_scale(-25, cx),
             ACCESSIBILITY_OVERLAY_SCALE_INCREASE => self.adjust_overlay_scale(25, cx),

@@ -488,8 +488,8 @@
         "description": "Fade the model window out while the pointer rests on it so whatever is underneath stays reachable, and restore it when the pointer leaves. The window is not closed, and click-through stays in effect while it is hidden."
       },
       "hide_on_pointer_hover_delay": {
-        "label": "Hover hide delay (ms)",
-        "description": "How long the pointer must rest on the model window before it hides, from 0 to 60000. Set to 0 to hide as soon as the pointer enters."
+        "label": "Hover hide delay (s)",
+        "description": "How long the pointer must rest on the model window before it hides, in whole seconds from 0 to 60. Set to 0 to hide as soon as the pointer enters."
       },
       "motion_audio": {
         "label": "Motion audio",

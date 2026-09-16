@@ -23,6 +23,8 @@ use bongocat_platform::{
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_platform::{SystemMenu, SystemMenuAction, SystemMenuPresentation};
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use bongocat_runtime::hover_hide_delay_ms;
 #[cfg(target_os = "windows")]
 use bongocat_ui::SettingsView;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -2184,7 +2186,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         opacity_percent: application.config().overlay.opacity_percent,
         corner_radius_percent: application.config().overlay.corner_radius_percent,
         hide_on_pointer_hover: application.config().overlay.hide_on_pointer_hover,
-        hide_on_pointer_hover_delay_ms: application.config().overlay.hide_on_pointer_hover_delay_ms,
+        hide_on_pointer_hover_delay_ms: hover_hide_delay_ms(
+            application
+                .config()
+                .overlay
+                .hide_on_pointer_hover_delay_seconds,
+        ),
         keep_inside_work_area: application.config().overlay.keep_inside_work_area,
         maximum_fps: application.config().model.maximum_fps,
         window_bounds: application.overlay_window_placement().map(|placement| {

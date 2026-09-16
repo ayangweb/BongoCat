@@ -180,13 +180,33 @@ impl fmt::Display for RuntimeRenderErrorCode {
     }
 }
 
-/// Upper bound of the overlay hover hide delay, in milliseconds.
+/// Upper bound of the overlay hover hide delay, in whole seconds.
 ///
-/// The legacy input accepted whole seconds with no upper bound. The first
-/// version stores milliseconds and caps them at one minute, matching the other
-/// millisecond timeout in the current v1 schema. See
-/// `bongocat_config::OverlayConfig::hide_on_pointer_hover_delay_ms`.
-pub const MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS: u32 = 60_000;
+/// The legacy input accepted whole seconds with no upper bound; the first
+/// version caps them at one minute. Seconds are also the unit the configuration
+/// and the settings page use, so nothing converts between the stored value and
+/// the visible one. See
+/// `bongocat_config::OverlayConfig::hide_on_pointer_hover_delay_seconds`.
+pub const MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS: u32 = 60;
+
+/// The same ceiling in the milliseconds the overlay frame loop counts in.
+///
+/// The hover state machine compares against `MonotonicMillis`, so the overlay
+/// options stay millisecond-valued; this constant keeps the platform option
+/// validation on the shared bound instead of a second literal.
+pub const MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS: u32 =
+    MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS * 1_000;
+
+/// The hover hide delay in the milliseconds the overlay frame loop counts in.
+///
+/// The current v1 configuration and the settings page store whole seconds; the
+/// overlay compares the delay against `MonotonicMillis`. This is the single
+/// conversion between the stored unit and the frame clock, so callers do not
+/// repeat the factor. The multiply saturates rather than wraps, which keeps an
+/// out-of-range value large enough for the option validation to reject it.
+pub const fn hover_hide_delay_ms(seconds: u32) -> u32 {
+    seconds.saturating_mul(1_000)
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct OverlaySettings {
@@ -206,8 +226,8 @@ pub struct OverlaySettings {
     /// and passes pointer events through until the pointer leaves again.
     pub hide_on_pointer_hover: bool,
     /// How long the pointer must stay inside the overlay window before the
-    /// hover hide starts, in milliseconds. `0` hides immediately.
-    pub hide_on_pointer_hover_delay_ms: u32,
+    /// hover hide starts, in whole seconds. `0` hides immediately.
+    pub hide_on_pointer_hover_delay_seconds: u32,
     pub keep_inside_work_area: bool,
 }
 
@@ -220,7 +240,7 @@ impl Default for OverlaySettings {
             opacity_percent: 100,
             corner_radius_percent: 0,
             hide_on_pointer_hover: false,
-            hide_on_pointer_hover_delay_ms: 0,
+            hide_on_pointer_hover_delay_seconds: 0,
             keep_inside_work_area: true,
         }
     }
@@ -233,7 +253,8 @@ impl OverlaySettings {
             && self.opacity_percent >= 1
             && self.opacity_percent <= 100
             && self.corner_radius_percent <= 50
-            && self.hide_on_pointer_hover_delay_ms <= MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS
+            && self.hide_on_pointer_hover_delay_seconds
+                <= MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS
     }
 }
 
@@ -2951,7 +2972,7 @@ mod tests {
             opacity_percent: 80,
             corner_radius_percent: 25,
             hide_on_pointer_hover: true,
-            hide_on_pointer_hover_delay_ms: 750,
+            hide_on_pointer_hover_delay_seconds: 1,
             keep_inside_work_area: false,
         };
         let sequence = client
@@ -3026,7 +3047,7 @@ mod tests {
         );
 
         let invalid = OverlaySettings {
-            hide_on_pointer_hover_delay_ms: MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS + 1,
+            hide_on_pointer_hover_delay_seconds: MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS + 1,
             ..settings
         };
         let sequence = client
@@ -4854,5 +4875,24 @@ mod tests {
             }
         );
         assert_eq!(client.snapshot().input.transport, producer.diagnostics());
+    }
+
+    #[test]
+    fn hover_hide_delay_converts_whole_seconds_to_the_frame_clock() {
+        assert_eq!(hover_hide_delay_ms(0), 0);
+        assert_eq!(hover_hide_delay_ms(1), 1_000);
+        assert_eq!(hover_hide_delay_ms(3), 3_000);
+        assert_eq!(
+            hover_hide_delay_ms(MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS),
+            MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS
+        );
+        // The multiply saturates instead of wrapping, so an out-of-range second
+        // value stays above the shared ceiling and the option validation keeps
+        // rejecting it instead of seeing a small wrapped delay.
+        assert!(
+            hover_hide_delay_ms(MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS + 1)
+                > MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS
+        );
+        assert!(hover_hide_delay_ms(u32::MAX) > MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS);
     }
 }

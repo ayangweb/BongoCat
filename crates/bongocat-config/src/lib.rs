@@ -271,24 +271,26 @@ pub struct OverlayConfig {
     /// window box again.
     pub hide_on_pointer_hover: bool,
     /// How long the pointer must stay inside the overlay box before the hover
-    /// hide starts, in milliseconds. `0` hides as soon as the pointer enters.
+    /// hide starts, in whole seconds. `0` hides as soon as the pointer enters.
     ///
-    /// The legacy input took whole seconds with a lower bound of `0` and no
-    /// upper bound. The first version stores milliseconds instead, so it keeps
-    /// the same one-second granularity the legacy UI offered, and caps the
-    /// value at `60_000` like the other millisecond timeout in this schema
-    /// (`model.release_fallback_timeout_ms`). The cap is a first-version
-    /// contract decision rather than a legacy ceiling: a hover delay longer
-    /// than a minute is indistinguishable from leaving the feature off.
-    pub hide_on_pointer_hover_delay_ms: u32,
+    /// The legacy input also took whole seconds with a lower bound of `0`, so
+    /// this field keeps the unit the settings page edits and needs no
+    /// conversion between the stored value and the visible one. The cap at `60`
+    /// seconds is a first-version contract decision rather than a legacy
+    /// ceiling (the legacy input had no upper bound): a hover delay longer than
+    /// a minute is indistinguishable from leaving the feature off. The overlay
+    /// frame loop still counts in milliseconds and converts once at its own
+    /// boundary, because the hover state machine compares against the
+    /// monotonic millisecond clock.
+    pub hide_on_pointer_hover_delay_seconds: u32,
     pub keep_inside_work_area: bool,
 }
 
-/// Upper bound of the hover hide delay, in milliseconds.
+/// Upper bound of the hover hide delay, in whole seconds.
 ///
-/// See [`OverlayConfig::hide_on_pointer_hover_delay_ms`] for why the legacy
-/// implementation's unbounded second-valued input is narrowed here.
-pub const MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS: u32 = 60_000;
+/// See [`OverlayConfig::hide_on_pointer_hover_delay_seconds`] for why the legacy
+/// implementation's unbounded second-valued input is capped here.
+pub const MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS: u32 = 60;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -942,7 +944,7 @@ impl Default for NativeConfig {
                 opacity_percent: 100,
                 corner_radius_percent: 0,
                 hide_on_pointer_hover: false,
-                hide_on_pointer_hover_delay_ms: 0,
+                hide_on_pointer_hover_delay_seconds: 0,
                 keep_inside_work_area: true,
             },
             input: InputConfig {
@@ -980,9 +982,11 @@ impl NativeConfig {
         if !(0..=50).contains(&self.overlay.corner_radius_percent) {
             return Err(ConfigError::InvalidValue("overlay.corner_radius_percent"));
         }
-        if self.overlay.hide_on_pointer_hover_delay_ms > MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS {
+        if self.overlay.hide_on_pointer_hover_delay_seconds
+            > MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS
+        {
             return Err(ConfigError::InvalidValue(
-                "overlay.hide_on_pointer_hover_delay_ms",
+                "overlay.hide_on_pointer_hover_delay_seconds",
             ));
         }
         if !(0.0..1.0).contains(&self.input.gamepad_stick_dead_zone)
@@ -2629,21 +2633,21 @@ mod tests {
 
     #[test]
     fn overlay_hover_hide_delay_accepts_the_first_version_range() {
-        for accepted in [0_u32, 1, 250, 1_000, 59_999, 60_000] {
+        for accepted in [0_u32, 1, 2, 30, 59, 60] {
             let mut config = NativeConfig::default();
-            config.overlay.hide_on_pointer_hover_delay_ms = accepted;
+            config.overlay.hide_on_pointer_hover_delay_seconds = accepted;
             assert!(
                 config.validate().is_ok(),
                 "hover hide delay {accepted} must be accepted"
             );
         }
-        for rejected in [60_001_u32, 120_000, u32::MAX] {
+        for rejected in [61_u32, 120, u32::MAX] {
             let mut config = NativeConfig::default();
-            config.overlay.hide_on_pointer_hover_delay_ms = rejected;
+            config.overlay.hide_on_pointer_hover_delay_seconds = rejected;
             assert!(matches!(
                 config.validate(),
                 Err(ConfigError::InvalidValue(
-                    "overlay.hide_on_pointer_hover_delay_ms"
+                    "overlay.hide_on_pointer_hover_delay_seconds"
                 ))
             ));
         }
@@ -2653,11 +2657,11 @@ mod tests {
     fn overlay_hover_hide_switch_defaults_to_off_and_round_trips() {
         let config = NativeConfig::default();
         assert!(!config.overlay.hide_on_pointer_hover);
-        assert_eq!(config.overlay.hide_on_pointer_hover_delay_ms, 0);
+        assert_eq!(config.overlay.hide_on_pointer_hover_delay_seconds, 0);
 
         let mut enabled = config;
         enabled.overlay.hide_on_pointer_hover = true;
-        enabled.overlay.hide_on_pointer_hover_delay_ms = 1_500;
+        enabled.overlay.hide_on_pointer_hover_delay_seconds = 3;
         enabled.validate().expect("enabled hover hide is valid");
         let encoded = serde_json::to_string(&enabled).expect("serialize enabled hover hide");
         let decoded: NativeConfig =
@@ -2767,11 +2771,11 @@ mod tests {
         );
 
         let mut invalid = config.clone();
-        invalid.overlay.hide_on_pointer_hover_delay_ms = 60_001;
+        invalid.overlay.hide_on_pointer_hover_delay_seconds = 61;
         assert!(matches!(
             store.commit(&invalid),
             Err(ConfigError::InvalidValue(
-                "overlay.hide_on_pointer_hover_delay_ms"
+                "overlay.hide_on_pointer_hover_delay_seconds"
             ))
         ));
         assert_eq!(

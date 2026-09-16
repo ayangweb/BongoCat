@@ -34,7 +34,7 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 - Redesigned settings navigation and status feedback, with more complete loading, empty, error, and retry states.
 - Model scaling now supports 25%–400%, and opacity supports 1%–100%.
 - The model window corner radius can be set from 0% to 50% of its width and height. 0% keeps square corners and 50% clips the window to a full ellipse.
-- Added a "Hide on pointer hover" setting that fades the model window out and lets pointer input pass through while the pointer rests on it, restoring it when the pointer leaves. The hover delay is configurable from 0 to 60000 ms, where 0 hides immediately.
+- Added a "Hide on pointer hover" setting that fades the model window out and lets pointer input pass through while the pointer rests on it, restoring it when the pointer leaves. The hover delay is configurable from 0 to 60 seconds, where 0 hides immediately.
 - Added dead-zone settings for gamepad sticks and triggers.
 
 ### 💻 Platform Changes

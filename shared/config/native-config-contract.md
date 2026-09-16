@@ -25,46 +25,48 @@ shortcuts
 
 当前命名基线：
 
-| Section       | Field                             | Meaning                                |
-| ------------- | --------------------------------- | -------------------------------------- |
-| `application` | `show_taskbar_icon`               | Windows 任务栏可见性                   |
-| `application` | `show_status_icon`                | 托盘/菜单栏入口可见性                  |
-| `application` | `check_for_updates_automatically` | 自动检查更新                           |
-| `appearance`  | `theme`                           | `system`、`light` 或 `dark`            |
-| `appearance`  | `language`                        | UI locale                              |
-| `overlay`     | `visible`                         | 主猫窗口可见性                         |
-| `overlay`     | `click_through`                   | 指针事件是否穿透                       |
-| `overlay`     | `always_on_top`                   | 是否置顶                               |
-| `overlay`     | `scale_percent`                   | 模型/窗口缩放百分比                    |
-| `overlay`     | `opacity_percent`                 | 窗口不透明度百分比                     |
-| `overlay`     | `corner_radius_percent`           | 窗口圆角百分比，`[0, 50]`              |
-| `overlay`     | `hide_on_pointer_hover`           | 指针悬停在窗口上时隐藏内容并临时穿透   |
-| `overlay`     | `hide_on_pointer_hover_delay_ms`  | 悬停隐藏前的等待毫秒，`[0, 60000]`     |
-| `overlay`     | `keep_inside_work_area`           | 保持在可见工作区                       |
-| `input`       | `gamepad_stick_dead_zone`         | 左/右摇杆死区，`[0, 1)`                |
-| `input`       | `gamepad_trigger_dead_zone`       | 扳机死区，`[0, 1)`                     |
-| `model`       | `selected_model_id`               | 当前模型稳定 ID，与 origin 成对为空    |
-| `model`       | `selected_model_origin`           | `preset` / `installed`，与 ID 成对为空 |
-| `model`       | `installed_models`                | 用户导入模型的元数据列表（id + title） |
-| `model`       | `mirror`                          | 水平镜像模型                           |
-| `model`       | `mirror_pointer_tracking`         | 镜像指针跟随方向                       |
-| `model`       | `play_motion_audio`               | 播放动作音效                           |
-| `model`       | `enable_behavior_shortcuts`       | 启用模型动作/表情绑定                  |
-| `model`       | `maximum_fps`                     | overlay 最大帧率                       |
-| `model`       | `ignore_pointer`                  | 模型求值忽略指针位置                   |
-| `model`       | `release_fallback_timeout_ms`     | 输入校正失败后的最后保险，不是主语义   |
-| `shortcuts`   | `commands`                        | 应用 command 到快捷键绑定              |
-| `shortcuts`   | `model_behaviors`                 | 模型动作/表情绑定                      |
+| Section       | Field                                 | Meaning                                |
+| ------------- | ------------------------------------- | -------------------------------------- |
+| `application` | `show_taskbar_icon`                   | Windows 任务栏可见性                   |
+| `application` | `show_status_icon`                    | 托盘/菜单栏入口可见性                  |
+| `application` | `check_for_updates_automatically`     | 自动检查更新                           |
+| `appearance`  | `theme`                               | `system`、`light` 或 `dark`            |
+| `appearance`  | `language`                            | UI locale                              |
+| `overlay`     | `visible`                             | 主猫窗口可见性                         |
+| `overlay`     | `click_through`                       | 指针事件是否穿透                       |
+| `overlay`     | `always_on_top`                       | 是否置顶                               |
+| `overlay`     | `scale_percent`                       | 模型/窗口缩放百分比                    |
+| `overlay`     | `opacity_percent`                     | 窗口不透明度百分比                     |
+| `overlay`     | `corner_radius_percent`               | 窗口圆角百分比，`[0, 50]`              |
+| `overlay`     | `hide_on_pointer_hover`               | 指针悬停在窗口上时隐藏内容并临时穿透   |
+| `overlay`     | `hide_on_pointer_hover_delay_seconds` | 悬停隐藏前的等待秒数，`[0, 60]`        |
+| `overlay`     | `keep_inside_work_area`               | 保持在可见工作区                       |
+| `input`       | `gamepad_stick_dead_zone`             | 左/右摇杆死区，`[0, 1)`                |
+| `input`       | `gamepad_trigger_dead_zone`           | 扳机死区，`[0, 1)`                     |
+| `model`       | `selected_model_id`                   | 当前模型稳定 ID，与 origin 成对为空    |
+| `model`       | `selected_model_origin`               | `preset` / `installed`，与 ID 成对为空 |
+| `model`       | `installed_models`                    | 用户导入模型的元数据列表（id + title） |
+| `model`       | `mirror`                              | 水平镜像模型                           |
+| `model`       | `mirror_pointer_tracking`             | 镜像指针跟随方向                       |
+| `model`       | `play_motion_audio`                   | 播放动作音效                           |
+| `model`       | `enable_behavior_shortcuts`           | 启用模型动作/表情绑定                  |
+| `model`       | `maximum_fps`                         | overlay 最大帧率                       |
+| `model`       | `ignore_pointer`                      | 模型求值忽略指针位置                   |
+| `model`       | `release_fallback_timeout_ms`         | 输入校正失败后的最后保险，不是主语义   |
+| `shortcuts`   | `commands`                            | 应用 command 到快捷键绑定              |
+| `shortcuts`   | `model_behaviors`                     | 模型动作/表情绑定                      |
 
 首次启动创建当前 v1 配置时，`overlay.click_through` 默认为 `false`。用户后续通过
 typed settings command 修改该值后，仍按配置 revision 原子提交并在重启时从当前环境恢复。
 
-`overlay.hide_on_pointer_hover` 默认 `false`，`overlay.hide_on_pointer_hover_delay_ms` 默认
+`overlay.hide_on_pointer_hover` 默认 `false`，`overlay.hide_on_pointer_hover_delay_seconds` 默认
 `0`（立即隐藏）。两者只在窗口呈现层生效：开启后指针进入 overlay 窗口矩形并停留满延迟时间，
 窗口渲染 alpha 在 300ms 内降到 `0`，同时指针事件立即穿透；指针离开后 alpha 在 300ms 内恢复，
 穿透状态回到 `overlay.click_through`。窗口本身不隐藏、不销毁，也不改变
-`overlay.visible`。延迟值在 `next` 首版收窄为 `0..=60000` 毫秒，理由见
-`bongocat-config` 中 `OverlayConfig::hide_on_pointer_hover_delay_ms` 的文档注释。
+`overlay.visible`。延迟值在 `next` 首版收窄为 `0..=60` 秒，理由见
+`bongocat-config` 中 `OverlayConfig::hide_on_pointer_hover_delay_seconds` 的文档注释。该字段以
+整秒存储，与设置页显示和输入的单位一致；overlay frame loop 仍以毫秒计时，只在
+`OverlaySessionOptions` 边界换算一次。
 
 `application.show_status_icon` 控制 Windows 托盘或 macOS 菜单栏状态图标，不销毁系统菜单的
 唯一事件 owner。修改时先通过有界主线程 bridge 应用平台显隐，成功后才按 expected revision
@@ -80,7 +82,7 @@ typed settings command 修改该值后，仍按配置 revision 原子提交并�
 typed platform snapshot，并仅在显式用户 command 时调用平台 adapter；不得持久化第二份布尔值。
 
 窗口圆角（`overlay.corner_radius_percent`）与指针悬停隐藏（`overlay.hide_on_pointer_hover`、
-`overlay.hide_on_pointer_hover_delay_ms`）原本属于 `P1 首发后` 范围，现按维护者决定上调为
+`overlay.hide_on_pointer_hover_delay_seconds`）原本属于 `P1 首发后` 范围，现按维护者决定上调为
 `P0 首发`，作为当前 v1 字段进入 `next` 初始版本。这不引入迁移或兼容逻辑：`next` 仍是全新首版，
 三个字段直接写在当前 v1 schema、默认值、fixture 与实现中。
 

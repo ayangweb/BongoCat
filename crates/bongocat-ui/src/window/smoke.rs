@@ -444,7 +444,7 @@ impl SettingsView {
                         snapshot.resolved_language.catalog_locale(),
                         "shortcuts.actions.decrease_hide_on_pointer_hover_delay",
                     ),
-                    snapshot.overlay.hide_on_pointer_hover_delay_ms == 0,
+                    snapshot.overlay.hide_on_pointer_hover_delay_seconds == 0,
                 ),
                 (
                     ACCESSIBILITY_OVERLAY_HOVER_DELAY_INCREASE,
@@ -452,8 +452,8 @@ impl SettingsView {
                         snapshot.resolved_language.catalog_locale(),
                         "shortcuts.actions.increase_hide_on_pointer_hover_delay",
                     ),
-                    snapshot.overlay.hide_on_pointer_hover_delay_ms
-                        >= bongocat_config::MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS,
+                    snapshot.overlay.hide_on_pointer_hover_delay_seconds
+                        >= bongocat_config::MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS,
                 ),
             ] {
                 let node = tree
@@ -476,10 +476,7 @@ impl SettingsView {
                         ))
                     || node.value.as_deref()
                         != Some(
-                            snapshot
-                                .overlay
-                                .hide_on_pointer_hover_delay_ms
-                                .to_string()
+                            format!("{}s", snapshot.overlay.hide_on_pointer_hover_delay_seconds)
                                 .as_str(),
                         )
                     || node.disabled != node_disabled

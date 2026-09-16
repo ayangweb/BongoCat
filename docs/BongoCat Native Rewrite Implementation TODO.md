@@ -3407,7 +3407,9 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 状态（2026-09-16，历史）：该决策已被第 79 项 `P0-OVERLAY-HOVER-HIDE` 推翻。维护者要求新版
       同步支持旧版已有的「鼠标移入隐藏 + 悬停延迟」配置，该能力因此从 `P1 首发后` 上调为
       `P0 首发`，两个字段以 `overlay.hide_on_pointer_hover` 与
-      `overlay.hide_on_pointer_hover_delay_ms` 重新进入当前 v1。此行只保留当时状态。
+      `overlay.hide_on_pointer_hover_delay_ms` 重新进入当前 v1（延迟字段的存储单位在同日的第 79 项
+      单位修订中由毫秒改为整秒，当前字段名为 `overlay.hide_on_pointer_hover_delay_seconds`）。
+      此行只保留当时状态。
 
 67. [x] `P6-KEEP-OVERLAY-IN-WORK-AREA`：让当前 v1 的可见工作区约束作用于正式 overlay。
     - 依赖：当前 v1 `overlay.keep_inside_work_area`、runtime overlay settings、持久化窗口 bounds、
@@ -3760,9 +3762,9 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       command/snapshot 链路、`P2-CURSOR-SMOOTHING` 建立的 `RuntimeSnapshot.cursor.sample` 与
       `PlatformInputServiceStatus`、`P5-*` 建立的 overlay 设置页与 debounced patch 机制、`P6-*`
       建立的当前 v1 schema 边界。
-    - 退出条件：`overlay.hide_on_pointer_hover` 与 `overlay.hide_on_pointer_hover_delay_ms` 作为当前
-      v1 字段在 Rust config、JSON Schema、默认 fixture 与共享 manifest 中一致存在；延迟范围
-      `0..=60000`、默认 `0`，开关默认 `false`，越界在 config `validate()`、runtime `is_valid()`、
+    - 退出条件：`overlay.hide_on_pointer_hover` 与 `overlay.hide_on_pointer_hover_delay_seconds` 作为
+      当前 v1 字段在 Rust config、JSON Schema、默认 fixture 与共享 manifest 中一致存在；延迟范围
+      `0..=60` 秒、默认 `0`，开关默认 `false`，越界在 config `validate()`、runtime `is_valid()`、
       JSON Schema 与两个平台的 options 校验四处都失败关闭；两值经强类型 command/snapshot 往返并在
       重启后恢复；开启后指针停留满延迟即淡出并强制穿透，离开后按同样时长淡回并恢复
       `overlay.click_through`，窗口本身不隐藏、不销毁，`overlay.visible` 不受影响；开关与延迟在
@@ -3774,6 +3776,15 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       上调为 `P0 首发`。不新增 ADR：该配置不改变架构边界，只是 overlay 窗口的呈现属性。三项首版
       契约决定经维护者确认：延迟上界收窄为 `0..=60000` 毫秒；淡入淡出复刻旧版 300ms 过渡；延迟
       输入控件始终显示（旧版只在开关开启时展开）。
+    - 决策记录（2026-09-16，单位修订）：维护者要求把悬停隐藏延迟从毫秒改成整秒，理由是秒更容易
+      操作。这推翻本项同日「延迟上界收窄为 `0..=60000` 毫秒」的契约决定，字段改名为
+      `overlay.hide_on_pointer_hover_delay_seconds`，范围 `0..=60` 秒、步进 1 秒，与旧版 UI 的
+      整秒单位一致；`60000` 毫秒的上界在数值上等于 `60` 秒，因此本次只改单位与名字，不改语义
+      边界。不新增 ADR：同上，不改变架构边界。`next` 仍是全新首版，按 §4.1 直接改当前 v1 schema、
+      默认值、fixture 与实现，不引入迁移、alias 或兼容分支；overlay frame loop 与两个平台的
+      options 继续以毫秒计时，秒到毫秒的换算集中在 `bongocat_runtime::hover_hide_delay_ms` 一处，
+      平台源码在本次修订中未改动。设置页数字输入的步进由 250 毫秒改为 1 秒，AX value 增加 `s`
+      单位后缀，中英文案与共享契约文档同步。
     - 旧版契约（`pre-refactor` 分支考古）：`src/stores/cat.ts` 的 `window.hideOnHover: boolean`
       默认 `false`、`window.hideOnHoverDelay: number` 默认 `0`；
       `src/pages/preference/components/cat/index.vue` 的 `<Switch>` 与
@@ -3786,25 +3797,29 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       立即把 opacity 设为 `'unset'` 并 `setIgnoreCursorEvents(catStore.window.passThrough)`。
       `src/assets/css/global.scss` 的 `body` 带 `transition-opacity-300`，即 300ms CSS 过渡。
     - 首版对旧版的收窄与修正（均为契约决定，不是遗留行为）：
-      1) 延迟上界收窄为 `60000` 毫秒。旧版 UI 无上界且以秒为单位，`hideOnHoverDelay * 1000` 可给出
-         任意长的 `setTimeout`；首版改为毫秒整数并显式限界。
+      1) 延迟上界收窄为 `60` 秒。旧版 UI 无上界，`hideOnHoverDelay * 1000` 可给出任意长的
+         `setTimeout`；首版保留旧版 UI 的整秒单位并显式限界。存储单位与设置页输入单位一致，
+         overlay frame loop 仍按毫秒计时，秒到毫秒只在 overlay options 边界换算一次。
       2) 恢复也走同一延迟。旧版只有「隐藏」经过 `setTimeout`，「恢复」在离开时立即生效；首版两侧
          对称，理由是旧版的不对称无法从代码意图解释，且会让快速划过的指针产生闪烁。
       3) 命中测试改为半开区间（`x >= left && x < left + width`，纵向同理）。旧版 `inBetween` 两端
          闭区间，相邻显示器共享的边界像素会同时落在两个窗口内。
       4) 旧版的降级路径不复刻：`windowState` 缺失、负 `winX`/`winY` 或丢失离开事件在旧版都会让内容
          停在全透明；首版把「无指针采样」和「平台输入服务未运行」都当作不在窗口内。
-    - 当前契约（2026-09-16）：`OverlayConfig::hide_on_pointer_hover: bool`
-      （`crates/bongocat-config/src/lib.rs:272`）与 `hide_on_pointer_hover_delay_ms: u32`（:283），
-      共享常量 `MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS = 60_000`（:291），`NativeConfig::default()`
-      为 `false` / `0`（:944-945），`validate()` 以 `>` 比较拒绝越界（:983-987）；共享 schema
+    - 当前契约（2026-09-16，含同日单位修订）：`OverlayConfig::hide_on_pointer_hover: bool`
+      （`crates/bongocat-config/src/lib.rs:272`）与 `hide_on_pointer_hover_delay_seconds: u32`（:285），
+      共享常量 `MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS = 60`（:293），`NativeConfig::default()`
+      为 `false` / `0`（:946-947），`validate()` 以 `>` 比较拒绝越界（:985-991）；共享 schema
       `shared/config/config.schema.json` 的 `overlay.required` 与
-      `{"type":"integer","minimum":0,"maximum":60000}` 同步。
-      `OverlaySettings::hide_on_pointer_hover` / `hide_on_pointer_hover_delay_ms`
-      （`crates/bongocat-runtime/src/lib.rs:207/210`）、同值常量（:189）与 `is_valid()` 的 `<=` 约束
-      （:236）同构。`OverlaySessionOptions`（`crates/bongocat-overlay/src/lib.rs:95/98`）与
-      `with_runtime_settings`（:112-113）透传；两者刻意**不**进入 `requires_window_recreation`
-      （:124），因为 alpha 与指针路由在每帧应用。
+      `{"type":"integer","minimum":0,"maximum":60}` 同步。
+      `OverlaySettings::hide_on_pointer_hover` / `hide_on_pointer_hover_delay_seconds`
+      （`crates/bongocat-runtime/src/lib.rs:227/230`）、秒上界常量（:190）与 `is_valid()` 的 `<=` 约束
+      （:257）同构。`OverlaySessionOptions`（`crates/bongocat-overlay/src/lib.rs:96/101`）刻意保留
+      毫秒，由 `with_runtime_settings`（:108-118）经 `bongocat_runtime::hover_hide_delay_ms`
+      （runtime :207）换算一次；毫秒上界常量 `MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS`（runtime :197）
+      由秒上界派生，平台 options 校验与两平台测试继续引用它，因此
+      `crates/bongocat-overlay/src/{macos,windows}.rs` 在本次单位修订中未改动。这两个字段刻意
+      **不**进入 `requires_window_recreation`（overlay :129），因为 alpha 与指针路由在每帧应用。
       可移植状态机 `crates/bongocat-overlay/src/hover.rs`：`HOVER_FADE_DURATION = 300ms`（:24）、
       半开区间命中测试 `pointer_inside_window`（:33）、`PointerHoverObservation`（:47）、
       `PointerHoverHide`（:66）及其 `observe`（:101）与 `advance`（:147）。`advance` 把 alpha 表示为
@@ -3821,26 +3836,29 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `None` 而不是猜测），Windows 侧 `GetCursorPos` 与 `GetWindowRect` 同为虚拟屏幕像素、无需换算。
       两平台 `validate_options`/`validate_product_options` 均以 `MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS + 1`
       作为拒绝边界。
-      UI：`SettingsOverlay::hide_on_pointer_hover` / `hide_on_pointer_hover_delay_ms`
+      UI：`SettingsOverlay::hide_on_pointer_hover` / `hide_on_pointer_hover_delay_seconds`
       （`crates/bongocat-ui/src/lib.rs:526/529`）、`SettingValue::OverlayHoverHideDelay` 与
-      `PendingOperation::OverlayHoverHideDelay`（`crates/bongocat-ui/src/window.rs:1424`、:245）、
-      `schedule_overlay_hover_hide_delay_flush`（:737）、flush 分支（:932）与失败重排（:1254）、
+      `PendingOperation::OverlayHoverHideDelay`（`crates/bongocat-ui/src/window.rs:1426`、:245）、
+      `schedule_overlay_hover_hide_delay_flush`（:725）、flush 分支（:938）与失败重排（:1304）、
       `set_overlay_hover_hide_delay_value` / `adjust_overlay_hover_hide_delay`
-      （`crates/bongocat-ui/src/window/settings.rs:373/416`，`raw.round().clamp(0.0, MAXIMUM_…)`，
+      （`crates/bongocat-ui/src/window/settings.rs:374/418`，`raw.round().clamp(0.0, MAXIMUM_…)`，
       上界直接引用 `bongocat_config` 常量而非本地字面量）、overlay 设置页开关与数字输入
-      `NumberFieldOptions { min: 0.0, max: MAXIMUM_…, step: 250.0 }`
+      `NumberFieldOptions { min: 0.0, max: MAXIMUM_…, step: 1.0 }`
       （`crates/bongocat-ui/src/window/render.rs:397-465`）、辅助功能节点
       `ACCESSIBILITY_OVERLAY_HIDE_ON_POINTER_HOVER` / `…_HOVER_DELAY_DECREASE` /
       `…_HOVER_DELAY_INCREASE`（`crates/bongocat-ui/src/window.rs:188/191/194`，节点 ID 51/52/53）
       与 `settings.overlay.hide_on_pointer_hover{,_delay}.{label,description}`、
       `shortcuts.actions.{decrease,increase}_hide_on_pointer_hover_delay` 中英文案
-      （`bongocat-i18n/locales/{zh-CN,en-US}.json`，共 6 个新 key）。
+      （`bongocat-i18n/locales/{zh-CN,en-US}.json`，共 6 个新 key）。延迟节点的 AX value 带 `s`
+      单位后缀（`accessibility.rs:449/463` 的 `format!("{hover_hide_delay_seconds}s")`），与相邻的
+      `%` 节点一致；增减按钮的步进为 1 秒（:1211/:1214）。
       app 侧映射：`overlay_settings_from_config`（`crates/bongocat-app/src/lib.rs:1464-1465`）、
-      `set_overlay_settings` 回写（:749-751）、启动 `OverlaySessionOptions` 字面量
-      （`crates/bongocat-app/src/main.rs:2186-2187`）、`SettingsCommand::SetOverlaySettings` 映射与
-      快照投影（`crates/bongocat-app/src/settings.rs:632-633`、:1195-1196）。
+      `set_overlay_settings` 回写（:749-751）、启动 `OverlaySessionOptions` 字面量经
+      `bongocat_runtime::hover_hide_delay_ms` 换算（`crates/bongocat-app/src/main.rs:2187-2189`）、
+      `SettingsCommand::SetOverlaySettings` 映射与快照投影
+      （`crates/bongocat-app/src/settings.rs:632-633`、:1196-1197）。
       共享 fixture：`accept-hover-hide.json`（开关开、延迟 0，accept）、`accept-hover-hide-delay.json`
-      （开关开、延迟 2500，accept）与 `invalid-hover-hide-delay.json`（延迟 60001，reject）取代原
+      （开关开、延迟 3 秒，accept）与 `invalid-hover-hide-delay.json`（延迟 61 秒，reject）取代原
       `invalid-deferred-hover-toggle.json` / `invalid-deferred-hover-delay.json`。
     - 验收证据（2026-09-16）：`cargo test --locked --workspace` 退出码 0，共 659 passed /
       0 failed / 5 ignored（config 51、runtime 72、overlay 28、ui 115、app 120+21、i18n 4 等；
@@ -3866,6 +3884,45 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       多显示器边界）；双平台 CI 门禁。因此 Windows 侧 `update_hover_presentation` 只经过与 macOS
       逐行同构的代码审查，未经过任何编译或运行验证；macOS 侧的坐标镜像只由代码审查与单元测试
       覆盖，未在真实多显示器与负坐标布局下验证。
+    - 验收证据（2026-09-16，单位修订）：`just check` 退出码 0，即 `cargo fmt --all -- --check`、
+      三组 clippy（`--workspace --all-targets --all-features --exclude bongocat-app`、
+      `-p bongocat-app --all-targets --features storage-test-injection`、
+      `-p bongocat-app --all-targets --features production`）、`cargo test --locked --workspace` 与
+      `cargo check --locked --workspace --release` 全部通过（仅剩与本次无关的 `block v0.1.6`
+      future-incompat 警告）。`cargo test --locked --workspace` 为 **660 passed / 0 failed /
+      5 ignored**，比修订前的 659 多 1 项，即新增的
+      `tests::hover_hide_delay_converts_whole_seconds_to_the_frame_clock`
+      （`crates/bongocat-runtime/src/lib.rs:4881`），断言 0/1/3 秒的换算、`60` 秒等于毫秒上界，
+      以及越界秒值经饱和乘法后仍大于毫秒上界而不是回绕成小延迟。
+      `tools/validate-json-schema.py` 输出 `validated 9 input, 9 expected, and 14 config,
+      6 state fixture(s), with Draft 2020-12`，其中 `hover-hide-delay (accept)` 与
+      `hover-hide-delay-out-of-range (reject)` 符合预期；`tools/validate-locales.py` 输出
+      `validated 2 locale(s), 380 key(s) each`（key 数不变，只改文案）；
+      `tools/validate-fixtures.py`（9 input fixture + 8 model package case）、
+      `tools/run-input-fixtures.py`（9 input fixture）与 `tools/tests` 契约测试 63 项均通过。
+      **未运行**：Windows 与 macOS 实机悬停、Windows HLSL 编译、双平台 CI。本次未改动任何平台
+      源码、着色器或输入处理，因此沿用第 79 项原有的平台未验证清单；但设置页在真实产品里按秒
+      显示与步进、AX value 的 `s` 后缀、以及 `config.json` 的 `schema_version: 1` 新键名，都只在
+      单元测试与 schema 校验层面验证过，没有人工打开设置窗口确认。
+      `spikes/config-store` 的隔离 contract 也在本次一并同步。该 spike 自带一份冻结的
+      `NativeConfig` 副本（`spikes/config-store/src/lib.rs:137`），却有一个
+      `default_serialization_matches_shared_config_fixture`（:1031）拿它去比对会漂移的
+      `shared/config/fixtures/default.json`；因此第 78 项（窗口圆角）与第 79 项（悬停隐藏）把字段
+      写进共享 fixture 之后，这个用例就已经失败，而它在 CI 里由 `contract-spikes` job 的
+      config-store 矩阵项和 `windows-input-spike` job 执行（`.github/workflows/native-rewrite-phase0.yml:1051-1053`、:1489-1490），
+      属于既有红项，不是本次改动引入。本次补齐 `corner_radius_percent`、
+      `hide_on_pointer_hover`、`hide_on_pointer_hover_delay_seconds` 三个字段、默认值与
+      `validate()` 上界；把 `serialized_keys_follow_native_snake_case_contract` 中这三个键的断言由
+      「必须缺席」改为「必须在场，且旧版 camelCase 拼写必须缺席」；把
+      `unknown_fields_are_rejected_like_the_json_schema` 的候选换成 `hideOnHover`、
+      `hideOnHoverDelay` 与 `hide_on_pointer_hover_delay_ms`（后者同时把本次改名记录为拒绝项）；
+      并新增 `overlay_presentation_fields_follow_the_shared_range_contract`。
+      验证：`cargo fmt --manifest-path spikes/config-store/Cargo.toml -- --check`、
+      `cargo clippy --manifest-path spikes/config-store/Cargo.toml --locked --all-targets -- -D warnings`
+      与 `cargo test --manifest-path spikes/config-store/Cargo.toml --locked` 均退出码 0，lib 21 项
+      （含此前失败的 `default_serialization_matches_shared_config_fixture`）与 2 项进程恢复集成
+      测试全部通过。**这是把冻结副本重新对齐到当前 v1 的同步，不是把该 spike 改成依赖正式
+      `bongocat-config`；下次再改配置字段它仍会漂移**，是否让它复用正式 crate 需要单独决策。
 
 80. [x] `P5-DEAD-SETTINGS-INPUT-CLEANUP`：删除设置窗口中从未被渲染的 5 个输入实体及其订阅。
     - 依赖：`P5-*` 建立的 overlay 与 gamepad 设置页、`gpui-component` 的 `SettingField::number_input`。

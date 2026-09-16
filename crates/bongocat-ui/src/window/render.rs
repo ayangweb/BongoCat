@@ -436,15 +436,15 @@ impl Render for SettingsView {
                             NumberFieldOptions {
                                 min: 0.0,
                                 max: f64::from(
-                                    bongocat_config::MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS,
+                                    bongocat_config::MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS,
                                 ),
-                                step: 250.0,
+                                step: 1.0,
                             },
                             {
                                 let view = view_entity.clone();
                                 move |app| {
                                     view.read(app).snapshot.as_ref().map_or(0.0, |s| {
-                                        f64::from(s.overlay.hide_on_pointer_hover_delay_ms)
+                                        f64::from(s.overlay.hide_on_pointer_hover_delay_seconds)
                                     })
                                 }
                             },

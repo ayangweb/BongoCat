@@ -175,6 +175,16 @@ pub struct OverlayConfig {
     pub always_on_top: bool,
     pub scale_percent: u16,
     pub opacity_percent: u8,
+    /// Corner radius of the overlay window box as a percentage of its width and
+    /// height. `0` keeps square corners and `50` clips the content to the full
+    /// inscribed ellipse, which is the legacy ceiling.
+    pub corner_radius_percent: u8,
+    /// Hide the overlay content while the pointer rests on it, keeping the
+    /// model out of the way of whatever the pointer is reaching for.
+    pub hide_on_pointer_hover: bool,
+    /// How long the pointer must stay inside the overlay box before the hover
+    /// hide starts, in whole seconds. `0` hides as soon as the pointer enters.
+    pub hide_on_pointer_hover_delay_seconds: u32,
     pub keep_inside_work_area: bool,
 }
 
@@ -261,6 +271,9 @@ impl Default for NativeConfig {
                 always_on_top: true,
                 scale_percent: 100,
                 opacity_percent: 100,
+                corner_radius_percent: 0,
+                hide_on_pointer_hover: false,
+                hide_on_pointer_hover_delay_seconds: 0,
                 keep_inside_work_area: true,
             },
             input: InputConfig {
@@ -294,6 +307,14 @@ impl NativeConfig {
         }
         if self.overlay.opacity_percent == 0 || self.overlay.opacity_percent > 100 {
             return Err(ConfigError::InvalidValue("overlay.opacity_percent"));
+        }
+        if self.overlay.corner_radius_percent > 50 {
+            return Err(ConfigError::InvalidValue("overlay.corner_radius_percent"));
+        }
+        if self.overlay.hide_on_pointer_hover_delay_seconds > 60 {
+            return Err(ConfigError::InvalidValue(
+                "overlay.hide_on_pointer_hover_delay_seconds",
+            ));
         }
         if !(0.0..1.0).contains(&self.input.gamepad_stick_dead_zone)
             || !self.input.gamepad_stick_dead_zone.is_finite()
@@ -982,18 +1003,23 @@ mod tests {
         let value = serde_json::to_value(NativeConfig::default()).unwrap();
         assert!(value.get("schema_version").is_some());
         assert!(value["application"].get("launch_at_login").is_none());
-        assert!(value["overlay"].get("corner_radius_percent").is_none());
         assert!(
             value["appearance"]
                 .get("check_for_updates_automatically")
                 .is_none()
         );
-        assert!(value["overlay"].get("hide_on_pointer_hover").is_none());
+        assert!(value["overlay"].get("corner_radius_percent").is_some());
+        assert!(value["overlay"].get("hide_on_pointer_hover").is_some());
         assert!(
             value["overlay"]
-                .get("hide_on_pointer_hover_delay_ms")
-                .is_none()
+                .get("hide_on_pointer_hover_delay_seconds")
+                .is_some()
         );
+        // The overlay presentation fields are part of the current v1, so the
+        // legacy store spelling must stay absent rather than come back with
+        // them.
+        assert!(value["overlay"].get("hideOnHover").is_none());
+        assert!(value["overlay"].get("hideOnHoverDelay").is_none());
         assert!(value["input"].get("gamepad_stick_dead_zone").is_some());
         assert!(value["input"].get("gamepad_trigger_dead_zone").is_some());
         assert!(value["model"].get("release_fallback_timeout_ms").is_some());
@@ -1031,12 +1057,13 @@ mod tests {
         assert!(error.to_string().contains("unknown field"));
 
         let mut value = serde_json::to_value(NativeConfig::default()).unwrap();
-        value["overlay"]["corner_radius_percent"] = serde_json::json!(25);
+        value["overlay"]["border_radius_percent"] = serde_json::json!(25);
         let error = serde_json::from_value::<NativeConfig>(value).unwrap_err();
         assert!(error.to_string().contains("unknown field"));
 
         for (field, value) in [
-            ("hide_on_pointer_hover", serde_json::json!(true)),
+            ("hideOnHover", serde_json::json!(true)),
+            ("hideOnHoverDelay", serde_json::json!(250)),
             ("hide_on_pointer_hover_delay_ms", serde_json::json!(250)),
         ] {
             let mut config = serde_json::to_value(NativeConfig::default()).unwrap();
@@ -1093,6 +1120,31 @@ mod tests {
                 config.validate(),
                 Err(ConfigError::InvalidValue(actual)) if actual == field
             ));
+        }
+    }
+
+    #[test]
+    fn overlay_presentation_fields_follow_the_shared_range_contract() {
+        for (corner_radius, hide_delay, field) in [
+            (51, 0, "overlay.corner_radius_percent"),
+            (0, 61, "overlay.hide_on_pointer_hover_delay_seconds"),
+        ] {
+            let mut config = NativeConfig::default();
+            config.overlay.corner_radius_percent = corner_radius;
+            config.overlay.hide_on_pointer_hover_delay_seconds = hide_delay;
+            assert!(matches!(
+                config.validate(),
+                Err(ConfigError::InvalidValue(actual)) if actual == field
+            ));
+        }
+
+        for (corner_radius, hide_delay) in [(0, 0), (25, 3), (50, 60)] {
+            let mut config = NativeConfig::default();
+            config.overlay.corner_radius_percent = corner_radius;
+            config.overlay.hide_on_pointer_hover_delay_seconds = hide_delay;
+            config
+                .validate()
+                .expect("in-range overlay presentation values are valid");
         }
     }
 }

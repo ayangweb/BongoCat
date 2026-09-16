@@ -525,8 +525,8 @@ pub struct SettingsOverlay {
     /// `window.hideOnHover` switch.
     pub hide_on_pointer_hover: bool,
     /// How long the pointer must rest on the overlay before the hover hide
-    /// starts, in milliseconds. `0` hides as soon as the pointer enters.
-    pub hide_on_pointer_hover_delay_ms: u32,
+    /// starts, in whole seconds. `0` hides as soon as the pointer enters.
+    pub hide_on_pointer_hover_delay_seconds: u32,
     pub keep_inside_work_area: bool,
 }
 
@@ -539,7 +539,7 @@ impl Default for SettingsOverlay {
             opacity_percent: 100,
             corner_radius_percent: 0,
             hide_on_pointer_hover: false,
-            hide_on_pointer_hover_delay_ms: 0,
+            hide_on_pointer_hover_delay_seconds: 0,
             keep_inside_work_area: true,
         }
     }

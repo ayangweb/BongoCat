@@ -26,6 +26,7 @@ use bongocat_render::{RenderConsumer, RenderTransportDiagnostics};
 use bongocat_runtime::PlatformInputDiagnosticsProducer;
 use bongocat_runtime::{
     CursorProducer, GamepadAxisProducer, InputProducer, OverlaySettings, RuntimeClient,
+    hover_hide_delay_ms,
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use raw_window_handle::{HandleError, HasWindowHandle, WindowHandle};
@@ -94,7 +95,9 @@ pub struct OverlaySessionOptions {
     /// replaced on every hover.
     pub hide_on_pointer_hover: bool,
     /// How long the pointer must stay inside the overlay window before the
-    /// hover hide starts, in milliseconds. `0` hides immediately.
+    /// hover hide starts, in milliseconds. `0` hides immediately. The current
+    /// v1 configuration stores whole seconds; the millisecond value is derived
+    /// once, when the runtime settings are applied to the session.
     pub hide_on_pointer_hover_delay_ms: u32,
     pub keep_inside_work_area: bool,
     pub maximum_fps: u16,
@@ -110,7 +113,9 @@ impl OverlaySessionOptions {
             opacity_percent: settings.opacity_percent,
             corner_radius_percent: settings.corner_radius_percent,
             hide_on_pointer_hover: settings.hide_on_pointer_hover,
-            hide_on_pointer_hover_delay_ms: settings.hide_on_pointer_hover_delay_ms,
+            hide_on_pointer_hover_delay_ms: hover_hide_delay_ms(
+                settings.hide_on_pointer_hover_delay_seconds,
+            ),
             keep_inside_work_area: settings.keep_inside_work_area,
             maximum_fps: self.maximum_fps,
             window_bounds: self.window_bounds,

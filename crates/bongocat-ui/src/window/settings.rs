@@ -368,21 +368,22 @@ impl SettingsView {
     /// The delay is the time the pointer has to rest on the overlay before it
     /// hides, so the value is clamped to the range the configuration accepts:
     /// `0` hides as soon as the pointer enters, and the upper bound is the
-    /// shared `hide_on_pointer_hover_delay_ms` limit rather than a UI-local
-    /// number.
+    /// shared `hide_on_pointer_hover_delay_seconds` limit rather than a
+    /// UI-local number. The field is whole-second valued, so a fractional entry
+    /// is rounded before it is compared with the current configuration.
     pub(super) fn set_overlay_hover_hide_delay_value(&mut self, raw: f64, cx: &mut Context<Self>) {
         if self.model_import.is_running() {
             return;
         }
         let value = raw.round().clamp(
             0.0,
-            f64::from(bongocat_config::MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS),
+            f64::from(bongocat_config::MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS),
         ) as u32;
         let Some(snapshot) = self.snapshot.as_ref() else {
             return;
         };
         if snapshot.configuration_status != SettingsConfigurationStatus::Ready
-            || snapshot.overlay.hide_on_pointer_hover_delay_ms == value
+            || snapshot.overlay.hide_on_pointer_hover_delay_seconds == value
         {
             return;
         }
@@ -392,15 +393,16 @@ impl SettingsView {
             .overlay_hover_hide_delay_debouncer
             .observe(value, Instant::now())
             .filter(|_| self.pending.is_none())
-            .and_then(|hide_on_pointer_hover_delay_ms| {
+            .and_then(|hide_on_pointer_hover_delay_seconds| {
                 expected_config_revision.map(|expected_config_revision| {
                     let mut settings = current_overlay;
-                    settings.hide_on_pointer_hover_delay_ms = hide_on_pointer_hover_delay_ms;
+                    settings.hide_on_pointer_hover_delay_seconds =
+                        hide_on_pointer_hover_delay_seconds;
                     self.start_request(
                         PendingOperation::OverlayHoverHideDelay,
                         Some(SettingValue::OverlayHoverHideDelay {
                             expected_config_revision,
-                            hide_on_pointer_hover_delay_ms,
+                            hide_on_pointer_hover_delay_seconds,
                             settings,
                         }),
                         cx,
@@ -415,17 +417,17 @@ impl SettingsView {
 
     pub(super) fn adjust_overlay_hover_hide_delay(
         &mut self,
-        delta_ms: i32,
+        delta_seconds: i32,
         cx: &mut Context<Self>,
     ) {
         let Some(snapshot) = self.snapshot.as_ref() else {
             return;
         };
-        let value = (i64::from(snapshot.overlay.hide_on_pointer_hover_delay_ms)
-            + i64::from(delta_ms))
+        let value = (i64::from(snapshot.overlay.hide_on_pointer_hover_delay_seconds)
+            + i64::from(delta_seconds))
         .clamp(
             0,
-            i64::from(bongocat_config::MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS),
+            i64::from(bongocat_config::MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS),
         ) as u32;
         self.set_overlay_hover_hide_delay_value(f64::from(value), cx);
     }

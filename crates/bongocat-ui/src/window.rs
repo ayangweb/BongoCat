@@ -736,7 +736,7 @@ impl SettingsView {
                 {
                     return;
                 }
-                let Some(hide_on_pointer_hover_delay_ms) = view
+                let Some(hide_on_pointer_hover_delay_seconds) = view
                     .overlay_hover_hide_delay_debouncer
                     .ready(Instant::now())
                 else {
@@ -749,12 +749,12 @@ impl SettingsView {
                     return;
                 };
                 let mut settings = snapshot.overlay;
-                settings.hide_on_pointer_hover_delay_ms = hide_on_pointer_hover_delay_ms;
+                settings.hide_on_pointer_hover_delay_seconds = hide_on_pointer_hover_delay_seconds;
                 view.start_request(
                     PendingOperation::OverlayHoverHideDelay,
                     Some(SettingValue::OverlayHoverHideDelay {
                         expected_config_revision,
-                        hide_on_pointer_hover_delay_ms,
+                        hide_on_pointer_hover_delay_seconds,
                         settings,
                     }),
                     cx,
@@ -931,16 +931,16 @@ impl SettingsView {
                 }),
                 cx,
             );
-        } else if let Some(hide_on_pointer_hover_delay_ms) =
+        } else if let Some(hide_on_pointer_hover_delay_seconds) =
             self.overlay_hover_hide_delay_debouncer.flush(now)
         {
             let mut settings = snapshot.overlay;
-            settings.hide_on_pointer_hover_delay_ms = hide_on_pointer_hover_delay_ms;
+            settings.hide_on_pointer_hover_delay_seconds = hide_on_pointer_hover_delay_seconds;
             self.start_request(
                 PendingOperation::OverlayHoverHideDelay,
                 Some(SettingValue::OverlayHoverHideDelay {
                     expected_config_revision,
-                    hide_on_pointer_hover_delay_ms,
+                    hide_on_pointer_hover_delay_seconds,
                     settings,
                 }),
                 cx,
@@ -1027,9 +1027,9 @@ impl SettingsView {
         };
         let sent_overlay_hover_hide_delay = match value.as_ref() {
             Some(SettingValue::OverlayHoverHideDelay {
-                hide_on_pointer_hover_delay_ms,
+                hide_on_pointer_hover_delay_seconds,
                 ..
-            }) => Some(*hide_on_pointer_hover_delay_ms),
+            }) => Some(*hide_on_pointer_hover_delay_seconds),
             _ => None,
         };
         let sent_gamepad_dead_zone = match value.as_ref() {
@@ -1253,10 +1253,10 @@ impl SettingsView {
                     }
                 }
                 if result.is_ok()
-                    && let Some(hide_on_pointer_hover_delay_ms) = sent_overlay_hover_hide_delay
+                    && let Some(hide_on_pointer_hover_delay_seconds) = sent_overlay_hover_hide_delay
                 {
                     view.overlay_hover_hide_delay_debouncer
-                        .mark_sent(&hide_on_pointer_hover_delay_ms);
+                        .mark_sent(&hide_on_pointer_hover_delay_seconds);
                     if view.overlay_hover_hide_delay_debouncer.is_pending() {
                         view.schedule_overlay_hover_hide_delay_flush(cx);
                     }
@@ -1425,7 +1425,7 @@ enum SettingValue {
     },
     OverlayHoverHideDelay {
         expected_config_revision: u64,
-        hide_on_pointer_hover_delay_ms: u32,
+        hide_on_pointer_hover_delay_seconds: u32,
         settings: SettingsOverlay,
     },
     MotionAudioEnabled {

@@ -562,7 +562,7 @@ blend 使用相同 linear premultiplied 输入。clipping mask 只携带 alpha�
 不透明度、工作区约束一样需要重建原生窗口资源。
 
 指针悬停隐藏是 overlay 窗口的临时呈现状态，不是窗口可见性。`overlay.hide_on_pointer_hover`
-开启时，指针进入 overlay 窗口矩形并停留 `overlay.hide_on_pointer_hover_delay_ms` 之后，owner 把
+开启时，指针进入 overlay 窗口矩形并停留 `overlay.hide_on_pointer_hover_delay_seconds` 之后，owner 把
 窗口的呈现 alpha 淡到 `0` 并强制指针穿透；指针离开窗口矩形后按同样的时长延迟淡回
 `opacity_percent`，并把穿透恢复为 `overlay.click_through`。窗口本身既不隐藏也不销毁，
 `overlay.visible` 不受影响，frame source 继续按 `maximum_fps` 出帧，shutdown 顺序不变。隐藏期间
