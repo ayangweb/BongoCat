@@ -361,9 +361,9 @@ mod tests {
         error_code, failure_stage, progress_info, restart_required_after_install,
         unavailable_reason,
     };
-    use bongocat_ui::{
-        UpdateCommand, UpdateStateHandle, UpdateUnavailableReason, UpdateWindowHandle,
-    };
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    use bongocat_ui::UpdateWindowHandle;
+    use bongocat_ui::{UpdateCommand, UpdateStateHandle, UpdateUnavailableReason};
     use bongocat_update::{
         UpdateError, UpdateErrorCode as SourceCode, UpdateEvent, UpdateOutcome, UpdateProgress,
         UpdateRelease, UpdateStage, UpdateUnavailability,
@@ -780,6 +780,7 @@ mod tests {
 
     /// The application stores the window handle next to the worker, so it has to be
     /// movable across the thread boundary the coordinator is built on.
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn the_update_window_handle_is_send() {
         fn assert_send<T: Send>() {}
