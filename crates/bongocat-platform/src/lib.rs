@@ -19,8 +19,8 @@ pub use accessibility::{
     AccessibilityToggle, AccessibilityTree,
 };
 
-mod directory_picker;
-pub use directory_picker::{DirectoryPickerError, DirectoryPickerOutcome};
+mod model_source_picker;
+pub use model_source_picker::{ModelSourcePickerError, ModelSourcePickerOutcome};
 
 mod directory_opener;
 pub use directory_opener::{DirectoryOpenError, open_directory};
@@ -123,16 +123,38 @@ mod display_bounds_tests {
     }
 }
 
+/// Let the user choose a model folder.
 pub fn pick_model_directory(
-    on_complete: impl FnOnce(Result<DirectoryPickerOutcome, DirectoryPickerError>) + Send + 'static,
-) -> Result<(), DirectoryPickerError> {
+    on_complete: impl FnOnce(Result<ModelSourcePickerOutcome, ModelSourcePickerError>) + Send + 'static,
+) -> Result<(), ModelSourcePickerError> {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
-    return directory_picker::pick_model_directory(on_complete);
+    return model_source_picker::pick_model_directory(on_complete);
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let _ = on_complete;
-        Err(DirectoryPickerError::UnsupportedPlatform)
+        Err(ModelSourcePickerError::UnsupportedPlatform)
+    }
+}
+
+/// Let the user choose a model archive.
+///
+/// The folder and archive sources get separate entry points because the native
+/// dialogs are separate: no supported platform offers one panel that selects
+/// "a folder or a file", so a single button would either hide which mode is
+/// active or need a second step to say. Which kind of source the user has is
+/// therefore decided by the button they press, and what the file actually *is*
+/// is still decided by the store when it reads the bytes.
+pub fn pick_model_archive(
+    on_complete: impl FnOnce(Result<ModelSourcePickerOutcome, ModelSourcePickerError>) + Send + 'static,
+) -> Result<(), ModelSourcePickerError> {
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    return model_source_picker::pick_model_archive(on_complete);
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let _ = on_complete;
+        Err(ModelSourcePickerError::UnsupportedPlatform)
     }
 }
 

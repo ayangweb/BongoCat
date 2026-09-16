@@ -1,18 +1,32 @@
 use super::*;
 
 impl SettingsView {
-    pub(super) fn choose_model_directory(&mut self, cx: &mut Context<Self>) {
+    /// Open the native picker for one model source kind.
+    ///
+    /// Both kinds share the whole flow — one dialog at a time, the selection
+    /// revalidated by the platform layer, the result applied to the same draft —
+    /// and differ only in which panel is opened, so the kind is carried through
+    /// instead of duplicating the flow per source.
+    pub(super) fn choose_model_source(&mut self, kind: ModelSourceKind, cx: &mut Context<Self>) {
         if self.model_import.is_running() || self.model_import.is_picker_open() {
             return;
         }
+        // Recording the kind as the picker opens is what keeps the status text
+        // describing the dialog the user is actually looking at.
+        self.model_import.source_kind = kind;
         self.model_import.state = ModelImportState::Picking;
         cx.notify();
 
         let (sender, receiver) = async_channel::bounded(1);
-        if let Err(error) = pick_model_directory(move |result| {
+        let picking = move |result| {
             let _ = sender.try_send(result);
-        }) {
-            self.apply_model_directory_result(Err(error));
+        };
+        let outcome = match kind {
+            ModelSourceKind::Directory => pick_model_directory(picking),
+            ModelSourceKind::Archive => pick_model_archive(picking),
+        };
+        if let Err(error) = outcome {
+            self.apply_model_source_result(Err(error));
             cx.notify();
             return;
         }
@@ -20,26 +34,26 @@ impl SettingsView {
             let result = receiver
                 .recv()
                 .await
-                .unwrap_or(Err(DirectoryPickerError::BackendUnavailable));
+                .unwrap_or(Err(ModelSourcePickerError::BackendUnavailable));
             let _ = this.update(cx, |view, cx| {
-                view.apply_model_directory_result(result);
+                view.apply_model_source_result(result);
                 cx.notify();
             });
         })
         .detach();
     }
 
-    pub(super) fn apply_model_directory_result(
+    pub(super) fn apply_model_source_result(
         &mut self,
-        result: Result<DirectoryPickerOutcome, DirectoryPickerError>,
+        result: Result<ModelSourcePickerOutcome, ModelSourcePickerError>,
     ) {
         match result {
-            Ok(DirectoryPickerOutcome::Selected(source_root)) => {
+            Ok(ModelSourcePickerOutcome::Selected(source_root)) => {
                 self.model_import.title = suggested_model_title(&source_root);
                 self.model_import.source_root = Some(source_root);
                 self.model_import.state = ModelImportState::Ready;
             }
-            Ok(DirectoryPickerOutcome::Cancelled) => {
+            Ok(ModelSourcePickerOutcome::Cancelled) => {
                 self.model_import.state = ModelImportState::PickerCancelled;
             }
             Err(error) => {

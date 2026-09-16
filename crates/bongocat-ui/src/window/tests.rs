@@ -757,6 +757,7 @@ fn cancellation_requested_while_starting_reaches_the_created_operation() {
         state: ModelImportState::Starting {
             cancel_requested: true,
         },
+        ..ModelImportDraft::default()
     };
 
     assert!(!operation.is_cancelled());
@@ -797,6 +798,7 @@ fn model_catalog_and_import_statuses_cover_loading_empty_error_and_cancellation(
         title: "custom-model".to_owned(),
         source_root: None,
         state: ModelImportState::Cancelled,
+        ..ModelImportDraft::default()
     };
     let (status, failed) = model_import_status(&cancelled, SettingsLanguage::ChineseSimplified);
     assert!(!failed);
@@ -810,16 +812,21 @@ fn model_import_accessibility_nodes_project_actions_progress_and_catalog_states(
         title: "custom-model".to_owned(),
         source_root: Some(PathBuf::from("/private/source")),
         state: ModelImportState::Ready,
+        ..ModelImportDraft::default()
     };
-    let [choose_folder, import, status] = super::accessibility::model_import_accessibility_nodes(
-        &ready,
-        false,
-        true,
-        SettingsLanguage::EnglishUnitedStates,
-    );
+    let [choose_folder, choose_archive, import, status] =
+        super::accessibility::model_import_accessibility_nodes(
+            &ready,
+            false,
+            true,
+            SettingsLanguage::EnglishUnitedStates,
+        );
     assert_eq!(choose_folder.role, AccessibilityRole::Button);
     assert_eq!(choose_folder.label, "Choose folder");
     assert!(choose_folder.supports_click);
+    assert_eq!(choose_archive.role, AccessibilityRole::Button);
+    assert_eq!(choose_archive.label, "Choose archive");
+    assert!(choose_archive.supports_click);
     assert_eq!(import.label, "Import");
     assert!(!import.disabled);
     assert!(import.supports_click);
@@ -833,13 +840,15 @@ fn model_import_accessibility_nodes_project_actions_progress_and_catalog_states(
         },
         ..ready
     };
-    let [choose_folder, import, status] = super::accessibility::model_import_accessibility_nodes(
-        &cancelling,
-        false,
-        true,
-        SettingsLanguage::EnglishUnitedStates,
-    );
+    let [choose_folder, choose_archive, import, status] =
+        super::accessibility::model_import_accessibility_nodes(
+            &cancelling,
+            false,
+            true,
+            SettingsLanguage::EnglishUnitedStates,
+        );
     assert!(choose_folder.disabled);
+    assert!(choose_archive.disabled);
     assert_eq!(import.label, "Cancel");
     assert!(!import.disabled);
     assert!(import.supports_click);
@@ -893,17 +902,30 @@ fn picker_status_never_contains_the_selected_path() {
         title: "custom-model".to_owned(),
         source_root: Some(PathBuf::from("/private/secret/model")),
         state: ModelImportState::PickerCancelled,
+        ..ModelImportDraft::default()
     };
     let (status, failed) = model_import_status(&draft, SettingsLanguage::EnglishUnitedStates);
     assert!(!failed);
-    assert_eq!(status, "Selection cancelled; previous folder retained");
+    assert_eq!(status, "Selection cancelled; previous selection retained");
     assert!(!status.contains("private"));
 
-    draft.state = ModelImportState::PickerFailed(DirectoryPickerError::SelectionInvalid);
+    draft.state = ModelImportState::PickerFailed(ModelSourcePickerError::SelectionInvalid);
     let (status, failed) = model_import_status(&draft, SettingsLanguage::EnglishUnitedStates);
     assert!(failed);
     assert_eq!(status, "Selected folder is unavailable");
     assert!(!status.contains("secret"));
+
+    // An archive source reports the archive's own wording, so the page never
+    // claims a folder was chosen when the user chose a `.zip`.
+    draft.source_kind = ModelSourceKind::Archive;
+    let (status, failed) = model_import_status(&draft, SettingsLanguage::ChineseSimplified);
+    assert!(failed);
+    assert_eq!(status, "所选压缩包不可用");
+
+    draft.state = ModelImportState::Ready;
+    let (status, failed) = model_import_status(&draft, SettingsLanguage::ChineseSimplified);
+    assert!(!failed);
+    assert_eq!(status, "已选择压缩包");
 }
 
 #[test]
@@ -912,6 +934,7 @@ fn picker_open_state_blocks_conflicting_import_actions() {
         title: "custom-model".to_owned(),
         source_root: Some(PathBuf::from("/private/source")),
         state: ModelImportState::Picking,
+        ..ModelImportDraft::default()
     };
 
     assert!(draft.is_picker_open());
@@ -919,6 +942,27 @@ fn picker_open_state_blocks_conflicting_import_actions() {
     let (status, failed) = model_import_status(&draft, SettingsLanguage::EnglishUnitedStates);
     assert!(!failed);
     assert_eq!(status, "Choosing folder...");
+
+    let archive = ModelImportDraft {
+        source_kind: ModelSourceKind::Archive,
+        ..draft
+    };
+    let (status, failed) = model_import_status(&archive, SettingsLanguage::EnglishUnitedStates);
+    assert!(!failed);
+    assert_eq!(status, "Choosing archive...");
+}
+
+#[test]
+fn suggested_titles_agree_for_a_folder_and_the_archive_made_from_it() {
+    let root = PathBuf::from("/private/我的猫 · 标准模式");
+    assert_eq!(suggested_model_title(&root), "我的猫 · 标准模式");
+    // An archive suggests the same title as the folder it was compressed from,
+    // rather than the exported file name with its extension attached.
+    assert_eq!(
+        suggested_model_title(&root.with_extension("zip")),
+        "我的猫 · 标准模式"
+    );
+    assert_eq!(suggested_model_title(&PathBuf::from("/")), "custom-model");
 }
 
 #[test]

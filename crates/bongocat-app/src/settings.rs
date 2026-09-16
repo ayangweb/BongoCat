@@ -2230,7 +2230,12 @@ const fn map_model_store_import_diagnostic(diagnostic: ModelStoreDiagnostic) -> 
         ModelStoreDiagnostic::InvalidPackage => SettingsErrorCode::ModelImportInvalidPackage,
         ModelStoreDiagnostic::SourceContainsStore => SettingsErrorCode::ModelImportSourceInvalid,
         ModelStoreDiagnostic::SourceChanged => SettingsErrorCode::ModelImportSourceChanged,
-        ModelStoreDiagnostic::SourceSymlinkUnsupported
+        // A source the store cannot read at all — an unsupported archive, an
+        // archive entry that is not a regular file or directory, or a symbolic
+        // link — is the same user-facing outcome as any other unsupported
+        // source entry: the chosen source cannot be imported as it stands.
+        ModelStoreDiagnostic::SourceArchiveUnsupported
+        | ModelStoreDiagnostic::SourceSymlinkUnsupported
         | ModelStoreDiagnostic::SourceEntryUnsupported => {
             SettingsErrorCode::ModelImportSourceUnsupported
         }
@@ -2264,6 +2269,7 @@ const fn map_model_store_delete_diagnostic(diagnostic: ModelStoreDiagnostic) -> 
         | ModelStoreDiagnostic::Cancelled
         | ModelStoreDiagnostic::InvalidPackage
         | ModelStoreDiagnostic::IoError
+        | ModelStoreDiagnostic::SourceArchiveUnsupported
         | ModelStoreDiagnostic::SourceContainsStore
         | ModelStoreDiagnostic::SourceChanged
         | ModelStoreDiagnostic::SourceSymlinkUnsupported
@@ -4708,6 +4714,10 @@ mod tests {
                 SettingsErrorCode::ModelImportSourceUnsupported,
             ),
             (
+                ModelStoreDiagnostic::SourceArchiveUnsupported,
+                SettingsErrorCode::ModelImportSourceUnsupported,
+            ),
+            (
                 ModelStoreDiagnostic::StoreBusy,
                 SettingsErrorCode::ModelStoreBusy,
             ),
@@ -4727,6 +4737,14 @@ mod tests {
 
         for (diagnostic, expected) in cases {
             assert_eq!(map_model_store_import_diagnostic(diagnostic), expected);
+        }
+        // Enumerating the cases is only useful while it stays complete, so a new
+        // store diagnostic cannot reach the settings service unmapped.
+        for diagnostic in ModelStoreDiagnostic::ALL {
+            assert!(
+                cases.iter().any(|(case, _)| *case == diagnostic),
+                "{diagnostic:?} has no import result code"
+            );
         }
     }
 
@@ -4774,6 +4792,10 @@ mod tests {
                 SettingsErrorCode::ModelDeleteFailed,
             ),
             (
+                ModelStoreDiagnostic::SourceArchiveUnsupported,
+                SettingsErrorCode::ModelDeleteFailed,
+            ),
+            (
                 ModelStoreDiagnostic::StoreEntryUnsupported,
                 SettingsErrorCode::ModelDeleteFailed,
             ),
@@ -4781,6 +4803,12 @@ mod tests {
 
         for (diagnostic, expected) in cases {
             assert_eq!(map_model_store_delete_diagnostic(diagnostic), expected);
+        }
+        for diagnostic in ModelStoreDiagnostic::ALL {
+            assert!(
+                cases.iter().any(|(case, _)| *case == diagnostic),
+                "{diagnostic:?} has no delete result code"
+            );
         }
     }
 

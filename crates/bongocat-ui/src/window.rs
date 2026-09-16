@@ -17,7 +17,9 @@ use bongocat_platform::{
     AccessibilityAction, AccessibilityActionRequest, AccessibilityNode, AccessibilityNodeId,
     AccessibilityRole, AccessibilityToggle, AccessibilityTree, SettingsAccessibilityBridge,
 };
-use bongocat_platform::{DirectoryPickerError, DirectoryPickerOutcome, pick_model_directory};
+use bongocat_platform::{
+    ModelSourcePickerError, ModelSourcePickerOutcome, pick_model_archive, pick_model_directory,
+};
 use gpui_kit::component::{
     ActiveTheme, Disableable, IconName, IndexPath, Root, Theme, ThemeMode, ThemeStyled, WindowExt,
     button::Button,
@@ -180,6 +182,8 @@ const ACCESSIBILITY_MODEL_IMPORT: AccessibilityNodeId = AccessibilityNodeId::new
 const ACCESSIBILITY_MODEL_IMPORT_STATUS: AccessibilityNodeId = AccessibilityNodeId::new(48);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_MODEL_CATALOG_STATUS: AccessibilityNodeId = AccessibilityNodeId::new(49);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_MODEL_CHOOSE_ARCHIVE: AccessibilityNodeId = AccessibilityNodeId::new(50);
 
 /// A request the settings window forwards to the application rather than acting
 /// on itself.
@@ -296,12 +300,24 @@ enum ShortcutSettingsTab {
     Model,
 }
 
+/// Which native picker the page is waiting on.
+///
+/// The two sources get two buttons because the native dialogs are separate: no
+/// platform offers one panel that selects "a folder or a file". Recording the
+/// kind keeps the status text truthful while the dialog is open and lets the
+/// selected source be described as what the user actually chose.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ModelSourceKind {
+    Directory,
+    Archive,
+}
+
 enum ModelImportState {
     Empty,
     Ready,
     Picking,
     PickerCancelled,
-    PickerFailed(DirectoryPickerError),
+    PickerFailed(ModelSourcePickerError),
     Starting { cancel_requested: bool },
     Running(SettingsModelImportMonitor),
     Succeeded,
@@ -312,6 +328,9 @@ enum ModelImportState {
 struct ModelImportDraft {
     title: String,
     source_root: Option<PathBuf>,
+    /// Which picker produced `source_root`, so the status text names the source
+    /// the user actually chose instead of always reporting a folder.
+    source_kind: ModelSourceKind,
     state: ModelImportState,
 }
 
@@ -374,6 +393,7 @@ impl Default for ModelImportDraft {
         Self {
             title: String::new(),
             source_root: None,
+            source_kind: ModelSourceKind::Directory,
             state: ModelImportState::Empty,
         }
     }
@@ -496,6 +516,7 @@ pub struct SettingsView {
     startup_item_focus: FocusHandle,
     model_id_focus: FocusHandle,
     choose_model_focus: FocusHandle,
+    choose_archive_focus: FocusHandle,
     import_model_focus: FocusHandle,
     open_backups_focus: FocusHandle,
     restore_defaults_focus: FocusHandle,
@@ -1390,18 +1411,14 @@ fn diagnostic_group(
         .child(div().border_b_1().border_color(tokens.border))
 }
 
-/// The import suggestion shown to the user is the source folder's own name.
-/// The portable store id is allocated by the settings service at import time,
-/// so the displayed name never needs ASCII folding; hand-typed edits are
-/// still sanitized by `sanitize_model_title_input`.
+/// The import suggestion shown to the user is the chosen source's own name. A
+/// folder and the `.zip` archive made from it therefore suggest the same title,
+/// because `model_source_display_name` drops the archive extension. The portable
+/// store id is allocated by the settings service at import time, so the
+/// displayed name never needs ASCII folding; hand-typed edits are still
+/// sanitized by `sanitize_model_title_input`.
 fn suggested_model_title(source_root: &Path) -> String {
-    source_root
-        .file_name()
-        .and_then(|name| name.to_str())
-        .map(str::trim)
-        .filter(|name| !name.is_empty())
-        .map(str::to_owned)
-        .unwrap_or_else(|| "custom-model".to_owned())
+    crate::model_source_display_name(source_root).unwrap_or_else(|| "custom-model".to_owned())
 }
 
 fn model_row_actions(
@@ -1523,48 +1540,62 @@ fn model_import_status(
     draft: &ModelImportDraft,
     language: SettingsLanguage,
 ) -> (SharedString, bool) {
+    // The status names whichever source the user actually chose, so an archive
+    // import never reports that a folder was selected.
+    let selected_key = match draft.source_kind {
+        ModelSourceKind::Directory => "models.import.folder.selected",
+        ModelSourceKind::Archive => "models.import.archive.selected",
+    };
+    let none_selected_key = match draft.source_kind {
+        ModelSourceKind::Directory => "models.import.folder.none_selected",
+        ModelSourceKind::Archive => "models.import.archive.none_selected",
+    };
+    let choosing_key = match draft.source_kind {
+        ModelSourceKind::Directory => "models.import.folder.choosing",
+        ModelSourceKind::Archive => "models.import.archive.choosing",
+    };
+    let unavailable_key = match draft.source_kind {
+        ModelSourceKind::Directory => "models.import.folder.selected_unavailable",
+        ModelSourceKind::Archive => "models.import.archive.selected_unavailable",
+    };
+    let picker_unavailable_key = match draft.source_kind {
+        ModelSourceKind::Directory => "models.import.folder.picker_unavailable",
+        ModelSourceKind::Archive => "models.import.archive.picker_unavailable",
+    };
     match &draft.state {
         ModelImportState::Empty => (
-            bongocat_i18n::text(
-                language.catalog_locale(),
-                "models.import.folder.none_selected",
-            )
-            .into(),
+            bongocat_i18n::text(language.catalog_locale(), none_selected_key).into(),
             false,
         ),
         ModelImportState::Ready => (
-            bongocat_i18n::text(language.catalog_locale(), "models.import.folder.selected").into(),
+            bongocat_i18n::text(language.catalog_locale(), selected_key).into(),
             false,
         ),
         ModelImportState::Picking => (
-            bongocat_i18n::text(language.catalog_locale(), "models.import.folder.choosing").into(),
+            bongocat_i18n::text(language.catalog_locale(), choosing_key).into(),
             false,
         ),
+        // Cancelling and the picker-thread failure are properties of the picker
+        // itself, so they read the same whichever source was being chosen.
         ModelImportState::PickerCancelled if draft.source_root.is_some() => (
             bongocat_i18n::text(
                 language.catalog_locale(),
-                "models.import.folder.cancelled_previous_retained",
+                "models.import.picker.cancelled_previous_retained",
             )
             .into(),
             false,
         ),
         ModelImportState::PickerCancelled => (
-            bongocat_i18n::text(language.catalog_locale(), "models.import.folder.cancelled").into(),
+            bongocat_i18n::text(language.catalog_locale(), "models.import.picker.cancelled").into(),
             false,
         ),
         ModelImportState::PickerFailed(error) => {
             let message = match error {
-                DirectoryPickerError::WrongThread => {
-                    "models.import.folder.picker_requires_ui_thread"
-                }
-                DirectoryPickerError::SelectionInvalid => {
-                    "models.import.folder.selected_unavailable"
-                }
-                DirectoryPickerError::UnsupportedPlatform
-                | DirectoryPickerError::BackendUnavailable
-                | DirectoryPickerError::SelectionUnavailable => {
-                    "models.import.folder.picker_unavailable"
-                }
+                ModelSourcePickerError::WrongThread => "models.import.picker.requires_ui_thread",
+                ModelSourcePickerError::SelectionInvalid => unavailable_key,
+                ModelSourcePickerError::UnsupportedPlatform
+                | ModelSourcePickerError::BackendUnavailable
+                | ModelSourcePickerError::SelectionUnavailable => picker_unavailable_key,
             };
             (
                 bongocat_i18n::text(language.catalog_locale(), message).into(),

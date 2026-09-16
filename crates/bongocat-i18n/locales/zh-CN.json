@@ -121,12 +121,20 @@
         "none_selected": "尚未选择文件夹",
         "selected": "已选择文件夹",
         "choosing": "正在选择文件夹...",
-        "cancelled_previous_retained": "已取消选择；保留之前的文件夹",
-        "cancelled": "已取消选择",
-        "picker_requires_ui_thread": "文件夹选择器必须在 UI 线程运行",
         "selected_unavailable": "所选文件夹不可用",
-        "picker_unavailable": "文件夹选择器不可用",
-        "choosing_short": "选择中..."
+        "picker_unavailable": "文件夹选择器不可用"
+      },
+      "archive": {
+        "none_selected": "尚未选择压缩包",
+        "selected": "已选择压缩包",
+        "choosing": "正在选择压缩包...",
+        "selected_unavailable": "所选压缩包不可用",
+        "picker_unavailable": "压缩包选择器不可用"
+      },
+      "picker": {
+        "cancelled": "已取消选择",
+        "cancelled_previous_retained": "已取消选择；保留之前的选择",
+        "requires_ui_thread": "模型来源选择器必须在 UI 线程运行"
       },
       "progress": {
         "cancelling": "正在取消导入...",
@@ -141,6 +149,8 @@
       },
       "actions": {
         "choose_folder": "选择文件夹",
+        "choose_archive": "选择压缩包",
+        "choosing": "选择中...",
         "import": "导入"
       }
     },

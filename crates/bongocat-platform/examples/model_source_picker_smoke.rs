@@ -1,16 +1,50 @@
-use bongocat_platform::pick_model_directory;
+//! Manual smoke harness for the native model source pickers.
+//!
+//! A model source is either a folder or a `.zip` archive, so the smoke covers
+//! both entry points:
+//!
+//! ```text
+//! cargo run -p bongocat-platform --example model_source_picker_smoke -- --expect-cancel
+//! cargo run -p bongocat-platform --example model_source_picker_smoke -- --expect-selected-any --kind archive
+//! cargo run -p bongocat-platform --example model_source_picker_smoke -- --expect-selected <path> --kind directory
+//! ```
+//!
+//! `--kind` defaults to `directory`. On Windows `--auto` additionally drives the
+//! dialog with the Win32 controller.
+
+use bongocat_platform::{pick_model_archive, pick_model_directory};
 use std::{error::Error, io};
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-use bongocat_platform::DirectoryPickerError;
+use bongocat_platform::ModelSourcePickerError;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-use bongocat_platform::DirectoryPickerOutcome;
+use bongocat_platform::ModelSourcePickerOutcome;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::{
     env,
     path::PathBuf,
     sync::{Arc, atomic::AtomicBool, mpsc},
 };
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SourceKind {
+    Directory,
+    Archive,
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+impl SourceKind {
+    /// Whether an arbitrary selection is a plausible source of this kind. Which
+    /// file is *usable* is the model store's decision, so the smoke only checks
+    /// the shape the picker promises.
+    fn accepts(self, path: &std::path::Path) -> bool {
+        match self {
+            Self::Directory => path.is_dir(),
+            Self::Archive => path.is_file(),
+        }
+    }
+}
 
 #[cfg(target_os = "windows")]
 use std::{sync::atomic::Ordering, thread, time::Duration};
@@ -65,8 +99,9 @@ fn prepare_native_application() -> NativeApplication {
 
 #[cfg(target_os = "macos")]
 fn start_native_picker(
+    kind: SourceKind,
     sender: mpsc::SyncSender<
-        Result<DirectoryPickerOutcome, bongocat_platform::DirectoryPickerError>,
+        Result<ModelSourcePickerOutcome, bongocat_platform::ModelSourcePickerError>,
     >,
 ) {
     use dispatch2::DispatchQueue;
@@ -74,16 +109,26 @@ fn start_native_picker(
     DispatchQueue::main().exec_async(move || {
         let callback_sender = sender;
         let callback_sender_for_picker = callback_sender.clone();
-        let result = pick_model_directory(move |result| {
-            let _ = callback_sender_for_picker.try_send(result);
-            // Project validation runs on a worker thread, so dispatch shutdown unconditionally
-            // rather than assuming the callback is already on AppKit's main thread.
-            DispatchQueue::main().exec_async(|| {
-                let mtm = objc2::MainThreadMarker::new()
-                    .expect("NSApplication stop must run on the AppKit main thread");
-                objc2_app_kit::NSApplication::sharedApplication(mtm).stop(None);
-            });
-        });
+        let result = match kind {
+            SourceKind::Directory => pick_model_directory(move |result| {
+                let _ = callback_sender_for_picker.try_send(result);
+                // Project validation runs on a worker thread, so dispatch shutdown unconditionally
+                // rather than assuming the callback is already on AppKit's main thread.
+                DispatchQueue::main().exec_async(|| {
+                    let mtm = objc2::MainThreadMarker::new()
+                        .expect("NSApplication stop must run on the AppKit main thread");
+                    objc2_app_kit::NSApplication::sharedApplication(mtm).stop(None);
+                });
+            }),
+            SourceKind::Archive => pick_model_archive(move |result| {
+                let _ = callback_sender_for_picker.try_send(result);
+                DispatchQueue::main().exec_async(|| {
+                    let mtm = objc2::MainThreadMarker::new()
+                        .expect("NSApplication stop must run on the AppKit main thread");
+                    objc2_app_kit::NSApplication::sharedApplication(mtm).stop(None);
+                });
+            }),
+        };
         if let Err(error) = result {
             let _ = callback_sender.try_send(Err(error));
             DispatchQueue::main().exec_async(|| {
@@ -117,6 +162,7 @@ enum ExpectedOutcome {
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 struct SmokeOptions {
     expected: ExpectedOutcome,
+    kind: SourceKind,
     automated: bool,
 }
 
@@ -138,12 +184,26 @@ fn smoke_options() -> Result<SmokeOptions, io::Error> {
             ));
         }
     };
-    let automated = arguments.next().as_deref() == Some("--auto");
-    if arguments.next().is_some() {
-        return Err(io::Error::other("unexpected picker smoke argument"));
+    let mut kind = SourceKind::Directory;
+    let mut automated = false;
+    while let Some(argument) = arguments.next() {
+        match argument.as_str() {
+            "--auto" => automated = true,
+            "--kind" => {
+                kind = match arguments.next().as_deref() {
+                    Some("directory") => SourceKind::Directory,
+                    Some("archive") => SourceKind::Archive,
+                    _ => {
+                        return Err(io::Error::other("--kind requires 'directory' or 'archive'"));
+                    }
+                };
+            }
+            _ => return Err(io::Error::other("unexpected picker smoke argument")),
+        }
     }
     Ok(SmokeOptions {
         expected,
+        kind,
         automated,
     })
 }
@@ -221,7 +281,7 @@ fn automate_dialog(action: DialogAction, completed: Arc<AtomicBool>) -> Result<(
         thread::sleep(Duration::from_millis(50));
     }
     Err(io::Error::other(format!(
-        "timed out waiting for the Windows directory picker after {posted_messages} message posts"
+        "timed out waiting for the Windows model source picker after {posted_messages} message posts"
     )))
 }
 
@@ -260,18 +320,35 @@ fn start_automation(
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn verify_unsupported_platform() -> Result<(), Box<dyn Error>> {
-    // The platform layer exposes no native directory picker on this target. It must reject the
-    // request synchronously and must never invoke the completion callback.
+    // The platform layer exposes no native model source picker on this target. Both entry points
+    // must reject the request synchronously and must never invoke the completion callback.
     match pick_model_directory(|_| {
-        unreachable!("the directory picker must not invoke its callback without a native backend")
+        unreachable!("the folder picker must not invoke its callback without a native backend")
     }) {
-        Err(DirectoryPickerError::UnsupportedPlatform) => Ok(()),
+        Err(ModelSourcePickerError::UnsupportedPlatform) => {}
+        Ok(()) => {
+            return Err(io::Error::other(
+                "the folder picker reported success without a native backend",
+            )
+            .into());
+        }
+        Err(error) => {
+            return Err(io::Error::other(format!(
+                "the folder picker reported '{error}' instead of an unsupported platform"
+            ))
+            .into());
+        }
+    }
+    match pick_model_archive(|_| {
+        unreachable!("the archive picker must not invoke its callback without a native backend")
+    }) {
+        Err(ModelSourcePickerError::UnsupportedPlatform) => Ok(()),
         Ok(()) => Err(io::Error::other(
-            "the directory picker reported success without a native backend",
+            "the archive picker reported success without a native backend",
         )
         .into()),
         Err(error) => Err(io::Error::other(format!(
-            "the directory picker reported '{error}' instead of an unsupported platform"
+            "the archive picker reported '{error}' instead of an unsupported platform"
         ))
         .into()),
     }
@@ -285,14 +362,20 @@ fn run_native_picker_smoke() -> Result<(), Box<dyn Error>> {
     let (sender, receiver) = mpsc::sync_channel(1);
     let completed = Arc::new(AtomicBool::new(false));
     #[cfg(target_os = "macos")]
-    start_native_picker(sender.clone());
+    start_native_picker(options.kind, sender.clone());
     #[cfg(target_os = "windows")]
     {
         let callback_completed = Arc::clone(&completed);
-        pick_model_directory(move |result| {
-            callback_completed.store(true, Ordering::Release);
-            let _ = sender.send(result);
-        })?;
+        match options.kind {
+            SourceKind::Directory => pick_model_directory(move |result| {
+                callback_completed.store(true, Ordering::Release);
+                let _ = sender.send(result);
+            })?,
+            SourceKind::Archive => pick_model_archive(move |result| {
+                callback_completed.store(true, Ordering::Release);
+                let _ = sender.send(result);
+            })?,
+        }
     }
     let automation = start_automation(&options.expected, options.automated, completed)?;
     #[cfg(target_os = "macos")]
@@ -302,29 +385,31 @@ fn run_native_picker_smoke() -> Result<(), Box<dyn Error>> {
     #[cfg(target_os = "windows")]
     let actual = receiver
         .recv_timeout(Duration::from_secs(15))
-        .map_err(|_| io::Error::other("timed out waiting for the directory picker callback"))??;
+        .map_err(|_| {
+            io::Error::other("timed out waiting for the model source picker callback")
+        })??;
     #[cfg(target_os = "macos")]
     let actual = receiver
         .recv()
-        .map_err(|_| io::Error::other("directory picker callback was dropped"))??;
+        .map_err(|_| io::Error::other("model source picker callback was dropped"))??;
     if let Some(automation) = automation {
         automation
             .join()
-            .map_err(|_| io::Error::other("directory picker automation panicked"))??;
+            .map_err(|_| io::Error::other("model source picker automation panicked"))??;
     }
     match (options.expected, actual) {
-        (ExpectedOutcome::Cancelled, DirectoryPickerOutcome::Cancelled) => Ok(()),
-        (ExpectedOutcome::Selected(expected), DirectoryPickerOutcome::Selected(actual))
+        (ExpectedOutcome::Cancelled, ModelSourcePickerOutcome::Cancelled) => Ok(()),
+        (ExpectedOutcome::Selected(expected), ModelSourcePickerOutcome::Selected(actual))
             if actual == expected =>
         {
             Ok(())
         }
-        (ExpectedOutcome::SelectedAny, DirectoryPickerOutcome::Selected(actual))
-            if actual.is_absolute() && actual.is_dir() =>
+        (ExpectedOutcome::SelectedAny, ModelSourcePickerOutcome::Selected(actual))
+            if actual.is_absolute() && options.kind.accepts(&actual) =>
         {
             Ok(())
         }
-        _ => Err(io::Error::other("directory picker returned an unexpected outcome").into()),
+        _ => Err(io::Error::other("model source picker returned an unexpected outcome").into()),
     }
 }
 

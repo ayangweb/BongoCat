@@ -2157,6 +2157,9 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
   - 状态（2026-09-05）：`ModelStoreDiagnostic` 现为 11 个来源无关、固定
     `model_store_*` code；枚举包含完整 `ALL` 集合与唯一性回归。settings service 继续按 import/
     delete 操作映射为既有可操作 `SettingsErrorCode`，不公开 model store 的资源名或 I/O detail。
+    2026-09-16 新增压缩包来源后为 12 个（多出 `model_store_source_archive_unsupported`，见
+    `P4-MODEL-ARCHIVE-SOURCE`）；settings 侧仍映射为既有 `SettingsErrorCode`，两个映射函数的
+    回归测试新增"枚举 cases 必须覆盖 `ALL`"的断言，避免新码静默漏映射。
     renderer 的 `ModelCommitErrorCode` 现同样公开唯一的稳定
     `model_commit_resource_preparation_failed` code，runtime 仍将该拒绝投影为
     `gpu_preparation_failed`，不改变既有两阶段模型切换失败语义。
@@ -2667,6 +2670,11 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       负责等待/执行选择、重新验证和 canonicalize。`rfd` 把取消与后端失败统一为 `None`，当前
       按取消映射。macOS 26.5.2 arm64 上 Cancel 与仓库目录 Select smoke 均已通过；完整 workspace
       门禁及 Windows x64 target Clippy 通过，Windows 实机 smoke 仍由对应原生 job 验证。
+    - 状态（2026-09-16）：`P4-MODEL-ARCHIVE-SOURCE` 增加压缩包来源后，本项职责由"选目录"扩展为
+      "选模型来源"，模块改名 `model_source_picker`，类型改名 `ModelSourcePickerOutcome`/
+      `ModelSourcePickerError`，稳定码前缀改为 `model_source_picker_*`（示例同步改名
+      `examples/model_source_picker_smoke.rs`）。本项已通过的退出条件与实机证据不变，只换了名字
+      与新增一个入口；归档选择器的实机 smoke 尚未执行。
 26. [x] `P4-MODEL-MANAGEMENT-UI`：在 Models 页面完成来源感知的激活与删除闭环。
     - 依赖：`P4-MODEL-CATALOG`、`P4-MODEL-SELECTION`、`P4-MODEL-DELETE-COMMAND` 和正式
       GPUI settings snapshot。
@@ -3574,8 +3582,77 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `SettingsModelCatalog.skipped_entries` 与 `Application::ModelCatalog` 一并撤销。
       未运行：Windows 路径与 Windows/macOS CI 门禁。
 
-## 13. 待决策清单
+77. [x] `P4-MODEL-ARCHIVE-SOURCE`：让模型来源同时支持文件夹与 `.zip` 压缩包。
+    - 依赖：`P4-MODEL-IMPORT-COMMAND`/`P4-MODEL-IMPORT-OPERATION`、`P7-MODEL-DIRECTORY-PICKER`
+      建立的来源选择面、`ModelStore` staging 事务与 `ModelPackageLimits`。
+    - 退出条件：来源类型按内容识别（目录 / zip 签名），不看扩展名、也不靠调用方标志；压缩包解压
+      写进 store 自己的 staging 目录，仍共用同一个 `PreparedModel` 校验与原子 rename 提交；归档在
+      **解压前**按中央目录校验条目名/条目类型/压缩方法/加密标志/条目数/深度/声明字节，容器另有
+      独立字节上限；包装目录被剥离；解压计入既有 copy stage；任何拒绝都不留 staging 或目标；
+      文件夹与压缩包两个来源入口、状态文案与 AccessKit 节点齐备；完整 Native 门禁通过。
+    - 决策记录：ADR-0036。
+    - 当前契约（2026-09-16）：`ModelStore::import_with_observer` 先 `detect_source_kind`
+      （目录 → 就地读取；常规文件且以 `PK\x03\x04`/`PK\x05\x06`/`PK\x07\x08` 开头 → 压缩包；其余
+      存续文件 → `SourceArchiveUnsupported`），再 `plan_archive`（只读中央目录，不解压）或
+      `PreparedModel::prepare`，之后才创建 staging；压缩包走 `extract_archive`（`create_new` 写入
+      + 逐条目复核名字/声明大小/实际字节数，CRC32 由 `zip` 默认校验），随后与目录来源一样
+      `PreparedModel::prepare(staging)` + `rename` 提交。
+      `ModelPackageLimits` 新增 `maximum_archive_bytes`（默认 1 GiB），与包字节上限分开，在解析
+      中央目录前挡住输入；条目数另有 `maximum_file_count × 4` 的结构上限。
+      `ModelStoreDiagnostic` 新增 `SourceArchiveUnsupported`
+      （`model_store_source_archive_unsupported`），`ALL` 由 11 增至 12；它映射到既有
+      `SettingsErrorCode::ModelImportSourceUnsupported`，因此没有新增用户可见错误码；路径穿越
+      / 重复条目 / 文件目录冲突复用 `SourceEntryUnsupported`，符号链接复用
+      `SourceSymlinkUnsupported`，超限与声明不符复用 `SourceChanged`。
+      包装目录反复剥离直到剩余条目不再共享同一首段；规则收窄为"任一**文件**位于归档根即不剥离、
+      等于该首段的**目录**条目不取消剥离"（后者是必要条件，否则真实"压缩文件夹"产物永远无法识别）。
+      `__MACOSX/**` 与 `._*`/`.DS_Store`/`.localized`/`Thumbs.db`/`desktop.ini` 按文件名丢弃，
+      既不参与包装判定也不解压。
+      `bongocat-platform` 的 `directory_picker` 模块改名 `model_source_picker`，
+      `DirectoryPickerOutcome`/`DirectoryPickerError` 改名 `ModelSourcePickerOutcome`/
+      `ModelSourcePickerError`，稳定码前缀改为 `model_source_picker_*`，新增 `pick_model_archive`
+      （`pick_file` + `.zip` 便利过滤，只要求"绝对路径 + 常规文件"），示例改名
+      `examples/model_source_picker_smoke.rs` 并支持 `--kind directory|archive`。
+      UI 的 Models 页面新增「选择压缩包」按钮、tab index 22 与
+      `ACCESSIBILITY_MODEL_CHOOSE_ARCHIVE`（节点 50），导入按钮移到 23；归档状态文案落在
+      `models.import.archive.*`，与来源无关的三条挑选文案上移到 `models.import.picker.*`。
+      建议标题规则统一在 `bongocat_ui::model_source_display_name`（归档去掉 `.zip`，目录保留原名），
+      UI 预填与 service 兜底共用它。
+    - 依赖评估（2026-09-16，§9）：`zip =8.6.0`（已在 workspace 依赖中，供诊断包写归档；本次打开
+      `deflate-flate2`，MIT）+ `flate2 =1.1.10`（显式后端 `rust_backend`/miniz_oxide，纯 Rust）。
+      两者均为当次核对的 crates.io 最新非 yanked 稳定版；不给 `bongocat-model` 打开 AES/bzip2/
+      zstd/lzma/ppmd/deflate64，未开启的压缩方法以稳定诊断拒绝。理由与替换边界见 ADR-0036 §9。
+    - 验收证据（2026-09-16）：`bongocat-model` 60 测试（新增 15：`store.rs` 10 + `archive.rs` 5），
+      新增用例覆盖"同一包以目录与压缩包两种来源导入后 `ModelPackageIndex` 逐字段相等"、按内容
+      识别（无扩展名归档、`Stored` 归档、名为 `*.zip` 的目录）、嵌套包装剥离与深度上限、
+      `__MACOSX`/`.DS_Store` 被丢弃且不干扰包装识别、非归档/截断/空/只有目录的归档、路径穿越
+      （`../`、绝对、平台前缀）与重复条目（`猫//model.moc3` 与 `猫/model.moc3` 归一化后相撞）与
+      文件目录冲突、符号链接条目、四类上限在解压前拒绝、进度单调 + 取消后无 staging 残留且不影响
+      已装模型。`bongocat-app` 120+21 测试（新增文件夹与压缩包双来源导入：两个 UUID id、
+      索引一致、目录侧标题 `非 ASCII 模型`、归档侧标题为归档名去掉 `.zip`），`bongocat-ui` 115
+      测试（新增标题 UTF-8 边界/大小写/目录名为 `*.zip` 保留原名、归档状态文案、两个按钮的
+      AccessKit 节点与禁用传播），`bongocat-platform` 50 测试（新增归档选择复验与稳定码唯一性）。
+      **真实压缩包验证**：`BONGOCAT_MODEL_ARCHIVE_SAMPLES=/tmp/bongocat-samples cargo test
+      -p bongocat-model imports_the_archive_samples` 通过，样本即用户提供的两个真实归档：
+      `经典小键盘 · 标准模式.zip` → 入口 `cat.model3.json`、moc `demomodel.moc3`、3 张 1024x512
+      纹理、cdi3、3 个表情、2 组动作（各 2 条，1 条带 FLAC 音轨）、31 文件 / 1 218 791 字节；
+      `送葬人 · 标准模式.zip`（内部目录名为 `图弟 · 标准模式`，与归档名**不一致**）→ 入口
+      `demomodel.model3.json`、1 张 1024x512 纹理、cdi3、61 文件 / 791 595 字节。两者包装目录均被
+      剥离（安装根目录下直接是 `.model3.json`），源归档未被修改。`cargo fmt --all --check`、
+      三组 clippy（workspace `--all-targets --all-features` 与 `bongocat-app` 的
+      `storage-test-injection`/`production`）、`cargo test --locked --workspace`、
+      `cargo check --locked --workspace --release` 全部通过。
+      按 §9 执行了完整 `cargo update`，只升了 4 个与本功能无关的传递依赖补丁版本
+      （`synstructure` 0.13.2 → 0.14.0，连带切到 `syn 3`；`yoke-derive` 0.8.2 → 0.8.3；
+      `zerofrom-derive` 0.1.7 → 0.1.8；`zlib-rs` 0.6.7 → 0.6.8）。
+      **顺带修复的既有缺陷**：`bongocat-platform` 的示例 `model_source_picker_smoke` 在 `next`
+      上本来就无法编译（已用 `git stash` 在 HEAD 上复现 `objc2_app_kit::NSBackingStoreType`
+      未解析），因为 `NSBackingStoreType` 属于未被打开的 `NSGraphics` feature；本次因需要修改该
+      示例而补上 `"NSGraphics"`。这是与本功能无关的既有缺陷，需要单独复核。
+      **未运行**：Windows 实机（无 Windows 机器）、UI 真实点击两个按钮与真实
+      `NSOpenPanel` 选 zip 的手工 smoke（需人工运行示例）。
 
+## 13. 待决策清单
 | 决策                                                          | 最迟完成              | 阻塞内容                           |
 | ------------------------------------------------------------- | --------------------- | ---------------------------------- |
 | Windows/macOS 首发 CPU 架构和 target triple                   | `P0-DOC-CONSISTENCY`  | CI、SDK 二进制、签名和安装包矩阵   |

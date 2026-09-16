@@ -53,10 +53,10 @@ pub(super) fn model_import_accessibility_nodes(
     commands_pending: bool,
     configuration_ready: bool,
     language: SettingsLanguage,
-) -> [AccessibilityNode; 3] {
+) -> [AccessibilityNode; 4] {
     let import_running = draft.is_running();
     let picker_open = draft.is_picker_open();
-    let choose_folder_disabled =
+    let pickers_disabled =
         commands_pending || import_running || picker_open || !configuration_ready;
     let mut choose_folder_node = AccessibilityNode::new(
         ACCESSIBILITY_MODEL_CHOOSE_FOLDER,
@@ -66,9 +66,21 @@ pub(super) fn model_import_accessibility_nodes(
             "models.import.actions.choose_folder",
         ),
     )
-    .disabled(choose_folder_disabled);
-    if !choose_folder_disabled {
+    .disabled(pickers_disabled);
+    if !pickers_disabled {
         choose_folder_node = choose_folder_node.clickable().focusable();
+    }
+    let mut choose_archive_node = AccessibilityNode::new(
+        ACCESSIBILITY_MODEL_CHOOSE_ARCHIVE,
+        AccessibilityRole::Button,
+        bongocat_i18n::text(
+            language.catalog_locale(),
+            "models.import.actions.choose_archive",
+        ),
+    )
+    .disabled(pickers_disabled);
+    if !pickers_disabled {
+        choose_archive_node = choose_archive_node.clickable().focusable();
     }
 
     let (import_status, _) = super::model_import_status(draft, language);
@@ -95,7 +107,12 @@ pub(super) fn model_import_accessibility_nodes(
         bongocat_i18n::text(language.catalog_locale(), "models.import.actions.import"),
     )
     .with_value(import_status.to_string());
-    [choose_folder_node, import_node, import_status_node]
+    [
+        choose_folder_node,
+        choose_archive_node,
+        import_node,
+        import_status_node,
+    ]
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -722,13 +739,17 @@ impl SettingsView {
         let model_configuration_ready = snapshot.is_some_and(|snapshot| {
             snapshot.configuration_status == SettingsConfigurationStatus::Ready
         });
-        let [choose_folder_node, import_node, import_status_node] =
-            model_import_accessibility_nodes(
-                &self.model_import,
-                self.pending.is_some(),
-                model_configuration_ready,
-                language,
-            );
+        let [
+            choose_folder_node,
+            choose_archive_node,
+            import_node,
+            import_status_node,
+        ] = model_import_accessibility_nodes(
+            &self.model_import,
+            self.pending.is_some(),
+            model_configuration_ready,
+            language,
+        );
         let catalog_status_node = model_catalog_accessibility_status_node(
             snapshot.map(|snapshot| &snapshot.model_catalog),
             language,
@@ -878,6 +899,7 @@ impl SettingsView {
             ACCESSIBILITY_RESTORE_SHORTCUTS,
             ACCESSIBILITY_CLEAR_SHORTCUTS,
             ACCESSIBILITY_MODEL_CHOOSE_FOLDER,
+            ACCESSIBILITY_MODEL_CHOOSE_ARCHIVE,
             ACCESSIBILITY_MODEL_IMPORT,
             ACCESSIBILITY_MODEL_IMPORT_STATUS,
         ];
@@ -970,6 +992,7 @@ impl SettingsView {
             restore_shortcuts_node,
             clear_shortcuts_node,
             choose_folder_node,
+            choose_archive_node,
             import_node,
             import_status_node,
             refresh_node,
@@ -1185,7 +1208,15 @@ impl SettingsView {
                     && !self.model_import.is_running()
                     && !self.model_import.is_picker_open()
                 {
-                    self.choose_model_directory(cx);
+                    self.choose_model_source(ModelSourceKind::Directory, cx);
+                }
+            }
+            ACCESSIBILITY_MODEL_CHOOSE_ARCHIVE => {
+                if self.pending.is_none()
+                    && !self.model_import.is_running()
+                    && !self.model_import.is_picker_open()
+                {
+                    self.choose_model_source(ModelSourceKind::Archive, cx);
                 }
             }
             ACCESSIBILITY_MODEL_IMPORT => {
@@ -1321,6 +1352,10 @@ impl SettingsView {
             (ACCESSIBILITY_REFRESH, &self.refresh_focus),
             (ACCESSIBILITY_QUIT, &self.quit_focus),
             (ACCESSIBILITY_MODEL_CHOOSE_FOLDER, &self.choose_model_focus),
+            (
+                ACCESSIBILITY_MODEL_CHOOSE_ARCHIVE,
+                &self.choose_archive_focus,
+            ),
             (ACCESSIBILITY_MODEL_IMPORT, &self.import_model_focus),
         ]
         .into_iter()

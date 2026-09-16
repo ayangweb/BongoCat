@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod archive;
 mod store;
 
 use serde::de::DeserializeOwned;
@@ -30,6 +31,15 @@ pub struct ModelPackageLimits {
     pub maximum_json_depth: usize,
     pub maximum_file_bytes: u64,
     pub maximum_package_bytes: u64,
+    /// Upper bound on a `.zip` source *file*, checked before the archive reader
+    /// parses its central directory and therefore before it can allocate for the
+    /// entries that directory declares. It is deliberately separate from
+    /// [`Self::maximum_package_bytes`]: that limit bounds the package an archive
+    /// produces, while this one bounds the container the user handed over, and
+    /// conflating them would make the package limit unreachable for archives
+    /// (any file that declares a large package is itself at least that large
+    /// only when uncompressed).
+    pub maximum_archive_bytes: u64,
     pub maximum_file_count: usize,
     pub maximum_directory_depth: usize,
 }
@@ -42,6 +52,7 @@ impl Default for ModelPackageLimits {
             maximum_json_depth: 64,
             maximum_file_bytes: 512 * 1024 * 1024,
             maximum_package_bytes: 1024 * 1024 * 1024,
+            maximum_archive_bytes: 1024 * 1024 * 1024,
             maximum_file_count: 4_096,
             maximum_directory_depth: 32,
         }

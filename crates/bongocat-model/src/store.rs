@@ -1,3 +1,4 @@
+use crate::archive::{self, ModelSourceKind};
 use crate::{InstalledModel, ModelError, ModelId, ModelPackageLimits, PreparedModel};
 use std::{
     fmt, fs,
@@ -13,7 +14,7 @@ const DELETING_PREFIX: &str = ".deleting-";
 
 // Installed models and their lock metadata are user-owned data. Unix modes
 // enforce that boundary; Windows relies on the profile directory ACL.
-fn set_private_directory(path: &Path) -> io::Result<()> {
+pub(crate) fn set_private_directory(path: &Path) -> io::Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -24,7 +25,7 @@ fn set_private_directory(path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn set_private_file(file: &File) -> io::Result<()> {
+pub(crate) fn set_private_file(file: &File) -> io::Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -42,6 +43,7 @@ pub enum ModelStoreDiagnostic {
     InvalidPackage,
     IoError,
     NotFound,
+    SourceArchiveUnsupported,
     SourceContainsStore,
     SourceChanged,
     SourceSymlinkUnsupported,
@@ -51,12 +53,13 @@ pub enum ModelStoreDiagnostic {
 }
 
 impl ModelStoreDiagnostic {
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 12] = [
         Self::AlreadyExists,
         Self::Cancelled,
         Self::InvalidPackage,
         Self::IoError,
         Self::NotFound,
+        Self::SourceArchiveUnsupported,
         Self::SourceContainsStore,
         Self::SourceChanged,
         Self::SourceSymlinkUnsupported,
@@ -72,6 +75,7 @@ impl ModelStoreDiagnostic {
             Self::InvalidPackage => "model_store_invalid_package",
             Self::IoError => "model_store_io_error",
             Self::NotFound => "model_store_not_found",
+            Self::SourceArchiveUnsupported => "model_store_source_archive_unsupported",
             Self::SourceContainsStore => "model_store_source_contains_store",
             Self::SourceChanged => "model_store_source_changed",
             Self::SourceSymlinkUnsupported => "model_store_source_symlink_unsupported",
@@ -106,7 +110,7 @@ pub struct ModelStoreError {
 }
 
 impl ModelStoreError {
-    fn new(
+    pub(crate) fn new(
         code: ModelStoreDiagnostic,
         resource: Option<String>,
         detail: impl Into<String>,
@@ -216,7 +220,7 @@ pub struct InstalledModelCatalog {
 
 /// File-manager and operating-system metadata that legitimately appears in the
 /// store root without being owned by the catalog.
-fn is_platform_metadata_name(name: &str) -> bool {
+pub(crate) fn is_platform_metadata_name(name: &str) -> bool {
     // AppleDouble sidecars are written next to files on non-native volumes.
     name.starts_with("._")
         || matches!(
@@ -478,8 +482,24 @@ impl ModelStore {
                 "model source cannot contain the destination store",
             ));
         }
-        let prepared_source = PreparedModel::prepare(id.clone(), &canonical_source, self.limits)
-            .map_err(ModelStoreError::package)?;
+        // A source is a directory or a zip archive, recognized from the source
+        // itself instead of from a caller-supplied flag or the file extension:
+        // the user picks one thing and the store decides what it is. Both are
+        // validated as far as their format allows *before* the store creates a
+        // staging directory, so a source that can never be imported leaves the
+        // store untouched; the archive's bounded decompression then takes the
+        // place of the directory copy.
+        let prepared_source = match archive::detect_source_kind(&canonical_source, self.limits)? {
+            ModelSourceKind::Directory => Some(
+                PreparedModel::prepare(id.clone(), &canonical_source, self.limits)
+                    .map_err(ModelStoreError::package)?,
+            ),
+            ModelSourceKind::ZipArchive => None,
+        };
+        let archive_plan = match prepared_source {
+            Some(_) => None,
+            None => Some(archive::plan_archive(&canonical_source, self.limits)?),
+        };
         observation.check_cancelled()?;
         let destination = self.canonical_root.join(id.as_str());
         if destination.exists() {
@@ -498,15 +518,26 @@ impl ModelStore {
             files_copied: 0,
             bytes_copied: 0,
         });
-        copy_package(
-            prepared_source.root(),
-            prepared_source.root(),
-            &staging,
-            0,
-            self.limits,
-            &mut statistics,
-            &mut observation,
-        )?;
+        match (&prepared_source, &archive_plan) {
+            (Some(prepared_source), _) => copy_package(
+                prepared_source.root(),
+                prepared_source.root(),
+                &staging,
+                0,
+                self.limits,
+                &mut statistics,
+                &mut observation,
+            )?,
+            (None, Some(archive_plan)) => archive::extract_archive(
+                &canonical_source,
+                archive_plan,
+                &staging,
+                self.limits,
+                &mut statistics,
+                &mut observation,
+            )?,
+            (None, None) => unreachable!("every model source is a directory or an archive"),
+        }
         observation.check_cancelled()?;
         observation.report(ModelImportProgress {
             stage: ModelImportStage::Validating,
@@ -731,14 +762,14 @@ struct ModelStoreLock {
 }
 
 #[derive(Default)]
-struct CopyStatistics {
-    file_count: usize,
-    total_bytes: u64,
+pub(crate) struct CopyStatistics {
+    pub(crate) file_count: usize,
+    pub(crate) total_bytes: u64,
 }
 
-const COPY_BUFFER_BYTES: usize = 64 * 1024;
+pub(crate) const COPY_BUFFER_BYTES: usize = 64 * 1024;
 
-struct ImportObservation<'a, Observe, IsCancelled> {
+pub(crate) struct ImportObservation<'a, Observe, IsCancelled> {
     observe: &'a mut Observe,
     is_cancelled: &'a mut IsCancelled,
 }
@@ -748,7 +779,7 @@ where
     Observe: FnMut(ModelImportProgress),
     IsCancelled: FnMut() -> bool,
 {
-    fn check_cancelled(&mut self) -> Result<(), ModelStoreError> {
+    pub(crate) fn check_cancelled(&mut self) -> Result<(), ModelStoreError> {
         if (self.is_cancelled)() {
             Err(ModelStoreError::new(
                 ModelStoreDiagnostic::Cancelled,
@@ -760,12 +791,12 @@ where
         }
     }
 
-    fn report(&mut self, progress: ModelImportProgress) {
+    pub(crate) fn report(&mut self, progress: ModelImportProgress) {
         (self.observe)(progress);
     }
 }
 
-fn file_count_for_progress(file_count: usize) -> u64 {
+pub(crate) fn file_count_for_progress(file_count: usize) -> u64 {
     u64::try_from(file_count).unwrap_or(u64::MAX)
 }
 
@@ -1059,6 +1090,7 @@ mod tests {
     use std::fs::TryLockError;
     use std::path::Path;
     use tempfile::tempdir;
+    use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
     fn repository_root() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -1538,5 +1570,582 @@ mod tests {
             assert!(ModelId::parse(id.as_str()).is_ok());
             assert!(seen.insert(id.as_str().to_owned()), "ids must be unique");
         }
+    }
+
+    // A model source is either the directory a user picked or the `.zip` archive
+    // a model site handed out. The archive cases below build real deflate
+    // streams with the same `zip` reader/writer the store itself uses, so the
+    // tests exercise the actual decompressor instead of a hand-made central
+    // directory.
+
+    const SAMPLE_MODEL_JSON: &[u8] = br#"{
+      "Version": 3,
+      "FileReferences": {
+        "Moc": "model.moc3",
+        "Textures": ["textures/texture_00.png"]
+      },
+      "Groups": [
+        {"Target": "Parameter", "Name": "EyeBlink", "Ids": ["ParamEyeLOpen"]}
+      ]
+    }"#;
+
+    /// The 24 bytes the package parser inspects: the PNG signature and an IHDR
+    /// chunk carrying the declared dimensions.
+    fn png_header(width: u32, height: u32) -> Vec<u8> {
+        let mut bytes = Vec::from(*b"\x89PNG\r\n\x1a\n");
+        bytes.extend_from_slice(&13_u32.to_be_bytes());
+        bytes.extend_from_slice(b"IHDR");
+        bytes.extend_from_slice(&width.to_be_bytes());
+        bytes.extend_from_slice(&height.to_be_bytes());
+        bytes
+    }
+
+    fn sample_package_entries() -> Vec<(String, Vec<u8>)> {
+        vec![
+            ("cat.model3.json".to_owned(), SAMPLE_MODEL_JSON.to_vec()),
+            ("model.moc3".to_owned(), b"moc3".to_vec()),
+            ("textures/texture_00.png".to_owned(), png_header(1024, 1024)),
+        ]
+    }
+
+    fn write_package_directory(root: &Path) {
+        for (reference, bytes) in sample_package_entries() {
+            let path = root.join(&reference);
+            fs::create_dir_all(path.parent().expect("reference parent"))
+                .expect("create package directory");
+            fs::write(path, bytes).expect("write package file");
+        }
+    }
+
+    struct ArchiveBuilder {
+        path: PathBuf,
+        writer: ZipWriter<File>,
+    }
+
+    impl ArchiveBuilder {
+        fn new(path: PathBuf) -> Self {
+            Self {
+                writer: ZipWriter::new(File::create(&path).expect("create archive")),
+                path,
+            }
+        }
+
+        fn deflated_file(&mut self, name: &str, bytes: &[u8]) {
+            self.writer
+                .start_file(
+                    name,
+                    SimpleFileOptions::default()
+                        .compression_method(CompressionMethod::Deflated)
+                        .unix_permissions(0o644),
+                )
+                .expect("start deflated archive file");
+            self.writer.write_all(bytes).expect("write archive file");
+        }
+
+        fn stored_file(&mut self, name: &str, bytes: &[u8]) {
+            self.writer
+                .start_file(
+                    name,
+                    SimpleFileOptions::default()
+                        .compression_method(CompressionMethod::Stored)
+                        .unix_permissions(0o644),
+                )
+                .expect("start stored archive file");
+            self.writer
+                .write_all(bytes)
+                .expect("write stored archive file");
+        }
+
+        fn directory(&mut self, name: &str) {
+            self.writer
+                .add_directory(name, SimpleFileOptions::default().unix_permissions(0o755))
+                .expect("add archive directory");
+        }
+
+        fn symlink(&mut self, name: &str, target: &str) {
+            self.writer
+                .add_symlink(name, target, SimpleFileOptions::default())
+                .expect("add archive symlink");
+        }
+
+        fn finish(self) -> PathBuf {
+            self.writer.finish().expect("finish archive");
+            self.path
+        }
+    }
+
+    /// Write the sample package into an archive, optionally below one wrapper
+    /// directory the way "compress this folder" does.
+    fn write_package_archive(path: PathBuf, wrapper: Option<&str>) -> PathBuf {
+        let mut builder = ArchiveBuilder::new(path);
+        if let Some(wrapper) = wrapper {
+            builder.directory(&format!("{wrapper}/"));
+        }
+        for (reference, bytes) in sample_package_entries() {
+            let name = match wrapper {
+                Some(wrapper) => format!("{wrapper}/{reference}"),
+                None => reference,
+            };
+            builder.deflated_file(&name, &bytes);
+        }
+        builder.finish()
+    }
+
+    fn assert_store_holds_no_entries(store: &ModelStore) {
+        assert!(
+            fs::read_dir(store.root())
+                .expect("store entries")
+                .next()
+                .is_none(),
+            "a rejected import must not leave staging or destination entries"
+        );
+    }
+
+    #[test]
+    fn zip_and_directory_sources_of_the_same_package_import_identically() {
+        let data = tempdir().expect("data root");
+        let store = model_store(data.path());
+        let directory_source = tempdir().expect("directory source");
+        write_package_directory(directory_source.path());
+        let archives = tempdir().expect("archive root");
+        // The wrapper name deliberately differs from the archive file name, the
+        // way an exported archive is usually named after the model release
+        // while the archived folder keeps its own name.
+        let archive = write_package_archive(
+            archives.path().join("猫 · 标准模式.zip"),
+            Some("图弟 · 标准模式"),
+        );
+
+        let from_directory = store
+            .import(
+                ModelId::parse("from-directory").expect("model id"),
+                directory_source.path(),
+            )
+            .expect("import directory source");
+        let from_archive = store
+            .import(ModelId::parse("from-archive").expect("model id"), &archive)
+            .expect("import archive source");
+
+        // Both sources describe exactly the same package, so the archive must
+        // not be a second, subtly different parser.
+        assert_eq!(from_archive.index(), from_directory.index());
+        assert_eq!(from_archive.index().entry, "cat.model3.json");
+        assert_eq!(from_archive.index().moc, "model.moc3");
+        assert_eq!(from_archive.index().textures.len(), 1);
+        assert_eq!(from_archive.index().textures[0].width, 1024);
+        // The wrapper directory is archive tooling, so the installed package has
+        // its entry at the root just like the directory source does.
+        assert!(from_archive.root().join("cat.model3.json").is_file());
+        assert!(
+            from_archive
+                .root()
+                .join("textures/texture_00.png")
+                .is_file()
+        );
+        assert!(!from_archive.root().join("图弟 · 标准模式").exists());
+        assert_eq!(store.list().expect("catalog").entries.len(), 2);
+    }
+
+    #[test]
+    fn archive_sources_are_recognized_by_content_not_by_name() {
+        let data = tempdir().expect("data root");
+        let store = model_store(data.path());
+        let sources = tempdir().expect("sources");
+
+        // An archive keeps working when the extension is missing or wrong.
+        let unnamed = write_package_archive(sources.path().join("model.package"), None);
+        store
+            .import(ModelId::parse("unnamed").expect("model id"), &unnamed)
+            .expect("extensionless archive");
+        // A stored (uncompressed) archive is a valid source too.
+        let mut builder = ArchiveBuilder::new(sources.path().join("stored.zip"));
+        for (reference, bytes) in sample_package_entries() {
+            builder.stored_file(&reference, &bytes);
+        }
+        store
+            .import(
+                ModelId::parse("stored").expect("model id"),
+                builder.finish(),
+            )
+            .expect("stored archive");
+        // A directory named like an archive stays a directory: the source type
+        // comes from the filesystem entry, never from the suffix.
+        let directory = sources.path().join("looks-like.zip");
+        fs::create_dir(&directory).expect("directory named like an archive");
+        write_package_directory(&directory);
+        store
+            .import(ModelId::parse("directory").expect("model id"), &directory)
+            .expect("directory named like an archive");
+
+        assert_eq!(store.list().expect("catalog").entries.len(), 3);
+    }
+
+    #[test]
+    fn nested_wrapper_directories_are_stripped_and_deep_ones_are_rejected() {
+        let data = tempdir().expect("data root");
+        let store = model_store(data.path());
+        let sources = tempdir().expect("sources");
+
+        let mut builder = ArchiveBuilder::new(sources.path().join("nested.zip"));
+        builder.directory("models/");
+        builder.directory("models/猫/");
+        for (reference, bytes) in sample_package_entries() {
+            builder.deflated_file(&format!("models/猫/{reference}"), &bytes);
+        }
+        let nested = builder.finish();
+        let installed = store
+            .import(ModelId::parse("nested").expect("model id"), &nested)
+            .expect("nested wrapper directories");
+        assert_eq!(installed.index().entry, "cat.model3.json");
+
+        let mut builder = ArchiveBuilder::new(sources.path().join("too-deep.zip"));
+        for (reference, bytes) in sample_package_entries() {
+            builder.deflated_file(&format!("猫/子目录/{reference}"), &bytes);
+        }
+        let too_deep = builder.finish();
+        let shallow = ModelStore::new(
+            data.path().join("shallow"),
+            data.path().join("locks/shallow.writer.lock"),
+            ModelPackageLimits {
+                maximum_directory_depth: 1,
+                ..ModelPackageLimits::default()
+            },
+        )
+        .expect("shallow model store");
+        let error = shallow
+            .import(ModelId::parse("too-deep").expect("model id"), &too_deep)
+            .expect_err("archive entry nested past the depth limit");
+        assert_eq!(error.code, ModelStoreDiagnostic::SourceChanged);
+        assert_store_holds_no_entries(&shallow);
+    }
+
+    #[test]
+    fn archive_tooling_metadata_entries_are_ignored() {
+        let data = tempdir().expect("data root");
+        let store = model_store(data.path());
+        let sources = tempdir().expect("sources");
+
+        let mut builder = ArchiveBuilder::new(sources.path().join("finder.zip"));
+        builder.directory("__MACOSX/");
+        builder.directory("__MACOSX/猫 · 标准模式/");
+        builder.deflated_file("__MACOSX/猫 · 标准模式/._cat.model3.json", b"appledouble");
+        builder.directory("猫 · 标准模式/");
+        builder.deflated_file("猫 · 标准模式/.DS_Store", b"finder metadata");
+        for (reference, bytes) in sample_package_entries() {
+            builder.deflated_file(&format!("猫 · 标准模式/{reference}"), &bytes);
+        }
+        let archive = builder.finish();
+
+        let installed = store
+            .import(ModelId::parse("finder").expect("model id"), &archive)
+            .expect("archive carrying file-manager metadata");
+        assert_eq!(installed.index().entry, "cat.model3.json");
+        assert_eq!(installed.index().package_file_count, 3);
+        assert!(!installed.root().join(".DS_Store").exists());
+        assert!(!installed.root().join("__MACOSX").exists());
+        assert!(installed.index().unreferenced_files.is_empty());
+    }
+
+    #[test]
+    fn archives_without_a_usable_package_are_rejected() {
+        let data = tempdir().expect("data root");
+        let store = model_store(data.path());
+        let sources = tempdir().expect("sources");
+
+        let not_an_archive = sources.path().join("plain.zip");
+        fs::write(&not_an_archive, b"this is not a zip archive").expect("plain file");
+        let truncated = sources.path().join("truncated.zip");
+        fs::write(&truncated, b"PK\x03\x04").expect("truncated archive");
+        let empty = ArchiveBuilder::new(sources.path().join("empty.zip")).finish();
+        let mut directories_only = ArchiveBuilder::new(sources.path().join("dirs.zip"));
+        directories_only.directory("猫/");
+        let directories_only = directories_only.finish();
+
+        for (id, source) in [
+            ("plain", not_an_archive),
+            ("truncated", truncated),
+            ("empty", empty),
+            ("directories-only", directories_only),
+        ] {
+            let error = store
+                .import(ModelId::parse(id).expect("model id"), &source)
+                .expect_err("archive without a usable package");
+            assert_eq!(
+                error.code,
+                ModelStoreDiagnostic::SourceArchiveUnsupported,
+                "source {id}"
+            );
+            assert_store_holds_no_entries(&store);
+        }
+    }
+
+    #[test]
+    fn archive_entries_that_escape_or_conflict_are_rejected() {
+        let data = tempdir().expect("data root");
+        let store = model_store(data.path());
+        let sources = tempdir().expect("sources");
+
+        for (id, name) in [
+            ("parent", "../escape.moc3"),
+            ("absolute", "/etc/passwd"),
+            ("platform", r"C:\models\moc.moc3"),
+        ] {
+            let mut builder = ArchiveBuilder::new(sources.path().join(format!("{id}.zip")));
+            builder.deflated_file(name, b"payload");
+            let archive = builder.finish();
+            let error = store
+                .import(ModelId::parse(id).expect("model id"), &archive)
+                .expect_err("escaping archive entry");
+            assert_eq!(
+                error.code,
+                ModelStoreDiagnostic::SourceEntryUnsupported,
+                "entry {name}"
+            );
+            assert_store_holds_no_entries(&store);
+        }
+
+        let mut duplicates = ArchiveBuilder::new(sources.path().join("duplicate.zip"));
+        duplicates.deflated_file("猫/model.moc3", b"first");
+        // Two archive names that differ only in path spelling collapse onto one
+        // package reference: the archive is well formed, the package is not.
+        duplicates.deflated_file("猫//model.moc3", b"second");
+        let error = store
+            .import(
+                ModelId::parse("duplicate").expect("model id"),
+                duplicates.finish(),
+            )
+            .expect_err("duplicate archive entry");
+        assert_eq!(error.code, ModelStoreDiagnostic::SourceEntryUnsupported);
+        assert_store_holds_no_entries(&store);
+
+        let mut conflicting = ArchiveBuilder::new(sources.path().join("conflict.zip"));
+        conflicting.deflated_file("猫/model.moc3", b"file where a directory is needed");
+        conflicting.deflated_file("猫/model.moc3/child.moc3", b"nested file");
+        let error = store
+            .import(
+                ModelId::parse("conflict").expect("model id"),
+                conflicting.finish(),
+            )
+            .expect_err("conflicting archive entries");
+        assert_eq!(error.code, ModelStoreDiagnostic::SourceEntryUnsupported);
+        assert_store_holds_no_entries(&store);
+    }
+
+    #[test]
+    fn archive_symbolic_links_are_never_followed() {
+        let data = tempdir().expect("data root");
+        let outside = tempdir().expect("outside root");
+        fs::write(outside.path().join("secret.moc3"), b"outside").expect("outside file");
+        let store = model_store(data.path());
+        let sources = tempdir().expect("sources");
+
+        let mut builder = ArchiveBuilder::new(sources.path().join("symlink.zip"));
+        builder.deflated_file("猫/cat.model3.json", SAMPLE_MODEL_JSON);
+        builder.symlink("猫/model.moc3", "../../outside/secret.moc3");
+        let archive = builder.finish();
+
+        let error = store
+            .import(ModelId::parse("symlinked").expect("model id"), &archive)
+            .expect_err("symlinked archive entry");
+        assert_eq!(error.code, ModelStoreDiagnostic::SourceSymlinkUnsupported);
+        assert_store_holds_no_entries(&store);
+    }
+
+    #[test]
+    fn archives_exceeding_the_package_limits_are_rejected_before_extraction() {
+        let data = tempdir().expect("data root");
+        let sources = tempdir().expect("sources");
+        let archive = write_package_archive(sources.path().join("limited.zip"), None);
+
+        for (label, limits) in [
+            (
+                "file count",
+                ModelPackageLimits {
+                    maximum_file_count: 2,
+                    ..ModelPackageLimits::default()
+                },
+            ),
+            (
+                "package bytes",
+                ModelPackageLimits {
+                    maximum_package_bytes: 8,
+                    ..ModelPackageLimits::default()
+                },
+            ),
+            (
+                "file bytes",
+                ModelPackageLimits {
+                    maximum_file_bytes: 8,
+                    ..ModelPackageLimits::default()
+                },
+            ),
+        ] {
+            let store = ModelStore::new(
+                data.path().join(label.replace(' ', "-")),
+                data.path()
+                    .join(format!("locks/{}.writer.lock", label.replace(' ', "-"))),
+                limits,
+            )
+            .expect("limited model store");
+            let error = store
+                .import(ModelId::parse("limited").expect("model id"), &archive)
+                .expect_err("archive over the package limits");
+            assert_eq!(error.code, ModelStoreDiagnostic::SourceChanged, "{label}");
+            assert_store_holds_no_entries(&store);
+        }
+
+        // The entry ceiling is a structural bound checked before the entries are
+        // walked at all, so an archive declaring far more entries than it can
+        // ever install is refused without being decompressed.
+        let mut builder = ArchiveBuilder::new(sources.path().join("crowded.zip"));
+        for index in 0..5 {
+            builder.deflated_file(&format!("猫/file{index}.moc3"), b"payload");
+        }
+        let crowded = builder.finish();
+        let store = ModelStore::new(
+            data.path().join("crowded"),
+            data.path().join("locks/crowded.writer.lock"),
+            ModelPackageLimits {
+                maximum_file_count: 1,
+                ..ModelPackageLimits::default()
+            },
+        )
+        .expect("crowded model store");
+        assert_eq!(
+            store
+                .import(ModelId::parse("crowded").expect("model id"), &crowded)
+                .expect_err("archive over the entry ceiling")
+                .code,
+            ModelStoreDiagnostic::SourceChanged
+        );
+        assert_store_holds_no_entries(&store);
+    }
+
+    #[test]
+    fn archive_import_reports_monotonic_progress_and_cancels_without_partial_state() {
+        let data = tempdir().expect("data root");
+        let store = model_store(data.path());
+        let sources = tempdir().expect("sources");
+        let archive = write_package_archive(sources.path().join("cat.zip"), Some("猫"));
+
+        let progress = RefCell::new(Vec::new());
+        store
+            .import_with_observer(
+                ModelId::parse("observed").expect("model id"),
+                &archive,
+                |update| progress.borrow_mut().push(update),
+                || false,
+            )
+            .expect("observed archive import");
+        let progress = progress.into_inner();
+        assert_eq!(
+            progress.first().map(|update| update.stage),
+            Some(ModelImportStage::Preparing)
+        );
+        assert_eq!(
+            progress.last().map(|update| update.stage),
+            Some(ModelImportStage::Committing)
+        );
+        let final_progress = progress.last().expect("final progress");
+        assert_eq!(final_progress.files_copied, 3);
+        for updates in progress.windows(2) {
+            assert!(updates[0].stage <= updates[1].stage);
+            assert!(updates[0].files_copied <= updates[1].files_copied);
+            assert!(updates[0].bytes_copied <= updates[1].bytes_copied);
+        }
+
+        let cancelled = Cell::new(false);
+        let error = store
+            .import_with_observer(
+                ModelId::parse("cancelled-archive").expect("model id"),
+                &archive,
+                |update| {
+                    if update.stage == ModelImportStage::Copying && update.bytes_copied > 0 {
+                        cancelled.set(true);
+                    }
+                },
+                || cancelled.get(),
+            )
+            .expect_err("cancelled archive import");
+        assert_eq!(error.code, ModelStoreDiagnostic::Cancelled);
+        // The cancelled import left no staging directory behind and did not
+        // disturb the model that was already installed.
+        assert!(
+            fs::read_dir(store.root())
+                .expect("store entries")
+                .all(|entry| !entry
+                    .expect("store entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(IMPORTING_PREFIX))
+        );
+        let catalog = store.list().expect("catalog");
+        assert_eq!(catalog.entries.len(), 1);
+        assert_eq!(catalog.entries[0].id().as_str(), "observed");
+    }
+
+    /// Import the archives the maintainer points at.
+    ///
+    /// Model archives exported from a model site cannot be committed to the
+    /// repository, so the real-world case is covered by pointing
+    /// `BONGOCAT_MODEL_ARCHIVE_SAMPLES` at a directory of `.zip` files instead.
+    /// The test is skipped when the variable is unset, which keeps it out of the
+    /// default `cargo test` line: everything it collects needs a model the
+    /// repository does not hold. What it asserts is what makes an archive usable
+    /// — the entry, the moc and every texture must resolve to a real file inside
+    /// the installed package, and the package must land in the catalog.
+    #[test]
+    fn imports_the_archive_samples_named_by_the_environment() {
+        let Some(directory) = std::env::var_os("BONGOCAT_MODEL_ARCHIVE_SAMPLES") else {
+            return;
+        };
+        let mut archives = fs::read_dir(PathBuf::from(directory))
+            .expect("sample directory")
+            .map(|entry| entry.expect("sample entry").path())
+            .filter(|path| {
+                path.extension()
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("zip"))
+            })
+            .collect::<Vec<_>>();
+        archives.sort();
+        assert!(!archives.is_empty(), "sample directory holds no .zip files");
+
+        let data = tempdir().expect("data root");
+        let store = model_store(data.path());
+        for (index, archive) in archives.iter().enumerate() {
+            let id = ModelId::parse(format!("sample-{index}")).expect("model id");
+            let installed = store.import(id.clone(), archive).unwrap_or_else(|error| {
+                panic!("sample {} was rejected: {error:?}", archive.display())
+            });
+            assert_eq!(installed.id(), &id);
+            assert!(
+                installed.root().join(&installed.index().moc).is_file(),
+                "sample {} has no installed moc",
+                archive.display()
+            );
+            assert!(
+                !installed.index().textures.is_empty(),
+                "sample {} declares no texture",
+                archive.display()
+            );
+            for texture in &installed.index().textures {
+                assert!(
+                    installed.root().join(&texture.file).is_file(),
+                    "sample {} is missing texture {}",
+                    archive.display(),
+                    texture.file
+                );
+            }
+            assert!(
+                installed.index().entry.ends_with(".model3.json"),
+                "sample {} entry moved out of the package root",
+                archive.display()
+            );
+        }
+        assert_eq!(
+            store.list().expect("catalog").entries.len(),
+            archives.len(),
+            "every sample must be installed and listed"
+        );
     }
 }

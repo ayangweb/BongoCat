@@ -364,14 +364,19 @@ pub(super) fn content(
         };
     let picker_disabled = import_running || picker_open || view.pending.is_some();
     let picker_button_label = if picker_open {
-        bongocat_i18n::text(
-            language.catalog_locale(),
-            "models.import.folder.choosing_short",
-        )
+        bongocat_i18n::text(language.catalog_locale(), "models.import.actions.choosing")
     } else {
         bongocat_i18n::text(
             language.catalog_locale(),
             "models.import.actions.choose_folder",
+        )
+    };
+    let archive_button_label = if picker_open {
+        bongocat_i18n::text(language.catalog_locale(), "models.import.actions.choosing")
+    } else {
+        bongocat_i18n::text(
+            language.catalog_locale(),
+            "models.import.actions.choose_archive",
         )
     };
     let import_button_label = if import_running {
@@ -441,7 +446,7 @@ pub(super) fn content(
                                         && view.pending.is_none()
                                     {
                                         window.focus(&view.choose_model_focus, cx);
-                                        view.choose_model_directory(cx);
+                                        view.choose_model_source(ModelSourceKind::Directory, cx);
                                     }
                                 }))
                                 .on_key_down(cx.listener(
@@ -453,7 +458,44 @@ pub(super) fn content(
                                         {
                                             cx.stop_propagation();
                                             window.focus(&view.choose_model_focus, cx);
-                                            view.choose_model_directory(cx);
+                                            view.choose_model_source(
+                                                ModelSourceKind::Directory,
+                                                cx,
+                                            );
+                                        }
+                                    },
+                                )),
+                            )
+                            .child(
+                                command_button(
+                                    archive_button_label,
+                                    &view.choose_archive_focus,
+                                    22,
+                                    window,
+                                    tokens,
+                                    picker_disabled,
+                                )
+                                .w(px(112.0))
+                                .id("choose-model-archive")
+                                .on_click(cx.listener(|view, _, window, cx| {
+                                    if !view.model_import.is_running()
+                                        && !view.model_import.is_picker_open()
+                                        && view.pending.is_none()
+                                    {
+                                        window.focus(&view.choose_archive_focus, cx);
+                                        view.choose_model_source(ModelSourceKind::Archive, cx);
+                                    }
+                                }))
+                                .on_key_down(cx.listener(
+                                    |view, event, window, cx| {
+                                        if !view.model_import.is_running()
+                                            && !view.model_import.is_picker_open()
+                                            && view.pending.is_none()
+                                            && is_activation_key(event)
+                                        {
+                                            cx.stop_propagation();
+                                            window.focus(&view.choose_archive_focus, cx);
+                                            view.choose_model_source(ModelSourceKind::Archive, cx);
                                         }
                                     },
                                 )),
@@ -462,7 +504,7 @@ pub(super) fn content(
                                 command_button(
                                     import_button_label,
                                     &view.import_model_focus,
-                                    22,
+                                    23,
                                     window,
                                     tokens,
                                     import_disabled,

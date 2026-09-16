@@ -3,7 +3,7 @@
 use async_channel::{Receiver, Sender};
 use std::{
     fmt,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -34,6 +34,11 @@ const MIN_SETTINGS_WINDOW_HEIGHT: u32 = 480;
 const MAX_SETTINGS_WINDOW_DIMENSION: u32 = 16_384;
 const MAX_SETTINGS_WINDOW_COORDINATE: i32 = 1_000_000;
 pub const SETTINGS_PATCH_DEBOUNCE: Duration = Duration::from_millis(150);
+
+/// The archive extension a model source may carry. Detection itself never uses
+/// it — the store reads the file's content — but a suggested title should not
+/// repeat it.
+const ARCHIVE_EXTENSION: &str = ".zip";
 
 /// Coalesces rapid typed setting updates while retaining values that were not
 /// acknowledged by the settings service.
@@ -571,6 +576,44 @@ pub enum SettingsStartupItemError {
 pub struct SettingsModelKey {
     pub id: String,
     pub origin: SettingsModelOrigin,
+}
+
+/// The display name a chosen model source suggests.
+///
+/// A model source is either a folder or a `.zip` archive, and both must suggest
+/// the same name for the same model: the folder a user exports becomes
+/// `名字.zip`, so dropping the archive extension is what keeps the pre-filled
+/// title and the service's own fallback in agreement. A *directory* keeps its
+/// full name, because a folder may legitimately be called `something.zip`.
+///
+/// The name is display-only: the portable store key stays a service-generated
+/// UUID and is never derived from it.
+pub fn model_source_display_name(source_root: &Path) -> Option<String> {
+    let name = source_root.file_name()?.to_str()?;
+    let name = match source_root.is_dir() {
+        true => name,
+        false => strip_archive_extension(name),
+    };
+    let name = name.trim();
+    (!name.is_empty()).then(|| name.to_owned())
+}
+
+/// Drop a trailing `.zip`, whatever its case.
+///
+/// The suffix is compared and removed through the bounds-checked `str` accessors
+/// rather than by slicing at a byte offset, because a name whose last four bytes
+/// are only *part* of a multi-byte character must leave the name untouched
+/// instead of panicking.
+fn strip_archive_extension(name: &str) -> &str {
+    let Some(offset) = name.len().checked_sub(ARCHIVE_EXTENSION.len()) else {
+        return name;
+    };
+    match name.get(offset..) {
+        Some(suffix) if suffix.eq_ignore_ascii_case(ARCHIVE_EXTENSION) => {
+            name.get(..offset).unwrap_or(name)
+        }
+        _ => name,
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1930,6 +1973,54 @@ impl SettingsServiceEndpoint {
 mod tests {
     use super::*;
     use std::thread;
+
+    #[test]
+    fn model_source_display_names_are_extension_aware_but_never_panic() {
+        assert_eq!(
+            model_source_display_name(&PathBuf::from("/models/我的猫 · 标准模式.zip")).as_deref(),
+            Some("我的猫 · 标准模式")
+        );
+        // The extension match is case-insensitive and never assumed to be ASCII
+        // adjacent: a name ending in four bytes of a multi-byte character must
+        // be returned as it stands instead of being sliced mid-character.
+        assert_eq!(
+            model_source_display_name(&PathBuf::from("/models/ARCHIVE.ZIP")).as_deref(),
+            Some("ARCHIVE")
+        );
+        assert_eq!(
+            model_source_display_name(&PathBuf::from("/models/猫猫猫")).as_deref(),
+            Some("猫猫猫")
+        );
+        assert_eq!(
+            model_source_display_name(&PathBuf::from("/models/model.moc3")).as_deref(),
+            Some("model.moc3")
+        );
+        assert_eq!(model_source_display_name(&PathBuf::from("/")), None);
+        assert_eq!(
+            model_source_display_name(&PathBuf::from("/models/   ")).as_deref(),
+            None
+        );
+    }
+
+    #[test]
+    fn a_directory_keeps_its_archive_like_name() {
+        let root = std::env::temp_dir().join("bongocat-model-source-name-test");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("directory named like an archive");
+        // A folder may legitimately be called `something.zip`; only a file
+        // carries the extension that the suggestion drops.
+        assert_eq!(
+            model_source_display_name(&root).as_deref(),
+            Some("bongocat-model-source-name-test")
+        );
+        std::fs::write(root.with_extension("zip"), b"PK\x03\x04").expect("archive");
+        assert_eq!(
+            model_source_display_name(&root.with_extension("zip")).as_deref(),
+            Some("bongocat-model-source-name-test")
+        );
+        std::fs::remove_file(root.with_extension("zip")).expect("remove archive");
+        std::fs::remove_dir_all(&root).expect("remove directory");
+    }
 
     #[test]
     fn settings_patch_debouncer_coalesces_and_confirms_latest_value() {

@@ -121,12 +121,20 @@
         "none_selected": "No folder selected",
         "selected": "Folder selected",
         "choosing": "Choosing folder...",
-        "cancelled_previous_retained": "Selection cancelled; previous folder retained",
-        "cancelled": "Selection cancelled",
-        "picker_requires_ui_thread": "Folder picker requires the UI thread",
         "selected_unavailable": "Selected folder is unavailable",
-        "picker_unavailable": "Folder picker is unavailable",
-        "choosing_short": "Choosing..."
+        "picker_unavailable": "Folder picker is unavailable"
+      },
+      "archive": {
+        "none_selected": "No archive selected",
+        "selected": "Archive selected",
+        "choosing": "Choosing archive...",
+        "selected_unavailable": "Selected archive is unavailable",
+        "picker_unavailable": "Archive picker is unavailable"
+      },
+      "picker": {
+        "cancelled": "Selection cancelled",
+        "cancelled_previous_retained": "Selection cancelled; previous selection retained",
+        "requires_ui_thread": "Model source picker requires the UI thread"
       },
       "progress": {
         "cancelling": "Cancelling import...",
@@ -141,6 +149,8 @@
       },
       "actions": {
         "choose_folder": "Choose folder",
+        "choose_archive": "Choose archive",
+        "choosing": "Choosing...",
         "import": "Import"
       }
     },
