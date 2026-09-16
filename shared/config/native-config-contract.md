@@ -37,6 +37,9 @@ shortcuts
 | `overlay`     | `always_on_top`                   | 是否置顶                               |
 | `overlay`     | `scale_percent`                   | 模型/窗口缩放百分比                    |
 | `overlay`     | `opacity_percent`                 | 窗口不透明度百分比                     |
+| `overlay`     | `corner_radius_percent`           | 窗口圆角百分比，`[0, 50]`              |
+| `overlay`     | `hide_on_pointer_hover`           | 指针悬停在窗口上时隐藏内容并临时穿透   |
+| `overlay`     | `hide_on_pointer_hover_delay_ms`  | 悬停隐藏前的等待毫秒，`[0, 60000]`     |
 | `overlay`     | `keep_inside_work_area`           | 保持在可见工作区                       |
 | `input`       | `gamepad_stick_dead_zone`         | 左/右摇杆死区，`[0, 1)`                |
 | `input`       | `gamepad_trigger_dead_zone`       | 扳机死区，`[0, 1)`                     |
@@ -56,6 +59,13 @@ shortcuts
 首次启动创建当前 v1 配置时，`overlay.click_through` 默认为 `false`。用户后续通过
 typed settings command 修改该值后，仍按配置 revision 原子提交并在重启时从当前环境恢复。
 
+`overlay.hide_on_pointer_hover` 默认 `false`，`overlay.hide_on_pointer_hover_delay_ms` 默认
+`0`（立即隐藏）。两者只在窗口呈现层生效：开启后指针进入 overlay 窗口矩形并停留满延迟时间，
+窗口渲染 alpha 在 300ms 内降到 `0`，同时指针事件立即穿透；指针离开后 alpha 在 300ms 内恢复，
+穿透状态回到 `overlay.click_through`。窗口本身不隐藏、不销毁，也不改变
+`overlay.visible`。延迟值在 `next` 首版收窄为 `0..=60000` 毫秒，理由见
+`bongocat-config` 中 `OverlayConfig::hide_on_pointer_hover_delay_ms` 的文档注释。
+
 `application.show_status_icon` 控制 Windows 托盘或 macOS 菜单栏状态图标，不销毁系统菜单的
 唯一事件 owner。修改时先通过有界主线程 bridge 应用平台显隐，成功后才按 expected revision
 原子提交配置；平台失败不提交，配置失败则恢复旧的平台可见性。启动直接应用当前 v1 值，隐藏后
@@ -69,9 +79,10 @@ typed settings command 修改该值后，仍按配置 revision 原子提交并�
 登录启动不属于配置字段。它是可被系统设置或其它进程改变的平台能力，settings service 只读取
 typed platform snapshot，并仅在显式用户 command 时调用平台 adapter；不得持久化第二份布尔值。
 
-窗口圆角和指针悬停延迟隐藏属于已冻结的 P1 首发后范围，不进入 `next` 初始版本的 v1 配置；首发后
-实现这些功能时再按当时已发布的 schema 基线设计顺序且幂等的迁移，当前不得预留未被产品消费的
-配置字段。
+窗口圆角（`overlay.corner_radius_percent`）与指针悬停隐藏（`overlay.hide_on_pointer_hover`、
+`overlay.hide_on_pointer_hover_delay_ms`）原本属于 `P1 首发后` 范围，现按维护者决定上调为
+`P0 首发`，作为当前 v1 字段进入 `next` 初始版本。这不引入迁移或兼容逻辑：`next` 仍是全新首版，
+三个字段直接写在当前 v1 schema、默认值、fixture 与实现中。
 
 `appearance.language` 是严格的三值枚举：`system`、`zh-CN` 和 `en-US`，默认 `system`；未知值
 由当前 v1 解析入口直接拒绝，不提供 alias、迁移或 fallback。`system` 在每次启动时读取平台首选

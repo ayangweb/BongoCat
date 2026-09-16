@@ -415,10 +415,69 @@ impl SettingsView {
             AccessibilityToggle::Off
         })
         .disabled(disabled);
+        let mut hide_on_pointer_hover_node = AccessibilityNode::new(
+            ACCESSIBILITY_OVERLAY_HIDE_ON_POINTER_HOVER,
+            AccessibilityRole::Switch,
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "settings.overlay.hide_on_pointer_hover.label",
+            ),
+        )
+        .with_value(bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.overlay.hide_on_pointer_hover.description",
+        ))
+        .with_toggle(if overlay_settings.hide_on_pointer_hover {
+            AccessibilityToggle::On
+        } else {
+            AccessibilityToggle::Off
+        })
+        .disabled(disabled);
+        let hover_hide_delay_ms = overlay_settings.hide_on_pointer_hover_delay_ms;
+        let mut hover_hide_delay_decrease_node = AccessibilityNode::new(
+            ACCESSIBILITY_OVERLAY_HOVER_DELAY_DECREASE,
+            AccessibilityRole::Button,
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "shortcuts.actions.decrease_hide_on_pointer_hover_delay",
+            ),
+        )
+        .with_description(bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.overlay.hide_on_pointer_hover_delay.description",
+        ))
+        .with_value(hover_hide_delay_ms.to_string())
+        .disabled(disabled || hover_hide_delay_ms == 0);
+        let mut hover_hide_delay_increase_node = AccessibilityNode::new(
+            ACCESSIBILITY_OVERLAY_HOVER_DELAY_INCREASE,
+            AccessibilityRole::Button,
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "shortcuts.actions.increase_hide_on_pointer_hover_delay",
+            ),
+        )
+        .with_description(bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.overlay.hide_on_pointer_hover_delay.description",
+        ))
+        .with_value(hover_hide_delay_ms.to_string())
+        .disabled(
+            disabled
+                || hover_hide_delay_ms >= bongocat_config::MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS,
+        );
         if !disabled {
             topmost_node = topmost_node.clickable().focusable();
             click_through_node = click_through_node.clickable().focusable();
             keep_inside_work_area_node = keep_inside_work_area_node.clickable().focusable();
+            hide_on_pointer_hover_node = hide_on_pointer_hover_node.clickable().focusable();
+            if hover_hide_delay_ms > 0 {
+                hover_hide_delay_decrease_node =
+                    hover_hide_delay_decrease_node.clickable().focusable();
+            }
+            if hover_hide_delay_ms < bongocat_config::MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS {
+                hover_hide_delay_increase_node =
+                    hover_hide_delay_increase_node.clickable().focusable();
+            }
         }
         let scale = overlay_settings.scale_percent;
         let opacity = overlay_settings.opacity_percent;
@@ -873,6 +932,9 @@ impl SettingsView {
             ACCESSIBILITY_OVERLAY_TOPMOST,
             ACCESSIBILITY_OVERLAY_CLICK_THROUGH,
             ACCESSIBILITY_OVERLAY_KEEP_INSIDE_WORK_AREA,
+            ACCESSIBILITY_OVERLAY_HIDE_ON_POINTER_HOVER,
+            ACCESSIBILITY_OVERLAY_HOVER_DELAY_DECREASE,
+            ACCESSIBILITY_OVERLAY_HOVER_DELAY_INCREASE,
             ACCESSIBILITY_OVERLAY_SCALE_DECREASE,
             ACCESSIBILITY_OVERLAY_SCALE_INCREASE,
             ACCESSIBILITY_OVERLAY_OPACITY_DECREASE,
@@ -966,6 +1028,9 @@ impl SettingsView {
             topmost_node,
             click_through_node,
             keep_inside_work_area_node,
+            hide_on_pointer_hover_node,
+            hover_hide_delay_decrease_node,
+            hover_hide_delay_increase_node,
             scale_decrease_node,
             scale_increase_node,
             opacity_decrease_node,
@@ -1132,6 +1197,19 @@ impl SettingsView {
                     self.set_overlay_settings(settings, cx);
                 }
             }
+            ACCESSIBILITY_OVERLAY_HIDE_ON_POINTER_HOVER => {
+                if let Some(snapshot) = self.snapshot.as_ref() {
+                    let mut settings = snapshot.overlay;
+                    settings.hide_on_pointer_hover = !settings.hide_on_pointer_hover;
+                    self.set_overlay_settings(settings, cx);
+                }
+            }
+            ACCESSIBILITY_OVERLAY_HOVER_DELAY_DECREASE => {
+                self.adjust_overlay_hover_hide_delay(-250, cx)
+            }
+            ACCESSIBILITY_OVERLAY_HOVER_DELAY_INCREASE => {
+                self.adjust_overlay_hover_hide_delay(250, cx)
+            }
             ACCESSIBILITY_OVERLAY_SCALE_DECREASE => self.adjust_overlay_scale(-25, cx),
             ACCESSIBILITY_OVERLAY_SCALE_INCREASE => self.adjust_overlay_scale(25, cx),
             ACCESSIBILITY_OVERLAY_OPACITY_DECREASE => self.adjust_overlay_opacity(-10, cx),
@@ -1284,6 +1362,18 @@ impl SettingsView {
             (
                 ACCESSIBILITY_OVERLAY_KEEP_INSIDE_WORK_AREA,
                 &self.overlay_keep_inside_work_area_focus,
+            ),
+            (
+                ACCESSIBILITY_OVERLAY_HIDE_ON_POINTER_HOVER,
+                &self.overlay_hide_on_pointer_hover_focus,
+            ),
+            (
+                ACCESSIBILITY_OVERLAY_HOVER_DELAY_DECREASE,
+                &self.overlay_hover_hide_delay_decrease_focus,
+            ),
+            (
+                ACCESSIBILITY_OVERLAY_HOVER_DELAY_INCREASE,
+                &self.overlay_hover_hide_delay_increase_focus,
             ),
             (
                 ACCESSIBILITY_OVERLAY_SCALE_DECREASE,

@@ -561,6 +561,26 @@ blend 使用相同 linear premultiplied 输入。clipping mask 只携带 alpha�
 作用于 overlay 窗口；GPUI 设置窗口和其他产品窗口保持各自的平台边框。改变圆角与改变缩放、
 不透明度、工作区约束一样需要重建原生窗口资源。
 
+指针悬停隐藏是 overlay 窗口的临时呈现状态，不是窗口可见性。`overlay.hide_on_pointer_hover`
+开启时，指针进入 overlay 窗口矩形并停留 `overlay.hide_on_pointer_hover_delay_ms` 之后，owner 把
+窗口的呈现 alpha 淡到 `0` 并强制指针穿透；指针离开窗口矩形后按同样的时长延迟淡回
+`opacity_percent`，并把穿透恢复为 `overlay.click_through`。窗口本身既不隐藏也不销毁，
+`overlay.visible` 不受影响，frame source 继续按 `maximum_fps` 出帧，shutdown 顺序不变。隐藏期间
+穿透强制为开，因此不可见的 overlay 不会吞掉本该落到下层窗口的点击。
+
+淡入淡出复刻旧版 CSS `transition-opacity-300` 的 `300 ms`，但按「从过渡起点起算的绝对经过时间」
+求值，而不是按帧累加：同样的时间点在不同帧率下得到同一个 alpha，60 FPS 与 240 FPS 的采样结果
+一致。首版按线性插值，不复刻旧版 CSS 的 `transition-timing-function`：该曲线来自样式框架默认值、
+未在旧版代码中显式声明，因此不视为已冻结的行为。命中测试用指针采样与窗口矩形的半开区间比较
+（`x >= left && x < left + width`，纵向同理），因此相邻显示器共享的边界像素只会落在其中一个窗口内。
+平台采样与窗口矩形的坐标空间不同时必须在 owner 内换算，不允许把平台坐标泄漏给 runtime 或 renderer。
+圆角窗口的透明角落仍算在窗口矩形内，与旧版一致。
+
+指针采样缺失、或平台输入服务不在 `Running` 状态时一律视为「不在窗口内」。这条降级规则保证指针
+链路失效时 overlay 最坏情况是保持可见，而不会永久停在全透明且穿透的状态。悬停隐藏与
+`opacity_percent` 共同决定最终 alpha，因此改变不透明度仍会重建窗口，而开关和延迟本身在 frame
+tick 内原地生效。
+
 原生 overlay 窗口创建后默认保持隐藏。平台 owner 只有在对应 renderer 已成功完成至少一次
 非空帧 draw/present 后才允许首次显示；启动、隐藏后重显、设置导致的窗口重建和模型切换重建
 都遵守同一顺序。首帧提交或验证失败时窗口保持隐藏，模型准备失败仍保留当前可用窗口与模型，

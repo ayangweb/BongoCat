@@ -342,7 +342,9 @@
       "decrease_maximum_fps": "降低最大帧率",
       "increase_maximum_fps": "提高最大帧率",
       "decrease_release_fallback_timeout": "缩短按键释放兜底超时",
-      "increase_release_fallback_timeout": "延长按键释放兜底超时"
+      "increase_release_fallback_timeout": "延长按键释放兜底超时",
+      "decrease_hide_on_pointer_hover_delay": "缩短悬停隐藏延迟",
+      "increase_hide_on_pointer_hover_delay": "延长悬停隐藏延迟"
     },
     "capture": {
       "command_prompt": "请为此命令按下组合键",
@@ -480,6 +482,14 @@
       "keep_inside_work_area": {
         "label": "保持在工作区内",
         "description": "让模型窗口避开任务栏、菜单栏和屏幕边缘。"
+      },
+      "hide_on_pointer_hover": {
+        "label": "鼠标悬停时隐藏",
+        "description": "指针停在模型窗口上时把窗口淡出，让开下面的内容；指针离开后恢复。窗口本身不关闭，穿透设置在隐藏期间始终生效。"
+      },
+      "hide_on_pointer_hover_delay": {
+        "label": "悬停隐藏延迟（毫秒）",
+        "description": "指针需要停留在模型窗口上多久才开始隐藏，范围 0 至 60000。设为 0 时指针一进入就隐藏。"
       },
       "motion_audio": {
         "label": "动作音效",

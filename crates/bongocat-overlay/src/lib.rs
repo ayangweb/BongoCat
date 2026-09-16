@@ -8,6 +8,12 @@ mod macos;
 #[cfg(target_os = "windows")]
 mod windows;
 
+/// Pointer hover hide is only reachable through the native sessions, so the
+/// module shares their platform gate rather than warning as dead code on the
+/// targets that cannot create an overlay.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+mod hover;
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_platform::PlatformInputServiceStatus;
 use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError, ShortcutDispatcher};
@@ -81,6 +87,15 @@ pub struct OverlaySessionOptions {
     /// full inscribed ellipse. Larger values are rejected by configuration and
     /// clamped by the renderer, matching the legacy `border-radius` ceiling.
     pub corner_radius_percent: u8,
+    /// Hide the overlay content while the pointer rests on the overlay window,
+    /// mirroring the legacy `window.hideOnHover` switch. Unlike the other
+    /// presentation options this is applied inside the frame tick, because the
+    /// window must hide and restore while it keeps running rather than being
+    /// replaced on every hover.
+    pub hide_on_pointer_hover: bool,
+    /// How long the pointer must stay inside the overlay window before the
+    /// hover hide starts, in milliseconds. `0` hides immediately.
+    pub hide_on_pointer_hover_delay_ms: u32,
     pub keep_inside_work_area: bool,
     pub maximum_fps: u16,
     pub window_bounds: Option<OverlayWindowBounds>,
@@ -94,14 +109,17 @@ impl OverlaySessionOptions {
             scale_percent: settings.scale_percent,
             opacity_percent: settings.opacity_percent,
             corner_radius_percent: settings.corner_radius_percent,
+            hide_on_pointer_hover: settings.hide_on_pointer_hover,
+            hide_on_pointer_hover_delay_ms: settings.hide_on_pointer_hover_delay_ms,
             keep_inside_work_area: settings.keep_inside_work_area,
             maximum_fps: self.maximum_fps,
             window_bounds: self.window_bounds,
         }
     }
 
-    /// Z-order and mouse-routing changes are applied directly to the native
-    /// window. Other settings still require replacing native window resources.
+    /// Z-order, mouse-routing and hover changes are applied directly to the
+    /// native window. Other settings still require replacing native window
+    /// resources.
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub(crate) const fn requires_window_recreation(self, next: Self) -> bool {
         self.scale_percent != next.scale_percent
@@ -119,6 +137,8 @@ impl Default for OverlaySessionOptions {
             scale_percent: 100,
             opacity_percent: 100,
             corner_radius_percent: 0,
+            hide_on_pointer_hover: false,
+            hide_on_pointer_hover_delay_ms: 0,
             keep_inside_work_area: true,
             maximum_fps: 60,
             window_bounds: None,
@@ -1112,7 +1132,7 @@ mod tests {
     }
 
     #[test]
-    fn z_order_and_click_through_changes_use_in_place_window_transitions() {
+    fn z_order_click_through_and_hover_changes_use_in_place_window_transitions() {
         let current = OverlaySessionOptions::default();
         let mut next = current;
         next.always_on_top = false;
@@ -1120,6 +1140,16 @@ mod tests {
 
         next = current;
         next.click_through = true;
+        assert!(!current.requires_window_recreation(next));
+
+        // Hover hide has to work while the session keeps running, so it must
+        // never be routed through a window replacement.
+        next = current;
+        next.hide_on_pointer_hover = true;
+        assert!(!current.requires_window_recreation(next));
+
+        next = current;
+        next.hide_on_pointer_hover_delay_ms = 1_500;
         assert!(!current.requires_window_recreation(next));
 
         next.opacity_percent = 80;

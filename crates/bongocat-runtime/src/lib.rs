@@ -180,6 +180,14 @@ impl fmt::Display for RuntimeRenderErrorCode {
     }
 }
 
+/// Upper bound of the overlay hover hide delay, in milliseconds.
+///
+/// The legacy input accepted whole seconds with no upper bound. The first
+/// version stores milliseconds and caps them at one minute, matching the other
+/// millisecond timeout in the current v1 schema. See
+/// `bongocat_config::OverlayConfig::hide_on_pointer_hover_delay_ms`.
+pub const MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS: u32 = 60_000;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct OverlaySettings {
     pub click_through: bool,
@@ -192,6 +200,14 @@ pub struct OverlaySettings {
     /// ellipse, which is also the legacy ceiling: the legacy implementation
     /// scaled every larger radius back down to that same ellipse.
     pub corner_radius_percent: u8,
+    /// Hide the overlay content while the pointer rests on the overlay window,
+    /// mirroring the legacy `window.hideOnHover` switch. The overlay keeps its
+    /// window and keeps presenting frames; it drops its rendered alpha to zero
+    /// and passes pointer events through until the pointer leaves again.
+    pub hide_on_pointer_hover: bool,
+    /// How long the pointer must stay inside the overlay window before the
+    /// hover hide starts, in milliseconds. `0` hides immediately.
+    pub hide_on_pointer_hover_delay_ms: u32,
     pub keep_inside_work_area: bool,
 }
 
@@ -203,6 +219,8 @@ impl Default for OverlaySettings {
             scale_percent: 100,
             opacity_percent: 100,
             corner_radius_percent: 0,
+            hide_on_pointer_hover: false,
+            hide_on_pointer_hover_delay_ms: 0,
             keep_inside_work_area: true,
         }
     }
@@ -215,6 +233,7 @@ impl OverlaySettings {
             && self.opacity_percent >= 1
             && self.opacity_percent <= 100
             && self.corner_radius_percent <= 50
+            && self.hide_on_pointer_hover_delay_ms <= MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS
     }
 }
 
@@ -2931,6 +2950,8 @@ mod tests {
             scale_percent: 125,
             opacity_percent: 80,
             corner_radius_percent: 25,
+            hide_on_pointer_hover: true,
+            hide_on_pointer_hover_delay_ms: 750,
             keep_inside_work_area: false,
         };
         let sequence = client
@@ -2995,6 +3016,25 @@ mod tests {
         let rejected = client
             .wait_for_command(sequence, TIMEOUT)
             .expect("out-of-range corner radius rejection");
+        assert_eq!(rejected.overlay_settings, settings);
+        assert_eq!(
+            rejected.last_command_failure,
+            Some(RuntimeCommandFailure {
+                sequence,
+                code: RuntimeRenderErrorCode::OverlaySettingsInvalid,
+            })
+        );
+
+        let invalid = OverlaySettings {
+            hide_on_pointer_hover_delay_ms: MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS + 1,
+            ..settings
+        };
+        let sequence = client
+            .send(RuntimeCommand::SetOverlaySettings(invalid))
+            .expect("out-of-range hover hide delay accepted for typed rejection");
+        let rejected = client
+            .wait_for_command(sequence, TIMEOUT)
+            .expect("out-of-range hover hide delay rejection");
         assert_eq!(rejected.overlay_settings, settings);
         assert_eq!(
             rejected.last_command_failure,

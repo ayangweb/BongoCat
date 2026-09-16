@@ -2183,6 +2183,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         scale_percent: application.config().overlay.scale_percent,
         opacity_percent: application.config().overlay.opacity_percent,
         corner_radius_percent: application.config().overlay.corner_radius_percent,
+        hide_on_pointer_hover: application.config().overlay.hide_on_pointer_hover,
+        hide_on_pointer_hover_delay_ms: application.config().overlay.hide_on_pointer_hover_delay_ms,
         keep_inside_work_area: application.config().overlay.keep_inside_work_area,
         maximum_fps: application.config().model.maximum_fps,
         window_bounds: application.overlay_window_placement().map(|placement| {

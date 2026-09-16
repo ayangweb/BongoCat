@@ -521,6 +521,12 @@ pub struct SettingsOverlay {
     /// Overlay window corner radius as a percentage of the window width and
     /// height, matching the legacy `border-radius: N%` window setting.
     pub corner_radius_percent: u8,
+    /// Hide the overlay while the pointer rests on it, matching the legacy
+    /// `window.hideOnHover` switch.
+    pub hide_on_pointer_hover: bool,
+    /// How long the pointer must rest on the overlay before the hover hide
+    /// starts, in milliseconds. `0` hides as soon as the pointer enters.
+    pub hide_on_pointer_hover_delay_ms: u32,
     pub keep_inside_work_area: bool,
 }
 
@@ -532,6 +538,8 @@ impl Default for SettingsOverlay {
             scale_percent: 100,
             opacity_percent: 100,
             corner_radius_percent: 0,
+            hide_on_pointer_hover: false,
+            hide_on_pointer_hover_delay_ms: 0,
             keep_inside_work_area: true,
         }
     }

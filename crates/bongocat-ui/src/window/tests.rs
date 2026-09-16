@@ -731,6 +731,8 @@ fn overlay_stepper_values_are_bounded_and_preserve_other_settings() {
         scale_percent: 100,
         opacity_percent: 50,
         corner_radius_percent: 25,
+        hide_on_pointer_hover: true,
+        hide_on_pointer_hover_delay_ms: 1500,
         keep_inside_work_area: false,
     };
     assert_eq!(stepped_overlay_scale(settings, -25).scale_percent, 75);
@@ -746,6 +748,8 @@ fn overlay_stepper_values_are_bounded_and_preserve_other_settings() {
     assert!(!changed.always_on_top);
     assert_eq!(changed.opacity_percent, 50);
     assert_eq!(changed.corner_radius_percent, 25);
+    assert!(changed.hide_on_pointer_hover);
+    assert_eq!(changed.hide_on_pointer_hover_delay_ms, 1500);
     assert!(!changed.keep_inside_work_area);
 }
 

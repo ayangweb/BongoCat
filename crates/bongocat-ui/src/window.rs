@@ -184,6 +184,15 @@ const ACCESSIBILITY_MODEL_IMPORT_STATUS: AccessibilityNodeId = AccessibilityNode
 const ACCESSIBILITY_MODEL_CATALOG_STATUS: AccessibilityNodeId = AccessibilityNodeId::new(49);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_MODEL_CHOOSE_ARCHIVE: AccessibilityNodeId = AccessibilityNodeId::new(50);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_OVERLAY_HIDE_ON_POINTER_HOVER: AccessibilityNodeId =
+    AccessibilityNodeId::new(51);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_OVERLAY_HOVER_DELAY_DECREASE: AccessibilityNodeId =
+    AccessibilityNodeId::new(52);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_OVERLAY_HOVER_DELAY_INCREASE: AccessibilityNodeId =
+    AccessibilityNodeId::new(53);
 
 /// A request the settings window forwards to the application rather than acting
 /// on itself.
@@ -233,6 +242,7 @@ enum PendingOperation {
     OverlayScale,
     OverlayOpacity,
     OverlayCornerRadius,
+    OverlayHoverHideDelay,
     MotionAudio,
     BehaviorShortcuts,
     MaximumFps,
@@ -460,6 +470,8 @@ pub struct SettingsView {
     overlay_opacity_timer_generation: u64,
     overlay_corner_radius_debouncer: crate::SettingsPatchDebouncer<u8>,
     overlay_corner_radius_timer_generation: u64,
+    overlay_hover_hide_delay_debouncer: crate::SettingsPatchDebouncer<u32>,
+    overlay_hover_hide_delay_timer_generation: u64,
     gamepad_dead_zone_debouncer: crate::SettingsPatchDebouncer<SettingsGamepadAxisSettings>,
     gamepad_dead_zone_timer_generation: u64,
     maximum_fps_debouncer: crate::SettingsPatchDebouncer<u16>,
@@ -501,6 +513,9 @@ pub struct SettingsView {
     overlay_topmost_focus: FocusHandle,
     overlay_click_through_focus: FocusHandle,
     overlay_keep_inside_work_area_focus: FocusHandle,
+    overlay_hide_on_pointer_hover_focus: FocusHandle,
+    overlay_hover_hide_delay_decrease_focus: FocusHandle,
+    overlay_hover_hide_delay_increase_focus: FocusHandle,
     overlay_scale_decrease_focus: FocusHandle,
     overlay_scale_increase_focus: FocusHandle,
     overlay_opacity_decrease_focus: FocusHandle,
@@ -705,6 +720,48 @@ impl SettingsView {
         .detach();
     }
 
+    fn schedule_overlay_hover_hide_delay_flush(&mut self, cx: &mut Context<Self>) {
+        self.overlay_hover_hide_delay_timer_generation = self
+            .overlay_hover_hide_delay_timer_generation
+            .saturating_add(1);
+        let generation = self.overlay_hover_hide_delay_timer_generation;
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            executor.timer(crate::SETTINGS_PATCH_DEBOUNCE).await;
+            let _ = this.update(cx, |view, cx| {
+                if view.overlay_hover_hide_delay_timer_generation != generation
+                    || view.pending.is_some()
+                {
+                    return;
+                }
+                let Some(hide_on_pointer_hover_delay_ms) = view
+                    .overlay_hover_hide_delay_debouncer
+                    .ready(Instant::now())
+                else {
+                    return;
+                };
+                let Some(snapshot) = view.snapshot.as_ref() else {
+                    return;
+                };
+                let Some(expected_config_revision) = snapshot.config_revision else {
+                    return;
+                };
+                let mut settings = snapshot.overlay;
+                settings.hide_on_pointer_hover_delay_ms = hide_on_pointer_hover_delay_ms;
+                view.start_request(
+                    PendingOperation::OverlayHoverHideDelay,
+                    Some(SettingValue::OverlayHoverHideDelay {
+                        expected_config_revision,
+                        hide_on_pointer_hover_delay_ms,
+                        settings,
+                    }),
+                    cx,
+                );
+            });
+        })
+        .detach();
+    }
+
     fn schedule_gamepad_dead_zone_flush(&mut self, cx: &mut Context<Self>) {
         self.gamepad_dead_zone_timer_generation =
             self.gamepad_dead_zone_timer_generation.saturating_add(1);
@@ -872,6 +929,20 @@ impl SettingsView {
                 }),
                 cx,
             );
+        } else if let Some(hide_on_pointer_hover_delay_ms) =
+            self.overlay_hover_hide_delay_debouncer.flush(now)
+        {
+            let mut settings = snapshot.overlay;
+            settings.hide_on_pointer_hover_delay_ms = hide_on_pointer_hover_delay_ms;
+            self.start_request(
+                PendingOperation::OverlayHoverHideDelay,
+                Some(SettingValue::OverlayHoverHideDelay {
+                    expected_config_revision,
+                    hide_on_pointer_hover_delay_ms,
+                    settings,
+                }),
+                cx,
+            );
         } else if let Some(settings) = self.gamepad_dead_zone_debouncer.flush(now) {
             self.start_request(
                 PendingOperation::GamepadAxisSettings,
@@ -950,6 +1021,13 @@ impl SettingsView {
                 corner_radius_percent,
                 ..
             }) => Some(*corner_radius_percent),
+            _ => None,
+        };
+        let sent_overlay_hover_hide_delay = match value.as_ref() {
+            Some(SettingValue::OverlayHoverHideDelay {
+                hide_on_pointer_hover_delay_ms,
+                ..
+            }) => Some(*hide_on_pointer_hover_delay_ms),
             _ => None,
         };
         let sent_gamepad_dead_zone = match value.as_ref() {
@@ -1043,6 +1121,15 @@ impl SettingsView {
                         .await
                 }
                 Some(SettingValue::OverlayCornerRadius {
+                    expected_config_revision,
+                    settings,
+                    ..
+                }) => {
+                    client
+                        .set_overlay_settings(expected_config_revision, settings)
+                        .await
+                }
+                Some(SettingValue::OverlayHoverHideDelay {
                     expected_config_revision,
                     settings,
                     ..
@@ -1164,6 +1251,15 @@ impl SettingsView {
                     }
                 }
                 if result.is_ok()
+                    && let Some(hide_on_pointer_hover_delay_ms) = sent_overlay_hover_hide_delay
+                {
+                    view.overlay_hover_hide_delay_debouncer
+                        .mark_sent(&hide_on_pointer_hover_delay_ms);
+                    if view.overlay_hover_hide_delay_debouncer.is_pending() {
+                        view.schedule_overlay_hover_hide_delay_flush(cx);
+                    }
+                }
+                if result.is_ok()
                     && let Some(settings) = sent_gamepad_dead_zone
                 {
                     view.gamepad_dead_zone_debouncer.mark_sent(&settings);
@@ -1202,6 +1298,9 @@ impl SettingsView {
                     }
                     if sent_overlay_corner_radius.is_some() {
                         view.schedule_overlay_corner_radius_flush(cx);
+                    }
+                    if sent_overlay_hover_hide_delay.is_some() {
+                        view.schedule_overlay_hover_hide_delay_flush(cx);
                     }
                     if sent_gamepad_dead_zone.is_some() {
                         view.schedule_gamepad_dead_zone_flush(cx);
@@ -1320,6 +1419,11 @@ enum SettingValue {
     OverlayCornerRadius {
         expected_config_revision: u64,
         corner_radius_percent: u8,
+        settings: SettingsOverlay,
+    },
+    OverlayHoverHideDelay {
+        expected_config_revision: u64,
+        hide_on_pointer_hover_delay_ms: u32,
         settings: SettingsOverlay,
     },
     MotionAudioEnabled {

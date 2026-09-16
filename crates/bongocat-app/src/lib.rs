@@ -746,6 +746,9 @@ impl Application {
         next_config.overlay.scale_percent = settings.scale_percent;
         next_config.overlay.opacity_percent = settings.opacity_percent;
         next_config.overlay.corner_radius_percent = settings.corner_radius_percent;
+        next_config.overlay.hide_on_pointer_hover = settings.hide_on_pointer_hover;
+        next_config.overlay.hide_on_pointer_hover_delay_ms =
+            settings.hide_on_pointer_hover_delay_ms;
         next_config.overlay.keep_inside_work_area = settings.keep_inside_work_area;
         let next_revision = self
             .config_store
@@ -1458,6 +1461,8 @@ fn overlay_settings_from_config(config: &NativeConfig) -> OverlaySettings {
         scale_percent: config.overlay.scale_percent,
         opacity_percent: config.overlay.opacity_percent,
         corner_radius_percent: config.overlay.corner_radius_percent,
+        hide_on_pointer_hover: config.overlay.hide_on_pointer_hover,
+        hide_on_pointer_hover_delay_ms: config.overlay.hide_on_pointer_hover_delay_ms,
         keep_inside_work_area: config.overlay.keep_inside_work_area,
     }
 }
@@ -1846,6 +1851,8 @@ mod tests {
             scale_percent: 150,
             opacity_percent: 75,
             corner_radius_percent: 25,
+            hide_on_pointer_hover: true,
+            hide_on_pointer_hover_delay_ms: 1_500,
             keep_inside_work_area: false,
         };
         let settings_snapshot = application
@@ -1857,6 +1864,11 @@ mod tests {
             overlay_settings.scale_percent
         );
         assert!(application.config().overlay.click_through);
+        assert!(application.config().overlay.hide_on_pointer_hover);
+        assert_eq!(
+            application.config().overlay.hide_on_pointer_hover_delay_ms,
+            1_500
+        );
         assert!(!application.config().overlay.keep_inside_work_area);
 
         application

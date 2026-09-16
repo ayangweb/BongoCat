@@ -342,7 +342,9 @@
       "decrease_maximum_fps": "Decrease maximum FPS",
       "increase_maximum_fps": "Increase maximum FPS",
       "decrease_release_fallback_timeout": "Decrease key release fallback timeout",
-      "increase_release_fallback_timeout": "Increase key release fallback timeout"
+      "increase_release_fallback_timeout": "Increase key release fallback timeout",
+      "decrease_hide_on_pointer_hover_delay": "Shorten hover hide delay",
+      "increase_hide_on_pointer_hover_delay": "Lengthen hover hide delay"
     },
     "capture": {
       "command_prompt": "Press a key combination for this command",
@@ -480,6 +482,14 @@
       "keep_inside_work_area": {
         "label": "Keep inside work area",
         "description": "Keep the overlay clear of taskbars, menu bars and screen edges."
+      },
+      "hide_on_pointer_hover": {
+        "label": "Hide on pointer hover",
+        "description": "Fade the model window out while the pointer rests on it so whatever is underneath stays reachable, and restore it when the pointer leaves. The window is not closed, and click-through stays in effect while it is hidden."
+      },
+      "hide_on_pointer_hover_delay": {
+        "label": "Hover hide delay (ms)",
+        "description": "How long the pointer must rest on the model window before it hides, from 0 to 60000. Set to 0 to hide as soon as the pointer enters."
       },
       "motion_audio": {
         "label": "Motion audio",

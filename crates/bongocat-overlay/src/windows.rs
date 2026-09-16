@@ -3,18 +3,22 @@ use crate::{
     OverlayContextMenuRequest, OverlayError, OverlayInteractionSinks, OverlayPresentationState,
     OverlaySessionOptions, OverlayTickOutcome, OverlayWindowBounds, OverlayWorkArea, PreviewReport,
     ProductOverlayReport, blend_factors, corner_radius_uniform, default_overlay_window_dimensions,
+    hover::{PointerHoverHide, PointerHoverObservation, pointer_inside_window},
     validate_frame_smoke, validate_model_generation_advance,
 };
 use bongocat_model::{CommittedModel, ModelId, ModelPackageLimits, PresetModelCatalog};
-use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError, WindowsInputService};
+use bongocat_platform::{
+    PlatformInputDiagnostics, PlatformInputError, PlatformInputServiceStatus, WindowsInputService,
+};
 use bongocat_render::{
     BlendMode, CanvasInfo, DrawableId, KeyAssetId, KeyOverlay, ModelBounds, ModelCommitErrorCode,
     ModelCommitFeedback, ModelCommitOutcome, ModelCommitToken, RenderConsumer, RenderFrame,
     RenderResources, RenderSnapshot, TextureAsset, TextureId, validate_render_snapshot,
 };
 use bongocat_runtime::{
-    CursorProducer, GamepadAxisProducer, GamepadButton, HandSide, InputBindings, InputControl,
-    InputEdge, InputEvent, InputProducer, InputSource, MonotonicMillis, PhysicalKey, RuntimeClient,
+    CursorProducer, CursorSample, GamepadAxisProducer, GamepadButton, HandSide, InputBindings,
+    InputControl, InputEdge, InputEvent, InputProducer, InputSource,
+    MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS, MonotonicMillis, PhysicalKey, RuntimeClient,
     RuntimeCommand, RuntimeOwner, RuntimeRenderErrorCode, RuntimeState,
     frame_interval_for_maximum_fps, maximum_fps_is_valid,
 };
@@ -1114,6 +1118,11 @@ struct NativeOverlay {
     renderer: Renderer,
     window: OverlayWindow,
     presentation: OverlayPresentationState,
+    /// Window opacity currently applied to the renderer, including the hover
+    /// fade. It lives here rather than on the session so replacing the native
+    /// window resets it together with the renderer that carries it.
+    applied_alpha: f32,
+    applied_click_through: bool,
 }
 
 impl NativeOverlay {
@@ -1131,6 +1140,8 @@ impl NativeOverlay {
             renderer,
             window,
             presentation: OverlayPresentationState::default(),
+            applied_alpha: f32::from(options.opacity_percent) / 100.0,
+            applied_click_through: options.click_through,
         })
     }
 
@@ -1151,6 +1162,23 @@ impl NativeOverlay {
 
     fn set_click_through(&self, click_through: bool) {
         self.window.set_click_through(click_through);
+    }
+
+    /// Apply the per-frame presentation state without replacing the window.
+    ///
+    /// `alpha` is the configured window opacity multiplied by the hover fade,
+    /// and `click_through` is the effective pointer routing. The hover hide
+    /// forces pass-through on so an invisible overlay cannot swallow a click
+    /// meant for whatever is underneath it.
+    fn apply_presentation(&mut self, alpha: f32, click_through: bool) {
+        if alpha != self.applied_alpha {
+            self.renderer.opacity = alpha;
+            self.applied_alpha = alpha;
+        }
+        if click_through != self.applied_click_through {
+            self.set_click_through(click_through);
+            self.applied_click_through = click_through;
+        }
     }
 
     fn draw(&mut self, verify: bool) -> Result<(), OverlayError> {
@@ -1177,6 +1205,8 @@ pub(super) struct ProductOverlaySession {
     last_frame: RenderFrame,
     retry_backoff: FrameRetryBackoff,
     context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
+    hover: PointerHoverHide,
+    hover_started: Instant,
 }
 
 impl HasWindowHandle for ProductOverlaySession {
@@ -1266,6 +1296,8 @@ impl ProductOverlaySession {
             last_frame: initial_frame,
             retry_backoff: FrameRetryBackoff::default(),
             context_menu_sender,
+            hover: PointerHoverHide::default(),
+            hover_started: Instant::now(),
         })
     }
 
@@ -1306,7 +1338,7 @@ impl ProductOverlaySession {
                 } else {
                     bounds
                 };
-                let mut replacement = NativeOverlay::create(
+                let mut replacement = self.create_overlay(
                     &self.last_frame,
                     next_options,
                     Some(bounds),
@@ -1319,9 +1351,6 @@ impl ProductOverlaySession {
                 }
                 self.overlay = replacement;
             } else {
-                if next_options.click_through != self.options.click_through {
-                    self.overlay.set_click_through(next_options.click_through);
-                }
                 if next_options.always_on_top != self.options.always_on_top {
                     self.overlay.set_always_on_top(next_options.always_on_top)?;
                 }
@@ -1331,6 +1360,14 @@ impl ProductOverlaySession {
         if self.options.keep_inside_work_area {
             self.overlay.window.ensure_inside_work_area()?;
         }
+        // Pointer routing and window opacity are applied every tick rather than
+        // only when the settings change, because the hover hide changes both
+        // while the session keeps running.
+        self.update_hover_presentation(
+            self.options,
+            runtime_snapshot.cursor.sample,
+            runtime_snapshot.platform_input.service_status == PlatformInputServiceStatus::Running,
+        )?;
         self.options.maximum_fps = runtime_snapshot.maximum_fps;
         let overlay_visible = runtime_snapshot.overlay_visible;
         if !overlay_visible {
@@ -1345,7 +1382,7 @@ impl ProductOverlaySession {
             let model_changed = frame.model_generation != self.overlay.renderer.model_generation;
             if model_changed {
                 let bounds = self.overlay.window.bounds()?;
-                let mut replacement = match NativeOverlay::create(
+                let mut replacement = match self.create_overlay(
                     &frame,
                     self.options,
                     Some(bounds),
@@ -1463,6 +1500,56 @@ impl ProductOverlaySession {
 
     pub(super) fn window_bounds(&self) -> Result<OverlayWindowBounds, OverlayError> {
         self.overlay.window.bounds()
+    }
+
+    /// Advance the hover hide and push the resulting window presentation.
+    ///
+    /// Hover hide needs a trustworthy pointer position. A missing sample (no
+    /// pointer event has arrived yet) and a platform input service that is not
+    /// running both count as "not inside", so a degraded pointer pipeline can
+    /// never leave the overlay stuck invisible.
+    ///
+    /// `GetCursorPos` and `GetWindowRect` both report virtual-screen pixels, so
+    /// unlike macOS this needs no coordinate conversion.
+    fn update_hover_presentation(
+        &mut self,
+        options: OverlaySessionOptions,
+        cursor: Option<CursorSample>,
+        input_running: bool,
+    ) -> Result<(), OverlayError> {
+        let bounds = self.overlay.window.bounds()?;
+        let pointer_inside = cursor.is_some_and(|sample| {
+            pointer_inside_window(bounds, sample.position.x, sample.position.y)
+        });
+        let fade = self.hover.observe(PointerHoverObservation {
+            enabled: options.hide_on_pointer_hover && input_running,
+            delay: Duration::from_millis(u64::from(options.hide_on_pointer_hover_delay_ms)),
+            pointer_inside,
+            now: self.hover_started.elapsed(),
+        });
+        let alpha = f32::from(options.opacity_percent) / 100.0 * fade as f32;
+        self.overlay
+            .apply_presentation(alpha, options.click_through || self.hover.hidden());
+        Ok(())
+    }
+
+    /// Create a native window that already carries the current hover fade.
+    ///
+    /// A replacement window is created with the configured opacity, so a
+    /// settings change or model change while the overlay is hover-hidden would
+    /// otherwise show the new window at full opacity before the next tick could
+    /// correct it.
+    fn create_overlay(
+        &self,
+        frame: &RenderFrame,
+        options: OverlaySessionOptions,
+        bounds: Option<OverlayWindowBounds>,
+        context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
+    ) -> Result<NativeOverlay, OverlayError> {
+        let mut overlay = NativeOverlay::create(frame, options, bounds, context_menu_sender)?;
+        let alpha = f32::from(options.opacity_percent) / 100.0 * self.hover.visible() as f32;
+        overlay.apply_presentation(alpha, options.click_through || self.hover.hidden());
+        Ok(overlay)
     }
 
     pub(super) fn is_visible(&self) -> bool {
@@ -2111,6 +2198,11 @@ fn validate_options(options: OverlaySessionOptions) -> Result<(), OverlayError> 
     if options.corner_radius_percent > MAXIMUM_CORNER_RADIUS_PERCENT {
         return Err(OverlayError::new(
             "overlay corner radius must be between 0 and 50 percent",
+        ));
+    }
+    if options.hide_on_pointer_hover_delay_ms > MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS {
+        return Err(OverlayError::new(
+            "overlay hover hide delay must be between 0 and 60000 milliseconds",
         ));
     }
     if !maximum_fps_is_valid(options.maximum_fps) {
@@ -2878,6 +2970,10 @@ mod tests {
             },
             OverlaySessionOptions {
                 corner_radius_percent: 51,
+                ..OverlaySessionOptions::default()
+            },
+            OverlaySessionOptions {
+                hide_on_pointer_hover_delay_ms: MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS + 1,
                 ..OverlaySessionOptions::default()
             },
             OverlaySessionOptions {

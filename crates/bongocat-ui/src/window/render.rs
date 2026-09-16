@@ -29,6 +29,15 @@ impl Render for SettingsView {
                     ACCESSIBILITY_OVERLAY_KEEP_INSIDE_WORK_AREA => {
                         Some(&self.overlay_keep_inside_work_area_focus)
                     }
+                    ACCESSIBILITY_OVERLAY_HIDE_ON_POINTER_HOVER => {
+                        Some(&self.overlay_hide_on_pointer_hover_focus)
+                    }
+                    ACCESSIBILITY_OVERLAY_HOVER_DELAY_DECREASE => {
+                        Some(&self.overlay_hover_hide_delay_decrease_focus)
+                    }
+                    ACCESSIBILITY_OVERLAY_HOVER_DELAY_INCREASE => {
+                        Some(&self.overlay_hover_hide_delay_increase_focus)
+                    }
                     ACCESSIBILITY_AUTOMATIC_UPDATE_CHECK => {
                         Some(&self.automatic_update_check_focus)
                     }
@@ -384,6 +393,74 @@ impl Render for SettingsView {
                     .description(bongocat_i18n::text(
                         language.catalog_locale(),
                         "settings.overlay.keep_inside_work_area.description",
+                    )),
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.overlay.hide_on_pointer_hover.label",
+                        ),
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.overlay.hide_on_pointer_hover)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        if let Some(snapshot) = view.snapshot.as_ref() {
+                                            let mut settings = snapshot.overlay;
+                                            settings.hide_on_pointer_hover = value;
+                                            view.set_overlay_settings(settings, cx);
+                                        }
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.overlay.hide_on_pointer_hover.description",
+                    )),
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.overlay.hide_on_pointer_hover_delay.label",
+                        ),
+                        SettingField::number_input(
+                            NumberFieldOptions {
+                                min: 0.0,
+                                max: f64::from(
+                                    bongocat_config::MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS,
+                                ),
+                                step: 250.0,
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app).snapshot.as_ref().map_or(0.0, |s| {
+                                        f64::from(s.overlay.hide_on_pointer_hover_delay_ms)
+                                    })
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_overlay_hover_hide_delay_value(value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.overlay.hide_on_pointer_hover_delay.description",
                     )),
                     SettingItem::new(
                         bongocat_i18n::text(

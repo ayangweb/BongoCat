@@ -3404,6 +3404,10 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       release check 和共享 fixture validator 均通过。实现 commit `66163f2` 的 CI run
       `33933263642` 全部 23 个 job 通过；macOS/Windows/Ubuntu workspace jobs
       `101216083086`/`101216083118`/`101216083187` 均通过完整 workspace 门禁和对应产品 smoke。
+    - 状态（2026-09-16，历史）：该决策已被第 79 项 `P0-OVERLAY-HOVER-HIDE` 推翻。维护者要求新版
+      同步支持旧版已有的「鼠标移入隐藏 + 悬停延迟」配置，该能力因此从 `P1 首发后` 上调为
+      `P0 首发`，两个字段以 `overlay.hide_on_pointer_hover` 与
+      `overlay.hide_on_pointer_hover_delay_ms` 重新进入当前 v1。此行只保留当时状态。
 
 67. [x] `P6-KEEP-OVERLAY-IN-WORK-AREA`：让当前 v1 的可见工作区约束作用于正式 overlay。
     - 依赖：当前 v1 `overlay.keep_inside_work_area`、runtime overlay settings、持久化窗口 bounds、
@@ -3704,6 +3708,12 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `OverlaySettings::corner_radius_percent` 与 `is_valid()` 的 `<= 50` 约束
       （`bongocat-runtime`）、`OverlaySessionOptions::corner_radius_percent`
       （`crates/bongocat-overlay/src/lib.rs:83`）与 `requires_window_recreation`（:109）三处同构。
+      行号注（2026-09-16）：第 79 项在 `crates/bongocat-config/src/lib.rs` 的同一结构体/函数内、
+      以及 `crates/bongocat-overlay/src/lib.rs` 的 `OverlaySessionOptions` 内插入悬停字段，因此
+      本条目的行号已整体下移：config 的 `NativeConfig::default()` 原 :918 → 现 :943、
+      `validate()` 原 :953 → 现 :980（`OverlayConfig::corner_radius_percent` 仍为 :264）；overlay 的
+      `OverlaySessionOptions::corner_radius_percent` 原 :83 → 现 :89、
+      `requires_window_recreation` 原 :109 → 现 :124。此处保留写入当时的行号，第 79 项记录了当前行号。
       共享 helper `MAXIMUM_CORNER_RADIUS_PERCENT = 50`（:44）与
       `corner_radius_uniform(percent, width, height) -> [f32; 4]`（:55）把百分比换算为
       `(radius_fraction, drawable_width, drawable_height, 0)`。
@@ -3744,6 +3754,118 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `naga` 不提供 HLSL frontend，离线校验路径不可用）；macOS 实机圆角视觉 smoke（需人工
       运行产品观察边缘抗锯齿与多层重叠）；双平台 CI 门禁。因此 Windows 侧 `corner_coverage`
       只经过与 Metal 逐行同构的代码审查，未经过任何编译或运行验证。
+
+79. [x] `P0-OVERLAY-HOVER-HIDE`：让当前 v1 支持旧版已有的鼠标悬停隐藏与悬停延迟，并作用于正式 overlay。
+    - 依赖：第 78 项建立的 overlay 呈现参数与窗口重建路径、`P2-*` 建立的 `OverlaySettings` 与强类型
+      command/snapshot 链路、`P2-CURSOR-SMOOTHING` 建立的 `RuntimeSnapshot.cursor.sample` 与
+      `PlatformInputServiceStatus`、`P5-*` 建立的 overlay 设置页与 debounced patch 机制、`P6-*`
+      建立的当前 v1 schema 边界。
+    - 退出条件：`overlay.hide_on_pointer_hover` 与 `overlay.hide_on_pointer_hover_delay_ms` 作为当前
+      v1 字段在 Rust config、JSON Schema、默认 fixture 与共享 manifest 中一致存在；延迟范围
+      `0..=60000`、默认 `0`，开关默认 `false`，越界在 config `validate()`、runtime `is_valid()`、
+      JSON Schema 与两个平台的 options 校验四处都失败关闭；两值经强类型 command/snapshot 往返并在
+      重启后恢复；开启后指针停留满延迟即淡出并强制穿透，离开后按同样时长淡回并恢复
+      `overlay.click_through`，窗口本身不隐藏、不销毁，`overlay.visible` 不受影响；开关与延迟在
+      frame tick 内原地生效，不触发原生窗口重建；指针采样缺失或平台输入服务未运行时按「不在窗口
+      内」处理；GPUI overlay 设置页有可编辑开关与数字输入、中英文案与 AX/UIA 语义；不引入旧版
+      兼容、migration、alias 或 fallback。
+    - 决策记录（2026-09-16）：本项由维护者要求直接决定，推翻第 66 项
+      `P6-REMOVE-DEFERRED-HOVER-FIELDS`，并把行为清单「主窗口/hover 延迟隐藏」由 `P1 首发后`
+      上调为 `P0 首发`。不新增 ADR：该配置不改变架构边界，只是 overlay 窗口的呈现属性。三项首版
+      契约决定经维护者确认：延迟上界收窄为 `0..=60000` 毫秒；淡入淡出复刻旧版 300ms 过渡；延迟
+      输入控件始终显示（旧版只在开关开启时展开）。
+    - 旧版契约（`pre-refactor` 分支考古）：`src/stores/cat.ts` 的 `window.hideOnHover: boolean`
+      默认 `false`、`window.hideOnHoverDelay: number` 默认 `0`；
+      `src/pages/preference/components/cat/index.vue` 的 `<Switch>` 与
+      `<InputNumber :min="0">`（只有下界、无上界，单位为秒，`SpaceAddon` 显示 `s`），延迟控件仅在
+      开关开启时展开（`w-28 opacity-100` / `w-0 opacity-0`）。
+      `src/composables/useDevice.ts` 的 `onHideOnHover`：先取 `appStore.windowState[MAIN]` 的
+      `x/y/width/height`，缺失即返回；用 `inBetween`（两端闭区间）判断指针是否在窗口内；`isInWindow`
+      与上一次相同时直接返回（边沿触发）；进入时 `setTimeout(delay * 1000)` 后把
+      `document.body.style.opacity` 设为 `'0'` 并 `appWindow.setIgnoreCursorEvents(true)`；离开时
+      立即把 opacity 设为 `'unset'` 并 `setIgnoreCursorEvents(catStore.window.passThrough)`。
+      `src/assets/css/global.scss` 的 `body` 带 `transition-opacity-300`，即 300ms CSS 过渡。
+    - 首版对旧版的收窄与修正（均为契约决定，不是遗留行为）：
+      1) 延迟上界收窄为 `60000` 毫秒。旧版 UI 无上界且以秒为单位，`hideOnHoverDelay * 1000` 可给出
+         任意长的 `setTimeout`；首版改为毫秒整数并显式限界。
+      2) 恢复也走同一延迟。旧版只有「隐藏」经过 `setTimeout`，「恢复」在离开时立即生效；首版两侧
+         对称，理由是旧版的不对称无法从代码意图解释，且会让快速划过的指针产生闪烁。
+      3) 命中测试改为半开区间（`x >= left && x < left + width`，纵向同理）。旧版 `inBetween` 两端
+         闭区间，相邻显示器共享的边界像素会同时落在两个窗口内。
+      4) 旧版的降级路径不复刻：`windowState` 缺失、负 `winX`/`winY` 或丢失离开事件在旧版都会让内容
+         停在全透明；首版把「无指针采样」和「平台输入服务未运行」都当作不在窗口内。
+    - 当前契约（2026-09-16）：`OverlayConfig::hide_on_pointer_hover: bool`
+      （`crates/bongocat-config/src/lib.rs:272`）与 `hide_on_pointer_hover_delay_ms: u32`（:283），
+      共享常量 `MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS = 60_000`（:291），`NativeConfig::default()`
+      为 `false` / `0`（:944-945），`validate()` 以 `>` 比较拒绝越界（:983-987）；共享 schema
+      `shared/config/config.schema.json` 的 `overlay.required` 与
+      `{"type":"integer","minimum":0,"maximum":60000}` 同步。
+      `OverlaySettings::hide_on_pointer_hover` / `hide_on_pointer_hover_delay_ms`
+      （`crates/bongocat-runtime/src/lib.rs:207/210`）、同值常量（:189）与 `is_valid()` 的 `<=` 约束
+      （:236）同构。`OverlaySessionOptions`（`crates/bongocat-overlay/src/lib.rs:95/98`）与
+      `with_runtime_settings`（:112-113）透传；两者刻意**不**进入 `requires_window_recreation`
+      （:124），因为 alpha 与指针路由在每帧应用。
+      可移植状态机 `crates/bongocat-overlay/src/hover.rs`：`HOVER_FADE_DURATION = 300ms`（:24）、
+      半开区间命中测试 `pointer_inside_window`（:33）、`PointerHoverObservation`（:47）、
+      `PointerHoverHide`（:66）及其 `observe`（:101）与 `advance`（:147）。`advance` 把 alpha 表示为
+      `fade_from + (target - fade_from) * clamp(elapsed / 300ms)`，即从过渡起点起算的绝对时间函数，
+      因此帧率无关（60 FPS 与 240 FPS 在 150ms 处都得到 `0.5`，由
+      `the_fade_is_a_function_of_elapsed_time_and_never_overshoots` 断言）。
+      两个平台 owner 对称实现：`apply_presentation(alpha, click_through)`（macOS
+      `crates/bongocat-overlay/src/macos.rs:1504` 写 `panel.setAlphaValue`，Windows
+      `crates/bongocat-overlay/src/windows.rs:1173` 写 `renderer.opacity`），
+      `update_hover_presentation`（macOS :667、Windows :1514）在 frame tick 内每帧应用，
+      `create_overlay`（macOS :697、Windows :1542）在窗口替换时预置当前淡出值以免闪一帧全不透明；
+      macOS 额外用 `appkit_cursor_position`（:922）把 `CursorSample` 的 CoreGraphics 坐标镜像到
+      AppKit 屏幕坐标（以 AppKit frame 原点为 `(0,0)` 的主显示器高度为轴，找不到主显示器时返回
+      `None` 而不是猜测），Windows 侧 `GetCursorPos` 与 `GetWindowRect` 同为虚拟屏幕像素、无需换算。
+      两平台 `validate_options`/`validate_product_options` 均以 `MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS + 1`
+      作为拒绝边界。
+      UI：`SettingsOverlay::hide_on_pointer_hover` / `hide_on_pointer_hover_delay_ms`
+      （`crates/bongocat-ui/src/lib.rs:526/529`）、`SettingValue::OverlayHoverHideDelay` 与
+      `PendingOperation::OverlayHoverHideDelay`（`crates/bongocat-ui/src/window.rs:1424`、:245）、
+      `schedule_overlay_hover_hide_delay_flush`（:737）、flush 分支（:932）与失败重排（:1254）、
+      `set_overlay_hover_hide_delay_value` / `adjust_overlay_hover_hide_delay`
+      （`crates/bongocat-ui/src/window/settings.rs:373/416`，`raw.round().clamp(0.0, MAXIMUM_…)`，
+      上界直接引用 `bongocat_config` 常量而非本地字面量）、overlay 设置页开关与数字输入
+      `NumberFieldOptions { min: 0.0, max: MAXIMUM_…, step: 250.0 }`
+      （`crates/bongocat-ui/src/window/render.rs:397-465`）、辅助功能节点
+      `ACCESSIBILITY_OVERLAY_HIDE_ON_POINTER_HOVER` / `…_HOVER_DELAY_DECREASE` /
+      `…_HOVER_DELAY_INCREASE`（`crates/bongocat-ui/src/window.rs:188/191/194`，节点 ID 51/52/53）
+      与 `settings.overlay.hide_on_pointer_hover{,_delay}.{label,description}`、
+      `shortcuts.actions.{decrease,increase}_hide_on_pointer_hover_delay` 中英文案
+      （`bongocat-i18n/locales/{zh-CN,en-US}.json`，共 6 个新 key）。
+      app 侧映射：`overlay_settings_from_config`（`crates/bongocat-app/src/lib.rs:1464-1465`）、
+      `set_overlay_settings` 回写（:749-751）、启动 `OverlaySessionOptions` 字面量
+      （`crates/bongocat-app/src/main.rs:2186-2187`）、`SettingsCommand::SetOverlaySettings` 映射与
+      快照投影（`crates/bongocat-app/src/settings.rs:632-633`、:1195-1196）。
+      共享 fixture：`accept-hover-hide.json`（开关开、延迟 0，accept）、`accept-hover-hide-delay.json`
+      （开关开、延迟 2500，accept）与 `invalid-hover-hide-delay.json`（延迟 60001，reject）取代原
+      `invalid-deferred-hover-toggle.json` / `invalid-deferred-hover-delay.json`。
+    - 验收证据（2026-09-16）：`cargo test --locked --workspace` 退出码 0，共 659 passed /
+      0 failed / 5 ignored（config 51、runtime 72、overlay 28、ui 115、app 120+21、i18n 4 等；
+      `hover.rs` 新增 7 项状态机测试全部通过）；`cargo check --locked --workspace --release` 通过
+      （仅有与本次无关的 `block v0.1.6` future-incompat 警告）；`cargo fmt --all --check`、
+      `git diff --check` 与三组 clippy（按 CI 逐字命令，含 `--manifest-path Cargo.toml --locked`：
+      `cargo clippy --manifest-path Cargo.toml --locked --workspace --all-targets --all-features --exclude bongocat-app -- -D warnings`、
+      `cargo clippy --manifest-path Cargo.toml --locked -p bongocat-app --all-targets --features storage-test-injection -- -D warnings`、
+      `cargo clippy --manifest-path Cargo.toml --locked -p bongocat-app --all-targets --features production -- -D warnings`）
+      均退出码 0，且三组都强制重编后复跑确认（非缓存命中，仅剩与本次无关的 `block v0.1.6`
+      future-incompat 警告）；
+      `tools/validate-json-schema.py` 输出
+      `validated 9 input, 9 expected, and 14 config, 6 state fixture(s)`，其中
+      `hover-hide (accept)`、`hover-hide-delay (accept)` 与
+      `hover-hide-delay-out-of-range (reject)` 均符合预期；`tools/validate-locales.py` 输出
+      `validated 2 locale(s), 380 key(s) each`；`tools/validate-fixtures.py`
+      （9 input fixture + 8 model package case）、`tools/run-input-fixtures.py`（9 input fixture）、
+      `tools/tests` 契约测试 63 项与 `tools.tests.test_native_release_target_matrix` 4 项均通过。
+      Metal 着色器以 `xcrun -sdk macosx metal -std=metal3.0 -c` 离线编译通过（退出码 0，产物
+      `/tmp/bongocat_overlay.air` 7568 字节）；本次未改动任何着色器源，该步骤只是回归确认。
+      **未运行**：Windows HLSL 编译与 Windows 实机悬停（本机无 Windows、无 `dxc`/`fxc`，且 `naga`
+      不提供 HLSL frontend）；macOS 实机悬停视觉 smoke（需人工运行产品观察淡出观感、穿透时序与
+      多显示器边界）；双平台 CI 门禁。因此 Windows 侧 `update_hover_presentation` 只经过与 macOS
+      逐行同构的代码审查，未经过任何编译或运行验证；macOS 侧的坐标镜像只由代码审查与单元测试
+      覆盖，未在真实多显示器与负坐标布局下验证。
 
 ## 13. 待决策清单
 | 决策                                                          | 最迟完成              | 阻塞内容                           |

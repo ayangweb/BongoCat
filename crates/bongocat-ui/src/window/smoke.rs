@@ -437,6 +437,61 @@ impl SettingsView {
                     );
                 }
             }
+            for (id, label, bound_disabled) in [
+                (
+                    ACCESSIBILITY_OVERLAY_HOVER_DELAY_DECREASE,
+                    bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "shortcuts.actions.decrease_hide_on_pointer_hover_delay",
+                    ),
+                    snapshot.overlay.hide_on_pointer_hover_delay_ms == 0,
+                ),
+                (
+                    ACCESSIBILITY_OVERLAY_HOVER_DELAY_INCREASE,
+                    bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "shortcuts.actions.increase_hide_on_pointer_hover_delay",
+                    ),
+                    snapshot.overlay.hide_on_pointer_hover_delay_ms
+                        >= bongocat_config::MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS,
+                ),
+            ] {
+                let node = tree
+                    .nodes
+                    .iter()
+                    .find(|node| node.id == id)
+                    .ok_or_else(|| {
+                        "accessibility tree omitted the hover hide delay setting".to_owned()
+                    })?;
+                // The delay buttons disable themselves at the ends of the range,
+                // so the expected state is the shared control state or the
+                // per-button bound rather than the shared state alone.
+                let node_disabled = controls_disabled || bound_disabled;
+                if node.role != AccessibilityRole::Button
+                    || node.label != label
+                    || node.description.as_deref()
+                        != Some(bongocat_i18n::text(
+                            snapshot.resolved_language.catalog_locale(),
+                            "settings.overlay.hide_on_pointer_hover_delay.description",
+                        ))
+                    || node.value.as_deref()
+                        != Some(
+                            snapshot
+                                .overlay
+                                .hide_on_pointer_hover_delay_ms
+                                .to_string()
+                                .as_str(),
+                        )
+                    || node.disabled != node_disabled
+                    || node.supports_click != !node_disabled
+                    || node.supports_focus != !node_disabled
+                {
+                    return Err(
+                        "hover hide delay accessibility semantics diverged from the visible control"
+                            .to_owned(),
+                    );
+                }
+            }
             for (id, label, value, toggled) in [
                 (
                     ACCESSIBILITY_OVERLAY_TOPMOST,
@@ -473,6 +528,18 @@ impl SettingsView {
                         "settings.overlay.keep_inside_work_area.description",
                     ),
                     snapshot.overlay.keep_inside_work_area,
+                ),
+                (
+                    ACCESSIBILITY_OVERLAY_HIDE_ON_POINTER_HOVER,
+                    bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "settings.overlay.hide_on_pointer_hover.label",
+                    ),
+                    bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "settings.overlay.hide_on_pointer_hover.description",
+                    ),
+                    snapshot.overlay.hide_on_pointer_hover,
                 ),
             ] {
                 let node = tree

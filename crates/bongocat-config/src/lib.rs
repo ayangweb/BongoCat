@@ -262,8 +262,33 @@ pub struct OverlayConfig {
     /// implementation scaled every radius above that point back down to the same
     /// ellipse, so `50` is the effective upper bound of the legacy behavior.
     pub corner_radius_percent: u8,
+    /// Hide the overlay while the pointer rests on it, keeping the model out of
+    /// the way of whatever the pointer is reaching for underneath.
+    ///
+    /// This mirrors the legacy `window.hideOnHover` switch. The overlay stays a
+    /// normal window and keeps presenting frames; only its rendered alpha drops
+    /// to zero, and pointer events pass through until the pointer leaves the
+    /// window box again.
+    pub hide_on_pointer_hover: bool,
+    /// How long the pointer must stay inside the overlay box before the hover
+    /// hide starts, in milliseconds. `0` hides as soon as the pointer enters.
+    ///
+    /// The legacy input took whole seconds with a lower bound of `0` and no
+    /// upper bound. The first version stores milliseconds instead, so it keeps
+    /// the same one-second granularity the legacy UI offered, and caps the
+    /// value at `60_000` like the other millisecond timeout in this schema
+    /// (`model.release_fallback_timeout_ms`). The cap is a first-version
+    /// contract decision rather than a legacy ceiling: a hover delay longer
+    /// than a minute is indistinguishable from leaving the feature off.
+    pub hide_on_pointer_hover_delay_ms: u32,
     pub keep_inside_work_area: bool,
 }
+
+/// Upper bound of the hover hide delay, in milliseconds.
+///
+/// See [`OverlayConfig::hide_on_pointer_hover_delay_ms`] for why the legacy
+/// implementation's unbounded second-valued input is narrowed here.
+pub const MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS: u32 = 60_000;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -916,6 +941,8 @@ impl Default for NativeConfig {
                 scale_percent: 100,
                 opacity_percent: 100,
                 corner_radius_percent: 0,
+                hide_on_pointer_hover: false,
+                hide_on_pointer_hover_delay_ms: 0,
                 keep_inside_work_area: true,
             },
             input: InputConfig {
@@ -952,6 +979,11 @@ impl NativeConfig {
         }
         if !(0..=50).contains(&self.overlay.corner_radius_percent) {
             return Err(ConfigError::InvalidValue("overlay.corner_radius_percent"));
+        }
+        if self.overlay.hide_on_pointer_hover_delay_ms > MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS {
+            return Err(ConfigError::InvalidValue(
+                "overlay.hide_on_pointer_hover_delay_ms",
+            ));
         }
         if !(0.0..1.0).contains(&self.input.gamepad_stick_dead_zone)
             || !self.input.gamepad_stick_dead_zone.is_finite()
@@ -2588,20 +2620,49 @@ mod tests {
             .expect_err("platform startup state must not enter config");
         assert!(error.to_string().contains("unknown field"));
 
-        for (field, value) in [
-            ("hide_on_pointer_hover", serde_json::Value::Bool(true)),
-            (
-                "hide_on_pointer_hover_delay_ms",
-                serde_json::Value::from(250),
-            ),
-        ] {
-            let mut config =
-                serde_json::to_value(NativeConfig::default()).expect("serialize default");
-            config["overlay"][field] = value;
-            let error = serde_json::from_value::<NativeConfig>(config)
-                .expect_err("post-launch hover behavior must not enter the initial v1 config");
-            assert!(error.to_string().contains("unknown field"));
+        let mut value = serde_json::to_value(NativeConfig::default()).expect("serialize default");
+        value["overlay"]["hideOnHover"] = serde_json::Value::Bool(true);
+        let error = serde_json::from_value::<NativeConfig>(value)
+            .expect_err("legacy store spelling must not enter the initial v1 config");
+        assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn overlay_hover_hide_delay_accepts_the_first_version_range() {
+        for accepted in [0_u32, 1, 250, 1_000, 59_999, 60_000] {
+            let mut config = NativeConfig::default();
+            config.overlay.hide_on_pointer_hover_delay_ms = accepted;
+            assert!(
+                config.validate().is_ok(),
+                "hover hide delay {accepted} must be accepted"
+            );
         }
+        for rejected in [60_001_u32, 120_000, u32::MAX] {
+            let mut config = NativeConfig::default();
+            config.overlay.hide_on_pointer_hover_delay_ms = rejected;
+            assert!(matches!(
+                config.validate(),
+                Err(ConfigError::InvalidValue(
+                    "overlay.hide_on_pointer_hover_delay_ms"
+                ))
+            ));
+        }
+    }
+
+    #[test]
+    fn overlay_hover_hide_switch_defaults_to_off_and_round_trips() {
+        let config = NativeConfig::default();
+        assert!(!config.overlay.hide_on_pointer_hover);
+        assert_eq!(config.overlay.hide_on_pointer_hover_delay_ms, 0);
+
+        let mut enabled = config;
+        enabled.overlay.hide_on_pointer_hover = true;
+        enabled.overlay.hide_on_pointer_hover_delay_ms = 1_500;
+        enabled.validate().expect("enabled hover hide is valid");
+        let encoded = serde_json::to_string(&enabled).expect("serialize enabled hover hide");
+        let decoded: NativeConfig =
+            serde_json::from_str(&encoded).expect("deserialize enabled hover hide");
+        assert_eq!(decoded, enabled);
     }
 
     #[test]
@@ -2699,6 +2760,19 @@ mod tests {
         assert!(matches!(
             store.commit(&invalid),
             Err(ConfigError::InvalidValue("overlay.corner_radius_percent"))
+        ));
+        assert_eq!(
+            fs::read(&store.layout().config).expect("config bytes"),
+            original
+        );
+
+        let mut invalid = config.clone();
+        invalid.overlay.hide_on_pointer_hover_delay_ms = 60_001;
+        assert!(matches!(
+            store.commit(&invalid),
+            Err(ConfigError::InvalidValue(
+                "overlay.hide_on_pointer_hover_delay_ms"
+            ))
         ));
         assert_eq!(
             fs::read(&store.layout().config).expect("config bytes"),

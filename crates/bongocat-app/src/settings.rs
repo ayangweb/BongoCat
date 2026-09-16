@@ -629,6 +629,8 @@ fn run_service(
                     scale_percent: settings.scale_percent,
                     opacity_percent: settings.opacity_percent,
                     corner_radius_percent: settings.corner_radius_percent,
+                    hide_on_pointer_hover: settings.hide_on_pointer_hover,
+                    hide_on_pointer_hover_delay_ms: settings.hide_on_pointer_hover_delay_ms,
                     keep_inside_work_area: settings.keep_inside_work_area,
                 };
                 let result = require_operational(&application)
@@ -1190,6 +1192,8 @@ fn snapshot(
             scale_percent: runtime.overlay_settings.scale_percent,
             opacity_percent: runtime.overlay_settings.opacity_percent,
             corner_radius_percent: runtime.overlay_settings.corner_radius_percent,
+            hide_on_pointer_hover: runtime.overlay_settings.hide_on_pointer_hover,
+            hide_on_pointer_hover_delay_ms: runtime.overlay_settings.hide_on_pointer_hover_delay_ms,
             keep_inside_work_area: runtime.overlay_settings.keep_inside_work_area,
         },
         motion_audio_enabled: runtime.motion_audio_enabled,
@@ -4099,6 +4103,8 @@ mod tests {
             scale_percent: 125,
             opacity_percent: 80,
             corner_radius_percent: 25,
+            hide_on_pointer_hover: true,
+            hide_on_pointer_hover_delay_ms: 1_500,
             keep_inside_work_area: false,
         };
         let configured = client
@@ -4223,6 +4229,8 @@ mod tests {
             scale_percent: 125,
             opacity_percent: 80,
             corner_radius_percent: 25,
+            hide_on_pointer_hover: true,
+            hide_on_pointer_hover_delay_ms: 1_500,
             keep_inside_work_area: false,
         };
         let committed = client
@@ -4236,6 +4244,8 @@ mod tests {
             scale_percent: 400,
             opacity_percent: 10,
             corner_radius_percent: 50,
+            hide_on_pointer_hover: false,
+            hide_on_pointer_hover_delay_ms: 0,
             keep_inside_work_area: true,
         };
         let error = client
