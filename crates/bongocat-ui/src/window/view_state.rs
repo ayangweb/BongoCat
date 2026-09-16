@@ -25,26 +25,6 @@ impl SettingsView {
             "navigation.settings.title",
         ));
         self.syncing_component_inputs = true;
-        let scale = f64::from(snapshot.overlay.scale_percent);
-        let opacity = f64::from(snapshot.overlay.opacity_percent);
-        let stick = f64::from(snapshot.gamepad_axis_settings.stick_dead_zone_percent);
-        let trigger = f64::from(snapshot.gamepad_axis_settings.trigger_dead_zone_percent);
-        self.overlay_scale_input.update(cx, |input, cx| {
-            input.set_value(scale.to_string(), window, cx)
-        });
-        self.overlay_opacity_input.update(cx, |input, cx| {
-            input.set_value(opacity.to_string(), window, cx)
-        });
-        let corner_radius = f64::from(snapshot.overlay.corner_radius_percent);
-        self.overlay_corner_radius_input.update(cx, |input, cx| {
-            input.set_value(corner_radius.to_string(), window, cx)
-        });
-        self.stick_dead_zone_input.update(cx, |input, cx| {
-            input.set_value(stick.to_string(), window, cx)
-        });
-        self.trigger_dead_zone_input.update(cx, |input, cx| {
-            input.set_value(trigger.to_string(), window, cx)
-        });
         self.model_id_input.update(cx, |input, cx| {
             input.set_placeholder(
                 bongocat_i18n::text(
@@ -95,11 +75,6 @@ impl SettingsView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let overlay_scale_input = cx.new(|cx| InputState::new(window, cx).placeholder("100"));
-        let overlay_opacity_input = cx.new(|cx| InputState::new(window, cx).placeholder("100"));
-        let overlay_corner_radius_input = cx.new(|cx| InputState::new(window, cx).placeholder("0"));
-        let stick_dead_zone_input = cx.new(|cx| InputState::new(window, cx).placeholder("15"));
-        let trigger_dead_zone_input = cx.new(|cx| InputState::new(window, cx).placeholder("0"));
         let model_id_input = cx.new(|cx| {
             InputState::new(window, cx).placeholder(bongocat_i18n::text(
                 SettingsLanguage::EnglishUnitedStates.catalog_locale(),
@@ -129,141 +104,6 @@ impl SettingsView {
                 cx,
             )
         });
-        cx.subscribe(
-            &overlay_scale_input,
-            |view, input, event: &NumberInputEvent, cx| {
-                if view.syncing_component_inputs {
-                    return;
-                }
-                let current = input.read(cx).value().parse::<f64>().unwrap_or(100.0);
-                let value = match event {
-                    NumberInputEvent::Step(StepAction::Increment) => current + 25.0,
-                    NumberInputEvent::Step(StepAction::Decrement) => current - 25.0,
-                };
-                view.set_overlay_scale_value(value, cx);
-            },
-        )
-        .detach();
-        cx.subscribe(
-            &overlay_scale_input,
-            |view, input, event: &InputEvent, cx| {
-                if matches!(event, InputEvent::Change)
-                    && !view.syncing_component_inputs
-                    && let Ok(value) = input.read(cx).value().parse::<f64>()
-                {
-                    view.set_overlay_scale_value(value, cx);
-                }
-            },
-        )
-        .detach();
-        cx.subscribe(
-            &overlay_opacity_input,
-            |view, input, event: &NumberInputEvent, cx| {
-                if view.syncing_component_inputs {
-                    return;
-                }
-                let current = input.read(cx).value().parse::<f64>().unwrap_or(100.0);
-                let value = match event {
-                    NumberInputEvent::Step(StepAction::Increment) => current + 10.0,
-                    NumberInputEvent::Step(StepAction::Decrement) => current - 10.0,
-                };
-                view.set_overlay_opacity_value(value, cx);
-            },
-        )
-        .detach();
-        cx.subscribe(
-            &overlay_opacity_input,
-            |view, input, event: &InputEvent, cx| {
-                if matches!(event, InputEvent::Change)
-                    && !view.syncing_component_inputs
-                    && let Ok(value) = input.read(cx).value().parse::<f64>()
-                {
-                    view.set_overlay_opacity_value(value, cx);
-                }
-            },
-        )
-        .detach();
-        cx.subscribe(
-            &overlay_corner_radius_input,
-            |view, input, event: &NumberInputEvent, cx| {
-                if view.syncing_component_inputs {
-                    return;
-                }
-                let current = input.read(cx).value().parse::<f64>().unwrap_or(0.0);
-                let value = match event {
-                    NumberInputEvent::Step(StepAction::Increment) => current + 5.0,
-                    NumberInputEvent::Step(StepAction::Decrement) => current - 5.0,
-                };
-                view.set_overlay_corner_radius_value(value, cx);
-            },
-        )
-        .detach();
-        cx.subscribe(
-            &overlay_corner_radius_input,
-            |view, input, event: &InputEvent, cx| {
-                if matches!(event, InputEvent::Change)
-                    && !view.syncing_component_inputs
-                    && let Ok(value) = input.read(cx).value().parse::<f64>()
-                {
-                    view.set_overlay_corner_radius_value(value, cx);
-                }
-            },
-        )
-        .detach();
-        cx.subscribe(
-            &stick_dead_zone_input,
-            |view, input, event: &NumberInputEvent, cx| {
-                if view.syncing_component_inputs {
-                    return;
-                }
-                let current = input.read(cx).value().parse::<f64>().unwrap_or(15.0);
-                let value = match event {
-                    NumberInputEvent::Step(StepAction::Increment) => current + 5.0,
-                    NumberInputEvent::Step(StepAction::Decrement) => current - 5.0,
-                };
-                view.set_gamepad_dead_zone_value(true, value, cx);
-            },
-        )
-        .detach();
-        cx.subscribe(
-            &stick_dead_zone_input,
-            |view, input, event: &InputEvent, cx| {
-                if matches!(event, InputEvent::Change)
-                    && !view.syncing_component_inputs
-                    && let Ok(value) = input.read(cx).value().parse::<f64>()
-                {
-                    view.set_gamepad_dead_zone_value(true, value, cx);
-                }
-            },
-        )
-        .detach();
-        cx.subscribe(
-            &trigger_dead_zone_input,
-            |view, input, event: &NumberInputEvent, cx| {
-                if view.syncing_component_inputs {
-                    return;
-                }
-                let current = input.read(cx).value().parse::<f64>().unwrap_or(0.0);
-                let value = match event {
-                    NumberInputEvent::Step(StepAction::Increment) => current + 5.0,
-                    NumberInputEvent::Step(StepAction::Decrement) => current - 5.0,
-                };
-                view.set_gamepad_dead_zone_value(false, value, cx);
-            },
-        )
-        .detach();
-        cx.subscribe(
-            &trigger_dead_zone_input,
-            |view, input, event: &InputEvent, cx| {
-                if matches!(event, InputEvent::Change)
-                    && !view.syncing_component_inputs
-                    && let Ok(value) = input.read(cx).value().parse::<f64>()
-                {
-                    view.set_gamepad_dead_zone_value(false, value, cx);
-                }
-            },
-        )
-        .detach();
         cx.subscribe(&model_id_input, |view, input, event: &InputEvent, cx| {
             if matches!(event, InputEvent::Change) {
                 if view.syncing_component_inputs || view.model_import.is_running() {
@@ -397,11 +237,6 @@ impl SettingsView {
             export_diagnostics_focus: cx.focus_handle().tab_index(32).tab_stop(true),
             refresh_focus: cx.focus_handle().tab_index(30).tab_stop(true),
             quit_focus: cx.focus_handle().tab_index(31).tab_stop(true),
-            overlay_scale_input,
-            overlay_opacity_input,
-            overlay_corner_radius_input,
-            stick_dead_zone_input,
-            trigger_dead_zone_input,
             model_id_input,
             syncing_component_inputs: false,
             #[cfg(any(target_os = "macos", target_os = "windows"))]

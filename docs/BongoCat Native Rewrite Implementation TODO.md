@@ -3867,6 +3867,52 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       逐行同构的代码审查，未经过任何编译或运行验证；macOS 侧的坐标镜像只由代码审查与单元测试
       覆盖，未在真实多显示器与负坐标布局下验证。
 
+80. [x] `P5-DEAD-SETTINGS-INPUT-CLEANUP`：删除设置窗口中从未被渲染的 5 个输入实体及其订阅。
+    - 依赖：`P5-*` 建立的 overlay 与 gamepad 设置页、`gpui-component` 的 `SettingField::number_input`。
+    - 退出条件：`SettingsView` 不再持有 `overlay_scale_input`、`overlay_opacity_input`、
+      `overlay_corner_radius_input`、`stick_dead_zone_input`、`trigger_dead_zone_input`；只为它们
+      存在的实体创建、`sync_component_inputs` 回填与 10 个输入事件订阅一并删除；
+      `model_id_input` 保留，因为它是唯一被真实渲染的设置文本框；四个数字设置项的编辑路径
+      （`set_overlay_scale_value` / `set_overlay_opacity_value` /
+      `set_overlay_corner_radius_value` / `set_gamepad_dead_zone_value`）仍由 render 层可达，
+      行为与用户可见结果完全不变；不引入新依赖、不改配置契约、不改任何测试期望。
+    - 决策记录（2026-09-16）：维护者在第 79 项报告后要求清理。这是**删除死代码**，不是行为变更，
+      因此不新增 ADR，也不改 Technical Design 的架构描述。
+    - 死代码成因：`gpui-component` 的 `SettingField::number_input` 在渲染时用
+      `Window::use_keyed_state` 自建 `InputState` 并直接调用传入的 setter，所以设置视图不需要
+      再持有一份数字输入实体。这 5 个实体是在改用组件库 `NumberField` 之前留下的：它们被创建、
+      被 `sync_component_inputs` 回填、并各自订阅了 `NumberInputEvent::Step` 与
+      `InputEvent::Change`，但没有任何 render 引用它们，因此订阅永不触发，回填也无人读取。
+      rustc 不会报 `dead_code`，因为这些字段确实被读取了，只有跨文件的渲染点缺失才能看出问题。
+    - 当前契约（2026-09-16）：`crates/bongocat-ui/src/window.rs:546-553` 只保留 `model_id_input`，
+      并用文档注释说明为什么不得再为数字字段保留实体副本；`window.rs:27` 的 import 收窄为
+      `input::{Input, InputEvent, InputState}`（`NumberInputEvent` 与 `StepAction` 已无引用）。
+      `crates/bongocat-ui/src/window/view_state.rs` 的 `sync_component_inputs` 从第 28 行起只剩
+      `model_id_input`、语言选择与主题选择；构造函数只创建 `model_id_input`、`language_select`、
+      `theme_select`；订阅只剩 `model_id_input`、`language_select`、`theme_select` 三处。
+      `model_id_input` 的渲染点仍是 `crates/bongocat-ui/src/window/models.rs:428` 的
+      `Input::new(&view.model_id_input)`。净删除 163 行（2 个文件，+8 / −171）。
+    - 验收证据（2026-09-16）：清理前后 `cargo test --locked --workspace` 均为退出码 0 且
+      **659 passed / 0 failed / 5 ignored**，逐项数字完全一致，符合「纯删除死代码不改变任何测试
+      结果」的预期；`cargo fmt --all --check`、`cargo check --workspace --all-targets`、
+      `cargo check --locked --workspace --release`（仅有与本次无关的 `block v0.1.6`
+      future-incompat 警告）与 `git diff --check` 通过；三组 clippy 按 CI 逐字命令
+      （`--manifest-path Cargo.toml --locked`，含
+      `--workspace --all-targets --all-features --exclude bongocat-app`、
+      `-p bongocat-app --all-targets --features storage-test-injection`、
+      `-p bongocat-app --all-targets --features production`，均 `-D warnings`）退出码 0，
+      并对 `bongocat-ui` 强制重编复跑确认（非缓存命中）；
+      `tools/validate-json-schema.py`（14 config fixture）、`tools/validate-locales.py`
+      （380 keys each）、`tools/validate-fixtures.py`（9 input + 8 model package case）、
+      `tools/run-input-fixtures.py`（9 input fixture）、`tools/tests` 63 项与
+      `tools.tests.test_native_release_target_matrix` 4 项均通过。删除前用全仓搜索确认这 5 个名字
+      只出现在 `window.rs` 的声明与 `view_state.rs` 的创建/回填/订阅/构造器，且
+      `crates/` 下只有 `Input::new(&view.model_id_input)` 一处真实渲染输入框。
+      **未运行**：Windows 与 macOS 实机设置页 smoke（需人工打开设置窗口逐项编辑 overlay 缩放、
+      不透明度、圆角与手柄死区，确认组件库的 `NumberField` 仍能提交数值）；双平台 CI 门禁。
+      因此「用户可见行为不变」这一结论目前由测试数字一致、setter 调用点未变与编译期检查支持，
+      尚未经过实机点击验证。
+
 ## 13. 待决策清单
 | 决策                                                          | 最迟完成              | 阻塞内容                           |
 | ------------------------------------------------------------- | --------------------- | ---------------------------------- |

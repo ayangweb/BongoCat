@@ -24,7 +24,7 @@ use gpui_kit::component::{
     ActiveTheme, Disableable, IconName, IndexPath, Root, Theme, ThemeMode, ThemeStyled, WindowExt,
     button::Button,
     group_box::{GroupBox, GroupBoxVariant, GroupBoxVariants},
-    input::{Input, InputEvent, InputState, NumberInputEvent, StepAction},
+    input::{Input, InputEvent, InputState},
     notification::{Notification, NotificationType},
     select::{SearchableVec, Select, SelectEvent, SelectState},
     setting::{
@@ -543,11 +543,13 @@ pub struct SettingsView {
     export_diagnostics_focus: FocusHandle,
     refresh_focus: FocusHandle,
     quit_focus: FocusHandle,
-    overlay_scale_input: Entity<InputState>,
-    overlay_opacity_input: Entity<InputState>,
-    overlay_corner_radius_input: Entity<InputState>,
-    stick_dead_zone_input: Entity<InputState>,
-    trigger_dead_zone_input: Entity<InputState>,
+    /// The only settings text field the window actually renders.
+    ///
+    /// The overlay and gamepad numbers are drawn by the component library's
+    /// `NumberField`, which owns its own `InputState` through
+    /// `Window::use_keyed_state` and calls the setter directly, so this view
+    /// must not keep a second copy of those entities: a subscription to one
+    /// would never fire because nothing renders it.
     model_id_input: Entity<InputState>,
     syncing_component_inputs: bool,
     #[cfg(any(target_os = "macos", target_os = "windows"))]
