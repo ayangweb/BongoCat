@@ -24,6 +24,7 @@ raw-window-handle.workspace = true
 rfd.workspace = true
 opener.workspace = true
 sys-locale = "=0.3.2"
+auto-launch = "=0.6.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 accesskit_macos.workspace = true
@@ -35,7 +36,6 @@ objc2-core-foundation = { version = "=0.3.2", default-features = false, features
 objc2-core-graphics = { version = "=0.3.2", default-features = false, features = ["CGDirectDisplay", "CGError", "CGEvent", "CGEventSource", "CGEventTypes", "CGRemoteOperation"] }
 objc2-foundation = { version = "=0.3.2", default-features = false, features = ["NSArray", "NSData", "NSGeometry", "NSNotification", "NSObject", "NSString", "NSURL", "block2"] }
 objc2-game-controller = { version = "=0.3.2", default-features = false, features = ["GCController", "GCControllerAxisInput", "GCControllerButtonInput", "GCControllerDirectionPad", "GCControllerElement", "GCExtendedGamepad", "GCPhysicalInputProfile", "block2"] }
-objc2-service-management = { version = "=0.3.2", default-features = false, features = ["SMAppService", "objc2", "objc2-foundation"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 accesskit_windows.workspace = true

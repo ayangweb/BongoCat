@@ -425,8 +425,11 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   右键弹出。Windows 状态图标从 Native 自有 `resources/icons/tray-windows.png` 解码，菜单、托盘
   隐藏点击恢复和 overlay 右键入口均由该唯一菜单 owner 管理；overlay 弹出使用自身 HWND，不借用
   托盘隐藏窗口。
-- 启动项：当前用户 HKCU Run，Development/Production 使用不同 value name，命令固定为当前
-  executable 加 `--run-seconds 0`，默认不要求管理员权限。
+- 启动项：统一由 `auto-launch 0.6.0` 提供双平台后端。Windows 写当前用户 HKCU Run 并同步
+  `StartupApproved\Run` 启用标记；macOS 写 `~/Library/LaunchAgents/{app_name}.plist`
+  （`RunAtLoad`）。Development/Production 使用不同 `app_name`（value name / plist Label），
+  命令固定为当前 executable 加 `--run-seconds 0`，默认不要求管理员权限或 TCC 授权
+  （ADR-0043）。
 - 启动权限：产品启动时以自身进程令牌的 `TokenElevation` 判断是否已提权，未提权时用 `rfd` 的
   原生系统弹框说明「属性 → 兼容性 → 勾选以管理员身份运行此程序」路径，并提供定位当前
   executable 的操作。检查非阻塞：主线程完成窗口、菜单栏等正常初始化后，由专用 worker 线程
@@ -1067,10 +1070,16 @@ Bundle ID 固定为 `com.ayangweb.bongo-cat`。Development 与 Production 使用
 
 runtime 非阻塞发布强类型音效命令，独立 Rust worker 使用最小 rodio/FLAC feature 管理唯一 voice、错误恢复和 shutdown；音频失败不影响动作或渲染。
 
-### ADR-013：启动项能力与环境隔离
+### ADR-013：启动项能力与环境隔离（已被 ADR-0043 取代）
 
 Windows 当前用户 Run value 按 Development/Production 分名；macOS 13+ 只允许 Production
 `.app` 使用 `SMAppService.mainAppService`，macOS 12 与 Development 明确报告不支持且不回退。
+
+### ADR-043：启动项后端统一 auto-launch
+
+双平台启动项后端统一为 `auto-launch 0.6.0`：macOS 12+ 全版本 LaunchAgent plist、Windows
+HKCU Run（CurrentUser），环境隔离通过不同 `app_name` 保持；后端只产生 Enabled/Disabled，
+`Stale`/`RequiresApproval`/`NotFound` 保留为契约变体。Windows stale 检测退役。
 
 ### ADR-021：签名更新 Manifest 信任边界（已被 ADR-0029 取代）
 

@@ -4216,6 +4216,42 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `v1.1.0` 之后、`2.0.0` 发布之前引入并修复，从未随任何发布版本出厂，因此 2.0.0 的变更日志
       无需新增条目（详见本次报告）。
 
+82. [x] `P7-STARTUP-ITEM-AUTO-LAUNCH`：双平台启动项后端统一为 `auto-launch`，补齐 macOS 12 支持。
+    - 依赖：ADR-0043（取代 ADR-0013）、`P7-STARTUP-ITEM-PLATFORM`（被替换的 contract 与 UI 闭环）。
+    - 退出条件：macOS 12+ 全版本与 Windows 当前用户启动项由 `auto-launch =0.6.0` 提供；
+      环境隔离保持（Development/Production 不同 `app_name`，macOS 为不同 plist Label、
+      Windows 为不同 HKCU value name）；启动命令携带 `--run-seconds 0`；共享
+      `StartupItemState`/`StartupItemError` contract 不变；Development 构建从此支持启动项；
+      完整 Native 门禁通过。
+    - 实现说明（2026-09-17）：`bongocat-platform` 新增 `startup_item_native.rs` 统一后端
+      （macOS `MacOSLaunchMode::LaunchAgent` 写 `~/Library/LaunchAgents/{app_name}.plist`，
+      Windows `WindowsEnableMode::CurrentUser` 写 HKCU Run 并同步 `StartupApproved\Run`），
+      删除 `startup_item_macos.rs`（SMAppService/objc2）与 `startup_item_windows.rs`
+      （HKCU raw binding）两个手写后端，`Cargo.toml` 移除 `objc2-service-management =0.3.2`。
+      后端现只产生 `Enabled`/`Disabled` 与错误；`Stale`/`RequiresApproval`/`NotFound`/
+      `Unsupported(OperatingSystem|BuildEnvironment)` 保留为契约变体、无生产者，UI 处理分支
+      作为防御性路径保留。Windows stale 检测随 ADR-0013 退役（安装位置变化后 `is_enabled`
+      仍为 enabled，重新开关一次即修复）。
+    - 依赖评估（2026-09-17，§9）：`auto-launch =0.6.0` 为当次核对的 crates.io 最新非 yanked
+      稳定版（MIT，上游 2026-09-16 仍有提交；本机阅读其 `macos.rs`/`windows.rs`
+      源码核实：Windows 命令行按 MSVCRT 规则加引号并写 StartupApproved 启用标记、
+      macOS LaunchAgent plist 含 `Label`/`AssociatedBundleIdentifiers`/`ProgramArguments`/
+      `RunAtLoad` 且 enable/disable/is_enabled 为纯文件操作）。传递依赖 macOS 侧
+      `dirs 6.0.0`/`os_info 3.15.0`/`smappservice-rs 0.1.3`、Windows 侧
+      `windows-registry 0.6.1`，许可证均在本仓库 `deny.toml` 白名单内。
+    - 验收证据（2026-09-17）：`bongocat-platform` 57 单测 + 1 opt-in smoke 全过
+      （新增环境命名隔离、双环境后端构造；`startup_item_lifecycle_smoke_restores_original_state`
+      在 macOS 实机驱动 Development 环境 disabled -> enabled -> disabled 并恢复原状态，
+      期间断言 plist 文件随之出现/消失，且 Production 环境状态前后不变）；
+      `cargo fmt --all -- --check`、workspace 与 `bongocat-app` 两组 feature 的严格 Clippy、
+      `cargo test --locked --workspace` 全部通过（app 128、ui 115、platform 57 等）。
+      按 §9 执行完整 `cargo update`（新增 auto-launch 及其传递依赖，另有 4 个无关传递
+      小版本升级）。
+    - **未运行**：Windows 实机注册表 lifecycle（CI Windows job 承担）与 macOS
+      `/Applications` 安装态 `--startup-item-smoke`（需 Production 签名构建，留给发布门禁）；
+      macOS 13+ 系统设置后台项目列表的可见性为文档预期、未实机核验。
+    - 决策记录：ADR-0043（ADR-0013 标记 Superseded，Technical Design 启动项段落同步）。
+
 ## 13. 待决策清单
 | 决策                                                          | 最迟完成              | 阻塞内容                           |
 | ------------------------------------------------------------- | --------------------- | ---------------------------------- |

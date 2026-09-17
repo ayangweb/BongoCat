@@ -1,6 +1,6 @@
 # ADR-0013: Startup Item Capability and Environment Isolation
 
-状态：Accepted
+状态：Superseded by ADR-0043
 日期：2026-08-31
 
 ## Context
