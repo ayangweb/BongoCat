@@ -28,9 +28,21 @@ ADR-0040 把 `Kp0..Kp9`、`KpMultiply` 等接入了运行时候选，但当时�
    "没名字"一样不可达——只补名字不补绑定，等于把词表做成摆设。ADR-0040 已经踩过这个坑
    （`KpEnter` 有了名字却没有 hand 归属）。
 4. **范围由平台 adapter 的实际产出界定。** Windows 的 `map_scan_code` 产出
-   `0x04..=0x31`、`0x33..=0x45`、`0x46..=0x4e`、`0x4f..=0x64`；macOS 的 keycode 表产出
+   `0x04..=0x31`、`0x33..=0x45`、`0x46..=0x4e`、`0x4f..=0x64` 与八个修饰键 usage
+   `0xe0..=0xe7`（E0/E1 前缀与非扩展码）；macOS 的 keycode 表产出
    `0x04..=0x31`、`0x33..=0x45`、`0x4a..=0x63`、`0x67`、`0x68..=0x6f`、`0xe0..=0xe7`。
-   两者并集 = `0x04..=0x65` ∪ `{0x67}` ∪ `0x68..=0x73`。`0x66`（`Power`）两边都不产出。
+   两者并集 = `0x04..=0x65` ∪ `{0x67}` ∪ `0x68..=0x73` ∪ `0xe0..=0xe7`。`0x66`（`Power`）
+   两边都不产出。
+
+   > **修订（2026-09-17，同日）：** 本事实原先写的并集漏掉了修饰键 `0xe0..=0xe7`（它们不在
+   > `0x04..=0x65`、`0x67`、`0x68..=0x73` 任何一段里），决策 2 的绑定循环照着这个不完整的并集
+   > 重写，于是八个修饰键 usage 失去了 hand 归属：`Shift`/`Control`/`Alt`/`Meta` 的按键被
+   > `InputState::model_snapshot` 丢弃，模型再也画不出 `ShiftLeft.png`、`AltLeft.png`、
+   > `AltRight.png`、`Meta.png` 等修饰键美术，爪子也不再为它们下压——即 ADR-0038 专门为 Alt
+   > 图片做过的事被同时作废。修正：绑定循环补回 `0xe0..=0xe7` → 左手，并把并集作为**规范**写进
+   > 绑定契约测试（遍历 `0x04..=0x65` ∪ `{0x67}` ∪ `0x68..=0x73` ∪ `0xe0..=0xe7`，断言每个
+   > usage 的绑定等于"该模型能画则绑"），不再只遍历实现恰好用到的那几段。测试盲区是本次回归能
+   > 溜过 `just check` 的直接原因：命名测试与绑定测试当时都只遍历前三段。
 5. **旧版键位映射图给出的名字是词表依据。** 它覆盖标准 104/105 布局 + 小键盘，包含
    `Minus`/`Equal`/`LeftBracket`/`RightBracket`/`BackSlash`/`SemiColon`/`Quote`/`Comma`/`Dot`/
    `PrintScreen`/`ScrollLock`/`Pause`/`Insert`/`Home`/`PageUp`/`Delete`/`End`/`PageDown`/`Apps`
@@ -65,6 +77,7 @@ ADR-0040 把 `Kp0..Kp9`、`KpMultiply` 等接入了运行时候选，但当时�
 0x04..=0x65（方向键 0x4f..=0x52 除外）→ 左手
 F13..F24（0x68..=0x73）              → 左手
 0x67                                 → 左手
+0xe0..=0xe7（八个修饰键）             → 左手   ← 2026-09-17 修订补回，见事实 4
 ```
 
 方向键仍归右手，且仍只对 `Installed`/`keyboard`/`gamepad` 生效（`standard` 预置照旧不绑方向键，

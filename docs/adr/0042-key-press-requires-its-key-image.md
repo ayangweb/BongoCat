@@ -120,11 +120,14 @@ ADR-0041 把标点键、`PrintScreen`、导航键和小键盘整块都绑到了�
   并断言 `keyboard` 的右手方向键可画、`gamepad` 连 `KeyA` 都不可画。
 - `bongocat-app` `--lib` 125 测试（新增 1，改写 3）：
   `a_key_the_active_model_cannot_draw_never_moves_the_paw` 启动真实渲染应用、激活预置
-  `standard`，断言按下 `A`（有 `KeyA.png`）置 `left_hand_down` 并进入 `key_presses`，而按下
+  `standard`，断言按下 `A`（有 `KeyA.png`）、左 `Shift`（`ShiftLeft.png`）与右 `Meta`
+  （无 `MetaRight.png`，回退共享 `Meta.png`）都置 `left_hand_down` 并进入 `key_presses`，而按下
   `.`（无 `Dot.png`）既不置爪也不产生按键 press；
   `keyboard_models_bind_every_drawable_key_of_the_standard_layout` 断言绑定等于"静态表 ∩ 模型
-  键位图"，并对 `KeyA`/`Num1`/`Delete`/小键盘 1/小键盘 Enter 为真、`.`/`PrintScreen`/`NumLock`/
-  小键盘 `.` 为假做逐条抽查；功能键用例改为断言 `PrintScreen` 不再绑定（无图），
+  键位图"，**遍历两个平台 adapter 的产出并集**（`0x04..=0x65` ∪ `{0x67}` ∪ `0x68..=0x73` ∪
+  `0xe0..=0xe7`，见 ADR-0041 事实 4 修订），并对 `KeyA`/`Num1`/`Delete`/小键盘 1/小键盘 Enter/
+  左右 `Shift`/`Alt`/`Control`/`Meta` 为真、`.`/`PrintScreen`/`NumLock`/小键盘 `.` 为假做逐条
+  抽查；功能键用例改为断言 `PrintScreen` 不再绑定（无图），
   `installed_models_get_default_keyboard_bindings` 断言 `gamepad` 预置不绑任何键盘键、手柄按钮
   映射不变。
 - `just check` 的六道门全过：`cargo fmt --all -- --check`；

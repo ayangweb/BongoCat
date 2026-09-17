@@ -4175,6 +4175,30 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       严格性，与按键层一致）。**既有缺口（不由本项引入）**：`bongocat-overlay` 的
       `preview_input_bindings` 仍是 ADR-0041 之前的独立静态表，不感知键位图，人工预览 `gamepad`
       时行为与产品不同。
+    - 修饰键失去 hand 归属的回归修复（2026-09-17）：ADR-0041 的绑定循环照着一个**不完整的并集**
+      重写，`0xe0..=0xe7` 八个修饰键 usage 落空（`0x04..=0x65` 止于 `0x65`，功能键表跳到
+      `0x68`，小键盘 `=` 是单点），而 ADR-0041 之前的旧表里 `0xe0..=0xe7` 是显式列出的。后果：
+      `InputState::model_snapshot` 对 `hand_for == None` 直接丢弃，于是按下 `Shift`/`Control`/
+      `Alt`/`Meta` 既不置 `left_hand_down`/`right_hand_down`，也不产生按键 press ⇒ 模型画不出
+      `ShiftLeft.png`、`AltLeft.png`、`AltRight.png`、`AltGr.png`、`Control.png`、`Meta.png`
+      等修饰键美术，爪子也不动——ADR-0038 为左右 Alt 单独出图的工作被同时作废。**快捷键不受影响**：
+      `bongocat-platform::ShortcutMatcher` 自己维护 pressed 集合（平台 adapter 对每个键边沿同时
+      喂 runtime 与 dispatcher），与 `InputBindings` 无关；但**单独按一个修饰键永远不会触发快捷键**
+      是 `ShortcutMatcher::apply` 的既有设计（`modifier_bit(key).is_some()` 直接返回 `None`），
+      不是本次回归。
+      修复与防回归：①`input_bindings_for_model` 补回 `0xe0..=0xe7` → 左手（仍受 ADR-0042 的键位图
+      门禁约束）；②`bongocat-app` 的绑定契约测试改为**遍历 adapter 产出并集**（`0x04..=0x65` ∪
+      `{0x67}` ∪ `0x68..=0x73` ∪ `0xe0..=0xe7`，逐 usage 断言绑定等于"该模型能画则绑"），不再只
+      遍历实现恰好用到的区间——修复前该用例在 `custom-model 0xe0` 上以 `left: None / right:
+      Some(Left)` 失败，是本次回归的直接证据；③`bongocat-live2d` 的
+      `every_key_the_platform_adapters_can_report_has_a_name` 同步补上修饰键段，使其名称与断言
+      范围一致（原先声称覆盖 adapter 全部产出，实际漏掉 `0xe0..=0xe7`）；④端到端用例
+      `a_key_the_active_model_cannot_draw_never_moves_the_paw` 增加 `0xe1`（`ShiftLeft.png`）与
+      `0xe7`（无 `MetaRight.png`，走共享 `Meta.png`）两个 drawable 断言。
+      验收证据：`bongocat-app` `--lib` 125 测试全过、`bongocat-live2d` 52 测试全过、`just check`
+      六道门全过。**未运行**：Windows/macOS 实机按键确认。**CHANGELOG 判定为跳过**：该回归在
+      `v1.1.0` 之后、`2.0.0` 发布之前引入并修复，从未随任何发布版本出厂，因此 2.0.0 的变更日志
+      无需新增条目（详见本次报告）。
 
 ## 13. 待决策清单
 | 决策                                                          | 最迟完成              | 阻塞内容                           |

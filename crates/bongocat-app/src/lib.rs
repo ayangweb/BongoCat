@@ -1774,6 +1774,17 @@ fn input_bindings_for_model(
         }
         // Keypad `=`, which macOS reports as a usage of its own.
         bind_drawable_key(&mut key_hands, 0x67, HandSide::Left, key_images);
+        // The eight modifier usages. They sit above every range in this block,
+        // which is exactly why they were dropped when the block was rewritten:
+        // `0x04..=0x65` stops at `0x65`, the function table resumes at `0x68`,
+        // and the keypad `=` is a single usage, so `0xe0..=0xe7` matched none of
+        // them. Unbound modifiers never reach `InputState::model_snapshot`, so
+        // no model could draw `ShiftLeft.png`, `AltLeft.png` or the shared
+        // `Meta.png`, and no paw moved for Shift, Control, Alt or Meta — the
+        // exact failure ADR-0038 renamed the Alt images to prevent.
+        for usage in 0xe0..=0xe7 {
+            bind_drawable_key(&mut key_hands, usage, HandSide::Left, key_images);
+        }
     } else {
         bind_drawable_key(
             &mut key_hands,
@@ -2200,6 +2211,24 @@ mod tests {
         KeyImageInventory::read(model.root())
     }
 
+    /// Every HID usage the two platform adapters can report, which is the set the
+    /// binding table has to cover: the main block (punctuation, PrintScreen and
+    /// the navigation cluster included), keypad `=`, F13 … F24, and the eight
+    /// modifier usages. `0x66` (Power) is the only gap, because neither adapter
+    /// maps it.
+    ///
+    /// The modifier block is written out instead of relying on the ranges the
+    /// implementation uses: it sits above `0x04..=0x65` and below nothing else,
+    /// so a rewrite of the binding loops dropped Shift, Control, Alt and Meta
+    /// without any range looking wrong.
+    fn adapter_keyboard_usages() -> Vec<u16> {
+        (0x04..=0x65)
+            .chain([0x67])
+            .chain(0x68..=0x73)
+            .chain(0xe0..=0xe7)
+            .collect()
+    }
+
     #[test]
     fn installed_models_get_default_keyboard_bindings() {
         // An imported model is bound from the same keyboard table as the
@@ -2296,39 +2325,39 @@ mod tests {
     fn keyboard_models_bind_every_drawable_key_of_the_standard_layout() {
         let standard_images = shipped_key_images("standard");
         let keyboard_images = shipped_key_images("keyboard");
-        for (origin, id, images) in [
-            (ModelOrigin::Installed, "custom-model", &keyboard_images),
-            (ModelOrigin::Preset, "standard", &standard_images),
-            (ModelOrigin::Preset, "keyboard", &keyboard_images),
+        for (origin, id, images, binds_arrows) in [
+            (
+                ModelOrigin::Installed,
+                "custom-model",
+                &keyboard_images,
+                true,
+            ),
+            (ModelOrigin::Preset, "standard", &standard_images, false),
+            (ModelOrigin::Preset, "keyboard", &keyboard_images, true),
         ] {
             let bindings = input_bindings_for_model(origin, id, images);
-            for usage in 0x04..=0x65 {
-                // The four arrows are the right hand's cluster.
-                if (0x4f..=0x52).contains(&usage) {
-                    continue;
-                }
-                assert_eq!(
-                    bindings.hand_for(PhysicalKey::from_hid_usage(usage)),
+            // Walk the whole adapter union, not the ranges the implementation
+            // happens to use: the modifier block sits outside `0x04..=0x65` and
+            // outside `0x68..=0x73`, and a rewrite of those two loops dropped all
+            // eight of them once already.
+            for usage in adapter_keyboard_usages() {
+                let expected = if (0x4f..=0x52).contains(&usage) {
+                    // The four arrows are the right hand's cluster.
+                    binds_arrows
+                        .then(|| images.can_draw(KeySide::Right, usage))
+                        .filter(|drawable| *drawable)
+                        .map(|_| HandSide::Right)
+                } else {
                     images
                         .can_draw(KeySide::Left, usage)
-                        .then_some(HandSide::Left),
+                        .then_some(HandSide::Left)
+                };
+                assert_eq!(
+                    bindings.hand_for(PhysicalKey::from_hid_usage(usage)),
+                    expected,
                     "{id} 0x{usage:02x}"
                 );
             }
-            for usage in 0x68..=0x73 {
-                assert_eq!(
-                    bindings.hand_for(PhysicalKey::from_hid_usage(usage)),
-                    Some(HandSide::Left),
-                    "{id} F13-F24 0x{usage:02x}"
-                );
-            }
-            assert_eq!(
-                bindings.hand_for(PhysicalKey::from_hid_usage(0x67)),
-                images
-                    .can_draw(KeySide::Left, 0x67)
-                    .then_some(HandSide::Left),
-                "{id} keypad ="
-            );
             // Spot checks, so the rule stays visible instead of being only a
             // mirror of the code under test.
             for (usage, expected, why) in [
@@ -2337,6 +2366,13 @@ mod tests {
                 (0x4c, true, "every keyboard model ships Delete.png"),
                 (0x59, true, "keypad 1 falls back to Num1.png"),
                 (0x58, true, "keypad Enter falls back to Enter.png"),
+                (0xe0, true, "Control.png is the shared family image"),
+                (0xe1, true, "every keyboard model ships ShiftLeft.png"),
+                (0xe2, true, "every keyboard model ships AltLeft.png"),
+                (0xe3, true, "MetaLeft.png is not shipped, Meta.png is"),
+                (0xe5, true, "every keyboard model ships ShiftRight.png"),
+                (0xe6, true, "every keyboard model ships AltRight.png"),
+                (0xe7, true, "MetaRight.png is not shipped, Meta.png is"),
                 (0x37, false, "no shipped model draws Dot.png"),
                 (0x46, false, "no shipped model draws PrintScreen.png"),
                 (0x53, false, "no shipped model draws NumLock.png"),
@@ -2352,29 +2388,9 @@ mod tests {
             }
         }
 
-        // The arrows stay the right hand's cluster for the models that ship that
-        // artwork; `standard` has no `right-keys` directory at all.
-        for (origin, id) in [
-            (ModelOrigin::Installed, "custom-model"),
-            (ModelOrigin::Preset, "keyboard"),
-        ] {
-            let bindings = input_bindings_for_model(origin, id, &keyboard_images);
-            for usage in 0x4f..=0x52 {
-                assert_eq!(
-                    bindings.hand_for(PhysicalKey::from_hid_usage(usage)),
-                    Some(HandSide::Right),
-                    "{id} 0x{usage:02x}"
-                );
-            }
-        }
-        let standard = input_bindings_for_model(ModelOrigin::Preset, "standard", &standard_images);
-        for usage in 0x4f..=0x52 {
-            assert_eq!(
-                standard.hand_for(PhysicalKey::from_hid_usage(usage)),
-                None,
-                "standard 0x{usage:02x} ships no arrow artwork"
-            );
-        }
+        // The union walk above covers the arrows too: they are the right hand's
+        // cluster for the models that ship that artwork, and `standard` has no
+        // `right-keys` directory at all.
 
         // The gamepad model keeps its button-only mapping.
         let gamepad = input_bindings_for_model(
@@ -2424,7 +2440,11 @@ mod tests {
 
         let input = application.input_producer();
         let mut sequence = 0;
-        for (hid_usage, drawable) in [(0x04u16, true), (0x37, false)] {
+        // `0xe1` (left Shift) is the modifier case: the bundled model draws it
+        // through `ShiftLeft.png`, and a binding table that misses the modifier
+        // block drops it before the paw ever moves. `0xe7` (right Meta) has no
+        // `MetaRight.png` and is drawn through the shared `Meta.png`.
+        for (hid_usage, drawable) in [(0x04u16, true), (0xe1, true), (0xe7, true), (0x37, false)] {
             for edge in [InputEdge::Down, InputEdge::Up] {
                 sequence += 1;
                 let published = input

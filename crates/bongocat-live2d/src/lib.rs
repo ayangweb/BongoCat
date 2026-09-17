@@ -1623,23 +1623,22 @@ mod tests {
 
     /// The vocabulary has no holes: every key the platform adapters can report
     /// carries at least one candidate name, so a model that ships artwork for it
-    /// is honoured without a product change. HID `0x66` (Power) is the only usage
-    /// in the block neither adapter ever produces, so it stays unnamed.
+    /// is honoured without a product change. That set is the main block, keypad
+    /// `=` (macOS reports it separately), F13 … F24 and the eight modifier usages
+    /// `0xe0..=0xe7`; HID `0x66` (Power) is the only usage in the block neither
+    /// adapter ever produces, so it stays unnamed.
     #[test]
     fn every_key_the_platform_adapters_can_report_has_a_name() {
-        for usage in 0x04..=0x65 {
+        for usage in (0x04..=0x65)
+            .chain([0x67])
+            .chain(0x68..=0x73)
+            .chain(0xe0..=0xe7)
+        {
             assert!(
                 !key_name_candidates(usage).is_empty(),
                 "0x{usage:02x} has no candidate name"
             );
         }
-        for usage in 0x68..=0x73 {
-            assert!(
-                !key_name_candidates(usage).is_empty(),
-                "0x{usage:02x} has no candidate name"
-            );
-        }
-        assert!(!key_name_candidates(0x67).is_empty(), "keypad =");
         assert!(
             key_name_candidates(0x66).is_empty(),
             "Power is not a key either adapter maps"

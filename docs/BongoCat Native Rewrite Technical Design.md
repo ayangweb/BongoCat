@@ -475,10 +475,12 @@ canonical 名（`AltLeft`/`AltRight`、`ControlLeft`/`ControlRight`、`ShiftLeft
 （`Kp1`…`Kp9`、`Kp0` → `Num1`…`Num9`、`Num0`，`KpEnter` → `Enter`，`KpDivide` → `Slash`）；
 `NumLock`、`KpMultiply`、`KpMinus`、`KpPlus`、`KpDecimal` 在主键盘上没有对应键，缺图时不绘制。
 小键盘整块归左手，因为可复用的数字、Enter 和 Slash 图只存在于 `left-keys`（见 ADR-0040）。键位词表
-覆盖标准 104/105 布局与小键盘的全部按键，范围由两个平台 adapter 实际能产出的 usage 界定，且**不以
-预置模型当前是否有图**为前提：命名是与模型作者的契约，模型提供 `Dot.png`、`Minus.png`、`Delete.png`
-等任何键位图都必须在不改产品代码的前提下生效；`hand` 归属覆盖同一集合，因为
-`InputState::model_snapshot` 会丢弃没有 hand 归属的按键（见 ADR-0041）。
+覆盖标准 104/105 布局与小键盘的全部按键，范围由两个平台 adapter 实际能产出的 usage 界定，即
+`0x04..=0x65` ∪ `{0x67}` ∪ `0x68..=0x73` ∪ `0xe0..=0xe7`（八个修饰键 usage；`0x66` `Power`
+两边都不产出），且**不以预置模型当前是否有图**为前提：命名是与模型作者的契约，模型提供 `Dot.png`、
+`Minus.png`、`Delete.png` 等任何键位图都必须在不改产品代码的前提下生效；`hand` 归属覆盖同一集合
+（含修饰键块，见 ADR-0041 事实 4 修订），因为 `InputState::model_snapshot` 会丢弃没有 hand 归属的
+按键，且该集合由契约测试遍历而不是由实现恰好用到的区间决定。
 
 **只有模型确实提供对应键位图时，按键才产生动作**（见 ADR-0042）：`bongocat-app` 在激活模型时用
 `bongocat-live2d::KeyImageInventory` 读取该模型的键位图清单（与渲染侧加载共用同一次目录扫描和同一套
