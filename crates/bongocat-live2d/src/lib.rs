@@ -839,12 +839,21 @@ fn load_key_assets(root: &std::path::Path) -> Result<Vec<bongocat_render::KeyAss
 /// A model may ship one image per key or a single shared image for a whole key
 /// family. The HID function keys F1 … F24 therefore resolve to their own
 /// `F1.png` … `F24.png` when the model provides one and fall back to the shared
-/// `Fn.png` otherwise; the keypad Enter key falls back to the main `Enter`
-/// artwork when the model does not draw a dedicated `KpEnter.png`; every other
-/// key only ever has an exact name plus, for the four modifier pairs, the
-/// shared side-independent asset (`Control`, `Shift`, `Alt`, `Meta`). A name
-/// that the model does not provide is skipped, so an incomplete model simply
-/// draws nothing for that key.
+/// `Fn.png` otherwise; the keypad block falls back to the main keyboard key each
+/// of its keys duplicates (see below); every other key only ever has an exact
+/// name plus, for the four modifier pairs, the shared side-independent asset
+/// (`Control`, `Shift`, `Alt`, `Meta`). A name that the model does not provide is
+/// skipped, so an incomplete model simply draws nothing for that key.
+///
+/// The table covers the whole standard 104/105-key layout plus the keypad, not
+/// just the keys the shipped models draw. A name is a contract with model
+/// authors: `Dot`, `Minus`, `Insert` and the rest ship no artwork today, but a
+/// model that provides one has to be honoured without a product change, and it
+/// cannot be if the name does not exist. Every physical key the platform
+/// adapters can report is therefore named here. A name only becomes reachable if
+/// the runtime also assigns that key a hand
+/// (`bongocat-app::input_bindings_for_model`), so the two tables cover the same
+/// set.
 ///
 /// `AltGr` and `Return` are the two legacy names in this table. BongoCat models
 /// written before the import normalizer existed ship the right Alt artwork as
@@ -856,6 +865,20 @@ fn load_key_assets(root: &std::path::Path) -> Result<Vec<bongocat_render::KeyAss
 /// before. `Return` is the old spelling of the main Enter key (HID `0x28`) and
 /// ranks after the canonical `Enter`, so both spellings can never disagree on
 /// which artwork a key means.
+///
+/// The keypad block (HID `0x53` … `0x63`) carries the `Kp*` vocabulary that the
+/// Mver conversion has always emitted, plus `NumLock`, and falls back to the
+/// main keyboard key it duplicates. Every keypad key that produces the same
+/// character as a main keyboard key falls back to it — `Kp1` … `Kp9`, `Kp0` to
+/// the number row's `Num1` … `Num9`, `Num0`; `KpEnter` to `Enter`; `KpDivide` to
+/// `Slash`; `KpMinus` to `Minus`; `KpDecimal` to `Dot` — so a keypad key no model
+/// ever drew still draws something whenever its counterpart has artwork.
+/// `NumLock`, `KpMultiply` and `KpPlus` have no counterpart at all: `*` and `+`
+/// are reachable on the main keyboard only through `Shift`, so they keep their
+/// exact name and draw nothing until a model provides artwork of its own. The
+/// keypad is the left hand's cluster for the same reason — `left-keys` is the
+/// directory the shared digit, Enter and Slash artwork lives in, and the runtime
+/// resolves an overlay against the pressed side only.
 fn key_name_candidates(hid_usage: u16) -> Vec<&'static str> {
     let function_key = bongocat_render::function_key_name(hid_usage);
     let exact = match hid_usage {
@@ -867,13 +890,56 @@ fn key_name_candidates(hid_usage: u16) -> Vec<&'static str> {
         0x2a => Some("Backspace"),
         0x2b => Some("Tab"),
         0x2c => Some("Space"),
+        // The punctuation block, in HID order. None of these keys ships artwork
+        // today, and that is deliberately not a reason to leave them unnamed:
+        // the vocabulary is a contract with model authors, not a list of the
+        // images the shipped models happen to carry. A model that provides
+        // `Dot.png` or `Minus.png` has to work without a product change, and it
+        // cannot if the name does not exist.
+        0x2d => Some("Minus"),
+        0x2e => Some("Equal"),
+        0x2f => Some("LeftBracket"),
+        0x30 => Some("RightBracket"),
+        0x31 => Some("BackSlash"),
+        0x32 => Some("IntlHash"),
+        0x33 => Some("SemiColon"),
+        0x34 => Some("Quote"),
         0x35 => Some("BackQuote"),
+        0x36 => Some("Comma"),
+        0x37 => Some("Dot"),
         0x38 => Some("Slash"),
         0x39 => Some("CapsLock"),
+        // PrintScreen, ScrollLock, Pause and the navigation cluster. PrintScreen
+        // is not a function key — `FUNCTION_KEY_USAGES` deliberately stops at
+        // `0x45` and resumes at `0x68` — but it is still a key, with its own name
+        // and hand like every other one.
+        0x46 => Some("PrintScreen"),
+        0x47 => Some("ScrollLock"),
+        0x48 => Some("Pause"),
+        0x49 => Some("Insert"),
+        0x4a => Some("Home"),
+        0x4b => Some("PageUp"),
+        0x4c => Some("Delete"),
+        0x4d => Some("End"),
+        0x4e => Some("PageDown"),
         0x4f => Some("RightArrow"),
         0x50 => Some("LeftArrow"),
         0x51 => Some("DownArrow"),
         0x52 => Some("UpArrow"),
+        // The keypad block, minus `0x58`: keypad Enter sits with the main Enter
+        // above because the two are one key split in two.
+        0x53 => Some("NumLock"),
+        0x54 => Some("KpDivide"),
+        0x55 => Some("KpMultiply"),
+        0x56 => Some("KpMinus"),
+        0x57 => Some("KpPlus"),
+        0x59..=0x62 => Some(KEYPAD_DIGIT_NAMES[usize::from(hid_usage - 0x59)]),
+        0x63 => Some("KpDecimal"),
+        // ISO layouts carry an extra key beside the left Shift, and macOS reports
+        // the keypad `=` as a usage of its own.
+        0x64 => Some("IntlBackslash"),
+        0x65 => Some("Apps"),
+        0x67 => Some("KpEqual"),
         0xe0 => Some("ControlLeft"),
         0xe1 => Some("ShiftLeft"),
         0xe2 => Some("AltLeft"),
@@ -904,13 +970,24 @@ fn key_name_candidates(hid_usage: u16) -> Vec<&'static str> {
         // in place (`next` has no migration path).
         candidates.push("Return");
     }
-    if hid_usage == 0x58 {
-        // Keypad Enter: the model's dedicated `KpEnter.png` wins, and a model
-        // that only drew the main Enter key still shows something for the
-        // keypad's Return. Always the last candidate.
-        candidates.push("Enter");
-    }
     match hid_usage {
+        // Keypad fallbacks: the exact `Kp*` name above wins when the model drew
+        // that key, and the main keyboard key the keypad key duplicates draws
+        // otherwise. A fallback only exists where the keypad key produces the
+        // same character as a named main keyboard key — `.` and `-` have main
+        // keyboard keys of their own, while `*` and `+` are reachable only
+        // through `Shift` and `NumLock` has no counterpart at all. Always the
+        // last candidate.
+        0x54 => candidates.push("Slash"),
+        0x56 => candidates.push("Minus"),
+        0x58 => candidates.push("Enter"),
+        0x59..=0x62 => {
+            // `Kp1` … `Kp9`, `Kp0` duplicate the number row's `Num1` … `Num9`,
+            // `Num0`. `KEY_NUMBERS` is ordered `1` … `9`, `0`, the same order as
+            // `KEYPAD_DIGIT_NAMES`, so one index drives both tables.
+            candidates.push(KEY_NUMBERS[usize::from(hid_usage - 0x59)]);
+        }
+        0x63 => candidates.push("Dot"),
         0xe0 | 0xe4 => candidates.push("Control"),
         0xe1 | 0xe5 => candidates.push("Shift"),
         0xe2 => candidates.push("Alt"),
@@ -934,6 +1011,15 @@ const KEY_LETTERS: [&str; 26] = [
 ];
 const KEY_NUMBERS: [&str; 10] = [
     "Num1", "Num2", "Num3", "Num4", "Num5", "Num6", "Num7", "Num8", "Num9", "Num0",
+];
+/// Keypad asset names for the ten digits, in the same HID and artwork order as
+/// [`KEY_NUMBERS`]: `Kp1` … `Kp9`, `Kp0`.
+///
+/// The Mver conversion has emitted the `Kp*` vocabulary since ADR-0037; the two
+/// tables line up index for index so a keypad digit's exact name and the number
+/// row key it duplicates come from a single offset.
+const KEYPAD_DIGIT_NAMES: [&str; 10] = [
+    "Kp1", "Kp2", "Kp3", "Kp4", "Kp5", "Kp6", "Kp7", "Kp8", "Kp9", "Kp0",
 ];
 
 fn load_background_asset(
@@ -1344,6 +1430,257 @@ mod tests {
             assert_eq!(keypad_name, "Enter", "{id} keypad Enter falls back");
             assert!(main_path.ends_with("resources/left-keys/Enter.png"));
             assert_eq!(main_path, keypad_path, "{id} shares the Enter artwork");
+        }
+    }
+
+    /// The whole keypad block carries the `Kp*` vocabulary the Mver conversion
+    /// has always emitted, plus `NumLock`. Every keypad key that duplicates a
+    /// main keyboard key lists that key's name as its second candidate; the five
+    /// keys with no counterpart on the main keyboard keep their exact name and
+    /// nothing else, because there is no artwork to fall back to.
+    #[test]
+    fn keypad_keys_name_themselves_and_fall_back_to_their_main_keyboard_twin() {
+        for (hid_usage, expected) in [
+            (0x53, vec!["NumLock"]),
+            (0x54, vec!["KpDivide", "Slash"]),
+            (0x55, vec!["KpMultiply"]),
+            (0x56, vec!["KpMinus", "Minus"]),
+            (0x57, vec!["KpPlus"]),
+            (0x58, vec!["KpEnter", "Enter"]),
+            (0x59, vec!["Kp1", "Num1"]),
+            (0x5a, vec!["Kp2", "Num2"]),
+            (0x5b, vec!["Kp3", "Num3"]),
+            (0x5c, vec!["Kp4", "Num4"]),
+            (0x5d, vec!["Kp5", "Num5"]),
+            (0x5e, vec!["Kp6", "Num6"]),
+            (0x5f, vec!["Kp7", "Num7"]),
+            (0x60, vec!["Kp8", "Num8"]),
+            (0x61, vec!["Kp9", "Num9"]),
+            (0x62, vec!["Kp0", "Num0"]),
+            (0x63, vec!["KpDecimal", "Dot"]),
+        ] {
+            assert_eq!(
+                key_name_candidates(hid_usage),
+                expected,
+                "keypad 0x{hid_usage:02x}"
+            );
+        }
+    }
+
+    /// The fallback is what a user actually sees: no model in the repository and
+    /// none of the collected community samples draws a dedicated `Kp*.png`. Each
+    /// shipped keyboard preset must therefore draw the digit, Enter and Slash
+    /// artwork for the keypad keys that duplicate them, and must keep drawing
+    /// nothing for the five keys that have no counterpart to borrow from.
+    #[test]
+    fn shipped_keyboard_models_draw_the_keypad_from_the_main_keyboard_artwork() {
+        use bongocat_model::{ModelPackageLimits, PresetModelCatalog};
+        use bongocat_render::{KeyPress, KeyPressSet, KeySide, RenderResources};
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/models");
+        let catalog =
+            PresetModelCatalog::open(&root, ModelPackageLimits::default()).expect("catalog");
+        for id in ["standard", "keyboard"] {
+            let model = catalog
+                .load(&bongocat_model::ModelId::parse(id).expect("model id"))
+                .expect("preset model");
+            let resources = RenderResources {
+                textures: Vec::new(),
+                key_assets: load_key_assets(model.root()).expect("key assets"),
+                background: None,
+            };
+            assert!(
+                !resources
+                    .key_assets
+                    .iter()
+                    .any(|asset| asset.name.starts_with("Kp")),
+                "{id} ships no keypad artwork, so every keypad key is a fallback"
+            );
+
+            let resolve = |hid_usage: u16| {
+                let mut presses = KeyPressSet::default();
+                presses.push(KeyPress {
+                    hid_usage,
+                    side: KeySide::Left,
+                });
+                resolve_key_overlays(&resources, presses)
+                    .first()
+                    .map(|overlay| resources.key_assets[overlay.asset_id.index()].name.clone())
+            };
+
+            for (hid_usage, artwork) in [
+                (0x54, "Slash"),
+                (0x58, "Enter"),
+                (0x59, "Num1"),
+                (0x5a, "Num2"),
+                (0x5b, "Num3"),
+                (0x5c, "Num4"),
+                (0x5d, "Num5"),
+                (0x5e, "Num6"),
+                (0x5f, "Num7"),
+                (0x60, "Num8"),
+                (0x61, "Num9"),
+                (0x62, "Num0"),
+            ] {
+                assert_eq!(
+                    resolve(hid_usage).as_deref(),
+                    Some(artwork),
+                    "{id} keypad 0x{hid_usage:02x} must fall back to {artwork}"
+                );
+            }
+
+            // Nothing to draw either way: 0x53, 0x55 and 0x57 have no main
+            // keyboard counterpart at all, and 0x56 / 0x63 have one (`Minus`,
+            // `Dot`) whose artwork the shipped models do not ship.
+            for hid_usage in [0x53, 0x55, 0x56, 0x57, 0x63] {
+                assert_eq!(
+                    resolve(hid_usage),
+                    None,
+                    "{id} keypad 0x{hid_usage:02x} has no artwork to draw"
+                );
+            }
+        }
+    }
+
+    /// The vocabulary has no holes: every key the platform adapters can report
+    /// carries at least one candidate name, so a model that ships artwork for it
+    /// is honoured without a product change. HID `0x66` (Power) is the only usage
+    /// in the block neither adapter ever produces, so it stays unnamed.
+    #[test]
+    fn every_key_the_platform_adapters_can_report_has_a_name() {
+        for usage in 0x04..=0x65 {
+            assert!(
+                !key_name_candidates(usage).is_empty(),
+                "0x{usage:02x} has no candidate name"
+            );
+        }
+        for usage in 0x68..=0x73 {
+            assert!(
+                !key_name_candidates(usage).is_empty(),
+                "0x{usage:02x} has no candidate name"
+            );
+        }
+        assert!(!key_name_candidates(0x67).is_empty(), "keypad =");
+        assert!(
+            key_name_candidates(0x66).is_empty(),
+            "Power is not a key either adapter maps"
+        );
+    }
+
+    /// A name is a contract with model authors, not a list of the images the
+    /// shipped models happen to carry. A model that provides a key image the
+    /// presets never shipped must draw it with no product change — and a model
+    /// that provides none of them must keep drawing nothing.
+    #[test]
+    fn a_model_providing_a_named_key_image_draws_it() {
+        use bongocat_render::{
+            KeyAsset, KeyAssetId, KeyPress, KeyPressSet, KeySide, RenderResources,
+        };
+        use std::path::PathBuf;
+
+        let resources = |names: &[&str]| RenderResources {
+            textures: Vec::new(),
+            key_assets: names
+                .iter()
+                .enumerate()
+                .map(|(index, name)| KeyAsset {
+                    id: KeyAssetId::new(index),
+                    side: KeySide::Left,
+                    name: (*name).to_owned(),
+                    path: PathBuf::from(format!("{name}.png")),
+                    width: 612,
+                    height: 354,
+                })
+                .collect(),
+            background: None,
+        };
+        let resolve = |model: &RenderResources, hid_usage: u16| {
+            let mut presses = KeyPressSet::default();
+            presses.push(KeyPress {
+                hid_usage,
+                side: KeySide::Left,
+            });
+            resolve_key_overlays(model, presses)
+                .first()
+                .map(|overlay| model.key_assets[overlay.asset_id.index()].name.clone())
+        };
+
+        // A model that draws the punctuation block, the navigation cluster and
+        // the keypad keys no shipped model ever drew.
+        let future = resources(&[
+            "Minus",
+            "Equal",
+            "LeftBracket",
+            "RightBracket",
+            "BackSlash",
+            "IntlHash",
+            "SemiColon",
+            "Quote",
+            "Comma",
+            "Dot",
+            "PrintScreen",
+            "ScrollLock",
+            "Pause",
+            "Insert",
+            "Home",
+            "PageUp",
+            "Delete",
+            "End",
+            "PageDown",
+            "NumLock",
+            "KpMultiply",
+            "KpMinus",
+            "KpPlus",
+            "KpDecimal",
+            "IntlBackslash",
+            "Apps",
+            "KpEqual",
+        ]);
+        for (hid_usage, name) in [
+            (0x2d, "Minus"),
+            (0x2e, "Equal"),
+            (0x2f, "LeftBracket"),
+            (0x30, "RightBracket"),
+            (0x31, "BackSlash"),
+            (0x32, "IntlHash"),
+            (0x33, "SemiColon"),
+            (0x34, "Quote"),
+            (0x36, "Comma"),
+            (0x37, "Dot"),
+            (0x46, "PrintScreen"),
+            (0x47, "ScrollLock"),
+            (0x48, "Pause"),
+            (0x49, "Insert"),
+            (0x4a, "Home"),
+            (0x4b, "PageUp"),
+            (0x4c, "Delete"),
+            (0x4d, "End"),
+            (0x4e, "PageDown"),
+            (0x53, "NumLock"),
+            (0x55, "KpMultiply"),
+            (0x56, "KpMinus"),
+            (0x57, "KpPlus"),
+            (0x63, "KpDecimal"),
+            (0x64, "IntlBackslash"),
+            (0x65, "Apps"),
+            (0x67, "KpEqual"),
+        ] {
+            assert_eq!(
+                resolve(&future, hid_usage).as_deref(),
+                Some(name),
+                "0x{hid_usage:02x} must draw {name}.png when a model ships it"
+            );
+        }
+
+        // The shipped vocabulary draws nothing for them, because it ships none
+        // of these images — the reason is the resource, not the name.
+        let shipped = resources(&["KeyA", "Num1", "Enter", "Slash"]);
+        for hid_usage in [0x37, 0x2d, 0x4c, 0x63] {
+            assert_eq!(
+                resolve(&shipped, hid_usage),
+                None,
+                "0x{hid_usage:02x} has no artwork in the shipped vocabulary"
+            );
         }
     }
 

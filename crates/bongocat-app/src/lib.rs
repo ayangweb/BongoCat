@@ -1714,26 +1714,34 @@ fn input_bindings_for_model(origin: ModelOrigin, model_id: &str) -> InputBinding
         origin == ModelOrigin::Installed || matches!(model_id, "standard" | "keyboard");
     let mut key_hands = BTreeMap::new();
     if keyboard_model {
-        for usage in 0x04..=0x27 {
+        // Every key of the standard 104/105-key layout belongs to the left hand
+        // and the arrow cluster to the right: the model's left paw draws the
+        // keyboard block and its right paw draws the arrows. One loop covers the
+        // whole block, punctuation, PrintScreen and the navigation cluster
+        // included, because naming and binding have to cover the same set.
+        // `bongocat-live2d::key_name_candidates` names every one of these keys,
+        // and `InputState::model_snapshot` drops any press without a hand
+        // assignment before the key-image resolver ever sees it — so a key that
+        // is named but not bound can never draw its artwork. The vocabulary is
+        // deliberately not limited to the keys the shipped models happen to
+        // draw: a model that ships `Dot.png`, `Minus.png` or `Insert.png` has to
+        // work without a product change.
+        for usage in 0x04..=0x65 {
+            if (RIGHT_ARROW.hid_usage()..=0x52).contains(&usage) {
+                continue;
+            }
             key_hands.insert(PhysicalKey::from_hid_usage(usage), HandSide::Left);
         }
-        // The top function row, F1-F24. The shipped models draw all of it with
-        // `Fn.png`, so these keys must still carry a hand: without one
-        // `InputState::model_snapshot` drops the press and no overlay is drawn.
-        // They sit above the left half of the board, next to the already-left
-        // `Escape`. `FUNCTION_KEY_USAGES` is the same table the key-image
+        // F13 … F24 sit above the block; F1 … F12 are already covered by the
+        // loop above. `FUNCTION_KEY_USAGES` is the same table the key-image
         // resolver names its assets from.
         for (first, last) in FUNCTION_KEY_USAGES {
             for usage in first..=last {
                 key_hands.insert(PhysicalKey::from_hid_usage(usage), HandSide::Left);
             }
         }
-        for usage in [
-            0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x35, 0x38, 0x39, 0x4c, 0xe0, 0xe1, 0xe2, 0xe3, 0xe4,
-            0xe5, 0xe6, 0xe7,
-        ] {
-            key_hands.insert(PhysicalKey::from_hid_usage(usage), HandSide::Left);
-        }
+        // Keypad `=`, which macOS reports as a usage of its own.
+        key_hands.insert(PhysicalKey::from_hid_usage(0x67), HandSide::Left);
     } else {
         key_hands.insert(PhysicalKey::KEY_A, HandSide::Left);
     }
@@ -2162,11 +2170,18 @@ mod tests {
                     );
                 }
             }
-            // PrintScreen sits directly after F12 and is not a function key.
+            // PrintScreen sits directly after F12 but is not a function key: it
+            // gets no `Fn` fallback from the resolver, and it is bound as an
+            // ordinary key rather than through `FUNCTION_KEY_USAGES`.
+            assert_eq!(
+                bongocat_render::function_key_name(0x46),
+                None,
+                "{id} PrintScreen must not be a function key"
+            );
             assert_eq!(
                 bindings.hand_for(PhysicalKey::from_hid_usage(0x46)),
-                None,
-                "{id} must not bind PrintScreen"
+                Some(HandSide::Left),
+                "{id} PrintScreen is an ordinary bound key"
             );
         }
 
@@ -2174,6 +2189,67 @@ mod tests {
         let gamepad = input_bindings_for_model(ModelOrigin::Preset, "gamepad");
         assert_eq!(gamepad.hand_for(PhysicalKey::from_hid_usage(0x3a)), None);
         assert_eq!(gamepad.hand_for(PhysicalKey::from_hid_usage(0x68)), None);
+    }
+
+    /// Naming and binding have to cover the same set. `bongocat-live2d`'s
+    /// resolver names every key of the standard 104/105-key layout plus the
+    /// keypad, and `InputState::model_snapshot` drops a press whose key has no
+    /// hand assignment before the resolver ever sees it — so a named but unbound
+    /// key can never draw its artwork. The whole block goes to the left hand
+    /// because `left-keys` is where the shipped key images live; the arrow
+    /// cluster is the right hand's.
+    #[test]
+    fn keyboard_models_bind_every_named_key_of_the_standard_layout() {
+        for (origin, id) in [
+            (ModelOrigin::Installed, "custom-model"),
+            (ModelOrigin::Preset, "standard"),
+            (ModelOrigin::Preset, "keyboard"),
+        ] {
+            let bindings = input_bindings_for_model(origin, id);
+            for usage in 0x04..=0x65 {
+                // The four arrows are the right hand's cluster.
+                if (0x4f..=0x52).contains(&usage) {
+                    continue;
+                }
+                assert_eq!(
+                    bindings.hand_for(PhysicalKey::from_hid_usage(usage)),
+                    Some(HandSide::Left),
+                    "{id} 0x{usage:02x}"
+                );
+            }
+            for usage in 0x68..=0x73 {
+                assert_eq!(
+                    bindings.hand_for(PhysicalKey::from_hid_usage(usage)),
+                    Some(HandSide::Left),
+                    "{id} F13-F24 0x{usage:02x}"
+                );
+            }
+            assert_eq!(
+                bindings.hand_for(PhysicalKey::from_hid_usage(0x67)),
+                Some(HandSide::Left),
+                "{id} keypad ="
+            );
+        }
+
+        // The arrows stay the right hand's cluster for the models that bind them.
+        for (origin, id) in [
+            (ModelOrigin::Installed, "custom-model"),
+            (ModelOrigin::Preset, "keyboard"),
+        ] {
+            let bindings = input_bindings_for_model(origin, id);
+            for usage in 0x4f..=0x52 {
+                assert_eq!(
+                    bindings.hand_for(PhysicalKey::from_hid_usage(usage)),
+                    Some(HandSide::Right),
+                    "{id} 0x{usage:02x}"
+                );
+            }
+        }
+
+        // The gamepad model keeps its button-only mapping.
+        let gamepad = input_bindings_for_model(ModelOrigin::Preset, "gamepad");
+        assert_eq!(gamepad.hand_for(PhysicalKey::from_hid_usage(0x58)), None);
+        assert_eq!(gamepad.hand_for(PhysicalKey::from_hid_usage(0x59)), None);
     }
 
     /// The binding test above proves the Map; this proves the press actually

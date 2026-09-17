@@ -4108,6 +4108,35 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `docs/phase-0/model-resource-inventory.md` 的 `contentManifestSha256` 仍是
       `c4103c7`（PNG 无损重压缩）之前的取值，仓库内没有生成该清单的脚本，算法无法从现有数据
       反推（文件数与字节数也已与该 commit 不符），因此本项只报告、不臆造新值。
+    - 小键盘键位图命名与完整键位词表（2026-09-17，ADR-0040 + ADR-0041）：闭合 ADR-0039 记录的
+      后续项「把 `Kp0..Kp9`、`KpMultiply` 等接入运行时候选」，并把键位词表补成完整集合。
+      ① `key_name_candidates` 增加小键盘整块精确名（`NumLock`、`KpDivide`、`KpMultiply`、
+      `KpMinus`、`KpPlus`、`KpDecimal`、`Kp1..Kp9`、`Kp0`）与回退候选（`Kp1..Kp9,Kp0` →
+      `Num1..Num9,Num0`、`KpEnter` → `Enter`、`KpDivide` → `Slash`、`KpMinus` → `Minus`、
+      `KpDecimal` → `Dot`），新增 `KEYPAD_DIGIT_NAMES` 与既有 `KEY_NUMBERS` 逐下标对齐。
+      ② 补齐主键盘缺失的 22 个 arm：标点 `Minus`/`Equal`/`LeftBracket`/`RightBracket`/`BackSlash`/
+      `IntlHash`/`SemiColon`/`Quote`/`Comma`/`Dot`，`PrintScreen`/`ScrollLock`/`Pause`，导航
+      `Insert`/`Home`/`PageUp`/`Delete`/`End`/`PageDown`，以及 `IntlBackslash`/`Apps`/`KpEqual`。
+      **词表范围由两个平台 adapter 实际能产出的 usage 界定**（`0x04..=0x65` ∪ `{0x67}` ∪
+      `0x68..=0x73`），**不以预置模型当前是否有图为前提**——命名是与模型作者的契约，
+      `0x66`（`Power`）两边都不产出故保持无名。③ `input_bindings_for_model` 收敛为一条循环绑定
+      `0x04..=0x65`（方向键除外）+ `F13..F24` + `0x67` → 左手：`InputState::model_snapshot`
+      会丢弃没有 hand 归属的按键，只加名字不加绑定等于死代码（ADR-0040 的 `KpEnter` 已踩过）。
+      `PrintScreen` 改为绑定，但 `FUNCTION_KEY_USAGES` 边界不变（它仍不是功能键）。
+      **修复的既有缺陷**：`0x4c`（`Delete`）一直绑在左手表里、`Delete.png` 也一直随两个预置模型
+      出厂，但没有名字 arm ⇒ **`Delete.png` 从出厂起就永远画不出来**；逐张核对 55 张预置键位图，
+      它是唯一不可达的一张，与功能键逐键图曾经的缺口同类。
+      验收证据：`bongocat-live2d` 50 测试（新增 2：
+      `every_key_the_platform_adapters_can_report_has_a_name` 断言 `0x04..=0x65`/`0x67`/
+      `0x68..=0x73` 每个 usage 的候选列表非空且 `0x66` 保持无名；
+      `a_model_providing_a_named_key_image_draws_it` 用合成资源断言 27 个新命名键在模型提供对应
+      PNG 时全部命中，并断言只提供出厂词汇的模型对这些键仍解析为空）；`bongocat-app` 124 测试
+      （`keyboard_models_bind_every_named_key_of_the_standard_layout` 断言整块布局的绑定覆盖，
+      功能键用例改为断言 `function_key_name(0x46) == None` + `hand_for(0x46) == Some(Left)`）。
+      `just check` 六道门全过（fmt、三组 clippy、`cargo test --workspace`、release check）。
+      **未运行**：Windows/macOS 实机按键、UI 实机点击。
+      **行为变化（尚未实机确认观感）**：标点键、`PrintScreen`、导航键现在都会让左爪下压，
+      此前完全无反应；除 `Delete.png` 外，本次补的名字都还没有美术，需要模型补图才有视觉效果。
 
 ## 13. 待决策清单
 | 决策                                                          | 最迟完成              | 阻塞内容                           |

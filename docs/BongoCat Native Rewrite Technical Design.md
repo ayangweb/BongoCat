@@ -470,7 +470,15 @@ HID 功能键 F1-F24 缺少专属 `F1.png`…`F24.png` 时回退到该模型共�
 `Control`/`Shift`/`Alt`/`Meta`；没有匹配资源时不绘制按键层。左右修饰键的精确名是两侧各自的
 canonical 名（`AltLeft`/`AltRight`、`ControlLeft`/`ControlRight`、`ShiftLeft`/`ShiftRight`、
 `MetaLeft`/`MetaRight`），`Alt`/`Control`/`Shift`/`Meta` 只作为两侧共用的家族图；`AltGr` 是唯一保留的
-旧名，只对右 Alt 生效，用于兼容没有经过导入归一化的包（见 ADR-0038）。功能键的范围、名字和左右手归属由
+旧名，只对右 Alt 生效，用于兼容没有经过导入归一化的包（见 ADR-0038）。小键盘（HID `0x53`…`0x63`）的
+精确名是 `NumLock` 与 Mver 词汇表的 `Kp*`，其中在主键盘上重复的七个键回退到主键盘的键位图
+（`Kp1`…`Kp9`、`Kp0` → `Num1`…`Num9`、`Num0`，`KpEnter` → `Enter`，`KpDivide` → `Slash`）；
+`NumLock`、`KpMultiply`、`KpMinus`、`KpPlus`、`KpDecimal` 在主键盘上没有对应键，缺图时不绘制。
+小键盘整块归左手，因为可复用的数字、Enter 和 Slash 图只存在于 `left-keys`（见 ADR-0040）。键位词表
+覆盖标准 104/105 布局与小键盘的全部按键，范围由两个平台 adapter 实际能产出的 usage 界定，且**不以
+预置模型当前是否有图**为前提：命名是与模型作者的契约，模型提供 `Dot.png`、`Minus.png`、`Delete.png`
+等任何键位图都必须在不改产品代码的前提下生效；`hand` 归属覆盖同一集合，因为
+`InputState::model_snapshot` 会丢弃没有 hand 归属的按键（见 ADR-0041）。功能键的范围、名字和左右手归属由
 `bongocat-render` 的同一张 HID 表给出（`0x3a..=0x45` 与 `0x68..=0x73` 两段，中间是 PrintScreen
 至方向键和数字键盘），避免按键图片解析和 runtime 绑定各自定义；没有 hand 归属的按键不产生按键层。
 
