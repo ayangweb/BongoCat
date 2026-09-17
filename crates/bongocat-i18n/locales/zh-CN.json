@@ -90,7 +90,7 @@
     },
     "installed": {
       "title": "已安装模型",
-      "description": "导入模型文件夹、验证模型包安全性并选择当前使用的模型。"
+      "description": "导入模型文件夹或压缩包，验证模型包安全性并选择当前使用的模型。BongoCatMver 模型会在导入时自动转换，其包含的每种模式都会成为一个独立模型。"
     },
     "identity": {
       "title": "模型名称",
@@ -152,6 +152,13 @@
         "choose_archive": "选择压缩包",
         "choosing": "选择中...",
         "import": "导入"
+      }
+    },
+    "legacy": {
+      "mode": {
+        "standard": "标准模式",
+        "keyboard": "键盘模式",
+        "gamepad": "手柄模式"
       }
     },
     "behaviors": {

@@ -3970,6 +3970,87 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       因此「用户可见行为不变」这一结论目前由测试数字一致、setter 调用点未变与编译期检查支持，
       尚未经过实机点击验证。
 
+81. [x] `P4-MODEL-LEGACY-SOURCE`：让模型导入直接识别 BongoCatMver 模型并触发转换，无需外部工具。
+    - 依赖：`P4-MODEL-ARCHIVE-SOURCE`（`detect_source_kind` 的来源识别与压缩包规划）、
+      `P4-MODEL-ID-UUID`/`P4-MODEL-LIBRARY-METADATA`（UUID 存储键与标题元数据）、
+      `P4-MODEL-IMPORT-OPERATION`（typed 导入操作与进度契约）、ADR-0030（先复用既有方案）。
+    - 退出条件：Mver 源按内容识别且需要两条独立证据（根 `config.json` 可解析成 legacy section
+      形状 + 它命名的模式里至少一个在 `<资源根>/<模式>/cat_model/` 下恰好有一个
+      `.model3.json`），缺任一条回退到普通包导入；一个源产出每种模式一个模型，各自独立 UUID 与
+      元数据、独立原子提交；转换写进 store 自己的 staging 并与目录/归档来源共用校验与 rename
+      尾部；归档来源不解压；输出键位图使用产品自己的名字词汇表；合成图做无损重编码；跨模型进度
+      单调；完整 Native 门禁通过。
+    - 决策记录：ADR-0037。
+    - 当前契约（2026-09-17）：`bongocat-model` 新增 `mver` 模块与公开类型 `MverInputMode`、
+      `ModelSourceContent`。`ModelStore::inspect_source` 复用 `detect_source_kind` 后按上述两条
+      证据判定；`ModelStore::import_mver_with_observer` 把选中的模式转换进自己的 staging；导入
+      尾部抽成 `commit_installed_staging`，目录复制、归档解压与转换三条路径共用
+      `PreparedModel::prepare` + 单次 `rename`。归档来源通过 `ArchivePlan` 新增的
+      `contains_file`/`file_references`/`file_size`/`read_file` 按需读取被命名的条目（逐条目复核
+      名字/声明大小/实际字节数），**不解压整个源**；转换期读取有独立上限
+      `LEGACY_RESOURCE_MAXIMUM_BYTES`（64 MiB），与约束"可被安装的包"的
+      `maximum_file_bytes` 分开。
+      键位表按模式分属两个编码空间：`standard`/`keyboard` 是 Windows 虚拟键码，`gamepad` 是
+      XInput 序号；输出名分别对应 `bongocat-live2d` 从 HID usage 解析的键盘名与随包预置
+      gamepad 模型已装载的手柄名（`0x08` 采用产品拼写 `Backspace`；无法命名的控制码不产出
+      图片也不报错）。`gamepad` 的右手图集下标从左手的长度继续，不是从 0 重新开始。
+      合成为"最小画布上的 Porter-Duff over"，整数实现只在抗锯齿边缘像素四舍五入一次；模式
+      没有 `keyboard/` 图集时按字节安装 paw 图；缺 paw 或配套键帽的绑定被跳过而不失败。
+      合成图交 `oxipng 10.2.1` 无损重编码（`optimize_alpha` 只改写全透明像素颜色通道）；
+      有损量化库 `imagequant` 因 GPL 许可证排除，Zopfli 后端因"多 5% 体积换 15 倍时间"不采用。
+      诊断上新增 `ModelStoreDiagnostic::SourceConversionFailed`
+      （`model_store_source_conversion_failed`，`ALL` 由 12 增至 13），映射到既有
+      `SettingsErrorCode::ModelImportSourceUnsupported`，未新增用户可见错误码。
+      `Application::import_model*` 被 `Application::import_models*` 取代（返回 `Vec<InstalledModel>`），
+      避免留下一条会绕过转换的旁路；标题为「用户标题 · 本地化模式名」，模式名在截断之后拼接；
+      跨模型进度由 `ImportProgressAccumulator` 折叠（累计已完成模型的总量、stage 取最大值）。
+      UI 无新增控件：只改写 `models.installed.description` 说明自动转换，新增两个 locale 的
+      `models.legacy.mode.*` 供标题使用。
+    - 依赖评估（2026-09-17，§9）：`image =0.25.10`（已在 workspace 依赖中，供 Live2D 纹理读取；
+      本次复用同一 pin 与同一 `png`-only feature 集）+ `oxipng =10.2.1`
+      （lossless PNG 优化器，MIT，MSRV 1.88 ≤ 项目 1.97；只开库入口，`binary`/`parallel`/`zopfli`
+      三个 feature 全关）。两者均为当次核对的 crates.io 最新非 yanked 稳定版。`oxipng` 传递引入
+      `libdeflater 1.26.0`（MIT，用 `cc` 编译 libdeflate 的 C 源码）。被排除的候选：
+      `imagequant 4.4.1`（GPL-3.0-or-later，与 `deny.toml` 白名单冲突）。取舍与替换边界见
+      ADR-0037 §6。
+    - 验收证据（2026-09-17）：`bongocat-model` 83 测试（`mver.rs` 新增 18 + `store.rs` 新增 5），
+      覆盖两条检测证据与"配置了模式却没有模型"的跳过、模式文件夹摊在根上的布局、左右手共用
+      键盘图集的下标、没有 `keyboard/` 图集时按字节复制、合成后包根布局与
+      `[128, 0, 127, 255]` 合成像素、`over` 算子边界、无损重编码在缩小文件的同时保持**每个
+      alpha > 0 的像素逐通道不变**、鼠标键与非法码被跳过、缺 layer 时跳过绑定、重复绑定只写
+      一次、符号链接被拒绝、归档来源不解压即转换、超限资源被拒绝、两个编码空间的键名、
+      切换模式与取消不留下 staging。`bongocat-app` 124 测试（新增 4：一个源导入出 3 个模型与
+      3 个 UUID、标题「我的猫 · 标准模式/键盘模式/手柄模式」、三种模式的键位图落位与标准模式
+      没有 `right-keys`、源目录未被写入、合并目录出现 3 条 installed、跨模型进度单调且终值等于
+      三模型之和、标题拼接模式名后仍不超上限、进度折叠的单元语义）。`bongocat-i18n` 4 测试
+      （两 locale 键与占位符一致）。
+      **真实模型验证**：`cargo run -p bongocat-model --example model_conversion_smoke -- --source
+      /Users/ayang/Downloads/bongo_cat_mver_0.1.6_64`（同一路径也可交给新用例
+      `converts_the_legacy_sample_named_by_the_environment`，经 `BONGOCAT_MVER_SAMPLE` 指定）。
+      逐模式结果：`standard` → 3 张纹理、15 张键位图（`Num1..Num7`/`KeyQ`/`KeyE`/`KeyR`/`Space`/
+      `KeyA`/`KeyD`/`KeyS`/`KeyW`，与 `config.json` 的 15 条绑定逐个对应）、31 文件 / 1 081 672
+      字节 / 0.87 s；`keyboard` → `left-keys`{`Control`,`KeyR`,`Shift`} +
+      `right-keys`{`LeftArrow`,`RightArrow`,`UpArrow`,`DownArrow`}、23 文件 / 1 015 987 字节 /
+      0.46 s；`gamepad` → `left-keys`{`DPadDown`,`DPadLeft`,`DPadRight`,`DPadUp`,`LeftTrigger`,
+      `LeftTrigger2`} + `right-keys`{`East`,`North`,`RightTrigger`,`RightTrigger2`,`South`,`West`}、
+      28 文件 / 1 082 753 字节 / 0.74 s。gamepad 的两个集合与仓库内
+      `resources/models/gamepad/{left-keys,right-keys}` 的文件名**逐字符一致**，源目录未被修改。
+      压缩取舍实测（15 张 612×354 合成图，release）：仅 `image` 编码 160 641 字节 →
+      oxipng/libdeflate 91 470 字节（−43%，0.68 s）→ 再加 Zopfli 86 605 字节（0.68 → 10.25 s）。
+      `cargo fmt --all --check`、三组 clippy（workspace `--all-targets --all-features` 与
+      `bongocat-app` 的 `storage-test-injection`/`production`）、`cargo test --locked --workspace`
+      （全部测试二进制全绿）、`cargo check --locked --workspace --release` 全部通过。
+      按 §9 执行了完整 `cargo update`，只升了 3 个与本功能无关的传递依赖
+      （`granit-parser` 1.2.1 → 1.3.0、`serde-saphyr` 1.2.0 → 1.3.0、`redox_users` 0.5.2 → 0.5.3）。
+      **未运行**：Windows 编译与实机导入（`libdeflater` 的 C 工具链未在 Windows/交叉编译下验证）、
+      UI 实机点击（本次未改动 Models 页面的控件集合，只改了说明文案）。
+      **已知缺口（既有，不由本项引入）**：①`bongocat-runtime` 只对键盘按键产生 `KeyPress`，手柄
+      按键仅置 hand-down/stick 标志，因此 gamepad 键位图与预置 gamepad 模型一样目前不可达；
+      ②`standard.mouse_left/right/side` 与 `mouse*.png` 没有可映射的 overlay 通道，与参考实现
+      一致地不转换；③转换按 `F1`…`F12` 命名以保留模型区分度，但
+      `bongocat-live2d::key_name_candidates` 目前把功能键统一回退到 `Fn`，逐键 F 图暂不可达
+      （预置模型只有 `Fn.png`、真实样本键位表也不含功能键，缺少可验证数据，未改运行时）。
+
 ## 13. 待决策清单
 | 决策                                                          | 最迟完成              | 阻塞内容                           |
 | ------------------------------------------------------------- | --------------------- | ---------------------------------- |

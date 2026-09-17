@@ -90,7 +90,7 @@
     },
     "installed": {
       "title": "Installed Models",
-      "description": "Import a model folder, validate package safety and choose the active model."
+      "description": "Import a model folder or archive, validate package safety and choose the active model. A BongoCatMver model is converted to the BongoCat format on import; each input mode it carries becomes its own model."
     },
     "identity": {
       "title": "Model name",
@@ -152,6 +152,13 @@
         "choose_archive": "Choose archive",
         "choosing": "Choosing...",
         "import": "Import"
+      }
+    },
+    "legacy": {
+      "mode": {
+        "standard": "Standard mode",
+        "keyboard": "Keyboard mode",
+        "gamepad": "Gamepad mode"
       }
     },
     "behaviors": {

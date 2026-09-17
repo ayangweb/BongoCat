@@ -43,6 +43,12 @@ rust-i18n = "=4.2.2"
 image = { version = "=0.25.10", default-features = false, features = ["png"] }
 muda = { version = "=0.20.0", default-features = false }
 opener = { version = "=0.8.5", features = ["reveal"] }
+# Lossless PNG re-encoder for key images the model converter composes. Only the
+# library entry point is used: the CLI (`binary`), the Zopfli backend and the
+# rayon-backed filter search are all off, because the library default already
+# recodes IDAT with libdeflate and that measured ~43% smaller output on real
+# key images in ~0.05s each, while Zopfli bought another 5% for 15x the time.
+oxipng = { version = "=10.2.1", default-features = false }
 proptest = { version = "=1.11.0", default-features = false, features = ["std"] }
 # CommonMark parsing for the update window's release notes. `default-features = false`
 # drops the CLI argument parser and the HTML renderer: the notes are rendered as GPUI

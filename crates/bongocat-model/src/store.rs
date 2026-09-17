@@ -1,4 +1,5 @@
 use crate::archive::{self, ModelSourceKind};
+use crate::mver::{self, ModelSourceContent, MverInputMode, MverSource};
 use crate::{InstalledModel, ModelError, ModelId, ModelPackageLimits, PreparedModel};
 use std::{
     fmt, fs,
@@ -46,6 +47,7 @@ pub enum ModelStoreDiagnostic {
     SourceArchiveUnsupported,
     SourceContainsStore,
     SourceChanged,
+    SourceConversionFailed,
     SourceSymlinkUnsupported,
     SourceEntryUnsupported,
     StoreBusy,
@@ -53,7 +55,7 @@ pub enum ModelStoreDiagnostic {
 }
 
 impl ModelStoreDiagnostic {
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 13] = [
         Self::AlreadyExists,
         Self::Cancelled,
         Self::InvalidPackage,
@@ -62,6 +64,7 @@ impl ModelStoreDiagnostic {
         Self::SourceArchiveUnsupported,
         Self::SourceContainsStore,
         Self::SourceChanged,
+        Self::SourceConversionFailed,
         Self::SourceSymlinkUnsupported,
         Self::SourceEntryUnsupported,
         Self::StoreBusy,
@@ -78,6 +81,13 @@ impl ModelStoreDiagnostic {
             Self::SourceArchiveUnsupported => "model_store_source_archive_unsupported",
             Self::SourceContainsStore => "model_store_source_contains_store",
             Self::SourceChanged => "model_store_source_changed",
+            // A source this product recognizes as a BongoCatMver model but
+            // cannot turn into a BongoCat package: an unreadable key image, a
+            // missing layer, metadata that does not describe a key table. It is
+            // deliberately distinct from `InvalidPackage`, which means the
+            // source was read as a package and failed package validation — this
+            // one never became a package at all.
+            Self::SourceConversionFailed => "model_store_source_conversion_failed",
             Self::SourceSymlinkUnsupported => "model_store_source_symlink_unsupported",
             Self::SourceEntryUnsupported => "model_store_source_entry_unsupported",
             Self::StoreBusy => "model_store_busy",
@@ -436,12 +446,170 @@ impl ModelStore {
         })
     }
 
+    /// Import a BongoCat model package from a directory or a `.zip` archive.
+    ///
+    /// A BongoCatMver source is not a package: ask [`ModelStore::inspect_source`]
+    /// what a user-picked source is first, and install each of its modes with
+    /// [`ModelStore::import_mver_with_observer`].
     pub fn import(
         &self,
         id: ModelId,
         source_root: impl AsRef<Path>,
     ) -> Result<InstalledModel, ModelStoreError> {
         self.import_with_observer(id, source_root, |_| {}, || false)
+    }
+
+    /// Describe what a user-picked source is, without installing anything.
+    ///
+    /// The answer comes from the source's own bytes rather than from the
+    /// button the user pressed, exactly like [`ModelStore::import`] deciding
+    /// between a directory and an archive: a folder is read in place, an archive
+    /// is planned but not unpacked, and both are then asked whether they carry a
+    /// BongoCatMver key table. A source that is neither a package nor a legacy
+    /// model is still reported as [`ModelSourceContent::Package`], so the
+    /// ordinary import reports the real diagnostic instead of this call
+    /// guessing.
+    pub fn inspect_source(
+        &self,
+        source_root: impl AsRef<Path>,
+    ) -> Result<ModelSourceContent, ModelStoreError> {
+        let canonical_source = source_root.as_ref().canonicalize().map_err(|error| {
+            ModelStoreError::new(
+                ModelStoreDiagnostic::IoError,
+                None,
+                format!("model source cannot be opened: {error}"),
+            )
+        })?;
+        match archive::detect_source_kind(&canonical_source, self.limits)? {
+            ModelSourceKind::Directory => {
+                self.describe_source(&MverSource::directory(&canonical_source)?)
+            }
+            ModelSourceKind::ZipArchive => {
+                let plan = archive::plan_archive(&canonical_source, self.limits)?;
+                self.describe_source(&MverSource::archive(&canonical_source, &plan))
+            }
+        }
+    }
+
+    fn describe_source(
+        &self,
+        source: &MverSource<'_>,
+    ) -> Result<ModelSourceContent, ModelStoreError> {
+        Ok(match mver::inspect(source, self.limits)? {
+            Some(plan) => ModelSourceContent::Mver {
+                modes: plan.modes().collect(),
+            },
+            None => ModelSourceContent::Package,
+        })
+    }
+
+    /// Import one input mode of a BongoCatMver source as its own model.
+    ///
+    /// The conversion writes into the store's own staging directory and the
+    /// result is committed by the same single rename as any other import, so a
+    /// legacy source is not a second, weaker way into the store: it cannot skip
+    /// package validation, and a conversion that fails part way leaves nothing
+    /// behind. One legacy source describes several models, so the caller
+    /// allocates one id per mode and calls this once per mode; each call is
+    /// independently atomic, which is what lets a source that only partly
+    /// converts still deliver the modes that do.
+    pub fn import_mver_with_observer<Observe, IsCancelled>(
+        &self,
+        id: ModelId,
+        mode: MverInputMode,
+        source_root: impl AsRef<Path>,
+        mut observe: Observe,
+        mut is_cancelled: IsCancelled,
+    ) -> Result<InstalledModel, ModelStoreError>
+    where
+        Observe: FnMut(ModelImportProgress),
+        IsCancelled: FnMut() -> bool,
+    {
+        let canonical_source = source_root.as_ref().canonicalize().map_err(|error| {
+            ModelStoreError::new(
+                ModelStoreDiagnostic::IoError,
+                None,
+                format!("model source cannot be opened: {error}"),
+            )
+        })?;
+        if self.canonical_root.starts_with(&canonical_source) {
+            return Err(ModelStoreError::new(
+                ModelStoreDiagnostic::SourceContainsStore,
+                None,
+                "model source cannot contain the destination store",
+            ));
+        }
+        if archive::detect_source_kind(&canonical_source, self.limits)?
+            == ModelSourceKind::ZipArchive
+        {
+            let plan = archive::plan_archive(&canonical_source, self.limits)?;
+            return self.convert_mver_mode(
+                id,
+                mode,
+                MverSource::archive(&canonical_source, &plan),
+                &mut observe,
+                &mut is_cancelled,
+            );
+        }
+        self.convert_mver_mode(
+            id,
+            mode,
+            MverSource::directory(&canonical_source)?,
+            &mut observe,
+            &mut is_cancelled,
+        )
+    }
+
+    fn convert_mver_mode<Observe, IsCancelled>(
+        &self,
+        id: ModelId,
+        mode: MverInputMode,
+        source: MverSource<'_>,
+        observe: &mut Observe,
+        is_cancelled: &mut IsCancelled,
+    ) -> Result<InstalledModel, ModelStoreError>
+    where
+        Observe: FnMut(ModelImportProgress),
+        IsCancelled: FnMut() -> bool,
+    {
+        let mut observation = ImportObservation::new(observe, is_cancelled);
+        observation.report(ModelImportProgress {
+            stage: ModelImportStage::Preparing,
+            files_copied: 0,
+            bytes_copied: 0,
+        });
+        observation.check_cancelled()?;
+        let _lock = self.acquire_lock()?;
+        observation.check_cancelled()?;
+
+        let plan = mver::inspect(&source, self.limits)?.ok_or_else(|| {
+            ModelStoreError::new(
+                ModelStoreDiagnostic::SourceConversionFailed,
+                None,
+                "the selected source is not a BongoCatMver model",
+            )
+        })?;
+        let mode_plan = plan.mode(mode).ok_or_else(|| {
+            ModelStoreError::new(
+                ModelStoreDiagnostic::SourceConversionFailed,
+                Some(mode.as_str().to_owned()),
+                "the source does not carry this BongoCatMver input mode",
+            )
+        })?;
+
+        let staging = self.create_staging_directory(&id)?;
+        let mut cleanup = StagingCleanup::new(staging.clone());
+        let mut statistics = CopyStatistics::default();
+        mver::convert_mode(
+            &source,
+            mode_plan,
+            &staging,
+            self.limits,
+            &mut statistics,
+            &mut observation,
+        )?;
+        observation.check_cancelled()?;
+        self.commit_installed_staging(&id, staging, &mut cleanup, &statistics, &mut observation)
     }
 
     pub fn import_with_observer<Observe, IsCancelled>(
@@ -455,10 +623,7 @@ impl ModelStore {
         Observe: FnMut(ModelImportProgress),
         IsCancelled: FnMut() -> bool,
     {
-        let mut observation = ImportObservation {
-            observe: &mut observe,
-            is_cancelled: &mut is_cancelled,
-        };
+        let mut observation = ImportObservation::new(&mut observe, &mut is_cancelled);
         observation.report(ModelImportProgress {
             stage: ModelImportStage::Preparing,
             files_copied: 0,
@@ -538,16 +703,39 @@ impl ModelStore {
             )?,
             (None, None) => unreachable!("every model source is a directory or an archive"),
         }
+        self.commit_installed_staging(&id, staging, &mut cleanup, &statistics, &mut observation)
+    }
+
+    /// Validate the materialized staging tree and commit it as the installed
+    /// model.
+    ///
+    /// Every source kind shares this tail. Whatever produced the bytes — a
+    /// directory copy, an archive extraction, or a BongoCatMver conversion —
+    /// goes through the *same* package validation and the *same* single atomic
+    /// rename, so no source format can become a second, weaker parser.
+    fn commit_installed_staging<Observe, IsCancelled>(
+        &self,
+        id: &ModelId,
+        staging: PathBuf,
+        cleanup: &mut StagingCleanup,
+        statistics: &CopyStatistics,
+        observation: &mut ImportObservation<'_, Observe, IsCancelled>,
+    ) -> Result<InstalledModel, ModelStoreError>
+    where
+        Observe: FnMut(ModelImportProgress),
+        IsCancelled: FnMut() -> bool,
+    {
         observation.check_cancelled()?;
         observation.report(ModelImportProgress {
             stage: ModelImportStage::Validating,
             files_copied: file_count_for_progress(statistics.file_count),
             bytes_copied: statistics.total_bytes,
         });
-        let mut prepared_staging = PreparedModel::prepare(id.clone(), &staging, self.limits)
+        let mut prepared = PreparedModel::prepare(id.clone(), &staging, self.limits)
             .map_err(ModelStoreError::package)?;
         observation.check_cancelled()?;
 
+        let destination = self.canonical_root.join(id.as_str());
         if destination.exists() {
             return Err(ModelStoreError::new(
                 ModelStoreDiagnostic::AlreadyExists,
@@ -577,8 +765,8 @@ impl ModelStore {
             ModelStoreError::new(code, Some(id.as_str().to_owned()), detail)
         })?;
         cleanup.disarm();
-        prepared_staging.canonical_root = destination;
-        Ok(InstalledModel::from_prepared(prepared_staging))
+        prepared.canonical_root = destination;
+        Ok(InstalledModel::from_prepared(prepared))
     }
 
     fn create_staging_directory(&self, id: &ModelId) -> Result<PathBuf, ModelStoreError> {
@@ -779,6 +967,16 @@ where
     Observe: FnMut(ModelImportProgress),
     IsCancelled: FnMut() -> bool,
 {
+    pub(crate) fn new<'a>(
+        observe: &'a mut Observe,
+        is_cancelled: &'a mut IsCancelled,
+    ) -> ImportObservation<'a, Observe, IsCancelled> {
+        ImportObservation {
+            observe,
+            is_cancelled,
+        }
+    }
+
     pub(crate) fn check_cancelled(&mut self) -> Result<(), ModelStoreError> {
         if (self.is_cancelled)() {
             Err(ModelStoreError::new(
@@ -1674,6 +1872,25 @@ mod tests {
         }
     }
 
+    /// Add every file below `directory` to the archive under `prefix`.
+    ///
+    /// Listing a real folder beats maintaining the expected entry names twice:
+    /// a source that gains or renames a resource must change the assertion it
+    /// belongs to, not an unrelated archive-entry list.
+    fn write_archive_tree(builder: &mut ArchiveBuilder, prefix: &str, directory: &Path) {
+        for entry in fs::read_dir(directory).expect("source directory") {
+            let entry = entry.expect("source entry");
+            let name = entry.file_name().into_string().expect("source entry name");
+            let reference = format!("{prefix}/{name}");
+            if entry.file_type().expect("source entry type").is_dir() {
+                builder.directory(&format!("{reference}/"));
+                write_archive_tree(builder, &reference, &entry.path());
+            } else {
+                builder.deflated_file(&reference, &fs::read(entry.path()).expect("source file"));
+            }
+        }
+    }
+
     /// Write the sample package into an archive, optionally below one wrapper
     /// directory the way "compress this folder" does.
     fn write_package_archive(path: PathBuf, wrapper: Option<&str>) -> PathBuf {
@@ -2082,6 +2299,305 @@ mod tests {
         let catalog = store.list().expect("catalog");
         assert_eq!(catalog.entries.len(), 1);
         assert_eq!(catalog.entries[0].id().as_str(), "observed");
+    }
+
+    /// A BongoCatMver source is one user-picked thing that describes several
+    /// models. The store must recognize it from its own bytes — a directory and
+    /// the archive exported from it behave identically — while leaving a genuine
+    /// BongoCat package alone.
+    #[test]
+    fn legacy_sources_are_described_by_their_own_bytes() {
+        use crate::mver::fixture;
+
+        let data = tempdir().expect("data root");
+        let store = model_store(data.path());
+        let sources = tempdir().expect("sources");
+        let legacy = sources.path().join("Bongo Cat Mver");
+        fs::create_dir(&legacy).expect("legacy source");
+        fixture::legacy_source(&legacy, &fixture::all_modes(), true);
+
+        assert_eq!(
+            store
+                .inspect_source(&legacy)
+                .expect("describe legacy directory"),
+            ModelSourceContent::Mver {
+                modes: MverInputMode::ALL.to_vec(),
+            }
+        );
+
+        let mut builder = ArchiveBuilder::new(sources.path().join("legacy.zip"));
+        builder.directory("Bongo Cat Mver/");
+        write_archive_tree(&mut builder, "Bongo Cat Mver", &legacy);
+        let archive = builder.finish();
+        assert_eq!(
+            store
+                .inspect_source(&archive)
+                .expect("describe legacy archive"),
+            ModelSourceContent::Mver {
+                modes: MverInputMode::ALL.to_vec(),
+            },
+            "the archive wrapped around the same folder describes the same models"
+        );
+
+        // A genuine package is still a package, whichever way it arrives.
+        assert_eq!(
+            store
+                .inspect_source(fixture("非 ASCII 模型"))
+                .expect("describe package"),
+            ModelSourceContent::Package
+        );
+        let directory = sources.path().join("looks-like-a-package");
+        write_package_directory(&directory);
+        assert_eq!(
+            store
+                .inspect_source(&directory)
+                .expect("describe package directory"),
+            ModelSourceContent::Package
+        );
+    }
+
+    /// Installing a legacy source produces one installed model per mode, each
+    /// with the structure the runtime and the settings page expect.
+    #[test]
+    fn legacy_import_installs_one_model_per_configured_mode() {
+        use crate::mver::fixture;
+
+        let data = tempdir().expect("data root");
+        let store = model_store(data.path());
+        let sources = tempdir().expect("sources");
+        let legacy = sources.path().join("Bongo Cat Mver");
+        fs::create_dir(&legacy).expect("legacy source");
+        fixture::legacy_source(&legacy, &fixture::all_modes(), true);
+
+        let mut installed = Vec::new();
+        for mode in MverInputMode::ALL {
+            let id = store.allocate_unique_id().expect("allocate id");
+            installed.push(
+                store
+                    .import_mver_with_observer(id, mode, &legacy, |_| {}, || false)
+                    .unwrap_or_else(|error| panic!("{} failed: {error:?}", mode.as_str())),
+            );
+        }
+
+        assert_eq!(store.list().expect("catalog").entries.len(), 3);
+        assert_ne!(installed[0].id(), installed[1].id());
+        for (model, mode) in installed.iter().zip(MverInputMode::ALL) {
+            assert_eq!(model.index().entry, "cat.model3.json");
+            assert_eq!(model.index().moc, "model.moc3");
+            assert!(
+                model
+                    .root()
+                    .join(format!("resources/left-keys/{}.png", left_key_name(mode)))
+                    .is_file(),
+                "{} must install a composed left key image",
+                mode.as_str()
+            );
+            assert!(
+                model.root().join("resources/background.png").is_file(),
+                "{} must install its background",
+                mode.as_str()
+            );
+            assert_eq!(
+                model.root().join("resources/right-keys").is_dir(),
+                mode != MverInputMode::Standard,
+                "only the split modes expose a right hand ({})",
+                mode.as_str()
+            );
+        }
+        // The legacy source itself is never modified.
+        assert!(legacy.join("config.json").is_file());
+        assert!(legacy.join("img").is_dir());
+        // A conversion leaves no staging directory behind.
+        assert!(
+            fs::read_dir(store.root())
+                .expect("store entries")
+                .all(|entry| !entry
+                    .expect("store entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(IMPORTING_PREFIX))
+        );
+    }
+
+    fn left_key_name(mode: MverInputMode) -> &'static str {
+        match mode {
+            MverInputMode::Standard | MverInputMode::Keyboard => "KeyA",
+            MverInputMode::Gamepad => "DPadLeft",
+        }
+    }
+
+    /// A conversion is cancellable and, like every other import, leaves nothing
+    /// behind when it is.
+    #[test]
+    fn legacy_import_reports_monotonic_progress_and_cancels_without_partial_state() {
+        use crate::mver::fixture;
+
+        let data = tempdir().expect("data root");
+        let store = model_store(data.path());
+        let sources = tempdir().expect("sources");
+        let legacy = sources.path().join("Bongo Cat Mver");
+        fs::create_dir(&legacy).expect("legacy source");
+        fixture::legacy_source(&legacy, &fixture::all_modes(), true);
+
+        let progress = RefCell::new(Vec::new());
+        let id = store.allocate_unique_id().expect("allocate id");
+        store
+            .import_mver_with_observer(
+                id.clone(),
+                MverInputMode::Standard,
+                &legacy,
+                |update| progress.borrow_mut().push(update),
+                || false,
+            )
+            .expect("observed conversion");
+        let progress = progress.into_inner();
+        assert_eq!(
+            progress.first().map(|update| update.stage),
+            Some(ModelImportStage::Preparing)
+        );
+        assert_eq!(
+            progress.last().map(|update| update.stage),
+            Some(ModelImportStage::Committing)
+        );
+        assert!(
+            progress
+                .iter()
+                .any(|update| update.stage == ModelImportStage::Copying)
+        );
+        assert!(
+            progress
+                .iter()
+                .any(|update| update.stage == ModelImportStage::Validating)
+        );
+        for updates in progress.windows(2) {
+            assert!(updates[0].stage <= updates[1].stage);
+            assert!(updates[0].files_copied <= updates[1].files_copied);
+            assert!(updates[0].bytes_copied <= updates[1].bytes_copied);
+        }
+
+        let cancelled = Cell::new(false);
+        let error = store
+            .import_mver_with_observer(
+                store.allocate_unique_id().expect("allocate id"),
+                MverInputMode::Keyboard,
+                &legacy,
+                |update| {
+                    if update.stage == ModelImportStage::Copying && update.files_copied > 0 {
+                        cancelled.set(true);
+                    }
+                },
+                || cancelled.get(),
+            )
+            .expect_err("cancelled conversion");
+        assert_eq!(error.code, ModelStoreDiagnostic::Cancelled);
+        let catalog = store.list().expect("catalog");
+        assert_eq!(catalog.entries.len(), 1);
+        assert_eq!(catalog.entries[0].id(), &id);
+        assert!(
+            fs::read_dir(store.root())
+                .expect("store entries")
+                .all(|entry| !entry
+                    .expect("store entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(IMPORTING_PREFIX))
+        );
+    }
+
+    /// Asking for a mode the source does not carry is a stable diagnostic, not
+    /// an installed model.
+    #[test]
+    fn legacy_import_rejects_a_mode_the_source_does_not_carry() {
+        use crate::mver::fixture;
+
+        let data = tempdir().expect("data root");
+        let store = model_store(data.path());
+        let sources = tempdir().expect("sources");
+        let legacy = sources.path().join("Bongo Cat Mver");
+        fs::create_dir(&legacy).expect("legacy source");
+        fixture::legacy_source(
+            &legacy,
+            &[(
+                MverInputMode::Standard,
+                r#"{"hand":[[65]],"keyboard":[[65]]}"#,
+            )],
+            true,
+        );
+
+        let error = store
+            .import_mver_with_observer(
+                store.allocate_unique_id().expect("allocate id"),
+                MverInputMode::Gamepad,
+                &legacy,
+                |_| {},
+                || false,
+            )
+            .expect_err("missing input mode");
+        assert_eq!(error.code, ModelStoreDiagnostic::SourceConversionFailed);
+        assert_store_holds_no_entries(&store);
+    }
+
+    /// Convert the legacy application folder the maintainer points at.
+    ///
+    /// A real BongoCatMver installation bundles third-party model artwork and
+    /// the legacy application itself, so it cannot be committed to the
+    /// repository; the real-world case is covered by pointing
+    /// `BONGOCAT_MVER_SAMPLE` at one instead. The test is skipped when the
+    /// variable is unset, which keeps it out of the default `cargo test` line.
+    /// What it asserts is what makes a conversion usable: every mode the
+    /// inspector found installs as a real package with a resolved entry, moc and
+    /// texture, its overlays are decodable PNGs of one size, and the legacy
+    /// source is left untouched.
+    #[test]
+    fn converts_the_legacy_sample_named_by_the_environment() {
+        use image::ImageReader;
+        use std::collections::BTreeSet;
+
+        let Some(source) = std::env::var_os("BONGOCAT_MVER_SAMPLE") else {
+            return;
+        };
+        let source = PathBuf::from(source);
+        let data = tempdir().expect("data root");
+        let store = model_store(data.path());
+        let content = store.inspect_source(&source).expect("describe sample");
+        let ModelSourceContent::Mver { modes } = &content else {
+            panic!("sample {} is not a BongoCatMver source", source.display());
+        };
+        assert!(!modes.is_empty(), "sample has no convertible mode");
+
+        for mode in modes {
+            let id = store.allocate_unique_id().expect("allocate id");
+            let installed = store
+                .import_mver_with_observer(id, *mode, &source, |_| {}, || false)
+                .unwrap_or_else(|error| panic!("{} failed: {error:?}", mode.as_str()));
+            assert_eq!(installed.index().entry, "cat.model3.json");
+            assert!(installed.root().join(&installed.index().moc).is_file());
+            assert!(!installed.index().textures.is_empty());
+            for texture in &installed.index().textures {
+                assert!(installed.root().join(&texture.file).is_file());
+            }
+
+            let left_keys = installed.root().join("resources/left-keys");
+            assert!(
+                left_keys.is_dir(),
+                "{} has no left key images",
+                mode.as_str()
+            );
+            let mut sizes = BTreeSet::new();
+            for entry in fs::read_dir(&left_keys).expect("left key images") {
+                let path = entry.expect("left key image").path();
+                let image = ImageReader::open(&path)
+                    .expect("open key image")
+                    .decode()
+                    .unwrap_or_else(|error| panic!("{} is not decodable: {error}", path.display()));
+                sizes.insert((image.width(), image.height()));
+            }
+            assert_eq!(sizes.len(), 1, "every overlay shares one canvas size");
+        }
+
+        // The legacy folder is a reference source, never an install target.
+        assert!(source.join("config.json").is_file());
+        assert!(source.join("img").is_dir());
     }
 
     /// Import the archives the maintainer points at.

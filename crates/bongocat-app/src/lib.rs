@@ -13,7 +13,8 @@ use bongocat_config::{
 };
 use bongocat_model::{
     CommittedModel, InstalledModel, ModelCatalogEntry, ModelError, ModelId, ModelImportProgress,
-    ModelOrigin, ModelPackageLimits, ModelStore, ModelStoreError, PresetModelCatalog,
+    ModelImportStage, ModelOrigin, ModelPackageLimits, ModelSourceContent, ModelStore,
+    ModelStoreError, MverInputMode, PresetModelCatalog,
 };
 use bongocat_render::{ModelCommitToken, RenderConsumer};
 use bongocat_runtime::{
@@ -1191,41 +1192,100 @@ impl Application {
         Ok(())
     }
 
-    pub fn import_model(
+    /// Import every model a source describes.
+    ///
+    /// A BongoCat package installs one model. A BongoCatMver source installs one
+    /// *converted* model per input mode it carries, each with the same
+    /// generated UUID store key and its own metadata record, so the three modes
+    /// of a legacy model become three ordinary entries in the model list that
+    /// can be activated, renamed and deleted independently.
+    ///
+    /// Each model is committed on its own: a source whose second mode fails
+    /// still leaves the first installed and titled. That is deliberate — the
+    /// models are independent, and silently discarding a mode that converted
+    /// correctly would be worse than reporting a failure the user can act on by
+    /// fixing that one mode.
+    pub fn import_models(
         &mut self,
         title_hint: impl Into<String>,
         source_root: impl AsRef<Path>,
-    ) -> Result<InstalledModel, ApplicationError> {
-        self.import_model_with_observer(title_hint, source_root, |_| {}, || false)
+    ) -> Result<Vec<InstalledModel>, ApplicationError> {
+        self.import_models_with_observer(title_hint, source_root, |_| {}, || false)
     }
 
-    pub fn import_model_with_observer<Observe, IsCancelled>(
+    pub fn import_models_with_observer<Observe, IsCancelled>(
         &mut self,
         title_hint: impl Into<String>,
         source_root: impl AsRef<Path>,
         observe: Observe,
-        is_cancelled: IsCancelled,
-    ) -> Result<InstalledModel, ApplicationError>
+        mut is_cancelled: IsCancelled,
+    ) -> Result<Vec<InstalledModel>, ApplicationError>
     where
         Observe: FnMut(ModelImportProgress),
         IsCancelled: FnMut() -> bool,
     {
         let title_hint = title_hint.into();
-        let id = self
+        let source_root = source_root.as_ref();
+        let language = self.effective_language();
+        let mut aggregate = ImportProgressAccumulator::new(observe);
+
+        // Which models the source describes is decided from its own bytes, the
+        // same way the store decides whether it was handed a directory or an
+        // archive; the caller never selects a format. The store only reports a
+        // legacy source once a mode really carries a usable model, so an empty
+        // mode list cannot occur — treating it as a package keeps the loop below
+        // total and still reports a real diagnostic from the package path.
+        let modes = match self
             .model_store
-            .allocate_unique_id()
-            .map_err(ApplicationError::ModelStore)?;
-        let title = installed_model_title(&title_hint, source_root.as_ref(), id.as_str());
-        let installed = self
-            .model_store
-            .import_with_observer(id, source_root, observe, is_cancelled)
-            .map_err(ApplicationError::ModelStore)?;
+            .inspect_source(source_root)
+            .map_err(ApplicationError::ModelStore)?
+        {
+            ModelSourceContent::Mver { modes } if modes.is_empty() => None,
+            ModelSourceContent::Mver { modes } => Some(modes),
+            ModelSourceContent::Package => None,
+        };
+
+        let mut installed = Vec::new();
         let mut installed_models = self.config.model.installed_models.clone();
-        installed_models.push(InstalledModelMetadata {
-            id: installed.id().as_str().to_owned(),
-            title,
-        });
-        self.commit_installed_models(installed_models)?;
+        let count = modes.as_ref().map_or(1, Vec::len);
+        for index in 0..count {
+            let id = self
+                .model_store
+                .allocate_unique_id()
+                .map_err(ApplicationError::ModelStore)?;
+            let fallback = id.as_str().to_owned();
+            let model = match modes.as_ref() {
+                None => self.model_store.import_with_observer(
+                    id,
+                    source_root,
+                    |update| aggregate.report(update),
+                    &mut is_cancelled,
+                ),
+                Some(modes) => self.model_store.import_mver_with_observer(
+                    id,
+                    modes[index],
+                    source_root,
+                    |update| aggregate.report(update),
+                    &mut is_cancelled,
+                ),
+            }
+            .map_err(ApplicationError::ModelStore)?;
+            let title = match modes.as_ref() {
+                None => installed_model_title(&title_hint, source_root, &fallback),
+                Some(modes) => legacy_model_title(
+                    &title_hint,
+                    source_root,
+                    &fallback,
+                    legacy_mode_label(language, modes[index]),
+                ),
+            };
+            installed_models.push(InstalledModelMetadata {
+                id: model.id().as_str().to_owned(),
+                title,
+            });
+            self.commit_installed_models(installed_models.clone())?;
+            installed.push(model);
+        }
         Ok(installed)
     }
 
@@ -1411,6 +1471,57 @@ const fn model_origin_from_config(origin: SelectedModelOrigin) -> ModelOrigin {
     }
 }
 
+/// Fold the per-model import progress of one import action into one sequence.
+///
+/// The store reports one model at a time and starts every one of them at
+/// `Preparing` with zero totals, because each is imported on its own. The
+/// settings monitor drops an update that moves backwards, so without this
+/// folding a legacy source's second model would report nothing and the display
+/// would sit on the first model's final numbers. Carrying the finished models'
+/// totals forward and never letting the stage regress keeps a single honest,
+/// monotone sequence for the whole action, which is what the UI is showing.
+struct ImportProgressAccumulator<Observe> {
+    observe: Observe,
+    completed_files: u64,
+    completed_bytes: u64,
+    current_files: u64,
+    current_bytes: u64,
+    stage: ModelImportStage,
+}
+
+impl<Observe> ImportProgressAccumulator<Observe>
+where
+    Observe: FnMut(ModelImportProgress),
+{
+    fn new(observe: Observe) -> Self {
+        Self {
+            observe,
+            completed_files: 0,
+            completed_bytes: 0,
+            current_files: 0,
+            current_bytes: 0,
+            stage: ModelImportStage::Preparing,
+        }
+    }
+
+    fn report(&mut self, update: ModelImportProgress) {
+        if update.stage == ModelImportStage::Preparing {
+            self.completed_files = self.completed_files.saturating_add(self.current_files);
+            self.completed_bytes = self.completed_bytes.saturating_add(self.current_bytes);
+            self.current_files = 0;
+            self.current_bytes = 0;
+        }
+        self.current_files = update.files_copied;
+        self.current_bytes = update.bytes_copied;
+        self.stage = self.stage.max(update.stage);
+        (self.observe)(ModelImportProgress {
+            stage: self.stage,
+            files_copied: self.completed_files.saturating_add(self.current_files),
+            bytes_copied: self.completed_bytes.saturating_add(self.current_bytes),
+        });
+    }
+}
+
 /// The preset model that is always available as the final startup fallback.
 const STANDARD_PRESET_MODEL_ID: &str = "standard";
 
@@ -1423,17 +1534,70 @@ const MODEL_TITLE_MAXIMUM_CHARS: usize = 128;
 fn installed_model_title(hint: &str, source_root: &Path, fallback: &str) -> String {
     let hint = hint.trim();
     if !hint.is_empty() {
-        let clipped = hint
-            .chars()
-            .take(MODEL_TITLE_MAXIMUM_CHARS)
-            .collect::<String>()
-            .trim_end()
-            .to_owned();
+        let clipped = clamp_model_title(hint);
         if !clipped.is_empty() {
             return clipped;
         }
     }
     installed_model_title_from_source(source_root, fallback)
+}
+
+/// The display name for one converted mode of a BongoCatMver source.
+///
+/// One legacy source becomes several models at once, so they need to be told
+/// apart in the model list: the source's own name is kept and the mode is
+/// appended, which is the naming the community already uses for exported
+/// models. The mode is reserved out of the title limit before the source name is
+/// clipped, because it is the only thing distinguishing the three models. The
+/// label is localized here rather than stored as a stable token, because a title
+/// is user-visible text the user can edit afterwards, exactly like the hint the
+/// settings page sends.
+fn legacy_model_title(hint: &str, source_root: &Path, fallback: &str, label: &str) -> String {
+    let base = installed_model_title(hint, source_root, fallback);
+    let suffix = format!(" · {label}");
+    let available = MODEL_TITLE_MAXIMUM_CHARS.saturating_sub(suffix.chars().count());
+    let base = base
+        .chars()
+        .take(available)
+        .collect::<String>()
+        .trim_end()
+        .to_owned();
+    if base.is_empty() {
+        return clamp_model_title(label);
+    }
+    clamp_model_title(&format!("{base}{suffix}"))
+}
+
+/// The localized name of one BongoCatMver input mode.
+fn legacy_mode_label(language: Language, mode: MverInputMode) -> &'static str {
+    let key = match mode {
+        MverInputMode::Standard => "models.legacy.mode.standard",
+        MverInputMode::Keyboard => "models.legacy.mode.keyboard",
+        MverInputMode::Gamepad => "models.legacy.mode.gamepad",
+    };
+    bongocat_i18n::text(locale_code(language), key)
+}
+
+/// The locale the embedded catalog knows for a resolved application language.
+///
+/// `system` never reaches this point: the application resolves it against the
+/// platform language before anything reads it, so the fallback arm mirrors the
+/// UI's own English default rather than a second resolution rule.
+const fn locale_code(language: Language) -> &'static str {
+    match language {
+        Language::ChineseSimplified => "zh-CN",
+        Language::System | Language::EnglishUnitedStates => bongocat_i18n::DEFAULT_LOCALE,
+    }
+}
+
+/// Trim a display name to the length the configuration schema accepts.
+fn clamp_model_title(value: &str) -> String {
+    value
+        .chars()
+        .take(MODEL_TITLE_MAXIMUM_CHARS)
+        .collect::<String>()
+        .trim_end()
+        .to_owned()
 }
 
 /// The source-folder default title; over-long or missing folder names
@@ -1444,12 +1608,7 @@ fn installed_model_title(hint: &str, source_root: &Path, fallback: &str) -> Stri
 /// folder and a `.zip` archive source.
 fn installed_model_title_from_source(source_root: &Path, fallback: &str) -> String {
     bongocat_ui::model_source_display_name(source_root)
-        .map(|name| {
-            name.chars()
-                .take(MODEL_TITLE_MAXIMUM_CHARS)
-                .collect::<String>()
-        })
-        .map(|title| title.trim_end().to_owned())
+        .map(|name| clamp_model_title(&name))
         .filter(|title| !title.is_empty())
         .unwrap_or_else(|| fallback.to_owned())
 }
@@ -1636,6 +1795,320 @@ mod tests {
             .expect("add wrapper directory");
         visit(&mut writer, source, wrapper, options);
         writer.finish().expect("finish archive");
+    }
+
+    /// Import a single-model package and return the one model it installed.
+    ///
+    /// The product's import entry point handles sources that describe several
+    /// models at once. Every source in this module is a BongoCat package, so the
+    /// count is asserted here instead of at each call site.
+    fn import_one(
+        application: &mut Application,
+        title_hint: &str,
+        source: impl AsRef<Path>,
+    ) -> InstalledModel {
+        let mut models = application
+            .import_models(title_hint, source)
+            .expect("import a single model package");
+        assert_eq!(
+            models.len(),
+            1,
+            "a package source installs exactly one model"
+        );
+        models.pop().expect("one installed model")
+    }
+
+    /// One opaque key cap and one semi-transparent paw, as exact PNG bytes so
+    /// the fixture does not need a bitmap decoder in the test build.
+    const LEGACY_KEY_CAP_PNG: &[u8] = &[
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x04, 0x08, 0x06, 0x00, 0x00, 0x00, 0xa9,
+        0xf1, 0x9e, 0x7e, 0x00, 0x00, 0x00, 0x11, 0x49, 0x44, 0x41, 0x54, 0x78, 0xda, 0x63, 0x60,
+        0x60, 0xf8, 0xff, 0x1f, 0x15, 0x93, 0x2c, 0x00, 0x00, 0x1c, 0x60, 0x1f, 0xe1, 0xcb, 0x7f,
+        0x73, 0xf9, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+    ];
+    const LEGACY_SECOND_KEY_CAP_PNG: &[u8] = &[
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x04, 0x08, 0x06, 0x00, 0x00, 0x00, 0xa9,
+        0xf1, 0x9e, 0x7e, 0x00, 0x00, 0x00, 0x0f, 0x49, 0x44, 0x41, 0x54, 0x78, 0xda, 0x63, 0x60,
+        0xf8, 0x8f, 0x06, 0x49, 0x17, 0x00, 0x00, 0x2c, 0x50, 0x1f, 0xe1, 0x45, 0xaf, 0x33, 0x10,
+        0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+    ];
+    const LEGACY_PAW_PNG: &[u8] = &[
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x04, 0x08, 0x06, 0x00, 0x00, 0x00, 0xa9,
+        0xf1, 0x9e, 0x7e, 0x00, 0x00, 0x00, 0x12, 0x49, 0x44, 0x41, 0x54, 0x78, 0xda, 0x63, 0xf8,
+        0xcf, 0xc0, 0xd0, 0x80, 0x8c, 0x19, 0x48, 0x17, 0x00, 0x00, 0x3a, 0x39, 0x17, 0xf1, 0x3b,
+        0x56, 0x2b, 0xf5, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+    ];
+
+    fn write_fixture_file(root: &Path, reference: &str, bytes: &[u8]) {
+        let path = root.join(reference);
+        fs::create_dir_all(path.parent().expect("fixture parent"))
+            .expect("create fixture directory");
+        fs::write(path, bytes).expect("write fixture file");
+    }
+
+    /// Write a minimal BongoCatMver application folder.
+    ///
+    /// The layout is the legacy application's: the mode key table at the root,
+    /// and one resource folder per mode holding the Live2D package, the paw and
+    /// key-cap layers a conversion composes, and the mode's background and
+    /// cover. The gamepad section addresses buttons with XInput indices, the way
+    /// the legacy config does.
+    fn legacy_source_fixture(root: &Path) {
+        let mut config = serde_json::Map::new();
+        for (mode, section) in [
+            ("standard", r#"{"hand":[[65],[66]],"keyboard":[[65],[66]]}"#),
+            (
+                "keyboard",
+                r#"{"lefthand":[[65]],"righthand":[[37]],"keyboard":[[65],[37]]}"#,
+            ),
+            (
+                "gamepad",
+                r#"{"lefthand":[[10]],"righthand":[[0]],"keyboard":[[10],[0]]}"#,
+            ),
+        ] {
+            config.insert(
+                mode.to_owned(),
+                serde_json::from_str(section).expect("legacy mode section"),
+            );
+        }
+        write_fixture_file(
+            root,
+            "config.json",
+            &serde_json::to_vec(&serde_json::Value::Object(config)).expect("legacy config"),
+        );
+
+        for mode in ["standard", "keyboard", "gamepad"] {
+            let base = format!("img/{mode}");
+            write_fixture_file(
+                root,
+                &format!("{base}/cat_model/cat.model3.json"),
+                br#"{"Version":3,"FileReferences":{"Moc":"model.moc3","Textures":[]}}"#,
+            );
+            write_fixture_file(root, &format!("{base}/cat_model/model.moc3"), b"moc");
+            write_fixture_file(root, &format!("{base}/keyboard/0.png"), LEGACY_KEY_CAP_PNG);
+            write_fixture_file(
+                root,
+                &format!("{base}/keyboard/1.png"),
+                LEGACY_SECOND_KEY_CAP_PNG,
+            );
+            for hand in ["hand", "lefthand", "righthand"] {
+                write_fixture_file(root, &format!("{base}/{hand}/0.png"), LEGACY_PAW_PNG);
+                write_fixture_file(root, &format!("{base}/{hand}/1.png"), LEGACY_PAW_PNG);
+            }
+            for asset in ["mousebg.png", "bg.png", "cat.png"] {
+                write_fixture_file(root, &format!("{base}/{asset}"), LEGACY_KEY_CAP_PNG);
+            }
+        }
+    }
+
+    /// One BongoCatMver source describes several models: importing it installs
+    /// one converted model per mode, each with its own store key and a title
+    /// that tells them apart.
+    #[test]
+    fn importing_a_legacy_source_installs_one_titled_model_per_mode() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let mut application = Application::start_with_layout(layout).expect("start application");
+        application
+            .set_language(Language::ChineseSimplified)
+            .expect("set language");
+        let source = base.path().join("Bongo Cat Mver");
+        fs::create_dir(&source).expect("legacy source");
+        legacy_source_fixture(&source);
+
+        let installed = application
+            .import_models("我的猫", &source)
+            .expect("import legacy source");
+        assert_eq!(installed.len(), 3, "one model per configured mode");
+        assert_eq!(
+            application
+                .config()
+                .model
+                .installed_models
+                .iter()
+                .map(|metadata| metadata.title.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "我的猫 · 标准模式",
+                "我的猫 · 键盘模式",
+                "我的猫 · 手柄模式"
+            ]
+        );
+        let ids = installed
+            .iter()
+            .map(|model| model.id().as_str().to_owned())
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(ids.len(), 3, "each model has its own store key");
+
+        // The standard mode has one paw per key and no right hand; the split
+        // modes publish both sides, with the gamepad's own vocabulary.
+        assert_eq!(installed[0].index().entry, "cat.model3.json");
+        assert!(
+            installed[0]
+                .root()
+                .join("resources/left-keys/KeyA.png")
+                .is_file()
+        );
+        assert!(
+            installed[0]
+                .root()
+                .join("resources/left-keys/KeyB.png")
+                .is_file()
+        );
+        assert!(!installed[0].root().join("resources/right-keys").exists());
+        assert!(
+            installed[1]
+                .root()
+                .join("resources/left-keys/KeyA.png")
+                .is_file()
+        );
+        assert!(
+            installed[1]
+                .root()
+                .join("resources/right-keys/LeftArrow.png")
+                .is_file()
+        );
+        assert!(
+            installed[2]
+                .root()
+                .join("resources/left-keys/DPadLeft.png")
+                .is_file()
+        );
+        assert!(
+            installed[2]
+                .root()
+                .join("resources/right-keys/South.png")
+                .is_file()
+        );
+        for model in &installed {
+            assert!(model.root().join("resources/background.png").is_file());
+            assert!(model.root().join("resources/cover.png").is_file());
+        }
+
+        // The legacy folder is read, never written into.
+        assert!(
+            source
+                .join("img/standard/cat_model/cat.model3.json")
+                .is_file()
+        );
+        let catalog = application.model_catalog().expect("model catalog");
+        assert_eq!(
+            catalog
+                .iter()
+                .filter(|entry| entry.origin() == ModelOrigin::Installed)
+                .count(),
+            3
+        );
+        application.shutdown().expect("clean shutdown");
+    }
+
+    /// The settings monitor drops an update that moves backwards, so folding the
+    /// per-model progress of one action has to keep the sequence monotone while
+    /// still counting every model.
+    #[test]
+    fn legacy_import_progress_stays_monotone_across_models() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let mut application = Application::start_with_layout(layout).expect("start application");
+        let source = base.path().join("Bongo Cat Mver");
+        fs::create_dir(&source).expect("legacy source");
+        legacy_source_fixture(&source);
+
+        let updates = std::cell::RefCell::new(Vec::new());
+        let installed = application
+            .import_models_with_observer(
+                "legacy",
+                &source,
+                |update| updates.borrow_mut().push(update),
+                || false,
+            )
+            .expect("import legacy source");
+        assert_eq!(installed.len(), 3);
+
+        let updates = updates.into_inner();
+        assert_eq!(
+            updates.first().map(|update| update.stage),
+            Some(ModelImportStage::Preparing)
+        );
+        assert_eq!(
+            updates.last().map(|update| update.stage),
+            Some(ModelImportStage::Committing)
+        );
+        for pair in updates.windows(2) {
+            assert!(pair[0].stage <= pair[1].stage);
+            assert!(pair[0].files_copied <= pair[1].files_copied);
+            assert!(pair[0].bytes_copied <= pair[1].bytes_copied);
+        }
+        // The three conversions are counted end to end, so the last update is
+        // the sum of what all of them wrote.
+        let final_update = updates.last().expect("final update");
+        assert_eq!(
+            final_update.files_copied,
+            installed
+                .iter()
+                .map(|model| model.index().package_file_count as u64)
+                .sum::<u64>()
+        );
+        assert_eq!(
+            final_update.bytes_copied,
+            installed
+                .iter()
+                .map(|model| model.index().package_total_bytes)
+                .sum::<u64>()
+        );
+        application.shutdown().expect("clean shutdown");
+    }
+
+    #[test]
+    fn legacy_model_titles_stay_within_the_configuration_limit() {
+        let hint = "猫".repeat(bongocat_config::MODEL_METADATA_MAXIMUM_TITLE_CHARS);
+        let title = legacy_model_title(&hint, Path::new("/source"), "fallback", "标准模式");
+        assert!(
+            title.chars().count() <= bongocat_config::MODEL_METADATA_MAXIMUM_TITLE_CHARS,
+            "{} characters",
+            title.chars().count()
+        );
+        assert!(title.ends_with("标准模式"));
+        // A blank hint still produces a distinguishable title per mode.
+        assert_eq!(
+            legacy_model_title("", Path::new("/source/我的猫"), "fallback", "手柄模式"),
+            "我的猫 · 手柄模式"
+        );
+    }
+
+    #[test]
+    fn import_progress_folding_carries_finished_models_forward() {
+        let mut updates = Vec::new();
+        {
+            let mut accumulator = ImportProgressAccumulator::new(|update| updates.push(update));
+            for files in [1_u64, 2] {
+                for (stage, files_copied) in [
+                    (ModelImportStage::Preparing, 0),
+                    (ModelImportStage::Copying, files),
+                    (ModelImportStage::Validating, files),
+                    (ModelImportStage::Committing, files),
+                ] {
+                    accumulator.report(ModelImportProgress {
+                        stage,
+                        files_copied,
+                        bytes_copied: files_copied * 100,
+                    });
+                }
+            }
+        }
+        for pair in updates.windows(2) {
+            assert!(pair[0].stage <= pair[1].stage, "{pair:?}");
+            assert!(pair[0].files_copied <= pair[1].files_copied, "{pair:?}");
+            assert!(pair[0].bytes_copied <= pair[1].bytes_copied, "{pair:?}");
+        }
+        let final_update = updates.last().expect("final update");
+        assert_eq!(final_update.files_copied, 3, "1 file + 2 files");
+        assert_eq!(final_update.bytes_copied, 300);
+        // The stage never regresses to the second model's `Preparing`.
+        assert_eq!(final_update.stage, ModelImportStage::Committing);
     }
 
     #[test]
@@ -2172,12 +2645,8 @@ mod tests {
         assert_ne!(development_root, production_root);
 
         let source = repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型");
-        development_app
-            .import_model("same-id", &source)
-            .expect("development import");
-        production_app
-            .import_model("same-id", source)
-            .expect("production import");
+        import_one(&mut development_app, "same-id", &source);
+        import_one(&mut production_app, "same-id", source);
         let development_ids = installed_catalog_ids(&development_app);
         let production_ids = installed_catalog_ids(&production_app);
         assert_eq!(development_ids.len(), 1);
@@ -2244,15 +2713,11 @@ mod tests {
         let mut application = Application::start_with_layout(layout).expect("start application");
         let fixtures = repository_root().join("shared/fixtures/model-fixtures/cases");
 
-        let active_id = application
-            .import_model("active", fixtures.join("非 ASCII 模型"))
-            .expect("import active model")
+        let active_id = import_one(&mut application, "active", fixtures.join("非 ASCII 模型"))
             .id()
             .as_str()
             .to_owned();
-        let broken_id = application
-            .import_model("broken", fixtures.join("非 ASCII 模型"))
-            .expect("import model to corrupt")
+        let broken_id = import_one(&mut application, "broken", fixtures.join("非 ASCII 模型"))
             .id()
             .as_str()
             .to_owned();
@@ -2292,9 +2757,7 @@ mod tests {
         let mut application = Application::start_with_layout(layout).expect("start application");
         let source = repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型");
 
-        let imported = application
-            .import_model("unicode", source)
-            .expect("import model");
+        let imported = import_one(&mut application, "unicode", source);
         assert_eq!(
             imported.root(),
             models_root
@@ -2323,12 +2786,8 @@ mod tests {
         let mut application = Application::start_with_layout(layout).expect("start application");
         let source = repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型");
 
-        let first = application
-            .import_model("我的猫", source.clone())
-            .expect("first import");
-        let second = application
-            .import_model("我的猫", source)
-            .expect("second import with the same hint");
+        let first = import_one(&mut application, "我的猫", source.clone());
+        let second = import_one(&mut application, "我的猫", source);
         assert_ne!(first.id(), second.id(), "ids are independent UUIDs");
 
         let installed = installed_catalog_ids(&application);
@@ -2375,12 +2834,8 @@ mod tests {
         let archive = archives.path().join("我的猫 · 标准模式.zip");
         archive_fixture(&source, &archive, "我的猫 · 标准模式");
 
-        let from_folder = application
-            .import_model("", source)
-            .expect("import folder source");
-        let from_archive = application
-            .import_model("", &archive)
-            .expect("import archive source");
+        let from_folder = import_one(&mut application, "", source);
+        let from_archive = import_one(&mut application, "", &archive);
 
         assert_ne!(from_folder.id(), from_archive.id());
         // Auto-detection means the archive is not a second parser: the same
@@ -2597,9 +3052,7 @@ mod tests {
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
         let mut application = Application::start_with_layout(layout).expect("start application");
         let source = repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型");
-        let active_id = application
-            .import_model("active", source)
-            .expect("import model")
+        let active_id = import_one(&mut application, "active", source)
             .id()
             .as_str()
             .to_owned();
@@ -2647,9 +3100,7 @@ mod tests {
         let source = repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型");
         let mut application =
             Application::start_with_layout(layout.clone()).expect("start application");
-        let selected_id = application
-            .import_model("selected", source)
-            .expect("import model")
+        let selected_id = import_one(&mut application, "selected", source)
             .id()
             .as_str()
             .to_owned();

@@ -13,6 +13,7 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 ### ✨ Features
 
 - Added a persistent model library for importing model folders or ZIP archives, with validation, progress, cancellation, and rejection of unsafe archives.
+- BongoCatMver models can be imported directly. Each input mode the source carries (standard, keyboard, or gamepad) becomes a separate model named after the source and its mode, so the converter tool is no longer needed.
 - The model library lets you rename, enable, and delete models and restores the last active model on startup. If a model cannot be activated, the currently working model remains available.
 - Model details list the available motions and expressions, which can be previewed and assigned to global behavior shortcuts.
 - Added a Diagnostics page for viewing runtime, rendering, and input status, exporting anonymous diagnostic reports, opening the backup folder, and restoring default settings when needed.

@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod archive;
+mod mver;
 mod store;
 
 use serde::de::DeserializeOwned;
@@ -13,6 +14,7 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
+pub use mver::{ModelSourceContent, MverInputMode};
 pub use store::{
     InstalledModelCatalog, ModelCatalogEntry, ModelImportProgress, ModelImportStage, ModelStore,
     ModelStoreDiagnostic, ModelStoreError, ModelStoreRecovery,

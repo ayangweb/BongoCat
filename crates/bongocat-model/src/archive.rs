@@ -147,6 +147,124 @@ pub(crate) struct ArchivePlan {
     files: Vec<PlannedEntry>,
 }
 
+impl ArchivePlan {
+    /// Whether the plan carries a file with this package reference.
+    pub(crate) fn contains_file(&self, reference: &str) -> bool {
+        self.files.iter().any(|file| file.reference == reference)
+    }
+
+    /// Every file reference the plan carries.
+    pub(crate) fn file_references(&self) -> impl Iterator<Item = &str> {
+        self.files.iter().map(|file| file.reference.as_str())
+    }
+
+    /// The bytes the central directory declares for one planned entry.
+    pub(crate) fn file_size(&self, reference: &str) -> Option<u64> {
+        self.files
+            .iter()
+            .find(|file| file.reference == reference)
+            .map(|file| file.bytes)
+    }
+
+    /// Read one planned entry without extracting the archive.
+    ///
+    /// The re-validation the full extraction performs applies here too: the
+    /// entry must still be the planned one, must still declare the same size,
+    /// and must deliver exactly that many bytes. A reader that takes a subset of
+    /// the archive therefore cannot be fooled by an archive that changed
+    /// underneath it either. Opening the archive again per entry costs one
+    /// central-directory scan, which is what the two-pass extraction already
+    /// pays once.
+    pub(crate) fn read_file(
+        &self,
+        archive_path: &Path,
+        reference: &str,
+    ) -> Result<Vec<u8>, ModelStoreError> {
+        let planned = self
+            .files
+            .iter()
+            .find(|file| file.reference == reference)
+            .ok_or_else(|| {
+                ModelStoreError::new(
+                    ModelStoreDiagnostic::SourceChanged,
+                    Some(reference.to_owned()),
+                    "planned archive entry is missing",
+                )
+            })?;
+        let file = File::open(archive_path).map_err(|error| {
+            ModelStoreError::new(
+                ModelStoreDiagnostic::IoError,
+                Some(reference.to_owned()),
+                format!("model archive cannot be reopened: {error}"),
+            )
+        })?;
+        let mut archive = ZipArchive::new(file).map_err(|error| {
+            ModelStoreError::new(
+                ModelStoreDiagnostic::SourceChanged,
+                Some(reference.to_owned()),
+                format!("model archive cannot be read again: {error}"),
+            )
+        })?;
+        let mut input = archive.by_index(planned.index).map_err(|error| {
+            ModelStoreError::new(
+                ModelStoreDiagnostic::SourceChanged,
+                Some(reference.to_owned()),
+                format!("model archive entry cannot be read: {error}"),
+            )
+        })?;
+        if input.name() != planned.original_name
+            || input.size() != planned.bytes
+            || !input.is_file()
+        {
+            return Err(ModelStoreError::new(
+                ModelStoreDiagnostic::SourceChanged,
+                Some(reference.to_owned()),
+                "model archive entry changed after it was validated",
+            ));
+        }
+
+        // The declared size is the allocation budget, capped at one buffer so an
+        // inconsistent central directory cannot reserve an unreasonable amount
+        // before any byte has been verified.
+        let capacity = usize::try_from(planned.bytes).unwrap_or(usize::MAX);
+        let mut bytes = Vec::with_capacity(capacity.min(COPY_BUFFER_BYTES));
+        let mut buffer = [0_u8; COPY_BUFFER_BYTES];
+        let mut read_total = 0_u64;
+        loop {
+            let read = input.read(&mut buffer).map_err(|error| {
+                ModelStoreError::new(
+                    ModelStoreDiagnostic::SourceArchiveUnsupported,
+                    Some(reference.to_owned()),
+                    format!("model archive entry cannot be decompressed: {error}"),
+                )
+            })?;
+            if read == 0 {
+                break;
+            }
+            read_total = read_total.saturating_add(u64::try_from(read).unwrap_or(u64::MAX));
+            if read_total > planned.bytes {
+                return Err(ModelStoreError::new(
+                    ModelStoreDiagnostic::SourceChanged,
+                    Some(reference.to_owned()),
+                    "model archive entry delivered more bytes than it declared",
+                ));
+            }
+            bytes.extend_from_slice(&buffer[..read]);
+        }
+        if read_total != planned.bytes {
+            return Err(ModelStoreError::new(
+                ModelStoreDiagnostic::SourceChanged,
+                Some(reference.to_owned()),
+                format!(
+                    "model archive entry declared {} bytes but delivered {read_total}",
+                    planned.bytes
+                ),
+            ));
+        }
+        Ok(bytes)
+    }
+}
+
 /// Read the archive's central directory and validate it against the package
 /// limits. No entry data is decompressed here, so a compression bomb is rejected
 /// while it is still only a number in a header.
@@ -511,7 +629,7 @@ where
 ///
 /// Parents are created lazily instead of relying on the archive declaring every
 /// directory before the files inside it, which the zip format does not require.
-fn create_package_directory(
+pub(crate) fn create_package_directory(
     destination: &Path,
     relative: &Path,
     created: &mut BTreeSet<PathBuf>,

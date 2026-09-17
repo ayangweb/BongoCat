@@ -22,6 +22,14 @@ zip = { workspace = true, features = ["deflate-flate2"] }
 # this crate's feature set in every build graph instead of relying on whichever
 # sibling crate happens to enable flate2's defaults.
 flate2.workspace = true
+# A BongoCatMver model keeps its key images as separate hand and device layers,
+# so converting one composes them into a single RGBA image. `image` already backs
+# the Live2D texture reader at the same pinned version and with the same
+# `png`-only feature set.
+image.workspace = true
+# The composed images are written as PNG; the ordinary encoder is a correct but
+# uncompressed baseline, so each one is handed to oxipng for a lossless recode.
+oxipng.workspace = true
 # v4 random UUIDs are the source of installed model store keys; std has no RNG
 # and the store must never derive identity from user-visible names.
 uuid = { version = "=1.26.1", default-features = false, features = ["std", "v4"] }

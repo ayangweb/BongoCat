@@ -217,7 +217,7 @@ Platform input ---> Runtime thread ---> Model/Animation state
 - `runtime`：唯一业务状态所有者，处理输入、快捷键、动画选择和模型命令。
 - `ui`：显示 runtime snapshot，发送显式 command，不直接修改业务字段。
 - `platform`：窗口、输入、托盘、权限、显示器、启动项、文件和更新。
-- `model`：模型包解析、路径安全、资源索引和显式导入（目录或 `.zip` 归档两种来源）。
+- `model`：模型包解析、路径安全、资源索引和显式导入（目录、`.zip` 归档和 BongoCatMver 源三种来源）。
 - `live2d`：Cubism Core 生命周期、motion/expression/physics/pose 求值。
 - `audio`：motion 音效的有序 command、FLAC 解码、唯一 voice、输出设备和 shutdown。
 - `render`：不可变 render snapshot 和 renderer contract。
@@ -724,6 +724,31 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
 - 压缩包容器有自己的字节上限 `maximum_archive_bytes`，在归档读取器解析中央目录之前生效；
   它与包字节上限分开，否则以 `Stored` 保存的合法归档会让包上限永不可达。解压出的条目数、
   深度、单文件字节和整包字节仍由既有包上限约束。
+- 第三种来源是 BongoCatMver 模型（ADR-0037），同样按内容识别，且需要两条独立证据：根
+  `config.json` 能解析成 legacy 的 section 形状，且它命名的模式里至少有一个在
+  `<资源根>/<模式>/cat_model/` 下恰好带一个 `.model3.json`。缺任一条就回退到普通包导入并
+  由那条路径报错，检测本身不报错。
+- 一个 Mver 源产出**多个** BongoCat 模型：每种输入模式各自转换成一个包，各自分配随机 UUID
+  v4 存储键与元数据记录，因此三种模式是模型列表里三个可独立启用/改名/删除的条目。每个模式
+  独立提交——某个模式的键位图损坏不影响已转换成功的模式，与"这几种模式彼此独立"的事实一致。
+- 转换只把合成后的包写进 `ModelStore` 自己的 staging，并与目录复制、归档解压共用同一个
+  `PreparedModel` 校验与单次 `rename` 提交尾部，因此不可能绕过包校验，也不存在第二个临时位置。
+  归档来源**不解压**：只按需读取被命名的条目并沿用逐条目复核，一个 Mver `.zip` 不会把整个
+  应用（exe、DLL、用不到的模式）落到磁盘上。
+- 键位图合成是"最小画布上的 Porter-Duff over"：画布取两层较小的宽高、两层锚在原点，因此过大
+  的一层被裁切而非缩放；模式没有 `keyboard/` 图集时按字节安装 paw 图而不合成；某个绑定缺 paw
+  或配套键帽时只跳过该绑定。输出文件名沿用产品自己的词汇表——键盘键是 `bongocat-live2d` 从
+  HID usage 解析出的名字，手柄键是随包预置 gamepad 模型已经装载的名字（`gamepad` 的键位表用
+  XInput 序号，不是虚拟键码）；无法命名的控制码不产出图片也不报错。
+- 合成图按 lossless 方式重编码（`oxipng`，只开库入口）：位深/颜色类型/调色板/灰度缩减保持解码
+  后像素不变，`optimize_alpha` 只改写全透明像素的颜色通道。有损量化库因许可证（GPL）被排除；
+  Zopfli 后端实测多 5% 体积换 15 倍时间，不采用。重编码失败写回普通编码结果，不让转换失败。
+- Mver 源的检测与转换只在 settings service worker 执行，UI executor 不做阻塞文件或模型解析；
+  跨模型进度在应用层折叠（累计已完成模型的文件数与字节数、stage 取最大值），因此用户看到的是
+  不倒退且终值等于各模型总和的一条序列，而不是卡在第一个模型的终值。标题为
+  「用户标题 · 本地化模式名」，模式名在截断之后拼接，长来源名不能挤掉三个模型之间唯一的区别。
+  诊断上只新增 store 码 `SourceConversionFailed`（映射到既有
+  `ModelImportSourceUnsupported`），没有新增用户可见错误码。
 - 模型包在反序列化或图片解码前执行 JSON 字节/深度、单文件/整包字节、文件数、目录深度
   和纹理尺寸上限。model ID、资源路径、model3 数组索引、任意 JSON bytes 和 PNG header/
   dimensions 具有可收缩 property contract；接受的资源路径必须规范化为幂等、相对且只含

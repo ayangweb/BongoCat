@@ -917,7 +917,7 @@ fn run_service(
                 let result = require_operational(&application)
                     .and_then(|()| {
                         application
-                            .import_model_with_observer(
+                            .import_models_with_observer(
                                 request.title,
                                 request.source_root,
                                 move |update| {
@@ -2240,10 +2240,14 @@ const fn map_model_store_import_diagnostic(diagnostic: ModelStoreDiagnostic) -> 
         ModelStoreDiagnostic::SourceContainsStore => SettingsErrorCode::ModelImportSourceInvalid,
         ModelStoreDiagnostic::SourceChanged => SettingsErrorCode::ModelImportSourceChanged,
         // A source the store cannot read at all — an unsupported archive, an
-        // archive entry that is not a regular file or directory, or a symbolic
-        // link — is the same user-facing outcome as any other unsupported
-        // source entry: the chosen source cannot be imported as it stands.
+        // archive entry that is not a regular file or directory, a symbolic
+        // link, or a BongoCatMver source it cannot convert — is the same
+        // user-facing outcome as any other unsupported source entry: the chosen
+        // source cannot be imported as it stands. The distinction between them
+        // stays in the diagnostic, which is what the diagnostics bundle and the
+        // log carry.
         ModelStoreDiagnostic::SourceArchiveUnsupported
+        | ModelStoreDiagnostic::SourceConversionFailed
         | ModelStoreDiagnostic::SourceSymlinkUnsupported
         | ModelStoreDiagnostic::SourceEntryUnsupported => {
             SettingsErrorCode::ModelImportSourceUnsupported
@@ -2279,6 +2283,7 @@ const fn map_model_store_delete_diagnostic(diagnostic: ModelStoreDiagnostic) -> 
         | ModelStoreDiagnostic::InvalidPackage
         | ModelStoreDiagnostic::IoError
         | ModelStoreDiagnostic::SourceArchiveUnsupported
+        | ModelStoreDiagnostic::SourceConversionFailed
         | ModelStoreDiagnostic::SourceContainsStore
         | ModelStoreDiagnostic::SourceChanged
         | ModelStoreDiagnostic::SourceSymlinkUnsupported
@@ -4736,6 +4741,10 @@ mod tests {
                 SettingsErrorCode::ModelImportSourceUnsupported,
             ),
             (
+                ModelStoreDiagnostic::SourceConversionFailed,
+                SettingsErrorCode::ModelImportSourceUnsupported,
+            ),
+            (
                 ModelStoreDiagnostic::StoreBusy,
                 SettingsErrorCode::ModelStoreBusy,
             ),
@@ -4811,6 +4820,10 @@ mod tests {
             ),
             (
                 ModelStoreDiagnostic::SourceArchiveUnsupported,
+                SettingsErrorCode::ModelDeleteFailed,
+            ),
+            (
+                ModelStoreDiagnostic::SourceConversionFailed,
                 SettingsErrorCode::ModelDeleteFailed,
             ),
             (
