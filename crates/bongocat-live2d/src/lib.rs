@@ -843,6 +843,14 @@ fn load_key_assets(root: &std::path::Path) -> Result<Vec<bongocat_render::KeyAss
 /// four modifier pairs, the shared side-independent asset (`Control`, `Shift`,
 /// `Alt`, `Meta`). A name that the model does not provide is skipped, so an
 /// incomplete model simply draws nothing for that key.
+///
+/// `AltGr` is the one legacy name in this table. BongoCat models written before
+/// the import normalizer existed ship the right Alt artwork as
+/// `AltGr.png` — the name the old `rdev`-based input layer used — and a package
+/// that reaches the model store without passing through that normalizer (an
+/// install predating it, or a model directory placed by hand) still has to draw
+/// the right artwork instead of the left one. It is deliberately right-Alt-only:
+/// `Alt.png` stays the shared family image, exactly as it was before.
 fn key_name_candidates(hid_usage: u16) -> Vec<&'static str> {
     let function_key = bongocat_render::function_key_name(hid_usage);
     let exact = match hid_usage {
@@ -885,7 +893,14 @@ fn key_name_candidates(hid_usage: u16) -> Vec<&'static str> {
     match hid_usage {
         0xe0 | 0xe4 => candidates.push("Control"),
         0xe1 | 0xe5 => candidates.push("Shift"),
-        0xe2 | 0xe6 => candidates.push("Alt"),
+        0xe2 => candidates.push("Alt"),
+        0xe6 => {
+            // Right Alt keeps its pre-rename name as an alias between the exact
+            // `AltRight` and the shared `Alt`: a legacy model draws its own
+            // right artwork when it has one, and the family image otherwise.
+            candidates.push("AltGr");
+            candidates.push("Alt");
+        }
         0xe3 | 0xe7 => candidates.push("Meta"),
         _ => {}
     }
@@ -1116,6 +1131,130 @@ mod tests {
             None,
             "the fallback covers function keys only"
         );
+    }
+
+    /// The two Alt keys are distinct physical keys and must resolve to distinct
+    /// artwork. Before the bundled models were renamed, both HID codes fell
+    /// through to the same `Alt.png`, so pressing right Alt drew the *left*
+    /// artwork and the model's own `AltGr.png` was unreachable.
+    #[test]
+    fn alt_keys_resolve_their_own_image_and_keep_the_legacy_alias() {
+        use bongocat_render::{
+            KeyAsset, KeyAssetId, KeyPress, KeyPressSet, KeySide, RenderResources,
+        };
+        use std::path::PathBuf;
+
+        // HID usages: `0xe2` is AltLeft, `0xe6` is AltRight.
+        assert_eq!(
+            key_name_candidates(0xe2),
+            vec!["AltLeft", "Alt"],
+            "left Alt prefers its own image over the shared family image"
+        );
+        assert_eq!(
+            key_name_candidates(0xe6),
+            vec!["AltRight", "AltGr", "Alt"],
+            "right Alt must never land on the left artwork while the model still \
+             speaks the legacy naming"
+        );
+
+        // Every asset sits in `left-keys`: the runtime binds both Alt keys to
+        // the left hand, so the side dimension is not what this test varies.
+        let resources = |names: &[&str]| RenderResources {
+            textures: Vec::new(),
+            key_assets: names
+                .iter()
+                .enumerate()
+                .map(|(index, name)| KeyAsset {
+                    id: KeyAssetId::new(index),
+                    side: KeySide::Left,
+                    name: (*name).to_owned(),
+                    path: PathBuf::from(format!("{name}.png")),
+                    width: 612,
+                    height: 354,
+                })
+                .collect(),
+            background: None,
+        };
+        let resolve = |model: &RenderResources, hid_usage: u16| {
+            let mut presses = KeyPressSet::default();
+            presses.push(KeyPress {
+                hid_usage,
+                side: KeySide::Left,
+            });
+            resolve_key_overlays(model, presses)
+                .first()
+                .map(|overlay| model.key_assets[overlay.asset_id.index()].name.clone())
+        };
+
+        // A renamed (or freshly imported) model: each side draws its own image.
+        let renamed = resources(&["AltLeft", "AltRight"]);
+        assert_eq!(resolve(&renamed, 0xe2).as_deref(), Some("AltLeft"));
+        assert_eq!(resolve(&renamed, 0xe6).as_deref(), Some("AltRight"));
+
+        // A model that predates the rename: `AltGr` is right Alt's old name, and
+        // the left key must not fall back to the right artwork.
+        let legacy = resources(&["Alt", "AltGr"]);
+        assert_eq!(resolve(&legacy, 0xe2).as_deref(), Some("Alt"));
+        assert_eq!(resolve(&legacy, 0xe6).as_deref(), Some("AltGr"));
+
+        // A model with a single shared `Alt` image keeps drawing it on both
+        // sides, which is the best an ambiguous model can do.
+        let shared = resources(&["Alt"]);
+        assert_eq!(resolve(&shared, 0xe2).as_deref(), Some("Alt"));
+        assert_eq!(resolve(&shared, 0xe6).as_deref(), Some("Alt"));
+    }
+
+    /// The shipped contract: the bundled keyboard models must expose both Alt
+    /// keys, with different artwork, under the names the resolver asks for.
+    #[test]
+    fn shipped_keyboard_models_draw_both_alt_keys_with_their_own_artwork() {
+        use bongocat_model::{ModelPackageLimits, PresetModelCatalog};
+        use bongocat_render::{KeyPress, KeyPressSet, KeySide, RenderResources};
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/models");
+        let catalog =
+            PresetModelCatalog::open(&root, ModelPackageLimits::default()).expect("catalog");
+        for id in ["standard", "keyboard"] {
+            let model = catalog
+                .load(&bongocat_model::ModelId::parse(id).expect("model id"))
+                .expect("preset model");
+            let resources = RenderResources {
+                textures: Vec::new(),
+                key_assets: load_key_assets(model.root()).expect("key assets"),
+                background: None,
+            };
+            for legacy in ["Alt", "AltGr"] {
+                assert!(
+                    !resources
+                        .key_assets
+                        .iter()
+                        .any(|asset| asset.name == legacy),
+                    "{id} must not ship the pre-rename `{legacy}` image"
+                );
+            }
+
+            let resolve = |hid_usage: u16| {
+                let mut presses = KeyPressSet::default();
+                presses.push(KeyPress {
+                    hid_usage,
+                    side: KeySide::Left,
+                });
+                let overlays = resolve_key_overlays(&resources, presses);
+                let asset = &resources.key_assets[overlays[0].asset_id.index()];
+                (asset.name.clone(), asset.path.clone())
+            };
+            let (left_name, left_path) = resolve(0xe2);
+            let (right_name, right_path) = resolve(0xe6);
+            assert_eq!(left_name, "AltLeft", "{id} left Alt");
+            assert_eq!(right_name, "AltRight", "{id} right Alt");
+            assert!(left_path.ends_with("resources/left-keys/AltLeft.png"));
+            assert!(right_path.ends_with("resources/left-keys/AltRight.png"));
+            assert_ne!(
+                fs::read(&left_path).expect("left Alt artwork"),
+                fs::read(&right_path).expect("right Alt artwork"),
+                "{id} must draw a different image for each Alt key"
+            );
+        }
     }
 
     #[test]

@@ -4069,6 +4069,45 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       （UEFI 表的 AT 101/102 列对 F13 及以上为 N/A，缺可依据的扫描码，未猜值），
       `legacy_virtual_key_name` 的 VK 表也仍止于 F12（0x70-0x7B），因此 Legacy 源里绑定 F13+
       的条目依旧会被跳过。
+    - 键位图 Alt 左右侧修正与旧名兼容（2026-09-17，ADR-0038）：`rdev` 时代的模型把左右 Alt 命名为
+      `Alt`/`AltGr`，而运行时按 HID usage 派生的 `AltLeft`/`AltRight` 查资源，于是右 Alt 落到
+      `Alt.png`（画成左 Alt 的图）、模型自带的 `AltGr.png` 完全不可达（预置模型中两者 SHA-256
+      不同，是肉眼可见的错误，不是"反正一样"）。修正分三处：①预置 `standard`/`keyboard` 的
+      `left-keys` 用 `git mv` 改名为 `AltLeft.png`/`AltRight.png`，字节不变，
+      `preset-model3-index.json` 冻结快照同步（重跑 `spikes/model-package` 解析器逐字段相等）；
+      ②`bongocat-live2d::key_name_candidates` 中右 Alt 的候选改为 `AltRight`→`AltGr`→`Alt`，
+      `AltGr` 是唯一保留的旧名且只对右侧生效，使**已经安装**的旧模型不回退成共用图（`next` 无
+      迁移，导入归一化不会回头改写用户数据根里的已有模型）；③`bongocat-model` 新增 `key_names`
+      模块，在 store 自己的 staging 上把 `resources/{left-,right-}keys/` 的 `Alt.png`/`AltGr.png`
+      改名为 canonical 名，调用点在目录复制与归档解压之后、共用的 `commit_installed_staging`
+      之前，因此两种来源结果一致、用户选中的源始终只读、文件数与字节数不变（进度计数不虚报）；
+      canonical 文件已存在时保留它、旧名文件原样留下，不猜作者意图。
+      Mver 侧 `mver::legacy_key_names` 取代单值 `legacy_key_name`：`0x12` `VK_MENU`（上游教程图
+      把左右 Alt 都编号为 `18`，C++ 侧用 `GetKeyState` 查询，旧格式本身没有"哪一侧"这一位信息）
+      展开为 `AltLeft` + `AltRight` 两个目标名，同一份合成图，不再产出共用的 `Alt` 名；
+      `0xA4`/`0xA5`（`VK_LMENU`/`VK_RMENU`）分别映射 `AltLeft`/`AltRight`，与
+      `bongocat-platform` 对同一码的处理一致。`0x10`/`0x11` 继续输出 `Shift`/`Control` 家族名：它们
+      与 `0x12` 属同一类歧义，但真实样本的 `left-keys{Control, KeyR, Shift}` 已被 ADR-0037 记为
+      验证证据，改动会同时作废那份证据，因此留作单独改动。
+      验收证据：`bongocat-live2d` 45 测试（新增 2：三组候选与命中结果；真实预置模型断言左 Alt 命中
+      `resources/left-keys/AltLeft.png`、右 Alt 命中 `.../AltRight.png`、两者字节不同、预置模型里
+      不再存在 `Alt`/`AltGr`）；`bongocat-model` 92 测试（`key_names` 3 + `store` 3 + `mver` 2，
+      其中 `store` 的一个是 env 门禁的真实样本用例
+      `imports_the_bongo_cat_sample_named_by_the_environment`，由 `BONGOCAT_PACKAGE_SAMPLE` 指定）。
+      **真实社区模型验证**（目录与 `.zip` 两种来源各跑一遍）：`送葬人 · 标准模式`（left-keys 56
+      张、2 个旧名）→ `Alt.png`/`AltGr.png` 改名后字节相同；`经典小键盘 · 标准模式`（15 张、0 旧名）
+      → 无改名且逐字节相同；`Bongo Cat v0.16/BongoCat - 标准模式`（50 张、1 个旧名）→
+      `Alt.png`→`AltLeft.png`。用例同时断言导入后 key 目录的**完整文件集合与逐文件字节**等于
+      "源集合按规则改名后的期望"，并**重新读取源**确认与导入前快照完全一致。真实 Mver 样本回归：
+      `model_conversion_smoke --source /Users/ayang/Downloads/bongo_cat_mver_0.1.6_64` 三个模式的
+      文件数/字节数/键位图名与 ADR-0037 记录**完全一致**，说明本次展开没有改变真实样本产物。
+      冻结快照用 `spikes/model-package` 解析器对仓库预置模型重新生成后逐字段相等（工作树里的
+      未跟踪 `.DS_Store` 需排除，否则会多出一个 unreferenced 文件）。
+      **未运行**：Windows 编译与实机按键、已有旧安装数据上的 `AltGr` 兼容路径、UI 实机点击。
+      **既有缺口（不由本项引入）**：`preset-models.json` 与
+      `docs/phase-0/model-resource-inventory.md` 的 `contentManifestSha256` 仍是
+      `c4103c7`（PNG 无损重压缩）之前的取值，仓库内没有生成该清单的脚本，算法无法从现有数据
+      反推（文件数与字节数也已与该 commit 不符），因此本项只报告、不臆造新值。
 
 ## 13. 待决策清单
 | 决策                                                          | 最迟完成              | 阻塞内容                           |

@@ -110,17 +110,17 @@
       },
       "left_keys": [
         {
-          "id": "Alt",
+          "id": "AltLeft",
           "image": {
-            "file": "resources/left-keys/Alt.png",
+            "file": "resources/left-keys/AltLeft.png",
             "width": 612,
             "height": 354
           }
         },
         {
-          "id": "AltGr",
+          "id": "AltRight",
           "image": {
-            "file": "resources/left-keys/AltGr.png",
+            "file": "resources/left-keys/AltRight.png",
             "width": 612,
             "height": 354
           }
@@ -670,17 +670,17 @@
       },
       "left_keys": [
         {
-          "id": "Alt",
+          "id": "AltLeft",
           "image": {
-            "file": "resources/left-keys/Alt.png",
+            "file": "resources/left-keys/AltLeft.png",
             "width": 612,
             "height": 354
           }
         },
         {
-          "id": "AltGr",
+          "id": "AltRight",
           "image": {
-            "file": "resources/left-keys/AltGr.png",
+            "file": "resources/left-keys/AltRight.png",
             "width": 612,
             "height": 354
           }

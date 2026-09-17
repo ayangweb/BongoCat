@@ -30,6 +30,7 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 
 - Improved keyboard and mouse state recovery, with automatic resets after lock screen, sleep, device changes, or permission changes to reduce stuck keys and buttons.
 - Settings are now backed up automatically and can recover from corruption, helping prevent lost configuration after an unexpected exit.
+- The left and right Alt keys are now drawn as the two separate keys they are. Pressing right Alt used to show the left Alt image and a model's own right-Alt artwork (`AltGr.png`) was never used. Models that still name the two keys `Alt` and `AltGr` are converted to the new names automatically on import, and already installed models keep drawing the right artwork.
 
 ### 🎨 UI and Experience
 

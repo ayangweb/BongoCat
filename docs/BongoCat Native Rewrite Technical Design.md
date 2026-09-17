@@ -217,7 +217,7 @@ Platform input ---> Runtime thread ---> Model/Animation state
 - `runtime`：唯一业务状态所有者，处理输入、快捷键、动画选择和模型命令。
 - `ui`：显示 runtime snapshot，发送显式 command，不直接修改业务字段。
 - `platform`：窗口、输入、托盘、权限、显示器、启动项、文件和更新。
-- `model`：模型包解析、路径安全、资源索引和显式导入（目录、`.zip` 归档和 BongoCatMver 源三种来源）。
+- `model`：模型包解析、路径安全、资源索引和显式导入（目录、`.zip` 归档和 BongoCatMver 源三种来源），并在导入时把包内的旧键位名归一化到产品词汇表。
 - `live2d`：Cubism Core 生命周期、motion/expression/physics/pose 求值。
 - `audio`：motion 音效的有序 command、FLAC 解码、唯一 voice、输出设备和 shutdown。
 - `render`：不可变 render snapshot 和 renderer contract。
@@ -467,7 +467,10 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 之前绘制；背景缺失时保持透明 overlay，背景文件损坏则拒绝该模型提交。按键图片从
 `resources/left-keys` 和 `resources/right-keys` 按目录绑定，当前按下键优先使用精确文件名；
 HID 功能键 F1-F24 缺少专属 `F1.png`…`F24.png` 时回退到该模型共享的 `Fn.png`，左右修饰键同理回退到
-`Control`/`Shift`/`Alt`/`Meta`；没有匹配资源时不绘制按键层。功能键的范围、名字和左右手归属由
+`Control`/`Shift`/`Alt`/`Meta`；没有匹配资源时不绘制按键层。左右修饰键的精确名是两侧各自的
+canonical 名（`AltLeft`/`AltRight`、`ControlLeft`/`ControlRight`、`ShiftLeft`/`ShiftRight`、
+`MetaLeft`/`MetaRight`），`Alt`/`Control`/`Shift`/`Meta` 只作为两侧共用的家族图；`AltGr` 是唯一保留的
+旧名，只对右 Alt 生效，用于兼容没有经过导入归一化的包（见 ADR-0038）。功能键的范围、名字和左右手归属由
 `bongocat-render` 的同一张 HID 表给出（`0x3a..=0x45` 与 `0x68..=0x73` 两段，中间是 PrintScreen
 至方向键和数字键盘），避免按键图片解析和 runtime 绑定各自定义；没有 hand 归属的按键不产生按键层。
 
@@ -727,6 +730,12 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
 - 压缩包容器有自己的字节上限 `maximum_archive_bytes`，在归档读取器解析中央目录之前生效；
   它与包字节上限分开，否则以 `Stored` 保存的合法归档会让包上限永不可达。解压出的条目数、
   深度、单文件字节和整包字节仍由既有包上限约束。
+- 导入在提交前把包内 `resources/left-keys` 与 `resources/right-keys` 下的旧键位名归一化到产品
+  词汇表：`Alt.png` → `AltLeft.png`、`AltGr.png` → `AltRight.png`（ADR-0038）。这一步只作用在
+  `ModelStore` 自己的 staging 上，目录来源与归档来源共用，因此用户选中的源目录/归档始终是只读
+  输入；改名不改变文件数与字节数，`ModelImportProgress` 的计数仍然真实。canonical 文件已存在时
+  保留它、旧名文件原样留下，不猜作者意图。Mver 转换路径不做这一步——它的输出已经按产品词汇表
+  命名。
 - 第三种来源是 BongoCatMver 模型（ADR-0037），同样按内容识别，且需要两条独立证据：根
   `config.json` 能解析成 legacy 的 section 形状，且它命名的模式里至少有一个在
   `<资源根>/<模式>/cat_model/` 下恰好带一个 `.model3.json`。缺任一条就回退到普通包导入并

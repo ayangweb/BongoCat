@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod archive;
+mod key_names;
 mod mver;
 mod store;
 

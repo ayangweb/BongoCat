@@ -614,9 +614,10 @@ pub(crate) fn inspect(
         let mut slots = Vec::new();
         let mut references = BTreeSet::new();
         for binding in section.bindings(mode) {
-            let Some(name) = legacy_key_name(mode, binding.control_code) else {
+            let names = legacy_key_names(mode, binding.control_code);
+            if names.is_empty() {
                 continue;
-            };
+            }
             let hand = indexed_image_reference(&root, binding.hand_directory, binding.hand_index);
             if !source.is_file(&hand)? {
                 continue;
@@ -634,13 +635,21 @@ pub(crate) fn inspect(
             } else {
                 MverSlotImage::Verbatim(hand)
             };
-            let reference = format!("{}/{name}.png", binding.output_directory);
-            if !references.insert(reference.clone()) {
-                // Two legacy bindings that resolve to one BongoCat key image:
-                // the first wins, and the duplicate is not a second write.
-                continue;
+            // One binding can address more than one key image — the legacy table
+            // has codes for a whole key family rather than for a single key — and
+            // each name gets the same composed overlay.
+            for name in names {
+                let reference = format!("{}/{name}.png", binding.output_directory);
+                if !references.insert(reference.clone()) {
+                    // Two legacy bindings that resolve to one BongoCat key image:
+                    // the first wins, and the duplicate is not a second write.
+                    continue;
+                }
+                slots.push(MverSlot {
+                    reference,
+                    image: image.clone(),
+                });
             }
-            slots.push(MverSlot { reference, image });
         }
 
         modes.push(MverModePlan {
@@ -971,7 +980,9 @@ fn conversion_error(resource: Option<&str>, detail: impl Into<String>) -> ModelS
 ///
 /// `0x08` is the one name the legacy key table spells differently (`BackSpace`);
 /// the product's runtime and its shipped preset models both use `Backspace`, so
-/// the product spelling wins.
+/// the product spelling wins. `0x12` keeps the legacy table's own `Alt` name —
+/// it is the side-independent code, and [`legacy_key_names`] is what turns it
+/// into the names the product actually looks up.
 ///
 /// A code with no name is not an error: it is a control this product has no
 /// overlay for (a mouse button, or a key outside the resolved set), and the
@@ -981,6 +992,35 @@ const fn legacy_key_name(mode: MverInputMode, control_code: i64) -> Option<&'sta
         MverInputMode::Standard | MverInputMode::Keyboard => legacy_virtual_key_name(control_code),
         MverInputMode::Gamepad => legacy_gamepad_button_name(control_code),
     }
+}
+
+/// `VK_MENU`: the legacy keyboard chart's `18`, worn by both Alt keys.
+const LEGACY_VK_MENU: i64 = 0x12;
+
+/// The BongoCat key-image names one legacy control code addresses.
+///
+/// Almost every code names exactly one image, and callers must treat every name
+/// it does produce as an equal destination for the same composed overlay.
+///
+/// `VK_MENU` (`0x12`) is the one code the legacy key table gives to two physical
+/// keys: its keyboard chart numbers *both* Alt keys `18`, and the application
+/// reads the code with `GetKeyState`, which reports either key. The code itself
+/// therefore never says which side was pressed, and the conversion installs that
+/// one overlay for `AltLeft` and `AltRight` rather than collapsing the two keys
+/// back into a single shared `Alt` name. A hand-written key table that does name
+/// a side is honoured: `VK_LMENU` (`0xA4`) and `VK_RMENU` (`0xA5`) resolve to
+/// the exact side, exactly as `bongocat-platform` maps the same two codes for
+/// the live Windows input path.
+///
+/// The other modifier codes (`0x10` Shift, `0x11` Control) are ambiguous in the
+/// same way and keep their shared family name, which the runtime resolves for
+/// both sides; widening this expansion to them is a separate change because it
+/// would move an output the real legacy sample's conversion already records.
+fn legacy_key_names(mode: MverInputMode, control_code: i64) -> Vec<&'static str> {
+    if mode != MverInputMode::Gamepad && control_code == LEGACY_VK_MENU {
+        return vec!["AltLeft", "AltRight"];
+    }
+    legacy_key_name(mode, control_code).into_iter().collect()
 }
 
 const fn legacy_virtual_key_name(virtual_key: i64) -> Option<&'static str> {
@@ -1074,6 +1114,10 @@ const fn legacy_virtual_key_name(virtual_key: i64) -> Option<&'static str> {
         0x7B => Some("F12"),
         0x90 => Some("NumLock"),
         0x91 => Some("ScrollLock"),
+        // `VK_LMENU` / `VK_RMENU`: the side-specific Alt codes a hand-written
+        // key table can name instead of the shared `VK_MENU`.
+        0xA4 => Some("AltLeft"),
+        0xA5 => Some("AltRight"),
         0xBA => Some("SemiColon"),
         0xBB => Some("Equal"),
         0xBC => Some("Comma"),
@@ -1891,6 +1935,11 @@ mod tests {
             (Standard, 0xC0, "BackQuote"),
             (Standard, 0xBF, "Slash"),
             (Keyboard, 0x52, "KeyR"),
+            // The side-independent Alt code keeps the legacy table's own name:
+            // `legacy_key_names` is what turns it into the product's two sides.
+            (Standard, 0x12, "Alt"),
+            (Standard, 0xA4, "AltLeft"),
+            (Keyboard, 0xA5, "AltRight"),
             // The gamepad mode addresses buttons, not virtual keys: index 13 is
             // the D-pad down button, while virtual key 0x0D is Return.
             (Gamepad, 13, "DPadDown"),
@@ -1912,6 +1961,86 @@ mod tests {
         );
         assert_eq!(legacy_key_name(Standard, 0x1234), None);
         assert_eq!(legacy_key_name(Gamepad, 16), None);
+    }
+
+    /// Left and right Alt may never collapse into one name again. The legacy
+    /// chart numbers both Alt keys `18`, so that one code has to reach both
+    /// sides; a table that does name a side keeps it.
+    #[test]
+    fn alt_control_codes_never_collapse_left_and_right() {
+        use MverInputMode::{Gamepad, Keyboard, Standard};
+        assert_eq!(
+            legacy_key_names(Standard, 0x12),
+            vec!["AltLeft", "AltRight"],
+            "the shared VK_MENU code must reach both Alt keys"
+        );
+        assert_eq!(
+            legacy_key_names(Keyboard, 0x12),
+            vec!["AltLeft", "AltRight"]
+        );
+        assert_eq!(legacy_key_names(Standard, 0xA4), vec!["AltLeft"]);
+        assert_eq!(legacy_key_names(Standard, 0xA5), vec!["AltRight"]);
+        // Every other code still names exactly one image.
+        assert_eq!(legacy_key_names(Standard, 0x41), vec!["KeyA"]);
+        assert_eq!(legacy_key_names(Gamepad, 10), vec!["DPadLeft"]);
+        assert!(legacy_key_names(Standard, 1).is_empty());
+        assert!(
+            legacy_key_names(Gamepad, 0x12).is_empty(),
+            "gamepad control codes are button indexes, not virtual keys"
+        );
+    }
+
+    /// The planned output for one ambiguous Alt binding: both sides are
+    /// destinations for the same composed overlay, and each side-specific code
+    /// still produces exactly one image.
+    #[test]
+    fn one_shared_alt_binding_installs_the_same_overlay_for_both_sides() {
+        let root = tempdir().expect("root");
+        legacy_source(
+            root.path(),
+            &[(
+                MverInputMode::Standard,
+                r#"{"hand":[[18],[164],[165]],"keyboard":[[18],[164],[165]]}"#,
+            )],
+            true,
+        );
+        for index in 0..3 {
+            write(
+                root.path(),
+                &format!("img/standard/hand/{index}.png"),
+                &flat([255, 0, 0, 255]),
+            );
+            write(
+                root.path(),
+                &format!("img/standard/keyboard/{index}.png"),
+                &flat([0, 0, 255, 255]),
+            );
+        }
+
+        let plan = inspect_directory(root.path()).expect("legacy plan");
+        let mode = plan_mode(&plan, MverInputMode::Standard);
+        assert_eq!(
+            mode.slots
+                .iter()
+                .map(|slot| slot.reference.as_str())
+                .collect::<Vec<_>>(),
+            vec!["left-keys/AltLeft.png", "left-keys/AltRight.png",]
+        );
+        // The shared code expands first, so the two side images carry the same
+        // overlay bytes and the later per-side bindings are duplicates.
+        assert_eq!(mode.slots[0].image, mode.slots[1].image);
+
+        let staging = tempdir().expect("staging");
+        convert(root.path(), &mode, staging.path()).expect("convert");
+        for name in ["AltLeft", "AltRight"] {
+            assert!(
+                staging
+                    .path()
+                    .join(format!("resources/left-keys/{name}.png"))
+                    .is_file(),
+                "{name} must be installed"
+            );
+        }
     }
 
     #[test]

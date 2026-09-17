@@ -1,4 +1,5 @@
 use crate::archive::{self, ModelSourceKind};
+use crate::key_names::normalize_legacy_key_image_names;
 use crate::mver::{self, ModelSourceContent, MverInputMode, MverSource};
 use crate::{InstalledModel, ModelError, ModelId, ModelPackageLimits, PreparedModel};
 use std::{
@@ -703,6 +704,12 @@ impl ModelStore {
             )?,
             (None, None) => unreachable!("every model source is a directory or an archive"),
         }
+        // The staged tree now speaks the product's key vocabulary. This runs on
+        // the store's own copy, after both source kinds have produced it and
+        // before the shared validation tail, so a directory and an archive of
+        // the same package are imported identically and the user's source is
+        // never written to.
+        normalize_legacy_key_image_names(&staging)?;
         self.commit_installed_staging(&id, staging, &mut cleanup, &statistics, &mut observation)
     }
 
@@ -1963,6 +1970,143 @@ mod tests {
         assert_eq!(store.list().expect("catalog").entries.len(), 2);
     }
 
+    /// A model authored against the old `rdev` naming must keep working after
+    /// import: the installed package is rewritten to the canonical names the
+    /// runtime resolves, and the user's source is left exactly as it was.
+    #[test]
+    fn legacy_alt_key_images_are_renamed_on_import_without_touching_the_source() {
+        let data = tempdir().expect("data root");
+        let store = model_store(data.path());
+        let source = tempdir().expect("source");
+        write_package_directory(source.path());
+        let legacy = [
+            ("resources/left-keys/Alt.png", b"alt".as_slice()),
+            ("resources/left-keys/AltGr.png", b"altgr".as_slice()),
+            ("resources/right-keys/Alt.png", b"hand alt".as_slice()),
+        ];
+        for (reference, bytes) in legacy {
+            let path = source.path().join(reference);
+            fs::create_dir_all(path.parent().expect("reference parent")).expect("key directory");
+            fs::write(&path, bytes).expect("write legacy key image");
+        }
+
+        let installed = store
+            .import(ModelId::parse("legacy").expect("model id"), source.path())
+            .expect("import legacy model");
+
+        for (reference, bytes) in [
+            ("resources/left-keys/AltLeft.png", b"alt".as_slice()),
+            ("resources/left-keys/AltRight.png", b"altgr".as_slice()),
+            ("resources/right-keys/AltLeft.png", b"hand alt".as_slice()),
+        ] {
+            assert_eq!(
+                fs::read(installed.root().join(reference)).expect("canonical key image"),
+                bytes,
+                "{reference}"
+            );
+        }
+        for legacy in [
+            "resources/left-keys/Alt.png",
+            "resources/left-keys/AltGr.png",
+            "resources/right-keys/Alt.png",
+        ] {
+            assert!(
+                !installed.root().join(legacy).exists(),
+                "{legacy} must not survive the import"
+            );
+        }
+        // Renaming is the only change: the package the source described is the
+        // package that was installed.
+        assert_eq!(installed.index().moc, "model.moc3");
+        assert_eq!(installed.index().textures.len(), 1);
+
+        for (reference, bytes) in legacy {
+            assert_eq!(
+                fs::read(source.path().join(reference)).expect("source key image"),
+                bytes,
+                "the source keeps its own names and bytes: {reference}"
+            );
+        }
+    }
+
+    /// The archive source runs through the same rewrite as the directory one.
+    #[test]
+    fn legacy_alt_key_images_are_renamed_when_imported_from_an_archive() {
+        let data = tempdir().expect("data root");
+        let store = model_store(data.path());
+        let archives = tempdir().expect("archive root");
+        let mut builder = ArchiveBuilder::new(archives.path().join("legacy.zip"));
+        for (reference, bytes) in sample_package_entries() {
+            builder.deflated_file(&reference, &bytes);
+        }
+        builder.deflated_file("resources/left-keys/Alt.png", b"alt");
+        builder.deflated_file("resources/left-keys/AltGr.png", b"altgr");
+        let archive = builder.finish();
+
+        let installed = store
+            .import(
+                ModelId::parse("legacy-archive").expect("model id"),
+                &archive,
+            )
+            .expect("import legacy archive");
+
+        assert_eq!(
+            fs::read(installed.root().join("resources/left-keys/AltLeft.png"))
+                .expect("canonical left alt"),
+            b"alt"
+        );
+        assert_eq!(
+            fs::read(installed.root().join("resources/left-keys/AltRight.png"))
+                .expect("canonical right alt"),
+            b"altgr"
+        );
+        assert!(
+            !installed
+                .root()
+                .join("resources/left-keys/Alt.png")
+                .exists()
+        );
+        assert!(
+            !installed
+                .root()
+                .join("resources/left-keys/AltGr.png")
+                .exists()
+        );
+    }
+
+    /// The rewrite never resolves a conflict by guessing: a package that ships
+    /// both spellings keeps the canonical file's bytes and the legacy file.
+    #[test]
+    fn an_imported_package_that_ships_both_spellings_keeps_the_canonical_image() {
+        let data = tempdir().expect("data root");
+        let store = model_store(data.path());
+        let source = tempdir().expect("source");
+        write_package_directory(source.path());
+        for (reference, bytes) in [
+            ("resources/left-keys/Alt.png", b"legacy".as_slice()),
+            ("resources/left-keys/AltLeft.png", b"canonical".as_slice()),
+        ] {
+            let path = source.path().join(reference);
+            fs::create_dir_all(path.parent().expect("reference parent")).expect("key directory");
+            fs::write(&path, bytes).expect("write key image");
+        }
+
+        let installed = store
+            .import(ModelId::parse("both").expect("model id"), source.path())
+            .expect("import model");
+
+        assert_eq!(
+            fs::read(installed.root().join("resources/left-keys/AltLeft.png"))
+                .expect("canonical key image"),
+            b"canonical"
+        );
+        assert_eq!(
+            fs::read(installed.root().join("resources/left-keys/Alt.png"))
+                .expect("legacy key image"),
+            b"legacy"
+        );
+    }
+
     #[test]
     fn archive_sources_are_recognized_by_content_not_by_name() {
         let data = tempdir().expect("data root");
@@ -2535,6 +2679,134 @@ mod tests {
             .expect_err("missing input mode");
         assert_eq!(error.code, ModelStoreDiagnostic::SourceConversionFailed);
         assert_store_holds_no_entries(&store);
+    }
+
+    /// Read a source's key images without importing anything: a directory is
+    /// listed in place, an archive is read through its own entries and is never
+    /// extracted. Keys are package-relative, so an archive's wrapper directory
+    /// is skipped by matching on the path's tail.
+    fn source_key_images(source: &Path) -> std::collections::BTreeMap<(String, String), Vec<u8>> {
+        use std::collections::BTreeMap;
+        use std::io::Read;
+
+        const DIRECTORIES: [&str; 2] = ["resources/left-keys", "resources/right-keys"];
+        let mut images = BTreeMap::new();
+        if source.is_dir() {
+            for directory in DIRECTORIES {
+                let Ok(entries) = fs::read_dir(source.join(directory)) else {
+                    continue;
+                };
+                for entry in entries {
+                    let entry = entry.expect("source key image");
+                    if entry.file_type().expect("source entry type").is_dir() {
+                        continue;
+                    }
+                    images.insert(
+                        (
+                            directory.to_owned(),
+                            entry.file_name().into_string().expect("key image name"),
+                        ),
+                        fs::read(entry.path()).expect("read source key image"),
+                    );
+                }
+            }
+            return images;
+        }
+
+        let mut archive =
+            zip::ZipArchive::new(File::open(source).expect("open archive")).expect("read archive");
+        for index in 0..archive.len() {
+            let mut entry = archive.by_index(index).expect("archive entry");
+            let name = entry.name().replace('\\', "/");
+            let Some((directory, file)) = DIRECTORIES.iter().find_map(|directory| {
+                let rest = name.rsplit_once(&format!("{directory}/"))?.1;
+                (!rest.is_empty() && !rest.contains('/')).then_some((*directory, rest.to_owned()))
+            }) else {
+                continue;
+            };
+            let mut bytes = Vec::new();
+            entry.read_to_end(&mut bytes).expect("read archive entry");
+            images.insert((directory.to_owned(), file), bytes);
+        }
+        images
+    }
+
+    /// Import the community BongoCat model the maintainer points at.
+    ///
+    /// Models downloaded for the old `rdev`-based BongoCat carry third-party
+    /// artwork and cannot be committed to the repository, so the real-world case
+    /// is covered by pointing `BONGOCAT_PACKAGE_SAMPLE` at one — a directory or
+    /// a `.zip` both work, because the source kind is decided from the source
+    /// itself. The test is skipped when the variable is unset, which keeps it out
+    /// of the default `cargo test` line.
+    ///
+    /// What it asserts is the whole point of the rewrite: every pre-rename key
+    /// image the source shipped is installed under its canonical name with the
+    /// same bytes, no pre-rename name survives, every other key image is copied
+    /// verbatim, and the source the user picked is not written to.
+    #[test]
+    fn imports_the_bongo_cat_sample_named_by_the_environment() {
+        use std::collections::BTreeMap;
+
+        let Some(source) = std::env::var_os("BONGOCAT_PACKAGE_SAMPLE") else {
+            return;
+        };
+        let source = PathBuf::from(source);
+        let data = tempdir().expect("data root");
+        let store = model_store(data.path());
+
+        let source_images = source_key_images(&source);
+        assert!(
+            !source_images.is_empty(),
+            "{} ships no key images",
+            source.display()
+        );
+        let mut expected: BTreeMap<(String, String), Vec<u8>> = BTreeMap::new();
+        for ((directory, name), bytes) in source_images.clone() {
+            let canonical = match name.as_str() {
+                "Alt.png" => "AltLeft.png",
+                "AltGr.png" => "AltRight.png",
+                _ => {
+                    expected.insert((directory, name), bytes);
+                    continue;
+                }
+            };
+            expected.insert((directory, canonical.to_owned()), bytes);
+        }
+
+        let installed = store
+            .import(store.allocate_unique_id().expect("allocate id"), &source)
+            .expect("import sample");
+
+        for directory in ["resources/left-keys", "resources/right-keys"] {
+            let mut actual = BTreeMap::new();
+            if let Ok(entries) = fs::read_dir(installed.root().join(directory)) {
+                for entry in entries {
+                    let entry = entry.expect("installed key image");
+                    if entry.file_type().expect("installed entry type").is_dir() {
+                        continue;
+                    }
+                    actual.insert(
+                        entry.file_name().into_string().expect("key image name"),
+                        fs::read(entry.path()).expect("read installed key image"),
+                    );
+                }
+            }
+            let want = expected
+                .iter()
+                .filter(|((expected_directory, _), _)| expected_directory == directory)
+                .map(|((_, name), bytes)| (name.clone(), bytes.clone()))
+                .collect::<BTreeMap<_, _>>();
+            assert_eq!(actual, want, "{directory} contents after import");
+        }
+
+        // The user's source is an input, not a working copy: a folder keeps its
+        // own names and bytes, and an archive keeps its own entries.
+        assert_eq!(
+            source_key_images(&source),
+            source_images,
+            "the source must not be rewritten by the import"
+        );
     }
 
     /// Convert the legacy application folder the maintainer points at.
